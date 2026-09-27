@@ -4160,7 +4160,7 @@ end
     );
     assert_eq!(
         output,
-        "has_many:posts:Post:user_id:posts:id\nbelongs_to:user:User:user_id:users:id\n"
+        "has_many:posts:Post:user_id:posts:id:User\nbelongs_to:user:User:user_id:users:id:Post\n"
     );
 }
 
@@ -4210,9 +4210,9 @@ end
     ]);
     assert_eq!(
         output,
-        "has_many:posts:Post:author_id:articles:handle\n\
-         belongs_to:account:Account:account_id:accounts_v2:uuid\n\
-         belongs_to:author:Author:author_id:writers:handle\n"
+        "has_many:posts:Post:author_id:articles:handle:Author\n\
+         belongs_to:account:Account:account_id:accounts_v2:uuid:Author\n\
+         belongs_to:author:Author:author_id:writers:handle:Post\n"
     );
 }
 
@@ -4241,7 +4241,7 @@ fn main() do
 end
 "#,
     );
-    assert_eq!(output, "has_one:profile:Profile:user_id:profiles:id\n");
+    assert_eq!(output, "has_one:profile:Profile:user_id:profiles:id:User\n");
 }
 
 /// __relationship_meta__() with multiple relationships on one struct.
@@ -4277,7 +4277,7 @@ end
     );
     assert_eq!(
         output,
-        "has_many:posts:Post:user_id:posts:id\nhas_one:profile:Profile:user_id:profiles:id\n"
+        "has_many:posts:Post:user_id:posts:id:User\nhas_one:profile:Profile:user_id:profiles:id:User\n"
     );
 }
 
@@ -5686,7 +5686,7 @@ end
     );
     assert_eq!(
         output,
-        "has_many:posts:Post:user_id:posts:id\npreload_types_ok\n"
+        "has_many:posts:Post:user_id:posts:id:User\npreload_types_ok\n"
     );
 }
 
@@ -5774,7 +5774,7 @@ fn main() do
 end
 "#,
     );
-    assert_eq!(output, "has_many:posts:Post:user_id:posts:id\nbelongs_to:user:User:user_id:users:id\nhas_many:comments:Comment:post_id:comments:id\n");
+    assert_eq!(output, "has_many:posts:Post:user_id:posts:id:User\nbelongs_to:user:User:user_id:users:id:Post\nhas_many:comments:Comment:post_id:comments:id:Post\n");
 }
 
 // ── Phase 101: Migration DSL E2E Tests ──────────────────────────────────

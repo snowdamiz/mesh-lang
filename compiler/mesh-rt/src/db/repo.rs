@@ -879,33 +879,46 @@ use crate::collections::list::string_list;
 use crate::string::text_of;
 use std::collections::{HashMap, HashSet};
 
-/// Parsed relationship metadata from "kind:name:target:fk:target_table:key"
-/// strings (`key` may be left out, meaning "id").
+/// One relationship, from "kind:name:target:fk:target_table:key:owner"
+/// (`key` may be left out, meaning "id"; so may `owner`, the struct
+/// declaring it, which `__relationship_meta__` writes).
 struct RelMeta {
     kind: String,         // "belongs_to", "has_many", "has_one"
+    name: String,         // the association (e.g., "posts")
+    target: String,       // the struct it loads (e.g., "Post")
     fk: String,           // foreign key column (e.g., "user_id")
     target_table: String, // target table (e.g., "posts")
     key: String,          // the primary key `fk` refers to (e.g., "id")
+    owner: Option<String>,
 }
 
-/// Parse relationship metadata strings into a lookup map keyed by association name.
-fn parse_relationship_meta(meta_strings: &[String]) -> HashMap<String, RelMeta> {
-    let mut map = HashMap::new();
-    for entry in meta_strings {
-        let parts: Vec<&str> = entry.splitn(6, ':').collect();
-        if parts.len() >= 5 {
-            map.insert(
-                parts[1].to_string(),
-                RelMeta {
-                    kind: parts[0].to_string(),
-                    fk: parts[3].to_string(),
-                    target_table: parts[4].to_string(),
-                    key: parts.get(5).unwrap_or(&"id").to_string(),
-                },
-            );
-        }
-    }
-    map
+/// Parse relationship metadata strings, in their order.
+fn parse_relationship_meta(meta_strings: &[String]) -> Vec<RelMeta> {
+    meta_strings
+        .iter()
+        .filter_map(|entry| {
+            let parts: Vec<&str> = entry.splitn(7, ':').collect();
+            (parts.len() >= 5).then(|| RelMeta {
+                kind: parts[0].to_string(),
+                name: parts[1].to_string(),
+                target: parts[2].to_string(),
+                fk: parts[3].to_string(),
+                target_table: parts[4].to_string(),
+                key: parts.get(5).unwrap_or(&"id").to_string(),
+                owner: parts.get(6).map(|owner| owner.to_string()),
+            })
+        })
+        .collect()
+}
+
+/// The relationship `name` of the struct `owner` declares; failing that
+/// (the rows' own struct, which no path names, or metadata without
+/// owners), the first one listed of that name.
+fn relationship<'a>(metas: &'a [RelMeta], owner: Option<&str>, name: &str) -> Option<&'a RelMeta> {
+    metas
+        .iter()
+        .find(|meta| meta.name == name && owner.is_some() && meta.owner.as_deref() == owner)
+        .or_else(|| metas.iter().find(|meta| meta.name == name))
 }
 
 /// Build a simple SELECT query with an IN clause for preloading.
@@ -921,7 +934,7 @@ fn build_preload_sql(table: &str, where_col: &str, ids: &[String]) -> (String, V
     (sql, ids.to_vec())
 }
 
-/// Preload a single direct association onto a list of rows.
+/// Preload a single direct association (`meta`) onto a list of rows.
 ///
 /// For has_many/has_one: collects parent "id" values, queries WHERE fk IN (...), groups by fk.
 /// For belongs_to: collects parent FK values, queries WHERE id IN (...), groups by id.
@@ -929,15 +942,7 @@ fn build_preload_sql(table: &str, where_col: &str, ids: &[String]) -> (String, V
 /// Returns a new list with each row enriched with the association data:
 /// - has_many: a List pointer under the association key
 /// - has_one/belongs_to: a Map pointer (single row) under the association key, or null
-unsafe fn preload_direct(
-    pool: u64,
-    rows: *mut u8,
-    assoc_name: &str,
-    rel_map: &HashMap<String, RelMeta>,
-) -> Result<*mut u8, *mut u8> {
-    let meta = rel_map.get(assoc_name)
-        .ok_or_else(|| err_result(&format!("Repo.preload: unknown association '{}' -- check that the relationship metadata includes this association", assoc_name)))?;
-
+unsafe fn preload_direct(pool: u64, rows: *mut u8, meta: &RelMeta) -> Result<*mut u8, *mut u8> {
     let row_count = mesh_list_length(rows);
 
     // Determine which column to extract from parent rows and which column to match in target
@@ -994,7 +999,7 @@ unsafe fn preload_direct(
 
     // 3. Each parent row with its association under the association's name:
     // has_many a list of rows, has_one and belongs_to a row or null (0).
-    let assoc_key_mesh = mesh_str(assoc_name) as u64;
+    let assoc_key_mesh = mesh_str(&meta.name) as u64;
     let many = meta.kind == "has_many";
     let mut enriched = mesh_list_new();
     for i in 0..row_count {
@@ -1011,37 +1016,29 @@ unsafe fn preload_direct(
     Ok(enriched)
 }
 
-/// Preload `path` onto `rows`: one association (`posts`), or a dotted path
-/// through them (`posts.comments`).
-unsafe fn preload_path(
-    pool: u64,
-    rows: *mut u8,
-    path: &str,
-    rel_map: &HashMap<String, RelMeta>,
-) -> Result<*mut u8, *mut u8> {
-    match path.split_once('.') {
-        Some((parent, child)) => preload_nested(pool, rows, parent, child, rel_map),
-        None => preload_direct(pool, rows, path, rel_map),
+/// Preload the last of `chain` onto `rows`, through the ones before it (a
+/// path's relationships, each already preloaded): `[posts]` is the rows'
+/// posts, `[posts, comments]` their posts' comments.
+unsafe fn preload_path(pool: u64, rows: *mut u8, chain: &[&RelMeta]) -> Result<*mut u8, *mut u8> {
+    let (first, rest) = chain.split_first().expect("a path names an association");
+    match rest.is_empty() {
+        true => preload_direct(pool, rows, first),
+        false => preload_nested(pool, rows, first, rest),
     }
 }
 
-/// Preload `child_assoc` below `parent_assoc` ("posts.comments"):
+/// Preload `rest` below the association `parent_meta` ("posts.comments"):
 /// 1. Collect all intermediate rows from the parent association (flatten all has_many lists)
-/// 2. Preload child_assoc on the intermediate rows using the SAME merged metadata
+/// 2. Preload the rest of the path on the intermediate rows
 /// 3. Re-stitch: rebuild parent association lists using positional tracking
 unsafe fn preload_nested(
     pool: u64,
     rows: *mut u8,
-    parent_assoc: &str,
-    child_assoc: &str,
-    rel_map: &HashMap<String, RelMeta>,
+    parent_meta: &RelMeta,
+    rest: &[&RelMeta],
 ) -> Result<*mut u8, *mut u8> {
     let row_count = mesh_list_length(rows);
-    let parent_key_mesh = mesh_str(parent_assoc) as *mut u8;
-
-    // The parent association's kind decides how to extract intermediate rows.
-    // It is known: `mesh_repo_preload` preloaded it before this path.
-    let parent_meta = &rel_map[parent_assoc];
+    let parent_key_mesh = mesh_str(&parent_meta.name) as *mut u8;
 
     // Collect intermediate rows and track which parent row each came from
     // and its position within the parent's association list.
@@ -1074,7 +1071,7 @@ unsafe fn preload_nested(
         return Ok(rows); // nothing to preload at nested level
     }
 
-    let enriched_intermediate = preload_path(pool, intermediate_rows, child_assoc, rel_map)?;
+    let enriched_intermediate = preload_path(pool, intermediate_rows, rest)?;
 
     // Re-stitch: rebuild parent rows with enriched intermediate rows
     // Group enriched intermediate rows back by parent index
@@ -1088,7 +1085,6 @@ unsafe fn preload_nested(
     }
 
     // Rebuild parent rows
-    let assoc_key_mesh_parent = mesh_str(parent_assoc) as *mut u8;
     let mut result = mesh_list_new();
     for i in 0..row_count {
         let row = mesh_list_get(rows, i) as *mut u8;
@@ -1099,15 +1095,12 @@ unsafe fn preload_nested(
                 for &child in enriched_children {
                     new_list = mesh_list_append(new_list, child as u64);
                 }
-                let new_row = mesh_map_put(row, assoc_key_mesh_parent as u64, new_list as u64);
+                let new_row = mesh_map_put(row, parent_key_mesh as u64, new_list as u64);
                 result = mesh_list_append(result, new_row as u64);
             } else {
                 // has_one/belongs_to: single enriched row
-                let new_row = mesh_map_put(
-                    row,
-                    assoc_key_mesh_parent as u64,
-                    enriched_children[0] as u64,
-                );
+                let new_row =
+                    mesh_map_put(row, parent_key_mesh as u64, enriched_children[0] as u64);
                 result = mesh_list_append(result, new_row as u64);
             }
         } else {
@@ -1119,58 +1112,35 @@ unsafe fn preload_nested(
     Ok(result)
 }
 
-/// The preloaded association paths as a tree: `["posts", "posts.comments"]`
-/// is posts -> comments.
+/// The preloaded associations as a tree, each with its relationship:
+/// `["posts", "posts.comments"]` is posts -> comments.
 #[derive(Default)]
-struct AssocTree(HashMap<String, AssocTree>);
-
-fn assoc_tree(paths: &[String]) -> AssocTree {
-    let mut tree = AssocTree::default();
-    for path in paths {
-        let mut node = &mut tree;
-        for name in path.split('.') {
-            node = node.0.entry(name.to_string()).or_default();
-        }
-    }
-    tree
-}
+struct AssocTree<'a>(HashMap<&'a str, (&'a RelMeta, AssocTree<'a>)>);
 
 /// A preloaded association as JSON: has_many a list of rows (an array),
 /// has_one and belongs_to a row or null (0).
-unsafe fn association_json(
-    value: u64,
-    many: bool,
-    nested: &AssocTree,
-    rel_map: &HashMap<String, RelMeta>,
-) -> serde_json::Value {
-    if many {
+unsafe fn association_json(value: u64, meta: &RelMeta, nested: &AssocTree) -> serde_json::Value {
+    if meta.kind == "has_many" {
         let list = value as *mut u8;
         let rows = (0..mesh_list_length(list))
-            .map(|i| row_json(mesh_list_get(list, i) as *mut u8, nested, rel_map));
+            .map(|i| row_json(mesh_list_get(list, i) as *mut u8, nested));
         serde_json::Value::Array(rows.collect())
     } else if value == 0 {
         serde_json::Value::Null
     } else {
-        row_json(value as *mut u8, nested, rel_map)
+        row_json(value as *mut u8, nested)
     }
 }
 
 /// A row as a JSON object: its columns as strings, the associations preloaded
 /// onto it as `association_json`.
-unsafe fn row_json(
-    row: *mut u8,
-    associations: &AssocTree,
-    rel_map: &HashMap<String, RelMeta>,
-) -> serde_json::Value {
+unsafe fn row_json(row: *mut u8, associations: &AssocTree) -> serde_json::Value {
     let mut object = serde_json::Map::new();
     for i in 0..mesh_map_size(row) {
         let key = text_of(mesh_map_entry_key(row, i) as *mut u8);
         let value = mesh_map_entry_value(row, i);
         let json = match associations.0.get(key) {
-            Some(nested) => {
-                let many = rel_map.get(key).is_some_and(|meta| meta.kind == "has_many");
-                association_json(value, many, nested, rel_map)
-            }
+            Some((meta, nested)) => association_json(value, meta, nested),
             None => serde_json::Value::String(text_of(value as *mut u8).to_string()),
         };
         object.insert(key.to_string(), json);
@@ -1190,10 +1160,11 @@ unsafe fn row_json(
 /// 4. Group results by FK value
 /// 5. Attach grouped results to each parent row under the association key
 ///
-/// Associations are sorted by nesting depth (atoms/direct first, then "a.b", then "a.b.c")
-/// to ensure parent-level data is loaded before nested preloading accesses it.
-/// While they load, an association is a list or row pointer; each row then
-/// gets it as JSON text (`association_json`), which is what a
+/// Each path is read level by level: its first association is the rows'
+/// own (the first listed of its name), each next one the one the previous
+/// association's target struct declares. Associations are preloaded parents
+/// first. While they load, an association is a list or row pointer; each row
+/// then gets it as JSON text (`association_json`), which is what a
 /// `Map<String, String>` can hold: a pointer there would be read, printed and
 /// copied between actors as a string.
 #[no_mangle]
@@ -1209,44 +1180,55 @@ pub extern "C" fn mesh_repo_preload(
             return ok_result(rows); // nothing to preload
         }
 
-        // Parse relationship metadata into lookup map
-        let meta_strings = list_strings(rel_meta);
-        let rel_map = parse_relationship_meta(&meta_strings);
+        let metas = parse_relationship_meta(&list_strings(rel_meta));
 
-        // Each path, and the associations it passes through ("posts.comments"
-        // preloads posts, then their comments), once each, parents first.
-        let mut paths: Vec<String> = Vec::new();
-        for name in list_strings(associations) {
-            let mut end = 0;
-            for part in name.split('.') {
-                end += part.len();
-                if !paths.iter().any(|path| *path == name[..end]) {
-                    paths.push(name[..end].to_string());
+        // Each path's relationships, level by level ("posts.comments" is the
+        // rows' posts, then the comments a post has), and every path on the
+        // way to one (posts, then posts' comments), once each, parents first.
+        let mut chains: Vec<Vec<&RelMeta>> = Vec::new();
+        for path in list_strings(associations) {
+            let mut chain: Vec<&RelMeta> = Vec::new();
+            for name in path.split('.') {
+                let owner = chain.last().map(|parent| parent.target.as_str());
+                let Some(meta) = relationship(&metas, owner, name) else {
+                    return err_result(&format!("Repo.preload: unknown association '{}' -- check that the relationship metadata includes this association", name));
+                };
+                chain.push(meta);
+                let known = chains.iter().any(|known| {
+                    known.len() == chain.len()
+                        && known.iter().zip(&chain).all(|(a, b)| std::ptr::eq(*a, *b))
+                });
+                if !known {
+                    chains.push(chain.clone());
                 }
-                end += 1;
             }
         }
-        paths.sort_by_key(|path| path.matches('.').count());
+        chains.sort_by_key(Vec::len);
 
         // Working copy: enrich rows progressively
         let mut current_rows = rows;
-        for path in &paths {
-            match preload_path(pool, current_rows, path, &rel_map) {
+        let mut tree = AssocTree::default();
+        for chain in &chains {
+            match preload_path(pool, current_rows, chain) {
                 Ok(enriched) => current_rows = enriched,
                 Err(e) => return e,
             }
+            let mut node = &mut tree;
+            for meta in chain {
+                node = &mut node
+                    .0
+                    .entry(&meta.name)
+                    .or_insert((meta, AssocTree::default()))
+                    .1;
+            }
         }
 
-        let tree = assoc_tree(&paths);
         let mut encoded = mesh_list_new();
         for i in 0..mesh_list_length(current_rows) {
             let mut row = mesh_list_get(current_rows, i) as *mut u8;
-            for (name, nested) in &tree.0 {
+            for (name, (meta, nested)) in &tree.0 {
                 let key = mesh_str(name) as u64;
-                let many = rel_map
-                    .get(name)
-                    .is_some_and(|meta| meta.kind == "has_many");
-                let json = association_json(mesh_map_get(row, key), many, nested, &rel_map);
+                let json = association_json(mesh_map_get(row, key), meta, nested);
                 row = mesh_map_put(row, key, mesh_str(&json.to_string()) as u64);
             }
             encoded = mesh_list_append(encoded, row as u64);
@@ -2287,13 +2269,13 @@ mod tests {
         ];
         let map = parse_relationship_meta(&meta);
         assert_eq!(map.len(), 3);
-        let posts = map.get("posts").unwrap();
+        let posts = relationship(&map, None, "posts").unwrap();
         assert_eq!(posts.kind, "has_many");
         assert_eq!(posts.fk, "user_id");
         assert_eq!(posts.target_table, "posts");
-        let profile = map.get("profile").unwrap();
+        let profile = relationship(&map, None, "profile").unwrap();
         assert_eq!(profile.kind, "has_one");
-        let user = map.get("user").unwrap();
+        let user = relationship(&map, None, "user").unwrap();
         assert_eq!(user.kind, "belongs_to");
         assert_eq!(user.fk, "user_id");
         assert_eq!(user.target_table, "users");
@@ -2301,7 +2283,8 @@ mod tests {
         let keyed = parse_relationship_meta(&[
             "belongs_to:owner:Account:owner_id:accounts:uuid".to_string()
         ]);
-        assert_eq!(keyed.get("owner").unwrap().key, "uuid");
+        assert_eq!(relationship(&keyed, None, "owner").unwrap().key, "uuid");
+        assert_eq!(user.owner, None, "an owner left out is none");
     }
 
     #[test]
@@ -3277,6 +3260,48 @@ mod tests {
         let paths = string_list(&["author.posts"]);
         let preloaded = ok(mesh_repo_preload(pool, posts, paths, meta));
         assert_eq!(column_of(preloaded, "author"), ["null"]);
+        crate::db::pool::mesh_pool_close(pool);
+    }
+
+    /// Two structs may name an association alike (users and posts both have
+    /// comments): each level of a path reads its own struct's relationship.
+    /// Keyed by name alone, the last one listed served every level.
+    #[test]
+    #[ignore = "requires MESH_TEST_DATABASE_URL (the coverage run starts a database)"]
+    fn each_struct_reads_its_own_relationship_of_a_shared_name() {
+        let pool = test_pool(
+            "mesh_repo_unit_owners",
+            &[
+                "CREATE TABLE users (id INT PRIMARY KEY)",
+                "CREATE TABLE posts (id INT PRIMARY KEY, user_id INT)",
+                "CREATE TABLE comments (id INT PRIMARY KEY, user_id INT, post_id INT)",
+                "INSERT INTO users VALUES (1), (2)",
+                "INSERT INTO posts VALUES (10, 2)",
+                "INSERT INTO comments VALUES (100, 1, 10)",
+            ],
+        );
+        use crate::db::query::{mesh_query_from, mesh_query_order_by};
+        let users = mesh_query_order_by(mesh_query_from(atom("users")), atom("id"), atom("asc"));
+        let rows = ok(mesh_repo_all(pool, users));
+        let meta = string_list(&[
+            "has_many:posts:Post:user_id:posts:id:User",
+            "has_many:comments:Comment:user_id:comments:id:User",
+            "has_many:comments:Comment:post_id:comments:id:Post",
+        ]);
+        let paths = string_list(&["comments", "posts.comments"]);
+        let preloaded = ok(mesh_repo_preload(pool, rows, paths, meta));
+        let comment = r#"{"id":"100","post_id":"10","user_id":"1"}"#;
+        assert_eq!(
+            column_of(preloaded, "comments"),
+            [format!("[{comment}]"), "[]".into()]
+        );
+        assert_eq!(
+            column_of(preloaded, "posts"),
+            [
+                "[]".to_string(),
+                format!(r#"[{{"comments":[{comment}],"id":"10","user_id":"2"}}]"#)
+            ]
+        );
         crate::db::pool::mesh_pool_close(pool);
     }
 
