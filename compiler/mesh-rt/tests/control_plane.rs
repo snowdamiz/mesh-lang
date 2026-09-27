@@ -134,6 +134,18 @@ fn a_node_serves_consensus_operator_controls_and_its_controller() {
         )
         .await
         .expect("consensus node");
+        // Only this process's started node can run a durable node.
+        assert_eq!(
+            start_mesh_durable_consensus_node(
+                2,
+                "someone-else@127.0.0.1:1",
+                "control-plane",
+                &directory.path().join("elsewhere.redb"),
+            )
+            .await
+            .err(),
+            Some("consensus_mesh_node_identity_mismatch".to_string())
+        );
         node.raft
             .initialize(BTreeMap::from([(1, openraft::BasicNode::new(&name))]))
             .await

@@ -85,6 +85,15 @@ fn the_bootstrap_controller_initializes_and_leads_its_consensus() {
     assert_eq!(waiting.state, "starting");
     assert_eq!(waiting.tick_sequence, 0);
 
+    // A voter list without this node's address is refused before anything
+    // starts, and the runtime can still start once it is right.
+    let voters = std::env::var("MESH_CONTROLLER_VOTERS").unwrap();
+    std::env::set_var("MESH_CONTROLLER_VOTERS", "env-cluster/controller/a");
+    assert_eq!(
+        start_mesh_consensus_from_env(&name),
+        Err("consensus_controller_voter_invalid".to_string())
+    );
+    std::env::set_var("MESH_CONTROLLER_VOTERS", voters);
     assert_eq!(start_mesh_consensus_from_env(&name), Ok(true));
     assert_eq!(
         start_mesh_consensus_from_env(&name),
