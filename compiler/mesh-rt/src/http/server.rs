@@ -28,7 +28,9 @@ use rustls_pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer};
 
 use crate::actor;
 use crate::bytes::{mesh_bytes_new, MeshBytes};
+use crate::callback::{call1, call3};
 use crate::collections::map;
+use crate::dist::telemetry::AdmissionController;
 use crate::gc::mesh_gc_alloc_actor;
 use crate::string::{mesh_str, MeshString};
 
@@ -245,45 +247,27 @@ struct TransportHttpResponse {
     headers: Vec<(String, String)>,
 }
 
-fn mesh_string_ptr_to_owned(ptr: *mut u8) -> String {
-    if ptr.is_null() {
-        String::new()
-    } else {
-        unsafe { (*(ptr as *const MeshString)).as_str().to_string() }
-    }
+/// A request's or response's string field: a Mesh String, never null.
+fn mesh_string_to_owned(ptr: *mut u8) -> String {
+    unsafe { (*(ptr as *const MeshString)).as_str().to_string() }
 }
 
-fn mesh_bytes_ptr_to_owned(ptr: *mut u8) -> Vec<u8> {
-    if ptr.is_null() {
-        Vec::new()
-    } else {
-        unsafe { (*(ptr as *const MeshBytes)).as_slice().to_vec() }
-    }
-}
-
-fn mesh_map_to_pairs(map_ptr: *mut u8) -> Result<Vec<(String, String)>, String> {
+/// A string-keyed map's entries, in order (a map may be a view of a
+/// table); a response without custom headers has a null map, and none.
+fn string_pairs(map_ptr: *mut u8) -> Vec<(String, String)> {
     if map_ptr.is_null() {
-        return Ok(Vec::new());
+        return Vec::new();
     }
-
-    let len = map::mesh_map_size(map_ptr);
-    if len < 0 {
-        return Err("mesh_http_map_size_invalid".to_string());
-    }
-
-    let mut pairs = Vec::with_capacity(len as usize);
-    for index in 0..len {
-        let key_ptr = map::mesh_map_entry_key(map_ptr, index) as *mut u8;
-        let value_ptr = map::mesh_map_entry_value(map_ptr, index) as *mut u8;
-        if key_ptr.is_null() || value_ptr.is_null() {
-            return Err(format!("mesh_http_map_entry_missing:{index}"));
-        }
-        pairs.push((
-            mesh_string_ptr_to_owned(key_ptr),
-            mesh_string_ptr_to_owned(value_ptr),
-        ));
-    }
-    Ok(pairs)
+    let (_, entries) = unsafe { map::live_entries(map_ptr) };
+    entries
+        .iter()
+        .map(|[key, value]| {
+            (
+                mesh_string_to_owned(*key as *mut u8),
+                mesh_string_to_owned(*value as *mut u8),
+            )
+        })
+        .collect()
 }
 
 fn pairs_to_mesh_map(pairs: &[(String, String)]) -> *mut u8 {
@@ -296,27 +280,25 @@ fn pairs_to_mesh_map(pairs: &[(String, String)]) -> *mut u8 {
     map_ptr
 }
 
-fn mesh_request_to_transport(request_ptr: *mut u8) -> Result<TransportHttpRequest, String> {
-    if request_ptr.is_null() {
-        return Err("mesh_http_request_missing".to_string());
-    }
-
+/// A request as the runtime built it: every field set, the idempotency key
+/// null when the caller gave none.
+fn mesh_request_to_transport(request_ptr: *mut u8) -> TransportHttpRequest {
     let request = unsafe { &*(request_ptr as *const MeshHttpRequest) };
-    Ok(TransportHttpRequest {
-        method: mesh_string_ptr_to_owned(request.method),
-        path: mesh_string_ptr_to_owned(request.path),
-        body: if request.body_bytes.is_null() {
-            mesh_string_ptr_to_owned(request.body).into_bytes()
-        } else {
-            mesh_bytes_ptr_to_owned(request.body_bytes)
+    TransportHttpRequest {
+        method: mesh_string_to_owned(request.method),
+        path: mesh_string_to_owned(request.path),
+        body: unsafe {
+            (*(request.body_bytes as *const MeshBytes))
+                .as_slice()
+                .to_vec()
         },
-        query_params: mesh_map_to_pairs(request.query_params)?,
-        headers: mesh_map_to_pairs(request.headers)?,
-        path_params: mesh_map_to_pairs(request.path_params)?,
-        request_id: mesh_string_ptr_to_owned(request.request_id),
+        query_params: string_pairs(request.query_params),
+        headers: string_pairs(request.headers),
+        path_params: string_pairs(request.path_params),
+        request_id: mesh_string_to_owned(request.request_id),
         idempotency_key: (!request.idempotency_key.is_null())
-            .then(|| mesh_string_ptr_to_owned(request.idempotency_key)),
-    })
+            .then(|| mesh_string_to_owned(request.idempotency_key)),
+    }
 }
 
 fn transport_request_to_mesh(request: &TransportHttpRequest) -> *mut u8 {
@@ -342,33 +324,35 @@ fn transport_request_to_mesh(request: &TransportHttpRequest) -> *mut u8 {
     }
 }
 
-fn mesh_response_to_transport(response_ptr: *mut u8) -> Result<TransportHttpResponse, String> {
-    if response_ptr.is_null() {
-        return Err("mesh_http_response_missing".to_string());
-    }
-
+/// A handler's response: its status, its body (the bytes of a byte-exact
+/// response, else its text) and its headers, a byte-exact one's with an
+/// octet-stream content type unless it names one.
+fn mesh_response_to_transport(response_ptr: *mut u8) -> TransportHttpResponse {
     let response = unsafe { &*(response_ptr as *const MeshHttpResponse) };
-    let binary_body = !response.body_bytes.is_null();
-    let mut headers = mesh_map_to_pairs(response.headers)?;
-    if binary_body
-        && !headers
+    let mut headers = string_pairs(response.headers);
+    let body = if response.body_bytes.is_null() {
+        mesh_string_to_owned(response.body).into_bytes()
+    } else {
+        if !headers
             .iter()
             .any(|(name, _)| name.eq_ignore_ascii_case("content-type"))
-    {
-        headers.push((
-            "Content-Type".to_string(),
-            "application/octet-stream".to_string(),
-        ));
-    }
-    Ok(TransportHttpResponse {
+        {
+            headers.push((
+                "Content-Type".to_string(),
+                "application/octet-stream".to_string(),
+            ));
+        }
+        unsafe {
+            (*(response.body_bytes as *const MeshBytes))
+                .as_slice()
+                .to_vec()
+        }
+    };
+    TransportHttpResponse {
         status: response.status,
-        body: if binary_body {
-            mesh_bytes_ptr_to_owned(response.body_bytes)
-        } else {
-            mesh_string_ptr_to_owned(response.body).into_bytes()
-        },
+        body,
         headers,
-    })
+    }
 }
 
 fn transport_response_to_mesh(response: &TransportHttpResponse) -> *mut u8 {
@@ -394,28 +378,39 @@ fn transport_response_to_mesh(response: &TransportHttpResponse) -> *mut u8 {
     }
 }
 
-fn encode_len_prefixed_string(
-    payload: &mut Vec<u8>,
-    value: &str,
-    label: &str,
-) -> Result<(), String> {
-    let len = u32::try_from(value.len())
-        .map_err(|_| format!("mesh_http_transport_{}_too_large:{}", label, value.len()))?;
+/// A length field: four little-endian bytes, which cannot carry 4 GiB or
+/// more (the `label` field is too large then).
+fn encode_len(payload: &mut Vec<u8>, len: usize, label: &str) -> Result<(), String> {
+    let len =
+        u32::try_from(len).map_err(|_| format!("mesh_http_transport_{label}_too_large:{len}"))?;
     payload.extend_from_slice(&len.to_le_bytes());
-    payload.extend_from_slice(value.as_bytes());
     Ok(())
 }
 
-fn encode_len_prefixed_bytes(
-    payload: &mut Vec<u8>,
-    value: &[u8],
-    label: &str,
-) -> Result<(), String> {
-    let len = u32::try_from(value.len())
-        .map_err(|_| format!("mesh_http_transport_{}_too_large:{}", label, value.len()))?;
-    payload.extend_from_slice(&len.to_le_bytes());
+fn encode_len_prefixed(payload: &mut Vec<u8>, value: &[u8], label: &str) -> Result<(), String> {
+    encode_len(payload, value.len(), label)?;
     payload.extend_from_slice(value);
     Ok(())
+}
+
+fn encode_string_pairs(
+    payload: &mut Vec<u8>,
+    pairs: &[(String, String)],
+    label: &str,
+) -> Result<(), String> {
+    encode_len(payload, pairs.len(), &format!("{label}_count"))?;
+    for (index, (key, value)) in pairs.iter().enumerate() {
+        encode_len_prefixed(payload, key.as_bytes(), &format!("{label}_key_{index}"))?;
+        encode_len_prefixed(payload, value.as_bytes(), &format!("{label}_value_{index}"))?;
+    }
+    Ok(())
+}
+
+/// The length field at `pos`, if the payload holds one.
+fn decode_len(payload: &[u8], pos: &mut usize) -> Option<usize> {
+    let bytes = payload.get(*pos..*pos + 4)?;
+    *pos += 4;
+    Some(u32::from_le_bytes(bytes.try_into().expect("four length bytes")) as usize)
 }
 
 fn decode_len_prefixed_bytes(
@@ -423,15 +418,12 @@ fn decode_len_prefixed_bytes(
     pos: &mut usize,
     label: &str,
 ) -> Result<Vec<u8>, String> {
-    if *pos + 4 > payload.len() {
-        return Err(format!("mesh_http_transport_{}_len_missing", label));
-    }
-    let len = u32::from_le_bytes(payload[*pos..*pos + 4].try_into().unwrap()) as usize;
-    *pos += 4;
-    if *pos + len > payload.len() {
-        return Err(format!("mesh_http_transport_{}_truncated", label));
-    }
-    let value = payload[*pos..*pos + len].to_vec();
+    let len = decode_len(payload, pos)
+        .ok_or_else(|| format!("mesh_http_transport_{label}_len_missing"))?;
+    let value = payload
+        .get(*pos..*pos + len)
+        .ok_or_else(|| format!("mesh_http_transport_{label}_truncated"))?
+        .to_vec();
     *pos += len;
     Ok(value)
 }
@@ -441,75 +433,42 @@ fn decode_len_prefixed_string(
     pos: &mut usize,
     label: &str,
 ) -> Result<String, String> {
-    if *pos + 4 > payload.len() {
-        return Err(format!("mesh_http_transport_{}_len_missing", label));
-    }
-    let len = u32::from_le_bytes(payload[*pos..*pos + 4].try_into().unwrap()) as usize;
-    *pos += 4;
-    if *pos + len > payload.len() {
-        return Err(format!("mesh_http_transport_{}_truncated", label));
-    }
-    let value = std::str::from_utf8(&payload[*pos..*pos + len])
-        .map_err(|_| format!("mesh_http_transport_{}_invalid_utf8", label))?
-        .to_string();
-    *pos += len;
-    Ok(value)
+    String::from_utf8(decode_len_prefixed_bytes(payload, pos, label)?)
+        .map_err(|_| format!("mesh_http_transport_{label}_invalid_utf8"))
 }
 
-fn encode_string_pairs(
-    payload: &mut Vec<u8>,
-    pairs: &[(String, String)],
-    label: &str,
-) -> Result<(), String> {
-    let len = u32::try_from(pairs.len()).map_err(|_| {
-        format!(
-            "mesh_http_transport_{}_count_too_large:{}",
-            label,
-            pairs.len()
-        )
-    })?;
-    payload.extend_from_slice(&len.to_le_bytes());
-    for (index, (key, value)) in pairs.iter().enumerate() {
-        encode_len_prefixed_string(payload, key, &format!("{}_key_{index}", label))?;
-        encode_len_prefixed_string(payload, value, &format!("{}_value_{index}", label))?;
-    }
-    Ok(())
-}
-
+/// The pairs at `pos`. Their count is what the payload claims, not what it
+/// holds: nothing is allocated for it up front.
 fn decode_string_pairs(
     payload: &[u8],
     pos: &mut usize,
     label: &str,
 ) -> Result<Vec<(String, String)>, String> {
-    if *pos + 4 > payload.len() {
-        return Err(format!("mesh_http_transport_{}_count_missing", label));
-    }
-    let count = u32::from_le_bytes(payload[*pos..*pos + 4].try_into().unwrap()) as usize;
-    *pos += 4;
-    // The count is what the payload claims, not what it holds: nothing is
-    // allocated for it up front.
-    let mut pairs = Vec::new();
-    for index in 0..count {
-        let key = decode_len_prefixed_string(payload, pos, &format!("{}_key_{index}", label))?;
-        let value = decode_len_prefixed_string(payload, pos, &format!("{}_value_{index}", label))?;
-        pairs.push((key, value));
-    }
-    Ok(pairs)
+    let count = decode_len(payload, pos)
+        .ok_or_else(|| format!("mesh_http_transport_{label}_count_missing"))?;
+    (0..count)
+        .map(|index| {
+            Ok((
+                decode_len_prefixed_string(payload, pos, &format!("{label}_key_{index}"))?,
+                decode_len_prefixed_string(payload, pos, &format!("{label}_value_{index}"))?,
+            ))
+        })
+        .collect()
 }
 
 fn encode_transport_request(request: &TransportHttpRequest) -> Result<Vec<u8>, String> {
     let mut payload = Vec::new();
-    encode_len_prefixed_string(&mut payload, &request.method, "request_method")?;
-    encode_len_prefixed_string(&mut payload, &request.path, "request_path")?;
-    encode_len_prefixed_bytes(&mut payload, &request.body, "request_body")?;
+    encode_len_prefixed(&mut payload, request.method.as_bytes(), "request_method")?;
+    encode_len_prefixed(&mut payload, request.path.as_bytes(), "request_path")?;
+    encode_len_prefixed(&mut payload, &request.body, "request_body")?;
     encode_string_pairs(&mut payload, &request.query_params, "request_query_params")?;
     encode_string_pairs(&mut payload, &request.headers, "request_headers")?;
     encode_string_pairs(&mut payload, &request.path_params, "request_path_params")?;
-    encode_len_prefixed_string(&mut payload, &request.request_id, "request_id")?;
+    encode_len_prefixed(&mut payload, request.request_id.as_bytes(), "request_id")?;
     match &request.idempotency_key {
         Some(key) => {
             payload.push(1);
-            encode_len_prefixed_string(&mut payload, key, "idempotency_key")?;
+            encode_len_prefixed(&mut payload, key.as_bytes(), "idempotency_key")?;
         }
         None => payload.push(0),
     }
@@ -527,29 +486,30 @@ fn decode_transport_request(payload: &[u8]) -> Result<TransportHttpRequest, Stri
     let query_params = decode_string_pairs(payload, &mut pos, "request_query_params")?;
     let headers = decode_string_pairs(payload, &mut pos, "request_headers")?;
     let path_params = decode_string_pairs(payload, &mut pos, "request_path_params")?;
+    // A payload from before request IDs and idempotency keys ends here.
     let request_id = if pos == payload.len() {
-        crate::dist::identity::request_id_generator()
-            .next()?
-            .to_string()
+        next_request_id()
     } else {
         decode_len_prefixed_string(payload, &mut pos, "request_id")?
     };
-    let idempotency_key = if pos == payload.len() {
-        None
-    } else {
-        let present = payload[pos];
-        pos += 1;
-        match present {
-            0 => None,
-            1 => {
-                let key = decode_len_prefixed_string(payload, &mut pos, "idempotency_key")?;
-                crate::dist::identity::validate_idempotency_key(&key)?;
-                Some(key)
-            }
-            _ => return Err("mesh_http_transport_idempotency_key_flag_invalid".to_string()),
+    let idempotency_key = match payload.get(pos) {
+        None => None,
+        Some(0) => {
+            pos += 1;
+            None
         }
+        Some(1) => {
+            pos += 1;
+            let key = decode_len_prefixed_string(payload, &mut pos, "idempotency_key")?;
+            crate::dist::identity::validate_idempotency_key(&key)?;
+            Some(key)
+        }
+        Some(_) => return Err("mesh_http_transport_idempotency_key_flag_invalid".to_string()),
     };
-    let request = TransportHttpRequest {
+    if pos != payload.len() {
+        return Err("mesh_http_transport_request_trailing_bytes".to_string());
+    }
+    Ok(TransportHttpRequest {
         method,
         path,
         body,
@@ -558,30 +518,24 @@ fn decode_transport_request(payload: &[u8]) -> Result<TransportHttpRequest, Stri
         path_params,
         request_id,
         idempotency_key,
-    };
-    if pos != payload.len() {
-        return Err("mesh_http_transport_request_trailing_bytes".to_string());
-    }
-    Ok(request)
+    })
 }
 
 fn encode_transport_response(response: &TransportHttpResponse) -> Result<Vec<u8>, String> {
     let mut payload = Vec::new();
     payload.extend_from_slice(&response.status.to_le_bytes());
-    encode_len_prefixed_bytes(&mut payload, &response.body, "response_body")?;
+    encode_len_prefixed(&mut payload, &response.body, "response_body")?;
     encode_string_pairs(&mut payload, &response.headers, "response_headers")?;
     Ok(payload)
 }
 
 fn decode_transport_response(payload: &[u8]) -> Result<TransportHttpResponse, String> {
-    if payload.len() < 8 {
-        return Err("mesh_http_transport_response_too_short".to_string());
-    }
-    let mut pos = 0usize;
-    let status = i64::from_le_bytes(payload[pos..pos + 8].try_into().unwrap());
-    pos += 8;
+    let status = payload
+        .get(..8)
+        .ok_or_else(|| "mesh_http_transport_response_too_short".to_string())?;
+    let mut pos = 8usize;
     let response = TransportHttpResponse {
-        status,
+        status: i64::from_le_bytes(status.try_into().expect("eight status bytes")),
         body: decode_len_prefixed_bytes(payload, &mut pos, "response_body")?,
         headers: decode_string_pairs(payload, &mut pos, "response_headers")?,
     };
@@ -591,8 +545,17 @@ fn decode_transport_response(payload: &[u8]) -> Result<TransportHttpResponse, St
     Ok(response)
 }
 
+/// A new request's identity. The generator's 64-bit counter does not run
+/// out.
+fn next_request_id() -> String {
+    crate::dist::identity::request_id_generator()
+        .next()
+        .expect("the request ID counter is not exhausted")
+        .to_string()
+}
+
 pub(crate) fn encode_http_request_payload(request_ptr: *mut u8) -> Result<Vec<u8>, String> {
-    encode_transport_request(&mesh_request_to_transport(request_ptr)?)
+    encode_transport_request(&mesh_request_to_transport(request_ptr))
 }
 
 pub(crate) fn decode_http_request_payload(payload: &[u8]) -> Result<*mut u8, String> {
@@ -617,7 +580,7 @@ pub(crate) fn http_request_payload_is_replay_safe(payload: &[u8]) -> Result<bool
 }
 
 pub(crate) fn encode_http_response_payload(response_ptr: *mut u8) -> Result<Vec<u8>, String> {
-    encode_transport_response(&mesh_response_to_transport(response_ptr)?)
+    encode_transport_response(&mesh_response_to_transport(response_ptr))
 }
 
 pub(crate) fn decode_http_response_payload(payload: &[u8]) -> Result<*mut u8, String> {
@@ -708,10 +671,6 @@ fn escape_json_string(value: &str) -> String {
 }
 
 fn set_response_header(response_ptr: *mut u8, name: &str, value: &str) -> *mut u8 {
-    if response_ptr.is_null() || name.is_empty() || value.is_empty() {
-        return response_ptr;
-    }
-
     unsafe {
         let response = &mut *(response_ptr as *mut MeshHttpResponse);
         let headers = if response.headers.is_null() {
@@ -722,16 +681,7 @@ fn set_response_header(response_ptr: *mut u8, name: &str, value: &str) -> *mut u
         response.headers =
             map::mesh_map_put(headers, mesh_str(name) as u64, mesh_str(value) as u64);
     }
-
     response_ptr
-}
-
-fn attach_clustered_route_request_key_header(response_ptr: *mut u8, request_key: &str) -> *mut u8 {
-    set_response_header(
-        response_ptr,
-        CLUSTERED_ROUTE_REQUEST_KEY_HEADER,
-        request_key,
-    )
 }
 
 fn clustered_route_failure_response(reason: &str, request_key: Option<&str>) -> *mut u8 {
@@ -740,24 +690,32 @@ fn clustered_route_failure_response(reason: &str, request_key: Option<&str>) -> 
         CLUSTERED_ROUTE_FAILURE_STATUS,
         mesh_str(&body) as *const MeshString,
     );
-    if let Some(request_key) = request_key.filter(|request_key| !request_key.is_empty()) {
-        attach_clustered_route_request_key_header(response_ptr, request_key)
-    } else {
-        response_ptr
+    match request_key {
+        Some(request_key) => set_response_header(
+            response_ptr,
+            CLUSTERED_ROUTE_REQUEST_KEY_HEADER,
+            request_key,
+        ),
+        None => response_ptr,
     }
 }
 
-fn clustered_route_response_from_request(runtime_name: &str, request_ptr: *mut u8) -> *mut u8 {
-    let _admission =
-        match crate::dist::telemetry::global_admission_controller().reserve_application() {
-            Ok(permit) => permit,
-            Err(rejection) => {
-                return clustered_route_failure_response(
-                    &format!("admission_rejected:{rejection:?}"),
-                    None,
-                );
-            }
-        };
+/// A clustered route's response, from wherever in the cluster it runs,
+/// once `admission` admits it.
+fn clustered_route_response_from_request(
+    admission: &Arc<AdmissionController>,
+    runtime_name: &str,
+    request_ptr: *mut u8,
+) -> *mut u8 {
+    let _admission = match admission.reserve_application() {
+        Ok(permit) => permit,
+        Err(rejection) => {
+            return clustered_route_failure_response(
+                &format!("admission_rejected:{rejection:?}"),
+                None,
+            );
+        }
+    };
     let result = encode_http_request_payload(request_ptr).and_then(|request_payload| {
         let (request_key, payload_hash) =
             build_clustered_http_route_identity(runtime_name, &request_payload)?;
@@ -769,25 +727,16 @@ fn clustered_route_response_from_request(runtime_name: &str, request_ptr: *mut u
         )
         .and_then(|execution| {
             let response_ptr = decode_http_response_payload(&execution.response_payload)?;
-            let response_ptr = set_response_header(
-                response_ptr,
-                CLUSTERED_ROUTE_INGRESS_HEADER,
-                &execution.ingress_node,
-            );
-            let response_ptr = set_response_header(
-                response_ptr,
-                CLUSTERED_ROUTE_EXECUTION_HEADER,
-                &execution.execution_node,
-            );
-            let response_ptr = set_response_header(
-                response_ptr,
-                CLUSTERED_ROUTE_REMOTE_HEADER,
-                if execution.routed_remotely {
-                    "true"
-                } else {
-                    "false"
-                },
-            );
+            for (name, value) in [
+                (CLUSTERED_ROUTE_INGRESS_HEADER, &*execution.ingress_node),
+                (CLUSTERED_ROUTE_EXECUTION_HEADER, &*execution.execution_node),
+                (
+                    CLUSTERED_ROUTE_REMOTE_HEADER,
+                    &execution.routed_remotely.to_string(),
+                ),
+            ] {
+                set_response_header(response_ptr, name, value);
+            }
             Ok(if execution.replayed {
                 set_response_header(response_ptr, IDEMPOTENCY_REPLAY_HEADER, "true")
             } else {
@@ -798,9 +747,11 @@ fn clustered_route_response_from_request(runtime_name: &str, request_ptr: *mut u
     });
 
     match result {
-        Ok((request_key, Ok(response_ptr))) => {
-            attach_clustered_route_request_key_header(response_ptr, &request_key)
-        }
+        Ok((request_key, Ok(response_ptr))) => set_response_header(
+            response_ptr,
+            CLUSTERED_ROUTE_REQUEST_KEY_HEADER,
+            &request_key,
+        ),
         Ok((request_key, Err(reason))) => {
             clustered_route_failure_response(&reason, Some(&request_key))
         }
@@ -834,79 +785,62 @@ pub extern "C" fn mesh_http_request_body_bytes(req: *mut u8) -> *mut u8 {
     unsafe { (*(req as *const MeshHttpRequest)).body_bytes }
 }
 
-/// Get the value of a request header by name. Returns MeshOption
-/// (tag 0 = Some with MeshString, tag 1 = None).
-#[no_mangle]
-pub extern "C" fn mesh_http_request_header(req: *mut u8, name: *const MeshString) -> *mut u8 {
+/// The value `name` has in `map`, one of a request's string maps, as a
+/// MeshOption (tag 0 = Some with MeshString, tag 1 = None): the entry
+/// whose key `matches` the name.
+fn request_map_value(
+    map: *mut u8,
+    name: *const MeshString,
+    matches: fn(&str, &str) -> bool,
+) -> *mut u8 {
     unsafe {
-        let request = &*(req as *const MeshHttpRequest);
         let name = (*name).as_str();
-        // A header's name is case-insensitive: `x-agent` finds `X-Agent`.
-        let (_, entries) = map::live_entries(request.headers);
-        match entries.iter().find(|[key, _]| {
-            (*(*key as *const MeshString))
-                .as_str()
-                .eq_ignore_ascii_case(name)
-        }) {
+        let (_, entries) = map::live_entries(map);
+        match entries
+            .iter()
+            .find(|[key, _]| matches((*(*key as *const MeshString)).as_str(), name))
+        {
             Some([_, value]) => alloc_option(0, *value as *mut u8),
             None => alloc_option(1, std::ptr::null_mut()),
         }
     }
 }
 
-/// Get the value of a query parameter by name. Returns MeshOption
-/// (tag 0 = Some with MeshString, tag 1 = None).
+/// Get the value of a request header by name, whose case does not matter:
+/// `x-agent` finds `X-Agent`.
 #[no_mangle]
-pub extern "C" fn mesh_http_request_query(req: *mut u8, name: *const MeshString) -> *mut u8 {
-    unsafe {
-        let request = &*(req as *const MeshHttpRequest);
-        let key_str = (*name).as_str();
-        let key_mesh = mesh_str(key_str);
-        let val = map::mesh_map_get(request.query_params, key_mesh as u64);
-        if val == 0 {
-            alloc_option(1, std::ptr::null_mut())
-        } else {
-            alloc_option(0, val as *mut u8)
-        }
-    }
+pub extern "C" fn mesh_http_request_header(req: *mut u8, name: *const MeshString) -> *mut u8 {
+    let request = unsafe { &*(req as *const MeshHttpRequest) };
+    request_map_value(request.headers, name, str::eq_ignore_ascii_case)
 }
 
-/// Get the value of a path parameter by name. Returns MeshOption
-/// (tag 0 = Some with MeshString, tag 1 = None).
+/// Get the value of a query parameter by name.
+#[no_mangle]
+pub extern "C" fn mesh_http_request_query(req: *mut u8, name: *const MeshString) -> *mut u8 {
+    let request = unsafe { &*(req as *const MeshHttpRequest) };
+    request_map_value(request.query_params, name, <str as PartialEq>::eq)
+}
+
+/// Get the value of a path parameter by name.
 ///
 /// Path parameters are extracted from parameterized route patterns
 /// like `/users/:id`. For a request matching this pattern with path
 /// `/users/42`, `Request.param(req, "id")` returns `Some("42")`.
 #[no_mangle]
 pub extern "C" fn mesh_http_request_param(req: *mut u8, name: *const MeshString) -> *mut u8 {
-    unsafe {
-        let request = &*(req as *const MeshHttpRequest);
-        let key_str = (*name).as_str();
-        let key_mesh = mesh_str(key_str);
-        let val = map::mesh_map_get(request.path_params, key_mesh as u64);
-        if val == 0 {
-            alloc_option(1, std::ptr::null_mut())
-        } else {
-            alloc_option(0, val as *mut u8)
-        }
-    }
+    let request = unsafe { &*(req as *const MeshHttpRequest) };
+    request_map_value(request.path_params, name, <str as PartialEq>::eq)
 }
 
 /// Return the globally unique request identity assigned at ingress.
 #[no_mangle]
 pub extern "C" fn mesh_http_request_id(req: *mut u8) -> *mut u8 {
-    if req.is_null() {
-        return mesh_str("") as *mut u8;
-    }
     unsafe { (*(req as *const MeshHttpRequest)).request_id }
 }
 
 /// Return the validated caller idempotency key, when supplied.
 #[no_mangle]
 pub extern "C" fn mesh_http_idempotency_key(req: *mut u8) -> *mut u8 {
-    if req.is_null() {
-        return alloc_option(1, std::ptr::null_mut());
-    }
     let key = unsafe { (*(req as *const MeshHttpRequest)).idempotency_key };
     if key.is_null() {
         alloc_option(1, std::ptr::null_mut())
@@ -946,9 +880,6 @@ fn read_bounded_line<R: BufRead>(
     maximum: usize,
     limit_error: &str,
 ) -> Result<String, String> {
-    if maximum == 0 {
-        return Err(limit_error.to_string());
-    }
     let mut bytes = Vec::new();
     reader
         .take((maximum + 1) as u64)
@@ -957,7 +888,7 @@ fn read_bounded_line<R: BufRead>(
     if bytes.len() > maximum {
         return Err(limit_error.to_string());
     }
-    if bytes.is_empty() || !bytes.ends_with(b"\n") {
+    if !bytes.ends_with(b"\n") {
         return Err("unterminated HTTP line".to_string());
     }
     String::from_utf8(bytes).map_err(|_| "HTTP headers must be UTF-8".to_string())
@@ -989,19 +920,17 @@ fn parse_buffered_request<R: BufRead>(reader: &mut R) -> Result<ParsedRequest, S
     let method = parts[0].to_string();
     let path = parts[1].to_string();
 
-    // 2. Read headers until blank line (\r\n alone).
+    // 2. Read headers until blank line (\r\n alone), each line within what
+    // the 8KB header section has left.
     let mut headers = Vec::new();
     let mut content_length = None;
     loop {
         let line = read_bounded_line(
             reader,
-            MAX_HTTP_HEADER_BYTES.saturating_sub(total_header_bytes),
+            MAX_HTTP_HEADER_BYTES - total_header_bytes,
             "header section exceeds 8KB limit",
         )?;
         total_header_bytes += line.len();
-        if total_header_bytes > MAX_HTTP_HEADER_BYTES {
-            return Err("header section exceeds 8KB limit".to_string());
-        }
 
         let trimmed = line.trim_end();
         if trimmed.is_empty() {
@@ -1110,55 +1039,36 @@ fn response_status(status: i64) -> Result<u16, String> {
 
 /// Write an HTTP/1.1 response to an `HttpStream` (plain TCP or TLS).
 ///
-/// Format: status line, Content-Type, Content-Length, Connection: close,
-/// optional extra headers, blank line, body bytes. A custom Content-Type
-/// replaces the JSON default.
-///
-/// When `extra_headers` is `Some`, each header is emitted as `{name}: {value}\r\n`
-/// between the standard headers and the blank line. All extra headers are
-/// validated first; an invalid header returns an error before any byte is
-/// written so the caller can still send a well-formed error response.
+/// Format: status line (the status's standard reason, or none for a status
+/// without one), Content-Type, Content-Length, Connection: close, the extra
+/// headers, blank line, body bytes. A custom Content-Type replaces the JSON
+/// default. The headers are valid ones: `validate_response_headers` passed
+/// them, or the runtime wrote them.
 fn write_response(
     stream: &mut impl Write,
     status: u16,
     body: &[u8],
-    extra_headers: Option<Vec<(String, String)>>,
+    extra_headers: &[(String, String)],
 ) -> Result<(), String> {
-    if let Some(headers) = extra_headers.as_deref() {
-        validate_response_headers(headers)?;
-    }
-
-    // The status's standard reason, or none for a status without one.
-    let status_text = ureq::http::StatusCode::from_u16(status)
+    let reason = ureq::http::StatusCode::from_u16(status)
         .ok()
         .and_then(|status| status.canonical_reason())
         .unwrap_or("");
-
     let content_type = extra_headers
-        .as_ref()
-        .and_then(|headers| {
-            headers
-                .iter()
-                .find(|(name, _)| name.eq_ignore_ascii_case("content-type"))
-        })
-        .map(|(_, value)| value.as_str())
-        .unwrap_or("application/json; charset=utf-8");
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case("content-type"))
+        .map_or("application/json; charset=utf-8", |(_, value)| {
+            value.as_str()
+        });
     let mut header = format!(
-        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n",
-        status,
-        status_text,
-        content_type,
+        "HTTP/1.1 {status} {reason}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\n",
         body.len()
     );
-
-    if let Some(ref headers) = extra_headers {
-        for (name, value) in headers {
-            if !name.eq_ignore_ascii_case("content-type") {
-                header.push_str(&format!("{}: {}\r\n", name, value));
-            }
+    for (name, value) in extra_headers {
+        if !name.eq_ignore_ascii_case("content-type") {
+            header.push_str(&format!("{name}: {value}\r\n"));
         }
     }
-
     header.push_str("\r\n");
 
     stream
@@ -1167,33 +1077,28 @@ fn write_response(
     stream
         .write_all(body)
         .map_err(|e| format!("write response body: {}", e))?;
-    stream
-        .flush()
-        .map_err(|e| format!("flush response: {}", e))?;
-    Ok(())
+    stream.flush().map_err(|e| format!("flush response: {}", e))
 }
 
 // ── Actor-per-connection infrastructure ────────────────────────────────
 
-/// Arguments passed to the connection handler actor via raw pointer.
-#[repr(C)]
+/// What a connection's actor takes over: the router, the connection, and
+/// its admission and telemetry permits.
 struct ConnectionArgs {
     /// Router address as usize (for Send safety across thread boundaries).
     router_addr: usize,
-    /// Raw pointer to a boxed `HttpStream`, transferred as usize.
-    request_ptr: usize,
-    /// Owned queue permit released when the actor starts running.
-    queue_permit_ptr: usize,
+    stream: HttpStream,
+    /// Queue permit released when the actor starts running.
+    queue_permit: crate::dist::telemetry::QueuePermit,
     /// Tracks accepted connections and request end-to-end/service latency.
-    connection_permit_ptr: usize,
+    connection_permit: crate::dist::telemetry::HttpConnectionPermit,
 }
 
 /// Actor entry function for handling a single HTTP connection.
 ///
-/// Receives a raw pointer to `ConnectionArgs` containing the router
-/// address and a boxed `HttpStream`. Wraps the handler call in
-/// `catch_unwind` for crash isolation -- a panic in one handler does
-/// not affect other connections.
+/// Receives a raw pointer to a boxed `ConnectionArgs`. Wraps the handler
+/// call in `catch_unwind` for crash isolation -- a panic in one handler
+/// does not affect other connections.
 ///
 /// The read timeout is already set on the underlying TcpStream before
 /// wrapping in `HttpStream` (both Plain and Tls variants). For TLS
@@ -1201,41 +1106,26 @@ struct ConnectionArgs {
 /// `read` call (via `StreamOwned`), which occurs inside this actor --
 /// not in the accept loop.
 extern "C" fn connection_handler_entry(args: *const u8) {
-    if args.is_null() {
-        return;
-    }
-
-    let args = unsafe { Box::from_raw(args as *mut ConnectionArgs) };
-    let router_ptr = args.router_addr as *mut u8;
-    let mut stream = unsafe { *Box::from_raw(args.request_ptr as *mut HttpStream) };
-    let mut connection_permit = (args.connection_permit_ptr != 0).then(|| unsafe {
-        Box::from_raw(
-            args.connection_permit_ptr as *mut crate::dist::telemetry::HttpConnectionPermit,
-        )
-    });
-    if args.queue_permit_ptr != 0 {
-        unsafe { Box::from_raw(args.queue_permit_ptr as *mut crate::dist::telemetry::QueuePermit) }
-            .begin();
-    }
-    if let Some(permit) = connection_permit.as_mut() {
-        permit.begin_service();
-    }
+    let ConnectionArgs {
+        router_addr,
+        mut stream,
+        queue_permit,
+        mut connection_permit,
+    } = *unsafe { Box::from_raw(args as *mut ConnectionArgs) };
+    queue_permit.begin();
+    connection_permit.begin_service();
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         match parse_request(&mut stream) {
             Ok(parsed) => {
-                let (status, body, headers) = process_request(router_ptr, parsed);
-                let checked = response_status(status).and_then(|status| {
-                    headers
-                        .as_deref()
-                        .map_or(Ok(()), validate_response_headers)
-                        .map(|()| status)
-                });
+                let (status, body, headers) = process_request(router_addr as *mut u8, parsed);
+                let checked = response_status(status)
+                    .and_then(|status| validate_response_headers(&headers).map(|()| status));
                 let _ = match checked {
-                    Ok(status) => write_response(&mut stream, status, &body, headers),
+                    Ok(status) => write_response(&mut stream, status, &body, &headers),
                     Err(error) => {
                         eprintln!("[mesh-rt] HTTP handler response rejected: {}", error);
-                        write_response(&mut stream, 500, b"Internal Server Error", None)
+                        write_response(&mut stream, 500, b"Internal Server Error", &[])
                     }
                 };
             }
@@ -1247,7 +1137,7 @@ extern "C" fn connection_handler_entry(args: *const u8) {
 
     if let Err(panic_info) = result {
         eprintln!("[mesh-rt] HTTP handler panicked: {:?}", panic_info);
-        let _ = write_response(&mut stream, 500, b"Internal Server Error", None);
+        let _ = write_response(&mut stream, 500, b"Internal Server Error", &[]);
     }
     drop(connection_permit);
 }
@@ -1323,91 +1213,89 @@ fn serve(router: *mut u8, port: i64, tls: Option<Arc<ServerConfig>>) {
     let scheme = if tls.is_some() { "HTTPS" } else { "HTTP" };
 
     let addr = format!("[::]:{}", port);
-    let listener = match std::net::TcpListener::bind(&addr) {
-        Ok(l) => l,
+    let listener = match std::net::TcpListener::bind(&addr)
+        .and_then(|listener| listener.set_nonblocking(true).map(|()| listener))
+    {
+        Ok(listener) => listener,
         Err(e) => {
             eprintln!("[mesh-rt] Failed to start {scheme} server on {addr}: {e}");
             return;
         }
     };
-    if let Err(e) = listener.set_nonblocking(true) {
-        eprintln!("[mesh-rt] Failed to configure {scheme} listener on {addr}: {e}");
-        return;
-    }
 
     eprintln!("[mesh-rt] {scheme} server listening on {addr}");
     crate::dist::node::mesh_trigger_startup_work();
 
-    let router_addr = router as usize;
-
+    let admission = crate::dist::telemetry::global_admission_controller();
     while !crate::process_signal::shutdown_requested() {
-        let tcp_stream = match listener.accept() {
-            Ok((stream, _peer)) => stream,
+        match listener.accept() {
+            Ok((stream, _peer)) => admit(stream, router as usize, tls.as_ref(), admission),
             Err(e) => {
                 if e.kind() != std::io::ErrorKind::WouldBlock {
                     eprintln!("[mesh-rt] accept error: {}", e);
                 }
                 std::thread::sleep(ACCEPT_PAUSE);
-                continue;
             }
-        };
-        if let Err(error) = configure_accepted_stream(&tcp_stream) {
-            eprintln!("[mesh-rt] failed to configure {scheme} connection: {error}");
-            continue;
         }
-        let connection_permit = crate::dist::telemetry::runtime_telemetry().begin_http_connection();
-
-        let http_stream = match &tls {
-            None => HttpStream::Plain(tcp_stream),
-            // No I/O here: the handshake happens on the connection's actor, at
-            // its first read.
-            Some(config) => HttpStream::Tls(StreamOwned::new(tls_session(config), tcp_stream)),
-        };
-        let queue_permit = match crate::dist::telemetry::global_admission_controller().enqueue(1) {
-            Ok(permit) => permit,
-            // A refused HTTPS connection just closes: answering would take a
-            // handshake with the client, here in the accept loop.
-            Err(_) if tls.is_some() => continue,
-            Err(rejection) => {
-                let mut stream = http_stream;
-                let _ = write_response(
-                    &mut stream,
-                    503,
-                    format!("admission_rejected:{rejection:?}").as_bytes(),
-                    Some(vec![("Retry-After".to_string(), "1".to_string())]),
-                );
-                continue;
-            }
-        };
-        let stream_ptr = Box::into_raw(Box::new(http_stream)) as usize;
-        let args = ConnectionArgs {
-            router_addr,
-            request_ptr: stream_ptr,
-            queue_permit_ptr: Box::into_raw(Box::new(queue_permit)) as usize,
-            connection_permit_ptr: Box::into_raw(Box::new(connection_permit)) as usize,
-        };
-        let args_ptr = Box::into_raw(Box::new(args)) as *const u8;
-        let args_size = std::mem::size_of::<ConnectionArgs>() as u64;
-
-        let sched = actor::global_scheduler();
-        sched.spawn(
-            connection_handler_entry as *const u8,
-            args_ptr,
-            args_size,
-            1, // Normal priority
-        );
     }
     drain_accepted_connections();
     eprintln!("[mesh-rt] {scheme} server stopped");
+}
+
+/// Hand an accepted connection to an actor of its own, as `admission`
+/// allows: a refused HTTP connection is answered 503, a refused HTTPS one
+/// just closed (answering would take a handshake here, in the accept
+/// loop). No I/O happens here for TLS: the handshake happens on the
+/// connection's actor, at its first read.
+fn admit(
+    stream: TcpStream,
+    router_addr: usize,
+    tls: Option<&Arc<ServerConfig>>,
+    admission: &Arc<AdmissionController>,
+) {
+    if let Err(error) = configure_accepted_stream(&stream) {
+        eprintln!("[mesh-rt] failed to configure accepted connection: {error}");
+        return;
+    }
+    let connection_permit = crate::dist::telemetry::runtime_telemetry().begin_http_connection();
+    let mut stream = match tls {
+        None => HttpStream::Plain(stream),
+        Some(config) => HttpStream::Tls(StreamOwned::new(tls_session(config), stream)),
+    };
+    let queue_permit = match admission.enqueue(1) {
+        Ok(permit) => permit,
+        Err(_) if tls.is_some() => return,
+        Err(rejection) => {
+            let _ = write_response(
+                &mut stream,
+                503,
+                format!("admission_rejected:{rejection:?}").as_bytes(),
+                &[("Retry-After".to_string(), "1".to_string())],
+            );
+            return;
+        }
+    };
+    let args = Box::new(ConnectionArgs {
+        router_addr,
+        stream,
+        queue_permit,
+        connection_permit,
+    });
+    actor::global_scheduler().spawn(
+        connection_handler_entry as *const u8,
+        Box::into_raw(args) as *const u8,
+        std::mem::size_of::<ConnectionArgs>() as u64,
+        1, // Normal priority
+    );
 }
 
 // ── Middleware chain infrastructure ──────────────────────────────────
 
 /// State for the middleware chain trampoline.
 ///
-/// Each step in the chain creates a new ChainState with `index + 1`,
-/// builds a Mesh closure wrapping `chain_next`, and calls the current
-/// middleware with (request, next_closure).
+/// Each step in the chain creates a new ChainState with `index + 1` and
+/// calls the current middleware with (request, next), next a closure of
+/// `chain_next` over it.
 struct ChainState {
     middlewares: Vec<MiddlewareEntry>,
     index: usize,
@@ -1421,280 +1309,121 @@ struct ChainState {
 /// This is what Mesh calls when middleware invokes `next(request)`.
 /// If all middleware has been traversed, calls the route handler.
 /// Otherwise, calls the next middleware with a new `next` closure.
+///
+/// Mesh compiles middleware with signature `fn(request: ptr, next: {ptr, ptr}) -> ptr`;
+/// the `next` closure struct `{fn_ptr, env_ptr}` goes as two arguments.
 extern "C" fn chain_next(env_ptr: *mut u8, request_ptr: *mut u8) -> *mut u8 {
+    let state = unsafe { &*(env_ptr as *const ChainState) };
+    let Some(middleware) = state.middlewares.get(state.index) else {
+        return match state.declared_handler_runtime_name.as_deref() {
+            Some(runtime_name) => clustered_route_response_from_request(
+                crate::dist::telemetry::global_admission_controller(),
+                runtime_name,
+                request_ptr,
+            ),
+            None => call_handler(state.handler_fn, state.handler_env, request_ptr),
+        };
+    };
+    let next_env = Box::into_raw(Box::new(ChainState {
+        middlewares: state.middlewares.clone(),
+        index: state.index + 1,
+        handler_fn: state.handler_fn,
+        handler_env: state.handler_env,
+        declared_handler_runtime_name: state.declared_handler_runtime_name.clone(),
+    }));
     unsafe {
-        let state = &*(env_ptr as *const ChainState);
-        if state.index >= state.middlewares.len() {
-            if let Some(runtime_name) = state.declared_handler_runtime_name.as_deref() {
-                clustered_route_response_from_request(runtime_name, request_ptr)
-            } else {
-                call_handler(state.handler_fn, state.handler_env, request_ptr)
-            }
-        } else {
-            let mw = &state.middlewares[state.index];
-            let next_state = Box::new(ChainState {
-                middlewares: state.middlewares.clone(),
-                index: state.index + 1,
-                handler_fn: state.handler_fn,
-                handler_env: state.handler_env,
-                declared_handler_runtime_name: state.declared_handler_runtime_name.clone(),
-            });
-            let next_env = Box::into_raw(next_state) as *mut u8;
-            let next_closure = build_mesh_closure(chain_next as *mut u8, next_env);
-            call_middleware(mw.fn_ptr, mw.env_ptr, request_ptr, next_closure)
-        }
+        call3(
+            middleware.fn_ptr,
+            middleware.env_ptr,
+            request_ptr as u64,
+            chain_next as *mut u8 as u64,
+            next_env as u64,
+        ) as *mut u8
     }
 }
 
-/// Build a Mesh-compatible closure struct (GC-allocated).
-///
-/// Layout: `{ fn_ptr: *mut u8, env_ptr: *mut u8 }` -- 16 bytes, 8-byte aligned.
-/// This matches Mesh's closure representation used by the codegen.
-fn build_mesh_closure(fn_ptr: *mut u8, env_ptr: *mut u8) -> *mut u8 {
-    unsafe {
-        let closure = mesh_gc_alloc_actor(16, 8) as *mut *mut u8;
-        *closure = fn_ptr;
-        *closure.add(1) = env_ptr;
-        closure as *mut u8
-    }
-}
-
-/// Call a route handler function.
-///
-/// If env_ptr is null: bare function `fn(request) -> response`.
-/// If non-null: closure `fn(env, request) -> response`.
+/// Call a route handler: `fn(request) -> response`, or `fn(env, request)`
+/// for a closure.
 fn call_handler(fn_ptr: *mut u8, env_ptr: *mut u8, request: *mut u8) -> *mut u8 {
-    unsafe {
-        if env_ptr.is_null() {
-            let f: extern "C-unwind" fn(*mut u8) -> *mut u8 = std::mem::transmute(fn_ptr);
-            f(request)
-        } else {
-            let f: extern "C-unwind" fn(*mut u8, *mut u8) -> *mut u8 = std::mem::transmute(fn_ptr);
-            f(env_ptr, request)
-        }
-    }
+    unsafe { call1(fn_ptr, env_ptr, request as u64) as *mut u8 }
 }
 
-/// Call a middleware function.
-///
-/// Mesh compiles middleware with signature `fn(request: ptr, next: {ptr, ptr}) -> ptr`.
-/// The `next` parameter is a closure struct `{fn_ptr, env_ptr}` which LLVM's calling
-/// convention decomposes into two separate register-passed arguments. So the actual
-/// ABI signature is `fn(request, next_fn_ptr, next_env_ptr) -> response`.
-///
-/// If env_ptr (middleware's own env) is non-null, it's a closure middleware:
-/// `fn(env, request, next_fn_ptr, next_env_ptr) -> response`.
-fn call_middleware(
-    fn_ptr: *mut u8,
-    env_ptr: *mut u8,
-    request: *mut u8,
-    next_closure: *mut u8,
-) -> *mut u8 {
-    unsafe {
-        // Dereference the next_closure pointer to extract fn_ptr and env_ptr fields.
-        // The closure struct layout is { fn_ptr: *mut u8, env_ptr: *mut u8 } -- 16 bytes.
-        let next_fn_ptr = *(next_closure as *const *mut u8);
-        let next_env_ptr = *(next_closure as *const *mut u8).add(1);
-
-        if env_ptr.is_null() {
-            let f: extern "C-unwind" fn(*mut u8, *mut u8, *mut u8) -> *mut u8 =
-                std::mem::transmute(fn_ptr);
-            f(request, next_fn_ptr, next_env_ptr)
-        } else {
-            let f: extern "C-unwind" fn(*mut u8, *mut u8, *mut u8, *mut u8) -> *mut u8 =
-                std::mem::transmute(fn_ptr);
-            f(env_ptr, request, next_fn_ptr, next_env_ptr)
-        }
-    }
+/// A 404 for a request no route matches, which middleware sees first.
+extern "C" fn not_found_handler(_request: *mut u8) -> *mut u8 {
+    mesh_http_response_new(404, mesh_str("Not Found"))
 }
 
 /// Process a single HTTP request by matching it against the router
 /// and calling the appropriate handler function.
 ///
-/// Returns `(status_code, body_bytes, optional_extra_headers)` for the
-/// response, the status as the handler gave it.
+/// Returns the response's status, body and headers (none for a response
+/// without).
 fn process_request(
     router_ptr: *mut u8,
     parsed: ParsedRequest,
-) -> (i64, Vec<u8>, Option<Vec<(String, String)>>) {
-    unsafe {
-        let router = &*(router_ptr as *const MeshRouter);
-
-        // Build the MeshHttpRequest.
-        let method_str = parsed.method;
-        let method = mesh_str(&method_str) as *mut u8;
-
-        let url = parsed.path;
-        // Split URL into path and query string.
-        let (path_str, query_str) = match url.find('?') {
-            Some(idx) => (&url[..idx], &url[idx + 1..]),
-            None => (url.as_str(), ""),
-        };
-        let path = mesh_str(path_str) as *mut u8;
-
-        // Body from parsed request.
-        let body_value = parsed.body;
-        let body = mesh_str(std::str::from_utf8(&body_value).unwrap_or("")) as *mut u8;
-        let body_bytes = mesh_bytes_new(body_value.as_ptr(), body_value.len() as u64) as *mut u8;
-
-        let request_id_value = match crate::dist::identity::request_id_generator().next() {
-            Ok(request_id) => request_id.to_string(),
-            Err(error) => return (503, error.into_bytes(), None),
-        };
-        let request_id = mesh_str(&request_id_value) as *mut u8;
-        let idempotency_key_value = parsed
-            .headers
-            .iter()
-            .find(|(name, _)| name.eq_ignore_ascii_case("idempotency-key"))
-            .map(|(_, value)| value.clone());
-        if let Some(key) = &idempotency_key_value {
-            if let Err(error) = crate::dist::identity::validate_idempotency_key(key) {
-                return (400, error.into_bytes(), None);
-            }
+) -> (i64, Vec<u8>, Vec<(String, String)>) {
+    let router = unsafe { &*(router_ptr as *const MeshRouter) };
+    let (path, query) = parsed.path.split_once('?').unwrap_or((&parsed.path, ""));
+    let idempotency_key = parsed
+        .headers
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case("idempotency-key"))
+        .map(|(_, value)| value.clone());
+    if let Some(key) = &idempotency_key {
+        if let Err(error) = crate::dist::identity::validate_idempotency_key(key) {
+            return (400, error.into_bytes(), Vec::new());
         }
-        let idempotency_key = idempotency_key_value
-            .as_deref()
-            .map_or(std::ptr::null_mut(), |key| mesh_str(key) as *mut u8);
-
-        // Parse query params into a MeshMap (string keys for content-based lookup).
-        let mut query_map = map::mesh_map_new_typed(1);
-        if !query_str.is_empty() {
-            for param in query_str.split('&') {
-                if let Some((k, v)) = param.split_once('=') {
-                    let key = mesh_str(k);
-                    let val = mesh_str(v);
-                    query_map = map::mesh_map_put(query_map, key as u64, val as u64);
-                }
-            }
-        }
-
-        // Parse headers into a MeshMap (string keys for content-based lookup).
-        let mut headers_map = map::mesh_map_new_typed(1);
-        for (name, value_str) in &parsed.headers {
-            let key = mesh_str(name);
-            let val = mesh_str(value_str);
-            headers_map = map::mesh_map_put(headers_map, key as u64, val as u64);
-        }
-
-        // Build the request struct (needed for both matched and 404 paths when middleware is present).
-        let build_mesh_request = |path_params_map: *mut u8| -> *mut u8 {
-            let mesh_req = mesh_gc_alloc_actor(
-                std::mem::size_of::<MeshHttpRequest>() as u64,
-                std::mem::align_of::<MeshHttpRequest>() as u64,
-            ) as *mut MeshHttpRequest;
-            (*mesh_req).method = method;
-            (*mesh_req).path = path;
-            (*mesh_req).body = body;
-            (*mesh_req).query_params = query_map;
-            (*mesh_req).headers = headers_map;
-            (*mesh_req).path_params = path_params_map;
-            (*mesh_req).request_id = request_id;
-            (*mesh_req).idempotency_key = idempotency_key;
-            (*mesh_req).body_bytes = body_bytes;
-            mesh_req as *mut u8
-        };
-
-        // Match against router (now with method and path params).
-        let matched = router.match_route(path_str, &method_str);
-        let has_middleware = !router.middlewares.is_empty();
-
-        let response_ptr = if let Some((entry, params)) = matched {
-            let mut path_params_map = map::mesh_map_new_typed(1);
-            for (k, v) in &params {
-                let key = mesh_str(k);
-                let val = mesh_str(v);
-                path_params_map = map::mesh_map_put(path_params_map, key as u64, val as u64);
-            }
-
-            let req_ptr = build_mesh_request(path_params_map);
-            let clustered_runtime_name = entry.declared_handler_runtime_name.clone();
-
-            if has_middleware {
-                let state = Box::new(ChainState {
-                    middlewares: router.middlewares.clone(),
-                    index: 0,
-                    handler_fn: entry.handler_fn,
-                    handler_env: entry.handler_env,
-                    declared_handler_runtime_name: clustered_runtime_name,
-                });
-                chain_next(Box::into_raw(state) as *mut u8, req_ptr)
-            } else if let Some(runtime_name) = clustered_runtime_name.as_deref() {
-                clustered_route_response_from_request(runtime_name, req_ptr)
-            } else {
-                call_handler(entry.handler_fn, entry.handler_env, req_ptr)
-            }
-        } else if has_middleware {
-            let path_params_map = map::mesh_map_new_typed(1);
-            let req_ptr = build_mesh_request(path_params_map);
-
-            extern "C" fn not_found_handler(_request: *mut u8) -> *mut u8 {
-                let body = mesh_str("Not Found");
-                mesh_http_response_new(404, body)
-            }
-
-            let state = Box::new(ChainState {
-                middlewares: router.middlewares.clone(),
-                index: 0,
-                handler_fn: not_found_handler as *mut u8,
-                handler_env: std::ptr::null_mut(),
-                declared_handler_runtime_name: None,
-            });
-            chain_next(Box::into_raw(state) as *mut u8, req_ptr)
-        } else {
-            return (404, b"Not Found".to_vec(), None);
-        };
-
-        // Extract response from the Mesh response pointer.
-        let resp = &*(response_ptr as *const MeshHttpResponse);
-        let status_code = resp.status;
-        let body = if resp.body_bytes.is_null() {
-            if resp.body.is_null() {
-                Vec::new()
-            } else {
-                let body_mesh = &*(resp.body as *const MeshString);
-                body_mesh.as_bytes().to_vec()
-            }
-        } else {
-            (*(resp.body_bytes as *const MeshBytes)).as_slice().to_vec()
-        };
-
-        // Extract custom headers from the response if present.
-        let mut extra_headers = if resp.headers.is_null() {
-            None
-        } else {
-            // The map's live entries (a map may be a view of a table), each
-            // a pair of MeshString pointers (a string-keyed map).
-            let (_, entries) = map::live_entries(resp.headers);
-            if entries.is_empty() {
-                None
-            } else {
-                let mut headers_vec = Vec::with_capacity(entries.len());
-                for entry in &entries {
-                    let key_ptr = entry[0] as *const MeshString;
-                    let val_ptr = entry[1] as *const MeshString;
-                    let key_str = (*key_ptr).as_str().to_string();
-                    let val_str = (*val_ptr).as_str().to_string();
-                    headers_vec.push((key_str, val_str));
-                }
-                Some(headers_vec)
-            }
-        };
-
-        if !resp.body_bytes.is_null()
-            && !extra_headers.as_ref().is_some_and(|headers| {
-                headers
-                    .iter()
-                    .any(|(name, _)| name.eq_ignore_ascii_case("content-type"))
-            })
-        {
-            extra_headers.get_or_insert_with(Vec::new).push((
-                "Content-Type".to_string(),
-                "application/octet-stream".to_string(),
-            ));
-        }
-
-        (status_code, body, extra_headers)
     }
+    let matched = router.match_route(path, &parsed.method);
+    let has_middleware = !router.middlewares.is_empty();
+    if matched.is_none() && !has_middleware {
+        return (404, b"Not Found".to_vec(), Vec::new());
+    }
+
+    let request_ptr = transport_request_to_mesh(&TransportHttpRequest {
+        method: parsed.method.clone(),
+        path: path.to_string(),
+        body: parsed.body,
+        query_params: query
+            .split('&')
+            .filter_map(|param| param.split_once('='))
+            .map(|(key, value)| (key.to_string(), value.to_string()))
+            .collect(),
+        headers: parsed.headers,
+        path_params: matched
+            .as_ref()
+            .map_or_else(Vec::new, |(_, params)| params.clone()),
+        request_id: next_request_id(),
+        idempotency_key,
+    });
+    let (handler_fn, handler_env, runtime_name) = match &matched {
+        Some((entry, _)) => (
+            entry.handler_fn,
+            entry.handler_env,
+            entry.declared_handler_runtime_name.clone(),
+        ),
+        None => (not_found_handler as *mut u8, std::ptr::null_mut(), None),
+    };
+    let response_ptr = if has_middleware {
+        let state = Box::new(ChainState {
+            middlewares: router.middlewares.clone(),
+            index: 0,
+            handler_fn,
+            handler_env,
+            declared_handler_runtime_name: runtime_name,
+        });
+        chain_next(Box::into_raw(state) as *mut u8, request_ptr)
+    } else if let Some(runtime_name) = runtime_name.as_deref() {
+        clustered_route_response_from_request(
+            crate::dist::telemetry::global_admission_controller(),
+            runtime_name,
+            request_ptr,
+        )
+    } else {
+        call_handler(handler_fn, handler_env, request_ptr)
+    };
+    let response = mesh_response_to_transport(response_ptr);
+    (response.status, response.body, response.headers)
 }
 
 #[cfg(test)]
@@ -1709,6 +1438,10 @@ mod tests {
     use crate::http::router::{mesh_http_route_get, mesh_http_router};
     use crate::string::mesh_string_new;
     use std::sync::atomic::{AtomicU64, Ordering};
+
+    fn bytes_of(ptr: *mut u8) -> Vec<u8> {
+        unsafe { (*(ptr as *const MeshBytes)).as_slice().to_vec() }
+    }
 
     fn reset_clustered_runtime_state() {
         clear_declared_handler_registry_for_test();
@@ -1767,10 +1500,7 @@ mod tests {
         }
     }
 
-    fn required_response_header(headers: &Option<Vec<(String, String)>>, name: &str) -> String {
-        let headers = headers
-            .as_ref()
-            .unwrap_or_else(|| panic!("missing response headers while looking up {name}"));
+    fn required_response_header(headers: &[(String, String)], name: &str) -> String {
         let mut matches = headers
             .iter()
             .filter(|(header_name, _)| header_name.eq_ignore_ascii_case(name));
@@ -1796,7 +1526,7 @@ mod tests {
     extern "C" fn clustered_route_test_handler(request: *mut u8) -> *mut u8 {
         CLUSTERED_ROUTE_HANDLER_CALLS.fetch_add(1, Ordering::Relaxed);
         let request = unsafe { &*(request as *const MeshHttpRequest) };
-        let body = mesh_string_ptr_to_owned(request.body);
+        let body = mesh_string_to_owned(request.body);
         build_test_response(
             200,
             &format!("{{\"echo\":\"{}\"}}", body),
@@ -1807,7 +1537,7 @@ mod tests {
     extern "C" fn idempotency_test_handler(request: *mut u8) -> *mut u8 {
         IDEMPOTENCY_HANDLER_CALLS.fetch_add(1, Ordering::Relaxed);
         let request = unsafe { &*(request as *const MeshHttpRequest) };
-        let body = mesh_string_ptr_to_owned(request.body);
+        let body = mesh_string_to_owned(request.body);
         build_test_response(
             200,
             &format!("{{\"echo\":\"{}\"}}", body),
@@ -1938,7 +1668,7 @@ mod tests {
 
         let body = vec![b'x'; 8 * 1024 * 1024];
         let started = std::time::Instant::now();
-        let error = write_response(&mut HttpStream::Plain(accepted), 200, &body, None)
+        let error = write_response(&mut HttpStream::Plain(accepted), 200, &body, &[])
             .expect_err("a write to a peer that never reads must time out");
         assert!(
             error.starts_with("write response"),
@@ -1950,34 +1680,6 @@ mod tests {
             started.elapsed()
         );
         drop(client);
-    }
-
-    /// A status line carries its status's standard reason, or none for a
-    /// status without one (a 409 was "OK"); a status of more or fewer than
-    /// three digits is refused (a 70000 wrapped to 4464).
-    #[test]
-    fn statuses_are_written_with_their_reasons() {
-        for (status, line) in [
-            (202, "HTTP/1.1 202 Accepted\r\n"),
-            (403, "HTTP/1.1 403 Forbidden\r\n"),
-            (405, "HTTP/1.1 405 Method Not Allowed\r\n"),
-            (409, "HTTP/1.1 409 Conflict\r\n"),
-            (299, "HTTP/1.1 299 \r\n"),
-        ] {
-            let mut response = Vec::new();
-            write_response(&mut response, status, b"", None).unwrap();
-            assert!(
-                String::from_utf8(response).unwrap().starts_with(line),
-                "{status}"
-            );
-        }
-        for status in [99, 1000, -1, 70_000] {
-            assert_eq!(
-                response_status(status),
-                Err(format!("invalid response status {status}"))
-            );
-        }
-        assert_eq!(response_status(100), Ok(100));
     }
 
     #[test]
@@ -2020,18 +1722,10 @@ mod tests {
             ("Bad Name", "value"),
             ("", "value"),
         ] {
-            let mut response = Vec::new();
             assert!(
-                write_response(
-                    &mut response,
-                    200,
-                    b"ok",
-                    Some(owned_pairs(&[(name, value)]))
-                )
-                .is_err(),
+                validate_response_headers(&owned_pairs(&[(name, value)])).is_err(),
                 "accepted invalid header {name:?}: {value:?}"
             );
-            assert!(response.is_empty());
         }
     }
 
@@ -2042,15 +1736,23 @@ mod tests {
             &mut response,
             429,
             b"{}",
-            Some(owned_pairs(&[
+            &owned_pairs(&[
                 ("Retry-After", "60"),
                 ("X-Reason", "rate\tlimited"),
                 ("X-Unicode", "café"),
-            ])),
+            ]),
         )
         .unwrap();
 
         let response = String::from_utf8(response).unwrap();
+        assert_eq!(
+            validate_response_headers(&owned_pairs(&[
+                ("Retry-After", "60"),
+                ("X-Reason", "rate\tlimited"),
+                ("X-Unicode", "café"),
+            ])),
+            Ok(())
+        );
         assert!(response.starts_with("HTTP/1.1 429 Too Many Requests\r\n"));
         assert!(response.contains("\r\nRetry-After: 60\r\n"));
         assert!(response.contains("\r\nX-Reason: rate\tlimited\r\n"));
@@ -2065,15 +1767,7 @@ mod tests {
             ("Transfer-Encoding", "chunked"),
             ("Connection", "keep-alive"),
         ] {
-            let mut response = Vec::new();
-            assert!(write_response(
-                &mut response,
-                200,
-                b"ok",
-                Some(owned_pairs(&[(name, value)]))
-            )
-            .is_err());
-            assert!(response.is_empty());
+            assert!(validate_response_headers(&owned_pairs(&[(name, value)])).is_err());
         }
     }
 
@@ -2084,10 +1778,7 @@ mod tests {
             &mut response,
             200,
             b"metric 1\n",
-            Some(owned_pairs(&[(
-                "Content-Type",
-                "text/plain; version=0.0.4; charset=utf-8",
-            )])),
+            &owned_pairs(&[("Content-Type", "text/plain; version=0.0.4; charset=utf-8")]),
         )
         .unwrap();
 
@@ -2153,7 +1844,7 @@ mod tests {
 
         let encoded = encode_http_request_payload(request_ptr).expect("encode request payload");
         let decoded_ptr = decode_http_request_payload(&encoded).expect("decode request payload");
-        let decoded = mesh_request_to_transport(decoded_ptr).expect("decoded request");
+        let decoded = mesh_request_to_transport(decoded_ptr);
 
         assert_eq!(decoded.method, "POST");
         assert_eq!(decoded.path, "/todos/42");
@@ -2205,7 +1896,7 @@ mod tests {
 
         let encoded = encode_http_response_payload(response_ptr).expect("encode response payload");
         let decoded_ptr = decode_http_response_payload(&encoded).expect("decode response payload");
-        let decoded = mesh_response_to_transport(decoded_ptr).expect("decoded response");
+        let decoded = mesh_response_to_transport(decoded_ptr);
 
         assert_eq!(decoded.status, 201);
         assert_eq!(decoded.body, b"{\"created\":true}");
@@ -2225,7 +1916,7 @@ mod tests {
         let request_payload = encode_http_request_payload(request_ptr).unwrap();
         let decoded_request = decode_http_request_payload(&request_payload).unwrap();
         assert_eq!(
-            mesh_bytes_ptr_to_owned(mesh_http_request_body_bytes(decoded_request)),
+            bytes_of(mesh_http_request_body_bytes(decoded_request)),
             binary
         );
 
@@ -2234,7 +1925,7 @@ mod tests {
         let response_payload = encode_http_response_payload(response_ptr).unwrap();
         let decoded_response = decode_http_response_payload(&response_payload).unwrap();
         let response = unsafe { &*(decoded_response as *const MeshHttpResponse) };
-        assert_eq!(mesh_bytes_ptr_to_owned(response.body_bytes), binary);
+        assert_eq!(bytes_of(response.body_bytes), binary);
     }
 
     #[test]
@@ -2472,9 +2163,9 @@ mod tests {
         assert_eq!(second_status, 200);
         assert_eq!(first_body, second_body);
         assert_eq!(IDEMPOTENCY_HANDLER_CALLS.load(Ordering::Relaxed), 1);
-        assert!(first_headers.as_ref().is_none_or(|headers| !headers
+        assert!(!first_headers
             .iter()
-            .any(|(name, _)| { name.eq_ignore_ascii_case(IDEMPOTENCY_REPLAY_HEADER) })));
+            .any(|(name, _)| name.eq_ignore_ascii_case(IDEMPOTENCY_REPLAY_HEADER)));
         assert_eq!(
             required_response_header(&second_headers, IDEMPOTENCY_REPLAY_HEADER),
             "true"
@@ -2505,11 +2196,563 @@ mod tests {
         .expect("invoke clustered handler from payload");
         let response_ptr =
             decode_http_response_payload(&response_payload).expect("decode response");
-        let response = mesh_response_to_transport(response_ptr).expect("transport response");
+        let response = mesh_response_to_transport(response_ptr);
 
         assert_eq!(CLUSTERED_ROUTE_HANDLER_CALLS.load(Ordering::Relaxed), 1);
         assert_eq!(response.status, 200);
         assert_eq!(response.body, b"{\"echo\":\"payload\"}");
         assert_eq!(response.headers, owned_pairs(&[("X-Clustered", "true")]));
+    }
+
+    // ── Transport payloads ───────────────────────────────────────────────
+
+    /// A payload's leading fields, as the encoder writes them.
+    fn fields(values: &[&[u8]]) -> Vec<u8> {
+        let mut payload = Vec::new();
+        for value in values {
+            encode_len_prefixed(&mut payload, value, "test").unwrap();
+        }
+        payload
+    }
+
+    /// Every way a request or response payload can be malformed is refused
+    /// by name, and payloads from before request IDs and idempotency keys
+    /// still decode.
+    #[test]
+    fn transport_payloads_are_refused_by_what_is_wrong() {
+        mesh_rt_init();
+        let head = fields(&[b"GET", b"/", b""]);
+        let no_pairs = [head.clone(), vec![0; 12]].concat();
+        for (payload, error) in [
+            (vec![1, 0], "mesh_http_transport_request_method_len_missing"),
+            (
+                vec![5, 0, 0, 0, b'G'],
+                "mesh_http_transport_request_method_truncated",
+            ),
+            (
+                fields(&[&[0xff]]),
+                "mesh_http_transport_request_method_invalid_utf8",
+            ),
+            (
+                head.clone(),
+                "mesh_http_transport_request_query_params_count_missing",
+            ),
+            (
+                [no_pairs.clone(), fields(&[b"id"]), vec![2]].concat(),
+                "mesh_http_transport_idempotency_key_flag_invalid",
+            ),
+            (
+                [
+                    no_pairs.clone(),
+                    fields(&[b"id"]),
+                    vec![1],
+                    fields(&[b"bad key"]),
+                ]
+                .concat(),
+                "idempotency_key_invalid_characters",
+            ),
+            (
+                [no_pairs.clone(), fields(&[b"id"]), vec![0, 9]].concat(),
+                "mesh_http_transport_request_trailing_bytes",
+            ),
+        ] {
+            assert_eq!(decode_transport_request(&payload).unwrap_err(), error);
+        }
+
+        let legacy = decode_transport_request(&no_pairs).unwrap();
+        assert!(!legacy.request_id.is_empty());
+        assert_eq!(legacy.idempotency_key, None);
+        let keyless =
+            decode_transport_request(&[no_pairs.clone(), fields(&[b"id"])].concat()).unwrap();
+        assert_eq!(
+            (keyless.request_id.as_str(), keyless.idempotency_key),
+            ("id", None)
+        );
+
+        let mut response = encode_transport_response(&TransportHttpResponse {
+            status: 200,
+            body: Vec::new(),
+            headers: Vec::new(),
+        })
+        .unwrap();
+        response.push(0);
+        assert_eq!(
+            decode_transport_response(&response).unwrap_err(),
+            "mesh_http_transport_response_trailing_bytes"
+        );
+    }
+
+    /// A length field cannot carry 4 GiB or more: the field is too large.
+    #[test]
+    fn transport_lengths_past_four_gigabytes_are_refused() {
+        let mut payload = Vec::new();
+        assert_eq!(
+            encode_len(&mut payload, u32::MAX as usize + 1, "response_body"),
+            Err("mesh_http_transport_response_body_too_large:4294967296".to_string())
+        );
+        assert!(payload.is_empty());
+    }
+
+    /// A clustered route's identity needs a request ID, and a caller key
+    /// that is a valid idempotency key; the content type is part of the
+    /// payload hash.
+    #[test]
+    fn clustered_route_identity_refuses_what_it_cannot_key() {
+        let request = |headers: &[(&str, &str)], request_id: &str| TransportHttpRequest {
+            method: "POST".to_string(),
+            path: "/todos".to_string(),
+            body: b"{}".to_vec(),
+            query_params: Vec::new(),
+            headers: owned_pairs(headers),
+            path_params: Vec::new(),
+            request_id: request_id.to_string(),
+            idempotency_key: None,
+        };
+        let payload = |request: &TransportHttpRequest| encode_transport_request(request).unwrap();
+        assert_eq!(
+            build_clustered_http_route_identity("Api.Todos.create", &payload(&request(&[], ""))),
+            Err("clustered_route_request_id_missing".to_string())
+        );
+        assert!(build_clustered_http_route_identity(
+            "Api.Todos.create",
+            &payload(&request(&[("Idempotency-Key", "bad key")], "id"))
+        )
+        .is_err());
+        let (_, json) = build_clustered_http_route_identity(
+            "Api.Todos.create",
+            &payload(&request(&[("Content-Type", "application/json")], "id")),
+        )
+        .unwrap();
+        let (_, text) = build_clustered_http_route_identity(
+            "Api.Todos.create",
+            &payload(&request(&[("Content-Type", "text/plain")], "id")),
+        )
+        .unwrap();
+        assert_ne!(json, text);
+    }
+
+    /// A clustered route an admission controller refuses, or whose request
+    /// cannot be keyed, answers 503 without a request key: no request was
+    /// keyed.
+    #[test]
+    fn a_refused_clustered_route_answers_503() {
+        mesh_rt_init();
+        let admission = Arc::new(AdmissionController::new(Default::default()));
+        let unkeyable = build_test_request(
+            "POST",
+            "/todos",
+            "",
+            &[],
+            &[("Idempotency-Key", "bad key")],
+            &[],
+        );
+        let response = mesh_response_to_transport(clustered_route_response_from_request(
+            &admission,
+            "Api.Todos.create",
+            unkeyable,
+        ));
+        assert_eq!(response.status, 503);
+        assert_eq!(
+            response.body,
+            br#"{"error":"idempotency_key_invalid_characters"}"#
+        );
+        assert!(response.headers.is_empty());
+
+        admission.set_draining(true);
+        let request = build_test_request("GET", "/todos", "", &[], &[], &[]);
+        let response = mesh_response_to_transport(clustered_route_response_from_request(
+            &admission,
+            "Api.Todos.list",
+            request,
+        ));
+        assert_eq!(response.status, 503);
+        assert_eq!(response.body, br#"{"error":"admission_rejected:Draining"}"#);
+        assert!(response.headers.is_empty());
+    }
+
+    /// A text response without headers comes back from its payload as one.
+    #[test]
+    fn a_bare_text_response_survives_its_payload() {
+        mesh_rt_init();
+        let payload = encode_http_response_payload(build_test_response(204, "", &[])).unwrap();
+        let response = decode_http_response_payload(&payload).unwrap();
+        assert_eq!(
+            mesh_response_to_transport(response),
+            TransportHttpResponse {
+                status: 204,
+                body: Vec::new(),
+                headers: Vec::new(),
+            }
+        );
+        assert!(unsafe { (*(response as *const MeshHttpResponse)).headers.is_null() });
+    }
+
+    /// A request with an idempotency key that is none is refused, 400.
+    #[test]
+    fn an_invalid_idempotency_key_is_refused() {
+        mesh_rt_init();
+        let (status, body, headers) = process_request(
+            mesh_http_router(),
+            ParsedRequest {
+                method: "POST".to_string(),
+                path: "/".to_string(),
+                headers: owned_pairs(&[("Idempotency-Key", "")]),
+                body: Vec::new(),
+            },
+        );
+        assert_eq!(
+            (status, body, headers),
+            (400, b"idempotency_key_missing".to_vec(), Vec::new())
+        );
+    }
+
+    extern "C" fn passthrough_middleware(
+        request: *mut u8,
+        next_fn: *mut u8,
+        next_env: *mut u8,
+    ) -> *mut u8 {
+        unsafe { call1(next_fn, next_env, request as u64) as *mut u8 }
+    }
+
+    /// A clustered route behind middleware runs through the chain to the
+    /// cluster; a request no route matches goes through the middleware to
+    /// a 404, and without middleware straight to one.
+    #[test]
+    fn middleware_reaches_clustered_routes_and_the_404() {
+        let _guard = declared_handler_registry_test_lock();
+        mesh_rt_init();
+        reset_clustered_runtime_state();
+        let runtime_name = "Api.Todos.handle_list_todos";
+        let executable_name = "__declared_route_api_todos_handle_list_todos";
+        mesh_register_declared_handler(
+            runtime_name.as_ptr(),
+            runtime_name.len() as u64,
+            executable_name.as_ptr(),
+            executable_name.len() as u64,
+            1,
+            clustered_route_test_handler as *const u8,
+        );
+        let bare = mesh_http_route_get(
+            mesh_http_router(),
+            mesh_string_new(b"/todos".as_ptr(), 6),
+            clustered_route_test_handler as *mut u8,
+            std::ptr::null_mut(),
+        );
+        let router = crate::http::router::mesh_http_use_middleware(
+            bare,
+            passthrough_middleware as *mut u8,
+            std::ptr::null_mut(),
+        );
+        let get = |router, path: &str| {
+            process_request(
+                router,
+                ParsedRequest {
+                    method: "GET".to_string(),
+                    path: path.to_string(),
+                    headers: Vec::new(),
+                    body: b"hi".to_vec(),
+                },
+            )
+        };
+        let (status, body, headers) = get(router, "/todos");
+        assert_eq!((status, body), (200, br#"{"echo":"hi"}"#.to_vec()));
+        assert!(
+            required_response_header(&headers, CLUSTERED_ROUTE_REQUEST_KEY_HEADER)
+                .starts_with("request::")
+        );
+        assert_eq!(
+            get(router, "/missing"),
+            (404, b"Not Found".to_vec(), Vec::new())
+        );
+        assert_eq!(
+            get(bare, "/missing"),
+            (404, b"Not Found".to_vec(), Vec::new())
+        );
+        reset_clustered_runtime_state();
+    }
+
+    // ── Requests ─────────────────────────────────────────────────────────
+
+    /// A query or path parameter is found by its exact name, a header by
+    /// its name in any case; one not there is None, as is an idempotency
+    /// key the request has none of.
+    #[test]
+    fn request_values_are_options() {
+        mesh_rt_init();
+        let request = build_test_request(
+            "GET",
+            "/users/7",
+            "",
+            &[("page", "2")],
+            &[("X-Agent", "mesh")],
+            &[("id", "7")],
+        );
+        let value = |option: *mut u8| unsafe {
+            let option = &*(option as *const crate::option::MeshOption);
+            (option.tag == 0).then(|| (*(option.value as *const MeshString)).as_str().to_string())
+        };
+        let name = |name: &str| mesh_str(name) as *const MeshString;
+        assert_eq!(
+            value(mesh_http_request_query(request, name("page"))).as_deref(),
+            Some("2")
+        );
+        assert_eq!(value(mesh_http_request_query(request, name("Page"))), None);
+        assert_eq!(
+            value(mesh_http_request_param(request, name("id"))).as_deref(),
+            Some("7")
+        );
+        assert_eq!(value(mesh_http_request_param(request, name("name"))), None);
+        assert_eq!(
+            value(mesh_http_request_header(request, name("x-agent"))).as_deref(),
+            Some("mesh")
+        );
+        assert_eq!(
+            value(mesh_http_request_header(request, name("x-other"))),
+            None
+        );
+        assert_eq!(value(mesh_http_idempotency_key(request)), None);
+    }
+
+    /// Each way a request can be malformed or too large is refused by
+    /// name, before a handler sees it.
+    #[test]
+    fn request_parser_refuses_malformed_requests() {
+        let parse = |request: Vec<u8>| {
+            parse_buffered_request(&mut BufReader::new(std::io::Cursor::new(request))).unwrap_err()
+        };
+        let many_headers = format!("GET / HTTP/1.1\r\n{}\r\n", "A: b\r\n".repeat(101));
+        let wide_headers = format!(
+            "GET / HTTP/1.1\r\nA: {}\r\nB: {}\r\n\r\n",
+            "x".repeat(4096),
+            "y".repeat(4096)
+        );
+        for (request, error) in [
+            (
+                b"GET / HTTP/1.1\r\nHost: x".to_vec(),
+                "unterminated HTTP line",
+            ),
+            (b"GET\r\n\r\n".to_vec(), "malformed request line: GET"),
+            (many_headers.into_bytes(), "too many headers (max 100)"),
+            (
+                wide_headers.into_bytes(),
+                "header section exceeds 8KB limit",
+            ),
+            (
+                b"GET / HTTP/1.1\r\nno colon\r\n\r\n".to_vec(),
+                "malformed HTTP header",
+            ),
+            (
+                b"GET / HTTP/1.1\r\n: empty\r\n\r\n".to_vec(),
+                "malformed HTTP header",
+            ),
+            (
+                b"POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n".to_vec(),
+                "transfer-encoding is not supported",
+            ),
+            (
+                b"GET / HTTP/1.1\r\nA: \xff\r\n\r\n".to_vec(),
+                "HTTP headers must be UTF-8",
+            ),
+        ] {
+            assert_eq!(parse(request), error);
+        }
+        assert!(
+            parse(b"POST / HTTP/1.1\r\nContent-Length: 4\r\n\r\nab".to_vec())
+                .starts_with("read body: ")
+        );
+    }
+
+    /// A status line carries its status's standard reason, or none for a
+    /// status without one; a status of more or fewer than three digits is
+    /// refused.
+    #[test]
+    fn statuses_are_written_with_their_reasons() {
+        for (status, line) in [
+            (202, "HTTP/1.1 202 Accepted\r\n"),
+            (403, "HTTP/1.1 403 Forbidden\r\n"),
+            (405, "HTTP/1.1 405 Method Not Allowed\r\n"),
+            (409, "HTTP/1.1 409 Conflict\r\n"),
+            (299, "HTTP/1.1 299 \r\n"),
+        ] {
+            let mut response = Vec::new();
+            write_response(&mut response, status, b"", &[]).unwrap();
+            assert!(
+                String::from_utf8(response).unwrap().starts_with(line),
+                "{status}"
+            );
+        }
+        for status in [99, 1000, -1, 70_000] {
+            assert_eq!(
+                response_status(status),
+                Err(format!("invalid response status {status}"))
+            );
+        }
+        assert_eq!(response_status(100), Ok(100));
+    }
+
+    // ── Connections ──────────────────────────────────────────────────────
+
+    /// Read one HTTP response: its head, and its body by Content-Length.
+    fn read_response(stream: &mut impl Read) -> (String, Vec<u8>) {
+        let mut head = Vec::new();
+        let mut byte = [0u8; 1];
+        while !head.ends_with(b"\r\n\r\n") {
+            stream.read_exact(&mut byte).unwrap();
+            head.push(byte[0]);
+        }
+        let head = String::from_utf8(head).unwrap();
+        let length = head
+            .lines()
+            .find_map(|line| line.strip_prefix("Content-Length: "))
+            .unwrap()
+            .parse::<usize>()
+            .unwrap();
+        let mut body = vec![0u8; length];
+        stream.read_exact(&mut body).unwrap();
+        (head, body)
+    }
+
+    /// A connection admitted to `router` under `admission`: the client end.
+    fn connect_admitted(
+        router: *mut u8,
+        tls: Option<&Arc<ServerConfig>>,
+        admission: &Arc<AdmissionController>,
+    ) -> TcpStream {
+        crate::actor::mesh_rt_init_actor(0);
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let client = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        client
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .unwrap();
+        let (accepted, _) = listener.accept().unwrap();
+        admit(accepted, router as usize, tls, admission);
+        client
+    }
+
+    fn router_of(path: &str, handler: extern "C" fn(*mut u8) -> *mut u8) -> *mut u8 {
+        mesh_http_route_get(
+            mesh_http_router(),
+            mesh_str(path) as *const MeshString,
+            handler as *mut u8,
+            std::ptr::null_mut(),
+        )
+    }
+
+    extern "C" fn invalid_header_handler(_request: *mut u8) -> *mut u8 {
+        build_test_response(200, "ok", &[("Content-Length", "0")])
+    }
+
+    extern "C" fn invalid_status_handler(_request: *mut u8) -> *mut u8 {
+        build_test_response(70_000, "ok", &[])
+    }
+
+    extern "C-unwind" fn panicking_handler(_request: *mut u8) -> *mut u8 {
+        panic!("handler failed");
+    }
+
+    extern "C" fn empty_headers_handler(_request: *mut u8) -> *mut u8 {
+        mesh_http_response_with_headers(
+            200,
+            mesh_str("plain") as *const MeshString,
+            map::mesh_map_new_typed(1),
+        )
+    }
+
+    /// A handler's response with a header the writer owns, or a status that
+    /// is no status, or a handler that panics, is answered 500 instead; a
+    /// response with an empty headers map is written without extra headers.
+    #[test]
+    fn connections_answer_500_for_responses_that_cannot_be_written() {
+        let admission = Arc::new(AdmissionController::new(Default::default()));
+        let panicking = mesh_http_route_get(
+            mesh_http_router(),
+            mesh_str("/bad") as *const MeshString,
+            panicking_handler as *mut u8,
+            std::ptr::null_mut(),
+        );
+        for router in [
+            router_of("/bad", invalid_header_handler),
+            router_of("/bad", invalid_status_handler),
+            panicking,
+        ] {
+            let mut client = connect_admitted(router, None, &admission);
+            client.write_all(b"GET /bad HTTP/1.1\r\n\r\n").unwrap();
+            let (head, body) = read_response(&mut client);
+            assert!(
+                head.starts_with("HTTP/1.1 500 Internal Server Error\r\n"),
+                "{head}"
+            );
+            assert_eq!(body, b"Internal Server Error");
+        }
+        let mut client =
+            connect_admitted(router_of("/plain", empty_headers_handler), None, &admission);
+        client.write_all(b"GET /plain HTTP/1.1\r\n\r\n").unwrap();
+        let (head, body) = read_response(&mut client);
+        assert!(head.starts_with("HTTP/1.1 200 OK\r\n"), "{head}");
+        assert_eq!(body, b"plain");
+    }
+
+    /// A request that does not parse gets no answer: the connection closes.
+    #[test]
+    fn a_malformed_request_closes_the_connection() {
+        let admission = Arc::new(AdmissionController::new(Default::default()));
+        let mut client = connect_admitted(router_of("/", empty_headers_handler), None, &admission);
+        client.write_all(b"GET\r\n\r\n").unwrap();
+        assert_eq!(client.read(&mut [0u8; 1]).unwrap(), 0);
+    }
+
+    /// A connection the admission controller refuses is answered 503 over
+    /// HTTP, and closed unanswered over HTTPS.
+    #[test]
+    fn refused_connections_are_answered_503_or_closed() {
+        let admission = Arc::new(AdmissionController::new(Default::default()));
+        admission.set_draining(true);
+        let router = router_of("/", empty_headers_handler);
+        let mut client = connect_admitted(router, None, &admission);
+        let (head, body) = read_response(&mut client);
+        assert!(
+            head.starts_with("HTTP/1.1 503 Service Unavailable\r\n"),
+            "{head}"
+        );
+        assert!(head.contains("\r\nRetry-After: 1\r\n"), "{head}");
+        assert_eq!(body, b"admission_rejected:Draining");
+
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let (server_config, _) = crate::dist::node::ws_test_tls_configs();
+        let mut client = connect_admitted(router, Some(&server_config), &admission);
+        assert_eq!(client.read(&mut [0u8; 1]).unwrap(), 0);
+    }
+
+    /// An HTTPS connection's request and response go through TLS.
+    #[test]
+    fn https_connections_are_served_over_tls() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let (server_config, client_config) = crate::dist::node::ws_test_tls_configs();
+        let admission = Arc::new(AdmissionController::new(Default::default()));
+        let tcp = connect_admitted(
+            router_of("/plain", empty_headers_handler),
+            Some(&server_config),
+            &admission,
+        );
+        let session = rustls::ClientConnection::new(
+            client_config,
+            rustls_pki_types::ServerName::try_from("localhost").unwrap(),
+        )
+        .unwrap();
+        let mut client = StreamOwned::new(session, tcp);
+        client.write_all(b"GET /plain HTTP/1.1\r\n\r\n").unwrap();
+        let (head, body) = read_response(&mut client);
+        assert!(head.starts_with("HTTP/1.1 200 OK\r\n"), "{head}");
+        assert_eq!(body, b"plain");
+    }
+
+    /// HTTP.serve on a port another socket holds says so and returns.
+    #[test]
+    fn serving_on_a_taken_port_returns() {
+        let taken = std::net::TcpListener::bind("[::]:0").unwrap();
+        mesh_http_serve(
+            mesh_http_router(),
+            i64::from(taken.local_addr().unwrap().port()),
+        );
     }
 }
