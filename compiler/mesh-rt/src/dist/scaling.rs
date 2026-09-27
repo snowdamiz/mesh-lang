@@ -2180,6 +2180,9 @@ impl CapacityReconciler {
         if committed.desired.revision.0 == 0 || committed.desired.worker_nodes == 0 {
             return Err("capacity_reconciler_desired_state_invalid".to_string());
         }
+        if cluster_id.is_empty() {
+            return Err("capacity_reconciler_cluster_id_missing".to_string());
+        }
         // A no-op fenced commit proves that the caller is still the majority-backed leader
         // before any provider observation or mutation is used for reconciliation.
         quorum.commit(
@@ -2193,9 +2196,6 @@ impl CapacityReconciler {
         self.last_log_index = committed.log_index;
         self.highest_term = committed.term;
 
-        if cluster_id.is_empty() {
-            return Err("capacity_reconciler_cluster_id_missing".to_string());
-        }
         let observation = self.driver.observe_capacity(cluster_id)?;
         let (safety, unmanaged_ready_workers) = safety_for_observation(&observation)?;
         let mut active: Vec<_> = observation
@@ -3416,6 +3416,53 @@ mod tests {
                 ControlMutation::PauseAutoscaler { paused: true },
             ),
             Err("controller_quorum_unavailable".to_string())
+        );
+    }
+
+    /// Arguments that cannot reconcile are refused before the fence is
+    /// committed: a refused call leaves the control log as it was.
+    #[test]
+    fn invalid_reconcile_arguments_commit_nothing() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let log =
+            Arc::new(DurableControlLog::open(&directory.path().join("control.log")).expect("log"));
+        let voters = BTreeSet::from(["a".to_string(), "b".to_string(), "c".to_string()]);
+        let quorum = ControllerQuorum::new(voters.clone(), log.clone()).expect("quorum");
+        let term = quorum.elect("a", &voters).expect("leader");
+        let committed = CommittedDesiredCapacity {
+            log_index: 3,
+            term,
+            desired: DesiredCapacity {
+                revision: DesiredRevision(1),
+                worker_nodes: 1,
+                gateway_nodes: 0,
+                template_revision: "v1".to_string(),
+            },
+        };
+        let mut reconciler =
+            CapacityReconciler::new(Arc::new(FakeCapacityDriver::new()), 1).expect("reconciler");
+        let mut reconcile = |cluster: &str, committed: &CommittedDesiredCapacity| {
+            reconciler.reconcile(&quorum, cluster, "a", &voters, committed, "autoscaler", &[])
+        };
+
+        assert_eq!(
+            reconcile("", &committed),
+            Err("capacity_reconciler_cluster_id_missing".to_string())
+        );
+        let mut empty = committed.clone();
+        empty.desired.worker_nodes = 0;
+        assert_eq!(
+            reconcile("cluster", &empty),
+            Err("capacity_reconciler_desired_state_invalid".to_string())
+        );
+        assert!(log.entries().is_empty(), "{:?}", log.entries());
+
+        reconcile("cluster", &committed).expect("reconcile");
+        let mut older = committed.clone();
+        older.log_index = 2;
+        assert_eq!(
+            reconcile("cluster", &older),
+            Err("capacity_reconciler_stale_committed_state".to_string())
         );
     }
 
