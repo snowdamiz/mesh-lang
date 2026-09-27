@@ -13254,6 +13254,14 @@ mod tests {
         merge_pending_record("drained-home-key", "drained-home@h:1", &state.name, handler);
         drain_with(&peers, "drained-home@h:1", at_once).unwrap();
         await_record("drained-home-key", |record| record.owner_node == state.name);
+
+        // A drain named by a member's name finds the member first.
+        let done = AtomicBool::new(false);
+        std::thread::scope(|scope| {
+            scope.spawn(|| serve_as_nodes(&peers, &done));
+            assert!(prepare_continuity_for_drain(c).is_ok());
+            done.store(true, Ordering::Release);
+        });
     }
 
     /// A session reports its health, age, circuit and each lane's use, and
@@ -14755,5 +14763,35 @@ mod tests {
         accepted.shutdown(std::net::Shutdown::Both).unwrap();
         handle_accepted_connection(accepted, state);
         drop(client);
+    }
+
+    /// Declared work needs a handler here, and is rejected before it runs
+    /// when it needs a replica no member can hold.
+    #[test]
+    fn declared_work_needs_a_handler_and_somewhere_for_its_copies() {
+        let _exclusive = declared_handler_registry_test_lock();
+        test_node();
+        let registry = crate::dist::continuity::continuity_registry();
+        registry.clear_for_test();
+        assert_eq!(
+            submit_declared_work("Unregistered.work", "unhandled-work", "sha256:x", 0).err(),
+            Some("declared_handler_not_registered:Unregistered.work".to_string())
+        );
+        let handler = "Copied.work";
+        mesh_register_declared_handler(
+            handler.as_ptr(),
+            handler.len() as u64,
+            handler.as_ptr(),
+            handler.len() as u64,
+            2,
+            drained_work_handler as *const u8,
+        );
+        let decision = submit_declared_work(handler, "uncopied-work", "sha256:c", 1).unwrap();
+        assert_eq!(
+            decision.record.phase,
+            crate::dist::continuity::ContinuityPhase::Rejected
+        );
+        registry.clear_for_test();
+        clear_declared_handler_registry_for_test();
     }
 }
