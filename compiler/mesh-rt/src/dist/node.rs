@@ -12431,4 +12431,67 @@ mod tests {
             Some("autonomous_mode_requires_mtls_identity".to_string())
         );
     }
+
+    /// Remote spawn arguments cross by their tags: numbers and booleans as
+    /// bits, text by value, unit as nothing, and a pid as its local id and
+    /// its node. An argument of a kind that cannot cross, bytes cut short
+    /// anywhere, or bytes left over are refused.
+    #[test]
+    fn remote_spawn_arguments_cross_by_their_tags() {
+        test_node();
+        let tags = [
+            REMOTE_SPAWN_ARG_INT,
+            REMOTE_SPAWN_ARG_FLOAT,
+            REMOTE_SPAWN_ARG_BOOL,
+            REMOTE_SPAWN_ARG_STRING,
+            REMOTE_SPAWN_ARG_UNIT,
+            REMOTE_SPAWN_ARG_STRING,
+            REMOTE_SPAWN_ARG_PID,
+        ];
+        let words = [
+            42,
+            1.5f64.to_bits(),
+            7,
+            crate::string::mesh_str("hello") as u64,
+            0,
+            0,
+            ProcessId(9).as_u64(),
+        ];
+        let data: Vec<u8> = words.iter().flat_map(|word| word.to_le_bytes()).collect();
+        let encoded = encode_remote_spawn_args(&data, &tags).unwrap();
+        let decoded = decode_remote_spawn_args(&encoded, &tags).unwrap();
+        let text = |raw: u64| unsafe { (*(raw as *const crate::string::MeshString)).as_str() };
+        assert_eq!(decoded[..3], [42, 1.5f64.to_bits(), 1]);
+        assert_eq!(text(decoded[3]), "hello");
+        assert_eq!(decoded[4], 0);
+        assert_eq!(text(decoded[5]), "");
+        assert_eq!(decoded[6], 9, "a pid on this node is local here");
+
+        for cut in 2..encoded.len() {
+            assert!(
+                decode_remote_spawn_args(&encoded[..cut], &tags).is_err(),
+                "{cut} bytes"
+            );
+        }
+        assert_eq!(
+            decode_remote_spawn_args(&[&encoded[..], &[0]].concat(), &tags),
+            Err("remote_spawn_args_trailing_bytes".to_string())
+        );
+        assert_eq!(
+            decode_remote_spawn_args(&[1], &[]),
+            Err("remote_spawn_args_too_short".to_string())
+        );
+        assert_eq!(
+            decode_remote_spawn_args(&[1, 0, 9], &[9]),
+            Err("remote_spawn_arg_tag_unsupported:9".to_string())
+        );
+        assert_eq!(
+            encode_remote_spawn_args(&data[..8], &tags),
+            Err("remote_spawn_args_size_mismatch".to_string())
+        );
+        assert_eq!(
+            encode_remote_spawn_args(&[0; 8], &[REMOTE_SPAWN_ARG_UNSUPPORTED]),
+            Err("remote_spawn_arg_tag_unsupported:0".to_string())
+        );
+    }
 }
