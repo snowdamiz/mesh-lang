@@ -49,6 +49,14 @@ const PROMOTION_REJECTED_NOT_STANDBY: &str = "promotion_rejected:not_standby";
 #[cfg_attr(not(test), allow(dead_code))]
 const PROMOTION_REJECTED_NO_MIRRORED_STATE: &str = "promotion_rejected:no_mirrored_state";
 const STALE_PROMOTION_EPOCH_REJECTED: &str = "stale_promotion_epoch_rejected";
+const CONTINUITY_TEXT_TOO_LARGE: &str = "continuity_text_too_large";
+
+/// The most bytes a request key, payload hash, node name, or handler name
+/// may have. A record's wire format gives each text field a 16-bit length,
+/// and the reasons a node loss records embed a node's name: within this
+/// bound every record built from a request encodes, so it persists and
+/// replicates.
+const CONTINUITY_TEXT_MAX_BYTES: usize = 4096;
 
 pub(crate) fn request_key_fingerprint(request_key: &str) -> String {
     let digest = Sha256::digest(request_key.as_bytes());
@@ -472,6 +480,20 @@ impl SubmitRequest {
         }
         if self.required_replica_count > self.replication_count.saturating_sub(1) {
             return Err(INVALID_REQUIRED_REPLICA_COUNT.to_string());
+        }
+        if [
+            &self.request_key,
+            &self.payload_hash,
+            &self.ingress_node,
+            &self.owner_node,
+            &self.replica_node,
+            &self.declared_handler_runtime_name,
+        ]
+        .into_iter()
+        .chain(&self.replica_nodes)
+        .any(|text| text.len() > CONTINUITY_TEXT_MAX_BYTES)
+        {
+            return Err(CONTINUITY_TEXT_TOO_LARGE.to_string());
         }
         let mut replicas = self.replica_nodes.clone();
         if replicas.is_empty() && !self.replica_node.is_empty() {
@@ -1605,6 +1627,9 @@ fn transition_completed_record(
     }
     if execution_node.is_empty() {
         return Err(EXECUTION_NODE_MISSING.to_string());
+    }
+    if execution_node.len() > CONTINUITY_TEXT_MAX_BYTES {
+        return Err(CONTINUITY_TEXT_TOO_LARGE.to_string());
     }
     if record.phase == ContinuityPhase::Completed {
         if record.execution_node == execution_node {
@@ -5418,6 +5443,61 @@ mod tests {
         assert!(registry
             .degrade_replica_records_for_node_loss("stranger@host")
             .is_empty());
+        // A record a newer attempt replaces while its replica prepares takes
+        // neither the ack nor the rejection meant for the replaced attempt.
+        for (key, prepared) in [
+            ("edge-replaced-ack", Ok(())),
+            ("edge-replaced-reject", Err("replica_down".to_string())),
+        ] {
+            let submitted = registry.submit_with_replica_prepare(
+                continuity_submit_request(key, "hash", "replica@host", 1),
+                |record| {
+                    let next = parse_attempt_token(&record.attempt_id).unwrap() + 1;
+                    let newer = ContinuityRecord {
+                        attempt_id: attempt_id_from_token(next),
+                        ..record.clone()
+                    };
+                    registry.merge_remote_record(next + 1, newer).unwrap();
+                    prepared
+                },
+            );
+            assert_eq!(submitted.err(), Some(ATTEMPT_ID_MISMATCH.to_string()));
+        }
+        assert_eq!(
+            registry
+                .acknowledge_replica_prepare("edge-replaced-ack", "attempt-0")
+                .err(),
+            Some(ATTEMPT_ID_MISMATCH.to_string())
+        );
+        // Text a record could not carry over the wire is refused at the
+        // door, so no admitted record fails to persist or replicate.
+        let most = "n".repeat(CONTINUITY_TEXT_MAX_BYTES);
+        let mut too_long = continuity_submit_request("edge-long", "hash", "", 0);
+        too_long.owner_node = format!("{most}n");
+        assert_eq!(
+            registry.submit(too_long).err(),
+            Some(CONTINUITY_TEXT_TOO_LARGE.to_string())
+        );
+        let mut longest = continuity_submit_request_with_owner(&most, &most, &most, "", 0);
+        longest.ingress_node = most.clone();
+        let admitted = registry.submit(longest).unwrap().record;
+        assert!(encode_record(&admitted).is_ok());
+        // The longest reason a node loss records names the node.
+        let lost = ContinuityRecord {
+            error: format!("replication_source_lost:{most}"),
+            ..admitted.clone()
+        };
+        assert!(encode_record(&lost).is_ok());
+        assert_eq!(
+            registry
+                .mark_completed(&most, &admitted.attempt_id, &format!("{most}n"))
+                .err(),
+            Some(CONTINUITY_TEXT_TOO_LARGE.to_string())
+        );
+        let completed = registry
+            .mark_completed(&most, &admitted.attempt_id, &most)
+            .unwrap();
+        assert!(encode_record(&completed).is_ok());
         // Every status has its rank.
         let ranked: Vec<_> = [
             ReplicaStatus::Unassigned,
