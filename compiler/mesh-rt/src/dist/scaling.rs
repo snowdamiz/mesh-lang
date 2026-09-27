@@ -345,11 +345,8 @@ pub(crate) fn start_local_scheduler_autoscaler(
     scheduler: &'static crate::actor::scheduler::Scheduler,
 ) {
     let bounds = scheduler.worker_bounds();
-    if bounds.0 == bounds.1 {
-        return;
-    }
     let embedded = super::autonomous::embedded_autonomous_config();
-    if embedded.is_some_and(|config| !config.features.local_scheduler_autoscaling) {
+    if !local_autoscaling_wanted(bounds, embedded.map(|config| &config.features)) {
         return;
     }
     LOCAL_AUTOSCALER_STARTED.call_once(|| {
@@ -373,6 +370,15 @@ pub(crate) fn start_local_scheduler_autoscaler(
             })
             .expect("failed to start local scheduler autoscaler");
     });
+}
+
+/// Whether a scheduler with worker `bounds` scales itself: when it has room
+/// to, unless the deployment's embedded `features` turn that off.
+fn local_autoscaling_wanted(
+    bounds: (usize, usize),
+    features: Option<&super::autonomous::RuntimeFeatureGates>,
+) -> bool {
+    bounds.0 != bounds.1 && features.is_none_or(|features| features.local_scheduler_autoscaling)
 }
 
 /// The local autoscaler's policy: the scheduler's worker bounds, and the
@@ -4019,6 +4025,22 @@ mod tests {
         let scale_down = autoscaler.evaluate(4, 0, Duration::ZERO, start + Duration::from_secs(8));
         assert_eq!(scale_down.desired_workers, 3);
         assert!(scale_down.changed);
+    }
+
+    #[test]
+    fn only_an_elastic_scheduler_the_deployment_allows_scales_itself() {
+        use super::super::autonomous::RuntimeFeatureGates;
+        let off = RuntimeFeatureGates {
+            local_scheduler_autoscaling: false,
+            ..RuntimeFeatureGates::default()
+        };
+        assert!(local_autoscaling_wanted((1, 4), None));
+        assert!(local_autoscaling_wanted(
+            (1, 4),
+            Some(&RuntimeFeatureGates::default())
+        ));
+        assert!(!local_autoscaling_wanted((1, 4), Some(&off)));
+        assert!(!local_autoscaling_wanted((2, 2), None));
     }
 
     #[test]
