@@ -584,24 +584,24 @@ pub extern "C" fn mesh_bytes_to_hex(bytes: *const MeshBytes) -> *mut MeshString 
     }
 }
 
+/// The bytes that pairs of hex digits of either case spell, or `None` for any
+/// other text.
+pub(crate) fn decode_hex(text: &str) -> Option<Vec<u8>> {
+    if !text.len().is_multiple_of(2) {
+        return None;
+    }
+    let digit = |byte: u8| (byte as char).to_digit(16);
+    text.as_bytes()
+        .chunks_exact(2)
+        .map(|pair| Some((digit(pair[0])? << 4 | digit(pair[1])?) as u8))
+        .collect()
+}
+
 #[no_mangle]
 pub extern "C" fn mesh_bytes_from_hex(text: *const MeshString) -> *mut MeshResult {
-    unsafe {
-        let text = (*text).as_str();
-        if !text.len().is_multiple_of(2) {
-            return err_result("invalid hex");
-        }
-        let mut decoded = Vec::with_capacity(text.len() / 2);
-        for pair in text.as_bytes().chunks_exact(2) {
-            let Some(high) = (pair[0] as char).to_digit(16) else {
-                return err_result("invalid hex");
-            };
-            let Some(low) = (pair[1] as char).to_digit(16) else {
-                return err_result("invalid hex");
-            };
-            decoded.push(((high << 4) | low) as u8);
-        }
-        ok_bytes(&decoded)
+    match decode_hex(unsafe { (*text).as_str() }) {
+        Some(decoded) => ok_bytes(&decoded),
+        None => err_result("invalid hex"),
     }
 }
 
