@@ -2255,50 +2255,52 @@ fn handle_session_message(
                 let requester_pid = ProcessId(u64::from_le_bytes(msg[9..17].try_into().unwrap()));
                 let link_flag = msg[17];
                 let fn_name_len = u16::from_le_bytes(msg[18..20].try_into().unwrap()) as usize;
+                // A name cut short, or not UTF-8, names no function: the
+                // peer is told so rather than left waiting.
+                let fn_name = msg
+                    .get(20..20 + fn_name_len)
+                    .and_then(|name| std::str::from_utf8(name).ok())
+                    .unwrap_or("");
+                let encoded_args = msg.get(20 + fn_name_len..).unwrap_or(&[]);
 
-                if msg.len() >= 20 + fn_name_len {
-                    let fn_name = std::str::from_utf8(&msg[20..20 + fn_name_len]).unwrap_or("");
+                match prepare_remote_spawn(fn_name, encoded_args) {
+                    Ok((fn_ptr, decoded_args)) => {
+                        let args_ptr = allocate_remote_spawn_args(&decoded_args);
+                        let args_size = (decoded_args.len() * std::mem::size_of::<u64>()) as u64;
 
-                    match prepare_remote_spawn(fn_name, &msg[20 + fn_name_len..]) {
-                        Ok((fn_ptr, decoded_args)) => {
-                            let args_ptr = allocate_remote_spawn_args(&decoded_args);
-                            let args_size =
-                                (decoded_args.len() * std::mem::size_of::<u64>()) as u64;
+                        // Spawn the actor locally.
+                        let spawned_pid = crate::actor::mesh_actor_spawn(
+                            fn_ptr, args_ptr, args_size, 1, // normal priority
+                        );
+                        let spawned = ProcessId(spawned_pid);
 
-                            // Spawn the actor locally.
-                            let spawned_pid = crate::actor::mesh_actor_spawn(
-                                fn_ptr, args_ptr, args_size, 1, // normal priority
-                            );
-                            let spawned = ProcessId(spawned_pid);
-
-                            // If spawn_link, establish bidirectional link.
-                            if link_flag == 1 {
-                                let sched = crate::actor::global_scheduler();
-                                // Add requester_pid to the new process's links set.
-                                // The requester_pid as received over the wire has node_id=0
-                                // (it's the caller's local PID). We need to construct a
-                                // remote-qualified PID using this session's node_id and creation.
-                                let remote_requester = session.peer_pid(requester_pid.as_u64());
-                                if let Some(proc_arc) = sched.get_process(spawned) {
-                                    proc_arc.lock().links.insert(remote_requester);
-                                }
-                                // Send DIST_LINK back so the requester's node records
-                                // the reverse link. from=spawned (local), to=requester (remote).
-                                // We send the local spawned PID as-is; the remote side will
-                                // use its own session info to qualify it.
-                                send_dist_link_via_session(session, spawned, requester_pid);
+                        // If spawn_link, establish bidirectional link.
+                        if link_flag == 1 {
+                            let sched = crate::actor::global_scheduler();
+                            // Add requester_pid to the new process's links set.
+                            // The requester_pid as received over the wire has node_id=0
+                            // (it's the caller's local PID). We need to construct a
+                            // remote-qualified PID using this session's node_id and creation.
+                            let remote_requester = session.peer_pid(requester_pid.as_u64());
+                            if let Some(proc_arc) = sched.get_process(spawned) {
+                                proc_arc.lock().links.insert(remote_requester);
                             }
+                            // Send DIST_LINK back so the requester's node records
+                            // the reverse link. from=spawned (local), to=requester (remote).
+                            // We send the local spawned PID as-is; the remote side will
+                            // use its own session info to qualify it.
+                            send_dist_link_via_session(session, spawned, requester_pid);
+                        }
 
-                            // Reply with the spawned process's local_id.
-                            send_spawn_reply(session, req_id, 0, spawned.local_id());
-                        }
-                        Err(reason) => {
-                            eprintln!(
-                                "mesh node spawn rejected from {} for fn {}: {}",
-                                session.remote_name, fn_name, reason
-                            );
-                            send_spawn_reply(session, req_id, 1, 0);
-                        }
+                        // Reply with the spawned process's local_id.
+                        send_spawn_reply(session, req_id, 0, spawned.local_id());
+                    }
+                    Err(reason) => {
+                        eprintln!(
+                            "mesh node spawn rejected from {} for fn {}: {}",
+                            session.remote_name, fn_name, reason
+                        );
+                        send_spawn_reply(session, req_id, 1, 0);
                     }
                 }
             }
@@ -11072,14 +11074,22 @@ mod tests {
             &frame(DIST_LINK, &[&spawned.to_le_bytes(), &11u64.to_le_bytes()])
         );
 
-        peer.receive(spawn(2, 0, "never_registered_for_remote_spawn"));
-        assert_eq!(
-            peer.sent(),
-            vec![frame(
+        let refused = |request: u64| {
+            frame(
                 DIST_SPAWN_REPLY,
-                &[&2u64.to_le_bytes(), &[1], &0u64.to_le_bytes()]
-            )]
-        );
+                &[&request.to_le_bytes(), &[1], &0u64.to_le_bytes()],
+            )
+        };
+        peer.receive(spawn(2, 0, "never_registered_for_remote_spawn"));
+        assert_eq!(peer.sent(), vec![refused(2)]);
+        // A name longer than the frame, or not UTF-8, names nothing.
+        let mut cut_short = spawn(3, 0, "peer_spawned_test_actor");
+        cut_short.truncate(24);
+        peer.receive(cut_short);
+        let mut not_text = spawn(4, 0, "peer_spawned_test_actor");
+        not_text[20] = 0xFF;
+        peer.receive(not_text);
+        assert_eq!(peer.sent(), vec![refused(3), refused(4)]);
     }
 
     /// A spawn reply reaches the spawn waiting for it, once.
