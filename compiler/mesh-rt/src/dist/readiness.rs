@@ -208,22 +208,83 @@ pub(crate) fn local_lifecycle_state() -> NodeLifecycleState {
     {
         return NodeLifecycleState::Draining;
     }
-    match std::env::var("MESH_NODE_STATE").as_deref() {
-        Ok("provisioning") => NodeLifecycleState::Provisioning,
-        Ok("joining") => NodeLifecycleState::Joining,
-        Ok("warming") => NodeLifecycleState::Warming,
-        Ok("draining") => NodeLifecycleState::Draining,
-        Ok("terminating") => NodeLifecycleState::Terminating,
-        Ok("removed") => NodeLifecycleState::Removed,
-        Ok("failed") => NodeLifecycleState::Failed,
-        _ => {
-            let status = local_readiness_status();
-            match status.state.as_str() {
-                "joining" => NodeLifecycleState::Joining,
-                "warming" => NodeLifecycleState::Warming,
-                "failed" => NodeLifecycleState::Failed,
-                _ => NodeLifecycleState::Ready,
-            }
+    lifecycle_state(std::env::var("MESH_NODE_STATE").ok().as_deref())
+}
+
+/// The state `MESH_NODE_STATE` (`declared`) names, other than ready; or
+/// else the one readiness finds.
+fn lifecycle_state(declared: Option<&str>) -> NodeLifecycleState {
+    declared
+        .and_then(lifecycle_state_named)
+        .filter(|state| *state != NodeLifecycleState::Ready)
+        .or_else(|| lifecycle_state_named(&local_readiness_status().state))
+        .unwrap_or(NodeLifecycleState::Ready)
+}
+
+fn lifecycle_state_named(name: &str) -> Option<NodeLifecycleState> {
+    (0..=u8::MAX)
+        .map_while(|value| NodeLifecycleState::from_u8(value).ok())
+        .find(|state| state.as_str() == name)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A manual node is ready as soon as it runs. An autonomous one names
+    /// each gate it has not passed; without a stable identity it has
+    /// failed.
+    #[test]
+    fn readiness_gates_an_autonomous_node_and_not_a_manual_one() {
+        let manual = local_readiness_status();
+        assert!(manual.ready);
+        assert_eq!(manual.state, "ready");
+        assert_eq!(
+            manual.gates,
+            vec![gate("autonomous_mode", true, "manual_mode")]
+        );
+
+        let autonomous = super::super::node::in_autonomous_mode(local_readiness_status);
+        assert!(!autonomous.ready);
+        assert_eq!(autonomous.state, "failed");
+        let failing: Vec<_> = autonomous
+            .gates
+            .iter()
+            .filter(|gate| !gate.ready)
+            .map(|gate| gate.reason.as_str())
+            .collect();
+        assert!(failing.contains(&"identity_or_mtls_missing"), "{failing:?}");
+        assert_eq!(
+            super::super::node::in_autonomous_mode(|| lifecycle_state(None)),
+            NodeLifecycleState::Failed
+        );
+    }
+
+    /// `MESH_NODE_STATE` names a node's state outright, but for ready,
+    /// which readiness must find; an unknown name is no state.
+    #[test]
+    fn a_declared_node_state_overrides_all_but_ready() {
+        for state in (0..=7).map(|value| NodeLifecycleState::from_u8(value).unwrap()) {
+            let expected = if state == NodeLifecycleState::Ready {
+                lifecycle_state(None)
+            } else {
+                state
+            };
+            assert_eq!(lifecycle_state(Some(state.as_str())), expected);
         }
+        assert_eq!(lifecycle_state(Some("sleepy")), lifecycle_state(None));
+        assert_eq!(lifecycle_state_named("sleepy"), None);
+    }
+
+    /// Roles come from `MESH_ROLES`, a gateway and worker by default, and a
+    /// peer's transport counts as stable after two discovery intervals.
+    #[test]
+    fn a_node_has_its_default_roles_and_stability_window() {
+        let roles = local_roles();
+        assert_eq!(
+            roles.contains(NodeRoles::WORKER),
+            std::env::var("MESH_ROLES").map_or(true, |roles| roles.contains("worker"))
+        );
+        assert!(transport_stability_window() >= std::time::Duration::from_millis(450));
     }
 }

@@ -4863,6 +4863,20 @@ thread_local! {
         const { std::cell::Cell::new(None) };
 }
 
+/// Runs `body` with this thread's node in autonomous mode.
+#[cfg(test)]
+pub(crate) fn in_autonomous_mode<T>(body: impl FnOnce() -> T) -> T {
+    struct Reset;
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            AUTONOMOUS_ON_THIS_THREAD.with(|mode| mode.set(None));
+        }
+    }
+    AUTONOMOUS_ON_THIS_THREAD.with(|mode| mode.set(Some(true)));
+    let _reset = Reset;
+    body()
+}
+
 /// Whether this node runs in autonomous mode: `MESH_CLUSTER_MODE=autonomous`,
 /// the legacy `MESH_AUTONOMOUS_MODE`, or an embedded manifest that enables it.
 /// Every part of the runtime asks here, so they agree.
@@ -10847,18 +10861,7 @@ mod tests {
         }
     }
 
-    /// Runs `body` with this thread's node in autonomous mode.
-    fn autonomous<T>(body: impl FnOnce() -> T) -> T {
-        struct Reset;
-        impl Drop for Reset {
-            fn drop(&mut self) {
-                AUTONOMOUS_ON_THIS_THREAD.with(|mode| mode.set(None));
-            }
-        }
-        AUTONOMOUS_ON_THIS_THREAD.with(|mode| mode.set(Some(true)));
-        let _reset = Reset;
-        body()
-    }
+    use super::in_autonomous_mode as autonomous;
 
     /// An operator query that names no query kind: answered with an error.
     fn bad_operator_query() -> Vec<u8> {

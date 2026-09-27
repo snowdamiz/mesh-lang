@@ -213,3 +213,54 @@ pub extern "C" fn mesh_cluster_state() -> *mut u8 {
         .as_str();
     mesh_str(state) as *mut u8
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn text(value: *mut u8) -> String {
+        unsafe {
+            (*(value as *const crate::string::MeshString))
+                .as_str()
+                .to_string()
+        }
+    }
+
+    fn has(map: *mut u8, key: &str) -> bool {
+        map::mesh_map_has_key(map, mesh_string(key)) == 1
+    }
+
+    /// Each introspection call answers with every field it names, read
+    /// from this process's runtime.
+    #[test]
+    fn cluster_introspection_answers_every_field() {
+        crate::actor::mesh_rt_init_actor(1);
+        let capacity = mesh_cluster_capacity();
+        for key in [
+            "local_active_workers",
+            "local_min_workers",
+            "local_max_workers",
+            "desired_nodes",
+            "observed_nodes",
+            "ready_nodes",
+            "draining_nodes",
+        ] {
+            assert!(has(capacity, key), "{key}");
+        }
+
+        let pressure = mesh_cluster_pressure();
+        let score = text(map::mesh_map_get(pressure, mesh_string("score")) as *mut u8);
+        assert!(score.parse::<f64>().is_ok(), "{score}");
+        assert!(has(pressure, "dominant_signal"));
+        let complete = map::mesh_map_get(pressure, mesh_string("telemetry_complete"));
+        assert!(["true", "false"].contains(&text(complete as *mut u8).as_str()));
+
+        let telemetry = mesh_cluster_telemetry();
+        assert_eq!(map::mesh_map_size(telemetry), 28);
+        assert!(has(telemetry, "cpu_available_parallelism"));
+
+        assert!(!text(mesh_cluster_role()).is_empty());
+        assert!(!text(mesh_cluster_state()).is_empty());
+        assert_eq!(duration_nanos(std::time::Duration::MAX), u64::MAX);
+    }
+}
