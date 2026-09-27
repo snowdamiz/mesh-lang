@@ -747,6 +747,20 @@ pub extern "C-unwind" fn mesh_actor_receive(timeout_ms: i64) -> *const u8 {
     })
 }
 
+/// `actor_receive_matching` without a deadline, for a wait of the runtime's
+/// (a service call, a job's await): a caller still waiting when the program
+/// ends stops, as one in a blocking `receive` does.
+pub(crate) fn receive_matching_or_stop<F>(predicate: F) -> *const u8
+where
+    F: Fn(&Message) -> bool,
+{
+    let message = actor_receive_matching(-1, predicate);
+    if message.is_null() {
+        mesh_actor_stop();
+    }
+    message
+}
+
 /// A blocking receive of any message, for the runtime's own actors
 /// (supervisors, WebSocket connections), which read the tags themselves.
 pub(crate) fn receive_any() -> *const u8 {

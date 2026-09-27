@@ -279,6 +279,8 @@ impl Scheduler {
 
     /// `spawn` of an actor linked to `parent` from the start: a link made once
     /// it is queued could come after it has ended, and its end go unnoticed.
+    /// With `parent_traps`, the parent gets the actor's abnormal exit as a
+    /// message instead of dying of it (see `Process::trapped_links`).
     pub fn spawn_linked(
         &self,
         fn_ptr: *const u8,
@@ -286,8 +288,9 @@ impl Scheduler {
         args_size: u64,
         priority: u8,
         parent: ProcessId,
+        parent_traps: bool,
     ) -> ProcessId {
-        let (shape, link) = (std::ptr::null(), Some(parent));
+        let (shape, link) = (std::ptr::null(), Some((parent, parent_traps)));
         self.spawn_process(fn_ptr, args_ptr, args_size, priority, shape, link)
     }
 
@@ -298,17 +301,21 @@ impl Scheduler {
         args_size: u64,
         priority: u8,
         shape: *const u32,
-        link: Option<ProcessId>,
+        link: Option<(ProcessId, bool)>,
     ) -> ProcessId {
         let pid = self.fresh_pid();
         let priority = Priority::from_u8(priority);
 
         // Create process entry in the table.
         let mut process = Process::new(pid, priority);
-        if let Some(parent) = link {
+        if let Some((parent, parent_traps)) = link {
             process.links.insert(parent);
             if let Some(parent) = self.get_process(parent) {
-                parent.lock().links.insert(pid);
+                let mut parent = parent.lock();
+                parent.links.insert(pid);
+                if parent_traps {
+                    parent.trapped_links.insert(pid);
+                }
             }
         }
         let spawner = get_current_pid().and_then(|pid| self.get_process(pid));
@@ -1623,9 +1630,9 @@ mod tests {
         let sched = Scheduler::new(1);
         let entry = increment_entry as *const u8;
         let parent = sched.create_main_process();
-        let child = sched.spawn_linked(entry, std::ptr::null(), 0, 1, parent);
+        let child = sched.spawn_linked(entry, std::ptr::null(), 0, 1, parent, false);
         let gone = ProcessId(u64::MAX >> 24);
-        let orphan = sched.spawn_linked(entry, std::ptr::null(), 0, 1, gone);
+        let orphan = sched.spawn_linked(entry, std::ptr::null(), 0, 1, gone, true);
 
         let links = |pid| sched.get_process(pid).unwrap().lock().links.clone();
         assert!(links(parent).contains(&child));

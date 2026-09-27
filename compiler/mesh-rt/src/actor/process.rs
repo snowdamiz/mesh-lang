@@ -276,6 +276,11 @@ pub struct Process {
     /// Used by supervisors to monitor child processes.
     pub trap_exit: bool,
 
+    /// Linked processes whose abnormal exit this process gets as an exit
+    /// signal message rather than dying of it: the jobs it started, whose
+    /// failures `Job.await` reports.
+    pub trapped_links: HashSet<ProcessId>,
+
     /// The monitors this process set up, by reference.
     pub monitors: FxHashMap<u64, Monitor>,
     /// Processes monitoring this process. Maps monitor_ref -> monitoring_pid.
@@ -383,6 +388,7 @@ impl Process {
             reductions: DEFAULT_REDUCTIONS,
             links: HashSet::new(),
             trap_exit: false,
+            trapped_links: HashSet::new(),
             monitors: FxHashMap::default(),
             monitored_by: FxHashMap::default(),
             mailbox: Arc::new(Mailbox::new()),

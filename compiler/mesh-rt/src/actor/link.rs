@@ -183,7 +183,8 @@ pub(crate) fn decode_reason(data: &[u8]) -> Option<(ExitReason, usize)> {
 ///
 /// For each linked PID:
 /// - A process with `trap_exit = true` (a supervisor) gets the signal as a
-///   message, whatever the reason.
+///   message, whatever the reason; one that traps this link (a job's
+///   caller) gets it for an abnormal exit.
 /// - Otherwise a normal or shutdown exit is dropped: the process's own
 ///   `receive` would read the signal as one of its messages (a supervised
 ///   worker printed "got 2", its supervisor's pid, as `main` ended).
@@ -216,8 +217,9 @@ where
             proc.links.remove(&exiting_pid);
 
             let is_non_crashing = matches!(reason, ExitReason::Normal | ExitReason::Shutdown);
+            let trapped = proc.trapped_links.remove(&exiting_pid) && !is_non_crashing;
 
-            if proc.trap_exit {
+            if proc.trap_exit || trapped {
                 // Deliver as a regular message -- the process does not crash.
                 let buffer = MessageBuffer::new(signal_data.clone(), EXIT_SIGNAL_TAG);
                 proc.mailbox.push(Message { buffer });

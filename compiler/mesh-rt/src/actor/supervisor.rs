@@ -143,6 +143,7 @@ pub fn start_single_child(
         child.spec.start_args_size,
         1, // Normal priority
         sup_pid,
+        false,
     );
     child.pid = Some(child_pid);
     child.running = true;

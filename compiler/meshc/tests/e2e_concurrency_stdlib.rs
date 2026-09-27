@@ -299,11 +299,64 @@ fn e2e_job_async_await() {
     assert_eq!(output, "1\n2\n");
 }
 
+/// A job that fails is an `Err` to whoever awaits it, `main` or an actor,
+/// which goes on; `Job.map` reports the failed element and the others; a
+/// slow job is a timeout first and its result later. (`main` waited for
+/// good on a failed job, and an actor died with it.)
+#[test]
+fn e2e_job_failures_come_back_as_errors() {
+    let source = r##"
+fn fail(n :: Int) -> Int do
+  if n == 2 do
+    panic("job two failed")
+  else
+    n * 10
+  end
+end
+
+fn sleepy() -> Int do
+  Timer.sleep(300)
+  7
+end
+
+fn report(label :: String, result) do
+  case result do
+    Ok(n) -> println("#{label} ok #{n}")
+    Err(e) -> println("#{label} err #{e}")
+  end
+end
+
+actor awaiter() do
+  report("actor", Job.await(Job.async(fn () -> fail(2) end)))
+  println("actor goes on")
+end
+
+fn main() do
+  report("main", Job.await(Job.async(fn () -> fail(2) end)))
+  List.map(Job.map([1, 2, 3], fn (n) -> fail(n) end), fn (r) -> report("map", r) end)
+  let slow = Job.async(fn () -> sleepy() end)
+  report("early", Job.await_timeout(slow, 10))
+  report("late", Job.await(slow))
+  spawn(awaiter)
+  Timer.sleep(300)
+end
+"##;
+    let output = compile_and_run_with_timeout(source, 30);
+    let failure = "err Mesh panic: job two failed";
+    assert_eq!(
+        output,
+        format!(
+            "main {failure}\nmap ok 10\nmap {failure}\nmap ok 30\nearly err timeout\n\
+             late ok 7\nactor {failure}\nactor goes on\n"
+        )
+    );
+}
+
 /// A job's result the actor never awaits is not one of its messages: its
 /// `receive` gets the String sent to it (it read the result as one).
 #[test]
 fn e2e_receive_passes_over_an_unawaited_job_result() {
-    let source = r#"
+    let source = r##"
 actor listener() do
   let job = Job.async(fn () -> 5 end)
   Timer.sleep(100)
@@ -318,7 +371,7 @@ fn main() do
   send(pid, "hello")
   Timer.sleep(200)
 end
-"#;
+"##;
     let output = compile_and_run_with_timeout(source, 30);
     assert_eq!(output, "got hello\n");
 }

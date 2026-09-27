@@ -101,18 +101,13 @@ pub extern "C-unwind" fn mesh_service_call_shaped(
             "service call to {target}: the service's mailbox is full"
         ));
     }
-    let reply = super::actor_receive_matching(-1, |message| {
+    let reply = super::receive_matching_or_stop(|message| {
         matches!(
             message.buffer.type_tag,
             SERVICE_REPLY_TAG | SERVICE_GONE_TAG
         )
     });
     stop_watching(sched, &me, caller, watch);
-    // The program is ending while the service still works on the call: the
-    // caller stops, as a blocking `receive` does then.
-    if reply.is_null() {
-        super::mesh_actor_stop();
-    }
     if unsafe { (reply as *const u64).read() } == SERVICE_GONE_TAG {
         crate::panic::raise(format_args!(
             "service call to {target}: the service stopped before it replied"
