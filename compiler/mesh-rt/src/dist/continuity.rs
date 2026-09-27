@@ -2245,11 +2245,7 @@ pub(crate) fn broadcast_continuity_upsert(next_attempt_token: u64, record: &Cont
         None => return,
     };
 
-    let payload = match encode_upsert_payload(next_attempt_token, record) {
-        Ok(payload) => payload,
-        Err(_) => return,
-    };
-
+    let payload = registry_upsert_payload(next_attempt_token, record);
     let sessions: Vec<Arc<super::node::NodeSession>> = {
         let map = state.sessions.read();
         map.values().map(Arc::clone).collect()
@@ -2293,10 +2289,15 @@ fn send_continuity_upsert_to_node(
     let Some(session) = state.sessions.read().get(target).cloned() else {
         return;
     };
-    let Ok(payload) = encode_upsert_payload(next_attempt_token, record) else {
-        return;
-    };
+    let payload = registry_upsert_payload(next_attempt_token, record);
     let _ = session.send(super::node::OutboundClass::Continuity, payload);
+}
+
+/// A registry record's upsert frame. Every record the registry holds is
+/// valid, and its texts are bounded (a rejection's reason cut to a
+/// record's text), so it encodes.
+fn registry_upsert_payload(next_attempt_token: u64, record: &ContinuityRecord) -> Vec<u8> {
+    encode_upsert_payload(next_attempt_token, record).expect("a registry record encodes")
 }
 
 /// Sends a new peer the continuity state on a thread of its own: it is one
@@ -2325,17 +2326,17 @@ fn send_continuity_sync(session: &Arc<super::node::NodeSession>) {
         // Nothing resends a dropped frame, and the peer stays `warming` until
         // the durable snapshot after these completes, so wait for room.
         for record in &snapshot.records {
-            if let Ok(payload) = encode_upsert_payload(snapshot.next_attempt_token, record) {
-                if session
-                    .send_waiting(super::node::OutboundClass::Snapshot, payload)
-                    .is_err()
-                {
-                    return;
-                }
+            let payload = registry_upsert_payload(snapshot.next_attempt_token, record);
+            if session
+                .send_waiting(super::node::OutboundClass::Snapshot, payload)
+                .is_err()
+            {
+                return;
             }
         }
         send_durable_store_sync(session);
-    } else if let Ok(payload) = encode_sync_payload(&snapshot) {
+    } else {
+        let payload = encode_sync_payload(&snapshot).expect("a registry snapshot encodes");
         let _ = session.send_waiting(super::node::OutboundClass::Snapshot, payload);
     }
 }
