@@ -9328,6 +9328,161 @@ impl<'a> Lowerer<'a> {
     /// The runtime function behind the stdlib function `base_name.field`
     /// (`Map.get`) instantiated at `fn_ty`; `fallback` is its MIR type when
     /// the runtime function has no declared one.
+    /// `Option.map` and the other `Option` and `Result` functions (`module`
+    /// and `field`), at the type the checker gave this use (`params` to
+    /// `ret`): a function generated once per instantiation, whose body is
+    /// the `case` a call stands for.
+    fn option_result_function(
+        &mut self,
+        module: &str,
+        field: &str,
+        params: &[Ty],
+        ret: &Ty,
+    ) -> MirExpr {
+        let fn_ty = Ty::Fun(params.to_vec(), Box::new(ret.clone()));
+        let name = format!(
+            "__{}_{field}__{}",
+            module.to_lowercase(),
+            Self::ty_specialization_component(&fn_ty)
+        );
+        let args: Vec<(String, MirType)> = params
+            .iter()
+            .enumerate()
+            .map(|(i, ty)| (format!("__arg_{i}"), self.binding_type(ty)))
+            .collect();
+        let return_type = self.binding_type(ret);
+        let mir_ty = MirType::FnPtr(
+            args.iter().map(|(_, ty)| ty.clone()).collect(),
+            Box::new(return_type.clone()),
+        );
+        if !self.known_functions.contains_key(&name) {
+            self.known_functions.insert(name.clone(), mir_ty.clone());
+            let arg = |i: usize| MirExpr::Var(args[i].0.clone(), args[i].1.clone());
+            let body =
+                self.option_result_body(field, params, ret, arg(0), args.get(1).map(|_| arg(1)));
+            self.push_helper_fn(&name, args, return_type, body);
+        }
+        MirExpr::Var(name, mir_ty)
+    }
+
+    /// The `case` behind `option_result_function`: `value` (an `Option` or a
+    /// `Result`, `params[0]`) matched, with `extra` the function or the
+    /// default the helper takes.
+    fn option_result_body(
+        &self,
+        field: &str,
+        params: &[Ty],
+        ret: &Ty,
+        value: MirExpr,
+        extra: Option<MirExpr>,
+    ) -> MirExpr {
+        let (module, payloads) = ty_head(&params[0]).expect("the checker types the value");
+        let (present, absent) = if module == "Option" {
+            ("Some", "None")
+        } else {
+            ("Ok", "Err")
+        };
+        let MirType::SumType(sum) = value.ty().clone() else {
+            unreachable!("an {module} lowers to a sum type")
+        };
+        // The payloads, bound: the present variant's and an `Err`'s.
+        let payload = |i: usize, name: &str| {
+            let ty = self.binding_type(&payloads[i]);
+            (
+                MirExpr::Var(name.to_string(), ty.clone()),
+                Some((name.to_string(), ty)),
+            )
+        };
+        let (v, bind_v) = payload(0, "__present");
+        let (e, bind_e) = if module == "Result" {
+            payload(1, "__absent")
+        } else {
+            (MirExpr::Unit, None)
+        };
+        let arm = |variant: &str, binding: Option<(String, MirType)>, body: MirExpr| {
+            let arity = usize::from(variant != "None");
+            MirMatchArm {
+                pattern: MirPattern::Constructor {
+                    type_name: sum.clone(),
+                    variant: variant.to_string(),
+                    fields: match &binding {
+                        Some((name, ty)) => vec![MirPattern::Var(name.clone(), ty.clone())],
+                        None => vec![MirPattern::Wildcard; arity],
+                    },
+                    bindings: binding.into_iter().collect(),
+                },
+                guard: None,
+                body,
+            }
+        };
+        let construct = |ty: &Ty, variant: &str, fields: Vec<MirExpr>| {
+            let mir = self.binding_type(ty);
+            let MirType::SumType(name) = mir.clone() else {
+                unreachable!("an Option or a Result lowers to a sum type")
+            };
+            MirExpr::ConstructVariant {
+                type_name: name,
+                variant: variant.to_string(),
+                fields,
+                ty: mir,
+            }
+        };
+        // `extra`, the function, applied to `arg`.
+        let apply = |arg: MirExpr| {
+            let f = extra.clone().expect("the helper takes a function");
+            let Some(Ty::Fun(_, result)) = params.get(1) else {
+                unreachable!("the checker types the function")
+            };
+            MirExpr::ClosureCall {
+                closure: Box::new(f),
+                args: vec![arg],
+                ty: self.binding_type(result),
+            }
+        };
+        let bool_lit = |b: bool| MirExpr::BoolLit(b, MirType::Bool);
+        let (present_body, absent_body) = match field {
+            "map" => (
+                construct(ret, present, vec![apply(v)]),
+                construct(ret, absent, bind_e.iter().map(|_| e.clone()).collect()),
+            ),
+            "and_then" => (
+                apply(v),
+                construct(ret, absent, bind_e.iter().map(|_| e.clone()).collect()),
+            ),
+            "map_err" => (
+                construct(ret, "Ok", vec![v]),
+                construct(ret, "Err", vec![apply(e.clone())]),
+            ),
+            "unwrap_or" => (v, extra.clone().expect("unwrap_or takes a default")),
+            "is_some" | "is_ok" => (bool_lit(true), bool_lit(false)),
+            "is_none" | "is_err" => (bool_lit(false), bool_lit(true)),
+            "ok_or" => (
+                construct(ret, "Ok", vec![v]),
+                construct(
+                    ret,
+                    "Err",
+                    vec![extra.clone().expect("ok_or takes an error")],
+                ),
+            ),
+            "ok" => (
+                construct(ret, "Some", vec![v]),
+                construct(ret, "None", vec![]),
+            ),
+            other => unreachable!("the checker has no {module}.{other}"),
+        };
+        // Only the bodies that read a payload bind it.
+        let present_binding = bind_v.filter(|_| !field.starts_with("is_"));
+        let absent_binding = bind_e.filter(|_| matches!(field, "map" | "and_then" | "map_err"));
+        MirExpr::Match {
+            scrutinee: Box::new(value),
+            arms: vec![
+                arm(present, present_binding, present_body),
+                arm(absent, absent_binding, absent_body),
+            ],
+            ty: self.binding_type(ret),
+        }
+    }
+
     fn lower_stdlib_function(
         &mut self,
         base_name: &str,
@@ -9335,6 +9490,9 @@ impl<'a> Lowerer<'a> {
         fn_ty: Option<Ty>,
         fallback: MirType,
     ) -> MirExpr {
+        if let ("Option" | "Result", Some(Ty::Fun(params, ret))) = (base_name, &fn_ty) {
+            return self.option_result_function(base_name, field, params, ret);
+        }
         // Convert to prefixed name: String.length -> string_length
         let prefix = match base_name {
             "WsClient" => "ws_client".to_string(),
@@ -14458,6 +14616,8 @@ const STDLIB_MODULES: &[&str] = &[
     "Test",       // Phase 138
     "Continuity", // continuity
     "Cluster",
+    "Option",
+    "Result",
 ];
 
 /// Map Mesh builtin function names to their runtime equivalents.

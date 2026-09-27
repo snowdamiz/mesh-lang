@@ -616,6 +616,75 @@ end
     assert_eq!(output, "3.0 3 fallback\n1 false\ntuple key\n");
 }
 
+/// `Option` and `Result` functions, over payloads of each shape (a word, a
+/// float, a string, a struct, a tuple, a list, `()`, another `Option`), by
+/// module, through a pipe, as methods, imported by name and as a value,
+/// with named functions and closures that capture.
+#[test]
+fn e2e_option_and_result_functions() {
+    let output = compile_and_run(
+        r##"
+from Result import map_err
+
+struct User do
+  name :: String
+  age :: Int
+end
+
+fn double(x :: Int) -> Int do
+  x * 2
+end
+
+fn parse(text :: String) -> Result<Int, String> do
+  case String.to_int(text) do
+    Some(n) -> Ok(n)
+    None -> Err("not a number: #{text}")
+  end
+end
+
+fn describe(o :: Option<Int>) -> String do
+  "#{Option.unwrap_or(o, -1)}"
+end
+
+fn main() do
+  let some = Some(20)
+  let none :: Option<Int> = None
+  println(describe(Option.map(some, fn x -> x + 1 end)) <> " " <> describe(Option.map(none, double)))
+  println(describe(some |> Option.and_then(fn x -> if x > 10 do Some(x) else None end end)))
+  println("#{Option.is_some(some)} #{Option.is_none(some)} #{Option.is_none(none)}")
+  println(Option.unwrap_or(Some("ada") |> Option.map(fn n -> String.to_upper(n) end), "?"))
+  println(describe(Some(User { name: "Ada", age: 36 }) |> Option.map(fn u -> u.age end)))
+  let pair = Some((1, "one")) |> Option.map(fn p -> case p do (n, s) -> "#{n}:#{s}" end end)
+  println(Option.unwrap_or(pair, "none"))
+  println("#{Option.ok_or(none, "missing") |> Result.is_err}")
+  let offset = 5
+  let r = parse("37") |> Result.map(fn n -> n + offset end)
+  println("#{Result.unwrap_or(r, 0)} #{Result.unwrap_or(parse("x"), 0)}")
+  case parse("x") |> map_err(fn msg -> "input: " <> msg end) do
+    Ok(_) -> println("ok?")
+    Err(msg) -> println(msg)
+  end
+  let chained = parse("4") |> Result.and_then(fn n -> if n > 3 do Ok(n * 10) else Err("small") end end)
+  println("#{Result.unwrap_or(chained, 0)} #{Result.is_ok(chained)} #{Result.is_err(chained)}")
+  println(describe(Result.ok(parse("9"))) <> " " <> describe(Result.ok(parse("z"))))
+  println("#{Option.unwrap_or(Some(1.5) |> Option.map(fn f -> f * 2.0 end), 0.0)}")
+  let unit_result :: Result<Unit, String> = Ok(())
+  println("#{Result.is_ok(unit_result)}")
+  println(describe(Some(Some(3)) |> Option.and_then(fn inner -> inner end)))
+  println("#{Result.unwrap_or(Ok([1, 2, 3]) |> Result.map(fn xs -> List.length(xs) end), 0)}")
+  let mapper = Option.map
+  println(describe(mapper(Some(4), double)))
+  println(describe(some.map(double)) <> " " <> "#{parse("x").map_err(fn e -> String.length(e) end).is_err()}")
+end
+"##,
+    );
+    assert_eq!(
+        output,
+        "21 -1\n20\ntrue false true\nADA\n36\n1:one\ntrue\n42 0\ninput: not a number: x\n\
+         40 true false\n9 -1\n3.0\ntrue\n3\n3\n8\n40 true\n"
+    );
+}
+
 /// `String.repeat`, called through its module and imported by name, and
 /// the one-sided trims.
 #[test]

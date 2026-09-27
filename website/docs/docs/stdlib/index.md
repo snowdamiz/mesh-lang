@@ -1,6 +1,6 @@
 ---
 title: Standard Library
-description: Strings, collections, files, regex, checked arithmetic, bytes, cryptography, host capabilities, encoding, and time in Mesh
+description: Strings, collections, Option and Result, files, regex, checked arithmetic, bytes, cryptography, host capabilities, encoding, and time in Mesh
 ---
 
 # Standard Library
@@ -176,6 +176,36 @@ Lists, maps and sets are immutable: `List.append`, `List.concat` (`++`), `Map.pu
 A tuple accessor returns the element's own type, taken from the tuple's type, so `Tuple.first(("a", 1))` is a `String`, and a helper with an unannotated parameter — `fn head(p) do Tuple.first(p) end` — works on any tuple long enough. A *computed* index needs every element to share one type, since any of them could be the one it selects; with a literal index the elements may differ. Where the tuple's type is not known at the accessor, such as an unannotated parameter indexed by a variable, the result is the declared `Int`, so annotate the parameter when the elements are not integers. `Queue.pop` returns a typed `(T, Queue<T>)`, so `let (front, rest) = Queue.pop(queue)` binds both. An index past the end panics at run time.
 
 `Queue.pop` and `Queue.peek` require a non-empty queue.
+
+## Option and Result
+
+These functions do what a `case` over an `Option` or a `Result` would
+otherwise spell out. Each takes the value first, so they read well in a
+pipe and as methods (`result.map_err(f)`).
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `Option.map(option, fn)` | `Option<B>` | `Some(fn(value))`, or `None` |
+| `Option.and_then(option, fn)` | `Option<B>` | `fn(value)`, where `fn` returns an `Option`, or `None` |
+| `Option.unwrap_or(option, default)` | `T` | The value, or `default` |
+| `Option.is_some(option)`, `Option.is_none(option)` | `Bool` | Test which it is |
+| `Option.ok_or(option, error)` | `Result<T, E>` | `Ok(value)`, or `Err(error)` |
+| `Result.map(result, fn)` | `Result<B, E>` | `Ok(fn(value))`, or the same `Err` |
+| `Result.map_err(result, fn)` | `Result<T, F>` | The same `Ok`, or `Err(fn(error))` |
+| `Result.and_then(result, fn)` | `Result<B, E>` | `fn(value)`, where `fn` returns a `Result`, or the same `Err` |
+| `Result.unwrap_or(result, default)` | `T` | The value, or `default` |
+| `Result.is_ok(result)`, `Result.is_err(result)` | `Bool` | Test which it is |
+| `Result.ok(result)` | `Option<T>` | `Some(value)`, or `None` |
+
+`unwrap_or` evaluates its default before the call, whichever the value is.
+To add context to an error before `?` returns it:
+
+```mesh
+fn load(path :: String) -> Result<String, String> do
+  let text = (File.read(path) |> Result.map_err(fn e -> "#{path}: #{e}" end))?
+  Ok(String.trim(text))
+end
+```
 
 ## Bytes
 

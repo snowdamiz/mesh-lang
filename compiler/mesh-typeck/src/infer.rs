@@ -561,7 +561,7 @@ pub fn method_module(ty: &Ty) -> Option<&'static str> {
     // A `List` with no element type is the untyped one, with no methods.
     let modules: &[&'static str] = match ty {
         Ty::Con(_) => &["String", "Int", "Float", "Bytes", "Range"],
-        _ => &["List", "Map", "Set", "Queue", "Iter"],
+        _ => &["List", "Map", "Set", "Queue", "Iter", "Option", "Result"],
     };
     let name = ty.con_name()?;
     modules.iter().copied().find(|module| *module == name)
@@ -3175,6 +3175,103 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
         }
 
         modules.insert("Iter".to_string(), iter_mod);
+    }
+
+    // ── Option and Result modules ──────────────────────────────────
+    // What a `case` over one would otherwise spell out; lowering generates
+    // each as that `case` (`option_result_function`).
+    {
+        let (a, b, e, f) = (TyVar(91300), TyVar(91301), TyVar(91302), TyVar(91303));
+        let (av, bv, ev, fv) = (Ty::Var(a), Ty::Var(b), Ty::Var(e), Ty::Var(f));
+        let scheme = |vars: Vec<TyVar>, params: Vec<Ty>, ret: Ty| Scheme {
+            vars,
+            ty: Ty::fun(params, ret),
+        };
+        let option = Ty::option(av.clone());
+        let result = Ty::result(av.clone(), ev.clone());
+        let to = |from: &Ty, to: Ty| Ty::fun(vec![from.clone()], to);
+        let option_mod = [
+            (
+                "map",
+                scheme(
+                    vec![a, b],
+                    vec![option.clone(), to(&av, bv.clone())],
+                    Ty::option(bv.clone()),
+                ),
+            ),
+            (
+                "and_then",
+                scheme(
+                    vec![a, b],
+                    vec![option.clone(), to(&av, Ty::option(bv.clone()))],
+                    Ty::option(bv.clone()),
+                ),
+            ),
+            (
+                "unwrap_or",
+                scheme(vec![a], vec![option.clone(), av.clone()], av.clone()),
+            ),
+            ("is_some", scheme(vec![a], vec![option.clone()], Ty::bool())),
+            ("is_none", scheme(vec![a], vec![option.clone()], Ty::bool())),
+            (
+                "ok_or",
+                scheme(vec![a, e], vec![option.clone(), ev.clone()], result.clone()),
+            ),
+        ];
+        let result_mod = [
+            (
+                "map",
+                scheme(
+                    vec![a, b, e],
+                    vec![result.clone(), to(&av, bv.clone())],
+                    Ty::result(bv.clone(), ev.clone()),
+                ),
+            ),
+            (
+                "map_err",
+                scheme(
+                    vec![a, e, f],
+                    vec![result.clone(), to(&ev, fv.clone())],
+                    Ty::result(av.clone(), fv.clone()),
+                ),
+            ),
+            (
+                "and_then",
+                scheme(
+                    vec![a, b, e],
+                    vec![result.clone(), to(&av, Ty::result(bv.clone(), ev.clone()))],
+                    Ty::result(bv.clone(), ev.clone()),
+                ),
+            ),
+            (
+                "unwrap_or",
+                scheme(vec![a, e], vec![result.clone(), av.clone()], av.clone()),
+            ),
+            (
+                "is_ok",
+                scheme(vec![a, e], vec![result.clone()], Ty::bool()),
+            ),
+            (
+                "is_err",
+                scheme(vec![a, e], vec![result.clone()], Ty::bool()),
+            ),
+            (
+                "ok",
+                scheme(vec![a, e], vec![result.clone()], option.clone()),
+            ),
+        ];
+        for (module, functions) in [
+            ("Option", option_mod.to_vec()),
+            ("Result", result_mod.to_vec()),
+        ] {
+            modules.insert(
+                module.to_string(),
+                functions
+                    .into_iter()
+                    .map(|(name, scheme)| (name.to_string(), scheme))
+                    .collect(),
+            );
+        }
     }
 
     // ── Orm module (Phase 97) ───────────────────────────────────────
