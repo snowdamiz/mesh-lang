@@ -359,6 +359,9 @@ def greet(name :: String) -> String do
 end
 ```
 
+A function with no parameters may leave out its parentheses: `fn version do 3 end`
+defines `version()`.
+
 ### One-Line Functions
 
 For simple functions, you can use the concise `=` syntax:

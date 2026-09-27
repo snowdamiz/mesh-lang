@@ -757,13 +757,18 @@ pub(crate) fn parse_item_or_stmt(p: &mut Parser) {
             }
         },
 
-        // fn/def: named function definition (`fn name(` / `fn name<`) vs a
-        // closure expression (`fn x -> ...`, `fn x, y do ...`, `fn(x) -> ...`).
-        // `def` never starts a closure.
+        // fn/def: named function definition (`fn name(` / `fn name<`, and
+        // `fn name do` with no parameters, as `def name do`) vs a closure
+        // expression (`fn x -> ...`, `fn x, y do ...`, `fn(x) -> ...`): a
+        // closure standing as a statement would never run. `def` never
+        // starts a closure.
         SyntaxKind::FN_KW | SyntaxKind::DEF_KW => {
             if p.at(SyntaxKind::DEF_KW)
                 || (p.nth(1) == SyntaxKind::IDENT
-                    && matches!(p.nth(2), SyntaxKind::L_PAREN | SyntaxKind::LT))
+                    && matches!(
+                        p.nth(2),
+                        SyntaxKind::L_PAREN | SyntaxKind::LT | SyntaxKind::DO_KW
+                    ))
             {
                 items::parse_fn_def(p);
             } else {
