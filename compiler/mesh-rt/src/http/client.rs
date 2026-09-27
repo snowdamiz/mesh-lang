@@ -1113,6 +1113,34 @@ mod tests {
     use std::io::Write;
     use std::net::TcpListener;
 
+    /// A whole request as a test server receives it: its head, and the
+    /// body its Content-Length gives, however the client's writes split.
+    fn read_request(stream: &mut std::net::TcpStream) -> String {
+        let mut request = Vec::new();
+        let mut chunk = [0u8; 4096];
+        loop {
+            let text = String::from_utf8_lossy(&request).into_owned();
+            if let Some(head_end) = text.find("\r\n\r\n") {
+                let length = text[..head_end]
+                    .lines()
+                    .find_map(|line| {
+                        let (name, value) = line.split_once(':')?;
+                        name.eq_ignore_ascii_case("content-length")
+                            .then(|| value.trim().parse::<usize>().ok())?
+                    })
+                    .unwrap_or(0);
+                if request.len() >= head_end + 4 + length {
+                    return text;
+                }
+            }
+            let read = stream.read(&mut chunk).unwrap();
+            if read == 0 {
+                return text;
+            }
+            request.extend_from_slice(&chunk[..read]);
+        }
+    }
+
     struct StreamState {
         calls: AtomicU64,
         bytes: AtomicU64,
@@ -1203,12 +1231,11 @@ mod tests {
             let port = listener.local_addr().unwrap().port();
             let server = std::thread::spawn(move || {
                 let (mut stream, _) = listener.accept().unwrap();
-                let mut request = vec![0u8; 4096];
-                let read = stream.read(&mut request).unwrap();
+                let request = read_request(&mut stream);
                 stream
                     .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
                     .unwrap();
-                String::from_utf8_lossy(&request[..read]).into_owned()
+                request
             });
             let with_body = matches!(method, "post" | "put" | "patch");
             let mut request = MeshRequestData::new(method, &format!("http://127.0.0.1:{port}/"));
@@ -1237,8 +1264,7 @@ mod tests {
         let port = listener.local_addr().unwrap().port();
         let server = std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
-            let mut request = [0u8; 1024];
-            let _ = stream.read(&mut request).unwrap();
+            read_request(&mut stream);
             stream
                 .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello")
                 .unwrap();
@@ -1258,8 +1284,7 @@ mod tests {
         let target_port = target.local_addr().unwrap().port();
         let target_server = std::thread::spawn(move || {
             let (mut stream, _) = target.accept().unwrap();
-            let mut request = [0u8; 1024];
-            let _ = stream.read(&mut request).unwrap();
+            read_request(&mut stream);
             stream
                 .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nfinal")
                 .unwrap();
@@ -1268,8 +1293,7 @@ mod tests {
         let redirect_port = redirect.local_addr().unwrap().port();
         let redirect_server = std::thread::spawn(move || {
             let (mut stream, _) = redirect.accept().unwrap();
-            let mut request = [0u8; 1024];
-            let _ = stream.read(&mut request).unwrap();
+            read_request(&mut stream);
             write!(
                 stream,
                 "HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:{target_port}/target\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
@@ -1308,8 +1332,7 @@ mod tests {
         let port = listener.local_addr().unwrap().port();
         let server = std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
-            let mut request = [0u8; 1024];
-            let _ = stream.read(&mut request).unwrap();
+            read_request(&mut stream);
             std::thread::sleep(Duration::from_millis(100));
             let _ = stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n");
         });
@@ -1330,8 +1353,7 @@ mod tests {
         let port = listener.local_addr().unwrap().port();
         let server = std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
-            let mut request = [0u8; 1024];
-            let _ = stream.read(&mut request).unwrap();
+            read_request(&mut stream);
             let body = vec![7u8; STREAM_CHUNK_BYTES * 2];
             write!(
                 stream,
@@ -1400,8 +1422,7 @@ mod tests {
         let (accepted_tx, accepted_rx) = std::sync::mpsc::channel();
         let server = std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
-            let mut request = [0u8; 1024];
-            let _ = stream.read(&mut request).unwrap();
+            read_request(&mut stream);
             accepted_tx.send(()).unwrap();
             std::thread::sleep(Duration::from_secs(1));
             let _ = stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n");
