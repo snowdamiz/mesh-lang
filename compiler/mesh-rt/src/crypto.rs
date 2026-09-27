@@ -2784,4 +2784,390 @@ mod tests {
         let result = mesh_hex_decode(mesh_str("4A6f"));
         unsafe { assert_eq!((*((*result).value as *const MeshString)).as_str(), "Jo") };
     }
+
+    fn created<T>(result: *mut MeshResult) -> *mut T {
+        let result = unsafe { &*result };
+        assert_eq!(result.tag, 0, "expected Ok");
+        result.value.cast()
+    }
+
+    /// The error's tag, expected and actual values.
+    fn refused(result: *mut MeshResult) -> (u8, i64, i64) {
+        let result = unsafe { &*result };
+        assert_eq!(result.tag, 1, "expected Err");
+        let error = unsafe { &*result.value.cast::<CryptoErrorLayout>() };
+        (error.tag, error.expected, error.actual)
+    }
+
+    fn tag_of(result: *mut MeshResult) -> u8 {
+        refused(result).0
+    }
+
+    fn bytes(data: &[u8]) -> *mut MeshBytes {
+        mesh_bytes_new(data.as_ptr(), data.len() as u64)
+    }
+
+    fn contents<'a>(bytes: *const MeshBytes) -> &'a [u8] {
+        unsafe { (*bytes).as_slice() }
+    }
+
+    /// A secret of the calling actor holding `data`.
+    fn secret(data: &[u8]) -> *mut MeshSecretHandle {
+        let process = crate::actor::current_process().expect("an actor");
+        let mut process = process.lock();
+        let material = Zeroizing::new(data.to_vec().into_boxed_slice());
+        insert_owned_resource(&mut process, ResourceKind::SecretBytes, material).expect("secret")
+    }
+
+    /// What a resource of the calling actor holds.
+    fn revealed(handle: *const MeshSecretHandle, kind: ResourceKind) -> Vec<u8> {
+        let process = crate::actor::current_process().expect("an actor");
+        let process = process.lock();
+        with_owned_resource(&process, handle, kind, <[u8]>::to_vec).expect("live resource")
+    }
+
+    /// Entry points that act for the calling actor refuse to run off one,
+    /// without making or keeping anything.
+    #[test]
+    fn crypto_entry_points_need_a_calling_actor() {
+        mesh_rt_init();
+        let internal = CryptoErrorTag::InternalFailure as u8;
+        let message = bytes(b"message");
+        assert_eq!(
+            tag_of(mesh_crypto_hmac_sha256(ptr::null(), message)),
+            internal
+        );
+        assert_eq!(tag_of(mesh_crypto_x25519_generate()), internal);
+        assert_eq!(tag_of(mesh_crypto_mlkem_generate()), internal);
+        assert_eq!(tag_of(mesh_crypto_signing_generate()), internal);
+        assert_eq!(tag_of(mesh_crypto_aead_key(ptr::null())), internal);
+    }
+
+    /// Every provider and retype failure has the CryptoError it documents,
+    /// and an exact-length input is refused with the length it had.
+    #[test]
+    fn failures_map_to_the_documented_crypto_errors() {
+        mesh_rt_init();
+        let tags = [
+            ProviderError::EntropyUnavailable,
+            ProviderError::InvalidLength,
+            ProviderError::ResourceLimitExceeded,
+            ProviderError::InvalidPublicKey,
+            ProviderError::AuthenticationFailed,
+        ]
+        .map(|error| provider_failure(error).tag);
+        assert_eq!(
+            tags,
+            [
+                CryptoErrorTag::EntropyUnavailable,
+                CryptoErrorTag::InternalFailure,
+                CryptoErrorTag::ResourceLimitExceeded,
+                CryptoErrorTag::InvalidPublicKey,
+                CryptoErrorTag::AuthenticationFailed,
+            ]
+        );
+        let removed = || Zeroizing::new(vec![0; 4].into_boxed_slice());
+        let rejected = failure(CryptoErrorTag::InvalidKey, 32, 4);
+        assert_eq!(
+            [
+                retype_failure(RetypeError::Resource(ResourceError::WrongKind)),
+                retype_failure(RetypeError::Rejected {
+                    error: rejected,
+                    removed: removed(),
+                }),
+                retype_failure(RetypeError::GenerationExhausted { removed: removed() }),
+            ]
+            .map(|error| error.tag),
+            [
+                CryptoErrorTag::InvalidKey,
+                CryptoErrorTag::InvalidKey,
+                CryptoErrorTag::ResourceLimitExceeded,
+            ]
+        );
+        assert_eq!(
+            [
+                ResourceError::ResourceLimitExceeded,
+                ResourceError::WrongKind,
+                ResourceError::StaleHandle,
+                ResourceError::WrongOwner,
+                ResourceError::OwnerExited,
+            ]
+            .map(|error| resource_failure(error).tag),
+            [
+                CryptoErrorTag::ResourceLimitExceeded,
+                CryptoErrorTag::InvalidKey,
+                CryptoErrorTag::SecretDestroyed,
+                CryptoErrorTag::SecretDestroyed,
+                CryptoErrorTag::SecretDestroyed,
+            ]
+        );
+        assert_eq!(
+            unsafe { exact_bytes::<12>(ptr::null(), CryptoErrorTag::InvalidLength) },
+            Err(failure(CryptoErrorTag::InvalidLength, 12, -1))
+        );
+        assert_eq!(
+            unsafe { required_bytes(ptr::null(), 4) },
+            Err(failure(CryptoErrorTag::InvalidLength, 4, -1))
+        );
+        assert!(mesh_crypto_sha256_hex(ptr::null()).is_null());
+        assert!(mesh_crypto_sha512_hex(ptr::null()).is_null());
+        let Err(error) = random_bytes_with_provider(&FixedProvider::with_random(&[]), 1) else {
+            panic!("a provider without entropy filled a buffer");
+        };
+        assert_eq!(error.tag, CryptoErrorTag::InternalFailure);
+    }
+
+    /// Each key agreement, encryption and signature entry point, called as
+    /// a Mesh program calls it: what one side makes, the other opens.
+    #[test]
+    fn crypto_entry_points_round_trip_for_the_calling_actor() {
+        mesh_rt_init();
+        crate::secret::as_test_actor(|_| unsafe {
+            let key = secret(&[0x11; 32]);
+            let mac = created(mesh_crypto_hmac_sha256(key, bytes(b"message")));
+            assert_eq!(revealed(mac, ResourceKind::SecretBytes).len(), 32);
+            let salt = bytes(b"somesalt");
+            let derived = created(mesh_crypto_hkdf_sha256(key, salt, bytes(b"info"), 16));
+            assert_eq!(revealed(derived, ResourceKind::SecretBytes).len(), 16);
+            let hashed = created(mesh_crypto_argon2id(key, salt, 8, 1, 1, 16));
+            assert_eq!(revealed(hashed, ResourceKind::SecretBytes).len(), 16);
+
+            let alice: *mut MeshX25519KeyPair = created(mesh_crypto_x25519_generate());
+            let bob: *mut MeshX25519KeyPair =
+                created(mesh_crypto_x25519_from_seed(bytes(&[2; 32])));
+            let carol: *mut MeshX25519KeyPair =
+                created(mesh_crypto_x25519_from_secret(secret(&[2; 32])));
+            assert_eq!(
+                contents((*bob).public_key.bytes),
+                contents((*carol).public_key.bytes)
+            );
+            let public: *mut MeshX25519PublicKey =
+                created(mesh_crypto_x25519_public((*alice).private_key));
+            assert_eq!(
+                contents((*public).bytes),
+                contents((*alice).public_key.bytes)
+            );
+            let ours = created(mesh_crypto_x25519_shared(
+                (*alice).private_key,
+                &(*bob).public_key,
+            ));
+            let theirs = created(mesh_crypto_x25519_shared(
+                (*carol).private_key,
+                &(*alice).public_key,
+            ));
+            assert_eq!(
+                revealed(ours, ResourceKind::SecretBytes),
+                revealed(theirs, ResourceKind::SecretBytes)
+            );
+            let low_order = MeshX25519PublicKey {
+                bytes: bytes(&[0; 32]),
+            };
+            assert_eq!(
+                refused(mesh_crypto_x25519_shared((*alice).private_key, &low_order)),
+                (CryptoErrorTag::InvalidPublicKey as u8, 32, 32)
+            );
+
+            let (info, aad) = (bytes(b"info"), bytes(b"aad"));
+            let sealed = created(mesh_crypto_hpke_seal(
+                &(*bob).public_key,
+                info,
+                aad,
+                bytes(b"hello"),
+            ));
+            let opened = created(mesh_crypto_hpke_open((*bob).private_key, info, aad, sealed));
+            assert_eq!(contents(opened), b"hello");
+            let sealed_key = created(mesh_crypto_hpke_seal_secret(
+                &(*bob).public_key,
+                info,
+                aad,
+                key,
+            ));
+            let opened_key = created(mesh_crypto_hpke_open_secret(
+                (*carol).private_key,
+                info,
+                aad,
+                sealed_key,
+            ));
+            assert_eq!(revealed(opened_key, ResourceKind::SecretBytes), [0x11; 32]);
+            let authentication = CryptoErrorTag::AuthenticationFailed as u8;
+            let other_info = bytes(b"other");
+            assert_eq!(
+                tag_of(mesh_crypto_hpke_open(
+                    (*bob).private_key,
+                    other_info,
+                    aad,
+                    sealed
+                )),
+                authentication
+            );
+            assert_eq!(
+                tag_of(mesh_crypto_hpke_open_secret(
+                    (*bob).private_key,
+                    other_info,
+                    aad,
+                    sealed
+                )),
+                authentication
+            );
+            assert_eq!(
+                refused(mesh_crypto_hpke_open(
+                    (*bob).private_key,
+                    info,
+                    aad,
+                    bytes(&[0; 47])
+                )),
+                (CryptoErrorTag::InvalidLength as u8, 48, 47)
+            );
+            assert_eq!(
+                tag_of(mesh_crypto_hpke_open(
+                    (*bob).private_key,
+                    info,
+                    aad,
+                    bytes(&[0; 48])
+                )),
+                CryptoErrorTag::InvalidPublicKey as u8
+            );
+            assert_eq!(
+                tag_of(mesh_crypto_hpke_seal(&low_order, info, aad, aad)),
+                CryptoErrorTag::InvalidPublicKey as u8
+            );
+            assert_eq!(
+                tag_of(mesh_crypto_hpke_seal_secret(
+                    &(*bob).public_key,
+                    info,
+                    aad,
+                    ptr::null()
+                )),
+                CryptoErrorTag::SecretDestroyed as u8
+            );
+
+            let receiver: *mut MeshMlKemKeyPair = created(mesh_crypto_mlkem_generate());
+            let seeded: *mut MeshMlKemKeyPair =
+                created(mesh_crypto_mlkem_from_seed(bytes(&[4; 64])));
+            let retyped: *mut MeshMlKemKeyPair =
+                created(mesh_crypto_mlkem_from_secret(secret(&[4; 64])));
+            assert_eq!(
+                contents((*seeded).public_key.bytes),
+                contents((*retyped).public_key.bytes)
+            );
+            let encapsulated: *mut MeshTuple2Pointers =
+                created(mesh_crypto_mlkem_encapsulate(&(*receiver).public_key));
+            let ciphertext = MeshMlKemCiphertext {
+                bytes: (*encapsulated).first,
+            };
+            let recovered = created(mesh_crypto_mlkem_decapsulate(
+                (*receiver).private_key,
+                &ciphertext,
+            ));
+            assert_eq!(
+                revealed(recovered, ResourceKind::SecretBytes),
+                revealed((*encapsulated).second, ResourceKind::SecretBytes)
+            );
+            let unreduced = MeshMlKemPublicKey {
+                bytes: bytes(&[0xff; MLKEM_PUBLIC_KEY_BYTES]),
+            };
+            assert_eq!(
+                tag_of(mesh_crypto_mlkem_encapsulate(&unreduced)),
+                CryptoErrorTag::InvalidPublicKey as u8
+            );
+            assert_eq!(
+                tag_of(mesh_crypto_mlkem_decapsulate(ptr::null(), &ciphertext)),
+                CryptoErrorTag::SecretDestroyed as u8
+            );
+
+            let signer: *mut MeshSigningKeyPair = created(mesh_crypto_signing_generate());
+            let seeded: *mut MeshSigningKeyPair =
+                created(mesh_crypto_signing_from_seed(bytes(&[5; 32])));
+            let retyped: *mut MeshSigningKeyPair =
+                created(mesh_crypto_signing_from_secret(secret(&[5; 32])));
+            assert_eq!(
+                contents((*seeded).public_key.bytes),
+                contents((*retyped).public_key.bytes)
+            );
+            let message = bytes(b"message");
+            let signature: *mut MeshSignature =
+                created(mesh_crypto_sign((*signer).private_key, message));
+            let verified: *mut bool = created(mesh_crypto_verify(
+                &(*signer).public_key,
+                message,
+                signature,
+            ));
+            assert!(*verified);
+            let not_a_point = (0u8..=255)
+                .map(|byte| [byte; 32])
+                .find(|candidate| ed25519_dalek::VerifyingKey::from_bytes(candidate).is_err())
+                .expect("an encoding off the curve");
+            let off_curve = MeshSigningPublicKey {
+                bytes: bytes(&not_a_point),
+            };
+            assert_eq!(
+                refused(mesh_crypto_verify(&off_curve, message, signature)),
+                (CryptoErrorTag::InvalidPublicKey as u8, 32, 32)
+            );
+
+            let aead = created(mesh_crypto_aead_key(secret(&[6; 32])));
+            let nonce = bytes(&[0; AEAD_NONCE_BYTES]);
+            let sealed = created(mesh_crypto_aead_seal(aead, nonce, aad, message));
+            let opened = created(mesh_crypto_aead_open(aead, nonce, aad, sealed));
+            assert_eq!(contents(opened), b"message");
+            assert_eq!(
+                tag_of(mesh_crypto_aead_open(aead, nonce, info, sealed)),
+                authentication
+            );
+        });
+    }
+
+    /// The legacy String helpers: RFC 4231's HMAC-SHA-512 vector, a v4 UUID,
+    /// and each codec's round trip and refusals.
+    #[test]
+    fn legacy_string_helpers_encode_and_refuse() {
+        mesh_rt_init();
+        let text = |value: *mut MeshString| unsafe { (*value).as_str().to_string() };
+        let decoded = |result: *mut MeshResult| unsafe {
+            let result = &*result;
+            ((result.tag), text(result.value.cast()))
+        };
+        assert_eq!(
+            text(mesh_crypto_hmac_sha512(
+                mesh_str("Jefe"),
+                mesh_str("what do ya want for nothing?")
+            )),
+            "164b7a7bfcf819e2e395fbe73b56e0a387bd64222e831fd610270cd7ea250554\
+             9758bf75c05a994a6d034f65f8f0e6fdcaeab1a34d4a6b4b636e070a38bce737"
+        );
+        let uuid = text(mesh_crypto_uuid4());
+        assert_eq!((uuid.len(), &uuid[14..15]), (36, "4"));
+        assert!(matches!(&uuid[19..20], "8" | "9" | "a" | "b"));
+
+        let hello = mesh_str("hello");
+        assert_eq!(
+            decoded(mesh_base64_decode(mesh_base64_encode(hello))),
+            (0, "hello".to_string())
+        );
+        assert_eq!(
+            decoded(mesh_base64_decode(mesh_str("aGVsbG8"))),
+            (0, "hello".to_string())
+        );
+        assert_eq!(
+            decoded(mesh_base64_decode_url(mesh_base64_encode_url(hello))),
+            (0, "hello".to_string())
+        );
+        assert_eq!(
+            decoded(mesh_hex_decode(mesh_hex_encode(hello))),
+            (0, "hello".to_string())
+        );
+        for refused in [
+            mesh_base64_decode(mesh_str("!")),
+            mesh_base64_decode_url(mesh_str("!")),
+        ] {
+            assert_eq!(decoded(refused), (1, "invalid base64".to_string()));
+        }
+        for not_text in [
+            mesh_base64_decode(mesh_str("/w==")),
+            mesh_base64_decode_url(mesh_str("_w")),
+            mesh_hex_decode(mesh_str("ff")),
+        ] {
+            assert_eq!(decoded(not_text), (1, "invalid utf-8".to_string()));
+        }
+    }
 }
