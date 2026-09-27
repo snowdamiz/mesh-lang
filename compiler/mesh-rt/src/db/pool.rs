@@ -103,6 +103,9 @@ fn checkout(pool: &PgPool) -> Result<u64, String> {
                 }
                 Err(error) => {
                     inner.total_created -= 1;
+                    drop(inner);
+                    // The slot is free again, for a checkout waiting on one.
+                    pool.available.notify_one();
                     return Err(format!("pool connect: {error}"));
                 }
             }
@@ -477,6 +480,38 @@ mod tests {
 
         assert_eq!(total_created, 0);
         assert_eq!(idle, 0);
+    }
+
+    /// A checkout waiting for the only slot gets it when the connection
+    /// that held it fails to open.
+    #[test]
+    fn a_failed_connection_attempt_frees_its_slot_for_a_waiting_checkout() {
+        let (held, held_signal) = mpsc::channel::<()>();
+        let (release, released) = mpsc::channel::<()>();
+        let released = parking_lot::Mutex::new(released);
+        let url = fake_server(move |index, socket| {
+            if index == 0 {
+                // Keep the first connection waiting, then refuse it.
+                held.send(()).unwrap();
+                released.lock().recv().unwrap();
+                drop(socket);
+            } else {
+                serve(socket);
+            }
+        });
+        let handle = pool_of(&url, Vec::new(), &[], 1, 5000);
+        let first = thread::spawn(move || checkout(pool(handle)));
+        held_signal.recv().unwrap();
+        let second = thread::spawn(move || checkout(pool(handle)));
+        // Long enough for the second checkout to be waiting.
+        thread::sleep(Duration::from_millis(200));
+        release.send(()).unwrap();
+
+        let refused = first.join().unwrap().unwrap_err();
+        assert!(refused.starts_with("pool connect: "), "{refused}");
+        let second = second.join().unwrap().expect("the freed slot was taken");
+        mesh_pool_checkin(handle, second);
+        mesh_pool_close(handle);
     }
 
     /// A connection that opens after its pool closed is closed, not lent.
