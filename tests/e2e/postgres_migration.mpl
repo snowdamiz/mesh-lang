@@ -48,8 +48,11 @@ fn run() -> Int!String do
   show("index_no_columns", Migration.create_index(pool, "people", [], ""))
   show("index_bad_option", Migration.create_index(pool, "people", ["name"], "fast:yes"))
   println("indexes:" <> indexes(pool)?)
-  show("drop_index", Migration.drop_index(pool, "people", ["name", "age"]))
+  # The columns create_index was given name the index it made, order and all.
+  show("drop_index", Migration.drop_index(pool, "people", ["name", "age:DESC"]))
   show("drop_index_again", Migration.drop_index(pool, "people", ["name", "age"]))
+  show("drop_index_bad", Migration.drop_index(pool, "people", ["age:UP"]))
+  println("indexes_left:" <> indexes(pool)?)
   show("execute", Migration.execute(pool, "COMMENT ON TABLE people IS 'migrated'"))
   show("execute_bad", Migration.execute(pool, "NOT SQL"))
   println("comment:" <> one(pool, "SELECT obj_description('people'::regclass) AS v")?)

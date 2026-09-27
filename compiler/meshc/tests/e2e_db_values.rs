@@ -148,6 +148,9 @@ WHERE (email IS NOT NULL) | CREATE INDEX idx_people_name_age ON mesh_migration_e
 btree (name, age DESC) | CREATE INDEX people_by_age ON mesh_migration_e2e.people USING btree (age)
 drop_index:ok
 drop_index_again:ok
+drop_index_bad:failed
+indexes_left:CREATE UNIQUE INDEX idx_people_email ON mesh_migration_e2e.people USING btree (email) \
+WHERE (email IS NOT NULL) | CREATE INDEX people_by_age ON mesh_migration_e2e.people USING btree (age)
 execute:ok
 execute_bad:failed
 comment:migrated
