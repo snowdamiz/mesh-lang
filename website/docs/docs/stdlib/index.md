@@ -202,7 +202,7 @@ To add context to an error before `?` returns it:
 
 ```mesh
 fn load(path :: String) -> Result<String, String> do
-  let text = (File.read(path) |> Result.map_err(fn e -> "#{path}: #{e}" end))?
+  let text = File.read(path) |> Result.map_err(fn e -> "#{path}: #{e}" end)?
   Ok(String.trim(text))
 end
 ```

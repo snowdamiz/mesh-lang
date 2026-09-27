@@ -958,6 +958,9 @@ impl Checker<'_> {
     /// `value |> f(a)` passes `value` as `f`'s first argument, and
     /// `value |2> f(a)` as its second; a bare `value |> f` calls `f` with it.
     fn check_pipe(&mut self, value: Option<Expr>, slot: usize, rhs: Option<Expr>) {
+        if let Some(Expr::TryExpr(try_expr)) = rhs {
+            return self.check_pipe(value, slot, try_expr.operand());
+        }
         let (range, callee, mut args) = match rhs {
             Some(Expr::CallExpr(call)) => (call.syntax().text_range(), call.callee(), call.args()),
             Some(callee) => (callee.syntax().text_range(), Some(callee), Vec::new()),

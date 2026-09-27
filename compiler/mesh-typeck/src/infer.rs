@@ -10427,6 +10427,26 @@ fn infer_piped(
     let rhs = rhs.ok_or_else(incomplete)?;
     let index = slot.map_or(0, |slot| slot as usize - 1);
 
+    // `x |> f(a)?` is `(x |> f(a))?`: `?` takes the result of the call the
+    // value goes into (recorded at the `?`, whose value is the pipe's).
+    if let Expr::TryExpr(try_expr) = &rhs {
+        let span = try_expr.syntax().text_range();
+        let piped = infer_piped(
+            ctx,
+            env,
+            Some(lhs),
+            try_expr.operand(),
+            slot,
+            span,
+            types,
+            type_registry,
+            trait_registry,
+            fn_constraints,
+        )?;
+        types.insert(span, piped.clone());
+        return try_value(ctx, trait_registry, piped, span);
+    }
+
     let lhs_ty = infer_expr(
         ctx,
         env,
@@ -14540,6 +14560,17 @@ fn infer_try_expr(
         trait_registry,
         fn_constraints,
     )?;
+    try_value(ctx, trait_registry, operand_ty, span)
+}
+
+/// What `?` at `span` gives on a value of `operand_ty` (see
+/// `infer_try_expr`), checking the early return against the function's.
+fn try_value(
+    ctx: &mut InferCtx,
+    trait_registry: &TraitRegistry,
+    operand_ty: Ty,
+    span: TextRange,
+) -> Result<Ty, TypeError> {
     let fn_ret = ctx
         .current_fn_return_type()
         .cloned()

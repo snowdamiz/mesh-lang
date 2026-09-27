@@ -5743,3 +5743,84 @@ end
 "##;
     assert_eq!(run(source), "2\n1.5\n2\n14\n");
 }
+
+/// `x |> f(a)?` is `(x |> f(a))?`: the value goes into the call and `?`
+/// takes the call's result, bare (`x |> f?`), in a chain, through a slot,
+/// for an `Option`, and converting the error by `From`. `?` bound to the
+/// call before the value went in, which then lacked an argument.
+#[test]
+fn a_pipe_into_a_call_then_try() {
+    let source = r##"
+struct AppError do
+  message :: String
+end
+
+impl From<String> for AppError do
+  fn from(message :: String) -> AppError do
+    AppError { message: "app: " <> message }
+  end
+end
+
+fn parse(text :: String) -> Result<Int, String> do
+  case String.to_int(text) do
+    Some(n) -> Ok(n)
+    None -> Err("not a number: #{text}")
+  end
+end
+
+fn add(n :: Int, m :: Int) -> Result<Int, String> do
+  Ok(n + m)
+end
+
+fn total(text :: String) -> Result<Int, String> do
+  let n = text |> parse? |> add(1)? |> add(10)?
+  Ok(n)
+end
+
+fn labelled(text :: String) -> Result<Int, String> do
+  let n = parse(text) |> Result.map_err(fn e -> "input: " <> e end)?
+  Ok(n)
+end
+
+fn subtract(from :: Int, n :: Int) -> Result<Int, String> do
+  Ok(from - n)
+end
+
+fn slot(n :: Int) -> Result<Int, String> do
+  let d = n |2> subtract(100)?
+  Ok(d)
+end
+
+fn first_big(xs :: List<Int>) -> Option<Int> do
+  let x = xs |> List.find(fn x -> x > 10 end)?
+  Some(x * 2)
+end
+
+fn converted(text :: String) -> Result<Int, AppError> do
+  let n = text |> parse?
+  Ok(n)
+end
+
+fn show(r :: Result<Int, String>) -> String do
+  case r do
+    Ok(n) -> "#{n}"
+    Err(e) -> e
+  end
+end
+
+fn main() do
+  println(show(total("4")) <> " " <> show(total("x")))
+  println(show(labelled("x")))
+  println(show(slot(30)))
+  println("#{Option.unwrap_or(first_big([1, 20]), 0)} #{Option.unwrap_or(first_big([1, 2]), 0)}")
+  case converted("y") do
+    Ok(n) -> println("#{n}")
+    Err(e) -> println(e.message)
+  end
+end
+"##;
+    assert_eq!(
+        run(source),
+        "15 not a number: x\ninput: not a number: x\n70\n40 0\napp: not a number: y\n"
+    );
+}

@@ -7688,9 +7688,16 @@ impl<'a> Lowerer<'a> {
             // Json object literal -- Phase 132-02 codegen
             Expr::JsonExpr(json_expr) => self.lower_json_expr(json_expr),
         };
-        let lowered = self.adapt_uniform_callback_call(lowered, expr.syntax().text_range());
-        let lowered = self.box_next_scalar(lowered, expr.syntax().text_range());
-        self.discard_callback_result(lowered, expr.syntax().text_range())
+        self.finish_lowered(lowered, expr.syntax().text_range())
+    }
+
+    /// What every expression's lowering ends with: `lowered`, the
+    /// expression at `range`, with its runtime callbacks adapted, a scalar
+    /// `Iter.next` payload boxed, and a discarded callback result dropped.
+    fn finish_lowered(&mut self, lowered: MirExpr, range: TextRange) -> MirExpr {
+        let lowered = self.adapt_uniform_callback_call(lowered, range);
+        let lowered = self.box_next_scalar(lowered, range);
+        self.discard_callback_result(lowered, range)
     }
 
     // ── Literal lowering ─────────────────────────────────────────────
@@ -9205,6 +9212,16 @@ impl<'a> Lowerer<'a> {
         rhs: Option<Expr>,
         index: usize,
     ) -> MirExpr {
+        // `x |> f(a)?` is `(x |> f(a))?`; the checker typed the call at the
+        // `?` and the value at the pipe.
+        if let Some(Expr::TryExpr(try_expr)) = &rhs {
+            let try_range = try_expr.syntax().text_range();
+            let piped = self.lower_piped(try_range, lhs_expr, try_expr.operand(), index);
+            let piped = self.finish_lowered(piped, try_range);
+            let operand_typeck = self.get_ty(try_range).cloned();
+            let success_ty = runtime_value_type(self.resolve_range(pipe_range));
+            return self.lower_try(piped, operand_typeck, success_ty);
+        }
         let lhs = lhs_expr
             .as_ref()
             .map(|e| self.lower_expr(e))
@@ -13006,6 +13023,22 @@ impl<'a> Lowerer<'a> {
             .operand()
             .expect("the parser gives every `?` an operand");
         let operand_typeck = self.get_ty(operand_expr.syntax().text_range()).cloned();
+        let operand = self.lower_expr(&operand_expr);
+        // `expr?` has the success type the type checker gave it.
+        let success_ty = runtime_value_type(self.resolve_range(try_expr.syntax().text_range()));
+        self.lower_try(operand, operand_typeck, success_ty)
+    }
+
+    /// `?` on `operand`, a `Result` or an `Option` of the checked type
+    /// `operand_typeck`: its value, of `success_ty`, or the function's early
+    /// return of the `Err` (converted by `From` where the function returns
+    /// another error type) or `None`.
+    fn lower_try(
+        &mut self,
+        operand: MirExpr,
+        operand_typeck: Option<Ty>,
+        success_ty: MirType,
+    ) -> MirExpr {
         let error_types = operand_typeck
             .as_ref()
             .and_then(Self::result_error_type)
@@ -13016,9 +13049,6 @@ impl<'a> Lowerer<'a> {
                     .and_then(Self::result_error_type)
                     .cloned(),
             );
-        let operand = self.lower_expr(&operand_expr);
-        // `expr?` has the success type the type checker gave it.
-        let success_ty = runtime_value_type(self.resolve_range(try_expr.syntax().text_range()));
         self.try_counter += 1;
         let val_name = format!("__try_val_{}", self.try_counter);
         // The failure variant's binding, and the value its early return
