@@ -697,69 +697,44 @@ pub fn start_mesh_consensus_from_env(node_name: &str) -> Result<bool, String> {
     MESH_CONSENSUS_RUNTIME_STARTED
         .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
         .map_err(|_| "consensus_runtime_already_started".to_string())?;
-    let thread = std::thread::Builder::new()
-        .name("mesh-control-plane".to_string())
-        .spawn(move || {
-            let runtime = match tokio::runtime::Builder::new_multi_thread()
-                .worker_threads(2)
-                .thread_name("mesh-control-plane-worker")
-                .enable_all()
-                .build()
-            {
-                Ok(runtime) => runtime,
-                Err(error) => {
-                    eprintln!("mesh consensus: transition=runtime_start_failed reason={error}");
-                    return;
-                }
-            };
-            runtime.block_on(async move {
-                let node = match start_mesh_durable_consensus_node(
-                    environment.local_id,
-                    &environment.local_name,
-                    &environment.cluster_name,
-                    &environment.store_path,
-                )
-                .await
-                {
-                    Ok(node) => node,
-                    Err(error) => {
-                        eprintln!("mesh consensus: transition=node_start_failed reason={error}");
-                        return;
-                    }
-                };
-                let already_initialized = node
-                    .state_machine
-                    .state()
-                    .map(|state| {
-                        state
-                            .last_membership
-                            .membership()
-                            .voter_ids()
-                            .next()
-                            .is_some()
-                    })
-                    .unwrap_or(false);
-                if environment.local_id == environment.bootstrap_id && !already_initialized {
-                    if let Err(error) = node.raft.initialize(environment.voters).await {
-                        eprintln!(
-                            "mesh consensus: transition=cluster_initialize_failed reason={error}"
-                        );
-                    }
-                }
-                while super::node::node_state().is_some() {
-                    tokio::time::sleep(Duration::from_millis(250)).await;
-                }
-                if let Err(error) = node.raft.shutdown().await {
-                    eprintln!("mesh consensus: transition=shutdown_failed reason={error}");
-                }
-            });
-        })
-        .map_err(|error| format!("consensus_runtime_thread_failed:{error}"));
-    if let Err(error) = thread {
-        MESH_CONSENSUS_RUNTIME_STARTED.store(false, Ordering::Release);
-        return Err(error);
-    }
+    // A node that cannot start the runtime fails to start; it cannot be
+    // started again, so the flag stays taken.
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .thread_name("mesh-control-plane-worker")
+        .enable_all()
+        .build()
+        .map_err(|error| format!("consensus_runtime_start_failed:{error}"))?;
+    runtime.spawn(run_mesh_consensus(environment));
+    // The consensus runs for as long as the process does.
+    std::mem::forget(runtime);
     Ok(true)
+}
+
+/// Starts this controller's consensus node, which the bootstrap voter
+/// initializes. Its Raft runs on the runtime for as long as the handle
+/// registered for peers' RPCs lives: as long as the process.
+async fn run_mesh_consensus(environment: MeshConsensusEnvironment) {
+    let node = match start_mesh_durable_consensus_node(
+        environment.local_id,
+        &environment.local_name,
+        &environment.cluster_name,
+        &environment.store_path,
+    )
+    .await
+    {
+        Ok(node) => node,
+        Err(error) => {
+            eprintln!("mesh consensus: transition=node_start_failed reason={error}");
+            return;
+        }
+    };
+    if environment.local_id == environment.bootstrap_id {
+        // Refused once the node holds a log or a vote, which openraft
+        // documents as safe to ignore, or when the Raft has stopped, which
+        // every later call reports.
+        let _ = node.raft.initialize(environment.voters).await;
+    }
 }
 
 #[cfg(test)]
