@@ -559,7 +559,19 @@ pub fn run_autonomous_performance(args: AutonomousPerformanceArgs) -> Result<(),
         budget.schema_version == 2,
         "performance_budget_schema_unsupported",
     )?;
+    let work = tempfile::tempdir()
+        .map_err(|error| format!("performance_work_directory_failed:{error}"))?;
+    measure_autonomous_performance(args.iterations, budget, &evidence, work.path())
+}
 
+/// The performance gate's measurements against `budget`, with the stores
+/// they write in `work`, and their evidence in `evidence`.
+fn measure_autonomous_performance(
+    iterations: u32,
+    budget: PerformanceBudget,
+    evidence: &Path,
+    work: &Path,
+) -> Result<(), String> {
     let prefix = format!("perf-{}", unix_millis());
     let now = Instant::now();
     let candidates = (0..8)
@@ -570,8 +582,9 @@ pub fn run_autonomous_performance(args: AutonomousPerformanceArgs) -> Result<(),
         load_report_registry().apply(report, now)?;
     }
     let routing_started = Instant::now();
-    for index in 0..args.iterations {
-        let decision = select_owner(
+    for index in 0..iterations {
+        // Every candidate has just reported: routing has one to pick.
+        let selected = select_owner(
             &format!("{prefix}-request-{index}"),
             "Todos.list",
             "gateway-a",
@@ -579,12 +592,12 @@ pub fn run_autonomous_performance(args: AutonomousPerformanceArgs) -> Result<(),
             None,
             &RoutingPolicy::default(),
             now,
-        )?;
-        let selected = !decision.selected_node.is_empty();
-        ensure(selected, "performance_routing_selected_empty_node")?;
+        )
+        .is_ok_and(|decision| !decision.selected_node.is_empty());
+        ensure(selected, "performance_routing_selected_no_node")?;
     }
     let routing_average_micros =
-        routing_started.elapsed().as_secs_f64() * 1_000_000.0 / f64::from(args.iterations);
+        routing_started.elapsed().as_secs_f64() * 1_000_000.0 / f64::from(iterations);
 
     let envelope = ProtocolEnvelope {
         class: MessageClass::Application,
@@ -595,33 +608,30 @@ pub fn run_autonomous_performance(args: AutonomousPerformanceArgs) -> Result<(),
         payload: vec![42; 4 * 1024],
     };
     let protocol_started = Instant::now();
-    for _ in 0..args.iterations {
+    for _ in 0..iterations {
         let encoded = envelope.encode(64 * 1024)?;
-        let decoded = ProtocolEnvelope::decode(&encoded, 64 * 1024)?;
-        ensure(
-            decoded == envelope,
-            "performance_protocol_round_trip_mismatch",
-        )?;
+        let round_tripped = ProtocolEnvelope::decode(&encoded, 64 * 1024)? == envelope;
+        ensure(round_tripped, "performance_protocol_round_trip_mismatch")?;
     }
     let protocol_round_trip_average_micros =
-        protocol_started.elapsed().as_secs_f64() * 1_000_000.0 / f64::from(args.iterations);
+        protocol_started.elapsed().as_secs_f64() * 1_000_000.0 / f64::from(iterations);
 
     let load_report = performance_report(format!("{prefix}-bandwidth"), 17, 1);
     let load_report_started = Instant::now();
     let mut load_report_bytes = 0_u64;
-    for _ in 0..args.iterations {
+    for _ in 0..iterations {
         let encoded = load_report.encode()?;
         load_report_bytes = encoded.len().try_into().unwrap_or(u64::MAX);
         let round_tripped = NodeLoadReport::decode(&encoded)? == load_report;
         ensure(round_tripped, "performance_load_report_round_trip_mismatch")?;
     }
     let load_report_encode_average_micros =
-        load_report_started.elapsed().as_secs_f64() * 1_000_000.0 / f64::from(args.iterations);
+        load_report_started.elapsed().as_secs_f64() * 1_000_000.0 / f64::from(iterations);
 
     let scheduler = Scheduler::new_elastic(1, 8)?;
-    let mut scheduler_scale_up_latencies = Vec::with_capacity(args.iterations as usize);
-    let mut scheduler_retirement_latencies = Vec::with_capacity(args.iterations as usize);
-    for _ in 0..args.iterations {
+    let mut scheduler_scale_up_latencies = Vec::with_capacity(iterations as usize);
+    let mut scheduler_retirement_latencies = Vec::with_capacity(iterations as usize);
+    for _ in 0..iterations {
         let started = Instant::now();
         scheduler.resize(8)?;
         let scaled_up = scheduler.active_workers() == 8;
@@ -636,19 +646,17 @@ pub fn run_autonomous_performance(args: AutonomousPerformanceArgs) -> Result<(),
             .push(started.elapsed().as_micros().try_into().unwrap_or(u64::MAX));
     }
 
-    let continuity_dir = tempfile::tempdir()
-        .map_err(|error| format!("performance_continuity_tempdir_failed:{error}"))?;
     let limits = ContinuityStoreLimits {
         terminal_retention_millis: 60_000,
         tombstone_retention_millis: 120_000,
-        max_terminal_records: u64::from(args.iterations) + 1,
+        max_terminal_records: u64::from(iterations) + 1,
         max_disk_bytes: 2 * 1024 * 1024 * 1024,
         compaction_batch_size: 1_000,
     };
-    let source = SqliteContinuityStore::open(&continuity_dir.path().join("source.db"), limits)?;
-    let mut continuity_latencies = Vec::with_capacity(args.iterations as usize);
+    let source = SqliteContinuityStore::open(&work.join("source.db"), limits)?;
+    let mut continuity_latencies = Vec::with_capacity(iterations as usize);
     let base = unix_millis();
-    for index in 0..args.iterations {
+    for index in 0..iterations {
         let record = soak_record(
             format!("perf-operation-{index}"),
             1,
@@ -666,7 +674,7 @@ pub fn run_autonomous_performance(args: AutonomousPerformanceArgs) -> Result<(),
         .iter()
         .map(|chunk| chunk.payload.len() as u64)
         .sum::<u64>();
-    let target = SqliteContinuityStore::open(&continuity_dir.path().join("target.db"), limits)?;
+    let target = SqliteContinuityStore::open(&work.join("target.db"), limits)?;
     let snapshot_started = Instant::now();
     for chunk in &chunks {
         target.apply_snapshot_chunk(chunk)?;
@@ -692,37 +700,35 @@ pub fn run_autonomous_performance(args: AutonomousPerformanceArgs) -> Result<(),
     }
     let continuity_compaction_records_per_second = continuity_compacted_records as f64
         / compaction_started.elapsed().as_secs_f64().max(0.000_001);
-    let compacted = continuity_compacted_records == u64::from(args.iterations);
+    let compacted = continuity_compacted_records == u64::from(iterations);
     ensure(compacted, "performance_continuity_compaction_incomplete")?;
 
-    let consensus_dir = tempfile::tempdir()
-        .map_err(|error| format!("performance_consensus_tempdir_failed:{error}"))?;
-    let log = Arc::new(DurableControlLog::open(
-        &consensus_dir.path().join("control.log"),
-    )?);
+    let log = Arc::new(DurableControlLog::open(&work.join("control.log"))?);
     let voters = BTreeSet::from(["a".to_string(), "b".to_string(), "c".to_string()]);
     let quorum = ControllerQuorum::new(voters.clone(), log)?;
     let term = quorum.elect("a", &voters)?;
-    let consensus_iterations = args.iterations.min(2_000);
+    let consensus_iterations = iterations.min(2_000);
     let mut consensus_latencies = Vec::with_capacity(consensus_iterations as usize);
     for index in 0..consensus_iterations {
         let started = Instant::now();
-        quorum.commit(
-            "a",
-            term,
-            &voters,
-            "performance-gate",
-            "bounded commit latency",
-            ControlMutation::PauseAutoscaler {
-                paused: index % 2 == 0,
-            },
-        )?;
+        quorum
+            .commit(
+                "a",
+                term,
+                &voters,
+                "performance-gate",
+                "bounded commit latency",
+                ControlMutation::PauseAutoscaler {
+                    paused: index % 2 == 0,
+                },
+            )
+            .map_err(|error| format!("performance_consensus_commit_failed:{error}"))?;
         consensus_latencies.push(started.elapsed().as_micros().try_into().unwrap_or(u64::MAX));
     }
 
     let driver = FakeCapacityDriver::new();
     let driver_started = Instant::now();
-    for index in 0..args.iterations {
+    for index in 0..iterations {
         let desired = DesiredCapacity {
             revision: DesiredRevision(u64::from(index) + 1),
             worker_nodes: 1,
@@ -738,7 +744,7 @@ pub fn run_autonomous_performance(args: AutonomousPerformanceArgs) -> Result<(),
         ensure(reconciled, "performance_driver_reconciliation_diverged")?;
     }
     let driver_reconcile_average_micros =
-        driver_started.elapsed().as_secs_f64() * 1_000_000.0 / f64::from(args.iterations);
+        driver_started.elapsed().as_secs_f64() * 1_000_000.0 / f64::from(iterations);
 
     let mut continuity_p50 = continuity_latencies.clone();
     let mut continuity_p95 = continuity_latencies.clone();
@@ -817,7 +823,7 @@ pub fn run_autonomous_performance(args: AutonomousPerformanceArgs) -> Result<(),
     let pass = assertions.values().all(|passed| *passed);
     let summary = AutonomousPerformanceSummary {
         schema_version: 2,
-        iterations: args.iterations,
+        iterations,
         budget,
         routing_average_micros,
         protocol_round_trip_average_micros,
@@ -865,6 +871,22 @@ mod tests {
             soak_verdict(false, false),
             Err("continuity_soak_gate_failed".to_string())
         );
+    }
+
+    /// A control log the consensus measurement cannot read fails the gate,
+    /// naming it, before any evidence is written.
+    #[test]
+    fn a_control_log_that_cannot_be_read_fails_the_performance_gate() {
+        let budget = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../proof/autonomous-gates/performance-budget.json");
+        let budget: PerformanceBudget = serde_json::from_slice(&fs::read(budget).unwrap()).unwrap();
+        let evidence = tempfile::tempdir().unwrap();
+        let work = tempfile::tempdir().unwrap();
+        fs::write(work.path().join("control.log"), "not a log entry\n").unwrap();
+        let error =
+            measure_autonomous_performance(100, budget, evidence.path(), work.path()).unwrap_err();
+        assert!(error.starts_with("control_log_decode_failed:"), "{error}");
+        assert!(!evidence.path().join("summary.json").exists());
     }
 
     #[test]
