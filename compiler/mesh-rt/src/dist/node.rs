@@ -6796,21 +6796,20 @@ fn startup_work_identity(runtime_name: &str) -> Result<StartupWorkIdentity, Stri
     })
 }
 
+/// Watches the membership until it settles with a peer in it, or, with
+/// no peer ever seen, until `max_polls` run out. A membership that had a
+/// peer but never settled is an error, carrying what was last seen.
 fn wait_for_startup_convergence_with<F, G>(
     mut observe_membership: F,
     mut sleep_between_polls: G,
     desired_required_replica_count: u64,
     max_polls: usize,
-) -> Result<StartupConvergenceState, String>
+) -> Result<StartupConvergenceState, StartupConvergenceState>
 where
     F: FnMut() -> Vec<String>,
     G: FnMut(),
 {
     let mut membership = normalize_declared_membership(observe_membership());
-    if membership.is_empty() {
-        return Err("declared_work_membership_empty".to_string());
-    }
-
     let mut saw_peer = membership.len() > 1;
     let mut stable_polls = 1usize;
     let mut polls = 0usize;
@@ -6836,10 +6835,6 @@ where
         polls += 1;
 
         let observed = normalize_declared_membership(observe_membership());
-        if observed.is_empty() {
-            return Err("declared_work_membership_empty".to_string());
-        }
-
         if observed == membership {
             stable_polls += 1;
         } else {
@@ -6852,7 +6847,12 @@ where
     }
 
     if saw_peer {
-        Err(STARTUP_CONVERGENCE_TIMEOUT.to_string())
+        Err(StartupConvergenceState {
+            membership,
+            required_replica_count: desired_required_replica_count,
+            saw_peer,
+            polls,
+        })
     } else {
         Ok(StartupConvergenceState {
             membership,
@@ -6866,8 +6866,9 @@ where
     }
 }
 
-fn wait_for_startup_convergence(runtime_name: &str) -> Result<StartupConvergenceState, String> {
-    let desired_required_replica_count = required_replica_count_for_runtime_name(runtime_name)?;
+fn wait_for_startup_convergence(
+    desired_required_replica_count: u64,
+) -> Result<StartupConvergenceState, StartupConvergenceState> {
     if node_state().is_none() {
         return Ok(StartupConvergenceState {
             membership: canonical_declared_membership(),
@@ -7266,21 +7267,11 @@ extern "C" fn startup_work_entry(args: *const u8) {
             }
         };
 
-    let convergence = match wait_for_startup_convergence(&identity.runtime_name) {
+    let convergence = match wait_for_startup_convergence(desired_required_replica_count) {
         Ok(state) => state,
-        Err(reason) if reason == STARTUP_CONVERGENCE_TIMEOUT => {
-            let state = StartupConvergenceState {
-                membership: canonical_declared_membership(),
-                required_replica_count: desired_required_replica_count,
-                saw_peer: true,
-                polls: STARTUP_TRIGGER_MAX_POLLS,
-            };
+        Err(state) => {
             log_startup_convergence_timeout(&identity, &state);
-            log_startup_rejected(&identity, None, None, None, &reason);
-            return;
-        }
-        Err(reason) => {
-            log_startup_rejected(&identity, None, None, None, &reason);
+            log_startup_rejected(&identity, None, None, None, STARTUP_CONVERGENCE_TIMEOUT);
             return;
         }
     };
@@ -8411,7 +8402,7 @@ mod tests {
         ];
         let mut next = 0usize;
 
-        let err = wait_for_startup_convergence_with(
+        let timed_out = wait_for_startup_convergence_with(
             || {
                 let index = next.min(snapshots.len() - 1);
                 next += 1;
@@ -8423,7 +8414,9 @@ mod tests {
         )
         .expect_err("flapping peer convergence should fail closed");
 
-        assert_eq!(err, STARTUP_CONVERGENCE_TIMEOUT);
+        assert!(timed_out.saw_peer);
+        assert_eq!(timed_out.polls, 3);
+        assert_eq!(timed_out.required_replica_count, 1);
     }
 
     #[test]
@@ -12760,27 +12753,6 @@ mod tests {
         assert_eq!(
             resolve_runtime_node_id("ambiguous-member-z"),
             Err("runtime_node_identifier_ambiguous:ambiguous-member-z".to_string())
-        );
-    }
-
-    /// Startup work cannot wait for a cluster it cannot see at all.
-    #[test]
-    fn startup_convergence_needs_a_membership_to_watch() {
-        assert_eq!(
-            wait_for_startup_convergence_with(Vec::new, || {}, 1, 3),
-            Err("declared_work_membership_empty".to_string())
-        );
-        let mut first = true;
-        let observe = || {
-            if std::mem::take(&mut first) {
-                vec!["alone@127.0.0.1:1".to_string()]
-            } else {
-                Vec::new()
-            }
-        };
-        assert_eq!(
-            wait_for_startup_convergence_with(observe, || {}, 1, 3),
-            Err("declared_work_membership_empty".to_string())
         );
     }
 
