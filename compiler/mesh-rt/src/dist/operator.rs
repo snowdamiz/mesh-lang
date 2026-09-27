@@ -1031,15 +1031,13 @@ fn apply_operator_control(
         },
         Duration::from_secs(10),
     )?;
-    // Every entry committed before this one applies first, in order. Moving
-    // the applied index past them skipped them for good: a drain the
-    // reconciler had finished stayed listed. Until this node's copy of the
-    // log reaches the new entry it is applied here, and again (harmlessly)
-    // when the copy does.
-    apply_committed_control_entries(&mut state);
-    if state.last_consensus_log_index < response.log_index {
-        apply_valid_control_mutation(&mut state, &mutation);
-    }
+    let committed = super::consensus::consensus_runtime_snapshot().map(|snapshot| snapshot.entries);
+    apply_committed_then(
+        &mut state,
+        committed.as_deref(),
+        response.log_index,
+        &mutation,
+    );
     let outcome = state.record_control(request, Some(response));
     drop(state);
     if let super::scaling::ControlMutation::DrainIntent { node_id, cancelled } = &mutation {
@@ -1137,6 +1135,27 @@ fn validate_control_mutation(mutation: &super::scaling::ControlMutation) -> Resu
 
 fn refresh_operator_control_from_consensus() {
     apply_committed_control_entries(&mut operator_control_state().lock());
+}
+
+/// Applies the committed `entries` (none when this node's copy of the log
+/// cannot be read), then `mutation`, committed at `log_index`, unless the
+/// entries already took `state` to it. Every entry committed before this
+/// one applies first, in order: moving the applied index past them skipped
+/// them for good, and a drain the reconciler had finished stayed listed.
+/// Until this node's copy of the log reaches the new entry it is applied
+/// here, and again (harmlessly) when the copy does.
+fn apply_committed_then(
+    state: &mut OperatorControlState,
+    entries: Option<&[super::scaling::ControlLogEntry]>,
+    log_index: u64,
+    mutation: &super::scaling::ControlMutation,
+) {
+    if let Some(entries) = entries {
+        apply_control_entries(state, entries);
+    }
+    if state.last_consensus_log_index < log_index {
+        apply_valid_control_mutation(state, mutation);
+    }
 }
 
 /// Applies the committed control entries `state` has not seen, in order;
@@ -2762,6 +2781,18 @@ mod tests {
         apply_control_entries(&mut state, &entries);
         assert!(!state.autoscaler_paused);
         assert_eq!(state.control_sequence, 5);
+
+        // A control the entries took the state past is not applied again;
+        // one this node's copy of the log lacks, or cannot read, is.
+        let pause = ControlMutation::PauseAutoscaler { paused: true };
+        apply_committed_then(&mut state, Some(&entries), 6, &pause);
+        assert!(!state.autoscaler_paused);
+        apply_committed_then(&mut state, Some(&entries), 7, &pause);
+        assert!(state.autoscaler_paused);
+        state.autoscaler_paused = false;
+        apply_committed_then(&mut state, None, 7, &pause);
+        assert!(state.autoscaler_paused);
+        assert_eq!(state.last_consensus_log_index, 6);
 
         let request = OperatorControlRequest {
             schema_version: 1,
