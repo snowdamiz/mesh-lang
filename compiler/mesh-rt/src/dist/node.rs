@@ -5626,18 +5626,20 @@ fn execute_clustered_http_route_remote(
         .cloned()
         .ok_or_else(|| format!("clustered_http_route_session_unavailable:{target}"))?;
     let correlation_id = HTTP_ROUTE_CORRELATION_ID.fetch_add(1, Ordering::Relaxed);
+    // The reservation names the handler and the key; the query adds the
+    // attempt, so only a name the reservation takes can fail it.
+    let reservation = encode_http_reserve(
+        correlation_id,
+        runtime_name,
+        request_key,
+        request_payload_len(request_payload),
+    )?;
     let payload = encode_http_route_v2_query_frame(
         correlation_id,
         runtime_name,
         request_key,
         attempt_id,
         request_payload,
-    )?;
-    let reservation = encode_http_reserve(
-        correlation_id,
-        runtime_name,
-        request_key,
-        request_payload_len(request_payload),
     )?;
     let (reservation_sender, reservation_receiver) = crate::actor::cooperative_channel();
     session
@@ -11650,6 +11652,31 @@ mod tests {
             route_to(name).join().unwrap(),
             Err(format!("clustered_http_route_session_unavailable:{name}"))
         );
+    }
+
+    /// A handler name or attempt too long for its frame is refused before
+    /// anything goes to the owner.
+    #[test]
+    fn a_routed_request_with_names_its_frames_cannot_hold_is_refused() {
+        let name = "long-names-route-owner@127.0.0.1:1";
+        let owner = TestPeer::new(name);
+        let long = "n".repeat(usize::from(u16::MAX) + 1);
+        for (runtime, attempt) in [(long.as_str(), "attempt-1"), ("Owner.handle", &long)] {
+            assert_eq!(
+                execute_clustered_http_route_remote(name, runtime, "key", attempt, b"GET /"),
+                Err(format!(
+                    "clustered_http_route_string_too_large:{}",
+                    long.len()
+                ))
+            );
+        }
+        assert!(owner.sent().is_empty());
+        assert!(owner
+            .session
+            .pending_http_reservations
+            .lock()
+            .unwrap()
+            .is_empty());
     }
 
     /// An owner that takes neither the reservation nor, later, the query
