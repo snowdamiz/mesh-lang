@@ -2401,9 +2401,12 @@ impl CapacityReconciler {
 
         if observed_workers < committed.desired.worker_nodes {
             self.cancel_pretermination_drains(&fence)?;
-            let missing = committed.desired.worker_nodes - observed_workers;
+            let missing = usize::from(committed.desired.worker_nodes - observed_workers);
+            // Creations the provider has not finished, whose nodes it does
+            // not show yet: they count toward the target.
+            let mut in_flight = 0;
             for ordinal in 0..u16::MAX {
-                if outcome.ensured.len() >= missing as usize {
+                if outcome.ensured.len() + in_flight >= missing {
                     break;
                 }
                 let mut operation = DriverOperation {
@@ -2420,58 +2423,52 @@ impl CapacityReconciler {
                     node_id: None,
                     state: DriverOperationState::Pending,
                 };
+                // The ordinal's latest operation: one whose node is gone was
+                // replaced by an operation keyed by that node.
                 let mut lineage_depth = 0_u8;
-                loop {
+                let existing = loop {
                     let Some(existing) = self.driver.get_operation(&operation.operation_id)? else {
-                        break;
+                        break None;
                     };
-                    match existing.state {
-                        DriverOperationState::Succeeded => {
-                            let active_node = existing.node_id.as_ref().is_some_and(|node_id| {
-                                active.iter().any(|node| &node.node_id == node_id)
-                            });
-                            if active_node {
-                                break;
-                            }
-                            let removed_node = existing.node_id.as_deref().unwrap_or("unknown");
-                            lineage_depth = lineage_depth.saturating_add(1);
-                            if lineage_depth > 64 {
-                                return Err("capacity_replacement_lineage_exhausted".to_string());
-                            }
-                            operation.operation_id = capacity_operation_id(
-                                cluster_id,
-                                committed.desired.revision,
-                                ordinal,
-                                &format!("replace:{removed_node}"),
-                            );
-                        }
-                        DriverOperationState::Pending => break,
-                        DriverOperationState::PermanentFailure(ref reason) => {
-                            outcome.constraints.push(format!(
-                                "capacity_operation_permanent_failure:{}:{reason}",
-                                operation.operation_id
-                            ));
-                            break;
-                        }
-                        DriverOperationState::RetryableFailure(_)
-                        | DriverOperationState::Unknown => {
-                            break;
-                        }
+                    let node_active = existing
+                        .node_id
+                        .as_ref()
+                        .is_some_and(|node_id| active.iter().any(|node| &node.node_id == node_id));
+                    if existing.state != DriverOperationState::Succeeded || node_active {
+                        break Some((existing.state, node_active));
                     }
-                }
-                if self
-                    .driver
-                    .get_operation(&operation.operation_id)?
-                    .is_some_and(|existing| {
-                        matches!(
-                            existing.state,
-                            DriverOperationState::Succeeded
-                                | DriverOperationState::Pending
-                                | DriverOperationState::PermanentFailure(_)
-                        )
-                    })
-                {
-                    continue;
+                    lineage_depth = lineage_depth.saturating_add(1);
+                    if lineage_depth > 64 {
+                        return Err("capacity_replacement_lineage_exhausted".to_string());
+                    }
+                    let removed_node = existing.node_id.as_deref().unwrap_or("unknown");
+                    operation.operation_id = capacity_operation_id(
+                        cluster_id,
+                        committed.desired.revision,
+                        ordinal,
+                        &format!("replace:{removed_node}"),
+                    );
+                };
+                match existing {
+                    // Its node is observed already.
+                    Some((DriverOperationState::Succeeded, _)) => continue,
+                    Some((DriverOperationState::Pending, node_active)) => {
+                        in_flight += usize::from(!node_active);
+                        continue;
+                    }
+                    Some((DriverOperationState::PermanentFailure(reason), _)) => {
+                        outcome.constraints.push(format!(
+                            "capacity_operation_permanent_failure:{}:{reason}",
+                            operation.operation_id
+                        ));
+                        continue;
+                    }
+                    // Retried under the same operation id.
+                    Some((
+                        DriverOperationState::RetryableFailure(_) | DriverOperationState::Unknown,
+                        _,
+                    ))
+                    | None => {}
                 }
                 fence.commit(
                     "ensure worker capacity",
@@ -2496,7 +2493,7 @@ impl CapacityReconciler {
                 }
                 outcome.ensured.push(result);
             }
-            if outcome.ensured.len() < missing as usize {
+            if in_flight > 0 {
                 outcome
                     .constraints
                     .push("capacity_pending_existing_operations".to_string());
@@ -3655,6 +3652,72 @@ mod tests {
             CapacityReconciler::new(driver.clone(), 1).expect("recovered reconciler");
         recovered.restore_from_control_entries(&log.entries());
         assert!(recovered.drain_progress().is_empty());
+    }
+
+    /// A creation the provider reports as still pending will be a worker:
+    /// the reconciler skipped past it and created another in its place.
+    #[test]
+    fn creations_still_in_flight_count_toward_the_target() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let log =
+            Arc::new(DurableControlLog::open(&directory.path().join("control.log")).expect("log"));
+        let voters = BTreeSet::from(["a".to_string(), "b".to_string(), "c".to_string()]);
+        let quorum = ControllerQuorum::new(voters.clone(), log).expect("quorum");
+        let term = quorum.elect("a", &voters).expect("leader");
+        let committed = quorum
+            .commit_desired_capacity(
+                "a",
+                term,
+                &voters,
+                "autoscaler",
+                "target",
+                DesiredCapacity {
+                    revision: DesiredRevision(1),
+                    worker_nodes: 2,
+                    gateway_nodes: 0,
+                    template_revision: "v1".to_string(),
+                },
+            )
+            .expect("desired capacity");
+        let ensure =
+            |ordinal| capacity_operation_id("cluster", DesiredRevision(1), ordinal, "ensure");
+        let driver = Arc::new(FakeCapacityDriver::new());
+        driver.operations.lock().unwrap().insert(
+            ensure(0),
+            DriverOperation {
+                cluster_id: "cluster".to_string(),
+                operation_id: ensure(0),
+                control_term: term,
+                desired_revision: DesiredRevision(1),
+                template_revision: "v1".to_string(),
+                node_id: None,
+                state: DriverOperationState::Pending,
+            },
+        );
+        let mut reconciler = CapacityReconciler::new(driver, 1).expect("reconciler");
+
+        let outcome = reconciler
+            .reconcile(
+                &quorum,
+                "cluster",
+                "a",
+                &voters,
+                &committed,
+                "autoscaler",
+                &[],
+            )
+            .expect("reconcile");
+
+        let ensured: Vec<_> = outcome
+            .ensured
+            .iter()
+            .map(|operation| operation.operation_id.clone())
+            .collect();
+        assert_eq!(ensured, [ensure(1)]);
+        assert_eq!(
+            outcome.constraints,
+            ["capacity_pending_existing_operations"]
+        );
     }
 
     /// Scale-down with no worker safe to drain is a state to wait in, not a
