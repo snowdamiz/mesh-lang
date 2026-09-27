@@ -2603,6 +2603,28 @@ mod tests {
         }
         execute(&store, "PRAGMA query_only = OFF");
         assert_eq!(store.get("operation"), Ok(None));
+
+        // Records kept without their key's constraint cannot be upserted,
+        // and records that can be read but not deleted cannot be compacted.
+        let store = self::store();
+        execute(
+            &store,
+            "ALTER TABLE continuity_records RENAME TO kept_records;
+             CREATE TABLE continuity_records AS SELECT * FROM kept_records;",
+        );
+        let refused = store.upsert(&active()).unwrap_err();
+        assert!(refused.contains("ON CONFLICT"), "{refused}");
+        let store = self::store();
+        store
+            .upsert(&record("expired", 1, StoredContinuityPhase::Completed))
+            .unwrap();
+        execute(
+            &store,
+            "ALTER TABLE continuity_records RENAME TO kept_records;
+             CREATE VIEW continuity_records AS SELECT * FROM kept_records;",
+        );
+        let refused = store.compact(30).unwrap_err();
+        assert!(refused.contains("is a view"), "{refused}");
     }
 
     /// A store whose schema no migration can bring up to date does not
