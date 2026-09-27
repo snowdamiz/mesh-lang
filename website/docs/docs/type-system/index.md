@@ -781,7 +781,7 @@ fn main() do
 end
 ```
 
-A type can have several `From` impls, one per source type: `Wrapper.from(value)` calls the one for the value's type, and a value no impl takes is error E0065. Like other static methods, it can be piped into: `21 |> Wrapper.from()`.
+A type can have several `From` impls, one per source type: `Wrapper.from(value)` calls the one for the value's whole type, so `From<(Int, Int)>`, `From<List<Int>>` and `From<List<String>>` are three impls, and a value no impl takes is error E0065. Like other static methods, it can be piped into: `21 |> Wrapper.from()`.
 
 ### Automatic Into
 

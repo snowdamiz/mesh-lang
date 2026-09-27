@@ -87,44 +87,13 @@ enum QualifiedRoute {
     Conversion(String, String, String),
 }
 
-/// Extract the trait name, trait type args, and type name from an ImplDef's PATH children.
-/// Returns `(trait_name, trait_type_args, type_name)`, e.g. `("From", vec!["Int"], "Float")`.
-/// For non-parameterized traits, trait_type_args is empty.
-fn extract_impl_names(impl_def: &ImplDef) -> (String, Vec<String>, String) {
-    let trait_name = impl_def
-        .interface_name()
-        .map(|t| t.text().to_string())
-        .unwrap_or_else(|| "<unknown>".to_string());
-
-    // Extract trait type arguments from GENERIC_ARG_LIST (e.g., <Int> in From<Int>).
-    // GENERIC_ARG_LIST is a direct child of IMPL_DEF.
-    let trait_type_args: Vec<String> = impl_def
-        .syntax()
-        .children()
-        .filter(|n| n.kind() == SyntaxKind::GENERIC_ARG_LIST)
-        .flat_map(|gal| {
-            gal.children_with_tokens()
-                .filter_map(|t| t.into_token())
-                .filter(|t| t.kind() == SyntaxKind::IDENT)
-                .map(|t| t.text().to_string())
-                .collect::<Vec<_>>()
-        })
-        .collect();
-
-    let type_name = impl_def
-        .type_name()
-        .map(|t| t.text().to_string())
-        .unwrap_or_else(|| "<unknown>".to_string());
-
-    (trait_name, trait_type_args, type_name)
-}
-
 /// A trait's type argument as the impl's mangled name spells it: a named
-/// type by its bare name.
+/// type by its bare name, any other in full (`From<List<Int>>` is
+/// `From_List_of_Int_end`).
 fn trait_arg_name(ty: &Ty) -> String {
-    match ty {
-        Ty::Con(tc) => tc.name.clone(),
-        other => other.to_string(),
+    match ty_head(ty) {
+        Some((name, [])) => name.to_string(),
+        _ => Lowerer::ty_specialization_component(ty),
     }
 }
 
@@ -1204,6 +1173,28 @@ impl<'a> Lowerer<'a> {
             .or_else(|| self.types.get(&range))
     }
 
+    /// An impl's interface, the interface's type arguments as its mangled
+    /// names spell them (as the type checker read them, where they are
+    /// written), and the implementing type: `("From", ["Int"], "Float")`.
+    fn impl_names(&self, impl_def: &ImplDef) -> (String, Vec<String>, String) {
+        let trait_name = impl_def
+            .interface_name()
+            .map(|t| t.text().to_string())
+            .unwrap_or_else(|| "<unknown>".to_string());
+        let trait_type_args = impl_def
+            .syntax()
+            .children()
+            .find(|n| n.kind() == SyntaxKind::GENERIC_ARG_LIST)
+            .and_then(|written| self.get_ty(written.text_range())?.args_of(&trait_name))
+            .map(|args| args.iter().map(trait_arg_name).collect())
+            .unwrap_or_default();
+        let type_name = impl_def
+            .type_name()
+            .map(|t| t.text().to_string())
+            .unwrap_or_else(|| "<unknown>".to_string());
+        (trait_name, trait_type_args, type_name)
+    }
+
     /// Fill `spec_types` for the function at `fn_range`, checked as `generic`
     /// and lowered here as `concrete`. Returns what was there before, for the
     /// caller to put back.
@@ -1972,7 +1963,7 @@ impl<'a> Lowerer<'a> {
                     }
                 }
                 Item::ImplDef(impl_def) => {
-                    let (trait_name, trait_type_args, type_name) = extract_impl_names(impl_def);
+                    let (trait_name, trait_type_args, type_name) = self.impl_names(impl_def);
                     let mut provided_methods = std::collections::HashSet::new();
                     for method in impl_def.methods() {
                         if let Some(method_name) = method.name().and_then(|n| n.text()) {
@@ -4826,7 +4817,7 @@ impl<'a> Lowerer<'a> {
             // them (E0080), and the REPL moves them into what it evaluates.
             Item::LetBinding(_) => {}
             Item::ImplDef(impl_def) => {
-                let (trait_name, trait_type_args, type_name) = extract_impl_names(&impl_def);
+                let (trait_name, trait_type_args, type_name) = self.impl_names(&impl_def);
 
                 // Collect names of methods explicitly provided in this impl.
                 let mut provided_methods = std::collections::HashSet::new();
@@ -8152,10 +8143,6 @@ impl<'a> Lowerer<'a> {
         type_name: &str,
         source: Option<&Ty>,
     ) -> String {
-        let key = |ty: &Ty| match ty {
-            Ty::App(con, args) if args.is_empty() => format!("{con}"),
-            other => format!("{other}"),
-        };
         let target = Ty::Con(mesh_typeck::ty::TyCon::new(type_name));
         let impls: Vec<_> = self
             .trait_registry
@@ -8169,7 +8156,7 @@ impl<'a> Lowerer<'a> {
                 impls.iter().find(|imp| {
                     imp.trait_type_args
                         .first()
-                        .is_some_and(|arg| key(arg) == key(source))
+                        .is_some_and(|arg| trait_arg_name(arg) == trait_arg_name(source))
                 })
             })
             .or(impls.first());
@@ -8441,10 +8428,8 @@ impl<'a> Lowerer<'a> {
                     .is_some_and(|ret| resolve_type(ret, self.registry) == result)
             })?
         };
-        let name_of =
-            |ty: &Ty| ty_head(ty).map_or_else(|| format!("{ty}"), |(name, _)| name.to_string());
-        let args: Vec<String> = imp.trait_type_args.iter().map(name_of).collect();
-        let source = [name_of(&imp.impl_type)];
+        let args: Vec<String> = imp.trait_type_args.iter().map(trait_arg_name).collect();
+        let source = [trait_arg_name(&imp.impl_type)];
         let mangled = match (imp.trait_name.as_str(), args.first()) {
             ("Into", Some(target)) => mangle_trait_method("From", &source, "from", target),
             ("TryInto", Some(target)) => {
@@ -11079,31 +11064,6 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    /// Mangle a `Ty` into a display-friendly name for synthetic wrapper functions.
-    ///
-    /// Examples:
-    /// - `Ty::Con("Int")` -> `"Int"`
-    /// - `Ty::App(Con("List"), [Con("Int")])` -> `"list_Int"`
-    /// - `Ty::App(Con("Option"), [Con("Int")])` -> `"Option_Int"`
-    /// - `Ty::App(Con("List"), [App(Con("List"), [Con("Int")])])` -> `"list_list_Int"`
-    fn mangle_ty_for_display(&self, ty: &Ty) -> String {
-        let Some((name, args)) = ty_head(ty) else {
-            return "Unknown".to_string();
-        };
-        let mut mangled = match (name, args) {
-            ("List", [_, ..]) => "list",
-            ("Set", [_, ..]) => "set",
-            ("Map", [_, ..]) => "map",
-            _ => name,
-        }
-        .to_string();
-        for arg in args {
-            mangled.push('_');
-            mangled.push_str(&self.mangle_ty_for_display(arg));
-        }
-        mangled
-    }
-
     // ── Equality, ordering and display decided by type ───────────────
     //
     // Lists, maps, sets, tuples, unit and instantiated generic sum types
@@ -12929,16 +12889,18 @@ impl<'a> Lowerer<'a> {
             // A Result's error is a generic payload: a pointer.
             return (name.clone(), MirType::Ptr, MirExpr::Var(name, MirType::Ptr));
         };
-        let source_ty = resolve_type(&source, self.registry);
+        // A tuple is the pointer to its heap block, as `From` takes it.
+        let source_ty = runtime_value_type(resolve_type(&source, self.registry));
         // A struct is a pointer to the heap, as the payload slot holds it.
         let target_ty = match resolve_type(&target, self.registry) {
             MirType::Struct(_) => MirType::Ptr,
             other => other,
         };
-        let from_fn = format!(
-            "From_{}__from__{}",
-            self.mangle_ty_for_display(&source),
-            self.mangle_ty_for_display(&target)
+        let from_fn = mangle_trait_method(
+            "From",
+            &[trait_arg_name(&source)],
+            "from",
+            &trait_arg_name(&target),
         );
         let converted = MirExpr::Call {
             func: Box::new(MirExpr::Var(
