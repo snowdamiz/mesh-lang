@@ -12128,10 +12128,10 @@ fn join_early_return(
 /// Build the full function type for a trait method, including the self parameter.
 /// Returns `Ty::Fun([self_type, ...param_types], return_type)`.
 ///
-/// Searches the trait registry's impl blocks to find the matching method
-/// signature for the given self type. Uses `param_count` to create fresh
-/// type variables for non-self parameters (since `ImplMethodSig` does not
-/// store individual parameter types).
+/// Uses the matching impl's method signature for the given self type, and
+/// its `param_count` to create fresh type variables for non-self parameters
+/// no declaration gives a type. The caller found the method's return type
+/// in that impl.
 fn build_method_fn_type(
     trait_registry: &TraitRegistry,
     method_name: &str,
@@ -12139,49 +12139,44 @@ fn build_method_fn_type(
     ret_ty: &Ty,
     ctx: &mut InferCtx,
 ) -> Ty {
-    // Look up the method signature to determine parameter count.
-    if let Some(method_sig) = trait_registry.find_method_sig(method_name, self_ty) {
-        let mut param_types = vec![self_ty.clone()]; // self parameter
-                                                     // The impl's declared parameter types check the arguments; a derived
-                                                     // or built-in impl declares none, and takes what its interface
-                                                     // declares, `Self` being the receiver's type (`eq` takes another
-                                                     // value of it, which it compared with whatever it was given).
-        let declared = method_sig.param_types.clone().or_else(|| {
-            let trait_name = trait_registry
-                .find_method_traits(method_name, self_ty)
-                .into_iter()
-                .next()?;
-            let method = trait_registry
-                .get_trait(&trait_name)?
-                .methods
+    let method_sig = trait_registry
+        .find_method_sig(method_name, self_ty)
+        .expect("the impl that gave the method's return type provides the method");
+    let mut param_types = vec![self_ty.clone()]; // self parameter
+                                                 // The impl's declared parameter types check the arguments; a derived
+                                                 // or built-in impl declares none, and takes what its interface
+                                                 // declares, `Self` being the receiver's type (`eq` takes another
+                                                 // value of it, which it compared with whatever it was given).
+    let declared = method_sig.param_types.clone().or_else(|| {
+        let trait_name = trait_registry
+            .find_method_traits(method_name, self_ty)
+            .into_iter()
+            .next()?;
+        let method = trait_registry
+            .get_trait(&trait_name)?
+            .methods
+            .iter()
+            .find(|method| method.name == method_name)?;
+        let self_as_receiver =
+            |ty: &Ty| ty.replace_cons(&mut |tc| (tc.name == "Self").then(|| self_ty.clone()));
+        Some(
+            method
+                .param_types
+                .as_ref()?
                 .iter()
-                .find(|method| method.name == method_name)?;
-            let self_as_receiver =
-                |ty: &Ty| ty.replace_cons(&mut |tc| (tc.name == "Self").then(|| self_ty.clone()));
-            Some(
-                method
-                    .param_types
-                    .as_ref()?
-                    .iter()
-                    .map(self_as_receiver)
-                    .collect(),
-            )
-        });
-        match declared {
-            Some(declared) if declared.len() == method_sig.param_count => {
-                param_types.extend(declared)
-            }
-            _ => {
-                for _ in 0..method_sig.param_count {
-                    param_types.push(ctx.fresh_var());
-                }
+                .map(self_as_receiver)
+                .collect(),
+        )
+    });
+    match declared {
+        Some(declared) if declared.len() == method_sig.param_count => param_types.extend(declared),
+        _ => {
+            for _ in 0..method_sig.param_count {
+                param_types.push(ctx.fresh_var());
             }
         }
-        return Ty::Fun(param_types, Box::new(ret_ty.clone()));
     }
-    // Fallback: if we can't find the full signature, construct a unary function
-    // (self -> return_type). infer_call's unification will catch arity mismatches.
-    Ty::Fun(vec![self_ty.clone()], Box::new(ret_ty.clone()))
+    Ty::Fun(param_types, Box::new(ret_ty.clone()))
 }
 
 // ── Struct/Field Inference (03-03) ─────────────────────────────────────
