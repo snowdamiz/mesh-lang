@@ -1307,7 +1307,7 @@ fn secure_database_file(_path: &Path) -> Result<(), String> {
 }
 
 static CONFIGURED_STORE: OnceLock<Option<Arc<SqliteContinuityStore>>> = OnceLock::new();
-static DURABLE_WRITER: OnceLock<crossbeam_channel::Sender<DurableWrite>> = OnceLock::new();
+static DURABLE_WRITER: OnceLock<DurableWriter> = OnceLock::new();
 
 const DURABLE_WRITE_QUEUE_ITEMS: usize = 8_192;
 const DURABLE_WRITE_BATCH_ITEMS: usize = 128;
@@ -1341,13 +1341,18 @@ impl ResponseReplayCache {
         self.responses
             .insert(operation_key.to_string(), response.to_vec());
         self.insertion_order.push_back(operation_key.to_string());
+        // Each key is queued once, and the newest response alone fits the
+        // byte bound: evicting older ones always ends inside the bounds.
         while self.responses.len() > MAX_REPLAY_RESPONSES || self.bytes > MAX_REPLAY_BYTES {
-            let Some(oldest) = self.insertion_order.pop_front() else {
-                break;
-            };
-            if let Some(removed) = self.responses.remove(&oldest) {
-                self.bytes = self.bytes.saturating_sub(removed.len());
-            }
+            let oldest = self
+                .insertion_order
+                .pop_front()
+                .expect("a cache over its bounds holds an older response");
+            let removed = self
+                .responses
+                .remove(&oldest)
+                .expect("every queued key has its response");
+            self.bytes = self.bytes.saturating_sub(removed.len());
         }
     }
 }
@@ -1358,72 +1363,88 @@ fn response_replay_cache() -> &'static Mutex<ResponseReplayCache> {
     RESPONSE_REPLAY_CACHE.get_or_init(|| Mutex::new(ResponseReplayCache::default()))
 }
 
+/// Reads one deployment environment variable: the runtime passes
+/// `std::env::var`, tests a table of their own.
+type EnvironmentLookup<'a> = &'a dyn Fn(&str) -> Option<String>;
+
+fn process_environment(name: &str) -> Option<String> {
+    std::env::var(name).ok()
+}
+
 pub fn configured_continuity_store() -> Option<&'static Arc<SqliteContinuityStore>> {
     CONFIGURED_STORE
         .get_or_init(|| {
-            let config = runtime_continuity_config();
-            let path = continuity_database_path(&config)?;
-            let limits = ContinuityStoreLimits {
-                terminal_retention_millis: config.terminal_retention_millis,
-                tombstone_retention_millis: config.tombstone_retention_millis,
-                max_terminal_records: config.max_terminal_records,
-                max_disk_bytes: config.max_disk_bytes,
-                compaction_batch_size: 1_000,
-            };
-            SqliteContinuityStore::open(&path, limits)
-                .map(Arc::new)
-                .inspect(|store| {
-                    start_continuity_compactor(Arc::clone(store));
-                })
-                .map_err(|error| {
-                    eprintln!("mesh continuity: durable_store_open_failed reason={error}");
-                    error
-                })
-                .ok()
+            let embedded = super::autonomous::embedded_autonomous_config();
+            let node_name = super::node::node_state().map(|state| state.name.as_str());
+            let path = continuity_database_path(embedded, &process_environment, node_name)?;
+            open_configured_store(&path, &runtime_continuity_config(embedded))
         })
         .as_ref()
 }
 
-fn runtime_continuity_config() -> super::autonomous::RuntimeContinuityConfig {
-    super::autonomous::embedded_autonomous_config()
+fn open_configured_store(
+    path: &Path,
+    config: &super::autonomous::RuntimeContinuityConfig,
+) -> Option<Arc<SqliteContinuityStore>> {
+    let limits = ContinuityStoreLimits {
+        terminal_retention_millis: config.terminal_retention_millis,
+        tombstone_retention_millis: config.tombstone_retention_millis,
+        max_terminal_records: config.max_terminal_records,
+        max_disk_bytes: config.max_disk_bytes,
+        compaction_batch_size: 1_000,
+    };
+    match SqliteContinuityStore::open(path, limits) {
+        Ok(store) => {
+            let store = Arc::new(store);
+            start_continuity_compactor(Arc::clone(&store));
+            Some(store)
+        }
+        Err(error) => {
+            eprintln!("mesh continuity: durable_store_open_failed reason={error}");
+            None
+        }
+    }
+}
+
+fn runtime_continuity_config(
+    embedded: Option<&super::autonomous::RuntimeAutonomousConfig>,
+) -> super::autonomous::RuntimeContinuityConfig {
+    embedded
         .map(|config| config.continuity.clone())
         .unwrap_or_default()
 }
 
+/// Where this node keeps its durable continuity store, if anywhere:
+/// MESH_CONTINUITY_DB when set; otherwise, in autonomous mode with durable
+/// continuity, the manifest's path or a node-private default.
 fn continuity_database_path(
-    config: &super::autonomous::RuntimeContinuityConfig,
+    embedded: Option<&super::autonomous::RuntimeAutonomousConfig>,
+    env: EnvironmentLookup<'_>,
+    node_name: Option<&str>,
 ) -> Option<PathBuf> {
-    if let Ok(path) = std::env::var("MESH_CONTINUITY_DB") {
+    if let Some(path) = env("MESH_CONTINUITY_DB") {
         return (!path.trim().is_empty()).then(|| PathBuf::from(path));
     }
-    if super::autonomous::embedded_autonomous_config()
-        .is_some_and(|autonomous| !autonomous.features.durable_continuity)
-    {
-        return None;
-    }
-    if let Some(path) = config
+    // Manual mode preserves the historical opt-in behavior.
+    let embedded = embedded.filter(|autonomous| autonomous.features.durable_continuity)?;
+    if let Some(path) = embedded
+        .continuity
         .path
         .as_ref()
         .filter(|path| !path.as_os_str().is_empty())
     {
         return Some(path.clone());
     }
-    // Manual mode preserves the historical opt-in behavior. Autonomous mode
-    // always gets a node-private default store when no path is declared.
-    super::autonomous::embedded_autonomous_config()?;
-    let stable_id = std::env::var("MESH_STABLE_NODE_ID")
-        .ok()
+    let stable_id = env("MESH_STABLE_NODE_ID")
         .filter(|value| !value.trim().is_empty())
-        .or_else(|| super::node::node_state().map(|state| state.name.clone()))
+        .or_else(|| node_name.map(str::to_string))
         .unwrap_or_else(|| "mesh-local-node".to_string());
     let digest = Sha256::digest(stable_id.as_bytes());
     let suffix: String = digest[..12]
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect();
-    let directory = std::env::var_os("MESH_DATA_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(".mesh"));
+    let directory = env("MESH_DATA_DIR").map_or_else(|| PathBuf::from(".mesh"), PathBuf::from);
     Some(directory.join(format!("continuity-{suffix}.db")))
 }
 
@@ -1432,43 +1453,62 @@ fn start_continuity_compactor(store: Arc<SqliteContinuityStore>) {
         .name("mesh-continuity-compactor".to_string())
         .spawn(move || loop {
             std::thread::park_timeout(std::time::Duration::from_secs(30));
-            match store.compact(SystemTimeMillis::now()) {
-                Ok(outcome) => {
-                    if outcome.records_tombstoned > 0 || outcome.tombstones_deleted > 0 {
-                        eprintln!(
-                            "mesh continuity: transition=compacted records_tombstoned={} tombstones_deleted={}",
-                            outcome.records_tombstoned, outcome.tombstones_deleted
-                        );
-                    }
-                    let _ = store.compact_log_to_replica_safe_point();
-                }
-                Err(error) => {
-                    eprintln!("mesh continuity: compaction_failed reason={error}");
-                }
-            }
+            compaction_pass(&store);
         });
 }
 
+/// One compactor pass: expire terminal records and tombstones, then trim
+/// the replication log every replica has acknowledged.
+fn compaction_pass(store: &SqliteContinuityStore) {
+    match store.compact(SystemTimeMillis::now()) {
+        Ok(outcome) => {
+            if outcome.records_tombstoned > 0 || outcome.tombstones_deleted > 0 {
+                eprintln!(
+                    "mesh continuity: transition=compacted records_tombstoned={} tombstones_deleted={}",
+                    outcome.records_tombstoned, outcome.tombstones_deleted
+                );
+            }
+            let _ = store.compact_log_to_replica_safe_point();
+        }
+        Err(error) => {
+            eprintln!("mesh continuity: compaction_failed reason={error}");
+        }
+    }
+}
+
 pub(crate) fn runtime_snapshot_chunk_bytes() -> usize {
-    std::env::var("MESH_CONTINUITY_SNAPSHOT_CHUNK_BYTES")
-        .ok()
+    snapshot_chunk_bytes(
+        &process_environment,
+        &runtime_continuity_config(super::autonomous::embedded_autonomous_config()),
+    )
+}
+
+fn snapshot_chunk_bytes(
+    env: EnvironmentLookup<'_>,
+    config: &super::autonomous::RuntimeContinuityConfig,
+) -> usize {
+    env("MESH_CONTINUITY_SNAPSHOT_CHUNK_BYTES")
         .and_then(|value| value.parse::<usize>().ok())
         // The bounds the manifest's `snapshot_chunk_bytes` has: a chunk must
         // fit in one transport frame.
         .filter(|value| (128..16 * 1024 * 1024).contains(value))
-        .unwrap_or_else(|| {
-            runtime_continuity_config()
-                .snapshot_chunk_bytes
-                .try_into()
-                .unwrap_or(usize::MAX)
-        })
+        .unwrap_or_else(|| config.snapshot_chunk_bytes.try_into().unwrap_or(usize::MAX))
 }
 
 pub(crate) fn degraded_durability_enabled() -> bool {
-    std::env::var("MESH_CONTINUITY_DURABILITY")
-        .ok()
+    durability_degraded(
+        &process_environment,
+        &runtime_continuity_config(super::autonomous::embedded_autonomous_config()),
+    )
+}
+
+fn durability_degraded(
+    env: EnvironmentLookup<'_>,
+    config: &super::autonomous::RuntimeContinuityConfig,
+) -> bool {
+    env("MESH_CONTINUITY_DURABILITY")
         .map(|value| value.trim().eq_ignore_ascii_case("degraded"))
-        .unwrap_or_else(|| !runtime_continuity_config().strict_durability)
+        .unwrap_or(!config.strict_durability)
 }
 
 pub(crate) fn continuity_node_safety(
@@ -1478,15 +1518,26 @@ pub(crate) fn continuity_node_safety(
     if node_id.is_empty() {
         return Err("continuity_safety_node_missing".to_string());
     }
-    if let Some(store) = configured_continuity_store() {
-        return store.node_safety(node_id, live_nodes);
+    match configured_continuity_store() {
+        Some(store) => store.node_safety(node_id, live_nodes),
+        None => Ok(registry_node_safety(
+            super::continuity::continuity_registry(),
+            node_id,
+            live_nodes,
+        )),
     }
+}
 
-    // Manual/non-durable mode retains the same conservative safety contract
-    // using its single-replica in-memory record shape. Arbitrary replica sets
-    // require the configured durable store and fail closed here when absent.
+/// Manual/non-durable mode retains the same conservative safety contract
+/// using its single-replica in-memory record shape. Arbitrary replica sets
+/// require the configured durable store.
+fn registry_node_safety(
+    registry: &super::continuity::ContinuityRegistry,
+    node_id: &str,
+    live_nodes: &BTreeSet<String>,
+) -> ContinuityNodeSafety {
     let mut safety = ContinuityNodeSafety::default();
-    for record in super::continuity::continuity_registry()
+    for record in registry
         .snapshot()
         .records
         .into_iter()
@@ -1509,7 +1560,7 @@ pub(crate) fn continuity_node_safety(
             safety.only_active_copy |= live_copies <= 1;
         }
     }
-    Ok(safety)
+    safety
 }
 
 pub(crate) fn persist_runtime_response(operation_key: &str, response: &[u8]) -> Result<(), String> {
@@ -1520,49 +1571,27 @@ pub(crate) fn persist_runtime_response(operation_key: &str, response: &[u8]) -> 
         .lock()
         .unwrap()
         .insert(operation_key, response);
-    let Some(store) = configured_continuity_store() else {
-        return Ok(());
-    };
-    store.update_response(operation_key, response)
+    configured_continuity_store().map_or(Ok(()), |store| {
+        store.update_response(operation_key, response)
+    })
 }
 
 pub(crate) fn replay_runtime_response(operation_key: &str) -> Result<Option<Vec<u8>>, String> {
-    if let Some(response) = response_replay_cache()
+    let cached = response_replay_cache()
         .lock()
         .unwrap()
         .responses
         .get(operation_key)
-        .cloned()
-    {
-        return Ok(Some(response));
+        .cloned();
+    match (cached, configured_continuity_store()) {
+        (Some(response), _) => Ok(Some(response)),
+        (None, Some(store)) => store.replay_response(operation_key),
+        (None, None) => Ok(None),
     }
-    let Some(store) = configured_continuity_store() else {
-        return Ok(None);
-    };
-    let response = store
-        .get(operation_key)?
-        .filter(|record| record.phase == StoredContinuityPhase::Completed)
-        .map(|record| record.response_body)
-        .filter(|response| !response.is_empty());
-    if let Some(response) = &response {
-        response_replay_cache()
-            .lock()
-            .unwrap()
-            .insert(operation_key, response);
-    }
-    Ok(response)
 }
 
 pub(crate) fn load_runtime_records() -> Result<Vec<Vec<u8>>, String> {
-    let Some(store) = configured_continuity_store() else {
-        return Ok(Vec::new());
-    };
-    Ok(store
-        .all_records()?
-        .into_iter()
-        .map(|record| record.runtime_record)
-        .filter(|encoded| !encoded.is_empty())
-        .collect())
+    configured_continuity_store().map_or(Ok(Vec::new()), |store| store.runtime_records())
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1652,71 +1681,108 @@ pub fn prove_interrupted_snapshot_resume() -> Result<SnapshotResumeProof, String
     result
 }
 
-fn stored_runtime_record(
-    store: &SqliteContinuityStore,
-    record: &super::continuity::ContinuityRecord,
-) -> Result<StoredContinuityRecord, String> {
-    let now = SystemTimeMillis::now();
-    let phase = match record.phase {
-        super::continuity::ContinuityPhase::Submitted => StoredContinuityPhase::Started,
-        super::continuity::ContinuityPhase::Completed => StoredContinuityPhase::Completed,
-        super::continuity::ContinuityPhase::Rejected => StoredContinuityPhase::Failed,
-    };
-    let terminal = (!phase.is_active()).then_some(now);
-    let runtime_record = super::continuity::encode_record_payload(record)
-        .map_err(|error| format!("durable_store_encode_failed:{error}"))?;
-    let existing = store
-        .get(&record.request_key)
-        .map_err(|error| format!("durable_store_read_failed:{error}"))?;
-    let cached_response = response_replay_cache()
-        .lock()
-        .unwrap()
-        .responses
-        .get(&record.request_key)
-        .cloned();
-    Ok(StoredContinuityRecord {
-        operation_key: record.request_key.clone(),
-        request_hash: record.payload_hash.clone(),
-        request_body: record.request_payload().to_vec(),
-        runtime_record,
-        owner_node: record.owner_node.clone(),
-        ownership_generation: record.promotion_epoch,
-        attempts: vec![record.attempt_id.clone()],
-        phase,
-        replica_set: record.acknowledged_replica_nodes().to_vec(),
-        created_at_millis: existing
-            .as_ref()
-            .map_or(now, |stored| stored.created_at_millis),
-        updated_at_millis: now,
-        terminal_at_millis: terminal,
-        expires_at_millis: terminal
-            .map(|time| time.saturating_add(runtime_continuity_config().terminal_retention_millis)),
-        response_metadata: existing.as_ref().map_or_else(
-            || {
+impl SqliteContinuityStore {
+    /// A completed record's stored response, now also in the replay cache.
+    fn replay_response(&self, operation_key: &str) -> Result<Option<Vec<u8>>, String> {
+        let response = self
+            .get(operation_key)?
+            .filter(|record| record.phase == StoredContinuityPhase::Completed)
+            .map(|record| record.response_body)
+            .filter(|response| !response.is_empty());
+        if let Some(response) = &response {
+            response_replay_cache()
+                .lock()
+                .unwrap()
+                .insert(operation_key, response);
+        }
+        Ok(response)
+    }
+
+    /// The versioned runtime records that rehydrate in-flight state.
+    fn runtime_records(&self) -> Result<Vec<Vec<u8>>, String> {
+        Ok(self
+            .all_records()?
+            .into_iter()
+            .map(|record| record.runtime_record)
+            .filter(|encoded| !encoded.is_empty())
+            .collect())
+    }
+
+    fn stored_runtime_record(
+        &self,
+        record: &super::continuity::ContinuityRecord,
+    ) -> Result<StoredContinuityRecord, String> {
+        let now = SystemTimeMillis::now();
+        let phase = match record.phase {
+            super::continuity::ContinuityPhase::Submitted => StoredContinuityPhase::Started,
+            super::continuity::ContinuityPhase::Completed => StoredContinuityPhase::Completed,
+            super::continuity::ContinuityPhase::Rejected => StoredContinuityPhase::Failed,
+        };
+        let terminal = (!phase.is_active()).then_some(now);
+        let runtime_record = super::continuity::encode_record_payload(record)
+            .map_err(|error| format!("durable_store_encode_failed:{error}"))?;
+        let existing = self
+            .get(&record.request_key)
+            .map_err(|error| format!("durable_store_read_failed:{error}"))?;
+        let cached_response = response_replay_cache()
+            .lock()
+            .unwrap()
+            .responses
+            .get(&record.request_key)
+            .cloned();
+        let (response_metadata, response_body) = match existing.as_ref() {
+            Some(stored) => (
+                stored.response_metadata.clone(),
+                stored.response_body.clone(),
+            ),
+            None => (
                 cached_response
                     .as_ref()
                     .map(|_| vec![("replayable".to_string(), "true".to_string())])
-                    .unwrap_or_default()
-            },
-            |stored| stored.response_metadata.clone(),
-        ),
-        response_body: existing.as_ref().map_or_else(
-            || cached_response.unwrap_or_default(),
-            |stored| stored.response_body.clone(),
-        ),
-        control_term: record.promotion_epoch,
-        schema_version: SCHEMA_VERSION,
-        version: record.record_version,
-    })
+                    .unwrap_or_default(),
+                cached_response.unwrap_or_default(),
+            ),
+        };
+        Ok(StoredContinuityRecord {
+            operation_key: record.request_key.clone(),
+            request_hash: record.payload_hash.clone(),
+            request_body: record.request_payload().to_vec(),
+            runtime_record,
+            owner_node: record.owner_node.clone(),
+            ownership_generation: record.promotion_epoch,
+            attempts: vec![record.attempt_id.clone()],
+            phase,
+            replica_set: record.acknowledged_replica_nodes().to_vec(),
+            created_at_millis: existing
+                .as_ref()
+                .map_or(now, |stored| stored.created_at_millis),
+            updated_at_millis: now,
+            terminal_at_millis: terminal,
+            expires_at_millis: terminal.map(|time| {
+                time.saturating_add(
+                    runtime_continuity_config(super::autonomous::embedded_autonomous_config())
+                        .terminal_retention_millis,
+                )
+            }),
+            response_metadata,
+            response_body,
+            control_term: record.promotion_epoch,
+            schema_version: SCHEMA_VERSION,
+            version: record.record_version,
+        })
+    }
 }
 
-fn durable_writer(
-    store: &Arc<SqliteContinuityStore>,
-) -> &'static crossbeam_channel::Sender<DurableWrite> {
-    DURABLE_WRITER.get_or_init(|| {
+/// Writes a store's records in group commits: one transaction for every
+/// write that arrives within a short window, from one writer thread.
+struct DurableWriter {
+    sender: crossbeam_channel::Sender<DurableWrite>,
+}
+
+impl DurableWriter {
+    fn start(store: Arc<SqliteContinuityStore>) -> Self {
         let (sender, receiver) =
             crossbeam_channel::bounded::<DurableWrite>(DURABLE_WRITE_QUEUE_ITEMS);
-        let store = Arc::clone(store);
         std::thread::Builder::new()
             .name("mesh-continuity-group-commit".to_string())
             .spawn(move || {
@@ -1725,22 +1791,44 @@ fn durable_writer(
                     writes.push(first);
                     let deadline = Instant::now() + DURABLE_WRITE_BATCH_WINDOW;
                     while writes.len() < DURABLE_WRITE_BATCH_ITEMS {
-                        let Some(remaining) = deadline.checked_duration_since(Instant::now())
-                        else {
-                            break;
-                        };
+                        let remaining = deadline.saturating_duration_since(Instant::now());
                         match receiver.recv_timeout(remaining) {
                             Ok(write) => writes.push(write),
-                            Err(crossbeam_channel::RecvTimeoutError::Timeout) => break,
-                            Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break,
+                            Err(_) => break,
                         }
                     }
                     commit_durable_writes(&store, writes);
                 }
             })
             .expect("failed to spawn continuity group-commit thread");
-        sender
-    })
+        Self { sender }
+    }
+
+    /// Persists `record` with the next group commit and waits for it;
+    /// `operation` names the caller in errors.
+    fn persist(&self, record: StoredContinuityRecord, operation: &str) -> Result<(), String> {
+        let (reply, result) = crate::actor::cooperative_channel();
+        self.sender
+            .try_send(DurableWrite { record, reply })
+            .map_err(|error| match error {
+                crossbeam_channel::TrySendError::Full(_) => {
+                    format!("continuity_{operation}_group_commit_queue_full")
+                }
+                crossbeam_channel::TrySendError::Disconnected(_) => {
+                    format!("continuity_{operation}_group_commit_unavailable")
+                }
+            })?;
+        crate::actor::cooperative_recv_timeout(&result, Duration::from_secs(4)).map_err(
+            |error| match error {
+                mpsc::RecvTimeoutError::Timeout => {
+                    format!("continuity_{operation}_group_commit_timeout")
+                }
+                mpsc::RecvTimeoutError::Disconnected => {
+                    format!("continuity_{operation}_group_commit_unavailable")
+                }
+            },
+        )?
+    }
 }
 
 fn commit_durable_writes(store: &SqliteContinuityStore, writes: Vec<DurableWrite>) {
@@ -1752,10 +1840,7 @@ fn commit_durable_writes(store: &SqliteContinuityStore, writes: Vec<DurableWrite
             }
         }
         Err(error) if writes.len() == 1 => {
-            let Some(write) = writes.into_iter().next() else {
-                return;
-            };
-            let _ = write.reply.send(Err(error));
+            let _ = writes[0].reply.send(Err(error));
         }
         Err(_) => {
             // A stale or fenced record must not roll back unrelated writes
@@ -1768,32 +1853,18 @@ fn commit_durable_writes(store: &SqliteContinuityStore, writes: Vec<DurableWrite
     }
 }
 
-fn persist_with_group_commit(
+/// Persists `record` through `store`'s group commit.
+fn persist_runtime(
     store: &Arc<SqliteContinuityStore>,
-    record: StoredContinuityRecord,
+    writer: &DurableWriter,
+    record: &super::continuity::ContinuityRecord,
     operation: &str,
 ) -> Result<(), String> {
-    let (reply, result) = crate::actor::cooperative_channel();
-    durable_writer(store)
-        .try_send(DurableWrite { record, reply })
-        .map_err(|error| match error {
-            crossbeam_channel::TrySendError::Full(_) => {
-                format!("continuity_{operation}_group_commit_queue_full")
-            }
-            crossbeam_channel::TrySendError::Disconnected(_) => {
-                format!("continuity_{operation}_group_commit_unavailable")
-            }
-        })?;
-    crate::actor::cooperative_recv_timeout(&result, Duration::from_secs(4)).map_err(|error| {
-        match error {
-            mpsc::RecvTimeoutError::Timeout => {
-                format!("continuity_{operation}_group_commit_timeout")
-            }
-            mpsc::RecvTimeoutError::Disconnected => {
-                format!("continuity_{operation}_group_commit_unavailable")
-            }
-        }
-    })?
+    writer.persist(store.stored_runtime_record(record)?, operation)
+}
+
+fn configured_writer(store: &Arc<SqliteContinuityStore>) -> &'static DurableWriter {
+    DURABLE_WRITER.get_or_init(|| DurableWriter::start(Arc::clone(store)))
 }
 
 pub(crate) fn persist_replica_prepare(
@@ -1802,8 +1873,7 @@ pub(crate) fn persist_replica_prepare(
     let Some(store) = configured_continuity_store() else {
         return Ok(());
     };
-    let stored = stored_runtime_record(store, record)?;
-    persist_with_group_commit(store, stored, "prepare")
+    persist_runtime(store, configured_writer(store), record, "prepare")
 }
 
 pub(crate) fn persist_runtime_record(
@@ -1813,9 +1883,7 @@ pub(crate) fn persist_runtime_record(
     let Some(store) = configured_continuity_store() else {
         return;
     };
-    let result = stored_runtime_record(store, record)
-        .and_then(|stored| persist_with_group_commit(store, stored, "runtime"));
-    if let Err(error) = result {
+    if let Err(error) = persist_runtime(store, configured_writer(store), record, "runtime") {
         eprintln!(
             "mesh continuity: durable_store_write_failed operation={} reason={}",
             record.request_key, error
