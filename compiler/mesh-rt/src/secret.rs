@@ -3,10 +3,10 @@
 use crate::actor::heap::{GcHeader, GC_HEADER_SIZE};
 use crate::actor::{Process, ProcessId, ProcessState};
 use crate::bytes::MeshBytes;
+use crate::crypto::provider::{CryptoProvider, SystemProvider};
 use crate::gc::mesh_gc_alloc_actor;
 use crate::io::{alloc_result, MeshResult};
 use parking_lot::Mutex;
-use ring::rand::{SecureRandom, SystemRandom};
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::fmt;
@@ -231,18 +231,12 @@ pub extern "C" fn mesh_secret_map_insert(
         }
     };
     match with_current_secret_process(|process| {
-        let map = validate_handle_pointer(process, map)
-            .ok_or(SecretMapError::Resource(ResourceError::StaleHandle));
-        let value_handle = validate_handle_pointer(process, value)
-            .ok_or(SecretMapError::Resource(ResourceError::StaleHandle));
-        let (map, value_handle) = match (map, value_handle) {
-            (Ok(map), Ok(value_handle)) => (map, value_handle),
-            (_, error) => {
-                destroy_resource_for_process(process, value, Some(ResourceKind::SecretBytes));
-                return Err(error
-                    .err()
-                    .unwrap_or(SecretMapError::Resource(ResourceError::StaleHandle)));
-            }
+        let (Some(map), Some(value_handle)) = (
+            validate_handle_pointer(process, map),
+            validate_handle_pointer(process, value),
+        ) else {
+            destroy_resource_for_process(process, value, Some(ResourceKind::SecretBytes));
+            return Err(SecretMapError::Resource(ResourceError::StaleHandle));
         };
         secret_table()
             .lock()
@@ -323,18 +317,12 @@ pub extern "C" fn mesh_secret_map_merge(
     source: *mut MeshSecretHandle,
 ) -> *mut MeshResult {
     match with_current_secret_process(|process| {
-        let target_handle = validate_handle_pointer(process, target)
-            .ok_or(SecretMapError::Resource(ResourceError::StaleHandle));
-        let source_handle = validate_handle_pointer(process, source)
-            .ok_or(SecretMapError::Resource(ResourceError::StaleHandle));
-        let (target_handle, source_handle) = match (target_handle, source_handle) {
-            (Ok(target_handle), Ok(source_handle)) => (target_handle, source_handle),
-            (_, error) => {
-                destroy_resource_for_process(process, source, Some(ResourceKind::SecretMap));
-                return Err(error
-                    .err()
-                    .unwrap_or(SecretMapError::Resource(ResourceError::StaleHandle)));
-            }
+        let (Some(target_handle), Some(source_handle)) = (
+            validate_handle_pointer(process, target),
+            validate_handle_pointer(process, source),
+        ) else {
+            destroy_resource_for_process(process, source, Some(ResourceKind::SecretMap));
+            return Err(SecretMapError::Resource(ResourceError::StaleHandle));
         };
         secret_table()
             .lock()
@@ -1662,10 +1650,9 @@ fn create_random_secret_entry(
         return Err(CreateSecretError::OwnerExited);
     }
     let mut bytes = Zeroizing::new(vec![0u8; length].into_boxed_slice());
-    if SystemRandom::new().fill(&mut bytes).is_err() {
-        bytes.zeroize();
-        return Err(CreateSecretError::EntropyUnavailable);
-    }
+    SystemProvider
+        .fill_random(&mut bytes)
+        .map_err(|_| CreateSecretError::EntropyUnavailable)?;
     table
         .insert(process.pid, ResourceKind::SecretBytes, bytes)
         .map_err(|_| CreateSecretError::ResourceLimitExceeded)
