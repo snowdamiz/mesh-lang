@@ -725,8 +725,7 @@ fn commit_policy_if_needed(
     }) {
         return Ok(());
     }
-    let policy_json = serde_json::to_string(&config.policy)
-        .map_err(|_| "autonomous_policy_encode_failed".to_string())?;
+    let policy_json = serde_json::to_string(&config.policy).expect("a scaling policy encodes");
     let policy_sha256 = format!("{:x}", Sha256::digest(policy_json.as_bytes()));
     committer.commit(
         "runtime-openraft",
@@ -1105,10 +1104,8 @@ pub extern "C" fn mesh_register_autonomous_config_json(data: *const u8, len: u64
     if data.is_null() || len == 0 || len > 1024 * 1024 {
         return -1;
     }
-    let Ok(len) = usize::try_from(len) else {
-        return -1;
-    };
-    let bytes = unsafe { std::slice::from_raw_parts(data, len) };
+    // At most 1 MiB, so the length fits any usize.
+    let bytes = unsafe { std::slice::from_raw_parts(data, len as usize) };
     match register_autonomous_config_json(bytes) {
         Ok(()) => 0,
         Err(error) => {
