@@ -611,7 +611,7 @@ fn record_peer_transport_success(peer: &str) {
     }
 }
 
-fn record_peer_transport_failure(peer: &str, now: Instant) {
+pub(crate) fn record_peer_transport_failure(peer: &str, now: Instant) {
     peer_circuits()
         .lock()
         .unwrap()
