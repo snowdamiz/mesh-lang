@@ -1814,3 +1814,40 @@ end
     );
     assert_eq!(output, "tree 6\ndir root 3\n");
 }
+
+/// An impl method takes and returns a tuple as the pointer to its heap
+/// block, as every other function does: it took the tuple's fields by
+/// value, so reading its argument dereferenced an element as a pointer, and
+/// its caller read the returned fields as a pointer.
+#[test]
+fn impl_methods_pass_tuples_as_pointers() {
+    let output = compile_and_run(
+        r##"struct Bag do
+  n :: Int
+end
+
+interface Adder do
+  fn add_pair(self, p :: (Int, Int)) -> Int
+  fn split(self) -> (Int, String)
+end
+
+impl Adder for Bag do
+  fn add_pair(self, p :: (Int, Int)) -> Int do
+    let (a, b) = p
+    self.n + a + b
+  end
+
+  fn split(self) -> (Int, String) do
+    (self.n, "n#{self.n}")
+  end
+end
+
+fn main() do
+  let bag = Bag { n: 1 }
+  let (k, label) = bag.split()
+  println("#{bag.add_pair((4, 5))} #{k} #{label} #{Adder.split(bag)}")
+end
+"##,
+    );
+    assert_eq!(output, "10 1 n1 (1, n1)\n");
+}
