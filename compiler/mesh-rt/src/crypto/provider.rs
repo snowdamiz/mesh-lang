@@ -274,51 +274,42 @@ impl CryptoProvider for SystemProvider {
     }
 }
 
-#[cfg(any(test, feature = "fuzzing"))]
-enum FixedEntropy<'a> {
-    Bytes(&'a [u8]),
-    #[cfg(test)]
-    Failure,
-}
-
+/// A provider whose randomness is fixed bytes, for vectors and fuzzing, or
+/// (in tests) a source that always fails.
 #[cfg(any(test, feature = "fuzzing"))]
 pub(crate) struct FixedProvider<'a> {
-    entropy: FixedEntropy<'a>,
+    /// `None` is an entropy source that fails.
+    entropy: Option<&'a [u8]>,
 }
 
 #[cfg(any(test, feature = "fuzzing"))]
 impl<'a> FixedProvider<'a> {
     pub(crate) fn with_random(bytes: &'a [u8]) -> Self {
         Self {
-            entropy: FixedEntropy::Bytes(bytes),
+            entropy: Some(bytes),
         }
     }
 
     #[cfg(test)]
     pub(crate) fn entropy_failure() -> Self {
-        Self {
-            entropy: FixedEntropy::Failure,
-        }
+        Self { entropy: None }
     }
 }
 
 #[cfg(any(test, feature = "fuzzing"))]
 impl CryptoProvider for FixedProvider<'_> {
     fn fill_random(&self, output: &mut [u8]) -> Result<(), ProviderError> {
-        let bytes = match self.entropy {
-            FixedEntropy::Bytes(bytes) => bytes,
-            #[cfg(test)]
-            FixedEntropy::Failure => {
-                output.zeroize();
-                return Err(ProviderError::EntropyUnavailable);
+        let filled = match self.entropy {
+            None => Err(ProviderError::EntropyUnavailable),
+            Some(bytes) if output.len() > MAX_RANDOM_BYTES || output.len() > bytes.len() => {
+                Err(ProviderError::InvalidLength)
+            }
+            Some(bytes) => {
+                output.copy_from_slice(&bytes[..output.len()]);
+                Ok(())
             }
         };
-        if output.len() > MAX_RANDOM_BYTES || output.len() > bytes.len() {
-            output.zeroize();
-            return Err(ProviderError::InvalidLength);
-        }
-        output.copy_from_slice(&bytes[..output.len()]);
-        Ok(())
+        cleared(output, filled)
     }
 }
 
