@@ -486,7 +486,9 @@ fn decode_string_pairs(
     }
     let count = u32::from_le_bytes(payload[*pos..*pos + 4].try_into().unwrap()) as usize;
     *pos += 4;
-    let mut pairs = Vec::with_capacity(count);
+    // The count is what the payload claims, not what it holds: nothing is
+    // allocated for it up front.
+    let mut pairs = Vec::new();
     for index in 0..count {
         let key = decode_len_prefixed_string(payload, pos, &format!("{}_key_{index}", label))?;
         let value = decode_len_prefixed_string(payload, pos, &format!("{}_value_{index}", label))?;
@@ -2239,6 +2241,23 @@ mod tests {
     fn http_transport_rejects_malformed_request_and_response_payloads() {
         assert!(decode_http_request_payload(&[]).is_err());
         assert!(decode_http_response_payload(&[1, 2, 3]).is_err());
+    }
+
+    /// A pair count is what the payload claims, not what it holds: a count
+    /// of four billion with no pairs after it is refused, and nothing is
+    /// allocated for it.
+    #[test]
+    fn http_transport_refuses_a_pair_count_the_payload_does_not_hold() {
+        let mut payload = Vec::new();
+        for field in [b"GET".as_slice(), b"/", b""] {
+            payload.extend_from_slice(&(field.len() as u32).to_le_bytes());
+            payload.extend_from_slice(field);
+        }
+        payload.extend_from_slice(&u32::MAX.to_le_bytes());
+        assert_eq!(
+            decode_transport_request(&payload).unwrap_err(),
+            "mesh_http_transport_request_query_params_key_0_len_missing"
+        );
     }
 
     #[test]
