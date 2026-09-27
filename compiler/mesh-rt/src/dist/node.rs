@@ -90,8 +90,6 @@ pub struct NodeState {
     pub sessions: RwLock<FxHashMap<String, Arc<NodeSession>>>,
     /// Reverse map: node_id -> node name (for PID routing in Phase 65)
     pub node_id_map: RwLock<FxHashMap<u16, String>>,
-    /// Signals the listener thread to stop accepting connections
-    pub listener_shutdown: AtomicBool,
     /// Messages for processes watching a node, sent once when it disconnects.
     pub node_monitors: RwLock<
         FxHashMap<
@@ -5930,47 +5928,32 @@ pub(crate) fn execute_clustered_http_route(
 /// 3. Registers authenticated session in NodeState
 /// 4. Spawns reader + heartbeat threads for the session
 fn accept_loop(listener: TcpListener, state: &'static NodeState) {
-    // Use non-blocking mode with periodic shutdown checks.
-    listener
-        .set_nonblocking(true)
-        .expect("set_nonblocking failed on node listener");
-
-    loop {
-        if state.listener_shutdown.load(Ordering::Relaxed) {
-            break;
+    // A node listens for as long as the process runs.
+    for tcp_stream in listener.incoming() {
+        let Ok(tcp_stream) = tcp_stream else {
+            // A connection that went before it was taken, or no descriptor
+            // to take it with for now.
+            std::thread::sleep(Duration::from_millis(10));
+            continue;
+        };
+        if ACTIVE_INCOMING_HANDSHAKES
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+                (active < MAX_INCOMING_HANDSHAKES).then_some(active + 1)
+            })
+            .is_err()
+        {
+            eprintln!("mesh node: incoming connection rejected: handshake_limit_reached");
+            continue;
         }
-
-        match listener.accept() {
-            Ok((tcp_stream, _addr)) => {
-                if ACTIVE_INCOMING_HANDSHAKES
-                    .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
-                        (active < MAX_INCOMING_HANDSHAKES).then_some(active + 1)
-                    })
-                    .is_err()
-                {
-                    eprintln!("mesh node: incoming connection rejected: handshake_limit_reached");
-                    continue;
-                }
-                let spawn = std::thread::Builder::new()
-                    .name("mesh-node-handshake".to_string())
-                    .spawn(move || {
-                        let _active = IncomingHandshakeGuard;
-                        handle_accepted_connection(tcp_stream, state);
-                    });
-                if let Err(error) = spawn {
-                    ACTIVE_INCOMING_HANDSHAKES.fetch_sub(1, Ordering::AcqRel);
-                    eprintln!("mesh node: handshake worker spawn failed: {error}");
-                }
-            }
-            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                // No pending connection -- brief sleep to avoid busy-wait,
-                // then check shutdown flag again.
-                std::thread::sleep(std::time::Duration::from_millis(100));
-            }
-            Err(_e) => {
-                // Transient accept error -- continue looping.
-                std::thread::sleep(std::time::Duration::from_millis(10));
-            }
+        let spawn = std::thread::Builder::new()
+            .name("mesh-node-handshake".to_string())
+            .spawn(move || {
+                let _active = IncomingHandshakeGuard;
+                handle_accepted_connection(tcp_stream, state);
+            });
+        if let Err(error) = spawn {
+            ACTIVE_INCOMING_HANDSHAKES.fetch_sub(1, Ordering::AcqRel);
+            eprintln!("mesh node: handshake worker spawn failed: {error}");
         }
     }
 }
@@ -5987,11 +5970,7 @@ fn handle_accepted_connection(tcp_stream: TcpStream, state: &NodeState) {
         eprintln!("mesh node: incoming connection rejected: authentication_rate_limited");
         return;
     }
-    // The listener is non-blocking; the handshake blocks, within its timeout.
-    let setup = tcp_stream
-        .set_nonblocking(false)
-        .and_then(|()| set_handshake_timeouts(&tcp_stream, Some(NODE_HANDSHAKE_TIMEOUT)));
-    if let Err(error) = setup {
+    if let Err(error) = set_handshake_timeouts(&tcp_stream, Some(NODE_HANDSHAKE_TIMEOUT)) {
         eprintln!("mesh node: accepted stream setup failed: {error}");
         return;
     }
@@ -6282,7 +6261,6 @@ pub extern "C" fn mesh_node_start(
         tls_client_config,
         sessions: RwLock::new(FxHashMap::default()),
         node_id_map: RwLock::new(FxHashMap::default()),
-        listener_shutdown: AtomicBool::new(false),
         node_monitors: RwLock::new(FxHashMap::default()),
     });
 
@@ -8659,6 +8637,25 @@ mod tests {
 
     const TEST_BINDING: ChannelBinding = ChannelBinding::TEST_PLAIN_TRANSPORT;
 
+    /// A node's state, as far as the cookie handshake reads it.
+    fn handshake_state(name: &str, cookie: impl Into<String>, creation: u8) -> NodeState {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let (cert, key) = generate_ephemeral_cert();
+        NodeState {
+            name: name.to_string(),
+            host: "127.0.0.1".to_string(),
+            port: 0,
+            cookie: cookie.into(),
+            creation: AtomicU8::new(creation),
+            next_node_id: AtomicU16::new(1),
+            tls_server_config: build_node_server_config(cert, key),
+            tls_client_config: build_node_client_config(),
+            sessions: RwLock::new(FxHashMap::default()),
+            node_id_map: RwLock::new(FxHashMap::default()),
+            node_monitors: RwLock::new(FxHashMap::default()),
+        }
+    }
+
     #[test]
     fn test_compute_response_deterministic() {
         // Same inputs must produce the same output
@@ -9674,42 +9671,9 @@ mod tests {
         let cookie = "test_shared_cookie".to_string();
 
         // Build minimal NodeState for each side (only fields used by handshake).
-        let state_a = NodeState {
-            name: "alice@127.0.0.1".to_string(),
-            host: "127.0.0.1".to_string(),
-            port: 9000,
-            cookie: cookie.clone(),
-            creation: AtomicU8::new(1),
-            next_node_id: AtomicU16::new(1),
-            tls_server_config: {
-                let _ = rustls::crypto::ring::default_provider().install_default();
-                let (cert, key) = generate_ephemeral_cert();
-                build_node_server_config(cert, key)
-            },
-            tls_client_config: build_node_client_config(),
-            sessions: RwLock::new(FxHashMap::default()),
-            node_id_map: RwLock::new(FxHashMap::default()),
-            listener_shutdown: AtomicBool::new(false),
-            node_monitors: RwLock::new(FxHashMap::default()),
-        };
+        let state_a = handshake_state("alice@127.0.0.1", cookie.clone(), 1);
 
-        let state_b = NodeState {
-            name: "bob@127.0.0.1".to_string(),
-            host: "127.0.0.1".to_string(),
-            port: 9001,
-            cookie: cookie.clone(),
-            creation: AtomicU8::new(2),
-            next_node_id: AtomicU16::new(1),
-            tls_server_config: {
-                let (cert, key) = generate_ephemeral_cert();
-                build_node_server_config(cert, key)
-            },
-            tls_client_config: build_node_client_config(),
-            sessions: RwLock::new(FxHashMap::default()),
-            node_id_map: RwLock::new(FxHashMap::default()),
-            listener_shutdown: AtomicBool::new(false),
-            node_monitors: RwLock::new(FxHashMap::default()),
-        };
+        let state_b = handshake_state("bob@127.0.0.1", cookie.clone(), 2);
 
         // Run initiator and acceptor on separate threads.
         let handle_a = std::thread::spawn(move || {
@@ -9837,42 +9801,9 @@ mod tests {
             .set_read_timeout(Some(Duration::from_secs(2)))
             .unwrap();
 
-        let state_a = NodeState {
-            name: "alice@127.0.0.1".to_string(),
-            host: "127.0.0.1".to_string(),
-            port: 9000,
-            cookie: "correct_cookie".to_string(),
-            creation: AtomicU8::new(1),
-            next_node_id: AtomicU16::new(1),
-            tls_server_config: {
-                let _ = rustls::crypto::ring::default_provider().install_default();
-                let (cert, key) = generate_ephemeral_cert();
-                build_node_server_config(cert, key)
-            },
-            tls_client_config: build_node_client_config(),
-            sessions: RwLock::new(FxHashMap::default()),
-            node_id_map: RwLock::new(FxHashMap::default()),
-            listener_shutdown: AtomicBool::new(false),
-            node_monitors: RwLock::new(FxHashMap::default()),
-        };
+        let state_a = handshake_state("alice@127.0.0.1", "correct_cookie".to_string(), 1);
 
-        let state_b = NodeState {
-            name: "bob@127.0.0.1".to_string(),
-            host: "127.0.0.1".to_string(),
-            port: 9001,
-            cookie: "wrong_cookie".to_string(),
-            creation: AtomicU8::new(2),
-            next_node_id: AtomicU16::new(1),
-            tls_server_config: {
-                let (cert, key) = generate_ephemeral_cert();
-                build_node_server_config(cert, key)
-            },
-            tls_client_config: build_node_client_config(),
-            sessions: RwLock::new(FxHashMap::default()),
-            node_id_map: RwLock::new(FxHashMap::default()),
-            listener_shutdown: AtomicBool::new(false),
-            node_monitors: RwLock::new(FxHashMap::default()),
-        };
+        let state_b = handshake_state("bob@127.0.0.1", "wrong_cookie".to_string(), 2);
 
         let handle_a = std::thread::spawn(move || {
             let mut s = stream_a;
@@ -9921,42 +9852,9 @@ mod tests {
             .set_read_timeout(Some(Duration::from_secs(2)))
             .unwrap();
 
-        let state_a = NodeState {
-            name: "alice@127.0.0.1".to_string(),
-            host: "127.0.0.1".to_string(),
-            port: 9000,
-            cookie: "shared_cookie".to_string(),
-            creation: AtomicU8::new(1),
-            next_node_id: AtomicU16::new(1),
-            tls_server_config: {
-                let _ = rustls::crypto::ring::default_provider().install_default();
-                let (cert, key) = generate_ephemeral_cert();
-                build_node_server_config(cert, key)
-            },
-            tls_client_config: build_node_client_config(),
-            sessions: RwLock::new(FxHashMap::default()),
-            node_id_map: RwLock::new(FxHashMap::default()),
-            listener_shutdown: AtomicBool::new(false),
-            node_monitors: RwLock::new(FxHashMap::default()),
-        };
+        let state_a = handshake_state("alice@127.0.0.1", "shared_cookie".to_string(), 1);
 
-        let state_b = NodeState {
-            name: "broken@[::1".to_string(),
-            host: "127.0.0.1".to_string(),
-            port: 9001,
-            cookie: "shared_cookie".to_string(),
-            creation: AtomicU8::new(2),
-            next_node_id: AtomicU16::new(1),
-            tls_server_config: {
-                let (cert, key) = generate_ephemeral_cert();
-                build_node_server_config(cert, key)
-            },
-            tls_client_config: build_node_client_config(),
-            sessions: RwLock::new(FxHashMap::default()),
-            node_id_map: RwLock::new(FxHashMap::default()),
-            listener_shutdown: AtomicBool::new(false),
-            node_monitors: RwLock::new(FxHashMap::default()),
-        };
+        let state_b = handshake_state("broken@[::1", "shared_cookie".to_string(), 2);
 
         let handle_a = std::thread::spawn(move || {
             let mut s = stream_a;
@@ -9992,10 +9890,6 @@ mod tests {
         // Create two independent TLS configurations (simulating two nodes).
         let (cert_a, key_a) = generate_ephemeral_cert();
         let server_config_a = build_node_server_config(cert_a, key_a);
-        let client_config_a = build_node_client_config();
-
-        let (cert_b, key_b) = generate_ephemeral_cert();
-        let _server_config_b = build_node_server_config(cert_b, key_b);
         let client_config_b = build_node_client_config();
 
         let cookie = "lifecycle_test_cookie".to_string();
@@ -10016,20 +9910,7 @@ mod tests {
             let server_conn = rustls::ServerConnection::new(server_cfg).unwrap();
             let mut tls_stream = StreamOwned::new(server_conn, tcp_stream);
 
-            let state = NodeState {
-                name: "server@127.0.0.1".to_string(),
-                host: "127.0.0.1".to_string(),
-                port,
-                cookie: cookie_a,
-                creation: AtomicU8::new(1),
-                next_node_id: AtomicU16::new(1),
-                tls_server_config: server_config_a,
-                tls_client_config: client_config_a,
-                sessions: RwLock::new(FxHashMap::default()),
-                node_id_map: RwLock::new(FxHashMap::default()),
-                listener_shutdown: AtomicBool::new(false),
-                node_monitors: RwLock::new(FxHashMap::default()),
-            };
+            let state = handshake_state("server@127.0.0.1", cookie_a, 1);
 
             perform_handshake(&mut tls_stream, &state, false)
         });
@@ -10041,23 +9922,7 @@ mod tests {
             rustls::ClientConnection::new(Arc::clone(&client_config_b), server_name).unwrap();
         let mut tls_stream = StreamOwned::new(client_conn, tcp_stream);
 
-        let client_state = NodeState {
-            name: "client@127.0.0.1".to_string(),
-            host: "127.0.0.1".to_string(),
-            port: 0,
-            cookie: cookie_b,
-            creation: AtomicU8::new(3),
-            next_node_id: AtomicU16::new(1),
-            tls_server_config: {
-                let (cert, key) = generate_ephemeral_cert();
-                build_node_server_config(cert, key)
-            },
-            tls_client_config: client_config_b,
-            sessions: RwLock::new(FxHashMap::default()),
-            node_id_map: RwLock::new(FxHashMap::default()),
-            listener_shutdown: AtomicBool::new(false),
-            node_monitors: RwLock::new(FxHashMap::default()),
-        };
+        let client_state = handshake_state("client@127.0.0.1", cookie_b, 3);
 
         let client_result = perform_handshake(&mut tls_stream, &client_state, true);
         let server_result = server_handle.join().unwrap();

@@ -993,9 +993,7 @@ fn controller_loop(mut controller: AutonomousController) {
     let interval = Duration::from_millis(controller.config.reconcile_interval_millis);
     let mut was_leader = false;
     loop {
-        let Some(state) = super::node::node_state()
-            .filter(|state| !state.listener_shutdown.load(Ordering::Acquire))
-        else {
+        let Some(state) = super::node::node_state() else {
             break;
         };
         let Some(consensus) = super::consensus::consensus_runtime_snapshot() else {

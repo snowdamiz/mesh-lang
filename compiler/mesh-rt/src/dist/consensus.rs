@@ -746,9 +746,7 @@ pub fn start_mesh_consensus_from_env(node_name: &str) -> Result<bool, String> {
                         );
                     }
                 }
-                while super::node::node_state()
-                    .is_some_and(|state| !state.listener_shutdown.load(Ordering::Acquire))
-                {
+                while super::node::node_state().is_some() {
                     tokio::time::sleep(Duration::from_millis(250)).await;
                 }
                 if let Err(error) = node.raft.shutdown().await {
