@@ -276,6 +276,10 @@ exit 0
         }
     }
     let evidence = tempfile::tempdir().unwrap();
+    // "unwritable-summary" leaves no room for the summary.
+    if failures.contains(&"unwritable-summary") {
+        std::fs::create_dir(evidence.path().join("summary.json")).unwrap();
+    }
     let path = if failures.contains(&"no-openssl") {
         fake.path().display().to_string()
     } else {
@@ -299,7 +303,7 @@ exit 0
     let summary = evidence
         .path()
         .join("summary.json")
-        .exists()
+        .is_file()
         .then(|| summary(evidence.path()));
     (
         output,
@@ -405,4 +409,19 @@ fn the_docker_proof_needs_its_certificates_before_anything_else() {
             "{failure}: Docker before the certificates: {calls}"
         );
     }
+}
+
+#[test]
+fn a_summary_that_cannot_be_written_fails_the_proof() {
+    let (output, summary, calls) =
+        docker_proof_with_failures(&["image inspect", "unwritable-summary"], &["--no-build"]);
+    let text = command_output_text(&output);
+    assert!(!output.status.success(), "{text}");
+    assert!(
+        text.contains("proof_evidence_write_failed:summary.json:"),
+        "{text}"
+    );
+    assert!(summary.is_none(), "{summary:?}");
+    // The topology was cleaned up before the summary.
+    assert!(calls.contains(" down --volumes"), "{calls}");
 }
