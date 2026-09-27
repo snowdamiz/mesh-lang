@@ -23,7 +23,9 @@
 //! - `mesh_repo_transaction`: Wraps callback in checkout/begin/commit-or-rollback/checkin
 
 use super::quote_name;
-use crate::collections::list::{mesh_list_append, mesh_list_get, mesh_list_length, mesh_list_new};
+use crate::collections::list::{
+    mesh_list_append, mesh_list_from_array, mesh_list_get, mesh_list_length, mesh_list_new,
+};
 use crate::collections::map::{
     mesh_map_entry_key, mesh_map_entry_value, mesh_map_get, mesh_map_has_key, mesh_map_put,
     mesh_map_size,
@@ -983,115 +985,55 @@ unsafe fn preload_direct(
         }
     };
 
-    // 1. Collect unique parent values for the IN clause
-    let parent_key_mesh = mesh_str(&parent_key) as *mut u8;
-    let mut id_set: Vec<String> = Vec::new();
+    // 1. The distinct parent keys. An empty one is NULL (or the row lacks
+    // the column), which matches no row: sent along, "" is not even a valid
+    // integer or uuid to PostgreSQL.
+    let parent_key_mesh = mesh_str(&parent_key) as u64;
+    let key_of = |row: *mut u8| match mesh_map_get(row, parent_key_mesh) {
+        0 => "",
+        key => text_of(key as *mut u8),
+    };
     let mut seen = HashSet::new();
-    for i in 0..row_count {
-        let row = mesh_list_get(rows, i) as *mut u8;
-        let val = mesh_map_get(row, parent_key_mesh as u64);
-        if val != 0 {
-            let s = text_of(val as *mut u8).to_string();
-            if seen.insert(s.clone()) {
-                id_set.push(s);
-            }
+    let ids: Vec<String> = (0..row_count)
+        .map(|i| key_of(mesh_list_get(rows, i) as *mut u8))
+        .filter(|key| !key.is_empty() && seen.insert(*key))
+        .map(str::to_string)
+        .collect();
+
+    // 2. The target rows those keys match, grouped by their key
+    let mut grouped: HashMap<&str, Vec<u64>> = HashMap::new();
+    if !ids.is_empty() {
+        let (sql, params) = build_preload_sql(&meta.target_table, &target_match_key, &ids);
+        let result = run_query(pool, &sql, &params);
+        let r = &*(result as *const MeshResult);
+        if r.tag != 0 {
+            return Err(result);
+        }
+        let match_key_mesh = mesh_str(&target_match_key) as u64;
+        for i in 0..mesh_list_length(r.value) {
+            let row = mesh_list_get(r.value, i);
+            let key = text_of(mesh_map_get(row as *mut u8, match_key_mesh) as *mut u8);
+            grouped.entry(key).or_default().push(row);
         }
     }
 
-    if id_set.is_empty() {
-        // No IDs to query -- attach empty associations and return
-        return Ok(attach_empty_association(
-            rows, row_count, assoc_name, &meta.kind,
-        ));
-    }
-
-    // 2. Build and execute the IN query
-    let (sql, params) = build_preload_sql(&meta.target_table, &target_match_key, &id_set);
-
-    let result = run_query(pool, &sql, &params);
-
-    let r = &*(result as *const MeshResult);
-    if r.tag != 0 {
-        return Err(result);
-    }
-    let result_rows = r.value;
-
-    // 3. Group results by the match key
-    let match_key_mesh = mesh_str(&target_match_key) as *mut u8;
-    let result_count = mesh_list_length(result_rows);
-    let mut grouped: HashMap<String, Vec<*mut u8>> = HashMap::new();
-    for i in 0..result_count {
-        let row = mesh_list_get(result_rows, i) as *mut u8;
-        let key_val = mesh_map_get(row, match_key_mesh as u64);
-        if key_val != 0 {
-            let key_str = text_of(key_val as *mut u8).to_string();
-            grouped.entry(key_str).or_default().push(row);
-        }
-    }
-
-    // 4. Attach results to each parent row under the association key
-    let assoc_key_mesh = mesh_str(assoc_name) as *mut u8;
+    // 3. Each parent row with its association under the association's name:
+    // has_many a list of rows, has_one and belongs_to a row or null (0).
+    let assoc_key_mesh = mesh_str(assoc_name) as u64;
+    let many = meta.kind == "has_many";
     let mut enriched = mesh_list_new();
     for i in 0..row_count {
         let row = mesh_list_get(rows, i) as *mut u8;
-        let parent_val = mesh_map_get(row, parent_key_mesh as u64);
-        let parent_str = if parent_val != 0 {
-            text_of(parent_val as *mut u8).to_string()
-        } else {
-            String::new()
+        let matches = grouped.get(key_of(row)).map_or(&[][..], Vec::as_slice);
+        let assoc_data = match many {
+            true => mesh_list_from_array(matches.as_ptr(), matches.len() as i64) as u64,
+            false => matches.first().copied().unwrap_or(0),
         };
-
-        let assoc_data: u64 = match meta.kind.as_str() {
-            "has_many" => {
-                // Build a List of associated rows
-                let mut list = mesh_list_new();
-                if let Some(matches) = grouped.get(&parent_str) {
-                    for &m in matches {
-                        list = mesh_list_append(list, m as u64);
-                    }
-                }
-                list as u64
-            }
-            "has_one" | "belongs_to" => {
-                // Single associated row or null pointer (0)
-                grouped
-                    .get(&parent_str)
-                    .and_then(|v| v.first())
-                    .map(|&m| m as u64)
-                    .unwrap_or(0)
-            }
-            _ => 0,
-        };
-
-        // Add association to the row's map (creates new map via copy-on-write)
-        let new_row = mesh_map_put(row, assoc_key_mesh as u64, assoc_data);
+        let new_row = mesh_map_put(row, assoc_key_mesh, assoc_data);
         enriched = mesh_list_append(enriched, new_row as u64);
     }
 
     Ok(enriched)
-}
-
-/// Attach empty associations (empty List for has_many, null for has_one/belongs_to)
-/// to all rows when there are no parent IDs to query.
-unsafe fn attach_empty_association(
-    rows: *mut u8,
-    row_count: i64,
-    assoc_name: &str,
-    kind: &str,
-) -> *mut u8 {
-    let assoc_key_mesh = mesh_str(assoc_name) as *mut u8;
-    let mut enriched = mesh_list_new();
-    for i in 0..row_count {
-        let row = mesh_list_get(rows, i) as *mut u8;
-        let empty_val: u64 = if kind == "has_many" {
-            mesh_list_new() as u64
-        } else {
-            0 // null for has_one/belongs_to with no match
-        };
-        let new_row = mesh_map_put(row, assoc_key_mesh as u64, empty_val);
-        enriched = mesh_list_append(enriched, new_row as u64);
-    }
-    enriched
 }
 
 /// Preload `path` onto `rows`: one association (`posts`), or a dotted path
@@ -3224,5 +3166,86 @@ mod tests {
             params,
             vec!["alice@example.com", "secret", "bf", "12", "Alice"]
         );
+    }
+
+    // ── Against PostgreSQL ────────────────────────────────────────────
+
+    /// A one-connection pool on MESH_TEST_DATABASE_URL whose session works
+    /// in a fresh schema of its own, set up by `setup`'s statements.
+    fn test_pool(schema: &str, setup: &[&str]) -> u64 {
+        crate::gc::mesh_rt_init();
+        let url = std::env::var("MESH_TEST_DATABASE_URL").expect("MESH_TEST_DATABASE_URL is set");
+        let open = crate::db::pool::mesh_pool_open(mesh_str(&url), 1, 1, 5000);
+        let pool = unsafe { unbox_u64_payload(ok(open)) };
+        let schema_sql = [
+            format!("DROP SCHEMA IF EXISTS {schema} CASCADE"),
+            format!("CREATE SCHEMA {schema}"),
+            format!("SET search_path TO {schema}"),
+        ];
+        for sql in schema_sql
+            .iter()
+            .map(String::as_str)
+            .chain(setup.iter().copied())
+        {
+            ok(mesh_pool_execute(pool, mesh_str(sql), mesh_list_new()));
+        }
+        pool
+    }
+
+    /// The value of an `Ok` result.
+    fn ok(result: *mut u8) -> *mut u8 {
+        let r = unsafe { &*(result as *const MeshResult) };
+        assert_eq!(r.tag, 0, "{}", unsafe { text_of(r.value) });
+        r.value
+    }
+
+    /// `column` of each row in a list of rows.
+    fn column_of(rows: *mut u8, column: &str) -> Vec<String> {
+        (0..mesh_list_length(rows))
+            .map(|i| {
+                let row = mesh_list_get(rows, i) as *mut u8;
+                unsafe { text_of(mesh_map_get(row, mesh_str(column) as u64) as *mut u8) }
+                    .to_string()
+            })
+            .collect()
+    }
+
+    /// A NULL foreign key (read as "") matches no row: it was sent among
+    /// the keys to look up, and PostgreSQL refused "" as an integer.
+    #[test]
+    #[ignore = "requires MESH_TEST_DATABASE_URL (the coverage run starts a database)"]
+    fn a_null_foreign_key_preloads_nothing() {
+        let pool = test_pool(
+            "mesh_repo_unit_preload",
+            &[
+                "CREATE TABLE authors (id INT PRIMARY KEY, name TEXT)",
+                "CREATE TABLE posts (id INT PRIMARY KEY, author_id INT REFERENCES authors)",
+                "INSERT INTO authors VALUES (1, 'Ada')",
+                "INSERT INTO posts VALUES (1, 1), (2, NULL)",
+            ],
+        );
+        use crate::db::query::{mesh_query_from, mesh_query_order_by};
+        let posts = mesh_query_order_by(mesh_query_from(atom("posts")), atom("id"), atom("asc"));
+        let rows = ok(mesh_repo_all(pool, posts));
+        let meta = string_list(&["belongs_to:author:Author:author_id:authors:id"]);
+        let preloaded = ok(mesh_repo_preload(
+            pool,
+            rows,
+            string_list(&["author"]),
+            meta,
+        ));
+        assert_eq!(
+            column_of(preloaded, "author"),
+            [r#"{"id":"1","name":"Ada"}"#, "null"]
+        );
+
+        // A has_many keyed on a NULL column finds nothing for that row.
+        let meta = string_list(&["has_many:peers:Post:author_id:posts:author_id"]);
+        let peers = ok(mesh_repo_preload(pool, rows, string_list(&["peers"]), meta));
+        assert_eq!(
+            column_of(peers, "peers"),
+            [r#"[{"author_id":"1","id":"1"}]"#, "[]"]
+        );
+        crate::db::pool::mesh_pool_close(pool);
     }
 }
