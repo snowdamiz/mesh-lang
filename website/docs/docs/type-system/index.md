@@ -672,6 +672,12 @@ end deriving(Eq, Ord)
 
 `deriving(Json)` validates every stored field. Directly supported values include `Int`, `Float`, `Bool`, `String`, generic parameters, tuples (as JSON arrays), `Option` (`None` is `null`), `List`, `Map<String, V>`, and values of types that derive `Json` — including the type itself and types declared later in the module. A generic type decodes at the instantiation the context asks for: `let r :: Result<Box<Int>, String> = Box.from_json(text)`. Decoding an `Int` field accepts only a whole number in `Int` range.
 
+A document `from_json` cannot decode is an `Err` naming where it failed, as a
+path from the top: `$.home.zip: expected String`, where `.name` is a field or
+a map key, `[1]` a list or tuple index, and a variant's values are under
+`.fields`. A field absent from its object is `missing field: name` (with the
+path of the object holding it, when that is not the top).
+
 `deriving(Row)` accepts `Int`, `Float`, `Bool`, `String`, and `Option` of those types. `deriving(Schema)` is for structs and emits metadata used by the database/query APIs, including table, fields, primary key, relationships, field types, and column accessors.
 
 ## Associated Types

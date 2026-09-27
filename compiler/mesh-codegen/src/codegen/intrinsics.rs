@@ -2368,6 +2368,12 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
         Some(inkwell::module::Linkage::External),
     );
+    // mesh_json_error_at(decoded: ptr, step: ptr) -> ptr (MeshResult)
+    module.add_function(
+        "mesh_json_error_at",
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
 
     // ── Result helpers (Phase 49: from_json Result propagation) ─────────
     // mesh_alloc_result(tag: i64, value: ptr) -> ptr

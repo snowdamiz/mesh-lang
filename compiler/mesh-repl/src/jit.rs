@@ -1129,6 +1129,10 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             mesh_rt::json::mesh_json_to_map as *const (),
         ),
         (
+            "mesh_json_error_at",
+            mesh_rt::json::mesh_json_error_at as *const (),
+        ),
+        (
             "mesh_json_value_as_bool",
             mesh_rt::json::mesh_json_value_as_bool as *const (),
         ),

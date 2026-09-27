@@ -6471,6 +6471,18 @@ impl<'a> Lowerer<'a> {
         Self::call_named(f, params, args, MirType::Ptr)
     }
 
+    /// `decoded`, a decoding's Result, whose error names `step` (`.field`,
+    /// `[index]`) at the front of the path it failed at.
+    fn json_error_at(decoded: MirExpr, step: &str) -> MirExpr {
+        Self::json_call(
+            "mesh_json_error_at",
+            vec![
+                decoded,
+                MirExpr::StringLit(step.to_string(), MirType::String),
+            ],
+        )
+    }
+
     /// A name for a binding in generated Json code, unique in its function.
     fn json_fresh(&mut self, base: &str) -> String {
         self.json_counter += 1;
@@ -6885,7 +6897,8 @@ impl<'a> Lowerer<'a> {
                 "mesh_result_unwrap",
                 vec![MirExpr::Var(got.clone(), MirType::Ptr)],
             );
-            let decoded = self.json_decode_expr(unwrapped, elem);
+            let decoded =
+                Self::json_error_at(self.json_decode_expr(unwrapped, elem), &format!("[{i}]"));
             let bound = self.json_bind(&format!("{prefix}{i}"), &dec, elem, body);
             body = Self::json_then(&got, item, Self::json_then(&dec, decoded, bound));
         }
@@ -6960,7 +6973,8 @@ impl<'a> Lowerer<'a> {
                 "mesh_result_unwrap",
                 vec![MirExpr::Var(got.clone(), MirType::Ptr)],
             );
-            let decoded = self.json_decode_expr(unwrapped, ty);
+            let decoded =
+                Self::json_error_at(self.json_decode_expr(unwrapped, ty), &format!(".{field}"));
             let bound = self.json_bind(&format!("__f_{i}"), &dec, ty, body);
             body = Self::json_then(&got, member, Self::json_then(&dec, decoded, bound));
         }
@@ -7076,7 +7090,10 @@ impl<'a> Lowerer<'a> {
                 let array = self.json_fresh("array");
                 let array_var = MirExpr::Var(array.clone(), MirType::Ptr);
                 let prefix = format!("__fv_{variant}_");
-                let each = self.json_decode_indexed(&array_var, fields, &prefix, constructed);
+                let each = Self::json_error_at(
+                    self.json_decode_indexed(&array_var, fields, &prefix, constructed),
+                    ".fields",
+                );
                 let member =
                     Self::json_call("mesh_json_object_get", vec![json.clone(), key("fields")]);
                 let unwrapped = Self::json_call(

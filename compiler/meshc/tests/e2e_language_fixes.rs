@@ -2609,7 +2609,7 @@ end
         run(source),
         "{\"f\":1.5,\"i\":7,\"s\":\"x\"}\n\
          {\"f\":null,\"i\":null,\"s\":null}\n\
-         err expected Int\n\
+         err $.i: expected Int\n\
          {\"inner\":{\"m\":{\"a\":[1]},\"n\":[[1,2],[]],\"o\":[3],\"p\":[1,\"z\"]},\"kids\":[{\"kids\":[]}]}\n\
          true [1]\n\
          {\"fields\":[{\"a\":1}],\"tag\":\"W\"} {\"fields\":[[10,20]],\"tag\":\"V\"}\n\
@@ -5844,5 +5844,59 @@ end
     assert_eq!(
         run(source),
         "(1, \"x\") (1, 2) ()\n[(1, \"a\")] [a] Some(\"s\")\n42 \"q\" %{\"k\" => [1]}\n"
+    );
+}
+
+/// A value `from_json` cannot decode names where it failed, as a path from
+/// the top of the document: a struct's field, a list's or tuple's index, a
+/// map's key, a variant's fields. The error was only "expected Int",
+/// wherever in a nested payload the value was.
+#[test]
+fn a_json_decoding_error_names_its_path() {
+    let source = r##"
+struct Address do
+  city :: String
+  zip :: Option<String>
+end deriving(Json)
+
+type Shape do
+  Circle(Float)
+  Rect(Float, Float)
+end deriving(Json)
+
+struct Person do
+  name :: String
+  age :: Int
+  tags :: List<String>
+  home :: Address
+  scores :: Map<String, Int>
+  pair :: (Int, String)
+  shape :: Shape
+end deriving(Json)
+
+fn show(text :: String) -> String do
+  case Person.from_json(text) do
+    Ok(p) -> "ok #{p.name}"
+    Err(e) -> e
+  end
+end
+
+fn main() do
+  let good = "{\"name\":\"A\",\"age\":1,\"tags\":[\"t\"],\"home\":{\"city\":\"c\",\"zip\":null},\"scores\":{\"x\":1},\"pair\":[1,\"a\"],\"shape\":{\"tag\":\"Circle\",\"fields\":[1.0]}}"
+  println(show(good))
+  println(show("{\"name\":\"A\",\"age\":\"x\"}"))
+  println(show("{\"name\":\"A\",\"age\":1,\"tags\":[\"t\",2],\"home\":{\"city\":\"c\",\"zip\":null},\"scores\":{},\"pair\":[1,\"a\"],\"shape\":{\"tag\":\"Circle\",\"fields\":[1.0]}}"))
+  println(show("{\"name\":\"A\",\"age\":1,\"tags\":[],\"home\":{\"city\":\"c\",\"zip\":5},\"scores\":{},\"pair\":[1,\"a\"],\"shape\":{\"tag\":\"Circle\",\"fields\":[1.0]}}"))
+  println(show("{\"name\":\"A\",\"age\":1,\"tags\":[],\"home\":{\"city\":\"c\",\"zip\":null},\"scores\":{\"k\":true},\"pair\":[1,\"a\"],\"shape\":{\"tag\":\"Circle\",\"fields\":[1.0]}}"))
+  println(show("{\"name\":\"A\",\"age\":1,\"tags\":[],\"home\":{\"city\":\"c\",\"zip\":null},\"scores\":{},\"pair\":[1,2],\"shape\":{\"tag\":\"Circle\",\"fields\":[1.0]}}"))
+  println(show("{\"name\":\"A\",\"age\":1,\"tags\":[],\"home\":{\"city\":\"c\",\"zip\":null},\"scores\":{},\"pair\":[1,\"a\"],\"shape\":{\"tag\":\"Rect\",\"fields\":[1.0,\"w\"]}}"))
+  println(show("{\"name\":\"A\"}"))
+end
+"##;
+    assert_eq!(
+        run(source),
+        "ok A\n$.age: expected Int\n$.tags[1]: expected String\n$.home.zip: expected String\n\
+         $.scores.k: expected Int\n$.pair[1]: expected String\n$.shape.fields[1]: expected Float\n\
+         missing field: age\n"
     );
 }

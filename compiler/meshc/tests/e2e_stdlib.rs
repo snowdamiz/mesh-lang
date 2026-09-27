@@ -555,7 +555,7 @@ fn e2e_deriving_json_option() {
     // Decoding round-trips both, and a wrong payload type is an error.
     assert_eq!(lines[2], lines[0]);
     assert_eq!(lines[3], lines[1]);
-    assert_eq!(lines[4], "err expected String");
+    assert_eq!(lines[4], "err $.bio: expected String");
 }
 
 #[test]

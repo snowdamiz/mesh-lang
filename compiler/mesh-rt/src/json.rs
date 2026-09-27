@@ -19,7 +19,7 @@ use crate::collections::list;
 use crate::collections::map;
 use crate::gc::mesh_gc_alloc_actor;
 use crate::io::{alloc_result, box_scalar, err_result, MeshResult};
-use crate::string::{mesh_str, MeshString};
+use crate::string::{mesh_str, text_of, MeshString};
 
 /// Tag constants for MeshJson variants.
 const JSON_NULL: u8 = 0;
@@ -594,8 +594,7 @@ pub extern "C-unwind" fn mesh_json_to_list(
             let decoded = elem_fn(elem as *mut u8);
             let res = decoded as *mut MeshResult;
             if (*res).tag != 0 {
-                // Propagate error
-                return decoded;
+                return located(decoded, &format!("[{i}]"));
             }
             result_list = list::mesh_list_builder_push(result_list, (*res).value as u64);
         }
@@ -628,12 +627,33 @@ pub extern "C-unwind" fn mesh_json_to_map(
             let decoded = val_fn(val as *mut u8);
             let res = decoded as *mut MeshResult;
             if (*res).tag != 0 {
-                // Propagate error
-                return decoded;
+                return located(decoded, &format!(".{}", text_of(key as *const MeshString)));
             }
             result_map = map::mesh_map_put(result_map, key, (*res).value as u64);
         }
         alloc_result(0, result_map) as *mut u8
+    }
+}
+
+/// `decoded`, a decoding's Result, with `step` (a struct field's `.name`,
+/// a tuple element's `[index]`) put at the front of the path its error
+/// names: `$.home.zip: expected String`.
+#[no_mangle]
+pub extern "C-unwind" fn mesh_json_error_at(decoded: *mut u8, step: *const MeshString) -> *mut u8 {
+    unsafe { located(decoded, text_of(step)) }
+}
+
+/// `decoded`, with `step` (`.name` or `[index]`) put at the front of the
+/// path an error names; an error with no path yet gets one. Ok passes.
+unsafe fn located(decoded: *mut u8, step: &str) -> *mut u8 {
+    let result = decoded as *mut MeshResult;
+    if (*result).tag == 0 {
+        return decoded;
+    }
+    let message = text_of((*result).value as *const MeshString);
+    match message.strip_prefix('$') {
+        Some(path) => err_result(&format!("${step}{path}")),
+        None => err_result(&format!("${step}: {message}")),
     }
 }
 
