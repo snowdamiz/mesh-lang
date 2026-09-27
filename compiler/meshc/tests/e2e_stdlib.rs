@@ -1365,7 +1365,7 @@ fn main() do
     |> HTTP.serve(18085)
 end
 "#;
-    let (_guard, port) = serve_on_free_port(&source, 18085);
+    let (_guard, port) = serve_on_free_port(source, 18085);
 
     let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
     stream
@@ -2583,7 +2583,7 @@ end
 /// Confirms a bare-function route handler serves live HTTP requests correctly.
 #[test]
 fn e2e_route_bare_handler_control() {
-    let (_guard, port) = serve_on_free_port(&route_bare_server_source(), 18124);
+    let (_guard, port) = serve_on_free_port(route_bare_server_source(), 18124);
 
     let response = send_request(
         port,
@@ -2609,7 +2609,7 @@ fn e2e_route_bare_handler_control() {
 /// to receive the closure's environment.
 #[test]
 fn e2e_route_closure_handler() {
-    let (_guard, port) = serve_on_free_port(&route_closure_server_source(), 18123);
+    let (_guard, port) = serve_on_free_port(route_closure_server_source(), 18123);
 
     let response = send_request(
         port,
