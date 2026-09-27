@@ -1744,6 +1744,73 @@ end
     );
 }
 
+/// Aliases that name each other are reported at each, and a use of one
+/// stops expanding; a tuple field derives `Json` where the empty tuple does
+/// not; and a send piped into, a link's argument and an interface's method
+/// of an unannotated parameter called on the interface are each checked.
+#[test]
+fn alias_cycles_json_tuples_and_calls_on_interfaces() {
+    assert_eq!(
+        errors(
+            r#"
+type Ping = Pong
+
+type Pong = Ping
+
+fn cycled(x :: Ping) do
+  x
+end
+
+struct Pair do
+  both :: (Int, String)
+end deriving(Json)
+
+struct Nothing do
+  none :: ()
+end deriving(Json)
+
+actor counter(n :: Int) do
+  receive do
+    m -> counter(n + m)
+  end
+end
+
+fn piped(p :: Pid<Int>) do
+  1 |2> send(p)
+end
+
+fn linked() do
+  link(nope)
+end
+
+interface Scaler do
+  fn scale(self, by) -> Int
+end
+
+struct Meters do
+  n :: Int
+end
+
+impl Scaler for Meters do
+  fn scale(self, by :: Int) -> Int do
+    self.n * by
+  end
+end
+
+fn scaled(m :: Meters) -> Int do
+  Scaler.scale(m, 2)
+end
+"#
+        ),
+        [
+            "type alias `Ping` refers to itself",
+            "type alias `Pong` refers to itself",
+            "field `none` of type `()` is not JSON-serializable",
+            "undefined variable `nope`",
+        ]
+    );
+}
+
 /// A value that is no function cannot be called, directly or piped into,
 /// though its arguments are checked first; a call of what never returns
 /// (`panic(...)`) is anything. A field read from a value nothing gives a
