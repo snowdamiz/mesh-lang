@@ -4639,21 +4639,6 @@ end
 
 // ── Phase 98-02: Repo Module Tests ──────────────────────────────────
 
-/// Repo module is recognized as stdlib module (verifies module registration).
-#[test]
-fn e2e_repo_module_available() {
-    let output = compile_and_run(
-        r#"
-fn main() do
-  println("ok")
-end
-"#,
-    );
-    // If Repo is in STDLIB_MODULE_NAMES, programs compile with it available.
-    // This test mainly exists to anchor the count.
-    assert_eq!(output, "ok\n");
-}
-
 /// Full pipeline compiles: Query build + Repo module available in type checking.
 #[test]
 fn e2e_repo_full_pipeline_compiles() {
@@ -5740,19 +5725,6 @@ end
 }
 
 // ── Phase 101: Migration DSL E2E Tests ──────────────────────────────────
-
-/// Migration.create_table compiles with correct type signature.
-#[test]
-fn e2e_migration_create_table_compiles() {
-    let output = compile_and_run(
-        r#"
-fn main() do
-  println("migration_ok")
-end
-"#,
-    );
-    assert_eq!(output, "migration_ok\n");
-}
 
 /// Migration module is available and all 8 functions type-check.
 #[test]
@@ -7446,12 +7418,6 @@ end
 
 // ── Compiler boundary regressions ──────────────────────────────────────
 
-const REQUEST_QUERY_MAIN: &str = r#"
-fn main() do
-  println("request_query_ok")
-end
-"#;
-
 const CROSS_MODULE_FROM_JSON_MAIN: &str = r##"
 from Models import Scout
 
@@ -7575,13 +7541,6 @@ fn main() do
   println("${Counter.get(counter)}")
 end
 "#;
-
-/// Proves `Request.query(...)` remains supported in compiled programs.
-#[test]
-fn e2e_request_query() {
-    let output = compile_and_run(REQUEST_QUERY_MAIN);
-    assert_eq!(output, "request_query_ok\n");
-}
 
 #[test]
 fn e2e_imported_size_shadows_builtin_name() {
