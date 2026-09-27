@@ -6,16 +6,19 @@ use std::sync::Arc;
 use parking_lot::Mutex;
 
 use crate::actor::Process;
-use crate::bytes::{mesh_bytes_new, MeshBytes};
-use crate::crypto::provider::{CryptoProvider, ProviderError, SystemProvider};
-use crate::io::{alloc_result, MeshResult};
+use crate::bytes::MeshBytes;
+use crate::crypto::provider::{CryptoProvider, SystemProvider};
+use crate::crypto::{
+    bytes_value, crypto_result, failure, provider_failure, required_bytes, resource_failure,
+    CryptoFailure,
+};
+use crate::io::MeshResult;
 use crate::library::{secure_store_delete_raw, secure_store_get_raw, secure_store_put_raw};
 use crate::secret::{
-    commit_storage_counter, crypto_error, insert_ephemeral_storage_key_resource,
-    insert_owned_resource, insert_storage_key_resource, prepare_owned_resource,
-    prepare_storage_key_resource, validate_prepared_owned_resource,
-    validate_prepared_storage_key_resource, CryptoErrorTag, MeshSecretHandle,
-    MeshStorageCounterReserve, PreparedOwnedResource, PreparedStorageKey, ResourceError,
+    commit_storage_counter, insert_ephemeral_storage_key_resource, insert_owned_resource,
+    insert_storage_key_resource, prepare_owned_resource, prepare_storage_key_resource,
+    validate_prepared_owned_resource, validate_prepared_storage_key_resource, CryptoErrorTag,
+    MeshSecretHandle, MeshStorageCounterReserve, PreparedOwnedResource, PreparedStorageKey,
     ResourceKind, StorageKeyError,
 };
 use subtle::ConstantTimeEq;
@@ -54,22 +57,7 @@ const BLOB_BINDING_OFFSET: usize = 15;
 const BLOB_LENGTH_OFFSET: usize = 47;
 const BLOB_CIPHERTEXT_OFFSET: usize = 51;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct StorageFailure {
-    tag: CryptoErrorTag,
-    expected: i64,
-    actual: i64,
-}
-
-fn failure(tag: CryptoErrorTag, expected: i64, actual: i64) -> StorageFailure {
-    StorageFailure {
-        tag,
-        expected,
-        actual,
-    }
-}
-
-fn invalid_length(expected: usize, actual: usize) -> StorageFailure {
+fn invalid_length(expected: usize, actual: usize) -> CryptoFailure {
     failure(
         CryptoErrorTag::InvalidLength,
         expected as i64,
@@ -120,7 +108,7 @@ impl From<ResourceKind> for StorageValueKind {
 }
 
 impl SecretPurpose {
-    fn from_id(id: u16) -> Result<Self, StorageFailure> {
+    fn from_id(id: u16) -> Result<Self, CryptoFailure> {
         match id {
             1 => Ok(Self::RootKey),
             2 => Ok(Self::SendingChainKey),
@@ -183,7 +171,7 @@ impl SecretPurpose {
 fn validate_plaintext_length(
     expected_kind: StorageValueKind,
     length: usize,
-) -> Result<(), StorageFailure> {
+) -> Result<(), CryptoFailure> {
     match expected_kind {
         StorageValueKind::Resource(ResourceKind::SecretMap) => {
             if length == 0 || length > MAX_PLAINTEXT_BYTES {
@@ -211,7 +199,7 @@ fn validate_plaintext_length(
 fn validate_context<K: Into<StorageValueKind>>(
     context: &[u8],
     expected_kind: K,
-) -> Result<SecretPurpose, StorageFailure> {
+) -> Result<SecretPurpose, CryptoFailure> {
     let expected_kind = expected_kind.into();
     if context.len() != CONTEXT_BYTES {
         return Err(invalid_length(CONTEXT_BYTES, context.len()));
@@ -270,36 +258,17 @@ fn associated_data(binding: &[u8; BINDING_BYTES], ciphertext_length: u32) -> Vec
     data
 }
 
-fn provider_failure(error: ProviderError) -> StorageFailure {
-    match error {
-        ProviderError::AuthenticationFailed => failure(CryptoErrorTag::AuthenticationFailed, 0, 0),
-        ProviderError::InvalidLength => failure(CryptoErrorTag::InvalidLength, 0, 0),
-        ProviderError::ResourceLimitExceeded => {
-            failure(CryptoErrorTag::ResourceLimitExceeded, 0, 0)
-        }
-        ProviderError::EntropyUnavailable => failure(CryptoErrorTag::EntropyUnavailable, 0, 0),
-        ProviderError::InvalidPublicKey => failure(CryptoErrorTag::InternalFailure, 0, 0),
-    }
-}
-
 fn seal_value<K: Into<StorageValueKind> + Copy>(
     provider: &impl CryptoProvider,
     plaintext: &[u8],
-    storage_key_material: &[u8],
+    storage_key_material: &[u8; STORAGE_KEY_MATERIAL_BYTES],
     counter: u64,
     context: &[u8],
     expected_kind: K,
-) -> Result<Vec<u8>, StorageFailure> {
+) -> Result<Vec<u8>, CryptoFailure> {
     let expected_kind = expected_kind.into();
     validate_context(context, expected_kind)?;
     validate_plaintext_length(expected_kind, plaintext.len())?;
-    if storage_key_material.len() != STORAGE_KEY_MATERIAL_BYTES {
-        return Err(failure(
-            CryptoErrorTag::InvalidKey,
-            STORAGE_KEY_MATERIAL_BYTES as i64,
-            storage_key_material.len() as i64,
-        ));
-    }
 
     let mut key = Zeroizing::new([0u8; 32]);
     key.copy_from_slice(&storage_key_material[..32]);
@@ -312,9 +281,6 @@ fn seal_value<K: Into<StorageValueKind> + Copy>(
     let ciphertext_and_tag = provider
         .chacha20poly1305_seal(&key, &nonce, &associated_data, plaintext)
         .map_err(provider_failure)?;
-    if ciphertext_and_tag.len() != plaintext.len() + TAG_BYTES {
-        return Err(failure(CryptoErrorTag::InternalFailure, 0, 0));
-    }
     let tag_offset = ciphertext_and_tag.len() - TAG_BYTES;
 
     let mut blob = Vec::with_capacity(FIXED_OVERHEAD_BYTES + plaintext.len());
@@ -331,10 +297,10 @@ fn seal_value<K: Into<StorageValueKind> + Copy>(
 fn open_value<K: Into<StorageValueKind> + Copy>(
     provider: &impl CryptoProvider,
     blob: &[u8],
-    storage_key_material: &[u8],
+    storage_key_material: &[u8; STORAGE_KEY_MATERIAL_BYTES],
     context: &[u8],
     expected_kind: K,
-) -> Result<Zeroizing<Box<[u8]>>, StorageFailure> {
+) -> Result<Zeroizing<Box<[u8]>>, CryptoFailure> {
     let expected_kind = expected_kind.into();
     // The validation order here is part of the on-disk format contract.
     if blob.len() < FIXED_OVERHEAD_BYTES {
@@ -365,9 +331,7 @@ fn open_value<K: Into<StorageValueKind> + Copy>(
     if ciphertext_length > MAX_PLAINTEXT_BYTES {
         return Err(invalid_length(MAX_PLAINTEXT_BYTES, ciphertext_length));
     }
-    let expected_total = FIXED_OVERHEAD_BYTES
-        .checked_add(ciphertext_length)
-        .ok_or_else(|| invalid_length(MAX_BLOB_BYTES, blob.len()))?;
+    let expected_total = FIXED_OVERHEAD_BYTES + ciphertext_length;
     if blob.len() != expected_total {
         return Err(invalid_length(expected_total, blob.len()));
     }
@@ -378,13 +342,6 @@ fn open_value<K: Into<StorageValueKind> + Copy>(
     let expected_binding = context_binding(provider, context);
     if supplied_binding.ct_eq(&expected_binding).unwrap_u8() != 1 {
         return Err(failure(CryptoErrorTag::AuthenticationFailed, 0, 0));
-    }
-    if storage_key_material.len() != STORAGE_KEY_MATERIAL_BYTES {
-        return Err(failure(
-            CryptoErrorTag::InvalidKey,
-            STORAGE_KEY_MATERIAL_BYTES as i64,
-            storage_key_material.len() as i64,
-        ));
     }
 
     let mut key = Zeroizing::new([0u8; 32]);
@@ -411,24 +368,19 @@ fn open_value<K: Into<StorageValueKind> + Copy>(
     Ok(Zeroizing::new(plaintext))
 }
 
+/// The material of a storage key resource, which is always its 32-byte key
+/// and 4-byte nonce prefix: the table refuses a storage key of any other
+/// length.
+fn storage_key_material(bytes: &[u8]) -> &[u8; STORAGE_KEY_MATERIAL_BYTES] {
+    bytes.try_into().expect("a 36-byte storage key")
+}
+
 struct SealPreparation {
     secret: PreparedOwnedResource,
     storage_key: PreparedStorageKey,
 }
 
-fn resource_failure(error: ResourceError) -> StorageFailure {
-    match error {
-        ResourceError::ResourceLimitExceeded => {
-            failure(CryptoErrorTag::ResourceLimitExceeded, 0, 0)
-        }
-        ResourceError::WrongKind => failure(CryptoErrorTag::InvalidKey, 0, 0),
-        ResourceError::StaleHandle | ResourceError::WrongOwner | ResourceError::OwnerExited => {
-            failure(CryptoErrorTag::SecretDestroyed, 0, 0)
-        }
-    }
-}
-
-fn storage_key_failure(error: StorageKeyError) -> StorageFailure {
+fn storage_key_failure(error: StorageKeyError) -> CryptoFailure {
     match error {
         StorageKeyError::Resource(error) => resource_failure(error),
         StorageKeyError::ReservationFailed | StorageKeyError::CounterNotMonotonic => {
@@ -444,7 +396,7 @@ fn prepare_seal(
     wrapping_key: *const MeshSecretHandle,
     context: &[u8],
     expected_kind: ResourceKind,
-) -> Result<SealPreparation, StorageFailure> {
+) -> Result<SealPreparation, CryptoFailure> {
     validate_context(context, expected_kind)?;
     let secret =
         prepare_owned_resource(process, secret, expected_kind).map_err(resource_failure)?;
@@ -462,7 +414,7 @@ fn commit_reserved_seal(
     preparation: &SealPreparation,
     counter: u64,
     expected_kind: ResourceKind,
-) -> Result<(), StorageFailure> {
+) -> Result<(), CryptoFailure> {
     // Commit first: if the secret disappeared during the host call, the
     // already-reserved counter remains burned in both durable and runtime state.
     commit_storage_counter(process, &preparation.storage_key, counter)
@@ -475,7 +427,7 @@ fn revalidate_seal_inputs(
     process: &Process,
     preparation: &SealPreparation,
     expected_kind: ResourceKind,
-) -> Result<(), StorageFailure> {
+) -> Result<(), CryptoFailure> {
     validate_prepared_storage_key_resource(process, &preparation.storage_key)
         .map_err(storage_key_failure)?;
     validate_prepared_owned_resource(process, &preparation.secret, expected_kind)
@@ -490,10 +442,16 @@ fn open_for_process(
     wrapping_key: *const MeshSecretHandle,
     context: &[u8],
     expected_kind: ResourceKind,
-) -> Result<*mut MeshSecretHandle, StorageFailure> {
+) -> Result<*mut MeshSecretHandle, CryptoFailure> {
     let storage_key = prepare_owned_resource(process, wrapping_key, ResourceKind::StorageKey)
         .map_err(resource_failure)?;
-    let plaintext = open_value(provider, blob, &storage_key.bytes, context, expected_kind)?;
+    let plaintext = open_value(
+        provider,
+        blob,
+        storage_key_material(&storage_key.bytes),
+        context,
+        expected_kind,
+    )?;
     validate_prepared_owned_resource(process, &storage_key, ResourceKind::StorageKey)
         .map_err(resource_failure)?;
     insert_owned_resource(process, expected_kind, plaintext).map_err(resource_failure)
@@ -508,7 +466,7 @@ fn seal_for_process_with_hook(
     context: &[u8],
     expected_kind: ResourceKind,
     after_reservation: impl FnOnce(&mut Process),
-) -> Result<Vec<u8>, StorageFailure> {
+) -> Result<Vec<u8>, CryptoFailure> {
     let mut preparation = prepare_seal(process, secret, wrapping_key, context, expected_kind)?;
     let counter = preparation
         .storage_key
@@ -519,7 +477,7 @@ fn seal_for_process_with_hook(
     let blob = seal_value(
         provider,
         &preparation.secret.bytes,
-        &preparation.storage_key.material,
+        storage_key_material(&preparation.storage_key.material),
         counter,
         context,
         expected_kind,
@@ -528,30 +486,24 @@ fn seal_for_process_with_hook(
     Ok(blob)
 }
 
-fn current_process() -> Result<Arc<Mutex<Process>>, StorageFailure> {
+fn current_process() -> Result<Arc<Mutex<Process>>, CryptoFailure> {
     crate::actor::current_process().ok_or_else(|| failure(CryptoErrorTag::InternalFailure, 0, 0))
 }
 
+/// A copy of `value`, at most `maximum` bytes of it: no host callback can
+/// see the actor heap it came from.
 unsafe fn copy_mesh_bytes(
     value: *const MeshBytes,
     maximum: usize,
-) -> Result<Vec<u8>, StorageFailure> {
-    if value.is_null() {
-        return Err(failure(CryptoErrorTag::InvalidLength, maximum as i64, -1));
-    }
-    let length = usize::try_from(unsafe { (*value).len })
-        .map_err(|_| invalid_length(maximum, usize::MAX))?;
-    if length > maximum {
-        return Err(invalid_length(maximum, length));
-    }
-    Ok(unsafe { (*value).as_slice() }.to_vec())
+) -> Result<Vec<u8>, CryptoFailure> {
+    required_bytes(value, maximum).map(<[u8]>::to_vec)
 }
 
 unsafe fn copy_native_exact(
     value: *const u8,
     length: u64,
     expected: usize,
-) -> Result<Zeroizing<Vec<u8>>, StorageFailure> {
+) -> Result<Zeroizing<Vec<u8>>, CryptoFailure> {
     if value.is_null() || length != expected as u64 {
         return Err(failure(
             CryptoErrorTag::InvalidLength,
@@ -568,24 +520,12 @@ unsafe fn copy_native_exact(
     ))
 }
 
-fn error_result(error: StorageFailure) -> *mut MeshResult {
-    crypto_error(error.tag, error.expected, error.actual)
-}
-
-fn ok_result<T>(value: *mut T) -> *mut MeshResult {
-    if value.is_null() {
-        error_result(failure(CryptoErrorTag::InternalFailure, 0, 0))
-    } else {
-        alloc_result(0, value.cast())
-    }
-}
-
 fn seal_for_current_actor(
     secret: *const MeshSecretHandle,
     wrapping_key: *const MeshSecretHandle,
     context: *const MeshBytes,
     expected_kind: ResourceKind,
-) -> Result<Vec<u8>, StorageFailure> {
+) -> Result<Vec<u8>, CryptoFailure> {
     let context = unsafe { copy_mesh_bytes(context, CONTEXT_BYTES) }?;
     let process = current_process()?;
     let mut preparation = {
@@ -606,7 +546,7 @@ fn seal_for_current_actor(
     let blob = seal_value(
         &SystemProvider,
         &preparation.secret.bytes,
-        &preparation.storage_key.material,
+        storage_key_material(&preparation.storage_key.material),
         counter,
         &context,
         expected_kind,
@@ -623,7 +563,7 @@ fn unseal_for_current_actor(
     wrapping_key: *const MeshSecretHandle,
     context: *const MeshBytes,
     expected_kind: ResourceKind,
-) -> Result<*mut MeshSecretHandle, StorageFailure> {
+) -> Result<*mut MeshSecretHandle, CryptoFailure> {
     let blob = unsafe { copy_mesh_bytes(blob, MAX_BLOB_BYTES) }?;
     let context = unsafe { copy_mesh_bytes(context, CONTEXT_BYTES) }?;
     let process = current_process()?;
@@ -635,7 +575,7 @@ fn unseal_for_current_actor(
     let plaintext = open_value(
         &SystemProvider,
         &blob,
-        &storage_key.bytes,
+        storage_key_material(&storage_key.bytes),
         &context,
         expected_kind,
     )?;
@@ -667,20 +607,17 @@ pub extern "C" fn mesh_storage_key_ephemeral() -> *mut MeshResult {
         };
         Ok(handle)
     })();
-    match result {
-        Ok(handle) => ok_result(handle),
-        Err(error) => error_result(error),
-    }
+    crypto_result(result)
 }
 
-fn platform_failure(status: i32) -> StorageFailure {
+fn platform_failure(status: i32) -> CryptoFailure {
     failure(CryptoErrorTag::InternalFailure, 0, status as i64)
 }
 
 fn read_platform_record(
     key: &[u8],
     maximum: usize,
-) -> Result<Option<Zeroizing<Vec<u8>>>, StorageFailure> {
+) -> Result<Option<Zeroizing<Vec<u8>>>, CryptoFailure> {
     let mut output = Zeroizing::new(vec![0u8; maximum]);
     match secure_store_get_raw(key, &mut output) {
         Ok(length) => {
@@ -692,7 +629,7 @@ fn read_platform_record(
     }
 }
 
-fn write_platform_record(key: &[u8], value: &[u8]) -> Result<(), StorageFailure> {
+fn write_platform_record(key: &[u8], value: &[u8]) -> Result<(), CryptoFailure> {
     let key_length =
         u32::try_from(key.len()).map_err(|_| invalid_length(u32::MAX as usize, key.len()))?;
     let mut request = Zeroizing::new(Vec::with_capacity(4 + key.len() + value.len()));
@@ -702,7 +639,7 @@ fn write_platform_record(key: &[u8], value: &[u8]) -> Result<(), StorageFailure>
     secure_store_put_raw(&request).map_err(platform_failure)
 }
 
-fn retire_legacy_records(record: &[u8]) -> Result<(), StorageFailure> {
+fn retire_legacy_records(record: &[u8]) -> Result<(), CryptoFailure> {
     let material = read_platform_record(PLATFORM_KEY_ID, STORAGE_KEY_MATERIAL_BYTES)?;
     let counter = read_platform_record(PLATFORM_COUNTER_ID, 8)?;
     if material
@@ -732,7 +669,7 @@ fn retire_legacy_records(record: &[u8]) -> Result<(), StorageFailure> {
     Ok(())
 }
 
-fn load_platform_material() -> Result<Zeroizing<Box<[u8]>>, StorageFailure> {
+fn load_platform_material() -> Result<Zeroizing<Box<[u8]>>, CryptoFailure> {
     let record = match read_platform_record(PLATFORM_RECORD_ID, PLATFORM_RECORD_BYTES)? {
         Some(record) => {
             if record.len() != PLATFORM_RECORD_BYTES {
@@ -776,9 +713,6 @@ fn load_platform_material() -> Result<Zeroizing<Box<[u8]>>, StorageFailure> {
 // ponytail: one process-wide lock; use a host atomic-increment callback if app
 // extensions ever share this storage key concurrently.
 unsafe extern "C" fn reserve_platform_counter(_context: *mut c_void, counter_out: *mut u64) -> i32 {
-    if counter_out.is_null() {
-        return 1;
-    }
     let _guard = PLATFORM_STORAGE_LOCK.lock();
     let result = (|| {
         let mut record = read_platform_record(PLATFORM_RECORD_ID, PLATFORM_RECORD_BYTES)?
@@ -820,17 +754,14 @@ pub extern "C" fn mesh_storage_key_platform() -> *mut MeshResult {
         };
         Ok(handle)
     })();
-    match result {
-        Ok(handle) => ok_result(handle),
-        Err(error) => error_result(error),
-    }
+    crypto_result(result)
 }
 
 fn seal_bytes_for_current_actor(
     value: *const MeshBytes,
     wrapping_key: *const MeshSecretHandle,
     context: *const MeshBytes,
-) -> Result<Vec<u8>, StorageFailure> {
+) -> Result<Vec<u8>, CryptoFailure> {
     let value = Zeroizing::new(unsafe { copy_mesh_bytes(value, MAX_PLAINTEXT_BYTES) }?);
     let context = unsafe { copy_mesh_bytes(context, CONTEXT_BYTES) }?;
     validate_context(&context, StorageValueKind::Bytes)?;
@@ -847,7 +778,7 @@ fn seal_bytes_for_current_actor(
     let blob = seal_value(
         &SystemProvider,
         &value,
-        &storage_key.material,
+        storage_key_material(&storage_key.material),
         counter,
         &context,
         StorageValueKind::Bytes,
@@ -864,7 +795,7 @@ fn unseal_bytes_for_current_actor(
     blob: *const MeshBytes,
     wrapping_key: *const MeshSecretHandle,
     context: *const MeshBytes,
-) -> Result<Zeroizing<Box<[u8]>>, StorageFailure> {
+) -> Result<Zeroizing<Box<[u8]>>, CryptoFailure> {
     let blob = unsafe { copy_mesh_bytes(blob, MAX_BLOB_BYTES) }?;
     let context = unsafe { copy_mesh_bytes(context, CONTEXT_BYTES) }?;
     let process = current_process()?;
@@ -876,7 +807,7 @@ fn unseal_bytes_for_current_actor(
     let plaintext = open_value(
         &SystemProvider,
         &blob,
-        &storage_key.bytes,
+        storage_key_material(&storage_key.bytes),
         &context,
         StorageValueKind::Bytes,
     )?;
@@ -894,10 +825,9 @@ pub extern "C" fn mesh_storage_key_seal_bytes(
     wrapping_key: *const MeshSecretHandle,
     context: *const MeshBytes,
 ) -> *mut MeshResult {
-    match seal_bytes_for_current_actor(value, wrapping_key, context) {
-        Ok(blob) => ok_result(mesh_bytes_new(blob.as_ptr(), blob.len() as u64)),
-        Err(error) => error_result(error),
-    }
+    crypto_result(
+        seal_bytes_for_current_actor(value, wrapping_key, context).map(|blob| bytes_value(&blob)),
+    )
 }
 
 #[no_mangle]
@@ -906,10 +836,10 @@ pub extern "C" fn mesh_storage_key_unseal_bytes(
     wrapping_key: *const MeshSecretHandle,
     context: *const MeshBytes,
 ) -> *mut MeshResult {
-    match unseal_bytes_for_current_actor(blob, wrapping_key, context) {
-        Ok(value) => ok_result(mesh_bytes_new(value.as_ptr(), value.len() as u64)),
-        Err(error) => error_result(error),
-    }
+    crypto_result(
+        unseal_bytes_for_current_actor(blob, wrapping_key, context)
+            .map(|value| bytes_value(&value)),
+    )
 }
 
 /// Provision a platform-backed storage key and durable nonce reservation
@@ -959,10 +889,7 @@ pub extern "C" fn mesh_storage_key_provision(
         };
         Ok(handle)
     })();
-    match result {
-        Ok(handle) => ok_result(handle),
-        Err(error) => error_result(error),
-    }
+    crypto_result(result)
 }
 
 macro_rules! storage_seal_abi {
@@ -973,10 +900,10 @@ macro_rules! storage_seal_abi {
             wrapping_key: *const MeshSecretHandle,
             context: *const MeshBytes,
         ) -> *mut MeshResult {
-            match seal_for_current_actor(secret, wrapping_key, context, $kind) {
-                Ok(blob) => ok_result(mesh_bytes_new(blob.as_ptr(), blob.len() as u64)),
-                Err(error) => error_result(error),
-            }
+            crypto_result(
+                seal_for_current_actor(secret, wrapping_key, context, $kind)
+                    .map(|blob| bytes_value(&blob)),
+            )
         }
     };
 }
@@ -989,10 +916,7 @@ macro_rules! storage_unseal_abi {
             wrapping_key: *const MeshSecretHandle,
             context: *const MeshBytes,
         ) -> *mut MeshResult {
-            match unseal_for_current_actor(blob, wrapping_key, context, $kind) {
-                Ok(handle) => ok_result(handle),
-                Err(error) => error_result(error),
-            }
+            crypto_result(unseal_for_current_actor(blob, wrapping_key, context, $kind))
         }
     };
 }
@@ -1031,7 +955,7 @@ storage_unseal_abi!(
 mod tests {
     use super::*;
     use crate::actor::{ExitReason, Priority, Process, ProcessId};
-    use crate::crypto::provider::SystemProvider;
+    use crate::crypto::provider::{ProviderError, SystemProvider};
     use crate::gc::mesh_rt_init;
     use crate::secret::{
         destroy_owned, insert_owned_resource, insert_test_storage_key_resource,
@@ -1049,13 +973,13 @@ mod tests {
         output
     }
 
-    fn material() -> Vec<u8> {
-        let mut material = vec![0x31; 32];
-        material.extend_from_slice(&[0x91, 0x92, 0x93, 0x94]);
+    fn material() -> [u8; STORAGE_KEY_MATERIAL_BYTES] {
+        let mut material = [0x31; STORAGE_KEY_MATERIAL_BYTES];
+        material[32..].copy_from_slice(&[0x91, 0x92, 0x93, 0x94]);
         material
     }
 
-    fn assert_tag(error: StorageFailure, tag: CryptoErrorTag) {
+    fn assert_tag(error: CryptoFailure, tag: CryptoErrorTag) {
         assert_eq!(error.tag, tag, "unexpected storage failure: {error:?}");
     }
 
@@ -1203,7 +1127,7 @@ mod tests {
         let blob = seal_value(
             &SystemProvider,
             &plaintext,
-            &material,
+            material.as_slice().try_into().unwrap(),
             0x0102_0304_0506_0708,
             &context(1),
             ResourceKind::SecretBytes,
@@ -1463,7 +1387,7 @@ mod tests {
         .expect("insert secret");
         let storage_key = insert_test_storage_key_resource(
             &mut process,
-            Zeroizing::new(material().into_boxed_slice()),
+            Zeroizing::new(material().to_vec().into_boxed_slice()),
             19,
         )
         .expect("insert storage key");
@@ -1518,7 +1442,7 @@ mod tests {
         .expect("insert secret");
         let storage_key = insert_test_storage_key_resource(
             &mut process,
-            Zeroizing::new(material().into_boxed_slice()),
+            Zeroizing::new(material().to_vec().into_boxed_slice()),
             5,
         )
         .expect("insert storage key");
@@ -1544,7 +1468,7 @@ mod tests {
         )
         .expect("next seal");
 
-        assert_eq!(failure.tag, CryptoErrorTag::InvalidLength);
+        assert_eq!(failure.tag, CryptoErrorTag::InternalFailure);
         assert_eq!(
             &next_blob[BLOB_NONCE_OFFSET + 4..BLOB_BINDING_OFFSET],
             &6u64.to_be_bytes()
@@ -1559,7 +1483,7 @@ mod tests {
         let mut process = Process::new(owner, Priority::Normal);
         let storage_key = insert_test_storage_key_resource(
             &mut process,
-            Zeroizing::new(material().into_boxed_slice()),
+            Zeroizing::new(material().to_vec().into_boxed_slice()),
             0,
         )
         .expect("insert storage key");
@@ -1607,7 +1531,7 @@ mod tests {
         .expect("insert signing key");
         let storage_key = insert_test_storage_key_resource(
             &mut owner_process,
-            Zeroizing::new(material().into_boxed_slice()),
+            Zeroizing::new(material().to_vec().into_boxed_slice()),
             0,
         )
         .expect("insert storage key");
