@@ -2701,46 +2701,55 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
             pg_int_result_t.clone(),
         )),
     );
-    // Pg.cast(Ptr, String) -> Ptr  (vendor-specific SQL type cast)
-    let ptr_t = Ty::Con(TyCon::new("Ptr"));
+    // Pg.cast(Expr, String) -> Expr  (vendor-specific SQL type cast)
+    let expr_t = Ty::Con(TyCon::new("Expr"));
     pg_mod.insert(
         "cast".to_string(),
-        Scheme::mono(Ty::fun(vec![ptr_t.clone(), Ty::string()], ptr_t.clone())),
+        Scheme::mono(Ty::fun(vec![expr_t.clone(), Ty::string()], expr_t.clone())),
     );
-    // Pg.jsonb/int/text/uuid/timestamptz(Ptr) -> Ptr
+    // Pg.jsonb/int/text/uuid/timestamptz(Expr) -> Expr
     for helper in ["jsonb", "int", "text", "uuid", "timestamptz"] {
         pg_mod.insert(
             helper.to_string(),
-            Scheme::mono(Ty::fun(vec![ptr_t.clone()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(vec![expr_t.clone()], expr_t.clone())),
         );
     }
-    // Pg.gen_salt(String, Int) -> Ptr
+    // Pg.gen_salt(String, Int) -> Expr
     pg_mod.insert(
         "gen_salt".to_string(),
-        Scheme::mono(Ty::fun(vec![Ty::string(), Ty::int()], ptr_t.clone())),
+        Scheme::mono(Ty::fun(vec![Ty::string(), Ty::int()], expr_t.clone())),
     );
-    // Pg.crypt(Ptr, Ptr) -> Ptr
+    // Pg.crypt(Expr, Expr) -> Expr
     pg_mod.insert(
         "crypt".to_string(),
-        Scheme::mono(Ty::fun(vec![ptr_t.clone(), ptr_t.clone()], ptr_t.clone())),
+        Scheme::mono(Ty::fun(
+            vec![expr_t.clone(), expr_t.clone()],
+            expr_t.clone(),
+        )),
     );
-    // Pg.to_tsvector/plainto_tsquery(String, Ptr) -> Ptr
+    // Pg.to_tsvector/plainto_tsquery(String, Expr) -> Expr
     for helper in ["to_tsvector", "plainto_tsquery"] {
         pg_mod.insert(
             helper.to_string(),
-            Scheme::mono(Ty::fun(vec![Ty::string(), ptr_t.clone()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(vec![Ty::string(), expr_t.clone()], expr_t.clone())),
         );
     }
-    // Pg.ts_rank(Ptr, Ptr) -> Ptr
+    // Pg.ts_rank(Expr, Expr) -> Expr
     pg_mod.insert(
         "ts_rank".to_string(),
-        Scheme::mono(Ty::fun(vec![ptr_t.clone(), ptr_t.clone()], ptr_t.clone())),
+        Scheme::mono(Ty::fun(
+            vec![expr_t.clone(), expr_t.clone()],
+            expr_t.clone(),
+        )),
     );
-    // Pg.tsvector_matches/jsonb_contains(Ptr, Ptr) -> Ptr
+    // Pg.tsvector_matches/jsonb_contains(Expr, Expr) -> Expr
     for helper in ["tsvector_matches", "jsonb_contains"] {
         pg_mod.insert(
             helper.to_string(),
-            Scheme::mono(Ty::fun(vec![ptr_t.clone(), ptr_t.clone()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(
+                vec![expr_t.clone(), expr_t.clone()],
+                expr_t.clone(),
+            )),
         );
     }
     modules.insert("Pg".to_string(), pg_mod);
@@ -3326,338 +3335,410 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
 
     // ── Expr module ─────────────────────────────────────────────────
     {
-        let ptr_t = Ty::Con(TyCon::new("Ptr"));
+        let expr_t = Ty::Con(TyCon::new("Expr"));
         let mut expr_mod = HashMap::new();
         expr_mod.insert(
             "column".to_string(),
-            Scheme::mono(Ty::fun(vec![Ty::string()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(vec![Ty::string()], expr_t.clone())),
         );
         expr_mod.insert(
             "value".to_string(),
-            Scheme::mono(Ty::fun(vec![Ty::string()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(vec![Ty::string()], expr_t.clone())),
         );
         expr_mod.insert(
             "null".to_string(),
-            Scheme::mono(Ty::fun(vec![], ptr_t.clone())),
+            Scheme::mono(Ty::fun(vec![], expr_t.clone())),
         );
         expr_mod.insert(
             "call".to_string(),
             Scheme::mono(Ty::fun(
-                vec![Ty::string(), Ty::list(ptr_t.clone())],
-                ptr_t.clone(),
+                vec![Ty::string(), Ty::list(expr_t.clone())],
+                expr_t.clone(),
             )),
         );
         expr_mod.insert(
             "fn_call".to_string(),
             Scheme::mono(Ty::fun(
-                vec![Ty::string(), Ty::list(ptr_t.clone())],
-                ptr_t.clone(),
+                vec![Ty::string(), Ty::list(expr_t.clone())],
+                expr_t.clone(),
             )),
         );
         expr_mod.insert(
             "add".to_string(),
-            Scheme::mono(Ty::fun(vec![ptr_t.clone(), ptr_t.clone()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(
+                vec![expr_t.clone(), expr_t.clone()],
+                expr_t.clone(),
+            )),
         );
         expr_mod.insert(
             "sub".to_string(),
-            Scheme::mono(Ty::fun(vec![ptr_t.clone(), ptr_t.clone()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(
+                vec![expr_t.clone(), expr_t.clone()],
+                expr_t.clone(),
+            )),
         );
         expr_mod.insert(
             "mul".to_string(),
-            Scheme::mono(Ty::fun(vec![ptr_t.clone(), ptr_t.clone()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(
+                vec![expr_t.clone(), expr_t.clone()],
+                expr_t.clone(),
+            )),
         );
         expr_mod.insert(
             "div".to_string(),
-            Scheme::mono(Ty::fun(vec![ptr_t.clone(), ptr_t.clone()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(
+                vec![expr_t.clone(), expr_t.clone()],
+                expr_t.clone(),
+            )),
         );
         expr_mod.insert(
             "eq".to_string(),
-            Scheme::mono(Ty::fun(vec![ptr_t.clone(), ptr_t.clone()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(
+                vec![expr_t.clone(), expr_t.clone()],
+                expr_t.clone(),
+            )),
         );
         expr_mod.insert(
             "neq".to_string(),
-            Scheme::mono(Ty::fun(vec![ptr_t.clone(), ptr_t.clone()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(
+                vec![expr_t.clone(), expr_t.clone()],
+                expr_t.clone(),
+            )),
         );
         expr_mod.insert(
             "lt".to_string(),
-            Scheme::mono(Ty::fun(vec![ptr_t.clone(), ptr_t.clone()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(
+                vec![expr_t.clone(), expr_t.clone()],
+                expr_t.clone(),
+            )),
         );
         expr_mod.insert(
             "lte".to_string(),
-            Scheme::mono(Ty::fun(vec![ptr_t.clone(), ptr_t.clone()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(
+                vec![expr_t.clone(), expr_t.clone()],
+                expr_t.clone(),
+            )),
         );
         expr_mod.insert(
             "gt".to_string(),
-            Scheme::mono(Ty::fun(vec![ptr_t.clone(), ptr_t.clone()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(
+                vec![expr_t.clone(), expr_t.clone()],
+                expr_t.clone(),
+            )),
         );
         expr_mod.insert(
             "gte".to_string(),
-            Scheme::mono(Ty::fun(vec![ptr_t.clone(), ptr_t.clone()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(
+                vec![expr_t.clone(), expr_t.clone()],
+                expr_t.clone(),
+            )),
         );
         expr_mod.insert(
             "case".to_string(),
             Scheme::mono(Ty::fun(
                 vec![
-                    Ty::list(ptr_t.clone()),
-                    Ty::list(ptr_t.clone()),
-                    ptr_t.clone(),
+                    Ty::list(expr_t.clone()),
+                    Ty::list(expr_t.clone()),
+                    expr_t.clone(),
                 ],
-                ptr_t.clone(),
+                expr_t.clone(),
             )),
         );
         expr_mod.insert(
             "case_when".to_string(),
             Scheme::mono(Ty::fun(
                 vec![
-                    Ty::list(ptr_t.clone()),
-                    Ty::list(ptr_t.clone()),
-                    ptr_t.clone(),
+                    Ty::list(expr_t.clone()),
+                    Ty::list(expr_t.clone()),
+                    expr_t.clone(),
                 ],
-                ptr_t.clone(),
+                expr_t.clone(),
             )),
         );
         expr_mod.insert(
             "coalesce".to_string(),
-            Scheme::mono(Ty::fun(vec![Ty::list(ptr_t.clone())], ptr_t.clone())),
+            Scheme::mono(Ty::fun(vec![Ty::list(expr_t.clone())], expr_t.clone())),
         );
         expr_mod.insert(
             "excluded".to_string(),
-            Scheme::mono(Ty::fun(vec![Ty::string()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(vec![Ty::string()], expr_t.clone())),
         );
         expr_mod.insert(
             "alias".to_string(),
-            Scheme::mono(Ty::fun(vec![ptr_t.clone(), Ty::string()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(vec![expr_t.clone(), Ty::string()], expr_t.clone())),
         );
         expr_mod.insert(
             "label".to_string(),
-            Scheme::mono(Ty::fun(vec![ptr_t.clone(), Ty::string()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(vec![expr_t.clone(), Ty::string()], expr_t.clone())),
         );
         modules.insert("Expr".to_string(), expr_mod);
     }
 
     // ── Query module (Phase 98) ─────────────────────────────────────
     {
-        let ptr_t = Ty::Con(TyCon::new("Ptr"));
+        let query_t = Ty::Con(TyCon::new("Query"));
+        let expr_t = Ty::Con(TyCon::new("Expr"));
         let atom_t = Ty::Con(TyCon::new("Atom"));
         let mut query_mod = HashMap::new();
-        // Query.from(String) -> Ptr
+        // Query.from(String) -> Query
         query_mod.insert(
             "from".to_string(),
-            Scheme::mono(Ty::fun(vec![Ty::string()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(vec![Ty::string()], query_t.clone())),
         );
-        // Query.where(Ptr, Atom, String) -> Ptr  (3-arg equality: field = value)
+        // Query.where(Query, Atom, String) -> Query  (3-arg equality: field = value)
         query_mod.insert(
             "where".to_string(),
             Scheme::mono(Ty::fun(
-                vec![ptr_t.clone(), atom_t.clone(), Ty::string()],
-                ptr_t.clone(),
+                vec![query_t.clone(), atom_t.clone(), Ty::string()],
+                query_t.clone(),
             )),
         );
-        // Query.where_op(Ptr, Atom, Atom, String) -> Ptr  (4-arg operator: field op value)
+        // Query.where_op(Query, Atom, Atom, String) -> Query  (4-arg operator: field op value)
         query_mod.insert(
             "where_op".to_string(),
             Scheme::mono(Ty::fun(
-                vec![ptr_t.clone(), atom_t.clone(), atom_t.clone(), Ty::string()],
-                ptr_t.clone(),
+                vec![
+                    query_t.clone(),
+                    atom_t.clone(),
+                    atom_t.clone(),
+                    Ty::string(),
+                ],
+                query_t.clone(),
             )),
         );
-        // Query.where_in(Ptr, Atom, List<String>) -> Ptr  (field IN values_list)
+        // Query.where_in(Query, Atom, List<String>) -> Query  (field IN values_list)
         query_mod.insert(
             "where_in".to_string(),
             Scheme::mono(Ty::fun(
-                vec![ptr_t.clone(), atom_t.clone(), Ty::list(Ty::string())],
-                ptr_t.clone(),
+                vec![query_t.clone(), atom_t.clone(), Ty::list(Ty::string())],
+                query_t.clone(),
             )),
         );
-        // Query.where_null(Ptr, Atom) -> Ptr  (field IS NULL)
+        // Query.where_null(Query, Atom) -> Query  (field IS NULL)
         query_mod.insert(
             "where_null".to_string(),
-            Scheme::mono(Ty::fun(vec![ptr_t.clone(), atom_t.clone()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(
+                vec![query_t.clone(), atom_t.clone()],
+                query_t.clone(),
+            )),
         );
-        // Query.where_not_null(Ptr, Atom) -> Ptr  (field IS NOT NULL)
+        // Query.where_not_null(Query, Atom) -> Query  (field IS NOT NULL)
         query_mod.insert(
             "where_not_null".to_string(),
-            Scheme::mono(Ty::fun(vec![ptr_t.clone(), atom_t.clone()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(
+                vec![query_t.clone(), atom_t.clone()],
+                query_t.clone(),
+            )),
         );
-        // Query.where_not_in(Ptr, Atom, List<String>) -> Ptr  (field NOT IN (values...))
+        // Query.where_not_in(Query, Atom, List<String>) -> Query  (field NOT IN (values...))
         query_mod.insert(
             "where_not_in".to_string(),
             Scheme::mono(Ty::fun(
-                vec![ptr_t.clone(), atom_t.clone(), Ty::list(Ty::string())],
-                ptr_t.clone(),
+                vec![query_t.clone(), atom_t.clone(), Ty::list(Ty::string())],
+                query_t.clone(),
             )),
         );
-        // Query.where_between(Ptr, Atom, String, String) -> Ptr  (field BETWEEN low AND high)
+        // Query.where_between(Query, Atom, String, String) -> Query  (field BETWEEN low AND high)
         query_mod.insert(
             "where_between".to_string(),
             Scheme::mono(Ty::fun(
-                vec![ptr_t.clone(), atom_t.clone(), Ty::string(), Ty::string()],
-                ptr_t.clone(),
+                vec![query_t.clone(), atom_t.clone(), Ty::string(), Ty::string()],
+                query_t.clone(),
             )),
         );
-        // Query.where_or(Ptr, List<Atom>, List<String>) -> Ptr  ((field1 = $N OR field2 = $M))
+        // Query.where_or(Query, List<Atom>, List<String>) -> Query  ((field1 = $N OR field2 = $M))
         query_mod.insert(
             "where_or".to_string(),
             Scheme::mono(Ty::fun(
                 vec![
-                    ptr_t.clone(),
+                    query_t.clone(),
                     Ty::list(atom_t.clone()),
                     Ty::list(Ty::string()),
                 ],
-                ptr_t.clone(),
+                query_t.clone(),
             )),
         );
-        // Query.where_expr(Ptr, Ptr) -> Ptr  (structured expression predicate)
+        // Query.where_expr(Query, Query) -> Query  (structured expression predicate)
         query_mod.insert(
             "where_expr".to_string(),
-            Scheme::mono(Ty::fun(vec![ptr_t.clone(), ptr_t.clone()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(
+                vec![query_t.clone(), expr_t.clone()],
+                query_t.clone(),
+            )),
         );
-        // Query.select(Ptr, List<String>) -> Ptr  (select fields list)
+        // Query.select(Query, List<String>) -> Query  (select fields list)
         query_mod.insert(
             "select".to_string(),
             Scheme::mono(Ty::fun(
-                vec![ptr_t.clone(), Ty::list(Ty::string())],
-                ptr_t.clone(),
+                vec![query_t.clone(), Ty::list(Ty::string())],
+                query_t.clone(),
             )),
         );
-        // Query.select_expr(Ptr, Ptr) -> Ptr  (single structured SELECT expression)
+        // Query.select_expr(Query, Query) -> Query  (single structured SELECT expression)
         query_mod.insert(
             "select_expr".to_string(),
-            Scheme::mono(Ty::fun(vec![ptr_t.clone(), ptr_t.clone()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(
+                vec![query_t.clone(), expr_t.clone()],
+                query_t.clone(),
+            )),
         );
-        // Query.select_exprs(Ptr, List<Ptr>) -> Ptr  (structured SELECT expressions)
+        // Query.select_exprs(Query, List<Expr>) -> Query  (structured SELECT expressions)
         query_mod.insert(
             "select_exprs".to_string(),
             Scheme::mono(Ty::fun(
-                vec![ptr_t.clone(), Ty::list(ptr_t.clone())],
-                ptr_t.clone(),
+                vec![query_t.clone(), Ty::list(expr_t.clone())],
+                query_t.clone(),
             )),
         );
-        // Query.order_by(Ptr, Atom, Atom) -> Ptr  (field atom, direction atom)
+        // Query.order_by(Query, Atom, Atom) -> Query  (field atom, direction atom)
         query_mod.insert(
             "order_by".to_string(),
             Scheme::mono(Ty::fun(
-                vec![ptr_t.clone(), atom_t.clone(), atom_t.clone()],
-                ptr_t.clone(),
+                vec![query_t.clone(), atom_t.clone(), atom_t.clone()],
+                query_t.clone(),
             )),
         );
-        // Query.limit(Ptr, Int) -> Ptr
+        // Query.limit(Query, Int) -> Query
         query_mod.insert(
             "limit".to_string(),
-            Scheme::mono(Ty::fun(vec![ptr_t.clone(), Ty::int()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(vec![query_t.clone(), Ty::int()], query_t.clone())),
         );
-        // Query.offset(Ptr, Int) -> Ptr
+        // Query.offset(Query, Int) -> Query
         query_mod.insert(
             "offset".to_string(),
-            Scheme::mono(Ty::fun(vec![ptr_t.clone(), Ty::int()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(vec![query_t.clone(), Ty::int()], query_t.clone())),
         );
-        // Query.join(Ptr, Atom, String, String) -> Ptr  (type atom, table, on_clause)
+        // Query.join(Query, Atom, String, String) -> Query  (type atom, table, on_clause)
         query_mod.insert(
             "join".to_string(),
             Scheme::mono(Ty::fun(
-                vec![ptr_t.clone(), atom_t.clone(), Ty::string(), Ty::string()],
-                ptr_t.clone(),
+                vec![query_t.clone(), atom_t.clone(), Ty::string(), Ty::string()],
+                query_t.clone(),
             )),
         );
-        // Query.join_as(Ptr, Atom, String, String, String) -> Ptr  (type atom, table, alias, on_clause)
+        // Query.join_as(Query, Atom, String, String, String) -> Query  (type atom, table, alias, on_clause)
         query_mod.insert(
             "join_as".to_string(),
             Scheme::mono(Ty::fun(
                 vec![
-                    ptr_t.clone(),
+                    query_t.clone(),
                     atom_t.clone(),
                     Ty::string(),
                     Ty::string(),
                     Ty::string(),
                 ],
-                ptr_t.clone(),
+                query_t.clone(),
             )),
         );
-        // Query.group_by(Ptr, Atom) -> Ptr  (field atom)
+        // Query.group_by(Query, Atom) -> Query  (field atom)
         query_mod.insert(
             "group_by".to_string(),
-            Scheme::mono(Ty::fun(vec![ptr_t.clone(), atom_t.clone()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(
+                vec![query_t.clone(), atom_t.clone()],
+                query_t.clone(),
+            )),
         );
-        // Query.having(Ptr, String, String) -> Ptr  (clause, value)
+        // Query.having(Query, String, String) -> Query  (clause, value)
         query_mod.insert(
             "having".to_string(),
             Scheme::mono(Ty::fun(
-                vec![ptr_t.clone(), Ty::string(), Ty::string()],
-                ptr_t.clone(),
+                vec![query_t.clone(), Ty::string(), Ty::string()],
+                query_t.clone(),
             )),
         );
-        // Query.fragment(Ptr, String, List<String>) -> Ptr  (raw sql, params list)
+        // Query.fragment(Query, String, List<String>) -> Query  (raw sql, params list)
         query_mod.insert(
             "fragment".to_string(),
             Scheme::mono(Ty::fun(
-                vec![ptr_t.clone(), Ty::string(), Ty::list(Ty::string())],
-                ptr_t.clone(),
+                vec![query_t.clone(), Ty::string(), Ty::list(Ty::string())],
+                query_t.clone(),
             )),
         );
-        // Query.select_raw(Ptr, List<String>) -> Ptr  (raw SQL expressions list)
+        // Query.select_raw(Query, List<String>) -> Query  (raw SQL expressions list)
         query_mod.insert(
             "select_raw".to_string(),
             Scheme::mono(Ty::fun(
-                vec![ptr_t.clone(), Ty::list(Ty::string())],
-                ptr_t.clone(),
+                vec![query_t.clone(), Ty::list(Ty::string())],
+                query_t.clone(),
             )),
         );
-        // Query.where_raw(Ptr, String, List<String>) -> Ptr  (raw clause, params list)
+        // Query.where_raw(Query, String, List<String>) -> Query  (raw clause, params list)
         query_mod.insert(
             "where_raw".to_string(),
             Scheme::mono(Ty::fun(
-                vec![ptr_t.clone(), Ty::string(), Ty::list(Ty::string())],
-                ptr_t.clone(),
+                vec![query_t.clone(), Ty::string(), Ty::list(Ty::string())],
+                query_t.clone(),
             )),
         );
-        // Query.order_by_raw(Ptr, String) -> Ptr  (raw ORDER BY expression)
+        // Query.order_by_raw(Query, String) -> Query  (raw ORDER BY expression)
         query_mod.insert(
             "order_by_raw".to_string(),
-            Scheme::mono(Ty::fun(vec![ptr_t.clone(), Ty::string()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(
+                vec![query_t.clone(), Ty::string()],
+                query_t.clone(),
+            )),
         );
-        // Query.group_by_raw(Ptr, String) -> Ptr  (raw GROUP BY expression)
+        // Query.group_by_raw(Query, String) -> Query  (raw GROUP BY expression)
         query_mod.insert(
             "group_by_raw".to_string(),
-            Scheme::mono(Ty::fun(vec![ptr_t.clone(), Ty::string()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(
+                vec![query_t.clone(), Ty::string()],
+                query_t.clone(),
+            )),
         );
         // ── Phase 108: Aggregate SELECT functions ─────────────────────────
-        // Query.select_count(Ptr) -> Ptr  (count all rows)
+        // Query.select_count(Query) -> Query  (count all rows)
         query_mod.insert(
             "select_count".to_string(),
-            Scheme::mono(Ty::fun(vec![ptr_t.clone()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(vec![query_t.clone()], query_t.clone())),
         );
-        // Query.select_count_field(Ptr, Atom) -> Ptr  (count specific field)
+        // Query.select_count_field(Query, Atom) -> Query  (count specific field)
         query_mod.insert(
             "select_count_field".to_string(),
-            Scheme::mono(Ty::fun(vec![ptr_t.clone(), atom_t.clone()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(
+                vec![query_t.clone(), atom_t.clone()],
+                query_t.clone(),
+            )),
         );
-        // Query.select_sum(Ptr, Atom) -> Ptr
+        // Query.select_sum(Query, Atom) -> Query
         query_mod.insert(
             "select_sum".to_string(),
-            Scheme::mono(Ty::fun(vec![ptr_t.clone(), atom_t.clone()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(
+                vec![query_t.clone(), atom_t.clone()],
+                query_t.clone(),
+            )),
         );
-        // Query.select_avg(Ptr, Atom) -> Ptr
+        // Query.select_avg(Query, Atom) -> Query
         query_mod.insert(
             "select_avg".to_string(),
-            Scheme::mono(Ty::fun(vec![ptr_t.clone(), atom_t.clone()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(
+                vec![query_t.clone(), atom_t.clone()],
+                query_t.clone(),
+            )),
         );
-        // Query.select_min(Ptr, Atom) -> Ptr
+        // Query.select_min(Query, Atom) -> Query
         query_mod.insert(
             "select_min".to_string(),
-            Scheme::mono(Ty::fun(vec![ptr_t.clone(), atom_t.clone()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(
+                vec![query_t.clone(), atom_t.clone()],
+                query_t.clone(),
+            )),
         );
-        // Query.select_max(Ptr, Atom) -> Ptr
+        // Query.select_max(Query, Atom) -> Query
         query_mod.insert(
             "select_max".to_string(),
-            Scheme::mono(Ty::fun(vec![ptr_t.clone(), atom_t.clone()], ptr_t.clone())),
+            Scheme::mono(Ty::fun(
+                vec![query_t.clone(), atom_t.clone()],
+                query_t.clone(),
+            )),
         );
         // ── Phase 109: Subquery WHERE ─────────────────────────────────────
-        // Query.where_sub(Ptr, Atom, Ptr) -> Ptr  (query, field, sub_query)
+        // Query.where_sub(Query, Atom, Query) -> Query  (query, field, sub_query)
         query_mod.insert(
             "where_sub".to_string(),
             Scheme::mono(Ty::fun(
-                vec![ptr_t.clone(), atom_t.clone(), ptr_t.clone()],
-                ptr_t.clone(),
+                vec![query_t.clone(), atom_t.clone(), query_t.clone()],
+                query_t.clone(),
             )),
         );
         modules.insert("Query".to_string(), query_mod);
@@ -3665,22 +3746,24 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
 
     // ── Repo module (Phase 98) ──────────────────────────────────────
     {
-        let ptr_t = Ty::Con(TyCon::new("Ptr"));
+        let query_t = Ty::Con(TyCon::new("Query"));
+        let expr_t = Ty::Con(TyCon::new("Expr"));
+        let changeset_t = Ty::Con(TyCon::new("Changeset"));
         let pool_t = Ty::Con(TyCon::new("PoolHandle"));
         let mut repo_mod = HashMap::new();
-        // Repo.all(PoolHandle, Ptr) -> Result<List<Map<String,String>>, String>  (pool, query)
+        // Repo.all(PoolHandle, Query) -> Result<List<Map<String,String>>, String>  (pool, query)
         repo_mod.insert(
             "all".to_string(),
             Scheme::mono(Ty::fun(
-                vec![pool_t.clone(), ptr_t.clone()],
+                vec![pool_t.clone(), query_t.clone()],
                 Ty::result(Ty::list(Ty::map(Ty::string(), Ty::string())), Ty::string()),
             )),
         );
-        // Repo.one(PoolHandle, Ptr) -> Ptr  (pool, query -> Result<Map<String,String>, String>)
+        // Repo.one(PoolHandle, Query) -> Result<Map<String,String>, String>
         repo_mod.insert(
             "one".to_string(),
             Scheme::mono(Ty::fun(
-                vec![pool_t.clone(), ptr_t.clone()],
+                vec![pool_t.clone(), query_t.clone()],
                 Ty::result(Ty::map(Ty::string(), Ty::string()), Ty::string()),
             )),
         );
@@ -3700,19 +3783,19 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
                 Ty::result(Ty::map(Ty::string(), Ty::string()), Ty::string()),
             )),
         );
-        // Repo.count(PoolHandle, Ptr) -> Ptr  (pool, query -> Result<Int, String>)
+        // Repo.count(PoolHandle, Query) -> Result<Int, String>
         repo_mod.insert(
             "count".to_string(),
             Scheme::mono(Ty::fun(
-                vec![pool_t.clone(), ptr_t.clone()],
+                vec![pool_t.clone(), query_t.clone()],
                 Ty::result(Ty::int(), Ty::string()),
             )),
         );
-        // Repo.exists(PoolHandle, Ptr) -> Ptr  (pool, query -> Result<Bool, String>)
+        // Repo.exists(PoolHandle, Query) -> Result<Bool, String>
         repo_mod.insert(
             "exists".to_string(),
             Scheme::mono(Ty::fun(
-                vec![pool_t.clone(), ptr_t.clone()],
+                vec![pool_t.clone(), query_t.clone()],
                 Ty::result(Ty::bool(), Ty::string()),
             )),
         );
@@ -3728,14 +3811,14 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
                 Ty::result(Ty::map(Ty::string(), Ty::string()), Ty::string()),
             )),
         );
-        // Repo.insert_expr(PoolHandle, String, Map<String,Ptr>) -> Result<Map<String,String>, String>
+        // Repo.insert_expr(PoolHandle, String, Map<String,Expr>) -> Result<Map<String,String>, String>
         repo_mod.insert(
             "insert_expr".to_string(),
             Scheme::mono(Ty::fun(
                 vec![
                     pool_t.clone(),
                     Ty::string(),
-                    Ty::map(Ty::string(), ptr_t.clone()),
+                    Ty::map(Ty::string(), expr_t.clone()),
                 ],
                 Ty::result(Ty::map(Ty::string(), Ty::string()), Ty::string()),
             )),
@@ -3784,7 +3867,7 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
             },
         );
         // ── Phase 103: Extended Repo Write Operations ────────────────────
-        // Repo.update_where(PoolHandle, String, Map<String,String>, Ptr) -> Result<Map<String,String>, String>  (pool, table, fields_map, query)
+        // Repo.update_where(PoolHandle, String, Map<String,String>, Query) -> Result<Map<String,String>, String>  (pool, table, fields_map, query)
         repo_mod.insert(
             "update_where".to_string(),
             Scheme::mono(Ty::fun(
@@ -3792,29 +3875,29 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
                     pool_t.clone(),
                     Ty::string(),
                     Ty::map(Ty::string(), Ty::string()),
-                    ptr_t.clone(),
+                    query_t.clone(),
                 ],
                 Ty::result(Ty::map(Ty::string(), Ty::string()), Ty::string()),
             )),
         );
-        // Repo.update_where_expr(PoolHandle, String, Map<String,Ptr>, Ptr) -> Result<Map<String,String>, String>
+        // Repo.update_where_expr(PoolHandle, String, Map<String,Expr>, Query) -> Result<Map<String,String>, String>
         repo_mod.insert(
             "update_where_expr".to_string(),
             Scheme::mono(Ty::fun(
                 vec![
                     pool_t.clone(),
                     Ty::string(),
-                    Ty::map(Ty::string(), ptr_t.clone()),
-                    ptr_t.clone(),
+                    Ty::map(Ty::string(), expr_t.clone()),
+                    query_t.clone(),
                 ],
                 Ty::result(Ty::map(Ty::string(), Ty::string()), Ty::string()),
             )),
         );
-        // Repo.delete_where(PoolHandle, String, Ptr) -> Result<Int, String>  (pool, table, query)
+        // Repo.delete_where(PoolHandle, String, Query) -> Result<Int, String>  (pool, table, query)
         repo_mod.insert(
             "delete_where".to_string(),
             Scheme::mono(Ty::fun(
-                vec![pool_t.clone(), Ty::string(), ptr_t.clone()],
+                vec![pool_t.clone(), Ty::string(), query_t.clone()],
                 Ty::result(Ty::int(), Ty::string()),
             )),
         );
@@ -3849,7 +3932,7 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
                 Ty::result(Ty::map(Ty::string(), Ty::string()), Ty::string()),
             )),
         );
-        // Repo.insert_or_update_expr(PoolHandle, String, Map<String,String>, List<String>, Map<String,Ptr>) -> Result<Map<String,String>, String>
+        // Repo.insert_or_update_expr(PoolHandle, String, Map<String,String>, List<String>, Map<String,Expr>) -> Result<Map<String,String>, String>
         repo_mod.insert(
             "insert_or_update_expr".to_string(),
             Scheme::mono(Ty::fun(
@@ -3858,16 +3941,16 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
                     Ty::string(),
                     Ty::map(Ty::string(), Ty::string()),
                     Ty::list(Ty::string()),
-                    Ty::map(Ty::string(), ptr_t.clone()),
+                    Ty::map(Ty::string(), expr_t.clone()),
                 ],
                 Ty::result(Ty::map(Ty::string(), Ty::string()), Ty::string()),
             )),
         );
-        // Repo.delete_where_returning(PoolHandle, String, Ptr) -> Result<List<Map<String,String>>, String>
+        // Repo.delete_where_returning(PoolHandle, String, Query) -> Result<List<Map<String,String>>, String>
         repo_mod.insert(
             "delete_where_returning".to_string(),
             Scheme::mono(Ty::fun(
-                vec![pool_t.clone(), Ty::string(), ptr_t.clone()],
+                vec![pool_t.clone(), Ty::string(), query_t.clone()],
                 Ty::result(Ty::list(Ty::map(Ty::string(), Ty::string())), Ty::string()),
             )),
         );
@@ -3876,16 +3959,21 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
         repo_mod.insert(
             "insert_changeset".to_string(),
             Scheme::mono(Ty::fun(
-                vec![pool_t.clone(), Ty::string(), ptr_t.clone()],
-                Ty::result(Ty::map(Ty::string(), Ty::string()), ptr_t.clone()),
+                vec![pool_t.clone(), Ty::string(), changeset_t.clone()],
+                Ty::result(Ty::map(Ty::string(), Ty::string()), changeset_t.clone()),
             )),
         );
         // Repo.update_changeset(PoolHandle, String, String, Changeset) -> Result<Map<String,String>, Changeset>
         repo_mod.insert(
             "update_changeset".to_string(),
             Scheme::mono(Ty::fun(
-                vec![pool_t.clone(), Ty::string(), Ty::string(), ptr_t.clone()],
-                Ty::result(Ty::map(Ty::string(), Ty::string()), ptr_t.clone()),
+                vec![
+                    pool_t.clone(),
+                    Ty::string(),
+                    Ty::string(),
+                    changeset_t.clone(),
+                ],
+                Ty::result(Ty::map(Ty::string(), Ty::string()), changeset_t.clone()),
             )),
         );
         // ── Phase 100: Repo Preloading ───────────────────────────────────
@@ -3907,22 +3995,22 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
 
     // ── Changeset module (Phase 99) ──────────────────────────────────
     {
-        let ptr_t = Ty::Con(TyCon::new("Ptr"));
+        let changeset_t = Ty::Con(TyCon::new("Changeset"));
         let atom_t = Ty::Con(TyCon::new("Atom"));
         let map_ss = Ty::map(Ty::string(), Ty::string());
         let list_atom = Ty::list(atom_t.clone());
         let list_str = Ty::list(Ty::string());
         let mut cs_mod = HashMap::new();
 
-        // Changeset.cast(Map<String,String>, Map<String,String>, List<Atom>) -> Ptr
+        // Changeset.cast(Map<String,String>, Map<String,String>, List<Atom>) -> Changeset
         cs_mod.insert(
             "cast".to_string(),
             Scheme::mono(Ty::fun(
                 vec![map_ss.clone(), map_ss.clone(), list_atom.clone()],
-                ptr_t.clone(),
+                changeset_t.clone(),
             )),
         );
-        // Changeset.cast_with_types(Map<String,String>, Map<String,String>, List<Atom>, List<String>) -> Ptr
+        // Changeset.cast_with_types(Map<String,String>, Map<String,String>, List<Atom>, List<String>) -> Changeset
         cs_mod.insert(
             "cast_with_types".to_string(),
             Scheme::mono(Ty::fun(
@@ -3932,82 +4020,88 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
                     list_atom.clone(),
                     list_str.clone(),
                 ],
-                ptr_t.clone(),
+                changeset_t.clone(),
             )),
         );
 
-        // Changeset.validate_required(Ptr, List<Atom>) -> Ptr
+        // Changeset.validate_required(Changeset, List<Atom>) -> Changeset
         cs_mod.insert(
             "validate_required".to_string(),
             Scheme::mono(Ty::fun(
-                vec![ptr_t.clone(), list_atom.clone()],
-                ptr_t.clone(),
+                vec![changeset_t.clone(), list_atom.clone()],
+                changeset_t.clone(),
             )),
         );
-        // Changeset.validate_length(Ptr, Atom, Int, Int) -> Ptr
+        // Changeset.validate_length(Changeset, Atom, Int, Int) -> Changeset
         cs_mod.insert(
             "validate_length".to_string(),
             Scheme::mono(Ty::fun(
-                vec![ptr_t.clone(), atom_t.clone(), Ty::int(), Ty::int()],
-                ptr_t.clone(),
+                vec![changeset_t.clone(), atom_t.clone(), Ty::int(), Ty::int()],
+                changeset_t.clone(),
             )),
         );
-        // Changeset.validate_format(Ptr, Atom, String) -> Ptr
+        // Changeset.validate_format(Changeset, Atom, String) -> Changeset
         cs_mod.insert(
             "validate_format".to_string(),
             Scheme::mono(Ty::fun(
-                vec![ptr_t.clone(), atom_t.clone(), Ty::string()],
-                ptr_t.clone(),
+                vec![changeset_t.clone(), atom_t.clone(), Ty::string()],
+                changeset_t.clone(),
             )),
         );
-        // Changeset.validate_inclusion(Ptr, Atom, List<String>) -> Ptr
+        // Changeset.validate_inclusion(Changeset, Atom, List<String>) -> Changeset
         cs_mod.insert(
             "validate_inclusion".to_string(),
             Scheme::mono(Ty::fun(
-                vec![ptr_t.clone(), atom_t.clone(), list_str.clone()],
-                ptr_t.clone(),
+                vec![changeset_t.clone(), atom_t.clone(), list_str.clone()],
+                changeset_t.clone(),
             )),
         );
-        // Changeset.validate_number(Ptr, Atom, Int, Int, Int, Int) -> Ptr
+        // Changeset.validate_number(Changeset, Atom, Int, Int, Int, Int) -> Changeset
         cs_mod.insert(
             "validate_number".to_string(),
             Scheme::mono(Ty::fun(
                 vec![
-                    ptr_t.clone(),
+                    changeset_t.clone(),
                     atom_t.clone(),
                     Ty::int(),
                     Ty::int(),
                     Ty::int(),
                     Ty::int(),
                 ],
-                ptr_t.clone(),
+                changeset_t.clone(),
             )),
         );
 
-        // Changeset.valid(Ptr) -> Bool
+        // Changeset.valid(Changeset) -> Bool
         cs_mod.insert(
             "valid".to_string(),
-            Scheme::mono(Ty::fun(vec![ptr_t.clone()], Ty::bool())),
+            Scheme::mono(Ty::fun(vec![changeset_t.clone()], Ty::bool())),
         );
-        // Changeset.errors(Ptr) -> Map<String,String>
+        // Changeset.errors(Changeset) -> Map<String,String>
         cs_mod.insert(
             "errors".to_string(),
-            Scheme::mono(Ty::fun(vec![ptr_t.clone()], map_ss.clone())),
+            Scheme::mono(Ty::fun(vec![changeset_t.clone()], map_ss.clone())),
         );
-        // Changeset.changes(Ptr) -> Map<String,String>
+        // Changeset.changes(Changeset) -> Map<String,String>
         cs_mod.insert(
             "changes".to_string(),
-            Scheme::mono(Ty::fun(vec![ptr_t.clone()], map_ss.clone())),
+            Scheme::mono(Ty::fun(vec![changeset_t.clone()], map_ss.clone())),
         );
-        // Changeset.get_change(Ptr, Atom) -> String
+        // Changeset.get_change(Changeset, Atom) -> String
         cs_mod.insert(
             "get_change".to_string(),
-            Scheme::mono(Ty::fun(vec![ptr_t.clone(), atom_t.clone()], Ty::string())),
+            Scheme::mono(Ty::fun(
+                vec![changeset_t.clone(), atom_t.clone()],
+                Ty::string(),
+            )),
         );
-        // Changeset.get_error(Ptr, Atom) -> String
+        // Changeset.get_error(Changeset, Atom) -> String
         cs_mod.insert(
             "get_error".to_string(),
-            Scheme::mono(Ty::fun(vec![ptr_t.clone(), atom_t.clone()], Ty::string())),
+            Scheme::mono(Ty::fun(
+                vec![changeset_t.clone(), atom_t.clone()],
+                Ty::string(),
+            )),
         );
 
         modules.insert("Changeset".to_string(), cs_mod);

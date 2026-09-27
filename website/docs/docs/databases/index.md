@@ -235,7 +235,7 @@ Schema metadata drives query construction and `Repo.preload`; it does not run mi
 
 ## Query Builder
 
-Queries are immutable and pipe-friendly:
+Queries are immutable and pipe-friendly values of type `Query`:
 
 ```mesh
 let query = Query.from(User.__table__())
@@ -297,7 +297,7 @@ In a fragment, `?` stands for the next parameter (`$1`, `$2`, … name them by p
 
 ## Structured SQL Expressions
 
-`Expr.value` creates a bound value; it does not interpolate text into SQL. `Expr.column` creates an identifier reference.
+Expressions are values of type `Expr`. `Expr.value` creates a bound value; it does not interpolate text into SQL. `Expr.column` creates an identifier reference.
 
 | Functions | Purpose |
 |-----------|---------|
@@ -391,7 +391,7 @@ callback must declare its PostgreSQL parameter as `borrow PgConn` and return a
 
 ## Changesets
 
-Changesets whitelist input fields, convert values, accumulate validation errors, and feed repository writes.
+Changesets (values of type `Changeset`) whitelist input fields, convert values, accumulate validation errors, and feed repository writes.
 
 ```mesh
 let changeset = Changeset.cast(%{}, params, [:name, :email])

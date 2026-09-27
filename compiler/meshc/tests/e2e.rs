@@ -5690,6 +5690,52 @@ end
     );
 }
 
+/// A Query, an Expr and a Changeset each have a type of their own: all three
+/// were `Ptr`, so one passed where another belonged compiled, and the
+/// runtime read it as the other kind of object (a bus error, for a Query
+/// given as an Expr).
+#[test]
+fn e2e_query_expr_and_changeset_values_have_their_own_types() {
+    for (value, expected, found) in [
+        (
+            "Query.where_expr(Query.from(\"t\"), Query.from(\"u\"))",
+            "Expr",
+            "Query",
+        ),
+        ("Repo.all(pool, Expr.column(\"a\"))", "Query", "Expr"),
+        ("Changeset.valid(Query.from(\"t\"))", "Changeset", "Query"),
+        (
+            "Repo.insert_changeset(pool, \"t\", Query.from(\"t\"))",
+            "Changeset",
+            "Query",
+        ),
+    ] {
+        let source = format!(
+            "fn run(pool :: PoolHandle) do\n  let v = {value}\n  println(\"built\")\nend\n\nfn main() do\n  println(\"ok\")\nend\n"
+        );
+        let error = compile_expect_error(&source);
+        assert!(
+            error.contains(&format!("expected `{expected}`, found `{found}`")),
+            "{value}:\n{error}"
+        );
+    }
+    // Annotated, a builder's value has the type its module names.
+    let output = compile_and_run(
+        r#"
+fn active(q :: Query) -> Query do
+  q |> Query.where_expr(Expr.eq(Expr.column("status"), Expr.value("on")))
+end
+
+fn main() do
+  let c :: Changeset = Changeset.cast(%{}, %{"a" => "1"}, [:a])
+  let q = Query.from("t") |> active()
+  println(Changeset.get_change(c, :a))
+end
+"#,
+    );
+    assert_eq!(output, "1\n");
+}
+
 /// Repo.preload with merged metadata for nested preloading compiles correctly.
 #[test]
 fn e2e_repo_preload_merged_meta() {
