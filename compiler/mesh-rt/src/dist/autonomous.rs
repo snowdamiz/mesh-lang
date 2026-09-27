@@ -872,11 +872,7 @@ fn controller_loop(
         }
 
         if !was_leader {
-            if let Err(error) = reconciler.restore_from_control_entries(&consensus.entries) {
-                controller_status().lock().unwrap().last_error = Some(error);
-                std::thread::park_timeout(interval);
-                continue;
-            }
+            reconciler.restore_from_control_entries(&consensus.entries);
             was_leader = true;
         }
 
