@@ -7906,17 +7906,11 @@ pub extern "C-unwind" fn mesh_node_spawn(
         None => return 0,
     };
 
+    // Both names are strings' bytes, compiled code's or the runtime's.
     let node_name = unsafe {
-        if node_ptr.is_null() {
-            return 0;
-        }
         std::str::from_utf8(std::slice::from_raw_parts(node_ptr, node_len as usize)).unwrap_or("")
     };
-
     let fn_name = unsafe {
-        if fn_name_ptr.is_null() {
-            return 0;
-        }
         std::str::from_utf8(std::slice::from_raw_parts(
             fn_name_ptr,
             fn_name_len as usize,
