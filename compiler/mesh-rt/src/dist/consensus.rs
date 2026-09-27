@@ -91,6 +91,34 @@ enum MeshConsensusRpcReply {
     TransportError(String),
 }
 
+type RpcAnswer<T, E = openraft::error::Infallible> = Result<T, MeshRaftError<E>>;
+
+impl MeshConsensusRpcReply {
+    fn into_append(self) -> Result<RpcAnswer<AppendEntriesResponse<ConsensusNodeId>>, Self> {
+        match self {
+            Self::Append(answer) => Ok(answer),
+            other => Err(other),
+        }
+    }
+
+    fn into_install_snapshot(
+        self,
+    ) -> Result<RpcAnswer<InstallSnapshotResponse<ConsensusNodeId>, InstallSnapshotError>, Self>
+    {
+        match self {
+            Self::InstallSnapshot(answer) => Ok(answer),
+            other => Err(other),
+        }
+    }
+
+    fn into_vote(self) -> Result<RpcAnswer<VoteResponse<ConsensusNodeId>>, Self> {
+        match self {
+            Self::Vote(answer) => Ok(answer),
+            other => Err(other),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct MeshConsensusRpcEnvelope {
     cluster_name: String,
@@ -385,7 +413,7 @@ fn unreachable<E: std::error::Error>(error: impl std::fmt::Display) -> MeshRpcEr
 fn rpc_reply<T, E: std::error::Error>(
     target: ConsensusNodeId,
     reply: Result<MeshConsensusRpcReply, String>,
-    pick: fn(MeshConsensusRpcReply) -> Result<Result<T, MeshRaftError<E>>, MeshConsensusRpcReply>,
+    pick: fn(MeshConsensusRpcReply) -> Result<RpcAnswer<T, E>, MeshConsensusRpcReply>,
 ) -> Result<T, MeshRpcError<E>> {
     match reply.map(pick) {
         Ok(Ok(Ok(response))) => Ok(response),
@@ -405,10 +433,7 @@ impl RaftNetwork<MeshRaftConfig> for MeshConsensusConnection {
     ) -> Result<AppendEntriesResponse<ConsensusNodeId>, MeshRpcError> {
         let rpc = MeshConsensusRpc::Append(request);
         let reply = self.round_trip(rpc, false, option).await;
-        rpc_reply(self.target, reply, |reply| match reply {
-            MeshConsensusRpcReply::Append(result) => Ok(result),
-            other => Err(other),
-        })
+        rpc_reply(self.target, reply, MeshConsensusRpcReply::into_append)
     }
 
     async fn install_snapshot(
@@ -418,10 +443,11 @@ impl RaftNetwork<MeshRaftConfig> for MeshConsensusConnection {
     ) -> Result<InstallSnapshotResponse<ConsensusNodeId>, MeshRpcError<InstallSnapshotError>> {
         let rpc = MeshConsensusRpc::InstallSnapshot(request);
         let reply = self.round_trip(rpc, true, option).await;
-        rpc_reply(self.target, reply, |reply| match reply {
-            MeshConsensusRpcReply::InstallSnapshot(result) => Ok(result),
-            other => Err(other),
-        })
+        rpc_reply(
+            self.target,
+            reply,
+            MeshConsensusRpcReply::into_install_snapshot,
+        )
     }
 
     async fn vote(
@@ -431,10 +457,7 @@ impl RaftNetwork<MeshRaftConfig> for MeshConsensusConnection {
     ) -> Result<VoteResponse<ConsensusNodeId>, MeshRpcError> {
         let rpc = MeshConsensusRpc::Vote(request);
         let reply = self.round_trip(rpc, false, option).await;
-        rpc_reply(self.target, reply, |reply| match reply {
-            MeshConsensusRpcReply::Vote(result) => Ok(result),
-            other => Err(other),
-        })
+        rpc_reply(self.target, reply, MeshConsensusRpcReply::into_vote)
     }
 }
 
@@ -992,10 +1015,7 @@ mod tests {
     #[tokio::test]
     async fn replies_map_to_answers_refusals_and_unreachable_peers() {
         let target = 7;
-        let pick = |reply| match reply {
-            MeshConsensusRpcReply::Vote(result) => Ok(result),
-            other => Err(other),
-        };
+        let pick = MeshConsensusRpcReply::into_vote;
         let answer = VoteResponse::new(vote(), None, true);
         assert_eq!(
             rpc_reply(
@@ -1026,6 +1046,39 @@ mod tests {
                 Err(RPCError::Unreachable(_))
             ));
         }
+        let append = MeshConsensusRpcReply::Append(Ok(AppendEntriesResponse::Success));
+        assert!(matches!(
+            rpc_reply(target, Ok(append), MeshConsensusRpcReply::into_append),
+            Ok(AppendEntriesResponse::Success)
+        ));
+        let snapshot =
+            MeshConsensusRpcReply::InstallSnapshot(Ok(InstallSnapshotResponse { vote: vote() }));
+        assert!(rpc_reply(
+            target,
+            Ok(snapshot),
+            MeshConsensusRpcReply::into_install_snapshot
+        )
+        .is_ok());
+        let vote_reply = MeshConsensusRpcReply::Vote(Ok(answer.clone()));
+        for wrong in [
+            rpc_reply(target, Ok(vote_reply), MeshConsensusRpcReply::into_append).map(|_| ()),
+            rpc_reply(
+                target,
+                Ok(MeshConsensusRpcReply::TransportError("x".to_string())),
+                MeshConsensusRpcReply::into_append,
+            )
+            .map(|_| ()),
+        ] {
+            assert!(matches!(wrong, Err(RPCError::Unreachable(_))));
+        }
+        assert!(matches!(
+            rpc_reply(
+                target,
+                Ok(MeshConsensusRpcReply::Vote(Ok(answer.clone()))),
+                MeshConsensusRpcReply::into_install_snapshot
+            ),
+            Err(RPCError::Unreachable(_))
+        ));
 
         // A connection to no one is unreachable before anything is sent.
         let mut network = MeshConsensusNetwork::new("cluster", 1, "source@host:4370").unwrap();
