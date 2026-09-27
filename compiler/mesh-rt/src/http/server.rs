@@ -1307,6 +1307,11 @@ pub extern "C" fn mesh_http_serve_tls(
     }
 }
 
+/// How long an accept loop with nothing to take waits before it looks
+/// again; one that failed waits as long, rather than failing again at once
+/// (out of descriptors, say) and again, a thread spinning on its log.
+pub(crate) const ACCEPT_PAUSE: Duration = Duration::from_millis(25);
+
 /// The accept loop HTTP.serve and HTTP.serve_tls share, until a shutdown is
 /// requested: each accepted connection (in TLS when `tls` is given) is
 /// admitted and handled on an actor of its own, or refused.
@@ -1336,12 +1341,11 @@ fn serve(router: *mut u8, port: i64, tls: Option<Arc<ServerConfig>>) {
     while !crate::process_signal::shutdown_requested() {
         let tcp_stream = match listener.accept() {
             Ok((stream, _peer)) => stream,
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                std::thread::sleep(Duration::from_millis(25));
-                continue;
-            }
             Err(e) => {
-                eprintln!("[mesh-rt] accept error: {}", e);
+                if e.kind() != std::io::ErrorKind::WouldBlock {
+                    eprintln!("[mesh-rt] accept error: {}", e);
+                }
+                std::thread::sleep(ACCEPT_PAUSE);
                 continue;
             }
         };
