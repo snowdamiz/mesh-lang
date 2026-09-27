@@ -144,7 +144,7 @@ pub fn type_at_position(
         }
     }
 
-    best.map(|(_, ty)| format!("{}", ty))
+    best.map(|(_, ty)| ty.with_named_vars().to_string())
 }
 
 /// Convert an LSP Position back to a byte offset in the source.
@@ -1406,28 +1406,43 @@ mod tests {
     // ── Hover Tests ───────────────────────────────────────────────────────
 
     #[test]
-    fn hover_integer_literal() {
-        let source = "let x = 42";
+    fn hover_names_a_generic_type_variables() {
+        let source = "fn pick(x, y) do\n  x\nend\n";
         let result = analyze_document("file:///test.mpl", source, &[]);
-        // Hover over the let binding -- should show the type.
-        // The rowan tree has "letx=42" so the LET_BINDING covers tree offsets.
-        // The type map uses tree-coordinate ranges.
-        // type_at_position converts LSP position to source byte offset.
-        // However, since the typeck uses rowan ranges (not source byte offsets),
-        // the hover might not work correctly for all positions due to the
-        // whitespace coordinate mismatch (pre-existing issue).
-        // We test with line 0, character 0 which should be in the LET_BINDING range.
         let ty = type_at_position(
             source,
             &result.typeck,
             &Position {
-                line: 0,
-                character: 0,
+                line: 1,
+                character: 2,
             },
         );
-        // May return Some("Int") or None depending on what range the typeck stored.
-        // At minimum, verify it doesn't panic.
-        let _ = ty;
+        assert_eq!(ty.as_deref(), Some("a"));
+        let whole = type_at_position(
+            source,
+            &result.typeck,
+            &Position {
+                line: 0,
+                character: 4,
+            },
+        )
+        .unwrap();
+        assert!(!whole.contains('?'), "{whole}");
+    }
+
+    #[test]
+    fn hover_integer_literal() {
+        let source = "fn main() do\n  let x = 42\n  x\nend\n";
+        let result = analyze_document("file:///test.mpl", source, &[]);
+        let ty = type_at_position(
+            source,
+            &result.typeck,
+            &Position {
+                line: 1,
+                character: 11,
+            },
+        );
+        assert_eq!(ty.as_deref(), Some("Int"));
     }
 
     #[test]

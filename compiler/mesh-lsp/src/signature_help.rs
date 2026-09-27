@@ -135,6 +135,11 @@ fn build_signature_info(
     ret: &Ty,
 ) -> SignatureInformation {
     let param_names = find_fn_def_param_names(root, callee_name);
+    // The variables named across the whole signature, so one keeps its name.
+    let (params, ret) = match Ty::Fun(params.to_vec(), Box::new(ret.clone())).with_named_vars() {
+        Ty::Fun(params, ret) => (params, *ret),
+        _ => unreachable!("naming variables keeps a function type"),
+    };
     let param_labels: Vec<String> = params
         .iter()
         .enumerate()
