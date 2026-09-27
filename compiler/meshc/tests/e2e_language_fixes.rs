@@ -5677,3 +5677,42 @@ end
 "##;
     assert_eq!(run(source), "t 3\n");
 }
+
+/// A tuple passed to or returned from a function value is the pointer to
+/// its heap block, as the function takes it: a call through the value
+/// passed it as a struct loaded from that pointer, and the callee read a
+/// garbage pointer.
+#[test]
+fn a_function_value_takes_and_returns_tuples() {
+    let source = r##"
+fn show(p :: (Int, String)) -> String do
+  case p do
+    (n, s) -> "#{n}:#{s}"
+  end
+end
+
+fn pair(n :: Int) -> (Int, String) do
+  (n, "p#{n}")
+end
+
+fn call_it(f :: Fun((Int, String)) -> String, p :: (Int, String)) -> String do
+  f(p)
+end
+
+fn use_pair(g :: Fun(Int) -> (Int, String)) -> String do
+  show(g(7))
+end
+
+fn main() do
+  let f = show
+  println(f((1, "one")))
+  println(call_it(show, (2, "two")))
+  println(call_it(fn q -> show(q) end, (3, "three")))
+  let g = pair
+  println(show(g(4)))
+  println(use_pair(pair))
+  println(use_pair(fn n -> (n * 2, "c") end))
+end
+"##;
+    assert_eq!(run(source), "1:one\n2:two\n3:three\n4:p4\n7:p7\n14:c\n");
+}

@@ -1531,6 +1531,12 @@ impl<'ctx> CodeGen<'ctx> {
             "type checking checks arity"
         );
         for (arg, param_ty) in args.iter().zip(declared_params.clone()) {
+            // A tuple is passed as the pointer to its heap block, as every
+            // function declares a tuple parameter.
+            let param_ty = match param_ty {
+                MirType::Tuple(_) => MirType::Ptr,
+                other => other,
+            };
             let expected = self.llvm_type(&param_ty);
             let val = self.codegen_expr(arg)?;
             let val = if val.get_type() != expected {
