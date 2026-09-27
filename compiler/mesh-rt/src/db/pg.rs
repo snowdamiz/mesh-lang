@@ -270,7 +270,8 @@ fn parse_pg_url(url: &str) -> Result<PgUrl, String> {
 
 /// Write a StartupMessage to a buffer.
 /// Format: Int32(length) Int32(196608=v3.0) String("user") String(username)
-///         String("database") String(dbname) Byte1(0)
+///         String("database") String(dbname)
+///         String("client_encoding") String("UTF8") Byte1(0)
 fn write_startup_message(buf: &mut Vec<u8>, user: &str, database: &str) {
     let mut body = Vec::new();
     // Protocol version 3.0 = 196608 = 0x00030000
@@ -281,6 +282,9 @@ fn write_startup_message(buf: &mut Vec<u8>, user: &str, database: &str) {
     body.extend_from_slice(b"database\0");
     body.extend_from_slice(database.as_bytes());
     body.push(0);
+    // Mesh text is UTF-8: the server converts to and from the database's
+    // encoding, which it otherwise assumes the client speaks.
+    body.extend_from_slice(b"client_encoding\0UTF8\0");
     // Terminator
     body.push(0);
 
@@ -2207,6 +2211,47 @@ mod tests {
             .err()
             .unwrap();
         assert!(error.contains("certificate"), "{error}");
+    }
+
+    /// MESH_TEST_DATABASE_URL with its database replaced by `name`.
+    fn database_url(name: &str) -> String {
+        let url = test_database_url(None, "sslmode=disable");
+        let (base, query) = url.split_once('?').unwrap();
+        format!("{}/{name}?{query}", base.rsplit_once('/').unwrap().0)
+    }
+
+    #[test]
+    fn startup_asks_for_utf8() {
+        let mut startup = Vec::new();
+        write_startup_message(&mut startup, "user", "db");
+        let asked = b"client_encoding\0UTF8\0";
+        assert!(startup.windows(asked.len()).any(|bytes| bytes == asked));
+    }
+
+    /// Mesh text is UTF-8 whatever the database's encoding: the server
+    /// converts both ways.
+    #[test]
+    #[ignore = "requires MESH_TEST_DATABASE_URL (the coverage run starts a database)"]
+    fn text_crosses_to_a_latin1_database_as_utf8() {
+        let mut admin = native_pg_connect(&test_database_url(None, "sslmode=disable")).unwrap();
+        for sql in [
+            "DROP DATABASE IF EXISTS mesh_latin1",
+            "CREATE DATABASE mesh_latin1 ENCODING 'LATIN1' LC_COLLATE 'C' LC_CTYPE 'C' \
+             TEMPLATE template0",
+        ] {
+            native_pg_execute(&mut admin, sql, &[]).unwrap();
+        }
+        let mut conn = native_pg_connect(&database_url("mesh_latin1")).unwrap();
+        let rows = native_pg_query(
+            &mut conn,
+            "SELECT length($1::text)::text AS n, chr(233) AS e",
+            &["é"],
+        );
+        native_pg_close(conn);
+        native_pg_execute(&mut admin, "DROP DATABASE mesh_latin1", &[]).unwrap();
+        native_pg_close(admin);
+        let pair = |column: &str, value: &str| (column.to_string(), value.to_string());
+        assert_eq!(rows, Ok(vec![vec![pair("n", "1"), pair("e", "é")]]));
     }
 
     #[test]
