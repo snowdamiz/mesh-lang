@@ -160,6 +160,22 @@ impl<'src> Parser<'src> {
             .nth(n)
     }
 
+    /// The name the last token before the current one that is not a comment
+    /// or a newline spells, when it is an identifier.
+    fn previous_ident(&self) -> Option<&str> {
+        let token = self.tokens.get(..self.pos)?.iter().rev().find(|token| {
+            !matches!(
+                token.kind,
+                TokenKind::Comment
+                    | TokenKind::DocComment
+                    | TokenKind::ModuleDocComment
+                    | TokenKind::Newline
+            )
+        })?;
+        (token.kind == TokenKind::Ident)
+            .then(|| &self.source[token.span.start as usize..token.span.end as usize])
+    }
+
     /// Returns the text of the current significant token.
     pub(crate) fn current_text(&self) -> &str {
         self.nth_text(0)
@@ -703,7 +719,21 @@ pub(crate) fn expect_statement_end(p: &mut Parser) {
     } else if !p.at_line_end()
         && !matches!(p.current(), SyntaxKind::SEMICOLON | SyntaxKind::ELSE_KW)
     {
-        p.error("expected a newline or `;` after the statement");
+        // `test "adds" do`: a call written without parentheses.
+        let call = matches!(
+            p.current(),
+            SyntaxKind::STRING_START | SyntaxKind::INT_LITERAL | SyntaxKind::FLOAT_LITERAL
+        )
+        .then(|| p.previous_ident())
+        .flatten()
+        .map(str::to_string);
+        match call {
+            Some(name) => p.error(&format!(
+                "expected a newline or `;` after the statement: to call `{name}`, \
+                 put its arguments in parentheses, `{name}(...)`"
+            )),
+            None => p.error("expected a newline or `;` after the statement"),
+        }
     }
 }
 

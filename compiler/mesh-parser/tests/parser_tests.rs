@@ -4337,3 +4337,26 @@ fn an_assignment_statement_says_names_are_bound_once() {
         .clone();
     assert!(first.contains("cannot be assigned again"), "{first}");
 }
+
+/// `test "adds" do`, a call written without parentheses, says to put the
+/// arguments in them; a value after a value does not.
+#[test]
+fn a_call_without_parentheses_says_to_add_them() {
+    for (source, hint) in [
+        ("test \"adds\" do\n  1\nend\n", Some("test(...)")),
+        ("fn f(x) do\n  g 5\nend\n", Some("g(...)")),
+        ("fn f() do\n  \"a\" \"b\"\nend\n", None),
+    ] {
+        let parse = mesh_parser::parse(source);
+        let first = parse
+            .errors()
+            .first()
+            .expect("a parse error")
+            .message
+            .clone();
+        match hint {
+            Some(call) => assert!(first.contains(call), "{source:?}: {first}"),
+            None => assert!(!first.contains("parentheses"), "{source:?}: {first}"),
+        }
+    }
+}
