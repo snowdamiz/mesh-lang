@@ -31,7 +31,7 @@ use crate::collections::map::{
 use crate::db::changeset::{
     add_constraint_error_to_changeset, map_constraint_error, SLOT_CHANGES, SLOT_VALID,
 };
-use crate::db::expr::{clone_expr, serialize_expr, SqlExpr};
+use crate::db::expr::{clone_expr, parse_expr, render_expr, SqlExpr};
 use crate::db::pool::{
     mesh_pool_checkin, mesh_pool_checkout, mesh_pool_execute, mesh_pool_query, unbox_u64_payload,
 };
@@ -135,25 +135,14 @@ fn select_sql(query: &QueryParts, bare_select: Option<&str>) -> (String, Vec<Str
         sql.push('*');
     } else {
         let mut cols = Vec::with_capacity(select_fields.len());
-        let mut select_param_idx = 0usize;
         for field in select_fields {
             if let Some(raw) = field.strip_prefix("RAW:") {
                 cols.push(raw.to_string());
-                continue;
+            } else if let Some(expr) = field.strip_prefix("EXPR:") {
+                cols.push(render_expr(&parse_expr(expr), &mut params, &mut param_idx));
+            } else {
+                cols.push(quote_name(field));
             }
-            if let Some(expr_sql) = field.strip_prefix("EXPR:") {
-                let (renumbered, consumed) = renumber_placeholders(expr_sql, param_idx);
-                cols.push(renumbered);
-                for _ in 0..consumed {
-                    if select_param_idx < query.select_params.len() {
-                        params.push(query.select_params[select_param_idx].clone());
-                        select_param_idx += 1;
-                    }
-                    param_idx += 1;
-                }
-                continue;
-            }
-            cols.push(quote_name(field));
         }
         sql.push_str(&cols.join(", "));
     }
@@ -500,18 +489,16 @@ fn build_set_expr_parts(
     exprs: &[SqlExpr],
     start_idx: usize,
 ) -> (Vec<String>, Vec<String>, usize) {
-    let mut set_parts = Vec::with_capacity(columns.len());
     let mut params = Vec::new();
     let mut next_idx = start_idx;
-
-    for (column, expr) in columns.iter().zip(exprs.iter()) {
-        let (expr_sql_local, expr_params) = serialize_expr(expr);
-        let (expr_sql, _consumed) = renumber_placeholders(&expr_sql_local, next_idx);
-        next_idx += expr_params.len();
-        params.extend(expr_params);
-        set_parts.push(format!("{} = {}", quote_name(column), expr_sql));
-    }
-
+    let set_parts = columns
+        .iter()
+        .zip(exprs)
+        .map(|(column, expr)| {
+            let expr_sql = render_expr(expr, &mut params, &mut next_idx);
+            format!("{} = {}", quote_name(column), expr_sql)
+        })
+        .collect();
     (set_parts, params, next_idx)
 }
 
@@ -610,17 +597,12 @@ fn build_insert_expr_sql_pure(
         .collect::<Vec<_>>()
         .join(", ");
 
-    let mut value_sql_parts = Vec::with_capacity(exprs.len());
     let mut params = Vec::new();
     let mut next_idx = 1usize;
-
-    for expr in exprs {
-        let (expr_sql_local, expr_params) = serialize_expr(expr);
-        let (expr_sql, _consumed) = renumber_placeholders(&expr_sql_local, next_idx);
-        next_idx += expr_params.len();
-        params.extend(expr_params);
-        value_sql_parts.push(expr_sql);
-    }
+    let value_sql_parts: Vec<String> = exprs
+        .iter()
+        .map(|expr| render_expr(expr, &mut params, &mut next_idx))
+        .collect();
 
     let sql = format!(
         "INSERT INTO {} ({}) VALUES ({}) RETURNING *",
@@ -1393,16 +1375,8 @@ fn build_where_from_query_parts(
             }
             continue;
         }
-        if let Some(expr_sql) = clause.strip_prefix("EXPR:") {
-            let (renumbered, consumed) = renumber_placeholders(expr_sql, param_idx);
-            conditions.push(renumbered);
-            for _ in 0..consumed {
-                if wp_idx < where_params.len() {
-                    params.push(where_params[wp_idx].clone());
-                    wp_idx += 1;
-                }
-                param_idx += 1;
-            }
+        if let Some(expr) = clause.strip_prefix("EXPR:") {
+            conditions.push(render_expr(&parse_expr(expr), &mut params, &mut param_idx));
             continue;
         }
         if let Some(raw_sql) = clause.strip_prefix("RAW:") {
@@ -1751,44 +1725,9 @@ mod tests {
         fragment_parts: &[String],
         fragment_params: &[String],
     ) -> (String, Vec<String>) {
-        build_select_sql_from_parts_with_select_params(
-            source,
-            select_fields,
-            &[],
-            where_clauses,
-            where_params,
-            order_fields,
-            limit_val,
-            offset_val,
-            join_clauses,
-            group_fields,
-            having_clauses,
-            having_params,
-            fragment_parts,
-            fragment_params,
-        )
-    }
-
-    fn build_select_sql_from_parts_with_select_params(
-        source: &str,
-        select_fields: &[String],
-        select_params: &[String],
-        where_clauses: &[String],
-        where_params: &[String],
-        order_fields: &[String],
-        limit_val: i64,
-        offset_val: i64,
-        join_clauses: &[String],
-        group_fields: &[String],
-        having_clauses: &[String],
-        having_params: &[String],
-        fragment_parts: &[String],
-        fragment_params: &[String],
-    ) -> (String, Vec<String>) {
         let parts = QueryParts {
             source: source.to_string(),
             select: select_fields.to_vec(),
-            select_params: select_params.to_vec(),
             where_clauses: where_clauses.to_vec(),
             where_params: where_params.to_vec(),
             order: order_fields.to_vec(),
@@ -1802,6 +1741,19 @@ mod tests {
             fragment_params: fragment_params.to_vec(),
         };
         select_sql(&parts, None)
+    }
+
+    /// A query's entry for `expr` (in its SELECT or WHERE list).
+    fn expr_entry(expr: &SqlExpr) -> String {
+        format!("EXPR:{}", serde_json::to_string(expr).unwrap())
+    }
+
+    fn value(text: &str) -> Box<SqlExpr> {
+        Box::new(SqlExpr::Value(text.into()))
+    }
+
+    fn column(name: &str) -> Box<SqlExpr> {
+        Box::new(SqlExpr::Column(name.into()))
     }
 
     #[test]
@@ -2368,10 +2320,9 @@ mod tests {
     /// selecting `1` when it names no columns so a GROUP BY still stands.
     #[test]
     fn counts_and_existence_wrap_the_whole_query() {
-        let (select, params) = build_select_sql_from_parts_with_select_params(
+        let (select, params) = build_select_sql_from_parts(
             "articles",
             &["RAW:1".into()],
-            &[],
             &["views >".into()],
             &["10".into()],
             &[],
@@ -3022,13 +2973,25 @@ mod tests {
 
     #[test]
     fn test_select_expr_sql_renumbers_select_params_before_where_params() {
-        let (sql, params) = build_select_sql_from_parts_with_select_params(
+        let (sql, params) = build_select_sql_from_parts(
             "issues",
             &[
-                "EXPR:COALESCE(\"nickname\", $1) AS \"nick\"".into(),
-                "EXPR:(\"event_count\" + $1) AS \"next_count\"".into(),
+                expr_entry(&SqlExpr::Alias {
+                    expr: Box::new(SqlExpr::Coalesce(vec![
+                        SqlExpr::Column("nickname".into()),
+                        SqlExpr::Value("fallback".into()),
+                    ])),
+                    alias: "nick".into(),
+                }),
+                expr_entry(&SqlExpr::Alias {
+                    expr: Box::new(SqlExpr::Binary {
+                        op: "+".into(),
+                        lhs: column("event_count"),
+                        rhs: value("2"),
+                    }),
+                    alias: "next_count".into(),
+                }),
             ],
-            &["fallback".into(), "2".into()],
             &["id =".into()],
             &["issue-123".into()],
             &[],
@@ -3155,12 +3118,22 @@ mod tests {
 
     #[test]
     fn test_where_expr_sql_renumbers_after_select_params() {
-        let (sql, params) = build_select_sql_from_parts_with_select_params(
+        let crypt = |salt: SqlExpr| SqlExpr::Call {
+            name: "crypt".into(),
+            args: vec![SqlExpr::Value("secret".into()), salt],
+        };
+        let (sql, params) = build_select_sql_from_parts(
             "users",
-            &["EXPR:crypt($1, password_hash) AS \"candidate\"".into()],
-            &["secret".into()],
-            &["EXPR:(\"password_hash\" = crypt($1, \"password_hash\"))".into()],
-            &["secret".into()],
+            &[expr_entry(&SqlExpr::Alias {
+                expr: Box::new(crypt(SqlExpr::Column("password_hash".into()))),
+                alias: "candidate".into(),
+            })],
+            &[expr_entry(&SqlExpr::Binary {
+                op: "=".into(),
+                lhs: column("password_hash"),
+                rhs: Box::new(crypt(SqlExpr::Column("password_hash".into()))),
+            })],
+            &[],
             &[],
             -1,
             -1,
@@ -3174,7 +3147,7 @@ mod tests {
 
         assert_eq!(
             sql,
-            "SELECT crypt($1, password_hash) AS \"candidate\" FROM \"users\" WHERE (\"password_hash\" = crypt($2, \"password_hash\"))"
+            "SELECT crypt($1, \"password_hash\") AS \"candidate\" FROM \"users\" WHERE (\"password_hash\" = crypt($2, \"password_hash\"))"
         );
         assert_eq!(params, vec!["secret", "secret"]);
     }

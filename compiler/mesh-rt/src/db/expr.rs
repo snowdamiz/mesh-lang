@@ -92,7 +92,12 @@ fn alloc_expr(expr: SqlExpr) -> *mut u8 {
 }
 
 pub(crate) unsafe fn clone_expr(ptr: *mut u8) -> SqlExpr {
-    serde_json::from_str(text_of(ptr)).expect("an Expr value holds an SqlExpr")
+    parse_expr(text_of(ptr))
+}
+
+/// The expression an `Expr` value's text (its JSON) holds.
+pub(crate) fn parse_expr(json: &str) -> SqlExpr {
+    serde_json::from_str(json).expect("an Expr value holds an SqlExpr")
 }
 
 fn render_function_name(name: &str) -> String {
@@ -100,13 +105,6 @@ fn render_function_name(name: &str) -> String {
         .map(|segment| segment.replace('"', ""))
         .collect::<Vec<_>>()
         .join(".")
-}
-
-pub(crate) fn serialize_expr(expr: &SqlExpr) -> (String, Vec<String>) {
-    let mut params = Vec::new();
-    let mut next_idx = 1usize;
-    let sql = render_expr(expr, &mut params, &mut next_idx);
-    (sql, params)
 }
 
 pub(crate) fn render_expr(
@@ -425,6 +423,13 @@ pub extern "C" fn mesh_expr_alias(expr: *mut u8, alias: *mut u8) -> *mut u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `expr` rendered on its own: its SQL, its values numbered from `$1`.
+    fn serialize_expr(expr: &SqlExpr) -> (String, Vec<String>) {
+        let mut params = Vec::new();
+        let sql = render_expr(expr, &mut params, &mut 1);
+        (sql, params)
+    }
 
     #[test]
     fn serialize_alias_coalesce_uses_local_placeholders() {

@@ -5,7 +5,7 @@
 //! `mesh_gc_alloc_actor`, copies the previous state, and modifies the
 //! relevant slots. The Query object is never mutated in place.
 //!
-//! ## Query object layout (14 slots, 112 bytes)
+//! ## Query object layout (13 slots, 104 bytes)
 //!
 //! | Slot | Offset | Name            | Type                   |
 //! |------|--------|-----------------|------------------------|
@@ -22,20 +22,18 @@
 //! | 10   |  80    | having_params   | *mut u8 (List<String>) |
 //! | 11   |  88    | fragment_parts  | *mut u8 (List<String>) |
 //! | 12   |  96    | fragment_params | *mut u8 (List<String>) |
-//! | 13   | 104    | select_params   | *mut u8 (List<String>) |
 
 use crate::collections::list::{
     list_strings, mesh_list_append, mesh_list_get, mesh_list_length, mesh_list_new,
 };
-use crate::db::expr::{clone_expr, serialize_expr};
 use crate::gc::mesh_gc_alloc_actor;
 use crate::string::mesh_str;
 use crate::string::text_of;
 
 // ── Constants ────────────────────────────────────────────────────────
 
-const QUERY_SLOTS: usize = 14;
-const QUERY_SIZE: usize = QUERY_SLOTS * 8; // 112 bytes
+const QUERY_SLOTS: usize = 13;
+const QUERY_SIZE: usize = QUERY_SLOTS * 8; // 104 bytes
 
 // Slot indices
 const SLOT_SOURCE: usize = 0;
@@ -51,7 +49,6 @@ const SLOT_HAVING_CLAUSES: usize = 9;
 const SLOT_HAVING_PARAMS: usize = 10;
 const SLOT_FRAGMENT_PARTS: usize = 11;
 const SLOT_FRAGMENT_PARAMS: usize = 12;
-const SLOT_SELECT_PARAMS: usize = 13;
 
 // ── Slot access helpers ──────────────────────────────────────────────
 
@@ -76,7 +73,6 @@ unsafe fn query_set_int(q: *mut u8, slot: usize, val: i64) {
 pub(crate) struct QueryParts {
     pub(crate) source: String,
     pub(crate) select: Vec<String>,
-    pub(crate) select_params: Vec<String>,
     pub(crate) where_clauses: Vec<String>,
     pub(crate) where_params: Vec<String>,
     pub(crate) order: Vec<String>,
@@ -98,7 +94,6 @@ pub(crate) unsafe fn query_parts(q: *mut u8) -> QueryParts {
     QueryParts {
         source: text_of(query_get(q, SLOT_SOURCE)).to_string(),
         select: strings(SLOT_SELECT),
-        select_params: strings(SLOT_SELECT_PARAMS),
         where_clauses: strings(SLOT_WHERE_CLAUSES),
         where_params: strings(SLOT_WHERE_PARAMS),
         order: strings(SLOT_ORDER),
@@ -165,14 +160,13 @@ unsafe fn alloc_query() -> *mut u8 {
     query_set(q, SLOT_HAVING_PARAMS, mesh_list_new());
     query_set(q, SLOT_FRAGMENT_PARTS, mesh_list_new());
     query_set(q, SLOT_FRAGMENT_PARAMS, mesh_list_new());
-    query_set(q, SLOT_SELECT_PARAMS, mesh_list_new());
     // Integer slots: -1 means "not set"
     query_set_int(q, SLOT_LIMIT, -1);
     query_set_int(q, SLOT_OFFSET, -1);
     q
 }
 
-/// Clone a Query: allocate new 112 bytes and copy all data from source.
+/// Clone a Query: allocate a new one and copy all data from source.
 unsafe fn clone_query(src: *mut u8) -> *mut u8 {
     let dst = mesh_gc_alloc_actor(QUERY_SIZE as u64, 8);
     std::ptr::copy_nonoverlapping(src, dst, QUERY_SIZE);
@@ -406,27 +400,19 @@ pub extern "C" fn mesh_query_where_not_null(q: *mut u8, field: *mut u8) -> *mut 
 /// Add a structured expression-valued WHERE predicate.
 ///
 /// `Query.where_expr(q, Expr.eq(Expr.column("password_hash"), Pg.crypt(...)))`
-///   -> new Query with a serialized boolean expression in the WHERE list.
+///   -> new Query with the expression (its JSON) in the WHERE list; the SQL
+///   builder renders it, numbering its values where they fall.
 #[no_mangle]
 pub extern "C" fn mesh_query_where_expr(q: *mut u8, expr: *mut u8) -> *mut u8 {
     unsafe {
         let new_q = clone_query(q);
-        let serialized = serialize_expr(&clone_expr(expr));
-        let encoded_expr = mesh_str(&format!("EXPR:{}", serialized.0)) as *mut u8;
-
+        let encoded_expr = mesh_str(&format!("EXPR:{}", text_of(expr)));
         let wc = query_get(new_q, SLOT_WHERE_CLAUSES);
         query_set(
             new_q,
             SLOT_WHERE_CLAUSES,
             mesh_list_append(wc, encoded_expr as u64),
         );
-
-        let mut wp = query_get(new_q, SLOT_WHERE_PARAMS);
-        for value in serialized.1 {
-            let value_ptr = mesh_str(&value) as *mut u8;
-            wp = mesh_list_append(wp, value_ptr as u64);
-        }
-        query_set(new_q, SLOT_WHERE_PARAMS, wp);
         new_q
     }
 }
@@ -439,30 +425,18 @@ pub extern "C" fn mesh_query_select(q: *mut u8, fields: *mut u8) -> *mut u8 {
     unsafe {
         let new_q = clone_query(q);
         query_set(new_q, SLOT_SELECT, fields);
-        query_set(new_q, SLOT_SELECT_PARAMS, mesh_list_new());
         new_q
     }
 }
 
+/// Each of `exprs` (their JSON) appended to the SELECT list.
 unsafe fn append_select_exprs(new_q: *mut u8, exprs: *mut u8) {
     let mut select_fields = query_get(new_q, SLOT_SELECT);
-    let mut select_params = query_get(new_q, SLOT_SELECT_PARAMS);
-    let expr_count = mesh_list_length(exprs);
-
-    for idx in 0..expr_count {
-        let expr_ptr = mesh_list_get(exprs, idx) as *mut u8;
-        let expr = clone_expr(expr_ptr);
-        let (expr_sql, expr_param_values) = serialize_expr(&expr);
-        let encoded_expr = mesh_str(&format!("EXPR:{expr_sql}")) as *mut u8;
+    for expr in list_strings(exprs) {
+        let encoded_expr = mesh_str(&format!("EXPR:{expr}"));
         select_fields = mesh_list_append(select_fields, encoded_expr as u64);
-        for value in expr_param_values {
-            let param_ptr = mesh_str(&value) as *mut u8;
-            select_params = mesh_list_append(select_params, param_ptr as u64);
-        }
     }
-
     query_set(new_q, SLOT_SELECT, select_fields);
-    query_set(new_q, SLOT_SELECT_PARAMS, select_params);
 }
 
 /// Append a single structured expression-valued SELECT item.
