@@ -76,6 +76,17 @@ pub(crate) fn global_scheduler() -> &'static Scheduler {
         .expect("actor scheduler not initialized -- call mesh_rt_init_actor() first")
 }
 
+/// The process `pid` names, once the scheduler is running and while the
+/// process lives.
+pub(crate) fn process(pid: ProcessId) -> Option<std::sync::Arc<parking_lot::Mutex<Process>>> {
+    GLOBAL_SCHEDULER.get()?.get_process(pid)
+}
+
+/// The process running on this thread.
+pub(crate) fn current_process() -> Option<std::sync::Arc<parking_lot::Mutex<Process>>> {
+    process(stack::get_current_pid()?)
+}
+
 /// A standard-library channel sender that wakes a suspended actor after a reply.
 ///
 /// Distribution reader threads use this for request/reply protocols whose
@@ -396,19 +407,8 @@ fn collect_at_safepoint() {
 /// - The heap is below the pressure threshold
 /// - GC is already in progress
 fn try_trigger_gc() {
-    let pid = match stack::get_current_pid() {
-        Some(pid) => pid,
-        None => return,
-    };
-
-    let sched = match GLOBAL_SCHEDULER.get() {
-        Some(s) => s,
-        None => return,
-    };
-
-    let proc_arc = match sched.get_process(pid) {
-        Some(p) => p,
-        None => return,
+    let Some(proc_arc) = current_process() else {
+        return;
     };
 
     let mut proc = proc_arc.lock();

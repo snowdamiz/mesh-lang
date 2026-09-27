@@ -151,11 +151,7 @@ fn with_live_builder<R>(
     if pointer.is_null() {
         return Err(BuilderError::Invalid);
     }
-    let owner = crate::actor::stack::get_current_pid().ok_or(BuilderError::Invalid)?;
-    let scheduler = crate::actor::GLOBAL_SCHEDULER
-        .get()
-        .ok_or(BuilderError::Invalid)?;
-    let process = scheduler.get_process(owner).ok_or(BuilderError::Invalid)?;
+    let process = crate::actor::current_process().ok_or(BuilderError::Invalid)?;
     let process = process.lock();
     let mut current = process.heap.all_objects_head();
     while !current.is_null() {

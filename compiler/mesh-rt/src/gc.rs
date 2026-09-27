@@ -173,7 +173,6 @@ pub extern "C" fn mesh_gc_alloc_actor(size: u64, align: u64) -> *mut u8 {
 /// succeeded. Returns `None` if no actor context is available.
 fn try_alloc_from_actor_heap(size: usize, align: usize) -> Option<*mut u8> {
     use crate::actor::stack::get_current_pid;
-    use crate::actor::GLOBAL_SCHEDULER;
 
     let pid = get_current_pid()?;
 
@@ -184,7 +183,7 @@ fn try_alloc_from_actor_heap(size: usize, align: usize) -> Option<*mut u8> {
         // shared by every worker, so taking it per allocation serialized
         // allocation-heavy actors across cores.
         if cached.as_ref().map(|(owner, _)| *owner) != Some(pid) {
-            *cached = Some((pid, GLOBAL_SCHEDULER.get()?.get_process(pid)?));
+            *cached = Some((pid, crate::actor::process(pid)?));
         }
         let (_, process) = cached.as_ref()?;
         let mut process = process.lock();
@@ -210,7 +209,6 @@ fn try_alloc_from_actor_heap(size: usize, align: usize) -> Option<*mut u8> {
 /// such as an HTTP stream's) nothing is: the object may be another actor's.
 pub(crate) fn may_update_in_place(ptr: *const u8) -> bool {
     use crate::actor::stack::get_current_pid;
-    use crate::actor::GLOBAL_SCHEDULER;
 
     let Some(pid) = get_current_pid() else {
         // Unit tests run off an actor and exercise the in-place paths.
@@ -219,7 +217,7 @@ pub(crate) fn may_update_in_place(ptr: *const u8) -> bool {
     let owns = |cached: &CachedProcess| {
         let mut cached = cached.borrow_mut();
         if cached.as_ref().map(|(owner, _)| *owner) != Some(pid) {
-            *cached = Some((pid, GLOBAL_SCHEDULER.get()?.get_process(pid)?));
+            *cached = Some((pid, crate::actor::process(pid)?));
         }
         let (_, process) = cached.as_ref()?;
         let mut process = process.lock();
@@ -265,22 +263,8 @@ pub(crate) fn forget_current_process() {
 /// progress (re-entrancy guard).
 #[no_mangle]
 pub extern "C" fn mesh_gc_collect() {
-    use crate::actor::stack;
-    use crate::actor::GLOBAL_SCHEDULER;
-
-    let pid = match stack::get_current_pid() {
-        Some(pid) => pid,
-        None => return,
-    };
-
-    let sched = match GLOBAL_SCHEDULER.get() {
-        Some(s) => s,
-        None => return,
-    };
-
-    let proc_arc = match sched.get_process(pid) {
-        Some(p) => p,
-        None => return,
+    let Some(proc_arc) = crate::actor::current_process() else {
+        return;
     };
 
     let register_roots = crate::actor::capture_register_roots();

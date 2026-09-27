@@ -74,13 +74,7 @@ pub extern "C" fn mesh_secret_random(length: i64) -> *mut MeshResult {
             length,
         );
     }
-    let Some(pid) = crate::actor::stack::get_current_pid() else {
-        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
-    };
-    let Some(scheduler) = crate::actor::GLOBAL_SCHEDULER.get() else {
-        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
-    };
-    let Some(process) = scheduler.get_process(pid) else {
+    let Some(process) = crate::actor::current_process() else {
         return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
     };
 
@@ -111,13 +105,7 @@ pub extern "C" fn mesh_secret_concat(
     first: *mut MeshSecretHandle,
     second: *mut MeshSecretHandle,
 ) -> *mut MeshResult {
-    let Some(pid) = crate::actor::stack::get_current_pid() else {
-        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
-    };
-    let Some(scheduler) = crate::actor::GLOBAL_SCHEDULER.get() else {
-        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
-    };
-    let Some(process) = scheduler.get_process(pid) else {
+    let Some(process) = crate::actor::current_process() else {
         return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
     };
     let mut process = process.lock();
@@ -135,13 +123,14 @@ pub extern "C" fn mesh_secret_concat(
         return crypto_error(CryptoErrorTag::SecretDestroyed, 0, 0);
     };
 
-    let result = match secret_table()
-        .lock()
-        .concat_secrets(pid, first_handle, second_handle)
-    {
-        Ok(handle) => Ok(allocate_handle(&mut process, handle)),
-        Err(error) => Err(error),
-    };
+    let result =
+        match secret_table()
+            .lock()
+            .concat_secrets(process.pid, first_handle, second_handle)
+        {
+            Ok(handle) => Ok(allocate_handle(&mut process, handle)),
+            Err(error) => Err(error),
+        };
     drop(process);
 
     match result {
@@ -182,13 +171,7 @@ fn secret_map_error_result(error: SecretMapError) -> *mut MeshResult {
 fn with_current_secret_process<R>(
     operation: impl FnOnce(&mut Process) -> Result<R, SecretMapError>,
 ) -> Result<R, SecretMapError> {
-    let owner = crate::actor::stack::get_current_pid()
-        .ok_or(SecretMapError::Resource(ResourceError::OwnerExited))?;
-    let scheduler = crate::actor::GLOBAL_SCHEDULER
-        .get()
-        .ok_or(SecretMapError::Resource(ResourceError::OwnerExited))?;
-    let process = scheduler
-        .get_process(owner)
+    let process = crate::actor::current_process()
         .ok_or(SecretMapError::Resource(ResourceError::OwnerExited))?;
     let mut process = process.lock();
     live_owner(&process).map_err(SecretMapError::Resource)?;
@@ -384,13 +367,7 @@ fn destroy_resource_for_current_actor(
     handle: *mut MeshSecretHandle,
     expected_kind: Option<ResourceKind>,
 ) {
-    let Some(owner) = crate::actor::stack::get_current_pid() else {
-        return;
-    };
-    let Some(scheduler) = crate::actor::GLOBAL_SCHEDULER.get() else {
-        return;
-    };
-    let Some(process) = scheduler.get_process(owner) else {
+    let Some(process) = crate::actor::current_process() else {
         return;
     };
     let process = process.lock();

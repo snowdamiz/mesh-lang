@@ -119,13 +119,7 @@ pub extern "C" fn mesh_env_get_secret_hex(key: *const MeshString) -> *mut MeshRe
             );
         }
     };
-    let Some(pid) = crate::actor::stack::get_current_pid() else {
-        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
-    };
-    let Some(scheduler) = crate::actor::GLOBAL_SCHEDULER.get() else {
-        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
-    };
-    let Some(process) = scheduler.get_process(pid) else {
+    let Some(process) = crate::actor::current_process() else {
         return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
     };
     let result = insert_owned_resource(&mut process.lock(), ResourceKind::SecretBytes, secret);

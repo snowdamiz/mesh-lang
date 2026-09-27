@@ -529,14 +529,7 @@ fn seal_for_process_with_hook(
 }
 
 fn current_process() -> Result<Arc<Mutex<Process>>, StorageFailure> {
-    let pid = crate::actor::stack::get_current_pid()
-        .ok_or_else(|| failure(CryptoErrorTag::InternalFailure, 0, 0))?;
-    let scheduler = crate::actor::GLOBAL_SCHEDULER
-        .get()
-        .ok_or_else(|| failure(CryptoErrorTag::InternalFailure, 0, 0))?;
-    scheduler
-        .get_process(pid)
-        .ok_or_else(|| failure(CryptoErrorTag::InternalFailure, 0, 0))
+    crate::actor::current_process().ok_or_else(|| failure(CryptoErrorTag::InternalFailure, 0, 0))
 }
 
 unsafe fn copy_mesh_bytes(

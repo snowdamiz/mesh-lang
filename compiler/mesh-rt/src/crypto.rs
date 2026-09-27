@@ -214,13 +214,7 @@ fn resource_failure(error: ResourceError) -> CryptoFailure {
 fn with_current_process<R>(
     operation: impl FnOnce(&mut Process) -> Result<R, CryptoFailure>,
 ) -> Result<R, CryptoFailure> {
-    let pid = crate::actor::stack::get_current_pid()
-        .ok_or_else(|| failure(CryptoErrorTag::InternalFailure, 0, 0))?;
-    let scheduler = crate::actor::GLOBAL_SCHEDULER
-        .get()
-        .ok_or_else(|| failure(CryptoErrorTag::InternalFailure, 0, 0))?;
-    let process = scheduler
-        .get_process(pid)
+    let process = crate::actor::current_process()
         .ok_or_else(|| failure(CryptoErrorTag::InternalFailure, 0, 0))?;
     let mut process = process.lock();
     operation(&mut process)

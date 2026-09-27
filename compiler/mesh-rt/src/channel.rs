@@ -339,10 +339,7 @@ pub extern "C-unwind" fn mesh_channel_recv(handle: i64, timeout_nanos: i64) -> *
 /// `Ok(value)` for a dequeued entry, its objects rebuilt in the current
 /// process's heap.
 fn received(mut entry: Entry) -> *mut MeshResult {
-    let receiver = stack::get_current_pid()
-        .zip(GLOBAL_SCHEDULER.get())
-        .and_then(|(pid, scheduler)| scheduler.get_process(pid));
-    if let Some(receiver) = receiver {
+    if let Some(receiver) = actor::current_process() {
         entry.buffer.addressed_to(&receiver);
         let mut process = receiver.lock();
         unsafe {

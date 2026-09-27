@@ -160,12 +160,8 @@ impl CoroutineHandle {
             // its address serves as the upper bound for GC stack scanning.
             let stack_anchor: u64 = 0;
             let _ = std::hint::black_box(&stack_anchor);
-            if let Some(pid) = CURRENT_PID.with(|c| c.get()) {
-                if let Some(sched) = crate::actor::GLOBAL_SCHEDULER.get() {
-                    if let Some(proc_arc) = sched.get_process(pid) {
-                        proc_arc.lock().stack_base = &stack_anchor as *const u64 as *const u8;
-                    }
-                }
+            if let Some(process) = crate::actor::current_process() {
+                process.lock().stack_base = &stack_anchor as *const u64 as *const u8;
             }
 
             // Install yielder in thread-local so mesh_reduction_check can access it.
