@@ -380,7 +380,7 @@ pub extern "C" fn mesh_expr_gte(lhs: *mut u8, rhs: *mut u8) -> *mut u8 {
 }
 
 #[no_mangle]
-pub extern "C" fn mesh_expr_case(
+pub extern "C-unwind" fn mesh_expr_case(
     conditions: *mut u8,
     results: *mut u8,
     else_expr: *mut u8,
@@ -388,13 +388,15 @@ pub extern "C" fn mesh_expr_case(
     unsafe {
         let conds = expr_list_to_vec(conditions);
         let vals = expr_list_to_vec(results);
-        let branch_count = conds.len().min(vals.len());
-        let mut branches = Vec::with_capacity(branch_count);
-        for idx in 0..branch_count {
-            branches.push((conds[idx].clone(), vals[idx].clone()));
+        if conds.len() != vals.len() {
+            crate::panic::raise(format_args!(
+                "Expr.case: {} condition(s) but {} result(s)",
+                conds.len(),
+                vals.len()
+            ));
         }
         alloc_expr(SqlExpr::Case {
-            branches,
+            branches: conds.into_iter().zip(vals).collect(),
             else_expr: Box::new(clone_expr(else_expr)),
         })
     }
@@ -444,6 +446,30 @@ mod tests {
         let (sql, params) = serialize_expr(&expr);
         assert_eq!(sql, "COALESCE(\"nickname\", $1) AS \"nick\"");
         assert_eq!(params, vec!["fallback"]);
+    }
+
+    /// `Expr.case` pairs each condition with the result at its place: lists
+    /// of different lengths dropped the unpaired conditions or results.
+    #[test]
+    fn case_needs_a_result_for_each_condition() {
+        use crate::collections::list::{mesh_list_append, mesh_list_new};
+        crate::gc::mesh_rt_init();
+        let text = |s: &str| mesh_str(s) as *mut u8;
+        let list = |items: &[*mut u8]| {
+            items.iter().fold(mesh_list_new(), |list, item| {
+                mesh_list_append(list, *item as u64)
+            })
+        };
+        let cond = mesh_expr_gt(mesh_expr_column(text("a")), mesh_expr_value(text("1")));
+        let result = mesh_expr_value(text("x"));
+        let panicked = std::panic::catch_unwind(|| {
+            mesh_expr_case(list(&[cond, cond]), list(&[result]), result)
+        })
+        .expect_err("the builder panics");
+        assert_eq!(
+            panicked.downcast_ref::<String>().map(String::as_str),
+            Some("Mesh panic: Expr.case: 2 condition(s) but 1 result(s)")
+        );
     }
 
     #[test]
