@@ -8995,29 +8995,20 @@ impl<'a> Lowerer<'a> {
             }
         }
 
-        // Collection Display/Debug dispatch: if the callee is "to_string" or
-        // "debug"/"inspect" and the first arg is a collection (MirType::Ptr),
-        // resolve the typeck type from the AST to emit the correct
-        // collection-to-string call.
+        // `to_string(value)` / `inspect(value)` of a value whose type, not a
+        // nominal impl, decides how it prints (a tuple, a collection, a PID,
+        // an instantiated generic type), as `value.to_string()` does.
         if let MirExpr::Var(ref name, _) = callee {
-            if (name == "to_string" || name == "debug" || name == "inspect")
-                && args.len() == 1
-                && matches!(args[0].ty(), MirType::Ptr)
-            {
-                // Look up the typeck Ty for the first argument from the call's AST
-                if let Some(arg_list) = call.arg_list() {
-                    if let Some(first_arg_ast) = arg_list.args().next() {
-                        if let Some(typeck_ty) =
-                            self.get_ty(first_arg_ast.syntax().text_range()).cloned()
-                        {
-                            let debug = name != "to_string";
-                            if let Some(collection_call) =
-                                self.wrap_collection_to_string(&args[0], &typeck_ty, debug)
-                            {
-                                return collection_call;
-                            }
-                        }
-                    }
+            if (name == "to_string" || name == "debug" || name == "inspect") && args.len() == 1 {
+                let source_ty = call
+                    .args()
+                    .first()
+                    .and_then(|arg| self.get_ty(arg.syntax().text_range()))
+                    .cloned();
+                if let Some(shown) = source_ty
+                    .and_then(|ty| self.display_by_type(&args[0], &ty, name != "to_string"))
+                {
+                    return shown;
                 }
             }
         }

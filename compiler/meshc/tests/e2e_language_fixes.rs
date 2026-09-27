@@ -5827,3 +5827,22 @@ end
         "15 not a number: x\ninput: not a number: x\n70\n40 0\napp: not a number: y\n"
     );
 }
+
+/// `to_string(value)` and `inspect(value)` show a value as the method
+/// calls and interpolation do, whatever its shape: called bare with a
+/// tuple, `inspect` failed code generation ("Undefined variable
+/// 'inspect'") and `to_string` found no `Display` for its pointer.
+#[test]
+fn bare_to_string_and_inspect_show_every_shape() {
+    let source = r##"
+fn main() do
+  println(inspect((1, "x")) <> " " <> to_string((1, 2)) <> " " <> inspect(()))
+  println(inspect([(1, "a")]) <> " " <> to_string(["a"]) <> " " <> inspect(Some("s")))
+  println(to_string(42) <> " " <> inspect("q") <> " " <> inspect(%{"k" => [1]}))
+end
+"##;
+    assert_eq!(
+        run(source),
+        "(1, \"x\") (1, 2) ()\n[(1, \"a\")] [a] Some(\"s\")\n42 \"q\" %{\"k\" => [1]}\n"
+    );
+}
