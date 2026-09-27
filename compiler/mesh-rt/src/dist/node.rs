@@ -30,7 +30,7 @@ use std::io::{self, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, AtomicU8, AtomicUsize, Ordering};
-use std::sync::{mpsc, Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use base64::Engine as _;
@@ -686,8 +686,6 @@ fn allow_peer_retry(peer: &str, now: Instant) -> bool {
 
 type PendingCooperativeReplies<T> =
     std::sync::Mutex<FxHashMap<u64, crate::actor::CooperativeSender<Result<T, String>>>>;
-type PendingOperatorQueries =
-    std::sync::Mutex<FxHashMap<u64, mpsc::Sender<Result<Vec<u8>, String>>>>;
 type PendingConsensusRpcs =
     std::sync::Mutex<FxHashMap<u64, tokio::sync::oneshot::Sender<Result<Vec<u8>, String>>>>;
 
@@ -744,9 +742,6 @@ pub struct NodeSession {
     /// Pending continuity prepare requests waiting for a replica ack.
     /// The sender side resolves to Ok(()) on ack or Err(reason) on reject/timeout.
     pub(crate) pending_continuity_prepares: PendingCooperativeReplies<()>,
-    /// Pending read-only operator queries waiting for a reply frame.
-    /// The sender side resolves to Ok(payload) on success or Err(reason) on reject.
-    pub(crate) pending_operator_queries: PendingOperatorQueries,
     /// Pending embedded-consensus RPCs. Tokio one-shot channels keep OpenRaft's
     /// async network path off the distribution reader thread.
     pub(crate) pending_consensus_rpcs: PendingConsensusRpcs,
@@ -876,7 +871,6 @@ impl NodeSession {
             pending_spawns: std::sync::Mutex::new(FxHashMap::default()),
             global_names_received: AtomicBool::new(false),
             pending_continuity_prepares: std::sync::Mutex::new(FxHashMap::default()),
-            pending_operator_queries: std::sync::Mutex::new(FxHashMap::default()),
             pending_consensus_rpcs: std::sync::Mutex::new(FxHashMap::default()),
             pending_http_routes: std::sync::Mutex::new(FxHashMap::default()),
             pending_http_reservations: std::sync::Mutex::new(FxHashMap::default()),
@@ -2742,9 +2736,6 @@ fn fail_pending_session_requests(session: &NodeSession, reason: &str) {
         let _ = sender.send(Err(reason.to_string()));
     }
     for (_, sender) in session.pending_continuity_prepares.lock().unwrap().drain() {
-        let _ = sender.send(Err(reason.to_string()));
-    }
-    for (_, sender) in session.pending_operator_queries.lock().unwrap().drain() {
         let _ = sender.send(Err(reason.to_string()));
     }
     for (_, sender) in session.pending_consensus_rpcs.lock().unwrap().drain() {
@@ -8096,6 +8087,7 @@ pub extern "C-unwind" fn mesh_node_spawn(
 mod tests {
     use super::*;
     use crate::dist::bootstrap::{BootstrapInputs, BootstrapMode};
+    use std::sync::mpsc;
 
     extern "C" fn startup_work_test_declared_handler(_args: *const u8) {}
 
@@ -11008,18 +11000,8 @@ mod tests {
         peer.receive(encode_consensus_rpc_frame(DIST_CONSENSUS_RPC_REPLY, 7, b"[]").unwrap());
         assert_eq!(rpc_answer.try_recv(), Ok(Ok(b"[]".to_vec())));
 
-        let (query, query_answer) = mpsc::channel();
-        peer.session
-            .pending_operator_queries
-            .lock()
-            .unwrap()
-            .insert(8, query);
-        peer.receive(frame(
-            DIST_OPERATOR_REPLY,
-            &[&8u64.to_le_bytes(), &[0], &2u32.to_le_bytes(), b"{}"],
-        ));
+        // No query waits on a session: an operator reply there is dropped.
         peer.receive(vec![DIST_OPERATOR_REPLY, 1]);
-        assert_eq!(query_answer.try_recv(), Ok(Ok(b"{}".to_vec())));
 
         let (prepare, prepare_answer) = crate::actor::cooperative_channel();
         peer.session
@@ -11346,12 +11328,6 @@ mod tests {
             .lock()
             .unwrap()
             .insert(1, prepare);
-        let (query, query_answer) = mpsc::channel();
-        session
-            .pending_operator_queries
-            .lock()
-            .unwrap()
-            .insert(2, query);
         let (rpc, mut rpc_answer) = tokio::sync::oneshot::channel();
         session
             .pending_consensus_rpcs
@@ -11418,7 +11394,6 @@ mod tests {
 
         let gone = "peer_session_disconnected".to_string();
         assert_eq!(prepare_answer.try_recv(), Ok(Err(gone.clone())));
-        assert_eq!(query_answer.try_recv(), Ok(Err(gone.clone())));
         assert_eq!(rpc_answer.try_recv(), Ok(Err(gone.clone())));
         assert_eq!(route_answer.try_recv(), Ok(Err(gone.clone())));
         assert_eq!(reservation_answer.try_recv(), Ok(Err(gone.clone())));
