@@ -9,8 +9,12 @@ use mesh_rt::io::MeshResult;
 use mesh_rt::{
     mesh_continuity_acknowledge_replica, mesh_continuity_authority_status,
     mesh_continuity_mark_completed, mesh_continuity_status, mesh_continuity_submit,
-    mesh_continuity_submit_declared_work, mesh_string_new, MeshString,
+    mesh_continuity_submit_declared_work, mesh_register_declared_handler, mesh_rt_init_actor,
+    mesh_string_new, MeshString,
 };
+
+/// Declared work that does nothing with its request key and attempt.
+extern "C" fn declared_work(_args: *const u8) {}
 
 #[test]
 fn the_continuity_ffi_answers_through_mesh_results() {
@@ -94,6 +98,36 @@ fn the_continuity_ffi_answers_through_mesh_results() {
         tag(mesh_continuity_submit_declared_work(
             text("Ffi.unregistered"),
             text("ffi-declared"),
+            text("hash"),
+            0
+        )),
+        1
+    );
+    // A registered handler runs declared work as an actor; a request the
+    // registry refuses is the submit's error.
+    mesh_rt_init_actor(1);
+    let (runtime, executable) = ("Ffi.work", "ffi_work");
+    mesh_register_declared_handler(
+        runtime.as_ptr(),
+        runtime.len() as u64,
+        executable.as_ptr(),
+        executable.len() as u64,
+        1,
+        declared_work as *const u8,
+    );
+    assert_eq!(
+        tag(mesh_continuity_submit_declared_work(
+            text(runtime),
+            text("ffi-declared"),
+            text("hash"),
+            0
+        )),
+        0
+    );
+    assert_eq!(
+        tag(mesh_continuity_submit_declared_work(
+            text(runtime),
+            text(""),
             text("hash"),
             0
         )),
