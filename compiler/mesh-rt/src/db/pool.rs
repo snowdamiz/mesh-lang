@@ -22,7 +22,7 @@ use parking_lot::{Condvar, Mutex};
 
 use super::pg::{
     mesh_pg_close, mesh_pg_connect, mesh_pg_execute, mesh_pg_execute_values, mesh_pg_query,
-    mesh_pg_query_values, pg_simple_command, PgConn,
+    mesh_pg_query_values, pg_simple_command, PgConn, ANSWER_TIMEOUT,
 };
 use crate::io::{alloc_result, box_scalar, err_result};
 use crate::string::text_of;
@@ -78,10 +78,14 @@ pub(crate) unsafe fn unbox_u64_payload(ptr: *mut u8) -> u64 {
 }
 
 /// Perform a health check on a connection by sending SELECT 1.
-/// Returns true if healthy, false if dead.
+/// Returns true if healthy, false if dead. The server has a bounded time to
+/// answer: a connection whose server went silent is dead too.
 unsafe fn health_check(handle: u64) -> bool {
     let conn = &mut *(handle as *mut PgConn);
-    !conn.is_broken() && pg_simple_command(conn, "SELECT 1").is_ok()
+    conn.set_read_timeout(Some(ANSWER_TIMEOUT));
+    let healthy = !conn.is_broken() && pg_simple_command(conn, "SELECT 1").is_ok();
+    conn.set_read_timeout(None);
+    healthy
 }
 
 // ── Public scoped API and runtime-internal leasing ───────────────────────

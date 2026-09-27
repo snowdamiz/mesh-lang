@@ -49,6 +49,10 @@ const MAX_PG_MESSAGE_BYTES: usize = 64 * 1024 * 1024;
 const MAX_PG_RESULT_BYTES: usize = 64 * 1024 * 1024;
 const MAX_PG_VALUES: usize = i16::MAX as usize;
 const MAX_PG_ROWS: usize = 100_000;
+/// How long the server has to answer the handshake, and a pool's health
+/// check. A statement takes as long as it takes, as with libpq: a
+/// server-side statement_timeout is what bounds it.
+pub(super) const ANSWER_TIMEOUT: Duration = Duration::from_secs(30);
 pub(crate) const DB_VALUE_TEXT: u8 = 0;
 pub(crate) const DB_VALUE_BINARY: u8 = 1;
 pub(crate) const DB_VALUE_NULL: u8 = 2;
@@ -73,6 +77,15 @@ impl Read for PgStream {
         match self {
             PgStream::Plain(s) => s.read(buf),
             PgStream::Tls(s) => s.read(buf),
+        }
+    }
+}
+
+impl PgStream {
+    fn tcp(&self) -> &TcpStream {
+        match self {
+            PgStream::Plain(s) => s,
+            PgStream::Tls(s) => &s.sock,
         }
     }
 }
@@ -135,6 +148,11 @@ impl PgConn {
 
     pub(super) fn is_broken(&self) -> bool {
         self.broken
+    }
+
+    /// Wait at most `timeout` for each read (`None`: as long as it takes).
+    pub(super) fn set_read_timeout(&self, timeout: Option<Duration>) {
+        let _ = self.stream.tcp().set_read_timeout(timeout);
     }
 
     #[cfg(test)]
@@ -1312,7 +1330,7 @@ fn connect(url: &str) -> Result<PgConn, String> {
         .next();
     let stream = stream.ok_or(failure)?;
     // Set before TLS wrapping (StreamOwned inherits them).
-    let _ = stream.set_read_timeout(Some(Duration::from_secs(30)));
+    let _ = stream.set_read_timeout(Some(ANSWER_TIMEOUT));
     let _ = stream.set_write_timeout(Some(Duration::from_secs(10)));
 
     let mut stream = negotiate_tls(stream, &pg_url).map_err(|e| format!("TLS: {}", e))?;
@@ -1422,11 +1440,14 @@ fn connect(url: &str) -> Result<PgConn, String> {
         }
     }
 
-    Ok(PgConn {
+    let conn = PgConn {
         stream,
         txn_status,
         broken: false,
-    })
+    };
+    // Connected: statements take as long as they take.
+    conn.set_read_timeout(None);
+    Ok(conn)
 }
 
 /// Close a PostgreSQL connection.
@@ -2061,6 +2082,26 @@ mod tests {
         let tls = connect(&format!("{url}?sslmode=require")).err().unwrap();
         peer.join().unwrap();
         assert!(!tls.contains("invalid hostname"), "{tls}");
+    }
+
+    /// The server has a bounded time to answer the handshake; a statement
+    /// then takes as long as it takes.
+    #[test]
+    fn only_the_handshake_has_a_read_timeout() {
+        let (url, peer) = wire_peer("sslmode=disable", |mut socket| {
+            read_startup(&mut socket);
+            socket
+                .write_all(&[auth(0, b""), ready(b'I')].concat())
+                .unwrap();
+        });
+        let conn = connect(&url).unwrap();
+        peer.join().unwrap();
+        assert_eq!(conn.stream.tcp().read_timeout().unwrap(), None);
+        conn.set_read_timeout(Some(ANSWER_TIMEOUT));
+        assert_eq!(
+            conn.stream.tcp().read_timeout().unwrap(),
+            Some(ANSWER_TIMEOUT)
+        );
     }
 
     /// `localhost` can name ::1 first (it does on macOS) for a server that
