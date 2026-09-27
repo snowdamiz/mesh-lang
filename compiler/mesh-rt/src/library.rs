@@ -423,10 +423,7 @@ fn host_callback_output() -> Zeroizing<Vec<u8>> {
 }
 
 fn error_result(message: &str) -> *mut MeshResult {
-    alloc_result(
-        1,
-        crate::string::mesh_string_new(message.as_ptr(), message.len() as u64).cast(),
-    )
+    alloc_result(1, crate::string::mesh_str(message) as *mut u8)
 }
 
 macro_rules! host_entrypoint {

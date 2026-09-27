@@ -25,7 +25,7 @@ use crate::collections::list::{
 use crate::collections::map::{mesh_map_from_string_entries, mesh_map_new_typed, mesh_map_put};
 use crate::db::pg::{alloc_db_value, MeshDbValue, DB_VALUE_BINARY, DB_VALUE_NULL, DB_VALUE_TEXT};
 use crate::io::{alloc_result, box_scalar};
-use crate::string::{mesh_string_new, MeshString};
+use crate::string::{mesh_str, MeshString};
 
 // ponytail: fixed safety caps; make these connection options only if real workloads need more.
 const MAX_DB_VALUE_BYTES: usize = 16 * 1024 * 1024;
@@ -74,14 +74,9 @@ unsafe fn mesh_str_to_rust(s: *const MeshString) -> &'static str {
     (*s).as_str()
 }
 
-/// Create a MeshString from a Rust &str and return as *mut u8.
-fn rust_str_to_mesh(s: &str) -> *mut u8 {
-    mesh_string_new(s.as_ptr(), s.len() as u64) as *mut u8
-}
-
 /// Create an error MeshResult from a Rust string.
 fn err_result(msg: &str) -> *mut u8 {
-    let s = rust_str_to_mesh(msg);
+    let s = mesh_str(msg) as *mut u8;
     alloc_result(1, s) as *mut u8
 }
 
@@ -311,7 +306,7 @@ unsafe fn typed_column_value(
         if text.len() > len {
             *result_bytes = add_result_bytes(*result_bytes, text.len() - len)?;
         }
-        let payload = rust_str_to_mesh(&text);
+        let payload = mesh_str(&text) as *mut u8;
         if payload.is_null() {
             return Err(format!("failed to allocate SQLite text column {column}"));
         }
@@ -514,8 +509,8 @@ pub extern "C" fn mesh_sqlite_query(
                     }
                 };
 
-                let key_mesh = rust_str_to_mesh(col_name);
-                let val_mesh = rust_str_to_mesh(&value_str);
+                let key_mesh = mesh_str(col_name) as *mut u8;
+                let val_mesh = mesh_str(&value_str) as *mut u8;
                 row_map = mesh_map_put(row_map, key_mesh as u64, val_mesh as u64);
             }
 
@@ -623,7 +618,7 @@ pub extern "C" fn mesh_sqlite_query_values(
                     entries[index][1] = value as u64;
                 } else {
                     indexes.insert(name.as_str(), entries.len());
-                    let key = rust_str_to_mesh(name);
+                    let key = mesh_str(name) as *mut u8;
                     if key.is_null() {
                         return err_result("failed to allocate SQLite column name");
                     }
@@ -706,6 +701,7 @@ mod tests {
     use super::*;
     use crate::gc::mesh_rt_init;
     use crate::io::MeshResult;
+    use crate::string::mesh_string_new;
 
     /// Helper to create a MeshString from a byte literal.
     fn mk_str(s: &[u8]) -> *mut MeshString {

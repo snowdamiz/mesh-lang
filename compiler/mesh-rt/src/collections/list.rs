@@ -509,7 +509,7 @@ pub extern "C-unwind" fn mesh_list_to_string(list: *mut u8, elem_to_str: *mut u8
             result.push_str((*elem_str).as_str());
         }
         result.push(']');
-        crate::string::mesh_string_new(result.as_ptr(), result.len() as u64) as *mut u8
+        crate::string::mesh_str(&result) as *mut u8
     }
 }
 
@@ -1121,7 +1121,7 @@ mod tests {
     #[test]
     fn test_collection_to_string_callback_order_unicode_and_nesting() {
         use crate::collections::{map, set};
-        use crate::string::{mesh_string_new, MeshString};
+        use crate::string::{mesh_str, MeshString};
         use std::cell::RefCell;
 
         thread_local! {
@@ -1130,7 +1130,7 @@ mod tests {
         extern "C-unwind" fn render(value: u64) -> *mut u8 {
             CALLS.with(|calls| calls.borrow_mut().push(value));
             let text = format!("雪{value}");
-            mesh_string_new(text.as_ptr(), text.len() as u64).cast()
+            mesh_str(&text) as *mut u8
         }
         extern "C-unwind" fn render_list(value: u64) -> *mut u8 {
             mesh_list_to_string(value as *mut u8, render as *mut u8)

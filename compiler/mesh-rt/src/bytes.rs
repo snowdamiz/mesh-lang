@@ -14,7 +14,7 @@ use crate::collections::list::{
 };
 use crate::gc::mesh_gc_alloc_actor;
 use crate::io::{alloc_result, ok_int, MeshResult};
-use crate::string::{mesh_string_new, MeshString};
+use crate::string::{mesh_str, mesh_string_new, MeshString};
 use crate::wide_num::{mesh_u64_new, mesh_u64_value, MeshWideNum};
 
 const BASE58: &[u8; 58] = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
@@ -88,10 +88,7 @@ impl MeshBytes {
 }
 
 fn error(message: &str) -> *mut MeshResult {
-    alloc_result(
-        1,
-        mesh_string_new(message.as_ptr(), message.len() as u64) as *mut u8,
-    )
+    alloc_result(1, mesh_str(message) as *mut u8)
 }
 
 fn ok_bytes(bytes: &[u8]) -> *mut MeshResult {
@@ -534,10 +531,7 @@ pub extern "C" fn mesh_bytes_from_utf8(text: *const MeshString) -> *mut MeshByte
 pub extern "C" fn mesh_bytes_to_utf8(bytes: *const MeshBytes) -> *mut MeshResult {
     unsafe {
         match std::str::from_utf8((*bytes).as_slice()) {
-            Ok(text) => alloc_result(
-                0,
-                mesh_string_new(text.as_ptr(), text.len() as u64) as *mut u8,
-            ),
+            Ok(text) => alloc_result(0, mesh_str(text) as *mut u8),
             Err(_) => error("invalid utf-8"),
         }
     }
@@ -751,10 +745,7 @@ pub extern "C" fn mesh_bytes_read_uint_le(
     read_uint(bytes, offset, width as usize, false)
         .map(|value| {
             let value = value.to_string();
-            alloc_result(
-                0,
-                mesh_string_new(value.as_ptr(), value.len() as u64) as *mut u8,
-            )
+            alloc_result(0, mesh_str(&value) as *mut u8)
         })
         .unwrap_or_else(error)
 }
@@ -792,10 +783,6 @@ mod tests {
         unsafe { (*(result.value as *const MeshBinaryError)).tag }
     }
 
-    fn text(value: &str) -> *const MeshString {
-        mesh_string_new(value.as_ptr(), value.len() as u64)
-    }
-
     /// Each constructor and writer refuses input it cannot represent, with
     /// what is wrong with it, before it allocates or writes anything.
     #[test]
@@ -827,15 +814,15 @@ mod tests {
             refused(mesh_bytes_from_list(ptr::null_mut())),
             "invalid byte list"
         );
-        assert_eq!(refused(mesh_bytes_from_hex(text("abc"))), "invalid hex");
-        assert_eq!(refused(mesh_bytes_from_hex(text("zz"))), "invalid hex");
-        assert_eq!(refused(mesh_bytes_from_hex(text("0z"))), "invalid hex");
+        assert_eq!(refused(mesh_bytes_from_hex(mesh_str("abc"))), "invalid hex");
+        assert_eq!(refused(mesh_bytes_from_hex(mesh_str("zz"))), "invalid hex");
+        assert_eq!(refused(mesh_bytes_from_hex(mesh_str("0z"))), "invalid hex");
         assert_eq!(
-            refused(mesh_bytes_write_uint_le(text("1"), 3)),
+            refused(mesh_bytes_write_uint_le(mesh_str("1"), 3)),
             "invalid unsigned integer width"
         );
         assert_eq!(
-            refused(mesh_bytes_write_uint_le(text("-1"), 4)),
+            refused(mesh_bytes_write_uint_le(mesh_str("-1"), 4)),
             "invalid unsigned integer"
         );
         assert_eq!(

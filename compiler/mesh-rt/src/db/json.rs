@@ -9,7 +9,7 @@
 //! - If the field exists and is a number/bool/null, convert to string
 //! - If the field is missing or JSON is invalid, return empty string ""
 
-use crate::string::{mesh_string_new, MeshString};
+use crate::string::{mesh_str, MeshString};
 
 // ── Pure Rust helpers (testable without GC) ─────────────────────────
 
@@ -80,7 +80,7 @@ pub extern "C" fn mesh_json_get(json_ptr: *mut u8, key_ptr: *mut u8) -> *mut u8 
         let json_str = (*(json_ptr as *const MeshString)).as_str();
         let key = (*(key_ptr as *const MeshString)).as_str();
         let result = json_get_field(json_str, key);
-        mesh_string_new(result.as_ptr(), result.len() as u64) as *mut u8
+        mesh_str(&result) as *mut u8
     }
 }
 
@@ -101,7 +101,7 @@ pub extern "C" fn mesh_json_get_nested(
         let path1 = (*(path1_ptr as *const MeshString)).as_str();
         let path2 = (*(path2_ptr as *const MeshString)).as_str();
         let result = json_get_nested_field(json_str, path1, path2);
-        mesh_string_new(result.as_ptr(), result.len() as u64) as *mut u8
+        mesh_str(&result) as *mut u8
     }
 }
 

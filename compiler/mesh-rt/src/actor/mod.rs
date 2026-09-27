@@ -337,7 +337,7 @@ pub extern "C" fn mesh_actor_self() -> u64 {
 #[no_mangle]
 pub extern "C" fn mesh_pid_to_string(pid: u64) -> *mut crate::string::MeshString {
     let text = ProcessId(pid).to_string();
-    crate::string::mesh_string_new(text.as_ptr(), text.len() as u64)
+    crate::string::mesh_str(&text)
 }
 
 /// Decrement the current actor's reduction counter and yield if exhausted.

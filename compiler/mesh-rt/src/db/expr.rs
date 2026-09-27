@@ -7,7 +7,7 @@
 
 use super::{quote_ident, quote_name};
 use crate::collections::list::{mesh_list_get, mesh_list_length};
-use crate::string::{mesh_string_new, MeshString};
+use crate::string::{mesh_str, MeshString};
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum SqlExpr {
@@ -92,7 +92,7 @@ unsafe fn mesh_str_ref(ptr: *mut u8) -> &'static str {
 /// frees with the last value holding it (a boxed `SqlExpr` was never freed).
 fn alloc_expr(expr: SqlExpr) -> *mut u8 {
     let json = serde_json::to_string(&expr).expect("an SqlExpr serializes");
-    mesh_string_new(json.as_ptr(), json.len() as u64) as *mut u8
+    mesh_str(&json) as *mut u8
 }
 
 pub(crate) unsafe fn clone_expr(ptr: *mut u8) -> SqlExpr {

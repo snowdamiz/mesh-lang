@@ -739,13 +739,13 @@ fn call_on_connect(
 
     unsafe {
         // Build Mesh-level path string
-        let path_mesh = crate::string::mesh_string_new(path.as_ptr(), path.len() as u64) as *mut u8;
+        let path_mesh = crate::string::mesh_str(path) as *mut u8;
 
         // Build headers map
         let mut headers_map = crate::collections::map::mesh_map_new_typed(1);
         for (name, value) in headers {
-            let key = crate::string::mesh_string_new(name.as_ptr(), name.len() as u64);
-            let val = crate::string::mesh_string_new(value.as_ptr(), value.len() as u64);
+            let key = crate::string::mesh_str(name);
+            let val = crate::string::mesh_str(value);
             headers_map =
                 crate::collections::map::mesh_map_put(headers_map, key as u64, val as u64);
         }
@@ -806,8 +806,7 @@ fn call_on_close(handler: &WsHandler, conn_ptr: *mut u8, code: u16, reason: &str
 
     unsafe {
         let code_i64 = code as i64;
-        let reason_mesh =
-            crate::string::mesh_string_new(reason.as_ptr(), reason.len() as u64) as *mut u8;
+        let reason_mesh = crate::string::mesh_str(reason) as *mut u8;
 
         if handler.on_close_env.is_null() {
             let f: extern "C-unwind" fn(*mut u8, i64, *mut u8) -> *mut u8 =

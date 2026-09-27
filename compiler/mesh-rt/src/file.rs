@@ -8,7 +8,7 @@ use std::io::{Read, Seek, SeekFrom, Write};
 
 use crate::bytes::{mesh_bytes_new, MeshBytes};
 use crate::io::{alloc_result, ok_int, MeshResult};
-use crate::string::{mesh_string_new, MeshString};
+use crate::string::{mesh_str, MeshString};
 
 const MAX_BINARY_CHUNK_BYTES: i64 = 64 * 1024;
 // ponytail: 16 MiB is the messenger's reviewed file ceiling; add a versioned
@@ -17,7 +17,7 @@ const MAX_BINARY_FILE_BYTES: i64 = 16 * 1024 * 1024;
 
 /// Helper to create an Err result with a string message.
 fn err_result(msg: &str) -> *mut MeshResult {
-    let s = mesh_string_new(msg.as_ptr(), msg.len() as u64);
+    let s = mesh_str(msg);
     alloc_result(1, s as *mut u8)
 }
 
@@ -41,7 +41,7 @@ pub extern "C" fn mesh_file_read(path: *const MeshString) -> *mut MeshResult {
         let path_str = (*path).as_str();
         match fs::read_to_string(path_str) {
             Ok(contents) => {
-                let s = mesh_string_new(contents.as_ptr(), contents.len() as u64);
+                let s = mesh_str(&contents);
                 alloc_result(0, s as *mut u8)
             }
             Err(e) => err_result(&e.to_string()),
@@ -227,10 +227,6 @@ mod tests {
     use super::*;
     use crate::gc::mesh_rt_init;
 
-    fn make_string(s: &str) -> *const MeshString {
-        mesh_string_new(s.as_ptr(), s.len() as u64)
-    }
-
     #[test]
     fn test_file_write_and_read() {
         mesh_rt_init();
@@ -238,8 +234,8 @@ mod tests {
         let path = dir.path().join("test.txt");
         let path_str = path.to_str().unwrap();
 
-        let path_mesh = make_string(path_str);
-        let content = make_string("Hello, Mesh!");
+        let path_mesh = mesh_str(path_str);
+        let content = mesh_str("Hello, Mesh!");
 
         // Write
         let write_result = mesh_file_write(path_mesh, content);
@@ -259,7 +255,7 @@ mod tests {
     #[test]
     fn test_file_read_nonexistent() {
         mesh_rt_init();
-        let path_mesh = make_string("/tmp/mesh_nonexistent_file_12345.txt");
+        let path_mesh = mesh_str("/tmp/mesh_nonexistent_file_12345.txt");
 
         let result = mesh_file_read(path_mesh);
         unsafe {
@@ -282,9 +278,9 @@ mod tests {
         let path = dir.path().join("append_test.txt");
         let path_str = path.to_str().unwrap();
 
-        let path_mesh = make_string(path_str);
-        let content1 = make_string("Hello");
-        let content2 = make_string(", Mesh!");
+        let path_mesh = mesh_str(path_str);
+        let content1 = mesh_str("Hello");
+        let content2 = mesh_str(", Mesh!");
 
         // Append twice
         let r1 = mesh_file_append(path_mesh, content1);
@@ -313,13 +309,13 @@ mod tests {
         let path = dir.path().join("exists_test.txt");
         let path_str = path.to_str().unwrap();
 
-        let path_mesh = make_string(path_str);
+        let path_mesh = mesh_str(path_str);
 
         // Should not exist yet
         assert_eq!(mesh_file_exists(path_mesh), 0);
 
         // Create the file
-        let content = make_string("test");
+        let content = mesh_str("test");
         mesh_file_write(path_mesh, content);
 
         // Should now exist
@@ -333,8 +329,8 @@ mod tests {
         let path = dir.path().join("delete_test.txt");
         let path_str = path.to_str().unwrap();
 
-        let path_mesh = make_string(path_str);
-        let content = make_string("to be deleted");
+        let path_mesh = mesh_str(path_str);
+        let content = mesh_str("to be deleted");
 
         // Write
         mesh_file_write(path_mesh, content);
@@ -353,7 +349,7 @@ mod tests {
     #[test]
     fn test_file_delete_nonexistent() {
         mesh_rt_init();
-        let path_mesh = make_string("/tmp/mesh_nonexistent_delete_12345.txt");
+        let path_mesh = mesh_str("/tmp/mesh_nonexistent_delete_12345.txt");
 
         let result = mesh_file_delete(path_mesh);
         unsafe {
@@ -371,13 +367,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("cycle_test.txt");
         let path_str = path.to_str().unwrap();
-        let path_mesh = make_string(path_str);
+        let path_mesh = mesh_str(path_str);
 
         // 1. File does not exist
         assert_eq!(mesh_file_exists(path_mesh), 0);
 
         // 2. Write
-        let content = make_string("initial content");
+        let content = mesh_str("initial content");
         let r = mesh_file_write(path_mesh, content);
         unsafe {
             assert_eq!((*r).tag, 0);
@@ -395,7 +391,7 @@ mod tests {
         }
 
         // 5. Append
-        let more = make_string(" + appended");
+        let more = mesh_str(" + appended");
         let r = mesh_file_append(path_mesh, more);
         unsafe {
             assert_eq!((*r).tag, 0);

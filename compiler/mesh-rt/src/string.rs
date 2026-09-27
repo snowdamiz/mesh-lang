@@ -93,6 +93,11 @@ pub extern "C" fn mesh_string_new(data: *const u8, len: u64) -> *mut MeshString 
     }
 }
 
+/// A new Mesh string holding `text`.
+pub(crate) fn mesh_str(text: &str) -> *mut MeshString {
+    mesh_string_new(text.as_ptr(), text.len() as u64)
+}
+
 /// Concatenate two Mesh strings, returning a new GC-managed string.
 #[no_mangle]
 pub extern "C" fn mesh_string_concat(

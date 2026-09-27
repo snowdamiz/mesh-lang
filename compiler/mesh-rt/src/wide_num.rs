@@ -4,7 +4,7 @@ use std::cmp::Ordering;
 
 use crate::gc::mesh_gc_alloc_actor;
 use crate::io::{alloc_result, ok_int, MeshResult};
-use crate::string::{mesh_string_new, MeshString};
+use crate::string::{mesh_str, MeshString};
 
 #[repr(C)]
 pub struct MeshWideNum {
@@ -37,10 +37,7 @@ unsafe fn bits(value: *const MeshWideNum) -> u128 {
 }
 
 fn error(message: &str) -> *mut MeshResult {
-    alloc_result(
-        1,
-        mesh_string_new(message.as_ptr(), message.len() as u64) as *mut u8,
-    )
+    alloc_result(1, mesh_str(message) as *mut u8)
 }
 
 fn ok_wide(value: u128) -> *mut MeshResult {
@@ -57,7 +54,7 @@ fn ordering(value: Ordering) -> i64 {
 
 fn mesh_string(value: impl ToString) -> *mut MeshString {
     let value = value.to_string();
-    mesh_string_new(value.as_ptr(), value.len() as u64)
+    mesh_str(&value)
 }
 
 macro_rules! wide_abi {

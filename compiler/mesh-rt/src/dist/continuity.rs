@@ -14,7 +14,7 @@
 
 use crate::gc::mesh_gc_alloc_actor;
 use crate::io::{alloc_result, MeshResult};
-use crate::string::{mesh_string_new, MeshString};
+use crate::string::{mesh_str, MeshString};
 use parking_lot::RwLock;
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
@@ -2917,10 +2917,6 @@ fn alloc_mesh_value<T>(value: T) -> *mut T {
     }
 }
 
-fn mesh_string_ptr(value: &str) -> *mut MeshString {
-    mesh_string_new(value.as_ptr(), value.len() as u64)
-}
-
 fn mesh_int_from_u64(value: u64) -> i64 {
     if value > i64::MAX as u64 {
         i64::MAX
@@ -2931,38 +2927,38 @@ fn mesh_int_from_u64(value: u64) -> i64 {
 
 fn mesh_authority_status(status: ContinuityAuthorityStatus) -> MeshContinuityAuthorityStatus {
     MeshContinuityAuthorityStatus {
-        cluster_role: mesh_string_ptr(status.cluster_role.as_str()),
+        cluster_role: mesh_str(status.cluster_role.as_str()),
         promotion_epoch: mesh_int_from_u64(status.promotion_epoch),
-        replication_health: mesh_string_ptr(status.replication_health.as_str()),
+        replication_health: mesh_str(status.replication_health.as_str()),
     }
 }
 
 fn mesh_record(record: &ContinuityRecord) -> MeshContinuityRecord {
     MeshContinuityRecord {
-        request_key: mesh_string_ptr(&record.request_key),
-        payload_hash: mesh_string_ptr(&record.payload_hash),
-        attempt_id: mesh_string_ptr(&record.attempt_id),
-        phase: mesh_string_ptr(record.phase.as_str()),
-        result: mesh_string_ptr(record.result.as_str()),
-        ingress_node: mesh_string_ptr(&record.ingress_node),
-        owner_node: mesh_string_ptr(&record.owner_node),
-        replica_node: mesh_string_ptr(&record.replica_node),
+        request_key: mesh_str(&record.request_key),
+        payload_hash: mesh_str(&record.payload_hash),
+        attempt_id: mesh_str(&record.attempt_id),
+        phase: mesh_str(record.phase.as_str()),
+        result: mesh_str(record.result.as_str()),
+        ingress_node: mesh_str(&record.ingress_node),
+        owner_node: mesh_str(&record.owner_node),
+        replica_node: mesh_str(&record.replica_node),
         replication_count: mesh_int_from_u64(record.replication_count),
-        replica_status: mesh_string_ptr(record.replica_status.as_str()),
-        cluster_role: mesh_string_ptr(record.cluster_role.as_str()),
+        replica_status: mesh_str(record.replica_status.as_str()),
+        cluster_role: mesh_str(record.cluster_role.as_str()),
         promotion_epoch: mesh_int_from_u64(record.promotion_epoch),
-        replication_health: mesh_string_ptr(record.replication_health.as_str()),
-        execution_node: mesh_string_ptr(&record.execution_node),
+        replication_health: mesh_str(record.replication_health.as_str()),
+        execution_node: mesh_str(&record.execution_node),
         routed_remotely: record.routed_remotely,
         fell_back_locally: record.fell_back_locally,
-        error: mesh_string_ptr(&record.error),
+        error: mesh_str(&record.error),
     }
 }
 
 fn mesh_submit_decision(decision: &SubmitDecision) -> MeshContinuitySubmitDecision {
     MeshContinuitySubmitDecision {
-        outcome: mesh_string_ptr(decision.outcome.as_str()),
-        conflict_reason: mesh_string_ptr(&decision.conflict_reason),
+        outcome: mesh_str(decision.outcome.as_str()),
+        conflict_reason: mesh_str(&decision.conflict_reason),
         record: mesh_record(&decision.record),
     }
 }
@@ -2986,10 +2982,7 @@ fn continuity_ok_submit_decision(decision: &SubmitDecision) -> *mut MeshResult {
 }
 
 fn continuity_err_string(reason: &str) -> *mut MeshResult {
-    alloc_result(
-        1,
-        mesh_string_new(reason.as_ptr(), reason.len() as u64) as *mut u8,
-    )
+    alloc_result(1, mesh_str(reason) as *mut u8)
 }
 
 fn mesh_string_to_owned(value: *const MeshString) -> String {
@@ -3151,6 +3144,7 @@ mod tests {
         invoke_route_handler_from_payload, mesh_http_response_new, MeshHttpRequest,
         MeshHttpResponse,
     };
+    use crate::string::mesh_string_new;
     use std::sync::atomic::{AtomicU64, Ordering};
 
     fn continuity_fresh_registry() -> ContinuityRegistry {
@@ -3164,7 +3158,7 @@ mod tests {
         let body_ptr = crate::http::server::mesh_http_request_body(request);
         let body = unsafe { (*(body_ptr as *const MeshString)).as_str().to_string() };
         let response_body = format!("handled:{body}");
-        let body_ptr = mesh_string_new(response_body.as_ptr(), response_body.len() as u64);
+        let body_ptr = mesh_str(&response_body);
         mesh_http_response_new(200, body_ptr)
     }
 
@@ -3176,7 +3170,7 @@ mod tests {
             ) as *mut MeshHttpRequest;
             (*request_ptr).method = mesh_string_new(b"POST".as_ptr(), 4) as *mut u8;
             (*request_ptr).path = mesh_string_new(b"/todos".as_ptr(), 6) as *mut u8;
-            (*request_ptr).body = mesh_string_new(body.as_ptr(), body.len() as u64) as *mut u8;
+            (*request_ptr).body = mesh_str(body) as *mut u8;
             (*request_ptr).query_params = map::mesh_map_new_typed(1);
             (*request_ptr).headers = map::mesh_map_new_typed(1);
             (*request_ptr).path_params = map::mesh_map_new_typed(1);

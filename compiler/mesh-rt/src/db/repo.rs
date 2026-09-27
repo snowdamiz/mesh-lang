@@ -37,7 +37,7 @@ use crate::db::pool::{
     mesh_pool_checkin, mesh_pool_checkout, mesh_pool_execute, mesh_pool_query, unbox_u64_payload,
 };
 use crate::io::{alloc_result, MeshResult};
-use crate::string::{mesh_string_new, MeshString};
+use crate::string::{mesh_str, MeshString};
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -47,17 +47,9 @@ unsafe fn mesh_str_ref(ptr: *mut u8) -> &'static str {
     (*ms).as_str()
 }
 
-/// Create a MeshString from a Rust &str and return as *mut u8.
-unsafe fn rust_str_to_mesh(s: &str) -> *mut u8 {
-    mesh_string_new(s.as_ptr(), s.len() as u64) as *mut u8
-}
-
 /// Create an error MeshResult from a Rust string.
 fn err_result(msg: &str) -> *mut u8 {
-    unsafe {
-        let s = rust_str_to_mesh(msg);
-        alloc_result(1, s) as *mut u8
-    }
+    alloc_result(1, mesh_str(msg) as *mut u8) as *mut u8
 }
 
 /// Create an Ok MeshResult wrapping a value pointer.
@@ -82,7 +74,7 @@ unsafe fn list_to_strings(list_ptr: *mut u8) -> Vec<String> {
 unsafe fn strings_to_mesh_list(strings: &[String]) -> *mut u8 {
     let mut list = mesh_list_new();
     for s in strings {
-        let ms = rust_str_to_mesh(s);
+        let ms = mesh_str(s) as *mut u8;
         list = mesh_list_append(list, ms as u64);
     }
     list
@@ -596,7 +588,7 @@ fn build_exists_sql_from_parts(
 pub extern "C" fn mesh_repo_all(pool: u64, query: *mut u8) -> *mut u8 {
     unsafe {
         let (sql, params) = query_to_select_sql(query);
-        let sql_ptr = rust_str_to_mesh(&sql) as *const MeshString;
+        let sql_ptr = mesh_str(&sql) as *const MeshString;
         let params_ptr = strings_to_mesh_list(&params);
         mesh_pool_query(pool, sql_ptr, params_ptr)
     }
@@ -644,7 +636,7 @@ pub extern "C" fn mesh_repo_one(pool: u64, query: *mut u8) -> *mut u8 {
             &fragment_params,
         );
 
-        let sql_ptr = rust_str_to_mesh(&sql) as *const MeshString;
+        let sql_ptr = mesh_str(&sql) as *const MeshString;
         let params_ptr = strings_to_mesh_list(&params);
         let result = mesh_pool_query(pool, sql_ptr, params_ptr);
 
@@ -684,7 +676,7 @@ unsafe fn primary_key(pool: u64, table: &str) -> Result<String, *mut u8> {
         WHERE i.indrelid = to_regclass($1) AND i.indisprimary";
     let result = mesh_pool_query(
         pool,
-        rust_str_to_mesh(sql) as *const MeshString,
+        mesh_str(sql) as *const MeshString,
         strings_to_mesh_list(&[quote_name(table)]),
     );
     let r = &*(result as *const MeshResult);
@@ -693,7 +685,7 @@ unsafe fn primary_key(pool: u64, table: &str) -> Result<String, *mut u8> {
     }
     let key = if mesh_list_length(r.value) == 1 {
         let row = mesh_list_get(r.value, 0) as *mut u8;
-        let name = mesh_map_get(row, rust_str_to_mesh("attname") as u64);
+        let name = mesh_map_get(row, mesh_str("attname") as u64);
         mesh_str_ref(name as *mut u8).to_string()
     } else {
         "id".to_string()
@@ -720,7 +712,7 @@ pub extern "C" fn mesh_repo_get(pool: u64, table: *mut u8, id: *mut u8) -> *mut 
             quote_name(table_str),
             quote_name(&key)
         );
-        let sql_ptr = rust_str_to_mesh(&sql) as *const MeshString;
+        let sql_ptr = mesh_str(&sql) as *const MeshString;
         let mut params_list = mesh_list_new();
         params_list = mesh_list_append(params_list, id as u64);
         let result = mesh_pool_query(pool, sql_ptr, params_list);
@@ -762,7 +754,7 @@ pub extern "C" fn mesh_repo_get_by(
             quote_name(table_str),
             quote_name(field_str)
         );
-        let sql_ptr = rust_str_to_mesh(&sql) as *const MeshString;
+        let sql_ptr = mesh_str(&sql) as *const MeshString;
         let mut params_list = mesh_list_new();
         params_list = mesh_list_append(params_list, value as u64);
         let result = mesh_pool_query(pool, sql_ptr, params_list);
@@ -793,7 +785,7 @@ pub extern "C" fn mesh_repo_get_by(
 pub extern "C" fn mesh_repo_count(pool: u64, query: *mut u8) -> *mut u8 {
     unsafe {
         let (sql, params) = query_to_count_sql(query);
-        let sql_ptr = rust_str_to_mesh(&sql) as *const MeshString;
+        let sql_ptr = mesh_str(&sql) as *const MeshString;
         let params_ptr = strings_to_mesh_list(&params);
         let result = mesh_pool_query(pool, sql_ptr, params_ptr);
 
@@ -811,7 +803,7 @@ pub extern "C" fn mesh_repo_count(pool: u64, query: *mut u8) -> *mut u8 {
         // Get the first row (a Map<String,String>)
         let first_row = mesh_list_get(list, 0) as *mut u8;
         // Get the "count" column value
-        let count_key = rust_str_to_mesh("count");
+        let count_key = mesh_str("count") as *mut u8;
         let count_val = mesh_map_get(first_row, count_key as u64);
         if count_val == 0 {
             return err_result("count returned no count column");
@@ -834,7 +826,7 @@ pub extern "C" fn mesh_repo_count(pool: u64, query: *mut u8) -> *mut u8 {
 pub extern "C" fn mesh_repo_exists(pool: u64, query: *mut u8) -> *mut u8 {
     unsafe {
         let (sql, params) = query_to_exists_sql(query);
-        let sql_ptr = rust_str_to_mesh(&sql) as *const MeshString;
+        let sql_ptr = mesh_str(&sql) as *const MeshString;
         let params_ptr = strings_to_mesh_list(&params);
         let result = mesh_pool_query(pool, sql_ptr, params_ptr);
 
@@ -847,7 +839,7 @@ pub extern "C" fn mesh_repo_exists(pool: u64, query: *mut u8) -> *mut u8 {
         let list = r.value;
         let exists = mesh_list_length(list) > 0 && {
             let first_row = mesh_list_get(list, 0) as *mut u8;
-            let exists_val = mesh_map_get(first_row, rust_str_to_mesh("exists") as u64);
+            let exists_val = mesh_map_get(first_row, mesh_str("exists") as u64);
             exists_val != 0 && matches!(mesh_str_ref(exists_val as *mut u8), "t" | "true" | "1")
         };
         ok_result(crate::io::box_scalar(exists))
@@ -1054,7 +1046,7 @@ pub extern "C" fn mesh_repo_insert(pool: u64, table: *mut u8, fields: *mut u8) -
         let returning = vec!["*".to_string()];
         let sql = crate::db::orm::build_insert_sql_pure(table_str, &columns, &returning);
 
-        let sql_ptr = rust_str_to_mesh(&sql) as *const MeshString;
+        let sql_ptr = mesh_str(&sql) as *const MeshString;
         let params_ptr = strings_to_mesh_list(&values);
         let result = mesh_pool_query(pool, sql_ptr, params_ptr);
 
@@ -1094,7 +1086,7 @@ pub extern "C" fn mesh_repo_insert_expr(
             Err(msg) => return err_result(msg),
         };
 
-        let sql_ptr = rust_str_to_mesh(&sql) as *const MeshString;
+        let sql_ptr = mesh_str(&sql) as *const MeshString;
         let params_ptr = strings_to_mesh_list(&params);
         let result = mesh_pool_query(pool, sql_ptr, params_ptr);
 
@@ -1149,7 +1141,7 @@ pub extern "C" fn mesh_repo_update(
         let id_str = mesh_str_ref(id);
         values.push(id_str.to_string());
 
-        let sql_ptr = rust_str_to_mesh(&sql) as *const MeshString;
+        let sql_ptr = mesh_str(&sql) as *const MeshString;
         let params_ptr = strings_to_mesh_list(&values);
         let result = mesh_pool_query(pool, sql_ptr, params_ptr);
 
@@ -1188,7 +1180,7 @@ pub extern "C" fn mesh_repo_delete(pool: u64, table: *mut u8, id: *mut u8) -> *m
         let returning = vec!["*".to_string()];
         let sql = crate::db::orm::build_delete_sql_pure(table_str, &wheres, &returning);
 
-        let sql_ptr = rust_str_to_mesh(&sql) as *const MeshString;
+        let sql_ptr = mesh_str(&sql) as *const MeshString;
         let mut params_list = mesh_list_new();
         params_list = mesh_list_append(params_list, id as u64);
         let result = mesh_pool_query(pool, sql_ptr, params_list);
@@ -1347,7 +1339,7 @@ pub extern "C" fn mesh_repo_insert_changeset(
         let returning = vec!["*".to_string()];
         let sql = crate::db::orm::build_insert_sql_pure(table_str, &columns, &returning);
 
-        let sql_ptr = rust_str_to_mesh(&sql) as *const MeshString;
+        let sql_ptr = mesh_str(&sql) as *const MeshString;
         let params_ptr = strings_to_mesh_list(&values);
         let result = mesh_pool_query(pool, sql_ptr, params_ptr);
 
@@ -1394,7 +1386,7 @@ pub extern "C" fn mesh_repo_update_changeset(
         let id_str = mesh_str_ref(id);
         values.push(id_str.to_string());
 
-        let sql_ptr = rust_str_to_mesh(&sql) as *const MeshString;
+        let sql_ptr = mesh_str(&sql) as *const MeshString;
         let params_ptr = strings_to_mesh_list(&values);
         let result = mesh_pool_query(pool, sql_ptr, params_ptr);
 
@@ -1513,7 +1505,7 @@ unsafe fn preload_direct(
     };
 
     // 1. Collect unique parent values for the IN clause
-    let parent_key_mesh = rust_str_to_mesh(&parent_key);
+    let parent_key_mesh = mesh_str(&parent_key) as *mut u8;
     let mut id_set: Vec<String> = Vec::new();
     let mut seen = HashSet::new();
     for i in 0..row_count {
@@ -1537,7 +1529,7 @@ unsafe fn preload_direct(
     // 2. Build and execute the IN query
     let (sql, params) = build_preload_sql(&meta.target_table, &target_match_key, &id_set);
 
-    let sql_ptr = rust_str_to_mesh(&sql) as *const MeshString;
+    let sql_ptr = mesh_str(&sql) as *const MeshString;
     let params_ptr = strings_to_mesh_list(&params);
     let result = mesh_pool_query(pool, sql_ptr, params_ptr);
 
@@ -1548,7 +1540,7 @@ unsafe fn preload_direct(
     let result_rows = r.value;
 
     // 3. Group results by the match key
-    let match_key_mesh = rust_str_to_mesh(&target_match_key);
+    let match_key_mesh = mesh_str(&target_match_key) as *mut u8;
     let result_count = mesh_list_length(result_rows);
     let mut grouped: HashMap<String, Vec<*mut u8>> = HashMap::new();
     for i in 0..result_count {
@@ -1561,7 +1553,7 @@ unsafe fn preload_direct(
     }
 
     // 4. Attach results to each parent row under the association key
-    let assoc_key_mesh = rust_str_to_mesh(assoc_name);
+    let assoc_key_mesh = mesh_str(assoc_name) as *mut u8;
     let mut enriched = mesh_list_new();
     for i in 0..row_count {
         let row = mesh_list_get(rows, i) as *mut u8;
@@ -1610,7 +1602,7 @@ unsafe fn attach_empty_association(
     assoc_name: &str,
     kind: &str,
 ) -> *mut u8 {
-    let assoc_key_mesh = rust_str_to_mesh(assoc_name);
+    let assoc_key_mesh = mesh_str(assoc_name) as *mut u8;
     let mut enriched = mesh_list_new();
     for i in 0..row_count {
         let row = mesh_list_get(rows, i) as *mut u8;
@@ -1649,7 +1641,7 @@ unsafe fn preload_nested(
     let child_assoc = parts[1];
 
     let row_count = mesh_list_length(rows);
-    let parent_key_mesh = rust_str_to_mesh(parent_assoc);
+    let parent_key_mesh = mesh_str(parent_assoc) as *mut u8;
 
     // Check parent association's kind to decide how to extract intermediate rows
     let parent_meta = rel_map.get(parent_assoc).ok_or_else(|| {
@@ -1709,7 +1701,7 @@ unsafe fn preload_nested(
     }
 
     // Rebuild parent rows
-    let assoc_key_mesh_parent = rust_str_to_mesh(parent_assoc);
+    let assoc_key_mesh_parent = mesh_str(parent_assoc) as *mut u8;
     let mut result = mesh_list_new();
     for i in 0..row_count {
         let row = mesh_list_get(rows, i) as *mut u8;
@@ -1868,7 +1860,7 @@ pub extern "C" fn mesh_repo_preload(
         for i in 0..mesh_list_length(current_rows) {
             let mut row = mesh_list_get(current_rows, i) as *mut u8;
             for (name, nested) in &tree.0 {
-                let key = rust_str_to_mesh(name) as u64;
+                let key = mesh_str(name) as u64;
                 if mesh_map_has_key(row, key) == 0 {
                     continue;
                 }
@@ -1876,7 +1868,7 @@ pub extern "C" fn mesh_repo_preload(
                     .get(name)
                     .is_some_and(|meta| meta.kind == "has_many");
                 let json = association_json(mesh_map_get(row, key), many, nested, &rel_map);
-                row = mesh_map_put(row, key, rust_str_to_mesh(&json.to_string()) as u64);
+                row = mesh_map_put(row, key, mesh_str(&json.to_string()) as u64);
             }
             encoded = mesh_list_append(encoded, row as u64);
         }
@@ -2057,7 +2049,7 @@ pub extern "C" fn mesh_repo_update_where(
 
         values.extend(where_param_values);
 
-        let sql_ptr = rust_str_to_mesh(&sql) as *const MeshString;
+        let sql_ptr = mesh_str(&sql) as *const MeshString;
         let params_ptr = strings_to_mesh_list(&values);
         let result = mesh_pool_query(pool, sql_ptr, params_ptr);
 
@@ -2104,7 +2096,7 @@ pub extern "C" fn mesh_repo_update_where_expr(
             Err(msg) => return err_result(msg),
         };
 
-        let sql_ptr = rust_str_to_mesh(&sql) as *const MeshString;
+        let sql_ptr = mesh_str(&sql) as *const MeshString;
         let params_ptr = strings_to_mesh_list(&params);
         let result = mesh_pool_query(pool, sql_ptr, params_ptr);
 
@@ -2143,7 +2135,7 @@ pub extern "C" fn mesh_repo_delete_where(pool: u64, table: *mut u8, query: *mut 
             build_where_from_query_parts(&where_clauses, &where_params, 1);
         sql.push_str(&format!(" WHERE {}", where_sql));
 
-        let sql_ptr = rust_str_to_mesh(&sql) as *const MeshString;
+        let sql_ptr = mesh_str(&sql) as *const MeshString;
         let params_ptr = strings_to_mesh_list(&where_param_values);
         mesh_pool_execute(pool, sql_ptr, params_ptr)
     }
@@ -2190,7 +2182,7 @@ pub extern "C" fn mesh_repo_insert_or_update(
             table_str, &columns, &targets, &updates, &returning,
         );
 
-        let sql_ptr = rust_str_to_mesh(&sql) as *const MeshString;
+        let sql_ptr = mesh_str(&sql) as *const MeshString;
         let params_ptr = strings_to_mesh_list(&values);
         let result = mesh_pool_query(pool, sql_ptr, params_ptr);
 
@@ -2239,7 +2231,7 @@ pub extern "C" fn mesh_repo_insert_or_update_expr(
             Err(msg) => return err_result(msg),
         };
 
-        let sql_ptr = rust_str_to_mesh(&sql) as *const MeshString;
+        let sql_ptr = mesh_str(&sql) as *const MeshString;
         let params_ptr = strings_to_mesh_list(&params);
         let result = mesh_pool_query(pool, sql_ptr, params_ptr);
 
@@ -2281,7 +2273,7 @@ pub extern "C" fn mesh_repo_delete_where_returning(
             build_where_from_query_parts(&where_clauses, &where_params, 1);
         sql.push_str(&format!(" WHERE {} RETURNING *", where_sql));
 
-        let sql_ptr = rust_str_to_mesh(&sql) as *const MeshString;
+        let sql_ptr = mesh_str(&sql) as *const MeshString;
         let params_ptr = strings_to_mesh_list(&where_param_values);
         mesh_pool_query(pool, sql_ptr, params_ptr)
     }

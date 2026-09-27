@@ -17,7 +17,7 @@ use crate::actor::process::{ProcessId, ProcessState};
 use crate::actor::{self, stack, GLOBAL_SCHEDULER};
 use crate::gc::mesh_gc_alloc_actor;
 use crate::io::{alloc_result, MeshResult};
-use crate::string::{mesh_string_new, MeshString};
+use crate::string::{mesh_str, MeshString};
 
 #[derive(Clone, Copy)]
 enum OverflowPolicy {
@@ -159,10 +159,7 @@ fn producer_registry() -> Result<MutexGuard<'static, HashMap<u64, Channel>>, &'s
 }
 
 fn err(error: &str) -> *mut MeshResult {
-    alloc_result(
-        1,
-        mesh_string_new(error.as_ptr(), error.len() as u64).cast(),
-    )
+    alloc_result(1, mesh_str(error) as *mut u8)
 }
 
 /// `Ok(value)` for a scalar: a `Result` payload is a pointer, which pattern

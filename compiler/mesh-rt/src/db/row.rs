@@ -13,7 +13,7 @@
 
 use crate::collections::map::{mesh_map_get, mesh_map_has_key};
 use crate::io::alloc_result;
-use crate::string::{mesh_string_new, MeshString};
+use crate::string::{mesh_str, MeshString};
 
 /// Extract a column value from a row map (Map<String, String>).
 ///
@@ -36,7 +36,7 @@ pub extern "C" fn mesh_row_from_row_get(row: *mut u8, col_name: *mut u8) -> *mut
             // Build descriptive error message
             let name_str = (*(col_name as *const MeshString)).as_str();
             let msg = format!("missing column: {}", name_str);
-            let err_mesh = mesh_string_new(msg.as_ptr(), msg.len() as u64);
+            let err_mesh = mesh_str(&msg);
             alloc_result(1, err_mesh as *mut u8) as *mut u8
         }
     }
@@ -58,7 +58,7 @@ pub extern "C" fn mesh_row_parse_int(s: *mut u8) -> *mut u8 {
             Ok(val) => alloc_result(0, val as *mut u8) as *mut u8,
             Err(_) => {
                 let msg = format!("cannot parse '{}' as Int", text);
-                let err_mesh = mesh_string_new(msg.as_ptr(), msg.len() as u64);
+                let err_mesh = mesh_str(&msg);
                 alloc_result(1, err_mesh as *mut u8) as *mut u8
             }
         }
@@ -91,7 +91,7 @@ pub extern "C" fn mesh_row_parse_float(s: *mut u8) -> *mut u8 {
             Ok(val) => alloc_result(0, f64::to_bits(val) as *mut u8) as *mut u8,
             Err(_) => {
                 let msg = format!("cannot parse '{}' as Float", raw);
-                let err_mesh = mesh_string_new(msg.as_ptr(), msg.len() as u64);
+                let err_mesh = mesh_str(&msg);
                 alloc_result(1, err_mesh as *mut u8) as *mut u8
             }
         }
@@ -121,7 +121,7 @@ pub extern "C" fn mesh_row_parse_bool(s: *mut u8) -> *mut u8 {
             "false" | "f" | "0" | "no" => alloc_result(0, std::ptr::null_mut::<u8>()) as *mut u8,
             _ => {
                 let msg = format!("cannot parse '{}' as Bool", raw);
-                let err_mesh = mesh_string_new(msg.as_ptr(), msg.len() as u64);
+                let err_mesh = mesh_str(&msg);
                 alloc_result(1, err_mesh as *mut u8) as *mut u8
             }
         }
@@ -133,11 +133,6 @@ mod tests {
     use super::*;
     use crate::gc::mesh_rt_init;
     use crate::io::MeshResult;
-
-    /// Helper: create a MeshString from a &str and return as *mut u8.
-    fn make_mesh_string(s: &str) -> *mut u8 {
-        mesh_string_new(s.as_ptr(), s.len() as u64) as *mut u8
-    }
 
     /// Helper: read the MeshResult tag from a result pointer.
     unsafe fn result_tag(r: *mut u8) -> u8 {
@@ -160,7 +155,7 @@ mod tests {
     #[test]
     fn test_parse_int_positive() {
         mesh_rt_init();
-        let s = make_mesh_string("42");
+        let s = mesh_str("42") as *mut u8;
         let r = mesh_row_parse_int(s);
         unsafe {
             assert_eq!(result_tag(r), 0);
@@ -171,7 +166,7 @@ mod tests {
     #[test]
     fn test_parse_int_negative() {
         mesh_rt_init();
-        let s = make_mesh_string("-17");
+        let s = mesh_str("-17") as *mut u8;
         let r = mesh_row_parse_int(s);
         unsafe {
             assert_eq!(result_tag(r), 0);
@@ -182,7 +177,7 @@ mod tests {
     #[test]
     fn test_parse_int_zero() {
         mesh_rt_init();
-        let s = make_mesh_string("0");
+        let s = mesh_str("0") as *mut u8;
         let r = mesh_row_parse_int(s);
         unsafe {
             assert_eq!(result_tag(r), 0);
@@ -193,7 +188,7 @@ mod tests {
     #[test]
     fn test_parse_int_failure() {
         mesh_rt_init();
-        let s = make_mesh_string("hello");
+        let s = mesh_str("hello") as *mut u8;
         let r = mesh_row_parse_int(s);
         unsafe {
             assert_eq!(result_tag(r), 1);
@@ -206,7 +201,7 @@ mod tests {
     #[test]
     fn test_parse_int_with_whitespace() {
         mesh_rt_init();
-        let s = make_mesh_string("  123  ");
+        let s = mesh_str("  123  ") as *mut u8;
         let r = mesh_row_parse_int(s);
         unsafe {
             assert_eq!(result_tag(r), 0);
@@ -219,7 +214,7 @@ mod tests {
     #[test]
     fn test_parse_float_normal() {
         mesh_rt_init();
-        let s = make_mesh_string("2.75");
+        let s = mesh_str("2.75") as *mut u8;
         let r = mesh_row_parse_float(s);
         unsafe {
             assert_eq!(result_tag(r), 0);
@@ -232,7 +227,7 @@ mod tests {
     #[test]
     fn test_parse_float_pg_infinity() {
         mesh_rt_init();
-        let s = make_mesh_string("Infinity");
+        let s = mesh_str("Infinity") as *mut u8;
         let r = mesh_row_parse_float(s);
         unsafe {
             assert_eq!(result_tag(r), 0);
@@ -245,7 +240,7 @@ mod tests {
     #[test]
     fn test_parse_float_pg_neg_infinity() {
         mesh_rt_init();
-        let s = make_mesh_string("-Infinity");
+        let s = mesh_str("-Infinity") as *mut u8;
         let r = mesh_row_parse_float(s);
         unsafe {
             assert_eq!(result_tag(r), 0);
@@ -258,7 +253,7 @@ mod tests {
     #[test]
     fn test_parse_float_failure() {
         mesh_rt_init();
-        let s = make_mesh_string("abc");
+        let s = mesh_str("abc") as *mut u8;
         let r = mesh_row_parse_float(s);
         unsafe {
             assert_eq!(result_tag(r), 1);
@@ -273,7 +268,7 @@ mod tests {
     fn test_parse_bool_true_variants() {
         mesh_rt_init();
         for input in &["true", "t", "1", "yes"] {
-            let s = make_mesh_string(input);
+            let s = mesh_str(input) as *mut u8;
             let r = mesh_row_parse_bool(s);
             unsafe {
                 assert_eq!(result_tag(r), 0, "failed for input: {}", input);
@@ -286,7 +281,7 @@ mod tests {
     fn test_parse_bool_false_variants() {
         mesh_rt_init();
         for input in &["false", "f", "0", "no"] {
-            let s = make_mesh_string(input);
+            let s = mesh_str(input) as *mut u8;
             let r = mesh_row_parse_bool(s);
             unsafe {
                 assert_eq!(result_tag(r), 0, "failed for input: {}", input);
@@ -299,7 +294,7 @@ mod tests {
     fn test_parse_bool_case_insensitive() {
         mesh_rt_init();
         for input in &["TRUE", "True", "FALSE", "False", "T", "F", "YES", "NO"] {
-            let s = make_mesh_string(input);
+            let s = mesh_str(input) as *mut u8;
             let r = mesh_row_parse_bool(s);
             unsafe {
                 assert_eq!(result_tag(r), 0, "failed for input: {}", input);
@@ -310,7 +305,7 @@ mod tests {
     #[test]
     fn test_parse_bool_failure() {
         mesh_rt_init();
-        let s = make_mesh_string("maybe");
+        let s = mesh_str("maybe") as *mut u8;
         let r = mesh_row_parse_bool(s);
         unsafe {
             assert_eq!(result_tag(r), 1);

@@ -24,7 +24,7 @@ use crate::collections::map::{
     mesh_map_get, mesh_map_has_key, mesh_map_new_typed, mesh_map_put, mesh_map_size,
 };
 use crate::gc::mesh_gc_alloc_actor;
-use crate::string::{mesh_string_new, MeshString};
+use crate::string::{mesh_str, MeshString};
 
 // ── Constants ────────────────────────────────────────────────────────
 
@@ -62,11 +62,6 @@ unsafe fn cs_set_int(cs: *mut u8, slot: usize, val: i64) {
 }
 
 // ── String helpers ───────────────────────────────────────────────────
-
-/// Create a MeshString from a Rust &str and return as *mut u8.
-unsafe fn rust_str_to_mesh(s: &str) -> *mut u8 {
-    mesh_string_new(s.as_ptr(), s.len() as u64) as *mut u8
-}
 
 /// Read a MeshString pointer as a Rust &str.
 unsafe fn mesh_str_ref(ptr: *mut u8) -> &'static str {
@@ -149,7 +144,7 @@ pub extern "C" fn mesh_changeset_cast(data: *mut u8, params: *mut u8, allowed: *
         let mut changes = mesh_map_new_typed(1);
 
         for field_name in &allowed_names {
-            let key_mesh = rust_str_to_mesh(field_name);
+            let key_mesh = mesh_str(field_name) as *mut u8;
             let key_u64 = key_mesh as u64;
             if mesh_map_has_key(params, key_u64) != 0 {
                 let val = mesh_map_get(params, key_u64);
@@ -197,7 +192,7 @@ pub extern "C" fn mesh_changeset_cast_with_types(
         let mut errors = mesh_map_new_typed(1);
 
         for field_name in &allowed_names {
-            let key_mesh = rust_str_to_mesh(field_name);
+            let key_mesh = mesh_str(field_name) as *mut u8;
             let key_u64 = key_mesh as u64;
             if mesh_map_has_key(params, key_u64) != 0 {
                 let val = mesh_map_get(params, key_u64);
@@ -206,11 +201,11 @@ pub extern "C" fn mesh_changeset_cast_with_types(
                 if let Some(sql_type) = type_map.get(field_name) {
                     match coerce_value(val_str, sql_type) {
                         Ok(coerced) => {
-                            let coerced_mesh = rust_str_to_mesh(&coerced);
+                            let coerced_mesh = mesh_str(&coerced) as *mut u8;
                             changes = mesh_map_put(changes, key_u64, coerced_mesh as u64);
                         }
                         Err(()) => {
-                            let err_msg = rust_str_to_mesh("is invalid");
+                            let err_msg = mesh_str("is invalid") as *mut u8;
                             errors = mesh_map_put(errors, key_u64, err_msg as u64);
                         }
                     }
@@ -245,7 +240,7 @@ pub extern "C" fn mesh_changeset_validate_required(cs: *mut u8, fields: *mut u8)
         let mut errors = cs_get(new_cs, SLOT_ERRORS);
 
         for field in &field_names {
-            let key_mesh = rust_str_to_mesh(field);
+            let key_mesh = mesh_str(field) as *mut u8;
             let key_u64 = key_mesh as u64;
 
             // Check if field has a non-empty value in changes or data
@@ -264,7 +259,7 @@ pub extern "C" fn mesh_changeset_validate_required(cs: *mut u8, fields: *mut u8)
             if !is_present {
                 // Only add error if no error exists for this field yet
                 if mesh_map_has_key(errors, key_u64) == 0 {
-                    let msg = rust_str_to_mesh("can't be blank");
+                    let msg = mesh_str("can't be blank") as *mut u8;
                     errors = mesh_map_put(errors, key_u64, msg as u64);
                 }
             }
@@ -297,7 +292,7 @@ pub extern "C" fn mesh_changeset_validate_length(
         let mut errors = cs_get(new_cs, SLOT_ERRORS);
 
         let field_str = mesh_str_ref(field);
-        let key_mesh = rust_str_to_mesh(field_str);
+        let key_mesh = mesh_str(field_str) as *mut u8;
         let key_u64 = key_mesh as u64;
 
         // Only validate if field exists in changes
@@ -310,11 +305,11 @@ pub extern "C" fn mesh_changeset_validate_length(
             if mesh_map_has_key(errors, key_u64) == 0 {
                 if min != -1 && len < min {
                     let msg = format!("should be at least {} character(s)", min);
-                    let msg_mesh = rust_str_to_mesh(&msg);
+                    let msg_mesh = mesh_str(&msg) as *mut u8;
                     errors = mesh_map_put(errors, key_u64, msg_mesh as u64);
                 } else if max != -1 && len > max {
                     let msg = format!("should be at most {} character(s)", max);
-                    let msg_mesh = rust_str_to_mesh(&msg);
+                    let msg_mesh = mesh_str(&msg) as *mut u8;
                     errors = mesh_map_put(errors, key_u64, msg_mesh as u64);
                 }
             }
@@ -347,7 +342,7 @@ pub extern "C" fn mesh_changeset_validate_format(
 
         let field_str = mesh_str_ref(field);
         let pattern_str = mesh_str_ref(pattern);
-        let key_mesh = rust_str_to_mesh(field_str);
+        let key_mesh = mesh_str(field_str) as *mut u8;
         let key_u64 = key_mesh as u64;
 
         // Only validate if field exists in changes
@@ -358,7 +353,7 @@ pub extern "C" fn mesh_changeset_validate_format(
             if !val_str.contains(pattern_str) {
                 // Only add error if no error exists for this field yet
                 if mesh_map_has_key(errors, key_u64) == 0 {
-                    let msg = rust_str_to_mesh("has invalid format");
+                    let msg = mesh_str("has invalid format") as *mut u8;
                     errors = mesh_map_put(errors, key_u64, msg as u64);
                 }
             }
@@ -390,7 +385,7 @@ pub extern "C" fn mesh_changeset_validate_inclusion(
         let mut errors = cs_get(new_cs, SLOT_ERRORS);
 
         let field_str = mesh_str_ref(field);
-        let key_mesh = rust_str_to_mesh(field_str);
+        let key_mesh = mesh_str(field_str) as *mut u8;
         let key_u64 = key_mesh as u64;
 
         // Only validate if field exists in changes
@@ -403,7 +398,7 @@ pub extern "C" fn mesh_changeset_validate_inclusion(
             let is_valid = allowed.iter().any(|a| a == val_str);
 
             if !is_valid && mesh_map_has_key(errors, key_u64) == 0 {
-                let msg = rust_str_to_mesh("is invalid");
+                let msg = mesh_str("is invalid") as *mut u8;
                 errors = mesh_map_put(errors, key_u64, msg as u64);
             }
         }
@@ -437,7 +432,7 @@ pub extern "C" fn mesh_changeset_validate_number(
         let mut errors = cs_get(new_cs, SLOT_ERRORS);
 
         let field_str = mesh_str_ref(field);
-        let key_mesh = rust_str_to_mesh(field_str);
+        let key_mesh = mesh_str(field_str) as *mut u8;
         let key_u64 = key_mesh as u64;
 
         // Only validate if field exists in changes
@@ -449,7 +444,7 @@ pub extern "C" fn mesh_changeset_validate_number(
             if mesh_map_has_key(errors, key_u64) == 0 {
                 match val_str.trim().parse::<i64>() {
                     Err(_) => {
-                        let msg = rust_str_to_mesh("is not a number");
+                        let msg = mesh_str("is not a number") as *mut u8;
                         errors = mesh_map_put(errors, key_u64, msg as u64);
                     }
                     Ok(num) => {
@@ -464,7 +459,7 @@ pub extern "C" fn mesh_changeset_validate_number(
                             err_msg = Some(format!("must be less than or equal to {}", lte));
                         }
                         if let Some(msg) = err_msg {
-                            let msg_mesh = rust_str_to_mesh(&msg);
+                            let msg_mesh = mesh_str(&msg) as *mut u8;
                             errors = mesh_map_put(errors, key_u64, msg_mesh as u64);
                         }
                     }
@@ -517,13 +512,13 @@ pub extern "C" fn mesh_changeset_get_change(cs: *mut u8, field: *mut u8) -> *mut
     unsafe {
         let changes = cs_get(cs, SLOT_CHANGES);
         let field_str = mesh_str_ref(field);
-        let key_mesh = rust_str_to_mesh(field_str);
+        let key_mesh = mesh_str(field_str) as *mut u8;
         let key_u64 = key_mesh as u64;
 
         if mesh_map_has_key(changes, key_u64) != 0 {
             mesh_map_get(changes, key_u64) as *mut u8
         } else {
-            rust_str_to_mesh("")
+            mesh_str("") as *mut u8
         }
     }
 }
@@ -536,13 +531,13 @@ pub extern "C" fn mesh_changeset_get_error(cs: *mut u8, field: *mut u8) -> *mut 
     unsafe {
         let errors = cs_get(cs, SLOT_ERRORS);
         let field_str = mesh_str_ref(field);
-        let key_mesh = rust_str_to_mesh(field_str);
+        let key_mesh = mesh_str(field_str) as *mut u8;
         let key_u64 = key_mesh as u64;
 
         if mesh_map_has_key(errors, key_u64) != 0 {
             mesh_map_get(errors, key_u64) as *mut u8
         } else {
-            rust_str_to_mesh("")
+            mesh_str("") as *mut u8
         }
     }
 }
@@ -635,12 +630,12 @@ pub(crate) unsafe fn add_constraint_error_to_changeset(
     let new_cs = clone_changeset(cs);
     let mut errors = cs_get(new_cs, SLOT_ERRORS);
 
-    let key_mesh = rust_str_to_mesh(field);
+    let key_mesh = mesh_str(field) as *mut u8;
     let key_u64 = key_mesh as u64;
 
     // Only add if no error exists for this field yet
     if mesh_map_has_key(errors, key_u64) == 0 {
-        let msg_mesh = rust_str_to_mesh(message);
+        let msg_mesh = mesh_str(message) as *mut u8;
         errors = mesh_map_put(errors, key_u64, msg_mesh as u64);
     }
 

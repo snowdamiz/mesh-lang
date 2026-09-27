@@ -20,7 +20,7 @@ use super::quote_ident;
 use crate::collections::list::{mesh_list_get, mesh_list_length, mesh_list_new};
 use crate::db::pool::mesh_pool_execute;
 use crate::io::alloc_result;
-use crate::string::{mesh_string_new, MeshString};
+use crate::string::{mesh_str, MeshString};
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -37,13 +37,8 @@ unsafe fn list_to_strings(list_ptr: *mut u8) -> Vec<String> {
     result
 }
 
-/// Create a MeshString from a Rust &str and return as *mut u8.
-unsafe fn rust_string_to_mesh(s: &str) -> *mut u8 {
-    mesh_string_new(s.as_ptr(), s.len() as u64) as *mut u8
-}
-
 fn err_result(message: &str) -> *mut u8 {
-    unsafe { alloc_result(1, rust_string_to_mesh(message)) as *mut u8 }
+    alloc_result(1, mesh_str(message) as *mut u8) as *mut u8
 }
 
 // ── Pure Rust SQL builders (testable without GC) ─────────────────────
@@ -332,7 +327,7 @@ pub extern "C" fn mesh_migration_create_table(
         let table_name = (*table).as_str();
         let cols = list_to_strings(columns);
         let sql = build_create_table_sql(table_name, &cols);
-        let sql_ptr = rust_string_to_mesh(&sql) as *const MeshString;
+        let sql_ptr = mesh_str(&sql) as *const MeshString;
         let empty_params = mesh_list_new();
         mesh_pool_execute(pool, sql_ptr, empty_params)
     }
@@ -348,7 +343,7 @@ pub extern "C" fn mesh_migration_drop_table(pool: u64, table: *const MeshString)
     unsafe {
         let table_name = (*table).as_str();
         let sql = build_drop_table_sql(table_name);
-        let sql_ptr = rust_string_to_mesh(&sql) as *const MeshString;
+        let sql_ptr = mesh_str(&sql) as *const MeshString;
         let empty_params = mesh_list_new();
         mesh_pool_execute(pool, sql_ptr, empty_params)
     }
@@ -369,7 +364,7 @@ pub extern "C" fn mesh_migration_add_column(
         let table_name = (*table).as_str();
         let col_def = (*column_def).as_str();
         let sql = build_add_column_sql(table_name, col_def);
-        let sql_ptr = rust_string_to_mesh(&sql) as *const MeshString;
+        let sql_ptr = mesh_str(&sql) as *const MeshString;
         let empty_params = mesh_list_new();
         mesh_pool_execute(pool, sql_ptr, empty_params)
     }
@@ -390,7 +385,7 @@ pub extern "C" fn mesh_migration_drop_column(
         let table_name = (*table).as_str();
         let col_name = (*column).as_str();
         let sql = build_drop_column_sql(table_name, col_name);
-        let sql_ptr = rust_string_to_mesh(&sql) as *const MeshString;
+        let sql_ptr = mesh_str(&sql) as *const MeshString;
         let empty_params = mesh_list_new();
         mesh_pool_execute(pool, sql_ptr, empty_params)
     }
@@ -413,7 +408,7 @@ pub extern "C" fn mesh_migration_rename_column(
         let old = (*old_name).as_str();
         let new = (*new_name).as_str();
         let sql = build_rename_column_sql(table_name, old, new);
-        let sql_ptr = rust_string_to_mesh(&sql) as *const MeshString;
+        let sql_ptr = mesh_str(&sql) as *const MeshString;
         let empty_params = mesh_list_new();
         mesh_pool_execute(pool, sql_ptr, empty_params)
     }
@@ -439,7 +434,7 @@ pub extern "C" fn mesh_migration_create_index(
         let opts = (*options).as_str();
         match build_create_index_sql(table_name, &cols, opts) {
             Ok(sql) => {
-                let sql_ptr = rust_string_to_mesh(&sql) as *const MeshString;
+                let sql_ptr = mesh_str(&sql) as *const MeshString;
                 let empty_params = mesh_list_new();
                 mesh_pool_execute(pool, sql_ptr, empty_params)
             }
@@ -463,7 +458,7 @@ pub extern "C" fn mesh_migration_drop_index(
         let table_name = (*table).as_str();
         let cols = list_to_strings(columns);
         let sql = build_drop_index_sql(table_name, &cols);
-        let sql_ptr = rust_string_to_mesh(&sql) as *const MeshString;
+        let sql_ptr = mesh_str(&sql) as *const MeshString;
         let empty_params = mesh_list_new();
         mesh_pool_execute(pool, sql_ptr, empty_params)
     }

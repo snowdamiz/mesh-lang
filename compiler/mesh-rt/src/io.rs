@@ -4,7 +4,7 @@
 //! module `IO` with `read_line` and `eprintln`.
 
 use crate::gc::mesh_gc_alloc_actor;
-use crate::string::{mesh_string_new, MeshString};
+use crate::string::{mesh_str, MeshString};
 
 /// Tagged result value for Mesh's Result<T, E> representation.
 ///
@@ -94,12 +94,12 @@ pub extern "C" fn mesh_io_read_line() -> *mut MeshResult {
                     input.pop();
                 }
             }
-            let s = mesh_string_new(input.as_ptr(), input.len() as u64);
+            let s = mesh_str(&input);
             alloc_result(0, s as *mut u8)
         }
         Err(e) => {
             let msg = e.to_string();
-            let s = mesh_string_new(msg.as_ptr(), msg.len() as u64);
+            let s = mesh_str(&msg);
             alloc_result(1, s as *mut u8)
         }
     }
@@ -118,6 +118,7 @@ pub extern "C" fn mesh_io_eprintln(s: *const MeshString) {
 mod tests {
     use super::*;
     use crate::gc::mesh_rt_init;
+    use crate::string::mesh_string_new;
 
     #[test]
     fn test_alloc_result_ok() {

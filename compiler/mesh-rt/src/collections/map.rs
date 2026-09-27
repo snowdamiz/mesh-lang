@@ -329,7 +329,7 @@ pub extern "C-unwind" fn mesh_map_to_string(
             result.push_str((*val_str).as_str());
         }
         result.push('}');
-        crate::string::mesh_string_new(result.as_ptr(), result.len() as u64) as *mut u8
+        crate::string::mesh_str(&result) as *mut u8
     }
 }
 

@@ -10,7 +10,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::io::{alloc_result, ok_int, MeshResult};
-use crate::string::{mesh_string_new, MeshString};
+use crate::string::{mesh_str, MeshString};
 use chrono::{DateTime, SecondsFormat, TimeDelta, Utc};
 
 // ── utc_now ──────────────────────────────────────────────────────────────────
@@ -40,7 +40,7 @@ pub extern "C" fn mesh_datetime_from_iso8601(s: *const MeshString) -> *mut MeshR
         match DateTime::parse_from_rfc3339(text) {
             Err(_) => {
                 let e = "invalid ISO 8601 datetime";
-                alloc_result(1, mesh_string_new(e.as_ptr(), e.len() as u64) as *mut u8)
+                alloc_result(1, mesh_str(e) as *mut u8)
             }
             Ok(dt) => {
                 let ms: i64 = dt.timestamp_millis();
@@ -61,7 +61,7 @@ pub extern "C" fn mesh_datetime_to_iso8601(ms: i64) -> *mut MeshString {
         DateTime::from_timestamp_millis(ms).expect("mesh_datetime_to_iso8601: ms out of range");
     // SecondsFormat::Millis + true (use_z=true) -> always Z, always 3 decimal digits
     let s = dt.to_rfc3339_opts(SecondsFormat::Millis, true);
-    mesh_string_new(s.as_ptr(), s.len() as u64)
+    mesh_str(&s)
 }
 
 // ── Unix timestamp interop ────────────────────────────────────────────────────
@@ -72,7 +72,7 @@ pub extern "C" fn mesh_datetime_from_unix_ms(ms: i64) -> *mut MeshResult {
     match DateTime::from_timestamp_millis(ms) {
         None => {
             let e = "unix timestamp out of range";
-            alloc_result(1, mesh_string_new(e.as_ptr(), e.len() as u64) as *mut u8)
+            alloc_result(1, mesh_str(e) as *mut u8)
         }
         Some(dt) => ok_int(dt.timestamp_millis()),
     }
@@ -90,7 +90,7 @@ pub extern "C" fn mesh_datetime_from_unix_secs(secs: i64) -> *mut MeshResult {
     match DateTime::from_timestamp(secs, 0) {
         None => {
             let e = "unix timestamp out of range";
-            alloc_result(1, mesh_string_new(e.as_ptr(), e.len() as u64) as *mut u8)
+            alloc_result(1, mesh_str(e) as *mut u8)
         }
         Some(dt) => ok_int(dt.timestamp_millis()),
     }

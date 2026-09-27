@@ -19,7 +19,7 @@ use crate::collections::list;
 use crate::collections::map;
 use crate::gc::mesh_gc_alloc_actor;
 use crate::io::{alloc_result, box_scalar, MeshResult};
-use crate::string::{mesh_string_new, MeshString};
+use crate::string::{mesh_str, MeshString};
 
 /// Tag constants for MeshJson variants.
 const JSON_NULL: u8 = 0;
@@ -58,7 +58,7 @@ fn alloc_json(tag: u8, value: u64) -> *mut MeshJson {
 }
 
 fn err_result(msg: &str) -> *mut MeshResult {
-    let s = mesh_string_new(msg.as_ptr(), msg.len() as u64);
+    let s = mesh_str(msg);
     alloc_result(1, s as *mut u8)
 }
 
@@ -82,7 +82,7 @@ fn serde_value_to_mesh_json(val: &serde_json::Value) -> *mut MeshJson {
             }
         }
         serde_json::Value::String(s) => {
-            let mesh_str = mesh_string_new(s.as_ptr(), s.len() as u64);
+            let mesh_str = mesh_str(s);
             alloc_json(JSON_STR, mesh_str as u64)
         }
         serde_json::Value::Array(arr) => {
@@ -101,7 +101,7 @@ fn serde_value_to_mesh_json(val: &serde_json::Value) -> *mut MeshJson {
             // and the string-key tag without scanning/copying every preceding entry.
             let mut entries = Vec::with_capacity(obj.len());
             for (key, val) in obj {
-                let key_str = mesh_string_new(key.as_ptr(), key.len() as u64);
+                let key_str = mesh_str(key);
                 let val_json = serde_value_to_mesh_json(val);
                 entries.push([key_str as u64, val_json as u64]);
             }
@@ -218,7 +218,7 @@ pub extern "C-unwind" fn mesh_json_encode(json: *mut u8) -> *mut MeshString {
         let json_ptr = json as *const MeshJson;
         let val = mesh_json_to_serde_value(json_ptr);
         let text = serde_json::to_string(&val).unwrap_or_else(|_| "null".to_string());
-        mesh_string_new(text.as_ptr(), text.len() as u64)
+        mesh_str(&text)
     }
 }
 
@@ -231,7 +231,7 @@ pub extern "C-unwind" fn mesh_json_encode_string(s: *const MeshString) -> *mut M
         let text = (*s).as_str();
         let val = serde_json::Value::String(text.to_string());
         let json_text = serde_json::to_string(&val).unwrap_or_else(|_| "null".to_string());
-        mesh_string_new(json_text.as_ptr(), json_text.len() as u64)
+        mesh_str(&json_text)
     }
 }
 
@@ -239,14 +239,14 @@ pub extern "C-unwind" fn mesh_json_encode_string(s: *const MeshString) -> *mut M
 #[no_mangle]
 pub extern "C-unwind" fn mesh_json_encode_int(val: i64) -> *mut MeshString {
     let text = val.to_string();
-    mesh_string_new(text.as_ptr(), text.len() as u64)
+    mesh_str(&text)
 }
 
 /// Encode a boolean to a JSON string.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_json_encode_bool(val: i8) -> *mut MeshString {
     let text = if val != 0 { "true" } else { "false" };
-    mesh_string_new(text.as_ptr(), text.len() as u64)
+    mesh_str(text)
 }
 
 /// Encode a MeshMap to a JSON string.
@@ -269,7 +269,7 @@ pub extern "C-unwind" fn mesh_json_encode_map(map_ptr: *mut u8) -> *mut MeshStri
         }
         let text = serde_json::to_string(&serde_json::Value::Object(obj))
             .unwrap_or_else(|_| "{}".to_string());
-        mesh_string_new(text.as_ptr(), text.len() as u64)
+        mesh_str(&text)
     }
 }
 
@@ -289,7 +289,7 @@ pub extern "C-unwind" fn mesh_json_encode_list(list_ptr: *mut u8) -> *mut MeshSt
         }
         let text = serde_json::to_string(&serde_json::Value::Array(arr))
             .unwrap_or_else(|_| "[]".to_string());
-        mesh_string_new(text.as_ptr(), text.len() as u64)
+        mesh_str(&text)
     }
 }
 
@@ -647,14 +647,10 @@ mod tests {
     use super::*;
     use crate::gc::mesh_rt_init;
 
-    fn make_string(s: &str) -> *const MeshString {
-        mesh_string_new(s.as_ptr(), s.len() as u64)
-    }
-
     #[test]
     fn test_json_parse_object() {
         mesh_rt_init();
-        let input = make_string(r#"{"name":"Mesh","version":1}"#);
+        let input = mesh_str(r#"{"name":"Mesh","version":1}"#);
         let result = mesh_json_parse(input);
         unsafe {
             assert_eq!((*result).tag, 0, "parse should succeed");
@@ -666,7 +662,7 @@ mod tests {
     #[test]
     fn test_json_parse_array() {
         mesh_rt_init();
-        let input = make_string(r#"[1, 2, 3]"#);
+        let input = mesh_str(r#"[1, 2, 3]"#);
         let result = mesh_json_parse(input);
         unsafe {
             assert_eq!((*result).tag, 0, "parse should succeed");
@@ -680,7 +676,7 @@ mod tests {
         mesh_rt_init();
 
         // null
-        let result = mesh_json_parse(make_string("null"));
+        let result = mesh_json_parse(mesh_str("null"));
         unsafe {
             assert_eq!((*result).tag, 0);
             let json = (*result).value as *const MeshJson;
@@ -688,7 +684,7 @@ mod tests {
         }
 
         // boolean
-        let result = mesh_json_parse(make_string("true"));
+        let result = mesh_json_parse(mesh_str("true"));
         unsafe {
             assert_eq!((*result).tag, 0);
             let json = (*result).value as *const MeshJson;
@@ -697,7 +693,7 @@ mod tests {
         }
 
         // number (integer)
-        let result = mesh_json_parse(make_string("42"));
+        let result = mesh_json_parse(mesh_str("42"));
         unsafe {
             assert_eq!((*result).tag, 0);
             let json = (*result).value as *const MeshJson;
@@ -706,7 +702,7 @@ mod tests {
         }
 
         // unsigned number outside the signed range
-        let result = mesh_json_parse(make_string("18446744073709551615"));
+        let result = mesh_json_parse(mesh_str("18446744073709551615"));
         unsafe {
             assert_eq!((*result).tag, 0);
             let json = (*result).value as *const MeshJson;
@@ -717,7 +713,7 @@ mod tests {
         }
 
         // string
-        let result = mesh_json_parse(make_string(r#""hello""#));
+        let result = mesh_json_parse(mesh_str(r#""hello""#));
         unsafe {
             assert_eq!((*result).tag, 0);
             let json = (*result).value as *const MeshJson;
@@ -730,7 +726,7 @@ mod tests {
     #[test]
     fn test_json_parse_invalid() {
         mesh_rt_init();
-        let input = make_string("{invalid json}");
+        let input = mesh_str("{invalid json}");
         let result = mesh_json_parse(input);
         unsafe {
             assert_eq!((*result).tag, 1, "parse should fail");
@@ -745,7 +741,7 @@ mod tests {
     #[test]
     fn test_json_encode_roundtrip() {
         mesh_rt_init();
-        let input = make_string(r#"{"a":1,"b":"hello","c":true}"#);
+        let input = mesh_str(r#"{"a":1,"b":"hello","c":true}"#);
         let result = mesh_json_parse(input);
         unsafe {
             assert_eq!((*result).tag, 0);
@@ -769,10 +765,10 @@ mod tests {
             r#"{"z":0,"a":1,"a":2}"#,
         ] {
             let expected: serde_json::Value = serde_json::from_str(text).unwrap();
-            let result = mesh_json_parse(make_string(text));
+            let result = mesh_json_parse(mesh_str(text));
             unsafe {
                 assert_eq!((*result).tag, 0);
-                for parsed in [(*result).value, mesh_json_parse_raw(make_string(text))] {
+                for parsed in [(*result).value, mesh_json_parse_raw(mesh_str(text))] {
                     let encoded = mesh_json_encode(parsed);
                     assert_eq!(
                         serde_json::from_str::<serde_json::Value>((*encoded).as_str()).unwrap(),
@@ -780,8 +776,7 @@ mod tests {
                     );
                 }
                 if expected.get("a").is_some() {
-                    let field =
-                        mesh_json_object_get((*result).value, make_string("a").cast_mut().cast());
+                    let field = mesh_json_object_get((*result).value, mesh_str("a").cast());
                     let field = &*(field as *const MeshResult);
                     assert_eq!(field.tag, 0);
                     assert_eq!((*(field.value as *const MeshJson)).value, 2);
@@ -793,7 +788,7 @@ mod tests {
     #[test]
     fn test_json_encode_string() {
         mesh_rt_init();
-        let s = make_string("hello world");
+        let s = mesh_str("hello world");
         let encoded = mesh_json_encode_string(s);
         unsafe {
             assert_eq!((*encoded).as_str(), r#""hello world""#);
@@ -823,10 +818,10 @@ mod tests {
     #[test]
     fn test_json_encode_map() {
         mesh_rt_init();
-        let key1 = make_string("name");
-        let val1 = make_string("Mesh");
-        let key2 = make_string("lang");
-        let val2 = make_string("rust");
+        let key1 = mesh_str("name");
+        let val1 = mesh_str("Mesh");
+        let key2 = mesh_str("lang");
+        let val2 = mesh_str("rust");
 
         let mut m = map::mesh_map_new();
         m = map::mesh_map_put(m, key1 as u64, val1 as u64);
@@ -867,7 +862,7 @@ mod tests {
     #[test]
     fn test_json_from_string() {
         mesh_rt_init();
-        let s = make_string("hello");
+        let s = mesh_str("hello");
         let json = mesh_json_from_string(s) as *const MeshJson;
         unsafe {
             assert_eq!((*json).tag, JSON_STR);
@@ -879,9 +874,9 @@ mod tests {
     #[test]
     fn test_json_encode_list() {
         mesh_rt_init();
-        let s1 = make_string("a");
-        let s2 = make_string("b");
-        let s3 = make_string("c");
+        let s1 = mesh_str("a");
+        let s2 = mesh_str("b");
+        let s3 = mesh_str("c");
 
         let mut l = list::mesh_list_new();
         l = list::mesh_list_append(l, s1 as u64);
@@ -901,8 +896,8 @@ mod tests {
     fn test_json_object_new_put_get_roundtrip() {
         mesh_rt_init();
         let mut obj = mesh_json_object_new();
-        let key = make_string("name") as *mut u8;
-        let val = mesh_json_from_string(make_string("Mesh"));
+        let key = mesh_str("name") as *mut u8;
+        let val = mesh_json_from_string(mesh_str("Mesh"));
         obj = mesh_json_object_put(obj, key, val);
 
         // Get the value back
@@ -921,7 +916,7 @@ mod tests {
     fn test_json_object_get_missing_key() {
         mesh_rt_init();
         let obj = mesh_json_object_new();
-        let key = make_string("nonexistent") as *mut u8;
+        let key = mesh_str("nonexistent") as *mut u8;
         let result = mesh_json_object_get(obj, key);
         unsafe {
             let res = result as *mut MeshResult;
@@ -977,7 +972,7 @@ mod tests {
     #[test]
     fn test_json_as_int_from_string_error() {
         mesh_rt_init();
-        let json = mesh_json_from_string(make_string("hello"));
+        let json = mesh_json_from_string(mesh_str("hello"));
         let result = mesh_json_as_int(json);
         unsafe {
             let res = result as *mut MeshResult;
@@ -1016,7 +1011,7 @@ mod tests {
     #[test]
     fn test_json_as_string_happy() {
         mesh_rt_init();
-        let json = mesh_json_from_string(make_string("world"));
+        let json = mesh_json_from_string(mesh_str("world"));
         let result = mesh_json_as_string(json);
         unsafe {
             let res = result as *mut MeshResult;
@@ -1138,7 +1133,7 @@ mod tests {
         // Build a JSON array with a string element -- int decode should fail
         let mut arr = mesh_json_array_new();
         arr = mesh_json_array_push(arr, mesh_json_from_int(1));
-        arr = mesh_json_array_push(arr, mesh_json_from_string(make_string("oops")));
+        arr = mesh_json_array_push(arr, mesh_json_from_string(mesh_str("oops")));
 
         let result = mesh_json_to_list(arr, json_to_int_result);
         unsafe {

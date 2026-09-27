@@ -10,7 +10,7 @@
 use crate::collections::list::{mesh_list_builder_new, mesh_list_builder_push};
 use crate::gc::mesh_gc_alloc_actor;
 use crate::option::alloc_option;
-use crate::string::{mesh_string_new, MeshString};
+use crate::string::{mesh_str, MeshString};
 use regex::RegexBuilder;
 use std::collections::VecDeque;
 use std::sync::{LazyLock, Mutex};
@@ -126,7 +126,7 @@ pub extern "C" fn mesh_regex_compile(pattern: *const MeshString) -> *mut u8 {
             Ok(_) => alloc_option(0, alloc_regex(pattern, 0)) as *mut u8,
             Err(e) => {
                 let msg = e.to_string();
-                let err_str = mesh_string_new(msg.as_ptr(), msg.len() as u64);
+                let err_str = mesh_str(&msg);
                 alloc_option(1, err_str as *mut u8) as *mut u8
             }
         }
@@ -166,7 +166,7 @@ pub extern "C" fn mesh_regex_captures(rx_ptr: *const u8, s: *const MeshString) -
                 let mut list = mesh_list_builder_new(n as i64);
                 for i in 0..n {
                     let group_str = caps.get(i).map(|m| m.as_str()).unwrap_or("");
-                    let ms = mesh_string_new(group_str.as_ptr(), group_str.len() as u64);
+                    let ms = mesh_str(group_str);
                     list = mesh_list_builder_push(list, ms as u64);
                 }
                 alloc_option(0, list) as *mut u8
@@ -189,7 +189,7 @@ pub extern "C" fn mesh_regex_replace(
         let text = (*s).as_str();
         let repl = (*replacement).as_str();
         let result: String = rx.replace_all(text, repl).into_owned();
-        mesh_string_new(result.as_ptr(), result.len() as u64)
+        mesh_str(&result)
     }
 }
 
@@ -204,7 +204,7 @@ pub extern "C" fn mesh_regex_split(rx_ptr: *const u8, s: *const MeshString) -> *
         let parts: Vec<&str> = rx.split(text).collect();
         let mut list = mesh_list_builder_new(parts.len() as i64);
         for part in &parts {
-            let ms = mesh_string_new(part.as_ptr(), part.len() as u64);
+            let ms = mesh_str(part);
             list = mesh_list_builder_push(list, ms as u64);
         }
         list
@@ -218,19 +218,16 @@ mod tests {
     use super::*;
     use crate::collections::list::mesh_list_length;
     use crate::gc::mesh_rt_init;
-
-    fn ms(s: &str) -> *mut MeshString {
-        mesh_string_new(s.as_ptr(), s.len() as u64)
-    }
+    use crate::string::mesh_str;
 
     #[test]
     fn test_regex_from_literal_basic() {
         mesh_rt_init();
-        let pat = ms("hello");
+        let pat = mesh_str("hello");
         let rx_ptr = mesh_regex_from_literal(pat, 0);
         assert!(!rx_ptr.is_null());
         // Verify it actually matches
-        let text = ms("hello world");
+        let text = mesh_str("hello world");
         let result = mesh_regex_match(rx_ptr as *const u8, text);
         assert_eq!(result, 1);
     }
@@ -246,7 +243,7 @@ mod tests {
             .unwrap_or(&0);
 
         for _ in 0..32 {
-            mesh_regex_from_literal(ms(pattern), 0);
+            mesh_regex_from_literal(mesh_str(pattern), 0);
         }
 
         let after = *REGEX_BUILD_COUNTS.lock().unwrap().get(pattern).unwrap();
@@ -257,7 +254,7 @@ mod tests {
         );
 
         for index in 0..=REGEX_CACHE_CAPACITY {
-            mesh_regex_compile(ms(&format!("mesh-regex-bounded-probe-{index}")));
+            mesh_regex_compile(mesh_str(&format!("mesh-regex-bounded-probe-{index}")));
         }
         assert_eq!(REGEX_CACHE.lock().unwrap().len(), REGEX_CACHE_CAPACITY);
     }
@@ -265,7 +262,7 @@ mod tests {
     #[test]
     fn test_regex_compile_valid() {
         mesh_rt_init();
-        let pat = ms("\\d+");
+        let pat = mesh_str("\\d+");
         let result_ptr = mesh_regex_compile(pat);
         unsafe {
             let opt = &*(result_ptr as *const crate::option::MeshOption);
@@ -277,7 +274,7 @@ mod tests {
     #[test]
     fn test_regex_compile_invalid() {
         mesh_rt_init();
-        let pat = ms("(unclosed");
+        let pat = mesh_str("(unclosed");
         let result_ptr = mesh_regex_compile(pat);
         unsafe {
             let opt = &*(result_ptr as *const crate::option::MeshOption);
@@ -288,9 +285,9 @@ mod tests {
     #[test]
     fn test_regex_match_true() {
         mesh_rt_init();
-        let pat = ms("\\d+");
+        let pat = mesh_str("\\d+");
         let rx_ptr = mesh_regex_from_literal(pat, 0);
-        let text = ms("foo123");
+        let text = mesh_str("foo123");
         let result = mesh_regex_match(rx_ptr as *const u8, text);
         assert_eq!(result, 1);
     }
@@ -298,9 +295,9 @@ mod tests {
     #[test]
     fn test_regex_match_false() {
         mesh_rt_init();
-        let pat = ms("^\\d+$");
+        let pat = mesh_str("^\\d+$");
         let rx_ptr = mesh_regex_from_literal(pat, 0);
-        let text = ms("foo");
+        let text = mesh_str("foo");
         let result = mesh_regex_match(rx_ptr as *const u8, text);
         assert_eq!(result, 0);
     }
@@ -308,9 +305,9 @@ mod tests {
     #[test]
     fn test_regex_captures_some() {
         mesh_rt_init();
-        let pat = ms("(\\w+) (\\w+)");
+        let pat = mesh_str("(\\w+) (\\w+)");
         let rx_ptr = mesh_regex_from_literal(pat, 0);
-        let text = ms("hello world");
+        let text = mesh_str("hello world");
         let result_ptr = mesh_regex_captures(rx_ptr as *const u8, text);
         unsafe {
             let opt = &*(result_ptr as *const crate::option::MeshOption);
@@ -323,9 +320,9 @@ mod tests {
     #[test]
     fn test_regex_captures_none() {
         mesh_rt_init();
-        let pat = ms("(\\d+)");
+        let pat = mesh_str("(\\d+)");
         let rx_ptr = mesh_regex_from_literal(pat, 0);
-        let text = ms("no digits here");
+        let text = mesh_str("no digits here");
         let result_ptr = mesh_regex_captures(rx_ptr as *const u8, text);
         unsafe {
             let opt = &*(result_ptr as *const crate::option::MeshOption);
@@ -336,10 +333,10 @@ mod tests {
     #[test]
     fn test_regex_replace() {
         mesh_rt_init();
-        let pat = ms("\\d+");
+        let pat = mesh_str("\\d+");
         let rx_ptr = mesh_regex_from_literal(pat, 0);
-        let text = ms("foo123bar");
-        let repl = ms("N");
+        let text = mesh_str("foo123bar");
+        let repl = mesh_str("N");
         let result = mesh_regex_replace(rx_ptr as *const u8, text, repl);
         unsafe {
             assert_eq!((*result).as_str(), "fooNbar");
@@ -349,9 +346,9 @@ mod tests {
     #[test]
     fn test_regex_split() {
         mesh_rt_init();
-        let pat = ms(",");
+        let pat = mesh_str(",");
         let rx_ptr = mesh_regex_from_literal(pat, 0);
-        let text = ms("a,b,c");
+        let text = mesh_str("a,b,c");
         let list = mesh_regex_split(rx_ptr as *const u8, text);
         assert_eq!(mesh_list_length(list), 3);
     }

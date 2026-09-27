@@ -1,10 +1,10 @@
 //! Read-only application-facing cluster introspection APIs.
 
 use crate::collections::map;
-use crate::string::mesh_string_new;
+use crate::string::mesh_str;
 
 fn mesh_string(value: &str) -> u64 {
-    mesh_string_new(value.as_ptr(), value.len() as u64) as u64
+    mesh_str(value) as u64
 }
 
 fn put_int(mut result: *mut u8, key: &str, value: u64) -> *mut u8 {
@@ -199,7 +199,7 @@ pub extern "C" fn mesh_cluster_role() -> *mut u8 {
         .ok()
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| "gateway,worker".to_string());
-    mesh_string_new(role.as_ptr(), role.len() as u64) as *mut u8
+    mesh_str(&role) as *mut u8
 }
 
 /// Return this process's current lifecycle state.
@@ -211,5 +211,5 @@ pub extern "C" fn mesh_cluster_state() -> *mut u8 {
     let state = super::routing::local_load_report(&node_id, Default::default())
         .state
         .as_str();
-    mesh_string_new(state.as_ptr(), state.len() as u64) as *mut u8
+    mesh_str(state) as *mut u8
 }

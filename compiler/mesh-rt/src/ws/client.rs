@@ -16,7 +16,7 @@ use crate::actor::{cooperative_channel, cooperative_recv_timeout, CooperativeSen
 use crate::bytes::{mesh_bytes_new, MeshBytes};
 use crate::gc::mesh_gc_alloc_actor;
 use crate::io::{alloc_result, ok_int, MeshResult};
-use crate::string::{mesh_string_new, MeshString};
+use crate::string::{mesh_str, MeshString};
 
 use super::close::is_valid_close_code;
 use super::frame::WsOpcode;
@@ -163,10 +163,7 @@ fn next_handle() -> u64 {
 
 fn error(message: impl AsRef<str>) -> *mut MeshResult {
     let message = message.as_ref();
-    alloc_result(
-        1,
-        mesh_string_new(message.as_ptr(), message.len() as u64).cast(),
-    )
+    alloc_result(1, mesh_str(message) as *mut u8)
 }
 
 fn ok_unit() -> *mut MeshResult {
@@ -184,10 +181,10 @@ fn mesh_message(event: ClientEvent) -> *mut MeshResult {
             std::mem::size_of::<MeshWsMessage>() as u64,
             std::mem::align_of::<MeshWsMessage>() as u64,
         ) as *mut MeshWsMessage;
-        (*message).kind = mesh_string_new(kind.as_ptr(), kind.len() as u64);
+        (*message).kind = mesh_str(kind);
         (*message).data = mesh_bytes_new(data.as_ptr(), data.len() as u64);
         (*message).close_code = close_code;
-        (*message).close_reason = mesh_string_new(close_reason.as_ptr(), close_reason.len() as u64);
+        (*message).close_reason = mesh_str(&close_reason);
         alloc_result(0, message.cast())
     }
 }

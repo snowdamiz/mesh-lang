@@ -38,7 +38,7 @@ use crate::collections::list::{
 use crate::collections::map::{mesh_map_from_string_entries, mesh_map_new_typed, mesh_map_put};
 use crate::gc::mesh_gc_alloc_actor;
 use crate::io::{alloc_result, MeshResult};
-use crate::string::{mesh_string_new, MeshString};
+use crate::string::{mesh_str, MeshString};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -997,7 +997,7 @@ unsafe fn typed_row_to_map(body: &[u8], columns: &[PgColumn]) -> Result<*mut u8,
     let mut indexes = HashMap::<&str, usize>::with_capacity(columns.len());
     for (column, value) in columns.iter().zip(values) {
         let value = match value {
-            RowValue::Text(text) => alloc_db_value(DB_VALUE_TEXT, rust_str_to_mesh(text)),
+            RowValue::Text(text) => alloc_db_value(DB_VALUE_TEXT, mesh_str(text) as *mut u8),
             RowValue::Binary(bytes) => alloc_db_value(
                 DB_VALUE_BINARY,
                 mesh_bytes_new(bytes.as_ptr(), bytes.len() as u64) as *mut u8,
@@ -1008,7 +1008,7 @@ unsafe fn typed_row_to_map(body: &[u8], columns: &[PgColumn]) -> Result<*mut u8,
             entries[index][1] = value as u64;
         } else {
             indexes.insert(column.name.as_str(), entries.len());
-            entries.push([rust_str_to_mesh(&column.name) as u64, value as u64]);
+            entries.push([mesh_str(&column.name) as u64, value as u64]);
         }
     }
     Ok(mesh_map_from_string_entries(&entries))
@@ -1067,14 +1067,9 @@ unsafe fn mesh_str_to_rust(s: *const MeshString) -> &'static str {
     (*s).as_str()
 }
 
-/// Create a MeshString from a Rust &str and return as *mut u8.
-fn rust_str_to_mesh(s: &str) -> *mut u8 {
-    mesh_string_new(s.as_ptr(), s.len() as u64) as *mut u8
-}
-
 /// Create an error MeshResult from a Rust string.
 fn err_result(msg: &str) -> *mut u8 {
-    let s = rust_str_to_mesh(msg);
+    let s = mesh_str(msg) as *mut u8;
     alloc_result(1, s) as *mut u8
 }
 
@@ -1515,8 +1510,8 @@ pub extern "C" fn mesh_pg_query(
                             "?"
                         };
 
-                        let key_mesh = rust_str_to_mesh(col_name);
-                        let val_mesh = rust_str_to_mesh(&value_str);
+                        let key_mesh = mesh_str(col_name) as *mut u8;
+                        let val_mesh = mesh_str(&value_str) as *mut u8;
                         row_map = mesh_map_put(row_map, key_mesh as u64, val_mesh as u64);
                     }
 
@@ -2085,6 +2080,7 @@ mod tests {
     use crate::collections::list::{mesh_list_append, mesh_list_new};
     use crate::collections::map::{mesh_map_entry_value, mesh_map_size};
     use crate::gc::mesh_rt_init;
+    use crate::string::mesh_string_new;
 
     // A wire-level peer exercises both public connection APIs without a database.
     fn scram_test_server(final_message: Option<&[u8]>) -> (String, std::thread::JoinHandle<()>) {
@@ -2618,7 +2614,7 @@ mod tests {
             b"\xff",
         ] {
             let (url, server) = scram_test_server(Some(final_message));
-            let result = mesh_pg_connect(mesh_string_new(url.as_ptr(), url.len() as u64));
+            let result = mesh_pg_connect(mesh_str(&url));
             server.join().unwrap();
             let result = unsafe { &*(result as *const MeshResult) };
             if result.tag == 0 {
@@ -2638,7 +2634,7 @@ mod tests {
         server.join().unwrap();
         mesh_rt_init();
         let (url, server) = scram_test_server(None);
-        let result = mesh_pg_connect(mesh_string_new(url.as_ptr(), url.len() as u64));
+        let result = mesh_pg_connect(mesh_str(&url));
         let result = unsafe { &*(result as *const MeshResult) };
         server.join().unwrap();
         assert_eq!(result.tag, 0);

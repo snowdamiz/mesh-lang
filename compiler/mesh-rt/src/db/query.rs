@@ -27,7 +27,7 @@
 use crate::collections::list::{mesh_list_append, mesh_list_get, mesh_list_length, mesh_list_new};
 use crate::db::expr::{clone_expr, serialize_expr};
 use crate::gc::mesh_gc_alloc_actor;
-use crate::string::{mesh_string_new, MeshString};
+use crate::string::{mesh_str, MeshString};
 
 // ── Constants ────────────────────────────────────────────────────────
 
@@ -70,11 +70,6 @@ unsafe fn query_set_int(q: *mut u8, slot: usize, val: i64) {
 }
 
 // ── String helpers ───────────────────────────────────────────────────
-
-/// Create a MeshString from a Rust &str and return as *mut u8.
-unsafe fn rust_str_to_mesh(s: &str) -> *mut u8 {
-    mesh_string_new(s.as_ptr(), s.len() as u64) as *mut u8
-}
 
 /// Read a MeshString pointer as a Rust &str.
 unsafe fn mesh_str_ref(ptr: *mut u8) -> &'static str {
@@ -177,7 +172,7 @@ pub extern "C" fn mesh_query_where(q: *mut u8, field: *mut u8, value: *mut u8) -
         let new_q = clone_query(q);
         let field_str = mesh_str_ref(field);
         let clause = format!("{} =", field_str);
-        let clause_mesh = rust_str_to_mesh(&clause);
+        let clause_mesh = mesh_str(&clause) as *mut u8;
         let wc = query_get(new_q, SLOT_WHERE_CLAUSES);
         query_set(
             new_q,
@@ -206,7 +201,7 @@ pub extern "C" fn mesh_query_where_op(
         let op_str = mesh_str_ref(op);
         let sql_op = atom_to_sql_op(op_str);
         let clause = format!("{} {}", field_str, sql_op);
-        let clause_mesh = rust_str_to_mesh(&clause);
+        let clause_mesh = mesh_str(&clause) as *mut u8;
         let wc = query_get(new_q, SLOT_WHERE_CLAUSES);
         query_set(
             new_q,
@@ -229,7 +224,7 @@ pub extern "C" fn mesh_query_where_in(q: *mut u8, field: *mut u8, values: *mut u
         let field_str = mesh_str_ref(field);
         let list_len = mesh_list_length(values);
         let clause = format!("{} IN:{}", field_str, list_len);
-        let clause_mesh = rust_str_to_mesh(&clause);
+        let clause_mesh = mesh_str(&clause) as *mut u8;
         let wc = query_get(new_q, SLOT_WHERE_CLAUSES);
         query_set(
             new_q,
@@ -257,7 +252,7 @@ pub extern "C" fn mesh_query_where_not_in(q: *mut u8, field: *mut u8, values: *m
         let field_str = mesh_str_ref(field);
         let list_len = mesh_list_length(values);
         let clause = format!("{} NOT_IN:{}", field_str, list_len);
-        let clause_mesh = rust_str_to_mesh(&clause);
+        let clause_mesh = mesh_str(&clause) as *mut u8;
         let wc = query_get(new_q, SLOT_WHERE_CLAUSES);
         query_set(
             new_q,
@@ -289,7 +284,7 @@ pub extern "C" fn mesh_query_where_between(
         let new_q = clone_query(q);
         let field_str = mesh_str_ref(field);
         let clause = format!("{} BETWEEN", field_str);
-        let clause_mesh = rust_str_to_mesh(&clause);
+        let clause_mesh = mesh_str(&clause) as *mut u8;
         let wc = query_get(new_q, SLOT_WHERE_CLAUSES);
         query_set(
             new_q,
@@ -319,7 +314,7 @@ pub extern "C" fn mesh_query_where_or(q: *mut u8, fields: *mut u8, values: *mut 
             field_names.push(mesh_str_ref(f).to_string());
         }
         let clause = format!("OR:{}:{}", field_names.join(","), field_count);
-        let clause_mesh = rust_str_to_mesh(&clause);
+        let clause_mesh = mesh_str(&clause) as *mut u8;
         let wc = query_get(new_q, SLOT_WHERE_CLAUSES);
         query_set(
             new_q,
@@ -347,7 +342,7 @@ pub extern "C" fn mesh_query_where_null(q: *mut u8, field: *mut u8) -> *mut u8 {
         let new_q = clone_query(q);
         let field_str = mesh_str_ref(field);
         let clause = format!("{} IS NULL", field_str);
-        let clause_mesh = rust_str_to_mesh(&clause);
+        let clause_mesh = mesh_str(&clause) as *mut u8;
         let wc = query_get(new_q, SLOT_WHERE_CLAUSES);
         query_set(
             new_q,
@@ -367,7 +362,7 @@ pub extern "C" fn mesh_query_where_not_null(q: *mut u8, field: *mut u8) -> *mut 
         let new_q = clone_query(q);
         let field_str = mesh_str_ref(field);
         let clause = format!("{} IS NOT NULL", field_str);
-        let clause_mesh = rust_str_to_mesh(&clause);
+        let clause_mesh = mesh_str(&clause) as *mut u8;
         let wc = query_get(new_q, SLOT_WHERE_CLAUSES);
         query_set(
             new_q,
@@ -387,7 +382,7 @@ pub extern "C" fn mesh_query_where_expr(q: *mut u8, expr: *mut u8) -> *mut u8 {
     unsafe {
         let new_q = clone_query(q);
         let serialized = serialize_expr(&clone_expr(expr));
-        let encoded_expr = rust_str_to_mesh(&format!("EXPR:{}", serialized.0));
+        let encoded_expr = mesh_str(&format!("EXPR:{}", serialized.0)) as *mut u8;
 
         let wc = query_get(new_q, SLOT_WHERE_CLAUSES);
         query_set(
@@ -398,7 +393,7 @@ pub extern "C" fn mesh_query_where_expr(q: *mut u8, expr: *mut u8) -> *mut u8 {
 
         let mut wp = query_get(new_q, SLOT_WHERE_PARAMS);
         for value in serialized.1 {
-            let value_ptr = rust_str_to_mesh(&value);
+            let value_ptr = mesh_str(&value) as *mut u8;
             wp = mesh_list_append(wp, value_ptr as u64);
         }
         query_set(new_q, SLOT_WHERE_PARAMS, wp);
@@ -428,10 +423,10 @@ unsafe fn append_select_exprs(new_q: *mut u8, exprs: *mut u8) {
         let expr_ptr = mesh_list_get(exprs, idx) as *mut u8;
         let expr = clone_expr(expr_ptr);
         let (expr_sql, expr_param_values) = serialize_expr(&expr);
-        let encoded_expr = rust_str_to_mesh(&format!("EXPR:{expr_sql}"));
+        let encoded_expr = mesh_str(&format!("EXPR:{expr_sql}")) as *mut u8;
         select_fields = mesh_list_append(select_fields, encoded_expr as u64);
         for value in expr_param_values {
-            let param_ptr = rust_str_to_mesh(&value);
+            let param_ptr = mesh_str(&value) as *mut u8;
             select_params = mesh_list_append(select_params, param_ptr as u64);
         }
     }
@@ -475,7 +470,7 @@ pub extern "C" fn mesh_query_order_by(q: *mut u8, field: *mut u8, direction: *mu
         let dir_str = mesh_str_ref(direction);
         let dir_sql = atom_to_direction(dir_str);
         let order = format!("{} {}", field_str, dir_sql);
-        let order_mesh = rust_str_to_mesh(&order);
+        let order_mesh = mesh_str(&order) as *mut u8;
         let of = query_get(new_q, SLOT_ORDER);
         query_set(new_q, SLOT_ORDER, mesh_list_append(of, order_mesh as u64));
         new_q
@@ -491,7 +486,7 @@ pub extern "C" fn mesh_query_order_by_raw(q: *mut u8, expression: *mut u8) -> *m
         let new_q = clone_query(q);
         let expr_str = mesh_str_ref(expression);
         let raw_order = format!("RAW:{}", expr_str);
-        let raw_mesh = rust_str_to_mesh(&raw_order);
+        let raw_mesh = mesh_str(&raw_order) as *mut u8;
         let of = query_get(new_q, SLOT_ORDER);
         query_set(new_q, SLOT_ORDER, mesh_list_append(of, raw_mesh as u64));
         new_q
@@ -539,7 +534,7 @@ pub extern "C" fn mesh_query_join(
         let on_str = mesh_str_ref(on_clause);
         let jt_sql = atom_to_join_type(jt_str);
         let join = format!("{}:{}:{}", jt_sql, tbl_str, on_str);
-        let join_mesh = rust_str_to_mesh(&join);
+        let join_mesh = mesh_str(&join) as *mut u8;
         let jc = query_get(new_q, SLOT_JOIN);
         query_set(new_q, SLOT_JOIN, mesh_list_append(jc, join_mesh as u64));
         new_q
@@ -565,7 +560,7 @@ pub extern "C" fn mesh_query_join_as(
         let on_str = mesh_str_ref(on_clause);
         let jt_sql = atom_to_join_type(jt_str);
         let join = format!("ALIAS:{}:{}:{}:{}", jt_sql, tbl_str, alias_str, on_str);
-        let join_mesh = rust_str_to_mesh(&join);
+        let join_mesh = mesh_str(&join) as *mut u8;
         let jc = query_get(new_q, SLOT_JOIN);
         query_set(new_q, SLOT_JOIN, mesh_list_append(jc, join_mesh as u64));
         new_q
@@ -594,7 +589,7 @@ pub extern "C" fn mesh_query_group_by_raw(q: *mut u8, expression: *mut u8) -> *m
         let new_q = clone_query(q);
         let expr_str = mesh_str_ref(expression);
         let raw_group = format!("RAW:{}", expr_str);
-        let raw_mesh = rust_str_to_mesh(&raw_group);
+        let raw_mesh = mesh_str(&raw_group) as *mut u8;
         let gf = query_get(new_q, SLOT_GROUP);
         query_set(new_q, SLOT_GROUP, mesh_list_append(gf, raw_mesh as u64));
         new_q
@@ -640,7 +635,7 @@ pub extern "C" fn mesh_query_select_raw(q: *mut u8, expressions: *mut u8) -> *mu
             let elem = mesh_list_get(expressions, i) as *mut u8;
             let expr_str = mesh_str_ref(elem);
             let raw_expr = format!("RAW:{}", expr_str);
-            let raw_mesh = rust_str_to_mesh(&raw_expr);
+            let raw_mesh = mesh_str(&raw_expr) as *mut u8;
             sf = mesh_list_append(sf, raw_mesh as u64);
         }
         query_set(new_q, SLOT_SELECT, sf);
@@ -662,7 +657,7 @@ pub extern "C" fn mesh_query_where_raw(q: *mut u8, clause: *mut u8, params: *mut
         let new_q = clone_query(q);
         let clause_str = mesh_str_ref(clause);
         let raw_clause = format!("RAW:{}", clause_str);
-        let raw_mesh = rust_str_to_mesh(&raw_clause);
+        let raw_mesh = mesh_str(&raw_clause) as *mut u8;
         let wc = query_get(new_q, SLOT_WHERE_CLAUSES);
         query_set(
             new_q,
@@ -690,7 +685,7 @@ pub extern "C" fn mesh_query_where_raw(q: *mut u8, clause: *mut u8, params: *mut
 pub extern "C" fn mesh_query_select_count(q: *mut u8) -> *mut u8 {
     unsafe {
         let new_q = clone_query(q);
-        let raw = rust_str_to_mesh("RAW:count(*)");
+        let raw = mesh_str("RAW:count(*)") as *mut u8;
         let sf = query_get(new_q, SLOT_SELECT);
         query_set(new_q, SLOT_SELECT, mesh_list_append(sf, raw as u64));
         new_q
@@ -706,7 +701,7 @@ pub extern "C" fn mesh_query_select_count_field(q: *mut u8, field: *mut u8) -> *
         let new_q = clone_query(q);
         let field_str = mesh_str_ref(field);
         let raw = format!("RAW:count(\"{}\")", field_str.replace('"', "\"\""));
-        let raw_mesh = rust_str_to_mesh(&raw);
+        let raw_mesh = mesh_str(&raw) as *mut u8;
         let sf = query_get(new_q, SLOT_SELECT);
         query_set(new_q, SLOT_SELECT, mesh_list_append(sf, raw_mesh as u64));
         new_q
@@ -722,7 +717,7 @@ pub extern "C" fn mesh_query_select_sum(q: *mut u8, field: *mut u8) -> *mut u8 {
         let new_q = clone_query(q);
         let field_str = mesh_str_ref(field);
         let raw = format!("RAW:sum(\"{}\")", field_str.replace('"', "\"\""));
-        let raw_mesh = rust_str_to_mesh(&raw);
+        let raw_mesh = mesh_str(&raw) as *mut u8;
         let sf = query_get(new_q, SLOT_SELECT);
         query_set(new_q, SLOT_SELECT, mesh_list_append(sf, raw_mesh as u64));
         new_q
@@ -738,7 +733,7 @@ pub extern "C" fn mesh_query_select_avg(q: *mut u8, field: *mut u8) -> *mut u8 {
         let new_q = clone_query(q);
         let field_str = mesh_str_ref(field);
         let raw = format!("RAW:avg(\"{}\")", field_str.replace('"', "\"\""));
-        let raw_mesh = rust_str_to_mesh(&raw);
+        let raw_mesh = mesh_str(&raw) as *mut u8;
         let sf = query_get(new_q, SLOT_SELECT);
         query_set(new_q, SLOT_SELECT, mesh_list_append(sf, raw_mesh as u64));
         new_q
@@ -754,7 +749,7 @@ pub extern "C" fn mesh_query_select_min(q: *mut u8, field: *mut u8) -> *mut u8 {
         let new_q = clone_query(q);
         let field_str = mesh_str_ref(field);
         let raw = format!("RAW:min(\"{}\")", field_str.replace('"', "\"\""));
-        let raw_mesh = rust_str_to_mesh(&raw);
+        let raw_mesh = mesh_str(&raw) as *mut u8;
         let sf = query_get(new_q, SLOT_SELECT);
         query_set(new_q, SLOT_SELECT, mesh_list_append(sf, raw_mesh as u64));
         new_q
@@ -770,7 +765,7 @@ pub extern "C" fn mesh_query_select_max(q: *mut u8, field: *mut u8) -> *mut u8 {
         let new_q = clone_query(q);
         let field_str = mesh_str_ref(field);
         let raw = format!("RAW:max(\"{}\")", field_str.replace('"', "\"\""));
-        let raw_mesh = rust_str_to_mesh(&raw);
+        let raw_mesh = mesh_str(&raw) as *mut u8;
         let sf = query_get(new_q, SLOT_SELECT);
         query_set(new_q, SLOT_SELECT, mesh_list_append(sf, raw_mesh as u64));
         new_q
@@ -842,7 +837,7 @@ pub extern "C" fn mesh_query_where_sub(q: *mut u8, field: *mut u8, sub_query: *m
             field_str.replace('"', "\"\""),
             sub_sql
         );
-        let clause_mesh = rust_str_to_mesh(&raw_clause);
+        let clause_mesh = mesh_str(&raw_clause) as *mut u8;
         let wc = query_get(new_q, SLOT_WHERE_CLAUSES);
         query_set(
             new_q,

@@ -14,7 +14,7 @@
 
 use super::quote_name;
 use crate::collections::list::{mesh_list_get, mesh_list_length};
-use crate::string::{mesh_string_new, MeshString};
+use crate::string::{mesh_str, MeshString};
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -29,11 +29,6 @@ unsafe fn list_to_strings(list_ptr: *mut u8) -> Vec<String> {
         }
     }
     result
-}
-
-/// Create a MeshString from a Rust &str and return as *mut u8.
-unsafe fn rust_string_to_mesh(s: &str) -> *mut u8 {
-    mesh_string_new(s.as_ptr(), s.len() as u64) as *mut u8
 }
 
 // ── Pure Rust SQL builders (testable without GC) ─────────────────────
@@ -359,7 +354,7 @@ pub extern "C" fn mesh_orm_build_select(
         let wheres = list_to_strings(where_clauses);
         let orders = list_to_strings(order_by);
         let sql = build_select_sql(table_name, &cols, &wheres, &orders, limit, offset);
-        rust_string_to_mesh(&sql)
+        mesh_str(&sql) as *mut u8
     }
 }
 
@@ -382,7 +377,7 @@ pub extern "C" fn mesh_orm_build_insert(
         let cols = list_to_strings(columns);
         let ret = list_to_strings(returning);
         let sql = build_insert_sql(table_name, &cols, &ret);
-        rust_string_to_mesh(&sql)
+        mesh_str(&sql) as *mut u8
     }
 }
 
@@ -409,7 +404,7 @@ pub extern "C" fn mesh_orm_build_update(
         let wheres = list_to_strings(where_clauses);
         let ret = list_to_strings(returning);
         let sql = build_update_sql(table_name, &set_cols, &wheres, &ret);
-        rust_string_to_mesh(&sql)
+        mesh_str(&sql) as *mut u8
     }
 }
 
@@ -432,7 +427,7 @@ pub extern "C" fn mesh_orm_build_delete(
         let wheres = list_to_strings(where_clauses);
         let ret = list_to_strings(returning);
         let sql = build_delete_sql(table_name, &wheres, &ret);
-        rust_string_to_mesh(&sql)
+        mesh_str(&sql) as *mut u8
     }
 }
 

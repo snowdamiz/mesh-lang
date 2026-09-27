@@ -21,7 +21,7 @@ use crate::bytes::{mesh_bytes_new, MeshBytes};
 use crate::collections::map::{mesh_map_new_typed, mesh_map_put};
 use crate::gc::mesh_gc_alloc_actor;
 use crate::io::alloc_result;
-use crate::string::{mesh_string_new, MeshString};
+use crate::string::{mesh_str, mesh_string_new, MeshString};
 
 const MAX_OPEN_HANDLES: usize = 4_096;
 const MAX_TIMEOUT: Duration = Duration::from_secs(120);
@@ -767,22 +767,18 @@ fn execute_request(
 
 fn mesh_error(message: impl AsRef<str>) -> *mut u8 {
     let message = message.as_ref();
-    alloc_result(
-        1,
-        mesh_string_new(message.as_ptr(), message.len() as u64).cast(),
-    )
-    .cast()
+    alloc_result(1, mesh_str(message) as *mut u8).cast()
 }
 
 fn mesh_response(response: WorkerResponse) -> *mut u8 {
     unsafe {
         let body_text = std::str::from_utf8(&response.body).unwrap_or("");
-        let body = mesh_string_new(body_text.as_ptr(), body_text.len() as u64);
+        let body = mesh_str(body_text);
         let body_bytes = mesh_bytes_new(response.body.as_ptr(), response.body.len() as u64);
         let mut headers = mesh_map_new_typed(1);
         for (name, value) in response.headers {
-            let name = mesh_string_new(name.as_ptr(), name.len() as u64);
-            let value = mesh_string_new(value.as_ptr(), value.len() as u64);
+            let name = mesh_str(&name);
+            let value = mesh_str(&value);
             headers = mesh_map_put(headers, name as u64, value as u64);
         }
         let output = mesh_gc_alloc_actor(
@@ -892,13 +888,13 @@ fn emit_text(
                 if text.is_empty() {
                     return Ok(false);
                 }
-                let text = mesh_string_new(text.as_ptr(), text.len() as u64).cast();
+                let text = mesh_str(text) as *mut u8;
                 pending.clear();
                 return Ok(call_stream_callback(callback_fn, callback_env, text));
             }
             Err(error) if error.valid_up_to() > 0 => {
                 let valid = pending.drain(..error.valid_up_to()).collect::<Vec<_>>();
-                let text = mesh_string_new(valid.as_ptr(), valid.len() as u64).cast();
+                let text = mesh_string_new(valid.as_ptr(), valid.len() as u64) as *mut u8;
                 if call_stream_callback(callback_fn, callback_env, text) {
                     return Ok(true);
                 }
@@ -1080,7 +1076,7 @@ pub extern "C" fn mesh_http_retry_class(
     } else {
         retry_class(unsafe { (*method).as_str() }, unsafe { (*error).as_str() })
     };
-    mesh_string_new(class.as_ptr(), class.len() as u64)
+    mesh_str(class)
 }
 
 fn metric_value(value: &AtomicU64) -> i64 {
@@ -1413,7 +1409,7 @@ mod tests {
         });
         let method = mesh_string_new(b"get".as_ptr(), 3);
         let url = format!("http://127.0.0.1:{port}/");
-        let url = mesh_string_new(url.as_ptr(), url.len() as u64);
+        let url = mesh_str(&url);
         let request = mesh_http_build(method, url);
         let started = Instant::now();
         let send = std::thread::spawn(move || mesh_http_send(request) as usize);

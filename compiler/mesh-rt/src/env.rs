@@ -11,7 +11,7 @@ use crate::secret::{
     crypto_error, insert_owned_resource, CryptoErrorTag, ResourceError, ResourceKind,
     MAX_SECRET_BYTES,
 };
-use crate::string::{mesh_string_new, MeshString};
+use crate::string::{mesh_str, MeshString};
 
 enum SecretHexError {
     Invalid,
@@ -53,7 +53,7 @@ pub extern "C" fn mesh_env_get(key: *const MeshString) -> *mut MeshOption {
         let key_str = (*key).as_str();
         match std::env::var(key_str) {
             Ok(val) => {
-                let s = mesh_string_new(val.as_ptr(), val.len() as u64);
+                let s = mesh_str(&val);
                 alloc_option(0, s as *mut u8)
             }
             Err(_) => alloc_option(1, std::ptr::null_mut()),
@@ -73,7 +73,7 @@ pub extern "C" fn mesh_env_get_with_default(
     unsafe {
         let key_str = (*key).as_str();
         match std::env::var(key_str) {
-            Ok(val) => mesh_string_new(val.as_ptr(), val.len() as u64),
+            Ok(val) => mesh_str(&val),
             Err(_) => default as *mut MeshString,
         }
     }
@@ -137,7 +137,7 @@ pub extern "C" fn mesh_env_get_secret_hex(key: *const MeshString) -> *mut MeshRe
 #[no_mangle]
 pub extern "C" fn mesh_env_args() -> *mut u8 {
     let args = std::env::args()
-        .map(|arg| mesh_string_new(arg.as_ptr(), arg.len() as u64) as u64)
+        .map(|arg| mesh_str(&arg) as u64)
         .collect::<Vec<_>>();
     mesh_list_from_array(args.as_ptr(), args.len() as i64)
 }
@@ -146,6 +146,7 @@ pub extern "C" fn mesh_env_args() -> *mut u8 {
 mod tests {
     use super::*;
     use crate::gc::mesh_rt_init;
+    use crate::string::mesh_string_new;
     use crate::string::MeshString;
 
     #[repr(C)]
@@ -214,7 +215,7 @@ mod tests {
         mesh_rt_init();
         let name = "MESH_SECRET_HEX_OVERSIZED_TEST";
         std::env::set_var(name, "00".repeat(MAX_SECRET_BYTES + 1));
-        let key = mesh_string_new(name.as_ptr(), name.len() as u64);
+        let key = mesh_str(name);
 
         let result = mesh_env_get_secret_hex(key);
 

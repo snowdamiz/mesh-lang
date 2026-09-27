@@ -644,6 +644,7 @@ pub fn stf_decode_value(data: &[u8]) -> Result<(u64, StfType), StfError> {
 mod tests {
     use super::*;
     use crate::gc::mesh_rt_init;
+    use crate::string::mesh_str;
 
     #[test]
     fn test_int_roundtrip() {
@@ -693,7 +694,7 @@ mod tests {
     fn test_string_roundtrip() {
         mesh_rt_init();
         let test_str = "hello";
-        let mesh_str = mesh_string_new(test_str.as_ptr(), test_str.len() as u64);
+        let mesh_str = mesh_str(test_str);
         let encoded = stf_encode_value(mesh_str as u64, &StfType::String).unwrap();
         assert_eq!(encoded[0], STF_VERSION, "version byte");
         let (decoded_ptr, typ) = stf_decode_value(&encoded).unwrap();

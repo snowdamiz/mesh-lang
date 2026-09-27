@@ -25,7 +25,7 @@ use super::pg::{
     mesh_pg_query_values, pg_simple_command, PgConn,
 };
 use crate::io::{alloc_result, box_scalar};
-use crate::string::{mesh_string_new, MeshString};
+use crate::string::{mesh_str, MeshString};
 
 // ── Data Structures ──────────────────────────────────────────────────────
 
@@ -61,14 +61,9 @@ unsafe fn mesh_str_to_rust(s: *const MeshString) -> &'static str {
     (*s).as_str()
 }
 
-/// Create a MeshString from a Rust &str and return as *mut u8.
-fn rust_str_to_mesh(s: &str) -> *mut u8 {
-    mesh_string_new(s.as_ptr(), s.len() as u64) as *mut u8
-}
-
 /// Create an error MeshResult from a Rust string.
 fn err_result(msg: &str) -> *mut u8 {
-    let s = rust_str_to_mesh(msg);
+    let s = mesh_str(msg) as *mut u8;
     alloc_result(1, s) as *mut u8
 }
 
@@ -76,7 +71,7 @@ fn err_result(msg: &str) -> *mut u8 {
 /// Returns Ok(handle_u64) or Err(error_message).
 unsafe fn create_connection(url: &str) -> Result<u64, String> {
     // Create a MeshString from the URL
-    let url_mesh = mesh_string_new(url.as_ptr(), url.len() as u64);
+    let url_mesh = mesh_str(url);
     let result_ptr = mesh_pg_connect(url_mesh as *const MeshString);
     let r = &*(result_ptr as *const crate::io::MeshResult);
     if r.tag == 0 {

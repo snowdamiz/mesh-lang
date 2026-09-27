@@ -8,7 +8,7 @@ use crate::collections::list::{mesh_list_append, mesh_list_get, mesh_list_length
 use crate::collections::map::mesh_map_get;
 use crate::db::pool::{mesh_pool_execute, mesh_pool_query};
 use crate::io::{alloc_result, MeshResult};
-use crate::string::{mesh_string_new, MeshString};
+use crate::string::{mesh_str, MeshString};
 
 fn quote_literal(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
@@ -40,20 +40,16 @@ unsafe fn list_to_strings(list_ptr: *mut u8) -> Vec<String> {
     result
 }
 
-unsafe fn rust_string_to_mesh(s: &str) -> *mut u8 {
-    mesh_string_new(s.as_ptr(), s.len() as u64) as *mut u8
-}
-
 unsafe fn strings_to_mesh_list(values: &[String]) -> *mut u8 {
     let mut list = mesh_list_new();
     for value in values {
-        list = mesh_list_append(list, rust_string_to_mesh(value) as u64);
+        list = mesh_list_append(list, mesh_str(value) as u64);
     }
     list
 }
 
 fn err_result(message: &str) -> *mut u8 {
-    unsafe { alloc_result(1, rust_string_to_mesh(message)) as *mut u8 }
+    alloc_result(1, mesh_str(message) as *mut u8) as *mut u8
 }
 
 fn ok_int_result(value: i64) -> *mut u8 {
@@ -238,7 +234,7 @@ pub extern "C" fn mesh_pg_create_extension(pool: u64, name: *const MeshString) -
     unsafe {
         match build_create_extension_sql((*name).as_str()) {
             Ok(sql) => {
-                let sql_ptr = rust_string_to_mesh(&sql) as *const MeshString;
+                let sql_ptr = mesh_str(&sql) as *const MeshString;
                 mesh_pool_execute(pool, sql_ptr, mesh_list_new())
             }
             Err(message) => err_result(&message),
@@ -261,7 +257,7 @@ pub extern "C" fn mesh_pg_create_range_partitioned_table(
             (*partition_column).as_str(),
         ) {
             Ok(sql) => {
-                let sql_ptr = rust_string_to_mesh(&sql) as *const MeshString;
+                let sql_ptr = mesh_str(&sql) as *const MeshString;
                 mesh_pool_execute(pool, sql_ptr, mesh_list_new())
             }
             Err(message) => err_result(&message),
@@ -285,7 +281,7 @@ pub extern "C" fn mesh_pg_create_gin_index(
             (*opclass).as_str(),
         ) {
             Ok(sql) => {
-                let sql_ptr = rust_string_to_mesh(&sql) as *const MeshString;
+                let sql_ptr = mesh_str(&sql) as *const MeshString;
                 mesh_pool_execute(pool, sql_ptr, mesh_list_new())
             }
             Err(message) => err_result(&message),
@@ -312,7 +308,7 @@ pub extern "C" fn mesh_pg_create_daily_partitions_ahead(
 
         for offset in 0..days {
             let sql = build_create_daily_partition_sql(parent_table, offset);
-            let sql_ptr = rust_string_to_mesh(&sql) as *const MeshString;
+            let sql_ptr = mesh_str(&sql) as *const MeshString;
             let exec_result = mesh_pool_execute(pool, sql_ptr, mesh_list_new());
             let result = &*(exec_result as *const MeshResult);
             if result.tag != 0 {
@@ -340,7 +336,7 @@ pub extern "C" fn mesh_pg_list_daily_partitions_before(
 
         let sql = build_list_daily_partitions_before_sql();
         let params = strings_to_mesh_list(&[parent_table.to_string(), max_days.to_string()]);
-        let sql_ptr = rust_string_to_mesh(sql) as *const MeshString;
+        let sql_ptr = mesh_str(sql) as *const MeshString;
         let query_result = mesh_pool_query(pool, sql_ptr, params);
         let result = &*(query_result as *const MeshResult);
         if result.tag != 0 {
@@ -349,7 +345,7 @@ pub extern "C" fn mesh_pg_list_daily_partitions_before(
 
         let rows = result.value;
         let len = mesh_list_length(rows);
-        let partition_name_key = rust_string_to_mesh("partition_name") as u64;
+        let partition_name_key = mesh_str("partition_name") as u64;
         let mut partitions = mesh_list_new();
         for i in 0..len {
             let row = mesh_list_get(rows, i) as *mut u8;
@@ -365,7 +361,7 @@ pub extern "C" fn mesh_pg_drop_partition(pool: u64, partition_name: *const MeshS
     unsafe {
         match build_drop_partition_sql((*partition_name).as_str()) {
             Ok(sql) => {
-                let sql_ptr = rust_string_to_mesh(&sql) as *const MeshString;
+                let sql_ptr = mesh_str(&sql) as *const MeshString;
                 mesh_pool_execute(pool, sql_ptr, mesh_list_new())
             }
             Err(message) => err_result(&message),

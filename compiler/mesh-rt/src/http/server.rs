@@ -30,7 +30,7 @@ use crate::actor;
 use crate::bytes::{mesh_bytes_new, MeshBytes};
 use crate::collections::map;
 use crate::gc::mesh_gc_alloc_actor;
-use crate::string::{mesh_string_new, MeshString};
+use crate::string::{mesh_str, MeshString};
 
 use super::router::{MeshRouter, MiddlewareEntry};
 
@@ -246,10 +246,6 @@ fn mesh_string_ptr_to_owned(ptr: *mut u8) -> String {
     }
 }
 
-fn mesh_string_to_ptr(value: &str) -> *mut u8 {
-    mesh_string_new(value.as_ptr(), value.len() as u64) as *mut u8
-}
-
 fn mesh_bytes_ptr_to_owned(ptr: *mut u8) -> Vec<u8> {
     if ptr.is_null() {
         Vec::new()
@@ -286,8 +282,8 @@ fn mesh_map_to_pairs(map_ptr: *mut u8) -> Result<Vec<(String, String)>, String> 
 fn pairs_to_mesh_map(pairs: &[(String, String)]) -> *mut u8 {
     let mut map_ptr = map::mesh_map_new_typed(1);
     for (key, value) in pairs {
-        let key_ptr = mesh_string_to_ptr(key);
-        let value_ptr = mesh_string_to_ptr(value);
+        let key_ptr = mesh_str(key) as *mut u8;
+        let value_ptr = mesh_str(value) as *mut u8;
         map_ptr = map::mesh_map_put(map_ptr, key_ptr as u64, value_ptr as u64);
     }
     map_ptr
@@ -322,20 +318,17 @@ fn transport_request_to_mesh(request: &TransportHttpRequest) -> *mut u8 {
             std::mem::size_of::<MeshHttpRequest>() as u64,
             std::mem::align_of::<MeshHttpRequest>() as u64,
         ) as *mut MeshHttpRequest;
-        (*req_ptr).method = mesh_string_to_ptr(&request.method);
-        (*req_ptr).path = mesh_string_to_ptr(&request.path);
-        (*req_ptr).body = std::str::from_utf8(&request.body)
-            .map(mesh_string_to_ptr)
-            .unwrap_or_else(|_| mesh_string_to_ptr(""));
+        (*req_ptr).method = mesh_str(&request.method) as *mut u8;
+        (*req_ptr).path = mesh_str(&request.path) as *mut u8;
+        (*req_ptr).body = mesh_str(std::str::from_utf8(&request.body).unwrap_or("")) as *mut u8;
         (*req_ptr).query_params = pairs_to_mesh_map(&request.query_params);
         (*req_ptr).headers = pairs_to_mesh_map(&request.headers);
         (*req_ptr).path_params = pairs_to_mesh_map(&request.path_params);
-        (*req_ptr).request_id = mesh_string_to_ptr(&request.request_id);
+        (*req_ptr).request_id = mesh_str(&request.request_id) as *mut u8;
         (*req_ptr).idempotency_key = request
             .idempotency_key
             .as_deref()
-            .map(mesh_string_to_ptr)
-            .unwrap_or(std::ptr::null_mut());
+            .map_or(std::ptr::null_mut(), |key| mesh_str(key) as *mut u8);
         (*req_ptr).body_bytes =
             mesh_bytes_new(request.body.as_ptr(), request.body.len() as u64) as *mut u8;
         req_ptr as *mut u8
@@ -385,7 +378,7 @@ fn transport_response_to_mesh(response: &TransportHttpResponse) -> *mut u8 {
         return response_ptr;
     }
     let body_text = std::str::from_utf8(&response.body).unwrap_or("");
-    let body = mesh_string_to_ptr(body_text) as *const MeshString;
+    let body = mesh_str(body_text) as *const MeshString;
     if response.headers.is_empty() {
         mesh_http_response_new(response.status, body)
     } else {
@@ -717,11 +710,8 @@ fn set_response_header(response_ptr: *mut u8, name: &str, value: &str) -> *mut u
         } else {
             response.headers
         };
-        response.headers = map::mesh_map_put(
-            headers,
-            mesh_string_to_ptr(name) as u64,
-            mesh_string_to_ptr(value) as u64,
-        );
+        response.headers =
+            map::mesh_map_put(headers, mesh_str(name) as u64, mesh_str(value) as u64);
     }
 
     response_ptr
@@ -739,7 +729,7 @@ fn clustered_route_failure_response(reason: &str, request_key: Option<&str>) -> 
     let body = format!("{{\"error\":\"{}\"}}", escape_json_string(reason));
     let response_ptr = mesh_http_response_new(
         CLUSTERED_ROUTE_FAILURE_STATUS,
-        mesh_string_to_ptr(&body) as *const MeshString,
+        mesh_str(&body) as *const MeshString,
     );
     if let Some(request_key) = request_key.filter(|request_key| !request_key.is_empty()) {
         attach_clustered_route_request_key_header(response_ptr, request_key)
@@ -843,7 +833,7 @@ pub extern "C" fn mesh_http_request_header(req: *mut u8, name: *const MeshString
         let request = &*(req as *const MeshHttpRequest);
         let key_str = (*name).as_str();
         // Look up in the headers map. Keys are MeshString pointers stored as u64.
-        let key_mesh = mesh_string_new(key_str.as_ptr(), key_str.len() as u64);
+        let key_mesh = mesh_str(key_str);
         let val = map::mesh_map_get(request.headers, key_mesh as u64);
         if val == 0 {
             // None
@@ -862,7 +852,7 @@ pub extern "C" fn mesh_http_request_query(req: *mut u8, name: *const MeshString)
     unsafe {
         let request = &*(req as *const MeshHttpRequest);
         let key_str = (*name).as_str();
-        let key_mesh = mesh_string_new(key_str.as_ptr(), key_str.len() as u64);
+        let key_mesh = mesh_str(key_str);
         let val = map::mesh_map_get(request.query_params, key_mesh as u64);
         if val == 0 {
             alloc_option(1, std::ptr::null_mut())
@@ -883,7 +873,7 @@ pub extern "C" fn mesh_http_request_param(req: *mut u8, name: *const MeshString)
     unsafe {
         let request = &*(req as *const MeshHttpRequest);
         let key_str = (*name).as_str();
-        let key_mesh = mesh_string_new(key_str.as_ptr(), key_str.len() as u64);
+        let key_mesh = mesh_str(key_str);
         let val = map::mesh_map_get(request.path_params, key_mesh as u64);
         if val == 0 {
             alloc_option(1, std::ptr::null_mut())
@@ -897,7 +887,7 @@ pub extern "C" fn mesh_http_request_param(req: *mut u8, name: *const MeshString)
 #[no_mangle]
 pub extern "C" fn mesh_http_request_id(req: *mut u8) -> *mut u8 {
     if req.is_null() {
-        return mesh_string_to_ptr("");
+        return mesh_str("") as *mut u8;
     }
     unsafe { (*(req as *const MeshHttpRequest)).request_id }
 }
@@ -1522,7 +1512,7 @@ fn process_request(
 
         // Build the MeshHttpRequest.
         let method_str = parsed.method;
-        let method = mesh_string_new(method_str.as_ptr(), method_str.len() as u64) as *mut u8;
+        let method = mesh_str(&method_str) as *mut u8;
 
         let url = parsed.path;
         // Split URL into path and query string.
@@ -1530,20 +1520,18 @@ fn process_request(
             Some(idx) => (&url[..idx], &url[idx + 1..]),
             None => (url.as_str(), ""),
         };
-        let path = mesh_string_new(path_str.as_ptr(), path_str.len() as u64) as *mut u8;
+        let path = mesh_str(path_str) as *mut u8;
 
         // Body from parsed request.
         let body_value = parsed.body;
-        let body = std::str::from_utf8(&body_value)
-            .map(mesh_string_to_ptr)
-            .unwrap_or_else(|_| mesh_string_to_ptr(""));
+        let body = mesh_str(std::str::from_utf8(&body_value).unwrap_or("")) as *mut u8;
         let body_bytes = mesh_bytes_new(body_value.as_ptr(), body_value.len() as u64) as *mut u8;
 
         let request_id_value = match crate::dist::identity::request_id_generator().next() {
             Ok(request_id) => request_id.to_string(),
             Err(error) => return (503, error.into_bytes(), None),
         };
-        let request_id = mesh_string_to_ptr(&request_id_value);
+        let request_id = mesh_str(&request_id_value) as *mut u8;
         let idempotency_key_value = parsed
             .headers
             .iter()
@@ -1556,16 +1544,15 @@ fn process_request(
         }
         let idempotency_key = idempotency_key_value
             .as_deref()
-            .map(mesh_string_to_ptr)
-            .unwrap_or(std::ptr::null_mut());
+            .map_or(std::ptr::null_mut(), |key| mesh_str(key) as *mut u8);
 
         // Parse query params into a MeshMap (string keys for content-based lookup).
         let mut query_map = map::mesh_map_new_typed(1);
         if !query_str.is_empty() {
             for param in query_str.split('&') {
                 if let Some((k, v)) = param.split_once('=') {
-                    let key = mesh_string_new(k.as_ptr(), k.len() as u64);
-                    let val = mesh_string_new(v.as_ptr(), v.len() as u64);
+                    let key = mesh_str(k);
+                    let val = mesh_str(v);
                     query_map = map::mesh_map_put(query_map, key as u64, val as u64);
                 }
             }
@@ -1574,8 +1561,8 @@ fn process_request(
         // Parse headers into a MeshMap (string keys for content-based lookup).
         let mut headers_map = map::mesh_map_new_typed(1);
         for (name, value_str) in &parsed.headers {
-            let key = mesh_string_new(name.as_ptr(), name.len() as u64);
-            let val = mesh_string_new(value_str.as_ptr(), value_str.len() as u64);
+            let key = mesh_str(name);
+            let val = mesh_str(value_str);
             headers_map = map::mesh_map_put(headers_map, key as u64, val as u64);
         }
 
@@ -1604,8 +1591,8 @@ fn process_request(
         let response_ptr = if let Some((entry, params)) = matched {
             let mut path_params_map = map::mesh_map_new_typed(1);
             for (k, v) in &params {
-                let key = mesh_string_new(k.as_ptr(), k.len() as u64);
-                let val = mesh_string_new(v.as_ptr(), v.len() as u64);
+                let key = mesh_str(k);
+                let val = mesh_str(v);
                 path_params_map = map::mesh_map_put(path_params_map, key as u64, val as u64);
             }
 
@@ -1631,8 +1618,7 @@ fn process_request(
             let req_ptr = build_mesh_request(path_params_map);
 
             extern "C" fn not_found_handler(_request: *mut u8) -> *mut u8 {
-                let body_text = b"Not Found";
-                let body = mesh_string_new(body_text.as_ptr(), body_text.len() as u64);
+                let body = mesh_str("Not Found");
                 mesh_http_response_new(404, body)
             }
 
@@ -1711,6 +1697,7 @@ mod tests {
     };
     use crate::gc::mesh_rt_init;
     use crate::http::router::{mesh_http_route_get, mesh_http_router};
+    use crate::string::mesh_string_new;
     use std::sync::atomic::{AtomicU64, Ordering};
 
     fn reset_clustered_runtime_state() {
@@ -1738,22 +1725,22 @@ mod tests {
                 std::mem::size_of::<MeshHttpRequest>() as u64,
                 std::mem::align_of::<MeshHttpRequest>() as u64,
             ) as *mut MeshHttpRequest;
-            (*req_ptr).method = mesh_string_to_ptr(method);
-            (*req_ptr).path = mesh_string_to_ptr(path);
-            (*req_ptr).body = mesh_string_to_ptr(body);
+            (*req_ptr).method = mesh_str(method) as *mut u8;
+            (*req_ptr).path = mesh_str(path) as *mut u8;
+            (*req_ptr).body = mesh_str(body) as *mut u8;
             (*req_ptr).query_params = pairs_to_mesh_map(&owned_pairs(query_params));
             (*req_ptr).headers = pairs_to_mesh_map(&owned_pairs(headers));
             (*req_ptr).path_params = pairs_to_mesh_map(&owned_pairs(path_params));
-            (*req_ptr).request_id = mesh_string_to_ptr(
+            (*req_ptr).request_id = mesh_str(
                 &crate::dist::identity::request_id_generator()
                     .next()
                     .expect("test request id")
                     .to_string(),
-            );
+            ) as *mut u8;
             (*req_ptr).idempotency_key = headers
                 .iter()
                 .find(|(name, _)| name.eq_ignore_ascii_case("idempotency-key"))
-                .map(|(_, value)| mesh_string_to_ptr(value))
+                .map(|(_, value)| mesh_str(value) as *mut u8)
                 .unwrap_or(std::ptr::null_mut());
             (*req_ptr).body_bytes = mesh_bytes_new(body.as_ptr(), body.len() as u64) as *mut u8;
             req_ptr as *mut u8
@@ -1761,7 +1748,7 @@ mod tests {
     }
 
     fn build_test_response(status: i64, body: &str, headers: &[(&str, &str)]) -> *mut u8 {
-        let body_ptr = mesh_string_to_ptr(body) as *const MeshString;
+        let body_ptr = mesh_str(body) as *const MeshString;
         if headers.is_empty() {
             mesh_http_response_new(status, body_ptr)
         } else {

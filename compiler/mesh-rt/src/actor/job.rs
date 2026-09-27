@@ -24,7 +24,7 @@
 
 use crate::gc::mesh_gc_alloc_actor;
 use crate::io::{alloc_result, MeshResult};
-use crate::string::mesh_string_new;
+use crate::string::mesh_str;
 
 use super::heap::MessageBuffer;
 use super::link::EXIT_SIGNAL_TAG;
@@ -54,7 +54,7 @@ fn box_job_value(value: i64) -> *mut u8 {
 
 /// Build an Err MeshResult from a Rust string slice.
 fn err_result(msg: &str) -> *mut MeshResult {
-    let mesh_str = mesh_string_new(msg.as_ptr(), msg.len() as u64);
+    let mesh_str = mesh_str(msg);
     alloc_result(1, mesh_str as *mut u8)
 }
 

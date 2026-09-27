@@ -55,7 +55,7 @@ use super::protocol::{
     ProtocolEnvelope, ProtocolHello, RetryBudget, PROTOCOL_V1, PROTOCOL_V2,
 };
 use crate::io::{alloc_result, MeshResult};
-use crate::string::{mesh_string_new, MeshString};
+use crate::string::{mesh_str, MeshString};
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -6707,16 +6707,12 @@ fn alloc_mesh_value<T>(value: T) -> *mut T {
     }
 }
 
-fn mesh_string_ptr(value: &str) -> *mut MeshString {
-    mesh_string_new(value.as_ptr(), value.len() as u64)
-}
-
 fn mesh_bootstrap_status(status: BootstrapStatus) -> MeshBootstrapStatus {
     MeshBootstrapStatus {
-        mode: mesh_string_ptr(status.mode_label()),
-        node_name: mesh_string_ptr(&status.node_name),
+        mode: mesh_str(status.mode_label()),
+        node_name: mesh_str(&status.node_name),
         cluster_port: i64::from(status.cluster_port),
-        discovery_seed: mesh_string_ptr(&status.discovery_seed),
+        discovery_seed: mesh_str(&status.discovery_seed),
     }
 }
 
@@ -6728,10 +6724,7 @@ fn bootstrap_ok_status(status: BootstrapStatus) -> *mut MeshResult {
 }
 
 fn bootstrap_err_string(reason: &str) -> *mut MeshResult {
-    alloc_result(
-        1,
-        mesh_string_new(reason.as_ptr(), reason.len() as u64) as *mut u8,
-    )
+    alloc_result(1, mesh_str(reason) as *mut u8)
 }
 
 /// Resolve startup mode from the public environment contract and start the
@@ -7027,8 +7020,7 @@ pub extern "C" fn mesh_node_connect(name_ptr: *const u8, name_len: u64) -> i64 {
 #[no_mangle]
 pub extern "C" fn mesh_node_self() -> *const u8 {
     match node_state() {
-        Some(state) => crate::string::mesh_string_new(state.name.as_ptr(), state.name.len() as u64)
-            as *const u8,
+        Some(state) => crate::string::mesh_str(&state.name) as *const u8,
         None => {
             // Return an empty string instead of null to prevent null pointer
             // dereference when Mesh code compares the result (e.g., `Node.self() != ""`).
@@ -7062,7 +7054,7 @@ pub extern "C" fn mesh_node_list() -> *mut u8 {
     // Build array of Mesh string pointers, then create list from array
     let mut string_ptrs: Vec<u64> = Vec::with_capacity(names.len());
     for name in &names {
-        let s = crate::string::mesh_string_new(name.as_ptr(), name.len() as u64);
+        let s = crate::string::mesh_str(name);
         string_ptrs.push(s as u64);
     }
 
@@ -7526,10 +7518,8 @@ fn declared_work_placement(
 }
 
 fn declared_work_arg_payload(request_key: &str, attempt_id: &str) -> (*mut u8, [u8; 2]) {
-    let request_key_ptr =
-        crate::string::mesh_string_new(request_key.as_ptr(), request_key.len() as u64);
-    let attempt_id_ptr =
-        crate::string::mesh_string_new(attempt_id.as_ptr(), attempt_id.len() as u64);
+    let request_key_ptr = crate::string::mesh_str(request_key);
+    let attempt_id_ptr = crate::string::mesh_str(attempt_id);
     let values = [request_key_ptr as u64, attempt_id_ptr as u64];
     (
         allocate_remote_spawn_args(&values),
@@ -7538,8 +7528,7 @@ fn declared_work_arg_payload(request_key: &str, attempt_id: &str) -> (*mut u8, [
 }
 
 fn startup_work_arg_payload(runtime_name: &str) -> *mut u8 {
-    let runtime_name_ptr =
-        crate::string::mesh_string_new(runtime_name.as_ptr(), runtime_name.len() as u64);
+    let runtime_name_ptr = crate::string::mesh_str(runtime_name);
     allocate_remote_spawn_args(&[runtime_name_ptr as u64])
 }
 
@@ -8034,16 +8023,10 @@ fn automatic_recovery_arg_payload(
     payload_hash: &str,
     previous_attempt_id: &str,
 ) -> *mut u8 {
-    let runtime_name_ptr =
-        crate::string::mesh_string_new(runtime_name.as_ptr(), runtime_name.len() as u64);
-    let request_key_ptr =
-        crate::string::mesh_string_new(request_key.as_ptr(), request_key.len() as u64);
-    let payload_hash_ptr =
-        crate::string::mesh_string_new(payload_hash.as_ptr(), payload_hash.len() as u64);
-    let previous_attempt_id_ptr = crate::string::mesh_string_new(
-        previous_attempt_id.as_ptr(),
-        previous_attempt_id.len() as u64,
-    );
+    let runtime_name_ptr = crate::string::mesh_str(runtime_name);
+    let request_key_ptr = crate::string::mesh_str(request_key);
+    let payload_hash_ptr = crate::string::mesh_str(payload_hash);
+    let previous_attempt_id_ptr = crate::string::mesh_str(previous_attempt_id);
     allocate_remote_spawn_args(&[
         runtime_name_ptr as u64,
         request_key_ptr as u64,
