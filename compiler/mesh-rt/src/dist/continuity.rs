@@ -956,7 +956,12 @@ impl ContinuityRegistry {
             .get(request_key)
             .cloned()
             .ok_or_else(|| REQUEST_KEY_NOT_FOUND.to_string())?;
-        let next = transition_replica_ack_record(record, attempt_id, acknowledged_replica_nodes)?;
+        let next = transition_replica_ack_record(
+            record,
+            attempt_id,
+            acknowledged_replica_nodes,
+            super::continuity_store::degraded_durability_enabled(),
+        )?;
         next.validate()?;
         inner.requests.insert(request_key.to_string(), next.clone());
         let watermark = inner.next_attempt_token;
@@ -1622,10 +1627,13 @@ fn transition_completed_record(
     })
 }
 
+/// Records the replicas that acknowledged `attempt_id`: below the majority
+/// the record is refused, or continues degraded when `degraded_allowed`.
 fn transition_replica_ack_record(
     record: ContinuityRecord,
     attempt_id: &str,
     acknowledged_replica_nodes: Vec<String>,
+    degraded_allowed: bool,
 ) -> Result<ContinuityRecord, String> {
     if record.attempt_id != attempt_id {
         return Err(ATTEMPT_ID_MISMATCH.to_string());
@@ -1642,7 +1650,7 @@ fn transition_replica_ack_record(
     acknowledged_replica_nodes.dedup();
     let required_acknowledgements = (record.replication_count / 2) as usize;
     let reached_threshold = acknowledged_replica_nodes.len() >= required_acknowledgements;
-    if !reached_threshold && !super::continuity_store::degraded_durability_enabled() {
+    if !reached_threshold && !degraded_allowed {
         return Err("continuity_replica_ack_threshold_unmet".to_string());
     }
     let record_version = record.record_version.saturating_add(1);
@@ -4677,5 +4685,762 @@ mod tests {
         let decoded = decode_sync_payload(&payload).expect("decode sync payload");
         assert_eq!(decoded.next_attempt_token, snapshot.next_attempt_token);
         assert_eq!(decoded.records, snapshot.records);
+    }
+
+    /// A pending record mirrored on one replica, attempt 1.
+    fn mirrored(key: &str) -> ContinuityRecord {
+        ContinuityRecord {
+            request_key: key.to_string(),
+            payload_hash: "hash".to_string(),
+            record_version: 1,
+            request_payload: Vec::new(),
+            attempt_id: attempt_id_from_token(1),
+            phase: ContinuityPhase::Submitted,
+            result: ContinuityResult::Pending,
+            ingress_node: "ingress@host".to_string(),
+            owner_node: "owner@host".to_string(),
+            replica_nodes: vec!["replica@host".to_string()],
+            acknowledged_replica_nodes: vec!["replica@host".to_string()],
+            replica_node: "replica@host".to_string(),
+            replication_count: 2,
+            replica_status: ReplicaStatus::Mirrored,
+            cluster_role: ContinuityClusterRole::Primary,
+            promotion_epoch: 0,
+            replication_health: ReplicationHealth::Healthy,
+            execution_node: String::new(),
+            routed_remotely: false,
+            fell_back_locally: false,
+            error: String::new(),
+            declared_handler_runtime_name: "Api.handle".to_string(),
+        }
+    }
+
+    #[test]
+    fn continuity_states_round_trip_their_wire_codes() {
+        for phase in [
+            ContinuityPhase::Submitted,
+            ContinuityPhase::Completed,
+            ContinuityPhase::Rejected,
+        ] {
+            assert_eq!(ContinuityPhase::from_wire(phase.to_wire()), Ok(phase));
+            assert!(!phase.as_str().is_empty());
+        }
+        for result in [
+            ContinuityResult::Pending,
+            ContinuityResult::Succeeded,
+            ContinuityResult::Rejected,
+        ] {
+            assert_eq!(ContinuityResult::from_wire(result.to_wire()), Ok(result));
+            assert!(!result.as_str().is_empty());
+        }
+        for status in [
+            ReplicaStatus::Unassigned,
+            ReplicaStatus::Preparing,
+            ReplicaStatus::Mirrored,
+            ReplicaStatus::OwnerLost,
+            ReplicaStatus::PreAdmissionRejected,
+            ReplicaStatus::Rejected,
+            ReplicaStatus::DegradedContinuing,
+        ] {
+            assert_eq!(ReplicaStatus::from_wire(status.to_wire()), Ok(status));
+            assert!(!status.as_str().is_empty());
+        }
+        for role in [
+            ContinuityClusterRole::Primary,
+            ContinuityClusterRole::Standby,
+        ] {
+            assert_eq!(ContinuityClusterRole::from_wire(role.to_wire()), Ok(role));
+        }
+        for health in [
+            ReplicationHealth::LocalOnly,
+            ReplicationHealth::Healthy,
+            ReplicationHealth::Degraded,
+            ReplicationHealth::Unavailable,
+        ] {
+            assert_eq!(ReplicationHealth::from_wire(health.to_wire()), Ok(health));
+            assert!(!health.as_str().is_empty());
+        }
+        assert!(ContinuityPhase::from_wire(9).is_err());
+        assert!(ContinuityResult::from_wire(9).is_err());
+        assert!(ReplicaStatus::from_wire(9).is_err());
+        assert!(ContinuityClusterRole::from_wire(9).is_err());
+        assert!(ReplicationHealth::from_wire(9).is_err());
+        let outcomes = [
+            (SubmitOutcome::Created, "created"),
+            (SubmitOutcome::Duplicate, "duplicate"),
+            (SubmitOutcome::Conflict, "conflict"),
+            (SubmitOutcome::Rejected, "rejected"),
+        ];
+        for (outcome, name) in outcomes {
+            assert_eq!(outcome.as_str(), name);
+        }
+        assert!(parse_authority_config(Some("leader"), None).is_err());
+        assert!(parse_authority_config(None, Some("soon")).is_err());
+        assert_eq!(
+            parse_authority_config(Some(" Standby "), Some("4")),
+            Ok(standby_authority(4))
+        );
+    }
+
+    #[test]
+    fn continuity_records_are_refused_for_each_broken_invariant() {
+        assert_eq!(mirrored("valid").validate(), Ok(()));
+        let cases: [(fn(&mut ContinuityRecord), &str); 11] = [
+            (|record| record.request_key.clear(), REQUEST_KEY_MISSING),
+            (|record| record.payload_hash.clear(), PAYLOAD_HASH_MISSING),
+            (|record| record.attempt_id.clear(), ATTEMPT_ID_MISSING),
+            (
+                |record| record.record_version = 0,
+                "continuity_record_version_invalid",
+            ),
+            (|record| record.owner_node.clear(), OWNER_NODE_MISSING),
+            (
+                |record| record.replication_count = 0,
+                INVALID_REPLICATION_COUNT,
+            ),
+            (
+                |record| record.replica_nodes.push("replica@host".to_string()),
+                "continuity_replica_set_invalid",
+            ),
+            (
+                |record| record.replica_node = "owner@host".to_string(),
+                "continuity_replica_set_invalid",
+            ),
+            (
+                |record| record.replica_nodes = vec!["other@host".to_string()],
+                "continuity_replica_set_invalid",
+            ),
+            (
+                |record| {
+                    record
+                        .acknowledged_replica_nodes
+                        .push("stranger@host".to_string())
+                },
+                "continuity_replica_ack_set_invalid",
+            ),
+            (
+                |record| {
+                    record.cluster_role = ContinuityClusterRole::Standby;
+                    record.replica_status = ReplicaStatus::OwnerLost;
+                },
+                STANDBY_OWNER_LOST_INVALID,
+            ),
+        ];
+        for (change, expected) in cases {
+            let mut broken = mirrored("broken");
+            change(&mut broken);
+            assert_eq!(broken.validate(), Err(expected.to_string()), "{expected}");
+        }
+        // A record naming only its primary replica has that one in its set.
+        let mut legacy = mirrored("legacy");
+        legacy.replica_nodes.clear();
+        assert_eq!(legacy.canonical_replica_nodes(), ["replica@host"]);
+    }
+
+    #[test]
+    fn submit_requests_are_refused_for_each_broken_invariant() {
+        let registry = continuity_fresh_registry();
+        let base = || continuity_submit_request("submit-invalid", "hash", "replica@host", 0);
+        let cases: [(fn(&mut SubmitRequest), &str); 8] = [
+            (|request| request.request_key.clear(), REQUEST_KEY_MISSING),
+            (|request| request.payload_hash.clear(), PAYLOAD_HASH_MISSING),
+            (|request| request.owner_node.clear(), OWNER_NODE_MISSING),
+            (
+                |request| request.replication_count = 0,
+                INVALID_REPLICATION_COUNT,
+            ),
+            (
+                |request| request.required_replica_count = 5,
+                INVALID_REQUIRED_REPLICA_COUNT,
+            ),
+            (
+                |request| request.replica_nodes.push("replica@host".to_string()),
+                "continuity_replica_set_invalid",
+            ),
+            (
+                |request| request.replica_nodes = vec![String::new()],
+                "continuity_replica_set_invalid",
+            ),
+            (
+                |request| request.replica_node = "owner@host".to_string(),
+                "continuity_replica_set_invalid",
+            ),
+        ];
+        for (change, expected) in cases {
+            let mut request = base();
+            change(&mut request);
+            assert_eq!(
+                registry.submit(request).err(),
+                Some(expected.to_string()),
+                "{expected}"
+            );
+        }
+        // Only a primary replica given, it is the whole set.
+        let mut single = base();
+        single.replica_nodes.clear();
+        let record = continuity_submitted_record(&single, 3);
+        assert_eq!(record.replica_nodes, ["replica@host"]);
+    }
+
+    #[test]
+    fn the_preferred_record_follows_epoch_attempt_phase_version_acks_and_rank() {
+        let base = mirrored("prefer");
+        let with = |change: &dyn Fn(&mut ContinuityRecord)| {
+            let mut record = base.clone();
+            change(&mut record);
+            record
+        };
+        let prefers = |existing: &ContinuityRecord, incoming: &ContinuityRecord| {
+            preferred_record(existing.clone(), incoming.clone())
+        };
+        // Promotion epoch first.
+        let newer_epoch = with(&|record| record.promotion_epoch = 1);
+        assert_eq!(prefers(&newer_epoch, &base), newer_epoch);
+        assert_eq!(prefers(&base, &newer_epoch), newer_epoch);
+        // A provisional higher attempt cannot erase a terminal result...
+        let completed = with(&|record| {
+            record.phase = ContinuityPhase::Completed;
+            record.result = ContinuityResult::Succeeded;
+        });
+        let preparing_next = with(&|record| {
+            record.attempt_id = attempt_id_from_token(2);
+            record.replica_status = ReplicaStatus::Preparing;
+        });
+        assert_eq!(prefers(&completed, &preparing_next), completed);
+        // ...and a terminal result wins over a provisional one.
+        let preparing = with(&|record| record.replica_status = ReplicaStatus::Preparing);
+        let completed_next = with(&|record| {
+            record.attempt_id = attempt_id_from_token(2);
+            record.phase = ContinuityPhase::Completed;
+            record.result = ContinuityResult::Succeeded;
+        });
+        assert_eq!(prefers(&preparing, &completed_next), completed_next);
+        // Then the attempt, a parseable one over one that is not.
+        let next_attempt = with(&|record| record.attempt_id = attempt_id_from_token(2));
+        assert_eq!(prefers(&next_attempt, &base), next_attempt);
+        assert_eq!(prefers(&base, &next_attempt), next_attempt);
+        let unparsed = with(&|record| record.attempt_id = "manual".to_string());
+        assert_eq!(prefers(&base, &unparsed), base);
+        assert_eq!(prefers(&unparsed, &base), base);
+        // Then a terminal phase.
+        assert_eq!(prefers(&completed, &base), completed);
+        assert_eq!(prefers(&base, &completed), completed);
+        // Then the record version.
+        let later = with(&|record| record.record_version = 2);
+        assert_eq!(prefers(&later, &base), later);
+        assert_eq!(prefers(&base, &later), later);
+        // Then acknowledgement progress over the same replica set.
+        let pair = |acks: &[&str], status| {
+            with(&|record| {
+                record.replica_nodes = vec!["a@host".to_string(), "b@host".to_string()];
+                record.replica_node = "a@host".to_string();
+                record.acknowledged_replica_nodes =
+                    acks.iter().map(|ack| ack.to_string()).collect();
+                record.replica_status = status;
+            })
+        };
+        let one = pair(&["a@host"], ReplicaStatus::Mirrored);
+        let two = pair(&["a@host", "b@host"], ReplicaStatus::Mirrored);
+        assert_eq!(prefers(&one, &two), two);
+        assert_eq!(prefers(&two, &one), two);
+        let degraded = pair(&["a@host"], ReplicaStatus::DegradedContinuing);
+        assert_eq!(prefers(&two, &degraded), degraded);
+        // Then the replica status rank, then replication health.
+        let owner_lost = with(&|record| record.replica_status = ReplicaStatus::OwnerLost);
+        assert_eq!(prefers(&owner_lost, &base), owner_lost);
+        assert_eq!(prefers(&base, &owner_lost), owner_lost);
+        let unavailable =
+            with(&|record| record.replication_health = ReplicationHealth::Unavailable);
+        assert_eq!(prefers(&base, &unavailable), base);
+        assert_eq!(prefers(&unavailable, &base), base);
+        let rejected = with(&|record| {
+            record.replica_status = ReplicaStatus::Rejected;
+            record.replication_health = ReplicationHealth::LocalOnly;
+        });
+        let rejected_healthy = with(&|record| {
+            record.replica_status = ReplicaStatus::Rejected;
+            record.replication_health = ReplicationHealth::Degraded;
+        });
+        assert_eq!(prefers(&rejected_healthy, &rejected), rejected_healthy);
+        assert_eq!(prefers(&base, &base.clone()), base);
+    }
+
+    #[test]
+    fn authority_health_and_projection_follow_the_records() {
+        let with_health = |health| {
+            let mut record = mirrored("health");
+            record.replication_health = health;
+            record
+        };
+        let health = |records: &[ContinuityRecord]| authority_replication_health(records.iter());
+        assert_eq!(health(&[]), ReplicationHealth::LocalOnly);
+        assert_eq!(
+            health(&[with_health(ReplicationHealth::Healthy)]),
+            ReplicationHealth::Healthy
+        );
+        assert_eq!(
+            health(&[
+                with_health(ReplicationHealth::Healthy),
+                with_health(ReplicationHealth::Degraded)
+            ]),
+            ReplicationHealth::Degraded
+        );
+        assert_eq!(
+            health(&[
+                with_health(ReplicationHealth::Unavailable),
+                with_health(ReplicationHealth::Degraded)
+            ]),
+            ReplicationHealth::Unavailable
+        );
+
+        // Promotion to primary: a record without a replica is local, a
+        // finished healthy one loses its source.
+        let mut local = mirrored("local");
+        local.replica_nodes.clear();
+        local.acknowledged_replica_nodes.clear();
+        local.replica_node.clear();
+        local.replica_status = ReplicaStatus::Unassigned;
+        let promoted =
+            project_record_for_authority_change(local, standby_authority(0), primary_authority(1));
+        assert_eq!(promoted.replication_health, ReplicationHealth::LocalOnly);
+        let mut finished = mirrored("finished");
+        finished.phase = ContinuityPhase::Completed;
+        finished.result = ContinuityResult::Succeeded;
+        let promoted = project_record_for_authority_change(
+            finished,
+            standby_authority(0),
+            primary_authority(1),
+        );
+        assert_eq!(promoted.replication_health, ReplicationHealth::Unavailable);
+        // Fenced to standby, an owner-lost record is mirrored again.
+        let mut lost = mirrored("lost");
+        lost.replica_status = ReplicaStatus::OwnerLost;
+        lost.error = "owner_lost:owner@host".to_string();
+        let fenced =
+            project_record_for_authority_change(lost, primary_authority(0), standby_authority(1));
+        assert_eq!(fenced.replica_status, ReplicaStatus::Mirrored);
+        assert!(fenced.error.is_empty());
+    }
+
+    #[test]
+    fn transitions_refuse_the_wrong_attempt_phase_or_node() {
+        let request = continuity_submit_request("transition", "hash", "replica@host", 0);
+        let base = mirrored("transition");
+        let mut other_key = base.clone();
+        other_key.request_key = "other".to_string();
+        assert_eq!(
+            transition_retry_rollover_record(&other_key, &request, 4).err(),
+            Some(CONTINUITY_CONFLICT_REASON.to_string())
+        );
+        let mut completed = base.clone();
+        completed.phase = ContinuityPhase::Completed;
+        completed.result = ContinuityResult::Succeeded;
+        completed.execution_node = "owner@host".to_string();
+        assert_eq!(
+            transition_retry_rollover_record(&completed, &request, 4).err(),
+            Some(TRANSITION_REJECTED_PHASE.to_string())
+        );
+        // A retry fills what it does not carry from the original.
+        let mut sparse = request.clone();
+        sparse.replication_count = 0;
+        let mut original = base.clone();
+        original.request_payload = b"payload".to_vec();
+        let retried = transition_retry_rollover_record(&original, &sparse, 4).unwrap();
+        assert_eq!(retried.replication_count, 2);
+        assert_eq!(retried.declared_handler_runtime_name, "Api.handle");
+        assert_eq!(retried.request_payload, b"payload");
+        assert_eq!(retried.attempt_id, attempt_id_from_token(4));
+
+        let attempt = base.attempt_id.clone();
+        assert_eq!(
+            transition_completed_record(base.clone(), &attempt, "").err(),
+            Some(EXECUTION_NODE_MISSING.to_string())
+        );
+        assert_eq!(
+            transition_completed_record(completed.clone(), &attempt, "owner@host"),
+            Ok(completed.clone())
+        );
+        assert_eq!(
+            transition_completed_record(completed.clone(), &attempt, "replica@host").err(),
+            Some(TRANSITION_REJECTED_ALREADY_COMPLETED.to_string())
+        );
+        let mut rejected = base.clone();
+        rejected.phase = ContinuityPhase::Rejected;
+        rejected.result = ContinuityResult::Rejected;
+        assert_eq!(
+            transition_completed_record(rejected.clone(), &attempt, "owner@host").err(),
+            Some(TRANSITION_REJECTED_PHASE.to_string())
+        );
+        assert_eq!(
+            transition_rejected_record(
+                rejected.clone(),
+                &attempt,
+                "again",
+                ReplicaStatus::Rejected
+            ),
+            Ok(rejected)
+        );
+
+        let acks = |nodes: &[&str]| {
+            nodes
+                .iter()
+                .map(|node| node.to_string())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            transition_replica_ack_record(base.clone(), "attempt-9", acks(&[]), false).err(),
+            Some(ATTEMPT_ID_MISMATCH.to_string())
+        );
+        let mut three = base.clone();
+        three.replication_count = 5;
+        three.replica_nodes = acks(&["a@host", "b@host", "c@host", "d@host"]);
+        three.replica_node = "a@host".to_string();
+        three.acknowledged_replica_nodes.clear();
+        three.replica_status = ReplicaStatus::Preparing;
+        assert_eq!(
+            transition_replica_ack_record(three.clone(), &attempt, acks(&["a@host"]), false).err(),
+            Some("continuity_replica_ack_threshold_unmet".to_string())
+        );
+        let degraded =
+            transition_replica_ack_record(three, &attempt, acks(&["a@host", "a@host"]), true)
+                .unwrap();
+        assert_eq!(degraded.replica_status, ReplicaStatus::DegradedContinuing);
+        assert_eq!(degraded.replication_health, ReplicationHealth::Degraded);
+        assert_eq!(degraded.acknowledged_replica_nodes, ["a@host"]);
+        assert_eq!(degraded.error, "continuity_replica_ack_threshold_degraded");
+
+        // A standby degrades replication only for a node it copies from.
+        let mut standby = base.clone();
+        standby.cluster_role = ContinuityClusterRole::Standby;
+        assert!(transition_replication_health_record(standby.clone(), "stranger@host").is_none());
+        assert!(transition_replication_health_record(standby, "replica@host").is_some());
+    }
+
+    #[test]
+    fn drain_replacements_install_only_over_the_expected_active_attempt() {
+        let registry = continuity_fresh_registry();
+        let current = mirrored("drain-replacement");
+        registry.merge_remote_record(2, current.clone()).unwrap();
+        let mut replacement = current.clone();
+        replacement.attempt_id = attempt_id_from_token(5);
+        replacement.owner_node = "new-owner@host".to_string();
+        replacement.record_version = 2;
+
+        let mut unknown = replacement.clone();
+        unknown.request_key = "unknown".to_string();
+        assert_eq!(
+            registry
+                .commit_drain_replacement(&current.attempt_id, unknown)
+                .err(),
+            Some(REQUEST_KEY_NOT_FOUND.to_string())
+        );
+        assert_eq!(
+            registry
+                .commit_drain_replacement("attempt-4", replacement.clone())
+                .err(),
+            Some("continuity_drain_attempt_fenced".to_string())
+        );
+        let installed = registry
+            .commit_drain_replacement(&current.attempt_id, replacement.clone())
+            .unwrap();
+        assert_eq!(installed.owner_node, "new-owner@host");
+        assert!(registry.next_attempt_token() > 5);
+
+        let mut completed = mirrored("drain-completed");
+        completed.phase = ContinuityPhase::Completed;
+        completed.result = ContinuityResult::Succeeded;
+        registry.merge_remote_record(2, completed.clone()).unwrap();
+        assert_eq!(
+            registry
+                .commit_drain_replacement(&completed.attempt_id.clone(), completed)
+                .err(),
+            Some("continuity_drain_record_not_active".to_string())
+        );
+    }
+
+    #[test]
+    fn replica_prepares_are_fenced_by_payload_attempt_owner_and_set() {
+        let registry = continuity_fresh_registry();
+        let mut unreplicated = mirrored("prepare-missing");
+        unreplicated.replica_nodes.clear();
+        unreplicated.acknowledged_replica_nodes.clear();
+        unreplicated.replica_node.clear();
+        unreplicated.replica_status = ReplicaStatus::Unassigned;
+        assert_eq!(
+            registry.mirror_prepare(unreplicated).err(),
+            Some(REPLICA_NODE_MISSING.to_string())
+        );
+        let base = mirrored("prepare");
+        registry
+            .mirror_prepare(base.clone())
+            .expect("first prepare");
+        let refusals = [
+            (
+                ContinuityRecord {
+                    payload_hash: "other-hash".to_string(),
+                    ..base.clone()
+                },
+                CONTINUITY_CONFLICT_REASON,
+            ),
+            (
+                ContinuityRecord {
+                    owner_node: "other-owner@host".to_string(),
+                    ..base.clone()
+                },
+                "owner_node_mismatch",
+            ),
+            (
+                ContinuityRecord {
+                    replica_nodes: vec!["replica@host".to_string(), "second@host".to_string()],
+                    ..base.clone()
+                },
+                "replica_set_mismatch",
+            ),
+            (
+                ContinuityRecord {
+                    owner_node: "other-owner@host".to_string(),
+                    record_version: 2,
+                    ..base.clone()
+                },
+                "owner_change_requires_new_attempt",
+            ),
+            (
+                ContinuityRecord {
+                    attempt_id: "manual".to_string(),
+                    ..base.clone()
+                },
+                "stale_replica_prepare",
+            ),
+        ];
+        for (record, expected) in refusals {
+            assert_eq!(
+                registry.mirror_prepare(record).err(),
+                Some(expected.to_string()),
+                "{expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_replica_acknowledgement_joins_the_acknowledged_set_once() {
+        let registry = continuity_fresh_registry();
+        let mut record = mirrored("ack-node");
+        record.replica_nodes = vec!["a@host".to_string(), "b@host".to_string()];
+        record.replica_node = "a@host".to_string();
+        record.acknowledged_replica_nodes = vec!["a@host".to_string()];
+        record.replication_count = 3;
+        registry.merge_remote_record(2, record.clone()).unwrap();
+        let acked = registry
+            .acknowledge_replica_node("ack-node", &record.attempt_id, "b@host")
+            .unwrap();
+        assert_eq!(acked.acknowledged_replica_nodes, ["a@host", "b@host"]);
+        let again = registry
+            .acknowledge_replica_node("ack-node", &record.attempt_id, "b@host")
+            .unwrap();
+        assert_eq!(again.acknowledged_replica_nodes, ["a@host", "b@host"]);
+        assert_eq!(
+            registry
+                .acknowledge_replica_node("missing", &record.attempt_id, "b@host")
+                .err(),
+            Some(REQUEST_KEY_NOT_FOUND.to_string())
+        );
+    }
+
+    #[test]
+    fn request_scoped_owner_loss_needs_the_current_attempt_and_owner() {
+        let registry = continuity_fresh_registry();
+        let record = mirrored("owner-loss");
+        registry.merge_remote_record(2, record.clone()).unwrap();
+        assert_eq!(
+            registry
+                .mark_owner_loss_for_request("missing", &record.attempt_id, "owner@host")
+                .err(),
+            Some(REQUEST_KEY_NOT_FOUND.to_string())
+        );
+        assert_eq!(
+            registry.mark_owner_loss_for_request("owner-loss", "attempt-9", "owner@host"),
+            Ok(None)
+        );
+        let mut unacknowledged = mirrored("owner-loss-unacked");
+        unacknowledged.acknowledged_replica_nodes.clear();
+        unacknowledged.replica_status = ReplicaStatus::Preparing;
+        registry
+            .merge_remote_record(2, unacknowledged.clone())
+            .unwrap();
+        assert_eq!(
+            registry.mark_owner_loss_for_request(
+                "owner-loss-unacked",
+                &unacknowledged.attempt_id,
+                "owner@host"
+            ),
+            Ok(None)
+        );
+        assert!(registry
+            .mark_owner_loss_for_request("owner-loss", &record.attempt_id, "owner@host")
+            .unwrap()
+            .is_some());
+        assert_eq!(ContinuityRegistry::default().snapshot().records.len(), 0);
+    }
+
+    #[test]
+    fn merged_snapshots_skip_stale_foreign_and_conflicting_records() {
+        let registry = continuity_fresh_registry();
+        registry.merge_remote_record(2, mirrored("kept")).unwrap();
+        // A remote record for the same key with another payload is ignored.
+        let conflicting = ContinuityRecord {
+            payload_hash: "other".to_string(),
+            record_version: 5,
+            ..mirrored("kept")
+        };
+        registry
+            .merge_remote_record(2, conflicting.clone())
+            .unwrap();
+        assert_eq!(registry.record("kept").unwrap().payload_hash, "hash");
+
+        let newer_epoch = ContinuityRecord {
+            promotion_epoch: 2,
+            ..mirrored("from-epoch-two")
+        };
+        let stale = ContinuityRecord {
+            promotion_epoch: 1,
+            ..mirrored("from-epoch-one")
+        };
+        let unparsed = ContinuityRecord {
+            attempt_id: "manual".to_string(),
+            promotion_epoch: 2,
+            ..mirrored("unparsed")
+        };
+        let conflicting = ContinuityRecord {
+            promotion_epoch: 2,
+            ..conflicting
+        };
+        registry
+            .merge_snapshot(ContinuitySnapshot {
+                next_attempt_token: 40,
+                records: vec![newer_epoch, stale, unparsed, conflicting],
+            })
+            .unwrap();
+        assert!(registry.next_attempt_token() >= 40);
+        // The higher epoch fenced this registry into a standby.
+        assert_eq!(
+            registry.authority_status().cluster_role,
+            ContinuityClusterRole::Standby
+        );
+        assert!(registry.record("from-epoch-two").is_some());
+        assert!(registry.record("from-epoch-one").is_none());
+        assert!(registry.record("unparsed").is_none());
+        assert_eq!(registry.record("kept").unwrap().payload_hash, "hash");
+        let mut invalid = mirrored("invalid");
+        invalid.owner_node.clear();
+        assert!(registry
+            .merge_snapshot(ContinuitySnapshot {
+                next_attempt_token: 0,
+                records: vec![invalid],
+            })
+            .is_err());
+    }
+
+    #[test]
+    fn malformed_continuity_payloads_are_refused() {
+        let mut wide = mirrored("wide");
+        wide.replica_nodes = vec!["a@host".to_string(), "b@host".to_string()];
+        wide.replica_node = "a@host".to_string();
+        wide.acknowledged_replica_nodes = vec!["a@host".to_string()];
+        wide.replication_count = 3;
+        wide.request_payload = b"payload".to_vec();
+        let encoded = encode_record(&wide).unwrap();
+        assert_eq!(decode_record(&encoded).unwrap(), wide);
+        for cut in [1, 3, 10, encoded.len() - 1] {
+            assert!(decode_record(&encoded[..cut]).is_err(), "cut at {cut}");
+        }
+        let mut unknown = encoded.clone();
+        unknown.extend_from_slice(b"XXXX");
+        assert_eq!(
+            decode_record(&unknown).err(),
+            Some("continuity record extension invalid".to_string())
+        );
+        let mut stray = encoded.clone();
+        stray.push(0);
+        assert_eq!(
+            decode_record(&stray).err(),
+            Some("continuity record extension truncated".to_string())
+        );
+        let base = encode_record(&ContinuityRecord {
+            acknowledged_replica_nodes: Vec::new(),
+            replica_status: ReplicaStatus::Preparing,
+            ..mirrored("base")
+        })
+        .unwrap();
+        for (extension, expected) in [
+            (&b"RSET\x01"[..], "continuity replica set truncated"),
+            (
+                &b"RACK\x01"[..],
+                "continuity replica acknowledgement set truncated",
+            ),
+            (
+                &b"RPAY\x01"[..],
+                "continuity request payload length truncated",
+            ),
+            (
+                &b"RPAY\x09\x00\x00\x00ab"[..],
+                "continuity request payload truncated",
+            ),
+        ] {
+            let mut damaged = base.clone();
+            damaged.extend_from_slice(extension);
+            assert_eq!(decode_record(&damaged).err(), Some(expected.to_string()));
+        }
+        // A mirrored record from before acknowledgements were sent counts
+        // its replicas as acknowledged.
+        let legacy = encode_record(&ContinuityRecord {
+            acknowledged_replica_nodes: Vec::new(),
+            ..mirrored("legacy")
+        })
+        .unwrap();
+        assert_eq!(
+            decode_record(&legacy).unwrap().acknowledged_replica_nodes,
+            ["replica@host"]
+        );
+        let mut crowded = mirrored("crowded");
+        crowded.replica_nodes = (0..=u16::MAX as u32)
+            .map(|index| format!("r{index}"))
+            .collect();
+        crowded.replica_node = "r0".to_string();
+        crowded.acknowledged_replica_nodes.clear();
+        crowded.replica_status = ReplicaStatus::Preparing;
+        assert_eq!(
+            encode_record(&crowded).err(),
+            Some("continuity replica set too large".to_string())
+        );
+
+        assert_eq!(
+            decode_upsert_payload(&[0; 5]).err(),
+            Some("continuity upsert payload too short".to_string())
+        );
+        let mut upsert = encode_upsert_payload(7, &wide).unwrap();
+        upsert.push(0);
+        assert_eq!(
+            decode_upsert_payload(&upsert).err(),
+            Some("continuity upsert payload length mismatch".to_string())
+        );
+        assert_eq!(
+            decode_sync_payload(&[0; 5]).err(),
+            Some("continuity sync payload too short".to_string())
+        );
+        let snapshot = ContinuitySnapshot {
+            next_attempt_token: 3,
+            records: vec![wide],
+        };
+        let sync = encode_sync_payload(&snapshot).unwrap();
+        let mut trailing = sync.clone();
+        trailing.push(0);
+        assert_eq!(
+            decode_sync_payload(&trailing).err(),
+            Some("continuity sync payload had trailing bytes".to_string())
+        );
+        assert_eq!(
+            decode_sync_payload(&sync[..sync.len() - 1]).err(),
+            Some("continuity sync record payload truncated".to_string())
+        );
     }
 }
