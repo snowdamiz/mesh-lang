@@ -1967,52 +1967,6 @@ fn parse_supervisor_config(data: &[u8]) -> Option<supervisor::SupervisorConfig> 
         };
         pos += 1;
 
-        // Optional target_node / start_fn_name for remote spawning.
-        // Backward compatible: if data ends here, treat as local (no target_node).
-        let (target_node, start_fn_name) = if pos < data.len() && data[pos] == 1 {
-            pos += 1; // skip has_target_node byte
-
-            // node_name_len (u16 LE)
-            if pos + 2 > data.len() {
-                return None;
-            }
-            let node_name_len = u16::from_le_bytes(data[pos..pos + 2].try_into().ok()?) as usize;
-            pos += 2;
-
-            // node_name bytes (UTF-8)
-            if pos + node_name_len > data.len() {
-                return None;
-            }
-            let node_name = std::str::from_utf8(&data[pos..pos + node_name_len])
-                .ok()?
-                .to_string();
-            pos += node_name_len;
-
-            // fn_name_len (u16 LE)
-            if pos + 2 > data.len() {
-                return None;
-            }
-            let fn_name_len = u16::from_le_bytes(data[pos..pos + 2].try_into().ok()?) as usize;
-            pos += 2;
-
-            // fn_name bytes (UTF-8)
-            if pos + fn_name_len > data.len() {
-                return None;
-            }
-            let fn_name = std::str::from_utf8(&data[pos..pos + fn_name_len])
-                .ok()?
-                .to_string();
-            pos += fn_name_len;
-
-            (Some(node_name), Some(fn_name))
-        } else {
-            // has_target_node == 0 or data ended (backward compat)
-            if pos < data.len() && data[pos] == 0 {
-                pos += 1;
-            }
-            (None, None)
-        };
-
         child_specs.push(child_spec::ChildSpec {
             id,
             start_fn,
@@ -2021,8 +1975,6 @@ fn parse_supervisor_config(data: &[u8]) -> Option<supervisor::SupervisorConfig> 
             restart_type,
             shutdown,
             child_type,
-            target_node,
-            start_fn_name,
         });
     }
 
@@ -2814,105 +2766,25 @@ mod tests {
     // Supervisor config parser tests (Phase 69)
     // -----------------------------------------------------------------------
 
-    /// Build a supervisor config byte buffer for testing.
-    ///
-    /// Creates a minimal config with one child spec. If `include_target_node`
-    /// is true, appends has_target_node=1 + node name + fn name.
-    /// If `include_has_target_node_byte` is true but `include_target_node` is
-    /// false, appends has_target_node=0.
-    fn build_test_config(include_has_target_node_byte: bool, include_target_node: bool) -> Vec<u8> {
-        let mut buf = Vec::new();
-
-        // Strategy: OneForOne (0)
-        buf.push(0u8);
-        // max_restarts: 3
+    /// A supervisor config of one local child, as codegen encodes it.
+    #[test]
+    fn a_supervisor_config_of_one_child_parses() {
+        let mut buf = vec![0u8];
         buf.extend_from_slice(&3u32.to_le_bytes());
-        // max_seconds: 5
         buf.extend_from_slice(&5u64.to_le_bytes());
-        // num_child_specs: 1
         buf.extend_from_slice(&1u32.to_le_bytes());
-
-        // Child spec:
-        // id: "worker1" (7 bytes)
-        let id = b"worker1";
-        buf.extend_from_slice(&(id.len() as u32).to_le_bytes());
-        buf.extend_from_slice(id);
-        // start_fn: null (0)
-        buf.extend_from_slice(&0u64.to_le_bytes());
-        // start_args_ptr: null (0)
-        buf.extend_from_slice(&0u64.to_le_bytes());
-        // start_args_size: 0
-        buf.extend_from_slice(&0u64.to_le_bytes());
-        // restart_type: Permanent (0)
-        buf.push(0u8);
-        // shutdown_type: BrutalKill (0)
-        buf.push(0u8);
-        // shutdown_timeout_ms: 0
-        buf.extend_from_slice(&0u64.to_le_bytes());
-        // child_type: Worker (0)
-        buf.push(0u8);
-
-        if include_target_node {
-            // has_target_node: 1
-            buf.push(1u8);
-            // node_name: "worker@host:9000"
-            let node = b"worker@host:9000";
-            buf.extend_from_slice(&(node.len() as u16).to_le_bytes());
-            buf.extend_from_slice(node);
-            // fn_name: "my_worker"
-            let fn_name = b"my_worker";
-            buf.extend_from_slice(&(fn_name.len() as u16).to_le_bytes());
-            buf.extend_from_slice(fn_name);
-        } else if include_has_target_node_byte {
-            // has_target_node: 0
-            buf.push(0u8);
+        buf.extend_from_slice(&7u32.to_le_bytes());
+        buf.extend_from_slice(b"worker1");
+        for _ in 0..3 {
+            buf.extend_from_slice(&0u64.to_le_bytes());
         }
-        // else: no has_target_node byte at all (backward compat)
-
-        buf
-    }
-
-    #[test]
-    fn test_parse_supervisor_config_with_target_node() {
-        let data = build_test_config(true, true);
-        let config = parse_supervisor_config(&data).expect("parse should succeed");
-
+        buf.extend_from_slice(&[0, 0]);
+        buf.extend_from_slice(&0u64.to_le_bytes());
+        buf.push(0);
+        let config = parse_supervisor_config(&buf).expect("parse should succeed");
         assert_eq!(config.child_specs.len(), 1);
-        let spec = &config.child_specs[0];
-        assert_eq!(spec.id, "worker1");
-        assert_eq!(spec.target_node.as_deref(), Some("worker@host:9000"));
-        assert_eq!(spec.start_fn_name.as_deref(), Some("my_worker"));
-    }
-
-    #[test]
-    fn test_parse_supervisor_config_with_explicit_local() {
-        let data = build_test_config(true, false);
-        let config = parse_supervisor_config(&data).expect("parse should succeed");
-
-        assert_eq!(config.child_specs.len(), 1);
-        let spec = &config.child_specs[0];
-        assert_eq!(spec.id, "worker1");
-        assert!(spec.target_node.is_none());
-        assert!(spec.start_fn_name.is_none());
-    }
-
-    #[test]
-    fn test_parse_supervisor_config_backward_compat() {
-        // No has_target_node byte at all -- simulates old compiled programs.
-        let data = build_test_config(false, false);
-        let config =
-            parse_supervisor_config(&data).expect("parse should succeed with backward compat");
-
-        assert_eq!(config.child_specs.len(), 1);
-        let spec = &config.child_specs[0];
-        assert_eq!(spec.id, "worker1");
-        assert!(
-            spec.target_node.is_none(),
-            "backward compat should default to None"
-        );
-        assert!(
-            spec.start_fn_name.is_none(),
-            "backward compat should default to None"
-        );
+        assert_eq!(config.child_specs[0].id, "worker1");
+        buf.pop();
+        assert!(parse_supervisor_config(&buf).is_none(), "cut off");
     }
 }

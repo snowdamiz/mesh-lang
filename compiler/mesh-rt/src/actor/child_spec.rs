@@ -108,13 +108,6 @@ pub struct ChildSpec {
     pub shutdown: ShutdownType,
     /// Whether this child is a worker or a nested supervisor.
     pub child_type: ChildType,
-    /// Optional target node name for remote spawning (e.g., "worker@192.168.1.2:9000").
-    /// When set, the supervisor spawns this child on the remote node via mesh_node_spawn.
-    /// When None, the supervisor spawns locally (existing behavior unchanged).
-    pub target_node: Option<String>,
-    /// Function name for remote spawning (required when target_node is Some).
-    /// Used by mesh_node_spawn to look up the function on the remote node.
-    pub start_fn_name: Option<String>,
 }
 
 // Safety: ChildSpec's fn ptrs are owned by the runtime and valid for the
@@ -197,8 +190,6 @@ mod tests {
             restart_type: RestartType::Permanent,
             shutdown: ShutdownType::default(),
             child_type: ChildType::Worker,
-            target_node: None,
-            start_fn_name: None,
         };
         assert_eq!(spec.id, "worker1");
         assert_eq!(spec.restart_type, RestartType::Permanent);
@@ -216,8 +207,6 @@ mod tests {
             restart_type: RestartType::Transient,
             shutdown: ShutdownType::BrutalKill,
             child_type: ChildType::Worker,
-            target_node: None,
-            start_fn_name: None,
         };
         let state = ChildState {
             spec,

@@ -180,26 +180,11 @@ pub fn start_children(
 ///
 /// Spawns the child via the scheduler, links the supervisor to the child,
 /// and updates the child state.
-///
-/// If the child spec has `target_node` set, the child is spawned on the
-/// remote node via `mesh_node_spawn`. Otherwise, spawns locally (unchanged).
 pub fn start_single_child(
     child: &mut ChildState,
     scheduler: &Scheduler,
     sup_pid: ProcessId,
 ) -> Result<ProcessId, String> {
-    // Route to remote spawn if target_node is set.
-    if child.spec.target_node.is_some() {
-        let node = child.spec.target_node.clone().unwrap();
-        let fn_name = child
-            .spec
-            .start_fn_name
-            .clone()
-            .ok_or("remote child requires start_fn_name")?;
-        return start_single_child_remote(child, sup_pid, &node, &fn_name);
-    }
-
-    // Local spawn path (existing behavior unchanged).
     let child_pid = scheduler.spawn(
         child.spec.start_fn,
         child.spec.start_args_ptr,
@@ -222,61 +207,6 @@ pub fn start_single_child(
     child.running = true;
 
     Ok(child_pid)
-}
-
-/// Start a child process on a remote node via `mesh_node_spawn`.
-///
-/// Calls `mesh_node_spawn` with `link_flag=1` (spawn + bidirectional link).
-/// The link ensures the supervisor receives DIST_EXIT when the remote child
-/// crashes, which the supervisor's existing `trap_exit + handle_child_exit`
-/// handles automatically.
-///
-/// The returned PID from `mesh_node_spawn` is a fully-qualified remote PID
-/// with correct node_id/creation/local_id (Phase 67 handles this).
-fn start_single_child_remote(
-    child: &mut ChildState,
-    _sup_pid: ProcessId,
-    target_node: &str,
-    fn_name: &str,
-) -> Result<ProcessId, String> {
-    let node_bytes = target_node.as_bytes();
-    let fn_bytes = fn_name.as_bytes();
-
-    let arg_count = child.spec.start_args_size / 8;
-    let arg_tags = if arg_count == 0 {
-        Vec::new()
-    } else {
-        vec![1u8; arg_count as usize]
-    };
-
-    // mesh_node_spawn is an extern "C" function expecting raw pointers.
-    // It must be called from within an actor coroutine context (reads
-    // stack::get_current_pid()). The supervisor IS an actor, so this works.
-    let result = crate::dist::node::mesh_node_spawn(
-        node_bytes.as_ptr(),
-        node_bytes.len() as u64,
-        fn_bytes.as_ptr(),
-        fn_bytes.len() as u64,
-        child.spec.start_args_ptr,
-        child.spec.start_args_size,
-        if arg_tags.is_empty() {
-            std::ptr::null()
-        } else {
-            arg_tags.as_ptr()
-        },
-        arg_count,
-        1, // link_flag=1: spawn with bidirectional link
-    );
-
-    if result == 0 {
-        return Err("remote spawn failed: node not connected or function not found".to_string());
-    }
-
-    let remote_pid = ProcessId(result);
-    child.pid = Some(remote_pid);
-    child.running = true;
-
-    Ok(remote_pid)
 }
 
 /// Start children from index `from_idx` to end, in forward order.
@@ -612,8 +542,6 @@ mod tests {
             restart_type: restart,
             shutdown,
             child_type: ChildType::Worker,
-            target_node: None,
-            start_fn_name: None,
         }
     }
 
@@ -1271,38 +1199,8 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // Remote child tests (Phase 69)
+    // Children with remote pids
     // -----------------------------------------------------------------------
-
-    #[test]
-    fn test_remote_child_spec_fields() {
-        let spec = ChildSpec {
-            id: "remote_worker".to_string(),
-            start_fn: std::ptr::null(),
-            start_args_ptr: std::ptr::null(),
-            start_args_size: 0,
-            restart_type: RestartType::Permanent,
-            shutdown: ShutdownType::default(),
-            child_type: ChildType::Worker,
-            target_node: Some("worker@host:9000".to_string()),
-            start_fn_name: Some("my_worker".to_string()),
-        };
-
-        assert_eq!(spec.target_node.as_deref(), Some("worker@host:9000"));
-        assert_eq!(spec.start_fn_name.as_deref(), Some("my_worker"));
-
-        let child_state = ChildState {
-            spec,
-            pid: None,
-            running: false,
-        };
-
-        assert_eq!(
-            child_state.spec.target_node.as_deref(),
-            Some("worker@host:9000")
-        );
-        assert_eq!(child_state.spec.start_fn_name.as_deref(), Some("my_worker"));
-    }
 
     #[test]
     fn test_find_child_index_with_remote_pid() {
