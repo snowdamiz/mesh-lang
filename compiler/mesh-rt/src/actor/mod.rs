@@ -122,12 +122,11 @@ impl<T> Clone for CooperativeSender<T> {
 impl<T> CooperativeSender<T> {
     pub(crate) fn send(&self, value: T) -> Result<(), std::sync::mpsc::SendError<T>> {
         self.sender.send(value)?;
+        // A waiter is an actor, so the scheduler is running.
         let Some(pid) = self.waiter else {
             return Ok(());
         };
-        let Some(scheduler) = GLOBAL_SCHEDULER.get() else {
-            return Ok(());
-        };
+        let scheduler = global_scheduler();
         if let Some(process) = scheduler.get_process(pid) {
             scheduler.wake_if_waiting(pid, process.lock());
         }
@@ -396,11 +395,14 @@ fn try_trigger_gc() {
         return;
     }
 
-    // Set once, as the coroutine starts, and never changed.
+    // Set once, as the coroutine starts or, for `main`, as the runtime does,
+    // and never changed. A process that collects here has one: an actor yields
+    // only from its coroutine, and `main` collects only when it has a base.
     let stack_bottom = proc.stack_base;
-    if stack_bottom.is_null() {
-        return;
-    }
+    assert!(
+        !stack_bottom.is_null(),
+        "a collecting process has a stack base"
+    );
 
     let register_roots = capture_register_roots();
 
@@ -563,9 +565,8 @@ pub(crate) fn pin_closure_env(env: *mut u8) {
 /// Detach a message from the sending actor's heap before it is queued.
 ///
 /// What `shape` describes at `buffer.data[base..]` is copied into the buffer;
-/// references it cannot describe are lent by the heaps that own them. Outside
-/// an actor there is no heap to detach from, and such callers only hold
-/// static or arena data.
+/// references it cannot describe are lent by the heaps that own them. A null
+/// shape is a message of plain bits.
 pub(crate) fn detach_from_sender(
     sched: &Scheduler,
     buffer: &mut MessageBuffer,
@@ -575,9 +576,9 @@ pub(crate) fn detach_from_sender(
     if shape.is_null() {
         return;
     }
-    let Some(sender) = stack::get_current_pid().and_then(|pid| sched.get_process(pid)) else {
-        return;
-    };
+    let sender = stack::get_current_pid()
+        .and_then(|pid| sched.get_process(pid))
+        .expect("a message with a shape comes from compiled code, which runs in a process");
     let captured = unsafe { msg_shape::capture(&sender.lock().heap, &buffer.data, base, shape) };
     buffer.borrows = scheduler::lend_words(&sender, &captured.lend);
     buffer.captured = captured;
@@ -672,11 +673,8 @@ fn capture_for_node(
     if shape.is_null() {
         return Some(msg_shape::Captured::default());
     }
-    let captured = stack::get_current_pid()
-        .and_then(|pid| global_scheduler().get_process(pid))
-        .and_then(|sender| unsafe {
-            msg_shape::capture_for_node(&sender.lock().heap, data, shape)
-        });
+    let (_, sender) = running_process();
+    let captured = unsafe { msg_shape::capture_for_node(&sender.lock().heap, data, shape) };
     if captured.is_none() {
         eprintln!(
             "mesh: a message for {target} holds code or a runtime object, which cannot leave this node; it was not sent"
@@ -940,9 +938,6 @@ pub extern "C" fn mesh_timer_send_after(
 /// caller is not linked to it: a failing callback does not take the caller down.
 #[no_mangle]
 pub extern "C" fn mesh_timer_apply_after(ms: i64, fn_ptr: *const u8, env_ptr: *const u8) {
-    if fn_ptr.is_null() {
-        return;
-    }
     // [u64 fn_ptr][u64 env_ptr][i64 ms], on the caller's heap so that
     // `adopt_spawn_args` copies it and lends what it points at.
     let words = [fn_ptr as u64, env_ptr as u64, ms.max(0) as u64];
@@ -952,9 +947,6 @@ pub extern "C" fn mesh_timer_apply_after(ms: i64, fn_ptr: *const u8, env_ptr: *c
 }
 
 extern "C-unwind" fn timer_apply_entry(args: *const u8) {
-    if args.is_null() {
-        return;
-    }
     let word = |index: usize| unsafe { (args.add(8 * index) as *const u64).read_unaligned() };
     let (fn_ptr, env_ptr, ms) = (word(0), word(1), word(2));
     mesh_timer_sleep(ms as i64);
@@ -1025,39 +1017,36 @@ pub(crate) fn copy_msg_to_actor_heap(
     pid: ProcessId,
     mut msg: Message,
 ) -> *const u8 {
-    if let Some(proc_arc) = sched.get_process(pid) {
-        let mut proc = proc_arc.lock();
-        // Layout: [u64 type_tag][u64 data_len][u8... data]
-        let header_size = 16; // 8 bytes type_tag + 8 bytes data_len
-        let total_size = header_size + msg.buffer.data.len();
-        let ptr = proc.heap.alloc(total_size, 8);
+    let proc_arc = sched
+        .get_process(pid)
+        .expect("a message is copied into the running process, which is in the table");
+    let mut proc = proc_arc.lock();
+    // Layout: [u64 type_tag][u64 data_len][u8... data]
+    let header_size = 16; // 8 bytes type_tag + 8 bytes data_len
+    let total_size = header_size + msg.buffer.data.len();
+    let ptr = proc.heap.alloc(total_size, 8);
 
-        unsafe {
-            // Write type_tag.
-            std::ptr::copy_nonoverlapping(msg.buffer.type_tag.to_le_bytes().as_ptr(), ptr, 8);
-            // Write data_len.
-            let data_len = msg.buffer.data.len() as u64;
-            std::ptr::copy_nonoverlapping(data_len.to_le_bytes().as_ptr(), ptr.add(8), 8);
-            // Write data bytes.
-            if !msg.buffer.data.is_empty() {
-                std::ptr::copy_nonoverlapping(
-                    msg.buffer.data.as_ptr(),
-                    ptr.add(header_size),
-                    msg.buffer.data.len(),
-                );
-            }
-            // Heap values the message references arrive detached from the
-            // sender; rebuild them here and point the message at the copies.
-            msg.buffer
-                .captured
-                .materialize(&mut proc.heap, ptr.add(header_size));
-        }
-        proc.heap_borrows.append(&mut msg.buffer.borrows);
-
-        ptr as *const u8
-    } else {
-        std::ptr::null()
+    unsafe {
+        // Write type_tag.
+        std::ptr::copy_nonoverlapping(msg.buffer.type_tag.to_le_bytes().as_ptr(), ptr, 8);
+        // Write data_len.
+        let data_len = msg.buffer.data.len() as u64;
+        std::ptr::copy_nonoverlapping(data_len.to_le_bytes().as_ptr(), ptr.add(8), 8);
+        // Write data bytes.
+        std::ptr::copy_nonoverlapping(
+            msg.buffer.data.as_ptr(),
+            ptr.add(header_size),
+            msg.buffer.data.len(),
+        );
+        // Heap values the message references arrive detached from the
+        // sender; rebuild them here and point the message at the copies.
+        msg.buffer
+            .captured
+            .materialize(&mut proc.heap, ptr.add(header_size));
     }
+    proc.heap_borrows.append(&mut msg.buffer.borrows);
+
+    ptr as *const u8
 }
 
 /// Link the current actor to the target actor.
@@ -1074,27 +1063,18 @@ pub(crate) fn copy_msg_to_actor_heap(
 /// - `target_pid`: the PID of the actor to link with
 #[no_mangle]
 pub extern "C" fn mesh_actor_link(target_pid: u64) {
-    let my_pid = match stack::get_current_pid() {
-        Some(pid) => pid,
-        None => return,
-    };
-
-    let sched = global_scheduler();
+    let (my_pid, me) = running_process();
     let target = ProcessId(target_pid);
 
     if target.node_id() == 0 {
-        // Local link: add to both processes' link sets directly.
-        let my_proc = sched.get_process(my_pid);
-        let target_proc = sched.get_process(target);
-
-        if let (Some(my_proc), Some(target_proc)) = (my_proc, target_proc) {
-            link::link(&my_proc, &target_proc, my_pid, target);
+        // Local link: add to both processes' link sets directly. A process
+        // that has already ended has nothing to link.
+        if let Some(target_proc) = global_scheduler().get_process(target) {
+            link::link(&me, &target_proc, my_pid, target);
         }
     } else {
         // Remote link: record locally + send DIST_LINK to remote node.
-        if let Some(my_proc) = sched.get_process(my_pid) {
-            my_proc.lock().links.insert(target);
-        }
+        me.lock().links.insert(target);
         crate::dist::node::send_dist_link(my_pid, target);
     }
 }
@@ -1109,10 +1089,6 @@ pub extern "C" fn mesh_actor_link(target_pid: u64) {
 ///   with signature `extern "C" fn(state_ptr: *const u8, reason_ptr: *const u8)`
 #[no_mangle]
 pub extern "C" fn mesh_actor_set_terminate(pid: u64, callback_fn_ptr: *const u8) {
-    if callback_fn_ptr.is_null() {
-        return;
-    }
-
     let sched = global_scheduler();
     let target = ProcessId(pid);
 
@@ -1130,18 +1106,19 @@ pub extern "C" fn mesh_actor_set_terminate(pid: u64, callback_fn_ptr: *const u8)
 ///
 /// The scheduler shuts down when the active process count reaches zero
 /// (i.e., all spawned actors have completed or been force-terminated).
-fn exit_main_process(sched: &Scheduler, main_pid: Option<ProcessId>) {
-    if let Some(pid) = main_pid {
-        if let Some(proc_arc) = sched.get_process(pid) {
-            proc_arc.lock().mark_exited(ExitReason::Normal);
-        }
-    }
+fn exit_main_process(sched: &Scheduler, main_pid: ProcessId) {
+    sched
+        .get_process(main_pid)
+        .expect("`main` has a process until the runtime ends")
+        .lock()
+        .mark_exited(ExitReason::Normal);
 }
 
 #[no_mangle]
 pub extern "C" fn mesh_rt_run_scheduler() {
     // Preserve the main actor context until its owned resources are destroyed.
-    let main_pid = stack::get_current_pid();
+    let main_pid = stack::get_current_pid()
+        .expect("`main` has a PID from mesh_rt_init_actor, which runs first");
     let sched = GLOBAL_SCHEDULER
         .get()
         .expect("actor scheduler not initialized -- call mesh_rt_init_actor() first");
@@ -1168,7 +1145,7 @@ pub extern "C" fn mesh_rt_run_scheduler() {
 /// Returns 0 on success, 1 on error.
 #[no_mangle]
 pub extern "C" fn mesh_process_register(name: *const crate::string::MeshString, pid: u64) -> u64 {
-    if name.is_null() || pid == 0 {
+    if pid == 0 {
         return 1;
     }
     let name_str = unsafe { (*name).as_str().to_string() };
@@ -1186,9 +1163,6 @@ pub extern "C" fn mesh_process_register(name: *const crate::string::MeshString, 
 /// Returns the PID as u64, or 0 if not found.
 #[no_mangle]
 pub extern "C" fn mesh_process_whereis(name: *const crate::string::MeshString) -> u64 {
-    if name.is_null() {
-        return 0;
-    }
     let name_str = unsafe { (*name).as_str() };
     match registry::global_registry().whereis(name_str) {
         Some(pid) => pid.as_u64(),
@@ -1423,15 +1397,7 @@ pub extern "C" fn mesh_supervisor_count_children(sup_pid: u64) -> u64 {
 /// children, and by regular actors that want to handle linked exits.
 #[no_mangle]
 pub extern "C" fn mesh_actor_trap_exit() {
-    let my_pid = match stack::get_current_pid() {
-        Some(pid) => pid,
-        None => return,
-    };
-
-    let sched = global_scheduler();
-    if let Some(proc_arc) = sched.get_process(my_pid) {
-        proc_arc.lock().trap_exit = true;
-    }
+    running_process().1.lock().trap_exit = true;
 }
 
 /// Send an exit signal to a target process.
@@ -1492,8 +1458,7 @@ pub extern "C" fn mesh_actor_exit(target_pid: u64, reason_tag: u8) {
 /// Monitor a target process: when it ends, for whatever reason, the calling
 /// actor is sent `msg` (`msg_size` bytes, whose heap references `shape`
 /// describes). It is sent at once when there is no such process, or no node
-/// to ask about one. Returns the reference `Process.demonitor` takes, or 0
-/// outside an actor.
+/// to ask about one. Returns the reference `Process.demonitor` takes.
 #[no_mangle]
 pub extern "C" fn mesh_process_monitor(
     target_pid: u64,
@@ -1501,13 +1466,8 @@ pub extern "C" fn mesh_process_monitor(
     msg_size: u64,
     shape: *const u32,
 ) -> u64 {
-    let Some(my_pid) = stack::get_current_pid() else {
-        return 0;
-    };
     let sched = global_scheduler();
-    let Some(me) = sched.get_process(my_pid) else {
-        return 0;
-    };
+    let (my_pid, me) = running_process();
     let message = message_buffer(sched, message_bytes(msg_ptr, msg_size), shape);
     watch(sched, &me, my_pid, ProcessId(target_pid), message)
 }
@@ -1560,12 +1520,10 @@ fn send_monitor_frame(tag: u8, from: ProcessId, to: ProcessId, monitor_ref: u64)
 }
 
 /// Remove a monitor, so its message is never sent. Returns 0 on success, 1
-/// outside an actor or for a reference it does not hold.
+/// for a reference the actor does not hold.
 #[no_mangle]
 pub extern "C" fn mesh_process_demonitor(monitor_ref: u64) -> u64 {
-    let Some(my_pid) = stack::get_current_pid() else {
-        return 1;
-    };
+    let (my_pid, _) = running_process();
     u64::from(!unwatch(global_scheduler(), my_pid, monitor_ref))
 }
 
@@ -1595,8 +1553,7 @@ pub(crate) fn unwatch(sched: &Scheduler, my_pid: ProcessId, monitor_ref: u64) ->
 
 /// Monitor a node: when it disconnects, the calling actor is sent `msg`
 /// (as for `mesh_process_monitor`), once. It is sent at once when the node
-/// is not connected. Returns 0 on success, 1 outside an actor, before this
-/// node has started, or for a name that is not UTF-8.
+/// is not connected. Returns 0 on success, 1 before this node has started.
 #[no_mangle]
 pub extern "C" fn mesh_node_monitor(
     node_ptr: *const u8,
@@ -1605,21 +1562,12 @@ pub extern "C" fn mesh_node_monitor(
     msg_size: u64,
     shape: *const u32,
 ) -> u64 {
-    let Some(my_pid) = stack::get_current_pid() else {
-        return 1;
-    };
     let sched = global_scheduler();
-    let (Some(me), Some(state)) = (sched.get_process(my_pid), crate::dist::node::node_state())
-    else {
+    let (my_pid, me) = running_process();
+    let Some(state) = crate::dist::node::node_state() else {
         return 1;
     };
-    if node_ptr.is_null() {
-        return 1;
-    }
-    let bytes = unsafe { std::slice::from_raw_parts(node_ptr, node_len as usize) };
-    let Ok(node_name) = std::str::from_utf8(bytes) else {
-        return 1;
-    };
+    let node_name = mesh_str(node_ptr, node_len);
     let mut message = message_buffer(sched, message_bytes(msg_ptr, msg_size), shape);
     message.addressed_to(&me);
     // Checked and recorded under the lock a disconnect takes its monitors
@@ -1646,42 +1594,42 @@ pub extern "C" fn mesh_node_monitor(
 /// The `pid` argument is the raw u64 PID value of the process to register.
 ///
 /// On success, broadcasts `DIST_GLOBAL_REGISTER` to all connected nodes
-/// and returns 0. Returns 1 on error (name already taken, invalid UTF-8).
+/// and returns 0. Returns 1 when the name is taken or empty.
 ///
 /// - `name_ptr`: pointer to UTF-8 name bytes
 /// - `name_len`: length of the name in bytes
 /// - `pid`: raw u64 PID value
 #[no_mangle]
 pub extern "C" fn mesh_global_register(name_ptr: *const u8, name_len: u64, pid: u64) -> u64 {
-    if name_ptr.is_null() || name_len == 0 {
+    let Some(name) = global_name(name_ptr, name_len) else {
         return 1;
-    }
-
-    let name = unsafe {
-        let slice = std::slice::from_raw_parts(name_ptr, name_len as usize);
-        match std::str::from_utf8(slice) {
-            Ok(s) => s.to_string(),
-            Err(_) => return 1,
-        }
     };
-
     let pid = process::ProcessId(pid);
-
     // Determine our node name for the owning_node field.
-    let node_name = match crate::dist::node::node_state() {
-        Some(s) => s.name.clone(),
-        None => "nonode@nohost".to_string(),
-    };
+    let node_name = crate::dist::node::node_state()
+        .map_or_else(|| "nonode@nohost".to_string(), |state| state.name.clone());
 
     let registry = crate::dist::global::global_name_registry();
-    match registry.register(name.clone(), pid, node_name.clone()) {
+    match registry.register(name.to_string(), pid, node_name.clone()) {
         Ok(()) => {
             // Broadcast to all connected nodes.
-            crate::dist::global::broadcast_global_register(&name, pid, &node_name);
+            crate::dist::global::broadcast_global_register(name, pid, &node_name);
             0
         }
         Err(_) => 1,
     }
+}
+
+/// The text of a Mesh string compiled code passes as its bytes.
+fn mesh_str<'a>(ptr: *const u8, len: u64) -> &'a str {
+    let bytes = unsafe { std::slice::from_raw_parts(ptr, len as usize) };
+    std::str::from_utf8(bytes).expect("a Mesh string is UTF-8")
+}
+
+/// A global name compiled code passes: `None` for the empty name, which is
+/// never registered.
+fn global_name<'a>(ptr: *const u8, len: u64) -> Option<&'a str> {
+    Some(mesh_str(ptr, len)).filter(|name| !name.is_empty())
 }
 
 /// Look up a globally registered process by name.
@@ -1695,48 +1643,26 @@ pub extern "C" fn mesh_global_register(name_ptr: *const u8, name_len: u64, pid: 
 /// - `name_len`: length of the name in bytes
 #[no_mangle]
 pub extern "C" fn mesh_global_whereis(name_ptr: *const u8, name_len: u64) -> u64 {
-    if name_ptr.is_null() || name_len == 0 {
-        return 0;
-    }
-
-    let name = unsafe {
-        let slice = std::slice::from_raw_parts(name_ptr, name_len as usize);
-        match std::str::from_utf8(slice) {
-            Ok(s) => s,
-            Err(_) => return 0,
-        }
-    };
-
-    match crate::dist::global::global_name_registry().whereis(name) {
-        Some(pid) => pid.as_u64(),
-        None => 0,
-    }
+    global_name(name_ptr, name_len)
+        .and_then(|name| crate::dist::global::global_name_registry().whereis(name))
+        .map_or(0, ProcessId::as_u64)
 }
 
 /// Unregister a globally registered name.
 ///
 /// On success, broadcasts `DIST_GLOBAL_UNREGISTER` to all connected nodes
-/// and returns 0. Returns 1 if the name was not registered or invalid UTF-8.
+/// and returns 0. Returns 1 if the name was not registered.
 ///
 /// - `name_ptr`: pointer to UTF-8 name bytes
 /// - `name_len`: length of the name in bytes
 #[no_mangle]
 pub extern "C" fn mesh_global_unregister(name_ptr: *const u8, name_len: u64) -> u64 {
-    if name_ptr.is_null() || name_len == 0 {
+    let Some(name) = global_name(name_ptr, name_len) else {
         return 1;
-    }
-
-    let name = unsafe {
-        let slice = std::slice::from_raw_parts(name_ptr, name_len as usize);
-        match std::str::from_utf8(slice) {
-            Ok(s) => s.to_string(),
-            Err(_) => return 1,
-        }
     };
-
     let registry = crate::dist::global::global_name_registry();
-    if registry.unregister(&name) {
-        crate::dist::global::broadcast_global_unregister(&name);
+    if registry.unregister(name) {
+        crate::dist::global::broadcast_global_unregister(name);
         0
     } else {
         1
@@ -1946,7 +1872,7 @@ mod tests {
         let main_pid = sched.create_main_process();
         crate::secret::insert_test_secret(main_pid);
 
-        exit_main_process(&sched, Some(main_pid));
+        exit_main_process(&sched, main_pid);
 
         let state_is_exited = matches!(
             sched.get_process(main_pid).unwrap().lock().state,
@@ -2770,6 +2696,169 @@ mod tests {
         let popped = proc_arc.lock().mailbox.pop().unwrap();
         assert_eq!(popped.buffer.type_tag, 99);
         assert_eq!(popped.buffer.data, vec![42, 43, 44, 45]);
+    }
+
+    /// Run `body` as a new process of the global scheduler, on this thread.
+    fn as_process<T>(body: impl FnOnce(ProcessId) -> T) -> T {
+        mesh_rt_init_actor(1);
+        let pid = global_scheduler().create_main_process();
+        stack::set_current_pid(pid);
+        let result = body(pid);
+        stack::clear_current_pid();
+        result
+    }
+
+    fn mesh_string(text: &str) -> *const crate::string::MeshString {
+        crate::string::mesh_string_new(text.as_ptr(), text.len() as u64)
+    }
+
+    /// A pid on node 3, which this process has never heard of.
+    fn unknown_node_pid() -> ProcessId {
+        ProcessId::from_remote(3, 1, 9)
+    }
+
+    /// A message for another node needs a session to it (4) and must hold
+    /// nothing that cannot leave this node (6); a delayed one of the latter
+    /// is dropped as it is sent.
+    #[test]
+    fn a_message_for_another_node_reports_why_it_cannot_go() {
+        let word = 7u64.to_le_bytes();
+        // `{fn, env}`: a closure, which cannot leave this node.
+        let closure = [1u64, 0];
+        let shape = [2, msg_shape::CLOSURE];
+        let remote = unknown_node_pid().as_u64();
+        let (plain, code) = as_process(|_| {
+            let closure = closure.as_ptr().cast();
+            mesh_timer_send_after_shaped(remote as i64, 0, closure, 16, shape.as_ptr());
+            (
+                mesh_actor_send(remote, word.as_ptr(), 8),
+                mesh_actor_send_shaped(remote, closure, 16, shape.as_ptr()),
+            )
+        });
+        assert_eq!((plain, code), (4, 6));
+    }
+
+    static PLAIN_FUNCTION_RAN: std::sync::atomic::AtomicBool =
+        std::sync::atomic::AtomicBool::new(false);
+
+    extern "C-unwind" fn plain_function() -> i64 {
+        PLAIN_FUNCTION_RAN.store(true, std::sync::atomic::Ordering::SeqCst);
+        0
+    }
+
+    /// A plain function (no environment) runs after its delay too, and a
+    /// sleep of no time returns at once.
+    #[test]
+    fn timer_apply_after_runs_a_plain_function() {
+        mesh_rt_init_actor(1);
+        mesh_timer_sleep(0);
+        mesh_timer_sleep(-5);
+        mesh_timer_apply_after(1, plain_function as *const u8, std::ptr::null());
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !PLAIN_FUNCTION_RAN.load(std::sync::atomic::Ordering::SeqCst)
+            && std::time::Instant::now() < deadline
+        {
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        assert!(PLAIN_FUNCTION_RAN.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    /// A link to another node is recorded here; one to a process that has
+    /// ended is not made, and neither is a terminate callback for one.
+    #[test]
+    fn links_to_another_node_and_to_an_ended_process() {
+        extern "C" fn callback(_state: *const u8, _reason: *const u8) {}
+        let gone = ProcessId(u64::MAX >> 24);
+        let links = as_process(|me| {
+            mesh_actor_link(unknown_node_pid().as_u64());
+            mesh_actor_link(gone.as_u64());
+            mesh_actor_set_terminate(gone.as_u64(), callback as *const u8);
+            let me = global_scheduler().get_process(me).unwrap();
+            let links = me.lock().links.clone();
+            links
+        });
+        assert_eq!(links, [unknown_node_pid()].into_iter().collect());
+    }
+
+    #[test]
+    fn process_names_refuse_pid_zero_and_a_taken_name() {
+        let name = mesh_string("names-refuse-pid-zero");
+        assert_eq!(mesh_process_register(name, 0), 1);
+        assert_eq!(mesh_process_register(name, 5), 0);
+        assert_eq!(mesh_process_register(name, 6), 1);
+        assert_eq!(mesh_process_whereis(name), 5);
+    }
+
+    /// `trap_exit` makes an exit signal a message, whatever its reason but
+    /// a kill, which ends the process; a process that has ended takes none.
+    #[test]
+    fn exit_signals_reach_a_trapping_process_as_messages() {
+        let reasons = as_process(|me| {
+            mesh_actor_trap_exit();
+            for tag in [0, 1, 4, 5, 9] {
+                mesh_actor_exit(me.as_u64(), tag);
+            }
+            let process = global_scheduler().get_process(me).unwrap();
+            let mut reasons = Vec::new();
+            while let Some(message) = process.lock().mailbox.pop() {
+                assert_eq!(message.buffer.type_tag, link::EXIT_SIGNAL_TAG);
+                reasons.push(link::decode_exit_signal(&message.buffer.data).unwrap().1);
+            }
+            mesh_actor_exit(me.as_u64(), 2);
+            mesh_actor_exit(me.as_u64(), 1);
+            let state = process.lock().state.clone();
+            let queued = process.lock().mailbox.len();
+            (reasons, state, queued)
+        });
+        let error = |text: &str| ExitReason::Error(text.to_string());
+        assert_eq!(
+            reasons,
+            (
+                vec![
+                    ExitReason::Normal,
+                    error("exit signal"),
+                    ExitReason::Shutdown,
+                    ExitReason::Custom("exit signal".to_string()),
+                    error("unknown exit reason tag: 9"),
+                ],
+                ProcessState::Exited(ExitReason::Killed),
+                0
+            )
+        );
+    }
+
+    /// A monitor on a process of a node this one has no session to fires at
+    /// once; a reference nobody holds does not demonitor.
+    #[test]
+    fn a_monitor_of_an_unreachable_process_fires_at_once() {
+        let message = 3u64.to_le_bytes();
+        let (queued, demonitored) = as_process(|me| {
+            let remote = unknown_node_pid().as_u64();
+            mesh_process_monitor(remote, message.as_ptr(), 8, std::ptr::null());
+            let process = global_scheduler().get_process(me).unwrap();
+            let queued = process.lock().mailbox.pop().map(|m| m.buffer.data);
+            (queued, mesh_process_demonitor(u64::MAX))
+        });
+        assert_eq!(queued, Some(message.to_vec()));
+        assert_eq!(demonitored, 1);
+    }
+
+    /// The empty global name is never registered, found or unregistered, and
+    /// a taken name is not registered again.
+    #[test]
+    fn global_names_refuse_the_empty_name_and_a_taken_one() {
+        let (empty, name) = ("", "global-names-refuse-a-taken-one");
+        let call = |text: &str, f: extern "C" fn(*const u8, u64) -> u64| {
+            f(text.as_ptr(), text.len() as u64)
+        };
+        assert_eq!(mesh_global_register(empty.as_ptr(), 0, 5), 1);
+        assert_eq!(call(empty, mesh_global_whereis), 0);
+        assert_eq!(call(empty, mesh_global_unregister), 1);
+        assert_eq!(mesh_global_register(name.as_ptr(), name.len() as u64, 5), 0);
+        assert_eq!(mesh_global_register(name.as_ptr(), name.len() as u64, 6), 1);
+        assert_eq!(call(name, mesh_global_whereis), 5);
+        assert_eq!(call(name, mesh_global_unregister), 0);
+        assert_eq!(call(name, mesh_global_unregister), 1);
     }
 
     // -----------------------------------------------------------------------

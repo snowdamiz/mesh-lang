@@ -131,7 +131,7 @@ impl fmt::Display for ProcessId {
 // ---------------------------------------------------------------------------
 
 /// The execution state of a process.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ProcessState {
     /// Ready to be scheduled (in a run queue).
     Ready,
@@ -148,7 +148,7 @@ pub enum ProcessState {
 // ---------------------------------------------------------------------------
 
 /// Why a process terminated.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ExitReason {
     /// Normal completion -- the actor's entry function returned.
     Normal,
