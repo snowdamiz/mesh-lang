@@ -12934,7 +12934,8 @@ mod tests {
     /// for one that says `superseded` after completing it), each
     /// reservation accepted (turned away, as by a draining owner, when its
     /// key says `turned-away`), each routed request answered (with an error
-    /// when its key says `failing`) and each spawn given a pid.
+    /// when its key says `failing`) and each spawn given a pid (but for a
+    /// function whose name says `Unspawnable`).
     fn serve_as_nodes(peers: &[&TestPeer], done: &AtomicBool) {
         let registry = crate::dist::continuity::continuity_registry();
         while !done.load(Ordering::Acquire) {
@@ -12959,10 +12960,15 @@ mod tests {
                             };
                             peer.receive(encode_continuity_prepare_ack(id, &result));
                         }
-                        DIST_SPAWN => peer.receive(frame(
-                            DIST_SPAWN_REPLY,
-                            &[&message[1..9], &[0], &1u64.to_le_bytes()],
-                        )),
+                        DIST_SPAWN => {
+                            let refused = message
+                                .windows(b"Unspawnable".len())
+                                .any(|name| name == b"Unspawnable");
+                            peer.receive(frame(
+                                DIST_SPAWN_REPLY,
+                                &[&message[1..9], &[u8::from(refused)], &1u64.to_le_bytes()],
+                            ))
+                        }
                         DIST_HTTP_RESERVE => {
                             let (correlation, _, _, key) = decode_http_reserve(&message).unwrap();
                             let result = if key.contains("turned-away") {
@@ -13052,24 +13058,36 @@ mod tests {
     #[test]
     fn draining_a_node_moves_its_work_and_replaces_it_as_a_replica() {
         let handler = "Drain.handle";
+        // Registered here, but no function a worker will spawn.
+        let unspawnable = "Unspawnable.work";
         let worker_a = TestPeer::new("drain-worker-a@127.0.0.1:1");
         let worker_b = TestPeer::new("drain-worker-b@127.0.0.1:1");
-        mesh_register_declared_handler(
-            handler.as_ptr(),
-            handler.len() as u64,
-            "Drain__handle".as_ptr(),
-            13,
-            2,
-            drained_work_handler as *const u8,
-        );
-        for worker in [&worker_a, &worker_b] {
-            report_worker(&worker.session.remote_name, &[handler]);
+        let worker_c = TestPeer::new("drain-worker-c@127.0.0.1:1");
+        for (name, executable) in [
+            (handler, "Drain__handle"),
+            (unspawnable, "Unspawnable__work"),
+        ] {
+            mesh_register_declared_handler(
+                name.as_ptr(),
+                name.len() as u64,
+                executable.as_ptr(),
+                executable.len() as u64,
+                2,
+                drained_work_handler as *const u8,
+            );
         }
-        let (a, b) = (
+        for worker in [&worker_a, &worker_b, &worker_c] {
+            report_worker(
+                &worker.session.remote_name,
+                &[handler, unspawnable, "Elsewhere.handle"],
+            );
+        }
+        let (a, b, c) = (
             worker_a.session.remote_name.as_str(),
             worker_b.session.remote_name.as_str(),
+            worker_c.session.remote_name.as_str(),
         );
-        let peers = [&worker_a, &worker_b];
+        let peers = [&worker_a, &worker_b, &worker_c];
 
         merge_pending_record("drained-owned-key", "drained-owner@h:1", a, handler);
         let outcome = drain_with(&peers, "drained-owner@h:1", at_once).unwrap();
@@ -13137,7 +13155,7 @@ mod tests {
             Err("continuity_drain_owner_transfer_unavailable".to_string())
         );
         let mut wide = continuity_record("drained-wide-key", "drained-wide@h:1", a);
-        wide.replication_count = 4;
+        wide.replication_count = 5;
         wide.declared_handler_runtime_name = handler.to_string();
         crate::dist::continuity::continuity_registry()
             .merge_remote_record(1, wide)
@@ -13149,6 +13167,57 @@ mod tests {
             prepare_continuity_for_drain("nobody-to-drain"),
             Err("runtime_node_not_found:nobody-to-drain".to_string())
         );
+
+        // A replica drained where another stays keeps that one as it is.
+        let mut kept = continuity_record("drained-kept-key", a, "drained-kept@h:1");
+        kept.replica_nodes.push(b.to_string());
+        kept.acknowledged_replica_nodes = kept.replica_nodes.clone();
+        kept.replica_status = crate::dist::continuity::ReplicaStatus::Mirrored;
+        kept.replication_count = 3;
+        kept.declared_handler_runtime_name = handler.to_string();
+        crate::dist::continuity::continuity_registry()
+            .merge_remote_record(1, kept)
+            .unwrap();
+        drain_with(&peers, "drained-kept@h:1", at_once).unwrap();
+        let kept = await_record("drained-kept-key", |record| {
+            record.replica_nodes().contains(&c.to_string())
+        });
+        assert_eq!(kept.replica_nodes(), [b.to_string(), c.to_string()]);
+
+        // Work kept in one copy moves with no replica to prepare, and then
+        // cannot start where this node has no handler for it.
+        let mut single = continuity_record("drained-single-key", "drained-single@h:1", "");
+        single.replica_nodes.clear();
+        single.replication_count = 1;
+        single.replica_status = crate::dist::continuity::ReplicaStatus::Unassigned;
+        single.declared_handler_runtime_name = "Elsewhere.handle".to_string();
+        crate::dist::continuity::continuity_registry()
+            .merge_remote_record(1, single)
+            .unwrap();
+        assert_eq!(
+            drain_with(&peers, "drained-single@h:1", at_once),
+            Err("continuity_drain_handler_unavailable:Elsewhere.handle".to_string())
+        );
+        // Work its new owner will not spawn fails the drain.
+        merge_pending_record(
+            "drained-unspawnable-key",
+            "drained-unspawnable@h:1",
+            a,
+            unspawnable,
+        );
+        assert_eq!(
+            drain_with(&peers, "drained-unspawnable@h:1", at_once),
+            Err(format!(
+                "declared_work_remote_spawn_failed:{a}:Unspawnable__work"
+            ))
+        );
+
+        // Work this node mirrors moves here, and starts here.
+        let state = test_node();
+        report_worker(&state.name, &[handler]);
+        merge_pending_record("drained-home-key", "drained-home@h:1", &state.name, handler);
+        drain_with(&peers, "drained-home@h:1", at_once).unwrap();
+        await_record("drained-home-key", |record| record.owner_node == state.name);
     }
 
     /// A session reports its health, age, circuit and each lane's use, and
@@ -13621,14 +13690,16 @@ mod tests {
         .starts_with("continuity_replica_ack_threshold_unmet:required=1:acknowledged=0"));
 
         // One of two refuses at first: the record goes on, and the repair
-        // prepares the refusing replica and records its acknowledgement.
+        // prepares the refusing replica (which refuses its first try too,
+        // so the repair backs off and tries again) and records its
+        // acknowledgement.
         let repaired = record("refused-by-replica-2", &[&one, &two], 3);
         crate::dist::continuity::continuity_registry()
             .merge_remote_record(1, repaired.clone())
             .unwrap();
         let done = AtomicBool::new(false);
         std::thread::scope(|scope| {
-            scope.spawn(|| answer_prepares(&[&first, &second], 1, &done));
+            scope.spawn(|| answer_prepares(&[&first, &second], 2, &done));
             assert_eq!(prepare_continuity_replica(&repaired), Ok(vec![one.clone()]));
             await_record("refused-by-replica-2", |record| {
                 record.acknowledged_replica_nodes().contains(&two)
