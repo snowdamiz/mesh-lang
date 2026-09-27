@@ -1245,7 +1245,7 @@ mod tests {
         .expect_err("changed authenticated ciphertext length");
         assert_tag(error, CryptoErrorTag::AuthenticationFailed);
 
-        let mut wrong_key = material.clone();
+        let mut wrong_key = material;
         wrong_key[0] ^= 1;
         let error = open_value(
             &SystemProvider,

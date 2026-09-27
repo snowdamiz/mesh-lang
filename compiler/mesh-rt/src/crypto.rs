@@ -726,7 +726,7 @@ fn x25519_shared_for_process(
             let output =
                 <&mut [u8; 32]>::try_from(&mut shared_secret[..]).expect("a 32-byte output");
             provider
-                .x25519_shared(private_key, &peer_public_key, output)
+                .x25519_shared(private_key, peer_public_key, output)
                 .map_err(provider_failure)
         },
     )
@@ -931,7 +931,7 @@ pub extern "C" fn mesh_crypto_hpke_seal(
     crypto_result(
         hpke_seal_material(
             &SystemProvider,
-            &recipient_public_key,
+            recipient_public_key,
             info,
             associated_data,
             plaintext,
@@ -1024,7 +1024,7 @@ pub extern "C" fn mesh_crypto_hpke_seal_secret(
             hpke_seal_secret_for_process(
                 process,
                 &SystemProvider,
-                &recipient_public_key,
+                recipient_public_key,
                 info,
                 associated_data,
                 plaintext,
@@ -1411,7 +1411,7 @@ fn aead_seal_for_process(
         let key = <&[u8; 32]>::try_from(key)
             .map_err(|_| failure(CryptoErrorTag::InvalidKey, 32, key.len() as i64))?;
         provider
-            .chacha20poly1305_seal(key, &nonce, associated_data, plaintext)
+            .chacha20poly1305_seal(key, nonce, associated_data, plaintext)
             .map_err(provider_failure)
     })
     .map_err(resource_failure)?
@@ -1456,7 +1456,7 @@ fn aead_open_for_process(
         let key = <&[u8; 32]>::try_from(key)
             .map_err(|_| failure(CryptoErrorTag::InvalidKey, 32, key.len() as i64))?;
         provider
-            .chacha20poly1305_open(key, &nonce, associated_data, &mut plaintext)
+            .chacha20poly1305_open(key, nonce, associated_data, &mut plaintext)
             .map_err(provider_failure)
     })
     .map_err(resource_failure)?;
