@@ -118,6 +118,8 @@ impl NodeState {
 
 /// Global node state singleton.
 static NODE_STATE: OnceLock<NodeState> = OnceLock::new();
+// Replica counts are u64 on the wire and in records, and index here as usize.
+const _: () = assert!(usize::BITS >= u64::BITS);
 static PROTOCOL_BOOT_ID: OnceLock<[u8; 16]> = OnceLock::new();
 static ACTIVE_INCOMING_HANDSHAKES: AtomicUsize = AtomicUsize::new(0);
 static AUTH_FAILURE_WINDOW: OnceLock<Mutex<FixedWindowCounter>> = OnceLock::new();
@@ -3469,11 +3471,7 @@ fn prepare_continuity_for_runtime_node(
                 record.request_key
             ));
         }
-        let required: usize = record
-            .replication_count
-            .saturating_sub(1)
-            .try_into()
-            .map_err(|_| "replication_count_exceeds_platform_limit".to_string())?;
+        let required = record.replication_count.saturating_sub(1) as usize;
         let previous_replicas = record.acknowledged_replica_nodes().to_vec();
         let reports = crate::dist::routing::load_report_registry();
         let now = Instant::now();
@@ -3659,11 +3657,7 @@ fn prepare_continuity_for_runtime_node(
 pub(crate) fn record_replica_set(
     record: &crate::dist::continuity::ContinuityRecord,
 ) -> Result<Vec<String>, String> {
-    let required: usize = record
-        .replication_count
-        .saturating_sub(1)
-        .try_into()
-        .map_err(|_| "replication_count_exceeds_platform_limit".to_string())?;
+    let required = record.replication_count.saturating_sub(1) as usize;
     if required == 0 {
         return Ok(Vec::new());
     }
@@ -3684,10 +3678,7 @@ pub(crate) fn select_continuity_replica_set(
     owner_node: &str,
     replication_count: u64,
 ) -> Result<Vec<String>, String> {
-    let required: usize = replication_count
-        .saturating_sub(1)
-        .try_into()
-        .map_err(|_| "replication_count_exceeds_platform_limit".to_string())?;
+    let required = replication_count.saturating_sub(1) as usize;
     if required == 0 {
         return Ok(Vec::new());
     }
@@ -6881,11 +6872,8 @@ fn declared_work_placement(
     request_key: &str,
     runtime_name: &str,
 ) -> Result<DeclaredWorkPlacement, String> {
+    // This node is always a member.
     let membership = canonical_declared_membership();
-    if membership.is_empty() {
-        return Err("declared_work_membership_empty".to_string());
-    }
-
     let ingress_node = node_state()
         .map(|state| state.name.clone())
         .unwrap_or_else(|| DECLARED_WORK_LOCAL_NODE.to_string());
@@ -6910,9 +6898,6 @@ fn declared_work_placement(
             (stable_hash_u64(&format!("request::{request_key}")) as usize) % membership.len();
         (membership[owner_index].clone(), None)
     };
-    if !membership.iter().any(|member| member == &owner_node) {
-        return Err("declared_work_owner_not_in_membership".to_string());
-    }
     let routed_remotely = owner_node != ingress_node;
 
     Ok(DeclaredWorkPlacement {
