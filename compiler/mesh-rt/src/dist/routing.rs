@@ -87,8 +87,8 @@ impl NodeLoadReport {
         self.validate()?;
         let mut output = Vec::with_capacity(256);
         output.extend_from_slice(&self.protocol_version.to_le_bytes());
-        encode_string(&mut output, &self.node_id)?;
-        encode_string(&mut output, &self.boot_id)?;
+        encode_string(&mut output, &self.node_id);
+        encode_string(&mut output, &self.boot_id);
         output.push(self.roles.bits());
         output.push(self.state.as_u8());
         output.extend_from_slice(&self.capacity_units.to_le_bytes());
@@ -108,12 +108,11 @@ impl NodeLoadReport {
         output.extend_from_slice(&self.sequence.to_le_bytes());
         output.extend_from_slice(&self.control_term.to_le_bytes());
         output.extend_from_slice(&self.membership_generation.to_le_bytes());
-        encode_string(&mut output, &self.failure_domain)?;
-        let handler_count = u16::try_from(self.handlers.len())
-            .map_err(|_| "load_report_handler_count_exceeded".to_string())?;
-        output.extend_from_slice(&handler_count.to_le_bytes());
+        encode_string(&mut output, &self.failure_domain);
+        // Validated, so no count or length here exceeds a u16.
+        output.extend_from_slice(&(self.handlers.len() as u16).to_le_bytes());
         for handler in &self.handlers {
-            encode_string(&mut output, handler)?;
+            encode_string(&mut output, handler);
         }
         if self.protocol_version >= 3 {
             output.extend_from_slice(&self.decision_pressure_ewma.to_bits().to_le_bytes());
@@ -189,12 +188,11 @@ fn validate_bounded_string(value: &str, maximum: usize, label: &str) -> Result<(
     }
 }
 
-fn encode_string(output: &mut Vec<u8>, value: &str) -> Result<(), String> {
-    let length =
-        u16::try_from(value.len()).map_err(|_| "load_report_string_too_long".to_string())?;
-    output.extend_from_slice(&length.to_le_bytes());
+/// Writes a string no longer than a u16 can count, as validation leaves
+/// every string of a report.
+fn encode_string(output: &mut Vec<u8>, value: &str) {
+    output.extend_from_slice(&(value.len() as u16).to_le_bytes());
     output.extend_from_slice(value.as_bytes());
-    Ok(())
 }
 
 struct Cursor<'a> {
