@@ -173,6 +173,49 @@ fn literals_and_patterns_cut_off_at_a_part_add_no_error() {
     }
 }
 
+/// Definitions cut off at a part (an impl without its interface, an alias
+/// or an associated type without its name, a parameter or return type
+/// without its type, a method without its body, an `as` without its
+/// name) are checked as far as they go, and add no error of their own.
+#[test]
+fn definitions_cut_off_at_a_part_add_no_error() {
+    for source in [
+        "impl for Int do\nend\n",
+        "type = Int\n",
+        "interface I do\n  fn m(self, x :: ) -> Int\nend\n",
+        "struct X do\nend\n\nimpl Display for X do\n  fn to_string(self) -> String\nend\n",
+        "fn f() -> do\n  1\nend\n",
+        "fn f(0) = 1\nfn f(x :: ) = 2\n",
+        "struct P do\n  x :: Int\nend\n\nfn f(p :: P) do\n  %{p | x: }\nend\n",
+        "fn f(Some(x) as) do\n  1\nend\n",
+    ] {
+        let parse = mesh_parser::parse(source);
+        assert!(!parse.errors().is_empty(), "{source:?}");
+        let result = mesh_typeck::check(&parse);
+        assert!(result.errors.is_empty(), "{source:?}: {:?}", result.errors);
+    }
+    // What the rest of the definition says is still checked.
+    for (source, error) in [
+        (
+            "struct X do\nend\n\nimpl Iterable for X do\n  type = Int\nend\n",
+            "impl `Iterable` for `X` is missing method `iter`",
+        ),
+        (
+            "fn f(x :: Map<Int, ) do\n  x\nend\n",
+            "`Map` takes 2 type arguments, not 1",
+        ),
+    ] {
+        let parse = mesh_parser::parse(source);
+        assert!(!parse.errors().is_empty(), "{source:?}");
+        let errors: Vec<String> = mesh_typeck::check(&parse)
+            .errors
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        assert!(errors.iter().any(|e| e == error), "{source:?}: {errors:?}");
+    }
+}
+
 /// A definition the parser could not name is neither exported nor a
 /// private name.
 #[test]

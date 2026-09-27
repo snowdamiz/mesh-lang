@@ -3184,6 +3184,87 @@ fn a_case_over_a_type_without_variants_needs_no_arm() {
     );
 }
 
+/// Programs that take paths of the checker ordinary programs rarely do,
+/// and the errors each gets.
+#[test]
+fn rarely_taken_paths_report_what_they_should() {
+    let route_from_a_call =
+        "pub fn h(r :: Request) -> Response do\n  HTTP.response(200, \"\")\nend\n\n\
+         fn make() do\n  h\nend\n\n\
+         fn main() do\n  let router = HTTP.router()\n  HTTP.on_get(router, \"/x\", make())\nend\n";
+    let cases: [(&str, &[&str]); 12] = [
+        // A clause without a parameter list is a catch-all.
+        (
+            "fn f do\n  1\nend\n\nfn f do\n  2\nend\n",
+            &["catch-all clause must be the last clause of function `f/0`; clauses after a catch-all are unreachable"],
+        ),
+        (
+            "fn main() do\n  let x = Int { a: 1 }\n  x\nend\n",
+            &["`Int` is not a struct"],
+        ),
+        // A default method without a parameter list.
+        ("interface I do\n  fn m do\n    1\n  end\nend\n", &[]),
+        // A default method whose returns disagree with its end.
+        (
+            "interface I do\n  fn m(self) do\n    if true do\n      return 1\n    end\n    \"s\"\n  end\nend\n",
+            &["type mismatch: expected `String`, found `Int`"],
+        ),
+        (
+            "struct X do\nend\n\nimpl Display for X do\n  fn to_string do\n    \"x\"\n  end\nend\n",
+            &["method `to_string` in impl `Display` has wrong signature: expected `(Self) -> _`, found `() -> _`"],
+        ),
+        (
+            "fn id(x) do\n  x\nend\n\nfn other() do\n  1\nend\n\nfn id(x) do\n  x\nend\n",
+            &["function `id/1` already defined; multi-clause functions must have consecutive clauses"],
+        ),
+        ("fn f(x :: Nope<Int>) do\n  x\nend\n", &["unknown type `Nope`"]),
+        // A route handler another call returns.
+        (route_from_a_call, &[]),
+        ("fn main() do\n  1 |> nope(2)?\nend\n", &["undefined variable `nope`"]),
+        (
+            "fn f(x :: Int) = 1\nfn f(y :: String) = 2\n",
+            &[
+                "catch-all clause must be the last clause of function `f/1`; clauses after a catch-all are unreachable",
+                "type mismatch: expected `Int`, found `String`",
+            ],
+        ),
+        // Clauses of a closure without parameters.
+        ("fn main() do\n  let f = fn () -> 1 | () -> 2 end\n  f\nend\n", &[]),
+        (
+            "fn f(conn :: PgConn) do\n  Pg.transaction(conn)\nend\n",
+            &["arity mismatch: expected 2 arguments, found 1"],
+        ),
+    ];
+    for (source, expected) in cases {
+        assert_eq!(errors(source), expected, "{source}");
+    }
+}
+
+/// A module's own `Option` is not exported over the builtin one, and a
+/// public function of several clauses is exported once.
+#[test]
+fn exports_leave_out_a_builtin_type_name_and_count_a_function_once() {
+    for (source, function) in [
+        ("pub type Option do\n  A\nend\n", None),
+        ("pub fn f(0) = 1\npub fn f(n) = n\n", Some("f")),
+    ] {
+        let parse = mesh_parser::parse(source);
+        let checked = mesh_typeck::check(&parse);
+        assert!(checked.errors.is_empty(), "{source}: {:?}", checked.errors);
+        let exports = mesh_typeck::collect_exports(&parse, &checked);
+        assert!(exports.sum_type_defs.is_empty(), "{source}");
+        assert_eq!(
+            exports
+                .functions
+                .keys()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            function.into_iter().collect::<Vec<_>>(),
+            "{source}"
+        );
+    }
+}
+
 /// A name the parser could not read (a positional argument after keyword
 /// arguments) is its parse error alone, not also "undefined variable
 /// `<unknown>`".
