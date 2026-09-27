@@ -2575,8 +2575,13 @@ mod tests {
         // A write a store refuses fails when it steps, and changes nothing.
         let store = self::store();
         execute(&store, "PRAGMA query_only = ON");
-        let refused = store.upsert(&active()).expect_err("read-only store");
-        assert!(refused.contains("readonly"), "{refused}");
+        for refused in [
+            store.upsert(&active()),
+            store.acknowledge_replica_safe_point("replica", 1),
+        ] {
+            let refused = refused.expect_err("read-only store");
+            assert!(refused.contains("readonly"), "{refused}");
+        }
         execute(&store, "PRAGMA query_only = OFF");
         assert_eq!(store.get("operation"), Ok(None));
 
