@@ -79,6 +79,62 @@ end
     assert_eq!(String::from_utf8_lossy(&run.stdout), "invalid\nok\n");
 }
 
+/// Two secrets join into one as long as both, which is only observed
+/// through what takes a secret of an exact length; a join longer than a
+/// secret may be is refused.
+#[test]
+fn secret_concat_joins_two_secrets_into_one() {
+    let temp = tempfile::tempdir().unwrap();
+    let project = write_project(
+        temp.path(),
+        "secret-concat",
+        r#"
+fn proof() -> Int ! CryptoError do
+  let joined = Secret.concat(Secret.random(16) ?, Secret.random(16) ?) ?
+  let key = Crypto.aead_key(joined) ?
+  println("thirty_two:key")
+  let short = Secret.concat(Secret.random(16) ?, Secret.random(8) ?) ?
+  case Crypto.aead_key(short) do
+    Err(InvalidKey) -> println("twenty_four:invalid_key")
+    Err(_) -> println("twenty_four:other")
+    Ok(unexpected) -> println("twenty_four:unexpected")
+  end
+  case Secret.concat(Secret.random(65536) ?, Secret.random(1) ?) do
+    Err(InvalidLength(maximum, actual)) -> println("too_long:#{maximum},#{actual}")
+    Ok(unexpected) -> println("too_long:unexpected")
+    Err(_) -> println("too_long:other")
+  end
+  Ok(0)
+end
+
+fn main() do
+  case proof() do
+    Err(_) -> println("failed")
+    Ok(_) -> nil
+  end
+end
+"#,
+    );
+    let output = build(&project);
+    assert!(
+        output.status.success(),
+        "meshc build failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let run = Command::new(project.join("secret-concat"))
+        .output()
+        .unwrap();
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "thirty_two:key\ntwenty_four:invalid_key\ntoo_long:65536,65537\n"
+    );
+}
+
 #[test]
 fn secret_map_keeps_bounded_keys_affine_across_the_native_abi() {
     let temp = tempfile::tempdir().unwrap();

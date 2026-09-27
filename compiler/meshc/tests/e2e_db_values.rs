@@ -116,8 +116,15 @@ fn postgres_migrations_change_the_table_they_name() {
     let run = Command::new(project.join("postgres-migration"))
         .output()
         .expect("failed to execute the Migration fixture");
-    assert!(run.status.success(), "{}", artifacts::command_output_text(&run));
-    assert_eq!(String::from_utf8_lossy(&run.stdout), EXPECTED_MIGRATION_OUTPUT);
+    assert!(
+        run.status.success(),
+        "{}",
+        artifacts::command_output_text(&run)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        EXPECTED_MIGRATION_OUTPUT
+    );
 }
 
 const EXPECTED_MIGRATION_OUTPUT: &str = "create:ok
