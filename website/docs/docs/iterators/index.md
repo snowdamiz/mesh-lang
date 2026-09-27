@@ -29,7 +29,7 @@ end
 
 The returned list iterator is consumed as a terminal operation or collect requests values. A pipeline is single-pass: after a terminal operation has exhausted an iterator, create another iterator if you need to traverse the list again.
 
-A pipeline has the type `Iter<T>`, where `T` is the element type: every adapter below takes an `Iter` and returns one, and compiler messages name it (`Iter<Int>`). A function that returns a pipeline declares it as `-> Iter<Int>`. The older `ListIterator`, a type without an element type, is compatible with every `Iter<T>`.
+A pipeline has the type `Iter<T>`, where `T` is the element type: every adapter below takes an `Iter` and returns one, and compiler messages name it (`Iter<Int>`). A function that returns a pipeline declares it as `-> Iter<Int>`. The older names `ListIterator`, `MapIterator`, `SetIterator`, and `RangeIterator` are deprecated spellings of `Iter` whose element type is inferred, as a bare `List` is a list of inferred elements: a function declared `-> ListIterator` that returns `Iter.from([1.0])` returns an `Iter<Float>`.
 
 ### Eager List Operations vs Lazy Iterators
 

@@ -7202,6 +7202,10 @@ fn resolve_method_annotation(
             }
         })
     });
+    // An associated type reads as if written here: `type Iter = ListIterator`
+    // leaves its element type to inference, in `-> Self.Iter` as in
+    // `-> ListIterator`. (The rest of the annotation has its arguments.)
+    let ty = infer_missing_type_args(ctx, ty, type_registry);
     for name in unknown {
         // The name's own token, after `Self` and `.`.
         let tokens: Vec<_> = ann
@@ -7569,7 +7573,10 @@ fn infer_impl_def(
                     &impl_type,
                     &assoc_types,
                 )
-            });
+            })
+            // Read as an annotation is: a `Self.Iter` bound to `ListIterator`
+            // leaves its element type to inference.
+            .map(|ty| infer_missing_type_args(ctx, ty, type_registry));
 
         // Also infer the method body to check it type-checks.
         env.push_scope();
@@ -15225,6 +15232,18 @@ fn resolve_alias_within(
                 || type_registry.lookup_sum_type(short).is_some() =>
         {
             TyCon::new(short)
+        }
+        _ => tc,
+    };
+    // An iterator handle's old name (`-> ListIterator`) is `Iter`, whose
+    // element type is inferred where it is left out, as a bare `List`'s
+    // is. (A type of its own had no element type: its elements were read
+    // as `()`, or as raw bits.)
+    let tc = match tc.name.as_str() {
+        "ListIterator" | "MapIterator" | "SetIterator" | "RangeIterator"
+            if declared_param_count(type_registry, &tc.name).is_none() =>
+        {
+            TyCon::new("Iter")
         }
         _ => tc,
     };
