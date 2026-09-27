@@ -35,6 +35,7 @@ use crate::db::expr::{clone_expr, serialize_expr, SqlExpr};
 use crate::db::pool::{
     mesh_pool_checkin, mesh_pool_checkout, mesh_pool_execute, mesh_pool_query, unbox_u64_payload,
 };
+use crate::db::query::{query_parts, QueryParts};
 use crate::io::{alloc_result, err_result, MeshResult};
 use crate::string::{mesh_str, MeshString};
 
@@ -56,32 +57,6 @@ unsafe fn first_row(result: *mut u8, none: &str) -> *mut u8 {
         return err_result(none);
     }
     ok_result(mesh_list_get(r.value, 0) as *mut u8)
-}
-
-// ── Query slot access ────────────────────────────────────────────────
-
-// Slot indices (must match query.rs exactly)
-const SLOT_SOURCE: usize = 0;
-const SLOT_SELECT: usize = 1;
-const SLOT_WHERE_CLAUSES: usize = 2;
-const SLOT_WHERE_PARAMS: usize = 3;
-const SLOT_ORDER: usize = 4;
-const SLOT_LIMIT: usize = 5;
-const SLOT_OFFSET: usize = 6;
-const SLOT_JOIN: usize = 7;
-const SLOT_GROUP: usize = 8;
-const SLOT_HAVING_CLAUSES: usize = 9;
-const SLOT_HAVING_PARAMS: usize = 10;
-const SLOT_FRAGMENT_PARTS: usize = 11;
-const SLOT_FRAGMENT_PARAMS: usize = 12;
-const SLOT_SELECT_PARAMS: usize = 13;
-
-unsafe fn query_get(q: *mut u8, slot: usize) -> *mut u8 {
-    *(q.add(slot * 8) as *mut *mut u8)
-}
-
-unsafe fn query_get_int(q: *mut u8, slot: usize) -> i64 {
-    *(q.add(slot * 8) as *mut i64)
 }
 
 // ── Placeholder renumbering helper ───────────────────────────────────
@@ -142,112 +117,20 @@ fn renumber_placeholders(sql: &str, start_idx: usize) -> (String, usize) {
 
 // ── Comprehensive SQL Builder ────────────────────────────────────────
 
-/// Read all 13 slots of a Query struct and produce a complete SELECT SQL
-/// statement with parameterized placeholders, plus the parameter values list.
-///
-/// Returns `(sql_string, params_vec)` as pure Rust types.
-unsafe fn query_to_select_sql(query: *mut u8) -> (String, Vec<String>) {
-    select_sql(query, None)
-}
-
-/// The query's SELECT, as `Repo.all` runs it; `bare_select` stands in for
-/// an empty select list (`*`).
-unsafe fn select_sql(query: *mut u8, bare_select: Option<&str>) -> (String, Vec<String>) {
-    let source_ptr = query_get(query, SLOT_SOURCE);
-    let source = text_of(source_ptr);
-    let mut select_fields = list_strings(query_get(query, SLOT_SELECT));
-    if select_fields.is_empty() {
-        select_fields.extend(bare_select.map(|select| format!("RAW:{select}")));
-    }
-    let select_params = list_strings(query_get(query, SLOT_SELECT_PARAMS));
-    let where_clauses = list_strings(query_get(query, SLOT_WHERE_CLAUSES));
-    let where_params = list_strings(query_get(query, SLOT_WHERE_PARAMS));
-    let order_fields = list_strings(query_get(query, SLOT_ORDER));
-    let limit_val = query_get_int(query, SLOT_LIMIT);
-    let offset_val = query_get_int(query, SLOT_OFFSET);
-    let join_clauses = list_strings(query_get(query, SLOT_JOIN));
-    let group_fields = list_strings(query_get(query, SLOT_GROUP));
-    let having_clauses = list_strings(query_get(query, SLOT_HAVING_CLAUSES));
-    let having_params = list_strings(query_get(query, SLOT_HAVING_PARAMS));
-    let fragment_parts = list_strings(query_get(query, SLOT_FRAGMENT_PARTS));
-    let fragment_params = list_strings(query_get(query, SLOT_FRAGMENT_PARAMS));
-
-    build_select_sql_from_parts_with_select_params(
-        source,
-        &select_fields,
-        &select_params,
-        &where_clauses,
-        &where_params,
-        &order_fields,
-        limit_val,
-        offset_val,
-        &join_clauses,
-        &group_fields,
-        &having_clauses,
-        &having_params,
-        &fragment_parts,
-        &fragment_params,
-    )
-}
-
-/// Pure Rust SQL builder from decomposed Query parts.
-/// Separated for testability without GC.
-#[allow(dead_code)]
-fn build_select_sql_from_parts(
-    source: &str,
-    select_fields: &[String],
-    where_clauses: &[String],
-    where_params: &[String],
-    order_fields: &[String],
-    limit_val: i64,
-    offset_val: i64,
-    join_clauses: &[String],
-    group_fields: &[String],
-    having_clauses: &[String],
-    having_params: &[String],
-    fragment_parts: &[String],
-    fragment_params: &[String],
-) -> (String, Vec<String>) {
-    build_select_sql_from_parts_with_select_params(
-        source,
-        select_fields,
-        &[],
-        where_clauses,
-        where_params,
-        order_fields,
-        limit_val,
-        offset_val,
-        join_clauses,
-        group_fields,
-        having_clauses,
-        having_params,
-        fragment_parts,
-        fragment_params,
-    )
-}
-
-fn build_select_sql_from_parts_with_select_params(
-    source: &str,
-    select_fields: &[String],
-    select_params: &[String],
-    where_clauses: &[String],
-    where_params: &[String],
-    order_fields: &[String],
-    limit_val: i64,
-    offset_val: i64,
-    join_clauses: &[String],
-    group_fields: &[String],
-    having_clauses: &[String],
-    having_params: &[String],
-    fragment_parts: &[String],
-    fragment_params: &[String],
-) -> (String, Vec<String>) {
+/// The query's SELECT, as `Repo.all` runs it, with its parameter values;
+/// `bare_select` stands in for an empty select list (`*`).
+fn select_sql(query: &QueryParts, bare_select: Option<&str>) -> (String, Vec<String>) {
     let mut sql = String::new();
     let mut params: Vec<String> = Vec::new();
     let mut param_idx = 1usize;
 
     // SELECT clause
     sql.push_str("SELECT ");
+    let bare = bare_select.map(|select| format!("RAW:{select}"));
+    let select_fields = match (&query.select[..], &bare) {
+        ([], Some(bare)) => std::slice::from_ref(bare),
+        (fields, _) => fields,
+    };
     if select_fields.is_empty() {
         sql.push('*');
     } else {
@@ -262,8 +145,8 @@ fn build_select_sql_from_parts_with_select_params(
                 let (renumbered, consumed) = renumber_placeholders(expr_sql, param_idx);
                 cols.push(renumbered);
                 for _ in 0..consumed {
-                    if select_param_idx < select_params.len() {
-                        params.push(select_params[select_param_idx].clone());
+                    if select_param_idx < query.select_params.len() {
+                        params.push(query.select_params[select_param_idx].clone());
                         select_param_idx += 1;
                     }
                     param_idx += 1;
@@ -276,10 +159,10 @@ fn build_select_sql_from_parts_with_select_params(
     }
 
     // FROM clause
-    sql.push_str(&format!(" FROM {}", quote_name(source)));
+    sql.push_str(&format!(" FROM {}", quote_name(&query.source)));
 
     // JOIN clauses (format: "TYPE:table:on_clause" or "ALIAS:TYPE:table:alias:on_clause")
-    for join in join_clauses {
+    for join in &query.joins {
         if let Some(rest) = join.strip_prefix("ALIAS:") {
             let parts: Vec<&str> = rest.splitn(4, ':').collect();
             if parts.len() == 4 {
@@ -305,17 +188,18 @@ fn build_select_sql_from_parts_with_select_params(
     }
 
     // WHERE clause
-    if !where_clauses.is_empty() {
+    if !query.where_clauses.is_empty() {
         let (where_sql, where_param_values, next_param_idx) =
-            build_where_from_query_parts(where_clauses, where_params, param_idx);
+            build_where_from_query_parts(&query.where_clauses, &query.where_params, param_idx);
         sql.push_str(&format!(" WHERE {}", where_sql));
         params.extend(where_param_values);
         param_idx = next_param_idx;
     }
 
     // GROUP BY clause
-    if !group_fields.is_empty() {
-        let cols: Vec<String> = group_fields
+    if !query.group.is_empty() {
+        let cols: Vec<String> = query
+            .group
             .iter()
             .map(|f| {
                 if let Some(raw) = f.strip_prefix("RAW:") {
@@ -329,33 +213,30 @@ fn build_select_sql_from_parts_with_select_params(
     }
 
     // HAVING clause
-    if !having_clauses.is_empty() {
+    if !query.having.is_empty() {
         sql.push_str(" HAVING ");
         let mut having_parts_sql = Vec::new();
-        for clause in having_clauses {
+        for clause in &query.having {
             having_parts_sql.push(format!("{} ${}", clause, param_idx));
             param_idx += 1;
         }
         sql.push_str(&having_parts_sql.join(" AND "));
-        for p in having_params {
-            params.push(p.clone());
-        }
+        params.extend(query.having_params.iter().cloned());
     }
 
     // Fragment injection (raw SQL appended, with $N renumbering)
-    for frag in fragment_parts {
+    for frag in &query.fragments {
         let (renumbered, consumed) = renumber_placeholders(frag, param_idx);
         sql.push_str(&format!(" {}", renumbered));
         param_idx += consumed;
     }
-    for p in fragment_params {
-        params.push(p.clone());
-    }
+    params.extend(query.fragment_params.iter().cloned());
 
     // ORDER BY clause
-    if !order_fields.is_empty() {
+    if !query.order.is_empty() {
         sql.push_str(" ORDER BY ");
-        let orders: Vec<String> = order_fields
+        let orders: Vec<String> = query
+            .order
             .iter()
             .map(|o| {
                 if let Some(raw) = o.strip_prefix("RAW:") {
@@ -373,13 +254,13 @@ fn build_select_sql_from_parts_with_select_params(
     }
 
     // LIMIT clause
-    if limit_val >= 0 {
-        sql.push_str(&format!(" LIMIT {}", limit_val));
+    if query.limit >= 0 {
+        sql.push_str(&format!(" LIMIT {}", query.limit));
     }
 
     // OFFSET clause
-    if offset_val >= 0 {
-        sql.push_str(&format!(" OFFSET {}", offset_val));
+    if query.offset >= 0 {
+        sql.push_str(&format!(" OFFSET {}", query.offset));
     }
 
     (sql, params)
@@ -388,23 +269,18 @@ fn build_select_sql_from_parts_with_select_params(
 /// How many rows the query returns: its SELECT (selecting `1` when it
 /// names no columns, so a GROUP BY stands) counted as a subquery. A bare
 /// `COUNT(*)` with a GROUP BY counted one group.
-unsafe fn query_to_count_sql(query: *mut u8) -> (String, Vec<String>) {
-    let (select, params) = select_sql(query, Some("1"));
-    (counted_sql(&select), params)
-}
-
 fn counted_sql(select: &str) -> String {
     format!("SELECT COUNT(*) AS count FROM ({select}) AS counted")
 }
 
 /// Whether the query returns a row, grouping and fragments included.
-unsafe fn query_to_exists_sql(query: *mut u8) -> (String, Vec<String>) {
-    let (select, params) = select_sql(query, Some("1"));
-    (exists_sql(&select), params)
-}
-
 fn exists_sql(select: &str) -> String {
     format!("SELECT EXISTS({select}) AS exists")
+}
+
+/// `sql` run on the pool with `params`: `Pool.query`'s result.
+fn run_query(pool: u64, sql: &str, params: &[String]) -> *mut u8 {
+    mesh_pool_query(pool, mesh_str(sql), string_list(params))
 }
 
 // ── Extern C functions ───────────────────────────────────────────────
@@ -417,75 +293,22 @@ fn exists_sql(select: &str) -> String {
 /// clause types, and executes via Pool.query.
 #[no_mangle]
 pub extern "C" fn mesh_repo_all(pool: u64, query: *mut u8) -> *mut u8 {
-    unsafe {
-        let (sql, params) = query_to_select_sql(query);
-        let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let params_ptr = string_list(&params);
-        mesh_pool_query(pool, sql_ptr, params_ptr)
-    }
+    let (sql, params) = select_sql(unsafe { &query_parts(query) }, None);
+    run_query(pool, &sql, &params)
 }
 
 /// Execute a query and return the first matching row or error.
 ///
 /// `Repo.one(pool, query)` -> `Result<Map<String,String>, String>`
 ///
-/// Adds LIMIT 1 to the query, executes, and extracts the first row.
-/// Returns Err("not found") if no rows match.
+/// Runs the query with LIMIT 1 and returns its row, or Err("not found").
 #[no_mangle]
 pub extern "C" fn mesh_repo_one(pool: u64, query: *mut u8) -> *mut u8 {
     unsafe {
-        // Read the query but force limit to 1
-        let source_ptr = query_get(query, SLOT_SOURCE);
-        let source = text_of(source_ptr);
-        let select_fields = list_strings(query_get(query, SLOT_SELECT));
-        let select_params = list_strings(query_get(query, SLOT_SELECT_PARAMS));
-        let where_clauses = list_strings(query_get(query, SLOT_WHERE_CLAUSES));
-        let where_params = list_strings(query_get(query, SLOT_WHERE_PARAMS));
-        let order_fields = list_strings(query_get(query, SLOT_ORDER));
-        let offset_val = query_get_int(query, SLOT_OFFSET);
-        let join_clauses = list_strings(query_get(query, SLOT_JOIN));
-        let group_fields = list_strings(query_get(query, SLOT_GROUP));
-        let having_clauses = list_strings(query_get(query, SLOT_HAVING_CLAUSES));
-        let having_params = list_strings(query_get(query, SLOT_HAVING_PARAMS));
-        let fragment_parts = list_strings(query_get(query, SLOT_FRAGMENT_PARTS));
-        let fragment_params = list_strings(query_get(query, SLOT_FRAGMENT_PARAMS));
-
-        let (sql, params) = build_select_sql_from_parts_with_select_params(
-            source,
-            &select_fields,
-            &select_params,
-            &where_clauses,
-            &where_params,
-            &order_fields,
-            1, // force LIMIT 1
-            offset_val,
-            &join_clauses,
-            &group_fields,
-            &having_clauses,
-            &having_params,
-            &fragment_parts,
-            &fragment_params,
-        );
-
-        let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let params_ptr = string_list(&params);
-        let result = mesh_pool_query(pool, sql_ptr, params_ptr);
-
-        // Check if query succeeded
-        let r = &*(result as *const MeshResult);
-        if r.tag != 0 {
-            return result; // propagate query error
-        }
-
-        // Extract first row from the result list
-        let list = r.value;
-        let list_len = mesh_list_length(list);
-        if list_len == 0 {
-            return err_result("not found");
-        }
-
-        let first_row = mesh_list_get(list, 0) as *mut u8;
-        ok_result(first_row)
+        let mut parts = query_parts(query);
+        parts.limit = 1;
+        let (sql, params) = select_sql(&parts, None);
+        first_row(run_query(pool, &sql, &params), "not found")
     }
 }
 
@@ -543,10 +366,8 @@ pub extern "C" fn mesh_repo_get(pool: u64, table: *mut u8, id: *mut u8) -> *mut 
             quote_name(table_str),
             quote_name(&key)
         );
-        let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let mut params_list = mesh_list_new();
-        params_list = mesh_list_append(params_list, id as u64);
-        let result = mesh_pool_query(pool, sql_ptr, params_list);
+        let params = mesh_list_append(mesh_list_new(), id as u64);
+        let result = mesh_pool_query(pool, mesh_str(&sql), params);
 
         // Check if query succeeded
         first_row(result, "not found")
@@ -573,10 +394,8 @@ pub extern "C" fn mesh_repo_get_by(
             quote_name(table_str),
             quote_name(field_str)
         );
-        let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let mut params_list = mesh_list_new();
-        params_list = mesh_list_append(params_list, value as u64);
-        let result = mesh_pool_query(pool, sql_ptr, params_list);
+        let params = mesh_list_append(mesh_list_new(), value as u64);
+        let result = mesh_pool_query(pool, mesh_str(&sql), params);
 
         first_row(result, "not found")
     }
@@ -591,7 +410,8 @@ pub extern "C" fn mesh_repo_get_by(
 #[no_mangle]
 pub extern "C" fn mesh_repo_count(pool: u64, query: *mut u8) -> *mut u8 {
     unsafe {
-        let (sql, params) = query_to_count_sql(query);
+        let (select, params) = select_sql(&query_parts(query), Some("1"));
+        let sql = counted_sql(&select);
         match single_value(pool, &sql, &params, "count") {
             Ok(count) => crate::io::ok_int(count.parse().unwrap_or(0)).cast(),
             Err(error) => error,
@@ -606,7 +426,7 @@ unsafe fn single_value(
     params: &[String],
     column: &str,
 ) -> Result<&'static str, *mut u8> {
-    let result = mesh_pool_query(pool, mesh_str(sql), string_list(params));
+    let result = run_query(pool, sql, params);
     let r = &*(result as *const MeshResult);
     if r.tag != 0 {
         return Err(result);
@@ -626,7 +446,8 @@ unsafe fn single_value(
 #[no_mangle]
 pub extern "C" fn mesh_repo_exists(pool: u64, query: *mut u8) -> *mut u8 {
     unsafe {
-        let (sql, params) = query_to_exists_sql(query);
+        let (select, params) = select_sql(&query_parts(query), Some("1"));
+        let sql = exists_sql(&select);
         match single_value(pool, &sql, &params, "exists") {
             // A Bool payload is boxed.
             Ok(exists) => ok_result(crate::io::box_scalar(exists == "t")),
@@ -835,9 +656,7 @@ pub extern "C" fn mesh_repo_insert(pool: u64, table: *mut u8, fields: *mut u8) -
         let returning = vec!["*".to_string()];
         let sql = crate::db::orm::build_insert_sql_pure(table_str, &columns, &returning);
 
-        let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let params_ptr = string_list(&values);
-        let result = mesh_pool_query(pool, sql_ptr, params_ptr);
+        let result = run_query(pool, &sql, &values);
 
         // Check if query succeeded
         first_row(result, "insert: no row returned")
@@ -862,9 +681,7 @@ pub extern "C" fn mesh_repo_insert_expr(
             Err(msg) => return err_result(msg),
         };
 
-        let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let params_ptr = string_list(&params);
-        let result = mesh_pool_query(pool, sql_ptr, params_ptr);
+        let result = run_query(pool, &sql, &params);
 
         first_row(result, "insert_expr: no row returned")
     }
@@ -905,9 +722,7 @@ pub extern "C" fn mesh_repo_update(
         let id_str = text_of(id);
         values.push(id_str.to_string());
 
-        let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let params_ptr = string_list(&values);
-        let result = mesh_pool_query(pool, sql_ptr, params_ptr);
+        let result = run_query(pool, &sql, &values);
 
         first_row(result, "update: no row returned (id not found)")
     }
@@ -932,10 +747,8 @@ pub extern "C" fn mesh_repo_delete(pool: u64, table: *mut u8, id: *mut u8) -> *m
         let returning = vec!["*".to_string()];
         let sql = crate::db::orm::build_delete_sql_pure(table_str, &wheres, &returning);
 
-        let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let mut params_list = mesh_list_new();
-        params_list = mesh_list_append(params_list, id as u64);
-        let result = mesh_pool_query(pool, sql_ptr, params_list);
+        let params = mesh_list_append(mesh_list_new(), id as u64);
+        let result = mesh_pool_query(pool, mesh_str(&sql), params);
 
         first_row(result, "delete: no row returned (id not found)")
     }
@@ -1026,9 +839,7 @@ pub extern "C" fn mesh_repo_insert_changeset(
         let returning = vec!["*".to_string()];
         let sql = crate::db::orm::build_insert_sql_pure(table_str, &columns, &returning);
 
-        let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let params_ptr = string_list(&values);
-        let result = mesh_pool_query(pool, sql_ptr, params_ptr);
+        let result = run_query(pool, &sql, &values);
 
         changeset_write_result(result, changeset, "no row returned")
     }
@@ -1073,9 +884,7 @@ pub extern "C" fn mesh_repo_update_changeset(
         let id_str = text_of(id);
         values.push(id_str.to_string());
 
-        let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let params_ptr = string_list(&values);
-        let result = mesh_pool_query(pool, sql_ptr, params_ptr);
+        let result = run_query(pool, &sql, &values);
 
         changeset_write_result(result, changeset, "not found")
     }
@@ -1215,9 +1024,7 @@ unsafe fn preload_direct(
     // 2. Build and execute the IN query
     let (sql, params) = build_preload_sql(&meta.target_table, &target_match_key, &id_set);
 
-    let sql_ptr = mesh_str(&sql) as *const MeshString;
-    let params_ptr = string_list(&params);
-    let result = mesh_pool_query(pool, sql_ptr, params_ptr);
+    let result = run_query(pool, &sql, &params);
 
     let r = &*(result as *const MeshResult);
     if r.tag != 0 {
@@ -1701,8 +1508,11 @@ pub extern "C" fn mesh_repo_update_where(
             return err_result("update_where: no fields provided");
         }
 
-        let where_clauses = list_strings(query_get(query, SLOT_WHERE_CLAUSES));
-        let where_params = list_strings(query_get(query, SLOT_WHERE_PARAMS));
+        let QueryParts {
+            where_clauses,
+            where_params,
+            ..
+        } = query_parts(query);
 
         if where_clauses.is_empty() {
             return err_result("update_where: no WHERE conditions");
@@ -1723,9 +1533,7 @@ pub extern "C" fn mesh_repo_update_where(
 
         values.extend(where_param_values);
 
-        let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let params_ptr = string_list(&values);
-        let result = mesh_pool_query(pool, sql_ptr, params_ptr);
+        let result = run_query(pool, &sql, &values);
 
         first_row(result, "update_where: no rows matched")
     }
@@ -1744,8 +1552,11 @@ pub extern "C" fn mesh_repo_update_where_expr(
     unsafe {
         let table_str = text_of(table);
         let (columns, exprs) = map_to_columns_and_exprs(expr_fields);
-        let where_clauses = list_strings(query_get(query, SLOT_WHERE_CLAUSES));
-        let where_params = list_strings(query_get(query, SLOT_WHERE_PARAMS));
+        let QueryParts {
+            where_clauses,
+            where_params,
+            ..
+        } = query_parts(query);
 
         let (sql, params) = match build_update_where_expr_sql_pure(
             table_str,
@@ -1758,9 +1569,7 @@ pub extern "C" fn mesh_repo_update_where_expr(
             Err(msg) => return err_result(msg),
         };
 
-        let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let params_ptr = string_list(&params);
-        let result = mesh_pool_query(pool, sql_ptr, params_ptr);
+        let result = run_query(pool, &sql, &params);
 
         first_row(result, "update_where_expr: no rows matched")
     }
@@ -1773,8 +1582,11 @@ pub extern "C" fn mesh_repo_delete_where(pool: u64, table: *mut u8, query: *mut 
     unsafe {
         let table_str = text_of(table);
 
-        let where_clauses = list_strings(query_get(query, SLOT_WHERE_CLAUSES));
-        let where_params = list_strings(query_get(query, SLOT_WHERE_PARAMS));
+        let QueryParts {
+            where_clauses,
+            where_params,
+            ..
+        } = query_parts(query);
 
         if where_clauses.is_empty() {
             return err_result("delete_where: no WHERE conditions");
@@ -1785,9 +1597,7 @@ pub extern "C" fn mesh_repo_delete_where(pool: u64, table: *mut u8, query: *mut 
             build_where_from_query_parts(&where_clauses, &where_params, 1);
         sql.push_str(&format!(" WHERE {}", where_sql));
 
-        let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let params_ptr = string_list(&where_param_values);
-        mesh_pool_execute(pool, sql_ptr, params_ptr)
+        mesh_pool_execute(pool, mesh_str(&sql), string_list(&where_param_values))
     }
 }
 
@@ -1832,9 +1642,7 @@ pub extern "C" fn mesh_repo_insert_or_update(
             table_str, &columns, &targets, &updates, &returning,
         );
 
-        let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let params_ptr = string_list(&values);
-        let result = mesh_pool_query(pool, sql_ptr, params_ptr);
+        let result = run_query(pool, &sql, &values);
 
         first_row(result, "insert_or_update: no row returned")
     }
@@ -1869,9 +1677,7 @@ pub extern "C" fn mesh_repo_insert_or_update_expr(
             Err(msg) => return err_result(msg),
         };
 
-        let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let params_ptr = string_list(&params);
-        let result = mesh_pool_query(pool, sql_ptr, params_ptr);
+        let result = run_query(pool, &sql, &params);
 
         first_row(result, "insert_or_update_expr: no row returned")
     }
@@ -1887,8 +1693,11 @@ pub extern "C" fn mesh_repo_delete_where_returning(
 ) -> *mut u8 {
     unsafe {
         let table_str = text_of(table);
-        let where_clauses = list_strings(query_get(query, SLOT_WHERE_CLAUSES));
-        let where_params = list_strings(query_get(query, SLOT_WHERE_PARAMS));
+        let QueryParts {
+            where_clauses,
+            where_params,
+            ..
+        } = query_parts(query);
 
         if where_clauses.is_empty() {
             return err_result("delete_where_returning: no WHERE conditions");
@@ -1899,9 +1708,7 @@ pub extern "C" fn mesh_repo_delete_where_returning(
             build_where_from_query_parts(&where_clauses, &where_params, 1);
         sql.push_str(&format!(" WHERE {} RETURNING *", where_sql));
 
-        let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let params_ptr = string_list(&where_param_values);
-        mesh_pool_query(pool, sql_ptr, params_ptr)
+        run_query(pool, &sql, &where_param_values)
     }
 }
 
@@ -1926,6 +1733,76 @@ pub extern "C" fn mesh_repo_execute_raw(pool: u64, sql: *mut u8, params: *mut u8
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `Repo.all`'s SELECT for a query of these clauses (a Query's slots, in
+    /// order).
+    fn build_select_sql_from_parts(
+        source: &str,
+        select_fields: &[String],
+        where_clauses: &[String],
+        where_params: &[String],
+        order_fields: &[String],
+        limit_val: i64,
+        offset_val: i64,
+        join_clauses: &[String],
+        group_fields: &[String],
+        having_clauses: &[String],
+        having_params: &[String],
+        fragment_parts: &[String],
+        fragment_params: &[String],
+    ) -> (String, Vec<String>) {
+        build_select_sql_from_parts_with_select_params(
+            source,
+            select_fields,
+            &[],
+            where_clauses,
+            where_params,
+            order_fields,
+            limit_val,
+            offset_val,
+            join_clauses,
+            group_fields,
+            having_clauses,
+            having_params,
+            fragment_parts,
+            fragment_params,
+        )
+    }
+
+    fn build_select_sql_from_parts_with_select_params(
+        source: &str,
+        select_fields: &[String],
+        select_params: &[String],
+        where_clauses: &[String],
+        where_params: &[String],
+        order_fields: &[String],
+        limit_val: i64,
+        offset_val: i64,
+        join_clauses: &[String],
+        group_fields: &[String],
+        having_clauses: &[String],
+        having_params: &[String],
+        fragment_parts: &[String],
+        fragment_params: &[String],
+    ) -> (String, Vec<String>) {
+        let parts = QueryParts {
+            source: source.to_string(),
+            select: select_fields.to_vec(),
+            select_params: select_params.to_vec(),
+            where_clauses: where_clauses.to_vec(),
+            where_params: where_params.to_vec(),
+            order: order_fields.to_vec(),
+            limit: limit_val,
+            offset: offset_val,
+            joins: join_clauses.to_vec(),
+            group: group_fields.to_vec(),
+            having: having_clauses.to_vec(),
+            having_params: having_params.to_vec(),
+            fragments: fragment_parts.to_vec(),
+            fragment_params: fragment_params.to_vec(),
+        };
+        select_sql(&parts, None)
+    }
 
     #[test]
     fn test_select_all_from_table() {

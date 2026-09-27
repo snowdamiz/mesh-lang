@@ -24,11 +24,13 @@
 //! | 12   |  96    | fragment_params | *mut u8 (List<String>) |
 //! | 13   | 104    | select_params   | *mut u8 (List<String>) |
 
-use crate::collections::list::{mesh_list_append, mesh_list_get, mesh_list_length, mesh_list_new};
+use crate::collections::list::{
+    list_strings, mesh_list_append, mesh_list_get, mesh_list_length, mesh_list_new,
+};
 use crate::db::expr::{clone_expr, serialize_expr};
 use crate::gc::mesh_gc_alloc_actor;
+use crate::string::mesh_str;
 use crate::string::text_of;
-use crate::string::{mesh_str, MeshString};
 
 // ── Constants ────────────────────────────────────────────────────────
 
@@ -61,7 +63,6 @@ unsafe fn query_set(q: *mut u8, slot: usize, val: *mut u8) {
     *(q.add(slot * 8) as *mut *mut u8) = val;
 }
 
-#[allow(dead_code)]
 unsafe fn query_get_int(q: *mut u8, slot: usize) -> i64 {
     *(q.add(slot * 8) as *mut i64)
 }
@@ -70,12 +71,46 @@ unsafe fn query_set_int(q: *mut u8, slot: usize, val: i64) {
     *(q.add(slot * 8) as *mut i64) = val;
 }
 
-// ── String helpers ───────────────────────────────────────────────────
+/// A Query's clauses, read out of its slots for the SQL builder (repo.rs).
+#[derive(Clone, Debug)]
+pub(crate) struct QueryParts {
+    pub(crate) source: String,
+    pub(crate) select: Vec<String>,
+    pub(crate) select_params: Vec<String>,
+    pub(crate) where_clauses: Vec<String>,
+    pub(crate) where_params: Vec<String>,
+    pub(crate) order: Vec<String>,
+    /// -1: no LIMIT.
+    pub(crate) limit: i64,
+    /// -1: no OFFSET.
+    pub(crate) offset: i64,
+    pub(crate) joins: Vec<String>,
+    pub(crate) group: Vec<String>,
+    pub(crate) having: Vec<String>,
+    pub(crate) having_params: Vec<String>,
+    pub(crate) fragments: Vec<String>,
+    pub(crate) fragment_params: Vec<String>,
+}
 
-/// Concatenate two MeshString pointers, returning a new MeshString as *mut u8.
-#[allow(dead_code)]
-unsafe fn mesh_concat(a: *mut u8, b: *mut u8) -> *mut u8 {
-    crate::string::mesh_string_concat(a as *const MeshString, b as *const MeshString) as *mut u8
+/// The clauses of the Query `q`.
+pub(crate) unsafe fn query_parts(q: *mut u8) -> QueryParts {
+    let strings = |slot| list_strings(query_get(q, slot));
+    QueryParts {
+        source: text_of(query_get(q, SLOT_SOURCE)).to_string(),
+        select: strings(SLOT_SELECT),
+        select_params: strings(SLOT_SELECT_PARAMS),
+        where_clauses: strings(SLOT_WHERE_CLAUSES),
+        where_params: strings(SLOT_WHERE_PARAMS),
+        order: strings(SLOT_ORDER),
+        limit: query_get_int(q, SLOT_LIMIT),
+        offset: query_get_int(q, SLOT_OFFSET),
+        joins: strings(SLOT_JOIN),
+        group: strings(SLOT_GROUP),
+        having: strings(SLOT_HAVING_CLAUSES),
+        having_params: strings(SLOT_HAVING_PARAMS),
+        fragments: strings(SLOT_FRAGMENT_PARTS),
+        fragment_params: strings(SLOT_FRAGMENT_PARAMS),
+    }
 }
 
 // ── Atom-to-SQL mapping ──────────────────────────────────────────────
