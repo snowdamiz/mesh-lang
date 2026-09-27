@@ -192,13 +192,17 @@ unsafe fn append_builder(builder: &mut MeshBytesBuilder, input: &[u8]) -> Result
     Ok(())
 }
 
+fn builder_error(error: BuilderError) -> *mut MeshResult {
+    match error {
+        BuilderError::Invalid => binary_error(BinaryErrorTag::InvalidLength),
+        BuilderError::Limit => binary_error(BinaryErrorTag::OutputTooLarge),
+    }
+}
+
 fn write_builder(pointer: *mut MeshBytesBuilder, input: &[u8]) -> *mut MeshResult {
     with_live_builder(pointer, |builder| unsafe { append_builder(builder, input) })
         .map(|()| alloc_result(0, ptr::null_mut()))
-        .unwrap_or_else(|builder_error| match builder_error {
-            BuilderError::Invalid => binary_error(BinaryErrorTag::InvalidLength),
-            BuilderError::Limit => binary_error(BinaryErrorTag::OutputTooLarge),
-        })
+        .unwrap_or_else(builder_error)
 }
 
 fn base58_encode(input: &[u8]) -> String {
@@ -259,9 +263,9 @@ fn base58_decode(input: &str) -> Result<Vec<u8>, ()> {
 /// A null `data` pointer is valid only when `len` is zero.
 #[no_mangle]
 pub extern "C" fn mesh_bytes_new(data: *const u8, len: u64) -> *mut MeshBytes {
-    let Ok(len) = usize::try_from(len) else {
-        return ptr::null_mut();
-    };
+    // No wider than a usize on the 64-bit targets the runtime builds for;
+    // anywhere else, a length past usize is refused like one past isize.
+    let len = usize::try_from(len).unwrap_or(usize::MAX);
     if data.is_null() && len != 0 {
         return ptr::null_mut();
     }
@@ -364,26 +368,16 @@ pub extern "C" fn mesh_bytes_builder_write_bytes(
 
 #[no_mangle]
 pub extern "C" fn mesh_bytes_builder_finish(builder: *mut u8) -> *mut MeshResult {
+    // Copied out first: the Bytes cannot be allocated while the builder's
+    // actor is locked.
     let finished = with_live_builder(builder.cast(), |builder| {
-        let mut bytes = Vec::new();
-        bytes
-            .try_reserve_exact(builder.len as usize)
-            .map_err(|_| BuilderError::Limit)?;
-        unsafe {
-            bytes.extend_from_slice(std::slice::from_raw_parts(
-                builder.data_ptr(),
-                builder.len as usize,
-            ))
-        };
+        let bytes = unsafe { std::slice::from_raw_parts(builder.data_ptr(), builder.len as usize) };
         builder.finished = 1;
-        Ok(bytes)
+        Ok(bytes.to_vec())
     });
     finished
         .map(|bytes| ok_bytes(&bytes))
-        .unwrap_or_else(|builder_error| match builder_error {
-            BuilderError::Invalid => binary_error(BinaryErrorTag::InvalidLength),
-            BuilderError::Limit => binary_error(BinaryErrorTag::OutputTooLarge),
-        })
+        .unwrap_or_else(builder_error)
 }
 
 #[no_mangle]
@@ -391,19 +385,15 @@ pub extern "C" fn mesh_bytes_from_list(values: *mut u8) -> *mut MeshResult {
     if values.is_null() {
         return err_result("invalid byte list");
     }
-    let len = mesh_list_length(values);
-    let Ok(len) = usize::try_from(len) else {
-        return err_result("byte length overflow");
-    };
+    // A list's length is never negative, and one that fits in memory fits
+    // a Bytes: `allocate` refuses only lengths past isize::MAX.
+    let len = mesh_list_length(values) as usize;
     for index in 0..len {
         if mesh_list_get(values, index as i64) > u8::MAX as u64 {
             return err_result("byte value out of range");
         }
     }
     let bytes = allocate(len);
-    if bytes.is_null() {
-        return err_result("byte length overflow");
-    }
     unsafe {
         for index in 0..len {
             *(*bytes).data_ptr_mut().add(index) = mesh_list_get(values, index as i64) as u8;
@@ -715,17 +705,11 @@ pub extern "C" fn mesh_bytes_write_u16_be(value: i64) -> *mut MeshResult {
 
 #[no_mangle]
 pub extern "C" fn mesh_bytes_write_u32_be(value: *const MeshWideNum) -> *mut MeshResult {
-    if value.is_null() {
-        return err_result("invalid unsigned integer");
-    }
     unsafe { write_uint(mesh_u64_value(value), 4, true) }
 }
 
 #[no_mangle]
 pub extern "C" fn mesh_bytes_write_u64_be(value: *const MeshWideNum) -> *mut MeshResult {
-    if value.is_null() {
-        return err_result("invalid unsigned integer");
-    }
     unsafe { write_uint(mesh_u64_value(value), 8, true) }
 }
 
@@ -870,6 +854,145 @@ mod tests {
             mesh_bytes_copy_to(ptr::null(), 0, destination.as_mut_ptr(), 1),
             -1
         );
+    }
+
+    fn slice_of<'a>(bytes: *const MeshBytes) -> &'a [u8] {
+        unsafe { (*bytes).as_slice() }
+    }
+
+    fn accepted(result: *mut MeshResult) -> *mut u8 {
+        let result = unsafe { &*result };
+        assert_eq!(result.tag, 0, "expected Ok");
+        result.value
+    }
+
+    fn accepted_bytes<'a>(result: *mut MeshResult) -> &'a [u8] {
+        slice_of(accepted(result).cast())
+    }
+
+    fn text<'a>(value: *mut MeshString) -> &'a str {
+        unsafe { (*value).as_str() }
+    }
+
+    /// Every constructor, accessor and codec returns what it was given back
+    /// in its own form, and refuses the input that has none.
+    #[test]
+    fn values_round_trip_through_every_codec() {
+        mesh_rt_init();
+        let bytes = mesh_bytes_copy_from([1, 2, 0xff].as_ptr(), 3);
+        assert_eq!(slice_of(mesh_bytes_empty()), [] as [u8; 0]);
+        let list = mesh_bytes_to_list(bytes);
+        assert_eq!(accepted_bytes(mesh_bytes_from_list(list)), [1, 2, 0xff]);
+        assert_eq!(accepted_bytes(mesh_bytes_repeat(7, 3)), [7, 7, 7]);
+        assert_eq!(mesh_bytes_length(bytes), 3);
+        assert_eq!(
+            unsafe { *accepted(mesh_bytes_get(bytes, 2)).cast::<i64>() },
+            0xff
+        );
+        for index in [-1, 3] {
+            assert_eq!(
+                refused(mesh_bytes_get(bytes, index)),
+                "byte index out of bounds"
+            );
+        }
+        assert_eq!(accepted_bytes(mesh_bytes_slice(bytes, 1, 2)), [2, 0xff]);
+        let joined = mesh_bytes_concat(bytes, bytes);
+        assert_eq!(accepted_bytes(joined), [1, 2, 0xff, 1, 2, 0xff]);
+        assert_eq!(mesh_bytes_secure_equals(bytes, bytes), 1);
+
+        let hello = mesh_bytes_from_utf8(mesh_str("héllo"));
+        assert_eq!(text(accepted(mesh_bytes_to_utf8(hello)).cast()), "héllo");
+        assert_eq!(refused(mesh_bytes_to_utf8(bytes)), "invalid utf-8");
+        assert_eq!(text(mesh_bytes_to_base64(bytes)), "AQL/");
+        for encoded in ["AQL/", "AQ", "AQ=="] {
+            let decoded = mesh_bytes_from_base64(mesh_str(encoded));
+            assert_eq!(accepted_bytes(decoded)[0], 1, "{encoded}");
+        }
+        assert_eq!(
+            refused(mesh_bytes_from_base64(mesh_str("A"))),
+            "invalid base64"
+        );
+        assert_eq!(
+            refused(mesh_bytes_from_base58(mesh_str("0"))),
+            "invalid base58"
+        );
+        assert_eq!(text(mesh_bytes_to_hex(bytes)), "0102ff");
+        assert_eq!(
+            accepted_bytes(mesh_bytes_from_hex(mesh_str("0102FF"))),
+            [1, 2, 0xff]
+        );
+
+        let read = mesh_bytes_read_uint_le(bytes, 1, 2);
+        assert_eq!(text(accepted(read).cast()), "65282");
+        for (offset, width) in [(-1, 1), (0, 3)] {
+            assert_eq!(
+                refused(mesh_bytes_read_uint_le(bytes, offset, width)),
+                "invalid unsigned integer width or offset"
+            );
+        }
+        assert_eq!(
+            refused(mesh_bytes_read_uint_le(bytes, 0, 4)),
+            "unsigned integer read out of bounds"
+        );
+        assert_eq!(accepted_bytes(mesh_bytes_write_u16_be(0x0102)), [1, 2]);
+        let large = mesh_u64_new(1 << 32);
+        assert_eq!(
+            refused(mesh_bytes_write_u32_be(large)),
+            "unsigned integer does not fit width"
+        );
+        assert_eq!(
+            accepted_bytes(mesh_bytes_write_u32_be(mesh_u64_new(5))),
+            [0, 0, 0, 5]
+        );
+        assert_eq!(accepted_bytes(mesh_bytes_write_u64_be(large))[3], 1);
+        let written = mesh_bytes_write_uint_le(mesh_str("258"), 2);
+        assert_eq!(accepted_bytes(written), [2, 1]);
+    }
+
+    /// A builder takes writes up to its limit, finishes once, and refuses
+    /// anything that is not a live, unfinished builder of the calling actor.
+    #[test]
+    fn a_builder_writes_up_to_its_limit_and_finishes_once() {
+        let off_actor = MeshBytesBuilder {
+            magic: BYTES_BUILDER_MAGIC,
+            len: 0,
+            maximum: 4,
+            finished: 0,
+            _padding: [0; 7],
+        };
+        let foreign = (&off_actor as *const MeshBytesBuilder)
+            .cast_mut()
+            .cast::<u8>();
+        mesh_rt_init();
+        assert_eq!(
+            refused_as(mesh_bytes_builder_write_u8(foreign, 1)),
+            BinaryErrorTag::InvalidLength as u8
+        );
+        let written = crate::secret::as_test_actor(|_| {
+            let builder = accepted(mesh_bytes_builder_new(4));
+            accepted(mesh_bytes_builder_write_u8(builder, 1));
+            accepted(mesh_bytes_builder_write_u16_be(builder, 0x0203));
+            assert_eq!(
+                refused_as(mesh_bytes_builder_write_u8(builder, 256)),
+                BinaryErrorTag::InvalidValue as u8
+            );
+            assert_eq!(
+                refused_as(mesh_bytes_builder_write_u32_be(builder, 5)),
+                BinaryErrorTag::OutputTooLarge as u8
+            );
+            let four = mesh_bytes_copy_from([4].as_ptr(), 1);
+            accepted(mesh_bytes_builder_write_bytes(builder, four));
+            let written = accepted_bytes(mesh_bytes_builder_finish(builder)).to_vec();
+            for refusal in [
+                mesh_bytes_builder_write_u8(builder, 1),
+                mesh_bytes_builder_finish(builder),
+                mesh_bytes_builder_write_u8(foreign, 1),
+            ] {
+                assert_eq!(refused_as(refusal), BinaryErrorTag::InvalidLength as u8);
+            }
+            written
+        });
+        assert_eq!(written, [1, 2, 3, 4]);
     }
     use rand::{rngs::StdRng, Rng, SeedableRng};
     use std::hint::black_box;
