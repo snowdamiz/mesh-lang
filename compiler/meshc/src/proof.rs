@@ -94,9 +94,127 @@ fn time_scale(requested: Option<&str>, cores: usize) -> u32 {
     }
 }
 
-/// A deadline for `timeout` worth of work, stretched for a slow machine.
-fn proof_deadline(timeout: Duration) -> Instant {
-    Instant::now() + timeout * proof_time_scale()
+/// Everything the Docker proof does outside itself: run a command (Docker,
+/// git, cargo), ask a controller for its runtime or continuity, send HTTP
+/// to a gateway, spawn a thread, and wait. The proof runs against local
+/// Docker; its tests put a scripted cluster with a clock of its own here.
+trait ProofWorld: Send + Sync {
+    /// Runs `program` in `dir` with `env` added to the environment.
+    fn run(
+        &self,
+        program: &str,
+        args: &[&str],
+        dir: &Path,
+        env: &BTreeMap<String, &str>,
+    ) -> std::io::Result<Output>;
+    fn runtime(&self, target: &str, timeout: Duration) -> Result<OperatorRuntimeSnapshot, String>;
+    fn continuity(&self, target: &str, timeout: Duration) -> Result<ContinuityEvidence, String>;
+    fn http(
+        &self,
+        port: u16,
+        method: &str,
+        path: &str,
+        body: &str,
+        headers: &[(&str, &str)],
+    ) -> Result<HttpResponse, String>;
+    /// Starts `work` on a thread of its own with `stack_size` bytes of
+    /// stack, as the burst's requests run.
+    fn spawn(
+        &self,
+        name: String,
+        stack_size: usize,
+        work: Box<dyn FnOnce() + Send>,
+    ) -> std::io::Result<thread::JoinHandle<()>>;
+    fn now(&self) -> Instant;
+    /// A deadline for `timeout` worth of work, stretched for a slow machine.
+    fn deadline(&self, timeout: Duration) -> Instant;
+    fn pause(&self, duration: Duration);
+}
+
+/// The proof's world: this machine's Docker and the cluster it runs.
+struct LocalDocker;
+
+impl ProofWorld for LocalDocker {
+    fn run(
+        &self,
+        program: &str,
+        args: &[&str],
+        dir: &Path,
+        env: &BTreeMap<String, &str>,
+    ) -> std::io::Result<Output> {
+        Command::new(program)
+            .args(args)
+            .current_dir(dir)
+            .envs(env)
+            .stdin(Stdio::null())
+            .output()
+    }
+
+    fn runtime(&self, target: &str, timeout: Duration) -> Result<OperatorRuntimeSnapshot, String> {
+        query_operator_runtime_remote(target, COOKIE, timeout).map_err(|error| error.to_string())
+    }
+
+    fn continuity(&self, target: &str, timeout: Duration) -> Result<ContinuityEvidence, String> {
+        query_operator_continuity_list_remote(target, COOKIE, Some(2_000), timeout)
+            .map(|list| ContinuityEvidence::of(&list))
+            .map_err(|error| error.to_string())
+    }
+
+    fn http(
+        &self,
+        port: u16,
+        method: &str,
+        path: &str,
+        body: &str,
+        headers: &[(&str, &str)],
+    ) -> Result<HttpResponse, String> {
+        http_request(port, method, path, body, headers)
+    }
+
+    fn spawn(
+        &self,
+        name: String,
+        stack_size: usize,
+        work: Box<dyn FnOnce() + Send>,
+    ) -> std::io::Result<thread::JoinHandle<()>> {
+        thread::Builder::new()
+            .name(name)
+            .stack_size(stack_size)
+            .spawn(work)
+    }
+
+    fn now(&self) -> Instant {
+        Instant::now()
+    }
+
+    fn deadline(&self, timeout: Duration) -> Instant {
+        Instant::now() + timeout * proof_time_scale()
+    }
+
+    fn pause(&self, duration: Duration) {
+        thread::park_timeout(duration);
+    }
+}
+
+/// Tries `attempt` every `interval` until it succeeds or `timeout` has
+/// passed, when the error is the last attempt's.
+fn poll<T>(
+    world: &dyn ProofWorld,
+    timeout: Duration,
+    interval: Duration,
+    mut attempt: impl FnMut() -> Result<T, String>,
+) -> Result<T, String> {
+    let deadline = world.deadline(timeout);
+    loop {
+        let last = match attempt() {
+            Ok(value) => return Ok(value),
+            Err(last) => last,
+        };
+        world.pause(interval);
+        if world.now() >= deadline {
+            return Err(last);
+        }
+    }
 }
 
 #[derive(Subcommand, Debug)]
@@ -255,6 +373,7 @@ fn run_autonomous_chaos(args: AutonomousChaosArgs) -> Result<(), String> {
 }
 
 struct ProofHarness {
+    world: Arc<dyn ProofWorld>,
     root: PathBuf,
     compose_file: PathBuf,
     /// Where instrumented containers write coverage profiles
@@ -401,18 +520,11 @@ impl ProofHarness {
         environment
     }
 
-    fn command(&self, program: &str, args: &[&str]) -> Result<Output, String> {
-        Command::new(program)
-            .args(args)
-            .current_dir(&self.root)
-            .envs(self.proof_environment())
-            .stdin(Stdio::null())
-            .output()
-            .map_err(|error| format!("proof_command_start_failed:{program}:{error}"))
-    }
-
     fn checked(&self, program: &str, args: &[&str]) -> Result<String, String> {
-        let output = self.command(program, args)?;
+        let output = self
+            .world
+            .run(program, args, &self.root, &self.proof_environment())
+            .map_err(|error| format!("proof_command_start_failed:{program}:{error}"))?;
         if !output.status.success() {
             return Err(format!(
                 "proof_command_failed:{} {}\nstdout={}\nstderr={}",
@@ -817,6 +929,7 @@ fn run_docker_autoscaling(args: DockerAutoscalingArgs) -> Result<(), String> {
         }
     }
     let mut harness = ProofHarness {
+        world: Arc::new(LocalDocker),
         compose_file: root.join("proof/docker-autoscaling/docker-compose.yml"),
         coverage_dir,
         root,
@@ -912,6 +1025,7 @@ fn run_proof(
     no_build: bool,
     connection_file: Option<&Path>,
 ) -> Result<(), String> {
+    let world = Arc::clone(&harness.world);
     if connection_file.is_none() {
         let snapshot_resume = mesh_rt::prove_interrupted_snapshot_resume()?;
         harness.write(
@@ -999,10 +1113,11 @@ fn run_proof(
         serde_json::to_vec_pretty(&mesh_versions).expect("serialize proof software versions"),
     )?;
     let _ = harness.compose(&["up", "-d", "--remove-orphans"])?;
-    wait_for_http(18081, "/health", Duration::from_secs(180))?;
-    wait_for_http(18082, "/health", Duration::from_secs(180))?;
+    wait_for_http(&*world, 18081, "/health", Duration::from_secs(180))?;
+    wait_for_http(&*world, 18082, "/health", Duration::from_secs(180))?;
     let mut controller_target = "controller1@127.0.0.1:14371".to_string();
     let baseline = wait_for_runtime(
+        &*world,
         &controller_target,
         MIN_WORKERS as usize,
         Duration::from_secs(90),
@@ -1026,13 +1141,14 @@ fn run_proof(
         return Ok(());
     }
 
-    let acknowledged_mutations = seed_postgres_mutations()?;
+    let acknowledged_mutations = seed_postgres_mutations(&*world)?;
     // Keep policy pressure active through worker replacement and controller
     // failover. Docker creates workers sequentially, so a short fixed burst can
     // end while max-capacity workers are still warming and accidentally turn
     // the crash-replacement assertion into a race with scale-down.
-    let load = start_load();
+    let load = start_load(&world);
     let (peak, initial_desired) = wait_for_runtime_desired(
+        &*world,
         &controller_target,
         |workers| workers > MIN_WORKERS,
         Duration::from_secs(30),
@@ -1052,13 +1168,14 @@ fn run_proof(
         initial_peak_managed.max(1),
         Duration::from_secs(90),
     )?;
-    let (peak, desired) = wait_for_stable_runtime(&controller_target, Duration::from_secs(120))?;
+    let (peak, desired) =
+        wait_for_stable_runtime(&*world, &controller_target, Duration::from_secs(120))?;
     let peak_managed = desired.saturating_sub(MIN_WORKERS) as usize;
     harness.write(
         "capacity-peak-ready.json",
         serde_json::to_vec_pretty(&peak).expect("serialize ready peak"),
     )?;
-    let concurrent_burst = run_concurrent_remote_burst(&controller_target, 1_000)?;
+    let concurrent_burst = run_concurrent_remote_burst(&world, &controller_target, 1_000)?;
     harness.write(
         "concurrent-1000-summary.json",
         serde_json::to_vec_pretty(&concurrent_burst).expect("serialize concurrent request summary"),
@@ -1099,6 +1216,7 @@ fn run_proof(
         .ok_or_else(|| "proof_runtime_desired_commit_missing".to_string())?;
     let committed_index = desired_entry.index;
     let consensus_before = wait_for_consensus_applied(
+        &*world,
         "controller1@127.0.0.1:14371",
         committed_index,
         Duration::from_secs(30),
@@ -1137,6 +1255,7 @@ fn run_proof(
     // comparing those later containers with the earlier readiness snapshot is
     // an evidence race rather than a metadata violation.
     let operations = wait_for_committed_managed_operations(
+        &*world,
         &controller_target,
         &managed_peak,
         &harness.cluster_id,
@@ -1187,6 +1306,7 @@ fn run_proof(
         .map(|node| node.node_id.clone())
         .collect();
     let peak_continuity = wait_for_routing_evidence(
+        &*world,
         &controller_target,
         &dynamic_workers,
         Duration::from_secs(30),
@@ -1194,8 +1314,7 @@ fn run_proof(
     let peak_routing_counts = pressure_routing_counts(&peak_continuity);
     harness.write(
         "continuity-peak.json",
-        serde_json::to_vec_pretty(&continuity_list_json(&peak_continuity))
-            .expect("serialize peak continuity"),
+        serde_json::to_vec_pretty(&peak_continuity.json()).expect("serialize peak continuity"),
     )?;
     harness.write(
         "routing-counts-peak.json",
@@ -1222,7 +1341,7 @@ fn run_proof(
     );
 
     let _ = harness.compose(&["restart", "docker-driver"])?;
-    wait_for_driver_recovery(&controller_target, Duration::from_secs(45))?;
+    wait_for_driver_recovery(&*world, &controller_target, Duration::from_secs(45))?;
     harness
         .assertions
         .insert("docker_driver_restart_recovered".to_string(), true);
@@ -1241,13 +1360,14 @@ fn run_proof(
     // fault stops a second after it starts, so the count alone can be met by a
     // doomed container. Wait until the replacement serves and reconcile is
     // idle; otherwise the failover check below watches it being replaced.
-    wait_for_stable_runtime(&controller_target, Duration::from_secs(120))?;
+    wait_for_stable_runtime(&*world, &controller_target, Duration::from_secs(120))?;
     harness
         .assertions
         .insert("killed_worker_replaced".to_string(), true);
 
     let _ = harness.compose(&["kill", "controller1"])?;
     let (failover_target, failover_runtime) = wait_for_autonomous_leader(
+        &*world,
         &["controller2@127.0.0.1:14372", "controller3@127.0.0.1:14373"],
         Duration::from_secs(60),
     )?;
@@ -1258,11 +1378,13 @@ fn run_proof(
         .ok_or_else(|| "proof_failover_consensus_missing".to_string())?;
     let failover_index = failover_consensus.last_applied_log.unwrap_or(0);
     let consensus_after_controller2 = wait_for_consensus_applied(
+        &*world,
         "controller2@127.0.0.1:14372",
         failover_index,
         Duration::from_secs(30),
     )?;
     let consensus_after_controller3 = wait_for_consensus_applied(
+        &*world,
         "controller3@127.0.0.1:14373",
         failover_index,
         Duration::from_secs(30),
@@ -1293,7 +1415,7 @@ fn run_proof(
             }),
     );
     let managed_before_failover_settle = managed_running_count(harness)?;
-    thread::park_timeout(Duration::from_secs(2));
+    world.pause(Duration::from_secs(2));
     let managed_after_failover_settle = managed_running_count(harness)?;
     harness.assertions.insert(
         "controller_failover_created_no_duplicate_capacity".to_string(),
@@ -1326,24 +1448,23 @@ fn run_proof(
         load_summary.successes > 0
             && load_summary.latency_p99_millis <= FAILURE_LOAD_P99_BUDGET_MILLIS,
     );
-    let service_after_failover = wait_for_http(18081, "/proof/pressure", Duration::from_secs(30))
-        .is_ok()
-        && wait_for_http(18082, "/proof/pressure", Duration::from_secs(30)).is_ok();
+    let service_after_failover = [18081, 18082].into_iter().all(|port| {
+        wait_for_http(&*world, port, "/proof/pressure", Duration::from_secs(30)).is_ok()
+    });
     harness.assertions.insert(
         "controller_failover_preserved_service".to_string(),
         service_after_failover,
     );
 
     let (final_snapshot, drain_snapshot, drain_load) = match wait_for_runtime_scale_down(
+        &world,
         &controller_target,
         MIN_WORKERS,
         RUNTIME_SCALE_DOWN_PROOF_TIMEOUT,
     ) {
         Ok(result) => result,
         Err(error) => {
-            if let Ok(snapshot) =
-                query_operator_runtime_remote(&controller_target, COOKIE, Duration::from_secs(3))
-            {
+            if let Ok(snapshot) = world.runtime(&controller_target, Duration::from_secs(3)) {
                 harness.write(
                     "capacity-scale-down-timeout.json",
                     serde_json::to_vec_pretty(&snapshot)
@@ -1403,17 +1524,12 @@ fn run_proof(
         "drain-load-summary.json",
         serde_json::to_vec_pretty(&drain_load).expect("serialize drain load summary"),
     )?;
-    let final_continuity = query_operator_continuity_list_remote(
-        &controller_target,
-        COOKIE,
-        Some(2_000),
-        Duration::from_secs(5),
-    )
-    .map_err(|error| format!("proof_final_continuity_query_failed:{error}"))?;
+    let final_continuity = world
+        .continuity(&controller_target, Duration::from_secs(5))
+        .map_err(|error| format!("proof_final_continuity_query_failed:{error}"))?;
     harness.write(
         "continuity-final.json",
-        serde_json::to_vec_pretty(&continuity_list_json(&final_continuity))
-            .expect("serialize final continuity"),
+        serde_json::to_vec_pretty(&final_continuity.json()).expect("serialize final continuity"),
     )?;
     let draining_nodes: BTreeSet<String> = drain_snapshot
         .as_ref()
@@ -1440,7 +1556,7 @@ fn run_proof(
                 !draining_nodes.contains(&record.owner_node)
                     && !draining_nodes.contains(&record.execution_node)
                     && record
-                        .replica_nodes()
+                        .replica_nodes
                         .iter()
                         .all(|node| !draining_nodes.contains(node))
             }),
@@ -1519,75 +1635,90 @@ struct BurstIsolationProbe {
     failure_reasons: Vec<String>,
 }
 
+/// The gate a burst's threads wait at, so that every request starts at once.
+type StartGate = Arc<(Mutex<bool>, std::sync::Condvar)>;
+
+fn wait_at(gate: &StartGate) {
+    let (open, signal) = &**gate;
+    let mut allowed = open.lock().unwrap();
+    while !*allowed {
+        allowed = signal.wait(allowed).unwrap();
+    }
+}
+
+fn open(gate: &StartGate) {
+    let (open, signal) = &**gate;
+    *open.lock().unwrap() = true;
+    signal.notify_all();
+}
+
+/// `requests` requests through the gateways at once, and meanwhile one
+/// operator query and a health check of each gateway, which a busy handler
+/// must not starve.
 fn run_concurrent_remote_burst(
+    world: &Arc<dyn ProofWorld>,
     controller_target: &str,
     requests: usize,
 ) -> Result<ConcurrentBurstSummary, String> {
-    let start_gate = Arc::new((Mutex::new(false), std::sync::Condvar::new()));
+    let start_gate: StartGate = Arc::new((Mutex::new(false), std::sync::Condvar::new()));
     let (sender, receiver) = std::sync::mpsc::channel();
-    let mut workers = Vec::with_capacity(requests);
+    let mut workers: Vec<thread::JoinHandle<()>> = Vec::with_capacity(requests + 1);
+    // A thread that cannot start ends the burst: the gate opens for those
+    // waiting, and they finish before the error returns.
+    let mut start = |name: String, stack_size: usize, work: Box<dyn FnOnce() + Send>| {
+        let started = world.spawn(name, stack_size, work).inspect_err(|_| {
+            open(&start_gate);
+            for worker in workers.drain(..) {
+                let _ = worker.join();
+            }
+        })?;
+        workers.push(started);
+        Ok::<(), std::io::Error>(())
+    };
     for index in 0..requests {
-        let worker_start_gate = Arc::clone(&start_gate);
+        let gate = Arc::clone(&start_gate);
         let sender = sender.clone();
-        let worker = thread::Builder::new()
-            .name(format!("mesh-proof-concurrent-{index}"))
-            .stack_size(256 * 1024)
-            .spawn(move || {
+        let world = Arc::clone(world);
+        start(
+            format!("mesh-proof-concurrent-{index}"),
+            256 * 1024,
+            Box::new(move || {
                 let port = if index % 2 == 0 { 18081 } else { 18082 };
-                let (started, signal) = &*worker_start_gate;
-                let mut allowed = started.lock().unwrap();
-                while !*allowed {
-                    allowed = signal.wait(allowed).unwrap();
-                }
-                drop(allowed);
+                wait_at(&gate);
                 let started = Instant::now();
-                let result = http_request(port, "GET", "/proof/pressure", "", &[]);
+                let result = world.http(port, "GET", "/proof/pressure", "", &[]);
                 let elapsed: u64 = started.elapsed().as_millis().try_into().unwrap_or(u64::MAX);
                 let _ = sender.send((result, elapsed));
-            });
-        match worker {
-            Ok(worker) => workers.push(worker),
-            Err(error) => {
-                let (started, signal) = &*start_gate;
-                *started.lock().unwrap() = true;
-                signal.notify_all();
-                for worker in workers {
-                    let _ = worker.join();
-                }
-                return Err(format!("proof_concurrent_thread_start_failed:{error}"));
-            }
-        }
+            }),
+        )
+        .map_err(|error| format!("proof_concurrent_thread_start_failed:{error}"))?;
     }
     drop(sender);
-    let probe_gate = Arc::clone(&start_gate);
+    let (probe_sender, probe_receiver) = std::sync::mpsc::channel();
+    let gate = Arc::clone(&start_gate);
+    let probe_world = Arc::clone(world);
     let controller_target = controller_target.to_string();
-    let isolation_probe = thread::Builder::new()
-        .name("mesh-proof-burst-isolation".to_string())
-        .spawn(move || {
-            let (started, signal) = &*probe_gate;
-            let mut allowed = started.lock().unwrap();
-            while !*allowed {
-                allowed = signal.wait(allowed).unwrap();
-            }
-            drop(allowed);
-
+    // A thread's usual stack: the operator query runs the runtime's client.
+    start(
+        "mesh-proof-burst-isolation".to_string(),
+        2 * 1024 * 1024,
+        Box::new(move || {
+            wait_at(&gate);
+            let world = probe_world;
             let mut failure_reasons = Vec::new();
             let operator_started = Instant::now();
-            let operator_query_succeeded = match query_operator_runtime_remote(
-                &controller_target,
-                COOKIE,
-                Duration::from_secs(3),
-            ) {
-                Ok(snapshot) if !snapshot.nodes.is_empty() => true,
-                Ok(_) => {
-                    failure_reasons.push("operator_query_returned_no_nodes".to_string());
-                    false
-                }
-                Err(error) => {
-                    failure_reasons.push(format!("operator_query_failed:{error}"));
-                    false
-                }
-            };
+            let operator_query_succeeded =
+                match world.runtime(&controller_target, Duration::from_secs(3)) {
+                    Ok(snapshot) if !snapshot.nodes.is_empty() => true,
+                    Ok(_) => {
+                        failure_reasons.push("operator_query_returned_no_nodes".to_string());
+                        false
+                    }
+                    Err(error) => {
+                        failure_reasons.push(format!("operator_query_failed:{error}"));
+                        false
+                    }
+                };
             let operator_query_latency_millis = operator_started
                 .elapsed()
                 .as_millis()
@@ -1598,7 +1729,7 @@ fn run_concurrent_remote_burst(
             let mut gateway_health_max_latency_millis = 0;
             for port in [18081, 18082] {
                 let health_started = Instant::now();
-                match http_request(port, "GET", "/health", "", &[]) {
+                match world.http(port, "GET", "/health", "", &[]) {
                     Ok(response) if response.status == 200 => gateway_health_successes += 1,
                     Ok(response) => failure_reasons.push(format!(
                         "gateway_{port}_health_status_{}:{}",
@@ -1616,29 +1747,17 @@ fn run_concurrent_remote_burst(
                         .unwrap_or(u64::MAX),
                 );
             }
-            BurstIsolationProbe {
+            let _ = probe_sender.send(BurstIsolationProbe {
                 operator_query_succeeded,
                 operator_query_latency_millis,
                 gateway_health_successes,
                 gateway_health_max_latency_millis,
                 failure_reasons,
-            }
-        });
-    let isolation_probe = match isolation_probe {
-        Ok(probe) => probe,
-        Err(error) => {
-            let (started, signal) = &*start_gate;
-            *started.lock().unwrap() = true;
-            signal.notify_all();
-            for worker in workers {
-                let _ = worker.join();
-            }
-            return Err(format!("proof_isolation_probe_thread_start_failed:{error}"));
-        }
-    };
-    let (started, signal) = &*start_gate;
-    *started.lock().unwrap() = true;
-    signal.notify_all();
+            });
+        }),
+    )
+    .map_err(|error| format!("proof_isolation_probe_thread_start_failed:{error}"))?;
+    open(&start_gate);
     let mut keys = BTreeSet::new();
     let mut successes = 0;
     let mut remote_executions = 0;
@@ -1678,8 +1797,8 @@ fn run_concurrent_remote_burst(
             .join()
             .map_err(|_| "proof_concurrent_thread_panicked".to_string())?;
     }
-    let isolation_probe = isolation_probe
-        .join()
+    let isolation_probe = probe_receiver
+        .recv()
         .map_err(|_| "proof_isolation_probe_thread_panicked".to_string())?;
     latencies.sort_unstable();
     Ok(ConcurrentBurstSummary {
@@ -1728,9 +1847,10 @@ impl Drop for RunningLoad {
     }
 }
 
-fn start_load() -> RunningLoad {
+fn start_load(world: &Arc<dyn ProofWorld>) -> RunningLoad {
     let stop = Arc::new(AtomicBool::new(false));
     let thread_stop = Arc::clone(&stop);
+    let world = Arc::clone(world);
     let handle = thread::spawn(move || {
         let requests = Arc::new(AtomicU64::new(0));
         let successes = Arc::new(AtomicU64::new(0));
@@ -1751,12 +1871,13 @@ fn start_load() -> RunningLoad {
             let keys = Arc::clone(&keys);
             let latencies = Arc::clone(&latencies);
             let failure_reasons = Arc::clone(&failure_reasons);
+            let world = Arc::clone(&world);
             workers.push(thread::spawn(move || {
                 let port = if index % 2 == 0 { 18081 } else { 18082 };
                 while !stop.load(Ordering::Relaxed) {
                     requests.fetch_add(1, Ordering::Relaxed);
                     let started = Instant::now();
-                    match http_request(port, "GET", "/proof/pressure", "", &[]) {
+                    match world.http(port, "GET", "/proof/pressure", "", &[]) {
                         Ok(response) if response.status == 200 => {
                             latencies
                                 .lock()
@@ -1898,144 +2019,122 @@ fn generate_proof_mtls() -> Result<(String, String, String, String, String), Str
 }
 
 fn wait_for_runtime(
+    world: &dyn ProofWorld,
     target: &str,
     minimum_nodes: usize,
     timeout: Duration,
 ) -> Result<OperatorRuntimeSnapshot, String> {
-    let deadline = proof_deadline(timeout);
-    let mut last_error = "no observation".to_string();
-    while Instant::now() < deadline {
-        match query_operator_runtime_remote(target, COOKIE, Duration::from_secs(3)) {
-            Ok(snapshot)
-                if snapshot
-                    .nodes
-                    .iter()
-                    .filter(|node| {
-                        node.roles.iter().any(|role| role == "worker") && node.routing_eligible
-                    })
-                    .count()
-                    >= minimum_nodes
-                    && snapshot.telemetry_complete =>
-            {
-                return Ok(snapshot);
-            }
-            Ok(snapshot) => {
-                let workers = snapshot
-                    .nodes
-                    .iter()
-                    .filter(|node| node.roles.iter().any(|role| role == "worker"))
-                    .count();
-                last_error = format!(
-                    "observed_nodes={} observed_workers={workers} telemetry_complete={}",
-                    snapshot.nodes.len(),
-                    snapshot.telemetry_complete
-                );
-            }
-            Err(error) => last_error = error.to_string(),
+    poll(world, timeout, Duration::from_millis(250), || {
+        let snapshot = world.runtime(target, Duration::from_secs(3))?;
+        let workers = || {
+            snapshot
+                .nodes
+                .iter()
+                .filter(|node| node.roles.iter().any(|role| role == "worker"))
+        };
+        if workers().filter(|node| node.routing_eligible).count() >= minimum_nodes
+            && snapshot.telemetry_complete
+        {
+            return Ok(snapshot);
         }
-        thread::park_timeout(Duration::from_millis(250));
-    }
-    Err(format!("proof_runtime_readiness_timeout:{last_error}"))
+        Err(format!(
+            "observed_nodes={} observed_workers={} telemetry_complete={}",
+            snapshot.nodes.len(),
+            workers().count(),
+            snapshot.telemetry_complete
+        ))
+    })
+    .map_err(|last| format!("proof_runtime_readiness_timeout:{last}"))
 }
 
+/// Waits for scaled-up capacity to hold still: every desired worker ready
+/// and reconcile idle, unchanged for two seconds.
 fn wait_for_stable_runtime(
+    world: &dyn ProofWorld,
     target: &str,
     timeout: Duration,
 ) -> Result<(OperatorRuntimeSnapshot, u16), String> {
     const STABLE_FOR: Duration = Duration::from_secs(2);
 
-    let deadline = proof_deadline(timeout);
     let mut stable_since: Option<(Instant, u16)> = None;
-    let mut last = "no runtime snapshot".to_string();
-    while Instant::now() < deadline {
-        match query_operator_runtime_remote(target, COOKIE, Duration::from_secs(3)) {
-            Ok(snapshot) => {
-                let workers: Vec<_> = snapshot
-                    .nodes
+    poll(world, timeout, Duration::from_millis(100), || {
+        let snapshot = world.runtime(target, Duration::from_secs(3)).inspect_err(|_| {
+            stable_since = None;
+        })?;
+        let workers: Vec<_> = snapshot
+            .nodes
+            .iter()
+            .filter(|node| node.roles.iter().any(|role| role == "worker"))
+            .collect();
+        let desired = latest_desired_workers(&snapshot).filter(|desired| {
+            *desired > MIN_WORKERS
+                && snapshot.telemetry_complete
+                && workers.len() == usize::from(*desired)
+                && workers.iter().all(|node| node.routing_eligible)
+                && snapshot.draining_capacity == 0
+                && snapshot
+                    .autonomous
+                    .last_reconcile
+                    .as_ref()
+                    .is_some_and(|reconcile| {
+                        reconcile.desired_workers == *desired
+                            && reconcile.observed_workers == reconcile.desired_workers
+                            && reconcile.drains.is_empty()
+                            && reconcile.ensured.is_empty()
+                            && reconcile.constraints.is_empty()
+                    })
+        });
+        let Some(desired) = desired else {
+            stable_since = None;
+            return Err(format!(
+                "desired={:?}:workers={}:ready={}:states={:?}:draining={}:telemetry_complete={}:last_error={:?}:reconcile={:?}",
+                latest_desired_workers(&snapshot),
+                workers.len(),
+                workers.iter().filter(|node| node.routing_eligible).count(),
+                workers
                     .iter()
-                    .filter(|node| node.roles.iter().any(|role| role == "worker"))
-                    .collect();
-                let desired = latest_desired_workers(&snapshot);
-                let stable = desired.is_some_and(|desired| desired > MIN_WORKERS)
-                    && snapshot.telemetry_complete
-                    && workers.len() == usize::from(desired.unwrap_or_default())
-                    && workers.iter().all(|node| node.routing_eligible)
-                    && snapshot.draining_capacity == 0
-                    && snapshot
-                        .autonomous
-                        .last_reconcile
-                        .as_ref()
-                        .is_some_and(|reconcile| {
-                            Some(reconcile.desired_workers) == desired
-                                && reconcile.observed_workers == reconcile.desired_workers
-                                && reconcile.drains.is_empty()
-                                && reconcile.ensured.is_empty()
-                                && reconcile.constraints.is_empty()
-                        });
-                if stable {
-                    let desired = desired.expect("stable desired capacity");
-                    match stable_since {
-                        Some((since, stable_desired)) if stable_desired == desired => {
-                            if since.elapsed() >= STABLE_FOR {
-                                return Ok((snapshot, desired));
-                            }
-                        }
-                        _ => stable_since = Some((Instant::now(), desired)),
-                    }
-                } else {
-                    stable_since = None;
-                    last = format!(
-                        "desired={desired:?}:workers={}:ready={}:states={:?}:draining={}:telemetry_complete={}:last_error={:?}:reconcile={:?}",
-                        workers.len(),
-                        workers.iter().filter(|node| node.routing_eligible).count(),
-                        workers
-                            .iter()
-                            .map(|node| (&node.node_id, &node.state, node.routing_eligible))
-                            .collect::<Vec<_>>(),
-                        snapshot.draining_capacity,
-                        snapshot.telemetry_complete,
-                        snapshot.autonomous.last_error,
-                        snapshot.autonomous.last_reconcile
-                    );
-                }
-            }
-            Err(error) => {
-                stable_since = None;
-                last = error.to_string();
-            }
+                    .map(|node| (&node.node_id, &node.state, node.routing_eligible))
+                    .collect::<Vec<_>>(),
+                snapshot.draining_capacity,
+                snapshot.telemetry_complete,
+                snapshot.autonomous.last_error,
+                snapshot.autonomous.last_reconcile
+            ));
+        };
+        // Stable since this observation, unless the last one was already
+        // stable at the same capacity.
+        let since = match stable_since {
+            Some((since, stable_desired)) if stable_desired == desired => since,
+            _ => world.now(),
+        };
+        stable_since = Some((since, desired));
+        if world.now() - since >= STABLE_FOR {
+            return Ok((snapshot, desired));
         }
-        thread::park_timeout(Duration::from_millis(100));
-    }
-    Err(format!("proof_runtime_stability_timeout:{last}"))
+        Err(format!("stable_for_less_than={STABLE_FOR:?}:desired={desired}"))
+    })
+    .map_err(|last| format!("proof_runtime_stability_timeout:{last}"))
 }
 
 fn wait_for_consensus_applied(
+    world: &dyn ProofWorld,
     target: &str,
     minimum_log_index: u64,
     timeout: Duration,
 ) -> Result<OperatorRuntimeSnapshot, String> {
-    let deadline = proof_deadline(timeout);
-    let mut last = "consensus snapshot unavailable".to_string();
-    while Instant::now() < deadline {
-        match query_operator_runtime_remote(target, COOKIE, Duration::from_secs(3)) {
-            Ok(snapshot)
-                if snapshot.consensus.as_ref().is_some_and(|consensus| {
-                    consensus.voter_ids.len() == 3
-                        && consensus
-                            .last_applied_log
-                            .is_some_and(|index| index >= minimum_log_index)
-                }) =>
-            {
-                return Ok(snapshot);
-            }
-            Ok(snapshot) => {
-                last = format!("consensus={:?}", snapshot.consensus);
-            }
-            Err(error) => last = error.to_string(),
+    poll(world, timeout, Duration::from_millis(200), || {
+        let snapshot = world.runtime(target, Duration::from_secs(3))?;
+        if snapshot.consensus.as_ref().is_some_and(|consensus| {
+            consensus.voter_ids.len() == 3
+                && consensus
+                    .last_applied_log
+                    .is_some_and(|index| index >= minimum_log_index)
+        }) {
+            return Ok(snapshot);
         }
-        thread::park_timeout(Duration::from_millis(200));
-    }
-    Err(format!("proof_consensus_apply_timeout:{last}"))
+        Err(format!("consensus={:?}", snapshot.consensus))
+    })
+    .map_err(|last| format!("proof_consensus_apply_timeout:{last}"))
 }
 
 fn wait_for_managed_count(
@@ -2043,25 +2142,16 @@ fn wait_for_managed_count(
     expected: usize,
     timeout: Duration,
 ) -> Result<(), String> {
-    let deadline = proof_deadline(timeout);
-    while Instant::now() < deadline {
-        let ids = harness.checked(
-            "docker",
-            &[
-                "ps",
-                "-q",
-                "--filter",
-                &format!("label=mesh.cluster={}", harness.cluster_id),
-                "--filter",
-                "label=mesh.managed=true",
-            ],
-        )?;
-        if ids.lines().filter(|line| !line.is_empty()).count() >= expected {
+    let deadline = harness.world.deadline(timeout);
+    loop {
+        if managed_running_count(harness)? >= expected {
             return Ok(());
         }
-        thread::park_timeout(Duration::from_millis(250));
+        if harness.world.now() >= deadline {
+            return Err("proof_managed_worker_readiness_timeout".to_string());
+        }
+        harness.world.pause(Duration::from_millis(250));
     }
-    Err("proof_managed_worker_readiness_timeout".to_string())
 }
 
 fn managed_running_count(harness: &ProofHarness) -> Result<usize, String> {
@@ -2084,18 +2174,19 @@ fn wait_for_managed_exact(
     expected: usize,
     timeout: Duration,
 ) -> Result<(), String> {
-    let deadline = proof_deadline(timeout);
-    let mut last = usize::MAX;
-    while Instant::now() < deadline {
-        last = managed_running_count(harness)?;
-        if last == expected {
+    let deadline = harness.world.deadline(timeout);
+    loop {
+        let observed = managed_running_count(harness)?;
+        if observed == expected {
             return Ok(());
         }
-        thread::park_timeout(Duration::from_millis(200));
+        if harness.world.now() >= deadline {
+            return Err(format!(
+                "proof_managed_worker_exact_count_timeout:expected={expected}:observed={observed}"
+            ));
+        }
+        harness.world.pause(Duration::from_millis(200));
     }
-    Err(format!(
-        "proof_managed_worker_exact_count_timeout:expected={expected}:observed={last}"
-    ))
 }
 
 fn latest_desired_workers(snapshot: &OperatorRuntimeSnapshot) -> Option<u16> {
@@ -2113,29 +2204,22 @@ fn latest_desired_workers(snapshot: &OperatorRuntimeSnapshot) -> Option<u16> {
 }
 
 fn wait_for_runtime_desired(
+    world: &dyn ProofWorld,
     target: &str,
     predicate: impl Fn(u16) -> bool,
     timeout: Duration,
 ) -> Result<(OperatorRuntimeSnapshot, u16), String> {
-    let deadline = proof_deadline(timeout);
-    let mut last = "no runtime snapshot".to_string();
-    while Instant::now() < deadline {
-        match query_operator_runtime_remote(target, COOKIE, Duration::from_secs(3)) {
-            Ok(snapshot) => {
-                if let Some(desired) = latest_desired_workers(&snapshot) {
-                    if predicate(desired) {
-                        return Ok((snapshot, desired));
-                    }
-                    last = format!("desired={desired}:autonomous={:?}", snapshot.autonomous);
-                } else {
-                    last = format!("desired_missing:autonomous={:?}", snapshot.autonomous);
-                }
-            }
-            Err(error) => last = error.to_string(),
+    poll(world, timeout, Duration::from_millis(150), || {
+        let snapshot = world.runtime(target, Duration::from_secs(3))?;
+        match latest_desired_workers(&snapshot) {
+            Some(desired) if predicate(desired) => Ok((snapshot, desired)),
+            desired => Err(format!(
+                "desired={desired:?}:autonomous={:?}",
+                snapshot.autonomous
+            )),
         }
-        thread::park_timeout(Duration::from_millis(150));
-    }
-    Err(format!("proof_runtime_desired_timeout:{last}"))
+    })
+    .map_err(|last| format!("proof_runtime_desired_timeout:{last}"))
 }
 
 fn successful_driver_operations(
@@ -2155,30 +2239,24 @@ fn successful_driver_operations(
 }
 
 fn wait_for_committed_managed_operations(
+    world: &dyn ProofWorld,
     target: &str,
     inspection: &Value,
     cluster_id: &str,
     timeout: Duration,
 ) -> Result<Vec<mesh_rt::DriverOperation>, String> {
-    let deadline = proof_deadline(timeout);
-    let mut last = "operator runtime unavailable".to_string();
-    while Instant::now() < deadline {
-        match query_operator_runtime_remote(target, COOKIE, Duration::from_secs(3)) {
-            Ok(snapshot) => {
-                let operations = successful_driver_operations(&snapshot);
-                if managed_labels_match_operations(inspection, &operations, cluster_id) {
-                    return Ok(operations);
-                }
-                last = format!(
-                    "managed_labels_not_yet_committed:successful_operations={}",
-                    operations.len()
-                );
-            }
-            Err(error) => last = error.to_string(),
+    poll(world, timeout, Duration::from_millis(100), || {
+        let operations =
+            successful_driver_operations(&world.runtime(target, Duration::from_secs(3))?);
+        if managed_labels_match_operations(inspection, &operations, cluster_id) {
+            return Ok(operations);
         }
-        thread::park_timeout(Duration::from_millis(100));
-    }
-    Err(format!("proof_managed_operation_commit_timeout:{last}"))
+        Err(format!(
+            "managed_labels_not_yet_committed:successful_operations={}",
+            operations.len()
+        ))
+    })
+    .map_err(|last| format!("proof_managed_operation_commit_timeout:{last}"))
 }
 
 fn managed_labels_match_operations(
@@ -2226,12 +2304,12 @@ fn managed_operation_labels_unique(inspection: &Value) -> bool {
 
 const PRESSURE_HANDLER: &str = "Api.Todos.handle_pressure_probe";
 
-fn pressure_routing_counts(list: &OperatorContinuityList) -> BTreeMap<String, u64> {
+fn pressure_routing_counts(list: &ContinuityEvidence) -> BTreeMap<String, u64> {
     let mut counts = BTreeMap::new();
     for record in &list.records {
-        if record.declared_handler_runtime_name() == PRESSURE_HANDLER
-            && record.phase.as_str() == "completed"
-            && record.result.as_str() == "succeeded"
+        if record.handler == PRESSURE_HANDLER
+            && record.phase == "completed"
+            && record.result == "succeeded"
             && !record.execution_node.is_empty()
         {
             *counts.entry(record.execution_node.clone()).or_default() += 1;
@@ -2241,119 +2319,149 @@ fn pressure_routing_counts(list: &OperatorContinuityList) -> BTreeMap<String, u6
 }
 
 fn wait_for_routing_evidence(
+    world: &dyn ProofWorld,
     target: &str,
     dynamic_workers: &BTreeSet<String>,
     timeout: Duration,
-) -> Result<OperatorContinuityList, String> {
-    let deadline = proof_deadline(timeout);
-    let mut last = "continuity unavailable".to_string();
-    while Instant::now() < deadline {
-        match query_operator_continuity_list_remote(
-            target,
-            COOKIE,
-            Some(2_000),
-            Duration::from_secs(3),
-        ) {
-            Ok(list) => {
-                let counts = pressure_routing_counts(&list);
-                let total: u64 = counts.values().sum();
-                let dynamic_received = dynamic_workers
-                    .iter()
-                    .any(|node| counts.get(node).copied().unwrap_or(0) > 0);
-                let constrained = counts.get("worker1@worker1:4370").copied().unwrap_or(0);
-                let larger = counts.get("worker2@worker2:4370").copied().unwrap_or(0);
-                if total >= 12 && dynamic_received && larger > constrained {
-                    return Ok(list);
-                }
-                last = format!(
-                    "records={} total_pressure={total} dynamic_received={dynamic_received} counts={counts:?}",
-                    list.total_records
-                );
-            }
-            Err(error) => last = error.to_string(),
+) -> Result<ContinuityEvidence, String> {
+    poll(world, timeout, Duration::from_millis(200), || {
+        let list = world.continuity(target, Duration::from_secs(3))?;
+        let counts = pressure_routing_counts(&list);
+        let total: u64 = counts.values().sum();
+        let dynamic_received = dynamic_workers
+            .iter()
+            .any(|node| counts.get(node).copied().unwrap_or(0) > 0);
+        let constrained = counts.get("worker1@worker1:4370").copied().unwrap_or(0);
+        let larger = counts.get("worker2@worker2:4370").copied().unwrap_or(0);
+        if total >= 12 && dynamic_received && larger > constrained {
+            return Ok(list);
         }
-        thread::park_timeout(Duration::from_millis(200));
+        Err(format!(
+            "records={} total_pressure={total} dynamic_received={dynamic_received} counts={counts:?}",
+            list.total_records
+        ))
+    })
+    .map_err(|last| format!("proof_routing_evidence_timeout:{last}"))
+}
+
+/// What the proof reads of a controller's continuity list: the records'
+/// evidence, and the fields its assertions check.
+struct ContinuityEvidence {
+    total_records: usize,
+    truncated: bool,
+    records: Vec<RecordEvidence>,
+}
+
+struct RecordEvidence {
+    request_key: String,
+    handler: String,
+    phase: String,
+    result: String,
+    owner_node: String,
+    execution_node: String,
+    replica_nodes: Vec<String>,
+    /// The whole record, as the evidence bundle shows it.
+    json: Value,
+}
+
+impl ContinuityEvidence {
+    fn of(list: &OperatorContinuityList) -> Self {
+        let record = |record: &ContinuityRecord| RecordEvidence {
+            request_key: record.request_key.clone(),
+            handler: record.declared_handler_runtime_name().to_string(),
+            phase: record.phase.as_str().to_string(),
+            result: record.result.as_str().to_string(),
+            owner_node: record.owner_node.clone(),
+            execution_node: record.execution_node.clone(),
+            replica_nodes: record.replica_nodes().to_vec(),
+            json: json!({
+                "request_key": record.request_key,
+                "attempt_id": record.attempt_id,
+                "phase": record.phase.as_str(),
+                "result": record.result.as_str(),
+                "ingress_node": record.ingress_node,
+                "owner_node": record.owner_node,
+                "replica_node": record.replica_node,
+                "replica_nodes": record.replica_nodes(),
+                "acknowledged_replica_nodes": record.acknowledged_replica_nodes(),
+                "replication_count": record.replication_count,
+                "replica_status": record.replica_status.as_str(),
+                "replication_health": record.replication_health.as_str(),
+                "execution_node": record.execution_node,
+                "routed_remotely": record.routed_remotely,
+                "fell_back_locally": record.fell_back_locally,
+                "error": record.error,
+                "declared_handler_runtime_name": record.declared_handler_runtime_name(),
+            }),
+        };
+        ContinuityEvidence {
+            total_records: list.total_records,
+            truncated: list.truncated,
+            records: list.records.iter().map(record).collect(),
+        }
     }
-    Err(format!("proof_routing_evidence_timeout:{last}"))
+
+    fn json(&self) -> Value {
+        json!({
+            "total_records": self.total_records,
+            "truncated": self.truncated,
+            "records": self.records.iter().map(|record| &record.json).collect::<Vec<_>>(),
+        })
+    }
 }
 
-fn continuity_record_json(record: &ContinuityRecord) -> Value {
-    json!({
-        "request_key": record.request_key,
-        "attempt_id": record.attempt_id,
-        "phase": record.phase.as_str(),
-        "result": record.result.as_str(),
-        "ingress_node": record.ingress_node,
-        "owner_node": record.owner_node,
-        "replica_node": record.replica_node,
-        "replica_nodes": record.replica_nodes(),
-        "acknowledged_replica_nodes": record.acknowledged_replica_nodes(),
-        "replication_count": record.replication_count,
-        "replica_status": record.replica_status.as_str(),
-        "replication_health": record.replication_health.as_str(),
-        "execution_node": record.execution_node,
-        "routed_remotely": record.routed_remotely,
-        "fell_back_locally": record.fell_back_locally,
-        "error": record.error,
-        "declared_handler_runtime_name": record.declared_handler_runtime_name(),
-    })
-}
-
-fn continuity_list_json(list: &OperatorContinuityList) -> Value {
-    json!({
-        "total_records": list.total_records,
-        "truncated": list.truncated,
-        "records": list.records.iter().map(continuity_record_json).collect::<Vec<_>>(),
-    })
-}
-
+/// The first of `targets` to lead the autonomous controller, and what it
+/// reported.
 fn wait_for_autonomous_leader(
+    world: &dyn ProofWorld,
     targets: &[&str],
     timeout: Duration,
 ) -> Result<(String, OperatorRuntimeSnapshot), String> {
-    let deadline = proof_deadline(timeout);
-    let mut last = "no candidate".to_string();
-    while Instant::now() < deadline {
+    let leading = |target: &str| {
+        let snapshot = world
+            .runtime(target, Duration::from_secs(3))
+            .map_err(|error| format!("{target}:{error}"))?;
+        if snapshot.autonomous.running
+            && snapshot.autonomous.leader
+            && snapshot
+                .consensus
+                .as_ref()
+                .is_some_and(|consensus| consensus.state == "leader")
+        {
+            return Ok((target.to_string(), snapshot));
+        }
+        Err(format!("{target}:{:?}", snapshot.autonomous))
+    };
+    poll(world, timeout, Duration::from_millis(200), || {
+        let mut last = Err("no candidate".to_string());
         for target in targets {
-            match query_operator_runtime_remote(target, COOKIE, Duration::from_secs(3)) {
-                Ok(snapshot)
-                    if snapshot.autonomous.running
-                        && snapshot.autonomous.leader
-                        && snapshot
-                            .consensus
-                            .as_ref()
-                            .is_some_and(|consensus| consensus.state == "leader") =>
-                {
-                    return Ok(((*target).to_string(), snapshot));
-                }
-                Ok(snapshot) => last = format!("{target}:{:?}", snapshot.autonomous),
-                Err(error) => last = format!("{target}:{error}"),
+            last = leading(target);
+            if last.is_ok() {
+                break;
             }
         }
-        thread::park_timeout(Duration::from_millis(200));
-    }
-    Err(format!("proof_autonomous_leader_timeout:{last}"))
+        last
+    })
+    .map_err(|last| format!("proof_autonomous_leader_timeout:{last}"))
 }
 
-fn wait_for_driver_recovery(target: &str, timeout: Duration) -> Result<(), String> {
-    let deadline = proof_deadline(timeout);
-    let mut last = "runtime unavailable".to_string();
-    while Instant::now() < deadline {
-        match query_operator_runtime_remote(target, COOKIE, Duration::from_secs(3)) {
-            Ok(snapshot)
-                if snapshot.autonomous.running
-                    && snapshot.autonomous.leader
-                    && snapshot.autonomous.last_error.is_none()
-                    && snapshot.autonomous.last_reconcile.is_some() =>
-            {
-                return Ok(());
-            }
-            Ok(snapshot) => last = format!("autonomous={:?}", snapshot.autonomous),
-            Err(error) => last = error.to_string(),
+fn wait_for_driver_recovery(
+    world: &dyn ProofWorld,
+    target: &str,
+    timeout: Duration,
+) -> Result<(), String> {
+    poll(world, timeout, Duration::from_millis(200), || {
+        let autonomous = world.runtime(target, Duration::from_secs(3))?.autonomous;
+        if autonomous.running
+            && autonomous.leader
+            && autonomous.last_error.is_none()
+            && autonomous.last_reconcile.is_some()
+        {
+            return Ok(());
         }
-        thread::park_timeout(Duration::from_millis(200));
-    }
-    Err(format!("proof_driver_restart_recovery_timeout:{last}"))
+        Err(format!("autonomous={autonomous:?}"))
+    })
+    .map_err(|last| format!("proof_driver_restart_recovery_timeout:{last}"))
 }
 
 #[derive(Default, serde::Serialize)]
@@ -2362,13 +2470,18 @@ struct DrainLoadSummary {
     request_keys: Vec<String>,
 }
 
-fn start_drain_continuity_load() -> thread::JoinHandle<DrainLoadSummary> {
-    thread::spawn(|| {
+fn start_drain_continuity_load(
+    world: &Arc<dyn ProofWorld>,
+) -> thread::JoinHandle<DrainLoadSummary> {
+    let world = Arc::clone(world);
+    thread::spawn(move || {
         let mut requests = Vec::new();
         for index in 0..4 {
+            let world = Arc::clone(&world);
             requests.push(thread::spawn(move || {
                 let port = if index % 2 == 0 { 18081 } else { 18082 };
-                http_request(port, "GET", "/proof/pressure", "", &[])
+                world
+                    .http(port, "GET", "/proof/pressure", "", &[])
                     .ok()
                     .filter(|response| response.status == 200)
                     .and_then(|response| {
@@ -2389,7 +2502,12 @@ fn start_drain_continuity_load() -> thread::JoinHandle<DrainLoadSummary> {
     })
 }
 
+/// Waits for capacity to return to `final_desired` workers with reconcile
+/// idle; when a node is first seen draining, starts requests to see where
+/// they go. Returns the final snapshot, the draining one, and those
+/// requests' results.
 fn wait_for_runtime_scale_down(
+    world: &Arc<dyn ProofWorld>,
     target: &str,
     final_desired: u16,
     timeout: Duration,
@@ -2401,75 +2519,68 @@ fn wait_for_runtime_scale_down(
     ),
     String,
 > {
-    let deadline = proof_deadline(timeout);
     let mut draining = None;
     let mut drain_load = None;
-    let mut last = "no runtime snapshot".to_string();
-    while Instant::now() < deadline {
-        match query_operator_runtime_remote(target, COOKIE, Duration::from_secs(3)) {
-            Ok(snapshot) => {
-                if draining.is_none()
-                    && snapshot
-                        .nodes
-                        .iter()
-                        .any(|node| node.state == "draining" && !node.routing_eligible)
-                {
-                    draining = Some(snapshot.clone());
-                    drain_load = Some(start_drain_continuity_load());
-                }
-                let desired = latest_desired_workers(&snapshot);
-                if desired == Some(final_desired)
-                    && snapshot.autonomous.last_error.is_none()
-                    && snapshot
-                        .autonomous
-                        .last_reconcile
-                        .as_ref()
-                        .is_some_and(|reconcile| {
-                            reconcile.desired_workers == final_desired
-                                && reconcile.observed_workers == final_desired
-                                && reconcile.drains.is_empty()
-                        })
-                {
-                    let drain_load_summary = drain_load
-                        .take()
-                        .map(|load| {
-                            load.join()
-                                .map_err(|_| "proof_drain_load_thread_panicked".to_string())
-                        })
-                        .transpose()?
-                        .unwrap_or_default();
-                    return Ok((snapshot, draining, drain_load_summary));
-                }
-                // Lead with the three numbers that decide this wait. They are
-                // all inside the status dump that follows, but finding them
-                // there means reading a struct printed on one line.
-                let observed = snapshot
-                    .autonomous
-                    .last_reconcile
-                    .as_ref()
-                    .map(|reconcile| reconcile.observed_workers);
-                last = format!(
-                    "final_desired={final_desired}:desired={desired:?}:observed={observed:?}:autonomous={:?}",
-                    snapshot.autonomous
-                );
-            }
-            Err(error) => last = error.to_string(),
+    let (snapshot, drain_load) = poll(&**world, timeout, Duration::from_millis(100), || {
+        let snapshot = world.runtime(target, Duration::from_secs(3))?;
+        if draining.is_none()
+            && snapshot
+                .nodes
+                .iter()
+                .any(|node| node.state == "draining" && !node.routing_eligible)
+        {
+            draining = Some(snapshot.clone());
+            drain_load = Some(start_drain_continuity_load(world));
         }
-        thread::park_timeout(Duration::from_millis(100));
-    }
-    Err(format!("proof_runtime_scale_down_timeout:{last}"))
+        let desired = latest_desired_workers(&snapshot);
+        if desired == Some(final_desired)
+            && snapshot.autonomous.last_error.is_none()
+            && snapshot
+                .autonomous
+                .last_reconcile
+                .as_ref()
+                .is_some_and(|reconcile| {
+                    reconcile.desired_workers == final_desired
+                        && reconcile.observed_workers == final_desired
+                        && reconcile.drains.is_empty()
+                })
+        {
+            return Ok((snapshot, drain_load.take()));
+        }
+        // Lead with the three numbers that decide this wait. They are
+        // all inside the status dump that follows, but finding them
+        // there means reading a struct printed on one line.
+        let observed = snapshot
+            .autonomous
+            .last_reconcile
+            .as_ref()
+            .map(|reconcile| reconcile.observed_workers);
+        Err(format!(
+            "final_desired={final_desired}:desired={desired:?}:observed={observed:?}:autonomous={:?}",
+            snapshot.autonomous
+        ))
+    })
+    .map_err(|last| format!("proof_runtime_scale_down_timeout:{last}"))?;
+    let drain_load = drain_load
+        .map(|load| {
+            load.join()
+                .map_err(|_| "proof_drain_load_thread_panicked".to_string())
+        })
+        .transpose()?
+        .unwrap_or_default();
+    Ok((snapshot, draining, drain_load))
 }
 
-fn seed_postgres_mutations() -> Result<u64, String> {
+fn seed_postgres_mutations(world: &dyn ProofWorld) -> Result<u64, String> {
     let mut acknowledged = 0;
     for index in 0..12 {
         let port = if index % 2 == 0 { 18081 } else { 18082 };
         let body = format!("{{\"title\":\"proof-{index}\"}}");
         let idempotency_key = format!("proof-seed-{index}");
-        let deadline = Instant::now() + Duration::from_secs(30);
+        let deadline = world.now() + Duration::from_secs(30);
         let mut last: String;
         loop {
-            match http_request(
+            match world.http(
                 port,
                 "POST",
                 "/todos",
@@ -2495,10 +2606,10 @@ fn seed_postgres_mutations() -> Result<u64, String> {
                 }
                 Err(error) => last = error,
             }
-            if Instant::now() >= deadline {
+            if world.now() >= deadline {
                 return Err(format!("proof_seed_mutation_timeout:{last}"));
             }
-            thread::park_timeout(Duration::from_millis(100));
+            world.pause(Duration::from_millis(100));
         }
     }
     Ok(acknowledged)
@@ -2590,18 +2701,20 @@ fn http_request(
     })
 }
 
-fn wait_for_http(port: u16, path: &str, timeout: Duration) -> Result<(), String> {
-    let deadline = proof_deadline(timeout);
-    let mut last = "not attempted".to_string();
-    while Instant::now() < deadline {
-        match http_request(port, "GET", path, "", &[]) {
-            Ok(response) if response.status == 200 => return Ok(()),
-            Ok(response) => last = format!("status={}", response.status),
-            Err(error) => last = error,
+fn wait_for_http(
+    world: &dyn ProofWorld,
+    port: u16,
+    path: &str,
+    timeout: Duration,
+) -> Result<(), String> {
+    poll(world, timeout, Duration::from_millis(250), || {
+        let response = world.http(port, "GET", path, "", &[])?;
+        if response.status == 200 {
+            return Ok(());
         }
-        thread::park_timeout(Duration::from_millis(250));
-    }
-    Err(format!("proof_http_readiness_timeout:{port}:{last}"))
+        Err(format!("status={}", response.status))
+    })
+    .map_err(|last| format!("proof_http_readiness_timeout:{port}:{last}"))
 }
 
 /// Where a proof writes its evidence: the directory asked for, else one
@@ -2656,6 +2769,9 @@ fn redact(value: &str) -> String {
         .replace(OPERATOR_KEY, "[redacted]")
         .replace("postgres:postgres", "[redacted]")
 }
+
+#[cfg(test)]
+mod scripted;
 
 #[cfg(test)]
 mod tests {
@@ -2772,7 +2888,8 @@ mod tests {
                 );
             }
         });
-        let error = wait_for_http(port, "/health", Duration::from_millis(300)).unwrap_err();
+        let error =
+            wait_for_http(&LocalDocker, port, "/health", Duration::from_millis(300)).unwrap_err();
         assert_eq!(
             error,
             format!("proof_http_readiness_timeout:{port}:status=503")
@@ -2782,10 +2899,12 @@ mod tests {
         let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = closed.local_addr().unwrap().port();
         drop(closed);
-        let error = wait_for_http(port, "/health", Duration::from_millis(100)).unwrap_err();
+        let error =
+            wait_for_http(&LocalDocker, port, "/health", Duration::from_millis(100)).unwrap_err();
         assert!(
-            error.starts_with(&format!("proof_http_readiness_timeout:{port}:"))
-                && !error.ends_with("not attempted"),
+            error.starts_with(&format!(
+                "proof_http_readiness_timeout:{port}:proof_http_connect_failed:"
+            )),
             "{error}"
         );
     }
