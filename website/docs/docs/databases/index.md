@@ -305,7 +305,7 @@ In a fragment, `?` stands for the next parameter (`$1`, `$2`, … name them by p
 | `Expr.call`, `Expr.fn_call` | Function calls with expression arguments |
 | `Expr.add`, `Expr.sub`, `Expr.mul`, `Expr.div` | Arithmetic |
 | `Expr.eq`, `Expr.neq`, `Expr.lt`, `Expr.lte`, `Expr.gt`, `Expr.gte` | Comparisons |
-| `Expr.case`, `Expr.case_when` | Paired conditions/results plus an else expression |
+| `Expr.case`, `Expr.case_when` | Paired conditions/results plus an else expression (lists of different lengths are a panic) |
 | `Expr.coalesce` | First non-null expression |
 | `Expr.excluded` | Refer to an upsert's `EXCLUDED` value (beside it, `Expr.column` names the existing row's) |
 | `Expr.label` | Assign a selected expression's output name |
