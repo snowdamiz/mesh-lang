@@ -6890,11 +6890,29 @@ fn wait_for_startup_convergence(
     }
 
     wait_for_startup_convergence_with(
-        canonical_declared_membership,
+        startup_membership,
         || crate::actor::mesh_timer_sleep(STARTUP_TRIGGER_POLL_MS),
         desired_required_replica_count,
         STARTUP_TRIGGER_MAX_POLLS,
     )
+}
+
+/// Under test, startup work can be made to watch a membership that never
+/// settles: each look finds another peer in it.
+#[cfg(test)]
+static UNSETTLED_STARTUP_MEMBERSHIP: AtomicBool = AtomicBool::new(false);
+
+/// The membership startup work waits to see settle.
+fn startup_membership() -> Vec<String> {
+    #[cfg(test)]
+    if UNSETTLED_STARTUP_MEMBERSHIP.load(Ordering::Acquire) {
+        static LOOKS: AtomicU64 = AtomicU64::new(0);
+        let mut membership = canonical_declared_membership();
+        let look = LOOKS.fetch_add(1, Ordering::Relaxed);
+        membership.push(format!("unsettled-{look}@127.0.0.1:1"));
+        return membership;
+    }
+    canonical_declared_membership()
 }
 
 fn declared_work_placement(
@@ -14684,8 +14702,8 @@ mod tests {
         clear_declared_handler_registry_for_test();
     }
 
-    /// Startup work whose cluster never settles (one peer after another
-    /// coming and going) gives up once its polls run out. Startup work kept
+    /// Startup work whose cluster never settles (another peer in it at each
+    /// look) gives up once its polls run out. Startup work kept
     /// in more than one copy waits out the dispatch window before it runs,
     /// and work a peer owns but will not spawn is rejected with the reason.
     #[test]
@@ -14708,31 +14726,25 @@ mod tests {
         };
 
         register("Startup.unsettled", "Startup__unsettled", 1);
-        let done = AtomicBool::new(false);
-        std::thread::scope(|scope| {
-            scope.spawn(|| {
-                for index in 0.. {
-                    if done.load(Ordering::Acquire) {
-                        break;
-                    }
-                    let peer =
-                        TestPeer::within(&exclusive, &format!("flapping-{index}@127.0.0.1:1"));
-                    std::thread::sleep(Duration::from_millis(20));
-                    drop(peer);
-                }
-            });
-            spawn_startup_work_actor("Startup.unsettled");
-            let key = startup_request_key("Startup.unsettled");
-            let timed_out = await_diagnostic("startup_convergence_timeout", &key);
-            done.store(true, Ordering::Release);
-            assert!(timed_out
-                .metadata
-                .contains(&("saw_peer".to_string(), "true".to_string())));
-            assert_eq!(
-                await_diagnostic("startup_rejected", &key).reason,
-                Some(STARTUP_CONVERGENCE_TIMEOUT.to_string())
-            );
-        });
+        struct Settles;
+        impl Drop for Settles {
+            fn drop(&mut self) {
+                UNSETTLED_STARTUP_MEMBERSHIP.store(false, Ordering::Release);
+            }
+        }
+        UNSETTLED_STARTUP_MEMBERSHIP.store(true, Ordering::Release);
+        let settles = Settles;
+        spawn_startup_work_actor("Startup.unsettled");
+        let key = startup_request_key("Startup.unsettled");
+        let timed_out = await_diagnostic("startup_convergence_timeout", &key);
+        drop(settles);
+        assert!(timed_out
+            .metadata
+            .contains(&("saw_peer".to_string(), "true".to_string())));
+        assert_eq!(
+            await_diagnostic("startup_rejected", &key).reason,
+            Some(STARTUP_CONVERGENCE_TIMEOUT.to_string())
+        );
 
         let peer = TestPeer::within(&exclusive, "startup-replica@127.0.0.1:1");
         report_worker(&peer.session.remote_name, &[]);
