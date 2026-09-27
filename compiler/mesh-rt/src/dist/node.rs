@@ -5014,10 +5014,23 @@ const TLS_CA_DER_B64_ENV: &str = "MESH_TLS_CA_DER_B64";
 const TLS_CERT_DER_B64_ENV: &str = "MESH_TLS_CERT_DER_B64";
 const TLS_KEY_DER_B64_ENV: &str = "MESH_TLS_KEY_DER_B64";
 
+#[cfg(test)]
+thread_local! {
+    /// What `autonomous_mode_requested` answers on this thread, when set: a
+    /// test of an autonomous path cannot set the process's environment
+    /// under the tests running beside it.
+    pub(crate) static AUTONOMOUS_ON_THIS_THREAD: std::cell::Cell<Option<bool>> =
+        const { std::cell::Cell::new(None) };
+}
+
 /// Whether this node runs in autonomous mode: `MESH_CLUSTER_MODE=autonomous`,
 /// the legacy `MESH_AUTONOMOUS_MODE`, or an embedded manifest that enables it.
 /// Every part of the runtime asks here, so they agree.
 pub(crate) fn autonomous_mode_requested() -> bool {
+    #[cfg(test)]
+    if let Some(forced) = AUTONOMOUS_ON_THIS_THREAD.with(std::cell::Cell::get) {
+        return forced;
+    }
     std::env::var("MESH_CLUSTER_MODE")
         .is_ok_and(|value| value.trim().eq_ignore_ascii_case("autonomous"))
         || std::env::var("MESH_AUTONOMOUS_MODE")
@@ -10413,42 +10426,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_heartbeat_ping_pong_wire_format() {
-        use std::io::Cursor;
-
-        // Construct a HEARTBEAT_PING message.
-        let payload: [u8; 8] = [0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE, 0xBA, 0xBE];
-        let mut ping = Vec::with_capacity(9);
-        ping.push(HEARTBEAT_PING);
-        ping.extend_from_slice(&payload);
-
-        // Write and read it back via write_msg/read_msg.
-        let mut buf = Vec::new();
-        write_msg(&mut buf, &ping).unwrap();
-
-        let mut cursor = Cursor::new(&buf);
-        let msg = read_msg(&mut cursor).unwrap();
-
-        assert_eq!(msg.len(), 9);
-        assert_eq!(msg[0], HEARTBEAT_PING);
-        assert_eq!(&msg[1..9], &payload);
-
-        // Construct matching HEARTBEAT_PONG.
-        let mut pong = Vec::with_capacity(9);
-        pong.push(HEARTBEAT_PONG);
-        pong.extend_from_slice(&payload);
-
-        let mut buf = Vec::new();
-        write_msg(&mut buf, &pong).unwrap();
-
-        let mut cursor = Cursor::new(&buf);
-        let msg = read_msg(&mut cursor).unwrap();
-
-        assert_eq!(msg[0], HEARTBEAT_PONG);
-        assert_eq!(&msg[1..9], &payload);
-    }
-
     // -------------------------------------------------------------------
     // Plan 65-03 Task 1: Wire format and message routing unit tests
     // -------------------------------------------------------------------
@@ -10557,7 +10534,7 @@ mod tests {
     #[test]
     fn a_remote_spawn_pid_argument_names_its_node() {
         let tags = [REMOTE_SPAWN_ARG_PID];
-        let unknown = crate::actor::process::ProcessId::from_remote(9, 1, 5);
+        let unknown = crate::actor::process::ProcessId::from_remote(u16::MAX, 1, 5);
         let encoded = encode_remote_spawn_args(&unknown.as_u64().to_le_bytes(), &tags).unwrap();
         assert_eq!(&encoded[3..11], &5u64.to_le_bytes(), "the local id");
         assert_eq!(&encoded[11..], &0u16.to_le_bytes(), "and no node");
@@ -10638,123 +10615,6 @@ mod tests {
     }
 
     #[test]
-    fn test_dist_send_wire_format() {
-        use std::io::Cursor;
-
-        // Test 1: Normal DIST_SEND message with payload
-        let target_pid: u64 = 0x0001_0000_0000_0042; // node_id=1, local pid=0x42
-        let message = b"hello remote actor";
-
-        let mut payload = Vec::new();
-        payload.push(DIST_SEND);
-        payload.extend_from_slice(&target_pid.to_le_bytes());
-        payload.extend_from_slice(message);
-
-        let mut buf = Vec::new();
-        write_msg(&mut buf, &payload).unwrap();
-
-        let mut cursor = Cursor::new(&buf);
-        let msg = read_dist_msg(&mut cursor).unwrap();
-
-        assert_eq!(msg[0], DIST_SEND);
-        let decoded_pid = u64::from_le_bytes(msg[1..9].try_into().unwrap());
-        assert_eq!(decoded_pid, target_pid);
-        assert_eq!(&msg[9..], message);
-
-        // Test 2: Empty message payload (msg_size == 0)
-        let mut payload = Vec::new();
-        payload.push(DIST_SEND);
-        payload.extend_from_slice(&target_pid.to_le_bytes());
-        // No message bytes
-
-        let mut buf = Vec::new();
-        write_msg(&mut buf, &payload).unwrap();
-
-        let mut cursor = Cursor::new(&buf);
-        let msg = read_dist_msg(&mut cursor).unwrap();
-
-        assert_eq!(msg.len(), 9); // tag + 8 bytes pid, no message
-        assert_eq!(msg[0], DIST_SEND);
-        let decoded_pid = u64::from_le_bytes(msg[1..9].try_into().unwrap());
-        assert_eq!(decoded_pid, target_pid);
-
-        // Test 3: Large payload (8KB -- above old 4KB handshake limit)
-        let big_message = vec![0xABu8; 8192];
-        let mut payload = Vec::new();
-        payload.push(DIST_SEND);
-        payload.extend_from_slice(&target_pid.to_le_bytes());
-        payload.extend_from_slice(&big_message);
-
-        let mut buf = Vec::new();
-        write_msg(&mut buf, &payload).unwrap();
-
-        let mut cursor = Cursor::new(&buf);
-        let msg = read_dist_msg(&mut cursor).unwrap();
-
-        assert_eq!(msg[0], DIST_SEND);
-        assert_eq!(&msg[9..], &big_message[..]);
-    }
-
-    #[test]
-    fn test_dist_peer_list_wire_format() {
-        use std::io::Cursor;
-
-        // Test 1: Multiple peers
-        let peers = vec![
-            "alpha@10.0.0.1:9000",
-            "beta@10.0.0.2:9001",
-            "gamma@10.0.0.3:9002",
-        ];
-
-        let mut payload = Vec::new();
-        payload.push(DIST_PEER_LIST);
-        payload.extend_from_slice(&(peers.len() as u16).to_le_bytes());
-        for peer in &peers {
-            let bytes = peer.as_bytes();
-            payload.extend_from_slice(&(bytes.len() as u16).to_le_bytes());
-            payload.extend_from_slice(bytes);
-        }
-
-        let mut buf = Vec::new();
-        write_msg(&mut buf, &payload).unwrap();
-
-        let mut cursor = Cursor::new(&buf);
-        let msg = read_dist_msg(&mut cursor).unwrap();
-
-        assert_eq!(msg[0], DIST_PEER_LIST);
-        let count = u16::from_le_bytes(msg[1..3].try_into().unwrap()) as usize;
-        assert_eq!(count, 3);
-
-        // Parse the peer names back out
-        let mut pos = 3;
-        let mut decoded_peers = Vec::new();
-        for _ in 0..count {
-            let name_len = u16::from_le_bytes(msg[pos..pos + 2].try_into().unwrap()) as usize;
-            pos += 2;
-            let name = std::str::from_utf8(&msg[pos..pos + name_len]).unwrap();
-            decoded_peers.push(name.to_string());
-            pos += name_len;
-        }
-
-        assert_eq!(decoded_peers, peers);
-
-        // Test 2: Empty peer list (count=0)
-        let mut payload = Vec::new();
-        payload.push(DIST_PEER_LIST);
-        payload.extend_from_slice(&0u16.to_le_bytes());
-
-        let mut buf = Vec::new();
-        write_msg(&mut buf, &payload).unwrap();
-
-        let mut cursor = Cursor::new(&buf);
-        let msg = read_dist_msg(&mut cursor).unwrap();
-
-        assert_eq!(msg[0], DIST_PEER_LIST);
-        let count = u16::from_le_bytes(msg[1..3].try_into().unwrap()) as usize;
-        assert_eq!(count, 0);
-    }
-
-    #[test]
     fn test_read_dist_msg_accepts_large_messages() {
         use std::io::Cursor;
 
@@ -10832,162 +10692,1095 @@ mod tests {
         assert!(len >= 0, "list length should be non-negative");
     }
 
-    #[test]
-    fn test_handle_peer_list_parsing_logic() {
-        // Test the peer list wire format parsing logic that handle_peer_list uses.
-        // We verify the parsing inline since handle_peer_list requires NODE_STATE
-        // and spawns threads. This tests the same byte-reading code path.
+    // -------------------------------------------------------------------
+    // What a node does with each message its peer sends
+    // -------------------------------------------------------------------
 
-        let peers = vec![
-            "node_a@10.0.0.1:9000",
-            "node_b@10.0.0.2:9001",
-            "node_c@10.0.0.3:9002",
-        ];
+    use crate::actor::heap::MessageBuffer;
+    use crate::actor::process::{ExitReason, Monitor, Priority, Process, ProcessId, ProcessState};
 
-        // Build the peer list payload (the data AFTER the DIST_PEER_LIST tag)
-        let mut data = Vec::new();
-        data.extend_from_slice(&(peers.len() as u16).to_le_bytes());
-        for peer in &peers {
-            let bytes = peer.as_bytes();
-            data.extend_from_slice(&(bytes.len() as u16).to_le_bytes());
-            data.extend_from_slice(bytes);
-        }
-
-        // Parse using the same logic as handle_peer_list
-        let count = u16::from_le_bytes(data[0..2].try_into().unwrap()) as usize;
-        assert_eq!(count, 3);
-
-        let mut pos = 2;
-        let mut decoded = Vec::new();
-        for _ in 0..count {
-            let name_len = u16::from_le_bytes(data[pos..pos + 2].try_into().unwrap()) as usize;
-            pos += 2;
-            let name = std::str::from_utf8(&data[pos..pos + name_len]).unwrap();
-            decoded.push(name.to_string());
-            pos += name_len;
-        }
-
-        assert_eq!(decoded, peers);
-
-        // Test filtering logic: given a self-name and known-names, filter correctly
-        let self_name = "node_a@10.0.0.1:9000";
-        let known_names: Vec<&str> = vec!["node_b@10.0.0.2:9001"];
-
-        let to_connect: Vec<&str> = decoded
-            .iter()
-            .filter(|name| name.as_str() != self_name)
-            .filter(|name| !known_names.contains(&name.as_str()))
-            .map(|s| s.as_str())
-            .collect();
-
-        // Should only have node_c (node_a is self, node_b is already connected)
-        assert_eq!(to_connect, vec!["node_c@10.0.0.3:9002"]);
-    }
-
-    #[test]
-    fn test_handle_peer_list_empty_data() {
-        // handle_peer_list returns early if data.len() < 2.
-        // Test that the parsing logic handles empty/truncated data gracefully.
-
-        // Empty data: less than 2 bytes
-        let data: &[u8] = &[];
-        assert!(data.len() < 2); // Would cause handle_peer_list to early-return
-
-        // Single byte: still < 2
-        let data: &[u8] = &[0x01];
-        assert!(data.len() < 2);
-
-        // Count=0 peer list: valid but empty
-        let data: &[u8] = &[0x00, 0x00]; // count = 0
-        let count = u16::from_le_bytes(data[0..2].try_into().unwrap()) as usize;
-        assert_eq!(count, 0);
-    }
-
-    #[test]
-    fn test_send_peer_list_wire_format_roundtrip() {
-        // Verify the peer list encoding logic produces correctly formatted data.
-        // We build a peer list payload the same way send_peer_list does,
-        // then parse it to verify correctness.
-
-        // Simulate the peer list we'd send (excluding the receiving node)
-        let all_sessions = [
-            "peer_x@10.0.0.10:5000".to_string(),
-            "peer_y@10.0.0.11:5001".to_string(),
-            "receiving_node@10.0.0.12:5002".to_string(),
-        ];
-        let receiving_node = "receiving_node@10.0.0.12:5002";
-
-        // Filter like send_peer_list does
-        let peers: Vec<&String> = all_sessions
-            .iter()
-            .filter(|name| name.as_str() != receiving_node)
-            .collect();
-
-        assert_eq!(peers.len(), 2);
-
-        // Build payload like send_peer_list
-        let mut payload = Vec::new();
-        payload.push(DIST_PEER_LIST);
-        payload.extend_from_slice(&(peers.len() as u16).to_le_bytes());
-        for peer_name in &peers {
-            let bytes = peer_name.as_bytes();
-            payload.extend_from_slice(&(bytes.len() as u16).to_le_bytes());
-            payload.extend_from_slice(bytes);
-        }
-
-        // Parse back: skip the tag byte
-        let data = &payload[1..];
-        let count = u16::from_le_bytes(data[0..2].try_into().unwrap()) as usize;
-        assert_eq!(count, 2);
-
-        let mut pos = 2;
-        let mut decoded = Vec::new();
-        for _ in 0..count {
-            let name_len = u16::from_le_bytes(data[pos..pos + 2].try_into().unwrap()) as usize;
-            pos += 2;
-            let name = std::str::from_utf8(&data[pos..pos + name_len]).unwrap();
-            decoded.push(name.to_string());
-            pos += name_len;
-        }
-
-        assert_eq!(decoded.len(), 2);
-        assert!(decoded.contains(&"peer_x@10.0.0.10:5000".to_string()));
-        assert!(decoded.contains(&"peer_y@10.0.0.11:5001".to_string()));
-        assert!(!decoded.contains(&receiving_node.to_string()));
-    }
-
-    #[test]
-    fn test_handle_peer_list_truncated_name() {
-        // Test graceful handling when a peer list entry has a name_len
-        // that extends beyond the buffer (truncated data).
-        // handle_peer_list uses `if pos + name_len > data.len() { break; }`
-
-        let mut data = Vec::new();
-        data.extend_from_slice(&1u16.to_le_bytes()); // count = 1
-        data.extend_from_slice(&100u16.to_le_bytes()); // name_len = 100
-        data.extend_from_slice(b"short"); // Only 5 bytes, not 100
-
-        // Parse with the same logic as handle_peer_list
-        let count = u16::from_le_bytes(data[0..2].try_into().unwrap()) as usize;
-        assert_eq!(count, 1);
-
-        let mut pos = 2;
-        let mut decoded = Vec::new();
-        for _ in 0..count {
-            if pos + 2 > data.len() {
-                break;
+    /// Both ends of a TLS connection over loopback, handshake done.
+    fn tls_pair() -> (
+        StreamOwned<rustls::ClientConnection, TcpStream>,
+        StreamOwned<rustls::ServerConnection, TcpStream>,
+    ) {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (tcp, _) = listener.accept().unwrap();
+            let (cert, key) = generate_ephemeral_cert();
+            let mut tls = StreamOwned::new(
+                rustls::ServerConnection::new(build_node_server_config(cert, key)).unwrap(),
+                tcp,
+            );
+            while tls.conn.is_handshaking() {
+                tls.conn.complete_io(&mut tls.sock).unwrap();
             }
-            let name_len = u16::from_le_bytes(data[pos..pos + 2].try_into().unwrap()) as usize;
-            pos += 2;
-            if pos + name_len > data.len() {
-                break;
-            } // This should trigger
-            let name = std::str::from_utf8(&data[pos..pos + name_len]).unwrap();
-            decoded.push(name.to_string());
-            pos += name_len;
+            tls
+        });
+        let tcp = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        let server_name: ServerName<'static> = "mesh-node".try_into().unwrap();
+        let mut tls = StreamOwned::new(
+            rustls::ClientConnection::new(build_node_client_config(), server_name).unwrap(),
+            tcp,
+        );
+        while tls.conn.is_handshaking() {
+            tls.conn.complete_io(&mut tls.sock).unwrap();
+        }
+        (tls, server.join().unwrap())
+    }
+
+    fn protocol_one() -> NegotiatedProtocol {
+        NegotiatedProtocol {
+            version: PROTOCOL_V1,
+            capabilities: super::super::protocol::Capabilities::default(),
+            max_frame_bytes: MAX_DIST_MSG,
+            autonomous_enabled: false,
+            disabled_reason: None,
+        }
+    }
+
+    /// A session of the test node to a peer the test plays. No thread serves
+    /// it: what it queues waits in its lanes for `sent`, what it writes to
+    /// the stream itself (heartbeats) reaches `stream`, and `receive` acts on
+    /// a message as its reader would. Dropping it disconnects the peer.
+    struct TestPeer {
+        session: Arc<NodeSession>,
+        stream: StreamOwned<rustls::ServerConnection, TcpStream>,
+        heartbeat: Mutex<HeartbeatState>,
+    }
+
+    impl TestPeer {
+        fn new(name: &str) -> Self {
+            let state = test_node();
+            let (client, server) = tls_pair();
+            let session = register_session(
+                state,
+                name.to_string(),
+                1,
+                state.assign_node_id(),
+                NodeStream::ClientTls(client),
+                protocol_one(),
+                None,
+            )
+            .expect("a peer name no other test uses");
+            Self {
+                session,
+                stream: server,
+                heartbeat: Mutex::new(HeartbeatState::new(
+                    Duration::from_secs(60),
+                    Duration::from_secs(15),
+                )),
+            }
         }
 
-        // Should have decoded 0 peers (truncated name caused early break)
-        assert_eq!(decoded.len(), 0);
+        fn receive(&self, msg: Vec<u8>) {
+            handle_session_message(&self.session, &self.heartbeat, msg);
+        }
+
+        /// The frames the session queued for the peer since the last call,
+        /// but for the broadcasts every session of the node gets (from the
+        /// other tests too).
+        fn sent(&self) -> Vec<Vec<u8>> {
+            let receivers = self.session.outbound_receivers.lock().unwrap();
+            let receivers = receivers.as_ref().expect("no writer took the lanes");
+            let mut frames = Vec::new();
+            for lane in [
+                &receivers.control,
+                &receivers.admission,
+                &receivers.continuity,
+                &receivers.application,
+                &receivers.snapshot,
+            ] {
+                for frame in lane.try_iter() {
+                    release_outbound_frame_bytes(&self.session, &frame);
+                    let payload =
+                        decode_session_payload(frame.payload, &self.session.negotiated_protocol)
+                            .expect("a frame the session encoded");
+                    if !matches!(
+                        payload[0],
+                        DIST_GLOBAL_REGISTER | DIST_GLOBAL_UNREGISTER | DIST_CONTINUITY_UPSERT
+                    ) {
+                        frames.push(payload);
+                    }
+                }
+            }
+            frames
+        }
+
+        /// The next frame the session queues, which an actor or worker
+        /// thread sends a moment from now.
+        fn next_sent(&self) -> Vec<u8> {
+            let deadline = Instant::now() + Duration::from_secs(10);
+            loop {
+                if let Some(frame) = self.sent().into_iter().next() {
+                    return frame;
+                }
+                assert!(Instant::now() < deadline, "the session sent nothing");
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        }
+
+        /// The peer's process `local`, as this node addresses it.
+        fn pid(&self, local: u64) -> ProcessId {
+            ProcessId::from_remote(self.session.node_id, self.session.remote_creation, local)
+        }
+    }
+
+    impl Drop for TestPeer {
+        fn drop(&mut self) {
+            self.session.shutdown.store(true, Ordering::SeqCst);
+            cleanup_session_if_current(&self.session);
+        }
+    }
+
+    /// A process of the running scheduler that nothing runs: what arrives
+    /// for it stays in its mailbox, and its links and monitors stay as set.
+    struct ParkedProcess {
+        pid: ProcessId,
+        process: Arc<parking_lot::Mutex<Process>>,
+    }
+
+    impl ParkedProcess {
+        fn new() -> Self {
+            test_node();
+            let pid = ProcessId::next();
+            let process = Arc::new(parking_lot::Mutex::new(Process::new(pid, Priority::Normal)));
+            crate::actor::global_scheduler()
+                .process_table()
+                .write()
+                .insert(pid, Arc::clone(&process));
+            Self { pid, process }
+        }
+
+        fn mailbox_len(&self) -> usize {
+            self.process.lock().mailbox.len()
+        }
+    }
+
+    impl Drop for ParkedProcess {
+        fn drop(&mut self) {
+            crate::actor::global_scheduler()
+                .process_table()
+                .write()
+                .remove(&self.pid);
+        }
+    }
+
+    fn frame(tag: u8, fields: &[&[u8]]) -> Vec<u8> {
+        let mut frame = vec![tag];
+        for field in fields {
+            frame.extend_from_slice(field);
+        }
+        frame
+    }
+
+    fn u16_str(text: &str) -> Vec<u8> {
+        let mut field = (text.len() as u16).to_le_bytes().to_vec();
+        field.extend_from_slice(text.as_bytes());
+        field
+    }
+
+    fn continuity_record(request_key: &str, owner: &str, replica: &str) -> ContinuityRecord {
+        use crate::dist::continuity::{
+            ContinuityClusterRole, ContinuityPhase, ContinuityResult, ReplicaStatus,
+            ReplicationHealth,
+        };
+        ContinuityRecord {
+            request_key: request_key.to_string(),
+            payload_hash: "sha256:payload".to_string(),
+            record_version: 1,
+            request_payload: Vec::new(),
+            attempt_id: "attempt-1".to_string(),
+            phase: ContinuityPhase::Submitted,
+            result: ContinuityResult::Pending,
+            ingress_node: owner.to_string(),
+            owner_node: owner.to_string(),
+            replica_nodes: vec![replica.to_string()],
+            acknowledged_replica_nodes: Vec::new(),
+            replica_node: replica.to_string(),
+            replication_count: 2,
+            replica_status: ReplicaStatus::Preparing,
+            cluster_role: ContinuityClusterRole::Primary,
+            promotion_epoch: 0,
+            // What every record the shared registry holds says, so what the
+            // operator tests read of its health stays true.
+            replication_health: ReplicationHealth::LocalOnly,
+            execution_node: String::new(),
+            routed_remotely: false,
+            fell_back_locally: false,
+            error: String::new(),
+            declared_handler_runtime_name: String::new(),
+        }
+    }
+
+    use crate::dist::continuity::ContinuityRecord;
+
+    /// A ping is answered straight on the stream with a pong carrying its
+    /// payload; a pong clears only the ping it answers. A session that can
+    /// no longer answer shuts down.
+    #[test]
+    fn a_peer_ping_is_answered_and_its_pong_clears_the_ping_it_answers() {
+        let mut peer = TestPeer::new("heartbeat-peer@127.0.0.1:1");
+        peer.receive(frame(HEARTBEAT_PING, &[&[7; 8]]));
+        peer.stream
+            .sock
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .unwrap();
+        assert_eq!(
+            read_msg(&mut peer.stream).unwrap(),
+            frame(HEARTBEAT_PONG, &[&[7; 8]])
+        );
+
+        peer.heartbeat.lock().unwrap().pending_ping_payload = Some([3; 8]);
+        peer.receive(frame(HEARTBEAT_PONG, &[&[4; 8]]));
+        peer.receive(vec![HEARTBEAT_PONG, 3]);
+        assert_eq!(
+            peer.heartbeat.lock().unwrap().pending_ping_payload,
+            Some([3; 8])
+        );
+        peer.receive(frame(HEARTBEAT_PONG, &[&[3; 8]]));
+        assert_eq!(peer.heartbeat.lock().unwrap().pending_ping_payload, None);
+        peer.receive(frame(HEARTBEAT_PONG, &[&[3; 8]]));
+        peer.receive(vec![HEARTBEAT_PING, 1]);
+        assert!(peer.sent().is_empty());
+
+        peer.session.shutdown.store(true, Ordering::SeqCst);
+        peer.receive(frame(HEARTBEAT_PING, &[&[7; 8]]));
+        assert!(peer.session.shutdown.load(Ordering::SeqCst));
+    }
+
+    /// An empty message, one of a kind this node does not know, and a
+    /// message too short to be what its tag says change nothing.
+    #[test]
+    fn empty_unknown_and_cut_short_messages_change_nothing() {
+        let peer = TestPeer::new("malformed-peer@127.0.0.1:1");
+        for msg in [
+            Vec::new(),
+            vec![0xEE, 1, 2],
+            vec![DIST_SEND, 1, 2],
+            vec![DIST_MONITOR, 1],
+            vec![DIST_DEMONITOR, 1],
+            vec![DIST_MONITOR_EXIT, 1],
+            vec![DIST_LINK, 1],
+            vec![DIST_EXIT, 1],
+            vec![DIST_SPAWN, 1],
+            vec![DIST_SPAWN_REPLY, 1],
+            vec![DIST_GLOBAL_REGISTER, 1],
+            vec![DIST_GLOBAL_UNREGISTER, 1],
+            vec![DIST_CONTINUITY_PREPARE, 1],
+            vec![DIST_CONTINUITY_PREPARE_ACK, 1],
+            vec![DIST_HTTP_ROUTE_V2_QUERY, 1],
+            vec![DIST_HTTP_ROUTE_V2_REPLY, 1],
+            vec![DIST_HTTP_RESERVE_REPLY, 1],
+            vec![DIST_ROOM_BROADCAST, 1],
+        ] {
+            peer.receive(msg);
+        }
+        assert!(peer.sent().is_empty());
+        assert!(!peer.session.shutdown.load(Ordering::SeqCst));
+    }
+
+    /// A peer monitors a local process; one that has ended, or never was,
+    /// is reported gone at once. A demonitor removes the monitor.
+    #[test]
+    fn a_peer_monitors_a_local_process_or_hears_at_once_it_is_gone() {
+        let peer = TestPeer::new("monitoring-peer@127.0.0.1:1");
+        let watched = ParkedProcess::new();
+        let monitor = |tag: u8, target: ProcessId, reference: u64| {
+            frame(
+                tag,
+                &[
+                    &5u64.to_le_bytes(),
+                    &target.as_u64().to_le_bytes(),
+                    &reference.to_le_bytes(),
+                ],
+            )
+        };
+        peer.receive(monitor(DIST_MONITOR, watched.pid, 41));
+        assert_eq!(
+            watched.process.lock().monitored_by.get(&41),
+            Some(&peer.pid(5))
+        );
+        peer.receive(monitor(DIST_DEMONITOR, watched.pid, 41));
+        assert!(watched.process.lock().monitored_by.is_empty());
+        peer.receive(monitor(DIST_DEMONITOR, ProcessId::next(), 41));
+        assert!(peer.sent().is_empty());
+
+        let gone = |target: ProcessId, reference: u64| {
+            let mut exit = monitor(DIST_MONITOR_EXIT, target, reference);
+            exit[9..17].copy_from_slice(&peer.pid(5).as_u64().to_le_bytes());
+            exit[1..9].copy_from_slice(&target.as_u64().to_le_bytes());
+            crate::actor::link::encode_reason(&mut exit, &ExitReason::Error("noproc".into()));
+            exit
+        };
+        watched.process.lock().mark_exited(ExitReason::Normal);
+        peer.receive(monitor(DIST_MONITOR, watched.pid, 42));
+        assert_eq!(peer.sent(), vec![gone(watched.pid, 42)]);
+        let never = ProcessId::next();
+        peer.receive(monitor(DIST_MONITOR, never, 43));
+        assert_eq!(peer.sent(), vec![gone(never, 43)]);
+    }
+
+    /// The peer telling of a watched process's end fires the monitor once.
+    #[test]
+    fn a_peer_telling_of_a_watched_process_end_fires_the_monitor_once() {
+        let peer = TestPeer::new("monitored-peer@127.0.0.1:1");
+        let watcher = ParkedProcess::new();
+        watcher.process.lock().monitors.insert(
+            7,
+            Monitor {
+                target: peer.pid(9),
+                message: MessageBuffer::new(b"gone".to_vec(), 1),
+            },
+        );
+        let mut exit = frame(
+            DIST_MONITOR_EXIT,
+            &[
+                &9u64.to_le_bytes(),
+                &watcher.pid.as_u64().to_le_bytes(),
+                &7u64.to_le_bytes(),
+            ],
+        );
+        crate::actor::link::encode_reason(&mut exit, &ExitReason::Normal);
+        peer.receive(exit.clone());
+        peer.receive(exit.clone());
+        assert_eq!(watcher.mailbox_len(), 1);
+        exit[9..17].copy_from_slice(&ProcessId::next().as_u64().to_le_bytes());
+        peer.receive(exit);
+        assert_eq!(watcher.mailbox_len(), 1);
+    }
+
+    /// A link the peer makes is recorded here, and its exit signal then
+    /// reaches the local process as a local one would: a normal exit leaves
+    /// a process that does not trap exits alone, a crash ends it, and one
+    /// that traps exits gets the signal as a message.
+    #[test]
+    fn a_peer_link_and_its_exit_signal_reach_the_local_process() {
+        let peer = TestPeer::new("linking-peer@127.0.0.1:1");
+        let linked = ParkedProcess::new();
+        let fields = |to: ProcessId| [3u64.to_le_bytes(), to.as_u64().to_le_bytes()].concat();
+        peer.receive(frame(DIST_LINK, &[&fields(linked.pid)]));
+        peer.receive(frame(DIST_LINK, &[&fields(ProcessId::next())]));
+        assert!(linked.process.lock().links.contains(&peer.pid(3)));
+
+        let exit = |to: ProcessId, reason: &ExitReason| {
+            let mut exit = frame(DIST_EXIT, &[&fields(to)]);
+            crate::actor::link::encode_reason(&mut exit, reason);
+            exit
+        };
+        peer.receive(exit(linked.pid, &ExitReason::Normal));
+        assert!(!linked.process.lock().links.contains(&peer.pid(3)));
+        assert!(matches!(linked.process.lock().state, ProcessState::Ready));
+
+        linked.process.lock().trap_exit = true;
+        peer.receive(exit(linked.pid, &ExitReason::Error("boom".into())));
+        let signal = linked.process.lock().mailbox.pop().expect("an exit signal");
+        assert_eq!(signal.buffer.type_tag, crate::actor::link::EXIT_SIGNAL_TAG);
+
+        linked.process.lock().trap_exit = false;
+        let crash = ExitReason::Error("boom".into());
+        peer.receive(exit(linked.pid, &crash));
+        let linked_crash = ExitReason::Linked(peer.pid(3), Box::new(crash));
+        let exited = format!("{:?}", ProcessState::Exited(linked_crash));
+        assert_eq!(format!("{:?}", linked.process.lock().state), exited);
+        peer.receive(exit(linked.pid, &ExitReason::Killed));
+        assert_eq!(format!("{:?}", linked.process.lock().state), exited);
+
+        peer.receive(exit(ProcessId::next(), &ExitReason::Killed));
+        peer.receive(frame(DIST_EXIT, &[&fields(linked.pid), &[0xFF]]));
+        assert_eq!(linked.mailbox_len(), 0);
+    }
+
+    /// A peer spawns a function registered for remote spawn and hears the
+    /// local id of the process it got, or that there was none; a linked
+    /// spawn links back.
+    #[test]
+    fn a_peer_spawns_a_registered_function_here_and_hears_back() {
+        let peer = TestPeer::new("spawning-peer@127.0.0.1:1");
+        register_remote_spawn_test_function("peer_spawned_test_actor", &[]);
+        let spawn = |request: u64, link: u8, name: &str| {
+            frame(
+                DIST_SPAWN,
+                &[
+                    &request.to_le_bytes(),
+                    &11u64.to_le_bytes(),
+                    &[link],
+                    &u16_str(name),
+                    &encode_spawn_arg_section(&[]),
+                ],
+            )
+        };
+        peer.receive(spawn(1, 1, "peer_spawned_test_actor"));
+        let sent = peer.sent();
+        assert_eq!(sent.len(), 2, "{sent:?}");
+        let (reply, link) = (&sent[0], &sent[1]);
+        assert_eq!(
+            &reply[..10],
+            &frame(DIST_SPAWN_REPLY, &[&1u64.to_le_bytes(), &[0]])[..]
+        );
+        let spawned = u64::from_le_bytes(reply[10..18].try_into().unwrap());
+        assert_eq!(
+            link,
+            &frame(DIST_LINK, &[&spawned.to_le_bytes(), &11u64.to_le_bytes()])
+        );
+
+        peer.receive(spawn(2, 0, "never_registered_for_remote_spawn"));
+        assert_eq!(
+            peer.sent(),
+            vec![frame(
+                DIST_SPAWN_REPLY,
+                &[&2u64.to_le_bytes(), &[1], &0u64.to_le_bytes()]
+            )]
+        );
+    }
+
+    /// A spawn reply reaches the process that asked for the spawn, once.
+    #[test]
+    fn a_spawn_reply_reaches_the_process_that_asked_once() {
+        let peer = TestPeer::new("spawn-reply-peer@127.0.0.1:1");
+        let asker = ParkedProcess::new();
+        peer.session
+            .pending_spawns
+            .lock()
+            .unwrap()
+            .insert(77, asker.pid);
+        peer.session
+            .pending_spawns
+            .lock()
+            .unwrap()
+            .insert(78, ProcessId::next());
+        let reply = |request: u64| {
+            frame(
+                DIST_SPAWN_REPLY,
+                &[&request.to_le_bytes(), &[0], &5u64.to_le_bytes()],
+            )
+        };
+        peer.receive(reply(77));
+        peer.receive(reply(77));
+        peer.receive(reply(78));
+        let message = asker.process.lock().mailbox.pop().expect("the reply");
+        assert_eq!(message.buffer.type_tag, SPAWN_REPLY_TAG);
+        assert_eq!(message.buffer.data, reply(77)[1..].to_vec());
+        assert_eq!(asker.mailbox_len(), 0);
+    }
+
+    /// A peer's global names register here under its processes, go when it
+    /// unregisters them, merge from its sync (which also tells the waiting
+    /// `Node.connect` they have arrived), and go with the peer.
+    #[test]
+    fn a_peer_global_names_come_and_go_with_it() {
+        let registry = crate::dist::global::global_name_registry();
+        let name = "global-names-peer@127.0.0.1:1";
+        let peer = TestPeer::new(name);
+        let entry = |global: &str, local: u64| {
+            [u16_str(global), local.to_le_bytes().to_vec(), u16_str(name)].concat()
+        };
+        peer.receive(frame(DIST_GLOBAL_REGISTER, &[&entry("peer-registered", 4)]));
+        assert_eq!(registry.whereis("peer-registered"), Some(peer.pid(4)));
+        peer.receive(frame(
+            DIST_GLOBAL_UNREGISTER,
+            &[&u16_str("peer-registered")],
+        ));
+        assert_eq!(registry.whereis("peer-registered"), None);
+
+        assert!(!peer.session.global_names_received.load(Ordering::Acquire));
+        peer.receive(frame(
+            DIST_GLOBAL_SYNC,
+            &[&1u32.to_le_bytes(), &entry("peer-synced", 6)],
+        ));
+        assert!(peer.session.global_names_received.load(Ordering::Acquire));
+        assert_eq!(registry.whereis("peer-synced"), Some(peer.pid(6)));
+        drop(peer);
+        assert_eq!(registry.whereis("peer-synced"), None);
+    }
+
+    fn protocol_two() -> NegotiatedProtocol {
+        NegotiatedProtocol {
+            version: PROTOCOL_V2,
+            capabilities: super::super::protocol::Capabilities::AUTONOMOUS_REQUIRED,
+            max_frame_bytes: MAX_DIST_MSG,
+            autonomous_enabled: true,
+            disabled_reason: None,
+        }
+    }
+
+    impl TestPeer {
+        /// A protocol-two peer whose signed identity gives it `roles`.
+        fn authenticated(name: &str, roles: &[&str]) -> Self {
+            let state = test_node();
+            let (client, server) = tls_pair();
+            let identity = super::super::identity_claim::NodeIdentityClaim {
+                schema_version: 1,
+                cluster_id: "test-cluster".to_string(),
+                stable_node_id: format!("test-cluster/{name}"),
+                advertised_name: name.to_string(),
+                roles: roles.iter().map(|role| role.to_string()).collect(),
+                issued_at_unix_millis: 0,
+                expires_at_unix_millis: u64::MAX,
+            };
+            let session = register_session(
+                state,
+                name.to_string(),
+                1,
+                state.assign_node_id(),
+                NodeStream::ClientTls(client),
+                protocol_two(),
+                Some(identity),
+            )
+            .expect("a peer name no other test uses");
+            Self {
+                session,
+                stream: server,
+                heartbeat: Mutex::new(HeartbeatState::new(
+                    Duration::from_secs(60),
+                    Duration::from_secs(15),
+                )),
+            }
+        }
+    }
+
+    /// Runs `body` with this thread's node in autonomous mode.
+    fn autonomous<T>(body: impl FnOnce() -> T) -> T {
+        struct Reset;
+        impl Drop for Reset {
+            fn drop(&mut self) {
+                AUTONOMOUS_ON_THIS_THREAD.with(|mode| mode.set(None));
+            }
+        }
+        AUTONOMOUS_ON_THIS_THREAD.with(|mode| mode.set(Some(true)));
+        let _reset = Reset;
+        body()
+    }
+
+    /// An operator query that names no query kind: answered with an error.
+    fn bad_operator_query() -> Vec<u8> {
+        frame(
+            DIST_OPERATOR_QUERY,
+            &[&7u64.to_le_bytes(), &[0xFF], &0u32.to_le_bytes()],
+        )
+    }
+
+    /// An autonomous node answers operator queries from operators and
+    /// controllers only, and takes consensus traffic from controllers only.
+    #[test]
+    fn autonomous_nodes_take_operator_and_consensus_traffic_from_their_roles_only() {
+        let rpc = encode_consensus_rpc_frame(DIST_CONSENSUS_RPC, 5, b"{}").unwrap();
+        let reply = encode_consensus_rpc_frame(DIST_CONSENSUS_RPC_REPLY, 5, b"{}").unwrap();
+
+        let worker = TestPeer::authenticated("authz-worker@127.0.0.1:1", &["worker"]);
+        let (waiting, answer) = tokio::sync::oneshot::channel();
+        worker
+            .session
+            .pending_consensus_rpcs
+            .lock()
+            .unwrap()
+            .insert(5, waiting);
+        autonomous(|| {
+            worker.receive(bad_operator_query());
+            worker.receive(rpc.clone());
+            worker.receive(reply.clone());
+        });
+        assert!(worker.sent().is_empty());
+        assert!(worker
+            .session
+            .pending_consensus_rpcs
+            .lock()
+            .unwrap()
+            .contains_key(&5));
+        drop(answer);
+
+        let operator = TestPeer::authenticated("authz-operator@127.0.0.1:1", &["operator"]);
+        autonomous(|| operator.receive(bad_operator_query()));
+        assert_eq!(operator.sent().len(), 1, "the operator is answered");
+
+        let controller = TestPeer::authenticated("authz-controller@127.0.0.1:1", &["controller"]);
+        let (waiting, mut answer) = tokio::sync::oneshot::channel();
+        controller
+            .session
+            .pending_consensus_rpcs
+            .lock()
+            .unwrap()
+            .insert(5, waiting);
+        autonomous(|| {
+            controller.receive(bad_operator_query());
+            controller.receive(reply);
+            controller.receive(vec![DIST_CONSENSUS_RPC_REPLY, 1]);
+            controller.receive(vec![DIST_CONSENSUS_RPC, 1]);
+            controller.receive(rpc);
+        });
+        assert_eq!(answer.try_recv(), Ok(Ok(b"{}".to_vec())));
+        let sent = controller.sent();
+        assert_eq!(sent.len(), 2, "the query and the rpc are answered");
+        assert_eq!(sent[1][0], DIST_CONSENSUS_RPC_REPLY);
+    }
+
+    /// Replies from the peer reach the requests waiting for them; one for a
+    /// request nothing waits on any more is dropped.
+    #[test]
+    fn peer_replies_reach_the_requests_waiting_for_them() {
+        let peer = TestPeer::new("replying-peer@127.0.0.1:1");
+        let (route, route_answer) = crate::actor::cooperative_channel();
+        peer.session
+            .pending_http_routes
+            .lock()
+            .unwrap()
+            .insert(5, route);
+        peer.receive(encode_http_route_v2_reply_frame(5, Ok(b"ok".to_vec())).unwrap());
+        peer.receive(encode_http_route_v2_reply_frame(5, Ok(b"again".to_vec())).unwrap());
+        assert_eq!(route_answer.try_recv(), Ok(Ok(b"ok".to_vec())));
+
+        let (reservation, reservation_answer) = crate::actor::cooperative_channel();
+        peer.session
+            .pending_http_reservations
+            .lock()
+            .unwrap()
+            .insert(6, reservation);
+        peer.receive(encode_http_reserve_reply(6, Err("full".to_string())).unwrap());
+        peer.receive(encode_http_reserve_reply(6, Ok(())).unwrap());
+        assert_eq!(reservation_answer.try_recv(), Ok(Err("full".to_string())));
+
+        let (rpc, mut rpc_answer) = tokio::sync::oneshot::channel();
+        peer.session
+            .pending_consensus_rpcs
+            .lock()
+            .unwrap()
+            .insert(7, rpc);
+        peer.receive(encode_consensus_rpc_frame(DIST_CONSENSUS_RPC_REPLY, 7, b"[]").unwrap());
+        peer.receive(encode_consensus_rpc_frame(DIST_CONSENSUS_RPC_REPLY, 7, b"[]").unwrap());
+        assert_eq!(rpc_answer.try_recv(), Ok(Ok(b"[]".to_vec())));
+
+        let (query, query_answer) = mpsc::channel();
+        peer.session
+            .pending_operator_queries
+            .lock()
+            .unwrap()
+            .insert(8, query);
+        peer.receive(frame(
+            DIST_OPERATOR_REPLY,
+            &[&8u64.to_le_bytes(), &[0], &2u32.to_le_bytes(), b"{}"],
+        ));
+        peer.receive(vec![DIST_OPERATOR_REPLY, 1]);
+        assert_eq!(query_answer.try_recv(), Ok(Ok(b"{}".to_vec())));
+
+        let (prepare, prepare_answer) = crate::actor::cooperative_channel();
+        peer.session
+            .pending_continuity_prepares
+            .lock()
+            .unwrap()
+            .insert(9, prepare);
+        peer.receive(encode_continuity_prepare_ack(
+            9,
+            &Err("no room".to_string()),
+        ));
+        peer.receive(encode_continuity_prepare_ack(9, &Ok(())));
+        assert_eq!(prepare_answer.try_recv(), Ok(Err("no room".to_string())));
+        assert!(peer.sent().is_empty());
+    }
+
+    /// A node that is not autonomous answers a consensus request with the
+    /// reason it cannot take part, and answers operator queries.
+    #[test]
+    fn a_manual_node_refuses_consensus_and_answers_operator_queries() {
+        let peer = TestPeer::new("manual-consensus-peer@127.0.0.1:1");
+        peer.receive(encode_consensus_rpc_frame(DIST_CONSENSUS_RPC, 5, b"{}").unwrap());
+        peer.receive(vec![DIST_CONSENSUS_RPC, 1]);
+        peer.receive(bad_operator_query());
+        assert_eq!(peer.sent().len(), 1, "only the operator query is answered");
+    }
+
+    /// A peer's load report counts as its own and in order only.
+    #[test]
+    fn a_peer_load_report_counts_only_as_its_own_and_in_order() {
+        let name = "load-report-peer@127.0.0.1:1";
+        let peer = TestPeer::new(name);
+        let report = |node: &str| {
+            let report = crate::dist::routing::local_load_report(node, BTreeSet::new());
+            frame(DIST_LOAD_REPORT, &[&report.encode().unwrap()])
+        };
+        let own = report(name);
+        peer.receive(own.clone());
+        let registry = crate::dist::routing::load_report_registry();
+        let seen = |node: &str| {
+            registry
+                .report(node, Instant::now(), Duration::from_secs(600))
+                .map(|report| report.sequence)
+        };
+        let first = seen(name).expect("the report counts");
+        peer.receive(own);
+        assert_eq!(seen(name), Some(first), "a repeat does not count");
+        peer.receive(report("load-report-impostor@127.0.0.1:1"));
+        assert_eq!(seen("load-report-impostor@127.0.0.1:1"), None);
+        peer.receive(vec![DIST_LOAD_REPORT, 1]);
+        assert!(peer.sent().is_empty());
+    }
+
+    /// Continuity records from a peer merge here, one at a time or as its
+    /// snapshot; an invalid or garbled one is dropped, and durable-store
+    /// traffic this node has no store for is refused.
+    #[test]
+    fn a_peer_continuity_records_merge_and_bad_ones_are_dropped() {
+        use crate::dist::continuity::{
+            continuity_registry, encode_sync_payload, encode_upsert_payload, ContinuitySnapshot,
+        };
+        let peer = TestPeer::new("continuity-peer@127.0.0.1:1");
+        let registry = continuity_registry();
+        let record = |key: &str| {
+            let mut record = continuity_record(key, "record-owner-a@h:1", "record-owner-b@h:1");
+            record.phase = crate::dist::continuity::ContinuityPhase::Completed;
+            record.result = crate::dist::continuity::ContinuityResult::Succeeded;
+            record
+        };
+        // A record whose replica is its owner does not validate.
+        let invalid = |mut bytes: Vec<u8>| {
+            let (from, to) = (b"record-owner-b", b"record-owner-a");
+            while let Some(at) = bytes.windows(from.len()).position(|window| window == from) {
+                bytes[at..at + to.len()].copy_from_slice(to);
+            }
+            bytes
+        };
+
+        peer.receive(encode_upsert_payload(1, &record("peer-upserted-key")).unwrap());
+        assert!(registry.record("peer-upserted-key").is_some());
+        peer.receive(invalid(
+            encode_upsert_payload(1, &record("peer-invalid-upsert")).unwrap(),
+        ));
+        assert!(registry.record("peer-invalid-upsert").is_none());
+        peer.receive(vec![DIST_CONTINUITY_UPSERT, 1]);
+
+        let snapshot = |key: &str| {
+            encode_sync_payload(&ContinuitySnapshot {
+                next_attempt_token: 1,
+                records: vec![record(key)],
+            })
+            .unwrap()
+        };
+        peer.receive(snapshot("peer-synced-key"));
+        assert!(registry.record("peer-synced-key").is_some());
+        peer.receive(invalid(snapshot("peer-invalid-sync")));
+        assert!(registry.record("peer-invalid-sync").is_none());
+        peer.receive(vec![DIST_CONTINUITY_SYNC, 1]);
+
+        for tag in [
+            DIST_CONTINUITY_STORE_SNAPSHOT,
+            DIST_CONTINUITY_STORE_SNAPSHOT_ACK,
+            DIST_CONTINUITY_STORE_LOG_ENTRY,
+        ] {
+            peer.receive(vec![tag]);
+        }
+        assert!(peer.sent().is_empty());
+    }
+
+    /// A peer prepares a replica of its record here and hears whether it
+    /// took; a record for another replica is refused.
+    #[test]
+    fn a_peer_prepares_a_replica_here_and_hears_whether_it_took() {
+        let state = test_node();
+        let peer = TestPeer::new("preparing-peer@127.0.0.1:1");
+        let record = continuity_record(
+            "peer-prepared-key",
+            "prepared-record-owner@h:1",
+            &state.name,
+        );
+        peer.receive(encode_continuity_prepare_payload(3, &record).unwrap());
+        assert_eq!(peer.next_sent(), encode_continuity_prepare_ack(3, &Ok(())));
+
+        let elsewhere = continuity_record(
+            "peer-misdirected-key",
+            "prepared-record-owner@h:1",
+            "prepared-record-replica@h:1",
+        );
+        peer.receive(encode_continuity_prepare_payload(4, &elsewhere).unwrap());
+        assert_eq!(
+            peer.next_sent(),
+            encode_continuity_prepare_ack(4, &Err("replica_prepare_target_mismatch".to_string()))
+        );
+    }
+
+    /// Continuity prepares and their acks are framed whole: a frame cut
+    /// short, padded, or with a status or reason no sender writes is
+    /// refused.
+    #[test]
+    fn continuity_prepare_frames_refuse_malformed_bytes() {
+        let record = continuity_record("framed-key", "framed-owner@h:1", "framed-replica@h:1");
+        let prepare = encode_continuity_prepare_payload(3, &record).unwrap();
+        assert_eq!(
+            decode_continuity_prepare_payload(&prepare)
+                .map(|(id, record)| (id, record.request_key)),
+            Ok((3, "framed-key".to_string()))
+        );
+        assert!(decode_continuity_prepare_payload(&prepare[..12]).is_err());
+        assert!(decode_continuity_prepare_payload(&prepare[..prepare.len() - 1]).is_err());
+
+        let ack = encode_continuity_prepare_ack(9, &Err("why".to_string()));
+        assert_eq!(
+            decode_continuity_prepare_ack(&ack),
+            Ok((9, Err("why".to_string())))
+        );
+        assert!(decode_continuity_prepare_ack(&ack[..11]).is_err());
+        assert!(decode_continuity_prepare_ack(&ack[..ack.len() - 1]).is_err());
+        let mut bad_status = ack.clone();
+        bad_status[9] = 2;
+        assert_eq!(
+            decode_continuity_prepare_ack(&bad_status),
+            Err("invalid continuity prepare ack status 2".to_string())
+        );
+        let mut bad_reason = ack;
+        bad_reason[12] = 0xFF;
+        assert!(decode_continuity_prepare_ack(&bad_reason).is_err());
+    }
+
+    /// Consensus RPCs are framed whole under their own tags.
+    #[test]
+    fn consensus_rpc_frames_refuse_malformed_bytes() {
+        assert_eq!(
+            encode_consensus_rpc_frame(DIST_SEND, 1, b""),
+            Err("consensus_rpc_tag_invalid".to_string())
+        );
+        let rpc = encode_consensus_rpc_frame(DIST_CONSENSUS_RPC, 4, b"{}").unwrap();
+        assert_eq!(
+            decode_consensus_rpc_frame(&rpc, DIST_CONSENSUS_RPC),
+            Ok((4, b"{}".to_vec()))
+        );
+        for (bytes, tag, error) in [
+            (&rpc[..], DIST_SEND, "consensus_rpc_frame_invalid"),
+            (
+                &rpc[..],
+                DIST_CONSENSUS_RPC_REPLY,
+                "consensus_rpc_frame_invalid",
+            ),
+            (
+                &rpc[..12],
+                DIST_CONSENSUS_RPC,
+                "consensus_rpc_frame_invalid",
+            ),
+            (
+                &rpc[..14],
+                DIST_CONSENSUS_RPC,
+                "consensus_rpc_length_invalid",
+            ),
+        ] {
+            assert_eq!(
+                decode_consensus_rpc_frame(bytes, tag),
+                Err(error.to_string())
+            );
+        }
+        let unaddressed = encode_consensus_rpc_frame(DIST_CONSENSUS_RPC, 0, b"").unwrap();
+        assert_eq!(
+            decode_consensus_rpc_frame(&unaddressed, DIST_CONSENSUS_RPC),
+            Err("consensus_rpc_correlation_invalid".to_string())
+        );
+    }
+
+    /// A peer's retained response is kept here for replay; a garbled one
+    /// is not.
+    #[test]
+    fn a_peer_retained_response_is_kept_for_replay() {
+        let peer = TestPeer::new("response-peer@127.0.0.1:1");
+        peer.receive(encode_continuity_response_frame("peer-response-key", b"200 OK").unwrap());
+        assert_eq!(
+            crate::dist::continuity_store::replay_runtime_response("peer-response-key"),
+            Ok(Some(b"200 OK".to_vec()))
+        );
+        peer.receive(vec![DIST_CONTINUITY_RESPONSE, 1]);
+        assert!(peer.sent().is_empty());
+    }
+
+    /// Retained responses are framed whole, with a key and a body.
+    #[test]
+    fn continuity_response_frames_refuse_malformed_bytes() {
+        let framed = encode_continuity_response_frame("key", b"body").unwrap();
+        assert_eq!(
+            decode_continuity_response_frame(&framed),
+            Ok(("key".to_string(), b"body".to_vec()))
+        );
+        let refused = |bytes: &[u8]| decode_continuity_response_frame(bytes).unwrap_err();
+        assert_eq!(refused(&framed[..8]), "continuity_response_frame_invalid");
+        assert_eq!(
+            refused(&[&[DIST_SEND], &framed[1..]].concat()),
+            "continuity_response_frame_invalid"
+        );
+        let mut long_key = framed.clone();
+        long_key[1..5].copy_from_slice(&100u32.to_le_bytes());
+        assert_eq!(refused(&long_key), "continuity_response_key_truncated");
+        let mut bad_key = framed.clone();
+        bad_key[5] = 0xFF;
+        assert_eq!(refused(&bad_key), "continuity_response_key_invalid_utf8");
+        assert_eq!(
+            refused(&framed[..framed.len() - 1]),
+            "continuity_response_payload_length_invalid"
+        );
+        let empty = encode_continuity_response_frame("", b"").unwrap();
+        assert_eq!(refused(&empty), "continuity_response_payload_invalid");
+        assert_eq!(
+            encode_continuity_response_frame("key", &vec![0; MAX_DIST_MSG as usize]),
+            Err("continuity_response_frame_too_large".to_string())
+        );
+    }
+
+    /// A room broadcast from a peer reaches this node's members of the
+    /// room; one cut short or not text reaches no one.
+    #[test]
+    fn a_peer_room_broadcast_is_delivered_only_when_whole() {
+        let peer = TestPeer::new("room-peer@127.0.0.1:1");
+        let broadcast = |room: &[u8], text: &[u8]| {
+            frame(
+                DIST_ROOM_BROADCAST,
+                &[
+                    &(room.len() as u16).to_le_bytes(),
+                    room,
+                    &(text.len() as u32).to_le_bytes(),
+                    text,
+                ],
+            )
+        };
+        let whole = broadcast(b"peer-room", b"hello");
+        peer.receive(whole.clone());
+        peer.receive(whole[..whole.len() - 1].to_vec());
+        peer.receive(whole[..8].to_vec());
+        peer.receive(broadcast(&[0xFF], b"hello"));
+        peer.receive(broadcast(b"peer-room", &[0xFF]));
+        assert!(peer.sent().is_empty());
+    }
+
+    /// A peer's list names the nodes it knows: this node connects, in the
+    /// background, to the ones it does not, never to itself or to a node it
+    /// is connected to. The list it sends a peer names its other peers.
+    #[test]
+    fn peer_lists_name_the_other_peers_and_lead_to_the_unknown_ones() {
+        let state = test_node();
+        let known = TestPeer::new("listed-known@127.0.0.1:1");
+        let receiver = TestPeer::new("listed-receiver@127.0.0.1:1");
+        send_peer_list(&receiver.session);
+        let sent = receiver.sent();
+        assert_eq!(sent.len(), 1);
+        let listed = String::from_utf8_lossy(&sent[0]).into_owned();
+        assert!(listed.contains("listed-known@127.0.0.1:1"), "{listed}");
+        assert!(!listed.contains("listed-receiver@127.0.0.1:1"), "{listed}");
+
+        let unreachable = "listed-unreachable@127.0.0.1:1";
+        let names = [state.name.as_str(), "listed-known@127.0.0.1:1", unreachable];
+        let mut list = frame(DIST_PEER_LIST, &[&4u16.to_le_bytes()]);
+        for name in names {
+            list.extend_from_slice(&u16_str(name));
+        }
+        list.extend_from_slice(&[2, 0, 0xFF, 0xFE]);
+        receiver.receive(list.clone());
+        receiver.receive(list[..list.len() - 3].to_vec());
+        receiver.receive(frame(DIST_PEER_LIST, &[&1u16.to_le_bytes(), &[1]]));
+        receiver.receive(vec![DIST_PEER_LIST, 1]);
+        assert!(!state.sessions.read().contains_key(unreachable));
+        drop(known);
+    }
+
+    /// When a peer goes, what waited on it fails, a local process linked to
+    /// one of its processes gets `noconnection` (as a message if it traps
+    /// exits), a monitor of one fires, and a watcher of the node hears.
+    #[test]
+    fn a_departing_peer_fails_what_waits_on_it_and_signals_what_watched_it() {
+        let state = test_node();
+        let name = "departing-peer@127.0.0.1:1";
+        let peer = TestPeer::new(name);
+        let session = Arc::clone(&peer.session);
+        let (prepare, prepare_answer) = crate::actor::cooperative_channel();
+        session
+            .pending_continuity_prepares
+            .lock()
+            .unwrap()
+            .insert(1, prepare);
+        let (query, query_answer) = mpsc::channel();
+        session
+            .pending_operator_queries
+            .lock()
+            .unwrap()
+            .insert(2, query);
+        let (rpc, mut rpc_answer) = tokio::sync::oneshot::channel();
+        session
+            .pending_consensus_rpcs
+            .lock()
+            .unwrap()
+            .insert(3, rpc);
+        let (route, route_answer) = crate::actor::cooperative_channel();
+        session.pending_http_routes.lock().unwrap().insert(4, route);
+        let (reservation, reservation_answer) = crate::actor::cooperative_channel();
+        session
+            .pending_http_reservations
+            .lock()
+            .unwrap()
+            .insert(5, reservation);
+
+        let linked = ParkedProcess::new();
+        linked.process.lock().links.insert(peer.pid(1));
+        let trapping = ParkedProcess::new();
+        {
+            let mut process = trapping.process.lock();
+            process.links.insert(peer.pid(2));
+            process.trap_exit = true;
+            process.state = ProcessState::Waiting;
+        }
+        let watching = ParkedProcess::new();
+        {
+            let mut process = watching.process.lock();
+            process.monitors.insert(
+                3,
+                Monitor {
+                    target: peer.pid(3),
+                    message: MessageBuffer::new(b"down".to_vec(), 1),
+                },
+            );
+            process.state = ProcessState::Waiting;
+        }
+        let ended = ParkedProcess::new();
+        {
+            let mut process = ended.process.lock();
+            process.links.insert(peer.pid(4));
+            process.monitors.insert(
+                4,
+                Monitor {
+                    target: peer.pid(4),
+                    message: MessageBuffer::new(b"down".to_vec(), 1),
+                },
+            );
+            process.mark_exited(ExitReason::Normal);
+        }
+        let node_watcher = ParkedProcess::new();
+        state
+            .node_monitors
+            .write()
+            .entry(name.to_string())
+            .or_default()
+            .push((
+                node_watcher.pid,
+                MessageBuffer::new(b"node gone".to_vec(), 1),
+            ));
+
+        drop(peer);
+
+        let gone = "peer_session_disconnected".to_string();
+        assert_eq!(prepare_answer.try_recv(), Ok(Err(gone.clone())));
+        assert_eq!(query_answer.try_recv(), Ok(Err(gone.clone())));
+        assert_eq!(rpc_answer.try_recv(), Ok(Err(gone.clone())));
+        assert_eq!(route_answer.try_recv(), Ok(Err(gone.clone())));
+        assert_eq!(reservation_answer.try_recv(), Ok(Err(gone)));
+        assert!(!state.sessions.read().contains_key(name));
+        assert!(!state.node_id_map.read().contains_key(&session.node_id));
+
+        let noconnection =
+            ExitReason::Linked(peer_pid(&session, 1), Box::new(ExitReason::Noconnection));
+        assert_eq!(
+            format!("{:?}", linked.process.lock().state),
+            format!("{:?}", ProcessState::Exited(noconnection))
+        );
+        assert_eq!(trapping.mailbox_len(), 1);
+        assert!(matches!(trapping.process.lock().state, ProcessState::Ready));
+        assert_eq!(watching.mailbox_len(), 1);
+        assert!(watching.process.lock().monitors.is_empty());
+        assert_eq!(ended.mailbox_len(), 0);
+        assert_eq!(node_watcher.mailbox_len(), 1);
+    }
+
+    fn peer_pid(session: &NodeSession, local: u64) -> ProcessId {
+        ProcessId::from_remote(session.node_id, session.remote_creation, local)
     }
 }
