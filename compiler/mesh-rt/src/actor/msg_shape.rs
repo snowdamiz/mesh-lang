@@ -307,9 +307,8 @@ unsafe fn capture_as(
     shape: *const u32,
     for_node: bool,
 ) -> Captured {
-    let Some(table) = Table::at(shape) else {
-        return Captured::default();
-    };
+    // A null shape is a message of plain bits, which callers do not capture.
+    let table = Table::at(shape).expect("the compiler emits a whole shape table");
     let mut capture = Capture {
         heap,
         table,
@@ -812,6 +811,91 @@ mod tests {
     /// A shape table: `nodes` after its length word.
     fn table(nodes: &[u32]) -> Vec<u32> {
         [&[nodes.len() as u32 + 1][..], nodes].concat()
+    }
+
+    /// A table shorter than its nodes say, a sum tag past the value, an
+    /// unknown kind: a wrong shape copies what it can describe and leaves
+    /// the rest where it is, and never reads past what it was given.
+    #[test]
+    fn a_malformed_shape_copies_nothing_it_cannot_describe() {
+        let mut sender = ActorHeap::new();
+        let text = string(&mut sender, "text");
+        let data = [text, text].map(usize::to_ne_bytes).concat();
+        let capture = |data: &[u8], nodes: &[u32]| {
+            let shape = table(nodes);
+            unsafe { capture(&sender, data, 0, shape.as_ptr()) }
+        };
+        for (data, nodes) in [
+            (&data[..], &[AGG, 2][..]),
+            (&[][..], &[SUM, 1, 0, 0]),
+            (&[1][..], &[SUM, 2]),
+            (&[0][..], &[SUM, 1, 0, 2]),
+            (&data[..8], &[CLOSURE]),
+        ] {
+            assert!(capture(data, nodes).is_empty(), "{nodes:?}");
+        }
+        let unknown = capture(&data[..8], &[99]);
+        assert_eq!((unknown.objects.len(), unknown.relocs.len()), (1, 1));
+        assert!(
+            unknown.objects[0].relocs.is_empty(),
+            "its insides are not read"
+        );
+    }
+
+    /// Objects a shape reads a header from, cut short, are copied as they
+    /// are; a closure environment's table must be there and aligned.
+    #[test]
+    fn objects_too_short_for_their_header_are_copied_as_they_are() {
+        let mut sender = ActorHeap::new();
+        let short = sender.alloc(4, 8) as usize;
+        let short_view = object(&mut sender, &[2, crate::collections::list::VIEW as usize]);
+        let short_map = object(&mut sender, &[1]);
+        let sentinel = crate::collections::table::view_sentinel(2) as usize;
+        let short_table_view = object(&mut sender, &[1, sentinel]);
+        let captured_text = string(&mut sender, "captured");
+        let env_without_table = object(&mut sender, &[0, captured_text]);
+        let env_misaligned = object(&mut sender, &[1, 0]);
+        let map = [MAP, 4, 4, LEAF];
+        for (address, nodes) in [
+            (short, &[QUEUE, 2][..]),
+            (short_view, &[LIST, 3, LEAF]),
+            (short_map, &map),
+            (short_table_view, &map),
+        ] {
+            let shape = table(nodes);
+            let data = address.to_ne_bytes();
+            let captured = unsafe { capture(&sender, &data, 0, shape.as_ptr()) };
+            assert_eq!(captured.objects.len(), 1, "{nodes:?}");
+            assert!(captured.objects[0].relocs.is_empty() && captured.lend.is_empty());
+        }
+        for env in [env_without_table, env_misaligned] {
+            let shape = table(&[CLOSURE]);
+            let data = [1, env].map(usize::to_ne_bytes).concat();
+            let captured = unsafe { capture(&sender, &data, 0, shape.as_ptr()) };
+            assert_eq!(
+                captured.objects.len(),
+                1,
+                "the environment, not what it holds"
+            );
+        }
+    }
+
+    /// A queue of plain values copies its buffer and reads none of its
+    /// slots; one without a buffer copies just itself.
+    #[test]
+    fn queues_of_scalars_and_without_a_buffer() {
+        let mut sender = ActorHeap::new();
+        let buffer = list(&mut sender, &[1, 2]);
+        let queue = object(&mut sender, &[buffer, 0, 2]);
+        let empty = object(&mut sender, &[0, 0, 0]);
+        let shape = table(&[QUEUE, 3, SCALAR]);
+        let data = [queue, empty].map(usize::to_ne_bytes);
+        let full = unsafe { capture(&sender, &data[0], 0, shape.as_ptr()) };
+        assert_eq!(full.objects.len(), 2);
+        assert_eq!(full.objects[0].relocs, [(0, 1)]);
+        let bare = unsafe { capture(&sender, &data[1], 0, shape.as_ptr()) };
+        assert_eq!(bare.objects.len(), 1);
+        assert!(bare.objects[0].relocs.is_empty());
     }
 
     /// A list view or a map view whose storage this heap cannot vouch for is
