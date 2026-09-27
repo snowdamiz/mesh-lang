@@ -9,5 +9,5 @@ expression: output
    │ ────────┬────────
    │         ╰────────── String does not satisfy Add
    │
-   │ Help: add `impl Add for String do ... end`
+   │ Help: join strings with `<>`, and lists with `++`
 ───╯

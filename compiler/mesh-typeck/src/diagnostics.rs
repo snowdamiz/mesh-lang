@@ -740,6 +740,8 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
                     "add `deriving({trait_name})` to the definition of `{ty}`, \
                      or `impl {trait_name} for {ty} do ... end`"
                 )
+            } else if trait_name == "Add" && matches!(ty.con_name(), Some("String" | "List")) {
+                "join strings with `<>`, and lists with `++`".to_string()
             } else if is_named_type(ty) {
                 format!("add `impl {} for {} do ... end`", trait_name, ty)
             } else {

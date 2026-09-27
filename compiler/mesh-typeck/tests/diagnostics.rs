@@ -259,6 +259,20 @@ fn test_diag_or_pattern_binding_mismatch() {
     );
 }
 
+/// `+` on strings or lists points at the operators that join them, not at
+/// implementing `Add` for a built-in type.
+#[test]
+fn test_diag_adding_strings_names_the_join_operator() {
+    for src in [
+        "fn main() do\n  println(\"x\" + \"y\")\nend\n",
+        "fn f() -> List<Int> do\n  [1] + [2]\nend\n",
+    ] {
+        let output = render_first_error(src);
+        assert!(output.contains("`<>`"), "{output}");
+        assert!(!output.contains("impl Add"), "{output}");
+    }
+}
+
 /// `n :: Int`, a type annotation written in a pattern, is a cons pattern
 /// whose tail names no variant: the help says what `::` means there.
 #[test]
