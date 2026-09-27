@@ -2981,4 +2981,149 @@ mod tests {
         mesh_pg_close(handle);
         peer.join().unwrap();
     }
+
+    // ── Against PostgreSQL ────────────────────────────────────────────
+
+    /// A connection handle to MESH_TEST_DATABASE_URL.
+    fn test_connection() -> u64 {
+        mesh_rt_init();
+        open(&test_database_url(None, "sslmode=disable")).unwrap()
+    }
+
+    fn run(handle: u64, sql: &str) -> Result<i64, String> {
+        int_outcome(mesh_pg_execute(handle, mesh_str(sql), mesh_list_new()))
+    }
+
+    /// A callback's `Ok(())`.
+    fn unit_ok() -> MeshResult {
+        MeshResult {
+            tag: 0,
+            value: std::ptr::null_mut(),
+        }
+    }
+
+    extern "C-unwind" fn add_parent_one(conn: u64) -> MeshResult {
+        run(conn, "INSERT INTO parent VALUES (1)").unwrap();
+        unit_ok()
+    }
+
+    extern "C-unwind" fn add_parent_two_then_fail(conn: u64) -> MeshResult {
+        run(conn, "INSERT INTO parent VALUES (2)").unwrap();
+        MeshResult {
+            tag: 1,
+            value: mesh_str("changed my mind") as *mut u8,
+        }
+    }
+
+    extern "C-unwind" fn add_parent_three_then_panic(conn: u64) -> MeshResult {
+        run(conn, "INSERT INTO parent VALUES (3)").unwrap();
+        panic!("the callback panicked");
+    }
+
+    /// Adds a child of the parent `env` points at: a deferred foreign key,
+    /// checked at COMMIT.
+    extern "C-unwind" fn add_child(env: *const u8, conn: u64) -> MeshResult {
+        let parent = unsafe { *(env as *const i64) };
+        run(conn, &format!("INSERT INTO child VALUES ({parent})")).unwrap();
+        unit_ok()
+    }
+
+    fn parents(handle: u64) -> Vec<String> {
+        let rows = outcome(mesh_pg_query(
+            handle,
+            mesh_str("SELECT id FROM parent ORDER BY id"),
+            mesh_list_new(),
+        ))
+        .unwrap();
+        rows_of(rows, false)
+    }
+
+    #[test]
+    #[ignore = "requires MESH_TEST_DATABASE_URL (the coverage run starts a database)"]
+    fn transactions_commit_roll_back_and_outlive_a_panicking_callback() {
+        let handle = test_connection();
+        run(handle, "CREATE TEMP TABLE parent (id bigint PRIMARY KEY)").unwrap();
+        run(
+            handle,
+            "CREATE TEMP TABLE child (parent bigint REFERENCES parent \
+             DEFERRABLE INITIALLY DEFERRED)",
+        )
+        .unwrap();
+        let transaction = |callback: *const u8, env: *const u8| {
+            outcome(mesh_pg_transaction(handle, callback, env))
+        };
+
+        assert!(transaction(add_parent_one as *const u8, std::ptr::null()).is_ok());
+        assert_eq!(
+            transaction(add_parent_two_then_fail as *const u8, std::ptr::null()).err(),
+            Some("changed my mind".to_string())
+        );
+        assert_eq!(
+            transaction(add_parent_three_then_panic as *const u8, std::ptr::null()).err(),
+            Some("transaction aborted: panic in callback".to_string())
+        );
+        let orphan = 9_i64;
+        let error =
+            transaction(add_child as *const u8, &orphan as *const i64 as *const u8).unwrap_err();
+        assert!(
+            error.starts_with("COMMIT: insert or update on table \"child\""),
+            "{error}"
+        );
+        let parent = 1_i64;
+        assert!(transaction(add_child as *const u8, &parent as *const i64 as *const u8).is_ok());
+
+        assert_eq!(parents(handle), ["id=1"]);
+        assert_eq!(conn_of(handle).txn_status, b'I');
+        mesh_pg_close(handle);
+    }
+
+    extern "C-unwind" fn column_count(row: u64) -> u64 {
+        mesh_map_size(row as *mut u8) as u64
+    }
+
+    extern "C-unwind" fn column_count_plus(env: *mut u8, row: u64) -> u64 {
+        unsafe { *(env as *const u64) + mesh_map_size(row as *mut u8) as u64 }
+    }
+
+    #[test]
+    #[ignore = "requires MESH_TEST_DATABASE_URL (the coverage run starts a database)"]
+    fn query_as_decodes_every_row_and_passes_a_failed_query_on() {
+        let handle = test_connection();
+        let sql = mesh_str("SELECT 1 AS a, 2 AS b UNION ALL SELECT 3, 4") as *mut u8;
+        let decoded = outcome(mesh_pg_query_as(
+            handle,
+            sql,
+            mesh_list_new(),
+            column_count as *mut u8,
+            std::ptr::null_mut(),
+        ))
+        .unwrap();
+        assert_eq!(
+            (0..mesh_list_length(decoded))
+                .map(|index| mesh_list_get(decoded, index))
+                .collect::<Vec<_>>(),
+            [2, 2]
+        );
+        let mut ten = 10_u64;
+        let decoded = outcome(mesh_pg_query_as(
+            handle,
+            sql,
+            mesh_list_new(),
+            column_count_plus as *mut u8,
+            &mut ten as *mut u64 as *mut u8,
+        ))
+        .unwrap();
+        assert_eq!(mesh_list_get(decoded, 1), 12);
+
+        let error = outcome(mesh_pg_query_as(
+            handle,
+            mesh_str("SELECT * FROM no_such_table") as *mut u8,
+            mesh_list_new(),
+            column_count as *mut u8,
+            std::ptr::null_mut(),
+        ))
+        .unwrap_err();
+        assert!(error.starts_with("42P01\t"), "{error}");
+        mesh_pg_close(handle);
+    }
 }
