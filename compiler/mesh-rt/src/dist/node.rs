@@ -1515,26 +1515,20 @@ pub(crate) const DIST_OPERATOR_QUERY: u8 = 0x23;
 /// Format: [tag 0x24][u64 request_id][u8 status][u32 payload_len][payload bytes]
 pub(crate) const DIST_OPERATOR_REPLY: u8 = 0x24;
 
-/// Wire tag for transient clustered HTTP route requests.
-/// Format: [tag 0x25][u16 runtime_name_len][runtime_name]
-///         [u16 request_key_len][request_key][u16 attempt_id_len][attempt_id]
-///         [u32 payload_len][encoded MeshHttpRequest payload]
-pub(crate) const DIST_HTTP_ROUTE_QUERY: u8 = 0x25;
-
-/// Wire tag for transient clustered HTTP route replies.
-/// Format: [tag 0x26][u8 status][u32 payload_len][payload or UTF-8 reason]
-pub(crate) const DIST_HTTP_ROUTE_REPLY: u8 = 0x26;
-
 /// Wire tag for compact protocol-two node load reports.
 /// Format: [tag 0x27][bounded NodeLoadReport payload]
 pub(crate) const DIST_LOAD_REPORT: u8 = 0x27;
 
-/// Protocol-two multiplexed HTTP request over an authenticated peer session.
-/// Format: [tag 0x28][u64 correlation_id][protocol-one route request fields]
+/// A clustered HTTP request for its owner, over the peer session.
+/// Format: [tag 0x28][u64 correlation_id][u16 runtime_name_len][runtime_name]
+///         [u16 request_key_len][request_key][u16 attempt_id_len][attempt_id]
+///         [u32 payload_len][encoded MeshHttpRequest payload]
+/// (Tags 0x25 and 0x26 were a transient connection's query and reply.)
 pub(crate) const DIST_HTTP_ROUTE_V2_QUERY: u8 = 0x28;
 
-/// Protocol-two multiplexed HTTP completion over an authenticated peer session.
-/// Format: [tag 0x29][u64 correlation_id][u8 status][u32 payload_len][payload]
+/// The owner's completion of a clustered HTTP request.
+/// Format: [tag 0x29][u64 correlation_id][u8 status][u32 payload_len]
+///         [response payload, or UTF-8 reason]
 pub(crate) const DIST_HTTP_ROUTE_V2_REPLY: u8 = 0x29;
 
 /// Replicates a retained successful response to continuity peers.
@@ -5552,7 +5546,8 @@ fn decode_http_route_string(data: &[u8], pos: &mut usize, label: &str) -> Result
     Ok(value)
 }
 
-fn encode_http_route_query_frame(
+fn encode_http_route_v2_query_frame(
+    correlation_id: u64,
     runtime_name: &str,
     request_key: &str,
     attempt_id: &str,
@@ -5564,17 +5559,8 @@ fn encode_http_route_query_frame(
             request_payload.len()
         )
     })?;
-    let mut frame = Vec::with_capacity(
-        1 + 2
-            + runtime_name.len()
-            + 2
-            + request_key.len()
-            + 2
-            + attempt_id.len()
-            + 4
-            + request_payload.len(),
-    );
-    frame.push(DIST_HTTP_ROUTE_QUERY);
+    let mut frame = vec![DIST_HTTP_ROUTE_V2_QUERY];
+    frame.extend_from_slice(&correlation_id.to_le_bytes());
     encode_http_route_string(&mut frame, runtime_name)?;
     encode_http_route_string(&mut frame, request_key)?;
     encode_http_route_string(&mut frame, attempt_id)?;
@@ -5583,17 +5569,16 @@ fn encode_http_route_query_frame(
     Ok(frame)
 }
 
-fn decode_http_route_query_frame(data: &[u8]) -> Result<(String, String, String, Vec<u8>), String> {
-    if data.is_empty() {
-        return Err("clustered_http_route_query_empty".to_string());
+/// A query `encode_http_route_v2_query_frame` made: its correlation id,
+/// runtime name, request key, attempt id and request.
+type HttpRouteQuery = (u64, String, String, String, Vec<u8>);
+
+fn decode_http_route_v2_query_frame(data: &[u8]) -> Result<HttpRouteQuery, String> {
+    if data.len() < 9 || data[0] != DIST_HTTP_ROUTE_V2_QUERY {
+        return Err("clustered_http_route_v2_query_invalid".to_string());
     }
-    if data[0] != DIST_HTTP_ROUTE_QUERY {
-        return Err(format!(
-            "clustered_http_route_query_unexpected_tag:{}",
-            data[0]
-        ));
-    }
-    let mut pos = 1usize;
+    let correlation_id = u64::from_le_bytes(data[1..9].try_into().unwrap());
+    let mut pos = 9usize;
     let runtime_name = decode_http_route_string(data, &mut pos, "runtime_name")?;
     let request_key = decode_http_route_string(data, &mut pos, "request_key")?;
     let attempt_id = decode_http_route_string(data, &mut pos, "attempt_id")?;
@@ -5605,47 +5590,53 @@ fn decode_http_route_query_frame(data: &[u8]) -> Result<(String, String, String,
     if pos + payload_len != data.len() {
         return Err("clustered_http_route_payload_length_mismatch".to_string());
     }
-    Ok((runtime_name, request_key, attempt_id, data[pos..].to_vec()))
+    Ok((
+        correlation_id,
+        runtime_name,
+        request_key,
+        attempt_id,
+        data[pos..].to_vec(),
+    ))
 }
 
-fn encode_http_route_reply_frame(result: Result<Vec<u8>, String>) -> Result<Vec<u8>, String> {
+fn encode_http_route_v2_reply_frame(
+    correlation_id: u64,
+    result: Result<Vec<u8>, String>,
+) -> Result<Vec<u8>, String> {
     let (status, payload) = match result {
         Ok(response_payload) => (0u8, response_payload),
         Err(reason) => (1u8, reason.into_bytes()),
     };
     let payload_len = u32::try_from(payload.len())
         .map_err(|_| format!("clustered_http_route_reply_too_large:{}", payload.len()))?;
-    let mut frame = Vec::with_capacity(1 + 1 + 4 + payload.len());
-    frame.push(DIST_HTTP_ROUTE_REPLY);
+    let mut frame = Vec::with_capacity(1 + 8 + 1 + 4 + payload.len());
+    frame.push(DIST_HTTP_ROUTE_V2_REPLY);
+    frame.extend_from_slice(&correlation_id.to_le_bytes());
     frame.push(status);
     frame.extend_from_slice(&payload_len.to_le_bytes());
     frame.extend_from_slice(&payload);
     Ok(frame)
 }
 
-fn decode_http_route_reply_frame(data: &[u8]) -> Result<Result<Vec<u8>, String>, String> {
-    if data.len() < 6 {
-        return Err("clustered_http_route_reply_too_short".to_string());
+fn decode_http_route_v2_reply_frame(data: &[u8]) -> Result<(u64, Result<Vec<u8>, String>), String> {
+    if data.len() < 14 || data[0] != DIST_HTTP_ROUTE_V2_REPLY {
+        return Err("clustered_http_route_v2_reply_invalid".to_string());
     }
-    if data[0] != DIST_HTTP_ROUTE_REPLY {
-        return Err(format!(
-            "clustered_http_route_reply_unexpected_tag:{}",
-            data[0]
-        ));
-    }
-    let status = data[1];
-    let payload_len = u32::from_le_bytes(data[2..6].try_into().unwrap()) as usize;
-    if data.len() != 6 + payload_len {
+    let correlation_id = u64::from_le_bytes(data[1..9].try_into().unwrap());
+    let status = data[9];
+    let payload_len = u32::from_le_bytes(data[10..14].try_into().unwrap()) as usize;
+    if data.len() != 14 + payload_len {
         return Err("clustered_http_route_reply_length_mismatch".to_string());
     }
-    let payload = &data[6..];
-    match status {
-        0 => Ok(Ok(payload.to_vec())),
-        1 => Ok(Err(std::str::from_utf8(payload)
+    let payload = &data[14..];
+    let result = match status {
+        0 => Ok(payload.to_vec()),
+        1 => Err(std::str::from_utf8(payload)
             .map_err(|_| "clustered_http_route_reply_reason_invalid_utf8".to_string())?
-            .to_string())),
-        other => Err(format!("invalid_clustered_http_route_reply_status:{other}")),
-    }
+            .to_string()),
+        other => return Err(format!("invalid_clustered_http_route_reply_status:{other}")),
+    };
+    Ok((correlation_id, result))
 }
 
 struct AcceptedHttpReservation {
@@ -5780,60 +5771,6 @@ fn handle_http_reserve(session: &Arc<NodeSession>, frame: &[u8]) {
     }
 }
 
-fn encode_http_route_v2_query_frame(
-    correlation_id: u64,
-    runtime_name: &str,
-    request_key: &str,
-    attempt_id: &str,
-    request_payload: &[u8],
-) -> Result<Vec<u8>, String> {
-    let protocol_one =
-        encode_http_route_query_frame(runtime_name, request_key, attempt_id, request_payload)?;
-    let mut frame = Vec::with_capacity(8 + protocol_one.len());
-    frame.push(DIST_HTTP_ROUTE_V2_QUERY);
-    frame.extend_from_slice(&correlation_id.to_le_bytes());
-    frame.extend_from_slice(&protocol_one[1..]);
-    Ok(frame)
-}
-
-fn decode_http_route_v2_query_frame(data: &[u8]) -> Result<(u64, Vec<u8>), String> {
-    if data.len() < 9 || data[0] != DIST_HTTP_ROUTE_V2_QUERY {
-        return Err("clustered_http_route_v2_query_invalid".to_string());
-    }
-    let correlation_id = u64::from_le_bytes(data[1..9].try_into().unwrap());
-    let mut protocol_one = Vec::with_capacity(data.len() - 8);
-    protocol_one.push(DIST_HTTP_ROUTE_QUERY);
-    protocol_one.extend_from_slice(&data[9..]);
-    decode_http_route_query_frame(&protocol_one)?;
-    Ok((correlation_id, protocol_one))
-}
-
-fn encode_http_route_v2_reply_frame(
-    correlation_id: u64,
-    result: Result<Vec<u8>, String>,
-) -> Result<Vec<u8>, String> {
-    let protocol_one = encode_http_route_reply_frame(result)?;
-    let mut frame = Vec::with_capacity(8 + protocol_one.len());
-    frame.push(DIST_HTTP_ROUTE_V2_REPLY);
-    frame.extend_from_slice(&correlation_id.to_le_bytes());
-    frame.extend_from_slice(&protocol_one[1..]);
-    Ok(frame)
-}
-
-fn decode_http_route_v2_reply_frame(data: &[u8]) -> Result<(u64, Result<Vec<u8>, String>), String> {
-    if data.len() < 9 || data[0] != DIST_HTTP_ROUTE_V2_REPLY {
-        return Err("clustered_http_route_v2_reply_invalid".to_string());
-    }
-    let correlation_id = u64::from_le_bytes(data[1..9].try_into().unwrap());
-    let mut protocol_one = Vec::with_capacity(data.len() - 8);
-    protocol_one.push(DIST_HTTP_ROUTE_REPLY);
-    protocol_one.extend_from_slice(&data[9..]);
-    Ok((
-        correlation_id,
-        decode_http_route_reply_frame(&protocol_one)?,
-    ))
-}
-
 fn encode_continuity_response_frame(
     operation_key: &str,
     response: &[u8],
@@ -5927,7 +5864,7 @@ fn retain_and_broadcast_continuity_response(operation_key: &str, response: &[u8]
 
 struct HttpRouteV2ReplyTask {
     session: Arc<NodeSession>,
-    message: Vec<u8>,
+    query: HttpRouteQuery,
     _reservation: AcceptedHttpReservation,
 }
 
@@ -5941,26 +5878,19 @@ extern "C-unwind" fn http_route_v2_reply_entry(args: *const u8) {
         return;
     }
     let task = unsafe { Box::from_raw(task_ptr) };
-    let reply = decode_http_route_v2_query_frame(&task.message).and_then(
-        |(correlation_id, protocol_one)| {
-            let result =
-                build_http_route_reply_frame(&protocol_one).and_then(|protocol_one_reply| {
-                    decode_http_route_reply_frame(&protocol_one_reply)
-                })?;
-            encode_http_route_v2_reply_frame(correlation_id, result)
-        },
-    );
-    if let Ok(reply) = reply {
+    let (correlation_id, runtime_name, request_key, attempt_id, request_payload) = &task.query;
+    let result = execute_http_route_query(runtime_name, request_key, attempt_id, request_payload);
+    if let Ok(reply) = encode_http_route_v2_reply_frame(*correlation_id, result) {
         let _ = task.session.send(OutboundClass::Application, reply);
     }
 }
 
 fn dispatch_http_route_v2_reply(session: Arc<NodeSession>, message: Vec<u8>) {
     expire_http_reservations(&session, Instant::now());
-    let correlation_id = match decode_http_route_v2_query_frame(&message) {
-        Ok((correlation_id, _)) => correlation_id,
-        Err(_) => return,
+    let Ok(query) = decode_http_route_v2_query_frame(&message) else {
+        return;
     };
+    let correlation_id = query.0;
     let Some(reservation) = session
         .accepted_http_reservations
         .lock()
@@ -5977,7 +5907,7 @@ fn dispatch_http_route_v2_reply(session: Arc<NodeSession>, message: Vec<u8>) {
     };
     let task_ptr = Box::into_raw(Box::new(HttpRouteV2ReplyTask {
         session,
-        message,
+        query,
         _reservation: reservation,
     })) as u64;
     let args_ptr = Box::into_raw(Box::new([task_ptr]));
@@ -6133,23 +6063,26 @@ fn execute_clustered_http_route_remote(
     }
 }
 
-fn build_http_route_reply_frame(msg: &[u8]) -> Result<Vec<u8>, String> {
-    let (runtime_name, request_key, attempt_id, request_payload) =
-        decode_http_route_query_frame(msg)?;
-    let result = match lookup_declared_handler(&runtime_name) {
+/// Runs a clustered HTTP request another node routed here, as its owner.
+fn execute_http_route_query(
+    runtime_name: &str,
+    request_key: &str,
+    attempt_id: &str,
+    request_payload: &[u8],
+) -> Result<Vec<u8>, String> {
+    match lookup_declared_handler(runtime_name) {
         Some(entry) => execute_clustered_http_route_locally(
             entry.fn_ptr.0,
-            &request_key,
-            &attempt_id,
-            &request_payload,
+            request_key,
+            attempt_id,
+            request_payload,
         ),
         None => {
             let reason = format!("declared_handler_not_registered:{runtime_name}");
-            reject_clustered_http_route_attempt(&request_key, &attempt_id, &reason);
+            reject_clustered_http_route_attempt(request_key, attempt_id, &reason);
             Err(reason)
         }
-    };
-    encode_http_route_reply_frame(result)
+    }
 }
 
 pub(crate) struct ClusteredHttpRouteExecution {
@@ -9451,6 +9384,91 @@ mod tests {
         assert_eq!(
             error,
             "mesh bootstrap start failed node=primary@127.0.0.1:4370: listener bind failed"
+        );
+    }
+
+    /// A clustered HTTP query and its reply cross whole; bytes cut short,
+    /// mislabelled or padded are refused rather than misread.
+    #[test]
+    fn clustered_http_route_frames_round_trip_and_refuse_malformed_bytes() {
+        let query = encode_http_route_v2_query_frame(7, "Api.handle", "key", "attempt-1", b"GET /")
+            .unwrap();
+        assert_eq!(
+            decode_http_route_v2_query_frame(&query),
+            Ok((
+                7,
+                "Api.handle".to_string(),
+                "key".to_string(),
+                "attempt-1".to_string(),
+                b"GET /".to_vec()
+            ))
+        );
+        let refused = |bytes: &[u8]| decode_http_route_v2_query_frame(bytes).unwrap_err();
+        assert_eq!(
+            refused(&query[..8]),
+            "clustered_http_route_v2_query_invalid"
+        );
+        assert_eq!(
+            refused(&[&[DIST_HTTP_ROUTE_V2_REPLY], &query[1..]].concat()),
+            "clustered_http_route_v2_query_invalid"
+        );
+        assert_eq!(
+            refused(&query[..10]),
+            "clustered_http_route_runtime_name_len_missing"
+        );
+        assert_eq!(
+            refused(&query[..12]),
+            "clustered_http_route_runtime_name_truncated"
+        );
+        let mut bad_name = query.clone();
+        bad_name[11] = 0xFF;
+        assert_eq!(
+            refused(&bad_name),
+            "clustered_http_route_runtime_name_invalid_utf8"
+        );
+        let payload_len_at = query.len() - 5 - 4;
+        assert_eq!(
+            refused(&query[..payload_len_at + 2]),
+            "clustered_http_route_payload_len_missing"
+        );
+        assert_eq!(
+            refused(&[&query[..], b"!"].concat()),
+            "clustered_http_route_payload_length_mismatch"
+        );
+        assert_eq!(
+            encode_http_route_v2_query_frame(7, &"x".repeat(70_000), "key", "a", b""),
+            Err("clustered_http_route_string_too_large:70000".to_string())
+        );
+
+        for result in [Ok(b"200 OK".to_vec()), Err("handler_failed".to_string())] {
+            let reply = encode_http_route_v2_reply_frame(9, result.clone()).unwrap();
+            assert_eq!(decode_http_route_v2_reply_frame(&reply), Ok((9, result)));
+        }
+        let reply = encode_http_route_v2_reply_frame(9, Err("no".to_string())).unwrap();
+        let refused = |bytes: &[u8]| decode_http_route_v2_reply_frame(bytes).unwrap_err();
+        assert_eq!(
+            refused(&reply[..13]),
+            "clustered_http_route_v2_reply_invalid"
+        );
+        assert_eq!(
+            refused(&[&[DIST_HTTP_ROUTE_V2_QUERY], &reply[1..]].concat()),
+            "clustered_http_route_v2_reply_invalid"
+        );
+        assert_eq!(
+            refused(&reply[..reply.len() - 1]),
+            "clustered_http_route_reply_length_mismatch"
+        );
+        let mut bad_reason = reply.clone();
+        bad_reason[14] = 0xFF;
+        assert_eq!(
+            refused(&bad_reason),
+            "clustered_http_route_reply_reason_invalid_utf8"
+        );
+        let mut bad_status = reply;
+        bad_status[9] = 2;
+        assert_eq!(
+            refused(&bad_status),
+            "invalid_clustered_http_route_reply_status:2"
         );
     }
 
