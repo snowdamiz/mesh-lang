@@ -241,15 +241,26 @@ fn compile_and_run_migration(
     })?;
 
     // Execute the compiled binary
-    let output = std::process::Command::new(&output_path)
-        .env("DATABASE_URL", url)
-        .output()
-        .map_err(|e| {
-            format!(
-                "Failed to execute migration {}_{}: {}",
-                migration.version, migration.name, e
-            )
-        })?;
+    migration_outcome(
+        migration,
+        std::process::Command::new(&output_path)
+            .env("DATABASE_URL", url)
+            .output(),
+    )
+}
+
+/// What running a migration's program says about it: that it could not
+/// run, the error it printed, or how it exited.
+fn migration_outcome(
+    migration: &MigrationInfo,
+    run: std::io::Result<std::process::Output>,
+) -> Result<(), String> {
+    let output = run.map_err(|e| {
+        format!(
+            "Failed to execute migration {}_{}: {}",
+            migration.version, migration.name, e
+        )
+    })?;
 
     // Check for errors in stdout (the generated main prints them with println)
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -553,6 +564,64 @@ fn civil_from_days(days: i64) -> (i64, u64, u64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn migration() -> MigrationInfo {
+        MigrationInfo {
+            version: 1,
+            name: "one".to_string(),
+            filename: "1_one.mpl".to_string(),
+        }
+    }
+
+    #[test]
+    fn a_migration_whose_file_is_gone_is_not_compiled() {
+        let project = tempfile::tempdir().unwrap();
+        let error =
+            compile_and_run_migration(project.path(), "postgres://unused", &migration(), "up")
+                .unwrap_err();
+        assert!(
+            error.starts_with("Failed to copy migration file '1_one.mpl':"),
+            "{error}"
+        );
+    }
+
+    /// A migration's program fails by not running, by printing why, or by
+    /// its exit status.
+    #[cfg(unix)]
+    #[test]
+    fn a_migration_program_says_how_it_failed() {
+        use std::os::unix::process::ExitStatusExt as _;
+
+        let ran = |code: i32, stdout: &str| {
+            Ok(std::process::Output {
+                status: std::process::ExitStatus::from_raw(code << 8),
+                stdout: stdout.as_bytes().to_vec(),
+                stderr: b"boom\n".to_vec(),
+            })
+        };
+        let outcome = |run| migration_outcome(&migration(), run);
+        assert_eq!(outcome(ran(0, "done\n")), Ok(()));
+        for (run, error) in [
+            (
+                Err(std::io::Error::other("no such program")),
+                "Failed to execute migration 1_one: no such program",
+            ),
+            (
+                ran(0, "CONNECTION_ERROR:refused\n"),
+                "Migration 1_one connection failed: refused",
+            ),
+            (
+                ran(0, "MIGRATION_ERROR:nope\n"),
+                "Migration 1_one failed: nope",
+            ),
+            (
+                ran(3, ""),
+                "Migration 1_one exited with non-zero status: boom",
+            ),
+        ] {
+            assert_eq!(outcome(run), Err(error.to_string()));
+        }
+    }
 
     #[test]
     fn test_format_timestamp_epoch() {
