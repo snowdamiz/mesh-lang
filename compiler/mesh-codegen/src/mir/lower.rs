@@ -3744,14 +3744,6 @@ impl<'a> Lowerer<'a> {
             "mesh_ws_send".to_string(),
             MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Int)),
         );
-        // mesh_ws_send_binary(conn: ptr, data: ptr, len: i64) -> i64
-        self.known_functions.insert(
-            "mesh_ws_send_binary".to_string(),
-            MirType::FnPtr(
-                vec![MirType::Ptr, MirType::Ptr, MirType::Int],
-                Box::new(MirType::Int),
-            ),
-        );
         // mesh_ws_serve_tls(on_connect_fn: ptr, on_connect_env: ptr, on_message_fn: ptr, on_message_env: ptr, on_close_fn: ptr, on_close_env: ptr, port: i64, cert_path: ptr, key_path: ptr) -> void
         self.known_functions.insert(
             "mesh_ws_serve_tls".to_string(),
@@ -15240,7 +15232,6 @@ fn map_builtin_name(name: &str) -> String {
         // ── WebSocket functions (Phase 60) ────────────────────────────
         "ws_serve" => "mesh_ws_serve".to_string(),
         "ws_send" => "mesh_ws_send".to_string(),
-        "ws_send_binary" => "mesh_ws_send_binary".to_string(),
         "ws_serve_tls" => "mesh_ws_serve_tls".to_string(),
         // ── WebSocket Room functions (Phase 62) ────────────────────────
         "ws_join" => "mesh_ws_join".to_string(),

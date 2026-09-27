@@ -43,6 +43,7 @@ use crate::actor::stack;
 use crate::actor::{
     global_scheduler, MailboxPushError, Message, MessageBuffer, ProcessId, ProcessState,
 };
+use crate::callback::{call2, call3};
 use crate::string::MeshString;
 
 // ---------------------------------------------------------------------------
@@ -70,10 +71,7 @@ const WS_POLICY_VIOLATION: u16 = 1008;
 
 /// WebSocket handler containing three Mesh closure pairs (on_connect,
 /// on_message, on_close). Each closure is a `{fn_ptr, env_ptr}` pair.
-///
-/// Passed from the Mesh-compiled program to `mesh_ws_serve`. The struct
-/// is `#[repr(C)]` so Mesh's codegen can construct it directly.
-#[repr(C)]
+#[derive(Clone, Copy)]
 struct WsHandler {
     on_connect_fn: *mut u8,
     on_connect_env: *mut u8,
@@ -87,6 +85,7 @@ struct WsHandler {
 // The pointers are to compiled Mesh functions which are valid for the
 // lifetime of the program.
 unsafe impl Send for WsHandler {}
+unsafe impl Sync for WsHandler {}
 
 /// Connection handle for `Ws.send` -- stored on the Rust heap (not GC heap)
 /// and backed by a bounded command path to the shared reactor.
@@ -190,9 +189,6 @@ impl ReactorEventSink for ServerSink {
     fn terminated(&self, reason: &str) {
         let target = {
             let mut state = self.state.lock();
-            if state.terminated {
-                return;
-            }
             state.terminated = true;
             (!state.remote_close)
                 .then(|| state.target.as_ref())
@@ -230,11 +226,11 @@ fn deliver_server_event(
     };
     // A connection's actor has the default mailbox, which takes a message of
     // any size the reactor admits: a refusal is a full mailbox.
-    push_actor_message(process, pid, message).map_err(|_| SinkFull)
+    push_actor_message(process, pid, message, false).map_err(|_| SinkFull)
 }
 
 // ---------------------------------------------------------------------------
-// Public API: mesh_ws_serve, mesh_ws_send, mesh_ws_send_binary
+// Public API: mesh_ws_serve, mesh_ws_serve_tls, mesh_ws_send
 // ---------------------------------------------------------------------------
 
 /// Start a WebSocket server on the given port and return after spawning its accept loop.
@@ -260,7 +256,7 @@ pub extern "C" fn mesh_ws_serve(
     on_close_env: *mut u8,
     port: i64,
 ) {
-    let callbacks = SendableHandler {
+    let callbacks = WsHandler {
         on_connect_fn,
         on_connect_env,
         on_message_fn,
@@ -273,7 +269,7 @@ pub extern "C" fn mesh_ws_serve(
 
 /// Bind `port`, then accept on a thread of its own (so Ws.serve returns at
 /// once, and HTTP.serve can follow it), in TLS when `tls` is given.
-fn ws_serve(callbacks: SendableHandler, port: i64, tls: Option<Arc<ServerConfig>>) {
+fn ws_serve(callbacks: WsHandler, port: i64, tls: Option<Arc<ServerConfig>>) {
     // Ensure the actor scheduler is initialized (idempotent).
     crate::actor::mesh_rt_init_actor(0);
     let kind = if tls.is_some() {
@@ -301,36 +297,8 @@ fn ws_serve(callbacks: SendableHandler, port: i64, tls: Option<Arc<ServerConfig>
     }
 }
 
-/// Wrapper for raw callback pointers to satisfy Send requirement.
-/// Safe because these are function pointers (or null) that remain valid
-/// for the entire program lifetime.
-#[derive(Clone, Copy)]
-struct SendableHandler {
-    on_connect_fn: *mut u8,
-    on_connect_env: *mut u8,
-    on_message_fn: *mut u8,
-    on_message_env: *mut u8,
-    on_close_fn: *mut u8,
-    on_close_env: *mut u8,
-}
-unsafe impl Send for SendableHandler {}
-unsafe impl Sync for SendableHandler {}
-
-impl SendableHandler {
-    fn actor_handler(self) -> WsHandler {
-        WsHandler {
-            on_connect_fn: self.on_connect_fn,
-            on_connect_env: self.on_connect_env,
-            on_message_fn: self.on_message_fn,
-            on_message_env: self.on_message_env,
-            on_close_fn: self.on_close_fn,
-            on_close_env: self.on_close_env,
-        }
-    }
-}
-
 struct ServerOpenHandler {
-    callbacks: SendableHandler,
+    callbacks: WsHandler,
 }
 
 impl ServerHandshakeHandler for ServerOpenHandler {
@@ -342,7 +310,7 @@ impl ServerHandshakeHandler for ServerOpenHandler {
     ) -> Arc<dyn ReactorEventSink> {
         let sink = Arc::new(ServerSink::new());
         let args = WsConnectionArgs {
-            handler: self.callbacks.actor_handler(),
+            handler: self.callbacks,
             connection,
             sink: Arc::clone(&sink),
             path,
@@ -366,11 +334,7 @@ impl ServerHandshakeHandler for ServerOpenHandler {
 /// Accept loop for WebSocket connections. Runs on a dedicated OS thread,
 /// dispatching each accepted connection (in TLS when `tls` is given) to an
 /// actor on the Mesh scheduler.
-fn ws_accept_loop(
-    listener: TcpListener,
-    callbacks: SendableHandler,
-    tls: Option<Arc<ServerConfig>>,
-) {
+fn ws_accept_loop(listener: TcpListener, callbacks: WsHandler, tls: Option<Arc<ServerConfig>>) {
     let handler: Arc<dyn ServerHandshakeHandler> = Arc::new(ServerOpenHandler { callbacks });
     for tcp_stream in listener.incoming() {
         let tcp_stream = match tcp_stream {
@@ -414,10 +378,6 @@ pub extern "C" fn mesh_ws_serve_tls(
     cert_path: *const MeshString,
     key_path: *const MeshString,
 ) {
-    if cert_path.is_null() || key_path.is_null() {
-        eprintln!("[mesh-rt] WebSocket TLS certificate and key paths must not be null");
-        return;
-    }
     let (cert_path, key_path) = unsafe { ((*cert_path).as_str(), (*key_path).as_str()) };
     let tls = match crate::http::server::build_server_config(cert_path, key_path) {
         Ok(tls) => tls,
@@ -426,7 +386,7 @@ pub extern "C" fn mesh_ws_serve_tls(
             return;
         }
     };
-    let callbacks = SendableHandler {
+    let callbacks = WsHandler {
         on_connect_fn,
         on_connect_env,
         on_message_fn,
@@ -439,13 +399,14 @@ pub extern "C" fn mesh_ws_serve_tls(
 
 /// Send a text frame to a WebSocket client.
 ///
-/// `conn` is a pointer to a `WsConnection` (obtained from the on_connect
-/// callback). `msg` is a pointer to a `MeshString` containing the text.
+/// `conn` is the connection handle the callbacks were given: a pointer to
+/// its `WsConnection`. Mesh code may pass any Int, 0 among them, which is
+/// refused.
 ///
 /// Returns 0 on success, -1 on error.
 #[no_mangle]
 pub extern "C" fn mesh_ws_send(conn: *mut u8, msg: *const MeshString) -> i64 {
-    if conn.is_null() || msg.is_null() {
+    if conn.is_null() {
         return -1;
     }
     let conn = unsafe { &*(conn as *const WsConnection) };
@@ -456,131 +417,51 @@ pub extern "C" fn mesh_ws_send(conn: *mut u8, msg: *const MeshString) -> i64 {
     }
 }
 
-/// Send a binary frame to a WebSocket client.
-///
-/// `conn` is a pointer to a `WsConnection`. `data` and `len` specify the
-/// raw bytes to send.
-///
-/// Returns 0 on success, -1 on error.
-#[no_mangle]
-pub extern "C" fn mesh_ws_send_binary(conn: *mut u8, data: *const u8, len: i64) -> i64 {
-    let Some(len) = binary_payload_len(len) else {
-        return -1;
-    };
-    if conn.is_null() || data.is_null() {
-        return -1;
-    }
-    let conn = unsafe { &*(conn as *const WsConnection) };
-    let bytes = unsafe { std::slice::from_raw_parts(data, len) };
-    match conn.io.send(WsOpcode::Binary, bytes) {
-        Ok(()) => 0,
-        Err(_) => -1,
-    }
-}
-
-fn binary_payload_len(len: i64) -> Option<usize> {
-    usize::try_from(len)
-        .ok()
-        .filter(|len| *len <= SERVER_MAX_MESSAGE_BYTES)
-}
-
 // ---------------------------------------------------------------------------
 // Actor entry point
 // ---------------------------------------------------------------------------
-
-fn close_or_cancel(connection: &ReactorConnection, code: u16, reason: &str) {
-    if let Err(error) = connection.graceful_close(code, reason) {
-        connection.cancel(error);
-    }
-}
 
 /// Actor entry function for a single WebSocket connection.
 ///
 /// Attaches the reactor event sink, runs the callback loop, and handles
 /// cleanup on exit or crash. It performs no socket I/O.
 extern "C" fn ws_connection_entry(args: *const u8) {
-    if args.is_null() {
-        return;
-    }
-
-    let args = unsafe { Box::from_raw(args as *mut WsConnectionArgs) };
     let WsConnectionArgs {
         handler,
         connection,
         sink,
         path,
         headers,
-    } = *args;
+    } = *unsafe { Box::from_raw(args as *mut WsConnectionArgs) };
     let conn = Box::into_raw(Box::new(WsConnection {
         io: connection.clone(),
     }));
     let conn_ptr = conn as *mut u8;
+    // The reactor's handler spawns this entry, and only as an actor.
+    let pid = stack::get_current_pid().expect("a WebSocket connection runs as an actor");
+    let process = global_scheduler()
+        .get_process(pid)
+        .expect("a running actor is in the process table");
 
-    let Some(my_pid) = stack::get_current_pid() else {
-        connection.cancel("WebSocket actor has no process ID");
-        unsafe {
-            drop(Box::from_raw(conn));
-        }
-        return;
+    let refusal = if !call_on_connect(&handler, conn_ptr, &path, &headers) {
+        Some((WS_POLICY_VIOLATION, "rejected"))
+    } else if sink.attach(process, pid).is_err() {
+        Some((WsCloseCode::TRY_AGAIN_LATER, "inbound queue full"))
+    } else {
+        None
     };
-    let sched = global_scheduler();
-    let Some(proc_arc) = sched.get_process(my_pid) else {
-        connection.cancel("WebSocket actor process is unavailable");
-        unsafe {
-            drop(Box::from_raw(conn));
-        }
-        return;
-    };
-
-    let accepted = call_on_connect(&handler, conn_ptr, &path, &headers);
-    if !accepted {
+    // A close the reactor cannot take cancels the connection, and one
+    // already closed takes none.
+    if let Some((code, reason)) = refusal {
+        let _ = connection.graceful_close(code, reason);
+    } else {
+        let (code, reason) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            actor_message_loop(&handler, conn_ptr)
+        }))
+        .unwrap_or_else(|_| (WsCloseCode::INTERNAL_ERROR, "internal error".to_string()));
         crate::ws::rooms::global_room_registry().cleanup_connection(conn as usize);
-        close_or_cancel(&connection, WS_POLICY_VIOLATION, "rejected");
-        unsafe {
-            drop(Box::from_raw(conn));
-        }
-        return;
-    }
-
-    if sink.attach(proc_arc, my_pid).is_err() {
-        crate::ws::rooms::global_room_registry().cleanup_connection(conn as usize);
-        close_or_cancel(
-            &connection,
-            WsCloseCode::TRY_AGAIN_LATER,
-            "inbound queue full",
-        );
-        unsafe {
-            drop(Box::from_raw(conn));
-        }
-        return;
-    }
-
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        actor_message_loop(&handler, conn_ptr)
-    }));
-
-    crate::ws::rooms::global_room_registry().cleanup_connection(conn as usize);
-
-    match result {
-        Err(_) => {
-            close_or_cancel(&connection, WsCloseCode::INTERNAL_ERROR, "internal error");
-            call_on_close(
-                &handler,
-                conn_ptr,
-                WsCloseCode::INTERNAL_ERROR,
-                "internal error",
-            );
-        }
-        Ok((code, reason)) => {
-            if !connection.is_closed() {
-                if code == 1006 {
-                    connection.cancel(reason.clone());
-                } else {
-                    close_or_cancel(&connection, code, &reason);
-                }
-            }
-            call_on_close(&handler, conn_ptr, code, &reason);
-        }
+        let _ = connection.graceful_close(code, &reason);
+        call_on_close(&handler, conn_ptr, code, &reason);
     }
 
     crate::ws::rooms::global_room_registry().cleanup_connection(conn as usize);
@@ -589,13 +470,20 @@ extern "C" fn ws_connection_entry(args: *const u8) {
     }
 }
 
+/// Queue `message` for the connection's actor and wake it; a disconnect,
+/// `control`, takes the mailbox's slot for one.
 fn push_actor_message(
     proc_arc: &Arc<Mutex<Process>>,
     actor_pid: ProcessId,
     message: Message,
+    control: bool,
 ) -> Result<(), MailboxPushError> {
     let mut proc = proc_arc.lock();
-    proc.mailbox.try_push(message)?;
+    if control {
+        proc.mailbox.try_push_control(message)?;
+    } else {
+        proc.mailbox.try_push(message)?;
+    }
     if matches!(proc.state, ProcessState::Waiting) && proc.set_live_state(ProcessState::Ready) {
         drop(proc);
         global_scheduler().wake_process(actor_pid);
@@ -603,21 +491,14 @@ fn push_actor_message(
     Ok(())
 }
 
-/// Push a WS_DISCONNECT_TAG message to the actor's mailbox and wake it.
+/// Push a WS_DISCONNECT_TAG message to the actor's mailbox and wake it: a
+/// connection has one disconnect, which its control slot takes.
 fn push_disconnect(proc_arc: &Arc<Mutex<Process>>, actor_pid: ProcessId, code: u16, reason: &str) {
-    let mut proc = proc_arc.lock();
     let mut payload = Vec::with_capacity(2 + reason.len());
     payload.extend_from_slice(&code.to_be_bytes());
     payload.extend_from_slice(reason.as_bytes());
     let buffer = MessageBuffer::new(payload, WS_DISCONNECT_TAG);
-    if proc.mailbox.try_push_control(Message { buffer }).is_err() {
-        return;
-    }
-    if matches!(proc.state, ProcessState::Waiting) && proc.set_live_state(ProcessState::Ready) {
-        drop(proc);
-        let sched = global_scheduler();
-        sched.wake_process(actor_pid);
-    }
+    let _ = push_actor_message(proc_arc, actor_pid, Message { buffer }, true);
 }
 
 // ---------------------------------------------------------------------------
@@ -636,10 +517,8 @@ fn actor_message_loop(handler: &WsHandler, conn_ptr: *mut u8) -> (u16, String) {
     use crate::actor::mesh_actor_receive;
 
     loop {
+        // An actor's receive without a timeout returns only a message.
         let msg_ptr = mesh_actor_receive(-1);
-        if msg_ptr.is_null() {
-            return (1006, "WebSocket actor receive stopped".to_string());
-        }
 
         // Read type_tag from heap layout: [u64 type_tag, u64 data_len, u8... data]
         let type_tag = unsafe {
@@ -658,13 +537,7 @@ fn actor_message_loop(handler: &WsHandler, conn_ptr: *mut u8) -> (u16, String) {
                     (len, msg_ptr.add(16))
                 };
                 // Call on_message (LIFE-03)
-                call_on_message(
-                    handler,
-                    conn_ptr,
-                    data_ptr,
-                    data_len,
-                    type_tag == WS_TEXT_TAG,
-                );
+                call_on_message(handler, conn_ptr, data_ptr, data_len);
             }
             WS_DISCONNECT_TAG => {
                 // Client disconnected (ACTOR-06)
@@ -690,116 +563,70 @@ fn actor_message_loop(handler: &WsHandler, conn_ptr: *mut u8) -> (u16, String) {
     }
 }
 
+/// A disconnect's code and reason, as `push_disconnect` wrote them.
 fn decode_disconnect(payload: &[u8]) -> (u16, String) {
-    let Some(code) = payload
-        .get(..2)
-        .map(|bytes| u16::from_be_bytes([bytes[0], bytes[1]]))
-    else {
-        return (1006, "WebSocket transport closed".to_string());
-    };
-    (code, String::from_utf8_lossy(&payload[2..]).into_owned())
+    (
+        u16::from_be_bytes([payload[0], payload[1]]),
+        String::from_utf8_lossy(&payload[2..]).into_owned(),
+    )
 }
 
 // ---------------------------------------------------------------------------
 // Callback invocation helpers
 // ---------------------------------------------------------------------------
 
-/// Call the on_connect callback.
-///
-/// Builds Mesh-level path string and headers map, invokes the callback.
-/// Returns `true` if the connection is accepted, `false` if rejected.
-///
-/// If no on_connect callback is set (null fn pointer), accepts by default.
+/// Call the on_connect callback with the connection, its path and its
+/// headers: whether it accepts the connection (a non-null result).
 fn call_on_connect(
     handler: &WsHandler,
     conn_ptr: *mut u8,
     path: &str,
     headers: &[(String, String)],
 ) -> bool {
-    if handler.on_connect_fn.is_null() {
-        return true; // No callback = accept
+    let path = crate::string::mesh_str(path);
+    let mut headers_map = crate::collections::map::mesh_map_new_typed(1);
+    for (name, value) in headers {
+        let key = crate::string::mesh_str(name);
+        let val = crate::string::mesh_str(value);
+        headers_map = crate::collections::map::mesh_map_put(headers_map, key as u64, val as u64);
     }
+    let result = unsafe {
+        call3(
+            handler.on_connect_fn,
+            handler.on_connect_env,
+            conn_ptr as u64,
+            path as u64,
+            headers_map as u64,
+        )
+    };
+    result != 0
+}
 
+/// Call the on_message callback with the message as a string.
+fn call_on_message(handler: &WsHandler, conn_ptr: *mut u8, data_ptr: *const u8, data_len: usize) {
+    let message = crate::string::mesh_string_new(data_ptr, data_len as u64);
     unsafe {
-        // Build Mesh-level path string
-        let path_mesh = crate::string::mesh_str(path) as *mut u8;
-
-        // Build headers map
-        let mut headers_map = crate::collections::map::mesh_map_new_typed(1);
-        for (name, value) in headers {
-            let key = crate::string::mesh_str(name);
-            let val = crate::string::mesh_str(value);
-            headers_map =
-                crate::collections::map::mesh_map_put(headers_map, key as u64, val as u64);
-        }
-
-        // Call the closure: if env is null, bare function; if non-null, closure
-        let result = if handler.on_connect_env.is_null() {
-            let f: extern "C-unwind" fn(*mut u8, *mut u8, *mut u8) -> *mut u8 =
-                std::mem::transmute(handler.on_connect_fn);
-            f(conn_ptr, path_mesh, headers_map)
-        } else {
-            let f: extern "C-unwind" fn(*mut u8, *mut u8, *mut u8, *mut u8) -> *mut u8 =
-                std::mem::transmute(handler.on_connect_fn);
-            f(handler.on_connect_env, conn_ptr, path_mesh, headers_map)
-        };
-
-        // Convention: non-null = accepted, null = rejected
-        !result.is_null()
+        call2(
+            handler.on_message_fn,
+            handler.on_message_env,
+            conn_ptr as u64,
+            message as u64,
+        );
     }
 }
 
-/// Call the on_message callback.
-///
-/// Converts the frame payload to a MeshString and invokes the callback.
-fn call_on_message(
-    handler: &WsHandler,
-    conn_ptr: *mut u8,
-    data_ptr: *const u8,
-    data_len: usize,
-    _is_text: bool,
-) {
-    if handler.on_message_fn.is_null() {
-        return;
-    }
-
-    unsafe {
-        // Build a Mesh string from the frame payload
-        let msg_mesh = crate::string::mesh_string_new(data_ptr, data_len as u64) as *mut u8;
-
-        if handler.on_message_env.is_null() {
-            let f: extern "C-unwind" fn(*mut u8, *mut u8) -> *mut u8 =
-                std::mem::transmute(handler.on_message_fn);
-            f(conn_ptr, msg_mesh);
-        } else {
-            let f: extern "C-unwind" fn(*mut u8, *mut u8, *mut u8) -> *mut u8 =
-                std::mem::transmute(handler.on_message_fn);
-            f(handler.on_message_env, conn_ptr, msg_mesh);
-        }
-    }
-}
-
-/// Call the on_close callback.
-///
-/// Invoked when the connection ends (normal disconnect or crash).
+/// Call the on_close callback: the connection ended (normal disconnect or
+/// crash).
 fn call_on_close(handler: &WsHandler, conn_ptr: *mut u8, code: u16, reason: &str) {
-    if handler.on_close_fn.is_null() {
-        return;
-    }
-
+    let reason = crate::string::mesh_str(reason);
     unsafe {
-        let code_i64 = code as i64;
-        let reason_mesh = crate::string::mesh_str(reason) as *mut u8;
-
-        if handler.on_close_env.is_null() {
-            let f: extern "C-unwind" fn(*mut u8, i64, *mut u8) -> *mut u8 =
-                std::mem::transmute(handler.on_close_fn);
-            f(conn_ptr, code_i64, reason_mesh);
-        } else {
-            let f: extern "C-unwind" fn(*mut u8, *mut u8, i64, *mut u8) -> *mut u8 =
-                std::mem::transmute(handler.on_close_fn);
-            f(handler.on_close_env, conn_ptr, code_i64, reason_mesh);
-        }
+        call3(
+            handler.on_close_fn,
+            handler.on_close_env,
+            conn_ptr as u64,
+            u64::from(code),
+            reason as u64,
+        );
     }
 }
 
@@ -955,9 +782,9 @@ mod tests {
             mesh_ws_serve(
                 join_then_reject_on_connect as *mut u8,
                 std::ptr::null_mut(),
+                echo_on_message as *mut u8,
                 std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
+                noop_on_close as *mut u8,
                 std::ptr::null_mut(),
                 port as i64,
             );
@@ -1119,32 +946,269 @@ mod tests {
 
     // ── Tests ────────────────────────────────────────────────────────
 
+    /// Callbacks without environments.
+    fn callbacks(on_connect: *mut u8, on_message: *mut u8, on_close: *mut u8) -> WsHandler {
+        WsHandler {
+            on_connect_fn: on_connect,
+            on_connect_env: std::ptr::null_mut(),
+            on_message_fn: on_message,
+            on_message_env: std::ptr::null_mut(),
+            on_close_fn: on_close,
+            on_close_env: std::ptr::null_mut(),
+        }
+    }
+
+    /// One connection to `handler` on the shared reactor: the raw client,
+    /// upgraded.
+    fn connect_to(handler: impl ServerHandshakeHandler + 'static) -> TcpStream {
+        crate::actor::mesh_rt_init_actor(0);
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let client = std::thread::spawn(move || ws_connect(port));
+        let (tcp, _) = listener.accept().unwrap();
+        register_server(
+            ReactorTransport::plain(tcp),
+            Arc::new(handler),
+            ReactorConfig::server(SERVER_MAX_MESSAGE_BYTES),
+        )
+        .unwrap();
+        client.join().unwrap()
+    }
+
+    /// The current actor's process.
+    fn current_process() -> Arc<Mutex<Process>> {
+        let pid = stack::get_current_pid().unwrap();
+        global_scheduler().get_process(pid).unwrap()
+    }
+
+    fn message(tag: u64) -> Message {
+        Message {
+            buffer: MessageBuffer::new(Vec::new(), tag),
+        }
+    }
+
+    /// on_connect: queue itself a message it ignores, then an exit signal.
+    extern "C" fn exit_on_connect(_conn: *mut u8, _path: *mut u8, _headers: *mut u8) -> *mut u8 {
+        let process = current_process();
+        process.lock().mailbox.push(message(7));
+        process
+            .lock()
+            .mailbox
+            .push(message(crate::actor::EXIT_SIGNAL_TAG));
+        std::ptr::dangling_mut::<u8>()
+    }
+
+    /// An exit signal ends a connection's actor: the client is told it is
+    /// going away, and on_close hears why. Other actors' messages are
+    /// ignored.
     #[test]
-    fn binary_payload_length_rejects_negative_and_oversized_values() {
-        assert_eq!(binary_payload_len(-1), None);
-        assert_eq!(
-            binary_payload_len(SERVER_MAX_MESSAGE_BYTES as i64 + 1),
-            None
+    fn an_exit_signal_closes_the_connection_as_going_away() {
+        let record = Box::leak(Box::new(CloseRecord {
+            code: AtomicU64::new(0),
+            reason: Mutex::new(String::new()),
+        }));
+        let mut handler = callbacks(
+            exit_on_connect as *mut u8,
+            echo_on_message as *mut u8,
+            recording_on_close as *mut u8,
         );
-        assert_eq!(binary_payload_len(0), Some(0));
+        handler.on_close_env = record as *const CloseRecord as *mut u8;
+        let mut stream = connect_to(ServerOpenHandler { callbacks: handler });
+        let close = read_frame(&mut stream).unwrap();
         assert_eq!(
-            binary_payload_len(SERVER_MAX_MESSAGE_BYTES as i64),
-            Some(SERVER_MAX_MESSAGE_BYTES)
+            parse_close_payload(&close.payload).0,
+            WsCloseCode::GOING_AWAY
+        );
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while record.code.load(Ordering::SeqCst) == 0 {
+            assert!(std::time::Instant::now() < deadline, "on_close never ran");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(record.code.load(Ordering::SeqCst), 1001);
+        assert_eq!(&*record.reason.lock(), "WebSocket actor exited");
+    }
+
+    static RELEASED: AtomicBool = AtomicBool::new(false);
+
+    /// on_connect: once released, fill its own mailbox.
+    extern "C" fn fill_mailbox_on_connect(
+        _conn: *mut u8,
+        _path: *mut u8,
+        _headers: *mut u8,
+    ) -> *mut u8 {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while !RELEASED.load(Ordering::SeqCst) {
+            assert!(std::time::Instant::now() < deadline, "never released");
+            std::thread::yield_now();
+        }
+        let process = current_process();
+        while process.lock().mailbox.try_push(message(7)).is_ok() {}
+        std::ptr::dangling_mut::<u8>()
+    }
+
+    /// The server's handler, with a message arriving before the actor
+    /// attaches.
+    struct MessageFirst(ServerOpenHandler);
+
+    impl ServerHandshakeHandler for MessageFirst {
+        fn opened(
+            &self,
+            connection: ReactorConnection,
+            path: String,
+            headers: Vec<(String, String)>,
+        ) -> Arc<dyn ReactorEventSink> {
+            let sink = self.0.opened(connection, path, headers);
+            sink.event(ReactorEvent::Text(
+                b"early".to_vec(),
+                InboundPermit::unbounded(5),
+            ))
+            .unwrap();
+            RELEASED.store(true, Ordering::SeqCst);
+            sink
+        }
+
+        fn failed(&self, reason: &str) {
+            self.0.failed(reason);
+        }
+    }
+
+    /// A message that arrived before the actor could take it, when its
+    /// mailbox is full by then, closes the connection as try-again-later.
+    #[test]
+    fn a_full_mailbox_at_attach_closes_the_connection() {
+        let mut stream = connect_to(MessageFirst(ServerOpenHandler {
+            callbacks: callbacks(
+                fill_mailbox_on_connect as *mut u8,
+                echo_on_message as *mut u8,
+                noop_on_close as *mut u8,
+            ),
+        }));
+        let close = read_frame(&mut stream).unwrap();
+        assert_eq!(
+            parse_close_payload(&close.payload),
+            (
+                WsCloseCode::TRY_AGAIN_LATER,
+                "inbound queue full".to_string()
+            )
         );
     }
 
+    /// on_close: send on the closed connection, recording the result.
+    extern "C" fn send_on_close(
+        env: *mut u8,
+        conn: *mut u8,
+        _code: i64,
+        _reason: *mut u8,
+    ) -> *mut u8 {
+        let sent = mesh_ws_send(conn, crate::string::mesh_str("late"));
+        unsafe { &*(env as *const AtomicU64) }.store(sent as u64, Ordering::SeqCst);
+        std::ptr::null_mut()
+    }
+
+    /// Ws.send refuses a null handle, and a connection that has closed. A
+    /// binary message reaches on_message as a string.
     #[test]
-    fn tls_server_rejects_null_certificate_paths() {
-        mesh_ws_serve_tls(
+    fn sends_to_a_null_or_closed_connection_are_refused() {
+        crate::gc::mesh_rt_init();
+        assert_eq!(
+            mesh_ws_send(std::ptr::null_mut(), crate::string::mesh_str("x")),
+            -1
+        );
+        let sent = Box::leak(Box::new(AtomicU64::new(0)));
+        let mut handler = callbacks(
+            accept_on_connect as *mut u8,
+            echo_on_message as *mut u8,
+            send_on_close as *mut u8,
+        );
+        handler.on_close_env = sent as *const AtomicU64 as *mut u8;
+        let mut stream = connect_to(ServerOpenHandler { callbacks: handler });
+        write_masked_frame(&mut stream, WsOpcode::Binary, b"bin", true, [1, 2, 3, 4]).unwrap();
+        assert_eq!(read_frame(&mut stream).unwrap().payload, b"bin");
+        ws_send_close(&mut stream, 1000);
+        assert_eq!(read_frame(&mut stream).unwrap().opcode, WsOpcode::Close);
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while sent.load(Ordering::SeqCst) == 0 {
+            assert!(std::time::Instant::now() < deadline, "on_close never ran");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(sent.load(Ordering::SeqCst) as i64, -1);
+    }
+
+    /// A request that is no upgrade fails the connection: the server tells
+    /// its log and closes the socket.
+    #[test]
+    fn a_failed_upgrade_closes_the_socket() {
+        crate::actor::mesh_rt_init_actor(0);
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let mut client = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        client
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        let (tcp, _) = listener.accept().unwrap();
+        register_server(
+            ReactorTransport::plain(tcp),
+            Arc::new(ServerOpenHandler {
+                callbacks: callbacks(
+                    accept_on_connect as *mut u8,
+                    echo_on_message as *mut u8,
+                    noop_on_close as *mut u8,
+                ),
+            }),
+            ReactorConfig::server(SERVER_MAX_MESSAGE_BYTES),
+        )
+        .unwrap();
+        client.write_all(b"BREW /pot\r\n\r\n").unwrap();
+        assert_eq!(client.read(&mut [0u8; 1]).unwrap(), 0);
+    }
+
+    /// Ws.serve on a port another socket holds says so and returns.
+    #[test]
+    fn serving_on_a_taken_port_returns() {
+        let taken = TcpListener::bind("0.0.0.0:0").unwrap();
+        mesh_ws_serve(
+            accept_on_connect as *mut u8,
             std::ptr::null_mut(),
+            echo_on_message as *mut u8,
             std::ptr::null_mut(),
+            noop_on_close as *mut u8,
             std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-            0,
-            std::ptr::null(),
-            std::ptr::null(),
+            i64::from(taken.local_addr().unwrap().port()),
+        );
+    }
+
+    /// A sink told its connection ended before the actor attached tells the
+    /// actor at attachment; data past the pending bounds is refused.
+    #[test]
+    fn a_sink_holds_what_arrives_before_attachment_within_bounds() {
+        let sink = ServerSink::new();
+        sink.terminated("gone");
+        let process = Arc::new(Mutex::new(Process::new(
+            ProcessId(99_003),
+            Priority::Normal,
+        )));
+        sink.attach(Arc::clone(&process), ProcessId(99_003))
+            .unwrap();
+        let disconnect = process.lock().mailbox.pop().unwrap().buffer;
+        assert_eq!(disconnect.type_tag, WS_DISCONNECT_TAG);
+        assert_eq!(
+            decode_disconnect(&disconnect.data),
+            (1006, "WebSocket transport closed".to_string())
+        );
+
+        let sink = ServerSink::new();
+        for _ in 0..SERVER_PENDING_ITEMS {
+            sink.event(ReactorEvent::Binary(
+                Vec::new(),
+                InboundPermit::unbounded(0),
+            ))
+            .unwrap();
+        }
+        assert_eq!(
+            sink.event(ReactorEvent::Binary(
+                Vec::new(),
+                InboundPermit::unbounded(0)
+            )),
+            Err(SinkFull)
         );
     }
 
@@ -1304,7 +1368,7 @@ mod tests {
             let server = std::thread::spawn(move || {
                 let (tcp, _) = listener.accept().unwrap();
                 let handler: Arc<dyn ServerHandshakeHandler> = Arc::new(ServerOpenHandler {
-                    callbacks: SendableHandler {
+                    callbacks: WsHandler {
                         on_connect_fn: join_on_connect as *mut u8,
                         on_connect_env: std::ptr::null_mut(),
                         on_message_fn: echo_on_message as *mut u8,
@@ -1354,7 +1418,7 @@ mod tests {
             let connection = ServerConnection::new(server_config).unwrap();
             let transport = ReactorTransport::tls(connection, tcp);
             let handler: Arc<dyn ServerHandshakeHandler> = Arc::new(ServerOpenHandler {
-                callbacks: SendableHandler {
+                callbacks: WsHandler {
                     on_connect_fn: accept_on_connect as *mut u8,
                     on_connect_env: std::ptr::null_mut(),
                     on_message_fn: echo_on_message as *mut u8,

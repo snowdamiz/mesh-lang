@@ -34,6 +34,23 @@ pub(crate) unsafe fn call2(fn_ptr: *mut u8, env_ptr: *mut u8, a: u64, b: u64) ->
     }
 }
 
+/// `fn(a, b, c)`, or `fn(env, a, b, c)` for a closure.
+///
+/// # Safety
+///
+/// As for [`call1`], with three slots.
+pub(crate) unsafe fn call3(fn_ptr: *mut u8, env_ptr: *mut u8, a: u64, b: u64, c: u64) -> u64 {
+    if env_ptr.is_null() {
+        std::mem::transmute::<*mut u8, unsafe extern "C-unwind" fn(u64, u64, u64) -> u64>(fn_ptr)(
+            a, b, c,
+        )
+    } else {
+        std::mem::transmute::<*mut u8, unsafe extern "C-unwind" fn(*mut u8, u64, u64, u64) -> u64>(
+            fn_ptr,
+        )(env_ptr, a, b, c)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -54,6 +71,14 @@ mod tests {
         a - b - unsafe { *(env as *const u64) }
     }
 
+    extern "C-unwind" fn sum3(a: u64, b: u64, c: u64) -> u64 {
+        a + b + c
+    }
+
+    extern "C-unwind" fn sum3_env(env: *mut u8, a: u64, b: u64, c: u64) -> u64 {
+        a + b + c + unsafe { *(env as *const u64) }
+    }
+
     #[test]
     fn a_callback_takes_its_environment_first_unless_it_has_none() {
         let mut ten = 10u64;
@@ -63,6 +88,8 @@ mod tests {
             assert_eq!(call1(add_env as *mut u8, env, 4), 14);
             assert_eq!(call2(sub as *mut u8, std::ptr::null_mut(), 9, 4), 5);
             assert_eq!(call2(sub_env as *mut u8, env, 29, 4), 15);
+            assert_eq!(call3(sum3 as *mut u8, std::ptr::null_mut(), 1, 2, 3), 6);
+            assert_eq!(call3(sum3_env as *mut u8, env, 1, 2, 3), 16);
         }
     }
 }
