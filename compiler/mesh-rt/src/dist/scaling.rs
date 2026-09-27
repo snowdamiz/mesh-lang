@@ -2003,10 +2003,7 @@ impl CapacityReconciler {
     /// This is called whenever a controller becomes leader, before it is
     /// allowed to issue provider mutations. Pending operations are retained so
     /// the same idempotency key is retried instead of selecting another node.
-    pub fn restore_from_control_entries(
-        &mut self,
-        entries: &[ControlLogEntry],
-    ) -> Result<(), String> {
+    pub fn restore_from_control_entries(&mut self, entries: &[ControlLogEntry]) {
         let mut active_intents = BTreeSet::new();
         let mut intent_started_at = BTreeMap::<String, u64>::new();
         let mut drain_operations: BTreeMap<String, DriverOperation> = BTreeMap::new();
@@ -2122,7 +2119,6 @@ impl CapacityReconciler {
             );
             crate::dist::operator::set_runtime_drain_intent(&node_id, true);
         }
-        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -3640,9 +3636,7 @@ mod tests {
 
         let mut reconciler =
             CapacityReconciler::new(driver.clone(), 1).expect("recovered reconciler");
-        reconciler
-            .restore_from_control_entries(&log.entries())
-            .expect("restore committed drain after leader failover");
+        reconciler.restore_from_control_entries(&log.entries());
         let restored = reconciler.drain_progress();
         assert_eq!(restored.len(), 1);
         assert_eq!(restored[0].node_id, draining.drains[0].node_id);
@@ -3697,9 +3691,7 @@ mod tests {
         )));
         let mut recovered =
             CapacityReconciler::new(driver.clone(), 1).expect("recovered reconciler");
-        recovered
-            .restore_from_control_entries(&log.entries())
-            .expect("restore after the drain finished");
+        recovered.restore_from_control_entries(&log.entries());
         assert!(recovered.drain_progress().is_empty());
     }
 
