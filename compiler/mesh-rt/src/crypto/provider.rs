@@ -24,6 +24,15 @@ const MAX_AEAD_CIPHERTEXT_BYTES: usize = MAX_INPUT_BYTES + AEAD_TAG_BYTES;
 
 struct HkdfOutputLength(usize);
 
+/// `result`, with `output` zeroized when it is an error: a failed operation
+/// leaves no partial key material behind.
+fn cleared<T>(output: &mut [u8], result: Result<T, ProviderError>) -> Result<T, ProviderError> {
+    if result.is_err() {
+        output.zeroize();
+    }
+    result
+}
+
 impl KeyType for HkdfOutputLength {
     fn len(&self) -> usize {
         self.0
@@ -90,14 +99,12 @@ pub(crate) trait CryptoProvider {
         let salt = Salt::new(HKDF_SHA256, salt);
         let pseudo_random_key = salt.extract(input_key);
         let info = [info];
-        let Ok(output_key) = pseudo_random_key.expand(&info, HkdfOutputLength(output.len())) else {
-            output.zeroize();
-            return Err(ProviderError::InvalidLength);
-        };
-        if output_key.fill(output).is_err() {
-            output.zeroize();
-            return Err(ProviderError::InvalidLength);
-        }
+        // `expand` refuses more than 255 hash lengths and `fill` an output of
+        // another length than the expansion's: neither can happen here.
+        pseudo_random_key
+            .expand(&info, HkdfOutputLength(output.len()))
+            .and_then(|output_key| output_key.fill(output))
+            .expect("HKDF output length checked above");
         Ok(())
     }
 
@@ -122,26 +129,21 @@ pub(crate) trait CryptoProvider {
             return Err(ProviderError::InvalidLength);
         }
 
-        let Ok(params) = Params::new(memory_kib, iterations, parallelism, Some(output.len()))
-        else {
-            output.zeroize();
-            return Err(ProviderError::InvalidLength);
-        };
+        // The bounds above are within every limit Params and the hash check.
+        let params = Params::new(memory_kib, iterations, parallelism, Some(output.len()))
+            .expect("Argon2 parameters checked above");
         let block_count = params.block_count();
-        let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+        // The memory cost is reserved first, so a host that cannot spare it
+        // fails the derivation instead of aborting the process.
         let mut blocks = Zeroizing::new(Vec::new());
-        if blocks.try_reserve_exact(block_count).is_err() {
-            output.zeroize();
-            return Err(ProviderError::ResourceLimitExceeded);
-        }
+        let reserved = blocks
+            .try_reserve_exact(block_count)
+            .map_err(|_| ProviderError::ResourceLimitExceeded);
+        cleared(output, reserved)?;
         blocks.resize(block_count, Block::default());
-        if argon2
+        Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
             .hash_password_into_with_memory(password, salt, output, blocks.as_mut_slice())
-            .is_err()
-        {
-            output.zeroize();
-            return Err(ProviderError::InvalidLength);
-        }
+            .expect("Argon2 inputs checked above");
         Ok(())
     }
 
@@ -261,15 +263,14 @@ pub(crate) struct SystemProvider;
 
 impl CryptoProvider for SystemProvider {
     fn fill_random(&self, output: &mut [u8]) -> Result<(), ProviderError> {
-        if output.len() > MAX_RANDOM_BYTES {
-            output.zeroize();
-            return Err(ProviderError::InvalidLength);
-        }
-        if SystemRandom::new().fill(output).is_err() {
-            output.zeroize();
-            return Err(ProviderError::EntropyUnavailable);
-        }
-        Ok(())
+        let filled = if output.len() > MAX_RANDOM_BYTES {
+            Err(ProviderError::InvalidLength)
+        } else {
+            SystemRandom::new()
+                .fill(output)
+                .map_err(|_| ProviderError::EntropyUnavailable)
+        };
+        cleared(output, filled)
     }
 }
 
@@ -379,6 +380,18 @@ mod tests {
         let result = SystemProvider.fill_random(&mut output);
 
         assert!(result.is_ok(), "system entropy failed: {result:?}");
+    }
+
+    #[test]
+    fn system_provider_clears_oversized_random_output() {
+        let mut output = vec![0xaa; 64 * 1024 + 1];
+
+        let error = SystemProvider.fill_random(&mut output).unwrap_err();
+
+        assert_eq!(
+            (error, output.iter().all(|byte| *byte == 0)),
+            (ProviderError::InvalidLength, true)
+        );
     }
 
     #[test]
