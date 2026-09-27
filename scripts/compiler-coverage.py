@@ -164,8 +164,8 @@ def run(extra):
             env={**env, "MESH_PROOF_COVERAGE_DIR": str(PROOF_COVERAGE)})
         failed = failed or proof.returncode
     LCOV.parent.mkdir(parents=True, exist_ok=True)
-    # Merges the profiles into PROFILES/mesh-lang.profdata, which the
-    # per-binary export below reads.
+    # Merges the profiles into PROFILES/<checkout directory name>.profdata,
+    # which the per-binary export below reads.
     subprocess.run(["cargo", "llvm-cov", "report", "--lcov", "--output-path", str(LCOV)],
                    cwd=ROOT, env=env, check=True)
     LCOV.write_text(per_binary_lcov(env, built_after))
@@ -184,7 +184,10 @@ def per_binary_lcov(env, built_after):
     binary that links the crate), one binary's calls were all it counted."""
     from concurrent.futures import ThreadPoolExecutor
 
-    profdata = PROFILES / "mesh-lang.profdata"
+    # cargo-llvm-cov names the merged profile after the workspace directory.
+    profdata = PROFILES / f"{ROOT.name}.profdata"
+    if not profdata.exists():
+        sys.exit(f"{profdata} is missing: cargo llvm-cov report wrote no merged profile")
     binaries = [path for directory in (PROFILES / "debug" / "deps", PROFILES / "debug")
                 for path in sorted(directory.iterdir())
                 if path.is_file() and not path.suffix and os.access(path, os.X_OK)
