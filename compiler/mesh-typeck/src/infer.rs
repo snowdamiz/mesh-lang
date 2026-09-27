@@ -282,21 +282,12 @@ fn generic_param_names(node: &mesh_parser::SyntaxNode) -> Vec<String> {
 /// which the lossless tree gives it: an argument on a line of its own starts
 /// at the line break before it.
 fn significant_range(node: &mesh_parser::SyntaxNode) -> TextRange {
-    let mut tokens = node
-        .descendants_with_tokens()
+    node.descendants_with_tokens()
         .filter_map(|element| element.into_token())
-        .filter(|token| !token.kind().is_trivia());
-    match tokens.next() {
-        Some(first) => {
-            let end = tokens
-                .last()
-                .unwrap_or_else(|| first.clone())
-                .text_range()
-                .end();
-            TextRange::new(first.text_range().start(), end)
-        }
-        None => node.text_range(),
-    }
+        .filter(|token| !token.kind().is_trivia())
+        .map(|token| token.text_range())
+        .reduce(|first, last| first.cover(last))
+        .unwrap_or_else(|| node.text_range())
 }
 
 /// What a function's body leaves to check until all of it is inferred (see
