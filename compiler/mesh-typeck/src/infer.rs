@@ -11437,8 +11437,7 @@ fn infer_block(
     for child in block.syntax().children() {
         if let Some(item) = Item::cast(child.clone()) {
             last_ty = Ty::Tuple(vec![]);
-            let Item::LetBinding(let_) = item else {
-                reject_nested_definition(ctx, &item);
+            let Some(let_) = nested_let(ctx, item) else {
                 continue;
             };
             let nesting = ctx.nesting(env);
@@ -11480,11 +11479,13 @@ fn infer_block(
     last_ty
 }
 
-/// Only `let` binds inside a function: a function, type, import or any
-/// other definition there was accepted and then ignored (a call of a nested
-/// `fn` failed in code generation, an `import` of no module compiled).
-fn reject_nested_definition(ctx: &mut InferCtx, item: &Item) {
-    let keyword = match item {
+/// `item`, inside a function, as the `let` it has to be. Only `let` binds
+/// there: a function, type, import or any other definition there was
+/// accepted and then ignored (a call of a nested `fn` failed in code
+/// generation, an `import` of no module compiled), and is reported.
+fn nested_let(ctx: &mut InferCtx, item: Item) -> Option<LetBinding> {
+    let keyword = match &item {
+        Item::LetBinding(let_) => return Some(let_.clone()),
         Item::FnDef(_) => "fn",
         Item::ModuleDef(_) => "module",
         Item::ImportDecl(_) => "import",
@@ -11496,7 +11497,6 @@ fn reject_nested_definition(ctx: &mut InferCtx, item: &Item) {
         Item::ActorDef(_) => "actor",
         Item::ServiceDef(_) => "service",
         Item::SupervisorDef(_) => "supervisor",
-        Item::LetBinding(_) => return,
     };
     // The definition's first line, not all of it.
     let span = item
@@ -11510,6 +11510,7 @@ fn reject_nested_definition(ctx: &mut InferCtx, item: &Item) {
         .unwrap_or_else(|| item.syntax().text_range());
     ctx.errors
         .push(TypeError::NestedDefinition { keyword, span });
+    None
 }
 
 /// Infer the type of a tuple expression.
