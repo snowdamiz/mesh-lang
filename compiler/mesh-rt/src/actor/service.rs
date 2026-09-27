@@ -280,29 +280,48 @@ mod tests {
         assert_eq!(decoded_caller, 456);
     }
 
-    use crate::actor::process::ProcessState;
-    use crate::actor::{global_scheduler, mesh_rt_init_actor, stack, Mailbox};
+    use crate::actor::process::{ExitReason, ProcessState};
+    use crate::actor::{global_scheduler, mesh_rt_init_actor, stack, Mailbox, PROGRAM_MESSAGE_TAG};
 
-    /// Run `call` as process `pid`, returning the panic it raised, if any.
-    fn call_as(pid: ProcessId, call: impl FnOnce() -> *const u8) -> Result<*const u8, String> {
-        stack::set_current_pid(pid);
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(call));
+    type Shared = std::sync::Arc<parking_lot::Mutex<crate::actor::Process>>;
+
+    fn process(pid: ProcessId) -> Shared {
+        global_scheduler().get_process(pid).unwrap()
+    }
+
+    /// A caller and a service, as processes nothing runs.
+    fn caller_and_service() -> (ProcessId, ProcessId) {
+        mesh_rt_init_actor(1);
+        let sched = global_scheduler();
+        (sched.create_main_process(), sched.create_main_process())
+    }
+
+    /// Call `service` as `caller`: the reply's word, or the panic it raised.
+    fn call(caller: ProcessId, service: ProcessId) -> Result<u64, String> {
+        stack::set_current_pid(caller);
+        let result = std::panic::catch_unwind(|| {
+            let reply = mesh_service_call(service.as_u64(), 3, std::ptr::null(), 0);
+            unsafe { (reply.add(16) as *const u64).read() }
+        });
         stack::clear_current_pid();
         result.map_err(|panic| *panic.downcast::<String>().unwrap())
     }
 
-    fn queue(pid: ProcessId, data: &[u8], tag: u64) {
-        let process = global_scheduler().get_process(pid).unwrap();
-        let buffer = MessageBuffer::new(data.to_vec(), tag);
-        process.lock().mailbox.push(Message { buffer });
+    fn queue(pid: ProcessId, word: u64, tag: u64) {
+        let buffer = MessageBuffer::new(word.to_le_bytes().to_vec(), tag);
+        process(pid).lock().mailbox.push(Message { buffer });
     }
 
     fn mailbox_tags(pid: ProcessId) -> Vec<u64> {
-        let process = global_scheduler().get_process(pid).unwrap();
+        let process = process(pid);
         let process = process.lock();
         std::iter::from_fn(|| process.mailbox.pop())
             .map(|message| message.buffer.type_tag)
             .collect()
+    }
+
+    fn stop(pid: ProcessId) {
+        process(pid).lock().state = ProcessState::Exited(ExitReason::Normal);
     }
 
     #[test]
@@ -317,36 +336,26 @@ mod tests {
     /// rest of the mailbox stays as it was.
     #[test]
     fn a_call_takes_its_reply_and_leaves_other_messages_queued() {
-        mesh_rt_init_actor(1);
-        let sched = global_scheduler();
-        let (caller, service) = (sched.create_main_process(), sched.create_main_process());
-        queue(caller, &99u64.to_le_bytes(), crate::actor::PROGRAM_MESSAGE_TAG);
-        queue(caller, &42u64.to_le_bytes(), SERVICE_REPLY_TAG);
+        let (caller, service) = caller_and_service();
+        queue(caller, 99, PROGRAM_MESSAGE_TAG);
+        queue(caller, 42, SERVICE_REPLY_TAG);
 
-        let reply = call_as(caller, || mesh_service_call(service.as_u64(), 3, std::ptr::null(), 0));
-
-        let reply = reply.expect("the reply was queued");
-        assert_eq!(unsafe { (reply.add(16) as *const u64).read() }, 42);
-        assert_eq!(mailbox_tags(caller), [crate::actor::PROGRAM_MESSAGE_TAG]);
-        let call = global_scheduler().get_process(service).unwrap().lock().mailbox.pop();
-        assert_eq!(call.unwrap().buffer.data[8..16], caller.as_u64().to_le_bytes());
-        assert!(sched.get_process(service).unwrap().lock().monitored_by.is_empty());
+        assert_eq!(call(caller, service), Ok(42));
+        assert_eq!(mailbox_tags(caller), [PROGRAM_MESSAGE_TAG]);
+        let request = process(service).lock().mailbox.pop().unwrap();
+        assert_eq!(request.buffer.data[8..16], caller.as_u64().to_le_bytes());
+        assert!(process(service).lock().monitored_by.is_empty());
     }
 
     /// A service that has ended answers no call: the caller panics.
     #[test]
     fn a_call_to_a_stopped_service_panics() {
-        mesh_rt_init_actor(1);
-        let sched = global_scheduler();
-        let (caller, service) = (sched.create_main_process(), sched.create_main_process());
-        sched.get_process(service).unwrap().lock().state =
-            ProcessState::Exited(crate::actor::ExitReason::Normal);
+        let (caller, service) = caller_and_service();
+        stop(service);
 
-        let reply = call_as(caller, || mesh_service_call(service.as_u64(), 0, std::ptr::null(), 0));
-
-        let error = reply.expect_err("no service to reply");
-        assert!(error.contains("the service stopped before it replied"), "{error}");
-        assert!(sched.get_process(caller).unwrap().lock().monitors.is_empty());
+        let error = call(caller, service).expect_err("no service to reply");
+        assert!(error.contains("the service stopped before it replied"));
+        assert!(process(caller).lock().monitors.is_empty());
         assert!(mailbox_tags(caller).is_empty());
     }
 
@@ -354,56 +363,40 @@ mod tests {
     /// notice of its end goes unread.
     #[test]
     fn a_reply_before_the_service_ends_wins() {
-        mesh_rt_init_actor(1);
-        let sched = global_scheduler();
-        let (caller, service) = (sched.create_main_process(), sched.create_main_process());
-        sched.get_process(service).unwrap().lock().state =
-            ProcessState::Exited(crate::actor::ExitReason::Normal);
-        queue(caller, &7u64.to_le_bytes(), SERVICE_REPLY_TAG);
+        let (caller, service) = caller_and_service();
+        stop(service);
+        queue(caller, 7, SERVICE_REPLY_TAG);
 
-        let reply = call_as(caller, || mesh_service_call(service.as_u64(), 0, std::ptr::null(), 0));
-
-        assert_eq!(unsafe { (reply.unwrap().add(16) as *const u64).read() }, 7);
+        assert_eq!(call(caller, service), Ok(7));
         assert!(mailbox_tags(caller).is_empty(), "the notice is discarded");
     }
 
     #[test]
     fn a_call_to_a_full_mailbox_panics() {
-        mesh_rt_init_actor(1);
-        let sched = global_scheduler();
-        let (caller, service) = (sched.create_main_process(), sched.create_main_process());
-        sched.get_process(service).unwrap().lock().mailbox =
-            std::sync::Arc::new(Mailbox::bounded(0, 1024));
+        let (caller, service) = caller_and_service();
+        process(service).lock().mailbox = std::sync::Arc::new(Mailbox::bounded(0, 1024));
 
-        let reply = call_as(caller, || mesh_service_call(service.as_u64(), 0, std::ptr::null(), 0));
-
-        let error = reply.expect_err("no room for the call");
-        assert!(error.contains("the service's mailbox is full"), "{error}");
-        assert!(sched.get_process(caller).unwrap().lock().monitors.is_empty());
-        assert!(sched.get_process(service).unwrap().lock().monitored_by.is_empty());
+        let error = call(caller, service).expect_err("no room for the call");
+        assert!(error.contains("the service's mailbox is full"));
+        assert!(process(caller).lock().monitors.is_empty());
+        assert!(process(service).lock().monitored_by.is_empty());
     }
 
     #[test]
     fn a_call_to_another_node_panics() {
-        mesh_rt_init_actor(1);
-        let caller = global_scheduler().create_main_process();
+        let (caller, _) = caller_and_service();
         let remote = ProcessId::from_remote(3, 0, 9);
 
-        let reply = call_as(caller, || mesh_service_call(remote.as_u64(), 0, std::ptr::null(), 0));
-
-        let error = reply.expect_err("a remote service is not called");
-        assert!(error.contains("a service is called on its own node"), "{error}");
+        let error = call(caller, remote).expect_err("a remote service is not called");
+        assert!(error.contains("a service is called on its own node"));
     }
 
     /// A reply goes to a caller whose mailbox is full, which waits for it,
     /// and nowhere once the caller has gone.
     #[test]
     fn a_reply_reaches_a_full_mailbox_and_skips_a_missing_caller() {
-        mesh_rt_init_actor(1);
-        let sched = global_scheduler();
-        let caller = sched.create_main_process();
-        sched.get_process(caller).unwrap().lock().mailbox =
-            std::sync::Arc::new(Mailbox::bounded(0, 1024));
+        let (caller, _) = caller_and_service();
+        process(caller).lock().mailbox = std::sync::Arc::new(Mailbox::bounded(0, 1024));
         let reply = 5u64.to_le_bytes();
 
         mesh_service_reply(caller.as_u64(), reply.as_ptr(), 8);
