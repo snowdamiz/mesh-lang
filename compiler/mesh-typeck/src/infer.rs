@@ -560,7 +560,7 @@ type StdlibModules = HashMap<String, HashMap<String, Scheme>>;
 pub fn method_module(ty: &Ty) -> Option<&'static str> {
     // A `List` with no element type is the untyped one, with no methods.
     let modules: &[&'static str] = match ty {
-        Ty::Con(_) => &["String", "Range"],
+        Ty::Con(_) => &["String", "Int", "Float", "Bytes", "Range"],
         _ => &["List", "Map", "Set", "Queue", "Iter"],
     };
     let name = ty.con_name()?;

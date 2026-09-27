@@ -598,10 +598,11 @@ from String import repeat
 fn main() do
   println("[#{String.repeat("ab", 3)}][#{String.repeat("ab", 0)}][#{repeat("x", -1)}]")
   println("[#{String.trim_start("  a b  ")}][#{String.trim_end("  a b  ")}]")
+  println("#{5.to_float()} #{3.7.to_int()} #{Bytes.from_utf8("abc").length()}")
 end
 "##,
     );
-    assert_eq!(output, "[ababab][][]\n[a b  ][  a b]\n");
+    assert_eq!(output, "[ababab][][]\n[a b  ][  a b]\n5.0 3 3\n");
 }
 
 #[test]

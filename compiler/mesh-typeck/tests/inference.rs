@@ -496,3 +496,15 @@ fn unit_is_the_empty_tuple() {
     );
     assert!(result.errors.is_empty(), "{:?}", result.errors);
 }
+
+/// An `Int`, a `Float` and a `Bytes` take their modules' functions as
+/// methods, as a `String` takes `String`'s: `5.to_float()` is
+/// `Int.to_float(5)`. Only `String` and `Range` values did.
+#[test]
+fn numbers_and_bytes_take_their_modules_functions_as_methods() {
+    let result = check_source(
+        "fn main() do\n  let f = 5.to_float()\n  let i = 3.7.to_int()\n  let n = Bytes.from_utf8(\"abc\").length()\n  f + Int.to_float(i + n)\nend\n",
+    );
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+    assert_result_type(&result, Ty::fun(vec![], Ty::float()));
+}
