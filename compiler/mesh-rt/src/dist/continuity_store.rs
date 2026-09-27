@@ -2532,6 +2532,90 @@ mod tests {
         }
     }
 
+    /// Each statement's failure is the operation's error. A table dropped
+    /// under the store stands in for the I/O and corruption errors SQLite
+    /// reports at the statement that meets them.
+    #[test]
+    fn a_statement_that_fails_fails_its_operation() {
+        let active = || record("operation", 1, StoredContinuityPhase::Started);
+        let missing = |error: Result<(), String>, table: &str| {
+            let error = error.expect_err(table);
+            assert!(
+                error.contains(&format!("no such table: {table}")),
+                "{error}"
+            );
+        };
+        let without = |table: &str| {
+            let store = self::store();
+            execute(&store, &format!("DROP TABLE {table}"));
+            store
+        };
+
+        let store = without("continuity_replica_safe_points");
+        missing(store.stats().map(drop), "continuity_replica_safe_points");
+        missing(
+            store.acknowledge_replica_safe_point("replica", 1),
+            "continuity_replica_safe_points",
+        );
+        let store = without("continuity_tombstones");
+        missing(store.upsert(&active()), "continuity_tombstones");
+        let store = without("continuity_records");
+        missing(store.upsert(&active()), "continuity_records");
+        missing(store.all_records().map(drop), "continuity_records");
+        missing(
+            store.update_response("operation", b"ok"),
+            "continuity_records",
+        );
+        missing(store.compact(10).map(drop), "continuity_records");
+        let store = without("continuity_log");
+        missing(store.upsert(&active()), "continuity_log");
+        assert_eq!(store.get("operation"), Ok(None));
+        missing(store.log_entries_after(0, 1).map(drop), "continuity_log");
+
+        // A write a store refuses fails when it steps, and changes nothing.
+        let store = self::store();
+        execute(&store, "PRAGMA query_only = ON");
+        let refused = store.upsert(&active()).expect_err("read-only store");
+        assert!(refused.contains("readonly"), "{refused}");
+        execute(&store, "PRAGMA query_only = OFF");
+        assert_eq!(store.get("operation"), Ok(None));
+
+        // A tombstone's expiry past SQLite's integers is refused.
+        let store = self::store();
+        store
+            .upsert(&record("expired", 1, StoredContinuityPhase::Completed))
+            .unwrap();
+        assert!(store.compact(i64::MAX as u64).is_err());
+        assert!(store.get("expired").unwrap().is_some());
+    }
+
+    #[test]
+    fn concurrent_writes_share_a_group_commit() {
+        let store = Arc::new(store());
+        let writer = Arc::new(DurableWriter::start(Arc::clone(&store)));
+        let start = Arc::new(std::sync::Barrier::new(8));
+        let writers: Vec<_> = (0..8)
+            .map(|index| {
+                let (writer, start) = (Arc::clone(&writer), Arc::clone(&start));
+                std::thread::spawn(move || {
+                    start.wait();
+                    writer.persist(
+                        record(
+                            &format!("batched-{index}"),
+                            1,
+                            StoredContinuityPhase::Started,
+                        ),
+                        "runtime",
+                    )
+                })
+            })
+            .collect();
+        for writer in writers {
+            assert_eq!(writer.join().unwrap(), Ok(()));
+        }
+        assert_eq!(store.stats().unwrap().records, 8);
+    }
+
     #[test]
     fn a_failed_compaction_changes_nothing() {
         let store = store();
@@ -2595,7 +2679,7 @@ mod tests {
         );
         let entry = store.log_entries_after(0, 10).unwrap().remove(0);
         assert!(entry.verify());
-        let target = super::tests::store();
+        let target = self::store();
         target.apply_log_entry(&entry).expect("apply");
         assert_eq!(target.get("operation").unwrap().unwrap(), entry.record);
         for tampered in [
