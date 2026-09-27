@@ -1976,46 +1976,48 @@ fn release_outbound_frame_bytes(session: &NodeSession, frame: &OutboundFrame) {
 }
 
 fn writer_loop_session(session: Arc<NodeSession>) {
-    let Some(receivers) = session.outbound_receivers.lock().unwrap().take() else {
-        session.shutdown.store(true, Ordering::Release);
-        return;
-    };
+    // `spawn_session_threads` starts one writer per session.
+    let receivers = session
+        .outbound_receivers
+        .lock()
+        .unwrap()
+        .take()
+        .expect("a session's one writer takes its lanes");
     let mut consecutive_control_frames = 0usize;
     while !session.shutdown.load(Ordering::Acquire) {
-        let Some(first) = wait_for_outbound_frame(&receivers, &mut consecutive_control_frames)
-        else {
-            if session.tls_output_pending.load(Ordering::Acquire) {
-                if let Err(error) = session.write_frames([]) {
-                    record_peer_transport_failure(&session.remote_name, Instant::now());
-                    eprintln!(
-                        "mesh transport: transition=writer_failed remote={} reason={}",
-                        session.remote_name, error
-                    );
-                    session.shutdown.store(true, Ordering::Release);
-                    break;
+        let result = match wait_for_outbound_frame(&receivers, &mut consecutive_control_frames) {
+            // Nothing to send: flush what a heartbeat left, if anything.
+            None if session.tls_output_pending.load(Ordering::Acquire) => session.write_frames([]),
+            None => continue,
+            Some(first) => {
+                let mut batch = Vec::with_capacity(MAX_OUTBOUND_WRITE_BATCH);
+                batch.push(first);
+                while batch.len() < MAX_OUTBOUND_WRITE_BATCH {
+                    let Some(frame) =
+                        try_next_outbound_frame(&receivers, &mut consecutive_control_frames)
+                    else {
+                        break;
+                    };
+                    batch.push(frame);
                 }
+                // A rustls StreamOwned cannot be split into independent
+                // reader/writer halves. Batching amortizes contention with the
+                // bounded reader poll instead of reacquiring this lock for
+                // every small protocol frame.
+                let written_application = batch
+                    .iter()
+                    .any(|frame| matches!(frame.class, OutboundClass::Application));
+                let result =
+                    session.write_frames(batch.iter().map(|frame| frame.payload.as_slice()));
+                for frame in &batch {
+                    release_outbound_frame_bytes(&session, frame);
+                }
+                if result.is_ok() && written_application {
+                    record_peer_transport_success(&session.remote_name);
+                }
+                result
             }
-            continue;
         };
-        let mut batch = Vec::with_capacity(MAX_OUTBOUND_WRITE_BATCH);
-        batch.push(first);
-        while batch.len() < MAX_OUTBOUND_WRITE_BATCH {
-            let Some(frame) = try_next_outbound_frame(&receivers, &mut consecutive_control_frames)
-            else {
-                break;
-            };
-            batch.push(frame);
-        }
-        // A rustls StreamOwned cannot be split into independent reader/writer
-        // halves. Batching amortizes contention with the bounded reader poll
-        // instead of reacquiring this lock for every small protocol frame.
-        let written_application = batch
-            .iter()
-            .any(|frame| matches!(frame.class, OutboundClass::Application));
-        let result = session.write_frames(batch.iter().map(|frame| frame.payload.as_slice()));
-        for frame in &batch {
-            release_outbound_frame_bytes(&session, frame);
-        }
         if let Err(error) = result {
             record_peer_transport_failure(&session.remote_name, Instant::now());
             eprintln!(
@@ -2023,9 +2025,6 @@ fn writer_loop_session(session: Arc<NodeSession>) {
                 session.remote_name, error
             );
             session.shutdown.store(true, Ordering::Release);
-            break;
-        } else if written_application {
-            record_peer_transport_success(&session.remote_name);
         }
     }
 }
@@ -12493,5 +12492,172 @@ mod tests {
             encode_remote_spawn_args(&[0; 8], &[REMOTE_SPAWN_ARG_UNSUPPORTED]),
             Err("remote_spawn_arg_tag_unsupported:0".to_string())
         );
+    }
+
+    /// A persistent session over loopback TLS that nothing serves, and the
+    /// stream its peer holds.
+    fn loose_session(
+        protocol: NegotiatedProtocol,
+    ) -> (
+        Arc<NodeSession>,
+        StreamOwned<rustls::ServerConnection, TcpStream>,
+    ) {
+        let (client, server) = tls_pair();
+        let session = Arc::new(NodeSession::new(
+            RemoteSessionEndpoint {
+                remote_name: "loose-peer@127.0.0.1:1".to_string(),
+                remote_creation: 1,
+                node_id: 0,
+                direction: SessionDirection::Outgoing,
+            },
+            NodeStream::ClientTls(client),
+            true,
+            protocol,
+            None,
+        ));
+        (session, server)
+    }
+
+    /// Queues frames on `session`'s stream until the socket takes no more
+    /// (its peer not reading), then a heartbeat, which stays queued.
+    fn fill_until_heartbeat_waits(session: &NodeSession) {
+        loop {
+            let mut stream = session.stream.lock();
+            stream.queue_frame(&[HEARTBEAT_PONG; 64 * 1024]).unwrap();
+            if !stream.flush_queued().unwrap().1 {
+                break;
+            }
+        }
+        session.send_heartbeat(vec![HEARTBEAT_PING; 9]).unwrap();
+        assert!(session.tls_output_pending.load(Ordering::Acquire));
+    }
+
+    fn spawn_writer(session: &Arc<NodeSession>) -> std::thread::JoinHandle<()> {
+        let session = Arc::clone(session);
+        std::thread::spawn(move || writer_loop_session(session))
+    }
+
+    /// When nothing else is queued, the writer sends what a heartbeat left
+    /// in the stream as soon as the peer takes it.
+    #[test]
+    fn the_writer_flushes_what_a_heartbeat_left_when_the_peer_reads() {
+        let (session, mut peer) = loose_session(protocol_one());
+        fill_until_heartbeat_waits(&session);
+        let writer = spawn_writer(&session);
+        peer.sock
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .unwrap();
+        while read_dist_msg(&mut peer).unwrap()[0] != HEARTBEAT_PING {}
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while session.tls_output_pending.load(Ordering::Acquire) {
+            assert!(Instant::now() < deadline, "the heartbeat stays queued");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        session.shutdown.store(true, Ordering::SeqCst);
+        writer.join().unwrap();
+    }
+
+    /// A writer whose peer has gone ends the session, whether it was
+    /// sending frames or flushing what a heartbeat left.
+    #[test]
+    fn the_writer_ends_its_session_when_the_peer_is_gone() {
+        let (session, peer) = loose_session(protocol_one());
+        drop(peer);
+        let writer = spawn_writer(&session);
+        while !session.shutdown.load(Ordering::Acquire) {
+            let _ = session.send(OutboundClass::Application, vec![DIST_SEND; 64 * 1024]);
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        writer.join().unwrap();
+
+        let (session, peer) = loose_session(protocol_one());
+        fill_until_heartbeat_waits(&session);
+        drop(peer);
+        spawn_writer(&session).join().unwrap();
+        assert!(session.shutdown.load(Ordering::Acquire));
+        assert_eq!(
+            session.send_heartbeat(vec![HEARTBEAT_PING; 9]),
+            Err("peer_session_shutdown".to_string())
+        );
+        assert_eq!(
+            session.send(OutboundClass::Control, vec![DIST_PEER_LIST]),
+            Err("peer_session_shutdown".to_string())
+        );
+    }
+
+    /// A reader ends its session on a frame it cannot take: one longer than
+    /// the protocol allows, or, in protocol two, one that is no envelope.
+    #[test]
+    fn the_reader_ends_its_session_on_a_frame_it_cannot_take() {
+        for (protocol, oversized) in [(protocol_one(), true), (protocol_two(), false)] {
+            let (session, mut peer) = loose_session(protocol);
+            let reader = std::thread::spawn({
+                let session = Arc::clone(&session);
+                move || {
+                    reader_loop_session(
+                        session,
+                        Arc::new(Mutex::new(HeartbeatState::new(
+                            Duration::from_secs(60),
+                            Duration::from_secs(15),
+                        ))),
+                    )
+                }
+            });
+            if oversized {
+                peer.write_all(&(MAX_DIST_MSG + 1).to_le_bytes()).unwrap();
+                peer.flush().unwrap();
+            } else {
+                write_msg(&mut peer, &[DIST_SEND, 1, 2]).unwrap();
+            }
+            reader.join().unwrap();
+            assert!(session.shutdown.load(Ordering::Acquire));
+        }
+    }
+
+    /// The heartbeat pings the peer and reports this node's load; when no
+    /// pong comes in time, or the ping cannot be written, it ends the
+    /// session and removes it.
+    #[test]
+    fn the_heartbeat_ends_a_session_whose_peer_does_not_answer() {
+        let beat = |session: &Arc<NodeSession>| {
+            let heartbeat = Arc::new(Mutex::new(HeartbeatState::new(
+                Duration::ZERO,
+                Duration::from_millis(50),
+            )));
+            let session = Arc::clone(session);
+            let name = session.remote_name.clone();
+            std::thread::spawn(move || heartbeat_loop_session(session, heartbeat, name))
+        };
+        let state = test_node();
+
+        let mut silent = TestPeer::new("silent-heartbeat-peer@127.0.0.1:1");
+        let beating = beat(&silent.session);
+        silent
+            .stream
+            .sock
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .unwrap();
+        assert_eq!(read_msg(&mut silent.stream).unwrap()[0], HEARTBEAT_PING);
+        beating.join().unwrap();
+        assert!(!state
+            .sessions
+            .read()
+            .contains_key("silent-heartbeat-peer@127.0.0.1:1"));
+        assert!(silent
+            .sent()
+            .iter()
+            .any(|frame| frame[0] == DIST_LOAD_REPORT));
+
+        let (session, peer) = loose_session(protocol_one());
+        loop {
+            let mut stream = session.stream.lock();
+            stream.queue_frame(&[HEARTBEAT_PONG; 64 * 1024]).unwrap();
+            if !stream.flush_queued().unwrap().1 {
+                break;
+            }
+        }
+        drop(peer);
+        beat(&session).join().unwrap();
+        assert!(session.shutdown.load(Ordering::Acquire));
     }
 }
