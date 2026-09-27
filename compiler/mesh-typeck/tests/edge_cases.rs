@@ -3192,7 +3192,13 @@ fn rarely_taken_paths_report_what_they_should() {
         "pub fn h(r :: Request) -> Response do\n  HTTP.response(200, \"\")\nend\n\n\
          fn make() do\n  h\nend\n\n\
          fn main() do\n  let router = HTTP.router()\n  HTTP.on_get(router, \"/x\", make())\nend\n";
-    let cases: [(&str, &[&str]); 12] = [
+    let cases: [(&str, &[&str]); 13] = [
+        // A variant without fields, written with parentheses, passes
+        // through as itself.
+        (
+            "type T do\n  A\n  B(Int)\nend\n\nfn f(x :: T) do\n  case x do\n    A()\n    B(n)\n  end\nend\n",
+            &[],
+        ),
         // A clause without a parameter list is a catch-all.
         (
             "fn f do\n  1\nend\n\nfn f do\n  2\nend\n",
