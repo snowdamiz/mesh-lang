@@ -30,6 +30,7 @@ use crate::actor::process::ProcessId;
 // ---------------------------------------------------------------------------
 
 /// Inner state of the global registry, protected by a single RwLock.
+#[derive(Default)]
 struct GlobalRegistryInner {
     /// name -> (PID, owning_node_name) mapping
     names: FxHashMap<String, (ProcessId, String)>,
@@ -37,16 +38,6 @@ struct GlobalRegistryInner {
     pid_names: FxHashMap<ProcessId, Vec<String>>,
     /// node_name -> names reverse index for efficient cleanup on node disconnect
     node_names: FxHashMap<String, Vec<String>>,
-}
-
-impl GlobalRegistryInner {
-    fn new() -> Self {
-        GlobalRegistryInner {
-            names: FxHashMap::default(),
-            pid_names: FxHashMap::default(),
-            node_names: FxHashMap::default(),
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -57,18 +48,23 @@ impl GlobalRegistryInner {
 ///
 /// Unlike the local `ProcessRegistry`, this tracks the owning node name
 /// for each registration to enable cleanup when a node disconnects.
+#[derive(Default)]
 pub struct GlobalRegistry {
     inner: RwLock<GlobalRegistryInner>,
 }
 
-impl GlobalRegistry {
-    /// Create a new empty global registry.
-    pub fn new() -> Self {
-        GlobalRegistry {
-            inner: RwLock::new(GlobalRegistryInner::new()),
-        }
+/// Takes `name` off the list `index` keeps under `key`, and the list off
+/// the index once it is empty.
+fn unindex<K: Eq + std::hash::Hash>(index: &mut FxHashMap<K, Vec<String>>, key: &K, name: &str) {
+    if index.get_mut(key).is_some_and(|list| {
+        list.retain(|n| n != name);
+        list.is_empty()
+    }) {
+        index.remove(key);
     }
+}
 
+impl GlobalRegistry {
     /// Register a name globally.
     ///
     /// Returns `Ok(())` if the name was successfully registered, or
@@ -104,27 +100,13 @@ impl GlobalRegistry {
     /// Removes from all three maps. Returns `true` if the name was found
     /// and removed, `false` if not found.
     pub fn unregister(&self, name: &str) -> bool {
-        let mut inner = self.inner.write();
-
-        if let Some((pid, node_name)) = inner.names.remove(name) {
-            // Remove from pid_names reverse index.
-            if let Some(list) = inner.pid_names.get_mut(&pid) {
-                list.retain(|n| n != name);
-                if list.is_empty() {
-                    inner.pid_names.remove(&pid);
-                }
-            }
-            // Remove from node_names reverse index.
-            if let Some(list) = inner.node_names.get_mut(&node_name) {
-                list.retain(|n| n != name);
-                if list.is_empty() {
-                    inner.node_names.remove(&node_name);
-                }
-            }
-            true
-        } else {
-            false
-        }
+        let inner = &mut *self.inner.write();
+        let Some((pid, node_name)) = inner.names.remove(name) else {
+            return false;
+        };
+        unindex(&mut inner.pid_names, &pid, name);
+        unindex(&mut inner.node_names, &node_name, name);
+        true
     }
 
     /// Remove all registrations owned by a specific node.
@@ -132,24 +114,16 @@ impl GlobalRegistry {
     /// Called when a node disconnects. Returns the list of removed names
     /// (for broadcasting unregister messages to remaining nodes).
     pub fn cleanup_node(&self, node_name: &str) -> Vec<String> {
-        let mut inner = self.inner.write();
-
-        let names_to_remove = inner.node_names.remove(node_name).unwrap_or_default();
-
-        if !names_to_remove.is_empty() {
-            for name in &names_to_remove {
-                if let Some((pid, _)) = inner.names.remove(name) {
-                    if let Some(list) = inner.pid_names.get_mut(&pid) {
-                        list.retain(|n| n != name);
-                        if list.is_empty() {
-                            inner.pid_names.remove(&pid);
-                        }
-                    }
-                }
-            }
+        let inner = &mut *self.inner.write();
+        let names = inner.node_names.remove(node_name).unwrap_or_default();
+        // The indexes hold exactly the registered names.
+        for (name, (pid, _)) in names
+            .iter()
+            .filter_map(|name| Some((name, inner.names.remove(name)?)))
+        {
+            unindex(&mut inner.pid_names, &pid, name);
         }
-
-        names_to_remove
+        names
     }
 
     /// Remove all registrations for a specific PID.
@@ -157,24 +131,15 @@ impl GlobalRegistry {
     /// Called when a local process exits. Returns the list of removed names
     /// (for broadcasting unregister messages to other nodes).
     pub fn cleanup_process(&self, pid: ProcessId) -> Vec<String> {
-        let mut inner = self.inner.write();
-
-        let names_to_remove = inner.pid_names.remove(&pid).unwrap_or_default();
-
-        if !names_to_remove.is_empty() {
-            for name in &names_to_remove {
-                if let Some((_, node_name)) = inner.names.remove(name) {
-                    if let Some(list) = inner.node_names.get_mut(&node_name) {
-                        list.retain(|n| n != name);
-                        if list.is_empty() {
-                            inner.node_names.remove(&node_name);
-                        }
-                    }
-                }
-            }
+        let inner = &mut *self.inner.write();
+        let names = inner.pid_names.remove(&pid).unwrap_or_default();
+        for (name, (_, node_name)) in names
+            .iter()
+            .filter_map(|name| Some((name, inner.names.remove(name)?)))
+        {
+            unindex(&mut inner.node_names, &node_name, name);
         }
-
-        names_to_remove
+        names
     }
 
     /// Get all current registrations as a snapshot for syncing to a newly
@@ -208,12 +173,6 @@ impl GlobalRegistry {
     }
 }
 
-impl Default for GlobalRegistry {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Global singleton
 // ---------------------------------------------------------------------------
@@ -223,7 +182,7 @@ static GLOBAL_NAME_REGISTRY: OnceLock<GlobalRegistry> = OnceLock::new();
 
 /// Get a reference to the global name registry.
 pub fn global_name_registry() -> &'static GlobalRegistry {
-    GLOBAL_NAME_REGISTRY.get_or_init(GlobalRegistry::new)
+    GLOBAL_NAME_REGISTRY.get_or_init(GlobalRegistry::default)
 }
 
 // ---------------------------------------------------------------------------
@@ -231,47 +190,25 @@ pub fn global_name_registry() -> &'static GlobalRegistry {
 // ---------------------------------------------------------------------------
 
 /// Broadcast a global register event to all connected nodes.
-///
-/// Follows the `send_peer_list` pattern: collect session references under
-/// read lock, drop lock, then iterate and write to each stream.
 pub(crate) fn broadcast_global_register(name: &str, pid: ProcessId, node_name: &str) {
-    let state = match super::node::node_state() {
-        Some(s) => s,
-        None => return,
-    };
-
     let mut payload = vec![super::node::DIST_GLOBAL_REGISTER];
     encode_entry(&mut payload, name, pid, node_name);
-
-    // Collect session references, then drop sessions lock before writing.
-    let sessions: Vec<std::sync::Arc<super::node::NodeSession>> = {
-        let map = state.sessions.read();
-        map.values().map(std::sync::Arc::clone).collect()
-    };
-
-    for session in &sessions {
-        let _ = session.send(super::node::OutboundClass::Control, payload.clone());
-    }
+    broadcast(payload);
 }
 
 /// Broadcast a global unregister event to all connected nodes.
-///
-/// Follows the same broadcast pattern as `broadcast_global_register`.
 pub(crate) fn broadcast_global_unregister(name: &str) {
-    let state = match super::node::node_state() {
-        Some(s) => s,
-        None => return,
-    };
-
     let mut payload = vec![super::node::DIST_GLOBAL_UNREGISTER];
     encode_str(&mut payload, name);
+    broadcast(payload);
+}
 
-    // Collect session references, then drop sessions lock before writing.
-    let sessions: Vec<std::sync::Arc<super::node::NodeSession>> = {
-        let map = state.sessions.read();
-        map.values().map(std::sync::Arc::clone).collect()
-    };
-
+/// Sends `payload` to every connected node, none when no node is started.
+/// The sessions are collected first so none is written under the lock.
+fn broadcast(payload: Vec<u8>) {
+    let sessions: Vec<std::sync::Arc<super::node::NodeSession>> = super::node::node_state()
+        .map(|state| state.sessions.read().values().cloned().collect())
+        .unwrap_or_default();
     for session in &sessions {
         let _ = session.send(super::node::OutboundClass::Control, payload.clone());
     }
@@ -356,7 +293,7 @@ mod tests {
 
     /// Create a fresh registry for testing (avoids global state interference).
     fn fresh_registry() -> GlobalRegistry {
-        GlobalRegistry::new()
+        GlobalRegistry::default()
     }
 
     #[test]
