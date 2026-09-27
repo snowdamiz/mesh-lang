@@ -8537,16 +8537,16 @@ fn infer_expr_here(
 ) -> Result<Ty, TypeError> {
     let ty = match expr {
         Expr::Literal(lit) => {
-            if let Some(token) = lit.token() {
-                // `-9223372036854775808` is a minus applied to a literal.
-                let negated = lit.syntax().parent().is_some_and(|parent| {
-                    parent.kind() == SyntaxKind::UNARY_EXPR
-                        && parent
-                            .children_with_tokens()
-                            .any(|t| t.kind() == SyntaxKind::MINUS)
-                });
-                check_numeric_literal(ctx, &token, negated);
-            }
+            // The parser makes a literal node of the one token it is.
+            let token = lit.token().expect("a literal is its token");
+            // `-9223372036854775808` is a minus applied to a literal.
+            let negated = lit.syntax().parent().is_some_and(|parent| {
+                parent.kind() == SyntaxKind::UNARY_EXPR
+                    && parent
+                        .children_with_tokens()
+                        .any(|t| t.kind() == SyntaxKind::MINUS)
+            });
+            check_numeric_literal(ctx, &token, negated);
             Ok(infer_literal(lit))
         }
         Expr::NameRef(name_ref) => {
