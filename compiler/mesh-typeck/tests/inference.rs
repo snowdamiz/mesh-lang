@@ -485,3 +485,14 @@ fn a_method_is_found_above_its_impl() {
     );
     assert!(result.errors.is_empty(), "{:?}", result.errors);
 }
+
+/// `Unit`, as the documentation writes it, is `()`: a function annotated
+/// `-> Unit` returns what `println` does, and `Result<Unit, String>` holds
+/// `nil`. It was a type of its own that nothing had.
+#[test]
+fn unit_is_the_empty_tuple() {
+    let result = check_source(
+        "fn quiet() -> Unit do\n  println(\"quiet\")\nend\n\nfn done() -> Result<Unit, String> do\n  quiet()\n  Ok(nil)\nend\n\nfn main() do\n  done()\nend\n",
+    );
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+}

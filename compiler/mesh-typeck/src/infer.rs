@@ -15282,6 +15282,11 @@ fn resolve_alias_within(
         }
         _ => tc,
     };
+    // `Unit`, as the documentation writes it (`Result<Unit, String>`), is
+    // `()`: it was a type of its own, which nothing returns.
+    if tc.name == "Unit" && !applied && declared_param_count(type_registry, "Unit").is_none() {
+        return Ty::Tuple(Vec::new());
+    }
     if applied {
         Ty::App(Box::new(Ty::Con(tc)), args)
     } else {
