@@ -49,17 +49,21 @@ test('materializeCorpus writes per-case .mpl files and preserves case metadata',
 })
 
 test('materializeCase fails closed when a markdown selection is not inside a mesh fence', () => {
-  const outDir = makeTempDir()
+  const rootDir = makeTempDir()
+  fs.writeFileSync(
+    path.join(rootDir, 'page.md'),
+    'Prose, not code: "#{x}"\n\n```mesh\nprintln("#{x}")\n```\n',
+  )
 
   assert.throws(
     () => materializeCase({
-      rootDir: repoRoot,
-      outDir,
+      rootDir,
+      outDir: makeTempDir(),
       caseDef: {
         id: 'bad-markdown-selection',
-        path: 'website/docs/docs/language-basics/index.md',
-        startLine: 56,
-        endLine: 56,
+        path: 'page.md',
+        startLine: 1,
+        endLine: 1,
         expectedForms: ['hash'],
         expectedStringKind: 'double',
       },

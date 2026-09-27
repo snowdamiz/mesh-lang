@@ -72,8 +72,8 @@ function validateSupportContract(baseRoot) {
     'Best-effort editors should invoke `meshc fmt <file>` directly and treat that integration as user-maintained.',
     'The JSON-RPC transport is shared across editors, but Mesh only publishes repo-owned editor-host guidance for VS Code and Neovim.',
     'Best-effort editors that support LSP can point their client at:',
-    'small backend-shaped Mesh project over real stdio JSON-RPC',
-    'same-file go-to-definition inside backend-shaped project code',
+    'editor-facing behaviors over real stdio JSON-RPC',
+    '| **Go-to-definition** | Jump to definitions in the current document |',
     '### VS Code',
     'VS Code is a first-class editor host in the public Mesh tooling contract.',
     'bash scripts/verify-m036-s03.sh',
@@ -82,8 +82,8 @@ function validateSupportContract(baseRoot) {
     'Use the Neovim-specific verifier below when you only need to replay this pack\'s bounded proof surface:',
     '### Best-effort editors',
     'Mesh does not publish repo-owned editor-host smoke, packaging, or troubleshooting guides for those setups.',
-    '| VS Code Extension | -- | First-class VS Code editor host with verified Mesh LSP integration |',
-    '| Neovim Pack | -- | First-class Neovim editor host for the classic syntax plus native `meshc lsp` path |',
+    '| VS Code Extension | Marketplace or VSIX | First-class VS Code host for the shared grammar and Mesh LSP |',
+    '| Neovim Pack | Native package runtime | First-class Neovim host for classic syntax and `meshc lsp` |',
   ])
   requireMatches(errors, toolingPath, tooling, [
     {

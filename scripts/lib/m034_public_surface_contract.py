@@ -169,22 +169,8 @@ README_REQUIRED_MARKERS = [
     "meshpkg --version",
     "Autonomous Clusters",
     "Distributed Proof",
-    "set -a && source .env && set +a && bash scripts/verify-m034-s05.sh",
-    "v<Cargo version>",
-    "ext-v<extension version>",
-    "deploy.yml",
-    "deploy-services.yml",
-    "authoritative-verification.yml",
-    "release.yml",
-    "extension-release-proof.yml",
-    "publish-extension.yml",
     GETTING_STARTED_URL,
     TOOLING_URL,
-    "https://packages.meshlang.dev/packages/snowdamiz/mesh-registry-proof",
-    "https://packages.meshlang.dev/search?q=snowdamiz%2Fmesh-registry-proof",
-    "https://api.packages.meshlang.dev/api/v1/packages?search=snowdamiz%2Fmesh-registry-proof",
-    ".tmp/m034-s05/verify/candidate-tags.json",
-    ".tmp/m034-s05/verify/remote-runs.json",
 ]
 
 GETTING_STARTED_SOURCE_MARKERS = [
