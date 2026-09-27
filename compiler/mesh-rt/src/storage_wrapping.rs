@@ -543,6 +543,8 @@ fn seal_for_current_actor(
         commit_reserved_seal(&process, &preparation, counter, expected_kind)?;
     }
 
+    // prepare_seal checked the context and the plaintext: sealing them
+    // cannot fail.
     let blob = seal_value(
         &SystemProvider,
         &preparation.secret.bytes,
@@ -550,7 +552,8 @@ fn seal_for_current_actor(
         counter,
         &context,
         expected_kind,
-    )?;
+    )
+    .expect("a context and plaintext checked before the reservation");
     {
         let process = process.lock();
         revalidate_seal_inputs(&process, &preparation, expected_kind)?;
@@ -775,6 +778,8 @@ fn seal_bytes_for_current_actor(
         let process = process.lock();
         commit_storage_counter(&process, &storage_key, counter).map_err(storage_key_failure)?;
     }
+    // The context and the value's length were checked above: sealing them
+    // cannot fail.
     let blob = seal_value(
         &SystemProvider,
         &value,
@@ -782,7 +787,8 @@ fn seal_bytes_for_current_actor(
         counter,
         &context,
         StorageValueKind::Bytes,
-    )?;
+    )
+    .expect("a context and plaintext checked before the reservation");
     {
         let process = process.lock();
         validate_prepared_storage_key_resource(&process, &storage_key)

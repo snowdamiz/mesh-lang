@@ -51,6 +51,12 @@ const MLKEM_SHARED_SECRET_BYTES: usize = 32;
 const HPKE_ENCAPSULATED_KEY_BYTES: usize = 32;
 const HPKE_MIN_SEALED_BYTES: usize = HPKE_ENCAPSULATED_KEY_BYTES + AEAD_TAG_BYTES;
 const MAX_HPKE_INFO_BYTES: usize = MAX_INPUT_BYTES - 64;
+// The longest labeled HMAC input HPKE builds, the info hash's, stays within
+// HMAC's input bound: no step of the key schedule can be refused.
+const _: () = assert!(
+    HPKE_VERSION_LABEL.len() + HPKE_SUITE_ID.len() + b"info_hash".len() + MAX_HPKE_INFO_BYTES
+        <= MAX_INPUT_BYTES
+);
 const MAX_HPKE_SEALED_BYTES: usize = HPKE_ENCAPSULATED_KEY_BYTES + MAX_AEAD_CIPHERTEXT_BYTES;
 const HPKE_KEM_SUITE_ID: &[u8] = b"KEM\x00\x20";
 const HPKE_SUITE_ID: &[u8] = b"HPKE\x00\x20\x00\x01\x00\x03";
@@ -747,7 +753,7 @@ fn hpke_labeled_extract(
     salt: &[u8],
     label: &[u8],
     input_key_material: &[u8],
-) -> Result<Zeroizing<[u8; 32]>, CryptoFailure> {
+) -> Zeroizing<[u8; 32]> {
     let mut labeled_input = Zeroizing::new(Vec::with_capacity(
         HPKE_VERSION_LABEL.len() + suite_id.len() + label.len() + input_key_material.len(),
     ));
@@ -758,8 +764,8 @@ fn hpke_labeled_extract(
     let mut output = Zeroizing::new([0; 32]);
     provider
         .hmac_sha256(salt, &labeled_input, &mut output)
-        .map_err(provider_failure)?;
-    Ok(output)
+        .expect("an HPKE label within HMAC's input bound");
+    output
 }
 
 fn hpke_labeled_expand<const N: usize>(
@@ -768,7 +774,7 @@ fn hpke_labeled_expand<const N: usize>(
     pseudo_random_key: &[u8; 32],
     label: &[u8],
     info: &[u8],
-) -> Result<Zeroizing<[u8; N]>, CryptoFailure> {
+) -> Zeroizing<[u8; N]> {
     // One HMAC block: every expansion HPKE's suite needs is a key or nonce.
     const { assert!(N > 0 && N <= 32) };
     let mut labeled_info = Vec::with_capacity(
@@ -783,23 +789,23 @@ fn hpke_labeled_expand<const N: usize>(
     let mut block = Zeroizing::new([0; 32]);
     provider
         .hmac_sha256(pseudo_random_key, &labeled_info, &mut block)
-        .map_err(provider_failure)?;
+        .expect("an HPKE label within HMAC's input bound");
     let mut output = Zeroizing::new([0; N]);
     output.copy_from_slice(&block[..N]);
-    Ok(output)
+    output
 }
 
 fn hpke_derive_private_key(
     provider: &impl CryptoProvider,
     input_key_material: &[u8; 32],
-) -> Result<Zeroizing<[u8; 32]>, CryptoFailure> {
+) -> Zeroizing<[u8; 32]> {
     let pseudo_random_key = hpke_labeled_extract(
         provider,
         HPKE_KEM_SUITE_ID,
         &[],
         b"dkp_prk",
         input_key_material,
-    )?;
+    );
     hpke_labeled_expand(provider, HPKE_KEM_SUITE_ID, &pseudo_random_key, b"sk", &[])
 }
 
@@ -808,8 +814,8 @@ fn hpke_shared_secret(
     dh: &[u8; 32],
     encapsulated_key: &[u8; 32],
     recipient_public_key: &[u8; 32],
-) -> Result<Zeroizing<[u8; 32]>, CryptoFailure> {
-    let pseudo_random_key = hpke_labeled_extract(provider, HPKE_KEM_SUITE_ID, &[], b"eae_prk", dh)?;
+) -> Zeroizing<[u8; 32]> {
+    let pseudo_random_key = hpke_labeled_extract(provider, HPKE_KEM_SUITE_ID, &[], b"eae_prk", dh);
     let mut kem_context = [0; 64];
     kem_context[..32].copy_from_slice(encapsulated_key);
     kem_context[32..].copy_from_slice(recipient_public_key);
@@ -826,28 +832,28 @@ fn hpke_key_and_nonce(
     provider: &impl CryptoProvider,
     shared_secret: &[u8; 32],
     info: &[u8],
-) -> Result<(Zeroizing<[u8; 32]>, Zeroizing<[u8; 12]>), CryptoFailure> {
-    let psk_id_hash = hpke_labeled_extract(provider, HPKE_SUITE_ID, &[], b"psk_id_hash", &[])?;
-    let info_hash = hpke_labeled_extract(provider, HPKE_SUITE_ID, &[], b"info_hash", info)?;
+) -> (Zeroizing<[u8; 32]>, Zeroizing<[u8; 12]>) {
+    let psk_id_hash = hpke_labeled_extract(provider, HPKE_SUITE_ID, &[], b"psk_id_hash", &[]);
+    let info_hash = hpke_labeled_extract(provider, HPKE_SUITE_ID, &[], b"info_hash", info);
     let mut key_schedule_context = Zeroizing::new([0; 65]);
     key_schedule_context[1..33].copy_from_slice(&psk_id_hash[..]);
     key_schedule_context[33..].copy_from_slice(&info_hash[..]);
-    let secret = hpke_labeled_extract(provider, HPKE_SUITE_ID, shared_secret, b"secret", &[])?;
+    let secret = hpke_labeled_extract(provider, HPKE_SUITE_ID, shared_secret, b"secret", &[]);
     let key = hpke_labeled_expand(
         provider,
         HPKE_SUITE_ID,
         &secret,
         b"key",
         &key_schedule_context[..],
-    )?;
+    );
     let nonce = hpke_labeled_expand(
         provider,
         HPKE_SUITE_ID,
         &secret,
         b"base_nonce",
         &key_schedule_context[..],
-    )?;
-    Ok((key, nonce))
+    );
+    (key, nonce)
 }
 
 fn hpke_seal_material(
@@ -861,14 +867,14 @@ fn hpke_seal_material(
     provider
         .fill_random(&mut input_key_material[..])
         .map_err(provider_failure)?;
-    let ephemeral_private_key = hpke_derive_private_key(provider, &input_key_material)?;
+    let ephemeral_private_key = hpke_derive_private_key(provider, &input_key_material);
     let encapsulated_key = provider.x25519_public(&ephemeral_private_key);
     let mut dh = Zeroizing::new([0; 32]);
     provider
         .x25519_shared(&ephemeral_private_key, recipient_public_key, &mut dh)
         .map_err(provider_failure)?;
-    let shared_secret = hpke_shared_secret(provider, &dh, &encapsulated_key, recipient_public_key)?;
-    let (key, nonce) = hpke_key_and_nonce(provider, &shared_secret, info)?;
+    let shared_secret = hpke_shared_secret(provider, &dh, &encapsulated_key, recipient_public_key);
+    let (key, nonce) = hpke_key_and_nonce(provider, &shared_secret, info);
     let ciphertext = provider
         .chacha20poly1305_seal(&key, &nonce, associated_data, plaintext)
         .map_err(provider_failure)?;
@@ -899,9 +905,8 @@ fn hpke_open_material(
     provider
         .x25519_shared(recipient_private_key, &encapsulated_key, &mut dh)
         .map_err(provider_failure)?;
-    let shared_secret =
-        hpke_shared_secret(provider, &dh, &encapsulated_key, &recipient_public_key)?;
-    let (key, nonce) = hpke_key_and_nonce(provider, &shared_secret, info)?;
+    let shared_secret = hpke_shared_secret(provider, &dh, &encapsulated_key, &recipient_public_key);
+    let (key, nonce) = hpke_key_and_nonce(provider, &shared_secret, info);
     let mut plaintext = Zeroizing::new(sealed[32..].to_vec());
     provider
         .chacha20poly1305_open(&key, &nonce, associated_data, &mut plaintext)
