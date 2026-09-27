@@ -4152,6 +4152,8 @@ fn malformed_constructs_report_what_was_expected() {
         ("type = Int", "expected type alias name"),
         ("fn f(x :: ) do\n  1\nend", "expected type name"),
         ("type T do\n  1\nend", "expected variant name"),
+        // A bad type parameter stops the declaration before its variants.
+        ("type T<1> do\n  A\nend", "expected a name"),
         (
             "@export(\"x\") fn f(b :: Bytes) -> Bytes!String",
             "exported functions require a Mesh body",
