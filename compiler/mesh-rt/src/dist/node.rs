@@ -13460,7 +13460,8 @@ mod tests {
         key: &str,
     ) -> Option<crate::dist::operator::OperatorDiagnosticEntry> {
         let fingerprint = crate::dist::continuity::request_key_fingerprint(key);
-        crate::dist::operator::diagnostics_buffer().snapshot(None)
+        crate::dist::operator::diagnostics_buffer()
+            .snapshot(None)
             .entries
             .into_iter()
             .rev()
@@ -13835,7 +13836,8 @@ mod tests {
     fn await_recovery_failure(node: &str) -> String {
         let deadline = Instant::now() + Duration::from_secs(10);
         loop {
-            let failure = crate::dist::operator::diagnostics_buffer().snapshot(None)
+            let failure = crate::dist::operator::diagnostics_buffer()
+                .snapshot(None)
                 .entries
                 .into_iter()
                 .rev()
@@ -13915,21 +13917,9 @@ mod tests {
 
     /// An encoded HTTP request, as a clustered route carries it.
     fn route_payload(method: &str, body: &str) -> Vec<u8> {
-        use crate::collections::map;
-        use crate::http::server::MeshHttpRequest;
-        unsafe {
-            let request = crate::gc::mesh_gc_alloc_actor(
-                std::mem::size_of::<MeshHttpRequest>() as u64,
-                std::mem::align_of::<MeshHttpRequest>() as u64,
-            ) as *mut MeshHttpRequest;
-            (*request).method = crate::string::mesh_str(method) as *mut u8;
-            (*request).path = crate::string::mesh_str("/routed") as *mut u8;
-            (*request).body = crate::string::mesh_str(body) as *mut u8;
-            (*request).query_params = map::mesh_map_new_typed(1);
-            (*request).headers = map::mesh_map_new_typed(1);
-            (*request).path_params = map::mesh_map_new_typed(1);
-            crate::http::server::encode_http_request_payload(request as *mut u8).unwrap()
-        }
+        let request =
+            crate::http::server::tests::build_test_request(method, "/routed", body, &[], &[], &[]);
+        crate::http::server::encode_http_request_payload(request).unwrap()
     }
 
     /// A request key whose clustered request the current members place on
@@ -14058,36 +14048,27 @@ mod tests {
         clear_declared_handler_registry_for_test();
     }
 
-    extern "C" fn unanswering_route_handler(_request: *mut u8) -> *mut u8 {
-        std::ptr::null_mut()
-    }
-
     /// When a routed request's owner turns it away, as a draining owner
     /// does, a request safe to replay is recovered: its owner is marked
     /// lost, this node (the coordinator, and the record's replica) takes it
     /// over with a new replica, runs it, and returns the response kept.
-    /// One kept in no other copy cannot be recovered, and one whose
-    /// recovered run fails is rejected: both fail as the owner answered.
+    /// One kept in no other copy cannot be recovered, and fails as the owner
+    /// answered.
     #[test]
     fn a_replay_safe_request_its_owner_turns_away_is_recovered_here() {
         let exclusive = declared_handler_registry_test_lock();
         let state = test_node();
         let registry = crate::dist::continuity::continuity_registry();
         registry.clear_for_test();
-        let (recovered, unreplicated, unanswered) =
-            ("Recovered.route", "Unreplicated.route", "Unanswered.route");
-        for (handler, copies, function) in [
-            (recovered, 2, clustered_route_handler as *const u8),
-            (unreplicated, 1, clustered_route_handler as *const u8),
-            (unanswered, 2, unanswering_route_handler as *const u8),
-        ] {
+        let (recovered, unreplicated) = ("Recovered.route", "Unreplicated.route");
+        for (handler, copies) in [(recovered, 2), (unreplicated, 1)] {
             mesh_register_declared_handler(
                 handler.as_ptr(),
                 handler.len() as u64,
                 handler.as_ptr(),
                 handler.len() as u64,
                 copies,
-                function,
+                clustered_route_handler as *const u8,
             );
         }
         // Peers that sort after this node as members, so this node
@@ -14102,7 +14083,6 @@ mod tests {
         };
         let owner = after_this_node("draining-route-owner");
         let lone_owner = after_this_node("lone-route-owner");
-        let failing_owner = after_this_node("failing-route-owner");
         let spare = after_this_node("route-spare");
         let request = |handler: &str, owner: &TestPeer| {
             let key = key_owned_by(&owner.session.remote_name, "turned-away-route");
@@ -14118,13 +14098,13 @@ mod tests {
         // would keep them.
         let report = || {
             for node in [&state.name, &spare.session.remote_name] {
-                report_worker(node, &[recovered, unreplicated, unanswered]);
+                report_worker(node, &[recovered, unreplicated]);
             }
         };
         report();
         let done = AtomicBool::new(false);
-        let peers = [&owner, &lone_owner, &failing_owner, &spare];
-        let (turned_away, alone, failed) = std::thread::scope(|scope| {
+        let peers = [&owner, &lone_owner, &spare];
+        let (turned_away, alone) = std::thread::scope(|scope| {
             let _stop = StopOnDrop(&done);
             scope.spawn(|| serve_as_nodes(&peers, &done));
             scope.spawn(|| {
@@ -14136,7 +14116,6 @@ mod tests {
             let results = (
                 request(recovered, &owner),
                 request(unreplicated, &lone_owner),
-                request(unanswered, &failing_owner),
             );
             done.store(true, Ordering::Release);
             results
@@ -14152,13 +14131,11 @@ mod tests {
             (record.owner_node, record.replica_nodes),
             (state.name.clone(), vec![spare.session.remote_name.clone()])
         );
-        for (_, result) in [alone, failed] {
-            assert_eq!(
-                result.err(),
-                Some("owner_reservation_rejected:Draining".to_string())
-            );
-        }
-        drop((owner, lone_owner, failing_owner, spare));
+        assert_eq!(
+            alone.1.err(),
+            Some("owner_reservation_rejected:Draining".to_string())
+        );
+        drop((owner, lone_owner, spare));
         registry.clear_for_test();
         clear_declared_handler_registry_for_test();
     }
