@@ -478,9 +478,9 @@ impl RaftStateMachine<MeshRaftConfig> for DurableConsensusStateMachine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dist::consensus::{
-        start_durable_consensus_node, wait_for_consensus_leader, ConsensusCommand,
-        InProcessConsensusNetwork,
+    use crate::dist::consensus::ConsensusCommand;
+    use crate::dist::consensus_testing::{
+        start_durable_consensus_node, wait_for_consensus_leader, InProcessConsensusNetwork,
     };
     use crate::dist::scaling::{ControlMutation, DesiredCapacity, DesiredRevision};
     use std::collections::BTreeMap;
