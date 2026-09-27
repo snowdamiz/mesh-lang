@@ -2064,6 +2064,80 @@ end
     assert_eq!(run(source), "0.5\n[2.0, 3.0] [10, 20] [3, 4] [0x, 1y] []\n");
 }
 
+/// An iterator handle's name in an annotation (`-> ListIterator`) is an
+/// `Iter` whose element type is inferred: as a type of its own it had no
+/// element type, so `Iter.next` printed `Some(())`, `List.collect` the
+/// Floats' bits, and a `for` over it could not add to an element.
+#[test]
+fn an_iterator_handle_name_is_an_iter_of_inferred_elements() {
+    let source = r##"
+fn floats() -> ListIterator do
+  Iter.from([1.0, 2.0])
+end
+
+fn pairs() -> MapIterator do
+  Iter.from(%{"a" => 1})
+end
+
+fn flags() -> SetIterator do
+  Iter.from(Set.from_list([true]))
+end
+
+fn steps() -> RangeIterator do
+  Iter.from(1..3)
+end
+
+fn total(it :: ListIterator) -> Int do
+  Iter.count(it)
+end
+
+struct Evens do
+  items :: List<Int>
+end
+
+impl Iterable for Evens do
+  type Item = Int
+  type Iter = ListIterator
+  fn iter(self) -> ListIterator do
+    Iter.from(self.items)
+  end
+end
+
+struct Odds do
+  items :: List<Int>
+end
+
+impl Iterable for Odds do
+  type Item = Int
+  type Iter = ListIterator
+  fn iter(self) -> Self.Iter do
+    Iter.from(self.items)
+  end
+end
+
+fn main() do
+  println("#{Iter.next(floats())}")
+  println("#{floats() |> List.collect()}")
+  let shifted = for v in floats() do
+    v + 0.5
+  end
+  println("#{shifted}")
+  println("#{Iter.next(pairs())} #{Iter.next(flags())} #{List.collect(steps())}")
+  let words :: ListIterator = Iter.from(["x", "y"])
+  println("#{total(words)} #{total(Iter.from([1, 2, 3]))}")
+  let evens = Evens { items: [2, 4] }
+  let doubled = for x in evens do
+    x * 2
+  end
+  println("#{doubled} #{Iter.next(evens.iter())} #{Iter.next(Odds { items: [3] }.iter())}")
+end
+"##;
+    assert_eq!(
+        run(source),
+        "Some(1.0)\n[1.0, 2.0]\n[1.5, 2.5]\nSome((a, 1)) Some(true) [1, 2]\n2 3\n[4, 8] Some(2) Some(3)\n"
+    );
+}
+
 #[test]
 fn values_of_a_type_nothing_fixed_compare_equal() {
     let source = "fn main() do\n  println(\"#{None == None} #{Ok(1) == Ok(1)} #{Ok(1) == Ok(2)} #{[None] == [None]}\")\nend\n";

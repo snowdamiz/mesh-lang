@@ -563,3 +563,75 @@ fn an_impl_method_returns_what_its_body_settles() {
     );
     assert_result_type(&result, Ty::fun(vec![], Ty::list(Ty::int())));
 }
+
+/// An iterator handle's name in an annotation is `Iter`, its element type
+/// inferred: `-> ListIterator` was a type of its own with no element type,
+/// so `Iter.next`, `List.collect` and a `for` over it read `()` or bits.
+#[test]
+fn an_iterator_handle_name_is_an_iter_of_inferred_elements() {
+    let floats = "fn floats() -> ListIterator do\n  Iter.from([1.0, 2.0])\nend\n\n";
+    for (body, expected) in [
+        ("Iter.next(floats())", Ty::option(Ty::float())),
+        ("floats() |> List.collect()", Ty::list(Ty::float())),
+        (
+            "for v in floats() do\n    v + 0.5\n  end",
+            Ty::list(Ty::float()),
+        ),
+    ] {
+        let result = check_source(&format!("{floats}fn main() do\n  {body}\nend\n"));
+        assert_result_type(&result, Ty::fun(vec![], expected));
+    }
+    for (handle, source, element) in [
+        ("MapIterator", "%{\"a\" => 1}", "(String, Int)"),
+        ("SetIterator", "Set.from_list([true])", "Bool"),
+        ("RangeIterator", "1..3", "Int"),
+    ] {
+        let result = check_source(&format!(
+            "fn items() -> {handle} do\n  Iter.from({source})\nend\n\nfn main() do\n  Iter.next(items())\nend\n"
+        ));
+        assert!(result.errors.is_empty(), "{handle}: {:?}", result.errors);
+        let found = result.result_type.map(|ty| ty.to_string());
+        assert_eq!(found, Some(format!("() -> Option<{element}>")), "{handle}");
+    }
+}
+
+/// A user `Iterable` names its iterator `ListIterator`, as the guide's
+/// example does, in its signature, through `Self.Iter`, or through an
+/// interface's declared return type: its iterator yields the elements the
+/// body gives it.
+#[test]
+fn a_user_iterable_names_its_iterator_by_a_handle_name() {
+    for (declared, method) in [
+        ("", "fn iter(self) -> ListIterator do"),
+        ("", "fn iter(self) -> Self.Iter do"),
+        (
+            "interface Source do\n  type Iter\n  fn iter(self) -> Self.Iter\nend\n\n",
+            "fn iter(self) do",
+        ),
+    ] {
+        let interface = if declared.is_empty() {
+            "Iterable"
+        } else {
+            "Source"
+        };
+        let item = if declared.is_empty() {
+            "  type Item = Int\n"
+        } else {
+            ""
+        };
+        let src = format!(
+            "{declared}struct Evens do\n  items :: List<Int>\nend\n\nimpl {interface} for Evens do\n{item}  type Iter = ListIterator\n  {method}\n    Iter.from(self.items)\n  end\nend\n\nfn main() do\n  Iter.next(Evens {{ items: [2] }}.iter())\nend\n"
+        );
+        let result = check_source(&src);
+        assert_result_type(&result, Ty::fun(vec![], Ty::option(Ty::int())));
+    }
+}
+
+/// A declared type of the same name is that type, not `Iter`.
+#[test]
+fn a_declared_type_named_like_an_iterator_handle_is_itself() {
+    let result = check_source(
+        "struct MapIterator do\n  n :: Int\nend\n\nfn make() -> MapIterator do\n  MapIterator { n: 1 }\nend\n\nfn main() do\n  make().n\nend\n",
+    );
+    assert_result_type(&result, Ty::fun(vec![], Ty::int()));
+}
