@@ -4624,6 +4624,28 @@ end
 }
 
 #[test]
+fn an_unknown_query_atom_is_a_mesh_panic() {
+    // An operator or join kind the Query builders do not know read as `=`
+    // or INNER: a typo ran a different query.
+    for (call, message) in [
+        (
+            "Query.from(\"t\") |> Query.where_op(:age, :greater, \"1\")",
+            "Mesh panic: Query.where_op: unknown operator :greater;",
+        ),
+        (
+            "Query.from(\"t\") |> Query.join_as(:outer, \"u\", \"x\", \"x.id = t.id\")",
+            "Mesh panic: Query.join_as: unknown join kind :outer;",
+        ),
+    ] {
+        let source = format!("fn main() do\n  let q = {call}\n  println(\"built\")\nend\n");
+        let (code, out, err) = run_status(&source, &[]);
+        assert_eq!(code, Some(101), "{call}\n{err}");
+        assert_eq!(out, "", "{call}");
+        assert!(err.starts_with(message), "{call}\n{err}");
+    }
+}
+
+#[test]
 fn a_failed_match_names_its_function() {
     // It said "Mesh panic in <unknown>".
     let (code, out, err) = run_status(
