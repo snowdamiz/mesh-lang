@@ -1082,6 +1082,124 @@ mod tests {
         context
     }
 
+    /// A context is refused for each way it can be wrong, before any key is
+    /// touched: its length, version, purpose, kind, snapshot and session.
+    #[test]
+    fn a_context_is_refused_for_what_is_wrong_with_it() {
+        let bytes = ResourceKind::SecretBytes;
+        assert!(validate_context(&context(1), bytes).is_ok());
+        assert_tag(
+            validate_context(&context(1)[..10], bytes).unwrap_err(),
+            CryptoErrorTag::InvalidLength,
+        );
+        let mut version = context(1);
+        version[CONTEXT_VERSION_OFFSET] = 2;
+        assert_tag(
+            validate_context(&version, bytes).unwrap_err(),
+            CryptoErrorTag::UnsupportedOperation,
+        );
+        assert_tag(
+            validate_context(&context(14), bytes).unwrap_err(),
+            CryptoErrorTag::UnsupportedOperation,
+        );
+        assert_tag(
+            validate_context(&context(12), bytes).unwrap_err(),
+            CryptoErrorTag::UnsupportedOperation,
+        );
+        let mut snapshot = context(1);
+        snapshot[CONTEXT_SNAPSHOT_OFFSET..CONTEXT_BYTES].fill(0);
+        assert_tag(
+            validate_context(&snapshot, bytes).unwrap_err(),
+            CryptoErrorTag::InvalidLength,
+        );
+        let mut session = context(5);
+        assert!(validate_context(&session, bytes).is_ok());
+        session[CONTEXT_SESSION_OFFSET] = 1;
+        assert_tag(
+            validate_context(&session, bytes).unwrap_err(),
+            CryptoErrorTag::InvalidLength,
+        );
+    }
+
+    unsafe extern "C" fn reserve_nothing(_: *mut c_void, _: *mut u64) -> i32 {
+        1
+    }
+
+    /// Provisioning a storage key takes exactly a 32-byte key, a 4-byte
+    /// nonce prefix, a counter callback and its context.
+    #[test]
+    fn a_storage_key_is_provisioned_only_from_exact_material() {
+        mesh_rt_init();
+        let key = [7u8; 32];
+        let prefix = [1u8; 4];
+        let mut callback_context = 0u8;
+        let context = &mut callback_context as *mut u8 as *mut c_void;
+        let reserve = Some(reserve_nothing as MeshStorageCounterReserve);
+        let tag_of = |result: *mut MeshResult| unsafe {
+            let result = &*result;
+            assert_eq!(result.tag, 1, "expected an error");
+            // A crypto error starts with its tag byte.
+            *result.value
+        };
+        let invalid = CryptoErrorTag::InvalidLength as u8;
+        let internal = CryptoErrorTag::InternalFailure as u8;
+        assert_eq!(
+            tag_of(mesh_storage_key_provision(
+                key.as_ptr(),
+                31,
+                prefix.as_ptr(),
+                4,
+                reserve,
+                context
+            )),
+            invalid
+        );
+        assert_eq!(
+            tag_of(mesh_storage_key_provision(
+                ptr::null(),
+                32,
+                prefix.as_ptr(),
+                4,
+                reserve,
+                context
+            )),
+            invalid
+        );
+        assert_eq!(
+            tag_of(mesh_storage_key_provision(
+                key.as_ptr(),
+                32,
+                prefix.as_ptr(),
+                3,
+                reserve,
+                context
+            )),
+            invalid
+        );
+        assert_eq!(
+            tag_of(mesh_storage_key_provision(
+                key.as_ptr(),
+                32,
+                prefix.as_ptr(),
+                4,
+                None,
+                context
+            )),
+            internal
+        );
+        assert_eq!(
+            tag_of(mesh_storage_key_provision(
+                key.as_ptr(),
+                32,
+                prefix.as_ptr(),
+                4,
+                reserve,
+                ptr::null_mut()
+            )),
+            internal
+        );
+    }
+
     #[test]
     fn version_one_encoding_matches_the_independent_golden_vector() {
         let key: Vec<_> = (0u8..32).collect();
