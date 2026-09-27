@@ -500,6 +500,36 @@ fn preloads(pool :: PoolHandle) do
     Err(error) -> println("preload_author:error:" <> error)
   end
   show_rows("preload_empty", Repo.preload(pool, [], ["posts"], meta), "posts")
+  # Rows without the key a relationship joins on get an empty association;
+  # a path below one that found nothing leaves the rows as they were.
+  case Repo.all(pool,
+    Query.from("writers")
+      |> Query.select(["name"])
+      |> Query.where(:handle, "ada")) do
+    Ok(rows) -> do
+      show_rows("preload_no_keys", Repo.preload(pool, rows, ["posts", "profile"], meta), "posts")
+      show_rows("preload_no_keys_one", Repo.preload(pool, rows, ["profile"], meta), "profile")
+    end
+    Err(error) -> println("preload_no_keys:error:" <> error)
+  end
+  case Repo.all(pool,
+    Query.from("writers")
+      |> Query.where(:handle, "cy")) do
+    Ok(rows) -> do
+      show_rows("preload_nested_none", Repo.preload(pool, rows, ["posts.comments"], meta), "name")
+      failed("preload_unknown_kind",
+        Repo.preload(pool, rows, ["pals"], ["friends_with:pals:Author:handle:writers:handle"]))
+    end
+    Err(error) -> println("preload_nested_none:error:" <> error)
+  end
+  case Repo.all(pool,
+    Query.from("writers")
+      |> Query.where(:handle, "ada")) do
+    Ok(rows) -> show_rows("preload_three_levels",
+      Repo.preload(pool, rows, ["posts", "posts.comments", "posts.comments.post"], meta),
+      "posts")
+    Err(error) -> println("preload_three_levels:error:" <> error)
+  end
 end
 
 fn deletes(pool :: PoolHandle) do

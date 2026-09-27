@@ -1136,10 +1136,6 @@ fn parse_relationship_meta(meta_strings: &[String]) -> HashMap<String, RelMeta> 
 /// Returns (sql, params) where params are the IN values.
 fn build_preload_sql(table: &str, where_col: &str, ids: &[String]) -> (String, Vec<String>) {
     let mut sql = format!("SELECT * FROM {}", quote_name(table));
-    if ids.is_empty() {
-        // Should not reach here (caller checks), but safety.
-        return (sql, vec![]);
-    }
     let placeholders: Vec<String> = (1..=ids.len()).map(|i| format!("${}", i)).collect();
     sql.push_str(&format!(
         " WHERE {} IN ({})",
@@ -1301,29 +1297,31 @@ unsafe fn attach_empty_association(
     enriched
 }
 
-/// Preload a nested association path like "posts.comments".
-///
-/// Algorithm:
-/// 1. Split path into parent_assoc ("posts") and child_assoc ("comments")
-/// 2. Collect all intermediate rows from the parent association (flatten all has_many lists)
-/// 3. Preload child_assoc on the intermediate rows using the SAME merged metadata
-/// 4. Re-stitch: rebuild parent association lists using positional tracking
+/// Preload `path` onto `rows`: one association (`posts`), or a dotted path
+/// through them (`posts.comments`).
+unsafe fn preload_path(
+    pool: u64,
+    rows: *mut u8,
+    path: &str,
+    rel_map: &HashMap<String, RelMeta>,
+) -> Result<*mut u8, *mut u8> {
+    match path.split_once('.') {
+        Some((parent, child)) => preload_nested(pool, rows, parent, child, rel_map),
+        None => preload_direct(pool, rows, path, rel_map),
+    }
+}
+
+/// Preload `child_assoc` below `parent_assoc` ("posts.comments"):
+/// 1. Collect all intermediate rows from the parent association (flatten all has_many lists)
+/// 2. Preload child_assoc on the intermediate rows using the SAME merged metadata
+/// 3. Re-stitch: rebuild parent association lists using positional tracking
 unsafe fn preload_nested(
     pool: u64,
     rows: *mut u8,
-    assoc_path: &str,
+    parent_assoc: &str,
+    child_assoc: &str,
     rel_map: &HashMap<String, RelMeta>,
 ) -> Result<*mut u8, *mut u8> {
-    let parts: Vec<&str> = assoc_path.splitn(2, '.').collect();
-    if parts.len() != 2 {
-        return Err(err_result(&format!(
-            "Repo.preload: invalid nested association path '{}'",
-            assoc_path
-        )));
-    }
-    let parent_assoc = parts[0];
-    let child_assoc = parts[1];
-
     let row_count = mesh_list_length(rows);
     let parent_key_mesh = mesh_str(parent_assoc) as *mut u8;
 
@@ -1366,12 +1364,7 @@ unsafe fn preload_nested(
         return Ok(rows); // nothing to preload at nested level
     }
 
-    // Preload child_assoc on intermediate rows (recursive if child_assoc contains dots)
-    let enriched_intermediate = if child_assoc.contains('.') {
-        preload_nested(pool, intermediate_rows, child_assoc, rel_map)?
-    } else {
-        preload_direct(pool, intermediate_rows, child_assoc, rel_map)?
-    };
+    let enriched_intermediate = preload_path(pool, intermediate_rows, child_assoc, rel_map)?;
 
     // Re-stitch: rebuild parent rows with enriched intermediate rows
     // Group enriched intermediate rows back by parent index
@@ -1524,18 +1517,9 @@ pub extern "C" fn mesh_repo_preload(
         let mut current_rows = rows;
 
         for (_depth, assoc_path) in &sorted_assocs {
-            if assoc_path.contains('.') {
-                // Nested preload: "posts.comments"
-                match preload_nested(pool, current_rows, assoc_path, &rel_map) {
-                    Ok(enriched) => current_rows = enriched,
-                    Err(e) => return e,
-                }
-            } else {
-                // Direct preload: "posts"
-                match preload_direct(pool, current_rows, assoc_path, &rel_map) {
-                    Ok(enriched) => current_rows = enriched,
-                    Err(e) => return e,
-                }
+            match preload_path(pool, current_rows, assoc_path, &rel_map) {
+                Ok(enriched) => current_rows = enriched,
+                Err(e) => return e,
             }
         }
 
@@ -2611,14 +2595,6 @@ mod tests {
         let (sql, params) = build_preload_sql("users", "id", &ids);
         assert_eq!(sql, "SELECT * FROM \"users\" WHERE \"id\" IN ($1)");
         assert_eq!(params, vec!["42"]);
-    }
-
-    #[test]
-    fn test_build_preload_sql_empty() {
-        let ids: Vec<String> = vec![];
-        let (sql, params) = build_preload_sql("posts", "user_id", &ids);
-        assert_eq!(sql, "SELECT * FROM \"posts\"");
-        assert!(params.is_empty());
     }
 
     // ── RAW: prefix tests (Phase 103) ──────────────────────────────────

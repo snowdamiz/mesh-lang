@@ -226,6 +226,11 @@ preload_unknown:failed
 preload_unknown_nested:failed
 preload_author:{"handle":"ada","name":"Ada","nickname":"A","profile":{"author_id":"ada","bio":"mathematician","id":"1"},"score":"50"},{"handle":"ada","name":"Ada","nickname":"A","profile":{"author_id":"ada","bio":"mathematician","id":"1"},"score":"50"},{"handle":"bob","name":"BOB","nickname":"b","profile":null,"score":"2"}
 preload_empty:
+preload_no_keys:[]
+preload_no_keys_one:null
+preload_nested_none:Cy
+preload_unknown_kind:failed
+preload_three_levels:[{"author_id":"ada","comments":[{"body":"nice","id":"1","post":{"author_id":"ada","id":"1","title":"First","views":"11"},"post_id":"1"},{"body":"great","id":"2","post":{"author_id":"ada","id":"1","title":"First","views":"11"},"post_id":"1"}],"id":"1","title":"First","views":"11"},{"author_id":"ada","comments":[],"id":"2","title":"Second","views":"31"}]
 insert_changeset:Fay
 insert_changeset_invalid:can't be blank
 insert_changeset_duplicate:has already been taken
