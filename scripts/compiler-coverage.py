@@ -15,7 +15,8 @@ own tests and every Mesh program the tests build: those link an instrumented
 runtime (with the profiler runtime a static library does not carry), and
 their profiles are read against its objects. `report`
 prints each crate's coverage and each file's uncovered lines, leaving out
-test code: `tests/` directories and `#[cfg(test)]` modules.
+test code: `tests/` directories and `#[cfg(test)]` modules, inline or in
+files of their own.
 
 Needs cargo-llvm-cov, and LLVM_COV/LLVM_PROFDATA from the LLVM the Rust
 toolchain uses when it is not rustup's (Homebrew's rustc: llvm@21).
@@ -325,16 +326,36 @@ def test_lines(path):
     return excluded
 
 
+def test_only_modules():
+    """The source files a `#[cfg(test)] mod name;` declares: test code as a
+    whole, like a `#[cfg(test)]` module written inline."""
+    declaration = re.compile(r"\s*(?:pub(?:\([^)]*\))?\s+)?mod (\w+);")
+    found = set()
+    for source in (ROOT / "compiler").glob("*/src/**/*.rs"):
+        lines = source.read_text().splitlines()
+        for above, line in zip(lines, lines[1:]):
+            match = declaration.fullmatch(line)
+            if above.strip() != "#[cfg(test)]" or not match:
+                continue
+            directory = (source.parent if source.name in ("mod.rs", "lib.rs", "main.rs")
+                         else source.with_suffix(""))
+            for candidate in (directory / f"{match[1]}.rs", directory / match[1] / "mod.rs"):
+                if candidate.exists():
+                    found.add(candidate.relative_to(ROOT))
+    return found
+
+
 def load():
     """{file: {line: hits}} for the crates' non-test code."""
     files, current = {}, None
+    test_only = test_only_modules()
     for line in LCOV.read_text().splitlines():
         if line.startswith("SF:"):
             path = Path(line[3:])
             rel = path.relative_to(ROOT) if path.is_relative_to(ROOT) else path
             parts = rel.parts
             keep = (len(parts) > 2 and parts[0] == "compiler" and parts[1] in CRATES
-                    and "tests" not in parts)
+                    and "tests" not in parts and rel not in test_only)
             current = files.setdefault(rel, {}) if keep else None
             if current is not None:
                 current["__exclude__"] = test_lines(path) if path.exists() else set()
