@@ -1395,7 +1395,7 @@ fn process_request(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::dist::continuity::{continuity_registry, ContinuityPhase, ContinuityResult};
     use crate::dist::node::{
@@ -1423,7 +1423,8 @@ mod tests {
             .collect()
     }
 
-    fn build_test_request(
+    /// A request as the runtime builds one: every field set.
+    pub(crate) fn build_test_request(
         method: &str,
         path: &str,
         body: &str,
