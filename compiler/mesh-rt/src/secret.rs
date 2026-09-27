@@ -998,6 +998,24 @@ pub(crate) fn owned_secret_count_for_test(owner: ProcessId) -> usize {
         .map_or(0, |usage| usage.secrets)
 }
 
+/// Run `body` on this thread as a live actor of the global scheduler, the
+/// way a library call runs, so runtime functions that act for the current
+/// actor can be called directly. The actor exits afterwards: its resources
+/// and heap are gone, so `body` returns plain data.
+#[cfg(test)]
+pub(crate) fn as_test_actor<R>(body: impl FnOnce(ProcessId) -> R) -> R {
+    use crate::actor::stack::{clear_current_pid, set_current_pid};
+    crate::gc::mesh_rt_init();
+    crate::actor::mesh_rt_init_actor(1);
+    let scheduler = crate::actor::global_scheduler();
+    let pid = scheduler.create_main_process();
+    set_current_pid(pid);
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| body(pid)));
+    clear_current_pid();
+    scheduler.finalize_host_process(pid);
+    result.unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+}
+
 impl ResourceTable {
     fn new(limits: Limits) -> Self {
         Self {
