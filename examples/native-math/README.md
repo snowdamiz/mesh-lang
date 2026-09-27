@@ -15,8 +15,11 @@ Copy `mesh.toml.example` to `mesh.toml`. Use
 
 ```sh
 meshc build .
-./native-math
+./output
 ```
+
+(`meshc build .` names the executable `output`; `meshc build native-math`
+from the parent directory names it `native-math/native-math`.)
 
 Expected output:
 
