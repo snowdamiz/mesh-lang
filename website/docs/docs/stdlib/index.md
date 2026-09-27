@@ -799,7 +799,9 @@ end
 ### Hex
 
 The `Hex` module encodes and decodes the UTF-8 bytes of `String` values.
-Decoding is case-insensitive and returns `Result<String, String>`. Use
+Decoding takes pairs of hex digits of either case and returns
+`Result<String, String>`: `Err("invalid hex")` for any other character or an
+odd length, and `Err("invalid utf-8")` when the bytes are not text. Use
 `Bytes.to_hex` and `Bytes.from_hex` for arbitrary binary values.
 
 ```mesh
