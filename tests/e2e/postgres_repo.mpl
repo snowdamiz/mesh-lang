@@ -409,6 +409,26 @@ fn expressions(pool :: PoolHandle) do
         |> Query.select(["writers.*"])
         |> Query.where(:handle, "ada")),
     "nickname")
+  case Pool.query_as(pool, "SELECT handle, score FROM writers ORDER BY handle", [], decode_score) do
+    Ok(rows) -> println("query_as:" <> String.join(List.map(rows,
+        fn(row) do
+          case row do
+            Ok(text) -> text
+            Err(error) -> "error:" <> error
+          end
+        end),
+      ","))
+    Err(error) -> println("query_as:error:" <> error)
+  end
+  failed("query_as_bad", Pool.query_as(pool, "SELECT * FROM no_such_table", [], decode_score))
+end
+
+fn decode_score(row :: Map<String, String>) -> Result<String, String> do
+  if Map.get(row, "handle") == "bob" do
+    Err("bob has no decodable score")
+  else
+    Ok(Map.get(row, "handle") <> "=" <> Map.get(row, "score"))
+  end
 end
 
 fn preloads(pool :: PoolHandle) do

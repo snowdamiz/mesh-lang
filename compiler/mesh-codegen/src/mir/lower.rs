@@ -564,6 +564,8 @@ fn uniform_callback_index(name: &str) -> Option<usize> {
         | "mesh_range_filter" | "mesh_job_map" | "mesh_iter_map" | "mesh_iter_filter"
         | "mesh_iter_any" | "mesh_iter_all" | "mesh_iter_find" => Some(1),
         "mesh_list_reduce" | "mesh_iter_reduce" => Some(2),
+        // A row decoder returns a `Result`, which the list of rows holds as a slot.
+        "mesh_pg_query_as" | "mesh_pool_query_as" => Some(3),
         // The runtime calls a job as `fn(env) -> i64`, whatever it returns.
         "mesh_job_async" => Some(0),
         "mesh_timer_apply_after" => Some(1),
@@ -4032,20 +4034,21 @@ impl<'a> Lowerer<'a> {
             "mesh_row_parse_bool".to_string(),
             MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
         );
-        self.known_functions.insert(
-            "mesh_pg_query_as".to_string(),
-            MirType::FnPtr(
-                vec![MirType::Int, MirType::Ptr, MirType::Ptr, MirType::Ptr],
-                Box::new(MirType::Ptr),
-            ),
-        );
-        self.known_functions.insert(
-            "mesh_pool_query_as".to_string(),
-            MirType::FnPtr(
-                vec![MirType::Int, MirType::Ptr, MirType::Ptr, MirType::Ptr],
-                Box::new(MirType::Ptr),
-            ),
-        );
+        for name in ["mesh_pg_query_as", "mesh_pool_query_as"] {
+            self.known_functions.insert(
+                name.to_string(),
+                MirType::FnPtr(
+                    vec![
+                        MirType::Int,
+                        MirType::Ptr,
+                        MirType::Ptr,
+                        MirType::Ptr,
+                        MirType::Ptr,
+                    ],
+                    Box::new(MirType::Ptr),
+                ),
+            );
+        }
         // ── Phase 97: ORM SQL Generation ─────────────────────────────────
         // mesh_orm_build_select(table: ptr, columns: ptr, where_clauses: ptr, order_by: ptr, limit: i64, offset: i64) -> ptr
         self.known_functions.insert(

@@ -22,7 +22,7 @@ use parking_lot::{Condvar, Mutex};
 
 use super::pg::{
     mesh_pg_close, mesh_pg_connect, mesh_pg_execute, mesh_pg_execute_values, mesh_pg_query,
-    mesh_pg_query_as, mesh_pg_query_values, pg_simple_command, PgConn,
+    mesh_pg_query_values, pg_simple_command, PgConn,
 };
 use crate::io::{alloc_result, box_scalar};
 use crate::string::{mesh_string_new, MeshString};
@@ -420,25 +420,13 @@ pub extern "C" fn mesh_pool_query_as(
     pool_handle: u64,
     sql: *mut u8,
     params: *mut u8,
-    from_row_fn: *mut u8,
+    fn_ptr: *mut u8,
+    env_ptr: *mut u8,
 ) -> *mut u8 {
-    unsafe {
-        // Checkout
-        let checkout_result = mesh_pool_checkout(pool_handle);
-        let r = &*(checkout_result as *const crate::io::MeshResult);
-        if r.tag != 0 {
-            return checkout_result; // propagate checkout error
-        }
-        let conn_handle = unbox_u64_payload(r.value);
-
-        // Use
-        let query_result = mesh_pg_query_as(conn_handle, sql, params, from_row_fn);
-
-        // Checkin (always, even on error)
-        mesh_pool_checkin(pool_handle, conn_handle);
-
-        query_result
-    }
+    // The rows are decoded after the connection is back: a decoder that
+    // queries the pool itself then finds it there.
+    let query_result = mesh_pool_query(pool_handle, sql as *const MeshString, params);
+    unsafe { crate::db::pg::decode_rows(query_result, fn_ptr, env_ptr) }
 }
 
 /// Close a connection pool.

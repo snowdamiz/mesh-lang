@@ -1866,7 +1866,34 @@ pub extern "C" fn mesh_pg_transaction(
 
 // ── Struct-to-Row Query ───────────────────────────────────────────────
 
-type FromRowFn = unsafe extern "C" fn(*mut u8) -> *mut u8;
+/// Decode every row of an Ok `query_result` with the callback `fn_ptr`,
+/// called as `fn(env_ptr, row)` (or `fn(row)` for a null `env_ptr`), into a
+/// list of what it returns: the uniform slot of a `Result`, as a list holds
+/// one. A failed query is passed on as it is.
+pub(crate) unsafe fn decode_rows(
+    query_result: *mut u8,
+    fn_ptr: *mut u8,
+    env_ptr: *mut u8,
+) -> *mut u8 {
+    type BareFn = unsafe extern "C-unwind" fn(u64) -> u64;
+    type ClosureFn = unsafe extern "C-unwind" fn(*mut u8, u64) -> u64;
+    let result = &*(query_result as *const crate::io::MeshResult);
+    if result.tag != 0 {
+        return query_result;
+    }
+    let rows = result.value;
+    let mut decoded = mesh_list_new();
+    for index in 0..mesh_list_length(rows) {
+        let row = mesh_list_get(rows, index);
+        let value = if env_ptr.is_null() {
+            std::mem::transmute::<*mut u8, BareFn>(fn_ptr)(row)
+        } else {
+            std::mem::transmute::<*mut u8, ClosureFn>(fn_ptr)(env_ptr, row)
+        };
+        decoded = mesh_list_append(decoded, value);
+    }
+    alloc_result(0, decoded) as *mut u8
+}
 
 /// Execute a SELECT query and map each row through a from_row callback.
 ///
@@ -1885,30 +1912,12 @@ pub extern "C" fn mesh_pg_query_as(
     conn_handle: u64,
     sql: *mut u8,
     params: *mut u8,
-    from_row_fn: *mut u8,
+    fn_ptr: *mut u8,
+    env_ptr: *mut u8,
 ) -> *mut u8 {
     unsafe {
-        // Execute the query
         let query_result = mesh_pg_query(conn_handle, sql as *const MeshString, params);
-        let r = &*(query_result as *const crate::io::MeshResult);
-        if r.tag != 0 {
-            return query_result; // propagate query error
-        }
-
-        // Extract the rows list from the Ok result
-        let rows_list = r.value;
-        let row_count = mesh_list_length(rows_list);
-        let from_row: FromRowFn = std::mem::transmute(from_row_fn);
-
-        // Map each row through the from_row callback
-        let mut result_list = mesh_list_new();
-        for i in 0..row_count {
-            let row = mesh_list_get(rows_list, i);
-            let mapped = from_row(row as *mut u8);
-            result_list = mesh_list_append(result_list, mapped as u64);
-        }
-
-        alloc_result(0, result_list) as *mut u8
+        decode_rows(query_result, fn_ptr, env_ptr)
     }
 }
 

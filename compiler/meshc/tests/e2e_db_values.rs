@@ -206,6 +206,8 @@ exprs:less=3 third=3 json={"a": 1} contains=t id=00000000-0000-0000-0000-0000000
 upsert_qualified:50
 upsert_labelled:failed
 select_star:A
+query_as:ada=50,error:bob has no decodable score,cy=90,dee=12
+query_as_bad:failed
 preload_posts:[{"author_id":"ada","comments":[{"body":"nice","id":"1","post_id":"1"},{"body":"great","id":"2","post_id":"1"}],"id":"1","title":"First","views":"11"},{"author_id":"ada","comments":[],"id":"2","title":"Second","views":"31"}],[{"author_id":"bob","comments":[{"body":"ok","id":"3","post_id":"3"}],"id":"3","title":"Third","views":"20"}],[]
 preload_profile:{"author_id":"ada","bio":"mathematician","id":"1"},null,null
 preload_unknown:failed

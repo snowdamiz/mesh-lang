@@ -3057,12 +3057,13 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
-    // mesh_pg_query_as(conn: i64, sql: ptr, params: ptr, from_row_fn: ptr) -> ptr (MeshResult)
+    // mesh_pg_query_as(conn: i64, sql: ptr, params: ptr, fn_ptr: ptr, env_ptr: ptr) -> ptr (MeshResult)
     module.add_function(
         "mesh_pg_query_as",
         ptr_type.fn_type(
             &[
                 i64_type.into(),
+                ptr_type.into(),
                 ptr_type.into(),
                 ptr_type.into(),
                 ptr_type.into(),
@@ -3072,12 +3073,13 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
-    // mesh_pool_query_as(pool: i64, sql: ptr, params: ptr, from_row_fn: ptr) -> ptr (MeshResult)
+    // mesh_pool_query_as(pool: i64, sql: ptr, params: ptr, fn_ptr: ptr, env_ptr: ptr) -> ptr (MeshResult)
     module.add_function(
         "mesh_pool_query_as",
         ptr_type.fn_type(
             &[
                 i64_type.into(),
+                ptr_type.into(),
                 ptr_type.into(),
                 ptr_type.into(),
                 ptr_type.into(),
