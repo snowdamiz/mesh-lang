@@ -136,7 +136,7 @@ A user-defined iterator is driven by `for...in` or by calling `next` directly; t
 | `start..end`, or a `Range` value (`let r = 1..5`, `Range.new(1, 5)`) | `Int`; the end is exclusive |
 | `List<T>` | `T` |
 | `Map<K, V>` | `{key, value}` destructuring, a `(key, value)` tuple pattern, or one name for the key |
-| `Set` | `Int` |
+| `Set<T>` | `T` |
 | `Iter<T>`, a pipeline (`Iter.from(xs) \|> Iter.map(f)`) | `T` |
 | `Iterable` | its associated `Item` |
 | `Iterator` | its associated `Item` |

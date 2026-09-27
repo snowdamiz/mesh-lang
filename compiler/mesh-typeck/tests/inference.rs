@@ -457,3 +457,13 @@ fn definitions_inside_a_function_are_refused() {
     ));
     assert!(fine.errors.is_empty(), "{:?}", fine.errors);
 }
+
+/// A `for` over a `Set<T>` binds `T`, whatever `T` is (the iterators guide
+/// said a set's loop variable is an `Int`).
+#[test]
+fn a_for_over_a_set_binds_its_element_type() {
+    let result = check_source(
+        "fn main() do\n  for s in Set.from_list([\"a\"]) do\n    String.length(s)\n  end\nend\n",
+    );
+    assert_result_type(&result, Ty::fun(vec![], Ty::list(Ty::int())));
+}
