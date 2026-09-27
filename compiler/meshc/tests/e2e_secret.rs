@@ -317,6 +317,104 @@ end
     assert_eq!(String::from_utf8_lossy(&run.stdout), "secret-map-ok\n");
 }
 
+/// Each SecretMap request refused for what is wrong with it: a capacity
+/// out of range, a key too short or long, taken or missing, a full map, an
+/// entry too big to encode, and a merge of a key both maps hold. A missing
+/// key is no error to `delete`, and no match for `contains`.
+#[test]
+fn secret_map_refuses_each_request_for_what_is_wrong_with_it() {
+    let temp = tempfile::tempdir().unwrap();
+    let project = write_project(
+        temp.path(),
+        "secret-map-refusals",
+        r#"
+fn name(error :: CryptoError) -> String do
+  case error do
+    InvalidKey -> "InvalidKey"
+    ResourceLimitExceeded -> "ResourceLimitExceeded"
+    InvalidLength(_, _) -> "InvalidLength"
+    _ -> "other"
+  end
+end
+
+fn show(label :: String, result :: Result<Unit, CryptoError>) do
+  case result do
+    Ok(_) -> println(label <> ":ok")
+    Err(error) -> println(label <> ":" <> name(error))
+  end
+end
+
+fn letters(length :: Int) -> String do
+  if length == 0 do
+    ""
+  else
+    "k" <> letters(length - 1)
+  end
+end
+
+fn key(length :: Int) -> Bytes do
+  Bytes.from_utf8(letters(length))
+end
+
+fn proof() -> Int ! CryptoError do
+  case SecretMap.new(0) do
+    Ok(_) -> println("capacity_zero:ok")
+    Err(error) -> println("capacity_zero:" <> name(error))
+  end
+  case SecretMap.new(65) do
+    Ok(_) -> println("capacity_65:ok")
+    Err(error) -> println("capacity_65:" <> name(error))
+  end
+  let map = SecretMap.new(2) ?
+  show("insert_empty_key", SecretMap.insert(map, key(0), Secret.random(8) ?))
+  show("insert_long_key", SecretMap.insert(map, key(129), Secret.random(8) ?))
+  show("insert", SecretMap.insert(map, key(1), Secret.random(8) ?))
+  show("insert_taken_key", SecretMap.insert(map, key(1), Secret.random(8) ?))
+  show("insert_too_big", SecretMap.insert(map, key(2), Secret.random(65530) ?))
+  show("insert_second", SecretMap.insert(map, key(2), Secret.random(8) ?))
+  show("insert_full", SecretMap.insert(map, key(3), Secret.random(8) ?))
+  println("contains_invalid:#{SecretMap.contains(map, key(0))}")
+  println("contains_missing:#{SecretMap.contains(map, key(3))}")
+  case SecretMap.copy(map, key(3)) do
+    Ok(copied) -> println("copy_missing:ok")
+    Err(error) -> println("copy_missing:" <> name(error))
+  end
+  show("delete_missing", SecretMap.delete(map, key(3)))
+  show("delete_invalid", SecretMap.delete(map, key(0)))
+  let other = SecretMap.new(1) ?
+  SecretMap.insert(other, key(2), Secret.random(8) ?) ?
+  show("merge_taken_key", SecretMap.merge(map, other))
+  Ok(0)
+end
+
+fn main() do
+  case proof() do
+    Ok(_) -> println("done")
+    Err(error) -> println("error:" <> name(error))
+  end
+end
+"#,
+    );
+    let output = build(&project);
+    assert!(
+        output.status.success(),
+        "meshc build failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let run = Command::new(project.join("secret-map-refusals"))
+        .output()
+        .unwrap();
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "capacity_zero:ResourceLimitExceeded\ncapacity_65:ResourceLimitExceeded\ninsert_empty_key:InvalidKey\ninsert_long_key:InvalidKey\ninsert:ok\ninsert_taken_key:InvalidKey\ninsert_too_big:ResourceLimitExceeded\ninsert_second:ok\ninsert_full:ResourceLimitExceeded\ncontains_invalid:false\ncontains_missing:false\ncopy_missing:InvalidKey\ndelete_missing:ok\ndelete_invalid:InvalidKey\nmerge_taken_key:InvalidKey\ndone\n"
+    );
+}
+
 #[test]
 fn secret_values_are_rejected_at_public_data_boundaries() {
     let cases = [
