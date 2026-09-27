@@ -407,6 +407,7 @@ fn one_of_each() -> Vec<TypeError> {
             name: "name".to_string(),
             span: span(19, 24),
         },
+        TypeError::TopLevelStatement { span: span(19, 24) },
         TypeError::ModuleNotImported {
             name: "name".to_string(),
             module: "module".to_string(),

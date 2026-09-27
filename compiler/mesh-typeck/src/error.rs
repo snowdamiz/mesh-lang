@@ -467,6 +467,9 @@ pub enum TypeError {
     ActorMessageTypeUnknown { actor: String, span: TextRange },
     /// A `let` outside any function: it makes no global.
     TopLevelLet { name: String, span: TextRange },
+    /// An expression outside every function (`println("hi")` at the top of
+    /// a file), which nothing runs.
+    TopLevelStatement { span: TextRange },
     /// A module of the project named without importing it: `Geo.area(1)`
     /// with no `import Geo` (the file declaring `module Geo` imports it too).
     ModuleNotImported {
@@ -610,6 +613,7 @@ impl TypeError {
             | TypeError::IndexingUnsupported { span }
             | TypeError::ActorMessageTypeUnknown { span, .. }
             | TypeError::TopLevelLet { span, .. }
+            | TypeError::TopLevelStatement { span }
             | TypeError::ModuleNotImported { span, .. }
             | TypeError::NoSuchModuleFunction { span, .. }
             | TypeError::OverloadedFunctionValue { span, .. }
@@ -1183,6 +1187,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::TopLevelLet { name, .. } => {
                 write!(f, "`let {name}` outside a function is not supported")
+            }
+            TypeError::TopLevelStatement { .. } => {
+                write!(f, "a statement outside a function never runs")
             }
             TypeError::ModuleNotImported { name, .. } => {
                 write!(f, "module `{name}` is not imported")

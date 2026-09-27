@@ -206,6 +206,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::TypeNotValue { .. } => "E0083",
         TypeError::NestedDefinition { .. } => "E0084",
         TypeError::TypeArgumentCount { .. } => "E0085",
+        TypeError::TopLevelStatement { .. } => "E0086",
     }
 }
 
@@ -1469,6 +1470,13 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
                 .with_help(format!(
                     "move it into the function that uses it, or make it a function: `fn {name}() do ... end`"
                 ))
+        }
+        TypeError::TopLevelStatement { span } => {
+            let range = clamp(text_range_to_range(*span));
+            Description::error(range, "nothing runs this").with_help(
+                "a program runs `main` and what it calls: move this into `main` or the function \
+                 that needs it",
+            )
         }
         TypeError::ModuleNotImported { module, span, .. } => {
             let range = clamp(text_range_to_range(*span));

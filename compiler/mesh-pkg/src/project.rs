@@ -562,6 +562,7 @@ pub fn check_project(project: &ProjectData, test_builtins: bool) -> CheckedProje
         import_ctx.test_builtins = test_builtins;
         let mut result = mesh_typeck::check_with_imports(parse, &import_ctx);
         result.errors.extend(top_level_lets(parse));
+        result.errors.extend(top_level_statements(parse));
         exports[idx] = Some(mesh_typeck::collect_exports(parse, &result));
         typeck[idx] = Some(result);
     }
@@ -599,6 +600,27 @@ fn top_level_lets(parse: &mesh_parser::Parse) -> Vec<mesh_typeck::error::TypeErr
                 .find(|child| child.kind() == SyntaxKind::NAME)
                 .map_or_else(|| "_".to_string(), |name| name.text().to_string()),
             span: let_.text_range(),
+        })
+        .collect()
+}
+
+/// The expressions at the top level of a file or of a `module` body, which
+/// nothing runs: a program runs `main` and what it calls.
+fn top_level_statements(parse: &mesh_parser::Parse) -> Vec<mesh_typeck::error::TypeError> {
+    parse
+        .syntax()
+        .descendants()
+        .filter(|node| {
+            node.parent().is_some_and(|parent| {
+                parent.kind() == SyntaxKind::SOURCE_FILE
+                    || parent.kind() == SyntaxKind::BLOCK
+                        && parent
+                            .parent()
+                            .is_some_and(|module| module.kind() == SyntaxKind::MODULE_DEF)
+            }) && mesh_parser::ast::expr::Expr::cast(node.clone()).is_some()
+        })
+        .map(|statement| mesh_typeck::error::TypeError::TopLevelStatement {
+            span: statement.text_range(),
         })
         .collect()
 }

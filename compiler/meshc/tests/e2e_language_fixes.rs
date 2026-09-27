@@ -5900,3 +5900,38 @@ end
          missing field: age\n"
     );
 }
+
+/// Code outside every function is an error (E0086): it compiled and never
+/// ran, `println` at the top of a file included, and `fn hello do ... end`,
+/// a function without parentheses, was such a closure expression (so
+/// `hello()` was undefined). A function with no parameters may now leave
+/// out its parentheses, as with `def`.
+#[test]
+fn top_level_code_is_an_error_and_fn_name_do_defines_a_function() {
+    let source = r##"
+fn version do
+  3
+end
+
+fn main() do
+  println("#{version()}")
+end
+"##;
+    assert_eq!(run(source), "3\n");
+    for top in [
+        "println(\"top\")",
+        "1 + 2",
+        "fn x -> x end",
+        "module M do\n  println(\"m\")\nend",
+    ] {
+        let built = build(
+            &format!("{top}\n\nfn main() do\n  println(\"m\")\nend\n"),
+            false,
+        );
+        assert!(
+            !built.ok && built.stderr.contains("E0086"),
+            "{top}: {}",
+            built.stderr
+        );
+    }
+}

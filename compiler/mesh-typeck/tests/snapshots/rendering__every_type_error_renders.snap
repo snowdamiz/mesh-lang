@@ -862,6 +862,17 @@ expression: rendered
 ───╯
 {"code":"E0080","severity":"error","message":"`let name` outside a function is not supported","file":"main.mpl","spans":[{"start":19,"end":24,"label":"a module has no global bindings"}],"fix":"move it into the function that uses it, or make it a function: `fn name() do ... end`"}
 
+[E0086] Error: a statement outside a function never runs
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── nothing runs this
+   │
+   │ Help: a program runs `main` and what it calls: move this into `main` or the function that needs it
+───╯
+{"code":"E0086","severity":"error","message":"a statement outside a function never runs","file":"main.mpl","spans":[{"start":19,"end":24,"label":"nothing runs this"}],"fix":"a program runs `main` and what it calls: move this into `main` or the function that needs it"}
+
 [E0081] Error: module `name` is not imported
    ╭─[ main.mpl:2:7 ]
    │
