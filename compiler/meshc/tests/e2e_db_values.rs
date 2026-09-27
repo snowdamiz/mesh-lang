@@ -189,6 +189,7 @@ where_raw:cy
 where_raw_quoted:cy
 select_limit_offset:bob,cy
 select_exprs:-,b,c,-
+empty_exprs:plain
 select_raw:DEE,CY,BOB,ADA
 join:First,Second
 join_as:Ada,Ada,BOB

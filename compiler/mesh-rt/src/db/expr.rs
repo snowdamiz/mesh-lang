@@ -135,6 +135,11 @@ pub(crate) fn render_expr(
             op,
             render_expr(rhs, params, next_idx)
         ),
+        // A CASE needs a WHEN: without one it is its else.
+        SqlExpr::Case {
+            branches,
+            else_expr,
+        } if branches.is_empty() => render_expr(else_expr, params, next_idx),
         SqlExpr::Case {
             branches,
             else_expr,
@@ -151,6 +156,8 @@ pub(crate) fn render_expr(
             sql.push_str(" END");
             sql
         }
+        // COALESCE needs an argument: the first non-null of none is NULL.
+        SqlExpr::Coalesce(exprs) if exprs.is_empty() => "NULL".to_string(),
         SqlExpr::Coalesce(exprs) => {
             let rendered = exprs
                 .iter()
@@ -446,6 +453,24 @@ mod tests {
         let (sql, params) = serialize_expr(&expr);
         assert_eq!(sql, "COALESCE(\"nickname\", $1) AS \"nick\"");
         assert_eq!(params, vec!["fallback"]);
+    }
+
+    /// A CASE without a WHEN and a COALESCE of nothing are not SQL: they are
+    /// their else and NULL.
+    #[test]
+    fn an_empty_case_or_coalesce_is_its_default() {
+        let case = SqlExpr::Case {
+            branches: vec![],
+            else_expr: Box::new(SqlExpr::Value("x".into())),
+        };
+        assert_eq!(
+            serialize_expr(&case),
+            ("$1".to_string(), vec!["x".to_string()])
+        );
+        assert_eq!(
+            serialize_expr(&SqlExpr::Coalesce(vec![])),
+            ("NULL".to_string(), vec![])
+        );
     }
 
     /// `Expr.case` pairs each condition with the result at its place: lists
