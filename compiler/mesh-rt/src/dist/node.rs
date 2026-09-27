@@ -3306,9 +3306,11 @@ struct OwnershipTransferGuard {
 
 impl OwnershipTransferGuard {
     fn new(node_id: &str) -> Self {
-        let mut active = active_ownership_transfers().lock().unwrap();
-        let count = active.entry(node_id.to_string()).or_default();
-        *count = count.saturating_add(1);
+        *active_ownership_transfers()
+            .lock()
+            .unwrap()
+            .entry(node_id.to_string())
+            .or_default() += 1;
         Self {
             node_id: node_id.to_string(),
         }
@@ -3318,11 +3320,12 @@ impl OwnershipTransferGuard {
 impl Drop for OwnershipTransferGuard {
     fn drop(&mut self) {
         let mut active = active_ownership_transfers().lock().unwrap();
-        if let Some(count) = active.get_mut(&self.node_id) {
-            *count = count.saturating_sub(1);
-            if *count == 0 {
-                active.remove(&self.node_id);
-            }
+        let count = active
+            .get_mut(&self.node_id)
+            .expect("a transfer is counted from when it starts until it ends");
+        *count -= 1;
+        if *count == 0 {
+            active.remove(&self.node_id);
         }
     }
 }
