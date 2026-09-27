@@ -13505,4 +13505,236 @@ mod tests {
         registry.clear_for_test();
         clear_declared_handler_registry_for_test();
     }
+
+    /// Answers each replica prepare `peers` receive until `done`: refused
+    /// by a replica whose name the record's key names after `refused-by-`
+    /// the first `refusals` times, acknowledged otherwise.
+    fn answer_prepares(peers: &[&TestPeer], refusals: usize, done: &AtomicBool) {
+        let mut refused = 0;
+        while !done.load(Ordering::Acquire) {
+            for peer in peers {
+                while let Some(message) = peer.take_sent() {
+                    if message[0] != DIST_CONTINUITY_PREPARE {
+                        continue;
+                    }
+                    let (id, record) = decode_continuity_prepare_payload(&message).unwrap();
+                    let refuses = record
+                        .request_key
+                        .contains(&format!("refused-by-{}", &record.replica_node[..9]));
+                    let result = if refuses && refused < refusals {
+                        refused += 1;
+                        Err("replica_full".to_string())
+                    } else {
+                        Ok(())
+                    };
+                    peer.receive(encode_continuity_prepare_ack(id, &result));
+                }
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+    }
+
+    /// A record is prepared on each of its replicas before it is admitted:
+    /// it goes on when enough of them take it (half its copies, rounded
+    /// down), the rest repaired in the background, and fails when too few
+    /// do, or when its replica set is not the size its copies need.
+    #[test]
+    fn a_record_is_prepared_on_its_replicas_before_it_is_admitted() {
+        let first = TestPeer::new("replica-1@127.0.0.1:1");
+        let second = TestPeer::new("replica-2@127.0.0.1:1");
+        let (one, two) = (
+            first.session.remote_name.clone(),
+            second.session.remote_name.clone(),
+        );
+        let record = |key: &str, replicas: &[&str], copies: u64| {
+            let mut record = continuity_record(key, "prepared-owner@h:1", replicas[0]);
+            record.replica_nodes = replicas.iter().map(|node| node.to_string()).collect();
+            record.replication_count = copies;
+            record
+        };
+        let prepare = |record: &ContinuityRecord, refusals: usize| {
+            let done = AtomicBool::new(false);
+            std::thread::scope(|scope| {
+                scope.spawn(|| answer_prepares(&[&first, &second], refusals, &done));
+                let prepared = prepare_continuity_replica(record);
+                done.store(true, Ordering::Release);
+                prepared
+            })
+        };
+
+        assert_eq!(
+            prepare(&record("prepared-by-both", &[&one, &two], 3), 0),
+            Ok(vec![one.clone(), two.clone()])
+        );
+        let mut alone = record("prepared-alone", &[&one], 1);
+        alone.replica_nodes.clear();
+        alone.replica_node.clear();
+        assert_eq!(prepare(&alone, 0), Ok(Vec::new()));
+        assert_eq!(
+            prepare(&record("prepared-short", &[&one], 3), 0),
+            Err("continuity_replica_set_size_mismatch:required=2:recorded=1".to_string())
+        );
+        assert!(prepare(
+            &record(
+                "refused-by-replica-1-refused-by-replica-2",
+                &[&one, &two],
+                3
+            ),
+            2
+        )
+        .unwrap_err()
+        .starts_with("continuity_replica_ack_threshold_unmet:required=1:acknowledged=0"));
+
+        // One of two refuses at first: the record goes on, and the repair
+        // prepares the refusing replica and records its acknowledgement.
+        let repaired = record("refused-by-replica-2", &[&one, &two], 3);
+        crate::dist::continuity::continuity_registry()
+            .merge_remote_record(1, repaired.clone())
+            .unwrap();
+        let done = AtomicBool::new(false);
+        std::thread::scope(|scope| {
+            scope.spawn(|| answer_prepares(&[&first, &second], 1, &done));
+            assert_eq!(prepare_continuity_replica(&repaired), Ok(vec![one.clone()]));
+            await_record("refused-by-replica-2", |record| {
+                record.acknowledged_replica_nodes().contains(&two)
+            });
+            done.store(true, Ordering::Release);
+        });
+    }
+
+    /// A replica prepare fails without a session to the replica, or one
+    /// that cannot send, and times out when the replica never answers; a
+    /// replica that is this node takes the record at once.
+    #[test]
+    fn a_replica_prepare_fails_without_a_live_replica() {
+        let state = test_node();
+        let silent = TestPeer::new("silent-replica@127.0.0.1:1");
+        let closed = TestPeer::new("closed-replica@127.0.0.1:1");
+        closed.session.shutdown.store(true, Ordering::SeqCst);
+        let prepare = |replica: &str| {
+            prepare_one_continuity_replica(&continuity_record(
+                "prepared-nowhere",
+                "prepared-owner@h:1",
+                replica,
+            ))
+        };
+        assert_eq!(prepare(&state.name), Ok(()));
+        assert_eq!(
+            prepare("absent-replica@127.0.0.1:1"),
+            Err("replica_required_unavailable".to_string())
+        );
+        assert_eq!(
+            prepare(&closed.session.remote_name),
+            Err("replica_required_unavailable".to_string())
+        );
+        assert_eq!(
+            prepare(&silent.session.remote_name),
+            Err("replica_prepare_timeout".to_string())
+        );
+        assert!(silent
+            .session
+            .pending_continuity_prepares
+            .lock()
+            .unwrap()
+            .is_empty());
+    }
+
+    /// The replicas a new record gets: none when it keeps one copy, too few
+    /// members fails, and otherwise live members with fresh load reports,
+    /// never its owner.
+    #[test]
+    fn replicas_are_chosen_among_live_reporting_members() {
+        let exclusive = declared_handler_registry_test_lock();
+        let state = test_node();
+        assert_eq!(
+            select_continuity_replica_set(&state.name, 1),
+            Ok(Vec::new())
+        );
+        assert!(select_continuity_replica_set(&state.name, 2)
+            .unwrap_err()
+            .starts_with("replica_capacity_unavailable"));
+        let first = TestPeer::within(&exclusive, "0-chosen-replica-a@127.0.0.1:1");
+        let second = TestPeer::within(&exclusive, "0-chosen-replica-b@127.0.0.1:1");
+        for peer in [&first, &second] {
+            report_worker(&peer.session.remote_name, &[]);
+        }
+        assert_eq!(
+            select_continuity_replica_set(&state.name, 3),
+            Ok(vec![
+                first.session.remote_name.clone(),
+                second.session.remote_name.clone()
+            ])
+        );
+        second.session.shutdown.store(true, Ordering::SeqCst);
+        assert!(select_continuity_replica_set(&state.name, 3).is_err());
+    }
+
+    /// Waits for an `owner_loss_recovery_failed` diagnostic about `node`.
+    fn await_recovery_failure(node: &str) -> String {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            let failure = crate::dist::operator::operator_recent_diagnostics(None)
+                .entries
+                .into_iter()
+                .rev()
+                .find(|entry| {
+                    entry.transition == "owner_loss_recovery_failed"
+                        && entry
+                            .metadata
+                            .iter()
+                            .any(|(key, value)| key == "disconnected_node" && value == node)
+                });
+            if let Some(failure) = failure {
+                return failure.reason.unwrap_or_default();
+            }
+            assert!(Instant::now() < deadline, "no recovery failure for {node}");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    /// The node that coordinates recovery (the controller leader, or else
+    /// the first remaining member) recovers the work of a lost owner, and
+    /// of a replica no longer a member, once at a time; recovery that
+    /// cannot place the work says so. Another node leaves it alone.
+    #[test]
+    fn the_coordinator_recovers_a_lost_owner_s_work_once_at_a_time() {
+        use crate::dist::continuity::ReplicaStatus;
+        let exclusive = declared_handler_registry_test_lock();
+        let state = test_node();
+        let registry = crate::dist::continuity::continuity_registry();
+        registry.clear_for_test();
+        let mut record = continuity_record("lost-owner-key", "lost-owner@h:1", "lost-replica@h:1");
+        record.replica_status = ReplicaStatus::OwnerLost;
+        record.declared_handler_runtime_name = "Recovered.work".to_string();
+        registry.merge_remote_record(1, record).unwrap();
+
+        assert!(local_coordinates_node_loss_recovery("lost-owner@h:1"));
+        recover_pending_owner_losses_if_coordinator();
+        assert_eq!(
+            await_recovery_failure("lost-owner@h:1"),
+            "continuity_drain_owner_transfer_unavailable"
+        );
+        await_recovery_failure("lost-replica@h:1");
+
+        active_owner_loss_recoveries()
+            .lock()
+            .unwrap()
+            .insert("held-owner@h:1".to_string());
+        maybe_spawn_primary_owner_loss_recovery("held-owner@h:1");
+        assert!(active_owner_loss_recoveries()
+            .lock()
+            .unwrap()
+            .remove("held-owner@h:1"));
+
+        // A member that sorts first coordinates instead.
+        let first = (0..)
+            .map(|index| format!("coordinator-{index}@127.0.0.1:1"))
+            .find(|name| stable_hash_u64(name) < stable_hash_u64(&state.name))
+            .unwrap();
+        let coordinator = TestPeer::within(&exclusive, &first);
+        assert!(!local_coordinates_node_loss_recovery("lost-owner@h:1"));
+        maybe_spawn_primary_owner_loss_recovery("lost-owner@h:1");
+        drop(coordinator);
+        registry.clear_for_test();
+    }
 }
