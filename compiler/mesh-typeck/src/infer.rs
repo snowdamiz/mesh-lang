@@ -485,15 +485,15 @@ fn constraints_key(
 /// call checks its callee's requirements against its arguments
 /// (`check_call`); a function used any other way is a value.
 fn is_called(expr: &Expr) -> bool {
-    let Some(parent) = expr.syntax().parent() else {
-        return false;
-    };
-    let called = match parent.kind() {
-        SyntaxKind::CALL_EXPR => CallExpr::cast(parent).and_then(|call| call.callee()),
-        SyntaxKind::PIPE_EXPR => PipeExpr::cast(parent).and_then(|pipe| pipe.rhs()),
-        SyntaxKind::SLOT_PIPE_EXPR => SlotPipeExpr::cast(parent).and_then(|pipe| pipe.rhs()),
-        _ => None,
-    };
+    let called = expr
+        .syntax()
+        .parent()
+        .and_then(|parent| match parent.kind() {
+            SyntaxKind::CALL_EXPR => CallExpr::cast(parent).and_then(|call| call.callee()),
+            SyntaxKind::PIPE_EXPR => PipeExpr::cast(parent).and_then(|pipe| pipe.rhs()),
+            SyntaxKind::SLOT_PIPE_EXPR => SlotPipeExpr::cast(parent).and_then(|pipe| pipe.rhs()),
+            _ => None,
+        });
     called.is_some_and(|called| called.syntax() == expr.syntax())
 }
 
@@ -10729,20 +10729,12 @@ enum CollectionType {
 /// Extract the element type from a collection type (List<T>, Map<K,V>, Set<T>).
 fn extract_collection_elem_type(ty: &Ty) -> CollectionType {
     match ty {
-        Ty::App(con, args) => {
-            if let Ty::Con(ref tc) = **con {
-                match tc.name.as_str() {
-                    "List" if !args.is_empty() => CollectionType::List(args[0].clone()),
-                    "Map" if args.len() >= 2 => {
-                        CollectionType::Map(args[0].clone(), args[1].clone())
-                    }
-                    "Set" if !args.is_empty() => CollectionType::Set(args[0].clone()),
-                    _ => CollectionType::Unknown,
-                }
-            } else {
-                CollectionType::Unknown
-            }
-        }
+        Ty::App(_, args) => match (ty.con_name(), args.as_slice()) {
+            (Some("List"), [elem, ..]) => CollectionType::List(elem.clone()),
+            (Some("Map"), [key, value, ..]) => CollectionType::Map(key.clone(), value.clone()),
+            (Some("Set"), [elem, ..]) => CollectionType::Set(elem.clone()),
+            _ => CollectionType::Unknown,
+        },
         Ty::Con(tc) => match tc.name.as_str() {
             "List" => CollectionType::List(Ty::int()),
             "Map" => CollectionType::Map(Ty::int(), Ty::int()),
