@@ -455,37 +455,29 @@ pub extern "C" fn mesh_repo_exists(pool: u64, query: *mut u8) -> *mut u8 {
 /// through the map's live entries (a map may be a view of a table).
 unsafe fn map_to_columns_and_values(map: *mut u8) -> (Vec<String>, Vec<String>) {
     let (_, entries) = crate::collections::map::live_entries(map);
-    let mut columns = Vec::with_capacity(entries.len());
-    let mut values = Vec::with_capacity(entries.len());
-    for [key, value] in entries {
-        let key_ptr = key as *const MeshString;
-        let val_ptr = value as *const MeshString;
-        if !key_ptr.is_null() {
-            columns.push((*key_ptr).as_str().to_string());
-        }
-        if !val_ptr.is_null() {
-            values.push((*val_ptr).as_str().to_string());
-        } else {
-            values.push(String::new());
-        }
-    }
-    (columns, values)
+    entries
+        .iter()
+        .map(|[key, value]| {
+            (
+                text_of(*key as *mut u8).to_string(),
+                text_of(*value as *mut u8).to_string(),
+            )
+        })
+        .unzip()
 }
 
 /// Extract (column_names, expressions) from a Mesh Map<String, Ptr> pointer.
 unsafe fn map_to_columns_and_exprs(map: *mut u8) -> (Vec<String>, Vec<SqlExpr>) {
     let (_, entries) = crate::collections::map::live_entries(map);
-    let mut columns = Vec::with_capacity(entries.len());
-    let mut exprs = Vec::with_capacity(entries.len());
-    for [key, expr] in entries {
-        let key_ptr = key as *const MeshString;
-        let expr_ptr = expr as *mut u8;
-        if !key_ptr.is_null() {
-            columns.push((*key_ptr).as_str().to_string());
-            exprs.push(clone_expr(expr_ptr));
-        }
-    }
-    (columns, exprs)
+    entries
+        .iter()
+        .map(|[key, expr]| {
+            (
+                text_of(*key as *mut u8).to_string(),
+                clone_expr(*expr as *mut u8),
+            )
+        })
+        .unzip()
 }
 
 fn build_set_expr_parts(
