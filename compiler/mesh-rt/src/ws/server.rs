@@ -341,6 +341,7 @@ fn ws_accept_loop(listener: TcpListener, callbacks: WsHandler, tls: Option<Arc<S
             Ok(s) => s,
             Err(e) => {
                 eprintln!("[mesh-rt] accept error: {}", e);
+                std::thread::sleep(crate::http::server::ACCEPT_PAUSE);
                 continue;
             }
         };

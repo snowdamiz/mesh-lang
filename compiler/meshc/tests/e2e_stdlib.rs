@@ -911,6 +911,15 @@ impl Drop for ServerGuard {
 /// The caller is responsible for waiting on the stderr readiness signal before
 /// sending requests.
 fn compile_and_start_server(source: &str) -> ServerGuard {
+    compile_and_start_server_with(source, |binary| Command::new(binary))
+}
+
+/// `compile_and_start_server`, the binary started by the command `launch`
+/// makes of its path.
+fn compile_and_start_server_with(
+    source: &str,
+    launch: impl FnOnce(&Path) -> Command,
+) -> ServerGuard {
     let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
     let project_dir = temp_dir.path().join("project");
     std::fs::create_dir_all(&project_dir).expect("failed to create project dir");
@@ -940,7 +949,7 @@ fn compile_and_start_server(source: &str) -> ServerGuard {
     );
 
     // Spawn the server binary with stderr piped so we can detect readiness.
-    let child = Command::new(&binary)
+    let child = launch(&binary)
         .stderr(Stdio::piped())
         .spawn()
         .unwrap_or_else(|e| panic!("failed to spawn server binary: {}", e));
@@ -1446,6 +1455,57 @@ end
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
     assert!(stopped.exists(), "HTTP.serve did not return after draining");
+}
+
+/// A server out of file descriptors cannot accept: it waits a moment and
+/// tries again, where it used to fail again at once, spinning a thread and
+/// its log.
+#[test]
+fn e2e_http_server_pauses_when_accept_fails() {
+    let port = free_port();
+    let source = format!(
+        r#"
+fn hello(request) do
+  HTTP.response(200, "hello")
+end
+
+fn main() do
+  HTTP.router() |> HTTP.on_get("/", hello) |> HTTP.serve({port})
+end
+"#
+    );
+    let mut guard = compile_and_start_server_with(&source, |binary| {
+        let mut command = Command::new("sh");
+        command
+            .arg("-c")
+            .arg(format!("ulimit -n 64 && exec '{}'", binary.display()));
+        command
+    });
+    let stderr = guard.child.stderr.take().expect("no stderr pipe");
+    let (listening, ready) = std::sync::mpsc::channel();
+    let errors = std::thread::spawn(move || {
+        let mut errors = 0;
+        for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+            if line.contains("server listening on") {
+                let _ = listening.send(());
+            }
+            errors += usize::from(line.contains("accept error"));
+        }
+        errors
+    });
+    ready
+        .recv_timeout(artifacts::LAUNCH_ALLOWANCE)
+        .expect("the server did not start");
+    // More idle connections than the server has descriptors: each one it
+    // accepts holds one, waiting for a request.
+    let _clients = (0..100)
+        .filter_map(|_| std::net::TcpStream::connect(("127.0.0.1", port)).ok())
+        .collect::<Vec<_>>();
+    std::thread::sleep(std::time::Duration::from_secs(1));
+    drop(guard);
+    let errors = errors.join().unwrap();
+    assert!(errors > 0, "the server never ran out of descriptors");
+    assert!(errors < 200, "{errors} accept errors in about a second");
 }
 
 // ── HTTP Crash Isolation E2E Tests (Phase 15) ─────────────────────────
