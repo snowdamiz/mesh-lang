@@ -1703,6 +1703,29 @@ pub trait ControlPlaneCommitter: Send + Sync {
     ) -> Result<ControlLogEntry, String>;
 }
 
+/// One reconcile's commits: every one goes through the same leader, term,
+/// acknowledgements, and actor.
+struct Fence<'a> {
+    quorum: &'a dyn ControlPlaneCommitter,
+    leader: &'a str,
+    acknowledgements: &'a BTreeSet<String>,
+    term: ControlTerm,
+    actor: &'a str,
+}
+
+impl Fence<'_> {
+    fn commit(&self, reason: &str, mutation: ControlMutation) -> Result<ControlLogEntry, String> {
+        self.quorum.commit(
+            self.leader,
+            self.term,
+            self.acknowledgements,
+            self.actor,
+            reason,
+            mutation,
+        )
+    }
+}
+
 impl ControllerQuorum {
     pub fn new(voters: BTreeSet<String>, log: Arc<DurableControlLog>) -> Result<Self, String> {
         if voters.is_empty() || (voters.len() > 1 && voters.len().is_multiple_of(2)) {
@@ -2182,13 +2205,16 @@ impl CapacityReconciler {
         if cluster_id.is_empty() {
             return Err("capacity_reconciler_cluster_id_missing".to_string());
         }
+        let fence = Fence {
+            quorum,
+            leader,
+            acknowledgements,
+            term: committed.term,
+            actor,
+        };
         // A no-op fenced commit proves that the caller is still the majority-backed leader
         // before any provider observation or mutation is used for reconciliation.
-        quorum.commit(
-            leader,
-            committed.term,
-            acknowledgements,
-            actor,
+        fence.commit(
             "capacity reconciliation fence",
             ControlMutation::DesiredCapacity(committed.desired.clone()),
         )?;
@@ -2230,7 +2256,7 @@ impl CapacityReconciler {
             constraints: Vec::new(),
         };
 
-        self.finish_removed_drains(quorum, leader, acknowledgements, committed, actor, &active)?;
+        self.finish_removed_drains(&fence, &active)?;
 
         // A provider object can exist without ever becoming a Ready runtime
         // member (bad image, failed health check, crash during warm-up). It is
@@ -2243,43 +2269,14 @@ impl CapacityReconciler {
             .iter()
             .find(|node| node.lifecycle == CapacityNodeLifecycle::Failed)
         {
-            let operation = DriverOperation {
-                cluster_id: cluster_id.to_string(),
-                operation_id: capacity_operation_id(
-                    cluster_id,
-                    committed.desired.revision,
-                    stable_ordinal(&failed.node_id),
-                    &format!("cleanup-failed:{}", failed.node_id),
-                ),
-                control_term: committed.term,
-                desired_revision: committed.desired.revision,
-                template_revision: failed.template_revision.clone(),
-                node_id: Some(failed.node_id.clone()),
-                state: DriverOperationState::Pending,
-            };
-            quorum.commit(
-                leader,
-                committed.term,
-                acknowledgements,
-                actor,
-                "clean up failed managed worker",
-                ControlMutation::DriverOperation(operation.clone()),
+            self.clean_up_orphan(
+                &fence,
+                committed,
+                cluster_id,
+                failed,
+                ("failed", "failed managed worker"),
+                &mut outcome,
             )?;
-            let result = self.driver.terminate_node(&operation, &failed.node_id)?;
-            quorum.commit(
-                leader,
-                committed.term,
-                acknowledgements,
-                actor,
-                "record failed managed worker cleanup result",
-                ControlMutation::DriverOperation(result.clone()),
-            )?;
-            if result.state != DriverOperationState::Succeeded {
-                outcome.constraints.push(format!(
-                    "capacity_failed_worker_cleanup_incomplete:{}:{:?}",
-                    failed.node_id, result.state
-                ));
-            }
             return Ok(outcome);
         }
 
@@ -2315,44 +2312,18 @@ impl CapacityReconciler {
                 // work, so a drain would be both impossible and unnecessary.
                 // Terminate only after the bounded join grace and only through
                 // the normal fenced managed-resource operation.
-                let operation = DriverOperation {
-                    cluster_id: cluster_id.to_string(),
-                    operation_id: capacity_operation_id(
-                        cluster_id,
-                        committed.desired.revision,
-                        stable_ordinal(&node.node_id),
-                        &format!("cleanup-unjoined:{}", node.node_id),
+                if self.clean_up_orphan(
+                    &fence,
+                    committed,
+                    cluster_id,
+                    node,
+                    (
+                        "unjoined",
+                        "managed worker that never joined runtime membership",
                     ),
-                    control_term: committed.term,
-                    desired_revision: committed.desired.revision,
-                    template_revision: node.template_revision.clone(),
-                    node_id: Some(node.node_id.clone()),
-                    state: DriverOperationState::Pending,
-                };
-                quorum.commit(
-                    leader,
-                    committed.term,
-                    acknowledgements,
-                    actor,
-                    "clean up managed worker that never joined runtime membership",
-                    ControlMutation::DriverOperation(operation.clone()),
-                )?;
-                let result = self.driver.terminate_node(&operation, &node.node_id)?;
-                quorum.commit(
-                    leader,
-                    committed.term,
-                    acknowledgements,
-                    actor,
-                    "record unjoined managed worker cleanup result",
-                    ControlMutation::DriverOperation(result.clone()),
-                )?;
-                if result.state == DriverOperationState::Succeeded {
+                    &mut outcome,
+                )? {
                     self.unjoined_ready_since.remove(&node.node_id);
-                } else {
-                    outcome.constraints.push(format!(
-                        "capacity_unjoined_worker_cleanup_incomplete:{}:{:?}",
-                        node.node_id, result.state
-                    ));
                 }
                 return Ok(outcome);
             }
@@ -2375,11 +2346,7 @@ impl CapacityReconciler {
                 state: DriverOperationState::Pending,
             };
             let result = self.driver.begin_drain(&operation, &node_id)?;
-            quorum.commit(
-                leader,
-                committed.term,
-                acknowledgements,
-                actor,
+            fence.commit(
                 "record resumed begin drain result",
                 ControlMutation::DriverOperation(result.clone()),
             )?;
@@ -2431,11 +2398,7 @@ impl CapacityReconciler {
                 state: DriverOperationState::Pending,
             };
             let result = self.driver.terminate_node(&operation, &node_id)?;
-            quorum.commit(
-                leader,
-                committed.term,
-                acknowledgements,
-                actor,
+            fence.commit(
                 "record resumed terminate worker result",
                 ControlMutation::DriverOperation(result.clone()),
             )?;
@@ -2450,7 +2413,7 @@ impl CapacityReconciler {
         }
 
         if observed_workers < committed.desired.worker_nodes {
-            self.cancel_pretermination_drains(quorum, leader, acknowledgements, committed, actor)?;
+            self.cancel_pretermination_drains(&fence)?;
             let missing = committed.desired.worker_nodes - observed_workers;
             for ordinal in 0..u16::MAX {
                 if outcome.ensured.len() >= missing as usize {
@@ -2523,20 +2486,12 @@ impl CapacityReconciler {
                 {
                     continue;
                 }
-                quorum.commit(
-                    leader,
-                    committed.term,
-                    acknowledgements,
-                    actor,
+                fence.commit(
                     "ensure worker capacity",
                     ControlMutation::DriverOperation(operation.clone()),
                 )?;
                 let result = self.driver.ensure_node(&operation)?;
-                quorum.commit(
-                    leader,
-                    committed.term,
-                    acknowledgements,
-                    actor,
+                fence.commit(
                     "record ensure worker result",
                     ControlMutation::DriverOperation(result.clone()),
                 )?;
@@ -2564,7 +2519,7 @@ impl CapacityReconciler {
         }
 
         if observed_workers <= committed.desired.worker_nodes {
-            self.cancel_pretermination_drains(quorum, leader, acknowledgements, committed, actor)?;
+            self.cancel_pretermination_drains(&fence)?;
             outcome.drains = self.drain_progress();
             return Ok(outcome);
         }
@@ -2616,11 +2571,7 @@ impl CapacityReconciler {
                         node_id: Some(node_id.clone()),
                         state: DriverOperationState::Pending,
                     };
-                    quorum.commit(
-                        leader,
-                        committed.term,
-                        acknowledgements,
-                        actor,
+                    fence.commit(
                         if force {
                             "force terminate drain after deadline with replicated continuity fence"
                         } else {
@@ -2637,11 +2588,7 @@ impl CapacityReconciler {
                         progress.forced_termination = force;
                     }
                     let result = self.driver.terminate_node(&operation, &node_id)?;
-                    quorum.commit(
-                        leader,
-                        committed.term,
-                        acknowledgements,
-                        actor,
+                    fence.commit(
                         "record terminate worker result",
                         ControlMutation::DriverOperation(result.clone()),
                     )?;
@@ -2726,22 +2673,14 @@ impl CapacityReconciler {
             node_id: Some(selected.node_id.clone()),
             state: DriverOperationState::Pending,
         };
-        quorum.commit(
-            leader,
-            committed.term,
-            acknowledgements,
-            actor,
+        fence.commit(
             "begin worker drain",
             ControlMutation::DrainIntent {
                 node_id: selected.node_id.clone(),
                 cancelled: false,
             },
         )?;
-        quorum.commit(
-            leader,
-            committed.term,
-            acknowledgements,
-            actor,
+        fence.commit(
             "begin driver drain",
             ControlMutation::DriverOperation(operation.clone()),
         )?;
@@ -2767,11 +2706,7 @@ impl CapacityReconciler {
         // until every active continuity record has a safe replacement.
         crate::dist::operator::prepare_committed_drain(&selected_runtime_node_id);
         let driver_result = self.driver.begin_drain(&operation, &selected.node_id)?;
-        quorum.commit(
-            leader,
-            committed.term,
-            acknowledgements,
-            actor,
+        fence.commit(
             "record begin drain result",
             ControlMutation::DriverOperation(driver_result.clone()),
         )?;
@@ -2798,16 +2733,58 @@ impl CapacityReconciler {
         Ok(outcome)
     }
 
+    /// Terminates `node`, a managed provider object that is no working
+    /// member, through a fenced operation of its own. `kind` names why (and
+    /// the operation), `description` the node in the log. Reports whether
+    /// the provider confirmed the termination; a constraint says when not.
+    fn clean_up_orphan(
+        &self,
+        fence: &Fence<'_>,
+        committed: &CommittedDesiredCapacity,
+        cluster_id: &str,
+        node: &ObservedCapacityNode,
+        (kind, description): (&str, &str),
+        outcome: &mut CapacityReconcileOutcome,
+    ) -> Result<bool, String> {
+        let operation = DriverOperation {
+            cluster_id: cluster_id.to_string(),
+            operation_id: capacity_operation_id(
+                cluster_id,
+                committed.desired.revision,
+                stable_ordinal(&node.node_id),
+                &format!("cleanup-{kind}:{}", node.node_id),
+            ),
+            control_term: committed.term,
+            desired_revision: committed.desired.revision,
+            template_revision: node.template_revision.clone(),
+            node_id: Some(node.node_id.clone()),
+            state: DriverOperationState::Pending,
+        };
+        fence.commit(
+            &format!("clean up {description}"),
+            ControlMutation::DriverOperation(operation.clone()),
+        )?;
+        let result = self.driver.terminate_node(&operation, &node.node_id)?;
+        fence.commit(
+            &format!("record {kind} managed worker cleanup result"),
+            ControlMutation::DriverOperation(result.clone()),
+        )?;
+        let confirmed = result.state == DriverOperationState::Succeeded;
+        if !confirmed {
+            outcome.constraints.push(format!(
+                "capacity_{kind}_worker_cleanup_incomplete:{}:{:?}",
+                node.node_id, result.state
+            ));
+        }
+        Ok(confirmed)
+    }
+
     /// A terminated node the provider no longer has is drained: its intent
     /// ends in the control log too, or every later leader would resume the
     /// drain and every operator would see the node draining for good.
     fn finish_removed_drains(
         &mut self,
-        quorum: &dyn ControlPlaneCommitter,
-        leader: &str,
-        acknowledgements: &BTreeSet<String>,
-        committed: &CommittedDesiredCapacity,
-        actor: &str,
+        fence: &Fence<'_>,
         active: &[ObservedCapacityNode],
     ) -> Result<(), String> {
         let removed: Vec<_> = self
@@ -2820,11 +2797,7 @@ impl CapacityReconciler {
             .map(|(node_id, progress)| (node_id.clone(), progress.runtime_node_id.clone()))
             .collect();
         for (node_id, runtime_node_id) in removed {
-            quorum.commit(
-                leader,
-                committed.term,
-                acknowledgements,
-                actor,
+            fence.commit(
                 "finish drain of removed worker",
                 ControlMutation::DrainIntent {
                     node_id: node_id.clone(),
@@ -2840,14 +2813,7 @@ impl CapacityReconciler {
         Ok(())
     }
 
-    fn cancel_pretermination_drains(
-        &mut self,
-        quorum: &dyn ControlPlaneCommitter,
-        leader: &str,
-        acknowledgements: &BTreeSet<String>,
-        committed: &CommittedDesiredCapacity,
-        actor: &str,
-    ) -> Result<(), String> {
+    fn cancel_pretermination_drains(&mut self, fence: &Fence<'_>) -> Result<(), String> {
         let cancellable: Vec<_> = self
             .draining
             .iter()
@@ -2857,11 +2823,7 @@ impl CapacityReconciler {
             })
             .collect();
         for (node_id, runtime_node_id) in cancellable {
-            quorum.commit(
-                leader,
-                committed.term,
-                acknowledgements,
-                actor,
+            fence.commit(
                 "cancel worker drain after desired capacity rebound",
                 ControlMutation::DrainIntent {
                     node_id: node_id.clone(),
