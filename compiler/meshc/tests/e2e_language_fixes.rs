@@ -2022,6 +2022,48 @@ end
     }
 }
 
+/// A `for` over an `Iter<T>` binds its elements as `T`: they were typed as
+/// the untyped iterator handle's element, a type parameter, so `v + 1.0`
+/// failed (E0006) and interpolating one failed in code generation.
+#[test]
+fn a_for_over_an_iterator_binds_its_element_type() {
+    let source = r##"
+struct Halves do
+  left :: Int
+end
+
+impl Iterator for Halves do
+  type Item = Float
+  fn next(self) -> Float? do
+    None
+  end
+end
+
+fn main() do
+  let floats = for v in Iter.from([1.0, 2.0]) do
+    v + 1.0
+  end
+  let lens = for n in Iter.from(["a", "bb"]) |> Iter.map(fn s -> String.length(s) end) do
+    n * 10
+  end
+  let big = for x in Iter.from([1, 2, 3]) |> Iter.filter(fn x -> x > 1 end) do
+    "#{x + 1}"
+  end
+  let pairs = for (i, s) in Iter.from(["x", "y"]) |> Iter.enumerate() do
+    "#{i}#{s}"
+  end
+  let none = for h in Halves { left: 2 } do
+    h + 0.5
+  end
+  for v in Iter.from([0.5]) do
+    println("#{v}")
+  end
+  println("#{floats} #{lens} #{big} #{pairs} #{none}")
+end
+"##;
+    assert_eq!(run(source), "0.5\n[2.0, 3.0] [10, 20] [3, 4] [0x, 1y] []\n");
+}
+
 #[test]
 fn values_of_a_type_nothing_fixed_compare_equal() {
     let source = "fn main() do\n  println(\"#{None == None} #{Ok(1) == Ok(1)} #{Ok(1) == Ok(2)} #{[None] == [None]}\")\nend\n";
