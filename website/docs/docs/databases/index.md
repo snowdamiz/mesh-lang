@@ -253,12 +253,12 @@ let query = Query.from(User.__table__())
 | `Query.from(table)` | Start a query |
 | `Query.where(query, field, value)` | Equality predicate |
 | `Query.where_op(query, field, operator, value)` | Predicate using `:eq`, `:neq`, `:lt`, `:lte`, `:gt`, `:gte`, `:like`, or `:ilike` (any other atom is a panic) |
-| `Query.where_in(query, field, values)` | `IN` predicate |
-| `Query.where_not_in(query, field, values)` | `NOT IN` predicate |
+| `Query.where_in(query, field, values)` | `IN` predicate (an empty list matches no row) |
+| `Query.where_not_in(query, field, values)` | `NOT IN` predicate (an empty list matches every row) |
 | `Query.where_between(query, field, low, high)` | Inclusive range predicate |
 | `Query.where_null(query, field)` | `IS NULL` |
 | `Query.where_not_null(query, field)` | `IS NOT NULL` |
-| `Query.where_or(query, fields, values)` | Group parallel equality predicates with `OR`, each field equal to the value at its place (lists of different lengths are a panic) |
+| `Query.where_or(query, fields, values)` | Group parallel equality predicates with `OR`, each field equal to the value at its place (lists of different lengths are a panic; empty lists match no row) |
 | `Query.where_expr(query, expression)` | Add a structured `Expr` predicate |
 | `Query.where_sub(query, field, subquery)` | Add `field IN (subquery)`, the subquery built as `Repo.all` would run it, every clause included |
 

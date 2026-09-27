@@ -224,6 +224,22 @@ fn reads(pool :: PoolHandle) do
         |> Query.where_not_in(:handle, ["ada", "cy"])
         |> Query.order_by(:handle, :asc)),
     "handle")
+  # No value is in an empty list; an OR of nothing holds for no row.
+  show_rows("where_in_none",
+    Repo.all(pool,
+      writers
+        |> Query.where_in(:handle, [])),
+    "handle")
+  show_rows("where_not_in_none",
+    Repo.all(pool,
+      writers
+        |> Query.where_not_in(:handle, [])
+        |> Query.order_by(:handle, :asc)),
+    "handle")
+  show_int("where_or_none",
+    Repo.count(pool,
+      writers
+        |> Query.where_or([], [])))
   show_rows("where_between",
     Repo.all(pool,
       writers
