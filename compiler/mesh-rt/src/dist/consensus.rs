@@ -150,21 +150,34 @@ fn register_mesh_consensus_rpc_server(
 }
 
 fn encode_consensus_rpc_reply(reply: MeshConsensusRpcReply) -> Vec<u8> {
-    serde_json::to_vec(&reply).unwrap_or_else(|error| {
-        serde_json::to_vec(&MeshConsensusRpcReply::TransportError(format!(
-            "consensus_rpc_reply_encode_failed:{error}"
-        )))
-        .unwrap_or_else(|_| b"{\"TransportError\":\"consensus_rpc_reply_encode_failed\"}".to_vec())
-    })
+    serde_json::to_vec(&reply).expect("a consensus RPC reply encodes")
 }
 
-fn send_consensus_transport_error(
-    session: &Arc<super::node::NodeSession>,
-    correlation_id: u64,
-    reason: impl Into<String>,
-) {
-    let payload = encode_consensus_rpc_reply(MeshConsensusRpcReply::TransportError(reason.into()));
-    let _ = super::node::send_mesh_consensus_rpc_reply(session, correlation_id, &payload);
+/// The local node's Raft and the RPC in `payload`, if the request is for
+/// it: the session negotiated autonomous mode, and the envelope names this
+/// cluster, this node, and the authenticated peer as its source.
+fn accepted_consensus_rpc(
+    autonomous_enabled: bool,
+    remote_name: &str,
+    payload: &[u8],
+    server: Option<MeshConsensusRpcServer>,
+    local_node: &str,
+) -> Result<(MeshConsensusRpcServer, MeshConsensusRpc), String> {
+    if !autonomous_enabled {
+        return Err("consensus_rpc_capability_unavailable".to_string());
+    }
+    let request: MeshConsensusRpcEnvelope = serde_json::from_slice(payload)
+        .map_err(|error| format!("consensus_rpc_request_decode_failed:{error}"))?;
+    let server = server.ok_or_else(|| "consensus_rpc_server_unavailable".to_string())?;
+    if request.cluster_name != server.cluster_name
+        || request.target_id != server.node_id
+        || request.source_id == 0
+        || request.source_name != remote_name
+        || server.node_name != local_node
+    {
+        return Err("consensus_rpc_identity_mismatch".to_string());
+    }
+    Ok((server, request.rpc))
 }
 
 /// Dispatch an incoming Raft request away from the distribution reader thread.
@@ -175,49 +188,27 @@ pub(crate) fn handle_mesh_consensus_rpc(
     correlation_id: u64,
     payload: Vec<u8>,
 ) {
-    if !session.negotiated_protocol.autonomous_enabled {
-        send_consensus_transport_error(
-            &session,
-            correlation_id,
-            "consensus_rpc_capability_unavailable",
-        );
-        return;
-    }
-    let request: MeshConsensusRpcEnvelope = match serde_json::from_slice(&payload) {
-        Ok(request) => request,
-        Err(error) => {
-            send_consensus_transport_error(
-                &session,
-                correlation_id,
-                format!("consensus_rpc_request_decode_failed:{error}"),
-            );
+    let server = consensus_rpc_server()
+        .read()
+        .ok()
+        .and_then(|server| server.clone());
+    let accepted = accepted_consensus_rpc(
+        session.negotiated_protocol.autonomous_enabled,
+        &session.remote_name,
+        &payload,
+        server,
+        super::node::node_state().map_or("", |state| state.name.as_str()),
+    );
+    let (server, rpc) = match accepted {
+        Ok(accepted) => accepted,
+        Err(reason) => {
+            let reply = encode_consensus_rpc_reply(MeshConsensusRpcReply::TransportError(reason));
+            let _ = super::node::send_mesh_consensus_rpc_reply(&session, correlation_id, &reply);
             return;
         }
     };
-    let server = match consensus_rpc_server().read() {
-        Ok(server) => server.clone(),
-        Err(_) => None,
-    };
-    let Some(server) = server else {
-        send_consensus_transport_error(
-            &session,
-            correlation_id,
-            "consensus_rpc_server_unavailable",
-        );
-        return;
-    };
-    if request.cluster_name != server.cluster_name
-        || request.target_id != server.node_id
-        || request.source_id == 0
-        || request.source_name != session.remote_name
-        || server.node_name != super::node::node_state().map_or("", |state| state.name.as_str())
-    {
-        send_consensus_transport_error(&session, correlation_id, "consensus_rpc_identity_mismatch");
-        return;
-    }
-
     server.runtime.spawn(async move {
-        let reply = match request.rpc {
+        let reply = match rpc {
             MeshConsensusRpc::Append(request) => {
                 MeshConsensusRpcReply::Append(server.raft.append_entries(request).await)
             }
@@ -371,7 +362,7 @@ impl MeshConsensusConnection {
             target_id: self.target,
             rpc,
         })
-        .map_err(|error| format!("consensus_rpc_request_encode_failed:{error}"))?;
+        .expect("a consensus RPC encodes");
         let reply = super::node::execute_mesh_consensus_rpc(
             &self.target_name,
             payload,
@@ -382,19 +373,27 @@ impl MeshConsensusConnection {
         serde_json::from_slice(&reply)
             .map_err(|error| format!("consensus_rpc_reply_decode_failed:{error}"))
     }
+}
 
-    fn unreachable<E>(&self, error: E) -> MeshRpcError
-    where
-        E: std::fmt::Display,
-    {
-        RPCError::Unreachable(Unreachable::new(&std::io::Error::other(error.to_string())))
-    }
+/// A peer that could not answer: its RPC is retried like a lost message.
+fn unreachable<E: std::error::Error>(error: impl std::fmt::Display) -> MeshRpcError<E> {
+    RPCError::Unreachable(Unreachable::new(&std::io::Error::other(error.to_string())))
+}
 
-    fn unreachable_snapshot<E>(&self, error: E) -> MeshRpcError<InstallSnapshotError>
-    where
-        E: std::fmt::Display,
-    {
-        RPCError::Unreachable(Unreachable::new(&std::io::Error::other(error.to_string())))
+/// The response `reply` carries for an RPC whose own reply variant `pick`
+/// takes out: the target's answer, its refusal, or why it could not answer.
+fn rpc_reply<T, E: std::error::Error>(
+    target: ConsensusNodeId,
+    reply: Result<MeshConsensusRpcReply, String>,
+    pick: fn(MeshConsensusRpcReply) -> Result<Result<T, MeshRaftError<E>>, MeshConsensusRpcReply>,
+) -> Result<T, MeshRpcError<E>> {
+    match reply.map(pick) {
+        Ok(Ok(Ok(response))) => Ok(response),
+        Ok(Ok(Err(error))) => Err(RPCError::RemoteError(RemoteError::new(target, error))),
+        Ok(Err(MeshConsensusRpcReply::TransportError(error))) | Err(error) => {
+            Err(unreachable(error))
+        }
+        Ok(Err(_)) => Err(unreachable("consensus_rpc_reply_kind_mismatch")),
     }
 }
 
@@ -404,18 +403,12 @@ impl RaftNetwork<MeshRaftConfig> for MeshConsensusConnection {
         request: AppendEntriesRequest<MeshRaftConfig>,
         option: RPCOption,
     ) -> Result<AppendEntriesResponse<ConsensusNodeId>, MeshRpcError> {
-        match self
-            .round_trip(MeshConsensusRpc::Append(request), false, option)
-            .await
-            .map_err(|error| self.unreachable(error))?
-        {
-            MeshConsensusRpcReply::Append(Ok(response)) => Ok(response),
-            MeshConsensusRpcReply::Append(Err(error)) => {
-                Err(RPCError::RemoteError(RemoteError::new(self.target, error)))
-            }
-            MeshConsensusRpcReply::TransportError(error) => Err(self.unreachable(error)),
-            _ => Err(self.unreachable("consensus_rpc_reply_kind_mismatch")),
-        }
+        let rpc = MeshConsensusRpc::Append(request);
+        let reply = self.round_trip(rpc, false, option).await;
+        rpc_reply(self.target, reply, |reply| match reply {
+            MeshConsensusRpcReply::Append(result) => Ok(result),
+            other => Err(other),
+        })
     }
 
     async fn install_snapshot(
@@ -423,18 +416,12 @@ impl RaftNetwork<MeshRaftConfig> for MeshConsensusConnection {
         request: InstallSnapshotRequest<MeshRaftConfig>,
         option: RPCOption,
     ) -> Result<InstallSnapshotResponse<ConsensusNodeId>, MeshRpcError<InstallSnapshotError>> {
-        match self
-            .round_trip(MeshConsensusRpc::InstallSnapshot(request), true, option)
-            .await
-            .map_err(|error| self.unreachable_snapshot(error))?
-        {
-            MeshConsensusRpcReply::InstallSnapshot(Ok(response)) => Ok(response),
-            MeshConsensusRpcReply::InstallSnapshot(Err(error)) => {
-                Err(RPCError::RemoteError(RemoteError::new(self.target, error)))
-            }
-            MeshConsensusRpcReply::TransportError(error) => Err(self.unreachable_snapshot(error)),
-            _ => Err(self.unreachable_snapshot("consensus_rpc_reply_kind_mismatch")),
-        }
+        let rpc = MeshConsensusRpc::InstallSnapshot(request);
+        let reply = self.round_trip(rpc, true, option).await;
+        rpc_reply(self.target, reply, |reply| match reply {
+            MeshConsensusRpcReply::InstallSnapshot(result) => Ok(result),
+            other => Err(other),
+        })
     }
 
     async fn vote(
@@ -442,18 +429,12 @@ impl RaftNetwork<MeshRaftConfig> for MeshConsensusConnection {
         request: VoteRequest<ConsensusNodeId>,
         option: RPCOption,
     ) -> Result<VoteResponse<ConsensusNodeId>, MeshRpcError> {
-        match self
-            .round_trip(MeshConsensusRpc::Vote(request), false, option)
-            .await
-            .map_err(|error| self.unreachable(error))?
-        {
-            MeshConsensusRpcReply::Vote(Ok(response)) => Ok(response),
-            MeshConsensusRpcReply::Vote(Err(error)) => {
-                Err(RPCError::RemoteError(RemoteError::new(self.target, error)))
-            }
-            MeshConsensusRpcReply::TransportError(error) => Err(self.unreachable(error)),
-            _ => Err(self.unreachable("consensus_rpc_reply_kind_mismatch")),
-        }
+        let rpc = MeshConsensusRpc::Vote(request);
+        let reply = self.round_trip(rpc, false, option).await;
+        rpc_reply(self.target, reply, |reply| match reply {
+            MeshConsensusRpcReply::Vote(result) => Ok(result),
+            other => Err(other),
+        })
     }
 }
 
@@ -619,26 +600,36 @@ pub fn consensus_node_id_for_stable_id(stable_id: &str) -> Result<ConsensusNodeI
     Ok(if node_id == 0 { 1 } else { node_id })
 }
 
-fn consensus_environment(node_name: &str) -> Result<Option<MeshConsensusEnvironment>, String> {
-    // The same mode and roles the rest of the runtime reads: a controller
-    // enabled by its embedded manifest alone never started consensus.
-    let autonomous = super::node::autonomous_mode_requested();
-    let controller =
-        super::readiness::local_roles().contains(super::telemetry::NodeRoles::CONTROLLER);
+/// Reads one deployment environment variable: the runtime passes
+/// `std::env::var_os`, tests a table of their own.
+type EnvironmentLookup<'a> = &'a dyn Fn(&str) -> Option<std::ffi::OsString>;
+
+/// This controller's consensus settings when `autonomous` mode runs it as a
+/// `controller`, from the deployment environment.
+fn consensus_environment(
+    node_name: &str,
+    autonomous: bool,
+    controller: bool,
+    env: EnvironmentLookup<'_>,
+) -> Result<Option<MeshConsensusEnvironment>, String> {
     if !autonomous || !controller {
         return Ok(None);
     }
-
-    let cluster_name =
-        std::env::var("MESH_CLUSTER_ID").map_err(|_| "consensus_cluster_id_missing".to_string())?;
+    let text = |name: &str, missing: &str| {
+        env(name)
+            .and_then(|value| value.into_string().ok())
+            .ok_or_else(|| missing.to_string())
+    };
+    let cluster_name = text("MESH_CLUSTER_ID", "consensus_cluster_id_missing")?;
     if cluster_name.trim().is_empty() || cluster_name.len() > 256 {
         return Err("consensus_cluster_id_invalid".to_string());
     }
-    let local_stable_id = std::env::var("MESH_STABLE_NODE_ID")
-        .map_err(|_| "consensus_stable_node_id_missing".to_string())?;
+    let local_stable_id = text("MESH_STABLE_NODE_ID", "consensus_stable_node_id_missing")?;
     let local_id = consensus_node_id_for_stable_id(&local_stable_id)?;
-    let encoded_voters = std::env::var("MESH_CONTROLLER_VOTERS")
-        .map_err(|_| "consensus_controller_voters_missing".to_string())?;
+    let encoded_voters = text(
+        "MESH_CONTROLLER_VOTERS",
+        "consensus_controller_voters_missing",
+    )?;
     let mut voters = BTreeMap::new();
     let mut bootstrap_id = None;
     for encoded in encoded_voters.split(',') {
@@ -654,13 +645,14 @@ fn consensus_environment(node_name: &str) -> Result<Option<MeshConsensusEnvironm
         bootstrap_id.get_or_insert(id);
         voters.insert(id, BasicNode::new(address));
     }
-    if voters.is_empty() || (voters.len() > 1 && voters.len().is_multiple_of(2)) {
+    // Splitting yields at least one voter, or an error above.
+    if voters.len() > 1 && voters.len().is_multiple_of(2) {
         return Err("consensus_controller_voter_count_invalid".to_string());
     }
     if voters.get(&local_id).map(|node| node.addr.as_str()) != Some(node_name) {
         return Err("consensus_local_voter_identity_mismatch".to_string());
     }
-    let store_path = std::env::var_os("MESH_CONSENSUS_DB")
+    let store_path = env("MESH_CONSENSUS_DB")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| std::path::PathBuf::from("/tmp/mesh-control-plane.redb"));
     Ok(Some(MeshConsensusEnvironment {
@@ -677,7 +669,15 @@ fn consensus_environment(node_name: &str) -> Result<Option<MeshConsensusEnvironm
 /// owns a dedicated Tokio executor and durable store, so consensus I/O cannot
 /// block Mesh actor schedulers or distribution reader threads.
 pub fn start_mesh_consensus_from_env(node_name: &str) -> Result<bool, String> {
-    let Some(environment) = consensus_environment(node_name)? else {
+    // The same mode and roles the rest of the runtime reads: a controller
+    // enabled by its embedded manifest alone never started consensus.
+    let Some(environment) = consensus_environment(
+        node_name,
+        super::node::autonomous_mode_requested(),
+        super::readiness::local_roles().contains(super::telemetry::NodeRoles::CONTROLLER),
+        &|name| std::env::var_os(name),
+    )?
+    else {
         return Ok(false);
     };
     MESH_CONSENSUS_RUNTIME_STARTED
@@ -748,4 +748,446 @@ pub fn start_mesh_consensus_from_env(node_name: &str) -> Result<bool, String> {
         return Err(error);
     }
     Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::scaling::{DesiredCapacity, DesiredRevision};
+    use super::*;
+    use openraft::{SnapshotMeta, Vote};
+
+    fn command() -> ConsensusCommand {
+        ConsensusCommand {
+            command_id: "command".to_string(),
+            actor: "actor".to_string(),
+            reason: "reason".to_string(),
+            timestamp_unix_millis: 1,
+            actor_sequence: 0,
+            mutation: ControlMutation::DesiredCapacity(DesiredCapacity {
+                revision: DesiredRevision(1),
+                worker_nodes: 1,
+                gateway_nodes: 0,
+                template_revision: "v1".to_string(),
+            }),
+        }
+    }
+
+    #[test]
+    fn commands_are_refused_for_empty_or_oversized_fields() {
+        assert_eq!(command().validate(), Ok(()));
+        let cases: [fn(&mut ConsensusCommand); 6] = [
+            |command| command.command_id = " ".to_string(),
+            |command| command.command_id = "x".repeat(513),
+            |command| command.actor = String::new(),
+            |command| command.actor = "x".repeat(257),
+            |command| command.reason = " ".to_string(),
+            |command| command.reason = "x".repeat(2_049),
+        ];
+        for change in cases {
+            let mut invalid = command();
+            change(&mut invalid);
+            assert_eq!(
+                invalid.validate(),
+                Err("consensus_command_invalid".to_string())
+            );
+            assert_eq!(
+                commit_consensus_command(invalid, Duration::from_secs(1)),
+                Err("consensus_command_invalid".to_string())
+            );
+        }
+        assert_eq!(
+            commit_consensus_command(command(), Duration::ZERO),
+            Err("consensus_commit_timeout_invalid".to_string())
+        );
+        // Nothing in this process registers the embedded consensus.
+        assert_eq!(
+            commit_consensus_command(command(), Duration::from_secs(1)),
+            Err("consensus_rpc_server_unavailable".to_string())
+        );
+        assert_eq!(consensus_runtime_snapshot(), None);
+        assert_eq!(start_mesh_consensus_from_env("node@host:4370"), Ok(false));
+    }
+
+    #[test]
+    fn stable_node_ids_hash_to_consensus_ids() {
+        let id = consensus_node_id_for_stable_id(" cluster/controller/a ").unwrap();
+        assert_eq!(
+            Ok(id),
+            consensus_node_id_for_stable_id("cluster/controller/a")
+        );
+        assert_ne!(
+            Ok(id),
+            consensus_node_id_for_stable_id("cluster/controller/b")
+        );
+        for invalid in [" ".to_string(), "x".repeat(513)] {
+            assert_eq!(
+                consensus_node_id_for_stable_id(&invalid),
+                Err("consensus_stable_node_id_invalid".to_string())
+            );
+        }
+    }
+
+    fn lookup<'a>(
+        table: &'a [(&'a str, &'a str)],
+    ) -> impl Fn(&str) -> Option<std::ffi::OsString> + 'a {
+        move |name| {
+            table
+                .iter()
+                .find(|(key, _)| *key == name)
+                .map(|(_, value)| value.into())
+        }
+    }
+
+    #[test]
+    fn a_controllers_consensus_settings_come_from_its_environment() {
+        let voters = "c/controller/a|a@a:4370,c/controller/b|b@b:4370,c/controller/c|c@c:4370";
+        let valid = [
+            ("MESH_CLUSTER_ID", "c"),
+            ("MESH_STABLE_NODE_ID", "c/controller/b"),
+            ("MESH_CONTROLLER_VOTERS", voters),
+        ];
+        assert!(
+            consensus_environment("b@b:4370", false, true, &lookup(&valid))
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            consensus_environment("b@b:4370", true, false, &lookup(&valid))
+                .unwrap()
+                .is_none()
+        );
+        let environment = consensus_environment("b@b:4370", true, true, &lookup(&valid))
+            .unwrap()
+            .expect("controller environment");
+        assert_eq!(environment.cluster_name, "c");
+        assert_eq!(
+            environment.local_id,
+            consensus_node_id_for_stable_id("c/controller/b").unwrap()
+        );
+        assert_eq!(
+            environment.bootstrap_id,
+            consensus_node_id_for_stable_id("c/controller/a").unwrap()
+        );
+        assert_eq!(environment.voters.len(), 3);
+        assert_eq!(
+            environment.store_path,
+            std::path::PathBuf::from("/tmp/mesh-control-plane.redb")
+        );
+        let mut stored = valid.to_vec();
+        stored.push(("MESH_CONSENSUS_DB", "/data/consensus.redb"));
+        assert_eq!(
+            consensus_environment("b@b:4370", true, true, &lookup(&stored))
+                .unwrap()
+                .unwrap()
+                .store_path,
+            std::path::PathBuf::from("/data/consensus.redb")
+        );
+
+        let cluster_too_long = "x".repeat(257);
+        let refusals: &[(&[(&str, &str)], &str)] = &[
+            (&[], "consensus_cluster_id_missing"),
+            (&[("MESH_CLUSTER_ID", " ")], "consensus_cluster_id_invalid"),
+            (
+                &[("MESH_CLUSTER_ID", &cluster_too_long)],
+                "consensus_cluster_id_invalid",
+            ),
+            (
+                &[("MESH_CLUSTER_ID", "c")],
+                "consensus_stable_node_id_missing",
+            ),
+            (
+                &[("MESH_CLUSTER_ID", "c"), ("MESH_STABLE_NODE_ID", " ")],
+                "consensus_stable_node_id_invalid",
+            ),
+            (
+                &[
+                    ("MESH_CLUSTER_ID", "c"),
+                    ("MESH_STABLE_NODE_ID", "c/controller/b"),
+                ],
+                "consensus_controller_voters_missing",
+            ),
+            (
+                &[
+                    ("MESH_CLUSTER_ID", "c"),
+                    ("MESH_STABLE_NODE_ID", "c/controller/b"),
+                    ("MESH_CONTROLLER_VOTERS", "c/controller/b"),
+                ],
+                "consensus_controller_voter_invalid",
+            ),
+            (
+                &[
+                    ("MESH_CLUSTER_ID", "c"),
+                    ("MESH_STABLE_NODE_ID", "c/controller/b"),
+                    ("MESH_CONTROLLER_VOTERS", "c/controller/b| "),
+                ],
+                "consensus_controller_voter_invalid",
+            ),
+            (
+                &[
+                    ("MESH_CLUSTER_ID", "c"),
+                    ("MESH_STABLE_NODE_ID", "c/controller/b"),
+                    (
+                        "MESH_CONTROLLER_VOTERS",
+                        "c/controller/b|b@b:4370,c/controller/b|b@b:4370",
+                    ),
+                ],
+                "consensus_controller_voter_invalid",
+            ),
+            (
+                &[
+                    ("MESH_CLUSTER_ID", "c"),
+                    ("MESH_STABLE_NODE_ID", "c/controller/b"),
+                    (
+                        "MESH_CONTROLLER_VOTERS",
+                        "c/controller/a|a@a:4370,c/controller/b|b@b:4370",
+                    ),
+                ],
+                "consensus_controller_voter_count_invalid",
+            ),
+            (
+                &[
+                    ("MESH_CLUSTER_ID", "c"),
+                    ("MESH_STABLE_NODE_ID", "c/controller/b"),
+                    ("MESH_CONTROLLER_VOTERS", "c/controller/b|elsewhere@b:4370"),
+                ],
+                "consensus_local_voter_identity_mismatch",
+            ),
+        ];
+        for (table, expected) in refusals {
+            assert_eq!(
+                consensus_environment("b@b:4370", true, true, &lookup(table)).err(),
+                Some(expected.to_string()),
+                "{expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn consensus_configuration_needs_a_cluster_and_a_node() {
+        for cluster in ["".to_string(), "x".repeat(257)] {
+            assert_eq!(
+                validated_consensus_config(&cluster).err(),
+                Some("consensus_node_configuration_invalid".to_string())
+            );
+        }
+        assert!(validated_consensus_config("cluster").is_ok());
+        let long_name = "x".repeat(513);
+        for (cluster, id, name) in [
+            ("", 1, "node"),
+            ("cluster", 0, "node"),
+            ("cluster", 1, " "),
+            ("cluster", 1, long_name.as_str()),
+        ] {
+            assert_eq!(
+                MeshConsensusNetwork::new(cluster, id, name).err(),
+                Some("consensus_network_configuration_invalid".to_string())
+            );
+        }
+    }
+
+    fn vote() -> Vote<ConsensusNodeId> {
+        Vote::new(1, 1)
+    }
+
+    #[tokio::test]
+    async fn replies_map_to_answers_refusals_and_unreachable_peers() {
+        let target = 7;
+        let pick = |reply| match reply {
+            MeshConsensusRpcReply::Vote(result) => Ok(result),
+            other => Err(other),
+        };
+        let answer = VoteResponse::new(vote(), None, true);
+        assert_eq!(
+            rpc_reply(
+                target,
+                Ok(MeshConsensusRpcReply::Vote(Ok(answer.clone()))),
+                pick
+            )
+            .unwrap(),
+            answer
+        );
+        let refused = rpc_reply(
+            target,
+            Ok(MeshConsensusRpcReply::Vote(Err(RaftError::Fatal(
+                openraft::error::Fatal::Stopped,
+            )))),
+            pick,
+        );
+        assert!(matches!(refused, Err(RPCError::RemoteError(ref error)) if error.target == 7));
+        for reply in [
+            Ok(MeshConsensusRpcReply::TransportError("gone".to_string())),
+            Err("no session".to_string()),
+            Ok(MeshConsensusRpcReply::Append(Ok(
+                AppendEntriesResponse::Success,
+            ))),
+        ] {
+            assert!(matches!(
+                rpc_reply(target, reply, pick),
+                Err(RPCError::Unreachable(_))
+            ));
+        }
+
+        // A connection to no one is unreachable before anything is sent.
+        let mut network = MeshConsensusNetwork::new("cluster", 1, "source@host:4370").unwrap();
+        let mut connection = network.new_client(0, &BasicNode::new("")).await;
+        let option = || RPCOption::new(Duration::from_secs(1));
+        let append = AppendEntriesRequest {
+            vote: vote(),
+            prev_log_id: None,
+            entries: Vec::new(),
+            leader_commit: None,
+        };
+        assert!(matches!(
+            connection.append_entries(append, option()).await,
+            Err(RPCError::Unreachable(_))
+        ));
+        assert!(matches!(
+            connection
+                .vote(VoteRequest::new(vote(), None), option())
+                .await,
+            Err(RPCError::Unreachable(_))
+        ));
+        let snapshot = InstallSnapshotRequest {
+            vote: vote(),
+            meta: SnapshotMeta {
+                last_log_id: None,
+                last_membership: StoredMembership::default(),
+                snapshot_id: "snapshot".to_string(),
+            },
+            offset: 0,
+            data: Vec::new(),
+            done: true,
+        };
+        assert!(matches!(
+            connection.install_snapshot(snapshot, option()).await,
+            Err(RPCError::Unreachable(_))
+        ));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn only_requests_for_this_node_from_their_peer_are_accepted() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let node = super::super::consensus_testing::start_durable_consensus_node(
+            9,
+            super::super::consensus_testing::InProcessConsensusNetwork::default(),
+            "cluster",
+            &directory.path().join("consensus.redb"),
+        )
+        .await
+        .expect("durable node");
+        let server = MeshConsensusRpcServer {
+            cluster_name: "cluster".to_string(),
+            node_id: 9,
+            node_name: "local@host:4370".to_string(),
+            raft: node.raft.clone(),
+            state_machine: node.state_machine.clone(),
+            runtime: tokio::runtime::Handle::current(),
+        };
+        let envelope = |cluster: &str, source_id, source: &str, target_id| {
+            serde_json::to_vec(&MeshConsensusRpcEnvelope {
+                cluster_name: cluster.to_string(),
+                source_id,
+                source_name: source.to_string(),
+                target_id,
+                rpc: MeshConsensusRpc::Vote(VoteRequest::new(vote(), None)),
+            })
+            .unwrap()
+        };
+        let accept = |autonomous, payload: &[u8], server: Option<MeshConsensusRpcServer>| {
+            accepted_consensus_rpc(
+                autonomous,
+                "peer@host:4370",
+                payload,
+                server,
+                "local@host:4370",
+            )
+            .map(|(_, rpc)| matches!(rpc, MeshConsensusRpc::Vote(_)))
+        };
+        let valid = envelope("cluster", 3, "peer@host:4370", 9);
+        assert_eq!(accept(true, &valid, Some(server.clone())), Ok(true));
+        assert_eq!(
+            accept(false, &valid, Some(server.clone())),
+            Err("consensus_rpc_capability_unavailable".to_string())
+        );
+        assert!(accept(true, b"{", Some(server.clone()))
+            .unwrap_err()
+            .starts_with("consensus_rpc_request_decode_failed:"));
+        assert_eq!(
+            accept(true, &valid, None),
+            Err("consensus_rpc_server_unavailable".to_string())
+        );
+        for mismatched in [
+            envelope("other", 3, "peer@host:4370", 9),
+            envelope("cluster", 3, "peer@host:4370", 8),
+            envelope("cluster", 0, "peer@host:4370", 9),
+            envelope("cluster", 3, "impostor@host:4370", 9),
+        ] {
+            assert_eq!(
+                accept(true, &mismatched, Some(server.clone())),
+                Err("consensus_rpc_identity_mismatch".to_string())
+            );
+        }
+        let elsewhere = accepted_consensus_rpc(
+            true,
+            "peer@host:4370",
+            &valid,
+            Some(server.clone()),
+            "renamed@host:4370",
+        );
+        assert_eq!(
+            elsewhere.map(|_| ()),
+            Err("consensus_rpc_identity_mismatch".to_string())
+        );
+        assert!(
+            encode_consensus_rpc_reply(MeshConsensusRpcReply::TransportError("reason".to_string()))
+                .starts_with(b"{\"TransportError\"")
+        );
+
+        // Registration checks its identity, and needs a Tokio runtime.
+        let (raft, state_machine) = (node.raft.clone(), node.state_machine.clone());
+        assert_eq!(
+            register_mesh_consensus_rpc_server(
+                " ",
+                9,
+                "local",
+                raft.clone(),
+                state_machine.clone()
+            ),
+            Err("consensus_rpc_server_configuration_invalid".to_string())
+        );
+        let outside_runtime = std::thread::spawn(move || {
+            register_mesh_consensus_rpc_server("cluster", 9, "local", raft, state_machine)
+        })
+        .join()
+        .unwrap();
+        assert_eq!(
+            outside_runtime,
+            Err("consensus_rpc_runtime_unavailable".to_string())
+        );
+        // A durable node must be this process's started node.
+        let long_name = "x".repeat(513);
+        for (id, name) in [(0, "local@host:4370"), (9, " "), (9, long_name.as_str())] {
+            assert_eq!(
+                start_mesh_durable_consensus_node(id, name, "cluster", directory.path())
+                    .await
+                    .err(),
+                Some("consensus_node_configuration_invalid".to_string())
+            );
+        }
+        let not_this_node = start_mesh_durable_consensus_node(
+            9,
+            "not-this-node@host:4370",
+            "cluster",
+            directory.path(),
+        )
+        .await
+        .err()
+        .unwrap();
+        assert!(
+            not_this_node == "consensus_mesh_node_not_started"
+                || not_this_node == "consensus_mesh_node_identity_mismatch",
+            "{not_this_node}"
+        );
+        node.raft.shutdown().await.expect("shutdown");
+    }
 }
