@@ -2715,26 +2715,23 @@ fn send_load_report(session: &Arc<NodeSession>) {
 /// without letting the old reader/heartbeat threads later remove the live
 /// replacement by name alone.
 fn cleanup_session_if_current(session: &Arc<NodeSession>) {
-    if let Some(state) = NODE_STATE.get() {
-        let removed = {
-            let mut sessions = state.sessions.write();
-            match sessions.get(&session.remote_name) {
-                Some(current) if Arc::ptr_eq(current, session) => {
-                    sessions.remove(&session.remote_name)
-                }
-                _ => None,
-            }
-        };
-        if let Some(session) = removed {
-            record_peer_transport_failure(&session.remote_name, Instant::now());
-            fail_pending_session_requests(&session, "peer_session_disconnected");
-            let node_id = session.node_id;
-            let mut id_map = state.node_id_map.write();
-            id_map.remove(&node_id);
-            drop(id_map);
-            // Phase 66: Fire all failure signals for the disconnected node.
-            handle_node_disconnect(&session.remote_name, node_id);
+    let state = started_node();
+    let removed = {
+        let mut sessions = state.sessions.write();
+        match sessions.get(&session.remote_name) {
+            Some(current) if Arc::ptr_eq(current, session) => sessions.remove(&session.remote_name),
+            _ => None,
         }
+    };
+    if let Some(session) = removed {
+        record_peer_transport_failure(&session.remote_name, Instant::now());
+        fail_pending_session_requests(&session, "peer_session_disconnected");
+        let node_id = session.node_id;
+        let mut id_map = state.node_id_map.write();
+        id_map.remove(&node_id);
+        drop(id_map);
+        // Phase 66: Fire all failure signals for the disconnected node.
+        handle_node_disconnect(&session.remote_name, node_id);
     }
 }
 
@@ -2880,12 +2877,15 @@ pub(crate) fn send_mesh_consensus_rpc_reply(
 /// Called from cleanup_session after removing the session from NodeState.
 ///
 /// Two-phase approach to avoid deadlocks:
-/// 1. Under process table READ lock, collect all actions to take
+/// 1. Under process table READ lock, collect all actions to take, with the
+///    processes they are for: one that exits meanwhile is still at hand,
+///    and seen to have exited.
 /// 2. Drop lock, then execute collected actions
 fn handle_node_disconnect(node_name: &str, node_id: u16) {
     use crate::actor::heap::MessageBuffer;
     use crate::actor::link;
-    use crate::actor::process::{ExitReason, Message, ProcessId, ProcessState};
+    use crate::actor::process::{ExitReason, Message, Process, ProcessId, ProcessState};
+    type ProcessHandle = Arc<parking_lot::Mutex<Process>>;
 
     // A node starts from code the scheduler runs.
     let sched = crate::actor::global_scheduler();
@@ -2893,10 +2893,10 @@ fn handle_node_disconnect(node_name: &str, node_id: u16) {
     let noconnection = ExitReason::Noconnection;
 
     // Phase 1: Collect under read lock.
-    // For links: (local_pid, Vec<remote_pid_to_unlink>)
-    let mut link_actions: Vec<(ProcessId, Vec<ProcessId>)> = Vec::new();
-    // For monitors: (local_pid, Vec<monitor_ref>)
-    let mut monitor_actions: Vec<(ProcessId, Vec<u64>)> = Vec::new();
+    // For links: (local_pid, process, Vec<remote_pid_to_unlink>)
+    let mut link_actions: Vec<(ProcessId, ProcessHandle, Vec<ProcessId>)> = Vec::new();
+    // For monitors: (local_pid, process, Vec<monitor_ref>)
+    let mut monitor_actions: Vec<(ProcessId, ProcessHandle, Vec<u64>)> = Vec::new();
 
     {
         let table = sched.process_table().read();
@@ -2912,7 +2912,7 @@ fn handle_node_disconnect(node_name: &str, node_id: u16) {
                 .collect();
 
             if !remote_links.is_empty() {
-                link_actions.push((pid, remote_links));
+                link_actions.push((pid, Arc::clone(proc_arc), remote_links));
             }
 
             // Collect remote monitors to the disconnected node.
@@ -2924,7 +2924,7 @@ fn handle_node_disconnect(node_name: &str, node_id: u16) {
                 .collect();
 
             if !remote_monitors.is_empty() {
-                monitor_actions.push((pid, remote_monitors));
+                monitor_actions.push((pid, Arc::clone(proc_arc), remote_monitors));
             }
         }
     }
@@ -2932,78 +2932,69 @@ fn handle_node_disconnect(node_name: &str, node_id: u16) {
 
     // Phase 2: Execute collected actions.
     // Process remote link disconnections.
-    for (local_pid, remote_pids) in &link_actions {
-        if let Some(proc_arc) = sched.get_process(*local_pid) {
-            let mut proc = proc_arc.lock();
+    for (local_pid, proc_arc, remote_pids) in &link_actions {
+        let mut proc = proc_arc.lock();
 
-            // Skip already-exited processes.
-            if matches!(proc.state, ProcessState::Exited(_)) {
-                continue;
-            }
+        // Skip already-exited processes.
+        if matches!(proc.state, ProcessState::Exited(_)) {
+            continue;
+        }
 
-            // Remove the remote links.
-            for remote_pid in remote_pids {
-                proc.links.remove(remote_pid);
-            }
+        // Remove the remote links.
+        for remote_pid in remote_pids {
+            proc.links.remove(remote_pid);
+        }
 
-            // Deliver :noconnection exit signal.
-            // Track whether we need to wake after processing all links.
-            let mut need_wake = false;
-            for remote_pid in remote_pids {
-                if matches!(proc.state, ProcessState::Exited(_)) {
-                    break;
+        // Deliver :noconnection exit signal: to a process trapping exits,
+        // one per link; any other exits on the first.
+        // Track whether we need to wake after processing all links.
+        let mut need_wake = false;
+        for remote_pid in remote_pids {
+            if proc.trap_exit {
+                let signal_data = link::encode_exit_signal(*remote_pid, &noconnection);
+                let buffer = MessageBuffer::new(signal_data, link::EXIT_SIGNAL_TAG);
+                proc.mailbox.push(Message { buffer });
+                if matches!(proc.state, ProcessState::Waiting) {
+                    need_wake = proc.set_live_state(ProcessState::Ready);
                 }
-
-                if proc.trap_exit {
-                    let signal_data = link::encode_exit_signal(*remote_pid, &noconnection);
-                    let buffer = MessageBuffer::new(signal_data, link::EXIT_SIGNAL_TAG);
-                    proc.mailbox.push(Message { buffer });
-                    if matches!(proc.state, ProcessState::Waiting) {
-                        need_wake = proc.set_live_state(ProcessState::Ready);
-                    }
-                } else {
-                    proc.mark_exited(ExitReason::Linked(
-                        *remote_pid,
-                        Box::new(noconnection.clone()),
-                    ));
-                    break;
-                }
+            } else {
+                proc.mark_exited(ExitReason::Linked(
+                    *remote_pid,
+                    Box::new(noconnection.clone()),
+                ));
+                break;
             }
+        }
 
-            if need_wake {
-                drop(proc);
-                sched.wake_process(*local_pid);
-            }
+        if need_wake {
+            drop(proc);
+            sched.wake_process(*local_pid);
         }
     }
 
     // Process remote monitor disconnections.
-    for (local_pid, monitors) in &monitor_actions {
-        if let Some(proc_arc) = sched.get_process(*local_pid) {
-            let mut proc = proc_arc.lock();
+    for (local_pid, proc_arc, monitors) in &monitor_actions {
+        let mut proc = proc_arc.lock();
 
-            // Skip already-exited processes.
-            if matches!(proc.state, ProcessState::Exited(_)) {
-                continue;
-            }
-
-            for monitor_ref in monitors {
-                proc.fire_monitor(*monitor_ref);
-            }
-
-            sched.wake_if_waiting(*local_pid, proc);
+        // Skip already-exited processes.
+        if matches!(proc.state, ProcessState::Exited(_)) {
+            continue;
         }
+
+        for monitor_ref in monitors {
+            proc.fire_monitor(*monitor_ref);
+        }
+
+        sched.wake_if_waiting(*local_pid, proc);
     }
 
     // Tell the processes watching the node, once.
-    if let Some(state) = node_state() {
-        let watchers = state.node_monitors.write().remove(node_name);
-        for (watcher_pid, buffer) in watchers.into_iter().flatten() {
-            if let Some(proc_arc) = sched.get_process(watcher_pid) {
-                let proc = proc_arc.lock();
-                proc.mailbox.push(Message { buffer });
-                sched.wake_if_waiting(watcher_pid, proc);
-            }
+    let watchers = started_node().node_monitors.write().remove(node_name);
+    for (watcher_pid, buffer) in watchers.into_iter().flatten() {
+        if let Some(proc_arc) = sched.get_process(watcher_pid) {
+            let proc = proc_arc.lock();
+            proc.mailbox.push(Message { buffer });
+            sched.wake_if_waiting(watcher_pid, proc);
         }
     }
 
