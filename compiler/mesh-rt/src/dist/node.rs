@@ -15353,6 +15353,35 @@ mod tests {
         false
     }
 
+    /// A node whose durable store fails goes on: a response a peer kept is
+    /// replayed from memory, and a record the store cannot take is only
+    /// logged. A response no one kept is looked for in the store.
+    #[test]
+    fn a_node_whose_durable_store_fails_goes_on() {
+        if !in_own_process("a_node_whose_durable_store_fails_goes_on") {
+            return;
+        }
+        use crate::dist::continuity_store::{
+            configured_continuity_store, persist_runtime_record, replay_runtime_response,
+        };
+        let directory = tempfile::tempdir().unwrap();
+        std::env::set_var("MESH_CONTINUITY_DB", directory.path().join("continuity.db"));
+        test_node();
+        let store = configured_continuity_store().expect("the configured store");
+        assert_eq!(replay_runtime_response("never-answered"), Ok(None));
+        crate::dist::continuity_store::tests::execute(store, "DROP TABLE continuity_records");
+        let peer = TestPeer::new("store-failing-peer@127.0.0.1:1");
+        peer.receive(encode_continuity_response_frame("answered-key", b"200").unwrap());
+        assert_eq!(
+            replay_runtime_response("answered-key"),
+            Ok(Some(b"200".to_vec()))
+        );
+        persist_runtime_record(
+            1,
+            &continuity_record("unkept-key", "unkept-owner@h:1", "unkept-replica@h:1"),
+        );
+    }
+
     /// An owner at its inflight limit turns a reservation away, saying so.
     #[test]
     fn an_owner_at_its_inflight_limit_turns_reservations_away() {
