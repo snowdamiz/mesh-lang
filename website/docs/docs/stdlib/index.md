@@ -21,6 +21,8 @@ String indexing is by Unicode code point rather than byte. `String.slice(text, s
 | `String.starts_with(text, prefix)` | `Bool` | Test the beginning |
 | `String.ends_with(text, suffix)` | `Bool` | Test the ending |
 | `String.trim(text)` | `String` | Remove surrounding whitespace |
+| `String.trim_start(text)`, `String.trim_end(text)` | `String` | Remove leading or trailing whitespace |
+| `String.repeat(text, count)` | `String` | `text` `count` times over; `""` for a count of zero or less |
 | `String.to_upper(text)` | `String` | Unicode uppercase conversion |
 | `String.to_lower(text)` | `String` | Unicode lowercase conversion |
 | `String.replace(text, from, to)` | `String` | Replace every occurrence |

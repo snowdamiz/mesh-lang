@@ -587,6 +587,23 @@ fn e2e_deriving_json_collections() {
     assert_eq!(lines[2], "2");
 }
 
+/// `String.repeat`, called through its module and imported by name, and
+/// the one-sided trims.
+#[test]
+fn e2e_string_repeat_and_trims() {
+    let output = compile_and_run(
+        r##"
+from String import repeat
+
+fn main() do
+  println("[#{String.repeat("ab", 3)}][#{String.repeat("ab", 0)}][#{repeat("x", -1)}]")
+  println("[#{String.trim_start("  a b  ")}][#{String.trim_end("  a b  ")}]")
+end
+"##,
+    );
+    assert_eq!(output, "[ababab][][]\n[a b  ][  a b]\n");
+}
+
 #[test]
 fn e2e_deriving_json_roundtrip() {
     let source = read_fixture("deriving_json_roundtrip.mpl");

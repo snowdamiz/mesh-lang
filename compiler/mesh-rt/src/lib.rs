@@ -348,9 +348,10 @@ pub use storage_wrapping::{
 pub use string::{
     mesh_bool_to_string, mesh_float_to_string, mesh_int_to_string, mesh_print, mesh_println,
     mesh_string_compare, mesh_string_concat, mesh_string_contains, mesh_string_ends_with,
-    mesh_string_eq, mesh_string_join, mesh_string_length, mesh_string_new, mesh_string_replace,
-    mesh_string_slice, mesh_string_split, mesh_string_starts_with, mesh_string_to_float,
-    mesh_string_to_int, mesh_string_to_lower, mesh_string_to_upper, mesh_string_trim, MeshString,
+    mesh_string_eq, mesh_string_join, mesh_string_length, mesh_string_new, mesh_string_repeat,
+    mesh_string_replace, mesh_string_slice, mesh_string_split, mesh_string_starts_with,
+    mesh_string_to_float, mesh_string_to_int, mesh_string_to_lower, mesh_string_to_upper,
+    mesh_string_trim, mesh_string_trim_end, mesh_string_trim_start, MeshString,
 };
 pub use test::{
     mesh_test_assert, mesh_test_assert_eq, mesh_test_assert_ne, mesh_test_assert_raises,

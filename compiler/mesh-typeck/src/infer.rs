@@ -616,6 +616,16 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
         "trim".to_string(),
         Scheme::mono(Ty::fun(vec![Ty::string()], Ty::string())),
     );
+    for trim in ["trim_start", "trim_end"] {
+        string_mod.insert(
+            trim.to_string(),
+            Scheme::mono(Ty::fun(vec![Ty::string()], Ty::string())),
+        );
+    }
+    string_mod.insert(
+        "repeat".to_string(),
+        Scheme::mono(Ty::fun(vec![Ty::string(), Ty::int()], Ty::string())),
+    );
     string_mod.insert(
         "to_upper".to_string(),
         Scheme::mono(Ty::fun(vec![Ty::string()], Ty::string())),

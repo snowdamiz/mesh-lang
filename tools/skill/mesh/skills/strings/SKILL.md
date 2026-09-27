@@ -96,17 +96,19 @@ let obj = json { tags: tags }  # {"tags":["a","b","c"]}
 ## String Stdlib
 
 Rules (String module functions):
-1. `String.length(s)` — character count.
-2. `String.contains(s, substring)` — returns Bool.
-3. `String.starts_with(s, prefix)` / `String.ends_with(s, suffix)` — prefix/suffix check.
-4. `String.split(s, delimiter)` — returns `List<String>`.
-5. `String.join(list, separator)` — joins list of strings with separator.
-6. `String.trim(s)` / `String.trim_start(s)` / `String.trim_end(s)` — whitespace stripping.
-7. `String.to_upper(s)` / `String.to_lower(s)` — case conversion.
-8. `String.replace(s, from, to)` — literal string replacement.
-9. `String.parse(s)` — attempts conversion (returns `Option<T>` based on context).
-10. `s.to_string()` — any value has this method (via Display trait).
-11. String concatenation: `s1 <> s2` operator.
+1. `String.length(s)` — character (code point) count.
+2. `String.slice(s, start, end)` — code-point slice, exclusive end, clamped to the string.
+3. `String.contains(s, substring)` — returns Bool.
+4. `String.starts_with(s, prefix)` / `String.ends_with(s, suffix)` — prefix/suffix check.
+5. `String.split(s, delimiter)` — returns `List<String>`.
+6. `String.join(list, separator)` — joins list of strings with separator.
+7. `String.trim(s)` / `String.trim_start(s)` / `String.trim_end(s)` — whitespace stripping.
+8. `String.to_upper(s)` / `String.to_lower(s)` — case conversion.
+9. `String.replace(s, from, to)` — literal string replacement.
+10. `String.repeat(s, count)` — `s` repeated; `""` for a count of zero or less.
+11. `String.to_int(s)` / `String.to_float(s)` — parse after trimming; return `Option<Int>` / `Option<Float>`.
+12. `String.from(value)` — any `Display` value as text, as `"#{value}"` would.
+13. String concatenation: `s1 <> s2` operator.
 
 Code example (from tests/e2e/stdlib_string_split_join.mpl):
 ```mesh

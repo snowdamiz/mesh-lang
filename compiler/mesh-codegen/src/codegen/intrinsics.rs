@@ -370,6 +370,22 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    // mesh_string_trim_start(s: ptr) -> ptr, mesh_string_trim_end(s: ptr) -> ptr
+    for trim in ["mesh_string_trim_start", "mesh_string_trim_end"] {
+        module.add_function(
+            trim,
+            string_trim_ty,
+            Some(inkwell::module::Linkage::External),
+        );
+    }
+
+    // mesh_string_repeat(s: ptr, count: i64) -> ptr
+    module.add_function(
+        "mesh_string_repeat",
+        ptr_type.fn_type(&[ptr_type.into(), i64_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+
     // mesh_string_to_upper(s: ptr) -> ptr
     let string_to_upper_ty = ptr_type.fn_type(&[ptr_type.into()], false);
     module.add_function(

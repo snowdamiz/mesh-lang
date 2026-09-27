@@ -285,6 +285,39 @@ pub extern "C" fn mesh_string_trim(s: *const MeshString) -> *mut MeshString {
     }
 }
 
+/// Remove leading whitespace.
+#[no_mangle]
+pub extern "C" fn mesh_string_trim_start(s: *const MeshString) -> *mut MeshString {
+    mesh_str(unsafe { (*s).as_str() }.trim_start())
+}
+
+/// Remove trailing whitespace.
+#[no_mangle]
+pub extern "C" fn mesh_string_trim_end(s: *const MeshString) -> *mut MeshString {
+    mesh_str(unsafe { (*s).as_str() }.trim_end())
+}
+
+/// `text` `count` times over; "" for a count of zero or less.
+#[no_mangle]
+pub extern "C-unwind" fn mesh_string_repeat(
+    text: *const MeshString,
+    count: i64,
+) -> *mut MeshString {
+    let text = unsafe { (*text).as_str() };
+    let count = usize::try_from(count).unwrap_or(0);
+    if text
+        .len()
+        .checked_mul(count)
+        .is_none_or(|length| length > isize::MAX as usize)
+    {
+        crate::panic::raise(format_args!(
+            "String.repeat: {count} copies of {} bytes do not fit in a string",
+            text.len()
+        ));
+    }
+    mesh_str(&text.repeat(count))
+}
+
 /// Convert to uppercase.
 #[no_mangle]
 pub extern "C" fn mesh_string_to_upper(s: *const MeshString) -> *mut MeshString {
@@ -408,6 +441,25 @@ pub extern "C" fn mesh_string_to_float(s: *const MeshString) -> *mut u8 {
 mod tests {
     use super::*;
     use crate::gc::mesh_rt_init;
+
+    /// `String.repeat`: the text so many times over, nothing for a count
+    /// of zero or less, and a Mesh panic for a length no string can have.
+    #[test]
+    fn repeat_repeats_and_refuses_what_cannot_fit() {
+        crate::gc::mesh_rt_init();
+        let text = |value: *mut MeshString| unsafe { (*value).as_str().to_string() };
+        assert_eq!(text(mesh_string_repeat(mesh_str("ab"), 3)), "ababab");
+        assert_eq!(text(mesh_string_repeat(mesh_str("ab"), 0)), "");
+        assert_eq!(text(mesh_string_repeat(mesh_str("ab"), -4)), "");
+        let overflow = std::panic::catch_unwind(|| mesh_string_repeat(mesh_str("ab"), i64::MAX));
+        let message = overflow.expect_err("an overflowing length panics");
+        assert!(
+            message
+                .downcast_ref::<String>()
+                .is_some_and(|message| message.contains("do not fit in a string")),
+            "{message:?}"
+        );
+    }
 
     #[test]
     fn test_string_new_and_read() {

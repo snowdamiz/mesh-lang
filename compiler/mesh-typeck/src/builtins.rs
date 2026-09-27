@@ -448,6 +448,16 @@ pub fn register_builtins(
         "string_trim".into(),
         Scheme::mono(Ty::fun(vec![Ty::string()], Ty::string())),
     );
+    for trim in ["string_trim_start", "string_trim_end"] {
+        env.insert(
+            trim.into(),
+            Scheme::mono(Ty::fun(vec![Ty::string()], Ty::string())),
+        );
+    }
+    env.insert(
+        "string_repeat".into(),
+        Scheme::mono(Ty::fun(vec![Ty::string(), Ty::int()], Ty::string())),
+    );
     env.insert(
         "string_to_upper".into(),
         Scheme::mono(Ty::fun(vec![Ty::string()], Ty::string())),

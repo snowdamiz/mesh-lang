@@ -2072,6 +2072,19 @@ impl<'a> Lowerer<'a> {
             "mesh_string_trim".to_string(),
             MirType::FnPtr(vec![MirType::String], Box::new(MirType::String)),
         );
+        for trim in ["mesh_string_trim_start", "mesh_string_trim_end"] {
+            self.known_functions.insert(
+                trim.to_string(),
+                MirType::FnPtr(vec![MirType::String], Box::new(MirType::String)),
+            );
+        }
+        self.known_functions.insert(
+            "mesh_string_repeat".to_string(),
+            MirType::FnPtr(
+                vec![MirType::String, MirType::Int],
+                Box::new(MirType::String),
+            ),
+        );
         self.known_functions.insert(
             "mesh_string_to_upper".to_string(),
             MirType::FnPtr(vec![MirType::String], Box::new(MirType::String)),
@@ -14447,6 +14460,9 @@ fn map_builtin_name(name: &str) -> String {
         "string_starts_with" => "mesh_string_starts_with".to_string(),
         "string_ends_with" => "mesh_string_ends_with".to_string(),
         "string_trim" => "mesh_string_trim".to_string(),
+        "string_repeat" => "mesh_string_repeat".to_string(),
+        "string_trim_start" => "mesh_string_trim_start".to_string(),
+        "string_trim_end" => "mesh_string_trim_end".to_string(),
         "string_to_upper" => "mesh_string_to_upper".to_string(),
         "string_to_lower" => "mesh_string_to_lower".to_string(),
         "string_replace" => "mesh_string_replace".to_string(),
