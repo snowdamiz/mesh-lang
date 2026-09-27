@@ -34,7 +34,7 @@ use crate::dist::telemetry::AdmissionController;
 use crate::gc::mesh_gc_alloc_actor;
 use crate::string::{mesh_str, MeshString};
 
-use super::router::{MeshRouter, MiddlewareEntry};
+use super::router::{ChainStep, MeshRouter, RouteEntry};
 
 // ── Stream Abstraction ──────────────────────────────────────────────────
 
@@ -594,7 +594,8 @@ pub(crate) fn invoke_route_handler_from_payload(
 ) -> Result<Vec<u8>, String> {
     let request_ptr = decode_http_request_payload(request_payload)
         .map_err(|reason| format!("clustered_route_request_decode_failed:{reason}"))?;
-    let response_ptr = call_handler(fn_ptr, std::ptr::null_mut(), request_ptr);
+    let response_ptr =
+        unsafe { call1(fn_ptr, std::ptr::null_mut(), request_ptr as u64) as *mut u8 };
     encode_http_response_payload(response_ptr)
         .map_err(|reason| format!("clustered_route_response_encode_failed:{reason}"))
 }
@@ -1291,66 +1292,50 @@ fn admit(
 
 // ── Middleware chain infrastructure ──────────────────────────────────
 
-/// State for the middleware chain trampoline.
-///
-/// Each step in the chain creates a new ChainState with `index + 1` and
-/// calls the current middleware with (request, next), next a closure of
-/// `chain_next` over it.
-struct ChainState {
-    middlewares: Vec<MiddlewareEntry>,
-    index: usize,
-    handler_fn: *mut u8,
-    handler_env: *mut u8,
-    declared_handler_runtime_name: Option<String>,
-}
-
 /// Trampoline for the middleware `next` function.
 ///
-/// This is what Mesh calls when middleware invokes `next(request)`.
-/// If all middleware has been traversed, calls the route handler.
-/// Otherwise, calls the next middleware with a new `next` closure.
+/// This is what Mesh calls when middleware invokes `next(request)`, with
+/// the request's step through its router's middleware: the next
+/// middleware, given the step beside this one as its `next`, or the
+/// route's handler once past them all.
 ///
 /// Mesh compiles middleware with signature `fn(request: ptr, next: {ptr, ptr}) -> ptr`;
 /// the `next` closure struct `{fn_ptr, env_ptr}` goes as two arguments.
 extern "C" fn chain_next(env_ptr: *mut u8, request_ptr: *mut u8) -> *mut u8 {
-    let state = unsafe { &*(env_ptr as *const ChainState) };
-    let Some(middleware) = state.middlewares.get(state.index) else {
-        return match state.declared_handler_runtime_name.as_deref() {
-            Some(runtime_name) => clustered_route_response_from_request(
-                crate::dist::telemetry::global_admission_controller(),
-                runtime_name,
-                request_ptr,
-            ),
-            None => call_handler(state.handler_fn, state.handler_env, request_ptr),
-        };
+    let step = unsafe { &*(env_ptr as *const ChainStep) };
+    let router = unsafe { &*step.router };
+    let Some(middleware) = router.middlewares.get(step.index) else {
+        return route_response(step.route.map(|index| &router.routes[index]), request_ptr);
     };
-    let next_env = Box::into_raw(Box::new(ChainState {
-        middlewares: state.middlewares.clone(),
-        index: state.index + 1,
-        handler_fn: state.handler_fn,
-        handler_env: state.handler_env,
-        declared_handler_runtime_name: state.declared_handler_runtime_name.clone(),
-    }));
+    let next = unsafe { (step as *const ChainStep).add(1) };
     unsafe {
         call3(
             middleware.fn_ptr,
             middleware.env_ptr,
             request_ptr as u64,
             chain_next as *mut u8 as u64,
-            next_env as u64,
+            next as u64,
         ) as *mut u8
     }
 }
 
-/// Call a route handler: `fn(request) -> response`, or `fn(env, request)`
-/// for a closure.
-fn call_handler(fn_ptr: *mut u8, env_ptr: *mut u8, request: *mut u8) -> *mut u8 {
-    unsafe { call1(fn_ptr, env_ptr, request as u64) as *mut u8 }
-}
-
-/// A 404 for a request no route matches, which middleware sees first.
-extern "C" fn not_found_handler(_request: *mut u8) -> *mut u8 {
-    mesh_http_response_new(404, mesh_str("Not Found"))
+/// A request's response from its route's handler: in the cluster for a
+/// clustered route, and a 404 for a request no route matched.
+fn route_response(route: Option<&RouteEntry>, request_ptr: *mut u8) -> *mut u8 {
+    match route {
+        Some(RouteEntry {
+            declared_handler_runtime_name: Some(runtime_name),
+            ..
+        }) => clustered_route_response_from_request(
+            crate::dist::telemetry::global_admission_controller(),
+            runtime_name,
+            request_ptr,
+        ),
+        Some(route) => unsafe {
+            call1(route.handler_fn, route.handler_env, request_ptr as u64) as *mut u8
+        },
+        None => mesh_http_response_new(404, mesh_str("Not Found")),
+    }
 }
 
 /// Process a single HTTP request by matching it against the router
@@ -1396,31 +1381,14 @@ fn process_request(
         request_id: next_request_id(),
         idempotency_key,
     });
-    let (handler_fn, handler_env, runtime_name) = match &matched {
-        Some((entry, _)) => (
-            entry.handler_fn,
-            entry.handler_env,
-            entry.declared_handler_runtime_name.clone(),
-        ),
-        None => (not_found_handler as *mut u8, std::ptr::null_mut(), None),
-    };
+    let route = matched.as_ref().map(|(route, _)| *route);
     let response_ptr = if has_middleware {
-        let state = Box::new(ChainState {
-            middlewares: router.middlewares.clone(),
-            index: 0,
-            handler_fn,
-            handler_env,
-            declared_handler_runtime_name: runtime_name,
+        let index = route.map(|route| unsafe {
+            (route as *const RouteEntry).offset_from(router.routes.as_ptr()) as usize
         });
-        chain_next(Box::into_raw(state) as *mut u8, request_ptr)
-    } else if let Some(runtime_name) = runtime_name.as_deref() {
-        clustered_route_response_from_request(
-            crate::dist::telemetry::global_admission_controller(),
-            runtime_name,
-            request_ptr,
-        )
+        chain_next(router.first_step(index) as *mut u8, request_ptr)
     } else {
-        call_handler(handler_fn, handler_env, request_ptr)
+        route_response(route, request_ptr)
     };
     let response = mesh_response_to_transport(response_ptr);
     (response.status, response.body, response.headers)
@@ -2469,6 +2437,45 @@ mod tests {
             (404, b"Not Found".to_vec(), Vec::new())
         );
         reset_clustered_runtime_state();
+    }
+
+    static NEXT_STEPS: std::sync::Mutex<Vec<usize>> = std::sync::Mutex::new(Vec::new());
+
+    extern "C" fn recording_middleware(
+        request: *mut u8,
+        next_fn: *mut u8,
+        next_env: *mut u8,
+    ) -> *mut u8 {
+        NEXT_STEPS.lock().unwrap().push(next_env as usize);
+        unsafe { call1(next_fn, next_env, request as u64) as *mut u8 }
+    }
+
+    /// A request's way through middleware takes nothing that outlives it:
+    /// every request's `next` is the same step, the router's, where each
+    /// request used to box a new one, never freed.
+    #[test]
+    fn requests_through_middleware_share_their_routers_steps() {
+        mesh_rt_init();
+        let router = crate::http::router::mesh_http_use_middleware(
+            router_of("/plain", empty_headers_handler),
+            recording_middleware as *mut u8,
+            std::ptr::null_mut(),
+        );
+        for _ in 0..2 {
+            let (status, body, _) = process_request(
+                router,
+                ParsedRequest {
+                    method: "GET".to_string(),
+                    path: "/plain".to_string(),
+                    headers: Vec::new(),
+                    body: Vec::new(),
+                },
+            );
+            assert_eq!((status, body), (200, b"plain".to_vec()));
+        }
+        let steps = NEXT_STEPS.lock().unwrap();
+        assert_eq!(steps.len(), 2);
+        assert_eq!(steps[0], steps[1]);
     }
 
     // ── Requests ─────────────────────────────────────────────────────────
