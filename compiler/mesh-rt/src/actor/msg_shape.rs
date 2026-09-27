@@ -537,11 +537,14 @@ impl Capture<'_> {
             }
             return;
         }
-        if self.kind(node) == LIST {
-            self.flatten_list_view(object);
-        }
-        if self.kind(node) == MAP {
-            self.flatten_table::<2>(object);
+        // A view left as it is holds no entries of its own to walk.
+        let holds_entries = match self.kind(node) {
+            LIST => self.flatten_list_view(object),
+            MAP => self.flatten_table::<2>(object),
+            _ => true,
+        };
+        if !holds_entries {
+            return;
         }
         let size = self.out.objects[object as usize].bytes.len();
         // `{len, ...}` headers are trusted only as far as the allocation goes.
@@ -600,8 +603,9 @@ impl Capture<'_> {
     /// shares its parent's buffer. The receiver gets an owned list holding
     /// just the elements the view covers, read from the parent as far as the
     /// parent's allocation goes. A parent that is not an object of this heap
-    /// cannot be read; the view is left as it is and the parent lent.
-    fn flatten_list_view(&mut self, object: u32) {
+    /// cannot be read; the view is left as it is and the parent lent. False
+    /// when the object is left a view (or too short to be a list at all).
+    fn flatten_list_view(&mut self, object: u32) -> bool {
         let container = Some(object);
         // A LIST node describes sets too.
         if self.read_word(container, 8)
@@ -617,11 +621,11 @@ impl Capture<'_> {
             self.read_word(container, 16),
             self.read_word(container, 24),
         ) else {
-            return;
+            return false;
         };
         let Some(parent_size) = self.heap.live_allocation_size(parent as *const u8) else {
             self.out.lend.push(parent);
-            return;
+            return false;
         };
         let available = parent_size.saturating_sub(16) / 8;
         let take = len.min(available.saturating_sub(offset));
@@ -633,6 +637,7 @@ impl Capture<'_> {
         };
         bytes.extend_from_slice(slots);
         self.out.objects[object as usize].bytes = bytes;
+        true
     }
 
     /// A map (`W = 2`) or set (`W = 1`) value: a table, or a view of the
@@ -642,13 +647,14 @@ impl Capture<'_> {
     /// also comes here: its capacity word's high bits count slots appends
     /// wrote past it, which the copy does not have. A view whose table or
     /// index this heap cannot vouch for is left as it is, the table lent.
-    fn flatten_table<const W: usize>(&mut self, object: u32) {
+    /// False when the object is left a view (or too short for its header).
+    fn flatten_table<const W: usize>(&mut self, object: u32) -> bool {
         use crate::collections::table;
         const CAP_MASK: usize = (1 << 32) - 1;
         const TAG_SHIFT: u32 = 56;
         let container = Some(object);
         let Some(capword) = self.read_word(container, 8) else {
-            return;
+            return false;
         };
         let read = |address: usize, offset: usize| unsafe {
             ((address + offset) as *const usize).read_unaligned()
@@ -660,14 +666,17 @@ impl Capture<'_> {
             bytes[8..16].copy_from_slice(&(capword & keep).to_ne_bytes());
             let entries_end = (16 + 8 * W * cap).min(bytes.len());
             bytes[entries_end..].fill(0);
-            return;
+            return true;
         }
         let (Some(n), Some(table_address)) =
             (self.read_word(container, 0), self.read_word(container, 16))
         else {
-            return;
+            return false;
         };
-        let lend = |this: &mut Self| this.out.lend.push(table_address);
+        let lend = |this: &mut Self| {
+            this.out.lend.push(table_address);
+            false
+        };
         let Some(table_size) = self.heap.live_allocation_size(table_address as *const u8) else {
             return lend(self);
         };
@@ -701,6 +710,7 @@ impl Capture<'_> {
         }
         bytes.extend_from_slice(&0u64.to_ne_bytes());
         self.out.objects[object as usize].bytes = bytes;
+        true
     }
 
     /// Capture a list whose elements are `elem`-shaped, without a LIST node
@@ -710,8 +720,7 @@ impl Capture<'_> {
             return None;
         }
         let index = self.object(address, LEAF_NODE)?;
-        self.flatten_list_view(index);
-        if self.kind(elem) != SCALAR {
+        if self.flatten_list_view(index) && self.kind(elem) != SCALAR {
             let size = self.out.objects[index as usize].bytes.len();
             let len = self.read_word(Some(index), 0).unwrap_or(0);
             for slot in 0..len.min(size.saturating_sub(16) / 8) {
@@ -789,6 +798,52 @@ mod tests {
             data.extend_from_slice(&word.to_ne_bytes());
         }
         (data, [11, AGG, 3, 0, 9, 8, 9, 16, 10, STRING, PID])
+    }
+
+    /// An object of `words` in `heap`, sized to exactly those words.
+    fn object(heap: &mut ActorHeap, words: &[usize]) -> usize {
+        let object = heap.alloc(8 * words.len(), 8) as *mut usize;
+        for (index, &word) in words.iter().enumerate() {
+            unsafe { object.add(index).write(word) };
+        }
+        object as usize
+    }
+
+    /// A shape table: `nodes` after its length word.
+    fn table(nodes: &[u32]) -> Vec<u32> {
+        [&[nodes.len() as u32 + 1][..], nodes].concat()
+    }
+
+    /// A list view or a map view whose storage this heap cannot vouch for is
+    /// left as it is, and what it points at lent once. Its header words are
+    /// not entries: before, they were walked as such, the storage lent twice
+    /// or, when it was an object here, copied and the view pointed at that.
+    #[test]
+    fn views_of_storage_this_heap_cannot_vouch_for_are_lent() {
+        let mut sender = ActorHeap::new();
+        let elsewhere = 0x1000usize;
+        let list_view = [1, crate::collections::list::VIEW as usize, elsewhere, 0];
+        let list_view = object(&mut sender, &list_view);
+        let sentinel = crate::collections::table::view_sentinel(2) as usize;
+        let map_view = |heap: &mut ActorHeap, n: usize, table: usize| {
+            object(heap, &[n, sentinel, table, 0, 0])
+        };
+        // A table of one entry `{len, cap, key, value, index}` with no index.
+        let unindexed = object(&mut sender, &[1, 1, 0, 0, 0]);
+        let map = [MAP, 4, 4, LEAF];
+        let cases = [
+            (list_view, &[LIST, 3, LEAF][..], elsewhere),
+            (map_view(&mut sender, 1, elsewhere), &map, elsewhere),
+            (map_view(&mut sender, 2, unindexed), &map, unindexed),
+            (map_view(&mut sender, 1, unindexed), &map, unindexed),
+        ];
+        for (address, nodes, lent) in cases {
+            let shape = table(nodes);
+            let data = address.to_ne_bytes();
+            let captured = unsafe { capture(&sender, &data, 0, shape.as_ptr()) };
+            assert_eq!(captured.lend, [lent], "{nodes:?}");
+            assert_eq!(captured.objects.len(), 1, "the view alone: {nodes:?}");
+        }
     }
 
     #[test]
