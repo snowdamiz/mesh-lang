@@ -636,11 +636,11 @@ local function run_compiler_token_syntax_case()
     end
   end
   local keyword_groups = {
-    meshControlKeyword = { 'if', 'else', 'case', 'match', 'when', 'return', 'import', 'for', 'while', 'cond', 'break', 'continue' },
+    meshControlKeyword = { 'if', 'else', 'case', 'match', 'when', 'return', 'import', 'for', 'while', 'break', 'continue' },
     meshDoKeyword = { 'do' },
     meshEndKeyword = { 'end' },
-    meshDeclarationKeyword = { 'fn', 'let', 'def', 'type', 'struct', 'module', 'interface', 'impl', 'pub', 'actor', 'service', 'supervisor', 'call', 'cast', 'trait', 'alias', 'json' },
-    meshWordOperator = { 'and', 'or', 'not', 'in', 'where', 'with', 'spawn', 'send', 'receive', 'self', 'link', 'monitor', 'terminate', 'trap', 'after' },
+    meshDeclarationKeyword = { 'fn', 'let', 'def', 'type', 'struct', 'module', 'interface', 'impl', 'pub', 'actor', 'service', 'supervisor', 'call', 'cast', 'json' },
+    meshWordOperator = { 'and', 'or', 'not', 'in', 'where', 'spawn', 'send', 'receive', 'self', 'link', 'terminate', 'after' },
     meshBoolean = { 'true', 'false', 'nil' },
   }
   local operator_probes = {
@@ -717,8 +717,8 @@ local function run_compiler_token_syntax_case()
       fail('syntax', string.format('case=%s reason=stale_keyword_probe keyword=%s', case_id, keyword))
     end
   end
-  if keyword_count ~= 49 then
-    fail('syntax', string.format('case=%s reason=unexpected_keyword_count expected=49 actual=%d', case_id, keyword_count))
+  if keyword_count ~= 43 then
+    fail('syntax', string.format('case=%s reason=unexpected_keyword_count expected=43 actual=%d', case_id, keyword_count))
   end
 
   assert_variant_set('Operators', 'Delimiters', vim.tbl_map(function(probe) return probe[1] end, operator_probes))

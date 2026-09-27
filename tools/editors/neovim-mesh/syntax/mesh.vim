@@ -88,11 +88,11 @@ execute 'syntax match meshOrmKeyword /' . s:mesh_nfa . s:mesh_id_left . '\%(belo
 
 execute 'syntax match meshContextualKeyword /' . s:mesh_nfa . s:mesh_id_left . 'as' . s:mesh_id_right . '\ze' . s:mesh_gap . s:mesh_identifier . s:mesh_id_right . '/'
 
-execute 'syntax match meshControlKeyword /' . s:mesh_nfa . s:mesh_id_left . '\%(if\|else\|case\|match\|when\|return\|import\|for\|while\|cond\|break\|continue\)' . s:mesh_id_right . '/'
+execute 'syntax match meshControlKeyword /' . s:mesh_nfa . s:mesh_id_left . '\%(if\|else\|case\|match\|when\|return\|import\|for\|while\|break\|continue\)' . s:mesh_id_right . '/'
 execute 'syntax match meshDoKeyword /' . s:mesh_nfa . s:mesh_do_word . '/'
 execute 'syntax match meshEndKeyword /' . s:mesh_nfa . s:mesh_end_word . '/'
-execute 'syntax match meshDeclarationKeyword /' . s:mesh_nfa . s:mesh_id_left . '\%(fn\|let\|def\|type\|struct\|module\|interface\|impl\|pub\|actor\|service\|supervisor\|call\|cast\|trait\|alias\|json\)' . s:mesh_id_right . '/'
-execute 'syntax match meshWordOperator /' . s:mesh_nfa . s:mesh_id_left . '\%(and\|or\|not\|in\|where\|with\|spawn\|send\|receive\|self\|link\|monitor\|terminate\|trap\|after\)' . s:mesh_id_right . '/'
+execute 'syntax match meshDeclarationKeyword /' . s:mesh_nfa . s:mesh_id_left . '\%(fn\|let\|def\|type\|struct\|module\|interface\|impl\|pub\|actor\|service\|supervisor\|call\|cast\|json\)' . s:mesh_id_right . '/'
+execute 'syntax match meshWordOperator /' . s:mesh_nfa . s:mesh_id_left . '\%(and\|or\|not\|in\|where\|spawn\|send\|receive\|self\|link\|terminate\|after\)' . s:mesh_id_right . '/'
 execute 'syntax match meshBoolean /' . s:mesh_nfa . s:mesh_id_left . '\%(true\|false\|nil\)' . s:mesh_id_right . '/'
 execute 'syntax match meshBuiltinType /' . s:mesh_nfa . s:mesh_id_left . '\%(Atom\|Bool\|BootstrapStatus\|Bytes\|ContinuityAuthorityStatus\|ContinuityRecord\|ContinuitySubmitDecision\|DateTime\|Float\|Fun\|HttpClientMetrics\|HttpResponse\|I128\|Int\|Json\|List\|ListIterator\|Map\|MapIterator\|Never\|Option\|Ordering\|PgConn\|Pid\|PoolHandle\|Queue\|Range\|RangeIterator\|Regex\|Request\|Response\|Result\|Router\|Set\|SetIterator\|SqliteConn\|String\|Tuple\|U128\|U64\|Unit\|WsMessage\)' . s:mesh_id_right . '/'
 execute 'syntax match meshBuiltinConstructor /' . s:mesh_nfa . s:mesh_id_left . '\%(Some\|None\|Ok\|Err\|Less\|Equal\|Greater\)' . s:mesh_id_right . '/'

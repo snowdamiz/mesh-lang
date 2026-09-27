@@ -5654,3 +5654,26 @@ end
 "##;
     assert_eq!(run(source), "6\n");
 }
+
+// alias, cond, monitor, trait, trap and with name nothing in the grammar,
+// so they are ordinary names.
+#[test]
+fn words_other_languages_reserve_are_names() {
+    let source = r##"
+struct Rule do
+  trait :: String
+  with :: Int
+end
+
+fn alias(cond :: Int) -> Int do
+  cond + 1
+end
+
+fn main() do
+  let trap = alias(2)
+  let monitor = Rule { trait: "t", with: trap }
+  println("#{monitor.trait} #{monitor.with}")
+end
+"##;
+    assert_eq!(run(source), "t 3\n");
+}

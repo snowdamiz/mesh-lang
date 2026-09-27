@@ -18,14 +18,12 @@ use crate::syntax::{defined_names, param_names};
 const KEYWORDS: &[&str] = &[
     "actor",
     "after",
-    "alias",
     "and",
     "break",
     "borrow",
     "call",
     "case",
     "cast",
-    "cond",
     "continue",
     "consume",
     "def",
@@ -45,7 +43,6 @@ const KEYWORDS: &[&str] = &[
     "link",
     "match",
     "module",
-    "monitor",
     "nil",
     "not",
     "or",
@@ -60,14 +57,11 @@ const KEYWORDS: &[&str] = &[
     "struct",
     "supervisor",
     "terminate",
-    "trait",
-    "trap",
     "true",
     "type",
     "when",
     "where",
     "while",
-    "with",
 ];
 
 /// Built-in type names commonly used in Mesh.

@@ -604,12 +604,11 @@ tools and runtime read.
 
 These words are reserved and cannot name a variable or function:
 
-`actor`, `after`, `alias`, `and`, `break`, `call`, `case`, `cast`, `cond`,
-`continue`, `def`, `do`, `else`, `end`, `false`, `fn`, `for`, `if`, `impl`,
-`import`, `in`, `interface`, `json`, `let`, `link`, `match`, `module`,
-`monitor`, `nil`, `not`, `or`, `pub`, `receive`, `return`, `self`, `send`,
-`service`, `spawn`, `struct`, `supervisor`, `terminate`, `trait`, `trap`,
-`true`, `type`, `when`, `where`, `while`, `with`.
+`actor`, `after`, `and`, `break`, `call`, `case`, `cast`, `continue`, `def`,
+`do`, `else`, `end`, `false`, `fn`, `for`, `if`, `impl`, `import`, `in`,
+`interface`, `json`, `let`, `link`, `match`, `module`, `nil`, `not`, `or`,
+`pub`, `receive`, `return`, `self`, `send`, `service`, `spawn`, `struct`,
+`supervisor`, `terminate`, `true`, `type`, `when`, `where`, `while`.
 
 Some words have a meaning only in one position and remain ordinary names
 elsewhere:
@@ -625,20 +624,18 @@ elsewhere:
 | `strategy`, `max_restarts`, `max_seconds`, `child`, `start`, `restart`, `shutdown` | Fields of a `supervisor` block and its `child` blocks |
 | `cluster`, `native`, `export` | Decorator names after `@` |
 
-### Reserved words that are not features
+### Words from other languages
 
-The lexer reserves `alias`, `cond`, `trait`, `trap`, and `with`, but the parser
-does not implement those forms on the current branch. Do not use them as
-language features. Use:
+`alias`, `cond`, `trait`, `trap`, `with`, and `monitor` are ordinary names in
+Mesh. For what they do elsewhere, use:
 
 - `import` or `from ... import` instead of `alias`;
 - `if`, `case`, or `match` instead of `cond`;
 - `interface` instead of `trait`;
 - `Result`, supervision, links, and monitors for the corresponding error and
-  process flows.
-
-`monitor` is available through qualified APIs such as `Process.monitor` and
-`Node.monitor`; it is not a bare monitor expression.
+  process flows;
+- `Process.monitor` and `Node.monitor`, or `from Process import monitor`, to
+  monitor a process.
 
 ## Current intentional limits
 

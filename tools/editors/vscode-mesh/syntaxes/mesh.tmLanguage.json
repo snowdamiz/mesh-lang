@@ -600,15 +600,15 @@
       "patterns": [
         {
           "name": "keyword.control.mesh",
-          "match": "(?<![\\p{Alphabetic}\\p{N}_])(if|else|case|match|when|do|end|return|import|for|while|cond|break|continue)(?![\\p{Alphabetic}\\p{N}_])"
+          "match": "(?<![\\p{Alphabetic}\\p{N}_])(if|else|case|match|when|do|end|return|import|for|while|break|continue)(?![\\p{Alphabetic}\\p{N}_])"
         },
         {
           "name": "keyword.declaration.mesh",
-          "match": "(?<![\\p{Alphabetic}\\p{N}_])(fn|let|def|type|struct|module|interface|impl|pub|actor|service|supervisor|call|cast|trait|alias|json)(?![\\p{Alphabetic}\\p{N}_])"
+          "match": "(?<![\\p{Alphabetic}\\p{N}_])(fn|let|def|type|struct|module|interface|impl|pub|actor|service|supervisor|call|cast|json)(?![\\p{Alphabetic}\\p{N}_])"
         },
         {
           "name": "keyword.operator.mesh",
-          "match": "(?<![\\p{Alphabetic}\\p{N}_])(and|or|not|in|where|with|spawn|send|receive|self|link|monitor|terminate|trap|after)(?![\\p{Alphabetic}\\p{N}_])"
+          "match": "(?<![\\p{Alphabetic}\\p{N}_])(and|or|not|in|where|spawn|send|receive|self|link|terminate|after)(?![\\p{Alphabetic}\\p{N}_])"
         },
         {
           "name": "constant.language.mesh",

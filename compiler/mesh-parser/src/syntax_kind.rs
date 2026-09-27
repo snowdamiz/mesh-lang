@@ -23,12 +23,10 @@ pub enum SyntaxKind {
     // ── Keywords (49) ──────────────────────────────────────────────────
     ACTOR_KW,
     AFTER_KW,
-    ALIAS_KW,
     AND_KW,
     CALL_KW,
     CASE_KW,
     CAST_KW,
-    COND_KW,
     DEF_KW,
     DO_KW,
     ELSE_KW,
@@ -46,7 +44,6 @@ pub enum SyntaxKind {
     LINK_KW,
     MATCH_KW,
     MODULE_KW,
-    MONITOR_KW,
     NIL_KW,
     NOT_KW,
     OR_KW,
@@ -60,14 +57,11 @@ pub enum SyntaxKind {
     STRUCT_KW,
     SUPERVISOR_KW,
     TERMINATE_KW,
-    TRAIT_KW,
-    TRAP_KW,
     TRUE_KW,
     TYPE_KW,
     WHEN_KW,
     WHERE_KW,
     WHILE_KW,
-    WITH_KW,
     BREAK_KW,
     CONTINUE_KW,
 
@@ -460,11 +454,9 @@ impl SyntaxKind {
         matches!(
             self,
             SyntaxKind::IDENT
-                | SyntaxKind::ALIAS_KW
                 | SyntaxKind::CALL_KW
                 | SyntaxKind::CASE_KW
                 | SyntaxKind::SELF_KW
-                | SyntaxKind::MONITOR_KW
                 | SyntaxKind::SPAWN_KW
                 | SyntaxKind::LINK_KW
                 | SyntaxKind::SEND_KW
@@ -481,12 +473,10 @@ impl From<TokenKind> for SyntaxKind {
             // Keywords
             TokenKind::Actor => SyntaxKind::ACTOR_KW,
             TokenKind::After => SyntaxKind::AFTER_KW,
-            TokenKind::Alias => SyntaxKind::ALIAS_KW,
             TokenKind::And => SyntaxKind::AND_KW,
             TokenKind::Call => SyntaxKind::CALL_KW,
             TokenKind::Case => SyntaxKind::CASE_KW,
             TokenKind::Cast => SyntaxKind::CAST_KW,
-            TokenKind::Cond => SyntaxKind::COND_KW,
             TokenKind::Def => SyntaxKind::DEF_KW,
             TokenKind::Do => SyntaxKind::DO_KW,
             TokenKind::Else => SyntaxKind::ELSE_KW,
@@ -504,7 +494,6 @@ impl From<TokenKind> for SyntaxKind {
             TokenKind::Link => SyntaxKind::LINK_KW,
             TokenKind::Match => SyntaxKind::MATCH_KW,
             TokenKind::Module => SyntaxKind::MODULE_KW,
-            TokenKind::Monitor => SyntaxKind::MONITOR_KW,
             TokenKind::Nil => SyntaxKind::NIL_KW,
             TokenKind::Not => SyntaxKind::NOT_KW,
             TokenKind::Or => SyntaxKind::OR_KW,
@@ -518,14 +507,11 @@ impl From<TokenKind> for SyntaxKind {
             TokenKind::Struct => SyntaxKind::STRUCT_KW,
             TokenKind::Supervisor => SyntaxKind::SUPERVISOR_KW,
             TokenKind::Terminate => SyntaxKind::TERMINATE_KW,
-            TokenKind::Trait => SyntaxKind::TRAIT_KW,
-            TokenKind::Trap => SyntaxKind::TRAP_KW,
             TokenKind::True => SyntaxKind::TRUE_KW,
             TokenKind::Type => SyntaxKind::TYPE_KW,
             TokenKind::When => SyntaxKind::WHEN_KW,
             TokenKind::Where => SyntaxKind::WHERE_KW,
             TokenKind::While => SyntaxKind::WHILE_KW,
-            TokenKind::With => SyntaxKind::WITH_KW,
             TokenKind::Break => SyntaxKind::BREAK_KW,
             TokenKind::Continue => SyntaxKind::CONTINUE_KW,
             // Operators
@@ -598,15 +584,13 @@ mod tests {
     fn all_token_kinds_convert_to_syntax_kind() {
         // Exhaustive test: every TokenKind variant must convert without panic.
         let all_kinds = [
-            // Keywords (49)
+            // Keywords (43)
             TokenKind::Actor,
             TokenKind::After,
-            TokenKind::Alias,
             TokenKind::And,
             TokenKind::Call,
             TokenKind::Case,
             TokenKind::Cast,
-            TokenKind::Cond,
             TokenKind::Def,
             TokenKind::Do,
             TokenKind::Else,
@@ -624,7 +608,6 @@ mod tests {
             TokenKind::Link,
             TokenKind::Match,
             TokenKind::Module,
-            TokenKind::Monitor,
             TokenKind::Nil,
             TokenKind::Not,
             TokenKind::Or,
@@ -638,14 +621,11 @@ mod tests {
             TokenKind::Struct,
             TokenKind::Supervisor,
             TokenKind::Terminate,
-            TokenKind::Trait,
-            TokenKind::Trap,
             TokenKind::True,
             TokenKind::Type,
             TokenKind::When,
             TokenKind::Where,
             TokenKind::While,
-            TokenKind::With,
             TokenKind::Break,
             TokenKind::Continue,
             // Operators (25)
@@ -708,7 +688,7 @@ mod tests {
             TokenKind::Error,
         ];
 
-        assert_eq!(all_kinds.len(), 101, "must test all 101 TokenKind variants");
+        assert_eq!(all_kinds.len(), 95, "must test all 95 TokenKind variants");
 
         for kind in all_kinds {
             let _syntax_kind: SyntaxKind = kind.into();

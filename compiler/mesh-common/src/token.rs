@@ -26,15 +26,13 @@ impl Token {
 /// identifiers, and special tokens.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum TokenKind {
-    // ── Keywords (49) ──────────────────────────────────────────────────
+    // ── Keywords (43) ──────────────────────────────────────────────────
     Actor,
     After,
-    Alias,
     And,
     Call,
     Case,
     Cast,
-    Cond,
     Def,
     Do,
     Else,
@@ -53,7 +51,6 @@ pub enum TokenKind {
     Link,
     Match,
     Module,
-    Monitor,
     Nil,
     Not,
     Or,
@@ -68,14 +65,11 @@ pub enum TokenKind {
     Struct,
     Supervisor,
     Terminate,
-    Trait,
-    Trap,
     True,
     Type,
     When,
     Where,
     While,
-    With,
     Break,
     Continue,
 
@@ -206,12 +200,10 @@ pub fn keyword_from_str(s: &str) -> Option<TokenKind> {
     match s {
         "actor" => Some(TokenKind::Actor),
         "after" => Some(TokenKind::After),
-        "alias" => Some(TokenKind::Alias),
         "and" => Some(TokenKind::And),
         "call" => Some(TokenKind::Call),
         "case" => Some(TokenKind::Case),
         "cast" => Some(TokenKind::Cast),
-        "cond" => Some(TokenKind::Cond),
         "def" => Some(TokenKind::Def),
         "do" => Some(TokenKind::Do),
         "else" => Some(TokenKind::Else),
@@ -229,7 +221,6 @@ pub fn keyword_from_str(s: &str) -> Option<TokenKind> {
         "link" => Some(TokenKind::Link),
         "match" => Some(TokenKind::Match),
         "module" => Some(TokenKind::Module),
-        "monitor" => Some(TokenKind::Monitor),
         "nil" => Some(TokenKind::Nil),
         "not" => Some(TokenKind::Not),
         "or" => Some(TokenKind::Or),
@@ -243,14 +234,11 @@ pub fn keyword_from_str(s: &str) -> Option<TokenKind> {
         "struct" => Some(TokenKind::Struct),
         "supervisor" => Some(TokenKind::Supervisor),
         "terminate" => Some(TokenKind::Terminate),
-        "trait" => Some(TokenKind::Trait),
-        "trap" => Some(TokenKind::Trap),
         "true" => Some(TokenKind::True),
         "type" => Some(TokenKind::Type),
         "when" => Some(TokenKind::When),
         "where" => Some(TokenKind::Where),
         "while" => Some(TokenKind::While),
-        "with" => Some(TokenKind::With),
         "break" => Some(TokenKind::Break),
         "continue" => Some(TokenKind::Continue),
         _ => None,
@@ -266,12 +254,10 @@ mod tests {
         let keywords = [
             ("actor", TokenKind::Actor),
             ("after", TokenKind::After),
-            ("alias", TokenKind::Alias),
             ("and", TokenKind::And),
             ("call", TokenKind::Call),
             ("case", TokenKind::Case),
             ("cast", TokenKind::Cast),
-            ("cond", TokenKind::Cond),
             ("def", TokenKind::Def),
             ("do", TokenKind::Do),
             ("else", TokenKind::Else),
@@ -289,7 +275,6 @@ mod tests {
             ("link", TokenKind::Link),
             ("match", TokenKind::Match),
             ("module", TokenKind::Module),
-            ("monitor", TokenKind::Monitor),
             ("nil", TokenKind::Nil),
             ("not", TokenKind::Not),
             ("or", TokenKind::Or),
@@ -303,14 +288,11 @@ mod tests {
             ("struct", TokenKind::Struct),
             ("supervisor", TokenKind::Supervisor),
             ("terminate", TokenKind::Terminate),
-            ("trait", TokenKind::Trait),
-            ("trap", TokenKind::Trap),
             ("true", TokenKind::True),
             ("type", TokenKind::Type),
             ("when", TokenKind::When),
             ("where", TokenKind::Where),
             ("while", TokenKind::While),
-            ("with", TokenKind::With),
             ("break", TokenKind::Break),
             ("continue", TokenKind::Continue),
         ];
@@ -323,8 +305,8 @@ mod tests {
             );
         }
 
-        // Verify we tested all 49 keywords
-        assert_eq!(keywords.len(), 49, "must test all 49 keywords");
+        // Verify we tested all 43 keywords
+        assert_eq!(keywords.len(), 43, "must test all 43 keywords");
     }
 
     #[test]
@@ -346,10 +328,10 @@ mod tests {
 
     #[test]
     fn token_kind_variant_count() {
-        // Keywords: 49 (added JsonKw), Operators: 25 (added SlotPipe(u32)), Delimiters: 6, Punctuation: 6,
-        // Literals: 9 (added RegexLiteral(String, String)), Identifiers/comments: 4, Special: 2 = 101 total
+        // Keywords: 43, Operators: 25 (added SlotPipe(u32)), Delimiters: 6, Punctuation: 6,
+        // Literals: 9 (added RegexLiteral(String, String)), Identifiers/comments: 4, Special: 2 = 95 total
         // This test documents the expected count.
-        let keywords = 49u32; // Added JsonKw
+        let keywords = 43u32;
         let operators = 25; // Added SlotPipe(u32)
         let delimiters = 6;
         let punctuation = 6;
@@ -358,6 +340,6 @@ mod tests {
         let special = 2;
         let total =
             keywords + operators + delimiters + punctuation + literals + ident_comments + special;
-        assert_eq!(total, 101, "TokenKind should have 101 variants");
+        assert_eq!(total, 95, "TokenKind should have 95 variants");
     }
 }

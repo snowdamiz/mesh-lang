@@ -22,218 +22,188 @@ expression: tokens
   span:
     - 13
     - 19
-- kind: Trait
-  text: trait
-  span:
-    - 20
-    - 25
 - kind: Module
   text: module
   span:
+    - 20
     - 26
-    - 32
 - kind: Import
   text: import
   span:
+    - 27
     - 33
-    - 39
 - kind: If
   text: if
   span:
-    - 40
-    - 42
+    - 34
+    - 36
 - kind: Else
   text: else
   span:
-    - 43
-    - 47
+    - 37
+    - 41
 - kind: Case
   text: case
   span:
-    - 48
-    - 52
+    - 42
+    - 46
 - kind: Match
   text: match
   span:
-    - 53
-    - 58
+    - 47
+    - 52
 - kind: Do
   text: do
   span:
-    - 59
-    - 61
+    - 53
+    - 55
 - kind: End
   text: end
   span:
-    - 62
-    - 65
+    - 56
+    - 59
 - kind: Newline
   text: "\n"
   span:
-    - 65
-    - 66
+    - 59
+    - 60
 - kind: Receive
   text: receive
   span:
-    - 66
-    - 73
+    - 60
+    - 67
 - kind: Spawn
   text: spawn
   span:
-    - 74
-    - 79
+    - 68
+    - 73
 - kind: Supervisor
   text: supervisor
   span:
-    - 80
-    - 90
+    - 74
+    - 84
 - kind: Send
   text: send
   span:
-    - 91
-    - 95
+    - 85
+    - 89
 - kind: Link
   text: link
   span:
-    - 96
-    - 100
-- kind: Monitor
-  text: monitor
-  span:
-    - 101
-    - 108
-- kind: Trap
-  text: trap
-  span:
-    - 109
-    - 113
+    - 90
+    - 94
 - kind: Terminate
   text: terminate
   span:
-    - 114
-    - 123
+    - 95
+    - 104
 - kind: Newline
   text: "\n"
   span:
-    - 123
-    - 124
-- kind: Cond
-  text: cond
-  span:
-    - 124
-    - 128
-- kind: With
-  text: with
-  span:
-    - 129
-    - 133
+    - 104
+    - 105
 - kind: After
   text: after
   span:
-    - 134
-    - 139
-- kind: Alias
-  text: alias
-  span:
-    - 140
-    - 145
+    - 105
+    - 110
 - kind: And
   text: and
   span:
-    - 146
-    - 149
+    - 111
+    - 114
 - kind: Or
   text: or
   span:
-    - 150
-    - 152
+    - 115
+    - 117
 - kind: Not
   text: not
   span:
-    - 153
-    - 156
+    - 118
+    - 121
 - kind: In
   text: in
   span:
-    - 157
-    - 159
+    - 122
+    - 124
 - kind: For
   text: for
   span:
-    - 160
-    - 163
+    - 125
+    - 128
 - kind: Newline
   text: "\n"
   span:
-    - 163
-    - 164
+    - 128
+    - 129
 - kind: Pub
   text: pub
   span:
-    - 164
-    - 167
+    - 129
+    - 132
 - kind: Impl
   text: impl
   span:
-    - 168
-    - 172
+    - 133
+    - 137
 - kind: Type
   text: type
   span:
-    - 173
-    - 177
+    - 138
+    - 142
 - kind: Def
   text: def
   span:
-    - 178
-    - 181
+    - 143
+    - 146
 - kind: Return
   text: return
   span:
-    - 182
-    - 188
+    - 147
+    - 153
 - kind: SelfKw
   text: self
   span:
-    - 189
-    - 193
+    - 154
+    - 158
 - kind: When
   text: when
   span:
-    - 194
-    - 198
+    - 159
+    - 163
 - kind: Where
   text: where
   span:
-    - 199
-    - 204
+    - 164
+    - 169
 - kind: Newline
   text: "\n"
   span:
-    - 204
-    - 205
+    - 169
+    - 170
 - kind: "True"
   text: "true"
   span:
-    - 205
-    - 209
+    - 170
+    - 174
 - kind: "False"
   text: "false"
   span:
-    - 210
-    - 215
+    - 175
+    - 180
 - kind: Nil
   text: nil
   span:
-    - 216
-    - 219
+    - 181
+    - 184
 - kind: Newline
   text: "\n"
   span:
-    - 219
-    - 220
+    - 184
+    - 185
 - kind: Eof
   text: ""
   span:
-    - 220
-    - 220
+    - 185
+    - 185
