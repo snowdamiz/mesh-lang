@@ -4902,7 +4902,22 @@ fn decode_tls_der(name: &str, value: &str) -> Result<Vec<u8>, String> {
         })
 }
 
-fn configured_mtls_material() -> Result<
+/// The mTLS identity the environment configures: the CA certificates, the
+/// node's certificate and its key, each DER in base64 (the CAs
+/// comma-separated).
+fn configured_mtls_values() -> MtlsValues {
+    [
+        std::env::var(TLS_CA_DER_B64_ENV).ok(),
+        std::env::var(TLS_CERT_DER_B64_ENV).ok(),
+        std::env::var(TLS_KEY_DER_B64_ENV).ok(),
+    ]
+}
+
+type MtlsValues = [Option<String>; 3];
+
+fn mtls_material(
+    values: &MtlsValues,
+) -> Result<
     Option<(
         Vec<CertificateDer<'static>>,
         CertificateDer<'static>,
@@ -4910,11 +4925,6 @@ fn configured_mtls_material() -> Result<
     )>,
     String,
 > {
-    let values = [
-        std::env::var(TLS_CA_DER_B64_ENV).ok(),
-        std::env::var(TLS_CERT_DER_B64_ENV).ok(),
-        std::env::var(TLS_KEY_DER_B64_ENV).ok(),
-    ];
     if values.iter().all(Option::is_none) {
         return Ok(None);
     }
@@ -4928,9 +4938,6 @@ fn configured_mtls_material() -> Result<
         .map(str::trim)
         .map(|value| decode_tls_der(TLS_CA_DER_B64_ENV, value).map(CertificateDer::from))
         .collect::<Result<Vec<_>, _>>()?;
-    if ca.is_empty() {
-        return Err(format!("{TLS_CA_DER_B64_ENV}_empty"));
-    }
     let cert = decode_tls_der(TLS_CERT_DER_B64_ENV, values[1].as_deref().unwrap())?;
     let key = decode_tls_der(TLS_KEY_DER_B64_ENV, values[2].as_deref().unwrap())?;
     Ok(Some((
@@ -4942,8 +4949,8 @@ fn configured_mtls_material() -> Result<
 
 type ConfiguredMtls = (Arc<ServerConfig>, Arc<ClientConfig>);
 
-fn configured_mtls_configs() -> Result<Option<ConfiguredMtls>, String> {
-    let Some((cas, certificate, private_key)) = configured_mtls_material()? else {
+fn mtls_configs(values: &MtlsValues) -> Result<Option<ConfiguredMtls>, String> {
+    let Some((cas, certificate, private_key)) = mtls_material(values)? else {
         return Ok(None);
     };
     let mut roots = RootCertStore::empty();
@@ -4966,8 +4973,10 @@ fn configured_mtls_configs() -> Result<Option<ConfiguredMtls>, String> {
     Ok(Some((Arc::new(server), Arc::new(client))))
 }
 
-fn node_tls_configs() -> Result<(Arc<ServerConfig>, Arc<ClientConfig>), String> {
-    if let Some(configs) = configured_mtls_configs()? {
+/// A node's TLS: the mTLS identity `mtls` configures, or else (not in
+/// autonomous mode, which requires one) an ephemeral certificate.
+fn node_tls_configs(mtls: &MtlsValues) -> Result<ConfiguredMtls, String> {
+    if let Some(configs) = mtls_configs(mtls)? {
         return Ok(configs);
     }
     if autonomous_mode_requested() {
@@ -4981,7 +4990,7 @@ fn node_tls_configs() -> Result<(Arc<ServerConfig>, Arc<ClientConfig>), String> 
 }
 
 fn operator_tls_client_config() -> Result<Arc<ClientConfig>, String> {
-    Ok(configured_mtls_configs()?
+    Ok(mtls_configs(&configured_mtls_values())?
         .map(|(_, client)| client)
         .unwrap_or_else(build_node_client_config))
 }
@@ -6220,10 +6229,11 @@ fn bind_node(name: &str, cookie: &str) -> Result<(NodeState, TcpListener), i64> 
         return Err(-3);
     }
     let (name_part, host, port) = super::discovery::split_node_name(name, true).map_err(|_| -3)?;
-    let (tls_server_config, tls_client_config) = node_tls_configs().map_err(|error| {
-        eprintln!("mesh node: TLS configuration failed: {error}");
-        -3
-    })?;
+    let (tls_server_config, tls_client_config) = node_tls_configs(&configured_mtls_values())
+        .map_err(|error| {
+            eprintln!("mesh node: TLS configuration failed: {error}");
+            -3
+        })?;
     let listener = TcpListener::bind((host, port)).map_err(|_| -2)?;
     let actual_port = listener.local_addr().map(|a| a.port()).unwrap_or(port);
     let advertised_name = if port == 0 {
@@ -12373,5 +12383,52 @@ mod tests {
         let fixed = format!("fixed@127.0.0.1:{port}");
         let (node, _listener) = bind_node(&fixed, TEST_NODE_COOKIE).unwrap();
         assert_eq!((node.name, node.port), (fixed, port));
+    }
+
+    /// A node's mTLS identity: none configured, all three parts, or an
+    /// error naming the part that is missing, not base64, empty, or not a
+    /// certificate or key TLS takes. Without one a node falls back to an
+    /// ephemeral certificate, which autonomous mode does not allow.
+    #[test]
+    fn a_node_takes_an_mtls_identity_only_when_whole() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let base64 = |bytes: &[u8]| base64::engine::general_purpose::STANDARD.encode(bytes);
+        let (cert, key) = generate_ephemeral_cert();
+        let cert = base64(cert.as_ref());
+        let key = base64(key.secret_der());
+        let values = |ca: &str, cert: &str, key: &str| {
+            [
+                Some(ca.to_string()),
+                Some(cert.to_string()),
+                Some(key.to_string()),
+            ]
+        };
+        let refused = |values: MtlsValues| mtls_configs(&values).err().unwrap();
+
+        assert!(mtls_configs(&[None, None, None]).unwrap().is_none());
+        assert!(mtls_configs(&values(&cert, &cert, &key)).unwrap().is_some());
+        assert_eq!(
+            refused([Some(cert.clone()), None, None]),
+            "mesh_mtls_configuration_incomplete"
+        );
+        assert_eq!(
+            refused(values("%%", &cert, &key)),
+            format!("{TLS_CA_DER_B64_ENV}_invalid_base64")
+        );
+        assert_eq!(
+            refused(values(&cert, "", &key)),
+            format!("{TLS_CERT_DER_B64_ENV}_empty")
+        );
+        let garbage = base64(b"not der");
+        assert!(refused(values(&garbage, &cert, &key)).starts_with("mesh_mtls_ca_invalid"));
+        assert!(refused(values(&cert, &cert, &garbage))
+            .starts_with("mesh_mtls_server_identity_invalid"));
+
+        assert!(node_tls_configs(&values(&cert, &cert, &key)).is_ok());
+        assert!(node_tls_configs(&[None, None, None]).is_ok());
+        assert_eq!(
+            autonomous(|| node_tls_configs(&[None, None, None]).err()),
+            Some("autonomous_mode_requires_mtls_identity".to_string())
+        );
     }
 }
