@@ -144,6 +144,8 @@ def run(extra):
     env["MESH_TEST_RT_LIB_PATH"] = str(RUNTIME_SNAPSHOT / "libmesh_test_rt.a")
     packages = [arg for crate in crates for arg in ("-p", crate)]
     subprocess.run(["cargo", "llvm-cov", "clean", "--workspace"], cwd=ROOT, env=env, check=True)
+    # The clean makes this run rebuild every binary of the workspace.
+    built_after = time.time()
     for stale in PROFILES.glob("*.profraw"):
         stale.unlink()
     test = subprocess.run(
@@ -166,7 +168,7 @@ def run(extra):
     # per-binary export below reads.
     subprocess.run(["cargo", "llvm-cov", "report", "--lcov", "--output-path", str(LCOV)],
                    cwd=ROOT, env=env, check=True)
-    LCOV.write_text(per_binary_lcov(env))
+    LCOV.write_text(per_binary_lcov(env, built_after))
     with LCOV.open("a") as lcov:
         lcov.write(program_runtime_lcov(env))
         if proof_ran:
@@ -174,7 +176,7 @@ def run(extra):
     return failed
 
 
-def per_binary_lcov(env):
+def per_binary_lcov(env, built_after):
     """The tests' lcov, each test binary exported on its own and the lines
     summed. llvm-cov keeps one record per function name, and a `#[no_mangle]`
     function has the same name in every binary: where two builds compiled it
@@ -185,7 +187,10 @@ def per_binary_lcov(env):
     profdata = PROFILES / "mesh-lang.profdata"
     binaries = [path for directory in (PROFILES / "debug" / "deps", PROFILES / "debug")
                 for path in sorted(directory.iterdir())
-                if path.is_file() and not path.suffix and os.access(path, os.X_OK)]
+                if path.is_file() and not path.suffix and os.access(path, os.X_OK)
+                # A test target since removed leaves its binary behind, built
+                # from sources that are gone; its lines would land on today's.
+                and path.stat().st_mtime >= built_after]
 
     def export(binary):
         return subprocess.run(
