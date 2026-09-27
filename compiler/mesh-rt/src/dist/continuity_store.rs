@@ -643,140 +643,19 @@ impl SqliteContinuityStore {
         }
     }
 
+    /// Creates the schema, or brings an older store's up to date: each
+    /// migration in turn, adding the columns an older store lacks.
     fn initialize_schema(&self) -> Result<(), String> {
         let connection = self.connection.lock().unwrap();
-        execute_batch(
-            connection.raw,
-            "PRAGMA foreign_keys = ON;
-             PRAGMA journal_mode = WAL;
-             PRAGMA synchronous = FULL;
-             PRAGMA busy_timeout = 5000;
-             CREATE TABLE IF NOT EXISTS schema_migrations (
-               version INTEGER PRIMARY KEY,
-               name TEXT NOT NULL,
-               applied_at_millis INTEGER NOT NULL
-             );
-             CREATE TABLE IF NOT EXISTS continuity_records (
-               operation_key TEXT PRIMARY KEY,
-               request_hash TEXT NOT NULL,
-               owner_node TEXT NOT NULL,
-               ownership_generation INTEGER NOT NULL CHECK (ownership_generation >= 0),
-               attempts_json TEXT NOT NULL,
-               phase TEXT NOT NULL,
-               replica_set_json TEXT NOT NULL,
-               created_at_millis INTEGER NOT NULL,
-               updated_at_millis INTEGER NOT NULL,
-               terminal_at_millis INTEGER,
-               expires_at_millis INTEGER,
-               response_metadata_json TEXT NOT NULL,
-               response_body BLOB NOT NULL,
-               request_body BLOB NOT NULL DEFAULT X'',
-               runtime_record BLOB NOT NULL DEFAULT X'',
-               control_term INTEGER NOT NULL,
-               schema_version INTEGER NOT NULL,
-               version INTEGER NOT NULL CHECK (version > 0)
-             );
-             CREATE INDEX IF NOT EXISTS continuity_terminal_expiry
-               ON continuity_records(expires_at_millis, updated_at_millis)
-               WHERE terminal_at_millis IS NOT NULL;
-             CREATE TABLE IF NOT EXISTS continuity_tombstones (
-               operation_key TEXT PRIMARY KEY,
-               version INTEGER NOT NULL,
-               deleted_at_millis INTEGER NOT NULL,
-               expires_at_millis INTEGER NOT NULL
-             );
-             CREATE INDEX IF NOT EXISTS continuity_tombstone_expiry
-               ON continuity_tombstones(expires_at_millis);
-             CREATE TABLE IF NOT EXISTS continuity_log (
-               sequence INTEGER PRIMARY KEY AUTOINCREMENT,
-               operation_key TEXT NOT NULL,
-               version INTEGER NOT NULL,
-               record_json BLOB NOT NULL,
-               checksum BLOB NOT NULL
-             );
-             CREATE TABLE IF NOT EXISTS continuity_replica_safe_points (
-               replica_node TEXT PRIMARY KEY,
-               high_water_mark INTEGER NOT NULL CHECK (high_water_mark >= 0),
-               acknowledged_at_millis INTEGER NOT NULL
-             );
-             INSERT OR IGNORE INTO schema_migrations(version, name, applied_at_millis)
-               VALUES (1, 'initial_continuity_store', 0);",
-        )?;
-        let mut column = Self::prepare(
-            &connection,
-            "SELECT COUNT(*) FROM pragma_table_info('continuity_records')
-              WHERE name = 'request_body'",
-        )?;
-        let request_body_missing = column.step()? == SQLITE_ROW && column.integer(0) == 0;
-        drop(column);
-        if request_body_missing {
-            execute_batch(
-                connection.raw,
-                "ALTER TABLE continuity_records
-                   ADD COLUMN request_body BLOB NOT NULL DEFAULT X'';",
-            )?;
+        execute_batch(connection.raw, INITIAL_SCHEMA)?;
+        for (column, migration) in [
+            (REQUEST_BODY_COLUMN, REQUEST_BODY_MIGRATION),
+            (RUNTIME_RECORD_COLUMN, RUNTIME_RECORD_MIGRATION),
+        ] {
+            add_record_column(connection.raw, column)?;
+            execute_batch(connection.raw, migration)?;
         }
-        execute_batch(
-            connection.raw,
-            "INSERT OR IGNORE INTO schema_migrations(version, name, applied_at_millis)
-               VALUES (2, 'continuity_request_body', 0);",
-        )?;
-        let mut column = Self::prepare(
-            &connection,
-            "SELECT COUNT(*) FROM pragma_table_info('continuity_records')
-              WHERE name = 'runtime_record'",
-        )?;
-        let runtime_record_missing = column.step()? == SQLITE_ROW && column.integer(0) == 0;
-        drop(column);
-        if runtime_record_missing {
-            execute_batch(
-                connection.raw,
-                "ALTER TABLE continuity_records
-                   ADD COLUMN runtime_record BLOB NOT NULL DEFAULT X'';",
-            )?;
-        }
-        execute_batch(
-            connection.raw,
-            "INSERT OR IGNORE INTO schema_migrations(version, name, applied_at_millis)
-               VALUES (3, 'continuity_runtime_record', 0);",
-        )?;
-        execute_batch(
-            connection.raw,
-            "CREATE TABLE IF NOT EXISTS continuity_store_counters (
-               singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
-               terminal_record_count INTEGER NOT NULL CHECK (terminal_record_count >= 0)
-             );
-             INSERT OR IGNORE INTO continuity_store_counters(singleton, terminal_record_count)
-               SELECT 1, COUNT(*) FROM continuity_records WHERE terminal_at_millis IS NOT NULL;
-             CREATE TRIGGER IF NOT EXISTS continuity_terminal_count_insert
-               AFTER INSERT ON continuity_records
-               WHEN NEW.terminal_at_millis IS NOT NULL
-               BEGIN
-                 UPDATE continuity_store_counters
-                    SET terminal_record_count = terminal_record_count + 1
-                  WHERE singleton = 1;
-               END;
-             CREATE TRIGGER IF NOT EXISTS continuity_terminal_count_delete
-               AFTER DELETE ON continuity_records
-               WHEN OLD.terminal_at_millis IS NOT NULL
-               BEGIN
-                 UPDATE continuity_store_counters
-                    SET terminal_record_count = terminal_record_count - 1
-                  WHERE singleton = 1;
-               END;
-             CREATE TRIGGER IF NOT EXISTS continuity_terminal_count_update
-               AFTER UPDATE OF terminal_at_millis ON continuity_records
-               WHEN (OLD.terminal_at_millis IS NULL) != (NEW.terminal_at_millis IS NULL)
-               BEGIN
-                 UPDATE continuity_store_counters
-                    SET terminal_record_count = terminal_record_count
-                      + CASE WHEN NEW.terminal_at_millis IS NULL THEN -1 ELSE 1 END
-                  WHERE singleton = 1;
-               END;
-             INSERT OR IGNORE INTO schema_migrations(version, name, applied_at_millis)
-               VALUES (4, 'continuity_constant_time_terminal_counter', 0);",
-        )?;
-        Ok(())
+        execute_batch(connection.raw, TERMINAL_COUNTER_MIGRATION)
     }
 
     fn prepare(connection: &Connection, sql: &str) -> Result<Statement, String> {
@@ -1223,6 +1102,122 @@ impl ContinuityStore for SqliteContinuityStore {
                 Err(error)
             }
         }
+    }
+}
+
+/// The store's schema as it began (migration 1).
+const INITIAL_SCHEMA: &str = "PRAGMA foreign_keys = ON;
+    PRAGMA journal_mode = WAL;
+    PRAGMA synchronous = FULL;
+    PRAGMA busy_timeout = 5000;
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      version INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      applied_at_millis INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS continuity_records (
+      operation_key TEXT PRIMARY KEY,
+      request_hash TEXT NOT NULL,
+      owner_node TEXT NOT NULL,
+      ownership_generation INTEGER NOT NULL CHECK (ownership_generation >= 0),
+      attempts_json TEXT NOT NULL,
+      phase TEXT NOT NULL,
+      replica_set_json TEXT NOT NULL,
+      created_at_millis INTEGER NOT NULL,
+      updated_at_millis INTEGER NOT NULL,
+      terminal_at_millis INTEGER,
+      expires_at_millis INTEGER,
+      response_metadata_json TEXT NOT NULL,
+      response_body BLOB NOT NULL,
+      request_body BLOB NOT NULL DEFAULT X'',
+      runtime_record BLOB NOT NULL DEFAULT X'',
+      control_term INTEGER NOT NULL,
+      schema_version INTEGER NOT NULL,
+      version INTEGER NOT NULL CHECK (version > 0)
+    );
+    CREATE INDEX IF NOT EXISTS continuity_terminal_expiry
+      ON continuity_records(expires_at_millis, updated_at_millis)
+      WHERE terminal_at_millis IS NOT NULL;
+    CREATE TABLE IF NOT EXISTS continuity_tombstones (
+      operation_key TEXT PRIMARY KEY,
+      version INTEGER NOT NULL,
+      deleted_at_millis INTEGER NOT NULL,
+      expires_at_millis INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS continuity_tombstone_expiry
+      ON continuity_tombstones(expires_at_millis);
+    CREATE TABLE IF NOT EXISTS continuity_log (
+      sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+      operation_key TEXT NOT NULL,
+      version INTEGER NOT NULL,
+      record_json BLOB NOT NULL,
+      checksum BLOB NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS continuity_replica_safe_points (
+      replica_node TEXT PRIMARY KEY,
+      high_water_mark INTEGER NOT NULL CHECK (high_water_mark >= 0),
+      acknowledged_at_millis INTEGER NOT NULL
+    );
+    INSERT OR IGNORE INTO schema_migrations(version, name, applied_at_millis)
+      VALUES (1, 'initial_continuity_store', 0);";
+
+/// Migration 2: each record keeps its request.
+const REQUEST_BODY_COLUMN: &str = "request_body BLOB NOT NULL DEFAULT X''";
+const REQUEST_BODY_MIGRATION: &str =
+    "INSERT OR IGNORE INTO schema_migrations(version, name, applied_at_millis)
+    VALUES (2, 'continuity_request_body', 0);";
+
+/// Migration 3: each record keeps the runtime record it came from.
+const RUNTIME_RECORD_COLUMN: &str = "runtime_record BLOB NOT NULL DEFAULT X''";
+const RUNTIME_RECORD_MIGRATION: &str =
+    "INSERT OR IGNORE INTO schema_migrations(version, name, applied_at_millis)
+    VALUES (3, 'continuity_runtime_record', 0);";
+
+/// Migration 4: the terminal records are counted as they change.
+const TERMINAL_COUNTER_MIGRATION: &str = "CREATE TABLE IF NOT EXISTS continuity_store_counters (
+      singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+      terminal_record_count INTEGER NOT NULL CHECK (terminal_record_count >= 0)
+    );
+    INSERT OR IGNORE INTO continuity_store_counters(singleton, terminal_record_count)
+      SELECT 1, COUNT(*) FROM continuity_records WHERE terminal_at_millis IS NOT NULL;
+    CREATE TRIGGER IF NOT EXISTS continuity_terminal_count_insert
+      AFTER INSERT ON continuity_records
+      WHEN NEW.terminal_at_millis IS NOT NULL
+      BEGIN
+        UPDATE continuity_store_counters
+           SET terminal_record_count = terminal_record_count + 1
+         WHERE singleton = 1;
+      END;
+    CREATE TRIGGER IF NOT EXISTS continuity_terminal_count_delete
+      AFTER DELETE ON continuity_records
+      WHEN OLD.terminal_at_millis IS NOT NULL
+      BEGIN
+        UPDATE continuity_store_counters
+           SET terminal_record_count = terminal_record_count - 1
+         WHERE singleton = 1;
+      END;
+    CREATE TRIGGER IF NOT EXISTS continuity_terminal_count_update
+      AFTER UPDATE OF terminal_at_millis ON continuity_records
+      WHEN (OLD.terminal_at_millis IS NULL) != (NEW.terminal_at_millis IS NULL)
+      BEGIN
+        UPDATE continuity_store_counters
+           SET terminal_record_count = terminal_record_count
+             + CASE WHEN NEW.terminal_at_millis IS NULL THEN -1 ELSE 1 END
+         WHERE singleton = 1;
+      END;
+    INSERT OR IGNORE INTO schema_migrations(version, name, applied_at_millis)
+      VALUES (4, 'continuity_constant_time_terminal_counter', 0);";
+
+/// Adds the column `definition` to continuity_records, which a store made
+/// before it lacks; one made since refuses it as a duplicate.
+fn add_record_column(database: *mut sqlite3, definition: &str) -> Result<(), String> {
+    let added = execute_batch(
+        database,
+        &format!("ALTER TABLE continuity_records ADD COLUMN {definition};"),
+    );
+    match added {
+        Err(error) if error.contains("duplicate column name") => Ok(()),
+        added => added,
     }
 }
 
@@ -2588,6 +2583,31 @@ mod tests {
             .unwrap();
         assert!(store.compact(i64::MAX as u64).is_err());
         assert!(store.get("expired").unwrap().is_some());
+    }
+
+    /// A store whose schema no migration can bring up to date does not
+    /// open.
+    #[test]
+    fn a_store_its_migrations_cannot_update_does_not_open() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("foreign.db");
+        let c_path = CString::new(path.to_string_lossy().as_bytes()).unwrap();
+        let mut raw = ptr::null_mut();
+        assert_eq!(
+            unsafe { sqlite3_open(c_path.as_ptr(), &mut raw) },
+            SQLITE_OK
+        );
+        let foreign = Connection { raw };
+        execute_batch(
+            foreign.raw,
+            "CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY);",
+        )
+        .unwrap();
+        drop(foreign);
+        let refused = SqliteContinuityStore::open(&path, ContinuityStoreLimits::default())
+            .err()
+            .unwrap();
+        assert!(refused.contains("has no column named name"), "{refused}");
     }
 
     #[test]
