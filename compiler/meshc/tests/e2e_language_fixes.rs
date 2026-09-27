@@ -5716,3 +5716,30 @@ end
 "##;
     assert_eq!(run(source), "1:one\n2:two\n3:three\n4:p4\n7:p7\n14:c\n");
 }
+
+/// A runtime function that takes a function, used as a value, is a Mesh
+/// function value: bound, passed and called like any other. Called through
+/// the value it took its function argument as two pointers, where the value
+/// passes one, and failed code generation ("Incorrect number of
+/// arguments").
+#[test]
+fn a_runtime_function_taking_a_function_is_a_value() {
+    let source = r##"
+fn double(x :: Int) -> Int do
+  x * 2
+end
+
+fn main() do
+  let m = List.map
+  println("#{List.length(m([1, 2], double))}")
+  let fm = List.map
+  let halves = fm([1.0, 3.0], fn f -> f / 2.0 end)
+  println("#{List.get(halves, 1)}")
+  let keep = List.filter
+  println("#{List.length(keep([1, 2, 3, 4], fn x -> x > 2 end))}")
+  let apply_all = fn f, xs -> f(xs, double) end
+  println("#{List.get(apply_all(List.map, [5, 6, 7]), 2)}")
+end
+"##;
+    assert_eq!(run(source), "2\n1.5\n2\n14\n");
+}

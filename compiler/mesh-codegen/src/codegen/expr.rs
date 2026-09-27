@@ -1234,10 +1234,6 @@ impl<'ctx> CodeGen<'ctx> {
         // them still fit. A closure passed as a value (`List.reduce`'s initial
         // accumulator, an `i64` slot) stays whole beside a callback that is
         // split.
-        // `__mesh_make_tuple` is synthetic and its arguments are the tuple's
-        // elements: values, so a closure stays whole. Splitting it made
-        // `(f, 5)` a three-element tuple `[fn, env, 5]`.
-        let is_tuple_literal = matches!(func, MirExpr::Var(name, _) if name == "__mesh_make_tuple");
         let is_closure_like = |arg: &MirExpr| {
             !is_user_fn && matches!(arg.ty(), MirType::Closure(_, _) | MirType::FnPtr(_, _))
         };
@@ -1258,11 +1254,11 @@ impl<'ctx> CodeGen<'ctx> {
                     })
                     .collect()
             }
-            // Unknown target: expand by default.
-            None => args
-                .iter()
-                .map(|arg| is_closure_like(arg) && !is_tuple_literal)
-                .collect(),
+            // No declared function: a function value, which takes its
+            // arguments as Mesh values (a runtime function is one through
+            // its wrapper, `wrap_builtin_values`), or `__mesh_make_tuple`,
+            // whose arguments are the tuple's elements.
+            None => vec![false; args.len()],
         };
 
         let mut arg_vals: Vec<BasicMetadataValueEnum<'ctx>> = Vec::new();

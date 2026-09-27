@@ -9439,11 +9439,18 @@ impl<'a> Lowerer<'a> {
         }
         // Use known_functions type if available (more accurate for
         // opaque Ptr returns like List.head on List<(A,B)>), otherwise
-        // fall back to typeck-resolved type.
-        let ty = if let Some(known_ty) = self.known_functions.get(&runtime_name) {
-            known_ty.clone()
-        } else {
-            fallback
+        // fall back to typeck-resolved type. A function that takes a
+        // function keeps the parameters it has as a Mesh value, which its
+        // wrapper takes where it is one (`wrap_builtin_values`).
+        let ty = match (self.known_functions.get(&runtime_name), &fallback) {
+            (
+                Some(MirType::FnPtr(_, ret)),
+                MirType::FnPtr(params, _) | MirType::Closure(params, _),
+            ) if params.iter().any(is_function_type) => {
+                MirType::Closure(params.clone(), ret.clone())
+            }
+            (Some(known_ty), _) => known_ty.clone(),
+            (None, _) => fallback,
         };
         MirExpr::Var(runtime_name, ty)
     }
@@ -15715,10 +15722,6 @@ const INLINE_BUILTINS: &[&str] = &[
     "mesh_string_from",
 ];
 
-/// A builtin used as a value (`List.map(xs, Int.to_float)`, `let f =
-/// Math.sqrt`) refers to a wrapper function that calls it: many builtins
-/// are expanded inline where they are called and have no function of their
-/// own to point at ("Undefined variable 'mesh_math_sqrt'").
 /// An operand that never finishes (a `panic`, `return`, `break` or
 /// `continue`, or a call that never returns) ends what uses it: the rest
 /// never runs, and codegen would put it after the block's end. Such an
@@ -15813,7 +15816,15 @@ fn eager_operands(expr: &mut MirExpr) -> Vec<&mut MirExpr> {
     }
 }
 
-fn wrap_builtin_values(functions: &mut Vec<MirFunction>) {
+/// A builtin used as a value (`List.map(xs, Int.to_float)`, `let f =
+/// Math.sqrt`, `let m = List.map`) refers to a wrapper function that calls
+/// it: many builtins are expanded inline where they are called and have no
+/// function of their own to point at ("Undefined variable
+/// 'mesh_math_sqrt'"), and a runtime function takes a function argument as
+/// two pointers, where a function value takes it whole. The names of the
+/// wrappers of runtime functions that take a function come back, for their
+/// callbacks to be adapted as a direct call's are.
+fn wrap_builtin_values(functions: &mut Vec<MirFunction>) -> Vec<String> {
     let defined: HashSet<String> = functions.iter().map(|f| f.name.clone()).collect();
     let mut wrappers: Vec<MirFunction> = Vec::new();
     for function in functions.iter_mut() {
@@ -15822,7 +15833,23 @@ fn wrap_builtin_values(functions: &mut Vec<MirFunction>) {
         collect_bound_names(&function.body, &mut bound);
         wrap_builtin_values_in(&mut function.body, &defined, &bound, &mut wrappers);
     }
+    let taking_functions = wrappers
+        .iter()
+        .filter(|wrapper| wrapper.params.iter().any(|(_, ty)| is_function_type(ty)))
+        .map(|wrapper| wrapper.name.clone())
+        .collect();
     functions.extend(wrappers);
+    taking_functions
+}
+
+fn is_function_type(ty: &MirType) -> bool {
+    matches!(ty, MirType::FnPtr(..) | MirType::Closure(..))
+}
+
+/// Whether the function type `ty` has a parameter that is a function.
+fn takes_function(ty: &MirType) -> bool {
+    matches!(ty, MirType::FnPtr(params, _) | MirType::Closure(params, _)
+        if params.iter().any(is_function_type))
 }
 
 fn wrap_builtin_values_in(
@@ -15842,7 +15869,8 @@ fn wrap_builtin_values_in(
             }
         }
         MirExpr::Var(name, ty)
-            if INLINE_BUILTINS.contains(&name.as_str())
+            if (INLINE_BUILTINS.contains(&name.as_str())
+                || name.starts_with("mesh_") && takes_function(ty))
                 && !defined.contains(name)
                 && !bound.contains(name) =>
         {
@@ -16374,7 +16402,17 @@ pub fn lower_module_to_mir<'a>(
             .join("\n"));
     }
 
-    wrap_builtin_values(&mut lowerer.functions);
+    // A wrapper passes its callback on as a direct call does.
+    for wrapper in wrap_builtin_values(&mut lowerer.functions) {
+        let index = lowerer
+            .functions
+            .iter()
+            .position(|function| function.name == wrapper)
+            .expect("the wrapper was just added");
+        let body = std::mem::replace(&mut lowerer.functions[index].body, MirExpr::Unit);
+        lowerer.functions[index].body =
+            lowerer.adapt_uniform_callback_call(body, TextRange::default());
+    }
     for function in &mut lowerer.functions {
         stop_at_never(&mut function.body);
     }
