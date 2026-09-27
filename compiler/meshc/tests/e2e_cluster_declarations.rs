@@ -300,3 +300,95 @@ fn cluster_declaration_invalid_cluster_decorator_count_fails_before_codegen() {
         "expected malformed decorator count to surface as a parse error, got:\n{stderr}"
     );
 }
+
+/// A package with an autonomous `[cluster]` gives its `default_replicas` to
+/// the declarations that name no count of their own.
+#[test]
+fn an_autonomous_cluster_gives_its_default_replicas_to_uncounted_declarations() {
+    let manifest = format!(
+        "{}\n[cluster]\nmode = \"autonomous\"\ndefault_replicas = 4\n",
+        package_manifest("clustered-autonomous")
+    );
+    let (_tmp, project_dir, output) = build_temp_project_with_sources(
+        &manifest,
+        &[
+            ("main.mpl", source_cluster_success_main()),
+            ("work.mpl", source_cluster_success_work()),
+        ],
+        &["--emit-llvm"],
+    );
+    assert!(output.status.success(), "{}", command_output_text(&output));
+    let llvm = fs::read_to_string(project_dir.join("project.ll")).expect("llvm output");
+    for registration in [
+        "i64 4, ptr @__declared_work_work_handle_submit",
+        "i64 3, ptr @__declared_work_work_handle_retry",
+    ] {
+        assert!(llvm.contains(registration), "{registration} in:\n{llvm}");
+    }
+}
+
+/// A `[cluster]` the runtime cannot run fails the build, before code is
+/// generated: a zero startup timeout passes the manifest's own checks.
+#[test]
+fn an_autonomous_cluster_the_runtime_refuses_fails_the_build() {
+    let manifest = format!(
+        "{}\n[cluster]\nmode = \"autonomous\"\n\n[cluster.capacity]\nstartup_timeout = \"0s\"\n",
+        package_manifest("clustered-autonomous")
+    );
+    let (_tmp, project_dir, output) = build_temp_project_with_sources(
+        &manifest,
+        &[("main.mpl", validation_main())],
+        &["--emit-llvm"],
+    );
+    let text = command_output_text(&output);
+    assert!(!output.status.success(), "{text}");
+    assert!(text.contains("autonomous_runtime_config_invalid"), "{text}");
+    assert!(!project_dir.join("project.ll").exists());
+}
+
+/// Declared work takes no arguments: the runtime supplies its continuity.
+#[test]
+fn declared_work_with_parameters_fails_the_build() {
+    let (_tmp, _project_dir, output) = build_temp_project_with_sources(
+        package_manifest("clustered-parameters").as_str(),
+        &[
+            (
+                "main.mpl",
+                "from Work import handle_submit\n\nfn main() do\n  let _ = handle_submit(1)\nend\n",
+            ),
+            (
+                "work.mpl",
+                "@cluster pub fn handle_submit(x :: Int) -> Int do\n  x + 1\nend\n",
+            ),
+        ],
+        &[],
+    );
+    let text = command_output_text(&output);
+    assert!(!output.status.success(), "{text}");
+    assert!(
+        text.contains("declared work target `Work.handle_submit` must use `pub fn name() -> ...`"),
+        "{text}"
+    );
+}
+
+/// LLVM IR that cannot be written fails the build, naming why.
+#[test]
+fn llvm_ir_that_cannot_be_written_fails_the_build() {
+    let tmp = tempfile::tempdir().expect("temp dir");
+    let project_dir = tmp.path().join("project");
+    write_project_sources(
+        &project_dir,
+        &package_manifest("unwritable-ir"),
+        &[("main.mpl", validation_main())],
+    );
+    fs::create_dir(project_dir.join("project.ll")).expect("a directory where the IR goes");
+    ensure_mesh_rt_staticlib();
+    let output = Command::new(meshc_bin())
+        .current_dir(repo_root())
+        .args(["build", project_dir.to_str().unwrap(), "--emit-llvm"])
+        .output()
+        .expect("meshc build runs");
+    let text = command_output_text(&output);
+    assert!(!output.status.success(), "{text}");
+    assert!(text.contains("Failed to emit LLVM IR"), "{text}");
+}
