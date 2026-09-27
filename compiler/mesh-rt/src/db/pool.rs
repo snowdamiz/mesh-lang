@@ -581,6 +581,111 @@ mod tests {
         assert!(idle_handle.is_none());
     }
 
+    fn result(pointer: *mut u8) -> (u8, *mut u8) {
+        let result = unsafe { &*(pointer as *const MeshResult) };
+        (result.tag, result.value)
+    }
+
+    fn error_text(pointer: *mut u8) -> String {
+        let (tag, value) = result(pointer);
+        assert_eq!(tag, 1, "expected an error");
+        unsafe {
+            (*(value as *const crate::string::MeshString))
+                .as_str()
+                .to_string()
+        }
+    }
+
+    fn test_database_url() -> String {
+        std::env::var("MESH_TEST_DATABASE_URL").expect("MESH_TEST_DATABASE_URL is set")
+    }
+
+    fn open_pool(url: &str, min: i64, max: i64, timeout_ms: i64) -> *mut u8 {
+        mesh_pool_open(mk_str(url.as_bytes()), min, max, timeout_ms)
+    }
+
+    /// A pool opens connections as they are asked for, up to its maximum;
+    /// past it a checkout waits its timeout out; a connection that died
+    /// while idle is replaced; a closed pool lends nothing.
+    #[test]
+    #[ignore = "requires MESH_TEST_DATABASE_URL (the coverage run starts a database)"]
+    fn a_pool_grows_waits_and_replaces_a_dead_connection() {
+        mesh_rt_init();
+        let (tag, pool) = result(open_pool(&test_database_url(), 0, 1, 100));
+        assert_eq!(tag, 0);
+        let pool = unsafe { unbox_u64_payload(pool) };
+
+        let (tag, first) = result(mesh_pool_checkout(pool));
+        assert_eq!(tag, 0, "a connection is opened for the first checkout");
+        let first = unsafe { unbox_u64_payload(first) };
+        assert_eq!(
+            error_text(mesh_pool_checkout(pool)),
+            "pool checkout timeout"
+        );
+
+        // The connection ends its own session, and goes back idle, dead.
+        let terminate = mk_str(b"SELECT pg_terminate_backend(pg_backend_pid())");
+        let _ = crate::db::pg::mesh_pg_execute(first, terminate, mesh_list_new());
+        mesh_pool_checkin(pool, first);
+        let (tag, second) = result(mesh_pool_checkout(pool));
+        assert_eq!(tag, 0, "the dead connection is replaced");
+        let second = unsafe { unbox_u64_payload(second) };
+        let (tag, _) = result(crate::db::pg::mesh_pg_execute(
+            second,
+            mk_str(b"SELECT 1"),
+            mesh_list_new(),
+        ));
+        assert_eq!(tag, 0);
+        mesh_pool_checkin(pool, second);
+
+        mesh_pool_close(pool);
+        assert_eq!(error_text(mesh_pool_checkout(pool)), "pool is closed");
+        assert_eq!(
+            error_text(mesh_pool_execute(
+                pool,
+                mk_str(b"SELECT 1"),
+                mesh_list_new()
+            )),
+            "pool is closed"
+        );
+    }
+
+    /// Opening a pool whose connections cannot all be made closes the ones
+    /// that were, and says why.
+    #[test]
+    #[ignore = "requires MESH_TEST_DATABASE_URL (the coverage run starts a database)"]
+    fn a_pool_that_cannot_open_every_connection_closes_the_rest() {
+        mesh_rt_init();
+        let url = test_database_url();
+        let (tag, admin) = result(open_pool(&url, 1, 1, 5000));
+        assert_eq!(tag, 0);
+        let admin = unsafe { unbox_u64_payload(admin) };
+        for sql in [
+            "DROP ROLE IF EXISTS mesh_pool_one_connection",
+            "CREATE ROLE mesh_pool_one_connection LOGIN PASSWORD 'one' CONNECTION LIMIT 1",
+        ] {
+            let (tag, _) = result(mesh_pool_execute(
+                admin,
+                mk_str(sql.as_bytes()),
+                mesh_list_new(),
+            ));
+            assert_eq!(tag, 0, "{sql}");
+        }
+        let (scheme, rest) = url.split_once("://").unwrap();
+        let (_, host) = rest.split_once('@').unwrap();
+        let limited = format!("{scheme}://mesh_pool_one_connection:one@{host}");
+
+        let refused = error_text(open_pool(&limited, 2, 2, 5000));
+        assert!(refused.starts_with("pool open: "), "{refused}");
+
+        let _ = mesh_pool_execute(
+            admin,
+            mk_str(b"DROP ROLE mesh_pool_one_connection"),
+            mesh_list_new(),
+        );
+        mesh_pool_close(admin);
+    }
+
     #[test]
     #[ignore = "requires MESH_TEST_DATABASE_URL (the coverage run starts a database)"]
     fn test_pool_execute_postgres_round_trip() {
