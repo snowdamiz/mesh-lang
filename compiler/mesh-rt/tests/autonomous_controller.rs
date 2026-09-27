@@ -50,6 +50,12 @@ fn a_registered_config_starts_one_controller_that_stops_without_a_node() {
     // One config per process.
     assert_eq!(register(&config), -1);
 
+    // No node, no runtime snapshot.
+    assert!(mesh_rt::operator_runtime_snapshot()
+        .unwrap_err()
+        .to_string()
+        .contains("node_not_started"));
+
     // Only a controller runs the controller.
     std::env::remove_var("MESH_ROLES");
     assert_eq!(start_autonomous_controller(), Ok(false));
