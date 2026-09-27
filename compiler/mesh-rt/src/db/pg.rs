@@ -1086,7 +1086,38 @@ pub(crate) unsafe fn db_values<'a>(
     maximum: usize,
     database: &str,
 ) -> Result<Vec<BindValue<'a>>, String> {
-    let len = mesh_list_length(params) as usize;
+    list_values(params, maximum, database, |slot| {
+        let value = &*(slot as *const MeshDbValue);
+        match value.tag {
+            DB_VALUE_TEXT => {
+                BindValue::Text((*(value.payload as *const MeshString)).as_str().as_bytes())
+            }
+            DB_VALUE_BINARY => BindValue::Binary((*(value.payload as *const MeshBytes)).as_slice()),
+            // `DB_VALUE_NULL`, the one other tag a DbValue has.
+            _ => BindValue::Null,
+        }
+    })
+}
+
+/// A `List<String>` as text values, bounded as `db_values` bounds them.
+pub(crate) unsafe fn text_values<'a>(
+    params: *mut u8,
+    maximum: usize,
+    database: &str,
+) -> Result<Vec<BindValue<'a>>, String> {
+    list_values(params, maximum, database, |slot| {
+        BindValue::Text((*(slot as *const MeshString)).as_str().as_bytes())
+    })
+}
+
+unsafe fn list_values<'a>(
+    params: *mut u8,
+    maximum: usize,
+    database: &str,
+    decode: impl Fn(u64) -> BindValue<'a>,
+) -> Result<Vec<BindValue<'a>>, String> {
+    // Through `list_slots`: the list may be a view of another's buffer.
+    let (len, slots) = crate::collections::list::list_slots(params);
     if len > maximum {
         return Err(format!(
             "too many {database} parameters: {len} (maximum {maximum})"
@@ -1094,15 +1125,7 @@ pub(crate) unsafe fn db_values<'a>(
     }
     (0..len)
         .map(|index| {
-            let value = &*(mesh_list_get(params, index as i64) as *const MeshDbValue);
-            let value = match value.tag {
-                DB_VALUE_TEXT => {
-                    BindValue::Text((*(value.payload as *const MeshString)).as_str().as_bytes())
-                }
-                DB_VALUE_BINARY => BindValue::Binary((*(value.payload as *const MeshBytes)).as_slice()),
-                // `DB_VALUE_NULL`, the one other tag a DbValue has.
-                _ => BindValue::Null,
-            };
+            let value = decode(*slots.add(index));
             if let BindValue::Text(bytes) | BindValue::Binary(bytes) = value {
                 if bytes.len() > MAX_DB_VALUE_BYTES {
                     return Err(format!(

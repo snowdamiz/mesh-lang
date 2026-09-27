@@ -49,7 +49,7 @@ end
 | `Sqlite.commit(connection)` | `Result<Unit, String>` | Commit the transaction |
 | `Sqlite.rollback(connection)` | `Result<Unit, String>` | Roll back the transaction |
 
-SQLite placeholders are `?`. Values in direct-query row maps are strings; decode them manually or apply a struct's generated `from_row` function with `List.map`.
+SQLite placeholders are `?`, and a statement takes exactly as many parameters as it has placeholders. Values in direct-query row maps are strings, and a `NULL` column reads as `""` (`Sqlite.query_values` tells the two apart); decode them manually or apply a struct's generated `from_row` function with `List.map`. The size limits under [Binary and NULL Values](#binary-and-null-values) apply here too.
 
 ## PostgreSQL Connections and Pools
 
