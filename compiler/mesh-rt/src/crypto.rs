@@ -28,9 +28,8 @@ use crate::bytes::{mesh_bytes_new, MeshBytes};
 use crate::gc::mesh_gc_alloc_actor;
 use crate::io::{alloc_result, MeshResult};
 use crate::secret::{
-    consume_and_retype_owned_resource, crypto_error, insert_owned_resource, mesh_resource_destroy,
-    with_owned_resource, CryptoErrorTag, MeshSecretHandle, ResourceError, ResourceKind,
-    RetypeError,
+    consume_and_retype_owned_resource, crypto_error, insert_owned_resource, with_owned_resource,
+    CryptoErrorTag, MeshSecretHandle, ResourceError, ResourceKind, RetypeError,
 };
 use crate::string::{mesh_string_new, MeshString};
 
@@ -138,14 +137,22 @@ fn failure(tag: CryptoErrorTag, expected: i64, actual: i64) -> CryptoFailure {
     }
 }
 
+/// The value of a step of a crypto entry point, or a return of the step's
+/// failure as the entry point's `Err`.
+macro_rules! try_crypto {
+    ($step:expr) => {
+        match $step {
+            Ok(value) => value,
+            Err(error) => return error_result(error),
+        }
+    };
+}
+
 fn error_result(error: CryptoFailure) -> *mut MeshResult {
     crypto_error(error.tag, error.expected, error.actual)
 }
 
 fn ok_result<T>(value: *mut T) -> *mut MeshResult {
-    if value.is_null() {
-        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
-    }
     alloc_result(0, value.cast())
 }
 
@@ -154,15 +161,20 @@ fn complete_result<T>(result: *mut MeshResult, value: *mut T) -> *mut MeshResult
     result
 }
 
+/// `value` in the running actor's heap, which aborts rather than fail.
 fn allocate_value<T>(value: T) -> *mut T {
     let pointer = mesh_gc_alloc_actor(
         std::mem::size_of::<T>() as u64,
         std::mem::align_of::<T>() as u64,
     ) as *mut T;
-    if !pointer.is_null() {
-        unsafe { pointer.write(value) };
-    }
+    unsafe { pointer.write(value) };
     pointer
+}
+
+/// A copy of `data` as Bytes: never null, since a slice's length is
+/// always one Bytes can have.
+fn bytes_value(data: &[u8]) -> *mut MeshBytes {
+    mesh_bytes_new(data.as_ptr(), data.len() as u64)
 }
 
 fn actual_length(length: u64) -> i64 {
@@ -622,10 +634,7 @@ fn mlkem_decapsulate_material(
 /// Generate an actor-owned X25519 private key and its public key.
 #[no_mangle]
 pub extern "C" fn mesh_crypto_x25519_generate() -> *mut MeshResult {
-    let (private_material, public_key) = match x25519_key_material(&SystemProvider) {
-        Ok(material) => material,
-        Err(error) => return error_result(error),
-    };
+    let (private_material, public_key) = try_crypto!(x25519_key_material(&SystemProvider));
     allocate_x25519_key_pair(private_material, public_key)
 }
 
@@ -633,27 +642,18 @@ fn allocate_x25519_key_pair(
     private_material: Zeroizing<Box<[u8]>>,
     public_key: [u8; 32],
 ) -> *mut MeshResult {
-    let public_bytes = mesh_bytes_new(public_key.as_ptr(), 32);
-    if public_bytes.is_null() {
-        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
-    }
+    let public_bytes = bytes_value(&public_key);
     let key_pair = allocate_value(MeshX25519KeyPair {
         private_key: ptr::null_mut(),
         public_key: MeshX25519PublicKey {
             bytes: public_bytes,
         },
     });
-    if key_pair.is_null() {
-        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
-    }
     let result = alloc_result(0, key_pair.cast());
-    let private_key = match with_current_process(move |process| {
+    let private_key = try_crypto!(with_current_process(move |process| {
         insert_owned_resource(process, ResourceKind::X25519PrivateKey, private_material)
             .map_err(resource_failure)
-    }) {
-        Ok(private_key) => private_key,
-        Err(error) => return error_result(error),
-    };
+    }));
     unsafe { (*key_pair).private_key = private_key };
     result
 }
@@ -713,27 +713,16 @@ fn x25519_from_secret_for_process(
 pub extern "C" fn mesh_crypto_x25519_from_secret(
     material: *const MeshSecretHandle,
 ) -> *mut MeshResult {
-    let (private_key, public_key) = match with_current_process(|process| {
+    let (private_key, public_key) = try_crypto!(with_current_process(|process| {
         x25519_from_secret_for_process(process, &SystemProvider, material)
-    }) {
-        Ok(value) => value,
-        Err(error) => return error_result(error),
-    };
-    let public_bytes = mesh_bytes_new(public_key.as_ptr(), public_key.len() as u64);
-    if public_bytes.is_null() {
-        mesh_resource_destroy(private_key);
-        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
-    }
+    }));
+    let public_bytes = bytes_value(&public_key);
     let key_pair = allocate_value(MeshX25519KeyPair {
         private_key,
         public_key: MeshX25519PublicKey {
             bytes: public_bytes,
         },
     });
-    if key_pair.is_null() {
-        mesh_resource_destroy(private_key);
-        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
-    }
     ok_result(key_pair)
 }
 
@@ -781,14 +770,8 @@ fn x25519_public_for_process(
 fn allocate_x25519_public_key(
     public_key: [u8; 32],
 ) -> Result<*mut MeshX25519PublicKey, CryptoFailure> {
-    let bytes = mesh_bytes_new(public_key.as_ptr(), public_key.len() as u64);
-    if bytes.is_null() {
-        return Err(failure(CryptoErrorTag::InternalFailure, 0, 0));
-    }
+    let bytes = bytes_value(&public_key);
     let public_key = allocate_value(MeshX25519PublicKey { bytes });
-    if public_key.is_null() {
-        return Err(failure(CryptoErrorTag::InternalFailure, 0, 0));
-    }
     Ok(public_key)
 }
 
@@ -797,12 +780,9 @@ fn allocate_x25519_public_key(
 pub extern "C" fn mesh_crypto_x25519_public(
     private_key: *const MeshSecretHandle,
 ) -> *mut MeshResult {
-    let public_key = match with_current_process(|process| {
+    let public_key = try_crypto!(with_current_process(|process| {
         x25519_public_for_process(process, &SystemProvider, private_key)
-    }) {
-        Ok(public_key) => public_key,
-        Err(error) => return error_result(error),
-    };
+    }));
     match allocate_x25519_public_key(public_key) {
         Ok(public_key) => ok_result(public_key),
         Err(error) => error_result(error),
@@ -1051,22 +1031,11 @@ pub extern "C" fn mesh_crypto_hpke_seal(
     associated_data: *const MeshBytes,
     plaintext: *const MeshBytes,
 ) -> *mut MeshResult {
-    let recipient_public_key = match unsafe { x25519_public_key_bytes(recipient_public_key) } {
-        Ok(key) => key,
-        Err(error) => return error_result(error),
-    };
-    let info = match unsafe { required_bytes(info, MAX_HPKE_INFO_BYTES) } {
-        Ok(info) => info,
-        Err(error) => return error_result(error),
-    };
-    let associated_data = match unsafe { required_bytes(associated_data, MAX_INPUT_BYTES) } {
-        Ok(data) => data,
-        Err(error) => return error_result(error),
-    };
-    let plaintext = match unsafe { required_bytes(plaintext, MAX_INPUT_BYTES) } {
-        Ok(plaintext) => plaintext,
-        Err(error) => return error_result(error),
-    };
+    let recipient_public_key =
+        try_crypto!(unsafe { x25519_public_key_bytes(recipient_public_key) });
+    let info = try_crypto!(unsafe { required_bytes(info, MAX_HPKE_INFO_BYTES) });
+    let associated_data = try_crypto!(unsafe { required_bytes(associated_data, MAX_INPUT_BYTES) });
+    let plaintext = try_crypto!(unsafe { required_bytes(plaintext, MAX_INPUT_BYTES) });
     match hpke_seal_material(
         &SystemProvider,
         &recipient_public_key,
@@ -1108,18 +1077,9 @@ pub extern "C" fn mesh_crypto_hpke_open(
     associated_data: *const MeshBytes,
     sealed: *const MeshBytes,
 ) -> *mut MeshResult {
-    let info = match unsafe { required_bytes(info, MAX_HPKE_INFO_BYTES) } {
-        Ok(info) => info,
-        Err(error) => return error_result(error),
-    };
-    let associated_data = match unsafe { required_bytes(associated_data, MAX_INPUT_BYTES) } {
-        Ok(data) => data,
-        Err(error) => return error_result(error),
-    };
-    let sealed = match unsafe { required_bytes(sealed, MAX_HPKE_SEALED_BYTES) } {
-        Ok(sealed) => sealed,
-        Err(error) => return error_result(error),
-    };
+    let info = try_crypto!(unsafe { required_bytes(info, MAX_HPKE_INFO_BYTES) });
+    let associated_data = try_crypto!(unsafe { required_bytes(associated_data, MAX_INPUT_BYTES) });
+    let sealed = try_crypto!(unsafe { required_bytes(sealed, MAX_HPKE_SEALED_BYTES) });
     match with_current_process(|process| {
         hpke_open_for_process(
             process,
@@ -1163,18 +1123,10 @@ pub extern "C" fn mesh_crypto_hpke_seal_secret(
     associated_data: *const MeshBytes,
     plaintext: *const MeshSecretHandle,
 ) -> *mut MeshResult {
-    let recipient_public_key = match unsafe { x25519_public_key_bytes(recipient_public_key) } {
-        Ok(key) => key,
-        Err(error) => return error_result(error),
-    };
-    let info = match unsafe { required_bytes(info, MAX_HPKE_INFO_BYTES) } {
-        Ok(info) => info,
-        Err(error) => return error_result(error),
-    };
-    let associated_data = match unsafe { required_bytes(associated_data, MAX_INPUT_BYTES) } {
-        Ok(data) => data,
-        Err(error) => return error_result(error),
-    };
+    let recipient_public_key =
+        try_crypto!(unsafe { x25519_public_key_bytes(recipient_public_key) });
+    let info = try_crypto!(unsafe { required_bytes(info, MAX_HPKE_INFO_BYTES) });
+    let associated_data = try_crypto!(unsafe { required_bytes(associated_data, MAX_INPUT_BYTES) });
     match with_current_process(|process| {
         hpke_seal_secret_for_process(
             process,
@@ -1218,18 +1170,9 @@ pub extern "C" fn mesh_crypto_hpke_open_secret(
     associated_data: *const MeshBytes,
     sealed: *const MeshBytes,
 ) -> *mut MeshResult {
-    let info = match unsafe { required_bytes(info, MAX_HPKE_INFO_BYTES) } {
-        Ok(info) => info,
-        Err(error) => return error_result(error),
-    };
-    let associated_data = match unsafe { required_bytes(associated_data, MAX_INPUT_BYTES) } {
-        Ok(data) => data,
-        Err(error) => return error_result(error),
-    };
-    let sealed = match unsafe { required_bytes(sealed, MAX_HPKE_SEALED_BYTES) } {
-        Ok(sealed) => sealed,
-        Err(error) => return error_result(error),
-    };
+    let info = try_crypto!(unsafe { required_bytes(info, MAX_HPKE_INFO_BYTES) });
+    let associated_data = try_crypto!(unsafe { required_bytes(associated_data, MAX_INPUT_BYTES) });
+    let sealed = try_crypto!(unsafe { required_bytes(sealed, MAX_HPKE_SEALED_BYTES) });
     let result = alloc_result(0, ptr::null_mut());
     match with_current_process(|process| {
         hpke_open_secret_for_process(
@@ -1250,27 +1193,18 @@ fn allocate_mlkem_key_pair(
     private_material: Zeroizing<Box<[u8]>>,
     public_key: &[u8],
 ) -> *mut MeshResult {
-    let public_bytes = mesh_bytes_new(public_key.as_ptr(), public_key.len() as u64);
-    if public_bytes.is_null() {
-        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
-    }
+    let public_bytes = bytes_value(&public_key);
     let key_pair = allocate_value(MeshMlKemKeyPair {
         private_key: ptr::null_mut(),
         public_key: MeshMlKemPublicKey {
             bytes: public_bytes,
         },
     });
-    if key_pair.is_null() {
-        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
-    }
     let result = alloc_result(0, key_pair.cast());
-    let private_key = match with_current_process(move |process| {
+    let private_key = try_crypto!(with_current_process(move |process| {
         insert_owned_resource(process, ResourceKind::MlKemPrivateKey, private_material)
             .map_err(resource_failure)
-    }) {
-        Ok(private_key) => private_key,
-        Err(error) => return error_result(error),
-    };
+    }));
     unsafe { (*key_pair).private_key = private_key };
     result
 }
@@ -1348,26 +1282,16 @@ fn mlkem_from_secret_for_process(
 pub extern "C" fn mesh_crypto_mlkem_from_secret(
     material: *const MeshSecretHandle,
 ) -> *mut MeshResult {
-    let (private_key, public_key) =
-        match with_current_process(|process| mlkem_from_secret_for_process(process, material)) {
-            Ok(value) => value,
-            Err(error) => return error_result(error),
-        };
-    let public_bytes = mesh_bytes_new(public_key.as_ptr(), public_key.len() as u64);
-    if public_bytes.is_null() {
-        mesh_resource_destroy(private_key);
-        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
-    }
+    let (private_key, public_key) = try_crypto!(with_current_process(|process| {
+        mlkem_from_secret_for_process(process, material)
+    }));
+    let public_bytes = bytes_value(&public_key);
     let key_pair = allocate_value(MeshMlKemKeyPair {
         private_key,
         public_key: MeshMlKemPublicKey {
             bytes: public_bytes,
         },
     });
-    if key_pair.is_null() {
-        mesh_resource_destroy(private_key);
-        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
-    }
     ok_result(key_pair)
 }
 
@@ -1418,35 +1342,20 @@ unsafe fn mlkem_ciphertext_bytes<'a>(
 pub extern "C" fn mesh_crypto_mlkem_encapsulate(
     public_key: *const MeshMlKemPublicKey,
 ) -> *mut MeshResult {
-    let public_key = match unsafe { mlkem_public_key_bytes(public_key) } {
-        Ok(public_key) => public_key,
-        Err(error) => return error_result(error),
-    };
-    let (ciphertext, shared_secret) = match mlkem_encapsulate_material(&SystemProvider, public_key)
-    {
-        Ok(output) => output,
-        Err(error) => return error_result(error),
-    };
-    let ciphertext = mesh_bytes_new(ciphertext.as_ptr(), ciphertext.len() as u64);
-    if ciphertext.is_null() {
-        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
-    }
+    let public_key = try_crypto!(unsafe { mlkem_public_key_bytes(public_key) });
+    let (ciphertext, shared_secret) =
+        try_crypto!(mlkem_encapsulate_material(&SystemProvider, public_key));
+    let ciphertext = bytes_value(&ciphertext);
     let output = allocate_value(MeshTuple2Pointers {
         len: 2,
         first: ciphertext,
         second: ptr::null_mut(),
     });
-    if output.is_null() {
-        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
-    }
     let result = alloc_result(0, output.cast());
-    let shared_secret = match with_current_process(move |process| {
+    let shared_secret = try_crypto!(with_current_process(move |process| {
         insert_owned_resource(process, ResourceKind::SecretBytes, shared_secret)
             .map_err(resource_failure)
-    }) {
-        Ok(shared_secret) => shared_secret,
-        Err(error) => return error_result(error),
-    };
+    }));
     unsafe { (*output).second = shared_secret };
     result
 }
@@ -1457,10 +1366,7 @@ pub extern "C" fn mesh_crypto_mlkem_decapsulate(
     private_key: *const MeshSecretHandle,
     ciphertext: *const MeshMlKemCiphertext,
 ) -> *mut MeshResult {
-    let ciphertext = match unsafe { mlkem_ciphertext_bytes(ciphertext) } {
-        Ok(ciphertext) => ciphertext,
-        Err(error) => return error_result(error),
-    };
+    let ciphertext = try_crypto!(unsafe { mlkem_ciphertext_bytes(ciphertext) });
     let result = alloc_result(0, ptr::null_mut());
     match with_current_process(|process| {
         let shared_secret = with_owned_resource(
@@ -1511,10 +1417,7 @@ fn signing_key_material(
 /// Generate an actor-owned signing private key and its public key.
 #[no_mangle]
 pub extern "C" fn mesh_crypto_signing_generate() -> *mut MeshResult {
-    let (private_material, public_key) = match signing_key_material(&SystemProvider) {
-        Ok(material) => material,
-        Err(error) => return error_result(error),
-    };
+    let (private_material, public_key) = try_crypto!(signing_key_material(&SystemProvider));
     allocate_signing_key_pair(private_material, public_key)
 }
 
@@ -1522,27 +1425,18 @@ fn allocate_signing_key_pair(
     private_material: Zeroizing<Box<[u8]>>,
     public_key: [u8; 32],
 ) -> *mut MeshResult {
-    let public_bytes = mesh_bytes_new(public_key.as_ptr(), 32);
-    if public_bytes.is_null() {
-        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
-    }
+    let public_bytes = bytes_value(&public_key);
     let key_pair = allocate_value(MeshSigningKeyPair {
         private_key: ptr::null_mut(),
         public_key: MeshSigningPublicKey {
             bytes: public_bytes,
         },
     });
-    if key_pair.is_null() {
-        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
-    }
     let result = alloc_result(0, key_pair.cast());
-    let private_key = match with_current_process(move |process| {
+    let private_key = try_crypto!(with_current_process(move |process| {
         insert_owned_resource(process, ResourceKind::SigningPrivateKey, private_material)
             .map_err(resource_failure)
-    }) {
-        Ok(private_key) => private_key,
-        Err(error) => return error_result(error),
-    };
+    }));
     unsafe { (*key_pair).private_key = private_key };
     result
 }
@@ -1600,27 +1494,16 @@ fn signing_from_secret_for_process(
 pub extern "C" fn mesh_crypto_signing_from_secret(
     material: *const MeshSecretHandle,
 ) -> *mut MeshResult {
-    let (private_key, public_key) = match with_current_process(|process| {
+    let (private_key, public_key) = try_crypto!(with_current_process(|process| {
         signing_from_secret_for_process(process, &SystemProvider, material)
-    }) {
-        Ok(value) => value,
-        Err(error) => return error_result(error),
-    };
-    let public_bytes = mesh_bytes_new(public_key.as_ptr(), public_key.len() as u64);
-    if public_bytes.is_null() {
-        mesh_resource_destroy(private_key);
-        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
-    }
+    }));
+    let public_bytes = bytes_value(&public_key);
     let key_pair = allocate_value(MeshSigningKeyPair {
         private_key,
         public_key: MeshSigningPublicKey {
             bytes: public_bytes,
         },
     });
-    if key_pair.is_null() {
-        mesh_resource_destroy(private_key);
-        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
-    }
     ok_result(key_pair)
 }
 
@@ -1647,14 +1530,8 @@ fn sign_for_process(
 }
 
 fn allocate_signature(signature: [u8; 64]) -> Result<*mut MeshSignature, CryptoFailure> {
-    let bytes = mesh_bytes_new(signature.as_ptr(), signature.len() as u64);
-    if bytes.is_null() {
-        return Err(failure(CryptoErrorTag::InternalFailure, 0, 0));
-    }
+    let bytes = bytes_value(&signature);
     let signature = allocate_value(MeshSignature { bytes });
-    if signature.is_null() {
-        return Err(failure(CryptoErrorTag::InternalFailure, 0, 0));
-    }
     Ok(signature)
 }
 
@@ -1664,12 +1541,9 @@ pub extern "C" fn mesh_crypto_sign(
     private_key: *const MeshSecretHandle,
     message: *const MeshBytes,
 ) -> *mut MeshResult {
-    let signature = match with_current_process(|process| {
+    let signature = try_crypto!(with_current_process(|process| {
         sign_for_process(process, &SystemProvider, private_key, message)
-    }) {
-        Ok(signature) => signature,
-        Err(error) => return error_result(error),
-    };
+    }));
     match allocate_signature(signature) {
         Ok(signature) => ok_result(signature),
         Err(error) => error_result(error),
@@ -1799,13 +1673,6 @@ unsafe fn aead_nonce_bytes(nonce: *const MeshBytes) -> Result<[u8; 12], CryptoFa
             CryptoErrorTag::InvalidLength,
             AEAD_NONCE_BYTES as i64,
             -1,
-        ));
-    }
-    if (*nonce).len != AEAD_NONCE_BYTES as u64 {
-        return Err(failure(
-            CryptoErrorTag::InvalidLength,
-            AEAD_NONCE_BYTES as i64,
-            actual_length((*nonce).len),
         ));
     }
     <[u8; 12]>::try_from((*nonce).as_slice()).map_err(|_| {
