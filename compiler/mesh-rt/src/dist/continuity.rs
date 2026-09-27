@@ -35,7 +35,6 @@ const REQUEST_KEY_MISSING: &str = "request_key_missing";
 const PAYLOAD_HASH_MISSING: &str = "payload_hash_missing";
 const ATTEMPT_ID_MISSING: &str = "attempt_id_missing";
 const REPLICA_NODE_MISSING: &str = "replica_node_missing";
-const REPLICA_MATCHES_OWNER: &str = "replica_matches_owner";
 const INVALID_REPLICATION_COUNT: &str = "invalid_replication_count";
 const INVALID_REQUIRED_REPLICA_COUNT: &str = "invalid_required_replica_count";
 const REPLICA_REQUIRED_UNAVAILABLE: &str = "replica_required_unavailable";
@@ -266,10 +265,6 @@ impl Default for ContinuityAuthorityConfig {
 }
 
 impl ContinuityAuthorityConfig {
-    fn validate(self) -> Result<Self, String> {
-        Ok(self)
-    }
-
     fn from_record(record: &ContinuityRecord) -> Self {
         Self {
             cluster_role: record.cluster_role,
@@ -320,11 +315,10 @@ fn parse_authority_config(
             format!("invalid {CONTINUITY_PROMOTION_EPOCH_ENV} `{raw}`: expected a whole number")
         })?,
     };
-    ContinuityAuthorityConfig {
+    Ok(ContinuityAuthorityConfig {
         cluster_role,
         promotion_epoch,
-    }
-    .validate()
+    })
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -435,9 +429,6 @@ impl ContinuityRecord {
         {
             return Err("continuity_replica_ack_set_invalid".to_string());
         }
-        if !self.replica_node.is_empty() && self.replica_node == self.owner_node {
-            return Err(REPLICA_MATCHES_OWNER.to_string());
-        }
         if self.cluster_role == ContinuityClusterRole::Standby
             && self.replica_status == ReplicaStatus::OwnerLost
         {
@@ -496,14 +487,6 @@ impl SubmitRequest {
         {
             return Err("continuity_replica_set_invalid".to_string());
         }
-        if !self.replica_node.is_empty() && self.replica_node == self.owner_node {
-            return Err(REPLICA_MATCHES_OWNER.to_string());
-        }
-        ContinuityAuthorityConfig {
-            cluster_role: self.cluster_role,
-            promotion_epoch: self.promotion_epoch,
-        }
-        .validate()?;
         Ok(())
     }
 
@@ -1053,32 +1036,35 @@ impl ContinuityRegistry {
         Ok(next)
     }
 
-    pub fn mark_owner_loss_records_for_node_loss(&self, owner_node: &str) -> Vec<ContinuityRecord> {
+    /// Applies `transition` to every record it changes, then logs and
+    /// broadcasts each changed record.
+    fn transition_records(
+        &self,
+        transition: impl Fn(ContinuityRecord) -> Option<ContinuityRecord>,
+        log: impl Fn(&ContinuityRecord),
+    ) -> Vec<ContinuityRecord> {
         let mut inner = self.inner.write();
         let watermark = inner.next_attempt_token;
-        let request_keys: Vec<String> = inner.requests.keys().cloned().collect();
-        let mut owner_lost_records = Vec::new();
-
-        for request_key in &request_keys {
-            let Some(record) = inner.requests.get(request_key).cloned() else {
-                continue;
-            };
-            let Some(owner_lost) = transition_owner_lost_record(record, owner_node) else {
-                continue;
-            };
-            inner
-                .requests
-                .insert(request_key.clone(), owner_lost.clone());
-            owner_lost_records.push(owner_lost);
+        let mut changed = Vec::new();
+        for record in inner.requests.values_mut() {
+            if let Some(next) = transition(record.clone()) {
+                *record = next.clone();
+                changed.push(next);
+            }
         }
         drop(inner);
-
-        for record in &owner_lost_records {
-            log_owner_lost(record, owner_node);
+        for record in &changed {
+            log(record);
             broadcast_continuity_upsert(watermark, record);
         }
+        changed
+    }
 
-        owner_lost_records
+    pub fn mark_owner_loss_records_for_node_loss(&self, owner_node: &str) -> Vec<ContinuityRecord> {
+        self.transition_records(
+            |record| transition_owner_lost_record(record, owner_node),
+            |record| log_owner_lost(record, owner_node),
+        )
     }
 
     /// Mark only the currently executing request as owner-lost.
@@ -1119,58 +1105,20 @@ impl ContinuityRegistry {
         &self,
         replica_node: &str,
     ) -> Vec<ContinuityRecord> {
-        let mut inner = self.inner.write();
-        let watermark = inner.next_attempt_token;
-        let request_keys: Vec<String> = inner.requests.keys().cloned().collect();
-        let mut degraded_records = Vec::new();
-
-        for request_key in &request_keys {
-            let Some(record) = inner.requests.get(request_key).cloned() else {
-                continue;
-            };
-            let Some(degraded) = transition_degraded_record(record, replica_node) else {
-                continue;
-            };
-            inner.requests.insert(request_key.clone(), degraded.clone());
-            degraded_records.push(degraded);
-        }
-        drop(inner);
-
-        for record in &degraded_records {
-            log_degraded(record, replica_node);
-            broadcast_continuity_upsert(watermark, record);
-        }
-
-        degraded_records
+        self.transition_records(
+            |record| transition_degraded_record(record, replica_node),
+            |record| log_degraded(record, replica_node),
+        )
     }
 
     pub fn degrade_replication_health_for_node_loss(
         &self,
         node_name: &str,
     ) -> Vec<ContinuityRecord> {
-        let mut inner = self.inner.write();
-        let watermark = inner.next_attempt_token;
-        let request_keys: Vec<String> = inner.requests.keys().cloned().collect();
-        let mut degraded_records = Vec::new();
-
-        for request_key in &request_keys {
-            let Some(record) = inner.requests.get(request_key).cloned() else {
-                continue;
-            };
-            let Some(degraded) = transition_replication_health_record(record, node_name) else {
-                continue;
-            };
-            inner.requests.insert(request_key.clone(), degraded.clone());
-            degraded_records.push(degraded);
-        }
-        drop(inner);
-
-        for record in &degraded_records {
-            log_replication_degraded(record, node_name);
-            broadcast_continuity_upsert(watermark, record);
-        }
-
-        degraded_records
+        self.transition_records(
+            |record| transition_replication_health_record(record, node_name),
+            |record| log_replication_degraded(record, node_name),
+        )
     }
 
     pub fn merge_remote_record(
