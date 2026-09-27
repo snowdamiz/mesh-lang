@@ -10555,7 +10555,10 @@ fn infer_piped(
     let Expr::CallExpr(call) = &rhs else {
         let rhs_range = rhs.syntax().text_range();
         let piped = Some((lhs_range, 0, lhs_ty.clone()));
-        if let Some(ty) = infer_node_spawn(
+        // A bare `Node.spawn` is given the piped value alone, not the node
+        // and the actor it needs: that is reported. Any other bare callee
+        // is a function the value is passed to.
+        infer_node_spawn(
             ctx,
             env,
             &rhs,
@@ -10566,9 +10569,7 @@ fn infer_piped(
             type_registry,
             trait_registry,
             fn_constraints,
-        )? {
-            return Ok(ty);
-        }
+        )?;
         let callee_ty = match infer_overloaded_callee(ctx, env, &rhs, 1, rhs_range, types) {
             Some(ty) => ty,
             None => infer_expr(
