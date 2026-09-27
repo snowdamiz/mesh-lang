@@ -812,11 +812,26 @@ fn parse_pg_error_string(err: &str) -> (&str, &str, &str, &str, &str) {
 
 // ── Changeset Write Operations ──────────────────────────────────────
 
+/// A changeset's changes as columns and values, or the `Err(changeset)`
+/// to return without running SQL: it is invalid, or has nothing to write
+/// (which its `_base` error then says).
+unsafe fn changeset_changes(changeset: *mut u8) -> Result<(Vec<String>, Vec<String>), *mut u8> {
+    if cs_get_int(changeset, SLOT_VALID) == 0 {
+        return Err(alloc_result(1, changeset) as *mut u8);
+    }
+    let (columns, values) = map_to_columns_and_values(cs_get(changeset, SLOT_CHANGES));
+    if columns.is_empty() {
+        let unchanged = add_constraint_error_to_changeset(changeset, "_base", "has no changes");
+        return Err(alloc_result(1, unchanged) as *mut u8);
+    }
+    Ok((columns, values))
+}
+
 /// Insert a row using a changeset, validating before SQL execution.
 ///
 /// `Repo.insert_changeset(pool, table, changeset)` -> `Result<Map<String,String>, Changeset>`
 ///
-/// 1. If changeset is invalid (valid == 0): return Err(changeset) without executing SQL
+/// 1. If changeset is invalid, or has no changes: return Err(changeset) without executing SQL
 /// 2. Extract changes map, build INSERT SQL with RETURNING *
 /// 3. Execute via Pool.query
 /// 4. On success: return Ok(first_row)
@@ -828,26 +843,13 @@ pub extern "C" fn mesh_repo_insert_changeset(
     changeset: *mut u8,
 ) -> *mut u8 {
     unsafe {
-        // 1. Check if changeset is valid
-        if cs_get_int(changeset, SLOT_VALID) == 0 {
-            return alloc_result(1, changeset) as *mut u8;
-        }
-
-        // 2. Extract changes map
-        let changes = cs_get(changeset, SLOT_CHANGES);
-        let (columns, values) = map_to_columns_and_values(changes);
-
-        if columns.is_empty() {
-            return alloc_result(1, changeset) as *mut u8;
-        }
-
-        // 3. Build INSERT SQL with RETURNING *
-        let table_str = text_of(table);
+        let (columns, values) = match changeset_changes(changeset) {
+            Ok(changes) => changes,
+            Err(refused) => return refused,
+        };
         let returning = vec!["*".to_string()];
-        let sql = crate::db::orm::build_insert_sql_pure(table_str, &columns, &returning);
-
+        let sql = crate::db::orm::build_insert_sql_pure(text_of(table), &columns, &returning);
         let result = run_query(pool, &sql, &values);
-
         changeset_write_result(result, changeset, "no row returned")
     }
 }
@@ -865,20 +867,10 @@ pub extern "C" fn mesh_repo_update_changeset(
     changeset: *mut u8,
 ) -> *mut u8 {
     unsafe {
-        // 1. Check if changeset is valid
-        if cs_get_int(changeset, SLOT_VALID) == 0 {
-            return alloc_result(1, changeset) as *mut u8;
-        }
-
-        // 2. Extract changes map
-        let changes = cs_get(changeset, SLOT_CHANGES);
-        let (columns, values) = map_to_columns_and_values(changes);
-
-        if columns.is_empty() {
-            return alloc_result(1, changeset) as *mut u8;
-        }
-
-        // 3. UPDATE ... RETURNING *, by primary key
+        let (columns, values) = match changeset_changes(changeset) {
+            Ok(changes) => changes,
+            Err(refused) => return refused,
+        };
         let result = update_by_key(pool, text_of(table), id, &columns, values);
         changeset_write_result(result, changeset, "not found")
     }
@@ -3167,6 +3159,27 @@ mod tests {
             params,
             vec!["alice@example.com", "secret", "bf", "12", "Alice"]
         );
+    }
+
+    /// A valid changeset with nothing to write comes back as the Err it is
+    /// with a `_base` error saying why: it came back with no error at all.
+    #[test]
+    fn a_changeset_without_changes_says_so() {
+        use crate::db::changeset::*;
+        crate::gc::mesh_rt_init();
+        let empty = || crate::collections::map::mesh_map_new_typed(1);
+        let cs = mesh_changeset_cast(empty(), empty(), string_list::<&str>(&[]));
+        let table = mesh_str("t") as *mut u8;
+        for result in [
+            mesh_repo_insert_changeset(0, table, cs),
+            mesh_repo_update_changeset(0, table, mesh_str("1") as *mut u8, cs),
+        ] {
+            let r = unsafe { &*(result as *const MeshResult) };
+            assert_eq!(r.tag, 1);
+            let error = mesh_changeset_get_error(r.value, mesh_str("_base") as *mut u8);
+            assert_eq!(unsafe { text_of(error) }, "has no changes");
+            assert_eq!(mesh_changeset_valid(r.value) as i64, 0);
+        }
     }
 
     // ── Against PostgreSQL ────────────────────────────────────────────
