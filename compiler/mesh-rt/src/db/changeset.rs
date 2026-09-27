@@ -445,4 +445,135 @@ mod tests {
         assert_eq!(error_of(cs, "name"), "");
         assert_eq!(error_of(cs, "city"), "should be at least 3 character(s)");
     }
+
+    fn change_of(cs: *mut u8, field: &str) -> String {
+        unsafe { text_of(mesh_changeset_get_change(cs, text(field))) }.to_string()
+    }
+
+    /// Each schema type coerces what it can read and names the rest
+    /// invalid; a field of an unknown type, or without one, passes as is.
+    #[test]
+    fn cast_with_types_coerces_each_schema_type() {
+        crate::gc::mesh_rt_init();
+        let params = string_map(&[
+            ("n", " 42 "),
+            ("bad_n", "4x"),
+            ("f", "2.50"),
+            ("bad_f", "pi"),
+            ("yes", "T"),
+            ("no", "no"),
+            ("maybe", "maybe"),
+            ("s", " as is "),
+            ("u", "uuid-ish"),
+            ("free", "untyped"),
+        ]);
+        let fields = [
+            "n", "bad_n", "f", "bad_f", "yes", "no", "maybe", "s", "u", "free",
+        ];
+        let types = string_list(&[
+            "n:BIGINT",
+            "bad_n:BIGINT",
+            "f:DOUBLE PRECISION",
+            "bad_f:DOUBLE PRECISION",
+            "yes:BOOLEAN",
+            "no:BOOLEAN",
+            "maybe:BOOLEAN",
+            "s:TEXT",
+            "u:UUID",
+            "malformed entry",
+        ]);
+        let cs =
+            mesh_changeset_cast_with_types(string_map(&[]), params, string_list(&fields), types);
+        let changes: Vec<String> = fields.iter().map(|f| change_of(cs, f)).collect();
+        assert_eq!(
+            changes,
+            ["42", "", "2.5", "", "true", "false", "", " as is ", "uuid-ish", "untyped"]
+        );
+        for field in ["bad_n", "bad_f", "maybe"] {
+            assert_eq!(error_of(cs, field), "is invalid");
+        }
+        assert_eq!(mesh_changeset_valid(cs) as i64, 0);
+        assert_eq!(mesh_map_size(mesh_changeset_errors(cs)), 3);
+    }
+
+    /// Each bound a number check reads, and the first error a field gets
+    /// is the one it keeps.
+    #[test]
+    fn validators_report_the_first_failure_of_each_field() {
+        crate::gc::mesh_rt_init();
+        let cs = changed(&[
+            ("word", "abc"),
+            ("nan", "x"),
+            ("low", "1"),
+            ("high", "9"),
+            ("under", "4"),
+            ("over", "7"),
+            ("fine", "5"),
+        ]);
+        let cs = mesh_changeset_validate_length(cs, text("word"), -1, 2);
+        let cs = mesh_changeset_validate_length(cs, text("word"), 9, -1);
+        let number = |cs, field: &str, bounds: [i64; 4]| {
+            let [gt, lt, gte, lte] = bounds;
+            mesh_changeset_validate_number(cs, text(field), gt, lt, gte, lte)
+        };
+        let cs = number(cs, "nan", [-1; 4]);
+        let cs = number(cs, "low", [1, -1, -1, -1]);
+        let cs = number(cs, "high", [-1, 9, -1, -1]);
+        let cs = number(cs, "under", [-1, -1, 5, -1]);
+        let cs = number(cs, "over", [-1, -1, -1, 6]);
+        let cs = number(cs, "fine", [4, 6, 5, 5]);
+        let errors: Vec<String> = ["word", "nan", "low", "high", "under", "over", "fine"]
+            .iter()
+            .map(|field| error_of(cs, field))
+            .collect();
+        assert_eq!(
+            errors,
+            [
+                "should be at most 2 character(s)",
+                "is not a number",
+                "must be greater than 1",
+                "must be less than 9",
+                "must be greater than or equal to 5",
+                "must be less than or equal to 6",
+                "",
+            ]
+        );
+    }
+
+    /// A constraint violation names its field by PostgreSQL's naming
+    /// conventions (`{table}_{column}_key`, `_fkey`, `_check`), or `_base`.
+    #[test]
+    fn constraint_violations_map_to_their_fields() {
+        let map =
+            |state, constraint, column| map_constraint_error(state, constraint, "users", column);
+        let error = |field: &str, message: &str| Some((field.to_string(), message.to_string()));
+        assert_eq!(
+            map("23505", "users_email_key", ""),
+            error("email", "has already been taken")
+        );
+        assert_eq!(
+            map("23505", "users_pkey", ""),
+            error("_base", "has already been taken")
+        );
+        assert_eq!(
+            map("23503", "users_org_id_fkey", ""),
+            error("org_id", "does not exist")
+        );
+        assert_eq!(
+            map("23503", "elsewhere_fkey", ""),
+            error("_base", "does not exist")
+        );
+        assert_eq!(map("23502", "", "name"), error("name", "can't be blank"));
+        assert_eq!(map("23502", "", ""), error("_base", "can't be blank"));
+        assert_eq!(map("42P01", "", ""), None);
+        assert_eq!(
+            extract_field_from_constraint("users_age_check", "users"),
+            Some("age".into())
+        );
+        assert_eq!(extract_field_from_constraint("users__key", "users"), None);
+        assert_eq!(
+            extract_field_from_constraint("users_email_idx", "users"),
+            None
+        );
+    }
 }
