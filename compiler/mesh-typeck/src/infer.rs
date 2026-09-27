@@ -7945,18 +7945,21 @@ fn infer_let_binding(
     // If there is a type annotation, resolve and unify with the inferred type.
     // The annotation declares the variable's type, also when the value does
     // not match it (that is reported, and the binding keeps its declared type).
-    let binding_ty = if let Some(annotation) = let_.type_annotation() {
-        if let Some(ann_ty) = resolve_type_annotation(ctx, &annotation, type_registry) {
+    // (A let has an initializer only when the parser read its annotation
+    // whole, and an annotation read whole names a type.)
+    let annotated = let_.type_annotation().and_then(|annotation| {
+        let ann_ty = resolve_type_annotation(ctx, &annotation, type_registry)?;
+        Some((annotation, ann_ty))
+    });
+    let binding_ty = match annotated {
+        Some((annotation, ann_ty)) => {
             let origin = ConstraintOrigin::Annotation {
                 annotation_span: annotation.syntax().text_range(),
             };
             let _ = ctx.unify(ann_ty.clone(), init_ty.clone(), origin);
             ann_ty
-        } else {
-            init_ty.clone()
         }
-    } else {
-        init_ty.clone()
+        None => init_ty.clone(),
     };
 
     ctx.leave_level();
@@ -7979,19 +7982,25 @@ fn infer_let_binding(
     // each use's instance.
     ctx.generalize_requirements(&scheme.vars, traits_before, concat_before);
 
-    if let Some(name) = let_.name() {
-        if let Some(name_text) = name.text() {
-            env.insert(name_text, scheme);
+    match let_.pattern() {
+        Some(pat) => {
+            let pat_ty = infer_pattern(ctx, env, &pat, types, type_registry)?;
+            ctx.unify(
+                pat_ty,
+                init_ty.clone(),
+                ConstraintOrigin::LetBinding {
+                    binding_span: let_.syntax().text_range(),
+                },
+            )?;
         }
-    } else if let Some(pat) = let_.pattern() {
-        let pat_ty = infer_pattern(ctx, env, &pat, types, type_registry)?;
-        ctx.unify(
-            pat_ty,
-            init_ty.clone(),
-            ConstraintOrigin::LetBinding {
-                binding_span: let_.syntax().text_range(),
-            },
-        )?;
+        None => {
+            // The parser reads an initializer only after a pattern or a name.
+            let name = let_
+                .name()
+                .and_then(|name| name.text())
+                .expect("a let with an initializer and no pattern has a name");
+            env.insert(name, scheme);
+        }
     }
 
     let resolved = ctx.resolve(init_ty);
