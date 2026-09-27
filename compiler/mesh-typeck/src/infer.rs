@@ -8621,24 +8621,22 @@ fn numeric_literal_error(kind: SyntaxKind, text: &str, negated: bool) -> Option<
     match kind {
         SyntaxKind::INT_LITERAL => {
             let lower = normalized.to_ascii_lowercase();
-            let (digits, radix, prefix) = [("0x", 16), ("0b", 2), ("0o", 8)]
+            let radixes = [
+                ("0x", 16, "hexadecimal"),
+                ("0b", 2, "binary"),
+                ("0o", 8, "octal"),
+            ];
+            let (digits, radix, prefix, kind) = radixes
                 .iter()
-                .find_map(|(prefix, radix)| {
-                    lower
-                        .strip_prefix(prefix)
-                        .map(|digits| (digits.to_string(), *radix, *prefix))
+                .find_map(|&(prefix, radix, kind)| {
+                    let digits = lower.strip_prefix(prefix)?;
+                    Some((digits.to_string(), radix, prefix, kind))
                 })
-                .unwrap_or((lower.clone(), 10, ""));
+                .unwrap_or((lower.clone(), 10, "", "decimal"));
             if digits.is_empty() {
                 return Some(format!("expected digits after `{prefix}`"));
             }
             if let Some(bad) = digits.chars().find(|c| !c.is_digit(radix)) {
-                let kind = match radix {
-                    2 => "binary",
-                    8 => "octal",
-                    16 => "hexadecimal",
-                    _ => "decimal",
-                };
                 return Some(format!("invalid digit `{bad}` in {kind} literal `{text}`"));
             }
             match u64::from_str_radix(&digits, radix) {
@@ -8650,15 +8648,14 @@ fn numeric_literal_error(kind: SyntaxKind, text: &str, negated: bool) -> Option<
                 )),
             }
         }
+        // The lexer makes a float of digits, a `.` and digits, and an
+        // exponent, whose digits alone may be missing.
         SyntaxKind::FLOAT_LITERAL => {
             if normalized.ends_with(['e', 'E', '+', '-']) {
                 return Some("expected digits after the exponent".to_string());
             }
-            match normalized.parse::<f64>() {
-                Ok(value) if value.is_finite() => None,
-                Ok(_) => Some(format!("float literal `{text}` is out of range")),
-                Err(_) => Some(format!("malformed float literal `{text}`")),
-            }
+            let finite = normalized.parse::<f64>().is_ok_and(f64::is_finite);
+            (!finite).then(|| format!("float literal `{text}` is out of range"))
         }
         _ => None,
     }
