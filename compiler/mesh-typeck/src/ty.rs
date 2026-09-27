@@ -147,8 +147,6 @@ impl Ty {
         }
     }
 
-    /// This type as a diagnostic shows it: the parts inference has not
-    /// determined (`?9`) as `_`.
     /// The type with its variables named `a`, `b`, ... in the order they
     /// first appear, as a reader writes a generic type: `(a) -> a`, not
     /// `(?9) -> ?9`.
@@ -166,6 +164,8 @@ impl Ty {
             .collect()
     }
 
+    /// This type as a diagnostic shows it: the parts inference has not
+    /// determined (`?9`) as `_`.
     pub fn with_holes(&self) -> Ty {
         match self {
             Ty::Var(_) => Ty::Con(TyCon::new("_")),
