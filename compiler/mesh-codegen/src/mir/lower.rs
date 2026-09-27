@@ -9777,30 +9777,20 @@ impl<'a> Lowerer<'a> {
             .and_then(|e| self.get_ty(e.syntax().text_range()))
             .cloned();
 
-        if let Some(ref ty) = iterable_ty {
-            if let Some([key_ty, val_ty]) = collection_elems(ty, "Map").as_deref() {
-                return self.lower_for_in_map(for_in, key_ty, val_ty);
-            }
-            if let Some([elem_ty]) = collection_elems(ty, "Set").as_deref() {
-                return self.lower_for_in_set(for_in, elem_ty);
-            }
-            if let Some(elem_ty) = list_elem(ty) {
-                return self.lower_for_in_list(for_in, &elem_ty);
-            }
-
-            // Check if type implements Iterable (collection -> produces iterator).
-            let ty_for_lookup = ty.clone();
-            if self.trait_registry.has_impl("Iterable", &ty_for_lookup) {
-                return self.lower_for_in_iterator(for_in, &ty_for_lookup, true);
-            }
-            // Check if type directly implements Iterator (type IS an iterator).
-            if self.trait_registry.has_impl("Iterator", &ty_for_lookup) {
-                return self.lower_for_in_iterator(for_in, &ty_for_lookup, false);
-            }
+        let ty = iterable_ty.expect("the type checker types a loop's iterable");
+        if let Some([key_ty, val_ty]) = collection_elems(&ty, "Map").as_deref() {
+            return self.lower_for_in_map(for_in, key_ty, val_ty);
         }
-
-        // Fallback: treat as list iteration with Int elements.
-        self.lower_for_in_list(for_in, &Ty::int())
+        if let Some([elem_ty]) = collection_elems(&ty, "Set").as_deref() {
+            return self.lower_for_in_set(for_in, elem_ty);
+        }
+        if let Some(elem_ty) = list_elem(&ty) {
+            return self.lower_for_in_list(for_in, &elem_ty);
+        }
+        // The type checker admits nothing else but an Iterable, which hands
+        // over its iterator, and an Iterator.
+        let is_iterable = self.trait_registry.has_impl("Iterable", &ty);
+        self.lower_for_in_iterator(for_in, &ty, is_iterable)
     }
 
     /// The loop variable of a `for`: its name, or for a pattern binding a
