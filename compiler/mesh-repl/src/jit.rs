@@ -2365,10 +2365,6 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             mesh_rt::ws::server::mesh_ws_send as *const (),
         ),
         (
-            "mesh_ws_send_binary",
-            mesh_rt::ws::server::mesh_ws_send_binary as *const (),
-        ),
-        (
             "mesh_ws_serve",
             mesh_rt::ws::server::mesh_ws_serve as *const (),
         ),
