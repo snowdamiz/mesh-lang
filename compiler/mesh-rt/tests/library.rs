@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::ptr;
+use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use mesh_rt::bytes::{mesh_bytes_new, MeshBytes};
@@ -46,6 +47,9 @@ unsafe extern "C" fn secure_store_put(
     0
 }
 
+/// A status for the secure store's delete to fail with, when not zero.
+static FAIL_DELETE: AtomicI32 = AtomicI32::new(0);
+
 unsafe extern "C" fn secure_store_delete(
     _context: *mut c_void,
     input: *const u8,
@@ -54,6 +58,10 @@ unsafe extern "C" fn secure_store_delete(
     _output_capacity: u64,
     output_len: *mut u64,
 ) -> i32 {
+    let failure = FAIL_DELETE.load(Ordering::SeqCst);
+    if failure != 0 {
+        return failure;
+    }
     secure_store()
         .lock()
         .unwrap()
@@ -237,6 +245,72 @@ fn embedded_lifecycle_contains_failures_and_bounds_callback_ownership() {
     );
     assert_eq!(
         unsafe { (*mesh_storage_key_unseal_bytes(sealed, migrated, context)).tag },
+        0
+    );
+
+    // An installed v2 record is used as it is; one of another length, a
+    // legacy record that disagrees with it, and a legacy record the host
+    // cannot delete are refused and left in place.
+    let tag = |result: *mut mesh_rt::io::MeshResult| unsafe { (*result).tag };
+    let store = |key: &[u8], value: Vec<u8>| {
+        secure_store().lock().unwrap().insert(key.to_vec(), value);
+    };
+    let remove = |key: &[u8]| secure_store().lock().unwrap().remove(key);
+    let (v2, v1_key, v1_counter) = (
+        b"mesh/storage-key/v2".as_slice(),
+        b"mesh/storage-key/v1".as_slice(),
+        b"mesh/storage-counter/v1".as_slice(),
+    );
+    let installed = mesh_storage_key_platform();
+    assert_eq!(tag(installed), 0);
+    let installed = unsafe { (*installed).value.cast::<MeshSecretHandle>() };
+    for corrupt in [record[..10].to_vec(), [record.clone(), vec![0; 6]].concat()] {
+        store(v2, corrupt);
+        assert_eq!(
+            tag(mesh_storage_key_platform()),
+            1,
+            "accepted a corrupt record"
+        );
+    }
+    store(v2, record.clone());
+    for (legacy, value) in [
+        (v1_key, vec![0xee; 36]),
+        (v1_counter, u64::MAX.to_be_bytes().to_vec()),
+    ] {
+        store(legacy, value);
+        assert_eq!(
+            tag(mesh_storage_key_platform()),
+            1,
+            "retired a newer record"
+        );
+        assert!(remove(legacy).is_some());
+    }
+    store(v1_key, record[..36].to_vec());
+    FAIL_DELETE.store(5, Ordering::SeqCst);
+    assert_eq!(
+        tag(mesh_storage_key_platform()),
+        1,
+        "ignored a failed delete"
+    );
+    FAIL_DELETE.store(0, Ordering::SeqCst);
+    assert_eq!(tag(mesh_storage_key_platform()), 0);
+    assert!(!secure_store().lock().unwrap().contains_key(v1_key));
+
+    // A seal reserves its counter in the durable record: without the record,
+    // with a corrupt one, or at the last counter, it fails and seals nothing.
+    let mut counter_at_end = record[..36].to_vec();
+    counter_at_end.extend(u64::MAX.to_be_bytes());
+    for unusable in [None, Some(record[..10].to_vec()), Some(counter_at_end)] {
+        match unusable {
+            Some(value) => store(v2, value),
+            None => drop(remove(v2)),
+        }
+        let sealed = mesh_storage_key_seal_bytes(plaintext, installed, context);
+        assert_eq!(tag(sealed), 1, "sealed without a reservation");
+    }
+    store(v2, record.clone());
+    assert_eq!(
+        tag(mesh_storage_key_seal_bytes(plaintext, installed, context)),
         0
     );
 

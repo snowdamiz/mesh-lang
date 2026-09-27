@@ -1649,4 +1649,214 @@ mod tests {
             );
         }
     }
+
+    /// A purpose the format does not define, and a value of the wrong size
+    /// for its kind, are refused; each storage-key failure is reported as the
+    /// CryptoError the docs give it.
+    #[test]
+    fn purposes_lengths_and_counter_failures_are_refused_as_documented() {
+        let mut unknown = context(1);
+        unknown[CONTEXT_PURPOSE_OFFSET..CONTEXT_SNAPSHOT_OFFSET]
+            .copy_from_slice(&99u16.to_be_bytes());
+        assert_tag(
+            validate_context(&unknown, ResourceKind::SecretBytes).unwrap_err(),
+            CryptoErrorTag::UnsupportedOperation,
+        );
+        for (kind, length) in [
+            (StorageValueKind::Resource(ResourceKind::SecretMap), 0),
+            (
+                StorageValueKind::Resource(ResourceKind::SecretMap),
+                MAX_PLAINTEXT_BYTES + 1,
+            ),
+            (StorageValueKind::Bytes, MAX_PLAINTEXT_BYTES + 1),
+            (
+                StorageValueKind::Resource(ResourceKind::MlKemPrivateKey),
+                32,
+            ),
+            (StorageValueKind::Resource(ResourceKind::SecretBytes), 64),
+        ] {
+            assert_tag(
+                validate_plaintext_length(kind, length).unwrap_err(),
+                CryptoErrorTag::InvalidLength,
+            );
+        }
+        assert_eq!(
+            [
+                StorageKeyError::Resource(crate::secret::ResourceError::StaleHandle),
+                StorageKeyError::ReservationFailed,
+                StorageKeyError::CounterNotMonotonic,
+                StorageKeyError::CounterExhausted,
+            ]
+            .map(|error| storage_key_failure(error).tag),
+            [
+                CryptoErrorTag::SecretDestroyed,
+                CryptoErrorTag::InternalFailure,
+                CryptoErrorTag::InternalFailure,
+                CryptoErrorTag::ResourceLimitExceeded,
+            ]
+        );
+    }
+
+    fn created<T>(result: *mut MeshResult) -> *mut T {
+        let result = unsafe { &*result };
+        assert_eq!(result.tag, 0, "expected Ok");
+        result.value.cast()
+    }
+
+    fn refused(result: *mut MeshResult) -> CryptoErrorTag {
+        let result = unsafe { &*result };
+        assert_eq!(result.tag, 1, "expected Err");
+        let tag = unsafe { *result.value };
+        [
+            CryptoErrorTag::InvalidLength,
+            CryptoErrorTag::InvalidKey,
+            CryptoErrorTag::InvalidPublicKey,
+            CryptoErrorTag::InvalidSignature,
+            CryptoErrorTag::AuthenticationFailed,
+            CryptoErrorTag::EntropyUnavailable,
+            CryptoErrorTag::SecretDestroyed,
+            CryptoErrorTag::ResourceLimitExceeded,
+            CryptoErrorTag::UnsupportedOperation,
+            CryptoErrorTag::InternalFailure,
+        ][tag as usize]
+    }
+
+    fn mesh_bytes(data: &[u8]) -> *mut MeshBytes {
+        crate::bytes::mesh_bytes_new(data.as_ptr(), data.len() as u64)
+    }
+
+    /// A resource of the calling actor holding `data`.
+    fn resource(kind: ResourceKind, data: &[u8]) -> *mut MeshSecretHandle {
+        let process = crate::actor::current_process().expect("an actor");
+        let mut process = process.lock();
+        let material = Zeroizing::new(data.to_vec().into_boxed_slice());
+        insert_owned_resource(&mut process, kind, material).expect("resource")
+    }
+
+    fn revealed(handle: *const MeshSecretHandle, kind: ResourceKind) -> Vec<u8> {
+        let process = crate::actor::current_process().expect("an actor");
+        let process = process.lock();
+        let prepared = prepare_owned_resource(&process, handle, kind).expect("resource");
+        prepared.bytes.to_vec()
+    }
+
+    static PROVISIONED_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+    unsafe extern "C" fn reserve_next(_context: *mut c_void, counter_out: *mut u64) -> i32 {
+        let counter = PROVISIONED_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        counter_out.write(counter);
+        0
+    }
+
+    /// The entry points seal and unseal for the calling actor with an
+    /// ephemeral or a provisioned key, refuse a blob opened under another
+    /// context, a destroyed key, and a context of the wrong length, and do
+    /// nothing off an actor.
+    #[test]
+    fn entry_points_seal_and_unseal_for_the_calling_actor() {
+        mesh_rt_init();
+        let context_one = mesh_bytes(&context(1));
+        let local = mesh_bytes(&context(14));
+        let internal = CryptoErrorTag::InternalFailure;
+        assert_eq!(refused(mesh_storage_key_ephemeral()), internal);
+        assert_eq!(refused(mesh_storage_key_platform()), internal);
+        let (key, prefix) = ([7u8; 32], [1u8; 4]);
+        let provision = || {
+            mesh_storage_key_provision(
+                key.as_ptr(),
+                32,
+                prefix.as_ptr(),
+                4,
+                Some(reserve_next),
+                ptr::dangling_mut(),
+            )
+        };
+        assert_eq!(refused(provision()), internal);
+        let null = ptr::null();
+        assert_eq!(
+            refused(mesh_secret_seal_for_storage(null, null, context_one)),
+            internal
+        );
+        let blob = mesh_bytes(&[0; FIXED_OVERHEAD_BYTES]);
+        assert_eq!(
+            refused(mesh_secret_unseal_from_storage(blob, null, context_one)),
+            internal
+        );
+        assert_eq!(
+            refused(mesh_storage_key_seal_bytes(blob, null, local)),
+            internal
+        );
+        assert_eq!(
+            refused(mesh_storage_key_unseal_bytes(blob, null, local)),
+            internal
+        );
+
+        crate::secret::as_test_actor(|_| {
+            for key in [created(mesh_storage_key_ephemeral()), created(provision())] {
+                let secret = resource(ResourceKind::SecretBytes, &[0x42; PLAINTEXT_BYTES]);
+                let sealed: *mut MeshBytes =
+                    created(mesh_secret_seal_for_storage(secret, key, context_one));
+                let opened = created(mesh_secret_unseal_from_storage(sealed, key, context_one));
+                assert_eq!(
+                    revealed(opened, ResourceKind::SecretBytes),
+                    [0x42; PLAINTEXT_BYTES]
+                );
+                let other = mesh_bytes(&context(2));
+                assert_eq!(
+                    refused(mesh_secret_unseal_from_storage(sealed, key, other)),
+                    CryptoErrorTag::AuthenticationFailed
+                );
+
+                let value = mesh_bytes(b"local data");
+                let sealed: *mut MeshBytes =
+                    created(mesh_storage_key_seal_bytes(value, key, local));
+                let opened: *mut MeshBytes =
+                    created(mesh_storage_key_unseal_bytes(sealed, key, local));
+                assert_eq!(unsafe { (*opened).as_slice() }, b"local data");
+                assert_eq!(
+                    refused(mesh_storage_key_unseal_bytes(sealed, key, context_one)),
+                    CryptoErrorTag::AuthenticationFailed
+                );
+            }
+            let key = created(mesh_storage_key_ephemeral());
+            let map = resource(ResourceKind::SecretMap, &[0, 1, 0, 0]);
+            let map_context = mesh_bytes(&context(12));
+            let sealed = created(mesh_secret_map_seal_for_storage(map, key, map_context));
+            let opened = created(mesh_secret_map_unseal_from_storage(
+                sealed,
+                key,
+                map_context,
+            ));
+            assert_eq!(revealed(opened, ResourceKind::SecretMap), [0, 1, 0, 0]);
+
+            let short = mesh_bytes(&context(1)[..10]);
+            let secret = resource(ResourceKind::SecretBytes, &[1; PLAINTEXT_BYTES]);
+            assert_eq!(
+                refused(mesh_secret_seal_for_storage(secret, key, short)),
+                CryptoErrorTag::InvalidLength
+            );
+            assert_eq!(
+                refused(mesh_storage_key_seal_bytes(mesh_bytes(b"x"), key, short)),
+                CryptoErrorTag::InvalidLength
+            );
+            crate::secret::mesh_resource_destroy(key);
+            let destroyed = CryptoErrorTag::SecretDestroyed;
+            assert_eq!(
+                refused(mesh_secret_seal_for_storage(secret, key, context_one)),
+                destroyed
+            );
+            assert_eq!(
+                refused(mesh_storage_key_seal_bytes(blob, key, local)),
+                destroyed
+            );
+            assert_eq!(
+                refused(mesh_secret_unseal_from_storage(blob, key, context_one)),
+                destroyed
+            );
+            assert_eq!(
+                refused(mesh_storage_key_unseal_bytes(blob, key, local)),
+                destroyed
+            );
+        });
+    }
 }
