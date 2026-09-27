@@ -22,7 +22,7 @@
 //! - `mesh_repo_delete`: DELETE with RETURNING *, accepts id
 //! - `mesh_repo_transaction`: Wraps callback in checkout/begin/commit-or-rollback/checkin
 
-use super::quote_name;
+use super::{quote_ident, quote_name};
 use crate::collections::list::{
     mesh_list_append, mesh_list_from_array, mesh_list_get, mesh_list_length, mesh_list_new,
 };
@@ -357,14 +357,12 @@ pub extern "C" fn mesh_repo_get(pool: u64, table: *mut u8, id: *mut u8) -> *mut 
             Err(error) => return error,
         };
         let sql = format!(
-            "SELECT * FROM {} WHERE {} = $1 LIMIT 1",
+            "SELECT * FROM {}{} LIMIT 1",
             quote_name(table_str),
-            quote_name(&key)
+            by_key(&key, 1)
         );
         let params = mesh_list_append(mesh_list_new(), id as u64);
         let result = mesh_pool_query(pool, mesh_str(&sql), params);
-
-        // Check if query succeeded
         first_row(result, "not found")
     }
 }
@@ -689,29 +687,52 @@ pub extern "C" fn mesh_repo_update(
     fields: *mut u8,
 ) -> *mut u8 {
     unsafe {
-        let table_str = text_of(table);
-        let (columns, mut values) = map_to_columns_and_values(fields);
-
+        let (columns, values) = map_to_columns_and_values(fields);
         if columns.is_empty() {
             return err_result("update: no fields provided");
         }
-
-        // Build UPDATE SQL: SET columns, WHERE <primary key> =, RETURNING *
-        let wheres = match primary_key(pool, table_str) {
-            Ok(key) => vec![format!("{key} =")],
-            Err(error) => return error,
-        };
-        let returning = vec!["*".to_string()];
-        let sql = crate::db::orm::build_update_sql_pure(table_str, &columns, &wheres, &returning);
-
-        // Params: SET values first, then id value for WHERE
-        let id_str = text_of(id);
-        values.push(id_str.to_string());
-
-        let result = run_query(pool, &sql, &values);
-
+        let result = update_by_key(pool, text_of(table), id, &columns, values);
         first_row(result, "update: no row returned (id not found)")
     }
+}
+
+/// `UPDATE "table" SET "c1" = $1, ...`: `columns` set to the first
+/// parameters, the WHERE to follow.
+fn update_set_sql(table: &str, columns: &[String]) -> String {
+    let set: Vec<String> = columns
+        .iter()
+        .enumerate()
+        .map(|(i, column)| format!("{} = ${}", quote_name(column), i + 1))
+        .collect();
+    format!("UPDATE {} SET {}", quote_name(table), set.join(", "))
+}
+
+/// ` WHERE "<primary key>" = $n`: the primary key column is one name,
+/// whatever it holds (a dot is no schema, a space no operator).
+fn by_key(key: &str, n: usize) -> String {
+    format!(" WHERE {} = ${n}", quote_ident(key))
+}
+
+/// `columns` set to `values` in the row of `table` whose primary key is
+/// `id`, RETURNING it: the query's result, or the primary key lookup's.
+unsafe fn update_by_key(
+    pool: u64,
+    table: &str,
+    id: *mut u8,
+    columns: &[String],
+    mut values: Vec<String>,
+) -> *mut u8 {
+    let key = match primary_key(pool, table) {
+        Ok(key) => key,
+        Err(error) => return error,
+    };
+    let sql = format!(
+        "{}{} RETURNING *",
+        update_set_sql(table, columns),
+        by_key(&key, columns.len() + 1)
+    );
+    values.push(text_of(id).to_string());
+    run_query(pool, &sql, &values)
 }
 
 /// Delete a row by primary key and return the deleted record.
@@ -724,15 +745,15 @@ pub extern "C" fn mesh_repo_update(
 pub extern "C" fn mesh_repo_delete(pool: u64, table: *mut u8, id: *mut u8) -> *mut u8 {
     unsafe {
         let table_str = text_of(table);
-
-        // Build DELETE SQL: WHERE <primary key> =, RETURNING *
-        let wheres = match primary_key(pool, table_str) {
-            Ok(key) => vec![format!("{key} =")],
+        let key = match primary_key(pool, table_str) {
+            Ok(key) => key,
             Err(error) => return error,
         };
-        let returning = vec!["*".to_string()];
-        let sql = crate::db::orm::build_delete_sql_pure(table_str, &wheres, &returning);
-
+        let sql = format!(
+            "DELETE FROM {}{} RETURNING *",
+            quote_name(table_str),
+            by_key(&key, 1)
+        );
         let params = mesh_list_append(mesh_list_new(), id as u64);
         let result = mesh_pool_query(pool, mesh_str(&sql), params);
 
@@ -851,27 +872,14 @@ pub extern "C" fn mesh_repo_update_changeset(
 
         // 2. Extract changes map
         let changes = cs_get(changeset, SLOT_CHANGES);
-        let (columns, mut values) = map_to_columns_and_values(changes);
+        let (columns, values) = map_to_columns_and_values(changes);
 
         if columns.is_empty() {
             return alloc_result(1, changeset) as *mut u8;
         }
 
-        // 3. Build UPDATE SQL with RETURNING *
-        let table_str = text_of(table);
-        let wheres = match primary_key(pool, table_str) {
-            Ok(key) => vec![format!("{key} =")],
-            Err(error) => return changeset_write_result(error, changeset, "not found"),
-        };
-        let returning = vec!["*".to_string()];
-        let sql = crate::db::orm::build_update_sql_pure(table_str, &columns, &wheres, &returning);
-
-        // Params: SET values first, then id value for WHERE
-        let id_str = text_of(id);
-        values.push(id_str.to_string());
-
-        let result = run_query(pool, &sql, &values);
-
+        // 3. UPDATE ... RETURNING *, by primary key
+        let result = update_by_key(pool, text_of(table), id, &columns, values);
         changeset_write_result(result, changeset, "not found")
     }
 }
@@ -1392,14 +1400,7 @@ pub extern "C" fn mesh_repo_update_where(
             return err_result("update_where: no WHERE conditions");
         }
 
-        let mut sql = format!("UPDATE {} SET ", quote_name(table_str));
-        let set_parts: Vec<String> = columns
-            .iter()
-            .enumerate()
-            .map(|(i, c)| format!("{} = ${}", quote_name(c), i + 1))
-            .collect();
-        sql.push_str(&set_parts.join(", "));
-
+        let mut sql = update_set_sql(table_str, &columns);
         let start_idx = columns.len() + 1;
         let (conditions, where_param_values, _next_idx) = where_sql(&query, start_idx);
         sql.push_str(&format!(" WHERE {} RETURNING *", conditions));
@@ -3208,6 +3209,44 @@ mod tests {
                     .to_string()
             })
             .collect()
+    }
+
+    /// `column` of a row.
+    fn field(row: *mut u8, column: &str) -> String {
+        unsafe { text_of(mesh_map_get(row, mesh_str(column) as u64) as *mut u8) }.to_string()
+    }
+
+    /// A primary key column is one name, whatever it holds: `Repo.get` read
+    /// a dot in it as a schema qualifier, and `update` and `delete` took
+    /// what followed a space for an operator.
+    #[test]
+    #[ignore = "requires MESH_TEST_DATABASE_URL (the coverage run starts a database)"]
+    fn a_primary_key_with_a_space_or_dot_in_its_name_finds_its_row() {
+        let pool = test_pool(
+            "mesh_repo_unit_keys",
+            &[
+                "CREATE TABLE spaced (\"row id\" TEXT PRIMARY KEY, note TEXT)",
+                "CREATE TABLE dotted (\"row.id\" TEXT PRIMARY KEY, note TEXT)",
+                "INSERT INTO spaced VALUES ('a', 'x')",
+                "INSERT INTO dotted VALUES ('a', 'x')",
+            ],
+        );
+        for table in ["spaced", "dotted"] {
+            let table = mesh_str(table) as *mut u8;
+            let id = mesh_str("a") as *mut u8;
+            assert_eq!(field(ok(mesh_repo_get(pool, table, id)), "note"), "x");
+            let fields = mesh_map_put(
+                crate::collections::map::mesh_map_new_typed(1),
+                mesh_str("note") as u64,
+                mesh_str("y") as u64,
+            );
+            assert_eq!(
+                field(ok(mesh_repo_update(pool, table, id, fields)), "note"),
+                "y"
+            );
+            assert_eq!(field(ok(mesh_repo_delete(pool, table, id)), "note"), "y");
+        }
+        crate::db::pool::mesh_pool_close(pool);
     }
 
     /// A NULL foreign key (read as "") matches no row: it was sent among
