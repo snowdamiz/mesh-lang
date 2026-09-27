@@ -92,9 +92,13 @@ impl Operator {
 #[test]
 fn a_node_serves_consensus_operator_controls_and_its_controller() {
     let directory = tempfile::tempdir().expect("tempdir");
-    // No durable continuity store here: settle that before any embedded
-    // config could ask for a default one in the working directory.
-    assert!(configured_continuity_store().is_none());
+    // The node keeps its continuity in a store of this test's: settled
+    // before any embedded config could ask for a default one.
+    std::env::set_var("MESH_CONTINUITY_DB", directory.path().join("continuity.db"));
+    assert!(configured_continuity_store().is_some());
+    // Until an operator sets one, the desired capacity is the deployment's.
+    std::env::set_var("MESH_DESIRED_CAPACITY", "4");
+    mesh_rt::actor::mesh_rt_init_actor(2);
     std::env::set_var("MESH_OPERATOR_KEY", OPERATOR_KEY);
     let audit_log = directory.path().join("audit").join("operator.log");
     std::env::set_var("MESH_OPERATOR_AUDIT_LOG", &audit_log);
@@ -169,6 +173,11 @@ fn a_node_serves_consensus_operator_controls_and_its_controller() {
         Err("consensus_commit_timeout".to_string())
     );
 
+    let before = mesh_rt::operator_runtime_snapshot().expect("local runtime snapshot");
+    assert_eq!(before.desired_capacity, 4);
+    assert_eq!(before.scheduler_min_workers, 2);
+    assert!(before.local_continuity_store.is_some());
+
     // Operator controls commit through the consensus and apply here.
     let mut operator = Operator {
         target: name.clone(),
@@ -203,6 +212,14 @@ fn a_node_serves_consensus_operator_controls_and_its_controller() {
         })
         .drain_intents
         .contains(&name));
+    let draining = mesh_rt::operator_runtime_snapshot().expect("draining snapshot");
+    let local = draining
+        .nodes
+        .iter()
+        .find(|node| node.node_id == name)
+        .expect("local node reported");
+    assert_eq!(local.state, "draining");
+    assert!(!local.routing_eligible);
     assert!(operator
         .control(OperatorControlAction::CancelDrain {
             node_id: name.clone()
