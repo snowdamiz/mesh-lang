@@ -12,8 +12,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use mesh_rt::{
-    configured_continuity_store, continuity_registry, mesh_continuity_submit, mesh_node_connect,
-    mesh_node_start, mesh_string_new,
+    configured_continuity_store, continuity_registry, mesh_continuity_submit,
+    mesh_continuity_submit_with_durability, mesh_node_connect, mesh_node_start, mesh_string_new,
+    ContinuityStore, ReplicaStatus,
 };
 
 const COOKIE: &str = "continuity-sync-cookie";
@@ -150,6 +151,26 @@ fn a_joining_node_receives_the_continuity_records_and_store() {
     // control lane to their owner, on the continuity lane otherwise.
     submit("owned-by-joiner", &source, &joiner);
     submit("entered-at-joiner", &joiner, &source);
+    // A record that needs a replica is admitted once the joining node has
+    // prepared, and durably kept, its copy.
+    let text = |value: &str| mesh_string_new(value.as_ptr(), value.len() as u64) as *const _;
+    let replicated = mesh_continuity_submit_with_durability(
+        text("replicated-by-joiner"),
+        text("hash"),
+        text(&source),
+        text(&source),
+        text(&joiner),
+        1,
+        0,
+        0,
+    );
+    assert_eq!(unsafe { (*replicated).tag }, 0);
+    assert_eq!(
+        continuity_registry()
+            .record("replicated-by-joiner")
+            .map(|record| record.replica_status),
+        Some(ReplicaStatus::Mirrored)
+    );
     assert!(child.wait().unwrap().success());
 }
 
@@ -178,5 +199,11 @@ fn a_joining_node_catches_up() {
         ["owned-by-joiner", "entered-at-joiner"]
             .iter()
             .all(|key| continuity_registry().record(key).is_some())
+            // A copy this node prepared is admitted once the source has its
+            // ack, and the source then sends the mirrored record.
+            && continuity_registry()
+                .record("replicated-by-joiner")
+                .is_some_and(|record| record.replica_status == ReplicaStatus::Mirrored)
     });
+    assert!(store.get("replicated-by-joiner").unwrap().is_some());
 }
