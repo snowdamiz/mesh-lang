@@ -488,15 +488,15 @@ fn write_frame_with_mask<W: Write>(
     writer.flush().map_err(|e| format!("flush frame: {}", e))
 }
 
-pub(crate) fn encode_frame(
-    opcode: WsOpcode,
-    payload: &[u8],
-    fin: bool,
-    mask_key: Option<[u8; 4]>,
-) -> Result<Vec<u8>, String> {
-    let mut encoded = Vec::with_capacity(payload.len().saturating_add(14));
-    write_frame_with_mask(&mut encoded, opcode, payload, fin, mask_key)?;
-    Ok(encoded)
+/// A final frame of `payload`, masked with `mask_key` when given. The
+/// reactor encodes control frames only of payloads a decoded frame or
+/// `build_close_payload` bounds to 125 bytes, and writing to memory cannot
+/// fail, so encoding does not.
+pub(crate) fn encode_frame(opcode: WsOpcode, payload: &[u8], mask_key: Option<[u8; 4]>) -> Vec<u8> {
+    let mut encoded = Vec::with_capacity(payload.len() + 14);
+    write_frame_with_mask(&mut encoded, opcode, payload, true, mask_key)
+        .expect("a final frame of a bounded control payload encodes");
+    encoded
 }
 
 #[cfg(test)]

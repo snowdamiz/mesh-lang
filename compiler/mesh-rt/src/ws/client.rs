@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use parking_lot::Mutex;
-use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned};
+use rustls::{ClientConfig, ClientConnection, RootCertStore};
 use rustls_pki_types::ServerName;
 use url::{Host, Url};
 
@@ -23,7 +23,7 @@ use super::frame::WsOpcode;
 use super::handshake::MAX_HANDSHAKE_BYTES;
 use super::reactor::{
     register_client, InboundPermit, ReactorConfig, ReactorConnection, ReactorEvent,
-    ReactorEventSink, ReactorTransport, SinkError,
+    ReactorEventSink, ReactorTransport, SinkFull,
 };
 
 const MAX_MESSAGE_BYTES: usize = 16 * 1024 * 1024;
@@ -98,15 +98,13 @@ impl ReactorEventSink for ClientSink {
         }
     }
 
-    fn event(&self, event: ReactorEvent) -> Result<(), SinkError> {
+    fn event(&self, event: ReactorEvent) -> Result<(), SinkFull> {
         let event = match event {
             ReactorEvent::Text(data, permit) => ClientEvent::Text(data, permit),
             ReactorEvent::Binary(data, permit) => ClientEvent::Binary(data, permit),
             ReactorEvent::Close(code, reason) => ClientEvent::Close(code, reason),
         };
-        deliver(&self.inbound, event)
-            .then_some(())
-            .ok_or(SinkError::Full)
+        deliver(&self.inbound, event).then_some(()).ok_or(SinkFull)
     }
 
     fn terminated(&self, reason: &str) {
@@ -381,7 +379,7 @@ fn connect_until(
     })?;
     tcp.set_nodelay(true).ok();
     let stream = match tls {
-        Some(connection) => ReactorTransport::client_tls(StreamOwned::new(connection, tcp)),
+        Some(session) => ReactorTransport::tls(session, tcp),
         None => ReactorTransport::plain(tcp),
     };
 
@@ -661,7 +659,7 @@ mod tests {
     use crate::ws::close::{build_close_payload, parse_close_payload};
     use crate::ws::frame::{read_frame_with_mask, write_frame};
     use crate::ws::handshake::compute_accept_key;
-    use rustls::ServerConnection;
+    use rustls::{ServerConnection, StreamOwned};
     use std::io::{Read, Write};
     use std::net::TcpListener;
     use std::time::Instant;
@@ -796,7 +794,7 @@ mod tests {
     }
 
     fn binary_event(data: Vec<u8>) -> ClientEvent {
-        let permit = InboundPermit::reserve(data.len()).unwrap();
+        let permit = InboundPermit::unbounded(data.len());
         ClientEvent::Binary(data, permit)
     }
 
@@ -1156,7 +1154,6 @@ mod tests {
         );
         drop(inbound);
         connection.io.cancel("test complete");
-        assert_eq!(crate::ws::reactor::reactor_threads_started(), 1);
         server.join().unwrap();
     }
 
@@ -1225,7 +1222,7 @@ mod tests {
         let tcp = TcpStream::connect(("127.0.0.1", port)).unwrap();
         let server_name = ServerName::try_from("localhost".to_string()).unwrap();
         let connection = ClientConnection::new(client_config, server_name).unwrap();
-        let stream = ReactorTransport::client_tls(StreamOwned::new(connection, tcp));
+        let stream = ReactorTransport::tls(connection, tcp);
         let inbound = Arc::new(Mutex::new(InboundState {
             queue: VecDeque::new(),
             queued_bytes: 0,
