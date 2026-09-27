@@ -935,7 +935,7 @@ Both duration conversions detect negative inputs and integer overflow. Their nan
 | Function | Returns | Description |
 |----------|---------|-------------|
 | `Random.seed(seed)` | `Int` | Create a deterministic state |
-| `Random.next_int(state, min, max)` | `(Int, Int)` | Return `(next_state, value)` over the inclusive range |
+| `Random.next_int(state, min, max)` | `(Int, Int)` | Return `(next_state, value)` over the inclusive range, which may be all of `Int`; panics when `min > max` |
 | `Random.next_unit_ppm(state)` | `(Int, Int)` | Return `(next_state, value)` from `0` through `999_999` |
 
 This generator is not suitable for secrets. Use `Crypto.uuid4` for cryptographically random identifiers.

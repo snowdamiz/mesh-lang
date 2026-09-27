@@ -575,7 +575,7 @@ end
 | Function | Returns | Description |
 |----------|---------|-------------|
 | `Random.seed(seed)` | `Int` | Normalize a deterministic generator state |
-| `Random.next_int(state, min, max)` | `(Int, Int)` | Return `(next_state, value)` with `min <= value <= max` |
+| `Random.next_int(state, min, max)` | `(Int, Int)` | Return `(next_state, value)` with `min <= value <= max`; panics when `min > max` |
 | `Random.next_unit_ppm(state)` | `(Int, Int)` | Return `(next_state, value)` where `0 <= value < 1_000_000` |
 
 ## Next Steps
