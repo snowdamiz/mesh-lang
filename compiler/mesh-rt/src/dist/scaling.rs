@@ -1164,53 +1164,35 @@ impl DockerCapacityDriver {
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|error| format!("docker_driver_command_failed:{error}"))?;
-        let mut stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| "docker_driver_stdout_unavailable".to_string())?;
-        let mut stderr = child
-            .stderr
-            .take()
-            .ok_or_else(|| "docker_driver_stderr_unavailable".to_string())?;
-        let stdout_reader = std::thread::spawn(move || {
-            let mut bytes = Vec::new();
-            let _ = std::io::Read::read_to_end(&mut stdout, &mut bytes);
-            bytes
-        });
-        let stderr_reader = std::thread::spawn(move || {
-            let mut bytes = Vec::new();
-            let _ = std::io::Read::read_to_end(&mut stderr, &mut bytes);
-            bytes
-        });
+        // Both are piped above; the readers only collect bytes.
+        let read_all = |mut stream: Box<dyn std::io::Read + Send>| {
+            std::thread::spawn(move || {
+                let mut bytes = Vec::new();
+                let _ = stream.read_to_end(&mut bytes);
+                bytes
+            })
+        };
+        let stdout_reader = read_all(Box::new(child.stdout.take().expect("piped stdout")));
+        let stderr_reader = read_all(Box::new(child.stderr.take().expect("piped stderr")));
         let deadline = Instant::now() + self.config.operation_timeout;
         let status = loop {
-            match child.try_wait() {
+            let failure = match child.try_wait() {
                 Ok(Some(status)) => break status,
                 Ok(None) if Instant::now() < deadline => {
                     std::thread::sleep(Duration::from_millis(10));
+                    continue;
                 }
-                Ok(None) => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    let _ = stdout_reader.join();
-                    let _ = stderr_reader.join();
-                    return Err("docker_driver_api_timeout".to_string());
-                }
-                Err(error) => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    let _ = stdout_reader.join();
-                    let _ = stderr_reader.join();
-                    return Err(format!("docker_driver_wait_failed:{error}"));
-                }
-            }
+                Ok(None) => "docker_driver_api_timeout".to_string(),
+                Err(error) => format!("docker_driver_wait_failed:{error}"),
+            };
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = stdout_reader.join();
+            let _ = stderr_reader.join();
+            return Err(failure);
         };
-        let stdout = stdout_reader
-            .join()
-            .map_err(|_| "docker_driver_stdout_reader_panicked".to_string())?;
-        let stderr = stderr_reader
-            .join()
-            .map_err(|_| "docker_driver_stderr_reader_panicked".to_string())?;
+        let stdout = stdout_reader.join().expect("stdout reader does not panic");
+        let stderr = stderr_reader.join().expect("stderr reader does not panic");
         if !status.success() {
             let stderr = String::from_utf8_lossy(&stderr);
             return Err(format!("docker_driver_api_error:{}", redact(&stderr)));
@@ -1223,6 +1205,14 @@ impl DockerCapacityDriver {
     fn environment_file(&self) -> Result<Option<DockerEnvironmentFile>, String> {
         if self.config.environment.is_empty() {
             return Ok(None);
+        }
+        let mut contents = String::new();
+        for entry in &self.config.environment {
+            if entry.contains(['\n', '\r']) || !entry.contains('=') {
+                return Err("docker_driver_environment_invalid".to_string());
+            }
+            contents.push_str(entry);
+            contents.push('\n');
         }
         let (host_directory, driver_directory) = self
             .config
@@ -1243,73 +1233,41 @@ impl DockerCapacityDriver {
                     format!("docker_driver_env_directory_permissions_failed:{error}")
                 })?;
         }
-        for _ in 0..16 {
-            let file_name = format!("env-{:032x}", rand::random::<u128>());
-            let host_path = host_directory.join(&file_name);
-            let driver_path = driver_directory.join(file_name);
-            let mut options = OpenOptions::new();
-            options.write(true).create_new(true);
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::OpenOptionsExt;
-                options.mode(0o600);
-            }
-            match options.open(&host_path) {
-                Ok(mut file) => {
-                    for entry in &self.config.environment {
-                        if entry.contains('\n') || entry.contains('\r') || !entry.contains('=') {
-                            let _ = std::fs::remove_file(&host_path);
-                            return Err("docker_driver_environment_invalid".to_string());
-                        }
-                        writeln!(file, "{entry}").map_err(|error| {
-                            format!("docker_driver_env_file_write_failed:{error}")
-                        })?;
-                    }
-                    file.sync_all()
-                        .map_err(|error| format!("docker_driver_env_file_sync_failed:{error}"))?;
-                    return Ok(Some(DockerEnvironmentFile {
-                        host_path,
-                        driver_path,
-                    }));
-                }
-                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
-                Err(error) => {
-                    return Err(format!("docker_driver_env_file_create_failed:{error}"));
-                }
-            }
+        // A fresh 128-bit name, created exclusively: no other file is it.
+        let file_name = format!("env-{:032x}", rand::random::<u128>());
+        let host_path = host_directory.join(&file_name);
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
         }
-        Err("docker_driver_env_file_name_exhausted".to_string())
+        options
+            .open(&host_path)
+            .and_then(|mut file| {
+                file.write_all(contents.as_bytes())?;
+                file.sync_all()
+            })
+            .map_err(|error| format!("docker_driver_env_file_write_failed:{error}"))?;
+        Ok(Some(DockerEnvironmentFile {
+            host_path,
+            driver_path: driver_directory.join(file_name),
+        }))
     }
 
-    fn matching_container(
+    /// The one container `operation_id` created inside `scope`, a label
+    /// filter; two are a conflict the driver refuses to resolve.
+    fn operation_container(
         &self,
-        cluster_id: &str,
+        scope: String,
         operation_id: &str,
     ) -> Result<Option<String>, String> {
         let output = self.docker(&[
             "ps".to_string(),
             "-aq".to_string(),
             "--filter".to_string(),
-            format!("label=mesh.cluster={cluster_id}"),
-            "--filter".to_string(),
-            format!("label=mesh.pool={}", self.config.pool),
-            "--filter".to_string(),
-            format!("label=mesh.operation={operation_id}"),
-        ])?;
-        let mut ids = output.lines().filter(|line| !line.trim().is_empty());
-        let first = ids.next().map(str::to_string);
-        if ids.next().is_some() {
-            return Err("docker_driver_duplicate_operation_containers".to_string());
-        }
-        Ok(first)
-    }
-
-    fn matching_operation_container(&self, operation_id: &str) -> Result<Option<String>, String> {
-        let output = self.docker(&[
-            "ps".to_string(),
-            "-aq".to_string(),
-            "--filter".to_string(),
-            "label=mesh.managed=true".to_string(),
+            scope,
             "--filter".to_string(),
             format!("label=mesh.pool={}", self.config.pool),
             "--filter".to_string(),
@@ -1359,7 +1317,7 @@ impl DockerCapacityDriver {
             ("running", _) => CapacityNodeLifecycle::Ready,
             ("created" | "restarting" | "paused", _) => CapacityNodeLifecycle::Provisioning,
             ("removing", _) => CapacityNodeLifecycle::Terminating,
-            ("exited" | "dead", _) => CapacityNodeLifecycle::Failed,
+            // exited, dead, and anything newer than this driver.
             _ => CapacityNodeLifecycle::Failed,
         };
         Ok(DockerContainerObservation {
@@ -1448,9 +1406,10 @@ impl CapacityDriver for DockerCapacityDriver {
         if let Some(existing) = self.operations.lock().unwrap().get(&operation.operation_id) {
             return Ok(existing.clone());
         }
-        if let Some(container) =
-            self.matching_container(&operation.cluster_id, &operation.operation_id)?
-        {
+        if let Some(container) = self.operation_container(
+            format!("label=mesh.cluster={}", operation.cluster_id),
+            &operation.operation_id,
+        )? {
             let observed = self.inspect_container(&container)?;
             self.validate_adoption(&observed, operation)?;
             let mut adopted = operation.clone();
@@ -1573,7 +1532,9 @@ impl CapacityDriver for DockerCapacityDriver {
         if let Some(operation) = self.operations.lock().unwrap().get(operation_id).cloned() {
             return Ok(Some(operation));
         }
-        let Some(node_id) = self.matching_operation_container(operation_id)? else {
+        let Some(node_id) =
+            self.operation_container("label=mesh.managed=true".to_string(), operation_id)?
+        else {
             return Ok(None);
         };
         let observed = self.inspect_container(&node_id)?;
