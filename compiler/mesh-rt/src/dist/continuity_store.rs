@@ -268,10 +268,11 @@ impl Statement {
         check_sqlite(self.database, result)
     }
 
-    fn bind_i64(&mut self, index: c_int, value: i64) -> Result<(), String> {
-        check_sqlite(self.database, unsafe {
-            sqlite3_bind_int64(self.raw, index, value)
-        })
+    /// Binds `value` to parameter `index`, one the statement has: SQLite
+    /// refuses an integer only for a parameter it lacks.
+    fn bind_i64(&mut self, index: c_int, value: i64) {
+        let result = unsafe { sqlite3_bind_int64(self.raw, index, value) };
+        assert_eq!(result, SQLITE_OK, "parameter {index} is the statement's");
     }
 
     fn bind_blob(&mut self, index: c_int, value: &[u8]) -> Result<(), String> {
@@ -288,11 +289,16 @@ impl Statement {
         })
     }
 
+    /// Binds `value`, or NULL, to parameter `index`, one the statement has.
     fn bind_optional_i64(&mut self, index: c_int, value: Option<u64>) -> Result<(), String> {
         match value {
             Some(value) => self.bind_i64(index, sqlite_integer(value)?),
-            None => check_sqlite(self.database, unsafe { sqlite3_bind_null(self.raw, index) }),
+            None => {
+                let result = unsafe { sqlite3_bind_null(self.raw, index) };
+                assert_eq!(result, SQLITE_OK, "parameter {index} is the statement's");
+            }
         }
+        Ok(())
     }
 
     fn step(&mut self) -> Result<c_int, String> {
@@ -545,19 +551,19 @@ impl SqliteContinuityStore {
         statement.bind_text(1, &record.operation_key)?;
         statement.bind_text(2, &record.request_hash)?;
         statement.bind_text(3, &record.owner_node)?;
-        statement.bind_i64(4, sqlite_integer(record.ownership_generation)?)?;
+        statement.bind_i64(4, sqlite_integer(record.ownership_generation)?);
         statement.bind_text(5, &prepared.attempts)?;
         statement.bind_text(6, record.phase.as_str())?;
         statement.bind_text(7, &prepared.replicas)?;
-        statement.bind_i64(8, sqlite_integer(record.created_at_millis)?)?;
-        statement.bind_i64(9, sqlite_integer(record.updated_at_millis)?)?;
+        statement.bind_i64(8, sqlite_integer(record.created_at_millis)?);
+        statement.bind_i64(9, sqlite_integer(record.updated_at_millis)?);
         statement.bind_optional_i64(10, record.terminal_at_millis)?;
         statement.bind_optional_i64(11, record.expires_at_millis)?;
         statement.bind_text(12, &prepared.response_metadata)?;
         statement.bind_blob(13, &record.response_body)?;
-        statement.bind_i64(14, sqlite_integer(record.control_term)?)?;
-        statement.bind_i64(15, i64::from(record.schema_version))?;
-        statement.bind_i64(16, sqlite_integer(record.version)?)?;
+        statement.bind_i64(14, sqlite_integer(record.control_term)?);
+        statement.bind_i64(15, i64::from(record.schema_version));
+        statement.bind_i64(16, sqlite_integer(record.version)?);
         statement.bind_blob(17, &record.request_body)?;
         statement.bind_blob(18, &record.runtime_record)?;
         statement.step()?;
@@ -573,7 +579,7 @@ impl SqliteContinuityStore {
              VALUES (?1, ?2, ?3, ?4)",
         )?;
         log.bind_text(1, &record.operation_key)?;
-        log.bind_i64(2, sqlite_integer(record.version)?)?;
+        log.bind_i64(2, sqlite_integer(record.version)?);
         log.bind_blob(3, &prepared.serialized)?;
         log.bind_blob(4, &prepared.checksum)?;
         log.step()?;
@@ -863,7 +869,7 @@ impl SqliteContinuityStore {
         statement.bind_text(1, operation_key)?;
         statement.bind_text(2, &metadata)?;
         statement.bind_blob(3, response)?;
-        statement.bind_i64(4, sqlite_integer(SystemTimeMillis::now())?)?;
+        statement.bind_i64(4, sqlite_integer(SystemTimeMillis::now())?);
         statement.step()?;
         if unsafe { sqlite3_changes(connection.raw) } == 0 {
             return Err("continuity_response_record_missing".to_string());
@@ -978,8 +984,8 @@ impl ContinuityStore for SqliteContinuityStore {
                    WHERE terminal_at_millis IS NOT NULL AND expires_at_millis <= ?1
                    ORDER BY expires_at_millis LIMIT ?2",
             )?;
-            select.bind_i64(1, sqlite_integer(now_millis)?)?;
-            select.bind_i64(2, i64::from(self.limits.compaction_batch_size))?;
+            select.bind_i64(1, sqlite_integer(now_millis)?);
+            select.bind_i64(2, i64::from(self.limits.compaction_batch_size));
             let mut expired = Vec::new();
             while select.step()? == SQLITE_ROW {
                 expired.push((select.text(0), unsigned_integer(select.integer(1))?));
@@ -996,28 +1002,28 @@ impl ContinuityStore for SqliteContinuityStore {
                        expires_at_millis=MAX(expires_at_millis, excluded.expires_at_millis)",
                 )?;
                 tombstone.bind_text(1, operation_key)?;
-                tombstone.bind_i64(2, sqlite_integer(*version)?)?;
-                tombstone.bind_i64(3, sqlite_integer(now_millis)?)?;
+                tombstone.bind_i64(2, sqlite_integer(*version)?);
+                tombstone.bind_i64(3, sqlite_integer(now_millis)?);
                 tombstone.bind_i64(
                     4,
                     sqlite_integer(
                         now_millis.saturating_add(self.limits.tombstone_retention_millis),
                     )?,
-                )?;
+                );
                 tombstone.step()?;
                 let mut delete = Self::prepare(
                     &connection,
                     "DELETE FROM continuity_records WHERE operation_key = ?1 AND version <= ?2",
                 )?;
                 delete.bind_text(1, operation_key)?;
-                delete.bind_i64(2, sqlite_integer(*version)?)?;
+                delete.bind_i64(2, sqlite_integer(*version)?);
                 delete.step()?;
             }
             let mut delete_tombstones = Self::prepare(
                 &connection,
                 "DELETE FROM continuity_tombstones WHERE expires_at_millis <= ?1",
             )?;
-            delete_tombstones.bind_i64(1, sqlite_integer(now_millis)?)?;
+            delete_tombstones.bind_i64(1, sqlite_integer(now_millis)?);
             delete_tombstones.step()?;
             let deleted = unsafe { sqlite3_changes(connection.raw) }.max(0) as u32;
             Ok(CompactionOutcome {
@@ -1130,8 +1136,8 @@ impl ContinuityStore for SqliteContinuityStore {
             "SELECT sequence, operation_key, version, record_json, checksum
                FROM continuity_log WHERE sequence > ?1 ORDER BY sequence LIMIT ?2",
         )?;
-        statement.bind_i64(1, sqlite_integer(high_water_mark)?)?;
-        statement.bind_i64(2, i64::from(limit))?;
+        statement.bind_i64(1, sqlite_integer(high_water_mark)?);
+        statement.bind_i64(2, i64::from(limit));
         let mut entries = Vec::new();
         while statement.step()? == SQLITE_ROW {
             let encoded = statement.blob(3);
@@ -1182,8 +1188,8 @@ impl ContinuityStore for SqliteContinuityStore {
                acknowledged_at_millis=excluded.acknowledged_at_millis",
         )?;
         statement.bind_text(1, replica_node)?;
-        statement.bind_i64(2, sqlite_integer(high_water_mark)?)?;
-        statement.bind_i64(3, sqlite_integer(SystemTimeMillis::now())?)?;
+        statement.bind_i64(2, sqlite_integer(high_water_mark)?);
+        statement.bind_i64(3, sqlite_integer(SystemTimeMillis::now())?);
         statement.step()?;
         Ok(())
     }
@@ -1202,8 +1208,8 @@ impl ContinuityStore for SqliteContinuityStore {
                     WHERE sequence <= ?1 ORDER BY sequence LIMIT ?2
                  )",
             )?;
-            delete.bind_i64(1, sqlite_integer(safe_point)?)?;
-            delete.bind_i64(2, i64::from(self.limits.compaction_batch_size))?;
+            delete.bind_i64(1, sqlite_integer(safe_point)?);
+            delete.bind_i64(2, i64::from(self.limits.compaction_batch_size));
             delete.step()?;
             Ok(unsafe { sqlite3_changes(connection.raw) }.max(0) as u64)
         })();
