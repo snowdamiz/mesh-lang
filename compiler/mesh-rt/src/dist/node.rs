@@ -5428,14 +5428,6 @@ fn encode_continuity_response_frame(
     operation_key: &str,
     response: &[u8],
 ) -> Result<Vec<u8>, String> {
-    let key_len: u32 = operation_key
-        .len()
-        .try_into()
-        .map_err(|_| "continuity_response_key_too_large".to_string())?;
-    let response_len: u32 = response
-        .len()
-        .try_into()
-        .map_err(|_| "continuity_response_payload_too_large".to_string())?;
     let frame_len = 1usize
         .saturating_add(4)
         .saturating_add(operation_key.len())
@@ -5446,9 +5438,10 @@ fn encode_continuity_response_frame(
     }
     let mut frame = Vec::with_capacity(frame_len);
     frame.push(DIST_CONTINUITY_RESPONSE);
-    frame.extend_from_slice(&key_len.to_le_bytes());
+    // Both lengths are within the frame's, so each fits a u32.
+    frame.extend_from_slice(&(operation_key.len() as u32).to_le_bytes());
     frame.extend_from_slice(operation_key.as_bytes());
-    frame.extend_from_slice(&response_len.to_le_bytes());
+    frame.extend_from_slice(&(response.len() as u32).to_le_bytes());
     frame.extend_from_slice(response);
     Ok(frame)
 }
