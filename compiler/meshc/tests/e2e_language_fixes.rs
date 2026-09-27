@@ -5629,3 +5629,28 @@ end
 "##;
     assert_eq!(run(source), "walked 100000\n");
 }
+
+/// A method called on what an interface call returns: `Add.add(v, v)` is a
+/// `V` as soon as its arguments say so.
+#[test]
+fn an_interface_call_result_takes_methods() {
+    let source = r##"
+struct V do
+  x :: Int
+end
+
+impl Add for V do
+  type Output = V
+  fn add(self, other :: V) -> V do
+    V { x: self.x + other.x }
+  end
+end
+
+fn main() do
+  let v = V { x: 2 }
+  let w = Add.add(v, v).add(v)
+  println("#{w.x}")
+end
+"##;
+    assert_eq!(run(source), "6\n");
+}

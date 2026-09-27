@@ -201,12 +201,11 @@ fn main() do
 end
 "#
         ),
+        // At the annotation, as for any other value of the wrong type: the
+        // call is the receiver's `Int` as soon as its argument says so.
         [
-            at(
-                "type mismatch: expected `String`, found `Int`",
-                "Container.first"
-            ),
-            at("type mismatch: expected `String`, found `Int`", "head"),
+            at("type mismatch: expected `String`, found `Int`", ":: String"),
+            at("type mismatch: expected `String`, found `Int`", ":: String"),
         ]
     );
 }

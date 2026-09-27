@@ -4596,20 +4596,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
     // An associated type reached through a method is the receiver's, known
     // wherever the receiver ended up concrete: as a call of a generic
     // function makes it, or as it was all along.
-    for (required, trait_name, assoc, receiver, span) in ctx.projection_requirements.clone() {
-        let receiver = ctx.resolve(receiver);
-        if receiver.has_type_vars() {
-            continue;
-        }
-        if let Some(assoc_ty) =
-            trait_registry.resolve_associated_type(&trait_name, &assoc, &receiver)
-        {
-            let origin = span.map_or(ConstraintOrigin::Builtin, |span| ConstraintOrigin::Expr {
-                span,
-            });
-            let _ = ctx.unify(required, assoc_ty, origin);
-        }
-    }
+    settle_projections(&mut ctx, &trait_registry, 0);
 
     // Resolve all types in the type table through the union-find.
     let resolved_types: FxHashMap<TextRange, Ty> = types
@@ -9679,7 +9666,55 @@ fn tuple_element_type(
 }
 
 /// Infer the type of a function call expression with where-clause enforcement.
+/// A call's type. What its callee left open about an associated type
+/// (`Add.add(v, v)` returns `Self.Output`) is settled as soon as the
+/// arguments fix the receiver, so a method called on the result
+/// (`Add.add(v, v).add(v)`) finds its type.
 fn infer_call(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    call: &CallExpr,
+    types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
+    trait_registry: &TraitRegistry,
+    fn_constraints: &FxHashMap<String, FnConstraints>,
+) -> Result<Ty, TypeError> {
+    let from = ctx.projection_requirements.len();
+    let ty = infer_call_unsettled(
+        ctx,
+        env,
+        call,
+        types,
+        type_registry,
+        trait_registry,
+        fn_constraints,
+    );
+    settle_projections(ctx, trait_registry, from);
+    ty
+}
+
+/// Unify each associated type required from index `from` on with the
+/// receiver's, where the receiver is now known.
+fn settle_projections(ctx: &mut InferCtx, trait_registry: &TraitRegistry, from: usize) {
+    for (required, trait_name, assoc, receiver, span) in
+        ctx.projection_requirements[from..].to_vec()
+    {
+        let receiver = ctx.resolve(receiver);
+        if receiver.has_type_vars() {
+            continue;
+        }
+        if let Some(assoc_ty) =
+            trait_registry.resolve_associated_type(&trait_name, &assoc, &receiver)
+        {
+            let origin = span.map_or(ConstraintOrigin::Builtin, |span| ConstraintOrigin::Expr {
+                span,
+            });
+            let _ = ctx.unify(required, assoc_ty, origin);
+        }
+    }
+}
+
+fn infer_call_unsettled(
     ctx: &mut InferCtx,
     env: &mut TypeEnv,
     call: &CallExpr,

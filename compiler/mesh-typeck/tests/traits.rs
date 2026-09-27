@@ -635,3 +635,16 @@ fn a_declared_type_named_like_an_iterator_handle_is_itself() {
     );
     assert_result_type(&result, Ty::fun(vec![], Ty::int()));
 }
+
+/// A call through an interface (`Add.add(v, v)`) returns the receiver's
+/// associated type as soon as its arguments fix the receiver, so a method
+/// called on the result finds its type. It was settled only after the
+/// whole program, and the method call failed with E0070.
+#[test]
+fn an_interface_call_result_takes_methods() {
+    let result = check_source(
+        "struct V do\n  x :: Int\nend\n\nimpl Add for V do\n  type Output = V\n  fn add(self, other :: V) -> V do\n    V { x: self.x + other.x }\n  end\nend\n\nfn main() do\n  let v = V { x: 2 }\n  Add.add(v, v).add(v).x\nend\n",
+    );
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+    assert_result_type(&result, Ty::fun(vec![], Ty::int()));
+}
