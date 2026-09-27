@@ -459,3 +459,48 @@ end
     );
     assert_eq!(received, (1, b"from spoke".to_vec()), "hub:\n{hub_stdout}");
 }
+
+/// A program that has not started a node: nameless and alone, it cannot
+/// connect; then a node name it cannot start with, and an address already
+/// taken, are refused, and a node starts once.
+const LONE: &str = r#"fn main() do
+  println("self=[#{Node.self()}]")
+  println("nodes=#{List.length(Node.list())}")
+  println("connect=#{Node.connect("SPOKE")}")
+  println("unnamed=#{Node.start("no-host", "COOKIE")}")
+  println("busy=#{Node.start("BUSY", "COOKIE")}")
+  println("started=#{Node.start("HUB", "COOKIE")}")
+  println("again=#{Node.start("HUB", "COOKIE")}")
+end
+"#;
+
+#[test]
+fn a_node_starts_once_and_only_from_a_name_it_can_use() {
+    artifacts::ensure_mesh_rt_staticlib();
+    let dir = tempfile::tempdir().unwrap();
+    let taken = TcpListener::bind("127.0.0.1:0").unwrap();
+    let busy = format!("busy@127.0.0.1:{}", taken.local_addr().unwrap().port());
+    let mut nodes = node_names();
+    nodes.push(("BUSY", busy));
+    let lone = build(dir.path(), "lone", LONE, &nodes);
+    let output = run_to_end(&lone).unwrap_or_else(|timed_out| panic!("lone {timed_out}"));
+    assert!(
+        output.status.success(),
+        "{}",
+        artifacts::command_output_text(&output)
+    );
+    assert_lines(
+        &String::from_utf8_lossy(&output.stdout),
+        &[
+            "self=[]",
+            "nodes=0",
+            "connect=-1",
+            "unnamed=-3",
+            "busy=-2",
+            "started=0",
+            "again=-1",
+        ],
+        "",
+    );
+    drop(taken);
+}
