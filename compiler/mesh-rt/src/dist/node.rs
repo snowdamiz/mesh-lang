@@ -3464,11 +3464,8 @@ fn dispatch_recovered_http_record(
                         record.request_payload(),
                     )
                 } else {
-                    let state = node_state()
-                        .ok_or_else(|| "continuity_recovery_node_not_started".to_string())?;
                     execute_clustered_http_route_remote(
                         &record.owner_node,
-                        &state.cookie,
                         record.declared_handler_runtime_name(),
                         &record.request_key,
                         &record.attempt_id,
@@ -5952,13 +5949,11 @@ fn execute_clustered_http_route_locally(
 
 fn execute_clustered_http_route_remote(
     target: &str,
-    cookie: &str,
     runtime_name: &str,
     request_key: &str,
     attempt_id: &str,
     request_payload: &[u8],
 ) -> Result<Vec<u8>, String> {
-    let _ = cookie;
     let state = node_state().ok_or_else(|| "clustered_http_route_node_not_started".to_string())?;
     let session = state
         .sessions
@@ -6210,16 +6205,9 @@ pub(crate) fn execute_clustered_http_route(
     }
 
     let dispatch = if prepared.placement.routed_remotely {
-        let state = node_state().ok_or_else(|| {
-            format!(
-                "clustered_http_route_owner_unavailable:{}",
-                prepared.decision.record.owner_node
-            )
-        })?;
         record_peer_original_attempt(&prepared.decision.record.owner_node, Instant::now());
         execute_clustered_http_route_remote(
             &prepared.decision.record.owner_node,
-            &state.cookie,
             runtime_name,
             &prepared.decision.record.request_key,
             &prepared.decision.record.attempt_id,
