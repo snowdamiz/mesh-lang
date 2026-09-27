@@ -13485,7 +13485,7 @@ mod tests {
         key: &str,
     ) -> Option<crate::dist::operator::OperatorDiagnosticEntry> {
         let fingerprint = crate::dist::continuity::request_key_fingerprint(key);
-        crate::dist::operator::operator_recent_diagnostics(None)
+        crate::dist::operator::diagnostics_buffer().snapshot(None)
             .entries
             .into_iter()
             .rev()
@@ -13860,7 +13860,7 @@ mod tests {
     fn await_recovery_failure(node: &str) -> String {
         let deadline = Instant::now() + Duration::from_secs(10);
         loop {
-            let failure = crate::dist::operator::operator_recent_diagnostics(None)
+            let failure = crate::dist::operator::diagnostics_buffer().snapshot(None)
                 .entries
                 .into_iter()
                 .rev()
