@@ -3,7 +3,7 @@ use std::env;
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
 use std::time::Duration;
 
-use super::node::{mesh_node_connect, node_state};
+use super::node::{mesh_node_connect, NodeState};
 
 const DEFAULT_DISCOVERY_RECONCILE_MS: u64 = 5_000;
 const DISCOVERY_PROVIDER: &str = "dns";
@@ -20,8 +20,12 @@ pub(crate) struct DiscoveryConfig {
 }
 
 impl DiscoveryConfig {
-    pub(crate) fn from_env(default_cluster_port: u16) -> Result<Option<Self>, String> {
-        let seed = match env::var(DISCOVERY_SEED_ENV) {
+    /// The discovery the settings `lookup` reads ask for, if any.
+    fn from_lookup(
+        default_cluster_port: u16,
+        lookup: impl Fn(&str) -> Result<String, env::VarError>,
+    ) -> Result<Option<Self>, String> {
+        let seed = match lookup(DISCOVERY_SEED_ENV) {
             Ok(value) => value,
             Err(env::VarError::NotPresent) => return Ok(None),
             Err(env::VarError::NotUnicode(_)) => {
@@ -31,9 +35,9 @@ impl DiscoveryConfig {
 
         Self::from_parts(
             Some(seed.as_str()),
-            env::var(DISCOVERY_CLUSTER_PORT_ENV).ok().as_deref(),
+            lookup(DISCOVERY_CLUSTER_PORT_ENV).ok().as_deref(),
             default_cluster_port,
-            env::var(DISCOVERY_RECONCILE_MS_ENV).ok().as_deref(),
+            lookup(DISCOVERY_RECONCILE_MS_ENV).ok().as_deref(),
         )
         .map(Some)
     }
@@ -98,12 +102,14 @@ pub(crate) struct FilteredCandidates {
     pub(crate) rejected: Vec<CandidateRejection>,
 }
 
-pub(crate) fn start_from_env() {
-    let Some(state) = node_state() else {
-        return;
-    };
+/// Starts the discovery the process environment asks for on the node
+/// `state`, which has just started.
+pub(crate) fn start_from_env(state: &'static NodeState) {
+    start_with(state, |name| env::var(name));
+}
 
-    let config = match DiscoveryConfig::from_env(state.port) {
+fn start_with(state: &'static NodeState, lookup: impl Fn(&str) -> Result<String, env::VarError>) {
+    let config = match DiscoveryConfig::from_lookup(state.port, lookup) {
         Ok(Some(config)) => config,
         Ok(None) => return,
         Err(err) => {
@@ -118,25 +124,21 @@ pub(crate) fn start_from_env() {
     let thread_name = format!("mesh-discovery-{}", sanitize_thread_name(&config.seed));
     std::thread::Builder::new()
         .name(thread_name)
-        .spawn(move || discovery_loop(config))
+        .spawn(move || discovery_loop(state, config))
         .expect("failed to spawn mesh discovery thread");
 }
 
-fn discovery_loop(config: DiscoveryConfig) {
+fn discovery_loop(state: &NodeState, config: DiscoveryConfig) {
     let mut last_error: Option<String> = None;
 
     // The node this runs for stays up as long as the process does.
     loop {
-        reconcile_once(&config, &mut last_error);
+        reconcile_once(state, &config, &mut last_error);
         std::thread::sleep(config.reconcile_interval);
     }
 }
 
-fn reconcile_once(config: &DiscoveryConfig, last_error: &mut Option<String>) {
-    let Some(state) = node_state() else {
-        return;
-    };
-
+fn reconcile_once(state: &NodeState, config: &DiscoveryConfig, last_error: &mut Option<String>) {
     let resolved = match resolve_dns_candidates(config) {
         Ok(candidates) => candidates,
         Err(err) => {
@@ -463,6 +465,71 @@ mod tests {
     }
 
     #[test]
+    fn discovery_config_reads_its_settings_by_name() {
+        assert_eq!(
+            DiscoveryConfig::from_lookup(4370, |name| match name {
+                DISCOVERY_SEED_ENV => Ok("cluster.internal".to_string()),
+                DISCOVERY_RECONCILE_MS_ENV => Ok(" 250 ".to_string()),
+                _ => Err(env::VarError::NotPresent),
+            }),
+            Ok(Some(DiscoveryConfig {
+                seed: "cluster.internal".to_string(),
+                cluster_port: 4370,
+                reconcile_interval: Duration::from_millis(250),
+            }))
+        );
+        assert_eq!(
+            DiscoveryConfig::from_lookup(4370, |_| Err(env::VarError::NotPresent)),
+            Ok(None)
+        );
+        assert_eq!(
+            DiscoveryConfig::from_lookup(4370, |_| Err(env::VarError::NotUnicode(
+                Default::default()
+            ))),
+            Err("MESH_DISCOVERY_SEED must be valid UTF-8".to_string())
+        );
+    }
+
+    /// Settings that cannot configure discovery leave it off, and a seed
+    /// that does not resolve is reported for the tick, not fatal.
+    #[test]
+    fn discovery_that_cannot_run_is_reported() {
+        let state = crate::dist::node::test_node();
+        start_with(state, |name| match name {
+            DISCOVERY_SEED_ENV => Ok("   ".to_string()),
+            _ => Err(env::VarError::NotPresent),
+        });
+        let config = DiscoveryConfig {
+            seed: String::new(),
+            cluster_port: 4370,
+            reconcile_interval: Duration::from_secs(1),
+        };
+        let mut last_error = None;
+        reconcile_once(state, &config, &mut last_error);
+        assert!(
+            last_error
+                .as_deref()
+                .is_some_and(|error| error.starts_with("seed= resolve_failed=")),
+            "{last_error:?}"
+        );
+    }
+
+    #[test]
+    fn discovery_node_names_need_a_host_and_nothing_after_brackets() {
+        assert_eq!(
+            split_node_name("node@[::1]x", false),
+            Err(
+                "invalid node name 'node@[::1]x': unexpected characters after bracketed host"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            split_node_name("node@:4370", false),
+            Err("invalid node name 'node@:4370': empty host part".to_string())
+        );
+    }
+
+    #[test]
     fn discovery_config_rejects_invalid_cluster_port() {
         let err =
             DiscoveryConfig::from_parts(Some("cluster.internal"), Some("not-a-port"), 9000, None)
@@ -523,6 +590,12 @@ mod tests {
             .rejected
             .iter()
             .any(|entry| entry.reason == CandidateRejectReason::AlreadyConnected));
+        let labels: Vec<_> = filtered
+            .rejected
+            .iter()
+            .map(|entry| entry.reason.label())
+            .collect();
+        assert_eq!(labels, ["self", "duplicate", "already_connected"]);
     }
 
     #[test]

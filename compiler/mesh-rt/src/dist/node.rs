@@ -6120,7 +6120,7 @@ fn start_named_node(name: &str, cookie: &str) -> i64 {
     };
     let state = NODE_STATE.get_or_init(|| node);
     std::thread::spawn(move || accept_loop(listener, state));
-    start_discovery_from_env();
+    start_discovery_from_env(state);
     0
 }
 
