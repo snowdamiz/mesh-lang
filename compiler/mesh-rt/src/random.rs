@@ -32,8 +32,7 @@ pub extern "C" fn mesh_random_seed(seed: i64) -> i64 {
     }
 }
 
-/// Raises a Mesh panic for a range with no values or more than a state can
-/// pick from, so it unwinds.
+/// Raises a Mesh panic for a range with no values, so it unwinds.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_random_next_int(state: i64, minimum: i64, maximum: i64) -> *mut u8 {
     if minimum > maximum {
@@ -41,12 +40,10 @@ pub extern "C-unwind" fn mesh_random_next_int(state: i64, minimum: i64, maximum:
             "Random.next_int: invalid range {minimum}..{maximum}"
         ));
     }
+    // At most 2^64 values: the whole Int range.
     let span = (i128::from(maximum) - i128::from(minimum) + 1) as u128;
-    if span > u128::from(u64::MAX) {
-        crate::panic::raise(format_args!("Random.next_int: range too wide"));
-    }
     let (next_state, random) = step(state as u64);
-    let value = i128::from(minimum) + i128::from(random % span as u64);
+    let value = i128::from(minimum) + (u128::from(random) % span) as i128;
     pair(next_state, value as i64)
 }
 
@@ -66,15 +63,29 @@ mod tests {
         assert_eq!(value % 100, 0);
     }
 
-    /// A range with no values, or more values than a state can pick from,
-    /// is the program's error: a Mesh panic, which ends the actor alone.
+    /// An empty range is the program's error: a Mesh panic, which ends the
+    /// actor alone.
     #[test]
-    fn an_empty_or_too_wide_range_raises_a_mesh_panic() {
+    fn an_empty_range_raises_a_mesh_panic() {
         crate::gc::mesh_rt_init();
-        for (minimum, maximum) in [(2, 1), (i64::MIN, i64::MAX)] {
-            let panic = std::panic::catch_unwind(|| mesh_random_next_int(1, minimum, maximum))
-                .expect_err("an unusable range was accepted");
-            assert!(crate::panic::mesh_panic_message(&*panic).is_some());
+        let panic = std::panic::catch_unwind(|| mesh_random_next_int(1, 2, 1))
+            .expect_err("an empty range was accepted");
+        assert!(crate::panic::mesh_panic_message(&*panic).is_some());
+    }
+
+    /// The whole Int range is 2^64 values, one past what a u64 holds: every
+    /// draw is a value of it.
+    #[test]
+    fn the_whole_int_range_can_be_drawn_from() {
+        crate::gc::mesh_rt_init();
+        let pair = mesh_random_next_int(42, i64::MIN, i64::MAX) as *const i64;
+        let (state, value) = step(42);
+        unsafe {
+            assert_eq!(*pair.add(1), state as i64);
+            assert_eq!(
+                *pair.add(2),
+                (i128::from(i64::MIN) + i128::from(value)) as i64
+            );
         }
     }
 }
