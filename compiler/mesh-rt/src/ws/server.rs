@@ -30,13 +30,13 @@ use std::net::TcpListener;
 use std::sync::Arc;
 
 use parking_lot::Mutex;
-use rustls::{ServerConfig, StreamOwned};
+use rustls::ServerConfig;
 
 use super::close::WsCloseCode;
 use super::frame::WsOpcode;
 use super::reactor::{
     register_server, ReactorConfig, ReactorConnection, ReactorEvent, ReactorEventSink,
-    ReactorTransport, ServerHandshakeHandler, SinkError,
+    ReactorTransport, ServerHandshakeHandler, SinkFull,
 };
 use crate::actor::process::Process;
 use crate::actor::stack;
@@ -138,7 +138,7 @@ impl ServerSink {
         }
     }
 
-    fn attach(&self, process: Arc<Mutex<Process>>, pid: ProcessId) -> Result<(), SinkError> {
+    fn attach(&self, process: Arc<Mutex<Process>>, pid: ProcessId) -> Result<(), SinkFull> {
         let (terminated, remote_close) = {
             let mut state = self.state.lock();
             while let Some(event) = state.pending.pop_front() {
@@ -156,11 +156,8 @@ impl ServerSink {
 }
 
 impl ReactorEventSink for ServerSink {
-    fn event(&self, event: ReactorEvent) -> Result<(), SinkError> {
+    fn event(&self, event: ReactorEvent) -> Result<(), SinkFull> {
         let mut state = self.state.lock();
-        if state.terminated {
-            return Err(SinkError::Closed);
-        }
         if let Some((process, pid)) = &state.target {
             let process = Arc::clone(process);
             let pid = *pid;
@@ -182,7 +179,7 @@ impl ReactorEventSink for ServerSink {
                     .checked_add(bytes)
                     .is_none_or(|total| total > SERVER_PENDING_BYTES))
         {
-            return Err(SinkError::Full);
+            return Err(SinkFull);
         }
         state.pending_bytes += bytes;
         state.pending.push_back(event);
@@ -219,7 +216,7 @@ fn deliver_server_event(
     process: &Arc<Mutex<Process>>,
     pid: ProcessId,
     event: ReactorEvent,
-) -> Result<(), SinkError> {
+) -> Result<(), SinkFull> {
     let (tag, payload, _permit) = match event {
         ReactorEvent::Text(payload, permit) => (WS_TEXT_TAG, payload, permit),
         ReactorEvent::Binary(payload, permit) => (WS_BINARY_TAG, payload, permit),
@@ -231,10 +228,9 @@ fn deliver_server_event(
     let message = Message {
         buffer: MessageBuffer::new(payload, tag),
     };
-    push_actor_message(process, pid, message).map_err(|error| match error {
-        MailboxPushError::Full => SinkError::Full,
-        MailboxPushError::MessageTooLarge => SinkError::TooLarge,
-    })
+    // A connection's actor has the default mailbox, which takes a message of
+    // any size the reactor admits: a refusal is a full mailbox.
+    push_actor_message(process, pid, message).map_err(|_| SinkFull)
 }
 
 // ---------------------------------------------------------------------------
@@ -388,10 +384,9 @@ fn ws_accept_loop(
         let _ = tcp_stream.set_nodelay(true);
         let transport = match &tls {
             None => ReactorTransport::plain(tcp_stream),
-            Some(config) => ReactorTransport::server_tls(StreamOwned::new(
-                crate::http::server::tls_session(config),
-                tcp_stream,
-            )),
+            Some(config) => {
+                ReactorTransport::tls(crate::http::server::tls_session(config), tcp_stream)
+            }
         };
         if let Err(error) = register_server(
             transport,
@@ -820,7 +815,7 @@ mod tests {
     use crate::ws::close::parse_close_payload;
     use crate::ws::frame::{apply_mask, read_frame, write_masked_frame, WsOpcode};
     use crate::ws::reactor::InboundPermit;
-    use rustls::{ClientConnection, ServerConnection};
+    use rustls::{ClientConnection, ServerConnection, StreamOwned};
     use rustls_pki_types::ServerName;
     use std::io::{Read, Write};
     use std::net::TcpStream;
@@ -1158,7 +1153,7 @@ mod tests {
         let sink = Arc::new(ServerSink::new());
         sink.event(ReactorEvent::Text(
             b"first".to_vec(),
-            InboundPermit::reserve(5).unwrap(),
+            InboundPermit::unbounded(5),
         ))
         .unwrap();
         let process = Arc::new(Mutex::new(Process::new(
@@ -1190,11 +1185,8 @@ mod tests {
     fn terminal_close_uses_reserved_pending_slot_after_data_limit() {
         let sink = ServerSink::new();
         for _ in 0..SERVER_PENDING_ITEMS {
-            sink.event(ReactorEvent::Text(
-                Vec::new(),
-                InboundPermit::reserve(0).unwrap(),
-            ))
-            .unwrap();
+            sink.event(ReactorEvent::Text(Vec::new(), InboundPermit::unbounded(0)))
+                .unwrap();
         }
         sink.event(ReactorEvent::Close(1001, "leaving".to_string()))
             .unwrap();
@@ -1360,7 +1352,7 @@ mod tests {
         let server = std::thread::spawn(move || {
             let (tcp, _) = listener.accept().unwrap();
             let connection = ServerConnection::new(server_config).unwrap();
-            let transport = ReactorTransport::server_tls(StreamOwned::new(connection, tcp));
+            let transport = ReactorTransport::tls(connection, tcp);
             let handler: Arc<dyn ServerHandshakeHandler> = Arc::new(ServerOpenHandler {
                 callbacks: SendableHandler {
                     on_connect_fn: accept_on_connect as *mut u8,

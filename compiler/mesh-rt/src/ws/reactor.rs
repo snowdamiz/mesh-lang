@@ -11,10 +11,10 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
-use crossbeam_channel::{Receiver, Sender, TryRecvError, TrySendError};
+use crossbeam_channel::{Receiver, Sender, TrySendError};
 use mio::{Events, Interest, Poll, Token, Waker};
 use parking_lot::Mutex;
-use rustls::{ClientConnection, ServerConnection, StreamOwned};
+use rustls::Connection;
 
 use super::close::{
     build_close_payload, is_valid_close_code, is_valid_text_payload, parse_close_payload_strict,
@@ -27,13 +27,6 @@ use super::handshake::{parse_upgrade_request_bytes, parse_upgrade_response_bytes
 
 const WAKE_TOKEN: Token = Token(0);
 const COMMAND_QUEUE_ITEMS: usize = 8_192;
-const MAX_CONNECTIONS: usize = 16_384;
-const MAX_TLS_HANDSHAKES: usize = 2_048;
-const MAX_AGGREGATE_WRITE_BYTES: usize = 128 * 1024 * 1024;
-const MAX_AGGREGATE_WRITE_ITEMS: usize = 65_536;
-const MAX_AGGREGATE_READ_BYTES: usize = 128 * 1024 * 1024;
-const MAX_AGGREGATE_INBOUND_EVENT_BYTES: usize = 128 * 1024 * 1024;
-const MAX_AGGREGATE_INBOUND_EVENT_ITEMS: usize = 65_536;
 const READ_BUDGET_BYTES: usize = 64 * 1024;
 const WRITE_BUDGET_BYTES: usize = 64 * 1024;
 const FRAME_BUDGET_ITEMS: usize = 64;
@@ -41,13 +34,32 @@ const TLS_BUFFER_BYTES: usize = 64 * 1024;
 const REACTOR_TICK: Duration = Duration::from_millis(25);
 const CLOSE_DEADLINE: Duration = Duration::from_secs(2);
 
-static NEXT_CONNECTION_ID: AtomicU64 = AtomicU64::new(1);
-static TLS_HANDSHAKES: AtomicUsize = AtomicUsize::new(0);
-static AGGREGATE_INBOUND_EVENT_BYTES: AtomicUsize = AtomicUsize::new(0);
-static AGGREGATE_INBOUND_EVENT_ITEMS: AtomicUsize = AtomicUsize::new(0);
+/// What one reactor admits across all its connections.
+#[derive(Clone, Copy)]
+struct ReactorLimits {
+    connections: usize,
+    tls_handshakes: usize,
+    write_items: usize,
+    write_bytes: usize,
+    read_bytes: usize,
+    inbound_items: usize,
+    inbound_bytes: usize,
+}
 
-#[cfg(test)]
-static REACTOR_THREADS_STARTED: AtomicUsize = AtomicUsize::new(0);
+/// The process reactor's limits.
+const PROCESS_LIMITS: ReactorLimits = ReactorLimits {
+    connections: 16_384,
+    tls_handshakes: 2_048,
+    write_items: 65_536,
+    write_bytes: 128 * 1024 * 1024,
+    read_bytes: 128 * 1024 * 1024,
+    inbound_items: 65_536,
+    inbound_bytes: 128 * 1024 * 1024,
+};
+
+/// Connection IDs are tokens, after the waker's 0; a 64-bit count does not
+/// wrap back to it.
+static NEXT_CONNECTION_ID: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug)]
 pub(crate) enum ReactorEvent {
@@ -56,49 +68,43 @@ pub(crate) enum ReactorEvent {
     Close(u16, String),
 }
 
+/// A delivered message's share of its reactor's inbound budget, held until
+/// the message is consumed.
 #[derive(Debug)]
 pub(crate) struct InboundPermit {
     bytes: usize,
+    budget: Arc<QueueBudget>,
 }
 
 impl InboundPermit {
-    pub(crate) fn reserve(bytes: usize) -> Option<Self> {
-        if !reserve_counter(
-            &AGGREGATE_INBOUND_EVENT_ITEMS,
-            1,
-            MAX_AGGREGATE_INBOUND_EVENT_ITEMS,
-        ) {
-            return None;
-        }
-        if !reserve_counter(
-            &AGGREGATE_INBOUND_EVENT_BYTES,
+    fn reserve(budget: &Arc<QueueBudget>, bytes: usize) -> Option<Self> {
+        budget.reserve(bytes).then(|| Self {
             bytes,
-            MAX_AGGREGATE_INBOUND_EVENT_BYTES,
-        ) {
-            AGGREGATE_INBOUND_EVENT_ITEMS.fetch_sub(1, Ordering::AcqRel);
-            return None;
-        }
-        Some(Self { bytes })
+            budget: Arc::clone(budget),
+        })
+    }
+
+    /// A permit of a budget of its own, for tests that make events by hand.
+    #[cfg(test)]
+    pub(crate) fn unbounded(bytes: usize) -> Self {
+        Self::reserve(&Arc::new(QueueBudget::new(1, bytes)), bytes).unwrap()
     }
 }
 
 impl Drop for InboundPermit {
     fn drop(&mut self) {
-        AGGREGATE_INBOUND_EVENT_BYTES.fetch_sub(self.bytes, Ordering::AcqRel);
-        AGGREGATE_INBOUND_EVENT_ITEMS.fetch_sub(1, Ordering::AcqRel);
+        self.budget.release(self.bytes);
     }
 }
 
+/// A sink refused an event: its queue is full.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SinkError {
-    Full,
-    TooLarge,
-    Closed,
-}
+pub(crate) struct SinkFull;
 
 pub(crate) trait ReactorEventSink: Send + Sync {
+    /// The connection completed its opening handshake.
     fn opened(&self) {}
-    fn event(&self, event: ReactorEvent) -> Result<(), SinkError>;
+    fn event(&self, event: ReactorEvent) -> Result<(), SinkFull>;
     fn terminated(&self, reason: &str);
 }
 
@@ -168,43 +174,14 @@ impl ReactorConfig {
     }
 }
 
+/// A connected socket as the reactor drives it: in the clear, or under a
+/// TLS session, client or server.
 pub(crate) enum ReactorTransport {
     Plain(mio::net::TcpStream),
-    ServerTls(StreamOwned<ServerConnection, mio::net::TcpStream>),
-    ClientTls(StreamOwned<ClientConnection, mio::net::TcpStream>),
-}
-
-struct BudgetedIo<'a> {
-    socket: &'a mut mio::net::TcpStream,
-    remaining: usize,
-}
-
-impl Read for BudgetedIo<'_> {
-    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
-        if self.remaining == 0 {
-            return Err(io::ErrorKind::WouldBlock.into());
-        }
-        let allowance = buffer.len().min(self.remaining);
-        let count = self.socket.read(&mut buffer[..allowance])?;
-        self.remaining -= count;
-        Ok(count)
-    }
-}
-
-impl Write for BudgetedIo<'_> {
-    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
-        if self.remaining == 0 {
-            return Err(io::ErrorKind::WouldBlock.into());
-        }
-        let allowance = buffer.len().min(self.remaining);
-        let count = self.socket.write(&buffer[..allowance])?;
-        self.remaining -= count;
-        Ok(count)
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        self.socket.flush()
-    }
+    Tls {
+        session: Connection,
+        socket: mio::net::TcpStream,
+    },
 }
 
 /// A connected socket, nonblocking for the reactor. A socket this process
@@ -221,156 +198,73 @@ impl ReactorTransport {
         Self::Plain(nonblocking(stream))
     }
 
-    pub(crate) fn server_tls(mut stream: StreamOwned<ServerConnection, TcpStream>) -> Self {
-        stream.conn.set_buffer_limit(Some(TLS_BUFFER_BYTES));
-        let (connection, socket) = stream.into_parts();
-        Self::ServerTls(StreamOwned::new(connection, nonblocking(socket)))
-    }
-
-    pub(crate) fn client_tls(mut stream: StreamOwned<ClientConnection, TcpStream>) -> Self {
-        stream.conn.set_buffer_limit(Some(TLS_BUFFER_BYTES));
-        let (connection, socket) = stream.into_parts();
-        Self::ClientTls(StreamOwned::new(connection, nonblocking(socket)))
+    pub(crate) fn tls(session: impl Into<Connection>, socket: TcpStream) -> Self {
+        let mut session = session.into();
+        session.set_buffer_limit(Some(TLS_BUFFER_BYTES));
+        Self::Tls {
+            session,
+            socket: nonblocking(socket),
+        }
     }
 
     fn source(&mut self) -> &mut mio::net::TcpStream {
         match self {
-            Self::Plain(stream) => stream,
-            Self::ServerTls(stream) => &mut stream.sock,
-            Self::ClientTls(stream) => &mut stream.sock,
+            Self::Plain(socket) | Self::Tls { socket, .. } => socket,
+        }
+    }
+
+    fn session(&self) -> Option<&Connection> {
+        match self {
+            Self::Tls { session, .. } => Some(session),
+            Self::Plain(_) => None,
         }
     }
 
     fn wants_write(&self) -> bool {
-        match self {
-            Self::Plain(_) => false,
-            Self::ServerTls(stream) => stream.conn.wants_write(),
-            Self::ClientTls(stream) => stream.conn.wants_write(),
-        }
+        self.session().is_some_and(|session| session.wants_write())
     }
 
     fn wants_read(&self) -> bool {
-        match self {
-            Self::Plain(_) => true,
-            Self::ServerTls(stream) => stream.conn.wants_read(),
-            Self::ClientTls(stream) => stream.conn.wants_read(),
-        }
-    }
-
-    fn is_tls(&self) -> bool {
-        !matches!(self, Self::Plain(_))
+        self.session().is_some_and(|session| session.wants_read())
     }
 
     fn is_handshaking(&self) -> bool {
-        match self {
-            Self::Plain(_) => false,
-            Self::ServerTls(stream) => stream.conn.is_handshaking(),
-            Self::ClientTls(stream) => stream.conn.is_handshaking(),
-        }
+        self.session()
+            .is_some_and(|session| session.is_handshaking())
     }
 
-    fn read_tls(&mut self, budget: usize) -> io::Result<Option<(usize, bool)>> {
-        match self {
-            Self::Plain(_) => Ok(None),
-            Self::ServerTls(stream) => {
-                let mut io = BudgetedIo {
-                    socket: &mut stream.sock,
-                    remaining: budget,
-                };
-                let count = stream.conn.read_tls(&mut io)?;
-                if count == 0 {
-                    return Ok(Some((0, true)));
-                }
-                let state = stream
-                    .conn
-                    .process_new_packets()
-                    .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-                Ok(Some((count, state.peer_has_closed())))
-            }
-            Self::ClientTls(stream) => {
-                let mut io = BudgetedIo {
-                    socket: &mut stream.sock,
-                    remaining: budget,
-                };
-                let count = stream.conn.read_tls(&mut io)?;
-                if count == 0 {
-                    return Ok(Some((0, true)));
-                }
-                let state = stream
-                    .conn
-                    .process_new_packets()
-                    .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-                Ok(Some((count, state.peer_has_closed())))
-            }
-        }
-    }
-
-    fn write_tls(&mut self, budget: usize) -> io::Result<Option<usize>> {
-        match self {
-            Self::Plain(_) => Ok(None),
-            Self::ServerTls(stream) => {
-                let mut io = BudgetedIo {
-                    socket: &mut stream.sock,
-                    remaining: budget,
-                };
-                stream.conn.write_tls(&mut io).map(Some)
-            }
-            Self::ClientTls(stream) => {
-                let mut io = BudgetedIo {
-                    socket: &mut stream.sock,
-                    remaining: budget,
-                };
-                stream.conn.write_tls(&mut io).map(Some)
-            }
-        }
-    }
-
-    fn send_close_notify(&mut self) {
-        match self {
-            Self::Plain(_) => {}
-            Self::ServerTls(stream) => stream.conn.send_close_notify(),
-            Self::ClientTls(stream) => stream.conn.send_close_notify(),
-        }
-    }
-
-    fn shutdown(&self) {
-        let result = match self {
-            Self::Plain(stream) => stream.shutdown(Shutdown::Both),
-            Self::ServerTls(stream) => stream.sock.shutdown(Shutdown::Both),
-            Self::ClientTls(stream) => stream.sock.shutdown(Shutdown::Both),
-        };
-        let _ = result;
-    }
-}
-
-impl Read for ReactorTransport {
+    /// Plaintext: from the socket, or what TLS records decrypted.
     fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
         match self {
-            Self::Plain(stream) => stream.read(buffer),
-            Self::ServerTls(stream) => stream.conn.reader().read(buffer),
-            Self::ClientTls(stream) => stream.conn.reader().read(buffer),
+            Self::Plain(socket) => socket.read(buffer),
+            Self::Tls { session, .. } => session.reader().read(buffer),
         }
+    }
+
+    /// Plaintext: to the socket, or to TLS to encrypt.
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        match self {
+            Self::Plain(socket) => socket.write(bytes),
+            Self::Tls { session, .. } => session.writer().write(bytes),
+        }
+    }
+
+    /// Writes TLS records waiting to go out: none when there are none.
+    fn flush_tls(&mut self) -> Option<io::Result<usize>> {
+        match self {
+            Self::Tls { session, socket } if session.wants_write() => {
+                Some(session.write_tls(socket))
+            }
+            _ => None,
+        }
+    }
+
+    fn shutdown(&mut self) {
+        let _ = self.source().shutdown(Shutdown::Both);
     }
 }
 
-impl Write for ReactorTransport {
-    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
-        match self {
-            Self::Plain(stream) => stream.write(buffer),
-            Self::ServerTls(stream) => stream.conn.writer().write(buffer),
-            Self::ClientTls(stream) => stream.conn.writer().write(buffer),
-        }
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        match self {
-            Self::Plain(stream) => stream.flush(),
-            Self::ServerTls(stream) => stream.conn.writer().flush(),
-            Self::ClientTls(stream) => stream.conn.writer().flush(),
-        }
-    }
-}
-
+#[derive(Debug)]
 struct QueueBudget {
     bytes: AtomicUsize,
     items: AtomicUsize,
@@ -406,19 +300,11 @@ impl QueueBudget {
 }
 
 fn reserve_counter(counter: &AtomicUsize, amount: usize, maximum: usize) -> bool {
-    let mut current = counter.load(Ordering::Acquire);
-    loop {
-        let Some(next) = current.checked_add(amount) else {
-            return false;
-        };
-        if next > maximum {
-            return false;
-        }
-        match counter.compare_exchange_weak(current, next, Ordering::AcqRel, Ordering::Acquire) {
-            Ok(_) => return true,
-            Err(observed) => current = observed,
-        }
-    }
+    counter
+        .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+            current.checked_add(amount).filter(|next| *next <= maximum)
+        })
+        .is_ok()
 }
 
 struct Reservation {
@@ -458,12 +344,8 @@ impl ReactorConnection {
         if !self.shared.accepting_writes.load(Ordering::Acquire) {
             return Err("WebSocket connection is closed".to_string());
         }
-        let mask = match self.role {
-            PeerRole::Server => None,
-            PeerRole::Client => Some(rand::random()),
-        };
         let reservation = self.reserve_frame(payload.len())?;
-        let encoded = encode_frame(opcode, payload, true, mask)?;
+        let encoded = encode_frame(opcode, payload, self.mask());
         self.submit(Command::Write {
             id: self.id,
             outbound: Outbound::new(encoded, Some(reservation)),
@@ -474,15 +356,8 @@ impl ReactorConnection {
         if !is_valid_close_code(code) {
             return Err("invalid WebSocket close code".to_string());
         }
-        if !self.shared.accepting_writes.load(Ordering::Acquire) {
-            return Ok(());
-        }
         let payload = build_close_payload(code, reason);
-        let mask = match self.role {
-            PeerRole::Server => None,
-            PeerRole::Client => Some(rand::random()),
-        };
-        let encoded = encode_frame(WsOpcode::Close, &payload, true, mask)?;
+        let encoded = encode_frame(WsOpcode::Close, &payload, self.mask());
         let retained_reason = String::from_utf8(payload[2..].to_vec())
             .expect("build_close_payload preserves UTF-8 boundaries");
         if !self.shared.accepting_writes.swap(false, Ordering::AcqRel) {
@@ -510,7 +385,18 @@ impl ReactorConnection {
         !self.shared.accepting_writes.load(Ordering::Acquire)
     }
 
-    fn reserve(&self, bytes: usize) -> Result<Reservation, String> {
+    /// A client masks every frame it sends; a server masks none.
+    fn mask(&self) -> Option<[u8; 4]> {
+        match self.role {
+            PeerRole::Server => None,
+            PeerRole::Client => Some(rand::random()),
+        }
+    }
+
+    /// Room in the connection's and the reactor's write budgets for a frame
+    /// of `payload_bytes` (a frame's header takes at most 14 more).
+    fn reserve_frame(&self, payload_bytes: usize) -> Result<Reservation, String> {
+        let bytes = payload_bytes + 14;
         if !self.shared.local_budget.reserve(bytes) {
             return Err("BACKPRESSURE: WebSocket outbound queue is full".to_string());
         }
@@ -523,13 +409,6 @@ impl ReactorConnection {
             local: Arc::clone(&self.shared.local_budget),
             aggregate: Arc::clone(&self.control.aggregate_write_budget),
         })
-    }
-
-    fn reserve_frame(&self, payload_bytes: usize) -> Result<Reservation, String> {
-        let bytes = payload_bytes
-            .checked_add(14)
-            .ok_or_else(|| "WebSocket frame length overflow".to_string())?;
-        self.reserve(bytes)
     }
 
     fn submit(&self, command: Command) -> Result<(), String> {
@@ -548,38 +427,64 @@ impl ReactorConnection {
     }
 }
 
+/// A reactor's command queue and waker, and what its limits count.
 struct ReactorControl {
     commands: Sender<Command>,
-    waker: Arc<Waker>,
+    waker: Waker,
+    limits: ReactorLimits,
+    connections: AtomicUsize,
+    tls_handshakes: AtomicUsize,
     aggregate_write_budget: Arc<QueueBudget>,
-    connection_count: Arc<AtomicUsize>,
+    inbound_budget: Arc<QueueBudget>,
 }
 
-struct ConnectionSlot(Arc<AtomicUsize>);
-
-impl Drop for ConnectionSlot {
-    fn drop(&mut self) {
-        self.0.fetch_sub(1, Ordering::AcqRel);
+impl ReactorControl {
+    fn new(commands: Sender<Command>, waker: Waker, limits: ReactorLimits) -> Self {
+        Self {
+            commands,
+            waker,
+            limits,
+            connections: AtomicUsize::new(0),
+            tls_handshakes: AtomicUsize::new(0),
+            aggregate_write_budget: Arc::new(QueueBudget::new(
+                limits.write_items,
+                limits.write_bytes,
+            )),
+            inbound_budget: Arc::new(QueueBudget::new(limits.inbound_items, limits.inbound_bytes)),
+        }
     }
 }
 
-struct TlsHandshakeSlot;
+/// A connection counted against its reactor's limit while it lives.
+struct ConnectionSlot(Arc<ReactorControl>);
+
+impl Drop for ConnectionSlot {
+    fn drop(&mut self) {
+        self.0.connections.fetch_sub(1, Ordering::AcqRel);
+    }
+}
+
+/// A TLS handshake counted against its reactor's limit until it completes.
+struct TlsHandshakeSlot(Arc<ReactorControl>);
 
 impl TlsHandshakeSlot {
-    fn reserve(stream: &ReactorTransport) -> Result<Option<Self>, String> {
-        if !stream.is_tls() || !stream.is_handshaking() {
+    fn reserve(
+        control: &Arc<ReactorControl>,
+        stream: &ReactorTransport,
+    ) -> Result<Option<Self>, String> {
+        if !stream.is_handshaking() {
             return Ok(None);
         }
-        if !reserve_counter(&TLS_HANDSHAKES, 1, MAX_TLS_HANDSHAKES) {
+        if !reserve_counter(&control.tls_handshakes, 1, control.limits.tls_handshakes) {
             return Err("WebSocket TLS handshake limit reached".to_string());
         }
-        Ok(Some(Self))
+        Ok(Some(Self(Arc::clone(control))))
     }
 }
 
 impl Drop for TlsHandshakeSlot {
     fn drop(&mut self) {
-        TLS_HANDSHAKES.fetch_sub(1, Ordering::AcqRel);
+        self.0.tls_handshakes.fetch_sub(1, Ordering::AcqRel);
     }
 }
 
@@ -624,29 +529,28 @@ fn prioritize_close(queue: &mut VecDeque<Outbound>, keep_front: bool, close: Out
     }
 }
 
+/// Where a connection is in its opening handshake, or open. Frames that
+/// arrive before a server connection opens wait in the decoder.
 enum Phase {
     ServerHandshake {
         handler: Arc<dyn ServerHandshakeHandler>,
         buffer: Vec<u8>,
-        deadline: Instant,
     },
+    /// The request is read and the 101 answer queued; the connection opens
+    /// once the answer is flushed.
     ServerReply {
         handler: Arc<dyn ServerHandshakeHandler>,
         path: String,
         headers: Vec<(String, String)>,
-        remainder: Vec<u8>,
-        deadline: Instant,
     },
     ClientHandshake {
         sink: Arc<dyn ReactorEventSink>,
         client_key: String,
         buffer: Vec<u8>,
-        deadline: Instant,
     },
     Open {
         sink: Arc<dyn ReactorEventSink>,
     },
-    Transitioning,
 }
 
 struct Heartbeat {
@@ -669,6 +573,8 @@ struct Entry {
     tls_handshake_slot: Option<TlsHandshakeSlot>,
     stream: ReactorTransport,
     phase: Phase,
+    /// When the opening handshake must be done by; none once open.
+    handshake_deadline: Option<Instant>,
     config: ReactorConfig,
     decoder: FrameDecoder,
     assembler: MessageAssembler,
@@ -677,7 +583,6 @@ struct Entry {
     read_ready: bool,
     write_ready: bool,
     frames_ready: bool,
-    transport_eof: bool,
     tls_close_notify_sent: bool,
     close_state: CloseState,
     close_deadline: Option<Instant>,
@@ -695,9 +600,12 @@ impl Entry {
     }
 
     fn needs_write_interest(&self) -> bool {
-        self.stream.wants_write()
-            || (!self.outbound.is_empty()
-                && (!self.stream.is_tls() || !self.stream.is_handshaking()))
+        self.stream.wants_write() || (!self.outbound.is_empty() && !self.stream.is_handshaking())
+    }
+
+    /// Whether the connection still takes frames to send: open, not closing.
+    fn accepts_frames(&self) -> bool {
+        self.close_state == CloseState::Open && !self.dead
     }
 
     fn release_tls_handshake_slot(&mut self) {
@@ -711,8 +619,7 @@ impl Entry {
             Phase::ServerHandshake { buffer, .. } | Phase::ClientHandshake { buffer, .. } => {
                 buffer.len()
             }
-            Phase::ServerReply { remainder, .. } => remainder.len(),
-            Phase::Open { .. } | Phase::Transitioning => 0,
+            Phase::ServerReply { .. } | Phase::Open { .. } => 0,
         };
         handshake + self.decoder.buffered_len() + self.assembler.buffered_len()
     }
@@ -738,31 +645,27 @@ impl Entry {
                     }
                 }
                 Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
-                    if !self.stream.is_tls() || self.transport_eof || !self.stream.wants_read() {
-                        if self.transport_eof {
-                            self.handle_transport_eof();
-                        }
+                    // TLS decrypts what it reads next; a plain socket has
+                    // nothing more.
+                    let ReactorTransport::Tls { session, socket } = &mut self.stream else {
+                        return false;
+                    };
+                    if !session.wants_read() {
                         return false;
                     }
-                    match self.stream.read_tls(READ_BUDGET_BYTES - bytes_read) {
-                        Ok(Some((0, _))) => {
+                    match read_tls(session, socket) {
+                        Ok(0) => {
                             self.handle_transport_eof();
                             return false;
                         }
-                        Ok(Some((count, peer_closed))) => {
-                            bytes_read += count;
-                            self.transport_eof |= peer_closed;
-                        }
-                        Ok(None) => return false,
+                        Ok(count) => bytes_read += count,
                         Err(error) if error.kind() == io::ErrorKind::WouldBlock => return false,
-                        Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
                         Err(error) => {
                             self.fail(&format!("read WebSocket TLS transport: {error}"));
                             return false;
                         }
                     }
                 }
-                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
                 Err(error) => {
                     self.fail(&format!("read WebSocket transport: {error}"));
                     return false;
@@ -785,118 +688,108 @@ impl Entry {
             Phase::ServerHandshake { buffer, .. } | Phase::ClientHandshake { buffer, .. } => {
                 buffer.extend_from_slice(bytes)
             }
-            Phase::ServerReply { remainder, .. } => remainder.extend_from_slice(bytes),
-            Phase::Open { .. } => self.decoder.extend(bytes)?,
-            Phase::Transitioning => return Err("invalid WebSocket reactor transition".to_string()),
+            Phase::ServerReply { .. } | Phase::Open { .. } => self.decoder.extend(bytes)?,
         }
         self.advance_handshake()?;
         self.process_frames()
     }
 
+    /// Completes the opening handshake whose request or answer the buffer
+    /// now holds whole; what follows it goes to the decoder.
     fn advance_handshake(&mut self) -> Result<(), String> {
-        let server_parsed = match &self.phase {
-            Phase::ServerHandshake { buffer, .. } => parse_upgrade_request_bytes(buffer)?,
-            _ => None,
-        };
-        if let Some(parsed) = server_parsed {
-            let Phase::ServerHandshake {
-                handler,
-                mut buffer,
-                deadline,
-            } = std::mem::replace(&mut self.phase, Phase::Transitioning)
-            else {
-                return Err("invalid server handshake transition".to_string());
-            };
-            let remainder = buffer.split_off(parsed.consumed);
-            self.outbound
-                .push_back(Outbound::new(parsed.response, None));
-            self.phase = Phase::ServerReply {
-                handler,
-                path: parsed.path,
-                headers: parsed.headers,
-                remainder,
-                deadline,
-            };
-            return Ok(());
-        }
-
-        let client_consumed = match &self.phase {
-            Phase::ClientHandshake {
-                buffer, client_key, ..
-            } => parse_upgrade_response_bytes(buffer, client_key)?,
-            _ => None,
-        };
-        if let Some(consumed) = client_consumed {
-            let Phase::ClientHandshake {
-                sink, mut buffer, ..
-            } = std::mem::replace(&mut self.phase, Phase::Transitioning)
-            else {
-                return Err("invalid client handshake transition".to_string());
-            };
-            let remainder = buffer.split_off(consumed);
-            sink.opened();
-            self.phase = Phase::Open { sink };
-            if !remainder.is_empty() {
-                self.decoder.extend(&remainder)?;
+        match &mut self.phase {
+            Phase::ServerHandshake { handler, buffer } => {
+                if let Some(parsed) = parse_upgrade_request_bytes(buffer)? {
+                    let reply = Phase::ServerReply {
+                        handler: Arc::clone(handler),
+                        path: parsed.path,
+                        headers: parsed.headers,
+                    };
+                    self.decoder.extend(&buffer[parsed.consumed..])?;
+                    self.outbound
+                        .push_back(Outbound::new(parsed.response, None));
+                    self.phase = reply;
+                }
             }
+            Phase::ClientHandshake {
+                sink,
+                client_key,
+                buffer,
+            } => {
+                if let Some(consumed) = parse_upgrade_response_bytes(buffer, client_key)? {
+                    let sink = Arc::clone(sink);
+                    self.decoder.extend(&buffer[consumed..])?;
+                    self.open(sink);
+                }
+            }
+            Phase::ServerReply { .. } | Phase::Open { .. } => {}
         }
         Ok(())
     }
 
+    fn open(&mut self, sink: Arc<dyn ReactorEventSink>) {
+        sink.opened();
+        self.handshake_deadline = None;
+        self.phase = Phase::Open { sink };
+    }
+
+    /// Once the 101 answer is flushed, the handler takes the connection and
+    /// the frames that came with the request are read.
     fn finish_server_reply(&mut self) -> Result<(), String> {
-        if !self.outbound.is_empty() || self.stream.wants_write() {
-            return Ok(());
-        }
-        let Phase::ServerReply {
-            handler,
-            path,
-            headers,
-            remainder,
-            ..
-        } = std::mem::replace(&mut self.phase, Phase::Transitioning)
+        let flushed = self.outbound.is_empty() && !self.stream.wants_write();
+        let (
+            Phase::ServerReply {
+                handler,
+                path,
+                headers,
+            },
+            true,
+        ) = (&mut self.phase, flushed)
         else {
             return Ok(());
         };
-        let sink = handler.opened(self.connection.clone(), path, headers);
-        self.phase = Phase::Open { sink };
-        if !remainder.is_empty() {
-            self.decoder.extend(&remainder)?;
-            self.process_frames()?;
-        }
-        Ok(())
+        let sink = handler.opened(
+            self.connection.clone(),
+            std::mem::take(path),
+            std::mem::take(headers),
+        );
+        self.open(sink);
+        self.process_frames()
     }
 
     fn process_frames(&mut self) -> Result<(), String> {
         self.frames_ready = false;
-        if !matches!(self.phase, Phase::Open { .. }) {
+        let Phase::Open { sink } = &self.phase else {
             return Ok(());
-        }
-        for index in 0..FRAME_BUDGET_ITEMS {
+        };
+        let sink = Arc::clone(sink);
+        for _ in 0..FRAME_BUDGET_ITEMS {
             let Some((frame, masked)) = self.decoder.next_frame()? else {
                 return Ok(());
             };
-            let valid_mask = match self.config.role {
-                PeerRole::Server => masked,
-                PeerRole::Client => !masked,
-            };
-            if !valid_mask {
-                return Err(match self.config.role {
-                    PeerRole::Server => "client sent an unmasked WebSocket frame".to_string(),
-                    PeerRole::Client => "server sent a masked WebSocket frame".to_string(),
-                });
+            match (self.config.role, masked) {
+                (PeerRole::Server, false) => {
+                    return Err("client sent an unmasked WebSocket frame".to_string());
+                }
+                (PeerRole::Client, true) => {
+                    return Err("server sent a masked WebSocket frame".to_string());
+                }
+                _ => {}
             }
-            self.process_frame(frame)?;
-            if self.close_state == CloseState::Replying || self.dead {
+            self.process_frame(frame, &sink)?;
+            if self.close_state == CloseState::Replying {
                 return Ok(());
             }
-            if index + 1 == FRAME_BUDGET_ITEMS {
-                self.frames_ready = true;
-            }
         }
+        self.frames_ready = true;
         Ok(())
     }
 
-    fn process_frame(&mut self, frame: WsFrame) -> Result<(), String> {
+    fn process_frame(
+        &mut self,
+        frame: WsFrame,
+        sink: &Arc<dyn ReactorEventSink>,
+    ) -> Result<(), String> {
         if self.close_state != CloseState::Open && frame.opcode != WsOpcode::Close {
             return Ok(());
         }
@@ -921,53 +814,45 @@ impl Entry {
                 self.close_deadline = Some(Instant::now() + CLOSE_DEADLINE);
                 self.termination_reason = "peer closed".to_string();
                 if self.close_state == CloseState::Open {
-                    let close = self.close_outbound(&frame.payload)?;
+                    let close = self.close_outbound(&frame.payload);
                     self.prioritize_close(close);
                 }
                 self.close_state = CloseState::Replying;
                 self.finish_close_if_flushed();
-                let _ = self.deliver(ReactorEvent::Close(code, reason));
+                let _ = sink.event(ReactorEvent::Close(code, reason));
                 Ok(())
             }
             WsOpcode::Text | WsOpcode::Binary | WsOpcode::Continuation => {
-                if self.close_state != CloseState::Open {
-                    return Ok(());
-                }
                 match self.assembler.push(frame) {
                     ReassembleResult::Complete(message) => {
-                        let Some(permit) = InboundPermit::reserve(message.payload.len()) else {
-                            return self.start_close(
+                        let Some(permit) = InboundPermit::reserve(
+                            &self.connection.control.inbound_budget,
+                            message.payload.len(),
+                        ) else {
+                            self.start_close(
                                 WsCloseCode::TRY_AGAIN_LATER,
                                 "aggregate inbound queue full",
                             );
+                            return Ok(());
                         };
-                        let event = match message.opcode {
-                            WsOpcode::Text => {
-                                if !is_valid_text_payload(&message.payload) {
-                                    return Err("invalid UTF-8 in text message".to_string());
-                                }
-                                ReactorEvent::Text(message.payload, permit)
+                        // A message is text or binary, as its first frame was.
+                        let event = if message.opcode == WsOpcode::Text {
+                            if !is_valid_text_payload(&message.payload) {
+                                return Err("invalid UTF-8 in text message".to_string());
                             }
-                            WsOpcode::Binary => ReactorEvent::Binary(message.payload, permit),
-                            _ => return Err("invalid reassembled WebSocket opcode".to_string()),
+                            ReactorEvent::Text(message.payload, permit)
+                        } else {
+                            ReactorEvent::Binary(message.payload, permit)
                         };
-                        match self.deliver(event) {
-                            Ok(()) => Ok(()),
-                            Err(SinkError::Full) => {
-                                self.start_close(WsCloseCode::TRY_AGAIN_LATER, "inbound queue full")
-                            }
-                            Err(SinkError::TooLarge) => {
-                                self.start_close(WsCloseCode::MESSAGE_TOO_BIG, "message too big")
-                            }
-                            Err(SinkError::Closed) => {
-                                self.fail("WebSocket event sink is closed");
-                                Ok(())
-                            }
+                        if sink.event(event).is_err() {
+                            self.start_close(WsCloseCode::TRY_AGAIN_LATER, "inbound queue full");
                         }
+                        Ok(())
                     }
                     ReassembleResult::Accumulating => Ok(()),
                     ReassembleResult::TooLarge => {
-                        self.start_close(WsCloseCode::MESSAGE_TOO_BIG, "message too big")
+                        self.start_close(WsCloseCode::MESSAGE_TOO_BIG, "message too big");
+                        Ok(())
                     }
                     ReassembleResult::ProtocolError(reason) => Err(reason.to_string()),
                 }
@@ -975,27 +860,12 @@ impl Entry {
         }
     }
 
-    fn deliver(&self, event: ReactorEvent) -> Result<(), SinkError> {
-        match &self.phase {
-            Phase::Open { sink } => sink.event(event),
-            _ => Err(SinkError::Closed),
-        }
-    }
-
     fn queue_internal(&mut self, opcode: WsOpcode, payload: &[u8]) -> Result<(), String> {
-        let outbound = self.internal_outbound(opcode, payload)?;
-        self.outbound.push_back(outbound);
-        Ok(())
-    }
-
-    fn internal_outbound(&self, opcode: WsOpcode, payload: &[u8]) -> Result<Outbound, String> {
-        let mask = match self.config.role {
-            PeerRole::Server => None,
-            PeerRole::Client => Some(rand::random()),
-        };
         let reservation = self.connection.reserve_frame(payload.len())?;
-        let encoded = encode_frame(opcode, payload, true, mask)?;
-        Ok(Outbound::new(encoded, Some(reservation)))
+        let encoded = encode_frame(opcode, payload, self.connection.mask());
+        self.outbound
+            .push_back(Outbound::new(encoded, Some(reservation)));
+        Ok(())
     }
 
     fn prioritize_close(&mut self, close: Outbound) {
@@ -1007,44 +877,42 @@ impl Entry {
         prioritize_close(&mut self.outbound, keep_front, close);
     }
 
-    fn close_outbound(&self, payload: &[u8]) -> Result<Outbound, String> {
-        let mask = match self.config.role {
-            PeerRole::Server => None,
-            PeerRole::Client => Some(rand::random()),
-        };
-        let encoded = encode_frame(WsOpcode::Close, payload, true, mask)?;
-        Ok(Outbound::new(encoded, None))
+    fn close_outbound(&self, payload: &[u8]) -> Outbound {
+        Outbound::new(
+            encode_frame(WsOpcode::Close, payload, self.connection.mask()),
+            None,
+        )
     }
 
-    fn start_close(&mut self, code: u16, reason: &str) -> Result<(), String> {
+    fn start_close(&mut self, code: u16, reason: &str) {
         if self.close_state != CloseState::Open {
-            return Ok(());
+            return;
         }
         self.connection
             .shared
             .accepting_writes
             .store(false, Ordering::Release);
-        let payload = build_close_payload(code, reason);
-        let close = self.close_outbound(&payload)?;
+        let close = self.close_outbound(&build_close_payload(code, reason));
         self.prioritize_close(close);
         self.close_state = CloseState::AwaitingPeer;
         self.close_deadline = Some(Instant::now() + CLOSE_DEADLINE);
         self.termination_reason = reason.to_string();
-        Ok(())
     }
 
     fn finish_close_if_flushed(&mut self) {
-        if self.close_state == CloseState::Replying
-            && self.outbound.is_empty()
-            && !self.stream.wants_write()
+        if self.close_state != CloseState::Replying
+            || !self.outbound.is_empty()
+            || self.stream.wants_write()
         {
-            if self.stream.is_tls() && !self.tls_close_notify_sent {
-                self.stream.send_close_notify();
+            return;
+        }
+        match &mut self.stream {
+            ReactorTransport::Tls { session, .. } if !self.tls_close_notify_sent => {
+                session.send_close_notify();
                 self.tls_close_notify_sent = true;
                 self.write_ready = true;
-            } else {
-                self.dead = true;
             }
+            _ => self.dead = true,
         }
     }
 
@@ -1060,9 +928,7 @@ impl Entry {
         } else {
             WsCloseCode::PROTOCOL_ERROR
         };
-        if self.start_close(code, reason).is_err() {
-            self.fail(reason);
-        }
+        self.start_close(code, reason);
     }
 
     fn writable(&mut self) -> bool {
@@ -1070,61 +936,41 @@ impl Entry {
         let mut network_written = false;
         let mut blocked = false;
         while written < WRITE_BUDGET_BYTES && !self.dead {
-            if self.stream.wants_write() {
-                match self.stream.write_tls(WRITE_BUDGET_BYTES - written) {
-                    Ok(Some(0)) => {
-                        self.fail("write WebSocket TLS transport returned zero bytes");
-                        break;
-                    }
-                    Ok(Some(count)) => {
-                        written += count;
-                        network_written = true;
-                        continue;
-                    }
-                    Ok(None) => {}
-                    Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+            // TLS records first, then the plaintext they carry.
+            let progress = if let Some(flushed) = self.stream.flush_tls() {
+                network_written = true;
+                flushed
+            } else {
+                let Some(outbound) = self.outbound.front_mut() else {
+                    break;
+                };
+                if outbound.offset == outbound.bytes.len() {
+                    // TLS holds a handshake's plaintext until the handshake is done.
+                    if self.stream.is_handshaking() {
                         blocked = true;
                         break;
                     }
-                    Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
-                    Err(error) => {
-                        self.fail(&format!("flush WebSocket TLS transport: {error}"));
-                        break;
-                    }
+                    self.outbound.pop_front();
+                    continue;
                 }
-            }
-
-            let Some(outbound) = self.outbound.front_mut() else {
-                break;
+                let end =
+                    (outbound.offset + WRITE_BUDGET_BYTES - written).min(outbound.bytes.len());
+                self.stream
+                    .write(&outbound.bytes[outbound.offset..end])
+                    .inspect(|count| outbound.offset += count)
             };
-            if outbound.offset == outbound.bytes.len() {
-                if self.stream.is_tls() && self.stream.is_handshaking() {
-                    blocked = true;
-                    break;
-                }
-                self.outbound.pop_front();
-                continue;
-            }
-            let remaining_budget = WRITE_BUDGET_BYTES - written;
-            let end = (outbound.offset + remaining_budget).min(outbound.bytes.len());
-            match self.stream.write(&outbound.bytes[outbound.offset..end]) {
-                Ok(0) if self.stream.is_tls() => {
-                    blocked = true;
-                    break;
-                }
-                Ok(0) => {
-                    self.fail("write WebSocket transport returned zero bytes");
-                    break;
-                }
-                Ok(count) => {
-                    outbound.offset += count;
-                    written += count;
-                }
+            // A write that took nothing waits for writability, as one that
+            // would block does: TLS takes nothing while its buffer is full.
+            match progress.and_then(|count| {
+                (count > 0)
+                    .then_some(count)
+                    .ok_or(io::ErrorKind::WouldBlock.into())
+            }) {
+                Ok(count) => written += count,
                 Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
                     blocked = true;
                     break;
                 }
-                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
                 Err(error) => {
                     self.fail(&format!("write WebSocket transport: {error}"));
                     break;
@@ -1132,20 +978,8 @@ impl Entry {
             }
         }
 
-        if (!self.stream.is_tls() || !self.stream.is_handshaking())
-            && !self.stream.wants_write()
-            && self
-                .outbound
-                .front()
-                .is_some_and(|outbound| outbound.offset == outbound.bytes.len())
-        {
-            self.outbound.pop_front();
-        }
-
-        if matches!(self.phase, Phase::ServerReply { .. }) {
-            if let Err(reason) = self.finish_server_reply() {
-                self.protocol_failure(&reason);
-            }
+        if let Err(reason) = self.finish_server_reply() {
+            self.protocol_failure(&reason);
         }
         if network_written && self.stream.wants_read() {
             self.read_ready = true;
@@ -1155,40 +989,24 @@ impl Entry {
     }
 
     fn preflight(&mut self, now: Instant) {
-        if self.dead {
-            return;
-        }
         if self.connection.shared.cancelled.load(Ordering::Acquire) {
-            let reason = self
-                .connection
-                .shared
-                .cancel_reason
-                .lock()
-                .clone()
-                .unwrap_or_else(|| "WebSocket connection cancelled".to_string());
-            self.fail(&reason);
-            return;
-        }
-        let handshake_deadline = match &self.phase {
-            Phase::ServerHandshake { deadline, .. }
-            | Phase::ServerReply { deadline, .. }
-            | Phase::ClientHandshake { deadline, .. } => Some(*deadline),
-            Phase::Open { .. } | Phase::Transitioning => None,
-        };
-        if handshake_deadline.is_some_and(|deadline| now >= deadline) {
+            let reason = self.connection.shared.cancel_reason.lock().clone();
+            self.fail(&reason.unwrap_or_default());
+        } else if self
+            .handshake_deadline
+            .is_some_and(|deadline| now >= deadline)
+        {
             self.fail("TIMEOUT: WebSocket handshake");
-            return;
-        }
-        if self.close_deadline.is_some_and(|deadline| now >= deadline) {
+        } else if self.close_deadline.is_some_and(|deadline| now >= deadline) {
             self.dead = true;
         }
     }
 
     fn tick(&mut self, now: Instant) {
-        if self.dead {
-            return;
-        }
-        if !matches!(self.phase, Phase::Open { .. }) || self.close_state != CloseState::Open {
+        if self.dead
+            || !matches!(self.phase, Phase::Open { .. })
+            || self.close_state != CloseState::Open
+        {
             return;
         }
         if self
@@ -1196,12 +1014,7 @@ impl Entry {
             .pending
             .is_some_and(|(_, sent)| now.duration_since(sent) >= self.config.pong_timeout)
         {
-            if self
-                .start_close(WsCloseCode::GOING_AWAY, "HEARTBEAT_TIMEOUT")
-                .is_err()
-            {
-                self.fail("HEARTBEAT_TIMEOUT");
-            }
+            self.start_close(WsCloseCode::GOING_AWAY, "HEARTBEAT_TIMEOUT");
             return;
         }
         if self.heartbeat.pending.is_none()
@@ -1237,72 +1050,41 @@ impl Entry {
             Phase::ClientHandshake { sink, .. } | Phase::Open { sink } => {
                 sink.terminated(&self.termination_reason)
             }
-            Phase::Transitioning => {}
         }
     }
+}
+
+/// Reads TLS records from `socket` and decrypts them: the bytes read, none
+/// at end of stream.
+fn read_tls(session: &mut Connection, socket: &mut mio::net::TcpStream) -> io::Result<usize> {
+    let count = session.read_tls(socket)?;
+    if count > 0 {
+        session
+            .process_new_packets()
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+    }
+    Ok(count)
 }
 
 fn reactor() -> Result<&'static Arc<ReactorControl>, String> {
     static REACTOR: OnceLock<Result<Arc<ReactorControl>, String>> = OnceLock::new();
     REACTOR
-        .get_or_init(start_reactor)
+        .get_or_init(|| start_reactor(PROCESS_LIMITS))
         .as_ref()
         .map_err(Clone::clone)
 }
 
-fn start_reactor() -> Result<Arc<ReactorControl>, String> {
+fn start_reactor(limits: ReactorLimits) -> Result<Arc<ReactorControl>, String> {
     let poll = Poll::new().map_err(|error| format!("create WebSocket poller: {error}"))?;
-    let waker = Arc::new(
-        Waker::new(poll.registry(), WAKE_TOKEN)
-            .map_err(|error| format!("create WebSocket reactor waker: {error}"))?,
-    );
+    let waker = Waker::new(poll.registry(), WAKE_TOKEN)
+        .map_err(|error| format!("create WebSocket reactor waker: {error}"))?;
     let (commands, receiver) = crossbeam_channel::bounded(COMMAND_QUEUE_ITEMS);
-    let control = Arc::new(ReactorControl {
-        commands,
-        waker,
-        aggregate_write_budget: Arc::new(QueueBudget::new(
-            MAX_AGGREGATE_WRITE_ITEMS,
-            MAX_AGGREGATE_WRITE_BYTES,
-        )),
-        connection_count: Arc::new(AtomicUsize::new(0)),
-    });
+    let control = Arc::new(ReactorControl::new(commands, waker, limits));
     std::thread::Builder::new()
         .name("mesh-ws-reactor".to_string())
-        .spawn(move || reactor_loop(poll, receiver))
+        .spawn(move || reactor_loop(poll, receiver, limits.read_bytes))
         .map_err(|error| format!("start WebSocket reactor: {error}"))?;
-    #[cfg(test)]
-    REACTOR_THREADS_STARTED.fetch_add(1, Ordering::AcqRel);
     Ok(control)
-}
-
-fn new_connection(config: ReactorConfig) -> Result<(ReactorConnection, ConnectionSlot), String> {
-    let control = Arc::clone(reactor()?);
-    if !reserve_counter(&control.connection_count, 1, MAX_CONNECTIONS) {
-        return Err("WebSocket reactor connection limit reached".to_string());
-    }
-    let id = NEXT_CONNECTION_ID.fetch_add(1, Ordering::Relaxed);
-    let token_value = usize::try_from(id).map_err(|_| "WebSocket connection ID overflow")?;
-    if token_value == WAKE_TOKEN.0 {
-        control.connection_count.fetch_sub(1, Ordering::AcqRel);
-        return Err("WebSocket connection ID exhausted".to_string());
-    }
-    let shared = Arc::new(ConnectionShared {
-        accepting_writes: AtomicBool::new(true),
-        cancelled: AtomicBool::new(false),
-        cancel_reason: Mutex::new(None),
-        local_budget: Arc::new(QueueBudget::new(
-            config.max_write_queue_items,
-            config.max_write_queue_bytes,
-        )),
-    });
-    let connection = ReactorConnection {
-        id,
-        role: config.role,
-        max_message_bytes: config.max_message_bytes,
-        shared,
-        control: Arc::clone(&control),
-    };
-    Ok((connection, ConnectionSlot(control.connection_count.clone())))
 }
 
 pub(crate) fn register_server(
@@ -1310,43 +1092,11 @@ pub(crate) fn register_server(
     handler: Arc<dyn ServerHandshakeHandler>,
     config: ReactorConfig,
 ) -> Result<ReactorConnection, String> {
-    let tls_handshake_slot = TlsHandshakeSlot::reserve(&stream)?;
-    let (connection, slot) = new_connection(config.clone())?;
-    let now = Instant::now();
-    let entry = Entry {
-        id: connection.id,
-        token: Token(connection.id as usize),
-        connection: connection.clone(),
-        _slot: slot,
-        tls_handshake_slot,
-        stream,
-        phase: Phase::ServerHandshake {
-            handler,
-            buffer: Vec::new(),
-            deadline: now + config.handshake_timeout,
-        },
-        decoder: FrameDecoder::new(config.max_message_bytes),
-        assembler: MessageAssembler::new(config.max_message_bytes),
-        config,
-        outbound: VecDeque::new(),
-        heartbeat: Heartbeat {
-            last_ping: now,
-            pending: None,
-        },
-        read_ready: false,
-        write_ready: false,
-        frames_ready: false,
-        transport_eof: false,
-        tls_close_notify_sent: false,
-        close_state: CloseState::Open,
-        close_deadline: None,
-        termination_reason: "WebSocket connection closed".to_string(),
-        dead: false,
+    let phase = Phase::ServerHandshake {
+        handler,
+        buffer: Vec::new(),
     };
-    connection.submit(Command::Register {
-        entry: Box::new(entry),
-    })?;
-    Ok(connection)
+    register(reactor()?, stream, phase, VecDeque::new(), config)
 }
 
 pub(crate) fn register_client(
@@ -1356,26 +1106,59 @@ pub(crate) fn register_client(
     sink: Arc<dyn ReactorEventSink>,
     config: ReactorConfig,
 ) -> Result<ReactorConnection, String> {
-    let tls_handshake_slot = TlsHandshakeSlot::reserve(&stream)?;
-    let (connection, slot) = new_connection(config.clone())?;
+    let phase = Phase::ClientHandshake {
+        sink,
+        client_key,
+        buffer: Vec::new(),
+    };
+    let request = VecDeque::from([Outbound::new(request, None)]);
+    register(reactor()?, stream, phase, request, config)
+}
+
+/// Hands `stream` to the reactor `control` drives, in its opening `phase`
+/// with `outbound` queued.
+fn register(
+    control: &Arc<ReactorControl>,
+    stream: ReactorTransport,
+    phase: Phase,
+    outbound: VecDeque<Outbound>,
+    config: ReactorConfig,
+) -> Result<ReactorConnection, String> {
+    let tls_handshake_slot = TlsHandshakeSlot::reserve(control, &stream)?;
+    if !reserve_counter(&control.connections, 1, control.limits.connections) {
+        return Err("WebSocket reactor connection limit reached".to_string());
+    }
+    let slot = ConnectionSlot(Arc::clone(control));
+    let id = NEXT_CONNECTION_ID.fetch_add(1, Ordering::Relaxed);
+    let connection = ReactorConnection {
+        id,
+        role: config.role,
+        max_message_bytes: config.max_message_bytes,
+        shared: Arc::new(ConnectionShared {
+            accepting_writes: AtomicBool::new(true),
+            cancelled: AtomicBool::new(false),
+            cancel_reason: Mutex::new(None),
+            local_budget: Arc::new(QueueBudget::new(
+                config.max_write_queue_items,
+                config.max_write_queue_bytes,
+            )),
+        }),
+        control: Arc::clone(control),
+    };
     let now = Instant::now();
     let entry = Entry {
-        id: connection.id,
-        token: Token(connection.id as usize),
+        id,
+        token: Token(id as usize),
         connection: connection.clone(),
         _slot: slot,
         tls_handshake_slot,
         stream,
-        phase: Phase::ClientHandshake {
-            sink,
-            client_key,
-            buffer: Vec::new(),
-            deadline: now + config.handshake_timeout,
-        },
+        phase,
+        handshake_deadline: Some(now + config.handshake_timeout),
         decoder: FrameDecoder::new(config.max_message_bytes),
         assembler: MessageAssembler::new(config.max_message_bytes),
         config,
-        outbound: VecDeque::from([Outbound::new(request, None)]),
+        outbound,
         heartbeat: Heartbeat {
             last_ping: now,
             pending: None,
@@ -1383,7 +1166,6 @@ pub(crate) fn register_client(
         read_ready: false,
         write_ready: false,
         frames_ready: false,
-        transport_eof: false,
         tls_close_notify_sent: false,
         close_state: CloseState::Open,
         close_deadline: None,
@@ -1396,7 +1178,7 @@ pub(crate) fn register_client(
     Ok(connection)
 }
 
-fn reactor_loop(mut poll: Poll, receiver: Receiver<Command>) {
+fn reactor_loop(mut poll: Poll, receiver: Receiver<Command>, read_limit: usize) {
     let mut events = Events::with_capacity(1024);
     let mut entries = HashMap::<u64, Box<Entry>>::new();
     loop {
@@ -1408,23 +1190,18 @@ fn reactor_loop(mut poll: Poll, receiver: Receiver<Command>) {
         } else {
             REACTOR_TICK
         };
-        if let Err(error) = poll.poll(&mut events, Some(timeout)) {
-            if error.kind() != io::ErrorKind::Interrupted {
-                eprintln!("[mesh-rt] WebSocket reactor poll failed: {error}");
-            }
-        }
+        // A poll fails only when a signal interrupts it; the next turn polls
+        // again.
+        let _ = poll.poll(&mut events, Some(timeout));
 
+        // The waker's token is no connection's: a wake only drains commands.
         for event in &events {
-            if event.token() == WAKE_TOKEN {
-                drain_commands(&poll, &receiver, &mut entries);
-                continue;
+            if let Some(entry) = entries.get_mut(&(event.token().0 as u64)) {
+                entry.read_ready |=
+                    event.is_readable() || event.is_read_closed() || event.is_error();
+                entry.write_ready |=
+                    event.is_writable() || event.is_write_closed() || event.is_error();
             }
-            let id = event.token().0 as u64;
-            let Some(entry) = entries.get_mut(&id) else {
-                continue;
-            };
-            entry.read_ready |= event.is_readable() || event.is_read_closed() || event.is_error();
-            entry.write_ready |= event.is_writable() || event.is_write_closed() || event.is_error();
         }
 
         drain_commands(&poll, &receiver, &mut entries);
@@ -1435,7 +1212,7 @@ fn reactor_loop(mut poll: Poll, receiver: Receiver<Command>) {
             let buffered_before = entry.buffered_bytes();
             let had_pending_write = entry.needs_write_interest();
             entry.preflight(now);
-            if entry.read_ready && !entry.dead && aggregate_read_bytes < MAX_AGGREGATE_READ_BYTES {
+            if entry.read_ready && !entry.dead && aggregate_read_bytes < read_limit {
                 entry.read_ready = entry.readable();
                 if entry.needs_write_interest() {
                     entry.write_ready = true;
@@ -1460,33 +1237,28 @@ fn reactor_loop(mut poll: Poll, receiver: Receiver<Command>) {
             }
         }
 
-        while aggregate_read_bytes >= MAX_AGGREGATE_READ_BYTES {
+        // Over the read limit, the connections holding the most unread bytes
+        // go first.
+        while aggregate_read_bytes >= read_limit {
             let Some(entry) = entries
                 .values_mut()
-                .filter(|entry| !entry.dead)
+                .filter(|entry| !entry.dead && entry.buffered_bytes() > 0)
                 .max_by_key(|entry| entry.buffered_bytes())
             else {
                 break;
             };
-            let bytes = entry.buffered_bytes();
-            if bytes == 0 {
-                break;
-            }
+            aggregate_read_bytes = aggregate_read_bytes.saturating_sub(entry.buffered_bytes());
             entry.fail("BACKPRESSURE: aggregate WebSocket read queue is full");
-            aggregate_read_bytes = aggregate_read_bytes.saturating_sub(bytes);
         }
 
-        let dead = entries
-            .iter()
-            .filter_map(|(id, entry)| entry.dead.then_some(*id))
-            .collect::<Vec<_>>();
-        for id in dead {
-            if let Some(mut entry) = entries.remove(&id) {
+        entries.retain(|_, entry| {
+            if entry.dead {
                 let _ = poll.registry().deregister(entry.stream.source());
                 entry.stream.shutdown();
                 entry.notify_terminated();
             }
-        }
+            !entry.dead
+        });
     }
 }
 
@@ -1495,73 +1267,60 @@ fn drain_commands(
     receiver: &Receiver<Command>,
     entries: &mut HashMap<u64, Box<Entry>>,
 ) {
-    loop {
-        match receiver.try_recv() {
-            Ok(Command::Register { mut entry }) => {
-                let interest = entry.interest();
-                match poll
+    while let Ok(command) = receiver.try_recv() {
+        match command {
+            Command::Register { mut entry } => {
+                let (token, interest) = (entry.token, entry.interest());
+                let registered = poll
                     .registry()
-                    .register(entry.stream.source(), entry.token, interest)
-                {
-                    Ok(()) => {
-                        entries.insert(entry.id, entry);
-                    }
-                    Err(error) => {
-                        entry.fail(&format!("register WebSocket transport: {error}"));
-                        entry.stream.shutdown();
-                        entry.notify_terminated();
-                    }
+                    .register(entry.stream.source(), token, interest);
+                // An entry the poller refuses is dropped at the end of the
+                // turn, as a dead one is.
+                if let Err(error) = registered {
+                    entry.fail(&format!("register WebSocket transport: {error}"));
+                }
+                entries.insert(entry.id, entry);
+            }
+            Command::Write { id, outbound } => {
+                if let Some(entry) = entries.get_mut(&id).filter(|entry| entry.accepts_frames()) {
+                    entry.outbound.push_back(outbound);
+                    reregister_writable(poll, entry);
                 }
             }
-            Ok(Command::Write { id, outbound }) => {
-                if let Some(entry) = entries.get_mut(&id) {
-                    if entry.close_state == CloseState::Open && !entry.dead {
-                        entry.outbound.push_back(outbound);
-                        reregister_writable(poll, entry);
-                    }
-                }
-            }
-            Ok(Command::Close {
+            Command::Close {
                 id,
                 outbound,
                 reason,
-            }) => {
-                if let Some(entry) = entries.get_mut(&id) {
-                    if entry.close_state == CloseState::Open && !entry.dead {
-                        entry.prioritize_close(outbound);
-                        entry.close_state = CloseState::AwaitingPeer;
-                        entry.close_deadline = Some(Instant::now() + CLOSE_DEADLINE);
-                        entry.termination_reason = reason;
-                        reregister_writable(poll, entry);
-                    }
+            } => {
+                if let Some(entry) = entries.get_mut(&id).filter(|entry| entry.accepts_frames()) {
+                    entry.prioritize_close(outbound);
+                    entry.close_state = CloseState::AwaitingPeer;
+                    entry.close_deadline = Some(Instant::now() + CLOSE_DEADLINE);
+                    entry.termination_reason = reason;
+                    reregister_writable(poll, entry);
                 }
             }
-            Err(TryRecvError::Empty) => break,
-            Err(TryRecvError::Disconnected) => break,
         }
     }
 }
 
 fn reregister_writable(poll: &Poll, entry: &mut Entry) {
-    let interest = entry.interest();
-    if let Err(error) = poll
+    let (token, interest) = (entry.token, entry.interest());
+    let reregistered = poll
         .registry()
-        .reregister(entry.stream.source(), entry.token, interest)
-    {
+        .reregister(entry.stream.source(), token, interest);
+    if let Err(error) = reregistered {
         entry.fail(&format!("reregister WebSocket writer: {error}"));
     }
-}
-
-#[cfg(test)]
-pub(crate) fn reactor_threads_started() -> usize {
-    REACTOR_THREADS_STARTED.load(Ordering::Acquire)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::ws::close::parse_close_payload;
-    use crate::ws::frame::{read_frame, write_frame, write_masked_frame};
+    use crate::ws::frame::{read_frame, read_frame_with_mask, write_frame, write_masked_frame};
+    use crate::ws::handshake::compute_accept_key;
+    use rustls::{ClientConnection, ServerConnection};
     use std::net::TcpListener;
     use std::sync::mpsc;
 
@@ -1605,7 +1364,7 @@ mod tests {
             self.saw(Seen::Opened(String::new()));
         }
 
-        fn event(&self, event: ReactorEvent) -> Result<(), SinkError> {
+        fn event(&self, event: ReactorEvent) -> Result<(), SinkFull> {
             self.saw(match event {
                 ReactorEvent::Text(data, _) => Seen::Text(data),
                 ReactorEvent::Binary(data, _) => Seen::Binary(data),
@@ -1636,76 +1395,147 @@ mod tests {
         }
     }
 
-    /// A server connection on the reactor under `config`, and the raw
-    /// client connected to it.
-    fn server(config: ReactorConfig) -> (TcpStream, Arc<Recorder>, mpsc::Receiver<Seen>) {
+    fn next(seen: &mpsc::Receiver<Seen>) -> Seen {
+        seen.recv_timeout(TIMEOUT).unwrap()
+    }
+
+    /// A connected pair of sockets: (ours, the reactor's).
+    fn socket_pair() -> (TcpStream, TcpStream) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let client = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
-        client.set_read_timeout(Some(TIMEOUT)).unwrap();
-        let (tcp, _) = listener.accept().unwrap();
+        let ours = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        ours.set_read_timeout(Some(TIMEOUT)).unwrap();
+        (ours, listener.accept().unwrap().0)
+    }
+
+    /// A reactor of the test's own, with `limits`.
+    fn reactor_with(limits: ReactorLimits) -> Arc<ReactorControl> {
+        start_reactor(limits).unwrap()
+    }
+
+    /// A server connection on `control`'s reactor under `config`, and the
+    /// raw client connected to it.
+    fn server_on(
+        control: &Arc<ReactorControl>,
+        config: ReactorConfig,
+    ) -> (TcpStream, Arc<Recorder>, mpsc::Receiver<Seen>) {
+        let (client, tcp) = socket_pair();
         let (recorder, seen) = Recorder::new();
-        register_server(
+        let phase = Phase::ServerHandshake {
+            handler: Arc::new(Arc::clone(&recorder)),
+            buffer: Vec::new(),
+        };
+        register(
+            control,
             ReactorTransport::plain(tcp),
-            Arc::new(Arc::clone(&recorder)),
+            phase,
+            VecDeque::new(),
             config,
         )
         .unwrap();
         (client, recorder, seen)
     }
 
+    fn server(config: ReactorConfig) -> (TcpStream, Arc<Recorder>, mpsc::Receiver<Seen>) {
+        server_on(reactor().unwrap(), config)
+    }
+
     const UPGRADE: &[u8] = b"GET /feed HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\n\
         Connection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\
         Sec-WebSocket-Version: 13\r\n\r\n";
 
-    /// Send the upgrade request with `then` in the same write, and read the
-    /// server's 101 answer.
-    fn upgrade(client: &mut TcpStream, then: &[u8]) {
-        client.write_all(&[UPGRADE, then].concat()).unwrap();
+    /// Read an HTTP head, through its blank line.
+    fn read_head(stream: &mut impl Read) -> String {
         let mut head = Vec::new();
         let mut byte = [0u8; 1];
         while !head.ends_with(b"\r\n\r\n") {
-            client.read_exact(&mut byte).unwrap();
+            stream.read_exact(&mut byte).unwrap();
             head.push(byte[0]);
         }
-        assert!(head.starts_with(b"HTTP/1.1 101"), "{head:?}");
+        String::from_utf8(head).unwrap()
     }
 
-    fn next(seen: &mpsc::Receiver<Seen>) -> Seen {
-        seen.recv_timeout(TIMEOUT).unwrap()
+    /// Send the upgrade request with `then` in the same write, and read the
+    /// server's 101 answer and its opening.
+    fn upgrade(client: &mut TcpStream, then: &[u8], seen: &mpsc::Receiver<Seen>) {
+        client.write_all(&[UPGRADE, then].concat()).unwrap();
+        assert!(read_head(client).starts_with("HTTP/1.1 101"));
+        assert_eq!(next(seen), Seen::Opened("/feed".to_string()));
+        assert_eq!(next(seen), Seen::Opened(String::new()));
+    }
+
+    /// A server connection on the process reactor, upgraded.
+    fn open_server(config: ReactorConfig) -> (TcpStream, Arc<Recorder>, mpsc::Receiver<Seen>) {
+        let (mut client, recorder, seen) = server(config);
+        upgrade(&mut client, &[], &seen);
+        (client, recorder, seen)
+    }
+
+    /// A masked frame, as a client sends.
+    fn masked(opcode: WsOpcode, payload: &[u8], fin: bool) -> Vec<u8> {
+        let mut frame = Vec::new();
+        write_masked_frame(&mut frame, opcode, payload, fin, [1, 2, 3, 4]).unwrap();
+        frame
     }
 
     /// The close frame the peer reads next: its code.
-    fn close_code(client: &mut TcpStream) -> u16 {
-        let frame = read_frame(client).unwrap();
+    fn close_code(peer: &mut impl Read) -> u16 {
+        let frame = read_frame(peer).unwrap();
         assert_eq!(frame.opcode, WsOpcode::Close);
         parse_close_payload(&frame.payload).0
     }
 
-    /// A bad frame that arrived with the upgrade request closes the opened
-    /// connection with a protocol error, as one arriving later does.
-    #[test]
-    fn a_bad_frame_sent_with_the_upgrade_closes_with_a_protocol_error() {
-        let (mut client, _recorder, seen) = server(ReactorConfig::server(1024));
-        let mut unmasked = Vec::new();
-        write_frame(&mut unmasked, WsOpcode::Text, b"hi", true).unwrap();
-        upgrade(&mut client, &unmasked);
-        assert_eq!(next(&seen), Seen::Opened("/feed".to_string()));
-        assert_eq!(close_code(&mut client), WsCloseCode::PROTOCOL_ERROR);
-        write_masked_frame(&mut client, WsOpcode::Close, &[], true, [1, 2, 3, 4]).unwrap();
-        assert_eq!(next(&seen), Seen::Close(1005, String::new()));
+    /// A client connection on the process reactor under `config` over
+    /// `transport`, its upgrade request `request`; the server side answers.
+    fn client(
+        transport: ReactorTransport,
+        request: Vec<u8>,
+        config: ReactorConfig,
+    ) -> (ReactorConnection, mpsc::Receiver<Seen>) {
+        let (recorder, seen) = Recorder::new();
+        let connection = register_client(
+            transport,
+            request,
+            "dGhlIHNhbXBsZSBub25jZQ==".to_string(),
+            recorder,
+            config,
+        )
+        .unwrap();
+        (connection, seen)
     }
 
-    #[test]
-    fn graceful_close_retains_only_the_protocol_encoded_reason() {
+    /// Answer a client's upgrade request as a server does.
+    fn accept_upgrade(peer: &mut (impl Read + Write)) {
+        read_head(peer);
+        write!(
+            peer,
+            "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\
+             Sec-WebSocket-Accept: {}\r\n\r\n",
+            compute_accept_key("dGhlIHNhbXBsZSBub25jZQ==")
+        )
+        .unwrap();
+        peer.flush().unwrap();
+    }
+
+    /// A plain client connection, open: the raw server side and the
+    /// connection's events.
+    fn open_client(config: ReactorConfig) -> (TcpStream, ReactorConnection, mpsc::Receiver<Seen>) {
+        let (mut peer, tcp) = socket_pair();
+        let (connection, seen) = client(ReactorTransport::plain(tcp), UPGRADE.to_vec(), config);
+        accept_upgrade(&mut peer);
+        assert_eq!(next(&seen), Seen::Opened(String::new()));
+        (peer, connection, seen)
+    }
+
+    /// A connection on a hand-made control no reactor drains, its commands
+    /// left in a queue of `commands`.
+    fn unattended(
+        commands: usize,
+        limits: ReactorLimits,
+        local: QueueBudget,
+    ) -> (ReactorConnection, crossbeam_channel::Receiver<Command>) {
         let poll = Poll::new().unwrap();
-        let waker = Arc::new(Waker::new(poll.registry(), WAKE_TOKEN).unwrap());
-        let (commands, receiver) = crossbeam_channel::bounded(1);
-        let control = Arc::new(ReactorControl {
-            commands,
-            waker,
-            aggregate_write_budget: Arc::new(QueueBudget::new(1, 1024)),
-            connection_count: Arc::new(AtomicUsize::new(0)),
-        });
+        let waker = Waker::new(poll.registry(), WAKE_TOKEN).unwrap();
+        let (sender, receiver) = crossbeam_channel::bounded(commands);
         let connection = ReactorConnection {
             id: 1,
             role: PeerRole::Server,
@@ -1714,10 +1544,16 @@ mod tests {
                 accepting_writes: AtomicBool::new(true),
                 cancelled: AtomicBool::new(false),
                 cancel_reason: Mutex::new(None),
-                local_budget: Arc::new(QueueBudget::new(1, 1024)),
+                local_budget: Arc::new(local),
             }),
-            control,
+            control: Arc::new(ReactorControl::new(sender, waker, limits)),
         };
+        (connection, receiver)
+    }
+
+    #[test]
+    fn graceful_close_retains_only_the_protocol_encoded_reason() {
+        let (connection, receiver) = unattended(1, PROCESS_LIMITS, QueueBudget::new(1, 1024));
         let supplied = "reason".repeat(1024);
 
         connection.graceful_close(1000, &supplied).unwrap();
@@ -1728,6 +1564,70 @@ mod tests {
         let payload = build_close_payload(1000, &supplied);
         assert_eq!(reason.as_bytes(), &payload[2..]);
         assert!(reason.len() <= 123);
+    }
+
+    /// What a connection refuses to send, before and after it closes, and a
+    /// reactor that cannot take a command.
+    #[test]
+    fn sends_are_refused_when_they_cannot_be_queued() {
+        let (connection, receiver) = unattended(1, PROCESS_LIMITS, QueueBudget::new(4, 1024));
+        assert_eq!(
+            connection.send(WsOpcode::Text, &[0; 1025]),
+            Err("MESSAGE_TOO_BIG".to_string())
+        );
+        assert_eq!(connection.send(WsOpcode::Text, b"one"), Ok(()));
+        assert_eq!(
+            connection.send(WsOpcode::Text, b"two"),
+            Err("BACKPRESSURE: WebSocket reactor command queue is full".to_string())
+        );
+        assert_eq!(
+            connection.graceful_close(1005, ""),
+            Err("invalid WebSocket close code".to_string())
+        );
+        assert_eq!(
+            connection.graceful_close(1000, ""),
+            Err("BACKPRESSURE: WebSocket reactor command queue is full".to_string())
+        );
+        assert!(connection.is_closed());
+        assert_eq!(connection.graceful_close(1000, ""), Ok(()));
+        assert_eq!(
+            connection.send(WsOpcode::Text, b"three"),
+            Err("WebSocket connection is closed".to_string())
+        );
+
+        drop(receiver);
+        let (connection, receiver) = unattended(1, PROCESS_LIMITS, QueueBudget::new(4, 1024));
+        drop(receiver);
+        assert_eq!(
+            connection.send(WsOpcode::Text, b"one"),
+            Err("WebSocket reactor is unavailable".to_string())
+        );
+    }
+
+    /// A frame needs room in its connection's write budget and then its
+    /// reactor's; refused by the second, it gives the first back.
+    #[test]
+    fn write_budgets_refuse_frames_they_cannot_hold() {
+        let (connection, _receiver) = unattended(4, PROCESS_LIMITS, QueueBudget::new(1, 1024));
+        connection.send(WsOpcode::Text, b"one").unwrap();
+        assert_eq!(
+            connection.send(WsOpcode::Text, b"two"),
+            Err("BACKPRESSURE: WebSocket outbound queue is full".to_string())
+        );
+
+        let limits = ReactorLimits {
+            write_items: 0,
+            ..PROCESS_LIMITS
+        };
+        let (connection, _receiver) = unattended(4, limits, QueueBudget::new(1, 1024));
+        assert_eq!(
+            connection.send(WsOpcode::Text, b"one"),
+            Err("BACKPRESSURE: aggregate WebSocket outbound queue is full".to_string())
+        );
+        assert_eq!(
+            connection.shared.local_budget.items.load(Ordering::Acquire),
+            0
+        );
     }
 
     #[test]
@@ -1745,6 +1645,18 @@ mod tests {
         drop(reservation);
         assert!(local.reserve(8));
         local.release(8);
+    }
+
+    /// An inbound permit takes an item and its bytes; refused the bytes, it
+    /// gives the item back.
+    #[test]
+    fn inbound_permits_are_bounded_by_items_and_bytes() {
+        let budget = Arc::new(QueueBudget::new(2, 8));
+        let permit = InboundPermit::reserve(&budget, 8).unwrap();
+        assert!(InboundPermit::reserve(&budget, 1).is_none());
+        assert_eq!(budget.items.load(Ordering::Acquire), 1);
+        drop(permit);
+        assert_eq!(budget.bytes.load(Ordering::Acquire), 0);
     }
 
     #[test]
@@ -1769,5 +1681,443 @@ mod tests {
         assert_eq!(started.len(), 2);
         assert_eq!(started[0].offset, 1);
         assert_eq!(started[1].bytes, [8]);
+    }
+
+    /// A bad frame that arrived with the upgrade request closes the opened
+    /// connection with a protocol error, as one arriving later does.
+    #[test]
+    fn a_bad_frame_sent_with_the_upgrade_closes_with_a_protocol_error() {
+        let (mut client, _recorder, seen) = server(ReactorConfig::server(1024));
+        let mut unmasked = Vec::new();
+        write_frame(&mut unmasked, WsOpcode::Text, b"hi", true).unwrap();
+        upgrade(&mut client, &unmasked, &seen);
+        assert_eq!(close_code(&mut client), WsCloseCode::PROTOCOL_ERROR);
+        client
+            .write_all(&masked(WsOpcode::Close, &[], true))
+            .unwrap();
+        assert_eq!(next(&seen), Seen::Close(1005, String::new()));
+    }
+
+    /// A reactor admits connections, TLS handshakes, unread bytes and
+    /// undelivered messages up to its limits.
+    #[test]
+    fn a_reactor_holds_to_its_limits() {
+        let control = reactor_with(ReactorLimits {
+            connections: 1,
+            ..PROCESS_LIMITS
+        });
+        let (_client, _recorder, _seen) = server_on(&control, ReactorConfig::server(1024));
+        let (_other, tcp) = socket_pair();
+        let (recorder, _) = Recorder::new();
+        let phase = Phase::ServerHandshake {
+            handler: Arc::new(recorder),
+            buffer: Vec::new(),
+        };
+        assert_eq!(
+            register(
+                &control,
+                ReactorTransport::plain(tcp),
+                phase,
+                VecDeque::new(),
+                ReactorConfig::server(1024)
+            )
+            .err(),
+            Some("WebSocket reactor connection limit reached".to_string())
+        );
+
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let (server_config, _) = crate::dist::node::ws_test_tls_configs();
+        let control = reactor_with(ReactorLimits {
+            tls_handshakes: 0,
+            ..PROCESS_LIMITS
+        });
+        let (_other, tcp) = socket_pair();
+        let (recorder, _) = Recorder::new();
+        let phase = Phase::ServerHandshake {
+            handler: Arc::new(recorder),
+            buffer: Vec::new(),
+        };
+        assert_eq!(
+            register(
+                &control,
+                ReactorTransport::tls(ServerConnection::new(server_config).unwrap(), tcp),
+                phase,
+                VecDeque::new(),
+                ReactorConfig::server(1024)
+            )
+            .err(),
+            Some("WebSocket TLS handshake limit reached".to_string())
+        );
+
+        let control = reactor_with(ReactorLimits {
+            read_bytes: 16,
+            ..PROCESS_LIMITS
+        });
+        let (mut client, _recorder, seen) = server_on(&control, ReactorConfig::server(1024));
+        client.write_all(&UPGRADE[..20]).unwrap();
+        assert_eq!(
+            next(&seen),
+            Seen::Failed("BACKPRESSURE: aggregate WebSocket read queue is full".to_string())
+        );
+
+        let control = reactor_with(ReactorLimits {
+            inbound_items: 0,
+            ..PROCESS_LIMITS
+        });
+        let (mut client, _recorder, seen) = server_on(&control, ReactorConfig::server(1024));
+        upgrade(&mut client, &masked(WsOpcode::Text, b"hi", true), &seen);
+        assert_eq!(close_code(&mut client), WsCloseCode::TRY_AGAIN_LATER);
+    }
+
+    /// A server answers a ping with its payload, delivers messages whole,
+    /// and closes on each kind of bad message with its code.
+    #[test]
+    fn a_server_answers_pings_and_closes_on_bad_messages() {
+        let (mut client, _recorder, seen) = open_server(ReactorConfig::server(8));
+        client
+            .write_all(
+                &[
+                    masked(WsOpcode::Ping, b"beat", true),
+                    masked(WsOpcode::Binary, &[1, 2], false),
+                    masked(WsOpcode::Continuation, &[3], true),
+                ]
+                .concat(),
+            )
+            .unwrap();
+        let (pong, masked_pong) = read_frame_with_mask(&mut client).unwrap();
+        assert_eq!(
+            (pong.opcode, pong.payload, masked_pong),
+            (WsOpcode::Pong, b"beat".to_vec(), false)
+        );
+        assert_eq!(next(&seen), Seen::Binary(vec![1, 2, 3]));
+
+        for (bad, code) in [
+            (
+                masked(WsOpcode::Text, &[0xff], true),
+                WsCloseCode::INVALID_DATA,
+            ),
+            (
+                masked(WsOpcode::Binary, &[0; 9], true),
+                WsCloseCode::MESSAGE_TOO_BIG,
+            ),
+            (
+                [
+                    masked(WsOpcode::Binary, &[0; 5], false),
+                    masked(WsOpcode::Continuation, &[0; 5], true),
+                ]
+                .concat(),
+                WsCloseCode::MESSAGE_TOO_BIG,
+            ),
+            (
+                masked(WsOpcode::Continuation, &[0], true),
+                WsCloseCode::PROTOCOL_ERROR,
+            ),
+        ] {
+            let (mut client, _recorder, _seen) = open_server(ReactorConfig::server(8));
+            client.write_all(&bad).unwrap();
+            assert_eq!(close_code(&mut client), code);
+        }
+    }
+
+    /// More frames than one turn processes wait for the next turn, whose
+    /// bad frame still closes the connection.
+    #[test]
+    fn frames_past_a_turns_budget_are_processed_next_turn() {
+        let (mut client, _recorder, seen) = open_server(ReactorConfig::server(8));
+        let mut unmasked = Vec::new();
+        write_frame(&mut unmasked, WsOpcode::Binary, &[], true).unwrap();
+        let frames = [
+            masked(WsOpcode::Binary, &[], true).repeat(FRAME_BUDGET_ITEMS),
+            unmasked,
+        ]
+        .concat();
+        client.write_all(&frames).unwrap();
+        for _ in 0..FRAME_BUDGET_ITEMS {
+            assert_eq!(next(&seen), Seen::Binary(Vec::new()));
+        }
+        assert_eq!(close_code(&mut client), WsCloseCode::PROTOCOL_ERROR);
+    }
+
+    /// A server connection whose handshake fails tells its handler: a
+    /// request that is no upgrade, and one that never finishes.
+    #[test]
+    fn a_failed_server_handshake_tells_the_handler() {
+        let (mut client, _recorder, seen) = server(ReactorConfig::server(8));
+        client.write_all(b"BREW /pot\r\n\r\n").unwrap();
+        assert!(
+            matches!(next(&seen), Seen::Failed(reason) if reason.starts_with("malformed WebSocket request line"))
+        );
+
+        let (_client, _recorder, seen) =
+            server(ReactorConfig::server(8).with_handshake_timeout(Duration::from_millis(50)));
+        assert_eq!(
+            next(&seen),
+            Seen::Failed("TIMEOUT: WebSocket handshake".to_string())
+        );
+    }
+
+    /// Set socket option `option` of `socket` to `value`.
+    #[cfg(unix)]
+    fn set_option<T>(socket: &TcpStream, option: libc::c_int, value: T) {
+        use std::os::unix::io::AsRawFd;
+        let rc = unsafe {
+            libc::setsockopt(
+                socket.as_raw_fd(),
+                libc::SOL_SOCKET,
+                option,
+                (&value as *const T).cast(),
+                std::mem::size_of::<T>() as libc::socklen_t,
+            )
+        };
+        assert_eq!(rc, 0, "setsockopt: {}", std::io::Error::last_os_error());
+    }
+
+    /// Close `socket` with a reset rather than a FIN.
+    #[cfg(unix)]
+    fn reset(socket: TcpStream) {
+        let linger = libc::linger {
+            l_onoff: 1,
+            l_linger: 0,
+        };
+        set_option(&socket, libc::SO_LINGER, linger);
+    }
+
+    /// A peer that resets the connection ends it with the read error.
+    #[cfg(unix)]
+    #[test]
+    fn a_reset_ends_the_connection() {
+        let (client, _recorder, seen) = open_server(ReactorConfig::server(8));
+        reset(client);
+        assert!(
+            matches!(next(&seen), Seen::Terminated(reason) if reason.starts_with("read WebSocket transport: ")),
+        );
+    }
+
+    /// A write to a peer that reset the connection ends it with the write
+    /// error, where the reactor has not read the reset first: this one reads
+    /// nothing, its read limit 0.
+    #[cfg(unix)]
+    #[test]
+    fn a_write_to_a_reset_peer_ends_the_connection() {
+        let control = reactor_with(ReactorLimits {
+            read_bytes: 0,
+            ..PROCESS_LIMITS
+        });
+        let (peer, tcp) = socket_pair();
+        let (recorder, seen) = Recorder::new();
+        let phase = Phase::ClientHandshake {
+            sink: recorder,
+            client_key: String::new(),
+            buffer: Vec::new(),
+        };
+        let connection = register(
+            &control,
+            ReactorTransport::plain(tcp),
+            phase,
+            VecDeque::new(),
+            ReactorConfig::client(8, Duration::from_secs(30)),
+        )
+        .unwrap();
+        reset(peer);
+        // The reset reaches the reactor's socket a moment after the close.
+        let deadline = Instant::now() + TIMEOUT;
+        let reason = loop {
+            assert!(Instant::now() < deadline, "no write failed");
+            let _ = connection.send(WsOpcode::Text, b"hi");
+            if let Ok(Seen::Terminated(reason)) = seen.recv_timeout(Duration::from_millis(20)) {
+                break reason;
+            }
+        };
+        assert!(
+            reason.starts_with("write WebSocket transport: "),
+            "{reason}"
+        );
+    }
+
+    /// A peer that stops reading holds the connection's writes back until
+    /// it reads again; then everything sent arrives, in order.
+    #[cfg(unix)]
+    #[test]
+    fn writes_wait_for_a_slow_reader() {
+        let (mut client, tcp) = socket_pair();
+        for socket in [&client, &tcp] {
+            set_option(socket, libc::SO_SNDBUF, 4096 as libc::c_int);
+            set_option(socket, libc::SO_RCVBUF, 4096 as libc::c_int);
+        }
+        let (recorder, seen) = Recorder::new();
+        let phase = Phase::ServerHandshake {
+            handler: Arc::new(Arc::clone(&recorder)),
+            buffer: Vec::new(),
+        };
+        register(
+            reactor().unwrap(),
+            ReactorTransport::plain(tcp),
+            phase,
+            VecDeque::new(),
+            ReactorConfig::server(64 * 1024),
+        )
+        .unwrap();
+        upgrade(&mut client, &[], &seen);
+        let connection = recorder.connection.lock().clone().unwrap();
+        let message = vec![7u8; 60 * 1024];
+        // Far more than the sockets buffer: the reactor's writes block.
+        for _ in 0..16 {
+            connection.send(WsOpcode::Binary, &message).unwrap();
+        }
+        for _ in 0..16 {
+            assert_eq!(read_frame(&mut client).unwrap().payload, message);
+        }
+    }
+
+    /// A peer that closes and then shuts its side, while the close reply
+    /// still waits behind data it has not read, gets both once it reads:
+    /// the end of its stream does not cut them off.
+    #[cfg(unix)]
+    #[test]
+    fn a_peer_that_closes_and_leaves_still_gets_the_reply() {
+        let (mut client, tcp) = socket_pair();
+        for socket in [&client, &tcp] {
+            set_option(socket, libc::SO_SNDBUF, 4096 as libc::c_int);
+            set_option(socket, libc::SO_RCVBUF, 4096 as libc::c_int);
+        }
+        let (recorder, seen) = Recorder::new();
+        let phase = Phase::ServerHandshake {
+            handler: Arc::new(Arc::clone(&recorder)),
+            buffer: Vec::new(),
+        };
+        register(
+            reactor().unwrap(),
+            ReactorTransport::plain(tcp),
+            phase,
+            VecDeque::new(),
+            ReactorConfig::server(64 * 1024),
+        )
+        .unwrap();
+        upgrade(&mut client, &[], &seen);
+        let message = vec![7u8; 60 * 1024];
+        let connection = recorder.connection.lock().clone().unwrap();
+        connection.send(WsOpcode::Binary, &message).unwrap();
+        client
+            .write_all(&masked(WsOpcode::Close, &1000u16.to_be_bytes(), true))
+            .unwrap();
+        assert_eq!(next(&seen), Seen::Close(1000, String::new()));
+        client.shutdown(Shutdown::Write).unwrap();
+        assert_eq!(read_frame(&mut client).unwrap().payload, message);
+        assert_eq!(close_code(&mut client), 1000);
+        assert_eq!(next(&seen), Seen::Terminated("peer closed".to_string()));
+    }
+
+    /// A client closes on a masked frame from its server.
+    #[test]
+    fn a_client_closes_on_a_masked_frame() {
+        let (mut peer, _connection, _seen) =
+            open_client(ReactorConfig::client(8, Duration::from_secs(30)));
+        peer.write_all(&masked(WsOpcode::Text, b"hi", true))
+            .unwrap();
+        assert_eq!(close_code(&mut peer), WsCloseCode::PROTOCOL_ERROR);
+    }
+
+    /// A client pings on its interval; the answering pong keeps it open,
+    /// and an unanswered ping closes it.
+    #[test]
+    fn a_client_heartbeat_is_kept_by_pongs() {
+        let (mut peer, _connection, _seen) =
+            open_client(ReactorConfig::client(8, Duration::from_millis(200)));
+        let ping = read_frame(&mut peer).unwrap();
+        assert_eq!(ping.opcode, WsOpcode::Ping);
+        write_frame(&mut peer, WsOpcode::Pong, &ping.payload, true).unwrap();
+        assert_eq!(read_frame(&mut peer).unwrap().opcode, WsOpcode::Ping);
+        assert_eq!(close_code(&mut peer), WsCloseCode::GOING_AWAY);
+    }
+
+    /// A ping the write budget cannot hold ends the connection.
+    #[test]
+    fn a_ping_without_room_ends_the_connection() {
+        let (_peer, _connection, seen) = open_client(
+            ReactorConfig::client(8, Duration::from_millis(100)).with_write_limits(0, 0),
+        );
+        assert_eq!(
+            next(&seen),
+            Seen::Terminated("BACKPRESSURE: WebSocket outbound queue is full".to_string())
+        );
+    }
+
+    /// Once a connection closes, data it receives is dropped: the peer's
+    /// close is what it delivers next.
+    #[test]
+    fn a_closing_connection_ignores_data() {
+        let (mut peer, connection, seen) =
+            open_client(ReactorConfig::client(8, Duration::from_secs(30)));
+        connection.graceful_close(1000, "bye").unwrap();
+        assert_eq!(close_code(&mut peer), 1000);
+        write_frame(&mut peer, WsOpcode::Text, b"late", true).unwrap();
+        write_frame(
+            &mut peer,
+            WsOpcode::Close,
+            &build_close_payload(1000, "ok"),
+            true,
+        )
+        .unwrap();
+        assert_eq!(next(&seen), Seen::Close(1000, "ok".to_string()));
+        assert_eq!(next(&seen), Seen::Terminated("peer closed".to_string()));
+    }
+
+    /// A bad frame while a connection closes starts no second close; the
+    /// peer going away ends it.
+    #[test]
+    fn a_closing_connection_does_not_close_twice() {
+        let (mut peer, connection, seen) =
+            open_client(ReactorConfig::client(8, Duration::from_secs(30)));
+        connection.graceful_close(1000, "bye").unwrap();
+        assert_eq!(close_code(&mut peer), 1000);
+        peer.write_all(&[0x83, 0x00]).unwrap();
+        peer.shutdown(Shutdown::Write).unwrap();
+        assert_eq!(
+            next(&seen),
+            Seen::Terminated("WebSocket peer disconnected".to_string())
+        );
+        assert_eq!(peer.read(&mut [0u8; 1]).unwrap(), 0);
+    }
+
+    /// TLS: a client whose upgrade request is more than TLS buffers during
+    /// the handshake sends the rest after it, and a peer that drops the
+    /// connection without a close_notify ends it.
+    #[test]
+    fn tls_buffers_a_large_request_and_notices_a_dropped_peer() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let (server_config, client_config) = crate::dist::node::ws_test_tls_configs();
+        let (tcp, reactor_side) = socket_pair();
+        let request = [
+            b"GET / HTTP/1.1\r\nX-Pad: ".as_slice(),
+            &vec![b'a'; 2 * TLS_BUFFER_BYTES],
+            b"\r\n\r\n",
+        ]
+        .concat();
+        let session = ClientConnection::new(
+            client_config,
+            rustls_pki_types::ServerName::try_from("localhost").unwrap(),
+        )
+        .unwrap();
+        let (_connection, seen) = client(
+            ReactorTransport::tls(session, reactor_side),
+            request.clone(),
+            ReactorConfig::client(8, Duration::from_secs(30)),
+        );
+        let mut peer = rustls::StreamOwned::new(ServerConnection::new(server_config).unwrap(), tcp);
+        assert_eq!(read_head(&mut peer).len(), request.len());
+        write!(
+            peer,
+            "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\
+             Sec-WebSocket-Accept: {}\r\n\r\n",
+            compute_accept_key("dGhlIHNhbXBsZSBub25jZQ==")
+        )
+        .unwrap();
+        peer.flush().unwrap();
+        assert_eq!(next(&seen), Seen::Opened(String::new()));
+        drop(peer);
+        assert_eq!(
+            next(&seen),
+            Seen::Terminated("WebSocket peer disconnected".to_string())
+        );
     }
 }
