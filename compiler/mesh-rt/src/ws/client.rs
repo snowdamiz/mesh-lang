@@ -399,10 +399,8 @@ fn connect_until(
         let connection = ClientConnection::new(Arc::new(config), server_name)
             .map_err(|reason| format!("TLS_ERROR: {reason}"))?;
         ReactorTransport::client_tls(StreamOwned::new(connection, tcp))
-            .map_err(|reason| format!("configure WebSocket TLS transport: {reason}"))?
     } else {
         ReactorTransport::plain(tcp)
-            .map_err(|reason| format!("configure WebSocket transport: {reason}"))?
     };
     let inbound = Arc::new(Mutex::new(InboundState {
         queue: VecDeque::new(),
@@ -754,7 +752,7 @@ mod tests {
         std::sync::mpsc::Receiver<Result<(), String>>,
     ) {
         let tcp = TcpStream::connect(("127.0.0.1", port)).unwrap();
-        let stream = ReactorTransport::plain(tcp).unwrap();
+        let stream = ReactorTransport::plain(tcp);
         let inbound = Arc::new(Mutex::new(InboundState {
             queue: VecDeque::new(),
             queued_bytes: 0,
@@ -1212,7 +1210,7 @@ mod tests {
         let tcp = TcpStream::connect(("127.0.0.1", port)).unwrap();
         let server_name = ServerName::try_from("localhost".to_string()).unwrap();
         let connection = ClientConnection::new(client_config, server_name).unwrap();
-        let stream = ReactorTransport::client_tls(StreamOwned::new(connection, tcp)).unwrap();
+        let stream = ReactorTransport::client_tls(StreamOwned::new(connection, tcp));
         let inbound = Arc::new(Mutex::new(InboundState {
             queue: VecDeque::new(),
             queued_bytes: 0,
