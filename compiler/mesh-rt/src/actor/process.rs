@@ -21,22 +21,29 @@ use super::mailbox::Mailbox;
 
 /// Unique identifier for an actor process.
 ///
-/// PIDs are assigned sequentially from a global atomic counter, guaranteeing
-/// uniqueness within a single runtime instance. 0 is never a process: it is
-/// what a lookup that finds none and a spawn that failed return, and a send
-/// to it goes nowhere.
+/// PIDs are assigned sequentially from a global atomic counter, unique among
+/// a runtime's live processes. 0 is never a process: it is what a lookup that
+/// finds none and a spawn that failed return, and a send to it goes nowhere.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ProcessId(pub u64);
 
+/// The local counter's bits of a PID (bits 39..0).
+const LOCAL_ID_MASK: u64 = 0x0000_00FF_FFFF_FFFF;
+
+static NEXT_LOCAL_ID: AtomicU64 = AtomicU64::new(1);
+
 impl ProcessId {
-    /// Generate a fresh, globally unique local PID.
-    ///
-    /// The counter is masked to 40 bits to prevent overflow into the
-    /// creation and node_id fields. In practice the counter will never
-    /// reach 2^40 (~1 trillion), but the mask is defensive.
+    /// A fresh local PID (see `next_unused`), for a process no table holds.
     pub fn next() -> Self {
-        static COUNTER: AtomicU64 = AtomicU64::new(1);
-        ProcessId(COUNTER.fetch_add(1, Ordering::Relaxed) & 0x0000_00FF_FFFF_FFFF)
+        Self::next_unused(|_| false)
+    }
+
+    /// A fresh local PID that no live process holds (`in_use`). The counter
+    /// is masked to its 40 bits; after 2^40 spawns (weeks, for a server
+    /// spawning per request) it wraps, and then skips 0 and the ids of
+    /// processes still running, such as actors started with the program.
+    pub fn next_unused(in_use: impl Fn(ProcessId) -> bool) -> Self {
+        next_local_id(&NEXT_LOCAL_ID, in_use)
     }
 
     /// Return the raw numeric value.
@@ -64,7 +71,7 @@ impl ProcessId {
     /// Extract the 40-bit local process identifier (bits 39..0).
     #[inline]
     pub fn local_id(self) -> u64 {
-        self.0 & 0x0000_00FF_FFFF_FFFF
+        self.0 & LOCAL_ID_MASK
     }
 
     /// Check if this PID belongs to the local node (node_id == 0).
@@ -83,9 +90,19 @@ impl ProcessId {
             "local_id exceeds 40 bits: {}",
             local_id
         );
-        ProcessId(
-            (node_id as u64) << 48 | (creation as u64) << 40 | (local_id & 0x0000_00FF_FFFF_FFFF),
-        )
+        ProcessId((node_id as u64) << 48 | (creation as u64) << 40 | (local_id & LOCAL_ID_MASK))
+    }
+}
+
+/// The next id of `counter` that is not 0 and, once the counter has wrapped
+/// past the 40 bits, not `in_use`.
+fn next_local_id(counter: &AtomicU64, in_use: impl Fn(ProcessId) -> bool) -> ProcessId {
+    loop {
+        let count = counter.fetch_add(1, Ordering::Relaxed);
+        let pid = ProcessId(count & LOCAL_ID_MASK);
+        if pid.0 != 0 && (count <= LOCAL_ID_MASK || !in_use(pid)) {
+            return pid;
+        }
     }
 }
 
@@ -563,6 +580,20 @@ mod tests {
     fn test_pid_display_remote() {
         let pid = ProcessId::from_remote(5, 2, 42);
         assert_eq!(format!("{}", pid), "<5.42.2>");
+    }
+
+    /// Once the counter wraps, a fresh PID skips 0 and every id a live
+    /// process holds; before, nothing is looked up.
+    #[test]
+    fn a_wrapped_counter_skips_zero_and_live_ids() {
+        let counter = AtomicU64::new(LOCAL_ID_MASK - 1);
+        let never = |_: ProcessId| -> bool { panic!("looked up before the counter wrapped") };
+        assert_eq!(next_local_id(&counter, never), ProcessId(LOCAL_ID_MASK - 1));
+        assert_eq!(next_local_id(&counter, never), ProcessId(LOCAL_ID_MASK));
+        let live = [ProcessId(1), ProcessId(2), ProcessId(4)];
+        let in_use = |pid: ProcessId| live.contains(&pid);
+        assert_eq!(next_local_id(&counter, in_use), ProcessId(3));
+        assert_eq!(next_local_id(&counter, in_use), ProcessId(5));
     }
 
     #[test]

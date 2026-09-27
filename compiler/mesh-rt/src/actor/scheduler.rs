@@ -274,7 +274,7 @@ impl Scheduler {
         priority: u8,
         shape: *const u32,
     ) -> ProcessId {
-        let pid = ProcessId::next();
+        let pid = self.fresh_pid();
         let priority = Priority::from_u8(priority);
 
         // Create process entry in the table.
@@ -476,6 +476,11 @@ impl Scheduler {
         telemetry.set_scheduler_queues(global_depth, &worker_depths);
     }
 
+    /// A PID no process in the table holds.
+    fn fresh_pid(&self) -> ProcessId {
+        ProcessId::next_unused(|pid| self.process_table.read().contains_key(&pid))
+    }
+
     /// Create a process entry for the main thread.
     ///
     /// This gives the main thread a PID and mailbox so that `mesh_service_call`
@@ -483,7 +488,7 @@ impl Scheduler {
     /// counted in active_count because it is not managed by the scheduler --
     /// its lifetime is controlled by the C main function.
     pub fn create_main_process(&self) -> ProcessId {
-        let pid = ProcessId::next();
+        let pid = self.fresh_pid();
         let mut process = Process::new(pid, Priority::Normal);
         process.set_live_state(ProcessState::Running);
         let process = Arc::new(Mutex::new(process));
