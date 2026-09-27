@@ -223,6 +223,58 @@ mod tests {
         );
     }
 
+    /// Claims of the wrong shape or size are neither signed nor read, and a
+    /// key in the ring that is not base64 verifies nothing.
+    #[test]
+    fn identity_envelopes_are_bounded_and_well_formed() {
+        let (private, public) = generate_identity_signing_material().unwrap();
+        let claim = NodeIdentityClaim {
+            schema_version: IDENTITY_SCHEMA_VERSION,
+            cluster_id: "cluster-a".to_string(),
+            stable_node_id: "cluster-a/worker/one".to_string(),
+            advertised_name: "one@one:4370".to_string(),
+            roles: vec!["worker".to_string()],
+            issued_at_unix_millis: 100,
+            expires_at_unix_millis: 200,
+        };
+        let future = NodeIdentityClaim {
+            schema_version: IDENTITY_SCHEMA_VERSION + 1,
+            ..claim.clone()
+        };
+        assert_eq!(
+            sign_identity_claim(&future, &private),
+            Err("node_identity_claim_invalid".to_string())
+        );
+        let oversized = NodeIdentityClaim {
+            advertised_name: "n".repeat(MAX_IDENTITY_ENVELOPE_BYTES),
+            ..claim.clone()
+        };
+        assert_eq!(
+            sign_identity_claim(&oversized, &private),
+            Err("node_identity_envelope_too_large".to_string())
+        );
+        assert_eq!(
+            decode_and_verify_identity(&[], &public, "cluster-a", "one@one:4370", 150),
+            Err("node_identity_envelope_invalid".to_string())
+        );
+        assert_eq!(
+            decode_envelope_b64(" "),
+            Err("node_identity_envelope_invalid".to_string())
+        );
+        let envelope =
+            decode_envelope_b64(&sign_identity_claim(&claim, &private).unwrap()).expect("envelope");
+        assert_eq!(
+            decode_and_verify_identity(
+                &envelope,
+                &format!("not base64!,{public}"),
+                "cluster-a",
+                "one@one:4370",
+                150,
+            ),
+            Ok(claim)
+        );
+    }
+
     #[test]
     fn signed_identity_verify_keyring_allows_rolling_issuer_rotation() {
         let (old_private, old_public) = generate_identity_signing_material().unwrap();
