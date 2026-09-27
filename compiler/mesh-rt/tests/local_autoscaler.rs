@@ -1,6 +1,6 @@
 //! An elastic scheduler starts its local autoscaler, which adds workers
-//! while actors wait to run. The scheduler is process-wide, so this binary
-//! holds one test.
+//! while actors wait to run. The scheduler is process-wide: this process
+//! starts one, and a child process of this binary starts another.
 
 use std::time::{Duration, Instant};
 
@@ -29,4 +29,44 @@ fn an_elastic_scheduler_grows_while_actors_wait() {
         assert!(Instant::now() < deadline, "the scheduler never grew");
         std::thread::sleep(Duration::from_millis(20));
     }
+}
+
+const INVALID_CHILD_ENV: &str = "MESH_TEST_LOCAL_AUTOSCALER_INVALID";
+
+/// A local policy the environment makes invalid leaves the scheduler at
+/// its minimum and says so. The scheduler starts once per process, so a
+/// child process of this binary starts it.
+#[test]
+fn an_invalid_local_policy_keeps_the_minimum() {
+    if std::env::var_os(INVALID_CHILD_ENV).is_some() {
+        return;
+    }
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "the_scheduler_under_an_invalid_local_policy",
+            "--exact",
+            "--nocapture",
+        ])
+        .env(INVALID_CHILD_ENV, "1")
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "{stderr}");
+    assert!(
+        stderr.contains("mesh scheduler: local autoscaling configuration invalid; keeping minimum"),
+        "{stderr}"
+    );
+}
+
+/// The child process of the test above.
+#[test]
+fn the_scheduler_under_an_invalid_local_policy() {
+    if std::env::var_os(INVALID_CHILD_ENV).is_none() {
+        return;
+    }
+    std::env::set_var("MESH_SCHEDULER_MIN_WORKERS", "1");
+    std::env::set_var("MESH_SCHEDULER_MAX_WORKERS", "3");
+    std::env::set_var("MESH_SCHEDULER_TARGET_RUNNABLE", "0");
+    mesh_rt_init_actor(1);
+    assert_eq!(runtime_telemetry().snapshot().active_workers, 1);
 }

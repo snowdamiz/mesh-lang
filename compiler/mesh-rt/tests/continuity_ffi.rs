@@ -115,12 +115,18 @@ fn the_continuity_ffi_answers_through_mesh_results() {
         1,
         declared_work as *const u8,
     );
+    let declared =
+        mesh_continuity_submit_declared_work(text(runtime), text("ffi-declared"), text("hash"), 0);
+    assert_eq!(tag(declared), 0);
+    let declared_attempt = unsafe {
+        let decision = &*((*declared).value as *const MeshContinuitySubmitDecision);
+        (*decision.record.attempt_id).as_str().to_string()
+    };
+    // The declared work completes on this node under its own attempt.
     assert_eq!(
-        tag(mesh_continuity_submit_declared_work(
-            text(runtime),
+        tag(mesh_continuity_complete_declared_work(
             text("ffi-declared"),
-            text("hash"),
-            0
+            text(&declared_attempt)
         )),
         0
     );
