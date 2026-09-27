@@ -1111,8 +1111,10 @@ impl<'a> Lowerer<'a> {
     /// - Empty module_name (single-file mode): return name unchanged
     /// - "main": unchanged (handled separately as mesh_main)
     /// - Pub functions: unchanged (cross-module references use unqualified name)
-    /// - Builtin/runtime prefixes (mesh_, trait impls): unchanged
     /// - Otherwise: `ModuleName__name` (dots replaced with underscores)
+    ///
+    /// Every caller names a function the program defines, so a name that
+    /// looks like the runtime's (`mesh_`) or an impl's is qualified too.
     fn qualify_name(&self, name: &str) -> String {
         // Single-file mode: no prefix
         if self.module_name.is_empty() {
@@ -1125,38 +1127,6 @@ impl<'a> Lowerer<'a> {
         // Pub functions keep unqualified names for cross-module references
         if self.pub_functions.contains(name) {
             return name.to_string();
-        }
-        // Builtin/runtime prefixes: do not prefix
-        const BUILTIN_PREFIXES: &[&str] = &[
-            "mesh_",
-            "Ord__",
-            "Eq__",
-            "Display__",
-            "Debug__",
-            "Hash__",
-            "Default__",
-            "Add__",
-            "Sub__",
-            "Mul__",
-            "Div__",
-            "Rem__",
-            "Neg__",
-            "FromRow__",
-            "FromJson__",
-            "ToJson__",
-            "From_",
-            "From__",
-            "Into_",
-            "Into__",
-            "TryFrom_",
-            "TryFrom__",
-            "TryInto_",
-            "TryInto__", // Phase 128
-        ];
-        for prefix in BUILTIN_PREFIXES {
-            if name.starts_with(prefix) {
-                return name.to_string();
-            }
         }
         // Apply module prefix: ModuleName__function_name
         format!("{}__{}", self.module_name.replace('.', "_"), name)

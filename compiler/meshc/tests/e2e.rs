@@ -2602,6 +2602,58 @@ end
     assert_eq!(output, "42\n99\n");
 }
 
+/// A private function is qualified by its module whatever its name. Names
+/// that began like the runtime's (`mesh_`) or a trait impl's (`Display__`)
+/// kept their bare names: two modules' `mesh_helper`s collided, and the
+/// entry module's `mesh_string_length` replaced the one `String.length`
+/// calls.
+#[test]
+fn e2e_cross_module_private_names_like_runtime_names_stay_apart() {
+    let output = compile_multifile_and_run(&[
+        (
+            "utils.mpl",
+            r#"
+fn mesh_helper() -> Int do
+  42
+end
+
+pub fn get_utils_value() -> Int do
+  mesh_helper()
+end
+"#,
+        ),
+        (
+            "math_ops.mpl",
+            r#"
+fn mesh_helper() -> Int do
+  99
+end
+
+pub fn get_math_value() -> Int do
+  mesh_helper()
+end
+"#,
+        ),
+        (
+            "main.mpl",
+            r#"
+from Utils import get_utils_value
+from MathOps import get_math_value
+
+fn mesh_string_length(n :: Int) -> Int do
+  n + 1
+end
+
+fn main() do
+  println("${get_utils_value()} ${get_math_value()}")
+  println("${mesh_string_length(4)} ${String.length("abc")}")
+end
+"#,
+        ),
+    ]);
+    assert_eq!(output, "42 99\n5 3\n");
+}
+
 /// Two modules with closures. Without module-prefixed closure names,
 /// both modules generate `__closure_1` and collide during MIR merge.
 #[test]
