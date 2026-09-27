@@ -2792,11 +2792,7 @@ pub(crate) async fn execute_mesh_consensus_rpc(
             .unwrap_or_else(|| "consensus_rpc_capability_unavailable".to_string()));
     }
 
-    let correlation_id = CONSENSUS_RPC_REQUEST_ID
-        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
-            current.checked_add(1)
-        })
-        .map_err(|_| "consensus_rpc_correlation_exhausted".to_string())?;
+    let correlation_id = CONSENSUS_RPC_REQUEST_ID.fetch_add(1, Ordering::Relaxed);
     let frame = encode_consensus_rpc_frame(DIST_CONSENSUS_RPC, correlation_id, &payload)?;
     let (sender, receiver) = tokio::sync::oneshot::channel();
     session
@@ -2818,10 +2814,11 @@ pub(crate) async fn execute_mesh_consensus_rpc(
         return Err(format!("consensus_rpc_write_failed:{error}"));
     }
 
+    // The reply handler and a disconnect (fail_pending_session_requests) send
+    // before they drop the sender, so the wait ends in a reply or here.
     match tokio::time::timeout(timeout, receiver).await {
         Ok(Ok(result)) => result,
-        Ok(Err(_)) => Err("consensus_rpc_reply_disconnected".to_string()),
-        Err(_) => {
+        _ => {
             session
                 .pending_consensus_rpcs
                 .lock()
@@ -5829,11 +5826,7 @@ fn execute_clustered_http_route_remote(
         .get(target)
         .cloned()
         .ok_or_else(|| format!("clustered_http_route_session_unavailable:{target}"))?;
-    let correlation_id = HTTP_ROUTE_CORRELATION_ID
-        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
-            current.checked_add(1)
-        })
-        .map_err(|_| "clustered_http_route_correlation_exhausted".to_string())?;
+    let correlation_id = HTTP_ROUTE_CORRELATION_ID.fetch_add(1, Ordering::Relaxed);
     let payload = encode_http_route_v2_query_frame(
         correlation_id,
         runtime_name,
@@ -11943,5 +11936,99 @@ mod tests {
             "clustered_http_route_query_write_failed:peer_session_shutdown"
         );
         assert!(retryable_clustered_http_transport_failure(&failure));
+    }
+
+    fn block_on<T>(future: impl std::future::Future<Output = T>) -> T {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .unwrap()
+            .block_on(future)
+    }
+
+    /// A consensus RPC goes to an autonomous peer over its session and
+    /// returns the peer's reply; it fails at once for no peer, a peer that
+    /// does not take part, or a session that cannot be written, and after
+    /// its timeout for a peer that does not answer.
+    #[test]
+    fn a_consensus_rpc_returns_the_peer_reply_or_why_there_is_none() {
+        test_node();
+        let wait = Duration::from_secs(10);
+        for (target, timeout) in [("", wait), ("someone@127.0.0.1:1", Duration::ZERO)] {
+            assert_eq!(
+                block_on(execute_mesh_consensus_rpc(
+                    target,
+                    Vec::new(),
+                    false,
+                    timeout
+                )),
+                Err("consensus_rpc_target_invalid".to_string())
+            );
+        }
+        assert_eq!(
+            block_on(execute_mesh_consensus_rpc(
+                "no-consensus-peer@127.0.0.1:1",
+                Vec::new(),
+                false,
+                wait
+            )),
+            Err("consensus_rpc_session_unavailable:no-consensus-peer@127.0.0.1:1".to_string())
+        );
+
+        let manual = TestPeer::new("manual-rpc-peer@127.0.0.1:1");
+        assert_eq!(
+            block_on(execute_mesh_consensus_rpc(
+                &manual.session.remote_name,
+                Vec::new(),
+                false,
+                wait
+            )),
+            Err("consensus_rpc_capability_unavailable".to_string())
+        );
+        assert_eq!(
+            send_mesh_consensus_rpc_reply(&manual.session, 1, b"{}"),
+            Err("consensus_rpc_capability_unavailable".to_string())
+        );
+
+        let name = "consensus-rpc-peer@127.0.0.1:1";
+        let peer = TestPeer::authenticated(name, &["controller"]);
+        for snapshot in [false, true] {
+            let call = std::thread::spawn(move || {
+                block_on(execute_mesh_consensus_rpc(
+                    name,
+                    b"{}".to_vec(),
+                    snapshot,
+                    wait,
+                ))
+            });
+            let request = peer.next_sent();
+            let (correlation, payload) =
+                decode_consensus_rpc_frame(&request, DIST_CONSENSUS_RPC).unwrap();
+            assert_eq!(payload, b"{}");
+            send_mesh_consensus_rpc_reply(&peer.session, correlation, b"[]").unwrap();
+            let reply = peer.next_sent();
+            peer.receive(reply);
+            assert_eq!(call.join().unwrap(), Ok(b"[]".to_vec()));
+        }
+        assert_eq!(
+            block_on(execute_mesh_consensus_rpc(
+                name,
+                Vec::new(),
+                false,
+                Duration::from_millis(20)
+            )),
+            Err("consensus_rpc_reply_timeout".to_string())
+        );
+        assert!(peer
+            .session
+            .pending_consensus_rpcs
+            .lock()
+            .unwrap()
+            .is_empty());
+        peer.session.shutdown.store(true, Ordering::SeqCst);
+        assert_eq!(
+            block_on(execute_mesh_consensus_rpc(name, Vec::new(), false, wait)),
+            Err("consensus_rpc_write_failed:peer_session_shutdown".to_string())
+        );
     }
 }
