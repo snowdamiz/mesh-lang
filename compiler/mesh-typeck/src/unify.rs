@@ -622,15 +622,17 @@ impl InferCtx {
 
             // Type applications -- unify constructor and args.
             (Ty::App(c1, a1), Ty::App(c2, a2)) => {
-                // Different constructors: the whole types differ ("expected
-                // Map<String, Int>, found List<Int>", not "Map, found List").
+                // Different constructors, or one applied to another number of
+                // arguments (which counting them where a type is named rules
+                // out): the whole types differ ("expected Map<String, Int>,
+                // found List<Int>", not "Map, found List").
                 if let (Ty::Con(h1), Ty::Con(h2)) =
                     (self.resolve(*c1.clone()), self.resolve(*c2.clone()))
                 {
-                    if h1 != h2
+                    let heads_differ = h1 != h2
                         && !Self::iterator_ptr_compatible(&h1, &h2)
-                        && !Self::json_string_compatible(&h1, &h2)
-                    {
+                        && !Self::json_string_compatible(&h1, &h2);
+                    if heads_differ || a1.len() != a2.len() {
                         let err = TypeError::Mismatch {
                             expected: self.resolve(Ty::App(c1, a1)),
                             found: self.resolve(Ty::App(c2, a2)),
@@ -641,20 +643,10 @@ impl InferCtx {
                     }
                 }
                 self.unify(*c1, *c2, origin.clone())?;
-                if a1.len() != a2.len() {
-                    let err = TypeError::ArityMismatch {
-                        expected: a1.len(),
-                        found: a2.len(),
-                        origin,
-                    };
-                    self.errors.push(err.clone());
-                    Err(err)
-                } else {
-                    for (a, b) in a1.into_iter().zip(a2.into_iter()) {
-                        self.unify(a, b, origin.clone())?;
-                    }
-                    Ok(())
+                for (a, b) in a1.into_iter().zip(a2) {
+                    self.unify(a, b, origin.clone())?;
                 }
+                Ok(())
             }
 
             // Tuple escape hatch: untyped Tuple (Con) unifies with any typed tuple (Ty::Tuple).
@@ -1098,6 +1090,23 @@ mod tests {
             }
             _ => panic!("expected function types"),
         }
+    }
+
+    /// One constructor applied to different numbers of arguments makes two
+    /// different types.
+    #[test]
+    fn unify_applications_of_different_lengths_mismatch() {
+        let mut ctx = InferCtx::new();
+        let boxed = |args: Vec<Ty>| Ty::App(Box::new(Ty::Con(TyCon::new("Box"))), args);
+        let result = ctx.unify(
+            boxed(vec![Ty::int()]),
+            boxed(vec![Ty::int(), Ty::int()]),
+            builtin_origin(),
+        );
+        assert!(
+            matches!(result, Err(TypeError::Mismatch { .. })),
+            "{result:?}"
+        );
     }
 
     #[test]
