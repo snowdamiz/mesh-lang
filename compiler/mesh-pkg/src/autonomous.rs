@@ -709,6 +709,12 @@ impl AutonomousClusterConfig {
                         .to_string(),
                 );
             }
+            if self.autoscaling.max_unavailable == 0 {
+                errors.push(
+                    "horizontal autoscaling drains nodes; [cluster.autoscaling].max_unavailable must be positive"
+                        .to_string(),
+                );
+            }
             let unique_roles: BTreeSet<_> = self.autoscaling.managed_roles.iter().collect();
             if self.autoscaling.managed_roles.is_empty()
                 || unique_roles.len() != self.autoscaling.managed_roles.len()
@@ -1021,6 +1027,10 @@ template_revision = "v1"
             (
                 |c| c.autoscaling.max_unavailable = 2,
                 "max_unavailable must be smaller",
+            ),
+            (
+                |c| c.autoscaling.max_unavailable = 0,
+                "max_unavailable must be positive",
             ),
             (
                 |c| c.autoscaling.managed_roles = vec![ManagedRole::Worker, ManagedRole::Worker],
