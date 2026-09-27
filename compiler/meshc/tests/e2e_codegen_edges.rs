@@ -1577,3 +1577,28 @@ end
     );
     assert_eq!(output, "main done\n");
 }
+
+/// A `@cluster` function runs at startup through an actor body that calls
+/// it and drops what it returns, a Unit included.
+#[test]
+fn cluster_work_runs_whatever_it_returns() {
+    let output = compile_and_run(
+        r##"@cluster pub fn tick() do
+  println("tick")
+end
+
+@cluster(2) pub fn count() -> Int do
+  3
+end
+
+fn main() do
+  tick()
+  println("#{count()}")
+  Timer.sleep(200)
+end
+"##,
+    );
+    let mut lines: Vec<&str> = output.lines().collect();
+    lines.sort();
+    assert_eq!(lines, ["3", "tick", "tick"], "{output}");
+}

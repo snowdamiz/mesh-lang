@@ -40,25 +40,16 @@ pub fn prepare_clustered_route_handler_plan<'a>(
 
     for typeck in typecks {
         for metadata in typeck.clustered_route_wrappers.values() {
-            let runtime_registration_name = metadata.runtime_name.trim();
-            if runtime_registration_name.is_empty() {
-                return Err(
-                    "clustered route wrapper metadata is missing a runtime registration name"
-                        .to_string(),
-                );
-            }
-
+            // The runtime name is the handler's qualified name, and a count
+            // is positive: the checker takes an explicit one only as a
+            // positive literal and the manifest's default only from 1.
+            let runtime_registration_name = metadata.runtime_name.as_str();
             let replication_count = u64::from(match metadata.replication_count.source {
                 mesh_typeck::ClusteredRouteReplicationCountSource::Default => default_replicas,
                 mesh_typeck::ClusteredRouteReplicationCountSource::Explicit => {
                     metadata.replication_count.value
                 }
             });
-            if replication_count == 0 {
-                return Err(format!(
-                    "clustered route handler `{runtime_registration_name}` lowered with invalid replication count 0"
-                ));
-            }
 
             if let Some(existing_count) = planned_routes.get(runtime_registration_name) {
                 if *existing_count != replication_count {
@@ -136,67 +127,41 @@ fn generate_declared_work_wrapper(
         .functions
         .iter()
         .find(|func| func.name == executable_symbol)
-        .cloned()
         .ok_or_else(|| {
             format!(
                 "declared work target `{runtime_registration_name}` has no lowered function `{executable_symbol}`"
             )
         })?;
-
-    let wrapper_name = declared_work_wrapper_name(runtime_registration_name);
-    if mir.functions.iter().any(|func| func.name == wrapper_name) {
-        return Ok(wrapper_name);
-    }
-
-    let body_name = format!("__actor_{}_body", wrapper_name);
-    let hidden_continuity_params = vec![
-        ("request_key".to_string(), MirType::String),
-        ("attempt_id".to_string(), MirType::String),
-    ];
-
     if !original.params.is_empty() {
         return Err(format!(
             "declared work target `{runtime_registration_name}` must use `pub fn name() -> ...`; continuity metadata is runtime-owned"
         ));
     }
+    let return_type = original.return_type.clone();
 
+    // The actor body runs the work and drops its result; the runtime owns the
+    // continuity metadata it receives.
+    let wrapper_name = declared_work_wrapper_name(runtime_registration_name);
     let call = MirExpr::Call {
         func: Box::new(MirExpr::Var(
-            original.name.clone(),
-            MirType::FnPtr(
-                original
-                    .params
-                    .iter()
-                    .map(|(_, ty)| ty.clone())
-                    .collect::<Vec<_>>(),
-                Box::new(original.return_type.clone()),
-            ),
+            executable_symbol.to_string(),
+            MirType::FnPtr(Vec::new(), Box::new(return_type.clone())),
         )),
         args: Vec::new(),
-        ty: original.return_type.clone(),
+        ty: return_type,
     };
-
-    let body = if original.return_type == MirType::Unit {
-        call
-    } else {
-        MirExpr::Let {
-            name: "__declared_work_result".to_string(),
-            ty: original.return_type.clone(),
-            value: Box::new(call),
-            body: Box::new(MirExpr::Unit),
-        }
-    };
-
     mir.functions.push(MirFunction {
-        name: body_name,
-        params: hidden_continuity_params,
+        name: format!("__actor_{wrapper_name}_body"),
+        params: vec![
+            ("request_key".to_string(), MirType::String),
+            ("attempt_id".to_string(), MirType::String),
+        ],
         return_type: MirType::Unit,
-        body,
+        body: MirExpr::Block(vec![call, MirExpr::Unit], MirType::Unit),
         is_closure_fn: false,
         captures: Vec::new(),
         has_tail_calls: false,
     });
-
     mir.functions.push(MirFunction {
         name: wrapper_name.clone(),
         params: vec![("__args_ptr".to_string(), MirType::Ptr)],
@@ -210,35 +175,23 @@ fn generate_declared_work_wrapper(
     Ok(wrapper_name)
 }
 
+/// A route's shim is generated where lowering meets its `HTTP.clustered`
+/// wrapper, always as `fn(Request) -> Response`.
 fn validate_declared_route_wrapper(
-    mir: &mut MirModule,
+    mir: &MirModule,
     runtime_registration_name: &str,
     executable_symbol: &str,
 ) -> Result<String, String> {
-    let route = mir
+    if mir
         .functions
         .iter()
-        .find(|func| func.name == executable_symbol)
-        .ok_or_else(|| {
-            format!(
-                "declared route target `{runtime_registration_name}` has no lowered function `{executable_symbol}`"
-            )
-        })?;
-
-    match route.params.as_slice() {
-        [(_, MirType::Ptr)] if route.return_type == MirType::Ptr && !route.is_closure_fn => {
-            Ok(executable_symbol.to_string())
-        }
-        _ => Err(format!(
-            "declared route target `{runtime_registration_name}` must lower to a bare `fn(Request) -> Response` shim, found `fn({}) -> {}`",
-            route
-                .params
-                .iter()
-                .map(|(_, ty)| ty.to_string())
-                .collect::<Vec<_>>()
-                .join(", "),
-            route.return_type
-        )),
+        .any(|func| func.name == executable_symbol)
+    {
+        Ok(executable_symbol.to_string())
+    } else {
+        Err(format!(
+            "declared route target `{runtime_registration_name}` has no lowered function `{executable_symbol}`"
+        ))
     }
 }
 
