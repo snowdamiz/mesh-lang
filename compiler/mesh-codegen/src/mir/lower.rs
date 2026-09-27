@@ -1263,23 +1263,26 @@ impl<'a> Lowerer<'a> {
 
     /// A top-level fn's name: `name__N` when the module defines the name at
     /// more than one arity, each arity being its own function.
-    fn fn_def_name(&self, fn_def: &FnDef) -> Option<String> {
-        let name = fn_def.name()?.text()?;
+    fn fn_def_name(&self, fn_def: &FnDef) -> String {
+        let name = fn_def
+            .name()
+            .and_then(|name| name.text())
+            .expect("the parser names every fn");
         let top_level = fn_def
             .syntax()
             .parent()
             .is_some_and(|parent| parent.kind() == SyntaxKind::SOURCE_FILE);
         if top_level && self.overloaded_fn_names.contains(&name) {
             let arity = fn_def.param_list().map_or(0, |pl| pl.params().count());
-            Some(format!("{name}__{arity}"))
+            format!("{name}__{arity}")
         } else {
-            Some(name)
+            name
         }
     }
 
     /// The fn `name_ref` names: its text, or, as the callee of a call to an
     /// overloaded fn, the arity the call runs (`name__N`).
-    fn name_ref_fn_name(&self, name_ref: &NameRef) -> Option<String> {
+    fn name_ref_fn_name(&self, name_ref: &NameRef) -> String {
         let range = name_ref.syntax().text_range();
         let call_range = name_ref
             .syntax()
@@ -1293,7 +1296,11 @@ impl<'a> Lowerer<'a> {
         self.overloaded_call_targets
             .get(&call_range)
             .cloned()
-            .or_else(|| name_ref.text())
+            .unwrap_or_else(|| {
+                name_ref
+                    .text()
+                    .expect("the parser makes a name reference of an identifier")
+            })
     }
 
     // ── Message shapes ───────────────────────────────────────────────
@@ -1464,24 +1471,18 @@ impl<'a> Lowerer<'a> {
         root: &mesh_parser::SyntaxNode,
     ) -> HashMap<String, Vec<Ty>> {
         let mut map: HashMap<String, Vec<Ty>> = HashMap::new();
-        for node in root.descendants() {
-            if node.kind() == SyntaxKind::NAME_REF {
-                if let Some(name_ref) = NameRef::cast(node) {
-                    if let Some(name) = self.name_ref_fn_name(&name_ref) {
-                        if self.user_fn_defs.contains(&name) {
-                            if let Some(ty) = self.types.get(&name_ref.syntax().text_range()) {
-                                // Only record concrete function types — skip Ty::Var results.
-                                if matches!(ty, Ty::Fun(..)) {
-                                    map.entry(name.to_string()).or_default().push(ty.clone());
-                                }
-                            }
-                            // `let g = f`: `g`'s uses are uses of `f`.
-                            let uses = self.alias_use_types(&name_ref);
-                            map.entry(name.to_string()).or_default().extend(uses);
-                        }
-                    }
-                }
+        for name_ref in root.descendants().filter_map(NameRef::cast) {
+            let name = self.name_ref_fn_name(&name_ref);
+            if !self.user_fn_defs.contains(&name) {
+                continue;
             }
+            // Only record concrete function types — skip Ty::Var results.
+            if let Some(ty @ Ty::Fun(..)) = self.types.get(&name_ref.syntax().text_range()) {
+                map.entry(name.clone()).or_default().push(ty.clone());
+            }
+            // `let g = f`: `g`'s uses are uses of `f`.
+            let uses = self.alias_use_types(&name_ref);
+            map.entry(name).or_default().extend(uses);
         }
         map
     }
@@ -1535,15 +1536,14 @@ impl<'a> Lowerer<'a> {
         let mut bodies: Vec<(usize, mesh_parser::SyntaxNode)> = Vec::new();
         for item in sf.items() {
             let Item::FnDef(fn_def) = item else { continue };
-            let Some(name) = self.fn_def_name(&fn_def) else {
-                continue;
-            };
+            let name = self.fn_def_name(&fn_def);
             let index = match fns.iter().position(|(fn_name, _, _)| *fn_name == name) {
                 Some(index) => index,
                 None => {
-                    let Some(ty) = self.get_ty(fn_def.syntax().text_range()).cloned() else {
-                        continue;
-                    };
+                    let ty = self
+                        .get_ty(fn_def.syntax().text_range())
+                        .cloned()
+                        .expect("the type checker types every function");
                     fns.push((name, ty, Vec::new()));
                     fns.len() - 1
                 }
@@ -1620,7 +1620,7 @@ impl<'a> Lowerer<'a> {
     ) -> Option<(String, TextRange)> {
         let open_at = |range: TextRange| self.types.get(&range).is_some_and(Self::ty_contains_var);
         if let Some(name_ref) = NameRef::cast(node.clone()) {
-            let callee = self.name_ref_fn_name(&name_ref)?;
+            let callee = self.name_ref_fn_name(&name_ref);
             let range = name_ref.syntax().text_range();
             let generic = match fns.iter().find(|(name, _, _)| *name == callee) {
                 Some((_, ty, _)) => Self::ty_contains_var(ty),
@@ -1665,9 +1665,7 @@ impl<'a> Lowerer<'a> {
         // here (lowering registers them again as it declares them).
         for item in sf.items() {
             if let Item::FnDef(fn_def) = item {
-                if let Some(name) = self.fn_def_name(&fn_def) {
-                    self.user_fn_defs.insert(name);
-                }
+                self.user_fn_defs.insert(self.fn_def_name(&fn_def));
             }
         }
 
@@ -1684,18 +1682,17 @@ impl<'a> Lowerer<'a> {
         // ABI, and multi-signature cases need per-signature MIR clones.
         for item in sf.items() {
             if let Item::FnDef(fn_def) = item {
-                if let Some(name) = self.fn_def_name(&fn_def) {
-                    let range = fn_def.syntax().text_range();
-                    if let Some(fn_ty) = self.get_ty(range) {
-                        if Self::ty_contains_var(fn_ty) {
-                            if let Some(usage_tys) = self.fn_value_usage_types.get(&name).cloned() {
-                                for usage_ty in usage_tys {
-                                    Self::push_usage_type(
-                                        &mut self.inferred_fn_specializations,
-                                        &name,
-                                        &usage_ty,
-                                    );
-                                }
+                let name = self.fn_def_name(&fn_def);
+                let range = fn_def.syntax().text_range();
+                if let Some(fn_ty) = self.get_ty(range) {
+                    if Self::ty_contains_var(fn_ty) {
+                        if let Some(usage_tys) = self.fn_value_usage_types.get(&name).cloned() {
+                            for usage_ty in usage_tys {
+                                Self::push_usage_type(
+                                    &mut self.inferred_fn_specializations,
+                                    &name,
+                                    &usage_ty,
+                                );
                             }
                         }
                     }
@@ -1886,9 +1883,7 @@ impl<'a> Lowerer<'a> {
             let Some(function) = FnDef::cast(node) else {
                 continue;
             };
-            let Some(name) = self.fn_def_name(&function) else {
-                continue;
-            };
+            let name = self.fn_def_name(&function);
             let modes = function
                 .param_list()
                 .map(|parameters| {
@@ -1912,14 +1907,13 @@ impl<'a> Lowerer<'a> {
         for item in sf.items() {
             match &item {
                 Item::FnDef(fn_def) => {
-                    if let Some(name) = self.fn_def_name(fn_def) {
-                        // Skip if already registered (subsequent clause of a multi-clause fn).
-                        if !self.known_functions.contains_key(&name) {
-                            let fn_ty = self.resolve_range(fn_def.syntax().text_range());
-                            self.known_functions.insert(name.clone(), fn_ty.clone());
-                            self.user_fn_defs.insert(name.clone());
-                            self.insert_var(name, fn_ty);
-                        }
+                    let name = self.fn_def_name(fn_def);
+                    // Skip if already registered (subsequent clause of a multi-clause fn).
+                    if !self.known_functions.contains_key(&name) {
+                        let fn_ty = self.resolve_range(fn_def.syntax().text_range());
+                        self.known_functions.insert(name.clone(), fn_ty.clone());
+                        self.user_fn_defs.insert(name.clone());
+                        self.insert_var(name, fn_ty);
                     }
                 }
                 Item::ActorDef(actor_def) => {
@@ -4876,9 +4870,7 @@ impl<'a> Lowerer<'a> {
     /// with one name and arity. Types come from the first clause.
     fn lower_fn_clauses(&mut self, clauses: &[&FnDef]) {
         let fn_def = clauses[0];
-        let original_name = self
-            .fn_def_name(fn_def)
-            .unwrap_or_else(|| "<anonymous>".to_string());
+        let original_name = self.fn_def_name(fn_def);
 
         let fn_ty_raw = self
             .get_ty(fn_def.syntax().text_range())
@@ -5369,10 +5361,9 @@ impl<'a> Lowerer<'a> {
         {
             if let Some(pattern) = param.pattern() {
                 bindings.extend(self.resource_pattern_bindings(&pattern));
-            } else if let Some(name) = param.name() {
-                if self.registry.is_resource_type(ty) {
-                    bindings.push((name.text().to_string(), ty.clone()));
-                }
+            } else if self.registry.is_resource_type(ty) {
+                let name = param.name().expect("a clause parameter is a pattern or a name");
+                bindings.push((name.text().to_string(), ty.clone()));
             }
         }
         bindings
