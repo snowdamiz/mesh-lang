@@ -31,7 +31,7 @@ use crate::collections::map::{
     mesh_map_size,
 };
 use crate::db::changeset::{
-    add_constraint_error_to_changeset, map_constraint_error, SLOT_CHANGES, SLOT_VALID,
+    add_error, map_constraint_error, mesh_changeset_changes, mesh_changeset_valid,
 };
 use crate::db::expr::{clone_expr, parse_expr, render_expr, SqlExpr};
 use crate::db::pool::{
@@ -782,18 +782,6 @@ pub extern "C" fn mesh_repo_transaction(
     }
 }
 
-// ── Changeset slot access ────────────────────────────────────────────
-
-/// Read a pointer slot from a changeset.
-unsafe fn cs_get(cs: *mut u8, slot: usize) -> *mut u8 {
-    *(cs.add(slot * 8) as *const *mut u8)
-}
-
-/// Read an integer slot from a changeset.
-unsafe fn cs_get_int(cs: *mut u8, slot: usize) -> i64 {
-    *(cs.add(slot * 8) as *const i64)
-}
-
 // ── PG error string parsing ─────────────────────────────────────────
 
 /// Parse the structured error string from pg.rs (tab-separated format).
@@ -816,12 +804,12 @@ fn parse_pg_error_string(err: &str) -> (&str, &str, &str, &str, &str) {
 /// to return without running SQL: it is invalid, or has nothing to write
 /// (which its `_base` error then says).
 unsafe fn changeset_changes(changeset: *mut u8) -> Result<(Vec<String>, Vec<String>), *mut u8> {
-    if cs_get_int(changeset, SLOT_VALID) == 0 {
+    if mesh_changeset_valid(changeset).is_null() {
         return Err(alloc_result(1, changeset) as *mut u8);
     }
-    let (columns, values) = map_to_columns_and_values(cs_get(changeset, SLOT_CHANGES));
+    let (columns, values) = map_to_columns_and_values(mesh_changeset_changes(changeset));
     if columns.is_empty() {
-        let unchanged = add_constraint_error_to_changeset(changeset, "_base", "has no changes");
+        let unchanged = add_error(changeset, "_base", "has no changes");
         return Err(alloc_result(1, unchanged) as *mut u8);
     }
     Ok((columns, values))
@@ -891,10 +879,7 @@ unsafe fn changeset_write_result(result: *mut u8, changeset: *mut u8, missing: &
     } else {
         return ok_result(mesh_list_get(r.value, 0) as *mut u8);
     };
-    alloc_result(
-        1,
-        add_constraint_error_to_changeset(changeset, &field, &message),
-    ) as *mut u8
+    alloc_result(1, add_error(changeset, &field, &message)) as *mut u8
 }
 
 // ── Preload Operations (Phase 100) ─────────────────────────────────
