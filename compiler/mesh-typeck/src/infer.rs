@@ -7617,7 +7617,10 @@ fn infer_impl_def(
 
         // The registry answers method lookups from other inference contexts,
         // so a return type still holding this context's type variables stays
-        // unknown there (the trait's declared type stands in).
+        // unknown there (the trait's declared type stands in). One the body
+        // settled (`-> List` returning a `List<Int>`) is known: read before
+        // it was resolved, it was unknown too, and the method was not found.
+        let return_type = return_type.map(|ty| ctx.resolve(ty));
         let declared_params: Vec<Ty> = all_param_tys
             .iter()
             .skip(usize::from(has_self))

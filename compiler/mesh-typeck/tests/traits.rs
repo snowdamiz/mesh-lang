@@ -552,3 +552,14 @@ fn impl_interface_arguments_are_read_in_full() {
         .trait_registry
         .has_impl_with_type_args("From", &[Ty::list(Ty::float())], &bag));
 }
+
+/// An impl method whose annotation leaves a type argument out (`-> List`)
+/// returns what its body settles: it was registered as returning nothing
+/// known, and a call of it was "no method `listed`".
+#[test]
+fn an_impl_method_returns_what_its_body_settles() {
+    let result = check_source(
+        "interface Lister do\n  fn listed(self) -> List\nend\n\nstruct Box do\n  items :: List<Int>\nend\n\nimpl Lister for Box do\n  fn listed(self) -> List do\n    self.items\n  end\nend\n\nfn main() do\n  Box { items: [1] }.listed()\nend\n",
+    );
+    assert_result_type(&result, Ty::fun(vec![], Ty::list(Ty::int())));
+}
