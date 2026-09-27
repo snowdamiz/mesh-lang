@@ -185,6 +185,15 @@ fn a_node_serves_consensus_operator_controls_and_its_controller() {
     );
 
     let before = mesh_rt::operator_runtime_snapshot().expect("local runtime snapshot");
+    // A node without peers has every report there is: its own.
+    assert!(before.telemetry_complete);
+    let pressure = mesh_rt::dist::cluster_api::mesh_cluster_pressure();
+    let key = "telemetry_complete";
+    let complete = mesh_rt::mesh_map_get(
+        pressure,
+        mesh_rt::string::mesh_string_new(key.as_ptr(), key.len() as u64) as u64,
+    ) as *const mesh_rt::string::MeshString;
+    assert_eq!(unsafe { (*complete).as_str() }, "true");
     assert_eq!(before.desired_capacity, 4);
     assert_eq!(before.scheduler_min_workers, 2);
     assert!(before.local_continuity_store.is_some());
