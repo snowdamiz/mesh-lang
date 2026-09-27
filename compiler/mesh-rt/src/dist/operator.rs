@@ -2761,4 +2761,439 @@ mod tests {
         assert_eq!(outcome.drain_intents, ["entries-drained-node"]);
         assert_eq!(state.actor_sequences["operator-b"], 11);
     }
+
+    #[test]
+    fn query_kinds_and_errors_name_themselves() {
+        let kinds = [
+            (OperatorQueryKind::Status, "status"),
+            (OperatorQueryKind::ContinuityLookup, "continuity_lookup"),
+            (OperatorQueryKind::ContinuityList, "continuity_list"),
+            (OperatorQueryKind::Diagnostics, "diagnostics"),
+            (OperatorQueryKind::Runtime, "runtime"),
+            (OperatorQueryKind::Control, "control"),
+        ];
+        for (kind, name) in kinds {
+            assert_eq!(kind.as_str(), name);
+            assert_eq!(OperatorQueryKind::from_wire(kind.to_wire()), Ok(kind));
+        }
+        let query = OperatorQueryKind::Status;
+        let target = || "node@host:1".to_string();
+        let reason = || "why".to_string();
+        let errors = [
+            (
+                OperatorQueryError::InvalidRequest {
+                    query,
+                    reason: reason(),
+                },
+                "operator query status invalid: why",
+            ),
+            (
+                OperatorQueryError::LocalRejected {
+                    query,
+                    reason: reason(),
+                },
+                "local operator query status rejected: why",
+            ),
+            (
+                OperatorQueryError::TargetUnavailable {
+                    target: target(),
+                    query,
+                    reason: reason(),
+                },
+                "operator query status target node@host:1 unavailable: why",
+            ),
+            (
+                OperatorQueryError::Timeout {
+                    target: target(),
+                    query,
+                    timeout: Duration::from_millis(1500),
+                },
+                "operator query status target node@host:1 timed out after 1500ms",
+            ),
+            (
+                OperatorQueryError::RemoteRejected {
+                    target: target(),
+                    query,
+                    reason: reason(),
+                },
+                "operator query status target node@host:1 rejected: why",
+            ),
+            (
+                OperatorQueryError::Decode {
+                    target: target(),
+                    query,
+                    reason: reason(),
+                },
+                "operator query status target node@host:1 decode failed: why",
+            ),
+        ];
+        for (error, text) in errors {
+            assert_eq!(error.to_string(), text);
+        }
+    }
+
+    #[test]
+    fn malformed_query_and_reply_frames_are_refused() {
+        let frame = |tag: u8, kind: u8, payload: &[u8], length: u32| {
+            let mut frame = vec![tag];
+            frame.extend_from_slice(&5u64.to_le_bytes());
+            frame.push(kind);
+            frame.extend_from_slice(&length.to_le_bytes());
+            frame.extend_from_slice(payload);
+            frame
+        };
+        assert_eq!(
+            decode_query_header(&[DIST_OPERATOR_QUERY]).err(),
+            Some("operator query payload too short".to_string())
+        );
+        assert!(decode_query_header(&frame(0, 0, &[], 0))
+            .unwrap_err()
+            .starts_with("operator query tag mismatch"));
+        assert_eq!(
+            decode_query_header(&frame(DIST_OPERATOR_QUERY, 0, &[], 3)).err(),
+            Some("operator query payload length mismatch".to_string())
+        );
+        assert_eq!(
+            decode_query(OperatorQueryKind::Status, &[0]),
+            Err("operator query payload trailing bytes".to_string())
+        );
+        assert_eq!(
+            decode_query(OperatorQueryKind::Diagnostics, &[2]),
+            Err("invalid operator query limit flag 2".to_string())
+        );
+        assert!(decode_query(OperatorQueryKind::Control, b"{")
+            .unwrap_err()
+            .starts_with("operator control decode failed:"));
+        assert_eq!(
+            decode_query(OperatorQueryKind::ContinuityList, &[0]),
+            Ok(OperatorQuery::ContinuityList { limit: None })
+        );
+
+        assert_eq!(
+            decode_query_reply_frame(&[DIST_OPERATOR_REPLY]).err(),
+            Some("operator reply payload too short".to_string())
+        );
+        assert!(decode_query_reply_frame(&frame(0, 0, &[], 0))
+            .unwrap_err()
+            .starts_with("operator reply tag mismatch"));
+        assert_eq!(
+            decode_query_reply_frame(&frame(DIST_OPERATOR_REPLY, 0, &[], 3)).err(),
+            Some("operator reply payload length mismatch".to_string())
+        );
+        assert_eq!(
+            decode_query_reply_frame(&frame(DIST_OPERATOR_REPLY, 9, &[], 0)).err(),
+            Some("invalid operator reply status 9".to_string())
+        );
+        let mut reason = Vec::new();
+        encode_string(&mut reason, "refused").unwrap();
+        reason.push(0);
+        assert_eq!(
+            decode_query_reply_frame(&frame(
+                DIST_OPERATOR_REPLY,
+                REPLY_STATUS_ERR,
+                &reason,
+                reason.len() as u32
+            ))
+            .err(),
+            Some("operator reply error payload trailing bytes".to_string())
+        );
+
+        // A query whose payload does not decode is answered with the reason.
+        let malformed = frame(DIST_OPERATOR_QUERY, QUERY_KIND_DIAGNOSTICS, &[7], 1);
+        let reply = build_query_reply_frame(
+            &malformed,
+            &fresh_registry(),
+            &OperatorDiagnosticsBuffer::new(1),
+            false,
+        )
+        .unwrap();
+        assert_eq!(
+            decode_query_reply_frame(&reply).unwrap().1,
+            Err("invalid operator query limit flag 7".to_string())
+        );
+        assert!(build_query_reply_frame(
+            &[DIST_OPERATOR_QUERY],
+            &fresh_registry(),
+            &OperatorDiagnosticsBuffer::new(1),
+            false
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn payload_values_refuse_bad_flags_and_truncation() {
+        assert_eq!(decode_bool(&[1], &mut 0), Ok(true));
+        assert_eq!(
+            decode_bool(&[2], &mut 0),
+            Err("invalid operator bool flag 2".to_string())
+        );
+        assert_eq!(
+            decode_bool(&[], &mut 0),
+            Err("operator payload truncated".to_string())
+        );
+        assert_eq!(
+            decode_optional_string(&[2], &mut 0),
+            Err("invalid operator optional string flag 2".to_string())
+        );
+        assert_eq!(
+            decode_optional_u64(&[2], &mut 0),
+            Err("invalid operator optional u64 flag 2".to_string())
+        );
+        assert_eq!(
+            decode_string(&5u32.to_le_bytes(), &mut 0),
+            Err("operator string payload truncated".to_string())
+        );
+        assert_eq!(
+            decode_string(&[1, 0, 0, 0, 0xff], &mut 0),
+            Err("operator string payload invalid UTF-8".to_string())
+        );
+        assert_eq!(
+            decode_u32(&[0; 3], &mut 0),
+            Err("operator u32 payload truncated".to_string())
+        );
+        assert_eq!(
+            decode_u64(&[0; 7], &mut 0),
+            Err("operator u64 payload truncated".to_string())
+        );
+        assert_eq!(
+            u32_from_usize(usize::MAX, "limit"),
+            Err("limit exceeds u32 range".to_string())
+        );
+
+        let mut status = encode_status_snapshot(&status_snapshot_from_parts(
+            "node",
+            &["peer".to_string()],
+            fresh_registry().authority_status(),
+        ))
+        .unwrap();
+        assert_eq!(
+            decode_status_snapshot(&status)
+                .unwrap()
+                .membership
+                .peer_nodes,
+            ["peer"]
+        );
+        status.push(0);
+        assert_eq!(
+            decode_status_snapshot(&status).err(),
+            Some("operator status payload trailing bytes".to_string())
+        );
+    }
+
+    fn submitted_record(key: &str) -> ContinuityRecord {
+        use crate::dist::continuity::*;
+        ContinuityRecord {
+            request_key: key.to_string(),
+            payload_hash: "hash".to_string(),
+            record_version: 1,
+            request_payload: Vec::new(),
+            attempt_id: attempt_id_from_token(1),
+            phase: ContinuityPhase::Submitted,
+            result: ContinuityResult::Pending,
+            ingress_node: "owner@host".to_string(),
+            owner_node: "owner@host".to_string(),
+            replica_nodes: Vec::new(),
+            acknowledged_replica_nodes: Vec::new(),
+            replica_node: String::new(),
+            replication_count: 1,
+            replica_status: ReplicaStatus::Unassigned,
+            cluster_role: ContinuityClusterRole::Primary,
+            promotion_epoch: 0,
+            replication_health: ReplicationHealth::LocalOnly,
+            execution_node: String::new(),
+            routed_remotely: false,
+            fell_back_locally: false,
+            error: String::new(),
+            declared_handler_runtime_name: "Api.handle".to_string(),
+        }
+    }
+
+    #[test]
+    fn continuity_and_diagnostics_replies_round_trip_and_bound_themselves() {
+        let registry = fresh_registry();
+        for key in ["key-a", "key-b", "key-c"] {
+            registry
+                .merge_remote_record(2, submitted_record(key))
+                .expect("record");
+        }
+        let diagnostics = OperatorDiagnosticsBuffer::new(4);
+        diagnostics.record(OperatorDiagnosticRecord {
+            transition: "promoted".to_string(),
+            promotion_epoch: Some(3),
+            cluster_role: Some("primary".to_string()),
+            metadata: vec![("key".to_string(), "value".to_string())],
+            ..OperatorDiagnosticRecord::default()
+        });
+        let ask = |query: OperatorQuery| {
+            let frame = encode_query_frame(1, &query).unwrap();
+            let reply = build_query_reply_frame(&frame, &registry, &diagnostics, false).unwrap();
+            decode_query_reply_frame(&reply).unwrap().1
+        };
+
+        let lookup = ask(OperatorQuery::ContinuityLookup {
+            request_key: "key-b".to_string(),
+        })
+        .unwrap();
+        assert_eq!(decode_record_payload(&lookup).unwrap().request_key, "key-b");
+        let list =
+            decode_continuity_list(&ask(OperatorQuery::ContinuityList { limit: Some(2) }).unwrap())
+                .unwrap();
+        assert_eq!(list.total_records, 3);
+        assert!(list.truncated);
+        let keys: Vec<_> = list
+            .records
+            .iter()
+            .map(|record| record.request_key.as_str())
+            .collect();
+        assert_eq!(keys, ["key-a", "key-b"]);
+        let snapshot =
+            decode_diagnostics_snapshot(&ask(OperatorQuery::Diagnostics { limit: None }).unwrap())
+                .unwrap();
+        assert_eq!(snapshot.entries[0].promotion_epoch, Some(3));
+        assert_eq!(snapshot.buffer_capacity, 4);
+
+        let mut encoded = encode_continuity_list(&list).unwrap();
+        encoded.push(0);
+        assert_eq!(
+            decode_continuity_list(&encoded).err(),
+            Some("operator continuity payload trailing bytes".to_string())
+        );
+        let mut short = encode_continuity_list(&list).unwrap();
+        short.truncate(short.len() - 1);
+        assert_eq!(
+            decode_continuity_list(&short).err(),
+            Some("operator continuity record payload truncated".to_string())
+        );
+        let mut encoded = encode_diagnostics_snapshot(&snapshot).unwrap();
+        encoded.push(0);
+        assert_eq!(
+            decode_diagnostics_snapshot(&encoded).err(),
+            Some("operator diagnostics payload trailing bytes".to_string())
+        );
+        // A runtime query needs this process's node.
+        if node_state().is_none() {
+            assert_eq!(
+                ask(OperatorQuery::Runtime),
+                Err("node_not_started".to_string())
+            );
+        }
+        assert_eq!(
+            execute_local_query(
+                None,
+                &[],
+                &registry,
+                &diagnostics,
+                OperatorQuery::Status,
+                false
+            ),
+            Err("node_not_started".to_string())
+        );
+    }
+
+    #[test]
+    fn diagnostics_keep_request_keys_only_as_fingerprints() {
+        let _guard = operator_test_guard();
+        record_diagnostic(OperatorDiagnosticRecord {
+            transition: "fingerprint-test".to_string(),
+            request_key: Some("plain-request-key".to_string()),
+            ..OperatorDiagnosticRecord::default()
+        });
+        let entry = diagnostics_buffer()
+            .snapshot(None)
+            .entries
+            .into_iter()
+            .rev()
+            .find(|entry| entry.transition == "fingerprint-test")
+            .expect("diagnostic");
+        let key = entry.request_key.expect("fingerprint");
+        assert!(key.starts_with("sha256:"), "{key}");
+        assert_ne!(key, "plain-request-key");
+        // Draining the empty name is ignored.
+        set_runtime_drain_intent("", true);
+        assert!(!drain_requested(""));
+    }
+
+    #[test]
+    fn controls_are_refused_before_they_reach_the_quorum() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        with_operator_environment(&directory.path().join("audit.log"), || {
+            let mut invalid =
+                signed_request("refusal-operator", OperatorControlAction::PauseAutoscaler);
+            invalid.schema_version = 2;
+            assert_eq!(
+                apply_operator_control(&invalid, false),
+                Err("operator_control_request_invalid".to_string())
+            );
+            let mut other_cluster =
+                signed_request("refusal-operator", OperatorControlAction::PauseAutoscaler);
+            other_cluster.cluster_id = "other".to_string();
+            assert_eq!(
+                apply_operator_control(&other_cluster, false),
+                Err("operator_control_cluster_mismatch".to_string())
+            );
+            // Nothing in this process runs the embedded consensus.
+            let valid = signed_request("refusal-operator", OperatorControlAction::PauseAutoscaler);
+            assert_eq!(
+                apply_operator_control(&valid, false),
+                Err("consensus_rpc_server_unavailable".to_string())
+            );
+            let internal = signed_request(
+                "mesh-drain-propagator",
+                OperatorControlAction::PauseAutoscaler,
+            );
+            assert_eq!(
+                apply_operator_control(&internal, true),
+                Err("operator_internal_control_action_invalid".to_string())
+            );
+            let unknown = signed_request(
+                "mesh-drain-propagator",
+                OperatorControlAction::DrainNode {
+                    node_id: "refusal-unknown-node@host:1".to_string(),
+                },
+            );
+            assert!(apply_operator_control(&unknown, true)
+                .unwrap_err()
+                .starts_with("runtime_node_not_found:"));
+            // Each refusal went to the audit log, whatever its action.
+            for action in [
+                OperatorControlAction::ResumeAutoscaler,
+                OperatorControlAction::SetDesiredCapacity { worker_nodes: 1 },
+                OperatorControlAction::CancelDrain {
+                    node_id: "n".to_string(),
+                },
+                OperatorControlAction::CommitControlMutation {
+                    command_id: "c".to_string(),
+                    mutation: ControlMutation::PauseAutoscaler { paused: true },
+                },
+            ] {
+                audit_operator_control_rejection(
+                    &signed_request("refusal-operator", action),
+                    "refused",
+                );
+            }
+            let audit = std::fs::read_to_string(directory.path().join("audit.log")).unwrap();
+            for name in [
+                "resume_autoscaler",
+                "set_desired_capacity",
+                "cancel_drain",
+                "commit_control_mutation",
+            ] {
+                assert!(audit.contains(name), "{name}: {audit}");
+            }
+        });
+        // A rejection whose audit log cannot be opened is a diagnostic.
+        let blocked = directory.path().join("file");
+        std::fs::write(&blocked, "").unwrap();
+        with_operator_environment(&blocked.join("audit.log"), || {
+            audit_operator_control_rejection(
+                &signed_request("refusal-operator", OperatorControlAction::PauseAutoscaler),
+                "refused",
+            );
+            assert!(diagnostics_buffer()
+                .snapshot(None)
+                .entries
+                .iter()
+                .any(|entry| entry.transition == "operator_control_rejection_audit_failed"));
+        });
+    }
 }
