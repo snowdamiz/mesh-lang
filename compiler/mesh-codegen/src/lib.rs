@@ -502,6 +502,22 @@ mod tests {
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    /// The LLVM IR of `source`, a program that type-checks cleanly.
+    fn llvm_of(source: &str) -> String {
+        let parse = mesh_parser::parse(source);
+        let typeck = mesh_typeck::check(&parse);
+        assert!(typeck.errors.is_empty(), "{:?}", typeck.errors);
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock before unix epoch")
+            .as_nanos();
+        let ll_path = std::env::temp_dir().join(format!("mesh-codegen-test-{stamp}.ll"));
+        compile_to_llvm_ir(&parse, &typeck, &ll_path, None).expect("failed to emit llvm");
+        let llvm = fs::read_to_string(&ll_path).expect("failed to read emitted llvm");
+        let _ = fs::remove_file(&ll_path);
+        llvm
+    }
+
     #[test]
     fn merge_mir_modules_prefers_entry_module_mesh_main_when_multiple_modules_define_main() {
         let merged = merge_mir_modules(
@@ -577,24 +593,7 @@ fn main() do
   request_registry_name_for_node("peer")
 end
 "#;
-        let parse = mesh_parser::parse(source);
-        let typeck = mesh_typeck::check(&parse);
-        assert!(
-            typeck.errors.is_empty(),
-            "expected test source to type-check cleanly, got {:?}",
-            typeck.errors
-        );
-
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system clock before unix epoch")
-            .as_nanos();
-        let ll_path = std::env::temp_dir().join(format!("mesh-codegen-shadowing-{stamp}.ll"));
-
-        compile_to_llvm_ir(&parse, &typeck, &ll_path, None)
-            .expect("failed to emit llvm for shadowing regression");
-        let llvm = fs::read_to_string(&ll_path).expect("failed to read emitted llvm");
-        let _ = fs::remove_file(&ll_path);
+        let llvm = llvm_of(source);
 
         let request_fn = llvm
             .split("define ptr @request_registry_name_for_node")
@@ -626,19 +625,7 @@ fn main() -> Int do
   20 |> add(22)
 end
 "#;
-        let parse = mesh_parser::parse(source);
-        let typeck = mesh_typeck::check(&parse);
-        assert!(typeck.errors.is_empty(), "{:?}", typeck.errors);
-
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("system clock before unix epoch")
-            .as_nanos();
-        let ll_path = std::env::temp_dir().join(format!("mesh-native-binding-{stamp}.ll"));
-        compile_to_llvm_ir(&parse, &typeck, &ll_path, None)
-            .expect("failed to emit native binding llvm");
-        let llvm = fs::read_to_string(&ll_path).unwrap();
-        let _ = fs::remove_file(&ll_path);
+        let llvm = llvm_of(source);
 
         assert!(
             llvm.contains("declare i64 @mesh_math_add(i64, i64)"),
@@ -649,5 +636,55 @@ end
             "native call missing:\n{llvm}"
         );
         assert!(!llvm.contains("define i64 @add"));
+    }
+
+    /// A move or a drop empties a resource's slot with a zero of the slot's
+    /// own type. A tuple, held in its slot as a pointer, was zeroed as the
+    /// whole tuple: the store overran the slot into the frame, and a later
+    /// return jumped to address 0.
+    #[test]
+    fn a_resource_slot_is_emptied_as_its_own_type() {
+        let llvm = llvm_of(
+            r#"
+fn pair() -> (SecretBytes, SecretBytes)!CryptoError do
+  Ok((Secret.random(8)?, Secret.random(8)?))
+end
+
+fn spend(p :: (SecretBytes, SecretBytes)) do
+  let (a, b) = p
+  Secret.destroy(a)
+  Secret.destroy(b)
+end
+
+fn main() do
+  case pair() do
+    Ok(p) -> spend(p)
+    Err(_) -> nil
+  end
+end
+"#,
+        );
+        let mut slots = std::collections::HashMap::new();
+        let mut zeroed = 0;
+        for line in llvm.lines().map(str::trim) {
+            if line.starts_with("define ") {
+                slots.clear();
+            } else if let Some((slot, ty)) = line.split_once(" = alloca ") {
+                slots.insert(
+                    slot.to_string(),
+                    ty.split(", align").next().unwrap().to_string(),
+                );
+            } else if let Some(store) = line.strip_prefix("store ") {
+                let Some((ty, slot)) = store.split_once(" zeroinitializer, ptr ") else {
+                    continue;
+                };
+                let slot = slot.split(',').next().unwrap();
+                if let Some(slot_ty) = slots.get(slot) {
+                    zeroed += 1;
+                    assert_eq!(ty, slot_ty, "zeroing {slot}");
+                }
+            }
+        }
+        assert!(zeroed > 0, "no slot was emptied:\n{llvm}");
     }
 }

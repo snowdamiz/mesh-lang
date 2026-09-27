@@ -112,8 +112,8 @@ impl<'ctx> CodeGen<'ctx> {
                 ty: _,
             } => self.codegen_make_closure(fn_name, captures),
 
-            MirExpr::ResourceMove { value, ty, source } => {
-                self.codegen_resource_move(value, ty, source)
+            MirExpr::ResourceMove { value, source, .. } => {
+                self.codegen_resource_move(value, source)
             }
 
             MirExpr::ResourceBorrow { value, .. } => self.codegen_expr(value),
@@ -300,9 +300,14 @@ impl<'ctx> CodeGen<'ctx> {
 
     /// Clear the local `name`, of type `ty`, whose resource has moved or been
     /// destroyed: a later drop of it then does nothing.
-    fn clear_resource_local(&mut self, name: &str, ty: &MirType) -> Result<(), String> {
+    /// Empty the slot of `name`, which a move or drop just took the value
+    /// of, with a zero of the slot's own type: a tuple or a boxed payload is
+    /// held there as a pointer, whatever the moved value's type says. A
+    /// zero of the value's type overran the slot into the frame.
+    fn clear_resource_local(&mut self, name: &str) -> Result<(), String> {
+        let zero = self.llvm_type(&self.local_types[name]).const_zero();
         self.builder
-            .build_store(self.locals[name], self.llvm_type(ty).const_zero())
+            .build_store(self.locals[name], zero)
             .map(drop)
             .map_err(|error| error.to_string())
     }
@@ -310,12 +315,11 @@ impl<'ctx> CodeGen<'ctx> {
     fn codegen_resource_move(
         &mut self,
         value: &MirExpr,
-        ty: &MirType,
         source: &MirResourceMoveSource,
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let moved = self.codegen_expr(value)?;
         match source {
-            MirResourceMoveSource::Slot(local) => self.clear_resource_local(local, ty)?,
+            MirResourceMoveSource::Slot(local) => self.clear_resource_local(local)?,
             MirResourceMoveSource::Projection {
                 root,
                 parent_ty,
@@ -338,7 +342,7 @@ impl<'ctx> CodeGen<'ctx> {
                     *field_index,
                     nested_field_indices,
                 )?;
-                self.clear_resource_local(root, parent_ty)?;
+                self.clear_resource_local(root)?;
             }
         }
         Ok(moved)
@@ -674,7 +678,7 @@ impl<'ctx> CodeGen<'ctx> {
         let owned = self.codegen_expr(value)?;
         self.codegen_resource_destructor(owned, resource_ty, destructor)?;
         if let MirExpr::Var(name, _) = value {
-            self.clear_resource_local(name, resource_ty)?;
+            self.clear_resource_local(name)?;
         }
         Ok(self.context.struct_type(&[], false).const_zero().into())
     }
