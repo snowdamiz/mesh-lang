@@ -1133,12 +1133,10 @@ fn outbound_lane_snapshot(
     }
 }
 
+/// The telemetry of this started node's peer sessions.
 pub(crate) fn local_peer_session_telemetry(
 ) -> Vec<crate::dist::telemetry::PeerSessionTelemetrySnapshot> {
-    let Some(state) = node_state() else {
-        return Vec::new();
-    };
-    let sessions: Vec<_> = state.sessions.read().values().cloned().collect();
+    let sessions: Vec<_> = started_node().sessions.read().values().cloned().collect();
     let now = Instant::now();
     let snapshots: Vec<_> = sessions
         .iter()
@@ -1148,11 +1146,10 @@ pub(crate) fn local_peer_session_telemetry(
     snapshots
 }
 
+/// Refreshes the runtime telemetry this started node's peer sessions add
+/// up to.
 pub(crate) fn refresh_peer_session_telemetry() {
-    let Some(state) = node_state() else {
-        return;
-    };
-    let sessions = state.sessions.read();
+    let sessions = started_node().sessions.read();
     let (queued_items, queued_bytes) =
         sessions
             .values()
@@ -3174,9 +3171,7 @@ fn active_owner_loss_recoveries() -> &'static Mutex<BTreeSet<String>> {
 }
 
 fn local_coordinates_node_loss_recovery(disconnected_node: &str) -> bool {
-    let Some(state) = node_state() else {
-        return false;
-    };
+    let state = started_node();
     if let Some(consensus) = crate::dist::consensus::consensus_runtime_snapshot() {
         return consensus.state == "leader"
             && consensus.current_leader == Some(consensus.node_id)
