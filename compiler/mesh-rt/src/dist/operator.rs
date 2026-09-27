@@ -2277,6 +2277,9 @@ mod tests {
     #[test]
     fn operator_query_transient_status_does_not_register_peer() {
         let _guard = operator_test_guard();
+        // No test peer connected, and none of the records other tests leave.
+        let _exclusive = crate::dist::node::declared_handler_registry_test_lock();
+        continuity_registry().clear_for_test();
         let target = ensure_operator_query_test_node();
         let state = node_state().expect("operator query test node should be started");
         let sessions_before: Vec<String> = state.sessions.read().keys().cloned().collect();

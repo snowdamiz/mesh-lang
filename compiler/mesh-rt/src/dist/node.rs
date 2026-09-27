@@ -12660,4 +12660,464 @@ mod tests {
         beat(&session).join().unwrap();
         assert!(session.shutdown.load(Ordering::Acquire));
     }
+
+    /// Why a declared handler's submission was refused: the record's error,
+    /// or else the conflict it hit, or else the outcome itself.
+    #[test]
+    fn a_refused_submission_says_why() {
+        use crate::dist::continuity::{SubmitDecision, SubmitOutcome};
+        let mut decision = SubmitDecision {
+            outcome: SubmitOutcome::Conflict,
+            record: continuity_record("refused-key", "owner@h:1", "replica@h:1"),
+            conflict_reason: String::new(),
+        };
+        assert_eq!(
+            rejected_submit_reason(&decision),
+            "declared_handler_submit_rejected:conflict"
+        );
+        decision.conflict_reason = "payload_hash_mismatch".to_string();
+        assert_eq!(rejected_submit_reason(&decision), "payload_hash_mismatch");
+        decision.record.error = "replica_required_unavailable".to_string();
+        assert_eq!(
+            rejected_submit_reason(&decision),
+            "replica_required_unavailable"
+        );
+    }
+
+    /// A clustered HTTP request needs its handler's name, a request key, a
+    /// payload hash, a payload, and a handler registered under that name.
+    #[test]
+    fn a_clustered_http_request_needs_its_identity_its_payload_and_a_handler() {
+        let refused = |runtime: &str, key: &str, hash: &str, payload: &[u8]| {
+            execute_clustered_http_route(runtime, key, hash, payload)
+                .err()
+                .unwrap()
+        };
+        assert_eq!(
+            refused(" ", "key", "hash", b"GET /"),
+            "declared_handler_runtime_name_missing"
+        );
+        assert_eq!(refused("R.h", "", "hash", b"GET /"), "request_key_missing");
+        assert_eq!(refused("R.h", "key", "", b"GET /"), "payload_hash_missing");
+        assert_eq!(
+            refused("R.h", "key", "hash", b""),
+            "clustered_http_route_request_payload_missing"
+        );
+        assert_eq!(
+            refused("Never.registered", "key", "hash", b"GET /"),
+            "declared_handler_not_registered:Never.registered"
+        );
+    }
+
+    /// A capacity provider's name for a node resolves to the member it is:
+    /// by its exact name, or by a 12-character prefix only one member has.
+    #[test]
+    fn a_provider_node_identifier_resolves_to_exactly_one_member() {
+        let state = test_node();
+        let _first = TestPeer::new("ambiguous-member-a@127.0.0.1:1");
+        let _second = TestPeer::new("ambiguous-member-b@127.0.0.1:1");
+        assert_eq!(
+            resolve_runtime_node_id(&format!(" {} ", state.name)),
+            Ok(state.name.clone())
+        );
+        let prefix: String = state.name.chars().take(12).collect();
+        assert_eq!(
+            resolve_runtime_node_id(&format!("{prefix}-container-id")),
+            Ok(state.name.clone())
+        );
+        assert_eq!(
+            resolve_runtime_node_id(" "),
+            Err("runtime_node_identifier_missing".to_string())
+        );
+        assert_eq!(
+            resolve_runtime_node_id("nobody-at-all"),
+            Err("runtime_node_not_found:nobody-at-all".to_string())
+        );
+        assert_eq!(
+            resolve_runtime_node_id("ambiguous-member-z"),
+            Err("runtime_node_identifier_ambiguous:ambiguous-member-z".to_string())
+        );
+    }
+
+    /// Startup work cannot wait for a cluster it cannot see at all.
+    #[test]
+    fn startup_convergence_needs_a_membership_to_watch() {
+        assert_eq!(
+            wait_for_startup_convergence_with(Vec::new, || {}, 1, 3),
+            Err("declared_work_membership_empty".to_string())
+        );
+        let mut first = true;
+        let observe = || {
+            if std::mem::take(&mut first) {
+                vec!["alone@127.0.0.1:1".to_string()]
+            } else {
+                Vec::new()
+            }
+        };
+        assert_eq!(
+            wait_for_startup_convergence_with(observe, || {}, 1, 3),
+            Err("declared_work_membership_empty".to_string())
+        );
+    }
+
+    fn authority(
+        cluster_role: crate::dist::continuity::ContinuityClusterRole,
+    ) -> crate::dist::continuity::ContinuityAuthorityStatus {
+        crate::dist::continuity::ContinuityAuthorityStatus {
+            cluster_role,
+            promotion_epoch: 0,
+            replication_health: crate::dist::continuity::ReplicationHealth::LocalOnly,
+        }
+    }
+
+    /// A standby promotes itself when its primary goes only when nothing
+    /// else could still be in charge: it is a standby, no peer remains, and
+    /// every pending record is one the lost primary owned and this node
+    /// mirrored. Those are the records it then resumes.
+    #[test]
+    fn a_standby_promotes_only_when_what_it_mirrored_is_all_that_is_pending() {
+        use crate::dist::continuity::{
+            ContinuityClusterRole::{Primary, Standby},
+            ContinuitySnapshot, ReplicaStatus,
+        };
+        let (local, lost) = ("standby@h:1", "primary@h:1");
+        let mirrored = |key: &str| {
+            let mut record = continuity_record(key, lost, local);
+            record.cluster_role = Standby;
+            record.replica_status = ReplicaStatus::Mirrored;
+            record.declared_handler_runtime_name = "Work.resume".to_string();
+            record
+        };
+        let snapshot = |records: Vec<ContinuityRecord>| ContinuitySnapshot {
+            next_attempt_token: 1,
+            records,
+        };
+        let reason = |peers: usize, role, records: Vec<ContinuityRecord>| {
+            automatic_promotion_reason(local, lost, peers, authority(role), &snapshot(records))
+        };
+
+        assert_eq!(reason(0, Standby, vec![mirrored("m")]), Ok(()));
+        assert_eq!(
+            reason(0, Primary, vec![mirrored("m")]),
+            Err(AUTOMATIC_PROMOTION_REJECTED_NOT_STANDBY)
+        );
+        assert_eq!(
+            reason(1, Standby, vec![mirrored("m")]),
+            Err(AUTOMATIC_PROMOTION_REJECTED_PEERS_REMAINING)
+        );
+        assert_eq!(
+            reason(0, Standby, Vec::new()),
+            Err(AUTOMATIC_PROMOTION_REJECTED_NO_MIRRORED_STATE)
+        );
+        let mut primary_record = mirrored("p");
+        primary_record.cluster_role = Primary;
+        let mut elsewhere = mirrored("e");
+        elsewhere.owner_node = "other@h:1".to_string();
+        for stray in [primary_record, elsewhere] {
+            assert_eq!(
+                reason(0, Standby, vec![mirrored("m"), stray]),
+                Err(AUTOMATIC_PROMOTION_REJECTED_AMBIGUOUS_PENDING)
+            );
+        }
+
+        let mut owner_lost = mirrored("resume-me");
+        owner_lost.cluster_role = Primary;
+        owner_lost.replica_status = ReplicaStatus::OwnerLost;
+        let mut done = owner_lost.clone();
+        done.request_key = "done".to_string();
+        done.phase = crate::dist::continuity::ContinuityPhase::Completed;
+        assert_eq!(
+            automatic_recovery_candidates(lost, &snapshot(vec![owner_lost, done, mirrored("m")])),
+            vec![(
+                "resume-me".to_string(),
+                "attempt-1".to_string(),
+                "sha256:payload".to_string(),
+                "Work.resume".to_string()
+            )]
+        );
+    }
+
+    /// A node dialing a legacy peer that speaks TLS 1.2 still checks the
+    /// server's handshake signature, though it trusts any certificate.
+    #[test]
+    fn a_legacy_client_checks_a_tls_1_2_server_signature() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let (cert, key) = generate_ephemeral_cert();
+        let server_config = Arc::new(
+            ServerConfig::builder_with_protocol_versions(&[&rustls::version::TLS12])
+                .with_no_client_auth()
+                .with_single_cert(vec![cert], key)
+                .unwrap(),
+        );
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (tcp, _) = listener.accept().unwrap();
+            let mut tls =
+                StreamOwned::new(rustls::ServerConnection::new(server_config).unwrap(), tcp);
+            tls.conn.complete_io(&mut tls.sock).map(|_| ())
+        });
+        let mut tls = StreamOwned::new(
+            rustls::ClientConnection::new(
+                build_node_client_config(),
+                "mesh-node".try_into().unwrap(),
+            )
+            .unwrap(),
+            TcpStream::connect(("127.0.0.1", port)).unwrap(),
+        );
+        while tls.conn.is_handshaking() {
+            tls.conn.complete_io(&mut tls.sock).unwrap();
+        }
+        assert_eq!(
+            tls.conn.protocol_version(),
+            Some(rustls::ProtocolVersion::TLSv1_2)
+        );
+        server.join().unwrap().unwrap();
+    }
+
+    /// Tells the test node that the node `name` is a ready worker serving
+    /// `handlers`.
+    fn report_worker(name: &str, handlers: &[&str]) {
+        let mut report = crate::dist::routing::local_load_report(
+            name,
+            handlers.iter().map(|handler| handler.to_string()).collect(),
+        );
+        report.roles = crate::dist::telemetry::NodeRoles::new(false, true, true);
+        report.state = crate::dist::telemetry::NodeLifecycleState::Ready;
+        crate::dist::routing::load_report_registry()
+            .apply(report, Instant::now())
+            .unwrap();
+    }
+
+    /// A pending record of declared work `handler`, owned by `owner` with
+    /// the one acknowledged replica `replica`, merged into this node's
+    /// continuity registry.
+    fn merge_pending_record(key: &str, owner: &str, replica: &str, handler: &str) {
+        let mut record = continuity_record(key, owner, replica);
+        record.acknowledged_replica_nodes = vec![replica.to_string()];
+        record.replica_status = crate::dist::continuity::ReplicaStatus::Mirrored;
+        record.declared_handler_runtime_name = handler.to_string();
+        if key.contains("http") {
+            record.request_payload = b"GET /drained".to_vec();
+        }
+        crate::dist::continuity::continuity_registry()
+            .merge_remote_record(1, record)
+            .unwrap();
+    }
+
+    /// Plays `peers` as live nodes until `done`: each replica prepare is
+    /// acknowledged (refused for a record whose key says `unprepared`, and
+    /// for one that says `superseded` after completing it), each
+    /// reservation accepted, each routed request answered (with an error
+    /// when its key says `failing`) and each spawn given a pid.
+    fn serve_as_nodes(peers: &[&TestPeer], done: &AtomicBool) {
+        let registry = crate::dist::continuity::continuity_registry();
+        while !done.load(Ordering::Acquire) {
+            for peer in peers {
+                while let Some(message) = peer.take_sent() {
+                    match message[0] {
+                        DIST_CONTINUITY_PREPARE => {
+                            let (id, record) = decode_continuity_prepare_payload(&message).unwrap();
+                            if record.request_key.contains("superseded") {
+                                let _ = registry.mark_completed(
+                                    &record.request_key,
+                                    "attempt-1",
+                                    "someone@h:1",
+                                );
+                            }
+                            let result = if record.request_key.contains("unprepared")
+                                || record.request_key.contains("superseded")
+                            {
+                                Err("replica_full".to_string())
+                            } else {
+                                Ok(())
+                            };
+                            peer.receive(encode_continuity_prepare_ack(id, &result));
+                        }
+                        DIST_SPAWN => peer.receive(frame(
+                            DIST_SPAWN_REPLY,
+                            &[&message[1..9], &[0], &1u64.to_le_bytes()],
+                        )),
+                        DIST_HTTP_RESERVE => {
+                            let (correlation, ..) = decode_http_reserve(&message).unwrap();
+                            peer.receive(encode_http_reserve_reply(correlation, Ok(())).unwrap());
+                        }
+                        DIST_HTTP_ROUTE_V2_QUERY => {
+                            let (correlation, _, key, ..) =
+                                decode_http_route_v2_query_frame(&message).unwrap();
+                            let result = if key.contains("failing") {
+                                Err("handler_failed".to_string())
+                            } else {
+                                Ok(b"200 drained".to_vec())
+                            };
+                            peer.receive(
+                                encode_http_route_v2_reply_frame(correlation, result).unwrap(),
+                            );
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+    }
+
+    /// Moves `node`'s continuity responsibilities elsewhere while `peers`
+    /// play live nodes, and they go on playing until `settled` (what the
+    /// drain started in the background has finished).
+    fn drain_with(
+        peers: &[&TestPeer],
+        node: &str,
+        settled: impl Fn() -> bool,
+    ) -> Result<DrainContinuityOutcome, String> {
+        let done = AtomicBool::new(false);
+        std::thread::scope(|scope| {
+            scope.spawn(|| serve_as_nodes(peers, &done));
+            let outcome = prepare_continuity_for_runtime_node(node);
+            let deadline = Instant::now() + Duration::from_secs(20);
+            while !settled() {
+                assert!(
+                    Instant::now() < deadline,
+                    "the drain of {node} never settled"
+                );
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            done.store(true, Ordering::Release);
+            outcome
+        })
+    }
+
+    fn at_once() -> bool {
+        true
+    }
+
+    fn record_phase(key: &str) -> Option<crate::dist::continuity::ContinuityPhase> {
+        crate::dist::continuity::continuity_registry()
+            .record(key)
+            .map(|record| record.phase)
+    }
+
+    /// Waits until `condition` holds of the registry's record `key`.
+    fn await_record(key: &str, condition: impl Fn(&ContinuityRecord) -> bool) -> ContinuityRecord {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            if let Some(record) = crate::dist::continuity::continuity_registry()
+                .record(key)
+                .filter(|record| condition(record))
+            {
+                return record;
+            }
+            assert!(Instant::now() < deadline, "the record {key} never changed");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    extern "C" fn drained_work_handler(_args: *const u8) {}
+
+    /// Draining a node moves the work it owns to a worker that has its
+    /// handler, preferring one that already mirrors it, replaces it where it
+    /// was a replica, and prepares each new replica before the record
+    /// changes; the moved work starts again on its new owner. A drain that
+    /// cannot place the work fails before touching it.
+    #[test]
+    fn draining_a_node_moves_its_work_and_replaces_it_as_a_replica() {
+        let handler = "Drain.handle";
+        let worker_a = TestPeer::new("drain-worker-a@127.0.0.1:1");
+        let worker_b = TestPeer::new("drain-worker-b@127.0.0.1:1");
+        mesh_register_declared_handler(
+            handler.as_ptr(),
+            handler.len() as u64,
+            "Drain__handle".as_ptr(),
+            13,
+            2,
+            drained_work_handler as *const u8,
+        );
+        for worker in [&worker_a, &worker_b] {
+            report_worker(&worker.session.remote_name, &[handler]);
+        }
+        let (a, b) = (
+            worker_a.session.remote_name.as_str(),
+            worker_b.session.remote_name.as_str(),
+        );
+        let peers = [&worker_a, &worker_b];
+
+        merge_pending_record("drained-owned-key", "drained-owner@h:1", a, handler);
+        let outcome = drain_with(&peers, "drained-owner@h:1", at_once).unwrap();
+        assert_eq!(
+            (outcome.ownership_transfers, outcome.records_examined),
+            (1, 1)
+        );
+        let moved = await_record("drained-owned-key", |record| record.owner_node == a);
+        assert_eq!(moved.replica_nodes(), [b.to_string()]);
+        assert_eq!(moved.acknowledged_replica_nodes(), [b.to_string()]);
+        assert_ne!(moved.attempt_id, "attempt-1");
+
+        merge_pending_record("drained-replica-key", a, "drained-replica@h:1", handler);
+        let outcome = drain_with(&peers, "drained-replica@h:1", at_once).unwrap();
+        assert_eq!(outcome.replica_replacements, 1);
+        let replaced = await_record("drained-replica-key", |record| {
+            record.replica_nodes() == [b.to_string()]
+        });
+        assert_eq!(replaced.owner_node, a);
+
+        merge_pending_record("drained-http-key", "drained-http@h:1", a, handler);
+        let answered = || {
+            crate::dist::continuity_store::replay_runtime_response("drained-http-key")
+                == Ok(Some(b"200 drained".to_vec()))
+        };
+        drain_with(&peers, "drained-http@h:1", answered).unwrap();
+
+        merge_pending_record(
+            "drained-http-failing-key",
+            "drained-failing@h:1",
+            a,
+            handler,
+        );
+        let rejected = || {
+            record_phase("drained-http-failing-key")
+                == Some(crate::dist::continuity::ContinuityPhase::Rejected)
+        };
+        drain_with(&peers, "drained-failing@h:1", rejected).unwrap();
+
+        merge_pending_record("drained-unprepared-key", "drained-prepare@h:1", a, handler);
+        assert_eq!(
+            drain_with(&peers, "drained-prepare@h:1", at_once),
+            Err("replica_full".to_string())
+        );
+        merge_pending_record("drained-superseded-key", "drained-raced@h:1", a, handler);
+        assert_eq!(
+            drain_with(&peers, "drained-raced@h:1", at_once)
+                .map(|outcome| outcome.ownership_transfers),
+            Ok(0)
+        );
+
+        merge_pending_record("drained-bare-key", "drained-bare@h:1", a, "");
+        assert_eq!(
+            drain_with(&peers, "drained-bare@h:1", at_once),
+            Err("continuity_drain_untransferable_active_record:drained-bare-key".to_string())
+        );
+        merge_pending_record(
+            "drained-orphan-key",
+            "drained-orphan@h:1",
+            a,
+            "Nobody.handle",
+        );
+        assert_eq!(
+            drain_with(&peers, "drained-orphan@h:1", at_once),
+            Err("continuity_drain_owner_transfer_unavailable".to_string())
+        );
+        let mut wide = continuity_record("drained-wide-key", "drained-wide@h:1", a);
+        wide.replication_count = 4;
+        wide.declared_handler_runtime_name = handler.to_string();
+        crate::dist::continuity::continuity_registry()
+            .merge_remote_record(1, wide)
+            .unwrap();
+        assert!(drain_with(&peers, "drained-wide@h:1", at_once)
+            .unwrap_err()
+            .starts_with("continuity_drain_replica_capacity_unavailable"));
+        assert_eq!(
+            prepare_continuity_for_drain("nobody-to-drain"),
+            Err("runtime_node_not_found:nobody-to-drain".to_string())
+        );
+    }
 }
