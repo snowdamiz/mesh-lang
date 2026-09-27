@@ -6089,13 +6089,21 @@ pub(crate) fn start_one_shot_test_listener() -> Result<String, String> {
 // Runtime-owned bootstrap entry point
 // ---------------------------------------------------------------------------
 
+/// Starts this process's node, `mesh_node_start` without the raw text: 0
+/// once it listens, -1 when a node is already started, or `bind_node`'s
+/// code.
 fn start_named_node(name: &str, cookie: &str) -> i64 {
-    mesh_node_start(
-        name.as_ptr(),
-        name.len() as u64,
-        cookie.as_ptr(),
-        cookie.len() as u64,
-    )
+    if NODE_STATE.get().is_some() {
+        return -1;
+    }
+    let (node, listener) = match bind_node(name, cookie) {
+        Ok(bound) => bound,
+        Err(code) => return code,
+    };
+    let state = NODE_STATE.get_or_init(|| node);
+    std::thread::spawn(move || accept_loop(listener, state));
+    start_discovery_from_env();
+    0
 }
 
 #[repr(C)]
@@ -6185,6 +6193,7 @@ where
 /// - `0` on success
 /// - `-1` if node already started
 /// - `-2` if TCP bind failed
+/// - `-3` for a name, cookie or TLS setup it cannot start with
 #[no_mangle]
 pub extern "C" fn mesh_node_start(
     name_ptr: *const u8,
@@ -6192,69 +6201,41 @@ pub extern "C" fn mesh_node_start(
     cookie_ptr: *const u8,
     cookie_len: u64,
 ) -> i64 {
-    // Already initialized?
-    if NODE_STATE.get().is_some() {
-        return -1;
+    let text = |ptr: *const u8, len: u64| {
+        std::str::from_utf8(unsafe { std::slice::from_raw_parts(ptr, len as usize) }).ok()
+    };
+    match (text(name_ptr, name_len), text(cookie_ptr, cookie_len)) {
+        (Some(name), Some(cookie)) => start_named_node(name, cookie),
+        _ => -3,
     }
+}
 
-    // Extract name and cookie from raw pointers
-    let name = unsafe {
-        let slice = std::slice::from_raw_parts(name_ptr, name_len as usize);
-        match std::str::from_utf8(slice) {
-            Ok(s) => s.to_string(),
-            Err(_) => return -3,
-        }
-    };
-
-    let cookie = unsafe {
-        let slice = std::slice::from_raw_parts(cookie_ptr, cookie_len as usize);
-        match std::str::from_utf8(slice) {
-            Ok(s) => s.to_string(),
-            Err(_) => return -3,
-        }
-    };
-
-    if let Err(error) = validate_cluster_cookie_strength(&cookie, autonomous_mode_requested()) {
+/// The state of a node named `name` (`name@host[:port]`, where port 0 asks
+/// the system for a free one) with `cookie`, and the listener it takes
+/// connections on: -3 for a name, cookie or TLS setup it cannot start
+/// with, -2 for an address it cannot bind.
+fn bind_node(name: &str, cookie: &str) -> Result<(NodeState, TcpListener), i64> {
+    if let Err(error) = validate_cluster_cookie_strength(cookie, autonomous_mode_requested()) {
         eprintln!("mesh node: cluster authentication configuration failed: {error}");
-        return -3;
+        return Err(-3);
     }
-
-    // Parse "name@host" or "name@host:port"
-    let (name_part, host, port) = match super::discovery::split_node_name(&name, true) {
-        Ok(parsed) => parsed,
-        Err(_) => return -3,
-    };
-
-    let host_owned = host.to_string();
-
-    let (tls_server_config, tls_client_config) = match node_tls_configs() {
-        Ok(configs) => configs,
-        Err(error) => {
-            eprintln!("mesh node: TLS configuration failed: {error}");
-            return -3;
-        }
-    };
-
-    // Bind TCP listener
-    let listener = match TcpListener::bind((host_owned.as_str(), port)) {
-        Ok(l) => l,
-        Err(_) => return -2,
-    };
-
-    // Determine actual port (may differ if port 0 was requested)
+    let (name_part, host, port) = super::discovery::split_node_name(name, true).map_err(|_| -3)?;
+    let (tls_server_config, tls_client_config) = node_tls_configs().map_err(|error| {
+        eprintln!("mesh node: TLS configuration failed: {error}");
+        -3
+    })?;
+    let listener = TcpListener::bind((host, port)).map_err(|_| -2)?;
     let actual_port = listener.local_addr().map(|a| a.port()).unwrap_or(port);
     let advertised_name = if port == 0 {
-        advertised_node_name(name_part, &host_owned, actual_port)
+        advertised_node_name(name_part, host, actual_port)
     } else {
-        name.clone()
+        name.to_string()
     };
-
-    // Initialize the global node state
-    let _state = NODE_STATE.get_or_init(|| NodeState {
+    let node = NodeState {
         name: advertised_name,
-        host: host_owned,
+        host: host.to_string(),
         port: actual_port,
-        cookie,
+        cookie: cookie.to_string(),
         creation: AtomicU8::new(1),
         next_node_id: AtomicU16::new(1),
         tls_server_config,
@@ -6262,18 +6243,8 @@ pub extern "C" fn mesh_node_start(
         sessions: RwLock::new(FxHashMap::default()),
         node_id_map: RwLock::new(FxHashMap::default()),
         node_monitors: RwLock::new(FxHashMap::default()),
-    });
-
-    // Spawn accept loop on a background thread.
-    // Access NodeState via the static NODE_STATE, which is 'static.
-    std::thread::spawn(move || {
-        let state = NODE_STATE.get().expect("NODE_STATE initialized above");
-        accept_loop(listener, state);
-    });
-
-    start_discovery_from_env();
-
-    0
+    };
+    Ok((node, listener))
 }
 
 /// The name a node started on port 0 goes by: its host, an IPv6 address in
@@ -12368,5 +12339,39 @@ mod tests {
         assert_eq!(extra.read(&mut [0; 1]).unwrap(), 0, "closed unread");
         drop(pending);
         await_active(0);
+    }
+
+    /// A node starts only with a name, a cookie and TLS it can use (-3),
+    /// on an address it can bind (-2). Started on port 0, it advertises the
+    /// port it got; on a port of its own, the name it was given.
+    #[test]
+    fn a_node_starts_only_with_what_it_can_use() {
+        let state = test_node();
+        let refused = |name: &str, cookie: &str| bind_node(name, cookie).err();
+        assert_eq!(refused("no-at-sign", TEST_NODE_COOKIE), Some(-3));
+        assert_eq!(refused("n@127.0.0.1:0", " , "), Some(-3), "no cookie");
+        let taken = format!("n@127.0.0.1:{}", state.port);
+        assert_eq!(refused(&taken, TEST_NODE_COOKIE), Some(-2));
+        autonomous(|| {
+            assert_eq!(refused("n@127.0.0.1:0", "short"), Some(-3));
+            assert_eq!(
+                refused("n@127.0.0.1:0", &"k".repeat(32)),
+                Some(-3),
+                "no mTLS"
+            );
+        });
+        let bad_text = [0xFF, 0xFE];
+        assert_eq!(
+            mesh_node_start(bad_text.as_ptr(), 2, TEST_NODE_COOKIE.as_ptr(), 3),
+            -3
+        );
+
+        let (node, listener) = bind_node("fresh@127.0.0.1:0", TEST_NODE_COOKIE).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        assert_eq!(node.name, format!("fresh@127.0.0.1:{port}"));
+        drop(listener);
+        let fixed = format!("fixed@127.0.0.1:{port}");
+        let (node, _listener) = bind_node(&fixed, TEST_NODE_COOKIE).unwrap();
+        assert_eq!((node.name, node.port), (fixed, port));
     }
 }
