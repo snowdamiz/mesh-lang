@@ -17,6 +17,7 @@ use libsqlite3_sys::*;
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
+use std::ptr::NonNull;
 
 use crate::bytes::mesh_bytes_new;
 use crate::collections::list::mesh_list_from_array;
@@ -47,10 +48,9 @@ struct StmtGuard {
 
 impl Drop for StmtGuard {
     fn drop(&mut self) {
-        if !self.stmt.is_null() {
-            unsafe {
-                sqlite3_finalize(self.stmt);
-            }
+        // `prepare_statement` makes a guard only for a statement it prepared.
+        unsafe {
+            sqlite3_finalize(self.stmt);
         }
     }
 }
@@ -210,17 +210,15 @@ unsafe fn read_rows(
     values: Values,
 ) -> Result<Vec<u64>, String> {
     let column_count = sqlite3_column_count(stmt) as usize;
-    let column_names: Vec<String> = (0..column_count)
+    let column_names = (0..column_count)
         .map(|column| {
-            let name = sqlite3_column_name(stmt, column as c_int);
             // Null only when SQLite runs out of memory.
-            if name.is_null() {
-                format!("column{column}")
-            } else {
-                CStr::from_ptr(name).to_string_lossy().into_owned()
-            }
+            let name = sqlite3_column_name(stmt, column as c_int);
+            (!name.is_null())
+                .then(|| CStr::from_ptr(name).to_string_lossy().into_owned())
+                .ok_or_else(|| sqlite_err_string(db))
         })
-        .collect();
+        .collect::<Result<Vec<String>, String>>()?;
     let row_base_bytes = column_names
         .iter()
         .try_fold(40_usize, |total, name| total.checked_add(name.len()))
@@ -278,12 +276,12 @@ unsafe fn typed_column_value(
         SQLITE_NULL => Ok(alloc_db_value(DB_VALUE_NULL, std::ptr::null_mut())),
         SQLITE_BLOB => {
             let len = column_len(stmt, column, result_bytes)?;
+            // The blob is null when empty, or when SQLite runs out of memory:
+            // `mesh_bytes_new` refuses (null) a null pointer with a length.
             let bytes = sqlite3_column_blob(stmt, column) as *const u8;
-            if bytes.is_null() && len != 0 {
-                return Err(format!("failed to read SQLite BLOB column {column}"));
-            }
-            let payload = mesh_bytes_new(bytes, len as u64) as *mut u8;
-            Ok(alloc_db_value(DB_VALUE_BINARY, payload))
+            let payload = NonNull::new(mesh_bytes_new(bytes, len as u64))
+                .ok_or_else(|| format!("failed to read SQLite BLOB column {column}"))?;
+            Ok(alloc_db_value(DB_VALUE_BINARY, payload.as_ptr().cast()))
         }
         _ => Ok(alloc_db_value(
             DB_VALUE_TEXT,
@@ -315,12 +313,11 @@ unsafe fn column_text(
     column: c_int,
     result_bytes: &mut usize,
 ) -> Result<*mut MeshString, String> {
-    let bytes = sqlite3_column_text(stmt, column);
+    // Null only when SQLite runs out of memory: a NULL column is read before.
+    let bytes = NonNull::new(sqlite3_column_text(stmt, column) as *mut u8)
+        .ok_or_else(|| format!("failed to read SQLite text column {column}"))?;
     let len = column_len(stmt, column, result_bytes)?;
-    if bytes.is_null() {
-        return Err(format!("failed to read SQLite text column {column}"));
-    }
-    let text = String::from_utf8_lossy(std::slice::from_raw_parts(bytes, len));
+    let text = String::from_utf8_lossy(std::slice::from_raw_parts(bytes.as_ptr(), len));
     if text.len() > MAX_DB_VALUE_BYTES {
         return Err(format!(
             "SQLite column {column} exceeds {MAX_DB_VALUE_BYTES} byte limit"
@@ -449,64 +446,40 @@ pub extern "C" fn mesh_sqlite_query_values(
 
 /// Execute a bare SQL command (BEGIN/COMMIT/ROLLBACK) on a SQLite connection.
 /// Returns a MeshResult: Ok(null) on success, Err(message) on failure.
-fn sqlite_simple_exec(conn: &SqliteConn, sql: &str) -> *mut u8 {
-    let sql_cstr = match CString::new(sql) {
-        Ok(c) => c,
-        Err(_) => return err_result("SQL contains null byte"),
-    };
+fn sqlite_simple_exec(conn_handle: u64, sql: &CStr) -> *mut u8 {
     unsafe {
+        let db = (*(conn_handle as *const SqliteConn)).db;
         let rc = sqlite3_exec(
-            conn.db,
-            sql_cstr.as_ptr(),
+            db,
+            sql.as_ptr(),
             None,
             std::ptr::null_mut(),
             std::ptr::null_mut(),
         );
         if rc != SQLITE_OK {
-            sqlite_err_result(conn.db)
+            sqlite_err_result(db)
         } else {
             alloc_result(0, std::ptr::null_mut()) as *mut u8
         }
     }
 }
 
-/// Begin a SQLite transaction.
-///
-/// # Signature
-///
-/// `mesh_sqlite_begin(conn_handle: u64) -> *mut u8 (MeshResult<Unit, String>)`
-///
-/// Sends `BEGIN` and returns Ok(()) or Err(error_message).
+/// Begin a SQLite transaction: `Result<Unit, String>`.
 #[no_mangle]
 pub extern "C" fn mesh_sqlite_begin(conn_handle: u64) -> *mut u8 {
-    let conn = unsafe { &*(conn_handle as *const SqliteConn) };
-    sqlite_simple_exec(conn, "BEGIN")
+    sqlite_simple_exec(conn_handle, c"BEGIN")
 }
 
-/// Commit a SQLite transaction.
-///
-/// # Signature
-///
-/// `mesh_sqlite_commit(conn_handle: u64) -> *mut u8 (MeshResult<Unit, String>)`
-///
-/// Sends `COMMIT` and returns Ok(()) or Err(error_message).
+/// Commit a SQLite transaction: `Result<Unit, String>`.
 #[no_mangle]
 pub extern "C" fn mesh_sqlite_commit(conn_handle: u64) -> *mut u8 {
-    let conn = unsafe { &*(conn_handle as *const SqliteConn) };
-    sqlite_simple_exec(conn, "COMMIT")
+    sqlite_simple_exec(conn_handle, c"COMMIT")
 }
 
-/// Rollback a SQLite transaction.
-///
-/// # Signature
-///
-/// `mesh_sqlite_rollback(conn_handle: u64) -> *mut u8 (MeshResult<Unit, String>)`
-///
-/// Sends `ROLLBACK` and returns Ok(()) or Err(error_message).
+/// Roll back a SQLite transaction: `Result<Unit, String>`.
 #[no_mangle]
 pub extern "C" fn mesh_sqlite_rollback(conn_handle: u64) -> *mut u8 {
-    let conn = unsafe { &*(conn_handle as *const SqliteConn) };
-    sqlite_simple_exec(conn, "ROLLBACK")
+    sqlite_simple_exec(conn_handle, c"ROLLBACK")
 }
 
 #[cfg(test)]
@@ -786,6 +759,78 @@ mod tests {
         let mismatch = mesh_sqlite_execute_values(handle, mk_str(b"SELECT ?"), mesh_list_new());
         assert_eq!(unsafe { (*(mismatch as *const MeshResult)).tag }, 1);
         assert!(add_result_bytes(MAX_SQLITE_RESULT_BYTES, 1).is_err());
+
+        mesh_sqlite_close(handle);
+    }
+
+    /// A statement that fails as it runs, a value the connection will not
+    /// bind, a result past the row limit, a column past the value limit (as
+    /// stored, or once its invalid UTF-8 is replaced) each come back as the
+    /// error they are; a column name used twice keeps its last value.
+    #[test]
+    fn statements_and_results_fail_for_what_is_wrong_with_them() {
+        mesh_rt_init();
+        let handle =
+            unsafe { unbox_u64_payload(result(mesh_sqlite_open(mk_str(b":memory:"))).value) };
+        let run = |sql: &str, params: *mut u8| {
+            mesh_sqlite_execute(handle, mk_str(sql.as_bytes()), params)
+        };
+        let rows = |sql: &str| mesh_sqlite_query(handle, mk_str(sql.as_bytes()), mesh_list_new());
+        assert_eq!(
+            result(run(
+                "CREATE TABLE t (id INTEGER PRIMARY KEY)",
+                mesh_list_new()
+            ))
+            .tag,
+            0
+        );
+        assert_eq!(
+            result(run("INSERT INTO t VALUES (1)", mesh_list_new())).tag,
+            0
+        );
+        assert_eq!(
+            error_text(run("INSERT INTO t VALUES (1)", mesh_list_new())),
+            "UNIQUE constraint failed: t.id"
+        );
+
+        let db = unsafe { (*(handle as *const SqliteConn)).db };
+        // SQLite lowers the length limit no further than 30 bytes.
+        let limit = unsafe { sqlite3_limit(db, SQLITE_LIMIT_LENGTH, 30) };
+        assert_eq!(
+            error_text(run("SELECT ?", texts(&[&"x".repeat(31)]))),
+            "string or blob too big"
+        );
+        unsafe { sqlite3_limit(db, SQLITE_LIMIT_LENGTH, limit) };
+
+        let many = format!(
+            "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < {}) SELECT i FROM n",
+            MAX_SQLITE_ROWS + 1
+        );
+        assert_eq!(
+            error_text(rows(&many)),
+            format!("SQLite result exceeds {MAX_SQLITE_ROWS} row limit")
+        );
+
+        let twice = result(rows("SELECT 1 AS a, 2 AS a")).value;
+        let row = crate::collections::list::mesh_list_get(twice, 0) as *mut u8;
+        assert_eq!(crate::collections::map::mesh_map_size(row), 1);
+        let a = crate::collections::map::mesh_map_get(row, mk_str(b"a") as u64);
+        assert_eq!(unsafe { text_of(a as *const MeshString) }, "2");
+
+        let too_big = format!("SQLite column 0 exceeds {MAX_DB_VALUE_BYTES} byte limit");
+        let blob = format!("SELECT zeroblob({})", MAX_DB_VALUE_BYTES + 1);
+        let typed = mesh_sqlite_query_values(handle, mk_str(blob.as_bytes()), mesh_list_new());
+        assert_eq!(error_text(typed), too_big);
+        // 0xFF bytes are invalid UTF-8, each replaced by a 3-byte U+FFFD.
+        let invalid = format!(
+            "SELECT CAST(unhex(replace(hex(zeroblob({})), '00', 'FF')) AS TEXT)",
+            MAX_DB_VALUE_BYTES / 3 + 1
+        );
+        assert_eq!(error_text(rows(&invalid)), too_big);
+        let replaced = result(rows("SELECT CAST(x'FF' AS TEXT) AS v")).value;
+        let row = crate::collections::list::mesh_list_get(replaced, 0) as *mut u8;
+        let v = crate::collections::map::mesh_map_get(row, mk_str(b"v") as u64);
+        assert_eq!(unsafe { text_of(v as *const MeshString) }, "\u{fffd}");
 
         mesh_sqlite_close(handle);
     }
