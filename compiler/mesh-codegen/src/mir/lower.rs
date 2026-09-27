@@ -1311,24 +1311,27 @@ impl<'a> Lowerer<'a> {
             .map_or(MsgShape::Shared, |ty| self.msg_shape(ty, &mut Vec::new()))
     }
 
-    /// `capture`, a variable a closure captures, with the shape of what it
-    /// holds. The shape goes into the environment's own shape table, which is
-    /// what lets a closure be copied to another actor. The variable's type is
-    /// read off one of its uses inside the closure.
-    fn shaped_capture(&self, closure: &mesh_parser::SyntaxNode, capture: MirExpr) -> MirExpr {
-        let MirExpr::Var(name, _) = &capture else {
-            return capture;
-        };
-        let used_at = closure.descendants().find_map(|node| {
-            let name_ref = NameRef::cast(node)?;
-            (name_ref.text().as_deref() == Some(name)).then(|| name_ref.syntax().text_range())
-        });
-        match used_at.and_then(|range| self.get_ty(range)) {
-            Some(ty) => MirExpr::Shaped {
-                shape: self.msg_shape(ty, &mut Vec::new()),
-                value: Box::new(capture),
-            },
-            None => capture,
+    /// The variable `name` of type `ty`, which a closure captures, with the
+    /// shape of what it holds. The shape goes into the environment's own
+    /// shape table, which is what lets a closure be copied to another actor.
+    /// The variable's type is read off a typed use of it inside the closure
+    /// (a keyword key of the same name, `f(name: 1)`, has none); `Shared`
+    /// stands for a type no use gives.
+    fn shaped_capture(
+        &self,
+        closure: &mesh_parser::SyntaxNode,
+        name: &str,
+        ty: &MirType,
+    ) -> MirExpr {
+        let shape = closure
+            .descendants()
+            .filter_map(NameRef::cast)
+            .filter(|name_ref| name_ref.text().as_deref() == Some(name))
+            .find_map(|name_ref| self.get_ty(name_ref.syntax().text_range()))
+            .map_or(MsgShape::Shared, |ty| self.msg_shape(ty, &mut Vec::new()));
+        MirExpr::Shaped {
+            shape,
+            value: Box::new(MirExpr::Var(name.to_string(), ty.clone())),
         }
     }
 
@@ -5362,7 +5365,9 @@ impl<'a> Lowerer<'a> {
             if let Some(pattern) = param.pattern() {
                 bindings.extend(self.resource_pattern_bindings(&pattern));
             } else if self.registry.is_resource_type(ty) {
-                let name = param.name().expect("a clause parameter is a pattern or a name");
+                let name = param
+                    .name()
+                    .expect("a clause parameter is a pattern or a name");
                 bindings.push((name.text().to_string(), ty.clone()));
             }
         }
@@ -10732,8 +10737,7 @@ impl<'a> Lowerer<'a> {
         let mut capture_exprs: Vec<MirExpr> = Vec::new();
         collect_free_vars(&body, &param_set, &outer_vars, &mut captures);
         for (name, ty) in &captures {
-            let capture = MirExpr::Var(name.clone(), ty.clone());
-            capture_exprs.push(self.shaped_capture(closure.syntax(), capture));
+            capture_exprs.push(self.shaped_capture(closure.syntax(), name, ty));
         }
 
         // Create the lifted function.
@@ -10863,8 +10867,7 @@ impl<'a> Lowerer<'a> {
         let mut capture_exprs: Vec<MirExpr> = Vec::new();
         collect_free_vars(&body, &param_set, &outer_vars, &mut captures);
         for (name, ty) in &captures {
-            let capture = MirExpr::Var(name.clone(), ty.clone());
-            capture_exprs.push(self.shaped_capture(closure.syntax(), capture));
+            capture_exprs.push(self.shaped_capture(closure.syntax(), name, ty));
         }
 
         // Create the lifted function.
@@ -17358,6 +17361,37 @@ mod tests {
             nested.return_type,
             "resource scope wrappers and constructors must preserve the concrete Result type: {:?}",
             nested.body
+        );
+    }
+
+    /// A closure's capture carries the shape of what its variable holds,
+    /// read off a use of the variable inside the closure. A keyword key of
+    /// the same name (`size(xs: 1)`) is no use of it: taking its missing
+    /// type left the capture to the shape of its MIR type, which says
+    /// nothing of a list's elements.
+    #[test]
+    fn closure_captures_are_shaped_by_a_typed_use() {
+        let mir = lower(
+            "fn size(m :: Map<String, Int>) -> Int do\n  Map.size(m)\nend\n\n\
+             fn main() do\n  let xs = [\"a\"]\n  let f = fn () -> size(xs: 1) + List.length(xs) end\n  println(\"#{f()}\")\nend",
+        );
+        let main = function_body(&mir, "mesh_main");
+        let captures = main
+            .descendants()
+            .into_iter()
+            .find_map(|node| match node {
+                MirExpr::MakeClosure { captures, .. } => Some(captures.clone()),
+                _ => None,
+            })
+            .expect("main makes a closure");
+        let xs = captures
+            .iter()
+            .find(|capture| var_refs(capture, "xs") == 1)
+            .expect("the closure captures xs");
+        assert!(
+            matches!(xs, MirExpr::Shaped { shape: MsgShape::List(element), .. }
+                if **element == MsgShape::String),
+            "{captures:?}"
         );
     }
 
