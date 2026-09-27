@@ -1444,16 +1444,12 @@ impl Checker<'_> {
         let Some(name) = name_ref.text() else {
             return;
         };
-        let is_resource = self
-            .scopes
-            .iter()
-            .rev()
-            .find_map(|scope| scope.get(&name))
-            .is_some_and(|binding| self.registry.is_resource_type(&binding.ty));
-        if !is_resource {
-            return;
-        }
-        let Some(binding) = self.lookup_mut(&name) else {
+        // Only a binding of a resource is checked.
+        let registry = self.registry;
+        let Some(binding) = self
+            .lookup_mut(&name)
+            .filter(|binding| registry.is_resource_type(&binding.ty))
+        else {
             return;
         };
         if binding.moved {
