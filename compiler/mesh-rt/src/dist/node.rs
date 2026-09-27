@@ -10788,6 +10788,19 @@ mod tests {
         };
         peer.receive(spawn(2, 0, "never_registered_for_remote_spawn"));
         assert_eq!(heard(), vec![refused(2)]);
+        // Declared work runs where it is placed, and is spawned there only
+        // as declared work.
+        extern "C" fn declared_only(_args: *const u8) {}
+        mesh_register_declared_handler(
+            b"PeerSpawned.declared".as_ptr(),
+            20,
+            b"PeerSpawned__declared".as_ptr(),
+            21,
+            1,
+            declared_only as *const u8,
+        );
+        peer.receive(spawn(5, 0, "PeerSpawned__declared"));
+        assert_eq!(heard(), vec![refused(5)]);
         // A name longer than the frame, or not UTF-8, names nothing.
         let mut cut_short = spawn(3, 0, "peer_spawned_test_actor");
         cut_short.truncate(24);
@@ -13508,6 +13521,12 @@ mod tests {
         );
         spawn_automatic_recovery_submission("Absent.work", "absent-key", "sha256:x", "attempt-9");
         await_diagnostic("automatic_recovery_rejected", "absent-key");
+        // Work that cannot be submitted again is refused with the reason.
+        spawn_automatic_recovery_submission(handler, "hashless-key", "", "attempt-9");
+        assert_eq!(
+            await_diagnostic("automatic_recovery_rejected", "hashless-key").reason,
+            Some("payload_hash_missing".to_string())
+        );
         let deadline = Instant::now() + Duration::from_secs(10);
         while diagnosed("automatic_recovery_rejected", "resumed-key").is_none() {
             assert!(Instant::now() < deadline, "the repeat was not refused");
@@ -14711,5 +14730,18 @@ mod tests {
         drop(peer);
         registry.clear_for_test();
         clear_startup_work_test_state();
+    }
+
+    /// An accepted connection whose socket will not take its handshake
+    /// timeout (one shut down already, which macOS refuses) is dropped.
+    #[test]
+    fn an_accepted_connection_that_refuses_its_timeout_is_dropped() {
+        let state = test_node();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let client = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (accepted, _) = listener.accept().unwrap();
+        accepted.shutdown(std::net::Shutdown::Both).unwrap();
+        handle_accepted_connection(accepted, state);
+        drop(client);
     }
 }
