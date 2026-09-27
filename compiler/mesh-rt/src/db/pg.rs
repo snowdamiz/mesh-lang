@@ -43,7 +43,7 @@ use crate::string::{mesh_str, MeshString};
 type HmacSha256 = Hmac<Sha256>;
 
 // ponytail: fixed safety caps; make these pool options if legitimate workloads need larger cells.
-const MAX_DB_VALUE_BYTES: usize = 16 * 1024 * 1024;
+pub(crate) const MAX_DB_VALUE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_PG_MESSAGE_BYTES: usize = 64 * 1024 * 1024;
 const MAX_PG_RESULT_BYTES: usize = 64 * 1024 * 1024;
 const MAX_PG_VALUES: usize = i16::MAX as usize;
@@ -326,7 +326,7 @@ fn write_bind(buf: &mut Vec<u8>, params: &[&str]) {
 }
 
 #[derive(Clone, Copy)]
-enum BindValue<'a> {
+pub(crate) enum BindValue<'a> {
     Text(&'a [u8]),
     Binary(&'a [u8]),
     Null,
@@ -984,9 +984,6 @@ pub(crate) unsafe fn alloc_db_value(tag: u8, payload: *mut u8) -> *mut MeshDbVal
         std::mem::size_of::<MeshDbValue>() as u64,
         std::mem::align_of::<MeshDbValue>() as u64,
     ) as *mut MeshDbValue;
-    if value.is_null() {
-        return std::ptr::null_mut();
-    }
     value.write(MeshDbValue { tag, payload });
     value
 }
@@ -1082,60 +1079,40 @@ unsafe fn extract_params(params: *mut u8) -> Vec<String> {
     result
 }
 
-unsafe fn extract_db_values<'a>(params: *mut u8) -> Result<Vec<BindValue<'a>>, String> {
-    if params.is_null() {
-        return Err("invalid PostgreSQL parameter list".to_string());
-    }
+/// The values a `List<DbValue>` holds, at most `maximum` of them and each
+/// within the byte limit; `database` names the driver in the errors.
+pub(crate) unsafe fn db_values<'a>(
+    params: *mut u8,
+    maximum: usize,
+    database: &str,
+) -> Result<Vec<BindValue<'a>>, String> {
     let len = mesh_list_length(params) as usize;
-    if len > MAX_PG_VALUES {
+    if len > maximum {
         return Err(format!(
-            "too many PostgreSQL parameters: {len} (maximum {MAX_PG_VALUES})"
+            "too many {database} parameters: {len} (maximum {maximum})"
         ));
     }
-
-    let mut result = Vec::with_capacity(len);
-    for index in 0..len {
-        let value = mesh_list_get(params, index as i64) as *const MeshDbValue;
-        if value.is_null() {
-            return Err(format!("invalid PostgreSQL parameter at index {index}"));
-        }
-        match (*value).tag {
-            DB_VALUE_TEXT => {
-                let text = (*value).payload as *const MeshString;
-                if text.is_null() {
-                    return Err(format!("invalid text parameter at index {index}"));
+    (0..len)
+        .map(|index| {
+            let value = &*(mesh_list_get(params, index as i64) as *const MeshDbValue);
+            let value = match value.tag {
+                DB_VALUE_TEXT => {
+                    BindValue::Text((*(value.payload as *const MeshString)).as_str().as_bytes())
                 }
-                let bytes = (*text).as_str().as_bytes();
+                DB_VALUE_BINARY => BindValue::Binary((*(value.payload as *const MeshBytes)).as_slice()),
+                // `DB_VALUE_NULL`, the one other tag a DbValue has.
+                _ => BindValue::Null,
+            };
+            if let BindValue::Text(bytes) | BindValue::Binary(bytes) = value {
                 if bytes.len() > MAX_DB_VALUE_BYTES {
                     return Err(format!(
-                        "PostgreSQL parameter at index {index} exceeds {MAX_DB_VALUE_BYTES} byte limit"
+                        "{database} parameter at index {index} exceeds {MAX_DB_VALUE_BYTES} byte limit"
                     ));
                 }
-                result.push(BindValue::Text(bytes));
             }
-            DB_VALUE_BINARY => {
-                let bytes = (*value).payload as *const MeshBytes;
-                if bytes.is_null() {
-                    return Err(format!("invalid binary parameter at index {index}"));
-                }
-                let len = usize::try_from((*bytes).len)
-                    .map_err(|_| format!("invalid binary parameter length at index {index}"))?;
-                if len > MAX_DB_VALUE_BYTES {
-                    return Err(format!(
-                        "PostgreSQL parameter at index {index} exceeds {MAX_DB_VALUE_BYTES} byte limit"
-                    ));
-                }
-                result.push(BindValue::Binary((*bytes).as_slice()));
-            }
-            DB_VALUE_NULL => result.push(BindValue::Null),
-            tag => {
-                return Err(format!(
-                    "invalid DbValue tag {tag} at PostgreSQL parameter index {index}"
-                ))
-            }
-        }
-    }
-    Ok(result)
+            Ok(value)
+        })
+        .collect()
 }
 
 // ── Parse CommandComplete tag for row count ────────────────────────────
@@ -1552,7 +1529,7 @@ pub extern "C" fn mesh_pg_execute_values(
         if let Err(error) = validate_typed_sql(sql) {
             return err_result(&error);
         }
-        let params = match extract_db_values(params) {
+        let params = match db_values(params, MAX_PG_VALUES, "PostgreSQL") {
             Ok(params) => params,
             Err(error) => return err_result(&error),
         };
@@ -1615,7 +1592,7 @@ pub extern "C" fn mesh_pg_query_values(
         }
         let conn = &mut *(conn_handle as *mut PgConn);
         let sql = mesh_str_to_rust(sql);
-        let params = match extract_db_values(params) {
+        let params = match db_values(params, MAX_PG_VALUES, "PostgreSQL") {
             Ok(params) => params,
             Err(error) => return err_result(&error),
         };
@@ -2687,7 +2664,7 @@ mod tests {
             mesh_list_append(list, *value as u64)
         });
 
-        let extracted = unsafe { extract_db_values(params) }.unwrap();
+        let extracted = unsafe { db_values(params, MAX_PG_VALUES, "PostgreSQL") }.unwrap();
 
         assert!(matches!(extracted[0], BindValue::Text(b"inbox")));
         assert!(matches!(

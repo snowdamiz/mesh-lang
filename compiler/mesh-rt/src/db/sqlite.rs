@@ -18,17 +18,17 @@ use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
 
-use crate::bytes::{mesh_bytes_new, MeshBytes};
-use crate::collections::list::{
-    mesh_list_append, mesh_list_from_array, mesh_list_get, mesh_list_length, mesh_list_new,
-};
+use crate::bytes::mesh_bytes_new;
+use crate::collections::list::{mesh_list_append, mesh_list_from_array, mesh_list_new};
 use crate::collections::map::{mesh_map_from_string_entries, mesh_map_new_typed, mesh_map_put};
-use crate::db::pg::{alloc_db_value, MeshDbValue, DB_VALUE_BINARY, DB_VALUE_NULL, DB_VALUE_TEXT};
+use crate::db::pg::{
+    alloc_db_value, db_values, BindValue, MeshDbValue, DB_VALUE_BINARY, DB_VALUE_NULL,
+    DB_VALUE_TEXT, MAX_DB_VALUE_BYTES,
+};
 use crate::io::{alloc_result, box_scalar, err_result};
 use crate::string::{mesh_str, MeshString};
 
 // ponytail: fixed safety caps; make these connection options only if real workloads need more.
-const MAX_DB_VALUE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_SQLITE_RESULT_BYTES: usize = 64 * 1024 * 1024;
 const MAX_SQLITE_VALUES: usize = 32_766;
 const MAX_SQLITE_ROWS: usize = 100_000;
@@ -160,78 +160,33 @@ unsafe fn bind_value_params(
     stmt: *mut sqlite3_stmt,
     params: *mut u8,
 ) -> Result<(), String> {
-    if params.is_null() {
-        return Err("invalid SQLite parameter list".to_string());
-    }
-    let len = mesh_list_length(params) as usize;
-    if len > MAX_SQLITE_VALUES {
-        return Err(format!(
-            "too many SQLite parameters: {len} (maximum {MAX_SQLITE_VALUES})"
-        ));
-    }
+    let values = db_values(params, MAX_SQLITE_VALUES, "SQLite")?;
     let expected = sqlite3_bind_parameter_count(stmt) as usize;
-    if len != expected {
+    if values.len() != expected {
         return Err(format!(
-            "SQLite statement expects {expected} parameters but received {len}"
+            "SQLite statement expects {expected} parameters but received {}",
+            values.len()
         ));
     }
-
-    for index in 0..len {
-        let value = mesh_list_get(params, index as i64) as *const MeshDbValue;
-        if value.is_null() {
-            return Err(format!("invalid SQLite parameter at index {index}"));
-        }
+    for (index, value) in values.into_iter().enumerate() {
         let sqlite_index = (index + 1) as c_int;
-        let rc = match (*value).tag {
-            DB_VALUE_TEXT => {
-                let text = (*value).payload as *const MeshString;
-                if text.is_null() {
-                    return Err(format!("invalid text parameter at index {index}"));
-                }
-                let bytes = (*text).as_str().as_bytes();
-                if bytes.len() > MAX_DB_VALUE_BYTES {
-                    return Err(format!(
-                        "SQLite parameter at index {index} exceeds {MAX_DB_VALUE_BYTES} byte limit"
-                    ));
-                }
-                sqlite3_bind_text(
-                    stmt,
-                    sqlite_index,
-                    bytes.as_ptr() as *const c_char,
-                    bytes.len() as c_int,
-                    sqlite_transient(),
-                )
-            }
-            DB_VALUE_BINARY => {
-                let bytes = (*value).payload as *const MeshBytes;
-                if bytes.is_null() {
-                    return Err(format!("invalid binary parameter at index {index}"));
-                }
-                let len = usize::try_from((*bytes).len)
-                    .map_err(|_| format!("invalid binary parameter length at index {index}"))?;
-                if len > MAX_DB_VALUE_BYTES {
-                    return Err(format!(
-                        "SQLite parameter at index {index} exceeds {MAX_DB_VALUE_BYTES} byte limit"
-                    ));
-                }
-                if len == 0 {
-                    sqlite3_bind_zeroblob(stmt, sqlite_index, 0)
-                } else {
-                    sqlite3_bind_blob(
-                        stmt,
-                        sqlite_index,
-                        (*bytes).as_slice().as_ptr() as *const std::ffi::c_void,
-                        len as c_int,
-                        sqlite_transient(),
-                    )
-                }
-            }
-            DB_VALUE_NULL => sqlite3_bind_null(stmt, sqlite_index),
-            tag => {
-                return Err(format!(
-                    "invalid DbValue tag {tag} at SQLite parameter index {index}"
-                ))
-            }
+        let rc = match value {
+            BindValue::Text(bytes) => sqlite3_bind_text(
+                stmt,
+                sqlite_index,
+                bytes.as_ptr() as *const c_char,
+                bytes.len() as c_int,
+                sqlite_transient(),
+            ),
+            BindValue::Binary([]) => sqlite3_bind_zeroblob(stmt, sqlite_index, 0),
+            BindValue::Binary(bytes) => sqlite3_bind_blob(
+                stmt,
+                sqlite_index,
+                bytes.as_ptr() as *const std::ffi::c_void,
+                bytes.len() as c_int,
+                sqlite_transient(),
+            ),
+            BindValue::Null => sqlite3_bind_null(stmt, sqlite_index),
         };
         if rc != SQLITE_OK {
             return Err(sqlite_err_string(db));
@@ -247,15 +202,6 @@ fn add_result_bytes(total: usize, bytes: usize) -> Result<usize, String> {
         .ok_or_else(|| format!("SQLite result exceeds {MAX_SQLITE_RESULT_BYTES} byte limit"))
 }
 
-unsafe fn checked_db_value(tag: u8, payload: *mut u8) -> Result<*mut MeshDbValue, String> {
-    let value = alloc_db_value(tag, payload);
-    if value.is_null() {
-        Err("failed to allocate SQLite DbValue".to_string())
-    } else {
-        Ok(value)
-    }
-}
-
 unsafe fn typed_column_value(
     stmt: *mut sqlite3_stmt,
     column: c_int,
@@ -263,7 +209,7 @@ unsafe fn typed_column_value(
 ) -> Result<*mut MeshDbValue, String> {
     let column_type = sqlite3_column_type(stmt, column);
     if column_type == SQLITE_NULL {
-        return checked_db_value(DB_VALUE_NULL, std::ptr::null_mut());
+        return Ok(alloc_db_value(DB_VALUE_NULL, std::ptr::null_mut()));
     }
 
     let len = sqlite3_column_bytes(stmt, column);
@@ -281,10 +227,7 @@ unsafe fn typed_column_value(
             return Err(format!("failed to read SQLite BLOB column {column}"));
         }
         let payload = mesh_bytes_new(bytes, len as u64) as *mut u8;
-        if payload.is_null() {
-            return Err(format!("failed to allocate SQLite BLOB column {column}"));
-        }
-        checked_db_value(DB_VALUE_BINARY, payload)
+        Ok(alloc_db_value(DB_VALUE_BINARY, payload))
     } else {
         let bytes = sqlite3_column_text(stmt, column);
         if bytes.is_null() {
@@ -300,11 +243,7 @@ unsafe fn typed_column_value(
         if text.len() > len {
             *result_bytes = add_result_bytes(*result_bytes, text.len() - len)?;
         }
-        let payload = mesh_str(&text) as *mut u8;
-        if payload.is_null() {
-            return Err(format!("failed to allocate SQLite text column {column}"));
-        }
-        checked_db_value(DB_VALUE_TEXT, payload)
+        Ok(alloc_db_value(DB_VALUE_TEXT, mesh_str(&text) as *mut u8))
     }
 }
 
@@ -612,11 +551,7 @@ pub extern "C" fn mesh_sqlite_query_values(
                     entries[index][1] = value as u64;
                 } else {
                     indexes.insert(name.as_str(), entries.len());
-                    let key = mesh_str(name) as *mut u8;
-                    if key.is_null() {
-                        return err_result("failed to allocate SQLite column name");
-                    }
-                    entries.push([key as u64, value as u64]);
+                    entries.push([mesh_str(name) as u64, value as u64]);
                 }
             }
             rows.push(mesh_map_from_string_entries(&entries) as u64);
@@ -693,6 +628,8 @@ pub extern "C" fn mesh_sqlite_rollback(conn_handle: u64) -> *mut u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bytes::MeshBytes;
+    use crate::collections::list::{mesh_list_get, mesh_list_length};
     use crate::gc::mesh_rt_init;
     use crate::io::MeshResult;
     use crate::string::mesh_string_new;
