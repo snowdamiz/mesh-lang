@@ -761,4 +761,28 @@ mod tests {
         assert!(!tmp.path().join("lib/start.mpl").exists());
         assert!(tmp.path().join(DEFAULT_ENTRYPOINT).exists());
     }
+
+    /// A source the copy refuses stops the preparation before the manifest
+    /// and the test program are written.
+    #[test]
+    fn prepare_temp_test_project_stops_at_a_source_it_cannot_copy() {
+        let project = tempfile::tempdir().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        write_file(
+            &project.path().join("mesh.toml"),
+            "[package]\nname = \"orphan\"\nversion = \"0.1.0\"\n",
+        );
+        write_file(
+            &project.path().join("missing.test-support.mpl"),
+            "pub fn helper() -> Int do\n  42\nend\n",
+        );
+
+        let test_project = resolve_test_project(project.path()).unwrap();
+        let err = prepare_temp_test_project(&test_project, tmp.path(), "fn main() do\nend\n")
+            .unwrap_err();
+
+        assert!(err.contains("missing.test-support.mpl"), "{err}");
+        assert!(!tmp.path().join("mesh.toml").exists());
+        assert!(!tmp.path().join(DEFAULT_ENTRYPOINT).exists());
+    }
 }
