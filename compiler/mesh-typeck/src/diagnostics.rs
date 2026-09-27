@@ -702,7 +702,12 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
         } => {
             let range = clamp(text_range_to_range(*span));
             let mut builder = Description::error(range, "not found in this scope");
-            if let Some(fix) = closest_name_help(name, suggestion, suggestions) {
+            if matches!(name.as_str(), "null" | "undefined") {
+                builder.set_help(format!(
+                    "Mesh has no `{name}`: a value that may be absent is an `Option` \
+                     (`None`, or `Some(value)`)"
+                ));
+            } else if let Some(fix) = closest_name_help(name, suggestion, suggestions) {
                 builder.set_help(fix);
             }
             builder

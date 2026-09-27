@@ -259,6 +259,15 @@ fn test_diag_or_pattern_binding_mismatch() {
     );
 }
 
+/// `null`, a name other languages give the absent value, points at
+/// `Option`.
+#[test]
+fn test_diag_null_names_option() {
+    let output = render_first_error("fn main() do\n  let x = null\n  x\nend\n");
+    assert!(output.contains("E0004"), "{output}");
+    assert!(output.contains("`None`"), "{output}");
+}
+
 /// `+` on strings or lists points at the operators that join them, not at
 /// implementing `Add` for a built-in type.
 #[test]
