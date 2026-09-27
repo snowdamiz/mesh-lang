@@ -1480,7 +1480,12 @@ fn parse_param(p: &mut Parser) {
         p.error("expected parameter name");
     }
 
-    // Optional type annotation: `:: Type`
+    parse_param_annotation(p);
+    p.close(m, SyntaxKind::PARAM);
+}
+
+/// A parameter's optional type annotation: `:: Type`, `:: borrow Type`.
+fn parse_param_annotation(p: &mut Parser) {
     if p.at(SyntaxKind::COLON_COLON) {
         let ann = p.open();
         p.advance(); // ::
@@ -1488,8 +1493,6 @@ fn parse_param(p: &mut Parser) {
         super::items::parse_type(p);
         p.close(ann, SyntaxKind::TYPE_ANNOTATION);
     }
-
-    p.close(m, SyntaxKind::PARAM);
 }
 
 // ── Multi-Clause Function Parameter Parsing ──────────────────────────
@@ -1516,93 +1519,46 @@ pub(crate) fn parse_fn_clause_param_list(p: &mut Parser) {
     p.close(m, SyntaxKind::PARAM_LIST);
 }
 
-/// Parse a single function parameter that may be a pattern.
+/// Parse a single function parameter that may be a pattern, either one
+/// with an optional `:: Type` after it.
 ///
-/// Detection logic:
-/// - Literals (int, float, true, false, nil) -> pattern param
-/// - `-` followed by number -> negative literal pattern param
-/// - `_` -> wildcard pattern param
-/// - `(` -> tuple pattern param
-/// - Uppercase IDENT -> constructor pattern param (`Some(x)`, `Red`, `Shape.Circle(r)`)
-/// - `[` -> list pattern param
-/// - Lowercase IDENT followed by `::` and a pattern (lowercase name, `_`, `[`)
-///   -> cons pattern param `h :: t`
-/// - Lowercase IDENT (not `_`) -> regular named param with optional `:: Type`
-/// - `self` -> regular param
+/// A literal, `_`, a tuple, a list, a constructor (`Some(x)`, `Red`,
+/// `Shape.Circle(r)`) or a name followed by `::` and a list pattern
+/// (`h :: t`) is a pattern; any other name, or `self`, names the parameter.
 pub(crate) fn parse_fn_clause_param(p: &mut Parser) {
     let m = p.open();
 
-    match p.current() {
-        SyntaxKind::L_BRACKET => {
-            super::patterns::parse_pattern(p);
-        }
-
-        SyntaxKind::IDENT if p.nth(1) == SyntaxKind::COLON_COLON && at_cons_tail(p, 2) => {
-            super::patterns::parse_pattern(p);
-        }
-
-        // Literal patterns: 0, 1, 3.14, true, false, nil
-        SyntaxKind::INT_LITERAL
-        | SyntaxKind::FLOAT_LITERAL
-        | SyntaxKind::TRUE_KW
-        | SyntaxKind::FALSE_KW
-        | SyntaxKind::NIL_KW => {
-            super::patterns::parse_pattern(p);
-        }
-
-        // Negative literal pattern: -1, -3.14
-        SyntaxKind::MINUS
-            if matches!(
-                p.nth(1),
-                SyntaxKind::INT_LITERAL | SyntaxKind::FLOAT_LITERAL
-            ) =>
-        {
-            super::patterns::parse_pattern(p);
-        }
-
-        // String literal pattern
-        SyntaxKind::STRING_START => {
-            super::patterns::parse_pattern(p);
-        }
-
-        // Tuple pattern: (a, b)
-        SyntaxKind::L_PAREN => {
-            super::patterns::parse_pattern(p);
-        }
-
+    let pattern = match p.current() {
         SyntaxKind::IDENT => {
-            let text = p.current_text().to_string();
-
-            if text == "_" {
-                // Wildcard pattern
-                super::patterns::parse_pattern(p);
-            } else if text.starts_with(|c: char| c.is_uppercase()) {
-                // Constructor pattern: Some(x), Ok(val), None, Shape.Circle(r)
-                super::patterns::parse_pattern(p);
-            } else {
-                // Regular identifier parameter with optional type annotation
-                p.advance(); // ident
-
-                // Optional type annotation: `:: Type`
-                if p.at(SyntaxKind::COLON_COLON) {
-                    let ann = p.open();
-                    p.advance(); // ::
-                    parse_param_ownership_modifier(p);
-                    super::items::parse_type(p);
-                    p.close(ann, SyntaxKind::TYPE_ANNOTATION);
-                }
-            }
+            let text = p.current_text();
+            text == "_"
+                || text.starts_with(|c: char| c.is_uppercase())
+                || (p.nth(1) == SyntaxKind::COLON_COLON && at_cons_tail(p, 2))
         }
-
-        // self keyword as parameter
-        SyntaxKind::SELF_KW => {
-            p.advance();
-        }
-
-        _ => {
-            p.error("expected parameter name or pattern");
-        }
+        SyntaxKind::MINUS => matches!(
+            p.nth(1),
+            SyntaxKind::INT_LITERAL | SyntaxKind::FLOAT_LITERAL
+        ),
+        kind => matches!(
+            kind,
+            SyntaxKind::L_BRACKET
+                | SyntaxKind::L_PAREN
+                | SyntaxKind::INT_LITERAL
+                | SyntaxKind::FLOAT_LITERAL
+                | SyntaxKind::TRUE_KW
+                | SyntaxKind::FALSE_KW
+                | SyntaxKind::NIL_KW
+                | SyntaxKind::STRING_START
+        ),
+    };
+    if pattern {
+        super::patterns::parse_param_pattern(p);
+    } else if p.at(SyntaxKind::IDENT) || p.at(SyntaxKind::SELF_KW) {
+        p.advance();
+    } else {
+        p.error("expected parameter name or pattern");
     }
+    parse_param_annotation(p);
 
     p.close(m, SyntaxKind::PARAM);
 }
@@ -1610,7 +1566,7 @@ pub(crate) fn parse_fn_clause_param(p: &mut Parser) {
 /// Whether the token at `n` (just after `name ::`) starts a list pattern
 /// rather than a type: a lowercase name, `_` or `[`. Types start uppercase or
 /// with `(`, and `borrow`/`consume` before a type are ownership modifiers.
-fn at_cons_tail(p: &Parser, n: usize) -> bool {
+pub(crate) fn at_cons_tail(p: &Parser, n: usize) -> bool {
     match p.nth(n) {
         SyntaxKind::L_BRACKET => true,
         SyntaxKind::IDENT => {

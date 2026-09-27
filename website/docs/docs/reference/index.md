@@ -161,8 +161,8 @@ supported. A non-exhaustive function-clause group warns; a non-exhaustive
 
 Function parameters may be patterns: literals, constructors, tuples, lists
 (`len([])`), cons (`len(_ :: rest)`), and or-patterns (`small(1 | 2)`). In a
-parameter, `name :: Type` is an annotation; a lowercase name, `_`, or a list
-pattern after `::` makes a cons pattern. A clause may use `= expression` or a
+parameter, `:: Type` after a name or a pattern is an annotation (`0 :: Int`);
+a lowercase name, `_`, or a list pattern after `::` makes a cons pattern. A clause may use `= expression` or a
 `do ... end` body. The first clause owns the public, generic, return-type, and
 `where` metadata for a same-name/arity clause group. Put a catch-all clause
 last. A function clause's `when` guard may be any `Bool` expression.

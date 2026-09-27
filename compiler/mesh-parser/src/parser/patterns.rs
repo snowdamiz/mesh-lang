@@ -38,15 +38,21 @@ pub(crate) fn at_destructuring_pattern(p: &Parser) -> bool {
 ///
 /// Handles the full pattern grammar including or-patterns and as-patterns.
 pub(crate) fn parse_pattern(p: &mut Parser) -> Option<MarkClosed> {
-    parse_as_pattern(p)
+    parse_as_pattern(p, false)
+}
+
+/// Parse a parameter's pattern. A `::` after it starts the parameter's type
+/// unless a list pattern follows (`h :: t`), as after a plain name.
+pub(crate) fn parse_param_pattern(p: &mut Parser) -> Option<MarkClosed> {
+    parse_as_pattern(p, true)
 }
 
 /// Parse an as-pattern: `pattern as name`
 ///
 /// If the inner pattern is followed by an IDENT with text "as", wraps
 /// the pattern in an AS_PAT node.
-fn parse_as_pattern(p: &mut Parser) -> Option<MarkClosed> {
-    let inner = parse_cons_pattern(p)?;
+fn parse_as_pattern(p: &mut Parser, param: bool) -> Option<MarkClosed> {
+    let inner = parse_cons_pattern(p, param)?;
 
     // Check for `as` binding (contextual keyword -- "as" is just an IDENT)
     if p.at(SyntaxKind::IDENT) && p.current_text() == "as" {
@@ -73,13 +79,13 @@ fn parse_as_pattern(p: &mut Parser) -> Option<MarkClosed> {
 /// Cons patterns destructure lists into head element and tail list.
 /// Right-associative: `a :: b :: c` parses as `a :: (b :: c)`.
 /// Only valid in pattern position -- `::` is not used as an expression operator.
-fn parse_cons_pattern(p: &mut Parser) -> Option<MarkClosed> {
+fn parse_cons_pattern(p: &mut Parser, param: bool) -> Option<MarkClosed> {
     let head = parse_or_pattern(p)?;
 
-    if p.at(SyntaxKind::COLON_COLON) {
+    if p.at(SyntaxKind::COLON_COLON) && (!param || super::expressions::at_cons_tail(p, 1)) {
         let m = p.open_before(head);
         p.advance(); // ::
-        parse_cons_pattern(p); // right-associative: tail can be another cons
+        parse_cons_pattern(p, param); // right-associative: tail can be another cons
         Some(p.close(m, SyntaxKind::CONS_PAT))
     } else {
         Some(head)

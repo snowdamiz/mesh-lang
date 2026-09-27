@@ -2132,6 +2132,14 @@ mod tests {
     }
 
     #[test]
+    fn annotated_pattern_parameters() {
+        assert_eq!(
+            fmt("fn f(0::Int)=1\nfn f((s,n)  ::  borrow (SecretBytes,Int))=n\nfn f(h::t::List<Int>)=h"),
+            "fn f(0 :: Int) = 1\nfn f((s, n) :: borrow (SecretBytes, Int)) = n\nfn f(h :: t :: List<Int>) = h\n"
+        );
+    }
+
+    #[test]
     fn struct_patterns_fit_on_one_line_or_take_a_line_per_field() {
         assert_eq!(
             fmt("case p do\nPoint{x:0,y} -> y\nGeo.Point {  x ,  y: (a,_)  } -> x\nend"),

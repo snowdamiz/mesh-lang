@@ -3204,6 +3204,39 @@ fn fn_tuple_pattern_param() {
     );
 }
 
+/// A pattern parameter takes a `:: Type` like a named one; `::` before a
+/// list pattern still makes a cons pattern.
+#[test]
+fn fn_pattern_params_take_a_type_annotation() {
+    for (source, pattern_kind, annotated) in [
+        ("fn f(0 :: Int) = 1", SyntaxKind::LITERAL_PAT, true),
+        (
+            "fn f(Some(x) :: Option<Int>) = x",
+            SyntaxKind::CONSTRUCTOR_PAT,
+            true,
+        ),
+        (
+            "fn f((s, n) :: borrow (SecretBytes, Int)) = n",
+            SyntaxKind::TUPLE_PAT,
+            true,
+        ),
+        ("fn f(h :: t :: List<Int>) = h", SyntaxKind::CONS_PAT, true),
+        ("fn f((a, b) :: rest) = a", SyntaxKind::CONS_PAT, false),
+        ("fn f(h :: [x]) = x", SyntaxKind::CONS_PAT, false),
+    ] {
+        let p = parse(source);
+        assert!(p.ok(), "{source}: {:?}", p.errors());
+        let fn_def: FnDef = p.tree().fn_defs().next().unwrap();
+        let param = fn_def.param_list().unwrap().params().next().unwrap();
+        assert_eq!(
+            param.pattern().map(|pattern| pattern.syntax().kind()),
+            Some(pattern_kind),
+            "{source}"
+        );
+        assert_eq!(param.type_annotation().is_some(), annotated, "{source}");
+    }
+}
+
 // ── AST Accessor Tests for Multi-Clause Functions ────────────────────
 
 #[test]

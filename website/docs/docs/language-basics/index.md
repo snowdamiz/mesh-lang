@@ -457,7 +457,7 @@ fn fact(n) do
 end
 ```
 
-In a parameter, `name :: Type` is a type annotation. When `::` is followed by a lowercase name, `_`, or a list pattern, as in `_ :: rest`, the parameter is a cons pattern instead. (The ownership modifiers `borrow` and `consume` are the exception: `r :: borrow Handle` is an annotation.)
+In a parameter, `:: Type` after a name or a pattern is a type annotation: `n :: Int`, `0 :: Int`, `(a, b) :: (Int, String)`. When `::` is followed by a lowercase name, `_`, or a list pattern, as in `_ :: rest`, it makes a cons pattern instead. (The ownership modifiers `borrow` and `consume` are the exception: `r :: borrow Handle` is an annotation.)
 
 Functions can reuse a name at different arities. Each arity is its own function, and a call runs the one with as many parameters as it has arguments (a piped value counts as one):
 
