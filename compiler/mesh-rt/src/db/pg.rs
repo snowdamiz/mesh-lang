@@ -1045,8 +1045,7 @@ fn request(
     message: &[u8],
     mut rows: impl FnMut(u8, &[u8]) -> Result<(), String>,
 ) -> Result<i64, Failure> {
-    conn.write_wire_all(message)
-        .map_err(|error| format!("send {what}: {error}"))?;
+    send(conn, what, message)?;
     let mut count = 0;
     let mut failure = None;
     loop {
@@ -1067,11 +1066,29 @@ fn request(
                 conn.txn_status = body.first().copied().unwrap_or(b'I');
                 return failure.map_or(Ok(count), Err);
             }
+            // CopyInResponse: COPY FROM STDIN waits for rows, and the driver
+            // has none to send. It is refused; the server ignores the Sync
+            // that ended the request while it copies, so another follows.
+            // (Only the extended protocol gets here: the simple commands
+            // never copy.)
+            b'G' => {
+                let reason = b"COPY FROM STDIN is not supported\0";
+                let mut refusal = vec![b'f'];
+                refusal.extend_from_slice(&(4 + reason.len() as i32).to_be_bytes());
+                refusal.extend_from_slice(reason);
+                write_sync(&mut refusal);
+                send(conn, what, &refusal)?;
+            }
             // ParseComplete, BindComplete, ParameterDescription, notices,
-            // and what follows a failure.
+            // COPY TO STDOUT's data, and what follows a failure.
             _ => {}
         }
     }
+}
+
+fn send(conn: &mut PgConn, what: &str, message: &[u8]) -> Result<(), String> {
+    conn.write_wire_all(message)
+        .map_err(|error| format!("send {what}: {error}"))
 }
 
 /// Parse `sql` as the unnamed statement, which it stays for the Bind that
@@ -3240,6 +3257,30 @@ mod tests {
 
         assert_eq!(parents(handle), ["id=1", "id=6"]);
         assert_eq!(conn_of(handle).txn_status, b'I');
+        mesh_pg_close(handle);
+    }
+
+    /// COPY FROM STDIN waits for rows the driver has none of to send: it is
+    /// refused, and the connection answers after.
+    #[test]
+    #[ignore = "requires MESH_TEST_DATABASE_URL (the coverage run starts a database)"]
+    fn copy_from_stdin_is_refused_and_the_connection_goes_on() {
+        let handle = test_connection();
+        run(handle, "CREATE TEMP TABLE copied (id int)").unwrap();
+        let sql = mesh_str("COPY copied FROM STDIN");
+        for result in [
+            mesh_pg_execute(handle, sql, mesh_list_new()),
+            mesh_pg_query(handle, sql, mesh_list_new()),
+            mesh_pg_query_values(handle, sql, mesh_list_new()),
+        ] {
+            let error = outcome(result).unwrap_err();
+            assert!(
+                error.ends_with("COPY FROM STDIN is not supported"),
+                "{error}"
+            );
+        }
+        assert_eq!(run(handle, "INSERT INTO copied VALUES (1)"), Ok(1));
+        assert_eq!(run(handle, "COPY copied TO STDOUT"), Ok(1));
         mesh_pg_close(handle);
     }
 
