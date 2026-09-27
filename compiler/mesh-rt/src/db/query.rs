@@ -120,7 +120,10 @@ pub(crate) unsafe fn query_parts(q: *mut u8) -> QueryParts {
 
 // ── Atom-to-SQL mapping ──────────────────────────────────────────────
 
-fn atom_to_sql_op(atom: &str) -> &str {
+// An atom none of these know is a Mesh panic, as DateTime.add's unknown
+// unit is: the type checker lets any atom through.
+
+fn atom_to_sql_op(atom: &str) -> &'static str {
     match atom {
         "eq" => "=",
         "neq" => "!=",
@@ -130,24 +133,32 @@ fn atom_to_sql_op(atom: &str) -> &str {
         "gte" => ">=",
         "like" => "LIKE",
         "ilike" => "ILIKE",
-        _ => "=", // default to equality
+        _ => crate::panic::raise(format_args!(
+            "Query.where_op: unknown operator :{atom}; the operators are :eq, :neq, :lt, \
+             :lte, :gt, :gte, :like and :ilike"
+        )),
     }
 }
 
-fn atom_to_direction(atom: &str) -> &str {
+fn atom_to_direction(atom: &str) -> &'static str {
     match atom {
         "asc" => "ASC",
         "desc" => "DESC",
-        _ => "ASC",
+        _ => crate::panic::raise(format_args!(
+            "Query.order_by: unknown direction :{atom}; the directions are :asc and :desc"
+        )),
     }
 }
 
-fn atom_to_join_type(atom: &str) -> &str {
+/// `builder` names the Query function, for the panic.
+fn atom_to_join_type(atom: &str, builder: &str) -> &'static str {
     match atom {
         "inner" => "INNER",
         "left" => "LEFT",
         "right" => "RIGHT",
-        _ => "INNER",
+        _ => crate::panic::raise(format_args!(
+            "Query.{builder}: unknown join kind :{atom}; the kinds are :inner, :left and :right"
+        )),
     }
 }
 
@@ -224,7 +235,7 @@ pub extern "C" fn mesh_query_where(q: *mut u8, field: *mut u8, value: *mut u8) -
 ///
 /// `Query.where_op(q, :age, :gt, "21")` -> new Query with WHERE age > $N
 #[no_mangle]
-pub extern "C" fn mesh_query_where_op(
+pub extern "C-unwind" fn mesh_query_where_op(
     q: *mut u8,
     field: *mut u8,
     op: *mut u8,
@@ -478,7 +489,11 @@ pub extern "C" fn mesh_query_select_exprs(q: *mut u8, exprs: *mut u8) -> *mut u8
 ///
 /// `Query.order_by(q, :name, :asc)` -> new Query with ORDER BY name ASC
 #[no_mangle]
-pub extern "C" fn mesh_query_order_by(q: *mut u8, field: *mut u8, direction: *mut u8) -> *mut u8 {
+pub extern "C-unwind" fn mesh_query_order_by(
+    q: *mut u8,
+    field: *mut u8,
+    direction: *mut u8,
+) -> *mut u8 {
     unsafe {
         let new_q = clone_query(q);
         let field_str = text_of(field);
@@ -536,7 +551,7 @@ pub extern "C" fn mesh_query_offset(q: *mut u8, n: i64) -> *mut u8 {
 ///
 /// `Query.join(q, :inner, "posts", "users.id = posts.user_id")` -> new Query with INNER JOIN
 #[no_mangle]
-pub extern "C" fn mesh_query_join(
+pub extern "C-unwind" fn mesh_query_join(
     q: *mut u8,
     join_type: *mut u8,
     table: *mut u8,
@@ -547,7 +562,7 @@ pub extern "C" fn mesh_query_join(
         let jt_str = text_of(join_type);
         let tbl_str = text_of(table);
         let on_str = text_of(on_clause);
-        let jt_sql = atom_to_join_type(jt_str);
+        let jt_sql = atom_to_join_type(jt_str, "join");
         let join = format!("{}:{}:{}", jt_sql, tbl_str, on_str);
         let join_mesh = mesh_str(&join) as *mut u8;
         let jc = query_get(new_q, SLOT_JOIN);
@@ -560,7 +575,7 @@ pub extern "C" fn mesh_query_join(
 ///
 /// `Query.join_as(q, :inner, "projects", "p", "p.id = issues.project_id")` -> INNER JOIN projects p ON ...
 #[no_mangle]
-pub extern "C" fn mesh_query_join_as(
+pub extern "C-unwind" fn mesh_query_join_as(
     q: *mut u8,
     join_type: *mut u8,
     table: *mut u8,
@@ -573,7 +588,7 @@ pub extern "C" fn mesh_query_join_as(
         let tbl_str = text_of(table);
         let alias_str = text_of(alias);
         let on_str = text_of(on_clause);
-        let jt_sql = atom_to_join_type(jt_str);
+        let jt_sql = atom_to_join_type(jt_str, "join_as");
         let join = format!("ALIAS:{}:{}:{}:{}", jt_sql, tbl_str, alias_str, on_str);
         let join_mesh = mesh_str(&join) as *mut u8;
         let jc = query_get(new_q, SLOT_JOIN);
@@ -833,5 +848,57 @@ pub extern "C" fn mesh_query_fragment(q: *mut u8, sql: *mut u8, params: *mut u8)
         }
         query_set(new_q, SLOT_FRAGMENT_PARAMS, fpar);
         new_q
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn text(s: &str) -> *mut u8 {
+        mesh_str(s) as *mut u8
+    }
+
+    /// The message of the Mesh panic `build` raises.
+    fn panic_of(build: impl FnOnce() -> *mut u8) -> String {
+        let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(build))
+            .expect_err("the builder panics");
+        payload
+            .downcast_ref::<String>()
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// An operator, direction or join kind the builders do not know is a
+    /// Mesh panic naming the ones they do (it read as `=`, ASC or INNER).
+    #[test]
+    fn an_unknown_atom_is_a_panic() {
+        crate::gc::mesh_rt_init();
+        let q = mesh_query_from(text("t"));
+        assert_eq!(
+            panic_of(|| mesh_query_where_op(q, text("a"), text("greater"), text("1"))),
+            "Mesh panic: Query.where_op: unknown operator :greater; the operators are \
+             :eq, :neq, :lt, :lte, :gt, :gte, :like and :ilike"
+        );
+        assert_eq!(
+            panic_of(|| mesh_query_order_by(q, text("a"), text("up"))),
+            "Mesh panic: Query.order_by: unknown direction :up; the directions are :asc and :desc"
+        );
+        assert_eq!(
+            panic_of(|| mesh_query_join(q, text("outer"), text("u"), text("u.id = t.id"))),
+            "Mesh panic: Query.join: unknown join kind :outer; the kinds are :inner, :left \
+             and :right"
+        );
+        assert_eq!(
+            panic_of(|| mesh_query_join_as(
+                q,
+                text("full"),
+                text("u"),
+                text("x"),
+                text("x.id = t.id")
+            )),
+            "Mesh panic: Query.join_as: unknown join kind :full; the kinds are :inner, :left \
+             and :right"
+        );
     }
 }

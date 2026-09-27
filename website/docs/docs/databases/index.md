@@ -252,7 +252,7 @@ let query = Query.from(User.__table__())
 |----------|-------------|
 | `Query.from(table)` | Start a query |
 | `Query.where(query, field, value)` | Equality predicate |
-| `Query.where_op(query, field, operator, value)` | Predicate using `:eq`, `:neq`, `:lt`, `:lte`, `:gt`, `:gte`, `:like`, or `:ilike` |
+| `Query.where_op(query, field, operator, value)` | Predicate using `:eq`, `:neq`, `:lt`, `:lte`, `:gt`, `:gte`, `:like`, or `:ilike` (any other atom is a panic) |
 | `Query.where_in(query, field, values)` | `IN` predicate |
 | `Query.where_not_in(query, field, values)` | `NOT IN` predicate |
 | `Query.where_between(query, field, low, high)` | Inclusive range predicate |
@@ -275,11 +275,11 @@ let query = Query.from(User.__table__())
 | `Query.select_avg(query, field)` | Select an average |
 | `Query.select_min(query, field)` | Select a minimum |
 | `Query.select_max(query, field)` | Select a maximum |
-| `Query.order_by(query, field, direction)` | Order with `:asc` or `:desc` |
+| `Query.order_by(query, field, direction)` | Order with `:asc` or `:desc` (any other atom is a panic) |
 | `Query.limit(query, count)` | Bound returned rows |
 | `Query.offset(query, count)` | Skip rows |
-| `Query.join(query, kind, table, on_clause)` | Add a join such as `:inner` or `:left` |
-| `Query.join_as(query, kind, table, alias, on_clause)` | Add an aliased join |
+| `Query.join(query, kind, table, on_clause)` | Add an `:inner`, `:left`, or `:right` join (any other atom is a panic) |
+| `Query.join_as(query, kind, table, alias, on_clause)` | Add an aliased join of the same kinds |
 | `Query.group_by(query, field)` | Group on a field |
 | `Query.having(query, clause, value)` | Add a parameterized aggregate predicate |
 
