@@ -562,6 +562,9 @@ fn automatic_recovery_effective_required_replica_count(
 
 /// Monotonic counter for generating unique spawn request IDs.
 static SPAWN_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
+/// How long a remote spawn waits for its peer's reply, which it sends as
+/// soon as the process is spawned.
+const REMOTE_SPAWN_TIMEOUT: Duration = Duration::from_secs(30);
 /// Monotonic counter for generating unique continuity prepare request IDs.
 static CONTINUITY_PREPARE_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 /// Correlation IDs for multiplexed clustered HTTP dispatch over peer sessions.
@@ -701,10 +704,9 @@ pub struct NodeSession {
     pub negotiated_protocol: NegotiatedProtocol,
     /// Cluster/stable identity authenticated by the protocol-two signed claim.
     pub remote_identity: Option<super::identity_claim::NodeIdentityClaim>,
-    /// Pending remote spawn requests: request_id -> requesting ProcessId.
-    /// Used by DIST_SPAWN_REPLY handler to route the spawned PID back to
-    /// the requesting process.
-    pub(crate) pending_spawns: std::sync::Mutex<FxHashMap<u64, crate::actor::process::ProcessId>>,
+    /// Pending remote spawn requests, waiting for the local id of the
+    /// process the peer spawned (DIST_SPAWN_REPLY).
+    pub(crate) pending_spawns: PendingCooperativeReplies<u64>,
     /// Set once the peer's global registry snapshot has been merged.
     global_names_received: AtomicBool,
     /// Pending continuity prepare requests waiting for a replica ack.
@@ -1553,9 +1555,6 @@ pub(crate) const DIST_CONSENSUS_RPC: u8 = 0x30;
 /// Format: [tag 0x31][u64 correlation_id][u32 JSON length][JSON reply]
 pub(crate) const DIST_CONSENSUS_RPC_REPLY: u8 = 0x31;
 
-/// Reserved type_tag for spawn reply messages in mailbox.
-pub(crate) const SPAWN_REPLY_TAG: u64 = u64::MAX - 4;
-
 // ---------------------------------------------------------------------------
 // HeartbeatState -- ping/pong dead connection detection
 // ---------------------------------------------------------------------------
@@ -2308,9 +2307,13 @@ fn handle_session_message(
             // Wire format: [tag][u64 req_id][u8 status][u64 spawned_local_id]
             if msg.len() >= 18 {
                 let req_id = u64::from_le_bytes(msg[1..9].try_into().unwrap());
-                let requester = session.pending_spawns.lock().unwrap().remove(&req_id);
-                if let Some(requester) = requester {
-                    deliver_spawn_reply(requester, &msg[1..18]);
+                let spawned_local_id = u64::from_le_bytes(msg[10..18].try_into().unwrap());
+                let reply = session.pending_spawns.lock().unwrap().remove(&req_id);
+                if let Some(reply) = reply {
+                    let _ = reply.send(match msg[9] {
+                        0 => Ok(spawned_local_id),
+                        status => Err(format!("remote_reply_status={status}")),
+                    });
                 }
             }
         }
@@ -2702,31 +2705,9 @@ fn cleanup_session_if_current(session: &Arc<NodeSession>) {
     }
 }
 
-/// Hands the reply to a remote spawn, `[u64 request id][u8 status][u64
-/// spawned local id]`, to the process waiting for it in `mesh_node_spawn`.
-fn deliver_spawn_reply(requester: crate::actor::process::ProcessId, reply: &[u8]) {
-    use crate::actor::heap::MessageBuffer;
-    use crate::actor::process::Message;
-
-    let sched = crate::actor::global_scheduler();
-    if let Some(process) = sched.get_process(requester) {
-        let process = process.lock();
-        process.mailbox.push(Message {
-            buffer: MessageBuffer::new(reply.to_vec(), SPAWN_REPLY_TAG),
-        });
-        sched.wake_if_waiting(requester, process);
-    }
-}
-
 fn fail_pending_session_requests(session: &NodeSession, reason: &str) {
-    // A spawn the peer never answered has failed: its requester stops
-    // waiting for a reply that cannot come.
-    let spawns: Vec<_> = session.pending_spawns.lock().unwrap().drain().collect();
-    for (request_id, requester) in spawns {
-        let mut reply = request_id.to_le_bytes().to_vec();
-        reply.push(1);
-        reply.extend_from_slice(&0u64.to_le_bytes());
-        deliver_spawn_reply(requester, &reply);
+    for (_, sender) in session.pending_spawns.lock().unwrap().drain() {
+        let _ = sender.send(Err(reason.to_string()));
     }
     for (_, sender) in session.pending_continuity_prepares.lock().unwrap().drain() {
         let _ = sender.send(Err(reason.to_string()));
@@ -8184,14 +8165,12 @@ pub extern "C-unwind" fn mesh_node_spawn(
     arg_count: u64,
     link_flag: u8,
 ) -> u64 {
-    use crate::actor::process::{ProcessId, ProcessState};
-    use crate::actor::stack;
+    use crate::actor::process::ProcessId;
 
-    // Must be called from within an actor context (coroutine).
-    let my_pid = match stack::get_current_pid() {
-        Some(pid) => pid,
-        None => return 0,
-    };
+    // The process asking, which a linked spawn links to. Outside an actor (a
+    // node's main, or a runtime thread moving declared work) the wait for
+    // the reply below blocks instead of yielding.
+    let my_pid = crate::actor::stack::get_current_pid().unwrap_or(ProcessId(0));
 
     let state = match node_state() {
         Some(s) => s,
@@ -8246,11 +8225,12 @@ pub extern "C-unwind" fn mesh_node_spawn(
     let req_id = SPAWN_REQUEST_ID.fetch_add(1, Ordering::Relaxed);
 
     // Register pending spawn so the reader thread can route the reply.
+    let (reply, answer) = crate::actor::cooperative_channel();
     session
         .pending_spawns
         .lock()
         .unwrap()
-        .insert(req_id, my_pid);
+        .insert(req_id, reply.clone());
 
     // Copy args data immediately (do NOT retain pointer to GC heap) and encode
     // remote-safe values using the compile-time tags supplied by codegen.
@@ -8328,11 +8308,7 @@ pub extern "C-unwind" fn mesh_node_spawn(
                     return 0;
                 }
             };
-            session
-                .pending_spawns
-                .lock()
-                .unwrap()
-                .insert(req_id, my_pid);
+            session.pending_spawns.lock().unwrap().insert(req_id, reply);
 
             let retry_result = session.send(OutboundClass::Application, payload);
             if retry_result.is_err() {
@@ -8346,66 +8322,28 @@ pub extern "C-unwind" fn mesh_node_spawn(
         }
     }
 
-    // Wait for DIST_SPAWN_REPLY in the mailbox.
-    // The reader thread will deliver it as a message with SPAWN_REPLY_TAG
-    // containing [u64 req_id][u8 status][u64 spawned_local_id].
-    let sched = crate::actor::global_scheduler();
-    loop {
-        // Check mailbox for a matching spawn reply (selective receive).
-        if let Some(proc_arc) = sched.get_process(my_pid) {
-            let reply = proc_arc.lock().mailbox.remove_first(|msg| {
-                if msg.buffer.type_tag != SPAWN_REPLY_TAG {
-                    return false;
-                }
-                if msg.buffer.data.len() < 17 {
-                    return false;
-                }
-                let msg_req_id = u64::from_le_bytes(msg.buffer.data[0..8].try_into().unwrap());
-                msg_req_id == req_id
-            });
-
-            if let Some(reply_msg) = reply {
-                let status = reply_msg.buffer.data[8];
-                let spawned_local_id =
-                    u64::from_le_bytes(reply_msg.buffer.data[9..17].try_into().unwrap());
-
-                if status == 0 {
-                    // Construct the remote PID using session's node_id and creation.
-                    let remote_pid = ProcessId::from_remote(
-                        session.node_id,
-                        session.remote_creation,
-                        spawned_local_id,
-                    );
-
-                    // If spawn_link, add remote PID to our links set.
-                    if link_flag == 1 {
-                        if let Some(proc_arc) = sched.get_process(my_pid) {
-                            proc_arc.lock().links.insert(remote_pid);
-                        }
-                    }
-
-                    return remote_pid.as_u64();
-                } else {
-                    eprintln!(
-                        "mesh node spawn failed target={} fn={}: remote_reply_status={} request_id={}",
-                        node_name, fn_name, status, req_id
-                    );
-                    // Function not found or other error.
-                    return 0;
+    // Wait for DIST_SPAWN_REPLY, or for the session to end without one.
+    let result = crate::actor::cooperative_recv_timeout(&answer, REMOTE_SPAWN_TIMEOUT)
+        .unwrap_or_else(|_| Err("remote_spawn_reply_timeout".to_string()));
+    session.pending_spawns.lock().unwrap().remove(&req_id);
+    match result {
+        Ok(spawned_local_id) => {
+            let remote_pid =
+                ProcessId::from_remote(session.node_id, session.remote_creation, spawned_local_id);
+            if link_flag == 1 {
+                if let Some(process) = crate::actor::process(my_pid) {
+                    process.lock().links.insert(remote_pid);
                 }
             }
-        } else {
-            // Our process no longer exists -- bail out.
-            return 0;
+            remote_pid.as_u64()
         }
-
-        // No matching reply yet. Enter Waiting state and yield.
-        if let Some(proc_arc) = sched.get_process(my_pid) {
-            let mut proc = proc_arc.lock();
-            proc.set_live_state(ProcessState::Waiting);
-            drop(proc);
+        Err(reason) => {
+            eprintln!(
+                "mesh node spawn failed target={} fn={}: {} request_id={}",
+                node_name, fn_name, reason, req_id
+            );
+            0
         }
-        stack::yield_current();
     }
 }
 
@@ -11144,34 +11082,30 @@ mod tests {
         );
     }
 
-    /// A spawn reply reaches the process that asked for the spawn, once.
+    /// A spawn reply reaches the spawn waiting for it, once.
     #[test]
-    fn a_spawn_reply_reaches_the_process_that_asked_once() {
+    fn a_spawn_reply_reaches_the_spawn_waiting_for_it_once() {
         let peer = TestPeer::new("spawn-reply-peer@127.0.0.1:1");
-        let asker = ParkedProcess::new();
-        peer.session
-            .pending_spawns
-            .lock()
-            .unwrap()
-            .insert(77, asker.pid);
-        peer.session
-            .pending_spawns
-            .lock()
-            .unwrap()
-            .insert(78, ProcessId::next());
-        let reply = |request: u64| {
+        let (waiting, answer) = crate::actor::cooperative_channel();
+        let mut pending = peer.session.pending_spawns.lock().unwrap();
+        pending.insert(77, waiting.clone());
+        pending.insert(78, waiting);
+        drop(pending);
+        let reply = |request: u64, status: u8| {
             frame(
                 DIST_SPAWN_REPLY,
-                &[&request.to_le_bytes(), &[0], &5u64.to_le_bytes()],
+                &[&request.to_le_bytes(), &[status], &5u64.to_le_bytes()],
             )
         };
-        peer.receive(reply(77));
-        peer.receive(reply(77));
-        peer.receive(reply(78));
-        let message = asker.process.lock().mailbox.pop().expect("the reply");
-        assert_eq!(message.buffer.type_tag, SPAWN_REPLY_TAG);
-        assert_eq!(message.buffer.data, reply(77)[1..].to_vec());
-        assert_eq!(asker.mailbox_len(), 0);
+        peer.receive(reply(77, 0));
+        peer.receive(reply(77, 0));
+        peer.receive(reply(78, 3));
+        assert_eq!(answer.try_recv(), Ok(Ok(5)));
+        assert_eq!(
+            answer.try_recv(),
+            Ok(Err("remote_reply_status=3".to_string()))
+        );
+        assert!(answer.try_recv().is_err());
     }
 
     /// A peer's global names register here under its processes, go when it
@@ -11717,6 +11651,8 @@ mod tests {
             .lock()
             .unwrap()
             .insert(5, reservation);
+        let (spawn, spawn_answer) = crate::actor::cooperative_channel();
+        session.pending_spawns.lock().unwrap().insert(6, spawn);
 
         let linked = ParkedProcess::new();
         linked.process.lock().links.insert(peer.pid(1));
@@ -11770,7 +11706,8 @@ mod tests {
         assert_eq!(query_answer.try_recv(), Ok(Err(gone.clone())));
         assert_eq!(rpc_answer.try_recv(), Ok(Err(gone.clone())));
         assert_eq!(route_answer.try_recv(), Ok(Err(gone.clone())));
-        assert_eq!(reservation_answer.try_recv(), Ok(Err(gone)));
+        assert_eq!(reservation_answer.try_recv(), Ok(Err(gone.clone())));
+        assert_eq!(spawn_answer.try_recv(), Ok(Err(gone)));
         assert!(!state.sessions.read().contains_key(name));
         assert!(!state.node_id_map.read().contains_key(&session.node_id));
 
@@ -11798,21 +11735,25 @@ mod tests {
         returned: mpsc::Sender<u64>,
     }
 
-    extern "C" fn remote_spawn_caller(args: *const u8) {
-        let call = unsafe { Box::from_raw(*(args as *const u64) as *mut RemoteSpawnCall) };
+    /// `Node.spawn(target, peer_side_function)`, linked when `link` is 1.
+    fn call_node_spawn(target: &str, link: u8) -> u64 {
         let function = "peer_side_function";
-        let pid = mesh_node_spawn(
-            call.target.as_ptr(),
-            call.target.len() as u64,
+        mesh_node_spawn(
+            target.as_ptr(),
+            target.len() as u64,
             function.as_ptr(),
             function.len() as u64,
             std::ptr::null(),
             0,
             std::ptr::null(),
             0,
-            call.link,
-        );
-        let _ = call.returned.send(pid);
+            link,
+        )
+    }
+
+    extern "C" fn remote_spawn_caller(args: *const u8) {
+        let call = unsafe { Box::from_raw(*(args as *const u64) as *mut RemoteSpawnCall) };
+        let _ = call.returned.send(call_node_spawn(&call.target, call.link));
     }
 
     /// What `mesh_node_spawn`, called from an actor, returns for a spawn
@@ -11865,5 +11806,33 @@ mod tests {
         request();
         drop(peer);
         assert_eq!(returned.recv_timeout(wait), Ok(0));
+    }
+
+    /// A remote spawn from outside an actor (a node's main, which has a
+    /// process but no coroutine, or a runtime thread moving declared work,
+    /// which has neither) blocks for the reply instead of yielding.
+    #[test]
+    fn a_remote_spawn_from_outside_an_actor_waits_for_the_reply() {
+        let name = "thread-spawn-target@127.0.0.1:1";
+        let peer = TestPeer::new(name);
+        let main_like = ParkedProcess::new();
+        for pid in [Some(main_like.pid), None] {
+            let caller = std::thread::spawn(move || {
+                if let Some(pid) = pid {
+                    crate::actor::stack::set_current_pid(pid);
+                }
+                call_node_spawn(name, 1)
+            });
+            let request = peer.next_sent();
+            assert_eq!(request[0], DIST_SPAWN);
+            let requester = pid.map_or(0, |pid| pid.as_u64());
+            assert_eq!(&request[9..17], &requester.to_le_bytes());
+            peer.receive(frame(
+                DIST_SPAWN_REPLY,
+                &[&request[1..9], &[0], &12u64.to_le_bytes()],
+            ));
+            assert_eq!(caller.join().unwrap(), peer.pid(12).as_u64());
+        }
+        assert!(main_like.process.lock().links.contains(&peer.pid(12)));
     }
 }
