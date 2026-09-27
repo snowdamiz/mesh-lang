@@ -633,3 +633,22 @@ fn every_error_code_names_one_kind() {
         .collect();
     assert!(shared.is_empty(), "{shared:?}");
 }
+
+/// A type's variables are named `a` to `z` in the order they appear, then
+/// numbered: the 27th is `a1`.
+#[test]
+fn type_variables_past_z_are_numbered() {
+    let vars: Vec<Ty> = (0..28).map(|n| Ty::Var(TyVar(n))).collect();
+    let named: Vec<String> = Ty::with_named_vars_across(&vars)
+        .iter()
+        .map(Ty::to_string)
+        .collect();
+    assert_eq!(named[..2], ["a", "b"]);
+    assert_eq!(named[25..], ["z", "a1", "b1"]);
+}
+
+/// ena names the key in its debug logs.
+#[test]
+fn a_type_variable_key_names_itself() {
+    assert_eq!(<TyVar as ena::unify::UnifyKey>::tag(), "TyVar");
+}
