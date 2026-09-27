@@ -132,8 +132,10 @@ fn a_joining_node_receives_the_continuity_records_and_store() {
     let stats = store.stats().unwrap();
     assert!(stats.log_entries < stats.high_water_mark, "{stats:?}");
 
-    // A record the joining node owns goes to it at once.
+    // Records the joining node takes part in go to it at once: on the
+    // control lane to their owner, on the continuity lane otherwise.
     submit("owned-by-joiner", &source, &joiner);
+    submit("entered-at-joiner", &joiner, &source);
     assert!(child.wait().unwrap().success());
 }
 
@@ -158,7 +160,9 @@ fn a_joining_node_catches_up() {
         store.stats().unwrap().records >= RECORDS as u64
     });
     println!("{SYNCED}");
-    wait_until("the record this node owns", || {
-        continuity_registry().record("owned-by-joiner").is_some()
+    wait_until("the records this node takes part in", || {
+        ["owned-by-joiner", "entered-at-joiner"]
+            .iter()
+            .all(|key| continuity_registry().record(key).is_some())
     });
 }
