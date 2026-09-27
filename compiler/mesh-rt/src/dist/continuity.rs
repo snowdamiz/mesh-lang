@@ -686,6 +686,16 @@ impl ContinuityRegistry {
         };
     }
 
+    /// Makes this registry's node a standby (at epoch 0), as
+    /// `MESH_CONTINUITY_ROLE=standby` would have at startup.
+    #[cfg(test)]
+    pub(crate) fn make_standby_for_test(&self) {
+        self.inner.write().authority = ContinuityAuthorityConfig {
+            cluster_role: ContinuityClusterRole::Standby,
+            promotion_epoch: 0,
+        };
+    }
+
     pub fn submit(&self, request: SubmitRequest) -> Result<SubmitDecision, String> {
         self.submit_with_hooks(
             request,

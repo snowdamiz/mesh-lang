@@ -10352,12 +10352,30 @@ mod tests {
         session: Arc<NodeSession>,
         stream: StreamOwned<rustls::ServerConnection, TcpStream>,
         heartbeat: Mutex<HeartbeatState>,
-        _member: parking_lot::RwLockReadGuard<'static, ()>,
+        _member: Option<parking_lot::RwLockReadGuard<'static, ()>>,
     }
 
     impl TestPeer {
         fn new(name: &str) -> Self {
-            let member = TEST_PEERS.read_recursive();
+            Self::build(
+                name,
+                protocol_one(),
+                None,
+                Some(TEST_PEERS.read_recursive()),
+            )
+        }
+
+        /// A peer in a test that holds the clustered state alone.
+        fn within(_exclusive: &parking_lot::RwLockWriteGuard<'static, ()>, name: &str) -> Self {
+            Self::build(name, protocol_one(), None, None)
+        }
+
+        fn build(
+            name: &str,
+            protocol: NegotiatedProtocol,
+            identity: Option<super::super::identity_claim::NodeIdentityClaim>,
+            member: Option<parking_lot::RwLockReadGuard<'static, ()>>,
+        ) -> Self {
             let state = test_node();
             let (client, server) = tls_pair();
             let session = register_session(
@@ -10366,8 +10384,8 @@ mod tests {
                 1,
                 state.assign_node_id(),
                 NodeStream::ClientTls(client),
-                protocol_one(),
-                None,
+                protocol,
+                identity,
             )
             .expect("a peer name no other test uses");
             Self {
@@ -10832,9 +10850,6 @@ mod tests {
     impl TestPeer {
         /// A protocol-two peer whose signed identity gives it `roles`.
         fn authenticated(name: &str, roles: &[&str]) -> Self {
-            let member = TEST_PEERS.read_recursive();
-            let state = test_node();
-            let (client, server) = tls_pair();
             let identity = super::super::identity_claim::NodeIdentityClaim {
                 schema_version: 1,
                 cluster_id: "test-cluster".to_string(),
@@ -10844,25 +10859,12 @@ mod tests {
                 issued_at_unix_millis: 0,
                 expires_at_unix_millis: u64::MAX,
             };
-            let session = register_session(
-                state,
-                name.to_string(),
-                1,
-                state.assign_node_id(),
-                NodeStream::ClientTls(client),
+            Self::build(
+                name,
                 protocol_two(),
                 Some(identity),
+                Some(TEST_PEERS.read_recursive()),
             )
-            .expect("a peer name no other test uses");
-            Self {
-                session,
-                stream: server,
-                heartbeat: Mutex::new(HeartbeatState::new(
-                    Duration::from_secs(60),
-                    Duration::from_secs(15),
-                )),
-                _member: member,
-            }
         }
     }
 
@@ -13293,5 +13295,111 @@ mod tests {
             sent.iter().map(|frame| frame[0]).collect::<Vec<_>>(),
             vec![DIST_MONITOR_EXIT, DIST_LINK]
         );
+    }
+
+    /// The newest diagnostic of `transition` for the request `key`.
+    fn diagnosed(
+        transition: &str,
+        key: &str,
+    ) -> Option<crate::dist::operator::OperatorDiagnosticEntry> {
+        let fingerprint = crate::dist::continuity::request_key_fingerprint(key);
+        crate::dist::operator::operator_recent_diagnostics(None)
+            .entries
+            .into_iter()
+            .rev()
+            .find(|entry| {
+                entry.transition == transition
+                    && entry.request_key.as_deref() == Some(fingerprint.as_str())
+            })
+    }
+
+    /// Waits for the diagnostic of `transition` for the request `key`.
+    fn await_diagnostic(
+        transition: &str,
+        key: &str,
+    ) -> crate::dist::operator::OperatorDiagnosticEntry {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            if let Some(entry) = diagnosed(transition, key) {
+                return entry;
+            }
+            assert!(Instant::now() < deadline, "no {transition} for {key}");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    extern "C" fn resumed_work_handler(_args: *const u8) {}
+
+    /// A standby whose primary goes promotes itself when no other peer
+    /// remains and every pending record is one it mirrored from that
+    /// primary, then submits that work again under a new attempt; a record
+    /// without a handler to resume is said to be refused. While a peer
+    /// remains it stays a standby.
+    #[test]
+    fn a_standby_promotes_itself_when_its_primary_goes_and_resumes_its_work() {
+        use crate::dist::continuity::{ContinuityClusterRole, ReplicaStatus};
+        let exclusive = declared_handler_registry_test_lock();
+        let state = test_node();
+        let registry = crate::dist::continuity::continuity_registry();
+        registry.clear_for_test();
+        registry.make_standby_for_test();
+        let handler = "Resumed.work";
+        mesh_register_declared_handler(
+            handler.as_ptr(),
+            handler.len() as u64,
+            "Resumed__work".as_ptr(),
+            13,
+            1,
+            resumed_work_handler as *const u8,
+        );
+
+        let primary = TestPeer::within(&exclusive, "lost-primary@127.0.0.1:1");
+        let lost = primary.session.remote_name.clone();
+        for (key, runtime_name) in [("resumed-key", handler), ("unresumable-key", "")] {
+            let mut record = continuity_record(key, &lost, &state.name);
+            record.cluster_role = ContinuityClusterRole::Standby;
+            record.replica_status = ReplicaStatus::Mirrored;
+            record.declared_handler_runtime_name = runtime_name.to_string();
+            registry.mirror_prepare(record).unwrap();
+        }
+
+        let remaining = TestPeer::within(&exclusive, "remaining-peer@127.0.0.1:1");
+        maybe_automatic_promote_and_resume(&lost);
+        assert_eq!(
+            registry.authority_status().cluster_role,
+            ContinuityClusterRole::Standby
+        );
+        drop(remaining);
+
+        drop(primary);
+        let authority = registry.authority_status();
+        assert_eq!(
+            (authority.cluster_role, authority.promotion_epoch),
+            (ContinuityClusterRole::Primary, 1)
+        );
+        let resumed = await_record("resumed-key", |record| record.attempt_id != "attempt-1");
+        assert_eq!(
+            await_diagnostic("automatic_recovery_rejected", "unresumable-key").reason,
+            Some(AUTOMATIC_RECOVERY_REJECTED_HANDLER_MISSING.to_string())
+        );
+
+        // Submitting the resumed work once more finds it already there, and
+        // a handler this node lacks cannot be submitted at all.
+        spawn_automatic_recovery_submission(
+            handler,
+            "resumed-key",
+            "sha256:payload",
+            &resumed.attempt_id,
+        );
+        spawn_automatic_recovery_submission("Absent.work", "absent-key", "sha256:x", "attempt-9");
+        await_diagnostic("automatic_recovery_rejected", "absent-key");
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while diagnosed("automatic_recovery_rejected", "resumed-key").is_none() {
+            assert!(Instant::now() < deadline, "the repeat was not refused");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+
+        registry.clear_for_test();
+        clear_declared_handler_registry_for_test();
     }
 }
