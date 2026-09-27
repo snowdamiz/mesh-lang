@@ -772,6 +772,13 @@ impl Checker<'_> {
         match expr {
             Expr::NameRef(name) => self.check_name(name, usage),
             Expr::CallExpr(call) => self.check_call(call),
+            Expr::PipeExpr(pipe) => self.check_pipe(pipe.lhs(), 0, pipe.rhs()),
+            Expr::SlotPipeExpr(pipe) => self.check_pipe(
+                pipe.lhs(),
+                pipe.slot()
+                    .map_or(0, |slot| (slot as usize).saturating_sub(1)),
+                pipe.rhs(),
+            ),
             Expr::StructLiteral(literal) => self.check_struct_literal(literal),
             Expr::StructUpdate(update) => self.check_struct_update(update),
             Expr::IfExpr(if_expr) => self.check_if(if_expr),
@@ -941,9 +948,28 @@ impl Checker<'_> {
     }
 
     fn check_call(&mut self, call: &CallExpr) {
-        let callee = call.callee();
+        self.check_call_parts(call.syntax().text_range(), call.callee(), call.args());
+    }
+
+    /// `value |> f(a)` passes `value` as `f`'s first argument, and
+    /// `value |2> f(a)` as its second; a bare `value |> f` calls `f` with it.
+    fn check_pipe(&mut self, value: Option<Expr>, slot: usize, rhs: Option<Expr>) {
+        let (range, callee, mut args) = match rhs {
+            Some(Expr::CallExpr(call)) => (call.syntax().text_range(), call.callee(), call.args()),
+            Some(callee) => (callee.syntax().text_range(), Some(callee), Vec::new()),
+            None => return,
+        };
+        if let Some(value) = value {
+            args.insert(slot.min(args.len()), value);
+        }
+        self.check_call_parts(range, callee, args);
+    }
+
+    /// A call of `callee` with `args`; `range` is where the type checker
+    /// recorded the call's type and the arity it runs.
+    fn check_call_parts(&mut self, range: TextRange, callee: Option<Expr>, args: Vec<Expr>) {
         let callee_name = callee.as_ref().and_then(direct_callee_name).map(|name| {
-            match self.call_targets.get(&call.syntax().text_range()) {
+            match self.call_targets.get(&range) {
                 Some(arity) => match name.rsplit_once('.') {
                     Some((module, _)) => format!("{module}.{arity}"),
                     None => arity.clone(),
@@ -957,11 +983,8 @@ impl Checker<'_> {
             _ => None,
         };
         if let Some(transaction_api) = transaction_api {
-            let callback = call
-                .arg_list()
-                .and_then(|arguments| arguments.args().nth(1));
-            if let Some(callback) = callback {
-                let borrows_connection = match &callback {
+            if let Some(callback) = args.get(1) {
+                let borrows_connection = match callback {
                     Expr::ClosureExpr(closure) => closure
                         .param_list()
                         .and_then(|parameters| parameters.params().next())
@@ -1017,11 +1040,11 @@ impl Checker<'_> {
             .flatten();
         let allowed_resource_constructor = callee_name.as_deref().is_some_and(|callee| {
             self.types
-                .get(&call.syntax().text_range())
+                .get(&range)
                 .is_some_and(|ty| is_resource_sum_constructor(self.registry, ty, callee))
         });
         {
-            for (index, argument) in call.args().into_iter().enumerate() {
+            for (index, argument) in args.into_iter().enumerate() {
                 let is_resource = self.expr_is_resource(&argument);
                 if is_resource {
                     if let Some(reason) = forbidden_reason {

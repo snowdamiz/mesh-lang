@@ -729,6 +729,36 @@ fn clause_groups_and_arities_take_resources() {
     );
 }
 
+/// A piped value is the call's argument at its position, moved or lent as
+/// that parameter says. Pipes only read it, so a resource piped into
+/// `Secret.destroy` could be destroyed again.
+#[test]
+fn a_piped_resource_is_an_argument() {
+    let result = check_source(
+        "fn peek(secret :: borrow SecretBytes, n :: Int) -> Int = n\n\
+         fn later(n :: Int, secret :: SecretBytes) -> Int = n\n\
+         fn piped(a :: SecretBytes, b :: SecretBytes, c :: SecretBytes) -> Int do\n\
+           a |> Secret.destroy()\n\
+           Secret.destroy(a)\n\
+           b |> Secret.destroy\n\
+           Secret.destroy(b)\n\
+           let n = c |> peek(1)\n\
+           c |2> later(n)\n\
+           Secret.destroy(c)\n\
+           n\n\
+         end",
+    );
+
+    assert_eq!(
+        resource_violations(&result),
+        [
+            "resource `a` was used after it moved",
+            "resource `b` was used after it moved",
+            "resource `c` was used after it moved",
+        ]
+    );
+}
+
 /// A parameter pattern owns what it binds, like a `case` arm.
 #[test]
 fn resource_parameter_patterns_bind_like_arms() {

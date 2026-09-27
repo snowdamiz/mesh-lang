@@ -135,6 +135,99 @@ end
     );
 }
 
+/// A parameter written as a pattern owns the resources it binds, like a
+/// `case` arm, and one annotated `borrow` lends them back to the caller.
+/// Clauses and arities of one name take resources like any function.
+#[test]
+fn resources_bind_through_parameter_patterns() {
+    let temp = tempfile::tempdir().unwrap();
+    let project = write_project(
+        temp.path(),
+        "secret-params",
+        r#"
+fn tag((key, message)) -> Int ! CryptoError do
+  let mac = Crypto.hmac_sha256(key, message) ?
+  println("tagged")
+  Ok(0)
+end
+
+fn peek((key, n) :: borrow (SecretBytes, Int)) -> Int ! CryptoError do
+  let mac = Crypto.hmac_sha256(key, Bytes.from_utf8("peek")) ?
+  Ok(n)
+end
+
+fn open(Ok(key) :: Result<SecretBytes, CryptoError>) -> String = "opened"
+fn open(Err(_) :: Result<SecretBytes, CryptoError>) = "failed"
+
+# One name at two arities: the two-argument one borrows.
+fn lend(key :: borrow SecretBytes, n :: Int) -> Int ! CryptoError do
+  let mac = Crypto.hmac_sha256(key, Bytes.from_utf8("lend")) ?
+  Ok(n)
+end
+fn lend(key :: SecretBytes) -> Int = 0
+
+fn left_in_arm() -> Int do
+  case Secret.random(1) do
+    Ok(secret) -> 1
+    Err(_) -> 0
+  end
+end
+
+# More secrets than a process may hold at once: each must be destroyed
+# where its arm or clause ends.
+fn churn(0) do nil end
+fn churn(count :: Int) do
+  left_in_arm()
+  open(Secret.random(1))
+  churn(count - 1)
+end
+
+fn proof() -> Int ! CryptoError do
+  tag((Secret.random(32) ?, Bytes.from_utf8("message"))) ?
+  let pair = (Secret.random(32) ?, 7)
+  println("peeked:#{peek(pair) ?}")
+  let (key, n) = pair
+  Secret.destroy(key)
+  println(open(Secret.random(16)))
+  println(open(Secret.random(0)))
+  churn(4200)
+  println(open(Secret.random(16)))
+  let lent = Secret.random(32) ?
+  let first = lend(lent, 2) ?
+  let piped = (lent |> lend(3)) ?
+  let mac = Crypto.hmac_sha256(lent, Bytes.from_utf8("after")) ?
+  println("lent:#{first + piped + (lent |> lend)}")
+  Ok(n)
+end
+
+fn main() do
+  case proof() do
+    Ok(n) -> println("done:#{n}")
+    Err(_) -> println("failed")
+  end
+end
+"#,
+    );
+    let output = build(&project);
+    assert!(
+        output.status.success(),
+        "meshc build failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let run = Command::new(project.join("secret-params"))
+        .output()
+        .unwrap();
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "tagged\npeeked:7\nopened\nfailed\nopened\nlent:5\ndone:7\n"
+    );
+}
+
 #[test]
 fn secret_map_keeps_bounded_keys_affine_across_the_native_abi() {
     let temp = tempfile::tempdir().unwrap();
