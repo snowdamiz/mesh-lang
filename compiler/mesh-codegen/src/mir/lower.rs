@@ -6380,10 +6380,12 @@ impl<'a> Lowerer<'a> {
 
         // ── __relationship_meta__() ──────────────────────────────────
         // Returns List<String> where each string is
-        // "kind:name:target:fk:target_table:key", `key` being the primary key
+        // "kind:name:target:fk:target_table:key:owner", `key` being the primary key
         // the foreign key refers to: the owner's for has_many and has_one, the
         // target's for belongs_to. The target's table and key are what its own
-        // deriving(Schema) declares, wherever it is declared.
+        // deriving(Schema) declares, wherever it is declared. `owner` is this
+        // struct: Repo.preload reads a nested path's next association from
+        // the struct the previous one loads, where two may share a name.
         let meta_elements: Vec<MirExpr> = relationships
             .iter()
             .filter_map(|rel| {
@@ -6417,7 +6419,7 @@ impl<'a> Lowerer<'a> {
                 };
 
                 Some(MirExpr::StringLit(
-                    format!("{kind}:{assoc}:{target}:{fk}:{target_table}:{key}"),
+                    format!("{kind}:{assoc}:{target}:{fk}:{target_table}:{key}:{name}"),
                     MirType::String,
                 ))
             })

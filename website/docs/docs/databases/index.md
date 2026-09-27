@@ -228,7 +228,7 @@ end deriving(Schema, Row)
 | `User.__fields__()` | Field-name list; timestamps add `inserted_at` and `updated_at` |
 | `User.__field_types__()` | `field:SQL_TYPE` metadata |
 | `User.__relationships__()` | Compact `belongs_to`, `has_one`, and `has_many` relationship metadata |
-| `User.__relationship_meta__()` | Relationship metadata including the foreign key, the target's table, and the primary key the foreign key refers to (each as the structs' own `table` and `primary_key` configure them) |
+| `User.__relationship_meta__()` | Relationship metadata including the foreign key, the target's table, and the primary key the foreign key refers to (each as the structs' own `table` and `primary_key` configure them), and the struct declaring it |
 | `User.__name_col__()` | Per-field column-name accessor |
 
 Schema metadata drives query construction and `Repo.preload`; it does not run migrations automatically.
@@ -340,7 +340,7 @@ changeset operations, whose error is the changeset itself.
 | `Repo.get_by(pool, table, field, value)` | Read by one field |
 | `Repo.count(pool, query)` | Count the rows the query returns (with `group_by`, its groups): `Result<Int, String>` |
 | `Repo.exists(pool, query)` | Test whether the query returns a row: `Result<Bool, String>` |
-| `Repo.preload(pool, rows, associations, relationship_meta)` | Load declared associations (`associations` is a `List<String>`, nested ones written `"posts.comments"`, which loads the posts too): `Result<List<Map<String, String>>, String>`, each row holding each association as JSON text under its name (an array of rows for `has_many`, a row or `null` for `has_one` and `belongs_to`; nested associations inside), for `Json.parse` or a `deriving(Json)` type's `from_json` |
+| `Repo.preload(pool, rows, associations, relationship_meta)` | Load declared associations (`associations` is a `List<String>`, nested ones written `"posts.comments"`, which loads the posts too; `relationship_meta` lists the rows' own struct's metadata first, then that of the structs a nested path passes through, each level read from the struct the previous one loads): `Result<List<Map<String, String>>, String>`, each row holding each association as JSON text under its name (an array of rows for `has_many`, a row or `null` for `has_one` and `belongs_to`; nested associations inside), for `Json.parse` or a `deriving(Json)` type's `from_json` |
 
 ### Writes
 
