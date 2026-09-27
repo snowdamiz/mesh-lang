@@ -535,22 +535,14 @@ enum StorageCounterSource {
     Ephemeral {
         next_counter: u64,
     },
-    #[cfg(test)]
-    Deterministic {
-        next_counter: u64,
-    },
-}
-
-enum ResourceMetadata {
-    Plain,
-    StorageKey(StorageCounterSource),
 }
 
 struct Entry {
     owner: ProcessId,
     kind: ResourceKind,
     bytes: Zeroizing<Box<[u8]>>,
-    metadata: ResourceMetadata,
+    /// A storage key's nonce counter; no other kind has one.
+    counter: Option<StorageCounterSource>,
 }
 
 struct Slot {
@@ -867,7 +859,7 @@ pub(crate) fn insert_test_storage_key_resource(
     let handle = secret_table().lock().insert_storage_key(
         owner,
         material,
-        StorageCounterSource::Deterministic { next_counter },
+        StorageCounterSource::Ephemeral { next_counter },
     )?;
     Ok(allocate_handle(process, handle))
 }
@@ -1057,7 +1049,7 @@ impl ResourceTable {
         if kind == ResourceKind::StorageKey {
             return Err(ResourceError::WrongKind);
         }
-        self.insert_with_metadata(owner, kind, bytes, ResourceMetadata::Plain)
+        self.insert_with_counter(owner, kind, bytes, None)
     }
 
     fn insert_storage_key(
@@ -1069,20 +1061,15 @@ impl ResourceTable {
         if bytes.len() != 36 {
             return Err(ResourceError::WrongKind);
         }
-        self.insert_with_metadata(
-            owner,
-            ResourceKind::StorageKey,
-            bytes,
-            ResourceMetadata::StorageKey(source),
-        )
+        self.insert_with_counter(owner, ResourceKind::StorageKey, bytes, Some(source))
     }
 
-    fn insert_with_metadata(
+    fn insert_with_counter(
         &mut self,
         owner: ProcessId,
         kind: ResourceKind,
         bytes: Zeroizing<Box<[u8]>>,
-        metadata: ResourceMetadata,
+        counter: Option<StorageCounterSource>,
     ) -> Result<ResourceHandle, ResourceError> {
         let byte_count = bytes.len();
         if byte_count > self.limits.max_secret_bytes {
@@ -1126,7 +1113,7 @@ impl ResourceTable {
             owner,
             kind,
             bytes,
-            metadata,
+            counter,
         });
         self.usage.insert(
             owner,
@@ -1397,12 +1384,9 @@ impl ResourceTable {
             .validate_entry(owner, handle, ResourceKind::StorageKey)
             .map_err(StorageKeyError::Resource)?;
         let material = Zeroizing::new(entry.bytes.to_vec().into_boxed_slice());
-        let source = match entry.metadata {
-            ResourceMetadata::StorageKey(source) => source,
-            ResourceMetadata::Plain => {
-                return Err(StorageKeyError::Resource(ResourceError::WrongKind));
-            }
-        };
+        let source = entry
+            .counter
+            .ok_or(StorageKeyError::Resource(ResourceError::WrongKind))?;
 
         let counter = match source {
             StorageCounterSource::Production {
@@ -1417,25 +1401,9 @@ impl ResourceTable {
                     .get_mut(handle.slot as usize)
                     .and_then(|slot| slot.entry.as_mut())
                     .ok_or(StorageKeyError::Resource(ResourceError::StaleHandle))?;
-                entry.metadata = ResourceMetadata::StorageKey(StorageCounterSource::Ephemeral {
+                entry.counter = Some(StorageCounterSource::Ephemeral {
                     next_counter: incremented,
                 });
-                PreparedStorageCounter::Reserved(next_counter)
-            }
-            #[cfg(test)]
-            StorageCounterSource::Deterministic { next_counter } => {
-                let incremented = next_counter
-                    .checked_add(1)
-                    .ok_or(StorageKeyError::CounterExhausted)?;
-                let entry = self
-                    .slots
-                    .get_mut(handle.slot as usize)
-                    .and_then(|slot| slot.entry.as_mut())
-                    .ok_or(StorageKeyError::Resource(ResourceError::StaleHandle))?;
-                entry.metadata =
-                    ResourceMetadata::StorageKey(StorageCounterSource::Deterministic {
-                        next_counter: incremented,
-                    });
                 PreparedStorageCounter::Reserved(next_counter)
             }
         };
@@ -1460,10 +1428,12 @@ impl ResourceTable {
             .get_mut(handle.slot as usize)
             .and_then(|slot| slot.entry.as_mut())
             .ok_or(StorageKeyError::Resource(ResourceError::StaleHandle))?;
-        match &mut entry.metadata {
-            ResourceMetadata::StorageKey(StorageCounterSource::Production {
-                last_counter, ..
-            }) => {
+        let source = entry
+            .counter
+            .as_mut()
+            .ok_or(StorageKeyError::Resource(ResourceError::WrongKind))?;
+        match source {
+            StorageCounterSource::Production { last_counter, .. } => {
                 if last_counter.is_some_and(|last| counter <= last) {
                     return Err(StorageKeyError::CounterNotMonotonic);
                 }
@@ -1474,22 +1444,13 @@ impl ResourceTable {
                     Ok(())
                 }
             }
-            ResourceMetadata::StorageKey(StorageCounterSource::Ephemeral { next_counter }) => {
+            StorageCounterSource::Ephemeral { next_counter } => {
                 if counter.checked_add(1) != Some(*next_counter) {
                     Err(StorageKeyError::CounterNotMonotonic)
                 } else {
                     Ok(())
                 }
             }
-            #[cfg(test)]
-            ResourceMetadata::StorageKey(StorageCounterSource::Deterministic { next_counter }) => {
-                if counter.checked_add(1) != Some(*next_counter) {
-                    Err(StorageKeyError::CounterNotMonotonic)
-                } else {
-                    Ok(())
-                }
-            }
-            ResourceMetadata::Plain => Err(StorageKeyError::Resource(ResourceError::WrongKind)),
         }
     }
 
@@ -1909,7 +1870,7 @@ mod tests {
             .insert_storage_key(
                 owner,
                 material,
-                StorageCounterSource::Deterministic { next_counter: 7 },
+                StorageCounterSource::Ephemeral { next_counter: 7 },
             )
             .expect("insert test storage key");
         assert!(matches!(
@@ -2418,7 +2379,7 @@ mod tests {
             .insert_storage_key(
                 owner,
                 Zeroizing::new(vec![0x45; 36].into_boxed_slice()),
-                StorageCounterSource::Deterministic { next_counter: 0 },
+                StorageCounterSource::Ephemeral { next_counter: 0 },
             )
             .expect("owned storage key");
         let other = table
