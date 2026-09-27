@@ -9,16 +9,11 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
+#[path = "support/test_artifacts.rs"]
+mod artifacts;
+
 fn meshc_bin() -> PathBuf {
-    let mut path = std::env::current_exe()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .to_path_buf();
-    if path.file_name().is_some_and(|name| name == "deps") {
-        path.pop();
-    }
-    path.join("meshc")
+    artifacts::meshc_bin()
 }
 
 /// Writes a project whose `a.mpl` and `b.mpl` both define `pub fn which`, with

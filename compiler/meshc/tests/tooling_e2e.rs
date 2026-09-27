@@ -13,11 +13,12 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+#[path = "support/test_artifacts.rs"]
+mod artifacts;
+
 /// Locate the meshc binary built by cargo.
 fn meshc_bin() -> PathBuf {
-    // CARGO_BIN_EXE_meshc is set by cargo when running integration tests
-    // for the meshc package.
-    PathBuf::from(env!("CARGO_BIN_EXE_meshc"))
+    artifacts::meshc_bin()
 }
 
 fn write_file(path: &Path, contents: &str) {

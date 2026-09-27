@@ -24,7 +24,11 @@ pub fn repo_root() -> PathBuf {
         .to_path_buf()
 }
 
+/// meshc, with the runtime the programs it builds link rebuilt first: the
+/// runtime cargo builds for meshc stays among its dependencies, and the one
+/// meshc links is only refreshed by `cargo build -p mesh-rt`.
 pub fn meshc_bin() -> PathBuf {
+    ensure_mesh_rt_staticlib();
     PathBuf::from(env!("CARGO_BIN_EXE_meshc"))
 }
 

@@ -8,16 +8,11 @@ use std::process::Command;
 use mesh_rt::ws::handshake::compute_accept_key;
 use mesh_rt::ws::{read_frame, write_frame, WsOpcode};
 
+#[path = "support/test_artifacts.rs"]
+mod artifacts;
+
 fn meshc_bin() -> PathBuf {
-    let mut path = std::env::current_exe()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .to_path_buf();
-    if path.file_name().is_some_and(|name| name == "deps") {
-        path.pop();
-    }
-    path.join("meshc")
+    artifacts::meshc_bin()
 }
 
 #[test]

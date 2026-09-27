@@ -3,6 +3,9 @@ use std::process::Command;
 
 use serde_json::Value;
 
+#[path = "support/test_artifacts.rs"]
+mod artifacts;
+
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -13,7 +16,7 @@ fn repo_root() -> PathBuf {
 }
 
 fn meshc_bin() -> PathBuf {
-    PathBuf::from(env!("CARGO_BIN_EXE_meshc"))
+    artifacts::meshc_bin()
 }
 
 fn fixture_dir() -> PathBuf {

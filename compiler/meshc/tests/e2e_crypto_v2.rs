@@ -7,6 +7,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+#[path = "support/test_artifacts.rs"]
+mod artifacts;
+
 #[derive(Deserialize)]
 struct MlKemVector {
     schema_version: u64,
@@ -47,15 +50,7 @@ struct MlKemVectorError {
 }
 
 fn meshc_bin() -> PathBuf {
-    let mut path = std::env::current_exe()
-        .expect("cannot locate test executable")
-        .parent()
-        .expect("test executable has no parent")
-        .to_path_buf();
-    if path.file_name().is_some_and(|name| name == "deps") {
-        path.pop();
-    }
-    path.join("meshc")
+    artifacts::meshc_bin()
 }
 
 fn fixture(name: &str) -> PathBuf {

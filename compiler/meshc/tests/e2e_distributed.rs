@@ -38,7 +38,7 @@ fn build(dir: &Path, name: &str, source: &str, nodes: &[(&str, String)]) -> Path
             source.replace(key, node)
         });
     std::fs::write(project.join("main.mpl"), source).unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_meshc"))
+    let output = Command::new(artifacts::meshc_bin())
         .arg("build")
         .arg(&project)
         .output()

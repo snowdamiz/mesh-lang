@@ -1,8 +1,11 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
+#[path = "support/test_artifacts.rs"]
+mod artifacts;
+
 fn meshc_bin() -> PathBuf {
-    PathBuf::from(env!("CARGO_BIN_EXE_meshc"))
+    artifacts::meshc_bin()
 }
 
 fn package_manifest(name: &str) -> String {

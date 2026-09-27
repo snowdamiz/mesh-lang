@@ -4,6 +4,9 @@
 use std::path::PathBuf;
 use std::process::{Command, Output};
 
+#[path = "support/test_artifacts.rs"]
+mod artifacts;
+
 /// `source` as the `main.mpl` of a project directory, kept as long as the
 /// returned guard lives.
 fn project(source: &str) -> (tempfile::TempDir, PathBuf) {
@@ -16,7 +19,7 @@ fn project(source: &str) -> (tempfile::TempDir, PathBuf) {
 
 /// `meshc build <project> <args>`.
 fn meshc_build(project_dir: &std::path::Path, args: &[&str]) -> Command {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_meshc"));
+    let mut command = Command::new(artifacts::meshc_bin());
     command
         .args(["build", project_dir.to_str().unwrap()])
         .args(args);

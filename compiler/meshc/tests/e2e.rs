@@ -6,6 +6,9 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+#[path = "support/test_artifacts.rs"]
+mod artifacts;
+
 /// Helper: compile a Mesh source file and run the resulting binary, returning stdout.
 fn compile_and_run(source: &str) -> String {
     compile_and_run_with_env(source, &[])
@@ -81,7 +84,7 @@ fn compile_expect_error(source: &str) -> String {
 }
 
 fn find_meshc() -> PathBuf {
-    PathBuf::from(env!("CARGO_BIN_EXE_meshc"))
+    artifacts::meshc_bin()
 }
 
 /// Read a test fixture from the tests/e2e/ directory.

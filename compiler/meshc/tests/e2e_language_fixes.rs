@@ -4,8 +4,11 @@
 use std::path::PathBuf;
 use std::process::Command;
 
+#[path = "support/test_artifacts.rs"]
+mod artifacts;
+
 fn find_meshc() -> PathBuf {
-    PathBuf::from(env!("CARGO_BIN_EXE_meshc"))
+    artifacts::meshc_bin()
 }
 
 struct Build {

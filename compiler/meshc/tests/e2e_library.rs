@@ -1,5 +1,8 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Output};
+
+#[path = "support/test_artifacts.rs"]
+mod artifacts;
 
 #[test]
 #[cfg(windows)]
@@ -146,7 +149,7 @@ fn assert_no_test_fixtures(artifact: &Path, dynamic: bool, description: &str) {
 }
 
 fn build(fixture: &Path, output: &Path, artifact: &str) -> Output {
-    let mut command = Command::new(PathBuf::from(env!("CARGO_BIN_EXE_meshc")));
+    let mut command = Command::new(artifacts::meshc_bin());
     command.args(["build", fixture.to_str().unwrap(), "--artifact", artifact]);
     // The compatibility runner builds its runtime in target/<triple>/release.
     #[cfg(windows)]

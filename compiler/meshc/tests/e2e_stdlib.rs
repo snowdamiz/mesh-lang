@@ -64,7 +64,7 @@ fn compile_and_run(source: &str) -> String {
 }
 
 fn find_meshc() -> PathBuf {
-    PathBuf::from(env!("CARGO_BIN_EXE_meshc"))
+    artifacts::meshc_bin()
 }
 
 /// Helper: compile a Mesh source file without running it. Returns compilation output.

@@ -82,7 +82,7 @@ fn read_fixture(name: &str) -> String {
 }
 
 fn find_meshc() -> PathBuf {
-    PathBuf::from(env!("CARGO_BIN_EXE_meshc"))
+    artifacts::meshc_bin()
 }
 
 // ── Service E2E Tests ──────────────────────────────────────────────────

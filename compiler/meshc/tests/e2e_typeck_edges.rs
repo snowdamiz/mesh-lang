@@ -1,8 +1,10 @@
 //! Programs whose type checking takes a path ordinary programs rarely do,
 //! compiled and run: what the checker accepts must also build and behave.
 
-use std::path::PathBuf;
 use std::process::Command;
+
+#[path = "support/test_artifacts.rs"]
+mod artifacts;
 
 /// Compile a one-file Mesh project and run it, returning its stdout.
 fn compile_and_run(source: &str) -> String {
@@ -11,7 +13,7 @@ fn compile_and_run(source: &str) -> String {
     std::fs::create_dir_all(&project_dir).expect("failed to create project dir");
     std::fs::write(project_dir.join("main.mpl"), source).expect("failed to write main.mpl");
 
-    let output = Command::new(PathBuf::from(env!("CARGO_BIN_EXE_meshc")))
+    let output = Command::new(artifacts::meshc_bin())
         .args(["build", project_dir.to_str().unwrap()])
         .output()
         .expect("failed to invoke meshc");
