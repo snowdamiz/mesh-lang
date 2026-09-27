@@ -60,6 +60,15 @@ fn run() -> Int!String do
   println("comment:" <> one(pool, "SELECT obj_description('people'::regclass) AS v")?)
   show("drop", Migration.drop_table(pool, "people"))
   show("drop_again", Migration.drop_table(pool, "people"))
+  # A schema-qualified table is that schema's table, its index beside it.
+  let pets = "mesh_migration_e2e.pets"
+  let pets_sql = "SELECT (SELECT count(*) FROM pg_tables WHERE schemaname = 'mesh_migration_e2e' AND tablename = 'pets')::text || ',' || (SELECT count(*) FROM pg_indexes WHERE schemaname = 'mesh_migration_e2e' AND indexname = 'idx_pets_name')::text AS v"
+  show("create_qualified", Migration.create_table(pool, pets, ["id:INT", "name:TEXT"]))
+  show("index_qualified", Migration.create_index(pool, pets, ["name"], ""))
+  println("qualified:" <> one(pool, pets_sql)?)
+  show("drop_index_qualified", Migration.drop_index(pool, pets, ["name"]))
+  show("drop_qualified", Migration.drop_table(pool, pets))
+  println("qualified_dropped:" <> one(pool, pets_sql)?)
   let _ = Pool.execute(pool, "DROP SCHEMA mesh_migration_e2e CASCADE", [])?
   Pool.close(pool)
   Ok(0)

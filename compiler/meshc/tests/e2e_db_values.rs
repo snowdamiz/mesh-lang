@@ -158,6 +158,12 @@ execute_bad:failed
 comment:migrated
 drop:ok
 drop_again:ok
+create_qualified:ok
+index_qualified:ok
+qualified:1,1
+drop_index_qualified:ok
+drop_qualified:ok
+qualified_dropped:0,0
 done
 ";
 
