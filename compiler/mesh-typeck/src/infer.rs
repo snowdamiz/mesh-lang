@@ -10186,96 +10186,86 @@ fn infer_call_inner(
         ) {
             Ok(ty) => ty,
             Err(first_err) => {
-                // If callee is a FieldAccess and normal inference failed, try method resolution.
-                // An undefined base (`Nope.start()`) is already reported; retrying
-                // would only report it again.
-                if let (Expr::FieldAccess(ref fa), false) = (
-                    &callee_expr,
-                    matches!(first_err, TypeError::UnboundVariable { .. }),
-                ) {
-                    // Remove the error that was pushed during the failed attempt.
-                    // The failed infer_field_access(false) pushed a NoSuchField error.
-                    if let Some(pos) = ctx
-                        .errors
-                        .iter()
-                        .rposition(|e| matches!(e, TypeError::NoSuchField { .. }))
+                // A name the base's type has no field of may be one of its
+                // methods. Any other failure (an undefined base, a module
+                // without the function, an error in the base itself) would
+                // only fail again, and report it again.
+                let fa = match (&callee_expr, &first_err) {
+                    (Expr::FieldAccess(fa), TypeError::NoSuchField { span, .. })
+                        if *span == fa.syntax().text_range() =>
                     {
-                        ctx.errors.remove(pos);
+                        fa
                     }
+                    _ => return Err(first_err),
+                };
+                // Take back the error this attempt reported, and no other.
+                ctx.errors.retain(|error| {
+                    !matches!(error, TypeError::NoSuchField { span, .. } if *span == fa.syntax().text_range())
+                });
+                let callee_ty = infer_field_access(
+                    ctx,
+                    env,
+                    fa,
+                    types,
+                    type_registry,
+                    trait_registry,
+                    fn_constraints,
+                    true,
+                )?;
+                let base = fa.base().ok_or_else(|| first_err.clone())?;
+                let explicit_args = call.args();
+                let ret_var = ctx.fresh_var();
+                let origin = ConstraintOrigin::FnArg {
+                    call_site: call.syntax().text_range(),
+                    param_idx: 0,
+                };
+                let param_types: Vec<Ty> =
+                    (0..=explicit_args.len()).map(|_| ctx.fresh_var()).collect();
+                let expected_fn_ty = Ty::Fun(param_types.clone(), Box::new(ret_var.clone()));
 
-                    // Try method-call context.
-                    match infer_field_access(
+                // Establish the method signature first. The receiver then
+                // specializes generic method parameters before explicit closure
+                // arguments are inferred.
+                ctx.unify(callee_ty, expected_fn_ty, origin.clone())?;
+                let receiver_ty = infer_expr(
+                    ctx,
+                    env,
+                    &base,
+                    types,
+                    type_registry,
+                    trait_registry,
+                    fn_constraints,
+                )?;
+                ctx.unify(
+                    param_types[0].clone(),
+                    receiver_ty,
+                    ConstraintOrigin::FnArg {
+                        call_site: call.syntax().text_range(),
+                        param_idx: 0,
+                    },
+                )?;
+
+                for (arg_idx, arg) in explicit_args.iter().enumerate() {
+                    let param_idx = arg_idx + 1;
+                    infer_call_argument(
                         ctx,
                         env,
-                        fa,
+                        arg,
+                        param_types[param_idx].clone(),
+                        ConstraintOrigin::FnArg {
+                            call_site: significant_range(arg.syntax()),
+                            param_idx,
+                        },
                         types,
                         type_registry,
                         trait_registry,
                         fn_constraints,
-                        true,
-                    ) {
-                        Ok(callee_ty) => {
-                            let base = fa.base().ok_or_else(|| first_err.clone())?;
-                            let explicit_args = call.args();
-                            let ret_var = ctx.fresh_var();
-                            let origin = ConstraintOrigin::FnArg {
-                                call_site: call.syntax().text_range(),
-                                param_idx: 0,
-                            };
-                            let param_types: Vec<Ty> =
-                                (0..=explicit_args.len()).map(|_| ctx.fresh_var()).collect();
-                            let expected_fn_ty =
-                                Ty::Fun(param_types.clone(), Box::new(ret_var.clone()));
-
-                            // Establish the method signature first. The receiver then
-                            // specializes generic method parameters before explicit closure
-                            // arguments are inferred.
-                            ctx.unify(callee_ty, expected_fn_ty, origin.clone())?;
-                            let receiver_ty = infer_expr(
-                                ctx,
-                                env,
-                                &base,
-                                types,
-                                type_registry,
-                                trait_registry,
-                                fn_constraints,
-                            )?;
-                            ctx.unify(
-                                param_types[0].clone(),
-                                receiver_ty,
-                                ConstraintOrigin::FnArg {
-                                    call_site: call.syntax().text_range(),
-                                    param_idx: 0,
-                                },
-                            )?;
-
-                            for (arg_idx, arg) in explicit_args.iter().enumerate() {
-                                let param_idx = arg_idx + 1;
-                                infer_call_argument(
-                                    ctx,
-                                    env,
-                                    arg,
-                                    param_types[param_idx].clone(),
-                                    ConstraintOrigin::FnArg {
-                                        call_site: significant_range(arg.syntax()),
-                                        param_idx,
-                                    },
-                                    types,
-                                    type_registry,
-                                    trait_registry,
-                                    fn_constraints,
-                                )?;
-                            }
-
-                            let result = ctx.resolve(ret_var);
-                            types.insert(call.syntax().text_range(), result.clone());
-                            return Ok(result);
-                        }
-                        Err(method_err) => return Err(method_err),
-                    }
-                } else {
-                    return Err(first_err);
+                    )?;
                 }
+
+                let result = ctx.resolve(ret_var);
+                types.insert(call.syntax().text_range(), result.clone());
+                return Ok(result);
             }
         }
     }; // close else { match ... } and the let binding

@@ -3157,6 +3157,23 @@ fn child_spec_values_are_checked_where_they_are_given() {
     );
 }
 
+/// A method call that is no function of its module keeps the errors
+/// before it: resolving it as a method took back the last "no field"
+/// error, which was another expression's.
+#[test]
+fn a_failed_method_call_keeps_an_earlier_field_error() {
+    assert_eq!(
+        errors(
+            "struct P do\n  x :: Int\nend\n\
+             fn f(p :: P) do\n  let a = p.nope\n  String.nope()\nend\n"
+        ),
+        [
+            "type `P` has no field `nope`",
+            "module `String` has no function `nope`",
+        ]
+    );
+}
+
 /// A supervisor the parser could not finish is checked as far as it goes.
 #[test]
 fn an_unfinished_supervisor_is_checked_as_far_as_it_goes() {
