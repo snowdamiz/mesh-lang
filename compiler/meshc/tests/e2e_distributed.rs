@@ -460,22 +460,30 @@ end
     assert_eq!(received, (1, b"from spoke".to_vec()), "hub:\n{hub_stdout}");
 }
 
-/// A program that has not started a node: nameless and alone, it cannot
-/// connect; then a node name it cannot start with, and an address already
-/// taken, are refused, and a node starts once.
-const LONE: &str = r#"fn main() do
-  println("self=[#{Node.self()}]")
+/// A program that has not started a node (as `e2e_actors` also shows it
+/// nameless, and a node starting once): alone, it can neither connect nor
+/// spawn on another node; then a node name it cannot start with, and an
+/// address already taken, are refused, and a name it can use starts one.
+const LONE: &str = r##"actor worker(prefix :: String) do
+  receive do
+    msg -> println("#{prefix}: #{msg}")
+  end
+end
+
+fn main() do
   println("nodes=#{List.length(Node.list())}")
   println("connect=#{Node.connect("SPOKE")}")
+  let spawned = Node.spawn("SPOKE", worker, "remote")
+  send(spawned, "unheard")
+  println("spawn=#{spawned}")
   println("unnamed=#{Node.start("no-host", "COOKIE")}")
   println("busy=#{Node.start("BUSY", "COOKIE")}")
   println("started=#{Node.start("HUB", "COOKIE")}")
-  println("again=#{Node.start("HUB", "COOKIE")}")
 end
-"#;
+"##;
 
 #[test]
-fn a_node_starts_once_and_only_from_a_name_it_can_use() {
+fn a_program_without_a_node_is_alone_until_it_starts_one() {
     artifacts::ensure_mesh_rt_staticlib();
     let dir = tempfile::tempdir().unwrap();
     let taken = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -492,13 +500,12 @@ fn a_node_starts_once_and_only_from_a_name_it_can_use() {
     assert_lines(
         &String::from_utf8_lossy(&output.stdout),
         &[
-            "self=[]",
             "nodes=0",
             "connect=-1",
+            "spawn=<0.0>",
             "unnamed=-3",
             "busy=-2",
             "started=0",
-            "again=-1",
         ],
         "",
     );
