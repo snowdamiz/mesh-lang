@@ -872,19 +872,13 @@ impl CapacityDriver for FakeCapacityDriver {
         if let Some(existing) = self.operations.lock().unwrap().get(&operation.operation_id) {
             return Ok(existing.clone());
         }
-        let mut nodes = self.nodes.lock().unwrap();
-        let node = nodes
-            .get_mut(node_id)
-            .ok_or_else(|| "capacity_node_not_found".to_string())?;
-        node.lifecycle = CapacityNodeLifecycle::Draining;
-        let mut completed = operation.clone();
-        completed.node_id = Some(node_id.to_string());
-        completed.state = DriverOperationState::Succeeded;
-        self.operations
+        self.nodes
             .lock()
             .unwrap()
-            .insert(operation.operation_id.clone(), completed.clone());
-        Ok(completed)
+            .get_mut(node_id)
+            .ok_or_else(|| "capacity_node_not_found".to_string())?
+            .lifecycle = CapacityNodeLifecycle::Draining;
+        completed_driver_operation(&self.operations, operation, node_id)
     }
 
     fn terminate_node(
@@ -898,14 +892,7 @@ impl CapacityDriver for FakeCapacityDriver {
         if let Some(node) = self.nodes.lock().unwrap().get_mut(node_id) {
             node.lifecycle = CapacityNodeLifecycle::Removed;
         }
-        let mut completed = operation.clone();
-        completed.node_id = Some(node_id.to_string());
-        completed.state = DriverOperationState::Succeeded;
-        self.operations
-            .lock()
-            .unwrap()
-            .insert(operation.operation_id.clone(), completed.clone());
-        Ok(completed)
+        completed_driver_operation(&self.operations, operation, node_id)
     }
 
     fn get_operation(&self, operation_id: &str) -> Result<Option<DriverOperation>, String> {
