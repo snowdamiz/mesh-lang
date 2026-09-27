@@ -1,12 +1,12 @@
 //! Changeset validation pipeline for the Mesh runtime.
 //!
 //! Provides an opaque Changeset struct that accumulates validated changes
-//! and errors. Each validator function clones the changeset, checks its
-//! condition, adds errors if needed, and returns a new changeset. This
-//! enables pipe-chain composition where all validators run without
+//! and errors. Each validator returns a new changeset (a changeset is never
+//! changed in place), carrying the error it found if the field has none
+//! yet. This enables pipe-chain composition where all validators run without
 //! short-circuiting.
 //!
-//! ## Changeset object layout (8 slots, 64 bytes)
+//! ## Changeset object layout (4 slots, 32 bytes)
 //!
 //! | Slot | Offset | Name        | Type                          |
 //! |------|--------|-------------|-------------------------------|
@@ -14,10 +14,6 @@
 //! |  1   |   8    | changes     | *mut u8 (Map<String,String>)  |
 //! |  2   |  16    | errors      | *mut u8 (Map<String,String>)  |
 //! |  3   |  24    | valid       | i64: 1 = valid, 0 = invalid   |
-//! |  4   |  32    | field_types | *mut u8 (List<String>)         |
-//! |  5   |  40    | table       | *mut u8 (MeshString or null)  |
-//! |  6   |  48    | primary_key | *mut u8 (MeshString or null)  |
-//! |  7   |  56    | action      | i64: 0 = insert, 1 = update   |
 
 use crate::collections::list::list_strings;
 use crate::collections::list::mesh_list_new;
@@ -30,20 +26,13 @@ use crate::string::text_of;
 
 // ── Constants ────────────────────────────────────────────────────────
 
-pub(crate) const CS_SLOTS: usize = 8;
-pub(crate) const CS_SIZE: usize = CS_SLOTS * 8; // 64 bytes
+const CS_SLOTS: usize = 4;
+const CS_SIZE: usize = CS_SLOTS * 8; // 32 bytes
 
-pub(crate) const SLOT_DATA: usize = 0;
-pub(crate) const SLOT_CHANGES: usize = 1;
-pub(crate) const SLOT_ERRORS: usize = 2;
-pub(crate) const SLOT_VALID: usize = 3;
-pub(crate) const SLOT_FIELD_TYPES: usize = 4;
-#[allow(dead_code)]
-pub(crate) const SLOT_TABLE: usize = 5;
-#[allow(dead_code)]
-pub(crate) const SLOT_PK: usize = 6;
-#[allow(dead_code)]
-pub(crate) const SLOT_ACTION: usize = 7;
+const SLOT_DATA: usize = 0;
+const SLOT_CHANGES: usize = 1;
+const SLOT_ERRORS: usize = 2;
+const SLOT_VALID: usize = 3;
 
 // ── Slot access helpers ──────────────────────────────────────────────
 
@@ -63,28 +52,10 @@ unsafe fn cs_set_int(cs: *mut u8, slot: usize, val: i64) {
     *(cs.add(slot * 8) as *mut i64) = val;
 }
 
-// ── String helpers ───────────────────────────────────────────────────
-
-// ── Allocation ───────────────────────────────────────────────────────
-
-/// Allocate a fresh Changeset with empty maps and valid=1.
-unsafe fn alloc_changeset() -> *mut u8 {
-    let cs = mesh_gc_alloc_actor(CS_SIZE as u64, 8);
-    std::ptr::write_bytes(cs, 0, CS_SIZE);
-    cs_set(cs, SLOT_DATA, mesh_map_new_typed(1)); // string-keyed
-    cs_set(cs, SLOT_CHANGES, mesh_map_new_typed(1));
-    cs_set(cs, SLOT_ERRORS, mesh_map_new_typed(1));
-    cs_set_int(cs, SLOT_VALID, 1); // valid until proven otherwise
-    cs_set(cs, SLOT_FIELD_TYPES, mesh_list_new());
-    cs_set_int(cs, SLOT_ACTION, 0); // insert by default
-    cs
-}
-
-/// Clone a Changeset: allocate new 64 bytes and copy all data from source.
-unsafe fn clone_changeset(src: *mut u8) -> *mut u8 {
-    let dst = mesh_gc_alloc_actor(CS_SIZE as u64, 8);
-    std::ptr::copy_nonoverlapping(src, dst, CS_SIZE);
-    dst
+/// The text `map` holds for `key`, if it holds one.
+unsafe fn text_at(map: *mut u8, key: &str) -> Option<&'static str> {
+    let key = mesh_str(key) as u64;
+    (mesh_map_has_key(map, key) != 0).then(|| text_of(mesh_map_get(map, key) as *mut u8))
 }
 
 // ── Type coercion ────────────────────────────────────────────────────
@@ -119,31 +90,14 @@ fn coerce_value(val: &str, sql_type: &str) -> Result<String, ()> {
 /// Creates a new changeset with the filtered params as `changes`.
 #[no_mangle]
 pub extern "C" fn mesh_changeset_cast(data: *mut u8, params: *mut u8, allowed: *mut u8) -> *mut u8 {
-    unsafe {
-        let cs = alloc_changeset();
-        cs_set(cs, SLOT_DATA, data);
-
-        let allowed_names = list_strings(allowed);
-        let mut changes = mesh_map_new_typed(1);
-
-        for field_name in &allowed_names {
-            let key_mesh = mesh_str(field_name) as *mut u8;
-            let key_u64 = key_mesh as u64;
-            if mesh_map_has_key(params, key_u64) != 0 {
-                let val = mesh_map_get(params, key_u64);
-                changes = mesh_map_put(changes, key_u64, val);
-            }
-        }
-
-        cs_set(cs, SLOT_CHANGES, changes);
-        cs
-    }
+    mesh_changeset_cast_with_types(data, params, allowed, mesh_list_new())
 }
 
 /// Changeset.cast_with_types(data, params, allowed, field_types) -- 4-arg version with coercion.
 ///
 /// Same as cast but additionally coerces string values based on SQL type metadata.
-/// field_types is a List<String> of "field_name:SQL_TYPE" entries.
+/// field_types is a List<String> of "field_name:SQL_TYPE" entries; a value
+/// that does not coerce is the error "is invalid" instead of a change.
 #[no_mangle]
 pub extern "C" fn mesh_changeset_cast_with_types(
     data: *mut u8,
@@ -152,109 +106,89 @@ pub extern "C" fn mesh_changeset_cast_with_types(
     field_types: *mut u8,
 ) -> *mut u8 {
     unsafe {
-        let cs = alloc_changeset();
-        cs_set(cs, SLOT_DATA, data);
-        cs_set(cs, SLOT_FIELD_TYPES, field_types);
-
         // Build field_type lookup from "field:SQL_TYPE" entries
         let ft_entries = list_strings(field_types);
-        let type_map: std::collections::HashMap<String, String> = ft_entries
+        let type_map: std::collections::HashMap<&str, &str> = ft_entries
             .iter()
-            .filter_map(|entry| {
-                let parts: Vec<&str> = entry.splitn(2, ':').collect();
-                if parts.len() == 2 {
-                    Some((parts[0].to_string(), parts[1].to_string()))
-                } else {
-                    None
-                }
-            })
+            .filter_map(|entry| entry.split_once(':'))
             .collect();
 
-        let allowed_names = list_strings(allowed);
         let mut changes = mesh_map_new_typed(1);
         let mut errors = mesh_map_new_typed(1);
-
-        for field_name in &allowed_names {
-            let key_mesh = mesh_str(field_name) as *mut u8;
-            let key_u64 = key_mesh as u64;
-            if mesh_map_has_key(params, key_u64) != 0 {
-                let val = mesh_map_get(params, key_u64);
-                let val_str = text_of(val as *mut u8);
-
-                if let Some(sql_type) = type_map.get(field_name) {
-                    match coerce_value(val_str, sql_type) {
-                        Ok(coerced) => {
-                            let coerced_mesh = mesh_str(&coerced) as *mut u8;
-                            changes = mesh_map_put(changes, key_u64, coerced_mesh as u64);
-                        }
-                        Err(()) => {
-                            let err_msg = mesh_str("is invalid") as *mut u8;
-                            errors = mesh_map_put(errors, key_u64, err_msg as u64);
-                        }
-                    }
-                } else {
-                    // No type info for this field -- pass through as-is
-                    changes = mesh_map_put(changes, key_u64, val);
-                }
+        for field_name in list_strings(allowed) {
+            let Some(value) = text_at(params, &field_name) else {
+                continue;
+            };
+            let key = mesh_str(&field_name) as u64;
+            match type_map
+                .get(field_name.as_str())
+                .map_or(Ok(value.to_string()), |sql_type| {
+                    coerce_value(value, sql_type)
+                }) {
+                Ok(coerced) => changes = mesh_map_put(changes, key, mesh_str(&coerced) as u64),
+                Err(()) => errors = mesh_map_put(errors, key, mesh_str("is invalid") as u64),
             }
         }
 
+        let cs = mesh_gc_alloc_actor(CS_SIZE as u64, 8);
+        cs_set(cs, SLOT_DATA, data);
         cs_set(cs, SLOT_CHANGES, changes);
         cs_set(cs, SLOT_ERRORS, errors);
-        let has_errors = mesh_map_size(errors) > 0;
-        cs_set_int(cs, SLOT_VALID, if has_errors { 0 } else { 1 });
+        cs_set_int(cs, SLOT_VALID, (mesh_map_size(errors) == 0) as i64);
         cs
     }
 }
 
 // ── Validators ───────────────────────────────────────────────────────
 
+/// `cs` with `message` as `field`'s error, unless it has one already: a new
+/// changeset, invalid.
+pub(crate) unsafe fn add_error(cs: *mut u8, field: &str, message: &str) -> *mut u8 {
+    let errors = cs_get(cs, SLOT_ERRORS);
+    let key = mesh_str(field) as u64;
+    if mesh_map_has_key(errors, key) != 0 {
+        return cs;
+    }
+    let new_cs = mesh_gc_alloc_actor(CS_SIZE as u64, 8);
+    std::ptr::copy_nonoverlapping(cs, new_cs, CS_SIZE);
+    cs_set(
+        new_cs,
+        SLOT_ERRORS,
+        mesh_map_put(errors, key, mesh_str(message) as u64),
+    );
+    cs_set_int(new_cs, SLOT_VALID, 0);
+    new_cs
+}
+
+/// `cs` with the error `check` finds in `field`'s change, if any; a field
+/// without a change is not checked.
+unsafe fn validate_change(
+    cs: *mut u8,
+    field: *mut u8,
+    check: impl FnOnce(&str) -> Option<String>,
+) -> *mut u8 {
+    let field = text_of(field);
+    match text_at(cs_get(cs, SLOT_CHANGES), field).and_then(check) {
+        Some(message) => add_error(cs, field, &message),
+        None => cs,
+    }
+}
+
 /// Changeset.validate_required(changeset, fields_list)
 ///
-/// Checks that each field in fields_list exists and is non-empty in
-/// either `changes` or `data`. Adds "can't be blank" error for missing fields.
+/// Checks that each field in fields_list has a non-empty value in `changes`
+/// or, when it has no change, in `data`. Adds "can't be blank" error for missing fields.
 #[no_mangle]
 pub extern "C" fn mesh_changeset_validate_required(cs: *mut u8, fields: *mut u8) -> *mut u8 {
     unsafe {
-        let new_cs = clone_changeset(cs);
-        let field_names = list_strings(fields);
-        let changes = cs_get(new_cs, SLOT_CHANGES);
-        let data = cs_get(new_cs, SLOT_DATA);
-        let mut errors = cs_get(new_cs, SLOT_ERRORS);
-
-        for field in &field_names {
-            let key_mesh = mesh_str(field) as *mut u8;
-            let key_u64 = key_mesh as u64;
-
-            // Check if field has a non-empty value in changes or data
-            let is_present = if mesh_map_has_key(changes, key_u64) != 0 {
-                let val = mesh_map_get(changes, key_u64);
-                let s = text_of(val as *mut u8);
-                !s.is_empty()
-            } else if mesh_map_has_key(data, key_u64) != 0 {
-                let val = mesh_map_get(data, key_u64);
-                let s = text_of(val as *mut u8);
-                !s.is_empty()
-            } else {
-                false
-            };
-
-            if !is_present {
-                // Only add error if no error exists for this field yet
-                if mesh_map_has_key(errors, key_u64) == 0 {
-                    let msg = mesh_str("can't be blank") as *mut u8;
-                    errors = mesh_map_put(errors, key_u64, msg as u64);
-                }
+        let (changes, data) = (cs_get(cs, SLOT_CHANGES), cs_get(cs, SLOT_DATA));
+        list_strings(fields).iter().fold(cs, |cs, field| {
+            let value = text_at(changes, field).or_else(|| text_at(data, field));
+            match value.is_some_and(|value| !value.is_empty()) {
+                true => cs,
+                false => add_error(cs, field, "can't be blank"),
             }
-        }
-
-        cs_set(new_cs, SLOT_ERRORS, errors);
-        cs_set_int(
-            new_cs,
-            SLOT_VALID,
-            if mesh_map_size(errors) > 0 { 0 } else { 1 },
-        );
-        new_cs
+        })
     }
 }
 
@@ -270,41 +204,16 @@ pub extern "C" fn mesh_changeset_validate_length(
     max: i64,
 ) -> *mut u8 {
     unsafe {
-        let new_cs = clone_changeset(cs);
-        let changes = cs_get(new_cs, SLOT_CHANGES);
-        let mut errors = cs_get(new_cs, SLOT_ERRORS);
-
-        let field_str = text_of(field);
-        let key_mesh = mesh_str(field_str) as *mut u8;
-        let key_u64 = key_mesh as u64;
-
-        // Only validate if field exists in changes
-        if mesh_map_has_key(changes, key_u64) != 0 {
-            let val = mesh_map_get(changes, key_u64);
-            let val_str = text_of(val as *mut u8);
-            let len = val_str.chars().count() as i64;
-
-            // Only add first error per field
-            if mesh_map_has_key(errors, key_u64) == 0 {
-                if min != -1 && len < min {
-                    let msg = format!("should be at least {} character(s)", min);
-                    let msg_mesh = mesh_str(&msg) as *mut u8;
-                    errors = mesh_map_put(errors, key_u64, msg_mesh as u64);
-                } else if max != -1 && len > max {
-                    let msg = format!("should be at most {} character(s)", max);
-                    let msg_mesh = mesh_str(&msg) as *mut u8;
-                    errors = mesh_map_put(errors, key_u64, msg_mesh as u64);
-                }
+        validate_change(cs, field, |value| {
+            let len = value.chars().count() as i64;
+            if min != -1 && len < min {
+                Some(format!("should be at least {} character(s)", min))
+            } else if max != -1 && len > max {
+                Some(format!("should be at most {} character(s)", max))
+            } else {
+                None
             }
-        }
-
-        cs_set(new_cs, SLOT_ERRORS, errors);
-        cs_set_int(
-            new_cs,
-            SLOT_VALID,
-            if mesh_map_size(errors) > 0 { 0 } else { 1 },
-        );
-        new_cs
+        })
     }
 }
 
@@ -319,36 +228,10 @@ pub extern "C" fn mesh_changeset_validate_format(
     pattern: *mut u8,
 ) -> *mut u8 {
     unsafe {
-        let new_cs = clone_changeset(cs);
-        let changes = cs_get(new_cs, SLOT_CHANGES);
-        let mut errors = cs_get(new_cs, SLOT_ERRORS);
-
-        let field_str = text_of(field);
-        let pattern_str = text_of(pattern);
-        let key_mesh = mesh_str(field_str) as *mut u8;
-        let key_u64 = key_mesh as u64;
-
-        // Only validate if field exists in changes
-        if mesh_map_has_key(changes, key_u64) != 0 {
-            let val = mesh_map_get(changes, key_u64);
-            let val_str = text_of(val as *mut u8);
-
-            if !val_str.contains(pattern_str) {
-                // Only add error if no error exists for this field yet
-                if mesh_map_has_key(errors, key_u64) == 0 {
-                    let msg = mesh_str("has invalid format") as *mut u8;
-                    errors = mesh_map_put(errors, key_u64, msg as u64);
-                }
-            }
-        }
-
-        cs_set(new_cs, SLOT_ERRORS, errors);
-        cs_set_int(
-            new_cs,
-            SLOT_VALID,
-            if mesh_map_size(errors) > 0 { 0 } else { 1 },
-        );
-        new_cs
+        let pattern = text_of(pattern);
+        validate_change(cs, field, |value| {
+            (!value.contains(pattern)).then(|| "has invalid format".to_string())
+        })
     }
 }
 
@@ -363,36 +246,10 @@ pub extern "C" fn mesh_changeset_validate_inclusion(
     allowed_values: *mut u8,
 ) -> *mut u8 {
     unsafe {
-        let new_cs = clone_changeset(cs);
-        let changes = cs_get(new_cs, SLOT_CHANGES);
-        let mut errors = cs_get(new_cs, SLOT_ERRORS);
-
-        let field_str = text_of(field);
-        let key_mesh = mesh_str(field_str) as *mut u8;
-        let key_u64 = key_mesh as u64;
-
-        // Only validate if field exists in changes
-        if mesh_map_has_key(changes, key_u64) != 0 {
-            let val = mesh_map_get(changes, key_u64);
-            let val_str = text_of(val as *mut u8);
-
-            // Check if value is in the allowed list
-            let allowed = list_strings(allowed_values);
-            let is_valid = allowed.iter().any(|a| a == val_str);
-
-            if !is_valid && mesh_map_has_key(errors, key_u64) == 0 {
-                let msg = mesh_str("is invalid") as *mut u8;
-                errors = mesh_map_put(errors, key_u64, msg as u64);
-            }
-        }
-
-        cs_set(new_cs, SLOT_ERRORS, errors);
-        cs_set_int(
-            new_cs,
-            SLOT_VALID,
-            if mesh_map_size(errors) > 0 { 0 } else { 1 },
-        );
-        new_cs
+        let allowed = list_strings(allowed_values);
+        validate_change(cs, field, |value| {
+            (!allowed.iter().any(|a| a == value)).then(|| "is invalid".to_string())
+        })
     }
 }
 
@@ -410,53 +267,18 @@ pub extern "C" fn mesh_changeset_validate_number(
     lte: i64,
 ) -> *mut u8 {
     unsafe {
-        let new_cs = clone_changeset(cs);
-        let changes = cs_get(new_cs, SLOT_CHANGES);
-        let mut errors = cs_get(new_cs, SLOT_ERRORS);
-
-        let field_str = text_of(field);
-        let key_mesh = mesh_str(field_str) as *mut u8;
-        let key_u64 = key_mesh as u64;
-
-        // Only validate if field exists in changes
-        if mesh_map_has_key(changes, key_u64) != 0 {
-            let val = mesh_map_get(changes, key_u64);
-            let val_str = text_of(val as *mut u8);
-
-            // Only add first error per field
-            if mesh_map_has_key(errors, key_u64) == 0 {
-                match val_str.trim().parse::<i64>() {
-                    Err(_) => {
-                        let msg = mesh_str("is not a number") as *mut u8;
-                        errors = mesh_map_put(errors, key_u64, msg as u64);
-                    }
-                    Ok(num) => {
-                        let mut err_msg: Option<String> = None;
-                        if gt != -1 && num <= gt {
-                            err_msg = Some(format!("must be greater than {}", gt));
-                        } else if lt != -1 && num >= lt {
-                            err_msg = Some(format!("must be less than {}", lt));
-                        } else if gte != -1 && num < gte {
-                            err_msg = Some(format!("must be greater than or equal to {}", gte));
-                        } else if lte != -1 && num > lte {
-                            err_msg = Some(format!("must be less than or equal to {}", lte));
-                        }
-                        if let Some(msg) = err_msg {
-                            let msg_mesh = mesh_str(&msg) as *mut u8;
-                            errors = mesh_map_put(errors, key_u64, msg_mesh as u64);
-                        }
-                    }
-                }
+        validate_change(cs, field, |value| match value.trim().parse::<i64>() {
+            Err(_) => Some("is not a number".to_string()),
+            Ok(num) if gt != -1 && num <= gt => Some(format!("must be greater than {}", gt)),
+            Ok(num) if lt != -1 && num >= lt => Some(format!("must be less than {}", lt)),
+            Ok(num) if gte != -1 && num < gte => {
+                Some(format!("must be greater than or equal to {}", gte))
             }
-        }
-
-        cs_set(new_cs, SLOT_ERRORS, errors);
-        cs_set_int(
-            new_cs,
-            SLOT_VALID,
-            if mesh_map_size(errors) > 0 { 0 } else { 1 },
-        );
-        new_cs
+            Ok(num) if lte != -1 && num > lte => {
+                Some(format!("must be less than or equal to {}", lte))
+            }
+            Ok(_) => None,
+        })
     }
 }
 
@@ -487,23 +309,21 @@ pub extern "C" fn mesh_changeset_changes(cs: *mut u8) -> *mut u8 {
     unsafe { cs_get(cs, SLOT_CHANGES) }
 }
 
+/// `field`'s entry in the map in `slot`, or "" if it has none.
+unsafe fn entry_or_empty(cs: *mut u8, slot: usize, field: *mut u8) -> *mut u8 {
+    let (map, key) = (cs_get(cs, slot), mesh_str(text_of(field)) as u64);
+    match mesh_map_has_key(map, key) {
+        0 => mesh_str("") as *mut u8,
+        _ => mesh_map_get(map, key) as *mut u8,
+    }
+}
+
 /// Changeset.get_change(changeset, field) -> String
 ///
 /// Returns the value of a field from the changes map, or empty string if not found.
 #[no_mangle]
 pub extern "C" fn mesh_changeset_get_change(cs: *mut u8, field: *mut u8) -> *mut u8 {
-    unsafe {
-        let changes = cs_get(cs, SLOT_CHANGES);
-        let field_str = text_of(field);
-        let key_mesh = mesh_str(field_str) as *mut u8;
-        let key_u64 = key_mesh as u64;
-
-        if mesh_map_has_key(changes, key_u64) != 0 {
-            mesh_map_get(changes, key_u64) as *mut u8
-        } else {
-            mesh_str("") as *mut u8
-        }
-    }
+    unsafe { entry_or_empty(cs, SLOT_CHANGES, field) }
 }
 
 /// Changeset.get_error(changeset, field) -> String
@@ -511,18 +331,7 @@ pub extern "C" fn mesh_changeset_get_change(cs: *mut u8, field: *mut u8) -> *mut
 /// Returns the error message for a field, or empty string if no error.
 #[no_mangle]
 pub extern "C" fn mesh_changeset_get_error(cs: *mut u8, field: *mut u8) -> *mut u8 {
-    unsafe {
-        let errors = cs_get(cs, SLOT_ERRORS);
-        let field_str = text_of(field);
-        let key_mesh = mesh_str(field_str) as *mut u8;
-        let key_u64 = key_mesh as u64;
-
-        if mesh_map_has_key(errors, key_u64) != 0 {
-            mesh_map_get(errors, key_u64) as *mut u8
-        } else {
-            mesh_str("") as *mut u8
-        }
-    }
+    unsafe { entry_or_empty(cs, SLOT_ERRORS, field) }
 }
 
 // ── Constraint-to-changeset error mapping ───────────────────────────
@@ -595,40 +404,6 @@ pub(crate) fn extract_field_from_constraint(
 
     // No known suffix matched -- return None
     None
-}
-
-/// Add a constraint error to a changeset, returning a new changeset with the error added.
-///
-/// Clones the changeset, adds the error if no error exists for that field yet,
-/// updates SLOT_VALID, and returns the new changeset pointer.
-///
-/// # Safety
-///
-/// The `cs` pointer must be a valid changeset allocation.
-pub(crate) unsafe fn add_constraint_error_to_changeset(
-    cs: *mut u8,
-    field: &str,
-    message: &str,
-) -> *mut u8 {
-    let new_cs = clone_changeset(cs);
-    let mut errors = cs_get(new_cs, SLOT_ERRORS);
-
-    let key_mesh = mesh_str(field) as *mut u8;
-    let key_u64 = key_mesh as u64;
-
-    // Only add if no error exists for this field yet
-    if mesh_map_has_key(errors, key_u64) == 0 {
-        let msg_mesh = mesh_str(message) as *mut u8;
-        errors = mesh_map_put(errors, key_u64, msg_mesh as u64);
-    }
-
-    cs_set(new_cs, SLOT_ERRORS, errors);
-    cs_set_int(
-        new_cs,
-        SLOT_VALID,
-        if mesh_map_size(errors) > 0 { 0 } else { 1 },
-    );
-    new_cs
 }
 
 #[cfg(test)]
