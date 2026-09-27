@@ -1629,17 +1629,8 @@ impl<'ctx> CodeGen<'ctx> {
             cond_val
         };
 
-        // Multi-element tuple expressions are represented by pointers to the
-        // runtime `{ len, elements... }` allocation. Preserve that
-        // representation across control-flow merges instead of allocating a
-        // by-value LLVM tuple and storing branch pointers into it.
-        let result_ty = if matches!(ty, MirType::Tuple(_)) {
-            self.context
-                .ptr_type(inkwell::AddressSpace::default())
-                .into()
-        } else {
-            self.llvm_type(ty)
-        };
+        // An `if`'s type is its value's runtime type: a tuple is `Ptr`.
+        let result_ty = self.llvm_type(ty);
         let result_alloca = self
             .builder
             .build_alloca(result_ty, "if_result")
