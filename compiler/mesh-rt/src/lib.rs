@@ -238,12 +238,9 @@ pub use dist::node::{
     MeshBootstrapStatus,
 };
 pub use dist::operator::{
-    operator_continuity_list, operator_continuity_status, operator_recent_diagnostics,
-    operator_runtime_snapshot, operator_status, query_operator_continuity_list,
-    query_operator_continuity_list_remote, query_operator_continuity_status,
-    query_operator_continuity_status_remote, query_operator_control, query_operator_control_remote,
-    query_operator_diagnostics, query_operator_diagnostics_remote, query_operator_runtime,
-    query_operator_runtime_remote, query_operator_status, query_operator_status_remote,
+    operator_runtime_snapshot, query_operator_continuity_list_remote,
+    query_operator_continuity_status_remote, query_operator_control_remote,
+    query_operator_diagnostics_remote, query_operator_runtime_remote, query_operator_status_remote,
     sign_operator_control_request, OperatorAuthoritySnapshot, OperatorContinuityList,
     OperatorControlAction, OperatorControlOutcome, OperatorControlRequest, OperatorDiagnosticEntry,
     OperatorDiagnosticRecord, OperatorDiagnosticsBuffer, OperatorDiagnosticsSnapshot,
