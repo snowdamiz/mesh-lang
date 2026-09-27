@@ -411,7 +411,7 @@ end
 | `Changeset.cast(data, params, allowed)` | Keep only allowed fields |
 | `Changeset.cast_with_types(data, params, allowed, field_types)` | Cast values using schema field metadata |
 | `Changeset.validate_required(changeset, fields)` | Require non-empty values |
-| `Changeset.validate_length(changeset, field, min, max)` | Validate string length; `-1` disables a bound |
+| `Changeset.validate_length(changeset, field, min, max)` | Validate string length in characters; `-1` disables a bound |
 | `Changeset.validate_format(changeset, field, substring)` | Require a string to contain the supplied substring |
 | `Changeset.validate_inclusion(changeset, field, allowed)` | Require one of the supplied strings |
 | `Changeset.validate_number(changeset, field, gt, lt, gte, lte)` | Validate integer bounds; `-1` disables a bound |
