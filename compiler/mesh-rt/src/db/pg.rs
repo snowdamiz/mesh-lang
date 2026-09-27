@@ -1507,12 +1507,23 @@ pub extern "C" fn mesh_pg_query_values(
 
 // ── Transaction Management ─────────────────────────────────────────────
 
-/// `Ok(())` once `sql` has run on the connection, or the server's message.
-unsafe fn unit_command(conn_handle: u64, sql: &str) -> *mut u8 {
-    match pg_simple_command(&mut *(conn_handle as *mut PgConn), sql) {
+/// `Ok(())`, or the error.
+fn unit_result(result: Result<(), String>) -> *mut u8 {
+    match result {
         Ok(()) => alloc_result(0, std::ptr::null_mut()) as *mut u8,
         Err(error) => err_result(&error),
     }
+}
+
+/// COMMIT. A transaction a failed statement aborted cannot commit:
+/// PostgreSQL rolls it back instead, without an error, so it is one here.
+fn commit(conn: &mut PgConn) -> Result<(), String> {
+    let failed = conn.txn_status == b'E';
+    pg_simple_command(conn, "COMMIT")?;
+    if failed {
+        return Err("the transaction failed, so COMMIT rolled it back".to_string());
+    }
+    Ok(())
 }
 
 /// Begin a PostgreSQL transaction.
@@ -1524,7 +1535,8 @@ unsafe fn unit_command(conn_handle: u64, sql: &str) -> *mut u8 {
 /// Sends `BEGIN` and returns Ok(()) or Err(error_message).
 #[no_mangle]
 pub extern "C" fn mesh_pg_begin(conn_handle: u64) -> *mut u8 {
-    unsafe { unit_command(conn_handle, "BEGIN") }
+    let conn = unsafe { &mut *(conn_handle as *mut PgConn) };
+    unit_result(pg_simple_command(conn, "BEGIN"))
 }
 
 /// Commit a PostgreSQL transaction.
@@ -1533,10 +1545,12 @@ pub extern "C" fn mesh_pg_begin(conn_handle: u64) -> *mut u8 {
 ///
 /// `mesh_pg_commit(conn_handle: u64) -> *mut u8 (MeshResult<Unit, String>)`
 ///
-/// Sends `COMMIT` and returns Ok(()) or Err(error_message).
+/// Sends `COMMIT` and returns Ok(()) or Err(error_message), an error too
+/// when a failed statement had aborted the transaction.
 #[no_mangle]
 pub extern "C" fn mesh_pg_commit(conn_handle: u64) -> *mut u8 {
-    unsafe { unit_command(conn_handle, "COMMIT") }
+    let conn = unsafe { &mut *(conn_handle as *mut PgConn) };
+    unit_result(commit(conn))
 }
 
 /// Rollback a PostgreSQL transaction.
@@ -1548,7 +1562,8 @@ pub extern "C" fn mesh_pg_commit(conn_handle: u64) -> *mut u8 {
 /// Sends `ROLLBACK` and returns Ok(()) or Err(error_message).
 #[no_mangle]
 pub extern "C" fn mesh_pg_rollback(conn_handle: u64) -> *mut u8 {
-    unsafe { unit_command(conn_handle, "ROLLBACK") }
+    let conn = unsafe { &mut *(conn_handle as *mut PgConn) };
+    unit_result(pg_simple_command(conn, "ROLLBACK"))
 }
 
 pub(crate) unsafe fn invoke_transaction_callback(
@@ -1606,7 +1621,7 @@ pub extern "C" fn mesh_pg_transaction(
                 let r = &*(result_ptr as *const crate::io::MeshResult);
                 if r.tag == 0 {
                     // Success -> COMMIT
-                    if let Err(e) = pg_simple_command(conn, "COMMIT") {
+                    if let Err(e) = commit(conn) {
                         let _ = pg_simple_command(conn, "ROLLBACK");
                         return err_result(&format!("COMMIT: {}", e));
                     }
@@ -2680,7 +2695,7 @@ mod tests {
             message(b'D', &data_row(&[Some(b"1"), None])),
             error_response("division by zero"),
             ready(b'E'),
-            // BEGIN refused; COMMIT and ROLLBACK accepted.
+            // BEGIN refused; COMMIT and ROLLBACK answered.
             error_response("cannot begin"),
             ready(b'E'),
             complete("COMMIT"),
@@ -2713,7 +2728,11 @@ mod tests {
             outcome(mesh_pg_begin(handle)).err().as_deref(),
             Some("cannot begin")
         );
-        assert!(outcome(mesh_pg_commit(handle)).is_ok());
+        // The refusal left the transaction failed: it cannot commit.
+        assert_eq!(
+            outcome(mesh_pg_commit(handle)).err().as_deref(),
+            Some("the transaction failed, so COMMIT rolled it back")
+        );
         assert!(outcome(mesh_pg_rollback(handle)).is_ok());
         assert_eq!(conn_of(handle).txn_status, b'I');
         mesh_pg_close(handle);
@@ -3020,6 +3039,13 @@ mod tests {
         panic!("the callback panicked");
     }
 
+    /// Adds parent 4, ignoring a statement that fails after it.
+    extern "C-unwind" fn add_parent_four_despite_a_failure(conn: u64) -> MeshResult {
+        run(conn, "INSERT INTO parent VALUES (4)").unwrap();
+        let _ = run(conn, "SELECT 1/0");
+        unit_ok()
+    }
+
     /// Adds a child of the parent `env` points at: a deferred foreign key,
     /// checked at COMMIT.
     extern "C-unwind" fn add_child(env: *const u8, conn: u64) -> MeshResult {
@@ -3071,8 +3097,29 @@ mod tests {
         );
         let parent = 1_i64;
         assert!(transaction(add_child as *const u8, &parent as *const i64 as *const u8).is_ok());
+        // PostgreSQL answers the COMMIT of a transaction a failed statement
+        // aborted by rolling it back, without an error.
+        let aborted = "the transaction failed, so COMMIT rolled it back";
+        assert_eq!(
+            transaction(
+                add_parent_four_despite_a_failure as *const u8,
+                std::ptr::null()
+            )
+            .err(),
+            Some(format!("COMMIT: {aborted}"))
+        );
+        assert!(outcome(mesh_pg_begin(handle)).is_ok());
+        run(handle, "INSERT INTO parent VALUES (5)").unwrap();
+        assert!(run(handle, "SELECT 1/0").is_err());
+        assert_eq!(
+            outcome(mesh_pg_commit(handle)).err().as_deref(),
+            Some(aborted)
+        );
+        assert!(outcome(mesh_pg_begin(handle)).is_ok());
+        run(handle, "INSERT INTO parent VALUES (6)").unwrap();
+        assert!(outcome(mesh_pg_commit(handle)).is_ok());
 
-        assert_eq!(parents(handle), ["id=1"]);
+        assert_eq!(parents(handle), ["id=1", "id=6"]);
         assert_eq!(conn_of(handle).txn_status, b'I');
         mesh_pg_close(handle);
     }
