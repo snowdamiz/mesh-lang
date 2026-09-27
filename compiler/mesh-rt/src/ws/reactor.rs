@@ -624,10 +624,18 @@ impl Entry {
         handshake + self.decoder.buffered_len() + self.assembler.buffered_len()
     }
 
+    /// Whether the connection takes more input now. Frames already read
+    /// wait for their turn, and a server's 101 answer goes out before the
+    /// frames after its request are read: until then, what the peer sends
+    /// stays in the socket, rather than the decoder growing.
+    fn takes_input(&self) -> bool {
+        !self.frames_ready && !matches!(self.phase, Phase::ServerReply { .. })
+    }
+
     fn readable(&mut self) -> bool {
         let mut bytes_read = 0usize;
         let mut buffer = [0u8; 16 * 1024];
-        while bytes_read < READ_BUDGET_BYTES && !self.dead {
+        while bytes_read < READ_BUDGET_BYTES && !self.dead && self.takes_input() {
             let allowance = (READ_BUDGET_BYTES - bytes_read).min(buffer.len());
             match self.stream.read(&mut buffer[..allowance]) {
                 Ok(0) => {
@@ -1997,14 +2005,42 @@ mod tests {
         let message = vec![7u8; 60 * 1024];
         let connection = recorder.connection.lock().clone().unwrap();
         connection.send(WsOpcode::Binary, &message).unwrap();
+        // The message's header: it is on its way, and the close queues
+        // behind it.
+        let mut head = [0u8; 4];
+        client.read_exact(&mut head).unwrap();
+        assert_eq!(head, [0x82, 126, 0xf0, 0x00]);
         client
             .write_all(&masked(WsOpcode::Close, &1000u16.to_be_bytes(), true))
             .unwrap();
         assert_eq!(next(&seen), Seen::Close(1000, String::new()));
         client.shutdown(Shutdown::Write).unwrap();
-        assert_eq!(read_frame(&mut client).unwrap().payload, message);
+        let mut payload = vec![0u8; message.len()];
+        client.read_exact(&mut payload).unwrap();
+        assert_eq!(payload, message);
         assert_eq!(close_code(&mut client), 1000);
         assert_eq!(next(&seen), Seen::Terminated("peer closed".to_string()));
+    }
+
+    /// A burst of small messages, far more than one turn processes and
+    /// more bytes than the decoder buffers beyond one message, all arrive:
+    /// the reactor reads no more than it has processed.
+    #[test]
+    fn a_burst_of_small_messages_all_arrive() {
+        let (mut peer, _connection, seen) =
+            open_client(ReactorConfig::client(16, Duration::from_secs(30)));
+        let mut burst = Vec::new();
+        for index in 0..20_000u32 {
+            write_frame(&mut burst, WsOpcode::Binary, &index.to_be_bytes(), true).unwrap();
+        }
+        let writer = std::thread::spawn(move || {
+            peer.write_all(&burst).unwrap();
+            peer
+        });
+        for index in 0..20_000u32 {
+            assert_eq!(next(&seen), Seen::Binary(index.to_be_bytes().to_vec()));
+        }
+        let _peer = writer.join().unwrap();
     }
 
     /// A client closes on a masked frame from its server.
