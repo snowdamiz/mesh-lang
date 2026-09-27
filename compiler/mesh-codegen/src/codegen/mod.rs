@@ -332,10 +332,12 @@ impl<'ctx> CodeGen<'ctx> {
     /// before it is read, so sharing one slot across iterations is safe.
     fn hoist_static_allocas(&self) {
         for function in self.module.get_functions() {
-            let Some(entry) = function.get_first_basic_block() else {
-                continue;
-            };
-            let Some(anchor) = entry.get_first_instruction() else {
+            // A declaration has no body; a compiled function's entry block
+            // holds at least its terminator.
+            let Some(anchor) = function
+                .get_first_basic_block()
+                .and_then(|entry| entry.get_first_instruction())
+            else {
                 continue;
             };
             for block in function.get_basic_block_iter().skip(1) {
@@ -727,11 +729,9 @@ impl<'ctx> CodeGen<'ctx> {
                 .collect();
         }
 
-        // Check if this is a service loop function that needs special codegen.
-        if func.name.starts_with("__service_") && func.name.ends_with("_loop") {
-            if let Some(dispatch_info) = self.service_dispatch.get(&func.name).cloned() {
-                return self.codegen_service_loop(&dispatch_info.0, &dispatch_info.1);
-            }
+        // A service's loop function dispatches its calls and casts.
+        if let Some((calls, casts)) = self.service_dispatch.get(&func.name).cloned() {
+            return self.codegen_service_loop(&calls, &casts);
         }
 
         // Check if this is an actor wrapper function that needs arg deserialization.
@@ -767,12 +767,11 @@ impl<'ctx> CodeGen<'ctx> {
                 _ => {
                     // Coerce the return value to match the function's declared return type.
                     // This handles mismatches like ptr vs { i8, ptr } (Result type).
-                    let fn_ret_ty = fn_val.get_type().get_return_type();
-                    let coerced_result = if let Some(expected_ty) = fn_ret_ty {
-                        self.coerce_value_to_type(result, expected_ty)?
-                    } else {
-                        result
-                    };
+                    let fn_ret_ty = fn_val
+                        .get_type()
+                        .get_return_type()
+                        .expect("a Mesh function returns a value");
+                    let coerced_result = self.coerce_value_to_type(result, fn_ret_ty)?;
                     self.builder
                         .build_return(Some(&coerced_result))
                         .map_err(|e| e.to_string())?;
@@ -944,23 +943,21 @@ impl<'ctx> CodeGen<'ctx> {
                 .i64_type()
                 .const_int(mir_fn.name.len() as u64, false);
 
-            // Get the LLVM function value for this MIR function.
-            if let Some(fn_val) = self.functions.get(&mir_fn.name) {
-                let (arg_tags_ptr, arg_count) = self.remote_spawn_signature_constant(mir_fn);
-                self.builder
-                    .build_call(
-                        register_fn,
-                        &[
-                            name_global.as_pointer_value().into(),
-                            name_len.into(),
-                            fn_val.as_global_value().as_pointer_value().into(),
-                            arg_tags_ptr.into(),
-                            arg_count.into(),
-                        ],
-                        "",
-                    )
-                    .map_err(|e| e.to_string())?;
-            }
+            let fn_val = self.functions[&mir_fn.name];
+            let (arg_tags_ptr, arg_count) = self.remote_spawn_signature_constant(mir_fn);
+            self.builder
+                .build_call(
+                    register_fn,
+                    &[
+                        name_global.as_pointer_value().into(),
+                        name_len.into(),
+                        fn_val.as_global_value().as_pointer_value().into(),
+                        arg_tags_ptr.into(),
+                        arg_count.into(),
+                    ],
+                    "",
+                )
+                .map_err(|e| e.to_string())?;
         }
 
         let register_declared_handler =
@@ -1024,23 +1021,9 @@ impl<'ctx> CodeGen<'ctx> {
         if !self.startup_work_registrations.is_empty() {
             let register_startup_work =
                 intrinsics::get_intrinsic(&self.module, "mesh_register_startup_work");
+            // Each is a declared handler too, registered above: both come
+            // from the same plan's work entries.
             for registration in &self.startup_work_registrations {
-                let Some(handler) = self.declared_handlers.iter().find(|handler| {
-                    handler.runtime_registration_name == registration.runtime_registration_name
-                }) else {
-                    return Err(format!(
-                        "Startup work `{}` is missing declared-handler metadata; clustered work declarations must lower both startup and declared-handler registrations",
-                        registration.runtime_registration_name
-                    ));
-                };
-
-                if !self.functions.contains_key(&handler.executable_symbol) {
-                    return Err(format!(
-                        "Startup work `{}` resolved to undeclared executable `{}` in the LLVM module",
-                        registration.runtime_registration_name, handler.executable_symbol
-                    ));
-                }
-
                 let runtime_name_global = self
                     .builder
                     .build_global_string_ptr(
