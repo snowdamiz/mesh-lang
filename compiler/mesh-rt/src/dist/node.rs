@@ -5521,78 +5521,12 @@ pub(crate) fn execute_transient_operator_query(
         .map_err(|e| format!("transient_operator_reply_read_failed:{e}"))
 }
 
-const TRANSIENT_HTTP_ROUTE_CLIENT_NAME_PART: &str = "mesh-http-route";
 const CLUSTERED_HTTP_ROUTE_TIMEOUT: Duration = Duration::from_secs(5);
 const HTTP_RESERVATION_TIMEOUT: Duration = Duration::from_secs(3);
 // The lease starts on the owner before the acceptance reply crosses the
 // transport. It must outlive the ingress's complete post-acceptance route
 // timeout while remaining bounded against clients that never send a query.
 const HTTP_RESERVATION_LEASE: Duration = Duration::from_secs(10);
-
-struct TransientHttpRouteReplyTask {
-    msg: Vec<u8>,
-    tx: mpsc::Sender<Result<Vec<u8>, String>>,
-}
-
-fn is_transient_http_route_client(remote_name: &str) -> bool {
-    remote_name.starts_with(&format!("{TRANSIENT_HTTP_ROUTE_CLIENT_NAME_PART}@"))
-}
-
-fn transient_http_route_compatibility_allowed(
-    negotiated: &NegotiatedProtocol,
-    autonomous_requested: bool,
-) -> bool {
-    !autonomous_requested && negotiated.version == PROTOCOL_V1
-}
-
-extern "C-unwind" fn transient_http_route_reply_entry(args: *const u8) {
-    if args.is_null() {
-        return;
-    }
-
-    let words = unsafe { Box::from_raw(args as *mut [u64; 1]) };
-    let task_ptr = words[0] as *mut TransientHttpRouteReplyTask;
-    if task_ptr.is_null() {
-        return;
-    }
-
-    let task = unsafe { Box::from_raw(task_ptr) };
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        build_http_route_reply_frame(&task.msg)
-    }))
-    .unwrap_or_else(|_| Err("transient_http_route_execute_panicked".to_string()));
-    let _ = task.tx.send(result);
-}
-
-fn build_http_route_reply_via_actor(msg: Vec<u8>, timeout: Duration) -> Result<Vec<u8>, String> {
-    let (tx, rx) = mpsc::channel();
-    let task_ptr = Box::into_raw(Box::new(TransientHttpRouteReplyTask { msg, tx })) as u64;
-    let args_ptr = Box::into_raw(Box::new([task_ptr]));
-    let pid = crate::actor::mesh_actor_spawn(
-        transient_http_route_reply_entry as *const u8,
-        args_ptr.cast(),
-        std::mem::size_of::<u64>() as u64,
-        1,
-    );
-    if pid == 0 {
-        unsafe {
-            drop(Box::from_raw(args_ptr));
-            drop(Box::from_raw(task_ptr as *mut TransientHttpRouteReplyTask));
-        }
-        return Err("transient_http_route_actor_spawn_failed".to_string());
-    }
-
-    match rx.recv_timeout(timeout) {
-        Ok(result) => result,
-        Err(mpsc::RecvTimeoutError::Timeout) => {
-            crate::dist::telemetry::runtime_telemetry().record_remote_dispatch_timeout();
-            Err("transient_http_route_execute_timeout".to_string())
-        }
-        Err(mpsc::RecvTimeoutError::Disconnected) => {
-            Err("transient_http_route_actor_disconnected".to_string())
-        }
-    }
-}
 
 fn encode_http_route_string(payload: &mut Vec<u8>, value: &str) -> Result<(), String> {
     let len = u16::try_from(value.len())
@@ -6218,38 +6152,6 @@ fn build_http_route_reply_frame(msg: &[u8]) -> Result<Vec<u8>, String> {
     encode_http_route_reply_frame(result)
 }
 
-pub(crate) fn handle_transient_http_route_connection(
-    remote_name: String,
-    mut stream: NodeStream,
-    timeout: Duration,
-) -> Result<(), String> {
-    stream
-        .set_read_timeout(Some(timeout))
-        .map_err(|error| format!("transient_http_route_timeout_set_failed:{error}"))?;
-
-    let msg = read_dist_msg(&mut stream)
-        .map_err(|error| format!("transient_http_route_read_failed:{error}"))?;
-    if msg.is_empty() {
-        return Err("transient_http_route_query_empty".to_string());
-    }
-    if msg[0] != DIST_HTTP_ROUTE_QUERY {
-        return Err(format!(
-            "transient_http_route_query_unexpected_tag:{}",
-            msg[0]
-        ));
-    }
-
-    let reply = build_http_route_reply_via_actor(msg, timeout)
-        .map_err(|error| format!("transient_http_route_execute_failed:{error}"))?;
-    write_msg(&mut stream, &reply)
-        .map_err(|error| format!("transient_http_route_reply_write_failed:{error}"))?;
-    eprintln!(
-        "mesh node: transient clustered HTTP route served for {}",
-        remote_name
-    );
-    Ok(())
-}
-
 pub(crate) struct ClusteredHttpRouteExecution {
     pub response_payload: Vec<u8>,
     pub replayed: bool,
@@ -6592,31 +6494,6 @@ fn handle_accepted_connection(tcp_stream: TcpStream, state: &NodeState) {
         ) {
             eprintln!(
                 "mesh node: transient operator query failed for {}: {}",
-                remote_name, error
-            );
-        }
-        return;
-    }
-
-    if is_transient_http_route_client(&remote_name) {
-        if !transient_http_route_compatibility_allowed(
-            &negotiated_protocol,
-            autonomous_mode_requested(),
-        ) {
-            eprintln!(
-                "mesh node: transient clustered HTTP route rejected for {}: compatibility_channel_disabled",
-                remote_name
-            );
-            return;
-        }
-        let stream = NodeStream::ServerTls(tls_stream);
-        if let Err(error) = handle_transient_http_route_connection(
-            remote_name.clone(),
-            stream,
-            CLUSTERED_HTTP_ROUTE_TIMEOUT,
-        ) {
-            eprintln!(
-                "mesh node: transient clustered HTTP route failed for {}: {}",
                 remote_name, error
             );
         }
@@ -9693,25 +9570,6 @@ mod tests {
                 .expect("protocol-one frame"),
             payload
         );
-        assert!(transient_http_route_compatibility_allowed(
-            &negotiated,
-            false
-        ));
-        assert!(!transient_http_route_compatibility_allowed(
-            &negotiated,
-            true
-        ));
-        let protocol_two = NegotiatedProtocol {
-            version: PROTOCOL_V2,
-            capabilities: super::super::protocol::Capabilities::AUTONOMOUS_REQUIRED,
-            max_frame_bytes: 4096,
-            autonomous_enabled: true,
-            disabled_reason: None,
-        };
-        assert!(!transient_http_route_compatibility_allowed(
-            &protocol_two,
-            false
-        ));
     }
 
     #[test]
