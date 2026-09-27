@@ -435,7 +435,7 @@ The `Migration` module executes common PostgreSQL DDL through a pool:
 | `Migration.drop_column(pool, table, column)` | Drop a column if present |
 | `Migration.rename_column(pool, table, old, new)` | Rename a column |
 | `Migration.create_index(pool, table, columns, options)` | Create a normal, unique, ordered, or partial index |
-| `Migration.drop_index(pool, table, columns)` | Drop the derived index |
+| `Migration.drop_index(pool, table, columns)` | Drop the index `create_index` made on the same columns (by its derived name) |
 | `Migration.execute(pool, sql)` | Execute raw DDL |
 
 Column definitions use `name:TYPE` or `name:TYPE:CONSTRAINTS`, for example `id:UUID:PRIMARY KEY`. Index columns may end in `:ASC` or `:DESC`. Index options accept `unique:true`, `name:index_name`, and a final `where:predicate`.

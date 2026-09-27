@@ -187,10 +187,13 @@ fn parse_create_index_options(options: &str) -> Result<CreateIndexOptions, Strin
     Ok(parsed)
 }
 
-fn parse_index_column(column: &str) -> Result<IndexColumnSpec, String> {
+/// One index column, `name` or `name:ASC`/`name:DESC`; `helper` names the
+/// Migration function for the error.
+fn parse_index_column(column: &str, helper: &str) -> Result<IndexColumnSpec, String> {
     let trimmed = column.trim();
+    let empty = || format!("{helper} columns: column name must not be empty");
     if trimmed.is_empty() {
-        return Err("Migration.create_index columns: column name must not be empty".to_string());
+        return Err(empty());
     }
 
     if let Some((name, suffix)) = trimmed.rsplit_once(':') {
@@ -206,9 +209,7 @@ fn parse_index_column(column: &str) -> Result<IndexColumnSpec, String> {
 
         if let Some(direction) = direction {
             if name.is_empty() {
-                return Err(
-                    "Migration.create_index columns: column name must not be empty".to_string(),
-                );
+                return Err(empty());
             }
             return Ok(IndexColumnSpec {
                 name: name.to_string(),
@@ -217,7 +218,7 @@ fn parse_index_column(column: &str) -> Result<IndexColumnSpec, String> {
         }
 
         return Err(format!(
-            "Migration.create_index columns: `{trimmed}` only supports :ASC or :DESC order suffixes"
+            "{helper} columns: `{trimmed}` only supports :ASC or :DESC order suffixes"
         ));
     }
 
@@ -227,29 +228,34 @@ fn parse_index_column(column: &str) -> Result<IndexColumnSpec, String> {
     })
 }
 
+/// An index's columns, parsed, with the name `create_index` derives from
+/// them and `drop_index` drops by: `idx_{table}_{col1}_{col2}`, the column
+/// names without their order suffixes.
+fn index_columns(
+    table: &str,
+    columns: &[String],
+    helper: &str,
+) -> Result<(Vec<IndexColumnSpec>, String), String> {
+    let parsed: Vec<IndexColumnSpec> = columns
+        .iter()
+        .map(|column| parse_index_column(column, helper))
+        .collect::<Result<_, _>>()?;
+    if parsed.is_empty() {
+        return Err(format!("{helper} columns: at least one column is required"));
+    }
+    let names: Vec<&str> = parsed.iter().map(|column| column.name.as_str()).collect();
+    let derived = format!("idx_{table}_{}", names.join("_"));
+    Ok((parsed, derived))
+}
+
 pub(crate) fn build_create_index_sql(
     table: &str,
     columns: &[String],
     options: &str,
 ) -> Result<String, String> {
     let parsed_options = parse_create_index_options(options)?;
-    let parsed_columns: Vec<IndexColumnSpec> = columns
-        .iter()
-        .map(|column| parse_index_column(column))
-        .collect::<Result<_, _>>()?;
-
-    if parsed_columns.is_empty() {
-        return Err("Migration.create_index columns: at least one column is required".to_string());
-    }
-
-    let index_name = parsed_options.name.unwrap_or_else(|| {
-        let column_suffix = parsed_columns
-            .iter()
-            .map(|column| column.name.as_str())
-            .collect::<Vec<_>>()
-            .join("_");
-        format!("idx_{table}_{column_suffix}")
-    });
+    let (parsed_columns, derived_name) = index_columns(table, columns, "Migration.create_index")?;
+    let index_name = parsed_options.name.unwrap_or(derived_name);
 
     let mut sql = String::new();
     sql.push_str("CREATE ");
@@ -279,13 +285,11 @@ pub(crate) fn build_create_index_sql(
     Ok(sql)
 }
 
-/// Build DROP INDEX SQL.
-///
-/// The index name is derived as `idx_{table}_{col1}_{col2}` to match
-/// the convention used by `build_create_index_sql`.
-pub(crate) fn build_drop_index_sql(table: &str, columns: &[String]) -> String {
-    let index_name = format!("idx_{}_{}", table, columns.join("_"));
-    format!("DROP INDEX IF EXISTS {}", quote_ident(&index_name))
+/// Build DROP INDEX SQL for the index `create_index` made on `columns`
+/// (its derived name).
+pub(crate) fn build_drop_index_sql(table: &str, columns: &[String]) -> Result<String, String> {
+    let (_, index_name) = index_columns(table, columns, "Migration.drop_index")?;
+    Ok(format!("DROP INDEX IF EXISTS {}", quote_ident(&index_name)))
 }
 
 // ── Extern C wrappers ───────────────────────────────────────────────
@@ -441,10 +445,10 @@ pub extern "C" fn mesh_migration_drop_index(
     unsafe {
         let table_name = (*table).as_str();
         let cols = list_strings(columns);
-        let sql = build_drop_index_sql(table_name, &cols);
-        let sql_ptr = mesh_str(&sql) as *const MeshString;
-        let empty_params = mesh_list_new();
-        mesh_pool_execute(pool, sql_ptr, empty_params)
+        match build_drop_index_sql(table_name, &cols) {
+            Ok(sql) => mesh_pool_execute(pool, mesh_str(&sql), mesh_list_new()),
+            Err(message) => err_result(&message),
+        }
     }
 }
 
@@ -652,14 +656,35 @@ mod tests {
 
     #[test]
     fn test_build_drop_index_sql() {
-        let sql = build_drop_index_sql("users", &["email".to_string()]);
+        let sql = build_drop_index_sql("users", &["email".to_string()]).unwrap();
         assert_eq!(sql, "DROP INDEX IF EXISTS \"idx_users_email\"");
     }
 
     #[test]
     fn test_build_drop_index_sql_multi_column() {
-        let sql = build_drop_index_sql("orders", &["user_id".to_string(), "status".to_string()]);
+        let sql =
+            build_drop_index_sql("orders", &["user_id".to_string(), "status".to_string()]).unwrap();
         assert_eq!(sql, "DROP INDEX IF EXISTS \"idx_orders_user_id_status\"");
+    }
+
+    /// `drop_index` given the columns `create_index` was drops the index it
+    /// made: an order suffix or spaces are no part of the derived name.
+    #[test]
+    fn drop_index_derives_the_name_create_index_did() {
+        let columns = ["name:DESC".to_string(), " age ".to_string()];
+        let created = build_create_index_sql("people", &columns, "").unwrap();
+        assert_eq!(
+            created,
+            "CREATE INDEX IF NOT EXISTS \"idx_people_name_age\" ON \"people\" (\"name\" DESC, \"age\")"
+        );
+        assert_eq!(
+            build_drop_index_sql("people", &columns).unwrap(),
+            "DROP INDEX IF EXISTS \"idx_people_name_age\""
+        );
+        assert_eq!(
+            build_drop_index_sql("people", &["name:UP".to_string()]).unwrap_err(),
+            "Migration.drop_index columns: `name:UP` only supports :ASC or :DESC order suffixes"
+        );
     }
 
     #[test]
