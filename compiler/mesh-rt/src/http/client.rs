@@ -1,7 +1,6 @@
 //! Scheduler-aware, bounded HTTP client runtime.
 
 use std::collections::HashMap;
-use std::fmt;
 use std::io::Read;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
@@ -142,13 +141,8 @@ struct HttpMetrics {
     cancellations: AtomicU64,
 }
 
+#[derive(Debug)]
 struct TimedResolver(DefaultResolver);
-
-impl fmt::Debug for TimedResolver {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("TimedResolver")
-    }
-}
 
 impl Resolver for TimedResolver {
     fn resolve(
@@ -166,13 +160,8 @@ impl Resolver for TimedResolver {
     }
 }
 
+#[derive(Debug)]
 struct TimedConnector<C>(C);
-
-impl<C> fmt::Debug for TimedConnector<C> {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("TimedConnector")
-    }
-}
 
 impl<In, C> Connector<In> for TimedConnector<C>
 where
@@ -195,13 +184,8 @@ where
     }
 }
 
+#[derive(Debug)]
 struct TimedTlsConnector<C>(C);
-
-impl<C> fmt::Debug for TimedTlsConnector<C> {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("TimedTlsConnector")
-    }
-}
 
 impl<In, C> Connector<In> for TimedTlsConnector<C>
 where
@@ -226,16 +210,11 @@ where
     }
 }
 
+#[derive(Debug)]
 struct TimedTlsTransport<T> {
     inner: T,
     timed: bool,
     recorded: bool,
-}
-
-impl<T> fmt::Debug for TimedTlsTransport<T> {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("TimedTlsTransport")
-    }
 }
 
 impl<T: Transport> Transport for TimedTlsTransport<T> {
@@ -359,9 +338,6 @@ fn set_timeout(
 
 #[no_mangle]
 pub extern "C" fn mesh_http_build(method: *const MeshString, url: *const MeshString) -> u64 {
-    if method.is_null() || url.is_null() {
-        return 0;
-    }
     let mut registry = requests().lock();
     if registry.len() >= MAX_OPEN_HANDLES {
         return 0;
@@ -379,9 +355,6 @@ pub extern "C" fn mesh_http_header(
     key: *const MeshString,
     value: *const MeshString,
 ) -> u64 {
-    if key.is_null() || value.is_null() {
-        return 0;
-    }
     let key = unsafe { (*key).as_str().to_string() };
     let value = unsafe { (*value).as_str().to_string() };
     update_request(handle, |request| request.headers.push((key, value)))
@@ -389,27 +362,18 @@ pub extern "C" fn mesh_http_header(
 
 #[no_mangle]
 pub extern "C" fn mesh_http_body(handle: u64, body: *const MeshString) -> u64 {
-    if body.is_null() {
-        return 0;
-    }
     let body = unsafe { (*body).as_str().as_bytes().to_vec() };
     update_request(handle, |request| request.body = Some(body))
 }
 
 #[no_mangle]
 pub extern "C" fn mesh_http_body_bytes(handle: u64, body: *const MeshBytes) -> u64 {
-    if body.is_null() {
-        return 0;
-    }
     let body = unsafe { (*body).as_slice().to_vec() };
     update_request(handle, |request| request.body = Some(body))
 }
 
 #[no_mangle]
 pub extern "C" fn mesh_http_json(handle: u64, body: *const MeshString) -> u64 {
-    if body.is_null() {
-        return 0;
-    }
     let body = unsafe { (*body).as_str().as_bytes().to_vec() };
     update_request(handle, |request| {
         request.body = Some(body);
@@ -423,9 +387,6 @@ pub extern "C" fn mesh_http_query(
     key: *const MeshString,
     value: *const MeshString,
 ) -> u64 {
-    if key.is_null() || value.is_null() {
-        return 0;
-    }
     let key = unsafe { (*key).as_str().to_string() };
     let value = unsafe { (*value).as_str().to_string() };
     update_request(handle, |request| request.query_params.push((key, value)))
@@ -449,9 +410,6 @@ pub extern "C" fn mesh_http_stage_timeout(
     stage: *const MeshString,
     millis: i64,
 ) -> u64 {
-    if stage.is_null() {
-        return 0;
-    }
     let stage = unsafe { (*stage).as_str().to_string() };
     update_request(handle, |request| {
         let timeout = match stage.as_str() {
@@ -508,9 +466,6 @@ pub extern "C" fn mesh_http_max_redirects(handle: u64, count: i64) -> u64 {
 }
 
 fn take_request(handle: u64) -> Result<MeshRequestData, String> {
-    if handle == 0 {
-        return Err("invalid or already-consumed HTTP request handle".to_string());
-    }
     requests()
         .lock()
         .remove(&handle)
@@ -522,9 +477,6 @@ fn activate_request(
     cancel: Arc<AtomicBool>,
     sender: CooperativeSender<WorkerEvent>,
 ) -> Result<MeshRequestData, String> {
-    if handle == 0 {
-        return Err("invalid or already-consumed HTTP request handle".to_string());
-    }
     let mut requests = requests().lock();
     let request = requests
         .remove(&handle)
@@ -619,8 +571,8 @@ fn dispatch(
         "get" => without_body(agent.get(url)),
         "head" => without_body(agent.head(url)),
         "delete" => without_body(agent.delete(url)),
-        "options" => without_body(agent.options(url)),
-        _ => unreachable!("request method was validated"),
+        // The one method validate_request admits that is left.
+        _ => without_body(agent.options(url)),
     }
 }
 
@@ -735,11 +687,14 @@ fn execute_request(
             )
         })
         .collect();
+    // A reader limited to one byte past the maximum refuses the byte that
+    // would reach it: a body of up to the maximum is read, a longer one is
+    // refused.
     let maximum = request.max_response_bytes;
     let body = response
         .body_mut()
         .with_config()
-        .limit(maximum.saturating_add(1) as u64)
+        .limit(maximum as u64 + 1)
         .read_to_vec()
         .map_err(|error| {
             record_error(&error);
@@ -749,9 +704,6 @@ fn execute_request(
                 format_error(&error)
             }
         })?;
-    if body.len() > maximum {
-        return Err(format!("RESPONSE_TOO_LARGE: limit is {maximum} bytes"));
-    }
     if cancel.is_some_and(|flag| flag.load(Ordering::Acquire)) {
         return Err("CANCELLED: HTTP request".to_string());
     }
@@ -811,18 +763,18 @@ fn send_cooperatively(agent: Agent, handle: u64) -> *mut u8 {
             Some(&worker_cancel),
         )));
     });
-    let result = match cooperative_recv_timeout(&receiver, wait) {
-        Ok(WorkerEvent::Complete(Ok(response))) => mesh_response(response),
-        Ok(WorkerEvent::Complete(Err(error))) => mesh_error(error),
-        Ok(WorkerEvent::Cancelled) => mesh_error("CANCELLED: HTTP request"),
-        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-            cancel.store(true, Ordering::Release);
-            mesh_error("TIMEOUT_TOTAL: HTTP worker exceeded global timeout")
-        }
-        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-            cancel.store(true, Ordering::Release);
-            mesh_error("HTTP_ERROR: HTTP worker stopped")
-        }
+    // The worker answers by the global timeout, which ureq keeps; the wait
+    // outlasts it by a second, a net under that.
+    let event = cooperative_recv_timeout(&receiver, wait).unwrap_or_else(|_| {
+        cancel.store(true, Ordering::Release);
+        WorkerEvent::Complete(Err(
+            "TIMEOUT_TOTAL: HTTP worker exceeded global timeout".to_string()
+        ))
+    });
+    let result = match event {
+        WorkerEvent::Complete(Ok(response)) => mesh_response(response),
+        WorkerEvent::Complete(Err(error)) => mesh_error(error),
+        WorkerEvent::Cancelled => mesh_error("CANCELLED: HTTP request"),
     };
     active_requests().lock().remove(&handle);
     result
@@ -974,9 +926,6 @@ fn start_stream(
     callback_env: *mut u8,
     binary: bool,
 ) -> i64 {
-    if callback_fn.is_null() {
-        return 0;
-    }
     let Ok(request) = take_request(request_handle) else {
         return 0;
     };
@@ -1070,12 +1019,9 @@ pub extern "C" fn mesh_http_retry_class(
     method: *const MeshString,
     error: *const MeshString,
 ) -> *mut MeshString {
-    let class = if method.is_null() || error.is_null() {
-        "do_not_retry"
-    } else {
-        retry_class(unsafe { (*method).as_str() }, unsafe { (*error).as_str() })
-    };
-    mesh_str(class)
+    mesh_str(retry_class(unsafe { (*method).as_str() }, unsafe {
+        (*error).as_str()
+    }))
 }
 
 fn metric_value(value: &AtomicU64) -> i64 {
@@ -1417,6 +1363,7 @@ mod tests {
 
     #[test]
     fn in_flight_request_cancellation_returns_without_waiting_for_io() {
+        let _api = API.lock();
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         let (accepted_tx, accepted_rx) = std::sync::mpsc::channel();
@@ -1443,5 +1390,540 @@ mod tests {
         assert_eq!(unsafe { error.as_str() }, "CANCELLED: HTTP request");
         assert!(started.elapsed() < Duration::from_millis(500));
         server.join().unwrap();
+    }
+
+    /// Held by the tests that use the runtime API's registries, which are
+    /// the process's: one test filling them must not refuse another.
+    static API: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
+
+    /// A server answering one request with `response`: its port, and the
+    /// request it received.
+    fn serve_once(response: &'static [u8]) -> (u16, std::thread::JoinHandle<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let request = read_request(&mut stream);
+            stream.write_all(response).unwrap();
+            request
+        });
+        (port, server)
+    }
+
+    fn built(method: &str, url: &str) -> u64 {
+        crate::gc::mesh_rt_init();
+        mesh_http_build(mesh_str(method), mesh_str(url))
+    }
+
+    /// A Mesh `Result` as Rust sees it: the payload, or the error text.
+    fn outcome(result: *mut u8) -> Result<*mut u8, String> {
+        let result = unsafe { &*(result as *const crate::io::MeshResult) };
+        match result.tag {
+            0 => Ok(result.value),
+            _ => Err(unsafe { (*(result.value as *const MeshString)).as_str().to_string() }),
+        }
+    }
+
+    /// Each setter refuses a value out of its range, which the request
+    /// then fails with; a setter given an unknown handle returns 0.
+    #[test]
+    fn setters_refuse_values_out_of_range() {
+        let refusal = |configure: &dyn Fn(u64) -> u64| {
+            let handle = built("get", "http://127.0.0.1/");
+            assert_eq!(configure(handle), handle);
+            validate_request(&take_request(handle).unwrap()).err()
+        };
+        let stage = |name: &'static str, millis| {
+            move |handle| mesh_http_stage_timeout(handle, mesh_str(name), millis)
+        };
+        for (configure, error) in [
+            (
+                Box::new(|handle| mesh_http_timeout(handle, -1)) as Box<dyn Fn(u64) -> u64>,
+                Some("global timeout must be positive".to_string()),
+            ),
+            (
+                Box::new(|handle| mesh_http_timeout(handle, 120_001)),
+                Some("global timeout must be between 1 and 120000 milliseconds".to_string()),
+            ),
+            (
+                Box::new(stage("bogus", 5)),
+                Some(
+                    "unknown HTTP timeout stage bogus; expected resolve, connect, send, first_byte, or body"
+                        .to_string(),
+                ),
+            ),
+            (
+                Box::new(|handle| mesh_http_max_response_bytes(handle, -1)),
+                Some("maximum response bytes must be positive".to_string()),
+            ),
+            (
+                Box::new(|handle| mesh_http_max_response_bytes(handle, 0)),
+                Some(format!(
+                    "maximum response bytes must be between 1 and {MAX_RESPONSE_BYTES}"
+                )),
+            ),
+            (
+                Box::new(|handle| mesh_http_max_redirects(handle, -1)),
+                Some(format!("maximum redirects must be between 0 and {MAX_REDIRECTS}")),
+            ),
+            (Box::new(|handle| mesh_http_max_redirects(handle, 3)), None),
+            (Box::new(|handle| mesh_http_max_response_bytes(handle, 16)), None),
+        ] {
+            assert_eq!(refusal(&*configure), error);
+        }
+        for name in [
+            "resolve",
+            "dns",
+            "connect",
+            "tls",
+            "send",
+            "first_byte",
+            "body",
+        ] {
+            assert_eq!(refusal(&stage(name, 50)), None, "{name}");
+        }
+        assert_eq!(mesh_http_timeout(u64::MAX, 5), 0);
+    }
+
+    /// A request is checked before anything is sent: its method, a body
+    /// only a method with one may carry, and an http or https URL.
+    #[test]
+    fn requests_are_checked_before_sending() {
+        let request = |method: &str, url: &str, body: Option<&[u8]>| {
+            let mut request = MeshRequestData::new(method, url);
+            request.body = body.map(<[u8]>::to_vec);
+            execute_request(&Agent::new_with_defaults(), request, None).unwrap_err()
+        };
+        assert_eq!(
+            request("brew", "http://127.0.0.1/", None),
+            "unsupported HTTP method brew"
+        );
+        assert_eq!(
+            request("get", "http://127.0.0.1/", Some(b"x")),
+            "HTTP get requests cannot carry a body"
+        );
+        assert_eq!(
+            request("get", "ftp://127.0.0.1/", None),
+            "INVALID_URL: HTTP URL must use http:// or https://"
+        );
+        assert!(request("get", "not a url", None).starts_with("INVALID_URL: "));
+
+        let cancelled = AtomicBool::new(true);
+        assert_eq!(
+            execute_request(
+                &Agent::new_with_defaults(),
+                MeshRequestData::new("get", "http://127.0.0.1:9/"),
+                Some(&cancelled),
+            )
+            .unwrap_err(),
+            "CANCELLED: HTTP request"
+        );
+    }
+
+    /// The runtime API: headers, query parameters and each kind of body
+    /// reach the server, and the response comes back as a Mesh value.
+    #[test]
+    fn the_runtime_api_sends_requests_and_returns_responses() {
+        let _api = API.lock();
+        let (port, server) =
+            serve_once(b"HTTP/1.1 201 Created\r\nX-Reply: yes\r\nContent-Length: 2\r\n\r\nok");
+        let url = format!("http://127.0.0.1:{port}/items");
+        let request = built("post", &url);
+        mesh_http_header(request, mesh_str("X-Test"), mesh_str("mesh"));
+        mesh_http_query(request, mesh_str("page"), mesh_str("2"));
+        mesh_http_json(request, mesh_str("{}"));
+        let response = outcome(mesh_http_send(request)).unwrap();
+        let response = unsafe { &*(response as *const MeshClientResponse) };
+        assert_eq!(response.status, 201);
+        assert_eq!(
+            unsafe { (*(response.body as *const MeshString)).as_str() },
+            "ok"
+        );
+        assert_eq!(
+            unsafe { (*(response.body_bytes as *const MeshBytes)).as_slice() },
+            b"ok"
+        );
+        let reply =
+            crate::collections::map::mesh_map_get(response.headers, mesh_str("x-reply") as u64);
+        assert_eq!(unsafe { (*(reply as *const MeshString)).as_str() }, "yes");
+        let seen = server.join().unwrap();
+        assert!(
+            seen.starts_with("POST /items?page=2 HTTP/1.1\r\n"),
+            "{seen}"
+        );
+        assert!(seen.to_lowercase().contains("x-test: mesh"), "{seen}");
+        assert!(seen.ends_with("{}"), "{seen}");
+
+        let client = mesh_http_client();
+        for (body, sent) in [(true, "text"), (false, "\u{0}\u{1}")] {
+            let (port, server) = serve_once(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n");
+            let request = built("put", &format!("http://127.0.0.1:{port}/"));
+            if body {
+                mesh_http_body(request, mesh_str(sent));
+            } else {
+                mesh_http_body_bytes(request, crate::bytes::mesh_bytes_new([0u8, 1].as_ptr(), 2));
+            }
+            assert!(outcome(mesh_http_send_with(client, request)).is_ok());
+            assert!(server.join().unwrap().ends_with(sent));
+        }
+        mesh_http_client_close(client);
+        assert_eq!(
+            outcome(mesh_http_send_with(
+                client,
+                built("get", "http://127.0.0.1/")
+            ))
+            .unwrap_err(),
+            "closed or unknown HTTP client handle"
+        );
+        assert_eq!(
+            outcome(mesh_http_send(u64::MAX)).unwrap_err(),
+            "invalid or already-consumed HTTP request handle"
+        );
+        let closed = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://127.0.0.1:{}/", closed.local_addr().unwrap().port());
+        drop(closed);
+        assert!(outcome(mesh_http_send(built("get", &url)))
+            .unwrap_err()
+            .starts_with("CONNECT_FAILURE: "));
+        assert_eq!(
+            unsafe {
+                (*mesh_http_retry_class(mesh_str("get"), mesh_str("DNS_FAILURE: x"))).as_str()
+            },
+            "safe_retry"
+        );
+        assert!(unsafe { (*mesh_http_metrics()).requests } > 0);
+    }
+
+    /// The request, client, active-request and stream registries each
+    /// refuse the handle that would pass their bound.
+    #[test]
+    fn handle_registries_are_bounded() {
+        let _api = API.lock();
+        crate::gc::mesh_rt_init();
+        let open = requests().lock().len();
+        let fillers = (open..MAX_OPEN_HANDLES)
+            .map(|_| built("get", "http://127.0.0.1/"))
+            .collect::<Vec<_>>();
+        assert_eq!(built("get", "http://127.0.0.1/"), 0);
+        for handle in fillers {
+            mesh_http_cancel(handle);
+        }
+
+        let open = clients().lock().len();
+        let fillers = (open..MAX_OPEN_HANDLES)
+            .map(|_| mesh_http_client())
+            .collect::<Vec<_>>();
+        assert_eq!(mesh_http_client(), 0);
+        for handle in fillers {
+            mesh_http_client_close(handle);
+        }
+
+        let (sender, _receiver) = cooperative_channel();
+        let open = active_requests().lock().len();
+        let fillers = (open..MAX_OPEN_HANDLES)
+            .map(|_| {
+                let handle = next_handle();
+                active_requests().lock().insert(
+                    handle,
+                    ActiveRequest {
+                        cancel: Arc::new(AtomicBool::new(false)),
+                        sender: sender.clone(),
+                    },
+                );
+                handle
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            outcome(mesh_http_send(built("get", "http://127.0.0.1/"))).unwrap_err(),
+            "too many active HTTP requests"
+        );
+        for handle in fillers {
+            active_requests().lock().remove(&handle);
+        }
+
+        let open = streams().lock().len();
+        let fillers = (open..MAX_OPEN_HANDLES)
+            .map(|_| {
+                let handle = next_handle();
+                streams()
+                    .lock()
+                    .insert(handle, Arc::new(AtomicBool::new(false)));
+                handle
+            })
+            .collect::<Vec<_>>();
+        let request = built("get", "http://127.0.0.1/");
+        assert_eq!(
+            mesh_http_stream(request, collect_text as *mut u8, std::ptr::null_mut()),
+            0
+        );
+        for handle in fillers {
+            streams().lock().remove(&handle);
+        }
+    }
+
+    /// A body cut short is an HTTP error; a redirect limit of 0 returns
+    /// the redirect itself.
+    #[test]
+    fn bodies_cut_short_fail_and_redirects_can_be_kept() {
+        let (port, server) = serve_once(b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\n\r\nabc");
+        let error = execute_request(
+            &Agent::new_with_defaults(),
+            MeshRequestData::new("get", &format!("http://127.0.0.1:{port}/")),
+            None,
+        )
+        .unwrap_err();
+        assert!(error.starts_with("HTTP_ERROR: "), "{error}");
+        server.join().unwrap();
+
+        let (port, server) =
+            serve_once(b"HTTP/1.1 302 Found\r\nLocation: /elsewhere\r\nContent-Length: 0\r\n\r\n");
+        let mut request = MeshRequestData::new("get", &format!("http://127.0.0.1:{port}/"));
+        request.max_redirects = Some(0);
+        assert_eq!(
+            execute_request(&http_agent(), request, None)
+                .unwrap()
+                .status,
+            302
+        );
+        server.join().unwrap();
+    }
+
+    /// An https request is timed through its TLS handshake, and a server
+    /// the web roots do not vouch for is a TLS error.
+    #[test]
+    fn https_requests_are_timed_and_verified() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let (server_config, _) = crate::dist::node::ws_test_tls_configs();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (tcp, _) = listener.accept().unwrap();
+            let mut tls = rustls::StreamOwned::new(
+                rustls::ServerConnection::new(server_config).unwrap(),
+                tcp,
+            );
+            let _ = std::io::Read::read(&mut tls, &mut [0u8; 1]);
+        });
+        let tls_before = metrics().tls_micros.load(Ordering::Relaxed);
+        let error = execute_request(
+            &http_agent(),
+            MeshRequestData::new("get", &format!("https://127.0.0.1:{port}/")),
+            None,
+        )
+        .unwrap_err();
+        assert!(error.starts_with("TLS_ERROR: "), "{error}");
+        assert!(metrics().tls_micros.load(Ordering::Relaxed) > tls_before);
+        server.join().unwrap();
+    }
+
+    struct Collected {
+        chunks: parking_lot::Mutex<Vec<String>>,
+        stop_after: usize,
+    }
+
+    extern "C" fn collect_text_into(environment: *mut u8, chunk: *mut u8) -> *mut u8 {
+        let collected = unsafe { &*(environment as *const Collected) };
+        let mut chunks = collected.chunks.lock();
+        chunks.push(unsafe { (*(chunk as *const MeshString)).as_str().to_string() });
+        if chunks.len() >= collected.stop_after {
+            mesh_str("stop") as *mut u8
+        } else {
+            std::ptr::null_mut()
+        }
+    }
+
+    static STREAMED: AtomicU64 = AtomicU64::new(0);
+
+    extern "C" fn collect_text(_chunk: *mut u8) -> *mut u8 {
+        STREAMED.fetch_add(1, Ordering::SeqCst);
+        std::ptr::null_mut()
+    }
+
+    fn collected(stop_after: usize) -> Box<Collected> {
+        Box::new(Collected {
+            chunks: parking_lot::Mutex::new(Vec::new()),
+            stop_after,
+        })
+    }
+
+    /// Text is handed on in whole characters: a character split across
+    /// reads waits for its end, a byte that begins none is an error, and so
+    /// is a character the body ends inside. A callback's "stop" stops.
+    #[test]
+    fn streamed_text_is_handed_on_in_whole_characters() {
+        crate::gc::mesh_rt_init();
+        let state = collected(usize::MAX);
+        let env = &*state as *const Collected as usize;
+        let callback = collect_text_into as *const () as usize;
+        let mut pending = "aé".as_bytes()[..2].to_vec();
+        assert_eq!(emit_text(callback, env, &mut pending, false), Ok(false));
+        assert_eq!(pending, "é".as_bytes()[..1]);
+        assert_eq!(emit_text(callback, env, &mut pending, false), Ok(false));
+        pending.push("é".as_bytes()[1]);
+        assert_eq!(emit_text(callback, env, &mut pending, false), Ok(false));
+        assert_eq!(emit_text(callback, env, &mut Vec::new(), true), Ok(false));
+        assert_eq!(*state.chunks.lock(), ["a", "é"]);
+        assert_eq!(
+            emit_text(callback, env, &mut vec![0xff], false),
+            Err("INVALID_UTF8: streamed HTTP body".to_string())
+        );
+        assert_eq!(
+            emit_text(callback, env, &mut "é".as_bytes()[..1].to_vec(), true),
+            Err("INVALID_UTF8: streamed HTTP body".to_string())
+        );
+        let stopping = collected(1);
+        let stop_env = &*stopping as *const Collected as usize;
+        assert_eq!(
+            emit_text(
+                callback,
+                stop_env,
+                &mut "ab\u{ff}".as_bytes()[..3].to_vec(),
+                false
+            ),
+            Ok(true)
+        );
+    }
+
+    /// A text stream hands the body on until its callback stops it; a
+    /// stream cancelled before it reads, one whose body is cut short, and
+    /// one whose server refuses the connection end with the error.
+    #[test]
+    fn text_streams_run_until_stopped_or_failed() {
+        crate::gc::mesh_rt_init();
+        let stream = |url: String, state: &Collected, cancelled: bool| {
+            execute_stream(
+                http_agent(),
+                MeshRequestData::new("get", &url),
+                Arc::new(AtomicBool::new(cancelled)),
+                collect_text_into as *const () as usize,
+                state as *const Collected as usize,
+                false,
+            )
+        };
+        for stop_after in [9, 1] {
+            let (port, server) = serve_once(b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello");
+            let state = collected(stop_after);
+            assert_eq!(
+                stream(format!("http://127.0.0.1:{port}/"), &state, false),
+                Ok(())
+            );
+            assert_eq!(*state.chunks.lock(), ["hello"]);
+            server.join().unwrap();
+        }
+
+        let (port, server) = serve_once(b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello");
+        assert_eq!(
+            stream(format!("http://127.0.0.1:{port}/"), &collected(9), true),
+            Err("CANCELLED: HTTP stream".to_string())
+        );
+        server.join().unwrap();
+
+        let (port, server) = serve_once(b"HTTP/1.1 200 OK\r\nContent-Length: 9\r\n\r\nhel");
+        let state = collected(9);
+        let error = stream(format!("http://127.0.0.1:{port}/"), &state, false).unwrap_err();
+        assert!(error.starts_with("HTTP_ERROR: "), "{error}");
+        assert_eq!(*state.chunks.lock(), ["hel"]);
+        server.join().unwrap();
+
+        let closed = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://127.0.0.1:{}/", closed.local_addr().unwrap().port());
+        drop(closed);
+        let error = stream(url, &collected(9), false).unwrap_err();
+        assert!(error.starts_with("CONNECT_FAILURE: "), "{error}");
+    }
+
+    /// Http.stream refuses an unknown handle and a request that fails its
+    /// checks; a stream it starts can be cancelled by its handle, as can a
+    /// request not yet sent.
+    #[test]
+    fn streams_start_and_cancel_by_handle() {
+        let _api = API.lock();
+        assert_eq!(
+            mesh_http_stream(u64::MAX, collect_text as *mut u8, std::ptr::null_mut()),
+            0
+        );
+        let invalid = built("brew", "http://127.0.0.1/");
+        assert_eq!(
+            mesh_http_stream_bytes(invalid, collect_text as *mut u8, std::ptr::null_mut()),
+            0
+        );
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (accepted, was_accepted) = std::sync::mpsc::channel();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            read_request(&mut stream);
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\npartial")
+                .unwrap();
+            accepted.send(()).unwrap();
+            // Until the client goes.
+            let _ = std::io::Read::read(&mut stream, &mut [0u8; 1]);
+        });
+        let request = built("get", &format!("http://127.0.0.1:{port}/"));
+        let streamed = STREAMED.load(Ordering::SeqCst);
+        let stream = mesh_http_stream(request, collect_text as *mut u8, std::ptr::null_mut());
+        assert!(stream > 0);
+        was_accepted.recv().unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while STREAMED.load(Ordering::SeqCst) == streamed {
+            assert!(Instant::now() < deadline, "the stream never delivered");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let cancelled = metrics().cancellations.load(Ordering::Relaxed);
+        mesh_http_cancel(stream as u64);
+        assert_eq!(
+            metrics().cancellations.load(Ordering::Relaxed),
+            cancelled + 1
+        );
+        assert!(!streams().lock().contains_key(&(stream as u64)));
+        drop(server);
+
+        let unsent = built("get", "http://127.0.0.1/");
+        mesh_http_cancel(unsent);
+        assert_eq!(
+            metrics().cancellations.load(Ordering::Relaxed),
+            cancelled + 2
+        );
+        assert!(take_request(unsent).is_err());
+    }
+
+    /// A resolver that holds its caller until released, as a resolution
+    /// that ignores its timeout would.
+    #[derive(Debug)]
+    struct Stalled(parking_lot::Mutex<std::sync::mpsc::Receiver<()>>);
+
+    impl Resolver for Stalled {
+        fn resolve(
+            &self,
+            _uri: &ureq::http::Uri,
+            _config: &ureq::config::Config,
+            _timeout: NextTimeout,
+        ) -> Result<ResolvedSocketAddrs, UreqError> {
+            let _ = self.0.lock().recv();
+            Err(UreqError::HostNotFound)
+        }
+    }
+
+    /// A worker that does not answer by a second past the global timeout
+    /// is given up on: the caller gets a timeout, and the worker is told to
+    /// cancel.
+    #[test]
+    fn a_worker_past_its_deadline_is_given_up_on() {
+        let _api = API.lock();
+        let (release, stalled) = std::sync::mpsc::channel();
+        let agent = Agent::with_parts(
+            ureq::config::Config::default(),
+            ().chain(TcpConnector::default()),
+            Stalled(parking_lot::Mutex::new(stalled)),
+        );
+        let request = built("get", "http://stalled.test/");
+        mesh_http_timeout(request, 1);
+        assert_eq!(
+            outcome(send_cooperatively(agent, request)).unwrap_err(),
+            "TIMEOUT_TOTAL: HTTP worker exceeded global timeout"
+        );
+        drop(release);
     }
 }
