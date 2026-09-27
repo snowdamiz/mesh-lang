@@ -596,3 +596,36 @@ fn every_type_error_renders() {
     }
     insta::assert_snapshot!(rendered);
 }
+
+/// Each error code names one kind of error, except where kinds are the same
+/// mistake told apart (E0003's argument counts, E0009's fields): E0086 was
+/// given to a second, unrelated error.
+#[test]
+fn every_error_code_names_one_kind() {
+    let json = DiagnosticOptions {
+        json: true,
+        ..DiagnosticOptions::colorless()
+    };
+    let mut kinds: std::collections::BTreeMap<String, std::collections::BTreeSet<String>> =
+        Default::default();
+    for error in one_of_each() {
+        let rendered = render_diagnostic(&error, SOURCE, "main.mpl", &json, None);
+        let code = rendered
+            .split("\"code\":\"")
+            .nth(1)
+            .and_then(|rest| rest.split('"').next())
+            .expect("a JSON diagnostic has a code")
+            .to_string();
+        let kind = format!("{error:?}")
+            .split(|c: char| !c.is_alphanumeric())
+            .next()
+            .unwrap_or_default()
+            .to_string();
+        kinds.entry(code).or_default().insert(kind);
+    }
+    let shared: Vec<_> = kinds
+        .iter()
+        .filter(|(code, kinds)| kinds.len() > 1 && !matches!(code.as_str(), "E0003" | "E0009"))
+        .collect();
+    assert!(shared.is_empty(), "{shared:?}");
+}

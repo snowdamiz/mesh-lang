@@ -645,7 +645,7 @@ Mesh. For what they do elsewhere, use:
   keeps its `let` bindings between inputs.
 - A program runs `main` and what it calls: an expression outside every
   function, such as `println("hi")` at the top of a file, would never run, and
-  is error E0086 in a build. The REPL runs each one it is given.
+  is error E0087 in a build. The REPL runs each one it is given.
 - Functions, types, imports and other definitions go at the top level of a
   module; inside a function, only `let` binds, and a definition there is
   error E0084. Bind a closure instead: `let helper = fn x -> x + 1 end`.

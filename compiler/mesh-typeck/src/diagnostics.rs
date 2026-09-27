@@ -206,7 +206,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::TypeNotValue { .. } => "E0083",
         TypeError::NestedDefinition { .. } => "E0084",
         TypeError::TypeArgumentCount { .. } => "E0085",
-        TypeError::TopLevelStatement { .. } => "E0086",
+        TypeError::TopLevelStatement { .. } => "E0087",
     }
 }
 

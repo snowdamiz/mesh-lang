@@ -5923,7 +5923,7 @@ end
     );
 }
 
-/// Code outside every function is an error (E0086): it compiled and never
+/// Code outside every function is an error (E0087): it compiled and never
 /// ran, `println` at the top of a file included, and `fn hello do ... end`,
 /// a function without parentheses, was such a closure expression (so
 /// `hello()` was undefined). A function with no parameters may now leave
@@ -5951,7 +5951,7 @@ end
             false,
         );
         assert!(
-            !built.ok && built.stderr.contains("E0086"),
+            !built.ok && built.stderr.contains("E0087"),
             "{top}: {}",
             built.stderr
         );
