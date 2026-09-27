@@ -249,21 +249,22 @@ fn tls_server_config() -> Result<Arc<ServerConfig>, String> {
         .map_err(|_| "driver_tls_server_identity_invalid".to_string())
 }
 
-fn signature_bytes<T: Serialize>(value: &T, key: &str) -> Result<String, String> {
-    let encoded = serde_json::to_vec(value)
-        .map_err(|_| "driver_service_signature_payload_invalid".to_string())?;
-    let mut mac = Hmac::<Sha256>::new_from_slice(key.as_bytes())
-        .map_err(|_| "driver_service_shared_key_invalid".to_string())?;
+/// The HMAC-SHA256 of `value`, serialized, under `key`. The messages are
+/// plain structs, which always serialize, and HMAC takes a key of any
+/// length.
+fn signature_bytes<T: Serialize>(value: &T, key: &str) -> [u8; 32] {
+    let encoded = serde_json::to_vec(value).expect("a driver service message serializes");
+    let mut mac =
+        Hmac::<Sha256>::new_from_slice(key.as_bytes()).expect("HMAC takes a key of any length");
     mac.update(&encoded);
-    Ok(mac
-        .finalize()
-        .into_bytes()
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect())
+    mac.finalize().into_bytes().into()
 }
 
-fn request_signature(request: &DriverServiceRequest, key: &str) -> Result<String, String> {
+fn hex_signature(signature: [u8; 32]) -> String {
+    signature.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn request_signature(request: &DriverServiceRequest, key: &str) -> [u8; 32] {
     signature_bytes(
         &(
             request.schema_version,
@@ -277,7 +278,7 @@ fn request_signature(request: &DriverServiceRequest, key: &str) -> Result<String
     )
 }
 
-fn response_signature(response: &DriverServiceResponse, key: &str) -> Result<String, String> {
+fn response_signature(response: &DriverServiceResponse, key: &str) -> [u8; 32] {
     signature_bytes(
         &(
             response.schema_version,
@@ -291,21 +292,14 @@ fn response_signature(response: &DriverServiceResponse, key: &str) -> Result<Str
 fn signature_matches<T>(
     keys: &[String],
     signature: &str,
-    expected: impl Fn(&T, &str) -> Result<String, String>,
+    expected: impl Fn(&T, &str) -> [u8; 32],
     value: &T,
 ) -> bool {
     let Some(signature) = decode_hex_signature(signature) else {
         return false;
     };
-    keys.iter().any(|key| {
-        let Ok(candidate) = expected(value, key) else {
-            return false;
-        };
-        let Some(candidate) = decode_hex_signature(&candidate) else {
-            return false;
-        };
-        bool::from(signature.ct_eq(&candidate))
-    })
+    keys.iter()
+        .any(|key| bool::from(signature.ct_eq(&expected(value, key))))
 }
 
 fn decode_hex_signature(value: &str) -> Option<[u8; 32]> {
@@ -404,7 +398,7 @@ impl RemoteDockerCapacityDriver {
             action,
             signature: String::new(),
         };
-        request.signature = request_signature(&request, &self.shared_keys[0])?;
+        request.signature = hex_signature(request_signature(&request, &self.shared_keys[0]));
         let tcp = TcpStream::connect(&self.endpoint)
             .map_err(|error| format!("driver_service_connect_failed:{error}"))?;
         tcp.set_read_timeout(Some(self.timeout)).ok();
@@ -746,7 +740,7 @@ fn handle_service_connection(
         result,
         signature: String::new(),
     };
-    response.signature = response_signature(&response, &service.shared_keys[0])?;
+    response.signature = hex_signature(response_signature(&response, &service.shared_keys[0]));
     write_frame(
         &mut stream,
         &serde_json::to_vec(&response)
@@ -890,12 +884,18 @@ mod tests {
             action: DriverServiceAction::Validate,
             signature: String::new(),
         };
-        request.signature = request_signature(&request, key).unwrap();
-        assert_eq!(request.signature, request_signature(&request, key).unwrap());
+        request.signature = hex_signature(request_signature(&request, key));
+        assert_eq!(
+            request.signature,
+            hex_signature(request_signature(&request, key))
+        );
         request.action = DriverServiceAction::Observe {
             cluster_id: "other".to_string(),
         };
-        assert_ne!(request.signature, request_signature(&request, key).unwrap());
+        assert_ne!(
+            request.signature,
+            hex_signature(request_signature(&request, key))
+        );
     }
 
     #[test]
@@ -972,7 +972,7 @@ mod tests {
             action: DriverServiceAction::Validate,
             signature: String::new(),
         };
-        request.signature = request_signature(&request, old).unwrap();
+        request.signature = hex_signature(request_signature(&request, old));
 
         assert!(signature_matches(
             &keys,
@@ -985,6 +985,12 @@ mod tests {
             &request.signature,
             request_signature,
             &request,
+        ));
+        assert!(!signature_matches(
+            &keys,
+            "not a signature",
+            request_signature,
+            &request
         ));
     }
 
