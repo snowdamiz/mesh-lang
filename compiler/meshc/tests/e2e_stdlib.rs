@@ -818,10 +818,12 @@ fn e2e_list_pipe_chain() {
 // These tests start a REAL HTTP server and make actual HTTP requests,
 // verifying that the Mesh HTTP server works end-to-end at runtime.
 
-/// RAII guard that stops the server child process on drop.
+/// RAII guard that stops the server child process on drop, then removes the
+/// project it was built in.
 struct ServerGuard {
     child: std::process::Child,
     _execution_guard: MutexGuard<'static, ()>,
+    _project: tempfile::TempDir,
 }
 
 impl Drop for ServerGuard {
@@ -837,8 +839,6 @@ impl Drop for ServerGuard {
 /// sending requests.
 fn compile_and_start_server(source: &str) -> ServerGuard {
     let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
-    // Leak the temp dir so it persists for the lifetime of the server process.
-    let temp_dir = Box::leak(Box::new(temp_dir));
     let project_dir = temp_dir.path().join("project");
     std::fs::create_dir_all(&project_dir).expect("failed to create project dir");
 
@@ -875,6 +875,7 @@ fn compile_and_start_server(source: &str) -> ServerGuard {
     ServerGuard {
         child,
         _execution_guard: build_guard,
+        _project: temp_dir,
     }
 }
 
