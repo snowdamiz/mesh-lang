@@ -177,6 +177,9 @@ all:ada,bob,cy,dee
 where_op:dee,cy
 where_in:ada,cy
 where_not_in:bob,dee
+where_in_none:
+where_not_in_none:ada,bob,cy,dee
+where_or_none:0
 where_between:ada,bob,dee
 where_null:ada,dee
 where_not_null:bob,cy

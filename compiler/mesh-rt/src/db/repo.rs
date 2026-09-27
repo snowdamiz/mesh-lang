@@ -1373,7 +1373,10 @@ fn where_sql(query: &QueryParts, start_idx: usize) -> (String, Vec<String>, usiz
                 wp_idx += 1;
                 param_idx += 1;
             }
-            conditions.push(format!("({})", or_parts.join(" OR ")));
+            conditions.push(match or_parts.is_empty() {
+                true => "FALSE".to_string(),
+                false => format!("({})", or_parts.join(" OR ")),
+            });
             continue;
         }
         if let Some(expr) = clause.strip_prefix("EXPR:") {
@@ -1397,31 +1400,25 @@ fn where_sql(query: &QueryParts, start_idx: usize) -> (String, Vec<String>, usiz
             let op = clause[space_pos + 1..].trim();
             if op == "IS NULL" || op == "IS NOT NULL" {
                 conditions.push(format!("{} {}", quote_name(col), op));
-            } else if let Some(count) = op.strip_prefix("IN:") {
+            } else if let Some((keyword, count, of_none)) = (op.strip_prefix("IN:"))
+                .map(|count| ("IN", count, "FALSE"))
+                .or_else(|| {
+                    op.strip_prefix("NOT_IN:")
+                        .map(|count| ("NOT IN", count, "TRUE"))
+                })
+            {
+                // No value is in an empty list (`IN ()` is not SQL).
                 let count: usize = count.parse().unwrap_or(0);
                 let placeholders: Vec<String> =
                     (0..count).map(|i| format!("${}", param_idx + i)).collect();
-                conditions.push(format!(
-                    "{} IN ({})",
-                    quote_name(col),
-                    placeholders.join(", ")
-                ));
-                for _ in 0..count {
-                    if wp_idx < where_params.len() {
-                        params.push(where_params[wp_idx].clone());
-                        wp_idx += 1;
-                    }
-                    param_idx += 1;
-                }
-            } else if let Some(count) = op.strip_prefix("NOT_IN:") {
-                let count: usize = count.parse().unwrap_or(0);
-                let placeholders: Vec<String> =
-                    (0..count).map(|i| format!("${}", param_idx + i)).collect();
-                conditions.push(format!(
-                    "{} NOT IN ({})",
-                    quote_name(col),
-                    placeholders.join(", ")
-                ));
+                conditions.push(match count {
+                    0 => of_none.to_string(),
+                    _ => format!(
+                        "{} {keyword} ({})",
+                        quote_name(col),
+                        placeholders.join(", ")
+                    ),
+                });
                 for _ in 0..count {
                     if wp_idx < where_params.len() {
                         params.push(where_params[wp_idx].clone());
@@ -2954,6 +2951,25 @@ mod tests {
 
     fn atom(name: &str) -> *mut u8 {
         mesh_str(name) as *mut u8
+    }
+
+    /// An empty IN list matches no row, an empty NOT IN list every row, and
+    /// an OR of no fields no row (each was `IN ()` or `()`, invalid SQL).
+    #[test]
+    fn empty_lists_match_nothing_or_everything() {
+        use crate::db::query::*;
+        crate::gc::mesh_rt_init();
+        let none = || string_list::<&str>(&[]);
+        let q = mesh_query_where_in(mesh_query_from(atom("t")), atom("a"), none());
+        let q = mesh_query_where_not_in(q, atom("b"), none());
+        let q = mesh_query_where_or(q, none(), none());
+        let q = mesh_query_where(q, atom("c"), atom("x"));
+        let (sql, params) = all_sql(q);
+        assert_eq!(
+            sql,
+            "SELECT * FROM \"t\" WHERE FALSE AND TRUE AND FALSE AND \"c\" = $1"
+        );
+        assert_eq!(params, ["x"]);
     }
 
     /// A subquery is the whole query `Repo.all` would run, whatever its
