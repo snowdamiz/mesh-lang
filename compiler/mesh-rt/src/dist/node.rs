@@ -14887,4 +14887,76 @@ mod tests {
         assert!(!gates.contains(&"protocol_capabilities".to_string()));
         drop(autonomous);
     }
+
+    /// A handshake transport that plays back what a peer sent and takes
+    /// what this node writes, or refuses it.
+    struct ScriptedHandshake {
+        input: io::Cursor<Vec<u8>>,
+        writable: bool,
+    }
+
+    impl Read for ScriptedHandshake {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            self.input.read(buf)
+        }
+    }
+
+    impl Write for ScriptedHandshake {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            if self.writable {
+                Ok(buf.len())
+            } else {
+                Err(io::ErrorKind::BrokenPipe.into())
+            }
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl HandshakeTransport for ScriptedHandshake {
+        fn channel_binding(&mut self) -> Result<ChannelBinding, String> {
+            Ok(ChannelBinding([7; 32]))
+        }
+    }
+
+    /// A handshake fails when its peer answers a challenge with the wrong
+    /// proof, and when this node cannot send its challenge.
+    #[test]
+    fn a_handshake_fails_on_a_wrong_proof_or_an_unsent_challenge() {
+        let peer = "scripted-peer@127.0.0.1:1";
+        let mut script = Vec::new();
+        send_named(&mut script, HANDSHAKE_CHALLENGE, peer, 1, &[3; 32]).unwrap();
+        send_challenge_ack(&mut script, &[0; 32]).unwrap();
+        let mut transport = ScriptedHandshake {
+            input: io::Cursor::new(script),
+            writable: true,
+        };
+        let refused = perform_handshake_with_identity(
+            &mut transport,
+            "scripted-node@127.0.0.1:1",
+            TEST_NODE_COOKIE,
+            1,
+            true,
+        )
+        .unwrap_err();
+        assert!(refused.contains("authentication failed"), "{refused}");
+
+        let mut script = Vec::new();
+        send_named(&mut script, HANDSHAKE_NAME, peer, 1, &[]).unwrap();
+        let mut transport = ScriptedHandshake {
+            input: io::Cursor::new(script),
+            writable: false,
+        };
+        let unsent = perform_handshake_with_identity(
+            &mut transport,
+            "scripted-node@127.0.0.1:1",
+            TEST_NODE_COOKIE,
+            1,
+            false,
+        )
+        .unwrap_err();
+        assert!(unsent.contains("not sent"), "{unsent}");
+    }
 }
