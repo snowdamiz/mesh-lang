@@ -88,42 +88,48 @@ unsafe fn query_get_int(q: *mut u8, slot: usize) -> i64 {
 
 /// Renumber $N placeholders in a SQL fragment.
 /// E.g., with start_idx=4: "$1" -> "$4", "$2" -> "$5"
-/// Also replaces `?` with next sequential $N.
+/// Also replaces `?` with next sequential $N. Quoted text and identifiers
+/// (`'...'`, `"..."`) pass through whole: a `?` or `$1` in them is text.
 /// Returns (renumbered_sql, number_of_params_consumed).
 fn renumber_placeholders(sql: &str, start_idx: usize) -> (String, usize) {
     let mut result = String::with_capacity(sql.len());
     let mut max_placeholder = 0usize;
     let mut question_count = 0usize;
-    let chars: Vec<char> = sql.chars().collect();
-    let mut i = 0;
-    while i < chars.len() {
-        if chars[i] == '?' {
-            let new_idx = start_idx + question_count;
-            result.push_str(&format!("${}", new_idx));
-            question_count += 1;
-            i += 1;
-        } else if chars[i] == '$' && i + 1 < chars.len() && chars[i + 1].is_ascii_digit() {
-            // Parse the number after $
-            let mut num_str = String::new();
-            let mut j = i + 1;
-            while j < chars.len() && chars[j].is_ascii_digit() {
-                num_str.push(chars[j]);
-                j += 1;
-            }
-            if let Ok(n) = num_str.parse::<usize>() {
-                if n > max_placeholder {
-                    max_placeholder = n;
+    let mut chars = sql.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\'' | '"' => {
+                result.push(c);
+                for quoted in chars.by_ref() {
+                    result.push(quoted);
+                    if quoted == c {
+                        break;
+                    }
                 }
-                let new_idx = start_idx + n - 1; // $1 -> $start_idx, $2 -> $start_idx+1
-                result.push_str(&format!("${}", new_idx));
-            } else {
-                result.push('$');
-                result.push_str(&num_str);
             }
-            i = j;
-        } else {
-            result.push(chars[i]);
-            i += 1;
+            '?' => {
+                result.push_str(&format!("${}", start_idx + question_count));
+                question_count += 1;
+            }
+            '$' if chars.peek().is_some_and(char::is_ascii_digit) => {
+                let mut digits = String::new();
+                while let Some(digit) = chars.next_if(char::is_ascii_digit) {
+                    digits.push(digit);
+                }
+                match digits.parse::<usize>() {
+                    // $1 -> $start_idx, $2 -> $start_idx+1
+                    Ok(n) if n > 0 => {
+                        max_placeholder = max_placeholder.max(n);
+                        result.push_str(&format!("${}", start_idx + n - 1));
+                    }
+                    // `$0` is no parameter, nor a number too long for one.
+                    _ => {
+                        result.push('$');
+                        result.push_str(&digits);
+                    }
+                }
+            }
+            _ => result.push(c),
         }
     }
     let params_consumed = if question_count > 0 {
@@ -2283,6 +2289,27 @@ mod tests {
         );
         assert_eq!(sql, "SELECT * FROM \"users\" AND custom_fn($1)");
         assert_eq!(params, vec!["test_val"]);
+    }
+
+    /// `?` and `$N` are parameters outside quotes, and text inside them;
+    /// `$0` and a number too long for an index are no parameters at all.
+    #[test]
+    fn placeholders_are_renumbered_outside_quotes() {
+        assert_eq!(
+            renumber_placeholders("a = ? AND b = '?' AND \"c?\" = ? AND d = 'it''s ?'", 3),
+            (
+                "a = $3 AND b = '?' AND \"c?\" = $4 AND d = 'it''s ?'".to_string(),
+                2
+            )
+        );
+        assert_eq!(
+            renumber_placeholders("x = $2 AND y = '$1' AND z = $1", 5),
+            ("x = $6 AND y = '$1' AND z = $5".to_string(), 2)
+        );
+        assert_eq!(
+            renumber_placeholders("$0 + $99999999999999999999999 + $", 2),
+            ("$0 + $99999999999999999999999 + $".to_string(), 0)
+        );
     }
 
     // ── Phase 106 Plan 02: Fragment $N renumbering and raw ORDER BY/GROUP BY ──

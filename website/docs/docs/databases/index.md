@@ -283,7 +283,7 @@ let query = Query.from(User.__table__())
 | `Query.order_by_raw(query, sql)` | Add a raw order expression |
 | `Query.group_by_raw(query, sql)` | Add a raw grouping expression |
 
-Prefer structured builders first. Keep database-specific SQL visible when a shape genuinely needs a raw fragment.
+In a fragment, `?` stands for the next parameter (`$1`, `$2`, … name them by position); inside quoted text or a quoted identifier it is just a character. Prefer structured builders first. Keep database-specific SQL visible when a shape genuinely needs a raw fragment.
 
 ## Structured SQL Expressions
 

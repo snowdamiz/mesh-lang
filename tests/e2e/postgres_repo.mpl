@@ -260,6 +260,11 @@ fn reads(pool :: PoolHandle) do
         |> Query.where_raw("length(name) = ?", ["2"])
         |> Query.order_by(:handle, :asc)),
     "handle")
+  show_rows("where_raw_quoted",
+    Repo.all(pool,
+      writers
+        |> Query.where_raw("name <> '?' AND name = ?", ["Cy"])),
+    "handle")
   show_rows("select_limit_offset",
     Repo.all(pool,
       writers

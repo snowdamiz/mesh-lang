@@ -183,6 +183,7 @@ where_not_null:bob,cy
 where_or:ada,bob
 where_expr:cy,dee
 where_raw:cy
+where_raw_quoted:cy
 select_limit_offset:bob,cy
 select_exprs:-,b,c,-
 select_raw:DEE,CY,BOB,ADA
