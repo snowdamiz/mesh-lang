@@ -2616,6 +2616,19 @@ mod tests {
             );
         });
 
+        // The root has no parent to create, and is no file to append to.
+        with_operator_environment(Path::new("/"), || {
+            let request = signed_request(
+                "audit-root-operator",
+                OperatorControlAction::PauseAutoscaler,
+            );
+            let refused = apply_operator_control(&request, false).unwrap_err();
+            assert!(
+                refused.starts_with("operator_audit_open_failed:"),
+                "{refused}"
+            );
+        });
+
         // A log that opened but then takes no entry is reported, and the
         // control stands.
         let read_only = std::fs::File::open(&blocked).unwrap();
