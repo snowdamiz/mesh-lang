@@ -146,35 +146,24 @@ fn consensus_rpc_server() -> &'static StdRwLock<Option<MeshConsensusRpcServer>> 
     MESH_CONSENSUS_RPC_SERVER.get_or_init(|| StdRwLock::new(None))
 }
 
+/// Serves this node's Raft to its peers' RPCs. Only a durable node's start
+/// registers one, after it checked the node's identity and the cluster's
+/// name, and from inside the Tokio runtime its Raft runs on.
 fn register_mesh_consensus_rpc_server(
     cluster_name: &str,
     node_id: ConsensusNodeId,
     node_name: &str,
     raft: MeshRaft,
     state_machine: DurableConsensusStateMachine,
-) -> Result<(), String> {
-    if cluster_name.trim().is_empty()
-        || cluster_name.len() > 256
-        || node_id == 0
-        || node_name.trim().is_empty()
-        || node_name.len() > 512
-    {
-        return Err("consensus_rpc_server_configuration_invalid".to_string());
-    }
-    let runtime = tokio::runtime::Handle::try_current()
-        .map_err(|_| "consensus_rpc_runtime_unavailable".to_string())?;
-    *consensus_rpc_server()
-        .write()
-        .map_err(|_| "consensus_rpc_server_lock_poisoned".to_string())? =
-        Some(MeshConsensusRpcServer {
-            cluster_name: cluster_name.to_string(),
-            node_id,
-            node_name: node_name.to_string(),
-            raft,
-            state_machine,
-            runtime,
-        });
-    Ok(())
+) {
+    *consensus_rpc_server().write().unwrap() = Some(MeshConsensusRpcServer {
+        cluster_name: cluster_name.to_string(),
+        node_id,
+        node_name: node_name.to_string(),
+        raft,
+        state_machine,
+        runtime: tokio::runtime::Handle::current(),
+    });
 }
 
 fn encode_consensus_rpc_reply(reply: MeshConsensusRpcReply) -> Vec<u8> {
@@ -208,6 +197,19 @@ fn accepted_consensus_rpc(
     Ok((server, request.rpc))
 }
 
+/// The local Raft's answer to an accepted RPC, encoded for the reply frame.
+async fn answer_consensus_rpc(raft: &MeshRaft, rpc: MeshConsensusRpc) -> Vec<u8> {
+    encode_consensus_rpc_reply(match rpc {
+        MeshConsensusRpc::Append(request) => {
+            MeshConsensusRpcReply::Append(raft.append_entries(request).await)
+        }
+        MeshConsensusRpc::InstallSnapshot(request) => {
+            MeshConsensusRpcReply::InstallSnapshot(raft.install_snapshot(request).await)
+        }
+        MeshConsensusRpc::Vote(request) => MeshConsensusRpcReply::Vote(raft.vote(request).await),
+    })
+}
+
 /// Dispatch an incoming Raft request away from the distribution reader thread.
 /// The authenticated peer name must match the source name in the signed TLS
 /// session, and cluster/target identity must match the registered local node.
@@ -236,18 +238,7 @@ pub(crate) fn handle_mesh_consensus_rpc(
         }
     };
     server.runtime.spawn(async move {
-        let reply = match rpc {
-            MeshConsensusRpc::Append(request) => {
-                MeshConsensusRpcReply::Append(server.raft.append_entries(request).await)
-            }
-            MeshConsensusRpc::InstallSnapshot(request) => {
-                MeshConsensusRpcReply::InstallSnapshot(server.raft.install_snapshot(request).await)
-            }
-            MeshConsensusRpc::Vote(request) => {
-                MeshConsensusRpcReply::Vote(server.raft.vote(request).await)
-            }
-        };
-        let payload = encode_consensus_rpc_reply(reply);
+        let payload = answer_consensus_rpc(&server.raft, rpc).await;
         if let Err(error) =
             super::node::send_mesh_consensus_rpc_reply(&session, correlation_id, &payload)
         {
@@ -530,7 +521,7 @@ pub async fn start_mesh_durable_consensus_node(
         node_name,
         raft.clone(),
         state_machine.clone(),
-    )?;
+    );
     Ok(DurableEmbeddedConsensusNode {
         node_id,
         raft,
@@ -1115,6 +1106,14 @@ mod tests {
             connection.install_snapshot(snapshot, option()).await,
             Err(RPCError::Unreachable(_))
         ));
+        // A named peer this node has no session with is unreachable too.
+        let mut absent = network
+            .new_client(2, &BasicNode::new("absent@127.0.0.1:1"))
+            .await;
+        assert!(matches!(
+            absent.vote(VoteRequest::new(vote(), None), option()).await,
+            Err(RPCError::Unreachable(_))
+        ));
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -1196,27 +1195,50 @@ mod tests {
                 .starts_with(b"{\"TransportError\"")
         );
 
-        // Registration checks its identity, and needs a Tokio runtime.
-        let (raft, state_machine) = (node.raft.clone(), node.state_machine.clone());
-        assert_eq!(
-            register_mesh_consensus_rpc_server(
-                " ",
-                9,
-                "local",
-                raft.clone(),
-                state_machine.clone()
-            ),
-            Err("consensus_rpc_server_configuration_invalid".to_string())
+        // An accepted RPC gets the local Raft's answer of the same kind.
+        let answer = |payload: Vec<u8>| -> MeshConsensusRpcReply {
+            serde_json::from_slice(&payload).unwrap()
+        };
+        let voted = answer(
+            answer_consensus_rpc(
+                &node.raft,
+                MeshConsensusRpc::Vote(VoteRequest::new(vote(), None)),
+            )
+            .await,
         );
-        let outside_runtime = std::thread::spawn(move || {
-            register_mesh_consensus_rpc_server("cluster", 9, "local", raft, state_machine)
-        })
-        .join()
-        .unwrap();
-        assert_eq!(
-            outside_runtime,
-            Err("consensus_rpc_runtime_unavailable".to_string())
+        assert!(voted.into_vote().is_ok());
+        let appended = answer(
+            answer_consensus_rpc(
+                &node.raft,
+                MeshConsensusRpc::Append(AppendEntriesRequest {
+                    vote: vote(),
+                    prev_log_id: None,
+                    entries: Vec::new(),
+                    leader_commit: None,
+                }),
+            )
+            .await,
         );
+        assert!(appended.into_append().is_ok());
+        let installed = answer(
+            answer_consensus_rpc(
+                &node.raft,
+                MeshConsensusRpc::InstallSnapshot(InstallSnapshotRequest {
+                    vote: vote(),
+                    meta: SnapshotMeta {
+                        last_log_id: None,
+                        last_membership: StoredMembership::default(),
+                        snapshot_id: "snapshot".to_string(),
+                    },
+                    offset: 0,
+                    data: Vec::new(),
+                    done: true,
+                }),
+            )
+            .await,
+        );
+        assert!(installed.into_install_snapshot().is_ok());
+
         // A durable node must be this process's started node.
         let long_name = "x".repeat(513);
         for (id, name) in [(0, "local@host:4370"), (9, " "), (9, long_name.as_str())] {
