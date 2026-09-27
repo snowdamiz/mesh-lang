@@ -3702,7 +3702,7 @@ fn prepare_continuity_for_runtime_node(
                         &entry,
                         &committed.request_key,
                         &committed.attempt_id,
-                    )?;
+                    );
                 } else {
                     spawn_declared_work_remote(
                         &committed.owner_node,
@@ -5869,15 +5869,8 @@ struct HttpRouteV2ReplyTask {
 }
 
 extern "C-unwind" fn http_route_v2_reply_entry(args: *const u8) {
-    if args.is_null() {
-        return;
-    }
     let words = unsafe { Box::from_raw(args as *mut [u64; 1]) };
-    let task_ptr = words[0] as *mut HttpRouteV2ReplyTask;
-    if task_ptr.is_null() {
-        return;
-    }
-    let task = unsafe { Box::from_raw(task_ptr) };
+    let task = unsafe { Box::from_raw(words[0] as *mut HttpRouteV2ReplyTask) };
     let (correlation_id, runtime_name, request_key, attempt_id, request_payload) = &task.query;
     let result = execute_http_route_query(runtime_name, request_key, attempt_id, request_payload);
     if let Ok(reply) = encode_http_route_v2_reply_frame(*correlation_id, result) {
@@ -5911,18 +5904,12 @@ fn dispatch_http_route_v2_reply(session: Arc<NodeSession>, message: Vec<u8>) {
         _reservation: reservation,
     })) as u64;
     let args_ptr = Box::into_raw(Box::new([task_ptr]));
-    let pid = crate::actor::mesh_actor_spawn(
+    crate::actor::mesh_actor_spawn(
         http_route_v2_reply_entry as *const u8,
         args_ptr.cast(),
         std::mem::size_of::<u64>() as u64,
         1,
     );
-    if pid == 0 {
-        unsafe {
-            drop(Box::from_raw(args_ptr));
-            drop(Box::from_raw(task_ptr as *mut HttpRouteV2ReplyTask));
-        }
-    }
 }
 
 fn reject_clustered_http_route_attempt(request_key: &str, attempt_id: &str, reason: &str) {
@@ -7061,8 +7048,6 @@ const STARTUP_RUNTIME_NAME_MISSING: &str = "startup_runtime_name_missing";
 const STARTUP_REQUEST_KEY_MISSING: &str = "startup_request_key_missing";
 const STARTUP_DUPLICATE_REGISTRATION: &str = "startup_duplicate_registration";
 const STARTUP_HANDLER_MISSING: &str = "startup_handler_not_registered";
-const STARTUP_WORK_SPAWN_FAILED: &str = "startup_spawn_failed";
-const STARTUP_KEEPALIVE_SPAWN_FAILED: &str = "startup_keepalive_spawn_failed";
 const STARTUP_CONVERGENCE_TIMEOUT: &str = "startup_convergence_timeout";
 const STARTUP_ATTEMPT_FENCED: &str = "startup_attempt_fenced";
 const STARTUP_TRIGGER_POLL_MS: i64 = 50;
@@ -7641,11 +7626,6 @@ fn wait_for_startup_terminal_state(identity: &StartupWorkIdentity, attempt_id: &
 }
 
 extern "C" fn startup_work_entry(args: *const u8) {
-    if args.is_null() {
-        log_startup_rejected_without_identity("", STARTUP_RUNTIME_NAME_MISSING);
-        return;
-    }
-
     let words = unsafe { std::slice::from_raw_parts(args as *const u64, 1) };
     let runtime_name = mesh_string_arg_to_owned(words[0]);
     let identity = match startup_work_identity(&runtime_name) {
@@ -7727,33 +7707,18 @@ extern "C" fn startup_keepalive_entry(_args: *const u8) {
     }
 }
 
-fn spawn_startup_work_actor(runtime_name: &str) -> Result<(), String> {
+fn spawn_startup_work_actor(runtime_name: &str) {
     let args_ptr = startup_work_arg_payload(runtime_name);
-    let pid = crate::actor::mesh_actor_spawn(
+    crate::actor::mesh_actor_spawn(
         startup_work_entry as *const u8,
         args_ptr,
         std::mem::size_of::<u64>() as u64,
         1,
     );
-    if pid == 0 {
-        Err(STARTUP_WORK_SPAWN_FAILED.to_string())
-    } else {
-        Ok(())
-    }
 }
 
-fn spawn_startup_keepalive_actor() -> Result<(), String> {
-    let pid = crate::actor::mesh_actor_spawn(
-        startup_keepalive_entry as *const u8,
-        std::ptr::null(),
-        0,
-        2,
-    );
-    if pid == 0 {
-        Err(STARTUP_KEEPALIVE_SPAWN_FAILED.to_string())
-    } else {
-        Ok(())
-    }
+fn spawn_startup_keepalive_actor() {
+    crate::actor::mesh_actor_spawn(startup_keepalive_entry as *const u8, std::ptr::null(), 0, 2);
 }
 
 fn trigger_startup_work_registrations<F, G>(
@@ -7764,21 +7729,16 @@ fn trigger_startup_work_registrations<F, G>(
     mut spawn_startup: F,
     mut spawn_keepalive: G,
 ) where
-    F: FnMut(&str) -> Result<(), String>,
-    G: FnMut() -> Result<(), String>,
+    F: FnMut(&str),
+    G: FnMut(),
 {
     if runtime_names.is_empty() {
         return;
     }
 
     if cluster_mode && !STARTUP_KEEPALIVE_SPAWNED.swap(true, Ordering::SeqCst) {
-        match spawn_keepalive() {
-            Ok(()) => log_startup_keepalive(runtime_names.len()),
-            Err(reason) => {
-                STARTUP_KEEPALIVE_SPAWNED.store(false, Ordering::SeqCst);
-                log_startup_rejected_without_identity("", &reason);
-            }
-        }
+        spawn_keepalive();
+        log_startup_keepalive(runtime_names.len());
     }
 
     for runtime_name in runtime_names {
@@ -7800,9 +7760,7 @@ fn trigger_startup_work_registrations<F, G>(
             continue;
         }
 
-        if let Err(reason) = spawn_startup(&identity.runtime_name) {
-            log_startup_rejected(&identity, None, None, None, &reason);
-        }
+        spawn_startup(&identity.runtime_name);
     }
 }
 
@@ -7854,10 +7812,6 @@ fn mesh_string_arg_to_owned(raw: u64) -> String {
 }
 
 extern "C" fn automatic_recovery_submit_entry(args: *const u8) {
-    if args.is_null() {
-        return;
-    }
-
     let words = unsafe { std::slice::from_raw_parts(args as *const u64, 4) };
     let runtime_name = mesh_string_arg_to_owned(words[0]);
     let request_key = mesh_string_arg_to_owned(words[1]);
@@ -7913,41 +7867,24 @@ fn spawn_automatic_recovery_submission(
     request_key: &str,
     payload_hash: &str,
     previous_attempt_id: &str,
-) -> Result<(), String> {
+) {
     let args_ptr = automatic_recovery_arg_payload(
         runtime_name,
         request_key,
         payload_hash,
         previous_attempt_id,
     );
-    let pid = crate::actor::mesh_actor_spawn(
+    crate::actor::mesh_actor_spawn(
         automatic_recovery_submit_entry as *const u8,
         args_ptr,
         (4 * std::mem::size_of::<u64>()) as u64,
         1,
     );
-    if pid == 0 {
-        Err("automatic_recovery_spawn_failed".to_string())
-    } else {
-        Ok(())
-    }
 }
 
-fn spawn_declared_work_local(
-    entry: &DeclaredHandlerEntry,
-    request_key: &str,
-    attempt_id: &str,
-) -> Result<(), String> {
+fn spawn_declared_work_local(entry: &DeclaredHandlerEntry, request_key: &str, attempt_id: &str) {
     let (args_ptr, _tags) = declared_work_arg_payload(request_key, attempt_id);
-    let pid = crate::actor::mesh_actor_spawn(entry.fn_ptr.0, args_ptr, 16, 1);
-    if pid == 0 {
-        Err(format!(
-            "declared_work_local_spawn_failed:{}",
-            entry.executable_name
-        ))
-    } else {
-        Ok(())
-    }
+    crate::actor::mesh_actor_spawn(entry.fn_ptr.0, args_ptr, 16, 1);
 }
 
 fn spawn_declared_work_remote(
@@ -8194,14 +8131,12 @@ fn maybe_automatic_promote_and_resume(disconnected_node: &str) {
             continue;
         }
 
-        if let Err(reason) = spawn_automatic_recovery_submission(
+        spawn_automatic_recovery_submission(
             &runtime_name,
             &request_key,
             &payload_hash,
             &previous_attempt_id,
-        ) {
-            log_automatic_recovery_rejected(&request_key, &previous_attempt_id, &reason);
-        }
+        );
     }
 }
 
@@ -8305,7 +8240,8 @@ pub fn submit_declared_work(
             &prepared.entry,
             &prepared.decision.record.request_key,
             &prepared.decision.record.attempt_id,
-        )
+        );
+        Ok(())
     };
 
     match dispatch_result {
@@ -8932,11 +8868,9 @@ mod tests {
             0,
             |runtime_name| {
                 startup_spawns.push(runtime_name.to_string());
-                Ok(())
             },
             || {
                 keepalive_spawns += 1;
-                Ok(())
             },
         );
 
@@ -8947,11 +8881,9 @@ mod tests {
             0,
             |runtime_name| {
                 startup_spawns.push(format!("repeat:{runtime_name}"));
-                Ok(())
             },
             || {
                 keepalive_spawns += 1;
-                Ok(())
             },
         );
 
@@ -8982,11 +8914,9 @@ mod tests {
             0,
             |runtime_name| {
                 startup_spawns.push(runtime_name.to_string());
-                Ok(())
             },
             || {
                 keepalive_spawns += 1;
-                Ok(())
             },
         );
 
