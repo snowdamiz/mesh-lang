@@ -8010,11 +8010,25 @@ pub extern "C-unwind" fn mesh_node_spawn(
 
     // Send the request over the TLS stream. If the cached stream is stale,
     // tear it down, reconnect once, and retry the same request on the fresh
-    // authenticated session.
+    // authenticated session. A request the session refuses otherwise (too
+    // large, its queue full, the node's circuit open) would be refused
+    // again: the spawn fails and the session stays.
     {
         record_peer_original_attempt(node_name, Instant::now());
         let write_result = session.send(OutboundClass::Application, payload.clone());
 
+        if let Some(error) = write_result
+            .as_ref()
+            .err()
+            .filter(|error| *error != "peer_session_shutdown")
+        {
+            eprintln!(
+                "mesh node spawn failed target={} fn={}: {}",
+                node_name, fn_name, error
+            );
+            session.pending_spawns.lock().unwrap().remove(&req_id);
+            return 0;
+        }
         if write_result.is_err() {
             eprintln!(
                 "mesh node spawn failed target={} fn={}: write_error",
@@ -12355,6 +12369,52 @@ mod tests {
         let gone = TestPeer::new("respawn-gone@127.0.0.1:1");
         gone.session.shutdown.store(true, Ordering::SeqCst);
         assert_eq!(call_node_spawn("respawn-gone@127.0.0.1:1", 0), 0);
+
+        // Dropping the dead session is the failure that opens the node's
+        // circuit: the fresh session cannot send either.
+        let node = FakeNode::new("respawn-tripped", TEST_NODE_COOKIE);
+        for _ in 0..2 {
+            record_peer_transport_failure(&node.name, Instant::now());
+        }
+        let dead = TestPeer::new(&node.name);
+        dead.session.shutdown.store(true, Ordering::SeqCst);
+        let accepted = node.accept();
+        assert_eq!(call_node_spawn(&node.name, 0), 0);
+        let connection = accepted.join().unwrap().unwrap();
+        assert!(peer_circuit_open(&node.name, Instant::now()));
+        drop(connection);
+        await_session_gone(&node.name);
+    }
+
+    /// A spawn request larger than a frame fails the spawn and leaves the
+    /// session alone: it was torn down, and the node connected to again
+    /// only to fail the same way.
+    #[test]
+    fn a_remote_spawn_too_large_to_send_leaves_the_session_up() {
+        let peer = TestPeer::new("oversized-spawn-peer@127.0.0.1:1");
+        let name = peer.session.remote_name.clone();
+        let function = "peer_side_function";
+        let text = "a".repeat(MAX_DIST_MSG as usize);
+        let argument = crate::string::mesh_string_new(text.as_ptr(), text.len() as u64);
+        let args = (argument as u64).to_le_bytes();
+        let spawned = mesh_node_spawn(
+            name.as_ptr(),
+            name.len() as u64,
+            function.as_ptr(),
+            function.len() as u64,
+            args.as_ptr(),
+            args.len() as u64,
+            [REMOTE_SPAWN_ARG_STRING].as_ptr(),
+            1,
+            0,
+        );
+        assert_eq!(spawned, 0);
+        assert!(!peer.session.shutdown.load(Ordering::SeqCst));
+        assert!(Arc::ptr_eq(
+            test_node().sessions.read().get(&name).unwrap(),
+            &peer.session
+        ));
+        assert!(peer.session.pending_spawns.lock().unwrap().is_empty());
     }
 
     /// A remote spawn needs a node, a function, and arguments that match
