@@ -301,8 +301,8 @@ struct Lowerer<'a> {
     /// These are directly callable without qualification and must not go through
     /// trait dispatch.
     imported_functions: HashSet<String>,
-    /// Names imported from a standard module and the prefixed name each
-    /// stands for (`sqrt` -> `math_sqrt`), which the runtime mapping knows.
+    /// Names imported from a standard module, each with its module
+    /// (`sqrt` -> `Math`): the name lowers as the qualified function does.
     stdlib_imports: &'a FxHashMap<String, String>,
     /// Module name for name-mangling private functions (Phase 41).
     /// Empty string means single-file mode (no prefix applied).
@@ -7843,7 +7843,7 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    fn lower_name_ref(&self, name_ref: &NameRef) -> MirExpr {
+    fn lower_name_ref(&mut self, name_ref: &NameRef) -> MirExpr {
         let name = name_ref.text().unwrap_or_else(|| "<unknown>".to_string());
         let range = name_ref.syntax().text_range();
         let resolved_ty = self.resolve_range(range);
@@ -7895,11 +7895,16 @@ impl<'a> Lowerer<'a> {
             return self.lower_local_ref(name, scope_ty, range);
         }
 
+        if let Some(module) = self.stdlib_imports.get(&name) {
+            let fn_ty = self.get_ty(range).cloned();
+            return self.lower_stdlib_function(module, &name, fn_ty, resolved_ty);
+        }
+
         // Map builtin function names to their runtime equivalents.
         let mapped_name = if self.imported_functions.contains(&name) {
             name.clone()
         } else {
-            map_builtin_name(self.stdlib_imports.get(&name).unwrap_or(&name))
+            map_builtin_name(&name)
         };
         let ty = resolved_ty;
 
@@ -14775,7 +14780,7 @@ fn map_builtin_name(name: &str) -> String {
         "queue_size" => "mesh_queue_size".to_string(),
         "queue_is_empty" => "mesh_queue_is_empty".to_string(),
         // The prelude's bare list functions. A name imported from a standard
-        // module arrives with its module's prefix (see `stdlib_imports`).
+        // module lowers as its qualified call (see `stdlib_imports`).
         "map" => "mesh_list_map".to_string(),
         "filter" => "mesh_list_filter".to_string(),
         "reduce" => "mesh_list_reduce".to_string(),

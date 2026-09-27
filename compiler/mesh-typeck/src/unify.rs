@@ -174,8 +174,8 @@ pub struct InferCtx {
     /// instance's receiver, where the function was used).
     pub projection_requirements: Vec<(Ty, String, String, Ty, Option<TextRange>)>,
     /// Names `from Module import name` brought in from a standard module,
-    /// each with the module's prefix (`sqrt` -> `math_sqrt`): the name the
-    /// call means, which lowering and `monitor`'s typing go by.
+    /// each with its module (`sqrt` -> `Math`): the function the name
+    /// means, which lowering and `monitor`'s typing go by.
     pub stdlib_imports: FxHashMap<String, String>,
     /// The module's types that derive Json, known before any is checked, so
     /// `deriving(Json)` accepts fields of types declared later or recursively.

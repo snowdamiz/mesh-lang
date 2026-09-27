@@ -5795,7 +5795,7 @@ fn register_import(
                     match functions.get(&name) {
                         Some(scheme) => {
                             let prefixed = format!("{}_{name}", module.to_lowercase());
-                            ctx.stdlib_imports.insert(name.clone(), prefixed.clone());
+                            ctx.stdlib_imports.insert(name.clone(), module.clone());
                             env.insert(prefixed, scheme.clone());
                             env.insert(name, scheme.clone());
                         }
@@ -8879,12 +8879,11 @@ fn infer_name_ref(ctx: &mut InferCtx, env: &TypeEnv, name_ref: &NameRef) -> Resu
     // `monitor` imported from `Process` or `Node` is typed as
     // `Process.monitor` or `Node.monitor` is.
     let monitor_module = match ctx.stdlib_imports.get(&name).map(String::as_str) {
-        Some("process_monitor") => Some("Process"),
-        Some("node_monitor") => Some("Node"),
+        Some(module @ ("Process" | "Node")) if name == "monitor" => Some(module.to_string()),
         _ => None,
     };
     if let (Some(module), false) = (monitor_module, env.is_local(&name)) {
-        return monitor_type(ctx, env, module, name_ref.syntax().text_range());
+        return monitor_type(ctx, env, &module, name_ref.syntax().text_range());
     }
 
     match env.lookup(&name) {

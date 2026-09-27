@@ -590,7 +590,8 @@ fn e2e_deriving_json_collections() {
 /// A function imported by name from any standard module runs as the
 /// qualified call does. Only a hand-kept list of names (String, IO, File
 /// and a few List ones) did: `from Math import sqrt` type-checked and then
-/// failed in code generation with "Undefined variable 'sqrt'".
+/// failed in code generation with "Undefined variable 'sqrt'". And an
+/// imported `Map.put` stored a tuple key where `Map.get` could not find it.
 #[test]
 fn e2e_stdlib_functions_import_by_name() {
     let output = compile_and_run(
@@ -602,14 +603,17 @@ from Env import get
 from Process import demonitor
 from Json import encode
 from File import exists
+from Map import put
 
 fn main() do
   println("#{sqrt(to_float(9))} #{Bytes.length(from_utf8("abc"))} #{get("MESH_NO_SUCH_VAR", "fallback")}")
   println("#{demonitor(12345)} #{exists("/no/such/file/at/all")}")
+  let m = put(Map.new(), (1, 2), "tuple key")
+  println(Map.get(m, (1, 2)))
 end
 "##,
     );
-    assert_eq!(output, "3.0 3 fallback\n1 false\n");
+    assert_eq!(output, "3.0 3 fallback\n1 false\ntuple key\n");
 }
 
 /// `String.repeat`, called through its module and imported by name, and
