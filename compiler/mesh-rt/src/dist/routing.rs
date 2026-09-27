@@ -295,16 +295,6 @@ impl LoadReportRegistry {
             .map(|observed| observed.report.clone())
     }
 
-    pub fn snapshot(&self, now: Instant, ttl: Duration) -> Vec<NodeLoadReport> {
-        self.reports
-            .read()
-            .unwrap()
-            .values()
-            .filter(|observed| now.saturating_duration_since(observed.received_at) <= ttl)
-            .map(|observed| observed.report.clone())
-            .collect()
-    }
-
     #[cfg(test)]
     fn clear(&self) {
         self.reports.write().unwrap().clear();
