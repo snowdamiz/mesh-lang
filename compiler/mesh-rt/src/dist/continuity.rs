@@ -2314,22 +2314,17 @@ fn outgoing_store_snapshot_acks() -> &'static Mutex<BTreeMap<(String, String), u
     OUTGOING_STORE_SNAPSHOT_ACKS.get_or_init(|| Mutex::new(BTreeMap::new()))
 }
 
-fn encode_tagged_json<T: Serialize>(tag: u8, value: &T) -> Result<Vec<u8>, String> {
-    let encoded = serde_json::to_vec(value)
-        .map_err(|error| format!("continuity_sync_encode_failed:{error}"))?;
-    let mut frame = Vec::with_capacity(1 + encoded.len());
-    frame.push(tag);
-    frame.extend_from_slice(&encoded);
-    Ok(frame)
+/// A store sync frame: its tag, then the value as JSON. The values are
+/// plain structs, which JSON always encodes.
+fn encode_tagged_json<T: Serialize>(tag: u8, value: &T) -> Vec<u8> {
+    let mut frame = vec![tag];
+    serde_json::to_writer(&mut frame, value).expect("a store sync value encodes as JSON");
+    frame
 }
 
-fn decode_tagged_json<T: for<'de> Deserialize<'de>>(
-    expected_tag: u8,
-    frame: &[u8],
-) -> Result<T, String> {
-    if frame.first().copied() != Some(expected_tag) {
-        return Err("continuity_sync_tag_invalid".to_string());
-    }
+/// The value of a store sync frame. The node hands each handler only
+/// frames whose tag it matched, so the tag is not checked again.
+fn decode_tagged_json<T: for<'de> Deserialize<'de>>(frame: &[u8]) -> Result<T, String> {
     serde_json::from_slice(&frame[1..])
         .map_err(|error| format!("continuity_sync_decode_failed:{error}"))
 }
@@ -2352,9 +2347,8 @@ fn send_durable_store_sync(session: &Arc<super::node::NodeSession>) {
     let Ok(chunks) = store.snapshot_chunks(chunk_bytes) else {
         return;
     };
-    let Some(first) = chunks.first() else {
-        return;
-    };
+    // A snapshot, even of an empty store, is at least one chunk.
+    let first = &chunks[0];
     let resume_at = outgoing_store_snapshot_acks()
         .lock()
         .unwrap()
@@ -2366,10 +2360,7 @@ fn send_durable_store_sync(session: &Arc<super::node::NodeSession>) {
         .into_iter()
         .filter(|chunk| chunk.sequence >= resume_at)
     {
-        let Ok(frame) = encode_tagged_json(super::node::DIST_CONTINUITY_STORE_SNAPSHOT, &chunk)
-        else {
-            return;
-        };
+        let frame = encode_tagged_json(super::node::DIST_CONTINUITY_STORE_SNAPSHOT, &chunk);
         if session
             .send_waiting(super::node::OutboundClass::Snapshot, frame)
             .is_err()
@@ -2386,10 +2377,7 @@ fn send_durable_store_sync(session: &Arc<super::node::NodeSession>) {
             break;
         }
         for entry in &entries {
-            let Ok(frame) = encode_tagged_json(super::node::DIST_CONTINUITY_STORE_LOG_ENTRY, entry)
-            else {
-                return;
-            };
+            let frame = encode_tagged_json(super::node::DIST_CONTINUITY_STORE_LOG_ENTRY, entry);
             if session
                 .send_waiting(super::node::OutboundClass::Snapshot, frame)
                 .is_err()
@@ -2408,12 +2396,27 @@ pub(crate) fn handle_store_snapshot_chunk(
     session: &Arc<super::node::NodeSession>,
     frame: &[u8],
 ) -> Result<(), String> {
-    let chunk: SnapshotChunk =
-        decode_tagged_json(super::node::DIST_CONTINUITY_STORE_SNAPSHOT, frame)?;
+    let (ack, complete) =
+        receive_store_snapshot_chunk(configured_continuity_store(), &session.remote_name, frame)?;
+    // The snapshot is applied whether or not its ack finds room to go out.
+    if complete {
+        crate::dist::readiness::mark_initial_state_synchronized();
+    }
+    session.send(super::node::OutboundClass::Control, ack)
+}
+
+/// Applies one chunk of `remote`'s store snapshot to `store`, in order,
+/// and returns the ack frame for it and whether the snapshot is complete.
+fn receive_store_snapshot_chunk(
+    store: Option<&Arc<super::continuity_store::SqliteContinuityStore>>,
+    remote: &str,
+    frame: &[u8],
+) -> Result<(Vec<u8>, bool), String> {
+    let chunk: SnapshotChunk = decode_tagged_json(frame)?;
     if !chunk.verify() {
         return Err("continuity_snapshot_checksum_mismatch".to_string());
     }
-    let key = (session.remote_name.clone(), chunk.snapshot_id.clone());
+    let key = (remote.to_string(), chunk.snapshot_id.clone());
     let mut incoming = incoming_store_snapshots().lock().unwrap();
     let state = incoming
         .entry(key.clone())
@@ -2436,9 +2439,9 @@ pub(crate) fn handle_store_snapshot_chunk(
         ));
     }
     if chunk.sequence == state.next_sequence {
-        let store = configured_continuity_store()
-            .ok_or_else(|| "continuity_store_not_configured".to_string())?;
-        store.apply_snapshot_chunk(&chunk)?;
+        store
+            .ok_or_else(|| "continuity_store_not_configured".to_string())?
+            .apply_snapshot_chunk(&chunk)?;
         state.chunk_checksums.push(chunk.checksum);
         state.next_sequence = state
             .next_sequence
@@ -2466,31 +2469,37 @@ pub(crate) fn handle_store_snapshot_chunk(
     if complete {
         incoming.remove(&key);
     }
-    drop(incoming);
-    // The snapshot is applied whether or not its ack finds room to go out.
-    if complete {
-        crate::dist::readiness::mark_initial_state_synchronized();
-    }
-    let payload = encode_tagged_json(super::node::DIST_CONTINUITY_STORE_SNAPSHOT_ACK, &ack)?;
-    session.send(super::node::OutboundClass::Control, payload)
+    Ok((
+        encode_tagged_json(super::node::DIST_CONTINUITY_STORE_SNAPSHOT_ACK, &ack),
+        complete,
+    ))
 }
 
 pub(crate) fn handle_store_snapshot_ack(
     session: &Arc<super::node::NodeSession>,
     frame: &[u8],
 ) -> Result<(), String> {
-    let ack: StoreSnapshotAck =
-        decode_tagged_json(super::node::DIST_CONTINUITY_STORE_SNAPSHOT_ACK, frame)?;
+    receive_store_snapshot_ack(configured_continuity_store(), &session.remote_name, frame)
+}
+
+/// Records how far `remote` has this node's store snapshot; once it has
+/// all of it, that is the replica's safe point and the log compacts to it.
+fn receive_store_snapshot_ack(
+    store: Option<&Arc<super::continuity_store::SqliteContinuityStore>>,
+    remote: &str,
+    frame: &[u8],
+) -> Result<(), String> {
+    let ack: StoreSnapshotAck = decode_tagged_json(frame)?;
     if ack.snapshot_id.is_empty() {
         return Err("continuity_snapshot_ack_id_missing".to_string());
     }
-    outgoing_store_snapshot_acks().lock().unwrap().insert(
-        (session.remote_name.clone(), ack.snapshot_id),
-        ack.next_sequence,
-    );
+    outgoing_store_snapshot_acks()
+        .lock()
+        .unwrap()
+        .insert((remote.to_string(), ack.snapshot_id), ack.next_sequence);
     if ack.complete {
-        if let Some(store) = configured_continuity_store() {
-            store.acknowledge_replica_safe_point(&session.remote_name, ack.high_water_mark)?;
+        if let Some(store) = store {
+            store.acknowledge_replica_safe_point(remote, ack.high_water_mark)?;
             let _ = store.compact_log_to_replica_safe_point()?;
         }
     }
@@ -2501,9 +2510,17 @@ pub(crate) fn handle_store_log_entry(
     session: &Arc<super::node::NodeSession>,
     frame: &[u8],
 ) -> Result<(), String> {
-    let entry: ContinuityLogEntry =
-        decode_tagged_json(super::node::DIST_CONTINUITY_STORE_LOG_ENTRY, frame)?;
-    configured_continuity_store()
+    let ack = receive_store_log_entry(configured_continuity_store(), frame)?;
+    session.send(super::node::OutboundClass::Control, ack)
+}
+
+/// Applies one store log entry from a peer and returns the ack frame for it.
+fn receive_store_log_entry(
+    store: Option<&Arc<super::continuity_store::SqliteContinuityStore>>,
+    frame: &[u8],
+) -> Result<Vec<u8>, String> {
+    let entry: ContinuityLogEntry = decode_tagged_json(frame)?;
+    store
         .ok_or_else(|| "continuity_store_not_configured".to_string())?
         .apply_log_entry(&entry)?;
     let ack = StoreSnapshotAck {
@@ -2512,8 +2529,10 @@ pub(crate) fn handle_store_log_entry(
         high_water_mark: entry.sequence,
         complete: true,
     };
-    let frame = encode_tagged_json(super::node::DIST_CONTINUITY_STORE_SNAPSHOT_ACK, &ack)?;
-    session.send(super::node::OutboundClass::Control, frame)
+    Ok(encode_tagged_json(
+        super::node::DIST_CONTINUITY_STORE_SNAPSHOT_ACK,
+        &ack,
+    ))
 }
 
 pub(crate) fn encode_upsert_payload(
@@ -5434,6 +5453,216 @@ mod tests {
         assert_eq!(
             decode_record(&count).err(),
             Some("continuity u64 truncated".to_string())
+        );
+    }
+
+    fn memory_store() -> Arc<super::super::continuity_store::SqliteContinuityStore> {
+        Arc::new(
+            super::super::continuity_store::SqliteContinuityStore::open(
+                std::path::Path::new(":memory:"),
+                Default::default(),
+            )
+            .unwrap(),
+        )
+    }
+
+    fn stored(key: &str) -> super::super::continuity_store::StoredContinuityRecord {
+        super::super::continuity_store::StoredContinuityRecord {
+            operation_key: key.to_string(),
+            request_hash: "hash".to_string(),
+            request_body: Vec::new(),
+            runtime_record: Vec::new(),
+            owner_node: "owner".to_string(),
+            ownership_generation: 1,
+            attempts: vec!["attempt-1".to_string()],
+            phase: super::super::continuity_store::StoredContinuityPhase::Admitted,
+            replica_set: Vec::new(),
+            created_at_millis: 1,
+            updated_at_millis: 1,
+            terminal_at_millis: None,
+            expires_at_millis: None,
+            response_metadata: Vec::new(),
+            response_body: Vec::new(),
+            control_term: 1,
+            schema_version: 1,
+            version: 1,
+        }
+    }
+
+    fn snapshot_frame(chunk: &SnapshotChunk) -> Vec<u8> {
+        encode_tagged_json(super::super::node::DIST_CONTINUITY_STORE_SNAPSHOT, chunk)
+    }
+
+    fn decoded_ack(frame: &[u8]) -> StoreSnapshotAck {
+        decode_tagged_json(frame).unwrap()
+    }
+
+    #[test]
+    fn a_store_snapshot_is_applied_in_order_and_acknowledged() {
+        let source = memory_store();
+        for index in 0..3 {
+            source.upsert(&stored(&format!("op-{index}"))).unwrap();
+        }
+        // One record per chunk.
+        let bound = serde_json::to_vec(&stored("op-0")).unwrap().len() + 2;
+        let chunks = source.snapshot_chunks(bound).unwrap();
+        assert_eq!(chunks.len(), 3);
+        let receiver = memory_store();
+        let remote = "snapshot-source@host";
+        let receive = |chunk: &SnapshotChunk| {
+            receive_store_snapshot_chunk(Some(&receiver), remote, &snapshot_frame(chunk))
+        };
+
+        // A chunk ahead of the next one waits for those before it.
+        assert_eq!(
+            receive(&chunks[1]).err(),
+            Some("continuity_snapshot_chunk_gap:expected=0:actual=1".to_string())
+        );
+        let (ack, complete) = receive(&chunks[0]).unwrap();
+        assert!(!complete);
+        assert_eq!(decoded_ack(&ack).next_sequence, 1);
+        // A chunk sent again is acknowledged again, not applied twice.
+        let (again, _) = receive(&chunks[0]).unwrap();
+        assert_eq!(decoded_ack(&again).next_sequence, 1);
+        receive(&chunks[1]).unwrap();
+        let (last, complete) = receive(&chunks[2]).unwrap();
+        assert!(complete);
+        let last = decoded_ack(&last);
+        assert!(last.complete);
+        assert_eq!(last.high_water_mark, chunks[0].high_water_mark);
+        assert_eq!(receiver.stats().unwrap().records, 3);
+
+        // The source records the replica's safe point and compacts to it.
+        assert_eq!(
+            receive_store_snapshot_ack(
+                Some(&source),
+                "snapshot-receiver@host",
+                &encode_tagged_json(0, &last)
+            ),
+            Ok(())
+        );
+        let stats = source.stats().unwrap();
+        assert_eq!(stats.replica_safe_point, Some(last.high_water_mark));
+        assert_eq!(stats.log_entries, 0);
+    }
+
+    #[test]
+    fn store_snapshot_chunks_that_do_not_add_up_are_refused() {
+        let source = memory_store();
+        source.upsert(&stored("op")).unwrap();
+        let chunk = source.snapshot_chunks(4096).unwrap().remove(0);
+        let receiver = memory_store();
+
+        assert!(
+            receive_store_snapshot_chunk(Some(&receiver), "garbled@host", &[0, b'{'])
+                .is_err_and(|error| error.starts_with("continuity_sync_decode_failed:"))
+        );
+        let mut corrupted = chunk.clone();
+        corrupted.payload.push(b' ');
+        assert_eq!(
+            receive_store_snapshot_chunk(
+                Some(&receiver),
+                "corrupt@host",
+                &snapshot_frame(&corrupted)
+            )
+            .err(),
+            Some("continuity_snapshot_checksum_mismatch".to_string())
+        );
+        // Without a store the chunk cannot be applied.
+        assert_eq!(
+            receive_store_snapshot_chunk(None, "storeless@host", &snapshot_frame(&chunk)).err(),
+            Some("continuity_store_not_configured".to_string())
+        );
+        // The same snapshot id cannot change what it describes midway.
+        let two = {
+            let source = memory_store();
+            for key in ["a", "b"] {
+                source.upsert(&stored(key)).unwrap();
+            }
+            let bound = serde_json::to_vec(&stored("a")).unwrap().len() + 2;
+            source.snapshot_chunks(bound).unwrap()
+        };
+        receive_store_snapshot_chunk(Some(&receiver), "shifting@host", &snapshot_frame(&two[0]))
+            .unwrap();
+        let shifted = SnapshotChunk {
+            high_water_mark: two[1].high_water_mark + 1,
+            ..two[1].clone()
+        };
+        assert_eq!(
+            receive_store_snapshot_chunk(
+                Some(&receiver),
+                "shifting@host",
+                &snapshot_frame(&shifted)
+            )
+            .err(),
+            Some("continuity_snapshot_identity_changed".to_string())
+        );
+        // A final chunk whose snapshot digest does not cover its chunks.
+        let misdigested = SnapshotChunk {
+            snapshot_checksum: [0; 32],
+            ..chunk
+        };
+        assert_eq!(
+            receive_store_snapshot_chunk(
+                Some(&receiver),
+                "misdigested@host",
+                &snapshot_frame(&misdigested)
+            )
+            .err(),
+            Some("continuity_snapshot_final_checksum_mismatch".to_string())
+        );
+    }
+
+    #[test]
+    fn store_snapshot_acks_and_log_entries_are_checked() {
+        let ack = |snapshot_id: &str, complete: bool| {
+            encode_tagged_json(
+                0,
+                &StoreSnapshotAck {
+                    snapshot_id: snapshot_id.to_string(),
+                    next_sequence: 1,
+                    high_water_mark: 1,
+                    complete,
+                },
+            )
+        };
+        let source = memory_store();
+        source.upsert(&stored("op")).unwrap();
+        assert_eq!(
+            receive_store_snapshot_ack(Some(&source), "acker@host", &ack("", true)).err(),
+            Some("continuity_snapshot_ack_id_missing".to_string())
+        );
+        // A partial ack only remembers where to resume; without a store a
+        // complete one has nothing to compact.
+        receive_store_snapshot_ack(Some(&source), "acker@host", &ack("snapshot-1", false)).unwrap();
+        receive_store_snapshot_ack(None, "acker@host", &ack("snapshot-1", true)).unwrap();
+        assert_eq!(source.stats().unwrap().replica_safe_point, None);
+        assert_eq!(
+            outgoing_store_snapshot_acks()
+                .lock()
+                .unwrap()
+                .get(&("acker@host".to_string(), "snapshot-1".to_string())),
+            Some(&1)
+        );
+
+        let entry = source.log_entries_after(0, 1).unwrap().remove(0);
+        let frame = encode_tagged_json(0, &entry);
+        let receiver = memory_store();
+        let ack = decoded_ack(&receive_store_log_entry(Some(&receiver), &frame).unwrap());
+        assert_eq!(ack.snapshot_id, "incremental-log");
+        assert_eq!(ack.high_water_mark, entry.sequence);
+        assert!(receiver.get("op").unwrap().is_some());
+        assert_eq!(
+            receive_store_log_entry(None, &frame).err(),
+            Some("continuity_store_not_configured".to_string())
+        );
+        let tampered = ContinuityLogEntry {
+            checksum: [0; 32],
+            ..entry
+        };
+        assert_eq!(
+            receive_store_log_entry(Some(&receiver), &encode_tagged_json(0, &tampered)).err(),
+            Some("continuity_log_entry_checksum_mismatch".to_string())
         );
     }
 
