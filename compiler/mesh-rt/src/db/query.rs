@@ -745,4 +745,12 @@ mod tests {
             "Mesh panic: Query.fragment: `LIMIT $2` takes 2 parameter(s) but was given 1"
         );
     }
+
+    #[test]
+    fn select_expr_selects_one_expression() {
+        crate::gc::mesh_rt_init();
+        let column = crate::db::expr::mesh_expr_column(text("a"));
+        let q = mesh_query_select_expr(mesh_query_from(text("t")), column);
+        assert_eq!(unsafe { query_parts(q) }.select, [r#"EXPR:{"Column":"a"}"#]);
+    }
 }

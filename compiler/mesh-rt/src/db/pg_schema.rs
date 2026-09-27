@@ -401,4 +401,19 @@ mod tests {
             build_drop_partition_sql("events_20260216").expect("drop partition SQL should build");
         assert_eq!(sql, "DROP TABLE IF EXISTS \"events_20260216\"");
     }
+
+    /// Listing partitions through a pool that cannot run the query returns
+    /// the pool's error.
+    #[test]
+    fn listing_partitions_returns_the_query_error() {
+        crate::gc::mesh_rt_init();
+        let url = mesh_str("postgres://nobody@127.0.0.1:1/none");
+        let opened = crate::db::pool::mesh_pool_open(url, 0, 1, 100);
+        let pool = unsafe { *((*(opened as *const MeshResult)).value as *const u64) };
+        crate::db::pool::mesh_pool_close(pool);
+        let listed = mesh_pg_list_daily_partitions_before(pool, mesh_str("events"), 1);
+        let result = unsafe { &*(listed as *const MeshResult) };
+        assert_eq!(result.tag, 1);
+        assert_eq!(unsafe { text_of(result.value) }, "pool is closed");
+    }
 }
