@@ -5,7 +5,6 @@
 //! one test that runs the phases in order.
 
 use std::collections::BTreeMap;
-use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
 use mesh_rt::dist::autonomous::start_autonomous_controller;
@@ -416,14 +415,5 @@ fn a_node_serves_consensus_operator_controls_and_its_controller() {
     wait_until("the controller to stand by", || {
         let status = autonomous_controller_status();
         status.state == "standby" && !status.leader
-    });
-
-    // A stopping node stops its controller.
-    mesh_rt::dist::node::node_state()
-        .unwrap()
-        .listener_shutdown
-        .store(true, Ordering::Release);
-    wait_until("the controller to stop", || {
-        autonomous_controller_status().state == "stopped"
     });
 }

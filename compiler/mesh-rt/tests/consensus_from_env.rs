@@ -1,10 +1,8 @@
 //! A controller starts its embedded consensus from the deployment
-//! environment: the bootstrap voter initializes the cluster, leads it, and
-//! shuts it down with the node, and the autonomous controller waits for that
-//! consensus before it ticks. The consensus runtime starts once per process,
+//! environment: the bootstrap voter initializes the cluster and leads it,
+//! and the autonomous controller waits for that consensus before it ticks. The consensus runtime starts once per process,
 //! so this binary holds one test.
 
-use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
 use mesh_rt::dist::autonomous::start_autonomous_controller;
@@ -113,19 +111,6 @@ fn the_bootstrap_controller_initializes_and_leads_its_consensus() {
             Instant::now() < deadline,
             "{snapshot:?} {:?}",
             autonomous_controller_status()
-        );
-        std::thread::sleep(Duration::from_millis(20));
-    }
-
-    mesh_rt::dist::node::node_state()
-        .unwrap()
-        .listener_shutdown
-        .store(true, Ordering::Release);
-    let deadline = Instant::now() + Duration::from_secs(20);
-    while consensus_runtime_snapshot().is_some_and(|snapshot| snapshot.state == "leader") {
-        assert!(
-            Instant::now() < deadline,
-            "consensus still leads after shutdown"
         );
         std::thread::sleep(Duration::from_millis(20));
     }

@@ -602,7 +602,7 @@ impl OperatorDiagnosticsBuffer {
 
 static OPERATOR_DIAGNOSTICS: OnceLock<OperatorDiagnosticsBuffer> = OnceLock::new();
 
-fn diagnostics_buffer() -> &'static OperatorDiagnosticsBuffer {
+pub(crate) fn diagnostics_buffer() -> &'static OperatorDiagnosticsBuffer {
     OPERATOR_DIAGNOSTICS.get_or_init(|| OperatorDiagnosticsBuffer::new(DEFAULT_DIAGNOSTIC_CAPACITY))
 }
 
