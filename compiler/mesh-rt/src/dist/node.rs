@@ -12198,4 +12198,206 @@ mod tests {
             Err("clustered_http_reservation_reason_too_large".to_string())
         );
     }
+
+    /// A connection a `FakeNode` took through the handshake: the test
+    /// plays the node on it.
+    struct FakeConnection {
+        stream: StreamOwned<rustls::ServerConnection, TcpStream>,
+        remote: String,
+        negotiated: NegotiatedProtocol,
+    }
+
+    impl FakeConnection {
+        fn send(&mut self, payload: Vec<u8>) {
+            let frame =
+                encode_session_payload(OutboundClass::Control, payload, &self.negotiated).unwrap();
+            write_msg(&mut self.stream, &frame).unwrap();
+        }
+
+        /// The next frame of kind `tag` the node sends, past any others.
+        fn receive(&mut self, tag: u8) -> Vec<u8> {
+            loop {
+                let frame = read_dist_msg(&mut self.stream).expect("a frame from the node");
+                let message = decode_session_payload(frame, &self.negotiated).unwrap();
+                if message[0] == tag {
+                    return message;
+                }
+            }
+        }
+    }
+
+    /// A node of the test's own on a loopback port: it takes connections
+    /// through the cookie handshake as a node does, sends its (empty)
+    /// global names as a node does, and hands the test the connection.
+    struct FakeNode {
+        name: String,
+        cookie: &'static str,
+        listener: TcpListener,
+        _member: parking_lot::RwLockReadGuard<'static, ()>,
+    }
+
+    impl FakeNode {
+        fn new(prefix: &str, cookie: &'static str) -> Self {
+            let member = TEST_PEERS.read_recursive();
+            test_node();
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let name = format!(
+                "{prefix}@127.0.0.1:{}",
+                listener.local_addr().unwrap().port()
+            );
+            Self {
+                name,
+                cookie,
+                listener,
+                _member: member,
+            }
+        }
+
+        fn accept(&self) -> std::thread::JoinHandle<Result<FakeConnection, String>> {
+            let listener = self.listener.try_clone().unwrap();
+            let (name, cookie) = (self.name.clone(), self.cookie);
+            std::thread::spawn(move || {
+                let (tcp, _) = listener.accept().map_err(|error| error.to_string())?;
+                tcp.set_read_timeout(Some(Duration::from_secs(10))).unwrap();
+                let (cert, key) = generate_ephemeral_cert();
+                let mut stream = StreamOwned::new(
+                    rustls::ServerConnection::new(build_node_server_config(cert, key)).unwrap(),
+                    tcp,
+                );
+                let (remote, _, negotiated, _) =
+                    perform_handshake_with_identity(&mut stream, &name, cookie, 1, false)?;
+                let mut connection = FakeConnection {
+                    stream,
+                    remote,
+                    negotiated,
+                };
+                connection.send(vec![DIST_GLOBAL_SYNC, 0, 0, 0, 0]);
+                Ok(connection)
+            })
+        }
+    }
+
+    fn node_connect(target: &str) -> i64 {
+        mesh_node_connect(target.as_ptr(), target.len() as u64)
+    }
+
+    /// Waits until the test node has no session to `name`.
+    fn await_session_gone(name: &str) {
+        let state = test_node();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while state.sessions.read().contains_key(name) {
+            assert!(Instant::now() < deadline, "the session to {name} stays");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    /// Node.connect authenticates with a node, keeps the session, and
+    /// returns once it knows the node's global names; connecting again finds
+    /// that session. When the node goes, so does the session.
+    #[test]
+    fn node_connect_opens_an_authenticated_session_that_ends_with_the_node() {
+        let state = test_node();
+        let node = FakeNode::new("connect-target", TEST_NODE_COOKIE);
+        let accepted = node.accept();
+        assert_eq!(node_connect(&node.name), 0);
+        let mut connection = accepted.join().unwrap().unwrap();
+        assert_eq!(connection.remote, state.name);
+        connection.receive(DIST_GLOBAL_SYNC);
+        let session = state.sessions.read().get(&node.name).cloned().unwrap();
+        assert!(session.global_names_received.load(Ordering::Acquire));
+
+        let again = node.accept();
+        assert_eq!(node_connect(&node.name), 0);
+        let _second = again.join().unwrap().unwrap();
+        assert!(Arc::ptr_eq(
+            state.sessions.read().get(&node.name).unwrap(),
+            &session
+        ));
+
+        drop(connection);
+        await_session_gone(&node.name);
+    }
+
+    /// Node.connect says why it could not connect: -2 when nothing listens
+    /// there, -3 for a target it cannot parse or read and for a node that
+    /// does not know the cookie.
+    #[test]
+    fn node_connect_says_why_it_could_not_connect() {
+        test_node();
+        assert_eq!(node_connect("unreachable-peer@127.0.0.1:1"), -2);
+        assert_eq!(node_connect("no-at-sign"), -3);
+        assert_eq!(mesh_node_connect([0xFF, 0xFE].as_ptr(), 2), -3);
+        let stranger = FakeNode::new("cookie-stranger", "a-cookie-the-test-node-lacks");
+        let accepted = stranger.accept();
+        assert_eq!(node_connect(&stranger.name), -3);
+        assert!(accepted
+            .join()
+            .unwrap()
+            .err()
+            .is_some_and(|error| error.contains("cookie mismatch")));
+    }
+
+    /// A remote spawn over a session that can no longer send drops it,
+    /// connects afresh (within the retry budget) and sends there; it fails
+    /// when the node cannot be reached again, or when the request cannot
+    /// be sent even then.
+    #[test]
+    fn a_remote_spawn_reconnects_once_over_a_dead_session() {
+        let node = FakeNode::new("respawn-target", TEST_NODE_COOKIE);
+        let dead = TestPeer::new(&node.name);
+        dead.session.shutdown.store(true, Ordering::SeqCst);
+        let accepted = node.accept();
+        let target: &'static str = Box::leak(node.name.clone().into_boxed_str());
+        let call = std::thread::spawn(move || call_node_spawn(target, 0));
+        let mut connection = accepted.join().unwrap().unwrap();
+        let request = connection.receive(DIST_SPAWN);
+        connection.send(frame(
+            DIST_SPAWN_REPLY,
+            &[&request[1..9], &[0], &21u64.to_le_bytes()],
+        ));
+        let spawned = call.join().unwrap();
+        let session = test_node().sessions.read().get(target).cloned().unwrap();
+        assert!(!Arc::ptr_eq(&session, &dead.session));
+        assert_eq!(
+            spawned,
+            ProcessId::from_remote(session.node_id, session.remote_creation, 21).as_u64()
+        );
+        drop(connection);
+        await_session_gone(target);
+
+        let gone = TestPeer::new("respawn-gone@127.0.0.1:1");
+        gone.session.shutdown.store(true, Ordering::SeqCst);
+        assert_eq!(call_node_spawn("respawn-gone@127.0.0.1:1", 0), 0);
+    }
+
+    /// A remote spawn needs a node, a function, and arguments that match
+    /// their tags; without them, or without a way to the node, it is 0.
+    #[test]
+    fn a_remote_spawn_without_a_target_or_whole_arguments_is_zero() {
+        test_node();
+        assert_eq!(call_node_spawn("", 0), 0);
+        assert_eq!(call_node_spawn("unreachable-spawn@127.0.0.1:1", 0), 0);
+        let peer = TestPeer::new("argument-spawn-peer@127.0.0.1:1");
+        let spawn = |function: &str, args: &[u8], tags: Option<&[u8]>, count: u64| {
+            mesh_node_spawn(
+                peer.session.remote_name.as_ptr(),
+                peer.session.remote_name.len() as u64,
+                function.as_ptr(),
+                function.len() as u64,
+                args.as_ptr(),
+                args.len() as u64,
+                tags.map_or(std::ptr::null(), <[u8]>::as_ptr),
+                count,
+                0,
+            )
+        };
+        assert_eq!(spawn("", &[], None, 0), 0);
+        assert_eq!(spawn("f", &[0; 8], None, 1), 0, "tags missing");
+        assert_eq!(
+            spawn("f", &[0; 4], Some(&[REMOTE_SPAWN_ARG_INT]), 1),
+            0,
+            "cut short"
+        );
+        assert!(peer.sent().is_empty());
+    }
 }
