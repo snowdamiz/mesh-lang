@@ -3,14 +3,14 @@
 //! These helpers intentionally own PostgreSQL-only DDL that should not be
 //! represented by the neutral `Migration.*` surface.
 
-use super::quote_ident;
+use super::{execute_ddl, quote_ident};
 use crate::collections::list::list_strings;
 use crate::collections::list::string_list;
 use crate::collections::list::{mesh_list_append, mesh_list_get, mesh_list_length, mesh_list_new};
 use crate::collections::map::mesh_map_get;
-use crate::db::pool::{mesh_pool_execute, mesh_pool_query};
+use crate::db::pool::mesh_pool_query;
 use crate::io::{alloc_result, err_result, MeshResult};
-use crate::string::{mesh_str, MeshString};
+use crate::string::{mesh_str, text_of, MeshString};
 
 fn quote_literal(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
@@ -28,10 +28,6 @@ fn quote_qualified_ident(value: &str, helper_name: &str) -> Result<String, Strin
         parts.push(quote_ident(trimmed));
     }
     Ok(parts.join("."))
-}
-
-fn ok_int_result(value: i64) -> *mut u8 {
-    crate::io::ok_int(value).cast()
 }
 
 enum PartitionedTableEntry {
@@ -209,15 +205,7 @@ pub(crate) fn build_drop_partition_sql(partition_name: &str) -> Result<String, S
 
 #[no_mangle]
 pub extern "C" fn mesh_pg_create_extension(pool: u64, name: *const MeshString) -> *mut u8 {
-    unsafe {
-        match build_create_extension_sql((*name).as_str()) {
-            Ok(sql) => {
-                let sql_ptr = mesh_str(&sql) as *const MeshString;
-                mesh_pool_execute(pool, sql_ptr, mesh_list_new())
-            }
-            Err(message) => err_result(&message),
-        }
-    }
+    unsafe { execute_ddl(pool, build_create_extension_sql(text_of(name))) }
 }
 
 #[no_mangle]
@@ -228,18 +216,12 @@ pub extern "C" fn mesh_pg_create_range_partitioned_table(
     partition_column: *const MeshString,
 ) -> *mut u8 {
     unsafe {
-        let cols = list_strings(columns);
-        match build_create_range_partitioned_table_sql(
-            (*table).as_str(),
-            &cols,
-            (*partition_column).as_str(),
-        ) {
-            Ok(sql) => {
-                let sql_ptr = mesh_str(&sql) as *const MeshString;
-                mesh_pool_execute(pool, sql_ptr, mesh_list_new())
-            }
-            Err(message) => err_result(&message),
-        }
+        let sql = build_create_range_partitioned_table_sql(
+            text_of(table),
+            &list_strings(columns),
+            text_of(partition_column),
+        );
+        execute_ddl(pool, sql)
     }
 }
 
@@ -252,18 +234,13 @@ pub extern "C" fn mesh_pg_create_gin_index(
     opclass: *const MeshString,
 ) -> *mut u8 {
     unsafe {
-        match build_create_gin_index_sql(
-            (*table).as_str(),
-            (*index_name).as_str(),
-            (*column).as_str(),
-            (*opclass).as_str(),
-        ) {
-            Ok(sql) => {
-                let sql_ptr = mesh_str(&sql) as *const MeshString;
-                mesh_pool_execute(pool, sql_ptr, mesh_list_new())
-            }
-            Err(message) => err_result(&message),
-        }
+        let sql = build_create_gin_index_sql(
+            text_of(table),
+            text_of(index_name),
+            text_of(column),
+            text_of(opclass),
+        );
+        execute_ddl(pool, sql)
     }
 }
 
@@ -274,7 +251,7 @@ pub extern "C" fn mesh_pg_create_daily_partitions_ahead(
     days: i64,
 ) -> *mut u8 {
     unsafe {
-        let parent_table = (*parent_table).as_str().trim();
+        let parent_table = text_of(parent_table).trim();
         if parent_table.is_empty() {
             return err_result("Pg.create_daily_partitions_ahead: parent table must not be empty");
         }
@@ -286,15 +263,13 @@ pub extern "C" fn mesh_pg_create_daily_partitions_ahead(
 
         for offset in 0..days {
             let sql = build_create_daily_partition_sql(parent_table, offset);
-            let sql_ptr = mesh_str(&sql) as *const MeshString;
-            let exec_result = mesh_pool_execute(pool, sql_ptr, mesh_list_new());
-            let result = &*(exec_result as *const MeshResult);
-            if result.tag != 0 {
+            let exec_result = execute_ddl(pool, Ok(sql));
+            if (*(exec_result as *const MeshResult)).tag != 0 {
                 return exec_result;
             }
         }
 
-        ok_int_result(0)
+        crate::io::ok_int(0).cast()
     }
 }
 
@@ -305,7 +280,7 @@ pub extern "C" fn mesh_pg_list_daily_partitions_before(
     max_days: i64,
 ) -> *mut u8 {
     unsafe {
-        let parent_table = (*parent_table).as_str();
+        let parent_table = text_of(parent_table);
         if max_days < 0 {
             return err_result(&format!(
                 "Pg.list_daily_partitions_before: max_days must be non-negative, got {max_days}"
@@ -314,18 +289,16 @@ pub extern "C" fn mesh_pg_list_daily_partitions_before(
 
         let sql = build_list_daily_partitions_before_sql();
         let params = string_list(&[parent_table.to_string(), max_days.to_string()]);
-        let sql_ptr = mesh_str(sql) as *const MeshString;
-        let query_result = mesh_pool_query(pool, sql_ptr, params);
+        let query_result = mesh_pool_query(pool, mesh_str(sql), params);
         let result = &*(query_result as *const MeshResult);
         if result.tag != 0 {
             return query_result;
         }
 
         let rows = result.value;
-        let len = mesh_list_length(rows);
         let partition_name_key = mesh_str("partition_name") as u64;
         let mut partitions = mesh_list_new();
-        for i in 0..len {
+        for i in 0..mesh_list_length(rows) {
             let row = mesh_list_get(rows, i) as *mut u8;
             partitions = mesh_list_append(partitions, mesh_map_get(row, partition_name_key));
         }
@@ -336,15 +309,7 @@ pub extern "C" fn mesh_pg_list_daily_partitions_before(
 
 #[no_mangle]
 pub extern "C" fn mesh_pg_drop_partition(pool: u64, partition_name: *const MeshString) -> *mut u8 {
-    unsafe {
-        match build_drop_partition_sql((*partition_name).as_str()) {
-            Ok(sql) => {
-                let sql_ptr = mesh_str(&sql) as *const MeshString;
-                mesh_pool_execute(pool, sql_ptr, mesh_list_new())
-            }
-            Err(message) => err_result(&message),
-        }
-    }
+    unsafe { execute_ddl(pool, build_drop_partition_sql(text_of(partition_name))) }
 }
 
 #[cfg(test)]

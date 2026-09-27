@@ -28,6 +28,19 @@ pub(crate) fn quote_name(name: &str) -> String {
         .join(".")
 }
 
+/// `sql` executed on the pool without parameters (`Pool.execute`'s
+/// result), or `Err(message)` for DDL that could not be built.
+pub(crate) fn execute_ddl(pool: u64, sql: Result<String, String>) -> *mut u8 {
+    match sql {
+        Ok(sql) => pool::mesh_pool_execute(
+            pool,
+            crate::string::mesh_str(&sql),
+            crate::collections::list::mesh_list_new(),
+        ),
+        Err(message) => crate::io::err_result(&message),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
