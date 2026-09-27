@@ -94,6 +94,7 @@ fn one_of_each() -> Vec<TypeError> {
             name: "name".to_string(),
             span: span(19, 24),
             suggestion: Some("suggestion".to_string()),
+            cons_tail: false,
         },
         TypeError::OrPatternBindingMismatch {
             expected_bindings: vec![

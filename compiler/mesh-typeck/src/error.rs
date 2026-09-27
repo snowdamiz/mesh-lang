@@ -156,10 +156,13 @@ pub enum TypeError {
     ManualContinuityPromotionDisabled { span: TextRange },
     /// A variant name was used in a pattern but does not exist.
     /// `suggestion` is a known one it may be a misspelling of.
+    /// `cons_tail`: the name ends a `head :: tail` pattern, as a type
+    /// annotation written in a pattern (`n :: Int`) would.
     UnknownVariant {
         name: String,
         span: TextRange,
         suggestion: Option<String>,
+        cons_tail: bool,
     },
     /// Or-pattern alternatives bind different sets of variables.
     /// `list_tail`: the or-pattern ends a list pattern, as `[a | rest]`, a

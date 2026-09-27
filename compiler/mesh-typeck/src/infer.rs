@@ -13075,6 +13075,11 @@ fn infer_pattern(
                     suggestion: did_you_mean(env, &name_text),
                     name: name_text,
                     span: pat.syntax().text_range(),
+                    cons_tail: pat
+                        .syntax()
+                        .parent()
+                        .is_some_and(|parent| parent.kind() == SyntaxKind::CONS_PAT)
+                        && pat.syntax().next_sibling().is_none(),
                 };
                 ctx.errors.push(err.clone());
                 return Err(err);
@@ -13216,6 +13221,7 @@ fn infer_constructor_pattern(
                 suggestion: did_you_mean(env, &lookup_name),
                 name: lookup_name,
                 span: pat.syntax().text_range(),
+                cons_tail: false,
             };
             ctx.errors.push(err.clone());
             return Err(err);

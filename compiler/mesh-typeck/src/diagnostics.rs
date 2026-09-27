@@ -849,10 +849,16 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
             name,
             span,
             suggestion,
+            cons_tail,
         } => {
             let range = clamp(text_range_to_range(*span));
             let mut builder = Description::error(range, "not a known variant");
-            if let Some(fix) = closest_name_help(name, suggestion, suggestions) {
+            if *cons_tail {
+                builder.set_help(format!(
+                    "`::` in a pattern splits a list into its head and tail, so `{name}` was read \
+                     as a variant; a pattern takes no type annotation"
+                ));
+            } else if let Some(fix) = closest_name_help(name, suggestion, suggestions) {
                 builder.set_help(fix);
             }
             builder

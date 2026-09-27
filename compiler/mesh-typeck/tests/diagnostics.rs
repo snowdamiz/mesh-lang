@@ -230,6 +230,7 @@ fn test_diag_unknown_variant() {
         name: "Triangle".to_string(),
         span: rowan::TextRange::new(42.into(), 54.into()),
         suggestion: None,
+        cons_tail: false,
     };
     let output = render_diagnostic(&err, src, "test.mpl", &opts(), None);
     assert!(output.contains("E0010"), "expected E0010 code: {}", output);
@@ -256,6 +257,21 @@ fn test_diag_or_pattern_binding_mismatch() {
         "expected binding-related message: {}",
         output
     );
+}
+
+/// `n :: Int`, a type annotation written in a pattern, is a cons pattern
+/// whose tail names no variant: the help says what `::` means there.
+#[test]
+fn test_diag_annotation_in_a_pattern_names_the_cons_reading() {
+    let annotated = render_first_error(
+        "fn f(x :: List<Int>) -> Int do\n  case x do\n    n :: Int -> 1\n    _ -> 0\n  end\nend\n",
+    );
+    assert!(annotated.contains("E0010"), "{annotated}");
+    assert!(annotated.contains("no type annotation"), "{annotated}");
+    let misspelled = render_first_error(
+        "type Color do\n  Green\nend\n\nfn f(c :: Color) -> Int do\n  case c do\n    Grean -> 1\n  end\nend\n",
+    );
+    assert!(!misspelled.contains("no type annotation"), "{misspelled}");
 }
 
 /// `[a, b | rest]`, a list's tail as another language writes it, is an
