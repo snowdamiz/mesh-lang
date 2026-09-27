@@ -41,6 +41,7 @@ end
 3. The surrounding function's return type must match — `T!E` for Result, `Option<T>` for Option.
 4. Replaces verbose nested `case` expressions with flat, readable code.
 5. Can only be used inside functions that return `Result` or `Option`.
+6. After a pipe, `?` applies to the call the value goes into: `x |> parse()?` is `(x |> parse())?`.
 
 ```mesh
 fn process(x :: Int) -> String!String do
@@ -73,6 +74,23 @@ fn run_pipeline(input :: Int) -> String!String do
   let b = step_two(a)?
   let c = step_three(b)?
   Ok("result: #{c}")
+end
+```
+
+## Option and Result Functions
+1. `Option.map`, `Option.and_then`, `Option.unwrap_or`, `Option.is_some`, `Option.is_none`, `Option.ok_or`.
+2. `Result.map`, `Result.map_err`, `Result.and_then`, `Result.unwrap_or`, `Result.is_ok`, `Result.is_err`, `Result.ok`.
+3. Each takes the value first: call it by module, through a pipe, or as a method (`r.map_err(f)`).
+4. `map_err` adds context to an error before `?` returns it.
+
+```mesh
+fn load(path :: String) -> String!String do
+  let text = File.read(path) |> Result.map_err(fn e -> "#{path}: #{e}" end)?
+  Ok(String.trim(text))
+end
+
+fn port_or_default(text :: String) -> Int do
+  String.to_int(text) |> Option.unwrap_or(8080)
 end
 ```
 
