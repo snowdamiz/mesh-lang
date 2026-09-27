@@ -132,6 +132,20 @@ fn a_joining_node_receives_the_continuity_records_and_store() {
     let stats = store.stats().unwrap();
     assert!(stats.log_entries < stats.high_water_mark, "{stats:?}");
 
+    // Once its load report arrives, the joining node is listed with the
+    // protocol its session negotiated.
+    wait_until("the joining node's load report", || {
+        mesh_rt::operator_runtime_snapshot()
+            .is_ok_and(|snapshot| snapshot.nodes.iter().any(|node| node.node_id == joiner))
+    });
+    let snapshot = mesh_rt::operator_runtime_snapshot().unwrap();
+    let listed = snapshot
+        .nodes
+        .iter()
+        .find(|node| node.node_id == joiner)
+        .unwrap();
+    assert!(listed.protocol_version > 0, "{listed:?}");
+
     // Records the joining node takes part in go to it at once: on the
     // control lane to their owner, on the continuity lane otherwise.
     submit("owned-by-joiner", &source, &joiner);

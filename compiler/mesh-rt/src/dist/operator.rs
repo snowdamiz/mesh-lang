@@ -2277,6 +2277,27 @@ mod tests {
         assert_eq!(second_lookup.attempt_id, "attempt-1");
     }
 
+    /// Cancelling a committed drain of this node clears it here and asks no
+    /// peer to do anything.
+    #[test]
+    fn cancelling_this_nodes_committed_drain_stays_local() {
+        let _guard = operator_test_guard();
+        ensure_operator_query_test_node();
+        let local = node_state().expect("test node").name.clone();
+        let propagations = || {
+            diagnostics_buffer()
+                .snapshot(None)
+                .entries
+                .iter()
+                .filter(|entry| entry.transition == "drain_cancel_propagation_failed")
+                .count()
+        };
+        let before = propagations();
+        cancel_committed_drain(&local);
+        assert!(!drain_requested(&local));
+        assert_eq!(propagations(), before);
+    }
+
     #[test]
     fn operator_query_transient_status_does_not_register_peer() {
         let _guard = operator_test_guard();
