@@ -210,6 +210,25 @@ fn soak_record(
     }
 }
 
+/// Snapshot `store` in chunks, as a joining replica receives it, and check
+/// that a fresh store rebuilt from them holds what `store` does.
+fn resume_snapshot(
+    store: &SqliteContinuityStore,
+    limits: ContinuityStoreLimits,
+) -> Result<(), String> {
+    let chunks = store.snapshot_chunks(64 * 1024)?;
+    let unbounded = ContinuityStoreLimits {
+        max_disk_bytes: u64::MAX,
+        ..limits
+    };
+    let target = SqliteContinuityStore::open(Path::new(":memory:"), unbounded)?;
+    for chunk in &chunks {
+        target.apply_snapshot_chunk(chunk)?;
+    }
+    let resumed = target.stats()?.records == store.stats()?.records;
+    ensure(resumed, "continuity_soak_resumed_snapshot_diverged")
+}
+
 fn drain_log(store: &SqliteContinuityStore) -> Result<(), String> {
     let high_water = store.high_water_mark()?;
     for replica in ["worker-a", "worker-b", "worker-c"] {
@@ -334,17 +353,7 @@ pub fn run_continuity_soak(args: ContinuitySoakArgs) -> Result<(), String> {
         drain_log(&store)?;
 
         if ordinal > 0 && ordinal.is_multiple_of(1_000) {
-            let chunks = store.snapshot_chunks(64 * 1024)?;
-            let unbounded = ContinuityStoreLimits {
-                max_disk_bytes: u64::MAX,
-                ..limits
-            };
-            let target = SqliteContinuityStore::open(Path::new(":memory:"), unbounded)?;
-            for chunk in &chunks {
-                target.apply_snapshot_chunk(chunk)?;
-            }
-            let resumed = target.stats()?.records == store.stats()?.records;
-            ensure(resumed, "continuity_soak_resumed_snapshot_diverged")?;
+            resume_snapshot(&store, limits)?;
             snapshots += 1;
         }
 
@@ -355,6 +364,13 @@ pub fn run_continuity_soak(args: ContinuitySoakArgs) -> Result<(), String> {
         }
         ordinal = ordinal.saturating_add(1);
         thread::park_timeout(Duration::from_millis(args.cycle_millis));
+    }
+
+    // A run too short or too slow for a thousand cycles still resumes one,
+    // taken with its records still in flight.
+    if snapshots == 0 {
+        resume_snapshot(&store, limits)?;
+        snapshots += 1;
     }
 
     let finish_time = base_time
