@@ -191,3 +191,88 @@ wide_abi!(
     mesh_i128_to_int,
     mesh_i128_to_string
 );
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::gc::mesh_rt_init;
+
+    unsafe fn value(result: *mut MeshResult) -> *const MeshWideNum {
+        assert_eq!((*result).tag, 0, "expected Ok");
+        (*result).value.cast()
+    }
+
+    unsafe fn error(result: *mut MeshResult) -> String {
+        assert_eq!((*result).tag, 1, "expected Err");
+        (*(*result).value.cast::<MeshString>()).as_str().to_string()
+    }
+
+    unsafe fn text(value: *mut MeshString) -> String {
+        (*value).as_str().to_string()
+    }
+
+    /// Each operation of the ABI all three widths share, on the signed
+    /// width: the only one whose division can overflow.
+    #[test]
+    fn checked_arithmetic_refuses_what_does_not_fit() {
+        mesh_rt_init();
+        unsafe {
+            let parse = |text: &str| value(mesh_i128_parse(mesh_str(text)));
+            let minimum = parse(&i128::MIN.to_string());
+            let minus_one = parse("-1");
+            let two = parse("2");
+            let zero = parse("0");
+            let large = parse(&(i128::from(i64::MAX) + 1).to_string());
+            let show = |result| text(mesh_i128_to_string(value(result)));
+
+            assert_eq!(error(mesh_i128_parse(mesh_str("2x"))), "invalid i128");
+            assert_eq!(
+                [
+                    mesh_i128_compare(minimum, two),
+                    mesh_i128_compare(two, two),
+                    mesh_i128_compare(two, minus_one),
+                ],
+                [-1, 0, 1]
+            );
+            assert_eq!(show(mesh_i128_add(two, minus_one)), "1");
+            assert_eq!(
+                error(mesh_i128_add(minimum, minus_one)),
+                "i128 addition overflow"
+            );
+            assert_eq!(show(mesh_i128_subtract(two, two)), "0");
+            assert_eq!(
+                error(mesh_i128_subtract(minimum, two)),
+                "i128 subtraction overflow"
+            );
+            assert_eq!(show(mesh_i128_multiply(two, two)), "4");
+            assert_eq!(
+                error(mesh_i128_multiply(minimum, two)),
+                "i128 multiplication overflow"
+            );
+            assert_eq!(show(mesh_i128_divide(two, minus_one)), "-2");
+            assert_eq!(error(mesh_i128_divide(two, zero)), "i128 division by zero");
+            assert_eq!(
+                error(mesh_i128_divide(minimum, minus_one)),
+                "i128 division overflow"
+            );
+            let int = mesh_i128_to_int(minus_one);
+            assert_eq!(((*int).tag, *(*int).value.cast::<i64>()), (0, -1));
+            assert_eq!(error(mesh_i128_to_int(large)), "i128 does not fit Int");
+        }
+    }
+
+    /// The unsigned widths read and write their whole range, and a u64 the
+    /// runtime makes reads back as itself.
+    #[test]
+    fn unsigned_widths_round_trip_their_extremes() {
+        mesh_rt_init();
+        unsafe {
+            let u64_max = value(mesh_u64_parse(mesh_str(&u64::MAX.to_string())));
+            assert_eq!(text(mesh_u64_to_string(u64_max)), u64::MAX.to_string());
+            assert_eq!(error(mesh_u64_parse(mesh_str("-1"))), "invalid u64");
+            let u128_max = value(mesh_u128_parse(mesh_str(&u128::MAX.to_string())));
+            assert_eq!(text(mesh_u128_to_string(u128_max)), u128::MAX.to_string());
+            assert_eq!(mesh_u64_value(mesh_u64_new(7)), 7);
+        }
+    }
+}

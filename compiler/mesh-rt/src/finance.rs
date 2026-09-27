@@ -170,7 +170,81 @@ pub extern "C" fn mesh_checked_rescale(
 
 #[cfg(test)]
 mod tests {
-    use super::{checked_mul_div, checked_rescale};
+    use super::*;
+    use crate::gc::mesh_rt_init;
+    use crate::string::mesh_str;
+
+    /// Every mode on a remainder of exactly one half, both signs, and on a
+    /// remainder below one half.
+    #[test]
+    fn each_rounding_mode_rounds_both_signs() {
+        let modes = [
+            "toward_zero",
+            "floor",
+            "ceil",
+            "half_away_from_zero",
+            "half_even",
+        ];
+        let rounded = |numerator| modes.map(|mode| checked_mul_div(numerator, 1, 2, mode));
+        assert_eq!(rounded(7), [Ok(3), Ok(3), Ok(4), Ok(4), Ok(4)]);
+        assert_eq!(rounded(-7), [Ok(-3), Ok(-4), Ok(-3), Ok(-4), Ok(-4)]);
+        assert_eq!(rounded(5)[3..], [Ok(3), Ok(2)]);
+        assert_eq!(checked_mul_div(4, 1, 3, "half_away_from_zero"), Ok(1));
+    }
+
+    #[test]
+    fn division_and_scaling_refuse_what_they_cannot_represent() {
+        assert_eq!(checked_mul_div(1, 1, 0, "floor"), Err("division by zero"));
+        assert_eq!(
+            checked_mul_div(i64::MAX, 2, 1, "floor"),
+            Err("integer overflow")
+        );
+        assert_eq!(
+            checked_rescale(1, -1, 2, "floor"),
+            Err("scale must be nonnegative")
+        );
+        assert_eq!(
+            checked_rescale(1, 0, i64::MAX, "floor"),
+            Err("scale out of range")
+        );
+        assert_eq!(
+            checked_rescale(1, 0, 39, "floor"),
+            Err("scale out of range")
+        );
+        assert_eq!(
+            checked_rescale(i64::MAX, 0, 38, "floor"),
+            Err("integer overflow")
+        );
+        assert_eq!(
+            checked_rescale(i64::MAX, 0, 1, "floor"),
+            Err("integer overflow")
+        );
+    }
+
+    /// The entry points return each result as a Mesh `Result`.
+    #[test]
+    fn entry_points_return_mesh_results() {
+        mesh_rt_init();
+        let int = |result: *mut MeshResult| unsafe {
+            assert_eq!((*result).tag, 0);
+            *(*result).value.cast::<i64>()
+        };
+        let error = |result: *mut MeshResult| unsafe {
+            assert_eq!((*result).tag, 1);
+            (*(*result).value.cast::<MeshString>()).as_str().to_string()
+        };
+        assert_eq!(int(mesh_checked_add(2, 3)), 5);
+        assert_eq!(error(mesh_checked_add(i64::MAX, 1)), "integer overflow");
+        assert_eq!(int(mesh_checked_sub(2, 3)), -1);
+        assert_eq!(int(mesh_checked_mul(2, 3)), 6);
+        assert_eq!(int(mesh_checked_div(7, 2)), 3);
+        assert_eq!(error(mesh_checked_div(7, 0)), "division by zero");
+        assert_eq!(error(mesh_checked_div(i64::MIN, -1)), "integer overflow");
+        assert_eq!(int(mesh_checked_abs(-4)), 4);
+        let half_even = mesh_str("half_even");
+        assert_eq!(int(mesh_checked_mul_div(5, 3, 2, half_even)), 8);
+        assert_eq!(int(mesh_checked_rescale(12355, 3, 2, half_even)), 1236);
+    }
 
     #[test]
     fn half_even_uses_a_wide_intermediate() {

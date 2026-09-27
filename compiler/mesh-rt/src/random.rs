@@ -63,6 +63,19 @@ mod tests {
         assert_eq!(value % 100, 0);
     }
 
+    #[test]
+    fn a_unit_ppm_is_a_draw_below_one_million() {
+        crate::gc::mesh_rt_init();
+        let pair = mesh_random_next_unit_ppm(mesh_random_seed(7)) as *const i64;
+        let (state, value) = step(7);
+        unsafe {
+            assert_eq!(
+                (*pair.add(1), *pair.add(2)),
+                (state as i64, (value % 1_000_000) as i64)
+            );
+        }
+    }
+
     /// An empty range is the program's error: a Mesh panic, which ends the
     /// actor alone.
     #[test]
