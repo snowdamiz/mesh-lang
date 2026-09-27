@@ -1390,21 +1390,30 @@ fn flush_queued_in<S>(
         return Ok((0, true));
     }
     sock.set_nonblocking(true)?;
-    let mut written = 0;
-    let result = loop {
-        if !conn.wants_write() {
-            break Ok((written, true));
-        }
-        match conn.write_tls(sock) {
-            Ok(0) => break Err(io::ErrorKind::WriteZero.into()),
-            Ok(count) => written += count,
-            Err(error) if error.kind() == io::ErrorKind::WouldBlock => break Ok((written, false)),
-            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
-            Err(error) => break Err(error),
-        }
-    };
+    let result = write_queued(conn, sock);
     sock.set_nonblocking(false)?;
     result
+}
+
+/// Writes what `conn` holds to send into `sink` until it takes no more:
+/// the bytes written, and whether none are left.
+fn write_queued<S>(
+    conn: &mut rustls::ConnectionCommon<S>,
+    sink: &mut dyn Write,
+) -> io::Result<(usize, bool)> {
+    let mut written = 0;
+    loop {
+        if !conn.wants_write() {
+            return Ok((written, true));
+        }
+        match conn.write_tls(sink) {
+            Ok(0) => return Err(io::ErrorKind::WriteZero.into()),
+            Ok(count) => written += count,
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => return Ok((written, false)),
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            Err(error) => return Err(error),
+        }
+    }
 }
 
 impl Write for NodeStream {
@@ -9180,6 +9189,45 @@ mod tests {
             failure(reader.read_next(&mut input, 1024)),
             io::ErrorKind::ConnectionReset
         );
+    }
+
+    /// A transport that takes nothing: a write reports no bytes written.
+    struct Unwritable;
+
+    impl Write for Unwritable {
+        fn write(&mut self, _: &[u8]) -> io::Result<usize> {
+            Ok(0)
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl Read for Unwritable {
+        fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
+            Ok(0)
+        }
+    }
+
+    /// A transport that takes none of what TLS queues fails the write, and
+    /// a handshake that gets nowhere stalls, rather than either spinning.
+    #[test]
+    fn a_transport_that_takes_nothing_fails_rather_than_spins() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let server_name: ServerName<'static> = "mesh-node".try_into().unwrap();
+        let client = || {
+            rustls::ClientConnection::new(build_node_client_config(), server_name.clone()).unwrap()
+        };
+        assert_eq!(
+            write_queued(&mut client(), &mut Unwritable)
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::WriteZero
+        );
+        match StreamOwned::new(client(), Unwritable).channel_binding() {
+            Err(error) => assert_eq!(error, "tls_handshake_stalled"),
+            Ok(_) => panic!("a handshake over nothing completed"),
+        }
     }
 
     /// A persistent session over loopback TLS, with its reader and writer
