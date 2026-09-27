@@ -2488,16 +2488,7 @@ impl<'ctx> CodeGen<'ctx> {
             msg_size.into(),
             shape_table.unwrap_or(null).into(),
         ]);
-        self.builder
-            .build_call(
-                get_intrinsic(&self.module, intrinsic_name),
-                &call_args,
-                "monitor",
-            )
-            .map_err(|e| e.to_string())?
-            .try_as_basic_value()
-            .basic()
-            .ok_or_else(|| format!("{intrinsic_name} returned void"))
+        self.codegen_runtime_call(intrinsic_name, &call_args, "monitor")
     }
 
     /// Codegen for Timer.send_after(pid, ms, msg).
