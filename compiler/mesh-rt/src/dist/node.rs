@@ -11032,6 +11032,12 @@ mod tests {
         let operator = TestPeer::authenticated("authz-operator@127.0.0.1:1", &["operator"]);
         autonomous(|| operator.receive(bad_operator_query()));
         assert_eq!(operator.sent().len(), 1, "the operator is answered");
+        // A query too short to answer, or an answer with no session to go
+        // on, is only logged.
+        autonomous(|| operator.receive(vec![DIST_OPERATOR_QUERY]));
+        operator.session.shutdown.store(true, Ordering::SeqCst);
+        autonomous(|| operator.receive(bad_operator_query()));
+        assert!(operator.sent().is_empty());
 
         let controller = TestPeer::authenticated("authz-controller@127.0.0.1:1", &["controller"]);
         let (waiting, mut answer) = tokio::sync::oneshot::channel();
@@ -15381,6 +15387,77 @@ mod tests {
             1,
             &continuity_record("unkept-key", "unkept-owner@h:1", "unkept-replica@h:1"),
         );
+        let runtime = crate::dist::operator::operator_runtime_snapshot().unwrap();
+        assert!(runtime.local_continuity_store.is_none());
+        assert!(runtime.local_continuity_store_error.is_some());
+    }
+
+    /// The drain propagator, a controller's internal actor, drains and
+    /// restores this node only: its admission stops taking work and takes
+    /// it again. A drain it names for another node is refused.
+    #[test]
+    fn the_drain_propagator_drains_and_restores_this_node_only() {
+        if !in_own_process("the_drain_propagator_drains_and_restores_this_node_only") {
+            return;
+        }
+        use crate::dist::operator::{
+            apply_operator_control, sign_operator_control_request, OperatorControlAction,
+            OperatorControlRequest,
+        };
+        let state = test_node();
+        let directory = tempfile::tempdir().unwrap();
+        let key = "drain-propagator-test-key-0123456789";
+        std::env::set_var("MESH_OPERATOR_KEY", key);
+        std::env::set_var(
+            "MESH_OPERATOR_AUDIT_LOG",
+            directory.path().join("audit.log"),
+        );
+        let elsewhere = TestPeer::new("drained-elsewhere@127.0.0.1:1");
+        let propagate = |sequence, action| {
+            let request = sign_operator_control_request(
+                OperatorControlRequest {
+                    schema_version: 1,
+                    cluster_id: "mesh".to_string(),
+                    actor: "mesh-drain-propagator".to_string(),
+                    sequence,
+                    expires_at_unix_millis: crate::dist::identity_claim::unix_millis() + 60_000,
+                    reason: "propagated drain".to_string(),
+                    action,
+                    signature: String::new(),
+                },
+                key,
+            )
+            .unwrap();
+            apply_operator_control(&request, true)
+        };
+        assert_eq!(
+            propagate(
+                1,
+                OperatorControlAction::DrainNode {
+                    node_id: elsewhere.session.remote_name.clone(),
+                }
+            ),
+            Err("operator_internal_control_target_mismatch".to_string())
+        );
+        let admission = crate::dist::telemetry::global_admission_controller();
+        let drained = propagate(
+            2,
+            OperatorControlAction::DrainNode {
+                node_id: state.name.clone(),
+            },
+        )
+        .unwrap();
+        assert!(drained.drain_intents.contains(&state.name));
+        assert!(admission.reserve_application().is_err());
+        let restored = propagate(
+            3,
+            OperatorControlAction::CancelDrain {
+                node_id: state.name.clone(),
+            },
+        )
+        .unwrap();
+        assert!(!restored.drain_intents.contains(&state.name));
+        assert!(admission.reserve_application().is_ok());
     }
 
     /// An owner at its inflight limit turns a reservation away, saying so.

@@ -928,7 +928,7 @@ fn validate_internal_control_caller(
     }
 }
 
-fn apply_operator_control(
+pub(crate) fn apply_operator_control(
     request: &OperatorControlRequest,
     authenticated_controller: bool,
 ) -> Result<OperatorControlOutcome, String> {
@@ -2325,6 +2325,24 @@ mod tests {
             sessions_before,
             "transient operator query must not register a visible peer session"
         );
+        // A reply that is not the kind asked for does not decode.
+        let mismatched = execute_transient_query(
+            &ensure_operator_query_test_node(),
+            &state.cookie,
+            OperatorQuery::Status,
+            Duration::from_secs(2),
+            decode_diagnostics_snapshot,
+        );
+        assert!(
+            matches!(
+                mismatched,
+                Err(OperatorQueryError::Decode {
+                    query: OperatorQueryKind::Status,
+                    ..
+                })
+            ),
+            "{mismatched:?}"
+        );
     }
 
     #[test]
@@ -3118,6 +3136,12 @@ mod tests {
         assert_eq!(
             decode_diagnostics_snapshot(&encoded).err(),
             Some("operator diagnostics payload trailing bytes".to_string())
+        );
+        // A buffer larger than its reply can say is refused.
+        assert_eq!(
+            encode_diagnostics_snapshot(&OperatorDiagnosticsBuffer::new(usize::MAX).snapshot(None))
+                .err(),
+            Some("operator diagnostics buffer capacity exceeds u32 range".to_string())
         );
         // A runtime query needs this process's node.
         if node_state().is_none() {
