@@ -858,11 +858,18 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
             builder
         }
 
-        TypeError::OrPatternBindingMismatch { span, .. } => {
+        TypeError::OrPatternBindingMismatch {
+            list_tail, span, ..
+        } => {
             let range = clamp(text_range_to_range(*span));
 
             Description::error(range, "alternatives must bind the same variables").with_help(
-                "all alternatives in an or-pattern must bind the same set of variable names",
+                if *list_tail {
+                    "`|` in a list pattern separates alternatives; a list's tail is written \
+                     `first :: rest` (`a :: b :: rest` after two elements)"
+                } else {
+                    "all alternatives in an or-pattern must bind the same set of variable names"
+                },
             )
         }
 

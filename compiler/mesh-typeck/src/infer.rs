@@ -13416,6 +13416,11 @@ fn infer_or_pattern(
             let err = TypeError::OrPatternBindingMismatch {
                 expected_bindings: first_sorted,
                 found_bindings: alt_sorted,
+                list_tail: pat
+                    .syntax()
+                    .parent()
+                    .is_some_and(|parent| parent.kind() == SyntaxKind::LIST_PAT)
+                    && pat.syntax().next_sibling().is_none(),
                 span: pat.syntax().text_range(),
             };
             ctx.errors.push(err.clone());

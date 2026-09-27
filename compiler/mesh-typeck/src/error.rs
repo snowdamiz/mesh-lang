@@ -162,9 +162,12 @@ pub enum TypeError {
         suggestion: Option<String>,
     },
     /// Or-pattern alternatives bind different sets of variables.
+    /// `list_tail`: the or-pattern ends a list pattern, as `[a | rest]`, a
+    /// tail as another language writes it, would.
     OrPatternBindingMismatch {
         expected_bindings: Vec<String>,
         found_bindings: Vec<String>,
+        list_tail: bool,
         span: TextRange,
     },
     /// A match/case expression is not exhaustive.

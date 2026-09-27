@@ -104,6 +104,7 @@ fn one_of_each() -> Vec<TypeError> {
                 "found_bindings_a".to_string(),
                 "found_bindings_b".to_string(),
             ],
+            list_tail: false,
             span: span(19, 24),
         },
         TypeError::NonExhaustiveMatch {

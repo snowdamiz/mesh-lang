@@ -246,6 +246,7 @@ fn test_diag_or_pattern_binding_mismatch() {
     let err = TypeError::OrPatternBindingMismatch {
         expected_bindings: vec!["a".to_string()],
         found_bindings: vec!["b".to_string(), "c".to_string()],
+        list_tail: false,
         span: rowan::TextRange::new(10.into(), 20.into()),
     };
     let output = render_diagnostic(&err, src, "test.mpl", &opts(), None);
@@ -255,6 +256,23 @@ fn test_diag_or_pattern_binding_mismatch() {
         "expected binding-related message: {}",
         output
     );
+}
+
+/// `[a, b | rest]`, a list's tail as another language writes it, is an
+/// or-pattern ending the list pattern: the help says how Mesh writes the
+/// tail, where elsewhere it says what an or-pattern needs.
+#[test]
+fn test_diag_or_pattern_ending_a_list_names_the_tail_syntax() {
+    let tail = render_first_error(
+        "fn f(xs :: List<Int>) -> Int do\n  case xs do\n    [a, b | rest] -> a\n    _ -> 0\n  end\nend\n",
+    );
+    assert!(tail.contains("E0011"), "{tail}");
+    assert!(tail.contains("a :: b :: rest"), "{tail}");
+    let elsewhere = render_first_error(
+        "fn f(p :: (Int, Int)) -> Int do\n  case p do\n    (a, 0) | (0, b) -> 1\n    _ -> 0\n  end\nend\n",
+    );
+    assert!(elsewhere.contains("E0011"), "{elsewhere}");
+    assert!(!elsewhere.contains("::"), "{elsewhere}");
 }
 
 // ── Phase 6 Actor Diagnostic Tests ──────────────────────────────────
