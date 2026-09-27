@@ -17,10 +17,6 @@ pub struct RequestId {
 }
 
 impl RequestId {
-    pub const fn counter(self) -> u64 {
-        self.counter
-    }
-
     pub fn as_bytes(self) -> [u8; 32] {
         let mut bytes = [0u8; 32];
         bytes[..8].copy_from_slice(&self.stable_node_hash);
@@ -44,11 +40,10 @@ pub struct RequestIdGenerator {
 }
 
 impl RequestIdGenerator {
+    /// A generator for the node `stable_node_id` names (never blank: the
+    /// setting is used only when it is not, a node name never is).
     pub fn new(stable_node_id: &str) -> Result<Self, String> {
         let stable_node_id = stable_node_id.trim();
-        if stable_node_id.is_empty() {
-            return Err("stable_node_id_missing".to_string());
-        }
         let digest = Sha256::digest(stable_node_id.as_bytes());
         let mut stable_node_hash = [0u8; 8];
         stable_node_hash.copy_from_slice(&digest[..8]);
@@ -122,39 +117,11 @@ impl OperationKey {
         hash_component(&mut hasher, caller_key.as_bytes());
         Ok(Self(hex(&hasher.finalize())))
     }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
 }
 
 impl fmt::Display for OperationKey {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(&self.0)
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct AttemptId {
-    pub request_id: RequestId,
-    pub ordinal: u32,
-}
-
-impl fmt::Display for AttemptId {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "{}-{:08x}", self.request_id, self.ordinal)
-    }
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct OwnershipGeneration(pub u64);
-
-impl OwnershipGeneration {
-    pub fn next(self) -> Result<Self, String> {
-        self.0
-            .checked_add(1)
-            .map(Self)
-            .ok_or_else(|| "ownership_generation_exhausted".to_string())
     }
 }
 
@@ -290,6 +257,18 @@ mod tests {
             .expect("valid operation key");
 
         assert_eq!(first, second);
+    }
+
+    #[test]
+    fn operation_key_needs_every_scope_and_a_bounded_key() {
+        assert_eq!(
+            OperationKey::derive("", "Todos.create", None, "key-1"),
+            Err("application_id_missing".to_string())
+        );
+        assert_eq!(
+            OperationKey::derive("app", "Todos.create", None, &"k".repeat(256)),
+            Err("idempotency_key_too_long:256>255".to_string())
+        );
     }
 
     #[test]

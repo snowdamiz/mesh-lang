@@ -223,8 +223,8 @@ pub use dist::driver_service::{
     serve_docker_driver_from_env, RemoteDockerCapacityDriver, RemoteDockerTemplate,
 };
 pub use dist::identity::{
-    request_id_generator, validate_idempotency_key, AttemptId, CanonicalHttpRequest, OperationKey,
-    OwnershipGeneration, RequestId, RequestIdGenerator,
+    request_id_generator, validate_idempotency_key, CanonicalHttpRequest, OperationKey, RequestId,
+    RequestIdGenerator,
 };
 pub use dist::identity_claim::{
     generate_identity_signing_material, sign_identity_claim, NodeIdentityClaim,
