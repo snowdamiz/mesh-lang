@@ -1309,8 +1309,13 @@ pub(crate) enum NodeStream {
 const SESSION_IO_POLL: Duration = Duration::from_millis(25);
 
 /// How long a peer may take none of what a session writes before the
-/// session is dead: its reader is stuck, not just slow.
-const SESSION_WRITE_STALL: Duration = Duration::from_secs(15);
+/// session is dead: its reader is stuck, not just slow. (Shorter in tests,
+/// which wait it out.)
+const SESSION_WRITE_STALL: Duration = if cfg!(test) {
+    Duration::from_secs(2)
+} else {
+    Duration::from_secs(15)
+};
 
 impl Read for NodeStream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
@@ -13106,6 +13111,187 @@ mod tests {
         assert_eq!(
             prepare_continuity_for_drain("nobody-to-drain"),
             Err("runtime_node_not_found:nobody-to-drain".to_string())
+        );
+    }
+
+    /// A session reports its health, age, circuit and each lane's use, and
+    /// the node every session's. Three transport failures open a peer's
+    /// circuit, which then refuses application frames until it half-opens.
+    #[test]
+    fn a_session_reports_its_lanes_and_its_circuit() {
+        let name = "telemetry-peer@127.0.0.1:1";
+        let peer = TestPeer::new(name);
+        peer.session
+            .send(OutboundClass::Application, vec![DIST_SEND; 100])
+            .unwrap();
+        let now = Instant::now();
+        let snapshot = peer.session.telemetry_snapshot(now);
+        assert_eq!(snapshot.peer, name);
+        assert!(snapshot.healthy);
+        assert_eq!(snapshot.circuit_state, "closed");
+        let application = snapshot
+            .lanes
+            .iter()
+            .find(|lane| lane.class == "application")
+            .unwrap();
+        assert_eq!(
+            (application.queued_items, application.queued_bytes),
+            (1, 100)
+        );
+        assert!(local_peer_session_telemetry()
+            .iter()
+            .any(|session| session.peer == name));
+
+        for _ in 0..3 {
+            record_peer_transport_failure(name, now);
+        }
+        assert_eq!(peer.session.telemetry_snapshot(now).circuit_state, "open");
+        assert_eq!(
+            peer.session
+                .send(OutboundClass::Application, vec![DIST_SEND]),
+            Err("peer_circuit_open".to_string())
+        );
+        refresh_peer_session_telemetry();
+        assert_eq!(
+            peer.session
+                .telemetry_snapshot(now + Duration::from_secs(6))
+                .circuit_state,
+            "half_open"
+        );
+        record_peer_transport_success(name);
+        assert!(!peer_circuit_open(name, Instant::now()));
+    }
+
+    /// A peer gets as many retries as its budget allows, each counted.
+    #[test]
+    fn a_peer_retry_budget_runs_out() {
+        let name = "retrying-peer@127.0.0.1:1";
+        let now = Instant::now();
+        assert!(allow_peer_retry(name, now));
+        let mut retries = 1;
+        while allow_peer_retry(name, now) {
+            retries += 1;
+            assert!(retries < 1_000, "the budget never ran out");
+        }
+    }
+
+    /// A heartbeat frame is a ping or a pong; nothing else goes that way.
+    #[test]
+    fn only_pings_and_pongs_go_as_heartbeats() {
+        let (session, _peer) = loose_session(protocol_one());
+        assert_eq!(
+            session.send_heartbeat(vec![DIST_SEND; 9]),
+            Err("heartbeat_frame_invalid".to_string())
+        );
+        assert_eq!(session.stream.lock().flush_queued().unwrap(), (0, true));
+    }
+
+    /// A bulk send waits for room in its lane rather than failing.
+    #[test]
+    fn a_bulk_send_waits_for_room_in_its_lane() {
+        let (session, _peer) = loose_session(protocol_one());
+        for _ in 0..SNAPSHOT_QUEUE_ITEMS {
+            session
+                .send(OutboundClass::Snapshot, vec![DIST_GLOBAL_SYNC])
+                .unwrap();
+        }
+        let waiting = std::thread::spawn({
+            let session = Arc::clone(&session);
+            move || session.send_waiting(OutboundClass::Snapshot, vec![DIST_GLOBAL_SYNC])
+        });
+        std::thread::sleep(Duration::from_millis(20));
+        let receivers = session.outbound_receivers.lock().unwrap();
+        let frame = receivers.as_ref().unwrap().snapshot.recv().unwrap();
+        release_outbound_frame_bytes(&session, &frame);
+        drop(receivers);
+        assert_eq!(waiting.join().unwrap(), Ok(()));
+    }
+
+    /// A write that the peer takes nothing of ends when its session shuts
+    /// down, or once the peer has taken nothing for `SESSION_WRITE_STALL`.
+    #[test]
+    fn a_write_the_peer_takes_nothing_of_ends() {
+        for shut_down in [true, false] {
+            let (session, _peer) = loose_session(protocol_one());
+            let writing = std::thread::spawn({
+                let session = Arc::clone(&session);
+                move || loop {
+                    if let Err(error) = session.write_frames([&[HEARTBEAT_PONG; 64 * 1024][..]]) {
+                        return error.kind();
+                    }
+                }
+            });
+            if shut_down {
+                std::thread::sleep(Duration::from_millis(100));
+                session.shutdown.store(true, Ordering::SeqCst);
+            }
+            let kind = writing.join().unwrap();
+            let expected = if shut_down {
+                io::ErrorKind::BrokenPipe
+            } else {
+                io::ErrorKind::TimedOut
+            };
+            assert_eq!(kind, expected);
+        }
+    }
+
+    /// A transient session writes its one frame straight to the stream.
+    #[test]
+    fn a_transient_session_writes_straight_to_its_stream() {
+        let (client, mut server) = tls_pair();
+        let session = NodeSession::new(
+            RemoteSessionEndpoint {
+                remote_name: "transient-peer@127.0.0.1:1".to_string(),
+                remote_creation: 1,
+                node_id: 0,
+                direction: SessionDirection::Outgoing,
+            },
+            NodeStream::ClientTls(client),
+            false,
+            protocol_one(),
+            None,
+        );
+        session
+            .send(OutboundClass::Control, vec![DIST_OPERATOR_REPLY, 1])
+            .unwrap();
+        server
+            .sock
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .unwrap();
+        assert_eq!(read_msg(&mut server).unwrap(), vec![DIST_OPERATOR_REPLY, 1]);
+    }
+
+    /// Pids cross between nodes as each node addresses them: a peer's pid
+    /// for one of its own processes is qualified here, one it qualified
+    /// already is kept, and a pid on a node this one does not know is none.
+    #[test]
+    fn pids_are_addressed_as_each_node_knows_them() {
+        let state = test_node();
+        let peer = TestPeer::new("pid-peer@127.0.0.1:1");
+        assert_eq!(peer.session.peer_pid(5), peer.pid(5));
+        assert_eq!(peer.session.peer_pid(peer.pid(5).as_u64()), peer.pid(5));
+        assert_eq!(
+            pid_node_name(peer.pid(5)),
+            Some(peer.session.remote_name.clone())
+        );
+        assert_eq!(pid_node_name(ProcessId(5)), Some(state.name.clone()));
+        assert_eq!(pid_node_name(ProcessId(0)), None);
+        assert_eq!(pid_on_node("", 5), 0);
+        assert_eq!(pid_on_node(&state.name, 5), 5);
+        assert_eq!(
+            pid_on_node(&peer.session.remote_name, 5),
+            peer.pid(5).as_u64()
+        );
+        assert_eq!(pid_on_node("unknown-node@127.0.0.1:1", 5), 0);
+
+        let local = ProcessId(7);
+        send_dist_link(local, peer.pid(3));
+        send_dist_monitor_exit_by_pid(local, peer.pid(3), 11, &ExitReason::Normal);
+        send_dist_link(local, ProcessId::from_remote(u16::MAX, 1, 3));
+        let sent = peer.sent();
+        assert_eq!(
+            sent.iter().map(|frame| frame[0]).collect::<Vec<_>>(),
+            vec![DIST_MONITOR_EXIT, DIST_LINK]
         );
     }
 }
