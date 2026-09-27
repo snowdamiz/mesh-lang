@@ -260,7 +260,7 @@ pub extern "C" fn mesh_changeset_validate_required(cs: *mut u8, fields: *mut u8)
 
 /// Changeset.validate_length(changeset, field, min, max)
 ///
-/// Checks that the string length of the field value is within [min, max].
+/// Checks that the field value's length in characters is within [min, max].
 /// Use -1 for "not set" (no bound). Only validates fields present in changes.
 #[no_mangle]
 pub extern "C" fn mesh_changeset_validate_length(
@@ -282,7 +282,7 @@ pub extern "C" fn mesh_changeset_validate_length(
         if mesh_map_has_key(changes, key_u64) != 0 {
             let val = mesh_map_get(changes, key_u64);
             let val_str = text_of(val as *mut u8);
-            let len = val_str.len() as i64;
+            let len = val_str.chars().count() as i64;
 
             // Only add first error per field
             if mesh_map_has_key(errors, key_u64) == 0 {
@@ -629,4 +629,45 @@ pub(crate) unsafe fn add_constraint_error_to_changeset(
         if mesh_map_size(errors) > 0 { 0 } else { 1 },
     );
     new_cs
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::collections::list::string_list;
+
+    fn text(s: &str) -> *mut u8 {
+        mesh_str(s) as *mut u8
+    }
+
+    /// A `Map<String, String>` of `entries`.
+    fn string_map(entries: &[(&str, &str)]) -> *mut u8 {
+        entries
+            .iter()
+            .fold(mesh_map_new_typed(1), |map, (key, value)| {
+                mesh_map_put(map, mesh_str(key) as u64, mesh_str(value) as u64)
+            })
+    }
+
+    /// A changeset whose changes are `entries`.
+    fn changed(entries: &[(&str, &str)]) -> *mut u8 {
+        let fields: Vec<&str> = entries.iter().map(|(key, _)| *key).collect();
+        mesh_changeset_cast(string_map(&[]), string_map(entries), string_list(&fields))
+    }
+
+    fn error_of(cs: *mut u8, field: &str) -> String {
+        unsafe { text_of(mesh_changeset_get_error(cs, text(field))) }.to_string()
+    }
+
+    /// A length is in characters, as its message says: "héllo" is five
+    /// long, though six bytes.
+    #[test]
+    fn validate_length_counts_characters() {
+        crate::gc::mesh_rt_init();
+        let cs = changed(&[("name", "héllo"), ("city", "日本")]);
+        let cs = mesh_changeset_validate_length(cs, text("name"), -1, 5);
+        let cs = mesh_changeset_validate_length(cs, text("city"), 3, -1);
+        assert_eq!(error_of(cs, "name"), "");
+        assert_eq!(error_of(cs, "city"), "should be at least 3 character(s)");
+    }
 }
