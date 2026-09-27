@@ -292,75 +292,26 @@ fn decode_job_message(msg_ptr: *const u8) -> *const u8 {
                 box_job_value(result_value)
             };
             alloc_result(0, payload) as *const u8
-        } else if type_tag == EXIT_SIGNAL_TAG {
-            // Job crashed. The data contains exit signal info.
-            // Try to extract a reason string from the exit signal.
+        } else {
+            // The job's exit signal, the only other message it is waited for
+            // by: its exit reason says what became of it.
             let data_len = u64::from_le_bytes(
                 std::slice::from_raw_parts(msg_ptr.add(8), 8)
                     .try_into()
                     .unwrap(),
             ) as usize;
-
-            if data_len >= 9 {
-                let data_ptr = msg_ptr.add(16);
-                // Exit signal layout: [u64 exiting_pid][u8 reason_tag][...reason_data]
-                let reason_tag = *data_ptr.add(8);
-                match reason_tag {
-                    0 => err_result("normal") as *const u8,
-                    1 => {
-                        // Error: [tag(1)][u64 str_len][str_bytes...]
-                        if data_len >= 17 {
-                            let str_len = u64::from_le_bytes(
-                                std::slice::from_raw_parts(data_ptr.add(9), 8)
-                                    .try_into()
-                                    .unwrap(),
-                            ) as usize;
-                            if data_len >= 17 + str_len {
-                                let reason_str = std::str::from_utf8(std::slice::from_raw_parts(
-                                    data_ptr.add(17),
-                                    str_len,
-                                ))
-                                .unwrap_or("unknown error");
-                                err_result(reason_str) as *const u8
-                            } else {
-                                err_result("job crashed") as *const u8
-                            }
-                        } else {
-                            err_result("job crashed") as *const u8
-                        }
-                    }
-                    2 => err_result("killed") as *const u8,
-                    4 => err_result("shutdown") as *const u8,
-                    5 => {
-                        // Custom: same layout as Error
-                        if data_len >= 17 {
-                            let str_len = u64::from_le_bytes(
-                                std::slice::from_raw_parts(data_ptr.add(9), 8)
-                                    .try_into()
-                                    .unwrap(),
-                            ) as usize;
-                            if data_len >= 17 + str_len {
-                                let reason_str = std::str::from_utf8(std::slice::from_raw_parts(
-                                    data_ptr.add(17),
-                                    str_len,
-                                ))
-                                .unwrap_or("unknown error");
-                                err_result(reason_str) as *const u8
-                            } else {
-                                err_result("job crashed") as *const u8
-                            }
-                        } else {
-                            err_result("job crashed") as *const u8
-                        }
-                    }
-                    _ => err_result("job crashed") as *const u8,
-                }
-            } else {
-                err_result("job crashed") as *const u8
-            }
-        } else {
-            // Unexpected message tag -- treat as error.
-            err_result("unexpected message") as *const u8
+            let data = std::slice::from_raw_parts(msg_ptr.add(16), data_len);
+            let reason = match super::link::decode_exit_signal(data).map(|(_, reason)| reason) {
+                Some(super::process::ExitReason::Normal) => "normal".to_string(),
+                Some(super::process::ExitReason::Killed) => "killed".to_string(),
+                Some(super::process::ExitReason::Shutdown) => "shutdown".to_string(),
+                Some(
+                    super::process::ExitReason::Error(text)
+                    | super::process::ExitReason::Custom(text),
+                ) => text,
+                _ => "job crashed".to_string(),
+            };
+            err_result(&reason) as *const u8
         }
     }
 }
@@ -495,6 +446,36 @@ extern "C-unwind" fn map_job_entry(args: *const u8) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// What a crashed job's `await` says, for each way its actor can end.
+    #[test]
+    fn a_crashed_job_is_an_error_naming_its_exit_reason() {
+        use crate::actor::process::ExitReason;
+        crate::gc::mesh_rt_init();
+        let error_of = |data: Vec<u8>| unsafe {
+            let mut message = EXIT_SIGNAL_TAG.to_le_bytes().to_vec();
+            message.extend_from_slice(&(data.len() as u64).to_le_bytes());
+            message.extend_from_slice(&data);
+            let result = &*(decode_job_message(message.as_ptr()) as *const crate::io::MeshResult);
+            assert_eq!(result.tag, 1);
+            (*(result.value as *const crate::string::MeshString))
+                .as_str()
+                .to_string()
+        };
+        let signal =
+            |reason: ExitReason| super::super::link::encode_exit_signal(ProcessId(9), &reason);
+        for (reason, text) in [
+            (ExitReason::Normal, "normal"),
+            (ExitReason::Killed, "killed"),
+            (ExitReason::Shutdown, "shutdown"),
+            (ExitReason::Error("boom".to_string()), "boom"),
+            (ExitReason::Custom("mine".to_string()), "mine"),
+            (ExitReason::Noconnection, "job crashed"),
+        ] {
+            assert_eq!(error_of(signal(reason)), text);
+        }
+        assert_eq!(error_of(vec![1, 2, 3]), "job crashed", "cut short");
+    }
 
     #[test]
     fn test_job_result_tag_distinct_from_exit() {
