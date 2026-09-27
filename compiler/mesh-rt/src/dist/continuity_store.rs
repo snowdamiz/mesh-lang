@@ -885,9 +885,7 @@ impl ContinuityStore for SqliteContinuityStore {
                 tombstone.bind_i64(3, sqlite_integer(now_millis)?);
                 tombstone.bind_i64(
                     4,
-                    sqlite_integer(
-                        now_millis.saturating_add(self.limits.tombstone_retention_millis),
-                    )?,
+                    sqlite_integer(expiry(now_millis, self.limits.tombstone_retention_millis))?,
                 );
                 tombstone.step()?;
                 let mut delete = Self::prepare(
@@ -1249,6 +1247,14 @@ fn sqlite_error(database: *mut sqlite3) -> String {
         "continuity_store_database_error:{}",
         unsafe { CStr::from_ptr(sqlite3_errmsg(database)) }.to_string_lossy()
     )
+}
+
+/// When something kept from `from_millis` for `retention_millis` expires:
+/// never, past the last time SQLite's integers hold, is that last time.
+fn expiry(from_millis: u64, retention_millis: u64) -> u64 {
+    from_millis
+        .saturating_add(retention_millis)
+        .min(i64::MAX as u64)
 }
 
 fn sqlite_integer(value: u64) -> Result<i64, String> {
@@ -1728,7 +1734,8 @@ impl SqliteContinuityStore {
             updated_at_millis: now,
             terminal_at_millis: terminal,
             expires_at_millis: terminal.map(|time| {
-                time.saturating_add(
+                expiry(
+                    time,
                     runtime_continuity_config(super::autonomous::embedded_autonomous_config())
                         .terminal_retention_millis,
                 )
@@ -2575,14 +2582,6 @@ mod tests {
         }
         execute(&store, "PRAGMA query_only = OFF");
         assert_eq!(store.get("operation"), Ok(None));
-
-        // A tombstone's expiry past SQLite's integers is refused.
-        let store = self::store();
-        store
-            .upsert(&record("expired", 1, StoredContinuityPhase::Completed))
-            .unwrap();
-        assert!(store.compact(i64::MAX as u64).is_err());
-        assert!(store.get("expired").unwrap().is_some());
     }
 
     /// A store whose schema no migration can bring up to date does not
@@ -2608,6 +2607,27 @@ mod tests {
             .err()
             .unwrap();
         assert!(refused.contains("has no column named name"), "{refused}");
+    }
+
+    /// A retention too long for SQLite's integers keeps a tombstone for
+    /// good; compaction goes on tombstoning what has expired.
+    #[test]
+    fn a_retention_past_sqlite_integers_still_compacts() {
+        let limits = ContinuityStoreLimits {
+            tombstone_retention_millis: u64::MAX,
+            ..ContinuityStoreLimits::default()
+        };
+        let store = SqliteContinuityStore::open(Path::new(":memory:"), limits).unwrap();
+        store
+            .upsert(&record("expired", 1, StoredContinuityPhase::Completed))
+            .unwrap();
+        assert_eq!(
+            store.compact(30).map(|outcome| outcome.records_tombstoned),
+            Ok(1)
+        );
+        assert_eq!(store.get("expired"), Ok(None));
+        assert_eq!(expiry(5, u64::MAX), i64::MAX as u64);
+        assert_eq!(expiry(5, 10), 15);
     }
 
     #[test]
