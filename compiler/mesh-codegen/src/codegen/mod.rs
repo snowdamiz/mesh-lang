@@ -313,10 +313,16 @@ impl<'ctx> CodeGen<'ctx> {
         // Step 7: Keep every stack slot a static, entry-block allocation.
         self.hoist_static_allocas();
 
-        // Step 8: Verify the module.
-        self.module
-            .verify()
-            .map_err(|e| format!("LLVM module verification failed: {}", e))?;
+        // Step 8: Verify the module, naming the function it fails in.
+        self.module.verify().map_err(|error| {
+            let function = self
+                .module
+                .get_functions()
+                .find(|function| !function.verify(false))
+                .map(|function| format!(" in `{}`", function.get_name().to_string_lossy()))
+                .unwrap_or_default();
+            format!("LLVM module verification failed{function}: {error}")
+        })?;
 
         Ok(())
     }
