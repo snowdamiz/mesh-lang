@@ -74,19 +74,6 @@ impl SupervisorState {
     }
 }
 
-impl std::fmt::Debug for SupervisorState {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SupervisorState")
-            .field("strategy", &self.strategy)
-            .field("max_restarts", &self.max_restarts)
-            .field("max_seconds", &self.max_seconds)
-            .field("children", &self.children.len())
-            .field("running", &self.running_count())
-            .field("restart_history", &self.restart_history.len())
-            .finish()
-    }
-}
-
 // ---------------------------------------------------------------------------
 // SupervisorConfig
 // ---------------------------------------------------------------------------
@@ -207,13 +194,7 @@ pub fn terminate_children_from(
 /// - BrutalKill: immediately mark the process as Exited(Killed).
 /// - Timeout(ms): send a Shutdown exit signal, poll/wait for exit, force-kill on timeout.
 pub fn terminate_single_child(child: &mut ChildState, scheduler: &Scheduler, sup_pid: ProcessId) {
-    let child_pid = match child.pid {
-        Some(pid) => pid,
-        None => {
-            child.running = false;
-            return;
-        }
-    };
+    let child_pid = child.pid.expect("a running child has a pid");
 
     // Remote children: send exit signal via distribution, don't access local process table.
     if !child_pid.is_local() {
@@ -227,43 +208,23 @@ pub fn terminate_single_child(child: &mut ChildState, scheduler: &Scheduler, sup
         return;
     }
 
-    match child.spec.shutdown {
-        ShutdownType::BrutalKill => {
-            // Immediately kill the child.
-            if let Some(proc_arc) = scheduler.get_process(child_pid) {
-                let mut proc = proc_arc.lock();
-                if !matches!(proc.state, ProcessState::Exited(_)) {
-                    proc.mark_exited(ExitReason::Killed);
-                }
-            }
+    if let ShutdownType::Timeout(ms) = child.spec.shutdown {
+        // A Shutdown signal ends a child at once, unless it traps exits:
+        // then it has `ms` to end on its own before it is killed.
+        super::deliver_exit_signal(scheduler, child_pid, ExitReason::Shutdown);
+        let deadline = Instant::now() + Duration::from_millis(ms);
+        let ended = || {
+            scheduler
+                .get_process(child_pid)
+                .is_none_or(|process| matches!(process.lock().state, ProcessState::Exited(_)))
+        };
+        while !ended() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(1));
         }
-        ShutdownType::Timeout(ms) => {
-            // Send a Shutdown exit signal to the child.
-            super::deliver_exit_signal(scheduler, child_pid, ExitReason::Shutdown);
-
-            // Poll for the child to exit within the timeout.
-            let deadline = Instant::now() + Duration::from_millis(ms);
-            loop {
-                if let Some(proc_arc) = scheduler.get_process(child_pid) {
-                    if matches!(proc_arc.lock().state, ProcessState::Exited(_)) {
-                        break;
-                    }
-                } else {
-                    break;
-                }
-                if Instant::now() >= deadline {
-                    // Timeout -- force kill.
-                    if let Some(proc_arc) = scheduler.get_process(child_pid) {
-                        let mut proc = proc_arc.lock();
-                        if !matches!(proc.state, ProcessState::Exited(_)) {
-                            proc.mark_exited(ExitReason::Killed);
-                        }
-                    }
-                    break;
-                }
-                std::thread::sleep(Duration::from_millis(1));
-            }
-        }
+    }
+    // A child that has ended keeps the reason it ended with.
+    if let Some(process) = scheduler.get_process(child_pid) {
+        process.lock().mark_exited(ExitReason::Killed);
     }
 
     // Unlink the supervisor from the child.
@@ -1034,6 +995,50 @@ mod tests {
 
         let (state, _sup_pid) = setup_supervisor(&sched, Strategy::OneForOne, specs);
         assert_eq!(state.running_count(), 3);
+    }
+
+    /// A child with a shutdown timeout ends at the Shutdown signal; one that
+    /// traps exits gets the signal as a message and is killed once the
+    /// timeout passes; one already gone from the table needs nothing.
+    #[test]
+    fn a_timed_shutdown_ends_a_child_or_kills_it_after_the_timeout() {
+        let sched = test_scheduler();
+        let sup_pid = sched.create_main_process();
+        let shutdown = ShutdownType::Timeout(20);
+        let start = |id| {
+            let mut child = test_child_state(test_child_spec(id, RestartType::Permanent, shutdown));
+            start_single_child(&mut child, &sched, sup_pid);
+            let pid = child.pid.unwrap();
+            (child, sched.get_process(pid).unwrap())
+        };
+        let (mut obedient, obedient_process) = start("obedient");
+        let (mut trapping, trapping_process) = start("trapping");
+        let (mut gone, _) = start("gone");
+        trapping_process.lock().trap_exit = true;
+        sched.process_table().write().remove(&gone.pid.unwrap());
+
+        terminate_single_child(&mut obedient, &sched, sup_pid);
+        let waited_from = Instant::now();
+        terminate_single_child(&mut trapping, &sched, sup_pid);
+        let waited = waited_from.elapsed();
+        terminate_single_child(&mut gone, &sched, sup_pid);
+
+        let state = |process: &Arc<Mutex<crate::actor::Process>>| process.lock().state.clone();
+        assert_eq!(
+            state(&obedient_process),
+            ProcessState::Exited(ExitReason::Shutdown)
+        );
+        assert_eq!(
+            state(&trapping_process),
+            ProcessState::Exited(ExitReason::Killed)
+        );
+        assert_eq!(
+            trapping_process.lock().mailbox.len(),
+            1,
+            "the signal, as a message"
+        );
+        assert!(waited >= Duration::from_millis(20), "{waited:?}");
+        assert!(!obedient.running && !trapping.running && !gone.running);
     }
 
     #[test]
