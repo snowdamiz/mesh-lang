@@ -5341,6 +5341,198 @@ mod tests {
     }
 
     #[test]
+    fn continuity_edges_between_the_main_flows() {
+        let registry = continuity_fresh_registry();
+        // A request naming only its primary replica gets that replica.
+        let mut single = continuity_submit_request("edge-single", "hash", "replica@host", 0);
+        single.replica_nodes.clear();
+        let created = registry.submit(single).unwrap();
+        assert_eq!(created.record.replica_nodes(), ["replica@host"]);
+        // A transfer reserves the next attempt without touching records.
+        let before = registry.next_attempt_token();
+        let (after, attempt) = registry.reserve_transfer_attempt();
+        assert_eq!(after, before + 1);
+        assert_eq!(attempt, attempt_id_from_token(before));
+        // A replica prepare that fails without saying why timed out.
+        let timed_out = registry
+            .submit_with_replica_prepare(
+                continuity_submit_request("edge-timeout", "hash", "replica@host", 1),
+                |_| Err(String::new()),
+            )
+            .unwrap();
+        assert_eq!(timed_out.outcome, SubmitOutcome::Rejected);
+        assert_eq!(timed_out.record.error, REPLICA_PREPARE_TIMEOUT);
+        // Two prepares with the same unparseable attempt are the same step.
+        let manual = ContinuityRecord {
+            attempt_id: "manual".to_string(),
+            ..mirrored("edge-manual")
+        };
+        registry.mirror_prepare(manual.clone()).unwrap();
+        assert_eq!(
+            registry
+                .mirror_prepare(ContinuityRecord {
+                    owner_node: "moved@host".to_string(),
+                    ..manual
+                })
+                .err(),
+            Some("owner_node_mismatch".to_string())
+        );
+        // Rejections name the wrong attempt and a finished record.
+        let base = mirrored("edge-reject");
+        assert_eq!(
+            transition_rejected_record(base.clone(), "attempt-9", "x", ReplicaStatus::Rejected)
+                .err(),
+            Some(ATTEMPT_ID_MISMATCH.to_string())
+        );
+        let completed = ContinuityRecord {
+            phase: ContinuityPhase::Completed,
+            result: ContinuityResult::Succeeded,
+            ..base.clone()
+        };
+        assert_eq!(
+            transition_rejected_record(completed, &base.attempt_id, "x", ReplicaStatus::Rejected)
+                .err(),
+            Some(TRANSITION_REJECTED_ALREADY_COMPLETED.to_string())
+        );
+        // A replica loss leaves records that replica never acknowledged.
+        registry.merge_remote_record(2, base).unwrap();
+        assert!(registry
+            .degrade_replica_records_for_node_loss("stranger@host")
+            .is_empty());
+        // Every status has its rank.
+        let ranked: Vec<_> = [
+            ReplicaStatus::Unassigned,
+            ReplicaStatus::Preparing,
+            ReplicaStatus::Mirrored,
+            ReplicaStatus::OwnerLost,
+            ReplicaStatus::DegradedContinuing,
+            ReplicaStatus::PreAdmissionRejected,
+            ReplicaStatus::Rejected,
+        ]
+        .into_iter()
+        .map(replica_status_rank)
+        .collect();
+        assert_eq!(ranked, [0, 1, 2, 3, 4, 5, 6]);
+        assert_eq!(mesh_int_from_u64(u64::MAX), i64::MAX);
+        // Without a durable store there is nothing to rehydrate.
+        assert_eq!(hydrate_runtime_continuity_from_store(), Ok(0));
+        // A record cut before a flag byte or inside a count.
+        let mut strings = Vec::new();
+        for value in ["key", "hash", "attempt-1"] {
+            put_string(&mut strings, value).unwrap();
+        }
+        assert_eq!(
+            decode_record(&strings).err(),
+            Some("continuity payload truncated".to_string())
+        );
+        let mut count = strings.clone();
+        count.extend_from_slice(&[0, 0]);
+        for value in ["ingress", "owner", ""] {
+            put_string(&mut count, value).unwrap();
+        }
+        count.extend_from_slice(&[1, 2, 3]);
+        assert_eq!(
+            decode_record(&count).err(),
+            Some("continuity u64 truncated".to_string())
+        );
+    }
+
+    #[test]
+    fn the_continuity_ffi_answers_through_mesh_results() {
+        let text = |value: &str| mesh_str(value) as *const MeshString;
+        let tag = |result: *mut MeshResult| unsafe { (*result).tag };
+        let key = "ffi-continuity-request";
+        let submitted = mesh_continuity_submit(
+            text(key),
+            text("hash"),
+            text("ingress@host"),
+            text("owner@host"),
+            text("replica@host"),
+            1,
+            0,
+        );
+        assert_eq!(tag(submitted), 0);
+        let (outcome, attempt) = unsafe {
+            let decision = &*((*submitted).value as *const MeshContinuitySubmitDecision);
+            (
+                (*decision.outcome).as_str().to_string(),
+                (*decision.record.attempt_id).as_str().to_string(),
+            )
+        };
+        assert_eq!(outcome, "created");
+        assert_eq!(tag(mesh_continuity_status(text(key))), 0);
+        assert_eq!(tag(mesh_continuity_status(text("ffi-missing"))), 1);
+        assert_eq!(tag(mesh_continuity_authority_status()), 0);
+        assert_eq!(
+            tag(mesh_continuity_acknowledge_replica(
+                text(key),
+                text(&attempt)
+            )),
+            0
+        );
+        assert_eq!(
+            tag(mesh_continuity_acknowledge_replica(
+                text("ffi-missing"),
+                text(&attempt)
+            )),
+            1
+        );
+        assert_eq!(
+            tag(mesh_continuity_mark_completed(
+                text(key),
+                text("attempt-x"),
+                text("owner@host")
+            )),
+            1
+        );
+        assert_eq!(
+            tag(mesh_continuity_mark_completed(
+                text(key),
+                text(&attempt),
+                text("owner@host")
+            )),
+            0
+        );
+        assert_eq!(
+            tag(mesh_continuity_submit(
+                text(""),
+                text("hash"),
+                text("ingress@host"),
+                text("owner@host"),
+                text(""),
+                0,
+                0
+            )),
+            1
+        );
+        assert_eq!(
+            tag(mesh_continuity_submit_declared_work(
+                text("Ffi.unregistered"),
+                text("ffi-declared"),
+                text("hash"),
+                -1
+            )),
+            1
+        );
+        assert_eq!(
+            tag(mesh_continuity_submit_declared_work(
+                text("Ffi.unregistered"),
+                text("ffi-declared"),
+                text("hash"),
+                0
+            )),
+            1
+        );
+        assert_eq!(
+            tag(mesh_continuity_complete_declared_work(
+                text("ffi-missing"),
+                text("attempt-0")
+            )),
+            1
+        );
+    }
+
+    #[test]
     fn malformed_continuity_payloads_are_refused() {
         let mut wide = mirrored("wide");
         wide.replica_nodes = vec!["a@host".to_string(), "b@host".to_string()];
