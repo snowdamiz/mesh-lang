@@ -449,16 +449,11 @@ fn configured_routing() -> super::autonomous::RuntimeRoutingConfig {
 /// precedence over embedded manifest values.
 pub fn runtime_routing_policy() -> RoutingPolicy {
     let configured = configured_routing();
-    // A report must outlive the interval to the next one, as the manifest
-    // requires; overrides that break that would leave every node stale.
-    let interval = runtime_load_report_interval().as_millis() as u64;
-    let ttl = env_u64("MESH_LOAD_REPORT_TTL_MS", configured.load_report_ttl_millis);
     RoutingPolicy {
-        load_report_ttl: Duration::from_millis(if ttl > interval {
-            ttl
-        } else {
-            interval.saturating_mul(2)
-        }),
+        load_report_ttl: load_report_ttl(
+            env_u64("MESH_LOAD_REPORT_TTL_MS", configured.load_report_ttl_millis),
+            runtime_load_report_interval().as_millis() as u64,
+        ),
         target_inflight: env_u32("MESH_ROUTING_TARGET_INFLIGHT", configured.target_inflight),
         target_queue_wait: Duration::from_millis(env_u64(
             "MESH_ROUTING_TARGET_QUEUE_WAIT_MS",
@@ -471,6 +466,18 @@ pub fn runtime_routing_policy() -> RoutingPolicy {
             configured.max_queued_bytes,
         ),
     }
+}
+
+/// How long a load report stays fresh: `ttl_millis`, unless that does not
+/// outlive `interval_millis` to the next report, as the manifest requires;
+/// overrides that break that would leave every node stale, so twice the
+/// interval then.
+fn load_report_ttl(ttl_millis: u64, interval_millis: u64) -> Duration {
+    Duration::from_millis(if ttl_millis > interval_millis {
+        ttl_millis
+    } else {
+        interval_millis.saturating_mul(2)
+    })
 }
 
 pub(crate) fn runtime_load_report_interval() -> Duration {
@@ -890,6 +897,12 @@ mod tests {
                 .expect("decode report"),
             original
         );
+    }
+
+    #[test]
+    fn a_load_report_outlives_the_interval_to_the_next() {
+        assert_eq!(load_report_ttl(2_000, 500), Duration::from_millis(2_000));
+        assert_eq!(load_report_ttl(500, 500), Duration::from_millis(1_000));
     }
 
     #[test]
