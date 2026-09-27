@@ -657,16 +657,15 @@ fn rejects_resource_wildcards_in_let_and_case_patterns() {
     );
 }
 
+/// An arm owns what its pattern binds, like a `let`: what it leaves
+/// unmoved, on any path, is destroyed where the arm ends.
 #[test]
-fn case_resource_bindings_must_be_consumed() {
+fn case_resource_bindings_may_be_left_to_the_arm_end() {
     let result = check_source(
-        "fn consume(result :: Result<SecretBytes, CryptoError>) do\n  case result do\n    Ok(secret) -> Secret.destroy(secret)\n    Err(_) -> nil\n  end\nend\nfn discard(result :: Result<SecretBytes, CryptoError>) do\n  case result do\n    Ok(secret) -> nil\n    Err(_) -> nil\n  end\nend",
+        "fn consume(result :: Result<SecretBytes, CryptoError>) do\n  case result do\n    Ok(secret) -> Secret.destroy(secret)\n    Err(_) -> nil\n  end\nend\nfn discard(result :: Result<SecretBytes, CryptoError>, consume :: Bool) do\n  case result do\n    Ok(secret) when consume -> if consume do Secret.destroy(secret) else nil end\n    Ok(secret) -> nil\n    Err(_) -> nil\n  end\nend",
     );
 
-    assert_eq!(
-        resource_violations(&result),
-        ["resource pattern binding `secret` must be consumed in this arm"]
-    );
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
 }
 
 #[test]
@@ -678,27 +677,29 @@ fn a_pass_through_arm_moves_what_its_pattern_binds() {
     assert!(result.errors.is_empty(), "{:?}", result.errors);
 }
 
+/// A failing guard hands the value to the next arm, which must not get a
+/// resource the guard already moved.
 #[test]
-fn case_resource_bindings_must_be_consumed_on_every_exit() {
+fn a_guard_cannot_move_a_resource() {
     let result = check_source(
-        "fn discard_on_one_path(result :: Result<SecretBytes, CryptoError>, consume :: Bool) do\n  case result do\n    Ok(secret) -> if consume do Secret.destroy(secret) else nil end\n    Err(_) -> nil\n  end\nend",
+        "fn spent(secret :: consume SecretBytes) -> Bool do\n  Secret.destroy(secret)\n  true\nend\nfn guarded(result :: Result<SecretBytes, CryptoError>) do\n  case result do\n    Ok(secret) when spent(secret) -> nil\n    Ok(secret) -> Secret.destroy(secret)\n    Err(_) -> nil\n  end\nend",
     );
 
     assert_eq!(
         resource_violations(&result),
-        ["resource pattern binding `secret` must be consumed in this arm"]
+        ["a guard cannot move resource `secret`"]
     );
 }
 
 #[test]
-fn guarded_resource_bindings_reject_the_guard_failure_exit() {
+fn an_as_pattern_cannot_bind_a_resource_twice() {
     let result = check_source(
-        "fn guarded(result :: Result<SecretBytes, CryptoError>, consume :: Bool) do\n  case result do\n    Ok(secret) when consume -> Secret.destroy(secret)\n    Ok(secret) -> Secret.destroy(secret)\n    Err(_) -> nil\n  end\nend",
+        "fn split(result :: Result<SecretBytes, CryptoError>) do\n  case result do\n    Ok(secret) as whole -> Secret.destroy(secret)\n    Err(_) as whole -> nil\n  end\nend",
     );
 
     assert_eq!(
         resource_violations(&result),
-        ["resource pattern binding `secret` must be consumed in this arm"]
+        ["resource value cannot be bound both by `as` and inside its pattern"]
     );
 }
 

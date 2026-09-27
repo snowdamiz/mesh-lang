@@ -10103,7 +10103,11 @@ impl<'a> Lowerer<'a> {
         let guard = arm.guard().map(|e| self.lower_expr(&e));
 
         let body = match arm.body() {
-            Some(body) => self.lower_expr(&body),
+            Some(body) => {
+                let body = self.lower_expr(&body);
+                let owned = self.resource_pattern_bindings(&written);
+                self.wrap_resource_scopes(body, owned)
+            }
             // An arm without `->` (the parser gives any other its body)
             // stands for its pattern's value.
             None => self.lower_rebuilt_pattern(&written, result),
@@ -10243,18 +10247,13 @@ impl<'a> Lowerer<'a> {
 
     fn resource_pattern_bindings(&self, pattern: &Pattern) -> Vec<(String, Ty)> {
         pattern
-            .syntax()
-            .descendants()
-            .filter_map(Pattern::cast)
-            .filter_map(|pattern| match pattern {
-                Pattern::Ident(identifier) => {
-                    let name = identifier.name()?.text().to_string();
-                    let ty = self.get_ty(identifier.syntax().text_range())?.clone();
-                    (!name.starts_with(|character: char| character.is_uppercase())
-                        && self.registry.is_resource_type(&ty))
-                    .then_some((name, ty))
-                }
-                _ => None,
+            .binders()
+            .into_iter()
+            .filter_map(|name| {
+                let ty = self.get_ty(name.parent()?.text_range())?.clone();
+                self.registry
+                    .is_resource_type(&ty)
+                    .then(|| (name.text().to_string(), ty))
             })
             .collect()
     }
@@ -16974,6 +16973,23 @@ mod tests {
             "one cleanup is required on each reachable exit path: {:?}",
             early.body
         );
+    }
+
+    /// What a `case` arm binds and leaves unmoved is destroyed where the arm
+    /// ends, and before a return out of it, like a `let` in a block.
+    #[test]
+    fn case_arm_resources_drop_where_the_arm_ends() {
+        let mir = lower(
+            "fn keep(result :: Result<SecretBytes, CryptoError>, stop :: Bool) do\n\
+               case result do\n\
+                 Ok(secret) -> if stop do return nil else nil end\n\
+                 Err(_) as whole -> nil\n\
+               end\n\
+             end",
+        );
+        let keep = function_body(&mir, "keep");
+        assert_eq!(drops_of(&keep, "secret"), 2, "{keep:?}");
+        assert_eq!(drops_of(&keep, "whole"), 1, "{keep:?}");
     }
 
     fn function_body(mir: &MirModule, name: &str) -> MirExpr {

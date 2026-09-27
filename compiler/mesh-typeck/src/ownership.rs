@@ -23,7 +23,6 @@ use crate::{ImportContext, ModuleExports};
 struct Binding {
     ty: Ty,
     moved: bool,
-    definitely_moved: bool,
     borrowed: bool,
 }
 
@@ -440,7 +439,7 @@ pub(crate) fn check(
     };
 
     checker.check_resource_parameter_patterns(parse);
-    checker.check_resource_pattern_wildcards(parse);
+    checker.check_resource_patterns(parse);
     for binding in &top_level_bindings {
         checker.check_top_level_binding(binding);
     }
@@ -592,24 +591,45 @@ impl Checker<'_> {
         }
     }
 
-    fn check_resource_pattern_wildcards(&mut self, parse: &Parse) {
+    fn check_resource_patterns(&mut self, parse: &Parse) {
         for pattern in parse.syntax().descendants().filter_map(Pattern::cast) {
-            if !matches!(pattern, Pattern::Wildcard(_)) {
-                continue;
-            }
-            let belongs_to_rejected_parameter = pattern
-                .syntax()
-                .ancestors()
-                .find_map(Param::cast)
-                .and_then(|parameter| parameter.pattern())
-                .is_some_and(|parameter_pattern| self.pattern_is_resource(&parameter_pattern));
-            if !belongs_to_rejected_parameter && self.pattern_is_resource(&pattern) {
+            let reason = match &pattern {
+                Pattern::Wildcard(_) => {
+                    let belongs_to_rejected_parameter = pattern
+                        .syntax()
+                        .ancestors()
+                        .find_map(Param::cast)
+                        .and_then(|parameter| parameter.pattern())
+                        .is_some_and(|parameter_pattern| {
+                            self.pattern_is_resource(&parameter_pattern)
+                        });
+                    (!belongs_to_rejected_parameter && self.pattern_is_resource(&pattern))
+                        .then_some("resource value cannot be discarded with `_` in a pattern")
+                }
+                // `Ok(key) as whole` would give one resource two owners.
+                Pattern::As(as_pattern) => as_pattern
+                    .pattern()
+                    .is_some_and(|inner| self.binds_resource(&inner))
+                    .then_some(
+                        "resource value cannot be bound both by `as` and inside its pattern",
+                    ),
+                _ => None,
+            };
+            if let Some(reason) = reason {
                 self.errors.push(TypeError::ResourceViolation {
-                    reason: "resource value cannot be discarded with `_` in a pattern".to_string(),
+                    reason: reason.to_string(),
                     span: pattern.syntax().text_range(),
                 });
             }
         }
+    }
+
+    fn binds_resource(&self, pattern: &Pattern) -> bool {
+        pattern.binders().iter().any(|name| {
+            name.parent()
+                .and_then(|binding| self.types.get(&binding.text_range()))
+                .is_some_and(|ty| self.registry.is_resource_type(ty))
+        })
     }
 
     fn pattern_is_resource(&self, pattern: &Pattern) -> bool {
@@ -1182,34 +1202,12 @@ impl Checker<'_> {
             if let Some(pattern) = &pattern {
                 self.bind_pattern(pattern);
             }
-            let guard = arm.guard();
-            let has_guard = guard.is_some();
-            if has_guard {
-                if let Some(pattern) = &pattern {
-                    self.check_unconsumed_pattern_resources(pattern);
-                }
+            if let Some(guard) = arm.guard() {
+                self.check_guard(&guard);
             }
-            if let Some(guard) = guard {
-                self.check_expr(&guard, Usage::Read);
-            }
+            // A resource the arm leaves unmoved is destroyed where it ends.
             if let Some(body) = arm.body() {
                 self.check_expr(&body, Usage::Move);
-            } else if arm.is_pass_through() {
-                // The arm's value is rebuilt from everything its pattern bound.
-                for binding in self
-                    .scopes
-                    .last_mut()
-                    .into_iter()
-                    .flat_map(|s| s.values_mut())
-                {
-                    binding.moved = true;
-                    binding.definitely_moved = true;
-                }
-            }
-            if !has_guard {
-                if let Some(pattern) = &pattern {
-                    self.check_unconsumed_pattern_resources(pattern);
-                }
             }
             self.scopes.pop();
             arm_states.push(self.scopes.clone());
@@ -1230,23 +1228,11 @@ impl Checker<'_> {
             if let Some(pattern) = &pattern {
                 self.bind_pattern(pattern);
             }
-            let guard = arm.guard();
-            let has_guard = guard.is_some();
-            if has_guard {
-                if let Some(pattern) = &pattern {
-                    self.check_unconsumed_pattern_resources(pattern);
-                }
-            }
-            if let Some(guard) = guard {
-                self.check_expr(&guard, Usage::Read);
+            if let Some(guard) = arm.guard() {
+                self.check_guard(&guard);
             }
             if let Some(body) = arm.body() {
                 self.check_expr(&body, Usage::Move);
-            }
-            if !has_guard {
-                if let Some(pattern) = &pattern {
-                    self.check_unconsumed_pattern_resources(pattern);
-                }
             }
             self.scopes.pop();
             arm_states.push(self.scopes.clone());
@@ -1370,26 +1356,31 @@ impl Checker<'_> {
         }
     }
 
-    fn check_unconsumed_pattern_resources(&mut self, pattern: &Pattern) {
-        for name in pattern.binders() {
-            self.check_unconsumed_resource_binding(name.text(), name.text_range());
-        }
-    }
-
-    fn check_unconsumed_resource_binding(&mut self, name: &str, span: TextRange) {
-        let is_unconsumed_resource = self
+    /// A failing guard passes the value on to the next arm, so it may not
+    /// move a resource: the next arm would get one already moved.
+    fn check_guard(&mut self, guard: &Expr) {
+        let before = self.scopes.clone();
+        self.check_expr(guard, Usage::Read);
+        let mut moved: Vec<&String> = self
             .scopes
-            .last()
-            .and_then(|scope| scope.get(name))
-            .is_some_and(|binding| {
-                self.registry.is_resource_type(&binding.ty) && !binding.definitely_moved
-            });
-        if is_unconsumed_resource {
-            self.errors.push(TypeError::ResourceViolation {
-                reason: format!("resource pattern binding `{name}` must be consumed in this arm"),
-                span,
-            });
-        }
+            .iter()
+            .zip(&before)
+            .flat_map(|(scope, before)| {
+                scope.iter().filter(|(name, binding)| {
+                    binding.moved && before.get(*name).is_some_and(|earlier| !earlier.moved)
+                })
+            })
+            .map(|(name, _)| name)
+            .collect();
+        moved.sort();
+        let errors: Vec<TypeError> = moved
+            .into_iter()
+            .map(|name| TypeError::ResourceViolation {
+                reason: format!("a guard cannot move resource `{name}`"),
+                span: guard.syntax().text_range(),
+            })
+            .collect();
+        self.errors.extend(errors);
     }
 
     fn merge_moved_states(&mut self, branch: &[FxHashMap<String, Binding>]) {
@@ -1414,12 +1405,6 @@ impl Checker<'_> {
                         .get(scope_index)
                         .and_then(|scope| scope.get(name))
                         .is_some_and(|state| state.moved)
-                });
-                binding.definitely_moved = branches.iter().all(|branch| {
-                    branch
-                        .get(scope_index)
-                        .and_then(|scope| scope.get(name))
-                        .is_some_and(|state| state.definitely_moved)
                 });
             }
         }
@@ -1454,7 +1439,6 @@ impl Checker<'_> {
                 });
             } else {
                 binding.moved = true;
-                binding.definitely_moved = true;
             }
         }
     }
@@ -1472,7 +1456,6 @@ impl Checker<'_> {
                 Binding {
                     ty,
                     moved: false,
-                    definitely_moved: false,
                     borrowed,
                 },
             );

@@ -13227,6 +13227,9 @@ fn infer_as_pattern(
     if let Some(binding_name_tok) = as_pat.binding_name() {
         let binding_name = binding_name_tok.text().to_string();
         env.insert(binding_name, Scheme::mono(inner_ty.clone()));
+        if let Some(binding) = binding_name_tok.parent() {
+            types.insert(binding.text_range(), inner_ty.clone());
+        }
     }
 
     types.insert(pat.syntax().text_range(), inner_ty.clone());
