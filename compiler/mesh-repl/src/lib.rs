@@ -206,9 +206,10 @@ fn type_check_expression(expr: &str, session: &ReplSession) -> CommandResult {
     full_source.push_str(&format!("fn __repl_type_check() do\n  {}\nend\n", expr));
 
     match jit::check_source(&full_source) {
-        Ok((_, typeck)) => {
-            CommandResult::TypeInfo(format!("{expr} :: {}", jit::wrapped_result(&typeck)))
-        }
+        Ok((_, typeck)) => CommandResult::TypeInfo(format!(
+            "{expr} :: {}",
+            jit::wrapped_result(&typeck).with_named_vars()
+        )),
         Err(error) => CommandResult::Error(error),
     }
 }

@@ -149,6 +149,31 @@ impl Ty {
 
     /// This type as a diagnostic shows it: the parts inference has not
     /// determined (`?9`) as `_`.
+    /// The type with its variables named `a`, `b`, ... in the order they
+    /// first appear, as a reader writes a generic type: `(a) -> a`, not
+    /// `(?9) -> ?9`.
+    pub fn with_named_vars(&self) -> Ty {
+        fn name(ty: &Ty, seen: &mut Vec<TyVar>) -> Ty {
+            match ty {
+                Ty::Var(var) => {
+                    let index = seen.iter().position(|v| v == var).unwrap_or_else(|| {
+                        seen.push(*var);
+                        seen.len() - 1
+                    });
+                    let letter = (b'a' + (index % 26) as u8) as char;
+                    let suffix = if index < 26 {
+                        String::new()
+                    } else {
+                        (index / 26).to_string()
+                    };
+                    Ty::Con(TyCon::new(format!("{letter}{suffix}")))
+                }
+                _ => ty.map_parts(|part| name(part, seen)),
+            }
+        }
+        name(self, &mut Vec::new())
+    }
+
     pub fn with_holes(&self) -> Ty {
         match self {
             Ty::Var(_) => Ty::Con(TyCon::new("_")),

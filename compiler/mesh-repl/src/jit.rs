@@ -2475,7 +2475,7 @@ fn eval_definition(input: &str, session: &mut ReplSession) -> Result<EvalResult,
     // Extract the type of the definition for display (a binding's result is
     // its wrapper function, not the binding).
     let type_info = match typeck.result_type {
-        Some(ref result_ty) if !is_binding => format!("{}", result_ty),
+        Some(ref result_ty) if !is_binding => result_ty.with_named_vars().to_string(),
         _ => String::new(),
     };
 
@@ -2529,13 +2529,27 @@ fn eval_expression(input: &str, session: &mut ReplSession) -> Result<EvalResult,
     let (full_source, wrapper_fn) = session.wrap_expression(input);
 
     let (parse, typeck) = check_source(&full_source)?;
-    let result_type_name = wrapped_result(&typeck).to_string();
+    let result_type_name = wrapped_result(&typeck).with_named_vars().to_string();
 
-    // Step 3: Lower to MIR
-    let mir = mesh_codegen::lower_to_mir_module(&parse, &typeck)?;
-
-    // Step 4: Generate LLVM IR and execute via JIT
-    let value = jit_execute(&mir, &wrapper_fn, &result_type_name)?;
+    // A value the result word does not show (a list, an Option, a struct)
+    // is shown as `inspect` shows it: that is what runs, once.
+    let shown = match result_type_name.as_str() {
+        "Int" | "Float" | "Bool" | "String" | "Unit" | "()" => None,
+        _ => {
+            let (source, wrapper) = session.wrap_expression(&format!("inspect({input})"));
+            check_source(&source).ok().map(|checked| (checked, wrapper))
+        }
+    };
+    let value = match shown {
+        Some(((parse, typeck), wrapper)) => {
+            let mir = mesh_codegen::lower_to_mir_module(&parse, &typeck)?;
+            jit_execute(&mir, &wrapper, SHOWN)?
+        }
+        None => {
+            let mir = mesh_codegen::lower_to_mir_module(&parse, &typeck)?;
+            jit_execute(&mir, &wrapper_fn, &result_type_name)?
+        }
+    };
 
     // Record the result in session history
     session.record_result(value.clone(), result_type_name.clone());
@@ -2588,9 +2602,14 @@ fn jit_execute(
     Ok(format_jit_result(unsafe { jit_fn.call() }, result_type))
 }
 
+/// The result type `jit_execute` is given for a value's `inspect` text,
+/// which is shown as it is.
+const SHOWN: &str = "<shown>";
+
 /// Format a raw JIT result value based on its Mesh type.
 fn format_jit_result(raw: i64, type_name: &str) -> String {
     match type_name {
+        SHOWN => unsafe { (*(raw as *const mesh_rt::MeshString)).as_str() }.to_string(),
         "Int" => format!("{}", raw),
         "Bool" => {
             if raw != 0 {

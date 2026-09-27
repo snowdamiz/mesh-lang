@@ -103,3 +103,38 @@ fn end_of_input_ends_the_session() {
     let (stdout, _) = repl("fn unfinished() do\n  1\n", home.path());
     assert!(stdout.ends_with("Goodbye!\n"), "{stdout}");
 }
+
+/// A value the result word does not show is printed as `inspect` shows it:
+/// a list, an Option, a tuple, a map and a struct were `<List<Int> at
+/// 0x...>` (an Option `at 0x0`). A function, which has no `inspect`,
+/// still shows where it is.
+#[test]
+fn compound_results_print_their_values() {
+    let home = tempfile::tempdir().unwrap();
+    let session = [
+        "[1, 2] |> List.map(fn n -> n * n end)",
+        "Some(3) |> Option.map(fn n -> n * 2 end)",
+        "(1, \"x\")",
+        "%{\"k\" => [1]}",
+        "struct P do\n  x :: Int\nend",
+        "P { x: 4 }",
+        "let f = fn n -> n end",
+        "f",
+        ":quit",
+    ]
+    .join("\n");
+    let (stdout, stderr) = repl(&session, home.path());
+    for expected in [
+        "[1, 4] :: List<Int>",
+        "Some(6) :: Option<Int>",
+        "(1, \"x\") :: (Int, String)",
+        "%{\"k\" => [1]} :: Map<String, List<Int>>",
+        "P { x: 4 } :: P",
+        "<(a) -> a at 0x",
+    ] {
+        assert!(
+            stdout.contains(expected),
+            "{expected:?} in:\n{stdout}\n{stderr}"
+        );
+    }
+}
