@@ -600,18 +600,6 @@ impl Scheduler {
     }
 }
 
-impl std::fmt::Debug for Scheduler {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Scheduler")
-            .field("num_threads", &self.num_threads)
-            .field("min_threads", &self.min_threads)
-            .field("active_threads", &self.active_workers())
-            .field("shutdown", &self.shutdown.load(Ordering::Relaxed))
-            .field("active_count", &self.active_count.load(Ordering::Relaxed))
-            .finish()
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Worker loop
 // ---------------------------------------------------------------------------
@@ -727,7 +715,8 @@ fn worker_loop(
 
         if let Some(req) = request {
             did_work = true;
-            let exited_reason = process_table.read().get(&req.pid).and_then(|process| {
+            let process = process_table.read().get(&req.pid).cloned().expect(IN_TABLE);
+            let exited_reason = {
                 let mut process = process.lock();
                 match &process.state {
                     ProcessState::Exited(reason) => Some(reason.clone()),
@@ -737,11 +726,11 @@ fn worker_loop(
                         None
                     }
                 }
-            });
+            };
 
             if let Some(reason) = exited_reason {
                 finalize_managed_process(&process_table, &active_count, req.pid, reason);
-            } else if process_table.read().contains_key(&req.pid) {
+            } else {
                 // Create the coroutine only after confirming the queued actor is live.
                 let mut handle = CoroutineHandle::new(req.fn_ptr, req.args_ptr);
                 match resume_process(&process_table, &active_count, req.pid, &mut handle) {
@@ -781,12 +770,8 @@ fn worker_loop(
                     // and returns null when no other actors are active,
                     // causing the service loop to exit cleanly.
                     for (pid, handle) in waiting.drain() {
-                        if let Some(proc_arc) = process_table.read().get(&pid) {
-                            let mut proc = proc_arc.lock();
-                            if matches!(proc.state, ProcessState::Waiting) {
-                                proc.set_live_state(ProcessState::Ready);
-                            }
-                        }
+                        let process = process_table.read().get(&pid).cloned().expect(IN_TABLE);
+                        process.lock().set_live_state(ProcessState::Ready);
                         runnable.push((pid, handle));
                     }
                     // The actors will be resumed in Phase 1 on the next
@@ -885,9 +870,8 @@ fn adopt_spawn_args(
     args_size: u64,
     shape: *const u32,
 ) -> *const u8 {
-    let Ok(size) = usize::try_from(args_size) else {
-        return args_ptr;
-    };
+    // A u64 and a usize are the same width on every target.
+    let size = args_size as usize;
     if args_ptr.is_null() || size == 0 {
         return args_ptr;
     }
@@ -916,6 +900,10 @@ fn adopt_spawn_args(
 }
 
 /// Resume one actor timeslice and turn a Mesh panic into a linked error exit.
+/// Why a worker's actor is in the process table: only that worker, once the
+/// actor ends, takes it out (`finalize_managed_process`).
+const IN_TABLE: &str = "an actor stays in the process table until its worker finalizes it";
+
 /// What became of a coroutine that was resumed.
 enum Resumed {
     Finished,
@@ -952,7 +940,8 @@ fn resume_process(
     match result {
         Ok(true) => {
             let mut outcome = Resumed::Runnable;
-            let exited_reason = if let Some(process) = process_table.read().get(&pid) {
+            let exited_reason = {
+                let process = process_table.read().get(&pid).cloned().expect(IN_TABLE);
                 let mut process = process.lock();
                 process.reductions = DEFAULT_REDUCTIONS;
                 match &process.state {
@@ -966,8 +955,6 @@ fn resume_process(
                         None
                     }
                 }
-            } else {
-                None
             };
             if let Some(reason) = exited_reason {
                 finalize_managed_process(process_table, active_count, pid, reason);
@@ -1067,9 +1054,9 @@ fn handle_process_exit(
     let (reason, terminate_cb, linked_pids, monitored_by_entries) = {
         if let Some(proc_arc) = process_table.read().get(&pid) {
             let mut proc = proc_arc.lock();
-            let Some(reason) = proc.begin_exit_finalization(fallback_reason) else {
-                return false;
-            };
+            let reason = proc
+                .begin_exit_finalization(fallback_reason)
+                .expect("a process is finalized once: by its worker, or by its host");
             let cb = proc.terminate_callback.take();
             let links = std::mem::take(&mut proc.links);
             let monitored_by = std::mem::take(&mut proc.monitored_by);
@@ -1154,15 +1141,7 @@ fn handle_process_exit(
 /// crashing the runtime.
 fn invoke_terminate_callback(cb: TerminateCallback, reason: &ExitReason) {
     // Encode the reason as a simple tag byte for the callback.
-    let reason_tag: u8 = match reason {
-        ExitReason::Normal => 0,
-        ExitReason::Error(_) => 1,
-        ExitReason::Killed => 2,
-        ExitReason::Linked(_, _) => 3,
-        ExitReason::Shutdown => 4,
-        ExitReason::Custom(_) => 5,
-        ExitReason::Noconnection => 6,
-    };
+    let reason_tag = reason.tag();
 
     // catch_unwind ensures a panicking terminate callback does not unwind
     // through the scheduler.
@@ -1621,6 +1600,33 @@ mod tests {
             num_actors,
             final_count
         );
+    }
+
+    /// No worker count means one per core; elastic bounds must be positive
+    /// and ordered; a worker above the active count leaves at shutdown too.
+    #[test]
+    fn worker_counts_and_an_elastic_scheduler_shutting_down() {
+        let cores = std::thread::available_parallelism().map_or(1, |n| n.get());
+        assert_eq!(Scheduler::new(0).worker_bounds().1, cores);
+        assert!(Scheduler::new_elastic(0, 1).is_err());
+        assert!(Scheduler::new_elastic(2, 1).is_err());
+        let elastic = Scheduler::new_elastic(1, 2).unwrap();
+        elastic.start();
+        elastic.signal_shutdown();
+        elastic.wait();
+    }
+
+    /// The monitor of an actor that ends is dropped when the actor watching
+    /// it has already left the table.
+    #[test]
+    fn an_ending_actor_passes_over_a_watcher_that_is_gone() {
+        let scheduler = Scheduler::new(1);
+        let target = scheduler.create_main_process();
+        let gone = ProcessId(u64::MAX >> 24);
+        let process = scheduler.get_process(target).unwrap();
+        process.lock().monitored_by.insert(5, gone);
+        scheduler.finalize_host_process(target);
+        assert!(scheduler.get_process(target).is_none());
     }
 
     /// A linked spawn links both ways before the actor can run; a parent

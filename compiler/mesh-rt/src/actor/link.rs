@@ -78,36 +78,20 @@ pub fn encode_exit_signal(exiting_pid: ProcessId, reason: &ExitReason) -> Vec<u8
 }
 
 pub(crate) fn encode_reason(data: &mut Vec<u8>, reason: &ExitReason) {
+    data.push(reason.tag());
     match reason {
-        ExitReason::Normal => {
-            data.push(0);
-        }
-        ExitReason::Error(msg) => {
-            data.push(1);
-            let bytes = msg.as_bytes();
-            data.extend_from_slice(&(bytes.len() as u64).to_le_bytes());
-            data.extend_from_slice(bytes);
-        }
-        ExitReason::Killed => {
-            data.push(2);
+        ExitReason::Error(msg) | ExitReason::Custom(msg) => {
+            data.extend_from_slice(&(msg.len() as u64).to_le_bytes());
+            data.extend_from_slice(msg.as_bytes());
         }
         ExitReason::Linked(pid, inner) => {
-            data.push(3);
             data.extend_from_slice(&pid.0.to_le_bytes());
             encode_reason(data, inner);
         }
-        ExitReason::Shutdown => {
-            data.push(4);
-        }
-        ExitReason::Custom(msg) => {
-            data.push(5);
-            let bytes = msg.as_bytes();
-            data.extend_from_slice(&(bytes.len() as u64).to_le_bytes());
-            data.extend_from_slice(bytes);
-        }
-        ExitReason::Noconnection => {
-            data.push(6);
-        }
+        ExitReason::Normal
+        | ExitReason::Killed
+        | ExitReason::Shutdown
+        | ExitReason::Noconnection => {}
     }
 }
 

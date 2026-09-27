@@ -198,6 +198,22 @@ impl Priority {
     }
 }
 
+impl ExitReason {
+    /// The byte that names this reason on the wire (`link::encode_reason`)
+    /// and to a terminate callback.
+    pub(crate) fn tag(&self) -> u8 {
+        match self {
+            ExitReason::Normal => 0,
+            ExitReason::Error(_) => 1,
+            ExitReason::Killed => 2,
+            ExitReason::Linked(_, _) => 3,
+            ExitReason::Shutdown => 4,
+            ExitReason::Custom(_) => 5,
+            ExitReason::Noconnection => 6,
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Message
 // ---------------------------------------------------------------------------
