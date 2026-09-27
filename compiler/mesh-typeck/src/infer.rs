@@ -10981,7 +10981,8 @@ fn infer_for_in(
                         iter_ty.clone(),
                         Ty::list(elem_ty.clone()),
                         ConstraintOrigin::Builtin,
-                    )?;
+                    )
+                    .expect("an unbound variable takes a list of a fresh one");
                     bind(ctx, env, elem_ty)?;
                 } else {
                     // An Iterable (collection -> iterator) or an Iterator
