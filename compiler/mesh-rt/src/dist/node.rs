@@ -2501,7 +2501,8 @@ fn handle_session_message(
             }
             match decode_consensus_rpc_frame(&msg, DIST_CONSENSUS_RPC) {
                 Ok((correlation_id, request)) => {
-                    crate::dist::consensus::handle_mesh_consensus_rpc(
+                    // The task sends its own reply.
+                    let _ = crate::dist::consensus::handle_mesh_consensus_rpc(
                         Arc::clone(session),
                         correlation_id,
                         request,
@@ -15487,6 +15488,48 @@ mod tests {
             std::thread::sleep(Duration::from_millis(20));
         }
         runtime.block_on(async { node.raft.shutdown().await.unwrap() });
+    }
+
+    /// A peer's consensus request this node's Raft answers goes back on the
+    /// session it came by; with that session gone, the answer is lost and
+    /// said so.
+    #[test]
+    fn a_consensus_answer_for_a_session_gone_is_dropped() {
+        if !in_own_process("a_consensus_answer_for_a_session_gone_is_dropped") {
+            return;
+        }
+        let state = test_node();
+        let directory = tempfile::tempdir().unwrap();
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        let _node = runtime
+            .block_on(crate::dist::consensus::start_mesh_durable_consensus_node(
+                1,
+                &state.name,
+                "answer-test",
+                &directory.path().join("consensus.redb"),
+            ))
+            .unwrap();
+        let voter = "consensus-voter@127.0.0.1:1";
+        let peer = TestPeer::authenticated(voter, &["controller"]);
+        peer.session.shutdown.store(true, Ordering::SeqCst);
+        let request = serde_json::json!({
+            "cluster_name": "answer-test",
+            "source_id": 3,
+            "source_name": voter,
+            "target_id": 1,
+            "rpc": {"Vote": openraft::raft::VoteRequest::<u64>::new(openraft::Vote::new(1, 3), None)},
+        });
+        let answering = crate::dist::consensus::handle_mesh_consensus_rpc(
+            Arc::clone(&peer.session),
+            7,
+            serde_json::to_vec(&request).unwrap(),
+        )
+        .expect("an accepted request");
+        runtime.block_on(answering).unwrap();
     }
 
     /// A node started from its environment reloads the continuity its

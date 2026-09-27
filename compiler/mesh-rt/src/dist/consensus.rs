@@ -213,11 +213,12 @@ async fn answer_consensus_rpc(raft: &MeshRaft, rpc: MeshConsensusRpc) -> Vec<u8>
 /// Dispatch an incoming Raft request away from the distribution reader thread.
 /// The authenticated peer name must match the source name in the signed TLS
 /// session, and cluster/target identity must match the registered local node.
+/// The task that answers an accepted request, which sends its own reply.
 pub(crate) fn handle_mesh_consensus_rpc(
     session: Arc<super::node::NodeSession>,
     correlation_id: u64,
     payload: Vec<u8>,
-) {
+) -> Option<tokio::task::JoinHandle<()>> {
     let server = consensus_rpc_server()
         .read()
         .ok()
@@ -234,10 +235,10 @@ pub(crate) fn handle_mesh_consensus_rpc(
         Err(reason) => {
             let reply = encode_consensus_rpc_reply(MeshConsensusRpcReply::TransportError(reason));
             let _ = super::node::send_mesh_consensus_rpc_reply(&session, correlation_id, &reply);
-            return;
+            return None;
         }
     };
-    server.runtime.spawn(async move {
+    Some(server.runtime.spawn(async move {
         let payload = answer_consensus_rpc(&server.raft, rpc).await;
         if let Err(error) =
             super::node::send_mesh_consensus_rpc_reply(&session, correlation_id, &payload)
@@ -247,7 +248,7 @@ pub(crate) fn handle_mesh_consensus_rpc(
                 session.remote_name, error
             );
         }
-    });
+    }))
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
