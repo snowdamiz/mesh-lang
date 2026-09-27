@@ -12563,15 +12563,14 @@ fn infer_field_access(
         // After trait method resolution fails, check if the method name
         // matches a stdlib module function for the receiver type.
         // e.g. "hello".length() -> String.length(str), my_list.length() -> List.length(list)
-        let module_name = method_module(&resolved_base);
-        if let Some(mod_name) = module_name {
-            let modules = stdlib_modules(ctx.test_builtins);
-            if let Some(mod_fns) = modules.get(mod_name) {
-                if let Some(scheme) = mod_fns.get(&field_name) {
-                    let fn_ty = ctx.instantiate(scheme);
-                    return Ok(fn_ty);
-                }
-            }
+        // (Every module method_module names is a standard module.)
+        if let Some(scheme) = method_module(&resolved_base).and_then(|module| {
+            stdlib_modules(ctx.test_builtins)
+                .get(module)?
+                .get(&field_name)
+                .cloned()
+        }) {
+            return Ok(ctx.instantiate(&scheme));
         }
 
         let err = TypeError::NoSuchMethod {
