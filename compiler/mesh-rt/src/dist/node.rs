@@ -49,7 +49,7 @@ use rustls::{
 use sha2::{Digest, Sha256};
 
 use super::bootstrap::{bootstrap_from_env_with, BootstrapStatus};
-use super::discovery::{parse_host_port, start_from_env as start_discovery_from_env};
+use super::discovery::start_from_env as start_discovery_from_env;
 use super::protocol::{
     negotiate_protocol, CircuitBreaker, CircuitState, MessageClass, NegotiatedProtocol,
     ProtocolEnvelope, ProtocolHello, RetryBudget, PROTOCOL_V1, PROTOCOL_V2,
@@ -5199,90 +5199,7 @@ impl ServerCertVerifier for SkipCertVerification {
 ///
 /// Returns `Err` for invalid formats (no @, empty parts, invalid port).
 pub fn parse_node_name(name: &str) -> Result<(&str, &str, u16), String> {
-    let at_pos = name
-        .find('@')
-        .ok_or_else(|| format!("invalid node name '{}': missing '@' separator", name))?;
-
-    let name_part = &name[..at_pos];
-    let host_port = &name[at_pos + 1..];
-
-    if name_part.is_empty() {
-        return Err(format!("invalid node name '{}': empty name part", name));
-    }
-
-    let (host, port) = parse_host_port(host_port, 9000, name)?;
-    Ok((name_part, host, port))
-}
-
-fn parse_bind_node_name(name: &str) -> Result<(&str, &str, u16), String> {
-    let at_pos = name
-        .find('@')
-        .ok_or_else(|| format!("invalid node name '{}': missing '@' separator", name))?;
-
-    let name_part = &name[..at_pos];
-    let host_port = &name[at_pos + 1..];
-
-    if name_part.is_empty() {
-        return Err(format!("invalid node name '{}': empty name part", name));
-    }
-
-    let (host, port) = parse_bind_host_port(host_port, 9000, name)?;
-    Ok((name_part, host, port))
-}
-
-fn parse_bind_host_port<'a>(
-    host_port: &'a str,
-    default_port: u16,
-    full_value: &str,
-) -> Result<(&'a str, u16), String> {
-    if host_port.is_empty() {
-        return Err(format!(
-            "invalid node name '{}': empty host part",
-            full_value
-        ));
-    }
-
-    if let Some(rest) = host_port.strip_prefix('[') {
-        let end = rest.find(']').ok_or_else(|| {
-            format!(
-                "invalid node name '{}': missing closing ']' for bracketed host",
-                full_value
-            )
-        })?;
-        let host = &rest[..end];
-        let tail = &rest[end + 1..];
-        if tail.is_empty() {
-            return Ok((host, default_port));
-        }
-        let port_str = tail.strip_prefix(':').ok_or_else(|| {
-            format!(
-                "invalid node name '{}': expected ':' after bracketed host",
-                full_value
-            )
-        })?;
-        let port = port_str
-            .parse::<u16>()
-            .map_err(|_| format!("{} must be a valid u16", full_value))?;
-        return Ok((host, port));
-    }
-
-    if let Some((host, port_str)) = host_port.rsplit_once(':') {
-        if host.contains(':') {
-            return Ok((host_port, default_port));
-        }
-        if host.is_empty() {
-            return Err(format!(
-                "invalid node name '{}': empty host part",
-                full_value
-            ));
-        }
-        let port = port_str
-            .parse::<u16>()
-            .map_err(|_| format!("{} must be a valid u16", full_value))?;
-        return Ok((host, port));
-    }
-
-    Ok((host_port, default_port))
+    super::discovery::split_node_name(name, false)
 }
 
 const TRANSIENT_OPERATOR_CLIENT_NAME_PART: &str = "mesh-operator-query";
@@ -6479,7 +6396,7 @@ pub extern "C" fn mesh_node_start(
     }
 
     // Parse "name@host" or "name@host:port"
-    let (name_part, host, port) = match parse_bind_node_name(&name) {
+    let (name_part, host, port) = match super::discovery::split_node_name(&name, true) {
         Ok(parsed) => parsed,
         Err(_) => return -3,
     };
@@ -8798,6 +8715,17 @@ mod tests {
         assert!(parse_node_name("name@host:abc").is_err());
         assert!(parse_node_name("name@host:99999").is_err());
         assert!(parse_node_name("name@[::1").is_err());
+
+        // Port 0, asking the system for a free port, names only a node that
+        // binds; a node to connect to has a port of its own. A name a node
+        // binds is parsed as any other.
+        assert!(parse_node_name("name@127.0.0.1:0").is_err());
+        let bind = |name| super::super::discovery::split_node_name(name, true);
+        assert_eq!(bind("name@127.0.0.1:0"), Ok(("name", "127.0.0.1", 0)));
+        assert_eq!(bind("name@[::1]:0"), Ok(("name", "::1", 0)));
+        assert!(bind("name@[]:0").is_err());
+        assert!(bind("name@fe80::1:4000:x").is_err());
+        assert!(bind("name@host:port").is_err());
     }
 
     #[test]

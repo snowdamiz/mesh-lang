@@ -242,10 +242,11 @@ where
     FilteredCandidates { accepted, rejected }
 }
 
-pub(crate) fn parse_host_port<'a>(
+fn parse_host_port<'a>(
     host_port: &'a str,
     default_port: u16,
     full_value: &str,
+    bind: bool,
 ) -> Result<(&'a str, u16), String> {
     if host_port.is_empty() {
         return Err(format!(
@@ -278,7 +279,7 @@ pub(crate) fn parse_host_port<'a>(
                 full_value
             )
         })?;
-        return Ok((host, parse_positive_u16(port, full_value)?));
+        return Ok((host, parse_node_port(port, full_value, bind)?));
     }
 
     if host_port.matches(':').count() > 1 {
@@ -300,10 +301,21 @@ pub(crate) fn parse_host_port<'a>(
                 full_value
             ));
         }
-        return Ok((host, parse_positive_u16(port_str, full_value)?));
+        return Ok((host, parse_node_port(port_str, full_value, bind)?));
     }
 
     Ok((host_port, default_port))
+}
+
+/// A node name's port. 0 asks the system for a free one, which only a
+/// node binding its listener (`bind`) can do.
+fn parse_node_port(raw: &str, full_value: &str, bind: bool) -> Result<u16, String> {
+    if bind {
+        raw.parse()
+            .map_err(|_| format!("{full_value} must be a valid u16"))
+    } else {
+        parse_positive_u16(raw, full_value)
+    }
 }
 
 #[cfg(test)]
@@ -335,14 +347,16 @@ pub(crate) fn socket_addr_from_candidate_host(host: &str, port: u16) -> Result<S
 }
 
 fn resolve_node_targets(node_name: &str) -> HashSet<SocketAddr> {
-    split_node_name(node_name)
+    split_node_name(node_name, false)
         .ok()
         .and_then(|(_, host, port)| (host, port).to_socket_addrs().ok())
         .map(|addrs| addrs.collect())
         .unwrap_or_default()
 }
 
-fn split_node_name(name: &str) -> Result<(&str, &str, u16), String> {
+/// `name@host[:port]` as its name, host and port (9000 when it names
+/// none). `bind` is for the name a node starts under, whose port may be 0.
+pub(crate) fn split_node_name(name: &str, bind: bool) -> Result<(&str, &str, u16), String> {
     let at_pos = name
         .find('@')
         .ok_or_else(|| format!("invalid node name '{}': missing '@' separator", name))?;
@@ -354,7 +368,7 @@ fn split_node_name(name: &str) -> Result<(&str, &str, u16), String> {
         return Err(format!("invalid node name '{}': empty name part", name));
     }
 
-    let (host, port) = parse_host_port(host_port, 9000, name)?;
+    let (host, port) = parse_host_port(host_port, 9000, name, bind)?;
     Ok((name_part, host, port))
 }
 
@@ -521,7 +535,7 @@ mod tests {
     #[test]
     fn discovery_parse_host_port_accepts_bracketed_ipv6_names() {
         let (host, port) =
-            parse_host_port("[fd00::1234]:9400", 9000, "node@[fd00::1234]:9400").unwrap();
+            parse_host_port("[fd00::1234]:9400", 9000, "node@[fd00::1234]:9400", false).unwrap();
 
         assert_eq!(host, "fd00::1234");
         assert_eq!(port, 9400);
