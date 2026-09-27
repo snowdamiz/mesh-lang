@@ -27,8 +27,7 @@ use crate::collections::list::{
     mesh_list_append, mesh_list_from_array, mesh_list_get, mesh_list_length, mesh_list_new,
 };
 use crate::collections::map::{
-    mesh_map_entry_key, mesh_map_entry_value, mesh_map_get, mesh_map_has_key, mesh_map_put,
-    mesh_map_size,
+    mesh_map_entry_key, mesh_map_entry_value, mesh_map_get, mesh_map_put, mesh_map_size,
 };
 use crate::db::changeset::{
     add_error, map_constraint_error, mesh_changeset_changes, mesh_changeset_valid,
@@ -1041,13 +1040,9 @@ unsafe fn preload_nested(
     let row_count = mesh_list_length(rows);
     let parent_key_mesh = mesh_str(parent_assoc) as *mut u8;
 
-    // Check parent association's kind to decide how to extract intermediate rows
-    let parent_meta = rel_map.get(parent_assoc).ok_or_else(|| {
-        err_result(&format!(
-            "Repo.preload: unknown parent association '{}' in nested path",
-            parent_assoc
-        ))
-    })?;
+    // The parent association's kind decides how to extract intermediate rows.
+    // It is known: `mesh_repo_preload` preloaded it before this path.
+    let parent_meta = &rel_map[parent_assoc];
 
     // Collect intermediate rows and track which parent row each came from
     // and its position within the parent's association list.
@@ -1219,35 +1214,36 @@ pub extern "C" fn mesh_repo_preload(
         let meta_strings = list_strings(rel_meta);
         let rel_map = parse_relationship_meta(&meta_strings);
 
-        // Parse association names
-        let assoc_names = list_strings(associations);
-
-        // Sort by depth: direct associations (depth 0) first, then nested
-        let mut sorted_assocs: Vec<(usize, String)> = assoc_names
-            .iter()
-            .map(|a| (a.matches('.').count(), a.clone()))
-            .collect();
-        sorted_assocs.sort_by_key(|(depth, _)| *depth);
+        // Each path, and the associations it passes through ("posts.comments"
+        // preloads posts, then their comments), once each, parents first.
+        let mut paths: Vec<String> = Vec::new();
+        for name in list_strings(associations) {
+            let mut end = 0;
+            for part in name.split('.') {
+                end += part.len();
+                if !paths.iter().any(|path| *path == name[..end]) {
+                    paths.push(name[..end].to_string());
+                }
+                end += 1;
+            }
+        }
+        paths.sort_by_key(|path| path.matches('.').count());
 
         // Working copy: enrich rows progressively
         let mut current_rows = rows;
-
-        for (_depth, assoc_path) in &sorted_assocs {
-            match preload_path(pool, current_rows, assoc_path, &rel_map) {
+        for path in &paths {
+            match preload_path(pool, current_rows, path, &rel_map) {
                 Ok(enriched) => current_rows = enriched,
                 Err(e) => return e,
             }
         }
 
-        let tree = assoc_tree(&assoc_names);
+        let tree = assoc_tree(&paths);
         let mut encoded = mesh_list_new();
         for i in 0..mesh_list_length(current_rows) {
             let mut row = mesh_list_get(current_rows, i) as *mut u8;
             for (name, nested) in &tree.0 {
                 let key = mesh_str(name) as u64;
-                if mesh_map_has_key(row, key) == 0 {
-                    continue;
-                }
                 let many = rel_map
                     .get(name)
                     .is_some_and(|meta| meta.kind == "has_many");
@@ -3235,6 +3231,39 @@ mod tests {
             );
             assert_eq!(field(ok(mesh_repo_delete(pool, table, id)), "note"), "y");
         }
+        crate::db::pool::mesh_pool_close(pool);
+    }
+
+    /// A nested path preloads the associations it passes through: asked
+    /// for "posts.comments" alone, the rows came back with neither.
+    #[test]
+    #[ignore = "requires MESH_TEST_DATABASE_URL (the coverage run starts a database)"]
+    fn a_nested_path_preloads_its_parents_too() {
+        let pool = test_pool(
+            "mesh_repo_unit_nested",
+            &[
+                "CREATE TABLE authors (id INT PRIMARY KEY)",
+                "CREATE TABLE posts (id INT PRIMARY KEY, author_id INT)",
+                "CREATE TABLE comments (id INT PRIMARY KEY, post_id INT)",
+                "INSERT INTO authors VALUES (1)",
+                "INSERT INTO posts VALUES (1, 1)",
+                "INSERT INTO comments VALUES (7, 1)",
+            ],
+        );
+        let rows = ok(mesh_repo_all(
+            pool,
+            crate::db::query::mesh_query_from(atom("authors")),
+        ));
+        let meta = string_list(&[
+            "has_many:posts:Post:author_id:posts:id",
+            "has_many:comments:Comment:post_id:comments:id",
+        ]);
+        let paths = string_list(&["posts.comments"]);
+        let preloaded = ok(mesh_repo_preload(pool, rows, paths, meta));
+        assert_eq!(
+            column_of(preloaded, "posts"),
+            [r#"[{"author_id":"1","comments":[{"id":"7","post_id":"1"}],"id":"1"}]"#]
+        );
         crate::db::pool::mesh_pool_close(pool);
     }
 
