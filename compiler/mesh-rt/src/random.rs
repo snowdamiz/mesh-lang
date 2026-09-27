@@ -42,7 +42,7 @@ pub extern "C-unwind" fn mesh_random_next_int(state: i64, minimum: i64, maximum:
     }
     // At most 2^64 values: the whole Int range.
     let span = (i128::from(maximum) - i128::from(minimum) + 1) as u128;
-    let (next_state, random) = step(state as u64);
+    let (next_state, random) = step(mesh_random_seed(state) as u64);
     let value = i128::from(minimum) + (u128::from(random) % span) as i128;
     pair(next_state, value as i64)
 }
@@ -71,6 +71,19 @@ mod tests {
         let panic = std::panic::catch_unwind(|| mesh_random_next_int(1, 2, 1))
             .expect_err("an empty range was accepted");
         assert!(crate::panic::mesh_panic_message(&*panic).is_some());
+    }
+
+    /// Zero is xorshift's one fixed point: a zero state that was never
+    /// seeded steps as `Random.seed(0)` does instead of repeating forever.
+    #[test]
+    fn a_zero_state_steps_as_its_seed() {
+        crate::gc::mesh_rt_init();
+        let pair = mesh_random_next_int(0, 0, i64::MAX) as *const i64;
+        let (state, value) = step(ZERO_SEED);
+        unsafe {
+            assert_eq!(*pair.add(1), state as i64);
+            assert_eq!(*pair.add(2), (value % (i64::MAX as u64 + 1)) as i64);
+        }
     }
 
     /// The whole Int range is 2^64 values, one past what a u64 holds: every
