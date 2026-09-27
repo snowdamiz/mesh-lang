@@ -6,11 +6,12 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use mesh_rt::dist::autonomous::start_autonomous_controller;
+use mesh_rt::dist::consensus::start_mesh_consensus_from_env;
 use mesh_rt::{
-    autonomous_controller_status, embedded_autonomous_config, mesh_register_autonomous_config_json,
-    RuntimeAutonomousConfig, RuntimeCapacityDriverConfig, RuntimeContinuityConfig,
-    RuntimeFeatureGates, RuntimeRoutingConfig, RuntimeSchedulerConfig, ScalingPolicy,
-    AUTONOMOUS_CONFIG_SCHEMA_VERSION,
+    autonomous_controller_status, consensus_runtime_snapshot, embedded_autonomous_config,
+    mesh_register_autonomous_config_json, RuntimeAutonomousConfig, RuntimeCapacityDriverConfig,
+    RuntimeContinuityConfig, RuntimeFeatureGates, RuntimeRoutingConfig, RuntimeSchedulerConfig,
+    ScalingPolicy, AUTONOMOUS_CONFIG_SCHEMA_VERSION,
 };
 
 fn register(config: &RuntimeAutonomousConfig) -> i32 {
@@ -87,4 +88,16 @@ fn a_registered_config_starts_one_controller_that_stops_without_a_node() {
         start_autonomous_controller(),
         Err("autonomous_controller_already_started".to_string())
     );
+
+    // Consensus needs this node started: its runtime thread reports that it
+    // is not and leaves no consensus behind.
+    std::env::set_var("MESH_STABLE_NODE_ID", "controller-test/controller/a");
+    std::env::set_var(
+        "MESH_CONTROLLER_VOTERS",
+        "controller-test/controller/a|a@a:4370",
+    );
+    std::env::set_var("MESH_CONSENSUS_DB", directory.path().join("consensus.redb"));
+    assert_eq!(start_mesh_consensus_from_env("a@a:4370"), Ok(true));
+    std::thread::sleep(Duration::from_millis(200));
+    assert!(consensus_runtime_snapshot().is_none());
 }
