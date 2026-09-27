@@ -549,11 +549,8 @@ fn negotiate_tls(mut stream: TcpStream, url: &PgUrl) -> Result<PgStream, String>
             let tls = upgrade_to_tls(stream, &url.host, url.sslrootcert.as_deref())?;
             Ok(PgStream::Tls(tls))
         }
-        b'N' => match sslmode {
-            SslMode::Require => Err("server does not support SSL".to_string()),
-            SslMode::Prefer => Ok(PgStream::Plain(stream)),
-            SslMode::Disable => unreachable!(),
-        },
+        b'N' if sslmode == SslMode::Require => Err("server does not support SSL".to_string()),
+        b'N' => Ok(PgStream::Plain(stream)),
         other => Err(format!("unexpected SSL response: 0x{:02x}", other)),
     }
 }
@@ -2701,6 +2698,24 @@ mod tests {
             validate_sql(&long).unwrap_err(),
             format!("PostgreSQL query exceeds {MAX_PG_MESSAGE_BYTES} byte message limit")
         );
+
+        // A Mesh list's values are bounded before any message is built.
+        mesh_rt_init();
+        let many = vec!["x"; MAX_PG_VALUES + 1];
+        let large = "x".repeat(MAX_DB_VALUE_BYTES + 1);
+        for (list, error) in [
+            (
+                crate::collections::list::string_list(&many),
+                "too many PostgreSQL parameters: 32768 (maximum 32767)".to_string(),
+            ),
+            (
+                crate::collections::list::string_list(&["", large.as_str()]),
+                format!("PostgreSQL parameter at index 1 exceeds {MAX_DB_VALUE_BYTES} byte limit"),
+            ),
+        ] {
+            let values = unsafe { text_values(list, MAX_PG_VALUES, "PostgreSQL") };
+            assert_eq!(values.err(), Some(error));
+        }
 
         let mut message = Vec::new();
         let nulls = vec![BindValue::Null; MAX_PG_VALUES + 1];
