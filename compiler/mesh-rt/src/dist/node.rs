@@ -2776,26 +2776,6 @@ fn cleanup_session_if_current(session: &Arc<NodeSession>) {
     }
 }
 
-/// Test cleanup helper that removes any session stored for the remote name.
-#[allow(dead_code)]
-fn cleanup_session(remote_name: &str) {
-    if let Some(state) = NODE_STATE.get() {
-        let removed = {
-            let mut sessions = state.sessions.write();
-            sessions.remove(remote_name)
-        };
-        if let Some(session) = removed {
-            fail_pending_session_requests(&session, "peer_session_disconnected");
-            let node_id = session.node_id;
-            let mut id_map = state.node_id_map.write();
-            id_map.remove(&node_id);
-            drop(id_map);
-            // Phase 66: Fire all failure signals for the disconnected node.
-            handle_node_disconnect(remote_name, node_id);
-        }
-    }
-}
-
 fn fail_pending_session_requests(session: &NodeSession, reason: &str) {
     for (_, sender) in session.pending_continuity_prepares.lock().unwrap().drain() {
         let _ = sender.send(Err(reason.to_string()));
@@ -10576,20 +10556,6 @@ mod tests {
 
         assert_eq!(msg[0], HEARTBEAT_PONG);
         assert_eq!(&msg[1..9], &payload);
-    }
-
-    #[test]
-    fn test_cleanup_session_removes_from_state() {
-        // Build a minimal NodeState and register a session manually.
-        let _ = rustls::crypto::ring::default_provider().install_default();
-
-        // We cannot use the global NODE_STATE easily in tests, so we test
-        // the cleanup logic by verifying that cleanup_session does not panic
-        // when called without NODE_STATE initialized (it early-returns).
-        // The functional test is covered by test_node_connect_full_lifecycle
-        // which exercises the full connection path including spawn_session_threads.
-        cleanup_session("nonexistent@host");
-        // If we get here, cleanup_session handled the None case gracefully.
     }
 
     // -------------------------------------------------------------------
