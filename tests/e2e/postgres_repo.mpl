@@ -75,6 +75,13 @@ fn failed<T>(label :: String, result :: Result<T, String>) do
   end
 end
 
+fn error_of<T>(label :: String, result :: Result<T, String>) do
+  case result do
+    Ok(_) -> println(label <> ":unexpected-ok")
+    Err(error) -> println(label <> ":" <> error)
+  end
+end
+
 fn setup(pool :: PoolHandle) -> Int!String do
   let _ = Pool.execute(pool, "DROP SCHEMA IF EXISTS mesh_repo_e2e CASCADE", [])?
   let _ = Pool.execute(pool, "CREATE SCHEMA mesh_repo_e2e", [])?
@@ -93,6 +100,15 @@ fn setup(pool :: PoolHandle) -> Int!String do
     [])?
   let _ = Pool.execute(pool,
     "CREATE TABLE ledger (id INT PRIMARY KEY, owner TEXT REFERENCES writers(handle) DEFERRABLE INITIALLY DEFERRED)",
+    [])?
+  # Every row written to `muted` is dropped by its trigger, so nothing comes
+  # back from RETURNING.
+  let _ = Pool.execute(pool, "CREATE TABLE muted (id TEXT PRIMARY KEY, note TEXT)", [])?
+  let _ = Pool.execute(pool,
+    "CREATE FUNCTION drop_row() RETURNS trigger LANGUAGE plpgsql AS 'BEGIN RETURN NULL; END'",
+    [])?
+  let _ = Pool.execute(pool,
+    "CREATE TRIGGER drop_row BEFORE INSERT OR UPDATE ON muted FOR EACH ROW EXECUTE FUNCTION drop_row()",
     [])?
   Ok(0)
 end
@@ -545,6 +561,53 @@ fn changesets(pool :: PoolHandle) do
   end
 end
 
+# Writes that have nothing to write, nothing to match, or get no row back.
+fn edges(pool :: PoolHandle) do
+  let ada = Query.from("writers")
+    |> Query.where(:handle, "ada")
+  let nobody = Query.from("writers")
+    |> Query.where(:handle, "zed")
+  error_of("insert_empty", Repo.insert(pool, "writers", %{}))
+  error_of("insert_muted", Repo.insert(pool, "muted", %{"id" => "1"}))
+  error_of("insert_expr_empty", Repo.insert_expr(pool, "writers", %{}))
+  error_of("insert_expr_muted", Repo.insert_expr(pool, "muted", %{"id" => Expr.value("1")}))
+  error_of("update_empty", Repo.update(pool, "writers", "ada", %{}))
+  error_of("update_missing", Repo.update(pool, "writers", "zed", %{"score" => "1"}))
+  error_of("update_where_empty", Repo.update_where(pool, "writers", %{}, ada))
+  error_of("update_where_unfiltered",
+    Repo.update_where(pool, "writers", %{"score" => "1"}, Query.from("writers")))
+  error_of("update_where_none", Repo.update_where(pool, "writers", %{"score" => "1"}, nobody))
+  error_of("update_where_expr_empty", Repo.update_where_expr(pool, "writers", %{}, ada))
+  error_of("update_where_expr_unfiltered",
+    Repo.update_where_expr(pool, "writers", %{"score" => Expr.value("1")}, Query.from("writers")))
+  error_of("update_where_expr_none",
+    Repo.update_where_expr(pool, "writers", %{"score" => Expr.value("1")}, nobody))
+  error_of("upsert_empty", Repo.insert_or_update(pool, "writers", %{}, ["handle"], ["score"]))
+  error_of("upsert_no_targets",
+    Repo.insert_or_update(pool, "writers", %{"handle" => "x"}, [], ["score"]))
+  error_of("upsert_no_updates",
+    Repo.insert_or_update(pool, "writers", %{"handle" => "x"}, ["handle"], []))
+  error_of("upsert_muted", Repo.insert_or_update(pool, "muted", %{"id" => "1"}, ["id"], ["note"]))
+  error_of("upsert_expr_empty",
+    Repo.insert_or_update_expr(pool, "writers", %{}, ["handle"], %{"score" => Expr.value("1")}))
+  error_of("upsert_expr_no_targets",
+    Repo.insert_or_update_expr(pool,
+      "writers",
+      %{"handle" => "x"},
+      [],
+      %{"score" => Expr.value("1")}))
+  error_of("upsert_expr_no_updates",
+    Repo.insert_or_update_expr(pool, "writers", %{"handle" => "x"}, ["handle"], %{}))
+  error_of("upsert_expr_muted",
+    Repo.insert_or_update_expr(pool,
+      "muted",
+      %{"id" => "1"},
+      ["id"],
+      %{"note" => Expr.value("n")}))
+  error_of("delete_missing", Repo.delete(pool, "writers", "zed"))
+  error_of("delete_where_unfiltered", Repo.delete_where(pool, "writers", Query.from("writers")))
+end
+
 fn add_article(conn :: borrow PgConn) -> String!String do
   let _ = Pg.execute(conn,
     "INSERT INTO articles (author_id, title) VALUES ($1, $2)",
@@ -607,6 +670,9 @@ fn closed_pool(url :: String) -> Int!String do
     Ok(_) -> println("transaction_closed:unexpected-ok")
     Err(error) -> println("transaction_closed:" <> error)
   end
+  error_of("get_closed", Repo.get(pool, "writers", "ada"))
+  error_of("update_closed", Repo.update(pool, "writers", "ada", %{"score" => "1"}))
+  error_of("delete_closed", Repo.delete(pool, "writers", "ada"))
   Ok(0)
 end
 
@@ -621,6 +687,7 @@ fn run() -> Int!String do
   preloads(pool)
   changesets(pool)
   transactions(pool)
+  edges(pool)
   deletes(pool)
   let _ = Pool.execute(pool, "DROP SCHEMA mesh_repo_e2e CASCADE", [])?
   Pool.close(pool)

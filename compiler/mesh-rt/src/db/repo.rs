@@ -45,6 +45,19 @@ fn ok_result(value: *mut u8) -> *mut u8 {
     alloc_result(0, value) as *mut u8
 }
 
+/// `Ok(first row)` of a query's rows, `Err(none)` when it returned none;
+/// a failed query as it is.
+unsafe fn first_row(result: *mut u8, none: &str) -> *mut u8 {
+    let r = &*(result as *const MeshResult);
+    if r.tag != 0 {
+        return result;
+    }
+    if mesh_list_length(r.value) == 0 {
+        return err_result(none);
+    }
+    ok_result(mesh_list_get(r.value, 0) as *mut u8)
+}
+
 // ── Query slot access ────────────────────────────────────────────────
 
 // Slot indices (must match query.rs exactly)
@@ -530,19 +543,7 @@ pub extern "C" fn mesh_repo_get(pool: u64, table: *mut u8, id: *mut u8) -> *mut 
         let result = mesh_pool_query(pool, sql_ptr, params_list);
 
         // Check if query succeeded
-        let r = &*(result as *const MeshResult);
-        if r.tag != 0 {
-            return result;
-        }
-
-        let list = r.value;
-        let list_len = mesh_list_length(list);
-        if list_len == 0 {
-            return err_result("not found");
-        }
-
-        let first_row = mesh_list_get(list, 0) as *mut u8;
-        ok_result(first_row)
+        first_row(result, "not found")
     }
 }
 
@@ -571,19 +572,7 @@ pub extern "C" fn mesh_repo_get_by(
         params_list = mesh_list_append(params_list, value as u64);
         let result = mesh_pool_query(pool, sql_ptr, params_list);
 
-        let r = &*(result as *const MeshResult);
-        if r.tag != 0 {
-            return result;
-        }
-
-        let list = r.value;
-        let list_len = mesh_list_length(list);
-        if list_len == 0 {
-            return err_result("not found");
-        }
-
-        let first_row = mesh_list_get(list, 0) as *mut u8;
-        ok_result(first_row)
+        first_row(result, "not found")
     }
 }
 
@@ -845,20 +834,7 @@ pub extern "C" fn mesh_repo_insert(pool: u64, table: *mut u8, fields: *mut u8) -
         let result = mesh_pool_query(pool, sql_ptr, params_ptr);
 
         // Check if query succeeded
-        let r = &*(result as *const MeshResult);
-        if r.tag != 0 {
-            return result; // propagate query error
-        }
-
-        // Extract first row from the result list (the inserted row)
-        let list = r.value;
-        let list_len = mesh_list_length(list);
-        if list_len == 0 {
-            return err_result("insert: no row returned");
-        }
-
-        let first_row = mesh_list_get(list, 0) as *mut u8;
-        ok_result(first_row)
+        first_row(result, "insert: no row returned")
     }
 }
 
@@ -884,19 +860,7 @@ pub extern "C" fn mesh_repo_insert_expr(
         let params_ptr = string_list(&params);
         let result = mesh_pool_query(pool, sql_ptr, params_ptr);
 
-        let r = &*(result as *const MeshResult);
-        if r.tag != 0 {
-            return result;
-        }
-
-        let list = r.value;
-        let list_len = mesh_list_length(list);
-        if list_len == 0 {
-            return err_result("insert_expr: no row returned");
-        }
-
-        let first_row = mesh_list_get(list, 0) as *mut u8;
-        ok_result(first_row)
+        first_row(result, "insert_expr: no row returned")
     }
 }
 
@@ -939,19 +903,7 @@ pub extern "C" fn mesh_repo_update(
         let params_ptr = string_list(&values);
         let result = mesh_pool_query(pool, sql_ptr, params_ptr);
 
-        let r = &*(result as *const MeshResult);
-        if r.tag != 0 {
-            return result;
-        }
-
-        let list = r.value;
-        let list_len = mesh_list_length(list);
-        if list_len == 0 {
-            return err_result("update: no row returned (id not found)");
-        }
-
-        let first_row = mesh_list_get(list, 0) as *mut u8;
-        ok_result(first_row)
+        first_row(result, "update: no row returned (id not found)")
     }
 }
 
@@ -979,19 +931,7 @@ pub extern "C" fn mesh_repo_delete(pool: u64, table: *mut u8, id: *mut u8) -> *m
         params_list = mesh_list_append(params_list, id as u64);
         let result = mesh_pool_query(pool, sql_ptr, params_list);
 
-        let r = &*(result as *const MeshResult);
-        if r.tag != 0 {
-            return result;
-        }
-
-        let list = r.value;
-        let list_len = mesh_list_length(list);
-        if list_len == 0 {
-            return err_result("delete: no row returned (id not found)");
-        }
-
-        let first_row = mesh_list_get(list, 0) as *mut u8;
-        ok_result(first_row)
+        first_row(result, "delete: no row returned (id not found)")
     }
 }
 
@@ -1797,19 +1737,7 @@ pub extern "C" fn mesh_repo_update_where(
         let params_ptr = string_list(&values);
         let result = mesh_pool_query(pool, sql_ptr, params_ptr);
 
-        let r = &*(result as *const MeshResult);
-        if r.tag != 0 {
-            return result;
-        }
-
-        let list = r.value;
-        let list_len = mesh_list_length(list);
-        if list_len == 0 {
-            return err_result("update_where: no rows matched");
-        }
-
-        let first_row = mesh_list_get(list, 0) as *mut u8;
-        ok_result(first_row)
+        first_row(result, "update_where: no rows matched")
     }
 }
 
@@ -1844,19 +1772,7 @@ pub extern "C" fn mesh_repo_update_where_expr(
         let params_ptr = string_list(&params);
         let result = mesh_pool_query(pool, sql_ptr, params_ptr);
 
-        let r = &*(result as *const MeshResult);
-        if r.tag != 0 {
-            return result;
-        }
-
-        let list = r.value;
-        let list_len = mesh_list_length(list);
-        if list_len == 0 {
-            return err_result("update_where_expr: no rows matched");
-        }
-
-        let first_row = mesh_list_get(list, 0) as *mut u8;
-        ok_result(first_row)
+        first_row(result, "update_where_expr: no rows matched")
     }
 }
 
@@ -1930,19 +1846,7 @@ pub extern "C" fn mesh_repo_insert_or_update(
         let params_ptr = string_list(&values);
         let result = mesh_pool_query(pool, sql_ptr, params_ptr);
 
-        let r = &*(result as *const MeshResult);
-        if r.tag != 0 {
-            return result;
-        }
-
-        let list = r.value;
-        let list_len = mesh_list_length(list);
-        if list_len == 0 {
-            return err_result("insert_or_update: no row returned");
-        }
-
-        let first_row = mesh_list_get(list, 0) as *mut u8;
-        ok_result(first_row)
+        first_row(result, "insert_or_update: no row returned")
     }
 }
 
@@ -1979,19 +1883,7 @@ pub extern "C" fn mesh_repo_insert_or_update_expr(
         let params_ptr = string_list(&params);
         let result = mesh_pool_query(pool, sql_ptr, params_ptr);
 
-        let r = &*(result as *const MeshResult);
-        if r.tag != 0 {
-            return result;
-        }
-
-        let list = r.value;
-        let list_len = mesh_list_length(list);
-        if list_len == 0 {
-            return err_result("insert_or_update_expr: no row returned");
-        }
-
-        let first_row = mesh_list_get(list, 0) as *mut u8;
-        ok_result(first_row)
+        first_row(result, "insert_or_update_expr: no row returned")
     }
 }
 

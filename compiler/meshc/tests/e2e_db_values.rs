@@ -238,6 +238,28 @@ transaction_panic:transaction aborted: panic in callback
 transaction_commit:COMMIT:
 transaction_titles:1
 transaction_ledger:0
+insert_empty:insert: no fields provided
+insert_muted:insert: no row returned
+insert_expr_empty:insert_expr: no fields provided
+insert_expr_muted:insert_expr: no row returned
+update_empty:update: no fields provided
+update_missing:update: no row returned (id not found)
+update_where_empty:update_where: no fields provided
+update_where_unfiltered:update_where: no WHERE conditions
+update_where_none:update_where: no rows matched
+update_where_expr_empty:update_where_expr: no fields provided
+update_where_expr_unfiltered:update_where_expr: no WHERE conditions
+update_where_expr_none:update_where_expr: no rows matched
+upsert_empty:insert_or_update: no fields provided
+upsert_no_targets:insert_or_update: no conflict targets provided
+upsert_no_updates:insert_or_update: no update fields provided
+upsert_muted:insert_or_update: no row returned
+upsert_expr_empty:insert_or_update_expr: no fields provided
+upsert_expr_no_targets:insert_or_update_expr: no conflict targets provided
+upsert_expr_no_updates:insert_or_update_expr: no update fields provided
+upsert_expr_muted:insert_or_update_expr: no row returned
+delete_missing:delete: no row returned (id not found)
+delete_where_unfiltered:delete_where: no WHERE conditions
 delete:ok
 delete_none:failed
 delete_where:1
@@ -246,6 +268,9 @@ delete_where_returning_unfiltered:failed
 delete_where_returning:great
 delete_where_returning_bad:failed
 transaction_closed:pool is closed
+get_closed:pool is closed
+update_closed:pool is closed
+delete_closed:pool is closed
 done
 "#;
 
