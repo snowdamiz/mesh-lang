@@ -435,11 +435,8 @@ fn handshake_request(
 ) -> Result<(Vec<u8>, String), String> {
     let nonce: [u8; 16] = rand::random();
     let key = STANDARD.encode(nonce);
-    let mut path = if url.path().is_empty() {
-        "/".to_string()
-    } else {
-        url.path().to_string()
-    };
+    // The parser gives a ws or wss URL a path, "/" at the least.
+    let mut path = url.path().to_string();
     if let Some(query) = url.query() {
         path.push('?');
         path.push_str(query);
