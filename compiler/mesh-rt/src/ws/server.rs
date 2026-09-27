@@ -267,30 +267,39 @@ pub extern "C" fn mesh_ws_serve(
     ws_serve(callbacks, port, None);
 }
 
-/// Bind `port`, then accept on a thread of its own (so Ws.serve returns at
-/// once, and HTTP.serve can follow it), in TLS when `tls` is given.
+/// Bind `port`, then serve on it (`ws_start`), in TLS when `tls` is given.
 fn ws_serve(callbacks: WsHandler, port: i64, tls: Option<Arc<ServerConfig>>) {
-    // Ensure the actor scheduler is initialized (idempotent).
-    crate::actor::mesh_rt_init_actor(0);
-    let kind = if tls.is_some() {
+    let addr = format!("0.0.0.0:{}", port);
+    match TcpListener::bind(&addr) {
+        Ok(listener) => ws_start(listener, callbacks, tls),
+        Err(e) => eprintln!(
+            "[mesh-rt] Failed to start {} server on {addr}: {e}",
+            ws_kind(&tls)
+        ),
+    }
+}
+
+fn ws_kind(tls: &Option<Arc<ServerConfig>>) -> &'static str {
+    if tls.is_some() {
         "WebSocket TLS"
     } else {
         "WebSocket"
-    };
+    }
+}
 
-    let addr = format!("0.0.0.0:{}", port);
-    let listener = match TcpListener::bind(&addr) {
-        Ok(l) => l,
-        Err(e) => {
-            eprintln!("[mesh-rt] Failed to start {kind} server on {addr}: {e}");
-            return;
-        }
-    };
-
+/// Accept on `listener` on a thread of its own (so Ws.serve returns at
+/// once, and HTTP.serve can follow it), in TLS when `tls` is given.
+fn ws_start(listener: TcpListener, callbacks: WsHandler, tls: Option<Arc<ServerConfig>>) {
+    // Ensure the actor scheduler is initialized (idempotent).
+    crate::actor::mesh_rt_init_actor(0);
+    let kind = ws_kind(&tls);
+    let addr = listener
+        .local_addr()
+        .expect("a bound listener has an address");
     eprintln!("[mesh-rt] {kind} server listening on {addr}");
     let thread = if tls.is_some() { "wss" } else { "ws" };
     if let Err(error) = std::thread::Builder::new()
-        .name(format!("{thread}-accept-{port}"))
+        .name(format!("{thread}-accept-{}", addr.port()))
         .spawn(move || ws_accept_loop(listener, callbacks, tls))
     {
         eprintln!("[mesh-rt] Failed to spawn {kind} accept thread: {error}");
@@ -758,105 +767,108 @@ mod tests {
     // ── Helpers ──────────────────────────────────────────────────────
 
     /// Get a free port by binding to port 0 and releasing.
-    fn free_port() -> u16 {
-        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        l.local_addr().unwrap().port()
+    /// Serve `callbacks` on a port of the test's own: the listener is bound
+    /// before the server starts, so no other socket can take the port in
+    /// between (as one could a port found free and then released).
+    fn serve(callbacks: WsHandler) -> u16 {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        ws_start(listener, callbacks, None);
+        port
+    }
+
+    fn handler(
+        on_connect: *mut u8,
+        on_connect_env: *mut u8,
+        on_message: *mut u8,
+        on_message_env: *mut u8,
+        on_close: *mut u8,
+        on_close_env: *mut u8,
+    ) -> WsHandler {
+        WsHandler {
+            on_connect_fn: on_connect,
+            on_connect_env,
+            on_message_fn: on_message,
+            on_message_env,
+            on_close_fn: on_close,
+            on_close_env,
+        }
     }
 
     /// Start a WS server that echoes messages back (no per-test counters).
-    fn start_echo_server(port: u16) {
-        std::thread::spawn(move || {
-            mesh_ws_serve(
-                accept_on_connect as *mut u8,
-                std::ptr::null_mut(),
-                echo_on_message as *mut u8,
-                std::ptr::null_mut(),
-                noop_on_close as *mut u8,
-                std::ptr::null_mut(),
-                port as i64,
-            );
-        });
+    fn start_echo_server() -> u16 {
+        serve(handler(
+            accept_on_connect as *mut u8,
+            std::ptr::null_mut(),
+            echo_on_message as *mut u8,
+            std::ptr::null_mut(),
+            noop_on_close as *mut u8,
+            std::ptr::null_mut(),
+        ))
     }
 
-    fn start_rejecting_server(port: u16) {
-        std::thread::spawn(move || {
-            mesh_ws_serve(
-                join_then_reject_on_connect as *mut u8,
-                std::ptr::null_mut(),
-                echo_on_message as *mut u8,
-                std::ptr::null_mut(),
-                noop_on_close as *mut u8,
-                std::ptr::null_mut(),
-                port as i64,
-            );
-        });
+    fn start_rejecting_server() -> u16 {
+        serve(handler(
+            join_then_reject_on_connect as *mut u8,
+            std::ptr::null_mut(),
+            echo_on_message as *mut u8,
+            std::ptr::null_mut(),
+            noop_on_close as *mut u8,
+            std::ptr::null_mut(),
+        ))
     }
 
     /// Start a WS server with per-test connect/close counters.
     fn start_counting_server(
-        port: u16,
         connect_ctr: &'static AtomicU64,
         close_ctr: &'static AtomicU64,
-    ) {
-        // Cast to usize to cross thread boundary (*mut u8 is !Send).
-        let connect_env = connect_ctr as *const AtomicU64 as usize;
-        let close_env = close_ctr as *const AtomicU64 as usize;
-        std::thread::spawn(move || {
-            mesh_ws_serve(
-                counting_on_connect as *mut u8,
-                connect_env as *mut u8,
-                echo_on_message as *mut u8,
-                std::ptr::null_mut(),
-                counting_on_close as *mut u8,
-                close_env as *mut u8,
-                port as i64,
-            );
-        });
+    ) -> u16 {
+        let connect_env = connect_ctr as *const AtomicU64 as *mut u8;
+        let close_env = close_ctr as *const AtomicU64 as *mut u8;
+        serve(handler(
+            counting_on_connect as *mut u8,
+            connect_env,
+            echo_on_message as *mut u8,
+            std::ptr::null_mut(),
+            counting_on_close as *mut u8,
+            close_env,
+        ))
     }
 
-    fn start_close_recording_server(port: u16, record: &'static CloseRecord) {
-        let close_env = record as *const CloseRecord as usize;
-        std::thread::spawn(move || {
-            mesh_ws_serve(
-                accept_on_connect as *mut u8,
-                std::ptr::null_mut(),
-                echo_on_message as *mut u8,
-                std::ptr::null_mut(),
-                recording_on_close as *mut u8,
-                close_env as *mut u8,
-                port as i64,
-            );
-        });
+    fn start_close_recording_server(record: &'static CloseRecord) -> u16 {
+        let close_env = record as *const CloseRecord as *mut u8;
+        serve(handler(
+            accept_on_connect as *mut u8,
+            std::ptr::null_mut(),
+            echo_on_message as *mut u8,
+            std::ptr::null_mut(),
+            recording_on_close as *mut u8,
+            close_env,
+        ))
     }
 
     /// Start a WS server where on_message always panics.
-    fn start_crash_server(port: u16) {
-        std::thread::spawn(move || {
-            mesh_ws_serve(
-                accept_on_connect as *mut u8,
-                std::ptr::null_mut(),
-                crash_on_message as *mut u8,
-                std::ptr::null_mut(),
-                noop_on_close as *mut u8,
-                std::ptr::null_mut(),
-                port as i64,
-            );
-        });
+    fn start_crash_server() -> u16 {
+        serve(handler(
+            accept_on_connect as *mut u8,
+            std::ptr::null_mut(),
+            crash_on_message as *mut u8,
+            std::ptr::null_mut(),
+            noop_on_close as *mut u8,
+            std::ptr::null_mut(),
+        ))
     }
 
-    fn start_blocked_server(port: u16, blocked: &'static AtomicBool) {
-        let blocked_env = blocked as *const AtomicBool as usize;
-        std::thread::spawn(move || {
-            mesh_ws_serve(
-                accept_on_connect as *mut u8,
-                std::ptr::null_mut(),
-                blocking_on_message as *mut u8,
-                blocked_env as *mut u8,
-                noop_on_close as *mut u8,
-                std::ptr::null_mut(),
-                port as i64,
-            );
-        });
+    fn start_blocked_server(blocked: &'static AtomicBool) -> u16 {
+        let blocked_env = blocked as *const AtomicBool as *mut u8;
+        serve(handler(
+            accept_on_connect as *mut u8,
+            std::ptr::null_mut(),
+            blocking_on_message as *mut u8,
+            blocked_env,
+            noop_on_close as *mut u8,
+            std::ptr::null_mut(),
+        ))
     }
 
     /// Connect to a WS server and complete the HTTP upgrade handshake.
@@ -1276,8 +1288,7 @@ mod tests {
 
     #[test]
     fn rejected_connection_is_removed_from_rooms_before_drop() {
-        let port = free_port();
-        start_rejecting_server(port);
+        let port = start_rejecting_server();
         let mut stream = ws_connect(port);
         let close = read_frame(&mut stream).unwrap();
         assert_eq!(parse_close_payload(&close.payload).0, WS_POLICY_VIOLATION);
@@ -1296,20 +1307,15 @@ mod tests {
 
     #[test]
     fn on_close_cannot_leave_a_dangling_room_member() {
-        let port = free_port();
         let called = Box::leak(Box::new(AtomicBool::new(false)));
-        let close_env = called as *const AtomicBool as usize;
-        std::thread::spawn(move || {
-            mesh_ws_serve(
-                accept_on_connect as *mut u8,
-                std::ptr::null_mut(),
-                echo_on_message as *mut u8,
-                std::ptr::null_mut(),
-                rejoining_on_close as *mut u8,
-                close_env as *mut u8,
-                port as i64,
-            );
-        });
+        let port = serve(handler(
+            accept_on_connect as *mut u8,
+            std::ptr::null_mut(),
+            echo_on_message as *mut u8,
+            std::ptr::null_mut(),
+            rejoining_on_close as *mut u8,
+            called as *const AtomicBool as *mut u8,
+        ));
         let mut stream = ws_connect(port);
         ws_send_close(&mut stream, 1000);
         let _ = read_frame(&mut stream).unwrap();
@@ -1336,8 +1342,7 @@ mod tests {
     /// End-to-end: connect, send text, get echo, close cleanly.
     #[test]
     fn test_ws_server_end_to_end_echo() {
-        let port = free_port();
-        start_echo_server(port);
+        let port = start_echo_server();
 
         let mut stream = ws_connect(port);
 
@@ -1479,10 +1484,9 @@ mod tests {
     /// Lifecycle: on_connect fires on handshake, on_close fires on close.
     #[test]
     fn test_ws_server_lifecycle_callbacks() {
-        let port = free_port();
         let connect_ctr: &'static AtomicU64 = Box::leak(Box::new(AtomicU64::new(0)));
         let close_ctr: &'static AtomicU64 = Box::leak(Box::new(AtomicU64::new(0)));
-        start_counting_server(port, connect_ctr, close_ctr);
+        let port = start_counting_server(connect_ctr, close_ctr);
 
         // Before connect
         assert_eq!(connect_ctr.load(Ordering::SeqCst), 0);
@@ -1515,12 +1519,11 @@ mod tests {
 
     #[test]
     fn on_close_receives_the_remote_code_and_reason() {
-        let port = free_port();
         let record = Box::leak(Box::new(CloseRecord {
             code: AtomicU64::new(0),
             reason: Mutex::new(String::new()),
         }));
-        start_close_recording_server(port, record);
+        let port = start_close_recording_server(record);
         let mut stream = ws_connect(port);
 
         ws_send_close_reason(&mut stream, 1001, "leaving");
@@ -1538,8 +1541,7 @@ mod tests {
     /// Crash isolation: actor panic sends close 1011, server keeps running.
     #[test]
     fn test_ws_server_crash_sends_1011() {
-        let port = free_port();
-        start_crash_server(port);
+        let port = start_crash_server();
 
         // First connection: any message triggers panic
         let mut stream = ws_connect(port);
@@ -1557,8 +1559,7 @@ mod tests {
     /// Shared reactor delivers multiple rapid messages in FIFO order.
     #[test]
     fn test_ws_server_shared_reactor_delivers_messages() {
-        let port = free_port();
-        start_echo_server(port);
+        let port = start_echo_server();
 
         let mut stream = ws_connect(port);
 
@@ -1581,9 +1582,8 @@ mod tests {
 
     #[test]
     fn inbound_mailbox_overflow_closes_instead_of_dropping_frames() {
-        let port = free_port();
         let blocked: &'static AtomicBool = Box::leak(Box::new(AtomicBool::new(true)));
-        start_blocked_server(port, blocked);
+        let port = start_blocked_server(blocked);
         let mut stream = ws_connect(port);
         stream
             .set_read_timeout(Some(Duration::from_secs(2)))
@@ -1610,10 +1610,9 @@ mod tests {
     /// Client disconnect (TCP drop) triggers on_close and server keeps running.
     #[test]
     fn test_ws_server_client_disconnect_cleanup() {
-        let port = free_port();
         let connect_ctr: &'static AtomicU64 = Box::leak(Box::new(AtomicU64::new(0)));
         let close_ctr: &'static AtomicU64 = Box::leak(Box::new(AtomicU64::new(0)));
-        start_counting_server(port, connect_ctr, close_ctr);
+        let port = start_counting_server(connect_ctr, close_ctr);
 
         {
             let mut stream = ws_connect(port);
