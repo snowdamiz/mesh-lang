@@ -12587,17 +12587,20 @@ mod tests {
     }
 
     /// Queues frames on `session`'s stream until the socket takes no more
-    /// (its peer not reading), then a heartbeat, which stays queued.
+    /// (its peer not reading), then a heartbeat, which stays queued. The
+    /// socket's buffers can grow as they fill and take the heartbeat after
+    /// all, so it fills them again until one stays.
     fn fill_until_heartbeat_waits(session: &NodeSession) {
-        loop {
-            let mut stream = session.stream.lock();
-            stream.queue_frame(&[HEARTBEAT_PONG; 64 * 1024]).unwrap();
-            if !stream.flush_queued().unwrap().1 {
-                break;
+        while !session.tls_output_pending.load(Ordering::Acquire) {
+            loop {
+                let mut stream = session.stream.lock();
+                stream.queue_frame(&[HEARTBEAT_PONG; 64 * 1024]).unwrap();
+                if !stream.flush_queued().unwrap().1 {
+                    break;
+                }
             }
+            session.send_heartbeat(vec![HEARTBEAT_PING; 9]).unwrap();
         }
-        session.send_heartbeat(vec![HEARTBEAT_PING; 9]).unwrap();
-        assert!(session.tls_output_pending.load(Ordering::Acquire));
     }
 
     fn spawn_writer(session: &Arc<NodeSession>) -> std::thread::JoinHandle<()> {
