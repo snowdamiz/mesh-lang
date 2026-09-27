@@ -425,4 +425,21 @@ fn a_node_serves_consensus_operator_controls_and_its_controller() {
         let status = autonomous_controller_status();
         status.state == "standby" && !status.leader
     });
+
+    // A commit handed to a runtime that has gone goes with it.
+    drop(runtime);
+    assert_eq!(
+        commit_consensus_command(
+            ConsensusCommand {
+                command_id: "orphaned-command".to_string(),
+                actor: "control-plane-test".to_string(),
+                reason: "no runtime to commit on".to_string(),
+                timestamp_unix_millis: unix_millis(),
+                actor_sequence: 0,
+                mutation: ControlMutation::PauseAutoscaler { paused: false },
+            },
+            TIMEOUT,
+        ),
+        Err("consensus_commit_disconnected".to_string())
+    );
 }
