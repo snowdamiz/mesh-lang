@@ -3868,16 +3868,23 @@ fn dispatch_continuity_prepare(
         request_id,
         record,
     };
-    if let Err(error) = continuity_prepare_dispatcher().try_send(task) {
-        let (task, reason) = match error {
-            crossbeam_channel::TrySendError::Full(task) => {
-                (task, "replica_prepare_overloaded".to_string())
-            }
-            crossbeam_channel::TrySendError::Disconnected(task) => {
-                (task, "replica_required_unavailable".to_string())
-            }
-        };
-        send_continuity_prepare_reply(&task.session, task.request_id, &Err(reason));
+    queue_continuity_prepare(continuity_prepare_dispatcher(), task);
+}
+
+/// Queues `task` for the prepare workers behind `queue`. They never stop,
+/// so a queue that refuses it is full: the peer hears the replica is
+/// overloaded.
+fn queue_continuity_prepare(
+    queue: &crossbeam_channel::Sender<ContinuityPrepareTask>,
+    task: ContinuityPrepareTask,
+) {
+    if let Err(error) = queue.try_send(task) {
+        let task = error.into_inner();
+        send_continuity_prepare_reply(
+            &task.session,
+            task.request_id,
+            &Err("replica_prepare_overloaded".to_string()),
+        );
     }
 }
 
@@ -11171,6 +11178,22 @@ mod tests {
         assert_eq!(
             peer.next_sent(),
             encode_continuity_prepare_ack(4, &Err("replica_prepare_target_mismatch".to_string()))
+        );
+
+        // Workers with no room for it: the peer hears this replica is
+        // overloaded.
+        let (full, _workers) = crossbeam_channel::bounded(0);
+        queue_continuity_prepare(
+            &full,
+            ContinuityPrepareTask {
+                session: Arc::clone(&peer.session),
+                request_id: 5,
+                record,
+            },
+        );
+        assert_eq!(
+            peer.next_sent(),
+            encode_continuity_prepare_ack(5, &Err("replica_prepare_overloaded".to_string()))
         );
     }
 
