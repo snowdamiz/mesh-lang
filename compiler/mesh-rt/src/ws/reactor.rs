@@ -207,34 +207,30 @@ impl Write for BudgetedIo<'_> {
     }
 }
 
+/// A connected socket, nonblocking for the reactor. A socket this process
+/// owns always takes the mode: only a bad descriptor refuses it.
+fn nonblocking(socket: TcpStream) -> mio::net::TcpStream {
+    socket
+        .set_nonblocking(true)
+        .expect("a connected socket accepts nonblocking mode");
+    mio::net::TcpStream::from_std(socket)
+}
+
 impl ReactorTransport {
-    pub(crate) fn plain(stream: TcpStream) -> io::Result<Self> {
-        stream.set_nonblocking(true)?;
-        Ok(Self::Plain(mio::net::TcpStream::from_std(stream)))
+    pub(crate) fn plain(stream: TcpStream) -> Self {
+        Self::Plain(nonblocking(stream))
     }
 
-    pub(crate) fn server_tls(
-        mut stream: StreamOwned<ServerConnection, TcpStream>,
-    ) -> io::Result<Self> {
+    pub(crate) fn server_tls(mut stream: StreamOwned<ServerConnection, TcpStream>) -> Self {
         stream.conn.set_buffer_limit(Some(TLS_BUFFER_BYTES));
         let (connection, socket) = stream.into_parts();
-        socket.set_nonblocking(true)?;
-        Ok(Self::ServerTls(StreamOwned::new(
-            connection,
-            mio::net::TcpStream::from_std(socket),
-        )))
+        Self::ServerTls(StreamOwned::new(connection, nonblocking(socket)))
     }
 
-    pub(crate) fn client_tls(
-        mut stream: StreamOwned<ClientConnection, TcpStream>,
-    ) -> io::Result<Self> {
+    pub(crate) fn client_tls(mut stream: StreamOwned<ClientConnection, TcpStream>) -> Self {
         stream.conn.set_buffer_limit(Some(TLS_BUFFER_BYTES));
         let (connection, socket) = stream.into_parts();
-        socket.set_nonblocking(true)?;
-        Ok(Self::ClientTls(StreamOwned::new(
-            connection,
-            mio::net::TcpStream::from_std(socket),
-        )))
+        Self::ClientTls(StreamOwned::new(connection, nonblocking(socket)))
     }
 
     fn source(&mut self) -> &mut mio::net::TcpStream {

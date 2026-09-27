@@ -95,6 +95,13 @@ pub(crate) fn build_server_config(
     Ok(Arc::new(config))
 }
 
+/// A server session under `config`, one `build_server_config` made: a
+/// session fails to start only on a maximum fragment size a config may not
+/// have, and such a config keeps the default.
+pub(crate) fn tls_session(config: &Arc<ServerConfig>) -> ServerConnection {
+    ServerConnection::new(Arc::clone(config)).expect("a built TLS config starts sessions")
+}
+
 // ── Request/Response structs ────────────────────────────────────────────
 
 /// HTTP request representation passed to Mesh handler functions.
@@ -1346,13 +1353,7 @@ fn serve(router: *mut u8, port: i64, tls: Option<Arc<ServerConfig>>) {
             None => HttpStream::Plain(tcp_stream),
             // No I/O here: the handshake happens on the connection's actor, at
             // its first read.
-            Some(config) => match ServerConnection::new(Arc::clone(config)) {
-                Ok(connection) => HttpStream::Tls(StreamOwned::new(connection, tcp_stream)),
-                Err(e) => {
-                    eprintln!("[mesh-rt] TLS connection setup failed: {}", e);
-                    continue;
-                }
-            },
+            Some(config) => HttpStream::Tls(StreamOwned::new(tls_session(config), tcp_stream)),
         };
         let queue_permit = match crate::dist::telemetry::global_admission_controller().enqueue(1) {
             Ok(permit) => permit,

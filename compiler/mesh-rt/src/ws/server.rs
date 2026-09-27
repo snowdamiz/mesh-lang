@@ -30,7 +30,7 @@ use std::net::TcpListener;
 use std::sync::Arc;
 
 use parking_lot::Mutex;
-use rustls::{ServerConfig, ServerConnection, StreamOwned};
+use rustls::{ServerConfig, StreamOwned};
 
 use super::close::WsCloseCode;
 use super::frame::WsOpcode;
@@ -388,22 +388,10 @@ fn ws_accept_loop(
         let _ = tcp_stream.set_nodelay(true);
         let transport = match &tls {
             None => ReactorTransport::plain(tcp_stream),
-            Some(config) => match ServerConnection::new(Arc::clone(config)) {
-                Ok(connection) => {
-                    ReactorTransport::server_tls(StreamOwned::new(connection, tcp_stream))
-                }
-                Err(e) => {
-                    eprintln!("[mesh-rt] TLS connection setup failed: {}", e);
-                    continue;
-                }
-            },
-        };
-        let transport = match transport {
-            Ok(transport) => transport,
-            Err(error) => {
-                eprintln!("[mesh-rt] prepare WebSocket socket: {error}");
-                continue;
-            }
+            Some(config) => ReactorTransport::server_tls(StreamOwned::new(
+                crate::http::server::tls_session(config),
+                tcp_stream,
+            )),
         };
         if let Err(error) = register_server(
             transport,
@@ -832,7 +820,7 @@ mod tests {
     use crate::ws::close::parse_close_payload;
     use crate::ws::frame::{apply_mask, read_frame, write_masked_frame, WsOpcode};
     use crate::ws::reactor::InboundPermit;
-    use rustls::ClientConnection;
+    use rustls::{ClientConnection, ServerConnection};
     use rustls_pki_types::ServerName;
     use std::io::{Read, Write};
     use std::net::TcpStream;
@@ -1334,7 +1322,7 @@ mod tests {
                     },
                 });
                 register_server(
-                    ReactorTransport::plain(tcp).unwrap(),
+                    ReactorTransport::plain(tcp),
                     handler,
                     ReactorConfig::server(1),
                 )
@@ -1372,8 +1360,7 @@ mod tests {
         let server = std::thread::spawn(move || {
             let (tcp, _) = listener.accept().unwrap();
             let connection = ServerConnection::new(server_config).unwrap();
-            let transport =
-                ReactorTransport::server_tls(StreamOwned::new(connection, tcp)).unwrap();
+            let transport = ReactorTransport::server_tls(StreamOwned::new(connection, tcp));
             let handler: Arc<dyn ServerHandshakeHandler> = Arc::new(ServerOpenHandler {
                 callbacks: SendableHandler {
                     on_connect_fn: accept_on_connect as *mut u8,
