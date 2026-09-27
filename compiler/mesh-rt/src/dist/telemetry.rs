@@ -886,6 +886,13 @@ impl Drop for QueuePermit {
 mod tests {
     use super::*;
 
+    /// A controller counting on telemetry of its own: the process-wide
+    /// counters are shared with every other test running at the time.
+    fn own_controller() -> Arc<AdmissionController> {
+        let telemetry = Box::leak(Box::new(RuntimeTelemetry::new(1, 1)));
+        Arc::new(AdmissionController::with_telemetry(limits(), telemetry))
+    }
+
     fn limits() -> AdmissionLimits {
         AdmissionLimits {
             max_inflight: 1,
@@ -912,7 +919,7 @@ mod tests {
 
     #[test]
     fn admission_rejects_above_hard_inflight_limit() {
-        let controller = Arc::new(AdmissionController::new(limits()));
+        let controller = own_controller();
         let _first = controller.reserve_application().expect("first reservation");
 
         assert_eq!(
@@ -923,7 +930,7 @@ mod tests {
 
     #[test]
     fn control_budget_remains_available_when_application_is_full() {
-        let controller = Arc::new(AdmissionController::new(limits()));
+        let controller = own_controller();
         let _application = controller
             .reserve_application()
             .expect("application permit");
@@ -933,7 +940,7 @@ mod tests {
 
     #[test]
     fn draining_rejects_new_application_but_not_control_work() {
-        let controller = Arc::new(AdmissionController::new(limits()));
+        let controller = own_controller();
         controller.set_draining(true);
 
         assert_eq!(
