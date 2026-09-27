@@ -323,6 +323,10 @@ From lowest to highest precedence, Mesh groups operators as follows:
 - `%` takes the sign of the dividend: `-7 % 2` is `-1` and `7 % -2` is `1`.
 - Dividing by zero with `/` or `%` is a runtime error that [panics](#panics).
 - The one overflowing division, `-9223372036854775808 / -1`, wraps to `-9223372036854775808`.
+- `+`, `-`, `*` and negation wrap on overflow in two's complement:
+  `9223372036854775807 + 1` is `-9223372036854775808`. The `Checked`
+  functions ([Standard Library](/docs/stdlib/#checked-integer-arithmetic))
+  return overflow as an error instead.
 
 `Float` values follow IEEE 754: `0.0 / 0.0` is NaN, `1.0 / 0.0` is infinity, and NaN is unequal to everything, itself included, so `nan != nan` is `true`. Converting a float to an integer saturates: `Float.to_int`, `Math.floor`, `Math.ceil`, and `Math.round` return the largest or smallest `Int` for a value beyond the range, and `0` for NaN.
 
