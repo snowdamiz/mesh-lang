@@ -1455,10 +1455,6 @@ impl<'ctx> CodeGen<'ctx> {
         // Insert reduction check after indirect call
         self.emit_reduction_check();
 
-        if matches!(ty, MirType::Unit) {
-            return Ok(self.context.struct_type(&[], false).const_zero().into());
-        }
-
         call.try_as_basic_value()
             .basic()
             .ok_or_else(|| "Indirect call returned void".to_string())
@@ -2184,14 +2180,6 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(error)?
                     .into()
             }
-            (Arg::IntValue(value), Param::PointerType(param))
-                if value.get_type().get_bit_width() == 64 =>
-            {
-                self.builder
-                    .build_int_to_ptr(value, param, "i64_to_ptr")
-                    .map_err(error)?
-                    .into()
-            }
             (Arg::PointerValue(value), Param::IntType(param)) if param.get_bit_width() == 64 => {
                 self.builder
                     .build_ptr_to_int(value, param, "ptr_to_i64")
@@ -2203,18 +2191,10 @@ impl<'ctx> CodeGen<'ctx> {
                 .build_bit_cast(value, param, "f64_to_i64")
                 .map_err(error)?
                 .into(),
-            (Arg::StructValue(unit), Param::PointerType(param))
-                if unit.get_type().count_fields() == 0 =>
-            {
-                param.const_null().into()
-            }
             (Arg::StructValue(unit), Param::IntType(param))
                 if unit.get_type().count_fields() == 0 =>
             {
                 param.const_zero().into()
-            }
-            (Arg::StructValue(value), Param::PointerType(_)) => {
-                self.box_value(value.into(), "arg_struct_heap")?.into()
             }
             (Arg::StructValue(value), Param::IntType(param)) if param.get_bit_width() == 64 => {
                 let boxed = self.box_value(value.into(), "arg_struct_heap")?;
@@ -2536,13 +2516,10 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, String> {
         // The caller has already evaluated the arguments. Evaluating them
         // again here ran the message expression, and its side effects, twice.
-        let values: Vec<BasicValueEnum<'ctx>> = evaluated
-            .iter()
-            .filter_map(|value| BasicValueEnum::try_from(*value).ok())
-            .collect();
-        let [pid_val, ms_val, msg_val] = values[..] else {
-            return Err("Timer.send_after takes a pid, a delay and a message".to_string());
+        let value = |index: usize| {
+            BasicValueEnum::try_from(evaluated[index]).expect("an argument is a value")
         };
+        let (pid_val, ms_val, msg_val) = (value(0), value(1), value(2));
         let (pid_val, ms_val) = (pid_val.into_int_value(), ms_val.into_int_value());
         let (msg_ptr, msg_size, shape_table) = self.message_bytes(&args[2], msg_val)?;
 
@@ -2586,17 +2563,7 @@ impl<'ctx> CodeGen<'ctx> {
         String,
     > {
         let i64_ty = self.context.i64_type();
-        let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
-
-        // Get the MeshString pointer (may be a pointer or i64-encoded pointer).
-        let string_ptr = if string_val.is_pointer_value() {
-            string_val.into_pointer_value()
-        } else {
-            // inttoptr: i64 -> ptr
-            self.builder
-                .build_int_to_ptr(string_val.into_int_value(), ptr_ty, "str_ptr")
-                .map_err(|e| e.to_string())?
-        };
+        let string_ptr = string_val.into_pointer_value();
 
         // Load len from offset 0 (the MeshString header).
         let len_val = self
