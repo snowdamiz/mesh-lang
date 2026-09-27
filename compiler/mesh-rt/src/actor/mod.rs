@@ -87,6 +87,18 @@ pub(crate) fn current_process() -> Option<std::sync::Arc<parking_lot::Mutex<Proc
     process(stack::get_current_pid()?)
 }
 
+/// The process running on this thread and its PID, for runtime functions
+/// only compiled code calls: it always runs in a process, be it an actor,
+/// `main` once the runtime has started, or a library call.
+pub(crate) fn running_process() -> (ProcessId, std::sync::Arc<parking_lot::Mutex<Process>>) {
+    let pid = stack::get_current_pid()
+        .expect("compiled code runs in a process: an actor, `main` or a library call");
+    let process = global_scheduler()
+        .get_process(pid)
+        .expect("a running process is in the process table");
+    (pid, process)
+}
+
 /// A standard-library channel sender that wakes a suspended actor after a reply.
 ///
 /// Distribution reader threads use this for request/reply protocols whose

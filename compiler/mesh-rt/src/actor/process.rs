@@ -366,7 +366,9 @@ impl Process {
         let Some(monitor) = self.monitors.remove(&monitor_ref) else {
             return false;
         };
-        self.mailbox.push(Message {
+        // A notice the process may be waiting on, as a service call waits on
+        // its service: it goes in even when the mailbox is full.
+        let _ = self.mailbox.try_push_control(Message {
             buffer: monitor.message,
         });
         true

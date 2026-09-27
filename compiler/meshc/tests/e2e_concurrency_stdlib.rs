@@ -20,6 +20,20 @@ mod artifacts;
 /// Helper: compile a Mesh source and run the binary with a timeout.
 /// Returns stdout on success. Panics on compilation failure or timeout.
 fn compile_and_run_with_timeout(source: &str, timeout_secs: u64) -> String {
+    let out = compile_and_run_output(source, timeout_secs);
+    assert!(
+        out.status.success(),
+        "binary execution failed with exit code {:?}:\nstdout: {}\nstderr: {}",
+        out.status.code(),
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8_lossy(&out.stdout).to_string()
+}
+
+/// Helper: compile a Mesh source and run the binary with a timeout, whatever
+/// its exit status. Panics on compilation failure or timeout.
+fn compile_and_run_output(source: &str, timeout_secs: u64) -> std::process::Output {
     let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
     let project_dir = temp_dir.path().join("project");
     std::fs::create_dir_all(&project_dir).expect("failed to create project dir");
@@ -49,21 +63,8 @@ fn compile_and_run_with_timeout(source: &str, timeout_secs: u64) -> String {
         .spawn()
         .unwrap_or_else(|e| panic!("failed to spawn binary at {}: {}", binary.display(), e));
 
-    let output = artifacts::wait_with_timeout(child, Duration::from_secs(timeout_secs));
-
-    match output {
-        Ok(out) => {
-            assert!(
-                out.status.success(),
-                "binary execution failed with exit code {:?}:\nstdout: {}\nstderr: {}",
-                out.status.code(),
-                String::from_utf8_lossy(&out.stdout),
-                String::from_utf8_lossy(&out.stderr)
-            );
-            String::from_utf8_lossy(&out.stdout).to_string()
-        }
-        Err(msg) => panic!("{}", msg),
-    }
+    artifacts::wait_with_timeout(child, Duration::from_secs(timeout_secs))
+        .unwrap_or_else(|msg| panic!("{}", msg))
 }
 
 /// Read a test fixture from the tests/e2e/ directory.
@@ -132,6 +133,160 @@ fn e2e_service_string_return() {
     let source = read_fixture("service_string_return.mpl");
     let output = compile_and_run_with_timeout(&source, 30);
     assert_eq!(output, "hello\nworld\n");
+}
+
+/// A service call waits for its reply, not for whatever reaches the caller
+/// first: a message the caller has queued, or a job's result on `main`.
+#[test]
+fn e2e_service_call_takes_only_its_reply() {
+    let source = r#"
+service Answer do
+  fn init(n :: Int) -> Int do
+    n
+  end
+
+  call Get() :: Int do |n|
+    (n, n)
+  end
+end
+
+fn ask(me) -> Int do
+  let svc = Answer.start(42)
+  send(me, 99)
+  let v = Answer.get(svc)
+  println("reply ${v}")
+  0
+end
+
+actor asker() do
+  receive do
+    start -> ask(self())
+  end
+  receive do
+    n -> println("mailbox ${n}")
+  end
+end
+
+fn main() do
+  let pid = spawn(asker)
+  send(pid, 1)
+  Timer.sleep(300)
+  let svc = Answer.start(7)
+  let job = Job.async(fn () -> 8 end)
+  Timer.sleep(100)
+  println("main reply ${Answer.get(svc)}")
+  case Job.await(job) do
+    Ok(n) -> println("job ${n}")
+    Err(e) -> println("job error ${e}")
+  end
+end
+"#;
+    let output = compile_and_run_with_timeout(source, 30);
+    assert_eq!(output, "reply 42\nmailbox 99\nmain reply 7\njob 8\n");
+}
+
+/// A call to a service that has stopped panics in the caller, instead of
+/// reading a reply that never came.
+#[test]
+fn e2e_service_call_to_a_stopped_service_panics() {
+    let source = r#"
+service Fragile do
+  fn init(n :: Int) -> Int do
+    n
+  end
+
+  call Get() :: Int do |n|
+    (n, n)
+  end
+
+  cast Crash() do |n|
+    panic("handler failed")
+    n
+  end
+end
+
+fn main() do
+  let svc = Fragile.start(42)
+  println("get ${Fragile.get(svc)}")
+  Fragile.crash(svc)
+  Timer.sleep(200)
+  println("after crash ${Fragile.get(svc)}")
+end
+"#;
+    let output = compile_and_run_output(source, 30);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(101), "{stderr}");
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "get 42\n");
+    assert!(
+        stderr.contains("the service stopped before it replied"),
+        "{stderr}"
+    );
+}
+
+/// A service that stops while it handles a call panics its caller, which
+/// would otherwise wait for good.
+#[test]
+fn e2e_service_stopping_during_a_call_panics_the_caller() {
+    let source = r#"
+service Fragile do
+  fn init(n :: Int) -> Int do
+    n
+  end
+
+  call Crash() :: Int do |n|
+    panic("handler failed")
+    (n, n)
+  end
+end
+
+fn main() do
+  let svc = Fragile.start(42)
+  println("crash replied ${Fragile.crash(svc)}")
+end
+"#;
+    let output = compile_and_run_output(source, 30);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(101), "{stderr}");
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "");
+    assert!(stderr.contains("handler failed"), "{stderr}");
+    assert!(
+        stderr.contains("the service stopped before it replied"),
+        "{stderr}"
+    );
+}
+
+/// An actor still waiting on a service call when `main` returns stops, as
+/// one waiting in `receive` does, and the program ends normally.
+#[test]
+fn e2e_service_call_pending_at_exit_stops_the_caller() {
+    let source = r#"
+service Blocker do
+  fn init(n :: Int) -> Int do
+    n
+  end
+
+  call Block() :: Int do |n|
+    Timer.sleep(100000)
+    (n, n)
+  end
+end
+
+actor caller() do
+  receive do
+    go -> Blocker.block(Blocker.start(1))
+  end
+  println("unreachable")
+end
+
+fn main() do
+  let pid = spawn(caller)
+  send(pid, 1)
+  Timer.sleep(200)
+  println("main done")
+end
+"#;
+    let output = compile_and_run_with_timeout(source, 30);
+    assert_eq!(output, "main done\n");
 }
 
 // ── Job E2E Tests ──────────────────────────────────────────────────────

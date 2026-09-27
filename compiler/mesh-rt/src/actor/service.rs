@@ -11,25 +11,33 @@
 //! - caller_pid: so the service knows where to send the reply
 //! - args: handler arguments encoded as i64 values
 //!
-//! **Reply TO caller:** `[i64 reply_value]`
+//! **Reply TO caller:** `[i64 reply_value]`, tagged `SERVICE_REPLY_TAG`
 //! - A single i64 value (the return value from the call handler)
+//!
+//! The caller waits for exactly its reply, leaving the rest of its mailbox
+//! as it is, and watches the service meanwhile: a call to a service that has
+//! stopped, or that stops before it replies, panics in the caller.
 
 use super::heap::MessageBuffer;
 use super::process::{Message, ProcessId};
-use super::stack;
 use super::GLOBAL_SCHEDULER;
+
+/// Header tag of a service's reply.
+pub(crate) const SERVICE_REPLY_TAG: u64 = u64::MAX - 6;
+/// Header tag of the notice a caller gets when the service it waits on ends.
+pub(crate) const SERVICE_GONE_TAG: u64 = u64::MAX - 7;
 
 /// Synchronous service call: send a message to the target service and block
 /// until a reply arrives.
 ///
 /// 1. Get the caller's PID
 /// 2. Build a call message: [u64 type_tag][u64 caller_pid][payload bytes]
-/// 3. Send to target via mesh_actor_send
-/// 4. Block on receive (infinite wait) for the reply
+/// 3. Queue it for the service, which the caller watches from now on
+/// 4. Block until the reply arrives, or the service ends
 /// 5. Return a pointer to the reply data
 ///
-/// Returns a pointer to the reply data (heap-allocated in the caller's
-/// actor heap), or null if the call fails.
+/// Returns a pointer to the reply message, allocated in the caller's heap:
+/// `[u64 tag][u64 len][i64 reply]`.
 ///
 /// - `target_pid`: PID of the service actor
 /// - `msg_tag`: type tag identifying which handler to invoke
@@ -65,77 +73,64 @@ pub extern "C-unwind" fn mesh_service_call_shaped(
     payload_size: u64,
     shape: *const u32,
 ) -> *const u8 {
-    // Get the caller's PID.
-    let caller_pid = match stack::get_current_pid() {
-        Some(pid) => pid.as_u64(),
-        None => return std::ptr::null(),
-    };
-
-    let sched = match GLOBAL_SCHEDULER.get() {
-        Some(s) => s,
-        None => return std::ptr::null(),
-    };
-
-    // Build the call message: [u64 type_tag][u64 caller_pid][payload bytes]
-    let mut data = Vec::with_capacity(16 + payload_size as usize);
-    data.extend_from_slice(&msg_tag.to_le_bytes());
-    data.extend_from_slice(&caller_pid.to_le_bytes());
-
-    if !payload_ptr.is_null() && payload_size > 0 {
-        let payload = unsafe { std::slice::from_raw_parts(payload_ptr, payload_size as usize) };
-        data.extend_from_slice(payload);
+    let sched = super::global_scheduler();
+    let (caller, me) = super::running_process();
+    let target = ProcessId(target_pid);
+    if !target.is_local() {
+        crate::panic::raise(format_args!(
+            "service call to {target}: a service is called on its own node"
+        ));
     }
 
-    // The type_tag for the MessageBuffer is the msg_tag itself.
+    // [u64 type_tag][u64 caller_pid][payload bytes]
+    let mut data = msg_tag.to_le_bytes().to_vec();
+    data.extend_from_slice(&caller.as_u64().to_le_bytes());
+    data.extend_from_slice(&super::message_bytes(payload_ptr, payload_size));
     let mut buffer = MessageBuffer::new(data, msg_tag);
     super::detach_from_sender(sched, &mut buffer, PAYLOAD_OFFSET, shape);
-    let mut msg = Message { buffer };
 
-    // Send the call message to the target service.
-    let target = ProcessId(target_pid);
-    if let Some(proc_arc) = sched.get_process(target) {
-        msg.buffer.addressed_to(&proc_arc);
-        let mut proc = proc_arc.lock();
-        proc.mailbox.push(msg);
-
-        // Wake the target if it's waiting.
-        if matches!(proc.state, super::process::ProcessState::Waiting)
-            && proc.set_live_state(super::process::ProcessState::Ready)
-        {
-            let worker = proc.worker;
-            drop(proc);
-            sched.wake_worker(worker, target);
-        }
-    } else {
-        return std::ptr::null();
+    // Watched before the call is queued, so that however the service ends,
+    // the caller hears of it rather than waiting for good.
+    let gone = MessageBuffer::new(Vec::new(), SERVICE_GONE_TAG);
+    let watch = super::watch(sched, &me, caller, target, gone);
+    if super::deliver_local(sched, target, Message { buffer }) >= 2 {
+        stop_watching(sched, &me, caller, watch);
+        crate::panic::raise(format_args!(
+            "service call to {target}: the service's mailbox is full"
+        ));
     }
+    let reply = super::actor_receive_matching(-1, |message| {
+        matches!(
+            message.buffer.type_tag,
+            SERVICE_REPLY_TAG | SERVICE_GONE_TAG
+        )
+    });
+    stop_watching(sched, &me, caller, watch);
+    // The program is ending while the service still works on the call: the
+    // caller stops, as a blocking `receive` does then.
+    if reply.is_null() {
+        super::mesh_actor_stop();
+    }
+    if unsafe { (reply as *const u64).read() } == SERVICE_GONE_TAG {
+        crate::panic::raise(format_args!(
+            "service call to {target}: the service stopped before it replied"
+        ));
+    }
+    reply
+}
 
-    // Block the caller until a reply arrives.
-    //
-    // If we're inside a coroutine, use the standard mesh_actor_receive which
-    // yields to the scheduler. If we're on the main thread (no coroutine),
-    // do a spin-wait on the mailbox instead (the main thread cannot yield).
-    let caller_pid_obj = stack::get_current_pid().unwrap();
-
-    // Check if we're in a coroutine context (CURRENT_YIELDER is set).
-    let in_coroutine = stack::CURRENT_YIELDER.with(|c| c.yielder.get().is_some());
-
-    if in_coroutine {
-        // Standard path: yield to scheduler while waiting for reply.
-        super::mesh_actor_receive(-1)
-    } else {
-        // Main thread path: spin-wait on the mailbox.
-        let mut wait = super::MainThreadWait::new();
-        loop {
-            if let Some(proc_arc) = sched.get_process(caller_pid_obj) {
-                let proc = proc_arc.lock();
-                if let Some(msg) = proc.mailbox.pop() {
-                    drop(proc);
-                    return super::copy_msg_to_actor_heap(sched, caller_pid_obj, msg);
-                }
-            }
-            wait.pause();
-        }
+/// End a call's watch on its service. Once the watch has fired, its notice
+/// is queued, unless the call took it for its answer: discard it.
+fn stop_watching(
+    sched: &super::Scheduler,
+    me: &std::sync::Arc<parking_lot::Mutex<super::Process>>,
+    caller: ProcessId,
+    watch: u64,
+) {
+    if !super::unwatch(sched, caller, watch) {
+        me.lock()
+            .mailbox
+            .remove_first(|message| message.buffer.type_tag == SERVICE_GONE_TAG);
     }
 }
 
@@ -149,8 +144,7 @@ pub extern "C-unwind" fn mesh_service_call_shaped(
 /// - `reply_size`: size of the reply data in bytes
 #[no_mangle]
 pub extern "C" fn mesh_service_reply(caller_pid: u64, reply_ptr: *const u8, reply_size: u64) {
-    // Send the reply data to the caller using mesh_actor_send.
-    super::mesh_actor_send(caller_pid, reply_ptr, reply_size);
+    mesh_service_reply_shaped(caller_pid, reply_ptr, reply_size, std::ptr::null());
 }
 
 /// A reply that references heap values. It must survive the service changing
@@ -162,7 +156,20 @@ pub extern "C" fn mesh_service_reply_shaped(
     reply_size: u64,
     shape: *const u32,
 ) {
-    super::mesh_actor_send_shaped(caller_pid, reply_ptr, reply_size, shape);
+    let sched = super::global_scheduler();
+    let mut buffer = MessageBuffer::new(
+        super::message_bytes(reply_ptr, reply_size),
+        SERVICE_REPLY_TAG,
+    );
+    super::detach_from_sender(sched, &mut buffer, 0, shape);
+    // The caller waits for this and nothing else: it goes in even when its
+    // mailbox is full. A caller that has gone takes no reply.
+    if let Some(caller) = sched.get_process(ProcessId(caller_pid)) {
+        buffer.addressed_to(&caller);
+        let caller = caller.lock();
+        let _ = caller.mailbox.try_push_control(Message { buffer });
+        sched.wake_if_waiting(ProcessId(caller_pid), caller);
+    }
 }
 
 /// Fire-and-forget service message whose arguments reference heap values.
@@ -273,12 +280,135 @@ mod tests {
         assert_eq!(decoded_caller, 456);
     }
 
+    use crate::actor::process::ProcessState;
+    use crate::actor::{global_scheduler, mesh_rt_init_actor, stack, Mailbox};
+
+    /// Run `call` as process `pid`, returning the panic it raised, if any.
+    fn call_as(pid: ProcessId, call: impl FnOnce() -> *const u8) -> Result<*const u8, String> {
+        stack::set_current_pid(pid);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(call));
+        stack::clear_current_pid();
+        result.map_err(|panic| *panic.downcast::<String>().unwrap())
+    }
+
+    fn queue(pid: ProcessId, data: &[u8], tag: u64) {
+        let process = global_scheduler().get_process(pid).unwrap();
+        let buffer = MessageBuffer::new(data.to_vec(), tag);
+        process.lock().mailbox.push(Message { buffer });
+    }
+
+    fn mailbox_tags(pid: ProcessId) -> Vec<u64> {
+        let process = global_scheduler().get_process(pid).unwrap();
+        let process = process.lock();
+        std::iter::from_fn(|| process.mailbox.pop())
+            .map(|message| message.buffer.type_tag)
+            .collect()
+    }
+
     #[test]
-    fn test_service_call_returns_null_outside_actor() {
-        // mesh_service_call requires a current PID (must be inside actor context).
-        // Without one, it should return null.
-        assert!(stack::get_current_pid().is_none());
-        let result = mesh_service_call(0, 0, std::ptr::null(), 0);
-        assert!(result.is_null());
+    #[should_panic(expected = "compiled code runs in a process")]
+    fn a_call_from_outside_any_process_is_a_bug_in_its_caller() {
+        mesh_rt_init_actor(1);
+        stack::clear_current_pid();
+        mesh_service_call(1, 0, std::ptr::null(), 0);
+    }
+
+    /// The reply is the message tagged as one, not whatever came first; the
+    /// rest of the mailbox stays as it was.
+    #[test]
+    fn a_call_takes_its_reply_and_leaves_other_messages_queued() {
+        mesh_rt_init_actor(1);
+        let sched = global_scheduler();
+        let (caller, service) = (sched.create_main_process(), sched.create_main_process());
+        queue(caller, &99u64.to_le_bytes(), crate::actor::PROGRAM_MESSAGE_TAG);
+        queue(caller, &42u64.to_le_bytes(), SERVICE_REPLY_TAG);
+
+        let reply = call_as(caller, || mesh_service_call(service.as_u64(), 3, std::ptr::null(), 0));
+
+        let reply = reply.expect("the reply was queued");
+        assert_eq!(unsafe { (reply.add(16) as *const u64).read() }, 42);
+        assert_eq!(mailbox_tags(caller), [crate::actor::PROGRAM_MESSAGE_TAG]);
+        let call = global_scheduler().get_process(service).unwrap().lock().mailbox.pop();
+        assert_eq!(call.unwrap().buffer.data[8..16], caller.as_u64().to_le_bytes());
+        assert!(sched.get_process(service).unwrap().lock().monitored_by.is_empty());
+    }
+
+    /// A service that has ended answers no call: the caller panics.
+    #[test]
+    fn a_call_to_a_stopped_service_panics() {
+        mesh_rt_init_actor(1);
+        let sched = global_scheduler();
+        let (caller, service) = (sched.create_main_process(), sched.create_main_process());
+        sched.get_process(service).unwrap().lock().state =
+            ProcessState::Exited(crate::actor::ExitReason::Normal);
+
+        let reply = call_as(caller, || mesh_service_call(service.as_u64(), 0, std::ptr::null(), 0));
+
+        let error = reply.expect_err("no service to reply");
+        assert!(error.contains("the service stopped before it replied"), "{error}");
+        assert!(sched.get_process(caller).unwrap().lock().monitors.is_empty());
+        assert!(mailbox_tags(caller).is_empty());
+    }
+
+    /// A reply that came before the service ended is the answer, and the
+    /// notice of its end goes unread.
+    #[test]
+    fn a_reply_before_the_service_ends_wins() {
+        mesh_rt_init_actor(1);
+        let sched = global_scheduler();
+        let (caller, service) = (sched.create_main_process(), sched.create_main_process());
+        sched.get_process(service).unwrap().lock().state =
+            ProcessState::Exited(crate::actor::ExitReason::Normal);
+        queue(caller, &7u64.to_le_bytes(), SERVICE_REPLY_TAG);
+
+        let reply = call_as(caller, || mesh_service_call(service.as_u64(), 0, std::ptr::null(), 0));
+
+        assert_eq!(unsafe { (reply.unwrap().add(16) as *const u64).read() }, 7);
+        assert!(mailbox_tags(caller).is_empty(), "the notice is discarded");
+    }
+
+    #[test]
+    fn a_call_to_a_full_mailbox_panics() {
+        mesh_rt_init_actor(1);
+        let sched = global_scheduler();
+        let (caller, service) = (sched.create_main_process(), sched.create_main_process());
+        sched.get_process(service).unwrap().lock().mailbox =
+            std::sync::Arc::new(Mailbox::bounded(0, 1024));
+
+        let reply = call_as(caller, || mesh_service_call(service.as_u64(), 0, std::ptr::null(), 0));
+
+        let error = reply.expect_err("no room for the call");
+        assert!(error.contains("the service's mailbox is full"), "{error}");
+        assert!(sched.get_process(caller).unwrap().lock().monitors.is_empty());
+        assert!(sched.get_process(service).unwrap().lock().monitored_by.is_empty());
+    }
+
+    #[test]
+    fn a_call_to_another_node_panics() {
+        mesh_rt_init_actor(1);
+        let caller = global_scheduler().create_main_process();
+        let remote = ProcessId::from_remote(3, 0, 9);
+
+        let reply = call_as(caller, || mesh_service_call(remote.as_u64(), 0, std::ptr::null(), 0));
+
+        let error = reply.expect_err("a remote service is not called");
+        assert!(error.contains("a service is called on its own node"), "{error}");
+    }
+
+    /// A reply goes to a caller whose mailbox is full, which waits for it,
+    /// and nowhere once the caller has gone.
+    #[test]
+    fn a_reply_reaches_a_full_mailbox_and_skips_a_missing_caller() {
+        mesh_rt_init_actor(1);
+        let sched = global_scheduler();
+        let caller = sched.create_main_process();
+        sched.get_process(caller).unwrap().lock().mailbox =
+            std::sync::Arc::new(Mailbox::bounded(0, 1024));
+        let reply = 5u64.to_le_bytes();
+
+        mesh_service_reply(caller.as_u64(), reply.as_ptr(), 8);
+        mesh_service_reply(u64::MAX >> 24, reply.as_ptr(), 8);
+
+        assert_eq!(mailbox_tags(caller), [SERVICE_REPLY_TAG]);
     }
 }

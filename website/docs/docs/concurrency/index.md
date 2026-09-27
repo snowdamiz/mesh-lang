@@ -407,6 +407,8 @@ Arguments and replies are copied between the caller and the service, as actor me
 
 Service calls are synchronous and wait for a reply. Casts are asynchronous. Prefer a cast, a direct actor message, or a job when the caller must remain independent of the service's response time.
 
+A call waits for its own reply only: messages already in the caller's mailbox stay there for its next `receive`. A call to a service that has stopped, or that stops before it replies (a handler that panics, say), panics in the caller, as does a call to a service whose mailbox is full.
+
 ## Jobs
 
 `Job` runs finite work on lightweight actors and returns failures through `Result`.
