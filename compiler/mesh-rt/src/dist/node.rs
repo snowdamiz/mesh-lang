@@ -6420,7 +6420,7 @@ pub extern "C" fn mesh_node_start(
     // Determine actual port (may differ if port 0 was requested)
     let actual_port = listener.local_addr().map(|a| a.port()).unwrap_or(port);
     let advertised_name = if port == 0 {
-        format!("{name_part}@{host_owned}:{actual_port}")
+        advertised_node_name(name_part, &host_owned, actual_port)
     } else {
         name.clone()
     };
@@ -6451,6 +6451,16 @@ pub extern "C" fn mesh_node_start(
     start_discovery_from_env();
 
     0
+}
+
+/// The name a node started on port 0 goes by: its host, an IPv6 address in
+/// brackets as a node name needs, and the port the system gave it.
+fn advertised_node_name(name_part: &str, host: &str, port: u16) -> String {
+    if host.contains(':') {
+        format!("{name_part}@[{host}]:{port}")
+    } else {
+        format!("{name_part}@{host}:{port}")
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -8726,6 +8736,20 @@ mod tests {
         assert!(bind("name@[]:0").is_err());
         assert!(bind("name@fe80::1:4000:x").is_err());
         assert!(bind("name@host:port").is_err());
+    }
+
+    /// A node started on port 0 advertises a name its peers can parse back
+    /// to where it listens, an IPv6 host included.
+    #[test]
+    fn a_node_on_port_zero_advertises_a_name_that_parses_back() {
+        for (host, advertised) in [
+            ("127.0.0.1", "zero@127.0.0.1:4100"),
+            ("::1", "zero@[::1]:4100"),
+        ] {
+            let name = advertised_node_name("zero", host, 4100);
+            assert_eq!(name, advertised);
+            assert_eq!(parse_node_name(&name), Ok(("zero", host, 4100)));
+        }
     }
 
     #[test]
