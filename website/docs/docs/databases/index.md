@@ -97,6 +97,10 @@ an error. The server may ask for SCRAM-SHA-256, md5 or a cleartext password.
 database operations borrow it, and `Pg.close` consumes it. It cannot cross an
 actor boundary. PostgreSQL placeholders are `$1`, `$2`, and so on.
 
+In `Pg.query` and `Pool.query` rows, a `NULL` column reads as `""`
+(`Pg.query_values` tells the two apart). The size limits under
+[Binary and NULL Values](#binary-and-null-values) apply to every query.
+
 ### Pool API
 
 | Function | Returns | Description |
