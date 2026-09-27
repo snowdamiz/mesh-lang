@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 use std::env;
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
-use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use super::node::{mesh_node_connect, node_state};
@@ -126,14 +125,8 @@ pub(crate) fn start_from_env() {
 fn discovery_loop(config: DiscoveryConfig) {
     let mut last_error: Option<String> = None;
 
+    // The node this runs for stays up as long as the process does.
     loop {
-        let Some(state) = node_state() else {
-            break;
-        };
-        if state.listener_shutdown.load(Ordering::Relaxed) {
-            break;
-        }
-
         reconcile_once(&config, &mut last_error);
         std::thread::sleep(config.reconcile_interval);
     }
