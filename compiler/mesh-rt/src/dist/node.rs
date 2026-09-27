@@ -14217,4 +14217,52 @@ mod tests {
             refused("non_controller_claimed_voter_name")
         );
     }
+
+    /// With adaptive routing on, declared work goes where the members' load
+    /// reports say, this node reporting its own load first: work its key
+    /// would place on a member too busy to take it stays here. The switch
+    /// reads on or off, and anything else leaves it to the manifest, which
+    /// a test process lacks.
+    #[test]
+    fn adaptive_routing_places_work_by_the_members_load() {
+        const SWITCH: &str = "MESH_ADAPTIVE_ROUTING";
+        let exclusive = declared_handler_registry_test_lock();
+        let state = test_node();
+        // No handler here, so this node takes any work.
+        clear_declared_handler_registry_for_test();
+        let busy = TestPeer::within(&exclusive, "busy-member@127.0.0.1:1");
+        let mut report = crate::dist::routing::local_load_report(
+            &busy.session.remote_name,
+            ["Adaptive.work".to_string()].into(),
+        );
+        report.inflight = crate::dist::routing::runtime_routing_policy().max_inflight;
+        crate::dist::routing::load_report_registry()
+            .apply(report, Instant::now())
+            .unwrap();
+        let key = key_owned_by(&busy.session.remote_name, "adaptive");
+
+        let original = std::env::var_os(SWITCH);
+        for (value, adaptive) in [("On", true), ("0", false), ("sometimes", false)] {
+            std::env::set_var(SWITCH, value);
+            assert_eq!(
+                crate::dist::routing::runtime_adaptive_routing_enabled(),
+                adaptive
+            );
+        }
+        std::env::set_var(SWITCH, "true");
+        let placement = declared_work_placement(&key, "Adaptive.work");
+        match original {
+            Some(value) => std::env::set_var(SWITCH, value),
+            None => std::env::remove_var(SWITCH),
+        }
+        let placement = placement.unwrap();
+        assert_eq!(placement.owner_node, state.name);
+        assert!(!placement.routed_remotely);
+        assert_eq!(
+            declared_work_placement(&key, "Adaptive.work")
+                .unwrap()
+                .owner_node,
+            busy.session.remote_name
+        );
+    }
 }
