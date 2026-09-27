@@ -3143,14 +3143,11 @@ pub extern "C-unwind" fn mesh_continuity_acknowledge_replica(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::collections::map;
-    use crate::gc::mesh_gc_alloc_actor;
+    use crate::http::server::tests::build_test_request;
     use crate::http::server::{
         decode_http_response_payload, encode_http_request_payload,
-        invoke_route_handler_from_payload, mesh_http_response_new, MeshHttpRequest,
-        MeshHttpResponse,
+        invoke_route_handler_from_payload, mesh_http_response_new, MeshHttpResponse,
     };
-    use crate::string::mesh_string_new;
     use std::sync::atomic::{AtomicU64, Ordering};
 
     fn continuity_fresh_registry() -> ContinuityRegistry {
@@ -3169,19 +3166,8 @@ mod tests {
     }
 
     fn route_request_payload(body: &str) -> Vec<u8> {
-        unsafe {
-            let request_ptr = mesh_gc_alloc_actor(
-                std::mem::size_of::<MeshHttpRequest>() as u64,
-                std::mem::align_of::<MeshHttpRequest>() as u64,
-            ) as *mut MeshHttpRequest;
-            (*request_ptr).method = mesh_string_new(b"POST".as_ptr(), 4) as *mut u8;
-            (*request_ptr).path = mesh_string_new(b"/todos".as_ptr(), 6) as *mut u8;
-            (*request_ptr).body = mesh_str(body) as *mut u8;
-            (*request_ptr).query_params = map::mesh_map_new_typed(1);
-            (*request_ptr).headers = map::mesh_map_new_typed(1);
-            (*request_ptr).path_params = map::mesh_map_new_typed(1);
-            encode_http_request_payload(request_ptr as *mut u8).expect("encode route request")
-        }
+        encode_http_request_payload(build_test_request("POST", "/todos", body, &[], &[], &[]))
+            .expect("encode route request")
     }
 
     fn continuity_registry_with_authority(
