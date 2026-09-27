@@ -4021,61 +4021,23 @@ struct PersistentFrameReader {
 }
 
 impl PersistentFrameReader {
+    /// The next whole frame, or None when the stream has no more of it for
+    /// now; what was read of it is kept for the next call.
     fn read_next(
         &mut self,
         stream: &mut impl Read,
         max_frame_bytes: u32,
     ) -> io::Result<Option<Vec<u8>>> {
-        while self.length_read < self.length.len() {
-            match stream.read(&mut self.length[self.length_read..]) {
-                Ok(0) => return Err(io::ErrorKind::UnexpectedEof.into()),
-                Ok(read) => self.length_read += read,
-                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
-                Err(error)
-                    if matches!(
-                        error.kind(),
-                        io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
-                    ) =>
-                {
-                    return Ok(None);
-                }
-                Err(error) => return Err(error),
-            }
+        if !fill_from(stream, &mut self.length, &mut self.length_read)? {
+            return Ok(None);
         }
-
         if self.payload.is_empty() && self.payload_read == 0 {
-            let length = u32::from_le_bytes(self.length);
-            let maximum = max_frame_bytes.min(MAX_DIST_MSG);
-            if length > maximum {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("dist message too large: {length} bytes (max {maximum})"),
-                ));
-            }
-            if length == 0 {
-                self.reset();
-                return Ok(Some(Vec::new()));
-            }
-            self.payload.resize(length as usize, 0);
+            let length = checked_frame_length(self.length, max_frame_bytes)?;
+            self.payload.resize(length, 0);
         }
-
-        while self.payload_read < self.payload.len() {
-            match stream.read(&mut self.payload[self.payload_read..]) {
-                Ok(0) => return Err(io::ErrorKind::UnexpectedEof.into()),
-                Ok(read) => self.payload_read += read,
-                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
-                Err(error)
-                    if matches!(
-                        error.kind(),
-                        io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
-                    ) =>
-                {
-                    return Ok(None);
-                }
-                Err(error) => return Err(error),
-            }
+        if !fill_from(stream, &mut self.payload, &mut self.payload_read)? {
+            return Ok(None);
         }
-
         let frame = std::mem::take(&mut self.payload);
         self.reset();
         Ok(Some(frame))
@@ -4089,18 +4051,46 @@ impl PersistentFrameReader {
     }
 }
 
-fn read_dist_msg_bounded(stream: &mut impl Read, max_frame_bytes: u32) -> io::Result<Vec<u8>> {
-    let mut len_buf = [0u8; 4];
-    stream.read_exact(&mut len_buf)?;
-    let len = u32::from_le_bytes(len_buf);
+/// Reads into `buffer` past its first `*filled` bytes until it is full
+/// (true) or the stream has nothing more for now (false).
+fn fill_from(stream: &mut impl Read, buffer: &mut [u8], filled: &mut usize) -> io::Result<bool> {
+    while *filled < buffer.len() {
+        match stream.read(&mut buffer[*filled..]) {
+            Ok(0) => return Err(io::ErrorKind::UnexpectedEof.into()),
+            Ok(read) => *filled += read,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+                ) =>
+            {
+                return Ok(false);
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(true)
+}
+
+/// The payload length a frame's prefix gives, if the reader takes frames
+/// that long.
+fn checked_frame_length(prefix: [u8; 4], max_frame_bytes: u32) -> io::Result<usize> {
+    let length = u32::from_le_bytes(prefix);
     let maximum = max_frame_bytes.min(MAX_DIST_MSG);
-    if len > maximum {
+    if length > maximum {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            format!("dist message too large: {} bytes (max {})", len, maximum),
+            format!("dist message too large: {length} bytes (max {maximum})"),
         ));
     }
-    let mut buf = vec![0u8; len as usize];
+    Ok(length as usize)
+}
+
+fn read_dist_msg_bounded(stream: &mut impl Read, max_frame_bytes: u32) -> io::Result<Vec<u8>> {
+    let mut prefix = [0u8; 4];
+    stream.read_exact(&mut prefix)?;
+    let mut buf = vec![0u8; checked_frame_length(prefix, max_frame_bytes)?];
     stream.read_exact(&mut buf)?;
     Ok(buf)
 }
@@ -9191,6 +9181,34 @@ mod tests {
         assert_eq!(reader.read_next(&mut input, 1024).unwrap(), None);
         assert_eq!(reader.read_next(&mut input, 1024).unwrap(), None);
         assert_eq!(reader.read_next(&mut input, 1024).unwrap(), Some(payload));
+
+        // An empty frame is whole at once; an interrupted read is retried;
+        // a stream that ends, or fails, mid-frame fails the read.
+        let mut input = ScriptedRead {
+            steps: std::collections::VecDeque::from([
+                Ok(0u32.to_le_bytes().to_vec()),
+                Err(io::ErrorKind::Interrupted),
+                Ok(1u32.to_le_bytes().to_vec()),
+                Ok(Vec::new()),
+                Ok(1u32.to_le_bytes().to_vec()),
+                Err(io::ErrorKind::ConnectionReset),
+            ]),
+        };
+        let mut reader = PersistentFrameReader::default();
+        assert_eq!(
+            reader.read_next(&mut input, 1024).unwrap(),
+            Some(Vec::new())
+        );
+        let failure = |result: io::Result<Option<Vec<u8>>>| result.unwrap_err().kind();
+        assert_eq!(
+            failure(reader.read_next(&mut input, 1024)),
+            io::ErrorKind::UnexpectedEof
+        );
+        let mut reader = PersistentFrameReader::default();
+        assert_eq!(
+            failure(reader.read_next(&mut input, 1024)),
+            io::ErrorKind::ConnectionReset
+        );
     }
 
     /// A persistent session over loopback TLS, with its reader and writer
