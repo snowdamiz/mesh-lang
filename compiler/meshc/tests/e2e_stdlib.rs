@@ -188,6 +188,31 @@ end
     assert_eq!(output, "true\ntrue\ntrue\ntrue\n");
 }
 
+/// A program that is no cluster's node still answers the cluster
+/// introspection calls: itself as the only node, its scheduler's bounds and
+/// pressure, the default roles and its state.
+#[test]
+fn e2e_cluster_introspection_describes_a_standalone_program() {
+    let output = compile_and_run(
+        r#"
+fn main() do
+  let capacity = Cluster.capacity()
+  println("nodes=${Map.get(capacity, "desired_nodes")},${Map.get(capacity, "observed_nodes")},${Map.get(capacity, "ready_nodes")},${Map.get(capacity, "draining_nodes")}")
+  println("workers=${Map.get(capacity, "local_min_workers") <= Map.get(capacity, "local_active_workers")},${Map.get(capacity, "local_active_workers") <= Map.get(capacity, "local_max_workers")}")
+  let pressure = Cluster.pressure()
+  println("pressure=${String.length(Map.get(pressure, "score")) > 0},${Map.get(pressure, "telemetry_complete")}")
+  println("signal=${String.length(Map.get(pressure, "dominant_signal")) > 0}")
+  println("role=${Cluster.role()}")
+  println("state=${Cluster.state()}")
+end
+"#,
+    );
+    assert_eq!(
+        output,
+        "nodes=1,1,1,0\nworkers=true,true\npressure=true,false\nsignal=true\nrole=gateway,worker\nstate=ready\n"
+    );
+}
+
 #[test]
 fn e2e_string_trim() {
     let source = read_fixture("stdlib_string_trim.mpl");
