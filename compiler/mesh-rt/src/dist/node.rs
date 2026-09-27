@@ -5341,23 +5341,27 @@ fn decode_http_reserve(frame: &[u8]) -> Result<(u64, u32, String, String), Strin
     Ok((correlation_id, payload_bytes, runtime_name, request_key))
 }
 
-fn encode_http_reserve_reply(
-    correlation_id: u64,
-    result: Result<(), String>,
-) -> Result<Vec<u8>, String> {
-    let (accepted, reason) = match result {
-        Ok(()) => (1u8, Vec::new()),
-        Err(reason) => (0u8, reason.into_bytes()),
+/// A reservation's reply. A refusal's reason is cut to the 64 KiB its
+/// length holds, at a character: one naming a handler the peer sent a
+/// longer name for must still reach the peer.
+fn encode_http_reserve_reply(correlation_id: u64, result: Result<(), String>) -> Vec<u8> {
+    let (accepted, reason) = match &result {
+        Ok(()) => (1u8, ""),
+        Err(reason) => {
+            let mut end = reason.len().min(usize::from(u16::MAX));
+            while !reason.is_char_boundary(end) {
+                end -= 1;
+            }
+            (0u8, &reason[..end])
+        }
     };
-    let reason_len = u16::try_from(reason.len())
-        .map_err(|_| "clustered_http_reservation_reason_too_large".to_string())?;
     let mut frame = Vec::with_capacity(12 + reason.len());
     frame.push(DIST_HTTP_RESERVE_REPLY);
     frame.extend_from_slice(&correlation_id.to_le_bytes());
     frame.push(accepted);
-    frame.extend_from_slice(&reason_len.to_le_bytes());
-    frame.extend_from_slice(&reason);
-    Ok(frame)
+    frame.extend_from_slice(&(reason.len() as u16).to_le_bytes());
+    frame.extend_from_slice(reason.as_bytes());
+    frame
 }
 
 fn decode_http_reserve_reply(frame: &[u8]) -> Result<(u64, Result<(), String>), String> {
@@ -5425,14 +5429,13 @@ fn handle_http_reserve(session: &Arc<NodeSession>, frame: &[u8]) {
         }
         Err(error) => (0, Err(error)),
     };
-    if let Ok(reply) = encode_http_reserve_reply(correlation_id, result) {
-        if session.send(OutboundClass::Admission, reply).is_err() {
-            session
-                .accepted_http_reservations
-                .lock()
-                .unwrap()
-                .remove(&correlation_id);
-        }
+    let reply = encode_http_reserve_reply(correlation_id, result);
+    if session.send(OutboundClass::Admission, reply).is_err() {
+        session
+            .accepted_http_reservations
+            .lock()
+            .unwrap()
+            .remove(&correlation_id);
     }
 }
 
@@ -11030,8 +11033,8 @@ mod tests {
             .lock()
             .unwrap()
             .insert(6, reservation);
-        peer.receive(encode_http_reserve_reply(6, Err("full".to_string())).unwrap());
-        peer.receive(encode_http_reserve_reply(6, Ok(())).unwrap());
+        peer.receive(encode_http_reserve_reply(6, Err("full".to_string())));
+        peer.receive(encode_http_reserve_reply(6, Ok(())));
         assert_eq!(reservation_answer.try_recv(), Ok(Err("full".to_string())));
 
         let (rpc, mut rpc_answer) = tokio::sync::oneshot::channel();
@@ -11619,7 +11622,7 @@ mod tests {
 
         let call = route_to(name);
         let correlation = reserved();
-        owner.receive(encode_http_reserve_reply(correlation, Ok(())).unwrap());
+        owner.receive(encode_http_reserve_reply(correlation, Ok(())));
         let query = decode_http_route_v2_query_frame(&owner.next_sent()).unwrap();
         assert_eq!(query.0, correlation);
         owner.receive(encode_http_route_v2_reply_frame(correlation, Ok(b"200".to_vec())).unwrap());
@@ -11628,12 +11631,15 @@ mod tests {
         let call = route_to(name);
         let correlation = reserved();
         let draining = "owner_reservation_rejected:Draining".to_string();
-        owner.receive(encode_http_reserve_reply(correlation, Err(draining.clone())).unwrap());
+        owner.receive(encode_http_reserve_reply(
+            correlation,
+            Err(draining.clone()),
+        ));
         assert_eq!(call.join().unwrap(), Err(draining));
 
         let call = route_to(name);
         let correlation = reserved();
-        owner.receive(encode_http_reserve_reply(correlation, Ok(())).unwrap());
+        owner.receive(encode_http_reserve_reply(correlation, Ok(())));
         assert_eq!(owner.next_sent()[0], DIST_HTTP_ROUTE_V2_QUERY);
         drop(owner);
         let reason = call.join().unwrap().unwrap_err();
@@ -11658,7 +11664,7 @@ mod tests {
         let unanswered = route_to(silent);
         let accepted_only = route_to(slow);
         let (correlation, ..) = decode_http_reserve(&slow_owner.next_sent()).unwrap();
-        slow_owner.receive(encode_http_reserve_reply(correlation, Ok(())).unwrap());
+        slow_owner.receive(encode_http_reserve_reply(correlation, Ok(())));
         for (call, reason) in [
             (unanswered, "clustered_http_reservation_timeout"),
             (accepted_only, "clustered_http_route_reply_timeout"),
@@ -11680,7 +11686,7 @@ mod tests {
         let call = route_to(closing);
         let (correlation, ..) = decode_http_reserve(&closing_owner.next_sent()).unwrap();
         closing_owner.session.shutdown.store(true, Ordering::SeqCst);
-        closing_owner.receive(encode_http_reserve_reply(correlation, Ok(())).unwrap());
+        closing_owner.receive(encode_http_reserve_reply(correlation, Ok(())));
         let failure = call.join().unwrap().unwrap_err();
         assert_eq!(
             failure,
@@ -11999,6 +12005,13 @@ mod tests {
                 Err("declared_handler_not_registered:Unregistered.handle".to_string())
             )
         );
+        // A name as long as a frame holds still gets its refusal, its
+        // reason cut to what a reply holds.
+        let (correlation, refused) = reserve(4, &"n".repeat(usize::from(u16::MAX)), 5);
+        assert_eq!(correlation, 4);
+        let refused = refused.unwrap_err();
+        assert_eq!(refused.len(), usize::from(u16::MAX));
+        assert!(refused.starts_with("declared_handler_not_registered:nnn"));
         assert_eq!(
             reserve(3, runtime_name, MAX_DIST_MSG + 1),
             (3, Err("owner_reservation_payload_limit".to_string()))
@@ -12099,7 +12112,7 @@ mod tests {
             "clustered_http_reservation_metadata_invalid"
         );
 
-        let reply = encode_http_reserve_reply(7, Err("full".to_string())).unwrap();
+        let reply = encode_http_reserve_reply(7, Err("full".to_string()));
         assert_eq!(
             decode_http_reserve_reply(&reply),
             Ok((7, Err("full".to_string())))
@@ -12125,9 +12138,11 @@ mod tests {
             refused(&not_text),
             "clustered_http_reservation_reason_invalid"
         );
+        // A reason longer than a reply holds is cut at a character.
+        let long = format!("{}é", "x".repeat(usize::from(u16::MAX) - 1));
         assert_eq!(
-            encode_http_reserve_reply(7, Err("x".repeat(70_000))),
-            Err("clustered_http_reservation_reason_too_large".to_string())
+            decode_http_reserve_reply(&encode_http_reserve_reply(7, Err(long.clone()))),
+            Ok((7, Err(long[..usize::from(u16::MAX) - 1].to_string())))
         );
     }
 
@@ -13066,7 +13081,7 @@ mod tests {
                             } else {
                                 Ok(())
                             };
-                            peer.receive(encode_http_reserve_reply(correlation, result).unwrap());
+                            peer.receive(encode_http_reserve_reply(correlation, result));
                         }
                         DIST_HTTP_ROUTE_V2_QUERY => {
                             let (correlation, _, key, ..) =
