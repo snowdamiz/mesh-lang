@@ -237,10 +237,9 @@ unsafe impl Send for Connection {}
 
 impl Drop for Connection {
     fn drop(&mut self) {
-        if !self.raw.is_null() {
-            unsafe {
-                sqlite3_close(self.raw);
-            }
+        // A Connection holds only a handle sqlite3_open_v2 opened.
+        unsafe {
+            sqlite3_close(self.raw);
         }
     }
 }
@@ -252,10 +251,10 @@ struct Statement {
 
 impl Drop for Statement {
     fn drop(&mut self) {
-        if !self.raw.is_null() {
-            unsafe {
-                sqlite3_finalize(self.raw);
-            }
+        // Finalizing a NULL statement (SQL that prepares to nothing) is a
+        // no-op.
+        unsafe {
+            sqlite3_finalize(self.raw);
         }
     }
 }
@@ -305,14 +304,9 @@ impl Statement {
         }
     }
 
-    fn text(&self, column: c_int) -> Result<String, String> {
-        let pointer = unsafe { sqlite3_column_text(self.raw, column) };
-        if pointer.is_null() {
-            return Ok(String::new());
-        }
-        Ok(unsafe { CStr::from_ptr(pointer.cast()) }
-            .to_string_lossy()
-            .into_owned())
+    /// A text column's value: the bytes of its UTF-8 text.
+    fn text(&self, column: c_int) -> String {
+        String::from_utf8_lossy(&self.blob(column)).into_owned()
     }
 
     fn integer(&self, column: c_int) -> i64 {
@@ -406,51 +400,23 @@ impl SqliteContinuityStore {
 
     pub fn stats(&self) -> Result<ContinuityStoreStats, String> {
         let connection = self.connection.lock().unwrap();
-        let count = |sql: &str| -> Result<u64, String> {
-            let mut statement = Self::prepare(&connection, sql)?;
-            if statement.step()? != SQLITE_ROW {
-                return Ok(0);
-            }
-            unsigned_integer(statement.integer(0))
-        };
+        let count = |sql: &str| Self::query_u64(&connection, sql, None);
         let records = count("SELECT COUNT(*) FROM continuity_records")?;
         let active_records = count(
             "SELECT COUNT(*) FROM continuity_records
              WHERE phase IN ('reserved', 'replicating', 'admitted', 'started')",
         )?;
-        let terminal_records = count(
-            "SELECT terminal_record_count FROM continuity_store_counters WHERE singleton = 1",
-        )?;
+        let terminal_records = Self::terminal_records(&connection)?;
         let tombstones = count("SELECT COUNT(*) FROM continuity_tombstones")?;
         let log_entries = count("SELECT COUNT(*) FROM continuity_log")?;
-        let high_water_mark = count("SELECT COALESCE(MAX(sequence), 0) FROM continuity_log")?;
-        let mut safe_point = Self::prepare(
+        let high_water_mark = Self::high_water(&connection)?;
+        let replica_safe_point = Self::replica_safe_point(&connection)?;
+        // Log sequences start at 1: with no safe point nothing is eligible.
+        let compaction_lag = Self::query_u64(
             &connection,
-            "SELECT COALESCE(MIN(high_water_mark), 0), COUNT(*)
-               FROM continuity_replica_safe_points",
+            "SELECT COUNT(*) FROM continuity_log WHERE sequence <= ?1",
+            Some(replica_safe_point.unwrap_or(0)),
         )?;
-        let replica_safe_point = if safe_point.step()? == SQLITE_ROW && safe_point.integer(1) > 0 {
-            Some(unsigned_integer(safe_point.integer(0))?)
-        } else {
-            None
-        };
-        drop(safe_point);
-        let compaction_lag = if let Some(replica_safe_point) = replica_safe_point {
-            let mut eligible = Self::prepare(
-                &connection,
-                "SELECT COUNT(*) FROM continuity_log WHERE sequence <= ?1",
-            )?;
-            eligible.bind_i64(1, sqlite_integer(replica_safe_point)?)?;
-            let count = if eligible.step()? == SQLITE_ROW {
-                unsigned_integer(eligible.integer(0))?
-            } else {
-                0
-            };
-            drop(eligible);
-            count
-        } else {
-            0
-        };
         let replication_lag =
             replica_safe_point.map(|safe_point| high_water_mark.saturating_sub(safe_point));
         drop(connection);
@@ -466,6 +432,55 @@ impl SqliteContinuityStore {
             compaction_lag,
             replication_lag,
         })
+    }
+
+    /// The one integer an aggregate query returns: it always has a row.
+    fn query_u64(
+        connection: &Connection,
+        sql: &str,
+        parameter: Option<u64>,
+    ) -> Result<u64, String> {
+        let mut statement = Self::prepare(connection, sql)?;
+        if let Some(parameter) = parameter {
+            statement.bind_i64(1, sqlite_integer(parameter)?)?;
+        }
+        statement.step()?;
+        unsigned_integer(statement.integer(0))
+    }
+
+    fn high_water(connection: &Connection) -> Result<u64, String> {
+        Self::query_u64(
+            connection,
+            "SELECT COALESCE(MAX(sequence), 0) FROM continuity_log",
+            None,
+        )
+    }
+
+    fn terminal_records(connection: &Connection) -> Result<u64, String> {
+        Self::query_u64(
+            connection,
+            "SELECT COALESCE(MAX(terminal_record_count), 0) FROM continuity_store_counters",
+            None,
+        )
+    }
+
+    /// The lowest high-water mark every replica has acknowledged, once any
+    /// replica has acknowledged one.
+    fn replica_safe_point(connection: &Connection) -> Result<Option<u64>, String> {
+        let replicas = Self::query_u64(
+            connection,
+            "SELECT COUNT(*) FROM continuity_replica_safe_points",
+            None,
+        )?;
+        if replicas == 0 {
+            return Ok(None);
+        }
+        Self::query_u64(
+            connection,
+            "SELECT MIN(high_water_mark) FROM continuity_replica_safe_points",
+            None,
+        )
+        .map(Some)
     }
 
     fn prepare_upsert<'a>(
@@ -788,16 +803,16 @@ impl SqliteContinuityStore {
 
     fn record_from_statement(statement: &Statement) -> Result<StoredContinuityRecord, String> {
         Ok(StoredContinuityRecord {
-            operation_key: statement.text(0)?,
-            request_hash: statement.text(1)?,
+            operation_key: statement.text(0),
+            request_hash: statement.text(1),
             request_body: statement.blob(16),
             runtime_record: statement.blob(17),
-            owner_node: statement.text(2)?,
+            owner_node: statement.text(2),
             ownership_generation: unsigned_integer(statement.integer(3))?,
-            attempts: serde_json::from_str(&statement.text(4)?)
+            attempts: serde_json::from_str(&statement.text(4))
                 .map_err(|_| "continuity_store_attempts_corrupt".to_string())?,
-            phase: StoredContinuityPhase::parse(&statement.text(5)?)?,
-            replica_set: serde_json::from_str(&statement.text(6)?)
+            phase: StoredContinuityPhase::parse(&statement.text(5))?,
+            replica_set: serde_json::from_str(&statement.text(6))
                 .map_err(|_| "continuity_store_replicas_corrupt".to_string())?,
             created_at_millis: unsigned_integer(statement.integer(7))?,
             updated_at_millis: unsigned_integer(statement.integer(8))?,
@@ -809,7 +824,7 @@ impl SqliteContinuityStore {
                 .optional_integer(10)
                 .map(unsigned_integer)
                 .transpose()?,
-            response_metadata: serde_json::from_str(&statement.text(11)?)
+            response_metadata: serde_json::from_str(&statement.text(11))
                 .map_err(|_| "continuity_store_response_metadata_corrupt".to_string())?,
             response_body: statement.blob(12),
             control_term: unsigned_integer(statement.integer(13))?,
@@ -867,16 +882,7 @@ impl SqliteContinuityStore {
     }
 
     fn terminal_record_count(&self) -> Result<u64, String> {
-        let connection = self.connection.lock().unwrap();
-        let mut statement = Self::prepare(
-            &connection,
-            "SELECT terminal_record_count
-               FROM continuity_store_counters WHERE singleton = 1",
-        )?;
-        if statement.step()? != SQLITE_ROW {
-            return Ok(0);
-        }
-        unsigned_integer(statement.integer(0))
+        Self::terminal_records(&self.connection.lock().unwrap())
     }
 
     fn node_safety(
@@ -914,15 +920,7 @@ impl SqliteContinuityStore {
         let connection = self.connection.lock().unwrap();
         execute_batch(connection.raw, "BEGIN")?;
         let result = (|| {
-            let mut high_water = Self::prepare(
-                &connection,
-                "SELECT COALESCE(MAX(sequence), 0) FROM continuity_log",
-            )?;
-            let high_water = if high_water.step()? == SQLITE_ROW {
-                unsigned_integer(high_water.integer(0))?
-            } else {
-                0
-            };
+            let high_water = Self::high_water(&connection)?;
             let records = Self::all_records_from_connection(&connection)?;
             Ok((high_water, records))
         })();
@@ -994,7 +992,7 @@ impl ContinuityStore for SqliteContinuityStore {
             select.bind_i64(2, i64::from(self.limits.compaction_batch_size))?;
             let mut expired = Vec::new();
             while select.step()? == SQLITE_ROW {
-                expired.push((select.text(0)?, unsigned_integer(select.integer(1))?));
+                expired.push((select.text(0), unsigned_integer(select.integer(1))?));
             }
             drop(select);
             for (operation_key, version) in &expired {
@@ -1125,15 +1123,7 @@ impl ContinuityStore for SqliteContinuityStore {
     }
 
     fn high_water_mark(&self) -> Result<u64, String> {
-        let connection = self.connection.lock().unwrap();
-        let mut statement = Self::prepare(
-            &connection,
-            "SELECT COALESCE(MAX(sequence), 0) FROM continuity_log",
-        )?;
-        if statement.step()? != SQLITE_ROW {
-            return Ok(0);
-        }
-        unsigned_integer(statement.integer(0))
+        Self::high_water(&self.connection.lock().unwrap())
     }
 
     fn log_entries_after(
@@ -1163,7 +1153,7 @@ impl ContinuityStore for SqliteContinuityStore {
                 .map_err(|_| "continuity_log_checksum_invalid".to_string())?;
             let entry = ContinuityLogEntry {
                 sequence: unsigned_integer(statement.integer(0))?,
-                operation_key: statement.text(1)?,
+                operation_key: statement.text(1),
                 version: unsigned_integer(statement.integer(2))?,
                 record,
                 checksum,
@@ -1212,15 +1202,9 @@ impl ContinuityStore for SqliteContinuityStore {
         let connection = self.connection.lock().unwrap();
         execute_batch(connection.raw, "BEGIN IMMEDIATE")?;
         let result = (|| {
-            let mut safe_point = Self::prepare(
-                &connection,
-                "SELECT MIN(high_water_mark), COUNT(*)
-                   FROM continuity_replica_safe_points",
-            )?;
-            if safe_point.step()? != SQLITE_ROW || safe_point.integer(1) == 0 {
+            let Some(safe_point) = Self::replica_safe_point(&connection)? else {
                 return Ok(0);
-            }
-            let safe_point = unsigned_integer(safe_point.integer(0))?;
+            };
             let mut delete = Self::prepare(
                 &connection,
                 "DELETE FROM continuity_log WHERE sequence IN (
@@ -1268,18 +1252,12 @@ fn check_sqlite(database: *mut sqlite3, result: c_int) -> Result<(), String> {
 }
 
 fn sqlite_error(database: *mut sqlite3) -> String {
-    if database.is_null() {
-        return "continuity_store_database_error".to_string();
-    }
-    let pointer = unsafe { sqlite3_errmsg(database) };
-    if pointer.is_null() {
-        "continuity_store_database_error".to_string()
-    } else {
-        format!(
-            "continuity_store_database_error:{}",
-            unsafe { CStr::from_ptr(pointer) }.to_string_lossy()
-        )
-    }
+    // sqlite3_errmsg never returns NULL; for a NULL handle (open ran out
+    // of memory) it reports that.
+    format!(
+        "continuity_store_database_error:{}",
+        unsafe { CStr::from_ptr(sqlite3_errmsg(database)) }.to_string_lossy()
+    )
 }
 
 fn sqlite_integer(value: u64) -> Result<i64, String> {
