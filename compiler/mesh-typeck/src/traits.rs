@@ -11,16 +11,15 @@ use crate::ty::{Ty, TyCon, TyVar};
 use crate::unify::InferCtx;
 
 /// Whether `ty` mentions `Self`, an associated type of it (`Self.Item`), or a
-/// type parameter of a generic interface (`T`): what only the impl decides.
-/// Signature comparison skips such a type.
-fn ty_contains_self(ty: &Ty) -> bool {
+/// type parameter of a generic interface (`T`, which no declared type in
+/// `nominal` is): what only the impl decides. Signature comparison skips
+/// such a type.
+fn ty_contains_self(ty: &Ty, nominal: &FxHashSet<String>) -> bool {
     match ty {
         Ty::Con(con) => {
-            con.name == "Self"
-                || con.name.starts_with("Self.")
-                || (con.name.len() == 1 && con.name.as_bytes()[0].is_ascii_uppercase())
+            con.name == "Self" || con.name.starts_with("Self.") || is_type_param(&con.name, nominal)
         }
-        _ => ty.parts().any(ty_contains_self),
+        _ => ty.parts().any(|part| ty_contains_self(part, nominal)),
     }
 }
 
@@ -249,7 +248,7 @@ impl TraitRegistry {
         let trait_def = self.traits.get(trait_name)?;
         let sig = trait_def.methods.iter().find(|m| m.name == method)?;
         let ty = in_impl(sig.return_type.as_ref()?, impl_type, assoc_types);
-        (!ty_contains_self(&ty)).then_some(ty)
+        (!ty_contains_self(&ty, &self.nominal)).then_some(ty)
     }
 
     /// Register an impl: `impl Trait for Type`. Returns what is wrong with
@@ -321,7 +320,8 @@ impl TraitRegistry {
                             (Some(expected), Some(found)) => {
                                 expected.iter().zip(found).any(|(expected, found)| {
                                     let expected = in_impl(expected);
-                                    !ty_contains_self(&expected) && expected != *found
+                                    !ty_contains_self(&expected, &self.nominal)
+                                        && expected != *found
                                 })
                             }
                             _ => false,
@@ -349,7 +349,8 @@ impl TraitRegistry {
                             // Generic, or naming an associated type the impl
                             // does not bind (reported below): not comparable.
                             let expected_ret = in_impl(expected_ret);
-                            let expected_involves_self = ty_contains_self(&expected_ret);
+                            let expected_involves_self =
+                                ty_contains_self(&expected_ret, &self.nominal);
                             if !expected_involves_self && expected_ret != *actual_ret {
                                 problems.push(ImplProblem::MethodMismatch {
                                     method_name: method.name.clone(),

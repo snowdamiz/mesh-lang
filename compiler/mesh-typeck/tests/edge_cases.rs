@@ -1811,6 +1811,45 @@ end
     );
 }
 
+/// An impl for a type named by one letter is compared with its interface
+/// as any other: the letter was taken for a type parameter of a generic
+/// interface, which only the impl decides, so `impl Mine for E` taking an
+/// `Int` where `Mine` takes `Self` was accepted. A generic interface's own
+/// parameter is still the impl's to decide.
+#[test]
+fn an_impl_for_a_one_letter_type_is_compared_with_its_interface() {
+    assert_eq!(
+        errors(
+            r#"
+interface Mine do
+  fn m(self, other :: Self) -> Int
+end
+
+struct E do
+  x :: Int
+end
+
+impl Mine for E do
+  fn m(self, other :: Int) -> Int do
+    other
+  end
+end
+
+impl From<Int> for E do
+  fn from(n :: Int) -> E do
+    E { x: n }
+  end
+end
+
+fn made() -> E do
+  E.from(1)
+end
+"#
+        ),
+        ["method `m` in impl `Mine` has wrong signature: expected `(Self, Self) -> _`, found `(Self, Int) -> _`"]
+    );
+}
+
 /// A value that is no function cannot be called, directly or piped into,
 /// though its arguments are checked first; a call of what never returns
 /// (`panic(...)`) is anything. A field read from a value nothing gives a
