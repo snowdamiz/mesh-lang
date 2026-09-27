@@ -507,12 +507,17 @@ pub(crate) fn clear_declared_handler_registry_for_test() {
     declared_handler_registry().write().clear();
 }
 
+/// Held (shared) by every test that plays a peer of the test node, whose
+/// sessions make that peer a member of the cluster.
 #[cfg(test)]
-pub(crate) fn declared_handler_registry_test_lock() -> std::sync::MutexGuard<'static, ()> {
-    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    LOCK.get_or_init(|| Mutex::new(()))
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
+pub(crate) static TEST_PEERS: parking_lot::RwLock<()> = parking_lot::const_rwlock(());
+
+/// The clustered runtime state tests share (declared handlers, the
+/// continuity registry, the test node's members), for one test at a time,
+/// with no test peer connected: clustered work placed now stays here.
+#[cfg(test)]
+pub(crate) fn declared_handler_registry_test_lock() -> parking_lot::RwLockWriteGuard<'static, ()> {
+    TEST_PEERS.write()
 }
 
 fn lookup_declared_handler_executable(name: &str) -> Option<DeclaredHandlerEntry> {
@@ -8156,7 +8161,7 @@ mod tests {
 
     extern "C" fn startup_work_test_declared_handler(_args: *const u8) {}
 
-    fn startup_work_test_lock() -> std::sync::MutexGuard<'static, ()> {
+    fn startup_work_test_lock() -> parking_lot::RwLockWriteGuard<'static, ()> {
         declared_handler_registry_test_lock()
     }
 
@@ -10513,10 +10518,12 @@ mod tests {
         session: Arc<NodeSession>,
         stream: StreamOwned<rustls::ServerConnection, TcpStream>,
         heartbeat: Mutex<HeartbeatState>,
+        _member: parking_lot::RwLockReadGuard<'static, ()>,
     }
 
     impl TestPeer {
         fn new(name: &str) -> Self {
+            let member = TEST_PEERS.read_recursive();
             let state = test_node();
             let (client, server) = tls_pair();
             let session = register_session(
@@ -10536,6 +10543,7 @@ mod tests {
                     Duration::from_secs(60),
                     Duration::from_secs(15),
                 )),
+                _member: member,
             }
         }
 
@@ -10881,8 +10889,16 @@ mod tests {
                 ],
             )
         };
+        // What the peer hears, but for the exit signal the spawned process,
+        // linked to its requester, sends when it ends.
+        let heard = || -> Vec<Vec<u8>> {
+            peer.sent()
+                .into_iter()
+                .filter(|frame| frame[0] != DIST_EXIT)
+                .collect()
+        };
         peer.receive(spawn(1, 1, "peer_spawned_test_actor"));
-        let sent = peer.sent();
+        let sent = heard();
         assert_eq!(sent.len(), 2, "{sent:?}");
         let (reply, link) = (&sent[0], &sent[1]);
         assert_eq!(
@@ -10902,7 +10918,7 @@ mod tests {
             )
         };
         peer.receive(spawn(2, 0, "never_registered_for_remote_spawn"));
-        assert_eq!(peer.sent(), vec![refused(2)]);
+        assert_eq!(heard(), vec![refused(2)]);
         // A name longer than the frame, or not UTF-8, names nothing.
         let mut cut_short = spawn(3, 0, "peer_spawned_test_actor");
         cut_short.truncate(24);
@@ -10910,7 +10926,7 @@ mod tests {
         let mut not_text = spawn(4, 0, "peer_spawned_test_actor");
         not_text[20] = 0xFF;
         peer.receive(not_text);
-        assert_eq!(peer.sent(), vec![refused(3), refused(4)]);
+        assert_eq!(heard(), vec![refused(3), refused(4)]);
     }
 
     /// A spawn reply reaches the spawn waiting for it, once.
@@ -10982,6 +10998,7 @@ mod tests {
     impl TestPeer {
         /// A protocol-two peer whose signed identity gives it `roles`.
         fn authenticated(name: &str, roles: &[&str]) -> Self {
+            let member = TEST_PEERS.read_recursive();
             let state = test_node();
             let (client, server) = tls_pair();
             let identity = super::super::identity_claim::NodeIdentityClaim {
@@ -11010,6 +11027,7 @@ mod tests {
                     Duration::from_secs(60),
                     Duration::from_secs(15),
                 )),
+                _member: member,
             }
         }
     }
