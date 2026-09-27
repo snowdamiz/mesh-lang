@@ -1174,39 +1174,31 @@ pub extern "C" fn mesh_process_whereis(name: *const crate::string::MeshString) -
 // Supervisor extern "C" ABI functions
 // ---------------------------------------------------------------------------
 
-extern "C" fn supervisor_entry(_args: *const u8) {
-    let Some(supervisor_pid) = stack::get_current_pid() else {
-        return;
+/// A supervisor's actor: it restarts its children as their exit signals
+/// arrive. `args` is its state, an `Arc` handed over by `mesh_supervisor_start`.
+extern "C-unwind" fn supervisor_entry(args: *const u8) {
+    let state = unsafe {
+        std::sync::Arc::from_raw(args as *const parking_lot::Mutex<supervisor::SupervisorState>)
     };
-
+    let (supervisor_pid, _) = running_process();
     loop {
         let message = mesh_actor_receive(-1);
         if message.is_null() {
             break;
         }
-
-        let Some(state) = supervisor::get_supervisor_state(supervisor_pid) else {
-            break;
-        };
+        // A program's own message means nothing to a supervisor.
         let type_tag = unsafe { std::ptr::read_unaligned(message.cast::<u64>()) };
         if type_tag != link::EXIT_SIGNAL_TAG {
             continue;
         }
         let data_len = unsafe { std::ptr::read_unaligned(message.add(8).cast::<u64>()) } as usize;
         let data = unsafe { std::slice::from_raw_parts(message.add(16), data_len) };
-        let Some((child_pid, reason)) = link::decode_exit_signal(data) else {
-            continue;
-        };
-
+        let (child_pid, reason) = link::decode_exit_signal(data)
+            .expect("the runtime encodes every exit signal it sends, and only it tags one");
+        let sched = global_scheduler();
         let mut state = state.lock();
-        if supervisor::handle_child_exit(
-            &mut state,
-            child_pid,
-            &reason,
-            global_scheduler(),
-            supervisor_pid,
-        )
-        .is_err()
+        if supervisor::handle_child_exit(&mut state, child_pid, &reason, sched, supervisor_pid)
+            .is_err()
         {
             break;
         }
@@ -1238,24 +1230,14 @@ extern "C" fn supervisor_entry(_args: *const u8) {
 ///   - u64 LE: shutdown_timeout_ms (only meaningful if shutdown_type=1)
 ///   - u8: child_type (0=Worker, 1=Supervisor)
 ///
-/// Returns the supervisor PID as `u64`, or `u64::MAX` on error.
+/// Returns the supervisor PID as `u64`. The compiler writes the config, so a
+/// malformed one is a bug: it panics.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_supervisor_start(config_ptr: *const u8, config_size: u64) -> u64 {
-    if config_ptr.is_null() || config_size == 0 {
-        return u64::MAX;
-    }
-
     let data = unsafe { std::slice::from_raw_parts(config_ptr, config_size as usize) };
-
-    // Parse the config.
-    let config = match parse_supervisor_config(data) {
-        Some(c) => c,
-        None => return u64::MAX,
-    };
-
+    let config = parse_supervisor_config(data);
     let sched = global_scheduler();
 
-    // Create the supervisor state.
     let mut sup_state =
         supervisor::SupervisorState::new(config.strategy, config.max_restarts, config.max_seconds);
     sup_state.children = config
@@ -1268,81 +1250,32 @@ pub extern "C-unwind" fn mesh_supervisor_start(config_ptr: *const u8, config_siz
         })
         .collect();
 
-    let sup_pid = sched.spawn(supervisor_entry as *const u8, std::ptr::null(), 0, 1);
-
-    // Set trap_exit on the supervisor process.
-    if let Some(proc) = sched.get_process(ProcessId(sup_pid.as_u64())) {
-        proc.lock().trap_exit = true;
-    }
-
-    // Register before starting children so even an immediately crashing child
-    // can be resolved by the supervisor receive loop.
-    let state = supervisor::register_supervisor_state(sup_pid, sup_state);
+    // The actor takes its state with it; the registry is for everyone else.
+    let state = std::sync::Arc::new(parking_lot::Mutex::new(sup_state));
+    let args = std::sync::Arc::into_raw(std::sync::Arc::clone(&state));
+    let sup_pid = sched.spawn(supervisor_entry as *const u8, args.cast(), 0, 1);
+    // Before any child is linked to it, so it gets their exits as messages.
+    sched
+        .get_process(sup_pid)
+        .expect("the supervisor is spawned and blocks in receive")
+        .lock()
+        .trap_exit = true;
+    supervisor::register_supervisor_state(sup_pid, std::sync::Arc::clone(&state));
 
     supervisor::start_children_from(&mut state.lock(), 0, sched, sup_pid);
     sup_pid.as_u64()
 }
 
-/// Start a dynamic child under a simple_one_for_one supervisor.
-///
-/// Looks up the supervisor state, clones the template child spec with the
-/// given args, spawns the child, links it to the supervisor, and returns
-/// the child PID.
-///
-/// Returns the child PID as `u64`, or `u64::MAX` on error.
+/// Start a dynamic child under a simple_one_for_one supervisor: `u64::MAX`,
+/// as there is no child template to start one from. A supervisor's children
+/// come from its `child` clauses; no Mesh code can name a template yet.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_supervisor_start_child(
-    sup_pid: u64,
-    args_ptr: *const u8,
-    args_size: u64,
+    _sup_pid: u64,
+    _args_ptr: *const u8,
+    _args_size: u64,
 ) -> u64 {
-    let sup_pid = ProcessId(sup_pid);
-    let sched = global_scheduler();
-
-    let state_arc = match supervisor::get_supervisor_state(sup_pid) {
-        Some(s) => s,
-        None => return u64::MAX,
-    };
-
-    let mut state = state_arc.lock();
-
-    // Clone the template spec (for simple_one_for_one).
-    let template = match &state.child_template {
-        Some(t) => t.clone(),
-        None => {
-            // Not a simple_one_for_one supervisor -- create from args directly.
-            // For now, return error.
-            return u64::MAX;
-        }
-    };
-
-    // The spec outlives this call -- a restart reads the arguments again -- so
-    // it cannot keep pointing at the caller's buffer.
-    // ponytail: leaked, a few bytes per dynamic child; own the bytes in
-    // ChildSpec if supervisors ever churn through enough children to matter.
-    // What the arguments point at is still the caller's: nothing compiles to
-    // this entry point yet, and whatever does must pass a shape as `spawn` does.
-    let args: &'static [u8] = if args_ptr.is_null() || args_size == 0 {
-        &[]
-    } else {
-        let bytes = unsafe { std::slice::from_raw_parts(args_ptr, args_size as usize) };
-        Box::leak(bytes.to_vec().into_boxed_slice())
-    };
-
-    let mut new_spec = template;
-    new_spec.id = format!("dynamic_{}", state.children.len());
-    new_spec.start_args_ptr = args.as_ptr();
-    new_spec.start_args_size = args.len() as u64;
-
-    let mut child_state = child_spec::ChildState {
-        spec: new_spec,
-        pid: None,
-        running: false,
-    };
-
-    let pid = supervisor::start_single_child(&mut child_state, sched, sup_pid);
-    state.children.push(child_state);
-    pid.as_u64()
+    u64::MAX
 }
 
 /// Terminate a specific child under a supervisor.
@@ -1412,7 +1345,7 @@ pub extern "C" fn mesh_actor_trap_exit() {
 ///
 /// For other reasons: if the target has trap_exit enabled, the signal is
 /// delivered as a message. Otherwise, the target is terminated immediately.
-fn deliver_exit_signal(sched: &Scheduler, pid: ProcessId, reason: ExitReason) {
+pub(crate) fn deliver_exit_signal(sched: &Scheduler, pid: ProcessId, reason: ExitReason) {
     if let Some(proc_arc) = sched.get_process(pid) {
         let mut proc = proc_arc.lock();
 
@@ -1669,145 +1602,82 @@ pub extern "C" fn mesh_global_unregister(name_ptr: *const u8, name_len: u64) -> 
     }
 }
 
-/// Parse a `SupervisorConfig` from raw bytes.
-fn parse_supervisor_config(data: &[u8]) -> Option<supervisor::SupervisorConfig> {
-    if data.len() < 14 {
-        return None; // Minimum: 1 + 4 + 8 + 4 = 17 bytes... actually 1+4+8+4=17
+/// Reads the supervisor config the compiler wrote, in order.
+struct ConfigReader<'a>(&'a [u8]);
+
+impl<'a> ConfigReader<'a> {
+    fn bytes(&mut self, len: usize) -> &'a [u8] {
+        let (head, rest) = self
+            .0
+            .split_at_checked(len)
+            .expect("the compiler writes a whole supervisor config");
+        self.0 = rest;
+        head
     }
 
-    let mut pos = 0;
-
-    // Strategy (1 byte)
-    let strategy = match data[pos] {
-        0 => child_spec::Strategy::OneForOne,
-        1 => child_spec::Strategy::OneForAll,
-        2 => child_spec::Strategy::RestForOne,
-        3 => child_spec::Strategy::SimpleOneForOne,
-        _ => return None,
-    };
-    pos += 1;
-
-    // max_restarts (4 bytes LE)
-    if pos + 4 > data.len() {
-        return None;
-    }
-    let max_restarts = u32::from_le_bytes(data[pos..pos + 4].try_into().ok()?);
-    pos += 4;
-
-    // max_seconds (8 bytes LE)
-    if pos + 8 > data.len() {
-        return None;
-    }
-    let max_seconds = u64::from_le_bytes(data[pos..pos + 8].try_into().ok()?);
-    pos += 8;
-
-    // num_child_specs (4 bytes LE)
-    if pos + 4 > data.len() {
-        return None;
-    }
-    let num_specs = u32::from_le_bytes(data[pos..pos + 4].try_into().ok()?) as usize;
-    pos += 4;
-
-    let mut child_specs = Vec::with_capacity(num_specs);
-
-    for _ in 0..num_specs {
-        // id string length (4 bytes LE)
-        if pos + 4 > data.len() {
-            return None;
-        }
-        let id_len = u32::from_le_bytes(data[pos..pos + 4].try_into().ok()?) as usize;
-        pos += 4;
-
-        // id string bytes
-        if pos + id_len > data.len() {
-            return None;
-        }
-        let id = std::str::from_utf8(&data[pos..pos + id_len])
-            .ok()?
-            .to_string();
-        pos += id_len;
-
-        // start_fn pointer (8 bytes LE)
-        if pos + 8 > data.len() {
-            return None;
-        }
-        let start_fn = u64::from_le_bytes(data[pos..pos + 8].try_into().ok()?) as *const u8;
-        pos += 8;
-
-        // start_args pointer (8 bytes LE)
-        if pos + 8 > data.len() {
-            return None;
-        }
-        let start_args_ptr = u64::from_le_bytes(data[pos..pos + 8].try_into().ok()?) as *const u8;
-        pos += 8;
-
-        // start_args size (8 bytes LE)
-        if pos + 8 > data.len() {
-            return None;
-        }
-        let start_args_size = u64::from_le_bytes(data[pos..pos + 8].try_into().ok()?);
-        pos += 8;
-
-        // restart_type (1 byte)
-        if pos >= data.len() {
-            return None;
-        }
-        let restart_type = match data[pos] {
-            0 => child_spec::RestartType::Permanent,
-            1 => child_spec::RestartType::Transient,
-            2 => child_spec::RestartType::Temporary,
-            _ => return None,
-        };
-        pos += 1;
-
-        // shutdown_type (1 byte)
-        if pos >= data.len() {
-            return None;
-        }
-        let shutdown_type_tag = data[pos];
-        pos += 1;
-
-        // shutdown_timeout_ms (8 bytes LE)
-        if pos + 8 > data.len() {
-            return None;
-        }
-        let shutdown_timeout = u64::from_le_bytes(data[pos..pos + 8].try_into().ok()?);
-        pos += 8;
-
-        let shutdown = match shutdown_type_tag {
-            0 => child_spec::ShutdownType::BrutalKill,
-            1 => child_spec::ShutdownType::Timeout(shutdown_timeout),
-            _ => return None,
-        };
-
-        // child_type (1 byte)
-        if pos >= data.len() {
-            return None;
-        }
-        let child_type = match data[pos] {
-            0 => child_spec::ChildType::Worker,
-            1 => child_spec::ChildType::Supervisor,
-            _ => return None,
-        };
-        pos += 1;
-
-        child_specs.push(child_spec::ChildSpec {
-            id,
-            start_fn,
-            start_args_ptr,
-            start_args_size,
-            restart_type,
-            shutdown,
-            child_type,
-        });
+    fn u8(&mut self) -> usize {
+        usize::from(self.bytes(1)[0])
     }
 
-    Some(supervisor::SupervisorConfig {
+    fn u32(&mut self) -> u32 {
+        u32::from_le_bytes(self.bytes(4).try_into().unwrap())
+    }
+
+    fn u64(&mut self) -> u64 {
+        u64::from_le_bytes(self.bytes(8).try_into().unwrap())
+    }
+}
+
+/// Parse the `SupervisorConfig` the compiler wrote (see
+/// `mesh_supervisor_start`). A tag out of range panics, as a short config
+/// does: the compiler writes neither.
+fn parse_supervisor_config(data: &[u8]) -> supervisor::SupervisorConfig {
+    use child_spec::{ChildType, RestartType, ShutdownType, Strategy};
+    let mut config = ConfigReader(data);
+    let strategy = [
+        Strategy::OneForOne,
+        Strategy::OneForAll,
+        Strategy::RestForOne,
+        Strategy::SimpleOneForOne,
+    ][config.u8()];
+    let max_restarts = config.u32();
+    let max_seconds = config.u64();
+    let children = config.u32();
+    let child_specs = (0..children)
+        .map(|_| {
+            let id_len = config.u32() as usize;
+            let id = String::from_utf8(config.bytes(id_len).to_vec())
+                .expect("a child's id is a Mesh identifier");
+            let start_fn = config.u64() as *const u8;
+            let start_args_ptr = config.u64() as *const u8;
+            let start_args_size = config.u64();
+            let restart_type = [
+                RestartType::Permanent,
+                RestartType::Transient,
+                RestartType::Temporary,
+            ][config.u8()];
+            let shutdown_tag = config.u8();
+            let timeout = config.u64();
+            let shutdown = [ShutdownType::BrutalKill, ShutdownType::Timeout(timeout)][shutdown_tag];
+            let child_type = [ChildType::Worker, ChildType::Supervisor][config.u8()];
+            child_spec::ChildSpec {
+                id,
+                start_fn,
+                start_args_ptr,
+                start_args_size,
+                restart_type,
+                shutdown,
+                child_type,
+            }
+        })
+        .collect();
+
+    supervisor::SupervisorConfig {
         strategy,
         max_restarts,
         max_seconds,
         child_specs,
-    })
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2865,25 +2735,71 @@ mod tests {
     // Supervisor config parser tests (Phase 69)
     // -----------------------------------------------------------------------
 
-    /// A supervisor config of one local child, as codegen encodes it.
+    /// The supervisor config the compiler writes for `children`: one for one,
+    /// each a permanent worker killed outright.
+    fn supervisor_config(children: &[extern "C-unwind" fn(*const u8)]) -> Vec<u8> {
+        let mut config = vec![0];
+        config.extend_from_slice(&3u32.to_le_bytes());
+        config.extend_from_slice(&5u64.to_le_bytes());
+        config.extend_from_slice(&(children.len() as u32).to_le_bytes());
+        for child in children {
+            config.extend_from_slice(&7u32.to_le_bytes());
+            config.extend_from_slice(b"worker1");
+            config.extend_from_slice(&(*child as usize as u64).to_le_bytes());
+            config.extend_from_slice(&[0; 16]);
+            config.extend_from_slice(&[0, 0]);
+            config.extend_from_slice(&0u64.to_le_bytes());
+            config.push(0);
+        }
+        config
+    }
+
+    extern "C-unwind" fn idle_child(_args: *const u8) {
+        mesh_actor_receive(-1);
+    }
+
     #[test]
     fn a_supervisor_config_of_one_child_parses() {
-        let mut buf = vec![0u8];
-        buf.extend_from_slice(&3u32.to_le_bytes());
-        buf.extend_from_slice(&5u64.to_le_bytes());
-        buf.extend_from_slice(&1u32.to_le_bytes());
-        buf.extend_from_slice(&7u32.to_le_bytes());
-        buf.extend_from_slice(b"worker1");
-        for _ in 0..3 {
-            buf.extend_from_slice(&0u64.to_le_bytes());
+        let mut config = supervisor_config(&[idle_child]);
+        let parsed = parse_supervisor_config(&config);
+        assert_eq!(parsed.child_specs.len(), 1);
+        assert_eq!(parsed.child_specs[0].id, "worker1");
+        config.pop();
+        let cut_off = std::panic::catch_unwind(|| parse_supervisor_config(&config));
+        assert!(cut_off.is_err(), "a config cut short is a compiler bug");
+    }
+
+    /// A supervisor passes over a program's messages, and answers for its
+    /// children by PID; it has no template to start a dynamic child from.
+    #[test]
+    fn a_supervisor_ignores_program_messages_and_answers_for_its_children() {
+        mesh_rt_init_actor(1);
+        let config = supervisor_config(&[idle_child]);
+        let sup = mesh_supervisor_start(config.as_ptr(), config.len() as u64);
+        let state = supervisor::get_supervisor_state(ProcessId(sup)).unwrap();
+        let child = state.lock().children[0].pid.unwrap().as_u64();
+        let nobody = u64::MAX >> 24;
+        assert_eq!(local_send(sup, 7u64.to_le_bytes().as_ptr(), 8), 0);
+
+        assert_eq!(mesh_supervisor_count_children(sup), 1);
+        assert_eq!(mesh_supervisor_count_children(nobody), 0);
+        assert_eq!(
+            mesh_supervisor_start_child(sup, std::ptr::null(), 0),
+            u64::MAX
+        );
+        assert_eq!(mesh_supervisor_terminate_child(sup, nobody), 1);
+        assert_eq!(mesh_supervisor_terminate_child(nobody, child), 1);
+        assert_eq!(mesh_supervisor_terminate_child(sup, child), 0);
+        assert_eq!(mesh_supervisor_count_children(sup), 0);
+        let supervisor = global_scheduler().get_process(ProcessId(sup)).unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !supervisor.lock().mailbox.is_empty() && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(1));
         }
-        buf.extend_from_slice(&[0, 0]);
-        buf.extend_from_slice(&0u64.to_le_bytes());
-        buf.push(0);
-        let config = parse_supervisor_config(&buf).expect("parse should succeed");
-        assert_eq!(config.child_specs.len(), 1);
-        assert_eq!(config.child_specs[0].id, "worker1");
-        buf.pop();
-        assert!(parse_supervisor_config(&buf).is_none(), "cut off");
+        assert!(
+            supervisor.lock().mailbox.is_empty(),
+            "the message was taken"
+        );
+        assert!(!matches!(supervisor.lock().state, ProcessState::Exited(_)));
     }
 }

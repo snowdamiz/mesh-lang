@@ -49,8 +49,6 @@ pub struct SupervisorState {
     pub children: Vec<ChildState>,
     /// Sliding window of restart timestamps for restart limit enforcement.
     pub restart_history: VecDeque<Instant>,
-    /// For simple_one_for_one: the template child spec used for dynamic children.
-    pub child_template: Option<ChildSpec>,
 }
 
 impl SupervisorState {
@@ -62,7 +60,6 @@ impl SupervisorState {
             max_seconds,
             children: Vec::new(),
             restart_history: VecDeque::new(),
-            child_template: None,
         }
     }
 
@@ -128,13 +125,8 @@ fn supervisor_states() -> &'static Mutex<FxHashMap<ProcessId, Arc<Mutex<Supervis
 }
 
 /// Register a supervisor state for the given PID.
-pub fn register_supervisor_state(
-    pid: ProcessId,
-    state: SupervisorState,
-) -> Arc<Mutex<SupervisorState>> {
-    let arc = Arc::new(Mutex::new(state));
-    supervisor_states().lock().insert(pid, Arc::clone(&arc));
-    arc
+pub fn register_supervisor_state(pid: ProcessId, state: Arc<Mutex<SupervisorState>>) {
+    supervisor_states().lock().insert(pid, state);
 }
 
 /// Look up a supervisor state by PID.
@@ -192,27 +184,7 @@ pub fn terminate_all_children(
     scheduler: &Scheduler,
     sup_pid: ProcessId,
 ) {
-    let len = state.children.len();
-    if len == 0 {
-        return;
-    }
-    terminate_children_range(state, 0, len, scheduler, sup_pid);
-}
-
-/// Terminate children in the range `[from_idx, to_idx)` in REVERSE order.
-pub fn terminate_children_range(
-    state: &mut SupervisorState,
-    from_idx: usize,
-    to_idx: usize,
-    scheduler: &Scheduler,
-    sup_pid: ProcessId,
-) {
-    // Iterate in reverse order.
-    for i in (from_idx..to_idx).rev() {
-        if state.children[i].running {
-            terminate_single_child(&mut state.children[i], scheduler, sup_pid);
-        }
-    }
+    terminate_children_from(state, 0, scheduler, sup_pid);
 }
 
 /// Terminate children from `from_idx` to end, in reverse order.
@@ -222,8 +194,11 @@ pub fn terminate_children_from(
     scheduler: &Scheduler,
     sup_pid: ProcessId,
 ) {
-    let len = state.children.len();
-    terminate_children_range(state, from_idx, len, scheduler, sup_pid);
+    for child in state.children[from_idx..].iter_mut().rev() {
+        if child.running {
+            terminate_single_child(child, scheduler, sup_pid);
+        }
+    }
 }
 
 /// Terminate a single child process.
@@ -264,7 +239,7 @@ pub fn terminate_single_child(child: &mut ChildState, scheduler: &Scheduler, sup
         }
         ShutdownType::Timeout(ms) => {
             // Send a Shutdown exit signal to the child.
-            send_exit_signal(scheduler, child_pid, &ExitReason::Shutdown);
+            super::deliver_exit_signal(scheduler, child_pid, ExitReason::Shutdown);
 
             // Poll for the child to exit within the timeout.
             let deadline = Instant::now() + Duration::from_millis(ms);
@@ -301,43 +276,6 @@ pub fn terminate_single_child(child: &mut ChildState, scheduler: &Scheduler, sup
     // Mark child as not running.
     child.running = false;
     child.pid = None;
-}
-
-/// Send an exit signal to a target process by delivering it to the mailbox.
-///
-/// If the target has trap_exit enabled, the signal is delivered as a message.
-/// If not, the process is terminated with the given reason.
-/// If the reason is Killed, the process is immediately terminated (untrappable).
-fn send_exit_signal(scheduler: &Scheduler, target_pid: ProcessId, reason: &ExitReason) {
-    if let Some(proc_arc) = scheduler.get_process(target_pid) {
-        let mut proc = proc_arc.lock();
-
-        // Skip already-exited processes.
-        if matches!(proc.state, ProcessState::Exited(_)) {
-            return;
-        }
-
-        // Killed is untrappable -- immediately terminate.
-        if matches!(reason, ExitReason::Killed) {
-            proc.mark_exited(ExitReason::Killed);
-            return;
-        }
-
-        if proc.trap_exit {
-            // Deliver as a message (the process will handle it in its receive loop).
-            let signal_data = link::encode_exit_signal(target_pid, reason);
-            let buffer = super::heap::MessageBuffer::new(signal_data, link::EXIT_SIGNAL_TAG);
-            proc.mailbox.push(super::process::Message { buffer });
-
-            // Wake if Waiting.
-            if matches!(proc.state, ProcessState::Waiting) {
-                proc.set_live_state(ProcessState::Ready);
-            }
-        } else {
-            // Non-trapping process: terminate immediately.
-            proc.mark_exited(reason.clone());
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -686,11 +624,6 @@ mod tests {
         }
 
         let mut state = SupervisorState::new(Strategy::SimpleOneForOne, 3, 5);
-        state.child_template = Some(test_child_spec(
-            "template",
-            RestartType::Permanent,
-            ShutdownType::BrutalKill,
-        ));
 
         // Add dynamic children.
         for i in 0..3 {
