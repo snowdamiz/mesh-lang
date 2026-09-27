@@ -666,7 +666,15 @@ pub(crate) fn runtime_snapshot_from_state(
     let routing_policy = super::routing::runtime_routing_policy();
     let local_report = super::routing::local_load_report(&state.name, BTreeSet::new());
     let _ = super::routing::load_report_registry().apply(local_report, now);
-    let mut membership = peer_names(state);
+    // The peers and their protocols as one read of the sessions finds them:
+    // every member but this node has its session's protocol.
+    let peer_protocols: BTreeMap<_, _> = state
+        .sessions
+        .read()
+        .iter()
+        .map(|(node, session)| (node.clone(), session.negotiated_protocol.clone()))
+        .collect();
+    let mut membership: Vec<String> = peer_protocols.keys().cloned().collect();
     membership.push(state.name.clone());
     membership.sort();
     membership.dedup();
@@ -676,12 +684,6 @@ pub(crate) fn runtime_snapshot_from_state(
         .filter_map(|node| {
             super::routing::load_report_registry().report(node, now, routing_policy.load_report_ttl)
         })
-        .collect();
-    let peer_protocols: BTreeMap<_, _> = state
-        .sessions
-        .read()
-        .iter()
-        .map(|(node, session)| (node.clone(), session.negotiated_protocol.clone()))
         .collect();
     let telemetry_complete = reports.len() == membership.len();
     let nodes: Vec<_> = reports
@@ -711,8 +713,27 @@ pub(crate) fn runtime_snapshot_from_state(
                 roles.push("worker".to_string());
             }
             let drain_intent = drain_requested(&report.node_id);
-            let protocol = peer_protocols.get(&report.node_id);
-            let local_protocol = report.node_id == state.name;
+            // A peer speaks its session's protocol, this node the current
+            // one.
+            let (
+                protocol_version,
+                protocol_capabilities,
+                autonomous_protocol_enabled,
+                protocol_disabled_reason,
+            ) = match peer_protocols.get(&report.node_id) {
+                Some(protocol) => (
+                    protocol.version,
+                    protocol.capabilities.bits(),
+                    protocol.autonomous_enabled,
+                    protocol.disabled_reason.clone(),
+                ),
+                None => (
+                    super::protocol::PROTOCOL_V2,
+                    super::protocol::Capabilities::AUTONOMOUS_REQUIRED.bits(),
+                    true,
+                    None,
+                ),
+            };
             let continuity_safety =
                 super::continuity_store::continuity_node_safety(&report.node_id, &live_nodes)
                     .unwrap_or(super::continuity_store::ContinuityNodeSafety {
@@ -722,26 +743,10 @@ pub(crate) fn runtime_snapshot_from_state(
                     });
             OperatorNodeRuntimeSnapshot {
                 node_id: report.node_id.clone(),
-                protocol_version: protocol.map_or_else(
-                    || u16::from(local_protocol) * super::protocol::PROTOCOL_V2,
-                    |protocol| protocol.version,
-                ),
-                protocol_capabilities: protocol.map_or_else(
-                    || {
-                        if local_protocol {
-                            super::protocol::Capabilities::AUTONOMOUS_REQUIRED.bits()
-                        } else {
-                            0
-                        }
-                    },
-                    |protocol| protocol.capabilities.bits(),
-                ),
-                autonomous_protocol_enabled: protocol
-                    .is_some_and(|protocol| protocol.autonomous_enabled)
-                    || local_protocol,
-                protocol_disabled_reason: protocol
-                    .and_then(|protocol| protocol.disabled_reason.clone())
-                    .or_else(|| (!local_protocol).then(|| "session_unavailable".to_string())),
+                protocol_version,
+                protocol_capabilities,
+                autonomous_protocol_enabled,
+                protocol_disabled_reason,
                 roles,
                 state: if drain_intent {
                     "draining".to_string()
