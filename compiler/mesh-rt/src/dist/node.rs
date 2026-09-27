@@ -200,8 +200,8 @@ fn local_protocol_hello() -> ProtocolHello {
     ProtocolHello::current(*PROTOCOL_BOOT_ID.get_or_init(rand::random))
 }
 
-/// A setting of the process environment, where a node reads its identity.
-fn process_env(name: &str) -> Option<String> {
+/// A setting of the process environment, where a node reads how it runs.
+pub(crate) fn process_env(name: &str) -> Option<String> {
     std::env::var(name).ok()
 }
 
@@ -14826,5 +14826,65 @@ mod tests {
         );
         registry.clear_for_test();
         clear_declared_handler_registry_for_test();
+    }
+
+    /// An autonomous node with a stable identity joins while a session it
+    /// has does not speak the autonomous protocol, then warms up until
+    /// every gate is passed: a controller alone among its voters needs no
+    /// peer, but it has no quorum here.
+    #[test]
+    fn an_autonomous_node_joins_then_warms_up() {
+        let exclusive = declared_handler_registry_test_lock();
+        test_node();
+        let settings = |name: &str| {
+            [
+                ("MESH_CLUSTER_ID", "cluster"),
+                ("MESH_STABLE_NODE_ID", "cluster/controller-1"),
+                ("MESH_TLS_CA_DER_B64", "ca"),
+                ("MESH_TLS_CERT_DER_B64", "cert"),
+                ("MESH_TLS_KEY_DER_B64", "key"),
+                ("MESH_ROLES", "controller"),
+                (
+                    "MESH_CONTROLLER_VOTERS",
+                    "cluster/controller-1|controller@127.0.0.1:1",
+                ),
+                ("MESH_DISCOVERY_INTERVAL_MS", "100"),
+            ]
+            .into_iter()
+            .find(|(setting, _)| *setting == name)
+            .map(|(_, value)| value.to_string())
+        };
+        let status = || in_autonomous_mode(|| crate::dist::readiness::readiness_status(&settings));
+        let unready = |status: &crate::dist::readiness::NodeReadinessStatus| -> Vec<String> {
+            status
+                .gates
+                .iter()
+                .filter(|gate| !gate.ready)
+                .map(|gate| gate.name.clone())
+                .collect()
+        };
+
+        let manual = TestPeer::within(&exclusive, "manual-protocol-peer@127.0.0.1:1");
+        let joining = status();
+        assert_eq!(joining.state, "joining");
+        assert!(unready(&joining).contains(&"protocol_capabilities".to_string()));
+        drop(manual);
+
+        let autonomous = TestPeer::build(
+            "autonomous-protocol-peer@127.0.0.1:1",
+            protocol_two(),
+            None,
+            None,
+        );
+        let warming = status();
+        assert_eq!(warming.state, "warming");
+        let gates = unready(&warming);
+        assert!(
+            gates.contains(&"controller_quorum".to_string()),
+            "{gates:?}"
+        );
+        assert!(!gates.contains(&"stable_identity_and_mtls".to_string()));
+        assert!(!gates.contains(&"protocol_capabilities".to_string()));
+        drop(autonomous);
     }
 }
