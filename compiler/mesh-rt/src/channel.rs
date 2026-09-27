@@ -290,7 +290,9 @@ pub extern "C-unwind" fn mesh_channel_recv(handle: i64, timeout_nanos: i64) -> *
             }
         }
     };
-    let armed = actor.is_some_and(|(pid, _)| actor::wake_at(pid, deadline));
+    if let Some((pid, _)) = actor {
+        actor::wake_at(pid, deadline);
+    }
     loop {
         // Waiting before looking: a value sent from here on finds the actor
         // Waiting (or already registered) and wakes it.
@@ -317,13 +319,7 @@ pub extern "C-unwind" fn mesh_channel_recv(handle: i64, timeout_nanos: i64) -> *
             }
         }
         match actor {
-            Some(_) if armed => stack::yield_current(),
-            // Nothing would wake it at the deadline (the timer queue is
-            // full): stay runnable.
-            Some(_) => {
-                set_state(ProcessState::Ready);
-                stack::yield_current();
-            }
+            Some(_) => stack::yield_current(),
             None => std::thread::park_timeout(deadline.saturating_duration_since(Instant::now())),
         }
     }

@@ -150,67 +150,35 @@ pub(crate) fn cooperative_channel<T>() -> (CooperativeSender<T>, std::sync::mpsc
 ///
 /// This is the scheduler-aware equivalent of `Receiver::recv_timeout`: an
 /// actor becomes Waiting and is resumed by either its reply sender or the
-/// bounded timer reactor. Non-actor callers retain the standard blocking
-/// behavior.
+/// timer reactor. Non-actor callers retain the standard blocking behavior.
 pub(crate) fn cooperative_recv_timeout<T>(
     receiver: &std::sync::mpsc::Receiver<T>,
     timeout: std::time::Duration,
 ) -> Result<T, std::sync::mpsc::RecvTimeoutError> {
+    use std::sync::mpsc::{RecvTimeoutError, TryRecvError};
     let in_coroutine = stack::CURRENT_YIELDER.with(|current| current.yielder.get().is_some());
     if !in_coroutine {
         return receiver.recv_timeout(timeout);
     }
 
-    let Some(pid) = stack::get_current_pid() else {
-        return receiver.recv_timeout(timeout);
-    };
+    let (pid, me) = running_process();
     let deadline = std::time::Instant::now() + timeout;
-    let scheduler = global_scheduler();
-    let timer_registered = timer_wake_sender()
-        .try_send(TimerWake { deadline, pid })
-        .is_ok();
-
+    wake_at(pid, deadline);
     loop {
-        match receiver.try_recv() {
-            Ok(value) => return Ok(value),
-            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                return Err(std::sync::mpsc::RecvTimeoutError::Disconnected);
+        // Waiting before looking: a reply, or the deadline, that comes from
+        // here on finds the actor Waiting and wakes it.
+        me.lock().set_live_state(ProcessState::Waiting);
+        let answer = match receiver.try_recv() {
+            Ok(value) => Some(Ok(value)),
+            Err(TryRecvError::Disconnected) => Some(Err(RecvTimeoutError::Disconnected)),
+            Err(TryRecvError::Empty) => {
+                (std::time::Instant::now() >= deadline).then_some(Err(RecvTimeoutError::Timeout))
             }
-            Err(std::sync::mpsc::TryRecvError::Empty) => {}
+        };
+        if let Some(answer) = answer {
+            me.lock().set_live_state(ProcessState::Ready);
+            return answer;
         }
-        if std::time::Instant::now() >= deadline {
-            return Err(std::sync::mpsc::RecvTimeoutError::Timeout);
-        }
-
-        if timer_registered {
-            if let Some(process) = scheduler.get_process(pid) {
-                process.lock().set_live_state(ProcessState::Waiting);
-            }
-            match receiver.try_recv() {
-                Ok(value) => {
-                    if let Some(process) = scheduler.get_process(pid) {
-                        process.lock().set_live_state(ProcessState::Ready);
-                    }
-                    return Ok(value);
-                }
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                    if let Some(process) = scheduler.get_process(pid) {
-                        process.lock().set_live_state(ProcessState::Ready);
-                    }
-                    return Err(std::sync::mpsc::RecvTimeoutError::Disconnected);
-                }
-                Err(std::sync::mpsc::TryRecvError::Empty) => {}
-            }
-            if std::time::Instant::now() >= deadline {
-                if let Some(process) = scheduler.get_process(pid) {
-                    process.lock().set_live_state(ProcessState::Ready);
-                }
-                return Err(std::sync::mpsc::RecvTimeoutError::Timeout);
-            }
-        }
-
-        // If the bounded timer queue is saturated, remain runnable and yield
-        // cooperatively until the deadline instead of blocking an OS worker.
         stack::yield_current();
     }
 }
@@ -847,10 +815,7 @@ where
         None // infinite wait
     };
     if let Some(deadline) = deadline {
-        if !wake_at(my_pid, deadline) {
-            // Match Timer.sleep's bounded fallback when the timer queue is full.
-            std::thread::sleep(deadline.saturating_duration_since(std::time::Instant::now()));
-        }
+        wake_at(my_pid, deadline);
     }
 
     loop {
@@ -929,12 +894,14 @@ impl PartialOrd for TimerWake {
     }
 }
 
-const TIMER_WAKE_QUEUE_ITEMS: usize = 65_536;
 static TIMER_WAKE_SENDER: OnceLock<crossbeam_channel::Sender<TimerWake>> = OnceLock::new();
 
+/// The timer reactor's queue. Unbounded: the reactor moves each timer into
+/// a heap of its own as it arrives, so a bound here would bound nothing, and
+/// a caller could only fall back to blocking its worker.
 fn timer_wake_sender() -> &'static crossbeam_channel::Sender<TimerWake> {
     TIMER_WAKE_SENDER.get_or_init(|| {
-        let (sender, receiver) = crossbeam_channel::bounded(TIMER_WAKE_QUEUE_ITEMS);
+        let (sender, receiver) = crossbeam_channel::unbounded();
         std::thread::Builder::new()
             .name("mesh-timer-reactor".to_string())
             .spawn(move || timer_reactor(receiver))
@@ -991,28 +958,11 @@ pub extern "C-unwind" fn mesh_timer_sleep(ms: i64) {
         return;
     }
 
-    let Some(pid) = stack::get_current_pid() else {
-        return;
-    };
+    let (pid, me) = running_process();
     let deadline = std::time::Instant::now() + std::time::Duration::from_millis(ms as u64);
-    let scheduler = global_scheduler();
-    loop {
-        let now = std::time::Instant::now();
-        if now >= deadline {
-            return;
-        }
-        if let Some(process) = scheduler.get_process(pid) {
-            process.lock().set_live_state(ProcessState::Waiting);
-        }
-        if !wake_at(pid, deadline) {
-            // Fail boundedly without stranding the actor. Saturating the timer
-            // queue is exceptional; this fallback blocks only the current worker.
-            if let Some(process) = scheduler.get_process(pid) {
-                process.lock().set_live_state(ProcessState::Running);
-            }
-            std::thread::sleep(deadline.saturating_duration_since(now));
-            return;
-        }
+    while std::time::Instant::now() < deadline {
+        me.lock().set_live_state(ProcessState::Waiting);
+        wake_at(pid, deadline);
         stack::yield_current();
         // A mailbox send may wake a sleeping actor early. Re-arm for the
         // remaining monotonic duration without consuming that message.
@@ -1020,11 +970,11 @@ pub extern "C-unwind" fn mesh_timer_sleep(ms: i64) {
 }
 
 /// Have the timer reactor make `pid` Ready at `deadline` if it is Waiting
-/// then. `false` when the timer queue is full.
-pub(crate) fn wake_at(pid: ProcessId, deadline: std::time::Instant) -> bool {
+/// then.
+pub(crate) fn wake_at(pid: ProcessId, deadline: std::time::Instant) {
     timer_wake_sender()
-        .try_send(TimerWake { deadline, pid })
-        .is_ok()
+        .send(TimerWake { deadline, pid })
+        .expect("the timer reactor runs for as long as the program");
 }
 
 /// Schedule a message to be sent to `target_pid` after `ms` milliseconds.
@@ -2000,6 +1950,27 @@ fn parse_supervisor_config(data: &[u8]) -> Option<supervisor::SupervisorConfig> 
 // Tests
 // ---------------------------------------------------------------------------
 
+/// Run `body` as an actor of the global scheduler, for a test, and return
+/// what it returns.
+#[cfg(test)]
+pub(crate) fn in_actor<T: Send + 'static>(body: impl FnOnce() -> T + Send + 'static) -> T {
+    type Body = Box<dyn FnOnce() + Send>;
+    extern "C-unwind" fn entry(args: *const u8) {
+        let body = unsafe { Box::from_raw(args as *mut Body) };
+        body();
+    }
+    mesh_rt_init_actor(1);
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let body: Body = Box::new(move || {
+        let _ = sender.send(body());
+    });
+    let args = Box::into_raw(Box::new(body));
+    global_scheduler().spawn(entry as *const u8, args.cast(), 0, 1);
+    receiver
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .expect("the actor ran to its end")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2144,6 +2115,38 @@ mod tests {
         let start = std::time::Instant::now();
         let timed_out = mesh_actor_receive(20).is_null();
         let _ = sender.send((timed_out, start.elapsed()));
+    }
+
+    /// A reply that is there, one that comes while the actor waits, a sender
+    /// that has gone and a deadline that passes each end the wait.
+    #[test]
+    fn cooperative_recv_timeout_answers_every_way_a_wait_ends() {
+        use std::sync::mpsc::RecvTimeoutError;
+        use std::time::Duration;
+        let answers = in_actor(|| {
+            let (sender, receiver) = cooperative_channel();
+            sender.send(5).unwrap();
+            let ready = cooperative_recv_timeout(&receiver, Duration::from_secs(5));
+            let later = std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(20));
+                sender.send(9).unwrap();
+            });
+            let waited = cooperative_recv_timeout(&receiver, Duration::from_secs(5));
+            later.join().unwrap();
+            let gone = cooperative_recv_timeout(&receiver, Duration::from_secs(5));
+            let (_sender, silent) = cooperative_channel::<i32>();
+            let timed_out = cooperative_recv_timeout(&silent, Duration::from_millis(20));
+            [ready, waited, gone, timed_out]
+        });
+        assert_eq!(
+            answers,
+            [
+                Ok(5),
+                Ok(9),
+                Err(RecvTimeoutError::Disconnected),
+                Err(RecvTimeoutError::Timeout)
+            ]
+        );
     }
 
     #[test]
