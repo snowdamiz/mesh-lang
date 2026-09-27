@@ -85,17 +85,12 @@ fn query_applied_versions(conn: &mut NativePgConn) -> Result<Vec<i64>, String> {
         "SELECT version FROM _mesh_migrations ORDER BY version",
         &[],
     )?;
-    let mut versions = Vec::new();
-    for row in &rows {
-        for (col, val) in row {
-            if col == "version" {
-                if let Ok(v) = val.parse::<i64>() {
-                    versions.push(v);
-                }
-            }
-        }
-    }
-    Ok(versions)
+    // Each row's one column is the version.
+    Ok(rows
+        .iter()
+        .flatten()
+        .filter_map(|(_, version)| version.parse().ok())
+        .collect())
 }
 
 /// The database the migrations run against.
