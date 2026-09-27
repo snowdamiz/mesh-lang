@@ -13402,4 +13402,107 @@ mod tests {
         registry.clear_for_test();
         clear_declared_handler_registry_for_test();
     }
+
+    /// A declared handler for startup work, which ends its attempt as its
+    /// runtime name says: completed, rejected, fenced by a newer attempt,
+    /// or forgotten (the record gone).
+    extern "C" fn startup_outcome_handler(args: *const u8) {
+        let words = unsafe { std::slice::from_raw_parts(args as *const u64, 2) };
+        let (key, attempt) = (
+            mesh_string_arg_to_owned(words[0]),
+            mesh_string_arg_to_owned(words[1]),
+        );
+        let registry = crate::dist::continuity::continuity_registry();
+        if key.ends_with(".complete") {
+            complete_declared_work(&key, &attempt).unwrap();
+        } else if key.ends_with(".reject") {
+            registry
+                .reject_durable_request(&key, &attempt, "startup_handler_failed")
+                .unwrap();
+        } else if key.ends_with(".fence") {
+            let mut newer = registry.record(&key).unwrap();
+            newer.attempt_id = "attempt-999".to_string();
+            newer.record_version += 1;
+            registry.merge_remote_record(1_000, newer).unwrap();
+        } else {
+            registry.clear_for_test();
+        }
+    }
+
+    /// Startup work waits for the cluster to settle, submits itself, and
+    /// waits for its attempt to end, saying how it ended: completed,
+    /// rejected, fenced by a newer attempt, or lost. Work with no handler,
+    /// or no name, is refused at once.
+    #[test]
+    fn startup_work_runs_once_the_cluster_settles_and_says_how_it_ended() {
+        let _exclusive = declared_handler_registry_test_lock();
+        test_node();
+        let registry = crate::dist::continuity::continuity_registry();
+        registry.clear_for_test();
+        let outcomes = ["complete", "reject", "fence"];
+        for outcome in outcomes {
+            let name = format!("Startup.{outcome}");
+            mesh_register_declared_handler(
+                name.as_ptr(),
+                name.len() as u64,
+                name.as_ptr(),
+                name.len() as u64,
+                1,
+                startup_outcome_handler as *const u8,
+            );
+            spawn_startup_work_actor(&name);
+        }
+        spawn_startup_work_actor("Startup.absent");
+        let words = [crate::string::mesh_str(" ") as u64];
+        crate::actor::global_scheduler().spawn(
+            startup_work_entry as *const u8,
+            words.as_ptr() as *const u8,
+            8,
+            1,
+        );
+
+        for (outcome, transition) in [
+            ("complete", "startup_completed"),
+            ("reject", "startup_rejected"),
+            ("fence", "startup_fenced"),
+            ("absent", "startup_rejected"),
+        ] {
+            await_diagnostic(
+                transition,
+                &startup_request_key(&format!("Startup.{outcome}")),
+            );
+        }
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !crate::dist::operator::operator_recent_diagnostics(None)
+            .entries
+            .iter()
+            .any(|entry| {
+                entry.transition == "startup_rejected"
+                    && entry.reason.as_deref() == Some(STARTUP_RUNTIME_NAME_MISSING)
+            })
+        {
+            assert!(
+                Instant::now() < deadline,
+                "the unnamed work was not refused"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+
+        let forgotten = "Startup.forget";
+        mesh_register_declared_handler(
+            forgotten.as_ptr(),
+            forgotten.len() as u64,
+            forgotten.as_ptr(),
+            forgotten.len() as u64,
+            1,
+            startup_outcome_handler as *const u8,
+        );
+        spawn_startup_work_actor(forgotten);
+        assert_eq!(
+            await_diagnostic("startup_rejected", &startup_request_key(forgotten)).reason,
+            Some("request_key_not_found".to_string())
+        );
+        registry.clear_for_test();
+        clear_declared_handler_registry_for_test();
+    }
 }
