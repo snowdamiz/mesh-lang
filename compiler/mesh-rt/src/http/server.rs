@@ -1098,6 +1098,14 @@ fn is_header_value_byte(byte: u8) -> bool {
     byte == b'\t' || (byte >= 0x20 && byte != 0x7F)
 }
 
+/// A handler's status as a status line's: three digits, or an error.
+fn response_status(status: i64) -> Result<u16, String> {
+    u16::try_from(status)
+        .ok()
+        .filter(|status| (100..=999).contains(status))
+        .ok_or_else(|| format!("invalid response status {status}"))
+}
+
 /// Write an HTTP/1.1 response to an `HttpStream` (plain TCP or TLS).
 ///
 /// Format: status line, Content-Type, Content-Length, Connection: close,
@@ -1118,23 +1126,11 @@ fn write_response(
         validate_response_headers(headers)?;
     }
 
-    let status_text = match status {
-        200 => "OK",
-        201 => "Created",
-        202 => "Accepted",
-        204 => "No Content",
-        301 => "Moved Permanently",
-        302 => "Found",
-        400 => "Bad Request",
-        401 => "Unauthorized",
-        403 => "Forbidden",
-        404 => "Not Found",
-        405 => "Method Not Allowed",
-        429 => "Too Many Requests",
-        500 => "Internal Server Error",
-        503 => "Service Unavailable",
-        _ => "OK",
-    };
+    // The status's standard reason, or none for a status without one.
+    let status_text = ureq::http::StatusCode::from_u16(status)
+        .ok()
+        .and_then(|status| status.canonical_reason())
+        .unwrap_or("");
 
     let content_type = extra_headers
         .as_ref()
@@ -1227,8 +1223,14 @@ extern "C" fn connection_handler_entry(args: *const u8) {
         match parse_request(&mut stream) {
             Ok(parsed) => {
                 let (status, body, headers) = process_request(router_ptr, parsed);
-                let _ = match headers.as_deref().map_or(Ok(()), validate_response_headers) {
-                    Ok(()) => write_response(&mut stream, status, &body, headers),
+                let checked = response_status(status).and_then(|status| {
+                    headers
+                        .as_deref()
+                        .map_or(Ok(()), validate_response_headers)
+                        .map(|()| status)
+                });
+                let _ = match checked {
+                    Ok(status) => write_response(&mut stream, status, &body, headers),
                     Err(error) => {
                         eprintln!("[mesh-rt] HTTP handler response rejected: {}", error);
                         write_response(&mut stream, 500, b"Internal Server Error", None)
@@ -1503,11 +1505,12 @@ fn call_middleware(
 /// Process a single HTTP request by matching it against the router
 /// and calling the appropriate handler function.
 ///
-/// Returns `(status_code, body_bytes, optional_extra_headers)` for the response.
+/// Returns `(status_code, body_bytes, optional_extra_headers)` for the
+/// response, the status as the handler gave it.
 fn process_request(
     router_ptr: *mut u8,
     parsed: ParsedRequest,
-) -> (u16, Vec<u8>, Option<Vec<(String, String)>>) {
+) -> (i64, Vec<u8>, Option<Vec<(String, String)>>) {
     unsafe {
         let router = &*(router_ptr as *const MeshRouter);
 
@@ -1637,7 +1640,7 @@ fn process_request(
 
         // Extract response from the Mesh response pointer.
         let resp = &*(response_ptr as *const MeshHttpResponse);
-        let status_code = resp.status as u16;
+        let status_code = resp.status;
         let body = if resp.body_bytes.is_null() {
             if resp.body.is_null() {
                 Vec::new()
@@ -1941,6 +1944,34 @@ mod tests {
             started.elapsed()
         );
         drop(client);
+    }
+
+    /// A status line carries its status's standard reason, or none for a
+    /// status without one (a 409 was "OK"); a status of more or fewer than
+    /// three digits is refused (a 70000 wrapped to 4464).
+    #[test]
+    fn statuses_are_written_with_their_reasons() {
+        for (status, line) in [
+            (202, "HTTP/1.1 202 Accepted\r\n"),
+            (403, "HTTP/1.1 403 Forbidden\r\n"),
+            (405, "HTTP/1.1 405 Method Not Allowed\r\n"),
+            (409, "HTTP/1.1 409 Conflict\r\n"),
+            (299, "HTTP/1.1 299 \r\n"),
+        ] {
+            let mut response = Vec::new();
+            write_response(&mut response, status, b"", None).unwrap();
+            assert!(
+                String::from_utf8(response).unwrap().starts_with(line),
+                "{status}"
+            );
+        }
+        for status in [99, 1000, -1, 70_000] {
+            assert_eq!(
+                response_status(status),
+                Err(format!("invalid response status {status}"))
+            );
+        }
+        assert_eq!(response_status(100), Ok(100));
     }
 
     #[test]
