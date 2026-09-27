@@ -235,12 +235,11 @@ fn select_sql(
             .map(|o| {
                 if let Some(raw) = o.strip_prefix("RAW:") {
                     raw.to_string() // emit verbatim
-                } else if let Some(space_pos) = o.rfind(' ') {
-                    let col = &o[..space_pos];
-                    let dir = &o[space_pos + 1..];
-                    format!("{} {}", quote_name(col), dir)
                 } else {
-                    format!("{} ASC", quote_name(o))
+                    // "field DIR": `order_by` writes a field (an atom, so
+                    // without a space) and its direction.
+                    let (col, dir) = o.split_once(' ').expect("an order has its direction");
+                    format!("{} {}", quote_name(col), dir)
                 }
             })
             .collect();
