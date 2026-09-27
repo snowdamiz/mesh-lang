@@ -11986,6 +11986,41 @@ mod tests {
         );
         assert!(!reserved(1), "the query took its reservation");
 
+        // A query for a handler this node no longer has runs nothing; one
+        // for work this node has no record of runs the handler, but cannot
+        // complete the work.
+        let responding = "PeerRouted.respond";
+        mesh_register_declared_handler(
+            responding.as_ptr(),
+            responding.len() as u64,
+            responding.as_ptr(),
+            responding.len() as u64,
+            1,
+            clustered_route_handler as *const u8,
+        );
+        let request = route_payload("GET", "unrecorded");
+        let reserved_query = |correlation: u64, runtime: &str, key: &str, attempt: &str| {
+            assert_eq!(
+                reserve(correlation, responding, request.len() as u32),
+                (correlation, Ok(()))
+            );
+            peer.receive(
+                encode_http_route_v2_query_frame(correlation, runtime, key, attempt, &request)
+                    .unwrap(),
+            );
+            decode_http_route_v2_reply_frame(&peer.next_sent()).unwrap()
+        };
+        assert_eq!(
+            reserved_query(5, "Vanished.handle", "", ""),
+            (
+                5,
+                Err("declared_handler_not_registered:Vanished.handle".to_string())
+            )
+        );
+        assert!(reserved_query(6, responding, "unrecorded-key", "attempt-1")
+            .1
+            .is_err());
+
         peer.session.shutdown.store(true, Ordering::SeqCst);
         peer.receive(encode_http_reserve(4, runtime_name, "reserved-key", 5).unwrap());
         assert!(!reserved(4), "a reservation it cannot confirm is not held");
@@ -13170,6 +13205,19 @@ mod tests {
             drain_with(&peers, "drained-single@h:1", at_once),
             Err("continuity_drain_handler_unavailable:Elsewhere.handle".to_string())
         );
+        // A request moved to a node, which this node has no handler to
+        // send it with, is rejected.
+        merge_pending_record(
+            "drained-http-elsewhere-key",
+            "drained-elsewhere@h:1",
+            a,
+            "Elsewhere.handle",
+        );
+        let rejected = || {
+            record_phase("drained-http-elsewhere-key")
+                == Some(crate::dist::continuity::ContinuityPhase::Rejected)
+        };
+        drain_with(&peers, "drained-elsewhere@h:1", rejected).unwrap();
         // Work its new owner will not spawn fails the drain.
         merge_pending_record(
             "drained-unspawnable-key",
@@ -13895,6 +13943,25 @@ mod tests {
             execute_clustered_http_route(handler, key, hash, &route_payload("GET", key))
         };
 
+        // A request kept in two copies, with no other member to hold the
+        // second, is refused before it runs.
+        let lonely = "Lonely.route";
+        mesh_register_declared_handler(
+            lonely.as_ptr(),
+            lonely.len() as u64,
+            lonely.as_ptr(),
+            lonely.len() as u64,
+            2,
+            clustered_route_handler as *const u8,
+        );
+        assert!(execute_clustered_http_route(
+            lonely,
+            "lonely-route",
+            "sha256:lonely",
+            &route_payload("GET", "lonely")
+        )
+        .is_err());
+
         let local = key_owned_by(&state.name, "local-route");
         let first = run(&local, "sha256:local").unwrap();
         assert!(!first.replayed && !first.routed_remotely);
@@ -13954,62 +14021,92 @@ mod tests {
         clear_declared_handler_registry_for_test();
     }
 
+    extern "C" fn unanswering_route_handler(_request: *mut u8) -> *mut u8 {
+        std::ptr::null_mut()
+    }
+
     /// When a routed request's owner turns it away, as a draining owner
     /// does, a request safe to replay is recovered: its owner is marked
     /// lost, this node (the coordinator, and the record's replica) takes it
     /// over with a new replica, runs it, and returns the response kept.
+    /// One kept in no other copy cannot be recovered, and one whose
+    /// recovered run fails is rejected: both fail as the owner answered.
     #[test]
     fn a_replay_safe_request_its_owner_turns_away_is_recovered_here() {
         let exclusive = declared_handler_registry_test_lock();
         let state = test_node();
         let registry = crate::dist::continuity::continuity_registry();
         registry.clear_for_test();
-        let handler = "Recovered.route";
-        mesh_register_declared_handler(
-            handler.as_ptr(),
-            handler.len() as u64,
-            handler.as_ptr(),
-            handler.len() as u64,
-            2,
-            clustered_route_handler as *const u8,
-        );
-        let owner = TestPeer::within(&exclusive, "draining-route-owner@127.0.0.1:1");
-        // The spare replica sorts after this node both as a member (so this
-        // node coordinates) and by name (so this node is the first replica).
-        let spare = (0..)
-            .map(|index| format!("zz-route-spare-{index}@127.0.0.1:1"))
-            .find(|name| stable_hash_u64(name) > stable_hash_u64(&state.name))
-            .unwrap();
-        let spare = TestPeer::within(&exclusive, &spare);
-        let key = key_owned_by(&owner.session.remote_name, "turned-away-route");
-        // Both stay ready workers with the handler, as their heartbeats
+        let (recovered, unreplicated, unanswered) =
+            ("Recovered.route", "Unreplicated.route", "Unanswered.route");
+        for (handler, copies, function) in [
+            (recovered, 2, clustered_route_handler as *const u8),
+            (unreplicated, 1, clustered_route_handler as *const u8),
+            (unanswered, 2, unanswering_route_handler as *const u8),
+        ] {
+            mesh_register_declared_handler(
+                handler.as_ptr(),
+                handler.len() as u64,
+                handler.as_ptr(),
+                handler.len() as u64,
+                copies,
+                function,
+            );
+        }
+        // Peers that sort after this node as members, so this node
+        // coordinates recovery, and after it by name, so this node is the
+        // first replica; each owner has a retry budget of its own.
+        let after_this_node = |prefix: &str| {
+            let name = (0..)
+                .map(|index| format!("zz-{prefix}-{index}@127.0.0.1:1"))
+                .find(|name| stable_hash_u64(name) > stable_hash_u64(&state.name))
+                .unwrap();
+            TestPeer::within(&exclusive, &name)
+        };
+        let owner = after_this_node("draining-route-owner");
+        let lone_owner = after_this_node("lone-route-owner");
+        let failing_owner = after_this_node("failing-route-owner");
+        let spare = after_this_node("route-spare");
+        let request = |handler: &str, owner: &TestPeer| {
+            let key = key_owned_by(&owner.session.remote_name, "turned-away-route");
+            let result = execute_clustered_http_route(
+                handler,
+                &key,
+                "sha256:turned",
+                &route_payload("GET", &key),
+            );
+            (key, result)
+        };
+        // Both stay ready workers with the handlers, as their heartbeats
         // would keep them.
         let report = || {
-            report_worker(&state.name, &[handler]);
-            report_worker(&spare.session.remote_name, &[handler]);
+            for node in [&state.name, &spare.session.remote_name] {
+                report_worker(node, &[recovered, unreplicated, unanswered]);
+            }
         };
         report();
         let done = AtomicBool::new(false);
-        let recovered = std::thread::scope(|scope| {
-            scope.spawn(|| serve_as_nodes(&[&owner, &spare], &done));
+        let peers = [&owner, &lone_owner, &failing_owner, &spare];
+        let (turned_away, alone, failed) = std::thread::scope(|scope| {
+            scope.spawn(|| serve_as_nodes(&peers, &done));
             scope.spawn(|| {
                 while !done.load(Ordering::Acquire) {
                     report();
                     std::thread::sleep(Duration::from_millis(200));
                 }
             });
-            let recovered = execute_clustered_http_route(
-                handler,
-                &key,
-                "sha256:recovered",
-                &route_payload("GET", &key),
+            let results = (
+                request(recovered, &owner),
+                request(unreplicated, &lone_owner),
+                request(unanswered, &failing_owner),
             );
             done.store(true, Ordering::Release);
-            recovered
-        })
-        .unwrap();
+            results
+        });
+
+        let (key, turned_away) = turned_away;
         assert_eq!(
-            response_body(&recovered.response_payload),
+            response_body(&turned_away.unwrap().response_payload),
             format!("handled:{key}")
         );
         let record = registry.record(&key).unwrap();
@@ -14017,7 +14114,13 @@ mod tests {
             (record.owner_node, record.replica_nodes),
             (state.name.clone(), vec![spare.session.remote_name.clone()])
         );
-        drop((owner, spare));
+        for (_, result) in [alone, failed] {
+            assert_eq!(
+                result.err(),
+                Some("owner_reservation_rejected:Draining".to_string())
+            );
+        }
+        drop((owner, lone_owner, failing_owner, spare));
         registry.clear_for_test();
         clear_declared_handler_registry_for_test();
     }
