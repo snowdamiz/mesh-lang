@@ -7622,15 +7622,9 @@ impl<'a> Lowerer<'a> {
             Expr::SpawnExpr(spawn) => self.lower_spawn_expr(spawn),
             Expr::SendExpr(send) => self.lower_send_expr(send),
             Expr::ReceiveExpr(recv) => self.lower_receive_expr(recv),
-            Expr::SelfExpr(_) => {
-                let ty = self.resolve_range(expr.syntax().text_range());
-                let ty = if matches!(ty, MirType::Unit) {
-                    MirType::Pid(None)
-                } else {
-                    ty
-                };
-                MirExpr::ActorSelf { ty }
-            }
+            Expr::SelfExpr(_) => MirExpr::ActorSelf {
+                ty: self.resolve_range(expr.syntax().text_range()),
+            },
             Expr::LinkExpr(link) => self.lower_link_expr(link),
             // Loop expressions
             Expr::WhileExpr(w) => self.lower_while_expr(w),
