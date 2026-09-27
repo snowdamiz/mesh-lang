@@ -1685,14 +1685,30 @@ impl<'ctx> CodeGen<'ctx> {
                 .map_err(|e| e.to_string())?;
         }
 
-        // Merge block
-        self.builder.position_at_end(merge_bb);
-        let result = self
-            .builder
-            .build_load(result_ty, result_alloca, "if_val")
-            .map_err(|e| e.to_string())?;
+        self.merged_value(merge_bb, result_ty, result_alloca, "if_val")
+    }
 
-        Ok(result)
+    /// The value the branches into `merge_bb` left in `slot`, continuing
+    /// there. When none of them reaches it (each ended in a `return`,
+    /// `break`, `continue` or panic) the block is unreachable, and so is
+    /// what follows: no value is read.
+    fn merged_value(
+        &self,
+        merge_bb: inkwell::basic_block::BasicBlock<'ctx>,
+        ty: inkwell::types::BasicTypeEnum<'ctx>,
+        slot: PointerValue<'ctx>,
+        name: &str,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        self.builder.position_at_end(merge_bb);
+        if merge_bb.get_first_use().is_none() {
+            self.builder
+                .build_unreachable()
+                .map_err(|e| e.to_string())?;
+            return Ok(ty.const_zero());
+        }
+        self.builder
+            .build_load(ty, slot, name)
+            .map_err(|e| e.to_string())
     }
 
     /// A call of type Never does not return: its block ends there.
@@ -1817,14 +1833,7 @@ impl<'ctx> CodeGen<'ctx> {
             },
         )?;
 
-        // Merge block
-        self.builder.position_at_end(merge_bb);
-        let result = self
-            .builder
-            .build_load(result_ty, result_alloca, "match_val")
-            .map_err(|e| e.to_string())?;
-
-        Ok(result)
+        self.merged_value(merge_bb, result_ty, result_alloca, "match_val")
     }
 
     /// Match `arms` against several values at once, held in a stack struct
@@ -1875,10 +1884,7 @@ impl<'ctx> CodeGen<'ctx> {
                 merge_bb,
             },
         )?;
-        self.builder.position_at_end(merge_bb);
-        self.builder
-            .build_load(result_ty, result_alloca, "match_val")
-            .map_err(|e| e.to_string())
+        self.merged_value(merge_bb, result_ty, result_alloca, "match_val")
     }
 
     // ── Struct literal ───────────────────────────────────────────────
@@ -2876,13 +2882,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(|e| e.to_string())?;
             }
 
-            // recv_merge_bb: load and return the result.
-            self.builder.position_at_end(recv_merge_bb);
-            let result = self
-                .builder
-                .build_load(result_llvm_ty, result_alloca, "recv_val")
-                .map_err(|e| e.to_string())?;
-            Ok(result)
+            self.merged_value(recv_merge_bb, result_llvm_ty, result_alloca, "recv_val")
         } else {
             let function = self.current_function();
             let stopped = self.context.append_basic_block(function, "receive_stopped");
@@ -4339,7 +4339,8 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(|e| e.to_string())?;
                 Ok(cast_result.into_int_value())
             }
-            MirType::String | MirType::Ptr | MirType::FnPtr(_, _) => {
+            // A tuple is a pointer to the runtime tuple.
+            MirType::String | MirType::Ptr | MirType::FnPtr(_, _) | MirType::Tuple(_) => {
                 let ptr_val = val.into_pointer_value();
                 self.builder
                     .build_ptr_to_int(ptr_val, i64_type, "ptr_to_i64")
@@ -4353,23 +4354,9 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(|e| e.to_string())
             }
             MirType::Int | MirType::Pid(_) => Ok(val.into_int_value()),
-            MirType::Unit => {
-                // Unit values are stored as 0 in lists.
-                Ok(self.context.i64_type().const_int(0, false))
-            }
-            _ => match val {
-                // A narrower integer (an `i8` bool or unit) widens to the slot.
-                BasicValueEnum::IntValue(iv) if iv.get_type().get_bit_width() < 64 => self
-                    .builder
-                    .build_int_z_extend(iv, i64_type, "narrow_to_i64")
-                    .map_err(|e| e.to_string()),
-                BasicValueEnum::IntValue(iv) => Ok(iv),
-                BasicValueEnum::PointerValue(pv) => self
-                    .builder
-                    .build_ptr_to_int(pv, i64_type, "ptr_to_i64")
-                    .map_err(|e| e.to_string()),
-                _ => Ok(i64_type.const_int(0, false)),
-            },
+            // A unit value was stored above; a value that never comes into
+            // being is never stored.
+            MirType::Unit | MirType::Never => unreachable!("a {mir_ty:?} value in a slot"),
         }
     }
 
@@ -4382,7 +4369,7 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
         match target_ty {
-            MirType::Int => Ok(val.into()),
+            MirType::Int | MirType::Pid(_) => Ok(val.into()),
             MirType::Bool => {
                 let truncated = self
                     .builder
@@ -4398,7 +4385,8 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(|e| e.to_string())?;
                 Ok(cast_result)
             }
-            MirType::String | MirType::Ptr | MirType::FnPtr(_, _) => {
+            // A tuple is a pointer to the runtime tuple.
+            MirType::String | MirType::Ptr | MirType::FnPtr(_, _) | MirType::Tuple(_) => {
                 let ptr_val = self
                     .builder
                     .build_int_to_ptr(val, ptr_type, "i64_to_ptr")
@@ -4414,12 +4402,8 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_load(self.llvm_type(target_ty), ptr_val, "boxed_value")
                     .map_err(|e| e.to_string())
             }
-            MirType::Pid(_) => Ok(val.into()),
             MirType::Unit => Ok(self.context.struct_type(&[], false).const_zero().into()),
-            _ => {
-                // Best effort: return as i64.
-                Ok(val.into())
-            }
+            MirType::Never => unreachable!("a slot holds no value that never comes into being"),
         }
     }
 
