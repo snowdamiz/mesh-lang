@@ -9615,7 +9615,7 @@ fn tuple_element_type(
         }
         _ => {
             // Anything that is not a tuple at all is rejected here.
-            ctx.unify(tuple_ty.clone(), Ty::Con(TyCon::new("Tuple")), origin)?;
+            ctx.unify(Ty::Con(TyCon::new("Tuple")), tuple_ty.clone(), origin)?;
             Ok(Ty::int())
         }
     }

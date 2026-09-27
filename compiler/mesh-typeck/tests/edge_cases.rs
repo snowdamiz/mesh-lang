@@ -1717,6 +1717,33 @@ end
     );
 }
 
+/// A tuple accessor applied to what is no tuple expects a tuple and finds
+/// the value: `Tuple.first(5)` was "expected `Int`, found `Tuple`". The
+/// other `Tuple` functions are ordinary calls.
+#[test]
+fn a_tuple_accessor_expects_a_tuple() {
+    assert_eq!(
+        located_errors(
+            r#"fn not_tuple() do
+  Tuple.first(5)
+end
+
+fn sized(t :: (Int, String)) -> Int do
+  Tuple.size(t)
+end
+
+fn bare(t :: (Int, String)) -> Int do
+  tuple_first(t)
+end
+"#
+        ),
+        [(
+            "type mismatch: expected `Tuple`, found `Int`".to_string(),
+            "Tuple.first(5)".to_string()
+        )]
+    );
+}
+
 /// A value that is no function cannot be called, directly or piped into,
 /// though its arguments are checked first; a call of what never returns
 /// (`panic(...)`) is anything. A field read from a value nothing gives a
