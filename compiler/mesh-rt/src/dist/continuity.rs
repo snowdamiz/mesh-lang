@@ -1754,7 +1754,8 @@ fn transition_rejected_record(
         result: ContinuityResult::Rejected,
         replica_status,
         replication_health: ReplicationHealth::Unavailable,
-        error: reason.to_string(),
+        // A reason can be a peer's error, which only its frame bounds.
+        error: super::char_prefix(reason, CONTINUITY_TEXT_MAX_BYTES).to_string(),
         ..record
     })
 }
@@ -3995,6 +3996,27 @@ mod tests {
         assert_eq!(retried.outcome, SubmitOutcome::Created);
         assert_ne!(retried.record.attempt_id, rejected.record.attempt_id);
         assert_eq!(retried.record.replica_status, ReplicaStatus::Mirrored);
+    }
+
+    /// A rejection's reason can be a peer's error, as long as a frame
+    /// holds: the record keeps what a record's text holds of it, so it
+    /// still encodes for its peers and its store.
+    #[test]
+    fn a_rejection_keeps_as_much_of_its_reason_as_a_record_holds() {
+        let registry = continuity_fresh_registry();
+        let created = registry
+            .submit_with_replica_prepare(
+                continuity_submit_request("req-1", "hash-a", "", 0),
+                |_| Ok(()),
+            )
+            .unwrap();
+        let reason = format!("{}é", "x".repeat(CONTINUITY_TEXT_MAX_BYTES - 1));
+        let rejected = registry
+            .reject_durable_request("req-1", &created.record.attempt_id, &reason.repeat(20))
+            .unwrap();
+        assert_eq!(rejected.error.len(), CONTINUITY_TEXT_MAX_BYTES - 1);
+        assert!(rejected.error.bytes().all(|byte| byte == b'x'));
+        assert!(encode_upsert_payload(1, &rejected).is_ok());
     }
 
     #[test]
