@@ -2307,32 +2307,10 @@ fn handle_session_message(
         DIST_SPAWN_REPLY => {
             // Wire format: [tag][u64 req_id][u8 status][u64 spawned_local_id]
             if msg.len() >= 18 {
-                use crate::actor::heap::MessageBuffer;
-                use crate::actor::process::Message;
-
                 let req_id = u64::from_le_bytes(msg[1..9].try_into().unwrap());
-                let status = msg[9];
-                let spawned_local_id = u64::from_le_bytes(msg[10..18].try_into().unwrap());
-
-                // Look up which process is waiting for this spawn reply.
                 let requester = session.pending_spawns.lock().unwrap().remove(&req_id);
-
-                if let Some(requester_pid) = requester {
-                    // Build spawn reply payload: [u64 req_id][u8 status][u64 spawned_local_id]
-                    let mut reply_data = Vec::with_capacity(17);
-                    reply_data.extend_from_slice(&req_id.to_le_bytes());
-                    reply_data.push(status);
-                    reply_data.extend_from_slice(&spawned_local_id.to_le_bytes());
-
-                    let buffer = MessageBuffer::new(reply_data, SPAWN_REPLY_TAG);
-                    let reply_msg = Message { buffer };
-
-                    let sched = crate::actor::global_scheduler();
-                    if let Some(proc_arc) = sched.get_process(requester_pid) {
-                        let proc = proc_arc.lock();
-                        proc.mailbox.push(reply_msg);
-                        sched.wake_if_waiting(requester_pid, proc);
-                    }
+                if let Some(requester) = requester {
+                    deliver_spawn_reply(requester, &msg[1..18]);
                 }
             }
         }
@@ -2724,7 +2702,32 @@ fn cleanup_session_if_current(session: &Arc<NodeSession>) {
     }
 }
 
+/// Hands the reply to a remote spawn, `[u64 request id][u8 status][u64
+/// spawned local id]`, to the process waiting for it in `mesh_node_spawn`.
+fn deliver_spawn_reply(requester: crate::actor::process::ProcessId, reply: &[u8]) {
+    use crate::actor::heap::MessageBuffer;
+    use crate::actor::process::Message;
+
+    let sched = crate::actor::global_scheduler();
+    if let Some(process) = sched.get_process(requester) {
+        let process = process.lock();
+        process.mailbox.push(Message {
+            buffer: MessageBuffer::new(reply.to_vec(), SPAWN_REPLY_TAG),
+        });
+        sched.wake_if_waiting(requester, process);
+    }
+}
+
 fn fail_pending_session_requests(session: &NodeSession, reason: &str) {
+    // A spawn the peer never answered has failed: its requester stops
+    // waiting for a reply that cannot come.
+    let spawns: Vec<_> = session.pending_spawns.lock().unwrap().drain().collect();
+    for (request_id, requester) in spawns {
+        let mut reply = request_id.to_le_bytes().to_vec();
+        reply.push(1);
+        reply.extend_from_slice(&0u64.to_le_bytes());
+        deliver_spawn_reply(requester, &reply);
+    }
     for (_, sender) in session.pending_continuity_prepares.lock().unwrap().drain() {
         let _ = sender.send(Err(reason.to_string()));
     }
@@ -10779,34 +10782,39 @@ mod tests {
             handle_session_message(&self.session, &self.heartbeat, msg);
         }
 
-        /// The frames the session queued for the peer since the last call,
+        /// The oldest frame the session has queued for the peer (by lane),
         /// but for the broadcasts every session of the node gets (from the
         /// other tests too).
-        fn sent(&self) -> Vec<Vec<u8>> {
+        fn take_sent(&self) -> Option<Vec<u8>> {
             let receivers = self.session.outbound_receivers.lock().unwrap();
             let receivers = receivers.as_ref().expect("no writer took the lanes");
-            let mut frames = Vec::new();
-            for lane in [
+            let lanes = [
                 &receivers.control,
                 &receivers.admission,
                 &receivers.continuity,
                 &receivers.application,
                 &receivers.snapshot,
-            ] {
-                for frame in lane.try_iter() {
+            ];
+            let frame = lanes
+                .into_iter()
+                .flat_map(|lane| lane.try_iter())
+                .find_map(|frame| {
                     release_outbound_frame_bytes(&self.session, &frame);
                     let payload =
                         decode_session_payload(frame.payload, &self.session.negotiated_protocol)
                             .expect("a frame the session encoded");
-                    if !matches!(
+                    (!matches!(
                         payload[0],
                         DIST_GLOBAL_REGISTER | DIST_GLOBAL_UNREGISTER | DIST_CONTINUITY_UPSERT
-                    ) {
-                        frames.push(payload);
-                    }
-                }
-            }
-            frames
+                    ))
+                    .then_some(payload)
+                });
+            frame
+        }
+
+        /// The frames the session queued for the peer since the last call.
+        fn sent(&self) -> Vec<Vec<u8>> {
+            std::iter::from_fn(|| self.take_sent()).collect()
         }
 
         /// The next frame the session queues, which an actor or worker
@@ -10814,7 +10822,7 @@ mod tests {
         fn next_sent(&self) -> Vec<u8> {
             let deadline = Instant::now() + Duration::from_secs(10);
             loop {
-                if let Some(frame) = self.sent().into_iter().next() {
+                if let Some(frame) = self.take_sent() {
                     return frame;
                 }
                 assert!(Instant::now() < deadline, "the session sent nothing");
@@ -11782,5 +11790,80 @@ mod tests {
 
     fn peer_pid(session: &NodeSession, local: u64) -> ProcessId {
         ProcessId::from_remote(session.node_id, session.remote_creation, local)
+    }
+
+    struct RemoteSpawnCall {
+        target: String,
+        link: u8,
+        returned: mpsc::Sender<u64>,
+    }
+
+    extern "C" fn remote_spawn_caller(args: *const u8) {
+        let call = unsafe { Box::from_raw(*(args as *const u64) as *mut RemoteSpawnCall) };
+        let function = "peer_side_function";
+        let pid = mesh_node_spawn(
+            call.target.as_ptr(),
+            call.target.len() as u64,
+            function.as_ptr(),
+            function.len() as u64,
+            std::ptr::null(),
+            0,
+            std::ptr::null(),
+            0,
+            call.link,
+        );
+        let _ = call.returned.send(pid);
+    }
+
+    /// What `mesh_node_spawn`, called from an actor, returns for a spawn
+    /// of `peer_side_function` on `target` (linked when `link` is 1).
+    fn spawn_remotely(target: &str, link: u8) -> mpsc::Receiver<u64> {
+        let (returned, result) = mpsc::channel();
+        let call = Box::into_raw(Box::new(RemoteSpawnCall {
+            target: target.to_string(),
+            link,
+            returned,
+        })) as u64;
+        let args = Box::leak(Box::new(call)) as *const u64 as *const u8;
+        crate::actor::global_scheduler().spawn(remote_spawn_caller as *const u8, args, 8, 1);
+        result
+    }
+
+    /// A remote spawn waits for the peer's reply and returns the pid it
+    /// names, or 0 when the peer refuses. When the peer goes before it
+    /// answers, the spawn fails rather than waiting for good.
+    #[test]
+    fn a_remote_spawn_returns_what_the_peer_answers_or_fails_when_it_goes() {
+        let name = "spawn-target@127.0.0.1:1";
+        let peer = TestPeer::new(name);
+        // The request, past the exit signal a linked caller sends as it ends.
+        let request = || loop {
+            let frame = peer.next_sent();
+            if frame[0] == DIST_SPAWN {
+                return frame;
+            }
+            assert_eq!(frame[0], DIST_EXIT);
+        };
+        let answer = |status: u8, local: u64| {
+            let request = request();
+            peer.receive(frame(
+                DIST_SPAWN_REPLY,
+                &[&request[1..9], &[status], &local.to_le_bytes()],
+            ));
+        };
+        let wait = Duration::from_secs(10);
+
+        let returned = spawn_remotely(name, 1);
+        answer(0, 12);
+        assert_eq!(returned.recv_timeout(wait), Ok(peer.pid(12).as_u64()));
+
+        let returned = spawn_remotely(name, 0);
+        answer(1, 0);
+        assert_eq!(returned.recv_timeout(wait), Ok(0));
+
+        let returned = spawn_remotely(name, 0);
+        request();
+        drop(peer);
+        assert_eq!(returned.recv_timeout(wait), Ok(0));
     }
 }
