@@ -246,14 +246,25 @@ fn parse_pg_url(url: &str) -> Result<PgUrl, String> {
         (host_part, user.clone()) // default database = username
     };
 
-    let (host, port) = if let Some((h, p)) = host_port.rsplit_once(':') {
-        let port = p
-            .parse::<u16>()
-            .map_err(|_| format!("invalid port: {}", p))?;
-        (h.to_string(), port)
-    } else {
-        (host_port.to_string(), 5432)
+    // An IPv6 address is bracketed: [::1] or [::1]:5432.
+    let (host, port) = match host_port
+        .strip_prefix('[')
+        .and_then(|rest| rest.split_once(']'))
+    {
+        Some((host, "")) => (host, None),
+        Some((host, port)) => (host, Some(port.strip_prefix(':').unwrap_or(port))),
+        None => match host_port.rsplit_once(':') {
+            Some((host, port)) => (host, Some(port)),
+            None => (host_port, None),
+        },
     };
+    let port = match port {
+        Some(port) => port
+            .parse::<u16>()
+            .map_err(|_| format!("invalid port: {}", port))?,
+        None => 5432,
+    };
+    let host = host.to_string();
 
     Ok(PgUrl {
         host,
@@ -1268,7 +1279,7 @@ pub(super) fn open(url: &str) -> Result<u64, String> {
 fn connect(url: &str) -> Result<PgConn, String> {
     let pg_url = parse_pg_url(url)?;
 
-    let addrs = format!("{}:{}", pg_url.host, pg_url.port)
+    let addrs = (pg_url.host.as_str(), pg_url.port)
         .to_socket_addrs()
         .map_err(|e| format!("DNS resolution failed: {}", e))?;
     // Each address in turn, as libpq tries them: `localhost` can name ::1
@@ -1993,6 +2004,45 @@ mod tests {
                 Err(error) => assert!(error.contains(expected), "{case}: {error}"),
             }
         }
+    }
+
+    /// An IPv6 host is bracketed in the URL, not in the address or the
+    /// name TLS checks the certificate against.
+    #[test]
+    fn connect_reaches_a_bracketed_ipv6_host() {
+        for (url, host, port) in [
+            ("postgres://u@[::1]:6543/d", "::1", 6543),
+            ("postgres://u@[fe80::1]/d", "fe80::1", 5432),
+        ] {
+            let url = parse_pg_url(url).unwrap();
+            assert_eq!((url.host.as_str(), url.port), (host, port));
+        }
+        assert_eq!(
+            parse_pg_url("postgres://u@[::1]x/d").err().as_deref(),
+            Some("invalid port: x")
+        );
+        // A host without IPv6 loopback (some containers) has nothing to reach.
+        let Ok(listener) = std::net::TcpListener::bind("[::1]:0") else {
+            return;
+        };
+        let port = listener.local_addr().unwrap().port();
+        let peer = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            read_startup(&mut socket);
+            socket
+                .write_all(&[auth(0, b""), ready(b'I')].concat())
+                .unwrap();
+            // TLS: offered, then the connection ends.
+            let (mut socket, _) = listener.accept().unwrap();
+            socket.read_exact(&mut [0; 8]).unwrap();
+            socket.write_all(b"S").unwrap();
+        });
+        let url = format!("postgres://u@[::1]:{port}/d");
+        let plain = connect(&format!("{url}?sslmode=disable")).map(|conn| conn.txn_status);
+        assert_eq!(plain, Ok(b'I'));
+        let tls = connect(&format!("{url}?sslmode=require")).err().unwrap();
+        peer.join().unwrap();
+        assert!(!tls.contains("invalid hostname"), "{tls}");
     }
 
     /// `localhost` can name ::1 first (it does on macOS) for a server that
