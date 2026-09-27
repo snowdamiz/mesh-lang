@@ -348,7 +348,7 @@ fn a_node_serves_consensus_operator_controls_and_its_controller() {
                 "-c".to_string(),
                 "exec sleep 5".to_string(),
             ],
-            working_directory: workers,
+            working_directory: workers.clone(),
         },
     };
     let json = serde_json::to_vec(&config).unwrap();
@@ -378,6 +378,34 @@ fn a_node_serves_consensus_operator_controls_and_its_controller() {
         .iter()
         .any(|entry| entry.reason == "record observed runtime membership"));
 
+    // A driver that can no longer create workers fails the tick that asks
+    // for one more, and the controller reports why.
+    std::fs::remove_dir(&workers).unwrap();
+    commit_consensus_command(
+        ConsensusCommand {
+            command_id: "more-workers".to_string(),
+            actor: "control-plane-test".to_string(),
+            reason: "one more worker".to_string(),
+            timestamp_unix_millis: unix_millis(),
+            actor_sequence: 0,
+            mutation: ControlMutation::ManualOverride { worker_nodes: 4 },
+        },
+        TIMEOUT,
+    )
+    .expect("override committed");
+    wait_until("a failed tick", || {
+        autonomous_controller_status()
+            .last_error
+            .is_some_and(|error| error.contains("process_driver_working_directory_invalid"))
+    });
+
+    // Without a leading consensus the controller stands by.
+    runtime.block_on(async { consensus.raft.shutdown().await.expect("shutdown") });
+    wait_until("the controller to stand by", || {
+        let status = autonomous_controller_status();
+        status.state == "standby" && !status.leader
+    });
+
     // A stopping node stops its controller.
     mesh_rt::dist::node::node_state()
         .unwrap()
@@ -386,5 +414,4 @@ fn a_node_serves_consensus_operator_controls_and_its_controller() {
     wait_until("the controller to stop", || {
         autonomous_controller_status().state == "stopped"
     });
-    runtime.block_on(async { consensus.raft.shutdown().await.expect("shutdown") });
 }

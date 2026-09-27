@@ -1119,7 +1119,8 @@ pub extern "C" fn mesh_register_autonomous_config_json(data: *const u8, len: u64
 mod tests {
     use super::super::operator::{OperatorNodeRuntimeSnapshot, OperatorRuntimeSnapshot};
     use super::super::scaling::{
-        CapacityNodeLifecycle, CapacityObservation, FakeCapacityDriver, ObservedCapacityNode,
+        CapacityNodeLifecycle, CapacityObservation, DriverOperation, DriverOperationState,
+        FakeCapacityDriver, ObservedCapacityNode,
     };
     use super::*;
 
@@ -1887,7 +1888,30 @@ mod tests {
         let mut config = config();
         config.features.horizontal_observe_only = true;
         let log = TestLog::default();
-        let mut controller = controller(config);
+        // The provider holds one live node and one it already removed.
+        let driver = FakeCapacityDriver::new();
+        for id in ["live", "removed"] {
+            let operation = DriverOperation {
+                cluster_id: "cluster".to_string(),
+                operation_id: format!("ensure-{id}"),
+                control_term: ControlTerm(1),
+                desired_revision: DesiredRevision(1),
+                template_revision: "v1".to_string(),
+                node_id: None,
+                state: DriverOperationState::Pending,
+            };
+            let node = driver.ensure_node(&operation).unwrap().node_id.unwrap();
+            if id == "removed" {
+                let terminate = DriverOperation {
+                    operation_id: format!("terminate-{id}"),
+                    ..operation
+                };
+                driver.terminate_node(&terminate, &node).unwrap();
+            }
+        }
+        let driver: Arc<dyn CapacityDriver> = Arc::new(driver);
+        let mut controller = AutonomousController::new(config, driver, "cluster".to_string())
+            .unwrap_or_else(|error| panic!("controller: {error}"));
         let snapshot = runtime_snapshot(vec![runtime_node("fixed@fixed:4370", &["worker"], 500)]);
 
         let tick = controller
@@ -1895,7 +1919,7 @@ mod tests {
             .expect("observe-only tick");
 
         assert_eq!(tick.reconcile.constraints, ["horizontal_observe_only"]);
-        assert_eq!(tick.reconcile.observed_workers, 0);
+        assert_eq!(tick.reconcile.observed_workers, 1);
         assert!(tick.reconcile.ensured.is_empty());
         assert!(tick
             .decision
