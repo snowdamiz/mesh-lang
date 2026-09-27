@@ -32,11 +32,10 @@ use sha2::Sha256;
 use subtle::ConstantTimeEq;
 
 use crate::bytes::{mesh_bytes_new, MeshBytes};
-use crate::collections::list::list_strings;
 use crate::collections::list::{
     mesh_list_append, mesh_list_from_array, mesh_list_get, mesh_list_length, mesh_list_new,
 };
-use crate::collections::map::{mesh_map_from_string_entries, mesh_map_new_typed, mesh_map_put};
+use crate::collections::map::mesh_map_from_string_entries;
 use crate::gc::mesh_gc_alloc_actor;
 use crate::io::{alloc_result, err_result, MeshResult};
 use crate::string::text_of;
@@ -111,7 +110,12 @@ impl PgConn {
                 "PostgreSQL connection is unusable",
             ));
         }
-        let result = self.stream.write_all(bytes);
+        // Flushed: TLS may hold what it was given, and report failing to
+        // send it only on the next read.
+        let result = self
+            .stream
+            .write_all(bytes)
+            .and_then(|()| self.stream.flush());
         if result.is_err() {
             self.broken = true;
         }
@@ -299,34 +303,6 @@ fn write_parse(buf: &mut Vec<u8>, query: &str) {
     buf.extend_from_slice(&body);
 }
 
-/// Write a Bind message with text parameters.
-fn write_bind(buf: &mut Vec<u8>, params: &[&str]) {
-    let mut body = Vec::new();
-    body.push(0); // unnamed portal
-    body.push(0); // unnamed statement
-
-    // Parameter format codes: 1 code, value 0 (text for all)
-    body.extend_from_slice(&1_i16.to_be_bytes());
-    body.extend_from_slice(&0_i16.to_be_bytes()); // text format
-
-    // Number of parameters
-    body.extend_from_slice(&(params.len() as i16).to_be_bytes());
-    for param in params {
-        let bytes = param.as_bytes();
-        body.extend_from_slice(&(bytes.len() as i32).to_be_bytes());
-        body.extend_from_slice(bytes);
-    }
-
-    // Result format codes: 1 code, value 0 (text for all)
-    body.extend_from_slice(&1_i16.to_be_bytes());
-    body.extend_from_slice(&0_i16.to_be_bytes()); // text format
-
-    buf.push(b'B');
-    let len = (body.len() + 4) as i32;
-    buf.extend_from_slice(&len.to_be_bytes());
-    buf.extend_from_slice(&body);
-}
-
 #[derive(Clone, Copy)]
 pub(crate) enum BindValue<'a> {
     Text(&'a [u8]),
@@ -334,7 +310,10 @@ pub(crate) enum BindValue<'a> {
     Null,
 }
 
-/// Write a Bind message with per-value parameter and result formats.
+/// Write a Bind of the unnamed statement: each parameter in text or binary
+/// format as its value is, and the result columns in `result_formats` (none:
+/// all text), which come from a RowDescription and so number at most
+/// `MAX_PG_VALUES`, each 0 or 1.
 fn write_bind_values(
     buf: &mut Vec<u8>,
     params: &[BindValue<'_>],
@@ -342,61 +321,33 @@ fn write_bind_values(
 ) -> Result<(), String> {
     if params.len() > MAX_PG_VALUES {
         return Err(format!(
-            "too many PostgreSQL parameters: {} (maximum {})",
-            params.len(),
-            MAX_PG_VALUES
+            "too many PostgreSQL parameters: {} (maximum {MAX_PG_VALUES})",
+            params.len()
         ));
     }
-    if result_formats.len() > MAX_PG_VALUES {
-        return Err(format!(
-            "too many PostgreSQL result columns: {} (maximum {})",
-            result_formats.len(),
-            MAX_PG_VALUES
-        ));
-    }
-    for format in result_formats {
-        if !matches!(format, 0 | 1) {
-            return Err(format!("invalid PostgreSQL format code: {format}"));
-        }
-    }
-
-    // Preflight the complete frame before copying any parameter bytes. This keeps
-    // a valid set of individually bounded values from growing an oversized buffer.
-    let mut body_len = 8_usize
-        .checked_add(
-            params
-                .len()
-                .checked_mul(2)
-                .ok_or_else(|| "PostgreSQL Bind message size calculation overflowed".to_string())?,
-        )
-        .and_then(|len| len.checked_add(result_formats.len().checked_mul(2)?))
-        .ok_or_else(|| "PostgreSQL Bind message size calculation overflowed".to_string())?;
+    // Sized in full before any value is copied: values each within their
+    // limit can still make a message past the protocol's. At most
+    // MAX_PG_VALUES values of MAX_DB_VALUE_BYTES each, the sum cannot
+    // overflow a 64-bit usize.
+    let mut body_len = 8 + 2 * params.len() + 2 * result_formats.len();
     for (index, param) in params.iter().enumerate() {
         let value_len = match param {
-            BindValue::Text(bytes) | BindValue::Binary(bytes) => {
-                if bytes.len() > MAX_DB_VALUE_BYTES {
-                    return Err(format!(
-                        "PostgreSQL parameter at index {index} exceeds {MAX_DB_VALUE_BYTES} byte limit"
-                    ));
-                }
-                bytes.len()
-            }
+            BindValue::Text(bytes) | BindValue::Binary(bytes) => bytes.len(),
             BindValue::Null => 0,
         };
-        body_len = body_len
-            .checked_add(4)
-            .and_then(|len| len.checked_add(value_len))
-            .ok_or_else(|| "PostgreSQL Bind message size calculation overflowed".to_string())?;
+        if value_len > MAX_DB_VALUE_BYTES {
+            return Err(format!(
+                "PostgreSQL parameter at index {index} exceeds {MAX_DB_VALUE_BYTES} byte limit"
+            ));
+        }
+        body_len += 4 + value_len;
     }
-    let message_len = body_len
-        .checked_add(4)
-        .filter(|len| *len <= MAX_PG_MESSAGE_BYTES)
-        .ok_or_else(|| {
-            format!(
-                "PostgreSQL Bind message exceeds {} byte limit",
-                MAX_PG_MESSAGE_BYTES
-            )
-        })?;
+    let message_len = body_len + 4;
+    if message_len > MAX_PG_MESSAGE_BYTES {
+        return Err(format!(
+            "PostgreSQL Bind message exceeds {MAX_PG_MESSAGE_BYTES} byte limit"
+        ));
+    }
 
     let mut body = Vec::with_capacity(body_len);
     body.push(0); // unnamed portal
@@ -755,14 +706,12 @@ fn authentication_body(tag: u8, body: &[u8], expected: i32) -> Result<&[u8], Str
 ///
 /// Contains SQLSTATE code, human-readable message, and optional constraint/table/column info
 /// for mapping database constraint violations to user-friendly changeset errors.
-pub(crate) struct PgError {
-    pub sqlstate: String, // 'C' field (e.g., "23505")
-    pub message: String,  // 'M' field
-    #[allow(dead_code)]
-    pub detail: Option<String>, // 'D' field
-    pub constraint: Option<String>, // 'n' field
-    pub table: Option<String>, // 't' field
-    pub column: Option<String>, // 'c' field
+struct PgError {
+    sqlstate: String,           // 'C' field (e.g., "23505")
+    message: String,            // 'M' field
+    constraint: Option<String>, // 'n' field
+    table: Option<String>,      // 't' field
+    column: Option<String>,     // 'c' field
 }
 
 /// Parse all tagged fields from an ErrorResponse body.
@@ -770,10 +719,9 @@ pub(crate) struct PgError {
 /// The body format is: `[field_type_byte][null_terminated_string]...[0]`
 /// This is the same format the existing `parse_error_response()` uses but extracts
 /// additional fields beyond just the message ('M').
-pub(crate) fn parse_error_response_full(body: &[u8]) -> PgError {
+fn parse_error_response_full(body: &[u8]) -> PgError {
     let mut sqlstate = String::new();
     let mut message = String::new();
-    let mut detail: Option<String> = None;
     let mut constraint: Option<String> = None;
     let mut table: Option<String> = None;
     let mut column: Option<String> = None;
@@ -794,11 +742,10 @@ pub(crate) fn parse_error_response_full(body: &[u8]) -> PgError {
         match field_type {
             b'C' => sqlstate = value,
             b'M' => message = value,
-            b'D' => detail = Some(value),
             b'n' => constraint = Some(value),
             b't' => table = Some(value),
             b'c' => column = Some(value),
-            _ => {} // skip other fields (S, V, P, q, W, etc.)
+            _ => {} // skip other fields (S, V, D, P, q, W, etc.)
         }
         i += 1; // skip null terminator
     }
@@ -810,7 +757,6 @@ pub(crate) fn parse_error_response_full(body: &[u8]) -> PgError {
     PgError {
         sqlstate,
         message,
-        detail,
         constraint,
         table,
         column,
@@ -844,13 +790,28 @@ fn format_pg_error_string(pg_err: &PgError) -> String {
 struct PgColumn {
     name: String,
     oid: u32,
+    /// Sent in binary format (a BYTEA column of a typed query).
+    binary: bool,
 }
+
+const BYTEA_OID: u32 = 17;
 
 #[derive(Debug, PartialEq, Eq)]
 enum RowValue<'a> {
-    Text(&'a str),
+    Text(&'a [u8]),
     Binary(&'a [u8]),
     Null,
+}
+
+impl RowValue<'_> {
+    /// The value as the text APIs give it: NULL as "", and bytes that are
+    /// not UTF-8 with U+FFFD.
+    fn lossy(&self) -> std::borrow::Cow<'_, str> {
+        match self {
+            RowValue::Text(bytes) | RowValue::Binary(bytes) => String::from_utf8_lossy(bytes),
+            RowValue::Null => "".into(),
+        }
+    }
 }
 
 fn parse_row_description(body: &[u8]) -> Result<Vec<PgColumn>, String> {
@@ -858,7 +819,7 @@ fn parse_row_description(body: &[u8]) -> Result<Vec<PgColumn>, String> {
         return Err("invalid PostgreSQL RowDescription".to_string());
     }
     let count = i16::from_be_bytes([body[0], body[1]]);
-    if count < 0 || count as usize > MAX_PG_VALUES {
+    if count < 0 {
         return Err(format!("invalid PostgreSQL column count: {count}"));
     }
 
@@ -874,11 +835,13 @@ fn parse_row_description(body: &[u8]) -> Result<Vec<PgColumn>, String> {
             .map_err(|_| "PostgreSQL column name is not UTF-8".to_string())?
             .to_string();
         offset = name_end + 1;
+        // Table OID, attribute number, type OID, size, modifier, format.
         let fields = body
             .get(offset..offset + 18)
             .ok_or_else(|| "truncated PostgreSQL RowDescription".to_string())?;
         let oid = u32::from_be_bytes([fields[6], fields[7], fields[8], fields[9]]);
-        columns.push(PgColumn { name, oid });
+        let binary = i16::from_be_bytes([fields[16], fields[17]]) == 1;
+        columns.push(PgColumn { name, oid, binary });
         offset += 18;
     }
     if offset != body.len() {
@@ -922,19 +885,16 @@ fn parse_typed_row<'a>(body: &'a [u8], columns: &[PgColumn]) -> Result<Vec<RowVa
                 column.name
             ));
         }
-        let end = offset
-            .checked_add(length as usize)
-            .filter(|end| *end <= body.len())
+        let end = offset + length as usize;
+        let bytes = body
+            .get(offset..end)
             .ok_or_else(|| format!("truncated PostgreSQL column `{}`", column.name))?;
-        let bytes = &body[offset..end];
         offset = end;
-        if column.oid == 17 {
-            values.push(RowValue::Binary(bytes));
+        values.push(if column.binary {
+            RowValue::Binary(bytes)
         } else {
-            values.push(RowValue::Text(std::str::from_utf8(bytes).map_err(
-                |_| format!("PostgreSQL text column `{}` is not UTF-8", column.name),
-            )?));
-        }
+            RowValue::Text(bytes)
+        });
     }
     if offset != body.len() {
         return Err("trailing bytes in PostgreSQL DataRow".to_string());
@@ -942,19 +902,13 @@ fn parse_typed_row<'a>(body: &'a [u8], columns: &[PgColumn]) -> Result<Vec<RowVa
     Ok(values)
 }
 
-fn validate_typed_sql(sql: &str) -> Result<(), String> {
+fn validate_sql(sql: &str) -> Result<(), String> {
     if sql.as_bytes().contains(&0) {
         return Err("PostgreSQL query contains a NUL byte".to_string());
     }
-    if sql
-        .len()
-        .checked_add(9)
-        .filter(|len| *len <= MAX_PG_MESSAGE_BYTES)
-        .is_none()
-    {
+    if sql.len() + 9 > MAX_PG_MESSAGE_BYTES {
         return Err(format!(
-            "PostgreSQL query exceeds {} byte message limit",
-            MAX_PG_MESSAGE_BYTES
+            "PostgreSQL query exceeds {MAX_PG_MESSAGE_BYTES} byte message limit"
         ));
     }
     Ok(())
@@ -967,18 +921,16 @@ fn add_result_bytes(total: usize, row_bytes: usize) -> Result<usize, String> {
         .ok_or_else(|| format!("PostgreSQL result exceeds {MAX_PG_RESULT_BYTES} byte limit"))
 }
 
-fn typed_row_result_cost(body: &[u8], columns: &[PgColumn]) -> Result<usize, String> {
-    // Includes the result-list slot, final map, GC headers, keys, tagged values,
-    // and a payload allocation for every cell. The wire body already includes
-    // each non-null payload, so nulls are deliberately over-counted.
-    let column_names = columns.iter().try_fold(0_usize, |total, column| {
-        total.checked_add(column.name.len())
-    });
-    body.len()
-        .checked_add(40)
-        .and_then(|cost| columns.len().checked_mul(96)?.checked_add(cost))
-        .and_then(|cost| cost.checked_add(column_names?))
-        .ok_or_else(|| "PostgreSQL decoded result size overflow".to_string())
+/// What a decoded row costs besides its DataRow's bytes: the result-list
+/// slot, the map, GC headers, keys, tagged values and a payload allocation
+/// for every cell. The wire body already counts each non-null payload, so
+/// nulls are deliberately over-counted. (Column names come from one
+/// bounded message, so the sum cannot overflow.)
+fn decoded_row_bytes(columns: &[PgColumn]) -> usize {
+    40 + columns
+        .iter()
+        .map(|column| 96 + column.name.len())
+        .sum::<usize>()
 }
 
 pub(crate) unsafe fn alloc_db_value(tag: u8, payload: *mut u8) -> *mut MeshDbValue {
@@ -990,69 +942,223 @@ pub(crate) unsafe fn alloc_db_value(tag: u8, payload: *mut u8) -> *mut MeshDbVal
     value
 }
 
-unsafe fn typed_row_to_map(body: &[u8], columns: &[PgColumn]) -> Result<*mut u8, String> {
-    let values = parse_typed_row(body, columns)?;
+/// A row as a `Map<String, String>` or, typed, a `Map<String, DbValue>`. A
+/// later column of the same name wins.
+unsafe fn row_map(columns: &[PgColumn], row: Vec<RowValue>, values: Values) -> Result<u64, String> {
     let mut entries = Vec::<[u64; 2]>::with_capacity(columns.len());
     let mut indexes = HashMap::<&str, usize>::with_capacity(columns.len());
-    for (column, value) in columns.iter().zip(values) {
-        let value = match value {
-            RowValue::Text(text) => alloc_db_value(DB_VALUE_TEXT, mesh_str(text) as *mut u8),
-            RowValue::Binary(bytes) => alloc_db_value(
+    for (column, value) in columns.iter().zip(row) {
+        let value = match (values, value) {
+            (Values::Text, value) => mesh_str(&value.lossy()) as u64,
+            (Values::Typed, RowValue::Text(bytes)) => {
+                let text = std::str::from_utf8(bytes).map_err(|_| {
+                    format!("PostgreSQL text column `{}` is not UTF-8", column.name)
+                })?;
+                alloc_db_value(DB_VALUE_TEXT, mesh_str(text) as *mut u8) as u64
+            }
+            (Values::Typed, RowValue::Binary(bytes)) => alloc_db_value(
                 DB_VALUE_BINARY,
                 mesh_bytes_new(bytes.as_ptr(), bytes.len() as u64) as *mut u8,
-            ),
-            RowValue::Null => alloc_db_value(DB_VALUE_NULL, std::ptr::null_mut()),
+            ) as u64,
+            (Values::Typed, RowValue::Null) => {
+                alloc_db_value(DB_VALUE_NULL, std::ptr::null_mut()) as u64
+            }
         };
         if let Some(index) = indexes.get(column.name.as_str()).copied() {
-            entries[index][1] = value as u64;
+            entries[index][1] = value;
         } else {
             indexes.insert(column.name.as_str(), entries.len());
-            entries.push([mesh_str(&column.name) as u64, value as u64]);
+            entries.push([mesh_str(&column.name) as u64, value]);
         }
     }
-    Ok(mesh_map_from_string_entries(&entries))
+    Ok(mesh_map_from_string_entries(&entries) as u64)
 }
 
-fn prepare_typed_statement(conn: &mut PgConn, sql: &str) -> Result<Vec<PgColumn>, String> {
-    validate_typed_sql(sql)?;
-    let mut request = Vec::new();
-    write_parse(&mut request, sql);
-    write_describe_statement(&mut request);
-    write_sync(&mut request);
-    conn.write_wire_all(&request)
-        .map_err(|error| format!("send prepare: {error}"))?;
+// ── Requests ───────────────────────────────────────────────────────────
 
-    let mut columns = None;
-    let mut error = None;
+/// How a statement's parameters and rows are typed: text (`List<String>`
+/// parameters, every column in text format) or `DbValue`s (BYTEA columns in
+/// binary format).
+#[derive(Clone, Copy, PartialEq)]
+enum Values {
+    Text,
+    Typed,
+}
+
+/// Why a request failed: the server's ErrorResponse, or anything else (the
+/// connection failing, a reply the driver cannot decode, a limit).
+enum Failure {
+    Server(PgError),
+    Other(String),
+}
+
+impl From<String> for Failure {
+    fn from(message: String) -> Self {
+        Failure::Other(message)
+    }
+}
+
+impl Failure {
+    /// The failure as the Mesh query APIs report it: a server error in the
+    /// structured form Repo maps constraint violations from.
+    fn structured(self) -> String {
+        match self {
+            Failure::Server(error) => format_pg_error_string(&error),
+            Failure::Other(message) => message,
+        }
+    }
+
+    /// Only the message.
+    fn message(self) -> String {
+        match self {
+            Failure::Server(error) => error.message,
+            Failure::Other(message) => message,
+        }
+    }
+}
+
+/// Send `message` and read the replies up to ReadyForQuery, which gives the
+/// connection its transaction status, passing each RowDescription, NoData
+/// and DataRow to `rows` as (tag, body). Returns the row count of the last
+/// CommandComplete, or the first failure, the server's or `rows`'s. Either
+/// way every reply is read, which leaves the connection ready for the next
+/// request unless it broke. `what` names the request in I/O errors.
+fn request(
+    conn: &mut PgConn,
+    what: &str,
+    message: &[u8],
+    mut rows: impl FnMut(u8, &[u8]) -> Result<(), String>,
+) -> Result<i64, Failure> {
+    conn.write_wire_all(message)
+        .map_err(|error| format!("send {what}: {error}"))?;
+    let mut count = 0;
+    let mut failure = None;
     loop {
         let (tag, body) = conn
             .read_wire_message()
-            .map_err(|read_error| format!("read prepare: {read_error}"))?;
+            .map_err(|error| format!("read {what}: {error}"))?;
         match tag {
-            b'1' | b't' | b'N' => {} // ParseComplete, ParameterDescription, NoticeResponse
-            b'T' if error.is_none() => match parse_row_description(&body) {
-                Ok(description) => columns = Some(description),
-                Err(description_error) => {
-                    conn.broken = true;
-                    return Err(description_error);
-                }
-            },
-            b'n' => columns = Some(Vec::new()), // NoData
-            b'E' if error.is_none() => {
-                error = Some(format_pg_error_string(&parse_error_response_full(&body)))
+            b'C' => {
+                count = parse_command_tag(String::from_utf8_lossy(&body).trim_end_matches('\0'))
+            }
+            b'E' if failure.is_none() => {
+                failure = Some(Failure::Server(parse_error_response_full(&body)))
+            }
+            b'T' | b'n' | b'D' if failure.is_none() => {
+                failure = rows(tag, &body).err().map(Failure::Other)
             }
             b'Z' => {
                 conn.txn_status = body.first().copied().unwrap_or(b'I');
-                break;
+                return failure.map_or(Ok(count), Err);
             }
+            // ParseComplete, BindComplete, ParameterDescription, notices,
+            // and what follows a failure.
             _ => {}
         }
     }
-    if let Some(error) = error {
-        Err(error)
-    } else {
-        columns.ok_or_else(|| "PostgreSQL prepare returned no row description".to_string())
-    }
+}
+
+/// Parse `sql` as the unnamed statement, which it stays for the Bind that
+/// follows: the columns it returns.
+fn prepare(conn: &mut PgConn, sql: &str) -> Result<Vec<PgColumn>, Failure> {
+    let mut message = Vec::new();
+    write_parse(&mut message, sql);
+    write_describe_statement(&mut message);
+    write_sync(&mut message);
+    let mut columns = None;
+    request(conn, "prepare", &message, |tag, body| {
+        // A RowDescription, or NoData.
+        columns = Some(if tag == b'T' {
+            parse_row_description(body)?
+        } else {
+            Vec::new()
+        });
+        Ok(())
+    })?;
+    Ok(columns.ok_or_else(|| "PostgreSQL prepare returned no row description".to_string())?)
+}
+
+/// Run `sql` with `params` for its effect: the number of rows it affected.
+fn execute(conn: &mut PgConn, sql: &str, params: &[BindValue]) -> Result<i64, Failure> {
+    validate_sql(sql)?;
+    let mut message = Vec::new();
+    write_parse(&mut message, sql);
+    write_bind_values(&mut message, params, &[])?;
+    write_execute(&mut message);
+    write_sync(&mut message);
+    request(conn, "execute", &message, |_, _| Ok(()))
+}
+
+/// Run a query with `params`: its rows, each decoded by `decode` from the
+/// columns and the row's values, within the row and byte limits.
+fn query<R>(
+    conn: &mut PgConn,
+    sql: &str,
+    params: &[BindValue],
+    values: Values,
+    mut decode: impl FnMut(&[PgColumn], Vec<RowValue>) -> Result<R, String>,
+) -> Result<Vec<R>, Failure> {
+    validate_sql(sql)?;
+    let mut message = Vec::new();
+    let formats: Vec<i16> = match values {
+        // The Bind names each column's format, so the columns come first.
+        Values::Typed => prepare(conn, sql)?
+            .iter()
+            .map(|column| i16::from(column.oid == BYTEA_OID))
+            .collect(),
+        Values::Text => {
+            write_parse(&mut message, sql);
+            Vec::new()
+        }
+    };
+    write_bind_values(&mut message, params, &formats)?;
+    write_describe_portal(&mut message);
+    write_execute(&mut message);
+    write_sync(&mut message);
+
+    let mut columns = Vec::new();
+    let mut row_bytes = decoded_row_bytes(&columns);
+    let mut rows = Vec::new();
+    // The final Result and list allocations, with their GC headers.
+    let mut result_bytes = 64;
+    request(conn, "query", &message, |tag, body| {
+        match tag {
+            b'T' => {
+                columns = parse_row_description(body)?;
+                row_bytes = decoded_row_bytes(&columns);
+            }
+            b'D' if rows.len() == MAX_PG_ROWS => {
+                return Err(format!("PostgreSQL result exceeds {MAX_PG_ROWS} row limit"))
+            }
+            b'D' => {
+                result_bytes = add_result_bytes(result_bytes, row_bytes + body.len())?;
+                rows.push(decode(&columns, parse_typed_row(body, &columns)?)?);
+            }
+            _ => {} // NoData: a statement that returns no rows.
+        }
+        Ok(())
+    })?;
+    Ok(rows)
+}
+
+/// Run `sql` through the Simple Query protocol (BEGIN, COMMIT, ROLLBACK and
+/// the pool's health check), ignoring any rows: the server's message when
+/// it fails.
+pub(super) fn pg_simple_command(conn: &mut PgConn, sql: &str) -> Result<(), String> {
+    let mut message = vec![b'Q'];
+    message.extend_from_slice(&(sql.len() as i32 + 5).to_be_bytes());
+    message.extend_from_slice(sql.as_bytes());
+    message.push(0);
+    request(conn, sql, &message, |_, _| Ok(()))
+        .map(drop)
+        .map_err(Failure::message)
+}
+
+/// Say goodbye (Terminate) and close the connection.
+fn close(mut conn: PgConn) {
+    let mut message = Vec::new();
+    write_terminate(&mut message);
+    let _ = conn.write_wire_all(&message);
 }
 
 // ── MeshString / MeshResult Helpers ────────────────────────────────────
@@ -1140,15 +1246,17 @@ fn parse_command_tag(tag: &str) -> i64 {
 /// a u64, or tag 1 (Err) containing an error message string.
 #[no_mangle]
 pub extern "C" fn mesh_pg_connect(url: *const MeshString) -> *mut u8 {
-    match connect(unsafe { text_of(url) }) {
+    match open(unsafe { text_of(url) }) {
         // Result payloads with integer semantics are represented by pointers
         // to boxed integers, as SQLite's handles are.
-        Ok(conn) => {
-            let handle = Box::into_raw(Box::new(conn)) as u64;
-            alloc_result(0, crate::io::box_scalar(handle)) as *mut u8
-        }
+        Ok(handle) => alloc_result(0, crate::io::box_scalar(handle)) as *mut u8,
         Err(error) => err_result(&error),
     }
+}
+
+/// A connection to `url`, as the handle Mesh holds: a `Box<PgConn>`.
+pub(super) fn open(url: &str) -> Result<u64, String> {
+    connect(url).map(|conn| Box::into_raw(Box::new(conn)) as u64)
 }
 
 /// Connect, authenticate and wait for the server to be ready: the handshake
@@ -1293,12 +1401,50 @@ fn connect(url: &str) -> Result<PgConn, String> {
 /// and lets Box::drop free the Rust memory and close the TcpStream.
 #[no_mangle]
 pub extern "C" fn mesh_pg_close(conn_handle: u64) {
-    unsafe {
-        let mut conn = Box::from_raw(conn_handle as *mut PgConn);
-        let mut buf = Vec::new();
-        write_terminate(&mut buf);
-        let _ = conn.stream.write_all(&buf);
-        // Box drops, TcpStream closes
+    close(*unsafe { Box::from_raw(conn_handle as *mut PgConn) });
+}
+
+/// The parameters a `List<String>` or `List<DbValue>` holds.
+unsafe fn bind_params<'a>(params: *mut u8, values: Values) -> Result<Vec<BindValue<'a>>, Failure> {
+    let params = match values {
+        Values::Text => text_values(params, MAX_PG_VALUES, "PostgreSQL"),
+        Values::Typed => db_values(params, MAX_PG_VALUES, "PostgreSQL"),
+    };
+    Ok(params?)
+}
+
+/// `Pg.execute` and `Pg.execute_values`: `Ok(rows affected)`.
+unsafe fn mesh_execute(
+    conn_handle: u64,
+    sql: *const MeshString,
+    params: *mut u8,
+    values: Values,
+) -> *mut u8 {
+    let conn = &mut *(conn_handle as *mut PgConn);
+    match bind_params(params, values).and_then(|params| execute(conn, text_of(sql), &params)) {
+        Ok(count) => crate::io::ok_int(count).cast(),
+        Err(failure) => err_result(&failure.structured()),
+    }
+}
+
+/// `Pg.query` and `Pg.query_values`: `Ok(rows)`.
+unsafe fn mesh_query(
+    conn_handle: u64,
+    sql: *const MeshString,
+    params: *mut u8,
+    values: Values,
+) -> *mut u8 {
+    let conn = &mut *(conn_handle as *mut PgConn);
+    let rows = bind_params(params, values).and_then(|params| {
+        query(conn, text_of(sql), &params, values, |columns, row| {
+            row_map(columns, row, values)
+        })
+    });
+    match rows {
+        Ok(rows) => {
+            alloc_result(0, mesh_list_from_array(rows.as_ptr(), rows.len() as i64)) as *mut u8
+        }
+        Err(failure) => err_result(&failure.structured()),
     }
 }
 
@@ -1317,61 +1463,7 @@ pub extern "C" fn mesh_pg_execute(
     sql: *const MeshString,
     params: *mut u8,
 ) -> *mut u8 {
-    unsafe {
-        let conn = &mut *(conn_handle as *mut PgConn);
-        let sql_str = text_of(sql);
-        let param_strs = list_strings(params);
-        let param_refs: Vec<&str> = param_strs.iter().map(|s| s.as_str()).collect();
-
-        // Build pipelined message: Parse + Bind + Execute + Sync
-        let mut buf = Vec::new();
-        write_parse(&mut buf, sql_str);
-        write_bind(&mut buf, &param_refs);
-        write_execute(&mut buf);
-        write_sync(&mut buf);
-
-        if let Err(e) = conn.write_wire_all(&buf) {
-            return err_result(&format!("send execute: {}", e));
-        }
-
-        let mut rows_affected: i64 = 0;
-        let mut error_msg: Option<String> = None;
-
-        // Read messages until ReadyForQuery
-        loop {
-            let (tag, body) = match conn.read_wire_message() {
-                Ok(m) => m,
-                Err(e) => return err_result(&format!("read execute: {}", e)),
-            };
-            match tag {
-                b'1' => {} // ParseComplete
-                b'2' => {} // BindComplete
-                b'C' => {
-                    // CommandComplete
-                    let tag_str = String::from_utf8_lossy(&body);
-                    let tag_str = tag_str.trim_end_matches('\0');
-                    rows_affected = parse_command_tag(tag_str);
-                }
-                b'E' => {
-                    // ErrorResponse -- use structured format for constraint mapping
-                    let pg_err = parse_error_response_full(&body);
-                    error_msg = Some(format_pg_error_string(&pg_err));
-                }
-                b'Z' => {
-                    conn.txn_status = if !body.is_empty() { body[0] } else { b'I' };
-                    break;
-                }
-                b'N' => {} // NoticeResponse -- skip
-                _ => {}
-            }
-        }
-
-        if let Some(msg) = error_msg {
-            err_result(&msg)
-        } else {
-            alloc_result(0, crate::io::box_scalar(rows_affected)) as *mut u8
-        }
-    }
+    unsafe { mesh_execute(conn_handle, sql, params, Values::Text) }
 }
 
 /// Execute a read SQL statement (SELECT) and return rows.
@@ -1390,129 +1482,8 @@ pub extern "C" fn mesh_pg_query(
     sql: *const MeshString,
     params: *mut u8,
 ) -> *mut u8 {
-    unsafe {
-        let conn = &mut *(conn_handle as *mut PgConn);
-        let sql_str = text_of(sql);
-        let param_strs = list_strings(params);
-        let param_refs: Vec<&str> = param_strs.iter().map(|s| s.as_str()).collect();
-
-        // Build pipelined message: Parse + Bind + Describe(Portal) + Execute + Sync
-        let mut buf = Vec::new();
-        write_parse(&mut buf, sql_str);
-        write_bind(&mut buf, &param_refs);
-        write_describe_portal(&mut buf);
-        write_execute(&mut buf);
-        write_sync(&mut buf);
-
-        if let Err(e) = conn.write_wire_all(&buf) {
-            return err_result(&format!("send query: {}", e));
-        }
-
-        let mut col_names: Vec<String> = Vec::new();
-        let mut result_list = mesh_list_new();
-        let mut error_msg: Option<String> = None;
-
-        // Read messages until ReadyForQuery
-        loop {
-            let (tag, body) = match conn.read_wire_message() {
-                Ok(m) => m,
-                Err(e) => return err_result(&format!("read query: {}", e)),
-            };
-            match tag {
-                b'1' => {} // ParseComplete
-                b'2' => {} // BindComplete
-                b'T' => {
-                    // RowDescription
-                    if body.len() < 2 {
-                        continue;
-                    }
-                    let num_fields = i16::from_be_bytes([body[0], body[1]]) as usize;
-                    let mut offset = 2;
-                    col_names.clear();
-                    for _ in 0..num_fields {
-                        // Read null-terminated column name
-                        let name_start = offset;
-                        while offset < body.len() && body[offset] != 0 {
-                            offset += 1;
-                        }
-                        let name = String::from_utf8_lossy(&body[name_start..offset]).into_owned();
-                        col_names.push(name);
-                        offset += 1; // skip null terminator
-                                     // Skip 18 bytes: table OID (4) + column number (2) + type OID (4)
-                                     //   + type size (2) + type modifier (4) + format code (2)
-                        offset += 18;
-                    }
-                }
-                b'D' => {
-                    // DataRow
-                    if body.len() < 2 {
-                        continue;
-                    }
-                    let num_cols = i16::from_be_bytes([body[0], body[1]]) as usize;
-                    let mut offset = 2;
-
-                    // Create a string-keyed map for this row (key_type = 1 = string)
-                    let mut row_map = mesh_map_new_typed(1);
-
-                    for col in 0..num_cols {
-                        if offset + 4 > body.len() {
-                            break;
-                        }
-                        let col_len = i32::from_be_bytes([
-                            body[offset],
-                            body[offset + 1],
-                            body[offset + 2],
-                            body[offset + 3],
-                        ]);
-                        offset += 4;
-
-                        let value_str = if col_len == -1 {
-                            // NULL
-                            String::new()
-                        } else {
-                            let end = offset + col_len as usize;
-                            let s = String::from_utf8_lossy(&body[offset..end]).into_owned();
-                            offset = end;
-                            s
-                        };
-
-                        let col_name = if col < col_names.len() {
-                            &col_names[col]
-                        } else {
-                            "?"
-                        };
-
-                        let key_mesh = mesh_str(col_name) as *mut u8;
-                        let val_mesh = mesh_str(&value_str) as *mut u8;
-                        row_map = mesh_map_put(row_map, key_mesh as u64, val_mesh as u64);
-                    }
-
-                    result_list = mesh_list_append(result_list, row_map as u64);
-                }
-                b'C' => {} // CommandComplete -- skip for query
-                b'E' => {
-                    // ErrorResponse -- use structured format for constraint mapping
-                    let pg_err = parse_error_response_full(&body);
-                    error_msg = Some(format_pg_error_string(&pg_err));
-                }
-                b'Z' => {
-                    conn.txn_status = if !body.is_empty() { body[0] } else { b'I' };
-                    break;
-                }
-                b'N' => {} // NoticeResponse -- skip
-                _ => {}
-            }
-        }
-
-        if let Some(msg) = error_msg {
-            err_result(&msg)
-        } else {
-            alloc_result(0, result_list) as *mut u8
-        }
-    }
+    unsafe { mesh_query(conn_handle, sql, params, Values::Text) }
 }
-
-// ── Transaction Management ─────────────────────────────────────────────
 
 /// Execute an unnamed prepared statement with typed `DbValue` parameters.
 #[no_mangle]
@@ -1521,63 +1492,7 @@ pub extern "C" fn mesh_pg_execute_values(
     sql: *const MeshString,
     params: *mut u8,
 ) -> *mut u8 {
-    unsafe {
-        if conn_handle == 0 || sql.is_null() {
-            return err_result("invalid PostgreSQL execute_values arguments");
-        }
-        let conn = &mut *(conn_handle as *mut PgConn);
-        let sql = text_of(sql);
-        if let Err(error) = validate_typed_sql(sql) {
-            return err_result(&error);
-        }
-        let params = match db_values(params, MAX_PG_VALUES, "PostgreSQL") {
-            Ok(params) => params,
-            Err(error) => return err_result(&error),
-        };
-
-        let mut request = Vec::new();
-        write_parse(&mut request, sql);
-        if let Err(error) = write_bind_values(&mut request, &params, &[]) {
-            return err_result(&error);
-        }
-        write_execute(&mut request);
-        write_sync(&mut request);
-        if let Err(error) = conn.write_wire_all(&request) {
-            return err_result(&format!("send execute_values: {error}"));
-        }
-
-        let mut rows_affected = 0_i64;
-        let mut error = None;
-        loop {
-            let (tag, body) = match conn.read_wire_message() {
-                Ok(message) => message,
-                Err(read_error) => {
-                    return err_result(&format!("read execute_values: {read_error}"))
-                }
-            };
-            match tag {
-                b'1' | b'2' | b'D' | b'N' => {}
-                b'C' => {
-                    let command = String::from_utf8_lossy(&body);
-                    rows_affected = parse_command_tag(command.trim_end_matches('\0'));
-                }
-                b'E' if error.is_none() => {
-                    error = Some(format_pg_error_string(&parse_error_response_full(&body)))
-                }
-                b'Z' => {
-                    conn.txn_status = body.first().copied().unwrap_or(b'I');
-                    break;
-                }
-                _ => {}
-            }
-        }
-
-        if let Some(error) = error {
-            err_result(&error)
-        } else {
-            alloc_result(0, crate::io::box_scalar(rows_affected)) as *mut u8
-        }
-    }
+    unsafe { mesh_execute(conn_handle, sql, params, Values::Typed) }
 }
 
 /// Query typed values while keeping non-BYTEA columns in PostgreSQL text format.
@@ -1587,118 +1502,16 @@ pub extern "C" fn mesh_pg_query_values(
     sql: *const MeshString,
     params: *mut u8,
 ) -> *mut u8 {
-    unsafe {
-        if conn_handle == 0 || sql.is_null() {
-            return err_result("invalid PostgreSQL query_values arguments");
-        }
-        let conn = &mut *(conn_handle as *mut PgConn);
-        let sql = text_of(sql);
-        let params = match db_values(params, MAX_PG_VALUES, "PostgreSQL") {
-            Ok(params) => params,
-            Err(error) => return err_result(&error),
-        };
-        let columns = match prepare_typed_statement(conn, sql) {
-            Ok(columns) => columns,
-            Err(error) => return err_result(&error),
-        };
-        let formats: Vec<i16> = columns
-            .iter()
-            .map(|column| if column.oid == 17 { 1 } else { 0 })
-            .collect();
-
-        let mut request = Vec::new();
-        if let Err(error) = write_bind_values(&mut request, &params, &formats) {
-            return err_result(&error);
-        }
-        write_execute(&mut request);
-        write_sync(&mut request);
-        if let Err(error) = conn.write_wire_all(&request) {
-            return err_result(&format!("send query_values: {error}"));
-        }
-
-        let mut rows = Vec::new();
-        let mut row_count = 0_usize;
-        // Final Result and list allocations, including actor-GC headers.
-        let mut result_bytes = 64_usize;
-        let mut error = None;
-        loop {
-            let (tag, body) = match conn.read_wire_message() {
-                Ok(message) => message,
-                Err(read_error) => return err_result(&format!("read query_values: {read_error}")),
-            };
-            match tag {
-                b'2' | b'C' | b'N' => {}
-                b'D' if error.is_none() => match typed_row_result_cost(&body, &columns)
-                    .and_then(|cost| add_result_bytes(result_bytes, cost))
-                {
-                    Err(size_error) => error = Some(size_error),
-                    Ok(_) if row_count == MAX_PG_ROWS => {
-                        error = Some(format!("PostgreSQL result exceeds {MAX_PG_ROWS} row limit"))
-                    }
-                    Ok(next_result_bytes) => match typed_row_to_map(&body, &columns) {
-                        Ok(row) => {
-                            rows.push(row as u64);
-                            row_count += 1;
-                            result_bytes = next_result_bytes;
-                        }
-                        Err(row_error) => {
-                            conn.broken = true;
-                            return err_result(&row_error);
-                        }
-                    },
-                },
-                b'E' if error.is_none() => {
-                    error = Some(format_pg_error_string(&parse_error_response_full(&body)))
-                }
-                b'Z' => {
-                    conn.txn_status = body.first().copied().unwrap_or(b'I');
-                    break;
-                }
-                _ => {}
-            }
-        }
-
-        if let Some(error) = error {
-            err_result(&error)
-        } else {
-            alloc_result(0, mesh_list_from_array(rows.as_ptr(), rows.len() as i64)) as *mut u8
-        }
-    }
+    unsafe { mesh_query(conn_handle, sql, params, Values::Typed) }
 }
 
-/// Send a simple SQL command (BEGIN/COMMIT/ROLLBACK) using the Simple Query protocol.
-/// Returns Ok(()) or Err(error_message). Updates conn.txn_status from ReadyForQuery.
-pub(super) fn pg_simple_command(conn: &mut PgConn, sql: &str) -> Result<(), String> {
-    // Simple Query protocol: Byte1('Q') Int32(len) String(query\0)
-    let mut buf = Vec::new();
-    buf.push(b'Q');
-    let body = format!("{}\0", sql);
-    let len = (body.len() + 4) as i32;
-    buf.extend_from_slice(&len.to_be_bytes());
-    buf.extend_from_slice(body.as_bytes());
-    conn.write_wire_all(&buf)
-        .map_err(|e| format!("send {}: {}", sql, e))?;
+// ── Transaction Management ─────────────────────────────────────────────
 
-    let mut error_msg: Option<String> = None;
-    loop {
-        let (tag, body) = conn
-            .read_wire_message()
-            .map_err(|e| format!("read {}: {}", sql, e))?;
-        match tag {
-            b'C' => {} // CommandComplete
-            b'E' => {
-                error_msg = Some(parse_error_response(&body));
-            }
-            b'Z' => {
-                conn.txn_status = if !body.is_empty() { body[0] } else { b'I' };
-                break;
-            }
-            _ => {}
-        }
-    }
-    match error_msg {
-        Some(msg) => Err(msg),
-        None => Ok(()),
+/// `Ok(())` once `sql` has run on the connection, or the server's message.
+unsafe fn unit_command(conn_handle: u64, sql: &str) -> *mut u8 {
+    match pg_simple_command(&mut *(conn_handle as *mut PgConn), sql) {
+        Ok(()) => alloc_result(0, std::ptr::null_mut()) as *mut u8,
+        Err(error) => err_result(&error),
     }
 }
 
@@ -1711,13 +1524,7 @@ pub(super) fn pg_simple_command(conn: &mut PgConn, sql: &str) -> Result<(), Stri
 /// Sends `BEGIN` and returns Ok(()) or Err(error_message).
 #[no_mangle]
 pub extern "C" fn mesh_pg_begin(conn_handle: u64) -> *mut u8 {
-    unsafe {
-        let conn = &mut *(conn_handle as *mut PgConn);
-        match pg_simple_command(conn, "BEGIN") {
-            Ok(()) => alloc_result(0, std::ptr::null_mut()) as *mut u8,
-            Err(e) => err_result(&e),
-        }
-    }
+    unsafe { unit_command(conn_handle, "BEGIN") }
 }
 
 /// Commit a PostgreSQL transaction.
@@ -1729,13 +1536,7 @@ pub extern "C" fn mesh_pg_begin(conn_handle: u64) -> *mut u8 {
 /// Sends `COMMIT` and returns Ok(()) or Err(error_message).
 #[no_mangle]
 pub extern "C" fn mesh_pg_commit(conn_handle: u64) -> *mut u8 {
-    unsafe {
-        let conn = &mut *(conn_handle as *mut PgConn);
-        match pg_simple_command(conn, "COMMIT") {
-            Ok(()) => alloc_result(0, std::ptr::null_mut()) as *mut u8,
-            Err(e) => err_result(&e),
-        }
-    }
+    unsafe { unit_command(conn_handle, "COMMIT") }
 }
 
 /// Rollback a PostgreSQL transaction.
@@ -1747,13 +1548,7 @@ pub extern "C" fn mesh_pg_commit(conn_handle: u64) -> *mut u8 {
 /// Sends `ROLLBACK` and returns Ok(()) or Err(error_message).
 #[no_mangle]
 pub extern "C" fn mesh_pg_rollback(conn_handle: u64) -> *mut u8 {
-    unsafe {
-        let conn = &mut *(conn_handle as *mut PgConn);
-        match pg_simple_command(conn, "ROLLBACK") {
-            Ok(()) => alloc_result(0, std::ptr::null_mut()) as *mut u8,
-            Err(e) => err_result(&e),
-        }
-    }
+    unsafe { unit_command(conn_handle, "ROLLBACK") }
 }
 
 pub(crate) unsafe fn invoke_transaction_callback(
@@ -1897,152 +1692,48 @@ pub fn native_pg_connect(url: &str) -> Result<NativePgConn, String> {
     connect(url).map(|inner| NativePgConn { inner })
 }
 
+fn text_params<'a>(params: &[&'a str]) -> Vec<BindValue<'a>> {
+    params
+        .iter()
+        .map(|param| BindValue::Text(param.as_bytes()))
+        .collect()
+}
+
 /// Execute a SQL statement via native connection. Returns rows affected.
 pub fn native_pg_execute(
     conn: &mut NativePgConn,
     sql: &str,
     params: &[&str],
 ) -> Result<i64, String> {
-    let mut buf = Vec::new();
-    write_parse(&mut buf, sql);
-    write_bind(&mut buf, params);
-    write_execute(&mut buf);
-    write_sync(&mut buf);
-
-    conn.inner
-        .write_wire_all(&buf)
-        .map_err(|e| format!("send execute: {}", e))?;
-
-    let mut rows_affected: i64 = 0;
-    let mut error_msg: Option<String> = None;
-
-    loop {
-        let (tag, body) = conn
-            .inner
-            .read_wire_message()
-            .map_err(|e| format!("read execute: {}", e))?;
-        match tag {
-            b'1' | b'2' => {}
-            b'C' => {
-                let tag_str = String::from_utf8_lossy(&body);
-                let tag_str = tag_str.trim_end_matches('\0');
-                rows_affected = parse_command_tag(tag_str);
-            }
-            b'E' => {
-                error_msg = Some(parse_error_response(&body));
-            }
-            b'Z' => {
-                conn.inner.txn_status = if !body.is_empty() { body[0] } else { b'I' };
-                break;
-            }
-            b'N' => {}
-            _ => {}
-        }
-    }
-
-    match error_msg {
-        Some(msg) => Err(msg),
-        None => Ok(rows_affected),
-    }
+    execute(&mut conn.inner, sql, &text_params(params)).map_err(Failure::message)
 }
 
-/// Execute a SQL query via native connection. Returns rows as Vec of column-value maps.
+/// Execute a SQL query via native connection. Returns rows as Vec of
+/// column-value pairs, a NULL as "".
 pub fn native_pg_query(
     conn: &mut NativePgConn,
     sql: &str,
     params: &[&str],
 ) -> Result<Vec<Vec<(String, String)>>, String> {
-    let mut buf = Vec::new();
-    write_parse(&mut buf, sql);
-    write_bind(&mut buf, params);
-    write_describe_portal(&mut buf);
-    write_execute(&mut buf);
-    write_sync(&mut buf);
-
-    conn.inner
-        .write_wire_all(&buf)
-        .map_err(|e| format!("send query: {}", e))?;
-
-    let mut columns: Vec<String> = Vec::new();
-    let mut rows: Vec<Vec<(String, String)>> = Vec::new();
-    let mut error_msg: Option<String> = None;
-
-    loop {
-        let (tag, body) = conn
-            .inner
-            .read_wire_message()
-            .map_err(|e| format!("read query: {}", e))?;
-        match tag {
-            b'1' | b'2' | b'n' => {} // ParseComplete, BindComplete, NoData
-            b'T' => {
-                // RowDescription
-                if body.len() >= 2 {
-                    let num_fields = i16::from_be_bytes([body[0], body[1]]) as usize;
-                    let mut offset = 2;
-                    for _ in 0..num_fields {
-                        let name_end = body[offset..].iter().position(|&b| b == 0).unwrap_or(0);
-                        let name =
-                            String::from_utf8_lossy(&body[offset..offset + name_end]).to_string();
-                        columns.push(name);
-                        offset += name_end + 1 + 18; // name + null + fixed fields
-                    }
-                }
-            }
-            b'D' => {
-                // DataRow
-                if body.len() >= 2 {
-                    let num_cols = i16::from_be_bytes([body[0], body[1]]) as usize;
-                    let mut offset = 2;
-                    let mut row = Vec::new();
-                    for i in 0..num_cols {
-                        if offset + 4 > body.len() {
-                            break;
-                        }
-                        let col_len = i32::from_be_bytes([
-                            body[offset],
-                            body[offset + 1],
-                            body[offset + 2],
-                            body[offset + 3],
-                        ]);
-                        offset += 4;
-                        let col_name = columns.get(i).cloned().unwrap_or_default();
-                        if col_len < 0 {
-                            // NULL
-                            row.push((col_name, String::new()));
-                        } else {
-                            let end = offset + col_len as usize;
-                            let val = String::from_utf8_lossy(&body[offset..end]).to_string();
-                            row.push((col_name, val));
-                            offset = end;
-                        }
-                    }
-                    rows.push(row);
-                }
-            }
-            b'C' => {} // CommandComplete
-            b'E' => {
-                error_msg = Some(parse_error_response(&body));
-            }
-            b'Z' => {
-                conn.inner.txn_status = if !body.is_empty() { body[0] } else { b'I' };
-                break;
-            }
-            b'N' => {}
-            _ => {}
-        }
-    }
-
-    match error_msg {
-        Some(msg) => Err(msg),
-        None => Ok(rows),
-    }
+    query(
+        &mut conn.inner,
+        sql,
+        &text_params(params),
+        Values::Text,
+        |columns, row| {
+            Ok(columns
+                .iter()
+                .zip(row)
+                .map(|(column, value)| (column.name.clone(), value.lossy().into_owned()))
+                .collect())
+        },
+    )
+    .map_err(Failure::message)
 }
 
 /// Close a native PG connection.
-pub fn native_pg_close(mut conn: NativePgConn) {
-    let mut buf = Vec::new();
-    write_terminate(&mut buf);
-    let _ = conn.inner.stream.write_all(&buf);
+pub fn native_pg_close(conn: NativePgConn) {
+    close(conn.inner);
 }
 
 #[cfg(test)]
@@ -2050,7 +1741,7 @@ mod tests {
     use super::*;
     use crate::bytes::mesh_bytes_new;
     use crate::collections::list::{mesh_list_append, mesh_list_new};
-    use crate::collections::map::{mesh_map_entry_value, mesh_map_size};
+    use crate::collections::map::{mesh_map_entry_key, mesh_map_entry_value, mesh_map_size};
     use crate::gc::mesh_rt_init;
     use crate::string::mesh_string_new;
 
@@ -2675,9 +2366,10 @@ mod tests {
         assert!(matches!(extracted[2], BindValue::Null));
     }
 
-    #[test]
-    fn typed_row_decodes_bytea_as_raw_bytes_and_other_columns_as_text() {
-        fn column(body: &mut Vec<u8>, name: &str, oid: u32) {
+    /// A RowDescription body of `(name, type OID, format)` columns.
+    fn row_description(columns: &[(&str, u32, i16)]) -> Vec<u8> {
+        let mut body = (columns.len() as i16).to_be_bytes().to_vec();
+        for (name, oid, format) in columns {
             body.extend_from_slice(name.as_bytes());
             body.push(0);
             body.extend_from_slice(&0_u32.to_be_bytes()); // table oid
@@ -2685,78 +2377,176 @@ mod tests {
             body.extend_from_slice(&oid.to_be_bytes());
             body.extend_from_slice(&(-1_i16).to_be_bytes()); // type size
             body.extend_from_slice(&(-1_i32).to_be_bytes()); // type modifier
-            body.extend_from_slice(&0_i16.to_be_bytes()); // statement description format
+            body.extend_from_slice(&format.to_be_bytes());
+        }
+        body
+    }
+
+    /// A DataRow body: each cell's bytes, or NULL.
+    fn data_row(cells: &[Option<&[u8]>]) -> Vec<u8> {
+        let mut body = (cells.len() as i16).to_be_bytes().to_vec();
+        for cell in cells {
+            match cell {
+                Some(bytes) => {
+                    body.extend_from_slice(&(bytes.len() as i32).to_be_bytes());
+                    body.extend_from_slice(bytes);
+                }
+                None => body.extend_from_slice(&(-1_i32).to_be_bytes()),
+            }
+        }
+        body
+    }
+
+    fn column(name: &str, oid: u32, binary: bool) -> PgColumn {
+        PgColumn {
+            name: name.to_string(),
+            oid,
+            binary,
+        }
+    }
+
+    #[test]
+    fn typed_row_decodes_binary_columns_as_raw_bytes_and_others_as_text() {
+        let description = row_description(&[("label", 25, 0), ("payload", 17, 1), ("gone", 17, 1)]);
+        let columns = parse_row_description(&description).unwrap();
+        assert_eq!(columns[1], column("payload", 17, true));
+
+        let row = data_row(&[Some(b"inbox"), Some(&[0, 0xff, 0x80]), None]);
+
+        assert_eq!(
+            parse_typed_row(&row, &columns).unwrap(),
+            [
+                RowValue::Text(b"inbox"),
+                RowValue::Binary(&[0, 0xff, 0x80]),
+                RowValue::Null
+            ]
+        );
+    }
+
+    #[test]
+    fn row_descriptions_and_rows_reject_malformed_bytes() {
+        let one = row_description(&[("a", 25, 0)]);
+        for (body, error) in [
+            (vec![0], "invalid PostgreSQL RowDescription"),
+            (
+                (-1_i16).to_be_bytes().to_vec(),
+                "invalid PostgreSQL column count: -1",
+            ),
+            (one[..3].to_vec(), "unterminated PostgreSQL column name"),
+            (
+                [&one[..2], b"\xff\0", &one[4..]].concat(),
+                "PostgreSQL column name is not UTF-8",
+            ),
+            (one[..10].to_vec(), "truncated PostgreSQL RowDescription"),
+            (
+                [&one[..], b"x"].concat(),
+                "trailing bytes in PostgreSQL RowDescription",
+            ),
+        ] {
+            assert_eq!(parse_row_description(&body).unwrap_err(), error);
         }
 
-        let mut description = 3_i16.to_be_bytes().to_vec();
-        column(&mut description, "label", 25);
-        column(&mut description, "payload", 17);
-        column(&mut description, "gone", 17);
-        let columns = parse_row_description(&description).unwrap();
+        let columns = [column("a", 25, false)];
+        let row = data_row(&[Some(b"abc")]);
+        let length = |length: i32| [&1_i16.to_be_bytes()[..], &length.to_be_bytes()].concat();
+        let too_long = format!("PostgreSQL column `a` exceeds {MAX_DB_VALUE_BYTES} byte limit");
+        for (body, error) in [
+            (vec![0], "invalid PostgreSQL DataRow"),
+            (data_row(&[]), "PostgreSQL row has 0 columns; expected 1"),
+            (
+                (-1_i16).to_be_bytes().to_vec(),
+                "PostgreSQL row has -1 columns; expected 1",
+            ),
+            (row[..4].to_vec(), "truncated PostgreSQL DataRow length"),
+            (length(-2), &too_long),
+            (length(MAX_DB_VALUE_BYTES as i32 + 1), &too_long),
+            (row[..8].to_vec(), "truncated PostgreSQL column `a`"),
+            (
+                [&row[..], b"x"].concat(),
+                "trailing bytes in PostgreSQL DataRow",
+            ),
+        ] {
+            assert_eq!(parse_typed_row(&body, &columns).unwrap_err(), error);
+        }
+    }
 
-        let mut row = 3_i16.to_be_bytes().to_vec();
-        row.extend_from_slice(&5_i32.to_be_bytes());
-        row.extend_from_slice(b"inbox");
-        row.extend_from_slice(&3_i32.to_be_bytes());
-        row.extend_from_slice(&[0, 0xff, 0x80]);
-        row.extend_from_slice(&(-1_i32).to_be_bytes());
+    #[test]
+    fn error_responses_keep_the_fields_repo_maps_and_name_a_missing_message() {
+        let mut body = Vec::new();
+        for (field, value) in [
+            (b'S', "ERROR"),
+            (b'C', "23502"),
+            (b'M', "null value"),
+            (b'D', "a detail"),
+            (b't', "people"),
+            (b'c', "name"),
+            (b'n', "people_name_not_null"),
+        ] {
+            body.push(field);
+            body.extend_from_slice(value.as_bytes());
+            body.push(0);
+        }
+        body.push(0);
 
-        let values = parse_typed_row(&row, &columns).unwrap();
+        assert_eq!(
+            format_pg_error_string(&parse_error_response_full(&body)),
+            "23502\tpeople_name_not_null\tpeople\tname\tnull value"
+        );
+        assert_eq!(
+            parse_error_response(b"C42000\0\0"),
+            "unknown PostgreSQL error"
+        );
+    }
 
-        assert!(matches!(values[0], RowValue::Text("inbox")));
-        assert!(matches!(
-            values[1],
-            RowValue::Binary(bytes) if bytes == [0, 0xff, 0x80]
-        ));
-        assert!(matches!(values[2], RowValue::Null));
+    #[test]
+    fn statements_and_binds_stay_within_the_protocol() {
+        assert_eq!(
+            validate_sql("SELECT '\0'").unwrap_err(),
+            "PostgreSQL query contains a NUL byte"
+        );
+        let long = "x".repeat(MAX_PG_MESSAGE_BYTES);
+        assert_eq!(
+            validate_sql(&long).unwrap_err(),
+            format!("PostgreSQL query exceeds {MAX_PG_MESSAGE_BYTES} byte message limit")
+        );
+
+        let mut message = Vec::new();
+        let nulls = vec![BindValue::Null; MAX_PG_VALUES + 1];
+        assert_eq!(
+            write_bind_values(&mut message, &nulls, &[]).unwrap_err(),
+            "too many PostgreSQL parameters: 32768 (maximum 32767)"
+        );
+        let large = vec![0; MAX_DB_VALUE_BYTES + 1];
+        assert_eq!(
+            write_bind_values(
+                &mut message,
+                &[BindValue::Null, BindValue::Text(&large)],
+                &[]
+            )
+            .unwrap_err(),
+            format!("PostgreSQL parameter at index 1 exceeds {MAX_DB_VALUE_BYTES} byte limit")
+        );
+        assert!(message.is_empty());
     }
 
     #[test]
     fn typed_row_map_keeps_the_last_duplicate_column_value() {
         mesh_rt_init();
-        let columns = [
-            PgColumn {
-                name: "payload".to_string(),
-                oid: 25,
-            },
-            PgColumn {
-                name: "payload".to_string(),
-                oid: 17,
-            },
-        ];
-        let mut row = 2_i16.to_be_bytes().to_vec();
-        row.extend_from_slice(&3_i32.to_be_bytes());
-        row.extend_from_slice(b"old");
-        row.extend_from_slice(&1_i32.to_be_bytes());
-        row.push(0xff);
+        let columns = [column("payload", 25, false), column("payload", 17, true)];
+        let row = data_row(&[Some(b"old"), Some(&[0xff])]);
 
-        let map = unsafe { typed_row_to_map(&row, &columns) }.unwrap();
+        let map = unsafe {
+            row_map(
+                &columns,
+                parse_typed_row(&row, &columns).unwrap(),
+                Values::Typed,
+            )
+        }
+        .unwrap() as *mut u8;
         let value = mesh_map_entry_value(map, 0) as *const MeshDbValue;
 
         assert_eq!(mesh_map_size(map), 1);
         assert_eq!(unsafe { (*value).tag }, DB_VALUE_BINARY);
-    }
-
-    #[test]
-    fn typed_row_rejects_oversized_and_truncated_cells() {
-        let columns = [PgColumn {
-            name: "payload".to_string(),
-            oid: 17,
-        }];
-        let mut oversized = 1_i16.to_be_bytes().to_vec();
-        oversized.extend_from_slice(&((MAX_DB_VALUE_BYTES + 1) as i32).to_be_bytes());
-
-        let oversized_error = parse_typed_row(&oversized, &columns).unwrap_err();
-
-        assert!(oversized_error.contains("exceeds"));
-
-        let mut truncated = 1_i16.to_be_bytes().to_vec();
-        truncated.extend_from_slice(&3_i32.to_be_bytes());
-        truncated.push(0xff);
-
-        let truncated_error = parse_typed_row(&truncated, &columns).unwrap_err();
-
-        assert!(truncated_error.contains("truncated"));
     }
 
     #[test]
@@ -2771,16 +2561,424 @@ mod tests {
 
     #[test]
     fn typed_result_budget_counts_decoded_null_row_overhead() {
-        let columns = [PgColumn {
-            name: "payload".to_string(),
-            oid: 17,
-        }];
-        let mut row = 1_i16.to_be_bytes().to_vec();
-        row.extend_from_slice(&(-1_i32).to_be_bytes());
+        let columns = [column("payload", 17, true)];
+        let row = data_row(&[None]);
 
-        let cost = typed_row_result_cost(&row, &columns).unwrap();
+        let cost = decoded_row_bytes(&columns) + row.len();
 
-        assert!(cost > row.len());
+        assert!(cost > row.len() + "payload".len());
         assert!(add_result_bytes(MAX_PG_RESULT_BYTES - cost + 1, cost).is_err());
+    }
+
+    // ── Requests against a scripted peer ──────────────────────────────
+
+    /// A connection handle to a peer that runs `script` on its socket.
+    fn peer_connection(
+        script: impl FnOnce(TcpStream) + Send + 'static,
+    ) -> (u64, std::thread::JoinHandle<()>) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let peer = std::thread::spawn(move || script(listener.accept().unwrap().0));
+        let conn = PgConn::from_test_stream(TcpStream::connect(address).unwrap());
+        (Box::into_raw(Box::new(conn)) as u64, peer)
+    }
+
+    /// A connection handle to a peer that sends `replies` at once, then reads
+    /// what it is sent until the connection closes.
+    fn scripted(replies: Vec<u8>) -> (u64, std::thread::JoinHandle<()>) {
+        peer_connection(move |mut socket| {
+            socket.write_all(&replies).unwrap();
+            let _ = socket.read_to_end(&mut Vec::new());
+        })
+    }
+
+    fn conn_of(handle: u64) -> &'static mut PgConn {
+        unsafe { &mut *(handle as *mut PgConn) }
+    }
+
+    fn outcome(result: *mut u8) -> Result<*mut u8, String> {
+        let result = unsafe { &*(result as *const MeshResult) };
+        match result.tag {
+            0 => Ok(result.value),
+            _ => Err(unsafe { text_of(result.value) }.to_string()),
+        }
+    }
+
+    fn int_outcome(result: *mut u8) -> Result<i64, String> {
+        outcome(result).map(|value| unsafe { *(value as *const i64) })
+    }
+
+    /// A `List<Map<String, _>>` as its rows' `column=value` entries, a
+    /// `DbValue` written `Text(..)`, `Binary(hex)` or `Null`.
+    fn rows_of(list: *mut u8, typed: bool) -> Vec<String> {
+        (0..mesh_list_length(list))
+            .map(|index| {
+                let map = mesh_list_get(list, index) as *mut u8;
+                (0..mesh_map_size(map))
+                    .map(|entry| unsafe {
+                        let key = text_of(mesh_map_entry_key(map, entry) as *const u8);
+                        let value = mesh_map_entry_value(map, entry) as *const u8;
+                        let value = if !typed {
+                            text_of(value).to_string()
+                        } else {
+                            let value = &*(value as *const MeshDbValue);
+                            match value.tag {
+                                DB_VALUE_TEXT => format!("Text({})", text_of(value.payload)),
+                                DB_VALUE_BINARY => format!(
+                                    "Binary({:02x?})",
+                                    (*(value.payload as *const MeshBytes)).as_slice()
+                                ),
+                                _ => "Null".to_string(),
+                            }
+                        };
+                        format!("{key}={value}")
+                    })
+                    .collect::<Vec<_>>()
+                    .join(",")
+            })
+            .collect()
+    }
+
+    fn complete(tag: &str) -> Vec<u8> {
+        message(b'C', format!("{tag}\0").as_bytes())
+    }
+
+    fn text_list(values: &[&str]) -> *mut u8 {
+        crate::collections::list::string_list(values)
+    }
+
+    #[test]
+    fn text_requests_read_every_reply_up_to_ready_for_query() {
+        mesh_rt_init();
+        let names = row_description(&[("id", 23, 0), ("name", 25, 0)]);
+        let replies = [
+            // execute: notices, parameter changes and anything unknown pass.
+            message(b'1', b""),
+            message(b'2', b""),
+            message(b'N', b"Mnotice\0\0"),
+            message(b'S', b"TimeZone\0UTC\0"),
+            message(b'A', b"unknown"),
+            complete("UPDATE 3"),
+            ready(b'T'),
+            // query: a NULL reads as "", text that is not UTF-8 as U+FFFD.
+            message(b'1', b""),
+            message(b'2', b""),
+            message(b'T', &names),
+            message(b'D', &data_row(&[Some(b"1"), None])),
+            message(b'D', &data_row(&[Some(b"2"), Some(b"\xffb")])),
+            complete("SELECT 2"),
+            ready(b'T'),
+            // execute refused: the first error, structured, and the status.
+            message(b'1', b""),
+            error_response("bad insert"),
+            error_response("a second error"),
+            ready(b'E'),
+            // query refused part way through its rows.
+            message(b'1', b""),
+            message(b'2', b""),
+            message(b'T', &names),
+            message(b'D', &data_row(&[Some(b"1"), None])),
+            error_response("division by zero"),
+            ready(b'E'),
+            // BEGIN refused; COMMIT and ROLLBACK accepted.
+            error_response("cannot begin"),
+            ready(b'E'),
+            complete("COMMIT"),
+            ready(b'I'),
+            complete("ROLLBACK"),
+            ready(b'I'),
+        ]
+        .concat();
+        let (handle, peer) = scripted(replies);
+        let sql = mesh_str("SELECT $1");
+
+        assert_eq!(
+            int_outcome(mesh_pg_execute(handle, sql, text_list(&["a"]))),
+            Ok(3)
+        );
+        assert_eq!(conn_of(handle).txn_status, b'T');
+        let rows = outcome(mesh_pg_query(handle, sql, text_list(&["a"]))).unwrap();
+        assert_eq!(rows_of(rows, false), ["id=1,name=", "id=2,name=\u{fffd}b"]);
+        let refused = "28P01\ta_constraint\t\t\t";
+        assert_eq!(
+            int_outcome(mesh_pg_execute(handle, sql, mesh_list_new())),
+            Err(format!("{refused}bad insert"))
+        );
+        assert_eq!(conn_of(handle).txn_status, b'E');
+        assert_eq!(
+            outcome(mesh_pg_query(handle, sql, mesh_list_new())).err(),
+            Some(format!("{refused}division by zero"))
+        );
+        assert_eq!(
+            outcome(mesh_pg_begin(handle)).err().as_deref(),
+            Some("cannot begin")
+        );
+        assert!(outcome(mesh_pg_commit(handle)).is_ok());
+        assert!(outcome(mesh_pg_rollback(handle)).is_ok());
+        assert_eq!(conn_of(handle).txn_status, b'I');
+        mesh_pg_close(handle);
+        peer.join().unwrap();
+    }
+
+    #[test]
+    fn native_requests_report_only_the_server_message() {
+        let replies = [
+            error_response("relation \"missing\" does not exist"),
+            ready(b'I'),
+            message(b'T', &row_description(&[("version", 20, 0)])),
+            message(b'D', &data_row(&[Some(b"7")])),
+            message(b'D', &data_row(&[None])),
+            error_response("permission denied"),
+            ready(b'I'),
+            message(b'n', b""),
+            complete("CREATE TABLE"),
+            ready(b'I'),
+            message(b'n', b""),
+            complete("SELECT 0"),
+            ready(b'I'),
+        ]
+        .concat();
+        let (handle, peer) = scripted(replies);
+        let mut conn = NativePgConn {
+            inner: *unsafe { Box::from_raw(handle as *mut PgConn) },
+        };
+
+        assert_eq!(
+            native_pg_execute(&mut conn, "SELECT * FROM missing", &[]),
+            Err("relation \"missing\" does not exist".to_string())
+        );
+        assert_eq!(
+            native_pg_query(&mut conn, "SELECT version", &[]),
+            Err("permission denied".to_string())
+        );
+        assert_eq!(
+            native_pg_execute(&mut conn, "CREATE TABLE t ()", &[]),
+            Ok(0)
+        );
+        assert_eq!(native_pg_query(&mut conn, "SELECT", &["x"]), Ok(vec![]));
+        native_pg_close(conn);
+        peer.join().unwrap();
+    }
+
+    #[test]
+    fn typed_queries_describe_the_statement_first_and_decode_bytea_raw() {
+        mesh_rt_init();
+        let statement = row_description(&[("payload", 17, 0), ("label", 25, 0)]);
+        let portal = row_description(&[("payload", 17, 1), ("label", 25, 0)]);
+        let replies = [
+            // Described, then bound with the BYTEA column in binary.
+            message(b'1', b""),
+            message(b't', &[0, 0]),
+            message(b'T', &statement),
+            ready(b'I'),
+            message(b'2', b""),
+            message(b'T', &portal),
+            message(b'D', &data_row(&[Some(&[0, 0xff]), Some(b"x")])),
+            message(b'D', &data_row(&[None, Some(b"y")])),
+            complete("SELECT 2"),
+            ready(b'I'),
+            // A statement without rows: NoData.
+            message(b'1', b""),
+            message(b'n', b""),
+            ready(b'I'),
+            message(b'2', b""),
+            message(b'n', b""),
+            complete("INSERT 0 1"),
+            ready(b'I'),
+            // The statement refused.
+            error_response("syntax error"),
+            ready(b'I'),
+            // A server that describes nothing.
+            message(b'1', b""),
+            ready(b'I'),
+            // Text a typed query cannot hold.
+            message(b'1', b""),
+            message(b'T', &row_description(&[("label", 25, 0)])),
+            ready(b'I'),
+            message(b'T', &row_description(&[("label", 25, 0)])),
+            message(b'D', &data_row(&[Some(b"\xff")])),
+            ready(b'I'),
+            // execute_values: typed parameters, text results.
+            message(b'1', b""),
+            message(b'2', b""),
+            complete("INSERT 0 2"),
+            ready(b'I'),
+        ]
+        .concat();
+        let (handle, peer) = scripted(replies);
+        let sql = mesh_str("SELECT $1");
+        let payload = mesh_bytes_new([1, 2].as_ptr(), 2) as *mut u8;
+        let params = [
+            unsafe { alloc_db_value(DB_VALUE_BINARY, payload) } as u64,
+            unsafe { alloc_db_value(DB_VALUE_NULL, std::ptr::null_mut()) } as u64,
+        ];
+        let params = mesh_list_from_array(params.as_ptr(), 2);
+
+        let rows = outcome(mesh_pg_query_values(handle, sql, params)).unwrap();
+        assert_eq!(
+            rows_of(rows, true),
+            [
+                "payload=Binary([00, ff]),label=Text(x)",
+                "payload=Null,label=Text(y)"
+            ]
+        );
+        let rows = outcome(mesh_pg_query_values(handle, sql, mesh_list_new())).unwrap();
+        assert_eq!(mesh_list_length(rows), 0);
+        assert_eq!(
+            outcome(mesh_pg_query_values(handle, sql, mesh_list_new())).err(),
+            Some("28P01\ta_constraint\t\t\tsyntax error".to_string())
+        );
+        assert_eq!(
+            outcome(mesh_pg_query_values(handle, sql, mesh_list_new())).err(),
+            Some("PostgreSQL prepare returned no row description".to_string())
+        );
+        assert_eq!(
+            outcome(mesh_pg_query_values(handle, sql, mesh_list_new())).err(),
+            Some("PostgreSQL text column `label` is not UTF-8".to_string())
+        );
+        assert_eq!(
+            int_outcome(mesh_pg_execute_values(handle, sql, params)),
+            Ok(2)
+        );
+        mesh_pg_close(handle);
+        peer.join().unwrap();
+    }
+
+    /// Before the text queries shared the typed ones' decoding, a DataRow
+    /// that ran past its message sliced out of bounds: a panic, which in an
+    /// `extern "C"` function aborts the program.
+    #[test]
+    fn a_reply_the_driver_cannot_decode_fails_the_request_not_the_program() {
+        mesh_rt_init();
+        let one = row_description(&[("a", 25, 0)]);
+        let replies = [
+            message(b'T', &one),
+            message(b'D', &[0, 1, 0, 0, 0, 9, b'x']),
+            message(b'D', &data_row(&[Some(b"ignored")])),
+            ready(b'I'),
+            message(b'T', b"\0"),
+            ready(b'I'),
+            // The connection still answers.
+            message(b'T', &one),
+            message(b'D', &data_row(&[Some(b"ok")])),
+            ready(b'I'),
+        ]
+        .concat();
+        let (handle, peer) = scripted(replies);
+        let sql = mesh_str("SELECT a");
+
+        assert_eq!(
+            outcome(mesh_pg_query(handle, sql, mesh_list_new()))
+                .err()
+                .as_deref(),
+            Some("truncated PostgreSQL column `a`")
+        );
+        assert_eq!(
+            outcome(mesh_pg_query(handle, sql, mesh_list_new()))
+                .err()
+                .as_deref(),
+            Some("invalid PostgreSQL RowDescription")
+        );
+        let rows = outcome(mesh_pg_query(handle, sql, mesh_list_new())).unwrap();
+        assert_eq!(rows_of(rows, false), ["a=ok"]);
+        mesh_pg_close(handle);
+        peer.join().unwrap();
+    }
+
+    #[test]
+    fn results_stay_within_the_row_and_byte_limits() {
+        let one = row_description(&[("a", 25, 0)]);
+        let row = message(b'D', &data_row(&[Some(b"1")]));
+        let mut replies = message(b'T', &one);
+        for _ in 0..=MAX_PG_ROWS {
+            replies.extend_from_slice(&row);
+        }
+        replies.extend_from_slice(&ready(b'I'));
+        // Four rows of 15 MiB fit in 64; the fifth does not.
+        let large = vec![b'x'; 15 * 1024 * 1024];
+        replies.extend_from_slice(&message(b'T', &one));
+        for _ in 0..5 {
+            replies.extend_from_slice(&message(b'D', &data_row(&[Some(&large)])));
+        }
+        replies.extend_from_slice(&ready(b'I'));
+        let (handle, peer) = scripted(replies);
+        let mut conn = NativePgConn {
+            inner: *unsafe { Box::from_raw(handle as *mut PgConn) },
+        };
+
+        assert_eq!(
+            native_pg_query(&mut conn, "SELECT a", &[]),
+            Err(format!("PostgreSQL result exceeds {MAX_PG_ROWS} row limit"))
+        );
+        assert_eq!(
+            native_pg_query(&mut conn, "SELECT a", &[]),
+            Err(format!(
+                "PostgreSQL result exceeds {MAX_PG_RESULT_BYTES} byte limit"
+            ))
+        );
+        native_pg_close(conn);
+        peer.join().unwrap();
+    }
+
+    #[test]
+    fn a_connection_that_fails_to_send_or_read_is_unusable_after() {
+        mesh_rt_init();
+        let sql = mesh_str("SELECT 1");
+        // The peer reads the request, then goes.
+        let (handle, peer) = peer_connection(|mut socket| {
+            assert!(socket.read(&mut [0; 1024]).unwrap() > 0);
+        });
+        let error = outcome(mesh_pg_query(handle, sql, mesh_list_new())).unwrap_err();
+        assert!(error.starts_with("read query: read tag: "), "{error}");
+        peer.join().unwrap();
+        let unusable = "PostgreSQL connection is unusable";
+        assert_eq!(
+            outcome(mesh_pg_execute(handle, sql, mesh_list_new())).err(),
+            Some(format!("send execute: {unusable}"))
+        );
+        for result in [
+            mesh_pg_begin(handle),
+            mesh_pg_commit(handle),
+            mesh_pg_rollback(handle),
+        ] {
+            assert!(outcome(result).unwrap_err().ends_with(unusable));
+        }
+        assert_eq!(
+            outcome(mesh_pg_transaction(
+                handle,
+                std::ptr::null(),
+                std::ptr::null()
+            ))
+            .err(),
+            Some(format!("BEGIN: send BEGIN: {unusable}"))
+        );
+        mesh_pg_close(handle);
+
+        // A message longer than any the driver accepts.
+        let (handle, peer) = scripted(b"Z\x7f\xff\xff\xff".to_vec());
+        assert_eq!(
+            outcome(mesh_pg_query(handle, sql, mesh_list_new())).err(),
+            Some(format!(
+                "read query: invalid PostgreSQL message length: {} (maximum {MAX_PG_MESSAGE_BYTES})",
+                i32::MAX
+            ))
+        );
+        assert!(conn_of(handle).is_broken());
+        mesh_pg_close(handle);
+        peer.join().unwrap();
+
+        // Sending fails.
+        let (handle, peer) = peer_connection(|mut socket| {
+            let _ = socket.read_to_end(&mut Vec::new());
+        });
+        let PgStream::Plain(stream) = &conn_of(handle).stream else {
+            unreachable!()
+        };
+        stream.shutdown(std::net::Shutdown::Write).unwrap();
+        let error = outcome(mesh_pg_execute(handle, sql, mesh_list_new())).unwrap_err();
+        assert!(error.starts_with("send execute: "), "{error}");
+        assert!(conn_of(handle).is_broken());
+        mesh_pg_close(handle);
+        peer.join().unwrap();
     }
 }
