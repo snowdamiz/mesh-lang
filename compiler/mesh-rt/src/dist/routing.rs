@@ -551,10 +551,10 @@ pub(crate) struct RoutingReservation {
 impl Drop for RoutingReservation {
     fn drop(&mut self) {
         let mut reservations = self.registry.lock();
-        let Some(count) = reservations.get_mut(&self.node_id) else {
-            return;
-        };
-        *count = count.saturating_sub(1);
+        let count = reservations
+            .get_mut(&self.node_id)
+            .expect("a reservation is counted from when it is made until it drops");
+        *count -= 1;
         if *count == 0 {
             reservations.remove(&self.node_id);
         }
@@ -632,8 +632,7 @@ fn select_owner_and_reserve_with_registry(
         &reservations,
     )?;
     let selected_node = decision.selected_node.clone();
-    let count = reservations.entry(selected_node.clone()).or_default();
-    *count = count.saturating_add(1);
+    *reservations.entry(selected_node.clone()).or_default() += 1;
     drop(reservations);
     Ok((
         decision,
