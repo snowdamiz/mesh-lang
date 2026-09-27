@@ -567,6 +567,108 @@ mod tests {
         restarted.raft.shutdown().await.expect("shutdown restart");
     }
 
+    fn blank_entry(index: u64) -> Entry<MeshRaftConfig> {
+        Entry {
+            log_id: LogId::new(openraft::CommittedLeaderId::new(1, 1), index),
+            payload: openraft::EntryPayload::Blank,
+        }
+    }
+
+    fn indexes(entries: Vec<Entry<MeshRaftConfig>>) -> Vec<u64> {
+        entries.iter().map(|entry| entry.log_id.index).collect()
+    }
+
+    #[test]
+    fn a_store_needs_a_file_path() {
+        assert_eq!(
+            open_durable_consensus_store(Path::new("")).err(),
+            Some("consensus_store_path_missing".to_string())
+        );
+        let root = open_durable_consensus_store(Path::new("/")).err();
+        assert!(
+            root.as_deref()
+                .is_some_and(|error| error.starts_with("consensus_store_open_failed:")),
+            "{root:?}"
+        );
+    }
+
+    /// Raft truncates a follower's log from a conflicting entry on, and
+    /// purges it up to a snapshot, remembering the last entry purged.
+    #[tokio::test]
+    async fn the_log_truncates_from_a_conflict_and_purges_up_to_a_snapshot() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let (mut log, _) =
+            open_durable_consensus_store(&directory.path().join("log.redb")).expect("store");
+        assert!(format!("{log:?}").contains("log.redb"));
+        // Written as `append` writes them: only Raft can make its callback.
+        let write = log.inner.database.begin_write().unwrap();
+        {
+            let mut table = write.open_table(LOG_TABLE).unwrap();
+            for entry in (1..=5).map(blank_entry) {
+                let encoded = serde_json::to_vec(&entry).unwrap();
+                table
+                    .insert(&entry.log_id.index, encoded.as_slice())
+                    .unwrap();
+            }
+        }
+        write.commit().unwrap();
+
+        log.truncate(blank_entry(4).log_id).await.expect("truncate");
+        assert_eq!(
+            indexes(log.try_get_log_entries(..).await.unwrap()),
+            [1, 2, 3]
+        );
+        let purged = blank_entry(2).log_id;
+        log.purge(purged).await.expect("purge");
+        let mut reader = log.get_log_reader().await;
+        assert_eq!(indexes(reader.try_get_log_entries(..).await.unwrap()), [3]);
+        let state = log.get_log_state().await.expect("log state");
+        assert_eq!(state.last_purged_log_id, Some(purged));
+        assert_eq!(state.last_log_id, Some(blank_entry(3).log_id));
+    }
+
+    /// A machine that applied nothing snapshots as empty; a snapshot whose
+    /// data went missing is refused rather than installed half.
+    #[tokio::test]
+    async fn empty_and_incomplete_snapshots() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let (_, mut machine) =
+            open_durable_consensus_store(&directory.path().join("machine.redb")).expect("store");
+        let built = machine
+            .get_snapshot_builder()
+            .await
+            .build_snapshot()
+            .await
+            .expect("snapshot");
+        assert_eq!(built.meta.snapshot_id, "empty-1");
+        assert!(machine
+            .begin_receiving_snapshot()
+            .await
+            .expect("snapshot buffer")
+            .get_ref()
+            .is_empty());
+
+        let write = machine.inner.database.begin_write().unwrap();
+        write
+            .open_table(META_TABLE)
+            .unwrap()
+            .remove(META_SNAPSHOT_DATA)
+            .unwrap();
+        write.commit().unwrap();
+        let Err(error) = machine.get_current_snapshot().await else {
+            panic!("a snapshot without its data was read");
+        };
+        assert!(
+            error
+                .to_string()
+                .contains("consensus snapshot is incomplete"),
+            "{error}"
+        );
+        assert!(storage_write_error("disk full")
+            .to_string()
+            .contains("disk full"));
+    }
+
     #[tokio::test]
     async fn durable_snapshot_round_trips_raw_state_bytes() {
         let source_directory = tempfile::tempdir().expect("source tempdir");
