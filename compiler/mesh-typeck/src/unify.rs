@@ -193,6 +193,10 @@ pub struct InferCtx {
     /// Field reads from values of a type not known yet, resolved when the
     /// enclosing function (or the module, outside functions) is done.
     pub pending_fields: Vec<PendingField>,
+    /// The field access whose base was typed last, and the base's type: a
+    /// call of a name that type has no field of is retried as a method of
+    /// it, without inferring the base again.
+    pub field_base: Option<(TextRange, Ty)>,
     /// Operands of `<>` or `++` whose type was not known yet, with the
     /// operator and where it is: checked when the function is done.
     pub concat_operands: Vec<(Ty, &'static str, TextRange)>,

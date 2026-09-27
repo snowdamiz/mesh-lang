@@ -3174,6 +3174,22 @@ fn a_failed_method_call_keeps_an_earlier_field_error() {
     );
 }
 
+/// Each call in a chain of method calls infers its receiver once: every
+/// call inferred it three times, and a chain of twelve calls took seconds.
+#[test]
+fn a_long_method_chain_is_checked_in_linear_time() {
+    let chain = ".trim()".repeat(40);
+    let source = format!("fn main() do\n  let s = \"a\"{chain}\n  s\nend\n");
+    let (sender, receiver) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = sender.send(errors(&source));
+    });
+    let checked = receiver
+        .recv_timeout(std::time::Duration::from_secs(60))
+        .expect("forty chained calls are checked within a minute");
+    assert!(checked.is_empty(), "{checked:?}");
+}
+
 /// A supervisor the parser could not finish is checked as far as it goes.
 #[test]
 fn an_unfinished_supervisor_is_checked_as_far_as_it_goes() {

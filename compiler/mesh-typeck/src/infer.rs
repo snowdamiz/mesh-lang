@@ -8692,6 +8692,7 @@ fn infer_expr_here(
             trait_registry,
             fn_constraints,
             false,
+            None,
         ),
         Expr::StructLiteral(sl) => infer_struct_literal(
             ctx,
@@ -10187,15 +10188,17 @@ fn infer_call_inner(
             Ok(ty) => ty,
             Err(first_err) => {
                 // A name the base's type has no field of may be one of its
-                // methods. Any other failure (an undefined base, a module
-                // without the function, an error in the base itself) would
-                // only fail again, and report it again.
-                let fa = match (&callee_expr, &first_err) {
-                    (Expr::FieldAccess(fa), TypeError::NoSuchField { span, .. })
-                        if *span == fa.syntax().text_range() =>
-                    {
-                        fa
-                    }
+                // methods, looked up on the type the attempt gave the base:
+                // inferring the base again made a chain of calls exponential.
+                // Any other failure (an undefined base, a module without the
+                // function, an error in the base itself) would only fail
+                // again, and report it again.
+                let (fa, base_ty) = match (&callee_expr, &first_err, ctx.field_base.take()) {
+                    (
+                        Expr::FieldAccess(fa),
+                        TypeError::NoSuchField { span, .. },
+                        Some((access, base_ty)),
+                    ) if *span == fa.syntax().text_range() && access == *span => (fa, base_ty),
                     _ => return Err(first_err),
                 };
                 // Take back the error this attempt reported, and no other.
@@ -10211,39 +10214,24 @@ fn infer_call_inner(
                     trait_registry,
                     fn_constraints,
                     true,
+                    Some(base_ty.clone()),
                 )?;
-                let base = fa.base().ok_or_else(|| first_err.clone())?;
                 let explicit_args = call.args();
                 let ret_var = ctx.fresh_var();
                 let origin = ConstraintOrigin::FnArg {
                     call_site: call.syntax().text_range(),
                     param_idx: 0,
                 };
-                let param_types: Vec<Ty> =
-                    (0..=explicit_args.len()).map(|_| ctx.fresh_var()).collect();
+                // The receiver, then the arguments.
+                let param_types: Vec<Ty> = std::iter::once(base_ty)
+                    .chain(explicit_args.iter().map(|_| ctx.fresh_var()))
+                    .collect();
                 let expected_fn_ty = Ty::Fun(param_types.clone(), Box::new(ret_var.clone()));
 
-                // Establish the method signature first. The receiver then
-                // specializes generic method parameters before explicit closure
-                // arguments are inferred.
-                ctx.unify(callee_ty, expected_fn_ty, origin.clone())?;
-                let receiver_ty = infer_expr(
-                    ctx,
-                    env,
-                    &base,
-                    types,
-                    type_registry,
-                    trait_registry,
-                    fn_constraints,
-                )?;
-                ctx.unify(
-                    param_types[0].clone(),
-                    receiver_ty,
-                    ConstraintOrigin::FnArg {
-                        call_site: call.syntax().text_range(),
-                        param_idx: 0,
-                    },
-                )?;
+                // Establish the method signature, with the receiver, first:
+                // the receiver specializes generic method parameters before
+                // explicit closure arguments are inferred.
+                ctx.unify(callee_ty, expected_fn_ty, origin)?;
 
                 for (arg_idx, arg) in explicit_args.iter().enumerate() {
                     let param_idx = arg_idx + 1;
@@ -12240,7 +12228,10 @@ fn build_method_fn_type(
 
 // ── Struct/Field Inference (03-03) ─────────────────────────────────────
 
-/// Infer the type of a field access expression: `expr.field_name`
+/// Infer the type of a field access expression: `expr.field_name`, or of
+/// the method it names when `is_method_call`. `base_ty` is the base's type
+/// when it has been inferred already.
+#[allow(clippy::too_many_arguments)]
 fn infer_field_access(
     ctx: &mut InferCtx,
     env: &mut TypeEnv,
@@ -12250,6 +12241,7 @@ fn infer_field_access(
     trait_registry: &TraitRegistry,
     fn_constraints: &FxHashMap<String, FnConstraints>,
     is_method_call: bool,
+    base_ty: Option<Ty>,
 ) -> Result<Ty, TypeError> {
     let base_expr = fa.base().ok_or_else(incomplete)?;
 
@@ -12415,15 +12407,19 @@ fn infer_field_access(
         }
     }
 
-    let base_ty = infer_expr(
-        ctx,
-        env,
-        &base_expr,
-        types,
-        type_registry,
-        trait_registry,
-        fn_constraints,
-    )?;
+    let base_ty = match base_ty {
+        Some(base_ty) => base_ty,
+        None => infer_expr(
+            ctx,
+            env,
+            &base_expr,
+            types,
+            type_registry,
+            trait_registry,
+            fn_constraints,
+        )?,
+    };
+    ctx.field_base = Some((fa.syntax().text_range(), base_ty.clone()));
     let resolved_base = ctx.resolve(base_ty);
 
     // Inside an interface's default method `self` has the type `Self`: its
