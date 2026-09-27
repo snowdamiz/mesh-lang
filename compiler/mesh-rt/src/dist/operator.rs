@@ -256,52 +256,14 @@ pub(crate) fn prepare_committed_drain(node_id: &str) {
         return;
     }
     if node_state().is_some_and(|state| state.name != runtime_node_id) {
-        let sequence_floor = unix_millis();
-        let sequence = DRAIN_PROPAGATION_SEQUENCE
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
-                Some(current.saturating_add(1).max(sequence_floor))
-            })
-            .unwrap_or(sequence_floor)
-            .saturating_add(1)
-            .max(sequence_floor);
-        let propagated = std::env::var("MESH_OPERATOR_KEY")
-            .map_err(|_| "operator_control_not_configured".to_string())
-            .and_then(|key| {
-                sign_operator_control_request(
-                    OperatorControlRequest {
-                        schema_version: 1,
-                        cluster_id: std::env::var("MESH_CLUSTER_ID")
-                            .unwrap_or_else(|_| "mesh".to_string()),
-                        actor: "mesh-drain-propagator".to_string(),
-                        sequence,
-                        expires_at_unix_millis: unix_millis().saturating_add(30_000),
-                        reason: "quorum-committed local drain admission fence".to_string(),
-                        action: OperatorControlAction::DrainNode {
-                            node_id: runtime_node_id.clone(),
-                        },
-                        signature: String::new(),
-                    },
-                    &key,
-                )
-            })
-            .and_then(|request| {
-                query_operator_control_remote(
-                    &runtime_node_id,
-                    &std::env::var("MESH_CLUSTER_COOKIE").unwrap_or_default(),
-                    request,
-                    Duration::from_secs(5),
-                )
-                .map(|_| ())
-                .map_err(|error| error.to_string())
-            });
-        if let Err(error) = propagated {
-            record_diagnostic(OperatorDiagnosticRecord {
-                transition: "drain_target_propagation_failed".to_string(),
-                reason: Some(error),
-                metadata: vec![("node_id".to_string(), runtime_node_id.clone())],
-                ..OperatorDiagnosticRecord::default()
-            });
-        }
+        propagate_drain(
+            &runtime_node_id,
+            OperatorControlAction::DrainNode {
+                node_id: runtime_node_id.clone(),
+            },
+            "quorum-committed local drain admission fence",
+            "drain_target_propagation_failed",
+        );
     }
     if let Err(error) = super::node::prepare_continuity_for_drain(&runtime_node_id) {
         record_diagnostic(OperatorDiagnosticRecord {
@@ -324,49 +286,57 @@ pub(crate) fn cancel_committed_drain(node_id: &str) {
     if node_state().is_none_or(|state| state.name == runtime_node_id) {
         return;
     }
-    let sequence_floor = unix_millis();
-    let sequence = DRAIN_PROPAGATION_SEQUENCE
+    propagate_drain(
+        &runtime_node_id,
+        OperatorControlAction::CancelDrain {
+            node_id: runtime_node_id.clone(),
+        },
+        "quorum-committed drain cancellation",
+        "drain_cancel_propagation_failed",
+    );
+}
+
+/// Asks `runtime_node_id`, a peer, to apply `action` to its own admission
+/// fence, signed as the drain propagator. A failure is recorded as the
+/// `failure` diagnostic.
+fn propagate_drain(
+    runtime_node_id: &str,
+    action: OperatorControlAction,
+    reason: &str,
+    failure: &str,
+) {
+    // Each propagated request needs a sequence above every earlier one, and
+    // above the clock, so a restarted controller still counts upward.
+    let floor = unix_millis();
+    let previous = DRAIN_PROPAGATION_SEQUENCE
         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
-            Some(current.saturating_add(1).max(sequence_floor))
+            Some(current.saturating_add(1).max(floor))
         })
-        .unwrap_or(sequence_floor)
-        .saturating_add(1)
-        .max(sequence_floor);
+        .expect("the update always applies");
+    let request = OperatorControlRequest {
+        schema_version: 1,
+        cluster_id: std::env::var("MESH_CLUSTER_ID").unwrap_or_else(|_| "mesh".to_string()),
+        actor: "mesh-drain-propagator".to_string(),
+        sequence: previous.saturating_add(1).max(floor),
+        expires_at_unix_millis: floor.saturating_add(30_000),
+        reason: reason.to_string(),
+        action,
+        signature: String::new(),
+    };
     let propagated = std::env::var("MESH_OPERATOR_KEY")
         .map_err(|_| "operator_control_not_configured".to_string())
-        .and_then(|key| {
-            sign_operator_control_request(
-                OperatorControlRequest {
-                    schema_version: 1,
-                    cluster_id: std::env::var("MESH_CLUSTER_ID")
-                        .unwrap_or_else(|_| "mesh".to_string()),
-                    actor: "mesh-drain-propagator".to_string(),
-                    sequence,
-                    expires_at_unix_millis: unix_millis().saturating_add(30_000),
-                    reason: "quorum-committed drain cancellation".to_string(),
-                    action: OperatorControlAction::CancelDrain {
-                        node_id: runtime_node_id.clone(),
-                    },
-                    signature: String::new(),
-                },
-                &key,
-            )
-        })
+        .and_then(|key| sign_operator_control_request(request, &key))
         .and_then(|request| {
-            query_operator_control_remote(
-                &runtime_node_id,
-                &std::env::var("MESH_CLUSTER_COOKIE").unwrap_or_default(),
-                request,
-                Duration::from_secs(5),
-            )
-            .map(|_| ())
-            .map_err(|error| error.to_string())
+            let cookie = std::env::var("MESH_CLUSTER_COOKIE").unwrap_or_default();
+            query_operator_control_remote(runtime_node_id, &cookie, request, Duration::from_secs(5))
+                .map(|_| ())
+                .map_err(|error| error.to_string())
         });
     if let Err(error) = propagated {
         record_diagnostic(OperatorDiagnosticRecord {
-            transition: "drain_cancel_propagation_failed".to_string(),
+            transition: failure.to_string(),
             reason: Some(error),
-            metadata: vec![("node_id".to_string(), runtime_node_id)],
+            metadata: vec![("node_id".to_string(), runtime_node_id.to_string())],
             ..OperatorDiagnosticRecord::default()
         });
     }
