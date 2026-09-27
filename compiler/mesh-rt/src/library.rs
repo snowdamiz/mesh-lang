@@ -13,7 +13,7 @@ use zeroize::Zeroizing;
 use crate::actor::{self, stack, ProcessId};
 use crate::bytes::{mesh_bytes_new, MeshBytes};
 use crate::gc::mesh_rt_init;
-use crate::io::{alloc_result, MeshResult};
+use crate::io::{alloc_result, err_result, MeshResult};
 use crate::string::MeshString;
 
 pub const MESH_LIBRARY_ABI_VERSION: u32 = 1;
@@ -380,18 +380,18 @@ pub extern "C" fn mesh_library_host_call(
     input: *const MeshBytes,
 ) -> *mut MeshResult {
     if input.is_null() {
-        return error_result("host_callback_invalid_input");
+        return err_result("host_callback_invalid_input");
     }
     let callbacks = *HOST_CALLBACKS.read();
     let Some(callbacks) = callbacks else {
-        return error_result("host_callback_not_registered");
+        return err_result("host_callback_not_registered");
     };
     let Some(callback) = callbacks.callback(capability) else {
-        return error_result("host_callback_missing");
+        return err_result("host_callback_missing");
     };
     let input = unsafe { (*input).as_slice() };
     if input.len() > MAX_BOUNDARY_BYTES {
-        return error_result("host_callback_input_too_large");
+        return err_result("host_callback_input_too_large");
     }
 
     let mut output = host_callback_output();
@@ -407,23 +407,19 @@ pub extern "C" fn mesh_library_host_call(
         )
     };
     if status != MESH_LIBRARY_OK {
-        return error_result(&format!("host_callback_failed:{capability}:{status}"));
+        return err_result(&format!("host_callback_failed:{capability}:{status}"));
     }
     let Ok(output_len) = usize::try_from(output_len) else {
-        return error_result("host_callback_output_too_large");
+        return err_result("host_callback_output_too_large");
     };
     if output_len > output.len() {
-        return error_result("host_callback_output_too_large");
+        return err_result("host_callback_output_too_large");
     }
     alloc_result(0, mesh_bytes_new(output.as_ptr(), output_len as u64).cast())
 }
 
 fn host_callback_output() -> Zeroizing<Vec<u8>> {
     Zeroizing::new(vec![0; MAX_BOUNDARY_BYTES])
-}
-
-fn error_result(message: &str) -> *mut MeshResult {
-    alloc_result(1, crate::string::mesh_str(message) as *mut u8)
 }
 
 macro_rules! host_entrypoint {

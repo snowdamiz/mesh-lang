@@ -9,7 +9,7 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::io::{alloc_result, ok_int, MeshResult};
+use crate::io::{err_result, ok_int, MeshResult};
 use crate::string::{mesh_str, MeshString};
 use chrono::{DateTime, SecondsFormat, TimeDelta, Utc};
 
@@ -40,7 +40,7 @@ pub extern "C" fn mesh_datetime_from_iso8601(s: *const MeshString) -> *mut MeshR
         match DateTime::parse_from_rfc3339(text) {
             Err(_) => {
                 let e = "invalid ISO 8601 datetime";
-                alloc_result(1, mesh_str(e) as *mut u8)
+                err_result(e)
             }
             Ok(dt) => {
                 let ms: i64 = dt.timestamp_millis();
@@ -72,7 +72,7 @@ pub extern "C" fn mesh_datetime_from_unix_ms(ms: i64) -> *mut MeshResult {
     match DateTime::from_timestamp_millis(ms) {
         None => {
             let e = "unix timestamp out of range";
-            alloc_result(1, mesh_str(e) as *mut u8)
+            err_result(e)
         }
         Some(dt) => ok_int(dt.timestamp_millis()),
     }
@@ -90,7 +90,7 @@ pub extern "C" fn mesh_datetime_from_unix_secs(secs: i64) -> *mut MeshResult {
     match DateTime::from_timestamp(secs, 0) {
         None => {
             let e = "unix timestamp out of range";
-            alloc_result(1, mesh_str(e) as *mut u8)
+            err_result(e)
         }
         Some(dt) => ok_int(dt.timestamp_millis()),
     }

@@ -19,7 +19,7 @@
 use super::quote_ident;
 use crate::collections::list::{mesh_list_get, mesh_list_length, mesh_list_new};
 use crate::db::pool::mesh_pool_execute;
-use crate::io::alloc_result;
+use crate::io::err_result;
 use crate::string::{mesh_str, MeshString};
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -35,10 +35,6 @@ unsafe fn list_to_strings(list_ptr: *mut u8) -> Vec<String> {
         }
     }
     result
-}
-
-fn err_result(message: &str) -> *mut u8 {
-    alloc_result(1, mesh_str(message) as *mut u8) as *mut u8
 }
 
 // ── Pure Rust SQL builders (testable without GC) ─────────────────────

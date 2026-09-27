@@ -26,7 +26,7 @@ use self::provider::{
 use crate::actor::Process;
 use crate::bytes::{mesh_bytes_new, MeshBytes};
 use crate::gc::mesh_gc_alloc_actor;
-use crate::io::{alloc_result, MeshResult};
+use crate::io::{alloc_result, err_result, MeshResult};
 use crate::secret::{
     consume_and_retype_owned_resource, crypto_error, insert_owned_resource, with_owned_resource,
     CryptoErrorTag, MeshSecretHandle, ResourceError, ResourceKind, RetypeError,
@@ -1853,12 +1853,12 @@ pub extern "C" fn mesh_base64_decode(s: *const MeshString) -> *mut MeshResult {
         match bytes {
             Err(_) => {
                 let e = "invalid base64";
-                alloc_result(1, mesh_str(e) as *mut u8)
+                err_result(e)
             }
             Ok(decoded) => match std::str::from_utf8(&decoded) {
                 Err(_) => {
                     let e = "invalid utf-8";
-                    alloc_result(1, mesh_str(e) as *mut u8)
+                    err_result(e)
                 }
                 Ok(valid) => alloc_result(0, mesh_str(valid) as *mut u8),
             },
@@ -1891,12 +1891,12 @@ pub extern "C" fn mesh_base64_decode_url(s: *const MeshString) -> *mut MeshResul
         match bytes {
             Err(_) => {
                 let e = "invalid base64";
-                alloc_result(1, mesh_str(e) as *mut u8)
+                err_result(e)
             }
             Ok(decoded) => match std::str::from_utf8(&decoded) {
                 Err(_) => {
                     let e = "invalid utf-8";
-                    alloc_result(1, mesh_str(e) as *mut u8)
+                    err_result(e)
                 }
                 Ok(valid) => alloc_result(0, mesh_str(valid) as *mut u8),
             },
@@ -1931,7 +1931,7 @@ pub extern "C" fn mesh_hex_decode(s: *const MeshString) -> *mut MeshResult {
         let text = (*s).as_str().to_lowercase();
         if !text.len().is_multiple_of(2) {
             let e = "invalid hex";
-            return alloc_result(1, mesh_str(e) as *mut u8);
+            return err_result(e);
         }
         let mut decoded = Vec::with_capacity(text.len() / 2);
         for chunk in text.as_bytes().chunks(2) {
@@ -1940,14 +1940,14 @@ pub extern "C" fn mesh_hex_decode(s: *const MeshString) -> *mut MeshResult {
                 Ok(b) => decoded.push(b),
                 Err(_) => {
                     let e = "invalid hex";
-                    return alloc_result(1, mesh_str(e) as *mut u8);
+                    return err_result(e);
                 }
             }
         }
         match std::str::from_utf8(&decoded) {
             Err(_) => {
                 let e = "invalid utf-8";
-                alloc_result(1, mesh_str(e) as *mut u8)
+                err_result(e)
             }
             Ok(valid) => alloc_result(0, mesh_str(valid) as *mut u8),
         }

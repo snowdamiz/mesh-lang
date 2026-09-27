@@ -7,7 +7,7 @@ use super::quote_ident;
 use crate::collections::list::{mesh_list_append, mesh_list_get, mesh_list_length, mesh_list_new};
 use crate::collections::map::mesh_map_get;
 use crate::db::pool::{mesh_pool_execute, mesh_pool_query};
-use crate::io::{alloc_result, MeshResult};
+use crate::io::{alloc_result, err_result, MeshResult};
 use crate::string::{mesh_str, MeshString};
 
 fn quote_literal(value: &str) -> String {
@@ -46,10 +46,6 @@ unsafe fn strings_to_mesh_list(values: &[String]) -> *mut u8 {
         list = mesh_list_append(list, mesh_str(value) as u64);
     }
     list
-}
-
-fn err_result(message: &str) -> *mut u8 {
-    alloc_result(1, mesh_str(message) as *mut u8) as *mut u8
 }
 
 fn ok_int_result(value: i64) -> *mut u8 {

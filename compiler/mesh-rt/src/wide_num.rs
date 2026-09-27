@@ -3,7 +3,7 @@
 use std::cmp::Ordering;
 
 use crate::gc::mesh_gc_alloc_actor;
-use crate::io::{alloc_result, ok_int, MeshResult};
+use crate::io::{alloc_result, err_result, ok_int, MeshResult};
 use crate::string::{mesh_str, MeshString};
 
 #[repr(C)]
@@ -34,10 +34,6 @@ fn allocate(bits: u128) -> *mut MeshWideNum {
 
 unsafe fn bits(value: *const MeshWideNum) -> u128 {
     ((*value).high as u128) << 64 | (*value).low as u128
-}
-
-fn error(message: &str) -> *mut MeshResult {
-    alloc_result(1, mesh_str(message) as *mut u8)
 }
 
 fn ok_wide(value: u128) -> *mut MeshResult {
@@ -75,7 +71,7 @@ macro_rules! wide_abi {
             unsafe {
                 match (*text).as_str().parse::<$rust_type>() {
                     Ok(value) => ok_wide(value as u128),
-                    Err(_) => error(concat!("invalid ", $label)),
+                    Err(_) => err_result(concat!("invalid ", $label)),
                 }
             }
         }
@@ -94,7 +90,7 @@ macro_rules! wide_abi {
                 (bits(left) as $rust_type)
                     .checked_add(bits(right) as $rust_type)
                     .map(|value| ok_wide(value as u128))
-                    .unwrap_or_else(|| error(concat!($label, " addition overflow")))
+                    .unwrap_or_else(|| err_result(concat!($label, " addition overflow")))
             }
         }
 
@@ -107,7 +103,7 @@ macro_rules! wide_abi {
                 (bits(left) as $rust_type)
                     .checked_sub(bits(right) as $rust_type)
                     .map(|value| ok_wide(value as u128))
-                    .unwrap_or_else(|| error(concat!($label, " subtraction overflow")))
+                    .unwrap_or_else(|| err_result(concat!($label, " subtraction overflow")))
             }
         }
 
@@ -120,7 +116,7 @@ macro_rules! wide_abi {
                 (bits(left) as $rust_type)
                     .checked_mul(bits(right) as $rust_type)
                     .map(|value| ok_wide(value as u128))
-                    .unwrap_or_else(|| error(concat!($label, " multiplication overflow")))
+                    .unwrap_or_else(|| err_result(concat!($label, " multiplication overflow")))
             }
         }
 
@@ -132,12 +128,12 @@ macro_rules! wide_abi {
             unsafe {
                 let right = bits(right) as $rust_type;
                 if right == 0 {
-                    return error(concat!($label, " division by zero"));
+                    return err_result(concat!($label, " division by zero"));
                 }
                 (bits(left) as $rust_type)
                     .checked_div(right)
                     .map(|value| ok_wide(value as u128))
-                    .unwrap_or_else(|| error(concat!($label, " division overflow")))
+                    .unwrap_or_else(|| err_result(concat!($label, " division overflow")))
             }
         }
 
@@ -146,7 +142,7 @@ macro_rules! wide_abi {
             unsafe {
                 i64::try_from(bits(value) as $rust_type)
                     .map(ok_int)
-                    .unwrap_or_else(|_| error(concat!($label, " does not fit Int")))
+                    .unwrap_or_else(|_| err_result(concat!($label, " does not fit Int")))
             }
         }
 

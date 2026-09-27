@@ -16,8 +16,8 @@ use crate::actor::heap::MessageBuffer;
 use crate::actor::process::{ProcessId, ProcessState};
 use crate::actor::{self, stack, GLOBAL_SCHEDULER};
 use crate::gc::mesh_gc_alloc_actor;
-use crate::io::{alloc_result, MeshResult};
-use crate::string::{mesh_str, MeshString};
+use crate::io::{alloc_result, err_result, MeshResult};
+use crate::string::MeshString;
 
 #[derive(Clone, Copy)]
 enum OverflowPolicy {
@@ -158,10 +158,6 @@ fn producer_registry() -> Result<MutexGuard<'static, HashMap<u64, Channel>>, &'s
     Err("channel busy")
 }
 
-fn err(error: &str) -> *mut MeshResult {
-    alloc_result(1, mesh_str(error) as *mut u8)
-}
-
 /// `Ok(value)` for a scalar: a `Result` payload is a pointer, which pattern
 /// lowering loads the concrete `T` through.
 fn ok_scalar(value: i64) -> *mut MeshResult {
@@ -171,7 +167,7 @@ fn ok_scalar(value: i64) -> *mut MeshResult {
 }
 
 fn created(value: Result<i64, &'static str>) -> *mut MeshResult {
-    value.map_or_else(err, ok_scalar)
+    value.map_or_else(err_result, ok_scalar)
 }
 
 fn register_channel(
@@ -255,13 +251,13 @@ pub extern "C" fn mesh_channel_try_send_shaped(
     let waiters = {
         let mut channels = match producer_registry() {
             Ok(channels) => channels,
-            Err(error) => return err(error),
+            Err(error) => return err_result(error),
         };
         let Some(channel) = channels.get_mut(&(handle as u64)) else {
-            return err("unknown channel");
+            return err_result("unknown channel");
         };
         if let Err(error) = channel.push(entry) {
-            return err(error);
+            return err_result(error);
         }
         std::mem::take(&mut channel.waiters)
     };
@@ -276,7 +272,7 @@ pub extern "C" fn mesh_channel_try_send_shaped(
 #[no_mangle]
 pub extern "C-unwind" fn mesh_channel_recv(handle: i64, timeout_nanos: i64) -> *mut MeshResult {
     if timeout_nanos < 0 {
-        return err("invalid timeout");
+        return err_result("invalid timeout");
     }
     let deadline = Instant::now() + Duration::from_nanos(timeout_nanos as u64);
     let in_actor = stack::CURRENT_YIELDER.with(|c| c.yielder.get().is_some());
@@ -304,14 +300,14 @@ pub extern "C-unwind" fn mesh_channel_recv(handle: i64, timeout_nanos: i64) -> *
             let Some(channel) = channels.get_mut(&(handle as u64)) else {
                 drop(channels);
                 set_state(ProcessState::Ready);
-                return err("unknown channel");
+                return err_result("unknown channel");
             };
             let popped = channel.pop();
             if popped.is_some() || Instant::now() >= deadline {
                 channel.waiters.retain(|waiter| !waiter.is(&me));
                 drop(channels);
                 set_state(ProcessState::Ready);
-                return popped.map_or_else(|| err("channel empty"), received);
+                return popped.map_or_else(|| err_result("channel empty"), received);
             }
             if !channel.waiters.iter().any(|waiter| waiter.is(&me)) {
                 channel.waiters.push(match &me {

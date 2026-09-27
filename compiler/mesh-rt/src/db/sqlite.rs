@@ -24,7 +24,7 @@ use crate::collections::list::{
 };
 use crate::collections::map::{mesh_map_from_string_entries, mesh_map_new_typed, mesh_map_put};
 use crate::db::pg::{alloc_db_value, MeshDbValue, DB_VALUE_BINARY, DB_VALUE_NULL, DB_VALUE_TEXT};
-use crate::io::{alloc_result, box_scalar};
+use crate::io::{alloc_result, box_scalar, err_result};
 use crate::string::{mesh_str, MeshString};
 
 // ponytail: fixed safety caps; make these connection options only if real workloads need more.
@@ -72,12 +72,6 @@ unsafe fn sqlite_transient() -> Option<unsafe extern "C" fn(*mut std::ffi::c_voi
 /// The pointer must reference a valid MeshString allocation.
 unsafe fn mesh_str_to_rust(s: *const MeshString) -> &'static str {
     (*s).as_str()
-}
-
-/// Create an error MeshResult from a Rust string.
-fn err_result(msg: &str) -> *mut u8 {
-    let s = mesh_str(msg) as *mut u8;
-    alloc_result(1, s) as *mut u8
 }
 
 #[cfg(test)]

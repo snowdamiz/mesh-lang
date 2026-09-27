@@ -18,7 +18,7 @@
 use crate::collections::list;
 use crate::collections::map;
 use crate::gc::mesh_gc_alloc_actor;
-use crate::io::{alloc_result, box_scalar, MeshResult};
+use crate::io::{alloc_result, box_scalar, err_result, MeshResult};
 use crate::string::{mesh_str, MeshString};
 
 /// Tag constants for MeshJson variants.
@@ -55,11 +55,6 @@ fn alloc_json(tag: u8, value: u64) -> *mut MeshJson {
         (*ptr).value = value;
         ptr
     }
-}
-
-fn err_result(msg: &str) -> *mut MeshResult {
-    let s = mesh_str(msg);
-    alloc_result(1, s as *mut u8)
 }
 
 // ── Conversion: serde_json::Value -> MeshJson ──────────────────────
@@ -346,7 +341,7 @@ pub extern "C-unwind" fn mesh_json_object_get(obj: *mut u8, key: *mut u8) -> *mu
     unsafe {
         let j = obj as *mut MeshJson;
         if (*j).tag != JSON_OBJECT {
-            return err_result("expected Object") as *mut u8;
+            return err_result("expected Object");
         }
         let m = (*j).value as *mut u8;
         if map::mesh_map_has_key(m, key as u64) != 0 {
@@ -354,7 +349,7 @@ pub extern "C-unwind" fn mesh_json_object_get(obj: *mut u8, key: *mut u8) -> *mu
             alloc_result(0, val as *mut u8) as *mut u8
         } else {
             let key_str = key as *const MeshString;
-            err_result(&format!("missing field: {}", (*key_str).as_str())) as *mut u8
+            err_result(&format!("missing field: {}", (*key_str).as_str()))
         }
     }
 }
@@ -394,10 +389,10 @@ pub extern "C-unwind" fn mesh_json_as_int(json: *mut u8) -> *mut u8 {
                 {
                     alloc_result(0, f as i64 as *mut u8) as *mut u8
                 } else {
-                    err_result("expected Int") as *mut u8
+                    err_result("expected Int")
                 }
             }
-            _ => err_result("expected Int") as *mut u8,
+            _ => err_result("expected Int"),
         }
     }
 }
@@ -419,7 +414,7 @@ pub extern "C-unwind" fn mesh_json_as_float(json: *mut u8) -> *mut u8 {
                 let f = ((*j).value as f64).to_bits();
                 alloc_result(0, f as *mut u8) as *mut u8
             }
-            _ => err_result("expected Float") as *mut u8,
+            _ => err_result("expected Float"),
         }
     }
 }
@@ -432,7 +427,7 @@ pub extern "C-unwind" fn mesh_json_as_string(json: *mut u8) -> *mut u8 {
         if (*j).tag == JSON_STR {
             alloc_result(0, (*j).value as *mut u8) as *mut u8
         } else {
-            err_result("expected String") as *mut u8
+            err_result("expected String")
         }
     }
 }
@@ -445,7 +440,7 @@ pub extern "C-unwind" fn mesh_json_as_bool(json: *mut u8) -> *mut u8 {
         if (*j).tag == JSON_BOOL {
             alloc_result(0, (*j).value as *mut u8) as *mut u8
         } else {
-            err_result("expected Bool") as *mut u8
+            err_result("expected Bool")
         }
     }
 }
@@ -499,7 +494,7 @@ pub extern "C-unwind" fn mesh_json_array_length(json: *mut u8) -> *mut u8 {
     unsafe {
         let json = json as *mut MeshJson;
         if (*json).tag != JSON_ARRAY {
-            return err_result("expected Array").cast();
+            return err_result("expected Array");
         }
         boxed_scalar_result(list::mesh_list_length((*json).value as *mut u8))
     }
@@ -523,7 +518,7 @@ pub extern "C-unwind" fn mesh_json_array_get(json_arr: *mut u8, index: i64) -> *
     unsafe {
         let j = json_arr as *mut MeshJson;
         if (*j).tag != JSON_ARRAY {
-            return err_result("expected Array") as *mut u8;
+            return err_result("expected Array");
         }
         let inner_list = (*j).value as *mut u8;
         let len = list::mesh_list_length(inner_list);
@@ -531,7 +526,7 @@ pub extern "C-unwind" fn mesh_json_array_get(json_arr: *mut u8, index: i64) -> *
             return err_result(&format!(
                 "array index {} out of bounds (length {})",
                 index, len
-            )) as *mut u8;
+            ));
         }
         let elem = list::mesh_list_get(inner_list, index);
         alloc_result(0, elem as *mut u8) as *mut u8
@@ -589,7 +584,7 @@ pub extern "C-unwind" fn mesh_json_to_list(
     unsafe {
         let j = json_arr as *mut MeshJson;
         if (*j).tag != JSON_ARRAY {
-            return err_result("expected Array") as *mut u8;
+            return err_result("expected Array");
         }
         let inner_list = (*j).value as *mut u8;
         let len = list::mesh_list_length(inner_list);
@@ -619,7 +614,7 @@ pub extern "C-unwind" fn mesh_json_to_map(
     unsafe {
         let j = json_obj as *mut MeshJson;
         if (*j).tag != JSON_OBJECT {
-            return err_result("expected Object") as *mut u8;
+            return err_result("expected Object");
         }
         let inner_map = (*j).value as *mut u8;
         let keys_list = map::mesh_map_keys(inner_map);

@@ -36,7 +36,7 @@ use crate::db::pg::{invoke_transaction_callback, mesh_pg_begin, mesh_pg_commit, 
 use crate::db::pool::{
     mesh_pool_checkin, mesh_pool_checkout, mesh_pool_execute, mesh_pool_query, unbox_u64_payload,
 };
-use crate::io::{alloc_result, MeshResult};
+use crate::io::{alloc_result, err_result, MeshResult};
 use crate::string::{mesh_str, MeshString};
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -45,11 +45,6 @@ use crate::string::{mesh_str, MeshString};
 unsafe fn mesh_str_ref(ptr: *mut u8) -> &'static str {
     let ms = ptr as *const MeshString;
     (*ms).as_str()
-}
-
-/// Create an error MeshResult from a Rust string.
-fn err_result(msg: &str) -> *mut u8 {
-    alloc_result(1, mesh_str(msg) as *mut u8) as *mut u8
 }
 
 /// Create an Ok MeshResult wrapping a value pointer.

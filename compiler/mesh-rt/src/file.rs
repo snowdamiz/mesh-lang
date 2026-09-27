@@ -7,19 +7,13 @@ use std::fs::{self, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 
 use crate::bytes::{mesh_bytes_new, MeshBytes};
-use crate::io::{alloc_result, ok_int, MeshResult};
+use crate::io::{alloc_result, err_result, ok_int, MeshResult};
 use crate::string::{mesh_str, MeshString};
 
 const MAX_BINARY_CHUNK_BYTES: i64 = 64 * 1024;
 // ponytail: 16 MiB is the messenger's reviewed file ceiling; add a versioned
 // quota API before generalizing binary range I/O to larger files.
 const MAX_BINARY_FILE_BYTES: i64 = 16 * 1024 * 1024;
-
-/// Helper to create an Err result with a string message.
-fn err_result(msg: &str) -> *mut MeshResult {
-    let s = mesh_str(msg);
-    alloc_result(1, s as *mut u8)
-}
 
 fn valid_range(offset: i64, length: i64) -> Option<(u64, usize)> {
     let end = offset.checked_add(length)?;

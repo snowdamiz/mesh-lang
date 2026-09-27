@@ -23,8 +23,7 @@
 //! - tag 1 = Err (value is a string describing the crash reason)
 
 use crate::gc::mesh_gc_alloc_actor;
-use crate::io::{alloc_result, MeshResult};
-use crate::string::mesh_str;
+use crate::io::{alloc_result, err_result, MeshResult};
 
 use super::heap::MessageBuffer;
 use super::link::EXIT_SIGNAL_TAG;
@@ -50,12 +49,6 @@ fn box_job_value(value: i64) -> *mut u8 {
         ptr.write(value);
         ptr.cast()
     }
-}
-
-/// Build an Err MeshResult from a Rust string slice.
-fn err_result(msg: &str) -> *mut MeshResult {
-    let mesh_str = mesh_str(msg);
-    alloc_result(1, mesh_str as *mut u8)
 }
 
 // ---------------------------------------------------------------------------
@@ -404,7 +397,7 @@ pub extern "C-unwind" fn mesh_job_map_shaped(
         // Block until we get a result from this job.
         let msg_ptr = receive_job_message(*job_pid, -1);
         let result = if msg_ptr.is_null() {
-            err_result("job map: no message received") as u64
+            err_result::<MeshResult>("job map: no message received") as u64
         } else {
             decode_job_message(msg_ptr) as u64
         };
@@ -497,7 +490,7 @@ mod tests {
     #[test]
     fn test_alloc_result_err() {
         crate::gc::mesh_rt_init();
-        let result = err_result("test error");
+        let result: *mut MeshResult = err_result("test error");
         unsafe {
             assert_eq!((*result).tag, 1);
             assert!(!(*result).value.is_null());

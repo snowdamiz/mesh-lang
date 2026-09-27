@@ -37,7 +37,7 @@ use crate::collections::list::{
 };
 use crate::collections::map::{mesh_map_from_string_entries, mesh_map_new_typed, mesh_map_put};
 use crate::gc::mesh_gc_alloc_actor;
-use crate::io::{alloc_result, MeshResult};
+use crate::io::{alloc_result, err_result, MeshResult};
 use crate::string::{mesh_str, MeshString};
 
 type HmacSha256 = Hmac<Sha256>;
@@ -1065,12 +1065,6 @@ fn prepare_typed_statement(conn: &mut PgConn, sql: &str) -> Result<Vec<PgColumn>
 /// The pointer must reference a valid MeshString allocation.
 unsafe fn mesh_str_to_rust(s: *const MeshString) -> &'static str {
     (*s).as_str()
-}
-
-/// Create an error MeshResult from a Rust string.
-fn err_result(msg: &str) -> *mut u8 {
-    let s = mesh_str(msg) as *mut u8;
-    alloc_result(1, s) as *mut u8
 }
 
 /// Extract param strings from a Mesh List<String>.

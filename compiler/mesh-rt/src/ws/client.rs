@@ -15,7 +15,7 @@ use url::Url;
 use crate::actor::{cooperative_channel, cooperative_recv_timeout, CooperativeSender};
 use crate::bytes::{mesh_bytes_new, MeshBytes};
 use crate::gc::mesh_gc_alloc_actor;
-use crate::io::{alloc_result, ok_int, MeshResult};
+use crate::io::{alloc_result, err_result, ok_int, MeshResult};
 use crate::string::{mesh_str, MeshString};
 
 use super::close::is_valid_close_code;
@@ -163,7 +163,7 @@ fn next_handle() -> u64 {
 
 fn error(message: impl AsRef<str>) -> *mut MeshResult {
     let message = message.as_ref();
-    alloc_result(1, mesh_str(message) as *mut u8)
+    err_result(message)
 }
 
 fn ok_unit() -> *mut MeshResult {

@@ -20,7 +20,7 @@ use crate::actor::{cooperative_channel, cooperative_recv_timeout, CooperativeSen
 use crate::bytes::{mesh_bytes_new, MeshBytes};
 use crate::collections::map::{mesh_map_new_typed, mesh_map_put};
 use crate::gc::mesh_gc_alloc_actor;
-use crate::io::alloc_result;
+use crate::io::{alloc_result, err_result};
 use crate::string::{mesh_str, mesh_string_new, MeshString};
 
 const MAX_OPEN_HANDLES: usize = 4_096;
@@ -766,8 +766,7 @@ fn execute_request(
 }
 
 fn mesh_error(message: impl AsRef<str>) -> *mut u8 {
-    let message = message.as_ref();
-    alloc_result(1, mesh_str(message) as *mut u8).cast()
+    err_result(message.as_ref())
 }
 
 fn mesh_response(response: WorkerResponse) -> *mut u8 {

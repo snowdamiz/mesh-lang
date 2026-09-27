@@ -1,12 +1,12 @@
 //! Checked integer arithmetic for financial calculations.
 
-use crate::io::{alloc_result, ok_int, MeshResult};
-use crate::string::{mesh_str, MeshString};
+use crate::io::{err_result, ok_int, MeshResult};
+use crate::string::MeshString;
 
 fn result(value: Result<i64, &'static str>) -> *mut MeshResult {
     match value {
         Ok(value) => ok_int(value),
-        Err(error) => alloc_result(1, mesh_str(error) as *mut u8),
+        Err(error) => err_result(error),
     }
 }
 

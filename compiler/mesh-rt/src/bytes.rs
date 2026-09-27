@@ -13,7 +13,7 @@ use crate::collections::list::{
     mesh_list_builder_new, mesh_list_builder_push, mesh_list_get, mesh_list_length,
 };
 use crate::gc::mesh_gc_alloc_actor;
-use crate::io::{alloc_result, ok_int, MeshResult};
+use crate::io::{alloc_result, err_result, ok_int, MeshResult};
 use crate::string::{mesh_str, mesh_string_new, MeshString};
 use crate::wide_num::{mesh_u64_new, mesh_u64_value, MeshWideNum};
 
@@ -85,10 +85,6 @@ impl MeshBytes {
     pub(crate) unsafe fn as_slice(&self) -> &[u8] {
         std::slice::from_raw_parts(self.data_ptr(), self.len as usize)
     }
-}
-
-fn error(message: &str) -> *mut MeshResult {
-    alloc_result(1, mesh_str(message) as *mut u8)
 }
 
 fn ok_bytes(bytes: &[u8]) -> *mut MeshResult {
@@ -393,20 +389,20 @@ pub extern "C" fn mesh_bytes_builder_finish(builder: *mut u8) -> *mut MeshResult
 #[no_mangle]
 pub extern "C" fn mesh_bytes_from_list(values: *mut u8) -> *mut MeshResult {
     if values.is_null() {
-        return error("invalid byte list");
+        return err_result("invalid byte list");
     }
     let len = mesh_list_length(values);
     let Ok(len) = usize::try_from(len) else {
-        return error("byte length overflow");
+        return err_result("byte length overflow");
     };
     for index in 0..len {
         if mesh_list_get(values, index as i64) > u8::MAX as u64 {
-            return error("byte value out of range");
+            return err_result("byte value out of range");
         }
     }
     let bytes = allocate(len);
     if bytes.is_null() {
-        return error("byte length overflow");
+        return err_result("byte length overflow");
     }
     unsafe {
         for index in 0..len {
@@ -433,14 +429,14 @@ pub extern "C" fn mesh_bytes_to_list(bytes: *const MeshBytes) -> *mut u8 {
 #[no_mangle]
 pub extern "C" fn mesh_bytes_repeat(byte: i64, count: i64) -> *mut MeshResult {
     if !(0..=u8::MAX as i64).contains(&byte) {
-        return error("byte value out of range");
+        return err_result("byte value out of range");
     }
     let Ok(count) = usize::try_from(count) else {
-        return error("byte count out of range");
+        return err_result("byte count out of range");
     };
     let bytes = allocate(count);
     if bytes.is_null() {
-        return error("byte length overflow");
+        return err_result("byte length overflow");
     }
     unsafe {
         ptr::write_bytes((*bytes).data_ptr_mut(), byte as u8, count);
@@ -457,7 +453,7 @@ pub extern "C" fn mesh_bytes_length(bytes: *const MeshBytes) -> i64 {
 pub extern "C" fn mesh_bytes_get(bytes: *const MeshBytes, index: i64) -> *mut MeshResult {
     unsafe {
         if index < 0 || index as u64 >= (*bytes).len {
-            return error("byte index out of bounds");
+            return err_result("byte index out of bounds");
         }
         ok_int(*(*bytes).data_ptr().add(index as usize) as i64)
     }
@@ -470,13 +466,13 @@ pub extern "C" fn mesh_bytes_slice(
     len: i64,
 ) -> *mut MeshResult {
     if start < 0 || len < 0 {
-        return error("byte slice out of bounds");
+        return err_result("byte slice out of bounds");
     }
     unsafe {
         let start = start as u64;
         let len = len as u64;
         if start.checked_add(len).is_none_or(|end| end > (*bytes).len) {
-            return error("byte slice out of bounds");
+            return err_result("byte slice out of bounds");
         }
         ok_bytes(std::slice::from_raw_parts(
             (*bytes).data_ptr().add(start as usize),
@@ -497,7 +493,7 @@ pub extern "C" fn mesh_bytes_concat(
             .and_then(|len| usize::try_from(len).ok())
             .map_or(ptr::null_mut(), allocate);
         if value.is_null() {
-            return error("byte length overflow");
+            return err_result("byte length overflow");
         }
         ptr::copy_nonoverlapping(
             (*left).data_ptr(),
@@ -532,7 +528,7 @@ pub extern "C" fn mesh_bytes_to_utf8(bytes: *const MeshBytes) -> *mut MeshResult
     unsafe {
         match std::str::from_utf8((*bytes).as_slice()) {
             Ok(text) => alloc_result(0, mesh_str(text) as *mut u8),
-            Err(_) => error("invalid utf-8"),
+            Err(_) => err_result("invalid utf-8"),
         }
     }
 }
@@ -553,7 +549,7 @@ pub extern "C" fn mesh_bytes_from_base64(text: *const MeshString) -> *mut MeshRe
             .or_else(|_| general_purpose::STANDARD_NO_PAD.decode((*text).as_str()));
         decoded
             .map(|bytes| ok_bytes(&bytes))
-            .unwrap_or_else(|_| error("invalid base64"))
+            .unwrap_or_else(|_| err_result("invalid base64"))
     }
 }
 
@@ -570,7 +566,7 @@ pub extern "C" fn mesh_bytes_from_base58(text: *const MeshString) -> *mut MeshRe
     unsafe {
         base58_decode((*text).as_str())
             .map(|bytes| ok_bytes(&bytes))
-            .unwrap_or_else(|_| error("invalid base58"))
+            .unwrap_or_else(|_| err_result("invalid base58"))
     }
 }
 
@@ -593,15 +589,15 @@ pub extern "C" fn mesh_bytes_from_hex(text: *const MeshString) -> *mut MeshResul
     unsafe {
         let text = (*text).as_str();
         if !text.len().is_multiple_of(2) {
-            return error("invalid hex");
+            return err_result("invalid hex");
         }
         let mut decoded = Vec::with_capacity(text.len() / 2);
         for pair in text.as_bytes().chunks_exact(2) {
             let Some(high) = (pair[0] as char).to_digit(16) else {
-                return error("invalid hex");
+                return err_result("invalid hex");
             };
             let Some(low) = (pair[1] as char).to_digit(16) else {
-                return error("invalid hex");
+                return err_result("invalid hex");
             };
             decoded.push(((high << 4) | low) as u8);
         }
@@ -649,7 +645,7 @@ fn read_int_result(
 ) -> *mut MeshResult {
     read_uint(bytes, offset, width, big_endian)
         .map(|value| ok_int(value as i64))
-        .unwrap_or_else(error)
+        .unwrap_or_else(err_result)
 }
 
 fn read_u64_result(
@@ -660,7 +656,7 @@ fn read_u64_result(
 ) -> *mut MeshResult {
     read_uint(bytes, offset, width, big_endian)
         .map(ok_u64)
-        .unwrap_or_else(error)
+        .unwrap_or_else(err_result)
 }
 
 #[no_mangle]
@@ -695,7 +691,7 @@ pub extern "C" fn mesh_bytes_read_u64_le(bytes: *const MeshBytes, offset: i64) -
 
 fn write_uint(value: u64, width: usize, big_endian: bool) -> *mut MeshResult {
     if width < 8 && value >= (1u64 << (width * 8)) {
-        return error("unsigned integer does not fit width");
+        return err_result("unsigned integer does not fit width");
     }
     let encoded = if big_endian {
         value.to_be_bytes()
@@ -712,7 +708,7 @@ fn write_uint(value: u64, width: usize, big_endian: bool) -> *mut MeshResult {
 #[no_mangle]
 pub extern "C" fn mesh_bytes_write_u16_be(value: i64) -> *mut MeshResult {
     if value < 0 {
-        return error("unsigned integer does not fit width");
+        return err_result("unsigned integer does not fit width");
     }
     write_uint(value as u64, 2, true)
 }
@@ -720,7 +716,7 @@ pub extern "C" fn mesh_bytes_write_u16_be(value: i64) -> *mut MeshResult {
 #[no_mangle]
 pub extern "C" fn mesh_bytes_write_u32_be(value: *const MeshWideNum) -> *mut MeshResult {
     if value.is_null() {
-        return error("invalid unsigned integer");
+        return err_result("invalid unsigned integer");
     }
     unsafe { write_uint(mesh_u64_value(value), 4, true) }
 }
@@ -728,7 +724,7 @@ pub extern "C" fn mesh_bytes_write_u32_be(value: *const MeshWideNum) -> *mut Mes
 #[no_mangle]
 pub extern "C" fn mesh_bytes_write_u64_be(value: *const MeshWideNum) -> *mut MeshResult {
     if value.is_null() {
-        return error("invalid unsigned integer");
+        return err_result("invalid unsigned integer");
     }
     unsafe { write_uint(mesh_u64_value(value), 8, true) }
 }
@@ -740,14 +736,14 @@ pub extern "C" fn mesh_bytes_read_uint_le(
     width: i64,
 ) -> *mut MeshResult {
     if offset < 0 || !matches!(width, 1 | 2 | 4 | 8) {
-        return error("invalid unsigned integer width or offset");
+        return err_result("invalid unsigned integer width or offset");
     }
     read_uint(bytes, offset, width as usize, false)
         .map(|value| {
             let value = value.to_string();
             alloc_result(0, mesh_str(&value) as *mut u8)
         })
-        .unwrap_or_else(error)
+        .unwrap_or_else(err_result)
 }
 
 #[no_mangle]
@@ -756,11 +752,11 @@ pub extern "C" fn mesh_bytes_write_uint_le(
     width: i64,
 ) -> *mut MeshResult {
     if !matches!(width, 1 | 2 | 4 | 8) {
-        return error("invalid unsigned integer width");
+        return err_result("invalid unsigned integer width");
     }
     unsafe {
         let Ok(value) = (*value).as_str().parse::<u64>() else {
-            return error("invalid unsigned integer");
+            return err_result("invalid unsigned integer");
         };
         write_uint(value, width as usize, false)
     }

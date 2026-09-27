@@ -54,7 +54,7 @@ use super::protocol::{
     negotiate_protocol, CircuitBreaker, CircuitState, MessageClass, NegotiatedProtocol,
     ProtocolEnvelope, ProtocolHello, RetryBudget, PROTOCOL_V1, PROTOCOL_V2,
 };
-use crate::io::{alloc_result, MeshResult};
+use crate::io::{alloc_result, err_result, MeshResult};
 use crate::string::{mesh_str, MeshString};
 
 type HmacSha256 = Hmac<Sha256>;
@@ -6723,10 +6723,6 @@ fn bootstrap_ok_status(status: BootstrapStatus) -> *mut MeshResult {
     )
 }
 
-fn bootstrap_err_string(reason: &str) -> *mut MeshResult {
-    alloc_result(1, mesh_str(reason) as *mut u8)
-}
-
 /// Resolve startup mode from the public environment contract and start the
 /// node only when cluster mode is valid.
 pub fn start_from_env() -> Result<BootstrapStatus, String> {
@@ -6748,7 +6744,7 @@ pub fn start_from_env() -> Result<BootstrapStatus, String> {
 pub extern "C" fn mesh_node_start_from_env() -> *mut MeshResult {
     match start_from_env() {
         Ok(status) => bootstrap_ok_status(status),
-        Err(reason) => bootstrap_err_string(&reason),
+        Err(reason) => err_result(&reason),
     }
 }
 

@@ -13,7 +13,7 @@
 //! durability and owner-loss recovery without changing the record shape.
 
 use crate::gc::mesh_gc_alloc_actor;
-use crate::io::{alloc_result, MeshResult};
+use crate::io::{alloc_result, err_result, MeshResult};
 use crate::string::{mesh_str, MeshString};
 use parking_lot::RwLock;
 use rustc_hash::FxHashMap;
@@ -2981,10 +2981,6 @@ fn continuity_ok_submit_decision(decision: &SubmitDecision) -> *mut MeshResult {
     )
 }
 
-fn continuity_err_string(reason: &str) -> *mut MeshResult {
-    alloc_result(1, mesh_str(reason) as *mut u8)
-}
-
 fn mesh_string_to_owned(value: *const MeshString) -> String {
     unsafe { (*value).as_str().to_string() }
 }
@@ -2992,7 +2988,7 @@ fn mesh_string_to_owned(value: *const MeshString) -> String {
 fn continuity_submit_impl(request: SubmitRequest) -> *mut MeshResult {
     match continuity_registry().submit(request) {
         Ok(decision) => continuity_ok_submit_decision(&decision),
-        Err(reason) => continuity_err_string(&reason),
+        Err(reason) => err_result(&reason),
     }
 }
 
@@ -3039,12 +3035,12 @@ pub extern "C-unwind" fn mesh_continuity_submit_declared_work(
     let request_key = mesh_string_to_owned(request_key);
     let payload_hash = mesh_string_to_owned(payload_hash);
     if required_replica_count < 0 {
-        return continuity_err_string(INVALID_REQUIRED_REPLICA_COUNT);
+        return err_result(INVALID_REQUIRED_REPLICA_COUNT);
     }
     let required_replica_count =
         match super::node::required_replica_count_for_runtime_name(&runtime_name) {
             Ok(value) => value,
-            Err(reason) => return continuity_err_string(&reason),
+            Err(reason) => return err_result(&reason),
         };
     match super::node::submit_declared_work(
         &runtime_name,
@@ -3053,7 +3049,7 @@ pub extern "C-unwind" fn mesh_continuity_submit_declared_work(
         required_replica_count,
     ) {
         Ok(decision) => continuity_ok_submit_decision(&decision),
-        Err(reason) => continuity_err_string(&reason),
+        Err(reason) => err_result(&reason),
     }
 }
 
@@ -3084,7 +3080,7 @@ pub extern "C-unwind" fn mesh_continuity_status(request_key: *const MeshString) 
     let request_key = mesh_string_to_owned(request_key);
     match continuity_registry().record(&request_key) {
         Some(record) => continuity_ok_record(&record),
-        None => continuity_err_string(REQUEST_KEY_NOT_FOUND),
+        None => err_result(REQUEST_KEY_NOT_FOUND),
     }
 }
 
@@ -3104,7 +3100,7 @@ pub extern "C-unwind" fn mesh_continuity_mark_completed(
     let execution_node = mesh_string_to_owned(execution_node);
     match continuity_registry().mark_completed(&request_key, &attempt_id, &execution_node) {
         Ok(record) => continuity_ok_record(&record),
-        Err(reason) => continuity_err_string(&reason),
+        Err(reason) => err_result(&reason),
     }
 }
 
@@ -3117,7 +3113,7 @@ pub extern "C-unwind" fn mesh_continuity_complete_declared_work(
     let attempt_id = mesh_string_to_owned(attempt_id);
     match super::node::complete_declared_work(&request_key, &attempt_id) {
         Ok(record) => continuity_ok_record(&record),
-        Err(reason) => continuity_err_string(&reason),
+        Err(reason) => err_result(&reason),
     }
 }
 
@@ -3130,7 +3126,7 @@ pub extern "C-unwind" fn mesh_continuity_acknowledge_replica(
     let attempt_id = mesh_string_to_owned(attempt_id);
     match continuity_registry().acknowledge_replica_prepare(&request_key, &attempt_id) {
         Ok(record) => continuity_ok_record(&record),
-        Err(reason) => continuity_err_string(&reason),
+        Err(reason) => err_result(&reason),
     }
 }
 

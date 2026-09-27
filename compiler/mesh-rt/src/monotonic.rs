@@ -3,15 +3,14 @@
 use std::sync::OnceLock;
 use std::time::Instant;
 
-use crate::io::{alloc_result, ok_int, MeshResult};
-use crate::string::mesh_str;
+use crate::io::{err_result, ok_int, MeshResult};
 
 static ORIGIN: OnceLock<Instant> = OnceLock::new();
 
 fn result(value: Result<i64, &'static str>) -> *mut MeshResult {
     match value {
         Ok(value) => ok_int(value),
-        Err(error) => alloc_result(1, mesh_str(error) as *mut u8),
+        Err(error) => err_result(error),
     }
 }
 

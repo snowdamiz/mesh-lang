@@ -32,6 +32,11 @@ pub(crate) fn alloc_result(tag: u8, value: *mut u8) -> *mut MeshResult {
     }
 }
 
+/// `Err(message)`, as the result pointer type the caller returns.
+pub(crate) fn err_result<T>(message: &str) -> *mut T {
+    alloc_result(1, crate::string::mesh_str(message).cast()).cast()
+}
+
 /// A scalar (an `Int`, a `Float`'s bits, an opaque integer handle) boxed as
 /// the payload of a `Result` or `Option`, which is a pointer. On the GC heap
 /// it lives as long as what holds it; a Rust `Box` would leak it.
