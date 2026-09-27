@@ -817,26 +817,7 @@ impl<'ctx> CodeGen<'ctx> {
 
             // struct -> ptr: heap-alloc + store + return pointer
             (BasicValueEnum::StructValue(sv), expected) if expected.is_pointer_type() => {
-                let sv_ty = sv.get_type();
-                let i64_type = self.context.i64_type();
-                let size = sv_ty.size_of().unwrap_or(i64_type.const_int(64, false));
-                let align = i64_type.const_int(8, false);
-                let gc_alloc = self
-                    .module
-                    .get_function("mesh_gc_alloc_actor")
-                    .ok_or("mesh_gc_alloc_actor not found")?;
-                let heap_ptr = self
-                    .builder
-                    .build_call(gc_alloc, &[size.into(), align.into()], "ret_coerce_heap")
-                    .map_err(|e| e.to_string())?
-                    .try_as_basic_value()
-                    .basic()
-                    .ok_or("gc_alloc returned void")?
-                    .into_pointer_value();
-                self.builder
-                    .build_store(heap_ptr, sv)
-                    .map_err(|e| e.to_string())?;
-                Ok(heap_ptr.into())
+                self.box_value(sv.into(), "ret_coerce_heap")
             }
 
             // int -> ptr: inttoptr

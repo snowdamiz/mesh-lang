@@ -819,8 +819,8 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// Call the runtime function `name` and return what it returns.
-    fn codegen_runtime_call(
-        &mut self,
+    pub(super) fn codegen_runtime_call(
+        &self,
         name: &str,
         args: &[BasicMetadataValueEnum<'ctx>],
         value_name: &str,
@@ -2098,30 +2098,25 @@ impl<'ctx> CodeGen<'ctx> {
     /// Box a non-pointer sum payload on the GC heap so generic {i8, ptr}
     /// sum layouts (like builtin Result/Option) can safely carry scalar
     /// values such as Int, Bool, and Float.
-    fn box_value(
+    pub(super) fn box_value(
         &self,
         val: BasicValueEnum<'ctx>,
         name: &str,
     ) -> Result<BasicValueEnum<'ctx>, String> {
-        let i64_ty = self.context.i64_type();
-        let size = val
-            .get_type()
-            .size_of()
-            .unwrap_or(i64_ty.const_int(8, false));
-        let align = i64_ty.const_int(8, false);
-        let gc_alloc = get_intrinsic(&self.module, "mesh_gc_alloc_actor");
-        let heap_ptr = self
-            .builder
-            .build_call(gc_alloc, &[size.into(), align.into()], name)
-            .map_err(|e| e.to_string())?
-            .try_as_basic_value()
-            .basic()
-            .ok_or("mesh_gc_alloc_actor returned void")?
-            .into_pointer_value();
+        let size = val.get_type().size_of().expect("a value's type has a size");
+        let heap_ptr = self.gc_alloc(size, name)?;
         self.builder
             .build_store(heap_ptr, val)
             .map_err(|e| e.to_string())?;
         Ok(heap_ptr.into())
+    }
+
+    /// `size` bytes on the GC heap, 8-aligned.
+    fn gc_alloc(&self, size: IntValue<'ctx>, name: &str) -> Result<PointerValue<'ctx>, String> {
+        let align = self.context.i64_type().const_int(8, false);
+        Ok(self
+            .codegen_runtime_call("mesh_gc_alloc_actor", &[size.into(), align.into()], name)?
+            .into_pointer_value())
     }
 
     /// A buffer on the GC heap holding `words`.
@@ -2131,11 +2126,7 @@ impl<'ctx> CodeGen<'ctx> {
         name: &str,
     ) -> Result<PointerValue<'ctx>, String> {
         let i64_ty = self.context.i64_type();
-        let size = i64_ty.const_int(8 * words.len() as u64, false);
-        let align = i64_ty.const_int(8, false);
-        let buffer = self
-            .codegen_runtime_call("mesh_gc_alloc_actor", &[size.into(), align.into()], name)?
-            .into_pointer_value();
+        let buffer = self.gc_alloc(i64_ty.const_int(8 * words.len() as u64, false), name)?;
         for (index, &word) in words.iter().enumerate() {
             let slot = unsafe {
                 self.builder
@@ -2254,17 +2245,7 @@ impl<'ctx> CodeGen<'ctx> {
         // (map, filter, reduce) use the closure calling convention fn(env, ...).
         let env_ptr = if captures.is_empty() {
             // No captures -> allocate a minimal 8-byte env (non-null sentinel).
-            let gc_alloc = get_intrinsic(&self.module, "mesh_gc_alloc_actor");
-            let size_val = self.context.i64_type().const_int(8, false);
-            let align_val = self.context.i64_type().const_int(8, false);
-            let env_raw = self
-                .builder
-                .build_call(gc_alloc, &[size_val.into(), align_val.into()], "env_dummy")
-                .map_err(|e| e.to_string())?
-                .try_as_basic_value()
-                .basic()
-                .ok_or("mesh_gc_alloc_actor returned void")?;
-            env_raw.into_pointer_value()
+            self.gc_alloc(self.context.i64_type().const_int(8, false), "env_dummy")?
         } else {
             // The env struct: a pointer to the shape table that describes it
             // (so it can be copied to another actor), then the captures. The
@@ -2282,19 +2263,10 @@ impl<'ctx> CodeGen<'ctx> {
             let target_data = self.target_machine.get_target_data();
             let env_size = target_data.get_store_size(&env_struct_ty);
 
-            // Allocate via mesh_gc_alloc_actor(size, align=8)
-            let gc_alloc = get_intrinsic(&self.module, "mesh_gc_alloc_actor");
-            let size_val = self.context.i64_type().const_int(env_size, false);
-            let align_val = self.context.i64_type().const_int(8, false);
-            let env_raw = self
-                .builder
-                .build_call(gc_alloc, &[size_val.into(), align_val.into()], "env_raw")
-                .map_err(|e| e.to_string())?
-                .try_as_basic_value()
-                .basic()
-                .ok_or("mesh_gc_alloc_actor returned void")?;
-
-            let env_ptr_val = env_raw.into_pointer_value();
+            let env_ptr_val = self.gc_alloc(
+                self.context.i64_type().const_int(env_size, false),
+                "env_raw",
+            )?;
             // Fresh memory is zeroed: no table means nothing to copy.
             if let Some(env_shape) = env_shape {
                 self.builder
@@ -4475,26 +4447,10 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(|e| e.to_string())
             }
             MirType::Struct(_) | MirType::SumType(_) | MirType::Closure(_, _) => {
-                // Aggregate values are boxed so the uniform slot can hold a pointer.
-                // Heap-allocate them via GC so we can store a pointer in the list.
-                let struct_val = val.into_struct_value();
-                let gc_alloc_fn = get_intrinsic(&self.module, "mesh_gc_alloc_actor");
-                let val_ty = struct_val.get_type();
-                let size = val_ty.size_of().unwrap_or(i64_type.const_int(8, false));
-                let align = i64_type.const_int(8, false);
-                let heap_ptr = self
-                    .builder
-                    .build_call(gc_alloc_fn, &[size.into(), align.into()], "heap_alloc")
-                    .map_err(|e| e.to_string())?
-                    .try_as_basic_value()
-                    .basic()
-                    .ok_or("mesh_gc_alloc_actor returned void")?
-                    .into_pointer_value();
+                // An aggregate sits in the uniform slot boxed.
+                let boxed = self.box_value(val, "heap_alloc")?.into_pointer_value();
                 self.builder
-                    .build_store(heap_ptr, struct_val)
-                    .map_err(|e| e.to_string())?;
-                self.builder
-                    .build_ptr_to_int(heap_ptr, i64_type, "struct_ptr_to_i64")
+                    .build_ptr_to_int(boxed, i64_type, "struct_ptr_to_i64")
                     .map_err(|e| e.to_string())
             }
             MirType::Int | MirType::Pid(_) => Ok(val.into_int_value()),
