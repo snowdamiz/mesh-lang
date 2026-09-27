@@ -992,7 +992,7 @@ A resource cannot:
 - pass through an indirect call, such as a function held in a variable, or through a parameter of a generic type; call a named function directly;
 - be bound by a top-level `let`.
 
-A `case` arm owns the resources its pattern binds, as a `let` does: whatever the arm leaves unmoved is destroyed where it ends. So does a function parameter written as a pattern, such as `fn consume((secret, n))`. A guard cannot move a resource, because a failing guard passes the value on to the next arm or clause. A pattern cannot discard a resource with `_`, or bind one both with `as` and inside the pattern.
+A `case` arm owns the resources its pattern binds, as a `let` does: whatever the arm leaves unmoved is destroyed where it ends. So does a function parameter written as a pattern, such as `fn consume((secret, n))`. A guard cannot move a resource, because a failing guard passes the value on to the next arm or clause. A `_` over a resource owns it as a name would, so the resource is destroyed there too. A pattern cannot bind a resource both with `as` and inside the pattern.
 
 A resource type derives nothing: listing any trait in its `deriving(...)` is an error, and the default `Debug`, `Eq`, `Ord` and `Hash` are not generated.
 

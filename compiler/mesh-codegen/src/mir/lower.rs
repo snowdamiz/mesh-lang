@@ -341,6 +341,10 @@ struct Lowerer<'a> {
     try_counter: u32,
     /// Counter for compiler-generated resource cleanup result temporaries.
     resource_temp_counter: u32,
+    /// Resources a pattern's `_` stands for, bound to names of their own
+    /// (see `lower_pattern_with_expected`), for the arm, `let` or clause the
+    /// pattern belongs to to destroy as it destroys named ones.
+    discarded_resources: Vec<(String, Ty)>,
     /// Numbers the bindings of generated Json code (`json_fresh`).
     json_counter: u32,
     /// While lowering an actor with parameters: its name, its body
@@ -700,6 +704,7 @@ impl<'a> Lowerer<'a> {
             current_fn_return_typeck: None,
             try_counter: 0,
             resource_temp_counter: 0,
+            discarded_resources: Vec::new(),
             json_counter: 0,
             actor_body_target: None,
             is_test_mode: false,
@@ -5271,16 +5276,14 @@ impl<'a> Lowerer<'a> {
         let mut arms = Vec::new();
         for clause in clauses {
             self.push_scope();
+            let discards_before = self.discarded_resources.len();
             let pattern = self.clause_pattern(clause.param_list(), params, param_srcs);
+            let discarded = self.discarded_resources.split_off(discards_before);
             let guard = self.lower_clause_guard(clause);
-            let mut body = self.lower_fn_body(clause);
-            for (name, ty) in self
-                .clause_resource_bindings(clause, param_srcs)
-                .into_iter()
-                .rev()
-            {
-                body = self.wrap_resource_scope(body, &name, &ty);
-            }
+            let body = self.lower_fn_body(clause);
+            let mut owned = self.clause_resource_bindings(clause, param_srcs);
+            owned.extend(discarded);
+            let body = self.wrap_resource_scopes(body, owned);
             self.pop_scope();
             arms.push(MirMatchArm {
                 pattern,
@@ -5347,7 +5350,15 @@ impl<'a> Lowerer<'a> {
             .flat_map(ParamList::params)
             .zip(params.iter().zip(param_srcs))
             .map(|(param, ((_, ty), source))| match param.pattern() {
-                Some(pattern) => self.lower_pattern_with_expected(&pattern, Some(source)),
+                Some(pattern) => {
+                    let discards_before = self.discarded_resources.len();
+                    let lowered = self.lower_pattern_with_expected(&pattern, Some(source));
+                    // A borrowed parameter's resources are its caller's to drop.
+                    if param.ownership() == ParamOwnership::Borrow {
+                        self.discarded_resources.truncate(discards_before);
+                    }
+                    lowered
+                }
                 None => {
                     let name = param
                         .name()
@@ -7267,9 +7278,11 @@ impl<'a> Lowerer<'a> {
                 };
 
                 if let Some(pattern) = let_.pattern() {
-                    let resources = self.resource_pattern_bindings(&pattern);
+                    let mut resources = self.resource_pattern_bindings(&pattern);
+                    let discards_before = self.discarded_resources.len();
                     let pattern =
                         self.lower_pattern_with_expected(&pattern, initializer_ty.as_ref());
+                    resources.extend(self.discarded_resources.split_off(discards_before));
                     parts.push(Part::Destructure {
                         pattern,
                         value,
@@ -10062,14 +10075,17 @@ impl<'a> Lowerer<'a> {
         self.push_scope();
 
         let written = arm.pattern().expect("the parser gives an arm its pattern");
+        let discards_before = self.discarded_resources.len();
         let pattern = self.lower_pattern_with_expected(&written, expected);
+        let discarded = self.discarded_resources.split_off(discards_before);
 
         let guard = arm.guard().map(|e| self.lower_expr(&e));
 
         let body = match arm.body() {
             Some(body) => {
                 let body = self.lower_expr(&body);
-                let owned = self.resource_pattern_bindings(&written);
+                let mut owned = self.resource_pattern_bindings(&written);
+                owned.extend(discarded);
                 self.wrap_resource_scopes(body, owned)
             }
             // An arm without `->` (the parser gives any other its body)
@@ -10242,7 +10258,26 @@ impl<'a> Lowerer<'a> {
 
     fn lower_pattern_with_expected(&mut self, pat: &Pattern, expected: Option<&Ty>) -> MirPattern {
         match pat {
-            Pattern::Wildcard(_) => MirPattern::Wildcard,
+            // A `_` over a resource binds no name the program sees, but the
+            // value is still owned here: it gets a name of its own.
+            Pattern::Wildcard(wildcard) => match self
+                .get_ty(wildcard.syntax().text_range())
+                .filter(|ty| self.registry.is_resource_type(ty))
+                .cloned()
+            {
+                Some(ty) => {
+                    let name = format!("__discarded_{}", self.resource_temp_counter);
+                    self.resource_temp_counter += 1;
+                    let mir_ty = match resolve_type(&ty, self.registry) {
+                        MirType::Tuple(_) => MirType::Ptr,
+                        other => other,
+                    };
+                    self.insert_var(name.clone(), mir_ty.clone());
+                    self.discarded_resources.push((name.clone(), ty));
+                    MirPattern::Var(name, mir_ty)
+                }
+                None => MirPattern::Wildcard,
+            },
 
             Pattern::Ident(ident) => {
                 let name = ident
@@ -16929,6 +16964,33 @@ mod tests {
         );
         let keep = function_body(&mir, "keep");
         assert_eq!(drops_of(&keep, "secret"), 1, "{keep:?}");
+
+        // And what a `_` stands for, in an arm, a `let` and a clause.
+        let mir = lower(
+            "fn arm(result :: Result<SecretBytes, CryptoError>) -> Int do\n\
+               case result do\n\
+                 Ok(_) -> 1\n\
+                 Err(_) -> 0\n\
+               end\n\
+             end\n\
+             fn bind(pair :: (SecretBytes, Int)) -> Int do\n\
+               let (_, n) = pair\n\
+               n\n\
+             end\n\
+             fn clause((_, n) :: (SecretBytes, Int)) -> Int = n",
+        );
+        for name in ["arm", "bind", "clause"] {
+            let body = function_body(&mir, name);
+            let discards = body
+                .descendants()
+                .into_iter()
+                .filter(|node| {
+                    matches!(node, MirExpr::ResourceDrop { value, .. }
+                        if matches!(value.as_ref(), MirExpr::Var(name, _) if name.starts_with("__discarded_")))
+                })
+                .count();
+            assert_eq!(discards, 1, "{name}: {body:?}");
+        }
     }
 
     fn function_body(mir: &MirModule, name: &str) -> MirExpr {

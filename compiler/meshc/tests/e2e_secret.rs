@@ -173,12 +173,37 @@ fn left_in_arm() -> Int do
   end
 end
 
+fn skipped_in_arm() -> Int do
+  case Secret.random(1) do
+    Ok(_) -> 1
+    Err(_) -> 0
+  end
+end
+
+fn skipped_in_let(pair :: (SecretBytes, Int)) -> Int do
+  let (_, n) = pair
+  n
+end
+
+fn skipped_in_clause((_, n) :: (SecretBytes, Int)) -> Int = n
+
+fn skip_all(n :: Int) -> Int ! CryptoError do
+  let a = skipped_in_arm()
+  let b = skipped_in_let((Secret.random(1) ?, 1))
+  let c = skipped_in_clause((Secret.random(1) ?, 1))
+  Ok(a + b + c + n)
+end
+
 # More secrets than a process may hold at once: each must be destroyed
-# where its arm or clause ends.
+# where its arm, `let` or clause ends, bound by name or by `_`.
 fn churn(0) do nil end
 fn churn(count :: Int) do
   left_in_arm()
   open(Secret.random(1))
+  case skip_all(0) do
+    Ok(_) -> nil
+    Err(_) -> println("skip failed")
+  end
   churn(count - 1)
 end
 

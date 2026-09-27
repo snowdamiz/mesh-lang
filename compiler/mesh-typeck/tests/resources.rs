@@ -642,18 +642,17 @@ fn tuple_destructuring_tracks_resource_element_moves() {
     );
 }
 
+/// A `_` over a resource owns it, as a name would: it is destroyed where
+/// the `let` or arm ends. Beside a name it still may not alias one.
 #[test]
-fn rejects_resource_wildcards_in_let_and_case_patterns() {
+fn a_resource_wildcard_owns_what_it_stands_for() {
     let result = check_source(
-        "fn discard_pair(pair :: (SecretBytes, Int)) do\n  let (_, value) = pair\n  value\nend\nfn discard_result(result :: Result<SecretBytes, CryptoError>) do\n  case result do\n    Ok(_) -> nil\n    Err(_) -> nil\n  end\nend",
+        "fn discard_pair(pair :: (SecretBytes, Int)) do\n  let (_, value) = pair\n  value\nend\nfn discard_result(result :: Result<SecretBytes, CryptoError>) do\n  case result do\n    Ok(_) -> nil\n    Err(_) -> nil\n  end\nend\nfn aliased(result :: Result<SecretBytes, CryptoError>) do\n  case result do\n    Ok(_) as whole -> nil\n    Err(_) -> nil\n  end\nend",
     );
 
     assert_eq!(
         resource_violations(&result),
-        [
-            "resource value cannot be discarded with `_` in a pattern",
-            "resource value cannot be discarded with `_` in a pattern",
-        ]
+        ["resource value cannot be bound both by `as` and inside its pattern"]
     );
 }
 
@@ -768,7 +767,8 @@ fn resource_parameter_patterns_bind_like_arms() {
          fn keep((secret, n)) -> Int = peek(secret) + n\n\
          fn pick(Ok(secret)) = Secret.destroy(secret)\n\
          fn pick(Err(reason)) = println(reason)\n\
-         fn lent((secret, n) :: borrow (SecretBytes, Int)) -> Int = peek(secret) + n",
+         fn lent((secret, n) :: borrow (SecretBytes, Int)) -> Int = peek(secret) + n\n\
+         fn discard((_, n) :: (SecretBytes, Int)) -> Int = n",
     );
     assert!(accepted.errors.is_empty(), "{:?}", accepted.errors);
 
@@ -776,13 +776,11 @@ fn resource_parameter_patterns_bind_like_arms() {
         "fn spent(secret :: consume SecretBytes) -> Bool do\n  Secret.destroy(secret)\n  true\nend\n\
          fn guarded((secret, n)) when spent(secret) = nil\n\
          fn guarded((secret, n)) = Secret.destroy(secret)\n\
-         fn lent((secret, n) :: borrow (SecretBytes, Int)) = Secret.destroy(secret)\n\
-         fn discard((_, n) :: (SecretBytes, Int)) -> Int = n",
+         fn lent((secret, n) :: borrow (SecretBytes, Int)) = Secret.destroy(secret)",
     );
     assert_eq!(
         resource_violations(&rejected),
         [
-            "resource value cannot be discarded with `_` in a pattern",
             "a guard cannot move resource `secret`",
             "borrowed resource `secret` cannot be moved",
         ]

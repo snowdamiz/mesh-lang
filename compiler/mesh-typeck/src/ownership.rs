@@ -586,42 +586,46 @@ fn register_pg_signature(
 }
 
 impl Checker<'_> {
+    /// `Ok(key) as whole` (or `Ok(_) as whole`, a `_` owning what it
+    /// stands for) would give one resource two owners.
     fn check_resource_patterns(&mut self, parse: &Parse) {
         for pattern in parse.syntax().descendants().filter_map(Pattern::cast) {
-            let reason = match &pattern {
-                Pattern::Wildcard(_) => self
-                    .pattern_is_resource(&pattern)
-                    .then_some("resource value cannot be discarded with `_` in a pattern"),
-                // `Ok(key) as whole` would give one resource two owners.
-                Pattern::As(as_pattern) => as_pattern
-                    .pattern()
-                    .is_some_and(|inner| self.binds_resource(&inner))
-                    .then_some(
-                        "resource value cannot be bound both by `as` and inside its pattern",
-                    ),
-                _ => None,
+            let Pattern::As(as_pattern) = &pattern else {
+                continue;
             };
-            if let Some(reason) = reason {
+            if as_pattern
+                .pattern()
+                .is_some_and(|inner| self.owns_resource(&inner))
+            {
                 self.errors.push(TypeError::ResourceViolation {
-                    reason: reason.to_string(),
+                    reason: "resource value cannot be bound both by `as` and inside its pattern"
+                        .to_string(),
                     span: pattern.syntax().text_range(),
                 });
             }
         }
     }
 
-    fn binds_resource(&self, pattern: &Pattern) -> bool {
-        pattern.binders().iter().any(|name| {
-            name.parent()
-                .and_then(|binding| self.types.get(&binding.text_range()))
-                .is_some_and(|ty| self.registry.is_resource_type(ty))
-        })
-    }
-
-    fn pattern_is_resource(&self, pattern: &Pattern) -> bool {
-        self.types
-            .get(&pattern.syntax().text_range())
-            .is_some_and(|ty| self.registry.is_resource_type(ty))
+    /// Whether `pattern` binds a resource, by name or with a `_`.
+    fn owns_resource(&self, pattern: &Pattern) -> bool {
+        pattern
+            .syntax()
+            .descendants_with_tokens()
+            .filter_map(|element| element.into_node())
+            .filter_map(Pattern::cast)
+            .any(|part| {
+                let owns = match &part {
+                    Pattern::Wildcard(_) => true,
+                    Pattern::Ident(ident) => ident
+                        .name()
+                        .is_some_and(|name| !name.text().starts_with(char::is_uppercase)),
+                    _ => false,
+                };
+                owns && self
+                    .types
+                    .get(&part.syntax().text_range())
+                    .is_some_and(|ty| self.registry.is_resource_type(ty))
+            })
     }
 
     fn check_top_level_binding(&mut self, binding: &LetBinding) {
