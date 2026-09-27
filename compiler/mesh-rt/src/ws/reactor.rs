@@ -627,9 +627,12 @@ impl Entry {
     /// Whether the connection takes more input now. Frames already read
     /// wait for their turn, and a server's 101 answer goes out before the
     /// frames after its request are read: until then, what the peer sends
-    /// stays in the socket, rather than the decoder growing.
+    /// stays in the socket, rather than the decoder growing. A connection
+    /// replying to a close, or failed, reads nothing more.
     fn takes_input(&self) -> bool {
-        !self.frames_ready && !matches!(self.phase, Phase::ServerReply { .. })
+        !self.frames_ready
+            && !matches!(self.phase, Phase::ServerReply { .. })
+            && self.close_state != CloseState::Replying
     }
 
     fn readable(&mut self) -> bool {
@@ -639,7 +642,7 @@ impl Entry {
             let allowance = (READ_BUDGET_BYTES - bytes_read).min(buffer.len());
             match self.stream.read(&mut buffer[..allowance]) {
                 Ok(0) => {
-                    self.handle_transport_eof();
+                    self.fail("WebSocket peer disconnected");
                     return false;
                 }
                 Ok(count) => {
@@ -647,9 +650,6 @@ impl Entry {
                     if let Err(reason) = self.consume_bytes(&buffer[..count]) {
                         self.protocol_failure(&reason);
                         break;
-                    }
-                    if self.close_state == CloseState::Replying {
-                        return false;
                     }
                 }
                 Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
@@ -663,7 +663,7 @@ impl Entry {
                     }
                     match read_tls(session, socket) {
                         Ok(0) => {
-                            self.handle_transport_eof();
+                            self.fail("WebSocket peer disconnected");
                             return false;
                         }
                         Ok(count) => bytes_read += count,
@@ -683,20 +683,12 @@ impl Entry {
         !self.dead
     }
 
-    fn handle_transport_eof(&mut self) {
-        if self.close_state == CloseState::Replying {
-            self.finish_close_if_flushed();
-        } else {
-            self.fail("WebSocket peer disconnected");
-        }
-    }
-
     fn consume_bytes(&mut self, bytes: &[u8]) -> Result<(), String> {
         match &mut self.phase {
             Phase::ServerHandshake { buffer, .. } | Phase::ClientHandshake { buffer, .. } => {
                 buffer.extend_from_slice(bytes)
             }
-            Phase::ServerReply { .. } | Phase::Open { .. } => self.decoder.extend(bytes)?,
+            Phase::ServerReply { .. } | Phase::Open { .. } => self.decoder.extend(bytes),
         }
         self.advance_handshake()?;
         self.process_frames()
@@ -713,7 +705,7 @@ impl Entry {
                         path: parsed.path,
                         headers: parsed.headers,
                     };
-                    self.decoder.extend(&buffer[parsed.consumed..])?;
+                    self.decoder.extend(&buffer[parsed.consumed..]);
                     self.outbound
                         .push_back(Outbound::new(parsed.response, None));
                     self.phase = reply;
@@ -726,7 +718,7 @@ impl Entry {
             } => {
                 if let Some(consumed) = parse_upgrade_response_bytes(buffer, client_key)? {
                     let sink = Arc::clone(sink);
-                    self.decoder.extend(&buffer[consumed..])?;
+                    self.decoder.extend(&buffer[consumed..]);
                     self.open(sink);
                 }
             }
@@ -924,6 +916,9 @@ impl Entry {
         }
     }
 
+    /// Fails the connection on input it cannot take (RFC 6455 7.1.7): an
+    /// open one sends the close its error calls for, unless it has sent
+    /// one; it reads nothing more, and ends once its close is out.
     fn protocol_failure(&mut self, reason: &str) {
         if !matches!(self.phase, Phase::Open { .. }) {
             self.fail(reason);
@@ -931,12 +926,15 @@ impl Entry {
         }
         let code = if reason.contains("UTF-8") {
             WsCloseCode::INVALID_DATA
-        } else if reason.contains("maximum") || reason.contains("buffer is full") {
+        } else if reason.contains("maximum") {
             WsCloseCode::MESSAGE_TOO_BIG
         } else {
             WsCloseCode::PROTOCOL_ERROR
         };
         self.start_close(code, reason);
+        self.termination_reason = reason.to_string();
+        self.close_state = CloseState::Replying;
+        self.finish_close_if_flushed();
     }
 
     fn writable(&mut self) -> bool {
@@ -1190,9 +1188,12 @@ fn reactor_loop(mut poll: Poll, receiver: Receiver<Command>, read_limit: usize) 
     let mut events = Events::with_capacity(1024);
     let mut entries = HashMap::<u64, Box<Entry>>::new();
     loop {
-        let immediate = entries
-            .values()
-            .any(|entry| entry.read_ready || entry.write_ready || entry.frames_ready);
+        // Input a connection does not take yet waits in its socket, and
+        // read_ready remembers it (readiness is edge-triggered): it makes no
+        // turn immediate.
+        let immediate = entries.values().any(|entry| {
+            (entry.read_ready && entry.takes_input()) || entry.write_ready || entry.frames_ready
+        });
         let timeout = if immediate {
             Duration::ZERO
         } else {
@@ -1691,8 +1692,10 @@ mod tests {
         assert_eq!(started[1].bytes, [8]);
     }
 
-    /// A bad frame that arrived with the upgrade request closes the opened
-    /// connection with a protocol error, as one arriving later does.
+    /// A bad frame that arrived with the upgrade request fails the opened
+    /// connection, as one arriving later does: a close with a protocol
+    /// error, then the end of the connection, without waiting for the
+    /// peer's close.
     #[test]
     fn a_bad_frame_sent_with_the_upgrade_closes_with_a_protocol_error() {
         let (mut client, _recorder, seen) = server(ReactorConfig::server(1024));
@@ -1700,10 +1703,11 @@ mod tests {
         write_frame(&mut unmasked, WsOpcode::Text, b"hi", true).unwrap();
         upgrade(&mut client, &unmasked, &seen);
         assert_eq!(close_code(&mut client), WsCloseCode::PROTOCOL_ERROR);
-        client
-            .write_all(&masked(WsOpcode::Close, &[], true))
-            .unwrap();
-        assert_eq!(next(&seen), Seen::Close(1005, String::new()));
+        assert_eq!(client.read(&mut [0u8; 1]).unwrap(), 0);
+        assert_eq!(
+            next(&seen),
+            Seen::Terminated("client sent an unmasked WebSocket frame".to_string())
+        );
     }
 
     /// A reactor admits connections, TLS handshakes, unread bytes and
@@ -2098,8 +2102,8 @@ mod tests {
         assert_eq!(next(&seen), Seen::Terminated("peer closed".to_string()));
     }
 
-    /// A bad frame while a connection closes starts no second close; the
-    /// peer going away ends it.
+    /// A bad frame while a connection closes sends no second close: the
+    /// connection, its close out, ends.
     #[test]
     fn a_closing_connection_does_not_close_twice() {
         let (mut peer, connection, seen) =
@@ -2107,10 +2111,9 @@ mod tests {
         connection.graceful_close(1000, "bye").unwrap();
         assert_eq!(close_code(&mut peer), 1000);
         peer.write_all(&[0x83, 0x00]).unwrap();
-        peer.shutdown(Shutdown::Write).unwrap();
         assert_eq!(
             next(&seen),
-            Seen::Terminated("WebSocket peer disconnected".to_string())
+            Seen::Terminated("unknown opcode: 0x3".to_string())
         );
         assert_eq!(peer.read(&mut [0u8; 1]).unwrap(), 0);
     }

@@ -3,7 +3,8 @@
 //! Provides the low-level frame parser and writer for the WebSocket wire
 //! protocol. Frames are the smallest unit of WebSocket communication.
 //!
-//! - [`read_frame`]: Parse a single frame from a byte stream (handles masking)
+//! - [`FrameDecoder`]: Parse frames from bytes as a nonblocking reader gets them
+//! - [`read_frame`]: Parse a single frame from a blocking byte stream
 //! - [`write_frame`]: Write an unmasked server frame to a byte stream
 //! - [`apply_mask`]: Symmetric XOR masking per RFC 6455 Section 5.3
 
@@ -11,6 +12,10 @@ use std::io::{Read, Write};
 
 /// Maximum payload size (16 MiB production limit) to prevent OOM from malicious lengths.
 const MAX_PAYLOAD_SIZE: u64 = 16 * 1024 * 1024;
+
+/// Consumed bytes a decoder keeps before it lets them go, and spare
+/// capacity it keeps then: a large frame's allocation goes with it.
+const COMPACT_AFTER: usize = 64 * 1024 + 14;
 
 /// WebSocket frame opcodes per RFC 6455 Section 5.2.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -39,6 +44,10 @@ impl WsOpcode {
             _ => Err(format!("unknown opcode: 0x{:X}", byte)),
         }
     }
+
+    fn is_control(self) -> bool {
+        matches!(self, WsOpcode::Close | WsOpcode::Ping | WsOpcode::Pong)
+    }
 }
 
 /// A parsed WebSocket frame.
@@ -52,11 +61,99 @@ pub struct WsFrame {
     pub payload: Vec<u8>,
 }
 
+/// A frame's header, and the length of what follows it.
+struct FrameHeader {
+    fin: bool,
+    opcode: WsOpcode,
+    mask_key: Option<[u8; 4]>,
+    /// The header's own length, its mask key included.
+    header_len: usize,
+    payload_len: usize,
+}
+
+impl FrameHeader {
+    /// The header at the start of `bytes`, of a frame whose payload may be
+    /// at most `max_payload` bytes: none until `bytes` holds all of it.
+    fn parse(bytes: &[u8], max_payload: usize) -> Result<Option<Self>, String> {
+        let [first, second, ..] = *bytes else {
+            return Ok(None);
+        };
+        let fin = first & 0x80 != 0;
+        if first & 0x70 != 0 {
+            return Err("non-zero RSV bits without negotiated extensions".to_string());
+        }
+        let opcode = WsOpcode::from_u8(first & 0x0f)?;
+        if opcode.is_control() && !fin {
+            return Err("control frames must not be fragmented".to_string());
+        }
+        // A 7-bit length, or a marker for the 16- or 64-bit one after it.
+        let (length_len, payload_len) = match second & 0x7f {
+            126 => (
+                2,
+                bytes
+                    .get(2..4)
+                    .map(|b| u16::from_be_bytes([b[0], b[1]]) as u64),
+            ),
+            127 => (
+                8,
+                bytes
+                    .get(2..10)
+                    .map(|b| u64::from_be_bytes(b.try_into().expect("eight length bytes"))),
+            ),
+            length => (0, Some(u64::from(length))),
+        };
+        let Some(payload_len) = payload_len else {
+            return Ok(None);
+        };
+        if payload_len > max_payload as u64 {
+            return Err(format!(
+                "payload length {payload_len} exceeds configured maximum {max_payload}"
+            ));
+        }
+        if opcode.is_control() && payload_len > 125 {
+            return Err("control frame payload exceeds 125 bytes".to_string());
+        }
+        let masked = second & 0x80 != 0;
+        let header_len = 2 + length_len + if masked { 4 } else { 0 };
+        let Some(header) = bytes.get(..header_len) else {
+            return Ok(None);
+        };
+        Ok(Some(Self {
+            fin,
+            opcode,
+            mask_key: masked.then(|| {
+                header[header_len - 4..]
+                    .try_into()
+                    .expect("four mask bytes")
+            }),
+            header_len,
+            payload_len: payload_len as usize,
+        }))
+    }
+
+    /// The frame of this header and `payload`, unmasked; and whether it was
+    /// masked.
+    fn frame(self, mut payload: Vec<u8>) -> (WsFrame, bool) {
+        if let Some(mask_key) = self.mask_key {
+            apply_mask(&mut payload, &mask_key);
+        }
+        (
+            WsFrame {
+                fin: self.fin,
+                opcode: self.opcode,
+                payload,
+            },
+            self.mask_key.is_some(),
+        )
+    }
+}
+
 /// Incremental frame decoder for nonblocking transports.
 ///
 /// Bytes may be supplied in arbitrarily small chunks. A declared payload
 /// length is validated before the decoder waits for or allocates the payload,
-/// which keeps partial reads bounded even for hostile peers.
+/// and the reactor gives it more only as it takes frames out, which keeps
+/// what it buffers bounded even for hostile peers.
 pub(crate) struct FrameDecoder {
     buffer: Vec<u8>,
     cursor: usize,
@@ -72,29 +169,8 @@ impl FrameDecoder {
         }
     }
 
-    pub(crate) fn extend(&mut self, bytes: &[u8]) -> Result<(), String> {
-        // A reactor read can contain the tail of one maximum-sized frame and
-        // a bounded batch of following frames. The reactor additionally
-        // accounts for this buffer against its aggregate read budget.
-        let max_buffered = self.max_payload_size.saturating_add(64 * 1024 + 14);
-        if self
-            .buffered_len()
-            .checked_add(bytes.len())
-            .is_none_or(|len| len > max_buffered)
-        {
-            return Err("WebSocket incremental read buffer is full".to_string());
-        }
-        if self.cursor > 0
-            && self
-                .buffer
-                .len()
-                .checked_add(bytes.len())
-                .is_none_or(|len| len > max_buffered)
-        {
-            self.compact();
-        }
+    pub(crate) fn extend(&mut self, bytes: &[u8]) {
         self.buffer.extend_from_slice(bytes);
-        Ok(())
     }
 
     pub(crate) fn buffered_len(&self) -> usize {
@@ -103,108 +179,24 @@ impl FrameDecoder {
 
     pub(crate) fn next_frame(&mut self) -> Result<Option<(WsFrame, bool)>, String> {
         let buffer = &self.buffer[self.cursor..];
-        if buffer.len() < 2 {
+        let Some(header) = FrameHeader::parse(buffer, self.max_payload_size)? else {
             return Ok(None);
-        }
-
-        let first = buffer[0];
-        let second = buffer[1];
-        let fin = first & 0x80 != 0;
-        if first & 0x70 != 0 {
-            return Err("non-zero RSV bits without negotiated extensions".to_string());
-        }
-        let opcode = WsOpcode::from_u8(first & 0x0f)?;
-        let is_control = matches!(opcode, WsOpcode::Close | WsOpcode::Ping | WsOpcode::Pong);
-        if is_control && !fin {
-            return Err("control frames must not be fragmented".to_string());
-        }
-
-        let masked = second & 0x80 != 0;
-        let mut header_len = 2usize;
-        let payload_len = match second & 0x7f {
-            length @ 0..=125 => length as u64,
-            126 => {
-                if buffer.len() < 4 {
-                    return Ok(None);
-                }
-                header_len = 4;
-                u16::from_be_bytes([buffer[2], buffer[3]]) as u64
-            }
-            127 => {
-                if buffer.len() < 10 {
-                    return Ok(None);
-                }
-                header_len = 10;
-                let length = u64::from_be_bytes(
-                    buffer[2..10]
-                        .try_into()
-                        .expect("fixed WebSocket length slice"),
-                );
-                if length >> 63 != 0 {
-                    return Err("MSB of 64-bit length must be 0".to_string());
-                }
-                length
-            }
-            _ => unreachable!("WebSocket length marker is masked to seven bits"),
         };
-        if payload_len > self.max_payload_size as u64 {
-            return Err(format!(
-                "payload length {payload_len} exceeds configured maximum {}",
-                self.max_payload_size
-            ));
-        }
-        if is_control && payload_len > 125 {
-            return Err("control frame payload exceeds 125 bytes".to_string());
-        }
-
-        let mask_len = if masked { 4 } else { 0 };
-        let total_len = header_len
-            .checked_add(mask_len)
-            .and_then(|len| len.checked_add(payload_len as usize))
-            .ok_or_else(|| "WebSocket frame length overflow".to_string())?;
-        if buffer.len() < total_len {
+        let total_len = header.header_len + header.payload_len;
+        let Some(payload) = buffer.get(header.header_len..total_len) else {
             return Ok(None);
-        }
-
-        let mask_key = if masked {
-            Some(
-                buffer[header_len..header_len + 4]
-                    .try_into()
-                    .expect("fixed WebSocket mask slice"),
-            )
-        } else {
-            None
         };
-        let payload_start = header_len + mask_len;
-        let mut payload = buffer[payload_start..total_len].to_vec();
-        if let Some(mask_key) = mask_key {
-            apply_mask(&mut payload, &mask_key);
-        }
+        let frame = header.frame(payload.to_vec());
         self.cursor += total_len;
-        if self.cursor == self.buffer.len() {
-            if self.buffer.capacity() > 64 * 1024 + 14 {
-                self.buffer = Vec::new();
-            } else {
-                self.buffer.clear();
-            }
-            self.cursor = 0;
-        } else if self.cursor >= 64 * 1024 && self.cursor >= self.buffer.len() / 2 {
+        if self.cursor == self.buffer.len() || self.cursor > COMPACT_AFTER {
             self.compact();
         }
-
-        Ok(Some((
-            WsFrame {
-                fin,
-                opcode,
-                payload,
-            },
-            masked,
-        )))
+        Ok(Some(frame))
     }
 
     fn compact(&mut self) {
         let remaining = self.buffered_len();
-        if self.buffer.capacity().saturating_sub(remaining) > 64 * 1024 + 14 {
+        if self.buffer.capacity() - remaining > COMPACT_AFTER {
             self.buffer = self.buffer[self.cursor..].to_vec();
         } else {
             self.buffer.copy_within(self.cursor.., 0);
@@ -214,6 +206,9 @@ impl FrameDecoder {
     }
 }
 
+/// Joins the data frames of a message: text or binary, then continuations.
+/// It takes data frames only (control frames are the caller's), each at
+/// most the message limit already, as the decoder allows no larger.
 pub(crate) struct MessageAssembler {
     initial_opcode: Option<WsOpcode>,
     buffer: Vec<u8>,
@@ -237,54 +232,35 @@ impl MessageAssembler {
     }
 
     pub(crate) fn push(&mut self, frame: WsFrame) -> ReassembleResult {
-        match frame.opcode {
-            WsOpcode::Text | WsOpcode::Binary if frame.fin && self.initial_opcode.is_none() => {
-                if frame.payload.len() > self.max_message_size {
-                    ReassembleResult::TooLarge
-                } else {
-                    ReassembleResult::Complete(frame)
-                }
-            }
-            WsOpcode::Text | WsOpcode::Binary if !frame.fin && self.initial_opcode.is_none() => {
+        let starts_message = frame.opcode != WsOpcode::Continuation;
+        match (self.initial_opcode, starts_message) {
+            (None, true) if frame.fin => ReassembleResult::Complete(frame),
+            (None, true) => {
                 self.initial_opcode = Some(frame.opcode);
                 self.buffer = frame.payload;
-                if self.buffer.len() > self.max_message_size {
-                    self.reset();
-                    ReassembleResult::TooLarge
-                } else {
-                    ReassembleResult::Accumulating
-                }
+                ReassembleResult::Accumulating
             }
-            WsOpcode::Text | WsOpcode::Binary if self.initial_opcode.is_some() => {
+            (None, false) => ReassembleResult::ProtocolError("unexpected continuation frame"),
+            (Some(_), true) => {
                 self.reset();
                 ReassembleResult::ProtocolError("new message during fragmented sequence")
             }
-            WsOpcode::Continuation if self.initial_opcode.is_some() => {
-                if self
-                    .buffer
-                    .len()
-                    .checked_add(frame.payload.len())
-                    .is_none_or(|len| len > self.max_message_size)
-                {
+            (Some(opcode), false) => {
+                if self.buffer.len() + frame.payload.len() > self.max_message_size {
                     self.reset();
                     return ReassembleResult::TooLarge;
                 }
                 self.buffer.extend_from_slice(&frame.payload);
-                if frame.fin {
-                    let opcode = self.initial_opcode.take().unwrap();
-                    ReassembleResult::Complete(WsFrame {
-                        fin: true,
-                        opcode,
-                        payload: std::mem::take(&mut self.buffer),
-                    })
-                } else {
-                    ReassembleResult::Accumulating
+                if !frame.fin {
+                    return ReassembleResult::Accumulating;
                 }
+                self.initial_opcode = None;
+                ReassembleResult::Complete(WsFrame {
+                    fin: true,
+                    opcode,
+                    payload: std::mem::take(&mut self.buffer),
+                })
             }
-            WsOpcode::Continuation => {
-                ReassembleResult::ProtocolError("unexpected continuation frame")
-            }
-            _ => ReassembleResult::ProtocolError("unexpected opcode in reassembly"),
         }
     }
 
@@ -311,102 +287,30 @@ pub fn apply_mask(payload: &mut [u8], mask_key: &[u8; 4]) {
 /// Parse one WebSocket frame from the stream.
 ///
 /// Handles all three payload length encodings (7-bit, 16-bit, 64-bit) and
-/// XOR unmasking of client-to-server frames. Uses `read_exact` for all reads
-/// -- the caller controls buffering.
+/// XOR unmasking of client-to-server frames, reading no byte past the
+/// frame: the caller controls buffering.
 pub fn read_frame<R: Read>(reader: &mut R) -> Result<WsFrame, String> {
     read_frame_with_mask(reader).map(|(frame, _)| frame)
 }
 
 pub(crate) fn read_frame_with_mask<R: Read>(reader: &mut R) -> Result<(WsFrame, bool), String> {
-    // Byte 0: FIN(1) RSV(3) Opcode(4)
-    // Byte 1: MASK(1) Payload-Length(7)
-    let mut header = [0u8; 2];
+    // The header, a byte at a time: its first bytes say how long it is.
+    let mut header = Vec::with_capacity(14);
+    let header = loop {
+        if let Some(header) = FrameHeader::parse(&header, MAX_PAYLOAD_SIZE as usize)? {
+            break header;
+        }
+        let mut byte = [0u8];
+        reader
+            .read_exact(&mut byte)
+            .map_err(|e| format!("read frame header: {}", e))?;
+        header.push(byte[0]);
+    };
+    let mut payload = vec![0u8; header.payload_len];
     reader
-        .read_exact(&mut header)
-        .map_err(|e| format!("read frame header: {}", e))?;
-
-    let fin = (header[0] & 0x80) != 0;
-    let rsv = (header[0] >> 4) & 0x07;
-    if rsv != 0 {
-        return Err("non-zero RSV bits without negotiated extensions".to_string());
-    }
-    let opcode_byte = header[0] & 0x0F;
-    let opcode = WsOpcode::from_u8(opcode_byte)?;
-    let is_control = matches!(opcode, WsOpcode::Close | WsOpcode::Ping | WsOpcode::Pong);
-    if is_control && !fin {
-        return Err("control frames must not be fragmented".to_string());
-    }
-
-    let masked = (header[1] & 0x80) != 0;
-    let length_byte = header[1] & 0x7F;
-
-    // Payload length: 3 encodings per RFC 6455 Section 5.2
-    let payload_len: u64 = match length_byte {
-        0..=125 => length_byte as u64,
-        126 => {
-            let mut buf = [0u8; 2];
-            reader
-                .read_exact(&mut buf)
-                .map_err(|e| format!("read 16-bit length: {}", e))?;
-            u16::from_be_bytes(buf) as u64
-        }
-        127 => {
-            let mut buf = [0u8; 8];
-            reader
-                .read_exact(&mut buf)
-                .map_err(|e| format!("read 64-bit length: {}", e))?;
-            let len = u64::from_be_bytes(buf);
-            if len >> 63 != 0 {
-                return Err("MSB of 64-bit length must be 0".to_string());
-            }
-            len
-        }
-        _ => unreachable!(),
-    };
-
-    // Safety cap to prevent OOM from malicious lengths
-    if payload_len > MAX_PAYLOAD_SIZE {
-        return Err(format!(
-            "payload length {} exceeds maximum {}",
-            payload_len, MAX_PAYLOAD_SIZE
-        ));
-    }
-    if is_control && payload_len > 125 {
-        return Err("control frame payload exceeds 125 bytes".to_string());
-    }
-
-    // Masking key (4 bytes, present only if MASK bit is set)
-    let mask_key = if masked {
-        let mut key = [0u8; 4];
-        reader
-            .read_exact(&mut key)
-            .map_err(|e| format!("read mask key: {}", e))?;
-        Some(key)
-    } else {
-        None
-    };
-
-    // Read payload
-    let mut payload = vec![0u8; payload_len as usize];
-    if payload_len > 0 {
-        reader
-            .read_exact(&mut payload)
-            .map_err(|e| format!("read payload: {}", e))?;
-    }
-
-    // Unmask if needed (client-to-server frames MUST be masked)
-    if let Some(key) = mask_key {
-        apply_mask(&mut payload, &key);
-    }
-
-    Ok((
-        WsFrame {
-            fin,
-            opcode,
-            payload,
-        },
-        masked,
-    ))
+        .read_exact(&mut payload)
+        .map_err(|e| format!("read payload: {}", e))?;
+    Ok(header.frame(payload))
 }
 
 /// Write one WebSocket frame to the stream (server-to-client, unmasked).
@@ -440,63 +344,55 @@ fn write_frame_with_mask<W: Write>(
     fin: bool,
     mask_key: Option<[u8; 4]>,
 ) -> Result<(), String> {
-    let is_control = matches!(opcode, WsOpcode::Close | WsOpcode::Ping | WsOpcode::Pong);
-    if is_control && (!fin || payload.len() > 125) {
+    let frame = frame_bytes(opcode, payload, fin, mask_key)?;
+    writer
+        .write_all(&frame)
+        .and_then(|()| writer.flush())
+        .map_err(|e| format!("write frame: {}", e))
+}
+
+/// A frame of `payload`, masked with `mask_key` when given. A control
+/// frame must be final and at most 125 bytes.
+fn frame_bytes(
+    opcode: WsOpcode,
+    payload: &[u8],
+    fin: bool,
+    mask_key: Option<[u8; 4]>,
+) -> Result<Vec<u8>, String> {
+    if opcode.is_control() && (!fin || payload.len() > 125) {
         return Err("control frames must be final and at most 125 bytes".to_string());
     }
-
-    // Byte 0: FIN + opcode
-    let byte0 = if fin { 0x80 } else { 0x00 } | (opcode as u8);
-
+    let mut frame = Vec::with_capacity(payload.len() + 14);
+    frame.push(if fin { 0x80 } else { 0x00 } | opcode as u8);
     let mask_bit = if mask_key.is_some() { 0x80 } else { 0 };
-    let len = payload.len();
-    if len <= 125 {
-        writer
-            .write_all(&[byte0, mask_bit | len as u8])
-            .map_err(|e| format!("write frame header: {}", e))?;
-    } else if len <= 65535 {
-        writer
-            .write_all(&[byte0, mask_bit | 126])
-            .map_err(|e| format!("write frame header: {}", e))?;
-        writer
-            .write_all(&(len as u16).to_be_bytes())
-            .map_err(|e| format!("write 16-bit length: {}", e))?;
-    } else {
-        writer
-            .write_all(&[byte0, mask_bit | 127])
-            .map_err(|e| format!("write frame header: {}", e))?;
-        writer
-            .write_all(&(len as u64).to_be_bytes())
-            .map_err(|e| format!("write 64-bit length: {}", e))?;
+    match payload.len() {
+        len @ 0..=125 => frame.push(mask_bit | len as u8),
+        len @ 126..=65535 => {
+            frame.push(mask_bit | 126);
+            frame.extend_from_slice(&(len as u16).to_be_bytes());
+        }
+        len => {
+            frame.push(mask_bit | 127);
+            frame.extend_from_slice(&(len as u64).to_be_bytes());
+        }
     }
-
     if let Some(mask_key) = mask_key {
-        writer
-            .write_all(&mask_key)
-            .map_err(|e| format!("write mask key: {}", e))?;
-        let mut masked = payload.to_vec();
-        apply_mask(&mut masked, &mask_key);
-        writer
-            .write_all(&masked)
-            .map_err(|e| format!("write payload: {}", e))?;
-    } else if !payload.is_empty() {
-        writer
-            .write_all(payload)
-            .map_err(|e| format!("write payload: {}", e))?;
+        frame.extend_from_slice(&mask_key);
     }
-
-    writer.flush().map_err(|e| format!("flush frame: {}", e))
+    let payload_start = frame.len();
+    frame.extend_from_slice(payload);
+    if let Some(mask_key) = mask_key {
+        apply_mask(&mut frame[payload_start..], &mask_key);
+    }
+    Ok(frame)
 }
 
 /// A final frame of `payload`, masked with `mask_key` when given. The
 /// reactor encodes control frames only of payloads a decoded frame or
-/// `build_close_payload` bounds to 125 bytes, and writing to memory cannot
-/// fail, so encoding does not.
+/// `build_close_payload` bounds to 125 bytes, so encoding cannot fail.
 pub(crate) fn encode_frame(opcode: WsOpcode, payload: &[u8], mask_key: Option<[u8; 4]>) -> Vec<u8> {
-    let mut encoded = Vec::with_capacity(payload.len() + 14);
-    write_frame_with_mask(&mut encoded, opcode, payload, true, mask_key)
-        .expect("a final frame of a bounded control payload encodes");
-    encoded
+    frame_bytes(opcode, payload, true, mask_key)
+        .expect("a final frame of a bounded control payload encodes")
 }
 
 #[cfg(test)]
@@ -518,10 +414,10 @@ mod tests {
         let mut decoder = FrameDecoder::new(1024);
 
         for byte in encoded.iter().take(encoded.len() - 1) {
-            decoder.extend(&[*byte]).unwrap();
+            decoder.extend(&[*byte]);
             assert!(decoder.next_frame().unwrap().is_none());
         }
-        decoder.extend(&encoded[encoded.len() - 1..]).unwrap();
+        decoder.extend(&encoded[encoded.len() - 1..]);
 
         let (frame, masked) = decoder.next_frame().unwrap().unwrap();
         assert!(masked);
@@ -563,10 +459,10 @@ mod tests {
         encoded.push(0x82);
 
         let mut decoder = FrameDecoder::new(512 * 1024);
-        decoder.extend(&encoded).unwrap();
+        decoder.extend(&encoded);
         assert_eq!(decoder.next_frame().unwrap().unwrap().0.payload, payload);
         assert_eq!(decoder.buffered_len(), 1);
-        assert!(decoder.buffer.capacity() <= 64 * 1024 + 14);
+        assert!(decoder.buffer.capacity() <= COMPACT_AFTER);
     }
 
     #[test]
@@ -575,13 +471,13 @@ mod tests {
         write_frame(&mut encoded, WsOpcode::Text, b"one", true).unwrap();
         write_frame(&mut encoded, WsOpcode::Binary, b"two", true).unwrap();
         let mut decoder = FrameDecoder::new(8);
-        decoder.extend(&encoded).unwrap();
+        decoder.extend(&encoded);
 
         assert_eq!(decoder.next_frame().unwrap().unwrap().0.payload, b"one");
         assert_eq!(decoder.next_frame().unwrap().unwrap().0.payload, b"two");
 
         let mut oversized = FrameDecoder::new(8);
-        oversized.extend(&[0x82, 126, 0, 9]).unwrap();
+        oversized.extend(&[0x82, 126, 0, 9]);
         assert!(oversized
             .next_frame()
             .unwrap_err()
@@ -596,7 +492,7 @@ mod tests {
             encoded.extend_from_slice(&[0x82, 0x81, 0, 0, 0, 0, payload]);
         }
         let mut decoder = FrameDecoder::new(encoded.len());
-        decoder.extend(&encoded).unwrap();
+        decoder.extend(&encoded);
 
         for expected in (0..1_000).map(|value| value as u8) {
             assert_eq!(decoder.next_frame().unwrap().unwrap().0.payload, [expected]);
@@ -610,7 +506,36 @@ mod tests {
         assert_eq!(decoder.buffered_len(), 0);
         assert_eq!(decoder.cursor, 0);
         assert!(decoder.buffer.is_empty());
-        assert_eq!(decoder.buffer.capacity(), 0);
+        assert!(decoder.buffer.capacity() <= COMPACT_AFTER);
+    }
+
+    #[test]
+    fn a_message_joins_any_number_of_fragments() {
+        let mut assembler = MessageAssembler::new(8);
+        let fragment = |opcode, payload: &[u8], fin| WsFrame {
+            fin,
+            opcode,
+            payload: payload.to_vec(),
+        };
+        assert!(matches!(
+            assembler.push(fragment(WsOpcode::Text, b"a", false)),
+            ReassembleResult::Accumulating
+        ));
+        assert!(matches!(
+            assembler.push(fragment(WsOpcode::Continuation, b"b", false)),
+            ReassembleResult::Accumulating
+        ));
+        assert!(matches!(
+            assembler.push(fragment(WsOpcode::Continuation, b"c", true)),
+            ReassembleResult::Complete(frame)
+                if frame.payload == b"abc" && frame.opcode == WsOpcode::Text
+        ));
+    }
+
+    #[test]
+    fn a_control_frame_is_written_final_and_short_or_not_at_all() {
+        assert!(write_frame(&mut Vec::new(), WsOpcode::Ping, &[0; 126], true).is_err());
+        assert!(write_frame(&mut Vec::new(), WsOpcode::Close, &[], false).is_err());
     }
 
     #[test]
