@@ -24,6 +24,7 @@
 //! | 12   |  96    | fragment_params | *mut u8 (List<String>) |
 //! | 13   | 104    | subqueries      | *mut u8 (List<Query>)  |
 
+use super::quote_ident;
 use crate::collections::list::{
     list_strings, mesh_list_append, mesh_list_get, mesh_list_length, mesh_list_new,
 };
@@ -208,6 +209,47 @@ unsafe fn clone_query(src: *mut u8) -> *mut u8 {
     dst
 }
 
+/// The elements of the Mesh list `list`.
+unsafe fn items(list: *mut u8) -> impl Iterator<Item = u64> {
+    (0..mesh_list_length(list)).map(move |i| mesh_list_get(list, i))
+}
+
+/// `values` appended to the list in `slot` of `new_q`, a fresh copy.
+unsafe fn push(new_q: *mut u8, slot: usize, values: impl IntoIterator<Item = u64>) {
+    let list = values
+        .into_iter()
+        .fold(query_get(new_q, slot), |list, value| {
+            mesh_list_append(list, value)
+        });
+    query_set(new_q, slot, list);
+}
+
+/// A copy of `q` with `values` appended to the list in `slot`.
+unsafe fn appended(q: *mut u8, slot: usize, values: impl IntoIterator<Item = u64>) -> *mut u8 {
+    let new_q = clone_query(q);
+    push(new_q, slot, values);
+    new_q
+}
+
+/// A copy of `q` with the text `entry` appended to the list in `slot`.
+unsafe fn with_entry(q: *mut u8, slot: usize, entry: &str) -> *mut u8 {
+    appended(q, slot, [mesh_str(entry) as u64])
+}
+
+/// A copy of `q` with the WHERE clause `clause` and the values it binds.
+unsafe fn with_where(q: *mut u8, clause: &str, values: impl IntoIterator<Item = u64>) -> *mut u8 {
+    let new_q = clone_query(q);
+    push(new_q, SLOT_WHERE_CLAUSES, [mesh_str(clause) as u64]);
+    push(new_q, SLOT_WHERE_PARAMS, values);
+    new_q
+}
+
+/// A copy of `q` selecting the aggregate `function("field")` too.
+unsafe fn with_aggregate(q: *mut u8, function: &str, field: *mut u8) -> *mut u8 {
+    let aggregate = format!("RAW:{function}({})", quote_ident(text_of(field)));
+    with_entry(q, SLOT_SELECT, &aggregate)
+}
+
 // ── Extern C builder functions ───────────────────────────────────────
 
 /// Create a new Query from a table name string.
@@ -227,21 +269,7 @@ pub extern "C" fn mesh_query_from(table: *mut u8) -> *mut u8 {
 /// `Query.where(q, :name, "Alice")` -> new Query with WHERE name = $N
 #[no_mangle]
 pub extern "C" fn mesh_query_where(q: *mut u8, field: *mut u8, value: *mut u8) -> *mut u8 {
-    unsafe {
-        let new_q = clone_query(q);
-        let field_str = text_of(field);
-        let clause = format!("{} =", field_str);
-        let clause_mesh = mesh_str(&clause) as *mut u8;
-        let wc = query_get(new_q, SLOT_WHERE_CLAUSES);
-        query_set(
-            new_q,
-            SLOT_WHERE_CLAUSES,
-            mesh_list_append(wc, clause_mesh as u64),
-        );
-        let wp = query_get(new_q, SLOT_WHERE_PARAMS);
-        query_set(new_q, SLOT_WHERE_PARAMS, mesh_list_append(wp, value as u64));
-        new_q
-    }
+    unsafe { with_where(q, &format!("{} =", text_of(field)), [value as u64]) }
 }
 
 /// Add an operator WHERE clause: `field op value`.
@@ -255,21 +283,8 @@ pub extern "C-unwind" fn mesh_query_where_op(
     value: *mut u8,
 ) -> *mut u8 {
     unsafe {
-        let new_q = clone_query(q);
-        let field_str = text_of(field);
-        let op_str = text_of(op);
-        let sql_op = atom_to_sql_op(op_str);
-        let clause = format!("{} {}", field_str, sql_op);
-        let clause_mesh = mesh_str(&clause) as *mut u8;
-        let wc = query_get(new_q, SLOT_WHERE_CLAUSES);
-        query_set(
-            new_q,
-            SLOT_WHERE_CLAUSES,
-            mesh_list_append(wc, clause_mesh as u64),
-        );
-        let wp = query_get(new_q, SLOT_WHERE_PARAMS);
-        query_set(new_q, SLOT_WHERE_PARAMS, mesh_list_append(wp, value as u64));
-        new_q
+        let clause = format!("{} {}", text_of(field), atom_to_sql_op(text_of(op)));
+        with_where(q, &clause, [value as u64])
     }
 }
 
@@ -279,25 +294,8 @@ pub extern "C-unwind" fn mesh_query_where_op(
 #[no_mangle]
 pub extern "C" fn mesh_query_where_in(q: *mut u8, field: *mut u8, values: *mut u8) -> *mut u8 {
     unsafe {
-        let new_q = clone_query(q);
-        let field_str = text_of(field);
-        let list_len = mesh_list_length(values);
-        let clause = format!("{} IN:{}", field_str, list_len);
-        let clause_mesh = mesh_str(&clause) as *mut u8;
-        let wc = query_get(new_q, SLOT_WHERE_CLAUSES);
-        query_set(
-            new_q,
-            SLOT_WHERE_CLAUSES,
-            mesh_list_append(wc, clause_mesh as u64),
-        );
-        // Append each value from the list to where_params
-        let mut wp = query_get(new_q, SLOT_WHERE_PARAMS);
-        for i in 0..list_len {
-            let elem = mesh_list_get(values, i);
-            wp = mesh_list_append(wp, elem);
-        }
-        query_set(new_q, SLOT_WHERE_PARAMS, wp);
-        new_q
+        let clause = format!("{} IN:{}", text_of(field), mesh_list_length(values));
+        with_where(q, &clause, items(values))
     }
 }
 
@@ -307,25 +305,8 @@ pub extern "C" fn mesh_query_where_in(q: *mut u8, field: *mut u8, values: *mut u
 #[no_mangle]
 pub extern "C" fn mesh_query_where_not_in(q: *mut u8, field: *mut u8, values: *mut u8) -> *mut u8 {
     unsafe {
-        let new_q = clone_query(q);
-        let field_str = text_of(field);
-        let list_len = mesh_list_length(values);
-        let clause = format!("{} NOT_IN:{}", field_str, list_len);
-        let clause_mesh = mesh_str(&clause) as *mut u8;
-        let wc = query_get(new_q, SLOT_WHERE_CLAUSES);
-        query_set(
-            new_q,
-            SLOT_WHERE_CLAUSES,
-            mesh_list_append(wc, clause_mesh as u64),
-        );
-        // Append each value from the list to where_params
-        let mut wp = query_get(new_q, SLOT_WHERE_PARAMS);
-        for i in 0..list_len {
-            let elem = mesh_list_get(values, i);
-            wp = mesh_list_append(wp, elem);
-        }
-        query_set(new_q, SLOT_WHERE_PARAMS, wp);
-        new_q
+        let clause = format!("{} NOT_IN:{}", text_of(field), mesh_list_length(values));
+        with_where(q, &clause, items(values))
     }
 }
 
@@ -340,21 +321,8 @@ pub extern "C" fn mesh_query_where_between(
     high: *mut u8,
 ) -> *mut u8 {
     unsafe {
-        let new_q = clone_query(q);
-        let field_str = text_of(field);
-        let clause = format!("{} BETWEEN", field_str);
-        let clause_mesh = mesh_str(&clause) as *mut u8;
-        let wc = query_get(new_q, SLOT_WHERE_CLAUSES);
-        query_set(
-            new_q,
-            SLOT_WHERE_CLAUSES,
-            mesh_list_append(wc, clause_mesh as u64),
-        );
-        let mut wp = query_get(new_q, SLOT_WHERE_PARAMS);
-        wp = mesh_list_append(wp, low as u64);
-        wp = mesh_list_append(wp, high as u64);
-        query_set(new_q, SLOT_WHERE_PARAMS, wp);
-        new_q
+        let clause = format!("{} BETWEEN", text_of(field));
+        with_where(q, &clause, [low as u64, high as u64])
     }
 }
 
@@ -379,24 +347,8 @@ pub extern "C-unwind" fn mesh_query_where_or(
                 field_names.len()
             ));
         }
-        let new_q = clone_query(q);
         // OR clause encoding: "OR:field1,field2,..."
-        let clause = format!("OR:{}", field_names.join(","));
-        let clause_mesh = mesh_str(&clause) as *mut u8;
-        let wc = query_get(new_q, SLOT_WHERE_CLAUSES);
-        query_set(
-            new_q,
-            SLOT_WHERE_CLAUSES,
-            mesh_list_append(wc, clause_mesh as u64),
-        );
-        // Append values to where_params
-        let mut wp = query_get(new_q, SLOT_WHERE_PARAMS);
-        for i in 0..val_count {
-            let elem = mesh_list_get(values, i);
-            wp = mesh_list_append(wp, elem);
-        }
-        query_set(new_q, SLOT_WHERE_PARAMS, wp);
-        new_q
+        with_where(q, &format!("OR:{}", field_names.join(",")), items(values))
     }
 }
 
@@ -405,19 +357,7 @@ pub extern "C-unwind" fn mesh_query_where_or(
 /// `Query.where_null(q, :deleted_at)` -> new Query with WHERE deleted_at IS NULL
 #[no_mangle]
 pub extern "C" fn mesh_query_where_null(q: *mut u8, field: *mut u8) -> *mut u8 {
-    unsafe {
-        let new_q = clone_query(q);
-        let field_str = text_of(field);
-        let clause = format!("{} IS NULL", field_str);
-        let clause_mesh = mesh_str(&clause) as *mut u8;
-        let wc = query_get(new_q, SLOT_WHERE_CLAUSES);
-        query_set(
-            new_q,
-            SLOT_WHERE_CLAUSES,
-            mesh_list_append(wc, clause_mesh as u64),
-        );
-        new_q
-    }
+    unsafe { with_where(q, &format!("{} IS NULL", text_of(field)), []) }
 }
 
 /// Add a WHERE IS NOT NULL clause.
@@ -425,19 +365,7 @@ pub extern "C" fn mesh_query_where_null(q: *mut u8, field: *mut u8) -> *mut u8 {
 /// `Query.where_not_null(q, :name)` -> new Query with WHERE name IS NOT NULL
 #[no_mangle]
 pub extern "C" fn mesh_query_where_not_null(q: *mut u8, field: *mut u8) -> *mut u8 {
-    unsafe {
-        let new_q = clone_query(q);
-        let field_str = text_of(field);
-        let clause = format!("{} IS NOT NULL", field_str);
-        let clause_mesh = mesh_str(&clause) as *mut u8;
-        let wc = query_get(new_q, SLOT_WHERE_CLAUSES);
-        query_set(
-            new_q,
-            SLOT_WHERE_CLAUSES,
-            mesh_list_append(wc, clause_mesh as u64),
-        );
-        new_q
-    }
+    unsafe { with_where(q, &format!("{} IS NOT NULL", text_of(field)), []) }
 }
 
 /// Add a structured expression-valued WHERE predicate.
@@ -447,17 +375,7 @@ pub extern "C" fn mesh_query_where_not_null(q: *mut u8, field: *mut u8) -> *mut 
 ///   builder renders it, numbering its values where they fall.
 #[no_mangle]
 pub extern "C" fn mesh_query_where_expr(q: *mut u8, expr: *mut u8) -> *mut u8 {
-    unsafe {
-        let new_q = clone_query(q);
-        let encoded_expr = mesh_str(&format!("EXPR:{}", text_of(expr)));
-        let wc = query_get(new_q, SLOT_WHERE_CLAUSES);
-        query_set(
-            new_q,
-            SLOT_WHERE_CLAUSES,
-            mesh_list_append(wc, encoded_expr as u64),
-        );
-        new_q
-    }
+    unsafe { with_where(q, &format!("EXPR:{}", text_of(expr)), []) }
 }
 
 /// Set the SELECT fields for the query.
@@ -472,25 +390,19 @@ pub extern "C" fn mesh_query_select(q: *mut u8, fields: *mut u8) -> *mut u8 {
     }
 }
 
-/// Each of `exprs` (their JSON) appended to the SELECT list.
-unsafe fn append_select_exprs(new_q: *mut u8, exprs: *mut u8) {
-    let mut select_fields = query_get(new_q, SLOT_SELECT);
-    for expr in list_strings(exprs) {
-        let encoded_expr = mesh_str(&format!("EXPR:{expr}"));
-        select_fields = mesh_list_append(select_fields, encoded_expr as u64);
-    }
-    query_set(new_q, SLOT_SELECT, select_fields);
+/// A copy of `q` selecting each of `exprs` (their JSON) too.
+unsafe fn with_select_exprs(q: *mut u8, exprs: *mut u8) -> *mut u8 {
+    let entries = list_strings(exprs)
+        .iter()
+        .map(|expr| mesh_str(&format!("EXPR:{expr}")) as u64)
+        .collect::<Vec<_>>();
+    appended(q, SLOT_SELECT, entries)
 }
 
 /// Append a single structured expression-valued SELECT item.
 #[no_mangle]
 pub extern "C" fn mesh_query_select_expr(q: *mut u8, expr: *mut u8) -> *mut u8 {
-    unsafe {
-        let new_q = clone_query(q);
-        let exprs = mesh_list_append(mesh_list_new(), expr as u64);
-        append_select_exprs(new_q, exprs);
-        new_q
-    }
+    unsafe { with_select_exprs(q, mesh_list_append(mesh_list_new(), expr as u64)) }
 }
 
 /// Append structured expression-valued SELECT items.
@@ -499,11 +411,7 @@ pub extern "C" fn mesh_query_select_expr(q: *mut u8, expr: *mut u8) -> *mut u8 {
 ///   -> new Query with portable expression SELECT items and ordered params.
 #[no_mangle]
 pub extern "C" fn mesh_query_select_exprs(q: *mut u8, exprs: *mut u8) -> *mut u8 {
-    unsafe {
-        let new_q = clone_query(q);
-        append_select_exprs(new_q, exprs);
-        new_q
-    }
+    unsafe { with_select_exprs(q, exprs) }
 }
 
 /// Add an ORDER BY clause.
@@ -516,15 +424,12 @@ pub extern "C-unwind" fn mesh_query_order_by(
     direction: *mut u8,
 ) -> *mut u8 {
     unsafe {
-        let new_q = clone_query(q);
-        let field_str = text_of(field);
-        let dir_str = text_of(direction);
-        let dir_sql = atom_to_direction(dir_str);
-        let order = format!("{} {}", field_str, dir_sql);
-        let order_mesh = mesh_str(&order) as *mut u8;
-        let of = query_get(new_q, SLOT_ORDER);
-        query_set(new_q, SLOT_ORDER, mesh_list_append(of, order_mesh as u64));
-        new_q
+        let order = format!(
+            "{} {}",
+            text_of(field),
+            atom_to_direction(text_of(direction))
+        );
+        with_entry(q, SLOT_ORDER, &order)
     }
 }
 
@@ -533,15 +438,7 @@ pub extern "C-unwind" fn mesh_query_order_by(
 /// `Query.order_by_raw(q, "random()")` -> new Query with ORDER BY random()
 #[no_mangle]
 pub extern "C" fn mesh_query_order_by_raw(q: *mut u8, expression: *mut u8) -> *mut u8 {
-    unsafe {
-        let new_q = clone_query(q);
-        let expr_str = text_of(expression);
-        let raw_order = format!("RAW:{}", expr_str);
-        let raw_mesh = mesh_str(&raw_order) as *mut u8;
-        let of = query_get(new_q, SLOT_ORDER);
-        query_set(new_q, SLOT_ORDER, mesh_list_append(of, raw_mesh as u64));
-        new_q
-    }
+    unsafe { with_entry(q, SLOT_ORDER, &format!("RAW:{}", text_of(expression))) }
 }
 
 /// Set the LIMIT for the query.
@@ -579,16 +476,13 @@ pub extern "C-unwind" fn mesh_query_join(
     on_clause: *mut u8,
 ) -> *mut u8 {
     unsafe {
-        let new_q = clone_query(q);
-        let jt_str = text_of(join_type);
-        let tbl_str = text_of(table);
-        let on_str = text_of(on_clause);
-        let jt_sql = atom_to_join_type(jt_str, "join");
-        let join = format!("{}:{}:{}", jt_sql, tbl_str, on_str);
-        let join_mesh = mesh_str(&join) as *mut u8;
-        let jc = query_get(new_q, SLOT_JOIN);
-        query_set(new_q, SLOT_JOIN, mesh_list_append(jc, join_mesh as u64));
-        new_q
+        let join = format!(
+            "{}:{}:{}",
+            atom_to_join_type(text_of(join_type), "join"),
+            text_of(table),
+            text_of(on_clause)
+        );
+        with_entry(q, SLOT_JOIN, &join)
     }
 }
 
@@ -604,17 +498,14 @@ pub extern "C-unwind" fn mesh_query_join_as(
     on_clause: *mut u8,
 ) -> *mut u8 {
     unsafe {
-        let new_q = clone_query(q);
-        let jt_str = text_of(join_type);
-        let tbl_str = text_of(table);
-        let alias_str = text_of(alias);
-        let on_str = text_of(on_clause);
-        let jt_sql = atom_to_join_type(jt_str, "join_as");
-        let join = format!("ALIAS:{}:{}:{}:{}", jt_sql, tbl_str, alias_str, on_str);
-        let join_mesh = mesh_str(&join) as *mut u8;
-        let jc = query_get(new_q, SLOT_JOIN);
-        query_set(new_q, SLOT_JOIN, mesh_list_append(jc, join_mesh as u64));
-        new_q
+        let join = format!(
+            "ALIAS:{}:{}:{}:{}",
+            atom_to_join_type(text_of(join_type), "join_as"),
+            text_of(table),
+            text_of(alias),
+            text_of(on_clause)
+        );
+        with_entry(q, SLOT_JOIN, &join)
     }
 }
 
@@ -623,12 +514,7 @@ pub extern "C-unwind" fn mesh_query_join_as(
 /// `Query.group_by(q, :category)` -> new Query with GROUP BY category
 #[no_mangle]
 pub extern "C" fn mesh_query_group_by(q: *mut u8, field: *mut u8) -> *mut u8 {
-    unsafe {
-        let new_q = clone_query(q);
-        let gf = query_get(new_q, SLOT_GROUP);
-        query_set(new_q, SLOT_GROUP, mesh_list_append(gf, field as u64));
-        new_q
-    }
+    unsafe { appended(q, SLOT_GROUP, [field as u64]) }
 }
 
 /// Add a raw GROUP BY expression (no quoting).
@@ -636,15 +522,7 @@ pub extern "C" fn mesh_query_group_by(q: *mut u8, field: *mut u8) -> *mut u8 {
 /// `Query.group_by_raw(q, "date_trunc('hour', received_at)")` -> new Query with raw GROUP BY
 #[no_mangle]
 pub extern "C" fn mesh_query_group_by_raw(q: *mut u8, expression: *mut u8) -> *mut u8 {
-    unsafe {
-        let new_q = clone_query(q);
-        let expr_str = text_of(expression);
-        let raw_group = format!("RAW:{}", expr_str);
-        let raw_mesh = mesh_str(&raw_group) as *mut u8;
-        let gf = query_get(new_q, SLOT_GROUP);
-        query_set(new_q, SLOT_GROUP, mesh_list_append(gf, raw_mesh as u64));
-        new_q
-    }
+    unsafe { with_entry(q, SLOT_GROUP, &format!("RAW:{}", text_of(expression))) }
 }
 
 /// Add a HAVING clause.
@@ -654,18 +532,8 @@ pub extern "C" fn mesh_query_group_by_raw(q: *mut u8, expression: *mut u8) -> *m
 pub extern "C" fn mesh_query_having(q: *mut u8, clause: *mut u8, value: *mut u8) -> *mut u8 {
     unsafe {
         let new_q = clone_query(q);
-        let hc = query_get(new_q, SLOT_HAVING_CLAUSES);
-        query_set(
-            new_q,
-            SLOT_HAVING_CLAUSES,
-            mesh_list_append(hc, clause as u64),
-        );
-        let hp = query_get(new_q, SLOT_HAVING_PARAMS);
-        query_set(
-            new_q,
-            SLOT_HAVING_PARAMS,
-            mesh_list_append(hp, value as u64),
-        );
+        push(new_q, SLOT_HAVING_CLAUSES, [clause as u64]);
+        push(new_q, SLOT_HAVING_PARAMS, [value as u64]);
         new_q
     }
 }
@@ -679,18 +547,11 @@ pub extern "C" fn mesh_query_having(q: *mut u8, clause: *mut u8, value: *mut u8)
 #[no_mangle]
 pub extern "C" fn mesh_query_select_raw(q: *mut u8, expressions: *mut u8) -> *mut u8 {
     unsafe {
-        let new_q = clone_query(q);
-        let expr_len = mesh_list_length(expressions);
-        let mut sf = query_get(new_q, SLOT_SELECT);
-        for i in 0..expr_len {
-            let elem = mesh_list_get(expressions, i) as *mut u8;
-            let expr_str = text_of(elem);
-            let raw_expr = format!("RAW:{}", expr_str);
-            let raw_mesh = mesh_str(&raw_expr) as *mut u8;
-            sf = mesh_list_append(sf, raw_mesh as u64);
-        }
-        query_set(new_q, SLOT_SELECT, sf);
-        new_q
+        let entries = list_strings(expressions)
+            .iter()
+            .map(|expr| mesh_str(&format!("RAW:{expr}")) as u64)
+            .collect::<Vec<_>>();
+        appended(q, SLOT_SELECT, entries)
     }
 }
 
@@ -711,24 +572,7 @@ pub extern "C-unwind" fn mesh_query_where_raw(
     unsafe {
         let clause_str = text_of(clause);
         check_parameters("where_raw", clause_str, params);
-        let new_q = clone_query(q);
-        let raw_clause = format!("RAW:{}", clause_str);
-        let raw_mesh = mesh_str(&raw_clause) as *mut u8;
-        let wc = query_get(new_q, SLOT_WHERE_CLAUSES);
-        query_set(
-            new_q,
-            SLOT_WHERE_CLAUSES,
-            mesh_list_append(wc, raw_mesh as u64),
-        );
-        // Append all params to where_params
-        let mut wp = query_get(new_q, SLOT_WHERE_PARAMS);
-        let param_len = mesh_list_length(params);
-        for i in 0..param_len {
-            let elem = mesh_list_get(params, i);
-            wp = mesh_list_append(wp, elem);
-        }
-        query_set(new_q, SLOT_WHERE_PARAMS, wp);
-        new_q
+        with_where(q, &format!("RAW:{clause_str}"), items(params))
     }
 }
 
@@ -739,13 +583,7 @@ pub extern "C-unwind" fn mesh_query_where_raw(
 /// `Query.select_count(q)` -> new Query with count(*) in SELECT
 #[no_mangle]
 pub extern "C" fn mesh_query_select_count(q: *mut u8) -> *mut u8 {
-    unsafe {
-        let new_q = clone_query(q);
-        let raw = mesh_str("RAW:count(*)") as *mut u8;
-        let sf = query_get(new_q, SLOT_SELECT);
-        query_set(new_q, SLOT_SELECT, mesh_list_append(sf, raw as u64));
-        new_q
-    }
+    unsafe { with_entry(q, SLOT_SELECT, "RAW:count(*)") }
 }
 
 /// Add SELECT count("field") to the query.
@@ -753,15 +591,7 @@ pub extern "C" fn mesh_query_select_count(q: *mut u8) -> *mut u8 {
 /// `Query.select_count_field(q, :assignee_id)` -> new Query with count("assignee_id") in SELECT
 #[no_mangle]
 pub extern "C" fn mesh_query_select_count_field(q: *mut u8, field: *mut u8) -> *mut u8 {
-    unsafe {
-        let new_q = clone_query(q);
-        let field_str = text_of(field);
-        let raw = format!("RAW:count(\"{}\")", field_str.replace('"', "\"\""));
-        let raw_mesh = mesh_str(&raw) as *mut u8;
-        let sf = query_get(new_q, SLOT_SELECT);
-        query_set(new_q, SLOT_SELECT, mesh_list_append(sf, raw_mesh as u64));
-        new_q
-    }
+    unsafe { with_aggregate(q, "count", field) }
 }
 
 /// Add SELECT sum("field") to the query.
@@ -769,15 +599,7 @@ pub extern "C" fn mesh_query_select_count_field(q: *mut u8, field: *mut u8) -> *
 /// `Query.select_sum(q, :amount)` -> new Query with sum("amount") in SELECT
 #[no_mangle]
 pub extern "C" fn mesh_query_select_sum(q: *mut u8, field: *mut u8) -> *mut u8 {
-    unsafe {
-        let new_q = clone_query(q);
-        let field_str = text_of(field);
-        let raw = format!("RAW:sum(\"{}\")", field_str.replace('"', "\"\""));
-        let raw_mesh = mesh_str(&raw) as *mut u8;
-        let sf = query_get(new_q, SLOT_SELECT);
-        query_set(new_q, SLOT_SELECT, mesh_list_append(sf, raw_mesh as u64));
-        new_q
-    }
+    unsafe { with_aggregate(q, "sum", field) }
 }
 
 /// Add SELECT avg("field") to the query.
@@ -785,15 +607,7 @@ pub extern "C" fn mesh_query_select_sum(q: *mut u8, field: *mut u8) -> *mut u8 {
 /// `Query.select_avg(q, :price)` -> new Query with avg("price") in SELECT
 #[no_mangle]
 pub extern "C" fn mesh_query_select_avg(q: *mut u8, field: *mut u8) -> *mut u8 {
-    unsafe {
-        let new_q = clone_query(q);
-        let field_str = text_of(field);
-        let raw = format!("RAW:avg(\"{}\")", field_str.replace('"', "\"\""));
-        let raw_mesh = mesh_str(&raw) as *mut u8;
-        let sf = query_get(new_q, SLOT_SELECT);
-        query_set(new_q, SLOT_SELECT, mesh_list_append(sf, raw_mesh as u64));
-        new_q
-    }
+    unsafe { with_aggregate(q, "avg", field) }
 }
 
 /// Add SELECT min("field") to the query.
@@ -801,15 +615,7 @@ pub extern "C" fn mesh_query_select_avg(q: *mut u8, field: *mut u8) -> *mut u8 {
 /// `Query.select_min(q, :created_at)` -> new Query with min("created_at") in SELECT
 #[no_mangle]
 pub extern "C" fn mesh_query_select_min(q: *mut u8, field: *mut u8) -> *mut u8 {
-    unsafe {
-        let new_q = clone_query(q);
-        let field_str = text_of(field);
-        let raw = format!("RAW:min(\"{}\")", field_str.replace('"', "\"\""));
-        let raw_mesh = mesh_str(&raw) as *mut u8;
-        let sf = query_get(new_q, SLOT_SELECT);
-        query_set(new_q, SLOT_SELECT, mesh_list_append(sf, raw_mesh as u64));
-        new_q
-    }
+    unsafe { with_aggregate(q, "min", field) }
 }
 
 /// Add SELECT max("field") to the query.
@@ -817,15 +623,7 @@ pub extern "C" fn mesh_query_select_min(q: *mut u8, field: *mut u8) -> *mut u8 {
 /// `Query.select_max(q, :created_at)` -> new Query with max("created_at") in SELECT
 #[no_mangle]
 pub extern "C" fn mesh_query_select_max(q: *mut u8, field: *mut u8) -> *mut u8 {
-    unsafe {
-        let new_q = clone_query(q);
-        let field_str = text_of(field);
-        let raw = format!("RAW:max(\"{}\")", field_str.replace('"', "\"\""));
-        let raw_mesh = mesh_str(&raw) as *mut u8;
-        let sf = query_get(new_q, SLOT_SELECT);
-        query_set(new_q, SLOT_SELECT, mesh_list_append(sf, raw_mesh as u64));
-        new_q
-    }
+    unsafe { with_aggregate(q, "max", field) }
 }
 
 /// Add a WHERE IN subquery clause.
@@ -838,20 +636,8 @@ pub extern "C" fn mesh_query_select_max(q: *mut u8, field: *mut u8) -> *mut u8 {
 #[no_mangle]
 pub extern "C" fn mesh_query_where_sub(q: *mut u8, field: *mut u8, sub_query: *mut u8) -> *mut u8 {
     unsafe {
-        let new_q = clone_query(q);
-        let clause = mesh_str(&format!("SUB:{}", text_of(field)));
-        let wc = query_get(new_q, SLOT_WHERE_CLAUSES);
-        query_set(
-            new_q,
-            SLOT_WHERE_CLAUSES,
-            mesh_list_append(wc, clause as u64),
-        );
-        let subs = query_get(new_q, SLOT_SUBQUERIES);
-        query_set(
-            new_q,
-            SLOT_SUBQUERIES,
-            mesh_list_append(subs, sub_query as u64),
-        );
+        let new_q = with_where(q, &format!("SUB:{}", text_of(field)), []);
+        push(new_q, SLOT_SUBQUERIES, [sub_query as u64]);
         new_q
     }
 }
@@ -864,17 +650,8 @@ pub extern "C" fn mesh_query_where_sub(q: *mut u8, field: *mut u8, sub_query: *m
 pub extern "C-unwind" fn mesh_query_fragment(q: *mut u8, sql: *mut u8, params: *mut u8) -> *mut u8 {
     unsafe {
         check_parameters("fragment", text_of(sql), params);
-        let new_q = clone_query(q);
-        let fp = query_get(new_q, SLOT_FRAGMENT_PARTS);
-        query_set(new_q, SLOT_FRAGMENT_PARTS, mesh_list_append(fp, sql as u64));
-        // Append each param from the params list to fragment_params
-        let mut fpar = query_get(new_q, SLOT_FRAGMENT_PARAMS);
-        let param_len = mesh_list_length(params);
-        for i in 0..param_len {
-            let elem = mesh_list_get(params, i);
-            fpar = mesh_list_append(fpar, elem);
-        }
-        query_set(new_q, SLOT_FRAGMENT_PARAMS, fpar);
+        let new_q = appended(q, SLOT_FRAGMENT_PARTS, [sql as u64]);
+        push(new_q, SLOT_FRAGMENT_PARAMS, items(params));
         new_q
     }
 }
