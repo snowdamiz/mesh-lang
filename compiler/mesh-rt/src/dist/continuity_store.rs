@@ -2595,6 +2595,13 @@ mod tests {
     }
 
     #[test]
+    fn a_store_at_the_root_path_does_not_open() {
+        assert!(
+            SqliteContinuityStore::open(Path::new("/"), ContinuityStoreLimits::default()).is_err()
+        );
+    }
+
+    #[test]
     fn concurrent_writes_share_a_group_commit() {
         let store = Arc::new(store());
         let writer = Arc::new(DurableWriter::start(Arc::clone(&store)));
