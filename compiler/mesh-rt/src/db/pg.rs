@@ -176,11 +176,12 @@ fn percent_decode(s: &str) -> String {
     let bytes = s.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(byte) =
-                u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""), 16)
+        // Exactly two hex digits: `from_str_radix` would take "+1" too.
+        if let Some([b'%', high, low]) = bytes.get(i..i + 3) {
+            if let (Some(high), Some(low)) =
+                ((*high as char).to_digit(16), (*low as char).to_digit(16))
             {
-                result.push(byte);
+                result.push((high * 16 + low) as u8);
                 i += 3;
                 continue;
             }
@@ -2201,6 +2202,8 @@ mod tests {
             ("me%zz", 5432, "me%zz")
         );
         assert!(url.sslmode == SslMode::Prefer && url.password.is_empty());
+        // Only two hex digits make an escape: "%+1" is not byte 1.
+        assert_eq!(percent_decode("a%+1b%4"), "a%+1b%4");
         for (mode, parsed) in [
             ("disable", SslMode::Disable),
             ("allow", SslMode::Prefer),
