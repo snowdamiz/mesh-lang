@@ -1227,8 +1227,8 @@ fn free_port() -> u16 {
 fn remote_spawns_carry_each_argument_type() {
     use std::io::{BufRead, BufReader};
     let (_guard, project_dir) = project(
-        r##"actor typed(i :: Int, f :: Float, b :: Bool, s :: String, u :: ()) do
-  println("typed #{i} #{f} #{b} #{s} #{u}")
+        r##"actor typed(i :: Int, f :: Float, b :: Bool, s :: String, u :: (), p :: Pid<Int>) do
+  println("typed #{i} #{f} #{b} #{s} #{u} #{p != p}")
 end
 
 actor bare() do
@@ -1236,7 +1236,8 @@ actor bare() do
 end
 
 actor spawner(host_name :: String) do
-  let _ = Node.spawn(host_name, typed, 7, 2.5, true, "remote", ())
+  let origin :: Pid<Int> = self()
+  let _ = Node.spawn(host_name, typed, 7, 2.5, true, "remote", (), origin)
   let _ = Node.spawn_link(host_name, bare)
   println("spawned")
 end
@@ -1289,7 +1290,7 @@ end
     let mut spawned: Vec<String> = host_lines.map(Result::unwrap).collect();
     host.wait().unwrap();
     spawned.sort();
-    assert_eq!(spawned, ["bare", "typed 7 2.5 true remote ()"]);
+    assert_eq!(spawned, ["bare", "typed 7 2.5 true remote () false"]);
 }
 
 /// A remote node starts the function `Node.spawn` names by its name, so a
@@ -1601,4 +1602,215 @@ end
     let mut lines: Vec<&str> = output.lines().collect();
     lines.sort();
     assert_eq!(lines, ["3", "tick", "tick"], "{output}");
+}
+
+/// Values of the less common shapes flow through branches and messages:
+/// Float remainders and comparisons, a tuple out of an `if` and a `case`,
+/// a function whose branches all panic, a loop body that always leaves,
+/// and a unit or Bool message.
+#[test]
+fn values_of_every_shape_flow_through_branches_and_messages() {
+    let output = compile_and_run(
+        r##"fn pick(c :: Bool) -> (Int, String) do
+  let t :: (Int, String) = if c do (1, "one") else (2, "two") end
+  t
+end
+
+fn choose(n :: Int) -> (Int, Int) do
+  case n do
+    0 -> (0, 0)
+    _ -> (n, n * n)
+  end
+end
+
+fn fail(c :: Bool) -> Int do
+  if c do
+    panic("fail a")
+  else
+    panic("fail b")
+  end
+end
+
+fn safe(n :: Int) -> Int do
+  if n > 100 do
+    fail(n > 200)
+  else
+    n
+  end
+end
+
+actor units() do
+  receive do
+    u -> println("unit #{u}")
+  end
+end
+
+actor flags() do
+  receive do
+    b -> println("flag #{b}")
+  end
+end
+
+fn main() do
+  println("#{5.5 % 2.0} #{1.5 <= 1.5} #{2.5 >= 3.0} #{2.5 >= 1.0}")
+  println("#{pick(true)} #{pick(false)} #{choose(0)} #{choose(3)} #{safe(7)}")
+  let kept = for x in [1, 2, 3] do
+    if x > 1 do
+      break
+    else
+      continue
+    end
+  end
+  println("#{kept}")
+  let u :: Pid<()> = spawn(units)
+  send(u, ())
+  Timer.sleep(100)
+  let f :: Pid<Bool> = spawn(flags)
+  send(f, true)
+  Timer.sleep(100)
+end
+"##,
+    );
+    assert_eq!(
+        output,
+        "1.5 true false true\n(1, one) (2, two) (0, 0) (3, 9) 7\n[]\nunit ()\nflag true\n"
+    );
+}
+
+/// A tuple holding a resource inside a nested tuple destroys it with the
+/// rest when its scope ends.
+#[test]
+fn a_resource_in_a_nested_tuple_is_destroyed() {
+    let output = compile_and_run(
+        r##"fn nested() -> Int ! CryptoError do
+  let a = Secret.random(1) ?
+  let b = Secret.random(1) ?
+  let t = ((a, 1), b)
+  Ok(2)
+end
+
+fn main() do
+  case nested() do
+    Ok(n) -> println("nested #{n}")
+    Err(_) -> println("error")
+  end
+end
+"##,
+    );
+    assert_eq!(output, "nested 2\n");
+}
+
+/// Resources held in less common places are released: in a sum type that
+/// holds itself, in a variant with named fields, in an impl method's
+/// parameter, and in a scope a panic may leave.
+#[test]
+fn resources_in_recursive_named_and_method_positions_are_released() {
+    let output = compile_and_run(
+        r##"type Chain do
+  Link(SecretBytes, Chain)
+  End
+end
+
+type Named do
+  Holder(key :: SecretBytes, n :: Int)
+  Empty
+end
+
+struct Vault do
+  n :: Int
+end
+
+interface Taker do
+  fn take(self, key :: SecretBytes) -> Int
+end
+
+impl Taker for Vault do
+  fn take(self, key :: SecretBytes) -> Int do
+    self.n
+  end
+end
+
+fn guarded(c :: Bool) -> Int ! CryptoError do
+  let key = Secret.random(1) ?
+  if c do
+    panic("guarded")
+  end
+  Ok(1)
+end
+
+fn build() -> Int ! CryptoError do
+  let a = Secret.random(1) ?
+  let b = Secret.random(1) ?
+  let chain = Link(a, Link(b, End))
+  let named = Holder(Secret.random(1) ?, 3)
+  let v = Vault { n: 7 }
+  let taken = Vault.take(v, Secret.random(1) ?)
+  Ok(taken)
+end
+
+fn main() do
+  case build() do
+    Ok(n) -> println("built #{n}")
+    Err(_) -> println("error")
+  end
+  case guarded(false) do
+    Ok(n) -> println("guarded #{n}")
+    Err(_) -> println("error")
+  end
+end
+"##,
+    );
+    assert_eq!(output, "built 7\nguarded 1\n");
+}
+
+/// A value of a type that holds itself, a tree of sum values or a struct
+/// with a list of its own kind, crosses to another actor whole: its shape
+/// table refers back to the type's own node.
+#[test]
+fn recursive_types_cross_to_actors() {
+    let output = compile_and_run(
+        r##"type Tree do
+  Leaf
+  Node(Tree, Int, Tree)
+end
+
+struct Dir do
+  name :: String
+  children :: List<Dir>
+end
+
+fn total(t :: Tree) -> Int do
+  case t do
+    Leaf -> 0
+    Node(l, v, r) -> total(l) + v + total(r)
+  end
+end
+
+fn count(d :: Dir) -> Int do
+  List.reduce(d.children, 1, fn (acc, c) -> acc + count(c) end)
+end
+
+actor trees() do
+  receive do
+    t -> println("tree #{total(t)}")
+  end
+end
+
+actor dirs() do
+  receive do
+    d -> println("dir #{d.name} #{count(d)}")
+  end
+end
+
+fn main() do
+  let t :: Pid<Tree> = spawn(trees)
+  send(t, Node(Node(Leaf, 1, Leaf), 2, Node(Leaf, 3, Leaf)))
+  Timer.sleep(100)
+  let d :: Pid<Dir> = spawn(dirs)
+  send(d, Dir { name: "root", children: [Dir { name: "a", children: [] }, Dir { name: "b", children: [] }] })
+  Timer.sleep(100)
+end
+"##,
+    );
+    assert_eq!(output, "tree 6\ndir root 3\n");
 }
