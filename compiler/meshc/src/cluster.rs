@@ -9,8 +9,8 @@ use mesh_rt::{
     query_operator_continuity_list_remote, query_operator_continuity_status_remote,
     query_operator_control_remote, query_operator_diagnostics_remote,
     query_operator_runtime_remote, query_operator_status_remote, sign_operator_control_request,
-    ContinuityRecord, OperatorControlAction, OperatorControlRequest, OperatorRuntimeSnapshot,
-    DEFAULT_OPERATOR_QUERY_TIMEOUT,
+    ContinuityRecord, OperatorControlAction, OperatorControlRequest, OperatorDiagnosticsSnapshot,
+    OperatorRuntimeSnapshot, DEFAULT_OPERATOR_QUERY_TIMEOUT,
 };
 use serde_json::json;
 
@@ -308,22 +308,35 @@ fn run_snapshot(args: ClusterRuntimeArgs) -> Result<(), String> {
         );
         return Ok(());
     }
+    print_lines(snapshot_lines(&args.target, &snapshot));
+    Ok(())
+}
 
-    println!("target: {}", args.target);
-    println!("local_node: {}", snapshot.local_node);
-    println!("telemetry_complete: {}", snapshot.telemetry_complete);
-    println!(
-        "capacity: desired={} observed={} ready={} draining={} min={} max={}",
-        snapshot.desired_capacity,
-        snapshot.observed_capacity,
-        snapshot.ready_capacity,
-        snapshot.draining_capacity,
-        snapshot.scheduler_min_workers,
-        snapshot.scheduler_max_workers,
-    );
-    println!("autoscaler_paused: {}", snapshot.autoscaler_paused);
-    if let Some(consensus) = &snapshot.consensus {
-        println!(
+fn print_lines(lines: Vec<String>) {
+    for line in lines {
+        println!("{line}");
+    }
+}
+
+/// `meshc cluster snapshot` as text.
+fn snapshot_lines(target: &str, snapshot: &OperatorRuntimeSnapshot) -> Vec<String> {
+    let mut lines = vec![
+        format!("target: {target}"),
+        format!("local_node: {}", snapshot.local_node),
+        format!("telemetry_complete: {}", snapshot.telemetry_complete),
+        format!(
+            "capacity: desired={} observed={} ready={} draining={} min={} max={}",
+            snapshot.desired_capacity,
+            snapshot.observed_capacity,
+            snapshot.ready_capacity,
+            snapshot.draining_capacity,
+            snapshot.scheduler_min_workers,
+            snapshot.scheduler_max_workers,
+        ),
+        format!("autoscaler_paused: {}", snapshot.autoscaler_paused),
+    ];
+    lines.push(match &snapshot.consensus {
+        Some(consensus) => format!(
             "consensus: state={} term={} leader={} applied={} voters={:?}",
             consensus.state,
             consensus.current_term,
@@ -334,24 +347,23 @@ fn run_snapshot(args: ClusterRuntimeArgs) -> Result<(), String> {
                 .last_applied_log
                 .map_or_else(|| "(none)".to_string(), |index| index.to_string()),
             consensus.voter_ids,
-        );
-    } else {
-        println!("consensus: disabled");
-    }
-    println!(
+        ),
+        None => "consensus: disabled".to_string(),
+    });
+    lines.push(format!(
         "autonomous: configured={} running={} leader={} state={} desired_workers={}",
         snapshot.autonomous.configured,
         snapshot.autonomous.running,
         snapshot.autonomous.leader,
         snapshot.autonomous.state,
         snapshot.autonomous.desired_workers,
-    );
+    ));
     if snapshot.nodes.is_empty() {
-        println!("nodes: (none)");
+        lines.push("nodes: (none)".to_string());
     } else {
-        println!("nodes:");
-        for node in snapshot.nodes {
-            println!(
+        lines.push("nodes:".to_string());
+        lines.extend(snapshot.nodes.iter().map(|node| {
+            format!(
                 "- node={} roles={} state={} eligible={} pressure={:.3} inflight={} queued={}",
                 node.node_id,
                 node.roles.join(","),
@@ -360,10 +372,10 @@ fn run_snapshot(args: ClusterRuntimeArgs) -> Result<(), String> {
                 node.pressure,
                 node.inflight,
                 node.queued_items,
-            );
-        }
+            )
+        }));
     }
-    Ok(())
+    lines
 }
 
 fn run_capacity(args: ClusterRuntimeArgs) -> Result<(), String> {
@@ -415,9 +427,17 @@ fn run_pressure(args: ClusterRuntimeArgs) -> Result<(), String> {
             .expect("serialize cluster pressure json")
         );
     } else {
-        println!("target: {}", args.target);
-        println!("telemetry_complete: {}", snapshot.telemetry_complete);
-        println!(
+        print_lines(pressure_lines(&args.target, &snapshot));
+    }
+    Ok(())
+}
+
+/// `meshc cluster pressure` as text.
+fn pressure_lines(target: &str, snapshot: &OperatorRuntimeSnapshot) -> Vec<String> {
+    let mut lines = vec![
+        format!("target: {target}"),
+        format!("telemetry_complete: {}", snapshot.telemetry_complete),
+        format!(
             "local: workers={}/{} runnable={} inflight={} queued={} rejected={} p95_queue_wait_ms={} p95_service_ms={} p95_end_to_end_ms={} rss_bytes={} cpu_available={}",
             snapshot.local_telemetry.active_workers,
             snapshot.local_telemetry.configured_workers,
@@ -433,25 +453,25 @@ fn run_pressure(args: ClusterRuntimeArgs) -> Result<(), String> {
                 .process_resident_memory_bytes
                 .map_or_else(|| "unavailable".to_string(), |bytes| bytes.to_string()),
             snapshot.local_telemetry.cpu_available_parallelism,
-        );
-        if snapshot.nodes.is_empty() {
-            println!("nodes: (missing telemetry)");
-        } else {
-            println!("nodes:");
-            for node in snapshot.nodes {
-                println!(
-                    "- node={} pressure={:.3} dominant_signal={} inflight={} queued={} runnable={}",
-                    node.node_id,
-                    node.pressure,
-                    node.dominant_signal,
-                    node.inflight,
-                    node.queued_items,
-                    node.runnable_actors
-                );
-            }
-        }
+        ),
+    ];
+    if snapshot.nodes.is_empty() {
+        lines.push("nodes: (missing telemetry)".to_string());
+    } else {
+        lines.push("nodes:".to_string());
+        lines.extend(snapshot.nodes.iter().map(|node| {
+            format!(
+                "- node={} pressure={:.3} dominant_signal={} inflight={} queued={} runnable={}",
+                node.node_id,
+                node.pressure,
+                node.dominant_signal,
+                node.inflight,
+                node.queued_items,
+                node.runnable_actors
+            )
+        }));
     }
-    Ok(())
+    lines
 }
 
 fn run_routing(args: ClusterRuntimeArgs) -> Result<(), String> {
@@ -538,29 +558,42 @@ fn run_scaling(args: ClusterRuntimeArgs) -> Result<(), String> {
             .expect("serialize cluster scaling json")
         );
     } else {
-        println!("target: {}", args.target);
-        println!("autoscaler_paused: {}", snapshot.autoscaler_paused);
-        println!("desired_capacity: {}", snapshot.desired_capacity);
-        println!("scheduler_min_workers: {}", snapshot.scheduler_min_workers);
-        println!("scheduler_max_workers: {}", snapshot.scheduler_max_workers);
-        println!(
+        print_lines(scaling_lines(&args.target, &snapshot));
+    }
+    Ok(())
+}
+
+/// `meshc cluster scaling` as text.
+fn scaling_lines(target: &str, snapshot: &OperatorRuntimeSnapshot) -> Vec<String> {
+    let mut lines = vec![
+        format!("target: {target}"),
+        format!("autoscaler_paused: {}", snapshot.autoscaler_paused),
+        format!("desired_capacity: {}", snapshot.desired_capacity),
+        format!("scheduler_min_workers: {}", snapshot.scheduler_min_workers),
+        format!("scheduler_max_workers: {}", snapshot.scheduler_max_workers),
+        format!(
             "scheduler_active_workers: {}",
             snapshot.scheduler_active_workers
-        );
-        println!(
+        ),
+        format!(
             "scheduler_run_queues: global={} workers={:?}",
             snapshot.local_telemetry.global_run_queue_depth,
             snapshot.local_telemetry.worker_run_queue_depths,
-        );
-        println!(
+        ),
+        format!(
             "scheduler_time: busy_ms={} idle_ms={} mailbox_messages={} mailbox_p95={}",
             snapshot.local_telemetry.scheduler_busy_time.as_millis(),
             snapshot.local_telemetry.scheduler_idle_time.as_millis(),
             snapshot.local_telemetry.mailbox_messages,
             snapshot.local_telemetry.mailbox_depth_p95,
-        );
-        if let Some(store) = &snapshot.local_continuity_store {
-            println!(
+        ),
+    ];
+    lines.push(
+        match (
+            &snapshot.local_continuity_store,
+            &snapshot.local_continuity_store_error,
+        ) {
+            (Some(store), _) => format!(
                 "continuity_store: active={} terminal={} disk_bytes={} compaction_lag={} replication_lag={}",
                 store.active_records,
                 store.terminal_records,
@@ -569,23 +602,27 @@ fn run_scaling(args: ClusterRuntimeArgs) -> Result<(), String> {
                 store
                     .replication_lag
                     .map_or_else(|| "unavailable".to_string(), |lag| lag.to_string()),
-            );
-        } else if let Some(error) = &snapshot.local_continuity_store_error {
-            println!("continuity_store: error={error}");
-        } else {
-            println!("continuity_store: disabled");
-        }
-        for operation in &snapshot.local_telemetry.capacity_driver_operations {
-            println!(
-                "capacity_driver: operation={} count={} errors={} p95_latency_ms={}",
-                operation.operation,
-                operation.count,
-                operation.errors,
-                operation.p95_latency.as_millis(),
-            );
-        }
-    }
-    Ok(())
+            ),
+            (None, Some(error)) => format!("continuity_store: error={error}"),
+            (None, None) => "continuity_store: disabled".to_string(),
+        },
+    );
+    lines.extend(
+        snapshot
+            .local_telemetry
+            .capacity_driver_operations
+            .iter()
+            .map(|operation| {
+                format!(
+                    "capacity_driver: operation={} count={} errors={} p95_latency_ms={}",
+                    operation.operation,
+                    operation.count,
+                    operation.errors,
+                    operation.p95_latency.as_millis(),
+                )
+            }),
+    );
+    lines
 }
 
 fn run_explain(args: ClusterExplainArgs) -> Result<(), String> {
@@ -803,20 +840,27 @@ fn run_diagnostics(args: ClusterDiagnosticsArgs) -> Result<(), String> {
         );
         return Ok(());
     }
+    print_lines(diagnostics_lines(&args.target, &snapshot));
+    Ok(())
+}
 
-    println!("target: {}", args.target);
-    println!("total_entries: {}", snapshot.total_entries);
-    println!("dropped_entries: {}", snapshot.dropped_entries);
-    println!("buffer_capacity: {}", snapshot.buffer_capacity);
-    println!("truncated: {}", snapshot.truncated);
+/// `meshc cluster diagnostics` as text.
+fn diagnostics_lines(target: &str, snapshot: &OperatorDiagnosticsSnapshot) -> Vec<String> {
+    let mut lines = vec![
+        format!("target: {target}"),
+        format!("total_entries: {}", snapshot.total_entries),
+        format!("dropped_entries: {}", snapshot.dropped_entries),
+        format!("buffer_capacity: {}", snapshot.buffer_capacity),
+        format!("truncated: {}", snapshot.truncated),
+    ];
     if snapshot.entries.is_empty() {
-        println!("entries: (none)");
-        return Ok(());
+        lines.push("entries: (none)".to_string());
+        return lines;
     }
 
-    println!("entries:");
+    lines.push("entries:".to_string());
     for entry in &snapshot.entries {
-        println!(
+        lines.push(format!(
             "- seq={} transition={} request_key={} attempt_id={} owner={} replica={} execution={} cluster_role={} promotion_epoch={} replication_health={} replica_status={} reason={}",
             entry.sequence,
             entry.transition,
@@ -833,12 +877,15 @@ fn run_diagnostics(args: ClusterDiagnosticsArgs) -> Result<(), String> {
             entry.replication_health.as_deref().unwrap_or(""),
             entry.replica_status.as_deref().unwrap_or(""),
             entry.reason.as_deref().unwrap_or(""),
+        ));
+        lines.extend(
+            entry
+                .metadata
+                .iter()
+                .map(|(key, value)| format!("    {key}={value}")),
         );
-        for (key, value) in &entry.metadata {
-            println!("    {}={}", key, value);
-        }
     }
-    Ok(())
+    lines
 }
 
 fn cluster_cookie(file: Option<&Path>) -> Result<String, String> {
@@ -969,7 +1016,73 @@ mod tests {
 
     use tempfile::NamedTempFile;
 
-    use super::read_secret_file;
+    use super::*;
+
+    /// A secret file as the commands read one: owner-only.
+    fn secret(contents: &str) -> NamedTempFile {
+        let mut file = NamedTempFile::new().expect("create secret file");
+        file.write_all(contents.as_bytes())
+            .expect("write secret file");
+        file
+    }
+
+    #[test]
+    fn the_text_forms_say_what_a_node_does_not_report() {
+        let mut snapshot: OperatorRuntimeSnapshot = serde_json::from_value(json!({
+            "schema_version": 1, "local_node": "a@127.0.0.1:1", "telemetry_complete": false,
+            "desired_capacity": 0, "observed_capacity": 0, "ready_capacity": 0,
+            "draining_capacity": 0, "autoscaler_paused": false,
+            "scheduler_min_workers": 1, "scheduler_max_workers": 1,
+            "scheduler_active_workers": 1, "nodes": [],
+        }))
+        .expect("a runtime snapshot");
+        snapshot.local_continuity_store_error = Some("disk full".to_string());
+        let has = |lines: Vec<String>, line: &str| lines.iter().any(|shown| shown == line);
+        assert!(has(snapshot_lines("a", &snapshot), "nodes: (none)"));
+        assert!(has(
+            pressure_lines("a", &snapshot),
+            "nodes: (missing telemetry)"
+        ));
+        assert!(has(
+            scaling_lines("a", &snapshot),
+            "continuity_store: error=disk full"
+        ));
+        let diagnostics = OperatorDiagnosticsSnapshot {
+            entries: Vec::new(),
+            total_entries: 0,
+            dropped_entries: 0,
+            buffer_capacity: 16,
+            truncated: false,
+        };
+        assert!(has(diagnostics_lines("a", &diagnostics), "entries: (none)"));
+    }
+
+    /// A key shorter than 32 bytes signs nothing, and nothing is sent.
+    #[test]
+    fn a_control_request_needs_a_signing_key() {
+        let cookie = secret("cookie\n");
+        let key = secret("too-short\n");
+        let authorization = ClusterControlAuthorization {
+            query: ClusterQueryArgs {
+                cookie_file: Some(cookie.path().to_path_buf()),
+                timeout_ms: 100,
+                json: false,
+            },
+            operator_key_file: Some(key.path().to_path_buf()),
+            cluster_id: "mesh".to_string(),
+            actor: "meshc".to_string(),
+            reason: "test".to_string(),
+            sequence: None,
+        };
+        assert_eq!(
+            run_control(
+                "nobody@127.0.0.1:1".to_string(),
+                authorization,
+                OperatorControlAction::PauseAutoscaler,
+            ),
+            Err("operator_control_key_missing".to_string())
+        );
+    }
 
     #[test]
     fn secret_file_trims_line_endings() {
