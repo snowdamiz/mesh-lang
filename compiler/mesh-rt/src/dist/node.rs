@@ -12903,7 +12903,8 @@ mod tests {
     /// Plays `peers` as live nodes until `done`: each replica prepare is
     /// acknowledged (refused for a record whose key says `unprepared`, and
     /// for one that says `superseded` after completing it), each
-    /// reservation accepted, each routed request answered (with an error
+    /// reservation accepted (turned away, as by a draining owner, when its
+    /// key says `turned-away`), each routed request answered (with an error
     /// when its key says `failing`) and each spawn given a pid.
     fn serve_as_nodes(peers: &[&TestPeer], done: &AtomicBool) {
         let registry = crate::dist::continuity::continuity_registry();
@@ -12934,8 +12935,13 @@ mod tests {
                             &[&message[1..9], &[0], &1u64.to_le_bytes()],
                         )),
                         DIST_HTTP_RESERVE => {
-                            let (correlation, ..) = decode_http_reserve(&message).unwrap();
-                            peer.receive(encode_http_reserve_reply(correlation, Ok(())).unwrap());
+                            let (correlation, _, _, key) = decode_http_reserve(&message).unwrap();
+                            let result = if key.contains("turned-away") {
+                                Err("owner_reservation_rejected:Draining".to_string())
+                            } else {
+                                Ok(())
+                            };
+                            peer.receive(encode_http_reserve_reply(correlation, result).unwrap());
                         }
                         DIST_HTTP_ROUTE_V2_QUERY => {
                             let (correlation, _, key, ..) =
@@ -13736,5 +13742,249 @@ mod tests {
         maybe_spawn_primary_owner_loss_recovery("lost-owner@h:1");
         drop(coordinator);
         registry.clear_for_test();
+    }
+
+    extern "C" fn clustered_route_handler(request: *mut u8) -> *mut u8 {
+        let body = crate::http::server::mesh_http_request_body(request);
+        let body = unsafe {
+            (*(body as *const crate::string::MeshString))
+                .as_str()
+                .to_string()
+        };
+        crate::http::server::mesh_http_response_new(
+            200,
+            crate::string::mesh_str(&format!("handled:{body}")),
+        )
+    }
+
+    /// An encoded HTTP request, as a clustered route carries it.
+    fn route_payload(method: &str, body: &str) -> Vec<u8> {
+        use crate::collections::map;
+        use crate::http::server::MeshHttpRequest;
+        unsafe {
+            let request = crate::gc::mesh_gc_alloc_actor(
+                std::mem::size_of::<MeshHttpRequest>() as u64,
+                std::mem::align_of::<MeshHttpRequest>() as u64,
+            ) as *mut MeshHttpRequest;
+            (*request).method = crate::string::mesh_str(method) as *mut u8;
+            (*request).path = crate::string::mesh_str("/routed") as *mut u8;
+            (*request).body = crate::string::mesh_str(body) as *mut u8;
+            (*request).query_params = map::mesh_map_new_typed(1);
+            (*request).headers = map::mesh_map_new_typed(1);
+            (*request).path_params = map::mesh_map_new_typed(1);
+            crate::http::server::encode_http_request_payload(request as *mut u8).unwrap()
+        }
+    }
+
+    /// A request key whose clustered request the current members place on
+    /// `owner`.
+    fn key_owned_by(owner: &str, prefix: &str) -> String {
+        let membership = canonical_declared_membership();
+        (0..)
+            .map(|index| format!("{prefix}-{index}"))
+            .find(|key| {
+                let index = stable_hash_u64(&format!("request::{key}")) as usize % membership.len();
+                membership[index] == owner
+            })
+            .unwrap()
+    }
+
+    fn response_body(payload: &[u8]) -> String {
+        let response = crate::http::server::decode_http_response_payload(payload).unwrap();
+        let response = unsafe { &*(response as *const crate::http::server::MeshHttpResponse) };
+        unsafe {
+            (*(response.body as *const crate::string::MeshString))
+                .as_str()
+                .to_string()
+        }
+    }
+
+    /// A clustered HTTP request runs on the member that owns its key, here
+    /// or on a peer, and its response is kept: the same request again gets
+    /// it back without running, one still running or whose response was
+    /// not kept is refused, and one whose owner fails it is rejected.
+    #[test]
+    fn a_clustered_http_request_runs_on_its_owner_and_replays_once_done() {
+        use crate::dist::continuity::{ContinuityPhase, ContinuityResult};
+        let exclusive = declared_handler_registry_test_lock();
+        let state = test_node();
+        let registry = crate::dist::continuity::continuity_registry();
+        registry.clear_for_test();
+        let handler = "Routed.handle";
+        mesh_register_declared_handler(
+            handler.as_ptr(),
+            handler.len() as u64,
+            handler.as_ptr(),
+            handler.len() as u64,
+            1,
+            clustered_route_handler as *const u8,
+        );
+        let run = |key: &str, hash: &str| {
+            execute_clustered_http_route(handler, key, hash, &route_payload("GET", key))
+        };
+
+        let local = key_owned_by(&state.name, "local-route");
+        let first = run(&local, "sha256:local").unwrap();
+        assert!(!first.replayed && !first.routed_remotely);
+        assert_eq!(
+            response_body(&first.response_payload),
+            format!("handled:{local}")
+        );
+        let replayed = run(&local, "sha256:local").unwrap();
+        assert!(replayed.replayed);
+        assert_eq!(replayed.response_payload, first.response_payload);
+        assert!(run(&local, "sha256:another-payload").is_err());
+
+        let mut running = continuity_record("route-running", &state.name, "unused@h:1");
+        running.replica_nodes.clear();
+        running.replica_node.clear();
+        running.replication_count = 1;
+        running.payload_hash = "sha256:running".to_string();
+        registry.merge_remote_record(1, running.clone()).unwrap();
+        assert_eq!(
+            run("route-running", "sha256:running").err(),
+            Some("idempotent_operation_in_progress".to_string())
+        );
+        let mut forgotten = running;
+        forgotten.request_key = "route-forgotten".to_string();
+        forgotten.phase = ContinuityPhase::Completed;
+        forgotten.result = ContinuityResult::Succeeded;
+        forgotten.execution_node = state.name.clone();
+        registry.merge_remote_record(1, forgotten).unwrap();
+        assert_eq!(
+            run("route-forgotten", "sha256:running").err(),
+            Some("idempotent_response_not_retained".to_string())
+        );
+
+        let owner = TestPeer::within(&exclusive, "route-owner@127.0.0.1:1");
+        let (remote, failing) = (
+            key_owned_by(&owner.session.remote_name, "remote-route"),
+            key_owned_by(&owner.session.remote_name, "remote-failing-route"),
+        );
+        let done = AtomicBool::new(false);
+        std::thread::scope(|scope| {
+            scope.spawn(|| serve_as_nodes(&[&owner], &done));
+            let routed = run(&remote, "sha256:remote").unwrap();
+            assert!(routed.routed_remotely && !routed.replayed);
+            assert_eq!(routed.response_payload, b"200 drained");
+            assert_eq!(
+                run(&failing, "sha256:failing").err(),
+                Some("handler_failed".to_string())
+            );
+            done.store(true, Ordering::Release);
+        });
+        assert_eq!(
+            registry.record(&failing).map(|record| record.phase),
+            Some(ContinuityPhase::Rejected)
+        );
+        drop(owner);
+        registry.clear_for_test();
+        clear_declared_handler_registry_for_test();
+    }
+
+    /// When a routed request's owner turns it away, as a draining owner
+    /// does, a request safe to replay is recovered: its owner is marked
+    /// lost, this node (the coordinator, and the record's replica) takes it
+    /// over with a new replica, runs it, and returns the response kept.
+    #[test]
+    fn a_replay_safe_request_its_owner_turns_away_is_recovered_here() {
+        let exclusive = declared_handler_registry_test_lock();
+        let state = test_node();
+        let registry = crate::dist::continuity::continuity_registry();
+        registry.clear_for_test();
+        let handler = "Recovered.route";
+        mesh_register_declared_handler(
+            handler.as_ptr(),
+            handler.len() as u64,
+            handler.as_ptr(),
+            handler.len() as u64,
+            2,
+            clustered_route_handler as *const u8,
+        );
+        let owner = TestPeer::within(&exclusive, "draining-route-owner@127.0.0.1:1");
+        // The spare replica sorts after this node both as a member (so this
+        // node coordinates) and by name (so this node is the first replica).
+        let spare = (0..)
+            .map(|index| format!("zz-route-spare-{index}@127.0.0.1:1"))
+            .find(|name| stable_hash_u64(name) > stable_hash_u64(&state.name))
+            .unwrap();
+        let spare = TestPeer::within(&exclusive, &spare);
+        let key = key_owned_by(&owner.session.remote_name, "turned-away-route");
+        // Both stay ready workers with the handler, as their heartbeats
+        // would keep them.
+        let report = || {
+            report_worker(&state.name, &[handler]);
+            report_worker(&spare.session.remote_name, &[handler]);
+        };
+        report();
+        let done = AtomicBool::new(false);
+        let recovered = std::thread::scope(|scope| {
+            scope.spawn(|| serve_as_nodes(&[&owner, &spare], &done));
+            scope.spawn(|| {
+                while !done.load(Ordering::Acquire) {
+                    report();
+                    std::thread::sleep(Duration::from_millis(200));
+                }
+            });
+            let recovered = execute_clustered_http_route(
+                handler,
+                &key,
+                "sha256:recovered",
+                &route_payload("GET", &key),
+            );
+            done.store(true, Ordering::Release);
+            recovered
+        })
+        .unwrap();
+        assert_eq!(
+            response_body(&recovered.response_payload),
+            format!("handled:{key}")
+        );
+        let record = registry.record(&key).unwrap();
+        assert_eq!(
+            (record.owner_node, record.replica_nodes),
+            (state.name.clone(), vec![spare.session.remote_name.clone()])
+        );
+        drop((owner, spare));
+        registry.clear_for_test();
+        clear_declared_handler_registry_for_test();
+    }
+
+    /// Whether the recovery of a failed routed attempt can be seen yet: the
+    /// record completed or succeeded, marked owner-lost, or moved on to
+    /// another attempt or owner; never once rejected.
+    #[test]
+    fn recovery_of_a_failed_attempt_is_observable_once_the_record_moves_on() {
+        use crate::dist::continuity::{ContinuityPhase, ContinuityResult, ReplicaStatus};
+        let _peers = TEST_PEERS.read_recursive();
+        let registry = crate::dist::continuity::continuity_registry();
+        let observable = |record: &ContinuityRecord| {
+            registry.merge_remote_record(1, record.clone()).unwrap();
+            continuity_recovery_is_observable(
+                &record.request_key,
+                "attempt-1",
+                "observed-owner@h:1",
+            )
+        };
+        assert!(!continuity_recovery_is_observable(
+            "never-recorded",
+            "attempt-1",
+            "o@h:1"
+        ));
+        let pending = continuity_record("observed-pending", "observed-owner@h:1", "r@h:1");
+        assert!(!observable(&pending));
+        let mut lost = pending.clone();
+        lost.request_key = "observed-lost".to_string();
+        lost.replica_status = ReplicaStatus::OwnerLost;
+        assert!(observable(&lost));
+        let mut moved = pending.clone();
+        moved.request_key = "observed-moved".to_string();
+        moved.owner_node = "new-owner@h:1".to_string();
+        assert!(observable(&moved));
+        let mut rejected = pending;
+        rejected.request_key = "observed-rejected".to_string();
+        rejected.phase = ContinuityPhase::Rejected;
+        rejected.result = ContinuityResult::Rejected;
+        assert!(!observable(&rejected));
     }
 }
