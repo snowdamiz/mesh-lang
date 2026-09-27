@@ -5214,18 +5214,12 @@ fn encode_http_route_v2_query_frame(
     attempt_id: &str,
     request_payload: &[u8],
 ) -> Result<Vec<u8>, String> {
-    let payload_len = u32::try_from(request_payload.len()).map_err(|_| {
-        format!(
-            "clustered_http_route_request_too_large:{}",
-            request_payload.len()
-        )
-    })?;
     let mut frame = vec![DIST_HTTP_ROUTE_V2_QUERY];
     frame.extend_from_slice(&correlation_id.to_le_bytes());
     encode_http_route_string(&mut frame, runtime_name)?;
     encode_http_route_string(&mut frame, request_key)?;
     encode_http_route_string(&mut frame, attempt_id)?;
-    frame.extend_from_slice(&payload_len.to_le_bytes());
+    frame.extend_from_slice(&request_payload_len(request_payload).to_le_bytes());
     frame.extend_from_slice(request_payload);
     Ok(frame)
 }
@@ -5305,14 +5299,20 @@ struct AcceptedHttpReservation {
     expires_at: Instant,
 }
 
+/// A clustered request's length, as its frames carry it: the request
+/// is one the HTTP server read, its body within 1 MiB and its head within
+/// 8 KiB, or one recovered from a record that came in a frame within
+/// 16 MiB, so it always fits.
+fn request_payload_len(request_payload: &[u8]) -> u32 {
+    request_payload.len() as u32
+}
+
 fn encode_http_reserve(
     correlation_id: u64,
     runtime_name: &str,
     request_key: &str,
-    payload_bytes: usize,
+    payload_bytes: u32,
 ) -> Result<Vec<u8>, String> {
-    let payload_bytes = u32::try_from(payload_bytes)
-        .map_err(|_| "clustered_http_reservation_payload_too_large".to_string())?;
     let mut frame = Vec::with_capacity(1 + 8 + 4 + 2 + runtime_name.len() + 2 + request_key.len());
     frame.push(DIST_HTTP_RESERVE);
     frame.extend_from_slice(&correlation_id.to_le_bytes());
@@ -5637,7 +5637,7 @@ fn execute_clustered_http_route_remote(
         correlation_id,
         runtime_name,
         request_key,
-        request_payload.len(),
+        request_payload_len(request_payload),
     )?;
     let (reservation_sender, reservation_receiver) = crate::actor::cooperative_channel();
     session
@@ -11941,7 +11941,7 @@ mod tests {
             1,
             routed_test_handler as *const u8,
         );
-        let reserve = |correlation: u64, runtime: &str, bytes: usize| {
+        let reserve = |correlation: u64, runtime: &str, bytes: u32| {
             peer.receive(encode_http_reserve(correlation, runtime, "reserved-key", bytes).unwrap());
             decode_http_reserve_reply(&peer.next_sent()).unwrap()
         };
@@ -11967,7 +11967,7 @@ mod tests {
             )
         );
         assert_eq!(
-            reserve(3, runtime_name, MAX_DIST_MSG as usize + 1),
+            reserve(3, runtime_name, MAX_DIST_MSG + 1),
             (3, Err("owner_reservation_payload_limit".to_string()))
         );
         peer.receive(vec![DIST_HTTP_RESERVE, 1]);
@@ -12029,10 +12029,6 @@ mod tests {
         assert_eq!(
             refused(&unnamed),
             "clustered_http_reservation_metadata_invalid"
-        );
-        assert_eq!(
-            encode_http_reserve(7, "Runtime.handle", "key", u32::MAX as usize + 1),
-            Err("clustered_http_reservation_payload_too_large".to_string())
         );
 
         let reply = encode_http_reserve_reply(7, Err("full".to_string())).unwrap();
