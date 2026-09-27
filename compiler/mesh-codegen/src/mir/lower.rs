@@ -5111,7 +5111,9 @@ impl<'a> Lowerer<'a> {
 
                 // Use the Ty::Fun param type for all params (including self).
                 // The type checker stores the impl type as the first param type.
-                let mir_ty = resolve_type(param_ty, self.registry);
+                // A tuple arrives as the pointer to its heap block, as it does
+                // in any other function.
+                let mir_ty = runtime_value_type(resolve_type(param_ty, self.registry));
                 self.insert_var(param_name.clone(), mir_ty.clone());
                 if let Some(ty) = self.owned_resource(&param, Some(param_ty)) {
                     owned.push((param_name.clone(), ty));
@@ -5120,7 +5122,7 @@ impl<'a> Lowerer<'a> {
             }
         }
 
-        let return_type = resolve_type(ret, self.registry);
+        let return_type = runtime_value_type(resolve_type(ret, self.registry));
         let return_typeck = Some(ret.clone());
 
         // Track current function return type for ? operator desugaring (Phase 45).
