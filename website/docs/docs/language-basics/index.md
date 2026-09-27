@@ -538,6 +538,9 @@ Closures capture variables from their surrounding scope. A closure bound with `l
 - **Do-end syntax** for multi-line closures: `fn x do ... end`
 - **Zero-argument syntax**: `fn -> 42 end` or `fn do ... end`
 - **Multi-clause syntax**: `fn 0 -> "zero" | n -> "non-zero" end`
+- **A tuple taken apart**: `fn ((key, value)) -> "#{key}=#{value}" end`, as
+  `Map.to_list` pairs need; `fn (key, value) -> ... end` is a closure of two
+  parameters
 
 ```mesh
 fn main() do
