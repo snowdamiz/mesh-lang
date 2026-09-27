@@ -12,6 +12,7 @@
 //! iterator via `mesh_iter_generic_next` and applies the transformation
 //! on-the-fly.
 
+use crate::callback::{call1, call2};
 use crate::collections::list::alloc_pair;
 use crate::collections::list::mesh_list_iter_next;
 use crate::collections::map::mesh_map_iter_next;
@@ -61,12 +62,6 @@ pub extern "C-unwind" fn mesh_iter_generic_next(iter: *mut u8) -> *mut u8 {
 
 // ── Combinator Adapter Structs ──────────────────────────────────────────
 
-// Closure calling type aliases (proven from list.rs)
-type BareFn = unsafe extern "C-unwind" fn(u64) -> u64;
-type ClosureFn = unsafe extern "C-unwind" fn(*mut u8, u64) -> u64;
-type BareFn2 = unsafe extern "C-unwind" fn(u64, u64) -> u64;
-type ClosureFn2 = unsafe extern "C-unwind" fn(*mut u8, u64, u64) -> u64;
-
 // ── MapAdapter (tag=10) ─────────────────────────────────────────────────
 
 /// Adapter state for Iter.map(iter, fn).
@@ -109,13 +104,7 @@ pub extern "C-unwind" fn mesh_iter_map_next(adapter_ptr: *mut u8) -> *mut u8 {
             return option; // None -- propagate
         }
         let elem = (*option_ref).value as u64;
-        let mapped = if (*adapter).env_ptr.is_null() {
-            let f: BareFn = std::mem::transmute((*adapter).fn_ptr);
-            f(elem)
-        } else {
-            let f: ClosureFn = std::mem::transmute((*adapter).fn_ptr);
-            f((*adapter).env_ptr, elem)
-        };
+        let mapped = call1((*adapter).fn_ptr, (*adapter).env_ptr, elem);
         alloc_option(0, mapped as *mut u8) as *mut u8
     }
 }
@@ -164,13 +153,7 @@ pub extern "C-unwind" fn mesh_iter_filter_next(adapter_ptr: *mut u8) -> *mut u8 
                 return option; // None -- source exhausted
             }
             let elem = (*option_ref).value as u64;
-            let passes = if (*adapter).env_ptr.is_null() {
-                let f: BareFn = std::mem::transmute((*adapter).fn_ptr);
-                f(elem)
-            } else {
-                let f: ClosureFn = std::mem::transmute((*adapter).fn_ptr);
-                f((*adapter).env_ptr, elem)
-            };
+            let passes = call1((*adapter).fn_ptr, (*adapter).env_ptr, elem);
             if passes != 0 {
                 return option; // Predicate passed -- return this element
             }
@@ -407,13 +390,7 @@ pub extern "C-unwind" fn mesh_iter_any(iter: *mut u8, fn_ptr: *mut u8, env_ptr: 
                 return 0; // Exhausted, none matched
             }
             let elem = (*opt_ref).value as u64;
-            let result = if env_ptr.is_null() {
-                let f: BareFn = std::mem::transmute(fn_ptr);
-                f(elem)
-            } else {
-                let f: ClosureFn = std::mem::transmute(fn_ptr);
-                f(env_ptr, elem)
-            };
+            let result = call1(fn_ptr, env_ptr, elem);
             if result != 0 {
                 return 1; // Found a match
             }
@@ -433,13 +410,7 @@ pub extern "C-unwind" fn mesh_iter_all(iter: *mut u8, fn_ptr: *mut u8, env_ptr: 
                 return 1; // All passed
             }
             let elem = (*opt_ref).value as u64;
-            let result = if env_ptr.is_null() {
-                let f: BareFn = std::mem::transmute(fn_ptr);
-                f(elem)
-            } else {
-                let f: ClosureFn = std::mem::transmute(fn_ptr);
-                f(env_ptr, elem)
-            };
+            let result = call1(fn_ptr, env_ptr, elem);
             if result == 0 {
                 return 0; // Failed
             }
@@ -462,13 +433,7 @@ pub extern "C-unwind" fn mesh_iter_find(
                 return alloc_option(1, std::ptr::null_mut()) as *mut u8; // None
             }
             let elem = (*opt_ref).value as u64;
-            let result = if env_ptr.is_null() {
-                let f: BareFn = std::mem::transmute(fn_ptr);
-                f(elem)
-            } else {
-                let f: ClosureFn = std::mem::transmute(fn_ptr);
-                f(env_ptr, elem)
-            };
+            let result = call1(fn_ptr, env_ptr, elem);
             if result != 0 {
                 return alloc_option(0, elem as *mut u8) as *mut u8; // Some(elem)
             }
@@ -493,13 +458,7 @@ pub extern "C-unwind" fn mesh_iter_reduce(
                 break;
             }
             let elem = (*opt_ref).value as u64;
-            acc = if env_ptr.is_null() {
-                let f: BareFn2 = std::mem::transmute(fn_ptr);
-                f(acc, elem)
-            } else {
-                let f: ClosureFn2 = std::mem::transmute(fn_ptr);
-                f(env_ptr, acc, elem)
-            };
+            acc = call2(fn_ptr, env_ptr, acc, elem);
         }
         acc
     }

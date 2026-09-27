@@ -55,6 +55,7 @@ macro_rules! eprint {
 
 pub mod actor;
 pub mod bytes;
+mod callback;
 pub mod channel;
 pub mod collections;
 pub mod crypto;

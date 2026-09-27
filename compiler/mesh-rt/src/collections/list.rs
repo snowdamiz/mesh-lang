@@ -22,6 +22,7 @@
 //! that is not the newest copies, into a buffer twice as large. So a list
 //! built one `append` at a time takes amortized O(1) per element.
 
+use crate::callback::{call1, call2};
 use crate::gc::mesh_gc_alloc_actor;
 use crate::option::alloc_option;
 use std::ptr;
@@ -302,9 +303,6 @@ pub extern "C-unwind" fn mesh_list_map(
     fn_ptr: *mut u8,
     env_ptr: *mut u8,
 ) -> *mut u8 {
-    type BareFn = unsafe extern "C-unwind" fn(u64) -> u64;
-    type ClosureFn = unsafe extern "C-unwind" fn(*mut u8, u64) -> u64;
-
     unsafe {
         let len = list_len(list);
         let new_list = alloc_list(len);
@@ -312,16 +310,8 @@ pub extern "C-unwind" fn mesh_list_map(
         let src = list_data(list);
         let dst = list_data_mut(new_list);
 
-        if env_ptr.is_null() {
-            let f: BareFn = std::mem::transmute(fn_ptr);
-            for i in 0..len as usize {
-                *dst.add(i) = f(*src.add(i));
-            }
-        } else {
-            let f: ClosureFn = std::mem::transmute(fn_ptr);
-            for i in 0..len as usize {
-                *dst.add(i) = f(env_ptr, *src.add(i));
-            }
+        for i in 0..len as usize {
+            *dst.add(i) = call1(fn_ptr, env_ptr, *src.add(i));
         }
         new_list
     }
@@ -334,9 +324,6 @@ pub extern "C-unwind" fn mesh_list_filter(
     fn_ptr: *mut u8,
     env_ptr: *mut u8,
 ) -> *mut u8 {
-    type BareFn = unsafe extern "C-unwind" fn(u64) -> u64;
-    type ClosureFn = unsafe extern "C-unwind" fn(*mut u8, u64) -> u64;
-
     unsafe {
         let len = list_len(list);
         // Allocate worst case, then shrink.
@@ -345,23 +332,11 @@ pub extern "C-unwind" fn mesh_list_filter(
         let dst = list_data_mut(temp);
         let mut count = 0u64;
 
-        if env_ptr.is_null() {
-            let f: BareFn = std::mem::transmute(fn_ptr);
-            for i in 0..len as usize {
-                let elem = *src.add(i);
-                if f(elem) != 0 {
-                    *dst.add(count as usize) = elem;
-                    count += 1;
-                }
-            }
-        } else {
-            let f: ClosureFn = std::mem::transmute(fn_ptr);
-            for i in 0..len as usize {
-                let elem = *src.add(i);
-                if f(env_ptr, elem) != 0 {
-                    *dst.add(count as usize) = elem;
-                    count += 1;
-                }
+        for i in 0..len as usize {
+            let elem = *src.add(i);
+            if call1(fn_ptr, env_ptr, elem) != 0 {
+                *dst.add(count as usize) = elem;
+                count += 1;
             }
         }
 
@@ -382,24 +357,13 @@ pub extern "C-unwind" fn mesh_list_reduce(
     fn_ptr: *mut u8,
     env_ptr: *mut u8,
 ) -> u64 {
-    type BareFn = unsafe extern "C-unwind" fn(u64, u64) -> u64;
-    type ClosureFn = unsafe extern "C-unwind" fn(*mut u8, u64, u64) -> u64;
-
     unsafe {
         let len = list_len(list);
         let src = list_data(list);
         let mut acc = init;
 
-        if env_ptr.is_null() {
-            let f: BareFn = std::mem::transmute(fn_ptr);
-            for i in 0..len as usize {
-                acc = f(acc, *src.add(i));
-            }
-        } else {
-            let f: ClosureFn = std::mem::transmute(fn_ptr);
-            for i in 0..len as usize {
-                acc = f(env_ptr, acc, *src.add(i));
-            }
+        for i in 0..len as usize {
+            acc = call2(fn_ptr, env_ptr, acc, *src.add(i));
         }
         acc
     }
@@ -562,9 +526,6 @@ pub extern "C-unwind" fn mesh_list_sort(
     fn_ptr: *mut u8,
     env_ptr: *mut u8,
 ) -> *mut u8 {
-    type BareFn = unsafe extern "C-unwind" fn(u64, u64) -> i64;
-    type ClosureFn = unsafe extern "C-unwind" fn(*mut u8, u64, u64) -> i64;
-
     unsafe {
         let len = list_len(list);
         if len <= 1 {
@@ -578,31 +539,8 @@ pub extern "C-unwind" fn mesh_list_sort(
             elements.push(*src.add(i));
         }
         // Sort using the comparator.
-        if env_ptr.is_null() {
-            let f: BareFn = std::mem::transmute(fn_ptr);
-            elements.sort_by(|a, b| {
-                let cmp = f(*a, *b);
-                if cmp < 0 {
-                    std::cmp::Ordering::Less
-                } else if cmp > 0 {
-                    std::cmp::Ordering::Greater
-                } else {
-                    std::cmp::Ordering::Equal
-                }
-            });
-        } else {
-            let f: ClosureFn = std::mem::transmute(fn_ptr);
-            elements.sort_by(|a, b| {
-                let cmp = f(env_ptr, *a, *b);
-                if cmp < 0 {
-                    std::cmp::Ordering::Less
-                } else if cmp > 0 {
-                    std::cmp::Ordering::Greater
-                } else {
-                    std::cmp::Ordering::Equal
-                }
-            });
-        }
+        // The comparator's slot is an `Int`.
+        elements.sort_by(|a, b| (call2(fn_ptr, env_ptr, *a, *b) as i64).cmp(&0));
         // Allocate new list with sorted elements.
         let new_list = alloc_list(len);
         *(new_list as *mut u64) = len;
@@ -625,27 +563,13 @@ pub extern "C-unwind" fn mesh_list_find(
     fn_ptr: *mut u8,
     env_ptr: *mut u8,
 ) -> *mut u8 {
-    type BareFn = unsafe extern "C-unwind" fn(u64) -> u64;
-    type ClosureFn = unsafe extern "C-unwind" fn(*mut u8, u64) -> u64;
-
     unsafe {
         let len = list_len(list);
         let src = list_data(list);
-        if env_ptr.is_null() {
-            let f: BareFn = std::mem::transmute(fn_ptr);
-            for i in 0..len as usize {
-                let elem = *src.add(i);
-                if f(elem) != 0 {
-                    return alloc_option(0, elem as *mut u8) as *mut u8; // Some(elem)
-                }
-            }
-        } else {
-            let f: ClosureFn = std::mem::transmute(fn_ptr);
-            for i in 0..len as usize {
-                let elem = *src.add(i);
-                if f(env_ptr, elem) != 0 {
-                    return alloc_option(0, elem as *mut u8) as *mut u8; // Some(elem)
-                }
+        for i in 0..len as usize {
+            let elem = *src.add(i);
+            if call1(fn_ptr, env_ptr, elem) != 0 {
+                return alloc_option(0, elem as *mut u8) as *mut u8; // Some(elem)
             }
         }
         alloc_option(1, std::ptr::null_mut()) as *mut u8 // None
@@ -658,25 +582,12 @@ pub extern "C-unwind" fn mesh_list_find(
 /// Short-circuits on first match.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_list_any(list: *mut u8, fn_ptr: *mut u8, env_ptr: *mut u8) -> i8 {
-    type BareFn = unsafe extern "C-unwind" fn(u64) -> u64;
-    type ClosureFn = unsafe extern "C-unwind" fn(*mut u8, u64) -> u64;
-
     unsafe {
         let len = list_len(list);
         let src = list_data(list);
-        if env_ptr.is_null() {
-            let f: BareFn = std::mem::transmute(fn_ptr);
-            for i in 0..len as usize {
-                if f(*src.add(i)) != 0 {
-                    return 1;
-                }
-            }
-        } else {
-            let f: ClosureFn = std::mem::transmute(fn_ptr);
-            for i in 0..len as usize {
-                if f(env_ptr, *src.add(i)) != 0 {
-                    return 1;
-                }
+        for i in 0..len as usize {
+            if call1(fn_ptr, env_ptr, *src.add(i)) != 0 {
+                return 1;
             }
         }
         0
@@ -689,25 +600,12 @@ pub extern "C-unwind" fn mesh_list_any(list: *mut u8, fn_ptr: *mut u8, env_ptr: 
 /// Short-circuits on first non-match.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_list_all(list: *mut u8, fn_ptr: *mut u8, env_ptr: *mut u8) -> i8 {
-    type BareFn = unsafe extern "C-unwind" fn(u64) -> u64;
-    type ClosureFn = unsafe extern "C-unwind" fn(*mut u8, u64) -> u64;
-
     unsafe {
         let len = list_len(list);
         let src = list_data(list);
-        if env_ptr.is_null() {
-            let f: BareFn = std::mem::transmute(fn_ptr);
-            for i in 0..len as usize {
-                if f(*src.add(i)) == 0 {
-                    return 0;
-                }
-            }
-        } else {
-            let f: ClosureFn = std::mem::transmute(fn_ptr);
-            for i in 0..len as usize {
-                if f(env_ptr, *src.add(i)) == 0 {
-                    return 0;
-                }
+        for i in 0..len as usize {
+            if call1(fn_ptr, env_ptr, *src.add(i)) == 0 {
+                return 0;
             }
         }
         1
@@ -818,9 +716,6 @@ pub extern "C-unwind" fn mesh_list_flat_map(
     fn_ptr: *mut u8,
     env_ptr: *mut u8,
 ) -> *mut u8 {
-    type BareFn = unsafe extern "C-unwind" fn(u64) -> u64;
-    type ClosureFn = unsafe extern "C-unwind" fn(*mut u8, u64) -> u64;
-
     // The callback runs Mesh code that may collect, so the results so far
     // live in a GC-allocated builder: a Rust `Vec` holding them is invisible
     // to the collector, and the sub-lists' elements are often fresh objects.
@@ -830,13 +725,7 @@ pub extern "C-unwind" fn mesh_list_flat_map(
         let mut result = alloc_list(len);
 
         for i in 0..len as usize {
-            let sub_list = if env_ptr.is_null() {
-                let f: BareFn = std::mem::transmute(fn_ptr);
-                f(*src.add(i))
-            } else {
-                let f: ClosureFn = std::mem::transmute(fn_ptr);
-                f(env_ptr, *src.add(i))
-            } as *mut u8;
+            let sub_list = call1(fn_ptr, env_ptr, *src.add(i)) as *mut u8;
             let sub_data = list_data(sub_list);
             for j in 0..list_len(sub_list) as usize {
                 result = mesh_list_builder_push(result, *sub_data.add(j));

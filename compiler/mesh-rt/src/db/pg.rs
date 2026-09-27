@@ -1875,8 +1875,6 @@ pub(crate) unsafe fn decode_rows(
     fn_ptr: *mut u8,
     env_ptr: *mut u8,
 ) -> *mut u8 {
-    type BareFn = unsafe extern "C-unwind" fn(u64) -> u64;
-    type ClosureFn = unsafe extern "C-unwind" fn(*mut u8, u64) -> u64;
     let result = &*(query_result as *const crate::io::MeshResult);
     if result.tag != 0 {
         return query_result;
@@ -1885,12 +1883,7 @@ pub(crate) unsafe fn decode_rows(
     let mut decoded = mesh_list_new();
     for index in 0..mesh_list_length(rows) {
         let row = mesh_list_get(rows, index);
-        let value = if env_ptr.is_null() {
-            std::mem::transmute::<*mut u8, BareFn>(fn_ptr)(row)
-        } else {
-            std::mem::transmute::<*mut u8, ClosureFn>(fn_ptr)(env_ptr, row)
-        };
-        decoded = mesh_list_append(decoded, value);
+        decoded = mesh_list_append(decoded, crate::callback::call1(fn_ptr, env_ptr, row));
     }
     alloc_result(0, decoded) as *mut u8
 }

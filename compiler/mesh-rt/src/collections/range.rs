@@ -5,6 +5,7 @@
 //!
 //! Ranges support conversion to List and higher-order operations (map, filter).
 
+use crate::callback::call1;
 use crate::gc::mesh_gc_alloc_actor;
 
 // ── Internal helpers ──────────────────────────────────────────────────
@@ -61,30 +62,14 @@ pub extern "C-unwind" fn mesh_range_map(
     fn_ptr: *mut u8,
     env_ptr: *mut u8,
 ) -> *mut u8 {
-    type BareFn = unsafe extern "C-unwind" fn(u64) -> u64;
-    type ClosureFn = unsafe extern "C-unwind" fn(*mut u8, u64) -> u64;
-
     unsafe {
         let start = range_start(range);
         let end = range_end(range);
         let mut list = range_builder(start, end);
 
-        if env_ptr.is_null() {
-            let f: BareFn = std::mem::transmute(fn_ptr);
-            let mut i = start;
-            while i < end {
-                let result = f(i as u64);
-                list = super::list::mesh_list_builder_push(list, result);
-                i += 1;
-            }
-        } else {
-            let f: ClosureFn = std::mem::transmute(fn_ptr);
-            let mut i = start;
-            while i < end {
-                let result = f(env_ptr, i as u64);
-                list = super::list::mesh_list_builder_push(list, result);
-                i += 1;
-            }
+        for i in start..end {
+            let result = call1(fn_ptr, env_ptr, i as u64);
+            list = super::list::mesh_list_builder_push(list, result);
         }
         list
     }
@@ -97,31 +82,14 @@ pub extern "C-unwind" fn mesh_range_filter(
     fn_ptr: *mut u8,
     env_ptr: *mut u8,
 ) -> *mut u8 {
-    type BareFn = unsafe extern "C-unwind" fn(u64) -> u64;
-    type ClosureFn = unsafe extern "C-unwind" fn(*mut u8, u64) -> u64;
-
     unsafe {
         let start = range_start(range);
         let end = range_end(range);
         let mut list = range_builder(start, end);
 
-        if env_ptr.is_null() {
-            let f: BareFn = std::mem::transmute(fn_ptr);
-            let mut i = start;
-            while i < end {
-                if f(i as u64) != 0 {
-                    list = super::list::mesh_list_builder_push(list, i as u64);
-                }
-                i += 1;
-            }
-        } else {
-            let f: ClosureFn = std::mem::transmute(fn_ptr);
-            let mut i = start;
-            while i < end {
-                if f(env_ptr, i as u64) != 0 {
-                    list = super::list::mesh_list_builder_push(list, i as u64);
-                }
-                i += 1;
+        for i in start..end {
+            if call1(fn_ptr, env_ptr, i as u64) != 0 {
+                list = super::list::mesh_list_builder_push(list, i as u64);
             }
         }
         list
