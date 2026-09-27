@@ -2027,13 +2027,9 @@ fn writer_loop_session(session: Arc<NodeSession>) {
 // reader_loop_session -- receives messages on a dedicated OS thread
 // ---------------------------------------------------------------------------
 
-/// Reader thread for a node session.
-///
-/// Runs on a dedicated OS thread, reading incoming messages from the TLS
-/// stream. Handles heartbeat messages:
-/// - HEARTBEAT_PING: responds immediately with HEARTBEAT_PONG echoing the payload
-/// - HEARTBEAT_PONG: validates payload matches pending ping and updates HeartbeatState
-/// - Other tags: ignored (Phase 65 will add message routing)
+/// Reader thread for a node session: reads the peer's frames off the TLS
+/// stream and hands each to `handle_session_message`, until the session
+/// shuts down, the peer goes, or it breaks the protocol.
 ///
 /// Uses a 25ms read timeout to allow periodic shutdown checks and writer
 /// turns without busy-waiting.
@@ -2065,571 +2061,17 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
         };
 
         match result {
-            Ok(Some(frame)) => {
-                let msg = match decode_session_payload(frame, &session.negotiated_protocol) {
-                    Ok(message) => message,
-                    Err(error) => {
-                        eprintln!(
-                            "mesh transport: transition=protocol_violation remote={} reason={}",
-                            session.remote_name, error
-                        );
-                        session.shutdown.store(true, Ordering::Release);
-                        break;
-                    }
-                };
-                if msg.is_empty() {
-                    continue;
+            Ok(Some(frame)) => match decode_session_payload(frame, &session.negotiated_protocol) {
+                Ok(msg) => handle_session_message(&session, &heartbeat_state, msg),
+                Err(error) => {
+                    eprintln!(
+                        "mesh transport: transition=protocol_violation remote={} reason={}",
+                        session.remote_name, error
+                    );
+                    session.shutdown.store(true, Ordering::Release);
+                    break;
                 }
-                match msg[0] {
-                    HEARTBEAT_PING => {
-                        if msg.len() >= 9 {
-                            let mut pong = Vec::with_capacity(9);
-                            pong.push(HEARTBEAT_PONG);
-                            pong.extend_from_slice(&msg[1..9]);
-                            if session.send_heartbeat(pong).is_err() {
-                                session.shutdown.store(true, Ordering::Release);
-                            }
-                        }
-                    }
-                    HEARTBEAT_PONG => {
-                        if msg.len() >= 9 {
-                            let mut hs = heartbeat_state.lock().unwrap();
-                            if let Some(expected) = hs.pending_ping_payload {
-                                if msg[1..9] == expected {
-                                    hs.last_pong_received = Instant::now();
-                                    hs.pending_ping_payload = None;
-                                }
-                            }
-                        }
-                    }
-                    DIST_SEND => match decode_dist_send(&msg) {
-                        Some((target, data, captured)) => {
-                            crate::actor::deliver_remote(target, data, captured);
-                        }
-                        None => eprintln!(
-                            "mesh transport: transition=message_malformed remote={}",
-                            session.remote_name
-                        ),
-                    },
-                    DIST_PEER_LIST => {
-                        handle_peer_list(&msg[1..]);
-                    }
-                    DIST_MONITOR => {
-                        // Wire format: [tag][u64 from_pid][u64 to_pid][u64 ref]
-                        if msg.len() >= 25 {
-                            use crate::actor::process::{ExitReason, ProcessState};
-                            let from_pid =
-                                session.peer_pid(u64::from_le_bytes(msg[1..9].try_into().unwrap()));
-                            let to_pid =
-                                own_pid(u64::from_le_bytes(msg[9..17].try_into().unwrap()));
-                            let monitor_ref = u64::from_le_bytes(msg[17..25].try_into().unwrap());
-
-                            let sched = crate::actor::global_scheduler();
-                            match sched.get_process(to_pid) {
-                                Some(target_arc) => {
-                                    let mut target_proc = target_arc.lock();
-                                    if matches!(target_proc.state, ProcessState::Exited(_)) {
-                                        // Target already dead -- send DIST_MONITOR_EXIT back with noproc.
-                                        drop(target_proc);
-                                        let noproc = ExitReason::Error("noproc".to_string());
-                                        send_dist_monitor_exit(
-                                            &session,
-                                            to_pid,
-                                            from_pid,
-                                            monitor_ref,
-                                            &noproc,
-                                        );
-                                    } else {
-                                        // Register monitor on local target.
-                                        target_proc.monitored_by.insert(monitor_ref, from_pid);
-                                    }
-                                }
-                                None => {
-                                    // Target does not exist -- send DIST_MONITOR_EXIT back.
-                                    let noproc = ExitReason::Error("noproc".to_string());
-                                    send_dist_monitor_exit(
-                                        &session,
-                                        to_pid,
-                                        from_pid,
-                                        monitor_ref,
-                                        &noproc,
-                                    );
-                                }
-                            }
-                        }
-                    }
-                    DIST_DEMONITOR => {
-                        // Wire format: [tag][u64 from_pid][u64 to_pid][u64 ref]
-                        if msg.len() >= 25 {
-                            let to_pid =
-                                own_pid(u64::from_le_bytes(msg[9..17].try_into().unwrap()));
-                            let monitor_ref = u64::from_le_bytes(msg[17..25].try_into().unwrap());
-
-                            let sched = crate::actor::global_scheduler();
-                            if let Some(target_arc) = sched.get_process(to_pid) {
-                                target_arc.lock().monitored_by.remove(&monitor_ref);
-                            }
-                        }
-                    }
-                    DIST_MONITOR_EXIT => {
-                        // [tag][u64 monitored_pid][u64 monitoring_pid][u64 ref][reason]
-                        if msg.len() >= 25 {
-                            let monitoring_pid =
-                                own_pid(u64::from_le_bytes(msg[9..17].try_into().unwrap()));
-                            let monitor_ref = u64::from_le_bytes(msg[17..25].try_into().unwrap());
-                            let sched = crate::actor::global_scheduler();
-                            if let Some(mon_arc) = sched.get_process(monitoring_pid) {
-                                let mut mon_proc = mon_arc.lock();
-                                if mon_proc.fire_monitor(monitor_ref) {
-                                    sched.wake_if_waiting(monitoring_pid, mon_proc);
-                                }
-                            }
-                        }
-                    }
-                    DIST_LINK => {
-                        // Wire format: [tag][u64 from_pid][u64 to_pid]
-                        if msg.len() >= 17 {
-                            let from_pid =
-                                session.peer_pid(u64::from_le_bytes(msg[1..9].try_into().unwrap()));
-                            let to_pid =
-                                own_pid(u64::from_le_bytes(msg[9..17].try_into().unwrap()));
-                            // Add from_pid to the local process's links set
-                            let sched = crate::actor::global_scheduler();
-                            if let Some(proc_arc) = sched.get_process(to_pid) {
-                                proc_arc.lock().links.insert(from_pid);
-                            }
-                        }
-                    }
-                    DIST_EXIT => {
-                        // Wire format: [tag][u64 from_pid][u64 to_pid][reason_bytes]
-                        if msg.len() >= 17 {
-                            use crate::actor::heap::MessageBuffer;
-                            use crate::actor::link;
-                            use crate::actor::process::{ExitReason, Message, ProcessState};
-
-                            let from_pid =
-                                session.peer_pid(u64::from_le_bytes(msg[1..9].try_into().unwrap()));
-                            let to_pid =
-                                own_pid(u64::from_le_bytes(msg[9..17].try_into().unwrap()));
-                            let reason_bytes = &msg[17..];
-                            if let Some((reason, _)) = link::decode_reason(reason_bytes) {
-                                let sched = crate::actor::global_scheduler();
-                                if let Some(proc_arc) = sched.get_process(to_pid) {
-                                    let mut proc = proc_arc.lock();
-                                    if matches!(proc.state, ProcessState::Exited(_)) {
-                                        continue; // Already dead, skip
-                                    }
-                                    proc.links.remove(&from_pid);
-                                    // As `link::propagate_exit`: only a process
-                                    // that traps exits gets the signal as a
-                                    // message; another ignores a normal exit.
-                                    let is_non_crashing =
-                                        matches!(reason, ExitReason::Normal | ExitReason::Shutdown);
-                                    if is_non_crashing && !proc.trap_exit {
-                                        continue;
-                                    }
-                                    if proc.trap_exit {
-                                        let signal_data =
-                                            link::encode_exit_signal(from_pid, &reason);
-                                        let buffer =
-                                            MessageBuffer::new(signal_data, link::EXIT_SIGNAL_TAG);
-                                        proc.mailbox.push(Message { buffer });
-                                        sched.wake_if_waiting(to_pid, proc);
-                                    } else {
-                                        proc.mark_exited(ExitReason::Linked(
-                                            from_pid,
-                                            Box::new(reason),
-                                        ));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    DIST_SPAWN => {
-                        // Wire format: [tag][u64 req_id][u64 requester_pid][u8 link_flag]
-                        //              [u16 fn_name_len][fn_name bytes][u16 arg_count][arg_tags][encoded args]
-                        if msg.len() >= 20 {
-                            use crate::actor::process::ProcessId;
-
-                            let req_id = u64::from_le_bytes(msg[1..9].try_into().unwrap());
-                            let requester_pid =
-                                ProcessId(u64::from_le_bytes(msg[9..17].try_into().unwrap()));
-                            let link_flag = msg[17];
-                            let fn_name_len =
-                                u16::from_le_bytes(msg[18..20].try_into().unwrap()) as usize;
-
-                            if msg.len() >= 20 + fn_name_len {
-                                let fn_name =
-                                    std::str::from_utf8(&msg[20..20 + fn_name_len]).unwrap_or("");
-
-                                match prepare_remote_spawn(fn_name, &msg[20 + fn_name_len..]) {
-                                    Ok((fn_ptr, decoded_args)) => {
-                                        let args_ptr = allocate_remote_spawn_args(&decoded_args);
-                                        let args_size = (decoded_args.len()
-                                            * std::mem::size_of::<u64>())
-                                            as u64;
-
-                                        // Spawn the actor locally.
-                                        let spawned_pid = crate::actor::mesh_actor_spawn(
-                                            fn_ptr, args_ptr, args_size, 1, // normal priority
-                                        );
-                                        let spawned = ProcessId(spawned_pid);
-
-                                        // If spawn_link, establish bidirectional link.
-                                        if link_flag == 1 {
-                                            let sched = crate::actor::global_scheduler();
-                                            // Add requester_pid to the new process's links set.
-                                            // The requester_pid as received over the wire has node_id=0
-                                            // (it's the caller's local PID). We need to construct a
-                                            // remote-qualified PID using this session's node_id and creation.
-                                            let remote_requester =
-                                                session.peer_pid(requester_pid.as_u64());
-                                            if let Some(proc_arc) = sched.get_process(spawned) {
-                                                proc_arc.lock().links.insert(remote_requester);
-                                            }
-                                            // Send DIST_LINK back so the requester's node records
-                                            // the reverse link. from=spawned (local), to=requester (remote).
-                                            // We send the local spawned PID as-is; the remote side will
-                                            // use its own session info to qualify it.
-                                            send_dist_link_via_session(
-                                                &session,
-                                                spawned,
-                                                requester_pid,
-                                            );
-                                        }
-
-                                        // Reply with the spawned process's local_id.
-                                        send_spawn_reply(&session, req_id, 0, spawned.local_id());
-                                    }
-                                    Err(reason) => {
-                                        eprintln!(
-                                            "mesh node spawn rejected from {} for fn {}: {}",
-                                            session.remote_name, fn_name, reason
-                                        );
-                                        send_spawn_reply(&session, req_id, 1, 0);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    DIST_SPAWN_REPLY => {
-                        // Wire format: [tag][u64 req_id][u8 status][u64 spawned_local_id]
-                        if msg.len() >= 18 {
-                            use crate::actor::heap::MessageBuffer;
-                            use crate::actor::process::Message;
-
-                            let req_id = u64::from_le_bytes(msg[1..9].try_into().unwrap());
-                            let status = msg[9];
-                            let spawned_local_id =
-                                u64::from_le_bytes(msg[10..18].try_into().unwrap());
-
-                            // Look up which process is waiting for this spawn reply.
-                            let requester = session.pending_spawns.lock().unwrap().remove(&req_id);
-
-                            if let Some(requester_pid) = requester {
-                                // Build spawn reply payload: [u64 req_id][u8 status][u64 spawned_local_id]
-                                let mut reply_data = Vec::with_capacity(17);
-                                reply_data.extend_from_slice(&req_id.to_le_bytes());
-                                reply_data.push(status);
-                                reply_data.extend_from_slice(&spawned_local_id.to_le_bytes());
-
-                                let buffer = MessageBuffer::new(reply_data, SPAWN_REPLY_TAG);
-                                let reply_msg = Message { buffer };
-
-                                let sched = crate::actor::global_scheduler();
-                                if let Some(proc_arc) = sched.get_process(requester_pid) {
-                                    let proc = proc_arc.lock();
-                                    proc.mailbox.push(reply_msg);
-                                    sched.wake_if_waiting(requester_pid, proc);
-                                }
-                            }
-                        }
-                    }
-                    DIST_GLOBAL_REGISTER => {
-                        if let Some((name, pid, node_name)) =
-                            crate::dist::global::decode_entry(&msg, &mut 1)
-                        {
-                            // A name already taken stays with its holder.
-                            let _ = crate::dist::global::global_name_registry().register(
-                                name,
-                                session.peer_pid(pid),
-                                node_name,
-                            );
-                        }
-                    }
-                    DIST_GLOBAL_UNREGISTER => {
-                        if let Some(name) = crate::dist::global::decode_str(&msg, &mut 1) {
-                            crate::dist::global::global_name_registry().unregister(&name);
-                        }
-                    }
-                    DIST_GLOBAL_SYNC => {
-                        let entries = crate::dist::global::decode_sync(&msg)
-                            .into_iter()
-                            .map(|(name, pid, node_name)| (name, session.peer_pid(pid), node_name))
-                            .collect();
-                        crate::dist::global::global_name_registry().merge_snapshot(entries);
-                        session.global_names_received.store(true, Ordering::Release);
-                    }
-                    DIST_CONTINUITY_UPSERT => {
-                        match crate::dist::continuity::decode_upsert_payload(&msg) {
-                            Ok((next_attempt_token, record)) => {
-                                if let Err(error) = crate::dist::continuity::continuity_registry()
-                                    .merge_remote_record(next_attempt_token, record)
-                                {
-                                    eprintln!(
-                                        "mesh continuity: transition=upsert_rejected remote={} error={}",
-                                        session.remote_name, error
-                                    );
-                                }
-                            }
-                            Err(error) => {
-                                eprintln!(
-                                    "mesh continuity: transition=upsert_malformed remote={} error={}",
-                                    session.remote_name, error
-                                );
-                            }
-                        }
-                    }
-                    DIST_CONTINUITY_SYNC => {
-                        match crate::dist::continuity::decode_sync_payload(&msg) {
-                            Ok(snapshot) => {
-                                if let Err(error) = crate::dist::continuity::continuity_registry()
-                                    .merge_snapshot(snapshot)
-                                {
-                                    eprintln!(
-                                        "mesh continuity: transition=sync_rejected remote={} error={}",
-                                        session.remote_name, error
-                                    );
-                                } else {
-                                    crate::dist::readiness::mark_initial_state_synchronized();
-                                }
-                            }
-                            Err(error) => {
-                                eprintln!(
-                                    "mesh continuity: transition=sync_malformed remote={} error={}",
-                                    session.remote_name, error
-                                );
-                            }
-                        }
-                    }
-                    DIST_CONTINUITY_STORE_SNAPSHOT => {
-                        if let Err(error) =
-                            crate::dist::continuity::handle_store_snapshot_chunk(&session, &msg)
-                        {
-                            eprintln!(
-                                "mesh continuity: transition=store_snapshot_rejected remote={} error={}",
-                                session.remote_name, error
-                            );
-                        }
-                    }
-                    DIST_CONTINUITY_STORE_SNAPSHOT_ACK => {
-                        if let Err(error) =
-                            crate::dist::continuity::handle_store_snapshot_ack(&session, &msg)
-                        {
-                            eprintln!(
-                                "mesh continuity: transition=store_snapshot_ack_rejected remote={} error={}",
-                                session.remote_name, error
-                            );
-                        }
-                    }
-                    DIST_CONTINUITY_STORE_LOG_ENTRY => {
-                        if let Err(error) =
-                            crate::dist::continuity::handle_store_log_entry(&session, &msg)
-                        {
-                            eprintln!(
-                                "mesh continuity: transition=store_log_rejected remote={} error={}",
-                                session.remote_name, error
-                            );
-                        }
-                    }
-                    DIST_CONTINUITY_PREPARE => {
-                        if let Ok((request_id, record)) = decode_continuity_prepare_payload(&msg) {
-                            dispatch_continuity_prepare(Arc::clone(&session), request_id, record);
-                        }
-                    }
-                    DIST_CONTINUITY_PREPARE_ACK => {
-                        if let Ok((request_id, result)) = decode_continuity_prepare_ack(&msg) {
-                            if let Some(sender) = session
-                                .pending_continuity_prepares
-                                .lock()
-                                .unwrap()
-                                .remove(&request_id)
-                            {
-                                let _ = sender.send(result);
-                            }
-                        }
-                    }
-                    DIST_OPERATOR_QUERY => {
-                        if autonomous_mode_requested()
-                            && !session.remote_has_role("operator")
-                            && !session.remote_has_role("controller")
-                        {
-                            eprintln!(
-                                "mesh operator: transition=query_rejected remote={} reason=operator_identity_required",
-                                session.remote_name
-                            );
-                        } else {
-                            crate::dist::operator::handle_operator_query_message(&session, &msg);
-                        }
-                    }
-                    DIST_OPERATOR_REPLY => {
-                        crate::dist::operator::handle_operator_reply_message(&session, &msg);
-                    }
-                    DIST_CONSENSUS_RPC => {
-                        if autonomous_mode_requested() && !session.remote_has_role("controller") {
-                            eprintln!(
-                                "mesh consensus: transition=rpc_request_rejected remote={} reason=controller_identity_required",
-                                session.remote_name
-                            );
-                            continue;
-                        }
-                        match decode_consensus_rpc_frame(&msg, DIST_CONSENSUS_RPC) {
-                            Ok((correlation_id, request)) => {
-                                crate::dist::consensus::handle_mesh_consensus_rpc(
-                                    Arc::clone(&session),
-                                    correlation_id,
-                                    request,
-                                );
-                            }
-                            Err(error) => eprintln!(
-                            "mesh consensus: transition=rpc_request_rejected remote={} reason={}",
-                            session.remote_name, error
-                        ),
-                        }
-                    }
-                    DIST_CONSENSUS_RPC_REPLY => {
-                        if autonomous_mode_requested() && !session.remote_has_role("controller") {
-                            eprintln!(
-                                "mesh consensus: transition=rpc_reply_rejected remote={} reason=controller_identity_required",
-                                session.remote_name
-                            );
-                            continue;
-                        }
-                        match decode_consensus_rpc_frame(&msg, DIST_CONSENSUS_RPC_REPLY) {
-                            Ok((correlation_id, reply)) => {
-                                if let Some(sender) = session
-                                    .pending_consensus_rpcs
-                                    .lock()
-                                    .unwrap()
-                                    .remove(&correlation_id)
-                                {
-                                    let _ = sender.send(Ok(reply));
-                                }
-                            }
-                            Err(error) => eprintln!(
-                                "mesh consensus: transition=rpc_reply_rejected remote={} reason={}",
-                                session.remote_name, error
-                            ),
-                        }
-                    }
-                    DIST_LOAD_REPORT => {
-                        match crate::dist::routing::NodeLoadReport::decode(&msg[1..]) {
-                            Ok(report) if report.node_id == session.remote_name => {
-                                if let Err(error) = crate::dist::routing::load_report_registry()
-                                    .apply(report, Instant::now())
-                                {
-                                    eprintln!(
-                                        "mesh routing: transition=load_report_rejected remote={} reason={}",
-                                        session.remote_name, error
-                                    );
-                                }
-                            }
-                            Ok(_) => {
-                                eprintln!(
-                                    "mesh routing: transition=load_report_rejected remote={} reason=identity_mismatch",
-                                    session.remote_name
-                                );
-                            }
-                            Err(error) => {
-                                eprintln!(
-                                    "mesh routing: transition=load_report_rejected remote={} reason={}",
-                                    session.remote_name, error
-                                );
-                            }
-                        }
-                    }
-                    DIST_HTTP_ROUTE_V2_QUERY => {
-                        dispatch_http_route_v2_reply(Arc::clone(&session), msg);
-                    }
-                    DIST_HTTP_ROUTE_V2_REPLY => {
-                        if let Ok((correlation_id, result)) = decode_http_route_v2_reply_frame(&msg)
-                        {
-                            if let Some(sender) = session
-                                .pending_http_routes
-                                .lock()
-                                .unwrap()
-                                .remove(&correlation_id)
-                            {
-                                let _ = sender.send(result);
-                            }
-                        }
-                    }
-                    DIST_HTTP_RESERVE => {
-                        handle_http_reserve(&session, &msg);
-                    }
-                    DIST_HTTP_RESERVE_REPLY => {
-                        if let Ok((correlation_id, result)) = decode_http_reserve_reply(&msg) {
-                            if let Some(sender) = session
-                                .pending_http_reservations
-                                .lock()
-                                .unwrap()
-                                .remove(&correlation_id)
-                            {
-                                let _ = sender.send(result);
-                            }
-                        }
-                    }
-                    DIST_CONTINUITY_RESPONSE => match decode_continuity_response_frame(&msg) {
-                        Ok((operation_key, response)) => {
-                            if let Err(error) =
-                                crate::dist::continuity_store::persist_runtime_response(
-                                    &operation_key,
-                                    &response,
-                                )
-                            {
-                                eprintln!(
-                                        "mesh continuity: response_replica_failed operation={} reason={}",
-                                        operation_key, error
-                                    );
-                            }
-                        }
-                        Err(error) => eprintln!(
-                            "mesh continuity: response_replica_rejected remote={} reason={}",
-                            session.remote_name, error
-                        ),
-                    },
-                    DIST_ROOM_BROADCAST => {
-                        // Wire format: [tag 0x1E][u16 room_name_len][room_name][u32 msg_len][msg]
-                        // Deliver to local room members only -- do NOT re-forward to other
-                        // nodes (prevents infinite broadcast storms; see RESEARCH.md Pitfall 1).
-                        if msg.len() >= 3 {
-                            let room_name_len =
-                                u16::from_le_bytes(msg[1..3].try_into().unwrap()) as usize;
-                            if msg.len() >= 3 + room_name_len + 4 {
-                                if let Ok(room_name) =
-                                    std::str::from_utf8(&msg[3..3 + room_name_len])
-                                {
-                                    let msg_len = u32::from_le_bytes(
-                                        msg[3 + room_name_len..7 + room_name_len]
-                                            .try_into()
-                                            .unwrap(),
-                                    ) as usize;
-                                    if msg.len() >= 7 + room_name_len + msg_len {
-                                        if let Ok(text) = std::str::from_utf8(
-                                            &msg[7 + room_name_len..7 + room_name_len + msg_len],
-                                        ) {
-                                            crate::ws::rooms::local_room_broadcast(room_name, text);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    _ => {
-                        // Unknown tag -- silently ignore for forward compatibility.
-                    }
-                }
-            }
+            },
             Ok(None) => continue,
             Err(error) => {
                 // A peer that exits closes its connection without TLS's
@@ -2651,6 +2093,512 @@ fn reader_loop_session(session: Arc<NodeSession>, heartbeat_state: Arc<Mutex<Hea
                 session.shutdown.store(true, Ordering::SeqCst);
                 break;
             }
+        }
+    }
+}
+
+/// Acts on one message the peer of `session` sent.
+fn handle_session_message(
+    session: &Arc<NodeSession>,
+    heartbeat_state: &Mutex<HeartbeatState>,
+    msg: Vec<u8>,
+) {
+    let Some(&tag) = msg.first() else {
+        return;
+    };
+    match tag {
+        HEARTBEAT_PING => {
+            if msg.len() >= 9 {
+                let mut pong = Vec::with_capacity(9);
+                pong.push(HEARTBEAT_PONG);
+                pong.extend_from_slice(&msg[1..9]);
+                if session.send_heartbeat(pong).is_err() {
+                    session.shutdown.store(true, Ordering::Release);
+                }
+            }
+        }
+        HEARTBEAT_PONG => {
+            if msg.len() >= 9 {
+                let mut hs = heartbeat_state.lock().unwrap();
+                if let Some(expected) = hs.pending_ping_payload {
+                    if msg[1..9] == expected {
+                        hs.last_pong_received = Instant::now();
+                        hs.pending_ping_payload = None;
+                    }
+                }
+            }
+        }
+        DIST_SEND => match decode_dist_send(&msg) {
+            Some((target, data, captured)) => {
+                crate::actor::deliver_remote(target, data, captured);
+            }
+            None => eprintln!(
+                "mesh transport: transition=message_malformed remote={}",
+                session.remote_name
+            ),
+        },
+        DIST_PEER_LIST => {
+            handle_peer_list(&msg[1..]);
+        }
+        DIST_MONITOR => {
+            // Wire format: [tag][u64 from_pid][u64 to_pid][u64 ref]
+            if msg.len() >= 25 {
+                use crate::actor::process::{ExitReason, ProcessState};
+                let from_pid = session.peer_pid(u64::from_le_bytes(msg[1..9].try_into().unwrap()));
+                let to_pid = own_pid(u64::from_le_bytes(msg[9..17].try_into().unwrap()));
+                let monitor_ref = u64::from_le_bytes(msg[17..25].try_into().unwrap());
+
+                let sched = crate::actor::global_scheduler();
+                match sched.get_process(to_pid) {
+                    Some(target_arc) => {
+                        let mut target_proc = target_arc.lock();
+                        if matches!(target_proc.state, ProcessState::Exited(_)) {
+                            // Target already dead -- send DIST_MONITOR_EXIT back with noproc.
+                            drop(target_proc);
+                            let noproc = ExitReason::Error("noproc".to_string());
+                            send_dist_monitor_exit(session, to_pid, from_pid, monitor_ref, &noproc);
+                        } else {
+                            // Register monitor on local target.
+                            target_proc.monitored_by.insert(monitor_ref, from_pid);
+                        }
+                    }
+                    None => {
+                        // Target does not exist -- send DIST_MONITOR_EXIT back.
+                        let noproc = ExitReason::Error("noproc".to_string());
+                        send_dist_monitor_exit(session, to_pid, from_pid, monitor_ref, &noproc);
+                    }
+                }
+            }
+        }
+        DIST_DEMONITOR => {
+            // Wire format: [tag][u64 from_pid][u64 to_pid][u64 ref]
+            if msg.len() >= 25 {
+                let to_pid = own_pid(u64::from_le_bytes(msg[9..17].try_into().unwrap()));
+                let monitor_ref = u64::from_le_bytes(msg[17..25].try_into().unwrap());
+
+                let sched = crate::actor::global_scheduler();
+                if let Some(target_arc) = sched.get_process(to_pid) {
+                    target_arc.lock().monitored_by.remove(&monitor_ref);
+                }
+            }
+        }
+        DIST_MONITOR_EXIT => {
+            // [tag][u64 monitored_pid][u64 monitoring_pid][u64 ref][reason]
+            if msg.len() >= 25 {
+                let monitoring_pid = own_pid(u64::from_le_bytes(msg[9..17].try_into().unwrap()));
+                let monitor_ref = u64::from_le_bytes(msg[17..25].try_into().unwrap());
+                let sched = crate::actor::global_scheduler();
+                if let Some(mon_arc) = sched.get_process(monitoring_pid) {
+                    let mut mon_proc = mon_arc.lock();
+                    if mon_proc.fire_monitor(monitor_ref) {
+                        sched.wake_if_waiting(monitoring_pid, mon_proc);
+                    }
+                }
+            }
+        }
+        DIST_LINK => {
+            // Wire format: [tag][u64 from_pid][u64 to_pid]
+            if msg.len() >= 17 {
+                let from_pid = session.peer_pid(u64::from_le_bytes(msg[1..9].try_into().unwrap()));
+                let to_pid = own_pid(u64::from_le_bytes(msg[9..17].try_into().unwrap()));
+                // Add from_pid to the local process's links set
+                let sched = crate::actor::global_scheduler();
+                if let Some(proc_arc) = sched.get_process(to_pid) {
+                    proc_arc.lock().links.insert(from_pid);
+                }
+            }
+        }
+        DIST_EXIT => {
+            // Wire format: [tag][u64 from_pid][u64 to_pid][reason_bytes]
+            if msg.len() >= 17 {
+                use crate::actor::heap::MessageBuffer;
+                use crate::actor::link;
+                use crate::actor::process::{ExitReason, Message, ProcessState};
+
+                let from_pid = session.peer_pid(u64::from_le_bytes(msg[1..9].try_into().unwrap()));
+                let to_pid = own_pid(u64::from_le_bytes(msg[9..17].try_into().unwrap()));
+                let reason_bytes = &msg[17..];
+                if let Some((reason, _)) = link::decode_reason(reason_bytes) {
+                    let sched = crate::actor::global_scheduler();
+                    if let Some(proc_arc) = sched.get_process(to_pid) {
+                        let mut proc = proc_arc.lock();
+                        if matches!(proc.state, ProcessState::Exited(_)) {
+                            return; // Already dead, skip
+                        }
+                        proc.links.remove(&from_pid);
+                        // As `link::propagate_exit`: only a process
+                        // that traps exits gets the signal as a
+                        // message; another ignores a normal exit.
+                        let is_non_crashing =
+                            matches!(reason, ExitReason::Normal | ExitReason::Shutdown);
+                        if is_non_crashing && !proc.trap_exit {
+                            return;
+                        }
+                        if proc.trap_exit {
+                            let signal_data = link::encode_exit_signal(from_pid, &reason);
+                            let buffer = MessageBuffer::new(signal_data, link::EXIT_SIGNAL_TAG);
+                            proc.mailbox.push(Message { buffer });
+                            sched.wake_if_waiting(to_pid, proc);
+                        } else {
+                            proc.mark_exited(ExitReason::Linked(from_pid, Box::new(reason)));
+                        }
+                    }
+                }
+            }
+        }
+        DIST_SPAWN => {
+            // Wire format: [tag][u64 req_id][u64 requester_pid][u8 link_flag]
+            //              [u16 fn_name_len][fn_name bytes][u16 arg_count][arg_tags][encoded args]
+            if msg.len() >= 20 {
+                use crate::actor::process::ProcessId;
+
+                let req_id = u64::from_le_bytes(msg[1..9].try_into().unwrap());
+                let requester_pid = ProcessId(u64::from_le_bytes(msg[9..17].try_into().unwrap()));
+                let link_flag = msg[17];
+                let fn_name_len = u16::from_le_bytes(msg[18..20].try_into().unwrap()) as usize;
+
+                if msg.len() >= 20 + fn_name_len {
+                    let fn_name = std::str::from_utf8(&msg[20..20 + fn_name_len]).unwrap_or("");
+
+                    match prepare_remote_spawn(fn_name, &msg[20 + fn_name_len..]) {
+                        Ok((fn_ptr, decoded_args)) => {
+                            let args_ptr = allocate_remote_spawn_args(&decoded_args);
+                            let args_size =
+                                (decoded_args.len() * std::mem::size_of::<u64>()) as u64;
+
+                            // Spawn the actor locally.
+                            let spawned_pid = crate::actor::mesh_actor_spawn(
+                                fn_ptr, args_ptr, args_size, 1, // normal priority
+                            );
+                            let spawned = ProcessId(spawned_pid);
+
+                            // If spawn_link, establish bidirectional link.
+                            if link_flag == 1 {
+                                let sched = crate::actor::global_scheduler();
+                                // Add requester_pid to the new process's links set.
+                                // The requester_pid as received over the wire has node_id=0
+                                // (it's the caller's local PID). We need to construct a
+                                // remote-qualified PID using this session's node_id and creation.
+                                let remote_requester = session.peer_pid(requester_pid.as_u64());
+                                if let Some(proc_arc) = sched.get_process(spawned) {
+                                    proc_arc.lock().links.insert(remote_requester);
+                                }
+                                // Send DIST_LINK back so the requester's node records
+                                // the reverse link. from=spawned (local), to=requester (remote).
+                                // We send the local spawned PID as-is; the remote side will
+                                // use its own session info to qualify it.
+                                send_dist_link_via_session(session, spawned, requester_pid);
+                            }
+
+                            // Reply with the spawned process's local_id.
+                            send_spawn_reply(session, req_id, 0, spawned.local_id());
+                        }
+                        Err(reason) => {
+                            eprintln!(
+                                "mesh node spawn rejected from {} for fn {}: {}",
+                                session.remote_name, fn_name, reason
+                            );
+                            send_spawn_reply(session, req_id, 1, 0);
+                        }
+                    }
+                }
+            }
+        }
+        DIST_SPAWN_REPLY => {
+            // Wire format: [tag][u64 req_id][u8 status][u64 spawned_local_id]
+            if msg.len() >= 18 {
+                use crate::actor::heap::MessageBuffer;
+                use crate::actor::process::Message;
+
+                let req_id = u64::from_le_bytes(msg[1..9].try_into().unwrap());
+                let status = msg[9];
+                let spawned_local_id = u64::from_le_bytes(msg[10..18].try_into().unwrap());
+
+                // Look up which process is waiting for this spawn reply.
+                let requester = session.pending_spawns.lock().unwrap().remove(&req_id);
+
+                if let Some(requester_pid) = requester {
+                    // Build spawn reply payload: [u64 req_id][u8 status][u64 spawned_local_id]
+                    let mut reply_data = Vec::with_capacity(17);
+                    reply_data.extend_from_slice(&req_id.to_le_bytes());
+                    reply_data.push(status);
+                    reply_data.extend_from_slice(&spawned_local_id.to_le_bytes());
+
+                    let buffer = MessageBuffer::new(reply_data, SPAWN_REPLY_TAG);
+                    let reply_msg = Message { buffer };
+
+                    let sched = crate::actor::global_scheduler();
+                    if let Some(proc_arc) = sched.get_process(requester_pid) {
+                        let proc = proc_arc.lock();
+                        proc.mailbox.push(reply_msg);
+                        sched.wake_if_waiting(requester_pid, proc);
+                    }
+                }
+            }
+        }
+        DIST_GLOBAL_REGISTER => {
+            if let Some((name, pid, node_name)) = crate::dist::global::decode_entry(&msg, &mut 1) {
+                // A name already taken stays with its holder.
+                let _ = crate::dist::global::global_name_registry().register(
+                    name,
+                    session.peer_pid(pid),
+                    node_name,
+                );
+            }
+        }
+        DIST_GLOBAL_UNREGISTER => {
+            if let Some(name) = crate::dist::global::decode_str(&msg, &mut 1) {
+                crate::dist::global::global_name_registry().unregister(&name);
+            }
+        }
+        DIST_GLOBAL_SYNC => {
+            let entries = crate::dist::global::decode_sync(&msg)
+                .into_iter()
+                .map(|(name, pid, node_name)| (name, session.peer_pid(pid), node_name))
+                .collect();
+            crate::dist::global::global_name_registry().merge_snapshot(entries);
+            session.global_names_received.store(true, Ordering::Release);
+        }
+        DIST_CONTINUITY_UPSERT => match crate::dist::continuity::decode_upsert_payload(&msg) {
+            Ok((next_attempt_token, record)) => {
+                if let Err(error) = crate::dist::continuity::continuity_registry()
+                    .merge_remote_record(next_attempt_token, record)
+                {
+                    eprintln!(
+                        "mesh continuity: transition=upsert_rejected remote={} error={}",
+                        session.remote_name, error
+                    );
+                }
+            }
+            Err(error) => {
+                eprintln!(
+                    "mesh continuity: transition=upsert_malformed remote={} error={}",
+                    session.remote_name, error
+                );
+            }
+        },
+        DIST_CONTINUITY_SYNC => match crate::dist::continuity::decode_sync_payload(&msg) {
+            Ok(snapshot) => {
+                if let Err(error) =
+                    crate::dist::continuity::continuity_registry().merge_snapshot(snapshot)
+                {
+                    eprintln!(
+                        "mesh continuity: transition=sync_rejected remote={} error={}",
+                        session.remote_name, error
+                    );
+                } else {
+                    crate::dist::readiness::mark_initial_state_synchronized();
+                }
+            }
+            Err(error) => {
+                eprintln!(
+                    "mesh continuity: transition=sync_malformed remote={} error={}",
+                    session.remote_name, error
+                );
+            }
+        },
+        DIST_CONTINUITY_STORE_SNAPSHOT => {
+            if let Err(error) = crate::dist::continuity::handle_store_snapshot_chunk(session, &msg)
+            {
+                eprintln!(
+                    "mesh continuity: transition=store_snapshot_rejected remote={} error={}",
+                    session.remote_name, error
+                );
+            }
+        }
+        DIST_CONTINUITY_STORE_SNAPSHOT_ACK => {
+            if let Err(error) = crate::dist::continuity::handle_store_snapshot_ack(session, &msg) {
+                eprintln!(
+                    "mesh continuity: transition=store_snapshot_ack_rejected remote={} error={}",
+                    session.remote_name, error
+                );
+            }
+        }
+        DIST_CONTINUITY_STORE_LOG_ENTRY => {
+            if let Err(error) = crate::dist::continuity::handle_store_log_entry(session, &msg) {
+                eprintln!(
+                    "mesh continuity: transition=store_log_rejected remote={} error={}",
+                    session.remote_name, error
+                );
+            }
+        }
+        DIST_CONTINUITY_PREPARE => {
+            if let Ok((request_id, record)) = decode_continuity_prepare_payload(&msg) {
+                dispatch_continuity_prepare(Arc::clone(session), request_id, record);
+            }
+        }
+        DIST_CONTINUITY_PREPARE_ACK => {
+            if let Ok((request_id, result)) = decode_continuity_prepare_ack(&msg) {
+                if let Some(sender) = session
+                    .pending_continuity_prepares
+                    .lock()
+                    .unwrap()
+                    .remove(&request_id)
+                {
+                    let _ = sender.send(result);
+                }
+            }
+        }
+        DIST_OPERATOR_QUERY => {
+            if autonomous_mode_requested()
+                && !session.remote_has_role("operator")
+                && !session.remote_has_role("controller")
+            {
+                eprintln!(
+                    "mesh operator: transition=query_rejected remote={} reason=operator_identity_required",
+                    session.remote_name
+                );
+            } else {
+                crate::dist::operator::handle_operator_query_message(session, &msg);
+            }
+        }
+        DIST_OPERATOR_REPLY => {
+            crate::dist::operator::handle_operator_reply_message(session, &msg);
+        }
+        DIST_CONSENSUS_RPC => {
+            if autonomous_mode_requested() && !session.remote_has_role("controller") {
+                eprintln!(
+                    "mesh consensus: transition=rpc_request_rejected remote={} reason=controller_identity_required",
+                    session.remote_name
+                );
+                return;
+            }
+            match decode_consensus_rpc_frame(&msg, DIST_CONSENSUS_RPC) {
+                Ok((correlation_id, request)) => {
+                    crate::dist::consensus::handle_mesh_consensus_rpc(
+                        Arc::clone(session),
+                        correlation_id,
+                        request,
+                    );
+                }
+                Err(error) => eprintln!(
+                    "mesh consensus: transition=rpc_request_rejected remote={} reason={}",
+                    session.remote_name, error
+                ),
+            }
+        }
+        DIST_CONSENSUS_RPC_REPLY => {
+            if autonomous_mode_requested() && !session.remote_has_role("controller") {
+                eprintln!(
+                    "mesh consensus: transition=rpc_reply_rejected remote={} reason=controller_identity_required",
+                    session.remote_name
+                );
+                return;
+            }
+            match decode_consensus_rpc_frame(&msg, DIST_CONSENSUS_RPC_REPLY) {
+                Ok((correlation_id, reply)) => {
+                    if let Some(sender) = session
+                        .pending_consensus_rpcs
+                        .lock()
+                        .unwrap()
+                        .remove(&correlation_id)
+                    {
+                        let _ = sender.send(Ok(reply));
+                    }
+                }
+                Err(error) => eprintln!(
+                    "mesh consensus: transition=rpc_reply_rejected remote={} reason={}",
+                    session.remote_name, error
+                ),
+            }
+        }
+        DIST_LOAD_REPORT => match crate::dist::routing::NodeLoadReport::decode(&msg[1..]) {
+            Ok(report) if report.node_id == session.remote_name => {
+                if let Err(error) =
+                    crate::dist::routing::load_report_registry().apply(report, Instant::now())
+                {
+                    eprintln!(
+                        "mesh routing: transition=load_report_rejected remote={} reason={}",
+                        session.remote_name, error
+                    );
+                }
+            }
+            Ok(_) => {
+                eprintln!(
+                        "mesh routing: transition=load_report_rejected remote={} reason=identity_mismatch",
+                        session.remote_name
+                    );
+            }
+            Err(error) => {
+                eprintln!(
+                    "mesh routing: transition=load_report_rejected remote={} reason={}",
+                    session.remote_name, error
+                );
+            }
+        },
+        DIST_HTTP_ROUTE_V2_QUERY => {
+            dispatch_http_route_v2_reply(Arc::clone(session), msg);
+        }
+        DIST_HTTP_ROUTE_V2_REPLY => {
+            if let Ok((correlation_id, result)) = decode_http_route_v2_reply_frame(&msg) {
+                if let Some(sender) = session
+                    .pending_http_routes
+                    .lock()
+                    .unwrap()
+                    .remove(&correlation_id)
+                {
+                    let _ = sender.send(result);
+                }
+            }
+        }
+        DIST_HTTP_RESERVE => {
+            handle_http_reserve(session, &msg);
+        }
+        DIST_HTTP_RESERVE_REPLY => {
+            if let Ok((correlation_id, result)) = decode_http_reserve_reply(&msg) {
+                if let Some(sender) = session
+                    .pending_http_reservations
+                    .lock()
+                    .unwrap()
+                    .remove(&correlation_id)
+                {
+                    let _ = sender.send(result);
+                }
+            }
+        }
+        DIST_CONTINUITY_RESPONSE => match decode_continuity_response_frame(&msg) {
+            Ok((operation_key, response)) => {
+                if let Err(error) = crate::dist::continuity_store::persist_runtime_response(
+                    &operation_key,
+                    &response,
+                ) {
+                    eprintln!(
+                        "mesh continuity: response_replica_failed operation={} reason={}",
+                        operation_key, error
+                    );
+                }
+            }
+            Err(error) => eprintln!(
+                "mesh continuity: response_replica_rejected remote={} reason={}",
+                session.remote_name, error
+            ),
+        },
+        DIST_ROOM_BROADCAST => {
+            // Wire format: [tag 0x1E][u16 room_name_len][room_name][u32 msg_len][msg]
+            // Deliver to local room members only -- do NOT re-forward to other
+            // nodes (prevents infinite broadcast storms; see RESEARCH.md Pitfall 1).
+            if msg.len() >= 3 {
+                let room_name_len = u16::from_le_bytes(msg[1..3].try_into().unwrap()) as usize;
+                if msg.len() >= 3 + room_name_len + 4 {
+                    if let Ok(room_name) = std::str::from_utf8(&msg[3..3 + room_name_len]) {
+                        let msg_len = u32::from_le_bytes(
+                            msg[3 + room_name_len..7 + room_name_len]
+                                .try_into()
+                                .unwrap(),
+                        ) as usize;
+                        if msg.len() >= 7 + room_name_len + msg_len {
+                            if let Ok(text) = std::str::from_utf8(
+                                &msg[7 + room_name_len..7 + room_name_len + msg_len],
+                            ) {
+                                crate::ws::rooms::local_room_broadcast(room_name, text);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        _ => {
+            // Unknown tag -- silently ignore for forward compatibility.
         }
     }
 }
