@@ -193,6 +193,9 @@ thread_local! {
     /// Set by a test to fail the threads it asks `spawn_named` for, as a
     /// system out of threads would.
     static FAIL_THREAD_SPAWNS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// Set by a test to fail clearing an authenticated connection's
+    /// handshake timeouts, as a socket shut down meanwhile does.
+    static FAIL_TIMEOUT_RESETS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 /// Starts `body` on a thread named `name`, for work whose caller copes
@@ -5998,6 +6001,10 @@ fn accept_loop(incoming: impl Iterator<Item = io::Result<TcpStream>>, state: &'s
 /// Bounds a connection's reads and writes by `timeout` while it has not
 /// authenticated (`None` once it has: its session polls instead).
 fn set_handshake_timeouts(stream: &TcpStream, timeout: Option<Duration>) -> io::Result<()> {
+    #[cfg(test)]
+    if timeout.is_none() && FAIL_TIMEOUT_RESETS.with(std::cell::Cell::get) {
+        return Err(io::Error::from(io::ErrorKind::InvalidInput));
+    }
     stream.set_read_timeout(timeout)?;
     stream.set_write_timeout(timeout)
 }
@@ -15082,7 +15089,9 @@ mod tests {
     }
 
     /// An accepted connection whose socket will not take its handshake
-    /// timeout (one shut down already, which macOS refuses) is dropped.
+    /// timeout (one shut down already, which macOS refuses) is dropped, and
+    /// so is one that authenticates but whose timeouts then cannot be
+    /// cleared.
     #[test]
     fn an_accepted_connection_that_refuses_its_timeout_is_dropped() {
         let state = test_node();
@@ -15092,6 +15101,232 @@ mod tests {
         accepted.shutdown(std::net::Shutdown::Both).unwrap();
         handle_accepted_connection(accepted, state);
         drop(client);
+
+        let target = format!(
+            "reset-target@127.0.0.1:{}",
+            listener.local_addr().unwrap().port()
+        );
+        let client = std::thread::spawn(move || {
+            let (mut stream, _) =
+                connect_as(&target, "reset-client@127.0.0.1:1", TEST_NODE_COOKIE).unwrap();
+            stream
+                .sock
+                .set_read_timeout(Some(Duration::from_secs(10)))
+                .unwrap();
+            read_msg(&mut stream).is_err()
+        });
+        let (accepted, _) = listener.accept().unwrap();
+        FAIL_TIMEOUT_RESETS.with(|fail| fail.set(true));
+        handle_accepted_connection(accepted, state);
+        FAIL_TIMEOUT_RESETS.with(|fail| fail.set(false));
+        assert!(client.join().unwrap(), "the connection stayed open");
+        assert!(!state
+            .sessions
+            .read()
+            .contains_key("reset-client@127.0.0.1:1"));
+    }
+
+    /// Names the one test a child process of this binary runs.
+    const OWN_PROCESS_TEST_ENV: &str = "MESH_RT_OWN_PROCESS_TEST";
+
+    /// Whether the test `name` runs its body here: in a process of its own,
+    /// which it starts from this binary when not already in one, for a
+    /// test that changes what every test in a process shares.
+    fn in_own_process(name: &str) -> bool {
+        if std::env::var(OWN_PROCESS_TEST_ENV).is_ok_and(|test| test == name) {
+            return true;
+        }
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                format!("dist::node::tests::{name}").as_str(),
+                "--exact",
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env(OWN_PROCESS_TEST_ENV, name)
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            output.status.success() && stdout.contains("1 passed"),
+            "{stdout}\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        false
+    }
+
+    /// An owner at its inflight limit turns a reservation away, saying so.
+    #[test]
+    fn an_owner_at_its_inflight_limit_turns_reservations_away() {
+        if !in_own_process("an_owner_at_its_inflight_limit_turns_reservations_away") {
+            return;
+        }
+        std::env::set_var("MESH_MAX_INFLIGHT_PER_NODE", "1");
+        let _held = crate::dist::telemetry::global_admission_controller()
+            .reserve_application()
+            .unwrap();
+        extern "C" fn full_handler(_: *const u8) {}
+        let handler = "Full.handle";
+        mesh_register_declared_handler(
+            handler.as_ptr(),
+            handler.len() as u64,
+            handler.as_ptr(),
+            handler.len() as u64,
+            1,
+            full_handler as *const u8,
+        );
+        let peer = TestPeer::new("full-owner-peer@127.0.0.1:1");
+        peer.receive(encode_http_reserve(1, handler, "full-key", 5).unwrap());
+        assert_eq!(
+            decode_http_reserve_reply(&peer.next_sent()).unwrap(),
+            (
+                1,
+                Err("owner_reservation_rejected:InflightLimit".to_string())
+            )
+        );
+    }
+
+    /// Past its limit of failed authentications, and of operator queries,
+    /// in a second, a node closes what it accepts before reading it.
+    #[test]
+    fn a_node_past_its_rate_limits_closes_what_it_accepts() {
+        if !in_own_process("a_node_past_its_rate_limits_closes_what_it_accepts") {
+            return;
+        }
+        let state = test_node();
+        let exhausted = |window: &'static OnceLock<Mutex<FixedWindowCounter>>, limit| {
+            *window
+                .get_or_init(|| Mutex::new(FixedWindowCounter::new(Instant::now())))
+                .lock()
+                .unwrap() = FixedWindowCounter {
+                started_at: Instant::now() + Duration::from_secs(3_600),
+                count: limit,
+            };
+        };
+        exhausted(&OPERATOR_QUERY_WINDOW, MAX_OPERATOR_QUERIES_PER_SECOND);
+        assert!(crate::dist::operator::query_operator_status_remote(
+            &state.name,
+            TEST_NODE_COOKIE,
+            Duration::from_secs(10)
+        )
+        .is_err());
+
+        exhausted(&AUTH_FAILURE_WINDOW, MAX_AUTH_FAILURES_PER_SECOND);
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let mut client = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (accepted, _) = listener.accept().unwrap();
+        handle_accepted_connection(accepted, state);
+        client
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .unwrap();
+        assert_eq!(client.read(&mut [0; 1]).unwrap(), 0);
+    }
+
+    /// With a controller consensus, the node that leads it coordinates a
+    /// lost node's recovery.
+    #[test]
+    fn the_consensus_leader_coordinates_recovery() {
+        if !in_own_process("the_consensus_leader_coordinates_recovery") {
+            return;
+        }
+        let state = test_node();
+        let directory = tempfile::tempdir().unwrap();
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        let node = runtime.block_on(async {
+            let node = crate::dist::consensus::start_mesh_durable_consensus_node(
+                1,
+                &state.name,
+                "coordinator-test",
+                &directory.path().join("consensus.redb"),
+            )
+            .await
+            .unwrap();
+            node.raft
+                .initialize(std::collections::BTreeMap::from([(
+                    1,
+                    openraft::BasicNode::new(&state.name),
+                )]))
+                .await
+                .unwrap();
+            node
+        });
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while !local_coordinates_node_loss_recovery("lost-node@127.0.0.1:1") {
+            assert!(Instant::now() < deadline, "the consensus never led");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        runtime.block_on(async { node.raft.shutdown().await.unwrap() });
+    }
+
+    /// A node started from its environment reloads the continuity its
+    /// store kept, and leaves out the consensus its deployment turns off;
+    /// an environment it cannot start from is an error for the program.
+    #[test]
+    fn a_node_started_from_its_environment_reloads_its_continuity() {
+        if !in_own_process("a_node_started_from_its_environment_reloads_its_continuity") {
+            return;
+        }
+        crate::actor::mesh_rt_init_actor(2);
+        let directory = tempfile::tempdir().unwrap();
+        std::env::set_var("MESH_CONTINUITY_DB", directory.path().join("continuity.db"));
+        std::env::set_var("MESH_CLUSTER_PORT", "0");
+        let refused = mesh_node_start_from_env();
+        assert_eq!(unsafe { (*refused).tag }, 1);
+
+        let mut kept = continuity_record("kept-before-start", "someone@127.0.0.1:1", "");
+        kept.replica_nodes.clear();
+        kept.replication_count = 1;
+        kept.replica_status = crate::dist::continuity::ReplicaStatus::Unassigned;
+        crate::dist::continuity_store::persist_runtime_record(1, &kept);
+        // A deployment without a controller consensus (nor protocol two,
+        // which would ask for a signed identity).
+        let config = crate::dist::autonomous::RuntimeAutonomousConfig {
+            schema_version: crate::dist::autonomous::AUTONOMOUS_CONFIG_SCHEMA_VERSION,
+            enabled: true,
+            features: crate::dist::autonomous::RuntimeFeatureGates {
+                protocol_two: false,
+                controller_quorum: false,
+                horizontal_autoscaling: false,
+                ..Default::default()
+            },
+            policy_revision: 1,
+            policy: Default::default(),
+            managed_roles: vec!["worker".to_string()],
+            gateway_nodes: 0,
+            template_revision: "v1".to_string(),
+            reconcile_interval_millis: 1_000,
+            startup_timeout_millis: 1_000,
+            drain_timeout_millis: 1_000,
+            termination_timeout_millis: 1_000,
+            force_termination_after_drain_timeout: false,
+            scheduler: Default::default(),
+            routing: Default::default(),
+            continuity: Default::default(),
+            driver: crate::dist::autonomous::RuntimeCapacityDriverConfig::Disabled,
+        };
+        crate::dist::autonomous::register_autonomous_config_json(
+            &serde_json::to_vec(&config).unwrap(),
+        )
+        .unwrap();
+        let port = TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        std::env::set_var("MESH_CLUSTER_PORT", port.to_string());
+        std::env::set_var("MESH_CLUSTER_COOKIE", TEST_NODE_COOKIE);
+        std::env::set_var("MESH_DISCOVERY_SEED", "localhost");
+        std::env::set_var("MESH_NODE_NAME", format!("from-env@127.0.0.1:{port}"));
+        let started = mesh_node_start_from_env();
+        assert_eq!(unsafe { (*started).tag }, 0);
+        assert!(crate::dist::continuity::continuity_registry()
+            .record("kept-before-start")
+            .is_some());
+        assert!(crate::dist::consensus::consensus_runtime_snapshot().is_none());
     }
 
     /// Declared work needs a handler here, and is rejected before it runs
