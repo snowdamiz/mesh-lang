@@ -24,14 +24,14 @@ use self::provider::{
     MIN_ARGON2_OUTPUT_BYTES, MIN_ARGON2_SALT_BYTES,
 };
 use crate::actor::Process;
-use crate::bytes::{decode_hex, mesh_bytes_new, MeshBytes};
+use crate::bytes::{decode_base64, decode_hex, hex_string, mesh_bytes_new, MeshBytes};
 use crate::gc::mesh_gc_alloc_actor;
 use crate::io::{alloc_result, err_result, MeshResult};
 use crate::secret::{
     consume_and_retype_owned_resource, crypto_error, insert_owned_resource, with_owned_resource,
     CryptoErrorTag, MeshSecretHandle, ResourceError, ResourceKind, RetypeError,
 };
-use crate::string::{mesh_str, mesh_string_new, MeshString};
+use crate::string::{mesh_str, MeshString};
 
 type HmacSha512 = Hmac<Sha512>;
 
@@ -227,16 +227,6 @@ unsafe fn valid_bytes<'a>(bytes: *const MeshBytes) -> Option<&'a [u8]> {
     Some((*bytes).as_slice())
 }
 
-fn digest_hex(digest: &[u8]) -> *mut MeshString {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut encoded = Vec::with_capacity(digest.len() * 2);
-    for byte in digest {
-        encoded.push(HEX[(byte >> 4) as usize]);
-        encoded.push(HEX[(byte & 0x0f) as usize]);
-    }
-    mesh_string_new(encoded.as_ptr(), encoded.len() as u64)
-}
-
 // ── Public ABI ─────────────────────────────────────────────────────────
 
 /// Return the SHA-256 digest of arbitrary valid binary input.
@@ -265,7 +255,7 @@ pub extern "C" fn mesh_crypto_sha256_hex(input: *const MeshBytes) -> *mut MeshSt
     let Some(input) = (unsafe { valid_bytes(input) }) else {
         return ptr::null_mut();
     };
-    digest_hex(&SystemProvider.sha256(input))
+    hex_string(&SystemProvider.sha256(input))
 }
 
 /// Return the SHA-512 digest as lowercase hexadecimal text.
@@ -274,7 +264,7 @@ pub extern "C" fn mesh_crypto_sha512_hex(input: *const MeshBytes) -> *mut MeshSt
     let Some(input) = (unsafe { valid_bytes(input) }) else {
         return ptr::null_mut();
     };
-    digest_hex(&SystemProvider.sha512(input))
+    hex_string(&SystemProvider.sha512(input))
 }
 
 fn random_bytes_with_provider(
@@ -1784,17 +1774,11 @@ pub extern "C" fn mesh_crypto_hmac_sha512(
     key: *const MeshString,
     msg: *const MeshString,
 ) -> *mut MeshString {
-    if key.is_null() || msg.is_null() {
-        return ptr::null_mut();
-    }
     unsafe {
-        let k = (*key).as_str().as_bytes();
-        let m = (*msg).as_str().as_bytes();
-        let Ok(mut mac) = HmacSha512::new_from_slice(k) else {
-            return ptr::null_mut();
-        };
-        mac.update(m);
-        digest_hex(&mac.finalize().into_bytes())
+        let mut mac = <HmacSha512 as Mac>::new_from_slice((*key).as_bytes())
+            .expect("HMAC takes a key of any length");
+        mac.update((*msg).as_bytes());
+        hex_string(&mac.finalize().into_bytes())
     }
 }
 
@@ -1831,11 +1815,7 @@ pub extern "C" fn mesh_crypto_uuid4() -> *mut MeshString {
 /// alphabet with `=` padding characters. Example: encode("hello") = "aGVsbG8="
 #[no_mangle]
 pub extern "C" fn mesh_base64_encode(s: *const MeshString) -> *mut MeshString {
-    unsafe {
-        let input = (*s).as_str().as_bytes();
-        let encoded = general_purpose::STANDARD.encode(input);
-        mesh_string_new(encoded.as_ptr(), encoded.len() as u64)
-    }
+    mesh_str(&general_purpose::STANDARD.encode(unsafe { (*s).as_bytes() }))
 }
 
 /// Base64.decode(s) -> Result<String, String>
@@ -1845,25 +1825,7 @@ pub extern "C" fn mesh_base64_encode(s: *const MeshString) -> *mut MeshString {
 /// Returns Err("invalid base64") if decoding fails, Err("invalid utf-8") if not UTF-8.
 #[no_mangle]
 pub extern "C" fn mesh_base64_decode(s: *const MeshString) -> *mut MeshResult {
-    unsafe {
-        let text = (*s).as_str();
-        let bytes = general_purpose::STANDARD
-            .decode(text)
-            .or_else(|_| general_purpose::STANDARD_NO_PAD.decode(text));
-        match bytes {
-            Err(_) => {
-                let e = "invalid base64";
-                err_result(e)
-            }
-            Ok(decoded) => match std::str::from_utf8(&decoded) {
-                Err(_) => {
-                    let e = "invalid utf-8";
-                    err_result(e)
-                }
-                Ok(valid) => alloc_result(0, mesh_str(valid) as *mut u8),
-            },
-        }
-    }
+    decoded_text(decode_base64(unsafe { (*s).as_str() }), "invalid base64")
 }
 
 /// Base64.encode_url(s) -> String
@@ -1872,11 +1834,7 @@ pub extern "C" fn mesh_base64_decode(s: *const MeshString) -> *mut MeshResult {
 /// alphabet without padding characters. Example: encode_url("hello") = "aGVsbG8"
 #[no_mangle]
 pub extern "C" fn mesh_base64_encode_url(s: *const MeshString) -> *mut MeshString {
-    unsafe {
-        let input = (*s).as_str().as_bytes();
-        let encoded = general_purpose::URL_SAFE_NO_PAD.encode(input);
-        mesh_string_new(encoded.as_ptr(), encoded.len() as u64)
-    }
+    mesh_str(&general_purpose::URL_SAFE_NO_PAD.encode(unsafe { (*s).as_bytes() }))
 }
 
 /// Base64.decode_url(s) -> Result<String, String>
@@ -1885,23 +1843,8 @@ pub extern "C" fn mesh_base64_encode_url(s: *const MeshString) -> *mut MeshStrin
 /// Returns Err("invalid base64") if decoding fails, Err("invalid utf-8") if not UTF-8.
 #[no_mangle]
 pub extern "C" fn mesh_base64_decode_url(s: *const MeshString) -> *mut MeshResult {
-    unsafe {
-        let text = (*s).as_str();
-        let bytes = general_purpose::URL_SAFE_NO_PAD.decode(text);
-        match bytes {
-            Err(_) => {
-                let e = "invalid base64";
-                err_result(e)
-            }
-            Ok(decoded) => match std::str::from_utf8(&decoded) {
-                Err(_) => {
-                    let e = "invalid utf-8";
-                    err_result(e)
-                }
-                Ok(valid) => alloc_result(0, mesh_str(valid) as *mut u8),
-            },
-        }
-    }
+    let decoded = general_purpose::URL_SAFE_NO_PAD.decode(unsafe { (*s).as_str() });
+    decoded_text(decoded.ok(), "invalid base64")
 }
 
 // ── Standard library: Hex functions (Phase 135) ────────────────────────────
@@ -1912,11 +1855,7 @@ pub extern "C" fn mesh_base64_decode_url(s: *const MeshString) -> *mut MeshResul
 /// Example: encode("hi") = "6869"
 #[no_mangle]
 pub extern "C" fn mesh_hex_encode(s: *const MeshString) -> *mut MeshString {
-    unsafe {
-        let input = (*s).as_str().as_bytes();
-        let hex: String = input.iter().map(|b| format!("{:02x}", b)).collect();
-        mesh_str(&hex)
-    }
+    hex_string(unsafe { (*s).as_bytes() })
 }
 
 /// Hex.decode(s) -> Result<String, String>
@@ -1927,17 +1866,18 @@ pub extern "C" fn mesh_hex_encode(s: *const MeshString) -> *mut MeshString {
 /// Returns Err("invalid hex") if parsing fails, Err("invalid utf-8") if not UTF-8.
 #[no_mangle]
 pub extern "C" fn mesh_hex_decode(s: *const MeshString) -> *mut MeshResult {
-    unsafe {
-        let Some(decoded) = decode_hex((*s).as_str()) else {
-            return err_result("invalid hex");
-        };
-        match std::str::from_utf8(&decoded) {
-            Err(_) => {
-                let e = "invalid utf-8";
-                err_result(e)
-            }
-            Ok(valid) => alloc_result(0, mesh_str(valid) as *mut u8),
-        }
+    decoded_text(decode_hex(unsafe { (*s).as_str() }), "invalid hex")
+}
+
+/// The text a legacy decoder's bytes spell: `Err(invalid)` when it could not
+/// decode them, `Err("invalid utf-8")` when they are not text.
+fn decoded_text(decoded: Option<Vec<u8>>, invalid: &str) -> *mut MeshResult {
+    let Some(decoded) = decoded else {
+        return err_result(invalid);
+    };
+    match std::str::from_utf8(&decoded) {
+        Ok(text) => alloc_result(0, mesh_str(text).cast()),
+        Err(_) => err_result("invalid utf-8"),
     }
 }
 
