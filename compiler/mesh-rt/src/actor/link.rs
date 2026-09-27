@@ -111,6 +111,11 @@ pub(crate) fn encode_reason(data: &mut Vec<u8>, reason: &ExitReason) {
     }
 }
 
+/// How deep `Linked` reasons nest at most: far deeper than a chain of linked
+/// actors that ended one after another, and shallow enough that one from
+/// another node cannot exhaust a stack.
+pub(crate) const MAX_LINK_DEPTH: usize = 1024;
+
 /// Decode an exit signal message back into `(ProcessId, ExitReason)`.
 ///
 /// This is the inverse of `encode_exit_signal`. The supervisor uses this to
@@ -118,65 +123,53 @@ pub(crate) fn encode_reason(data: &mut Vec<u8>, reason: &ExitReason) {
 ///
 /// Layout: `[u64 exiting_pid, u8 reason_tag, ...reason_data]`
 pub fn decode_exit_signal(data: &[u8]) -> Option<(ProcessId, ExitReason)> {
-    if data.len() < 9 {
-        return None;
-    }
-    let pid = ProcessId(u64::from_le_bytes(data[0..8].try_into().ok()?));
+    let pid = ProcessId(u64::from_le_bytes(data.get(..8)?.try_into().unwrap()));
     let (reason, _consumed) = decode_reason(&data[8..])?;
     Some((pid, reason))
 }
 
 /// Decode an ExitReason from raw bytes.
 ///
-/// Returns `(ExitReason, bytes_consumed)` or `None` if the data is malformed.
+/// Returns `(ExitReason, bytes_consumed)` or `None` if the data is malformed:
+/// cut short, a text that is not UTF-8, or `Linked` nested past
+/// `MAX_LINK_DEPTH`. The bytes may come from another node, so the nesting
+/// is read without recursing.
 pub(crate) fn decode_reason(data: &[u8]) -> Option<(ExitReason, usize)> {
-    if data.is_empty() {
-        return None;
-    }
-    let tag = data[0];
-    match tag {
-        0 => Some((ExitReason::Normal, 1)),
-        1 => {
-            // Error: tag(1) + u64 len + string bytes
-            if data.len() < 9 {
-                return None;
+    let word = |at: usize| -> Option<u64> {
+        let bytes = data.get(at..at.checked_add(8)?)?;
+        Some(u64::from_le_bytes(bytes.try_into().unwrap()))
+    };
+    // A text of `len` bytes after its length word at `at`, and where it ends.
+    let text = |at: usize| -> Option<(String, usize)> {
+        let start = at + 8;
+        let end = start.checked_add(usize::try_from(word(at)?).ok()?)?;
+        let text = std::str::from_utf8(data.get(start..end)?).ok()?;
+        Some((text.to_string(), end))
+    };
+    let mut links = Vec::new();
+    let mut at = 0;
+    let (leaf, end) = loop {
+        let tag = *data.get(at)?;
+        at += 1;
+        match tag {
+            0 => break (ExitReason::Normal, at),
+            1 => break text(at).map(|(text, end)| (ExitReason::Error(text), end))?,
+            2 => break (ExitReason::Killed, at),
+            3 if links.len() < MAX_LINK_DEPTH => {
+                links.push(ProcessId(word(at)?));
+                at += 8;
             }
-            let str_len = u64::from_le_bytes(data[1..9].try_into().ok()?) as usize;
-            if data.len() < 9 + str_len {
-                return None;
-            }
-            let msg = std::str::from_utf8(&data[9..9 + str_len]).ok()?.to_string();
-            Some((ExitReason::Error(msg), 1 + 8 + str_len))
+            4 => break (ExitReason::Shutdown, at),
+            5 => break text(at).map(|(text, end)| (ExitReason::Custom(text), end))?,
+            6 => break (ExitReason::Noconnection, at),
+            _ => return None,
         }
-        2 => Some((ExitReason::Killed, 1)),
-        3 => {
-            // Linked: tag(1) + u64 pid + nested reason
-            if data.len() < 9 {
-                return None;
-            }
-            let linked_pid = ProcessId(u64::from_le_bytes(data[1..9].try_into().ok()?));
-            let (inner, inner_consumed) = decode_reason(&data[9..])?;
-            Some((
-                ExitReason::Linked(linked_pid, Box::new(inner)),
-                1 + 8 + inner_consumed,
-            ))
-        }
-        4 => Some((ExitReason::Shutdown, 1)),
-        5 => {
-            // Custom: tag(1) + u64 len + string bytes
-            if data.len() < 9 {
-                return None;
-            }
-            let str_len = u64::from_le_bytes(data[1..9].try_into().ok()?) as usize;
-            if data.len() < 9 + str_len {
-                return None;
-            }
-            let msg = std::str::from_utf8(&data[9..9 + str_len]).ok()?.to_string();
-            Some((ExitReason::Custom(msg), 1 + 8 + str_len))
-        }
-        6 => Some((ExitReason::Noconnection, 1)),
-        _ => None,
-    }
+    };
+    let reason = links
+        .into_iter()
+        .rev()
+        .fold(leaf, |inner, pid| ExitReason::Linked(pid, Box::new(inner)));
+    Some((reason, end))
 }
 
 /// Propagate exit signals to all linked processes.
@@ -249,6 +242,58 @@ mod tests {
     use super::*;
     use crate::actor::process::{Priority, Process, ProcessId};
     use std::sync::Arc;
+
+    /// An exit reason from another node is read defensively: bytes cut short,
+    /// a length past the end (even one that overflows) and nesting deeper
+    /// than any chain of links decode to nothing, never a panic.
+    #[test]
+    fn a_malformed_exit_reason_decodes_to_nothing() {
+        let mut long_text = vec![1];
+        long_text.extend_from_slice(&u64::MAX.to_le_bytes());
+        let mut deep = Vec::new();
+        for _ in 0..=MAX_LINK_DEPTH {
+            deep.push(3);
+            deep.extend_from_slice(&7u64.to_le_bytes());
+        }
+        deep.push(0);
+        for data in [
+            &[][..],
+            &[1, 5, 0],
+            &[1, 5, 0, 0, 0, 0, 0, 0, 0, b'a'],
+            &[3, 1, 2],
+            &[5, 1, 0],
+            &[5, 3, 0, 0, 0, 0, 0, 0, 0, b'a'],
+            &[1, 1, 0, 0, 0, 0, 0, 0, 0, 0xff],
+            &[9],
+            &long_text,
+            &deep,
+        ] {
+            assert_eq!(decode_reason(data), None, "{data:?}");
+        }
+        assert_eq!(decode_exit_signal(&[0; 8]), None);
+    }
+
+    /// A linked process that has already left the table is passed over.
+    #[test]
+    fn propagate_exit_passes_over_a_process_that_is_gone() {
+        let (gone, _) = make_process();
+        let linked = [gone].into_iter().collect();
+        let woken = propagate_exit(ProcessId(1), &ExitReason::Killed, linked, |_| None);
+        assert!(woken.is_empty());
+    }
+
+    /// A chain of links as deep as any real one decodes, and says how many
+    /// bytes it took.
+    #[test]
+    fn a_deep_chain_of_linked_reasons_round_trips() {
+        let reason = (0..MAX_LINK_DEPTH).fold(ExitReason::Custom("root".into()), |inner, pid| {
+            ExitReason::Linked(ProcessId(pid as u64), Box::new(inner))
+        });
+        let mut data = Vec::new();
+        encode_reason(&mut data, &reason);
+        data.push(0xAA);
+        assert_eq!(decode_reason(&data), Some((reason, data.len() - 1)));
+    }
 
     fn make_process() -> (ProcessId, Arc<Mutex<Process>>) {
         let pid = ProcessId::next();
