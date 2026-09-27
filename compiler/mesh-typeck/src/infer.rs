@@ -7453,13 +7453,11 @@ fn impl_trait_type_args(
     let Some(written) = written_trait_args(impl_) else {
         return Vec::new();
     };
-    // Read as the arguments of a type applied to them.
-    let mut tokens = vec![(SyntaxKind::IDENT, "_".to_string())];
+    let mut tokens = Vec::new();
     collect_annotation_tokens(&written, &mut tokens);
-    let Ty::App(_, args) = parse_type_tokens(&tokens, &mut 0) else {
-        return Vec::new();
-    };
-    args.into_iter()
+    // After the `<` the parser opens the list with.
+    parse_type_args(&tokens, &mut 1)
+        .into_iter()
         .map(|arg| resolve_alias(ctx, arg, type_registry))
         .collect()
 }
@@ -15433,22 +15431,30 @@ fn parse_type_tokens(tokens: &[(SyntaxKind, String)], pos: &mut usize) -> Ty {
     // Generic args: Name<A, B>
     let base = if *pos < tokens.len() && tokens[*pos].0 == SyntaxKind::LT {
         *pos += 1;
-        let mut args = Vec::new();
-        while *pos < tokens.len() && tokens[*pos].0 != SyntaxKind::GT {
-            args.push(parse_type_tokens(tokens, pos));
-            if *pos < tokens.len() && tokens[*pos].0 == SyntaxKind::COMMA {
-                *pos += 1;
-            }
-        }
-        if *pos < tokens.len() && tokens[*pos].0 == SyntaxKind::GT {
-            *pos += 1;
-        }
-        Ty::App(Box::new(Ty::Con(TyCon::new(&name))), args)
+        Ty::App(
+            Box::new(Ty::Con(TyCon::new(&name))),
+            parse_type_args(tokens, pos),
+        )
     } else {
         name_to_type(&name)
     };
 
     apply_type_sugar(tokens, pos, base)
+}
+
+/// The types of a written argument list whose `<` is read, through its `>`.
+fn parse_type_args(tokens: &[(SyntaxKind, String)], pos: &mut usize) -> Vec<Ty> {
+    let mut args = Vec::new();
+    while *pos < tokens.len() && tokens[*pos].0 != SyntaxKind::GT {
+        args.push(parse_type_tokens(tokens, pos));
+        if *pos < tokens.len() && tokens[*pos].0 == SyntaxKind::COMMA {
+            *pos += 1;
+        }
+    }
+    if *pos < tokens.len() && tokens[*pos].0 == SyntaxKind::GT {
+        *pos += 1;
+    }
+    args
 }
 
 /// Apply sugar postfix: `?` for Option, `!` for Result.
