@@ -4564,4 +4564,1227 @@ esac
         assert!(!rendered.contains("postgres://secret"), "{rendered}");
         assert!(rendered.contains("[redacted; 1]"), "{rendered}");
     }
+
+    #[test]
+    fn scaling_policies_refuse_each_invalid_bound() {
+        let base = ScalingPolicy::default();
+        let cases = [
+            (
+                ScalingPolicy {
+                    min_nodes: 0,
+                    ..base.clone()
+                },
+                "scaling_node_bounds_invalid",
+            ),
+            (
+                ScalingPolicy {
+                    target_inflight_per_node: 0,
+                    ..base.clone()
+                },
+                "scaling_target_inflight_zero",
+            ),
+            (
+                ScalingPolicy {
+                    scale_up_window_millis: 0,
+                    ..base.clone()
+                },
+                "scaling_stabilization_windows_invalid",
+            ),
+            (
+                ScalingPolicy {
+                    max_scale_down_step: 0,
+                    ..base.clone()
+                },
+                "scaling_step_bound_zero",
+            ),
+            (
+                ScalingPolicy {
+                    max_unavailable: 2,
+                    ..base
+                },
+                "scaling_max_unavailable_invalid",
+            ),
+        ];
+        for (policy, expected) in cases {
+            assert_eq!(policy.validate(), Err(expected.to_string()));
+        }
+
+        let local = LocalScalingPolicy {
+            min_workers: 1,
+            max_workers: 2,
+            target_runnable_per_worker: 1.0,
+            target_queue_wait: Duration::from_millis(25),
+            scale_up_window: Duration::from_secs(1),
+            scale_down_window: Duration::from_secs(5),
+            cooldown: Duration::ZERO,
+        };
+        let cases = [
+            (
+                LocalScalingPolicy {
+                    min_workers: 0,
+                    ..local.clone()
+                },
+                "local_scaling_worker_bounds_invalid",
+            ),
+            (
+                LocalScalingPolicy {
+                    target_runnable_per_worker: f64::NAN,
+                    ..local.clone()
+                },
+                "local_scaling_runnable_target_invalid",
+            ),
+            (
+                LocalScalingPolicy {
+                    target_queue_wait: Duration::ZERO,
+                    ..local
+                },
+                "local_scaling_windows_invalid",
+            ),
+        ];
+        for (policy, expected) in cases {
+            assert_eq!(
+                LocalSchedulerAutoscaler::new(policy).err(),
+                Some(expected.to_string())
+            );
+        }
+    }
+
+    #[test]
+    fn local_scheduler_autoscaler_explains_every_hold() {
+        let start = Instant::now();
+        let mut autoscaler = LocalSchedulerAutoscaler::new(LocalScalingPolicy {
+            min_workers: 1,
+            max_workers: 4,
+            target_runnable_per_worker: 1.0,
+            target_queue_wait: Duration::from_millis(20),
+            scale_up_window: Duration::from_secs(2),
+            scale_down_window: Duration::from_secs(5),
+            cooldown: Duration::from_secs(10),
+        })
+        .expect("valid local policy");
+        let reason = |autoscaler: &mut LocalSchedulerAutoscaler, runnable, wait, at| {
+            autoscaler
+                .evaluate(2, runnable, Duration::from_millis(wait), start + at)
+                .reason
+        };
+
+        // One runnable actor per two workers, a 15 ms wait: neither high nor low.
+        assert_eq!(
+            reason(&mut autoscaler, 1, 15, Duration::ZERO),
+            "within_target"
+        );
+        assert_eq!(
+            reason(&mut autoscaler, 0, 0, Duration::from_secs(1)),
+            "scale_down_stabilizing"
+        );
+        assert_eq!(
+            reason(&mut autoscaler, 0, 50, Duration::from_secs(2)),
+            "scale_up_stabilizing"
+        );
+        assert_eq!(
+            reason(&mut autoscaler, 0, 50, Duration::from_secs(4)),
+            "sustained_local_pressure"
+        );
+        assert_eq!(
+            reason(&mut autoscaler, 0, 50, Duration::from_secs(5)),
+            "cooldown"
+        );
+    }
+
+    #[test]
+    fn autoscaler_names_every_reason_a_scale_down_is_frozen() {
+        let policy = ScalingPolicy {
+            scale_up_window_millis: 1,
+            scale_down_window_millis: 10,
+            cooldown_millis: 0,
+            ..ScalingPolicy::default()
+        };
+        let mut autoscaler = Autoscaler::new(policy.clone()).expect("valid policy");
+        let start = Instant::now();
+        autoscaler.evaluate(5, high_sample(start));
+        autoscaler.evaluate(5, low_sample(start + Duration::from_millis(2)));
+        let mut unhealthy = low_sample(start + Duration::from_millis(4));
+        unhealthy.reports_complete = false;
+        unhealthy.driver_healthy = false;
+        unhealthy.controller_stable = false;
+        unhealthy.continuity_healthy = false;
+        unhealthy.drain_incomplete = true;
+
+        let decision = autoscaler.evaluate(5, unhealthy);
+
+        assert_eq!(decision.action, ScalingAction::Frozen);
+        assert_eq!(
+            decision.constraints,
+            [
+                "scale_down_requires_complete_healthy_window",
+                "scale_down_window_incomplete",
+                "scale_down_reports_incomplete",
+                "scale_down_driver_unhealthy",
+                "scale_down_controller_unstable",
+                "scale_down_continuity_unhealthy",
+                "scale_down_drain_incomplete",
+                "scale_down_recommendation_not_sustained",
+            ]
+        );
+
+        let mut paused = Autoscaler::new(policy.clone()).expect("valid policy");
+        paused.set_paused(true);
+        let decision = paused.evaluate(5, low_sample(start));
+        assert_eq!(decision.action, ScalingAction::Paused);
+        assert_eq!(decision.constraints, ["autoscaler_paused"]);
+
+        let mut cooling = Autoscaler::new(ScalingPolicy {
+            cooldown_millis: 60_000,
+            ..policy
+        })
+        .expect("valid policy");
+        cooling.evaluate(2, high_sample(start));
+        let up = cooling.evaluate(2, high_sample(start + Duration::from_millis(2)));
+        assert_eq!(up.action, ScalingAction::ScaleUp);
+        let held = cooling.evaluate(
+            up.bounded_desired,
+            high_sample(start + Duration::from_millis(3)),
+        );
+        assert_eq!(held.constraints, ["cooldown"]);
+    }
+
+    /// A driver whose creations end in a scripted state, over the fake.
+    struct ScriptedEnsure {
+        inner: FakeCapacityDriver,
+        state: DriverOperationState,
+    }
+
+    impl CapacityDriver for ScriptedEnsure {
+        fn validate_configuration(&self) -> Result<(), String> {
+            self.inner.validate_configuration()
+        }
+        fn observe_capacity(&self, cluster_id: &str) -> Result<CapacityObservation, String> {
+            self.inner.observe_capacity(cluster_id)
+        }
+        fn ensure_node(&self, operation: &DriverOperation) -> Result<DriverOperation, String> {
+            let mut result = operation.clone();
+            result.state = self.state.clone();
+            Ok(result)
+        }
+        fn begin_drain(
+            &self,
+            operation: &DriverOperation,
+            node_id: &str,
+        ) -> Result<DriverOperation, String> {
+            self.inner.begin_drain(operation, node_id)
+        }
+        fn terminate_node(
+            &self,
+            operation: &DriverOperation,
+            node_id: &str,
+        ) -> Result<DriverOperation, String> {
+            self.inner.terminate_node(operation, node_id)
+        }
+        fn get_operation(&self, operation_id: &str) -> Result<Option<DriverOperation>, String> {
+            self.inner.get_operation(operation_id)
+        }
+    }
+
+    #[test]
+    fn instrumented_drivers_count_every_operation_and_failed_ones() {
+        let counts = |operation: &str| {
+            crate::dist::telemetry::runtime_telemetry()
+                .snapshot()
+                .capacity_driver_operations
+                .into_iter()
+                .find(|candidate| candidate.operation == operation)
+                .map(|candidate| (candidate.count, candidate.errors))
+                .expect("operation telemetry")
+        };
+        let kinds = [
+            "validate",
+            "observe",
+            "ensure",
+            "begin_drain",
+            "terminate",
+            "get_operation",
+        ];
+        let before: Vec<_> = kinds.iter().map(|kind| counts(kind)).collect();
+        let driver = instrument_capacity_driver(Arc::new(ScriptedEnsure {
+            inner: FakeCapacityDriver::new(),
+            state: DriverOperationState::RetryableFailure("busy".to_string()),
+        }));
+
+        driver.validate_configuration().expect("validate");
+        driver.observe_capacity("cluster").expect("observe");
+        let ensured = driver
+            .ensure_node(&driver_operation("instrumented-failure", None))
+            .expect("ensure");
+        assert_eq!(
+            ensured.state,
+            DriverOperationState::RetryableFailure("busy".to_string())
+        );
+        assert_eq!(
+            driver.begin_drain(&driver_operation("instrumented-drain", None), "missing"),
+            Err("capacity_node_not_found".to_string())
+        );
+        driver
+            .terminate_node(&driver_operation("instrumented-terminate", None), "missing")
+            .expect("terminate");
+        driver
+            .get_operation("instrumented-terminate")
+            .expect("lookup");
+
+        // Other tests drive instrumented drivers at the same time: counts
+        // only grow.
+        for (kind, (count, errors)) in kinds.iter().zip(before) {
+            let (now_count, now_errors) = counts(kind);
+            assert!(now_count > count, "{kind}");
+            if matches!(*kind, "ensure" | "begin_drain") {
+                assert!(now_errors > errors, "{kind}");
+            }
+        }
+    }
+
+    #[test]
+    fn fake_driver_repeats_recorded_operations() {
+        let driver = FakeCapacityDriver::default();
+        let ensure = driver_operation("fake-ensure", None);
+        let first = driver.ensure_node(&ensure).expect("ensure");
+        assert_eq!(driver.ensure_node(&ensure), Ok(first.clone()));
+        let node_id = first.node_id.expect("node");
+        let drain = driver_operation("fake-drain", Some(&node_id));
+        let drained = driver.begin_drain(&drain, &node_id).expect("drain");
+        assert_eq!(driver.begin_drain(&drain, "elsewhere"), Ok(drained));
+        let terminate = driver_operation("fake-terminate", Some(&node_id));
+        let terminated = driver
+            .terminate_node(&terminate, &node_id)
+            .expect("terminate");
+        assert_eq!(
+            driver.terminate_node(&terminate, "elsewhere"),
+            Ok(terminated)
+        );
+        assert_eq!(
+            driver.observe_capacity("cluster").expect("observe").nodes[0].lifecycle,
+            CapacityNodeLifecycle::Removed
+        );
+        assert_eq!(
+            reconcile_scale_up(
+                &driver,
+                "cluster",
+                ControlTerm(1),
+                &DesiredCapacity {
+                    revision: DesiredRevision(1),
+                    worker_nodes: 1,
+                    gateway_nodes: 0,
+                    template_revision: "v1".to_string(),
+                },
+                1,
+            ),
+            Ok(Vec::new())
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn process_driver_reports_exited_workers_and_refuses_bad_commands() {
+        let directory = tempfile::tempdir().expect("process driver working directory");
+        let driver = |command: &[&str]| {
+            ProcessCapacityDriver::new(ProcessDriverConfig {
+                command: command.iter().map(|part| part.to_string()).collect(),
+                working_directory: directory.path().to_path_buf(),
+                environment: BTreeMap::new(),
+            })
+        };
+        assert_eq!(
+            driver(&[" "]).validate_configuration(),
+            Err("process_driver_command_missing".to_string())
+        );
+        assert!(driver(&["/nonexistent/worker"])
+            .ensure_node(&driver_operation("process-missing", None))
+            .unwrap_err()
+            .starts_with("process_driver_spawn_failed:"));
+
+        let exited = driver(&["sh", "-c", "exit 0"]);
+        exited
+            .ensure_node(&driver_operation("process-exits-cleanly", None))
+            .expect("spawn");
+        let failed = driver(&["sh", "-c", "exit 3"]);
+        failed
+            .ensure_node(&driver_operation("process-exits-failed", None))
+            .expect("spawn");
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let lifecycle = |driver: &ProcessCapacityDriver, expected| loop {
+            let observed = driver.observe_capacity("cluster-a").expect("observe");
+            if observed.nodes[0].lifecycle == expected {
+                return;
+            }
+            assert!(Instant::now() < deadline, "{observed:?}");
+            std::thread::sleep(Duration::from_millis(10));
+        };
+        lifecycle(&exited, CapacityNodeLifecycle::Removed);
+        lifecycle(&failed, CapacityNodeLifecycle::Failed);
+
+        let terminate = driver_operation("process-terminate-cached", None);
+        let terminated = exited
+            .terminate_node(&terminate, "process-0")
+            .expect("terminate");
+        assert_eq!(exited.terminate_node(&terminate, "other"), Ok(terminated));
+    }
+
+    #[test]
+    fn durable_control_log_reopens_what_it_wrote_and_refuses_corruption() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let path = directory.path().join("nested").join("control.log");
+        let log = DurableControlLog::open(&path).expect("log");
+        assert_eq!(log.path(), path);
+        let pause = |paused| ControlLogEntry {
+            index: 0,
+            term: ControlTerm(1),
+            actor: "operator".to_string(),
+            reason: "pause".to_string(),
+            timestamp_unix_millis: 1,
+            actor_sequence: 0,
+            mutation: ControlMutation::PauseAutoscaler { paused },
+        };
+        log.append(pause(true)).expect("append");
+        log.append(pause(false)).expect("append");
+        drop(log);
+
+        let reopened = DurableControlLog::open(&path).expect("reopen");
+        let indexes: Vec<_> = reopened.entries().iter().map(|entry| entry.index).collect();
+        assert_eq!(indexes, [1, 2]);
+        assert_eq!(reopened.append(pause(true)).expect("append").index, 3);
+        drop(reopened);
+
+        std::fs::write(&path, "not json\n").unwrap();
+        assert!(DurableControlLog::open(&path)
+            .unwrap_err()
+            .starts_with("control_log_decode_failed:"));
+
+        let log = Arc::new(DurableControlLog::open(&directory.path().join("voters.log")).unwrap());
+        for voters in [
+            BTreeSet::new(),
+            BTreeSet::from(["a".to_string(), "b".to_string()]),
+        ] {
+            assert_eq!(
+                ControllerQuorum::new(voters, log.clone()).err(),
+                Some("controller_voter_configuration_invalid".to_string())
+            );
+        }
+        let voters = BTreeSet::from(["a".to_string()]);
+        let quorum = ControllerQuorum::new(voters.clone(), log).expect("single voter");
+        assert_eq!(
+            quorum.commit_desired_capacity(
+                "a",
+                ControlTerm(1),
+                &voters,
+                "autoscaler",
+                "not elected",
+                DesiredCapacity {
+                    revision: DesiredRevision(1),
+                    worker_nodes: 1,
+                    gateway_nodes: 0,
+                    template_revision: "v1".to_string(),
+                },
+            ),
+            Err("control_leader_fence_rejected".to_string())
+        );
+    }
+
+    #[test]
+    fn capacity_reconcilers_refuse_a_zero_budget_or_drain_timeout() {
+        let driver: Arc<dyn CapacityDriver> = Arc::new(FakeCapacityDriver::new());
+        assert_eq!(
+            CapacityReconciler::new(driver.clone(), 0).err(),
+            Some("capacity_reconciler_disruption_budget_zero".to_string())
+        );
+        assert_eq!(
+            CapacityReconciler::new_runtime(driver.clone(), 1, Duration::ZERO, false).err(),
+            Some("capacity_reconciler_drain_timeout_zero".to_string())
+        );
+        let reconciler = CapacityReconciler::new(driver, 1).expect("reconciler");
+        let rendered = format!("{reconciler:?}");
+        assert!(rendered.starts_with("CapacityReconciler {"), "{rendered}");
+        assert!(rendered.contains("max_unavailable: 1"), "{rendered}");
+    }
+
+    /// A three-voter quorum with `a` elected over a durable log, a fake
+    /// driver, and a committer that refuses the one reason a test names.
+    struct Harness {
+        _directory: tempfile::TempDir,
+        log: Arc<DurableControlLog>,
+        quorum: ControllerQuorum,
+        voters: BTreeSet<String>,
+        term: ControlTerm,
+        driver: Arc<FakeCapacityDriver>,
+        refused: Option<&'static str>,
+    }
+
+    impl ControlPlaneCommitter for Harness {
+        fn commit(
+            &self,
+            leader: &str,
+            term: ControlTerm,
+            acknowledgements: &BTreeSet<String>,
+            actor: &str,
+            reason: &str,
+            mutation: ControlMutation,
+        ) -> Result<ControlLogEntry, String> {
+            if self.refused == Some(reason) {
+                return Err(format!("refused:{reason}"));
+            }
+            self.quorum
+                .commit(leader, term, acknowledgements, actor, reason, mutation)
+        }
+    }
+
+    impl Harness {
+        fn new(refused: Option<&'static str>) -> Self {
+            let directory = tempfile::tempdir().expect("tempdir");
+            let log = Arc::new(
+                DurableControlLog::open(&directory.path().join("control.log")).expect("log"),
+            );
+            let voters = BTreeSet::from(["a".to_string(), "b".to_string(), "c".to_string()]);
+            let quorum = ControllerQuorum::new(voters.clone(), log.clone()).expect("quorum");
+            let term = quorum.elect("a", &voters).expect("leader");
+            Self {
+                _directory: directory,
+                log,
+                quorum,
+                voters,
+                term,
+                driver: Arc::new(FakeCapacityDriver::new()),
+                refused,
+            }
+        }
+
+        fn commit(&self, reason: &str, mutation: ControlMutation) {
+            self.quorum
+                .commit("a", self.term, &self.voters, "autoscaler", reason, mutation)
+                .expect("commit");
+        }
+
+        fn desired(&self, revision: u64, worker_nodes: u16) -> CommittedDesiredCapacity {
+            self.quorum
+                .commit_desired_capacity(
+                    "a",
+                    self.term,
+                    &self.voters,
+                    "autoscaler",
+                    "target",
+                    DesiredCapacity {
+                        revision: DesiredRevision(revision),
+                        worker_nodes,
+                        gateway_nodes: 0,
+                        template_revision: "v1".to_string(),
+                    },
+                )
+                .expect("desired capacity")
+        }
+
+        /// `workers` provider nodes, sorted by id.
+        fn seed(&self, workers: u16) -> Vec<String> {
+            let desired = DesiredCapacity {
+                revision: DesiredRevision(1),
+                worker_nodes: workers,
+                gateway_nodes: 0,
+                template_revision: "v1".to_string(),
+            };
+            reconcile_scale_up(&*self.driver, "cluster", self.term, &desired, 0).expect("seed");
+            let mut nodes: Vec<_> = self.driver.nodes.lock().unwrap().keys().cloned().collect();
+            nodes.sort();
+            nodes
+        }
+
+        fn operation(
+            &self,
+            operation_id: &str,
+            node_id: &str,
+            state: DriverOperationState,
+        ) -> DriverOperation {
+            DriverOperation {
+                cluster_id: "cluster".to_string(),
+                operation_id: operation_id.to_string(),
+                control_term: self.term,
+                desired_revision: DesiredRevision(1),
+                template_revision: "v1".to_string(),
+                node_id: Some(node_id.to_string()),
+                state,
+            }
+        }
+
+        /// Makes the driver answer `operation_id` with `state`.
+        fn preset(&self, operation_id: &str, node_id: &str, state: DriverOperationState) {
+            self.driver.operations.lock().unwrap().insert(
+                operation_id.to_string(),
+                self.operation(operation_id, node_id, state),
+            );
+        }
+
+        /// A drain of `node_id` the log records as `phase`.
+        fn log_drain(&self, node_id: &str, phase: DrainPhase) {
+            self.commit(
+                "begin worker drain",
+                ControlMutation::DrainIntent {
+                    node_id: node_id.to_string(),
+                    cancelled: false,
+                },
+            );
+            let state = if phase == DrainPhase::Preparing {
+                DriverOperationState::Pending
+            } else {
+                DriverOperationState::Succeeded
+            };
+            self.commit(
+                "record begin drain result",
+                ControlMutation::DriverOperation(self.operation(
+                    &format!("drain-{node_id}"),
+                    node_id,
+                    state,
+                )),
+            );
+            if phase == DrainPhase::Terminating {
+                self.commit(
+                    "terminate drained worker",
+                    ControlMutation::DriverOperation(self.operation(
+                        &format!("terminate-{node_id}"),
+                        node_id,
+                        DriverOperationState::Pending,
+                    )),
+                );
+            }
+        }
+
+        fn restored(&self, runtime: bool) -> CapacityReconciler {
+            let mut reconciler = if runtime {
+                CapacityReconciler::new_runtime(
+                    self.driver.clone(),
+                    1,
+                    Duration::from_millis(1),
+                    true,
+                )
+            } else {
+                CapacityReconciler::new(self.driver.clone(), 1)
+            }
+            .expect("reconciler");
+            reconciler.restore_from_control_entries(&self.log.entries());
+            reconciler
+        }
+
+        fn reconcile(
+            &self,
+            reconciler: &mut CapacityReconciler,
+            committed: &CommittedDesiredCapacity,
+            safety: &[ReconcileNodeSafety],
+        ) -> Result<CapacityReconcileOutcome, String> {
+            reconciler.reconcile(
+                self,
+                "cluster",
+                "a",
+                &self.voters,
+                committed,
+                "autoscaler",
+                safety,
+            )
+        }
+    }
+
+    /// A worker every drain gate lets go.
+    fn drainable(node_id: &str) -> ReconcileNodeSafety {
+        ReconcileNodeSafety {
+            node_id: node_id.to_string(),
+            runtime_node_id: format!("runtime-{node_id}@host:4370"),
+            transferable_load: 0,
+            active_ownership_transfers: 0,
+            active_work: 0,
+            required_replica_responsibilities: 0,
+            only_active_copy: false,
+            membership_generation_acknowledged: true,
+            controller_voter: false,
+            unique_capability: false,
+        }
+    }
+
+    fn drainable_all(nodes: &[String]) -> Vec<ReconcileNodeSafety> {
+        nodes.iter().map(|node| drainable(node)).collect()
+    }
+
+    #[test]
+    fn restore_rebuilds_each_drain_phase_from_the_log() {
+        let h = Harness::new(None);
+        let nodes = [
+            "restore-preparing",
+            "restore-draining",
+            "restore-terminating",
+        ];
+        h.log_drain(nodes[0], DrainPhase::Preparing);
+        h.log_drain(nodes[1], DrainPhase::Draining);
+        h.log_drain(nodes[2], DrainPhase::Terminating);
+        h.commit(
+            "force terminate drain after deadline with replicated continuity fence",
+            ControlMutation::DriverOperation(h.operation(
+                "terminate-restore-terminating",
+                nodes[2],
+                DriverOperationState::Pending,
+            )),
+        );
+        // Operations without a node, for a node that is not draining, or
+        // of neither kind do not become drains.
+        let mut anonymous = h.operation("anonymous", "x", DriverOperationState::Succeeded);
+        anonymous.node_id = None;
+        h.commit(
+            "record begin drain result",
+            ControlMutation::DriverOperation(anonymous),
+        );
+        h.commit(
+            "record begin drain result",
+            ControlMutation::DriverOperation(h.operation(
+                "not-draining",
+                "restore-idle",
+                DriverOperationState::Succeeded,
+            )),
+        );
+        h.commit(
+            "ensure worker capacity",
+            ControlMutation::DriverOperation(h.operation(
+                "ensure-draining",
+                nodes[1],
+                DriverOperationState::Succeeded,
+            )),
+        );
+        // A cancelled intent and an intent with no operation yet.
+        h.commit(
+            "begin worker drain",
+            ControlMutation::DrainIntent {
+                node_id: "restore-cancelled".to_string(),
+                cancelled: false,
+            },
+        );
+        h.commit(
+            "cancel worker drain after desired capacity rebound",
+            ControlMutation::DrainIntent {
+                node_id: "restore-cancelled".to_string(),
+                cancelled: true,
+            },
+        );
+        h.commit(
+            "begin worker drain",
+            ControlMutation::DrainIntent {
+                node_id: "restore-intent-only".to_string(),
+                cancelled: false,
+            },
+        );
+        h.commit(
+            "operator override",
+            ControlMutation::ManualOverride { worker_nodes: 3 },
+        );
+        let mut entries = h.log.entries();
+        // An entry from before timestamps were recorded.
+        entries[0].timestamp_unix_millis = 0;
+
+        let mut reconciler = CapacityReconciler::new(h.driver.clone(), 1).expect("reconciler");
+        reconciler.restore_from_control_entries(&entries);
+
+        let drains = reconciler.drain_progress();
+        let phases: Vec<_> = drains
+            .iter()
+            .map(|progress| (progress.node_id.as_str(), progress.phase))
+            .collect();
+        assert_eq!(
+            phases,
+            [
+                (nodes[1], DrainPhase::Draining),
+                (nodes[0], DrainPhase::Preparing),
+                (nodes[2], DrainPhase::Terminating),
+            ]
+        );
+        assert!(drains[1].started_at_unix_millis > 1);
+        assert!(drains[2].forced_termination);
+        assert_eq!(
+            drains[2].terminate_operation_id.as_deref(),
+            Some("terminate-restore-terminating")
+        );
+        assert_eq!(reconciler.last_log_index, entries.last().unwrap().index);
+        // An intent without an operation fences its node; a new leader
+        // selects it again.
+        assert!(crate::dist::operator::drain_requested(
+            "restore-intent-only"
+        ));
+        for node in nodes.into_iter().chain(["restore-intent-only"]) {
+            crate::dist::operator::set_runtime_drain_intent(node, false);
+        }
+    }
+
+    #[test]
+    fn resumed_drains_begin_on_the_provider_once_their_member_is_known() {
+        let h = Harness::new(None);
+        let nodes = h.seed(2);
+        h.log_drain(&nodes[0], DrainPhase::Preparing);
+        let committed = h.desired(2, 1);
+        let mut reconciler = h.restored(false);
+        let unknown: Vec<_> = nodes
+            .iter()
+            .map(|node| ReconcileNodeSafety {
+                runtime_node_id: String::new(),
+                ..drainable(node)
+            })
+            .collect();
+        assert_eq!(
+            h.reconcile(&mut reconciler, &committed, &unknown),
+            Err(format!("capacity_drain_runtime_missing:{}", nodes[0]))
+        );
+
+        let resumed = h
+            .reconcile(&mut reconciler, &committed, &drainable_all(&nodes))
+            .expect("resume drain");
+        assert_eq!(resumed.drains[0].phase, DrainPhase::Draining);
+        assert!(resumed.constraints.is_empty(), "{:?}", resumed.constraints);
+        assert!(h
+            .log
+            .entries()
+            .iter()
+            .any(|entry| entry.reason == "record resumed begin drain result"));
+
+        // A provider that has not begun the drain keeps it preparing.
+        let h = Harness::new(None);
+        let nodes = h.seed(2);
+        h.log_drain(&nodes[0], DrainPhase::Preparing);
+        h.preset(
+            &format!("drain-{}", nodes[0]),
+            &nodes[0],
+            DriverOperationState::RetryableFailure("busy".to_string()),
+        );
+        let committed = h.desired(2, 1);
+        let mut reconciler = h.restored(false);
+        let waiting = h
+            .reconcile(&mut reconciler, &committed, &drainable_all(&nodes))
+            .expect("drain not ready");
+        assert_eq!(
+            waiting.constraints,
+            [format!(
+                "capacity_drain_not_ready:drain-{}:RetryableFailure(\"busy\")",
+                nodes[0]
+            )]
+        );
+        assert_eq!(waiting.drains[0].phase, DrainPhase::Preparing);
+
+        // A runtime reconciler waits for the member's continuity to move.
+        let h = Harness::new(None);
+        let nodes = h.seed(2);
+        h.log_drain(&nodes[0], DrainPhase::Preparing);
+        let committed = h.desired(2, 1);
+        let mut reconciler = h.restored(true);
+        let blocked = h
+            .reconcile(&mut reconciler, &committed, &drainable_all(&nodes))
+            .expect("continuity not ready");
+        assert!(
+            blocked.constraints[0].starts_with(&format!(
+                "capacity_drain_continuity_not_ready:{}:runtime_node_not_found:",
+                nodes[0]
+            )),
+            "{:?}",
+            blocked.constraints
+        );
+        assert_eq!(blocked.drains[0].phase, DrainPhase::Preparing);
+        crate::dist::operator::set_runtime_drain_intent(
+            &drainable(&nodes[0]).runtime_node_id,
+            false,
+        );
+    }
+
+    #[test]
+    fn resumed_terminations_finish_on_the_provider() {
+        let h = Harness::new(None);
+        let nodes = h.seed(2);
+        h.log_drain(&nodes[0], DrainPhase::Terminating);
+        let committed = h.desired(2, 1);
+        let mut reconciler = h.restored(false);
+        let safety = drainable_all(&nodes);
+
+        let terminating = h
+            .reconcile(&mut reconciler, &committed, &safety)
+            .expect("resume termination");
+        assert!(terminating.constraints.is_empty());
+        assert_eq!(
+            h.driver.nodes.lock().unwrap()[&nodes[0]].lifecycle,
+            CapacityNodeLifecycle::Removed
+        );
+        let finished = h
+            .reconcile(&mut reconciler, &committed, &safety)
+            .expect("finish drain");
+        assert!(finished.drains.is_empty());
+
+        let h = Harness::new(None);
+        let nodes = h.seed(2);
+        h.log_drain(&nodes[0], DrainPhase::Terminating);
+        h.preset(
+            &format!("terminate-{}", nodes[0]),
+            &nodes[0],
+            DriverOperationState::Unknown,
+        );
+        let committed = h.desired(2, 1);
+        let mut reconciler = h.restored(false);
+        let incomplete = h
+            .reconcile(&mut reconciler, &committed, &drainable_all(&nodes))
+            .expect("termination incomplete");
+        assert_eq!(
+            incomplete.constraints,
+            [format!(
+                "capacity_termination_not_complete:terminate-{}:Unknown",
+                nodes[0]
+            )]
+        );
+    }
+
+    #[test]
+    fn ensure_replaces_retries_and_reports_failed_creations() {
+        let h = Harness::new(None);
+        let committed = h.desired(1, 4);
+        let ensure =
+            |ordinal| capacity_operation_id("cluster", DesiredRevision(1), ordinal, "ensure");
+        let replace = |ordinal, node: &str| {
+            capacity_operation_id(
+                "cluster",
+                DesiredRevision(1),
+                ordinal,
+                &format!("replace:{node}"),
+            )
+        };
+        // Ordinal 0 created a node since removed, ordinal 1 failed for
+        // good, ordinal 2 may be retried, ordinal 3 was never tried.
+        h.preset(&ensure(0), "gone-node", DriverOperationState::Succeeded);
+        h.preset(
+            &ensure(1),
+            "failed-node",
+            DriverOperationState::PermanentFailure("quota".to_string()),
+        );
+        h.preset(
+            &ensure(2),
+            "busy-node",
+            DriverOperationState::RetryableFailure("busy".to_string()),
+        );
+        let mut reconciler = CapacityReconciler::new(h.driver.clone(), 1).expect("reconciler");
+
+        let outcome = h
+            .reconcile(&mut reconciler, &committed, &[])
+            .expect("reconcile");
+
+        let ensured: Vec<_> = outcome
+            .ensured
+            .iter()
+            .map(|operation| operation.operation_id.clone())
+            .collect();
+        assert_eq!(
+            ensured,
+            [replace(0, "gone-node"), ensure(2), ensure(3), ensure(4)]
+        );
+        assert_eq!(
+            outcome.constraints,
+            [
+                format!("capacity_operation_permanent_failure:{}:quota", ensure(1)),
+                format!("capacity_operation_retryable:{}:busy", ensure(2)),
+            ]
+        );
+
+        // A driver that refuses the creation outright.
+        let refusing = Arc::new(ScriptedEnsure {
+            inner: FakeCapacityDriver::new(),
+            state: DriverOperationState::PermanentFailure("image".to_string()),
+        });
+        let mut reconciler = CapacityReconciler::new(refusing, 1).expect("reconciler");
+        let committed = h.desired(2, 1);
+        let refused = h
+            .reconcile(&mut reconciler, &committed, &[])
+            .expect("reconcile");
+        let operation = capacity_operation_id("cluster", DesiredRevision(2), 0, "ensure");
+        assert_eq!(
+            refused.constraints,
+            [format!(
+                "capacity_operation_permanent_failure:{operation}:image"
+            )]
+        );
+
+        // A replacement chain longer than any real one is refused.
+        let h = Harness::new(None);
+        let committed = h.desired(1, 1);
+        let mut operation = ensure(0);
+        for depth in 0..=64 {
+            let node = format!("gone-{depth}");
+            h.preset(&operation, &node, DriverOperationState::Succeeded);
+            operation = replace(0, &node);
+        }
+        let mut reconciler = CapacityReconciler::new(h.driver.clone(), 1).expect("reconciler");
+        assert_eq!(
+            h.reconcile(&mut reconciler, &committed, &[]),
+            Err("capacity_replacement_lineage_exhausted".to_string())
+        );
+    }
+
+    #[test]
+    fn a_rebounding_target_cancels_drains_that_have_not_terminated() {
+        for workers in [2, 3] {
+            let h = Harness::new(None);
+            let nodes = h.seed(2);
+            h.log_drain(&nodes[0], DrainPhase::Draining);
+            let committed = h.desired(2, workers);
+            let mut reconciler = h.restored(false);
+
+            let outcome = h
+                .reconcile(&mut reconciler, &committed, &[])
+                .expect("rebound");
+
+            assert!(outcome.drains.is_empty());
+            assert_eq!(outcome.ensured.len(), usize::from(workers - 2));
+            assert!(h.log.entries().iter().any(|entry| {
+                entry.reason == "cancel worker drain after desired capacity rebound"
+                    && entry.mutation
+                        == ControlMutation::DrainIntent {
+                            node_id: nodes[0].clone(),
+                            cancelled: true,
+                        }
+            }));
+        }
+    }
+
+    #[test]
+    fn draining_workers_wait_for_their_gates() {
+        let reconcile_draining =
+            |runtime: bool, safety: &dyn Fn(&[String]) -> Vec<ReconcileNodeSafety>| {
+                let h = Harness::new(None);
+                let nodes = h.seed(2);
+                h.log_drain(&nodes[0], DrainPhase::Draining);
+                let committed = h.desired(2, 1);
+                let mut reconciler = h.restored(runtime);
+                std::thread::sleep(Duration::from_millis(3));
+                let outcome = h
+                    .reconcile(&mut reconciler, &committed, &safety(&nodes))
+                    .expect("reconcile");
+                (outcome.constraints, nodes[0].clone())
+            };
+
+        let (constraints, node) = reconcile_draining(false, &|nodes| drainable_all(&nodes[1..]));
+        assert_eq!(constraints, [format!("drain_safety_missing:{node}")]);
+        let busy = |nodes: &[String]| {
+            let mut safety = drainable_all(nodes);
+            safety[0].active_work = 1;
+            safety
+        };
+        let (constraints, node) = reconcile_draining(false, &busy);
+        assert_eq!(constraints, [format!("drain_gates_incomplete:{node}")]);
+        let only_copy = |nodes: &[String]| {
+            let mut safety = busy(nodes);
+            safety[0].only_active_copy = true;
+            safety
+        };
+        let (constraints, node) = reconcile_draining(true, &only_copy);
+        assert_eq!(
+            constraints,
+            [format!(
+                "drain_timeout_force_blocked_by_continuity_or_membership:{node}"
+            )]
+        );
+
+        // A drained worker whose termination the provider has not finished.
+        let h = Harness::new(None);
+        let nodes = h.seed(2);
+        h.log_drain(&nodes[0], DrainPhase::Draining);
+        let committed = h.desired(2, 1);
+        let terminate = capacity_operation_id(
+            "cluster",
+            DesiredRevision(2),
+            stable_ordinal(&nodes[0]),
+            "terminate",
+        );
+        h.preset(&terminate, &nodes[0], DriverOperationState::Pending);
+        let mut reconciler = h.restored(false);
+        let outcome = h
+            .reconcile(&mut reconciler, &committed, &drainable_all(&nodes))
+            .expect("reconcile");
+        assert_eq!(
+            outcome.constraints,
+            [format!(
+                "capacity_termination_not_complete:{terminate}:Pending"
+            )]
+        );
+        assert_eq!(outcome.drains[0].phase, DrainPhase::Terminating);
+    }
+
+    #[test]
+    fn new_drains_wait_for_the_provider_and_for_continuity() {
+        // The provider has not begun the drain.
+        let h = Harness::new(None);
+        let nodes = h.seed(2);
+        let committed = h.desired(2, 1);
+        let drain = capacity_operation_id(
+            "cluster",
+            DesiredRevision(2),
+            stable_ordinal(&nodes[0]),
+            "drain",
+        );
+        h.preset(&drain, &nodes[0], DriverOperationState::Unknown);
+        let mut reconciler = CapacityReconciler::new(h.driver.clone(), 1).expect("reconciler");
+        let outcome = h
+            .reconcile(&mut reconciler, &committed, &drainable_all(&nodes))
+            .expect("reconcile");
+        assert_eq!(
+            outcome.constraints,
+            [format!("capacity_drain_not_ready:{drain}:Unknown")]
+        );
+        assert_eq!(outcome.drains[0].phase, DrainPhase::Preparing);
+
+        // The member's continuity has not moved off it yet.
+        let h = Harness::new(None);
+        let nodes = h.seed(2);
+        let committed = h.desired(2, 1);
+        let mut reconciler =
+            CapacityReconciler::new_runtime(h.driver.clone(), 1, Duration::from_secs(60), false)
+                .expect("reconciler");
+        let outcome = h
+            .reconcile(&mut reconciler, &committed, &drainable_all(&nodes))
+            .expect("reconcile");
+        assert!(outcome.constraints[0].starts_with(&format!(
+            "capacity_drain_continuity_not_ready:{}:runtime_node_not_found:",
+            nodes[0]
+        )));
+        assert_eq!(outcome.drains[0].phase, DrainPhase::Preparing);
+
+        // A candidate no runtime member answers for cannot be fenced.
+        let h = Harness::new(None);
+        let nodes = h.seed(2);
+        let committed = h.desired(2, 1);
+        let unknown: Vec<_> = nodes
+            .iter()
+            .map(|node| ReconcileNodeSafety {
+                runtime_node_id: String::new(),
+                ..drainable(node)
+            })
+            .collect();
+        let mut reconciler = CapacityReconciler::new(h.driver.clone(), 1).expect("reconciler");
+        assert_eq!(
+            h.reconcile(&mut reconciler, &committed, &unknown),
+            Err(format!("capacity_drain_runtime_missing:{}", nodes[0]))
+        );
+        for node in &nodes {
+            crate::dist::operator::set_runtime_drain_intent(
+                &drainable(node).runtime_node_id,
+                false,
+            );
+        }
+    }
+
+    /// Every commit a reconcile makes can be refused, and a refused commit
+    /// fails the reconcile before its provider step.
+    #[test]
+    fn a_refused_commit_fails_the_reconcile() {
+        fn scale_up(h: &Harness) -> Result<CapacityReconcileOutcome, String> {
+            let committed = h.desired(1, 1);
+            let mut reconciler = CapacityReconciler::new(h.driver.clone(), 1).unwrap();
+            h.reconcile(&mut reconciler, &committed, &[])
+        }
+        fn failed_cleanup(h: &Harness) -> Result<CapacityReconcileOutcome, String> {
+            let nodes = h.seed(1);
+            h.driver
+                .nodes
+                .lock()
+                .unwrap()
+                .get_mut(&nodes[0])
+                .unwrap()
+                .lifecycle = CapacityNodeLifecycle::Failed;
+            scale_up(h)
+        }
+        fn unjoined_cleanup(h: &Harness) -> Result<CapacityReconcileOutcome, String> {
+            let nodes = h.seed(1);
+            h.driver
+                .nodes
+                .lock()
+                .unwrap()
+                .get_mut(&nodes[0])
+                .unwrap()
+                .lifecycle = CapacityNodeLifecycle::Ready;
+            let committed = h.desired(1, 1);
+            let mut reconciler = CapacityReconciler::new_runtime(
+                h.driver.clone(),
+                1,
+                Duration::from_millis(1),
+                false,
+            )
+            .unwrap();
+            let unjoined = [ReconcileNodeSafety {
+                runtime_node_id: String::new(),
+                ..drainable(&nodes[0])
+            }];
+            h.reconcile(&mut reconciler, &committed, &unjoined)?;
+            std::thread::sleep(Duration::from_millis(3));
+            h.reconcile(&mut reconciler, &committed, &unjoined)
+        }
+        fn resumed(
+            phase: DrainPhase,
+        ) -> impl Fn(&Harness) -> Result<CapacityReconcileOutcome, String> {
+            move |h: &Harness| {
+                let nodes = h.seed(2);
+                h.log_drain(&nodes[0], phase);
+                let committed = h.desired(2, 1);
+                let mut reconciler = h.restored(false);
+                h.reconcile(&mut reconciler, &committed, &drainable_all(&nodes))?;
+                h.reconcile(&mut reconciler, &committed, &drainable_all(&nodes))
+            }
+        }
+        fn fresh_drain(h: &Harness) -> Result<CapacityReconcileOutcome, String> {
+            let nodes = h.seed(2);
+            let committed = h.desired(2, 1);
+            let mut reconciler = CapacityReconciler::new(h.driver.clone(), 1).unwrap();
+            h.reconcile(&mut reconciler, &committed, &drainable_all(&nodes))
+        }
+        fn rebound(h: &Harness) -> Result<CapacityReconcileOutcome, String> {
+            let nodes = h.seed(2);
+            h.log_drain(&nodes[0], DrainPhase::Draining);
+            let committed = h.desired(2, 2);
+            let mut reconciler = h.restored(false);
+            h.reconcile(&mut reconciler, &committed, &[])
+        }
+        let resumed_preparing = resumed(DrainPhase::Preparing);
+        let resumed_draining = resumed(DrainPhase::Draining);
+        let resumed_terminating = resumed(DrainPhase::Terminating);
+        let cases: Vec<(
+            &'static str,
+            &dyn Fn(&Harness) -> Result<CapacityReconcileOutcome, String>,
+        )> = vec![
+            ("capacity reconciliation fence", &scale_up),
+            ("ensure worker capacity", &scale_up),
+            ("record ensure worker result", &scale_up),
+            ("clean up failed managed worker", &failed_cleanup),
+            (
+                "record failed managed worker cleanup result",
+                &failed_cleanup,
+            ),
+            (
+                "clean up managed worker that never joined runtime membership",
+                &unjoined_cleanup,
+            ),
+            (
+                "record unjoined managed worker cleanup result",
+                &unjoined_cleanup,
+            ),
+            ("record resumed begin drain result", &resumed_preparing),
+            ("terminate drained worker", &resumed_draining),
+            ("record terminate worker result", &resumed_draining),
+            (
+                "record resumed terminate worker result",
+                &resumed_terminating,
+            ),
+            ("finish drain of removed worker", &resumed_terminating),
+            ("begin worker drain", &fresh_drain),
+            ("begin driver drain", &fresh_drain),
+            ("record begin drain result", &fresh_drain),
+            (
+                "cancel worker drain after desired capacity rebound",
+                &rebound,
+            ),
+        ];
+        for (reason, scenario) in cases {
+            assert_eq!(
+                scenario(&Harness::new(Some(reason))).map(|_| ()),
+                Err(format!("refused:{reason}")),
+                "{reason}"
+            );
+            // The scenario reaches that commit when nothing is refused.
+            scenario(&Harness::new(None)).expect(reason);
+        }
+    }
 }
