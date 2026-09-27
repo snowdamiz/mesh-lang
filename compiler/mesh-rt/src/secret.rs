@@ -2669,4 +2669,305 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(table.usage.get(&owner).map_or(0, |usage| usage.secrets), 0);
     }
+
+    fn map_entry(key: &[u8], value: &[u8]) -> Vec<u8> {
+        let mut entry = (key.len() as u16).to_be_bytes().to_vec();
+        entry.extend((value.len() as u32).to_be_bytes());
+        entry.extend(key);
+        entry.extend(value);
+        entry
+    }
+
+    fn map_encoding(capacity: u16, count: u16, entries: &[Vec<u8>]) -> Vec<u8> {
+        let mut encoding = capacity.to_be_bytes().to_vec();
+        encoding.extend(count.to_be_bytes());
+        entries.iter().for_each(|entry| encoding.extend(entry));
+        encoding
+    }
+
+    /// A map's encoding is refused for each way it can be malformed (only an
+    /// authenticated storage blob can bring one in), and a map is refused a
+    /// capacity, a key or a size it cannot have.
+    #[test]
+    fn a_malformed_map_is_refused_for_what_is_wrong_with_it() {
+        let valid = map_encoding(2, 1, &[map_entry(b"k", b"v")]);
+        assert!(SecretMapData::decode(&valid).is_ok());
+        for malformed in [
+            vec![0, 1, 0],
+            map_encoding(0, 0, &[]),
+            map_encoding(1, 2, &[]),
+            map_encoding(1, 1, &[]),
+            map_encoding(1, 1, &[map_entry(b"", b"v")]),
+            map_encoding(1, 1, &[map_entry(b"k", b"")]),
+            map_encoding(1, 1, &[map_entry(b"k", b"v")[..7].to_vec()]),
+            map_encoding(1, 1, &[map_entry(b"k", b"v")[..5].to_vec()]),
+            map_encoding(2, 2, &[map_entry(b"k", b"v"), map_entry(b"k", b"w")]),
+            [valid.clone(), vec![0]].concat(),
+        ] {
+            assert_eq!(
+                SecretMapData::decode(&malformed).err(),
+                Some(SecretMapError::InvalidEncoding),
+                "{malformed:?}"
+            );
+        }
+        for capacity in [0, MAX_SECRET_MAP_CAPACITY + 1] {
+            assert_eq!(
+                SecretMapData::empty(capacity).err(),
+                Some(SecretMapError::InvalidCapacity)
+            );
+        }
+        let oversized = SecretMapData {
+            capacity: 1,
+            entries: vec![(
+                b"k".to_vec(),
+                Zeroizing::new(vec![1; MAX_SECRET_BYTES].into_boxed_slice()),
+            )],
+        };
+        assert_eq!(
+            oversized.encode().err(),
+            Some(SecretMapError::Resource(
+                ResourceError::ResourceLimitExceeded
+            ))
+        );
+        assert_eq!(valid_secret_map_key(b""), Err(SecretMapError::InvalidKey));
+    }
+
+    /// Map updates refuse a key already present, a merge of a map into
+    /// itself, and a map grown past a resource's or the actor's byte limit.
+    #[test]
+    fn map_updates_refuse_duplicates_and_what_the_limits_cannot_hold() {
+        let owner = ProcessId(56);
+        let mut table = ResourceTable::new(Limits::for_tests(16, 16, 40, 64, 1024));
+        let map = table.insert_secret_map(owner, 4).expect("map");
+        let secret = |table: &mut ResourceTable, length| {
+            table
+                .insert_secret(owner, vec![7; length].into_boxed_slice())
+                .expect("secret")
+        };
+        let first = secret(&mut table, 8);
+        table
+            .secret_map_insert(owner, map, b"a", first)
+            .expect("insert a");
+        let again = secret(&mut table, 8);
+        assert_eq!(
+            table.secret_map_insert(owner, map, b"a", again),
+            Err(SecretMapError::DuplicateKey)
+        );
+        assert_eq!(
+            table.secret_map_merge(owner, map, map),
+            Err(SecretMapError::DuplicateKey)
+        );
+        let fork = table.secret_map_fork(owner, map).expect("fork");
+        assert_eq!(
+            table.secret_map_merge(owner, map, fork),
+            Err(SecretMapError::DuplicateKey)
+        );
+        assert_eq!(
+            table.validate(owner, fork, ResourceKind::SecretMap),
+            Err(ResourceError::StaleHandle)
+        );
+        let past_the_actor = secret(&mut table, 20);
+        assert_eq!(
+            table.secret_map_insert(owner, map, b"b", past_the_actor),
+            Err(SecretMapError::Resource(
+                ResourceError::ResourceLimitExceeded
+            ))
+        );
+        let stale = ResourceHandle {
+            generation: map.generation + 1,
+            ..map
+        };
+        assert_eq!(
+            table.secret_map_contains(owner, stale, b"a"),
+            Err(SecretMapError::Resource(ResourceError::StaleHandle))
+        );
+
+        let mut roomy = ResourceTable::new(Limits::for_tests(16, 16, 1024, 64, 1024));
+        let map = roomy.insert_secret_map(owner, 4).expect("map");
+        let past_a_resource = secret(&mut roomy, 60);
+        assert_eq!(
+            roomy.secret_map_insert(owner, map, b"a", past_a_resource),
+            Err(SecretMapError::Resource(
+                ResourceError::ResourceLimitExceeded
+            ))
+        );
+    }
+
+    /// A handle is refused for a kind other than its entry's, even when its
+    /// own kind field was rewritten to match, and a storage key is refused
+    /// wherever a plain resource is expected.
+    #[test]
+    fn handles_are_refused_for_another_kind_even_when_forged() {
+        let owner = ProcessId(57);
+        let mut table = ResourceTable::new(Limits::for_tests(8, 8, 256, 64, 256));
+        let secret = table
+            .insert_secret(owner, vec![1; 8].into_boxed_slice())
+            .expect("secret");
+        let forged = ResourceHandle {
+            kind: ResourceKind::StorageKey as u32,
+            ..secret
+        };
+        for handle in [secret, forged] {
+            assert!(matches!(
+                table.prepare_storage_key(owner, handle),
+                Err(StorageKeyError::Resource(ResourceError::WrongKind))
+            ));
+        }
+        let source = StorageCounterSource::Ephemeral { next_counter: 3 };
+        let short = Zeroizing::new(vec![0; 35].into_boxed_slice());
+        assert_eq!(
+            table.insert_storage_key(owner, short, source),
+            Err(ResourceError::WrongKind)
+        );
+        let material = Zeroizing::new(vec![0; 36].into_boxed_slice());
+        let key = table
+            .insert_storage_key(owner, material, source)
+            .expect("storage key");
+        assert_eq!(
+            table.commit_storage_counter(owner, key, 5),
+            Err(StorageKeyError::CounterNotMonotonic)
+        );
+        let stale = ResourceHandle {
+            generation: secret.generation + 1,
+            ..secret
+        };
+        assert_eq!(
+            table.concat_secrets(owner, stale, secret),
+            Err(failure(CryptoErrorTag::SecretDestroyed, 0, 0))
+        );
+        assert_eq!(
+            table.validate(owner, secret, ResourceKind::SecretBytes),
+            Err(ResourceError::StaleHandle)
+        );
+        assert!(format!(
+            "{:?}",
+            RetypeError::<()>::Resource(ResourceError::StaleHandle)
+        )
+        .contains("StaleHandle"));
+
+        let mut process = Process::new(ProcessId(58), Priority::Normal);
+        assert!(matches!(
+            consume_and_retype_owned_resource::<()>(
+                &mut process,
+                std::ptr::null(),
+                ResourceKind::StorageKey,
+                ResourceKind::SecretBytes,
+                |_| Ok(()),
+            ),
+            Err(RetypeError::Resource(ResourceError::WrongKind))
+        ));
+        destroy_resource_for_process(&process, std::ptr::null_mut(), None);
+    }
+
+    fn created(result: *mut MeshResult) -> *mut MeshSecretHandle {
+        let result = unsafe { &*result };
+        assert_eq!(result.tag, 0, "expected Ok");
+        result.value.cast()
+    }
+
+    fn refused(result: *mut MeshResult) -> u8 {
+        let result = unsafe { &*result };
+        assert_eq!(result.tag, 1, "expected Err");
+        unsafe { (*result.value.cast::<MeshCryptoError>()).tag }
+    }
+
+    /// The entry points act for the calling actor: they create its secrets
+    /// and maps, consume what they document, refuse what is stale or
+    /// invalid, and do nothing off an actor or for one that has exited.
+    #[test]
+    fn secret_entry_points_act_for_the_calling_actor() {
+        let _global_table_test = GLOBAL_TABLE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        crate::gc::mesh_rt_init();
+        let key = |text: &str| crate::bytes::mesh_bytes_new(text.as_ptr(), text.len() as u64);
+        let null = std::ptr::null_mut();
+        assert_eq!(
+            refused(mesh_secret_random(8)),
+            CryptoErrorTag::InternalFailure as u8
+        );
+        assert_eq!(
+            refused(mesh_secret_concat(null, null)),
+            CryptoErrorTag::InternalFailure as u8
+        );
+        assert_eq!(
+            refused(mesh_secret_map_new(1)),
+            CryptoErrorTag::SecretDestroyed as u8
+        );
+        mesh_secret_destroy(null);
+
+        as_test_actor(|owner| {
+            let destroyed = CryptoErrorTag::SecretDestroyed as u8;
+            let invalid_key = CryptoErrorTag::InvalidKey as u8;
+            let first = created(mesh_secret_random(8));
+            let second = created(mesh_secret_random(8));
+            let joined = created(mesh_secret_concat(first, second));
+            let third = created(mesh_secret_random(8));
+            assert_eq!(refused(mesh_secret_concat(first, third)), destroyed);
+            let fourth = created(mesh_secret_random(8));
+            assert_eq!(refused(mesh_secret_concat(null, fourth)), destroyed);
+            let largest = created(mesh_secret_random(MAX_SECRET_BYTES as i64));
+            assert_eq!(
+                refused(mesh_secret_concat(largest, joined)),
+                CryptoErrorTag::InvalidLength as u8
+            );
+            assert_eq!(owned_secret_count_for_test(owner), 0);
+
+            let limit = CryptoErrorTag::ResourceLimitExceeded as u8;
+            assert_eq!(refused(mesh_secret_map_new(-1)), limit);
+            assert_eq!(refused(mesh_secret_map_new(0)), limit);
+            let map = created(mesh_secret_map_new(2));
+            let value = created(mesh_secret_random(8));
+            assert_eq!(
+                unsafe { (*mesh_secret_map_insert(map, key("a"), value)).tag },
+                0
+            );
+            assert_eq!(mesh_secret_map_contains(map, key("a")), 1);
+            assert_eq!(mesh_secret_map_contains(map, key("")), 0);
+            let copy = created(mesh_secret_map_copy(map, key("a")));
+            assert_eq!(refused(mesh_secret_map_copy(map, key(""))), invalid_key);
+            assert_eq!(refused(mesh_secret_map_copy(map, key("b"))), invalid_key);
+            assert_eq!(refused(mesh_secret_map_copy(null, key("a"))), destroyed);
+            assert_eq!(
+                refused(mesh_secret_map_insert(map, key(""), copy)),
+                invalid_key
+            );
+            let value = created(mesh_secret_random(8));
+            assert_eq!(
+                refused(mesh_secret_map_insert(null, key("b"), value)),
+                destroyed
+            );
+            let fork = created(mesh_secret_map_fork(map));
+            assert_eq!(refused(mesh_secret_map_merge(map, fork)), invalid_key);
+            assert_eq!(refused(mesh_secret_map_merge(map, null)), destroyed);
+            assert_eq!(refused(mesh_secret_map_fork(null)), destroyed);
+            assert_eq!(refused(mesh_secret_map_delete(map, key(""))), invalid_key);
+            assert_eq!(refused(mesh_secret_map_delete(null, key("a"))), destroyed);
+            assert_eq!(unsafe { (*mesh_secret_map_delete(map, key("a"))).tag }, 0);
+            let empty = created(mesh_secret_map_new(1));
+            assert_eq!(unsafe { (*mesh_secret_map_merge(map, empty)).tag }, 0);
+            mesh_resource_destroy(map);
+            let corrupt = {
+                let process = crate::actor::current_process().expect("test actor");
+                let mut process = process.lock();
+                let garbage = Zeroizing::new(vec![1, 2].into_boxed_slice());
+                insert_owned_resource(&mut process, ResourceKind::SecretMap, garbage)
+                    .expect("corrupt map")
+            };
+            assert_eq!(
+                refused(mesh_secret_map_copy(corrupt, key("a"))),
+                CryptoErrorTag::InternalFailure as u8
+            );
+            mesh_resource_destroy(corrupt);
+            let spare = created(mesh_secret_random(8));
+            mesh_secret_destroy(spare);
+            assert_eq!(owned_secret_count_for_test(owner), 0);
+
+            let process = crate::actor::current_process().expect("test actor");
+            process.lock().mark_exited(crate::actor::ExitReason::Normal);
+            assert_eq!(refused(mesh_secret_random(8)), destroyed);
+            assert_eq!(refused(mesh_secret_concat(null, null)), destroyed);
+            assert_eq!(refused(mesh_secret_map_new(1)), destroyed);
+        });
+    }
 }
