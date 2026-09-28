@@ -398,11 +398,9 @@ fn try_trigger_gc() {
     // Set once, as the coroutine starts or, for `main`, as the runtime does,
     // and never changed. A process that collects here has one: an actor yields
     // only from its coroutine, and `main` collects only when it has a base.
-    let stack_bottom = proc.stack_base;
-    assert!(
-        !stack_bottom.is_null(),
-        "a collecting process has a stack base"
-    );
+    let stack_bottom = std::ptr::NonNull::new(proc.stack_base.cast_mut())
+        .expect("a collecting process has a stack base")
+        .as_ptr();
 
     let register_roots = capture_register_roots();
 
