@@ -1867,27 +1867,33 @@ impl<'ctx> CodeGen<'ctx> {
 
     // ── Struct literal ───────────────────────────────────────────────
 
+    /// A struct literal: each field's value, evaluated in the order the
+    /// literal writes them, stored in the field its name gives. A field the
+    /// literal leaves out (a schema's timestamps) is zero.
     fn codegen_struct_lit(
         &mut self,
         name: &str,
         fields: &[(String, MirExpr)],
     ) -> Result<BasicValueEnum<'ctx>, String> {
-        let struct_ty = self
-            .struct_types
-            .get(name)
-            .ok_or_else(|| format!("Unknown struct type '{}'", name))?;
-        let struct_ty = *struct_ty;
+        let (struct_ty, declared) = self.struct_layout(&MirType::Struct(name.to_string()));
 
         let alloca = self
             .builder
             .build_alloca(struct_ty, "struct_lit")
             .map_err(|e| e.to_string())?;
+        self.builder
+            .build_store(alloca, struct_ty.const_zero())
+            .map_err(|e| e.to_string())?;
 
-        for (i, (_, field_expr)) in fields.iter().enumerate() {
+        for (field_name, field_expr) in fields {
             let val = self.codegen_expr(field_expr)?;
+            let index = declared
+                .iter()
+                .position(|(declared_name, _)| declared_name == field_name)
+                .expect("the type checker admits only a struct's own fields");
             let field_ptr = self
                 .builder
-                .build_struct_gep(struct_ty, alloca, i as u32, "field_ptr")
+                .build_struct_gep(struct_ty, alloca, index as u32, "field_ptr")
                 .map_err(|e| e.to_string())?;
             self.builder
                 .build_store(field_ptr, val)

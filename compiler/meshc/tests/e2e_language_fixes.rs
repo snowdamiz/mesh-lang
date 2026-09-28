@@ -5957,3 +5957,41 @@ end
         );
     }
 }
+
+/// A struct literal names its fields, in any order: each value goes to the
+/// field its name gives, and is evaluated where it is written. Code
+/// generation stored them by their place in the literal, so a literal in
+/// another order than the declaration put a String where an Int belongs.
+#[test]
+fn struct_literal_fields_go_where_their_names_say() {
+    let source = r##"
+struct P do
+  a :: Int
+  b :: String
+  c :: Float
+end
+
+struct Box<T> do
+  first :: T
+  label :: String
+end
+
+fn noisy(n :: Int) -> Int do
+  println("evaluated #{n}")
+  n
+end
+
+fn main() do
+  let p = P { c: 2.5, b: "x", a: noisy(1) }
+  println("#{p.a} #{p.b} #{p.c}")
+  let q = P { b: "y", a: noisy(2), c: 0.5 }
+  println("#{q.a} #{q.b} #{q.c}")
+  let boxed = Box { label: "l", first: 7 }
+  println("#{boxed.first} #{boxed.label}")
+end
+"##;
+    assert_eq!(
+        run(source),
+        "evaluated 1\n1 x 2.5\nevaluated 2\n2 y 0.5\n7 l\n"
+    );
+}
