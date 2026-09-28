@@ -5,7 +5,7 @@ use std::io::Cursor;
 use libfuzzer_sys::fuzz_target;
 use mesh_rt::dist::protocol::{ProtocolEnvelope, ProtocolHello, MAX_NEGOTIATED_FRAME_BYTES};
 use mesh_rt::dist::routing::NodeLoadReport;
-use mesh_rt::ws::{parse_close_payload, read_frame, validate_text_payload};
+use mesh_rt::ws::{parse_close_payload, read_frame, is_valid_text_payload};
 
 fuzz_target!(|data: &[u8]| {
     let input = &data[..data.len().min(64 * 1_024)];
@@ -20,5 +20,5 @@ fuzz_target!(|data: &[u8]| {
     let _ = NodeLoadReport::decode(input);
     let _ = read_frame(&mut Cursor::new(input));
     let _ = parse_close_payload(input);
-    let _ = validate_text_payload(input);
+    let _ = is_valid_text_payload(input);
 });

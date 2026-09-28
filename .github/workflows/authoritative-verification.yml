@@ -125,6 +125,9 @@ jobs:
           cargo test --locked -p mesh-parser -p mesh-typeck -p mesh-codegen -p mesh-fmt -p mesh-lint
           cargo test --locked -p mesh-rt --lib --test library --test library_memory
           cargo build --workspace --locked
+          # The fuzz crate is its own workspace and only runs at release:
+          # compile its targets here, or a runtime rename breaks the release.
+          cargo check --locked --manifest-path fuzz/Cargo.toml --bins
           # The examples and official packages are what users copy from: lint
           # them and keep them formatted.
           for path in examples packages mesh-slug; do

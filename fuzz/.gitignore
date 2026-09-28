@@ -1,0 +1,4 @@
+# cargo fuzz run writes these next to the targets.
+corpus/
+artifacts/
+coverage/
