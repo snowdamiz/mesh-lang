@@ -4264,6 +4264,26 @@ esac
         std::fs::write(directory.join("status"), status).expect("container status");
     }
 
+    /// A Docker CLI run the driver cannot wait for fails, and is not
+    /// waited on forever: here SIGCHLD is ignored, so the exited child is
+    /// reaped before the driver can.
+    #[cfg(unix)]
+    #[test]
+    fn docker_driver_fails_a_command_it_cannot_wait_for() {
+        if !super::super::in_own_process(
+            "dist::scaling::tests::docker_driver_fails_a_command_it_cannot_wait_for",
+        ) {
+            return;
+        }
+        let state = tempfile::tempdir().expect("fake docker state");
+        let driver = docker_driver(state.path(), Vec::new());
+        // SAFETY: this process runs only this test, and nothing else in it
+        // sets signal dispositions.
+        unsafe { libc::signal(libc::SIGCHLD, libc::SIG_IGN) };
+        let error = driver.validate_configuration().unwrap_err();
+        assert!(error.starts_with("docker_driver_wait_failed:"), "{error}");
+    }
+
     #[cfg(unix)]
     #[test]
     fn docker_driver_validates_through_the_cli_and_redacts_its_errors() {
