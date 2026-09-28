@@ -585,8 +585,13 @@ impl Capture<'_> {
                 }
             }
             JSON => {
-                let tag = self.out.objects[object as usize].bytes.first().copied();
-                let inner = match tag {
+                // A `Json` may be the JSON text of a tree, a string copied
+                // whole, whose bytes are not a tree's to follow.
+                let bytes = &self.out.objects[object as usize].bytes;
+                if bytes.get(1..8) != Some(&crate::json::TREE_MARK[..]) {
+                    return;
+                }
+                let inner = match bytes.first().copied() {
                     Some(JSON_TAG_STR) => STRING_NODE,
                     Some(JSON_TAG_ARRAY) => JSON_ARRAY_NODE,
                     Some(JSON_TAG_OBJECT) => JSON_OBJECT_NODE,
@@ -1195,6 +1200,8 @@ mod tests {
             let node = heap.alloc(16, 8);
             unsafe {
                 node.write(tag);
+                let mark = crate::json::TREE_MARK;
+                std::ptr::copy_nonoverlapping(mark.as_ptr(), node.add(1), mark.len());
                 (node.add(8) as *mut usize).write(value);
             }
             node as usize
@@ -1213,6 +1220,23 @@ mod tests {
         let leaf = unsafe { *array.add(2) as *const usize };
         assert_eq!(unsafe { text(*leaf.add(1)) }, "deep");
         assert_eq!(unsafe { *(*array.add(3) as *const usize).add(1) }, 5);
+    }
+
+    /// A `Json` that is JSON text is a string, copied whole; its bytes are
+    /// not read as a tree's even where they look like one (a length whose low
+    /// byte is an array's tag, a word that is a live object's address).
+    #[test]
+    fn json_text_is_copied_as_a_string() {
+        let mut sender = ActorHeap::new();
+        let decoy = string(&mut sender, "decoy");
+        let text = sender.alloc(16, 8) as *mut usize;
+        unsafe {
+            text.write(JSON_TAG_ARRAY as usize);
+            text.add(1).write(decoy);
+        }
+        let (_, _, captured) = transfer(&sender, &(text as usize).to_ne_bytes(), &[2, JSON]);
+        assert_eq!(captured.objects.len(), 1);
+        assert!(captured.objects[0].relocs.is_empty());
     }
 
     #[test]

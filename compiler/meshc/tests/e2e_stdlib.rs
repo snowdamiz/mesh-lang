@@ -507,6 +507,33 @@ fn e2e_json_is_string() {
     assert_eq!(output, "true\nfalse\ntrue\n");
 }
 
+/// A `json { }` literal is a Json like a parsed one: it encodes as itself,
+/// its fields read back, and either kind nests in another literal. (The
+/// literal is JSON text at run time, which encoded as `null` and was not an
+/// object to `object_get`; a parsed value nested in a literal became `null`.)
+#[test]
+fn e2e_json_literals_and_parsed_values_mix() {
+    let source = r#"
+fn main() do
+  let lit = json { a: 1, bb: 2 }
+  println(Json.encode(lit))
+  case Json.object_get(lit, "a") do
+    Ok(v) -> println("a=#{Json.encode(v)}")
+    Err(e) -> println(e)
+  end
+  case Json.parse("{\"x\": [1, 2]}") do
+    Ok(parsed) -> println(Json.encode(json { inner: parsed, outer: lit }))
+    Err(e) -> println(e)
+  end
+end
+"#;
+    let output = compile_and_run(source);
+    assert_eq!(
+        output,
+        "{\"a\":1,\"bb\":2}\na=1\n{\"inner\":{\"x\":[1,2]},\"outer\":{\"a\":1,\"bb\":2}}\n"
+    );
+}
+
 // ── JSON Struct Serde E2E Tests (Phase 49) ──────────────────────────────
 
 #[test]

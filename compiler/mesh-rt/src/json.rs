@@ -14,6 +14,12 @@
 //! ```
 //! Tags: 0=Null, 1=Bool, 2=Int(i64), 3=Str(*MeshString), 4=Array(*MeshList),
 //! 5=Object(*MeshMap), 6=Float(f64), 7=UInt(u64)
+//!
+//! A value of type `Json` is such a tree, or the JSON text of one: a `json
+//! { }` literal is its encoded text, while `Json.parse` and the accessors
+//! return trees. A tree carries `TREE_MARK` in its padding, which no string's
+//! length word can hold, and every function taking a `Json` reads a text as
+//! the tree it spells (`tree`).
 
 use crate::collections::list;
 use crate::collections::map;
@@ -31,10 +37,15 @@ const JSON_OBJECT: u8 = 5;
 const JSON_FLOAT: u8 = 6;
 const JSON_UINT: u8 = 7;
 
+/// Marks a `MeshJson`: its padding bytes. A Mesh string starts with its
+/// length, whose high seven bytes are these only for a string of at least
+/// 2^56 bytes, which cannot exist.
+pub(crate) const TREE_MARK: [u8; 7] = *b"MshJson";
+
 /// GC-allocated JSON value.
 ///
-/// Layout: `{ tag: u8, _pad: [u8; 7], value: u64 }` -- 16 bytes total.
-/// The padding ensures 8-byte alignment for the value field.
+/// Layout: `{ tag: u8, _pad: [u8; 7], value: u64 }` -- 16 bytes total. The
+/// padding holds `TREE_MARK` and aligns the value field to 8 bytes.
 #[repr(C)]
 pub struct MeshJson {
     pub tag: u8,
@@ -51,9 +62,30 @@ fn alloc_json(tag: u8, value: u64) -> *mut MeshJson {
             std::mem::align_of::<MeshJson>() as u64,
         ) as *mut MeshJson;
         (*ptr).tag = tag;
-        (*ptr)._pad = [0; 7];
+        (*ptr)._pad = TREE_MARK;
         (*ptr).value = value;
         ptr
+    }
+}
+
+/// Whether the `Json` value at `value` is a tree rather than JSON text.
+pub(crate) unsafe fn is_tree(value: *const u8) -> bool {
+    std::slice::from_raw_parts(value.add(1), TREE_MARK.len()) == TREE_MARK
+}
+
+/// The tree a `Json` value is: itself, or the tree its JSON text spells. A
+/// `Json` holding text that is not JSON (a `String` typed as one) is a Mesh
+/// panic.
+unsafe fn tree(value: *mut u8) -> *mut MeshJson {
+    if is_tree(value) {
+        return value.cast();
+    }
+    let text = text_of(value);
+    match serde_json::from_str::<serde_json::Value>(text) {
+        Ok(parsed) => serde_value_to_mesh_json(&parsed),
+        Err(error) => crate::panic::raise(format_args!(
+            "a Json value holds text that is not JSON ({error}): {text:?}"
+        )),
     }
 }
 
@@ -109,6 +141,7 @@ fn serde_value_to_mesh_json(val: &serde_json::Value) -> *mut MeshJson {
 
 /// Recursively convert a MeshJson to a serde_json::Value for encoding.
 unsafe fn mesh_json_to_serde_value(json: *const MeshJson) -> serde_json::Value {
+    let json = tree(json as *mut u8);
     match (*json).tag {
         JSON_NULL => serde_json::Value::Null,
         JSON_BOOL => serde_json::Value::Bool((*json).value != 0),
@@ -180,27 +213,12 @@ pub extern "C-unwind" fn mesh_json_parse(input: *const MeshString) -> *mut MeshR
     }
 }
 
-/// Parse a JSON-encoded string back into a raw MeshJson pointer.
-///
-/// Used by codegen when a Json-typed variable (produced by mesh_json_encode) needs to be
-/// embedded raw into a parent JSON object without re-encoding as a quoted string.
-/// Panics on invalid JSON (codegen-produced strings are always valid).
-///
-/// # Safety
-///
-/// `input` must be a valid non-null `*const MeshString`.
+/// The tree of a `Json` value, for codegen to embed a `Json` variable in a
+/// `json { }` literal without encoding it as a quoted string. The value is a
+/// tree already (from `Json.parse`) or the text of one (another literal).
 #[no_mangle]
-pub extern "C-unwind" fn mesh_json_parse_raw(input: *const MeshString) -> *mut u8 {
-    unsafe {
-        let text = (*input).as_str();
-        match serde_json::from_str::<serde_json::Value>(text) {
-            Ok(val) => serde_value_to_mesh_json(&val) as *mut u8,
-            Err(_) => {
-                // Codegen-produced JSON is always valid; panic on any failure.
-                alloc_json(JSON_NULL, 0) as *mut u8
-            }
-        }
-    }
+pub extern "C-unwind" fn mesh_json_parse_raw(input: *mut u8) -> *mut u8 {
+    unsafe { tree(input).cast() }
 }
 
 // ── Public API: Encode ──────────────────────────────────────────────
@@ -209,8 +227,7 @@ pub extern "C-unwind" fn mesh_json_parse_raw(input: *const MeshString) -> *mut u
 #[no_mangle]
 pub extern "C-unwind" fn mesh_json_encode(json: *mut u8) -> *mut MeshString {
     unsafe {
-        let json_ptr = json as *const MeshJson;
-        let val = mesh_json_to_serde_value(json_ptr);
+        let val = mesh_json_to_serde_value(json.cast());
         let text = serde_json::to_string(&val).unwrap_or_else(|_| "null".to_string());
         mesh_str(&text)
     }
@@ -338,7 +355,7 @@ pub extern "C-unwind" fn mesh_json_object_put(obj: *mut u8, key: *mut u8, val: *
 #[no_mangle]
 pub extern "C-unwind" fn mesh_json_object_get(obj: *mut u8, key: *mut u8) -> *mut u8 {
     unsafe {
-        let j = obj as *mut MeshJson;
+        let j = tree(obj);
         if (*j).tag != JSON_OBJECT {
             return err_result("expected Object");
         }
@@ -376,7 +393,7 @@ pub extern "C-unwind" fn mesh_json_array_push(arr: *mut u8, val: *mut u8) -> *mu
 #[no_mangle]
 pub extern "C-unwind" fn mesh_json_as_int(json: *mut u8) -> *mut u8 {
     unsafe {
-        let j = json as *mut MeshJson;
+        let j = tree(json);
         match (*j).tag {
             JSON_INT => alloc_result(0, (*j).value as i64 as *mut u8) as *mut u8,
             // A number written with a fraction or exponent is an Int only when
@@ -401,7 +418,7 @@ pub extern "C-unwind" fn mesh_json_as_int(json: *mut u8) -> *mut u8 {
 #[no_mangle]
 pub extern "C-unwind" fn mesh_json_as_float(json: *mut u8) -> *mut u8 {
     unsafe {
-        let j = json as *mut MeshJson;
+        let j = tree(json);
         match (*j).tag {
             JSON_FLOAT => alloc_result(0, (*j).value as *mut u8) as *mut u8,
             JSON_INT => {
@@ -422,7 +439,7 @@ pub extern "C-unwind" fn mesh_json_as_float(json: *mut u8) -> *mut u8 {
 #[no_mangle]
 pub extern "C-unwind" fn mesh_json_as_string(json: *mut u8) -> *mut u8 {
     unsafe {
-        let j = json as *mut MeshJson;
+        let j = tree(json);
         if (*j).tag == JSON_STR {
             alloc_result(0, (*j).value as *mut u8) as *mut u8
         } else {
@@ -435,7 +452,7 @@ pub extern "C-unwind" fn mesh_json_as_string(json: *mut u8) -> *mut u8 {
 #[no_mangle]
 pub extern "C-unwind" fn mesh_json_as_bool(json: *mut u8) -> *mut u8 {
     unsafe {
-        let j = json as *mut MeshJson;
+        let j = tree(json);
         if (*j).tag == JSON_BOOL {
             alloc_result(0, (*j).value as *mut u8) as *mut u8
         } else {
@@ -491,7 +508,7 @@ pub extern "C-unwind" fn mesh_json_value_as_bool(json: *mut u8) -> *mut u8 {
 #[no_mangle]
 pub extern "C-unwind" fn mesh_json_array_length(json: *mut u8) -> *mut u8 {
     unsafe {
-        let json = json as *mut MeshJson;
+        let json = tree(json);
         if (*json).tag != JSON_ARRAY {
             return err_result("expected Array");
         }
@@ -501,7 +518,7 @@ pub extern "C-unwind" fn mesh_json_array_length(json: *mut u8) -> *mut u8 {
 
 #[no_mangle]
 pub extern "C-unwind" fn mesh_json_is_null(json: *mut u8) -> i8 {
-    unsafe { ((*(json as *const MeshJson)).tag == JSON_NULL) as i8 }
+    unsafe { ((*tree(json)).tag == JSON_NULL) as i8 }
 }
 
 /// Return a MeshJson null value. Used for Option::None encoding.
@@ -515,7 +532,7 @@ pub extern "C-unwind" fn mesh_json_null() -> *mut u8 {
 #[no_mangle]
 pub extern "C-unwind" fn mesh_json_array_get(json_arr: *mut u8, index: i64) -> *mut u8 {
     unsafe {
-        let j = json_arr as *mut MeshJson;
+        let j = tree(json_arr);
         if (*j).tag != JSON_ARRAY {
             return err_result("expected Array");
         }
@@ -581,7 +598,7 @@ pub extern "C-unwind" fn mesh_json_to_list(
     elem_fn: extern "C-unwind" fn(*mut u8) -> *mut u8,
 ) -> *mut u8 {
     unsafe {
-        let j = json_arr as *mut MeshJson;
+        let j = tree(json_arr);
         if (*j).tag != JSON_ARRAY {
             return err_result("expected Array");
         }
@@ -610,7 +627,7 @@ pub extern "C-unwind" fn mesh_json_to_map(
     val_fn: extern "C-unwind" fn(*mut u8) -> *mut u8,
 ) -> *mut u8 {
     unsafe {
-        let j = json_obj as *mut MeshJson;
+        let j = tree(json_obj);
         if (*j).tag != JSON_OBJECT {
             return err_result("expected Object");
         }
@@ -704,6 +721,61 @@ mod tests {
         assert_eq!(unsafe { (*mesh_json_encode(unknown)).as_str() }, "null");
         let infinite = alloc_json(JSON_FLOAT, f64::INFINITY.to_bits()) as *mut u8;
         assert_eq!(unsafe { (*mesh_json_encode(infinite)).as_str() }, "null");
+    }
+
+    /// A `Json` that is the text of a tree (what a `json { }` literal is)
+    /// reads as that tree everywhere a `Json` goes: encoded, embedded, and
+    /// through every accessor. It was read as a tree's bytes: encoded as
+    /// `null`, and not an object to `object_get`.
+    #[test]
+    fn json_text_reads_as_the_tree_it_spells() {
+        mesh_rt_init();
+        let text = mesh_str(r#"{"a":[1,2.5,true,"s"],"n":null}"#) as *mut u8;
+        let encoded = |json: *mut u8| unsafe { (*mesh_json_encode(json)).as_str().to_string() };
+        assert_eq!(encoded(text), r#"{"a":[1,2.5,true,"s"],"n":null}"#);
+        assert!(unsafe { is_tree(mesh_json_parse_raw(text)) });
+        let object = mesh_json_parse_raw(text);
+        assert_eq!(mesh_json_parse_raw(object), object, "a tree is itself");
+
+        let field = |json: *mut u8, key: &str| {
+            let got = mesh_json_object_get(json, mesh_str(key) as *mut u8) as *const MeshResult;
+            unsafe { (*got).value }
+        };
+        let array = field(text, "a");
+        assert_eq!(error_of(mesh_json_array_length(array)), None);
+        assert_eq!(mesh_json_is_null(field(text, "n")), 1);
+        let array_text = mesh_str("[7]") as *mut u8;
+        let first = mesh_json_array_get(array_text, 0) as *const MeshResult;
+        assert_eq!(encoded(unsafe { (*first).value }), "7");
+        for (json, accessor) in [
+            (
+                "3",
+                mesh_json_value_as_int as extern "C-unwind" fn(*mut u8) -> *mut u8,
+            ),
+            ("1.5", mesh_json_value_as_float),
+            ("true", mesh_json_value_as_bool),
+            (r#""s""#, mesh_json_as_string),
+        ] {
+            assert_eq!(
+                error_of(accessor(mesh_str(json) as *mut u8)),
+                None,
+                "{json}"
+            );
+        }
+        extern "C-unwind" fn ok(json: *mut u8) -> *mut u8 {
+            alloc_result(0, json).cast()
+        }
+        assert_eq!(error_of(mesh_json_to_list(array_text, ok)), None);
+        assert_eq!(error_of(mesh_json_to_map(text, ok)), None);
+    }
+
+    /// Text that is not JSON, held by a `Json` (a `String` typed as one), is
+    /// a Mesh panic where it is read.
+    #[test]
+    #[should_panic(expected = "a Json value holds text that is not JSON")]
+    fn json_text_that_is_not_json_panics() {
+        mesh_rt_init();
+        mesh_json_encode(mesh_str("not json") as *mut u8);
     }
 
     #[test]
@@ -827,7 +899,7 @@ mod tests {
             let result = mesh_json_parse(mesh_str(text));
             unsafe {
                 assert_eq!((*result).tag, 0);
-                for parsed in [(*result).value, mesh_json_parse_raw(mesh_str(text))] {
+                for parsed in [(*result).value, mesh_json_parse_raw(mesh_str(text).cast())] {
                     let encoded = mesh_json_encode(parsed);
                     assert_eq!(
                         serde_json::from_str::<serde_json::Value>((*encoded).as_str()).unwrap(),
