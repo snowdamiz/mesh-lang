@@ -2358,7 +2358,7 @@ impl<'ctx> CodeGen<'ctx> {
         // function evaluated as a value is a closure.
         let fn_ptr = self
             .fn_item_arg(func)
-            .ok_or("an actor is spawned by its function's name")?;
+            .expect("the type checker spawns an actor by its name (E0089)");
 
         // Serialize arguments into a buffer of 8-byte slots, which is how the
         // actor wrapper reads them back. An aggregate that fits a word travels

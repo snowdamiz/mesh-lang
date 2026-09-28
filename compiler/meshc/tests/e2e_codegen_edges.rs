@@ -1857,9 +1857,9 @@ end
 
 /// A pid whose messages are resources is not a resource of its own to
 /// destroy: the actor it names owns what it receives. Lowering gave such a
-/// pid (an actor receiving secrets, a job returning one) the destructor of
-/// an opaque resource handle, and code generation crashed on the pid's
-/// integer where it expected a pointer.
+/// pid (an actor receiving secrets) the destructor of an opaque resource
+/// handle, and code generation crashed on the pid's integer where it
+/// expected a pointer. (A job returning one is refused where it is made.)
 #[test]
 fn pids_of_actors_that_receive_resources_are_plain_values() {
     let output = compile_and_run(
@@ -1875,7 +1875,6 @@ end
 
 fn main() do
   let p = keep(spawn(sink))
-  let job = Job.async(fn () -> Secret.random(8) end)
   println("spawned")
 end
 "##,
@@ -2096,7 +2095,7 @@ fn supervisor_children_start_as_closures_spawning_named_actors() {
         ),
         (
             "fn -> spawn(if true do worker else worker end) end",
-            "a supervisor child must spawn an actor by its name",
+            "an actor is spawned by its name",
         ),
     ] {
         let (_guard, project_dir) = project(&format!(
@@ -2290,7 +2289,8 @@ end
 }
 
 /// `spawn` starts an actor by its name: an actor function that a call
-/// returns is refused, with nothing to look up its terminate callback by.
+/// returns is refused, with nothing to look up its terminate callback by
+/// (by the type checker, E0089, where the spawn names it).
 #[test]
 fn spawn_takes_an_actor_by_its_name() {
     let (_guard, project_dir) = project(
@@ -2309,7 +2309,7 @@ end
     );
     let output = meshc_build(&project_dir, &[]).output().unwrap();
     assert!(
-        stderr(&output).contains("an actor is spawned by its function's name"),
+        stderr(&output).contains("an actor is spawned by its name"),
         "{}",
         stderr(&output)
     );
