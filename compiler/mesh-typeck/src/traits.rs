@@ -234,6 +234,30 @@ impl TraitRegistry {
         }
     }
 
+    /// What the default method `method` of the interface `trait_name`,
+    /// written without a return type, was found to return (`ret`, in terms
+    /// of `Self`): the interface's signature says so, as does every impl's
+    /// that says nothing yet (one inheriting the default, or overriding it
+    /// unannotated, which is then checked against it).
+    pub fn set_default_return(&mut self, trait_name: &str, method: &str, ret: &Ty) {
+        let Some(sig) = self
+            .traits
+            .get_mut(trait_name)
+            .and_then(|def| def.methods.iter_mut().find(|m| m.name == method))
+        else {
+            return;
+        };
+        sig.return_type = Some(ret.clone());
+        for impl_def in self.impls.get_mut(trait_name).into_iter().flatten() {
+            let (impl_type, assoc_types) = (&impl_def.impl_type, &impl_def.associated_types);
+            if let Some(impl_sig) = impl_def.methods.get_mut(method) {
+                if impl_sig.return_type.is_none() {
+                    impl_sig.return_type = Some(in_impl(ret, impl_type, assoc_types));
+                }
+            }
+        }
+    }
+
     /// What the interface `trait_name` declares its method `method` returns,
     /// as an impl for `impl_type` binding `assoc_types` sees it, when that is
     /// a type of its own and not one the impl decides (a type parameter of a

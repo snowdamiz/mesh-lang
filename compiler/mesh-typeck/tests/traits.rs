@@ -445,6 +445,20 @@ fn a_default_method_parameter_needs_a_type() {
     assert!(typed.errors.is_empty(), "{:?}", typed.errors);
 }
 
+/// A default method written without a return type returns what its body
+/// does, as if written: calling it on an implementing type has that type
+/// ("the return type of method `greet` on `Person` is not known"), and so
+/// does one returning `Self`, as the implementing type.
+#[test]
+fn a_default_method_returns_what_its_body_does() {
+    let src = "interface Greeter do\n  fn name(self) -> String\n  fn greet(self) do\n    \"hello #{self.name()}\"\n  end\n  fn me(self) do\n    self\n  end\nend\n\n\
+struct Person do\n  who :: String\nend\n\n\
+impl Greeter for Person do\n  fn name(self) -> String do\n    self.who\n  end\nend\n\n\
+fn main() do\n  let p = Person { who: \"ada\" }\n  let n :: Int = String.length(p.greet())\n  p.me().who\nend\n";
+    let result = check_source(src);
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+}
+
 /// An operator needs its trait of a known operand type: `<` Ord, `+` Add,
 /// unary `-` Neg. A struct deriving nothing has none of them, and `Bool`
 /// cannot be added or negated.

@@ -7290,7 +7290,7 @@ fn infer_interface_def(
     // expressions have types for codegen to specialize per implementing type
     // and so errors in it are reported. The trait is registered first, which
     // is what lets `self.other_method()` resolve through the interface.
-    let previous_interface = ctx.current_interface.replace(trait_name);
+    let previous_interface = ctx.current_interface.replace(trait_name.clone());
     for method in iface.methods() {
         let Some(body) = method.body() else {
             continue;
@@ -7346,7 +7346,19 @@ fn infer_interface_def(
                 let _ = ctx.unify(declared.clone(), body_ty, body_origin(Some(body.clone())));
                 declared
             }
-            None => join_returns(ctx, body_ty, returns).unwrap_or_else(|_| Ty::Tuple(vec![])),
+            None => {
+                let ret = join_returns(ctx, body_ty, returns).unwrap_or_else(|_| Ty::Tuple(vec![]));
+                // What the body returns is what the method returns, as if
+                // written: `p.greet()` has its type. Not a type the body
+                // leaves open.
+                let ret = ctx.resolve(ret);
+                if let Some(name) = method.name().and_then(|n| n.text()) {
+                    if !ret.has_type_vars() {
+                        trait_registry.set_default_return(&trait_name, &name, &ret);
+                    }
+                }
+                ret
+            }
         };
         types.insert(
             method.syntax().text_range(),
