@@ -14140,7 +14140,7 @@ impl<'a> Lowerer<'a> {
     fn lower_link_expr(&mut self, link: &LinkExpr) -> MirExpr {
         let target = link
             .arg_list()
-            .and_then(|list| list.args().into_iter().next())
+            .and_then(|list| list.args().next())
             .expect("the type checker gives link its target");
         MirExpr::ActorLink {
             target: Box::new(self.lower_expr(&target)),
@@ -17109,8 +17109,8 @@ mod tests {
         let typeck = mesh_typeck::check_with_imports(&parse, &import_ctx);
         assert!(typeck.errors.is_empty(), "{:?}", typeck.errors);
         let error = lower_to_mir(&parse, &typeck, "", &HashSet::new(), &HashMap::new())
-            .err()
-            .expect("the route is never lowered");
+            .map(|mir| mir.functions.len())
+            .expect_err("the route is never lowered");
         assert!(
             error.contains("did not lower to a concrete route shim"),
             "{error}"

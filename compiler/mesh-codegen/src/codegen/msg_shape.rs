@@ -419,9 +419,9 @@ impl<'a, 'ctx> ShapeTable<'a, 'ctx> {
                 .find(|(variant_name, _)| *variant_name == variant.name)
                 .expect("a sum's shape describes each of its variants");
             words.extend([variant.tag as u32, variant.fields.len() as u32]);
-            for index in 0..variant.fields.len() {
+            for (index, shape) in shapes.iter().enumerate() {
                 let field_ty = overlay.get_field_type_at_index(index as u32 + 1).unwrap();
-                let node = self.value(&shapes[index], field_ty);
+                let node = self.value(shape, field_ty);
                 words.extend([self.offset_of(&overlay, index as u32 + 1), node]);
             }
         }
