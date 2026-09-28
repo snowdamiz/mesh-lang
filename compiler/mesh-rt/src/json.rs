@@ -714,7 +714,7 @@ mod tests {
     fn a_large_integer_as_a_float_and_an_unknown_value_as_null() {
         mesh_rt_init();
         let parsed = mesh_json_parse(mesh_str("18446744073709551615"));
-        let big = unsafe { (*parsed).value as *mut u8 };
+        let big = unsafe { (*parsed).value };
         let float = mesh_json_value_as_float(big) as *const MeshResult;
         assert_eq!(unsafe { *((*float).value as *const f64) }, u64::MAX as f64);
         let unknown = alloc_json(99, 0) as *mut u8;

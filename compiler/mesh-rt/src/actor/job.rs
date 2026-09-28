@@ -271,7 +271,7 @@ pub extern "C-unwind" fn mesh_job_map_shaped(
         .map(|i| {
             let element = mesh_list_get(list_ptr as *mut u8, i);
             let (function, env, shape) = (fn_ptr as u64, env_ptr as u64, result_shape as u64);
-            let words = [function, env, element as u64, caller.as_u64(), shape];
+            let words = [function, env, element, caller.as_u64(), shape];
             spawn_job(caller, map_job_entry as *const u8, &words)
         })
         .collect();
