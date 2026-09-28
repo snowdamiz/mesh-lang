@@ -8309,6 +8309,9 @@ impl<'a> Lowerer<'a> {
                     .as_ref()
                     .and_then(|source| self.instantiation_trait_callee(method_name, source))
             })
+            // A method, unlike a bare call, is its receiver's even when a
+            // function has its name.
+            .or_else(|| self.trait_callee(method_name, &first_arg_ty))
             .unwrap_or_else(|| self.resolve_trait_callee(method_name, &first_arg_ty));
 
         // Apply the same post-dispatch optimizations as bare-name calls: a
@@ -8387,20 +8390,27 @@ impl<'a> Lowerer<'a> {
         Some(builtin_trait_redirect(mangled))
     }
 
+    /// The trait method `name` of `receiver`'s type: of the traits defining
+    /// it that the type implements, the first by name.
+    fn trait_callee(&self, name: &str, receiver: &MirType) -> Option<String> {
+        let mut traits = self
+            .trait_registry
+            .find_method_traits(name, &mir_type_to_ty(receiver));
+        traits.sort();
+        let trait_name = traits.first()?;
+        let type_name = mir_type_to_impl_name(receiver);
+        Some(builtin_trait_redirect(format!(
+            "{trait_name}__{name}__{type_name}"
+        )))
+    }
+
     /// The function a call of `name` with a first argument of type
     /// `first_arg_ty` runs: the trait method of that type it names, or
     /// `name` itself.
     fn resolve_trait_callee(&self, name: &str, first_arg_ty: &MirType) -> String {
         if !self.known_functions.contains_key(name) {
-            let ty_for_lookup = mir_type_to_ty(first_arg_ty);
-            let mut matching_traits = self.trait_registry.find_method_traits(name, &ty_for_lookup);
-            matching_traits.sort(); // Defense-in-depth: deterministic trait selection
-            if !matching_traits.is_empty() {
-                let trait_name = &matching_traits[0];
-                let type_name = mir_type_to_impl_name(first_arg_ty);
-                let mangled = format!("{}__{}__{}", trait_name, name, type_name);
-
-                return builtin_trait_redirect(mangled);
+            if let Some(callee) = self.trait_callee(name, first_arg_ty) {
+                return callee;
             }
 
             // A generic type's instance has its trait functions found by

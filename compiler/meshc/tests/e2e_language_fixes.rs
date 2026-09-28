@@ -6030,3 +6030,39 @@ end
 "##;
     assert_eq!(run(source), "2 6 two other 3.0\n");
 }
+
+/// A method call runs the method of the receiver's type even when a
+/// top-level function has the method's name. The call went to the
+/// top-level function, which is private to the module under another name,
+/// so the build panicked; with the names matching it would have run the
+/// wrong function.
+#[test]
+fn a_method_call_runs_the_method_whatever_the_top_level_functions() {
+    let source = r##"
+interface Describe do
+  fn describe(self) -> String
+end
+
+struct Crate do
+  n :: Int
+end
+
+impl Describe for Crate do
+  fn describe(self) -> String do
+    "method #{self.n}"
+  end
+end
+
+fn describe(c :: Crate) -> String do
+  "function #{c.n}"
+end
+
+fn main() do
+  let c = Crate { n: 4 }
+  println(c.describe())
+  println(describe(c))
+  println(Describe.describe(c))
+end
+"##;
+    assert_eq!(run(source), "method 4\nfunction 4\nmethod 4\n");
+}
