@@ -14,8 +14,18 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  changes:
+    name: Changed areas
+    uses: ./.github/workflows/changes.yml
+    permissions:
+      contents: read
+      actions: read # find the last green run to compare with
+
   secrets-preflight:
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release'
+    needs: changes
+    if: >-
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release') &&
+      (needs.changes.outputs.registry == 'true' || needs.changes.outputs.packages_site == 'true')
     name: Verify deploy secrets
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -57,7 +67,8 @@ jobs:
 
   deploy-registry:
     name: Deploy mesh-registry
-    needs: secrets-preflight
+    needs: [changes, secrets-preflight]
+    if: needs.changes.outputs.registry == 'true'
     runs-on: ubuntu-latest
     # The container image is a Rust release build via cargo-chef, so this is
     # the slow job; the image layers cache between runs on Cloudflare's side.
@@ -86,7 +97,8 @@ jobs:
 
   deploy-packages-website:
     name: Deploy mesh-packages website
-    needs: secrets-preflight
+    needs: [changes, secrets-preflight]
+    if: needs.changes.outputs.packages_site == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -116,6 +128,8 @@ jobs:
   health-check:
     name: Post-deploy health checks
     needs: [deploy-registry, deploy-packages-website]
+    # After whichever deploys ran, unless one of them failed.
+    if: ${{ !cancelled() && contains(needs.*.result, 'success') && !contains(needs.*.result, 'failure') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

@@ -15,8 +15,17 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  changes:
+    name: Changed areas
+    uses: ./.github/workflows/changes.yml
+    permissions:
+      contents: read
+      actions: read # find the last green run to compare with
+
   compatibility:
     name: Compatibility (${{ matrix.target }})
+    needs: changes
+    if: needs.changes.outputs.compiler == 'true'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     continue-on-error: true

@@ -11,6 +11,13 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    name: Changed areas
+    uses: ./.github/workflows/changes.yml
+    permissions:
+      contents: read
+      actions: read # find the last green run to compare with
+
   tag-secrets-preflight:
     name: Verify release publish secrets
     if: startsWith(github.ref, 'refs/tags/v')
@@ -35,8 +42,12 @@ jobs:
           fi
           exit "$missing"
 
+  # A push to main builds every target only when the compiler changed. A tag
+  # or a dispatch marks every area changed, so a release always builds.
   build:
     name: Build (${{ matrix.target }})
+    needs: changes
+    if: needs.changes.outputs.compiler == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -315,6 +326,8 @@ jobs:
 
   build-meshpkg:
     name: Build meshpkg (${{ matrix.target }})
+    needs: changes
+    if: needs.changes.outputs.compiler == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

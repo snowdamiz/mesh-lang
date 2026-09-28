@@ -14,8 +14,18 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  changes:
+    name: Changed areas
+    uses: ./.github/workflows/changes.yml
+    permissions:
+      contents: read
+      actions: read # find the last green run to compare with
+
   build:
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release'
+    needs: changes
+    if: >-
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release') &&
+      needs.changes.outputs.docs_site == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

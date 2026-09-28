@@ -1,0 +1,80 @@
+name: Changed areas
+
+# Which parts of the repository a run has to build, test or deploy; see
+# scripts/ci-changed-areas.sh for the areas. Callers gate their jobs on these
+# outputs, so a change to the landing page deploys the docs site and nothing
+# else.
+#
+# A push is compared with the last commit the calling workflow succeeded on,
+# not with the previous push. A run that failed, or was cancelled while queued
+# behind another (a concurrency group keeps only the newest pending run),
+# leaves its changes to the next run instead of dropping them. A pull request
+# is compared with its base. Anything else -- a manual run, a tag, the release
+# branch's dispatches -- does everything, which makes "Run workflow" the way to
+# force a full rebuild or redeploy.
+on:
+  workflow_call:
+    outputs:
+      compiler:
+        value: ${{ jobs.changes.outputs.compiler }}
+      docs_site:
+        value: ${{ jobs.changes.outputs.docs_site }}
+      packages_site:
+        value: ${{ jobs.changes.outputs.packages_site }}
+      registry:
+        value: ${{ jobs.changes.outputs.registry }}
+      editors:
+        value: ${{ jobs.changes.outputs.editors }}
+
+jobs:
+  changes:
+    name: Changed areas
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      compiler: ${{ steps.areas.outputs.compiler }}
+      docs_site: ${{ steps.areas.outputs.docs_site }}
+      packages_site: ${{ steps.areas.outputs.packages_site }}
+      registry: ${{ steps.areas.outputs.registry }}
+      editors: ${{ steps.areas.outputs.editors }}
+    steps:
+      # Full history to find the base commit; the diff only needs trees.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: blob:none
+
+      - name: Classify changed paths
+        id: areas
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          # The caller's file: the github context belongs to the caller.
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: |
+          set -euo pipefail
+          # A wrong classification skips a deploy silently; fail loudly instead.
+          bash scripts/tests/ci-changed-areas.test.sh
+          base=""
+          if [[ "$EVENT" == pull_request ]]; then
+            base="$PR_BASE"
+          elif [[ "$EVENT" == push && "$GITHUB_REF" == refs/heads/* ]]; then
+            workflow="${WORKFLOW_REF%@*}"
+            workflow="${workflow##*/}"
+            # Excluding this run keeps "Re-run all jobs" on a green run from
+            # comparing the commit with itself.
+            base="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$workflow" \
+              --branch "$GITHUB_REF_NAME" --status success --limit 20 --json databaseId,headSha \
+              --jq "map(select(.databaseId != $GITHUB_RUN_ID))[0].headSha // \"\"")" || base=""
+          fi
+
+          if [[ -n "$base" ]] && git cat-file -e "$base^{commit}" 2>/dev/null; then
+            echo "changes since $base:"
+            git diff --name-only --no-renames "$base" HEAD | tee changed-paths.txt
+            bash scripts/ci-changed-areas.sh <changed-paths.txt | tee -a "$GITHUB_OUTPUT"
+          else
+            echo "nothing to compare with ($EVENT): everything runs"
+            bash scripts/ci-changed-areas.sh --all | tee -a "$GITHUB_OUTPUT"
+          fi

@@ -15,6 +15,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  changes:
+    name: Changed areas
+    uses: ./.github/workflows/changes.yml
+    permissions:
+      contents: read
+      actions: read # find the last green run to compare with
+
   whitespace-guard:
     name: Whitespace guard
     runs-on: ubuntu-latest
@@ -49,6 +56,8 @@ jobs:
 
   formatting:
     name: Formatting
+    needs: changes
+    if: needs.changes.outputs.compiler == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -64,6 +73,8 @@ jobs:
 
   rust-core:
     name: Rust core build and smoke
+    needs: changes
+    if: needs.changes.outputs.compiler == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     steps:
@@ -123,8 +134,42 @@ jobs:
           # e2e_library builds static and dynamic libraries and runs a C host.
           cargo test --locked -p meshc --test e2e --test tooling_e2e --test e2e_language_fixes --test e2e_performance --test e2e_library
 
+  # The ```mesh examples on the docs site must parse, lint and format cleanly.
+  # rust-core runs these tests with the rest of the mesh-lint and mesh-fmt
+  # suites; this covers a change to the docs alone, without LLVM.
+  docs-examples:
+    name: Docs examples
+    needs: changes
+    if: needs.changes.outputs.docs_site == 'true' && needs.changes.outputs.compiler != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: authoritative-verification-docs-examples
+
+      - name: Lint and format the docs examples
+        run: |
+          cargo test --locked -p mesh-lint --test website_examples
+          cargo test --locked -p mesh-fmt --test corpus
+
   docs-and-sites:
     name: Docs and sites build
+    needs: changes
+    # The docs build's prebuild tests check the VS Code grammar against
+    # examples/ and the test fixtures, hence editors and compiler.
+    if: >-
+      needs.changes.outputs.docs_site == 'true' ||
+      needs.changes.outputs.packages_site == 'true' ||
+      needs.changes.outputs.editors == 'true' ||
+      needs.changes.outputs.compiler == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -141,11 +186,13 @@ jobs:
             packages-website/package-lock.json
 
       - name: Build website docs
+        if: needs.changes.outputs.docs_site == 'true' || needs.changes.outputs.editors == 'true' || needs.changes.outputs.compiler == 'true'
         run: |
           npm --prefix website ci
           npm --prefix website run build
 
       - name: Verify Neovim syntax parity
+        if: needs.changes.outputs.editors == 'true' || needs.changes.outputs.compiler == 'true'
         shell: bash
         env:
           NVIM_SHA256: ab757a1fd9ad307d53d2df4045698906a7ca3993d92260dd8fe49108712d57d0
@@ -156,12 +203,15 @@ jobs:
           NEOVIM_BIN="$RUNNER_TEMP/nvim-linux-x86_64/bin/nvim" bash scripts/verify-m036-s02.sh syntax
 
       - name: Build packages website
+        if: needs.changes.outputs.packages_site == 'true'
         run: |
           npm --prefix packages-website ci
           npm --prefix packages-website run build
 
   vscode-extension:
     name: VS Code extension package
+    needs: changes
+    if: needs.changes.outputs.editors == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
