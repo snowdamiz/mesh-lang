@@ -34,6 +34,8 @@ struct Faults {
     no_draining: bool,
     /// Docker reports no managed container.
     no_managed: bool,
+    /// The managed containers Docker reports running, whatever the phase.
+    running: Option<&'static str>,
 }
 
 struct FakeCluster {
@@ -141,7 +143,9 @@ impl FakeCluster {
     /// The managed containers running: three at the peak, one after the
     /// scale-down.
     fn running(&self) -> &'static str {
-        if self.failed_over.load(Ordering::SeqCst) {
+        if let Some(running) = self.faults.running {
+            running
+        } else if self.failed_over.load(Ordering::SeqCst) {
             "m1"
         } else {
             "m1\nm2\nm3"
@@ -240,6 +244,12 @@ impl FakeCluster {
                 ControlMutation::DriverOperation(operation(index as u64, &id)),
             )
         }));
+        // An operator's override of the same capacity, the latest word on it.
+        entries.push(entry(
+            5,
+            "override",
+            ControlMutation::ManualOverride { worker_nodes: 4 },
+        ));
         if scaled_down {
             entries.push(desired(5, 2));
             entries.push(entry(
@@ -754,6 +764,23 @@ fn no_managed_container_is_no_committed_operation() {
 }
 
 #[test]
+fn managed_containers_that_never_come_or_go_time_out() {
+    for (running, expected) in [
+        ("", "proof_managed_worker_readiness_timeout"),
+        (
+            "m1\nm2\nm3",
+            "proof_managed_worker_exact_count_timeout:expected=1:observed=3",
+        ),
+    ] {
+        let faults = Faults {
+            running: Some(running),
+            ..Faults::default()
+        };
+        assert_eq!(prove(faults, &[]).result, Err(expected.to_string()));
+    }
+}
+
+#[test]
 fn a_start_only_run_writes_the_connection_manifest_and_nothing_over_it() {
     let evidence = tempfile::tempdir().unwrap();
     let manifest = evidence.path().join("connection.json");
@@ -807,7 +834,12 @@ fn logs_and_cleanup_follow_what_docker_reports() {
         .join("managed-containers-inspect.json")
         .exists());
     // A removal failing, before `down` and of a container left after it.
-    for command in [3, 6] {
+    // Listing what is left after `down` failing, too.
+    for (command, failed) in [
+        (3, "docker rm -f m1 m2 m3"),
+        (5, "docker ps -aq"),
+        (6, "docker rm -f m1 m2 m3"),
+    ] {
         let cleanup = harness(
             FakeCluster::new(Faults {
                 command: Some(command),
@@ -817,7 +849,7 @@ fn logs_and_cleanup_follow_what_docker_reports() {
         );
         let error = cleanup.cleanup().unwrap_err();
         assert!(
-            error.starts_with("proof_command_failed:docker rm -f m1 m2 m3\n"),
+            error.starts_with(&format!("proof_command_failed:{failed}")),
             "{command}: {error}"
         );
     }

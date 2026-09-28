@@ -2873,6 +2873,22 @@ mod tests {
         assert!(write_owner_only_new(&path.join("below"), b"", "test")
             .unwrap_err()
             .starts_with("test_directory_failed:"));
+        // A path with no parent has no directory to make: the root, which
+        // is no file to create.
+        assert!(write_owner_only_new(Path::new("/"), b"", "test")
+            .unwrap_err()
+            .starts_with("test_open_failed:"));
+    }
+
+    /// Managed containers match the committed operations only as a list,
+    /// each labelled with its operation.
+    #[test]
+    fn managed_labels_are_read_from_a_list_of_labelled_containers() {
+        let unlisted = json!({"Config": {"Labels": {"mesh.operation": "op1"}}});
+        assert!(!managed_labels_match_operations(&unlisted, &[], "c"));
+        assert!(!managed_operation_labels_unique(&unlisted));
+        let unlabelled = json!([{"Config": {"Labels": {}}}]);
+        assert!(!managed_labels_match_operations(&unlabelled, &[], "c"));
     }
 
     #[test]
