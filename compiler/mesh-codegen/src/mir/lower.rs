@@ -518,24 +518,6 @@ fn apply_type_vars(ty: &Ty, bindings: &[(mesh_typeck::ty::TyVar, Ty)]) -> Ty {
     }
 }
 
-/// The type of a call to `callee`, given what the type checker says it is.
-///
-/// A nested tuple read out of a tuple (`Tuple.first(((1, "a"), 2))`) is a
-/// pointer like every other tuple value, whatever its static type.
-fn tuple_slot_type(callee: &MirExpr, ty: MirType) -> MirType {
-    match callee {
-        MirExpr::Var(name, _)
-            if matches!(
-                name.as_str(),
-                "mesh_tuple_first" | "mesh_tuple_second" | "mesh_tuple_nth"
-            ) =>
-        {
-            runtime_value_type(ty)
-        }
-        _ => ty,
-    }
-}
-
 fn uniform_callback_index(name: &str) -> Option<usize> {
     match name {
         "mesh_list_map" | "mesh_list_filter" | "mesh_list_sort" | "mesh_list_find"
@@ -7850,15 +7832,9 @@ impl<'a> Lowerer<'a> {
 
         if let Some(scope_ty) = self.lookup_var(&name) {
             if self.user_fn_defs.contains(&name) {
-                let resolved_ty = self.resolve_range(range);
                 let qualified_name = self.qualify_name(&name);
                 let lowered_name = self.lowered_fn_symbol_name(&name, &qualified_name, range);
-                let var_ty = if matches!(resolved_ty, MirType::Unit) {
-                    scope_ty
-                } else {
-                    resolved_ty
-                };
-                return MirExpr::Var(lowered_name, var_ty);
+                return MirExpr::Var(lowered_name, resolved_ty);
             }
             return self.lower_local_ref(name, scope_ty, range);
         }
@@ -7876,12 +7852,9 @@ impl<'a> Lowerer<'a> {
         };
         let ty = resolved_ty;
 
-        // Apply module-qualified naming to user-defined functions (Phase 41).
-        // This ensures call sites match the qualified definition names.
-        let lowered_name = if self.user_fn_defs.contains(&mapped_name) {
-            let qualified_name = self.qualify_name(&mapped_name);
-            self.lowered_fn_symbol_name(&mapped_name, &qualified_name, range)
-        } else if self.imported_functions.contains(&mapped_name) {
+        // The functions this module defines are in scope, found above; an
+        // imported one keeps its own name.
+        let lowered_name = if self.imported_functions.contains(&mapped_name) {
             self.lowered_fn_symbol_name(&mapped_name, &mapped_name, range)
         } else {
             mapped_name
@@ -7980,34 +7953,27 @@ impl<'a> Lowerer<'a> {
             }
         }
 
-        // Arithmetic on user types dispatches to the type's operator impl.
+        // Arithmetic on user types dispatches to the type's operator impl:
+        // comparisons of them were decided above, and the type checker
+        // admits no other operator on them, nor one without its impl.
         let lhs_ty = lhs.ty().clone();
-        let is_user_type = matches!(lhs_ty, MirType::Struct(_) | MirType::SumType(_));
-        if is_user_type {
-            let dispatch = match op {
-                BinOp::Add => Some(("Add", "add")),
-                BinOp::Sub => Some(("Sub", "sub")),
-                BinOp::Mul => Some(("Mul", "mul")),
-                BinOp::Div => Some(("Div", "div")),
-                BinOp::Mod => Some(("Mod", "mod")),
-                _ => None,
+        if matches!(lhs_ty, MirType::Struct(_) | MirType::SumType(_)) {
+            let (trait_name, method_name) = match op {
+                BinOp::Add => ("Add", "add"),
+                BinOp::Sub => ("Sub", "sub"),
+                BinOp::Mul => ("Mul", "mul"),
+                BinOp::Div => ("Div", "div"),
+                _ => ("Mod", "mod"),
             };
-            if let Some((trait_name, method_name)) = dispatch {
-                let ty_for_lookup = mir_type_to_ty(&lhs_ty);
-                let type_name = mir_type_to_impl_name(&lhs_ty);
-                let mangled = format!("{}__{}__{}", trait_name, method_name, type_name);
-                let has_impl = self.trait_registry.has_impl(trait_name, &ty_for_lookup)
-                    || self.known_functions.contains_key(&mangled);
-                if has_impl {
-                    let rhs_ty = rhs.ty().clone();
-                    let fn_ty = MirType::FnPtr(vec![lhs_ty.clone(), rhs_ty], Box::new(ty.clone()));
-                    return MirExpr::Call {
-                        func: Box::new(MirExpr::Var(mangled, fn_ty)),
-                        args: vec![lhs, rhs],
-                        ty,
-                    };
-                }
-            }
+            let type_name = mir_type_to_impl_name(&lhs_ty);
+            let mangled = format!("{}__{}__{}", trait_name, method_name, type_name);
+            let rhs_ty = rhs.ty().clone();
+            let fn_ty = MirType::FnPtr(vec![lhs_ty, rhs_ty], Box::new(ty.clone()));
+            return MirExpr::Call {
+                func: Box::new(MirExpr::Var(mangled, fn_ty)),
+                args: vec![lhs, rhs],
+                ty,
+            };
         }
 
         MirExpr::BinOp {
@@ -8024,43 +7990,27 @@ impl<'a> Lowerer<'a> {
         let operand = un
             .operand()
             .map(|e| self.lower_expr(&e))
-            .unwrap_or(MirExpr::Unit);
+            .expect("the parser gives a unary operator its operand");
 
-        let op = un
-            .op()
-            .map(|t| match t.kind() {
-                SyntaxKind::MINUS => UnaryOp::Neg,
-                SyntaxKind::BANG | SyntaxKind::NOT_KW => UnaryOp::Not,
-                _ => UnaryOp::Neg,
-            })
-            .unwrap_or(UnaryOp::Neg);
+        // The parser's unary operators are `-`, and `!` or `not`.
+        let op = match un.op().map(|t| t.kind()) {
+            Some(SyntaxKind::MINUS) => UnaryOp::Neg,
+            _ => UnaryOp::Not,
+        };
 
         let ty = self.resolve_range(un.syntax().text_range());
 
-        // Neg trait dispatch for user types: if the operand is a struct or
-        // sum type with a Neg impl, emit a trait method call instead of a
-        // hardware UnaryOp.  Primitives (Int/Float) fall through to the
-        // hardware path.
-        if op == UnaryOp::Neg {
-            let operand_ty = operand.ty().clone();
-            let is_user_type = matches!(operand_ty, MirType::Struct(_) | MirType::SumType(_));
-            if is_user_type {
-                let ty_for_lookup = mir_type_to_ty(&operand_ty);
-                let type_name = mir_type_to_impl_name(&operand_ty);
-                let mangled = format!("Neg__neg__{}", type_name);
-
-                let has_impl = self.trait_registry.has_impl("Neg", &ty_for_lookup)
-                    || self.known_functions.contains_key(&mangled);
-
-                if has_impl {
-                    let fn_ty = MirType::FnPtr(vec![operand_ty], Box::new(ty.clone()));
-                    return MirExpr::Call {
-                        func: Box::new(MirExpr::Var(mangled, fn_ty)),
-                        args: vec![operand],
-                        ty,
-                    };
-                }
-            }
+        // A negated struct or sum type calls its Neg impl, which the type
+        // checker requires; Int and Float are negated by the hardware.
+        let operand_ty = operand.ty().clone();
+        if op == UnaryOp::Neg && matches!(operand_ty, MirType::Struct(_) | MirType::SumType(_)) {
+            let mangled = format!("Neg__neg__{}", mir_type_to_impl_name(&operand_ty));
+            let fn_ty = MirType::FnPtr(vec![operand_ty], Box::new(ty.clone()));
+            return MirExpr::Call {
+                func: Box::new(MirExpr::Var(mangled, fn_ty)),
+                args: vec![operand],
+                ty,
+            };
         }
 
         MirExpr::UnaryOp {
@@ -8091,12 +8041,7 @@ impl<'a> Lowerer<'a> {
     /// generic instantiation `source` (`Box<List<Int>>`), whose helpers go
     /// by its source types rather than its layout (see
     /// `instantiation_helper_name`); `None` for any other callee.
-    fn instantiation_trait_callee(
-        &mut self,
-        name: &str,
-        source: &Ty,
-        var_ty: &MirType,
-    ) -> Option<MirExpr> {
+    fn instantiation_trait_callee(&mut self, name: &str, source: &Ty) -> Option<String> {
         let (Ty::App(..), Some((type_name, args))) = (source, ty_head(source)) else {
             return None;
         };
@@ -8109,7 +8054,6 @@ impl<'a> Lowerer<'a> {
             .iter()
             .map(|t| format!("{t}__{name}__{helper}"))
             .find(|f| self.known_functions.contains_key(f))
-            .map(|f| MirExpr::Var(f, var_ty.clone()))
     }
 
     /// The mangled name of the impl method `method` that type `ty` provides
@@ -8165,15 +8109,10 @@ impl<'a> Lowerer<'a> {
                         .is_some_and(|arg| trait_arg_name(arg) == trait_arg_name(source))
                 })
             })
-            .or(impls.first());
-        match chosen {
-            Some(imp) => {
-                let type_args: Vec<String> =
-                    imp.trait_type_args.iter().map(trait_arg_name).collect();
-                mangle_trait_method(trait_name, &type_args, method, &imp.impl_type_name)
-            }
-            None => format!("{trait_name}__{method}__{type_name}"),
-        }
+            .or(impls.first())
+            .expect("the type checker admits a conversion only with its impl");
+        let type_args: Vec<String> = chosen.trait_type_args.iter().map(trait_arg_name).collect();
+        mangle_trait_method(trait_name, &type_args, method, &chosen.impl_type_name)
     }
 
     /// How a call of `fa` (`Base.method(...)`) is lowered when its base
@@ -8196,16 +8135,19 @@ impl<'a> Lowerer<'a> {
         let is_module = STDLIB_MODULES.contains(&base_name.as_str())
             || self.user_modules.contains_key(&base_name)
             || self.service_modules.contains_key(&base_name);
-        if !is_type && !is_module {
-            if let Some(trait_def) = self.trait_registry.get_trait(&base_name) {
-                if trait_def
-                    .methods
-                    .iter()
-                    .any(|m| m.name == method && m.has_self)
-                {
-                    return Some(QualifiedRoute::Interface(base_name, method));
-                }
-            }
+        let interface_method = !is_type
+            && !is_module
+            && self
+                .trait_registry
+                .get_trait(&base_name)
+                .is_some_and(|trait_def| {
+                    trait_def
+                        .methods
+                        .iter()
+                        .any(|m| m.name == method && m.has_self)
+                });
+        if interface_method {
+            return Some(QualifiedRoute::Interface(base_name, method));
         }
         let ty = match base_name.as_str() {
             "Int" | "Float" | "String" | "Bool" => Ty::Con(mesh_typeck::ty::TyCon::new(&base_name)),
@@ -8228,19 +8170,20 @@ impl<'a> Lowerer<'a> {
             "try_from" => Some("TryFrom"),
             _ => None,
         };
-        if let (true, Some(trait_name)) = (is_type, conversion) {
-            if self
-                .trait_registry
-                .impls_providing(&method, &ty)
-                .iter()
-                .any(|(imp, _)| imp.trait_name == trait_name)
-            {
-                return Some(QualifiedRoute::Conversion(
-                    trait_name.to_string(),
-                    method,
-                    base_name,
-                ));
-            }
+        let conversion = conversion.filter(|trait_name| {
+            is_type
+                && self
+                    .trait_registry
+                    .impls_providing(&method, &ty)
+                    .iter()
+                    .any(|(imp, _)| imp.trait_name == *trait_name)
+        });
+        if let Some(trait_name) = conversion {
+            return Some(QualifiedRoute::Conversion(
+                trait_name.to_string(),
+                method,
+                base_name,
+            ));
         }
         self.static_impl_method(&method, &ty)
             .map(QualifiedRoute::Static)
@@ -8292,13 +8235,7 @@ impl<'a> Lowerer<'a> {
                             )
                         })
                 })
-                .unwrap_or_else(|| {
-                    let type_name = args
-                        .first()
-                        .map(|arg| mir_type_to_impl_name(arg.ty()))
-                        .unwrap_or_default();
-                    format!("{trait_name}__{method}__{type_name}")
-                }),
+                .expect("the type checker calls an interface's method on a type implementing it"),
         };
         let callee = MirExpr::Var(
             builtin_trait_redirect(callee),
@@ -8346,58 +8283,54 @@ impl<'a> Lowerer<'a> {
             args.iter().map(|a| a.ty().clone()).collect(),
             Box::new(ty.clone()),
         );
-        if method_name == "compare" && args.len() == 2 {
-            if let Some(source) = receiver_source
-                .as_ref()
-                .filter(|ty| !matches!(ty, Ty::Var(_)))
-            {
-                return self.compare_call(source, args);
-            }
+        let compared = receiver_source
+            .as_ref()
+            .filter(|ty| method_name == "compare" && args.len() == 2 && !matches!(ty, Ty::Var(_)));
+        if let Some(source) = compared {
+            return self.compare_call(source, args);
         }
         let call_result = self.get_ty(call_range).cloned();
-        let callee = receiver_source
+        let callee_name = receiver_source
             .as_ref()
             .and_then(|source| {
-                self.parameterized_impl_callee(
-                    method_name,
-                    source,
-                    call_result.as_ref(),
-                    &callee_var_ty,
-                )
+                self.parameterized_impl_callee(method_name, source, call_result.as_ref())
             })
             .or_else(|| {
-                receiver_source.as_ref().and_then(|source| {
-                    self.instantiation_trait_callee(method_name, source, &callee_var_ty)
-                })
+                receiver_source
+                    .as_ref()
+                    .and_then(|source| self.instantiation_trait_callee(method_name, source))
             })
-            .unwrap_or_else(|| {
-                self.resolve_trait_callee(method_name, &callee_var_ty, &first_arg_ty)
-            });
+            .unwrap_or_else(|| self.resolve_trait_callee(method_name, &first_arg_ty));
 
-        // Apply the same post-dispatch optimizations as bare-name calls:
-        // Display__to_string__String identity short-circuit
-        if let MirExpr::Var(ref name, _) = callee {
-            if name == "Display__to_string__String" && !args.is_empty() {
-                return args.into_iter().next().unwrap();
+        // Apply the same post-dispatch optimizations as bare-name calls: a
+        // String's Display is the String itself, its Debug quotes and
+        // escapes it.
+        let mut receiver_and_rest = args.into_iter();
+        match callee_name.as_str() {
+            "Display__to_string__String" => {
+                return receiver_and_rest.next().expect("a method has a receiver")
             }
-            // Debug__inspect__String quotes and escapes
-            if name == "Debug__inspect__String" && !args.is_empty() {
-                return Self::inspect_string(args.into_iter().next().unwrap());
+            "Debug__inspect__String" => {
+                return Self::inspect_string(
+                    receiver_and_rest.next().expect("a method has a receiver"),
+                )
             }
+            _ => {}
         }
+        let args: Vec<MirExpr> = receiver_and_rest.collect();
 
         // `to_string` / `inspect` on a value whose type, not a
         // nominal impl, decides how it prints.
-        if let MirExpr::Var(ref name, _) = callee {
-            if (name == "to_string" || name == "debug" || name == "inspect") && args.len() == 1 {
-                if let Some(shown) = receiver_source
-                    .as_ref()
-                    .and_then(|ty| self.display_by_type(&args[0], ty, name == "inspect"))
-                {
-                    return shown;
-                }
-            }
+        let shown_by_type =
+            matches!(callee_name.as_str(), "to_string" | "debug" | "inspect") && args.len() == 1;
+        let shown = receiver_source
+            .as_ref()
+            .filter(|_| shown_by_type)
+            .and_then(|ty| self.display_by_type(&args[0], ty, callee_name == "inspect"));
+        if let Some(shown) = shown {
+            return shown;
         }
+        let callee = MirExpr::Var(callee_name, callee_var_ty);
         let args = self.borrow_receiver(&callee, args);
         let args = self.apply_direct_resource_modes(&callee, args);
         MirExpr::Call {
@@ -8417,8 +8350,7 @@ impl<'a> Lowerer<'a> {
         method: &str,
         receiver: &Ty,
         result: Option<&Ty>,
-        var_ty: &MirType,
-    ) -> Option<MirExpr> {
+    ) -> Option<String> {
         let mut candidates: Vec<_> = self
             .trait_registry
             .impls_providing(method, receiver)
@@ -8443,18 +8375,13 @@ impl<'a> Lowerer<'a> {
             }
             _ => mangle_trait_method(&imp.trait_name, &args, method, &imp.impl_type_name),
         };
-        Some(MirExpr::Var(
-            builtin_trait_redirect(mangled),
-            var_ty.clone(),
-        ))
+        Some(builtin_trait_redirect(mangled))
     }
 
-    fn resolve_trait_callee(
-        &self,
-        name: &str,
-        var_ty: &MirType,
-        first_arg_ty: &MirType,
-    ) -> MirExpr {
+    /// The function a call of `name` with a first argument of type
+    /// `first_arg_ty` runs: the trait method of that type it names, or
+    /// `name` itself.
+    fn resolve_trait_callee(&self, name: &str, first_arg_ty: &MirType) -> String {
         if !self.known_functions.contains_key(name) {
             let ty_for_lookup = mir_type_to_ty(first_arg_ty);
             let mut matching_traits = self.trait_registry.find_method_traits(name, &ty_for_lookup);
@@ -8464,51 +8391,13 @@ impl<'a> Lowerer<'a> {
                 let type_name = mir_type_to_impl_name(first_arg_ty);
                 let mangled = format!("{}__{}__{}", trait_name, name, type_name);
 
-                let resolved = builtin_trait_redirect(mangled);
-                return MirExpr::Var(resolved, var_ty.clone());
+                return builtin_trait_redirect(mangled);
             }
 
-            // Fallback for monomorphized generic types
-            let type_name = mir_type_to_impl_name(first_arg_ty);
-            let known_traits = ["Display", "Debug", "Eq", "Ord", "Hash"];
-            for trait_name in &known_traits {
-                let candidate = format!("{}__{}__{}", trait_name, name, type_name);
-                if self.known_functions.contains_key(&candidate) {
-                    return MirExpr::Var(candidate, var_ty.clone());
-                }
-            }
-
-            // Stdlib module method fallback: check if this is a module function
-            // callable as a method on the receiver's type (e.g., "hello".length() -> mesh_string_length).
-            let module_method = match first_arg_ty {
-                MirType::String => {
-                    let prefixed = format!("string_{}", name);
-                    let runtime = map_builtin_name(&prefixed);
-                    if self.known_functions.contains_key(&runtime)
-                        || runtime.starts_with("mesh_string_")
-                    {
-                        Some(runtime)
-                    } else {
-                        None
-                    }
-                }
-                MirType::Ptr => {
-                    // List/Map/Set methods -- try list_ prefix first (most common collection).
-                    let prefixed = format!("list_{}", name);
-                    let runtime = map_builtin_name(&prefixed);
-                    if self.known_functions.contains_key(&runtime)
-                        || runtime.starts_with("mesh_list_")
-                    {
-                        Some(runtime)
-                    } else {
-                        None
-                    }
-                }
-                _ => None,
-            };
-            if let Some(runtime_name) = module_method {
-                return MirExpr::Var(runtime_name, var_ty.clone());
-            }
+            // A generic type's instance has its trait functions found by
+            // `instantiation_trait_callee`, and a method of a String or a
+            // collection (`"hello".length()`) is its module's function,
+            // lowered as the stdlib call it is before this.
 
             // Defense-in-depth warning -- skip module-scoped helpers (Module__func),
             // compiler-generated service stubs (__service_*), and runtime intrinsics (mesh_*).
@@ -8528,7 +8417,7 @@ impl<'a> Lowerer<'a> {
                 );
             }
         }
-        MirExpr::Var(name.to_string(), var_ty.clone())
+        name.to_string()
     }
 
     // ── Call expression lowering ─────────────────────────────────────
@@ -8541,13 +8430,12 @@ impl<'a> Lowerer<'a> {
         if matches!(callee, MirExpr::Var(name, _) if self.ownership_signatures.contains_key(name)) {
             return args;
         }
-        if let Some(receiver) = args.first_mut() {
-            if let MirExpr::ResourceMove { value, ty, .. } = receiver {
-                *receiver = MirExpr::ResourceBorrow {
-                    value: value.clone(),
-                    ty: ty.clone(),
-                };
-            }
+        // A method call has its receiver first.
+        if let MirExpr::ResourceMove { value, ty, .. } = &args[0] {
+            args[0] = MirExpr::ResourceBorrow {
+                value: value.clone(),
+                ty: ty.clone(),
+            };
         }
         args
     }
@@ -8576,24 +8464,23 @@ impl<'a> Lowerer<'a> {
         // Inside an actor with parameters, a call to the actor itself runs its
         // body function; the actor's own name is the spawn entry, which takes
         // an argument buffer. Tail calls become loops later.
-        if let (Some((actor, body_fn, param_tys)), Some(Expr::NameRef(callee))) =
-            (&self.actor_body_target, call.callee())
+        if let (
+            Some((actor, body_fn, param_tys)),
+            Some(Expr::NameRef(callee)),
+            MirExpr::Call { args, .. },
+        ) = (&self.actor_body_target, call.callee(), &lowered)
         {
             if callee.text().as_deref() == Some(actor.as_str())
                 && self.lookup_non_global_var(actor).is_none()
             {
-                if let MirExpr::Call { func, args, .. } = &lowered {
-                    if matches!(func.as_ref(), MirExpr::Var(name, _) if name == actor) {
-                        return MirExpr::Call {
-                            func: Box::new(MirExpr::Var(
-                                body_fn.clone(),
-                                MirType::FnPtr(param_tys.clone(), Box::new(MirType::Unit)),
-                            )),
-                            args: args.clone(),
-                            ty: MirType::Unit,
-                        };
-                    }
-                }
+                return MirExpr::Call {
+                    func: Box::new(MirExpr::Var(
+                        body_fn.clone(),
+                        MirType::FnPtr(param_tys.clone(), Box::new(MirType::Unit)),
+                    )),
+                    args: args.clone(),
+                    ty: MirType::Unit,
+                };
             }
         }
         // A message that crosses to another actor, last of the arguments:
@@ -8787,10 +8674,10 @@ impl<'a> Lowerer<'a> {
                 .as_ref()
                 .map(|ty| resolve_type(ty, self.registry))
                 .unwrap_or(MirType::Unit);
-            Some(self.lower_stdlib_function(module, &method, fn_ty, fallback))
+            self.lower_stdlib_function(module, &method, fn_ty, fallback)
         } else {
-            call.callee()
-                .map(|e| self.lower_call_target(call.syntax().text_range(), &e))
+            let callee = call.callee().expect("the parser gives a call its callee");
+            self.lower_call_target(call.syntax().text_range(), &callee)
         };
         let receiver = stdlib_method
             .as_ref()
@@ -8802,64 +8689,14 @@ impl<'a> Lowerer<'a> {
             .chain(explicit.iter().map(|a| self.lower_expr(a)))
             .collect();
 
+        // A tuple result is the pointer to its block, as `resolve_range`
+        // types every tuple value.
         let ty = self.resolve_range(call.syntax().text_range());
-
-        let callee = match callee {
-            Some(c) => c,
-            None => return MirExpr::Unit,
-        };
-        let mut ty = tuple_slot_type(&callee, ty);
-
-        // When calling a known stdlib function whose return type is Ptr but
-        // the typeck resolved to a Tuple type, use Ptr. This prevents LLVM
-        // struct/pointer mismatches where typeck resolves e.g. List.head on
-        // List<(A,B)> as Tuple([A,B]) but the runtime returns an opaque Ptr.
-        if let MirExpr::Var(ref _name, MirType::FnPtr(_, ref ret_ty)) = callee {
-            if matches!(ty, MirType::Tuple(_)) && matches!(**ret_ty, MirType::Ptr) {
-                ty = MirType::Ptr;
-            }
-        }
-
-        // When the typeck produces an unresolved type variable for a call to a
-        // known function, the resolved MIR type is Unit (the fallback for
-        // Ty::Var). This happens when function parameters lack type annotations
-        // and the call is type-checked before the call site that provides the
-        // concrete type. Fall back to the known function's declared return type
-        // so that the codegen doesn't discard the return value (which causes
-        // SIGBUS on arm64 when the value is later used as a pointer).
-        if matches!(ty, MirType::Unit) {
-            if let MirExpr::Var(ref name, ref callee_ty) = callee {
-                if let MirType::FnPtr(_, ref ret_ty) = callee_ty {
-                    if !matches!(**ret_ty, MirType::Unit) {
-                        ty = *ret_ty.clone();
-                    }
-                }
-                // Also check known_functions for the definitive return type.
-                // This handles cases where the callee Var's type was also
-                // resolved from an unresolved typeck variable.
-                if matches!(ty, MirType::Unit) {
-                    if let Some(MirType::FnPtr(_, ref ret_ty)) = self.known_functions.get(name) {
-                        if !matches!(**ret_ty, MirType::Unit) {
-                            ty = *ret_ty.clone();
-                        }
-                    }
-                }
-            }
-        }
 
         // Check if this is a variant constructor call (e.g., Circle(5.0)).
         if let MirExpr::Var(ref name, _) = callee {
-            if let Some(base_name) =
-                find_type_for_variant(name, Some(&ty), self.registry, Some(args.len()))
-            {
-                let concrete_name = match &ty {
-                    MirType::SumType(name)
-                        if name == &base_name || name.starts_with(&format!("{base_name}_")) =>
-                    {
-                        name.clone()
-                    }
-                    _ => base_name,
-                };
+            if find_type_for_variant(name, Some(&ty), self.registry, Some(args.len())).is_some() {
+                let concrete_name = mir_type_to_impl_name(&ty);
                 return MirExpr::ConstructVariant {
                     type_name: concrete_name.clone(),
                     variant: name.clone(),
@@ -8929,29 +8766,15 @@ impl<'a> Lowerer<'a> {
             }
         }
 
-        // compare(a, b) dispatch: by the operands' type, else rewrite to
-        // Ord__compare__TypeName.
-        if let MirExpr::Var(ref name, _) = callee {
-            if name == "compare" && args.len() == 2 {
-                let source = call
-                    .arg_list()
-                    .and_then(|list| list.args().next())
-                    .and_then(|arg| self.get_ty(arg.syntax().text_range()).cloned());
-                if let Some(source) = source.filter(|ty| !matches!(ty, Ty::Var(_))) {
-                    return self.compare_call(&source, args);
-                }
-                let arg_ty = args[0].ty().clone();
-                let type_name = mir_type_to_impl_name(&arg_ty);
-                let mangled = format!("Ord__compare__{}", type_name);
-                let ordering_ty = MirType::SumType("Ordering".to_string());
-                let fn_ty =
-                    MirType::FnPtr(vec![arg_ty.clone(), arg_ty], Box::new(ordering_ty.clone()));
-                return MirExpr::Call {
-                    func: Box::new(MirExpr::Var(mangled, fn_ty)),
-                    args,
-                    ty: ordering_ty,
-                };
-            }
+        // compare(a, b) dispatches on the operands' type, which the type
+        // checker gives them (a generic body is lowered at concrete types).
+        if matches!(&callee, MirExpr::Var(name, _) if name == "compare") && args.len() == 2 {
+            let source = call
+                .arg_list()
+                .and_then(|list| list.args().next())
+                .and_then(|arg| self.get_ty(arg.syntax().text_range()).cloned())
+                .expect("the type checker types compare's operands");
+            return self.compare_call(&source, args);
         }
 
         // `String.from(x)` shows `x` the way interpolating it would.
@@ -9036,12 +8859,13 @@ impl<'a> Lowerer<'a> {
                     .and_then(|list| list.args().next())
                     .and_then(|arg| self.get_ty(arg.syntax().text_range()).cloned());
                 let call_result = self.get_ty(call.syntax().text_range()).cloned();
-                first_arg_source
+                let resolved = first_arg_source
                     .and_then(|source| {
-                        self.parameterized_impl_callee(name, &source, call_result.as_ref(), var_ty)
-                            .or_else(|| self.instantiation_trait_callee(name, &source, var_ty))
+                        self.parameterized_impl_callee(name, &source, call_result.as_ref())
+                            .or_else(|| self.instantiation_trait_callee(name, &source))
                     })
-                    .unwrap_or_else(|| self.resolve_trait_callee(name, var_ty, &first_arg_ty))
+                    .unwrap_or_else(|| self.resolve_trait_callee(name, &first_arg_ty));
+                MirExpr::Var(resolved, var_ty.clone())
             } else {
                 callee
             }
@@ -9192,17 +9016,18 @@ impl<'a> Lowerer<'a> {
             .as_ref()
             .and_then(|e| self.get_ty(e.syntax().text_range()).cloned());
 
-        match rhs {
-            Some(Expr::CallExpr(call)) => {
+        match rhs.expect("the parser gives a pipe its right-hand side") {
+            Expr::CallExpr(call) => {
                 let route = match call.callee() {
                     Some(Expr::FieldAccess(fa)) => self.qualified_route(&fa),
                     _ => None,
                 };
                 let callee = match route {
                     Some(_) => None,
-                    None => call
-                        .callee()
-                        .map(|e| self.lower_call_target(call.syntax().text_range(), &e)),
+                    None => {
+                        let callee = call.callee().expect("the parser gives a call its callee");
+                        Some(self.lower_call_target(call.syntax().text_range(), &callee))
+                    }
                 };
                 let explicit = call.args();
                 let index = index.min(explicit.len());
@@ -9223,17 +9048,15 @@ impl<'a> Lowerer<'a> {
                         first_ty,
                     );
                 }
-                let Some(callee) = callee else {
-                    return MirExpr::Unit;
-                };
+                let callee = callee.expect("a call without a route has its callee");
                 let args = self.apply_direct_resource_modes(&callee, args);
                 MirExpr::Call {
-                    ty: tuple_slot_type(&callee, ty),
+                    ty,
                     func: Box::new(callee),
                     args,
                 }
             }
-            Some(rhs_expr) => {
+            rhs_expr => {
                 // `x |> f`: `f(x)`.
                 if let Expr::FieldAccess(fa) = &rhs_expr {
                     if let Some(route) = self.qualified_route(fa) {
@@ -9243,12 +9066,11 @@ impl<'a> Lowerer<'a> {
                 let func = self.lower_call_target(rhs_expr.syntax().text_range(), &rhs_expr);
                 let args = self.apply_direct_resource_modes(&func, vec![lhs]);
                 MirExpr::Call {
-                    ty: tuple_slot_type(&func, ty),
+                    ty,
                     func: Box::new(func),
                     args,
                 }
             }
-            None => MirExpr::Unit,
         }
     }
 
