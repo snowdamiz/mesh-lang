@@ -1434,20 +1434,6 @@ impl<'ctx> CodeGen<'ctx> {
             }
         }
 
-        // Lowering's last resort for `"${value}"`: no Display or Debug impl
-        // was found for the value's type, and there is no generic `to_string`.
-        if let MirExpr::Var(name, _) = func {
-            if name == "to_string" && !self.locals.contains_key(name) {
-                let ty = args
-                    .first()
-                    .map_or_else(String::new, |arg| arg.ty().to_string());
-                return Err(format!(
-                    "cannot convert a value of type `{ty}` to a string: the type has no \
-                     `Display` implementation (derive or implement it, or convert the value yourself)"
-                ));
-            }
-        }
-
         // A function value (`x |> f`, where `f` is a local) carries its
         // environment; only a bare pointer is called directly.
         if matches!(func.ty(), MirType::Closure(..)) {

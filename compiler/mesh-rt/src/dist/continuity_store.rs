@@ -2320,6 +2320,9 @@ pub(crate) mod tests {
                 ))
                 .expect("record");
         }
+        // No replica has acknowledged anything: nothing is compacted.
+        assert_eq!(store.compact_log_to_replica_safe_point().unwrap(), 0);
+        assert_eq!(store.log_entries_after(0, 10).unwrap().len(), 3);
         store
             .acknowledge_replica_safe_point("replica-a", 3)
             .expect("first replica safe point");

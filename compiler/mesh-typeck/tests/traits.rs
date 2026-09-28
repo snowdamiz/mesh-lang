@@ -664,3 +664,19 @@ fn an_interface_call_result_takes_methods() {
     assert!(result.errors.is_empty(), "{:?}", result.errors);
     assert_result_type(&result, Ty::fun(vec![], Ty::int()));
 }
+
+/// An interface method written without its name (a parse error) still has
+/// its default body checked, under the name the interface registered it
+/// by, without a panic.
+#[test]
+fn a_default_method_without_a_name_is_checked() {
+    let result = check_source("interface Greeter do\n  fn (self) do\n    \"hi\"\n  end\nend\n");
+    assert!(
+        !result
+            .errors
+            .iter()
+            .any(|e| matches!(e, TypeError::MethodReturnUnknown { .. })),
+        "{:?}",
+        result.errors
+    );
+}

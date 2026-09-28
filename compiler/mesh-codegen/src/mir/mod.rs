@@ -784,6 +784,14 @@ impl MirExpr {
         all
     }
 
+    /// The name this expression is, when it is a variable.
+    pub fn var_name(&self) -> Option<&str> {
+        match self {
+            MirExpr::Var(name, _) => Some(name),
+            _ => None,
+        }
+    }
+
     /// Get the type of this expression.
     pub fn ty(&self) -> &MirType {
         match self {

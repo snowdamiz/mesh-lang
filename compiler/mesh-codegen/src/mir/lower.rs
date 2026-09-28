@@ -8690,12 +8690,12 @@ impl<'a> Lowerer<'a> {
         let ty = self.resolve_range(call.syntax().text_range());
 
         // Check if this is a variant constructor call (e.g., Circle(5.0)).
-        if let MirExpr::Var(ref name, _) = callee {
+        if let Some(name) = callee.var_name() {
             if find_type_for_variant(name, Some(&ty), self.registry, Some(args.len())).is_some() {
                 let concrete_name = mir_type_to_impl_name(&ty);
                 return MirExpr::ConstructVariant {
                     type_name: concrete_name.clone(),
-                    variant: name.clone(),
+                    variant: name.to_string(),
                     fields: args,
                     ty: MirType::SumType(concrete_name),
                 };
@@ -11224,16 +11224,11 @@ impl<'a> Lowerer<'a> {
                 // A collection is always applied to its element types: only
                 // the name `List` or `Map` has the bare type, and lowering
                 // refuses a type's name as a value (`lower_name_ref`).
+                // The type checker compares only a type with Eq.
                 name => {
                     let f = format!("Eq__eq__{name}");
-                    if self.known_functions.contains_key(&f)
-                        || self.trait_registry.has_impl("Eq", ty)
-                    {
-                        let params = vec![lhs.ty().clone(), rhs.ty().clone()];
-                        Self::call_named(&f, params, vec![lhs, rhs], MirType::Bool)
-                    } else {
-                        hardware(lhs, rhs)
-                    }
+                    let params = vec![lhs.ty().clone(), rhs.ty().clone()];
+                    Self::call_named(&f, params, vec![lhs, rhs], MirType::Bool)
                 }
             },
         }
@@ -11545,15 +11540,10 @@ impl<'a> Lowerer<'a> {
                         MirType::Int,
                     );
                 }
+                // The type checker orders only a type with Ord.
                 self.ensure_instantiation_traits(ty);
                 let f = format!("Ord__lt__{}", self.instantiation_helper_name(name, args));
-                if self.known_functions.contains_key(&f)
-                    || (args.is_empty() && self.trait_registry.has_impl("Ord", ty))
-                {
-                    by_lt(self, f, lhs, rhs)
-                } else {
-                    three_way(binop(BinOp::Lt, &lhs, &rhs), binop(BinOp::Gt, &lhs, &rhs))
-                }
+                by_lt(self, f, lhs, rhs)
             }
             Ty::Con(tc) => match tc.name.as_str() {
                 "Int" | "Float" => {
@@ -11581,16 +11571,7 @@ impl<'a> Lowerer<'a> {
                     three_way(and(not(&lhs), rhs.clone()), and(lhs.clone(), not(&rhs)))
                 }
                 "Unit" => int(0),
-                name => {
-                    let f = format!("Ord__lt__{name}");
-                    if self.known_functions.contains_key(&f)
-                        || self.trait_registry.has_impl("Ord", ty)
-                    {
-                        by_lt(self, f, lhs, rhs)
-                    } else {
-                        three_way(binop(BinOp::Lt, &lhs, &rhs), binop(BinOp::Gt, &lhs, &rhs))
-                    }
-                }
+                name => by_lt(self, format!("Ord__lt__{name}"), lhs, rhs),
             },
         }
     }
@@ -12382,16 +12363,9 @@ impl<'a> Lowerer<'a> {
                         format!("Debug__inspect__{mangled}"),
                     ]
                 };
-                let imported = |trait_name: &str| {
-                    args.is_empty() && self.trait_registry.has_impl(trait_name, ty)
-                };
                 candidates
                     .into_iter()
-                    .find(|f| {
-                        self.known_functions.contains_key(f)
-                            || (f.starts_with("Display__") && imported("Display"))
-                            || (f.starts_with("Debug__") && imported("Debug"))
-                    })
+                    .find(|f| self.known_functions.contains_key(f))
                     .map(|f| {
                         Self::call_named(
                             &f,
@@ -13979,17 +13953,16 @@ impl<'a> Lowerer<'a> {
 
         // Check if the spawned function has a terminate callback.
         // Look up by function name in known functions to find matching __terminate_<name>.
-        // The spawned function is named (E0089), so the callee is its Var.
-        let mut terminate_callback = None;
-        if let MirExpr::Var(fn_name, _) = func.as_ref() {
-            let cb_name = format!("__terminate_{fn_name}");
-            if self.known_functions.contains_key(&cb_name) {
-                terminate_callback = Some(Box::new(MirExpr::Var(
-                    cb_name,
-                    MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Unit)),
-                )));
-            }
-        }
+        let fn_name = func
+            .var_name()
+            .expect("the type checker spawns an actor by its name (E0089)");
+        let cb_name = format!("__terminate_{fn_name}");
+        let terminate_callback = self.known_functions.contains_key(&cb_name).then(|| {
+            Box::new(MirExpr::Var(
+                cb_name,
+                MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Unit)),
+            ))
+        });
 
         MirExpr::ActorSpawn {
             func,

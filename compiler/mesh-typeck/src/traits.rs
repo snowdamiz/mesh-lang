@@ -216,9 +216,10 @@ impl TraitRegistry {
     /// `type_name`: a derive it cannot have after all, a field of it lacking
     /// the trait (see `check_derive_needs`).
     pub fn remove_impl(&mut self, trait_name: &str, type_name: &str) {
-        if let Some(impls) = self.impls.get_mut(trait_name) {
-            impls.retain(|imp| imp.impl_type_name != type_name);
-        }
+        self.impls
+            .get_mut(trait_name)
+            .expect("the impl taken back was registered")
+            .retain(|imp| imp.impl_type_name != type_name);
     }
 
     /// Register a trait definition.

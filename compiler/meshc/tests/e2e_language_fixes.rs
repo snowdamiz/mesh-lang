@@ -6121,3 +6121,39 @@ end
 "##;
     assert_eq!(run(source), "a regex\na regex [a regex]\ntrue\n");
 }
+
+/// A generic function shows a struct by the struct's Display (lowering
+/// sees its type only once the function is specialized), and an interface
+/// default method whose result nothing fixes builds for a type that never
+/// calls it.
+#[test]
+fn generic_shows_and_unused_open_defaults_build() {
+    let source = r##"
+struct Point do
+  x :: Int
+end deriving(Display)
+
+interface Empty do
+  fn empty(self) do
+    []
+  end
+end
+
+struct S do
+  n :: Int
+end
+
+impl Empty for S do
+end
+
+fn show(x) do
+  "#{x}"
+end
+
+fn main() do
+  println(show(Point { x: 1 }))
+  println(show(S { n: 2 }.n))
+end
+"##;
+    assert_eq!(run(source), "Point(1)\n2\n");
+}
