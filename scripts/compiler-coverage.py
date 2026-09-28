@@ -63,14 +63,16 @@ def llvm_env():
 PG_CONTAINER = "mesh-coverage-pg"
 PG_PORT = 55530
 PG_URL = f"postgres://mesh_test:mesh_test@127.0.0.1:{PG_PORT}/mesh_test?sslmode=disable"
-# The server speaks TLS with a certificate for 127.0.0.1, signed at start by a
-# CA of its own (exported to PG_CA, for sslrootcert), and md5 authentication
-# to a role whose password is md5-hashed. The label names this setup: a
+# The server speaks TLS with a certificate for 127.0.0.1, signed at its first
+# start by a CA of its own (exported to PG_CA, for sslrootcert), and md5
+# authentication to a role whose password is md5-hashed. A restart keeps the
+# CA, so an exported copy stays valid. The label names this setup: a
 # container without it is an older one, made again.
 PG_CA = ROOT / "target/coverage/pg-ca.crt"
-PG_SETUP = "tls-md5-1"
+PG_SETUP = "tls-md5-2"
 PG_START = """set -e
 mkdir -p /etc/ssl/mesh && cd /etc/ssl/mesh
+if [ ! -f server.crt ]; then
 openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -subj /CN=mesh-test-ca \
   -keyout ca.key -out ca.crt 2>/dev/null
 openssl req -newkey rsa:2048 -nodes -subj /CN=localhost -keyout server.key \
@@ -80,6 +82,7 @@ openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -days 
   -extfile server.ext -out server.crt 2>/dev/null
 chown postgres server.key server.crt
 chmod 600 server.key
+fi
 exec docker-entrypoint.sh postgres -c ssl=on \
   -c ssl_cert_file=/etc/ssl/mesh/server.crt -c ssl_key_file=/etc/ssl/mesh/server.key
 """
