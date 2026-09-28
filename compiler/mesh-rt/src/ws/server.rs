@@ -272,7 +272,7 @@ pub extern "C" fn mesh_ws_serve(
 fn ws_serve(callbacks: WsHandler, port: i64, tls: Option<Arc<ServerConfig>>) {
     let addr = format!("0.0.0.0:{}", port);
     match TcpListener::bind(&addr) {
-        Ok(listener) => ws_start(listener, callbacks, tls),
+        Ok(listener) => ws_start(listener, callbacks, tls, super::spawn_thread),
         Err(e) => eprintln!(
             "[mesh-rt] Failed to start {} server on {addr}: {e}",
             ws_kind(&tls)
@@ -290,7 +290,12 @@ fn ws_kind(tls: &Option<Arc<ServerConfig>>) -> &'static str {
 
 /// Accept on `listener` on a thread of its own (so Ws.serve returns at
 /// once, and HTTP.serve can follow it), in TLS when `tls` is given.
-fn ws_start(listener: TcpListener, callbacks: WsHandler, tls: Option<Arc<ServerConfig>>) {
+fn ws_start(
+    listener: TcpListener,
+    callbacks: WsHandler,
+    tls: Option<Arc<ServerConfig>>,
+    spawn: super::SpawnThread,
+) {
     // Ensure the actor scheduler is initialized (idempotent).
     crate::actor::mesh_rt_init_actor(0);
     let kind = ws_kind(&tls);
@@ -299,10 +304,9 @@ fn ws_start(listener: TcpListener, callbacks: WsHandler, tls: Option<Arc<ServerC
         .expect("a bound listener has an address");
     eprintln!("[mesh-rt] {kind} server listening on {addr}");
     let thread = if tls.is_some() { "wss" } else { "ws" };
-    if let Err(error) = std::thread::Builder::new()
-        .name(format!("{thread}-accept-{}", addr.port()))
-        .spawn(move || ws_accept_loop(listener, callbacks, tls))
-    {
+    let accept = move || ws_accept_loop(listener.incoming(), callbacks, tls, register_server);
+    let name = format!("{thread}-accept-{}", addr.port());
+    if let Err(error) = spawn(&name, Box::new(accept)) {
         eprintln!("[mesh-rt] Failed to spawn {kind} accept thread: {error}");
     }
 }
@@ -341,12 +345,25 @@ impl ServerHandshakeHandler for ServerOpenHandler {
     }
 }
 
+/// How an accepted connection is handed to the reactor: `register_server`,
+/// or in a test one that refuses as a full reactor does.
+type RegisterServer = fn(
+    ReactorTransport,
+    Arc<dyn ServerHandshakeHandler>,
+    ReactorConfig,
+) -> Result<super::reactor::ReactorConnection, String>;
+
 /// Accept loop for WebSocket connections. Runs on a dedicated OS thread,
-/// dispatching each accepted connection (in TLS when `tls` is given) to an
-/// actor on the Mesh scheduler.
-fn ws_accept_loop(listener: TcpListener, callbacks: WsHandler, tls: Option<Arc<ServerConfig>>) {
+/// dispatching each connection `incoming` accepts (in TLS when `tls` is
+/// given), through `register`, to an actor on the Mesh scheduler.
+fn ws_accept_loop(
+    incoming: impl Iterator<Item = std::io::Result<std::net::TcpStream>>,
+    callbacks: WsHandler,
+    tls: Option<Arc<ServerConfig>>,
+    register: RegisterServer,
+) {
     let handler: Arc<dyn ServerHandshakeHandler> = Arc::new(ServerOpenHandler { callbacks });
-    for tcp_stream in listener.incoming() {
+    for tcp_stream in incoming {
         let tcp_stream = match tcp_stream {
             Ok(s) => s,
             Err(e) => {
@@ -363,7 +380,7 @@ fn ws_accept_loop(listener: TcpListener, callbacks: WsHandler, tls: Option<Arc<S
                 ReactorTransport::tls(crate::http::server::tls_session(config), tcp_stream)
             }
         };
-        if let Err(error) = register_server(
+        if let Err(error) = register(
             transport,
             Arc::clone(&handler),
             ReactorConfig::server(SERVER_MAX_MESSAGE_BYTES),
@@ -772,8 +789,45 @@ mod tests {
     fn serve(callbacks: WsHandler) -> u16 {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
-        ws_start(listener, callbacks, None);
+        ws_start(listener, callbacks, None, super::super::spawn_thread);
         port
+    }
+
+    /// A server that cannot start its accept thread says so and returns; an
+    /// accept loop goes on past a failed accept and a connection the reactor
+    /// refuses.
+    #[test]
+    fn servers_go_on_past_what_the_system_refuses() {
+        fn refuse(
+            _: ReactorTransport,
+            _: Arc<dyn ServerHandshakeHandler>,
+            _: ReactorConfig,
+        ) -> Result<super::super::reactor::ReactorConnection, String> {
+            Err("WebSocket reactor connection limit reached".to_string())
+        }
+        let null = std::ptr::null_mut();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        ws_start(
+            listener,
+            callbacks(null, null, null),
+            None,
+            super::super::no_threads,
+        );
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let client = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (accepted, _) = listener.accept().unwrap();
+        let incoming = [
+            Err(std::io::Error::other("out of descriptors")),
+            Ok(accepted),
+        ];
+        ws_accept_loop(
+            incoming.into_iter(),
+            callbacks(null, null, null),
+            None,
+            refuse,
+        );
+        drop(client);
     }
 
     fn handler(

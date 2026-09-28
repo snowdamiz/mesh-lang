@@ -266,6 +266,15 @@ pub extern "C-unwind" fn mesh_ws_client_connect(
     url: *const MeshString,
     options_handle: i64,
 ) -> *mut MeshResult {
+    client_connect(url, options_handle, super::spawn_thread)
+}
+
+/// `mesh_ws_client_connect`, its connect worker started by `spawn`.
+fn client_connect(
+    url: *const MeshString,
+    options_handle: i64,
+    spawn: super::SpawnThread,
+) -> *mut MeshResult {
     let Some(options) = options().lock().remove(&(options_handle as u64)) else {
         return error("invalid or already-consumed WebSocket options handle");
     };
@@ -282,13 +291,11 @@ pub extern "C-unwind" fn mesh_ws_client_connect(
     let url = unsafe { (*url).as_str().to_string() };
     let deadline = Instant::now() + options.connect_timeout;
     let (sender, receiver) = cooperative_channel();
-    let worker = std::thread::Builder::new()
-        .name("mesh-ws-connect".to_string())
-        .spawn(move || {
-            let _permit = worker_permit;
-            send_connect_result(sender, connect_until(&url, options, deadline));
-        });
-    if let Err(reason) = worker {
+    let worker = move || {
+        let _permit = worker_permit;
+        send_connect_result(sender, connect_until(&url, options, deadline));
+    };
+    if let Err(reason) = spawn("mesh-ws-connect", Box::new(worker)) {
         return error(format!("WebSocket connect worker spawn failed: {reason}"));
     }
 
@@ -1310,6 +1317,21 @@ mod tests {
                 "invalid or already-consumed WebSocket options handle"
             );
         }
+    }
+
+    /// A connect whose worker thread cannot start says so, and gives its
+    /// worker slot back.
+    #[test]
+    fn a_connect_without_a_worker_thread_is_an_error() {
+        let _api = API.lock();
+        crate::gc::mesh_rt_init();
+        let url = mesh_str("ws://127.0.0.1:9/");
+        let failed = client_connect(url, mesh_ws_client_options(), crate::ws::no_threads);
+        assert_eq!(
+            api_error(failed),
+            "WebSocket connect worker spawn failed: no threads left"
+        );
+        assert!(ConnectWorkerPermit::reserve().is_some(), "the slot is free");
     }
 
     /// The options, connection and connect-worker bounds each refuse the
