@@ -9,7 +9,9 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, MutexGuard, OnceLock, TryLockError};
+use std::sync::OnceLock;
+
+use parking_lot::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use crate::actor::heap::MessageBuffer;
@@ -56,9 +58,8 @@ impl Waiter {
     fn wake(self) {
         match self {
             Waiter::Actor(pid) => {
-                let Some(scheduler) = GLOBAL_SCHEDULER.get() else {
-                    return;
-                };
+                // An actor waits only once the scheduler runs.
+                let scheduler = actor::global_scheduler();
                 if let Some(process) = scheduler.get_process(pid) {
                     scheduler.wake_if_waiting(pid, process.lock());
                 }
@@ -149,11 +150,10 @@ const PRODUCER_SPINS: u32 = 1_000;
 /// stays taken.
 fn producer_registry() -> Result<MutexGuard<'static, HashMap<u64, Channel>>, &'static str> {
     for _ in 0..PRODUCER_SPINS {
-        match channels().try_lock() {
-            Ok(channels) => return Ok(channels),
-            Err(TryLockError::WouldBlock) => std::hint::spin_loop(),
-            Err(TryLockError::Poisoned(_)) => return Err("channel registry poisoned"),
+        if let Some(channels) = channels().try_lock() {
+            return Ok(channels);
         }
+        std::hint::spin_loop();
     }
     Err("channel busy")
 }
@@ -195,7 +195,6 @@ fn register_channel(
     let handle = NEXT_HANDLE.fetch_add(1, Ordering::Relaxed);
     channels()
         .lock()
-        .expect("channel registry poisoned")
         .insert(handle, Channel::new(capacity, byte_capacity, policy));
     i64::try_from(handle).map_err(|_| "channel handle overflow")
 }
@@ -298,7 +297,7 @@ pub extern "C-unwind" fn mesh_channel_recv(handle: i64, timeout_nanos: i64) -> *
         // Waiting (or already registered) and wakes it.
         set_state(ProcessState::Waiting);
         {
-            let mut channels = channels().lock().expect("channel registry poisoned");
+            let mut channels = channels().lock();
             let Some(channel) = channels.get_mut(&(handle as u64)) else {
                 drop(channels);
                 set_state(ProcessState::Ready);
@@ -355,7 +354,6 @@ fn received(mut entry: Entry) -> *mut MeshResult {
 fn inspect(handle: i64, f: impl FnOnce(&Channel) -> u64) -> i64 {
     channels()
         .lock()
-        .expect("channel registry poisoned")
         .get(&(handle as u64))
         .and_then(|channel| i64::try_from(f(channel)).ok())
         .unwrap_or(-1)
@@ -451,9 +449,110 @@ mod tests {
         );
     }
 
+    /// Held by a test that holds the registry lock, and by those whose sends
+    /// it would make busy.
+    static REGISTRY_TESTS: Mutex<()> = Mutex::new(());
+
+    fn policy(name: &str) -> *const MeshString {
+        crate::string::mesh_str(name)
+    }
+
+    /// A channel's value, or the error it gave.
+    fn outcome(result: *mut MeshResult) -> Result<i64, String> {
+        let result = unsafe { &*result };
+        if result.tag == 0 {
+            Ok(unsafe { *(result.value as *const i64) })
+        } else {
+            Err(unsafe { (*(result.value as *const MeshString)).as_str() }.to_string())
+        }
+    }
+
+    fn new_channel(capacity: i64) -> i64 {
+        crate::gc::mesh_rt_init();
+        outcome(mesh_channel_bounded(capacity, policy("reject_newest"))).unwrap()
+    }
+
+    #[test]
+    fn unknown_channels_policies_and_timeouts_are_errors() {
+        let _serial = REGISTRY_TESTS.lock();
+        crate::gc::mesh_rt_init();
+        let unknown = i64::MAX;
+        let error = |message: &str| Err(message.to_string());
+        assert_eq!(
+            outcome(mesh_channel_bounded(1, policy("bogus"))),
+            error("invalid overflow policy")
+        );
+        assert_eq!(
+            outcome(mesh_channel_try_send(unknown, 1)),
+            error("unknown channel")
+        );
+        assert_eq!(
+            outcome(mesh_channel_recv(unknown, 0)),
+            error("unknown channel")
+        );
+        assert_eq!(
+            outcome(mesh_channel_recv(unknown, -1)),
+            error("invalid timeout")
+        );
+    }
+
+    /// A thread (`main`) and an actor that wait on one channel are each woken
+    /// by a value, and each leaves the waiters when it has one.
+    #[test]
+    fn a_thread_and_an_actor_wait_on_one_channel() {
+        let _serial = REGISTRY_TESTS.lock();
+        let channel = new_channel(4);
+        let waiters = || channels().lock()[&(channel as u64)].waiters.len();
+        let actor = std::thread::spawn(move || {
+            crate::actor::in_actor(move || outcome(mesh_channel_recv(channel, 10_000_000_000)))
+        });
+        let thread =
+            std::thread::spawn(move || outcome(mesh_channel_recv(channel, 10_000_000_000)));
+        while waiters() < 2 {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert_eq!(outcome(mesh_channel_try_send(channel, 1)), Ok(0));
+        // Both were woken; one takes the value, the other waits again.
+        while waiters() != 1 {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert_eq!(outcome(mesh_channel_try_send(channel, 2)), Ok(0));
+        let mut values = [actor.join().unwrap(), thread.join().unwrap()];
+        values.sort();
+        assert_eq!(values, [Ok(1), Ok(2)]);
+        assert_eq!(waiters(), 0);
+    }
+
+    /// An actor woken by something else (a message) while it waits on a
+    /// channel waits on, still registered once.
+    #[test]
+    fn an_actor_woken_by_a_message_waits_on() {
+        let _serial = REGISTRY_TESTS.lock();
+        let channel = new_channel(1);
+        let (pid_sender, pid) = std::sync::mpsc::channel();
+        let receiver = std::thread::spawn(move || {
+            crate::actor::in_actor(move || {
+                let (me, _) = crate::actor::running_process();
+                pid_sender.send(me).unwrap();
+                outcome(mesh_channel_recv(channel, 10_000_000_000))
+            })
+        });
+        let me = pid.recv().unwrap();
+        let waiting = || channels().lock()[&(channel as u64)].waiters.len() == 1;
+        while !waiting() {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        crate::actor::local_send(me.as_u64(), std::ptr::null(), 0);
+        std::thread::sleep(Duration::from_millis(20));
+        assert!(waiting(), "registered once, still waiting");
+        assert_eq!(outcome(mesh_channel_try_send(channel, 5)), Ok(0));
+        assert_eq!(receiver.join().unwrap(), Ok(5));
+    }
+
     #[test]
     fn producer_does_not_wait_for_registry_lock() {
-        let registry = channels().lock().expect("channel registry poisoned");
+        let _serial = REGISTRY_TESTS.lock();
+        let registry = channels().lock();
         let (sender, receiver) = std::sync::mpsc::channel();
         let producer = std::thread::spawn(move || {
             let response = mesh_channel_try_send(1, 1);
