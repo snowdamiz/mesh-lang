@@ -2246,3 +2246,56 @@ end
         );
     }
 }
+
+/// `spawn` starts an actor by its name: an actor function that a call
+/// returns is refused, with nothing to look up its terminate callback by.
+#[test]
+fn spawn_takes_an_actor_by_its_name() {
+    let (_guard, project_dir) = project(
+        r##"actor worker() do
+  println("worker")
+end
+
+fn pick() do
+  worker
+end
+
+fn main() do
+  let _ = spawn(pick())
+end
+"##,
+    );
+    let output = meshc_build(&project_dir, &[]).output().unwrap();
+    assert!(
+        stderr(&output).contains("an actor is spawned by its function's name"),
+        "{}",
+        stderr(&output)
+    );
+}
+
+/// A `List` or `Map` annotated without type arguments compares and shows
+/// by its contents, as a typed one does.
+#[test]
+fn untyped_lists_and_maps_compare_and_show_by_contents() {
+    let output = compile_and_run(
+        r##"fn same(xs :: List, ys :: List) -> Bool do
+  xs == ys
+end
+
+fn same_map(a :: Map, b :: Map) -> Bool do
+  a == b
+end
+
+fn show(xs :: List, m :: Map) -> String do
+  "#{xs} #{inspect(xs)} #{m}"
+end
+
+fn main() do
+  println("#{same([1, 2], [1, 2])} #{same([1], [2])}")
+  println("#{same_map(%{1 => 2}, %{1 => 2})} #{same_map(%{1 => 2}, %{1 => 3})}")
+  println(show([1, 2], %{3 => 4}))
+end
+"##,
+    );
+    assert_eq!(output, "true false\ntrue false\n[1, 2] [1, 2] %{3 => 4}\n");
+}

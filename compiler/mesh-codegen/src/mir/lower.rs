@@ -11251,6 +11251,7 @@ impl<'a> Lowerer<'a> {
                     vec![lhs, rhs],
                     MirType::Bool,
                 ),
+                // A `List` or `Map` annotation without type arguments.
                 "List" => {
                     let callback = MirExpr::Var(
                         self.resolve_eq_callback(&Ty::int()),
@@ -17041,6 +17042,129 @@ mod tests {
             [("__resource".to_string(), MirType::Struct("Chain".to_string()))]
         );
         assert_eq!(drops_of(&destroy[0].body, "__resource"), 1);
+    }
+
+    /// A tuple type's hash and compare functions are generated once, however
+    /// many values hash or order tuples of it: the set of pairs and the set
+    /// of optional pairs hash them with one function, and ordering pairs
+    /// and optional pairs compares them with one.
+    #[test]
+    fn a_tuple_type_has_one_hash_and_one_compare_function() {
+        let mir = lower(
+            "fn main() do\n\
+               let pairs = Set.add(Set.new(), (1, 2))\n\
+               let optional = Set.add(Set.new(), Some((1, 2)))\n\
+               let less = (1, 2) < (1, 3)\n\
+               let less_optional = Some((1, 2)) < Some((1, 3))\n\
+               nil\n\
+             end",
+        );
+        for prefix in ["__hash_tuple_", "__cmp_tuple_"] {
+            let generated = mir
+                .functions
+                .iter()
+                .filter(|function| function.name.starts_with(prefix))
+                .count();
+            assert_eq!(generated, 1, "{prefix}");
+        }
+    }
+
+    /// A service's `init` written without parentheses takes no arguments.
+    #[test]
+    fn a_service_init_without_parentheses_takes_no_arguments() {
+        let mir = lower(
+            "service Tally do\n  fn init do\n    5\n  end\n\n  \
+             call Get() :: Int do |n|\n    (n, n)\n  end\nend",
+        );
+        let init = mir
+            .functions
+            .iter()
+            .find(|function| function.name == "__service_tally_init")
+            .expect("the service has an init function");
+        assert!(init.params.is_empty(), "{:?}", init.params);
+        assert!(
+            matches!(init.body, MirExpr::IntLit(5, MirType::Int)),
+            "{:?}",
+            init.body
+        );
+    }
+
+    /// A closure of several clauses captures the variables its clauses use.
+    #[test]
+    fn a_closure_of_several_clauses_captures_what_its_clauses_use() {
+        let mir = lower(
+            "fn main() do\n  let k = 10\n  let g = fn 0 -> k | n -> n + k end\n  g(1)\nend",
+        );
+        let captures = function_body(&mir, "mesh_main")
+            .descendants()
+            .into_iter()
+            .find_map(|node| match node {
+                MirExpr::MakeClosure { captures, .. } => Some(captures.clone()),
+                _ => None,
+            })
+            .expect("main makes the closure");
+        assert!(
+            matches!(captures.as_slice(), [MirExpr::Shaped { value, .. }]
+                if matches!(value.as_ref(), MirExpr::Var(name, MirType::Int) if name == "k")),
+            "{captures:?}"
+        );
+    }
+
+    /// A generic function's own body, lowered before any use fixes its
+    /// type, sends a value on a channel as the runtime takes it; each use's
+    /// copy sends through the helper for its type.
+    #[test]
+    fn a_generic_channel_send_uses_the_helper_of_each_use() {
+        let source = "fn offer<T>(channel :: Channel<T>, value :: T) -> Result<Int, String> do\n  \
+                      Channel.try_send(channel, value)\nend\n";
+        let callees = |mir: &MirModule| {
+            function_body(mir, "offer")
+                .descendants()
+                .into_iter()
+                .filter_map(|node| match node {
+                    MirExpr::Var(name, _) if name.contains("channel_try_send") => {
+                        Some(name.clone())
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(callees(&lower(source)), ["mesh_channel_try_send"]);
+        let used = format!(
+            "{source}\nfn main() do\n  case Channel.bounded(4, :reject_newest) do\n    \
+             Ok(channel) -> offer(channel, \"hello\")\n    Err(e) -> Err(e)\n  end\nend"
+        );
+        assert_eq!(callees(&lower(&used)), ["__channel_try_send_String"]);
+    }
+
+    /// Keys a map or set compares by their type's Eq: all but words (and a
+    /// map's strings, which its tag can say it holds), and not keys of a type
+    /// nothing fixed.
+    #[test]
+    fn map_and_set_keys_need_their_types_eq_unless_words() {
+        let con = |name: &str| Ty::Con(TyCon::new(name));
+        for word in ["Int", "Bool", "Float"] {
+            assert!(!Lowerer::key_needs_eq("set", &con(word)), "{word}");
+        }
+        for text in ["String", "Atom"] {
+            assert!(!Lowerer::key_needs_eq("map", &con(text)), "{text}");
+            assert!(Lowerer::key_needs_eq("set", &con(text)), "{text}");
+        }
+        assert!(Lowerer::key_needs_eq("map", &con("Color")));
+        assert!(Lowerer::key_needs_eq("set", &Ty::Tuple(vec![Ty::int()])));
+        assert!(!Lowerer::key_needs_eq(
+            "set",
+            &Ty::Var(mesh_typeck::ty::TyVar(0))
+        ));
+    }
+
+    /// Every escape a string literal may hold is the character it names.
+    #[test]
+    fn string_escapes_are_their_characters() {
+        assert_eq!(
+            unescape_string(r#"a\nb\tc\rd\0e\\f\"g\$h\#i\u{1F389}"#),
+            "a\nb\tc\rd\0e\\f\"g$h#i\u{1F389}"
+        );
     }
 
     /// The checker counts a pid of resource messages as a resource, but the
