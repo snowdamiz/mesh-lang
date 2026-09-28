@@ -1935,6 +1935,30 @@ fn e2e_a_modules_function_is_no_actor_to_spawn() {
     assert!(error.contains("only an actor can be spawned"), "{error}");
 }
 
+/// Bytes are equal when they hold the same bytes, alone, in a derived `==`
+/// and inside an Option, and inspect as their hex: `==` on two Bytes was
+/// "does not implement Eq", and a sum type deriving Eq over a Bytes payload
+/// failed to build.
+#[test]
+fn e2e_bytes_compare_by_content() {
+    let output = compile_and_run(
+        r##"
+type W do
+  A(Bytes)
+  B
+end deriving(Eq, Debug)
+
+fn main() do
+  let x = A(Bytes.from_utf8("ab"))
+  println("#{x == A(Bytes.from_utf8("ab"))} #{x == A(Bytes.from_utf8("ac"))} #{x == B}")
+  println("#{Bytes.from_utf8("q") == Bytes.from_utf8("q")} #{Some(Bytes.from_utf8("a")) == Some(Bytes.from_utf8("b"))}")
+  println(inspect(x))
+end
+"##,
+    );
+    assert_eq!(output, "true false false\ntrue false\nA(Bytes(6162))\n");
+}
+
 /// Helper: compile a multi-file Mesh project, expecting build failure.
 /// Returns stderr.
 fn compile_multifile_expect_error(files: &[(&str, &str)]) -> String {

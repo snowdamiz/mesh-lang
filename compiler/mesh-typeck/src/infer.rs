@@ -39,7 +39,7 @@ use crate::traits::{
     TraitDef, TraitMethodSig, TraitRegistry,
 };
 use crate::ty::{Scheme, Ty, TyCon, TyVar};
-use crate::unify::{EarlyReturn, ImplChoice, InferCtx, MethodParam, PendingField};
+use crate::unify::{DeriveNeed, EarlyReturn, ImplChoice, InferCtx, MethodParam, PendingField};
 use crate::{
     ClusteredRouteReplicationCount, ClusteredRouteWrapperMetadata, ImportContext, TypeckResult,
 };
@@ -402,6 +402,84 @@ fn finish_fn_body(
     check_impl_choices(ctx, impl_choices);
     ctx.rigid_params = enclosing.rigid_params;
     open_decodes
+}
+
+/// What the Eq, Ord, Display and Debug `type_name` derives need of its
+/// fields (`fields`: name, type, where): each field's type must have the
+/// trait (to show one, Display or Debug), since the derived function
+/// compares or shows it (checked by `check_derive_needs`).
+/// A field whose type names a type parameter is its instantiations' to have
+/// it. Deriving everything by default is Eq, Ord and Debug (and Hash, which
+/// any field has).
+fn record_derive_needs(
+    ctx: &mut InferCtx,
+    type_name: &str,
+    generic_params: &[String],
+    derive_list: &[String],
+    derive_all: bool,
+    fields: impl IntoIterator<Item = (String, Ty, TextRange)>,
+) {
+    let traits: Vec<(&str, bool)> = ["Eq", "Ord", "Display", "Debug"]
+        .into_iter()
+        .filter_map(|t| {
+            let explicit = derive_list.iter().any(|d| d == t);
+            (explicit || (derive_all && t != "Display")).then_some((t, explicit))
+        })
+        .collect();
+    for (field, field_ty, span) in fields {
+        let mut named = Vec::new();
+        type_constructors(&field_ty, &mut named);
+        if named.iter().any(|name| generic_params.contains(name)) {
+            continue;
+        }
+        for (trait_name, explicit) in &traits {
+            ctx.derive_needs.push(DeriveNeed {
+                type_name: type_name.to_string(),
+                trait_name: trait_name.to_string(),
+                explicit: *explicit,
+                field: field.clone(),
+                field_ty: field_ty.clone(),
+                span,
+            });
+        }
+    }
+}
+
+/// Whether each derived trait's fields have it, once every type and impl
+/// is registered: one derived by default whose field lacks it is taken
+/// back, and so, in turn, is one of a type holding that type; then a derive
+/// the deriving list names whose field lacks it is an error. Its derived
+/// function called the field's missing one and failed to build.
+fn check_derive_needs(ctx: &mut InferCtx, trait_registry: &mut TraitRegistry) {
+    let (explicit, mut by_default): (Vec<DeriveNeed>, Vec<DeriveNeed>) =
+        std::mem::take(&mut ctx.derive_needs)
+            .into_iter()
+            .partition(|need| need.explicit);
+    let has = |registry: &TraitRegistry, need: &DeriveNeed| match need.trait_name.as_str() {
+        "Display" | "Debug" => registry.can_show(&need.field_ty),
+        trait_name => registry.has_impl(trait_name, &need.field_ty),
+    };
+    while let Some(index) = by_default
+        .iter()
+        .position(|need| !has(trait_registry, need))
+    {
+        let need = by_default.swap_remove(index);
+        trait_registry.remove_impl(&need.trait_name, &need.type_name);
+        by_default.retain(|other| {
+            (&other.trait_name, &other.type_name) != (&need.trait_name, &need.type_name)
+        });
+    }
+    for need in explicit {
+        if !has(trait_registry, &need) {
+            ctx.errors.push(TypeError::UnderivableFieldType {
+                trait_name: need.trait_name,
+                type_name: need.type_name,
+                field_name: need.field,
+                field_ty: need.field_ty,
+                span: need.span,
+            });
+        }
+    }
 }
 
 /// The type variables in `ty`.
@@ -4725,6 +4803,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
             }
         }
     }
+    check_derive_needs(&mut ctx, &mut trait_registry);
 
     // Check the items and expressions in source order, except that a
     // function, top-level `let`, actor or service comes after those it names
@@ -6376,6 +6455,21 @@ fn register_struct_def(
     }
 
     // A struct derives Hash by default, and Display only when asked.
+    let fields_needing = fields.iter().map(|(field, ty)| {
+        (
+            field.clone(),
+            ty.clone(),
+            struct_field_span(struct_def, field),
+        )
+    });
+    record_derive_needs(
+        ctx,
+        &name,
+        &generic_params,
+        &derive_list,
+        derive_all,
+        fields_needing,
+    );
     register_value_trait_impls(trait_registry, &name, &impl_ty, |t| {
         derive_list.iter().any(|d| d == t) || (derive_all && t != "Display")
     });
@@ -7160,6 +7254,34 @@ fn register_sum_type_def(
         Ty::App(Box::new(base_ty), param_tys)
     };
 
+    let payloads_needing = variants.iter().flat_map(|variant| {
+        let span = sum_def
+            .variants()
+            .find(|v| v.name().is_some_and(|n| n.text() == variant.name))
+            .map(|v| v.syntax().text_range())
+            .unwrap_or_else(|| deriving_span(sum_def.syntax()));
+        variant
+            .fields
+            .iter()
+            .enumerate()
+            .map(move |(i, field)| match field {
+                VariantFieldInfo::Positional(ty) => {
+                    (format!("{}::{i}", variant.name), ty.clone(), span)
+                }
+                VariantFieldInfo::Named(field, ty) => {
+                    (format!("{}::{field}", variant.name), ty.clone(), span)
+                }
+            })
+    });
+    let payloads_needing: Vec<_> = payloads_needing.collect();
+    record_derive_needs(
+        ctx,
+        &name,
+        &generic_params,
+        &derive_list,
+        derive_all,
+        payloads_needing,
+    );
     // A sum type derives neither Hash nor Display unless asked.
     register_value_trait_impls(trait_registry, &name, &impl_ty, |t| {
         derive_list.iter().any(|d| d == t) || (derive_all && !matches!(t, "Hash" | "Display"))
@@ -14928,7 +15050,18 @@ fn infer_bare_method_call(
             return Err(err);
         }
         if traits.is_empty() {
-            return Ok(None);
+            // A trait's method, of a value whose type lacks the trait: it
+            // was "undefined variable `inspect`".
+            let declaring = trait_registry.traits_declaring(&name);
+            let Some(trait_name) = declaring.into_iter().next() else {
+                return Ok(None);
+            };
+            let origin = ConstraintOrigin::Expr {
+                span: call.syntax().text_range(),
+            };
+            let err = trait_not_satisfied(ctx, resolved.with_holes(), trait_name, origin);
+            ctx.errors.push(err.clone());
+            return Err(err);
         }
         let Some(ret) = method_return_type(ctx, trait_registry, &name, &resolved, span) else {
             return Ok(None);

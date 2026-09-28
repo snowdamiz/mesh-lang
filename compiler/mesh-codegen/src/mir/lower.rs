@@ -10800,20 +10800,16 @@ impl<'a> Lowerer<'a> {
             MirType::Float => "mesh_float_to_string".to_string(),
             MirType::Bool => "mesh_bool_to_string".to_string(),
             // A struct or sum type: its Display impl's `to_string`, or else
-            // its Debug `inspect`. With neither (a payload of a type that
-            // derives Display, which the type checker lets through), a call
-            // of an undefined `to_string`, which code generation reports if
-            // the call is ever compiled.
+            // its Debug `inspect` (a derived Debug's field): the type checker
+            // shows no value with neither (E0006, E0092).
             _ => {
                 let type_name = mir_type_to_impl_name(expr.ty());
                 let matching = self
                     .trait_registry
                     .find_method_traits("to_string", &mir_type_to_ty(expr.ty()));
-                let debug = format!("Debug__inspect__{type_name}");
                 match matching.first() {
                     Some(trait_name) => format!("{trait_name}__to_string__{type_name}"),
-                    None if self.known_functions.contains_key(&debug) => debug,
-                    None => "to_string".to_string(),
+                    None => format!("Debug__inspect__{type_name}"),
                 }
             }
         };
@@ -11112,16 +11108,8 @@ impl<'a> Lowerer<'a> {
             Ty::Tuple(elems) if elems.is_empty() => always(lhs, rhs),
             // A type nothing fixed (`None == None`, `Ok(1) == Ok(1)`'s error
             // type) has no values to tell apart, nor has a value that never
-            // comes into being.
-            Ty::Var(_) | Ty::Never => always(lhs, rhs),
-            // The type checker lets a function through inside another type
-            // (`Some(f) == Some(g)`).
-            Ty::Fun(..) => {
-                self.lowering_errors.push(format!(
-                    "cannot compare values of type `{ty}`: functions have no `Eq`"
-                ));
-                always(lhs, rhs)
-            }
+            // comes into being. (The type checker compares no function.)
+            Ty::Var(_) | Ty::Never | Ty::Fun(..) => always(lhs, rhs),
             Ty::Tuple(elems) => {
                 let f = self.tuple_eq_fn(elems);
                 Self::call_named(
@@ -11204,19 +11192,10 @@ impl<'a> Lowerer<'a> {
                         let f = format!("Eq__eq__{}", self.instantiation_helper_name(name, args));
                         // An imported type (`App(Point, [])`) has its helpers
                         // in its own module.
-                        if self.known_functions.contains_key(&f)
-                            || (args.is_empty() && self.trait_registry.has_impl("Eq", ty))
-                        {
-                            let params = vec![lhs.ty().clone(), rhs.ty().clone()];
-                            Self::call_named(&f, params, vec![lhs, rhs], MirType::Bool)
-                        } else {
-                            // An iterator inside an `Option`, say, which the
-                            // type checker lets through.
-                            self.lowering_errors.push(format!(
-                                "cannot compare values of type `{ty}`: the type has no `Eq`"
-                            ));
-                            always(lhs, rhs)
-                        }
+                        // The type checker compares only a type with Eq, what
+                        // it holds included.
+                        let params = vec![lhs.ty().clone(), rhs.ty().clone()];
+                        Self::call_named(&f, params, vec![lhs, rhs], MirType::Bool)
                     }
                 }
             }
@@ -11226,6 +11205,12 @@ impl<'a> Lowerer<'a> {
                 "Unit" => always(lhs, rhs),
                 "Json" => Self::call_named(
                     "mesh_json_eq",
+                    vec![MirType::Ptr, MirType::Ptr],
+                    vec![lhs, rhs],
+                    MirType::Bool,
+                ),
+                "Bytes" => Self::call_named(
+                    "mesh_bytes_secure_equals",
                     vec![MirType::Ptr, MirType::Ptr],
                     vec![lhs, rhs],
                     MirType::Bool,
@@ -11532,13 +11517,10 @@ impl<'a> Lowerer<'a> {
         match ty {
             Ty::Tuple(elems) if elems.is_empty() => int(0),
             // A type nothing fixed (`Ok(1) < Ok(2)`'s error type) has no
-            // values to tell apart, as in `eq_expr`.
-            Ty::Var(_) | Ty::Never => MirExpr::Block(vec![lhs, rhs, int(0)], MirType::Int),
-            Ty::Fun(..) => {
-                self.lowering_errors.push(format!(
-                    "cannot order values of type `{ty}`: functions have no `Ord`"
-                ));
-                int(0)
+            // values to tell apart, as in `eq_expr`. (The type checker orders
+            // no function.)
+            Ty::Var(_) | Ty::Never | Ty::Fun(..) => {
+                MirExpr::Block(vec![lhs, rhs, int(0)], MirType::Int)
             }
             Ty::Tuple(elems) => {
                 let f = self.tuple_cmp_fn(elems);
@@ -12428,6 +12410,26 @@ impl<'a> Lowerer<'a> {
                 vec![expr.clone()],
                 MirType::String,
             )),
+            // Inspected only (Bytes have no Display): `Bytes(0a1b)`.
+            Ty::Con(tc) if tc.name == "Bytes" => {
+                let concat = |a, b| {
+                    Self::call_named(
+                        "mesh_string_concat",
+                        vec![MirType::String, MirType::String],
+                        vec![a, b],
+                        MirType::String,
+                    )
+                };
+                let hex = Self::call_named(
+                    "mesh_bytes_to_hex",
+                    vec![MirType::Ptr],
+                    vec![expr.clone()],
+                    MirType::String,
+                );
+                let open = MirExpr::StringLit("Bytes(".to_string(), MirType::String);
+                let close = MirExpr::StringLit(")".to_string(), MirType::String);
+                Some(concat(concat(open, hex), close))
+            }
             Ty::Con(tc) if matches!(tc.name.as_str(), "U64" | "U128" | "I128") => {
                 Some(Self::call_named(
                     &format!("mesh_{}_to_string", tc.name.to_ascii_lowercase()),
@@ -12481,15 +12483,6 @@ impl<'a> Lowerer<'a> {
         }
         if let Some(shown) = self.display_by_type(&expr, ty, true) {
             return shown;
-        }
-        let inspect = format!("Debug__inspect__{}", mir_type_to_impl_name(expr.ty()));
-        if self.known_functions.contains_key(&inspect) {
-            return Self::call_named(
-                &inspect,
-                vec![expr.ty().clone()],
-                vec![expr],
-                MirType::String,
-            );
         }
         self.wrap_to_string(expr, Some(ty))
     }

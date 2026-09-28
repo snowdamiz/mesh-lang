@@ -142,6 +142,13 @@ fn one_of_each() -> Vec<TypeError> {
         },
         TypeError::SpawnByName { span: span(19, 24) },
         TypeError::SpawnNotActor { span: span(19, 24) },
+        TypeError::UnderivableFieldType {
+            trait_name: "Eq".to_string(),
+            type_name: "Holder".to_string(),
+            field_name: "p".to_string(),
+            field_ty: Ty::Con(mesh_typeck::ty::TyCon::new("Point")),
+            span: span(19, 24),
+        },
         TypeError::DecodeTypeUnknown {
             ty: Ty::Con(mesh_typeck::ty::TyCon::new("Box<_>")),
             span: span(19, 24),

@@ -1937,11 +1937,11 @@ end
 }
 
 /// A type deriving Display shows each payload by the payload's own
-/// Display, or else its Debug. A payload type with neither ends the build
-/// when the derived function is used; a type whose derived Display is
-/// never used still builds.
+/// Display, or else its Debug. A payload type with neither is refused where
+/// the Display is derived (it ended the build where the derived function
+/// was used).
 #[test]
-fn derived_display_needs_a_displayable_payload_only_when_used() {
+fn derived_display_needs_a_payload_it_can_show() {
     let (_guard, project_dir) = project(
         r##"struct Inner do
   x :: Int
@@ -1958,7 +1958,7 @@ end
     );
     let output = meshc_build(&project_dir, &[]).output().unwrap();
     assert!(
-        stderr(&output).contains("cannot convert a value of type `Inner` to a string"),
+        stderr(&output).contains("cannot derive `Display` for `Wrap`: field `W::0` is a `Inner`"),
         "{}",
         stderr(&output)
     );

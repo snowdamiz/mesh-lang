@@ -2911,6 +2911,10 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         // A Json value is shown as its JSON text, and equal to another
         // holding the same (an object's keys in any order).
         (Ty::json(), "Json", &["Eq", "Display", "Debug"]),
+        // Bytes are equal when they hold the same bytes (compared in
+        // constant time, as `Bytes.secure_equals` does), and inspected as
+        // their hex, `Bytes(0a1b)`.
+        (Ty::bytes(), "Bytes", &["Eq", "Debug"]),
         // A wide integer compares and shows as the number it holds.
         (Ty::u64(), "U64", &["Eq", "Ord", "Display", "Debug"]),
         (Ty::u128(), "U128", &["Eq", "Ord", "Display", "Debug"]),

@@ -211,6 +211,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::SpawnByName { .. } => "E0089",
         TypeError::SpawnNotActor { .. } => "E0090",
         TypeError::DecodeTypeUnknown { .. } => "E0091",
+        TypeError::UnderivableFieldType { .. } => "E0092",
     }
 }
 
@@ -1001,6 +1002,21 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
             let range = clamp(text_range_to_range(*span));
 
             Description::error(range, format!("expected a function, found {}", found))
+        }
+
+        TypeError::UnderivableFieldType {
+            trait_name,
+            type_name,
+            field_ty,
+            span,
+            ..
+        } => {
+            let range = clamp(text_range_to_range(*span));
+            let field_ty = field_ty.with_holes();
+            Description::error(range, format!("this has no `{trait_name}`")).with_help(format!(
+                "derive or implement `{trait_name}` for `{field_ty}`, or leave `{trait_name}` out \
+                 of `{type_name}`'s deriving list"
+            ))
         }
 
         TypeError::DecodeTypeUnknown { ty, span } => {

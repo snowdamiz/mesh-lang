@@ -405,6 +405,58 @@ fn test_a_decode_nothing_fixes_is_unknown() {
 }
 
 #[test]
+fn test_a_derive_needs_its_fields_to_have_the_trait() {
+    // A derived Eq, Ord, Display or Debug calls the field's own: a field
+    // without it failed to build (LLVM verification, "cannot convert a
+    // value of type `Point` to a string").
+    let point = "struct Point do\n  x :: Int\nend deriving()\n\n";
+    for (derive, trait_name) in [("Eq", "Eq"), ("Display", "Display"), ("Debug", "Debug")] {
+        let result = check_source(&format!(
+            "{point}type T do\n  A(Point)\nend deriving({derive})\n"
+        ));
+        assert_has_error(
+            &result,
+            |e| matches!(e, TypeError::UnderivableFieldType { trait_name: t, .. } if t == trait_name),
+            derive,
+        );
+    }
+    // Derived by default (no deriving clause), the trait is quietly left
+    // out: the type has no Eq to use.
+    let result = check_source(&format!(
+        "{point}struct H do\n  p :: Point\nend\n\nfn main() do\n  let h = H {{ p: Point {{ x: 1 }} }}\n  h == h\nend\n"
+    ));
+    assert_has_error(
+        &result,
+        |e| matches!(e, TypeError::TraitNotSatisfied { trait_name, .. } if trait_name == "Eq"),
+        "H has no Eq",
+    );
+    assert!(!result
+        .errors
+        .iter()
+        .any(|e| matches!(e, TypeError::UnderivableFieldType { .. })));
+    // A field of a type declared later, or implemented by hand, has it.
+    let result = check_source(
+        "struct Later do\n  q :: Q\nend deriving(Eq, Display)\n\n\
+         struct Q do\n  n :: Int\nend deriving(Eq)\n\n\
+         impl Display for Q do\n  fn to_string(self) -> String do\n    \"q\"\n  end\nend\n",
+    );
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+}
+
+#[test]
+fn test_showing_a_value_without_debug_names_the_trait() {
+    // It was "undefined variable `inspect`".
+    let result = check_source(
+        "struct Point do\n  x :: Int\nend deriving()\n\nfn main() do\n  inspect(Some(Point { x: 1 }))\nend\n",
+    );
+    assert_has_error(
+        &result,
+        |e| matches!(e, TypeError::TraitNotSatisfied { trait_name, .. } if trait_name == "Debug"),
+        "Debug",
+    );
+}
+
+#[test]
 fn test_a_json_literal_holds_only_json() {
     // A struct deriving nothing was written as `null`.
     let result = check_source(

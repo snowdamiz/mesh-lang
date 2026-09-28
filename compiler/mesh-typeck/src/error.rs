@@ -215,6 +215,15 @@ pub enum TypeError {
     SpawnByName { span: TextRange },
     /// spawn of a function that is no actor (`spawn(hello)` for a `fn`).
     SpawnNotActor { span: TextRange },
+    /// A derived Eq, Ord, Display or Debug over a field whose type lacks it
+    /// (to show one: has neither Display nor Debug).
+    UnderivableFieldType {
+        trait_name: String,
+        type_name: String,
+        field_name: String,
+        field_ty: Ty,
+        span: TextRange,
+    },
     /// A generic type's `from_json` whose instantiation nothing fixes.
     DecodeTypeUnknown { ty: Ty, span: TextRange },
     /// receive used outside an actor block.
@@ -586,6 +595,7 @@ impl TypeError {
             | TypeError::SpawnByName { span }
             | TypeError::SpawnNotActor { span }
             | TypeError::DecodeTypeUnknown { span, .. }
+            | TypeError::UnderivableFieldType { span, .. }
             | TypeError::ReceiveOutsideActor { span, .. }
             | TypeError::InvalidChildStart { span, .. }
             | TypeError::InvalidStrategy { span, .. }
@@ -881,6 +891,23 @@ impl fmt::Display for TypeError {
             }
             TypeError::SpawnNotActor { .. } => {
                 write!(f, "only an actor can be spawned")
+            }
+            TypeError::UnderivableFieldType {
+                trait_name,
+                type_name,
+                field_name,
+                field_ty,
+                ..
+            } => {
+                write!(
+                    f,
+                    "cannot derive `{trait_name}` for `{type_name}`: field `{field_name}` is a `{}`, which has no `{}`",
+                    field_ty.with_holes(),
+                    match trait_name.as_str() {
+                        "Display" | "Debug" => "Display` or `Debug",
+                        other => other,
+                    }
+                )
             }
             TypeError::DecodeTypeUnknown { ty, .. } => {
                 write!(f, "cannot tell what `{ty}` this decodes")

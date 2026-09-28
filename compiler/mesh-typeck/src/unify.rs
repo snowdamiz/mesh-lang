@@ -90,6 +90,20 @@ pub struct Nesting {
     scopes: usize,
 }
 
+/// A derived trait's need of one field: `type_name` derives `trait_name`
+/// by comparing or showing its field `field`, of type `field_ty`, which must
+/// have the trait too. `explicit` when the deriving list names the trait;
+/// a type deriving everything by default quietly goes without it instead.
+#[derive(Clone, Debug)]
+pub struct DeriveNeed {
+    pub type_name: String,
+    pub trait_name: String,
+    pub explicit: bool,
+    pub field: String,
+    pub field_ty: Ty,
+    pub span: TextRange,
+}
+
 /// The inference context -- owns the unification table, level state, and errors.
 ///
 /// All type inference happens through this context. It creates fresh type
@@ -149,6 +163,9 @@ pub struct InferCtx {
     pub json_text_arguments: FxHashSet<TextRange>,
     /// Every type the builtins name (`builtin_type_names`): no value.
     pub builtin_types: FxHashSet<String>,
+    /// What each derived Eq, Ord, Display or Debug needs of a field's type (see
+    /// `DeriveNeed`), checked once every type and impl is registered.
+    pub derive_needs: Vec<DeriveNeed>,
     /// The types generic `from_json` calls decode, with where each is
     /// called, checked when the enclosing function is done: a type it
     /// leaves open that no caller can fix is not known.

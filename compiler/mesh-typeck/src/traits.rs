@@ -199,6 +199,28 @@ impl TraitRegistry {
         freshen_type_params_with_names(ty, ctx, &[], &self.nominal)
     }
 
+    /// The traits that declare a method `method` (`inspect`: Debug), by
+    /// name.
+    pub fn traits_declaring(&self, method: &str) -> Vec<String> {
+        let mut names: Vec<String> = self
+            .traits
+            .values()
+            .filter(|def| def.methods.iter().any(|m| m.name == method))
+            .map(|def| def.name.clone())
+            .collect();
+        names.sort();
+        names
+    }
+
+    /// Take back the impl of `trait_name` registered for the type named
+    /// `type_name`: a derive it cannot have after all, a field of it lacking
+    /// the trait (see `check_derive_needs`).
+    pub fn remove_impl(&mut self, trait_name: &str, type_name: &str) {
+        if let Some(impls) = self.impls.get_mut(trait_name) {
+            impls.retain(|imp| imp.impl_type_name != type_name);
+        }
+    }
+
     /// Register a trait definition.
     pub fn register_trait(&mut self, def: TraitDef) {
         self.traits.insert(def.name.clone(), def);
@@ -539,24 +561,29 @@ impl TraitRegistry {
     /// Uses structural matching via temporary unification to find the first
     /// impl whose type unifies with the query type.
     pub fn find_impl(&self, trait_name: &str, ty: &Ty) -> Option<&ImplDef> {
-        let impls = self.impls.get(trait_name)?;
         let head = impl_head(ty, &self.nominal);
-        for impl_def in impls {
-            if !self.may_match(&impl_def.impl_type, head) {
-                continue;
-            }
-            let mut ctx = InferCtx::new();
-            let query = import_vars(ty, &mut ctx, &mut FxHashMap::default());
-            let freshened = self.freshen(&impl_def.impl_type, &mut ctx);
-            if ctx
-                .unify(freshened, query, ConstraintOrigin::Builtin)
-                .is_ok()
-                && self.elements_have_it(impl_def, ty)
-            {
-                return Some(impl_def);
-            }
+        self.impls
+            .get(trait_name)?
+            .iter()
+            .find(|impl_def| self.applies(impl_def, head, ty).is_some())
+    }
+
+    /// Whether `impl_def` is an impl for values of type `ty` (headed by
+    /// `head`, see `impl_head`): its type unifies with `ty`, and what `ty`
+    /// holds has the trait when the impl needs it (`elements_have_it`). The
+    /// context the two unified in reads the impl's types as they are for
+    /// `ty`.
+    fn applies(&self, impl_def: &ImplDef, head: Option<&str>, ty: &Ty) -> Option<InferCtx> {
+        if !self.may_match(&impl_def.impl_type, head) {
+            return None;
         }
-        None
+        let mut ctx = InferCtx::new();
+        let query = import_vars(ty, &mut ctx, &mut FxHashMap::default());
+        let freshened = self.freshen(&impl_def.impl_type, &mut ctx);
+        let unifies = ctx
+            .unify(freshened, query, ConstraintOrigin::Builtin)
+            .is_ok();
+        (unifies && self.elements_have_it(impl_def, ty)).then_some(ctx)
     }
 
     /// Whether what `ty` holds has the trait a built-in structural impl
@@ -569,7 +596,8 @@ impl TraitRegistry {
             impl_def.impl_type_name.as_str(),
             "Option" | "Result" | "List" | "Map" | "Set" | "Tuple"
         );
-        if !structural || !matches!(impl_def.trait_name.as_str(), "Eq" | "Ord" | "Display") {
+        let trait_name = impl_def.trait_name.as_str();
+        if !structural || !matches!(trait_name, "Eq" | "Ord" | "Display" | "Debug") {
             return true;
         }
         let elements = match ty {
@@ -579,8 +607,17 @@ impl TraitRegistry {
             _ => &[],
         };
         elements.iter().all(|element| {
-            matches!(element, Ty::Var(_)) || self.has_impl(&impl_def.trait_name, element)
+            matches!(element, Ty::Var(_))
+                || self.has_impl(trait_name, element)
+                // An element is shown by its Display, or else its Debug.
+                || (matches!(trait_name, "Display" | "Debug") && self.can_show(element))
         })
+    }
+
+    /// Whether a value of type `ty` can be shown: by its Display, or else
+    /// its Debug, as an element or a derived function's field is.
+    pub fn can_show(&self, ty: &Ty) -> bool {
+        self.has_impl("Display", ty) || self.has_impl("Debug", ty)
     }
 
     /// The impl of `trait_name` for `impl_ty` whose trait arguments are
@@ -643,24 +680,13 @@ impl TraitRegistry {
     pub fn impls_providing(&self, method_name: &str, ty: &Ty) -> Vec<(&ImplDef, Option<Ty>)> {
         let mut found = Vec::new();
         let head = impl_head(ty, &self.nominal);
-        for impl_list in self.impls.values() {
-            for impl_def in impl_list {
-                if !self.may_match(&impl_def.impl_type, head) {
-                    continue;
-                }
-                let Some(method_sig) = impl_def.methods.get(method_name) else {
-                    continue;
-                };
-                let mut ctx = InferCtx::new();
-                let query = import_vars(ty, &mut ctx, &mut FxHashMap::default());
-                let freshened = self.freshen(&impl_def.impl_type, &mut ctx);
-                if ctx
-                    .unify(freshened, query, ConstraintOrigin::Builtin)
-                    .is_ok()
-                {
-                    let ret = method_sig.return_type.clone().map(|ret| ctx.resolve(ret));
-                    found.push((impl_def, ret));
-                }
+        for impl_def in self.impls.values().flatten() {
+            let Some(method_sig) = impl_def.methods.get(method_name) else {
+                continue;
+            };
+            if let Some(mut ctx) = self.applies(impl_def, head, ty) {
+                let ret = method_sig.return_type.clone().map(|ret| ctx.resolve(ret));
+                found.push((impl_def, ret));
             }
         }
         found
@@ -682,28 +708,17 @@ impl TraitRegistry {
 
     pub fn resolve_trait_method(&self, method_name: &str, arg_ty: &Ty) -> Option<Ty> {
         let head = impl_head(arg_ty, &self.nominal);
-        for impl_list in self.impls.values() {
-            for impl_def in impl_list {
-                if !self.may_match(&impl_def.impl_type, head) {
-                    continue;
-                }
-                if let Some(method_sig) = impl_def.methods.get(method_name) {
-                    let mut ctx = InferCtx::new();
-                    let query = import_vars(arg_ty, &mut ctx, &mut FxHashMap::default());
-                    let freshened = self.freshen(&impl_def.impl_type, &mut ctx);
-                    if ctx
-                        .unify(freshened, query, ConstraintOrigin::Builtin)
-                        .is_ok()
-                    {
-                        // Resolve the return type through the temp context
-                        // in case it contains freshened vars that were bound
-                        // during unification.
-                        return method_sig
-                            .return_type
-                            .as_ref()
-                            .map(|ret_ty| ctx.resolve(ret_ty.clone()));
-                    }
-                }
+        for impl_def in self.impls.values().flatten() {
+            let Some(method_sig) = impl_def.methods.get(method_name) else {
+                continue;
+            };
+            if let Some(mut ctx) = self.applies(impl_def, head, arg_ty) {
+                // Resolve the return type through the temp context in case it
+                // contains freshened vars that were bound during unification.
+                return method_sig
+                    .return_type
+                    .as_ref()
+                    .map(|ret_ty| ctx.resolve(ret_ty.clone()));
             }
         }
         None
@@ -716,25 +731,10 @@ impl TraitRegistry {
     /// a clone of the `ImplMethodSig` if found.
     pub fn find_method_sig(&self, method_name: &str, ty: &Ty) -> Option<ImplMethodSig> {
         let head = impl_head(ty, &self.nominal);
-        for impl_list in self.impls.values() {
-            for impl_def in impl_list {
-                if !self.may_match(&impl_def.impl_type, head) {
-                    continue;
-                }
-                if let Some(method_sig) = impl_def.methods.get(method_name) {
-                    let mut ctx = InferCtx::new();
-                    let query = import_vars(ty, &mut ctx, &mut FxHashMap::default());
-                    let freshened = self.freshen(&impl_def.impl_type, &mut ctx);
-                    if ctx
-                        .unify(freshened, query, ConstraintOrigin::Builtin)
-                        .is_ok()
-                    {
-                        return Some(method_sig.clone());
-                    }
-                }
-            }
-        }
-        None
+        self.impls.values().flatten().find_map(|impl_def| {
+            let method_sig = impl_def.methods.get(method_name)?;
+            self.applies(impl_def, head, ty).map(|_| method_sig.clone())
+        })
     }
 
     /// Find all trait names that provide a given method for a given type.
@@ -744,27 +744,18 @@ impl TraitRegistry {
     /// structurally matches the given type. Useful for ambiguity diagnostics:
     /// if the returned list has more than one element, the call is ambiguous.
     pub fn find_method_traits(&self, method_name: &str, ty: &Ty) -> Vec<String> {
-        let mut trait_names = Vec::new();
         let head = impl_head(ty, &self.nominal);
-        for (trait_name, impl_list) in &self.impls {
-            for impl_def in impl_list {
-                if !self.may_match(&impl_def.impl_type, head) {
-                    continue;
-                }
-                if impl_def.methods.contains_key(method_name) {
-                    let mut ctx = InferCtx::new();
-                    let query = import_vars(ty, &mut ctx, &mut FxHashMap::default());
-                    let freshened = self.freshen(&impl_def.impl_type, &mut ctx);
-                    if ctx
-                        .unify(freshened, query, ConstraintOrigin::Builtin)
-                        .is_ok()
-                    {
-                        trait_names.push(trait_name.clone());
-                        break; // One match per trait is enough
-                    }
-                }
-            }
-        }
+        let mut trait_names: Vec<String> = self
+            .impls
+            .iter()
+            .filter(|(_, impl_list)| {
+                impl_list.iter().any(|impl_def| {
+                    impl_def.methods.contains_key(method_name)
+                        && self.applies(impl_def, head, ty).is_some()
+                })
+            })
+            .map(|(trait_name, _)| trait_name.clone())
+            .collect();
         trait_names.sort();
         trait_names
     }
