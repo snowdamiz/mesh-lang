@@ -460,9 +460,9 @@ fn controller_role_enabled() -> bool {
 
 /// Reads one deployment environment variable: the runtime passes
 /// `std::env::var_os`, tests a table of their own.
-type EnvironmentLookup<'a> = &'a dyn Fn(&str) -> Option<OsString>;
+pub(super) type EnvironmentLookup<'a> = &'a dyn Fn(&str) -> Option<OsString>;
 
-fn environment_text(env: EnvironmentLookup<'_>, name: &str) -> Option<String> {
+pub(super) fn environment_text(env: EnvironmentLookup<'_>, name: &str) -> Option<String> {
     env(name).and_then(|value| value.into_string().ok())
 }
 
@@ -544,7 +544,9 @@ fn build_capacity_driver(
                     operation_timeout_millis: operation_timeout.as_millis() as u64,
                 };
                 Arc::new(
-                    super::driver_service::RemoteDockerCapacityDriver::from_environment(template)?,
+                    super::driver_service::RemoteDockerCapacityDriver::from_environment(
+                        template, env,
+                    )?,
                 )
             } else {
                 let execution_prefix =
@@ -1435,10 +1437,11 @@ mod tests {
                 &[("MESH_CAPACITY_WORKER_ENV_ALLOWLIST", "A=B")],
                 "capacity_worker_environment_name_invalid",
             ),
-            // The remote driver reads the rest of its settings itself.
+            // The remote driver reads the rest of its settings from the
+            // same place.
             (
                 &[("MESH_DOCKER_DRIVER_ENDPOINT", "127.0.0.1:1")],
-                "docker_driver_endpoint_missing",
+                "docker_driver_shared_key_missing_or_invalid",
             ),
         ];
         for (table, expected) in refusals {

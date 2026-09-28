@@ -24,6 +24,7 @@ use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
 
+use super::autonomous::{environment_text, EnvironmentLookup};
 use super::scaling::{
     CapacityDriver, CapacityObservation, DockerCapacityDriver, DockerDriverConfig, DriverOperation,
     ObservedCapacityNode,
@@ -162,15 +163,20 @@ fn unix_millis() -> u64 {
         .unwrap_or(u64::MAX)
 }
 
-fn decode_der_env(name: &str) -> Result<Vec<u8>, String> {
-    let raw = std::env::var(name).map_err(|_| format!("driver_tls_environment_missing:{name}"))?;
+fn decode_der(env: EnvironmentLookup<'_>, name: &str) -> Result<Vec<u8>, String> {
+    let raw = environment_text(env, name)
+        .ok_or_else(|| format!("driver_tls_environment_missing:{name}"))?;
     base64::engine::general_purpose::STANDARD
         .decode(raw.trim())
         .map_err(|_| format!("driver_tls_environment_invalid:{name}"))
 }
 
-fn decode_ca_keyring_env(name: &str) -> Result<Vec<CertificateDer<'static>>, String> {
-    let raw = std::env::var(name).map_err(|_| format!("driver_tls_environment_missing:{name}"))?;
+fn decode_ca_keyring(
+    env: EnvironmentLookup<'_>,
+    name: &str,
+) -> Result<Vec<CertificateDer<'static>>, String> {
+    let raw = environment_text(env, name)
+        .ok_or_else(|| format!("driver_tls_environment_missing:{name}"))?;
     let roots = raw
         .split(',')
         .map(str::trim)
@@ -188,8 +194,9 @@ fn decode_ca_keyring_env(name: &str) -> Result<Vec<CertificateDer<'static>>, Str
     Ok(roots)
 }
 
-fn shared_keyring_from_env(name: &str) -> Result<Vec<String>, String> {
-    let raw = std::env::var(name).map_err(|_| format!("driver_shared_key_missing:{name}"))?;
+fn shared_keyring(env: EnvironmentLookup<'_>, name: &str) -> Result<Vec<String>, String> {
+    let raw =
+        environment_text(env, name).ok_or_else(|| format!("driver_shared_key_missing:{name}"))?;
     parse_shared_keyring(&raw).map_err(|_| format!("driver_shared_key_invalid:{name}"))
 }
 
@@ -206,11 +213,12 @@ fn parse_shared_keyring(raw: &str) -> Result<Vec<String>, String> {
     Ok(keys)
 }
 
-fn tls_client_config() -> Result<Arc<ClientConfig>, String> {
-    let cas = decode_ca_keyring_env("MESH_DOCKER_DRIVER_CA_DER_B64")?;
+fn tls_client_config(env: EnvironmentLookup<'_>) -> Result<Arc<ClientConfig>, String> {
+    let cas = decode_ca_keyring(env, "MESH_DOCKER_DRIVER_CA_DER_B64")?;
     let certificate =
-        CertificateDer::from(decode_der_env("MESH_DOCKER_DRIVER_CLIENT_CERT_DER_B64")?);
-    let key = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(decode_der_env(
+        CertificateDer::from(decode_der(env, "MESH_DOCKER_DRIVER_CLIENT_CERT_DER_B64")?);
+    let key = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(decode_der(
+        env,
         "MESH_DOCKER_DRIVER_CLIENT_KEY_DER_B64",
     )?));
     let mut roots = RootCertStore::empty();
@@ -226,11 +234,12 @@ fn tls_client_config() -> Result<Arc<ClientConfig>, String> {
         .map_err(|_| "driver_tls_client_identity_invalid".to_string())
 }
 
-fn tls_server_config() -> Result<Arc<ServerConfig>, String> {
-    let cas = decode_ca_keyring_env("MESH_DOCKER_DRIVER_CA_DER_B64")?;
+fn tls_server_config(env: EnvironmentLookup<'_>) -> Result<Arc<ServerConfig>, String> {
+    let cas = decode_ca_keyring(env, "MESH_DOCKER_DRIVER_CA_DER_B64")?;
     let certificate =
-        CertificateDer::from(decode_der_env("MESH_DOCKER_DRIVER_SERVER_CERT_DER_B64")?);
-    let key = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(decode_der_env(
+        CertificateDer::from(decode_der(env, "MESH_DOCKER_DRIVER_SERVER_CERT_DER_B64")?);
+    let key = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(decode_der(
+        env,
         "MESH_DOCKER_DRIVER_SERVER_KEY_DER_B64",
     )?));
     let mut roots = RootCertStore::empty();
@@ -366,12 +375,16 @@ impl std::fmt::Debug for RemoteDockerCapacityDriver {
 }
 
 impl RemoteDockerCapacityDriver {
-    pub fn from_environment(template: RemoteDockerTemplate) -> Result<Self, String> {
-        let endpoint = std::env::var("MESH_DOCKER_DRIVER_ENDPOINT")
-            .map_err(|_| "docker_driver_endpoint_missing".to_string())?;
-        let server_name = std::env::var("MESH_DOCKER_DRIVER_SERVER_NAME")
-            .unwrap_or_else(|_| "docker-driver".to_string());
-        let shared_keys = shared_keyring_from_env("MESH_DOCKER_DRIVER_SHARED_KEY")
+    /// The driver for `template` that the settings in `env` point at.
+    pub fn from_environment(
+        template: RemoteDockerTemplate,
+        env: EnvironmentLookup<'_>,
+    ) -> Result<Self, String> {
+        let endpoint = environment_text(env, "MESH_DOCKER_DRIVER_ENDPOINT")
+            .ok_or_else(|| "docker_driver_endpoint_missing".to_string())?;
+        let server_name = environment_text(env, "MESH_DOCKER_DRIVER_SERVER_NAME")
+            .unwrap_or_else(|| "docker-driver".to_string());
+        let shared_keys = shared_keyring(env, "MESH_DOCKER_DRIVER_SHARED_KEY")
             .map_err(|_| "docker_driver_shared_key_missing_or_invalid".to_string())?;
         if endpoint.trim().is_empty() {
             return Err("docker_driver_remote_configuration_invalid".to_string());
@@ -381,7 +394,7 @@ impl RemoteDockerCapacityDriver {
             endpoint,
             server_name,
             template,
-            tls: tls_client_config()?,
+            tls: tls_client_config(env)?,
             shared_keys,
             timeout,
         })
@@ -503,6 +516,10 @@ struct DockerDriverService {
     allowed_network: Option<String>,
     allowed_environment_names: BTreeSet<String>,
     shared_keys: Vec<String>,
+    /// The Docker CLI the driver runs, and the arguments before each
+    /// operation's (see `DockerDriverConfig::execution_prefix`).
+    docker_binary: PathBuf,
+    docker_execution_prefix: Vec<String>,
     driver: Mutex<Option<(RemoteDockerTemplate, Arc<DockerCapacityDriver>)>>,
     seen_request_ids: Mutex<BTreeMap<String, u64>>,
     active_connections: AtomicUsize,
@@ -576,10 +593,8 @@ impl DockerDriverService {
             return Ok(driver.clone());
         }
         let driver = Arc::new(DockerCapacityDriver::new(DockerDriverConfig {
-            binary: std::env::var_os("MESH_DOCKER_BINARY")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| PathBuf::from("docker")),
-            execution_prefix: Vec::new(),
+            binary: self.docker_binary.clone(),
+            execution_prefix: self.docker_execution_prefix.clone(),
             image: template.image.clone(),
             pool: template.pool.clone(),
             network: template.network.clone(),
@@ -748,22 +763,38 @@ fn handle_service_connection(
     )
 }
 
-/// Runs the dedicated Docker driver service until its listener is closed.
+/// Runs the dedicated Docker driver service the process environment
+/// describes.
 pub fn serve_docker_driver_from_env() -> Result<(), String> {
-    let listen =
-        std::env::var("MESH_DOCKER_DRIVER_LISTEN").unwrap_or_else(|_| "0.0.0.0:7443".to_string());
-    let allowed_cluster = std::env::var("MESH_DOCKER_DRIVER_ALLOWED_CLUSTER")
-        .map_err(|_| "driver_service_allowed_cluster_missing".to_string())?;
-    let allowed_pool = std::env::var("MESH_DOCKER_DRIVER_ALLOWED_POOL")
-        .map_err(|_| "driver_service_allowed_pool_missing".to_string())?;
-    let allowed_image = std::env::var("MESH_DOCKER_DRIVER_ALLOWED_IMAGE")
-        .map_err(|_| "driver_service_allowed_image_missing".to_string())?;
-    let allowed_network = std::env::var("MESH_DOCKER_DRIVER_ALLOWED_NETWORK")
-        .map_err(|_| "driver_service_allowed_network_missing".to_string())?;
+    serve_docker_driver(&|name| std::env::var_os(name), accept_forever)
+}
+
+/// The next connection to `listener`; there is always another.
+fn accept_forever(listener: &TcpListener) -> Option<std::io::Result<TcpStream>> {
+    Some(listener.accept().map(|(tcp, _)| tcp))
+}
+
+/// Runs the driver service the settings in `env` describe, on each
+/// connection `accept` takes from its listener until `accept` has none.
+fn serve_docker_driver(
+    env: EnvironmentLookup<'_>,
+    mut accept: impl FnMut(&TcpListener) -> Option<std::io::Result<TcpStream>>,
+) -> Result<(), String> {
+    let listen = environment_text(env, "MESH_DOCKER_DRIVER_LISTEN")
+        .unwrap_or_else(|| "0.0.0.0:7443".to_string());
+    let allowed_cluster = environment_text(env, "MESH_DOCKER_DRIVER_ALLOWED_CLUSTER")
+        .ok_or_else(|| "driver_service_allowed_cluster_missing".to_string())?;
+    let allowed_pool = environment_text(env, "MESH_DOCKER_DRIVER_ALLOWED_POOL")
+        .ok_or_else(|| "driver_service_allowed_pool_missing".to_string())?;
+    let allowed_image = environment_text(env, "MESH_DOCKER_DRIVER_ALLOWED_IMAGE")
+        .ok_or_else(|| "driver_service_allowed_image_missing".to_string())?;
+    let allowed_network = environment_text(env, "MESH_DOCKER_DRIVER_ALLOWED_NETWORK")
+        .ok_or_else(|| "driver_service_allowed_network_missing".to_string())?;
     let allowed_network =
         (!allowed_network.trim().is_empty()).then(|| allowed_network.trim().to_string());
-    let allowed_environment_names_raw = std::env::var("MESH_DOCKER_DRIVER_ALLOWED_ENV_NAMES")
-        .map_err(|_| "driver_service_allowed_environment_names_missing".to_string())?;
+    let allowed_environment_names_raw =
+        environment_text(env, "MESH_DOCKER_DRIVER_ALLOWED_ENV_NAMES")
+            .ok_or_else(|| "driver_service_allowed_environment_names_missing".to_string())?;
     let allowed_environment_name_list = allowed_environment_names_raw
         .split(',')
         .map(str::trim)
@@ -774,7 +805,7 @@ pub fn serve_docker_driver_from_env() -> Result<(), String> {
         .iter()
         .cloned()
         .collect::<BTreeSet<_>>();
-    let shared_keys = shared_keyring_from_env("MESH_DOCKER_DRIVER_SHARED_KEY")
+    let shared_keys = shared_keyring(env, "MESH_DOCKER_DRIVER_SHARED_KEY")
         .map_err(|_| "driver_service_shared_key_missing_or_invalid".to_string())?;
     if allowed_cluster.trim().is_empty()
         || allowed_pool.trim().is_empty()
@@ -791,7 +822,8 @@ pub fn serve_docker_driver_from_env() -> Result<(), String> {
     }
     let listener = TcpListener::bind(&listen)
         .map_err(|error| format!("driver_service_bind_failed:{error}"))?;
-    let tls = tls_server_config()?;
+    let tls = tls_server_config(env)?;
+    let faults = environment_text(env, "MESH_DOCKER_DRIVER_FAULTS").unwrap_or_default();
     let service = Arc::new(DockerDriverService {
         allowed_cluster,
         allowed_pool,
@@ -799,19 +831,27 @@ pub fn serve_docker_driver_from_env() -> Result<(), String> {
         allowed_network,
         allowed_environment_names,
         shared_keys,
+        docker_binary: env("MESH_DOCKER_BINARY")
+            .map_or_else(|| PathBuf::from("docker"), PathBuf::from),
+        docker_execution_prefix: Vec::new(),
         driver: Mutex::new(None),
         seen_request_ids: Mutex::new(BTreeMap::new()),
         active_connections: AtomicUsize::new(0),
-        inject_ensure_response_loss_once: AtomicBool::new(env_fault_enabled(
+        inject_ensure_response_loss_once: AtomicBool::new(fault_list_enabled(
+            &faults,
             "ensure_response_loss_once",
         )),
-        inject_api_timeout_once: AtomicBool::new(env_fault_enabled("docker_api_timeout_once")),
-        inject_unhealthy_worker_once: AtomicBool::new(env_fault_enabled(
+        inject_api_timeout_once: AtomicBool::new(fault_list_enabled(
+            &faults,
+            "docker_api_timeout_once",
+        )),
+        inject_unhealthy_worker_once: AtomicBool::new(fault_list_enabled(
+            &faults,
             "unhealthy_new_worker_once",
         )),
     });
     eprintln!("mesh capacity driver: listening on {listen}");
-    for connection in listener.incoming() {
+    while let Some(connection) = accept(&listener) {
         match connection {
             Ok(tcp) => {
                 if service
@@ -841,12 +881,6 @@ pub fn serve_docker_driver_from_env() -> Result<(), String> {
     Ok(())
 }
 
-fn env_fault_enabled(expected: &str) -> bool {
-    std::env::var("MESH_DOCKER_DRIVER_FAULTS")
-        .ok()
-        .is_some_and(|raw| fault_list_enabled(&raw, expected))
-}
-
 fn fault_list_enabled(raw: &str, expected: &str) -> bool {
     raw.split(',')
         .map(str::trim)
@@ -856,6 +890,347 @@ fn fault_list_enabled(raw: &str, expected: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::OsString;
+
+    const KEY: &str = "0123456789abcdef0123456789abcdef";
+
+    /// A self-signed P-256 certificate for `docker-driver`, with its
+    /// PKCS#8 key: the identity of the service and of its clients, and the
+    /// CA that both trust.
+    fn test_identity() -> (Vec<u8>, Vec<u8>) {
+        use ring::rand::SystemRandom;
+        use ring::signature::{EcdsaKeyPair, KeyPair, ECDSA_P256_SHA256_ASN1_SIGNING};
+        fn der(tag: u8, parts: &[&[u8]]) -> Vec<u8> {
+            let content = parts.concat();
+            let mut out = vec![tag];
+            // DER lengths are as short as they can be.
+            match content.len() {
+                len @ 0..=0x7F => out.push(len as u8),
+                len @ 0x80..=0xFF => out.extend([0x81, len as u8]),
+                len => {
+                    out.push(0x82);
+                    out.extend(u16::try_from(len).unwrap().to_be_bytes());
+                }
+            }
+            out.extend(content);
+            out
+        }
+        let rng = SystemRandom::new();
+        let pkcs8 = EcdsaKeyPair::generate_pkcs8(&ECDSA_P256_SHA256_ASN1_SIGNING, &rng).unwrap();
+        let key = EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_ASN1_SIGNING, pkcs8.as_ref(), &rng)
+            .unwrap();
+        let ecdsa_sha256 = der(
+            0x30,
+            &[&[0x06, 0x08, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x04, 0x03, 0x02]],
+        );
+        let common_name = der(0x0C, &[b"docker-driver"]);
+        let name = der(
+            0x30,
+            &[&der(
+                0x31,
+                &[&der(0x30, &[&[0x06, 0x03, 0x55, 0x04, 0x03], &common_name])],
+            )],
+        );
+        let ec_p256 = der(
+            0x30,
+            &[
+                &[0x06, 0x07, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x02, 0x01],
+                &[0x06, 0x08, 0x2A, 0x86, 0x48, 0xCE, 0x3D, 0x03, 0x01, 0x07],
+            ],
+        );
+        let public_key = der(0x03, &[&[0], key.public_key().as_ref()]);
+        let dns_name = der(0x30, &[&der(0x82, &[b"docker-driver"])]);
+        let subject_alt_name = der(
+            0x30,
+            &[&[0x06, 0x03, 0x55, 0x1D, 0x11], &der(0x04, &[&dns_name])],
+        );
+        let tbs = der(
+            0x30,
+            &[
+                &[0xA0, 0x03, 0x02, 0x01, 0x02],
+                &[0x02, 0x01, 0x01],
+                &ecdsa_sha256,
+                &name,
+                &der(
+                    0x30,
+                    &[
+                        &der(0x17, &[b"200101000000Z"]),
+                        &der(0x18, &[b"20991231235959Z"]),
+                    ],
+                ),
+                &name,
+                &der(0x30, &[&ec_p256, &public_key]),
+                &der(0xA3, &[&der(0x30, &[&subject_alt_name])]),
+            ],
+        );
+        let signature = key.sign(&rng, &tbs).unwrap();
+        let certificate = der(
+            0x30,
+            &[&tbs, &ecdsa_sha256, &der(0x03, &[&[0], signature.as_ref()])],
+        );
+        (certificate, pkcs8.as_ref().to_vec())
+    }
+
+    /// The TLS settings for a service and a client that trust each other,
+    /// with the shared key [`KEY`].
+    fn tls_settings() -> Vec<(&'static str, String)> {
+        let (certificate, key) = test_identity();
+        let [certificate, key] =
+            [certificate, key].map(|der| base64::engine::general_purpose::STANDARD.encode(der));
+        vec![
+            ("MESH_DOCKER_DRIVER_CA_DER_B64", certificate.clone()),
+            (
+                "MESH_DOCKER_DRIVER_CLIENT_CERT_DER_B64",
+                certificate.clone(),
+            ),
+            ("MESH_DOCKER_DRIVER_CLIENT_KEY_DER_B64", key.clone()),
+            ("MESH_DOCKER_DRIVER_SERVER_CERT_DER_B64", certificate),
+            ("MESH_DOCKER_DRIVER_SERVER_KEY_DER_B64", key),
+            ("MESH_DOCKER_DRIVER_SHARED_KEY", KEY.to_string()),
+        ]
+    }
+
+    /// The settings of a service on a free local port.
+    fn service_settings() -> Vec<(&'static str, String)> {
+        let mut table = tls_settings();
+        table.extend([
+            ("MESH_DOCKER_DRIVER_LISTEN", "127.0.0.1:0".to_string()),
+            (
+                "MESH_DOCKER_DRIVER_ALLOWED_CLUSTER",
+                "cluster-a".to_string(),
+            ),
+            ("MESH_DOCKER_DRIVER_ALLOWED_POOL", "workers".to_string()),
+            (
+                "MESH_DOCKER_DRIVER_ALLOWED_IMAGE",
+                "image@sha256:abc".to_string(),
+            ),
+            ("MESH_DOCKER_DRIVER_ALLOWED_NETWORK", " ".to_string()),
+            ("MESH_DOCKER_DRIVER_ALLOWED_ENV_NAMES", "PORT".to_string()),
+        ]);
+        table
+    }
+
+    /// `table` with `name` set to `value`, or left out.
+    fn with(
+        table: &[(&'static str, String)],
+        name: &'static str,
+        value: Option<&str>,
+    ) -> Vec<(&'static str, String)> {
+        let mut table = table.to_vec();
+        table.retain(|(key, _)| *key != name);
+        table.extend(value.map(|value| (name, value.to_string())));
+        table
+    }
+
+    /// Settings read from `table`.
+    fn settings(table: Vec<(&'static str, String)>) -> impl Fn(&str) -> Option<OsString> + Sync {
+        move |name| {
+            table
+                .iter()
+                .find(|(key, _)| *key == name)
+                .map(|(_, value)| value.into())
+        }
+    }
+
+    fn template() -> RemoteDockerTemplate {
+        RemoteDockerTemplate {
+            image: "image@sha256:abc".to_string(),
+            pool: "workers".to_string(),
+            network: None,
+            environment: vec!["PORT=8080".to_string()],
+            operation_timeout_millis: 5_000,
+        }
+    }
+
+    #[test]
+    fn a_remote_driver_reads_its_settings_from_the_lookup_it_is_given() {
+        let table = with(
+            &tls_settings(),
+            "MESH_DOCKER_DRIVER_ENDPOINT",
+            Some("127.0.0.1:1"),
+        );
+        let driver =
+            RemoteDockerCapacityDriver::from_environment(template(), &settings(table.clone()))
+                .expect("a remote driver");
+        let rendered = format!("{driver:?}");
+        assert!(rendered.contains("127.0.0.1:1") && rendered.contains("\"docker-driver\""));
+        assert!(rendered.contains("[redacted]") && !rendered.contains(KEY));
+
+        let invalid = |name: &str| format!("driver_tls_environment_invalid:{name}");
+        let refusals = [
+            (
+                "MESH_DOCKER_DRIVER_ENDPOINT",
+                None,
+                "docker_driver_endpoint_missing".to_string(),
+            ),
+            (
+                "MESH_DOCKER_DRIVER_ENDPOINT",
+                Some(" "),
+                "docker_driver_remote_configuration_invalid".to_string(),
+            ),
+            (
+                "MESH_DOCKER_DRIVER_SHARED_KEY",
+                Some("short"),
+                "docker_driver_shared_key_missing_or_invalid".to_string(),
+            ),
+            (
+                "MESH_DOCKER_DRIVER_CA_DER_B64",
+                None,
+                "driver_tls_environment_missing:MESH_DOCKER_DRIVER_CA_DER_B64".to_string(),
+            ),
+            (
+                "MESH_DOCKER_DRIVER_CA_DER_B64",
+                Some(" , "),
+                invalid("MESH_DOCKER_DRIVER_CA_DER_B64"),
+            ),
+            (
+                "MESH_DOCKER_DRIVER_CA_DER_B64",
+                Some("!"),
+                invalid("MESH_DOCKER_DRIVER_CA_DER_B64"),
+            ),
+            (
+                "MESH_DOCKER_DRIVER_CA_DER_B64",
+                Some("AAAA"),
+                "driver_tls_ca_invalid".to_string(),
+            ),
+            (
+                "MESH_DOCKER_DRIVER_CLIENT_CERT_DER_B64",
+                Some("!"),
+                invalid("MESH_DOCKER_DRIVER_CLIENT_CERT_DER_B64"),
+            ),
+            (
+                "MESH_DOCKER_DRIVER_CLIENT_KEY_DER_B64",
+                None,
+                "driver_tls_environment_missing:MESH_DOCKER_DRIVER_CLIENT_KEY_DER_B64".to_string(),
+            ),
+            (
+                "MESH_DOCKER_DRIVER_CLIENT_KEY_DER_B64",
+                Some("AAAA"),
+                "driver_tls_client_identity_invalid".to_string(),
+            ),
+        ];
+        for (name, value, expected) in refusals {
+            assert_eq!(
+                RemoteDockerCapacityDriver::from_environment(
+                    template(),
+                    &settings(with(&table, name, value))
+                )
+                .err(),
+                Some(expected),
+                "{name}={value:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_driver_service_refuses_settings_it_cannot_serve_with() {
+        let table = service_settings();
+        let refusals = [
+            (
+                "MESH_DOCKER_DRIVER_ALLOWED_CLUSTER",
+                None,
+                "driver_service_allowed_cluster_missing",
+            ),
+            (
+                "MESH_DOCKER_DRIVER_ALLOWED_POOL",
+                Some(" "),
+                "driver_service_configuration_invalid",
+            ),
+            (
+                "MESH_DOCKER_DRIVER_ALLOWED_ENV_NAMES",
+                Some("PORT,PORT"),
+                "driver_service_configuration_invalid",
+            ),
+            (
+                "MESH_DOCKER_DRIVER_ALLOWED_ENV_NAMES",
+                Some("NOT-A-NAME"),
+                "driver_service_configuration_invalid",
+            ),
+            (
+                "MESH_DOCKER_DRIVER_SHARED_KEY",
+                None,
+                "driver_service_shared_key_missing_or_invalid",
+            ),
+            (
+                "MESH_DOCKER_DRIVER_SERVER_KEY_DER_B64",
+                None,
+                "driver_tls_environment_missing:MESH_DOCKER_DRIVER_SERVER_KEY_DER_B64",
+            ),
+            (
+                "MESH_DOCKER_DRIVER_SERVER_KEY_DER_B64",
+                Some("AAAA"),
+                "driver_tls_server_identity_invalid",
+            ),
+            (
+                "MESH_DOCKER_DRIVER_CA_DER_B64",
+                Some("AAAA"),
+                "driver_tls_ca_invalid",
+            ),
+        ];
+        for (name, value, expected) in refusals {
+            assert_eq!(
+                serve_docker_driver(&settings(with(&table, name, value)), |_| None),
+                Err(expected.to_string()),
+                "{name}={value:?}"
+            );
+        }
+        assert!(serve_docker_driver(
+            &settings(with(
+                &table,
+                "MESH_DOCKER_DRIVER_LISTEN",
+                Some("not an address")
+            )),
+            |_| None
+        )
+        .unwrap_err()
+        .starts_with("driver_service_bind_failed:"));
+        // With no connections to take, it is done.
+        assert_eq!(serve_docker_driver(&settings(table), |_| None), Ok(()));
+        // The process environment of these tests configures no service.
+        assert_eq!(
+            serve_docker_driver_from_env(),
+            Err("driver_service_allowed_cluster_missing".to_string())
+        );
+    }
+
+    /// A service serves as many connections at once as it may, closes any
+    /// past that unanswered, and goes on when taking one fails.
+    #[test]
+    fn a_driver_service_turns_away_connections_past_its_limit() {
+        let env = settings(service_settings());
+        let (addresses, address) = std::sync::mpsc::channel();
+        let mut taken = 0;
+        let served = std::thread::spawn(move || {
+            serve_docker_driver(&env, |listener| {
+                taken += 1;
+                if taken == 1 {
+                    addresses.send(listener.local_addr().unwrap()).unwrap();
+                }
+                match taken {
+                    taken if taken <= DRIVER_SERVICE_MAX_CONCURRENT_CONNECTIONS + 1 => {
+                        accept_forever(listener)
+                    }
+                    taken if taken == DRIVER_SERVICE_MAX_CONCURRENT_CONNECTIONS + 2 => {
+                        Some(Err(std::io::Error::other("accept refused")))
+                    }
+                    _ => None,
+                }
+            })
+        });
+        let address = address.recv().unwrap();
+        // Connections queue until the service takes them, in order.
+        let clients = (0..=DRIVER_SERVICE_MAX_CONCURRENT_CONNECTIONS)
+            .map(|_| TcpStream::connect(address).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(served.join().unwrap(), Ok(()));
+        let mut turned_away = clients.last().unwrap();
+        assert_eq!(turned_away.read(&mut [0]).unwrap(), 0);
+        let mut waiting = &clients[0];
+        waiting
+            .set_read_timeout(Some(Duration::from_millis(100)))
+            .unwrap();
+        assert!(waiting.read(&mut [0]).is_err());
+    }
 
     #[test]
     fn hex_signature_rejects_non_ascii_without_panicking() {
@@ -923,6 +1298,8 @@ mod tests {
             allowed_network: Some("mesh-private".to_string()),
             allowed_environment_names: BTreeSet::from(["PORT".to_string()]),
             shared_keys: vec!["0123456789abcdef0123456789abcdef".to_string()],
+            docker_binary: PathBuf::from("docker"),
+            docker_execution_prefix: Vec::new(),
             driver: Mutex::new(None),
             seen_request_ids: Mutex::new(BTreeMap::new()),
             active_connections: AtomicUsize::new(0),
