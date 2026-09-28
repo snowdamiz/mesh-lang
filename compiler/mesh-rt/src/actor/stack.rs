@@ -228,25 +228,32 @@ impl CoroutineHandle {
 /// scan of it has to stop, or null where the platform offers no way to ask
 /// (the thread then never collects, as the main thread used not to).
 pub(crate) fn current_thread_stack_base() -> *const u8 {
+    current_thread_stack_bounds().1 as *const u8
+}
+
+/// The lowest and the highest address of the calling thread's stack, or
+/// zeros where the platform does not say.
+pub(crate) fn current_thread_stack_bounds() -> (usize, usize) {
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     unsafe {
-        libc::pthread_get_stackaddr_np(libc::pthread_self()) as *const u8
+        let thread = libc::pthread_self();
+        let top = libc::pthread_get_stackaddr_np(thread) as usize;
+        (
+            top.saturating_sub(libc::pthread_get_stacksize_np(thread)),
+            top,
+        )
     }
     #[cfg(any(target_os = "linux", target_os = "android"))]
     unsafe {
+        // Unknown (zeros) if either query fails: nothing is written then.
         let mut attr: libc::pthread_attr_t = std::mem::zeroed();
-        if libc::pthread_getattr_np(libc::pthread_self(), &mut attr) != 0 {
-            return std::ptr::null();
-        }
         let mut lowest: *mut libc::c_void = std::ptr::null_mut();
         let mut size: libc::size_t = 0;
-        let found = libc::pthread_attr_getstack(&attr, &mut lowest, &mut size) == 0;
-        libc::pthread_attr_destroy(&mut attr);
-        if found && !lowest.is_null() {
-            (lowest as *const u8).add(size)
-        } else {
-            std::ptr::null()
+        if libc::pthread_getattr_np(libc::pthread_self(), &mut attr) == 0 {
+            libc::pthread_attr_getstack(&attr, &mut lowest, &mut size);
+            libc::pthread_attr_destroy(&mut attr);
         }
+        (lowest as usize, lowest as usize + size)
     }
     #[cfg(windows)]
     unsafe {
@@ -255,7 +262,7 @@ pub(crate) fn current_thread_stack_base() -> *const u8 {
         }
         let (mut low, mut high) = (0usize, 0usize);
         GetCurrentThreadStackLimits(&mut low, &mut high);
-        high as *const u8
+        (low, high)
     }
     #[cfg(not(any(
         target_os = "macos",
@@ -265,7 +272,7 @@ pub(crate) fn current_thread_stack_base() -> *const u8 {
         windows
     )))]
     {
-        std::ptr::null()
+        (0, 0)
     }
 }
 

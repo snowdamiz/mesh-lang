@@ -74,37 +74,7 @@ pub fn back_on_thread_stack() {
 
 #[cfg(unix)]
 fn thread_stack_limit() -> usize {
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
-    unsafe {
-        let thread = libc::pthread_self();
-        let top = libc::pthread_get_stackaddr_np(thread) as usize;
-        top.saturating_sub(libc::pthread_get_stacksize_np(thread))
-    }
-    #[cfg(any(target_os = "linux", target_os = "android"))]
-    unsafe {
-        let mut attr: libc::pthread_attr_t = std::mem::zeroed();
-        if libc::pthread_getattr_np(libc::pthread_self(), &mut attr) != 0 {
-            return 0;
-        }
-        let mut lowest: *mut libc::c_void = std::ptr::null_mut();
-        let mut size: libc::size_t = 0;
-        let found = libc::pthread_attr_getstack(&attr, &mut lowest, &mut size) == 0;
-        libc::pthread_attr_destroy(&mut attr);
-        if found {
-            lowest as usize
-        } else {
-            0
-        }
-    }
-    #[cfg(not(any(
-        target_os = "macos",
-        target_os = "ios",
-        target_os = "linux",
-        target_os = "android"
-    )))]
-    {
-        0
-    }
+    crate::actor::stack::current_thread_stack_bounds().0
 }
 
 #[cfg(unix)]
@@ -113,23 +83,53 @@ extern "C" fn handler(
     info: *mut libc::siginfo_t,
     _context: *mut libc::c_void,
 ) {
+    on_fault(signal, unsafe { (*info).si_addr() } as usize);
+}
+
+/// What a fault at `address` does: a stack overflow is reported and aborts
+/// the process; any other fault takes the default action, as without the
+/// handler (the faulting instruction runs again and faults).
+#[cfg(unix)]
+fn on_fault(signal: libc::c_int, address: usize) {
+    let limit = CURRENT_LIMIT.with(|c| c.get());
+    let overflow = limit != 0
+        && address >= limit.saturating_sub(GUARD_WINDOW)
+        && address < limit + GUARD_WINDOW;
     unsafe {
-        let address = (*info).si_addr() as usize;
-        let limit = CURRENT_LIMIT.with(|c| c.get());
-        let overflow = limit != 0
-            && address >= limit.saturating_sub(GUARD_WINDOW)
-            && address < limit + GUARD_WINDOW;
         if overflow {
             let message: &[u8] = b"\nerror: stack overflow: a function recursed too deeply \
 (only a call in tail position runs in constant stack)\n";
             libc::write(2, message.as_ptr().cast(), message.len());
             libc::abort();
         }
-        // Not a stack overflow: take the default action, as without the
-        // handler (the faulting instruction runs again and faults).
         let mut action: libc::sigaction = std::mem::zeroed();
         action.sa_sigaction = libc::SIG_DFL;
         libc::sigemptyset(&mut action.sa_mask);
         libc::sigaction(signal, &action, std::ptr::null_mut());
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    /// A fault that is not at the stack's limit gives the signal back to its
+    /// default action.
+    #[test]
+    fn a_fault_away_from_the_stack_limit_takes_the_default_action() {
+        let disposition = |signal| unsafe {
+            let mut action: libc::sigaction = std::mem::zeroed();
+            libc::sigaction(signal, std::ptr::null(), &mut action);
+            action
+        };
+        // SIGBUS, not SIGSEGV: nothing in the test process expects it.
+        install_for_current_thread();
+        let installed = disposition(libc::SIGBUS);
+        assert_eq!(installed.sa_sigaction, handler as *const () as usize);
+
+        on_fault(libc::SIGBUS, 16);
+
+        assert_eq!(disposition(libc::SIGBUS).sa_sigaction, libc::SIG_DFL);
+        unsafe { libc::sigaction(libc::SIGBUS, &installed, std::ptr::null_mut()) };
     }
 }
