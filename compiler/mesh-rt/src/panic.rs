@@ -24,17 +24,15 @@ pub extern "C-unwind" fn mesh_panic(
     msg_len: u64,
     file: *const u8,
     file_len: u64,
-    line: u32,
+    _line: u32,
 ) -> ! {
     unsafe {
         let msg = std::str::from_utf8_unchecked(std::slice::from_raw_parts(msg, msg_len as usize));
         let file =
             std::str::from_utf8_unchecked(std::slice::from_raw_parts(file, file_len as usize));
-        if line == 0 {
-            // No source line: `file` names the function that panicked.
-            panic!("Mesh panic in {}: {}", file, msg);
-        }
-        panic!("Mesh panic at {}:{}: {}", file, line, msg);
+        // Compiled code passes no line (0): `file` names the function that
+        // panicked.
+        panic!("Mesh panic in {}: {}", file, msg);
     }
 }
 
