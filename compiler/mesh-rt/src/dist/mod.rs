@@ -33,6 +33,31 @@ pub(crate) fn char_prefix(text: &str, max_bytes: usize) -> &str {
     &text[..end]
 }
 
+/// Whether the test at `path`, as the test harness names it, runs its body
+/// here: in a process of its own, which it starts from this binary when not
+/// already in one, for a test that changes what every test in a process
+/// shares.
+#[cfg(test)]
+pub(crate) fn in_own_process(path: &str) -> bool {
+    /// Names the one test a child process of this binary runs.
+    const OWN_PROCESS_TEST_ENV: &str = "MESH_RT_OWN_PROCESS_TEST";
+    if std::env::var(OWN_PROCESS_TEST_ENV).is_ok_and(|test| test == path) {
+        return true;
+    }
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([path, "--exact", "--nocapture", "--test-threads=1"])
+        .env(OWN_PROCESS_TEST_ENV, path)
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success() && stdout.contains("1 passed"),
+        "{stdout}\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    false
+}
+
 #[cfg(test)]
 mod autonomous_model_tests;
 #[cfg(test)]

@@ -15331,33 +15331,10 @@ mod tests {
             .contains_key("reset-client@127.0.0.1:1"));
     }
 
-    /// Names the one test a child process of this binary runs.
-    const OWN_PROCESS_TEST_ENV: &str = "MESH_RT_OWN_PROCESS_TEST";
-
-    /// Whether the test `name` runs its body here: in a process of its own,
-    /// which it starts from this binary when not already in one, for a
-    /// test that changes what every test in a process shares.
+    /// Whether this module's test `name` runs its body here (see
+    /// `dist::in_own_process`).
     fn in_own_process(name: &str) -> bool {
-        if std::env::var(OWN_PROCESS_TEST_ENV).is_ok_and(|test| test == name) {
-            return true;
-        }
-        let output = std::process::Command::new(std::env::current_exe().unwrap())
-            .args([
-                format!("dist::node::tests::{name}").as_str(),
-                "--exact",
-                "--nocapture",
-                "--test-threads=1",
-            ])
-            .env(OWN_PROCESS_TEST_ENV, name)
-            .output()
-            .unwrap();
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(
-            output.status.success() && stdout.contains("1 passed"),
-            "{stdout}\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        false
+        super::super::in_own_process(&format!("dist::node::tests::{name}"))
     }
 
     /// A node whose durable store fails goes on: a response a peer kept is
