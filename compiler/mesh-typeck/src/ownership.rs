@@ -800,19 +800,19 @@ impl Checker<'_> {
             Expr::WhileExpr(while_expr) => self.check_while(while_expr),
             Expr::ForInExpr(for_expr) => self.check_for(for_expr),
             Expr::FieldAccess(access) => {
-                if let Some(base) = access.base() {
-                    let base_usage = if matches!(usage, Usage::Move)
-                        && self
-                            .types
-                            .get(&access.syntax().text_range())
-                            .is_some_and(|ty| self.registry.is_resource_type(ty))
-                    {
-                        Usage::Move
-                    } else {
-                        Usage::Read
-                    };
-                    self.check_expr(&base, base_usage);
-                }
+                // The parser opens a field access around its base.
+                let base = access.base().expect("a field access has its base");
+                let base_usage = if matches!(usage, Usage::Move)
+                    && self
+                        .types
+                        .get(&access.syntax().text_range())
+                        .is_some_and(|ty| self.registry.is_resource_type(ty))
+                {
+                    Usage::Move
+                } else {
+                    Usage::Read
+                };
+                self.check_expr(&base, base_usage);
             }
             Expr::StringExpr(string) => {
                 for interpolation in string
