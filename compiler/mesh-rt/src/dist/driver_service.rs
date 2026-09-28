@@ -1400,6 +1400,75 @@ mod tests {
         );
     }
 
+    /// A remote driver drives Docker through a driver service: each of its
+    /// operations, and each fault the service injects (an ensure asked
+    /// again after its reply was lost makes no second worker). The service
+    /// runs the fake Docker CLI through `/bin/sh`: a script of its own,
+    /// new to the machine, can take seconds to run the first time (macOS
+    /// scans it), past the requests' deadline.
+    #[test]
+    fn a_remote_driver_drives_docker_through_a_driver_service() {
+        use super::super::scaling::tests::{docker_calls, driver_operation};
+        let state = tempfile::tempdir().expect("fake docker state");
+        let service = Arc::new(fake_service(state.path()));
+        service
+            .inject_api_timeout_once
+            .store(true, Ordering::Release);
+        service
+            .inject_ensure_response_loss_once
+            .store(true, Ordering::Release);
+        let table = tls_settings();
+        let tls = tls_server_config(&settings(table.clone())).expect("service TLS");
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = listener.local_addr().unwrap().to_string();
+        let serving = std::thread::spawn(move || {
+            for tcp in listener.incoming().take(8) {
+                let _ = handle_service_connection(tcp.unwrap(), tls.clone(), service.clone());
+            }
+        });
+        let driver = RemoteDockerCapacityDriver::from_environment(
+            template(),
+            &settings(with(&table, "MESH_DOCKER_DRIVER_ENDPOINT", Some(&endpoint))),
+        )
+        .expect("a remote driver");
+
+        assert_eq!(
+            driver.observe_capacity("cluster-a").err(),
+            Some("docker_driver_api_timeout".to_string())
+        );
+        assert_eq!(driver.validate_configuration(), Ok(()));
+        let ensure = driver_operation("remote-ensure", None);
+        // The worker is made, but its reply is lost; asked again, the
+        // service adopts it.
+        let lost = driver.ensure_node(&ensure).unwrap_err();
+        assert!(lost.starts_with("driver_service_read_failed:"), "{lost}");
+        let ensured = driver.ensure_node(&ensure).expect("the adopted worker");
+        let node_id = ensured.node_id.clone().expect("its container");
+        let observed = driver
+            .observe_capacity("cluster-a")
+            .expect("an observation");
+        assert_eq!(observed.nodes.len(), 1);
+        assert_eq!(observed.nodes[0].node_id, node_id);
+        let drain = driver_operation("remote-drain", Some(&node_id));
+        assert!(driver.begin_drain(&drain, &node_id).is_ok());
+        assert_eq!(
+            driver
+                .get_operation("remote-ensure")
+                .map(|operation| operation.and_then(|operation| operation.node_id)),
+            Ok(Some(node_id.clone()))
+        );
+        let terminate = driver_operation("remote-terminate", Some(&node_id));
+        assert!(driver.terminate_node(&terminate, &node_id).is_ok());
+        serving.join().unwrap();
+        assert_eq!(
+            docker_calls(state.path())
+                .iter()
+                .filter(|call| call.starts_with("create"))
+                .count(),
+            1
+        );
+    }
+
     /// A remote driver refuses a reply of the wrong kind or signed with a
     /// key it does not hold, and a service that hangs up before replying.
     #[test]
