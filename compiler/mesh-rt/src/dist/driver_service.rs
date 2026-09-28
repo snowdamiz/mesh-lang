@@ -1400,6 +1400,79 @@ mod tests {
         );
     }
 
+    /// A remote driver refuses a reply of the wrong kind or signed with a
+    /// key it does not hold, and a service that hangs up before replying.
+    #[test]
+    fn a_remote_driver_refuses_replies_it_cannot_trust() {
+        use super::super::scaling::tests::driver_operation;
+        let table = tls_settings();
+        let tls = tls_server_config(&settings(table.clone())).expect("service TLS");
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = listener.local_addr().unwrap().to_string();
+        // Each request is answered with a payload of another kind, signed
+        // with the one key.
+        let answering = std::thread::spawn(move || {
+            for tcp in listener.incoming().take(7) {
+                let connection = ServerConnection::new(tls.clone()).unwrap();
+                let mut stream = StreamOwned::new(connection, tcp.unwrap());
+                let request: DriverServiceRequest =
+                    serde_json::from_slice(&read_frame(&mut stream).unwrap()).unwrap();
+                let payload = match request.action {
+                    DriverServiceAction::Validate => {
+                        DriverServicePayload::OptionalOperation { operation: None }
+                    }
+                    _ => DriverServicePayload::Valid,
+                };
+                let mut response = DriverServiceResponse {
+                    schema_version: DRIVER_SERVICE_SCHEMA_VERSION,
+                    request_id: request.request_id,
+                    result: Ok(payload),
+                    signature: String::new(),
+                };
+                response.signature = hex_signature(response_signature(&response, KEY));
+                write_frame(&mut stream, &serde_json::to_vec(&response).unwrap()).unwrap();
+            }
+        });
+        let table = with(&table, "MESH_DOCKER_DRIVER_ENDPOINT", Some(&endpoint));
+        let driver =
+            RemoteDockerCapacityDriver::from_environment(template(), &settings(table.clone()))
+                .expect("a remote driver");
+        let operation = driver_operation("operation", Some("node"));
+        let wrong_kind = Some("driver_service_reply_kind_invalid".to_string());
+        assert_eq!(driver.validate_configuration().err(), wrong_kind);
+        assert_eq!(driver.observe_capacity("cluster-a").err(), wrong_kind);
+        assert_eq!(driver.ensure_node(&operation).err(), wrong_kind);
+        assert_eq!(driver.begin_drain(&operation, "node").err(), wrong_kind);
+        assert_eq!(driver.terminate_node(&operation, "node").err(), wrong_kind);
+        assert_eq!(driver.get_operation("operation").err(), wrong_kind);
+        let other_key = with(
+            &table,
+            "MESH_DOCKER_DRIVER_SHARED_KEY",
+            Some("another-key-0123456789abcdef0123"),
+        );
+        let other = RemoteDockerCapacityDriver::from_environment(template(), &settings(other_key))
+            .expect("a remote driver");
+        assert_eq!(
+            other.validate_configuration(),
+            Err("driver_service_response_authentication_failed".to_string())
+        );
+        answering.join().unwrap();
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = listener.local_addr().unwrap().to_string();
+        let hanging_up = std::thread::spawn(move || drop(listener.accept()));
+        let driver = RemoteDockerCapacityDriver::from_environment(
+            template(),
+            &settings(with(&table, "MESH_DOCKER_DRIVER_ENDPOINT", Some(&endpoint))),
+        )
+        .expect("a remote driver");
+        assert!(driver
+            .validate_configuration()
+            .unwrap_err()
+            .starts_with("driver_service_write_failed:"));
+        hanging_up.join().unwrap();
+    }
+
     #[test]
     fn driver_service_rejects_unapproved_network_and_environment_shape() {
         let service = DockerDriverService {
