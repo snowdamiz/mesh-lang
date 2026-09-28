@@ -353,7 +353,9 @@ pub fn run_continuity_soak(args: ContinuitySoakArgs) -> Result<(), String> {
         store.compact(now)?;
         drain_log(&store)?;
 
-        if ordinal > 0 && ordinal.is_multiple_of(1_000) {
+        // From the first cycle, with its records still in flight, then
+        // every 1,000: however short or slow the run, it resumes one.
+        if ordinal.is_multiple_of(1_000) {
             resume_snapshot(&store, limits)?;
             snapshots += 1;
         }
@@ -365,13 +367,6 @@ pub fn run_continuity_soak(args: ContinuitySoakArgs) -> Result<(), String> {
         }
         ordinal = ordinal.saturating_add(1);
         thread::park_timeout(Duration::from_millis(args.cycle_millis));
-    }
-
-    // A run too short or too slow for a thousand cycles still resumes one,
-    // taken with its records still in flight.
-    if snapshots == 0 {
-        resume_snapshot(&store, limits)?;
-        snapshots += 1;
     }
 
     let finish_time = base_time

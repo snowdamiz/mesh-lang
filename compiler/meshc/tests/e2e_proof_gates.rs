@@ -26,8 +26,8 @@ fn summary(evidence: &std::path::Path) -> Value {
 #[test]
 fn a_short_continuity_soak_passes_as_a_smoke_run() {
     let evidence = tempfile::tempdir().unwrap();
-    // Long and fast enough for a resumed snapshot (every 1,000 cycles) and a
-    // disk plateau judged over four samples (one a second).
+    // Long enough for a disk plateau judged over four samples (one a
+    // second); a snapshot is resumed from the first cycle.
     let output = proof(&[
         "continuity-soak",
         "--duration-seconds",
