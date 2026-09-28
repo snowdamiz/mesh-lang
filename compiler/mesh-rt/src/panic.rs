@@ -121,6 +121,7 @@ fn ignore_sigpipe() {
 
 /// End the process as an unhandled SIGPIPE would, once stdout is gone.
 pub(crate) fn die_of_sigpipe() -> ! {
+    crate::process_signal::write_coverage_profile();
     #[cfg(unix)]
     unsafe {
         libc::signal(libc::SIGPIPE, libc::SIG_DFL);

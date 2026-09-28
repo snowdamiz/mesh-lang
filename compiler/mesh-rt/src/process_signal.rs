@@ -13,21 +13,28 @@ extern "C" fn request_shutdown_from_signal(_signal: libc::c_int) {
     SHUTDOWN_REQUESTED.store(true, Ordering::SeqCst);
 }
 
-/// Coverage builds (`--cfg mesh_coverage`) write the coverage profile when a
-/// program is told to stop: test harnesses and `docker stop` end servers with
-/// SIGTERM, and a process a signal ends runs no exit hook to write it. A
+/// Write the coverage profile now, in a coverage build (`--cfg
+/// mesh_coverage`): a process a signal ends runs no exit hook to write it.
+/// Anywhere else, nothing.
+pub(crate) fn write_coverage_profile() {
+    #[cfg(all(mesh_coverage, unix))]
+    unsafe {
+        extern "C" {
+            fn __llvm_profile_write_file() -> libc::c_int;
+        }
+        __llvm_profile_write_file();
+    }
+}
+
+/// Coverage builds write the coverage profile when a program is told to
+/// stop: test harnesses and `docker stop` end servers with SIGTERM. A
 /// program that handles the signals itself replaces this and exits the
 /// ordinary way, which writes it.
 #[cfg(all(mesh_coverage, unix))]
 pub(crate) fn install_coverage_flush() {
-    extern "C" {
-        fn __llvm_profile_write_file() -> libc::c_int;
-    }
     extern "C" fn flush_and_exit(signal: libc::c_int) {
-        unsafe {
-            __llvm_profile_write_file();
-            libc::_exit(128 + signal);
-        }
+        write_coverage_profile();
+        unsafe { libc::_exit(128 + signal) };
     }
     unsafe {
         let handler = flush_and_exit as *const () as libc::sighandler_t;

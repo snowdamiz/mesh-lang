@@ -100,6 +100,8 @@ fn on_fault(signal: libc::c_int, address: usize) {
             let message: &[u8] = b"\nerror: stack overflow: a function recursed too deeply \
 (only a call in tail position runs in constant stack)\n";
             libc::write(2, message.as_ptr().cast(), message.len());
+            // A coverage build counts the process, which abort would lose.
+            crate::process_signal::write_coverage_profile();
             libc::abort();
         }
         let mut action: libc::sigaction = std::mem::zeroed();
