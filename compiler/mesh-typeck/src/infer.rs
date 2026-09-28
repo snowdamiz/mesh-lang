@@ -11585,13 +11585,11 @@ fn ast_pattern_to_abstract(
             // `Geo.Circle` (through the module that exports `Shape`), or
             // `Circle`.
             let name = constructor_lookup_name(ctx, ctor_pat);
-            let (type_name, variant_name) = match name.rsplit_once('.') {
-                Some((owner, variant)) => (owner.to_string(), variant.to_string()),
-                None => match type_registry.lookup_variant(&name) {
-                    Some((sum, _)) => (sum.name.clone(), name),
-                    None => (String::new(), name),
-                },
-            };
+            let type_name = variant_owner(type_registry, &name)
+                .expect("the pattern was checked: it names a variant")
+                .name
+                .clone();
+            let variant_name = name.rsplit('.').next().unwrap_or(&name).to_string();
 
             let args: Vec<AbsPat> = ctor_pat
                 .fields()
@@ -11727,6 +11725,19 @@ fn struct_type_info(def: &StructDefInfo) -> AbsTypeInfo {
             name: def.name.clone(),
             arity: def.fields.len(),
         }],
+    }
+}
+
+/// The sum type whose variant a constructor pattern's lookup name
+/// (`Circle`, or `Shape.Circle`) names: none when it names no variant (a
+/// struct, an actor, a service's helper).
+fn variant_owner<'a>(type_registry: &'a TypeRegistry, name: &str) -> Option<&'a SumTypeDefInfo> {
+    match name.rsplit_once('.') {
+        Some((owner, variant)) => type_registry
+            .sum_type_defs
+            .get(owner)
+            .filter(|sum| sum.variants.iter().any(|v| v.name == variant)),
+        None => type_registry.lookup_variant(name).map(|(sum, _)| sum),
     }
 }
 
@@ -13243,8 +13254,11 @@ fn infer_constructor_pattern(
 ) -> Result<Ty, TypeError> {
     let lookup_name = constructor_lookup_name(ctx, ctor_pat);
 
-    // Look up the constructor in the environment.
-    let ctor_scheme = match env.lookup(&lookup_name) {
+    // Look up the constructor in the environment: a variant's.
+    let variant = env
+        .lookup(&lookup_name)
+        .filter(|_| variant_owner(type_registry, &lookup_name).is_some());
+    let ctor_scheme = match variant {
         Some(scheme) => scheme.clone(),
         None => {
             let err = TypeError::UnknownVariant {

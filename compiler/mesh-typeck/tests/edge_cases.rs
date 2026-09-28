@@ -3188,6 +3188,25 @@ fn a_struct_pattern_through_an_alias_chain_is_checked_for_coverage() {
     );
 }
 
+/// A constructor pattern names a variant: `P()` for a struct `P` is no
+/// pattern. It crashed the checker. A qualified variant is still one.
+#[test]
+fn a_constructor_pattern_of_something_else_is_an_unknown_variant() {
+    let found = errors(
+        "struct P do\n  x :: Int\nend\n\nfn f(p :: P) do\n  case p do\n    P() -> 1\n  end\nend\n",
+    );
+    assert!(
+        found.len() == 1 && found[0].starts_with("unknown variant `P`"),
+        "{found:?}"
+    );
+    assert_eq!(
+        errors(
+            "fn f(x :: Option<Int>) do\n  case x do\n    Option.Some(n) -> n\n    Option.None -> 0\n  end\nend\n"
+        ),
+        Vec::<String>::new()
+    );
+}
+
 /// A `case` over a type with no variants needs no arm: no value reaches
 /// it. It was "missing patterns [_]".
 #[test]
