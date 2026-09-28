@@ -10318,9 +10318,12 @@ impl<'a> Lowerer<'a> {
                 MirPattern::Struct { name, fields }
             }
 
+            // Each alternative matches the type the whole pattern does.
             Pattern::Or(or) => {
-                let alts: Vec<MirPattern> =
-                    or.alternatives().map(|p| self.lower_pattern(&p)).collect();
+                let alts: Vec<MirPattern> = or
+                    .alternatives()
+                    .map(|p| self.lower_pattern_with_expected(&p, expected))
+                    .collect();
                 MirPattern::Or(alts)
             }
 

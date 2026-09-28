@@ -5995,3 +5995,38 @@ end
         "evaluated 1\n1 x 2.5\nevaluated 2\n2 y 0.5\n7 l\n"
     );
 }
+
+/// The alternatives of an or-pattern match the type the whole pattern
+/// does. They were lowered with no type, so a variable an alternative binds
+/// inside a generic constructor (`Ok(n) | Err(n)`) had the unsubstituted
+/// parameter's type, and the build failed ("Unsupported binop type").
+#[test]
+fn or_pattern_alternatives_bind_at_the_scrutinee_type() {
+    let source = r##"
+fn f(r :: Result<Int, Int>) -> Int do
+  case r do
+    Ok(n) | Err(n) -> n + 1
+  end
+end
+
+fn g(p :: Option<(Int, String)>) -> String do
+  case p do
+    Some((1, s)) | Some((2, s)) -> s
+    _ -> "other"
+  end
+end
+
+fn h(p :: Option<Float>) -> Float do
+  case p do
+    Some(x) | Some(x) -> x * 2.0
+    None -> 0.0
+  end
+end
+
+fn main() do
+  let two = Some((2, "two"))
+  println("#{f(Ok(1))} #{f(Err(5))} #{g(two)} #{g(None)} #{h(Some(1.5))}")
+end
+"##;
+    assert_eq!(run(source), "2 6 two other 3.0\n");
+}
