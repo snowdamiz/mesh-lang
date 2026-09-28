@@ -7748,8 +7748,9 @@ impl<'a> Lowerer<'a> {
                 }
                 continue;
             }
+            // A name the type checker gave no type is no use of the value:
+            // a keyword key (`f(name: 1)`) spells it too.
             let Some(use_ty) = self.get_ty(name_ref.syntax().text_range()) else {
-                all_concrete = false;
                 continue;
             };
             if !matches!(use_ty, Ty::Fun(..)) || Self::ty_contains_var(use_ty) {

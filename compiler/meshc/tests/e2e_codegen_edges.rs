@@ -1882,3 +1882,25 @@ end
     );
     assert_eq!(output, "spawned\n");
 }
+
+/// A closure used at several types is compiled once per type, and its
+/// generic copy is left out when every use has its own. A keyword key of
+/// the closure's name (`size(add: 1)`) is no use of it, but it counted as
+/// one whose type is unknown: the generic copy was compiled too, and its
+/// `a + b` on operands of no known type failed the build.
+#[test]
+fn keyword_keys_named_like_a_polymorphic_closure_are_not_uses() {
+    let output = compile_and_run(
+        r##"fn size(m :: Map<String, Int>) -> Int do
+  Map.size(m)
+end
+
+fn main() do
+  let add = fn a, b -> a + b end
+  let n = size(add: 1)
+  println("#{add(1, 2)} #{add(1.5, 2.5)} #{n}")
+end
+"##,
+    );
+    assert_eq!(output, "3 4.0 1\n");
+}
