@@ -45,6 +45,11 @@ use self::types::{create_sum_type_layout, llvm_closure_fn_type, llvm_fn_type, ll
 /// whose registered signature contains it.
 const REMOTE_SPAWN_ARG_UNSUPPORTED: u8 = 0;
 
+/// The builder refuses an instruction only without an insertion point or
+/// with an index outside its aggregate: codegen builds inside a block, with
+/// indices from the layouts it made itself.
+const BUILT: &str = "codegen builds its instructions in a block, from its own layouts";
+
 // ── CodeGen ──────────────────────────────────────────────────────────
 
 /// The main LLVM code generation context.

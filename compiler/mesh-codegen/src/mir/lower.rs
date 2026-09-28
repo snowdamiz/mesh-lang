@@ -13236,10 +13236,7 @@ impl<'a> Lowerer<'a> {
         let resource_overrides = base_typeck
             .as_ref()
             .and_then(|base_ty| self.resource_destructor(base_ty))
-            .and_then(|destructor| match destructor {
-                MirResourceDestructor::Aggregate(fields) => Some(fields),
-                _ => None,
-            })
+            .map(|destructor| destructor.fields().to_vec())
             .unwrap_or_default()
             .into_iter()
             .filter(|field| override_indices.contains(&field.index))

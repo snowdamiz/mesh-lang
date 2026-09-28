@@ -120,6 +120,16 @@ pub enum MirType {
     Pid(Option<Box<MirType>>),
 }
 
+impl MirType {
+    /// The parameter and result types of a function pointer or closure.
+    pub fn function_parts(&self) -> Option<(&[MirType], &MirType)> {
+        match self {
+            MirType::FnPtr(params, ret) | MirType::Closure(params, ret) => Some((params, ret)),
+            _ => None,
+        }
+    }
+}
+
 /// Where the heap references are inside a value that crosses actors.
 ///
 /// `MirType` erases what a collection holds (`List<String>` is just `Ptr`), so
@@ -187,6 +197,17 @@ pub enum MirResourceDestructor {
     /// A general tagged union whose resource-bearing variants require distinct
     /// field layouts and destruction plans.
     SumVariants(Vec<MirResourceVariant>),
+}
+
+impl MirResourceDestructor {
+    /// The resource fields an aggregate destroys; any other destructor
+    /// destroys its value whole and has none.
+    pub fn fields(&self) -> &[MirResourceField] {
+        match self {
+            MirResourceDestructor::Aggregate(fields) => fields,
+            _ => &[],
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -945,7 +966,7 @@ pub struct MirVariantDef {
 
 #[cfg(test)]
 mod tests {
-    use super::MirType;
+    use super::{MirExpr, MirResourceDestructor, MirResourceField, MirType};
 
     /// Errors name MIR types as written here.
     #[test]
@@ -961,7 +982,7 @@ mod tests {
             MirType::Struct("Point".to_string()),
             MirType::SumType("Option_Int".to_string()),
             MirType::FnPtr(vec![MirType::Int, MirType::Bool], int()),
-            MirType::Closure(vec![MirType::Ptr], int()),
+            MirType::Closure(vec![MirType::Ptr, MirType::Int], int()),
             MirType::Ptr,
             MirType::Never,
             MirType::Pid(None),
@@ -980,12 +1001,104 @@ mod tests {
                 "Point",
                 "Option_Int",
                 "fn(Int, Bool) -> Int",
-                "closure(Ptr) -> Int",
+                "closure(Ptr, Int) -> Int",
                 "Ptr",
                 "Never",
                 "Pid",
                 "Pid<Int>",
             ]
         );
+    }
+
+    /// A drop is Unit; a panic and a tail call never finish, whatever the
+    /// call's own result type; a link and a supervisor's start are what
+    /// lowering typed them.
+    #[test]
+    fn expressions_that_carry_no_type_have_theirs() {
+        let unit = || Box::new(MirExpr::Unit);
+        let pid = MirType::Pid(None);
+        let cases = [
+            (
+                MirExpr::ResourceDrop {
+                    value: unit(),
+                    resource_ty: MirType::Ptr,
+                    destructor: MirResourceDestructor::Opaque,
+                },
+                MirType::Unit,
+            ),
+            (
+                MirExpr::Panic {
+                    message: "boom".to_string(),
+                    file: "main.mpl".to_string(),
+                    line: 1,
+                },
+                MirType::Never,
+            ),
+            (
+                MirExpr::TailCall {
+                    args: Vec::new(),
+                    ty: MirType::Int,
+                },
+                MirType::Never,
+            ),
+            (
+                MirExpr::ActorLink {
+                    target: unit(),
+                    ty: MirType::Int,
+                },
+                MirType::Int,
+            ),
+            (
+                MirExpr::SupervisorStart {
+                    name: "Pool".to_string(),
+                    strategy: 0,
+                    max_restarts: 3,
+                    max_seconds: 5,
+                    children: Vec::new(),
+                    ty: pid.clone(),
+                },
+                pid,
+            ),
+        ];
+        for (expr, ty) in cases {
+            assert_eq!(expr.ty(), &ty, "{expr:?}");
+        }
+    }
+
+    /// An aggregate's fields are what it destroys; a destructor of a whole
+    /// value has none.
+    #[test]
+    fn only_an_aggregate_destructor_has_fields() {
+        let field = MirResourceField {
+            index: 1,
+            ty: MirType::Ptr,
+            destructor: MirResourceDestructor::Opaque,
+        };
+        let aggregate = MirResourceDestructor::Aggregate(vec![field]);
+        assert_eq!(aggregate.fields().len(), 1);
+        assert_eq!(aggregate.fields()[0].index, 1);
+        for whole in [
+            MirResourceDestructor::Opaque,
+            MirResourceDestructor::PgConnection,
+            MirResourceDestructor::SumVariants(Vec::new()),
+        ] {
+            assert!(whole.fields().is_empty(), "{whole:?}");
+        }
+    }
+
+    /// A function type's parts, and none for any other type.
+    #[test]
+    fn function_types_have_parameters_and_a_result() {
+        let params = vec![MirType::Int, MirType::String];
+        for ty in [
+            MirType::FnPtr(params.clone(), Box::new(MirType::Bool)),
+            MirType::Closure(params.clone(), Box::new(MirType::Bool)),
+        ] {
+            assert_eq!(
+                ty.function_parts(),
+                Some((params.as_slice(), &MirType::Bool))
+            );
+        }
+        assert_eq!(MirType::Ptr.function_parts(), None);
     }
 }

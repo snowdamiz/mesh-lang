@@ -278,7 +278,7 @@ impl<'ctx> CodeGen<'ctx> {
                         "mesh_string_eq",
                         &[test_val.into(), pattern_str.into()],
                         "str_eq",
-                    )?
+                    )
                     .into_int_value();
 
                 // Convert i8 result to i1 for branch condition
@@ -342,7 +342,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Call mesh_list_length(list) to check if non-empty.
         let length_val = self
-            .codegen_runtime_call("mesh_list_length", &[list_ptr.into()], "list_len")?
+            .codegen_runtime_call("mesh_list_length", &[list_ptr.into()], "list_len")
             .into_int_value();
 
         // Compare length > 0.
@@ -372,15 +372,10 @@ impl<'ctx> CodeGen<'ctx> {
         path: &AccessPath,
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let ptr = self.navigate_access_path_ptr(scrutinee_alloca, scrutinee_ty, path)?;
-        // Tuple expressions use a runtime pointer, including control-flow results
-        // and nested tuple fields. Do not load the semantic by-value tuple type.
-        let llvm_ty = match path.ty(scrutinee_ty) {
-            MirType::Tuple(_) => self
-                .context
-                .ptr_type(inkwell::AddressSpace::default())
-                .into(),
-            path_ty => self.llvm_type(path_ty),
-        };
+        // A tuple is never loaded by value: lowering gives every tuple value
+        // the pointer to its runtime block as its type (`runtime_value_type`),
+        // scrutinees, columns and nested elements alike.
+        let llvm_ty = self.llvm_type(path.ty(scrutinee_ty));
         self.builder
             .build_load(llvm_ty, ptr, "path_val")
             .map_err(|e| e.to_string())
@@ -418,7 +413,7 @@ impl<'ctx> CodeGen<'ctx> {
                         "mesh_tuple_nth",
                         &[tuple_ptr.into(), index.into()],
                         "tuple_field",
-                    )?
+                    )
                     .into_int_value();
 
                 self.materialize_tuple_element_ptr(element, element_ty)
@@ -496,7 +491,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let list_ptr = parent_val.into_pointer_value();
 
                 let head_i64 = self
-                    .codegen_runtime_call("mesh_list_head", &[list_ptr.into()], "list_head")?
+                    .codegen_runtime_call("mesh_list_head", &[list_ptr.into()], "list_head")
                     .into_int_value();
 
                 // Convert u64 -> the element type.
@@ -520,7 +515,7 @@ impl<'ctx> CodeGen<'ctx> {
                 let list_ptr = parent_val.into_pointer_value();
 
                 let tail_ptr = self
-                    .codegen_runtime_call("mesh_list_tail", &[list_ptr.into()], "list_tail")?
+                    .codegen_runtime_call("mesh_list_tail", &[list_ptr.into()], "list_tail")
                     .into_pointer_value();
 
                 // Store in an alloca so we can return a pointer.

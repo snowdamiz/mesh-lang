@@ -15,7 +15,8 @@ use inkwell::IntPredicate;
 use super::intrinsics::get_intrinsic;
 use super::pattern::MatchTarget;
 use super::types::{closure_type, variant_struct_type};
-use super::CodeGen;
+use super::{CodeGen, BUILT};
+use crate::mir::types::mir_type_to_impl_name;
 use crate::mir::{
     BinOp, MirChildSpec, MirExpr, MirMatchArm, MirResourceDestructor, MirResourceField,
     MirResourceMoveSource, MirType, UnaryOp,
@@ -304,12 +305,11 @@ impl<'ctx> CodeGen<'ctx> {
     /// of, with a zero of the slot's own type: a tuple or a boxed payload is
     /// held there as a pointer, whatever the moved value's type says. A
     /// zero of the value's type overran the slot into the frame.
-    fn clear_resource_local(&mut self, name: &str) -> Result<(), String> {
+    fn clear_resource_local(&mut self, name: &str) {
         let zero = self.llvm_type(&self.local_types[name]).const_zero();
         self.builder
             .build_store(self.locals[name], zero)
-            .map(drop)
-            .map_err(|error| error.to_string())
+            .expect(BUILT);
     }
 
     fn codegen_resource_move(
@@ -319,7 +319,7 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let moved = self.codegen_expr(value)?;
         match source {
-            MirResourceMoveSource::Slot(local) => self.clear_resource_local(local)?,
+            MirResourceMoveSource::Slot(local) => self.clear_resource_local(local),
             MirResourceMoveSource::Projection {
                 root,
                 parent_ty,
@@ -334,15 +334,15 @@ impl<'ctx> CodeGen<'ctx> {
                         self.locals[root],
                         "resource_projection_parent",
                     )
-                    .map_err(|error| error.to_string())?
+                    .expect(BUILT)
                     .into_struct_value();
                 self.codegen_resource_projection_siblings(
                     aggregate,
                     parent_destructor,
                     *field_index,
                     nested_field_indices,
-                )?;
-                self.clear_resource_local(root)?;
+                );
+                self.clear_resource_local(root);
             }
         }
         Ok(moved)
@@ -357,37 +357,28 @@ impl<'ctx> CodeGen<'ctx> {
         destructor: &MirResourceDestructor,
         selected_index: u32,
         path: &[u32],
-    ) -> Result<(), String> {
-        let MirResourceDestructor::Aggregate(fields) = destructor else {
-            return Err("resource projection parent did not have an aggregate destructor".into());
-        };
-        for field in fields {
+    ) {
+        // A projection's parent is a struct, destroyed field by field.
+        for field in destructor.fields() {
             let value = self
                 .builder
                 .build_extract_value(aggregate, field.index, "resource_projection_field")
-                .map_err(|error| error.to_string())?;
+                .expect(BUILT);
             match path.split_first() {
-                _ if field.index != selected_index => {
-                    self.codegen_field_destructor(value, field)?
-                }
+                _ if field.index != selected_index => self.codegen_field_destructor(value, field),
                 Some((&next_index, rest)) => self.codegen_resource_projection_siblings(
                     value.into_struct_value(),
                     &field.destructor,
                     next_index,
                     rest,
-                )?,
+                ),
                 None => {}
             }
         }
-        Ok(())
     }
 
     /// Destroy `value`, the resource field `field` of an aggregate.
-    fn codegen_field_destructor(
-        &mut self,
-        value: BasicValueEnum<'ctx>,
-        field: &MirResourceField,
-    ) -> Result<(), String> {
+    fn codegen_field_destructor(&mut self, value: BasicValueEnum<'ctx>, field: &MirResourceField) {
         self.codegen_resource_destructor(value, &field.ty, &field.destructor)
     }
 
@@ -396,12 +387,12 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         pointer: PointerValue<'ctx>,
         name: &str,
-        destroy: impl FnOnce(&mut Self) -> Result<(), String>,
-    ) -> Result<(), String> {
+        destroy: impl FnOnce(&mut Self),
+    ) {
         let is_null = self
             .builder
             .build_is_null(pointer, &format!("{name}_is_null"))
-            .map_err(|error| error.to_string())?;
+            .expect(BUILT);
         let function = self.current_function();
         let destroy_block = self
             .context
@@ -411,14 +402,13 @@ impl<'ctx> CodeGen<'ctx> {
             .append_basic_block(function, &format!("{name}_live"));
         self.builder
             .build_conditional_branch(is_null, continue_block, destroy_block)
-            .map_err(|error| error.to_string())?;
+            .expect(BUILT);
         self.builder.position_at_end(destroy_block);
-        destroy(self)?;
+        destroy(self);
         self.builder
             .build_unconditional_branch(continue_block)
-            .map_err(|error| error.to_string())?;
+            .expect(BUILT);
         self.builder.position_at_end(continue_block);
-        Ok(())
     }
 
     fn codegen_resource_destructor(
@@ -426,7 +416,7 @@ impl<'ctx> CodeGen<'ctx> {
         value: BasicValueEnum<'ctx>,
         resource_ty: &MirType,
         destructor: &MirResourceDestructor,
-    ) -> Result<(), String> {
+    ) {
         match destructor {
             MirResourceDestructor::Opaque => {
                 let pointer = value.into_pointer_value();
@@ -434,8 +424,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let destroy = get_intrinsic(&this.module, "mesh_resource_destroy");
                     this.builder
                         .build_call(destroy, &[pointer.into()], "")
-                        .map_err(|error| error.to_string())?;
-                    Ok(())
+                        .expect(BUILT);
                 })
             }
             MirResourceDestructor::PgConnection => {
@@ -452,13 +441,13 @@ impl<'ctx> CodeGen<'ctx> {
                     let is_null = self
                         .builder
                         .build_is_null(boxed_handle, "pg_connection_box_is_empty")
-                        .map_err(|error| error.to_string())?;
+                        .expect(BUILT);
                     let unbox_block = self
                         .context
                         .append_basic_block(function, "pg_connection_unbox");
                     self.builder
                         .build_conditional_branch(is_null, continue_block, unbox_block)
-                        .map_err(|error| error.to_string())?;
+                        .expect(BUILT);
                     self.builder.position_at_end(unbox_block);
                     self.builder
                         .build_load(
@@ -466,7 +455,7 @@ impl<'ctx> CodeGen<'ctx> {
                             boxed_handle,
                             "pg_connection_handle",
                         )
-                        .map_err(|error| error.to_string())?
+                        .expect(BUILT)
                         .into_int_value()
                 };
                 let is_zero = self
@@ -477,24 +466,23 @@ impl<'ctx> CodeGen<'ctx> {
                         handle.get_type().const_zero(),
                         "pg_connection_is_closed",
                     )
-                    .map_err(|error| error.to_string())?;
+                    .expect(BUILT);
                 let close_block = self
                     .context
                     .append_basic_block(function, "pg_connection_close");
                 self.builder
                     .build_conditional_branch(is_zero, continue_block, close_block)
-                    .map_err(|error| error.to_string())?;
+                    .expect(BUILT);
 
                 self.builder.position_at_end(close_block);
                 let close = get_intrinsic(&self.module, "mesh_pg_close");
                 self.builder
                     .build_call(close, &[handle.into()], "")
-                    .map_err(|error| error.to_string())?;
+                    .expect(BUILT);
                 self.builder
                     .build_unconditional_branch(continue_block)
-                    .map_err(|error| error.to_string())?;
+                    .expect(BUILT);
                 self.builder.position_at_end(continue_block);
-                Ok(())
             }
             // A tuple is a pointer to the runtime tuple, each element a slot.
             MirResourceDestructor::Aggregate(fields)
@@ -509,7 +497,7 @@ impl<'ctx> CodeGen<'ctx> {
                                 "mesh_tuple_nth",
                                 &[tuple.into(), index.into()],
                                 "resource_tuple_field",
-                            )?
+                            )
                             .into_int_value();
                         let field_value = if matches!(field.ty, MirType::Tuple(_)) {
                             this.builder
@@ -518,21 +506,22 @@ impl<'ctx> CodeGen<'ctx> {
                                     this.context.ptr_type(inkwell::AddressSpace::default()),
                                     "resource_nested_tuple",
                                 )
-                                .map_err(|error| error.to_string())?
+                                .expect(BUILT)
                                 .into()
                         } else {
-                            let field_ptr = this.materialize_tuple_element_ptr(raw, &field.ty)?;
+                            let field_ptr = this
+                                .materialize_tuple_element_ptr(raw, &field.ty)
+                                .expect(BUILT);
                             this.builder
                                 .build_load(
                                     this.llvm_type(&field.ty),
                                     field_ptr,
                                     "resource_tuple_value",
                                 )
-                                .map_err(|error| error.to_string())?
+                                .expect(BUILT)
                         };
-                        this.codegen_field_destructor(field_value, field)?;
+                        this.codegen_field_destructor(field_value, field);
                     }
-                    Ok(())
                 })
             }
             // A struct held by pointer (a boxed payload) is loaded first.
@@ -542,7 +531,7 @@ impl<'ctx> CodeGen<'ctx> {
                     let aggregate = this
                         .builder
                         .build_load(this.llvm_type(resource_ty), pointer, "resource_aggregate")
-                        .map_err(|error| error.to_string())?;
+                        .expect(BUILT);
                     this.codegen_aggregate_destructor(aggregate.into_struct_value(), fields)
                 })
             }
@@ -551,7 +540,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             MirResourceDestructor::SumVariants(variants) => {
                 if variants.is_empty() {
-                    return Ok(());
+                    return;
                 }
                 let function = self.current_function();
                 let continue_block = self
@@ -563,17 +552,17 @@ impl<'ctx> CodeGen<'ctx> {
                     let is_null = self
                         .builder
                         .build_is_null(pointer, "resource_sum_is_null")
-                        .map_err(|error| error.to_string())?;
+                        .expect(BUILT);
                     let load_block = self
                         .context
                         .append_basic_block(function, "resource_sum_load");
                     self.builder
                         .build_conditional_branch(is_null, continue_block, load_block)
-                        .map_err(|error| error.to_string())?;
+                        .expect(BUILT);
                     self.builder.position_at_end(load_block);
                     self.builder
                         .build_load(self.llvm_type(resource_ty), pointer, "resource_sum")
-                        .map_err(|error| error.to_string())?
+                        .expect(BUILT)
                         .into_struct_value()
                 } else {
                     value.into_struct_value()
@@ -581,14 +570,12 @@ impl<'ctx> CodeGen<'ctx> {
                 let sum_slot = self
                     .builder
                     .build_alloca(aggregate.get_type(), "resource_sum_slot")
-                    .map_err(|error| error.to_string())?;
-                self.builder
-                    .build_store(sum_slot, aggregate)
-                    .map_err(|error| error.to_string())?;
+                    .expect(BUILT);
+                self.builder.build_store(sum_slot, aggregate).expect(BUILT);
                 let tag = self
                     .builder
                     .build_extract_value(aggregate, 0, "resource_sum_tag")
-                    .map_err(|error| error.to_string())?
+                    .expect(BUILT)
                     .into_int_value();
 
                 for (index, variant) in variants.iter().enumerate() {
@@ -609,10 +596,10 @@ impl<'ctx> CodeGen<'ctx> {
                             self.context.i8_type().const_int(variant.tag as u64, false),
                             "resource_sum_is_variant",
                         )
-                        .map_err(|error| error.to_string())?;
+                        .expect(BUILT);
                     self.builder
                         .build_conditional_branch(is_variant, destroy_block, next_block)
-                        .map_err(|error| error.to_string())?;
+                        .expect(BUILT);
 
                     self.builder.position_at_end(destroy_block);
                     let overlay = variant_struct_type(
@@ -630,25 +617,24 @@ impl<'ctx> CodeGen<'ctx> {
                                 field.index + 1,
                                 "resource_sum_field_ptr",
                             )
-                            .map_err(|error| error.to_string())?;
+                            .expect(BUILT);
                         let storage_ty = overlay
                             .get_field_type_at_index(field.index + 1)
-                            .ok_or("resource sum field index exceeded its variant layout")?;
+                            .expect("a resource field is in its variant's layout");
                         let field_value = self
                             .builder
                             .build_load(storage_ty, field_ptr, "resource_sum_field")
-                            .map_err(|error| error.to_string())?;
-                        self.codegen_field_destructor(field_value, field)?;
+                            .expect(BUILT);
+                        self.codegen_field_destructor(field_value, field);
                     }
                     self.builder
                         .build_unconditional_branch(continue_block)
-                        .map_err(|error| error.to_string())?;
+                        .expect(BUILT);
                     if next_block != continue_block {
                         self.builder.position_at_end(next_block);
                     }
                 }
                 self.builder.position_at_end(continue_block);
-                Ok(())
             }
         }
     }
@@ -658,15 +644,14 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         aggregate: StructValue<'ctx>,
         fields: &[MirResourceField],
-    ) -> Result<(), String> {
+    ) {
         for field in fields {
             let field_value = self
                 .builder
                 .build_extract_value(aggregate, field.index, "resource_field")
-                .map_err(|error| error.to_string())?;
-            self.codegen_field_destructor(field_value, field)?;
+                .expect(BUILT);
+            self.codegen_field_destructor(field_value, field);
         }
-        Ok(())
     }
 
     fn codegen_resource_drop(
@@ -676,9 +661,9 @@ impl<'ctx> CodeGen<'ctx> {
         destructor: &MirResourceDestructor,
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let owned = self.codegen_expr(value)?;
-        self.codegen_resource_destructor(owned, resource_ty, destructor)?;
+        self.codegen_resource_destructor(owned, resource_ty, destructor);
         if let MirExpr::Var(name, _) = value {
-            self.clear_resource_local(name)?;
+            self.clear_resource_local(name);
         }
         Ok(self.context.struct_type(&[], false).const_zero().into())
     }
@@ -727,23 +712,24 @@ impl<'ctx> CodeGen<'ctx> {
                 .builder
                 .build_load(llvm_ty, alloca, name)
                 .map_err(|e| e.to_string())?;
-            Ok(val)
-        } else if let Some(fn_ptr) = self.fn_item_pointer(name) {
-            // A known function or runtime intrinsic. As a value it is a
-            // closure with no environment; typed `FnPtr`, the bare pointer.
-            if matches!(ty, MirType::Closure(..)) {
-                let null_env = self
-                    .context
-                    .ptr_type(inkwell::AddressSpace::default())
-                    .const_null();
-                return Ok(closure_type(self.context)
-                    .const_named_struct(&[fn_ptr.into(), null_env.into()])
-                    .into());
-            }
-            Ok(fn_ptr.into())
-        } else {
-            Err(format!("Undefined variable '{}'", name))
+            return Ok(val);
         }
+        // Lowering names only bound variables and functions: this is a
+        // known function or runtime intrinsic. As a value it is a closure
+        // with no environment; typed `FnPtr`, the bare pointer.
+        let fn_ptr = self
+            .fn_item_pointer(name)
+            .expect("lowering names only bound variables and functions");
+        if matches!(ty, MirType::Closure(..)) {
+            let null_env = self
+                .context
+                .ptr_type(inkwell::AddressSpace::default())
+                .const_null();
+            return Ok(closure_type(self.context)
+                .const_named_struct(&[fn_ptr.into(), null_env.into()])
+                .into());
+        }
+        Ok(fn_ptr.into())
     }
 
     /// The code pointer `name` refers to, unless a local shadows it.
@@ -794,10 +780,17 @@ impl<'ctx> CodeGen<'ctx> {
                 MirType::Ptr => ("mesh_list_concat", "list_concat"),
                 _ => ("mesh_string_concat", "concat"),
             };
-            return self.codegen_runtime_call(function, &[lhs_val.into(), rhs_val.into()], name);
+            return Ok(self.codegen_runtime_call(
+                function,
+                &[lhs_val.into(), rhs_val.into()],
+                name,
+            ));
         }
 
-        // Anything else is arithmetic or a comparison.
+        // Anything else is arithmetic or a comparison of the operands
+        // lowering leaves to the hardware (it calls a user type's operator
+        // impl and compares other types by their own functions): Ints, pids,
+        // Floats, Bools and Strings.
         match lhs.ty() {
             // A PID is its integer.
             MirType::Int | MirType::Pid(_) => self.codegen_int_binop(op, lhs_val, rhs_val),
@@ -815,25 +808,26 @@ impl<'ctx> CodeGen<'ctx> {
                     .map(Into::into)
                     .map_err(|e| e.to_string())
             }
-            MirType::String => self.codegen_string_compare(op, lhs_val, rhs_val),
-            other => Err(format!("Unsupported binop type: {:?}", other)),
+            _ => self.codegen_string_compare(op, lhs_val, rhs_val),
         }
     }
 
-    /// Call the runtime function `name` and return what it returns.
+    /// Call the runtime function `name` for the value it returns. Code is
+    /// only generated inside a function body, where the builder is always
+    /// positioned, and each runtime function called this way returns a value.
     pub(super) fn codegen_runtime_call(
         &self,
         name: &str,
         args: &[BasicMetadataValueEnum<'ctx>],
         value_name: &str,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> BasicValueEnum<'ctx> {
         let function = get_intrinsic(&self.module, name);
         self.builder
             .build_call(function, args, value_name)
-            .map_err(|e| e.to_string())?
+            .expect("the builder is positioned in a function body")
             .try_as_basic_value()
             .basic()
-            .ok_or_else(|| format!("{name} returned void"))
+            .unwrap_or_else(|| panic!("{name} returns a value"))
     }
 
     fn codegen_int_binop(
@@ -972,7 +966,7 @@ impl<'ctx> CodeGen<'ctx> {
         if matches!(op, BinOp::Eq | BinOp::NotEq) {
             // mesh_string_eq gives 1 when equal, 0 when not.
             let equal = self
-                .codegen_runtime_call("mesh_string_eq", &args, "str_eq")?
+                .codegen_runtime_call("mesh_string_eq", &args, "str_eq")
                 .into_int_value();
             let predicate = match op {
                 BinOp::Eq => IntPredicate::NE,
@@ -987,7 +981,7 @@ impl<'ctx> CodeGen<'ctx> {
         }
         // mesh_string_compare gives -1, 0 or 1: compare that with zero.
         let order = self
-            .codegen_runtime_call("mesh_string_compare", &args, "str_cmp")?
+            .codegen_runtime_call("mesh_string_compare", &args, "str_cmp")
             .into_int_value();
         let zero = order.get_type().const_zero();
         self.builder
@@ -1006,25 +1000,18 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let val = self.codegen_expr(operand)?;
         match op {
-            UnaryOp::Neg => match operand.ty() {
-                MirType::Int => {
-                    let int_val = val.into_int_value();
-                    Ok(self
-                        .builder
-                        .build_int_neg(int_val, "neg")
-                        .map_err(|e| e.to_string())?
-                        .into())
-                }
-                MirType::Float => {
-                    let float_val = val.into_float_value();
-                    Ok(self
-                        .builder
-                        .build_float_neg(float_val, "fneg")
-                        .map_err(|e| e.to_string())?
-                        .into())
-                }
-                _ => Err(format!("Cannot negate type {:?}", operand.ty())),
-            },
+            // Lowering calls a user type's Neg impl; the hardware negates
+            // an Int or a Float.
+            UnaryOp::Neg if val.is_int_value() => Ok(self
+                .builder
+                .build_int_neg(val.into_int_value(), "neg")
+                .map_err(|e| e.to_string())?
+                .into()),
+            UnaryOp::Neg => Ok(self
+                .builder
+                .build_float_neg(val.into_float_value(), "fneg")
+                .map_err(|e| e.to_string())?
+                .into()),
             UnaryOp::Not => {
                 let bool_val = val.into_int_value();
                 Ok(self
@@ -1078,7 +1065,7 @@ impl<'ctx> CodeGen<'ctx> {
                         "mesh_list_contains_str",
                         &[list.into(), element.into()],
                         "list_contains_str",
-                    )?
+                    )
                     .into_int_value();
                 self.builder
                     .build_int_truncate(found, self.context.bool_type(), "list_contains_bool")
@@ -1340,7 +1327,11 @@ impl<'ctx> CodeGen<'ctx> {
                     .ptr_type(inkwell::AddressSpace::default())
                     .const_null();
                 arg_vals.push(self.shape_table_for_element(shape).unwrap_or(null).into());
-                return self.codegen_runtime_call(&format!("{name}_shaped"), &arg_vals, "shaped");
+                return Ok(self.codegen_runtime_call(
+                    &format!("{name}_shaped"),
+                    &arg_vals,
+                    "shaped",
+                ));
             }
             // Timer.send_after(pid, ms, msg) -> mesh_timer_send_after(pid, ms, msg_ptr, msg_size)
             // The 3rd arg (msg) needs message serialization like codegen_actor_send.
@@ -1516,17 +1507,11 @@ impl<'ctx> CodeGen<'ctx> {
         // The callee's own parameter types decide the representation each
         // argument is passed in (a runtime `Option` box becomes the by-value
         // `{ i8, ptr }` a Mesh function receives).
-        let (MirType::Closure(declared_params, _) | MirType::FnPtr(declared_params, _)) =
-            closure.ty()
-        else {
-            return Err(format!("calling a value of type {:?}", closure.ty()));
-        };
-        debug_assert_eq!(
-            declared_params.len(),
-            args.len(),
-            "type checking checks arity"
-        );
-        for (arg, param_ty) in args.iter().zip(declared_params.clone()) {
+        let (declared_params, _) = closure
+            .ty()
+            .function_parts()
+            .expect("the type checker calls only functions");
+        for (arg, param_ty) in args.iter().zip(declared_params.to_vec()) {
             // A tuple is passed as the pointer to its heap block, as every
             // function declares a tuple parameter.
             let param_ty = match param_ty {
@@ -1919,17 +1904,14 @@ impl<'ctx> CodeGen<'ctx> {
 
     // ── Struct update ─────────────────────────────────────────────────
 
-    /// The LLVM type and fields of the struct type `ty`.
-    fn struct_layout(
-        &self,
-        ty: &MirType,
-    ) -> Result<(StructType<'ctx>, Vec<(String, MirType)>), String> {
-        match ty {
-            MirType::Struct(name) => {
-                Ok((self.struct_types[name], self.mir_struct_defs[name].clone()))
-            }
-            other => Err(format!("expected a struct, found {other:?}")),
-        }
+    /// The LLVM type and fields of the struct type `ty` (a field access or a
+    /// struct update is on a struct, as the type checker has it).
+    fn struct_layout(&self, ty: &MirType) -> (StructType<'ctx>, Vec<(String, MirType)>) {
+        let name = mir_type_to_impl_name(ty);
+        (
+            self.struct_types[&name],
+            self.mir_struct_defs[&name].clone(),
+        )
     }
 
     /// `base` with the fields `overrides` names replaced. A replaced field
@@ -1941,7 +1923,7 @@ impl<'ctx> CodeGen<'ctx> {
         resource_overrides: &[MirResourceField],
         ty: &MirType,
     ) -> Result<BasicValueEnum<'ctx>, String> {
-        let (_, field_defs) = self.struct_layout(ty)?;
+        let (_, field_defs) = self.struct_layout(ty);
         let base_val = self.codegen_expr(base)?.into_struct_value();
         let mut updated = base_val;
         for (index, (field_name, _)) in field_defs.iter().enumerate() {
@@ -1956,7 +1938,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .builder
                     .build_extract_value(base_val, index, "old_resource")
                     .map_err(|error| error.to_string())?;
-                self.codegen_field_destructor(old_value, resource)?;
+                self.codegen_field_destructor(old_value, resource);
             }
             updated = self
                 .builder
@@ -1976,7 +1958,7 @@ impl<'ctx> CodeGen<'ctx> {
         ty: &MirType,
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let obj_val = self.codegen_expr(object)?;
-        let (struct_ty, fields) = self.struct_layout(object.ty())?;
+        let (struct_ty, fields) = self.struct_layout(object.ty());
         let field_idx = fields
             .iter()
             .position(|(name, _)| name == field)
@@ -2101,7 +2083,7 @@ impl<'ctx> CodeGen<'ctx> {
         name: &str,
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let size = val.get_type().size_of().expect("a value's type has a size");
-        let heap_ptr = self.gc_alloc(size, name)?;
+        let heap_ptr = self.gc_alloc(size, name);
         self.builder
             .build_store(heap_ptr, val)
             .map_err(|e| e.to_string())?;
@@ -2109,11 +2091,10 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     /// `size` bytes on the GC heap, 8-aligned.
-    fn gc_alloc(&self, size: IntValue<'ctx>, name: &str) -> Result<PointerValue<'ctx>, String> {
+    fn gc_alloc(&self, size: IntValue<'ctx>, name: &str) -> PointerValue<'ctx> {
         let align = self.context.i64_type().const_int(8, false);
-        Ok(self
-            .codegen_runtime_call("mesh_gc_alloc_actor", &[size.into(), align.into()], name)?
-            .into_pointer_value())
+        self.codegen_runtime_call("mesh_gc_alloc_actor", &[size.into(), align.into()], name)
+            .into_pointer_value()
     }
 
     /// A buffer on the GC heap holding `words`.
@@ -2123,7 +2104,7 @@ impl<'ctx> CodeGen<'ctx> {
         name: &str,
     ) -> Result<PointerValue<'ctx>, String> {
         let i64_ty = self.context.i64_type();
-        let buffer = self.gc_alloc(i64_ty.const_int(8 * words.len() as u64, false), name)?;
+        let buffer = self.gc_alloc(i64_ty.const_int(8 * words.len() as u64, false), name);
         for (index, &word) in words.iter().enumerate() {
             let slot = unsafe {
                 self.builder
@@ -2226,7 +2207,7 @@ impl<'ctx> CodeGen<'ctx> {
         // (map, filter, reduce) use the closure calling convention fn(env, ...).
         let env_ptr = if captures.is_empty() {
             // No captures -> allocate a minimal 8-byte env (non-null sentinel).
-            self.gc_alloc(self.context.i64_type().const_int(8, false), "env_dummy")?
+            self.gc_alloc(self.context.i64_type().const_int(8, false), "env_dummy")
         } else {
             // The env struct: a pointer to the shape table that describes it
             // (so it can be copied to another actor), then the captures. The
@@ -2247,7 +2228,7 @@ impl<'ctx> CodeGen<'ctx> {
             let env_ptr_val = self.gc_alloc(
                 self.context.i64_type().const_int(env_size, false),
                 "env_raw",
-            )?;
+            );
             // Fresh memory is zeroed: no table means nothing to copy.
             if let Some(env_shape) = env_shape {
                 self.builder
@@ -2381,7 +2362,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             None => "mesh_actor_spawn",
         };
-        let pid_val = self.codegen_runtime_call(spawn_fn, &spawn_args, "pid")?;
+        let pid_val = self.codegen_runtime_call(spawn_fn, &spawn_args, "pid");
 
         // If terminate callback exists, call mesh_actor_set_terminate(pid, callback_fn_ptr)
         if let Some(cb_expr) = terminate_callback {
@@ -2419,7 +2400,7 @@ impl<'ctx> CodeGen<'ctx> {
             }
             None => "mesh_actor_send",
         };
-        self.codegen_runtime_call(send_fn, &send_args, "send_status")
+        Ok(self.codegen_runtime_call(send_fn, &send_args, "send_status"))
     }
 
     /// `value`, what `message` evaluated to, as the runtime takes a message: a
@@ -2468,9 +2449,8 @@ impl<'ctx> CodeGen<'ctx> {
         args: &[MirExpr],
         intrinsic_name: &str,
     ) -> Result<BasicValueEnum<'ctx>, String> {
-        let [target, message] = args else {
-            return Err(format!("{intrinsic_name} takes a target and a message"));
-        };
+        // The type checker gives each monitor its target and its message.
+        let (target, message) = (&args[0], &args[1]);
         let target_val = self.codegen_expr(target)?;
         let mut call_args: Vec<BasicMetadataValueEnum<'ctx>> =
             if intrinsic_name == "mesh_node_monitor" {
@@ -2490,7 +2470,7 @@ impl<'ctx> CodeGen<'ctx> {
             msg_size.into(),
             shape_table.unwrap_or(null).into(),
         ]);
-        self.codegen_runtime_call(intrinsic_name, &call_args, "monitor")
+        Ok(self.codegen_runtime_call(intrinsic_name, &call_args, "monitor"))
     }
 
     /// Codegen for Timer.send_after(pid, ms, msg).
@@ -2582,7 +2562,7 @@ impl<'ctx> CodeGen<'ctx> {
         let (name_ptr, name_len) = self.codegen_unpack_string(name_val)?;
         let (cookie_ptr, cookie_len) = self.codegen_unpack_string(cookie_val)?;
 
-        self.codegen_runtime_call(
+        Ok(self.codegen_runtime_call(
             "mesh_node_start",
             &[
                 name_ptr.into(),
@@ -2591,7 +2571,7 @@ impl<'ctx> CodeGen<'ctx> {
                 cookie_len.into(),
             ],
             "node_start",
-        )
+        ))
     }
 
     /// Codegen for Node functions taking a single string arg (connect, monitor).
@@ -2605,11 +2585,11 @@ impl<'ctx> CodeGen<'ctx> {
         let str_val = self.codegen_expr(&args[0])?;
         let (data_ptr, data_len) = self.codegen_unpack_string(str_val)?;
 
-        self.codegen_runtime_call(
+        Ok(self.codegen_runtime_call(
             intrinsic_name,
             &[data_ptr.into(), data_len.into()],
             "node_call",
-        )
+        ))
     }
 
     /// Codegen for Global.register(name, pid).
@@ -2627,11 +2607,11 @@ impl<'ctx> CodeGen<'ctx> {
         // Second argument is pid (i64)
         let pid_val = self.codegen_expr(&args[1])?;
 
-        self.codegen_runtime_call(
+        Ok(self.codegen_runtime_call(
             "mesh_global_register",
             &[name_ptr.into(), name_len.into(), pid_val.into()],
             "global_register",
-        )
+        ))
     }
 
     /// Runtime `REMOTE_SPAWN_ARG_*` tag for a remotely transferable value type.
@@ -2749,7 +2729,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Call mesh_node_spawn(node_ptr, node_len, fn_name_ptr, fn_name_len,
         //                      args_ptr, args_size, arg_tags_ptr, arg_count, link_flag)
-        self.codegen_runtime_call(
+        Ok(self.codegen_runtime_call(
             "mesh_node_spawn",
             &[
                 node_ptr.into(),
@@ -2763,7 +2743,7 @@ impl<'ctx> CodeGen<'ctx> {
                 link_val.into(),
             ],
             "remote_pid",
-        )
+        ))
     }
 
     fn codegen_actor_receive(
@@ -2785,7 +2765,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Call mesh_actor_receive(timeout_ms) -> ptr (null when timeout fires)
         let msg_ptr = self
-            .codegen_runtime_call("mesh_actor_receive", &[timeout_val.into()], "msg_ptr")?
+            .codegen_runtime_call("mesh_actor_receive", &[timeout_val.into()], "msg_ptr")
             .into_pointer_value();
 
         // When timeout_body is present, we need null-check branching:
@@ -3106,7 +3086,7 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     fn codegen_actor_self(&mut self) -> Result<BasicValueEnum<'ctx>, String> {
-        self.codegen_runtime_call("mesh_actor_self", &[], "self_pid")
+        Ok(self.codegen_runtime_call("mesh_actor_self", &[], "self_pid"))
     }
 
     fn codegen_actor_link(&mut self, target: &MirExpr) -> Result<BasicValueEnum<'ctx>, String> {
@@ -3236,7 +3216,7 @@ impl<'ctx> CodeGen<'ctx> {
         let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
         // The list builder moves when it grows, so it lives in a slot.
         let list =
-            self.codegen_runtime_call("mesh_list_builder_new", &[capacity.into()], "result_list")?;
+            self.codegen_runtime_call("mesh_list_builder_new", &[capacity.into()], "result_list");
         let result = self
             .builder
             .build_alloca(ptr_ty, "result_alloca")
@@ -3282,7 +3262,7 @@ impl<'ctx> CodeGen<'ctx> {
                 "mesh_list_builder_push",
                 &[list.into(), value.into()],
                 "res_list_pushed",
-            )?;
+            );
             self.builder
                 .build_store(result, pushed)
                 .map_err(|e| e.to_string())?;
@@ -3640,11 +3620,11 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         // Call mesh_supervisor_start(config_ptr, config_size) -> i64 (PID)
-        self.codegen_runtime_call(
+        Ok(self.codegen_runtime_call(
             "mesh_supervisor_start",
             &[config_alloca.into(), config_size_val.into()],
             "sup_pid",
-        )
+        ))
     }
 
     // ── Panic ────────────────────────────────────────────────────────
@@ -3779,7 +3759,7 @@ impl<'ctx> CodeGen<'ctx> {
         // Call mesh_actor_receive(-1) -> ptr (blocks until message arrives).
         let timeout = i64_ty.const_int(u64::MAX, true); // -1
         let msg_ptr = self
-            .codegen_runtime_call("mesh_actor_receive", &[timeout.into()], "msg_ptr")?
+            .codegen_runtime_call("mesh_actor_receive", &[timeout.into()], "msg_ptr")
             .into_pointer_value();
 
         // Check for null (shutdown signal). If null, exit the loop.
@@ -3875,10 +3855,10 @@ impl<'ctx> CodeGen<'ctx> {
             let new_state = if *is_call {
                 let result_ptr = handler_result.into_pointer_value();
                 let new_state_word = self
-                    .codegen_runtime_call("mesh_tuple_first", &[result_ptr.into()], "new_state")?
+                    .codegen_runtime_call("mesh_tuple_first", &[result_ptr.into()], "new_state")
                     .into_int_value();
                 let reply_val = self
-                    .codegen_runtime_call("mesh_tuple_second", &[result_ptr.into()], "reply")?
+                    .codegen_runtime_call("mesh_tuple_second", &[result_ptr.into()], "reply")
                     .into_int_value();
 
                 // Send reply to caller: mesh_service_reply(caller_pid, &reply, 8)
@@ -4105,7 +4085,7 @@ impl<'ctx> CodeGen<'ctx> {
                     shape_table.into(),
                 ],
                 "call_result",
-            )?
+            )
             .into_pointer_value();
 
         // The reply is a raw message pointer. The data after the 16-byte header
@@ -4257,11 +4237,11 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(|e| e.to_string())?;
         let count_val = i64_type.const_int(count as u64, false);
 
-        self.codegen_runtime_call(
+        Ok(self.codegen_runtime_call(
             "mesh_list_from_array",
             &[array_ptr.into(), count_val.into()],
             "list",
-        )
+        ))
     }
 
     /// Convert a value to i64 for uniform list element storage.
@@ -4308,10 +4288,9 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_ptr_to_int(boxed, i64_type, "struct_ptr_to_i64")
                     .map_err(|e| e.to_string())
             }
-            MirType::Int | MirType::Pid(_) => Ok(val.into_int_value()),
-            // A unit value was stored above; a value that never comes into
-            // being is never stored.
-            MirType::Unit | MirType::Never => unreachable!("a {mir_ty:?} value in a slot"),
+            // An Int or a Pid word. A unit value was stored above, and a
+            // value that never comes into being is never stored.
+            _ => Ok(val.into_int_value()),
         }
     }
 
@@ -4357,8 +4336,11 @@ impl<'ctx> CodeGen<'ctx> {
                     .build_load(self.llvm_type(target_ty), ptr_val, "boxed_value")
                     .map_err(|e| e.to_string())
             }
-            MirType::Unit => Ok(self.context.struct_type(&[], false).const_zero().into()),
-            MirType::Never => unreachable!("a slot holds no value that never comes into being"),
+            // The unit value; no slot holds a value that never comes into
+            // being, so none is read as one.
+            MirType::Unit | MirType::Never => {
+                Ok(self.context.struct_type(&[], false).const_zero().into())
+            }
         }
     }
 
@@ -4374,7 +4356,7 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let list = self.codegen_expr(collection)?;
         let len = self
-            .codegen_runtime_call("mesh_list_length", &[list.into()], "len")?
+            .codegen_runtime_call("mesh_list_length", &[list.into()], "len")
             .into_int_value();
         let start = self.context.i64_type().const_zero();
         self.codegen_indexed_comprehension(
@@ -4388,7 +4370,7 @@ impl<'ctx> CodeGen<'ctx> {
                     "mesh_list_get",
                     &[list.into(), index.into()],
                     "raw_elem",
-                )?;
+                );
                 Ok(vec![cg.convert_from_list_element(
                     raw.into_int_value(),
                     elem_ty,
@@ -4410,7 +4392,7 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let map = self.codegen_expr(collection)?;
         let len = self
-            .codegen_runtime_call("mesh_map_size", &[map.into()], "map_len")?
+            .codegen_runtime_call("mesh_map_size", &[map.into()], "map_len")
             .into_int_value();
         let start = self.context.i64_type().const_zero();
         self.codegen_indexed_comprehension(
@@ -4421,8 +4403,8 @@ impl<'ctx> CodeGen<'ctx> {
             body,
             |cg, index| {
                 let args = [map.into(), index.into()];
-                let key = cg.codegen_runtime_call("mesh_map_entry_key", &args, "raw_key")?;
-                let value = cg.codegen_runtime_call("mesh_map_entry_value", &args, "raw_val")?;
+                let key = cg.codegen_runtime_call("mesh_map_entry_key", &args, "raw_key");
+                let value = cg.codegen_runtime_call("mesh_map_entry_value", &args, "raw_val");
                 Ok(vec![
                     cg.convert_from_list_element(key.into_int_value(), key_ty)?,
                     cg.convert_from_list_element(value.into_int_value(), val_ty)?,
@@ -4441,7 +4423,7 @@ impl<'ctx> CodeGen<'ctx> {
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let set = self.codegen_expr(collection)?;
         let len = self
-            .codegen_runtime_call("mesh_set_size", &[set.into()], "set_len")?
+            .codegen_runtime_call("mesh_set_size", &[set.into()], "set_len")
             .into_int_value();
         let start = self.context.i64_type().const_zero();
         self.codegen_indexed_comprehension(
@@ -4455,7 +4437,7 @@ impl<'ctx> CodeGen<'ctx> {
                     "mesh_set_element_at",
                     &[set.into(), index.into()],
                     "raw_elem",
-                )?;
+                );
                 Ok(vec![cg.convert_from_list_element(
                     raw.into_int_value(),
                     elem_ty,
@@ -4484,7 +4466,7 @@ impl<'ctx> CodeGen<'ctx> {
         // handle, or a user struct passed to its `next` by value).
         let iterable = self.codegen_expr(iterable)?;
         let iterator = match iter_fn {
-            Some(iter_fn) => self.codegen_runtime_call(iter_fn, &[iterable.into()], "iter")?,
+            Some(iter_fn) => self.codegen_runtime_call(iter_fn, &[iterable.into()], "iter"),
             None => iterable,
         };
         self.codegen_comprehension(
@@ -4497,7 +4479,7 @@ impl<'ctx> CodeGen<'ctx> {
                 // (`{ tag, value }`, tag 0 for Some). A user `next` returns
                 // it by value, with a scalar payload boxed; it is spilled to
                 // read it the same way.
-                let next = cg.codegen_runtime_call(next_fn, &[iterator.into()], "next_result")?;
+                let next = cg.codegen_runtime_call(next_fn, &[iterator.into()], "next_result");
                 let (option, option_ty, boxed) = match next {
                     BasicValueEnum::StructValue(option) => {
                         let option_ty = option.get_type();
