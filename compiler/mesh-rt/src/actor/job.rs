@@ -340,8 +340,11 @@ mod tests {
                 mesh_job_async(f as *const u8, std::ptr::null())
             };
             let (ok, failed, slow_job) = (job(forty_two), job(failing), job(slow));
+            // A program's own message waits for the actor's receive.
+            let (me, _) = crate::actor::running_process();
+            crate::actor::local_send(me.as_u64(), 5u64.to_le_bytes().as_ptr(), 8);
             [
-                outcome(mesh_job_await(ok)),
+                outcome(mesh_job_await_timeout(ok, 5_000)),
                 outcome(mesh_job_await(failed)),
                 outcome(mesh_job_await_timeout(slow_job, 1)),
                 outcome(mesh_job_await(slow_job)),

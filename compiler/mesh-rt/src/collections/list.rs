@@ -898,6 +898,52 @@ mod tests {
     use super::*;
     use crate::gc::mesh_rt_init;
 
+    /// The panic `f` raised, as its message.
+    fn panic_of(f: impl FnOnce()) -> String {
+        let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).unwrap_err();
+        *panic.downcast::<String>().unwrap()
+    }
+
+    fn list_of(values: &[u64]) -> *mut u8 {
+        values.iter().fold(mesh_list_new(), |list, &value| {
+            mesh_list_append(list, value)
+        })
+    }
+
+    /// The operations that need an element panic on an empty list, and no
+    /// list is made past its maximum length.
+    #[test]
+    fn empty_lists_and_the_length_limit() {
+        mesh_rt_init();
+        let empty = mesh_list_new();
+        let tail = panic_of(|| {
+            mesh_list_tail(empty);
+        });
+        assert!(tail.contains("List.tail: the list is empty"), "{tail}");
+        let last = panic_of(|| {
+            mesh_list_last(empty);
+        });
+        assert!(last.contains("List.last: the list is empty"), "{last}");
+        let too_long = panic_of(|| unsafe {
+            alloc_list(MAX_CAP + 1);
+        });
+        assert!(too_long.contains("a list holds at most"), "{too_long}");
+    }
+
+    /// Concatenating with an empty list is the other list; sorting one of
+    /// at most one element copies it.
+    #[test]
+    fn concatenating_and_sorting_the_smallest_lists() {
+        mesh_rt_init();
+        let (empty, one) = (mesh_list_new(), list_of(&[7]));
+        assert_eq!(mesh_list_concat(one, empty), one);
+        assert_eq!(mesh_list_concat(empty, one), one);
+        let null = std::ptr::null_mut();
+        let sorted = mesh_list_sort(one, null, null);
+        assert_ne!(sorted, one);
+        assert_eq!((mesh_list_length(sorted), mesh_list_get(sorted, 0)), (1, 7));
+    }
+
     #[test]
     fn test_list_new_is_empty() {
         mesh_rt_init();

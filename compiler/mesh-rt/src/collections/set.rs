@@ -326,6 +326,31 @@ mod tests {
     use super::*;
     use crate::gc::mesh_rt_init;
 
+    unsafe extern "C-unwind" fn hash_word(word: u64) -> i64 {
+        word as i64 * 31
+    }
+
+    /// Sets of different sizes are unequal before any element is compared;
+    /// a set hashes the same whatever order it was built in.
+    #[test]
+    fn set_equality_by_size_and_order_free_hashing() {
+        mesh_rt_init();
+        let one = mesh_set_add(mesh_set_new(), 1);
+        let two = mesh_set_add(one, 2);
+        let other_two = mesh_set_add(mesh_set_add(mesh_set_new(), 2), 1);
+        assert_eq!(mesh_set_eq(one, two), 0);
+        let hash = |set| mesh_set_hash_by(set, hash_word as *mut u8);
+        assert_eq!(hash(two), hash(other_two));
+        assert_ne!(hash(one), hash(two));
+    }
+
+    #[test]
+    #[should_panic(expected = "mesh_set_element_at: index 1 out of bounds (len 1)")]
+    fn an_element_past_the_set_panics() {
+        mesh_rt_init();
+        mesh_set_element_at(mesh_set_add(mesh_set_new(), 1), 1);
+    }
+
     #[test]
     fn test_set_new_is_empty() {
         mesh_rt_init();

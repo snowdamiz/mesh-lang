@@ -532,6 +532,47 @@ mod tests {
     use super::*;
     use crate::gc::mesh_rt_init;
 
+    #[test]
+    #[should_panic(expected = "a map or set holds at most")]
+    fn no_table_is_made_past_its_maximum() {
+        mesh_rt_init();
+        unsafe { alloc_table::<2>(MAX_CAP + 1, 0) };
+    }
+
+    unsafe extern "C-unwind" fn same(a: u64, b: u64) -> i8 {
+        i8::from(a == b)
+    }
+
+    /// A roomy table with no index yet gets one as its first entry goes in
+    /// place; keys with an Eq and no hash then find the latest entry of a
+    /// key by scanning back, and skip one deleted since.
+    #[test]
+    fn an_indexed_table_found_by_keys_it_cannot_hash() {
+        mesh_rt_init();
+        unsafe {
+            let roomy = alloc_table::<2>(4 * SMALL, 0);
+            let mut value = roomy;
+            for key in 0..=SMALL as u64 {
+                value = put::<2>(value, [key, key * 10], &Keys::WORDS);
+            }
+            value = put::<2>(value, [3, 99], &Keys::WORDS);
+            value = delete::<2>(value, 5, &Keys::WORDS);
+            assert_eq!(state::<2>(value).0, roomy, "every change went in place");
+            assert!(!meta::<2>(roomy).is_null(), "indexed");
+            let eq_only = Keys {
+                string: false,
+                eq: Some(same),
+                hash: None,
+            };
+            let (table, n, _) = state::<2>(value);
+            let found =
+                |key| find::<2>(table, n, key, &eq_only).map(|p| *entry::<2>(table, p).add(1));
+            assert_eq!(found(3), Some(99));
+            assert_eq!(found(5), None);
+            assert_eq!(found(SMALL as u64 + 7), None);
+        }
+    }
+
     /// A reference model of one version: its entries in insertion order.
     type Model = Vec<(u64, u64)>;
 

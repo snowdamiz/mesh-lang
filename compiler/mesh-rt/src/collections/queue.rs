@@ -110,6 +110,26 @@ mod tests {
     use crate::gc::mesh_rt_init;
 
     #[test]
+    fn popping_or_peeking_an_empty_queue_panics() {
+        mesh_rt_init();
+        let empty = mesh_queue_new();
+        for (what, f) in [
+            (
+                "Queue.pop",
+                Box::new(move || _ = mesh_queue_pop(empty)) as Box<dyn Fn()>,
+            ),
+            ("Queue.peek", Box::new(move || _ = mesh_queue_peek(empty))),
+        ] {
+            let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).unwrap_err();
+            let message = *panic.downcast::<String>().unwrap();
+            assert!(
+                message.contains(&format!("{what}: the queue is empty")),
+                "{message}"
+            );
+        }
+    }
+
+    #[test]
     fn test_queue_new_is_empty() {
         mesh_rt_init();
         let q = mesh_queue_new();

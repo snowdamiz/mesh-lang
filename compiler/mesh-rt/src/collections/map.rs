@@ -452,6 +452,36 @@ mod tests {
     use super::*;
     use crate::gc::mesh_rt_init;
 
+    unsafe extern "C-unwind" fn same(a: u64, b: u64) -> i8 {
+        i8::from(a == b)
+    }
+
+    unsafe extern "C-unwind" fn hash_word(word: u64) -> i64 {
+        word as i64 * 31
+    }
+
+    /// Maps of different sizes are unequal before any entry is compared; a
+    /// map hashes the same whatever order it was built in.
+    #[test]
+    fn map_equality_by_size_and_order_free_hashing() {
+        mesh_rt_init();
+        let (null, eq) = (std::ptr::null_mut(), same as *mut u8);
+        let one = mesh_map_put(mesh_map_new(), 1, 10);
+        let two = mesh_map_put(one, 2, 20);
+        let other_two = mesh_map_put(mesh_map_put(mesh_map_new(), 2, 20), 1, 10);
+        assert_eq!(mesh_map_eq_by(one, two, eq, null, null), 0);
+        let hash = |map| mesh_map_hash_by(map, hash_word as *mut u8, hash_word as *mut u8);
+        assert_eq!(hash(two), hash(other_two));
+        assert_ne!(hash(one), hash(two));
+    }
+
+    #[test]
+    #[should_panic(expected = "mesh_map_entry_key: index 1 out of bounds (len 1)")]
+    fn an_entry_past_the_map_panics() {
+        mesh_rt_init();
+        mesh_map_entry_key(mesh_map_put(mesh_map_new(), 1, 10), 1);
+    }
+
     #[test]
     fn test_map_new_is_empty() {
         mesh_rt_init();
