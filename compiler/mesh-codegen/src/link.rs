@@ -182,19 +182,26 @@ pub(crate) fn link_with_plan(
     Ok(())
 }
 
+/// The `libtool` command that archives the program's object, the native
+/// archives and the runtime into one static library for an Apple target.
+fn apple_archive_command(object_path: &Path, output_path: &Path, plan: &LinkPlan) -> Command {
+    let mut command = Command::new("xcrun");
+    command.args(["libtool", "-static", "-o"]);
+    command
+        .arg(output_path)
+        .arg(object_path)
+        .args(&plan.native_archives)
+        .arg(&plan.rt_path);
+    command
+}
+
 pub(crate) fn archive_with_plan(
     object_path: &Path,
     output_path: &Path,
     plan: &LinkPlan,
 ) -> Result<(), String> {
     let output = if plan.target.is_apple() {
-        let mut command = Command::new("xcrun");
-        command.args(["libtool", "-static", "-o"]);
-        command.arg(output_path).arg(object_path);
-        for archive in &plan.native_archives {
-            command.arg(archive);
-        }
-        command.arg(&plan.rt_path).output()
+        apple_archive_command(object_path, output_path, plan).output()
     } else if plan.target.kind == LinkTargetKind::Unix {
         let script = archiver_script(object_path, output_path, plan);
         run_archiver(&plan.target.archiver_program()?, &script)
@@ -283,10 +290,7 @@ fn dynamic_link_command(
         return Ok(command);
     }
     let mut command = plan.target.dynamic_linker_command()?;
-    command.arg(object_path);
-    for archive in &plan.native_archives {
-        command.arg(archive);
-    }
+    command.arg(object_path).args(&plan.native_archives);
     if plan.target.is_apple() {
         command
             .arg(format!("-Wl,-force_load,{}", plan.rt_path.display()))
@@ -1218,6 +1222,53 @@ mod tests {
             "{apple:?}"
         );
         assert!(apple.contains(&"Security".to_string()), "{apple:?}");
+    }
+
+    /// A package's native archives go into a library beside the program's
+    /// object, ahead of the runtime: archived with it for an Apple static
+    /// library, linked with it into a dynamic one.
+    #[test]
+    fn libraries_take_the_native_archives_before_the_runtime() {
+        let plan = LinkPlan {
+            native_archives: vec![PathBuf::from("/tmp/libnative.a")],
+            ..plan_for("aarch64-apple-darwin")
+        };
+        let args = |command: Command| {
+            command
+                .get_args()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+        };
+        let archived = args(apple_archive_command(
+            Path::new("/tmp/lib.o"),
+            Path::new("/tmp/libapp.a"),
+            &plan,
+        ));
+        assert_eq!(
+            archived,
+            [
+                "libtool",
+                "-static",
+                "-o",
+                "/tmp/libapp.a",
+                "/tmp/lib.o",
+                "/tmp/libnative.a",
+                "/tmp/libmesh_rt.a"
+            ]
+        );
+        let linked = args(
+            dynamic_link_command(
+                Path::new("/tmp/lib.o"),
+                Path::new("/tmp/libapp.dylib"),
+                &plan,
+            )
+            .unwrap(),
+        );
+        let native = linked.iter().position(|arg| arg == "/tmp/libnative.a");
+        let runtime = linked
+            .iter()
+            .position(|arg| arg == "-Wl,-force_load,/tmp/libmesh_rt.a");
+        assert!(native.unwrap() < runtime.unwrap(), "{linked:?}");
     }
 
     #[cfg(unix)]
