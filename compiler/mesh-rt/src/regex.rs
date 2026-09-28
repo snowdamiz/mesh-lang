@@ -86,12 +86,8 @@ fn alloc_regex(pattern: *const MeshString, flags_bits: i64) -> *mut u8 {
 unsafe fn regex_from_handle(rx_ptr: *const u8) -> regex::Regex {
     let handle = &*(rx_ptr as *const MeshRegex);
     let pattern = (*handle.pattern).as_str();
-    cached_regex(pattern, handle.flags_bits).unwrap_or_else(|error| {
-        panic!(
-            "mesh regex handle contained invalid pattern {:?}: {}",
-            pattern, error
-        )
-    })
+    // A handle is made only for a pattern that compiled with its flags.
+    cached_regex(pattern, handle.flags_bits).expect("a regex handle holds a pattern that compiles")
 }
 
 // ── Public ABI ─────────────────────────────────────────────────────────
@@ -219,6 +215,13 @@ mod tests {
     use crate::collections::list::mesh_list_length;
     use crate::gc::mesh_rt_init;
     use crate::string::mesh_str;
+
+    #[test]
+    #[should_panic(expected = "invalid regex literal ~r/(/")]
+    fn an_invalid_regex_literal_panics() {
+        mesh_rt_init();
+        mesh_regex_from_literal(mesh_str("("), 0);
+    }
 
     #[test]
     fn test_regex_from_literal_basic() {

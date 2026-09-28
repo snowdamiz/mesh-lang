@@ -592,6 +592,31 @@ mod tests {
         mesh_rt_init();
     }
 
+    /// An iterator of no kind the runtime makes is exhausted; pairs collect
+    /// into a map keyed by strings.
+    #[test]
+    fn an_unknown_iterator_ends_and_string_keys_collect() {
+        init_runtime();
+        let unknown = [99u8; 16];
+        let next = mesh_iter_generic_next(unknown.as_ptr() as *mut u8);
+        assert_eq!(unsafe { *(next as *const u8) }, 1, "None");
+        let pair = |key: &str, value: u64| {
+            let tuple = crate::gc::mesh_gc_alloc(24, 8) as *mut u64;
+            let key = crate::string::mesh_str(key) as u64;
+            unsafe {
+                [2, key, value]
+                    .iter()
+                    .enumerate()
+                    .for_each(|(i, &w)| *tuple.add(i) = w)
+            };
+            tuple as u64
+        };
+        let pairs = [pair("a", 1), pair("b", 2), pair("a", 3)];
+        let list = mesh_list_from_array(pairs.as_ptr(), 3);
+        let map = mesh_map_collect_string_keys(mesh_list_iter_new(list));
+        assert_eq!(mesh_map_size(map), 2);
+    }
+
     #[test]
     fn test_list_collect() {
         init_runtime();

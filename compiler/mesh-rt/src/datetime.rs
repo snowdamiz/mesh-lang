@@ -185,3 +185,26 @@ pub extern "C" fn mesh_datetime_after(dt1_ms: i64, dt2_ms: i64) -> i8 {
         0
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A timestamp chrono cannot hold is an error; a difference is in the
+    /// unit asked for, and an unknown unit is a Mesh panic.
+    #[test]
+    fn out_of_range_timestamps_and_units() {
+        crate::gc::mesh_rt_init();
+        let tag = |result: *mut MeshResult| unsafe { (*result).tag };
+        assert_eq!(tag(mesh_datetime_from_unix_ms(i64::MAX)), 1);
+        assert_eq!(tag(mesh_datetime_from_unix_secs(i64::MAX)), 1);
+        let week = 604_800_000;
+        assert_eq!(mesh_datetime_diff(week, 0, mesh_str("week")), 1.0);
+        let unknown = std::panic::catch_unwind(|| mesh_datetime_diff(0, 0, mesh_str("fortnight")));
+        let message = *unknown.unwrap_err().downcast::<String>().unwrap();
+        assert!(
+            message.contains("DateTime.diff: unknown unit \"fortnight\""),
+            "{message}"
+        );
+    }
+}

@@ -89,8 +89,12 @@ pub extern "C" fn mesh_result_unwrap(result: *mut u8) -> *mut u8 {
 /// The trailing newline is stripped from the result.
 #[no_mangle]
 pub extern "C" fn mesh_io_read_line() -> *mut MeshResult {
+    read_line_from(&mut std::io::stdin().lock())
+}
+
+fn read_line_from(reader: &mut impl std::io::BufRead) -> *mut MeshResult {
     let mut input = String::new();
-    match std::io::stdin().read_line(&mut input) {
+    match reader.read_line(&mut input) {
         Ok(_) => {
             // Strip trailing newline
             if input.ends_with('\n') {
@@ -124,6 +128,22 @@ mod tests {
     use super::*;
     use crate::gc::mesh_rt_init;
     use crate::string::mesh_string_new;
+
+    /// A line comes back without its line ending, `\r\n` or `\n`; input
+    /// that is not UTF-8 is an error.
+    #[test]
+    fn read_line_strips_its_ending_and_refuses_what_is_not_text() {
+        mesh_rt_init();
+        let read = |input: &[u8]| {
+            let result = read_line_from(&mut std::io::Cursor::new(input.to_vec()));
+            let result = unsafe { &*result };
+            let text = unsafe { (*(result.value as *const MeshString)).as_str() }.to_string();
+            (result.tag, text)
+        };
+        assert_eq!(read(b"crlf\r\nnext"), (0, "crlf".to_string()));
+        assert_eq!(read(b"lf\n"), (0, "lf".to_string()));
+        assert_eq!(read(b"\xff\n").0, 1);
+    }
 
     #[test]
     fn test_alloc_result_ok() {

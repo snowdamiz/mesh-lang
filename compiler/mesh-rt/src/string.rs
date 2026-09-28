@@ -442,6 +442,13 @@ mod tests {
     use super::*;
     use crate::gc::mesh_rt_init;
 
+    #[test]
+    fn inspect_escapes_carriage_returns_and_nul() {
+        mesh_rt_init();
+        let shown = mesh_string_inspect(mesh_str("a\r\0b"));
+        assert_eq!(unsafe { (*shown).as_str() }, "\"a\\r\\0b\"");
+    }
+
     /// `String.repeat`: the text so many times over, nothing for a count
     /// of zero or less, and a Mesh panic for a length no string can have.
     #[test]
