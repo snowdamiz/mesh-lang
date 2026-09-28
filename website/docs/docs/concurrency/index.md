@@ -533,7 +533,7 @@ A queued value takes eight bytes plus the size of whatever it references: a `Str
 | `Process.install_shutdown_signals()` | `Unit` | Treat native `SIGINT` and `SIGTERM` as shutdown requests |
 | `Process.shutdown_requested()` | `Bool` | Read the process-wide shutdown flag |
 | `Process.request_shutdown()` | `Unit` | Set the shutdown flag programmatically |
-| `Process.exit(status)` | `Unit` | Exit the native process with a status code |
+| `Process.exit(status)` | `Unit` | Exit the native process with a status code, 0 to 255 (any other status exits with 1) |
 
 `Process.whereis` returns an untyped `Pid`, which accepts any message, so a
 send through it does not tell the compiler what the actor receives. When an
