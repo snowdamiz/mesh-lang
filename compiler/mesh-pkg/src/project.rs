@@ -619,9 +619,11 @@ fn top_level_statements(parse: &mesh_parser::Parse) -> Vec<mesh_typeck::error::T
                             .is_some_and(|module| module.kind() == SyntaxKind::MODULE_DEF)
             }) && mesh_parser::ast::expr::Expr::cast(node.clone()).is_some()
         })
-        .map(|statement| mesh_typeck::error::TypeError::TopLevelStatement {
-            span: statement.text_range(),
-        })
+        .map(
+            |statement| mesh_typeck::error::TypeError::TopLevelStatement {
+                span: statement.text_range(),
+            },
+        )
         .collect()
 }
 
