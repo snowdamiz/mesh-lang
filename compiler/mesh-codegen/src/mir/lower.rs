@@ -17028,19 +17028,23 @@ mod tests {
         assert_eq!(destroy.len(), 1);
         assert_eq!(
             destroy[0].params,
-            [("__resource".to_string(), MirType::Struct("Chain".to_string()))]
+            [(
+                "__resource".to_string(),
+                MirType::Struct("Chain".to_string())
+            )]
         );
         assert_eq!(drops_of(&destroy[0].body, "__resource"), 1);
     }
 
     /// A tuple type's hash and compare functions are generated once, however
-    /// many values hash or order tuples of it: the set of pairs and the set
-    /// of optional pairs hash them with one function, and ordering pairs
-    /// and optional pairs compares them with one.
+    /// many values hash or order tuples of it: a struct's two pair fields,
+    /// the set of pairs and the set of optional pairs hash them with one
+    /// function, and ordering pairs and optional pairs compares them with one.
     #[test]
     fn a_tuple_type_has_one_hash_and_one_compare_function() {
         let mir = lower(
-            "fn main() do\n\
+            "struct Span do\n  a :: (Int, Int)\n  b :: (Int, Int)\nend deriving(Eq, Hash)\n\n\
+             fn main() do\n\
                let pairs = Set.add(Set.new(), (1, 2))\n\
                let optional = Set.add(Set.new(), Some((1, 2)))\n\
                let less = (1, 2) < (1, 3)\n\
@@ -17056,6 +17060,96 @@ mod tests {
                 .count();
             assert_eq!(generated, 1, "{prefix}");
         }
+    }
+
+    /// A generic function's own body sends a value of a type nothing fixed:
+    /// its shape is unknown, so the message is shared, never copied.
+    #[test]
+    fn a_message_of_an_open_type_is_shared() {
+        let mir = lower("fn forward(p, x) do\n  send(p, x)\nend");
+        let shapes: Vec<MsgShape> = function_body(&mir, "forward")
+            .descendants()
+            .into_iter()
+            .filter_map(|node| match node {
+                MirExpr::Shaped { shape, .. } => Some(shape.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(shapes, [MsgShape::Shared]);
+    }
+
+    /// An interface's default method written without a result type returns
+    /// Unit in each impl that takes it.
+    #[test]
+    fn a_default_method_without_a_result_type_returns_unit() {
+        let mir = lower(
+            "interface Greeter do\n  fn greet(self) do\n    println(\"hi\")\n  end\nend\n\n\
+             struct P do\n  x :: Int\nend\n\nimpl Greeter for P do\nend",
+        );
+        let greet = mir
+            .functions
+            .iter()
+            .find(|function| function.name == "Greeter__greet__P")
+            .expect("the impl takes the default method");
+        assert_eq!(greet.return_type, MirType::Unit);
+    }
+
+    /// A clustered route an interface's default method declares is lowered
+    /// only in the impls that take the method: with none, it never becomes a
+    /// route shim, and lowering says so.
+    #[test]
+    fn a_clustered_route_nothing_lowers_is_refused() {
+        let source = "pub fn handle_local(req :: Request) -> Response do\n  \
+                      HTTP.response(200, \"ok\")\nend\n\n\
+                      interface Routed do\n  fn routes(self, router :: Router) -> Router do\n    \
+                      HTTP.on_get(router, \"/one\", HTTP.clustered(handle_local))\n  end\nend\n";
+        let mut import_ctx = ImportContext::empty();
+        import_ctx.current_module = Some("App.Router".to_string());
+        let parse = mesh_parser::parse(source);
+        let typeck = mesh_typeck::check_with_imports(&parse, &import_ctx);
+        assert!(typeck.errors.is_empty(), "{:?}", typeck.errors);
+        let error = lower_to_mir(&parse, &typeck, "", &HashSet::new(), &HashMap::new())
+            .err()
+            .expect("the route is never lowered");
+        assert!(
+            error.contains("did not lower to a concrete route shim"),
+            "{error}"
+        );
+    }
+
+    /// Lowering takes only programs the type checker accepts, and names
+    /// what it relies on where a rejected program would break it.
+    #[test]
+    #[should_panic(expected = "the type checker rejects indexing (E0078)")]
+    fn lowering_an_index_relies_on_the_checker_rejecting_it() {
+        lower("fn first(xs :: List<Int>) -> Int do\n  xs[0]\nend\n");
+    }
+
+    #[test]
+    #[should_panic(expected = "the type checker rejects a pattern that is not a value (E0056)")]
+    fn lowering_a_rebuilt_tuple_relies_on_the_checker_rejecting_it() {
+        lower("fn same(t :: (Int, Int)) -> (Int, Int) do\n  case t do\n    (1, 2)\n  end\nend\n");
+    }
+
+    /// A relationship to a struct without a schema names the table that
+    /// struct's name gives by convention and the `id` key.
+    #[test]
+    fn a_relationship_to_a_struct_without_a_schema_uses_the_default_table() {
+        let mir = lower(
+            "struct User do\n  id :: String\nend\n\n\
+             struct Post do\n  id :: String\n  user_id :: String\n  belongs_to :user, User\n\
+             end deriving(Schema)",
+        );
+        let meta = function_body(&mir, "Post____relationship_meta__");
+        let strings: Vec<String> = meta
+            .descendants()
+            .into_iter()
+            .filter_map(|node| match node {
+                MirExpr::StringLit(text, _) => Some(text.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(strings, ["belongs_to:user:User:user_id:users:id:Post"]);
     }
 
     /// A service's `init` written without parentheses takes no arguments.
@@ -17081,9 +17175,8 @@ mod tests {
     /// A closure of several clauses captures the variables its clauses use.
     #[test]
     fn a_closure_of_several_clauses_captures_what_its_clauses_use() {
-        let mir = lower(
-            "fn main() do\n  let k = 10\n  let g = fn 0 -> k | n -> n + k end\n  g(1)\nend",
-        );
+        let mir =
+            lower("fn main() do\n  let k = 10\n  let g = fn 0 -> k | n -> n + k end\n  g(1)\nend");
         let captures = function_body(&mir, "mesh_main")
             .descendants()
             .into_iter()

@@ -1985,8 +1985,9 @@ end
     assert_eq!(output, "W(Inner { x: 1 })\n");
 }
 
-/// An actor receives a Bool as the byte it is; a receive with no arm only
-/// waits out its `after`.
+/// An actor receives a Bool as the byte it is, whether an arm uses it or
+/// the receive is the Bool; a receive with no arm only waits out its
+/// `after`.
 #[test]
 fn actors_receive_bools_and_wait_without_arms() {
     let output = compile_and_run(
@@ -1994,6 +1995,10 @@ fn actors_receive_bools_and_wait_without_arms() {
   receive do
     b -> send(done, if b do "yes" else "no" end)
   end
+  let again = receive do
+    b -> b
+  end
+  send(done, if again do "yes" else "no" end)
   flag(done)
 end
 
@@ -2004,6 +2009,10 @@ actor driver() do
     s -> println(s)
   end
   send(p, false)
+  receive do
+    s -> println(s)
+  end
+  send(p, true)
   receive do
     s -> println(s)
   end
@@ -2020,7 +2029,7 @@ fn main() do
 end
 "##,
     );
-    assert_eq!(output, "yes\nno\nnothing\n");
+    assert_eq!(output, "yes\nno\nyes\nnothing\n");
 }
 
 /// `String.from` passed as a function shows each value as interpolating it
@@ -2166,7 +2175,9 @@ end
 }
 
 /// A resource type that holds itself (a struct through an Option, a sum
-/// type through its own payload) destroys every resource down the chain.
+/// type through its own payload, a struct and a sum type through each
+/// other) destroys every resource down the chain, and the rest of it when
+/// a field is moved out.
 /// Its drop plan stopped where the type met itself again, so the secrets
 /// of every nested value leaked: an actor holds at most 4096 secrets, and
 /// the later `Secret.random`s failed.
@@ -2183,10 +2194,28 @@ type Keys do
   End
 end
 
+resource struct Node do
+  key :: SecretBytes
+  rest :: Tail
+end
+
+type Tail do
+  Next(Node)
+  Done
+end
+
+fn take_key(c :: Chain) -> SecretBytes do
+  c.key
+end
+
 fn once() -> Int ! CryptoError do
   let inner = Chain { key: Secret.random(1) ?, next: None }
   let outer = Chain { key: Secret.random(1) ?, next: Some(inner) }
   let keys = More(Secret.random(1) ?, More(Secret.random(1) ?, End))
+  let leaf = Node { key: Secret.random(1) ?, rest: Done }
+  let tail = Next(Node { key: Secret.random(1) ?, rest: Next(leaf) })
+  let last = Chain { key: Secret.random(1) ?, next: None }
+  let taken = take_key(Chain { key: Secret.random(1) ?, next: Some(last) })
   Ok(1)
 end
 
@@ -2215,14 +2244,26 @@ end
 #[test]
 fn values_holding_functions_or_iterators_cannot_be_compared() {
     for (comparison, error) in [
-        ("Some(inc) == Some(inc)", "cannot compare values of type `(Int) -> Int`"),
-        ("[inc] != [inc]", "cannot compare values of type `(Int) -> Int`"),
-        ("(inc, 1) == (inc, 1)", "cannot compare values of type `(Int) -> Int`"),
+        (
+            "Some(inc) == Some(inc)",
+            "cannot compare values of type `(Int) -> Int`",
+        ),
+        (
+            "[inc] != [inc]",
+            "cannot compare values of type `(Int) -> Int`",
+        ),
+        (
+            "(inc, 1) == (inc, 1)",
+            "cannot compare values of type `(Int) -> Int`",
+        ),
         (
             "Set.size(Set.add(Set.new(), Some(inc))) > 0",
             "cannot compare values of type `(Int) -> Int`",
         ),
-        ("Some(inc) < Some(inc)", "cannot order values of type `(Int) -> Int`"),
+        (
+            "Some(inc) < Some(inc)",
+            "cannot order values of type `(Int) -> Int`",
+        ),
         (
             "Some(Iter.from([1])) == Some(Iter.from([2]))",
             "cannot compare values of type `Iter<Int>`: the type has no `Eq`",
@@ -2494,4 +2535,252 @@ end
 "##,
     );
     assert_eq!(output, "a b Some(f) None\n(1, kept)\n");
+}
+
+/// Definitions in their less common forms compile and run: an impl's
+/// method and an interface's default method written without parentheses,
+/// a default method returning `()`, a static method taken as a value, an
+/// `Ord` defining only `lt`, an actor without parentheses, a function of
+/// no parameters with a guard, a named function discarded by `let _`, a
+/// closure whose value a `()` callback drops, a `for` over a
+/// concatenation and empty lists compared.
+#[test]
+fn definitions_in_less_common_forms_run() {
+    let output = compile_and_run(
+        r##"interface Named do
+  fn label() -> String
+end
+
+interface Titled do
+  fn title -> String do
+    "untitled"
+  end
+end
+
+interface Greeter do
+  fn greet(self) -> () do
+    println("hi")
+  end
+end
+
+interface Make do
+  fn make() -> Self
+end
+
+struct P do
+  x :: Int
+end deriving(Eq)
+
+impl Named for P do
+  fn label -> String do
+    "p"
+  end
+end
+
+impl Titled for P do
+end
+
+impl Greeter for P do
+end
+
+impl Make for P do
+  fn make() -> P do
+    P { x: 1 }
+  end
+end
+
+impl Ord for P do
+  fn lt(self, other :: P) -> Bool do
+    self.x < other.x
+  end
+end
+
+actor ticker do
+  receive do
+    n -> println("tick #{n}")
+  end
+end
+
+fn pick() when 1 > 0 do
+  1
+end
+
+fn helper() -> Int do
+  1
+end
+
+fn run(f :: Fun(Int) -> ()) -> () do
+  f(1)
+end
+
+fn main() do
+  println(P.label())
+  println(P.title())
+  let p = P { x: 1 }
+  p.greet()
+  let make = P.make
+  println("#{make().x}")
+  println("#{P { x: 1 } < P { x: 2 }}")
+  println("#{pick()}")
+  let _ = helper
+  run(fn x -> x + 1 end)
+  for x in [1] ++ [2] do
+    println("#{x}")
+  end
+  println("#{[] == []} #{[] < []}")
+  let t = spawn(ticker)
+  send(t, 1)
+  Timer.sleep(200)
+end
+"##,
+    );
+    assert_eq!(
+        output,
+        "p\nuntitled\nhi\n1\ntrue\n1\n1\n2\ntrue false\ntick 1\n"
+    );
+}
+
+/// Data in its less common shapes: a JSON literal inside another, a
+/// generic struct decoded at `()`, a struct of tuples through JSON and
+/// back, a generic sum value, a set and an empty list as map keys, a sum
+/// type with no variants deriving Json, Hash and Eq, a local shadowing a
+/// function, a keyword key named like a generic function, and a generic
+/// function used at two types and as a value.
+#[test]
+fn data_in_less_common_shapes_runs() {
+    let output = compile_and_run(
+        r##"struct Box<Item> do
+  value :: Item
+end deriving(Json)
+
+struct Pairs do
+  a :: (Int, String)
+  b :: (Int, String)
+end deriving(Json)
+
+type Tree<T> do
+  Leaf
+  Node(T)
+end deriving(Eq, Hash)
+
+type Void do
+end deriving(Json, Hash, Eq)
+
+fn ident(x) do
+  x
+end
+
+fn size(m :: Map<String, Int>) -> Int do
+  Map.size(m)
+end
+
+fn wrap(y) do
+  let n = size(ident: 1)
+  let ident = n + 1
+  println("#{ident + 1}")
+  y
+end
+
+fn helper() -> Int do
+  1
+end
+
+fn main() do
+  let j = json { a: json { b: 1 } }
+  println(j)
+  let unit_box :: Result<Box<()>, String> = Box.from_json("{\"value\":null}")
+  println("#{Result.is_ok(unit_box)}")
+  let encoded = Json.encode(Pairs { a: (1, "x"), b: (2, "y") })
+  println(encoded)
+  case Pairs.from_json(encoded) do
+    Ok(p) -> println("#{p.b}")
+    Err(e) -> println(e)
+  end
+  let trees = Map.put(Map.new(), Node(1), 1)
+  let sets = Map.put(Map.new(), Set.add(Set.new(), 1), 2)
+  let lists = Map.put(Map.new(), [], 3)
+  println("#{Map.get(trees, Node(1))} #{Map.get(sets, Set.add(Set.new(), 1))} #{Map.get(lists, [])}")
+  let helper = (1, 2)
+  let (a, b) = helper
+  println("#{a + b} #{wrap(1)} #{wrap("a")}")
+  let f = ident
+  println("#{ident(1)} #{ident("a")} #{f(2)}")
+end
+"##,
+    );
+    assert_eq!(
+        output,
+        "{\"a\":{\"b\":1}}\ntrue\n{\"a\":[1,\"x\"],\"b\":[2,\"y\"]}\n(2, y)\n1 2 3\n3\n3\n3 1 a\n1 a 2\n"
+    );
+}
+
+/// A `simple_one_for_one` supervisor starts, and a closure may capture a
+/// variable whose value never comes into being.
+#[test]
+fn simple_one_for_one_supervisors_and_never_captures_build() {
+    let output = compile_and_run(
+        r##"actor worker() do
+  receive do
+    n -> println("worker #{n + 1}")
+  end
+end
+
+supervisor Pool do
+  strategy: simple_one_for_one
+  child w do
+    start: fn -> spawn(worker) end
+    restart: temporary
+  end
+end
+
+fn boom() -> Int do
+  let x = panic("no")
+  let f = fn -> x end
+  f()
+end
+
+fn main() do
+  let pool = spawn(Pool)
+  if false do
+    println("#{boom()}")
+  end
+  println("started")
+end
+"##,
+    );
+    assert_eq!(output, "started\n");
+}
+
+/// A generic `deriving(Json)` type decoded at a type without JSON (the type
+/// checker lets `Box<Point>.from_json` through) fails to decode at run
+/// time, naming the type.
+#[test]
+fn json_decoding_at_a_type_without_json_fails_at_run_time() {
+    let output = compile_and_run(
+        r##"struct Point do
+  x :: Int
+end
+
+struct Box<Item> do
+  value :: Item
+end deriving(Json)
+
+fn main() do
+  let decoded :: Result<Box<Point>, String> = Box.from_json("{\"value\":{\"x\":1}}")
+  case decoded do
+    Ok(_) -> println("decoded")
+    Err(e) -> println(e)
+  end
+  let f :: Result<Box<Fun(Int) -> Int>, String> = Box.from_json("{\"value\":null}")
+  case f do
+    Ok(_) -> println("decoded")
+    Err(e) -> println(e)
+  end
+end
+"##,
+    );
+    assert_eq!(
+        output,
+        "$.value: cannot decode Point from JSON\n$.value: cannot decode (Int) -> Int from JSON\n"
+    );
 }
