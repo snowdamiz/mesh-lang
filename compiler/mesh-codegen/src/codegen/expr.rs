@@ -538,6 +538,29 @@ impl<'ctx> CodeGen<'ctx> {
             MirResourceDestructor::Aggregate(fields) => {
                 self.codegen_aggregate_destructor(value.into_struct_value(), fields)
             }
+            // A value of a type that holds itself: the type's own function
+            // destroys it, given the value itself, loaded when it sits in a
+            // box (as a payload that recurs does).
+            MirResourceDestructor::Recursive(function) => {
+                let destroy = self.functions[function];
+                let by_value = self.llvm_type(resource_ty);
+                if value.is_pointer_value() && !by_value.is_pointer_type() {
+                    let pointer = value.into_pointer_value();
+                    self.codegen_unless_null(pointer, "resource_recursive", |this| {
+                        let loaded = this
+                            .builder
+                            .build_load(by_value, pointer, "resource_recursive")
+                            .expect(BUILT);
+                        this.builder
+                            .build_call(destroy, &[loaded.into()], "")
+                            .expect(BUILT);
+                    })
+                } else {
+                    self.builder
+                        .build_call(destroy, &[value.into()], "")
+                        .expect(BUILT);
+                }
+            }
             MirResourceDestructor::SumVariants(variants) => {
                 if variants.is_empty() {
                     return;

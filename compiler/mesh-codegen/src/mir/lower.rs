@@ -787,14 +787,51 @@ impl<'a> Lowerer<'a> {
         name
     }
 
-    fn resource_destructor(&self, ty: &Ty) -> Option<MirResourceDestructor> {
-        self.resource_destructor_inner(ty, &mut HashSet::new())
+    /// How a value of type `ty` is destroyed, when it holds resources. A
+    /// type met again inside its own plan (a struct holding itself through
+    /// an Option, a sum type through its own payload) is destroyed there by
+    /// a function of its own, generated here once, which runs its plan.
+    fn resource_destructor(&mut self, ty: &Ty) -> Option<MirResourceDestructor> {
+        let mut recursive = Vec::new();
+        let plan = self.resource_destructor_inner(ty, &mut HashSet::new(), &mut recursive);
+        while let Some(ty) = recursive.pop() {
+            let name = Self::destroyer_name(&ty);
+            if self.known_functions.contains_key(&name) {
+                continue;
+            }
+            let mir_ty = resolve_type(&ty, self.registry);
+            self.known_functions.insert(
+                name.clone(),
+                MirType::FnPtr(vec![mir_ty.clone()], Box::new(MirType::Unit)),
+            );
+            let own = self
+                .resource_destructor_inner(&ty, &mut HashSet::new(), &mut recursive)
+                .expect("a type that holds itself holds resources");
+            let value = "__resource".to_string();
+            let body = MirExpr::ResourceDrop {
+                value: Box::new(MirExpr::Var(value.clone(), mir_ty.clone())),
+                resource_ty: mir_ty.clone(),
+                destructor: own,
+            };
+            self.push_helper_fn(&name, vec![(value, mir_ty)], MirType::Unit, body);
+        }
+        plan
     }
 
+    /// The name of the function that destroys a value of type `ty`, a type
+    /// that holds itself.
+    fn destroyer_name(ty: &Ty) -> String {
+        format!("__destroy_{}", Self::ty_specialization_component(ty))
+    }
+
+    /// `ty`'s destruction plan; `visiting` holds the named types whose plans
+    /// are being made around this one, and a type met again is left to its
+    /// own function, collected in `recursive`.
     fn resource_destructor_inner(
         &self,
         ty: &Ty,
         visiting: &mut HashSet<String>,
+        recursive: &mut Vec<Ty>,
     ) -> Option<MirResourceDestructor> {
         if !self.registry.is_resource_type(ty) {
             return None;
@@ -806,7 +843,7 @@ impl<'a> Lowerer<'a> {
                     .iter()
                     .enumerate()
                     .filter_map(|(index, element)| {
-                        self.resource_destructor_inner(element, visiting)
+                        self.resource_destructor_inner(element, visiting, recursive)
                             .map(|destructor| MirResourceField {
                                 index: index as u32,
                                 ty: resolve_type(element, self.registry),
@@ -826,7 +863,7 @@ impl<'a> Lowerer<'a> {
             return Some(MirResourceDestructor::PgConnection);
         }
         if self.registry.sum_type_defs.contains_key(name) {
-            return self.resource_sum_destructor_inner(name, arguments, visiting);
+            return self.resource_sum_destructor_inner(ty, name, arguments, visiting, recursive);
         }
         // A resource without fields (a builtin handle, or an opaque one a
         // package declares) is destroyed by the runtime.
@@ -839,7 +876,8 @@ impl<'a> Lowerer<'a> {
             return Some(MirResourceDestructor::Opaque);
         };
         if !visiting.insert(name.to_string()) {
-            return None;
+            recursive.push(ty.clone());
+            return Some(MirResourceDestructor::Recursive(Self::destroyer_name(ty)));
         }
         let substitutions: HashMap<String, &Ty> = definition
             .generic_params
@@ -853,7 +891,7 @@ impl<'a> Lowerer<'a> {
             .enumerate()
             .filter_map(|(index, (_, field_ty))| {
                 let field_ty = substitute_type_params(field_ty, &substitutions);
-                self.resource_destructor_inner(&field_ty, visiting)
+                self.resource_destructor_inner(&field_ty, visiting, recursive)
                     .map(|destructor| MirResourceField {
                         index: index as u32,
                         ty: resolve_type(&field_ty, self.registry),
@@ -865,16 +903,20 @@ impl<'a> Lowerer<'a> {
         Some(MirResourceDestructor::Aggregate(fields))
     }
 
+    /// The plan of the sum type `ty`, `name` applied to `arguments`.
     fn resource_sum_destructor_inner(
         &self,
+        ty: &Ty,
         name: &str,
         arguments: &[Ty],
         visiting: &mut HashSet<String>,
+        recursive: &mut Vec<Ty>,
     ) -> Option<MirResourceDestructor> {
-        let definition = self.registry.sum_type_defs.get(name)?;
+        let definition = &self.registry.sum_type_defs[name];
         let visit_key = format!("sum:{name}");
         if !visiting.insert(visit_key.clone()) {
-            return None;
+            recursive.push(ty.clone());
+            return Some(MirResourceDestructor::Recursive(Self::destroyer_name(ty)));
         }
         let substitutions: HashMap<String, &Ty> = definition
             .generic_params
@@ -911,7 +953,7 @@ impl<'a> Lowerer<'a> {
                     .iter()
                     .enumerate()
                     .filter_map(|(index, field_ty)| {
-                        self.resource_destructor_inner(field_ty, visiting)
+                        self.resource_destructor_inner(field_ty, visiting, recursive)
                             .map(|destructor| MirResourceField {
                                 index: index as u32,
                                 ty: resolve_type(field_ty, self.registry),
@@ -16941,6 +16983,33 @@ mod tests {
             .collect();
         assert!(twice.is_empty(), "generated twice: {twice:?}");
         assert!(seen.contains("__json_decode__U") && seen.contains("__json_decode__T"));
+    }
+
+    /// A resource type that holds itself leaves the value it meets again to
+    /// a function of its own, generated once, whose plan is the type's.
+    #[test]
+    fn resource_types_holding_themselves_get_a_destroy_function() {
+        let mir = lower(
+            "resource struct Chain do\n  key :: SecretBytes\n  next :: Option<Chain>\nend\n\n\
+             fn discard(c :: Chain) do nil end",
+        );
+        let plan = first_destructor(&function_body(&mir, "discard"))
+            .cloned()
+            .expect("the chain is dropped");
+        let mut called = Vec::new();
+        plan.functions(&mut called);
+        assert_eq!(called, ["__destroy_Chain"], "{plan:?}");
+        let destroy = mir
+            .functions
+            .iter()
+            .filter(|function| function.name == "__destroy_Chain")
+            .collect::<Vec<_>>();
+        assert_eq!(destroy.len(), 1);
+        assert_eq!(
+            destroy[0].params,
+            [("__resource".to_string(), MirType::Struct("Chain".to_string()))]
+        );
+        assert_eq!(drops_of(&destroy[0].body, "__resource"), 1);
     }
 
     /// The checker counts a pid of resource messages as a resource, but the

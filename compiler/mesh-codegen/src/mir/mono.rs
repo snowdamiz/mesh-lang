@@ -13,7 +13,7 @@
 
 use std::collections::HashSet;
 
-use super::{MirExpr, MirModule};
+use super::{MirExpr, MirModule, MirResourceMoveSource};
 
 /// Run the monomorphization pass on a MIR module.
 ///
@@ -171,8 +171,9 @@ mod library_tests {
 }
 
 /// The function names an expression refers to: every variable (a callee
-/// included), each closure's function, a supervisor's child start functions
-/// and a `for` loop's iterator functions.
+/// included), each closure's function, a supervisor's child start functions,
+/// a `for` loop's iterator functions, and the functions that destroy the
+/// resources of types holding themselves.
 fn collect_function_refs(expr: &MirExpr, refs: &mut Vec<String>) {
     for node in expr.descendants() {
         match node {
@@ -184,6 +185,21 @@ fn collect_function_refs(expr: &MirExpr, refs: &mut Vec<String>) {
             MirExpr::ForInIterator {
                 next_fn, iter_fn, ..
             } => refs.extend(iter_fn.iter().chain([next_fn]).cloned()),
+            MirExpr::ResourceDrop { destructor, .. }
+            | MirExpr::ResourceDestroy { destructor, .. }
+            | MirExpr::ResourceMove {
+                source:
+                    MirResourceMoveSource::Projection {
+                        parent_destructor: destructor,
+                        ..
+                    },
+                ..
+            } => destructor.functions(refs),
+            MirExpr::StructUpdate {
+                resource_overrides, ..
+            } => resource_overrides
+                .iter()
+                .for_each(|field| field.destructor.functions(refs)),
             _ => {}
         }
     }

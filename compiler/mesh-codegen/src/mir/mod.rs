@@ -197,6 +197,10 @@ pub enum MirResourceDestructor {
     /// A general tagged union whose resource-bearing variants require distinct
     /// field layouts and destruction plans.
     SumVariants(Vec<MirResourceVariant>),
+    /// A value of a type that holds itself (through a box), whose plan
+    /// would never end inline: destroyed by the generated function named,
+    /// which runs the type's own plan.
+    Recursive(std::string::String),
 }
 
 impl MirResourceDestructor {
@@ -206,6 +210,22 @@ impl MirResourceDestructor {
         match self {
             MirResourceDestructor::Aggregate(fields) => fields,
             _ => &[],
+        }
+    }
+
+    /// The generated functions this plan calls to destroy the values of
+    /// types that hold themselves.
+    pub fn functions(&self, out: &mut Vec<std::string::String>) {
+        match self {
+            MirResourceDestructor::Recursive(function) => out.push(function.clone()),
+            MirResourceDestructor::Aggregate(fields) => fields
+                .iter()
+                .for_each(|field| field.destructor.functions(out)),
+            MirResourceDestructor::SumVariants(variants) => variants
+                .iter()
+                .flat_map(|variant| &variant.resource_fields)
+                .for_each(|field| field.destructor.functions(out)),
+            MirResourceDestructor::Opaque | MirResourceDestructor::PgConnection => {}
         }
     }
 }

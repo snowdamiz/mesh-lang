@@ -2164,3 +2164,45 @@ end
     );
     assert_eq!(output, "3\n");
 }
+
+/// A resource type that holds itself (a struct through an Option, a sum
+/// type through its own payload) destroys every resource down the chain.
+/// Its drop plan stopped where the type met itself again, so the secrets
+/// of every nested value leaked: an actor holds at most 4096 secrets, and
+/// the later `Secret.random`s failed.
+#[test]
+fn resources_that_hold_themselves_are_destroyed_all_the_way_down() {
+    let output = compile_and_run(
+        r##"resource struct Chain do
+  key :: SecretBytes
+  next :: Option<Chain>
+end
+
+type Keys do
+  More(SecretBytes, Keys)
+  End
+end
+
+fn once() -> Int ! CryptoError do
+  let inner = Chain { key: Secret.random(1) ?, next: None }
+  let outer = Chain { key: Secret.random(1) ?, next: Some(inner) }
+  let keys = More(Secret.random(1) ?, More(Secret.random(1) ?, End))
+  Ok(1)
+end
+
+fn churn(0, acc :: Int) -> Int do acc end
+fn churn(count :: Int, acc :: Int) do
+  let r = case once() do
+    Ok(v) -> v
+    Err(_) -> -100000
+  end
+  churn(count - 1, acc + r)
+end
+
+fn main() do
+  println("#{churn(3000, 0)}")
+end
+"##,
+    );
+    assert_eq!(output, "3000\n");
+}
