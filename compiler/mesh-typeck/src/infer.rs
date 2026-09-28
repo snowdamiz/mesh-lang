@@ -9926,22 +9926,21 @@ fn infer_call_unsettled(
         && env
             .lookup("default")
             .is_some_and(|scheme| scheme.vars == [TyVar(99000)]);
-    if let Some(callee) = call.callee() {
-        let span = call.syntax().text_range();
-        if let Some(ty) = infer_node_spawn(
-            ctx,
-            env,
-            &callee,
-            &call.args(),
-            None,
-            span,
-            types,
-            type_registry,
-            trait_registry,
-            fn_constraints,
-        )? {
-            return Ok(ty);
-        }
+    // The parser opens a call around the expression it calls.
+    let callee = call.callee().expect("a call has its callee");
+    if let Some(ty) = infer_node_spawn(
+        ctx,
+        env,
+        &callee,
+        &call.args(),
+        None,
+        call.syntax().text_range(),
+        types,
+        type_registry,
+        trait_registry,
+        fn_constraints,
+    )? {
+        return Ok(ty);
     }
     let ty = infer_call_inner(
         ctx,
