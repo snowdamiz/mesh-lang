@@ -1478,6 +1478,8 @@ impl<'a> Lowerer<'a> {
                     .collect();
                 (&info.generic_params, variants)
             } else {
+                // A type of a module lowered later, which a generic function
+                // here is specialized at: nothing here describes it.
                 return MsgShape::Shared;
             };
 

@@ -62,21 +62,17 @@ impl<'ctx> CodeGen<'ctx> {
             | MirType::FnPtr(..) => MsgShape::Scalar,
             MirType::Pid(_) => MsgShape::Pid,
             MirType::String => MsgShape::String,
-            MirType::Ptr => MsgShape::Shared,
+            // Lowering types a tuple value, and a field or payload holding
+            // one, as the pointer to its heap block.
+            MirType::Ptr | MirType::Tuple(_) => MsgShape::Shared,
             MirType::Closure(..) => MsgShape::Closure,
-            MirType::Tuple(elems) => MsgShape::Tuple(
-                elems
-                    .iter()
-                    .map(|elem| self.shape_of_mir_type(elem, open))
-                    .collect(),
-            ),
             MirType::Struct(name) | MirType::SumType(name) if open.contains(name) => {
                 MsgShape::Recur(name.clone())
             }
+            // Every struct and sum type a value has is defined, builtin
+            // ones and generic instances included.
             MirType::Struct(name) => {
-                let Some(fields) = self.mir_struct_defs.get(name).cloned() else {
-                    return MsgShape::Shared;
-                };
+                let fields = self.mir_struct_defs[name].clone();
                 open.push(name.clone());
                 let shapes = fields
                     .iter()
@@ -86,9 +82,7 @@ impl<'ctx> CodeGen<'ctx> {
                 MsgShape::Struct(name.clone(), shapes)
             }
             MirType::SumType(name) => {
-                let Some(def) = self.lookup_sum_type_def(name).cloned() else {
-                    return MsgShape::Shared;
-                };
+                let def = self.defined_sum_type(name);
                 open.push(name.clone());
                 let variants = def
                     .variants
@@ -347,10 +341,9 @@ impl<'a, 'ctx> ShapeTable<'a, 'ctx> {
         match shape {
             MsgShape::Struct(name, fields) => self.by_value_struct(name, fields, struct_ty),
             MsgShape::Sum(name, variants) => self.by_value_sum(name, variants),
-            MsgShape::Recur(name) => match self.named.get(name) {
-                Some(&node) => node,
-                None => self.plain(SCALAR),
-            },
+            // A type refers back to itself only inside its own description,
+            // whose node is reserved first.
+            MsgShape::Recur(name) => self.named[name],
             MsgShape::Scalar => self.plain(SCALAR),
             MsgShape::Closure => self.plain(CLOSURE),
             // An aggregate the shape does not describe: every pointer in it
@@ -402,9 +395,7 @@ impl<'a, 'ctx> ShapeTable<'a, 'ctx> {
         if let Some(&node) = self.named.get(name) {
             return node;
         }
-        let Some(def) = self.codegen.lookup_sum_type_def(name).cloned() else {
-            return self.plain(SCALAR);
-        };
+        let def = self.codegen.defined_sum_type(name);
         let size = 2 + def
             .variants
             .iter()
@@ -422,18 +413,15 @@ impl<'a, 'ctx> ShapeTable<'a, 'ctx> {
                 &self.codegen.struct_types,
                 &self.codegen.sum_type_layouts,
             );
-            let shapes = variants
+            // A sum's shape describes each variant's every field.
+            let (_, shapes) = variants
                 .iter()
                 .find(|(variant_name, _)| *variant_name == variant.name)
-                .map(|(_, shapes)| shapes.as_slice())
-                .unwrap_or_default();
+                .expect("a sum's shape describes each of its variants");
             words.extend([variant.tag as u32, variant.fields.len() as u32]);
             for index in 0..variant.fields.len() {
                 let field_ty = overlay.get_field_type_at_index(index as u32 + 1).unwrap();
-                let node = match shapes.get(index) {
-                    Some(shape) => self.value(shape, field_ty),
-                    None => self.value(&MsgShape::Shared, field_ty),
-                };
+                let node = self.value(&shapes[index], field_ty);
                 words.extend([self.offset_of(&overlay, index as u32 + 1), node]);
             }
         }

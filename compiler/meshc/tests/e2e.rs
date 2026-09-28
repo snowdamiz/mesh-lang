@@ -8406,6 +8406,32 @@ end
 }
 
 #[test]
+fn e2e_a_generic_closure_captures_types_of_later_modules() {
+    // A generic function's closure captures a value of a type from a module
+    // lowered after it: nothing in the function's module describes the type,
+    // so the capture is shared, and the closure still reads it back.
+    let alpha = r##"pub fn later<T>(x :: T) -> Fun() -> T do
+  fn () -> x end
+end
+"##;
+    let main = r##"from Alpha import later
+
+struct Crate do
+  n :: Int
+  label :: String
+end
+
+fn main() do
+  let f = later(Crate { n: 4, label: "four" })
+  let c = f()
+  println("#{c.n} #{c.label}")
+end
+"##;
+    let output = compile_multifile_and_run(&[("alpha.mpl", alpha), ("main.mpl", main)]);
+    assert_eq!(output, "4 four\n");
+}
+
+#[test]
 fn e2e_generic_structs_and_services_are_used_from_other_modules() {
     // A generic struct named through its module or imported by name gets
     // fresh type arguments at each use, and a service another module

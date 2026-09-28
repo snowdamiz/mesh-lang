@@ -2355,3 +2355,143 @@ fn a_type_name_is_not_a_value() {
         );
     }
 }
+
+/// A service's first state goes to the service's actor described by its
+/// type: a tuple, and a struct and a sum type that hold each other (the sum
+/// holds the struct in a box), whose description refers back to itself.
+#[test]
+fn services_start_from_tuples_and_mutually_recursive_types() {
+    let output = compile_and_run(
+        r##"struct Node do
+  label :: String
+  rest :: Tail
+end
+
+type Tail do
+  More(Node)
+  Done
+end
+
+fn depth(tail :: Tail) -> Int do
+  case tail do
+    More(node) -> 1 + depth(node.rest)
+    Done -> 0
+  end
+end
+
+service Chain do
+  fn init(node :: Node) -> Node do
+    node
+  end
+
+  call Depth() :: Int do |node|
+    (node, 1 + depth(node.rest))
+  end
+
+  call Label() :: String do |node|
+    (node, node.label)
+  end
+end
+
+service Pair do
+  fn init(n :: Int) -> (Int, String) do
+    (n, "pair")
+  end
+
+  call Show() :: String do |pair|
+    let (n, text) = pair
+    (pair, "#{text} #{n}")
+  end
+end
+
+fn main() do
+  let chain = Chain.start(Node { label: "top", rest: More(Node { label: "leaf", rest: Done }) })
+  println("#{Chain.depth(chain)} #{Chain.label(chain)}")
+  let pair = Pair.start(7)
+  println(Pair.show(pair))
+end
+"##,
+    );
+    assert_eq!(output, "2 top\npair 7\n");
+}
+
+/// A struct with `timestamps` has two fields more than its declaration
+/// says, so a message holding one is described by the pointers its layout
+/// holds, nested aggregates included: it reaches another actor whole.
+#[test]
+fn schema_structs_with_timestamps_cross_to_actors() {
+    let output = compile_and_run(
+        r##"struct User do
+  timestamps true
+  id :: String
+  age :: Int
+  nick :: Option<String>
+end deriving(Schema)
+
+actor show() do
+  receive do
+    user -> println("#{user.id} #{user.age} #{user.nick}")
+  end
+end
+
+fn main() do
+  let p = spawn(show)
+  send(p, User { id: "u1", age: 30, nick: Some("al") })
+  Timer.sleep(300)
+end
+"##,
+    );
+    assert_eq!(output, "u1 30 Some(al)\n");
+}
+
+/// A message's description covers a struct appearing twice, a sum type
+/// appearing twice, a unit field, and, for a service's reply, a struct
+/// holding a tuple.
+#[test]
+fn messages_with_repeated_unit_and_tuple_fields_cross_whole() {
+    let output = compile_and_run(
+        r##"struct Pt do
+  x :: Int
+  label :: String
+end
+
+struct Seg do
+  a :: Pt
+  b :: Pt
+  u :: ()
+  first :: Option<String>
+  second :: Option<String>
+end
+
+struct Tagged do
+  pair :: (Int, String)
+end
+
+service Keeper do
+  fn init() -> Int do
+    0
+  end
+
+  call Get() :: Tagged do |n|
+    (n, Tagged { pair: (n + 1, "kept") })
+  end
+end
+
+actor show() do
+  receive do
+    s -> println("#{s.a.label} #{s.b.label} #{s.first} #{s.second}")
+  end
+end
+
+fn main() do
+  let p = spawn(show)
+  send(p, Seg { a: Pt { x: 1, label: "a" }, b: Pt { x: 2, label: "b" }, u: (), first: Some("f"), second: None })
+  Timer.sleep(200)
+  let k = Keeper.start()
+  let t = Keeper.get(k)
+  println("#{t.pair}")
+end
+"##,
+    );
+    assert_eq!(output, "a b Some(f) None\n(1, kept)\n");
+}

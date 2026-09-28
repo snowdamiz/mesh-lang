@@ -569,6 +569,14 @@ impl<'ctx> CodeGen<'ctx> {
         by_sum_type_name(&self.sum_type_defs, name)
     }
 
+    /// The definition of the sum type `name` (or of its base), which every
+    /// sum type a value has, builtin or instance, has.
+    pub(crate) fn defined_sum_type(&self, name: &str) -> MirSumTypeDef {
+        self.lookup_sum_type_def(name)
+            .cloned()
+            .expect("every sum type a value has is defined")
+    }
+
     fn create_sum_type_layouts(&mut self, sum_types: &[MirSumTypeDef]) -> Result<(), String> {
         let known_names = sum_types
             .iter()
@@ -1368,6 +1376,24 @@ mod tests {
             actors: Vec::new(),
             native_functions: vec![],
         }
+    }
+
+    /// An aggregate a shape does not describe (a shared value laid out as a
+    /// struct) keeps every pointer in it alive; one with no pointers needs
+    /// no table.
+    #[test]
+    fn undescribed_aggregates_keep_their_pointers_alive() {
+        let context = Context::create();
+        let codegen = CodeGen::new(&context, "shapes", 0, None).unwrap();
+        let ptr = context.ptr_type(inkwell::AddressSpace::default());
+        let pointers = context.struct_type(&[ptr.into(), ptr.into()], false);
+        let words = context.struct_type(&[context.i64_type().into()], false);
+        assert!(codegen
+            .shape_table_for_value(&MsgShape::Shared, pointers.into())
+            .is_some());
+        assert!(codegen
+            .shape_table_for_value(&MsgShape::Shared, words.into())
+            .is_none());
     }
 
     #[test]
