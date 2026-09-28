@@ -208,6 +208,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::TypeArgumentCount { .. } => "E0085",
         TypeError::TopLevelStatement { .. } => "E0087",
         TypeError::MethodReturnUnknown { .. } => "E0088",
+        TypeError::SpawnByName { .. } => "E0089",
     }
 }
 
@@ -983,6 +984,14 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
             let range = clamp(text_range_to_range(*span));
 
             Description::error(range, format!("expected a function, found {}", found))
+        }
+
+        TypeError::SpawnByName { span } => {
+            let range = clamp(text_range_to_range(*span));
+            Description::error(range, "a function worked out here, not named").with_help(
+                "name the actor or function, `spawn(worker, ...)`; to choose one at run time, \
+                 spawn each by name where it is chosen",
+            )
         }
 
         TypeError::ReceiveOutsideActor { span } => {

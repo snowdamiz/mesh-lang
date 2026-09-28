@@ -14232,6 +14232,23 @@ fn infer_spawn(
         trait_registry,
         fn_constraints,
     )?;
+    // An actor starts from its function's compiled entry: a name, maybe
+    // module-qualified, and not a value that holds a function.
+    let not_local = |expr: &Expr| match expr {
+        Expr::NameRef(name) => name.text().is_some_and(|name| !env.is_local(&name)),
+        _ => false,
+    };
+    let named = match actor_fn_expr {
+        Expr::FieldAccess(fa) => fa.base().is_some_and(|base| not_local(&base)),
+        other => not_local(other),
+    };
+    if !named && matches!(ctx.resolve(actor_fn_ty.clone()), Ty::Fun(..)) {
+        let err = TypeError::SpawnByName {
+            span: actor_fn_expr.syntax().text_range(),
+        };
+        ctx.errors.push(err.clone());
+        return Err(err);
+    }
 
     // Remaining args are initial state.
     let mut state_arg_types = Vec::new();

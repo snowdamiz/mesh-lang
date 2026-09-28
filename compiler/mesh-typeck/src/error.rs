@@ -210,6 +210,9 @@ pub enum TypeError {
     MonitorOutsideActor { span: TextRange },
     /// spawn called with a non-function argument.
     SpawnNonFunction { found: Ty, span: TextRange },
+    /// spawn of a function computed at run time (`spawn(pick())`): an actor
+    /// is started from its compiled entry, which only its name gives.
+    SpawnByName { span: TextRange },
     /// receive used outside an actor block.
     ReceiveOutsideActor { span: TextRange },
     /// Child spec start function does not return Pid.
@@ -576,6 +579,7 @@ impl TypeError {
             | TypeError::SelfOutsideActor { span, .. }
             | TypeError::MonitorOutsideActor { span, .. }
             | TypeError::SpawnNonFunction { span, .. }
+            | TypeError::SpawnByName { span }
             | TypeError::ReceiveOutsideActor { span, .. }
             | TypeError::InvalidChildStart { span, .. }
             | TypeError::InvalidStrategy { span, .. }
@@ -865,6 +869,9 @@ impl fmt::Display for TypeError {
                     "cannot spawn non-function: found `{}`",
                     found.with_holes()
                 )
+            }
+            TypeError::SpawnByName { .. } => {
+                write!(f, "an actor is spawned by its name")
             }
             TypeError::ReceiveOutsideActor { .. } => {
                 write!(f, "receive used outside actor block")

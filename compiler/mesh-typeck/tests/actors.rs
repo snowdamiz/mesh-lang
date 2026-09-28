@@ -312,3 +312,21 @@ fn test_monitor_outside_actor_error() {
         );
     }
 }
+
+/// An actor is spawned by its name: a function worked out at run time (a
+/// call's result, a local holding one) has no compiled entry for the new
+/// actor, and code generation refused it without a location.
+#[test]
+fn test_an_actor_is_spawned_by_its_name() {
+    let prelude = "actor worker() do\n  receive do\n    msg -> println(\"#{msg + 1}\")\n  end\nend\n\nfn pick() do\n  worker\nend\n\n";
+    for body in ["spawn(pick())", "let w = pick()\n  spawn(w)"] {
+        let result = check_source(&format!("{prelude}fn main() do\n  {body}\nend\n"));
+        assert_has_error(
+            &result,
+            |e| matches!(e, TypeError::SpawnByName { .. }),
+            body,
+        );
+    }
+    let result = check_source(&format!("{prelude}fn main() do\n  spawn(worker)\nend\n"));
+    assert_no_errors(&result);
+}
