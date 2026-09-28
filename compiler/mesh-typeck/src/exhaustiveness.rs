@@ -1012,6 +1012,32 @@ mod tests {
         );
     }
 
+    /// Without the nested type in the registry, its column is taken for a
+    /// type of endless values: every variant named there still leaves a
+    /// value no arm covers.
+    #[test]
+    fn test_nested_type_missing_from_the_registry_is_endless() {
+        let mut registry = TypeRegistry::new();
+        registry.register("Option", option_shape_type());
+        let result = check_exhaustiveness(
+            &[
+                ctor(
+                    "Some",
+                    "Option",
+                    vec![ctor("Circle", "Shape", vec![wildcard()])],
+                ),
+                ctor("Some", "Option", vec![ctor("Point", "Shape", vec![])]),
+                ctor("None", "Option", vec![]),
+            ],
+            &option_shape_type(),
+            &registry,
+        );
+        assert!(
+            result.is_some(),
+            "an unregistered nested type cannot be covered"
+        );
+    }
+
     // ── Or-patterns ──────────────────────────────────────────────────
 
     #[test]
