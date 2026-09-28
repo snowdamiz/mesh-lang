@@ -1060,7 +1060,7 @@ impl<'ctx> CodeGen<'ctx> {
         let value = match name {
             "__mesh_uniform_decode" => {
                 let raw = self.codegen_expr(&args[0])?.into_int_value();
-                self.convert_from_list_element(raw, ty)?
+                self.convert_from_list_element(raw, ty)
             }
             "__mesh_uniform_encode" => {
                 let value = self.codegen_expr(&args[0])?;
@@ -1189,7 +1189,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(error)?
             }
             MirType::Struct(_) | MirType::SumType(_) | MirType::Closure(..) => {
-                self.convert_from_list_element(word, ty)?
+                self.convert_from_list_element(word, ty)
             }
             MirType::String | MirType::Ptr => self
                 .builder
@@ -4329,46 +4329,38 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         val: inkwell::values::IntValue<'ctx>,
         target_ty: &MirType,
-    ) -> Result<BasicValueEnum<'ctx>, String> {
+    ) -> BasicValueEnum<'ctx> {
         let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
         match target_ty {
-            MirType::Int | MirType::Pid(_) => Ok(val.into()),
-            MirType::Bool => {
-                let truncated = self
-                    .builder
-                    .build_int_truncate(val, self.context.bool_type(), "i64_to_bool")
-                    .map_err(|e| e.to_string())?;
-                Ok(truncated.into())
-            }
-            MirType::Float => {
-                let f64_type = self.context.f64_type();
-                let cast_result = self
-                    .builder
-                    .build_bit_cast(val, f64_type, "i64_to_float")
-                    .map_err(|e| e.to_string())?;
-                Ok(cast_result)
-            }
+            MirType::Int | MirType::Pid(_) => val.into(),
+            MirType::Bool => self
+                .builder
+                .build_int_truncate(val, self.context.bool_type(), "i64_to_bool")
+                .expect(BUILT)
+                .into(),
+            MirType::Float => self
+                .builder
+                .build_bit_cast(val, self.context.f64_type(), "i64_to_float")
+                .expect(BUILT),
             // A tuple is a pointer to the runtime tuple.
-            MirType::String | MirType::Ptr | MirType::FnPtr(_, _) | MirType::Tuple(_) => {
-                let ptr_val = self
-                    .builder
-                    .build_int_to_ptr(val, ptr_type, "i64_to_ptr")
-                    .map_err(|e| e.to_string())?;
-                Ok(ptr_val.into())
-            }
+            MirType::String | MirType::Ptr | MirType::FnPtr(_, _) | MirType::Tuple(_) => self
+                .builder
+                .build_int_to_ptr(val, ptr_type, "i64_to_ptr")
+                .expect(BUILT)
+                .into(),
             MirType::Struct(_) | MirType::SumType(_) | MirType::Closure(_, _) => {
                 let ptr_val = self
                     .builder
                     .build_int_to_ptr(val, ptr_type, "i64_to_boxed_ptr")
-                    .map_err(|e| e.to_string())?;
+                    .expect(BUILT);
                 self.builder
                     .build_load(self.llvm_type(target_ty), ptr_val, "boxed_value")
-                    .map_err(|e| e.to_string())
+                    .expect(BUILT)
             }
             // The unit value; no slot holds a value that never comes into
             // being, so none is read as one.
             MirType::Unit | MirType::Never => {
-                Ok(self.context.struct_type(&[], false).const_zero().into())
+                self.context.struct_type(&[], false).const_zero().into()
             }
         }
     }
@@ -4400,10 +4392,9 @@ impl<'ctx> CodeGen<'ctx> {
                     &[list.into(), index.into()],
                     "raw_elem",
                 );
-                Ok(vec![cg.convert_from_list_element(
-                    raw.into_int_value(),
-                    elem_ty,
-                )?])
+                Ok(vec![
+                    cg.convert_from_list_element(raw.into_int_value(), elem_ty)
+                ])
             },
         )
     }
@@ -4435,8 +4426,8 @@ impl<'ctx> CodeGen<'ctx> {
                 let key = cg.codegen_runtime_call("mesh_map_entry_key", &args, "raw_key");
                 let value = cg.codegen_runtime_call("mesh_map_entry_value", &args, "raw_val");
                 Ok(vec![
-                    cg.convert_from_list_element(key.into_int_value(), key_ty)?,
-                    cg.convert_from_list_element(value.into_int_value(), val_ty)?,
+                    cg.convert_from_list_element(key.into_int_value(), key_ty),
+                    cg.convert_from_list_element(value.into_int_value(), val_ty),
                 ])
             },
         )
@@ -4467,10 +4458,9 @@ impl<'ctx> CodeGen<'ctx> {
                     &[set.into(), index.into()],
                     "raw_elem",
                 );
-                Ok(vec![cg.convert_from_list_element(
-                    raw.into_int_value(),
-                    elem_ty,
-                )?])
+                Ok(vec![
+                    cg.convert_from_list_element(raw.into_int_value(), elem_ty)
+                ])
             },
         )
     }
@@ -4569,7 +4559,7 @@ impl<'ctx> CodeGen<'ctx> {
                         .builder
                         .build_ptr_to_int(raw, i64_ty, "elem_slot")
                         .map_err(|e| e.to_string())?;
-                    cg.convert_from_list_element(slot, elem_ty)?
+                    cg.convert_from_list_element(slot, elem_ty)
                 };
                 Ok(vec![value])
             },

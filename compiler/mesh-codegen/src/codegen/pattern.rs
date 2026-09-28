@@ -495,7 +495,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .into_int_value();
 
                 // Convert u64 -> the element type.
-                let converted = self.convert_from_list_element(head_i64, elem_ty)?;
+                let converted = self.convert_from_list_element(head_i64, elem_ty);
 
                 // Store in an alloca so we can return a pointer.
                 let alloca = self
