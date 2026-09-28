@@ -836,19 +836,26 @@ mod tests {
         std::fs::create_dir_all(inner.join("debug")).unwrap();
         std::fs::write(outer.join("CACHEDIR.TAG"), "").unwrap();
         std::fs::write(inner.join("CACHEDIR.TAG"), "").unwrap();
+        // The temporary directory may itself be under a `target` directory.
+        let within = |meshc: PathBuf| {
+            target_dirs_above(&meshc)
+                .into_iter()
+                .filter(|dir| dir.starts_with(&root))
+                .collect::<Vec<_>>()
+        };
         assert_eq!(
-            target_dirs_above(&inner.join("debug/meshc")),
+            within(inner.join("debug/meshc")),
             [inner.clone(), outer.clone()],
             "its own first, then the `target` around it"
         );
         std::fs::create_dir_all(root.join("custom/release")).unwrap();
         std::fs::write(root.join("custom/CACHEDIR.TAG"), "").unwrap();
         assert_eq!(
-            target_dirs_above(&root.join("custom/release/meshc")),
+            within(root.join("custom/release/meshc")),
             [root.join("custom"), outer.clone()]
         );
         assert_eq!(
-            target_dirs_above(&root.join("bin/meshc")),
+            within(root.join("bin/meshc")),
             [outer],
             "untagged: a `target` beside an ancestor"
         );
