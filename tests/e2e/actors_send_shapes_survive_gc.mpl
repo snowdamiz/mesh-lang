@@ -80,6 +80,10 @@ fn show_result(outcome :: Result<Int, String>) -> Int do
   end
 end
 
+fn show_json(doc :: Json) -> Int do
+  say("json", "${doc}")
+end
+
 actor r_named() do
   receive do
     m -> show_note(m)
@@ -152,6 +156,12 @@ actor r_result() do
   end
 end
 
+actor r_json() do
+  receive do
+    m -> show_json(m)
+  end
+end
+
 fn churn(i :: Int, n :: Int, acc :: Int) -> Int do
   if i >= n do
     acc
@@ -174,6 +184,7 @@ fn run_sender() -> Int do
   send(spawn(r_map), Map.put(Map.new(), "key-${1000000 + 1}", "mapped-${100 + 10}"))
   send(spawn(r_option), Some("option-${100 + 11}"))
   send(spawn(r_result), Err("result-${100 + 12}"))
+  send(spawn(r_json), json { name: "json-${100 + 17}", tags: ["tag-${100 + 18}"] })
   churn(0, 200000, 0)
 end
 

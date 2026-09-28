@@ -277,8 +277,9 @@ fn assert_lines(fixture: &str, expected: &[&str]) {
 
 /// Every common message shape arrives as the receiver's own copy, while the
 /// sender drops each value and keeps collecting. Also covers messages wider
-/// than one word, which `receive` used to truncate to their first 8 bytes, and
-/// a one-word struct, which a tuple field holds without a box.
+/// than one word, which `receive` used to truncate to their first 8 bytes, a
+/// one-word struct, which a tuple field holds without a box, and a `json { }`
+/// literal, a tree like any `Json`.
 #[test]
 fn actors_send_shapes_survive_sender_gc() {
     assert_lines(
@@ -296,6 +297,7 @@ fn actors_send_shapes_survive_sender_gc() {
             "option=option-111",
             "result=result-112",
             "pairs=pairs-b-114/14",
+            r#"json={"name":"json-117","tags":["tag-118"]}"#,
         ],
     );
 }

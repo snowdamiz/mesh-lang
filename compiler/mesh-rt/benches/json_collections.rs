@@ -72,7 +72,7 @@ fn main() {
                 let parsed = if case.starts_with("parse_") {
                     std::ptr::null_mut()
                 } else {
-                    json::mesh_json_parse_raw(input)
+                    unsafe { (*json::mesh_json_parse(input)).value }
                 };
                 let source = if case == "from_list" {
                     let values: Vec<u64> = (0..size as u64).collect();

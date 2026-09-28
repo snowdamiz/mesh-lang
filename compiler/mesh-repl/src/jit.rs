@@ -1117,10 +1117,6 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
         ),
         ("mesh_json_parse", mesh_rt::mesh_json_parse as *const ()),
         (
-            "mesh_json_parse_raw",
-            mesh_rt::json::mesh_json_parse_raw as *const (),
-        ),
-        (
             "mesh_json_to_list",
             mesh_rt::json::mesh_json_to_list as *const (),
         ),

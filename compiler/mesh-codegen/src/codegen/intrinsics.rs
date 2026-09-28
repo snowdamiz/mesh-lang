@@ -2169,13 +2169,6 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
-    // mesh_json_parse_raw(input: ptr) -> ptr (MeshJson) -- Phase 132: decode JSON string to raw pointer for nesting
-    module.add_function(
-        "mesh_json_parse_raw",
-        ptr_type.fn_type(&[ptr_type.into()], false),
-        Some(inkwell::module::Linkage::External),
-    );
-
     // mesh_json_encode(json: ptr) -> ptr (MeshString)
     module.add_function(
         "mesh_json_encode",
