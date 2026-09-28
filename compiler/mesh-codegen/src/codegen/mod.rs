@@ -1516,7 +1516,10 @@ mod tests {
             name: name.to_string(),
             fields: vec![("next".to_string(), MirType::Struct(other.to_string()))],
         };
-        for structs in [vec![holding("Node", "Node")], vec![holding("A", "B"), holding("B", "A")]] {
+        for structs in [
+            vec![holding("Node", "Node")],
+            vec![holding("A", "B"), holding("B", "A")],
+        ] {
             let mut mir = empty_mir_module();
             mir.structs = structs;
             let context = Context::create();

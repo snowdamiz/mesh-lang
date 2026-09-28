@@ -9491,9 +9491,7 @@ impl<'a> Lowerer<'a> {
                 let suffix = format!("__{field}__{ty_name}");
                 self.known_functions
                     .iter()
-                    .filter(|(fn_name, _)| {
-                        fn_name.ends_with(&suffix) && !fn_name.starts_with("__")
-                    })
+                    .filter(|(fn_name, _)| fn_name.ends_with(&suffix) && !fn_name.starts_with("__"))
                     .min_by(|a, b| a.0.cmp(b.0))
                     .map(|(fn_name, fn_ty)| MirExpr::Var(fn_name.clone(), fn_ty.clone()))
             })
