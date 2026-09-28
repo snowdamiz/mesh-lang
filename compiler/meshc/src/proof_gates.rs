@@ -136,6 +136,8 @@ struct AutonomousPerformanceSummary {
     consensus_commit_p50_micros: u64,
     consensus_commit_p95_micros: u64,
     consensus_commit_p99_micros: u64,
+    /// The first consensus commit that failed, if one did.
+    consensus_commit_error: Option<String>,
     driver_reconcile_average_micros: f64,
     assertions: BTreeMap<String, bool>,
     pass: bool,
@@ -709,20 +711,21 @@ fn measure_autonomous_performance(
     let term = quorum.elect("a", &voters)?;
     let consensus_iterations = iterations.min(2_000);
     let mut consensus_latencies = Vec::with_capacity(consensus_iterations as usize);
+    // The first commit that failed (the durable log could not be written).
+    let mut consensus_commit_error = None;
     for index in 0..consensus_iterations {
         let started = Instant::now();
-        quorum
-            .commit(
-                "a",
-                term,
-                &voters,
-                "performance-gate",
-                "bounded commit latency",
-                ControlMutation::PauseAutoscaler {
-                    paused: index % 2 == 0,
-                },
-            )
-            .map_err(|error| format!("performance_consensus_commit_failed:{error}"))?;
+        let committed = quorum.commit(
+            "a",
+            term,
+            &voters,
+            "performance-gate",
+            "bounded commit latency",
+            ControlMutation::PauseAutoscaler {
+                paused: index % 2 == 0,
+            },
+        );
+        consensus_commit_error = consensus_commit_error.or(committed.err());
         consensus_latencies.push(started.elapsed().as_micros().try_into().unwrap_or(u64::MAX));
     }
 
@@ -817,6 +820,10 @@ fn measure_autonomous_performance(
         consensus_commit_p95_micros <= budget.consensus_commit_p95_max_micros,
     );
     assertions.insert(
+        "consensus_commits_succeeded".to_string(),
+        consensus_commit_error.is_none(),
+    );
+    assertions.insert(
         "driver_reconcile_average_within_budget".to_string(),
         driver_reconcile_average_micros <= budget.driver_reconcile_average_max_micros,
     );
@@ -848,6 +855,7 @@ fn measure_autonomous_performance(
         consensus_commit_p50_micros,
         consensus_commit_p95_micros,
         consensus_commit_p99_micros,
+        consensus_commit_error,
         driver_reconcile_average_micros,
         assertions,
         pass,
