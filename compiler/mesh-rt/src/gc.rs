@@ -248,47 +248,6 @@ pub(crate) fn forget_current_process() {
     let _ = CURRENT_PROCESS.try_with(|cached| cached.borrow_mut().take());
 }
 
-/// Trigger garbage collection on the current actor's heap.
-///
-/// Explicitly forces a mark-sweep GC cycle on the calling actor's heap,
-/// regardless of heap pressure. This can be called from Mesh code via
-/// `System.gc()` or similar intrinsic.
-///
-/// The function:
-/// 1. Conservatively scans the actor's coroutine stack for roots
-/// 2. Marks all transitively reachable objects
-/// 3. Sweeps unmarked objects onto the free list for reuse
-///
-/// No-op if called outside of an actor context or if GC is already in
-/// progress (re-entrancy guard).
-#[no_mangle]
-pub extern "C" fn mesh_gc_collect() {
-    let Some(proc_arc) = crate::actor::current_process() else {
-        return;
-    };
-
-    let register_roots = crate::actor::capture_register_roots();
-
-    // Capture current stack position as stack_top.
-    let stack_anchor: u64 = 0;
-    let _ = std::hint::black_box(&stack_anchor);
-    let stack_top = std::cmp::min(
-        &stack_anchor as *const u64 as usize,
-        register_roots.as_ptr() as usize,
-    ) as *const u8;
-
-    let mut proc = proc_arc.lock();
-
-    // Set once, as the coroutine starts, and never changed.
-    let stack_bottom = proc.stack_base;
-    if stack_bottom.is_null() {
-        return;
-    }
-
-    proc.heap.collect(stack_bottom, stack_top);
-    std::hint::black_box(&register_roots);
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -347,10 +306,10 @@ mod tests {
     }
 
     #[test]
-    fn test_mesh_gc_collect_no_crash_outside_actor() {
-        // When called outside an actor context (no current PID), should be a
-        // no-op without crashing.
-        mesh_gc_collect();
+    fn an_arena_readies_itself_on_its_first_allocation() {
+        let mut arena = Arena::new();
+        assert!(!arena.alloc(8, 8).is_null());
+        assert_eq!(arena.pages.len(), 1);
     }
 
     #[test]
