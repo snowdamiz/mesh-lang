@@ -1443,11 +1443,9 @@ impl<'a> Lowerer<'a> {
             _ => {}
         }
 
-        // User-defined and builtin generic types. Resources are owner-bound
-        // handles, never duplicated.
-        if self.registry.is_resource_name(name) {
-            return MsgShape::Shared;
-        }
+        // User-defined and builtin generic types. A resource never crosses
+        // (the ownership checker refuses it in a send, a spawn, a service
+        // call and a job's result).
         let (MirType::Struct(mir_name) | MirType::SumType(mir_name)) =
             resolve_type(ty, self.registry)
         else {

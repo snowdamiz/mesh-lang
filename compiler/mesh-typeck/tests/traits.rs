@@ -454,6 +454,8 @@ fn a_default_method_returns_what_its_body_does() {
     let src = "interface Greeter do\n  fn name(self) -> String\n  fn greet(self) do\n    \"hello #{self.name()}\"\n  end\n  fn me(self) do\n    self\n  end\nend\n\n\
 struct Person do\n  who :: String\nend\n\n\
 impl Greeter for Person do\n  fn name(self) -> String do\n    self.who\n  end\nend\n\n\
+struct Robot do\n  id :: Int\nend\n\n\
+impl Greeter for Robot do\n  fn name(self) -> String do\n    \"robot\"\n  end\n  fn greet(self) -> String do\n    \"beep\"\n  end\nend\n\n\
 fn main() do\n  let p = Person { who: \"ada\" }\n  let n :: Int = String.length(p.greet())\n  p.me().who\nend\n";
     let result = check_source(src);
     assert!(result.errors.is_empty(), "{:?}", result.errors);

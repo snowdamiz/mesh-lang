@@ -166,10 +166,8 @@ impl serde::Serialize for Tree {
                 let mut object = serializer.serialize_map(Some(len as usize))?;
                 for i in 0..len {
                     let key = unsafe { text_of(list::mesh_list_get(keys, i) as *const MeshString) };
-                    object.serialize_entry(
-                        key,
-                        &Tree(list::mesh_list_get(values, i) as *const MeshJson),
-                    )?;
+                    let value = Tree(list::mesh_list_get(values, i) as *const MeshJson);
+                    object.serialize_entry(key, &value)?;
                 }
                 object.end()
             }
@@ -733,6 +731,33 @@ mod tests {
         assert_eq!(unsafe { (*mesh_json_encode(unknown)).as_str() }, "null");
         let infinite = alloc_json(JSON_FLOAT, f64::INFINITY.to_bits()) as *mut u8;
         assert_eq!(unsafe { (*mesh_json_encode(infinite)).as_str() }, "null");
+    }
+
+    /// Negative numbers (serde's `visit_i64`), floats compared, and what a
+    /// parse expects when handed something no JSON text holds.
+    #[test]
+    fn negative_numbers_and_floats_read_and_compare() {
+        use serde::Deserialize;
+        mesh_rt_init();
+        let parsed = |text: &str| unsafe { (*mesh_json_parse(mesh_str(text))).value };
+        let negative = parsed("-5");
+        assert_eq!(
+            unsafe {
+                (
+                    (*(negative as *const MeshJson)).tag,
+                    (*(negative as *const MeshJson)).value as i64,
+                )
+            },
+            (JSON_INT, -5)
+        );
+        assert_eq!(mesh_json_eq(parsed("1.5"), parsed("1.5")), 1);
+        assert_eq!(mesh_json_eq(parsed("1.5"), parsed("2.5")), 0);
+        let bytes = serde::de::value::BytesDeserializer::<serde::de::value::Error>::new(b"x");
+        let error = Parsed::deserialize(bytes).err().unwrap();
+        assert!(
+            error.to_string().contains("expected a JSON value"),
+            "{error}"
+        );
     }
 
     #[test]

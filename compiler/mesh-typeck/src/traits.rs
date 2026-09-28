@@ -262,20 +262,21 @@ impl TraitRegistry {
     /// that says nothing yet (one inheriting the default, or overriding it
     /// unannotated, which is then checked against it).
     pub fn set_default_return(&mut self, trait_name: &str, method: &str, ret: &Ty) {
-        let Some(sig) = self
+        let sig = self
             .traits
             .get_mut(trait_name)
             .and_then(|def| def.methods.iter_mut().find(|m| m.name == method))
-        else {
-            return;
-        };
+            .expect("the interface is registered with its default method");
         sig.return_type = Some(ret.clone());
         for impl_def in self.impls.get_mut(trait_name).into_iter().flatten() {
             let (impl_type, assoc_types) = (&impl_def.impl_type, &impl_def.associated_types);
-            if let Some(impl_sig) = impl_def.methods.get_mut(method) {
-                if impl_sig.return_type.is_none() {
-                    impl_sig.return_type = Some(in_impl(ret, impl_type, assoc_types));
-                }
+            // Every impl has the method, its own or the default.
+            let unsaid = impl_def
+                .methods
+                .get_mut(method)
+                .filter(|sig| sig.return_type.is_none());
+            if let Some(impl_sig) = unsaid {
+                impl_sig.return_type = Some(in_impl(ret, impl_type, assoc_types));
             }
         }
     }

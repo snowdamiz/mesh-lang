@@ -1029,11 +1029,12 @@ impl Checker<'_> {
             _ => None,
         };
         if let Some(function) = job_function {
-            let result = match self.known_expr_type(function) {
-                Some(Ty::Fun(_, result)) => Some(*result),
-                _ => None,
-            };
-            if result.is_some_and(|result| self.registry.is_resource_type(&result)) {
+            // The type checker gave the job's function its type.
+            let returns_resource = matches!(
+                self.known_expr_type(function),
+                Some(Ty::Fun(_, result)) if self.registry.is_resource_type(&result)
+            );
+            if returns_resource {
                 self.errors.push(TypeError::ResourceViolation {
                     reason: "a job's result cannot be a resource: it crosses to the actor that awaits it"
                         .to_string(),

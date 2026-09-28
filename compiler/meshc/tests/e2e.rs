@@ -1959,6 +1959,45 @@ end
     assert_eq!(output, "true false false\ntrue false\nA(Bytes(6162))\n");
 }
 
+/// An interface method declared without a result type returns `()`, and
+/// an imported struct is shown by its own module's derived Display.
+#[test]
+fn e2e_unit_methods_and_imported_displays() {
+    let output = compile_multifile_and_run(&[
+        (
+            "shapes.mpl",
+            "pub struct Point do\n  x :: Int\nend deriving(Display)\n",
+        ),
+        (
+            "main.mpl",
+            r##"
+import Shapes
+
+interface Poke do
+  fn poke(self)
+end
+
+struct Target do
+  n :: Int
+end
+
+impl Poke for Target do
+  fn poke(self) do
+    println("poked #{self.n}")
+  end
+end
+
+fn main() do
+  Target { n: 1 }.poke()
+  let p = Shapes.Point { x: 2 }
+  println("#{p} #{[p]}")
+end
+"##,
+        ),
+    ]);
+    assert_eq!(output, "poked 1\nPoint(2) [Point(2)]\n");
+}
+
 /// Helper: compile a multi-file Mesh project, expecting build failure.
 /// Returns stderr.
 fn compile_multifile_expect_error(files: &[(&str, &str)]) -> String {

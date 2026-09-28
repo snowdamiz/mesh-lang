@@ -7514,10 +7514,13 @@ fn infer_interface_def(
                 // written: `p.greet()` has its type. Not a type the body
                 // leaves open.
                 let ret = ctx.resolve(ret);
-                if let Some(name) = method.name().and_then(|n| n.text()) {
-                    if !ret.has_type_vars() {
-                        trait_registry.set_default_return(&trait_name, &name, &ret);
-                    }
+                if !ret.has_type_vars() {
+                    // Named as `interface_trait_def` registered it.
+                    let name = method
+                        .name()
+                        .and_then(|n| n.text())
+                        .unwrap_or_else(|| "<unnamed>".to_string());
+                    trait_registry.set_default_return(&trait_name, &name, &ret);
                 }
                 ret
             }
