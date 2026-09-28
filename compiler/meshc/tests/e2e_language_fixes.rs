@@ -2607,13 +2607,13 @@ end
 "##;
     assert_eq!(
         run(source),
-        "{\"f\":1.5,\"i\":7,\"s\":\"x\"}\n\
-         {\"f\":null,\"i\":null,\"s\":null}\n\
+        "{\"s\":\"x\",\"i\":7,\"f\":1.5}\n\
+         {\"s\":null,\"i\":null,\"f\":null}\n\
          err $.i: expected Int\n\
-         {\"inner\":{\"m\":{\"a\":[1]},\"n\":[[1,2],[]],\"o\":[3],\"p\":[1,\"z\"]},\"kids\":[{\"kids\":[]}]}\n\
+         {\"inner\":{\"n\":[[1,2],[]],\"o\":[3],\"m\":{\"a\":[1]},\"p\":[1,\"z\"]},\"kids\":[{\"kids\":[]}]}\n\
          true [1]\n\
-         {\"fields\":[{\"a\":1}],\"tag\":\"W\"} {\"fields\":[[10,20]],\"tag\":\"V\"}\n\
-         {\"fields\":[[1,2]],\"tag\":\"V\"}\n\
+         {\"tag\":\"W\",\"fields\":[{\"a\":1}]} {\"tag\":\"V\",\"fields\":[[10,20]]}\n\
+         {\"tag\":\"V\",\"fields\":[[1,2]]}\n\
          3\n\
          {\"value\":[\"x\"]} {\"value\":{\"a\":1}}\n"
     );
@@ -5168,7 +5168,7 @@ end
 "##;
     assert_eq!(
         run(source),
-        "1\ntrue\n1.5\n\"s\"\n[1.5,2.0]\n1\n[1,\"a\"]\n{\"y\":2,\"z\":1}\n[{\"a\":\"x\",\"b\":1}]\n[1,2]\n"
+        "1\ntrue\n1.5\n\"s\"\n[1.5,2.0]\n1\n[1,\"a\"]\n{\"z\":1,\"y\":2}\n[{\"b\":1,\"a\":\"x\"}]\n[1,2]\n"
     );
     let err = build_error("fn main() do\n  println(Json.encode(%{1 => 2}))\nend\n");
     assert!(
