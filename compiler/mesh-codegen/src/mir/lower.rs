@@ -756,6 +756,19 @@ impl<'a> Lowerer<'a> {
         None
     }
 
+    /// The variables a closure lowered here may capture: those of the
+    /// enclosing functions' scopes, an inner one's shadowing an outer one's.
+    /// The global scope holds top-level functions, which a closure calls by
+    /// name.
+    fn capturable_vars(&self) -> HashMap<String, MirType> {
+        self.scopes
+            .iter()
+            .skip(1)
+            .flat_map(|scope| scope.iter())
+            .map(|(name, ty)| (name.clone(), ty.clone()))
+            .collect()
+    }
+
     fn lookup_non_global_var(&self, name: &str) -> Option<MirType> {
         for scope in self.scopes.iter().skip(1).rev() {
             if let Some(ty) = scope.get(name) {
@@ -10701,12 +10714,7 @@ impl<'a> Lowerer<'a> {
         // Determine captured variables by scanning the closure body.
         // Any variable referenced in the body that is not a parameter and
         // exists in the outer scope is a capture.
-        let outer_vars: HashMap<String, MirType> = self
-            .scopes
-            .iter()
-            .flat_map(|s| s.iter())
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
+        let outer_vars = self.capturable_vars();
 
         let param_set: std::collections::HashSet<&str> =
             param_names.iter().map(|s| s.as_str()).collect();
@@ -10800,12 +10808,7 @@ impl<'a> Lowerer<'a> {
         fn_params.extend(params.iter().cloned());
 
         // Collect outer vars for capture analysis.
-        let outer_vars: HashMap<String, MirType> = self
-            .scopes
-            .iter()
-            .flat_map(|s| s.iter())
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
+        let outer_vars = self.capturable_vars();
 
         let param_names: Vec<String> = params.iter().map(|(n, _)| n.clone()).collect();
         let param_set: std::collections::HashSet<&str> =
@@ -17393,6 +17396,29 @@ mod tests {
                 if **element == MsgShape::String),
             "{captures:?}"
         );
+    }
+
+    /// A closure calls a top-level function by its name, as any function
+    /// does; only the enclosing function's variables are captured. The
+    /// global scope's function names were captured too, each taking an
+    /// environment slot for a pointer the call never read.
+    #[test]
+    fn closures_capture_locals_but_not_top_level_functions() {
+        let mir = lower(
+            "fn double(n :: Int) -> Int do\n  n * 2\nend\n\n\
+             fn main() do\n  let k = 3\n  let f = fn (x :: Int) -> double(x) + k end\n  println(\"#{f(1)}\")\nend",
+        );
+        let main = function_body(&mir, "mesh_main");
+        let captures = main
+            .descendants()
+            .into_iter()
+            .find_map(|node| match node {
+                MirExpr::MakeClosure { captures, .. } => Some(captures.clone()),
+                _ => None,
+            })
+            .expect("main makes a closure");
+        assert_eq!(captures.len(), 1, "{captures:?}");
+        assert_eq!(var_refs(&captures[0], "k"), 1, "{captures:?}");
     }
 
     /// The checker counts a pid of resource messages as a resource, but the
