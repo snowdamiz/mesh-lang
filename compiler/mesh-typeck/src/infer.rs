@@ -14294,6 +14294,15 @@ fn infer_spawn(
 
     let resolved_fn = ctx.resolve(actor_fn_ty.clone());
     match resolved_fn {
+        // A function that is no actor returns no pid: it said "expected
+        // `()`, found `Pid<_>`" of the spawn.
+        Ty::Fun(_, ret) if !matches!(*ret, Ty::Var(_)) && ret.con_name() != Some("Pid") => {
+            let err = TypeError::SpawnNotActor {
+                span: actor_fn_expr.syntax().text_range(),
+            };
+            ctx.errors.push(err.clone());
+            return Err(err);
+        }
         Ty::Fun(_, _) | Ty::Var(_) => {
             let origin = ConstraintOrigin::FnArg {
                 call_site: spawn.syntax().text_range(),

@@ -209,6 +209,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::TopLevelStatement { .. } => "E0087",
         TypeError::MethodReturnUnknown { .. } => "E0088",
         TypeError::SpawnByName { .. } => "E0089",
+        TypeError::SpawnNotActor { .. } => "E0090",
     }
 }
 
@@ -999,6 +1000,14 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
             let range = clamp(text_range_to_range(*span));
 
             Description::error(range, format!("expected a function, found {}", found))
+        }
+
+        TypeError::SpawnNotActor { span } => {
+            let range = clamp(text_range_to_range(*span));
+            Description::error(range, "a function, not an actor").with_help(
+                "define what runs in the new process as `actor name(...) do ... end`, \
+                 or call the function",
+            )
         }
 
         TypeError::SpawnByName { span } => {

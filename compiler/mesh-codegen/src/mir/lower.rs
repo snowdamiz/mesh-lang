@@ -13393,15 +13393,14 @@ impl<'a> Lowerer<'a> {
             .map(|list| list.args().collect::<Vec<_>>())
             .unwrap_or_default()
             .into_iter();
-        let actor = args.next().and_then(|actor| match actor {
-            Expr::NameRef(actor) => Some((actor.text()?, actor.syntax().text_range())),
-            _ => None,
-        });
-        let Some((actor, range)) = actor else {
-            self.lowering_errors
-                .push("a supervisor child must spawn an actor by its name".to_string());
-            return MirExpr::Unit;
-        };
+        // The type checker spawns an actor by its name (E0089), and no
+        // module exports one to name it through.
+        let actor = args
+            .next()
+            .and_then(|actor| NameRef::cast(actor.syntax().clone()))
+            .expect("the type checker spawns an actor by its name");
+        let range = actor.syntax().text_range();
+        let actor = actor.text().expect("a name has its text");
         let (params, _) = fun_parts(
             self.get_ty(range)
                 .expect("the type checker types the spawned actor"),
@@ -14010,19 +14009,17 @@ impl<'a> Lowerer<'a> {
 
         // Check if the spawned function has a terminate callback.
         // Look up by function name in known functions to find matching __terminate_<name>.
-        let terminate_callback = if let MirExpr::Var(ref fn_name, _) = *func {
-            let cb_name = format!("__terminate_{}", fn_name);
+        // The spawned function is named (E0089), so the callee is its Var.
+        let mut terminate_callback = None;
+        if let MirExpr::Var(fn_name, _) = func.as_ref() {
+            let cb_name = format!("__terminate_{fn_name}");
             if self.known_functions.contains_key(&cb_name) {
-                Some(Box::new(MirExpr::Var(
-                    cb_name.clone(),
+                terminate_callback = Some(Box::new(MirExpr::Var(
+                    cb_name,
                     MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Unit)),
-                )))
-            } else {
-                None
+                )));
             }
-        } else {
-            None
-        };
+        }
 
         MirExpr::ActorSpawn {
             func,

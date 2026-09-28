@@ -265,6 +265,17 @@ expression: rendered
 ───╯
 {"code":"E0089","severity":"error","message":"an actor is spawned by its name","file":"main.mpl","spans":[{"start":19,"end":24,"label":"a function worked out here, not named"}],"fix":"name the actor or function, `spawn(worker, ...)`; to choose one at run time, spawn each by name where it is chosen"}
 
+[E0090] Error: only an actor can be spawned
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── a function, not an actor
+   │
+   │ Help: define what runs in the new process as `actor name(...) do ... end`, or call the function
+───╯
+{"code":"E0090","severity":"error","message":"only an actor can be spawned","file":"main.mpl","spans":[{"start":19,"end":24,"label":"a function, not an actor"}],"fix":"define what runs in the new process as `actor name(...) do ... end`, or call the function"}
+
 [E0017] Error: receive used outside actor block
    ╭─[ main.mpl:2:7 ]
    │

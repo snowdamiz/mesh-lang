@@ -1921,6 +1921,20 @@ fn compile_multifile_and_run(files: &[(&str, &str)]) -> String {
     String::from_utf8_lossy(&run_output.stdout).to_string()
 }
 
+/// Only an actor is spawned, and a module's function is none (a module's
+/// actors are its own): the error said "expected `()`, found `Pid<_>`".
+#[test]
+fn e2e_a_modules_function_is_no_actor_to_spawn() {
+    let error = compile_multifile_expect_error(&[
+        ("workers.mpl", "pub fn hello() do\n  println(\"hi\")\nend\n"),
+        (
+            "main.mpl",
+            "import Workers\n\nfn main() do\n  spawn(Workers.hello)\nend\n",
+        ),
+    ]);
+    assert!(error.contains("only an actor can be spawned"), "{error}");
+}
+
 /// Helper: compile a multi-file Mesh project, expecting build failure.
 /// Returns stderr.
 fn compile_multifile_expect_error(files: &[(&str, &str)]) -> String {

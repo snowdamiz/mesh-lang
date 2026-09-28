@@ -213,6 +213,8 @@ pub enum TypeError {
     /// spawn of a function computed at run time (`spawn(pick())`): an actor
     /// is started from its compiled entry, which only its name gives.
     SpawnByName { span: TextRange },
+    /// spawn of a function that is no actor (`spawn(hello)` for a `fn`).
+    SpawnNotActor { span: TextRange },
     /// receive used outside an actor block.
     ReceiveOutsideActor { span: TextRange },
     /// Child spec start function does not return Pid.
@@ -580,6 +582,7 @@ impl TypeError {
             | TypeError::MonitorOutsideActor { span, .. }
             | TypeError::SpawnNonFunction { span, .. }
             | TypeError::SpawnByName { span }
+            | TypeError::SpawnNotActor { span }
             | TypeError::ReceiveOutsideActor { span, .. }
             | TypeError::InvalidChildStart { span, .. }
             | TypeError::InvalidStrategy { span, .. }
@@ -872,6 +875,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::SpawnByName { .. } => {
                 write!(f, "an actor is spawned by its name")
+            }
+            TypeError::SpawnNotActor { .. } => {
+                write!(f, "only an actor can be spawned")
             }
             TypeError::ReceiveOutsideActor { .. } => {
                 write!(f, "receive used outside actor block")

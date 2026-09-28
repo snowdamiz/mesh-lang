@@ -141,6 +141,7 @@ fn one_of_each() -> Vec<TypeError> {
             span: span(19, 24),
         },
         TypeError::SpawnByName { span: span(19, 24) },
+        TypeError::SpawnNotActor { span: span(19, 24) },
         TypeError::ReceiveOutsideActor { span: span(19, 24) },
         TypeError::InvalidChildStart {
             child_name: "child_name".to_string(),

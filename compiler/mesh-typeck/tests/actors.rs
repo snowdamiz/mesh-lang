@@ -330,3 +330,17 @@ fn test_an_actor_is_spawned_by_its_name() {
     let result = check_source(&format!("{prelude}fn main() do\n  spawn(worker)\nend\n"));
     assert_no_errors(&result);
 }
+
+/// Only an actor can be spawned: a function returns no pid, and the error
+/// said "expected `()`, found `Pid<_>`" of the spawn.
+#[test]
+fn test_only_an_actor_can_be_spawned() {
+    let result = check_source(
+        "fn hello() do\n  println(\"hi\")\nend\n\nfn main() do\n  spawn(hello)\nend\n",
+    );
+    assert_has_error(
+        &result,
+        |e| matches!(e, TypeError::SpawnNotActor { .. }),
+        "SpawnNotActor",
+    );
+}
