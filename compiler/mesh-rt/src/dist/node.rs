@@ -10968,6 +10968,51 @@ mod tests {
         assert_eq!(registry.whereis("peer-synced"), None);
     }
 
+    /// This node's global names go to its peers: each as it registers, on
+    /// the control lane, and all of them in the sync a new peer gets.
+    #[test]
+    fn this_node_global_names_go_to_its_peers() {
+        let registry = crate::dist::global::global_name_registry();
+        let peer = TestPeer::new("global-names-sent@127.0.0.1:1");
+        let pid = ProcessId(0x5E47);
+        let entry = [
+            u16_str("sent-global-name"),
+            pid.as_u64().to_le_bytes().to_vec(),
+            u16_str("self@127.0.0.1:1"),
+        ]
+        .concat();
+        registry
+            .register(
+                "sent-global-name".to_string(),
+                pid,
+                "self@127.0.0.1:1".to_string(),
+            )
+            .unwrap();
+        crate::dist::global::broadcast_global_register("sent-global-name", pid, "self@127.0.0.1:1");
+        // Other tests' registrations reach every session too.
+        let registration = frame(DIST_GLOBAL_REGISTER, &[&entry]);
+        let receivers = peer.session.outbound_receivers.lock().unwrap();
+        let control = &receivers
+            .as_ref()
+            .expect("no writer took the lanes")
+            .control;
+        assert!(control.try_iter().any(|frame| {
+            release_outbound_frame_bytes(&peer.session, &frame);
+            decode_session_payload(frame.payload, &peer.session.negotiated_protocol).unwrap()
+                == registration
+        }));
+        drop(receivers);
+
+        crate::dist::global::send_global_sync(&peer.session);
+        let sync = peer
+            .sent()
+            .into_iter()
+            .find(|frame| frame[0] == DIST_GLOBAL_SYNC)
+            .expect("a sync");
+        assert!(sync.windows(entry.len()).any(|window| window == entry));
+        assert!(registry.unregister("sent-global-name"));
+    }
+
     fn protocol_two() -> NegotiatedProtocol {
         NegotiatedProtocol {
             version: PROTOCOL_V2,
