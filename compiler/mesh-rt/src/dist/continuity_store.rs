@@ -2733,6 +2733,12 @@ pub(crate) mod tests {
             .compact_log_to_replica_safe_point()
             .unwrap_err()
             .starts_with("continuity_store_database_error:"));
+        // And one that cannot read the replicas' safe points.
+        execute(&store, "DROP TABLE continuity_replica_safe_points");
+        assert!(store
+            .compact_log_to_replica_safe_point()
+            .unwrap_err()
+            .starts_with("continuity_store_database_error:"));
         execute(&store, "BEGIN; COMMIT;");
     }
 
