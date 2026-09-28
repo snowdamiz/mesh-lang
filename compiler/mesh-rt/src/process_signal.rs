@@ -32,11 +32,22 @@ pub(crate) fn write_coverage_profile() {
 /// ordinary way, which writes it.
 #[cfg(all(mesh_coverage, unix))]
 pub(crate) fn install_coverage_flush() {
+    use std::sync::atomic::AtomicI32;
+    // A descriptor kept for the profile to be written with: a server stopped
+    // for having run out of them has none left to open its file.
+    static SPARE: AtomicI32 = AtomicI32::new(-1);
     extern "C" fn flush_and_exit(signal: libc::c_int) {
+        unsafe { libc::close(SPARE.load(Ordering::SeqCst)) };
         write_coverage_profile();
         unsafe { libc::_exit(128 + signal) };
     }
     unsafe {
+        if SPARE.load(Ordering::SeqCst) < 0 {
+            SPARE.store(
+                libc::open(c"/dev/null".as_ptr(), libc::O_RDONLY),
+                Ordering::SeqCst,
+            );
+        }
         let handler = flush_and_exit as *const () as libc::sighandler_t;
         libc::signal(libc::SIGINT, handler);
         libc::signal(libc::SIGTERM, handler);
