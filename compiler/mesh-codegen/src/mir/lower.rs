@@ -7162,22 +7162,19 @@ impl<'a> Lowerer<'a> {
             // The type checker rejects any definition but a `let` in a
             // function (E0084).
             if let Some(let_) = LetBinding::cast(child.clone()) {
-                let initializer = let_.initializer();
-                let initializer_ty = initializer
-                    .as_ref()
-                    .and_then(|init| self.get_ty(init.syntax().text_range()))
-                    .cloned();
+                let initializer = let_
+                    .initializer()
+                    .expect("the parser gives a `let` its value");
+                let initializer_ty = self.get_ty(initializer.syntax().text_range()).cloned();
                 // A polymorphic closure, or a generic function named
                 // by the `let` (`let id = identity`, `let pop =
                 // Queue.pop`), gets one compiled copy per concrete
                 // type it is used at, bound here so its captures are
                 // the values in scope at the `let`.
                 let mut specialized_everywhere = false;
-                let poly_value = match initializer.as_ref() {
-                    Some(expr @ (Expr::ClosureExpr(_) | Expr::NameRef(_))) => Some(expr),
-                    Some(expr @ Expr::FieldAccess(fa))
-                        if matches!(fa.base(), Some(Expr::NameRef(_))) =>
-                    {
+                let poly_value = match &initializer {
+                    expr @ (Expr::ClosureExpr(_) | Expr::NameRef(_)) => Some(expr),
+                    expr @ Expr::FieldAccess(fa) if matches!(fa.base(), Some(Expr::NameRef(_))) => {
                         Some(expr)
                     }
                     _ => None,
@@ -7210,10 +7207,10 @@ impl<'a> Lowerer<'a> {
                 }
                 // Every use has its own copy: the generic one (whose
                 // operators may not know their operand types) is unused.
-                let value = match initializer {
-                    Some(_) if specialized_everywhere => MirExpr::Unit,
-                    Some(init) => self.lower_expr(&init),
-                    None => MirExpr::Unit,
+                let value = if specialized_everywhere {
+                    MirExpr::Unit
+                } else {
+                    self.lower_expr(&initializer)
                 };
 
                 if let Some(pattern) = let_.pattern() {
@@ -9617,10 +9614,12 @@ impl<'a> Lowerer<'a> {
             if let Some(chained_if) = else_branch.if_expr() {
                 // else-if chain
                 self.lower_if_expr(&chained_if)
-            } else if let Some(block) = else_branch.block() {
-                self.lower_block(&block)
             } else {
-                MirExpr::Unit
+                // The parser gives an `else` a chained `if` or a block.
+                let block = else_branch
+                    .block()
+                    .expect("the parser gives an `else` its block");
+                self.lower_block(&block)
             }
         } else {
             MirExpr::Unit
@@ -10186,10 +10185,7 @@ impl<'a> Lowerer<'a> {
                 Some(ty) => {
                     let name = format!("__discarded_{}", self.resource_temp_counter);
                     self.resource_temp_counter += 1;
-                    let mir_ty = match resolve_type(&ty, self.registry) {
-                        MirType::Tuple(_) => MirType::Ptr,
-                        other => other,
-                    };
+                    let mir_ty = runtime_value_type(resolve_type(&ty, self.registry));
                     self.insert_var(name.clone(), mir_ty.clone());
                     self.discarded_resources.push((name.clone(), ty));
                     MirPattern::Var(name, mir_ty)
@@ -10208,28 +10204,30 @@ impl<'a> Lowerer<'a> {
                 // IDENT_PAT for these because they lack parentheses, but
                 // they must be lowered as Constructor patterns for correct
                 // pattern matching codegen (switch on tag).
-                if name.starts_with(|c: char| c.is_uppercase()) {
-                    let expected_mir = expected.map(|ty| resolve_type(ty, self.registry));
-                    if let Some(type_name) =
+                let variant_type = name
+                    .starts_with(|c: char| c.is_uppercase())
+                    .then(|| {
+                        let expected_mir = expected.map(|ty| resolve_type(ty, self.registry));
                         find_type_for_variant(&name, expected_mir.as_ref(), self.registry, None)
-                    {
-                        let variant_fields = self
-                            .registry
-                            .sum_type_defs
-                            .get(&type_name)
-                            .and_then(|info| info.variants.iter().find(|v| v.name == name))
-                            .map(|v| v.fields.len())
-                            .unwrap_or(0);
-                        // Nullary constructor: no fields.
-                        // Payload-bearing constructor without explicit binder: treat as
-                        // Constructor(_) -- wildcards cover all fields, bind nothing.
-                        return MirPattern::Constructor {
-                            type_name: self.pattern_sum_name(expected, type_name),
-                            variant: name,
-                            fields: vec![MirPattern::Wildcard; variant_fields],
-                            bindings: vec![],
-                        };
-                    }
+                    })
+                    .flatten();
+                if let Some(type_name) = variant_type {
+                    let variant_fields = self
+                        .registry
+                        .sum_type_defs
+                        .get(&type_name)
+                        .and_then(|info| info.variants.iter().find(|v| v.name == name))
+                        .map(|v| v.fields.len())
+                        .unwrap_or(0);
+                    // Nullary constructor: no fields.
+                    // Payload-bearing constructor without explicit binder: treat as
+                    // Constructor(_) -- wildcards cover all fields, bind nothing.
+                    return MirPattern::Constructor {
+                        type_name: self.pattern_sum_name(expected, type_name),
+                        variant: name,
+                        fields: vec![MirPattern::Wildcard; variant_fields],
+                        bindings: vec![],
+                    };
                 }
 
                 let ty = expected
@@ -10302,9 +10300,7 @@ impl<'a> Lowerer<'a> {
                 let fields = self
                     .concrete_struct_fields(&struct_ty)
                     .expect("a struct pattern matches a struct");
-                let MirType::Struct(name) = resolve_type(&struct_ty, self.registry) else {
-                    unreachable!("a struct pattern matches a struct")
-                };
+                let name = mir_type_to_impl_name(&resolve_type(&struct_ty, self.registry));
                 let fields = fields
                     .into_iter()
                     .map(|(field, field_ty)| {
@@ -10335,11 +10331,8 @@ impl<'a> Lowerer<'a> {
                     .map(|t| t.text().to_string())
                     .unwrap_or_else(|| "_".to_string());
                 // Tuples live on the heap: a binding to one is a pointer, as
-                // for a plain variable pattern.
-                let ty = match self.resolve_range(as_pat.syntax().text_range()) {
-                    MirType::Tuple(_) => MirType::Ptr,
-                    ty => ty,
-                };
+                // for a plain variable pattern (`resolve_range` gives it).
+                let ty = self.resolve_range(as_pat.syntax().text_range());
                 self.insert_var(binding_name.clone(), ty.clone());
                 let inner = as_pat
                     .pattern()
@@ -10707,16 +10700,13 @@ impl<'a> Lowerer<'a> {
                     // After any interpolation, subsequent STRING_CONTENT is not first
                     is_first_content = false;
                     // INTERPOLATION node contains an expression child.
-                    if let Some(node) = child.as_node() {
-                        for inner in node.children() {
-                            if let Some(expr) = Expr::cast(inner) {
-                                let typeck_ty = self.get_ty(expr.syntax().text_range()).cloned();
-                                let lowered = self.lower_expr(&expr);
-                                // Wrap in a to_string call based on the expression's type.
-                                let converted = self.wrap_to_string(lowered, typeck_ty.as_ref());
-                                segments.push(converted);
-                            }
-                        }
+                    let node = child.as_node().expect("an interpolation is a node");
+                    for expr in node.children().filter_map(Expr::cast) {
+                        let typeck_ty = self.get_ty(expr.syntax().text_range()).cloned();
+                        let lowered = self.lower_expr(&expr);
+                        // Wrap in a to_string call based on the expression's type.
+                        let converted = self.wrap_to_string(lowered, typeck_ty.as_ref());
+                        segments.push(converted);
                     }
                 }
                 _ => {
@@ -12640,10 +12630,8 @@ impl<'a> Lowerer<'a> {
                     Some(self.try_error(err_name, error_types)),
                 )
             }
-            MirType::SumType(name) if sum_type_base(name) == "Option" => {
-                ("Option", ["Some", "None"], None)
-            }
-            ty => unreachable!("`?` on a {ty}, which is neither a Result nor an Option"),
+            // The type checker admits `?` on a Result or an Option.
+            _ => ("Option", ["Some", "None"], None),
         };
         let (fields, bindings, returned) = match error {
             Some((name, ty, value)) => (
@@ -12799,27 +12787,27 @@ impl<'a> Lowerer<'a> {
         );
         // Keys that are not words or strings go through `Map.put` for their
         // type, which compares them by the key type's Eq.
-        let map_ty = self.get_ty(map_lit.syntax().text_range()).cloned();
-        let put_fn = match &map_ty {
-            Some(Ty::App(_, args)) if args.len() == 2 => {
-                let (key, value) = (args[0].clone(), args[1].clone());
-                let map_ty = map_ty.clone().unwrap();
-                self.resolve_table_by(
-                    "map",
-                    "put",
-                    &[map_ty.clone(), key.clone(), value],
-                    &map_ty,
-                    &key,
-                    false,
-                )
-                .map(|helper| {
-                    let ty = self.known_functions[&helper].clone();
-                    MirExpr::Var(helper, ty)
-                })
-            }
-            _ => None,
-        }
-        .unwrap_or_else(|| MirExpr::Var("mesh_map_put".to_string(), put_fn_ty.clone()));
+        let map_ty = self
+            .get_ty(map_lit.syntax().text_range())
+            .cloned()
+            .expect("the type checker types a map literal");
+        let [key, value] = collection_elems(&map_ty, "Map")
+            .and_then(|elems| <[Ty; 2]>::try_from(elems).ok())
+            .expect("a map literal's type is a Map of keys and values");
+        let put_fn = self
+            .resolve_table_by(
+                "map",
+                "put",
+                &[map_ty.clone(), key.clone(), value],
+                &map_ty,
+                &key,
+                false,
+            )
+            .map(|helper| {
+                let ty = self.known_functions[&helper].clone();
+                MirExpr::Var(helper, ty)
+            })
+            .unwrap_or_else(|| MirExpr::Var("mesh_map_put".to_string(), put_fn_ty.clone()));
 
         for entry in map_lit.entries() {
             // For keyword argument entries (name: value), the key is a NAME_REF
@@ -13895,40 +13883,27 @@ impl<'a> Lowerer<'a> {
         if self.supervised_spawn == Some(spawn.syntax().text_range()) {
             return self.run_actor_in_place(spawn);
         }
+        // The type checker types the spawn as the pid it gives.
         let ty = self.resolve_range(spawn.syntax().text_range());
-        let ty = if matches!(ty, MirType::Unit) {
-            MirType::Pid(None)
-        } else {
-            ty
-        };
 
-        // Everything after the function crosses to the new actor.
-        let args: Vec<MirExpr> = spawn
+        // The first argument is the function to spawn, named rather than
+        // passed as a value; the rest, its initial state, cross to the new
+        // actor.
+        let mut args = spawn
             .arg_list()
-            .map(|al| {
-                al.args()
-                    .enumerate()
-                    .map(|(index, a)| {
-                        // The actor itself is named, not passed as a value.
-                        if index == 0 {
-                            return self.lower_callee(&a);
-                        }
-                        let lowered = self.lower_expr(&a);
-                        self.shaped(lowered, a.syntax().text_range())
-                    })
-                    .collect()
+            .map(|list| list.args().collect::<Vec<_>>())
+            .unwrap_or_default()
+            .into_iter();
+        let actor = args
+            .next()
+            .expect("the type checker gives spawn its function");
+        let func = Box::new(self.lower_callee(&actor));
+        let state_args: Vec<MirExpr> = args
+            .map(|arg| {
+                let lowered = self.lower_expr(&arg);
+                self.shaped(lowered, arg.syntax().text_range())
             })
-            .unwrap_or_default();
-
-        // First argument is the function to spawn; rest are initial state.
-        let (func, state_args) = if args.is_empty() {
-            (Box::new(MirExpr::Unit), Vec::new())
-        } else {
-            let mut iter = args.into_iter();
-            let func = Box::new(iter.next().unwrap());
-            let state_args: Vec<MirExpr> = iter.collect();
-            (func, state_args)
-        };
+            .collect();
 
         // Check if the spawned function has a terminate callback.
         // Look up by function name in known functions to find matching __terminate_<name>.
@@ -13990,23 +13965,21 @@ impl<'a> Lowerer<'a> {
             .arg_list()
             .map(|list| list.args().collect())
             .unwrap_or_default();
-        let mut args: Vec<(MirExpr, Option<TextRange>)> = explicit
+        let mut args: Vec<(MirExpr, TextRange)> = explicit
             .iter()
-            .map(|arg| (self.lower_expr(arg), Some(arg.syntax().text_range())))
+            .map(|arg| (self.lower_expr(arg), arg.syntax().text_range()))
             .collect();
         let at = insert_idx.min(args.len());
-        args.insert(at, (lhs, lhs_expr.map(|e| e.syntax().text_range())));
-        let mut args = args.into_iter();
-        let target = args
-            .next()
-            .map(|(target, _)| target)
-            .unwrap_or(MirExpr::Unit);
-        // The message crosses to another actor.
-        let message = match args.next() {
-            Some((message, Some(range))) => self.shaped(message, range),
-            Some((message, None)) => message,
-            None => MirExpr::Unit,
-        };
+        let lhs_range = lhs_expr
+            .expect("the parser gives a pipe its left-hand side")
+            .syntax()
+            .text_range();
+        args.insert(at, (lhs, lhs_range));
+        // The type checker gives `send` its target and its message, which
+        // crosses to another actor.
+        let [(target, _), (message, range)] = <[_; 2]>::try_from(args)
+            .unwrap_or_else(|_| panic!("the type checker gives send a target and a message"));
+        let message = self.shaped(message, range);
         MirExpr::ActorSend {
             target: Box::new(target),
             message: Box::new(message),
@@ -14015,40 +13988,20 @@ impl<'a> Lowerer<'a> {
     }
 
     fn lower_send_expr(&mut self, send: &SendExpr) -> MirExpr {
-        // send(target, message): the message crosses to another actor.
-        let args: Vec<MirExpr> = send
+        // send(target, message) -> Int status: the type checker gives it
+        // both, and the message crosses to another actor.
+        let args: Vec<Expr> = send
             .arg_list()
-            .map(|al| {
-                al.args()
-                    .enumerate()
-                    .map(|(index, a)| {
-                        let lowered = self.lower_expr(&a);
-                        if index == 1 {
-                            self.shaped(lowered, a.syntax().text_range())
-                        } else {
-                            lowered
-                        }
-                    })
-                    .collect()
-            })
+            .map(|list| list.args().collect())
             .unwrap_or_default();
-
-        // send(target, message) -> Int status
-        let (target, message) = if args.len() >= 2 {
-            let mut iter = args.into_iter();
-            let target = Box::new(iter.next().unwrap());
-            let message = Box::new(iter.next().unwrap());
-            (target, message)
-        } else if args.len() == 1 {
-            let mut iter = args.into_iter();
-            (Box::new(iter.next().unwrap()), Box::new(MirExpr::Unit))
-        } else {
-            (Box::new(MirExpr::Unit), Box::new(MirExpr::Unit))
-        };
-
+        let [target, message] = <[Expr; 2]>::try_from(args)
+            .unwrap_or_else(|_| panic!("the type checker gives send a target and a message"));
+        let target = self.lower_expr(&target);
+        let lowered = self.lower_expr(&message);
+        let message = self.shaped(lowered, message.syntax().text_range());
         MirExpr::ActorSend {
-            target,
-            message,
+            target: Box::new(target),
+            message: Box::new(message),
             ty: MirType::Int,
         }
     }
@@ -14061,11 +14014,10 @@ impl<'a> Lowerer<'a> {
             .arms()
             .find_map(|arm| arm.pattern())
             .and_then(|pat| self.get_ty(pat.syntax().text_range()).cloned());
-        let msg_ty = match msg_typeck.as_ref().map(|t| resolve_type(t, self.registry)) {
-            Some(MirType::Tuple(_)) => MirType::Ptr,
-            Some(t) => t,
-            None => MirType::Int,
-        };
+        // A receive with no arm (only an `after`) binds no message.
+        let msg_ty = msg_typeck.as_ref().map_or(MirType::Int, |t| {
+            runtime_value_type(resolve_type(t, self.registry))
+        });
         let msg_var = format!(
             "__recv_msg_{}",
             u32::from(recv.syntax().text_range().start())
@@ -14124,19 +14076,12 @@ impl<'a> Lowerer<'a> {
     }
 
     fn lower_link_expr(&mut self, link: &LinkExpr) -> MirExpr {
-        let args: Vec<MirExpr> = link
+        let target = link
             .arg_list()
-            .map(|al| al.args().map(|a| self.lower_expr(&a)).collect())
-            .unwrap_or_default();
-
-        let target = if let Some(first) = args.into_iter().next() {
-            Box::new(first)
-        } else {
-            Box::new(MirExpr::Unit)
-        };
-
+            .and_then(|list| list.args().into_iter().next())
+            .expect("the type checker gives link its target");
         MirExpr::ActorLink {
-            target,
+            target: Box::new(self.lower_expr(&target)),
             ty: MirType::Unit,
         }
     }
@@ -14971,41 +14916,35 @@ fn unescape_string(raw: &str) -> String {
     let mut result = String::with_capacity(raw.len());
     let mut chars = raw.chars();
     while let Some(c) = chars.next() {
-        if c == '\\' {
-            match chars.next() {
-                Some('n') => result.push('\n'),
-                Some('t') => result.push('\t'),
-                Some('r') => result.push('\r'),
-                Some('0') => result.push('\0'),
-                Some('\\') => result.push('\\'),
-                Some('"') => result.push('"'),
-                // `\u{1F389}`; the parser rejects a malformed one.
-                Some('u') => {
-                    let rest: String = chars.clone().collect();
-                    let code = rest
-                        .strip_prefix('{')
-                        .and_then(|r| r.split_once('}'))
-                        .and_then(|(digits, _)| {
-                            let c = u32::from_str_radix(digits, 16)
-                                .ok()
-                                .and_then(char::from_u32)?;
-                            Some((c, digits.len() + 2))
-                        });
-                    match code {
-                        Some((c, consumed)) => {
-                            result.push(c);
-                            for _ in 0..consumed {
-                                chars.next();
-                            }
-                        }
-                        None => result.push('u'),
-                    }
-                }
-                Some(other) => result.push(other),
-                None => result.push('\\'),
-            }
-        } else {
+        if c != '\\' {
             result.push(c);
+            continue;
+        }
+        // The lexer ends no string content with a lone backslash, and the
+        // parser admits only the escapes below (`\$` and `\#` are the
+        // character itself).
+        match chars.next().expect("a backslash escapes a character") {
+            'n' => result.push('\n'),
+            't' => result.push('\t'),
+            'r' => result.push('\r'),
+            '0' => result.push('\0'),
+            // `\u{1F389}`.
+            'u' => {
+                let rest: String = chars.clone().collect();
+                let (digits, _) = rest
+                    .strip_prefix('{')
+                    .and_then(|r| r.split_once('}'))
+                    .expect("the parser admits only a well-formed unicode escape");
+                result.extend(
+                    u32::from_str_radix(digits, 16)
+                        .ok()
+                        .and_then(char::from_u32),
+                );
+                for _ in 0..digits.len() + 2 {
+                    chars.next();
+                }
+            }
+            other => result.push(other),
         }
     }
     result
@@ -15118,44 +15057,37 @@ fn find_type_for_variant(
 fn collect_pattern_bindings(patterns: &[MirPattern]) -> Vec<(String, MirType)> {
     let mut bindings = Vec::new();
     for pat in patterns {
-        collect_bindings_recursive(pat, &mut bindings);
+        pattern_bindings(pat, &mut bindings);
     }
     bindings
+        .into_iter()
+        .map(|(name, ty)| (name.to_string(), ty.clone()))
+        .collect()
 }
 
-fn collect_bindings_recursive(pat: &MirPattern, bindings: &mut Vec<(String, MirType)>) {
-    match pat {
-        MirPattern::Var(name, ty) => {
-            bindings.push((name.clone(), ty.clone()));
-        }
-        MirPattern::Constructor { fields, .. } => {
-            for f in fields {
-                collect_bindings_recursive(f, bindings);
-            }
-        }
-        MirPattern::Tuple(pats) => {
-            for p in pats {
-                collect_bindings_recursive(p, bindings);
-            }
-        }
-        MirPattern::Struct { fields, .. } => {
-            for (_, _, p) in fields {
-                collect_bindings_recursive(p, bindings);
-            }
-        }
-        MirPattern::Or(alts) => {
-            // Use bindings from first alternative (all should have same bindings).
-            if let Some(first) = alts.first() {
-                collect_bindings_recursive(first, bindings);
-            }
-        }
-        MirPattern::ListCons { head, tail, .. } => {
-            collect_bindings_recursive(head, bindings);
-            collect_bindings_recursive(tail, bindings);
-        }
+/// The variables `pattern` binds, with their types, in order. The
+/// alternatives of an or-pattern bind the same variables, so the first's
+/// stand for them all.
+fn pattern_bindings<'a>(pattern: &'a MirPattern, out: &mut Vec<(&'a str, &'a MirType)>) {
+    match pattern {
+        MirPattern::Var(name, ty) => out.push((name, ty)),
         MirPattern::As { name, ty, inner } => {
-            bindings.push((name.clone(), ty.clone()));
-            collect_bindings_recursive(inner, bindings);
+            out.push((name, ty));
+            pattern_bindings(inner, out);
+        }
+        MirPattern::Constructor { fields, .. } | MirPattern::Tuple(fields) => {
+            fields.iter().for_each(|field| pattern_bindings(field, out))
+        }
+        MirPattern::Struct { fields, .. } => fields
+            .iter()
+            .for_each(|(_, _, field)| pattern_bindings(field, out)),
+        MirPattern::Or(alternatives) => alternatives
+            .iter()
+            .take(1)
+            .for_each(|first| pattern_bindings(first, out)),
+        MirPattern::ListCons { head, tail, .. } => {
+            pattern_bindings(head, out);
+            pattern_bindings(tail, out);
         }
         MirPattern::Wildcard | MirPattern::Literal(_) | MirPattern::ListNil => {}
     }
@@ -15336,12 +15268,9 @@ impl TailCalls<'_> {
             MirExpr::Let {
                 name, value, body, ..
             } if name.starts_with(RESOURCE_TEMP_PREFIX) => {
-                let Some(cleanup) = (match body.as_ref() {
-                    MirExpr::Block(parts, _) => parts.first().cloned(),
-                    _ => None,
-                }) else {
-                    return false;
-                };
+                // A resource scope's body is a block of its cleanup, then its
+                // result (`wrap_resource_scope`, `cleanup_before_exits`).
+                let cleanup = body.children()[0].clone();
                 self.cleanups.push(cleanup);
                 let rewritten = self.rewrite(value);
                 self.cleanups.pop();
@@ -15699,24 +15628,9 @@ fn is_pid(ty: &Ty) -> bool {
 
 /// The variables a pattern binds.
 fn pattern_names<'a>(pattern: &'a MirPattern, names: &mut Vec<&'a str>) {
-    match pattern {
-        MirPattern::Var(name, _) => names.push(name),
-        MirPattern::As { inner, name, .. } => {
-            names.push(name);
-            pattern_names(inner, names);
-        }
-        MirPattern::Constructor { fields, .. } => {
-            fields.iter().for_each(|field| pattern_names(field, names))
-        }
-        MirPattern::Tuple(items) | MirPattern::Or(items) => {
-            items.iter().for_each(|item| pattern_names(item, names))
-        }
-        MirPattern::ListCons { head, tail, .. } => {
-            pattern_names(head, names);
-            pattern_names(tail, names);
-        }
-        _ => {}
-    }
+    let mut bindings = Vec::new();
+    pattern_bindings(pattern, &mut bindings);
+    names.extend(bindings.into_iter().map(|(name, _)| name));
 }
 
 /// Every name `expr` binds: `let`s, loop variables and pattern variables.
