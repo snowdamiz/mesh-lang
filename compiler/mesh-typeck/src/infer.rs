@@ -11511,7 +11511,7 @@ fn infer_tuple(
 /// Variable bindings become wildcards (they match anything). Literals, constructors,
 /// and or-patterns are mapped directly to their abstract equivalents.
 fn ast_pattern_to_abstract(
-    ctx: &InferCtx,
+    ctx: &mut InferCtx,
     pat: &Pattern,
     env: &TypeEnv,
     type_registry: &TypeRegistry,
@@ -11607,27 +11607,33 @@ fn ast_pattern_to_abstract(
         // A struct is a type with one constructor, whose arguments are its
         // fields in declaration order.
         Pattern::Struct(struct_pat) => {
-            let def = struct_pat
-                .type_name()
-                .and_then(|name| struct_def_named(type_registry, name.text()));
-            match def {
-                Some(def) => AbsPat::Constructor {
-                    name: def.name.clone(),
-                    type_name: def.name.clone(),
-                    args: def
-                        .fields
-                        .iter()
-                        .map(|(field, _)| {
-                            struct_pat
-                                .fields()
-                                .find(|f| f.name().is_some_and(|n| n.text() == field))
-                                .and_then(|f| f.pattern())
-                                .map(|sub| ast_pattern_to_abstract(ctx, &sub, env, type_registry))
-                                .unwrap_or(AbsPat::Wildcard)
-                        })
-                        .collect(),
-                },
-                None => AbsPat::Wildcard,
+            // The struct the pattern was checked against, through any
+            // aliases (`B` in `type B = A`, `type A = P`).
+            let name = struct_pat.type_name().map(|name| name.text().to_string());
+            let named = resolve_alias(
+                ctx,
+                Ty::Con(TyCon::new(name.unwrap_or_default())),
+                type_registry,
+            );
+            let def = named
+                .con_name()
+                .and_then(|name| type_registry.lookup_struct(name))
+                .expect("the pattern was checked: it names a struct");
+            AbsPat::Constructor {
+                name: def.name.clone(),
+                type_name: def.name.clone(),
+                args: def
+                    .fields
+                    .iter()
+                    .map(|(field, _)| {
+                        struct_pat
+                            .fields()
+                            .find(|f| f.name().is_some_and(|n| n.text() == field))
+                            .and_then(|f| f.pattern())
+                            .map(|sub| ast_pattern_to_abstract(ctx, &sub, env, type_registry))
+                            .unwrap_or(AbsPat::Wildcard)
+                    })
+                    .collect(),
             }
         }
         Pattern::Or(or_pat) => {
@@ -11645,7 +11651,7 @@ fn ast_pattern_to_abstract(
         }
         Pattern::Cons(cons_pat) => {
             // `head :: tail` is the non-empty constructor of the list type.
-            let lower = |sub: Option<Pattern>| {
+            let mut lower = |sub: Option<Pattern>| {
                 sub.map(|sub| ast_pattern_to_abstract(ctx, &sub, env, type_registry))
                     .unwrap_or(AbsPat::Wildcard)
             };
@@ -11722,14 +11728,6 @@ fn struct_type_info(def: &StructDefInfo) -> AbsTypeInfo {
             arity: def.fields.len(),
         }],
     }
-}
-
-/// The struct `name` names, directly or through an alias.
-fn struct_def_named<'a>(type_registry: &'a TypeRegistry, name: &str) -> Option<&'a StructDefInfo> {
-    type_registry.lookup_struct(name).or_else(|| {
-        let aliased = &type_registry.lookup_alias(name)?.aliased_type;
-        type_registry.lookup_struct(aliased.con_name()?)
-    })
 }
 
 /// Build an exhaustiveness `TypeRegistry` from the infer `TypeRegistry`.

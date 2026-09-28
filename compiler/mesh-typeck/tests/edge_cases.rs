@@ -3174,6 +3174,20 @@ fn a_failed_method_call_keeps_an_earlier_field_error() {
     );
 }
 
+/// A struct pattern through an alias of an alias is the struct's: `B { x:
+/// 1 }` alone does not cover every `P`. It was taken for `_`, and the case
+/// for exhaustive.
+#[test]
+fn a_struct_pattern_through_an_alias_chain_is_checked_for_coverage() {
+    assert_eq!(
+        errors(
+            "struct P do\n  x :: Int\nend\n\ntype A = P\ntype B = A\n\n\
+             fn f(p :: P) do\n  case p do\n    B { x: 1 } -> 1\n  end\nend\n"
+        ),
+        ["non-exhaustive match on `P`: missing patterns [P { x: _ }]"]
+    );
+}
+
 /// A `case` over a type with no variants needs no arm: no value reaches
 /// it. It was "missing patterns [_]".
 #[test]
