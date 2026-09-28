@@ -257,6 +257,22 @@ mod tests {
         assert_eq!(st.count_fields(), 2);
     }
 
+    /// A struct or sum type name without a layout (one lowering could not
+    /// resolve) is an opaque struct, or a sum type's bare tag.
+    #[test]
+    fn names_without_a_layout_have_placeholder_types() {
+        let context = Context::create();
+        let structs = FxHashMap::default();
+        let sums = FxHashMap::default();
+
+        let opaque = llvm_type(&context, &MirType::Struct("Gone".into()), &structs, &sums);
+        assert!(opaque.into_struct_type().is_opaque());
+        let tag = llvm_type(&context, &MirType::SumType("Gone".into()), &structs, &sums)
+            .into_struct_type();
+        assert_eq!(tag.count_fields(), 1);
+        assert!(tag.get_field_type_at_index(0).unwrap().is_int_type());
+    }
+
     #[test]
     fn test_closure_type_shape() {
         let context = Context::create();

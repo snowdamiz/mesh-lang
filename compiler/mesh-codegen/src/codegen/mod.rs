@@ -318,7 +318,12 @@ impl<'ctx> CodeGen<'ctx> {
         // Step 7: Keep every stack slot a static, entry-block allocation.
         self.hoist_static_allocas();
 
-        // Step 8: Verify the module, naming the function it fails in.
+        // Step 8: Verify the module.
+        self.verify()
+    }
+
+    /// Verify the module, naming the function verification fails in.
+    fn verify(&self) -> Result<(), String> {
         self.module.verify().map_err(|error| {
             let function = self
                 .module
@@ -327,9 +332,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .map(|function| format!(" in `{}`", function.get_name().to_string_lossy()))
                 .unwrap_or_default();
             format!("LLVM module verification failed{function}: {error}")
-        })?;
-
-        Ok(())
+        })
     }
 
     /// Move every fixed-size `alloca` into its function's entry block.
@@ -1473,6 +1476,41 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// A module LLVM refuses is reported with the function it refuses.
+    #[test]
+    fn verification_names_the_function_it_fails_in() {
+        let context = Context::create();
+        let codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        // A block without a terminator.
+        let broken =
+            codegen
+                .module
+                .add_function("broken", context.void_type().fn_type(&[], false), None);
+        context.append_basic_block(broken, "entry");
+        let error = codegen.verify().unwrap_err();
+        assert!(
+            error.starts_with("LLVM module verification failed in `broken`: "),
+            "{error}"
+        );
+    }
+
+    /// A program with an autonomous cluster configuration registers it with
+    /// the runtime as its main starts, before anything reads it.
+    #[test]
+    fn the_autonomous_configuration_is_registered_at_startup() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.set_autonomous_config_json(Some("{\"min\":1}"));
+        codegen.compile(&hello_world_mir()).unwrap();
+        let ir = codegen.get_llvm_ir();
+        let init = ir.find("call void @mesh_rt_init").unwrap();
+        let register = ir
+            .find("call i32 @mesh_register_autonomous_config_json(ptr @mesh_autonomous_config_json, i64 9)")
+            .unwrap_or_else(|| panic!("{ir}"));
+        assert!(init < register, "{ir}");
+        assert!(ir.contains("c\"{\\22min\\22:1}\\00\""), "{ir}");
     }
 
     #[test]

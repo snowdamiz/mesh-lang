@@ -477,6 +477,10 @@ mod tests {
         let function = Ty::Fun(vec![Ty::int()], Box::new(Ty::string()));
         let name = mangle_type_name("Box", &[function], &reg);
         assert_eq!(name, "Box_Closure_Int_to_String");
+        // A value that never comes into being, and a pid of no known
+        // message type.
+        let name = mangle_type_name("Pair", &[Ty::Never, Ty::untyped_pid()], &reg);
+        assert_eq!(name, "Pair_Never_Pid");
     }
 
     #[test]
