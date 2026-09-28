@@ -250,7 +250,7 @@ Clustered HTTP handlers normally use `HTTP.clustered`, which owns continuity sub
 
 For declared work, the registered `@cluster` policy is authoritative. The final `replica_hint` argument must be non-negative for API compatibility, but it does not override the declaration's replica count.
 
-Request keys, payload hashes, and node names are at most 4096 bytes each. A longer one is refused with `continuity_text_too_large` instead of being admitted as a record that could not be persisted or replicated.
+Request keys, payload hashes, and node names are at most 4096 bytes each. A longer one is refused with `continuity_text_too_large` instead of being admitted as a record that could not be persisted or replicated. A rejected record's `error` keeps at most the first 4096 bytes of its reason, cut at a character boundary, since the reason can be another node's error.
 
 `ContinuitySubmitDecision` contains:
 
