@@ -1961,25 +1961,26 @@ impl<'a> Lowerer<'a> {
                         }
                     }
                     // Pre-register default method bodies for missing methods.
-                    if let Some(trait_def) = self.trait_registry.get_trait(&trait_name) {
-                        for trait_method in &trait_def.methods {
-                            if trait_method.has_default_body
-                                && !provided_methods.contains(&trait_method.name)
-                            {
-                                let mangled = mangle_trait_method(
-                                    &trait_name,
-                                    &trait_type_args,
-                                    &trait_method.name,
-                                    &type_name,
-                                );
-                                // Use the return type from the trait method sig, fallback to Unit.
-                                let fn_ty = if let Some(ret_ty) = &trait_method.return_type {
-                                    resolve_type(ret_ty, self.registry)
-                                } else {
-                                    MirType::Unit
-                                };
-                                self.known_functions.insert(mangled, fn_ty);
-                            }
+                    let trait_def = self
+                        .trait_registry
+                        .get_trait(&trait_name)
+                        .expect("the type checker knows every implemented interface");
+                    for trait_method in &trait_def.methods {
+                        if trait_method.has_default_body
+                            && !provided_methods.contains(&trait_method.name)
+                        {
+                            let mangled = mangle_trait_method(
+                                &trait_name,
+                                &trait_type_args,
+                                &trait_method.name,
+                                &type_name,
+                            );
+                            // A method written without a result type returns Unit.
+                            let fn_ty = match &trait_method.return_type {
+                                Some(ret_ty) => resolve_type(ret_ty, self.registry),
+                                None => MirType::Unit,
+                            };
+                            self.known_functions.insert(mangled, fn_ty);
                         }
                     }
                 }
@@ -1990,16 +1991,13 @@ impl<'a> Lowerer<'a> {
         // Detect test mode: scan for the `fn __test_body_*` and
         // `fn __test_describe_*` functions injected by the test preprocessor.
         // When found, enable special DSL lowering for assert/assert_raises.
-        for item in sf.items() {
-            if let Item::FnDef(ref fn_def) = item {
-                if let Some(name) = fn_def.name().and_then(|n| n.text()) {
-                    if name.starts_with("__test_body_") || name.starts_with("__test_describe_") {
-                        self.is_test_mode = true;
-                        break;
-                    }
-                }
+        self.is_test_mode = sf.items().any(|item| match item {
+            Item::FnDef(fn_def) => {
+                let name = self.fn_def_name(&fn_def);
+                name.starts_with("__test_body_") || name.starts_with("__test_describe_")
             }
-        }
+            _ => false,
+        });
 
         // Register builtin I/O functions as known functions.
         self.known_functions.insert(
@@ -4793,9 +4791,6 @@ impl<'a> Lowerer<'a> {
             Item::FnDef(fn_def) => self.lower_fn_def(&fn_def),
             Item::StructDef(struct_def) => self.lower_struct_def(&struct_def),
             Item::SumTypeDef(sum_def) => self.lower_sum_type_def(&sum_def),
-            // A module has no global bindings: building a project rejects
-            // them (E0080), and the REPL moves them into what it evaluates.
-            Item::LetBinding(_) => {}
             Item::ImplDef(impl_def) => {
                 let (trait_name, trait_type_args, type_name) = self.impl_names(&impl_def);
 
@@ -4817,48 +4812,55 @@ impl<'a> Lowerer<'a> {
                 }
 
                 // Lower default method bodies for methods not provided by the impl.
-                if let Some(trait_def) = self.trait_registry.get_trait(&trait_name) {
-                    for trait_method in &trait_def.methods {
-                        if trait_method.has_default_body
-                            && !provided_methods.contains(&trait_method.name)
-                        {
-                            let key = (trait_name.clone(), trait_method.name.clone());
-                            if let Some(&range) = self.default_method_bodies.get(&key) {
-                                self.lower_default_method(
-                                    range,
-                                    &trait_name,
-                                    &trait_type_args,
-                                    &trait_method.name,
-                                    &type_name,
-                                );
-                            } else if let Some(foreign) = self.foreign_defaults.get(&key).copied() {
-                                // Lowered from the declaring module's syntax
-                                // and types, for this module's type.
-                                let parse = std::mem::replace(&mut self.parse, foreign.parse);
-                                let types = std::mem::replace(&mut self.types, foreign.types);
-                                self.lower_default_method(
-                                    foreign.range,
-                                    &trait_name,
-                                    &trait_type_args,
-                                    &trait_method.name,
-                                    &type_name,
-                                );
-                                self.parse = parse;
-                                self.types = types;
-                            }
+                let trait_def = self
+                    .trait_registry
+                    .get_trait(&trait_name)
+                    .expect("the type checker knows every implemented interface");
+                for trait_method in &trait_def.methods {
+                    if trait_method.has_default_body
+                        && !provided_methods.contains(&trait_method.name)
+                    {
+                        let key = (trait_name.clone(), trait_method.name.clone());
+                        if let Some(&range) = self.default_method_bodies.get(&key) {
+                            self.lower_default_method(
+                                range,
+                                &trait_name,
+                                &trait_type_args,
+                                &trait_method.name,
+                                &type_name,
+                            );
+                        } else if let Some(foreign) = self.foreign_defaults.get(&key).copied() {
+                            // Lowered from the declaring module's syntax
+                            // and types, for this module's type.
+                            let parse = std::mem::replace(&mut self.parse, foreign.parse);
+                            let types = std::mem::replace(&mut self.types, foreign.types);
+                            self.lower_default_method(
+                                foreign.range,
+                                &trait_name,
+                                &trait_type_args,
+                                &trait_method.name,
+                                &type_name,
+                            );
+                            self.parse = parse;
+                            self.types = types;
                         }
                     }
                 }
             }
-            Item::InterfaceDef(_) | Item::TypeAliasDef(_) => {
-                // Skip -- interfaces are erased, type aliases are resolved.
-            }
-            Item::ModuleDef(_) | Item::ImportDecl(_) | Item::FromImportDecl(_) => {
-                // Skip -- module/import handling is not needed for single-file compilation.
-            }
             Item::ActorDef(actor_def) => self.lower_actor_def(&actor_def),
-            Item::ServiceDef(service_def) => self.lower_service_def(&service_def),
             Item::SupervisorDef(sup_def) => self.lower_supervisor_def(&sup_def),
+            // Nothing to lower: interfaces are erased, type aliases resolved
+            // and imports settled by the project; services were lowered
+            // before any other item; and a module has no global bindings
+            // (a project build rejects them, E0080, and the REPL moves them
+            // into what it evaluates).
+            Item::InterfaceDef(_)
+            | Item::TypeAliasDef(_)
+            | Item::ModuleDef(_)
+            | Item::ImportDecl(_)
+            | Item::FromImportDecl(_)
+            | Item::ServiceDef(_)
+            | Item::LetBinding(_) => {}
         }
     }
 
@@ -5391,31 +5393,27 @@ impl<'a> Lowerer<'a> {
         let name = struct_def
             .name()
             .and_then(|n| n.text())
-            .unwrap_or_else(|| "<unnamed>".to_string());
-
-        // Look up from type registry for accurate types.
-        let fields: Vec<(String, MirType)> =
-            if let Some(info) = self.registry.struct_defs.get(&name) {
-                info.fields
-                    .iter()
-                    // A tuple field holds the pointer to its heap block.
-                    .map(|(fname, fty)| {
-                        (
-                            fname.clone(),
-                            runtime_value_type(resolve_type(fty, self.registry)),
-                        )
-                    })
-                    .collect()
-            } else {
-                Vec::new()
-            };
-
-        // Check if this is a generic struct (trait functions generated lazily at instantiation).
-        let has_generic_params = self
-            .registry
+            .expect("the parser names every struct");
+        let registry = self.registry;
+        let info = registry
             .struct_defs
             .get(&name)
-            .is_some_and(|info| !info.generic_params.is_empty());
+            .expect("the type checker registers every struct");
+
+        let fields: Vec<(String, MirType)> = info
+            .fields
+            .iter()
+            // A tuple field holds the pointer to its heap block.
+            .map(|(fname, fty)| {
+                (
+                    fname.clone(),
+                    runtime_value_type(resolve_type(fty, registry)),
+                )
+            })
+            .collect();
+
+        // Check if this is a generic struct (trait functions generated lazily at instantiation).
+        let has_generic_params = !info.generic_params.is_empty();
 
         if struct_def.is_declared_resource() {
             if !has_generic_params {
@@ -5435,12 +5433,7 @@ impl<'a> Lowerer<'a> {
             let struct_ty = Ty::Con(mesh_typeck::ty::TyCon::new(&name));
             let granted = |lowerer: &Self, t: &str| lowerer.trait_registry.has_impl(t, &struct_ty);
 
-            let typed_fields = self
-                .registry
-                .struct_defs
-                .get(&name)
-                .map(|info| info.fields.clone())
-                .unwrap_or_default();
+            let typed_fields = info.fields.clone();
             if (derive_all || derive_list.iter().any(|t| t == "Debug")) && granted(self, "Debug") {
                 self.generate_display_struct_typed(&name, &name, &name, &typed_fields, true);
             }
@@ -5469,12 +5462,7 @@ impl<'a> Lowerer<'a> {
             }
 
             // Schema: only via explicit deriving(Schema), never auto-derived
-            let schema = self
-                .registry
-                .struct_defs
-                .get(&name)
-                .and_then(|info| info.schema.clone());
-            if let Some(schema) = schema {
+            if let Some(schema) = info.schema.clone() {
                 // Inject timestamp fields if requested.
                 let mut schema_fields = fields.clone();
                 if schema.timestamps {
@@ -5515,13 +5503,15 @@ impl<'a> Lowerer<'a> {
     /// 3. Generates Display, Eq, Debug, etc. MIR functions with the mangled name
     /// 4. Pushes a MirStructDef with the mangled name and concrete fields
     ///
-    /// Called from `lower_struct_literal` when a generic struct instantiation is detected.
+    /// Called with the instantiation (`Box<Int>`) of the generic struct
+    /// `base_name`, from `lower_struct_literal` and `ensure_instantiation_traits`.
     fn ensure_monomorphized_struct_trait_fns(&mut self, base_name: &str, typeck_ty: &Ty) {
-        // Extract type args from Ty::App(Con("Box"), [Con("Int")])
-        let type_args = match typeck_ty {
-            Ty::App(_, args) => args,
-            _ => return, // Not a generic instantiation
-        };
+        let (_, type_args) = ty_head(typeck_ty).expect("a struct type has a head");
+        let registry = self.registry;
+        let struct_info = registry
+            .struct_defs
+            .get(base_name)
+            .expect("the type checker registers every struct");
 
         let mangled = mangle_type_name(base_name, type_args, self.registry);
         let helper = self.instantiation_helper_name(base_name, type_args);
@@ -5530,12 +5520,6 @@ impl<'a> Lowerer<'a> {
         if !self.monomorphized_trait_fns.insert(helper.clone()) {
             return;
         }
-
-        // Look up the generic struct definition to get field info and generic params.
-        let struct_info = match self.registry.struct_defs.get(base_name) {
-            Some(info) => info.clone(),
-            None => return,
-        };
 
         // Build a substitution map: generic param name -> concrete Ty.
         let subst: HashMap<String, &Ty> = struct_info
@@ -6012,10 +5996,9 @@ impl<'a> Lowerer<'a> {
             let key_str = field.key_text().unwrap_or_default();
             let key_mir = MirExpr::StringLit(key_str, MirType::String);
 
-            let val_expr = match field.value() {
-                Some(e) => e,
-                None => continue,
-            };
+            let val_expr = field
+                .value()
+                .expect("the parser gives a json field its value");
 
             // Look up the typeck-inferred type for this field value.
             let val_ty = self
@@ -6166,9 +6149,7 @@ impl<'a> Lowerer<'a> {
     /// `Some(value)`, or `None` without one, of the `Option` type `ty`.
     fn option_variant(&self, ty: &Ty, value: Option<MirExpr>) -> MirExpr {
         let option = self.binding_type(ty);
-        let MirType::SumType(type_name) = option.clone() else {
-            unreachable!("an Option is a sum type")
-        };
+        let type_name = mir_type_to_impl_name(&option);
         let (variant, fields) = match value {
             Some(value) => ("Some", vec![value]),
             None => ("None", vec![]),
@@ -6345,11 +6326,11 @@ impl<'a> Lowerer<'a> {
                         format!("{}_id", assoc),
                         target_schema.map_or("id", |target| target.primary_key.as_str()),
                     ),
-                    "has_many" | "has_one" => (
+                    // The parser's other relationships: has_many and has_one.
+                    _ => (
                         format!("{}_id", name.to_lowercase()),
                         schema.primary_key.as_str(),
                     ),
-                    _ => return None,
                 };
 
                 Some(MirExpr::StringLit(
@@ -6530,9 +6511,7 @@ impl<'a> Lowerer<'a> {
             }
             "Option" => {
                 let inner = arg(0);
-                let MirType::SumType(option) = self.binding_type(ty) else {
-                    return MirExpr::Block(vec![value, null()], MirType::Ptr);
-                };
+                let option = mir_type_to_impl_name(&self.binding_type(ty));
                 let var = self.json_fresh("some");
                 let inner_mir = self.binding_type(&inner);
                 let some =
@@ -6616,9 +6595,7 @@ impl<'a> Lowerer<'a> {
                 // null is None; anything else is the inner value, as Some.
                 let inner = arg(0);
                 let option_ty = self.binding_type(ty);
-                let MirType::SumType(option) = option_ty.clone() else {
-                    return fail(json);
-                };
+                let option = mir_type_to_impl_name(&option_ty);
                 let (j, res, val) = (
                     self.json_fresh("opt"),
                     self.json_fresh("res"),
@@ -7800,17 +7777,10 @@ impl<'a> Lowerer<'a> {
 
         // Check if this is a nullary variant constructor (e.g., Red, None, Point).
         // These are NameRef nodes that refer to sum type variants with no fields.
-        if let Some(base_name) =
-            find_type_for_variant(&name, Some(&resolved_ty), self.registry, Some(0))
-        {
-            let concrete_name = match &resolved_ty {
-                MirType::SumType(name)
-                    if name == &base_name || name.starts_with(&format!("{base_name}_")) =>
-                {
-                    name.clone()
-                }
-                _ => base_name,
-            };
+        // The type checker types a constructor as the instance of its sum
+        // type it builds (`Option_Int`).
+        if find_type_for_variant(&name, Some(&resolved_ty), self.registry, Some(0)).is_some() {
+            let concrete_name = mir_type_to_impl_name(&resolved_ty);
             return MirExpr::ConstructVariant {
                 type_name: concrete_name.clone(),
                 variant: name,
@@ -9176,9 +9146,7 @@ impl<'a> Lowerer<'a> {
         } else {
             ("Ok", "Err")
         };
-        let MirType::SumType(sum) = value.ty().clone() else {
-            unreachable!("an {module} lowers to a sum type")
-        };
+        let sum = mir_type_to_impl_name(value.ty());
         // The payloads, bound: the present variant's and an `Err`'s.
         let payload = |i: usize, name: &str| {
             let ty = self.binding_type(&payloads[i]);
@@ -9211,11 +9179,8 @@ impl<'a> Lowerer<'a> {
         };
         let construct = |ty: &Ty, variant: &str, fields: Vec<MirExpr>| {
             let mir = self.binding_type(ty);
-            let MirType::SumType(name) = mir.clone() else {
-                unreachable!("an Option or a Result lowers to a sum type")
-            };
             MirExpr::ConstructVariant {
-                type_name: name,
+                type_name: mir_type_to_impl_name(&mir),
                 variant: variant.to_string(),
                 fields,
                 ty: mir,
@@ -9224,9 +9189,7 @@ impl<'a> Lowerer<'a> {
         // `extra`, the function, applied to `arg`.
         let apply = |arg: MirExpr| {
             let f = extra.clone().expect("the helper takes a function");
-            let Some(Ty::Fun(_, result)) = params.get(1) else {
-                unreachable!("the checker types the function")
-            };
+            let (_, result) = fun_parts(&params[1]);
             MirExpr::ClosureCall {
                 closure: Box::new(f),
                 args: vec![arg],
@@ -9258,11 +9221,11 @@ impl<'a> Lowerer<'a> {
                     vec![extra.clone().expect("ok_or takes an error")],
                 ),
             ),
-            "ok" => (
+            // `ok`, the last of the functions the type checker has.
+            _ => (
                 construct(ret, "Some", vec![v]),
                 construct(ret, "None", vec![]),
             ),
-            other => unreachable!("the checker has no {module}.{other}"),
         };
         // Only the bodies that read a payload bind it.
         let present_binding = bind_v.filter(|_| !field.starts_with("is_"));
@@ -9536,14 +9499,7 @@ impl<'a> Lowerer<'a> {
                         // The call around it constructs the variant.
                         return MirExpr::Var(field, ty);
                     }
-                    let concrete = match &ty {
-                        MirType::SumType(name)
-                            if name == &owner || name.starts_with(&format!("{owner}_")) =>
-                        {
-                            name.clone()
-                        }
-                        _ => owner.clone(),
-                    };
+                    let concrete = mir_type_to_impl_name(&ty);
                     return MirExpr::ConstructVariant {
                         type_name: concrete.clone(),
                         variant: field,
@@ -10116,17 +10072,8 @@ impl<'a> Lowerer<'a> {
             }
             _ => unreachable!("the type checker rejects a pattern that is not a value (E0056)"),
         };
-        let base_name =
-            find_type_for_variant(&variant, Some(&ty), self.registry, Some(fields.len()))
-                .unwrap_or_default();
-        let type_name = match ty {
-            MirType::SumType(name)
-                if name == base_name || name.starts_with(&format!("{base_name}_")) =>
-            {
-                name
-            }
-            _ => base_name,
-        };
+        // The arm's value is the `case`'s type, a sum type's instance.
+        let type_name = mir_type_to_impl_name(&ty);
         MirExpr::ConstructVariant {
             type_name: type_name.clone(),
             variant,
@@ -12958,22 +12905,17 @@ impl<'a> Lowerer<'a> {
 
         let ty = self.resolve_range(sl.syntax().text_range());
 
-        // For generic structs, the resolved type is MirType::Struct("Box_Int") (mangled).
-        // Use the mangled name for the struct literal so codegen finds the right LLVM type.
-        // Also trigger monomorphized trait function generation.
-        let name = if let MirType::Struct(ref mangled) = ty {
-            if mangled != &base_name {
-                // This is a monomorphized generic struct -- generate trait functions.
-                if let Some(typeck_ty) = self.get_ty(sl.syntax().text_range()).cloned() {
-                    self.ensure_monomorphized_struct_trait_fns(&base_name, &typeck_ty);
-                }
-                mangled.clone()
-            } else {
-                base_name
-            }
-        } else {
-            base_name
-        };
+        // A generic struct's literal has its instantiation's struct type
+        // (`Box_Int`), whose layout and trait functions are made on first
+        // use.
+        let name = mir_type_to_impl_name(&ty);
+        if name != base_name {
+            let typeck_ty = self
+                .get_ty(sl.syntax().text_range())
+                .cloned()
+                .expect("the type checker types a struct literal");
+            self.ensure_monomorphized_struct_trait_fns(&base_name, &typeck_ty);
+        }
 
         MirExpr::StructLit { name, fields, ty }
     }
@@ -13208,8 +13150,8 @@ impl<'a> Lowerer<'a> {
                 "one_for_one" => 0,
                 "one_for_all" => 1,
                 "rest_for_one" => 2,
-                "simple_one_for_one" => 3,
-                other => unreachable!("the supervision strategy {other}"),
+                // simple_one_for_one, the last strategy the type checker admits.
+                _ => 3,
             });
 
         // Extract max_restarts (default: 3).
@@ -13269,8 +13211,8 @@ impl<'a> Lowerer<'a> {
             let restart_type = setting("restart").map_or(0, |value| match value.text() {
                 "permanent" => 0,
                 "transient" => 1,
-                "temporary" => 2,
-                other => unreachable!("the restart type {other}"),
+                // temporary, the last restart type the type checker admits.
+                _ => 2,
             });
             // A timeout in milliseconds, or 0 for `brutal_kill`.
             let shutdown_ms = setting("shutdown").map_or(5000, |value| match value.kind() {
@@ -13454,10 +13396,7 @@ impl<'a> Lowerer<'a> {
                 .body()
                 .and_then(|block| block.tail_expr())
                 .and_then(|expr| self.get_ty(expr.syntax().text_range()))
-                .and_then(|ty| match ty {
-                    Ty::Tuple(elems) => elems.get(1).cloned(),
-                    _ => None,
-                })
+                .and_then(|ty| ty.parts().nth(1).cloned())
                 .expect("the type checker gives a call handler a (state, reply) body");
             call_infos.push(CallInfo {
                 snake_name: to_snake_case(&variant_name),
