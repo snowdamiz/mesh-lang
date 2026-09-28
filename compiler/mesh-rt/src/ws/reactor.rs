@@ -1130,6 +1130,22 @@ fn register(
     outbound: VecDeque<Outbound>,
     config: ReactorConfig,
 ) -> Result<ReactorConnection, String> {
+    let (entry, connection) = new_entry(control, stream, phase, outbound, config)?;
+    connection.submit(Command::Register {
+        entry: Box::new(entry),
+    })?;
+    Ok(connection)
+}
+
+/// The reactor's entry for `stream`, and the connection its owner drives it
+/// through, within `control`'s limits.
+fn new_entry(
+    control: &Arc<ReactorControl>,
+    stream: ReactorTransport,
+    phase: Phase,
+    outbound: VecDeque<Outbound>,
+    config: ReactorConfig,
+) -> Result<(Entry, ReactorConnection), String> {
     let tls_handshake_slot = TlsHandshakeSlot::reserve(control, &stream)?;
     if !reserve_counter(&control.connections, 1, control.limits.connections) {
         return Err("WebSocket reactor connection limit reached".to_string());
@@ -1178,10 +1194,7 @@ fn register(
         termination_reason: "WebSocket connection closed".to_string(),
         dead: false,
     };
-    connection.submit(Command::Register {
-        entry: Box::new(entry),
-    })?;
-    Ok(connection)
+    Ok((entry, connection))
 }
 
 fn reactor_loop(mut poll: Poll, receiver: Receiver<Command>, read_limit: usize) {
@@ -1446,6 +1459,53 @@ mod tests {
 
     fn server(config: ReactorConfig) -> (TcpStream, Arc<Recorder>, mpsc::Receiver<Seen>) {
         server_on(reactor().unwrap(), config)
+    }
+
+    /// An entry for a descriptor no poller takes (a directory), with a
+    /// frame queued so it asks to write.
+    fn unpollable_entry() -> Entry {
+        use std::os::fd::{FromRawFd, IntoRawFd};
+        let directory = std::fs::File::open(std::env::temp_dir()).unwrap();
+        let socket = unsafe { TcpStream::from_raw_fd(directory.into_raw_fd()) };
+        let (recorder, _seen) = Recorder::new();
+        let phase = Phase::Open {
+            sink: Arc::clone(&recorder) as Arc<dyn ReactorEventSink>,
+        };
+        let outbound = VecDeque::from([Outbound::new(b"frame".to_vec(), None)]);
+        let transport = ReactorTransport::Plain(mio::net::TcpStream::from_std(socket));
+        let config = ReactorConfig::server(1024);
+        new_entry(reactor().unwrap(), transport, phase, outbound, config)
+            .unwrap()
+            .0
+    }
+
+    /// A connection the poller refuses to watch, as it registers or as it
+    /// asks to write, fails with the poller's reason.
+    #[test]
+    fn a_connection_the_poller_refuses_fails() {
+        let poll = Poll::new().unwrap();
+        let (commands, receiver) = crossbeam_channel::unbounded();
+        let entry = unpollable_entry();
+        let id = entry.id;
+        commands
+            .send(Command::Register {
+                entry: Box::new(entry),
+            })
+            .unwrap();
+        let mut entries = HashMap::new();
+        drain_commands(&poll, &receiver, &mut entries);
+        let registered = &entries[&id];
+        assert!(registered.dead);
+        assert!(registered
+            .termination_reason
+            .starts_with("register WebSocket transport: "));
+
+        let mut entry = unpollable_entry();
+        reregister_writable(&poll, &mut entry);
+        assert!(entry.dead);
+        assert!(entry
+            .termination_reason
+            .starts_with("reregister WebSocket writer: "));
     }
 
     const UPGRADE: &[u8] = b"GET /feed HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\n\
