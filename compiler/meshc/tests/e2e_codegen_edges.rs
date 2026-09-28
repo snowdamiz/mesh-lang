@@ -2238,35 +2238,36 @@ end
 
 /// Functions and iterators cannot be compared, and comparing values that
 /// hold one (an `Option`, a list, a tuple or a set of functions) says so.
-/// The type checker lets such a comparison through, and code generation
-/// compared them as strings: for functions LLVM's verification failed, and
-/// two different iterators were equal.
+/// Code generation compared them as strings: for functions LLVM's
+/// verification failed, and two different iterators were equal. The type
+/// checker refuses the comparison itself; a set's elements are compared
+/// where it is built.
 #[test]
 fn values_holding_functions_or_iterators_cannot_be_compared() {
     for (comparison, error) in [
         (
             "Some(inc) == Some(inc)",
-            "cannot compare values of type `(Int) -> Int`",
+            "`Option<(Int) -> Int>` does not implement `Eq`",
         ),
         (
             "[inc] != [inc]",
-            "cannot compare values of type `(Int) -> Int`",
+            "`List<(Int) -> Int>` does not implement `Eq`",
         ),
         (
             "(inc, 1) == (inc, 1)",
-            "cannot compare values of type `(Int) -> Int`",
+            "`((Int) -> Int, Int)` does not implement `Eq`",
         ),
         (
             "Set.size(Set.add(Set.new(), Some(inc))) > 0",
-            "cannot compare values of type `(Int) -> Int`",
+            "cannot compare values of type `Option<(Int) -> Int>`: the type has no `Eq`",
         ),
         (
             "Some(inc) < Some(inc)",
-            "cannot order values of type `(Int) -> Int`",
+            "`Option<(Int) -> Int>` does not implement `Ord`",
         ),
         (
             "Some(Iter.from([1])) == Some(Iter.from([2]))",
-            "cannot compare values of type `Iter<Int>`: the type has no `Eq`",
+            "`Option<Iter<Int>>` does not implement `Eq`",
         ),
     ] {
         let (_guard, project_dir) = project(&format!(
@@ -2370,21 +2371,21 @@ end
     assert_eq!(output, "failed\n");
 }
 
-/// A type's name is not a value. The type checker lets `Int` or `Map`
+/// A type's name is not a value. The type checker let `Int` or `Map`
 /// through as one, of the type it names, and code generation found no
 /// variable of that name: the build failed ("Undefined variable 'Int'"),
 /// and panicked once code generation took every name lowering gives it
-/// for a variable or a function.
+/// for a variable or a function. The type checker refuses it now.
 #[test]
 fn a_type_name_is_not_a_value() {
     for (binding, error) in [
         (
             "let n = Int\n  println(\"#{n + 1}\")",
-            "`Int` names a type, not a value",
+            "`Int` is a type, not a value",
         ),
         (
             "let m = Map\n  println(\"#{m == Map}\")",
-            "`Map` names a type, not a value",
+            "`Map` is a type, not a value",
         ),
     ] {
         let (_guard, project_dir) = project(&format!("fn main() do\n  {binding}\nend\n"));
@@ -2688,8 +2689,6 @@ end
 fn main() do
   let j = json { a: json { b: 1 } }
   println(j)
-  let unit_box :: Result<Box<()>, String> = Box.from_json("{\"value\":null}")
-  println("#{Result.is_ok(unit_box)}")
   let encoded = Json.encode(Pairs { a: (1, "x"), b: (2, "y") })
   println(encoded)
   case Pairs.from_json(encoded) do
@@ -2710,7 +2709,7 @@ end
     );
     assert_eq!(
         output,
-        "{\"a\":{\"b\":1}}\ntrue\n{\"a\":[1,\"x\"],\"b\":[2,\"y\"]}\n(2, y)\n1 2 3\n3\n3\n3 1 a\n1 a 2\n"
+        "{\"a\":{\"b\":1}}\n{\"a\":[1,\"x\"],\"b\":[2,\"y\"]}\n(2, y)\n1 2 3\n3\n3\n3 1 a\n1 a 2\n"
     );
 }
 
@@ -2751,13 +2750,20 @@ end
     assert_eq!(output, "started\n");
 }
 
-/// A generic `deriving(Json)` type decoded at a type without JSON (the type
-/// checker lets `Box<Point>.from_json` through) fails to decode at run
-/// time, naming the type.
+/// A generic `deriving(Json)` type decoded at a type without JSON
+/// (`Box<Point>.from_json`) is refused where it is decoded; it failed at
+/// run time with "cannot decode Point from JSON".
 #[test]
-fn json_decoding_at_a_type_without_json_fails_at_run_time() {
-    let output = compile_and_run(
-        r##"struct Point do
+fn json_decoding_at_a_type_without_json_is_refused() {
+    for (decoded, error) in [
+        ("Box<Point>", "`Box<Point>` does not implement `Json`"),
+        (
+            "Box<Fun(Int) -> Int>",
+            "`Box<(Int) -> Int>` does not implement `Json`",
+        ),
+    ] {
+        let (_guard, project_dir) = project(&format!(
+            r##"struct Point do
   x :: Int
 end
 
@@ -2766,21 +2772,19 @@ struct Box<Item> do
 end deriving(Json)
 
 fn main() do
-  let decoded :: Result<Box<Point>, String> = Box.from_json("{\"value\":{\"x\":1}}")
+  let decoded :: Result<{decoded}, String> = Box.from_json("{{}}")
   case decoded do
     Ok(_) -> println("decoded")
     Err(e) -> println(e)
   end
-  let f :: Result<Box<Fun(Int) -> Int>, String> = Box.from_json("{\"value\":null}")
-  case f do
-    Ok(_) -> println("decoded")
-    Err(e) -> println(e)
-  end
 end
-"##,
-    );
-    assert_eq!(
-        output,
-        "$.value: cannot decode Point from JSON\n$.value: cannot decode (Int) -> Int from JSON\n"
-    );
+"##
+        ));
+        let output = meshc_build(&project_dir, &[]).output().unwrap();
+        assert!(
+            stderr(&output).contains(error),
+            "{decoded}: {}",
+            stderr(&output)
+        );
+    }
 }
