@@ -2328,3 +2328,30 @@ end
     );
     assert_eq!(output, "failed\n");
 }
+
+/// A type's name is not a value. The type checker lets `Int` or `Map`
+/// through as one, of the type it names, and code generation found no
+/// variable of that name: the build failed ("Undefined variable 'Int'"),
+/// and panicked once code generation took every name lowering gives it
+/// for a variable or a function.
+#[test]
+fn a_type_name_is_not_a_value() {
+    for (binding, error) in [
+        (
+            "let n = Int\n  println(\"#{n + 1}\")",
+            "`Int` names a type, not a value",
+        ),
+        (
+            "let m = Map\n  println(\"#{m == Map}\")",
+            "`Map` names a type, not a value",
+        ),
+    ] {
+        let (_guard, project_dir) = project(&format!("fn main() do\n  {binding}\nend\n"));
+        let output = meshc_build(&project_dir, &[]).output().unwrap();
+        assert!(
+            stderr(&output).contains(error),
+            "{binding}: {}",
+            stderr(&output)
+        );
+    }
+}

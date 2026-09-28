@@ -7868,6 +7868,14 @@ impl<'a> Lowerer<'a> {
         } else {
             mapped_name
         };
+        // The type checker gives a type's name (`Int`, `Map`) the type it
+        // names, as though it were a value of it.
+        if name.starts_with(|c: char| c.is_ascii_uppercase())
+            && !self.known_functions.contains_key(&lowered_name)
+        {
+            self.lowering_errors
+                .push(format!("`{name}` names a type, not a value"));
+        }
 
         MirExpr::Var(lowered_name, ty)
     }
