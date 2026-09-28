@@ -86,7 +86,9 @@ pub extern "C" fn mesh_result_unwrap(result: *mut u8) -> *mut u8 {
 /// Read a line from stdin. Returns a MeshResult (tag 0 = Ok with string,
 /// tag 1 = Err with error message string).
 ///
-/// The trailing newline is stripped from the result.
+/// The trailing newline is stripped from the result. At the end of input
+/// the result is `Err("end of input")`: were it an empty line, a program
+/// reading to the end could not tell it from a blank one, and would loop.
 #[no_mangle]
 pub extern "C" fn mesh_io_read_line() -> *mut MeshResult {
     read_line_from(&mut std::io::stdin().lock())
@@ -95,6 +97,7 @@ pub extern "C" fn mesh_io_read_line() -> *mut MeshResult {
 fn read_line_from(reader: &mut impl std::io::BufRead) -> *mut MeshResult {
     let mut input = String::new();
     match reader.read_line(&mut input) {
+        Ok(0) => err_result("end of input"),
         Ok(_) => {
             // Strip trailing newline
             if input.ends_with('\n') {
@@ -129,8 +132,8 @@ mod tests {
     use crate::gc::mesh_rt_init;
     use crate::string::mesh_string_new;
 
-    /// A line comes back without its line ending, `\r\n` or `\n`; input
-    /// that is not UTF-8 is an error.
+    /// A line comes back without its line ending, `\r\n` or `\n`; the end of
+    /// input and input that is not UTF-8 are errors.
     #[test]
     fn read_line_strips_its_ending_and_refuses_what_is_not_text() {
         mesh_rt_init();
@@ -142,6 +145,9 @@ mod tests {
         };
         assert_eq!(read(b"crlf\r\nnext"), (0, "crlf".to_string()));
         assert_eq!(read(b"lf\n"), (0, "lf".to_string()));
+        assert_eq!(read(b"last"), (0, "last".to_string()));
+        assert_eq!(read(b"\n"), (0, String::new()));
+        assert_eq!(read(b""), (1, "end of input".to_string()));
         assert_eq!(read(b"\xff\n").0, 1);
     }
 

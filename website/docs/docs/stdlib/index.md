@@ -54,7 +54,7 @@ end
 
 | Function | Returns | Description |
 |----------|---------|-------------|
-| `IO.read_line()` | `Result<String, String>` | Read one line from standard input |
+| `IO.read_line()` | `Result<String, String>` | Read one line from standard input, without its line ending; `Err("end of input")` once input is exhausted |
 | `IO.eprintln(text)` | `Unit` | Write a line to standard error |
 | `Env.get(name, default)` | `String` | Read an environment variable or use a default |
 | `Env.get_int(name, default)` | `Int` | Read a decimal environment variable or use a default |

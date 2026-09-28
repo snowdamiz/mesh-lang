@@ -307,6 +307,29 @@ fn e2e_io_read_line() {
     assert_eq!(output, "hello world\n");
 }
 
+/// A program reading to the end of its input stops there: the end is an
+/// error, where it was an empty line (and the program read on forever).
+#[test]
+fn e2e_io_read_line_ends_with_the_input() {
+    let source = r#"
+fn count_lines(count :: Int) -> Int do
+  case IO.read_line() do
+    Ok(_) -> count_lines(count + 1)
+    Err(reason) -> do
+      println(reason)
+      count
+    end
+  end
+end
+
+fn main() do
+  println("${count_lines(0)}")
+end
+"#;
+    let output = compile_and_run_with_stdin(source, "one\n\nthree");
+    assert_eq!(output, "end of input\n3\n");
+}
+
 // ── Collection E2E Tests (Phase 8 Plan 02) ────────────────────────────
 
 #[test]
