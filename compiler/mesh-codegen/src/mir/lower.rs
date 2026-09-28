@@ -11259,26 +11259,9 @@ impl<'a> Lowerer<'a> {
                     vec![lhs, rhs],
                     MirType::Bool,
                 ),
-                // A `List` or `Map` annotation without type arguments.
-                "List" => {
-                    let callback = MirExpr::Var(
-                        self.resolve_eq_callback(&Ty::int()),
-                        MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Bool)),
-                    );
-                    Self::call_named(
-                        "mesh_list_eq",
-                        ptr3,
-                        vec![lhs, rhs, callback],
-                        MirType::Bool,
-                    )
-                }
-                "Map" => {
-                    let callback = MirExpr::Var(
-                        self.resolve_eq_callback(&Ty::int()),
-                        MirType::FnPtr(vec![MirType::Int, MirType::Int], Box::new(MirType::Bool)),
-                    );
-                    Self::call_named("mesh_map_eq", ptr3, vec![lhs, rhs, callback], MirType::Bool)
-                }
+                // A collection is always applied to its element types: only
+                // the name `List` or `Map` has the bare type, and lowering
+                // refuses a type's name as a value (`lower_name_ref`).
                 name => {
                     let f = format!("Eq__eq__{name}");
                     if self.known_functions.contains_key(&f)
@@ -12447,9 +12430,6 @@ impl<'a> Lowerer<'a> {
                             MirType::String,
                         )
                     })
-            }
-            Ty::Con(tc) if matches!(tc.name.as_str(), "List" | "Map" | "Set") => {
-                Some(self.wrap_collection_to_string(expr, ty, debug))
             }
             Ty::Con(tc) if tc.name == "Unit" => Some(unit(expr)),
             Ty::Con(tc) if tc.name == "Json" => Some(Self::call_named(
