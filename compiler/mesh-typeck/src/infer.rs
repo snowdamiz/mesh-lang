@@ -8884,6 +8884,25 @@ fn is_named_type(type_registry: &TypeRegistry, name: &str) -> bool {
     type_registry.lookup_struct(name).is_some() || type_registry.lookup_sum_type(name).is_some()
 }
 
+/// `ty` does not implement `trait_name`. A built-in type (`Regex`, `Map`)
+/// is told apart: it has no definition to derive the trait on.
+fn trait_not_satisfied(
+    ctx: &InferCtx,
+    ty: Ty,
+    trait_name: String,
+    origin: ConstraintOrigin,
+) -> TypeError {
+    let builtin = ty
+        .con_name()
+        .is_some_and(|name| ctx.builtin_types.contains(name));
+    TypeError::TraitNotSatisfied {
+        ty,
+        trait_name,
+        builtin,
+        origin,
+    }
+}
+
 /// A struct or sum type's name names no value: it is the base of a
 /// qualified name (`Point.origin()`, `Shape.Circle`) or an error. It type
 /// checked as a value of the type, and code generation failed on it. So
@@ -9171,11 +9190,7 @@ fn infer_binary(
                 ctx.operand_traits
                     .push((resolved, trait_name.to_string(), origin));
             } else if !trait_registry.has_impl(trait_name, &resolved) {
-                let err = TypeError::TraitNotSatisfied {
-                    ty: resolved,
-                    trait_name: trait_name.to_string(),
-                    origin,
-                };
+                let err = trait_not_satisfied(ctx, resolved, trait_name.to_string(), origin);
                 ctx.errors.push(err.clone());
                 return Err(err);
             }
@@ -9236,11 +9251,7 @@ fn infer_trait_binary_op(
     // that the right one differs (`maybe + 1` on an `Int?`).
     let lhs = ctx.resolve(lhs_ty.clone());
     if !lhs.has_type_vars() && !trait_registry.has_impl(trait_name, &lhs) {
-        let err = TypeError::TraitNotSatisfied {
-            ty: lhs,
-            trait_name: trait_name.to_string(),
-            origin: origin.clone(),
-        };
+        let err = trait_not_satisfied(ctx, lhs, trait_name.to_string(), origin.clone());
         ctx.errors.push(err.clone());
         return Err(err);
     }
@@ -9261,11 +9272,7 @@ fn infer_trait_binary_op(
             .resolve_associated_type(trait_name, "Output", &resolved)
             .unwrap_or(resolved));
     }
-    let err = TypeError::TraitNotSatisfied {
-        ty: resolved,
-        trait_name: trait_name.to_string(),
-        origin: origin.clone(),
-    };
+    let err = trait_not_satisfied(ctx, resolved, trait_name.to_string(), origin.clone());
     ctx.errors.push(err.clone());
     Err(err)
 }
@@ -9315,13 +9322,13 @@ fn infer_unary(
             .resolve_associated_type("Neg", "Output", &resolved)
             .unwrap_or(resolved));
     }
-    let err = TypeError::TraitNotSatisfied {
-        ty: resolved,
-        trait_name: "Neg".to_string(),
-        origin: ConstraintOrigin::Expr {
-            span: un.syntax().text_range(),
-        },
-    };
+    let span = un.syntax().text_range();
+    let err = trait_not_satisfied(
+        ctx,
+        resolved,
+        "Neg".to_string(),
+        ConstraintOrigin::Expr { span },
+    );
     ctx.errors.push(err.clone());
     Err(err)
 }
@@ -10965,16 +10972,16 @@ fn infer_for_in(
                         .into_iter()
                         .find(|trait_name| trait_registry.has_impl(trait_name, &resolved));
                     let Some(trait_name) = trait_name else {
-                        let err = TypeError::TraitNotSatisfied {
-                            ty: resolved,
-                            trait_name: "Iterable".to_string(),
-                            origin: ConstraintOrigin::Expr {
-                                span: for_in
-                                    .iterable()
-                                    .map(|e| e.syntax().text_range())
-                                    .unwrap_or_else(|| for_in.syntax().text_range()),
-                            },
-                        };
+                        let span = for_in
+                            .iterable()
+                            .map(|e| e.syntax().text_range())
+                            .unwrap_or_else(|| for_in.syntax().text_range());
+                        let err = trait_not_satisfied(
+                            ctx,
+                            resolved,
+                            "Iterable".to_string(),
+                            ConstraintOrigin::Expr { span },
+                        );
                         ctx.errors.push(err.clone());
                         env.pop_scope();
                         return Err(err);
@@ -14964,11 +14971,12 @@ fn check_default_calls(
         if built.has_type_vars() {
             ctx.errors.push(TypeError::AmbiguousDefault { span });
         } else if !trait_registry.has_impl("Default", &built) {
-            ctx.errors.push(TypeError::TraitNotSatisfied {
-                ty: built,
-                trait_name: "Default".to_string(),
-                origin: ConstraintOrigin::Expr { span },
-            });
+            ctx.errors.push(trait_not_satisfied(
+                ctx,
+                built,
+                "Default".to_string(),
+                ConstraintOrigin::Expr { span },
+            ));
         }
     }
 }
@@ -14994,11 +15002,8 @@ fn check_type_param_bounds(
             let encodable = matches!(&used, Ty::Con(c) if c.name == "Json")
                 || is_json_serializable(&used, &[], &ctx.json_types, trait_registry);
             if !used.has_type_vars() && !encodable {
-                ctx.errors.push(TypeError::TraitNotSatisfied {
-                    ty: used,
-                    trait_name,
-                    origin,
-                });
+                ctx.errors
+                    .push(trait_not_satisfied(ctx, used, trait_name, origin));
             }
             continue;
         }
@@ -15006,11 +15011,8 @@ fn check_type_param_bounds(
         // left partly open must have an instance that could: no `Queue`
         // implements Display, whatever it holds.
         if !is_type_var(&used) && !trait_registry.has_impl(&trait_name, &used) {
-            ctx.errors.push(TypeError::TraitNotSatisfied {
-                ty: used.with_holes(),
-                trait_name,
-                origin,
-            });
+            let err = trait_not_satisfied(ctx, used.with_holes(), trait_name, origin);
+            ctx.errors.push(err);
             continue;
         }
         if !used.has_type_vars() {

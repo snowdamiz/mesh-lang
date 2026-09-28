@@ -744,6 +744,7 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
         TypeError::TraitNotSatisfied {
             ty,
             trait_name,
+            builtin,
             origin,
         } => {
             let span = origin_span(origin).unwrap_or(0..source_len.max(1).min(source_len));
@@ -758,6 +759,7 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
                  Map<String, _> of them; a struct or sum type gets it with `deriving(Json)`"
                     .to_string()
             } else if is_named_type(ty)
+                && !builtin
                 && matches!(
                     trait_name.as_str(),
                     "Eq" | "Ord" | "Display" | "Debug" | "Hash"
@@ -1779,9 +1781,11 @@ mod tests {
     #[test]
     fn missing_traits_are_explained_by_the_type() {
         let help = |ty: Ty, trait_name: &str| {
+            let builtin = ty.con_name() == Some("Regex");
             let error = TypeError::TraitNotSatisfied {
                 ty,
                 trait_name: trait_name.to_string(),
+                builtin,
                 origin: ConstraintOrigin::Builtin,
             };
             let json: serde_json::Value =
@@ -1791,6 +1795,11 @@ mod tests {
         let point = || Ty::struct_ty("Point", vec![]);
         assert!(help(Ty::int(), "Json").starts_with("JSON holds Int, Float"));
         assert!(help(point(), "Eq").starts_with("add `deriving(Eq)`"));
+        // A built-in type has no definition to derive on.
+        assert_eq!(
+            help(Ty::Con(crate::ty::TyCon::new("Regex")), "Display"),
+            "add `impl Display for Regex do ... end`"
+        );
         assert_eq!(
             help(point(), "Named"),
             "add `impl Named for Point do ... end`"

@@ -112,10 +112,12 @@ pub enum TypeError {
     },
     /// A non-function value is called as a function.
     NotAFunction { ty: Ty, span: TextRange },
-    /// A type does not satisfy a required trait constraint.
+    /// A type does not satisfy a required trait constraint. `builtin` when
+    /// the type is a built-in one, which has no definition to derive on.
     TraitNotSatisfied {
         ty: Ty,
         trait_name: String,
+        builtin: bool,
         origin: ConstraintOrigin,
     },
     /// An impl block is missing a method required by the trait.

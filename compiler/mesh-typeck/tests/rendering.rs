@@ -54,6 +54,7 @@ fn one_of_each() -> Vec<TypeError> {
         TypeError::TraitNotSatisfied {
             ty: Ty::int(),
             trait_name: "trait_name".to_string(),
+            builtin: false,
             origin: ConstraintOrigin::Expr { span: span(27, 40) },
         },
         TypeError::MissingTraitMethod {
