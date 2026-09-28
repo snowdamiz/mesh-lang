@@ -1984,3 +1984,133 @@ end
     );
     assert_eq!(output, "W(Inner { x: 1 })\n");
 }
+
+/// An actor receives a Bool as the byte it is; a receive with no arm only
+/// waits out its `after`.
+#[test]
+fn actors_receive_bools_and_wait_without_arms() {
+    let output = compile_and_run(
+        r##"actor flag(done :: Pid<String>) do
+  receive do
+    b -> send(done, if b do "yes" else "no" end)
+  end
+  flag(done)
+end
+
+actor driver() do
+  let p = spawn(flag, self())
+  send(p, true)
+  receive do
+    s -> println(s)
+  end
+  send(p, false)
+  receive do
+    s -> println(s)
+  end
+  let quiet = receive do
+  after 20 ->
+    "nothing"
+  end
+  println(quiet)
+end
+
+fn main() do
+  let d :: Pid<String> = spawn(driver)
+  Timer.sleep(500)
+end
+"##,
+    );
+    assert_eq!(output, "yes\nno\nnothing\n");
+}
+
+/// `String.from` passed as a function shows each value as interpolating it
+/// would: a String as itself, a Float, a Bool.
+#[test]
+fn string_from_as_a_function_value_shows_each_type() {
+    let output = compile_and_run(
+        r##"fn main() do
+  println("#{List.map([1.5, 2.0], String.from)} #{List.map([true], String.from)} #{List.map(["x"], String.from)}")
+end
+"##,
+    );
+    assert_eq!(output, "[1.5, 2.0] [true] [x]\n");
+}
+
+/// An error code generation reports inside a `case` arm, or inside a match
+/// of several values at once, ends the build as it does anywhere else.
+#[test]
+fn errors_inside_match_arms_end_the_build() {
+    for source in [
+        r##"actor launcher(host :: String) do
+  let _ = case host do
+    "" -> self()
+    _ -> Node.spawn(host, fn () -> self() end)
+  end
+end
+
+fn main() do
+  let _ = spawn(launcher, "")
+end
+"##,
+        r##"actor launcher(host :: String, n :: Int) do
+  let _ = case (host, n) do
+    ("", _) -> self()
+    (_, _) -> Node.spawn(host, fn () -> self() end)
+  end
+end
+
+fn main() do
+  let _ = spawn(launcher, "", 1)
+end
+"##,
+    ] {
+        let (_guard, project_dir) = project(source);
+        let output = meshc_build(&project_dir, &[]).output().unwrap();
+        assert!(
+            stderr(&output).contains(
+                "Node.spawn needs a function defined at the top level: the remote node starts it by name"
+            ),
+            "{}",
+            stderr(&output)
+        );
+    }
+}
+
+/// A child's start is a closure that spawns an actor by its name: a start
+/// that is no closure, or that spawns a closure, is refused.
+#[test]
+fn supervisor_children_start_as_closures_spawning_named_actors() {
+    for (start, error) in [
+        (
+            "start_worker",
+            "the child `w` of supervisor `Sup` must start as `fn -> spawn(actor, ...) end`",
+        ),
+        (
+            "fn -> spawn(if true do worker else worker end) end",
+            "a supervisor child must spawn an actor by its name",
+        ),
+    ] {
+        let (_guard, project_dir) = project(&format!(
+            r##"actor worker() do
+  println("worker")
+end
+
+fn start_worker() -> Pid<Int> do
+  spawn(worker)
+end
+
+supervisor Sup do
+  child w do
+    start: {start}
+  end
+end
+
+fn main() do
+  let _ = spawn(Sup)
+end
+"##
+        ));
+        let output = meshc_build(&project_dir, &[]).output().unwrap();
+        assert!(stderr(&output).contains(error), "{}", stderr(&output));
+    }
+}
