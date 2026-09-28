@@ -6667,6 +6667,48 @@ end
     );
 }
 
+/// Wide integers compare and show by the number they hold, in a struct's
+/// derived `==` and inside an Option or a list too: they had no `==` or
+/// `<`, and a derived `==` over a U64 field compared the boxes the two
+/// values live in, so equal amounts built apart were unequal.
+#[test]
+fn e2e_wide_integers_compare_by_value() {
+    let output = compile_and_run(
+        r##"
+struct Holder do
+  amount :: U64
+  reserve :: Option<U64>
+end
+
+fn u(text :: String) -> U64 do
+  case U64.parse(text) do
+    Ok(v) -> v
+    Err(_) -> u("0")
+  end
+end
+
+fn main() do
+  let a = u("18446744073709551615")
+  let b = u("18446744073709551615")
+  let c = u("7")
+  println("#{a == b} #{a != c} #{c < a} #{a > c} #{a <= b}")
+  println("#{a} #{inspect(c)} #{Some(c) == Some(u("7"))} #{[a, c] == [b, u("7")]}")
+  let h1 = Holder { amount: a, reserve: Some(c) }
+  let h2 = Holder { amount: b, reserve: Some(u("7")) }
+  println("#{h1 == h2}")
+  case (I128.parse("-5"), U128.parse("5")) do
+    (Ok(n), Ok(p)) -> println("#{n < (I128.parse("0") |> Result.unwrap_or(n))} #{p == p}")
+    _ -> println("parse failed")
+  end
+end
+"##,
+    );
+    assert_eq!(
+        output,
+        "true true true true true\n18446744073709551615 7 true true\ntrue\ntrue true\n"
+    );
+}
+
 // ── Phase 136: DateTime stdlib tests ─────────────────────────────────────────
 
 /// Phase 136: DateTime.utc_now() returns a plausible UTC timestamp (DTIME-01).

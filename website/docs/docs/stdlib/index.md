@@ -298,7 +298,9 @@ big-endian length prefix, and `finish` rejects trailing bytes.
 
 `U64`, `U128`, and `I128` are opaque integer values for protocol fields that
 do not fit Mesh `Int`. Construction and arithmetic are checked. Convert to
-`Int` only when the value is known to fit.
+`Int` only when the value is known to fit. They compare by value with `==`,
+`!=`, `<` and the other comparisons (as `compare` does), also inside a struct's
+derived `==` or an `Option`, and show as their decimal text in `"#{value}"`.
 
 ```mesh
 fn parse_count(text :: String) -> Int!String do

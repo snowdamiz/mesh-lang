@@ -2911,6 +2911,10 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         // A Json value is shown as its JSON text, and equal to another
         // holding the same (an object's keys in any order).
         (Ty::json(), "Json", &["Eq", "Display", "Debug"]),
+        // A wide integer compares and shows as the number it holds.
+        (Ty::u64(), "U64", &["Eq", "Ord", "Display", "Debug"]),
+        (Ty::u128(), "U128", &["Eq", "Ord", "Display", "Debug"]),
+        (Ty::i128(), "I128", &["Eq", "Ord", "Display", "Debug"]),
     ];
     for arity in 0..=8u8 {
         let elems = (0..arity)

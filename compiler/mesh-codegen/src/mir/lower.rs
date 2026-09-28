@@ -11260,6 +11260,14 @@ impl<'a> Lowerer<'a> {
                     vec![lhs, rhs],
                     MirType::Bool,
                 ),
+                // A wide integer is a boxed number: equal by its value, not
+                // its box.
+                wide @ ("U64" | "U128" | "I128") => MirExpr::BinOp {
+                    op: BinOp::Eq,
+                    lhs: Box::new(Self::wide_compare(wide, lhs, rhs)),
+                    rhs: Box::new(MirExpr::IntLit(0, MirType::Int)),
+                    ty: MirType::Bool,
+                },
                 // A collection is always applied to its element types: only
                 // the name `List` or `Map` has the bare type, and lowering
                 // refuses a type's name as a value (`lower_name_ref`).
@@ -11506,6 +11514,16 @@ impl<'a> Lowerer<'a> {
         );
     }
 
+    /// `U64.compare(lhs, rhs)` (or U128's, I128's, by `wide`): -1, 0 or 1.
+    fn wide_compare(wide: &str, lhs: MirExpr, rhs: MirExpr) -> MirExpr {
+        Self::call_named(
+            &format!("mesh_{}_compare", wide.to_ascii_lowercase()),
+            vec![MirType::Ptr, MirType::Ptr],
+            vec![lhs, rhs],
+            MirType::Int,
+        )
+    }
+
     /// `compare(lhs, rhs)` as an Int (negative, zero, positive) for values
     /// of type `ty`. The operands must be variables: they are read twice.
     fn cmp_expr(&mut self, lhs: MirExpr, rhs: MirExpr, ty: &Ty) -> MirExpr {
@@ -11591,6 +11609,7 @@ impl<'a> Lowerer<'a> {
                 "Int" | "Float" => {
                     three_way(binop(BinOp::Lt, &lhs, &rhs), binop(BinOp::Gt, &lhs, &rhs))
                 }
+                wide @ ("U64" | "U128" | "I128") => Self::wide_compare(wide, lhs, rhs),
                 "String" => Self::call_named(
                     "mesh_string_compare",
                     vec![MirType::String, MirType::String],
@@ -12439,6 +12458,14 @@ impl<'a> Lowerer<'a> {
                 vec![expr.clone()],
                 MirType::String,
             )),
+            Ty::Con(tc) if matches!(tc.name.as_str(), "U64" | "U128" | "I128") => {
+                Some(Self::call_named(
+                    &format!("mesh_{}_to_string", tc.name.to_ascii_lowercase()),
+                    vec![MirType::Ptr],
+                    vec![expr.clone()],
+                    MirType::String,
+                ))
+            }
             _ => None,
         }
     }
