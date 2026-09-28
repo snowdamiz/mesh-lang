@@ -10169,10 +10169,6 @@ impl<'a> Lowerer<'a> {
         )
     }
 
-    fn lower_pattern(&mut self, pat: &Pattern) -> MirPattern {
-        self.lower_pattern_with_expected(pat, None)
-    }
-
     fn lower_pattern_with_expected(&mut self, pat: &Pattern, expected: Option<&Ty>) -> MirPattern {
         match pat {
             // A `_` over a resource binds no name the program sees, but the
