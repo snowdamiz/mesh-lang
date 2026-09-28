@@ -2114,3 +2114,53 @@ end
         assert!(stderr(&output).contains(error), "{}", stderr(&output));
     }
 }
+
+/// A struct cannot hold itself by value: no value of it could exist. The
+/// build accepted one and failed LLVM's verification ("Cannot allocate
+/// unsized type") where a function held one; it now says what is wrong.
+/// Through an Option the struct is held by pointer and works.
+#[test]
+fn structs_hold_themselves_only_through_a_pointer() {
+    let (_guard, project_dir) = project(
+        r##"struct Node do
+  next :: Node
+end
+
+fn keep(n :: Node) -> Node do
+  n
+end
+
+fn main() do
+  if false do
+    let _ = keep(panic("no node"))
+  end
+  println("x")
+end
+"##,
+    );
+    let output = meshc_build(&project_dir, &[]).output().unwrap();
+    assert!(
+        stderr(&output).contains("struct `Node` holds itself by value"),
+        "{}",
+        stderr(&output)
+    );
+    let output = compile_and_run(
+        r##"struct Link do
+  n :: Int
+  next :: Option<Link>
+end
+
+fn total(chain :: Link) -> Int do
+  case chain.next do
+    Some(next) -> chain.n + total(next)
+    None -> chain.n
+  end
+end
+
+fn main() do
+  println("#{total(Link { n: 1, next: Some(Link { n: 2, next: None }) })}")
+end
+"##,
+    );
+    assert_eq!(output, "3\n");
+}

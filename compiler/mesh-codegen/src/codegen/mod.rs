@@ -45,6 +45,33 @@ use self::types::{create_sum_type_layout, llvm_closure_fn_type, llvm_fn_type, ll
 /// whose registered signature contains it.
 const REMOTE_SPAWN_ARG_UNSUPPORTED: u8 = 0;
 
+/// Whether the struct `start` reaches itself through fields of struct type,
+/// which are held by value.
+fn holds_itself(start: &MirStructDef, structs: &[MirStructDef]) -> bool {
+    let fields_of = |name: &str| {
+        structs
+            .iter()
+            .find(|s| s.name == name)
+            .into_iter()
+            .flat_map(|s| s.fields.iter())
+            .filter_map(|(_, ty)| match ty {
+                MirType::Struct(field) => Some(field.as_str()),
+                _ => None,
+            })
+    };
+    let mut seen = FxHashSet::default();
+    let mut next: Vec<&str> = fields_of(&start.name).collect();
+    while let Some(name) = next.pop() {
+        if name == start.name {
+            return true;
+        }
+        if seen.insert(name) {
+            next.extend(fields_of(name));
+        }
+    }
+    false
+}
+
 /// The builder refuses an instruction only without an insertion point or
 /// with an index outside its aggregate: codegen builds inside a block, with
 /// indices from the layouts it made itself.
@@ -292,7 +319,7 @@ impl<'ctx> CodeGen<'ctx> {
             self.struct_types.insert(s.name.clone(), struct_type);
         }
         self.create_sum_type_layouts(&mir.sum_types)?;
-        self.create_struct_types(&mir.structs);
+        self.create_struct_types(&mir.structs)?;
         for s in &mir.structs {
             self.mir_struct_defs
                 .insert(s.name.clone(), s.fields.clone());
@@ -505,7 +532,10 @@ impl<'ctx> CodeGen<'ctx> {
 
     // ── Type layout creation ─────────────────────────────────────────
 
-    fn create_struct_types(&mut self, structs: &[MirStructDef]) {
+    /// Give each struct its fields. A struct that holds itself by value,
+    /// directly or through other structs, has no size: no value of it can
+    /// exist, and every use of one failed LLVM's verification.
+    fn create_struct_types(&mut self, structs: &[MirStructDef]) -> Result<(), String> {
         for s in structs {
             let field_types: Vec<inkwell::types::BasicTypeEnum<'ctx>> = s
                 .fields
@@ -516,6 +546,14 @@ impl<'ctx> CodeGen<'ctx> {
                 .collect();
             let struct_ty = self.struct_types[&s.name];
             struct_ty.set_body(&field_types, false);
+        }
+        match structs.iter().find(|s| holds_itself(s, structs)) {
+            Some(s) => Err(format!(
+                "struct `{}` holds itself by value, so no value of it can exist: hold it in an \
+                 Option or a List instead",
+                s.name
+            )),
+            None => Ok(()),
         }
     }
 
@@ -1442,6 +1480,31 @@ mod tests {
         let mut codegen = CodeGen::new(&context, "cyclic_sums", 0, None).unwrap();
         let error = codegen.compile(&mir).unwrap_err();
         assert_eq!(error, "recursive by-value sum type layout dependency: A, B");
+    }
+
+    /// A struct holding itself by value, directly or through another
+    /// struct, has no size and no value; it was accepted, and LLVM's
+    /// verification failed on the first function that used one.
+    #[test]
+    fn structs_holding_themselves_by_value_are_rejected() {
+        let holding = |name: &str, other: &str| MirStructDef {
+            name: name.to_string(),
+            fields: vec![("next".to_string(), MirType::Struct(other.to_string()))],
+        };
+        for structs in [vec![holding("Node", "Node")], vec![holding("A", "B"), holding("B", "A")]] {
+            let mut mir = empty_mir_module();
+            mir.structs = structs;
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "cyclic_structs", 0, None).unwrap();
+            let error = codegen.compile(&mir).unwrap_err();
+            assert!(
+                error.ends_with(
+                    "holds itself by value, so no value of it can exist: hold it in an Option \
+                     or a List instead"
+                ),
+                "{error}"
+            );
+        }
     }
 
     #[test]
