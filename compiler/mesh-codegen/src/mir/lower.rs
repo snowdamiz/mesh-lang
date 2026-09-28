@@ -9423,13 +9423,14 @@ impl<'a> Lowerer<'a> {
     /// conversion from the function type's parameter, a `deriving(Schema)`
     /// struct's metadata functions are `Type____table__` and the like, and
     /// any other static interface method is its impl's `Trait__field__Type`.
+    /// The type checker types `Type.field` only as one of these.
     fn type_function(
         &mut self,
         fa: &FieldAccess,
         ty_name: &str,
         field: &str,
         is_struct: bool,
-    ) -> Option<MirExpr> {
+    ) -> MirExpr {
         // Each of these is a function, as the type checker types it.
         let fn_ty = self.get_ty(fa.syntax().text_range()).cloned();
         let function_type =
@@ -9476,14 +9477,18 @@ impl<'a> Lowerer<'a> {
             let ty = self.known_functions.get(&name)?.clone();
             Some(MirExpr::Var(name, ty))
         });
-        known.or_else(|| {
-            let suffix = format!("__{field}__{ty_name}");
-            self.known_functions
-                .iter()
-                .filter(|(fn_name, _)| fn_name.ends_with(&suffix) && !fn_name.starts_with("__"))
-                .min_by(|a, b| a.0.cmp(b.0))
-                .map(|(fn_name, fn_ty)| MirExpr::Var(fn_name.clone(), fn_ty.clone()))
-        })
+        known
+            .or_else(|| {
+                let suffix = format!("__{field}__{ty_name}");
+                self.known_functions
+                    .iter()
+                    .filter(|(fn_name, _)| {
+                        fn_name.ends_with(&suffix) && !fn_name.starts_with("__")
+                    })
+                    .min_by(|a, b| a.0.cmp(b.0))
+                    .map(|(fn_name, fn_ty)| MirExpr::Var(fn_name.clone(), fn_ty.clone()))
+            })
+            .expect("the type checker types `Type.field` only as a function of the type")
     }
 
     fn lower_field_access(&mut self, fa: &FieldAccess) -> MirExpr {
@@ -9567,9 +9572,7 @@ impl<'a> Lowerer<'a> {
                 // `Type.name` of a struct or sum type: a function of the type.
                 let is_struct = self.registry.struct_defs.contains_key(&base_name);
                 if is_struct || self.registry.sum_type_defs.contains_key(&base_name) {
-                    if let Some(function) = self.type_function(fa, &base_name, &field, is_struct) {
-                        return function;
-                    }
+                    return self.type_function(fa, &base_name, &field, is_struct);
                 }
             }
         }
