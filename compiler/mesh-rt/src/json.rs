@@ -61,105 +61,120 @@ fn alloc_json(tag: u8, value: u64) -> *mut MeshJson {
     }
 }
 
-// ── Conversion: serde_json::Value -> MeshJson ──────────────────────
+// ── Conversion: JSON text <-> MeshJson ────────────────────────────
 
-/// Recursively convert a serde_json::Value to a GC-allocated MeshJson.
-fn serde_value_to_mesh_json(val: &serde_json::Value) -> *mut MeshJson {
-    match val {
-        serde_json::Value::Null => alloc_json(JSON_NULL, 0),
-        serde_json::Value::Bool(b) => alloc_json(JSON_BOOL, if *b { 1 } else { 0 }),
-        serde_json::Value::Number(n) => {
-            // Int and Float are separate tags for round-trip fidelity.
-            match (n.as_i64(), n.as_u64()) {
-                (Some(i), _) => alloc_json(JSON_INT, i as u64),
-                (None, Some(u)) => alloc_json(JSON_UINT, u),
-                (None, None) => {
-                    let f = n.as_f64().expect("a JSON number is an integer or a float");
-                    alloc_json(JSON_FLOAT, f.to_bits())
-                }
-            }
-        }
-        serde_json::Value::String(s) => {
-            let mesh_str = mesh_str(s);
-            alloc_json(JSON_STR, mesh_str as u64)
-        }
-        serde_json::Value::Array(arr) => {
-            // Build a MeshList from the array elements.
-            let mut mesh_list = list::mesh_list_builder_new(arr.len() as i64);
-            for item in arr {
-                let json_ptr = serde_value_to_mesh_json(item);
-                mesh_list = list::mesh_list_builder_push(mesh_list, json_ptr as u64);
-            }
-            alloc_json(JSON_ARRAY, mesh_list as u64)
-        }
-        serde_json::Value::Object(obj) => {
-            // Build a MeshMap from the object entries.
-            // Keys are stored as MeshString pointers (as u64), values as MeshJson pointers (as u64).
-            // Serde has already deduplicated keys; bulk construction preserves their order
-            // and the string-key tag without scanning/copying every preceding entry.
-            let mut entries = Vec::with_capacity(obj.len());
-            for (key, val) in obj {
-                let key_str = mesh_str(key);
-                let val_json = serde_value_to_mesh_json(val);
-                entries.push([key_str as u64, val_json as u64]);
-            }
-            let mesh_map = map::mesh_map_from_string_entries(&entries);
-            alloc_json(JSON_OBJECT, mesh_map as u64)
-        }
+/// A `MeshJson` read from JSON text, built as it is parsed: an object keeps
+/// its keys in the order the text has them, a repeated key its last value.
+struct Parsed(*mut MeshJson);
+
+impl<'de> serde::Deserialize<'de> for Parsed {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_any(ParsedVisitor)
     }
 }
 
-// ── Conversion: MeshJson -> serde_json::Value ──────────────────────
+struct ParsedVisitor;
 
-/// Recursively convert a MeshJson to a serde_json::Value for encoding.
-unsafe fn mesh_json_to_serde_value(json: *const MeshJson) -> serde_json::Value {
-    match (*json).tag {
-        JSON_NULL => serde_json::Value::Null,
-        JSON_BOOL => serde_json::Value::Bool((*json).value != 0),
-        JSON_INT => {
-            let ival = (*json).value as i64;
-            serde_json::Value::Number(serde_json::Number::from(ival))
+impl<'de> serde::de::Visitor<'de> for ParsedVisitor {
+    type Value = Parsed;
+
+    fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str("a JSON value")
+    }
+
+    fn visit_unit<E>(self) -> Result<Parsed, E> {
+        Ok(Parsed(alloc_json(JSON_NULL, 0)))
+    }
+
+    fn visit_bool<E>(self, b: bool) -> Result<Parsed, E> {
+        Ok(Parsed(alloc_json(JSON_BOOL, b as u64)))
+    }
+
+    // Int and Float are separate tags for round-trip fidelity; an integer
+    // past Int's range is a UInt.
+    fn visit_i64<E>(self, i: i64) -> Result<Parsed, E> {
+        Ok(Parsed(alloc_json(JSON_INT, i as u64)))
+    }
+
+    fn visit_u64<E>(self, u: u64) -> Result<Parsed, E> {
+        let tag = if i64::try_from(u).is_ok() {
+            JSON_INT
+        } else {
+            JSON_UINT
+        };
+        Ok(Parsed(alloc_json(tag, u)))
+    }
+
+    fn visit_f64<E>(self, f: f64) -> Result<Parsed, E> {
+        Ok(Parsed(alloc_json(JSON_FLOAT, f.to_bits())))
+    }
+
+    fn visit_str<E>(self, s: &str) -> Result<Parsed, E> {
+        Ok(Parsed(alloc_json(JSON_STR, mesh_str(s) as u64)))
+    }
+
+    fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut seq: A) -> Result<Parsed, A::Error> {
+        let mut items = Vec::new();
+        while let Some(Parsed(item)) = seq.next_element()? {
+            items.push(item as u64);
         }
-        JSON_UINT => serde_json::Value::Number(serde_json::Number::from((*json).value)),
-        JSON_FLOAT => {
-            let bits = (*json).value;
-            let f = f64::from_bits(bits);
-            serde_json::Number::from_f64(f)
-                .map(serde_json::Value::Number)
-                .unwrap_or(serde_json::Value::Null)
+        let list = list::mesh_list_from_array(items.as_ptr(), items.len() as i64);
+        Ok(Parsed(alloc_json(JSON_ARRAY, list as u64)))
+    }
+
+    fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<Parsed, A::Error> {
+        let mut entries = Vec::new();
+        while let Some(key) = map.next_key::<std::borrow::Cow<'de, str>>()? {
+            let Parsed(value) = map.next_value()?;
+            entries.push([mesh_str(&key) as u64, value as u64]);
         }
-        JSON_STR => {
-            let s = (*json).value as *const MeshString;
-            let text = (*s).as_str().to_string();
-            serde_json::Value::String(text)
-        }
-        JSON_ARRAY => {
-            let list_ptr = (*json).value as *mut u8;
-            let len = list::mesh_list_length(list_ptr);
-            let mut arr = Vec::with_capacity(len as usize);
-            for i in 0..len {
-                let elem = list::mesh_list_get(list_ptr, i);
-                let elem_json = elem as *const MeshJson;
-                arr.push(mesh_json_to_serde_value(elem_json));
+        let object = map::mesh_map_from_string_entries(&entries);
+        Ok(Parsed(alloc_json(JSON_OBJECT, object as u64)))
+    }
+}
+
+/// A `MeshJson` written as JSON text: an object's keys in its map's order
+/// (a literal's as written, a parsed object's as the text had them). A float
+/// that is not finite, and a node of no known tag, is `null`.
+struct Tree(*const MeshJson);
+
+impl serde::Serialize for Tree {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::{SerializeMap, SerializeSeq};
+        let (tag, value) = unsafe { ((*self.0).tag, (*self.0).value) };
+        match tag {
+            JSON_BOOL => serializer.serialize_bool(value != 0),
+            JSON_INT => serializer.serialize_i64(value as i64),
+            JSON_UINT => serializer.serialize_u64(value),
+            JSON_FLOAT => serializer.serialize_f64(f64::from_bits(value)),
+            JSON_STR => serializer.serialize_str(unsafe { text_of(value as *const MeshString) }),
+            JSON_ARRAY => {
+                let items = value as *mut u8;
+                let len = list::mesh_list_length(items);
+                let mut seq = serializer.serialize_seq(Some(len as usize))?;
+                for i in 0..len {
+                    seq.serialize_element(&Tree(list::mesh_list_get(items, i) as *const MeshJson))?;
+                }
+                seq.end()
             }
-            serde_json::Value::Array(arr)
-        }
-        JSON_OBJECT => {
-            let map_ptr = (*json).value as *mut u8;
-            let keys_list = map::mesh_map_keys(map_ptr);
-            let vals_list = map::mesh_map_values(map_ptr);
-            let len = list::mesh_list_length(keys_list);
-            let mut obj = serde_json::Map::new();
-            for i in 0..len {
-                let key_ptr = list::mesh_list_get(keys_list, i) as *const MeshString;
-                let val_ptr = list::mesh_list_get(vals_list, i) as *const MeshJson;
-                let key_str = (*key_ptr).as_str().to_string();
-                let val_json = mesh_json_to_serde_value(val_ptr);
-                obj.insert(key_str, val_json);
+            JSON_OBJECT => {
+                let (keys, values) = (
+                    map::mesh_map_keys(value as *mut u8),
+                    map::mesh_map_values(value as *mut u8),
+                );
+                let len = list::mesh_list_length(keys);
+                let mut object = serializer.serialize_map(Some(len as usize))?;
+                for i in 0..len {
+                    let key = unsafe { text_of(list::mesh_list_get(keys, i) as *const MeshString) };
+                    object.serialize_entry(
+                        key,
+                        &Tree(list::mesh_list_get(values, i) as *const MeshJson),
+                    )?;
+                }
+                object.end()
             }
-            serde_json::Value::Object(obj)
+            _ => serializer.serialize_unit(),
         }
-        _ => serde_json::Value::Null,
     }
 }
 
@@ -174,11 +189,8 @@ unsafe fn mesh_json_to_serde_value(json: *const MeshJson) -> serde_json::Value {
 pub extern "C-unwind" fn mesh_json_parse(input: *const MeshString) -> *mut MeshResult {
     unsafe {
         let text = (*input).as_str();
-        match serde_json::from_str::<serde_json::Value>(text) {
-            Ok(val) => {
-                let json = serde_value_to_mesh_json(&val);
-                alloc_result(0, json as *mut u8)
-            }
+        match serde_json::from_str::<Parsed>(text) {
+            Ok(Parsed(json)) => alloc_result(0, json as *mut u8),
             Err(e) => err_result(&e.to_string()),
         }
     }
@@ -189,11 +201,10 @@ pub extern "C-unwind" fn mesh_json_parse(input: *const MeshString) -> *mut MeshR
 /// Encode a MeshJson value to a JSON string.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_json_encode(json: *mut u8) -> *mut MeshString {
-    unsafe {
-        let val = mesh_json_to_serde_value(json.cast());
-        let text = serde_json::to_string(&val).unwrap_or_else(|_| "null".to_string());
-        mesh_str(&text)
-    }
+    // Keys are strings and a float that is not finite is `null`: nothing
+    // fails to encode.
+    let text = serde_json::to_string(&Tree(json.cast())).expect("a Json tree encodes");
+    mesh_str(&text)
 }
 
 // ── Convenience encode functions ────────────────────────────────────

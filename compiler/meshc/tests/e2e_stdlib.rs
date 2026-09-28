@@ -590,8 +590,37 @@ end
     assert_eq!(
         output,
         "{\"b\":[1,2]}\n{\"b\":[1,2]}\n{\"b\":[1,2]}|11|{\"B\":[1,2]}\n\
-         {\"n\":1,\"nested\":{\"b\":[1,2]}}|28|{\"N\":1,\"NESTED\":{\"B\":[1,2]}}\n\
-         {\"n\":1,\"nested\":{\"b\":[1,2]}}\n"
+         {\"nested\":{\"b\":[1,2]},\"n\":1}|28|{\"NESTED\":{\"B\":[1,2]},\"N\":1}\n\
+         {\"nested\":{\"b\":[1,2]},\"n\":1}\n"
+    );
+}
+
+/// An object's keys are written in its own order: a literal's as written,
+/// a struct's fields as declared, a Map's as it was built, and a parsed
+/// object's as the text had them, a repeated key in its first place with its
+/// last value. (Every object came out with its keys sorted.)
+#[test]
+fn e2e_json_keeps_key_order() {
+    let source = r#"
+struct Point do
+  y :: Int
+  x :: Int
+end deriving(Json)
+
+fn main() do
+  println(json { zebra: 1, apple: 2, mango: 3 })
+  println(Json.encode(Point { y: 1, x: 2 }))
+  println(Json.encode(Map.put(Map.put(Map.new(), "b", 1), "a", 2)))
+  case Json.parse("{\"z\": 0, \"a\": 1, \"z\": 2}") do
+    Ok(parsed) -> println(parsed)
+    Err(e) -> println(e)
+  end
+end
+"#;
+    let output = compile_and_run(source);
+    assert_eq!(
+        output,
+        "{\"zebra\":1,\"apple\":2,\"mango\":3}\n{\"y\":1,\"x\":2}\n{\"b\":1,\"a\":2}\n{\"z\":2,\"a\":1}\n"
     );
 }
 
