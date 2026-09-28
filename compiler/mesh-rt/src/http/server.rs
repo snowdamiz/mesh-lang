@@ -2754,6 +2754,19 @@ pub(crate) mod tests {
         assert_eq!(body, b"plain");
     }
 
+    /// A connection whose socket options cannot be set (here a descriptor
+    /// that is not a socket at all) is dropped, not handled.
+    #[cfg(unix)]
+    #[test]
+    fn an_accepted_connection_that_cannot_be_configured_is_dropped() {
+        use std::os::fd::{FromRawFd, IntoRawFd};
+        let file = tempfile::tempfile().unwrap();
+        let stream = unsafe { TcpStream::from_raw_fd(file.into_raw_fd()) };
+        assert!(configure_accepted_stream(&stream).is_err());
+        let admission = Arc::new(AdmissionController::new(Default::default()));
+        admit(stream, mesh_http_router() as usize, None, &admission);
+    }
+
     /// HTTP.serve on a port another socket holds says so and returns.
     #[test]
     fn serving_on_a_taken_port_returns() {
