@@ -624,6 +624,32 @@ end
     );
 }
 
+/// Two Json values are equal when they hold the same: an object's keys in
+/// any order, `1` and `1.0` apart, and so inside a list or an Option. (Json
+/// compared as a String, which a tree is not.)
+#[test]
+fn e2e_json_values_compare_by_contents() {
+    let source = r##"
+fn parsed(text :: String) -> Json do
+  case Json.parse(text) do
+    Ok(j) -> j
+    Err(_) -> json { failed: true }
+  end
+end
+
+fn main() do
+  let a = json { x: 1, y: [1, 2], z: "s" }
+  let b = parsed("{\"z\": \"s\", \"y\": [1, 2], \"x\": 1}")
+  println("#{a == b} #{a != b}")
+  println("#{parsed("1") == parsed("1.0")} #{parsed("[1, 2]") == parsed("[2, 1]")}")
+  println("#{parsed("{\"a\": null}") == parsed("{\"a\": null, \"b\": 1}")}")
+  println("#{[a] == [b]} #{Some(a) == Some(b)}")
+end
+"##;
+    let output = compile_and_run(source);
+    assert_eq!(output, "true false\nfalse false\nfalse\ntrue true\n");
+}
+
 // ── JSON Struct Serde E2E Tests (Phase 49) ──────────────────────────────
 
 #[test]

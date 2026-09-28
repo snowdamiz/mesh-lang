@@ -490,6 +490,44 @@ pub extern "C-unwind" fn mesh_json_array_length(json: *mut u8) -> *mut u8 {
     }
 }
 
+/// `a == b` for two `Json` values: the same kind holding equal contents, an
+/// object's keys in any order. `1` and `1.0` differ, as `Json.parse` tells
+/// them apart.
+#[no_mangle]
+pub extern "C-unwind" fn mesh_json_eq(a: *mut u8, b: *mut u8) -> i8 {
+    unsafe { json_eq(a.cast(), b.cast()) as i8 }
+}
+
+unsafe fn json_eq(a: *const MeshJson, b: *const MeshJson) -> bool {
+    let ((tag, x), (other_tag, y)) = (((*a).tag, (*a).value), ((*b).tag, (*b).value));
+    if tag != other_tag {
+        return false;
+    }
+    match tag {
+        JSON_FLOAT => f64::from_bits(x) == f64::from_bits(y),
+        JSON_STR => text_of(x as *const MeshString) == text_of(y as *const MeshString),
+        JSON_ARRAY => {
+            let (x, y) = (x as *mut u8, y as *mut u8);
+            let len = list::mesh_list_length(x);
+            len == list::mesh_list_length(y)
+                && (0..len).all(|i| {
+                    json_eq(
+                        list::mesh_list_get(x, i) as *const MeshJson,
+                        list::mesh_list_get(y, i) as *const MeshJson,
+                    )
+                })
+        }
+        JSON_OBJECT => map::mesh_map_eq(x as *mut u8, y as *mut u8, json_slot_eq as *mut u8) != 0,
+        // null, Bool, Int and UInt are their word.
+        _ => x == y,
+    }
+}
+
+/// `json_eq` over two map value slots, for `mesh_map_eq`.
+extern "C-unwind" fn json_slot_eq(a: u64, b: u64) -> i8 {
+    unsafe { json_eq(a as *const MeshJson, b as *const MeshJson) as i8 }
+}
+
 #[no_mangle]
 pub extern "C-unwind" fn mesh_json_is_null(json: *mut u8) -> i8 {
     unsafe { ((*json.cast::<MeshJson>()).tag == JSON_NULL) as i8 }

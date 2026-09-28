@@ -11604,6 +11604,12 @@ impl<'a> Lowerer<'a> {
                 // An atom is its name at run time.
                 "Int" | "Float" | "Bool" | "String" | "Atom" => hardware(lhs, rhs),
                 "Unit" => always(lhs, rhs),
+                "Json" => Self::call_named(
+                    "mesh_json_eq",
+                    vec![MirType::Ptr, MirType::Ptr],
+                    vec![lhs, rhs],
+                    MirType::Bool,
+                ),
                 "List" => {
                     let callback = MirExpr::Var(
                         self.resolve_eq_callback(&Ty::int()),

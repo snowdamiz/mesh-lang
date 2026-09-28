@@ -1098,6 +1098,7 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             "mesh_json_is_null",
             mesh_rt::json::mesh_json_is_null as *const (),
         ),
+        ("mesh_json_eq", mesh_rt::json::mesh_json_eq as *const ()),
         (
             "mesh_json_is_string",
             mesh_rt::mesh_json_is_string as *const (),
