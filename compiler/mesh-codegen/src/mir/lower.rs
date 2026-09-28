@@ -404,13 +404,18 @@ fn runtime_value_type(ty: MirType) -> MirType {
     }
 }
 
+/// The parameter and result types of `ty` when it is a function type.
+fn fn_type_parts(ty: &Ty) -> Option<(&[Ty], &Ty)> {
+    match ty {
+        Ty::Fun(params, ret) => Some((params, ret)),
+        _ => None,
+    }
+}
+
 /// The parameter and result types of a function's type (the type checker
 /// gives every function one).
 fn fun_parts(ty: &Ty) -> (&[Ty], &Ty) {
-    match ty {
-        Ty::Fun(params, ret) => (params, ret),
-        _ => unreachable!("a function typed {ty:?}"),
-    }
+    fn_type_parts(ty).expect("the type checker gives a function a function type")
 }
 
 /// What a function's clauses match: its one parameter, several as a tuple,
@@ -776,6 +781,22 @@ impl<'a> Lowerer<'a> {
             }
         }
         None
+    }
+
+    /// A fresh name for a generated function of `kind`: `__closure_3`, and
+    /// in a project the module's own (`Utils__closure_3`), so two modules'
+    /// generated functions never meet when their MIR is merged.
+    fn generated_fn_name(&mut self, kind: &str) -> String {
+        self.closure_counter += 1;
+        if self.module_name.is_empty() {
+            format!("__{kind}_{}", self.closure_counter)
+        } else {
+            format!(
+                "{}__{kind}_{}",
+                self.module_name.replace('.', "_"),
+                self.closure_counter
+            )
+        }
     }
 
     fn next_resource_temp(&mut self) -> String {
@@ -1504,22 +1525,18 @@ impl<'a> Lowerer<'a> {
     }
 
     /// When `name_ref` is the whole initializer of `let g = name_ref`, the
-    /// types `g` is used at after it (through further aliases too).
+    /// types `g` is used at after it (through further aliases too). A name
+    /// reference right under a `let` is its initializer; a `let` that takes
+    /// it apart with a pattern (a local tuple named like a function) aliases
+    /// nothing.
     fn alias_use_types(&self, name_ref: &NameRef) -> Vec<Ty> {
         let Some(alias) = name_ref.syntax().parent().and_then(LetBinding::cast) else {
             return Vec::new();
         };
-        let is_initializer = alias.initializer().map(|init| init.syntax().text_range())
-            == Some(name_ref.syntax().text_range());
-        let (Some(alias_name), Some(scope)) = (
-            alias.name().and_then(|name| name.text()),
-            alias.syntax().parent(),
-        ) else {
+        let Some(alias_name) = alias.name().and_then(|name| name.text()) else {
             return Vec::new();
         };
-        if !is_initializer {
-            return Vec::new();
-        }
+        let scope = alias.syntax().parent().expect("a `let` is inside a block");
         let after = alias.syntax().text_range().end();
         let mut types = Vec::new();
         for use_ref in scope.descendants().filter_map(NameRef::cast) {
@@ -1597,12 +1614,15 @@ impl<'a> Lowerer<'a> {
             }
             let mut found = Vec::new();
             for (callee, range) in calls {
-                let Some(call_ty) = self.types.get(range) else {
+                // A name that is no call of the function: a keyword key
+                // (`f(name: 1)`, untyped) or a local of the same name.
+                let Some(call_ty) = self
+                    .types
+                    .get(range)
+                    .filter(|ty| fn_type_parts(ty).is_some())
+                else {
                     continue;
                 };
-                if !matches!(call_ty, Ty::Fun(..)) {
-                    continue;
-                }
                 let concrete = apply_default_unit(&apply_type_vars(call_ty, &bindings));
                 let known = self
                     .inferred_fn_specializations
@@ -1700,16 +1720,14 @@ impl<'a> Lowerer<'a> {
             if let Item::FnDef(fn_def) = item {
                 let name = self.fn_def_name(&fn_def);
                 let range = fn_def.syntax().text_range();
-                if let Some(fn_ty) = self.get_ty(range) {
-                    if Self::ty_contains_var(fn_ty) {
-                        if let Some(usage_tys) = self.fn_value_usage_types.get(&name).cloned() {
-                            for usage_ty in usage_tys {
-                                Self::push_usage_type(
-                                    &mut self.inferred_fn_specializations,
-                                    &name,
-                                    &usage_ty,
-                                );
-                            }
+                if self.get_ty(range).is_some_and(Self::ty_contains_var) {
+                    if let Some(usage_tys) = self.fn_value_usage_types.get(&name).cloned() {
+                        for usage_ty in usage_tys {
+                            Self::push_usage_type(
+                                &mut self.inferred_fn_specializations,
+                                &name,
+                                &usage_ty,
+                            );
                         }
                     }
                 }
@@ -1797,11 +1815,10 @@ impl<'a> Lowerer<'a> {
         }
     }
 
+    /// The name of `base_name`'s specialization at `fun_ty`, a concrete
+    /// function type (`push_usage_type` keeps no other).
     fn mangle_inferred_fn_name(&self, base_name: &str, fun_ty: &Ty) -> String {
-        let Ty::Fun(params, ret) = fun_ty else {
-            return base_name.to_string();
-        };
-
+        let (params, ret) = fun_parts(fun_ty);
         let mut parts: Vec<String> = params
             .iter()
             .map(Self::ty_specialization_component)
@@ -1811,40 +1828,27 @@ impl<'a> Lowerer<'a> {
         format!("{}__spec__{}", base_name, parts.join("__"))
     }
 
-    fn specialization_ty_for_range(&self, name: &str, range: TextRange) -> Option<Ty> {
-        let variants = self.inferred_fn_specializations.get(name)?;
-        if variants.is_empty() {
-            return None;
-        }
-        if variants.len() == 1 {
-            return variants.first().cloned();
-        }
-        // What nothing fixed is Unit, as `close_specializations` took it.
-        let ty = apply_default_unit(self.get_ty(range)?);
-        if Self::is_concrete_fun_ty(&ty) && variants.contains(&ty) {
-            Some(ty)
-        } else {
-            None
-        }
-    }
-
+    /// The function a use of `original_name` at `range` runs: a function
+    /// specialized at several types, the specialization at the use's type
+    /// (what nothing fixed is Unit, as `close_specializations` took it);
+    /// any other, `base_name`.
     fn lowered_fn_symbol_name(
         &self,
         original_name: &str,
         base_name: &str,
         range: TextRange,
     ) -> String {
-        match self.specialization_ty_for_range(original_name, range) {
-            Some(fun_ty)
-                if self
-                    .inferred_fn_specializations
-                    .get(original_name)
-                    .map(|variants| variants.len() > 1)
-                    .unwrap_or(false) =>
-            {
-                self.mangle_inferred_fn_name(base_name, &fun_ty)
-            }
-            _ => base_name.to_string(),
+        let specialization = self
+            .inferred_fn_specializations
+            .get(original_name)
+            .filter(|variants| variants.len() > 1)
+            .and_then(|variants| {
+                let ty = apply_default_unit(self.get_ty(range)?);
+                variants.contains(&ty).then_some(ty)
+            });
+        match specialization {
+            Some(fun_ty) => self.mangle_inferred_fn_name(base_name, &fun_ty),
+            None => base_name.to_string(),
         }
     }
 
@@ -7350,13 +7354,13 @@ impl<'a> Lowerer<'a> {
     /// `result` is what f returns; `range` is the whole call, whose own type
     /// (`Pid<T>`, `List<Result<T, String>>`) names T for piped calls as well.
     fn job_result_shape(&self, name: &str, result: &MirType, range: TextRange) -> Option<MsgShape> {
-        let result_ty = match (name, self.get_ty(range)) {
-            ("mesh_job_async", Some(Ty::App(_, args))) => args.first(),
-            ("mesh_job_map", Some(Ty::App(_, args))) => match args.first() {
-                Some(Ty::App(_, result_args)) => result_args.first(),
-                _ => None,
-            },
-            ("mesh_job_async" | "mesh_job_map", _) => None,
+        fn first_arg(ty: &Ty) -> Option<&Ty> {
+            ty_head(ty).and_then(|(_, args)| args.first())
+        }
+        let call_ty = self.get_ty(range);
+        let result_ty = match name {
+            "mesh_job_async" => call_ty.and_then(first_arg),
+            "mesh_job_map" => call_ty.and_then(first_arg).and_then(first_arg),
             _ => return None,
         };
         self.slot_shape(result, result_ty)
@@ -7367,7 +7371,8 @@ impl<'a> Lowerer<'a> {
     /// when the slot holds plain bits. The representation `rep`, not the
     /// type, says whether the word is a reference at all: the runtime boxes
     /// a scalar and hands a reference on as it is, so a reference always
-    /// gets a shape, `Shared` when nothing more is known.
+    /// gets a shape, `Shared` when nothing more is known (no type whose
+    /// values are references has a scalar shape).
     fn slot_shape(&self, rep: &MirType, ty: Option<&Ty>) -> Option<MsgShape> {
         if matches!(
             rep,
@@ -7380,10 +7385,7 @@ impl<'a> Lowerer<'a> {
         ) {
             return None;
         }
-        Some(match ty.map(|ty| self.msg_shape(ty, &mut Vec::new())) {
-            None | Some(MsgShape::Scalar) => MsgShape::Shared,
-            Some(shape) => shape,
-        })
+        Some(ty.map_or(MsgShape::Shared, |ty| self.msg_shape(ty, &mut Vec::new())))
     }
 
     /// `Iter.next` hands back the element word as the `Some` payload, as
@@ -7414,27 +7416,19 @@ impl<'a> Lowerer<'a> {
         let Some(callback_index) = uniform_callback_index(&name) else {
             return MirExpr::Call { func, args, ty };
         };
-        let Some(callback) = args.get(callback_index).cloned() else {
-            return MirExpr::Call { func, args, ty };
-        };
+        let callback = args
+            .get(callback_index)
+            .cloned()
+            .expect("the type checker gives a runtime function its callback");
         let callback = self.as_fn_item(callback);
         let callback_ty = callback.ty().clone();
-        let (param_types, return_type, is_closure) = match &callback_ty {
-            MirType::Closure(params, ret) => (params.clone(), (**ret).clone(), true),
-            MirType::FnPtr(params, ret) => (params.clone(), (**ret).clone(), false),
-            _ => return MirExpr::Call { func, args, ty },
-        };
+        let (param_types, return_type) = callback_ty
+            .function_parts()
+            .map(|(params, ret)| (params.to_vec(), ret.clone()))
+            .expect("the type checker gives a runtime function its callback");
+        let is_closure = matches!(callback_ty, MirType::Closure(..));
 
-        self.closure_counter += 1;
-        let adapter_name = if self.module_name.is_empty() {
-            format!("__uniform_callback_{}", self.closure_counter)
-        } else {
-            format!(
-                "{}__uniform_callback_{}",
-                self.module_name.replace('.', "_"),
-                self.closure_counter
-            )
-        };
+        let adapter_name = self.generated_fn_name("uniform_callback");
         let raw_params = param_types
             .iter()
             .enumerate()
@@ -7523,22 +7517,13 @@ impl<'a> Lowerer<'a> {
         }
         let callback = self.as_fn_item(expr);
         let callback_ty = callback.ty().clone();
-        let (param_types, return_type, is_closure) = match &callback_ty {
-            MirType::Closure(params, ret) => (params.clone(), (**ret).clone(), true),
-            MirType::FnPtr(params, ret) => (params.clone(), (**ret).clone(), false),
-            _ => return callback,
-        };
+        let (param_types, return_type) = callback_ty
+            .function_parts()
+            .map(|(params, ret)| (params.to_vec(), ret.clone()))
+            .expect("the type checker recorded a function whose result is discarded");
+        let is_closure = matches!(callback_ty, MirType::Closure(..));
 
-        self.closure_counter += 1;
-        let adapter_name = if self.module_name.is_empty() {
-            format!("__discard_callback_{}", self.closure_counter)
-        } else {
-            format!(
-                "{}__discard_callback_{}",
-                self.module_name.replace('.', "_"),
-                self.closure_counter
-            )
-        };
+        let adapter_name = self.generated_fn_name("discard_callback");
         let params = param_types
             .iter()
             .enumerate()
@@ -9505,36 +9490,36 @@ impl<'a> Lowerer<'a> {
                     .strip_prefix("mesh_set_")
                     .map(|op| ("set", "Set", op))
             });
+        // Each of the functions handled below is typed as the function it is
+        // (a module's constant, `Math.pi`, is none of them).
+        let function_type =
+            || fun_parts(fn_ty.as_ref().expect("the type checker types a function"));
         if let Some((collection, type_name, op)) = table_op {
             // `Map.get` runs as `mesh_map_fetch`.
             let op = if op == "fetch" { "get" } else { op };
-            if let Some(Ty::Fun(params, ret)) = fn_ty.clone() {
-                let table_ty = match op {
-                    "from_list" | "collect" => Some(ret.as_ref().clone()),
-                    _ => params.first().cloned(),
-                };
-                let key = table_ty
-                    .as_ref()
-                    .and_then(ty_head)
-                    .filter(|(name, _)| *name == type_name)
-                    .and_then(|(_, args)| args.first().cloned());
-                if let Some(key) = key {
-                    let string = matches!(&key, Ty::Con(tc) if tc.name == "String");
-                    if let Some(helper) =
-                        self.resolve_table_by(collection, op, &params, &ret, &key, string)
-                    {
-                        let ty = self.known_functions[&helper].clone();
-                        return MirExpr::Var(helper, ty);
-                    }
+            let (params, ret) = function_type();
+            let table_ty = match op {
+                "from_list" | "collect" => Some(ret),
+                _ => params.first(),
+            };
+            let key = table_ty
+                .and_then(ty_head)
+                .filter(|(name, _)| *name == type_name)
+                .and_then(|(_, args)| args.first().cloned());
+            if let Some(key) = key {
+                let string = matches!(&key, Ty::Con(tc) if tc.name == "String");
+                let (params, ret) = (params.to_vec(), Box::new(ret.clone()));
+                if let Some(helper) =
+                    self.resolve_table_by(collection, op, &params, &ret, &key, string)
+                {
+                    let ty = self.known_functions[&helper].clone();
+                    return MirExpr::Var(helper, ty);
                 }
             }
         }
         // `Iter.from` starts the iterator of its source's collection type.
         if runtime_name == "mesh_iter_from" {
-            let source = match &fn_ty {
-                Some(Ty::Fun(params, _)) => params.first(),
-                _ => None,
-            };
+            let source = function_type().0.first();
             let constructor = match source.and_then(ty_head) {
                 Some(("Map", _)) => Some("mesh_map_iter_new"),
                 Some(("Set", _)) => Some("mesh_set_iter_new"),
@@ -9549,37 +9534,34 @@ impl<'a> Lowerer<'a> {
             }
         }
         if runtime_name == "mesh_channel_try_send" {
-            if let Some(Ty::Fun(params, _)) = &fn_ty {
-                if let Some(helper) = params
-                    .get(1)
-                    .and_then(|value| self.resolve_channel_send(value))
-                {
-                    let ty = self.known_functions[&helper].clone();
-                    return MirExpr::Var(helper, ty);
-                }
+            let value = &function_type().0[1];
+            if let Some(helper) = self.resolve_channel_send(value) {
+                let ty = self.known_functions[&helper].clone();
+                return MirExpr::Var(helper, ty);
             }
         }
         if runtime_name == "mesh_queue_pop" {
-            if let Some(Ty::Fun(_, ret)) = &fn_ty {
-                if let Ty::Tuple(elems) = ret.as_ref() {
-                    let helper = self.resolve_queue_pop(&elems[0]);
-                    let ty = self.known_functions[&helper].clone();
-                    return MirExpr::Var(helper, ty);
-                }
-            }
+            // `Queue.pop` returns the value and the queue left.
+            let value = function_type()
+                .1
+                .parts()
+                .next()
+                .expect("Queue.pop returns a pair")
+                .clone();
+            let helper = self.resolve_queue_pop(&value);
+            let ty = self.known_functions[&helper].clone();
+            return MirExpr::Var(helper, ty);
         }
         // Membership of a value that is not a word compares by
         // the element type's Eq, not by the raw slot.
         if runtime_name == "mesh_list_contains" {
-            if let Some(Ty::Fun(params, _)) = fn_ty.clone() {
-                if let Some(elem) = params.get(1).filter(|elem| {
-                    !matches!(elem, Ty::Var(_))
-                        && !matches!(elem, Ty::Con(tc) if matches!(tc.name.as_str(), "Int" | "Bool" | "String"))
-                }) {
-                    let helper = self.resolve_list_contains(elem);
-                    let ty = self.known_functions[&helper].clone();
-                    return MirExpr::Var(helper, ty);
-                }
+            let elem = function_type().0[1].clone();
+            let by_word = matches!(&elem, Ty::Var(_))
+                || matches!(&elem, Ty::Con(tc) if matches!(tc.name.as_str(), "Int" | "Bool" | "String"));
+            if !by_word {
+                let helper = self.resolve_list_contains(&elem);
+                let ty = self.known_functions[&helper].clone();
+                return MirExpr::Var(helper, ty);
             }
         }
         // Use known_functions type if available (more accurate for
@@ -9587,15 +9569,15 @@ impl<'a> Lowerer<'a> {
         // fall back to typeck-resolved type. A function that takes a
         // function keeps the parameters it has as a Mesh value, which its
         // wrapper takes where it is one (`wrap_builtin_values`).
-        let ty = match (self.known_functions.get(&runtime_name), &fallback) {
-            (
-                Some(MirType::FnPtr(_, ret)),
-                MirType::FnPtr(params, _) | MirType::Closure(params, _),
-            ) if params.iter().any(is_function_type) => {
-                MirType::Closure(params.clone(), ret.clone())
+        let ty = match self.known_functions.get(&runtime_name) {
+            Some(MirType::FnPtr(_, ret)) if takes_function(&fallback) => {
+                let (params, _) = fallback
+                    .function_parts()
+                    .expect("a function that takes a function is one");
+                MirType::Closure(params.to_vec(), ret.clone())
             }
-            (Some(known_ty), _) => known_ty.clone(),
-            (None, _) => fallback,
+            Some(known_ty) => known_ty.clone(),
+            None => fallback,
         };
         MirExpr::Var(runtime_name, ty)
     }
@@ -9614,24 +9596,20 @@ impl<'a> Lowerer<'a> {
         field: &str,
         is_struct: bool,
     ) -> Option<MirExpr> {
+        // Each of these is a function, as the type checker types it.
         let fn_ty = self.get_ty(fa.syntax().text_range()).cloned();
+        let function_type =
+            || fun_parts(fn_ty.as_ref().expect("the type checker types a function"));
         let specific = match field {
             "from_json" => {
-                let result = match &fn_ty {
-                    Some(Ty::Fun(_, ret)) => Some(ret.as_ref().clone()),
-                    _ => fa
-                        .syntax()
-                        .parent()
-                        .and_then(|call| self.get_ty(call.text_range()).cloned()),
-                };
-                let instance = match result {
-                    Some(Ty::App(_, args)) => match args.first() {
-                        Some(ty @ Ty::App(_, ty_args)) if !ty_args.is_empty() => {
-                            self.ensure_instantiation_traits(ty);
-                            Some(self.instantiation_helper_name(ty_name, ty_args))
-                        }
-                        _ => None,
-                    },
+                // It returns a `Result` of the instance it decodes.
+                let decoded = ty_head(function_type().1).and_then(|(_, args)| args.first());
+                let instance = match decoded {
+                    Some(ty @ Ty::App(_, ty_args)) if !ty_args.is_empty() => {
+                        let ty = ty.clone();
+                        self.ensure_instantiation_traits(&ty);
+                        Some(self.instantiation_helper_name(ty_name, ty_args))
+                    }
                     _ => None,
                 };
                 Some(format!(
@@ -9642,10 +9620,7 @@ impl<'a> Lowerer<'a> {
             "from_row" if is_struct => Some(format!("FromRow__from_row__{ty_name}")),
             "from" | "try_from" => {
                 let trait_name = if field == "from" { "From" } else { "TryFrom" };
-                let source = match &fn_ty {
-                    Some(Ty::Fun(params, _)) => params.first(),
-                    _ => None,
-                };
+                let source = function_type().0.first();
                 Some(self.conversion_fn(trait_name, field, ty_name, source))
             }
             "__table__"
@@ -10678,16 +10653,7 @@ impl<'a> Lowerer<'a> {
             return self.lower_multi_clause_closure(closure);
         }
 
-        self.closure_counter += 1;
-        let closure_fn_name = if self.module_name.is_empty() {
-            format!("__closure_{}", self.closure_counter)
-        } else {
-            format!(
-                "{}__closure_{}",
-                self.module_name.replace('.', "_"),
-                self.closure_counter
-            )
-        };
+        let closure_fn_name = self.generated_fn_name("closure");
 
         let closure_ty = self
             .get_ty(closure.syntax().text_range())
@@ -10780,16 +10746,7 @@ impl<'a> Lowerer<'a> {
     /// For single-param multi-clause, uses Match directly on the param.
     /// For multi-param multi-clause, uses an if-else chain (same as named fn lowering).
     fn lower_multi_clause_closure(&mut self, closure: &ClosureExpr) -> MirExpr {
-        self.closure_counter += 1;
-        let closure_fn_name = if self.module_name.is_empty() {
-            format!("__closure_{}", self.closure_counter)
-        } else {
-            format!(
-                "{}__closure_{}",
-                self.module_name.replace('.', "_"),
-                self.closure_counter
-            )
-        };
+        let closure_fn_name = self.generated_fn_name("closure");
 
         let closure_ty = self
             .get_ty(closure.syntax().text_range())
@@ -15881,13 +15838,13 @@ fn wrap_builtin_values(functions: &mut Vec<MirFunction>) -> Vec<String> {
 }
 
 fn is_function_type(ty: &MirType) -> bool {
-    matches!(ty, MirType::FnPtr(..) | MirType::Closure(..))
+    ty.function_parts().is_some()
 }
 
 /// Whether the function type `ty` has a parameter that is a function.
 fn takes_function(ty: &MirType) -> bool {
-    matches!(ty, MirType::FnPtr(params, _) | MirType::Closure(params, _)
-        if params.iter().any(is_function_type))
+    ty.function_parts()
+        .is_some_and(|(params, _)| params.iter().any(is_function_type))
 }
 
 fn wrap_builtin_values_in(
@@ -15912,9 +15869,11 @@ fn wrap_builtin_values_in(
                 && !defined.contains(name)
                 && !bound.contains(name) =>
         {
-            let (MirType::FnPtr(params, ret) | MirType::Closure(params, ret)) = ty.clone() else {
-                return;
-            };
+            // A builtin named as a value has its function type.
+            let (params, ret) = ty
+                .function_parts()
+                .map(|(params, ret)| (params.to_vec(), ret.clone()))
+                .expect("a builtin function value has a function type");
             let signature: String = format!("{params:?}{ret:?}")
                 .chars()
                 .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
@@ -15933,7 +15892,7 @@ fn wrap_builtin_values_in(
                         .enumerate()
                         .map(|(i, ty)| (format!("__arg{i}"), ty.clone()))
                         .collect(),
-                    return_type: (*ret).clone(),
+                    return_type: ret.clone(),
                     body: builtin_call(name, &params, &ret, args),
                     is_closure_fn: false,
                     captures: Vec::new(),
