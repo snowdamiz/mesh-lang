@@ -62,7 +62,8 @@ pub fn read_u16_be(state :: BinaryReader) -> Result<(BinaryReader, Int), BinaryE
   end
 end
 
-pub fn read_fixed(state :: BinaryReader, length :: Int) -> Result<(BinaryReader, Bytes), BinaryError> do
+pub fn read_fixed(state :: BinaryReader,
+  length :: Int) -> Result<(BinaryReader, Bytes), BinaryError> do
   if length < 0 do
     Err(InvalidLength)
   else if length > remaining(state)? do
@@ -77,7 +78,8 @@ end
 
 # Vectors use a canonical unsigned 32-bit big-endian length prefix.
 
-pub fn read_vector(state :: BinaryReader, maximum :: Int) -> Result<(BinaryReader, Bytes), BinaryError> do
+pub fn read_vector(state :: BinaryReader,
+  maximum :: Int) -> Result<(BinaryReader, Bytes), BinaryError> do
   if maximum < 0 do
     Err(InvalidLimit)
   else if remaining(state)? < 4 do

@@ -738,33 +738,59 @@ fn walk_trailing_closure(node: &SyntaxNode) -> FormatIR {
 // ── Binary expression ────────────────────────────────────────────────
 
 fn walk_binary_expr(node: &SyntaxNode) -> FormatIR {
-    let mut parts = Vec::new();
+    let (mut first, mut rest) = (Vec::new(), Vec::new());
+    binary_chain(node, &mut first, &mut rest);
+    ir::group(ir::concat(vec![
+        ir::concat(first),
+        ir::indent(ir::concat(rest)),
+    ]))
+}
 
+/// The operands and operators of `node`, taking in operands that repeat its
+/// operator, so each link of a long `a && b && c` gets a line of its own. The
+/// chain breaks before its operators, the links one level in (a line starting
+/// with an operator continues the last). Comparisons stay on the line: their
+/// operands are what break, and `x\n  == 0` after a multi-line `x` reads badly.
+/// `-` and `%` never start a line, since they also start statements.
+fn binary_chain(node: &SyntaxNode, first: &mut Vec<FormatIR>, rest: &mut Vec<FormatIR>) {
+    let operator = binary_operator(node);
     for child in node.elements() {
+        // Everything after the chain's first operator goes one level in.
+        let parts = if rest.is_empty() {
+            &mut *first
+        } else {
+            &mut *rest
+        };
         match child {
-            NodeOrToken::Token(tok) => {
-                match tok.kind() {
-                    // Range operator `..` has no surrounding spaces.
-                    SyntaxKind::DOT_DOT => {
-                        parts.push(ir::text(".."));
-                    }
-                    _ if is_operator(tok.kind()) => {
-                        parts.push(sp());
-                        parts.push(ir::text(tok.text()));
-                        parts.push(sp());
-                    }
-                    _ => {
-                        add_token_with_context(&tok, &mut parts);
-                    }
-                }
+            NodeOrToken::Token(tok) => match tok.kind() {
+                // Range operator `..` has no surrounding spaces.
+                SyntaxKind::DOT_DOT => parts.push(ir::text("..")),
+                SyntaxKind::AMP_AMP
+                | SyntaxKind::PIPE_PIPE
+                | SyntaxKind::AND_KW
+                | SyntaxKind::OR_KW
+                | SyntaxKind::DIAMOND
+                | SyntaxKind::PLUS_PLUS
+                | SyntaxKind::PLUS
+                | SyntaxKind::STAR
+                | SyntaxKind::SLASH => rest.extend([ir::space(), ir::text(tok.text()), sp()]),
+                kind if is_operator(kind) => rest.extend([sp(), ir::text(tok.text()), sp()]),
+                _ => add_token_with_context(&tok, parts),
+            },
+            NodeOrToken::Node(n)
+                if n.kind() == SyntaxKind::BINARY_EXPR && binary_operator(&n) == operator =>
+            {
+                binary_chain(&n, first, rest)
             }
-            NodeOrToken::Node(n) => {
-                parts.push(walk_node(&n));
-            }
+            NodeOrToken::Node(n) => parts.push(walk_node(&n)),
         }
     }
+}
 
-    ir::concat(parts)
+fn binary_operator(node: &SyntaxNode) -> Option<SyntaxKind> {
+    node.children_with_tokens()
+        .map(|element| element.kind())
+        .find(|&kind| kind == SyntaxKind::DOT_DOT || is_operator(kind))
 }
 
 // ── Unary expression ────────────────────────────────────────────────
@@ -1382,14 +1408,27 @@ fn walk_import_list(node: &SyntaxNode) -> FormatIR {
         |child| matches!(child, NodeOrToken::Token(ref tok) if tok.kind() == SyntaxKind::L_PAREN),
     );
 
-    if !has_parens {
-        // Non-parenthesized: inline formatting (e.g. "sqrt, pow")
+    let commented = node.children_with_tokens().any(|child| {
+        child.kind().is_trivia()
+            && !matches!(child.kind(), SyntaxKind::WHITESPACE | SyntaxKind::NEWLINE)
+    });
+    if !has_parens && commented {
         return walk_tokens_inline(node);
     }
+    if !has_parens {
+        // `sqrt, pow` on the line when it fits, parenthesized when not.
+        return ir::group(ir::if_break(
+            walk_tokens_inline(node),
+            parenthesized_imports(node),
+        ));
+    }
+    parenthesized_imports(node)
+}
 
-    // Parenthesized: one name per indented line. A comment that ends a line
-    // stays at the end of that line, after `(` or after the name it follows;
-    // one on a line of its own stays on its own line, before the next name.
+/// `(`, one name per indented line, `)`. A comment that ends a line stays at
+/// the end of that line, after `(` or after the name it follows; one on a line
+/// of its own stays on its own line, before the next name.
+fn parenthesized_imports(node: &SyntaxNode) -> FormatIR {
     // (comments on lines of their own before, name, comments after)
     let mut names: Vec<(Vec<FormatIR>, FormatIR, Vec<FormatIR>)> = Vec::new();
     let mut header = Vec::new();
@@ -1562,38 +1601,80 @@ fn walk_literal_pat(node: &SyntaxNode) -> FormatIR {
     )
 }
 
-/// `%{base | field: value, other: value}`.
+/// `%{base | field: value, other: value}`, or the fields one per line under
+/// `%{base |` when they do not fit or carry comments. A comment that ends the
+/// `|` line or a field's line stays at its end; one on a line of its own stays
+/// on its own line.
 fn walk_struct_update(node: &SyntaxNode) -> FormatIR {
-    let mut parts = vec![ir::text("%{")];
-    let mut fields = 0;
+    let mut head = vec![ir::text("%{")];
+    let mut header: Option<SyntaxToken> = None;
+    let mut lines: Vec<(Option<FormatIR>, Option<SyntaxToken>)> = Vec::new();
+    let mut past_bar = false;
     for element in node.children_with_tokens() {
         match element {
             NodeOrToken::Token(tok) => match tok.kind() {
-                SyntaxKind::BAR => {
-                    parts.push(sp());
-                    parts.push(ir::text("|"));
-                    parts.push(sp());
+                SyntaxKind::BAR => past_bar = true,
+                SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT if !past_bar => {
+                    head.extend([inline_comment(&tok), sp()])
                 }
-                SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT => {
-                    parts.push(inline_comment(&tok));
-                    parts.push(sp());
-                }
+                SyntaxKind::COMMENT | SyntaxKind::DOC_COMMENT => match lines.last_mut() {
+                    Some((Some(_), comment @ None)) if ends_a_line_of_code(&tok) => {
+                        *comment = Some(tok)
+                    }
+                    None if header.is_none() && ends_a_line_of_code(&tok) => header = Some(tok),
+                    _ => lines.push((None, Some(tok))),
+                },
                 _ => {}
             },
-            NodeOrToken::Node(n) => {
-                if n.kind() == SyntaxKind::STRUCT_LITERAL_FIELD {
-                    if fields > 0 {
-                        parts.push(ir::text(","));
-                        parts.push(sp());
-                    }
-                    fields += 1;
-                }
-                parts.push(walk_node(&n));
+            NodeOrToken::Node(n) if n.kind() == SyntaxKind::STRUCT_LITERAL_FIELD => {
+                lines.push((Some(walk_node(&n)), None))
             }
+            NodeOrToken::Node(n) => head.push(walk_node(&n)),
         }
     }
-    parts.push(ir::text("}"));
-    ir::concat(parts)
+    head.push(ir::text(" |"));
+
+    let fields = lines.iter().filter(|(field, _)| field.is_some()).count();
+    if header.is_none() && lines.iter().all(|(_, comment)| comment.is_none()) {
+        let mut inner = Vec::new();
+        for (i, (field, _)) in lines.into_iter().enumerate() {
+            if i > 0 {
+                inner.push(ir::text(","));
+            }
+            inner.push(ir::space());
+            inner.extend(field);
+        }
+        head.extend([
+            ir::indent(ir::concat(inner)),
+            ir::if_break(FormatIR::Empty, ir::hardline()),
+            ir::text("}"),
+        ]);
+        return ir::group(ir::concat(head));
+    }
+
+    if let Some(comment) = header {
+        head.extend([sp(), ir::text(comment.text())]);
+    }
+    let mut inner = Vec::new();
+    let mut seen = 0;
+    for (field, comment) in lines {
+        inner.push(ir::hardline());
+        if let Some(field) = field {
+            inner.push(field);
+            seen += 1;
+            if seen < fields {
+                inner.push(ir::text(","));
+            }
+        }
+        if let Some(comment) = comment {
+            if !matches!(inner.last(), Some(FormatIR::Hardline)) {
+                inner.push(sp());
+            }
+            inner.push(inline_comment(&comment));
+        }
+    }
+    head.extend([ir::indent(ir::concat(inner)), ir::hardline(), ir::text("}")]);
+    ir::concat(head)
 }
 
 // ── Variant definition ──────────────────────────────────────────────
@@ -2971,11 +3052,42 @@ mod tests {
     fn tuple_types_are_spaced_like_other_types() {
         formats_to(
             "fn f(x :: (Int, Int), m :: Map<String, (Int, Int)>, cb :: Fun((Int, Int)) -> (Int, Int)) -> (Int, String)? do\nx\nend",
-            "fn f(x :: (Int, Int), m :: Map<String, (Int, Int)>, cb :: Fun((Int, Int)) -> (Int, Int)) -> (Int, String)? do\n  x\nend\n",
+            // The return type counts toward the line: the parameters break.
+            "fn f(x :: (Int, Int),\n  m :: Map<String, (Int, Int)>,\n  cb :: Fun((Int, Int)) -> (Int, Int)) -> (Int, String)? do\n  x\nend\n",
         );
         formats_to(
             "let p :: (Int, (Int, Int))!String = x",
             "let p :: (Int, (Int, Int))!String = x\n",
+        );
+    }
+
+    #[test]
+    fn long_operator_chains_break_before_each_operator() {
+        formats_to(
+            "fn f() do\nif first_condition_value_here == 1 && second_condition_value_here == 2 && third_condition_value_here - 3 == 4 do\n1\nelse\n2\nend\nend",
+            "fn f() do\n  if first_condition_value_here == 1\n    && second_condition_value_here == 2\n    && third_condition_value_here - 3 == 4 do\n    1\n  else\n    2\n  end\nend\n",
+        );
+        formats_to("fn f() do\na && b\nend", "fn f() do\n  a && b\nend\n");
+    }
+
+    #[test]
+    fn long_imports_and_struct_updates_break_one_item_per_line() {
+        formats_to(
+            "from Config import database_url_key, port_key, todo_rate_limit_max_requests_key, missing_required_env_key",
+            "from Config import (\n  database_url_key,\n  port_key,\n  todo_rate_limit_max_requests_key,\n  missing_required_env_key\n)\n",
+        );
+        formats_to("from Math import sqrt, pow", "from Math import sqrt, pow\n");
+        formats_to(
+            "fn f(state) do\n%{state | version: 2, epoch: commit_epoch, transcript_hash: transcript_hash, previous_chain_length: previous, sent: 0}\nend",
+            "fn f(state) do\n  %{state |\n    version: 2,\n    epoch: commit_epoch,\n    transcript_hash: transcript_hash,\n    previous_chain_length: previous,\n    sent: 0\n  }\nend\n",
+        );
+        formats_to(
+            "fn f(s) do\n%{s | a: 1, b: 2}\nend",
+            "fn f(s) do\n  %{s | a: 1, b: 2}\nend\n",
+        );
+        formats_to(
+            "fn f(s) do\n%{s | # c\na: 1, # c\n# own line\nb: 2 # c\n}\nend",
+            "fn f(s) do\n  %{s | # c\n    a: 1, # c\n    # own line\n    b: 2 # c\n  }\nend\n",
         );
     }
 

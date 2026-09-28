@@ -1,5 +1,11 @@
 from Api.Health import handle_health
-from Api.Todos import handle_create_todo, handle_delete_todo, handle_get_todo, handle_list_todos, handle_toggle_todo
+from Api.Todos import (
+  handle_create_todo,
+  handle_delete_todo,
+  handle_get_todo,
+  handle_list_todos,
+  handle_toggle_todo
+)
 
 pub fn build_router() do
   let router = HTTP.router()

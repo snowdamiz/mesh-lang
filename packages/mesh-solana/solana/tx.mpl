@@ -1,4 +1,14 @@
-from Solana.Read import Hash, Pubkey, RpcRequest, RpcResponse, pubkey, pubkey_equal, pubkey_string, rpc_request, spl_token_program
+from Solana.Read import (
+  Hash,
+  Pubkey,
+  RpcRequest,
+  RpcResponse,
+  pubkey,
+  pubkey_equal,
+  pubkey_string,
+  rpc_request,
+  spl_token_program
+)
 
 pub struct MessageHeader do
   num_required_signatures :: Int
@@ -185,7 +195,12 @@ fn merge_key_meta(values :: List<KeyMeta>,
       output
     else
       output
-        |> List.append(KeyMeta { pubkey: key, signer: signer, writable: writable, invoked: invoked })
+        |> List.append(KeyMeta {
+          pubkey: key,
+          signer: signer,
+          writable: writable,
+          invoked: invoked
+        })
     end
   else
     let current = values
@@ -218,7 +233,9 @@ fn merge_key_meta(values :: List<KeyMeta>,
   end
 end
 
-fn collect_account_metas(values :: List<KeyMeta>, accounts :: List<AccountMeta>, index :: Int) -> List<KeyMeta> do
+fn collect_account_metas(values :: List<KeyMeta>,
+  accounts :: List<AccountMeta>,
+  index :: Int) -> List<KeyMeta> do
   if index >= List.length(accounts) do
     values
   else
@@ -265,7 +282,10 @@ fn key_category(meta :: KeyMeta) -> Int do
   end
 end
 
-fn category_keys(values :: List<KeyMeta>, category :: Int, index :: Int, output :: List<Pubkey>) -> List<Pubkey> do
+fn category_keys(values :: List<KeyMeta>,
+  category :: Int,
+  index :: Int,
+  output :: List<Pubkey>) -> List<Pubkey> do
   if index >= List.length(values) do
     output
   else
@@ -281,7 +301,9 @@ fn category_keys(values :: List<KeyMeta>, category :: Int, index :: Int, output 
   end
 end
 
-fn append_pubkey_values(output :: List<Pubkey>, values :: List<Pubkey>, index :: Int) -> List<Pubkey> do
+fn append_pubkey_values(output :: List<Pubkey>,
+  values :: List<Pubkey>,
+  index :: Int) -> List<Pubkey> do
   if index >= List.length(values) do
     output
   else
@@ -306,11 +328,12 @@ fn category_count(values :: List<KeyMeta>, category :: Int, index :: Int, count 
     category_count(values,
       category,
       index + 1,
-      count + if key_category(List.get(values, index)) == category do
-        1
-      else
-        0
-      end)
+      count
+        + if key_category(List.get(values, index)) == category do
+          1
+        else
+          0
+        end)
   end
 end
 
@@ -438,7 +461,10 @@ fn validate_pubkeys(keys :: List<Pubkey>, index :: Int, label :: String) -> Int!
   end
 end
 
-fn append_account_indexes(output :: Bytes, indexes :: List<Int>, index :: Int, account_count :: Int) -> Bytes!String do
+fn append_account_indexes(output :: Bytes,
+  indexes :: List<Int>,
+  index :: Int,
+  account_count :: Int) -> Bytes!String do
   if index >= List.length(indexes) do
     Ok(output)
   else
@@ -490,7 +516,12 @@ end
 fn validate_header(header :: MessageHeader, account_count :: Int) -> Int!String do
   if account_count > 256 do
     Err("SOLANA_TX: message exceeds 256 static account keys")
-  else if header.num_required_signatures < 0 || header.num_required_signatures > account_count || header.num_readonly_signed_accounts < 0 || header.num_readonly_signed_accounts > header.num_required_signatures || header.num_readonly_unsigned_accounts < 0 || header.num_readonly_unsigned_accounts > account_count - header.num_required_signatures do
+  else if header.num_required_signatures < 0
+    || header.num_required_signatures > account_count
+    || header.num_readonly_signed_accounts < 0
+    || header.num_readonly_signed_accounts > header.num_required_signatures
+    || header.num_readonly_unsigned_accounts < 0
+    || header.num_readonly_unsigned_accounts > account_count - header.num_required_signatures do
     Err("SOLANA_TX: invalid message header")
   else
     Ok(account_count)
@@ -534,7 +565,9 @@ pub fn serialize_legacy_message(message :: LegacyMessage) -> Bytes!String do
   end
 end
 
-fn loaded_account_count(lookups :: List<AddressTableLookup>, index :: Int, total :: Int) -> Int!String do
+fn loaded_account_count(lookups :: List<AddressTableLookup>,
+  index :: Int,
+  total :: Int) -> Int!String do
   if index >= List.length(lookups) do
     Ok(total)
   else
@@ -546,7 +579,8 @@ fn loaded_account_count(lookups :: List<AddressTableLookup>, index :: Int, total
       |> List.length()
     if Bytes.length(lookup.account_key.bytes) != 32 do
       Err("SOLANA_TX: address lookup table key must be 32 bytes")
-    else if writable_count != List.length(lookup.writable_addresses) || readonly_count != List.length(lookup.readonly_addresses) do
+    else if writable_count != List.length(lookup.writable_addresses)
+      || readonly_count != List.length(lookup.readonly_addresses) do
       Err("SOLANA_TX: address lookup indexes and resolved addresses differ")
     else
       (lookup.writable_addresses
@@ -569,11 +603,12 @@ fn pubkey_occurrences(values :: List<Pubkey>, key :: Pubkey, index :: Int, count
     pubkey_occurrences(values,
       key,
       index + 1,
-      count + if pubkey_equal(List.get(values, index), key) do
-        1
-      else
-        0
-      end)
+      count
+        + if pubkey_equal(List.get(values, index), key) do
+          1
+        else
+          0
+        end)
   end
 end
 
@@ -589,10 +624,9 @@ fn lookup_occurrences(lookups :: List<AddressTableLookup>,
     lookup_occurrences(lookups,
       key,
       index + 1,
-      count + pubkey_occurrences(lookup.writable_addresses, key, 0, 0) + pubkey_occurrences(lookup.readonly_addresses,
-        key,
-        0,
-        0))
+      count
+        + pubkey_occurrences(lookup.writable_addresses, key, 0, 0)
+        + pubkey_occurrences(lookup.readonly_addresses, key, 0, 0))
   end
 end
 
@@ -637,7 +671,9 @@ fn validate_loaded_addresses(metas :: List<KeyMeta>,
   end
 end
 
-fn validate_loaded_metas(metas :: List<KeyMeta>, lookups :: List<AddressTableLookup>, index :: Int) -> Int!String do
+fn validate_loaded_metas(metas :: List<KeyMeta>,
+  lookups :: List<AddressTableLookup>,
+  index :: Int) -> Int!String do
   if index >= List.length(lookups) do
     Ok(index)
   else
@@ -735,7 +771,9 @@ fn append_lookup_indexes(output :: Bytes, indexes :: List<Int>, index :: Int) ->
   end
 end
 
-fn append_address_table_lookups(output :: Bytes, lookups :: List<AddressTableLookup>, index :: Int) -> Bytes!String do
+fn append_address_table_lookups(output :: Bytes,
+  lookups :: List<AddressTableLookup>,
+  index :: Int) -> Bytes!String do
   if index >= List.length(lookups) do
     Ok(output)
   else
@@ -971,7 +1009,10 @@ fn account_meta(value :: Json) -> AccountMeta!String do
   })
 end
 
-fn account_metas(values :: Json, index :: Int, total :: Int, accounts :: List<AccountMeta>) -> List<AccountMeta>!String do
+fn account_metas(values :: Json,
+  index :: Int,
+  total :: Int,
+  accounts :: List<AccountMeta>) -> List<AccountMeta>!String do
   if index >= total do
     Ok(accounts)
   else
@@ -1023,7 +1064,10 @@ pub fn instruction_from_jupiter_json(raw :: String) -> Instruction!String do
   end
 end
 
-fn instruction_list(values :: Json, index :: Int, total :: Int, instructions :: List<Instruction>) -> List<Instruction>!String do
+fn instruction_list(values :: Json,
+  index :: Int,
+  total :: Int,
+  instructions :: List<Instruction>) -> List<Instruction>!String do
   if index >= total do
     Ok(instructions)
   else
@@ -1123,7 +1167,9 @@ pub fn jupiter_instruction_set_from_json(raw :: String) -> JupiterInstructionSet
   end
 end
 
-fn append_instruction_values(output :: List<Instruction>, values :: List<Instruction>, index :: Int) -> List<Instruction> do
+fn append_instruction_values(output :: List<Instruction>,
+  values :: List<Instruction>,
+  index :: Int) -> List<Instruction> do
   if index >= List.length(values) do
     output
   else
@@ -1133,7 +1179,8 @@ fn append_instruction_values(output :: List<Instruction>, values :: List<Instruc
   end
 end
 
-fn append_optional_instruction(output :: List<Instruction>, value :: Option<Instruction>) -> List<Instruction> do
+fn append_optional_instruction(output :: List<Instruction>,
+  value :: Option<Instruction>) -> List<Instruction> do
   case value do
     None -> output
     Some(instruction) -> output
@@ -1160,7 +1207,9 @@ fn append_if(values :: List<String>, include :: Bool, value :: String) -> List<S
   end
 end
 
-fn report_accounts(accounts :: List<AccountMeta>, index :: Int, report :: InstructionReport) -> InstructionReport do
+fn report_accounts(accounts :: List<AccountMeta>,
+  index :: Int,
+  report :: InstructionReport) -> InstructionReport do
   if index >= List.length(accounts) do
     report
   else
@@ -1170,10 +1219,14 @@ fn report_accounts(accounts :: List<AccountMeta>, index :: Int, report :: Instru
       |> pubkey_string()
     report_accounts(accounts,
       index + 1,
-      %{report | account_keys: report.account_keys
-        |> List.append(key), signer_keys: report.signer_keys
-        |> append_if(account.signer, key), writable_keys: report.writable_keys
-        |> append_if(account.writable, key)})
+      %{report |
+        account_keys: report.account_keys
+          |> List.append(key),
+        signer_keys: report.signer_keys
+          |> append_if(account.signer, key),
+        writable_keys: report.writable_keys
+          |> append_if(account.writable, key)
+      })
   end
 end
 
@@ -1238,7 +1291,9 @@ fn compiled_program_ids(keys :: List<Pubkey>,
   end
 end
 
-fn lookup_table_keys(lookups :: List<AddressTableLookup>, index :: Int, keys :: List<String>) -> List<String> do
+fn lookup_table_keys(lookups :: List<AddressTableLookup>,
+  index :: Int,
+  keys :: List<String>) -> List<String> do
   if index >= List.length(lookups) do
     keys
   else
@@ -1331,13 +1386,18 @@ pub fn message_v0_report_json(message :: MessageV0) -> String!String do
   }))
 end
 
-fn collect_account(report :: JupiterInstructionReport, account :: AccountMeta) -> JupiterInstructionReport do
+fn collect_account(report :: JupiterInstructionReport,
+  account :: AccountMeta) -> JupiterInstructionReport do
   let key = account.pubkey
     |> pubkey_string()
-  %{report | account_keys: report.account_keys
-    |> append_unique(key), signer_keys: report.signer_keys
-    |> append_unique_if(account.signer, key), writable_keys: report.writable_keys
-    |> append_unique_if(account.writable, key)}
+  %{report |
+    account_keys: report.account_keys
+      |> append_unique(key),
+    signer_keys: report.signer_keys
+      |> append_unique_if(account.signer, key),
+    writable_keys: report.writable_keys
+      |> append_unique_if(account.writable, key)
+  }
 end
 
 fn append_unique_if(values :: List<String>, include :: Bool, value :: String) -> List<String> do
@@ -1349,7 +1409,9 @@ fn append_unique_if(values :: List<String>, include :: Bool, value :: String) ->
   end
 end
 
-fn collect_accounts(report :: JupiterInstructionReport, accounts :: List<AccountMeta>, index :: Int) -> JupiterInstructionReport do
+fn collect_accounts(report :: JupiterInstructionReport,
+  accounts :: List<AccountMeta>,
+  index :: Int) -> JupiterInstructionReport do
   if index >= List.length(accounts) do
     report
   else
@@ -1359,10 +1421,15 @@ fn collect_accounts(report :: JupiterInstructionReport, accounts :: List<Account
   end
 end
 
-fn collect_instruction(report :: JupiterInstructionReport, instruction :: Instruction) -> JupiterInstructionReport do
-  %{report | instruction_count: report.instruction_count + 1, data_bytes: report.data_bytes + Bytes.length(instruction.data), program_ids: report.program_ids
-    |> append_unique(instruction.program_id
-      |> pubkey_string())}
+fn collect_instruction(report :: JupiterInstructionReport,
+  instruction :: Instruction) -> JupiterInstructionReport do
+  %{report |
+    instruction_count: report.instruction_count + 1,
+    data_bytes: report.data_bytes + Bytes.length(instruction.data),
+    program_ids: report.program_ids
+      |> append_unique(instruction.program_id
+        |> pubkey_string())
+  }
     |> collect_accounts(instruction.accounts, 0)
 end
 

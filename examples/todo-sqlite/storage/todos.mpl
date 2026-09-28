@@ -5,7 +5,10 @@ fn todo_from_row(row) -> Todo!String do
   Todo.from_row(row)
 end
 
-fn rows_to_json_loop(rows, index :: Int, total :: Int, acc :: List<String>) -> List<String>!String do
+fn rows_to_json_loop(rows,
+  index :: Int,
+  total :: Int,
+  acc :: List<String>) -> List<String>!String do
   if index >= total do
     Ok(acc)
   else

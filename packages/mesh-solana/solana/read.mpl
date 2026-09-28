@@ -484,14 +484,19 @@ fn account_params(address :: Pubkey, commitment :: String) -> String!String do
   Ok("[#{Json.encode_string(pubkey_string(address))},{\"commitment\":#{Json.encode_string(commitment)},\"encoding\":\"base64\"}]")
 end
 
-pub fn get_account_info_request(id :: Int, address :: Pubkey, commitment :: String) -> RpcRequest!String do
+pub fn get_account_info_request(id :: Int,
+  address :: Pubkey,
+  commitment :: String) -> RpcRequest!String do
   rpc_request(id,
     "getAccountInfo",
     (address
       |> account_params(commitment))?)
 end
 
-fn pubkeys_json_loop(values :: List<Pubkey>, index :: Int, total :: Int, output :: String) -> String do
+fn pubkeys_json_loop(values :: List<Pubkey>,
+  index :: Int,
+  total :: Int,
+  output :: String) -> String do
   if index >= total do
     output <> "]"
   else
@@ -511,7 +516,9 @@ fn pubkeys_json(values :: List<Pubkey>) -> String do
   pubkeys_json_loop(values, 0, List.length(values), "[")
 end
 
-pub fn get_multiple_accounts_request(id :: Int, addresses :: List<Pubkey>, commitment :: String) -> RpcRequest!String do
+pub fn get_multiple_accounts_request(id :: Int,
+  addresses :: List<Pubkey>,
+  commitment :: String) -> RpcRequest!String do
   (commitment
     |> validate_commitment())?
   if List.length(addresses) == 0 do
@@ -615,7 +622,9 @@ pub fn program_accounts_request(id :: Int,
     "[#{Json.encode_string(pubkey_string(program))},{\"commitment\":#{Json.encode_string(commitment)},\"encoding\":\"base64\",\"filters\":#{filters_json(filters)}}]")
 end
 
-pub fn account_subscribe_request(id :: Int, address :: Pubkey, commitment :: String) -> RpcRequest!String do
+pub fn account_subscribe_request(id :: Int,
+  address :: Pubkey,
+  commitment :: String) -> RpcRequest!String do
   rpc_request(id,
     "accountSubscribe",
     (address
@@ -737,7 +746,10 @@ pub fn latest_blockhash_from_response(response :: RpcResponse) -> LatestBlockhas
   end
 end
 
-fn accounts_loop(values :: Json, index :: Int, total :: Int, accounts :: List<AccountInfo>) -> List<AccountInfo>!String do
+fn accounts_loop(values :: Json,
+  index :: Int,
+  total :: Int,
+  accounts :: List<AccountInfo>) -> List<AccountInfo>!String do
   if index >= total do
     Ok(accounts)
   else

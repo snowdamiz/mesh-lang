@@ -6,7 +6,10 @@ struct RegistryState do
 end
 
 service TodoRegistry do
-  fn init(db_path :: String, rate_limiter_pid :: Pid, window_seconds :: Int, max_requests :: Int) -> RegistryState do
+  fn init(db_path :: String,
+    rate_limiter_pid :: Pid,
+    window_seconds :: Int,
+    max_requests :: Int) -> RegistryState do
     RegistryState {
       db_path: db_path,
       rate_limiter_pid: rate_limiter_pid,

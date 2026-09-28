@@ -6,7 +6,10 @@ struct RegistryState do
 end
 
 service TodoRegistry do
-  fn init(pool :: PoolHandle, rate_limiter_pid :: Pid, window_seconds :: Int, max_requests :: Int) -> RegistryState do
+  fn init(pool :: PoolHandle,
+    rate_limiter_pid :: Pid,
+    window_seconds :: Int,
+    max_requests :: Int) -> RegistryState do
     RegistryState {
       pool: pool,
       rate_limiter_pid: rate_limiter_pid,

@@ -717,7 +717,14 @@ end
 }
 
 fn postgres_todo_config_test() -> &'static str {
-    r#"from Config import database_url_key, port_key, todo_rate_limit_window_seconds_key, todo_rate_limit_max_requests_key, missing_required_env, invalid_positive_int
+    r#"from Config import (
+  database_url_key,
+  port_key,
+  todo_rate_limit_window_seconds_key,
+  todo_rate_limit_max_requests_key,
+  missing_required_env,
+  invalid_positive_int
+)
 
 describe("Config helpers") do
   test("exposes the canonical environment variable keys") do
@@ -1107,7 +1114,14 @@ COMMIT;
 }
 
 fn postgres_todo_main_mesh() -> &'static str {
-    r#"from Config import database_url_key, port_key, todo_rate_limit_max_requests_key, todo_rate_limit_window_seconds_key, invalid_positive_int, missing_required_env
+    r#"from Config import (
+  database_url_key,
+  port_key,
+  todo_rate_limit_max_requests_key,
+  todo_rate_limit_window_seconds_key,
+  invalid_positive_int,
+  missing_required_env
+)
 from Api.Router import build_router
 from Runtime.Registry import start_registry
 from Services.RateLimiter import start_rate_limiter
@@ -1153,7 +1167,10 @@ fn on_pool_ready(port :: Int, window_seconds :: Int, max_requests :: Int, pool :
   start_runtime(port, window_seconds, max_requests)
 end
 
-fn maybe_boot_with_pool(port :: Int, window_seconds :: Int, max_requests :: Int, pool :: PoolHandle) do
+fn maybe_boot_with_pool(port :: Int,
+  window_seconds :: Int,
+  max_requests :: Int,
+  pool :: PoolHandle) do
   case Node.start_from_env() do
     Ok(status) -> do
       log_bootstrap(status)
@@ -1372,7 +1389,10 @@ fn postgres_todo_registry_mesh() -> &'static str {
 end
 
 service TodoRegistry do
-  fn init(pool :: PoolHandle, rate_limiter_pid :: Pid, window_seconds :: Int, max_requests :: Int) -> RegistryState do
+  fn init(pool :: PoolHandle,
+    rate_limiter_pid :: Pid,
+    window_seconds :: Int,
+    max_requests :: Int) -> RegistryState do
     RegistryState {
       pool: pool,
       rate_limiter_pid: rate_limiter_pid,
@@ -1614,7 +1634,13 @@ end
 "#;
 
     let router_mesh = r#"from Api.Health import handle_health
-from Api.Todos import handle_create_todo, handle_delete_todo, handle_get_todo, handle_list_todos, handle_toggle_todo
+from Api.Todos import (
+  handle_create_todo,
+  handle_delete_todo,
+  handle_get_todo,
+  handle_list_todos,
+  handle_toggle_todo
+)
 
 pub fn build_router() do
   let router = HTTP.router()
@@ -1808,7 +1834,15 @@ pub fn todo_not_found_message() -> String do
 end
 "#;
 
-    let main_mesh = r#"from Config import default_todo_db_path, invalid_db_path, invalid_positive_int, port_key, todo_db_path_key, todo_rate_limit_max_requests_key, todo_rate_limit_window_seconds_key
+    let main_mesh = r#"from Config import (
+  default_todo_db_path,
+  invalid_db_path,
+  invalid_positive_int,
+  port_key,
+  todo_db_path_key,
+  todo_rate_limit_max_requests_key,
+  todo_rate_limit_window_seconds_key
+)
 from Api.Router import build_router
 from Runtime.Registry import start_registry
 from Services.RateLimiter import start_rate_limiter
@@ -1912,7 +1946,13 @@ end
 "#;
 
     let router_mesh = r#"from Api.Health import handle_health
-from Api.Todos import handle_create_todo, handle_delete_todo, handle_get_todo, handle_list_todos, handle_toggle_todo
+from Api.Todos import (
+  handle_create_todo,
+  handle_delete_todo,
+  handle_get_todo,
+  handle_list_todos,
+  handle_toggle_todo
+)
 
 pub fn build_router() do
   let router = HTTP.router()
@@ -2065,7 +2105,10 @@ end
 end
 
 service TodoRegistry do
-  fn init(db_path :: String, rate_limiter_pid :: Pid, window_seconds :: Int, max_requests :: Int) -> RegistryState do
+  fn init(db_path :: String,
+    rate_limiter_pid :: Pid,
+    window_seconds :: Int,
+    max_requests :: Int) -> RegistryState do
     RegistryState {
       db_path: db_path,
       rate_limiter_pid: rate_limiter_pid,
@@ -2197,7 +2240,10 @@ fn todo_from_row(row) -> Todo!String do
   Todo.from_row(row)
 end
 
-fn rows_to_json_loop(rows, index :: Int, total :: Int, acc :: List<String>) -> List<String>!String do
+fn rows_to_json_loop(rows,
+  index :: Int,
+  total :: Int,
+  acc :: List<String>) -> List<String>!String do
   if index >= total do
     Ok(acc)
   else
@@ -2324,7 +2370,18 @@ end
 end deriving(Json, Row)
 "#;
 
-    let config_test = r#"from Config import default_todo_db_path, invalid_db_path, invalid_positive_int, invalid_todo_id_message, port_key, title_required_message, todo_db_path_key, todo_not_found_message, todo_rate_limit_max_requests_key, todo_rate_limit_window_seconds_key
+    let config_test = r#"from Config import (
+  default_todo_db_path,
+  invalid_db_path,
+  invalid_positive_int,
+  invalid_todo_id_message,
+  port_key,
+  title_required_message,
+  todo_db_path_key,
+  todo_not_found_message,
+  todo_rate_limit_max_requests_key,
+  todo_rate_limit_window_seconds_key
+)
 
 describe("SQLite todo-api config") do
   test("exposes local environment keys and defaults") do

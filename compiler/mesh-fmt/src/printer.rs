@@ -146,9 +146,15 @@ pub fn print(ir: &FormatIR, config: &FormatConfig) -> String {
             }
 
             FormatIR::Group(child) => {
-                // Measure flat width of the group contents.
+                // The group fits when it and what follows it on the line do:
+                // `f(a, b) -> Result<(A, B), E> do` breaks the parameters.
                 let flat_width = measure_flat(child);
-                if group_fits_on_line(col, flat_width, config.max_width) {
+                let limit = config.max_width.saturating_sub(col);
+                let width = match flat_width {
+                    usize::MAX => usize::MAX,
+                    w => w.saturating_add(rest_of_line_width(&stack, limit)),
+                };
+                if group_fits_on_line(col, width, config.max_width) {
                     // Fits on one line: render flat.
                     stack.push(PrintCmd {
                         indent: cmd.indent,
@@ -202,6 +208,36 @@ pub fn print(ir: &FormatIR, config: &FormatConfig) -> String {
     }
 
     out
+}
+
+/// Width of what the stack prints after the current group before the line can
+/// end, each command in its own mode. A later group counts as broken, since it
+/// can still break itself when reached. Stops early once past `limit`.
+fn rest_of_line_width(stack: &[PrintCmd], limit: usize) -> usize {
+    let mut width = 0usize;
+    let mut todo: Vec<(Mode, &FormatIR)> = Vec::new();
+    for cmd in stack.iter().rev() {
+        todo.push((cmd.mode, cmd.ir));
+        while let Some((mode, ir)) = todo.pop() {
+            match ir {
+                FormatIR::Empty => {}
+                FormatIR::Text(s) => {
+                    width += s.len();
+                    if width > limit {
+                        return width;
+                    }
+                }
+                FormatIR::Space if mode == Mode::Flat => width += 1,
+                FormatIR::Space | FormatIR::Hardline | FormatIR::LineEnd => return width,
+                FormatIR::Indent(child) | FormatIR::Group(child) => todo.push((mode, child)),
+                FormatIR::IfBreak { flat, broken } => {
+                    todo.push((mode, if mode == Mode::Flat { flat } else { broken }))
+                }
+                FormatIR::Concat(parts) => todo.extend(parts.iter().rev().map(|p| (mode, p))),
+            }
+        }
+    }
+    width
 }
 
 /// Measure the width of an IR node when rendered flat (all on one line).

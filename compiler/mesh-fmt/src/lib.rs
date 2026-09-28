@@ -88,7 +88,8 @@ fn tree_shape(parse: &mesh_parser::Parse) -> Vec<Option<mesh_parser::SyntaxKind>
 /// comment after a `|>` taken as before it, and without trailing commas, which the formatter may drop (`import (a, b,)`),
 /// without semicolons: a statement separated by `;` goes on its own line, and
 /// without the commas between the fields of a struct literal or pattern or a
-/// `json` literal, where a new line may separate fields instead.
+/// `json` literal, where a new line may separate fields instead, nor the
+/// parens of an import list, which a long one gains.
 fn significant_tokens(parse: &mesh_parser::Parse) -> Vec<(mesh_parser::SyntaxKind, String)> {
     use mesh_parser::SyntaxKind;
     let optional_comma = |token: &mesh_parser::SyntaxToken| {
@@ -100,6 +101,7 @@ fn significant_tokens(parse: &mesh_parser::Parse) -> Vec<(mesh_parser::SyntaxKin
                 )
             })
     };
+    // (kind, text, a paren an import list too long for its line gains)
     let mut tokens: Vec<_> = parse
         .syntax()
         .descendants_with_tokens()
@@ -113,7 +115,17 @@ fn significant_tokens(parse: &mesh_parser::Parse) -> Vec<(mesh_parser::SyntaxKin
                     | SyntaxKind::EOF
             ) && !optional_comma(token)
         })
-        .map(|token| (token.kind(), token.text().trim_end().to_owned()))
+        .map(|token| {
+            let import_paren = matches!(token.kind(), SyntaxKind::L_PAREN | SyntaxKind::R_PAREN)
+                && token
+                    .parent()
+                    .is_some_and(|parent| parent.kind() == SyntaxKind::IMPORT_LIST);
+            (
+                token.kind(),
+                token.text().trim_end().to_owned(),
+                import_paren,
+            )
+        })
         .collect();
     // A pipeline's steps start their lines (`|> step`), so a comment after a
     // `|>` that ended a line ends the line before instead: the same place.
@@ -135,14 +147,15 @@ fn significant_tokens(parse: &mesh_parser::Parse) -> Vec<(mesh_parser::SyntaxKin
     tokens
         .iter()
         .enumerate()
-        .filter(|(i, (kind, _))| {
+        .filter(|(i, (kind, _, _))| {
             !(*kind == SyntaxKind::COMMA
                 && tokens[i + 1..]
                     .iter()
                     .find(|next| !comment(next.0))
                     .is_some_and(|next| closes(next.0)))
         })
-        .map(|(_, token)| token.clone())
+        .filter(|(_, (_, _, import_paren))| !import_paren)
+        .map(|(_, (kind, text, _))| (*kind, text.clone()))
         .collect()
 }
 

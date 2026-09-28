@@ -1,4 +1,11 @@
-from Config import database_url_key, port_key, todo_rate_limit_max_requests_key, todo_rate_limit_window_seconds_key, invalid_positive_int, missing_required_env
+from Config import (
+  database_url_key,
+  port_key,
+  todo_rate_limit_max_requests_key,
+  todo_rate_limit_window_seconds_key,
+  invalid_positive_int,
+  missing_required_env
+)
 from Api.Router import build_router
 from Runtime.Registry import start_registry
 from Services.RateLimiter import start_rate_limiter
@@ -44,7 +51,10 @@ fn on_pool_ready(port :: Int, window_seconds :: Int, max_requests :: Int, pool :
   start_runtime(port, window_seconds, max_requests)
 end
 
-fn maybe_boot_with_pool(port :: Int, window_seconds :: Int, max_requests :: Int, pool :: PoolHandle) do
+fn maybe_boot_with_pool(port :: Int,
+  window_seconds :: Int,
+  max_requests :: Int,
+  pool :: PoolHandle) do
   case Node.start_from_env() do
     Ok(status) -> do
       log_bootstrap(status)
