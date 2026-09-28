@@ -1390,5 +1390,50 @@ mod tests {
         claim_request_id(&mut seen, "request-2", 300, 201).unwrap();
         assert!(!seen.contains_key("request-1"));
         assert!(seen.contains_key("request-2"));
+
+        // Unexpired ids fill the cache, which then takes no more.
+        let mut seen = (0..DRIVER_SERVICE_MAX_REPLAY_ENTRIES)
+            .map(|id| (id.to_string(), 200))
+            .collect();
+        assert_eq!(
+            claim_request_id(&mut seen, "one-more", 200, 100),
+            Err("driver_service_replay_cache_saturated".to_string())
+        );
+    }
+
+    #[test]
+    fn driver_service_keyrings_and_frames_are_bounded() {
+        assert_eq!(
+            parse_shared_keyring(&format!("{KEY},short")),
+            Err("driver_shared_keyring_invalid".to_string())
+        );
+        assert_eq!(
+            parse_shared_keyring(" , "),
+            Err("driver_shared_keyring_invalid".to_string())
+        );
+
+        let mut sent = Vec::new();
+        assert_eq!(
+            write_frame(&mut sent, &[]),
+            Err("driver_service_frame_size_invalid".to_string())
+        );
+        assert_eq!(
+            write_frame(&mut sent, &vec![0; DRIVER_SERVICE_MAX_FRAME + 1]),
+            Err("driver_service_frame_size_invalid".to_string())
+        );
+        write_frame(&mut sent, b"frame").unwrap();
+        assert_eq!(read_frame(&mut sent.as_slice()).unwrap(), b"frame");
+        for length in [0, DRIVER_SERVICE_MAX_FRAME as u32 + 1] {
+            assert_eq!(
+                read_frame(&mut length.to_be_bytes().as_slice()),
+                Err("driver_service_frame_size_invalid".to_string())
+            );
+        }
+        assert!(read_frame(&mut [0, 0].as_slice())
+            .unwrap_err()
+            .starts_with("driver_service_read_failed:"));
+        assert!(read_frame(&mut [0, 0, 0, 2, 0].as_slice())
+            .unwrap_err()
+            .starts_with("driver_service_read_failed:"));
     }
 }
