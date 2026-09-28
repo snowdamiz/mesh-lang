@@ -1055,6 +1055,38 @@ mod tests {
             truncated: false,
         };
         assert!(has(diagnostics_lines("a", &diagnostics), "entries: (none)"));
+
+        // A node with consensus and a continuity store says what they hold.
+        snapshot.consensus = Some(mesh_rt::ConsensusRuntimeSnapshot {
+            node_id: 1,
+            node_name: "a".to_string(),
+            state: "leader".to_string(),
+            current_term: 2,
+            current_leader: None,
+            last_applied_log: None,
+            voter_ids: vec![1],
+            entries: Vec::new(),
+        });
+        snapshot.local_continuity_store = Some(mesh_rt::ContinuityStoreStats {
+            records: 3,
+            active_records: 1,
+            terminal_records: 2,
+            tombstones: 0,
+            log_entries: 0,
+            high_water_mark: 0,
+            disk_bytes: 4096,
+            replica_safe_point: None,
+            compaction_lag: 0,
+            replication_lag: None,
+        });
+        assert!(has(
+            snapshot_lines("a", &snapshot),
+            "consensus: state=leader term=2 leader=(none) applied=(none) voters=[1]"
+        ));
+        assert!(has(
+            scaling_lines("a", &snapshot),
+            "continuity_store: active=1 terminal=2 disk_bytes=4096 compaction_lag=0 replication_lag=unavailable"
+        ));
     }
 
     /// A key shorter than 32 bytes signs nothing, and nothing is sent.
