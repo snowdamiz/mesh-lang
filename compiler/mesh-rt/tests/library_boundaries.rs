@@ -143,6 +143,11 @@ fn the_embedding_abi_refuses_what_it_cannot_do() {
     );
     mesh_library_free_returned_bytes(ptr::null_mut());
 
+    // A host whose process started the scheduler on another thread first
+    // still starts the library.
+    std::thread::spawn(|| mesh_rt::actor::mesh_rt_init_actor(1))
+        .join()
+        .unwrap();
     assert_eq!(mesh_library_init(), MESH_LIBRARY_OK);
     assert_eq!(
         mesh_library_register_host_callbacks(&callbacks),

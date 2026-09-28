@@ -158,9 +158,13 @@ pub extern "C" fn mesh_library_init() -> i32 {
         Lifecycle::New => {
             mesh_rt_init();
             actor::mesh_rt_init_actor(1);
-            let Some(pid) = stack::get_current_pid() else {
-                return MESH_LIBRARY_ERR_NOT_INITIALIZED;
-            };
+            // The thread that starts the scheduler gets the main process; one
+            // that finds it started gets a process of its own.
+            let pid = stack::get_current_pid().unwrap_or_else(|| {
+                let pid = actor::global_scheduler().create_main_process();
+                stack::set_current_pid(pid);
+                pid
+            });
             *lifecycle = Lifecycle::Running(pid);
             MESH_LIBRARY_OK
         }
