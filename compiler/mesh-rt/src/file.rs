@@ -15,6 +15,14 @@ const MAX_BINARY_CHUNK_BYTES: i64 = 64 * 1024;
 // quota API before generalizing binary range I/O to larger files.
 const MAX_BINARY_FILE_BYTES: i64 = 16 * 1024 * 1024;
 
+/// `Ok(())` as a Mesh `Result<(), String>`, or the error's text.
+fn unit_result(result: std::io::Result<()>) -> *mut MeshResult {
+    match result {
+        Ok(()) => alloc_result(0, std::ptr::null_mut()),
+        Err(error) => err_result(&error.to_string()),
+    }
+}
+
 fn valid_range(offset: i64, length: i64) -> Option<(u64, usize)> {
     let end = offset.checked_add(length)?;
     if offset < 0 || length <= 0 || length > MAX_BINARY_CHUNK_BYTES || end > MAX_BINARY_FILE_BYTES {
@@ -53,9 +61,6 @@ pub extern "C" fn mesh_file_read_bytes(
     offset: i64,
     length: i64,
 ) -> *mut MeshResult {
-    if path.is_null() {
-        return err_result("invalid file path");
-    }
     let Some((offset, length)) = valid_range(offset, length) else {
         return err_result("invalid binary file range");
     };
@@ -89,19 +94,12 @@ pub extern "C" fn mesh_file_write_bytes(
     bytes: *const MeshBytes,
     truncate: i8,
 ) -> *mut MeshResult {
-    if path.is_null()
-        || bytes.is_null()
-        || (truncate != 0 && truncate != 1)
-        || (truncate != 0 && offset != 0)
-    {
+    if truncate != 0 && offset != 0 {
         return err_result("invalid binary file write");
     }
     unsafe {
         let input = (*bytes).as_slice();
-        let Ok(length) = i64::try_from(input.len()) else {
-            return err_result("invalid binary file range");
-        };
-        let Some((offset, _)) = valid_range(offset, length) else {
+        let Some((offset, _)) = valid_range(offset, input.len() as i64) else {
             return err_result("invalid binary file range");
         };
         let path = (*path).as_str();
@@ -114,19 +112,13 @@ pub extern "C" fn mesh_file_write_bytes(
             file.seek(SeekFrom::Start(offset))?;
             file.write_all(input)
         })();
-        match result {
-            Ok(()) => alloc_result(0, std::ptr::null_mut()),
-            Err(error) => err_result(&error.to_string()),
-        }
+        unit_result(result)
     }
 }
 
 /// Returns a regular file's byte length when it fits in a Mesh `Int`.
 #[no_mangle]
 pub extern "C" fn mesh_file_size(path: *const MeshString) -> *mut MeshResult {
-    if path.is_null() {
-        return err_result("invalid file path");
-    }
     unsafe {
         let length = fs::metadata((*path).as_str()).and_then(|metadata| {
             if !metadata.is_file() {
@@ -155,10 +147,7 @@ pub extern "C" fn mesh_file_write(
     unsafe {
         let path_str = (*path).as_str();
         let content_str = (*content).as_str();
-        match fs::write(path_str, content_str) {
-            Ok(()) => alloc_result(0, std::ptr::null_mut()),
-            Err(e) => err_result(&e.to_string()),
-        }
+        unit_result(fs::write(path_str, content_str))
     }
 }
 
@@ -175,13 +164,8 @@ pub extern "C" fn mesh_file_append(
     unsafe {
         let path_str = (*path).as_str();
         let content_str = (*content).as_str();
-        match OpenOptions::new().append(true).create(true).open(path_str) {
-            Ok(mut file) => match file.write_all(content_str.as_bytes()) {
-                Ok(()) => alloc_result(0, std::ptr::null_mut()),
-                Err(e) => err_result(&e.to_string()),
-            },
-            Err(e) => err_result(&e.to_string()),
-        }
+        let file = OpenOptions::new().append(true).create(true).open(path_str);
+        unit_result(file.and_then(|mut file| file.write_all(content_str.as_bytes())))
     }
 }
 
@@ -207,19 +191,54 @@ pub extern "C" fn mesh_file_exists(path: *const MeshString) -> i8 {
 /// - tag 1 (Err): value = pointer to MeshString containing error message
 #[no_mangle]
 pub extern "C" fn mesh_file_delete(path: *const MeshString) -> *mut MeshResult {
-    unsafe {
-        let path_str = (*path).as_str();
-        match fs::remove_file(path_str) {
-            Ok(()) => alloc_result(0, std::ptr::null_mut()),
-            Err(e) => err_result(&e.to_string()),
-        }
-    }
+    unsafe { unit_result(fs::remove_file((*path).as_str())) }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::gc::mesh_rt_init;
+
+    /// The text of a failed `MeshResult`, or `None` for an `Ok`.
+    fn error_of(result: *mut MeshResult) -> Option<String> {
+        let result = unsafe { &*result };
+        (result.tag == 1)
+            .then(|| unsafe { (*(result.value as *const MeshString)).as_str() }.to_string())
+    }
+
+    /// What the file functions say for a directory, a missing file or
+    /// directory, and a byte range or write they cannot take.
+    #[test]
+    fn file_functions_report_what_they_cannot_do() {
+        mesh_rt_init();
+        let dir = tempfile::tempdir().unwrap();
+        let text = |path: std::path::PathBuf| mesh_str(path.to_str().unwrap());
+        let (directory, missing) = (
+            text(dir.path().to_path_buf()),
+            text(dir.path().join("none")),
+        );
+        let lost = text(dir.path().join("no-dir").join("file"));
+        let content = mesh_str("x");
+        let bytes = crate::bytes::mesh_bytes_new(b"xy".as_ptr(), 2);
+
+        assert_eq!(
+            error_of(mesh_file_size(directory)).unwrap(),
+            "path is not a regular file"
+        );
+        for failed in [
+            mesh_file_size(missing),
+            mesh_file_read_bytes(missing, 0, 1),
+            mesh_file_write_bytes(lost, 0, bytes, 0),
+            mesh_file_write(lost, content),
+            mesh_file_append(directory, content),
+        ] {
+            assert!(error_of(failed).is_some());
+        }
+        let range = error_of(mesh_file_write_bytes(missing, -1, bytes, 0));
+        assert_eq!(range.unwrap(), "invalid binary file range");
+        let truncate = error_of(mesh_file_write_bytes(missing, 4, bytes, 1));
+        assert_eq!(truncate.unwrap(), "invalid binary file write");
+    }
 
     #[test]
     fn test_file_write_and_read() {
