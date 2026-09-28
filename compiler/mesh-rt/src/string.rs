@@ -204,7 +204,12 @@ pub extern "C" fn mesh_println(s: *const MeshString) {
 /// error: the program then ends as SIGPIPE would have ended it (`prog | head`
 /// stays quiet). `print!` would panic, and these functions cannot unwind.
 fn write_stdout(text: &str, end: &str) {
-    let mut out = std::io::stdout().lock();
+    write_to(&mut std::io::stdout().lock(), text, end)
+}
+
+/// `write_stdout` to `out`. An error other than a closed pipe (a full disk,
+/// a non-blocking pipe with no room) loses the text, as C's `printf` does.
+fn write_to(out: &mut impl Write, text: &str, end: &str) {
     let written = out
         .write_all(text.as_bytes())
         .and_then(|()| out.write_all(end.as_bytes()))
@@ -441,6 +446,25 @@ pub extern "C" fn mesh_string_to_float(s: *const MeshString) -> *mut u8 {
 mod tests {
     use super::*;
     use crate::gc::mesh_rt_init;
+
+    /// Output goes out text first, then its ending; a write error other
+    /// than a closed pipe returns rather than ending the program.
+    #[test]
+    fn output_is_written_and_other_write_errors_return() {
+        struct Full;
+        impl Write for Full {
+            fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+                Err(std::io::ErrorKind::StorageFull.into())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let mut out = Vec::new();
+        write_to(&mut out, "line", "\n");
+        assert_eq!(out, b"line\n");
+        write_to(&mut Full, "line", "\n");
+    }
 
     #[test]
     fn inspect_escapes_carriage_returns_and_nul() {
