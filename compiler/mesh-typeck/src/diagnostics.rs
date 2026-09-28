@@ -1633,10 +1633,17 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
             Description::error(range, "this arm")
                 .with_help("write the value after `->`: `pattern -> value`")
         }
-        TypeError::ResourceViolation { span, .. } => {
+        TypeError::ResourceViolation { reason, span } => {
             let range = clamp(text_range_to_range(*span));
-            Description::error(range, "here")
-                .with_help("move each resource once, or pass it to a direct `borrow` parameter")
+            // Across an actor, a job or into JSON it is the value itself
+            // that cannot go, however it is moved.
+            let crosses = reason.contains("cross") || reason.contains("transferred");
+            Description::error(range, "here").with_help(if crosses {
+                "a resource stays with the actor that owns it: pass what it stands for \
+                 instead, such as an id or the data it holds"
+            } else {
+                "move each resource once, or pass it to a direct `borrow` parameter"
+            })
         }
     }
 }

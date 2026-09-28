@@ -1020,6 +1020,27 @@ impl Checker<'_> {
                 }
             }
         }
+        // A job runs in an actor of its own, and its result goes to the one
+        // that awaits it: a resource cannot cross, as it cannot through a
+        // mailbox. `Job.await` of such a job could never be called.
+        let job_function = match callee_name.as_deref() {
+            Some("Job.async" | "job_async") => args.first(),
+            Some("Job.map" | "job_map") => args.get(1),
+            _ => None,
+        };
+        if let Some(function) = job_function {
+            let result = match self.known_expr_type(function) {
+                Some(Ty::Fun(_, result)) => Some(*result),
+                _ => None,
+            };
+            if result.is_some_and(|result| self.registry.is_resource_type(&result)) {
+                self.errors.push(TypeError::ResourceViolation {
+                    reason: "a job's result cannot be a resource: it crosses to the actor that awaits it"
+                        .to_string(),
+                    span: function.syntax().text_range(),
+                });
+            }
+        }
         if let Some(Expr::FieldAccess(access)) = &callee {
             if let Some(base) = access.base().filter(|base| self.expr_is_resource(base)) {
                 let field = access
@@ -1086,10 +1107,17 @@ impl Checker<'_> {
                     .and_then(|signature| signature.formal_types.get(index))
                     .and_then(Option::as_ref)
                     .is_some_and(|formal| self.registry.is_resource_type(formal));
+                // A job of a resource is refused where it is made
+                // (`Job.async`), not again where it is awaited.
+                let awaits_job = matches!(
+                    callee_name.as_deref(),
+                    Some("Job.await" | "Job.await_timeout" | "job_await" | "job_await_timeout")
+                );
                 let lacks_resource_aware_formal = is_resource
                     && forbidden_reason.is_none()
                     && !formal_is_resource
-                    && !allowed_resource_constructor;
+                    && !allowed_resource_constructor
+                    && !awaits_job;
                 if lacks_resource_aware_formal {
                     self.errors.push(TypeError::ResourceViolation {
                         reason: format!(

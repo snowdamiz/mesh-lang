@@ -1060,3 +1060,23 @@ end
         ]
     );
 }
+
+/// A job runs in an actor of its own and its result goes to the one that
+/// awaits it, so a function returning a resource is refused where the job
+/// is made (`Job.async`, `Job.map`), as a resource crossing a mailbox is.
+/// The job could not be awaited: `Job.await` refused it as an indirect call.
+#[test]
+fn a_job_cannot_return_a_resource() {
+    let prelude = "resource struct Session do\n  id :: Int\nend\n\n";
+    for body in [
+        "let job = Job.async(fn -> Session { id: 7 } end)\n  Job.await(job)",
+        "Job.map([1], fn n -> Session { id: n } end)",
+    ] {
+        let result = check_source(&format!("{prelude}fn main() do\n  {body}\nend\n"));
+        assert_eq!(
+            resource_violations(&result),
+            ["a job's result cannot be a resource: it crosses to the actor that awaits it"],
+            "{body}"
+        );
+    }
+}
