@@ -12355,6 +12355,19 @@ fn infer_field_access(
                 if trait_registry.has_impl("FromJson", &named)
                     || trait_registry.has_impl("FromJson", &decoded)
                 {
+                    // A generic type decodes at the instantiation asked for,
+                    // which JSON must hold too (`Box<Point>` needs a Point
+                    // deriving Json): checked once it is known, as
+                    // `Json.encode`'s argument is.
+                    if params > 0 {
+                        ctx.operand_traits.push((
+                            decoded.clone(),
+                            "Json".to_string(),
+                            ConstraintOrigin::Expr {
+                                span: fa.syntax().text_range(),
+                            },
+                        ));
+                    }
                     let result_ty = Ty::result(decoded, Ty::string());
                     return Ok(Ty::fun(vec![Ty::string()], result_ty));
                 }

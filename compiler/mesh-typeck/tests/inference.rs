@@ -344,6 +344,24 @@ fn test_a_structural_impl_needs_its_elements_to_have_the_trait() {
     assert!(result.errors.is_empty(), "{:?}", result.errors);
 }
 
+#[test]
+fn test_a_generic_from_json_needs_json_of_its_instantiation() {
+    // It failed at run time: "cannot decode Point from JSON".
+    let prelude = "struct Point do\n  x :: Int\nend\n\nstruct Box<T> do\n  value :: T\nend deriving(Json)\n\n";
+    let result = check_source(&format!(
+        "{prelude}let r :: Result<Box<Point>, String> = Box.from_json(\"{{}}\")\nr"
+    ));
+    assert_has_error(
+        &result,
+        |e| matches!(e, TypeError::TraitNotSatisfied { trait_name, .. } if trait_name == "Json"),
+        "TraitNotSatisfied Json (Box<Point>)",
+    );
+    let result = check_source(&format!(
+        "{prelude}let r :: Result<Box<Int>, String> = Box.from_json(\"{{}}\")\nr"
+    ));
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+}
+
 // ── Callbacks returning () ─────────────────────────────────────────────
 
 #[test]
