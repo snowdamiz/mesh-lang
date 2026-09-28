@@ -2206,3 +2206,43 @@ end
     );
     assert_eq!(output, "3000\n");
 }
+
+/// Functions and iterators cannot be compared, and comparing values that
+/// hold one (an `Option`, a list, a tuple or a set of functions) says so.
+/// The type checker lets such a comparison through, and code generation
+/// compared them as strings: for functions LLVM's verification failed, and
+/// two different iterators were equal.
+#[test]
+fn values_holding_functions_or_iterators_cannot_be_compared() {
+    for (comparison, error) in [
+        ("Some(inc) == Some(inc)", "cannot compare values of type `(Int) -> Int`"),
+        ("[inc] != [inc]", "cannot compare values of type `(Int) -> Int`"),
+        ("(inc, 1) == (inc, 1)", "cannot compare values of type `(Int) -> Int`"),
+        (
+            "Set.size(Set.add(Set.new(), Some(inc))) > 0",
+            "cannot compare values of type `(Int) -> Int`",
+        ),
+        ("Some(inc) < Some(inc)", "cannot order values of type `(Int) -> Int`"),
+        (
+            "Some(Iter.from([1])) == Some(Iter.from([2]))",
+            "cannot compare values of type `Iter<Int>`: the type has no `Eq`",
+        ),
+    ] {
+        let (_guard, project_dir) = project(&format!(
+            r##"fn inc(x :: Int) -> Int do
+  x + 1
+end
+
+fn main() do
+  println("#{{{comparison}}}")
+end
+"##
+        ));
+        let output = meshc_build(&project_dir, &[]).output().unwrap();
+        assert!(
+            stderr(&output).contains(error),
+            "{comparison}: {}",
+            stderr(&output)
+        );
+    }
+}

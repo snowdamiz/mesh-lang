@@ -11129,8 +11129,17 @@ impl<'a> Lowerer<'a> {
         match ty {
             Ty::Tuple(elems) if elems.is_empty() => always(lhs, rhs),
             // A type nothing fixed (`None == None`, `Ok(1) == Ok(1)`'s error
-            // type) has no values to tell apart.
-            Ty::Var(_) => always(lhs, rhs),
+            // type) has no values to tell apart, nor has a value that never
+            // comes into being.
+            Ty::Var(_) | Ty::Never => always(lhs, rhs),
+            // The type checker lets a function through inside another type
+            // (`Some(f) == Some(g)`).
+            Ty::Fun(..) => {
+                self.lowering_errors.push(format!(
+                    "cannot compare values of type `{ty}`: functions have no `Eq`"
+                ));
+                always(lhs, rhs)
+            }
             Ty::Tuple(elems) => {
                 let f = self.tuple_eq_fn(elems);
                 Self::call_named(
@@ -11219,7 +11228,12 @@ impl<'a> Lowerer<'a> {
                             let params = vec![lhs.ty().clone(), rhs.ty().clone()];
                             Self::call_named(&f, params, vec![lhs, rhs], MirType::Bool)
                         } else {
-                            hardware(lhs, rhs)
+                            // An iterator inside an `Option`, say, which the
+                            // type checker lets through.
+                            self.lowering_errors.push(format!(
+                                "cannot compare values of type `{ty}`: the type has no `Eq`"
+                            ));
+                            always(lhs, rhs)
                         }
                     }
                 }
@@ -11265,7 +11279,6 @@ impl<'a> Lowerer<'a> {
                     }
                 }
             },
-            _ => hardware(lhs, rhs),
         }
     }
 
@@ -11536,7 +11549,13 @@ impl<'a> Lowerer<'a> {
             Ty::Tuple(elems) if elems.is_empty() => int(0),
             // A type nothing fixed (`Ok(1) < Ok(2)`'s error type) has no
             // values to tell apart, as in `eq_expr`.
-            Ty::Var(_) => MirExpr::Block(vec![lhs, rhs, int(0)], MirType::Int),
+            Ty::Var(_) | Ty::Never => MirExpr::Block(vec![lhs, rhs, int(0)], MirType::Int),
+            Ty::Fun(..) => {
+                self.lowering_errors.push(format!(
+                    "cannot order values of type `{ty}`: functions have no `Ord`"
+                ));
+                int(0)
+            }
             Ty::Tuple(elems) => {
                 let f = self.tuple_cmp_fn(elems);
                 Self::call_named(
@@ -11608,7 +11627,6 @@ impl<'a> Lowerer<'a> {
                     }
                 }
             },
-            _ => three_way(binop(BinOp::Lt, &lhs, &rhs), binop(BinOp::Gt, &lhs, &rhs)),
         }
     }
 
