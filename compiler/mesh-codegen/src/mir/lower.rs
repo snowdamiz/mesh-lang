@@ -5471,11 +5471,11 @@ impl<'a> Lowerer<'a> {
             if derive_list.iter().any(|t| t == "Display") && granted(self, "Display") {
                 self.generate_display_struct_typed(&name, &name, &name, &typed_fields, false);
             }
-            // Json: only via explicit deriving(Json), never auto-derived
+            // Json: only via explicit deriving(Json), never auto-derived.
+            // Its `from_json` string wrapper was made before any item.
             if derive_list.iter().any(|t| t == "Json") {
                 self.generate_to_json_struct_typed(&name, &name, &typed_fields);
                 self.generate_from_json_struct_typed(&name, &name, &typed_fields);
-                self.generate_from_json_string_wrapper(&name);
             }
             // Row: only via explicit deriving(Row), never auto-derived
             if derive_list.iter().any(|t| t == "Row") {
@@ -5670,11 +5670,11 @@ impl<'a> Lowerer<'a> {
         if has_deriving && derive_list.iter().any(|t| t == "Hash") && granted(self, "Hash") {
             self.generate_hash_sum_typed(&name, &name, &typed_variants);
         }
-        // Json: only via explicit deriving(Json) for sum types
+        // Json: only via explicit deriving(Json) for sum types. Its
+        // `from_json` string wrapper was made before any item.
         if derive_list.iter().any(|t| t == "Json") {
             self.generate_to_json_sum_typed(&name, &name, &typed_variants);
             self.generate_from_json_sum_typed(&name, &name, &typed_variants);
-            self.generate_from_json_string_wrapper(&name);
         }
     }
 
@@ -16431,55 +16431,41 @@ pub fn lower_module_to_mir<'a>(
     // needs __json_decode__User in known_functions so that User.from_json(str)
     // resolves correctly in lower_field_access. Generate the thin wrappers here
     // BEFORE lower_source_file so they're available during field access resolution.
+    // Nothing has been lowered yet, so none of these is known already.
     {
         let struct_names: Vec<String> = typeck.type_registry.struct_defs.keys().cloned().collect();
         for name in &struct_names {
-            // FromJson: generate __json_decode__ wrapper if not already present
-            let wrapper_name = format!("__json_decode__{}", name);
-            if !lowerer.known_functions.contains_key(&wrapper_name) {
-                let struct_ty = Ty::Con(mesh_typeck::ty::TyCon::new(name));
-                if typeck.trait_registry.has_impl("FromJson", &struct_ty) {
-                    lowerer.generate_from_json_string_wrapper(name);
-                }
+            let struct_ty = Ty::Con(mesh_typeck::ty::TyCon::new(name));
+            // FromJson: generate the __json_decode__ wrapper.
+            if typeck.trait_registry.has_impl("FromJson", &struct_ty) {
+                lowerer.generate_from_json_string_wrapper(name);
             }
 
             // ToJson: register known_functions entry for ToJson__to_json__StructName
             // The actual function body is generated in the defining module's MIR.
-            let to_json_name = format!("ToJson__to_json__{}", name);
-            if let std::collections::hash_map::Entry::Vacant(e) =
-                lowerer.known_functions.entry(to_json_name)
-            {
-                let struct_ty = Ty::Con(mesh_typeck::ty::TyCon::new(name));
-                if typeck.trait_registry.has_impl("ToJson", &struct_ty) {
-                    e.insert(MirType::FnPtr(
-                        vec![MirType::Struct(name.clone())],
-                        Box::new(MirType::Ptr),
-                    ));
-                }
+            if typeck.trait_registry.has_impl("ToJson", &struct_ty) {
+                lowerer.known_functions.insert(
+                    format!("ToJson__to_json__{}", name),
+                    MirType::FnPtr(vec![MirType::Struct(name.clone())], Box::new(MirType::Ptr)),
+                );
             }
 
             // FromRow: register known_functions entry for FromRow__from_row__StructName
             // The actual function body is generated in the defining module's MIR.
-            let from_row_name = format!("FromRow__from_row__{}", name);
-            if let std::collections::hash_map::Entry::Vacant(e) =
-                lowerer.known_functions.entry(from_row_name)
-            {
-                let struct_ty = Ty::Con(mesh_typeck::ty::TyCon::new(name));
-                if typeck.trait_registry.has_impl("FromRow", &struct_ty) {
-                    e.insert(MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)));
-                }
+            if typeck.trait_registry.has_impl("FromRow", &struct_ty) {
+                lowerer.known_functions.insert(
+                    format!("FromRow__from_row__{}", name),
+                    MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
+                );
             }
         }
 
         // Also handle sum types with FromJson
         let sum_names: Vec<String> = typeck.type_registry.sum_type_defs.keys().cloned().collect();
         for name in &sum_names {
-            let wrapper_name = format!("__json_decode__{}", name);
-            if !lowerer.known_functions.contains_key(&wrapper_name) {
-                let sum_ty = Ty::Con(mesh_typeck::ty::TyCon::new(name));
-                if typeck.trait_registry.has_impl("FromJson", &sum_ty) {
-                    lowerer.generate_from_json_string_wrapper(name);
-                }
+            let sum_ty = Ty::Con(mesh_typeck::ty::TyCon::new(name));
+            if typeck.trait_registry.has_impl("FromJson", &sum_ty) {
+                lowerer.generate_from_json_string_wrapper(name);
             }
         }
 
@@ -16490,45 +16476,43 @@ pub fn lower_module_to_mir<'a>(
         // StructName.__fields__(), etc. resolve correctly in lower_field_access.
         for name in &struct_names {
             let table_fn = format!("{}____table__", name);
-            if !lowerer.known_functions.contains_key(&table_fn) {
-                let struct_ty = Ty::Con(mesh_typeck::ty::TyCon::new(name));
-                if typeck.trait_registry.has_impl("Schema", &struct_ty) {
-                    // __table__() -> String
-                    lowerer
-                        .known_functions
-                        .insert(table_fn, MirType::FnPtr(vec![], Box::new(MirType::String)));
-                    // __fields__() -> Ptr (List<String>)
+            let struct_ty = Ty::Con(mesh_typeck::ty::TyCon::new(name));
+            if typeck.trait_registry.has_impl("Schema", &struct_ty) {
+                // __table__() -> String
+                lowerer
+                    .known_functions
+                    .insert(table_fn, MirType::FnPtr(vec![], Box::new(MirType::String)));
+                // __fields__() -> Ptr (List<String>)
+                lowerer.known_functions.insert(
+                    format!("{}____fields__", name),
+                    MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
+                );
+                // __primary_key__() -> String
+                lowerer.known_functions.insert(
+                    format!("{}____primary_key__", name),
+                    MirType::FnPtr(vec![], Box::new(MirType::String)),
+                );
+                // __relationships__() -> Ptr (List<String>)
+                lowerer.known_functions.insert(
+                    format!("{}____relationships__", name),
+                    MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
+                );
+                // __field_types__() -> Ptr (List<String>)
+                lowerer.known_functions.insert(
+                    format!("{}____field_types__", name),
+                    MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
+                );
+                // __relationship_meta__() -> Ptr (List<String>)
+                lowerer.known_functions.insert(
+                    format!("{}____relationship_meta__", name),
+                    MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
+                );
+                // Per-field column accessors: __{field}_col__() -> String
+                for (field_name, _) in &typeck.type_registry.struct_defs[name].fields {
                     lowerer.known_functions.insert(
-                        format!("{}____fields__", name),
-                        MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
-                    );
-                    // __primary_key__() -> String
-                    lowerer.known_functions.insert(
-                        format!("{}____primary_key__", name),
+                        format!("{}____{}_col__", name, field_name),
                         MirType::FnPtr(vec![], Box::new(MirType::String)),
                     );
-                    // __relationships__() -> Ptr (List<String>)
-                    lowerer.known_functions.insert(
-                        format!("{}____relationships__", name),
-                        MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
-                    );
-                    // __field_types__() -> Ptr (List<String>)
-                    lowerer.known_functions.insert(
-                        format!("{}____field_types__", name),
-                        MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
-                    );
-                    // __relationship_meta__() -> Ptr (List<String>)
-                    lowerer.known_functions.insert(
-                        format!("{}____relationship_meta__", name),
-                        MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
-                    );
-                    // Per-field column accessors: __{field}_col__() -> String
-                    for (field_name, _) in &typeck.type_registry.struct_defs[name].fields {
-                        lowerer.known_functions.insert(
-                            format!("{}____{}_col__", name, field_name),
-                            MirType::FnPtr(vec![], Box::new(MirType::String)),
-                        );
-                    }
                 }
             }
         }
@@ -17420,6 +17404,28 @@ mod tests {
             .expect("main makes a closure");
         assert_eq!(captures.len(), 1, "{captures:?}");
         assert_eq!(var_refs(&captures[0], "k"), 1, "{captures:?}");
+    }
+
+    /// Each function is generated once: a struct or sum type deriving Json
+    /// had its `from_json` string wrapper made both before any item was
+    /// lowered and again with its other Json functions, and code
+    /// generation met the name twice.
+    #[test]
+    fn json_types_get_one_from_json_wrapper() {
+        let mir = lower(
+            "struct U do\n  a :: Int\nend deriving(Json)\n\n\
+             type T do\n  A(Int)\nend deriving(Json)\n\n\
+             fn main() do\n  nil\nend",
+        );
+        let mut seen = HashSet::new();
+        let twice: Vec<&str> = mir
+            .functions
+            .iter()
+            .map(|function| function.name.as_str())
+            .filter(|name| !seen.insert(*name))
+            .collect();
+        assert!(twice.is_empty(), "generated twice: {twice:?}");
+        assert!(seen.contains("__json_decode__U") && seen.contains("__json_decode__T"));
     }
 
     /// The checker counts a pid of resource messages as a resource, but the
