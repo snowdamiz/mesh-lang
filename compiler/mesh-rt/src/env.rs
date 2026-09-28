@@ -5,11 +5,11 @@
 use zeroize::Zeroizing;
 
 use crate::collections::list::mesh_list_from_array;
-use crate::io::{alloc_result, MeshResult};
+use crate::crypto::{crypto_result, failure, resource_failure, CryptoFailure};
+use crate::io::MeshResult;
 use crate::option::{alloc_option, MeshOption};
 use crate::secret::{
-    crypto_error, insert_owned_resource, CryptoErrorTag, ResourceError, ResourceKind,
-    MAX_SECRET_BYTES,
+    insert_owned_resource, CryptoErrorTag, MeshSecretHandle, ResourceKind, MAX_SECRET_BYTES,
 };
 use crate::string::{mesh_str, MeshString};
 
@@ -95,42 +95,26 @@ pub extern "C" fn mesh_env_get_int(key: *const MeshString, default: i64) -> i64 
 /// Read a required hexadecimal environment value directly into actor-owned secret storage.
 #[no_mangle]
 pub extern "C" fn mesh_env_get_secret_hex(key: *const MeshString) -> *mut MeshResult {
-    if key.is_null() {
-        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
+    crypto_result(secret_from_env(unsafe { (*key).as_str() }))
+}
+
+fn secret_from_env(key: &str) -> Result<*mut MeshSecretHandle, CryptoFailure> {
+    let invalid_key = || failure(CryptoErrorTag::InvalidKey, 0, 0);
+    if key.is_empty() || key.bytes().any(|byte| matches!(byte, 0 | b'=')) {
+        return Err(invalid_key());
     }
-    let key = unsafe { (*key).as_str() };
-    if key.is_empty() || key.as_bytes().iter().any(|byte| matches!(byte, 0 | b'=')) {
-        return crypto_error(CryptoErrorTag::InvalidKey, 0, 0);
-    }
-    let encoded = match std::env::var(key) {
-        Ok(value) => Zeroizing::new(value),
-        Err(_) => return crypto_error(CryptoErrorTag::InvalidKey, 0, 0),
-    };
-    let secret = match decode_secret_hex(&encoded) {
-        Ok(secret) => secret,
-        Err(SecretHexError::Invalid) => {
-            return crypto_error(CryptoErrorTag::InvalidKey, 0, 0);
-        }
-        Err(SecretHexError::TooLong(actual)) => {
-            return crypto_error(
-                CryptoErrorTag::InvalidLength,
-                MAX_SECRET_BYTES as i64,
-                i64::try_from(actual).unwrap_or(i64::MAX),
-            );
-        }
-    };
-    let Some(process) = crate::actor::current_process() else {
-        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
-    };
-    let result = insert_owned_resource(&mut process.lock(), ResourceKind::SecretBytes, secret);
-    match result {
-        Ok(secret) => alloc_result(0, secret.cast()),
-        Err(ResourceError::ResourceLimitExceeded) => {
-            crypto_error(CryptoErrorTag::ResourceLimitExceeded, 0, 0)
-        }
-        Err(ResourceError::OwnerExited) => crypto_error(CryptoErrorTag::SecretDestroyed, 0, 0),
-        Err(_) => crypto_error(CryptoErrorTag::InternalFailure, 0, 0),
-    }
+    let encoded = Zeroizing::new(std::env::var(key).map_err(|_| invalid_key())?);
+    let secret = decode_secret_hex(&encoded).map_err(|error| match error {
+        SecretHexError::Invalid => invalid_key(),
+        SecretHexError::TooLong(actual) => failure(
+            CryptoErrorTag::InvalidLength,
+            MAX_SECRET_BYTES as i64,
+            actual as i64,
+        ),
+    })?;
+    let (_, process) = crate::actor::running_process();
+    let mut process = process.lock();
+    insert_owned_resource(&mut process, ResourceKind::SecretBytes, secret).map_err(resource_failure)
 }
 
 /// Return CLI arguments as a `List<String>`.
@@ -235,6 +219,40 @@ mod tests {
                 MAX_SECRET_BYTES as i64 + 1,
             )
         );
+    }
+
+    /// A name that is empty or could not name a variable, a variable that is
+    /// not set, and a value that is not hex are all an invalid key; hex in
+    /// either case decodes.
+    #[test]
+    fn secret_hex_names_and_values() {
+        let tag = |key: &str| match secret_from_env(key) {
+            Ok(_) => None,
+            Err(error) => Some(error.tag),
+        };
+        std::env::set_var("MESH_SECRET_HEX_NOT_HEX", "0g");
+        let invalid = Some(CryptoErrorTag::InvalidKey);
+        for key in [
+            "",
+            "A=B",
+            "A\0B",
+            "MESH_SECRET_HEX_UNSET",
+            "MESH_SECRET_HEX_NOT_HEX",
+        ] {
+            assert_eq!(tag(key), invalid, "{key:?}");
+        }
+        std::env::remove_var("MESH_SECRET_HEX_NOT_HEX");
+        let decoded = decode_secret_hex("0aFf").ok().unwrap();
+        assert_eq!(&decoded[..], [0x0a, 0xff]);
+        assert!(decode_secret_hex("abc").is_err(), "odd length");
+
+        let secret = crate::actor::in_actor(|| {
+            std::env::set_var("MESH_SECRET_HEX_SET", "C0FFEE");
+            let secret = secret_from_env("MESH_SECRET_HEX_SET").is_ok();
+            std::env::remove_var("MESH_SECRET_HEX_SET");
+            secret
+        });
+        assert!(secret);
     }
 
     #[test]
