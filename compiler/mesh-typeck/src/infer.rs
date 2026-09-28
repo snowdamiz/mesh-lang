@@ -15581,3 +15581,32 @@ fn infer_json_expr(
     // String at call sites via the `json_string_compatible` rule in unify.rs.
     Ok(Ty::json())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Abstract patterns read as they are written: an or-pattern's
+    /// alternatives joined by `|` (the witnesses a missing-pattern error
+    /// shows are built without them).
+    #[test]
+    fn abstract_patterns_read_as_written() {
+        let pattern = AbsPat::Or {
+            alternatives: vec![
+                AbsPat::Literal {
+                    value: "1".to_string(),
+                    ty: AbsLitKind::Int,
+                },
+                AbsPat::Constructor {
+                    name: "Some".to_string(),
+                    type_name: "Option".to_string(),
+                    args: vec![AbsPat::Wildcard],
+                },
+            ],
+        };
+        assert_eq!(
+            format_abstract_pat(&pattern, &TypeRegistry::new()),
+            "1 | Some(_)"
+        );
+    }
+}
