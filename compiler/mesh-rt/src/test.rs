@@ -53,27 +53,34 @@ fn palette() -> &'static Palette {
     static PALETTE: std::sync::OnceLock<Palette> = std::sync::OnceLock::new();
     PALETTE.get_or_init(|| {
         use std::io::IsTerminal;
-        let color = match std::env::var("MESH_TEST_COLOR").as_deref() {
-            Ok("1") => true,
-            Ok(_) => false,
-            Err(_) => std::env::var_os("NO_COLOR").is_none() && std::io::stdout().is_terminal(),
-        };
-        if color {
-            Palette {
-                green: "\x1b[32m",
-                red: "\x1b[31m",
-                bold: "\x1b[1m",
-                reset: "\x1b[0m",
-            }
-        } else {
-            Palette {
-                green: "",
-                red: "",
-                bold: "",
-                reset: "",
-            }
-        }
+        let asked = std::env::var("MESH_TEST_COLOR").ok();
+        let terminal = || std::env::var_os("NO_COLOR").is_none() && std::io::stdout().is_terminal();
+        palette_for(colored(asked.as_deref(), terminal))
     })
+}
+
+/// Whether to color: as `MESH_TEST_COLOR` asks ("1"), or, when it is not
+/// set, as `terminal` says.
+fn colored(asked: Option<&str>, terminal: impl FnOnce() -> bool) -> bool {
+    asked.map_or_else(terminal, |asked| asked == "1")
+}
+
+fn palette_for(color: bool) -> Palette {
+    if color {
+        Palette {
+            green: "\x1b[32m",
+            red: "\x1b[31m",
+            bold: "\x1b[1m",
+            reset: "\x1b[0m",
+        }
+    } else {
+        Palette {
+            green: "",
+            red: "",
+            bold: "",
+            reset: "",
+        }
+    }
 }
 
 /// `meshc test --quiet` (`MESH_TEST_QUIET=1`): a `.` or `F` per test
@@ -329,9 +336,10 @@ pub unsafe extern "C-unwind" fn mesh_test_assert_raises(
 /// Exits with code `0` when all tests passed, `1` when any tests failed.
 /// This lets the outer `meshc test` runner detect test failures via exit code.
 ///
-/// The harness (`Plan 03`) passes the elapsed time as milliseconds.
+/// The file's tests are timed from the first one; the harness passes 0 for
+/// `_elapsed_ms`.
 #[no_mangle]
-pub extern "C" fn mesh_test_summary(passed: i64, failed: i64, elapsed_ms: i64) {
+pub extern "C" fn mesh_test_summary(passed: i64, failed: i64, _elapsed_ms: i64) {
     let Palette {
         green,
         red,
@@ -352,12 +360,7 @@ pub extern "C" fn mesh_test_summary(passed: i64, failed: i64, elapsed_ms: i64) {
         }
     });
 
-    // The harness passes 0; the file's tests are timed from the first one.
-    let elapsed = if elapsed_ms > 0 {
-        elapsed_ms as f64 / 1000.0
-    } else {
-        first_test_started().elapsed().as_secs_f64()
-    };
+    let elapsed = first_test_started().elapsed().as_secs_f64();
     if failed > 0 {
         println!("\n{red}{bold}{failed} failed{reset}, {passed} passed in {elapsed:.2}s");
         std::process::exit(1);
@@ -513,4 +516,22 @@ pub unsafe extern "C" fn mesh_test_mock_actor(fn_ptr: *const u8, env_ptr: *const
 
     MOCK_ACTOR_PIDS.with(|p| p.borrow_mut().push(pid));
     pid
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `meshc test` says whether to color; run on its own, a test binary
+    /// colors a terminal.
+    #[test]
+    fn colors_as_asked_or_for_a_terminal() {
+        let never = || -> bool { unreachable!("asked, so the terminal is not consulted") };
+        assert!(colored(Some("1"), never));
+        assert!(!colored(Some("0"), never));
+        assert!(colored(None, || true));
+        assert!(!colored(None, || false));
+        assert_eq!(palette_for(true).red, "\x1b[31m");
+        assert_eq!(palette_for(false).red, "");
+    }
 }

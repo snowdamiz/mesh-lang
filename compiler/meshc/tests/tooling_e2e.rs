@@ -1874,6 +1874,26 @@ b"
   assert_eq(s, "a\nb")
 end
 
+describe("fails twice") do
+  teardown do
+    assert(1 > 2)
+  end
+
+  test("body and teardown") do
+    assert(2 > 3)
+  end
+end
+
+test("equal sides") do
+  assert_ne(1, 1)
+end
+
+test("no raise") do
+  assert_raises(fn() do
+    assert(true)
+  end)
+end
+
 test("passes") do
   assert(true)
 end
@@ -1893,7 +1913,18 @@ end
     assert!(!stdout.contains("TEARDOWN AFTER BROKEN SETUP"), "{stdout}");
     assert!(stdout.contains("AFTER RAISES"), "{stdout}");
     assert!(stdout.contains("assert failed: false"), "{stdout}");
-    assert!(stdout.contains("3 failed"), "{stdout}");
+    // A test that fails in its body and its teardown fails once, with both
+    // messages under its name.
+    assert!(
+        stdout.contains("assert failed: 2 > 3\n    assert failed: 1 > 2"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("both sides equal: 1"), "{stdout}");
+    assert!(
+        stdout.contains("assert_raises failed: expression did not raise"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("6 failed"), "{stdout}");
     assert!(stdout.contains("3 passed"), "{stdout}");
 }
 
