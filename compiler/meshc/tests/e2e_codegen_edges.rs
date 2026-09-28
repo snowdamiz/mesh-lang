@@ -2299,3 +2299,32 @@ end
     );
     assert_eq!(output, "true false\ntrue false\n[1, 2] [1, 2] %{3 => 4}\n");
 }
+
+/// A `BinaryError` without the package that declares its variants is the
+/// runtime's pointer to it: it can be passed, returned and captured. It was
+/// laid out as an opaque struct, and LLVM's verification refused every
+/// function holding one ("Cannot allocate unsized type").
+#[test]
+fn binary_errors_without_their_package_are_pointers() {
+    let output = compile_and_run(
+        r##"fn describe(e :: BinaryError) -> String do
+  "failed"
+end
+
+fn keep(e :: BinaryError) -> Fun() -> BinaryError do
+  fn () -> e end
+end
+
+fn main() do
+  case BytesBuilder.new(100000) do
+    Ok(_) -> println("built")
+    Err(e) -> do
+      let again = keep(e)
+      println(describe(again()))
+    end
+  end
+end
+"##,
+    );
+    assert_eq!(output, "failed\n");
+}

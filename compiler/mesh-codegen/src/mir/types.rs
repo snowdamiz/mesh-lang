@@ -116,8 +116,15 @@ fn resolve_con(con: &TyCon, registry: &TypeRegistry) -> MirType {
         | "Regex" => MirType::Ptr,
         // Atom type resolves to String at MIR level (atoms are compile-time only, lowered to StringLit)
         "Atom" => MirType::String,
+        // A `BinaryError` without the package that declares its variants (a
+        // sum type, resolved above) is what the runtime hands over: a pointer
+        // to its tag. As an opaque struct it had no size, and no function
+        // could hold one.
+        "BinaryError" if !registry.struct_defs.contains_key("BinaryError") => MirType::Ptr,
         // A struct (sum types were resolved above), or a name no definition
-        // gives, which is laid out as an opaque struct.
+        // gives here, which is laid out as an opaque struct: a type of a
+        // module lowered later, which a generic function here is specialized
+        // at, names that module's struct.
         name => MirType::Struct(name.to_string()),
     }
 }
