@@ -320,6 +320,30 @@ fn test_a_builtin_type_names_no_value() {
     assert!(result.errors.is_empty(), "{:?}", result.errors);
 }
 
+#[test]
+fn test_a_structural_impl_needs_its_elements_to_have_the_trait() {
+    // Functions have no Eq, so neither has an Option, list, tuple or map
+    // value holding them; lowering refused these without a location.
+    let f = "fn f(x :: Int) -> Int do\n  x\nend\n";
+    for (src, trait_name) in [
+        ("Some(f) == Some(f)", "Eq"),
+        ("[f] == [f]", "Eq"),
+        ("(1, f) == (1, f)", "Eq"),
+        ("Map.put(Map.new(), \"k\", f) == Map.new()", "Eq"),
+        ("\"#{Some(f)}\"", "Display"),
+    ] {
+        let result = check_source(&format!("{f}{src}"));
+        assert_has_error(
+            &result,
+            |e| matches!(e, TypeError::TraitNotSatisfied { trait_name: t, .. } if t == trait_name),
+            src,
+        );
+    }
+    // Elements that have it.
+    let result = check_source("[[1]] == [[1]] && Some((1, \"a\")) == Some((1, \"a\"))");
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+}
+
 // ── Callbacks returning () ─────────────────────────────────────────────
 
 #[test]

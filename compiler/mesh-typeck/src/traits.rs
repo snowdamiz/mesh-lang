@@ -527,11 +527,36 @@ impl TraitRegistry {
             if ctx
                 .unify(freshened, query, ConstraintOrigin::Builtin)
                 .is_ok()
+                && self.elements_have_it(impl_def, ty)
             {
                 return Some(impl_def);
             }
         }
         None
+    }
+
+    /// Whether what `ty` holds has the trait a built-in structural impl
+    /// needs of it: an `Option`, `Result`, collection or tuple is equal,
+    /// ordered or shown by its elements (a map by its values), so
+    /// `Some(f) == Some(g)` asks for functions' `Eq`. An element not known
+    /// yet may still get it.
+    fn elements_have_it(&self, impl_def: &ImplDef, ty: &Ty) -> bool {
+        let structural = matches!(
+            impl_def.impl_type_name.as_str(),
+            "Option" | "Result" | "List" | "Map" | "Set" | "Tuple"
+        );
+        if !structural || !matches!(impl_def.trait_name.as_str(), "Eq" | "Ord" | "Display") {
+            return true;
+        }
+        let elements = match ty {
+            Ty::Tuple(elements) => elements.as_slice(),
+            Ty::App(_, args) if impl_def.impl_type_name == "Map" => args.get(1..).unwrap_or(&[]),
+            Ty::App(_, args) => args.as_slice(),
+            _ => &[],
+        };
+        elements.iter().all(|element| {
+            matches!(element, Ty::Var(_)) || self.has_impl(&impl_def.trait_name, element)
+        })
     }
 
     /// The impl of `trait_name` for `impl_ty` whose trait arguments are
@@ -1318,11 +1343,15 @@ mod tests {
                 .map(|imp| imp.impl_type_name.clone())
         };
         assert_eq!(found(con("Json")), None);
-        assert_eq!(found(Ty::list(Ty::int())).as_deref(), Some("List"));
+        assert_eq!(found(Ty::list(Ty::string())).as_deref(), Some("List"));
         assert_eq!(
-            found(Ty::Tuple(vec![Ty::int(), Ty::string()])).as_deref(),
+            found(Ty::Tuple(vec![Ty::string(), Ty::string()])).as_deref(),
             Some("Tuple")
         );
+        // A structural impl needs its elements to have the trait: no Int
+        // is shown here, so no list or tuple holding one is.
+        assert_eq!(found(Ty::list(Ty::int())), None);
+        assert_eq!(found(Ty::Tuple(vec![Ty::int(), Ty::string()])), None);
         assert_eq!(found(con("Tuple")).as_deref(), Some("Tuple"));
         assert_eq!(found(con("ListIterator")).as_deref(), Some("Ptr"));
         assert_eq!(found(Ty::int()), None);
