@@ -8,7 +8,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -677,18 +676,9 @@ impl DockerDriverService {
                         .node_id
                         .as_deref()
                         .ok_or_else(|| "driver_service_unhealthy_fault_node_missing".to_string())?;
-                    let status = Command::new(
-                        std::env::var_os("MESH_DOCKER_BINARY").unwrap_or_else(|| "docker".into()),
-                    )
-                    .args(["stop", "--time", "1", node_id])
-                    .stdin(Stdio::null())
-                    .stdout(Stdio::null())
-                    .stderr(Stdio::null())
-                    .status()
-                    .map_err(|error| format!("driver_service_unhealthy_fault_failed:{error}"))?;
-                    if !status.success() {
-                        return Err("driver_service_unhealthy_fault_failed".to_string());
-                    }
+                    driver.stop(node_id).map_err(|error| {
+                        format!("driver_service_unhealthy_fault_failed:{error}")
+                    })?;
                     eprintln!(
                         "mesh capacity driver: transition=fault_injected fault=unhealthy_new_worker_once node_id={node_id}"
                     );
@@ -1287,6 +1277,127 @@ mod tests {
 
         assert!(!rendered.contains("postgres://debug-secret"));
         assert!(rendered.contains("[redacted; 1]"));
+    }
+
+    /// A service for `cluster-a` whose Docker is the fake one keeping its
+    /// containers in `state`.
+    fn fake_service(state: &std::path::Path) -> DockerDriverService {
+        let (docker_binary, docker_execution_prefix) =
+            super::super::scaling::tests::fake_docker(state);
+        DockerDriverService {
+            allowed_cluster: "cluster-a".to_string(),
+            allowed_pool: "workers".to_string(),
+            allowed_image: "image@sha256:abc".to_string(),
+            allowed_network: None,
+            allowed_environment_names: BTreeSet::from(["PORT".to_string()]),
+            shared_keys: vec![KEY.to_string()],
+            docker_binary,
+            docker_execution_prefix,
+            driver: Mutex::new(None),
+            seen_request_ids: Mutex::new(BTreeMap::new()),
+            active_connections: AtomicUsize::new(0),
+            inject_ensure_response_loss_once: AtomicBool::new(false),
+            inject_api_timeout_once: AtomicBool::new(false),
+            inject_unhealthy_worker_once: AtomicBool::new(false),
+        }
+    }
+
+    /// A fresh request for `action` on `template`, signed with `key`.
+    fn signed(
+        action: DriverServiceAction,
+        template: RemoteDockerTemplate,
+        key: &str,
+    ) -> DriverServiceRequest {
+        let now = unix_millis();
+        let mut request = DriverServiceRequest {
+            schema_version: DRIVER_SERVICE_SCHEMA_VERSION,
+            request_id: format!("{:032x}", rand::random::<u128>()),
+            issued_at_unix_millis: now,
+            expires_at_unix_millis: now + 60_000,
+            template,
+            action,
+            signature: String::new(),
+        };
+        request.signature = hex_signature(request_signature(&request, key));
+        request
+    }
+
+    #[test]
+    fn a_driver_service_runs_fresh_signed_requests_for_its_cluster_only() {
+        use super::super::scaling::tests::{add_container, docker_calls, driver_operation};
+        let state = tempfile::tempdir().expect("fake docker state");
+        let service = fake_service(state.path());
+        let validate = signed(DriverServiceAction::Validate, template(), KEY);
+        assert_eq!(service.execute(&validate), Ok(DriverServicePayload::Valid));
+        assert_eq!(
+            service.execute(&validate),
+            Err("driver_service_request_replayed".to_string())
+        );
+        let forged = signed(
+            DriverServiceAction::Validate,
+            template(),
+            "another-key-0123456789abcdef0123",
+        );
+        assert_eq!(
+            service.execute(&forged),
+            Err("driver_service_request_authentication_failed".to_string())
+        );
+        // The driver serves the template it was first asked for.
+        let mut revised = template();
+        revised.operation_timeout_millis += 1;
+        assert_eq!(
+            service.execute(&signed(DriverServiceAction::Validate, revised, KEY)),
+            Err("driver_service_template_revision_conflict".to_string())
+        );
+
+        let observe_other = DriverServiceAction::Observe {
+            cluster_id: "cluster-b".to_string(),
+        };
+        assert_eq!(
+            service.execute(&signed(observe_other, template(), KEY)),
+            Err("driver_service_cluster_not_allowed".to_string())
+        );
+        let mut foreign = driver_operation("foreign-operation", None);
+        foreign.cluster_id = "cluster-b".to_string();
+        add_container(state.path(), "foreign", &foreign, "running");
+        let get_foreign = DriverServiceAction::GetOperation {
+            operation_id: "foreign-operation".to_string(),
+        };
+        assert_eq!(
+            service.execute(&signed(get_foreign, template(), KEY)),
+            Err("driver_service_cluster_not_allowed".to_string())
+        );
+
+        // The injected fault stops the new worker, and fails the request
+        // when it cannot.
+        service
+            .inject_unhealthy_worker_once
+            .store(true, Ordering::Release);
+        let ensure = |operation_id: &str| {
+            service.execute(&signed(
+                DriverServiceAction::Ensure {
+                    operation: driver_operation(operation_id, None),
+                },
+                template(),
+                KEY,
+            ))
+        };
+        let Ok(DriverServicePayload::Operation { operation }) = ensure("unhealthy") else {
+            panic!("the worker is created");
+        };
+        let node_id = operation.node_id.expect("a created worker");
+        assert!(docker_calls(state.path()).contains(&format!("stop --time 1 {node_id}")));
+        std::fs::write(state.path().join("fail-stop"), "").unwrap();
+        service
+            .inject_unhealthy_worker_once
+            .store(true, Ordering::Release);
+        assert_eq!(
+            ensure("unhealthy-again"),
+            Err(
+                "driver_service_unhealthy_fault_failed:docker_driver_api_error:stop refused"
+                    .to_string()
+            )
+        );
     }
 
     #[test]

@@ -1264,6 +1264,18 @@ impl DockerCapacityDriver {
         }))
     }
 
+    /// Stops `node_id`, giving it a second to exit: the driver service's
+    /// injected fault that makes a new worker unhealthy.
+    pub(super) fn stop(&self, node_id: &str) -> Result<(), String> {
+        self.docker(&[
+            "stop".to_string(),
+            "--time".to_string(),
+            "1".to_string(),
+            node_id.to_string(),
+        ])
+        .map(drop)
+    }
+
     /// The one container `operation_id` created inside `scope`, a label
     /// filter; two are a conflict the driver refuses to resolve.
     fn operation_container(
@@ -2949,10 +2961,13 @@ fn unix_millis() -> u64 {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
-    fn driver_operation(operation_id: &str, action_node: Option<&str>) -> DriverOperation {
+    pub(crate) fn driver_operation(
+        operation_id: &str,
+        action_node: Option<&str>,
+    ) -> DriverOperation {
         DriverOperation {
             cluster_id: "cluster-a".to_string(),
             operation_id: operation_id.to_string(),
@@ -4187,19 +4202,31 @@ create)
   echo created > "$dir/status"
   echo "$id" ;;
 start) echo running > "$state/containers/$1/status" ;;
+stop)
+  [ -f "$state/fail-stop" ] && { echo "stop refused" >&2; exit 1; }
+  echo exited > "$state/containers/$4/status" ;;
 rm) rm -rf "$state/containers/$2" ;;
 esac
 "#;
 
-    /// A Docker driver whose `docker` is the fake above, run through
-    /// `/bin/sh` as the execution prefix.
-    fn docker_driver(state: &Path, environment: Vec<String>) -> DockerCapacityDriver {
+    /// The binary and execution prefix that run the fake `docker` above,
+    /// keeping its containers in `state`, through `/bin/sh`.
+    pub(crate) fn fake_docker(state: &Path) -> (PathBuf, Vec<String>) {
         std::fs::create_dir_all(state.join("containers")).expect("fake docker state");
         let script = state.join("docker.sh");
         std::fs::write(&script, FAKE_DOCKER).expect("fake docker script");
+        (
+            PathBuf::from("/bin/sh"),
+            vec![script.display().to_string(), state.display().to_string()],
+        )
+    }
+
+    /// A Docker driver whose `docker` is the fake above.
+    fn docker_driver(state: &Path, environment: Vec<String>) -> DockerCapacityDriver {
+        let (binary, execution_prefix) = fake_docker(state);
         DockerCapacityDriver::new(DockerDriverConfig {
-            binary: PathBuf::from("/bin/sh"),
-            execution_prefix: vec![script.display().to_string(), state.display().to_string()],
+            binary,
+            execution_prefix,
             image: "image@sha256:abc".to_string(),
             pool: "workers".to_string(),
             network: Some("mesh-net".to_string()),
@@ -4209,7 +4236,7 @@ esac
         })
     }
 
-    fn docker_calls(state: &Path) -> Vec<String> {
+    pub(crate) fn docker_calls(state: &Path) -> Vec<String> {
         std::fs::read_to_string(state.join("calls"))
             .unwrap_or_default()
             .lines()
@@ -4218,7 +4245,7 @@ esac
     }
 
     /// A managed container as the driver labels one, in `status`.
-    fn add_container(state: &Path, id: &str, operation: &DriverOperation, status: &str) {
+    pub(crate) fn add_container(state: &Path, id: &str, operation: &DriverOperation, status: &str) {
         let directory = state.join("containers").join(id);
         std::fs::create_dir_all(&directory).expect("container directory");
         std::fs::write(
