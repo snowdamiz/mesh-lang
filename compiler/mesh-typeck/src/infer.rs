@@ -15088,29 +15088,22 @@ fn trait_method_type(
 
 /// A function's `where` clause as (type parameter, trait) pairs.
 fn extract_where_constraints(fn_: &FnDef) -> Vec<(String, String)> {
-    let mut constraints = Vec::new();
-
-    for child in fn_.syntax().children() {
-        if child.kind() == SyntaxKind::WHERE_CLAUSE {
-            for bound in child.children() {
-                if bound.kind() == SyntaxKind::TRAIT_BOUND {
-                    let tokens: Vec<_> = bound
-                        .children_with_tokens()
-                        .filter_map(|t| t.into_token())
-                        .filter(|t| t.kind() == SyntaxKind::IDENT)
-                        .collect();
-
-                    if tokens.len() >= 2 {
-                        let type_param = tokens[0].text().to_string();
-                        let trait_name = tokens[1].text().to_string();
-                        constraints.push((type_param, trait_name));
-                    }
-                }
-            }
-        }
-    }
-
-    constraints
+    // A where clause's nodes are its bounds, `T: Trait`; one the parser
+    // could not finish names no trait.
+    fn_.syntax()
+        .children()
+        .filter(|child| child.kind() == SyntaxKind::WHERE_CLAUSE)
+        .flat_map(|clause| clause.children())
+        .filter_map(|bound| {
+            let mut names = bound
+                .children_with_tokens()
+                .filter_map(|t| t.into_token())
+                .filter(|t| t.kind() == SyntaxKind::IDENT);
+            let type_param = names.next()?.text().to_string();
+            let trait_name = names.next()?.text().to_string();
+            Some((type_param, trait_name))
+        })
+        .collect()
 }
 
 /// The declared type parameter an annotation consists of, if it is exactly
