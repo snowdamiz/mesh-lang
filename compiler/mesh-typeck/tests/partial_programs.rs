@@ -188,6 +188,14 @@ fn definitions_cut_off_at_a_part_add_no_error() {
         "fn f(0) = 1\nfn f(x :: ) = 2\n",
         "struct P do\n  x :: Int\nend\n\nfn f(p :: P) do\n  %{p | x: }\nend\n",
         "fn f(Some(x) as) do\n  1\nend\n",
+        // Types cut off: a tuple of no element, a function type without
+        // its result.
+        "fn f(x :: (,)) do\n  x\nend\n",
+        "fn f(x :: Fun()) do\n  x\nend\n",
+        "fn f(x :: Fun(Int) ->) do\n  x\nend\n",
+        // A keyword argument list cut off at a positional argument, in a
+        // closure.
+        "fn f(m) do\n  m\nend\n\nfn main() do\n  let g = fn() -> f(a: 1, 2) end\n  g\nend\n",
     ] {
         let parse = mesh_parser::parse(source);
         assert!(!parse.errors().is_empty(), "{source:?}");

@@ -3246,7 +3246,50 @@ fn rarely_taken_paths_report_what_they_should() {
         "pub fn h(r :: Request) -> Response do\n  HTTP.response(200, \"\")\nend\n\n\
          fn make() do\n  h\nend\n\n\
          fn main() do\n  let router = HTTP.router()\n  HTTP.on_get(router, \"/x\", make())\nend\n";
-    let cases: [(&str, &[&str]); 13] = [
+    let cases: [(&str, &[&str]); 20] = [
+        // A static impl method whose parameter nothing types.
+        (
+            "interface Make do\n  fn make(n) -> Self\nend\n\nstruct X do\n  n :: Int\nend\n\n\
+             impl Make for X do\n  fn make(n) do\n    X { n: 1 }\n  end\nend\n\n\
+             fn main() do\n  X.make(5)\nend\n",
+            &["the type of `n` in method `make` is not known"],
+        ),
+        // An interface's method through a value that does not implement it,
+        // its associated type left open.
+        (
+            "interface Box do\n  type Item\n  fn get(self) -> Self.Item\nend\n\n\
+             fn main() do\n  let x = 5\n  Box.get(x)\nend\n",
+            &["`Int` does not implement `Box`"],
+        ),
+        // A function held in a field of a field, called.
+        (
+            "struct S do\n  f :: Fun(Int) -> Int\nend\n\nstruct W do\n  s :: S\nend\n\n\
+             fn g(w :: W) do\n  w.s.f(1)\nend\n",
+            &[],
+        ),
+        // An interface method that declares no return type, called through
+        // a where-bound type parameter.
+        (
+            "interface Poke do\n  fn poke(self)\nend\n\n\
+             fn use_it<T>(x :: T) where T: Poke do\n  x.poke()\n  Poke.poke(x)\nend\n",
+            &[],
+        ),
+        // A type parameter applied to arguments takes a type applied to
+        // as many.
+        (
+            "fn f<T>(x :: T<Int>) -> T<Int> do\n  x\nend\n\nfn main() do\n  let y = f([1])\n  y\nend\n",
+            &[],
+        ),
+        // An actor that calls itself with other arguments than it takes.
+        (
+            "actor a(n) do\n  a(1, 2)\nend\n",
+            &["arity mismatch: expected 2 arguments, found 1"],
+        ),
+        // A child whose start does not type is reported once.
+        (
+            "supervisor Sup do\n  strategy: one_for_one\n  child a do\n    start: nope\n  end\nend\n",
+            &["undefined variable `nope`"],
+        ),
         // A variant without fields, written with parentheses, passes
         // through as itself.
         (

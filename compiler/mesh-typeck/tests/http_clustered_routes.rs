@@ -398,6 +398,30 @@ fn clustered_route_wrapper_rejects_each_bad_handler_reference() {
     assert!(fine.errors.is_empty(), "{:?}", fine.errors);
 }
 
+/// `Continuity.promote` is refused wherever it is named, a clustered
+/// route's handler too, even through a module of that name.
+#[test]
+fn clustered_route_wrapper_refuses_manual_promotion_as_a_handler() {
+    let mut import_ctx = ImportContext::empty();
+    import_ctx.current_module = Some("App.Router".to_string());
+    import_ctx.module_exports.insert(
+        "Continuity".to_string(),
+        module_exports("Ops.Continuity", &["promote"], &[]),
+    );
+    let result = check_source(
+        "import Ops.Continuity\n\nfn build() do\n  HTTP.router() |> HTTP.on_get(\"/p\", HTTP.clustered(Continuity.promote))\nend\n",
+        import_ctx,
+    );
+    assert!(
+        result
+            .errors
+            .iter()
+            .any(|error| matches!(error, TypeError::ManualContinuityPromotionDisabled { .. })),
+        "{:?}",
+        result.errors
+    );
+}
+
 /// In a program checked alone, in no module, a handler runs under its own
 /// name; a local or top-level binding of it, a function of two parameters
 /// and a count that is no integer are each an error.
