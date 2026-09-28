@@ -142,6 +142,10 @@ fn one_of_each() -> Vec<TypeError> {
         },
         TypeError::SpawnByName { span: span(19, 24) },
         TypeError::SpawnNotActor { span: span(19, 24) },
+        TypeError::DecodeTypeUnknown {
+            ty: Ty::Con(mesh_typeck::ty::TyCon::new("Box<_>")),
+            span: span(19, 24),
+        },
         TypeError::ReceiveOutsideActor { span: span(19, 24) },
         TypeError::InvalidChildStart {
             child_name: "child_name".to_string(),

@@ -383,6 +383,42 @@ fn test_a_key_needs_eq_where_it_is_added() {
     assert!(result.errors.is_empty(), "{:?}", result.errors);
 }
 
+#[test]
+fn test_a_decode_nothing_fixes_is_unknown() {
+    // It failed at run time: "cannot decode ?9 from JSON".
+    let prelude = "struct Box<T> do\n  value :: T\nend deriving(Json)\n\n";
+    let result = check_source(&format!(
+        "{prelude}fn main() do\n  let r = Box.from_json(\"{{}}\")\n  println(\"x\")\nend\n"
+    ));
+    assert_has_error(
+        &result,
+        |e| matches!(e, TypeError::DecodeTypeUnknown { .. }),
+        "DecodeTypeUnknown",
+    );
+    // A generic function's callers fix it; so does a use of the value.
+    let result = check_source(&format!(
+        "{prelude}fn parse(text :: String) do\n  Box.from_json(text)\nend\n\n\
+         fn main() do\n  let r :: Result<Box<Int>, String> = parse(\"{{}}\")\n  \
+         case Box.from_json(\"{{}}\") do\n    Ok(b) -> b.value + 1\n    Err(_) -> 0\n  end\nend\n"
+    ));
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+}
+
+#[test]
+fn test_a_json_literal_holds_only_json() {
+    // A struct deriving nothing was written as `null`.
+    let result = check_source(
+        "struct Point do\n  x :: Int\nend deriving()\n\nfn main() do\n  json { p: Point { x: 1 }, n: nil }\nend\n",
+    );
+    assert_has_error(
+        &result,
+        |e| matches!(e, TypeError::TraitNotSatisfied { trait_name, .. } if trait_name == "Json"),
+        "Json",
+    );
+    let result = check_source("fn main() do\n  json { n: nil, xs: [1], o: Some(\"a\") }\nend\n");
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+}
+
 // ── Callbacks returning () ─────────────────────────────────────────────
 
 #[test]

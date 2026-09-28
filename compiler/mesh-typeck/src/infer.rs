@@ -301,6 +301,7 @@ struct EnclosingFn {
     concat_operands: Vec<(Ty, &'static str, TextRange)>,
     default_calls: Vec<(Ty, TextRange)>,
     impl_choices: Vec<ImplChoice>,
+    open_decodes: Vec<(Ty, TextRange)>,
 }
 
 /// Starts inferring the body of a function with these type parameters and
@@ -327,6 +328,7 @@ fn enter_fn_body(
         concat_operands: std::mem::take(&mut ctx.concat_operands),
         default_calls: std::mem::take(&mut ctx.default_calls),
         impl_choices: std::mem::take(&mut ctx.impl_choices),
+        open_decodes: std::mem::take(&mut ctx.open_decodes),
     }
 }
 
@@ -334,7 +336,8 @@ fn enter_fn_body(
 /// function): checks what the body left to check, records under `env_key`
 /// what it requires of the arguments of parameters whose type is still open
 /// (an operator's trait, being joinable) for calls to check, and restores
-/// the enclosing function's.
+/// the enclosing function's. Returns the body's generic decodes, which need
+/// the function's whole type (`check_open_decodes`).
 #[allow(clippy::too_many_arguments)]
 fn finish_fn_body(
     ctx: &mut InferCtx,
@@ -347,8 +350,9 @@ fn finish_fn_body(
     fn_constraints: &mut FxHashMap<String, FnConstraints>,
     type_registry: &TypeRegistry,
     trait_registry: &TraitRegistry,
-) {
+) -> Vec<(Ty, TextRange)> {
     ctx.where_bounds = enclosing.where_bounds;
+    let open_decodes = std::mem::replace(&mut ctx.open_decodes, enclosing.open_decodes);
     let operand_traits = std::mem::replace(&mut ctx.operand_traits, enclosing.operand_traits);
     let default_calls = std::mem::replace(&mut ctx.default_calls, enclosing.default_calls);
     let impl_choices = std::mem::replace(&mut ctx.impl_choices, enclosing.impl_choices);
@@ -397,6 +401,36 @@ fn finish_fn_body(
     check_default_calls(ctx, type_params, trait_registry, default_calls);
     check_impl_choices(ctx, impl_choices);
     ctx.rigid_params = enclosing.rigid_params;
+    open_decodes
+}
+
+/// The type variables in `ty`.
+fn type_vars(ty: &Ty, out: &mut Vec<TyVar>) {
+    match ty {
+        Ty::Var(var) => out.push(*var),
+        _ => ty.parts().for_each(|part| type_vars(part, out)),
+    }
+}
+
+/// A generic type's `from_json` decodes the instantiation its result is
+/// used at; one its function leaves open is decoded at the instantiation
+/// each caller gives, when its type (`signature`) holds it. Any other open
+/// type nothing can fix: it failed at run time, "cannot decode ?9 from
+/// JSON".
+fn check_open_decodes(ctx: &mut InferCtx, decodes: Vec<(Ty, TextRange)>, signature: &Ty) {
+    let mut fixed_by_callers = Vec::new();
+    type_vars(&ctx.resolve(signature.clone()), &mut fixed_by_callers);
+    for (ty, span) in decodes {
+        let decoded = ctx.resolve(ty);
+        let mut open = Vec::new();
+        type_vars(&decoded, &mut open);
+        if open.iter().any(|var| !fixed_by_callers.contains(var)) {
+            ctx.errors.push(TypeError::DecodeTypeUnknown {
+                ty: decoded.with_holes(),
+                span,
+            });
+        }
+    }
 }
 
 /// What a function requires of its arguments beyond their types (its
@@ -4761,6 +4795,10 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         }
     }
 
+    // Decodes outside any function: nothing but this code fixes their type.
+    let top_level_decodes = std::mem::take(&mut ctx.open_decodes);
+    check_open_decodes(&mut ctx, top_level_decodes, &Ty::Tuple(vec![]));
+
     for (actor, msg_ty, span) in std::mem::take(&mut ctx.actor_message_types) {
         if matches!(ctx.resolve(msg_ty), Ty::Var(_)) {
             ctx.errors
@@ -5726,7 +5764,7 @@ fn infer_multi_clause_fn(
         env.pop_scope();
     }
 
-    finish_fn_body(
+    let open_decodes = finish_fn_body(
         ctx,
         enclosing,
         first,
@@ -5743,6 +5781,8 @@ fn infer_multi_clause_fn(
     for early in ctx.pop_fn_return_type() {
         join_early_return(ctx, &mut result_ty, early)?;
     }
+    let signature = Ty::Fun(param_types.clone(), Box::new(result_ty.clone()));
+    check_open_decodes(ctx, open_decodes, &signature);
 
     // ── Step 4: Exhaustiveness and redundancy checking ─────────────────
 
@@ -8187,7 +8227,7 @@ fn infer_fn_def(
     if let Some(ref ret_ann) = return_type_annotation {
         let _ = ctx.unify(ret_ann.clone(), body_ty.clone(), body_origin(fn_.body()));
     }
-    finish_fn_body(
+    let open_decodes = finish_fn_body(
         ctx,
         enclosing,
         fn_,
@@ -8207,6 +8247,7 @@ fn infer_fn_def(
         None => join_returns(ctx, body_ty, returns)?,
     };
     let fn_ty = Ty::Fun(param_types, Box::new(ret_ty));
+    check_open_decodes(ctx, open_decodes, &fn_ty);
 
     ctx.unify(self_var, fn_ty.clone(), ConstraintOrigin::Builtin)?;
 
@@ -12381,13 +12422,13 @@ fn infer_field_access(
                     // deriving Json): checked once it is known, as
                     // `Json.encode`'s argument is.
                     if params > 0 {
+                        let span = fa.syntax().text_range();
                         ctx.operand_traits.push((
                             decoded.clone(),
                             "Json".to_string(),
-                            ConstraintOrigin::Expr {
-                                span: fa.syntax().text_range(),
-                            },
+                            ConstraintOrigin::Expr { span },
                         ));
+                        ctx.open_decodes.push((decoded.clone(), span));
                     }
                     let result_ty = Ty::result(decoded, Ty::string());
                     return Ok(Ty::fun(vec![Ty::string()], result_ty));
@@ -15661,12 +15702,12 @@ fn infer_json_expr(
     trait_registry: &TraitRegistry,
     fn_constraints: &FxHashMap<String, FnConstraints>,
 ) -> Result<Ty, TypeError> {
-    // Type-check each value expression so that undefined variables produce
-    // compile-time errors (satisfies must_haves truth: "Using an undefined variable
-    // inside `json { }` produces a compile-time type error").
+    // Each value must be one JSON holds, as `Json.encode`'s argument must
+    // (checked once its type is known): a struct deriving nothing was
+    // written as `null`. `nil` is null.
     for field in json_expr.fields() {
         let val_expr = field.value().ok_or_else(incomplete)?;
-        infer_expr(
+        let ty = infer_expr(
             ctx,
             env,
             &val_expr,
@@ -15675,6 +15716,11 @@ fn infer_json_expr(
             trait_registry,
             fn_constraints,
         )?;
+        if ctx.resolve(ty.clone()) != Ty::Tuple(vec![]) {
+            let span = val_expr.syntax().text_range();
+            ctx.operand_traits
+                .push((ty, "Json".to_string(), ConstraintOrigin::Expr { span }));
+        }
     }
     // A Json, not its text: passed where a String is expected, a Json is
     // encoded there (`json_as_text`).

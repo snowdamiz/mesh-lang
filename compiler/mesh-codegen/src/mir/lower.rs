@@ -6582,45 +6582,30 @@ impl<'a> Lowerer<'a> {
                     ty: MirType::Ptr,
                 }
             }
+            // A type deriving Json: the type checker allows no other
+            // (`Json.encode`'s argument, a `json { }` field).
             _ => {
                 self.ensure_instantiation_traits(ty);
                 let f = format!(
                     "ToJson__to_json__{}",
                     self.instantiation_helper_name(name, args)
                 );
-                if self.known_functions.contains_key(&f)
-                    || (args.is_empty() && self.trait_registry.has_impl("ToJson", ty))
-                {
-                    Self::json_call(&f, vec![value])
-                } else {
-                    MirExpr::Block(vec![value, null()], MirType::Ptr)
-                }
+                Self::json_call(&f, vec![value])
             }
         }
     }
 
     /// Decode the `*mut MeshJson` `json` as a value of source type `ty`, as
     /// a `*mut MeshResult` (see the section comment).
+    /// The type checker decodes only types JSON holds, at a known
+    /// instantiation (`from_json`'s E0006, E0091): no unit, variable or
+    /// function reaches here.
     fn json_decode_expr(&mut self, json: MirExpr, ty: &Ty) -> MirExpr {
-        let fail = |json: MirExpr| {
-            MirExpr::Block(
-                vec![
-                    json,
-                    Self::json_err(format!("cannot decode {ty} from JSON")),
-                ],
-                MirType::Ptr,
-            )
-        };
         if let Ty::Tuple(elems) = ty {
-            if elems.is_empty() {
-                return MirExpr::Block(vec![json, Self::json_ok(MirExpr::Unit)], MirType::Ptr);
-            }
             let f = self.json_tuple_decode_fn(elems);
             return Self::json_call(&f, vec![json]);
         }
-        let Some((name, args)) = ty_head(ty) else {
-            return fail(json);
-        };
+        let (name, args) = ty_head(ty).expect("the type checker decodes only named types");
         let arg = |i: usize| args.get(i).cloned().unwrap_or_else(Ty::int);
         match name {
             "Int" | "Float" | "Bool" | "String" => {
@@ -6686,13 +6671,7 @@ impl<'a> Lowerer<'a> {
                     "FromJson__from_json__{}",
                     self.instantiation_helper_name(name, args)
                 );
-                if self.known_functions.contains_key(&f)
-                    || (args.is_empty() && self.trait_registry.has_impl("FromJson", ty))
-                {
-                    Self::json_call(&f, vec![json])
-                } else {
-                    fail(json)
-                }
+                Self::json_call(&f, vec![json])
             }
         }
     }

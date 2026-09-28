@@ -215,6 +215,8 @@ pub enum TypeError {
     SpawnByName { span: TextRange },
     /// spawn of a function that is no actor (`spawn(hello)` for a `fn`).
     SpawnNotActor { span: TextRange },
+    /// A generic type's `from_json` whose instantiation nothing fixes.
+    DecodeTypeUnknown { ty: Ty, span: TextRange },
     /// receive used outside an actor block.
     ReceiveOutsideActor { span: TextRange },
     /// Child spec start function does not return Pid.
@@ -583,6 +585,7 @@ impl TypeError {
             | TypeError::SpawnNonFunction { span, .. }
             | TypeError::SpawnByName { span }
             | TypeError::SpawnNotActor { span }
+            | TypeError::DecodeTypeUnknown { span, .. }
             | TypeError::ReceiveOutsideActor { span, .. }
             | TypeError::InvalidChildStart { span, .. }
             | TypeError::InvalidStrategy { span, .. }
@@ -878,6 +881,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::SpawnNotActor { .. } => {
                 write!(f, "only an actor can be spawned")
+            }
+            TypeError::DecodeTypeUnknown { ty, .. } => {
+                write!(f, "cannot tell what `{ty}` this decodes")
             }
             TypeError::ReceiveOutsideActor { .. } => {
                 write!(f, "receive used outside actor block")

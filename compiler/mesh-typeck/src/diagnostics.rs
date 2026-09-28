@@ -210,6 +210,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::MethodReturnUnknown { .. } => "E0088",
         TypeError::SpawnByName { .. } => "E0089",
         TypeError::SpawnNotActor { .. } => "E0090",
+        TypeError::DecodeTypeUnknown { .. } => "E0091",
     }
 }
 
@@ -1000,6 +1001,14 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
             let range = clamp(text_range_to_range(*span));
 
             Description::error(range, format!("expected a function, found {}", found))
+        }
+
+        TypeError::DecodeTypeUnknown { ty, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Description::error(range, "nothing fixes what this decodes").with_help(format!(
+                "annotate the result, as `let r :: Result<{ty}, String> = ...` with the `_` \
+                 filled in"
+            ))
         }
 
         TypeError::SpawnNotActor { span } => {

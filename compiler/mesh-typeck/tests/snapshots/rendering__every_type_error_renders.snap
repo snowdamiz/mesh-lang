@@ -276,6 +276,17 @@ expression: rendered
 ───╯
 {"code":"E0090","severity":"error","message":"only an actor can be spawned","file":"main.mpl","spans":[{"start":19,"end":24,"label":"a function, not an actor"}],"fix":"define what runs in the new process as `actor name(...) do ... end`, or call the function"}
 
+[E0091] Error: cannot tell what `Box<_>` this decodes
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── nothing fixes what this decodes
+   │
+   │ Help: annotate the result, as `let r :: Result<Box<_>, String> = ...` with the `_` filled in
+───╯
+{"code":"E0091","severity":"error","message":"cannot tell what `Box<_>` this decodes","file":"main.mpl","spans":[{"start":19,"end":24,"label":"nothing fixes what this decodes"}],"fix":"annotate the result, as `let r :: Result<Box<_>, String> = ...` with the `_` filled in"}
+
 [E0017] Error: receive used outside actor block
    ╭─[ main.mpl:2:7 ]
    │
