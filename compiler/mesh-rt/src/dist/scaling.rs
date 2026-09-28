@@ -1231,16 +1231,14 @@ impl DockerCapacityDriver {
                 let directory = std::env::temp_dir().join("mesh-capacity-driver");
                 (directory.clone(), directory)
             });
-        std::fs::create_dir_all(&host_directory)
-            .map_err(|error| format!("docker_driver_env_directory_failed:{error}"))?;
+        // Only this process may list the directory, however it was made.
+        let prepared = std::fs::create_dir_all(&host_directory);
         #[cfg(unix)]
-        {
+        let prepared = prepared.and_then(|()| {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(&host_directory, std::fs::Permissions::from_mode(0o700))
-                .map_err(|error| {
-                    format!("docker_driver_env_directory_permissions_failed:{error}")
-                })?;
-        }
+        });
+        prepared.map_err(|error| format!("docker_driver_env_directory_failed:{error}"))?;
         // A fresh 128-bit name, created exclusively: no other file is it.
         let file_name = format!("env-{:032x}", rand::random::<u128>());
         let host_path = host_directory.join(&file_name);
