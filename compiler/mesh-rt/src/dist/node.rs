@@ -4711,8 +4711,10 @@ fn build_tbs_certificate(public_key: &[u8]) -> Vec<u8> {
     let issuer = build_dn(b"mesh-node");
 
     // validity: NotBefore 2020-01-01, NotAfter 2099-12-31
-    let not_before = der_utc_time(b"200101000000Z");
-    let not_after = der_utc_time(b"991231235959Z");
+    let not_before = der_time(0x17, b"200101000000Z");
+    // A UTCTime holds years before 2050 ("99" is 1999), a GeneralizedTime
+    // any year.
+    let not_after = der_time(0x18, b"20991231235959Z");
     let validity = der_sequence(&[&not_before, &not_after]);
 
     // subject: same as issuer
@@ -4785,10 +4787,10 @@ fn der_bit_string(data: &[u8]) -> Vec<u8> {
     out
 }
 
-/// Encode a DER UTCTime.
-fn der_utc_time(time_str: &[u8]) -> Vec<u8> {
+/// Encode a DER time: a UTCTime (`tag` 0x17) or GeneralizedTime (0x18).
+fn der_time(tag: u8, time_str: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(time_str.len() + 2);
-    out.push(0x17); // UTCTime tag
+    out.push(tag);
     der_push_length(&mut out, time_str.len());
     out.extend_from_slice(time_str);
     out
@@ -8595,6 +8597,13 @@ mod tests {
 
         // Certificate should be non-empty DER
         assert!(!cert.as_ref().is_empty());
+        // It is valid until the end of 2099, a date only GeneralizedTime
+        // can hold: as a UTCTime, "99" is 1999.
+        let not_after = [&[0x18, 0x0F][..], b"20991231235959Z"].concat();
+        assert!(cert
+            .as_ref()
+            .windows(not_after.len())
+            .any(|window| window == not_after));
 
         // Key should be non-empty
         match &key {
