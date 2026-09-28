@@ -21,7 +21,7 @@ description: Mesh programming language — use for any question about Mesh synta
 1. Expression-oriented: most constructs evaluate to a value; `do...end` delimits blocks.
 2. Type annotations use `::` (e.g., `x :: Int`); function return types use `->`.
 3. String interpolation: `"hello #{name}"` (hash-brace syntax; `${}` also accepted for compatibility).
-4. Heredocs: `"""..."""` for multiline strings with embedded interpolation; `json { }` for JSON object literals (type-safe, auto-coerces to String).
+4. Heredocs: `"""..."""` for multiline strings with embedded interpolation; `json { }` for JSON object literals (type-safe; a `Json` passed as a String argument is its JSON text).
 5. Pipe operator `|>` chains function calls left-to-right: `3 |> double |> println`.
 6. Slot pipe `|N>` routes a value to the Nth argument position: `"world" |2> concat3("hello ", " !")`.
 7. Pattern matching with `case...do...end`; `_` is the wildcard.

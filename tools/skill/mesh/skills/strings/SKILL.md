@@ -50,7 +50,7 @@ println(body)
 Rules:
 1. `json { key: value, ... }` — constructs a JSON object. Keys are bare identifiers; values are any Mesh expression.
 2. Multi-line syntax works identically — newlines inside `{ }` are insignificant.
-3. The result is a `Json` type that auto-coerces to `String` — pass directly to `HTTP.response`, `Ws.broadcast`, or any function expecting a String.
+3. The result is a `Json`. Passed as an argument where a String is expected (`HTTP.response`, `Ws.broadcast`, any function taking a String) it is its JSON text; so is `"#{value}"`. Anywhere else (a `-> String` return, a `List<String>`), call `Json.encode(value)`.
 4. Nesting: assign `json { }` to a variable then use it as a field value — embedded raw, no double-encoding.
 5. Reserved keywords (`type`, `fn`, `let`, etc.) cannot be used as bare keys — use heredoc strings for those cases.
 

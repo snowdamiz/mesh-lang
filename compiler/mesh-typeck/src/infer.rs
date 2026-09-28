@@ -4853,6 +4853,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         overloaded_fn_names: ctx.overloaded_fn_names,
         clustered_route_wrappers: ctx.clustered_route_wrappers,
         discarded_callback_results: ctx.discarded_callback_results,
+        json_text_arguments: ctx.json_text_arguments,
         function_ownership: ownership.function_ownership,
         fn_constraints,
         assoc_projections,
@@ -9764,9 +9765,25 @@ fn infer_call_argument(
         }
     }
 
-    ctx.unify(expected_ty, arg_ty.clone(), origin)?;
+    if !json_as_text(ctx, &expected_ty, &arg_ty, arg.syntax().text_range()) {
+        ctx.unify(expected_ty, arg_ty.clone(), origin)?;
+    }
     types.insert(arg.syntax().text_range(), ctx.resolve(arg_ty.clone()));
     Ok(arg_ty)
+}
+
+/// Whether the argument at `range`, of type `arg_ty`, is a `Json` where a
+/// `String` is expected: the call is given its encoded text, which lowering
+/// makes (`json_text_arguments`), so `HTTP.response(200, json { .. })` needs
+/// no `Json.encode`. Nowhere else does a `Json` stand for a `String`.
+fn json_as_text(ctx: &mut InferCtx, expected_ty: &Ty, arg_ty: &Ty, range: TextRange) -> bool {
+    let is = |ty: &Ty, name: &str| matches!(ty, Ty::Con(con) if con.name == name);
+    let converts =
+        is(&ctx.resolve(expected_ty.clone()), "String") && is(&ctx.resolve(arg_ty.clone()), "Json");
+    if converts {
+        ctx.json_text_arguments.insert(range);
+    }
+    converts
 }
 
 fn is_unit(ty: &Ty) -> bool {
@@ -10283,13 +10300,16 @@ fn check_call(
         // then the written arguments in source order. This lets an earlier
         // argument specialize the expected type of a later closure.
         ctx.unify(callee_ty, expected_fn_ty, origin.clone())?;
-        for (param_idx, (_, piped_ty)) in args.iter().enumerate() {
+        for (param_idx, (piped, piped_ty)) in args.iter().enumerate() {
             if let Some(ty) = piped_ty {
                 let origin = ConstraintOrigin::FnArg {
                     call_site: call_range,
                     param_idx,
                 };
-                ctx.unify(param_types[param_idx].clone(), ty.clone(), origin)?;
+                let param_ty = &param_types[param_idx];
+                if !json_as_text(ctx, param_ty, ty, piped.syntax().text_range()) {
+                    ctx.unify(param_ty.clone(), ty.clone(), origin)?;
+                }
             }
         }
         for (param_idx, (arg, piped_ty)) in args.iter().enumerate() {
@@ -15578,8 +15598,8 @@ fn infer_json_expr(
             fn_constraints,
         )?;
     }
-    // Return the Json newtype -- NOT Ty::string(). The Json type auto-coerces to
-    // String at call sites via the `json_string_compatible` rule in unify.rs.
+    // A Json, not its text: passed where a String is expected, a Json is
+    // encoded there (`json_as_text`).
     Ok(Ty::json())
 }
 

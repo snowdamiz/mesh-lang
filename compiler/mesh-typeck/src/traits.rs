@@ -761,9 +761,9 @@ fn is_type_param(name: &str, nominal: &FxHashSet<String>) -> bool {
 /// What a type is headed by, as far as unification can tell heads apart,
 /// or `None` when it could be anything (a type parameter, a variable):
 /// types with different heads never unify. Constructors that unify despite
-/// their names (see `InferCtx::unify`) share one: `Json` is `String`, every
-/// iterator handle and `Iter` is `Ptr`, and the untyped `Tuple` is a tuple,
-/// of any length since a tuple row matches several.
+/// their names (see `InferCtx::unify`) share one: every iterator handle and
+/// `Iter` is `Ptr`, and the untyped `Tuple` is a tuple, of any length since a
+/// tuple row matches several.
 fn impl_head<'a>(ty: &'a Ty, nominal: &FxHashSet<String>) -> Option<&'a str> {
     match ty {
         Ty::Con(c) => {
@@ -772,7 +772,6 @@ fn impl_head<'a>(ty: &'a Ty, nominal: &FxHashSet<String>) -> Option<&'a str> {
                 return None;
             }
             Some(match name {
-                "Json" => "String",
                 "Tuple" => "(,)",
                 "Iter" | "Ptr" => "Ptr",
                 name if name.ends_with("Iterator") => "Ptr",
@@ -1318,7 +1317,7 @@ mod tests {
                 .find_impl("Display", &ty)
                 .map(|imp| imp.impl_type_name.clone())
         };
-        assert_eq!(found(con("Json")).as_deref(), Some("String"));
+        assert_eq!(found(con("Json")), None);
         assert_eq!(found(Ty::list(Ty::int())).as_deref(), Some("List"));
         assert_eq!(
             found(Ty::Tuple(vec![Ty::int(), Ty::string()])).as_deref(),

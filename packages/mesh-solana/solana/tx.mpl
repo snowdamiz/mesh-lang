@@ -1199,6 +1199,7 @@ pub fn instruction_report_json(instruction :: Instruction) -> String do
     dataBytes: instruction.data
       |> Bytes.length()
   }
+    |> Json.encode()
 end
 
 fn append_unique(values :: List<String>, value :: String) -> List<String> do
@@ -1286,7 +1287,7 @@ end
 pub fn legacy_message_report_json(message :: LegacyMessage) -> String!String do
   let bytes = (message
     |> serialize_legacy_message())?
-  Ok(json {
+  Ok(Json.encode(json {
     schemaVersion: 1,
     version: "legacy",
     requiredSignatures: message.header.num_required_signatures,
@@ -1297,7 +1298,7 @@ pub fn legacy_message_report_json(message :: LegacyMessage) -> String!String do
     loadedWritableAccounts: 0,
     loadedReadonlyAccounts: 0,
     messageBytes: Bytes.length(bytes)
-  })
+  }))
 end
 
 pub fn message_v0_report_json(message :: MessageV0) -> String!String do
@@ -1307,7 +1308,7 @@ pub fn message_v0_report_json(message :: MessageV0) -> String!String do
   let static_keys = pubkey_strings(message.static_account_keys, 0, List.new())
   let writable_keys = loaded_address_strings(message.address_table_lookups, 0, true, List.new())
   let readonly_keys = loaded_address_strings(message.address_table_lookups, 0, false, List.new())
-  Ok(json {
+  Ok(Json.encode(json {
     schemaVersion: 1,
     version: "v0",
     requiredSignatures: message.header.num_required_signatures,
@@ -1327,7 +1328,7 @@ pub fn message_v0_report_json(message :: MessageV0) -> String!String do
     loadedWritableAccountKeys: writable_keys,
     loadedReadonlyAccountKeys: readonly_keys,
     messageBytes: Bytes.length(bytes)
-  })
+  }))
 end
 
 fn collect_account(report :: JupiterInstructionReport, account :: AccountMeta) -> JupiterInstructionReport do
@@ -1416,4 +1417,5 @@ pub fn jupiter_instruction_set_report_json(instructions :: JupiterInstructionSet
     signerKeys: report.signer_keys,
     writableKeys: report.writable_keys
   }
+    |> Json.encode()
 end

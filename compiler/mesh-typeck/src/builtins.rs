@@ -2908,6 +2908,8 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
         // A process is its PID: compared as one, shown as `<0.12>`.
         (Ty::untyped_pid(), "Pid", &["Eq", "Display", "Debug"]),
         (Ty::pid(param("'M")), "Pid", &["Eq", "Display", "Debug"]),
+        // A Json value is shown as its JSON text.
+        (Ty::json(), "Json", &["Display", "Debug"]),
     ];
     for arity in 0..=8u8 {
         let elems = (0..arity)

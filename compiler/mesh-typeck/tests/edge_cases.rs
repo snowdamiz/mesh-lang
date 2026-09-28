@@ -1515,7 +1515,7 @@ type Maybe<T> do
   Nothing
 end deriving(Eq)
 
-fn encoded(b :: Box<Int>) -> String do
+fn encoded(b :: Box<Int>) -> Json do
   Box.to_json(b)
 end
 

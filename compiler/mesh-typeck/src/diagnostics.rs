@@ -264,6 +264,9 @@ fn fix_suggestion(expected: &Ty, found: &Ty) -> Option<&'static str> {
         ("Int", "Float") => Some("convert it with `Float.to_int(...)`"),
         ("Float", "Int") => Some("convert it with `Int.to_float(...)`"),
         ("String", "Int" | "Float") => Some("use to_string()"),
+        // An argument converts on its own (`json_as_text`); nothing else does.
+        ("String", "Json") => Some("encode it: `Json.encode(...)` is its JSON text"),
+        ("Json", "String") => Some("parse it: `Json.parse(...)` reads JSON text into a Json"),
         ("Bool", _) => Some("expected a boolean expression"),
         _ => None,
     }
@@ -1745,6 +1748,16 @@ mod tests {
             (Ty::string(), Ty::float(), Some("use to_string()")),
             (Ty::bool(), Ty::int(), Some("expected a boolean expression")),
             (Ty::string(), Ty::bool(), None),
+            (
+                Ty::string(),
+                Ty::json(),
+                Some("encode it: `Json.encode(...)` is its JSON text"),
+            ),
+            (
+                Ty::json(),
+                Ty::string(),
+                Some("parse it: `Json.parse(...)` reads JSON text into a Json"),
+            ),
         ];
         for (expected, found, suggestion) in cases {
             assert_eq!(

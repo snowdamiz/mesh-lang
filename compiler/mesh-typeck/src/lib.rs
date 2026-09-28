@@ -304,6 +304,9 @@ pub struct TypeckResult {
     /// expected, whose own non-unit result is discarded. Lowering wraps each in
     /// an adapter that calls it and returns `()`.
     pub discarded_callback_results: FxHashSet<TextRange>,
+    /// Ranges of `Json` arguments passed where a `String` is expected. Lowering
+    /// passes each one's encoded text (`Json.encode`).
+    pub json_text_arguments: FxHashSet<TextRange>,
     /// Ownership modes keyed by the direct callee spelling/symbol used by lowering.
     pub function_ownership: FxHashMap<String, Vec<ParamOwnership>>,
     /// What each function requires of a call's arguments beyond their types

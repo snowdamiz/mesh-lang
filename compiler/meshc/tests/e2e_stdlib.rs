@@ -557,6 +557,44 @@ end
     );
 }
 
+/// A Json passed where a String is expected is its JSON text: written or
+/// piped, to a stdlib or a user function, parsed or a literal; interpolated
+/// and inspected it shows the same text. (A parsed value was a tree read as
+/// a string's bytes.)
+#[test]
+fn e2e_json_passed_where_a_string_is_expected() {
+    let source = r##"
+fn shout(s :: String) -> String do
+  String.to_upper(s)
+end
+
+fn show(j :: Json) -> String do
+  "#{j}|#{String.length(j)}|#{shout(j)}"
+end
+
+fn main() do
+  case Json.parse("{\"b\": [1, 2]}") do
+    Ok(parsed) -> do
+      println(parsed)
+      parsed |> println
+      println(show(parsed))
+      let lit = json { nested: parsed, n: 1 }
+      println(show(lit))
+      println(inspect(lit))
+    end
+    Err(e) -> println(e)
+  end
+end
+"##;
+    let output = compile_and_run(source);
+    assert_eq!(
+        output,
+        "{\"b\":[1,2]}\n{\"b\":[1,2]}\n{\"b\":[1,2]}|11|{\"B\":[1,2]}\n\
+         {\"n\":1,\"nested\":{\"b\":[1,2]}}|28|{\"N\":1,\"NESTED\":{\"B\":[1,2]}}\n\
+         {\"n\":1,\"nested\":{\"b\":[1,2]}}\n"
+    );
+}
+
 // ── JSON Struct Serde E2E Tests (Phase 49) ──────────────────────────────
 
 #[test]

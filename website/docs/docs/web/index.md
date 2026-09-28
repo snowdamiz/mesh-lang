@@ -248,7 +248,7 @@ Middleware runs in the order added with `HTTP.use`. In the example above, every 
 
 ### JSON Object Literals
 
-Use `json { }` to construct JSON objects without manual string escaping or heredoc interpolation. The result auto-coerces to `String` and can be passed directly to `HTTP.response`:
+Use `json { }` to construct JSON objects without manual string escaping or heredoc interpolation. Passed as a `String` argument, the result is its JSON text, so it goes directly to `HTTP.response`:
 
 ```mesh
 fn api_handler(request) do

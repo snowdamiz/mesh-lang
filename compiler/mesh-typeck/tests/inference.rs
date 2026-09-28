@@ -269,6 +269,41 @@ fn test_computed_tuple_index_takes_the_shared_element_type() {
     assert_result_type(&result, Ty::string());
 }
 
+// ── Json where a String is expected ──────────────────────────────────
+
+#[test]
+fn test_json_arguments_convert_to_strings() {
+    // Written and piped arguments, to a module function and a user one: the
+    // checker records each, and lowering passes its encoded text.
+    let result = check_source(
+        "fn shout(s :: String) -> String do\n  String.to_upper(s)\nend\n\
+         let j = json { a: 1 }\n\
+         println(j)\n\
+         shout(j)\n\
+         j |> String.length",
+    );
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+    assert_eq!(result.json_text_arguments.len(), 3);
+}
+
+#[test]
+fn test_json_is_no_string_outside_an_argument() {
+    // An annotation, a list's elements, and a String where a Json goes.
+    for src in [
+        "let s :: String = json { a: 1 }\ns",
+        "let xs :: List<String> = [json { a: 1 }]\nxs",
+        "Json.object_get(\"{}\", \"a\")",
+    ] {
+        let result = check_source(src);
+        assert_has_error(
+            &result,
+            |e| matches!(e, TypeError::Mismatch { .. }),
+            "Mismatch (Json and String)",
+        );
+        assert!(result.json_text_arguments.is_empty(), "{src}");
+    }
+}
+
 // ── Callbacks returning () ─────────────────────────────────────────────
 
 #[test]

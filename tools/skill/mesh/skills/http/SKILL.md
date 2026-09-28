@@ -12,7 +12,7 @@ Rules:
 4. `HTTP.serve(router, port)` starts the HTTP server on the given port (blocks).
 5. Handler signature: `fn handler(request) do ... HTTP.response(status, body) end`.
 6. `HTTP.response(status_code, body_string)` creates a Response — return this from handlers.
-7. For JSON responses, use `json { }` literals — they are type-safe and auto-coerce to String: `HTTP.response(200, json { status: "ok", id: record_id })`.
+7. For JSON responses, use `json { }` literals — they are type-safe, and a `Json` passed as a String argument is its JSON text: `HTTP.response(200, json { status: "ok", id: record_id })`.
 
 Code example (from tests/e2e/stdlib_http_server_runtime.mpl):
 ```mesh

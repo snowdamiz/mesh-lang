@@ -81,7 +81,7 @@ let literal = "\#{not interpolated} \u{1F389}"
 let resp = json { status: "ok", count: n }          # {"status":"ok","count":42}
 let err  = json { error: reason }                    # {"error":"not found"}
 let nest = json { result: json { code: 200 } }       # {"result":{"code":200}}
-HTTP.response(200, json { status: "ok", id: id })   # Json is String-compatible at call sites
+HTTP.response(200, json { status: "ok", id: id })   # a Json argument is its JSON text
 
 # Regex literals
 let rx = ~r/\d+/

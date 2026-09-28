@@ -371,6 +371,8 @@ struct Lowerer<'a> {
     consumed_clustered_route_wrappers: HashSet<TextRange>,
     /// Callback arguments whose result is discarded (see `discard_callback_result`).
     discarded_callback_results: &'a FxHashSet<TextRange>,
+    /// `Json` arguments passed where a `String` is expected (see `json_text`).
+    json_text_arguments: &'a FxHashSet<TextRange>,
     /// Fail-closed lowering errors gathered while rewriting clustered routes.
     lowering_errors: Vec<String>,
     /// Each service loop's handlers, calls and casts: tag, function and
@@ -721,6 +723,7 @@ impl<'a> Lowerer<'a> {
             clustered_route_wrappers: &typeck.clustered_route_wrappers,
             consumed_clustered_route_wrappers: HashSet::new(),
             discarded_callback_results: &typeck.discarded_callback_results,
+            json_text_arguments: &typeck.json_text_arguments,
             lowering_errors: Vec::new(),
             supervised_spawn: None,
             service_dispatch: HashMap::new(),
@@ -3474,13 +3477,6 @@ impl<'a> Lowerer<'a> {
             "mesh_json_from_string".to_string(),
             MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr)),
         );
-        // Phase 132: decode a JSON-encoded String back to a raw *mut MeshJson pointer.
-        // Used when a Json-typed variable (String from mesh_json_encode) needs to be
-        // embedded raw into a parent json { } object without double-encoding.
-        self.known_functions.insert(
-            "mesh_json_parse_raw".to_string(),
-            MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr)),
-        );
         // Phase 103: JSON field extraction (no DB roundtrip)
         // mesh_json_get(json: String, key: String) -> String
         self.known_functions.insert(
@@ -6027,25 +6023,10 @@ impl<'a> Lowerer<'a> {
 
     // ── json { } literal lowering (Phase 132-02) ─────────────────────
 
-    /// Lower a `json { key: val, ... }` expression to a MirType::String via
-    /// `mesh_json_encode(mesh_json_object_put(...(mesh_json_object_new())))`.
-    ///
-    /// This is the public entry point; it wraps the raw object pointer with
-    /// `mesh_json_encode` to produce a MeshString.
+    /// Lower a `json { key: val, ... }` expression to the object it builds,
+    /// `mesh_json_object_put(...(mesh_json_object_new()))`: a `Json` like any
+    /// other, encoded only where a `String` is expected.
     fn lower_json_expr(&mut self, json_expr: &JsonExpr) -> MirExpr {
-        let inner = self.lower_json_expr_inner(json_expr);
-        let enc_fn_ty = MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String));
-        MirExpr::Call {
-            func: Box::new(MirExpr::Var("mesh_json_encode".to_string(), enc_fn_ty)),
-            args: vec![inner],
-            ty: MirType::String,
-        }
-    }
-
-    /// Lower a `json { }` to a raw `*mut MeshJson` pointer (MirType::Ptr) WITHOUT
-    /// calling `mesh_json_encode`.  Used internally so that nested `json { }` values
-    /// can be embedded into a parent object without double-encoding.
-    fn lower_json_expr_inner(&mut self, json_expr: &JsonExpr) -> MirExpr {
         let new_fn_ty = MirType::FnPtr(vec![], Box::new(MirType::Ptr));
         let mut result = MirExpr::Call {
             func: Box::new(MirExpr::Var("mesh_json_object_new".to_string(), new_fn_ty)),
@@ -6075,25 +6056,9 @@ impl<'a> Lowerer<'a> {
                 .unwrap_or_else(Ty::string);
 
             // Dispatch: choose how to convert the field value to a JSON pointer.
-            let json_val = if let Expr::JsonExpr(inner_json) = &val_expr {
-                // Nested json { } literal: recurse without encoding so that the
-                // raw object pointer is embedded directly (no double-encoding).
-                self.lower_json_expr_inner(inner_json)
-            } else if ty_is_json(&val_ty) {
-                // Variable of type Json.
-                // lower_json_expr returns MirType::String (the mesh_json_encode output).
-                // To embed it raw in the parent object (no double-encoding), decode the
-                // string back to a *mut MeshJson pointer via mesh_json_parse_raw.
-                let val_lowered = self.lower_expr(&val_expr);
-                let parse_raw_ty = MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr));
-                MirExpr::Call {
-                    func: Box::new(MirExpr::Var(
-                        "mesh_json_parse_raw".to_string(),
-                        parse_raw_ty,
-                    )),
-                    args: vec![val_lowered],
-                    ty: MirType::Ptr,
-                }
+            // A Json (a nested literal among them) is embedded as it is.
+            let json_val = if ty_is_json(&val_ty) {
+                self.lower_expr(&val_expr)
             } else {
                 // All other types: lower to the raw Mesh value then convert it
                 // to a JSON pointer by its type (`nil` is null).
@@ -7704,11 +7669,27 @@ impl<'a> Lowerer<'a> {
 
     /// What every expression's lowering ends with: `lowered`, the
     /// expression at `range`, with its runtime callbacks adapted, a scalar
-    /// `Iter.next` payload boxed, and a discarded callback result dropped.
+    /// `Iter.next` payload boxed, a discarded callback result dropped, and a
+    /// `Json` passed where a `String` is expected encoded.
     fn finish_lowered(&mut self, lowered: MirExpr, range: TextRange) -> MirExpr {
         let lowered = self.adapt_uniform_callback_call(lowered, range);
         let lowered = self.box_next_scalar(lowered, range);
-        self.discard_callback_result(lowered, range)
+        let lowered = self.discard_callback_result(lowered, range);
+        self.json_text(lowered, range)
+    }
+
+    /// A `Json` argument passed where a `String` is expected, which the type
+    /// checker recorded: its encoded text.
+    fn json_text(&self, expr: MirExpr, range: TextRange) -> MirExpr {
+        if !self.json_text_arguments.contains(&range) {
+            return expr;
+        }
+        Self::call_named(
+            "mesh_json_encode",
+            vec![MirType::Ptr],
+            vec![expr],
+            MirType::String,
+        )
     }
 
     // ── Literal lowering ─────────────────────────────────────────────
@@ -12811,6 +12792,12 @@ impl<'a> Lowerer<'a> {
                 self.wrap_collection_to_string(expr, ty, debug)
             }
             Ty::Con(tc) if tc.name == "Unit" => Some(unit(expr)),
+            Ty::Con(tc) if tc.name == "Json" => Some(Self::call_named(
+                "mesh_json_encode",
+                vec![MirType::Ptr],
+                vec![expr.clone()],
+                MirType::String,
+            )),
             _ => None,
         }
     }

@@ -144,6 +144,9 @@ pub struct InferCtx {
     /// Function arguments passed where a callback returning `()` is expected
     /// whose own result is discarded; lowering wraps each one in an adapter.
     pub discarded_callback_results: FxHashSet<TextRange>,
+    /// `Json` arguments passed where a `String` is expected; lowering passes
+    /// each one's encoded text.
+    pub json_text_arguments: FxHashSet<TextRange>,
     /// Replication counts already declared for a clustered route runtime name.
     pub clustered_route_replication_counts: FxHashMap<String, ClusteredRouteReplicationCount>,
     /// Service method mappings imported from other modules.
@@ -392,18 +395,6 @@ impl InferCtx {
     /// (ListIterator, MapIterator, etc.) and adapter types resolve to
     /// MirType::Ptr at the MIR/codegen level, so they must be unifiable
     /// with each other and with the generic `Ptr` type in the type checker.
-    /// Json auto-coerces to String at use sites.
-    ///
-    /// When a String is expected but a Json is provided (or vice versa), they are
-    /// considered compatible. This enables `HTTP.response(200, json { ... })` to
-    /// work without explicit conversion.
-    fn json_string_compatible(c1: &TyCon, c2: &TyCon) -> bool {
-        matches!(
-            (c1.name.as_str(), c2.name.as_str()),
-            ("Json", "String") | ("String", "Json")
-        )
-    }
-
     fn iterator_ptr_compatible(c1: &TyCon, c2: &TyCon) -> bool {
         fn is_iter_ptr(name: &str) -> bool {
             name == "Ptr"
@@ -579,10 +570,7 @@ impl InferCtx {
 
             // Concrete constructor meets concrete constructor -- names must match.
             (Ty::Con(c1), Ty::Con(c2)) => {
-                if c1 == c2
-                    || Self::iterator_ptr_compatible(&c1, &c2)
-                    || Self::json_string_compatible(&c1, &c2)
-                {
+                if c1 == c2 || Self::iterator_ptr_compatible(&c1, &c2) {
                     Ok(())
                 } else {
                     let err = TypeError::Mismatch {
@@ -665,9 +653,7 @@ impl InferCtx {
                 if let (Ty::Con(h1), Ty::Con(h2)) =
                     (self.resolve(*c1.clone()), self.resolve(*c2.clone()))
                 {
-                    let heads_differ = h1 != h2
-                        && !Self::iterator_ptr_compatible(&h1, &h2)
-                        && !Self::json_string_compatible(&h1, &h2);
+                    let heads_differ = h1 != h2 && !Self::iterator_ptr_compatible(&h1, &h2);
                     if heads_differ || a1.len() != a2.len() {
                         let err = TypeError::Mismatch {
                             expected: self.resolve(Ty::App(c1, a1)),

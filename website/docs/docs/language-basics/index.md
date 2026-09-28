@@ -1413,7 +1413,7 @@ let outer = json { result: inner, ok: true }
 # outer is: {"result":{"code":200},"ok":true}
 ```
 
-The result of `json { }` has type `Json`. `Json` is implicitly compatible with `String` at call sites, so it can be passed directly to APIs such as `HTTP.response` or `Ws.broadcast` without manual encoding:
+The result of `json { }` has type `Json`. A `Json` passed as an argument where a `String` is expected is its JSON text, so it goes directly to APIs such as `HTTP.response` or `Ws.broadcast` without manual encoding:
 
 ```mesh
 HTTP.response(200, json { status: "ok", affected: n })
@@ -1421,7 +1421,7 @@ HTTP.response(401, json { error: "unauthorized" })
 Ws.broadcast(room, json { id: record_id })
 ```
 
-A `json { }` value also works wherever any other `Json` does: `Json.encode`, `Json.object_get` and the other `Json` functions read it, and it nests in another literal next to a value from `Json.parse`. Only the literal carries its text: pass a parsed `Json` through `Json.encode` where a `String` is expected.
+A `json { }` value is a `Json` like one from `Json.parse`: `Json.encode`, `Json.object_get` and the other `Json` functions read it, either kind nests in a literal, and either kind is its JSON text when passed as a `String` argument or interpolated (`"#{value}"`). Anywhere else a `String` is expected, such as a function's return value or a `List<String>`, encode it with `Json.encode(value)`.
 
 This replaces heredoc JSON templates (`"""{"key":"#{val}"}"""`) and manual string concatenation (`"{\"key\":\"" <> val <> "\"}"`) with readable, type-safe object literals.
 
