@@ -745,6 +745,17 @@ expression: rendered
 ───╯
 {"code":"E0083","severity":"error","message":"`Name` is a type, not a value","file":"main.mpl","spans":[{"start":19,"end":24,"label":"a type names no value"}],"fix":"build a value of it (`Name { ... }` for a struct, a variant for a sum type), or call one of its methods, `Name.method(...)`"}
 
+[E0083] Error: `Int` is a type, not a value
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── a type names no value
+   │
+   │ Help: call a function of its module, `Int.function(...)`
+───╯
+{"code":"E0083","severity":"error","message":"`Int` is a type, not a value","file":"main.mpl","spans":[{"start":19,"end":24,"label":"a type names no value"}],"fix":"call a function of its module, `Int.function(...)`"}
+
 [E0084] Error: `fn` belongs at the top level of a module, not inside a function
    ╭─[ main.mpl:2:7 ]
    │

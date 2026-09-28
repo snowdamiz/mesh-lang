@@ -420,8 +420,13 @@ pub enum TypeError {
     UnknownType { name: String, span: TextRange },
     /// A field read from a value whose type nothing determines.
     UnknownFieldOwner { field: String, span: TextRange },
-    /// A struct or sum type's name used as a value (`let x = Point`).
-    TypeNotValue { name: String, span: TextRange },
+    /// A type's name used as a value (`let x = Point`): a struct or sum
+    /// type's, or a built-in type's (`let x = Int`).
+    TypeNotValue {
+        name: String,
+        builtin: bool,
+        span: TextRange,
+    },
     /// A definition (`fn`, `struct`, `import`, ...) inside a function body:
     /// only `let` binds there.
     NestedDefinition {

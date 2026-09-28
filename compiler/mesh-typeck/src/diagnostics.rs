@@ -1544,14 +1544,19 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
             let range = clamp(text_range_to_range(*span));
             Description::error(range, "wrong number of type arguments")
         }
-        TypeError::TypeNotValue { name, span } => {
+        TypeError::TypeNotValue {
+            name,
+            builtin,
+            span,
+        } => {
             let range = clamp(text_range_to_range(*span));
-            Description::error(
-                range,
-                "a type names no value")
-            .with_help(format!(
-                "build a value of it (`{name} {{ ... }}` for a struct, a variant for a sum type), or call one of its methods, `{name}.method(...)`"
-            ))
+            Description::error(range, "a type names no value").with_help(if *builtin {
+                format!("call a function of its module, `{name}.function(...)`")
+            } else {
+                format!(
+                    "build a value of it (`{name} {{ ... }}` for a struct, a variant for a sum type), or call one of its methods, `{name}.method(...)`"
+                )
+            })
         }
         TypeError::UntypedMethodParam { param, span, .. } => {
             let range = clamp(text_range_to_range(*span));

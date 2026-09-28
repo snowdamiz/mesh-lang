@@ -304,6 +304,22 @@ fn test_json_is_no_string_outside_an_argument() {
     }
 }
 
+#[test]
+fn test_a_builtin_type_names_no_value() {
+    // It type checked as a value of the type, and lowering failed on it.
+    for name in ["Int", "Map", "Json"] {
+        let result = check_source(&format!("let v = {name}\nv"));
+        assert_has_error(
+            &result,
+            |e| matches!(e, TypeError::TypeNotValue { name: n, builtin: true, .. } if n == name),
+            "TypeNotValue (a built-in type)",
+        );
+    }
+    // Its module's functions are still reached through it.
+    let result = check_source("String.length(\"abc\")");
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+}
+
 // ── Callbacks returning () ─────────────────────────────────────────────
 
 #[test]

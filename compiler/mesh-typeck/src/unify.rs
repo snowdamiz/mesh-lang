@@ -147,6 +147,8 @@ pub struct InferCtx {
     /// `Json` arguments passed where a `String` is expected; lowering passes
     /// each one's encoded text.
     pub json_text_arguments: FxHashSet<TextRange>,
+    /// Every type the builtins name (`builtin_type_names`): no value.
+    pub builtin_types: FxHashSet<String>,
     /// Replication counts already declared for a clustered route runtime name.
     pub clustered_route_replication_counts: FxHashMap<String, ClusteredRouteReplicationCount>,
     /// Service method mappings imported from other modules.

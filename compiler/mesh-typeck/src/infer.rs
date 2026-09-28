@@ -4312,6 +4312,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
     });
 
     let builtin_types = builtin_type_names(&env, &type_registry, &trait_registry);
+    ctx.builtin_types = builtin_types.clone();
 
     // Pre-seed with imported trait defs (XMOD-05: globally visible)
     for trait_def in &import_ctx.all_trait_defs {
@@ -8885,9 +8886,10 @@ fn is_named_type(type_registry: &TypeRegistry, name: &str) -> bool {
 
 /// A struct or sum type's name names no value: it is the base of a
 /// qualified name (`Point.origin()`, `Shape.Circle`) or an error. It type
-/// checked as a value of the type, and code generation failed on it. An
-/// alias's name is not even such a base (`Id.parse` for `type Id = Int`):
-/// it was "undefined variable".
+/// checked as a value of the type, and code generation failed on it. So
+/// does a built-in type's (`Int`, `Json`, `Map`), which is the base of its
+/// module's functions (`Int.parse`). An alias's name is not even such a base
+/// (`Id.parse` for `type Id = Int`): it was "undefined variable".
 fn reject_type_as_value(
     ctx: &mut InferCtx,
     env: &TypeEnv,
@@ -8903,13 +8905,15 @@ fn reject_type_as_value(
         .and_then(FieldAccess::cast)
         .and_then(|fa| fa.base())
         .is_some_and(|base| base.syntax() == name_ref.syntax());
+    let builtin = ctx.builtin_types.contains(&name);
     let is_type = type_registry.lookup_alias(&name).is_some()
-        || (!is_base && is_named_type(type_registry, &name));
+        || (!is_base && (builtin || is_named_type(type_registry, &name)));
     if !is_type || env.is_local(&name) {
         return Ok(());
     }
     let err = TypeError::TypeNotValue {
         name,
+        builtin,
         span: name_ref.syntax().text_range(),
     };
     ctx.errors.push(err.clone());

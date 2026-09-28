@@ -363,6 +363,12 @@ fn one_of_each() -> Vec<TypeError> {
         },
         TypeError::TypeNotValue {
             name: "Name".to_string(),
+            builtin: false,
+            span: span(19, 24),
+        },
+        TypeError::TypeNotValue {
+            name: "Int".to_string(),
+            builtin: true,
             span: span(19, 24),
         },
         TypeError::NestedDefinition {
