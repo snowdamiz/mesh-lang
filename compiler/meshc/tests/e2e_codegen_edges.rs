@@ -2239,8 +2239,8 @@ end
 /// hold one (an `Option`, a list, a tuple or a set of functions) says so.
 /// Code generation compared them as strings: for functions LLVM's
 /// verification failed, and two different iterators were equal. The type
-/// checker refuses the comparison itself; a set's elements are compared
-/// where it is built.
+/// checker refuses the comparison itself, and a set of them where an
+/// element is added.
 #[test]
 fn values_holding_functions_or_iterators_cannot_be_compared() {
     for (comparison, error) in [
@@ -2258,7 +2258,7 @@ fn values_holding_functions_or_iterators_cannot_be_compared() {
         ),
         (
             "Set.size(Set.add(Set.new(), Some(inc))) > 0",
-            "cannot compare values of type `Option<(Int) -> Int>`: the type has no `Eq`",
+            "`Option<(Int) -> Int>` does not implement `Eq`",
         ),
         (
             "Some(inc) < Some(inc)",
