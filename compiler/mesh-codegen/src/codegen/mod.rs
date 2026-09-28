@@ -821,18 +821,17 @@ impl<'ctx> CodeGen<'ctx> {
         // Compile the function body.
         let result = self.codegen_expr(&func.body)?;
 
-        // Build return instruction (if not already terminated).
+        // Build return instruction (if not already terminated). A function
+        // returning Never has ended its block: a value of type Never ends
+        // the block it would come into being in (a call of such a function,
+        // and an `if` or `case` whose every branch ends so, close it with
+        // `unreachable`).
         if self.block_is_open() {
             match func.return_type {
                 MirType::Unit => {
                     let unit_val = self.context.struct_type(&[], false).const_zero();
                     self.builder
                         .build_return(Some(&unit_val))
-                        .map_err(|e| e.to_string())?;
-                }
-                MirType::Never => {
-                    self.builder
-                        .build_unreachable()
                         .map_err(|e| e.to_string())?;
                 }
                 _ => {
