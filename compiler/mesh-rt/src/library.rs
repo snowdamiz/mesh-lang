@@ -234,9 +234,8 @@ pub(crate) fn secure_store_delete_raw(input: &[u8]) -> Result<(), i32> {
 }
 
 fn call_raw_host_callback(capability: u32, input: &[u8], output: &mut [u8]) -> Result<usize, i32> {
-    if input.len() > MAX_BOUNDARY_BYTES || output.len() > MAX_BOUNDARY_BYTES {
-        return Err(MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE);
-    }
+    // Its callers pass storage records of a few dozen bytes.
+    debug_assert!(input.len() <= MAX_BOUNDARY_BYTES && output.len() <= MAX_BOUNDARY_BYTES);
     // No callbacks at all is a missing callback too, not status 2: a host's
     // secure store answers 2 for "not found", which callers act on.
     let callbacks = (*HOST_CALLBACKS.read()).ok_or(MESH_LIBRARY_ERR_CALLBACK_MISSING)?;
@@ -257,11 +256,13 @@ fn call_raw_host_callback(capability: u32, input: &[u8], output: &mut [u8]) -> R
     if status != MESH_LIBRARY_OK {
         return Err(status);
     }
-    let output_len = usize::try_from(output_len).map_err(|_| MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE)?;
-    if output_len > output.len() {
-        return Err(MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE);
-    }
-    Ok(output_len)
+    written_length(output_len, output.len()).ok_or(MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE)
+}
+
+/// The length a host callback says it wrote, when it fits the `capacity`
+/// it was given.
+fn written_length(reported: u64, capacity: usize) -> Option<usize> {
+    (reported <= capacity as u64).then_some(reported as usize)
 }
 
 /// Run an exported Mesh function on `input` and hand its result to `output`.
@@ -281,10 +282,7 @@ pub unsafe extern "C" fn mesh_library_invoke(
         return MESH_LIBRARY_ERR_INVALID_ARGUMENT;
     }
     (*output) = MeshLibraryBytes::default();
-    let Ok(input_len) = usize::try_from(input_len) else {
-        return MESH_LIBRARY_ERR_INVALID_ARGUMENT;
-    };
-    if input_len > MAX_BOUNDARY_BYTES {
+    if input_len > MAX_BOUNDARY_BYTES as u64 {
         return MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE;
     }
     let Some(_call) = CALL_LOCK.try_lock() else {
@@ -293,9 +291,8 @@ pub unsafe extern "C" fn mesh_library_invoke(
     if !matches!(*LIFECYCLE.lock(), Lifecycle::Running(_)) {
         return MESH_LIBRARY_ERR_NOT_INITIALIZED;
     }
-    let Some(scheduler) = actor::GLOBAL_SCHEDULER.get() else {
-        return MESH_LIBRARY_ERR_NOT_INITIALIZED;
-    };
+    // Running: mesh_library_init started the scheduler.
+    let scheduler = actor::global_scheduler();
 
     // The byte ABI copies the result to caller-owned memory before this scope
     // ends. Reclaim the call's managed values and secrets on every exit path.
@@ -307,7 +304,7 @@ pub unsafe extern "C" fn mesh_library_invoke(
         process.lock().library_call = true;
     }
     stack::set_current_pid(context.pid);
-    let managed_input = mesh_bytes_new(input, input_len as u64);
+    let managed_input = mesh_bytes_new(input, input_len);
     let result = catch_unwind(AssertUnwindSafe(|| {
         let mut result = MeshLibraryCallResult {
             tag: u8::MAX,
@@ -318,9 +315,9 @@ pub unsafe extern "C" fn mesh_library_invoke(
         result
     }));
     match result {
-        Ok(result) if result.tag == 0 => copy_mesh_value(result.value, true, output),
+        Ok(result) if result.tag == 0 => copy_mesh_value(result.value, true, output, malloc),
         Ok(result) if result.tag == 1 => {
-            let status = copy_mesh_value(result.value, false, output);
+            let status = copy_mesh_value(result.value, false, output, malloc);
             if status == MESH_LIBRARY_OK {
                 MESH_LIBRARY_ERR_APPLICATION
             } else {
@@ -332,7 +329,20 @@ pub unsafe extern "C" fn mesh_library_invoke(
     }
 }
 
-unsafe fn copy_mesh_value(value: *mut u8, bytes: bool, output: *mut MeshLibraryBytes) -> i32 {
+/// The C allocator the host frees returned bytes with
+/// (`mesh_library_free_returned_bytes`).
+unsafe fn malloc(len: usize) -> *mut u8 {
+    libc::malloc(len).cast()
+}
+
+/// Copy the Bytes (or, for an error, the String) an entry point returned into
+/// `output`, in memory from `allocate`.
+unsafe fn copy_mesh_value(
+    value: *mut u8,
+    bytes: bool,
+    output: *mut MeshLibraryBytes,
+    allocate: unsafe fn(usize) -> *mut u8,
+) -> i32 {
     if value.is_null() {
         return MESH_LIBRARY_ERR_INVALID_ARGUMENT;
     }
@@ -343,20 +353,17 @@ unsafe fn copy_mesh_value(value: *mut u8, bytes: bool, output: *mut MeshLibraryB
         let value = &*value.cast::<MeshString>();
         (value.data_ptr(), value.len)
     };
-    let Ok(len_usize) = usize::try_from(len) else {
-        return MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE;
-    };
-    if len_usize > MAX_BOUNDARY_BYTES {
+    if len > MAX_BOUNDARY_BYTES as u64 {
         return MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE;
     }
-    if len_usize == 0 {
+    if len == 0 {
         return MESH_LIBRARY_OK;
     }
-    let copied = libc::malloc(len_usize).cast::<u8>();
+    let copied = allocate(len as usize);
     if copied.is_null() {
         return MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE;
     }
-    ptr::copy_nonoverlapping(data, copied, len_usize);
+    ptr::copy_nonoverlapping(data, copied, len as usize);
     (*output) = MeshLibraryBytes { data: copied, len };
     MESH_LIBRARY_OK
 }
@@ -379,9 +386,6 @@ pub extern "C" fn mesh_library_host_call(
     capability: u32,
     input: *const MeshBytes,
 ) -> *mut MeshResult {
-    if input.is_null() {
-        return err_result("host_callback_invalid_input");
-    }
     let callbacks = *HOST_CALLBACKS.read();
     let Some(callbacks) = callbacks else {
         return err_result("host_callback_not_registered");
@@ -409,12 +413,9 @@ pub extern "C" fn mesh_library_host_call(
     if status != MESH_LIBRARY_OK {
         return err_result(&format!("host_callback_failed:{capability}:{status}"));
     }
-    let Ok(output_len) = usize::try_from(output_len) else {
+    let Some(output_len) = written_length(output_len, output.len()) else {
         return err_result("host_callback_output_too_large");
     };
-    if output_len > output.len() {
-        return err_result("host_callback_output_too_large");
-    }
     alloc_result(0, mesh_bytes_new(output.as_ptr(), output_len as u64).cast())
 }
 
@@ -444,6 +445,28 @@ host_entrypoint!(mesh_host_log_redacted, 9);
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A host whose allocator cannot give the returned bytes their memory
+    /// gets an error, not a copy into nothing.
+    #[test]
+    fn returned_bytes_the_host_cannot_allocate_are_an_error() {
+        unsafe fn out_of_memory(_len: usize) -> *mut u8 {
+            ptr::null_mut()
+        }
+        crate::gc::mesh_rt_init();
+        let value = mesh_bytes_new(b"x".as_ptr(), 1);
+        let mut output = MeshLibraryBytes::default();
+        let status = unsafe { copy_mesh_value(value.cast(), true, &mut output, out_of_memory) };
+        assert_eq!(status, MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE);
+        assert!(output.data.is_null());
+    }
+
+    #[test]
+    fn a_written_length_fits_its_capacity() {
+        assert_eq!(written_length(3, 3), Some(3));
+        assert_eq!(written_length(4, 3), None);
+        assert_eq!(written_length(u64::MAX, usize::MAX), Some(usize::MAX));
+    }
 
     #[test]
     fn host_callback_output_uses_zeroizing_boundary_buffer() {
