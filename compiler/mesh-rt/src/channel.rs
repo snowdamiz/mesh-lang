@@ -523,6 +523,25 @@ mod tests {
         assert_eq!(waiters(), 0);
     }
 
+    /// Two threads that wait on one channel each register, and each gets a
+    /// value.
+    #[test]
+    fn two_threads_wait_on_one_channel() {
+        let _serial = REGISTRY_TESTS.lock();
+        let channel = new_channel(4);
+        let waiters = || channels().lock()[&(channel as u64)].waiters.len();
+        let receive = move || outcome(mesh_channel_recv(channel, 10_000_000_000));
+        let threads = [std::thread::spawn(receive), std::thread::spawn(receive)];
+        while waiters() < 2 {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert_eq!(outcome(mesh_channel_try_send(channel, 1)), Ok(0));
+        assert_eq!(outcome(mesh_channel_try_send(channel, 2)), Ok(0));
+        let mut values = threads.map(|thread| thread.join().unwrap());
+        values.sort();
+        assert_eq!(values, [Ok(1), Ok(2)]);
+    }
+
     /// An actor woken by something else (a message) while it waits on a
     /// channel waits on, still registered once.
     #[test]
