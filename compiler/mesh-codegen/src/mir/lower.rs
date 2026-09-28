@@ -17152,6 +17152,23 @@ mod tests {
         assert_eq!(strings, ["belongs_to:user:User:user_id:users:id:Post"]);
     }
 
+    /// A constructor pattern matches the instance of its sum type it is
+    /// matched as, and only its type's name when nothing says more.
+    #[test]
+    fn a_constructor_pattern_matches_the_instance_it_is_matched_as() {
+        let parse = mesh_parser::parse("fn main() do\n  nil\nend\n");
+        let typeck = mesh_typeck::check(&parse);
+        let lowerer = Lowerer::new(&typeck, &parse, "", &HashSet::new(), &HashMap::new());
+        assert_eq!(
+            lowerer.pattern_sum_name(Some(&Ty::option(Ty::int())), "Option".to_string()),
+            "Option_Int"
+        );
+        assert_eq!(
+            lowerer.pattern_sum_name(None, "Option".to_string()),
+            "Option"
+        );
+    }
+
     /// A service's `init` written without parentheses takes no arguments.
     #[test]
     fn a_service_init_without_parentheses_takes_no_arguments() {
