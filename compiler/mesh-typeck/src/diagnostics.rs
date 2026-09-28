@@ -770,6 +770,21 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
                     "add `deriving({trait_name})` to the definition of `{ty}`, \
                      or `impl {trait_name} for {ty} do ... end`"
                 )
+            } else if matches!(trait_name.as_str(), "Eq" | "Ord" | "Display")
+                && (matches!(ty, Ty::Tuple(_))
+                    || matches!(
+                        ty.con_name(),
+                        Some("Option" | "Result" | "List" | "Map" | "Set")
+                    ))
+            {
+                let what = match ty.con_name() {
+                    Some(name) => format!("`{name}`"),
+                    None => "a tuple".to_string(),
+                };
+                format!(
+                    "{what} has `{trait_name}` only when what it holds does, and here it holds \
+                     something without it"
+                )
             } else if trait_name == "Add" && matches!(ty.con_name(), Some("String" | "List")) {
                 "join strings with `<>`, and lists with `++`".to_string()
             } else if is_named_type(ty) {
@@ -1811,6 +1826,9 @@ mod tests {
         let point = || Ty::struct_ty("Point", vec![]);
         assert!(help(Ty::int(), "Json").starts_with("JSON holds Int, Float"));
         assert!(help(point(), "Eq").starts_with("add `deriving(Eq)`"));
+        // An Option or a tuple has it by what it holds.
+        assert!(help(Ty::option(Ty::int()), "Eq").starts_with("`Option` has `Eq` only when"));
+        assert!(help(Ty::Tuple(vec![Ty::int()]), "Display").starts_with("a tuple has `Display`"));
         // A built-in type has no definition to derive on.
         assert_eq!(
             help(Ty::Con(crate::ty::TyCon::new("Regex")), "Display"),

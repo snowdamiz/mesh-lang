@@ -10418,6 +10418,27 @@ fn check_call(
             ctx.operand_traits
                 .push((arg.clone(), trait_name.to_string(), origin.clone()));
         }
+        // A map's keys and a set's elements are told apart by their Eq
+        // (lowering's `key_needs_eq`), asked where one is added: a set of
+        // functions was refused there, without a place.
+        let adds_key = matches!(
+            (
+                module.as_deref(),
+                fa.field().map(|f| f.text().to_string()).as_deref()
+            ),
+            (Some("Map"), Some("put")) | (Some("Set"), Some("add"))
+        );
+        if adds_key {
+            let collection = ctx.resolve(arg.clone());
+            let key = collection
+                .args_of("Map")
+                .or_else(|| collection.args_of("Set"))
+                .and_then(<[Ty]>::first);
+            if let Some(key) = key {
+                ctx.operand_traits
+                    .push((key.clone(), "Eq".to_string(), origin.clone()));
+            }
+        }
     }
 
     if let Some(constraints) =

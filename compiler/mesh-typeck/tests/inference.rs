@@ -362,6 +362,27 @@ fn test_a_generic_from_json_needs_json_of_its_instantiation() {
     assert!(result.errors.is_empty(), "{:?}", result.errors);
 }
 
+#[test]
+fn test_a_key_needs_eq_where_it_is_added() {
+    // A map's keys and a set's elements are compared by their Eq; a set of
+    // functions was refused by lowering, with no place.
+    let f = "fn f(x :: Int) -> Int do\n  x\nend\n";
+    for src in [
+        "Set.size(Set.add(Set.new(), Some(f)))",
+        "Map.size(Map.put(Map.new(), (f, 1), 2))",
+    ] {
+        let result = check_source(&format!("{f}{src}"));
+        let eq_errors = result
+            .errors
+            .iter()
+            .filter(|e| matches!(e, TypeError::TraitNotSatisfied { trait_name, .. } if trait_name == "Eq"))
+            .count();
+        assert_eq!(eq_errors, 1, "{src}: {:?}", result.errors);
+    }
+    let result = check_source("Map.get(Map.put(Map.new(), Some(1), \"one\"), Some(1))");
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+}
+
 // ── Callbacks returning () ─────────────────────────────────────────────
 
 #[test]
