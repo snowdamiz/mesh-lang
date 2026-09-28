@@ -66,14 +66,13 @@ fn serde_value_to_mesh_json(val: &serde_json::Value) -> *mut MeshJson {
         serde_json::Value::Bool(b) => alloc_json(JSON_BOOL, if *b { 1 } else { 0 }),
         serde_json::Value::Number(n) => {
             // Int and Float are separate tags for round-trip fidelity.
-            if let Some(i) = n.as_i64() {
-                alloc_json(JSON_INT, i as u64)
-            } else if let Some(u) = n.as_u64() {
-                alloc_json(JSON_UINT, u)
-            } else if let Some(f) = n.as_f64() {
-                alloc_json(JSON_FLOAT, f.to_bits())
-            } else {
-                alloc_json(JSON_INT, 0)
+            match (n.as_i64(), n.as_u64()) {
+                (Some(i), _) => alloc_json(JSON_INT, i as u64),
+                (None, Some(u)) => alloc_json(JSON_UINT, u),
+                (None, None) => {
+                    let f = n.as_f64().expect("a JSON number is an integer or a float");
+                    alloc_json(JSON_FLOAT, f.to_bits())
+                }
             }
         }
         serde_json::Value::String(s) => {
@@ -661,6 +660,51 @@ unsafe fn located(decoded: *mut u8, step: &str) -> *mut u8 {
 mod tests {
     use super::*;
     use crate::gc::mesh_rt_init;
+
+    /// The text of a failed `MeshResult`, or `None` for an `Ok`.
+    fn error_of(result: *mut u8) -> Option<String> {
+        let result = unsafe { &*(result as *const MeshResult) };
+        (result.tag == 1)
+            .then(|| unsafe { (*(result.value as *const MeshString)).as_str() }.to_string())
+    }
+
+    extern "C-unwind" fn never_called(_json: *mut u8) -> *mut u8 {
+        unreachable!("no element to decode")
+    }
+
+    /// Each accessor refuses a value of another kind, by name.
+    #[test]
+    fn accessors_refuse_values_of_another_kind() {
+        mesh_rt_init();
+        let null = mesh_json_null();
+        let key = mesh_str("k") as *mut u8;
+        for (result, expected) in [
+            (mesh_json_object_get(null, key), "expected Object"),
+            (mesh_json_value_as_int(null), "expected Int"),
+            (mesh_json_value_as_float(null), "expected Float"),
+            (mesh_json_value_as_bool(null), "expected Bool"),
+            (mesh_json_array_length(null), "expected Array"),
+            (mesh_json_to_list(null, never_called), "expected Array"),
+            (mesh_json_to_map(null, never_called), "expected Object"),
+        ] {
+            assert_eq!(error_of(result).as_deref(), Some(expected));
+        }
+    }
+
+    /// An integer above i64::MAX is read as a Float too; a value of no known
+    /// kind encodes as null.
+    #[test]
+    fn a_large_integer_as_a_float_and_an_unknown_value_as_null() {
+        mesh_rt_init();
+        let parsed = mesh_json_parse(mesh_str("18446744073709551615"));
+        let big = unsafe { (*parsed).value as *mut u8 };
+        let float = mesh_json_value_as_float(big) as *const MeshResult;
+        assert_eq!(unsafe { *((*float).value as *const f64) }, u64::MAX as f64);
+        let unknown = alloc_json(99, 0) as *mut u8;
+        assert_eq!(unsafe { (*mesh_json_encode(unknown)).as_str() }, "null");
+        let infinite = alloc_json(JSON_FLOAT, f64::INFINITY.to_bits()) as *mut u8;
+        assert_eq!(unsafe { (*mesh_json_encode(infinite)).as_str() }, "null");
+    }
 
     #[test]
     fn test_json_parse_object() {
