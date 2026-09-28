@@ -6092,3 +6092,32 @@ end
 "##;
     assert_eq!(run(source), "ok 5 2\nok 5 1\nok 2\n");
 }
+
+/// A program may give a built-in type a trait it lacks (`impl Display for
+/// Regex`): interpolated, inspected in a list, or called as a method, the
+/// value is shown by that impl, and compared by an Eq impl. It type
+/// checked, and lowering then said the type had no `Display`.
+#[test]
+fn a_programs_impls_for_built_in_types_are_used() {
+    let source = r##"
+impl Display for Regex do
+  fn to_string(self) -> String do
+    "a regex"
+  end
+end
+
+impl Eq for Regex do
+  fn eq(self, other :: Regex) -> Bool do
+    true
+  end
+end
+
+fn main() do
+  let r = ~r/a+/
+  println(r.to_string())
+  println("#{r} #{[r]}")
+  println("#{r == ~r/b/}")
+end
+"##;
+    assert_eq!(run(source), "a regex\na regex [a regex]\ntrue\n");
+}

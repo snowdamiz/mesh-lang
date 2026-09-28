@@ -12457,6 +12457,29 @@ impl<'a> Lowerer<'a> {
                     MirType::String,
                 ))
             }
+            // A built-in type the program implements Display or Debug for
+            // (`impl Display for Regex`): shown by that impl.
+            Ty::Con(tc) => {
+                let name = &tc.name;
+                let mut candidates = [
+                    format!("Display__to_string__{name}"),
+                    format!("Debug__inspect__{name}"),
+                ];
+                if debug {
+                    candidates.reverse();
+                }
+                candidates
+                    .into_iter()
+                    .find(|f| self.known_functions.contains_key(f))
+                    .map(|f| {
+                        Self::call_named(
+                            &f,
+                            vec![expr.ty().clone()],
+                            vec![expr.clone()],
+                            MirType::String,
+                        )
+                    })
+            }
             _ => None,
         }
     }
