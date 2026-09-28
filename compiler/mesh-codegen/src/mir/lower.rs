@@ -8456,11 +8456,10 @@ impl<'a> Lowerer<'a> {
     /// unless the callee states its own modes. It was moved out, nulling
     /// the caller's `s`: its later reads saw zeroes, and nothing dropped it.
     fn borrow_receiver(&self, callee: &MirExpr, mut args: Vec<MirExpr>) -> Vec<MirExpr> {
-        if matches!(callee, MirExpr::Var(name, _) if self.ownership_signatures.contains_key(name)) {
-            return args;
-        }
+        let own_modes =
+            matches!(callee, MirExpr::Var(name, _) if self.ownership_signatures.contains_key(name));
         // A method call has its receiver first.
-        if let MirExpr::ResourceMove { value, ty, .. } = &args[0] {
+        if let (false, MirExpr::ResourceMove { value, ty, .. }) = (own_modes, &args[0]) {
             args[0] = MirExpr::ResourceBorrow {
                 value: value.clone(),
                 ty: ty.clone(),
@@ -9507,83 +9506,85 @@ impl<'a> Lowerer<'a> {
         // resolve as a function reference instead of a struct field access.
         // User-defined modules take precedence over stdlib modules to allow
         // user code with modules named "Math", "Int", "Float", etc.
-        if let Some(Expr::NameRef(ref name_ref)) = fa.base() {
-            if let Some(base_name) = name_ref.text() {
-                let field = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
-                let range = fa.syntax().text_range();
-                // Service modules first: a service method is its generated
-                // function (`Counter.start` is `__service_counter_start`),
-                // which a user module's bare name would shadow.
-                let service_fn = self.service_modules.get(&base_name).and_then(|methods| {
-                    methods
-                        .iter()
-                        .find(|(method, _)| *method == field)
-                        .map(|(_, generated)| generated.clone())
-                });
-                if let Some(generated) = service_fn {
-                    return MirExpr::Var(generated, self.resolve_range(range));
-                }
+        let named_base = match fa.base() {
+            Some(Expr::NameRef(name_ref)) => name_ref.text(),
+            _ => None,
+        };
+        if let Some(base_name) = named_base {
+            let field = fa.field().map(|t| t.text().to_string()).unwrap_or_default();
+            let range = fa.syntax().text_range();
+            // Service modules first: a service method is its generated
+            // function (`Counter.start` is `__service_counter_start`),
+            // which a user module's bare name would shadow.
+            let service_fn = self.service_modules.get(&base_name).and_then(|methods| {
+                methods
+                    .iter()
+                    .find(|(method, _)| *method == field)
+                    .map(|(_, generated)| generated.clone())
+            });
+            if let Some(generated) = service_fn {
+                return MirExpr::Var(generated, self.resolve_range(range));
+            }
 
-                // Check user-defined modules (Phase 39) -- they shadow stdlib.
-                if self
-                    .user_modules
-                    .get(&base_name)
-                    .is_some_and(|functions| functions.contains(&field))
-                {
-                    let ty = self.resolve_range(range);
-                    let lowered_name = self.lowered_fn_symbol_name(&field, &field, range);
-                    return MirExpr::Var(lowered_name, ty);
-                }
+            // Check user-defined modules (Phase 39) -- they shadow stdlib.
+            if self
+                .user_modules
+                .get(&base_name)
+                .is_some_and(|functions| functions.contains(&field))
+            {
+                let ty = self.resolve_range(range);
+                let lowered_name = self.lowered_fn_symbol_name(&field, &field, range);
+                return MirExpr::Var(lowered_name, ty);
+            }
 
-                // A qualified variant constructor (`Color.Red`, `Result.Ok`)
-                // lowers like the unqualified one. Qualified by the module
-                // exporting its type (`Geo.Dot`), the type is the one the
-                // checker gave it.
-                let owner = if self.user_modules.contains_key(&base_name) {
-                    let result = match self.get_ty(range) {
-                        Some(Ty::Fun(_, ret)) => Some(ret.as_ref().clone()),
-                        other => other.cloned(),
-                    };
-                    result
-                        .as_ref()
-                        .and_then(ty_head)
-                        .map_or(base_name.clone(), |(name, _)| name.to_string())
-                } else {
-                    base_name.clone()
+            // A qualified variant constructor (`Color.Red`, `Result.Ok`)
+            // lowers like the unqualified one. Qualified by the module
+            // exporting its type (`Geo.Dot`), the type is the one the
+            // checker gave it.
+            let owner = if self.user_modules.contains_key(&base_name) {
+                let result = match self.get_ty(range) {
+                    Some(Ty::Fun(_, ret)) => Some(ret.as_ref().clone()),
+                    other => other.cloned(),
                 };
-                let variant_arity = self.registry.sum_type_defs.get(&owner).and_then(|info| {
-                    info.variants
-                        .iter()
-                        .find(|v| v.name == field)
-                        .map(|v| v.fields.len())
-                });
-                if let Some(arity) = variant_arity {
-                    let ty = self.resolve_range(range);
-                    if arity > 0 {
-                        // The call around it constructs the variant.
-                        return MirExpr::Var(field, ty);
-                    }
-                    let concrete = mir_type_to_impl_name(&ty);
-                    return MirExpr::ConstructVariant {
-                        type_name: concrete.clone(),
-                        variant: field,
-                        fields: vec![],
-                        ty: MirType::SumType(concrete),
-                    };
+                result
+                    .as_ref()
+                    .and_then(ty_head)
+                    .map_or(base_name.clone(), |(name, _)| name.to_string())
+            } else {
+                base_name.clone()
+            };
+            let variant_arity = self.registry.sum_type_defs.get(&owner).and_then(|info| {
+                info.variants
+                    .iter()
+                    .find(|v| v.name == field)
+                    .map(|v| v.fields.len())
+            });
+            if let Some(arity) = variant_arity {
+                let ty = self.resolve_range(range);
+                if arity > 0 {
+                    // The call around it constructs the variant.
+                    return MirExpr::Var(field, ty);
                 }
+                let concrete = mir_type_to_impl_name(&ty);
+                return MirExpr::ConstructVariant {
+                    type_name: concrete.clone(),
+                    variant: field,
+                    fields: vec![],
+                    ty: MirType::SumType(concrete),
+                };
+            }
 
-                // Check stdlib modules (after user modules so user code can shadow).
-                if STDLIB_MODULES.contains(&base_name.as_str()) {
-                    let fn_ty = self.get_ty(range).cloned();
-                    let fallback = self.resolve_range(range);
-                    return self.lower_stdlib_function(&base_name, &field, fn_ty, fallback);
-                }
+            // Check stdlib modules (after user modules so user code can shadow).
+            if STDLIB_MODULES.contains(&base_name.as_str()) {
+                let fn_ty = self.get_ty(range).cloned();
+                let fallback = self.resolve_range(range);
+                return self.lower_stdlib_function(&base_name, &field, fn_ty, fallback);
+            }
 
-                // `Type.name` of a struct or sum type: a function of the type.
-                let is_struct = self.registry.struct_defs.contains_key(&base_name);
-                if is_struct || self.registry.sum_type_defs.contains_key(&base_name) {
-                    return self.type_function(fa, &base_name, &field, is_struct);
-                }
+            // `Type.name` of a struct or sum type: a function of the type.
+            let is_struct = self.registry.struct_defs.contains_key(&base_name);
+            if is_struct || self.registry.sum_type_defs.contains_key(&base_name) {
+                return self.type_function(fa, &base_name, &field, is_struct);
             }
         }
 
@@ -10182,12 +10183,14 @@ impl<'a> Lowerer<'a> {
                     .variants
                     .iter()
                     .find(|variant| variant.name == variant_name)?;
-                let substitutions: HashMap<String, &Ty> = match expected.and_then(ty_head) {
-                    Some((name, args)) if name == type_name => {
-                        info.generic_params.iter().cloned().zip(args).collect()
-                    }
-                    _ => HashMap::new(),
-                };
+                // `expected` is an instance of the type, or nothing to go by.
+                let args = expected.and_then(|ty| ty.args_of(type_name));
+                let substitutions: HashMap<String, &Ty> = info
+                    .generic_params
+                    .iter()
+                    .cloned()
+                    .zip(args.unwrap_or_default())
+                    .collect();
                 Some(
                     variant
                         .fields
@@ -10335,17 +10338,15 @@ impl<'a> Lowerer<'a> {
             }
 
             Pattern::Tuple(tuple) => {
-                let expected_elements = match expected {
-                    Some(Ty::Tuple(elements)) => Some(elements.as_slice()),
-                    _ => None,
-                };
+                let elems =
+                    expected.and_then(|t| if let Ty::Tuple(e) = t { Some(e) } else { None });
                 let patterns = tuple
                     .patterns()
                     .enumerate()
                     .map(|(index, pattern)| {
                         self.lower_pattern_with_expected(
                             &pattern,
-                            expected_elements.and_then(|elements| elements.get(index)),
+                            elems.and_then(|elements| elements.get(index)),
                         )
                     })
                     .collect();
