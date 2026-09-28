@@ -1904,3 +1904,83 @@ end
     );
     assert_eq!(output, "3 4.0 1\n");
 }
+
+/// A value that never comes into being (a `panic`) can stand wherever a
+/// value goes. Interpolated, lowering had no way to show it and emitted a
+/// call of an undefined `to_string`; compared with `<`, it generated a
+/// comparison function for `Never` that LLVM rejected. Both now end where
+/// the panic does, as arithmetic on it already did.
+#[test]
+fn values_that_never_come_into_being_interpolate_and_compare() {
+    let output = compile_and_run(
+        r##"fn show(n :: Int) -> String do
+  if n > 0 do
+    "big #{panic("no")}"
+  else
+    "small #{n}"
+  end
+end
+
+fn below(n :: Int) -> Bool do
+  if n > 0 do
+    panic("no") < n
+  else
+    n < 0
+  end
+end
+
+fn main() do
+  println("#{show(0)} #{below(-1)}")
+end
+"##,
+    );
+    assert_eq!(output, "small 0 true\n");
+}
+
+/// A type deriving Display shows each payload by the payload's own
+/// Display, or else its Debug. A payload type with neither ends the build
+/// when the derived function is used; a type whose derived Display is
+/// never used still builds.
+#[test]
+fn derived_display_needs_a_displayable_payload_only_when_used() {
+    let (_guard, project_dir) = project(
+        r##"struct Inner do
+  x :: Int
+end deriving(Eq)
+
+type Wrap do
+  W(Inner)
+end deriving(Display)
+
+fn main() do
+  println("#{W(Inner { x: 1 })}")
+end
+"##,
+    );
+    let output = meshc_build(&project_dir, &[]).output().unwrap();
+    assert!(
+        stderr(&output).contains("cannot convert a value of type `Inner` to a string"),
+        "{}",
+        stderr(&output)
+    );
+    let output = compile_and_run(
+        r##"struct Inner do
+  x :: Int
+end
+
+type Wrap do
+  W(Inner)
+end deriving(Display)
+
+type Held do
+  H(Inner)
+end deriving(Display)
+
+fn main() do
+  println("#{W(Inner { x: 1 })}")
+  let _ = H(Inner { x: 2 })
+end
+"##,
+    );
+    assert_eq!(output, "W(Inner { x: 1 })\n");
+}

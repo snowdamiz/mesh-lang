@@ -7957,7 +7957,10 @@ impl<'a> Lowerer<'a> {
             .lhs()
             .and_then(|e| self.get_ty(e.syntax().text_range()).cloned());
         let primitive = |ty: &Ty| matches!(ty, Ty::Con(tc) if matches!(tc.name.as_str(), "Int" | "Float" | "Bool" | "String"));
-        if let Some(source) = lhs_source.filter(|t| !matches!(t, Ty::Var(_)) && !primitive(t)) {
+        // A value that never comes into being needs no comparison: the
+        // hardware path ends where the operand does.
+        let needs_fn = |t: &Ty| !matches!(t, Ty::Var(_) | Ty::Never) && !primitive(t);
+        if let Some(source) = lhs_source.filter(needs_fn) {
             match op {
                 BinOp::Eq | BinOp::NotEq => {
                     let equal = self.eq_expr(lhs, rhs, &source);
@@ -11034,189 +11037,71 @@ impl<'a> Lowerer<'a> {
         if let Some(shown) = typeck_ty.and_then(|ty| self.display_by_type(&expr, ty, false)) {
             return shown;
         }
-        match expr.ty() {
-            MirType::String => expr, // already a string
-            MirType::Unit => MirExpr::Block(
-                vec![expr, MirExpr::StringLit("()".to_string(), MirType::String)],
-                MirType::String,
-            ),
-            MirType::Int => MirExpr::Call {
-                func: Box::new(MirExpr::Var(
-                    "mesh_int_to_string".to_string(),
-                    MirType::FnPtr(vec![MirType::Int], Box::new(MirType::String)),
-                )),
-                args: vec![expr],
-                ty: MirType::String,
-            },
-            MirType::Float => MirExpr::Call {
-                func: Box::new(MirExpr::Var(
-                    "mesh_float_to_string".to_string(),
-                    MirType::FnPtr(vec![MirType::Float], Box::new(MirType::String)),
-                )),
-                args: vec![expr],
-                ty: MirType::String,
-            },
-            MirType::Bool => MirExpr::Call {
-                func: Box::new(MirExpr::Var(
-                    "mesh_bool_to_string".to_string(),
-                    MirType::FnPtr(vec![MirType::Bool], Box::new(MirType::String)),
-                )),
-                args: vec![expr],
-                ty: MirType::String,
-            },
-            MirType::Struct(_) | MirType::SumType(_) => {
-                // Display trait dispatch: check if the type has a Display impl
-                // and emit a mangled Display__to_string__TypeName call.
-                let ty_for_lookup = mir_type_to_ty(expr.ty());
+        let runtime = match expr.ty() {
+            // Already a string; and a value that never comes into being
+            // (`"#{panic(..)}"`) is never shown: the panic ends the string.
+            MirType::String | MirType::Never => return expr,
+            MirType::Unit => {
+                return MirExpr::Block(
+                    vec![expr, MirExpr::StringLit("()".to_string(), MirType::String)],
+                    MirType::String,
+                )
+            }
+            MirType::Int => "mesh_int_to_string".to_string(),
+            MirType::Float => "mesh_float_to_string".to_string(),
+            MirType::Bool => "mesh_bool_to_string".to_string(),
+            // A struct or sum type: its Display impl's `to_string`, or else
+            // its Debug `inspect`. With neither (a payload of a type that
+            // derives Display, which the type checker lets through), a call
+            // of an undefined `to_string`, which code generation reports if
+            // the call is ever compiled.
+            _ => {
+                let type_name = mir_type_to_impl_name(expr.ty());
                 let matching = self
                     .trait_registry
-                    .find_method_traits("to_string", &ty_for_lookup);
-                if !matching.is_empty() {
-                    let trait_name = &matching[0];
-                    let type_name = mir_type_to_impl_name(expr.ty());
-                    let mangled = format!("{}__{}__{}", trait_name, "to_string", type_name);
-                    MirExpr::Call {
-                        func: Box::new(MirExpr::Var(
-                            mangled,
-                            MirType::FnPtr(vec![expr.ty().clone()], Box::new(MirType::String)),
-                        )),
-                        args: vec![expr],
-                        ty: MirType::String,
-                    }
-                } else {
-                    // Check if a monomorphized Display function was generated
-                    // (for generic struct instantiations like Box_Int).
-                    let type_name = mir_type_to_impl_name(expr.ty());
-                    let mono_mangled = format!("Display__to_string__{}", type_name);
-                    if self.known_functions.contains_key(&mono_mangled) {
-                        MirExpr::Call {
-                            func: Box::new(MirExpr::Var(
-                                mono_mangled,
-                                MirType::FnPtr(vec![expr.ty().clone()], Box::new(MirType::String)),
-                            )),
-                            args: vec![expr],
-                            ty: MirType::String,
-                        }
-                    } else {
-                        // Check for Debug fallback (inspect).
-                        let debug_mangled = format!("Debug__inspect__{}", type_name);
-                        if self.known_functions.contains_key(&debug_mangled) {
-                            MirExpr::Call {
-                                func: Box::new(MirExpr::Var(
-                                    debug_mangled,
-                                    MirType::FnPtr(
-                                        vec![expr.ty().clone()],
-                                        Box::new(MirType::String),
-                                    ),
-                                )),
-                                args: vec![expr],
-                                ty: MirType::String,
-                            }
-                        } else {
-                            // No Display or Debug impl found -- fall through to generic to_string
-                            MirExpr::Call {
-                                func: Box::new(MirExpr::Var(
-                                    "to_string".to_string(),
-                                    MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String)),
-                                )),
-                                args: vec![expr],
-                                ty: MirType::String,
-                            }
-                        }
-                    }
+                    .find_method_traits("to_string", &mir_type_to_ty(expr.ty()));
+                let debug = format!("Debug__inspect__{type_name}");
+                match matching.first() {
+                    Some(trait_name) => format!("{trait_name}__to_string__{type_name}"),
+                    None if self.known_functions.contains_key(&debug) => debug,
+                    None => "to_string".to_string(),
                 }
             }
-            _ => {
-                // For other types, attempt a generic to_string call.
-                MirExpr::Call {
-                    func: Box::new(MirExpr::Var(
-                        "to_string".to_string(),
-                        MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::String)),
-                    )),
-                    args: vec![expr],
-                    ty: MirType::String,
-                }
-            }
-        }
+        };
+        let param = expr.ty().clone();
+        Self::call_named(&runtime, vec![param], vec![expr], MirType::String)
     }
 
-    /// Attempt to wrap a collection expression in its Display runtime call.
-    ///
-    /// Returns `Some(MirExpr)` if the `Ty` is a List, Map, or Set with known
-    /// element types; `None` otherwise (fallback to generic to_string).
-    fn wrap_collection_to_string(
-        &mut self,
-        expr: &MirExpr,
-        ty: &Ty,
-        debug: bool,
-    ) -> Option<MirExpr> {
-        // Match Ty::App(Con("List"|"Map"|"Set"), args).
-        // Also handle Ty::Con("List"|"Map"|"Set") without type args (empty collections).
-        let (base_name, args) = ty_head(ty)?;
-
-        let fn_ptr_ty = MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr));
-
-        match base_name {
-            "List" => {
-                let elem_fn = if args.is_empty() {
-                    // Unparameterized List -- use int as default fallback
-                    self.resolve_to_string_callback(&Ty::int(), debug)
-                } else {
-                    self.resolve_to_string_callback(&args[0], debug)
-                };
-                let fn_ptr_expr = MirExpr::Var(elem_fn, fn_ptr_ty.clone());
-                Some(MirExpr::Call {
-                    func: Box::new(MirExpr::Var(
-                        "mesh_list_to_string".to_string(),
-                        MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::String)),
-                    )),
-                    args: vec![expr.clone(), fn_ptr_expr],
-                    ty: MirType::String,
-                })
-            }
+    /// The display of `expr`, a List, Map or Set of type `ty`: its runtime
+    /// function called with the callback that shows each element (and each
+    /// value). A collection its type does not parameterize shows Ints.
+    fn wrap_collection_to_string(&mut self, expr: &MirExpr, ty: &Ty, debug: bool) -> MirExpr {
+        let (base_name, args) = ty_head(ty).expect("a collection type has a head");
+        let arg = |i: usize| args.get(i).cloned().unwrap_or_else(Ty::int);
+        let mut callbacks = vec![self.resolve_to_string_callback(&arg(0), debug)];
+        let runtime = match base_name {
+            "List" => "mesh_list_to_string",
             "Map" => {
-                let key_fn = if !args.is_empty() {
-                    self.resolve_to_string_callback(&args[0], debug)
-                } else {
-                    self.resolve_to_string_callback(&Ty::int(), debug)
-                };
-                let val_fn = if args.len() >= 2 {
-                    self.resolve_to_string_callback(&args[1], debug)
-                } else {
-                    self.resolve_to_string_callback(&Ty::int(), debug)
-                };
-                let key_ptr_expr = MirExpr::Var(key_fn, fn_ptr_ty.clone());
-                let val_ptr_expr = MirExpr::Var(val_fn, fn_ptr_ty.clone());
-                Some(MirExpr::Call {
-                    func: Box::new(MirExpr::Var(
-                        "mesh_map_to_string".to_string(),
-                        MirType::FnPtr(
-                            vec![MirType::Ptr, MirType::Ptr, MirType::Ptr],
-                            Box::new(MirType::String),
-                        ),
-                    )),
-                    args: vec![expr.clone(), key_ptr_expr, val_ptr_expr],
-                    ty: MirType::String,
-                })
+                callbacks.push(self.resolve_to_string_callback(&arg(1), debug));
+                "mesh_map_to_string"
             }
-            "Set" => {
-                let elem_fn = if args.is_empty() {
-                    self.resolve_to_string_callback(&Ty::int(), debug)
-                } else {
-                    self.resolve_to_string_callback(&args[0], debug)
-                };
-                let fn_ptr_expr = MirExpr::Var(elem_fn, fn_ptr_ty.clone());
-                Some(MirExpr::Call {
-                    func: Box::new(MirExpr::Var(
-                        "mesh_set_to_string".to_string(),
-                        MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::String)),
-                    )),
-                    args: vec![expr.clone(), fn_ptr_expr],
-                    ty: MirType::String,
-                })
-            }
-            _ => None,
-        }
+            // A Set, the last collection `display_by_type` shows here.
+            _ => "mesh_set_to_string",
+        };
+        let fn_ptr_ty = MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr));
+        let args: Vec<MirExpr> = std::iter::once(expr.clone())
+            .chain(
+                callbacks
+                    .into_iter()
+                    .map(|callback| MirExpr::Var(callback, fn_ptr_ty.clone())),
+            )
+            .collect();
+        Self::call_named(
+            runtime,
+            vec![MirType::Ptr; args.len()],
+            args,
+            MirType::String,
+        )
     }
 
     /// The callback a collection runtime function calls per element:
@@ -12732,7 +12617,7 @@ impl<'a> Lowerer<'a> {
             Ty::App(..) => {
                 let (name, args) = ty_head(ty).expect("an applied type has a named head");
                 if matches!(name, "List" | "Map" | "Set") {
-                    return self.wrap_collection_to_string(expr, ty, debug);
+                    return Some(self.wrap_collection_to_string(expr, ty, debug));
                 }
                 self.ensure_instantiation_traits(ty);
                 let mangled = self.instantiation_helper_name(name, args);
@@ -12767,7 +12652,7 @@ impl<'a> Lowerer<'a> {
                     })
             }
             Ty::Con(tc) if matches!(tc.name.as_str(), "List" | "Map" | "Set") => {
-                self.wrap_collection_to_string(expr, ty, debug)
+                Some(self.wrap_collection_to_string(expr, ty, debug))
             }
             Ty::Con(tc) if tc.name == "Unit" => Some(unit(expr)),
             Ty::Con(tc) if tc.name == "Json" => Some(Self::call_named(
