@@ -6066,3 +6066,29 @@ end
 "##;
     assert_eq!(run(source), "method 4\nfunction 4\nmethod 4\n");
 }
+
+/// An Option or Result a runtime function returns, written into a tuple
+/// that a `case` matches (its values matched as columns), matches its
+/// constructor patterns. The column held the pointer the function returned
+/// where the value goes, so its tag was the pointer's low byte and
+/// `(String.to_int(s), n)` never matched `(Some(a), m)`.
+#[test]
+fn runtime_options_and_results_match_as_tuple_columns() {
+    let source = r##"
+fn main() do
+  case (U64.parse("5"), Ok(2)) do
+    (Ok(a), Ok(b)) -> println("ok #{U64.to_string(a)} #{b}")
+    _ -> println("other")
+  end
+  case (String.to_int("5"), 1) do
+    (Some(a), n) -> println("ok #{a} #{n}")
+    _ -> println("other")
+  end
+  case (List.find([1, 2], fn x -> x > 1 end), File.read("/nonexistent/mesh")) do
+    (Some(a), Err(_)) -> println("ok #{a}")
+    _ -> println("other")
+  end
+end
+"##;
+    assert_eq!(run(source), "ok 5 2\nok 5 1\nok 2\n");
+}

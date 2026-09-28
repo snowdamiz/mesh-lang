@@ -1852,8 +1852,20 @@ impl<'ctx> CodeGen<'ctx> {
             .builder
             .build_alloca(struct_ty, "columns")
             .map_err(|e| e.to_string())?;
-        for (index, value) in values.iter().enumerate() {
+        for (index, (value, column_ty)) in values.iter().zip(&column_types).enumerate() {
             let value = self.codegen_expr(value)?;
+            // A runtime function returns an Option or a Result as a pointer
+            // to it; the column holds the value, as `codegen_match` reads
+            // one through the pointer. Its tag was read from the pointer's
+            // low byte, so `(String.to_int(s), n)` never matched `Some`.
+            let column_llvm = self.llvm_type(column_ty);
+            let value = if value.is_pointer_value() && !column_llvm.is_pointer_type() {
+                self.builder
+                    .build_load(column_llvm, value.into_pointer_value(), "column_value")
+                    .map_err(|e| e.to_string())?
+            } else {
+                value
+            };
             let slot = self
                 .builder
                 .build_struct_gep(struct_ty, scrutinee_alloca, index as u32, "column")
