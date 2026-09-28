@@ -356,6 +356,11 @@ fn one_of_each() -> Vec<TypeError> {
             param: "param".to_string(),
             span: span(19, 24),
         },
+        TypeError::MethodReturnUnknown {
+            method: "poke".to_string(),
+            ty: Ty::Con(mesh_typeck::ty::TyCon::new("Point")),
+            span: span(19, 24),
+        },
         TypeError::TypeNotValue {
             name: "Name".to_string(),
             span: span(19, 24),

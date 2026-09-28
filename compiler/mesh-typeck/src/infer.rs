@@ -12527,10 +12527,19 @@ fn infer_field_access(
             return Ok(ctx.instantiate(&scheme));
         }
 
-        let err = TypeError::NoSuchMethod {
-            ty: resolved_base,
-            method_name: field_name,
-            span: fa.syntax().text_range(),
+        // An impl provides the method, but nothing fixed what it returns.
+        let err = if matching_traits.is_empty() {
+            TypeError::NoSuchMethod {
+                ty: resolved_base,
+                method_name: field_name,
+                span: fa.syntax().text_range(),
+            }
+        } else {
+            TypeError::MethodReturnUnknown {
+                method: field_name,
+                ty: resolved_base,
+                span: fa.syntax().text_range(),
+            }
         };
         ctx.errors.push(err.clone());
         return Err(err);

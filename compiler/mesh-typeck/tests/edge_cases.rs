@@ -3207,6 +3207,27 @@ fn a_constructor_pattern_of_something_else_is_an_unknown_variant() {
     );
 }
 
+/// A method its impl provides, whose return type nothing fixes, is not "no
+/// method": the call says what is missing. Called as a function of its
+/// receiver it takes the impl's type, as before.
+#[test]
+fn a_method_whose_return_type_is_not_known_says_so() {
+    let poke = "interface Poke do\n  fn poke(self)\nend\n\nstruct X do\nend\n\n\
+                impl Poke for X do\n  fn poke(self) do\n    []\n  end\nend\n\n";
+    assert_eq!(
+        errors(&format!(
+            "{poke}fn main() do\n  let x = X {{}}\n  x.poke()\nend\n"
+        )),
+        ["the return type of method `poke` on `X` is not known"]
+    );
+    assert_eq!(
+        errors(&format!(
+            "{poke}fn main() do\n  let x = X {{}}\n  poke(x)\nend\n"
+        )),
+        Vec::<String>::new()
+    );
+}
+
 /// A `case` over a type with no variants needs no arm: no value reaches
 /// it. It was "missing patterns [_]".
 #[test]

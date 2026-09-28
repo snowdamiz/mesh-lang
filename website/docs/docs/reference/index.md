@@ -657,7 +657,10 @@ Mesh. For what they do elsewhere, use:
   parameter needs a type, from an annotation in the interface or the `impl`,
   or from how the body uses it. A parameter nothing
   fixes is error E0082. A top-level function with an unannotated parameter
-  is generic and compiled for each argument type.
+  is generic and compiled for each argument type. Likewise, calling
+  `value.method()` needs the method's return type: when neither an
+  annotation nor the body fixes it (`[]`, whose elements nothing names), the
+  call is error E0088.
 - Wide integers use checked module functions instead of ordinary literal
   operators.
 - `Random` is deterministic, not cryptographic.

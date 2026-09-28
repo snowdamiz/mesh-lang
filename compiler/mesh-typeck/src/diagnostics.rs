@@ -207,6 +207,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::NestedDefinition { .. } => "E0084",
         TypeError::TypeArgumentCount { .. } => "E0085",
         TypeError::TopLevelStatement { .. } => "E0087",
+        TypeError::MethodReturnUnknown { .. } => "E0088",
     }
 }
 
@@ -1556,6 +1557,12 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
                 "nothing fixes the type of this parameter")
             .with_help(format!(
                 "annotate it, `{param} :: Type`: a method is compiled once, for the type it is implemented for, not for each call"
+            ))
+        }
+        TypeError::MethodReturnUnknown { method, span, .. } => {
+            let range = clamp(text_range_to_range(*span));
+            Description::error(range, "nothing fixes what this method returns").with_help(format!(
+                "annotate its return type in the `impl` or the interface, `fn {method}(self) -> Type`"
             ))
         }
         TypeError::RigidTypeParam { param, found, span } => {

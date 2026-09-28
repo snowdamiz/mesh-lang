@@ -443,6 +443,13 @@ pub enum TypeError {
         param: String,
         span: TextRange,
     },
+    /// A method an impl provides for the receiver's type whose return type
+    /// nothing fixes there: the call cannot be given one.
+    MethodReturnUnknown {
+        method: String,
+        ty: Ty,
+        span: TextRange,
+    },
     /// An `impl` names an interface that does not exist.
     UnknownInterface { name: String, span: TextRange },
     /// A numeric literal that is malformed or does not fit its type.
@@ -612,6 +619,7 @@ impl TypeError {
             | TypeError::UnknownType { span, .. }
             | TypeError::UnknownFieldOwner { span, .. }
             | TypeError::UntypedMethodParam { span, .. }
+            | TypeError::MethodReturnUnknown { span, .. }
             | TypeError::TypeNotValue { span, .. }
             | TypeError::NestedDefinition { span, .. }
             | TypeError::TypeArgumentCount { span, .. }
@@ -1232,6 +1240,10 @@ impl fmt::Display for TypeError {
             }
             TypeError::UntypedMethodParam { method, param, .. } => {
                 write!(f, "the type of `{param}` in method `{method}` is not known")
+            }
+            TypeError::MethodReturnUnknown { method, ty, .. } => {
+                let ty = ty.with_holes();
+                write!(f, "the return type of method `{method}` on `{ty}` is not known")
             }
             TypeError::RigidTypeParam { param, found, .. } => {
                 write!(

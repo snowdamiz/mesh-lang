@@ -723,6 +723,17 @@ expression: rendered
 ───╯
 {"code":"E0082","severity":"error","message":"the type of `param` in method `method` is not known","file":"main.mpl","spans":[{"start":19,"end":24,"label":"nothing fixes the type of this parameter"}],"fix":"annotate it, `param :: Type`: a method is compiled once, for the type it is implemented for, not for each call"}
 
+[E0088] Error: the return type of method `poke` on `Point` is not known
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── nothing fixes what this method returns
+   │
+   │ Help: annotate its return type in the `impl` or the interface, `fn poke(self) -> Type`
+───╯
+{"code":"E0088","severity":"error","message":"the return type of method `poke` on `Point` is not known","file":"main.mpl","spans":[{"start":19,"end":24,"label":"nothing fixes what this method returns"}],"fix":"annotate its return type in the `impl` or the interface, `fn poke(self) -> Type`"}
+
 [E0083] Error: `Name` is a type, not a value
    ╭─[ main.mpl:2:7 ]
    │
