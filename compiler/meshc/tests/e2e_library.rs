@@ -12,8 +12,8 @@ fn builds_hosted_windows_dynamic_library() {
     let dynamic = temp.path().join("libmesh_library.dll");
     assert_success(build(&fixture, &dynamic, "cdylib"), "Windows DLL build");
     let host = temp.path().join("mesh-library-host.exe");
-    let clang = PathBuf::from(std::env::var_os("LLVM_SYS_211_PREFIX").expect("LLVM prefix"))
-        .join("bin/clang.exe");
+    let llvm = std::env::var_os("LLVM_SYS_211_PREFIX").expect("LLVM prefix");
+    let clang = Path::new(&llvm).join("bin/clang.exe");
     assert_success(
         Command::new(clang)
             .arg(fixture.join("host.c"))
