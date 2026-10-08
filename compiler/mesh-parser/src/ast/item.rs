@@ -207,6 +207,22 @@ impl ExportDecl {
     }
 }
 
+/// `@display` before or after an `@export`.
+#[derive(Debug, Clone)]
+pub struct DisplayDecl {
+    syntax: SyntaxNode,
+}
+
+impl AstNode for DisplayDecl {
+    fn cast(node: SyntaxNode) -> Option<Self> {
+        (node.kind() == SyntaxKind::DISPLAY_DECORATOR_DECL).then_some(Self { syntax: node })
+    }
+
+    fn syntax(&self) -> &SyntaxNode {
+        &self.syntax
+    }
+}
+
 ast_node!(FnDef, FN_DEF);
 
 impl FnDef {
@@ -227,6 +243,11 @@ impl FnDef {
 
     /// A stable mobile/library ABI export (`@export("symbol")`), if present.
     pub fn export_decl(&self) -> Option<ExportDecl> {
+        child_node(&self.syntax)
+    }
+
+    /// The `@display` marker, which lets an `@export` carry `Plaintext`.
+    pub fn display_decl(&self) -> Option<DisplayDecl> {
         child_node(&self.syntax)
     }
 

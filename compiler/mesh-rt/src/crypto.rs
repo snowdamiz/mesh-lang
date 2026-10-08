@@ -4,17 +4,19 @@
 //! exposes raw hash bytes by default. The non-colliding legacy HMAC-SHA-512,
 //! UUID, Base64, and Hex exports remain available for existing callers.
 
+pub(crate) mod blind_rsa;
+#[cfg(test)]
+mod mlkem_tests;
 pub(crate) mod provider;
 
 use std::ptr;
 
 use base64::{engine::general_purpose, Engine as _};
 use hmac::{Hmac, Mac};
-use ml_kem::ml_kem_768::Ciphertext as MlKem768Ciphertext;
-use ml_kem::{Decapsulate, DecapsulationKey768, EncapsulationKey768, Key, KeyExport, Seed, B32};
+use libcrux_ml_kem::mlkem768::{self, MlKem768Ciphertext, MlKem768PrivateKey, MlKem768PublicKey};
 use rand::RngCore;
 use sha2::Sha512;
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
 #[cfg(feature = "fuzzing")]
 use self::provider::FixedProvider;
@@ -28,8 +30,9 @@ use crate::bytes::{decode_base64, decode_hex, hex_string, mesh_bytes_new, MeshBy
 use crate::gc::mesh_gc_alloc_actor;
 use crate::io::{alloc_result, err_result, MeshResult};
 use crate::secret::{
-    consume_and_retype_owned_resource, crypto_error, insert_owned_resource, with_owned_resource,
-    CryptoErrorTag, MeshSecretHandle, ResourceError, ResourceKind, RetypeError,
+    consume_and_retype_owned_resource, consume_owned_resource, crypto_error, insert_owned_resource,
+    with_owned_resource, CryptoErrorTag, MeshSecretHandle, ResourceError, ResourceKind,
+    RetypeError,
 };
 use crate::string::{mesh_str, MeshString};
 
@@ -124,6 +127,19 @@ pub struct MeshSignature {
 pub struct MeshSigningKeyPair {
     pub private_key: *mut MeshSecretHandle,
     pub public_key: MeshSigningPublicKey,
+}
+
+#[repr(C)]
+/// Runtime representation of a blind RSA public key: its RFC 9578 SPKI.
+pub struct MeshBlindRsaPublicKey {
+    pub bytes: *mut MeshBytes,
+}
+
+#[repr(C)]
+/// Runtime representation of a blinded message and its affine blinding state.
+pub struct MeshBlindRsaBlinded {
+    pub blinded: *mut MeshBytes,
+    pub state: *mut MeshSecretHandle,
 }
 
 #[cfg(test)]
@@ -380,6 +396,37 @@ pub extern "C" fn mesh_crypto_hmac_sha256(
     }))
 }
 
+fn hmac_sha256_tag_for_process(
+    process: &Process,
+    provider: &impl CryptoProvider,
+    key: *const MeshSecretHandle,
+    message: *const MeshBytes,
+) -> Result<[u8; 32], CryptoFailure> {
+    let message = unsafe { required_bytes(message, MAX_INPUT_BYTES) }?;
+    let mut output = [0u8; 32];
+    with_owned_resource(process, key, ResourceKind::SecretBytes, |key| {
+        provider
+            .hmac_sha256(key, message, &mut output)
+            .map_err(provider_failure)
+    })
+    .map_err(resource_failure)??;
+    Ok(output)
+}
+
+/// HMAC-SHA-256 under a borrowed secret key, returned as public `Bytes`: a
+/// MAC tag is not secret, so it needs no resource. Compare tags with
+/// `Bytes.secure_equals`.
+#[no_mangle]
+pub extern "C" fn mesh_crypto_hmac_sha256_tag(
+    key: *const MeshSecretHandle,
+    message: *const MeshBytes,
+) -> *mut MeshResult {
+    crypto_result(with_current_process(|process| {
+        hmac_sha256_tag_for_process(process, &SystemProvider, key, message)
+            .map(|tag| bytes_value(&tag))
+    }))
+}
+
 fn hkdf_sha256_for_process(
     process: &mut Process,
     provider: &impl CryptoProvider,
@@ -556,32 +603,55 @@ fn mlkem_key_material(
     Ok((private_seed, public_key))
 }
 
-/// The encapsulation key of a 64-byte ML-KEM-768 seed. Every seed reaching
-/// here has that length: callers check it, and an ML-KEM private key
-/// resource holds nothing else.
+/// An ML-KEM-768 key pair expanded from its 64-byte seed (d then z) by
+/// FIPS 203 `ML-KEM.KeyGen_internal`. The runtime stores only the seed and
+/// expands it for each use; the expanded private key is wiped on drop.
+struct ExpandedMlKemKey {
+    private_key: MlKem768PrivateKey,
+    public_key: MlKem768PublicKey,
+}
+
+impl Drop for ExpandedMlKemKey {
+    fn drop(&mut self) {
+        self.private_key[0..].zeroize();
+    }
+}
+
+/// Every seed reaching here is 64 bytes: callers check it, and an ML-KEM
+/// private key resource holds nothing else. libcrux's portable
+/// implementation is called directly on every target, never its runtime
+/// CPU dispatch to the NEON or AVX2 code.
+fn mlkem_expand(private_seed: &[u8]) -> ExpandedMlKemKey {
+    let mut seed = Zeroizing::new([0; MLKEM_PRIVATE_SEED_BYTES]);
+    seed.copy_from_slice(private_seed);
+    let (private_key, public_key) = mlkem768::portable::generate_key_pair(*seed).into_parts();
+    ExpandedMlKemKey {
+        private_key,
+        public_key,
+    }
+}
+
 fn mlkem_public_key(private_seed: &[u8]) -> Vec<u8> {
-    let seed = Seed::try_from(private_seed).expect("a 64-byte ML-KEM seed");
-    DecapsulationKey768::from_seed(seed)
-        .encapsulation_key()
-        .to_bytes()
-        .to_vec()
+    mlkem_expand(private_seed).public_key.as_slice().to_vec()
 }
 
 fn mlkem_encapsulate_material(
     provider: &impl CryptoProvider,
     public_key: &[u8; MLKEM_PUBLIC_KEY_BYTES],
 ) -> Result<(Vec<u8>, Zeroizing<Box<[u8]>>), CryptoFailure> {
-    let public_key = EncapsulationKey768::new(&Key::<EncapsulationKey768>::from(*public_key))
-        .map_err(|_| failure(CryptoErrorTag::InvalidPublicKey, 0, 0))?;
-    let mut randomness = Zeroizing::new(vec![0; MLKEM_SHARED_SECRET_BYTES].into_boxed_slice());
+    let public_key = MlKem768PublicKey::from(public_key);
+    // FIPS 203 section 7.2 input check: every coefficient is reduced mod q.
+    if !mlkem768::portable::validate_public_key(&public_key) {
+        return Err(failure(CryptoErrorTag::InvalidPublicKey, 0, 0));
+    }
+    let mut randomness = Zeroizing::new([0; MLKEM_SHARED_SECRET_BYTES]);
     provider
-        .fill_random(&mut randomness)
+        .fill_random(&mut *randomness)
         .map_err(provider_failure)?;
-    let randomness = B32::try_from(randomness.as_ref()).expect("32 bytes of randomness");
-    let (ciphertext, shared_secret) = public_key.encapsulate_deterministic(&randomness);
+    let (ciphertext, shared_secret) = mlkem768::portable::encapsulate(&public_key, *randomness);
     Ok((
-        ciphertext.to_vec(),
-        Zeroizing::new(shared_secret.to_vec().into_boxed_slice()),
+        ciphertext.as_slice().to_vec(),
+        mlkem_shared_secret(shared_secret),
     ))
 }
 
@@ -591,10 +661,23 @@ fn mlkem_decapsulate_material(
     private_seed: &[u8],
     ciphertext: &[u8; MLKEM_CIPHERTEXT_BYTES],
 ) -> Zeroizing<Box<[u8]>> {
-    let private_seed = Seed::try_from(private_seed).expect("a 64-byte ML-KEM seed");
-    let shared_secret = DecapsulationKey768::from_seed(private_seed)
-        .decapsulate(&MlKem768Ciphertext::from(*ciphertext));
-    Zeroizing::new(shared_secret.to_vec().into_boxed_slice())
+    mlkem_decapsulate_expanded(&mlkem_expand(private_seed).private_key, ciphertext)
+}
+
+fn mlkem_decapsulate_expanded(
+    private_key: &MlKem768PrivateKey,
+    ciphertext: &[u8; MLKEM_CIPHERTEXT_BYTES],
+) -> Zeroizing<Box<[u8]>> {
+    mlkem_shared_secret(mlkem768::portable::decapsulate(
+        private_key,
+        &MlKem768Ciphertext::from(ciphertext),
+    ))
+}
+
+fn mlkem_shared_secret(mut shared_secret: [u8; MLKEM_SHARED_SECRET_BYTES]) -> Zeroizing<Box<[u8]>> {
+    let owned = Zeroizing::new(Box::from(&shared_secret[..]));
+    shared_secret.zeroize();
+    owned
 }
 
 /// Generate an actor-owned X25519 private key and its public key.
@@ -863,6 +946,55 @@ fn hpke_seal_material(
     associated_data: &[u8],
     plaintext: &[u8],
 ) -> Result<Vec<u8>, CryptoFailure> {
+    hpke_seal_keeping_secret(
+        provider,
+        recipient_public_key,
+        info,
+        associated_data,
+        plaintext,
+    )
+    .map(|(sealed, _)| sealed)
+}
+
+// RFC 9180 section 5.3: Export(exporter_context, Nh) from the context the KEM
+// shared secret and info set up. OHTTP (RFC 9458 section 4.4) takes its
+// response key from one export of max(Nn, Nk) = 32 bytes for this AEAD.
+fn hpke_export(
+    provider: &impl CryptoProvider,
+    shared_secret: &[u8; 32],
+    info: &[u8],
+    exporter_context: &[u8],
+) -> Zeroizing<[u8; 32]> {
+    let psk_id_hash = hpke_labeled_extract(provider, HPKE_SUITE_ID, &[], b"psk_id_hash", &[]);
+    let info_hash = hpke_labeled_extract(provider, HPKE_SUITE_ID, &[], b"info_hash", info);
+    let mut key_schedule_context = Zeroizing::new([0; 65]);
+    key_schedule_context[1..33].copy_from_slice(&psk_id_hash[..]);
+    key_schedule_context[33..].copy_from_slice(&info_hash[..]);
+    let secret = hpke_labeled_extract(provider, HPKE_SUITE_ID, shared_secret, b"secret", &[]);
+    let exporter_secret: Zeroizing<[u8; 32]> = hpke_labeled_expand(
+        provider,
+        HPKE_SUITE_ID,
+        &secret,
+        b"exp",
+        &key_schedule_context[..],
+    );
+    hpke_labeled_expand(
+        provider,
+        HPKE_SUITE_ID,
+        &exporter_secret,
+        b"sec",
+        exporter_context,
+    )
+}
+
+// The seal, and the KEM shared secret its context came from (for an export).
+fn hpke_seal_keeping_secret(
+    provider: &impl CryptoProvider,
+    recipient_public_key: &[u8; 32],
+    info: &[u8],
+    associated_data: &[u8],
+    plaintext: &[u8],
+) -> Result<(Vec<u8>, Zeroizing<[u8; 32]>), CryptoFailure> {
     let mut input_key_material = Zeroizing::new([0; 32]);
     provider
         .fill_random(&mut input_key_material[..])
@@ -881,7 +1013,7 @@ fn hpke_seal_material(
     let mut sealed = Vec::with_capacity(HPKE_ENCAPSULATED_KEY_BYTES + ciphertext.len());
     sealed.extend_from_slice(&encapsulated_key);
     sealed.extend_from_slice(&ciphertext);
-    Ok(sealed)
+    Ok((sealed, shared_secret))
 }
 
 fn hpke_open_material(
@@ -891,6 +1023,23 @@ fn hpke_open_material(
     associated_data: &[u8],
     sealed: &[u8],
 ) -> Result<Zeroizing<Vec<u8>>, CryptoFailure> {
+    hpke_open_keeping_secret(
+        provider,
+        recipient_private_key,
+        info,
+        associated_data,
+        sealed,
+    )
+    .map(|(plaintext, _)| plaintext)
+}
+
+fn hpke_open_keeping_secret(
+    provider: &impl CryptoProvider,
+    recipient_private_key: &[u8; 32],
+    info: &[u8],
+    associated_data: &[u8],
+    sealed: &[u8],
+) -> Result<(Zeroizing<Vec<u8>>, Zeroizing<[u8; 32]>), CryptoFailure> {
     if sealed.len() < HPKE_MIN_SEALED_BYTES || sealed.len() > MAX_HPKE_SEALED_BYTES {
         return Err(failure(
             CryptoErrorTag::InvalidLength,
@@ -911,7 +1060,7 @@ fn hpke_open_material(
     provider
         .chacha20poly1305_open(&key, &nonce, associated_data, &mut plaintext)
         .map_err(provider_failure)?;
-    Ok(plaintext)
+    Ok((plaintext, shared_secret))
 }
 
 /// Seal one RFC 9180 base-mode X25519/HKDF-SHA-256/ChaCha20-Poly1305 message.
@@ -1075,6 +1224,221 @@ pub extern "C" fn mesh_crypto_hpke_open_secret(
             sealed,
         )
     }))
+}
+
+// `(Bytes, SecretBytes)`: a sealed or opened message and the secret exported
+// from its context, owned by the running actor.
+fn bytes_and_secret(value: &[u8], exported: Zeroizing<[u8; 32]>) -> *mut MeshResult {
+    let output = allocate_value(MeshTuple2Pointers {
+        len: 2,
+        first: bytes_value(value),
+        second: ptr::null_mut(),
+    });
+    let result = alloc_result(0, output.cast());
+    let exported = try_crypto!(with_current_process(move |process| {
+        insert_owned_resource(
+            process,
+            ResourceKind::SecretBytes,
+            Zeroizing::new(Box::from(&exported[..])),
+        )
+        .map_err(resource_failure)
+    }));
+    unsafe { (*output).second = exported };
+    result
+}
+
+/// Seal like `mesh_crypto_hpke_seal`, and also export 32 bytes from the
+/// sender's context under `exporter_context` (RFC 9180 section 5.3).
+#[no_mangle]
+pub extern "C" fn mesh_crypto_hpke_seal_export(
+    recipient_public_key: *const MeshX25519PublicKey,
+    info: *const MeshBytes,
+    associated_data: *const MeshBytes,
+    plaintext: *const MeshBytes,
+    exporter_context: *const MeshBytes,
+) -> *mut MeshResult {
+    let recipient_public_key =
+        try_crypto!(unsafe { x25519_public_key_bytes(recipient_public_key) });
+    let info = try_crypto!(unsafe { required_bytes(info, MAX_HPKE_INFO_BYTES) });
+    let associated_data = try_crypto!(unsafe { required_bytes(associated_data, MAX_INPUT_BYTES) });
+    let plaintext = try_crypto!(unsafe { required_bytes(plaintext, MAX_INPUT_BYTES) });
+    let exporter_context =
+        try_crypto!(unsafe { required_bytes(exporter_context, MAX_HPKE_INFO_BYTES) });
+    let (sealed, shared_secret) = try_crypto!(hpke_seal_keeping_secret(
+        &SystemProvider,
+        recipient_public_key,
+        info,
+        associated_data,
+        plaintext,
+    ));
+    let exported = hpke_export(&SystemProvider, &shared_secret, info, exporter_context);
+    bytes_and_secret(&sealed, exported)
+}
+
+/// Open like `mesh_crypto_hpke_open`, and also export 32 bytes from the
+/// receiver's context under `exporter_context`: the sender's export.
+#[no_mangle]
+pub extern "C" fn mesh_crypto_hpke_open_export(
+    recipient_private_key: *const MeshSecretHandle,
+    info: *const MeshBytes,
+    associated_data: *const MeshBytes,
+    sealed: *const MeshBytes,
+    exporter_context: *const MeshBytes,
+) -> *mut MeshResult {
+    let info = try_crypto!(unsafe { required_bytes(info, MAX_HPKE_INFO_BYTES) });
+    let associated_data = try_crypto!(unsafe { required_bytes(associated_data, MAX_INPUT_BYTES) });
+    let sealed = try_crypto!(unsafe { required_bytes(sealed, MAX_HPKE_SEALED_BYTES) });
+    let exporter_context =
+        try_crypto!(unsafe { required_bytes(exporter_context, MAX_HPKE_INFO_BYTES) });
+    let (plaintext, shared_secret) = try_crypto!(with_current_process(|process| {
+        with_owned_resource(
+            process,
+            recipient_private_key,
+            ResourceKind::X25519PrivateKey,
+            |private_key| {
+                let private_key = <&[u8; 32]>::try_from(private_key).map_err(|_| {
+                    failure(CryptoErrorTag::InvalidKey, 32, private_key.len() as i64)
+                })?;
+                hpke_open_keeping_secret(
+                    &SystemProvider,
+                    private_key,
+                    info,
+                    associated_data,
+                    sealed,
+                )
+            },
+        )
+        .map_err(resource_failure)?
+    }));
+    let exported = hpke_export(&SystemProvider, &shared_secret, info, exporter_context);
+    bytes_and_secret(&plaintext, exported)
+}
+
+// The derived-key AEAD takes messages up to a mebibyte: an OHTTP response
+// carries a whole mailbox batch.
+const MAX_DERIVED_AEAD_BYTES: usize = 1024 * 1024;
+
+// RFC 9458 section 4.4 steps 3-5 with HKDF-SHA-256 and ChaCha20-Poly1305:
+// prk = Extract(salt, secret), key = Expand(prk, "key", 32),
+// nonce = Expand(prk, "nonce", 12).
+fn derived_aead_key_and_nonce(
+    provider: &impl CryptoProvider,
+    secret: &[u8],
+    salt: &[u8],
+) -> Result<(Zeroizing<[u8; 32]>, Zeroizing<[u8; 12]>), CryptoFailure> {
+    let mut pseudo_random_key = Zeroizing::new([0; 32]);
+    provider
+        .hmac_sha256(salt, secret, &mut pseudo_random_key)
+        .map_err(provider_failure)?;
+    let mut key = Zeroizing::new([0; 32]);
+    provider
+        .hmac_sha256(&pseudo_random_key[..], b"key\x01", &mut key)
+        .map_err(provider_failure)?;
+    let mut block = Zeroizing::new([0; 32]);
+    provider
+        .hmac_sha256(&pseudo_random_key[..], b"nonce\x01", &mut block)
+        .map_err(provider_failure)?;
+    let mut nonce = Zeroizing::new([0; 12]);
+    nonce.copy_from_slice(&block[..12]);
+    Ok((key, nonce))
+}
+
+fn derived_aead_seal_material(
+    provider: &impl CryptoProvider,
+    secret: &[u8],
+    salt: &[u8],
+    associated_data: &[u8],
+    plaintext: &[u8],
+) -> Result<Vec<u8>, CryptoFailure> {
+    let (key, nonce) = derived_aead_key_and_nonce(provider, secret, salt)?;
+    provider
+        .chacha20poly1305_seal_within(
+            &key,
+            &nonce,
+            associated_data,
+            plaintext,
+            MAX_DERIVED_AEAD_BYTES,
+        )
+        .map_err(provider_failure)
+}
+
+fn derived_aead_open_material(
+    provider: &impl CryptoProvider,
+    secret: &[u8],
+    salt: &[u8],
+    associated_data: &[u8],
+    ciphertext: &[u8],
+) -> Result<Zeroizing<Vec<u8>>, CryptoFailure> {
+    let (key, nonce) = derived_aead_key_and_nonce(provider, secret, salt)?;
+    let mut plaintext = Zeroizing::new(ciphertext.to_vec());
+    provider
+        .chacha20poly1305_open_within(
+            &key,
+            &nonce,
+            associated_data,
+            &mut plaintext,
+            MAX_DERIVED_AEAD_BYTES,
+        )
+        .map_err(provider_failure)?;
+    Ok(plaintext)
+}
+
+/// ChaCha20-Poly1305 under the key and nonce HKDF-SHA-256 derives from a
+/// secret and a public salt (RFC 9458 section 4.4); the secret is borrowed.
+#[no_mangle]
+pub extern "C" fn mesh_crypto_hkdf_aead_seal(
+    secret: *const MeshSecretHandle,
+    salt: *const MeshBytes,
+    associated_data: *const MeshBytes,
+    plaintext: *const MeshBytes,
+) -> *mut MeshResult {
+    let salt = try_crypto!(unsafe { required_bytes(salt, MAX_INPUT_BYTES) });
+    let associated_data = try_crypto!(unsafe { required_bytes(associated_data, MAX_INPUT_BYTES) });
+    let plaintext = try_crypto!(unsafe { required_bytes(plaintext, MAX_DERIVED_AEAD_BYTES) });
+    crypto_result(
+        with_current_process(|process| {
+            with_owned_resource(process, secret, ResourceKind::SecretBytes, |secret| {
+                derived_aead_seal_material(
+                    &SystemProvider,
+                    secret,
+                    salt,
+                    associated_data,
+                    plaintext,
+                )
+            })
+            .map_err(resource_failure)?
+        })
+        .map(|ciphertext| bytes_value(&ciphertext)),
+    )
+}
+
+/// Open what `mesh_crypto_hkdf_aead_seal` sealed.
+#[no_mangle]
+pub extern "C" fn mesh_crypto_hkdf_aead_open(
+    secret: *const MeshSecretHandle,
+    salt: *const MeshBytes,
+    associated_data: *const MeshBytes,
+    ciphertext: *const MeshBytes,
+) -> *mut MeshResult {
+    let salt = try_crypto!(unsafe { required_bytes(salt, MAX_INPUT_BYTES) });
+    let associated_data = try_crypto!(unsafe { required_bytes(associated_data, MAX_INPUT_BYTES) });
+    let ciphertext =
+        try_crypto!(unsafe { required_bytes(ciphertext, MAX_DERIVED_AEAD_BYTES + AEAD_TAG_BYTES) });
+    crypto_result(
+        with_current_process(|process| {
+            with_owned_resource(process, secret, ResourceKind::SecretBytes, |secret| {
+                derived_aead_open_material(
+                    &SystemProvider,
+                    secret,
+                    salt,
+                    associated_data,
+                    ciphertext,
+                )
+            })
+            .map_err(resource_failure)?
+        })
+        .map(|plaintext| bytes_value(&plaintext)),
+    )
 }
 
 fn allocate_mlkem_key_pair(
@@ -1487,6 +1851,197 @@ pub extern "C" fn mesh_crypto_aead_open(
     )
 }
 
+// ── Blind RSA (profile BR1) ───────────────────────────────────────────
+
+/// The BR1 key a public key wrapper holds: only the exact RFC 9578 SPKI of a
+/// 2,048-bit key with e = 65,537.
+unsafe fn blind_rsa_public_key(
+    public_key: *const MeshBlindRsaPublicKey,
+) -> Result<blind_rsa::Br1PublicKey, CryptoFailure> {
+    let spki = valid_bytes((*public_key).bytes).ok_or_else(|| {
+        failure(
+            CryptoErrorTag::InvalidPublicKey,
+            blind_rsa::SPKI_BYTES as i64,
+            -1,
+        )
+    })?;
+    blind_rsa::public_key_from_spki(spki)
+}
+
+fn blind_rsa_public_key_value(spki: &[u8]) -> *mut MeshResult {
+    let bytes = bytes_value(spki);
+    ok_result(allocate_value(MeshBlindRsaPublicKey { bytes }))
+}
+
+/// Parse an RFC 9578 SPKI (RSASSA-PSS, SHA-384, 2,048 bits, e = 65,537).
+#[no_mangle]
+pub extern "C" fn mesh_crypto_blind_rsa_public_from_spki(
+    spki: *const MeshBytes,
+) -> *mut MeshResult {
+    let spki = try_crypto!(unsafe { valid_bytes(spki) }.ok_or_else(|| failure(
+        CryptoErrorTag::InvalidPublicKey,
+        blind_rsa::SPKI_BYTES as i64,
+        -1
+    )))
+    .to_vec();
+    try_crypto!(blind_rsa::public_key_from_spki(&spki));
+    blind_rsa_public_key_value(&spki)
+}
+
+/// Blind a message of at most 64 KiB: the 256-byte blinded message for the
+/// issuer and the actor-owned state that finalizes its signature.
+#[no_mangle]
+pub extern "C" fn mesh_crypto_blind_rsa_blind(
+    public_key: *const MeshBlindRsaPublicKey,
+    message: *const MeshBytes,
+) -> *mut MeshResult {
+    let key = try_crypto!(unsafe { blind_rsa_public_key(public_key) });
+    let message = try_crypto!(unsafe { required_bytes(message, MAX_INPUT_BYTES) });
+    let blind_rsa::Blinded { blinded, inverse } =
+        try_crypto!(blind_rsa::blind(&SystemProvider, &key, message));
+    let blinded = bytes_value(&blinded);
+    let output = allocate_value(MeshBlindRsaBlinded {
+        blinded,
+        state: ptr::null_mut(),
+    });
+    let result = alloc_result(0, output.cast());
+    let state = try_crypto!(with_current_process(move |process| {
+        insert_owned_resource(process, ResourceKind::BlindRsaBlindingState, inverse)
+            .map_err(resource_failure)
+    }));
+    unsafe { (*output).state = state };
+    result
+}
+
+/// Unblind the issuer's 256-byte blind signature with a blinding state,
+/// which is consumed on every path. The signature is returned only if it
+/// verifies for `message` under the key.
+#[no_mangle]
+pub extern "C" fn mesh_crypto_blind_rsa_finalize(
+    public_key: *const MeshBlindRsaPublicKey,
+    message: *const MeshBytes,
+    blind_signature: *const MeshBytes,
+    state: *const MeshSecretHandle,
+) -> *mut MeshResult {
+    let inverse = try_crypto!(with_current_process(|process| {
+        consume_owned_resource(process, state, ResourceKind::BlindRsaBlindingState)
+            .map_err(resource_failure)
+    }));
+    let key = try_crypto!(unsafe { blind_rsa_public_key(public_key) });
+    let message = try_crypto!(unsafe { required_bytes(message, MAX_INPUT_BYTES) });
+    let blind_signature = try_crypto!(unsafe { valid_bytes(blind_signature) }.ok_or_else(|| {
+        failure(
+            CryptoErrorTag::InvalidSignature,
+            blind_rsa::MODULUS_BYTES as i64,
+            -1,
+        )
+    }));
+    crypto_result(
+        blind_rsa::finalize(&key, message, blind_signature, &inverse)
+            .map(|signature| bytes_value(&signature)),
+    )
+}
+
+fn blind_rsa_verify_values(
+    public_key: *const MeshBlindRsaPublicKey,
+    message: *const MeshBytes,
+    signature: *const MeshBytes,
+) -> Result<bool, CryptoFailure> {
+    let key = unsafe { blind_rsa_public_key(public_key) }?;
+    let message = unsafe { required_bytes(message, MAX_INPUT_BYTES) }?;
+    let signature = unsafe {
+        exact_bytes::<{ blind_rsa::MODULUS_BYTES }>(signature, CryptoErrorTag::InvalidSignature)
+    }?;
+    Ok(blind_rsa::verify(&key, message, signature))
+}
+
+/// Verify an RSASSA-PSS-SHA384 signature: `Ok(false)` for a 256-byte
+/// signature that does not verify.
+#[no_mangle]
+pub extern "C" fn mesh_crypto_blind_rsa_verify(
+    public_key: *const MeshBlindRsaPublicKey,
+    message: *const MeshBytes,
+    signature: *const MeshBytes,
+) -> *mut MeshResult {
+    crypto_result(blind_rsa_verify_values(public_key, message, signature).map(allocate_value))
+}
+
+/// Generate an actor-owned 2,048-bit blind RSA private key (servers only).
+#[no_mangle]
+pub extern "C" fn mesh_crypto_blind_rsa_generate() -> *mut MeshResult {
+    try_crypto!(blind_rsa::server_target());
+    let key = try_crypto!(blind_rsa::signer::generate());
+    crypto_result(with_current_process(move |process| {
+        insert_owned_resource(process, ResourceKind::BlindRsaSecretKey, key)
+            .map_err(resource_failure)
+    }))
+}
+
+fn blind_rsa_from_secret_for_process(
+    process: &mut Process,
+    material: *const MeshSecretHandle,
+) -> Result<*mut MeshSecretHandle, CryptoFailure> {
+    // Consumed whatever happens next, as `consume` promises.
+    let pkcs8 = consume_owned_resource(process, material, ResourceKind::SecretBytes)
+        .map_err(resource_failure)?;
+    blind_rsa::server_target()?;
+    let key = blind_rsa::signer::import(&pkcs8)?;
+    drop(pkcs8);
+    insert_owned_resource(process, ResourceKind::BlindRsaSecretKey, key).map_err(resource_failure)
+}
+
+/// Consume PKCS#8 DER secret bytes into a blind RSA private key: exactly
+/// 2,048 bits, e = 65,537, consistent parts (servers only).
+#[no_mangle]
+pub extern "C" fn mesh_crypto_blind_rsa_from_secret(
+    material: *const MeshSecretHandle,
+) -> *mut MeshResult {
+    crypto_result(with_current_process(|process| {
+        blind_rsa_from_secret_for_process(process, material)
+    }))
+}
+
+/// The public key of an actor-owned blind RSA private key (servers only).
+#[no_mangle]
+pub extern "C" fn mesh_crypto_blind_rsa_public(
+    private_key: *const MeshSecretHandle,
+) -> *mut MeshResult {
+    try_crypto!(blind_rsa::server_target());
+    let modulus = try_crypto!(with_current_process(|process| {
+        with_owned_resource(
+            process,
+            private_key,
+            ResourceKind::BlindRsaSecretKey,
+            blind_rsa::signer::public_modulus,
+        )
+        .map_err(resource_failure)?
+    }));
+    blind_rsa_public_key_value(&blind_rsa::spki_for_modulus(&modulus))
+}
+
+/// Sign a 256-byte blinded message below n with an actor-owned blind RSA
+/// private key (servers only). The signature is checked before it is
+/// returned.
+#[no_mangle]
+pub extern "C" fn mesh_crypto_blind_rsa_sign(
+    private_key: *const MeshSecretHandle,
+    blinded: *const MeshBytes,
+) -> *mut MeshResult {
+    try_crypto!(blind_rsa::server_target());
+    let blinded =
+        try_crypto!(unsafe { required_bytes(blinded, blind_rsa::MODULUS_BYTES) }).to_vec();
+    let signature = try_crypto!(with_current_process(|process| {
+        with_owned_resource(
+            process,
+            private_key,
+            ResourceKind::BlindRsaSecretKey,
+            |pkcs8| blind_rsa::signer::sign(pkcs8, &blinded),
+        )
+        .map_err(resource_failure)?
+    }));
+    ok_result(bytes_value(&signature))
+}
+
 /// Crypto.hmac_sha512(key, msg) -> String
 ///
 /// Returns the HMAC-SHA512 of `msg` keyed with `key`, as a lowercase hex string.
@@ -1677,6 +2232,14 @@ pub fn fuzz_crypto_boundaries(data: &[u8]) {
         }
         let _ = hpke_open_material(&fixed, &key, info, associated_data, input);
     }
+
+    // Blind RSA: SPKI parsing always; blinding, finalizing, verifying and
+    // (on servers) import and signing rejection on a selector, as they cost
+    // modular exponentiations.
+    let _ = blind_rsa::public_key_from_spki(input);
+    if input.first().copied().unwrap_or_default() & 0x1f == 2 {
+        blind_rsa::fuzz_blind_rsa_boundaries(input);
+    }
 }
 
 #[cfg(test)]
@@ -1708,6 +2271,8 @@ mod tests {
         let _: extern "C" fn(i64) -> *mut MeshResult = mesh_crypto_random_bytes;
         let _: extern "C" fn(*const MeshSecretHandle, *const MeshBytes) -> *mut MeshResult =
             mesh_crypto_hmac_sha256;
+        let _: extern "C" fn(*const MeshSecretHandle, *const MeshBytes) -> *mut MeshResult =
+            mesh_crypto_hmac_sha256_tag;
         let _: extern "C" fn(
             *const MeshSecretHandle,
             *const MeshBytes,
@@ -1790,6 +2355,40 @@ mod tests {
             *const MeshBytes,
             *const MeshBytes,
         ) -> *mut MeshResult = mesh_crypto_aead_open;
+        let _: extern "C" fn() -> *mut MeshResult = mesh_crypto_blind_rsa_generate;
+        let _: extern "C" fn(*const MeshSecretHandle) -> *mut MeshResult =
+            mesh_crypto_blind_rsa_from_secret;
+        let _: extern "C" fn(*const MeshSecretHandle) -> *mut MeshResult =
+            mesh_crypto_blind_rsa_public;
+        let _: extern "C" fn(*const MeshBytes) -> *mut MeshResult =
+            mesh_crypto_blind_rsa_public_from_spki;
+        let _: extern "C" fn(*const MeshBlindRsaPublicKey, *const MeshBytes) -> *mut MeshResult =
+            mesh_crypto_blind_rsa_blind;
+        let _: extern "C" fn(*const MeshSecretHandle, *const MeshBytes) -> *mut MeshResult =
+            mesh_crypto_blind_rsa_sign;
+        let _: extern "C" fn(
+            *const MeshBlindRsaPublicKey,
+            *const MeshBytes,
+            *const MeshBytes,
+            *const MeshSecretHandle,
+        ) -> *mut MeshResult = mesh_crypto_blind_rsa_finalize;
+        let _: extern "C" fn(
+            *const MeshBlindRsaPublicKey,
+            *const MeshBytes,
+            *const MeshBytes,
+        ) -> *mut MeshResult = mesh_crypto_blind_rsa_verify;
+        assert_eq!(
+            [
+                std::mem::size_of::<MeshBlindRsaPublicKey>(),
+                std::mem::size_of::<MeshBlindRsaBlinded>(),
+                std::mem::offset_of!(MeshBlindRsaBlinded, blinded),
+                std::mem::offset_of!(MeshBlindRsaBlinded, state),
+                CryptoErrorTag::UnsupportedTarget as usize,
+                ResourceKind::BlindRsaSecretKey as usize,
+                ResourceKind::BlindRsaBlindingState as usize,
+            ],
+            [8, 16, 0, 8, 10, 9, 10]
+        );
 
         assert_eq!(
             [
@@ -1951,6 +2550,65 @@ mod tests {
         .expect("read HMAC output");
 
         assert_eq!(length, 32);
+        destroy_owned(owner);
+    }
+
+    /// A MAC tag is public: RFC 4231 cases 1, 2 and 6 come back as `Bytes`,
+    /// the key stays with its owner, and a key that is not a secret is refused.
+    #[test]
+    fn hmac_sha256_tag_matches_rfc4231_and_leaves_the_key_owned() {
+        mesh_rt_init();
+        let owner = ProcessId(70_011);
+        let mut process = Process::new(owner, Priority::Normal);
+        let hex = |value: &[u8]| {
+            value
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>()
+        };
+        for (key, message, tag) in [
+            (
+                vec![0x0b; 20],
+                b"Hi There".to_vec(),
+                "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7",
+            ),
+            (
+                b"Jefe".to_vec(),
+                b"what do ya want for nothing?".to_vec(),
+                "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843",
+            ),
+            (
+                vec![0xaa; 131],
+                b"Test Using Larger Than Block-Size Key - Hash Key First".to_vec(),
+                "60e431591ee0b67f0d8a26aacbf5b77f8e0bc6213728c5140546040f0ee37f54",
+            ),
+        ] {
+            let key = insert_owned_resource(
+                &mut process,
+                ResourceKind::SecretBytes,
+                Zeroizing::new(key.into_boxed_slice()),
+            )
+            .expect("insert HMAC key");
+            let message = mesh_bytes_new(message.as_ptr(), message.len() as u64);
+            let output = hmac_sha256_tag_for_process(&process, &SystemProvider, key, message)
+                .expect("HMAC tag");
+            assert_eq!(hex(&output), tag);
+            assert!(
+                with_owned_resource(&process, key, ResourceKind::SecretBytes, |_| ()).is_ok(),
+                "the key is borrowed"
+            );
+        }
+        let not_secret = insert_owned_resource(
+            &mut process,
+            ResourceKind::SigningPrivateKey,
+            Zeroizing::new(vec![1; 32].into_boxed_slice()),
+        )
+        .expect("insert signing key");
+        let message = mesh_bytes_new(b"m".as_ptr(), 1);
+        let error = hmac_sha256_tag_for_process(&process, &SystemProvider, not_secret, message)
+            .err()
+            .expect("refused");
+        assert_eq!(error.tag, CryptoErrorTag::InvalidKey);
         destroy_owned(owner);
     }
 
@@ -2244,6 +2902,135 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn hpke_export_matches_rfc9180_a2_1_exported_values() {
+        fn hex(value: &str) -> Vec<u8> {
+            value
+                .as_bytes()
+                .chunks_exact(2)
+                .map(|chunk| u8::from_str_radix(std::str::from_utf8(chunk).unwrap(), 16).unwrap())
+                .collect()
+        }
+
+        let input_key_material =
+            hex("909a9b35d3dc4713a5e72a4da274b55d3d3821a37e5d099e74a647db583a904b");
+        let provider = FixedProvider::with_random(&input_key_material);
+        let recipient_public_key: [u8; 32] =
+            hex("4310ee97d88cc1f088a5576c77ab0cf5c3ac797f3d95139c6c84b5429c59662a")
+                .try_into()
+                .unwrap();
+        let recipient_private_key: [u8; 32] =
+            hex("8057991eef8f1f1af18f4a9491d16a1ce333f695d4db8e38da75975c4478e0fb")
+                .try_into()
+                .unwrap();
+        let info = hex("4f6465206f6e2061204772656369616e2055726e");
+        let Ok((sealed, sender_secret)) =
+            hpke_seal_keeping_secret(&provider, &recipient_public_key, &info, b"", b"pt")
+        else {
+            panic!("RFC 9180 seal failed");
+        };
+        let Ok((_, receiver_secret)) =
+            hpke_open_keeping_secret(&provider, &recipient_private_key, &info, b"", &sealed)
+        else {
+            panic!("RFC 9180 open failed");
+        };
+        for (context, expected) in [
+            (
+                "",
+                "4bbd6243b8bb54cec311fac9df81841b6fd61f56538a775e7c80a9f40160606e",
+            ),
+            (
+                "00",
+                "8c1df14732580e5501b00f82b10a1647b40713191b7c1240ac80e2b68808ba69",
+            ),
+            (
+                "54657374436f6e74657874",
+                "5acb09211139c43b3090489a9da433e8a30ee7188ba8b0a9a1ccf0c229283e53",
+            ),
+        ] {
+            let context = hex(context);
+            for shared_secret in [&sender_secret, &receiver_secret] {
+                assert_eq!(
+                    &hpke_export(&provider, shared_secret, &info, &context)[..],
+                    hex(expected)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn derived_aead_matches_an_independent_derivation_and_takes_large_messages() {
+        // Expected from Node (OpenSSL): HKDF-SHA-256 with salt 0x22 * 64 over
+        // secret 0x11 * 32, labels "key" and "nonce", then ChaCha20-Poly1305.
+        let secret = [0x11; 32];
+        let salt = [0x22; 64];
+        let Ok(sealed) =
+            derived_aead_seal_material(&SystemProvider, &secret, &salt, b"", b"OHTTP response")
+        else {
+            panic!("derived seal failed");
+        };
+        assert_eq!(
+            sealed,
+            b"\x81\x06\x83\x21\x19\x38\xfc\xe0\x25\x72\x22\x42\x3d\x79\x50\xb5\
+              \xf6\x40\x5c\x2a\xb9\x19\xe5\xdf\xed\x07\x29\xcb\xd8\x36"
+        );
+        let large = vec![7; MAX_DERIVED_AEAD_BYTES];
+        let Ok(sealed_large) =
+            derived_aead_seal_material(&SystemProvider, &secret, &salt, b"", &large)
+        else {
+            panic!("large derived seal failed");
+        };
+        let Ok(opened) =
+            derived_aead_open_material(&SystemProvider, &secret, &salt, b"", &sealed_large)
+        else {
+            panic!("large derived open failed");
+        };
+        assert_eq!(&opened[..], &large[..]);
+        let mut tampered = sealed_large;
+        tampered[0] ^= 1;
+        assert!(matches!(
+            derived_aead_open_material(&SystemProvider, &secret, &salt, b"", &tampered),
+            Err(CryptoFailure {
+                tag: CryptoErrorTag::AuthenticationFailed,
+                ..
+            })
+        ));
+        assert!(matches!(
+            derived_aead_open_material(&SystemProvider, &secret, &[0x23; 64], b"", &sealed),
+            Err(CryptoFailure {
+                tag: CryptoErrorTag::AuthenticationFailed,
+                ..
+            })
+        ));
+        assert!(derived_aead_seal_material(
+            &SystemProvider,
+            &secret,
+            &salt,
+            b"",
+            &vec![0; MAX_DERIVED_AEAD_BYTES + 1]
+        )
+        .is_err());
+    }
+
+    /// The published release vector (NIST ACVP keyGen tcId 26) at the
+    /// runtime level; Morse's `scripts/prove-m14.sh` runs this test by name.
+    /// `mlkem_tests` checks every ACVP ML-KEM-768 case.
+    #[test]
+    fn nist_acvp_mlkem768_keygen_tc26_matches_public_key() {
+        let vector: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tests/vectors/mlkem/mlkem768-keygen-acvp-tc26.json"
+        ))
+        .expect("ML-KEM vector file");
+        let hex = |field: &serde_json::Value| {
+            crate::bytes::decode_hex(field.as_str().expect("a hex string")).expect("hex")
+        };
+        let seed = [hex(&vector["input"]["d"]), hex(&vector["input"]["z"])].concat();
+        assert_eq!(
+            mlkem_public_key(&seed),
+            hex(&vector["expected"]["public_key"])
+        );
     }
 
     #[test]
@@ -2989,6 +3776,46 @@ mod tests {
                 sealed_key,
             ));
             assert_eq!(revealed(opened_key, ResourceKind::SecretBytes), [0x11; 32]);
+            let context = bytes(b"message/bhttp response");
+            let exported_seal: *mut MeshTuple2Pointers = created(mesh_crypto_hpke_seal_export(
+                &(*bob).public_key,
+                info,
+                aad,
+                bytes(b"request"),
+                context,
+            ));
+            let exported_open: *mut MeshTuple2Pointers = created(mesh_crypto_hpke_open_export(
+                (*carol).private_key,
+                info,
+                aad,
+                (*exported_seal).first,
+                context,
+            ));
+            assert_eq!(contents((*exported_open).first), b"request");
+            let sender_export = revealed((*exported_seal).second, ResourceKind::SecretBytes);
+            assert_eq!(sender_export.len(), 32);
+            assert_eq!(
+                sender_export,
+                revealed((*exported_open).second, ResourceKind::SecretBytes)
+            );
+            let salt = bytes(&[9; 64]);
+            let response = created(mesh_crypto_hkdf_aead_seal(
+                (*exported_open).second,
+                salt,
+                aad,
+                bytes(b"response"),
+            ));
+            let read = created(mesh_crypto_hkdf_aead_open(
+                (*exported_seal).second,
+                salt,
+                aad,
+                response,
+            ));
+            assert_eq!(contents(read), b"response");
+            assert_eq!(
+                tag_of(mesh_crypto_hkdf_aead_open(key, salt, aad, response)),
+                CryptoErrorTag::AuthenticationFailed as u8
+            );
             let authentication = CryptoErrorTag::AuthenticationFailed as u8;
             let other_info = bytes(b"other");
             assert_eq!(
@@ -3114,6 +3941,445 @@ mod tests {
                 tag_of(mesh_crypto_aead_open(aead, nonce, info, sealed)),
                 authentication
             );
+        });
+    }
+
+    fn blind_rsa_vector(name: &str) -> Vec<u8> {
+        let document: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tests/vectors/blind-rsa/rfc9578-type2.json"
+        ))
+        .expect("RFC 9578 vector file");
+        crate::bytes::decode_hex(document["vectors"][0][name].as_str().expect("field"))
+            .expect("hex")
+    }
+
+    /// The RFC 9578 issuer key as PKCS#8 DER.
+    fn blind_rsa_issuer_pkcs8() -> Vec<u8> {
+        let pem = String::from_utf8(blind_rsa_vector("skI")).expect("PEM");
+        let body: String = pem
+            .lines()
+            .filter(|line| !line.starts_with("-----"))
+            .collect();
+        crate::bytes::decode_base64(&body).expect("PEM base64")
+    }
+
+    fn owned_count() -> usize {
+        let process = crate::actor::current_process().expect("an actor");
+        let owner = process.lock().pid;
+        crate::secret::owned_secret_count_for_test(owner)
+    }
+
+    /// Blind RSA as a Mesh program calls it: the RFC 9578 issuer key imports
+    /// from secret bytes, its public key is the vector's SPKI, a token input
+    /// blinds, signs, finalizes and verifies, and each state finalizes once.
+    #[test]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    fn blind_rsa_entry_points_round_trip_for_the_calling_actor() {
+        mesh_rt_init();
+        crate::secret::as_test_actor(|_| unsafe {
+            let spki = blind_rsa_vector("pkI");
+            let public: *mut MeshBlindRsaPublicKey =
+                created(mesh_crypto_blind_rsa_public_from_spki(bytes(&spki)));
+            assert_eq!(contents((*public).bytes), spki.as_slice());
+
+            let issuer = created(mesh_crypto_blind_rsa_from_secret(secret(
+                &blind_rsa_issuer_pkcs8(),
+            )));
+            let derived: *mut MeshBlindRsaPublicKey = created(mesh_crypto_blind_rsa_public(issuer));
+            assert_eq!(contents((*derived).bytes), spki.as_slice());
+
+            let token_input = bytes(&blind_rsa_vector("token")[..98]);
+            let blinded: *mut MeshBlindRsaBlinded =
+                created(mesh_crypto_blind_rsa_blind(public, token_input));
+            assert_eq!(contents((*blinded).blinded).len(), 256);
+            let states = owned_count();
+            let blind_signature = created(mesh_crypto_blind_rsa_sign(issuer, (*blinded).blinded));
+            let signature: *mut MeshBytes = created(mesh_crypto_blind_rsa_finalize(
+                public,
+                token_input,
+                blind_signature,
+                (*blinded).state,
+            ));
+            assert_eq!(owned_count(), states - 1, "finalize consumed the state");
+            let verified: *mut bool =
+                created(mesh_crypto_blind_rsa_verify(public, token_input, signature));
+            assert!(*verified);
+            assert_eq!(
+                refused(mesh_crypto_blind_rsa_finalize(
+                    public,
+                    token_input,
+                    blind_signature,
+                    (*blinded).state
+                ))
+                .0,
+                CryptoErrorTag::SecretDestroyed as u8
+            );
+
+            let generated = created(mesh_crypto_blind_rsa_generate());
+            let generated_public: *mut MeshBlindRsaPublicKey =
+                created(mesh_crypto_blind_rsa_public(generated));
+            let reparsed: *mut MeshBlindRsaPublicKey = created(
+                mesh_crypto_blind_rsa_public_from_spki((*generated_public).bytes),
+            );
+            let blinded: *mut MeshBlindRsaBlinded =
+                created(mesh_crypto_blind_rsa_blind(reparsed, token_input));
+            let blind_signature =
+                created(mesh_crypto_blind_rsa_sign(generated, (*blinded).blinded));
+            let signature: *mut MeshBytes = created(mesh_crypto_blind_rsa_finalize(
+                generated_public,
+                token_input,
+                blind_signature,
+                (*blinded).state,
+            ));
+            let verified: *mut bool = created(mesh_crypto_blind_rsa_verify(
+                generated_public,
+                token_input,
+                signature,
+            ));
+            let other_key: *mut bool =
+                created(mesh_crypto_blind_rsa_verify(public, token_input, signature));
+            assert!(*verified && !*other_key);
+        });
+    }
+
+    /// Each blind RSA entry point refuses what the profile excludes with its
+    /// documented error, and consumed arguments are gone on failure too.
+    #[test]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    fn blind_rsa_entry_points_refuse_with_typed_errors() {
+        mesh_rt_init();
+        crate::secret::as_test_actor(|_| unsafe {
+            let spki = blind_rsa_vector("pkI");
+            let public: *mut MeshBlindRsaPublicKey =
+                created(mesh_crypto_blind_rsa_public_from_spki(bytes(&spki)));
+            let message = bytes(b"token input");
+            let public_key = CryptoErrorTag::InvalidPublicKey as u8;
+            assert_eq!(
+                refused(mesh_crypto_blind_rsa_public_from_spki(bytes(&spki[1..]))),
+                (public_key, 342, 341)
+            );
+            assert_eq!(
+                refused(mesh_crypto_blind_rsa_public_from_spki(ptr::null())),
+                (public_key, 342, -1)
+            );
+            let forged = MeshBlindRsaPublicKey {
+                bytes: bytes(&[0; 342]),
+            };
+            assert_eq!(
+                tag_of(mesh_crypto_blind_rsa_blind(&forged, message)),
+                public_key
+            );
+            assert_eq!(
+                tag_of(mesh_crypto_blind_rsa_verify(
+                    &forged,
+                    message,
+                    bytes(&[0; 256])
+                )),
+                public_key
+            );
+            let oversized = vec![0u8; MAX_INPUT_BYTES + 1];
+            assert_eq!(
+                refused(mesh_crypto_blind_rsa_blind(public, bytes(&oversized))),
+                (
+                    CryptoErrorTag::InvalidLength as u8,
+                    MAX_INPUT_BYTES as i64,
+                    MAX_INPUT_BYTES as i64 + 1
+                )
+            );
+            let signature = CryptoErrorTag::InvalidSignature as u8;
+            assert_eq!(
+                refused(mesh_crypto_blind_rsa_verify(
+                    public,
+                    message,
+                    bytes(&[0; 255])
+                )),
+                (signature, 256, 255)
+            );
+            let rejected: *mut bool = created(mesh_crypto_blind_rsa_verify(
+                public,
+                message,
+                bytes(&[1; 256]),
+            ));
+            assert!(!*rejected);
+
+            // A failed finalize still consumes its state.
+            let blinded: *mut MeshBlindRsaBlinded =
+                created(mesh_crypto_blind_rsa_blind(public, message));
+            let before = owned_count();
+            assert_eq!(
+                refused(mesh_crypto_blind_rsa_finalize(
+                    &forged,
+                    message,
+                    bytes(&[1; 256]),
+                    (*blinded).state
+                ))
+                .0,
+                public_key
+            );
+            assert_eq!(owned_count(), before - 1);
+            let blinded: *mut MeshBlindRsaBlinded =
+                created(mesh_crypto_blind_rsa_blind(public, message));
+            assert_eq!(
+                refused(mesh_crypto_blind_rsa_finalize(
+                    public,
+                    message,
+                    bytes(&[1; 255]),
+                    (*blinded).state
+                )),
+                (signature, 256, 255)
+            );
+            assert_eq!(owned_count(), before - 1);
+
+            // Signing: a blinded message of the wrong length or not below n.
+            let issuer = created(mesh_crypto_blind_rsa_from_secret(secret(
+                &blind_rsa_issuer_pkcs8(),
+            )));
+            let length = CryptoErrorTag::InvalidLength as u8;
+            let modulus = spki[81..81 + 256].to_vec();
+            assert_eq!(
+                refused(mesh_crypto_blind_rsa_sign(issuer, bytes(&[1; 255]))),
+                (length, 256, 255)
+            );
+            assert_eq!(
+                refused(mesh_crypto_blind_rsa_sign(issuer, bytes(&[1; 257]))),
+                (length, 256, 257)
+            );
+            assert_eq!(
+                refused(mesh_crypto_blind_rsa_sign(issuer, bytes(&modulus))),
+                (length, 256, 256)
+            );
+
+            // Import consumes its secret bytes even when it refuses them.
+            let before = owned_count();
+            let wrong = secret(&blind_rsa_issuer_pkcs8()[..1000]);
+            assert_eq!(
+                tag_of(mesh_crypto_blind_rsa_from_secret(wrong)),
+                CryptoErrorTag::InvalidKey as u8
+            );
+            assert_eq!(owned_count(), before);
+            let destroyed = CryptoErrorTag::SecretDestroyed as u8;
+            assert_eq!(tag_of(mesh_crypto_blind_rsa_from_secret(wrong)), destroyed);
+            // A destroyed key: stale for every operation.
+            let doomed = created(mesh_crypto_blind_rsa_from_secret(secret(
+                &blind_rsa_issuer_pkcs8(),
+            )));
+            crate::secret::mesh_resource_destroy(doomed);
+            assert_eq!(tag_of(mesh_crypto_blind_rsa_public(doomed)), destroyed);
+            assert_eq!(
+                tag_of(mesh_crypto_blind_rsa_sign(doomed, bytes(&[0; 256]))),
+                destroyed
+            );
+            // A key handle is not a blinding state, nor the reverse.
+            let blinded: *mut MeshBlindRsaBlinded =
+                created(mesh_crypto_blind_rsa_blind(public, message));
+            let wrong_kind = CryptoErrorTag::InvalidKey as u8;
+            assert_eq!(
+                tag_of(mesh_crypto_blind_rsa_sign(
+                    (*blinded).state,
+                    bytes(&[0; 256])
+                )),
+                wrong_kind
+            );
+            assert_eq!(
+                tag_of(mesh_crypto_blind_rsa_finalize(
+                    public,
+                    message,
+                    bytes(&[0; 256]),
+                    issuer
+                )),
+                wrong_kind
+            );
+        });
+    }
+
+    /// A key or blinding state belongs to the actor that made it: another
+    /// actor cannot sign with it or finalize with it, and it stays usable
+    /// for its owner.
+    #[test]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    fn blind_rsa_resources_refuse_a_different_actor() {
+        mesh_rt_init();
+        let owner = ProcessId(70_030);
+        let other = Process::new(ProcessId(70_031), Priority::Normal);
+        let mut process = Process::new(owner, Priority::Normal);
+        let key = blind_rsa::signer::import(&blind_rsa_issuer_pkcs8()).expect("import");
+        let key = insert_owned_resource(&mut process, ResourceKind::BlindRsaSecretKey, key)
+            .expect("insert key");
+        let state = insert_owned_resource(
+            &mut process,
+            ResourceKind::BlindRsaBlindingState,
+            Zeroizing::new(vec![1; 256].into_boxed_slice()),
+        )
+        .expect("insert state");
+        for (handle, kind) in [
+            (key, ResourceKind::BlindRsaSecretKey),
+            (state, ResourceKind::BlindRsaBlindingState),
+        ] {
+            assert_eq!(
+                with_owned_resource(&other, handle, kind, |_| ()),
+                Err(ResourceError::StaleHandle)
+            );
+            assert_eq!(
+                consume_owned_resource(&other, handle, kind),
+                Err(ResourceError::StaleHandle)
+            );
+            assert!(with_owned_resource(&process, handle, kind, |_| ()).is_ok());
+        }
+        assert_eq!(destroy_owned(owner), 2);
+    }
+
+    /// Secret leaks: a PKCS#8 import that fails, a refused signature and a
+    /// finalize that fails leave no sentinel byte in their errors, the
+    /// runtime's error record or AWS-LC's error queue, and the consumed
+    /// material is gone from the table.
+    #[test]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    // `expect_err` would print an accepted key.
+    #[allow(clippy::err_expect)]
+    fn blind_rsa_failures_do_not_leak_sentinel_material() {
+        mesh_rt_init();
+        let sentinel = b"mesh-secret-leak-sentinel";
+        let leaked = |text: &str| {
+            text.contains("mesh-secret-leak-sentinel")
+                || text.contains(&format!("{:?}", &sentinel[..]))
+                || text.contains(
+                    &sentinel
+                        .iter()
+                        .map(|byte| format!("{byte:02x}"))
+                        .collect::<String>(),
+                )
+        };
+        crate::secret::as_test_actor(|_| unsafe {
+            // A PKCS#8 shell whose private key is the sentinel.
+            let mut pkcs8 = blind_rsa_issuer_pkcs8();
+            for (index, byte) in pkcs8[300..].iter_mut().enumerate() {
+                *byte = sentinel[index % sentinel.len()];
+            }
+            let before = owned_count();
+            let result = mesh_crypto_blind_rsa_from_secret(secret(&pkcs8));
+            let record = std::slice::from_raw_parts((*result).value.cast::<u8>(), 24);
+            assert_eq!(refused(result).0, CryptoErrorTag::InvalidKey as u8);
+            assert!(!record
+                .windows(4)
+                .any(|window| sentinel.windows(4).any(|s| s == window)));
+            assert_eq!(owned_count(), before, "the secret was consumed");
+            let direct = blind_rsa::signer::import(&pkcs8).err().expect("refused");
+            assert!(!leaked(&format!("{direct:?}")));
+            assert_eq!(aws_lc_sys::ERR_peek_error(), 0);
+
+            let issuer = created(mesh_crypto_blind_rsa_from_secret(secret(
+                &blind_rsa_issuer_pkcs8(),
+            )));
+            let spki = blind_rsa_vector("pkI");
+            let refused_sign = blind_rsa::signer::sign(&blind_rsa_issuer_pkcs8(), &spki[81..337])
+                .err()
+                .expect("n is out of range");
+            assert!(!leaked(&format!("{refused_sign:?}")));
+            assert_eq!(
+                tag_of(mesh_crypto_blind_rsa_sign(issuer, bytes(&spki[81..337]))),
+                CryptoErrorTag::InvalidLength as u8
+            );
+
+            let public: *mut MeshBlindRsaPublicKey =
+                created(mesh_crypto_blind_rsa_public_from_spki(bytes(&spki)));
+            let blinded: *mut MeshBlindRsaBlinded =
+                created(mesh_crypto_blind_rsa_blind(public, bytes(b"input")));
+            let before = owned_count();
+            let failure = blind_rsa::finalize(
+                &blind_rsa::public_key_from_spki(&spki).expect("key"),
+                b"input",
+                &[1; 256],
+                &[0xa5; 256],
+            )
+            .err()
+            .expect("does not verify");
+            assert!(!leaked(&format!("{failure:?}")));
+            assert_eq!(
+                tag_of(mesh_crypto_blind_rsa_finalize(
+                    public,
+                    bytes(b"input"),
+                    bytes(&[1; 256]),
+                    (*blinded).state
+                )),
+                CryptoErrorTag::InvalidSignature as u8
+            );
+            assert_eq!(owned_count(), before - 1, "the state was destroyed");
+        });
+    }
+
+    /// The client half of blind RSA runs on every target; the server half
+    /// (key generation and import, the public key of a private key, signing,
+    /// sealing an issuer key) is `UnsupportedTarget` wherever AWS-LC is not
+    /// compiled, and import still consumes its secret bytes there.
+    #[test]
+    fn blind_rsa_entry_points_follow_the_target() {
+        mesh_rt_init();
+        let server = cfg!(any(target_os = "linux", target_os = "macos"));
+        let unsupported = CryptoErrorTag::UnsupportedTarget as u8;
+        crate::secret::as_test_actor(|_| unsafe {
+            let spki = blind_rsa_vector("pkI");
+            let token = blind_rsa_vector("token");
+            let public: *mut MeshBlindRsaPublicKey =
+                created(mesh_crypto_blind_rsa_public_from_spki(bytes(&spki)));
+            let (input, authenticator) = (bytes(&token[..98]), bytes(&token[98..]));
+            let verified: *mut bool =
+                created(mesh_crypto_blind_rsa_verify(public, input, authenticator));
+            assert!(*verified);
+            let blinded: *mut MeshBlindRsaBlinded =
+                created(mesh_crypto_blind_rsa_blind(public, input));
+            let before = owned_count();
+            assert_eq!(
+                tag_of(mesh_crypto_blind_rsa_finalize(
+                    public,
+                    input,
+                    bytes(&[1; 256]),
+                    (*blinded).state
+                )),
+                CryptoErrorTag::InvalidSignature as u8
+            );
+            assert_eq!(owned_count(), before - 1);
+
+            let generated = mesh_crypto_blind_rsa_generate();
+            let before = owned_count();
+            let imported = mesh_crypto_blind_rsa_from_secret(secret(&blind_rsa_issuer_pkcs8()));
+            if server {
+                let key = created(imported);
+                created::<MeshSecretHandle>(generated);
+                assert_eq!(owned_count(), before + 1);
+                created::<MeshBlindRsaPublicKey>(mesh_crypto_blind_rsa_public(key));
+            } else {
+                assert_eq!(tag_of(generated), unsupported);
+                assert_eq!(tag_of(imported), unsupported);
+                assert_eq!(owned_count(), before, "import consumed its secret bytes");
+                let stale = secret(&[0; 1]);
+                crate::secret::mesh_resource_destroy(stale);
+                assert_eq!(tag_of(mesh_crypto_blind_rsa_public(stale)), unsupported);
+                assert_eq!(
+                    tag_of(mesh_crypto_blind_rsa_sign(stale, bytes(&[0; 256]))),
+                    unsupported
+                );
+                let wrapping_key = created(crate::storage_wrapping::mesh_storage_key_ephemeral());
+                assert_eq!(
+                    tag_of(
+                        crate::storage_wrapping::mesh_blind_rsa_secret_key_seal_for_storage(
+                            stale,
+                            wrapping_key,
+                            bytes(&[0; 123])
+                        )
+                    ),
+                    unsupported
+                );
+                assert_eq!(
+                    tag_of(
+                        crate::storage_wrapping::mesh_blind_rsa_secret_key_unseal_from_storage(
+                            bytes(&[0; 67]),
+                            wrapping_key,
+                            bytes(&[0; 123])
+                        )
+                    ),
+                    unsupported
+                );
+            }
         });
     }
 

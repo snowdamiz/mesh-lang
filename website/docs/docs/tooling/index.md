@@ -282,10 +282,30 @@ Build options:
 | `--artifact <kind>` | `executable` (default), `staticlib`, or `cdylib`; see [Library Builds](/docs/library-builds/) |
 | `--json` | Emit newline-delimited JSON diagnostics |
 | `--no-color` | Disable color in human-readable diagnostics |
+| `--plaintext-report <path>` | After the build, write the [plaintext report](#plaintext-report) there |
 
 The build reports `  Compiled: <path>` (and `  LLVM IR: <path>` with
 `--emit-llvm`) on standard error. Human-readable diagnostics are colored only
 when standard error is a terminal and `NO_COLOR` is unset.
+
+### Plaintext report
+
+Every `declassify` call and every `@display` export of a project (see
+[Plaintext](/docs/type-system/#plaintext)) is listed by
+
+```bash
+meshc plaintext-report .                                  # print it
+meshc plaintext-report . --output plaintext-report.json   # write it
+meshc plaintext-report . --check plaintext-report.json    # compare with a committed one
+```
+
+The report is JSON, sorted by file and line, so the same source gives the same
+bytes. `--check` exits `1` when a site was added
+(``+ declassify in `f` (main.mpl): reason``) or removed (`-`), and passes when
+only line numbers moved.
+Commit the report and run the check in CI, so no disclosure is added without
+review. The command type-checks the project as `meshc build` does, and fails
+on the same errors.
 
 ### JSON diagnostics
 
@@ -1198,6 +1218,7 @@ The verifier persists the candidate and hosted-run evidence under:
 | Tool | Command | Description |
 |------|---------|-------------|
 | Compiler | `meshc build <dir>` | Compile a project to a native executable, or with `--artifact` to a static or dynamic library |
+| Plaintext report | `meshc plaintext-report [dir] [--output <file> \| --check <file>]` | List every `declassify` and `@display` export; `--check` fails on an unreviewed change |
 | Project scaffolding | `meshc init [--clustered \| --template todo-api --db <backend>] <name>` | Create hello-world, clustered, SQLite Todo, or PostgreSQL Todo projects |
 | Source dependencies | `meshc deps [dir]` | Resolve git/path dependencies, fetch git checkouts, and write lock entries |
 | Registry dependencies | `meshpkg install [name]` | Install all declared exact registry dependencies or one latest named package |

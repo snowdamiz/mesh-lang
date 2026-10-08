@@ -1,0 +1,244 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Mesh style frames</title>
+<style>
+@font-face { font-family: 'Inter'; font-weight: 100 900; src: url('https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7W0Q5nw.woff2') format('woff2'); }
+@font-face { font-family: 'Archivo'; font-weight: 100 900; font-stretch: 62% 125%; src: url('https://fonts.gstatic.com/s/archivo/v25/k3kQo8UDI-1M0wlSfdnoLmvDIaI.woff2') format('woff2'); }
+@font-face { font-family: 'JetBrains Mono'; font-weight: 400 700; src: url('https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxDcwgknk-4.woff2') format('woff2'); }
+:root { --mint: oklch(0.8 0.15 163); --mint-hi: oklch(0.9 0.14 160); --ink: oklch(0.1 0 0); --paper: oklch(0.96 0.01 110); --err: oklch(0.68 0.2 25); }
+* { box-sizing: border-box; margin: 0; }
+html, body { width: 1920px; height: 1080px; overflow: hidden; background: #000; color: #fff; font-family: Inter, sans-serif; -webkit-font-smoothing: antialiased; }
+.frame { position: absolute; inset: 0; overflow: hidden; display: none; }
+.mono { font-family: 'JetBrains Mono', monospace; font-variant-ligatures: none; }
+.arch { font-family: Archivo, sans-serif; }
+canvas { position: absolute; inset: 0; }
+.grain { position: absolute; inset: -50%; pointer-events: none; opacity: 0.09; mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='240' height='240' filter='url(%23n)'/></svg>"); }
+.vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse 75% 70% at 50% 50%, transparent 55%, rgba(0,0,0,0.75)); }
+
+/* A — particles */
+.a-title { position: absolute; left: 120px; bottom: 120px; font-family: Archivo; font-weight: 300; font-stretch: 100%; font-size: 120px; letter-spacing: -0.04em; line-height: 0.95; }
+.a-title b { font-weight: 700; color: var(--mint-hi); }
+.a-meta { position: absolute; left: 124px; bottom: 76px; font-size: 20px; letter-spacing: 0.3em; text-transform: uppercase; color: rgba(255,255,255,0.55); }
+.hud { position: absolute; font-size: 15px; letter-spacing: 0.12em; color: rgba(255,255,255,0.5); }
+
+/* B — code in space */
+#B1, #B2 { background: radial-gradient(ellipse 80% 70% at 60% 60%, #07120e, #000 70%); }
+.plane { position: absolute; left: 50%; top: 50%; transform-style: preserve-3d; }
+.codeplane { font-size: 58px; line-height: 92px; white-space: pre; color: rgba(255,255,255,0.8); }
+.codeplane .k { color: #fff; font-weight: 700; }
+.codeplane .t { color: #9fc3d8; font-style: italic; }
+.codeplane .s { color: #e0b49c; }
+.codeplane .f { color: var(--mint); }
+.codeplane .c { color: #5f6f66; font-style: italic; }
+.bad { color: #ffb4a8 !important; text-shadow: 0 0 30px rgba(255,80,60,0.9); }
+.b-head { position: absolute; left: 120px; top: 110px; font-family: Archivo; font-weight: 800; font-stretch: 75%; font-size: 150px; line-height: 0.88; letter-spacing: -0.02em; text-transform: uppercase; }
+.b-head span { color: var(--err); }
+.errcard { position: absolute; padding: 26px 34px; border: 1.5px solid rgba(255,110,90,0.7); border-radius: 14px; background: rgba(40,6,4,0.72); backdrop-filter: blur(6px); box-shadow: 0 0 80px rgba(255,70,50,0.35); font-size: 26px; line-height: 1.6; }
+
+/* C — editorial */
+#C1 { background: var(--mint); color: var(--ink); }
+#C2 { background: var(--ink); }
+.c-giant { position: absolute; font-family: Archivo; font-weight: 900; font-stretch: 62%; text-transform: uppercase; letter-spacing: -0.02em; line-height: 0.8; }
+.rule { position: absolute; background: currentColor; }
+.tag { position: absolute; font-size: 17px; letter-spacing: 0.14em; text-transform: uppercase; }
+.card { position: absolute; background: var(--ink); color: #fff; border-radius: 4px; padding: 30px 36px; font-size: 25px; line-height: 1.65; white-space: pre; }
+</style>
+</head>
+<body>
+
+<!-- A: ten thousand lights -->
+<section class="frame" id="A1">
+  <canvas id="gl" width="1920" height="1080"></canvas>
+  <div class="vignette"></div>
+  <div class="hud mono" style="left:120px; top:90px">MESH / RUNTIME · 3 NODES</div>
+  <div class="hud mono" style="right:120px; top:90px; text-align:right">ACTORS · MESSAGES</div>
+  <div class="a-title">Every light<br>is an <b>actor.</b></div>
+  <div class="a-meta mono">spawn · send · receive</div>
+  <div class="grain"></div>
+</section>
+<section class="frame" id="A2">
+  <canvas id="gl2" width="1920" height="1080"></canvas>
+  <div class="vignette"></div>
+  <div class="hud mono" style="left:120px; top:90px"><span style="color:var(--err)">●</span> NODE-3 LOST · REROUTING</div>
+  <div class="a-title" style="font-size:112px">Lose a node.<br><b>Keep going.</b></div>
+  <div class="grain"></div>
+</section>
+
+<!-- B: code in space -->
+<section class="frame" id="B1">
+  <div class="plane" style="perspective:1500px; left:0; top:0; width:1920px; height:1080px">
+    <div class="codeplane mono" style="position:absolute; left:640px; top:120px; transform: rotateX(52deg) rotateZ(-14deg) translateZ(0); transform-origin: 50% 40%; -webkit-mask-image: linear-gradient(180deg, transparent, #000 18%, #000 70%, transparent);"><span class="k">actor</span> <span class="t">counter</span>(total :: <span class="t">Int</span>) <span class="k">do</span>
+  <span class="k">receive do</span>
+    amount -> <span class="f">counter</span>(total + amount)
+  <span class="k">end</span>
+<span class="k">end</span>
+
+<span class="k">fn</span> <span class="f">main</span>() <span class="k">do</span>
+  <span class="k">let</span> pid = <span class="f">spawn</span>(counter, 0)  <span class="c"># Pid&lt;Int&gt;</span>
+  <span class="f">send</span>(pid, 5)
+  <span class="bad">send(pid, "five")</span>
+<span class="k">end</span></div>
+  </div>
+  <svg style="position:absolute; left:0; top:0" width="1920" height="1080">
+    <ellipse cx="1180" cy="820" rx="360" ry="90" fill="none" stroke="rgba(255,90,70,0.55)" stroke-width="2"/>
+    <ellipse cx="1180" cy="820" rx="560" ry="140" fill="none" stroke="rgba(255,90,70,0.25)" stroke-width="1.5"/>
+    <ellipse cx="1180" cy="820" rx="800" ry="200" fill="none" stroke="rgba(255,90,70,0.1)" stroke-width="1"/>
+  </svg>
+  <div class="b-head">Wrong<br>message?<br><span>No build.</span></div>
+  <div class="errcard mono" style="left:1060px; top:470px"><span style="color:#ff8a78; font-weight:700">error[E0014]</span> message type mismatch<br><span style="color:rgba(255,255,255,0.6)">expected</span> Int<span style="color:rgba(255,255,255,0.6)">, found</span> String</div>
+  <div class="vignette"></div>
+  <div class="grain"></div>
+</section>
+<section class="frame" id="B2">
+  <div class="mono" style="position:absolute; left:-60px; top:170px; font-size:430px; font-weight:700; letter-spacing:-0.04em; color:#fff; filter: blur(1.5px); transform: perspective(1200px) rotateY(-24deg); transform-origin: 0 50%;">Pid<span style="color:var(--mint)">&lt;Int&gt;</span></div>
+  <div class="mono" style="position:absolute; left:1250px; top:120px; font-size:90px; color:rgba(255,255,255,0.25); filter: blur(6px);">spawn(</div>
+  <div class="mono" style="position:absolute; left:1450px; top:860px; font-size:70px; color:rgba(95,227,176,0.35); filter: blur(4px);">receive do</div>
+  <div class="mono" style="position:absolute; left:140px; top:880px; font-size:26px; color:rgba(255,255,255,0.7); letter-spacing:0.08em">let pid = spawn(counter, 0) <span style="color:rgba(255,255,255,0.4)"># inferred: Pid&lt;Int&gt;</span></div>
+  <div class="vignette"></div>
+  <div class="grain"></div>
+</section>
+
+<!-- C: editorial -->
+<section class="frame" id="C1">
+  <div class="c-giant" style="left:-30px; top:170px; font-size:760px;">Actors</div>
+  <div class="rule" style="left:0; right:0; top:96px; height:3px"></div>
+  <div class="rule" style="left:0; right:0; bottom:96px; height:3px"></div>
+  <div class="tag mono" style="left:60px; top:44px">Mesh — 01 / Concurrency</div>
+  <div class="tag mono" style="right:60px; top:44px">Typed mailboxes</div>
+  <div class="card mono" style="right:110px; bottom:150px; box-shadow: 18px 18px 0 rgba(0,0,0,0.9)">let pid = spawn(counter, 0)
+send(pid, 5)
+<span style="color:#ff8f7d; text-decoration: underline wavy #ff8f7d; text-underline-offset: 8px">send(pid, "five")</span>
+<span style="color:#ff8f7d">✕ expected Int, found String</span></div>
+  <div class="tag mono" style="left:60px; bottom:44px">spawn · send · receive</div>
+  <div class="tag mono" style="right:60px; bottom:44px">meshlang.dev</div>
+</section>
+<section class="frame" id="C2">
+  <div style="position:absolute; left:0; top:0; bottom:0; width:1240px; background:var(--ink)"></div>
+  <div style="position:absolute; left:1240px; top:0; bottom:0; right:0; background:var(--paper); color:var(--ink)">
+    <div class="tag mono" style="left:60px; top:130px">GET /text · req/s</div>
+    <div id="bars" style="position:absolute; left:60px; right:60px; top:200px"></div>
+    <div class="tag mono" style="left:60px; bottom:140px; font-size:14px; line-height:1.6">benchmarks/RESULTS.md<br>2 vCPU · 100 connections</div>
+  </div>
+  <div class="c-giant" style="left:70px; top:260px; font-size:520px; color:#fff">29,108</div>
+  <div class="tag mono" style="left:80px; top:130px; color:var(--mint)">Mesh — 03 / Native speed</div>
+  <div class="arch" style="position:absolute; left:80px; top:760px; font-size:64px; font-weight:800; font-stretch:75%; text-transform:uppercase; line-height:0.95">requests per second.<br><span style="color:var(--mint)">2.3× Elixir.</span></div>
+</section>
+
+<script>
+const q = new URLSearchParams(location.search)
+const which = q.get('f') || 'A1'
+document.getElementById(which).style.display = 'block'
+
+// seeded random
+let seed = 12345
+const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296)
+const gauss = () => { let u = 0, v = 0; while (!u) u = rnd(); while (!v) v = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v) }
+
+function perspective(fov, aspect, n, f) {
+  const t = 1 / Math.tan(fov / 2)
+  return [t / aspect, 0, 0, 0, 0, t, 0, 0, 0, 0, (f + n) / (n - f), -1, 0, 0, (2 * f * n) / (n - f), 0]
+}
+function lookAt(e, c, u) {
+  const sub = (a, b) => a.map((x, i) => x - b[i]), norm = (a) => { const l = Math.hypot(...a); return a.map((x) => x / l) }
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+  const z = norm(sub(e, c)), x = norm(cross(u, z)), y = cross(z, x)
+  return [x[0], y[0], z[0], 0, x[1], y[1], z[1], 0, x[2], y[2], z[2], 0, -dot(x, e), -dot(y, e), -dot(z, e), 1]
+}
+function mul(a, b) { const o = new Array(16).fill(0); for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) for (let k = 0; k < 4; k++) o[j * 4 + i] += a[k * 4 + i] * b[j * 4 + k]; return o }
+
+function particles(canvasId, failover) {
+  const gl = document.getElementById(canvasId).getContext('webgl2', { antialias: true, premultipliedAlpha: false })
+  const vs = `#version 300 es
+  in vec3 p; in vec4 c; in float s; uniform mat4 m; uniform float focus; out vec4 vc;
+  void main() { vec4 q = m * vec4(p, 1.0); gl_Position = q; float coc = abs(q.w - focus) * 0.055;
+    gl_PointSize = clamp(s * 2000.0 / q.w * (1.0 + coc * 2.0), 1.5, 260.0); vc = vec4(c.rgb, c.a / pow(1.0 + coc * 1.6, 2.0)); }`
+  const fs = `#version 300 es
+  precision highp float; in vec4 vc; out vec4 o;
+  void main() { float d = length(gl_PointCoord - 0.5) * 2.0; float a = exp(-d * d * 3.2) * smoothstep(1.0, 0.6, d); o = vec4(vc.rgb * vc.a * a, 1.0); }`
+  const sh = (t, src) => { const s = gl.createShader(t); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw gl.getShaderInfoLog(s); return s }
+  const pr = gl.createProgram(); gl.attachShader(pr, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(pr); gl.useProgram(pr)
+
+  const P = [], C = [], S = []
+  const push = (p, c, s) => { P.push(...p); C.push(...c); S.push(s) }
+  const MINT = [0.36, 0.98, 0.72], WHITE = [0.85, 1, 0.95], RED = [1, 0.33, 0.28]
+  const nodes = failover ? [[-9, 1.5, -6], [8, -1, -7], [1, -2, 6]] : [[-9, 1.5, -4], [7, -2, -8], [2, 4, 8]]
+  const members = nodes.map(() => [])
+  nodes.forEach((n, ni) => {
+    for (let i = 0; i < 4200; i++) {
+      const r = Math.abs(gauss()) * 2.4 + (rnd() < 0.3 ? 2.5 : 0)
+      const th = rnd() * Math.PI * 2, ph = Math.acos(2 * rnd() - 1)
+      const pt = [n[0] + r * Math.sin(ph) * Math.cos(th), n[1] + r * Math.sin(ph) * Math.sin(th) * 0.8, n[2] + r * Math.cos(ph)]
+      members[ni].push(pt)
+    }
+  })
+  nodes.forEach((n, ni) => { for (let i = 0; i < 40; i++) push([n[0] + gauss() * 1.2, n[1] + gauss() * 1.0, n[2] + gauss() * 1.2], [...(failover && ni === 2 ? RED : MINT), 0.05], 1.6 + rnd() * 1.5) })
+  // failover: node 3 empties into the others along curved paths
+  const lost = failover ? 2 : -1
+  members.forEach((list, ni) => list.forEach((pt, i) => {
+    const bright = rnd() < 0.06
+    let p = pt, col = bright ? WHITE : MINT, a = bright ? 1.0 : 0.45 + rnd() * 0.35
+    if (ni === lost) {
+      const k = Math.min(1, Math.max(0, 0.55 - (i / list.length) * 0.9 + gauss() * 0.05) * 1.8)
+      const dest = members[i % 2][Math.floor(rnd() * 4000)]
+      const mid = [(pt[0] + dest[0]) / 2, (pt[1] + dest[1]) / 2 + 6, (pt[2] + dest[2]) / 2]
+      const u = k, v = 1 - k
+      p = [0, 1, 2].map((j) => v * v * pt[j] + 2 * v * u * mid[j] + u * u * dest[j])
+      col = k < 0.02 ? RED : k > 0.98 ? MINT : [RED[0] * v + MINT[0] * u, RED[1] * v + MINT[1] * u, RED[2] * v + MINT[2] * u]
+      a = k < 0.02 ? 0.75 : 0.95
+    }
+    push(p, [...col, a], bright ? 0.09 : 0.045 + rnd() * 0.03)
+  }))
+  // messages: comets arcing between actors
+  const nMsg = failover ? 90 : 160
+  for (let m = 0; m < nMsg; m++) {
+    const a = Math.floor(rnd() * 3), b = rnd() < 0.55 ? (a + 1 + Math.floor(rnd() * 2)) % 3 : a
+    if (failover && (a === lost || b === lost)) continue
+    const A = members[a][Math.floor(rnd() * 4200)], B = members[b][Math.floor(rnd() * 4200)]
+    const lift = a === b ? 1.5 : 5 + rnd() * 4
+    const mid = [(A[0] + B[0]) / 2 + gauss(), (A[1] + B[1]) / 2 + lift, (A[2] + B[2]) / 2 + gauss()]
+    const head = rnd()
+    for (let k = 0; k < 46; k++) {
+      const u = head - k * 0.012
+      if (u < 0) break
+      const v = 1 - u
+      const p = [0, 1, 2].map((j) => v * v * A[j] + 2 * v * u * mid[j] + u * u * B[j])
+      const fall = 1 - k / 46
+      push(p, [...(k === 0 ? WHITE : MINT), (k === 0 ? 1.6 : 0.9) * fall * fall], k === 0 ? 0.16 : 0.07 * fall + 0.02)
+      if (k === 0) push(p, [...MINT, 0.25], 0.9)
+    }
+  }
+  // dust
+  for (let i = 0; i < 3000; i++) push([gauss() * 30, gauss() * 16, gauss() * 30], [0.6, 0.8, 0.75, 0.12], 0.03)
+
+  const buf = (data, name, n) => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data), gl.STATIC_DRAW); const l = gl.getAttribLocation(pr, name); gl.enableVertexAttribArray(l); gl.vertexAttribPointer(l, n, gl.FLOAT, false, 0, 0) }
+  buf(P, 'p', 3); buf(C, 'c', 4); buf(S, 's', 1)
+  const eye = failover ? [-4, 6, 22] : [-3, 2.5, 19]
+  const m = mul(perspective(0.9, 1920 / 1080, 0.1, 200), lookAt(eye, failover ? [-1, 1, -1] : [1, 0.5, -1], [0, 1, 0]))
+  gl.uniformMatrix4fv(gl.getUniformLocation(pr, 'm'), false, m)
+  gl.uniform1f(gl.getUniformLocation(pr, 'focus'), failover ? 22 : 19)
+  gl.viewport(0, 0, 1920, 1080)
+  gl.clearColor(0.004, 0.012, 0.01, 1); gl.clear(gl.COLOR_BUFFER_BIT)
+  gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE)
+  gl.drawArrays(gl.POINTS, 0, S.length)
+}
+
+// C2 bars
+if (which === 'C2') {
+  const rows = [['Rust', 46244], ['Go', 30306], ['Mesh', 29108], ['Elixir', 12441]]
+  document.getElementById('bars').innerHTML = rows.map(([l, v]) => `<div style="margin-top:46px; font-family:'JetBrains Mono'; font-size:22px; ${l === 'Mesh' ? 'font-weight:700' : 'opacity:0.55'}">${l}<span style="float:right">${(v / 1000).toFixed(1)}k</span><div style="height:${l === 'Mesh' ? 22 : 10}px; margin-top:12px; width:${v / 46244 * 100}%; background:${l === 'Mesh' ? 'oklch(0.62 0.15 163)' : 'currentColor'}"></div></div>`).join('')
+}
+
+window.render = () => {}
+window.ready = (async () => {
+  await document.fonts.load('900 100px Archivo'); await document.fonts.load("400 20px 'JetBrains Mono'"); await document.fonts.load('700 20px "JetBrains Mono"'); await document.fonts.ready
+  if (which === 'A1') particles('gl', false)
+  if (which === 'A2') particles('gl2', true)
+  return true
+})()
+</script>
+</body>
+</html>

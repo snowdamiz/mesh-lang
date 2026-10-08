@@ -1,0 +1,866 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Mesh brag</title>
+<style>
+/* Fonts and colours are the ones website/docs/.vitepress/theme/styles uses (dark theme). */
+@font-face { font-family: 'Inter'; font-weight: 100 900; src: url('https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7W0Q5nw.woff2') format('woff2'); }
+@font-face { font-family: 'Archivo'; font-weight: 100 900; font-stretch: 62% 125%; src: url('https://fonts.gstatic.com/s/archivo/v25/k3kQo8UDI-1M0wlSfdnoLmvDIaI.woff2') format('woff2'); }
+@font-face { font-family: 'JetBrains Mono'; font-weight: 400 700; src: url('https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxDcwgknk-4.woff2') format('woff2'); }
+
+:root {
+  --bg: oklch(0.115 0 0);
+  --fg: oklch(0.955 0 0);
+  --muted: oklch(0.58 0 0);
+  --line: color-mix(in oklab, var(--fg) 9%, transparent);
+  --line-strong: color-mix(in oklab, var(--fg) 22%, transparent);
+  --panel: oklch(0.14 0 0);
+  --panel-head: oklch(0.165 0 0);
+  --dot: color-mix(in oklab, var(--fg) 12%, transparent);
+  --brand: oklch(0.8 0.15 163);
+  --brand-hi: oklch(0.87 0.16 160);
+  --ok: oklch(0.76 0.15 160);
+  --warn: oklch(0.8 0.13 80);
+  --err: oklch(0.68 0.18 25);
+  --sans: 'Inter', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); color: var(--fg); font-family: var(--sans); -webkit-font-smoothing: antialiased; }
+#stage { position: absolute; inset: 0; overflow: hidden; background: var(--bg); }
+.abs { position: absolute; }
+.scene { position: absolute; inset: 0; transform-origin: 50% 50%; }
+
+#dots { position: absolute; inset: 0; background-image: radial-gradient(var(--dot) 1.3px, transparent 1.9px); background-size: 24px 24px; background-position: -12px -12px; }
+#glow { position: absolute; width: 1400px; height: 1000px; border-radius: 50%; background: radial-gradient(closest-side, color-mix(in oklab, var(--brand) 16%, transparent), transparent); pointer-events: none; }
+
+.display { font-family: 'Archivo', var(--sans); font-weight: 600; font-stretch: 114%; letter-spacing: -0.045em; line-height: 0.96; }
+.h2 { font-family: 'Archivo', var(--sans); font-weight: 600; font-stretch: 110%; letter-spacing: -0.035em; line-height: 1.02; font-size: 88px; }
+.label { display: inline-flex; align-items: center; gap: 14px; font-family: var(--mono); font-size: 20px; letter-spacing: 0.04em; color: var(--muted); }
+.label::before { content: ''; width: 22px; height: 3px; background: var(--brand); }
+.lede { font-size: 31px; line-height: 1.5; color: var(--muted); text-wrap: pretty; }
+.muted { color: var(--muted); }
+
+.panel { border: 1px solid var(--line-strong); border-radius: 16px; background: var(--panel); overflow: hidden; box-shadow: 0 40px 90px -40px oklch(0 0 0 / 0.9); }
+.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 60px; padding: 0 24px; border-bottom: 1px solid var(--line); background: var(--panel-head); font-family: var(--mono); font-size: 18px; color: var(--muted); }
+.panel-foot { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 24px; border-top: 1px solid var(--line); font-family: var(--mono); font-size: 17px; color: var(--muted); }
+.code { font-variant-ligatures: none; font-family: var(--mono); font-size: 24px; line-height: 38px; padding: 22px 0; white-space: pre; }
+.code .ln { position: relative; padding-right: 28px; }
+.code .no { display: inline-block; width: 52px; margin-right: 26px; text-align: right; color: color-mix(in oklab, var(--fg) 24%, transparent); }
+.code .ln.hl { background: color-mix(in oklab, var(--brand) 10%, transparent); box-shadow: inset 3px 0 0 var(--brand); }
+.code .ln.hl .no { color: var(--brand); }
+.caret { display: inline-block; width: 13px; height: 30px; margin-left: 2px; vertical-align: -6px; background: var(--brand); }
+
+/* Top band */
+#band-l { left: 184px; top: 30px; display: flex; align-items: center; gap: 14px; font-family: 'Archivo'; font-weight: 600; font-stretch: 110%; font-size: 26px; letter-spacing: -0.02em; }
+#band-r { right: 184px; top: 34px; font-family: var(--mono); font-size: 19px; color: var(--muted); display: flex; align-items: center; gap: 12px; }
+#band-r i { width: 9px; height: 9px; border-radius: 50%; background: var(--ok); display: inline-block; }
+
+/* S2 */
+#wordmark { font-size: 220px; }
+#s2-sub { left: 0; right: 0; top: 548px; text-align: center; font-size: 40px; color: var(--muted); letter-spacing: -0.01em; }
+#s2-specs { left: 280px; right: 280px; top: 680px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 32px; border-top: 1px solid var(--line); padding-top: 34px; }
+#s2-specs dt { font-family: var(--mono); font-size: 20px; color: var(--brand); }
+#s2-specs dd { margin: 8px 0 0; font-size: 25px; color: var(--fg); }
+
+/* Split scenes */
+.col-l { position: absolute; left: 208px; top: 96px; bottom: 96px; width: 600px; display: flex; flex-direction: column; justify-content: center; gap: 30px; }
+.col-r { position: absolute; left: 880px; right: 208px; top: 96px; bottom: 96px; display: flex; flex-direction: column; justify-content: center; gap: 24px; }
+
+/* S3 terminal */
+#term { font-family: Menlo, monospace; font-size: 18.5px; line-height: 30px; padding: 20px 26px 22px; white-space: pre; color: var(--fg); }
+#term .e { color: var(--err); font-weight: 700; }
+#term .r { color: var(--err); }
+#term .b { color: color-mix(in oklab, var(--fg) 34%, transparent); }
+#term .p { color: var(--brand); }
+.bad { text-decoration: underline wavy var(--err); text-decoration-thickness: 2px; text-underline-offset: 8px; }
+
+/* S4 */
+#s4-top { left: 208px; right: 208px; top: 124px; display: flex; flex-direction: column; gap: 22px; }
+#s4-top .h2 { font-size: 72px; white-space: nowrap; }
+#s4-chip { left: 208px; width: 900px; top: 288px; }
+#s4-chip .code { font-size: 21px; line-height: 34px; padding: 14px 0; }
+#sim { left: 208px; right: 208px; top: 446px; }
+#sim-body { display: grid; grid-template-columns: 1.25fr 1fr; height: 372px; }
+#sim-svg { border-right: 1px solid var(--line); display: flex; align-items: center; justify-content: center; }
+#sim-log { display: flex; flex-direction: column; justify-content: flex-end; padding: 22px 28px; font-family: var(--mono); font-size: 19px; line-height: 38px; overflow: hidden; }
+#sim-log .row { display: flex; align-items: center; gap: 16px; white-space: nowrap; }
+#sim-log .ts { color: color-mix(in oklab, var(--muted) 70%, transparent); font-variant-numeric: tabular-nums; }
+#sim-log .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+#sim-log .msg { color: color-mix(in oklab, var(--fg) 88%, transparent); }
+.fault-btn { display: inline-flex; align-items: center; height: 40px; padding: 0 18px; border: 1px solid color-mix(in oklab, var(--err) 45%, transparent); border-radius: 9px; background: color-mix(in oklab, var(--err) 8%, transparent); font-family: var(--mono); font-size: 18px; font-weight: 600; color: var(--err); }
+#status { display: flex; align-items: center; gap: 14px; }
+#status i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+#cursor { left: 0; top: 0; width: 40px; height: 40px; filter: drop-shadow(0 4px 8px oklch(0 0 0 / 0.5)); }
+
+/* S5 */
+#bench { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 25px; }
+#bench th { font-weight: 400; text-align: left; font-size: 18px; color: var(--muted); padding-bottom: 18px; }
+#bench td, #bench tbody th { border-top: 1px solid var(--line); padding: 26px 0; }
+#bench tbody th { font-size: 25px; color: var(--muted); width: 130px; }
+#bench .num { text-align: right; font-variant-numeric: tabular-nums; width: 110px; }
+#bench .bar-wrap { display: flex; align-items: center; gap: 18px; padding-right: 20px; }
+#bench .track { flex: 1; height: 16px; }
+#bench .bar { height: 100%; border-radius: 3px; background: color-mix(in oklab, var(--fg) 20%, transparent); transform-origin: left; }
+#bench .rps { width: 5ch; text-align: right; font-variant-numeric: tabular-nums; }
+#bench tr.mesh th, #bench tr.mesh td { color: var(--fg); font-weight: 700; }
+#bench tr.mesh .bar { background: var(--brand); box-shadow: 0 0 24px color-mix(in oklab, var(--brand) 55%, transparent); }
+#bench tr.other td { color: var(--muted); }
+#s5-stat { display: flex; align-items: center; gap: 24px; margin-top: 6px; }
+#s5-stat .lede { line-height: 1.25; }
+#s5-x { font-size: 112px; color: var(--brand-hi); font-stretch: 110%; }
+.cap { font-family: var(--mono); font-size: 18px; color: var(--muted); }
+
+/* S6 */
+#tabs { display: flex; position: relative; border-bottom: 1px solid var(--line); background: var(--panel-head); }
+#tabs span { padding: 18px 17px; font-family: var(--mono); font-size: 19px; color: var(--muted); white-space: nowrap; }
+#tabs span.on { color: var(--fg); }
+#tab-ul { position: absolute; bottom: -1px; height: 3px; background: var(--brand); }
+#lib-code { height: 420px; }
+#lib-code .code { font-size: 19.5px; line-height: 36px; }
+#lib-code { -webkit-mask-image: linear-gradient(90deg, black 92%, transparent); mask-image: linear-gradient(90deg, black 92%, transparent); }
+
+/* S7 */
+#s7-tag { left: 0; right: 0; top: 408px; text-align: center; font-size: 118px; }
+#install { font-variant-ligatures: none; left: 50%; top: 690px; display: flex; align-items: center; gap: 22px; height: 78px; padding: 0 16px 0 30px; border: 1px solid var(--line-strong); border-radius: 14px; background: var(--panel); font-family: var(--mono); font-size: 27px; white-space: pre; }
+#install .copy { width: 46px; height: 46px; border-radius: 9px; display: grid; place-items: center; color: var(--muted); background: color-mix(in oklab, var(--fg) 6%, transparent); }
+#s7-url { left: 0; right: 0; top: 818px; text-align: center; font-family: var(--mono); font-size: 26px; color: var(--muted); }
+#s7-url b { color: var(--fg); font-weight: 600; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="glow"></div>
+  <div id="dots"></div>
+  <svg id="frame" class="abs" width="1920" height="1080" style="left:0;top:0"></svg>
+
+  <div id="band-l" class="abs">
+    <svg width="34" height="34" viewBox="0 0 100 100" fill="none"><path d="M50 17L88.1 83L11.9 83ZM50 61L50 17M50 61L88.1 83M50 61L11.9 83" stroke="currentColor" stroke-width="9.98" stroke-linejoin="round"/><circle cx="50" cy="17" r="10.89" fill="currentColor"/><circle cx="88.1" cy="83" r="10.89" fill="currentColor"/><circle cx="11.9" cy="83" r="10.89" fill="currentColor"/><circle cx="50" cy="61" r="13.61" fill="currentColor"/></svg>
+    Mesh
+  </div>
+  <div id="band-r" class="abs"><i></i>meshlang.dev</div>
+
+  <!-- S1 hook -->
+  <section class="scene" id="s1">
+    <div class="abs display" style="left:208px; top:372px; font-size:138px;">
+      <div id="s1a">Write a server.</div>
+      <div id="s1b">Ship a fleet.</div>
+    </div>
+  </section>
+
+  <!-- S1 fleet → S2 logo (shared) -->
+  <svg id="net" class="abs" width="1920" height="1080" style="left:0;top:0;overflow:visible"></svg>
+
+  <!-- S2 reveal -->
+  <section class="scene" id="s2">
+    <div id="wordmark" class="abs display">Mesh</div>
+    <div id="s2-sub" class="abs">An actor-based language for native services and distributed systems.</div>
+    <dl id="s2-specs" class="abs">
+      <div><dt>Native</dt><dd>LLVM-compiled binaries</dd></div>
+      <div><dt>Typed</dt><dd>Hindley–Milner inference</dd></div>
+      <div><dt>Concurrent</dt><dd>Actors and supervisors</dd></div>
+      <div><dt>Distributed</dt><dd>Clustering in the runtime</dd></div>
+    </dl>
+  </section>
+
+  <!-- S3 typed mailboxes -->
+  <section class="scene" id="s3">
+    <div class="col-l">
+      <div class="label" id="s3-l">Concurrency</div>
+      <div class="h2" id="s3-h">Typed<br>mailboxes.</div>
+      <div class="lede" id="s3-p">Send an actor the wrong message and it won’t compile.</div>
+    </div>
+    <div class="col-r">
+      <div class="panel" id="s3-code">
+        <div class="panel-head"><span style="color:var(--fg)">main.mpl</span><span>mesh</span></div>
+        <div class="code" id="counter"></div>
+      </div>
+      <div class="panel" id="s3-term" style="border-color: color-mix(in oklab, var(--err) 40%, transparent)">
+        <div id="term"><span class="p">$</span> meshc build .
+<span class="e">[E0014] Error:</span> message type mismatch: expected `Int`, found `String`
+<span class="b">    ╭─[</span> ./main.mpl:10:3 <span class="b">]</span>
+<span class="b"> 10 │</span>   send(pid, "five")
+<span class="b">    │</span>   <span class="r">────────┬────────</span>
+<span class="b">    │</span>           <span class="r">╰────────── expected Int, found String</span>
+<span class="b">    │</span> Help: this Pid accepts messages of type Int</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- S4 failover -->
+  <section class="scene" id="s4">
+    <div id="s4-top" class="abs">
+      <div class="label" id="s4-l">Distribution</div>
+      <div class="h2" id="s4-h">A lost node is the runtime’s problem.</div>
+    </div>
+    <div class="panel abs" id="s4-chip"><div class="code" id="clustered"></div></div>
+    <div id="sim" class="abs panel">
+      <div class="panel-head">
+        <span id="status"><i></i><span><span id="st-word" style="color:var(--fg)">healthy</span> · <span id="st-n">3/3</span> nodes</span></span>
+        <span class="fault-btn" id="fault">Stop a node</span>
+      </div>
+      <div id="sim-body">
+        <div id="sim-svg"></div>
+        <div id="sim-log"></div>
+      </div>
+      <div class="panel-foot"><span>Illustrative. Real recovery depends on quorum, replicas, and your continuity policy.</span></div>
+    </div>
+  </section>
+
+  <!-- S5 performance -->
+  <section class="scene" id="s5">
+    <div class="col-l">
+      <div class="label" id="s5-l">Performance</div>
+      <div class="h2" id="s5-h">Native speed,<br>measured.</div>
+      <div id="s5-stat"><span class="display" id="s5-x">2.3×</span><span class="lede">Elixir’s<br>throughput</span></div>
+    </div>
+    <div class="col-r" id="s5-r" style="position:absolute">
+      <table id="bench">
+        <thead><tr><th></th><th>requests / s</th><th class="num">p50</th><th class="num">p99</th></tr></thead>
+        <tbody id="bench-rows"></tbody>
+      </table>
+      <div class="cap" id="s5-cap">GET /text · 2 vCPU · 100 connections · latency in ms · benchmarks/RESULTS.md</div>
+    </div>
+  </section>
+
+  <!-- S6 standard library -->
+  <section class="scene" id="s6">
+    <div class="col-l">
+      <div class="label" id="s6-l">Standard library</div>
+      <div class="h2" id="s6-h">Server primitives,<br>included.</div>
+      <div class="lede" id="s6-p">No framework to pick first.</div>
+    </div>
+    <div class="col-r" style="left:820px">
+      <div class="panel" id="s6-panel">
+        <div id="tabs"><div id="tab-ul"></div></div>
+        <div id="lib-code"><div class="code" id="lib"></div></div>
+        <div class="panel-foot"><span id="lib-file"></span><span style="color:var(--fg)" id="lib-guide"></span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- S7 outro -->
+  <section class="scene" id="s7">
+    <svg id="s7-logo" class="abs" viewBox="0 0 100 100" fill="none" style="overflow:visible"></svg>
+    <div id="s7-word" class="abs display" style="font-size:150px">Mesh</div>
+    <div id="s7-tag" class="abs display"><span id="s7a" class="muted">Write a server.</span> <span id="s7b">Ship a fleet.</span></div>
+    <div id="install" class="abs"><span><span style="color:var(--brand)">$ </span><span id="cmd"></span><span class="caret" id="caret2"></span></span><span class="copy"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span></div>
+    <div id="s7-url" class="abs">Get started at <b>meshlang.dev</b></div>
+  </section>
+
+  <svg id="cursor" class="abs" viewBox="0 0 24 24"><path d="M4 2.5 L4 19.5 L8.4 15.4 L11.3 22 L14.2 20.7 L11.4 14.3 L17.5 14.3 Z" fill="white" stroke="black" stroke-width="1.2" stroke-linejoin="round"/></svg>
+</div>
+
+<script src="snippets.js"></script>
+<script>
+const DUR = 24, FPS = 30
+const $ = (s) => document.querySelector(s)
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x))
+const lerp = (a, b, k) => a + (b - a) * k
+const P = (t, s, d) => clamp((t - s) / d)
+
+function bezier(x1, y1, x2, y2) {
+  const cx = 3 * x1, bx = 3 * (x2 - x1) - cx, ax = 1 - cx - bx
+  const cy = 3 * y1, by = 3 * (y2 - y1) - cy, ay = 1 - cy - by
+  const sx = (u) => ((ax * u + bx) * u + cx) * u
+  return (x) => {
+    if (x <= 0) return 0
+    if (x >= 1) return 1
+    let u = x
+    for (let i = 0; i < 8; i++) {
+      const d = (3 * ax * u + 2 * bx) * u + cx
+      if (Math.abs(d) < 1e-6) break
+      u -= (sx(u) - x) / d
+    }
+    return ((ay * u + by) * u + cy) * u
+  }
+}
+const eo = bezier(0.22, 1, 0.36, 1) // the site's l-enter ease
+const eio = bezier(0.65, 0, 0.35, 1)
+const ei = bezier(0.55, 0, 1, 0.45)
+
+// Rise in (the site's l-rise), optionally with a slam of scale and blur.
+function rise(el, t, s, { d = 0.7, dy = 28, sc = 0, blur = 0 } = {}) {
+  const k = eo(P(t, s, d))
+  el.style.opacity = clamp((t - s) / (d * 0.35))
+  const scale = 1 + sc * (1 - k)
+  el.style.transform = `translateY(${(1 - k) * dy}px) scale(${scale})`
+  el.style.filter = blur ? `blur(${(1 - k) * blur}px)` : ''
+}
+
+const scenes = [
+  ['s1', 0, 3.5], ['s2', 3.5, 7.0], ['s3', 7.0, 11.0], ['s4', 11.0, 15.0],
+  ['s5', 15.0, 18.0], ['s6', 18.0, 20.0], ['s7', 20.0, 24.0],
+]
+const EXIT = 0.24
+
+/* ───────── frame: rails, rules and crosses ───────── */
+const frame = $('#frame')
+const RL = 160, RR = 1760, RT = 96, RB = 984
+frame.innerHTML = `
+  <g stroke="var(--line)" stroke-width="1">
+    <line id="fr-l" x1="${RL}" y1="0" x2="${RL}" y2="1080"/>
+    <line id="fr-r" x1="${RR}" y1="0" x2="${RR}" y2="1080"/>
+    <line id="fr-t" x1="0" y1="${RT}" x2="1920" y2="${RT}"/>
+    <line id="fr-b" x1="0" y1="${RB}" x2="1920" y2="${RB}"/>
+  </g>
+  <g id="crosses" stroke="var(--line-strong)" stroke-width="1.5">
+    ${[[RL, RT], [RR, RT], [RL, RB], [RR, RB]].map(([x, y]) => `<path d="M${x - 7} ${y}H${x + 7}M${x} ${y - 7}V${y + 7}"/>`).join('')}
+  </g>`
+
+/* ───────── S1 fleet network, collapsing into the S2 logo ───────── */
+const net = $('#net')
+const N = {
+  hub: [1440, 456], A: [1272, 216], B: [1584, 168], C: [1704, 360], D: [1656, 624], E: [1464, 792],
+  F: [1224, 720], G: [960, 840], H: [696, 888], I: [1728, 816], J: [1368, 912], K: [1128, 120],
+}
+const group = { hub: 'hub', A: 'top', B: 'top', C: 'top', D: 'right', E: 'right', I: 'right', J: 'right', F: 'left', G: 'left', H: 'left', K: 'left' }
+const LINKS = [['hub', 'A'], ['hub', 'B'], ['hub', 'C'], ['hub', 'D'], ['hub', 'E'], ['hub', 'F'],
+  ['A', 'B'], ['B', 'C'], ['C', 'D'], ['D', 'E'], ['E', 'F'], ['A', 'K'], ['D', 'I'], ['I', 'E'], ['E', 'J'], ['J', 'G'], ['F', 'G'], ['G', 'H']]
+const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1])
+// Links grow outward from the hub: tier 1 at the drop, tier 2 once tier 1 lands.
+const tier1 = new Set(['A', 'B', 'C', 'D', 'E', 'F'])
+const T_SHIP = 2.0
+const linkStart = LINKS.map(([a, b], i) => (a === 'hub' ? T_SHIP + i * 0.035 : T_SHIP + 0.26 + (i - 6) * 0.022))
+const nodeStart = {}
+LINKS.forEach(([a, b], i) => {
+  const land = linkStart[i] + 0.28
+  if (!(b in nodeStart) || land < nodeStart[b]) nodeStart[b] = land
+  if (a !== 'hub' && !(a in nodeStart)) nodeStart[a] = land
+})
+nodeStart.hub = 0.25
+const PACKETS = [
+  { path: ['A', 'hub', 'E'], dur: 1.6, off: 0.0 }, { path: ['B', 'hub', 'F'], dur: 1.9, off: 0.5 },
+  { path: ['C', 'D', 'E', 'J'], dur: 1.7, off: 0.2 }, { path: ['K', 'A', 'B', 'C'], dur: 2.0, off: 0.9 },
+  { path: ['H', 'G', 'F', 'hub', 'C'], dur: 2.2, off: 0.3 }, { path: ['I', 'D', 'hub', 'A'], dur: 1.8, off: 1.1 },
+  { path: ['J', 'E', 'hub', 'B'], dur: 1.9, off: 0.7 },
+]
+net.innerHTML = `
+  <g id="rings"></g>
+  <g id="links" stroke-linecap="round">${LINKS.map(() => '<line/>').join('')}</g>
+  <g id="packets">${PACKETS.map(() => '<circle r="4.5" fill="var(--brand-hi)"/>').join('')}</g>
+  <g id="nodes">${Object.keys(N).map((k) => `<g data-k="${k}"><circle class="halo"/><circle class="core"/></g>`).join('')}</g>`
+const ringEls = [0, 1, 2].map(() => { const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle'); c.setAttribute('fill', 'none'); $('#rings').append(c); return c })
+
+let LOGO = null // S2 logo geometry, measured at init
+const LOGO_PTS = { top: [50, 17], right: [88.1, 83], left: [11.9, 83], hub: [50, 61] }
+const logoPt = (g) => [LOGO.x + LOGO_PTS[g][0] * LOGO.s / 100, LOGO.y + LOGO_PTS[g][1] * LOGO.s / 100]
+const M0 = 3.3, MD = 0.72 // morph window
+
+function morphK(k, t) {
+  const stagger = { hub: 0, top: 0.03, right: 0.06, left: 0.09 }[group[k]]
+  return eio(P(t, M0 + stagger, MD - 0.09))
+}
+function nodePos(k, t) {
+  const m = morphK(k, t)
+  const target = logoPt(group[k])
+  return [lerp(N[k][0], target[0], m), lerp(N[k][1], target[1], m), m]
+}
+
+function renderNet(t) {
+  const vis = t < 7.0
+  net.style.display = vis ? '' : 'none'
+  if (!vis) return
+  // leaves with S2
+  const out = eio(P(t, 7.0 - EXIT, EXIT))
+  net.style.opacity = 1 - out
+  net.style.transform = `translateY(${-18 * out}px)`
+
+  const logoScale = LOGO.s / 100
+  // a small punch when the wordmark lands
+  const punch = t > 4.0 ? Math.exp(-(t - 4.0) * 9) * Math.sin((t - 4.0) * 30) * 0.03 : 0
+  const cx = LOGO.x + LOGO.s / 2, cy = LOGO.y + LOGO.s / 2
+  const punchPt = ([x, y]) => [cx + (x - cx) * (1 + punch), cy + (y - cy) * (1 + punch)]
+
+  // links
+  $('#links').querySelectorAll('line').forEach((el, i) => {
+    const [a, b] = LINKS[i]
+    const q = eo(P(t, linkStart[i], 0.3))
+    let pa = nodePos(a, t), pb = nodePos(b, t)
+    const m = Math.min(pa[2], pb[2])
+    pa = punchPt(pa); pb = punchPt(pb)
+    const x2 = lerp(pa[0], pb[0], q), y2 = lerp(pa[1], pb[1], q)
+    el.setAttribute('x1', pa[0]); el.setAttribute('y1', pa[1]); el.setAttribute('x2', x2); el.setAttribute('y2', y2)
+    el.setAttribute('stroke-width', lerp(2, 9.98 * logoScale, m))
+    el.style.stroke = `color-mix(in oklab, var(--fg) ${m * 100}%, var(--brand))`
+    el.style.opacity = q <= 0 ? 0 : lerp(0.42, 1, m)
+  })
+
+  // nodes
+  $('#nodes').querySelectorAll('g').forEach((g) => {
+    const k = g.dataset.k
+    const [x0, y0, m] = nodePos(k, t)
+    const [x, y] = punchPt([x0, y0])
+    const s = nodeStart[k]
+    const pop = t < s ? 0 : 1 + 0.5 * Math.exp(-(t - s) * 10) * Math.cos((t - s) * 22)
+    const isHub = k === 'hub'
+    const rCore = (isHub ? 11 : 6.5) * pop
+    const rHalo = (isHub ? 30 : 15) * pop
+    const target = (isHub ? 13.61 : 10.89) * logoScale
+    const halo = g.querySelector('.halo'), core = g.querySelector('.core')
+    halo.setAttribute('cx', x); halo.setAttribute('cy', y); halo.setAttribute('r', lerp(rHalo, 0, m))
+    halo.style.fill = 'var(--brand)'; halo.style.opacity = 0.16
+    core.setAttribute('cx', x); core.setAttribute('cy', y)
+    core.setAttribute('r', t < s ? 0 : lerp(rCore, target, m))
+    core.style.fill = `color-mix(in oklab, var(--fg) ${m * 100}%, var(--brand))`
+  })
+
+  // packets travel the fleet until the collapse
+  const pk = 1 - P(t, M0 - 0.1, 0.25)
+  $('#packets').querySelectorAll('circle').forEach((c, i) => {
+    const p = PACKETS[i]
+    const t0 = T_SHIP + 0.75 + i * 0.07
+    if (t < t0 || pk <= 0) { c.style.opacity = 0; return }
+    const pts = p.path.map((k) => N[k])
+    const lens = pts.slice(1).map((q, j) => dist(pts[j], q))
+    const total = lens.reduce((a, b) => a + b, 0)
+    let d = (((t - t0) / p.dur + p.off) % 1) * total
+    let j = 0
+    while (j < lens.length - 1 && d > lens[j]) { d -= lens[j]; j++ }
+    const u = clamp(d / lens[j])
+    c.setAttribute('cx', lerp(pts[j][0], pts[j + 1][0], u)); c.setAttribute('cy', lerp(pts[j][1], pts[j + 1][1], u))
+    c.style.opacity = clamp((t - t0) / 0.2) * pk
+  })
+
+  // ripples from the hub: the first server, then the fleet shipping
+  const ripples = [[0.25, 90, 0.9], [T_SHIP, 420, 1.2], [T_SHIP + 0.18, 260, 1.0]]
+  ripples.forEach(([s, R, d], i) => {
+    const c = ringEls[i]
+    const q = P(t, s, d)
+    const on = t >= s && q < 1
+    c.setAttribute('cx', N.hub[0]); c.setAttribute('cy', N.hub[1])
+    c.setAttribute('r', 12 + eo(q) * R)
+    c.setAttribute('stroke', 'var(--brand)')
+    c.setAttribute('stroke-width', 2)
+    c.style.opacity = on ? (1 - q) * 0.55 : 0
+  })
+}
+
+/* ───────── code helpers ───────── */
+function segs(html) {
+  const d = document.createElement('div')
+  d.innerHTML = html
+  return [...d.childNodes].map((n) => ({ style: n.getAttribute ? n.getAttribute('style') : '', text: n.textContent }))
+}
+function typed(ss, n) {
+  let out = ''
+  for (const s of ss) {
+    if (n <= 0) break
+    const part = s.text.slice(0, n)
+    n -= part.length
+    out += `<span style="${s.style || ''}">${part.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</span>`
+  }
+  return out
+}
+const len = (ss) => ss.reduce((a, s) => a + s.text.length, 0)
+function codeLines(el, lines, { hl = [] } = {}) {
+  el.innerHTML = lines.map((l, i) => `<div class="ln${hl.includes(i + 1) ? ' hl' : ''}"><span class="no">${i + 1}</span><span class="tx">${l}</span></div>`).join('')
+  return [...el.querySelectorAll('.ln')]
+}
+
+/* ───────── S3 ───────── */
+const counterLines = codeLines($('#counter'), SNIPPETS.counter)
+const typedSegs = segs(SNIPPETS.counter[9])
+const T_TYPE = 7.95, T_TYPE_END = 8.7, T_ERR = 9.0
+const typeLen = len(typedSegs)
+const typeStart = 2 // leading indent appears at once
+window.TYPE_TIMES = [] // keystroke times, exported for the sound pass
+for (let i = typeStart + 1; i <= typeLen; i++) TYPE_TIMES.push(T_TYPE + (i - typeStart) / (typeLen - typeStart) * (T_TYPE_END - T_TYPE))
+
+/* ───────── S4 ───────── */
+codeLines($('#clustered'), SNIPPETS.clustered, { hl: [3] })
+const NODE_X = 256, NODE_W = 168, NODE_H = 60
+const simNodes = [
+  { label: 'node-1', y: 22 }, { label: 'node-2', y: 110 }, { label: 'node-3', y: 198 },
+]
+const edgeD = (n) => { const cy = n.y + NODE_H / 2; return [[124, 140], [190, 140], [190, cy], [NODE_X, cy]] }
+const cubic = ([p0, p1, p2, p3], u) => {
+  const v = 1 - u
+  return [0, 1].map((i) => v * v * v * p0[i] + 3 * v * v * u * p1[i] + 3 * v * u * u * p2[i] + u * u * u * p3[i])
+}
+$('#sim-svg').innerHTML = `
+<svg viewBox="0 0 440 280" width="${440 * 1.3}" height="${280 * 1.3}">
+  <line x1="0" y1="140" x2="20" y2="140" stroke="var(--line-strong)"/>
+  <circle id="in-pk" r="2.5" fill="var(--brand)"/>
+  <rect x="20" y="108" width="104" height="64" rx="8" fill="var(--bg)" stroke="var(--line-strong)"/>
+  <text x="72" y="136" text-anchor="middle" font-family="JetBrains Mono" font-size="11" font-weight="600" fill="var(--fg)">ingress</text>
+  <text x="72" y="152" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="var(--muted)">load balancer</text>
+  ${simNodes.map((n, i) => {
+    const [p0, p1, p2, p3] = edgeD(n)
+    return `<path id="edge${i}" fill="none" d="M ${p0} C ${p1} ${p2} ${p3}"/>
+    <circle id="pa${i}" r="2.75" fill="var(--brand)"/><circle id="pb${i}" r="2.75" fill="var(--brand)" opacity="0.45"/>`
+  }).join('')}
+  ${simNodes.map((n, i) => `
+  <g id="node${i}">
+    <rect class="box" x="${NODE_X}" y="${n.y}" width="${NODE_W}" height="${NODE_H}" rx="8" fill="var(--bg)"/>
+    <circle class="st" cx="${NODE_X + 18}" cy="${n.y + 22}" r="3.5"/>
+    <text x="${NODE_X + 30}" y="${n.y + 26}" font-family="JetBrains Mono" font-size="12" font-weight="600" fill="var(--fg)" class="nm">${n.label}</text>
+    <text class="tag" x="${NODE_X + NODE_W - 14}" y="${n.y + 26}" text-anchor="end" font-family="JetBrains Mono" font-size="9.5"></text>
+    <rect x="${NODE_X + 18}" y="${n.y + 38}" width="${NODE_W - 36}" height="5" rx="2.5" fill="var(--line)"/>
+    <rect class="load" x="${NODE_X + 18}" y="${n.y + 38}" height="5" rx="2.5" fill="var(--brand)"/>
+  </g>`).join('')}
+</svg>`
+const T_CLICK = 11.92, T_DOWN = 12.0, T_REROUTE = 12.4, T_REBAL = 13.0, T_JOIN = 13.9, T_BACK = 14.5
+const LOG = [
+  [11.15, 'ok', 'node-1 joined as leader'], [11.3, 'ok', 'node-2 joined'], [11.45, 'ok', 'node-3 joined'],
+  [11.6, 'info', 'cluster ready, 3 nodes'], [T_DOWN, 'fail', 'node-2 stopped responding'],
+  [T_REROUTE, 'info', 'new requests → node-1, node-3'], [T_REBAL, 'ok', 'traffic rebalanced'],
+  [T_JOIN, 'info', 'node-2 rejoining'], [T_BACK, 'ok', 'node-2 back, 3/3 nodes up'],
+]
+const tone = { ok: 'var(--ok)', info: 'var(--muted)', warn: 'var(--warn)', fail: 'var(--err)' }
+const stamp = (at) => {
+  const ms = (14 * 3600 + 2 * 60 + 7) * 1000 + Math.round((at - 11) * 1000)
+  const pad = (n, w = 2) => String(n).padStart(w, '0')
+  return `${pad(Math.floor(ms / 3600000) % 24)}:${pad(Math.floor(ms / 60000) % 60)}:${pad(Math.floor(ms / 1000) % 60)}.${pad(ms % 1000, 3)}`
+}
+$('#sim-log').innerHTML = LOG.map(([at, lv, msg]) => `<div class="row"><span class="ts">${stamp(at)}</span><span class="dot" style="background:${tone[lv]}"></span><span class="msg">${msg}</span></div>`).join('')
+const logRows = [...$('#sim-log').children]
+
+/* ───────── S5 ───────── */
+// benchmarks/RESULTS.md, Isolated Peak Throughput, /text (the landing page's figures)
+const BENCH = [
+  { lang: 'Rust', rps: 46244, p50: 2.06, p99: 4.55 }, { lang: 'Go', rps: 30306, p50: 2.95, p99: 8.51 },
+  { lang: 'Mesh', rps: 29108, p50: 2.77, p99: 16.94 }, { lang: 'Elixir', rps: 12441, p50: 6.74, p99: 25.14 },
+]
+const BMAX = Math.max(...BENCH.map((r) => r.rps))
+$('#bench-rows').innerHTML = BENCH.map((r) => `<tr class="${r.lang === 'Mesh' ? 'mesh' : 'other'}"><th>${r.lang}</th><td><div class="bar-wrap"><div class="track"><div class="bar" style="width:${r.rps / BMAX * 100}%"></div></div><span class="rps">0.0k</span></div></td><td class="num">${r.p50.toFixed(2)}</td><td class="num">${r.p99.toFixed(2)}</td></tr>`).join('')
+const benchRows = [...$('#bench-rows').children]
+const T_ROWS = [15.35, 15.5, 15.65, 15.8]
+const T_BADGE = 16.0
+
+/* ───────── S6 ───────── */
+const MODS = SNIPPETS.modules
+const FILES = ['clients/prices.mpl', 'api/live.mpl', 'storage/todos.mpl', 'storage/events.mpl', 'api/todos.mpl', 'workers/report.mpl', 'tests/slug.test.mpl']
+$('#tabs').insertAdjacentHTML('afterbegin', MODS.map((m) => `<span>${m.name}</span>`).join(''))
+const tabEls = [...$('#tabs').querySelectorAll('span')]
+const TAB0 = 18.25, TABSTEP = 0.22
+const tabAt = (t) => clamp(Math.floor((t - TAB0) / TABSTEP), 0, MODS.length - 1)
+window.TAB_TIMES = MODS.map((_, i) => TAB0 + i * TABSTEP).slice(1)
+let shownTab = -1
+
+/* ───────── S7 ───────── */
+const CMD = 'curl -sSf https://meshlang.dev/install.sh | sh'
+const T_CMD = 20.95, T_CMD_END = 21.75
+window.CMD_TIMES = [...CMD].map((_, i) => T_CMD + (i + 1) / CMD.length * (T_CMD_END - T_CMD)).filter((_, i) => CMD[i] !== ' ')
+$('#s7-logo').innerHTML = `
+  <path id="lg-tri" d="M50 17L88.1 83L11.9 83Z" stroke="var(--fg)" stroke-width="9.98" stroke-linejoin="round" pathLength="1"/>
+  <path id="lg-sp" d="M50 61L50 17M50 61L88.1 83M50 61L11.9 83" stroke="var(--fg)" stroke-width="9.98" stroke-linecap="round" pathLength="1"/>
+  ${[[50, 17, 10.89], [88.1, 83, 10.89], [11.9, 83, 10.89], [50, 61, 13.61]].map(([x, y, r], i) => `<circle class="lg-n" cx="${x}" cy="${y}" r="${r}" fill="${i === 3 ? 'var(--brand)' : 'var(--fg)'}"/>`).join('')}`
+
+/* ───────── layout that needs measuring ───────── */
+function layout() {
+  document.querySelectorAll('.scene').forEach((s) => { s.style.display = ''; s.style.transform = '' })
+  // S2: logo + wordmark row centred
+  const wm = $('#wordmark'), wr = wm.getBoundingClientRect()
+  const S = 188, GAP = 52
+  const rowW = S + GAP + wr.width
+  const x0 = 960 - rowW / 2
+  LOGO = { x: x0, y: 318 - S / 2 - 6, s: S }
+  wm.style.left = `${x0 + S + GAP}px`
+  wm.style.top = `${318 - wr.height / 2 - 4}px`
+  // S7: logo + wordmark row centred
+  const w7 = $('#s7-word'), r7 = w7.getBoundingClientRect()
+  const S7 = 128, G7 = 38, row7 = S7 + G7 + r7.width, x7 = 960 - row7 / 2
+  Object.assign($('#s7-logo').style, { left: `${x7}px`, top: `${258 - S7 / 2}px`, width: `${S7}px`, height: `${S7}px` })
+  w7.style.left = `${x7 + S7 + G7}px`
+  w7.style.top = `${258 - r7.height / 2 - 3}px`
+  // install box: final width fixed so typing does not re-centre it
+  $('#cmd').textContent = CMD
+  const ib = $('#install').getBoundingClientRect()
+  $('#install').style.width = `${ib.width}px`
+  $('#install').style.marginLeft = `${-ib.width / 2}px`
+  $('#cmd').textContent = ''
+  // S4 cursor target: centre of the fault button
+  const fb = $('#fault').getBoundingClientRect()
+  window.BTN = [fb.left + fb.width / 2, fb.top + fb.height / 2]
+  // S6 tab underline positions
+  const tb = $('#tabs').getBoundingClientRect()
+  window.TABX = tabEls.map((e) => { const r = e.getBoundingClientRect(); return [r.left - tb.left + 12, r.width - 24] })
+}
+
+/* ───────── render(t): every frame a pure function of time ───────── */
+function sceneFx(el, t, s, e) {
+  const on = t >= s && t < e
+  el.style.display = on ? '' : 'none'
+  if (!on) return false
+  const out = eio(P(t, e - EXIT, EXIT))
+  const drift = 1 + 0.018 * ((t - s) / (e - s))
+  el.style.opacity = 1 - out
+  el.style.transform = `translateY(${-18 * out}px) scale(${drift})`
+  return true
+}
+
+function render(t) {
+  // frame and dot grid
+  const fr = eo(P(t, 0, 0.9))
+  const [fl, frr, ft, fb] = ['#fr-l', '#fr-r', '#fr-t', '#fr-b'].map((s) => $(s))
+  fl.setAttribute('y2', 1080 * fr); frr.setAttribute('y1', 1080 * (1 - fr))
+  ft.setAttribute('x2', 1920 * fr); fb.setAttribute('x1', 1920 * (1 - fr))
+  $('#crosses').style.opacity = P(t, 0.5, 0.4)
+  // the dot grid's lit patch follows the action
+  const spots = [[0, 1400, 500, 900], [3.5, 960, 420, 1100], [7, 1300, 500, 1000], [11, 960, 640, 1200], [15, 1300, 540, 1000], [18, 1300, 540, 1000], [20, 960, 500, 1200]]
+  let sp = spots[0]
+  for (let i = 1; i < spots.length; i++) {
+    const k = eio(P(t, spots[i][0] - 0.4, 0.8))
+    sp = [0, lerp(sp[1], spots[i][1], k), lerp(sp[2], spots[i][2], k), lerp(sp[3], spots[i][3], k)]
+  }
+  const mask = `radial-gradient(ellipse ${sp[3] / 2}px ${sp[3] / 2.6}px at ${sp[1]}px ${sp[2]}px, black 25%, transparent 100%)`
+  const dots = $('#dots')
+  dots.style.maskImage = mask; dots.style.webkitMaskImage = mask
+  dots.style.opacity = 0.35 + 0.65 * P(t, 0, 0.8)
+  // brand glow behind the logo moments
+  const glowOn = Math.max(P(t, 3.6, 0.8) * (1 - P(t, 6.8, 0.3)), P(t, 20.0, 0.8))
+  const g = $('#glow')
+  const gc = t < 12 ? [960, 330] : [960, 400]
+  g.style.left = `${gc[0] - 700}px`; g.style.top = `${gc[1] - 500}px`
+  g.style.opacity = glowOn * (0.85 + 0.15 * Math.sin(t * 2.2))
+
+  // bands
+  const bandL = P(t, 7.0, 0.5) * (1 - P(t, 19.76, 0.24))
+  $('#band-l').style.opacity = bandL
+  $('#band-r').style.opacity = P(t, 0.4, 0.6)
+
+  renderNet(t)
+
+  // S1
+  if (sceneFx($('#s1'), t, 0, 3.5)) {
+    rise($('#s1a'), t, 0.25, { d: 0.8, dy: 40, blur: 10 })
+    $('#s1a').style.color = `color-mix(in oklab, var(--muted) ${100 * eo(P(t, T_SHIP - 0.1, 0.5))}%, var(--fg))`
+    rise($('#s1b'), t, T_SHIP - 0.04, { d: 0.7, dy: 0, sc: 0.12, blur: 14 })
+    // the fleet leaves the hook text behind as it collapses
+    const s1 = $('#s1')
+    s1.style.opacity = 1 - eio(P(t, 3.18, 0.3))
+  }
+
+  // S2
+  if (sceneFx($('#s2'), t, 3.5, 7.0)) {
+    const wm = $('#wordmark')
+    const k = eo(P(t, 3.98, 0.6))
+    wm.style.opacity = clamp((t - 3.98) / 0.12)
+    wm.style.transform = `translateX(${(1 - k) * 60}px)`
+    wm.style.filter = `blur(${(1 - k) * 12}px)`
+    wm.style.clipPath = `inset(-20% ${(1 - k) * 100}% -20% 0)`
+    rise($('#s2-sub'), t, 4.3, { d: 0.7, dy: 22 })
+    const sp = $('#s2-specs')
+    sp.style.opacity = P(t, 4.6, 0.3)
+    sp.style.borderTopColor = `color-mix(in oklab, var(--fg) ${9 * P(t, 4.6, 0.6)}%, transparent)`
+    ;[...sp.children].forEach((c, i) => rise(c, t, 4.72 + i * 0.12, { d: 0.6, dy: 18 }))
+  }
+
+  // S3
+  if (sceneFx($('#s3'), t, 7.0, 11.0)) {
+    rise($('#s3-l'), t, 7.05); rise($('#s3-h'), t, 7.12, { dy: 36 }); rise($('#s3-p'), t, 7.25)
+    const code = $('#s3-code')
+    rise(code, t, 7.1, { d: 0.7, dy: 40 })
+    counterLines.forEach((ln, i) => {
+      if (i === 9) return
+      const s = 7.3 + i * 0.05
+      ln.style.opacity = clamp((t - s) / 0.2)
+      ln.style.transform = `translateX(${(1 - eo(P(t, s, 0.4))) * 16}px)`
+    })
+    // line 10 is typed, then the compiler answers
+    const l10 = counterLines[9], tx = l10.querySelector('.tx')
+    l10.style.opacity = t >= T_TYPE - 0.15 ? 1 : 0
+    let n = typeStart
+    for (const tt of TYPE_TIMES) if (t >= tt) n++
+    const blink = t < T_TYPE_END + 0.05 || Math.floor((t - T_TYPE_END) / 0.4) % 2 === 0
+    const caret = t < T_ERR && blink ? '<span class="caret"></span>' : ''
+    const err = t >= T_ERR
+    const body = typed(typedSegs, n)
+    tx.innerHTML = err ? `<span class="bad">${body}</span>` : body + caret
+    l10.style.background = err ? `color-mix(in oklab, var(--err) ${14 - 4 * P(t, T_ERR, 0.6)}%, transparent)` : ''
+    l10.style.boxShadow = err ? 'inset 3px 0 0 var(--err)' : ''
+    l10.querySelector('.no').style.color = err ? 'var(--err)' : ''
+    // a short shake when the build fails
+    const sh = err ? Math.exp(-(t - T_ERR) * 14) * Math.sin((t - T_ERR) * 70) * 7 : 0
+    if (err) code.style.transform = `translateX(${sh}px)`
+    const term = $('#s3-term')
+    const tk = eo(P(t, T_ERR, 0.55))
+    term.style.opacity = clamp((t - T_ERR) / 0.1)
+    term.style.transform = `translateY(${(1 - tk) * 50}px) scale(${1 + 0.04 * (1 - tk)})`
+    term.style.boxShadow = err ? `0 0 ${60 * (1 - P(t, T_ERR, 1.2)) + 20}px -10px color-mix(in oklab, var(--err) ${50 * (1 - P(t, T_ERR, 1.5)) + 12}%, transparent), 0 40px 90px -40px black` : ''
+  }
+
+  // S4
+  if (sceneFx($('#s4'), t, 11.0, 15.0)) {
+    rise($('#s4-l'), t, 11.05); rise($('#s4-h'), t, 11.12, { dy: 36 }); rise($('#s4-chip'), t, 11.25, { dy: 30 })
+    rise($('#sim'), t, 11.18, { d: 0.8, dy: 50 })
+    const down = t >= T_DOWN && t < T_JOIN
+    const joining = t >= T_JOIN && t < T_BACK
+    const up = [true, !down && !joining, true]
+    const upCount = up.filter(Boolean).length
+    // status
+    const state = !down && !joining ? 'healthy' : t < T_REBAL ? 'degraded' : 'recovering'
+    $('#st-word').textContent = state
+    $('#st-n').textContent = `${upCount}/3`
+    const blinkOn = Math.floor(t / 0.45) % 2 === 0
+    const si = $('#status i')
+    si.style.background = state === 'healthy' ? 'var(--ok)' : state === 'degraded' ? 'var(--err)' : 'var(--warn)'
+    si.style.opacity = state === 'healthy' || blinkOn ? 1 : 0.25
+    // fault button: pressed by the cursor, then disabled while recovering
+    const btn = $('#fault')
+    const press = t >= T_CLICK && t < T_CLICK + 0.12
+    btn.style.transform = press ? 'scale(0.95)' : ''
+    btn.style.opacity = t >= T_CLICK + 0.1 && t < T_BACK ? 0.45 : 1
+    btn.style.background = press ? 'color-mix(in oklab, var(--err) 22%, transparent)' : ''
+    // nodes
+    simNodes.forEach((n, i) => {
+      const g = $(`#node${i}`)
+      const isDown = i === 1 && down, isJoin = i === 1 && joining
+      const col = isDown ? 'var(--err)' : isJoin ? 'var(--warn)' : 'var(--ok)'
+      const box = g.querySelector('.box')
+      box.setAttribute('stroke', isDown || isJoin ? col : 'var(--line-strong)')
+      box.setAttribute('stroke-dasharray', isDown ? '4 4' : '')
+      box.setAttribute('opacity', isDown ? 0.65 : 1)
+      const st = g.querySelector('.st')
+      st.setAttribute('fill', col)
+      st.setAttribute('opacity', (isDown || isJoin) && !blinkOn ? 0.25 : 1)
+      g.querySelector('.nm').setAttribute('opacity', isDown ? 0.55 : 1)
+      const tag = g.querySelector('.tag')
+      tag.textContent = isDown ? 'offline' : isJoin ? 'joining' : i === 0 ? 'leader' : ''
+      tag.setAttribute('fill', isDown || isJoin ? col : 'var(--brand)')
+      // load: survivors absorb the stopped node's share (0.8s, the site's ease)
+      const full = NODE_W - 36
+      const share = (k) => (k ? full / 2 : full / 3)
+      const kIn = eo(P(t, T_REROUTE + 0.1, 0.8)), kBack = eo(P(t, T_BACK, 0.8))
+      let w
+      if (i === 1) w = t < T_DOWN ? full / 3 : t < T_BACK ? 0 : full / 3 * kBack
+      else w = lerp(lerp(full / 3, full / 2, kIn), full / 3, kBack)
+      g.querySelector('.load').setAttribute('width', Math.max(0, w))
+      // edges and traffic
+      const e = $(`#edge${i}`)
+      e.setAttribute('stroke', isDown ? 'var(--err)' : 'var(--line-strong)')
+      e.setAttribute('stroke-dasharray', isDown ? '2 5' : '')
+      e.setAttribute('opacity', isDown ? 0.5 : 1)
+      const pts = edgeD(n)
+      ;[['pa', 1.7 + i * 0.3, 0], ['pb', 2.1 + i * 0.25, 0.9]].forEach(([id, dur, begin]) => {
+        const c = $(`#${id}${i}`)
+        const flowing = !(i === 1 && (down || joining))
+        const u = (((t - 11 - begin) / dur) % 1 + 1) % 1
+        const [x, y] = cubic(pts, u)
+        c.setAttribute('cx', x); c.setAttribute('cy', y)
+        c.style.display = flowing && t - 11 >= begin ? '' : 'none'
+      })
+    })
+    const ip = $('#in-pk'), iu = ((t - 11) / 1.4) % 1
+    ip.setAttribute('cx', lerp(-6, 20, iu)); ip.setAttribute('cy', 140)
+    // log: newest at the bottom, seven rows at most
+    const shown = LOG.filter(([at]) => t >= at).length
+    logRows.forEach((r, i) => {
+      const vis = i < shown && i >= shown - 7
+      r.style.display = vis ? '' : 'none'
+      if (vis) { const k = eo(P(t, LOG[i][0], 0.35)); r.style.opacity = clamp((t - LOG[i][0]) / 0.12); r.style.transform = `translateY(${(1 - k) * 14}px)` }
+    })
+  }
+
+  // S4 cursor
+  const cur = $('#cursor')
+  if (t >= 11.35 && t < 13.0) {
+    const [bx, by] = window.BTN
+    const k = eio(P(t, 11.4, 0.48))
+    const x = lerp(bx + 260, bx - 6, k), y = lerp(by + 300, by - 4, k) + Math.sin(k * Math.PI) * -40
+    const pressS = t >= T_CLICK && t < T_CLICK + 0.12 ? 0.86 : 1
+    const fade = clamp((t - 11.35) / 0.15) * (1 - P(t, 12.6, 0.3))
+    cur.style.display = ''
+    cur.style.opacity = fade
+    cur.style.transform = `translate(${x}px, ${y}px) scale(${pressS})`
+  } else cur.style.display = 'none'
+
+  // S5
+  if (sceneFx($('#s5'), t, 15.0, 18.0)) {
+    rise($('#s5-l'), t, 15.05); rise($('#s5-h'), t, 15.12, { dy: 36 })
+    rise($('#bench'), t, 15.1, { dy: 30 })
+    benchRows.forEach((r, i) => {
+      const s = T_ROWS[i]
+      const k = eo(P(t, s, 1.0))
+      r.querySelector('.bar').style.transform = `scaleX(${k})`
+      r.querySelector('.rps').textContent = `${(BENCH[i].rps * k / 1000).toFixed(1)}k`
+      r.style.opacity = 0.25 + 0.75 * clamp((t - s + 0.1) / 0.2)
+    })
+    rise($('#s5-cap'), t, 15.9, { dy: 10 })
+    rise($('#s5-stat'), t, T_BADGE - 0.05, { d: 0.6, dy: 20, blur: 6 })
+    $('#s5-x').textContent = `${(1 + 1.3 * eo(P(t, T_BADGE, 0.7))).toFixed(1)}×`
+  }
+
+  // S6
+  if (sceneFx($('#s6'), t, 18.0, 20.0)) {
+    rise($('#s6-l'), t, 18.04); rise($('#s6-h'), t, 18.1, { dy: 36 }); rise($('#s6-p'), t, 18.2)
+    rise($('#s6-panel'), t, 18.08, { dy: 40 })
+    const a = tabAt(t)
+    if (a !== shownTab) {
+      shownTab = a
+      tabEls.forEach((e, i) => e.classList.toggle('on', i === a))
+      window.libLines = codeLines($('#lib'), MODS[a].lines)
+      $('#lib-file').textContent = FILES[a]
+      $('#lib-guide').textContent = `${MODS[a].name} guide →`
+    }
+    const since = t - (TAB0 + a * TABSTEP)
+    window.libLines.forEach((ln, i) => {
+      const s = Math.max(0, since) - i * 0.012
+      ln.style.opacity = a === 0 && t < TAB0 ? clamp((t - 18.25 + 0.2) / 0.2) : clamp(s / 0.06)
+      ln.style.transform = `translateY(${(1 - eo(clamp(s / 0.2))) * 8}px)`
+    })
+    // underline slides to the active tab
+    const prev = Math.max(0, a - 1)
+    const k = a === 0 ? 1 : eo(clamp(since / 0.16))
+    const [x0, w0] = window.TABX[prev], [x1, w1] = window.TABX[a]
+    const ul = $('#tab-ul')
+    ul.style.left = `${lerp(x0, x1, k)}px`; ul.style.width = `${lerp(w0, w1, k)}px`
+  }
+
+  // S7
+  if (sceneFx($('#s7'), t, 20.0, 24.0 + 1)) {
+    const s7 = $('#s7')
+    s7.style.transform = `scale(${1 + 0.02 * P(t, 20, 4)})`
+    const tri = $('#lg-tri'), sp = $('#lg-sp')
+    const dk = eo(P(t, 20.0, 0.55)), sk = eo(P(t, 20.12, 0.5))
+    tri.style.strokeDasharray = '1'; tri.style.strokeDashoffset = `${1 - dk}`
+    sp.style.strokeDasharray = '1'; sp.style.strokeDashoffset = `${1 - sk}`
+    document.querySelectorAll('.lg-n').forEach((c, i) => {
+      const s = 20.0 + [0, 0.18, 0.36, 0.3][i]
+      const pop = t < s ? 0 : 1 + 0.45 * Math.exp(-(t - s) * 10) * Math.cos((t - s) * 22)
+      c.style.transformOrigin = `${c.getAttribute('cx')}px ${c.getAttribute('cy')}px`
+      c.style.transform = `scale(${pop})`
+    })
+    const w = $('#s7-word'), wk = eo(P(t, 20.15, 0.6))
+    w.style.opacity = clamp((t - 20.15) / 0.12)
+    w.style.transform = `translateX(${(1 - wk) * 50}px)`
+    w.style.filter = `blur(${(1 - wk) * 10}px)`
+    w.style.clipPath = `inset(-20% ${(1 - wk) * 100}% -20% 0)`
+    rise($('#s7a'), t, 20.35, { dy: 30, blur: 8 })
+    rise($('#s7b'), t, 20.6, { dy: 30, blur: 8 })
+    $('#s7a').style.display = $('#s7b').style.display = 'inline-block'
+    rise($('#install'), t, 20.8, { dy: 24 })
+    let n = 0
+    for (const ct of [...CMD].map((_, i) => T_CMD + (i + 1) / CMD.length * (T_CMD_END - T_CMD))) if (t >= ct) n++
+    $('#cmd').textContent = CMD.slice(0, n)
+    $('#caret2').style.opacity = t < T_CMD_END || Math.floor((t - T_CMD_END) / 0.45) % 2 === 0 ? 1 : 0
+    rise($('#s7-url'), t, 21.9, { dy: 16 })
+  }
+}
+
+window.render = render
+window.ready = (async () => {
+  await document.fonts.load("600 100px Archivo")
+  await document.fonts.load("400 20px 'JetBrains Mono'")
+  await document.fonts.load("700 20px 'JetBrains Mono'")
+  await document.fonts.load("400 20px Inter")
+  await document.fonts.ready
+  layout()
+  return true
+})()
+
+// Preview: ?t=3.1 freezes a frame; otherwise it plays on a loop.
+const q = new URLSearchParams(location.search)
+if (!q.has('capture')) {
+  window.ready.then(() => {
+    if (q.has('t')) return render(parseFloat(q.get('t')))
+    const t0 = performance.now()
+    const loop = () => { render(((performance.now() - t0) / 1000) % DUR); requestAnimationFrame(loop) }
+    loop()
+  })
+}
+</script>
+</body>
+</html>

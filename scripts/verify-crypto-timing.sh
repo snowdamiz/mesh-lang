@@ -42,9 +42,12 @@ trap cleanup EXIT
 status=0
 (
   cd "${ROOT_DIR}"
-  CARGO_INCREMENTAL=0 cargo test --locked --release -p mesh-rt \
-    bytes::tests::secure_equals_timing_distribution -- \
-    --ignored --exact --nocapture
+  # Bytes.secure_equals, and blind RSA signing on AWS-LC (servers only, as
+  # the signer is: Linux and macOS).
+  CARGO_INCREMENTAL=0 cargo test --locked --release -p mesh-rt --lib -- \
+    bytes::tests::secure_equals_timing_distribution \
+    crypto::blind_rsa::tests::server::blind_rsa_sign_timing_distribution \
+    --ignored --exact --nocapture --test-threads=1
 ) >"${LOG_FILE}" 2>&1 || status=$?
 
 if [[ "${status}" -ne 0 ]]; then
@@ -61,29 +64,41 @@ log_path, output_path = sys.argv[1:]
 with open(log_path, encoding="utf-8") as log_file:
     matches = re.findall(r"MESH_TIMING_JSON=(\{[^\n]+\})", log_file.read())
 
-if len(matches) != 1:
-    raise SystemExit(f"expected one timing JSON record, found {len(matches)}")
-
-record = json.loads(matches[0])
-if record.get("schema_version") != 2 or record.get("boundary") != "Bytes.secure_equals":
-    raise SystemExit("timing record has an unexpected schema or boundary")
-if record.get("samples_per_group", 0) < 200 or record.get("passed") is not True:
-    raise SystemExit("timing record did not satisfy the release contract")
-if record.get("inconclusive") is True:
-    # Not a leak and not a clean bill of health: the control group -- an
-    # identical workload in its own allocation -- separated by as much as the
-    # real comparison, so this host cannot resolve the boundary at all. Say so
-    # in the evidence rather than recording a pass that was never measured.
-    print(
-        "warning: timing boundary was INCONCLUSIVE on this host "
-        f"(control |t|={record.get('control_t')}, "
-        f"first-vs-last |t|={record.get('welch_t')}); "
-        "re-run on a quiet machine before treating it as evidence",
-        file=sys.stderr,
+BOUNDARIES = ["Bytes.secure_equals", "Crypto.blind_rsa_sign"]
+records = [json.loads(match) for match in matches]
+if sorted(record.get("boundary") for record in records) != sorted(BOUNDARIES):
+    raise SystemExit(
+        f"expected one timing record for each of {BOUNDARIES}, found {len(records)}"
     )
+for record in records:
+    if record.get("schema_version") != 2:
+        raise SystemExit("timing record has an unexpected schema")
+    if record.get("samples_per_group", 0) < 200 or record.get("passed") is not True:
+        raise SystemExit(f"{record['boundary']} timing did not satisfy the release contract")
+    if record.get("inconclusive") is True:
+        # Not a leak and not a clean bill of health: the control group -- an
+        # identical workload in its own allocation -- separated by as much as
+        # the real comparison, so this host cannot resolve the boundary at
+        # all. Say so in the evidence rather than recording a pass that was
+        # never measured.
+        print(
+            f"warning: {record['boundary']} timing was INCONCLUSIVE on this host "
+            f"(control |t|={record.get('control_t')}, "
+            f"compared |t|={record.get('welch_t')}); "
+            "re-run on a quiet machine before treating it as evidence",
+            file=sys.stderr,
+        )
 
 with open(output_path, "x", encoding="utf-8") as output_file:
-    json.dump(record, output_file, indent=2, sort_keys=True)
+    json.dump(
+        {
+            "schema_version": 3,
+            "boundaries": {record["boundary"]: record for record in records},
+        },
+        output_file,
+        indent=2,
+        sort_keys=True,
+    )
     output_file.write("\n")
 PY
 

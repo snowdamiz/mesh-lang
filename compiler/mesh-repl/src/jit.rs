@@ -435,6 +435,10 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             mesh_rt::crypto::mesh_crypto_hmac_sha256 as *const (),
         ),
         (
+            "mesh_crypto_hmac_sha256_tag",
+            mesh_rt::crypto::mesh_crypto_hmac_sha256_tag as *const (),
+        ),
+        (
             "mesh_crypto_hmac_sha512",
             mesh_rt::crypto::mesh_crypto_hmac_sha512 as *const (),
         ),
@@ -453,6 +457,54 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
         (
             "mesh_crypto_hpke_seal_secret",
             mesh_rt::crypto::mesh_crypto_hpke_seal_secret as *const (),
+        ),
+        (
+            "mesh_crypto_hpke_seal_export",
+            mesh_rt::crypto::mesh_crypto_hpke_seal_export as *const (),
+        ),
+        (
+            "mesh_crypto_hpke_open_export",
+            mesh_rt::crypto::mesh_crypto_hpke_open_export as *const (),
+        ),
+        (
+            "mesh_crypto_hkdf_aead_seal",
+            mesh_rt::crypto::mesh_crypto_hkdf_aead_seal as *const (),
+        ),
+        (
+            "mesh_crypto_hkdf_aead_open",
+            mesh_rt::crypto::mesh_crypto_hkdf_aead_open as *const (),
+        ),
+        (
+            "mesh_crypto_blind_rsa_blind",
+            mesh_rt::crypto::mesh_crypto_blind_rsa_blind as *const (),
+        ),
+        (
+            "mesh_crypto_blind_rsa_finalize",
+            mesh_rt::crypto::mesh_crypto_blind_rsa_finalize as *const (),
+        ),
+        (
+            "mesh_crypto_blind_rsa_from_secret",
+            mesh_rt::crypto::mesh_crypto_blind_rsa_from_secret as *const (),
+        ),
+        (
+            "mesh_crypto_blind_rsa_generate",
+            mesh_rt::crypto::mesh_crypto_blind_rsa_generate as *const (),
+        ),
+        (
+            "mesh_crypto_blind_rsa_public",
+            mesh_rt::crypto::mesh_crypto_blind_rsa_public as *const (),
+        ),
+        (
+            "mesh_crypto_blind_rsa_public_from_spki",
+            mesh_rt::crypto::mesh_crypto_blind_rsa_public_from_spki as *const (),
+        ),
+        (
+            "mesh_crypto_blind_rsa_sign",
+            mesh_rt::crypto::mesh_crypto_blind_rsa_sign as *const (),
+        ),
+        (
+            "mesh_crypto_blind_rsa_verify",
+            mesh_rt::crypto::mesh_crypto_blind_rsa_verify as *const (),
         ),
         (
             "mesh_crypto_mlkem_decapsulate",
@@ -672,7 +724,9 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             "mesh_file_read_bytes",
             mesh_rt::file::mesh_file_read_bytes as *const (),
         ),
+        ("mesh_file_rename", mesh_rt::mesh_file_rename as *const ()),
         ("mesh_file_size", mesh_rt::file::mesh_file_size as *const ()),
+        ("mesh_file_sync", mesh_rt::mesh_file_sync as *const ()),
         ("mesh_file_write", mesh_rt::mesh_file_write as *const ()),
         (
             "mesh_file_write_bytes",
@@ -1351,6 +1405,14 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             mesh_rt::mesh_migration_rename_column as *const (),
         ),
         (
+            "mesh_blind_rsa_secret_key_seal_for_storage",
+            mesh_rt::storage_wrapping::mesh_blind_rsa_secret_key_seal_for_storage as *const (),
+        ),
+        (
+            "mesh_blind_rsa_secret_key_unseal_from_storage",
+            mesh_rt::storage_wrapping::mesh_blind_rsa_secret_key_unseal_from_storage as *const (),
+        ),
+        (
             "mesh_mlkem_private_key_seal_for_storage",
             mesh_rt::storage_wrapping::mesh_mlkem_private_key_seal_for_storage as *const (),
         ),
@@ -1521,6 +1583,14 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
         (
             "mesh_pid_to_string",
             mesh_rt::mesh_pid_to_string as *const (),
+        ),
+        (
+            "mesh_plaintext_enter",
+            mesh_rt::panic::mesh_plaintext_enter as *const (),
+        ),
+        (
+            "mesh_plaintext_leave",
+            mesh_rt::panic::mesh_plaintext_leave as *const (),
         ),
         (
             "mesh_pool_close",
@@ -1856,6 +1926,10 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             "mesh_row_parse_int",
             mesh_rt::db::row::mesh_row_parse_int as *const (),
         ),
+        (
+            "mesh_rt_disable_core_dumps",
+            mesh_rt::secret_memory::mesh_rt_disable_core_dumps as *const (),
+        ),
         ("mesh_rt_init", mesh_rt::mesh_rt_init as *const ()),
         (
             "mesh_rt_init_actor",
@@ -2066,6 +2140,14 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
         (
             "mesh_storage_key_ephemeral",
             mesh_rt::storage_wrapping::mesh_storage_key_ephemeral as *const (),
+        ),
+        (
+            "mesh_storage_key_from_secret",
+            mesh_rt::storage_wrapping::mesh_storage_key_from_secret as *const (),
+        ),
+        (
+            "mesh_secret_from_bytes",
+            mesh_rt::secret::mesh_secret_from_bytes as *const (),
         ),
         (
             "mesh_storage_key_platform",

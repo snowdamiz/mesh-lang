@@ -2990,6 +2990,32 @@ fn parser_export_declaration_exposes_external_symbol_with_body() {
     assert!(function.body().is_some());
 }
 
+/// `@display` marks an export that may carry plaintext, on either side of
+/// its `@export`.
+#[test]
+fn parser_display_marks_an_export_before_or_after_it() {
+    for source in [
+        "@display\n@export(\"mesh_show\")\npub fn show(request :: Bytes) -> Bytes!String do\n  Ok(request)\nend\n",
+        "@export(\"mesh_show\")\n@display\npub fn show(request :: Bytes) -> Bytes!String do\n  Ok(request)\nend\n",
+    ] {
+        let parsed = parse(source);
+        assert!(parsed.errors().is_empty(), "{:?}", parsed.errors());
+        let function = parsed.tree().fn_defs().next().expect("exported function");
+        assert!(function.display_decl().is_some(), "{source:?}");
+        let export = function.export_decl().expect("@export declaration");
+        assert_eq!(export.symbol().as_deref(), Some("mesh_show"));
+    }
+    let dangling = parse("@display\n");
+    assert!(
+        dangling
+            .errors()
+            .iter()
+            .any(|error| error.message.contains("after `@display`")),
+        "{:?}",
+        dangling.errors()
+    );
+}
+
 #[test]
 fn parser_export_declaration_requires_one_literal_symbol() {
     for source in [

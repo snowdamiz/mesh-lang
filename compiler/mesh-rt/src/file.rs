@@ -1,10 +1,12 @@
 //! File I/O runtime functions for the Mesh standard library.
 //!
-//! Provides file read, write, append, exists, and delete operations.
+//! Provides file read, write, append, exists, delete, rename and sync
+//! operations.
 //! All fallible operations return MeshResult (tag 0 = Ok, tag 1 = Err).
 
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
+use std::path::Path;
 
 use crate::bytes::{mesh_bytes_new, MeshBytes};
 use crate::io::{alloc_result, err_result, ok_int, MeshResult};
@@ -194,6 +196,51 @@ pub extern "C" fn mesh_file_delete(path: *const MeshString) -> *mut MeshResult {
     unsafe { unit_result(fs::remove_file((*path).as_str())) }
 }
 
+/// Opens `path` and flushes its data and metadata with `File::sync_all`:
+/// `fcntl(F_FULLFSYNC)` on Apple platforms (which also flushes the drive's
+/// cache), `fsync` on other Unix systems, `FlushFileBuffers` on Windows.
+fn sync_path(path: &Path) -> std::io::Result<()> {
+    // Windows flushes only handles opened for writing; Unix refuses to open
+    // a directory for writing.
+    OpenOptions::new()
+        .read(true)
+        .write(cfg!(windows))
+        .open(path)?
+        .sync_all()
+}
+
+/// Flushes a file (or, on Unix, a directory) to disk. Syncing a directory
+/// makes the names created, renamed or deleted in it durable.
+#[no_mangle]
+pub extern "C" fn mesh_file_sync(path: *const MeshString) -> *mut MeshResult {
+    unsafe { unit_result(sync_path(Path::new((*path).as_str()))) }
+}
+
+/// Renames `from` to `to`, atomically replacing an existing `to` (POSIX
+/// `rename`; both must be on one filesystem). On Unix it then syncs `to`'s
+/// directory so the new name survives a crash; if only that sync fails, the
+/// error says the rename already happened.
+#[no_mangle]
+pub extern "C" fn mesh_file_rename(
+    from: *const MeshString,
+    to: *const MeshString,
+) -> *mut MeshResult {
+    unsafe {
+        let to = Path::new((*to).as_str());
+        let renamed = fs::rename((*from).as_str(), to);
+        #[cfg(unix)]
+        let renamed = renamed.and_then(|()| {
+            let directory = to.parent().filter(|parent| !parent.as_os_str().is_empty());
+            sync_path(directory.unwrap_or(Path::new("."))).map_err(|error| {
+                std::io::Error::other(format!(
+                    "renamed, but syncing the directory failed: {error}"
+                ))
+            })
+        });
+        unit_result(renamed)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -372,6 +419,32 @@ mod tests {
                 "deleting nonexistent file should return Err"
             );
         }
+    }
+
+    /// The crash-safe save: write a temporary file, sync it, rename it over
+    /// the old one. Rename replaces the target; a missing source or a
+    /// missing file to sync is an error.
+    #[test]
+    fn rename_replaces_the_target_and_sync_flushes_files_and_directories() {
+        mesh_rt_init();
+        let dir = tempfile::tempdir().unwrap();
+        let text = |name: &str| mesh_str(dir.path().join(name).to_str().unwrap());
+        let (temp, target) = (text("state.tmp"), text("state"));
+        mesh_file_write(target, mesh_str("old"));
+        mesh_file_write(temp, mesh_str("new"));
+
+        assert_eq!(error_of(mesh_file_sync(temp)), None);
+        assert_eq!(error_of(mesh_file_rename(temp, target)), None);
+        assert_eq!(fs::read_to_string(dir.path().join("state")).unwrap(), "new");
+        assert_eq!(mesh_file_exists(temp), 0);
+
+        assert!(error_of(mesh_file_rename(temp, target)).is_some());
+        assert!(error_of(mesh_file_sync(temp)).is_some());
+        #[cfg(unix)]
+        assert_eq!(
+            error_of(mesh_file_sync(mesh_str(dir.path().to_str().unwrap()))),
+            None
+        );
     }
 
     #[test]

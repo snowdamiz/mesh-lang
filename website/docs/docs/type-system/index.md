@@ -1006,7 +1006,117 @@ A resource type derives nothing: listing any trait in its `deriving(...)` is an 
 
 `PgConn` is a resource. `Pg.connect` returns one, the query functions such as `Pg.execute` and `Pg.query` borrow it, and `Pg.close` consumes it. A `Pg.transaction` or `Repo.transaction` callback must declare its connection parameter as `conn :: borrow PgConn` (see [Databases](/docs/databases/)). `SqliteConn` is an ordinary value.
 
-`SecretBytes`, `AeadKey` and the private keys of the `Crypto` key pairs are resources, which makes `X25519KeyPair`, `SigningKeyPair` and `MlKemKeyPair` resources too; so is `BytesBuilder`, whose writes borrow it and whose `finish` consumes it (see the [Standard Library](/docs/stdlib/)).
+`SecretBytes`, `AeadKey`, `BlindRsaSecretKey`, `BlindRsaBlindingState` and the private keys of the `Crypto` key pairs are resources, which makes `X25519KeyPair`, `SigningKeyPair`, `MlKemKeyPair` and `BlindRsaBlinded` resources too; so is `BytesBuilder`, whose writes borrow it and whose `finish` consumes it (see the [Standard Library](/docs/stdlib/)).
+
+## Plaintext
+
+`Plaintext<T>` labels message content: the text of a message, a caption, a file name, a contact's name. A labeled value can leave the program only through a seal, an `@display` export, or a `declassify` that says why. Anything else that would take it out is a compile error (E0093, or a type error with a note naming the exits). At run time a `Plaintext<T>` is its `T`: the label costs nothing.
+
+```mesh
+fn seal(key :: borrow AeadKey, nonce :: Bytes, body :: Plaintext<String>) -> Bytes!CryptoError do
+  let bytes = Plaintext.map(body, fn(text) -> Bytes.from_utf8(text) end)
+  Crypto.aead_seal_plaintext(key, nonce, Bytes.empty(), bytes)
+end
+
+fn bucket(body :: Plaintext<Bytes>) -> Int do
+  declassify(Plaintext.map(body, fn(bytes) -> (Bytes.length(bytes) / 256 + 1) * 256 end), "padding bucket")
+end
+```
+
+### Where plaintext comes from
+
+| Source | Gives |
+|--------|-------|
+| `Plaintext.from(value)` | `value` labeled: text the program writes itself, or data it decides to treat as content |
+| `Crypto.aead_open_plaintext(key, nonce, aad, ciphertext)` | `Result<Plaintext<Bytes>, CryptoError>` |
+| `Crypto.hpke_open_plaintext(private_key, info, aad, sealed)` | `Result<Plaintext<Bytes>, CryptoError>` |
+| `Plaintext.unseal_from_storage(sealed, key, context)` | `Result<Plaintext<Bytes>, CryptoError>` |
+| an `@display` export's `Plaintext<Bytes>` parameter | what the host (the UI) passes in |
+
+### Working on it
+
+`Plaintext.map(value, f)` applies `f` to the content and labels the result; `Plaintext.map2(a, b, f)` does it for two. Slicing, concatenation, trimming, splitting, measuring and comparing are all a map:
+
+```mesh
+let preview = Plaintext.map(body, fn(text) -> String.slice(text, 0, 40) end)
+let joined = Plaintext.map2(first, second, fn(a, b) -> a <> b end)
+let same = Plaintext.map2(first, second, fn(a, b) -> a == b end)   # Plaintext<Bool>
+```
+
+A record, variant, tuple or collection that holds a `Plaintext` holds plaintext too, whatever it is nested in. Such a type derives nothing (listing `Json`, `Display`, `Debug`, `Row`, `Eq`, `Ord` or `Hash` is an error, and the default derives are not generated); `Schema`, which only names fields, is allowed. A program may write its own `impl` for one, which cannot read the content.
+
+The function a map applies must have no exits, and the compiler checks that it has none. It is a closure written at the call or a named function of the program (a standard-library function is wrapped: `fn(x) -> String.trim(x) end`). Its body, and every function of the program it calls, may not:
+
+- call anything outside the pure standard-library modules (`String`, `Bytes`, `List`, `Map`, `Set`, `Option`, `Result`, `Int`, `Float`, `Math`, `Json`, `Crypto`, `Base64`, `Hex` and the like; not `IO`, `File`, `Http`, `Ws`, `Env`, `Host`, `Process`, `Node`, `Timer` or the database modules), `println`, `panic` or native code;
+- send, spawn, receive or link;
+- call a function value it did not write itself, such as a parameter or a record's field;
+- show, compare, hash or encode a value of a type the program defines (its trait impls could be code with exits): only the built-in types' are known.
+
+A panic inside a map (an index out of bounds, say) ends the program as usual, but its message is withheld, since it could carry what the content made of it.
+
+### Exits
+
+| Exit | Why |
+|------|-----|
+| `Crypto.aead_seal_plaintext(key, nonce, aad, Plaintext<Bytes>)` | Encryption |
+| `Crypto.hpke_seal_plaintext(recipient, info, aad, Plaintext<Bytes>)` | Encryption |
+| `Plaintext.seal_for_storage(Plaintext<Bytes>, key, context)` | Local storage, sealed under a `StorageKey` |
+| An export marked `@display` | The host (a UI) shows the content |
+| `declassify(value, "reason")` | A deliberate disclosure: returns the `T` |
+
+`declassify` is called directly, and its reason is a non-empty string literal. Every call, with its reason, and every `@display` export go into the [plaintext report](#the-plaintext-report).
+
+Everything else refuses plaintext: printing, logging, `panic`, string interpolation, JSON, files, HTTP bodies, headers and URLs, WebSockets, host callbacks, `Crypto.sha256` and the other functions that take `String` or `Bytes`, `==`, map keys and `List.contains`.
+
+### Exports
+
+A library export may take or return `Plaintext<Bytes>` in place of `Bytes` only when it is marked `@display` (before or after its `@export`). `@display` on an export that carries no plaintext, or on a function that is not exported, is an error.
+
+```mesh
+@display
+@export("app_show_message")
+pub fn show_message(request :: Bytes) -> Plaintext<Bytes>!String do
+  let key = case StorageKey.platform() do
+    Ok(key)
+    Err(_) -> Err("no storage key")
+  end?
+  case Plaintext.unseal_from_storage(request, key, message_context()) do
+    Ok(body)
+    Err(_) -> Err("unreadable")
+  end
+end
+```
+
+### Actors
+
+Plaintext goes only to the program's own actors: those it starts on its own node with `spawn`, and its services, reached through the typed `Pid<M>` that `spawn`, `self()` or a service's `start` gives. So:
+
+- a message holding plaintext cannot be sent to an untyped `Pid` (what `Process.whereis` and `Global.whereis` return);
+- an untyped `Pid` does not become a `Pid<M>` whose messages hold plaintext, so such a pid cannot be made from a lookup; it can be registered and monitored, since what a lookup then gives back is untyped. A service that takes plaintext gets such a pid;
+- `Node.spawn` and `Node.spawn_link` cannot take plaintext or start an actor whose messages hold it, and an `@cluster` function cannot take or return it.
+
+A message cannot carry a closure to another node, so a closure that captured plaintext stays on its node.
+
+### The plaintext report
+
+`meshc build <dir> --plaintext-report <file>` writes, after a successful build, every `declassify` site (file, line, function, reason) and every `@display` export (file, line, function, symbol) as JSON, sorted, so the same source always gives the same file. `meshc plaintext-report <dir>` prints it; `--output <file>` writes it; `--check <file>` compares it with a committed report and fails, listing each site added (`+`) or removed (`-`), when they differ. Line numbers are not compared, so moving code does not fail the check.
+
+```json
+{
+  "format": "mesh-plaintext-report/1",
+  "package": "app",
+  "declassify": [
+    { "file": "padding.mpl", "line": 12, "function": "bucket", "reason": "padding bucket" }
+  ],
+  "display": [
+    { "file": "main.mpl", "line": 40, "function": "show_message", "symbol": "app_show_message" }
+  ]
+}
+```
+
+### What it does not cover
+
+The check holds for the source that was compiled: knowing that an installed binary is that build takes more than the compiler. Code outside Mesh (the host, native libraries, Rust and C code) is not checked, and a compromised device is not stopped. A computation on plaintext can still differ in how long it takes or in whether it crashes.
 
 ## Next Steps
 

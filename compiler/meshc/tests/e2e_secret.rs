@@ -130,6 +130,140 @@ end
     );
 }
 
+/// HMAC-SHA-256 tags are public bytes: RFC 4231 cases 1, 2 and 6, through
+/// compiled Mesh, under keys that stay secrets and are used again.
+#[test]
+fn hmac_sha256_tags_match_rfc4231() {
+    let temp = tempfile::tempdir().unwrap();
+    let project = write_project(
+        temp.path(),
+        "hmac-tags",
+        r#"
+fn tagged(key_hex :: String, message :: Bytes) -> String ! CryptoError do
+  case Bytes.from_hex(key_hex) do
+    Err(_) -> Ok("bad key")
+    Ok(key_bytes) -> do
+      let key = Secret.from_bytes(key_bytes) ?
+      let tag = Crypto.hmac_sha256_tag(key, message) ?
+      let again = Crypto.hmac_sha256_tag(key, message) ?
+      if Bytes.secure_equals(tag, again) do
+        Ok(Bytes.to_hex(tag))
+      else
+        Ok("unstable")
+      end
+    end
+  end
+end
+
+fn proof() -> Int ! CryptoError do
+  println(tagged("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b", Bytes.from_utf8("Hi There")) ?)
+  println(tagged("4a656665", Bytes.from_utf8("what do ya want for nothing?")) ?)
+  println(tagged(String.repeat("aa", 131), Bytes.from_utf8("Test Using Larger Than Block-Size Key - Hash Key First")) ?)
+  Ok(0)
+end
+
+fn main() do
+  case proof() do
+    Err(_) -> println("failed")
+    Ok(_) -> nil
+  end
+end
+"#,
+    );
+    let output = build(&project);
+    assert!(
+        output.status.success(),
+        "meshc build failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let run = Command::new(project.join("hmac-tags")).output().unwrap();
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7\n\
+         5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843\n\
+         60e431591ee0b67f0d8a26aacbf5b77f8e0bc6213728c5140546040f0ee37f54\n"
+    );
+}
+
+/// A private key sealed under a storage key derived from a code someone holds
+/// comes back as the same key under a fresh derivation of that code, and not
+/// under another code. The code arrives as ordinary bytes, as a typed code
+/// does, and a secret too short to derive from is refused.
+#[test]
+fn storage_keys_derived_from_a_code_reopen_what_they_sealed() {
+    let temp = tempfile::tempdir().unwrap();
+    let project = write_project(
+        temp.path(),
+        "derived-storage-key",
+        r#"
+fn keyed(code :: Bytes) -> StorageKey ! CryptoError do
+  StorageKey.from_secret(Secret.from_bytes(code) ?, Bytes.from_utf8("e2e-backup/v1"))
+end
+
+fn proof(context :: Bytes) -> Int ! CryptoError do
+  let code = Crypto.random_bytes(32) ?
+  let pair = Crypto.signing_generate() ?
+  let sealing_key = keyed(code) ?
+  let sealed = SigningPrivateKey.seal_for_storage(pair.private_key, sealing_key, context) ?
+  let opening_key = keyed(code) ?
+  let restored = SigningPrivateKey.unseal_from_storage(sealed, opening_key, context) ?
+  let message = Bytes.from_utf8("still the same key")
+  let signature = Crypto.sign(restored, message) ?
+  if Crypto.verify(pair.public_key, message, signature) ? do
+    println("same_key:restored")
+  else
+    println("same_key:different")
+  end
+  let other_key = keyed(Crypto.random_bytes(32) ?) ?
+  case SigningPrivateKey.unseal_from_storage(sealed, other_key, context) do
+    Err(AuthenticationFailed) -> println("other_code:refused")
+    Err(_) -> println("other_code:other")
+    Ok(unexpected) -> println("other_code:opened")
+  end
+  case StorageKey.from_secret(Secret.from_bytes(Bytes.from_utf8("short")) ?, Bytes.from_utf8("x")) do
+    Err(InvalidLength(minimum, actual)) -> println("short:#{minimum},#{actual}")
+    Err(_) -> println("short:other")
+    Ok(unexpected) -> println("short:accepted")
+  end
+  Ok(0)
+end
+
+fn main() do
+  case Bytes.from_hex("010707070707070707070707070707070707070707070707070707070707070707080808080808080808080808080808080000000000000000000000000000000000000000000000000000000000000000090909090909090909090909090909090909090909090909090909090909090900060000000000000001") do
+    Err(_) -> println("bad context")
+    Ok(context) -> case proof(context) do
+      Err(_) -> println("failed")
+      Ok(_) -> nil
+    end
+  end
+end
+"#,
+    );
+    let output = build(&project);
+    assert!(
+        output.status.success(),
+        "meshc build failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let run = Command::new(project.join("derived-storage-key"))
+        .output()
+        .unwrap();
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "same_key:restored\nother_code:refused\nshort:16,5\n"
+    );
+}
+
 /// A parameter written as a pattern owns the resources it binds, like a
 /// `case` arm, and one annotated `borrow` lends them back to the caller.
 /// Clauses and arities of one name take resources like any function.
@@ -874,4 +1008,115 @@ end
         String::from_utf8_lossy(&run.stderr)
     );
     assert_eq!(String::from_utf8_lossy(&run.stdout), "12\n21\n");
+}
+
+/// A release build (`--opt-level 2`) turns core dumps off as `main` starts:
+/// the core size limit drops to 0 and, on Linux, the process stops being
+/// dumpable. A debug build keeps what it inherited. A preloaded shim reports
+/// both as the program exits; the shell raises the soft limit to the hard one
+/// first, so a program that left the limit alone reports them equal.
+#[test]
+fn release_builds_turn_core_dumps_off() {
+    let temp = tempfile::tempdir().unwrap();
+    let shim_source = temp.path().join("report.c");
+    fs::write(
+        &shim_source,
+        r#"#include <stdio.h>
+#include <sys/resource.h>
+#ifdef __linux__
+#include <sys/prctl.h>
+#endif
+__attribute__((destructor)) static void report(void) {
+    struct rlimit limit;
+    int dumpable = -1;
+    getrlimit(RLIMIT_CORE, &limit);
+#ifdef __linux__
+    dumpable = prctl(PR_GET_DUMPABLE);
+#endif
+    fprintf(stderr, "core=%llu/%llu dumpable=%d\n", (unsigned long long) limit.rlim_cur,
+            (unsigned long long) limit.rlim_max, dumpable);
+}
+"#,
+    )
+    .unwrap();
+    let (shim, library_flags, preload) = if cfg!(target_os = "macos") {
+        (
+            "report.dylib",
+            &["-dynamiclib"][..],
+            "DYLD_INSERT_LIBRARIES",
+        )
+    } else {
+        ("report.so", &["-shared", "-fPIC"][..], "LD_PRELOAD")
+    };
+    let shim = temp.path().join(shim);
+    let compiled = Command::new("cc")
+        .args(library_flags)
+        .arg(&shim_source)
+        .arg("-o")
+        .arg(&shim)
+        .output()
+        .unwrap();
+    assert!(
+        compiled.status.success(),
+        "{}",
+        String::from_utf8_lossy(&compiled.stderr)
+    );
+
+    let project = write_project(
+        temp.path(),
+        "core-dumps",
+        "fn main() do\n  println(\"ran\")\nend\n",
+    );
+    let report = |opt_level: &str| {
+        let binary = temp.path().join(format!("core-dumps-O{opt_level}"));
+        let built = Command::new(meshc_bin())
+            .args(["build", project.to_str().unwrap(), "--opt-level", opt_level])
+            .arg("--output")
+            .arg(&binary)
+            .output()
+            .unwrap();
+        assert!(
+            built.status.success(),
+            "{}",
+            String::from_utf8_lossy(&built.stderr)
+        );
+        // The shell sets the preload variable itself: macOS strips DYLD_*
+        // from the environment of a protected binary such as /bin/sh.
+        let run = Command::new("sh")
+            .args([
+                "-c",
+                r#"ulimit -S -c "$(ulimit -H -c)" && export "$1=$2" && exec "$0""#,
+            ])
+            .arg(&binary)
+            .arg(preload)
+            .arg(&shim)
+            .output()
+            .unwrap();
+        assert!(
+            run.status.success(),
+            "{}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&run.stdout), "ran\n");
+        String::from_utf8_lossy(&run.stderr).trim().to_string()
+    };
+
+    let debug = report("0");
+    let limits = debug
+        .strip_prefix("core=")
+        .and_then(|rest| rest.split(' ').next())
+        .and_then(|limits| limits.split_once('/'))
+        .unwrap_or_else(|| panic!("no report from the debug build: {debug:?}"));
+    assert_eq!(limits.0, limits.1, "{debug}");
+    if cfg!(target_os = "linux") {
+        assert!(debug.ends_with("dumpable=1"), "{debug}");
+    }
+
+    let release = report("2");
+    let expected = if cfg!(target_os = "linux") {
+        "core=0/0 dumpable=0"
+    } else {
+        "core=0/0 dumpable=-1"
+    };
+    assert_eq!(release, expected);
 }

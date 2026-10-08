@@ -313,7 +313,8 @@ fn walk_fn_def(node: &SyntaxNode) -> FormatIR {
                 match n.kind() {
                     SyntaxKind::CLUSTER_DECORATOR_DECL
                     | SyntaxKind::NATIVE_DECORATOR_DECL
-                    | SyntaxKind::EXPORT_DECORATOR_DECL => {
+                    | SyntaxKind::EXPORT_DECORATOR_DECL
+                    | SyntaxKind::DISPLAY_DECORATOR_DECL => {
                         parts.push(walk_decorator(&n));
                         // Keep the decorator on the fn's line or its own, as written.
                         let own_line = std::iter::successors(n.next_sibling_or_token(), |e| {
@@ -2600,7 +2601,7 @@ mod tests {
     #[test]
     fn decorators_keep_their_spelling_and_line() {
         // `@cluster pub fn` used to become `@ clusterpub fn`, which does not parse.
-        let source = "@cluster pub fn add() -> Int do\n  1\nend\n\n@cluster(3)\npub fn sync() -> Int do\n  3\nend\n\n@native(\"mesh_math_add\")\npub fn native_add(a :: Int, b :: Int) -> Int\n";
+        let source = "@cluster pub fn add() -> Int do\n  1\nend\n\n@cluster(3)\npub fn sync() -> Int do\n  3\nend\n\n@native(\"mesh_math_add\")\npub fn native_add(a :: Int, b :: Int) -> Int\n\n@display\n@export(\"mesh_show\")\npub fn show(request :: Bytes) -> Plaintext<Bytes>!String do\n  Ok(Plaintext.from(request))\nend\n";
         assert_eq!(fmt(source), source);
     }
 

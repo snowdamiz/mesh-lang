@@ -32,5 +32,16 @@ grep -Fq 'known-answer-vectors.log' "${SCRIPT_PATH}" ||
   fail "release evidence does not retain the vector runner report"
 grep -Fq 'known_answer_vectors' "${SCRIPT_PATH}" ||
   fail "release record does not name the vector result"
+grep -Fq 'tests/vectors/blind-rsa/rfc9578-type2.json' "${SCRIPT_PATH}" ||
+  fail "release evidence does not publish the RFC 9578 blind RSA vectors"
+for proof in blind_rsa_rfc9578_type2_vectors_run_through_the_public_mesh_api \
+  blind_rsa_agrees_with_the_openssl_cli; do
+  grep -Fq "${proof}" "${SCRIPT_PATH}" ||
+    fail "release evidence does not run ${proof}"
+done
+grep -Fq 'crypto::mlkem_tests' "${SCRIPT_PATH}" ||
+  fail "release evidence does not run the ACVP and OpenSSL ML-KEM vectors"
+grep -Fq 'blind_rsa_sign_timing' "${SCRIPT_PATH}" ||
+  fail "release record does not name the blind RSA signing timing result"
 
 printf 'release evidence contract passed\n'

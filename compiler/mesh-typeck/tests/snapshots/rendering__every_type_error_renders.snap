@@ -1082,6 +1082,17 @@ expression: rendered
 ───╯
 {"code":"E0053","severity":"error","message":"resource ownership violation: reason","file":"main.mpl","spans":[{"start":19,"end":24,"label":"here"}],"fix":"move each resource once, or pass it to a direct `borrow` parameter"}
 
+[E0093] Error: plaintext cannot leave here: reason
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── here
+   │
+   │ Help: a `Plaintext` value leaves the program only through `Crypto.aead_seal_plaintext`, `Crypto.hpke_seal_plaintext`, `Plaintext.seal_for_storage`, an `@display` export, or `declassify(value, "reason")`; work on it with `Plaintext.map`
+───╯
+{"code":"E0093","severity":"error","message":"plaintext cannot leave here: reason","file":"main.mpl","spans":[{"start":19,"end":24,"label":"here"}],"fix":"a `Plaintext` value leaves the program only through `Crypto.aead_seal_plaintext`, `Crypto.hpke_seal_plaintext`, `Plaintext.seal_for_storage`, an `@display` export, or `declassify(value, \"reason\")`; work on it with `Plaintext.map`"}
+
 [E0001] Error: type mismatch: expected `Int`, found `String`
    ╭─[ main.mpl:2:15 ]
    │

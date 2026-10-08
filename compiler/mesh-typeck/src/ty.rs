@@ -213,6 +213,12 @@ impl Ty {
         Ty::Con(TyCon::new("SecretBytes"))
     }
 
+    /// `Plaintext<T>`: message content, which leaves only through a seal,
+    /// an `@display` export or `declassify` (see `plaintext.rs`).
+    pub fn plaintext(inner: Ty) -> Ty {
+        Ty::App(Box::new(Ty::Con(TyCon::new(PLAINTEXT))), vec![inner])
+    }
+
     pub fn secret_map() -> Ty {
         Ty::Con(TyCon::new("SecretMap"))
     }
@@ -251,6 +257,22 @@ impl Ty {
 
     pub fn mlkem_key_pair() -> Ty {
         Ty::Con(TyCon::new("MlKemKeyPair"))
+    }
+
+    pub fn blind_rsa_secret_key() -> Ty {
+        Ty::Con(TyCon::new("BlindRsaSecretKey"))
+    }
+
+    pub fn blind_rsa_blinding_state() -> Ty {
+        Ty::Con(TyCon::new("BlindRsaBlindingState"))
+    }
+
+    pub fn blind_rsa_public_key() -> Ty {
+        Ty::Con(TyCon::new("BlindRsaPublicKey"))
+    }
+
+    pub fn blind_rsa_blinded() -> Ty {
+        Ty::Con(TyCon::new("BlindRsaBlinded"))
     }
 
     pub fn signing_private_key() -> Ty {
@@ -473,6 +495,9 @@ impl fmt::Display for Ty {
 
 /// Name of the type constructor behind `Ty::tuple_row`.
 pub const TUPLE_ROW: &str = "TupleRow";
+
+/// Name of the labeled content type, `Plaintext<T>`.
+pub const PLAINTEXT: &str = "Plaintext";
 
 /// A polymorphic type scheme: a type with universally quantified variables.
 ///

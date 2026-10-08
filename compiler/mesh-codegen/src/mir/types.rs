@@ -146,6 +146,12 @@ fn resolve_app(base_name: &str, args: &[Ty], registry: &TypeRegistry) -> MirType
         return MirType::Int;
     }
 
+    // `Plaintext<T>` is a label the type checker follows: at run time it
+    // is its value.
+    if let (mesh_typeck::ty::PLAINTEXT, [inner]) = (base_name, args) {
+        return resolve_type(inner, registry);
+    }
+
     // Handle Pid<M> -> MirType::Pid(Some(M))
     if let ("Pid", [msg_ty]) = (base_name, args) {
         return MirType::Pid(Some(Box::new(resolve_type(msg_ty, registry))));
@@ -262,7 +268,27 @@ mod tests {
             type_aliases: Default::default(),
             sum_type_defs: Default::default(),
             resource_types: Default::default(),
+            plaintext_types: Default::default(),
         }
+    }
+
+    /// `Plaintext<T>` costs nothing at run time: it is laid out as `T`,
+    /// alone or inside another type.
+    #[test]
+    fn plaintext_is_its_value() {
+        let registry = empty_registry();
+        assert_eq!(
+            resolve_type(&Ty::plaintext(Ty::string()), &registry),
+            MirType::String
+        );
+        assert_eq!(
+            resolve_type(&Ty::plaintext(Ty::int()), &registry),
+            MirType::Int
+        );
+        assert_eq!(
+            resolve_type(&Ty::option(Ty::plaintext(Ty::string())), &registry),
+            resolve_type(&Ty::option(Ty::string()), &registry)
+        );
     }
 
     #[test]

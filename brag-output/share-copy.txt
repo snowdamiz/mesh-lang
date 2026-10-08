@@ -1,0 +1,5 @@
+A · Living cluster
+Every light is an actor. Mesh is a compiled, typed language where sending an actor the wrong message won't compile, and losing a node is the runtime's problem, not your code's. meshlang.dev
+
+C · Editorial
+Spawn. Send. Won't compile. Mesh gives you typed actors, LLVM-native binaries and a runtime that reroutes around a lost node, with HTTP, WebSockets, Postgres, SQLite and tests in the box. meshlang.dev

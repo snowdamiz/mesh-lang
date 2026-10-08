@@ -1,0 +1,345 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Mesh · editorial</title>
+<style>
+@font-face { font-family: 'Inter'; font-weight: 100 900; src: url('https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7W0Q5nw.woff2') format('woff2'); }
+@font-face { font-family: 'Archivo'; font-weight: 100 900; font-stretch: 62% 125%; src: url('https://fonts.gstatic.com/s/archivo/v25/k3kQo8UDI-1M0wlSfdnoLmvDIaI.woff2') format('woff2'); }
+@font-face { font-family: 'JetBrains Mono'; font-weight: 400 700; src: url('https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxDcwgknk-4.woff2') format('woff2'); }
+:root { --mint: oklch(0.8 0.15 163); --mint-deep: oklch(0.62 0.15 163); --ink: #0a0a0a; --paper: #f1f1e9; --red: oklch(0.64 0.21 28); }
+* { box-sizing: border-box; margin: 0; }
+html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--ink); font-family: Inter, sans-serif; -webkit-font-smoothing: antialiased; }
+#stage { position: absolute; inset: 0; overflow: hidden; }
+.card { position: absolute; inset: 0; overflow: hidden; display: none; }
+.abs { position: absolute; }
+.giant { position: absolute; font-family: Archivo; font-weight: 900; font-stretch: 62%; text-transform: uppercase; line-height: 0.8; letter-spacing: -0.01em; white-space: nowrap; }
+.head { position: absolute; font-family: Archivo; font-weight: 800; font-stretch: 72%; text-transform: uppercase; line-height: 0.9; letter-spacing: -0.005em; white-space: nowrap; }
+.tag { position: absolute; font-family: 'JetBrains Mono'; font-size: 19px; letter-spacing: 0.16em; text-transform: uppercase; white-space: nowrap; }
+.mono { font-family: 'JetBrains Mono'; font-variant-ligatures: none; white-space: pre; }
+.rule { position: absolute; left: 0; right: 0; height: 3px; background: currentColor; }
+.ink { background: var(--ink); color: var(--paper); }
+.mintbg { background: var(--mint); color: var(--ink); }
+.paperbg { background: var(--paper); color: var(--ink); }
+.redbg { background: var(--red); color: var(--ink); }
+.codecard { position: absolute; background: var(--ink); color: var(--paper); padding: 34px 44px; font-size: 30px; line-height: 1.6; box-shadow: 16px 16px 0 rgba(0,0,0,0.85); }
+.k { color: #fff; font-weight: 700; } .fn { color: var(--mint); } .ty { color: #9fc3d8; } .cm { color: #6d7a72; } .st { color: #e7b8a0; }
+#flash { position: absolute; inset: 0; background: #fff; pointer-events: none; opacity: 0; }
+.grain { position: absolute; inset: 0; pointer-events: none; opacity: 0.1; mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='300'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='300' height='300' filter='url(%23n)'/></svg>"); }
+.mark { position: absolute; width: 26px; height: 26px; }
+.mark::before, .mark::after { content: ''; position: absolute; background: currentColor; }
+.mark::before { left: 12px; top: 0; width: 2px; height: 26px; } .mark::after { top: 12px; left: 0; height: 2px; width: 26px; }
+</style>
+</head>
+<body>
+<div id="stage">
+
+  <!-- S0 cold open -->
+  <section class="card ink" id="c-m"><div class="giant" id="g-m">M</div></section>
+  <section class="card mintbg" id="c-e"><div class="giant" id="g-e">E</div></section>
+  <section class="card paperbg" id="c-s"><div class="giant" id="g-s">S</div></section>
+  <section class="card redbg" id="c-h"><div class="giant" id="g-h">H</div></section>
+  <section class="card mintbg" id="c-mesh">
+    <div class="rule" style="top:92px"></div><div class="rule" style="bottom:92px"></div>
+    <div class="tag" style="left:64px; top:40px">A programming language</div>
+    <div class="tag" style="right:64px; top:40px">for actors, types &amp; clusters</div>
+    <div class="giant" id="g-mesh"><span>M</span><span>E</span><span>S</span><span>H</span></div>
+    <div class="tag" style="left:64px; bottom:40px">meshlang.dev</div>
+    <div class="tag" style="right:64px; bottom:40px">Native · Typed · Concurrent · Distributed</div>
+  </section>
+
+  <!-- S1 actors -->
+  <section class="card ink" id="c-actors">
+    <div class="tag" style="left:64px; top:44px; color:var(--mint)">01 / Concurrency</div>
+    <div class="tag" style="right:64px; top:44px">Typed mailboxes</div>
+    <div class="giant" id="g-actors" style="top:140px; font-size:820px; color:var(--paper)">ACTORS</div>
+    <div class="codecard mono" id="cc-actor" style="right:110px; bottom:120px; background:var(--mint); color:var(--ink); box-shadow:16px 16px 0 var(--paper)"><span class="l">actor counter(total :: Int) do</span>
+<span class="l">  receive do</span>
+<span class="l">    amount -> counter(total + amount)</span>
+<span class="l">  end</span>
+<span class="l">end</span></div>
+  </section>
+  <section class="card paperbg" id="c-send">
+    <div class="tag" style="left:64px; top:44px">01 / Concurrency</div>
+    <div class="head" id="h-spawn" style="left:60px; top:150px; font-size:250px">Spawn.</div>
+    <div class="head" id="h-send" style="left:60px; top:380px; font-size:250px">Send.</div>
+    <div class="head" id="h-recv" style="left:60px; top:610px; font-size:250px; color:var(--mint-deep)">Receive.</div>
+    <div class="codecard mono" id="cc-send" style="right:110px; top:330px"><span class="l"><span class="k">let</span> pid = <span class="fn">spawn</span>(counter, 0)</span>
+<span class="l"><span class="cm"># inferred: Pid&lt;Int&gt;</span></span>
+<span class="l"><span class="fn">send</span>(pid, 5)</span></div>
+  </section>
+  <section class="card redbg" id="c-err">
+    <div class="tag" style="left:64px; top:44px">01 / Concurrency</div>
+    <div class="tag" style="right:64px; top:44px">meshc build .</div>
+    <div class="mono" id="bad" style="position:absolute; left:64px; top:170px; font-size:132px; font-weight:700; color:var(--paper); text-decoration: underline wavy var(--ink); text-decoration-thickness: 6px; text-underline-offset: 26px">send(pid, "five")</div>
+    <div class="giant" id="g-wont" style="left:56px; top:430px; font-size:420px; color:var(--ink)">Won’t compile.</div>
+    <div class="tag" id="errline" style="left:64px; bottom:56px; font-size:24px; letter-spacing:0.04em; text-transform:none; color:var(--ink)">error[E0014] message type mismatch: expected Int, found String</div>
+  </section>
+
+  <!-- S2 clusters -->
+  <section class="card mintbg" id="c-nodes">
+    <div class="tag" style="left:64px; top:44px">02 / Distribution</div>
+    <div class="tag" style="right:64px; top:44px">@cluster · HTTP.clustered</div>
+    <div class="giant" id="g-nodes" style="left:40px; top:120px; font-size:430px">Nodes</div>
+    <svg id="net" class="abs" style="left:0; top:0" width="1920" height="1080"></svg>
+    <div class="head" id="h-lose" style="left:56px; top:120px; font-size:250px">Lose a node.</div>
+    <div class="head" id="h-reroute" style="left:64px; top:370px; font-size:100px; color:var(--paper); background:var(--ink); padding:10px 24px 4px">The runtime reroutes.</div>
+  </section>
+  <section class="card ink" id="c-clustered">
+    <div class="tag" style="left:64px; top:44px; color:var(--mint)">02 / Distribution</div>
+    <div class="mono" id="cl-cm" style="position:absolute; left:120px; top:330px; font-size:44px; color:var(--mint)"># the runtime decides which node runs it</div>
+    <div class="mono" id="cl-code" style="position:absolute; left:110px; top:420px; font-size:132px; font-weight:700; color:var(--paper)">HTTP.<span style="color:var(--mint)">clustered</span>(hello)</div>
+    <div class="tag" id="cl-tag" style="left:120px; top:640px; font-size:24px; color:rgba(241,241,233,0.6); text-transform:none; letter-spacing:0.02em">placement, routing and failover belong to the runtime, not your handler</div>
+  </section>
+
+  <!-- S3 native -->
+  <section class="card ink" id="c-speed">
+    <div style="position:absolute; left:1240px; top:0; bottom:0; right:0; background:var(--paper); color:var(--ink)">
+      <div class="tag" style="left:60px; top:130px">GET /text · req/s</div>
+      <div id="bars" style="position:absolute; left:60px; right:60px; top:200px"></div>
+      <div class="tag" style="left:60px; bottom:130px; font-size:15px; line-height:1.7">benchmarks/RESULTS.md<br>2 vCPU · 100 connections · one run</div>
+    </div>
+    <div class="tag" style="left:80px; top:130px; color:var(--mint)">03 / Native speed</div>
+    <div class="giant" id="g-num" style="left:66px; top:270px; font-size:440px; color:var(--paper)">0</div>
+    <div class="head" id="h-rps" style="left:80px; top:760px; font-size:70px; color:var(--paper)">Requests per second.</div>
+    <div class="head" id="h-x" style="left:80px; top:836px; font-size:70px; color:var(--mint)">2.3× Elixir.</div>
+  </section>
+  <section class="card mintbg" id="c-llvm">
+    <div class="tag" style="left:64px; top:44px">03 / Native speed</div>
+    <div class="giant" id="g-llvm" style="left:50px; top:170px; font-size:560px">LLVM →</div>
+    <div class="head" id="h-bin" style="left:64px; top:690px; font-size:170px">Native binary.</div>
+    <div class="mono" id="build" style="position:absolute; right:64px; bottom:60px; font-size:30px; background:var(--ink); color:var(--paper); padding:16px 26px">$ meshc build . &amp;&amp; ./output</div>
+  </section>
+
+  <!-- S4 in the box -->
+  <section class="card" id="c-word"><div class="giant" id="g-word"></div></section>
+  <section class="card ink" id="c-box">
+    <div class="tag" style="left:64px; top:44px; color:var(--mint)">04 / Standard library</div>
+    <div id="boxlist" class="abs" style="left:64px; top:150px; right:64px"></div>
+    <div class="giant" id="g-box" style="left:56px; bottom:70px; font-size:360px; color:var(--mint)">In the box.</div>
+  </section>
+
+  <!-- S5 outro -->
+  <section class="card mintbg" id="c-out">
+    <div class="rule" style="top:92px"></div><div class="rule" style="bottom:92px"></div>
+    <div class="mark" style="left:40px; top:40px"></div><div class="mark" style="right:40px; top:40px"></div>
+    <div class="mark" style="left:40px; bottom:40px"></div><div class="mark" style="right:40px; bottom:40px"></div>
+    <svg id="logo" class="abs" viewBox="0 0 100 100" style="left:100px; top:170px; width:420px; height:420px; overflow:visible" fill="none"><path d="M50 17L88.1 83L11.9 83ZM50 61L50 17M50 61L88.1 83M50 61L11.9 83" stroke="#0a0a0a" stroke-width="9.98" stroke-linejoin="round"/><circle cx="50" cy="17" r="10.89" fill="#0a0a0a"/><circle cx="88.1" cy="83" r="10.89" fill="#0a0a0a"/><circle cx="11.9" cy="83" r="10.89" fill="#0a0a0a"/><circle cx="50" cy="61" r="13.61" fill="#0a0a0a"/></svg>
+    <div class="giant" id="g-out" style="left:580px; top:150px; font-size:520px">Mesh</div>
+    <div class="head" id="h-out" style="left:108px; top:650px; font-size:76px">Typed actors. Native binaries. <span style="color:var(--paper); background:var(--ink); padding:4px 18px 0">Clusters built in.</span></div>
+    <div class="mono" id="install" style="position:absolute; left:108px; top:790px; font-size:34px; background:var(--ink); color:var(--paper); padding:18px 30px"><span style="color:var(--mint)">$</span> curl -sSf https://meshlang.dev/install.sh | sh</div>
+    <div class="tag" style="right:64px; bottom:40px">meshlang.dev</div>
+    <div class="tag" style="left:64px; bottom:40px">Mesh — 2026</div>
+  </section>
+
+  <div id="flash"></div>
+  <div class="grain"></div>
+</div>
+
+<script>
+const DUR = 20
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x))
+const lerp = (a, b, k) => a + (b - a) * k
+const P = (t, s, d) => clamp((t - s) / d)
+const expo = (k) => (k >= 1 ? 1 : 1 - Math.pow(2, -10 * k))
+const $ = (s) => document.querySelector(s)
+
+// every hard cut and slam, in seconds; the score is written against the same list
+const CARDS = [
+  ['#c-m', 0.0, 0.25], ['#c-e', 0.25, 0.5], ['#c-s', 0.5, 0.75], ['#c-h', 0.75, 1.0], ['#c-mesh', 1.0, 2.5],
+  ['#c-actors', 2.5, 4.0], ['#c-send', 4.0, 5.0], ['#c-err', 5.0, 6.5],
+  ['#c-nodes', 6.5, 9.5], ['#c-clustered', 9.5, 10.5],
+  ['#c-speed', 10.5, 13.0], ['#c-llvm', 13.0, 14.0],
+  ['#c-word', 14.0, 15.75], ['#c-box', 15.75, 17.0],
+  ['#c-out', 17.0, 20.01],
+]
+const WORDS = [['HTTP', 'paperbg'], ['WebSockets', 'ink'], ['Postgres', 'mintbg'], ['SQLite', 'paperbg'], ['JSON', 'ink'], ['Jobs', 'mintbg'], ['Tests', 'redbg']]
+const SLAMS = [0, 0.25, 0.5, 0.75, 1.0, 2.5, 3.0, 4.0, 4.5, 5.0, 6.5, 8.0, 8.5, 9.0, 9.5, 10.5, 12.0, 13.0, 13.5, ...WORDS.map((_, i) => 14 + i * 0.25), 15.75, 17.0, 17.5, 18.0]
+const FLASHES = [1.0, 2.5, 5.0, 6.5, 10.5, 14.0, 17.0]
+window.CUES = { slams: SLAMS, flashes: FLASHES, words: WORDS.map((_, i) => 14 + i * 0.25) }
+
+function fitGiant(el, text, maxW, maxH) {
+  if (text != null) el.textContent = text
+  el.style.fontSize = '100px'
+  const r = el.getBoundingClientRect()
+  const s = Math.min(maxW / r.width, maxH / (r.height * 0.8)) * 100
+  el.style.fontSize = `${s}px`
+  return s
+}
+function centerGiant(el) {
+  const r = el.getBoundingClientRect()
+  el.style.left = `${(1920 - r.width) / 2}px`
+  el.style.top = `${(1080 - r.height) / 2 + r.height * 0.06}px`
+}
+
+// the node graph: three blocks, traffic between them
+const NODES = [[250, 640], [810, 640], [1370, 640]]
+const NW = 300, NH = 230
+$('#net').innerHTML = `
+  <g id="links" stroke="#0a0a0a" stroke-width="10" fill="none" stroke-dasharray="26 22">
+    <path id="l01" d="M ${NODES[0][0] + NW} ${NODES[0][1] + 70} L ${NODES[1][0]} ${NODES[1][1] + 70}"/>
+    <path id="l12" d="M ${NODES[1][0] + NW} ${NODES[1][1] + 70} L ${NODES[2][0]} ${NODES[2][1] + 70}"/>
+    <path id="l02" d="M ${NODES[0][0] + NW / 2} ${NODES[0][1] + NH} C ${NODES[0][0] + NW / 2} ${NODES[0][1] + NH + 150}, ${NODES[2][0] + NW / 2} ${NODES[2][1] + NH + 150}, ${NODES[2][0] + NW / 2} ${NODES[2][1] + NH}"/>
+  </g>
+  ${NODES.map(([x, y], i) => `<g id="n${i}"><rect x="${x}" y="${y}" width="${NW}" height="${NH}" fill="#0a0a0a"/>
+    <text x="${x + 26}" y="${y + 52}" font-family="JetBrains Mono" font-size="28" fill="#f1f1e9" letter-spacing="3">NODE-${i + 1}</text>
+    <text class="st" x="${x + 26}" y="${y + NH - 30}" font-family="JetBrains Mono" font-size="22" fill="oklch(0.8 0.15 163)" letter-spacing="3">● UP</text>
+    <path class="x" d="M ${x - 30} ${y - 30} L ${x + NW + 30} ${y + NH + 30} M ${x + NW + 30} ${y - 30} L ${x - 30} ${y + NH + 30}" stroke="oklch(0.64 0.21 28)" stroke-width="26" fill="none" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1"/></g>`).join('')}`
+
+const BENCH = [['Rust', 46244], ['Go', 30306], ['Mesh', 29108], ['Elixir', 12441]]
+$('#bars').innerHTML = BENCH.map(([l, v]) => `<div class="row" style="margin-top:48px; font-family:'JetBrains Mono'; font-size:24px; ${l === 'Mesh' ? 'font-weight:700' : 'opacity:0.55'}">${l}<span style="float:right">${(v / 1000).toFixed(1)}k</span><div class="bar" style="height:${l === 'Mesh' ? 26 : 12}px; margin-top:12px; width:${v / 46244 * 100}%; transform-origin:left; background:${l === 'Mesh' ? 'var(--mint-deep)' : 'currentColor'}"></div></div>`).join('')
+$('#boxlist').innerHTML = WORDS.map(([w], i) => `<div class="head bx" style="position:relative; display:inline-block; font-size:108px; margin-right:44px; color:${i % 2 ? 'var(--paper)' : 'var(--mint)'}">${w}</div>`).join('')
+
+function shake(t) {
+  let x = 0, y = 0
+  for (const s of SLAMS) if (t >= s && t < s + 0.4) { const k = t - s; x += Math.exp(-k * 18) * Math.sin(k * 95) * 16; y += Math.exp(-k * 18) * Math.cos(k * 83) * 10 }
+  return [x, y]
+}
+function rgb(el, t, s, amt = 14) {
+  const k = t - s
+  const a = k >= 0 && k < 0.12 ? amt * (1 - k / 0.12) : 0
+  el.style.textShadow = a ? `${a}px 0 0 rgba(255,40,60,0.85), ${-a}px 0 0 rgba(40,255,210,0.85)` : ''
+}
+function slam(el, t, s, { from = 1.35, dy = 0, dx = 0 } = {}) {
+  const k = expo(P(t, s, 0.35))
+  el.style.opacity = t >= s ? 1 : 0
+  el.style.transform = `translate(${(1 - k) * dx}px, ${(1 - k) * dy}px) scale(${lerp(from, 1, k)})`
+}
+function wipe(el, t, s, d = 0.3) {
+  const k = expo(P(t, s, d))
+  el.style.clipPath = `inset(0 ${(1 - k) * 100}% 0 0)`
+  el.style.opacity = t >= s ? 1 : 0
+}
+const fmt = (v) => Math.round(v).toLocaleString('en-US')
+
+function render(t) {
+  for (const [id, s, e] of CARDS) $(id).style.display = t >= s && t < e ? 'block' : 'none'
+  const [sx, sy] = shake(t)
+  $('#stage').style.transform = `translate(${sx}px, ${sy}px)`
+  let fl = 0
+  for (const s of FLASHES) if (t >= s && t < s + 0.1) fl = Math.max(fl, 0.85 * (1 - (t - s) / 0.1))
+  $('#flash').style.opacity = fl
+
+  // cold open: one letter per eighth, then the name
+  ;[['#g-m', 0], ['#g-e', 0.25], ['#g-s', 0.5], ['#g-h', 0.75]].forEach(([id, s]) => {
+    const el = $(id)
+    if (t >= s && t < s + 0.25) { slam(el, t, s, { from: 1.5 }); rgb(el, t, s, 22) }
+  })
+  if (t >= 1.0 && t < 2.5) {
+    const g = $('#g-mesh')
+    ;[...g.children].forEach((c, i) => {
+      const s = 1.0 + i * 0.045, k = expo(P(t, s, 0.4))
+      c.style.display = 'inline-block'
+      c.style.transform = `translateY(${(1 - k) * 700}px)`
+    })
+    g.style.transform = `scale(${1 + 0.03 * P(t, 1.0, 1.5)})`
+    rgb(g, t, 1.0, 18)
+  }
+
+  // 01 actors
+  if (t >= 2.5 && t < 4.0) {
+    const g = $('#g-actors')
+    g.style.left = `${lerp(80, -520, (t - 2.5) / 1.5)}px`
+    rgb(g, t, 2.5, 20)
+    const cc = $('#cc-actor'), k = expo(P(t, 3.0, 0.4))
+    cc.style.transform = `translateY(${(1 - k) * 700}px)`
+    ;[...cc.querySelectorAll('.l')].forEach((l, i) => { l.style.opacity = clamp((t - 3.1 - i * 0.0625) / 0.05) })
+  }
+  if (t >= 4.0 && t < 5.0) {
+    ;[['#h-spawn', 4.0], ['#h-send', 4.5], ['#h-recv', 4.75]].forEach(([id, s]) => { const el = $(id); el.style.visibility = t >= s ? 'visible' : 'hidden'; slam(el, t, s, { from: 1.25, dx: -120 }); rgb(el, t, s) })
+    const cc = $('#cc-send'), k = expo(P(t, 4.0, 0.35))
+    cc.style.transform = `translateX(${(1 - k) * 900}px)`
+    ;[...cc.querySelectorAll('.l')].forEach((l, i) => { l.style.opacity = t >= [4.05, 4.1, 4.5][i] ? 1 : 0 })
+  }
+  if (t >= 5.0 && t < 6.5) {
+    const b = $('#bad'); slam(b, t, 5.0, { from: 1.2 }); rgb(b, t, 5.0, 24)
+    const w = $('#g-wont'); w.style.visibility = t >= 5.25 ? 'visible' : 'hidden'; slam(w, t, 5.25, { from: 1.6 }); rgb(w, t, 5.25, 26)
+    wipe($('#errline'), t, 5.6, 0.5)
+  }
+
+  // 02 nodes
+  if (t >= 6.5 && t < 9.5) {
+    const g = $('#g-nodes'); rgb(g, t, 6.5, 20); g.style.visibility = t < 8.0 ? 'visible' : 'hidden'
+    g.style.transform = `translateX(${-60 * P(t, 6.5, 3)}px)`
+    NODES.forEach((_, i) => { const n = $(`#n${i}`), s = 6.75 + i * 0.25, k = expo(P(t, s, 0.3)); n.style.opacity = t >= s ? 1 : 0; n.style.transform = `translateY(${(1 - k) * 80}px)` })
+    const lost = t >= 8.0
+    const links = $('#links')
+    links.style.strokeDashoffset = `${-t * 160}`
+    links.style.opacity = t >= 7.4 ? 1 : 0
+    // node-2 goes down: red cross, its links go dead, traffic takes the long way round
+    const n1 = $('#n1')
+    n1.querySelector('rect').setAttribute('fill', lost ? 'oklch(0.64 0.21 28)' : '#0a0a0a')
+    n1.querySelector('.st').textContent = lost ? '✕ LOST' : '● UP'
+    n1.querySelector('.st').setAttribute('fill', lost ? '#0a0a0a' : 'oklch(0.8 0.15 163)')
+    n1.querySelector('.x').setAttribute('stroke-dashoffset', 1 - expo(P(t, 8.0, 0.25)))
+    ;['#l01', '#l12'].forEach((id) => { const p = $(id); p.style.opacity = lost ? 0.18 : 1 })
+    const l02 = $('#l02'); l02.style.opacity = t >= 8.5 ? 1 : 0; l02.style.strokeWidth = t >= 8.5 ? 14 : 10
+    const lose = $('#h-lose'); lose.style.visibility = t >= 8.0 ? 'visible' : 'hidden'; slam(lose, t, 8.0, { from: 1.3 }); rgb(lose, t, 8.0)
+    const rr = $('#h-reroute'); rr.style.visibility = t >= 8.5 ? 'visible' : 'hidden'; wipe(rr, t, 8.5, 0.35)
+  }
+  if (t >= 9.5 && t < 10.5) {
+    const c = $('#cl-code'); slam(c, t, 9.5, { from: 1.3 }); rgb(c, t, 9.5)
+    wipe($('#cl-cm'), t, 9.6, 0.4); wipe($('#cl-tag'), t, 9.8, 0.4)
+  }
+
+  // 03 native speed
+  if (t >= 10.5 && t < 13.0) {
+    const n = $('#g-num'); n.textContent = fmt(29108 * expo(P(t, 10.5, 1.2))); rgb(n, t, 10.5, 18)
+    document.querySelectorAll('#bars .bar').forEach((b, i) => { b.style.transform = `scaleX(${expo(P(t, 10.6 + i * 0.125, 0.6))})` })
+    const r = $('#h-rps'); r.style.visibility = t >= 11.0 ? 'visible' : 'hidden'; wipe(r, t, 11.0, 0.35)
+    const x = $('#h-x'); x.style.visibility = t >= 12.0 ? 'visible' : 'hidden'; slam(x, t, 12.0, { from: 1.4 }); rgb(x, t, 12.0)
+  }
+  if (t >= 13.0 && t < 14.0) {
+    const g = $('#g-llvm'); slam(g, t, 13.0, { from: 1.3, dx: 200 }); rgb(g, t, 13.0, 22)
+    const b = $('#h-bin'); b.style.visibility = t >= 13.5 ? 'visible' : 'hidden'; slam(b, t, 13.5, { from: 1.3 }); rgb(b, t, 13.5)
+    wipe($('#build'), t, 13.6, 0.3)
+  }
+
+  // 04 in the box: a word per eighth, then the list
+  if (t >= 14.0 && t < 15.75) {
+    const i = clamp(Math.floor((t - 14.0) / 0.25), 0, WORDS.length - 1)
+    const card = $('#c-word'), g = $('#g-word')
+    card.className = `card ${WORDS[i][1]}`
+    card.style.display = 'block'
+    if (g.dataset.i !== String(i)) { g.dataset.i = i; fitGiant(g, WORDS[i][0], 1780, 900); centerGiant(g) }
+    const s = 14.0 + i * 0.25
+    g.style.transform = `scale(${lerp(1.18, 1, expo(P(t, s, 0.2)))})`
+    rgb(g, t, s, 20)
+  }
+  if (t >= 15.75 && t < 17.0) {
+    document.querySelectorAll('#boxlist .bx').forEach((b, i) => { b.style.opacity = t >= 15.75 + i * 0.04 ? 1 : 0 })
+    const g = $('#g-box'); slam(g, t, 15.9, { from: 1.25, dy: 60 }); g.style.visibility = t >= 15.9 ? 'visible' : 'hidden'; rgb(g, t, 15.9)
+  }
+
+  // outro
+  if (t >= 17.0) {
+    const lg = $('#logo'), k = expo(P(t, 17.0, 0.45))
+    lg.style.transform = `scale(${lerp(0.2, 1, k)}) rotate(${(1 - k) * -40}deg)`
+    const w = $('#g-out'); slam(w, t, 17.0, { from: 1.3, dx: 120 }); rgb(w, t, 17.0, 22)
+    const h = $('#h-out'); h.style.visibility = t >= 17.5 ? 'visible' : 'hidden'; wipe(h, t, 17.5, 0.4)
+    const ins = $('#install'); ins.style.visibility = t >= 18.0 ? 'visible' : 'hidden'; wipe(ins, t, 18.0, 0.45)
+  }
+}
+
+window.render = render
+window.EVENTS = window.CUES
+window.ready = (async () => {
+  await document.fonts.load('900 100px Archivo'); await document.fonts.load('800 100px Archivo'); await document.fonts.load("400 20px 'JetBrains Mono'"); await document.fonts.load("700 20px 'JetBrains Mono'")
+  await document.fonts.ready
+  // giant letters fill the frame
+  for (const id of ['#g-m', '#g-e', '#g-s', '#g-h']) { const el = $(id); el.parentElement.style.display = 'block'; fitGiant(el, el.textContent, 1700, 1000); centerGiant(el); el.parentElement.style.display = '' }
+  { const c = $('#c-err'); c.style.display = 'block'; fitGiant($('#g-wont'), null, 1800, 560); c.style.display = '' }
+  const cm = $('#c-mesh'); cm.style.display = 'block'
+  const gm = $('#g-mesh'); fitGiant(gm, null, 1760, 820); centerGiant(gm)
+  cm.style.display = ''
+  return true
+})()
+const q = new URLSearchParams(location.search)
+if (!q.has('capture')) window.ready.then(() => {
+  if (q.has('t')) return render(parseFloat(q.get('t')))
+  const t0 = performance.now(); const loop = () => { render(((performance.now() - t0) / 1000) % DUR); requestAnimationFrame(loop) }; loop()
+})
+</script>
+</body>
+</html>

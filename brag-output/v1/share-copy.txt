@@ -1,0 +1,1 @@
+Mesh is a compiled, statically typed language with actors built in and clustering in the runtime. Send an actor the wrong message and it won't compile; lose a node and the runtime reroutes the traffic. Write a server, ship a fleet: meshlang.dev

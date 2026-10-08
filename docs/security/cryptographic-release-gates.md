@@ -98,10 +98,18 @@ contains:
 ## Current baseline
 
 The development runtime implements the classical Crypto V2 API, an ML-KEM-768
-KEM primitive, and an Argon2id v1.3 password KDF, plus affine secret resources,
+KEM primitive (libcrux-ml-kem 0.0.10, portable implementation on every target),
+an Argon2id v1.3 password KDF, and blind RSA profile BR1
+(RFC 9474 RSABSSA-SHA384-PSS-Deterministic, 2,048 bits, the RFC 9578 token type
+`0x0002` scheme), plus affine secret resources,
 a static production provider, a test-only deterministic provider, known-answer
 and negative tests, a published NIST ACVP ML-KEM-768 key-generation vector
-executed through the public Mesh API, and an iOS compilation proof. The hybrid
+executed through the public Mesh API, every ACVP ML-KEM-768 key-generation,
+encapsulation and decapsulation case plus an OpenSSL differential run through
+the runtime's ML-KEM helpers, secret-table memory locked in RAM and left out
+of core dumps where the OS allows it (see the
+[secret memory model](secret-memory-model.md)), core dumps turned off in
+release executables, and an iOS compilation proof. The hybrid
 messenger suite is callable; there is no software-enforced external-review
 disable. Release readiness requires protocol negotiation, downgrade and target
 performance evidence at the exact candidate. No independent audit is claimed:
@@ -119,6 +127,36 @@ performance evidence at the exact candidate. No independent audit is claimed:
   and packages both the vector and its test log. Published external vectors for
   the remaining Crypto V2 primitives and reproducibility of every advertised
   target archive remain open.
+- ML-KEM provider evidence (libcrux-ml-kem 0.0.10): `crypto::mlkem_tests`
+  checks all 25 ACVP key generations (public and expanded private key), 25
+  encapsulations and 10 decapsulations (implicit rejection included) at
+  ACVP-Server `65370b86`, and eight OpenSSL 3.6.3 cases (public key from seed,
+  encapsulation, decapsulation of the ciphertext and a tampered copy);
+  `crypto::tests::nist_acvp_mlkem768_keygen_tc26_matches_public_key` keeps the
+  release vector at the runtime level. `scripts/verify-crypto-mobile.sh`
+  proves libcrux, not the `ml-kem` crate, is in the iOS and Android graphs.
+  libcrux's portable backend is formally verified; parts of its generic code
+  and its SHA-3 are not yet (see the dependency change review). The outside
+  review (plan C10) is still to come.
+- Blind RSA BR1 evidence: all five RFC 9578 Appendix A.2 tokens run through
+  the public Mesh API in compiled Mesh (key import, SPKI, signing, token
+  verification) and through the helpers with the deterministic test provider
+  (blinding reproduces each token request); RFC 9474 Appendix A.3 runs through
+  the size-generic helpers and AWS-LC at 4,096 bits. An OpenSSL CLI
+  differential checks Mesh SPKIs and finalized signatures with
+  `openssl dgst -sha384` (RSASSA-PSS, 48-byte salt) and raw signing against
+  OpenSSL's raw private-key operation. Negative and bounds tests cover wrong
+  lengths, a blinded value not below n, every byte of the SPKI template,
+  another exponent or size, tampered and misplaced signatures, stale,
+  destroyed, wrong-kind and wrong-owner handles, a second finalize with one
+  state (a compile error) and `UnsupportedTarget` off the servers, which also
+  runs in the iOS simulator. The crypto fuzz target covers SPKI parsing,
+  blinding, finalizing, verifying and signing rejection, with corpus seeds.
+  The release timing check covers `Crypto.blind_rsa_sign`, and the release
+  evidence publishes the RFC 9578 vectors, runs the vector proof and the
+  differential, and records the BR1 profile. Android and Windows are
+  build-verified only (no AWS-LC linked); an outside review of the primitive is
+  still to come.
 
 Current primitives are implementation baseline, not approval evidence. A
 release record must name the profile, Mesh revision, provider and dependency

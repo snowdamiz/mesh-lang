@@ -2,7 +2,7 @@ use argon2::{Algorithm, Argon2, Block, Params, Version};
 use chacha20poly1305::aead::{AeadInPlace, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Tag};
 use ed25519_dalek::{Signature, Signer as _, SigningKey, VerifyingKey};
-use ring::digest::{digest, SHA256, SHA512};
+use ring::digest::{digest, SHA256, SHA384, SHA512};
 use ring::hkdf::{KeyType, Salt, HKDF_SHA256};
 use ring::hmac::{sign, Key, HMAC_SHA256};
 use ring::rand::{SecureRandom, SystemRandom};
@@ -20,7 +20,6 @@ pub(crate) const MAX_ARGON2_PARALLELISM: u32 = 8;
 pub(crate) const MIN_ARGON2_OUTPUT_BYTES: usize = 16;
 pub(crate) const MAX_ARGON2_OUTPUT_BYTES: usize = 64;
 const AEAD_TAG_BYTES: usize = 16;
-const MAX_AEAD_CIPHERTEXT_BYTES: usize = MAX_INPUT_BYTES + AEAD_TAG_BYTES;
 
 struct HkdfOutputLength(usize);
 
@@ -54,6 +53,13 @@ pub(crate) trait CryptoProvider {
     fn sha256(&self, input: &[u8]) -> [u8; 32] {
         let value = digest(&SHA256, input);
         let mut output = [0; 32];
+        output.copy_from_slice(value.as_ref());
+        output
+    }
+
+    fn sha384(&self, input: &[u8]) -> [u8; 48] {
+        let value = digest(&SHA384, input);
+        let mut output = [0; 48];
         output.copy_from_slice(value.as_ref());
         output
     }
@@ -208,7 +214,20 @@ pub(crate) trait CryptoProvider {
         associated_data: &[u8],
         plaintext: &[u8],
     ) -> Result<Vec<u8>, ProviderError> {
-        if associated_data.len() > MAX_INPUT_BYTES || plaintext.len() > MAX_INPUT_BYTES {
+        self.chacha20poly1305_seal_within(key, nonce, associated_data, plaintext, MAX_INPUT_BYTES)
+    }
+
+    // The same with a plaintext bound of `maximum` bytes (the derived-key AEAD
+    // takes whole OHTTP responses, up to a mebibyte).
+    fn chacha20poly1305_seal_within(
+        &self,
+        key: &[u8; 32],
+        nonce: &[u8; 12],
+        associated_data: &[u8],
+        plaintext: &[u8],
+        maximum: usize,
+    ) -> Result<Vec<u8>, ProviderError> {
+        if associated_data.len() > MAX_INPUT_BYTES || plaintext.len() > maximum {
             return Err(ProviderError::InvalidLength);
         }
         let cipher = ChaCha20Poly1305::new(key.into());
@@ -229,7 +248,18 @@ pub(crate) trait CryptoProvider {
         associated_data: &[u8],
         ciphertext: &mut Zeroizing<Vec<u8>>,
     ) -> Result<(), ProviderError> {
-        if associated_data.len() > MAX_INPUT_BYTES || ciphertext.len() > MAX_AEAD_CIPHERTEXT_BYTES {
+        self.chacha20poly1305_open_within(key, nonce, associated_data, ciphertext, MAX_INPUT_BYTES)
+    }
+
+    fn chacha20poly1305_open_within(
+        &self,
+        key: &[u8; 32],
+        nonce: &[u8; 12],
+        associated_data: &[u8],
+        ciphertext: &mut Zeroizing<Vec<u8>>,
+        maximum: usize,
+    ) -> Result<(), ProviderError> {
+        if associated_data.len() > MAX_INPUT_BYTES || ciphertext.len() > maximum + AEAD_TAG_BYTES {
             ciphertext.zeroize();
             return Err(ProviderError::InvalidLength);
         }
@@ -393,6 +423,16 @@ mod tests {
         let digest = SystemProvider.sha256(b"abc");
 
         assert_eq!(digest, expected);
+    }
+
+    #[test]
+    fn sha384_matches_nist_abc_vector() {
+        let expected = decode_hex(
+            "cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed\
+             8086072ba1e7cc2358baeca134c825a7",
+        );
+
+        assert_eq!(SystemProvider.sha384(b"abc"), expected);
     }
 
     #[test]

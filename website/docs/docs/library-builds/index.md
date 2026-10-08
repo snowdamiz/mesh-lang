@@ -257,6 +257,25 @@ text with status `9`. Use `Bytes` for structured data and choose the encoding
 yourself, such as JSON text or a length-prefixed binary format built with
 [`BytesBuilder`](/docs/stdlib/#building-binary-values).
 
+### Display exports
+
+An export that hands message content to the host, or takes it from the
+host, is marked `@display`, before or after its `@export`. It may then use
+`Plaintext<Bytes>` in place of `Bytes` for its parameter, its `Ok` value, or
+both; the C ABI is the same bytes either way.
+
+```text
+@display
+@export("app_show_message")
+pub fn show_message(request :: Bytes) -> Plaintext<Bytes>!String do ... end
+```
+
+An export without `@display` that takes or returns plaintext is error E0093,
+and so is `@display` on an export that carries none. Every `@display` export
+is listed in the plaintext report (`meshc plaintext-report`), so the set of
+functions that give the host content is fixed and reviewed. See
+[Plaintext](/docs/type-system/#plaintext).
+
 ## Generated files
 
 | File | Contents |

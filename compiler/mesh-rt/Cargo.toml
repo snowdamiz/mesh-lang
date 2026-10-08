@@ -48,7 +48,7 @@ webpki-roots = "0.26"
 rustls-pki-types = "1"
 # Phase 64: ring for ECDSA key generation (ephemeral TLS certs for node connections)
 # Already compiled as transitive dep of rustls -- zero additional compile time.
-ring = "0.17"
+ring = "=0.17.14"
 zeroize = "1.8"
 argon2 = { version = "=0.5.3", default-features = false, features = ["zeroize"] }
 x25519-dalek = { version = "=2.0.1", default-features = false, features = ["static_secrets", "zeroize"] }
@@ -56,11 +56,23 @@ ed25519-dalek = { version = "=2.1.1", default-features = false, features = ["zer
 chacha20poly1305 = { version = "=0.10.1", default-features = false }
 # Feature-unify the transitive authenticator so key state zeroizes on drop.
 poly1305 = { version = "=0.8.0", default-features = false, features = ["zeroize"] }
-ml-kem = { version = "=0.3.2", default-features = false, features = ["alloc", "zeroize"] }
+# ML-KEM-768 from Cryspen's formally verified libcrux. Only the ML-KEM-768
+# parameter set; the runtime calls its portable implementation on every
+# target (see docs/security/dependency-policy.md).
+libcrux-ml-kem = { version = "=0.0.10", default-features = false, features = ["mlkem768"] }
+# Blind RSA (profile BR1): constant-time Montgomery exponentiation and safegcd
+# inversion for blinding and finalizing on every target.
+crypto-bigint = { version = "=0.7.5", default-features = false, features = ["zeroize"] }
 # Hostname-based auto-identity for generic Docker/container deployments.
 hostname = "0.4"
 libc = "0.2"
 mio = { version = "1.1", features = ["net", "os-poll"] }
+
+# Blind RSA signing, key generation and PKCS#8 import (profile BR1) run only
+# on servers. Phones and Windows never compile AWS-LC; their server-only blind
+# RSA functions return CryptoError.UnsupportedTarget.
+[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
+aws-lc-sys = { version = "=0.45.0", default-features = false }
 
 [lints.rust]
 # Set by scripts/compiler-coverage.py and the Docker proof's coverage build.

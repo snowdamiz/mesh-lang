@@ -77,10 +77,27 @@ restrictions, code inspection, or review.
 - The unsafe string comparison API has been removed. `Bytes.secure_equals`
   uses the runtime's constant-time dependency and has a 256-byte length-boundary
   regression test. `scripts/verify-crypto-timing.sh` records a release-mode
-  timing-distribution check for equal-length first- and last-byte mismatches.
+  timing-distribution check for equal-length first- and last-byte mismatches,
+  and one for `Crypto.blind_rsa_sign` on fixed versus random blinded
+  messages.
+- ML-KEM-768 runs libcrux-ml-kem's portable implementation on every target,
+  whose ring arithmetic uses its `libcrux-secrets` integer types and
+  constant-time selection; its compile-time `check-secret-independence`
+  mode does not build in 0.0.10, so it is not enabled (see the dependency
+  change review).
+- Blind RSA blinding and unblinding use `crypto-bigint`'s constant-time
+  Montgomery arithmetic and safegcd inversion; signing uses AWS-LC with RSA
+  blinding always on (see the dependency change review).
 - Binary-first hash, HMAC, HKDF, Argon2id, AEAD, signature, key-agreement, and
   KEM APIs use the selected runtime provider and secret/resource inputs where
   required.
+- A MAC tag is public, so `Crypto.hmac_sha256_tag(key, message)` returns it as
+  `Bytes` from the runtime provider under a borrowed `SecretBytes` key. Code
+  that needs a tag it can store or compare must use it rather than composing
+  HMAC in Mesh source over `Crypto.sha256` with the key as `Bytes`, which
+  neither keeps the key a resource nor runs in constant time. Compare tags with
+  `Bytes.secure_equals`. `Crypto.hmac_sha256` remains for output used as key
+  material and returns `SecretBytes`.
 
 ## Migration order
 

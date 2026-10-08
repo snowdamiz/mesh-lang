@@ -7,6 +7,10 @@ readonly PROFILE="crypto-v2-development-baseline"
 readonly MLKEM_VECTOR_PATH="tests/vectors/mlkem/mlkem768-keygen-acvp-tc26.json"
 readonly MLKEM_VECTOR_FILE="mlkem768-keygen-acvp-tc26.json"
 readonly MLKEM_VECTOR_TEST="crypto_v2_public_api_compiles_and_executes_natively"
+readonly BLIND_RSA_VECTOR_PATH="tests/vectors/blind-rsa/rfc9578-type2.json"
+readonly BLIND_RSA_VECTOR_FILE="blind-rsa-rfc9578-type2.json"
+readonly BLIND_RSA_VECTOR_TEST="blind_rsa_rfc9578_type2_vectors_run_through_the_public_mesh_api"
+readonly BLIND_RSA_DIFFERENTIAL_TEST="blind_rsa_agrees_with_the_openssl_cli"
 
 usage() {
   printf 'usage: bash scripts/generate-crypto-release-evidence.sh OUTPUT_DIRECTORY\n' >&2
@@ -32,7 +36,7 @@ output_parent="$(cd "${output_parent}" && pwd -P)"
 readonly OUTPUT_DIR="${output_parent}/${output_name}"
 [[ ! -e "${OUTPUT_DIR}" && ! -L "${OUTPUT_DIR}" ]] || fail "output path already exists: ${OUTPUT_DIR}" 73
 
-for command_name in cargo cargo-audit cargo-cyclonedx cp git python3 rustc tar; do
+for command_name in cargo cargo-audit cargo-cyclonedx cp git openssl python3 rustc tar; do
   command -v "${command_name}" >/dev/null || fail "required command is unavailable: ${command_name}" 69
 done
 
@@ -85,6 +89,10 @@ readonly MLKEM_VECTOR_SOURCE="${SOURCE_A}/${MLKEM_VECTOR_PATH}"
 readonly MLKEM_VECTOR_ARTIFACT="${OUTPUT_DIR}/${MLKEM_VECTOR_FILE}"
 [[ -s "${MLKEM_VECTOR_SOURCE}" ]] || fail "release revision is missing ${MLKEM_VECTOR_PATH}"
 cp "${MLKEM_VECTOR_SOURCE}" "${MLKEM_VECTOR_ARTIFACT}"
+readonly BLIND_RSA_VECTOR_SOURCE="${SOURCE_A}/${BLIND_RSA_VECTOR_PATH}"
+readonly BLIND_RSA_VECTOR_ARTIFACT="${OUTPUT_DIR}/${BLIND_RSA_VECTOR_FILE}"
+[[ -s "${BLIND_RSA_VECTOR_SOURCE}" ]] || fail "release revision is missing ${BLIND_RSA_VECTOR_PATH}"
+cp "${BLIND_RSA_VECTOR_SOURCE}" "${BLIND_RSA_VECTOR_ARTIFACT}"
 
 audit_status=0
 (cd "${SOURCE_A}" && cargo audit --json >"${OUTPUT_DIR}/cargo-audit.json") || audit_status=$?
@@ -195,8 +203,16 @@ run_known_answer_vectors() {
       RUSTFLAGS="${remap_flags}" \
       MESH_RT_LIB_PATH="${target_root}/release/libmesh_rt.a" \
       cargo test --locked --release -p meshc \
-        --test e2e_crypto_v2 "${MLKEM_VECTOR_TEST}" \
-        --target-dir "${target_root}" -- --exact
+        --test e2e_crypto_v2 --target-dir "${target_root}" -- \
+        "${MLKEM_VECTOR_TEST}" "${BLIND_RSA_VECTOR_TEST}" \
+        "${BLIND_RSA_DIFFERENTIAL_TEST}" --exact
+    # Every ACVP ML-KEM-768 case and the OpenSSL differential, through the
+    # runtime's libcrux provider.
+    CARGO_INCREMENTAL=0 \
+      SOURCE_DATE_EPOCH="${COMMIT_EPOCH}" \
+      RUSTFLAGS="${remap_flags}" \
+      cargo test --locked --release -p mesh-rt --lib --target-dir "${target_root}" -- \
+        crypto::mlkem_tests crypto::tests::nist_acvp_mlkem768_keygen_tc26_matches_public_key
   )
 }
 
@@ -259,10 +275,12 @@ TIMING_SHA="$(sha256_file "${OUTPUT_DIR}/constant-time.json")"
 readonly TIMING_SHA
 VECTOR_SHA="$(sha256_file "${MLKEM_VECTOR_ARTIFACT}")"
 readonly VECTOR_SHA
+BLIND_RSA_VECTOR_SHA="$(sha256_file "${BLIND_RSA_VECTOR_ARTIFACT}")"
+readonly BLIND_RSA_VECTOR_SHA
 VECTOR_TEST_SHA="$(sha256_file "${OUTPUT_DIR}/known-answer-vectors.log")"
 readonly VECTOR_TEST_SHA
 
-python3 - "${OUTPUT_DIR}/release-record.json" "${PROFILE}" "${REVISION}" "${COMMIT_EPOCH}" "${HOST_TARGET}" "${RUSTC_VERSION}" "${CARGO_VERSION}" "${AUDIT_VERSION}" "${CYCLONEDX_VERSION}" "${AUDIT_SHA}" "${SBOM_SHA}" "${TIMING_SHA}" "${SHA_A}" "${VECTOR_SHA}" "${VECTOR_TEST_SHA}" <<'PY'
+python3 - "${OUTPUT_DIR}/release-record.json" "${PROFILE}" "${REVISION}" "${COMMIT_EPOCH}" "${HOST_TARGET}" "${RUSTC_VERSION}" "${CARGO_VERSION}" "${AUDIT_VERSION}" "${CYCLONEDX_VERSION}" "${AUDIT_SHA}" "${SBOM_SHA}" "${TIMING_SHA}" "${SHA_A}" "${VECTOR_SHA}" "${VECTOR_TEST_SHA}" "${BLIND_RSA_VECTOR_SHA}" <<'PY'
 from datetime import datetime, timezone
 import json
 import sys
@@ -283,6 +301,7 @@ import sys
     artifact_sha,
     vector_sha,
     vector_test_sha,
+    blind_rsa_vector_sha,
 ) = sys.argv[1:]
 
 record = {
@@ -302,7 +321,14 @@ record = {
             "artifact": "mlkem768-keygen-acvp-tc26.json",
             "sha256": vector_sha,
             "runner": "public Mesh Crypto V2 end-to-end proof",
-        }
+        },
+        {
+            "suite": "RSABSSA-SHA384-PSS-Deterministic",
+            "version": "RFC 9578 Appendix A.2 (token type 0x0002)",
+            "artifact": "blind-rsa-rfc9578-type2.json",
+            "sha256": blind_rsa_vector_sha,
+            "runner": "public Mesh blind RSA end-to-end proof and OpenSSL CLI differential",
+        },
     ],
     "primitive_profiles": {
         "argon2id": {
@@ -317,12 +343,30 @@ record = {
                 "output_bytes": [16, 64],
                 "password_bytes_maximum": 65536,
             },
-        }
+        },
+        "ml_kem": {
+            "algorithm": "ML-KEM-768 (FIPS 203)",
+            "dependency": "libcrux-ml-kem 0.0.10, portable implementation on every target",
+            "vectors": "NIST ACVP-Server 65370b86 ML-KEM-768 keyGen, encapsulation and decapsulation; OpenSSL differential",
+        },
+        "blind_rsa": {
+            "profile": "BR1",
+            "algorithm": "RSABSSA-SHA384-PSS-Deterministic (RFC 9474)",
+            "modulus_bits": 2048,
+            "public_exponent": 65537,
+            "dependencies": {
+                "blind_finalize": "crypto-bigint 0.7.5",
+                "verify": "ring 0.17.14 RSA_PSS_2048_8192_SHA384",
+                "sign_generate_import": "aws-lc-sys 0.45.0 (AWS-LC 5.7.0), Linux and macOS only",
+            },
+            "bounds": {"message_bytes_maximum": 65536, "blinded_and_signature_bytes": 256},
+        },
     },
     "results": {
         "dependency_audit": {"status": "passed", "sha256": audit_sha},
         "sbom": {"status": "passed", "format": "CycloneDX 1.5 JSON", "sha256": sbom_sha},
         "secure_equals_timing": {"status": "passed", "sha256": timing_sha},
+        "blind_rsa_sign_timing": {"status": "passed", "sha256": timing_sha},
         "reproducible_meshc_build": {"status": "passed", "sha256": artifact_sha},
         "known_answer_vectors": {
             "status": "passed",
@@ -331,7 +375,7 @@ record = {
         },
     },
     "known_limitations": [
-        "The published external vector set currently covers ML-KEM-768 key generation; other Crypto V2 embedded KATs are not yet exported as versioned vector artifacts.",
+        "The published external vector sets cover ML-KEM-768 key generation and RFC 9578 blind RSA token issuance; other Crypto V2 embedded KATs are not yet exported as versioned vector artifacts.",
         "This record does not embed the separate native fuzz-smoke evidence or the complete generated-Mesh fuzz and secret-leak sentinel suites.",
         "This record covers the current host target only, not the advertised mobile and host matrix.",
         "This record is not an independent cryptographic, protocol, server, or mobile security review.",
@@ -345,7 +389,7 @@ PY
 
 (
   cd "${OUTPUT_DIR}"
-  for evidence_file in cargo-audit.json meshc.cdx.json constant-time.json reproducibility.json "${MLKEM_VECTOR_FILE}" known-answer-vectors.log release-record.json; do
+  for evidence_file in cargo-audit.json meshc.cdx.json constant-time.json reproducibility.json "${MLKEM_VECTOR_FILE}" "${BLIND_RSA_VECTOR_FILE}" known-answer-vectors.log release-record.json; do
     printf '%s  %s\n' "$(sha256_file "${evidence_file}")" "${evidence_file}"
   done
 ) >"${OUTPUT_DIR}/SHA256SUMS"

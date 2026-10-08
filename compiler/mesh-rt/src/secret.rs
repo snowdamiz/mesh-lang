@@ -9,6 +9,7 @@ use crate::crypto::{
 };
 use crate::gc::mesh_gc_alloc_actor;
 use crate::io::{alloc_result, MeshResult};
+use crate::secret_memory::SecretBuf;
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::ffi::c_void;
@@ -40,6 +41,9 @@ pub(crate) enum CryptoErrorTag {
     ResourceLimitExceeded = 7,
     UnsupportedOperation = 8,
     InternalFailure = 9,
+    /// A server-only operation (blind RSA signing) on a target that has no
+    /// signing provider: iOS, Android and Windows.
+    UnsupportedTarget = 10,
 }
 
 /// Runtime representation of the largest `CryptoError` variant.
@@ -89,6 +93,36 @@ pub extern "C" fn mesh_secret_random(length: i64) -> *mut MeshResult {
             create_random_secret_entry(&process, &mut table, length as usize)
         };
         handle.map(|handle| allocate_handle(&mut process, handle))
+    };
+    crypto_result(result)
+}
+
+/// Take ordinary bytes in as an actor-owned secret: material that reached the
+/// program as data (a recovery code a person typed) and must from here on be
+/// handled as a secret. The source `Bytes` is not erased; it stays wherever the
+/// caller keeps it until the garbage collector frees it.
+#[no_mangle]
+pub extern "C" fn mesh_secret_from_bytes(value: *const MeshBytes) -> *mut MeshResult {
+    let Some(process) = crate::actor::current_process() else {
+        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
+    };
+    let length = if value.is_null() {
+        0
+    } else {
+        unsafe { (*value).len }
+    };
+    if length == 0 || length > MAX_SECRET_BYTES as u64 {
+        return crypto_error(
+            CryptoErrorTag::InvalidLength,
+            MAX_SECRET_BYTES as i64,
+            length.min(i64::MAX as u64) as i64,
+        );
+    }
+    let bytes = Zeroizing::new(unsafe { (*value).as_slice() }.to_vec().into_boxed_slice());
+    let result = {
+        let mut process = process.lock();
+        insert_owned_resource(&mut process, ResourceKind::SecretBytes, bytes)
+            .map_err(resource_failure)
     };
     crypto_result(result)
 }
@@ -365,6 +399,10 @@ pub(crate) enum ResourceKind {
     StorageKey = 5,
     SecretMap = 6,
     MlKemPrivateKey = 8,
+    /// A 2,048-bit blind RSA private key as canonical PKCS#8 DER.
+    BlindRsaSecretKey = 9,
+    /// The inverse of a blind RSA blinding factor, `r^-1 mod n`.
+    BlindRsaBlindingState = 10,
 }
 
 impl ResourceKind {
@@ -377,6 +415,10 @@ impl ResourceKind {
             value if value == Self::StorageKey as u32 => Some(Self::StorageKey),
             value if value == Self::SecretMap as u32 => Some(Self::SecretMap),
             value if value == Self::MlKemPrivateKey as u32 => Some(Self::MlKemPrivateKey),
+            value if value == Self::BlindRsaSecretKey as u32 => Some(Self::BlindRsaSecretKey),
+            value if value == Self::BlindRsaBlindingState as u32 => {
+                Some(Self::BlindRsaBlindingState)
+            }
             _ => None,
         }
     }
@@ -489,7 +531,8 @@ enum StorageCounterSource {
 struct Entry {
     owner: ProcessId,
     kind: ResourceKind,
-    bytes: Zeroizing<Box<[u8]>>,
+    /// Locked, dump-excluded memory; see `secret_memory`.
+    bytes: SecretBuf,
     /// A storage key's nonce counter; no other kind has one.
     counter: Option<StorageCounterSource>,
 }
@@ -785,6 +828,23 @@ pub(crate) fn insert_ephemeral_storage_key_resource(
     Ok(allocate_handle(process, handle))
 }
 
+/// Register a storage key derived from a secret. Every derivation of the same
+/// secret has the same key, so its nonces must not repeat across derivations:
+/// the caller draws the prefix in `material` and `next_counter` at random.
+pub(crate) fn insert_derived_storage_key_resource(
+    process: &mut Process,
+    material: Zeroizing<Box<[u8]>>,
+    next_counter: u64,
+) -> Result<*mut MeshSecretHandle, ResourceError> {
+    let owner = live_owner(process)?;
+    let handle = secret_table().lock().insert_storage_key(
+        owner,
+        material,
+        StorageCounterSource::Ephemeral { next_counter },
+    )?;
+    Ok(allocate_handle(process, handle))
+}
+
 #[cfg(test)]
 pub(crate) fn insert_test_storage_key_resource(
     process: &mut Process,
@@ -882,7 +942,6 @@ pub(crate) fn validate_prepared_storage_key_resource(
 /// Remove a private resource from its owner table and invalidate its handle.
 /// The returned allocation remains zeroizing so callers cannot accidentally
 /// free live key material without wiping it.
-#[cfg(test)]
 pub(crate) fn consume_owned_resource(
     process: &Process,
     pointer: *const MeshSecretHandle,
@@ -1066,7 +1125,7 @@ impl ResourceTable {
         slot.entry = Some(Entry {
             owner,
             kind,
-            bytes,
+            bytes: SecretBuf::new(bytes),
             counter,
         });
         self.usage.insert(
@@ -1121,7 +1180,7 @@ impl ResourceTable {
             .get_mut(handle.slot as usize)
             .and_then(|slot| slot.entry.as_mut())
             .ok_or(ResourceError::StaleHandle)?;
-        let old = mem::replace(&mut entry.bytes, bytes);
+        let old = mem::replace(&mut entry.bytes, SecretBuf::new(bytes));
         self.usage
             .get_mut(&owner)
             .expect("validated owner usage")
@@ -1275,7 +1334,7 @@ impl ResourceTable {
             .saturating_sub(target_data.capacity as usize);
         target_data.entries.drain(..excess);
         let encoded = target_data.encode()?;
-        let consumed = self.consume(owner, source, ResourceKind::SecretMap)?;
+        let consumed = self.take(owner, source, ResourceKind::SecretMap)?;
         self.replace_resource_bytes(owner, target, ResourceKind::SecretMap, encoded)?;
         drop(consumed);
         Ok(())
@@ -1412,7 +1471,7 @@ impl ResourceTable {
         &mut self,
         owner: ProcessId,
         handle: ResourceHandle,
-    ) -> Result<Option<Zeroizing<Box<[u8]>>>, ResourceError> {
+    ) -> Result<Option<SecretBuf>, ResourceError> {
         let kind = ResourceKind::from_raw(handle.kind).ok_or(ResourceError::WrongKind)?;
         self.destroy_kind(owner, handle, kind)
     }
@@ -1422,8 +1481,8 @@ impl ResourceTable {
         owner: ProcessId,
         handle: ResourceHandle,
         expected_kind: ResourceKind,
-    ) -> Result<Option<Zeroizing<Box<[u8]>>>, ResourceError> {
-        match self.consume(owner, handle, expected_kind) {
+    ) -> Result<Option<SecretBuf>, ResourceError> {
+        match self.take(owner, handle, expected_kind) {
             Ok(mut bytes) => {
                 bytes.zeroize();
                 Ok(Some(bytes))
@@ -1433,12 +1492,23 @@ impl ResourceTable {
         }
     }
 
+    /// Remove a resource and hand its bytes out of the locked pool.
     fn consume(
         &mut self,
         owner: ProcessId,
         handle: ResourceHandle,
         expected_kind: ResourceKind,
     ) -> Result<Zeroizing<Box<[u8]>>, ResourceError> {
+        self.take(owner, handle, expected_kind)
+            .map(SecretBuf::into_inner)
+    }
+
+    fn take(
+        &mut self,
+        owner: ProcessId,
+        handle: ResourceHandle,
+        expected_kind: ResourceKind,
+    ) -> Result<SecretBuf, ResourceError> {
         self.validate(owner, handle, expected_kind)?;
         let slot = &mut self.slots[handle.slot as usize];
         let entry = slot.entry.take().ok_or(ResourceError::StaleHandle)?;
@@ -1478,10 +1548,10 @@ impl ResourceTable {
         };
         let total_length = first_length.saturating_add(second_length);
         let first_bytes = self
-            .consume(owner, first, ResourceKind::SecretBytes)
+            .take(owner, first, ResourceKind::SecretBytes)
             .map_err(resource_failure)?;
         let second_bytes = self
-            .consume(owner, second, ResourceKind::SecretBytes)
+            .take(owner, second, ResourceKind::SecretBytes)
             .map_err(resource_failure)?;
         if total_length > self.limits.max_secret_bytes {
             return Err(failure(
@@ -1532,7 +1602,7 @@ impl ResourceTable {
             self.release_usage(owner, entry.bytes.len());
             return Err(RetypeError::Rejected {
                 error,
-                removed: entry.bytes,
+                removed: entry.bytes.into_inner(),
             });
         }
 
@@ -1540,7 +1610,7 @@ impl ResourceTable {
             entry.bytes.zeroize();
             self.release_usage(owner, entry.bytes.len());
             return Err(RetypeError::GenerationExhausted {
-                removed: entry.bytes,
+                removed: entry.bytes.into_inner(),
             });
         };
         entry.kind = target_kind;
@@ -1683,6 +1753,8 @@ mod tests {
             (ResourceKind::SigningPrivateKey, 0x33),
             (ResourceKind::AeadKey, 0x44),
             (ResourceKind::MlKemPrivateKey, 0x55),
+            (ResourceKind::BlindRsaSecretKey, 0x66),
+            (ResourceKind::BlindRsaBlindingState, 0x77),
         ];
 
         for (kind, marker) in cases {
@@ -2054,6 +2126,38 @@ mod tests {
         assert!(removed.iter().all(|byte| *byte == 0));
     }
 
+    /// A stored secret's bytes sit in a page the kernel reports locked in
+    /// RAM and, where the OS can say so (Linux, Android), left out of core
+    /// dumps.
+    #[test]
+    fn stored_secrets_live_in_locked_dump_excluded_pages() {
+        let owner = ProcessId(74);
+        let mut table = ResourceTable::new(Limits::for_tests(4, 4, 64, 64, 64));
+        let handle = table
+            .insert(
+                owner,
+                ResourceKind::AeadKey,
+                Zeroizing::new(vec![0x3C; 32].into_boxed_slice()),
+            )
+            .expect("insert AEAD key");
+        let address = table
+            .with_resource(owner, handle, ResourceKind::AeadKey, |bytes| {
+                bytes.as_ptr() as usize
+            })
+            .expect("read AEAD key");
+
+        let (locked, dump_excluded) = crate::secret_memory::kernel_page_flags(address);
+        assert!(
+            locked,
+            "the kernel does not report the secret's page locked"
+        );
+        assert_ne!(
+            dump_excluded,
+            Some(false),
+            "the secret's page is in core dumps"
+        );
+    }
+
     #[test]
     fn consume_invalidates_the_handle_and_releases_exact_quota() {
         let owner = ProcessId(72);
@@ -2306,13 +2410,15 @@ mod tests {
     fn owner_cleanup_removes_only_owned_secrets_and_is_idempotent() {
         let owner = ProcessId(101);
         let other_actor = ProcessId(102);
-        let mut table = ResourceTable::new(Limits::for_tests(8, 8, 128, 64, 160));
+        let mut table = ResourceTable::new(Limits::for_tests(10, 10, 128, 64, 160));
         let kinds = [
             ResourceKind::SecretBytes,
             ResourceKind::X25519PrivateKey,
             ResourceKind::SigningPrivateKey,
             ResourceKind::AeadKey,
             ResourceKind::MlKemPrivateKey,
+            ResourceKind::BlindRsaSecretKey,
+            ResourceKind::BlindRsaBlindingState,
         ];
         let owned: Vec<_> = kinds
             .into_iter()
@@ -2342,7 +2448,7 @@ mod tests {
             )
             .expect("other actor private resource");
 
-        assert_eq!(table.destroy_owned(owner), 6);
+        assert_eq!(table.destroy_owned(owner), kinds.len() + 1);
         for (handle, kind) in owned.into_iter().zip(kinds) {
             assert!(matches!(
                 table.with_resource(owner, handle, kind, |_| ()),
@@ -2559,6 +2665,8 @@ mod tests {
             ResourceKind::X25519PrivateKey,
             ResourceKind::SigningPrivateKey,
             ResourceKind::AeadKey,
+            ResourceKind::BlindRsaSecretKey,
+            ResourceKind::BlindRsaBlindingState,
         ];
         let resources: Vec<_> = kinds
             .into_iter()
@@ -2883,6 +2991,44 @@ mod tests {
         let result = unsafe { &*result };
         assert_eq!(result.tag, 1, "expected Err");
         unsafe { (*result.value.cast::<MeshCryptoError>()).tag }
+    }
+
+    /// Bytes that arrived as ordinary data, such as a code a person typed,
+    /// become an actor-owned secret with the same contents. Empty and
+    /// oversized input is refused, and nothing happens off an actor.
+    #[test]
+    fn secret_from_bytes_copies_ordinary_data_into_an_owned_secret() {
+        let _global_table_test = GLOBAL_TABLE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        crate::gc::mesh_rt_init();
+        let bytes = |data: &[u8]| crate::bytes::mesh_bytes_new(data.as_ptr(), data.len() as u64);
+        assert_eq!(
+            refused(mesh_secret_from_bytes(bytes(b"code"))),
+            CryptoErrorTag::InternalFailure as u8
+        );
+        as_test_actor(|owner| {
+            let secret = created(mesh_secret_from_bytes(bytes(&[9; 32])));
+            {
+                let process = crate::actor::current_process().expect("test actor");
+                let process = process.lock();
+                let prepared = prepare_owned_resource(&process, secret, ResourceKind::SecretBytes)
+                    .expect("owned secret");
+                assert_eq!(prepared.bytes.as_ref(), &[9u8; 32][..]);
+            }
+            let invalid = CryptoErrorTag::InvalidLength as u8;
+            assert_eq!(refused(mesh_secret_from_bytes(bytes(&[]))), invalid);
+            assert_eq!(
+                refused(mesh_secret_from_bytes(bytes(&vec![
+                    1;
+                    MAX_SECRET_BYTES + 1
+                ]))),
+                invalid
+            );
+            assert_eq!(refused(mesh_secret_from_bytes(std::ptr::null())), invalid);
+            mesh_secret_destroy(secret);
+            assert_eq!(owned_secret_count_for_test(owner), 0);
+        });
     }
 
     /// The entry points act for the calling actor: they create its secrets

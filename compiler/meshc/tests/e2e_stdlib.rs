@@ -290,6 +290,13 @@ fn e2e_file_binary_ranges_are_bounded() {
     );
 }
 
+#[test]
+fn e2e_file_sync_then_rename_replaces_the_target() {
+    let source = read_fixture("stdlib_file_rename_sync.mpl");
+    let output = compile_and_run(&source);
+    assert_eq!(output, "new\nfalse\nmissing source\nmissing sync\n");
+}
+
 // ── IO E2E Tests ────────────────────────────────────────────────────────
 
 #[test]

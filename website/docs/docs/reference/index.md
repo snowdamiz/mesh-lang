@@ -538,7 +538,10 @@ end
 built with `meshc build --artifact staticlib` or `--artifact cdylib`. The
 function must be `pub`, the symbol a C identifier, and the signature exactly
 `(Bytes) -> Bytes!String`, without generic parameters, `where`, or a guard;
-anything else is error E0055. See [Library Builds](/docs/library-builds/).
+anything else is error E0055. An export marked `@display` (before or after
+`@export`) may use `Plaintext<Bytes>` for either `Bytes`, and only such an
+export may carry plaintext (E0093); see [Plaintext](/docs/type-system/#plaintext).
+See [Library Builds](/docs/library-builds/).
 
 ## Standard-library module index
 
@@ -551,7 +554,8 @@ branch.
 | Binary and numbers | `Bytes`, `BytesBuilder`, `U64`, `U128`, `I128`, `Checked`, `Math`, `Int`, `Float` | [Standard Library](/docs/stdlib/) |
 | Encoding and JSON | `JSON`, `Json`, `Base64`, `Hex` | [Web](/docs/web/), [Standard Library](/docs/stdlib/) |
 | System and time | `IO`, `Env`, `File`, `DateTime`, `Monotonic`, `Duration`, `Random`, `Crypto` | [Standard Library](/docs/stdlib/) |
-| Secrets and keys | `Secret`, `SecretMap`, `StorageKey`, `X25519PrivateKey`, `SigningPrivateKey`, `MlKemPrivateKey` | [Standard Library](/docs/stdlib/) |
+| Secrets and keys | `Secret`, `SecretMap`, `StorageKey`, `X25519PrivateKey`, `SigningPrivateKey`, `MlKemPrivateKey`, `BlindRsaSecretKey` | [Standard Library](/docs/stdlib/) |
+| Message content | `Plaintext` | [Type System](/docs/type-system/#plaintext) |
 | Host callbacks | `Host` | [Standard Library](/docs/stdlib/), [Library Builds](/docs/library-builds/) |
 | Concurrent runtime | `Job`, `Timer`, `Channel`, `Process`, `Test` | [Concurrency](/docs/concurrency/), [Testing](/docs/testing/) |
 | Web and sockets | `HTTP`, `Request`, `Ws`, `Http`, `WsClient` | [Web](/docs/web/) |

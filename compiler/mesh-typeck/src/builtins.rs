@@ -75,6 +75,13 @@ pub(crate) fn crypto_functions() -> Vec<(&'static str, Scheme)> {
             )),
         ),
         (
+            "hmac_sha256_tag",
+            Scheme::mono(Ty::fun(
+                vec![Ty::secret_bytes(), Ty::bytes()],
+                crypto_result(Ty::bytes()),
+            )),
+        ),
+        (
             "hkdf_sha256",
             Scheme::mono(Ty::fun(
                 vec![Ty::secret_bytes(), Ty::bytes(), Ty::bytes(), Ty::int()],
@@ -175,6 +182,50 @@ pub(crate) fn crypto_functions() -> Vec<(&'static str, Scheme)> {
                 crypto_result(Ty::secret_bytes()),
             )),
         ),
+        // HPKE with a 32-byte export from the context (RFC 9180 section 5.3):
+        // the last argument is the exporter context.
+        (
+            "hpke_seal_export",
+            Scheme::mono(Ty::fun(
+                vec![
+                    Ty::x25519_public_key(),
+                    Ty::bytes(),
+                    Ty::bytes(),
+                    Ty::bytes(),
+                    Ty::bytes(),
+                ],
+                crypto_result(Ty::Tuple(vec![Ty::bytes(), Ty::secret_bytes()])),
+            )),
+        ),
+        (
+            "hpke_open_export",
+            Scheme::mono(Ty::fun(
+                vec![
+                    Ty::x25519_private_key(),
+                    Ty::bytes(),
+                    Ty::bytes(),
+                    Ty::bytes(),
+                    Ty::bytes(),
+                ],
+                crypto_result(Ty::Tuple(vec![Ty::bytes(), Ty::secret_bytes()])),
+            )),
+        ),
+        // ChaCha20-Poly1305 under the key and nonce HKDF-SHA-256 derives from
+        // a secret and a salt (RFC 9458 section 4.4): secret, salt, aad, input.
+        (
+            "hkdf_aead_seal",
+            Scheme::mono(Ty::fun(
+                vec![Ty::secret_bytes(), Ty::bytes(), Ty::bytes(), Ty::bytes()],
+                crypto_result(Ty::bytes()),
+            )),
+        ),
+        (
+            "hkdf_aead_open",
+            Scheme::mono(Ty::fun(
+                vec![Ty::secret_bytes(), Ty::bytes(), Ty::bytes(), Ty::bytes()],
+                crypto_result(Ty::bytes()),
+            )),
+        ),
         (
             "mlkem_generate",
             Scheme::mono(Ty::fun(vec![], crypto_result(Ty::mlkem_key_pair()))),
@@ -260,6 +311,110 @@ pub(crate) fn crypto_functions() -> Vec<(&'static str, Scheme)> {
                 crypto_result(Ty::bytes()),
             )),
         ),
+        // The seals are the exits for message content: `Plaintext<Bytes>` in,
+        // ciphertext out, and back (see `plaintext.rs`).
+        (
+            "aead_seal_plaintext",
+            Scheme::mono(Ty::fun(
+                vec![
+                    Ty::aead_key(),
+                    Ty::bytes(),
+                    Ty::bytes(),
+                    Ty::plaintext(Ty::bytes()),
+                ],
+                crypto_result(Ty::bytes()),
+            )),
+        ),
+        (
+            "aead_open_plaintext",
+            Scheme::mono(Ty::fun(
+                vec![Ty::aead_key(), Ty::bytes(), Ty::bytes(), Ty::bytes()],
+                crypto_result(Ty::plaintext(Ty::bytes())),
+            )),
+        ),
+        (
+            "hpke_seal_plaintext",
+            Scheme::mono(Ty::fun(
+                vec![
+                    Ty::x25519_public_key(),
+                    Ty::bytes(),
+                    Ty::bytes(),
+                    Ty::plaintext(Ty::bytes()),
+                ],
+                crypto_result(Ty::bytes()),
+            )),
+        ),
+        (
+            "hpke_open_plaintext",
+            Scheme::mono(Ty::fun(
+                vec![
+                    Ty::x25519_private_key(),
+                    Ty::bytes(),
+                    Ty::bytes(),
+                    Ty::bytes(),
+                ],
+                crypto_result(Ty::plaintext(Ty::bytes())),
+            )),
+        ),
+        // Blind RSA, profile BR1 (RFC 9474 RSABSSA-SHA384-PSS-Deterministic).
+        (
+            "blind_rsa_generate",
+            Scheme::mono(Ty::fun(vec![], crypto_result(Ty::blind_rsa_secret_key()))),
+        ),
+        (
+            "blind_rsa_from_secret",
+            Scheme::mono(Ty::fun(
+                vec![Ty::secret_bytes()],
+                crypto_result(Ty::blind_rsa_secret_key()),
+            )),
+        ),
+        (
+            "blind_rsa_public",
+            Scheme::mono(Ty::fun(
+                vec![Ty::blind_rsa_secret_key()],
+                crypto_result(Ty::blind_rsa_public_key()),
+            )),
+        ),
+        (
+            "blind_rsa_public_from_spki",
+            Scheme::mono(Ty::fun(
+                vec![Ty::bytes()],
+                crypto_result(Ty::blind_rsa_public_key()),
+            )),
+        ),
+        (
+            "blind_rsa_blind",
+            Scheme::mono(Ty::fun(
+                vec![Ty::blind_rsa_public_key(), Ty::bytes()],
+                crypto_result(Ty::blind_rsa_blinded()),
+            )),
+        ),
+        (
+            "blind_rsa_sign",
+            Scheme::mono(Ty::fun(
+                vec![Ty::blind_rsa_secret_key(), Ty::bytes()],
+                crypto_result(Ty::bytes()),
+            )),
+        ),
+        (
+            "blind_rsa_finalize",
+            Scheme::mono(Ty::fun(
+                vec![
+                    Ty::blind_rsa_public_key(),
+                    Ty::bytes(),
+                    Ty::bytes(),
+                    Ty::blind_rsa_blinding_state(),
+                ],
+                crypto_result(Ty::bytes()),
+            )),
+        ),
+        (
+            "blind_rsa_verify",
+            Scheme::mono(Ty::fun(
+                vec![Ty::blind_rsa_public_key(), Ty::bytes(), Ty::bytes()],
+                crypto_result(Ty::bool()),
+            )),
+        ),
         // Non-colliding Phase 135 APIs remain temporarily available.
         (
             "hmac_sha512",
@@ -329,6 +484,20 @@ pub fn register_builtins(
     env.insert(
         "panic".into(),
         Scheme::mono(Ty::fun(vec![Ty::string()], Ty::Never)),
+    );
+
+    // declassify(Plaintext<T>, String) -> T -- a deliberate disclosure; the
+    // reason must be a string literal, and the build report lists the site.
+    let revealed = TyVar(u32::MAX - 40);
+    env.insert(
+        "declassify".into(),
+        Scheme {
+            vars: vec![revealed],
+            ty: Ty::fun(
+                vec![Ty::plaintext(Ty::Var(revealed)), Ty::string()],
+                Ty::Var(revealed),
+            ),
+        },
     );
 
     // print(String) -> () -- prints a string without trailing newline
@@ -546,6 +715,20 @@ pub fn register_builtins(
     );
     env.insert(
         "file_delete".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string()],
+            Ty::result(Ty::Tuple(vec![]), Ty::string()),
+        )),
+    );
+    env.insert(
+        "file_rename".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string(), Ty::string()],
+            Ty::result(Ty::Tuple(vec![]), Ty::string()),
+        )),
+    );
+    env.insert(
+        "file_sync".into(),
         Scheme::mono(Ty::fun(
             vec![Ty::string()],
             Ty::result(Ty::Tuple(vec![]), Ty::string()),
@@ -792,6 +975,13 @@ pub fn register_builtins(
         Scheme::mono(Ty::fun(vec![Ty::secret_bytes()], Ty::Tuple(vec![]))),
     );
     env.insert(
+        "secret_from_bytes".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::bytes()],
+            Ty::result(Ty::secret_bytes(), Ty::crypto_error()),
+        )),
+    );
+    env.insert(
         "secret_concat".into(),
         Scheme::mono(Ty::fun(
             vec![Ty::secret_bytes(), Ty::secret_bytes()],
@@ -809,6 +999,13 @@ pub fn register_builtins(
         "storage_key_platform".into(),
         Scheme::mono(Ty::fun(
             vec![],
+            Ty::result(Ty::storage_key(), Ty::crypto_error()),
+        )),
+    );
+    env.insert(
+        "storage_key_from_secret".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::secret_bytes(), Ty::bytes()],
             Ty::result(Ty::storage_key(), Ty::crypto_error()),
         )),
     );
@@ -839,6 +1036,11 @@ pub fn register_builtins(
             Ty::mlkem_private_key(),
             Ty::bytes(),
         ),
+        (
+            "blind_rsa_secret_key_seal_for_storage",
+            Ty::blind_rsa_secret_key(),
+            Ty::bytes(),
+        ),
     ] {
         env.insert(
             name.into(),
@@ -862,6 +1064,10 @@ pub fn register_builtins(
         (
             "mlkem_private_key_unseal_from_storage",
             Ty::mlkem_private_key(),
+        ),
+        (
+            "blind_rsa_secret_key_unseal_from_storage",
+            Ty::blind_rsa_secret_key(),
         ),
     ] {
         env.insert(
@@ -3717,6 +3923,8 @@ mod tests {
         assert!(env.lookup("file_append").is_some());
         assert!(env.lookup("file_exists").is_some());
         assert!(env.lookup("file_delete").is_some());
+        assert!(env.lookup("file_rename").is_some());
+        assert!(env.lookup("file_sync").is_some());
 
         // IO functions
         assert!(env.lookup("io_read_line").is_some());

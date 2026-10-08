@@ -30,6 +30,13 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    // mesh_rt_disable_core_dumps() -> void: release builds call it first in `main`
+    module.add_function(
+        "mesh_rt_disable_core_dumps",
+        void_type.fn_type(&[], false),
+        Some(inkwell::module::Linkage::External),
+    );
+
     // mesh_run_main(entry: ptr) -> void: runs `main`, turning a panic into exit 101
     module.add_function(
         "mesh_run_main",
@@ -534,6 +541,22 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    // mesh_file_rename(from: ptr, to: ptr) -> ptr (MeshResult)
+    let file_rename_ty = ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
+    module.add_function(
+        "mesh_file_rename",
+        file_rename_ty,
+        Some(inkwell::module::Linkage::External),
+    );
+
+    // mesh_file_sync(path: ptr) -> ptr (MeshResult)
+    let file_sync_ty = ptr_type.fn_type(&[ptr_type.into()], false);
+    module.add_function(
+        "mesh_file_sync",
+        file_sync_ty,
+        Some(inkwell::module::Linkage::External),
+    );
+
     // ── Standard library: IO functions (Phase 8) ─────────────────────
 
     // mesh_io_read_line() -> ptr (MeshResult)
@@ -682,6 +705,11 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         hmac256_ty,
         Some(inkwell::module::Linkage::External),
     );
+    module.add_function(
+        "mesh_crypto_hmac_sha256_tag",
+        hmac256_ty,
+        Some(inkwell::module::Linkage::External),
+    );
 
     module.add_function(
         "mesh_crypto_hkdf_sha256",
@@ -791,6 +819,24 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    // Blind RSA (BR1): every argument is a runtime pointer.
+    for (name, arity) in [
+        ("mesh_crypto_blind_rsa_generate", 0),
+        ("mesh_crypto_blind_rsa_from_secret", 1),
+        ("mesh_crypto_blind_rsa_public", 1),
+        ("mesh_crypto_blind_rsa_public_from_spki", 1),
+        ("mesh_crypto_blind_rsa_blind", 2),
+        ("mesh_crypto_blind_rsa_sign", 2),
+        ("mesh_crypto_blind_rsa_verify", 3),
+        ("mesh_crypto_blind_rsa_finalize", 4),
+    ] {
+        module.add_function(
+            name,
+            ptr_type.fn_type(&vec![ptr_type.into(); arity], false),
+            Some(inkwell::module::Linkage::External),
+        );
+    }
+
     for name in ["mesh_crypto_aead_seal", "mesh_crypto_aead_open"] {
         module.add_function(
             name,
@@ -812,6 +858,8 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         "mesh_crypto_hpke_open",
         "mesh_crypto_hpke_seal_secret",
         "mesh_crypto_hpke_open_secret",
+        "mesh_crypto_hkdf_aead_seal",
+        "mesh_crypto_hkdf_aead_open",
     ] {
         module.add_function(
             name,
@@ -824,6 +872,17 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
                 ],
                 false,
             ),
+            Some(inkwell::module::Linkage::External),
+        );
+    }
+
+    for name in [
+        "mesh_crypto_hpke_seal_export",
+        "mesh_crypto_hpke_open_export",
+    ] {
+        module.add_function(
+            name,
+            ptr_type.fn_type(&[ptr_type.into(); 5], false),
             Some(inkwell::module::Linkage::External),
         );
     }
@@ -1050,6 +1109,16 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
     module.add_function(
+        "mesh_storage_key_from_secret",
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_secret_from_bytes",
+        ptr_type.fn_type(&[ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
         "mesh_storage_key_platform",
         ptr_type.fn_type(&[], false),
         Some(inkwell::module::Linkage::External),
@@ -1116,6 +1185,7 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         "x25519_private_key",
         "signing_private_key",
         "mlkem_private_key",
+        "blind_rsa_secret_key",
     ] {
         for operation in ["seal_for_storage", "unseal_from_storage"] {
             module.add_function(
@@ -3581,6 +3651,15 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         void_type.fn_type(&[], false),
         Some(inkwell::module::Linkage::External),
     );
+    // mesh_plaintext_enter() / mesh_plaintext_leave(): around a
+    // `Plaintext.map`, whose panics then withhold their messages.
+    for name in ["mesh_plaintext_enter", "mesh_plaintext_leave"] {
+        module.add_function(
+            name,
+            void_type.fn_type(&[], false),
+            Some(inkwell::module::Linkage::External),
+        );
+    }
     // mesh_panic_str(message: ptr) -> ! (`panic(message)`)
     let panic_str = module.add_function(
         "mesh_panic_str",
@@ -4896,6 +4975,8 @@ mod tests {
         assert!(module.get_function("mesh_file_append").is_some());
         assert!(module.get_function("mesh_file_exists").is_some());
         assert!(module.get_function("mesh_file_delete").is_some());
+        assert!(module.get_function("mesh_file_rename").is_some());
+        assert!(module.get_function("mesh_file_sync").is_some());
         assert!(module.get_function("mesh_string_length").is_some());
         assert!(module.get_function("mesh_string_slice").is_some());
         assert!(module.get_function("mesh_string_contains").is_some());
@@ -5361,6 +5442,7 @@ mod tests {
             ("mesh_crypto_sha512_hex", 1),
             ("mesh_crypto_random_bytes", 1),
             ("mesh_crypto_hmac_sha256", 2),
+            ("mesh_crypto_hmac_sha256_tag", 2),
             ("mesh_crypto_hkdf_sha256", 4),
             ("mesh_crypto_argon2id", 6),
             ("mesh_crypto_x25519_generate", 0),
@@ -5385,6 +5467,20 @@ mod tests {
             ("mesh_crypto_hpke_open", 4),
             ("mesh_crypto_hpke_seal_secret", 4),
             ("mesh_crypto_hpke_open_secret", 4),
+            ("mesh_crypto_hpke_seal_export", 5),
+            ("mesh_crypto_hpke_open_export", 5),
+            ("mesh_crypto_hkdf_aead_seal", 4),
+            ("mesh_crypto_hkdf_aead_open", 4),
+            ("mesh_crypto_blind_rsa_generate", 0),
+            ("mesh_crypto_blind_rsa_from_secret", 1),
+            ("mesh_crypto_blind_rsa_public", 1),
+            ("mesh_crypto_blind_rsa_public_from_spki", 1),
+            ("mesh_crypto_blind_rsa_blind", 2),
+            ("mesh_crypto_blind_rsa_sign", 2),
+            ("mesh_crypto_blind_rsa_finalize", 4),
+            ("mesh_crypto_blind_rsa_verify", 3),
+            ("mesh_blind_rsa_secret_key_seal_for_storage", 3),
+            ("mesh_blind_rsa_secret_key_unseal_from_storage", 3),
         ] {
             let function = module
                 .get_function(name)

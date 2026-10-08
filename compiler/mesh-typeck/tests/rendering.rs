@@ -490,6 +490,10 @@ fn one_of_each() -> Vec<TypeError> {
             reason: "reason".to_string(),
             span: span(19, 24),
         },
+        TypeError::PlaintextViolation {
+            reason: "reason".to_string(),
+            span: span(19, 24),
+        },
         TypeError::Mismatch {
             expected: Ty::int(),
             found: Ty::string(),

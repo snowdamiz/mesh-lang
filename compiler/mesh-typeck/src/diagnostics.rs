@@ -212,6 +212,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::SpawnNotActor { .. } => "E0090",
         TypeError::DecodeTypeUnknown { .. } => "E0091",
         TypeError::UnderivableFieldType { .. } => "E0092",
+        TypeError::PlaintextViolation { .. } => "E0093",
     }
 }
 
@@ -554,7 +555,32 @@ impl Description {
 fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> Description {
     let mut description = describe_spans(error, source, suggestions);
     description.message = error.to_string();
+    if mentions_plaintext(error) && !matches!(error, TypeError::PlaintextViolation { .. }) {
+        description.notes.push(PLAINTEXT_EXITS.to_string());
+    }
     description
+}
+
+/// Where a `Plaintext` value may go, noted on every error about one.
+const PLAINTEXT_EXITS: &str = "a `Plaintext` value leaves the program only through \
+    `Crypto.aead_seal_plaintext`, `Crypto.hpke_seal_plaintext`, \
+    `Plaintext.seal_for_storage`, an `@display` export, or \
+    `declassify(value, \"reason\")`; work on it with `Plaintext.map`";
+
+/// Whether `error` is about a `Plaintext` value: a plaintext violation, or
+/// a type or trait error whose types name `Plaintext`.
+fn mentions_plaintext(error: &TypeError) -> bool {
+    let names = |ty: &Ty| ty.to_string().contains(crate::ty::PLAINTEXT);
+    match error {
+        TypeError::Mismatch {
+            expected, found, ..
+        }
+        | TypeError::SendTypeMismatch {
+            expected, found, ..
+        } => names(expected) || names(found),
+        TypeError::TraitNotSatisfied { ty, .. } => names(ty),
+        _ => false,
+    }
 }
 
 /// Everything `describe` reports about `error` but its headline.
@@ -1681,6 +1707,9 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
             let range = clamp(text_range_to_range(*span));
             Description::error(range, "this arm")
                 .with_help("write the value after `->`: `pattern -> value`")
+        }
+        TypeError::PlaintextViolation { span, .. } => {
+            Description::error(clamp(text_range_to_range(*span)), "here").with_help(PLAINTEXT_EXITS)
         }
         TypeError::ResourceViolation { reason, span } => {
             let range = clamp(text_range_to_range(*span));

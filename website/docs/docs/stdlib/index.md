@@ -65,6 +65,8 @@ end
 | `File.append(path, text)` | `Result<Unit, String>` | Append text, creating the file when needed |
 | `File.exists(path)` | `Bool` | Test whether a path exists |
 | `File.delete(path)` | `Result<Unit, String>` | Delete a file |
+| `File.rename(from, to)` | `Result<Unit, String>` | Rename a file, atomically replacing `to` if it exists |
+| `File.sync(path)` | `Result<Unit, String>` | Flush a file's data and metadata to disk |
 | `File.read_bytes(path, offset, length)` | `Result<Bytes, String>` | Read up to `length` bytes starting at `offset` |
 | `File.write_bytes(path, offset, bytes, truncate)` | `Result<Unit, String>` | Write bytes at `offset`, creating the file when needed |
 | `File.size(path)` | `Result<Int, String>` | Byte length of a regular file |
@@ -93,6 +95,19 @@ end
 
 fn copy_file(source :: String, target :: String) -> Int!String do
   copy_from(source, target, 0, File.size(source)?)
+end
+```
+
+`File.rename` has POSIX `rename` semantics: `to` is replaced atomically, so a reader sees the old file or the new one and never a mix. Both paths must be on the same filesystem. On Unix, `File.rename` then syncs the directory holding `to`, so the new name survives a crash; if only that sync fails, the error starts with `renamed, but syncing the directory failed`. `File.sync` flushes with `fsync`; on macOS and iOS it uses `F_FULLFSYNC`, which also flushes the drive's cache, and on Windows `FlushFileBuffers`. On Unix, `File.sync` also accepts a directory, which makes names created or deleted in it durable. Missing paths are errors.
+
+Together they save a file so that a crash leaves either the old contents or the new ones:
+
+```mesh
+fn save(path :: String, contents :: String) -> Result<Unit, String> do
+  let temp = "#{path}.tmp"
+  File.write(temp, contents)?
+  File.sync(temp)?
+  File.rename(temp, path)
 end
 ```
 
@@ -427,7 +442,9 @@ end
 | `Crypto.random_bytes(length)` | `Result<Bytes, CryptoError>` | OS-backed random public bytes |
 | `Secret.random(length)` | `Result<SecretBytes, CryptoError>` | OS-backed move-only secret bytes |
 | `Secret.concat(first, second)` | `Result<SecretBytes, CryptoError>` | Consume two secrets and join them, up to 64 KiB |
-| `Crypto.hmac_sha256(key, message)` | `Result<SecretBytes, CryptoError>` | HMAC with a borrowed secret key |
+| `Secret.from_bytes(value)` | `Result<SecretBytes, CryptoError>` | Take in 1 byte to 64 KiB that arrived as ordinary data (a code a person typed) as a secret; the `Bytes` itself is not erased |
+| `Crypto.hmac_sha256(key, message)` | `Result<SecretBytes, CryptoError>` | HMAC with a borrowed secret key, as a secret (for output used as key material) |
+| `Crypto.hmac_sha256_tag(key, message)` | `Result<Bytes, CryptoError>` | HMAC with a borrowed secret key, as a public 32-byte tag (a MAC to store or send; compare with `Bytes.secure_equals`) |
 | `Crypto.hkdf_sha256(key, salt, info, length)` | `Result<SecretBytes, CryptoError>` | Bounded HKDF output |
 | `Crypto.argon2id(password, salt, memory_kib, iterations, parallelism, length)` | `Result<SecretBytes, CryptoError>` | Argon2id v1.3 password KDF with a borrowed secret |
 | `Crypto.x25519_generate()` | `Result<X25519KeyPair, CryptoError>` | Generate an X25519 key pair |
@@ -445,6 +462,8 @@ end
 | `Crypto.aead_key(material)` | `Result<AeadKey, CryptoError>` | Consume 32 secret bytes as an AEAD key |
 | `Crypto.aead_seal(key, nonce, aad, plaintext)` | `Result<Bytes, CryptoError>` | ChaCha20-Poly1305 encryption |
 | `Crypto.aead_open(key, nonce, aad, ciphertext)` | `Result<Bytes, CryptoError>` | Authenticate before returning plaintext |
+| `Crypto.aead_seal_plaintext(key, nonce, aad, content)` | `Result<Bytes, CryptoError>` | `aead_seal` of a `Plaintext<Bytes>`: an exit for [message content](/docs/type-system/#plaintext) |
+| `Crypto.aead_open_plaintext(key, nonce, aad, ciphertext)` | `Result<Plaintext<Bytes>, CryptoError>` | `aead_open`, labeling what it opens |
 
 Borrowed keys remain owned by the caller. `Crypto.aead_key`, `Secret.concat`,
 and the `*_from_secret` constructors consume their input, including on error.
@@ -491,6 +510,8 @@ end
 | `Crypto.hpke_open(private_key, info, aad, sealed)` | `Result<Bytes, CryptoError>` | Decrypt with a borrowed private key |
 | `Crypto.hpke_seal_secret(public_key, info, aad, secret)` | `Result<Bytes, CryptoError>` | Encrypt a borrowed `SecretBytes` without copying it into `Bytes` |
 | `Crypto.hpke_open_secret(private_key, info, aad, sealed)` | `Result<SecretBytes, CryptoError>` | Decrypt directly into a new secret |
+| `Crypto.hpke_seal_plaintext(public_key, info, aad, content)` | `Result<Bytes, CryptoError>` | `hpke_seal` of a `Plaintext<Bytes>` |
+| `Crypto.hpke_open_plaintext(private_key, info, aad, sealed)` | `Result<Plaintext<Bytes>, CryptoError>` | `hpke_open`, labeling what it opens |
 
 `info` is application context bound into the key schedule, up to 65,472
 bytes. `aad` is authenticated but not encrypted, up to 64 KiB, and the
@@ -498,6 +519,22 @@ plaintext is also limited to 64 KiB. Opening with a different key, `info`, or
 `aad`, or opening a modified message, returns `AuthenticationFailed`. A sealed
 value shorter than 48 bytes returns `InvalidLength`, and a malformed or
 low-order recipient key returns `InvalidPublicKey`.
+
+A protocol that derives more keys from the HPKE context, as Oblivious HTTP
+(RFC 9458) does for its response, seals and opens with an export: both
+functions also return `Export(exporter_context, 32)` (RFC 9180 section 5.3)
+from the same context as a new secret, the same on both sides. The derived-key
+AEAD then seals under the ChaCha20-Poly1305 key and nonce HKDF-SHA256 derives
+from a borrowed secret and a public salt (`Extract(salt, secret)`, then
+`Expand` with the labels `key` and `nonce`), for messages up to 1 MiB; the
+nonce never leaves the runtime.
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `Crypto.hpke_seal_export(public_key, info, aad, plaintext, exporter_context)` | `Result<(Bytes, SecretBytes), CryptoError>` | `hpke_seal`, and the sender's 32-byte export |
+| `Crypto.hpke_open_export(private_key, info, aad, sealed, exporter_context)` | `Result<(Bytes, SecretBytes), CryptoError>` | `hpke_open`, and the receiver's 32-byte export |
+| `Crypto.hkdf_aead_seal(secret, salt, aad, plaintext)` | `Result<Bytes, CryptoError>` | Seal under the key and nonce derived from `secret` and `salt` |
+| `Crypto.hkdf_aead_open(secret, salt, aad, ciphertext)` | `Result<Bytes, CryptoError>` | Open what `hkdf_aead_seal` sealed |
 
 ### ML-KEM-768
 
@@ -532,14 +569,87 @@ Decapsulation uses the implicit rejection of FIPS 203: a modified ciphertext
 still returns `Ok`, with a different secret. Authenticate the result before
 trusting it, for example by opening an AEAD message with it as above.
 
+### Blind RSA
+
+Blind RSA lets an issuer sign a message without seeing it (RFC 9474). The
+client blinds the message, the issuer signs the blinded message, and the client
+finalizes the result into an ordinary RSASSA-PSS signature that anyone with the
+public key can verify and that the issuer cannot link to the request it
+signed. Privacy Pass tokens of type `0x0002` (RFC 9578) work this way.
+
+Mesh implements one profile, BR1: RSABSSA-SHA384-PSS-Deterministic with
+2,048-bit keys and the public exponent 65,537 (SHA-384, MGF1-SHA-384, a 48-byte
+salt). Other key sizes, exponents and the randomized RFC 9474 variants are
+refused, never substituted.
+
+```mesh
+fn issue_and_verify(message :: Bytes) -> Bool!CryptoError do
+  let issuer = Crypto.blind_rsa_generate()?
+  let published = Crypto.blind_rsa_public(issuer)?
+  let key = Crypto.blind_rsa_public_from_spki(published.bytes)?
+  let blinded = Crypto.blind_rsa_blind(key, message)?
+  let request = blinded.blinded
+  let response = Crypto.blind_rsa_sign(issuer, request)?
+  let signature = Crypto.blind_rsa_finalize(key, message, response, blinded.state)?
+  Crypto.blind_rsa_verify(key, message, signature)
+end
+```
+
+| Function | Returns | Where | Description |
+|----------|---------|-------|-------------|
+| `Crypto.blind_rsa_generate()` | `Result<BlindRsaSecretKey, CryptoError>` | Servers | Generate a 2,048-bit issuer key |
+| `Crypto.blind_rsa_from_secret(material)` | `Result<BlindRsaSecretKey, CryptoError>` | Servers | Consume PKCS#8 DER secret bytes as an issuer key |
+| `Crypto.blind_rsa_public(private_key)` | `Result<BlindRsaPublicKey, CryptoError>` | Servers | The public key of a borrowed issuer key |
+| `Crypto.blind_rsa_sign(private_key, blinded)` | `Result<Bytes, CryptoError>` | Servers | Sign a 256-byte blinded message |
+| `Crypto.blind_rsa_public_from_spki(spki)` | `Result<BlindRsaPublicKey, CryptoError>` | All | Accept a public key by its RFC 9578 SPKI |
+| `Crypto.blind_rsa_blind(public_key, message)` | `Result<BlindRsaBlinded, CryptoError>` | All | Blind a message of up to 64 KiB |
+| `Crypto.blind_rsa_finalize(public_key, message, blind_signature, state)` | `Result<Bytes, CryptoError>` | All | Unblind the issuer's signature, consuming the state |
+| `Crypto.blind_rsa_verify(public_key, message, signature)` | `Result<Bool, CryptoError>` | All | Verify a 256-byte signature |
+
+Servers are Linux and macOS. On iOS, Android and Windows the server functions
+return `UnsupportedTarget`; `blind_rsa_from_secret` still consumes its input
+there.
+
+A `BlindRsaPublicKey` holds `bytes`, the key's 342-byte SPKI: the RSASSA-PSS
+object identifier with SHA-384 parameters, exactly as RFC 9578 encodes it. Every
+function that takes a public key checks those bytes against that encoding and
+returns `InvalidPublicKey` for anything else, including another size or
+exponent. RFC 9578's `token_key_id` is `Crypto.sha256(key.bytes)`.
+
+`Crypto.blind_rsa_blind` returns a `BlindRsaBlinded` with two fields: `blinded`,
+the 256 bytes to send to the issuer, and `state`, a move-only
+`BlindRsaBlindingState` that holds the inverse of the random blinding factor.
+Keep the state secret: it is what keeps the request and the signature
+unlinkable. `Crypto.blind_rsa_finalize` consumes it, so finalizing twice with
+one state is a compile error. Moving `state` out moves the whole value, so read
+`blinded` first, as the example does. A dropped state is destroyed like any
+other resource.
+
+`Crypto.blind_rsa_sign` takes exactly 256 bytes that are numerically below the
+modulus: another length returns `InvalidLength(256, actual)` and a value that
+is too large returns `InvalidLength(256, 256)`. Each signature is checked
+against the public key before it is returned. `Crypto.blind_rsa_finalize`
+returns the signature only if it verifies for the message; otherwise, and for a
+blind signature that is not 256 bytes, it returns `InvalidSignature`.
+`Crypto.blind_rsa_verify` returns `InvalidSignature` for a signature that is not
+256 bytes and `Ok(false)` for one that does not verify.
+
+`Crypto.blind_rsa_from_secret` accepts an `rsaEncryption` PKCS#8 private key
+in DER, for example read with `Env.get_secret_hex`. It checks that the key's
+parts agree and stores it re-encoded; anything else returns `InvalidKey`. The
+private key is never available as `Bytes`: persist it with
+`BlindRsaSecretKey.seal_for_storage` (purpose 18, below).
+
 ### Key types and errors
 
 `X25519KeyPair`, `SigningKeyPair` (Ed25519), and `MlKemKeyPair` have a
 move-only `private_key` field and a public `public_key` field.
 `X25519PublicKey`, `SigningPublicKey`, `MlKemPublicKey`, `MlKemCiphertext`,
-and `Signature` each hold one `bytes :: Bytes` field. Build one from received
-bytes with, for example, `X25519PublicKey { bytes: received }`; the operation
-that uses it checks the length.
+`BlindRsaPublicKey`, and `Signature` each hold one `bytes :: Bytes` field.
+Build one from received bytes with, for example,
+`X25519PublicKey { bytes: received }`; the operation that uses it checks the
+length. `BlindRsaSecretKey` and `BlindRsaBlindingState` are move-only
+resources, and `BlindRsaBlinded` is move-only because it holds a state.
 
 `CryptoError` has these variants:
 
@@ -547,14 +657,15 @@ that uses it checks the length.
 |---------|---------------|
 | `InvalidLength(expected, actual)` | An input or requested output is outside its bound; `expected` is the bound or exact size |
 | `InvalidKey` | Key material has the wrong size or kind, or a `SecretMap` key is invalid, duplicated, or missing |
-| `InvalidPublicKey` | A public key has the wrong length, or an X25519 key is a low-order point |
-| `InvalidSignature` | A signature is malformed; a well-formed signature that does not verify returns `Ok(false)` |
+| `InvalidPublicKey` | A public key has the wrong length, an X25519 key is a low-order point, or a blind RSA key is not the exact RFC 9578 SPKI |
+| `InvalidSignature` | A signature is malformed, or a blind RSA signature does not verify when finalized; a well-formed signature that does not verify returns `Ok(false)` from `verify` |
 | `AuthenticationFailed` | AEAD, HPKE, or storage authentication failed; no plaintext is returned |
 | `EntropyUnavailable` | The operating system's random source failed |
 | `SecretDestroyed` | A resource was already destroyed or belongs to another actor |
 | `ResourceLimitExceeded` | A resource quota, a `SecretMap` capacity, or a storage-key counter is exhausted |
 | `UnsupportedOperation` | A storage blob or context has an unknown version, algorithm, or purpose, or the purpose does not match the sealed value |
 | `InternalFailure` | An unexpected runtime failure, including a platform storage key without host callbacks |
+| `UnsupportedTarget` | A server-only operation (blind RSA key generation, import, signing and storage) on iOS, Android or Windows |
 
 ```mesh
 fn describe(error :: CryptoError) -> String do
@@ -655,15 +766,18 @@ end
 |----------|---------|-------------|
 | `StorageKey.ephemeral()` | `Result<StorageKey, CryptoError>` | Random key that exists only in this process |
 | `StorageKey.platform()` | `Result<StorageKey, CryptoError>` | Load or create the application's durable key through the host secure store |
+| `StorageKey.from_secret(material, context)` | `Result<StorageKey, CryptoError>` | Consume a secret of at least 16 bytes someone holds and derive a key from it and a 1- to 256-byte context |
 | `StorageKey.seal_bytes(value, storage_key, context)` | `Result<Bytes, CryptoError>` | Seal public `Bytes` of up to 64 KiB |
 | `StorageKey.unseal_bytes(blob, storage_key, context)` | `Result<Bytes, CryptoError>` | Authenticate a blob and return its `Bytes` |
 
-`Secret`, `SecretMap`, `X25519PrivateKey`, `SigningPrivateKey`, and
-`MlKemPrivateKey` each provide `seal_for_storage(value, storage_key,
-context) -> Result<Bytes, CryptoError>`, which borrows the value and the key,
-and `unseal_from_storage(blob, storage_key, context)`, which returns a new
-resource of that type. `Secret.seal_for_storage` accepts exactly 32 bytes and
-`MlKemPrivateKey` seals its 64-byte seed.
+`Secret`, `SecretMap`, `X25519PrivateKey`, `SigningPrivateKey`,
+`MlKemPrivateKey`, and `BlindRsaSecretKey` each provide
+`seal_for_storage(value, storage_key, context) -> Result<Bytes, CryptoError>`,
+which borrows the value and the key, and
+`unseal_from_storage(blob, storage_key, context)`, which returns a new resource
+of that type. `Secret.seal_for_storage` accepts exactly 32 bytes,
+`MlKemPrivateKey` seals its 64-byte seed, and `BlindRsaSecretKey` seals its
+PKCS#8 encoding (1,190 to 1,220 bytes) on servers only.
 
 The context is exactly 123 bytes and names what the blob holds:
 
@@ -672,7 +786,7 @@ The context is exactly 123 bytes and names what the blob holds:
 | 0 | Version | `1` |
 | 1–32 | Account ID | 32 bytes |
 | 33–48 | Device ID | 16 bytes |
-| 49–80 | Session ID | 32 bytes; all zero for purposes 5 through 10 and 15 |
+| 49–80 | Session ID | 32 bytes; all zero for purposes 5 through 10, 15 and 18 |
 | 81–112 | Object ID | 32 bytes |
 | 113–114 | Purpose | Big-endian 16-bit identifier |
 | 115–122 | Snapshot version | Big-endian 64-bit integer, not zero |
@@ -683,7 +797,8 @@ key), 11 (skipped message key), or 16 (group epoch secret); `SecretMap` takes
 12 (skipped-key map); `SigningPrivateKey` takes 6 (account authorization key)
 or 7 (device signing key); `X25519PrivateKey` takes 8 (device DH key), 9
 (signed prekey), 10 (one-time prekey), 13 (ratchet DH key), or 17 (group
-TreeKEM key); `MlKemPrivateKey` takes 15 (ML-KEM prekey seed); and
+TreeKEM key); `MlKemPrivateKey` takes 15 (ML-KEM prekey seed);
+`BlindRsaSecretKey` takes 18 (blind RSA issuer key); and
 `StorageKey.seal_bytes` takes 14 (local data). The runtime checks the version,
 purpose, session rule, and snapshot; the IDs are opaque bytes that you choose.
 
@@ -708,6 +823,39 @@ and rewriting it to reserve each counter. It needs the host's secure-store
 callbacks (see [Host Capabilities](#host-capabilities)) and returns
 `Err(InternalFailure)` without them. In `meshc test`,
 `Test.install_in_memory_secure_store()` provides them.
+
+`StorageKey.from_secret(material, context)` is for what must open anywhere the
+secret is known, such as a backup restored from a recovery code on a new
+device. Its key is `HKDF-SHA-256(material, "mesh/storage-key/derived/v1",
+context)`, so every derivation of the same secret and context opens the same
+blobs, and a different secret or context opens none of them. It keeps no
+counter anywhere, so each derivation draws a random nonce prefix and a random
+starting counter below 2^63: two derivations share a nonce with probability
+about 2^-95 for each seal. The secret is consumed, including on error; one
+shorter than 16 bytes returns `InvalidLength(16, actual)`, and an empty or
+longer than 256-byte context `InvalidLength(256, actual)`.
+
+```mesh
+fn seal_for_backup(code :: Bytes, key :: borrow SigningPrivateKey, context :: Bytes) -> Bytes ! CryptoError do
+  let backup_key = StorageKey.from_secret(Secret.from_bytes(code)?, Bytes.from_utf8("app/backup-keys/v1"))?
+  SigningPrivateKey.seal_for_storage(key, backup_key, context)
+end
+```
+
+### Message content
+
+`Plaintext<T>` labels message content, which leaves the program only through
+the seals above, `Plaintext.seal_for_storage`, an `@display` export or
+`declassify` (see [Plaintext](/docs/type-system/#plaintext)).
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `Plaintext.from(value)` | `Plaintext<T>` | Label a value the program treats as content |
+| `Plaintext.map(content, f)` | `Plaintext<B>` | Apply `f`, which the compiler checks has no exits |
+| `Plaintext.map2(a, b, f)` | `Plaintext<C>` | The same for two labeled values |
+| `Plaintext.seal_for_storage(content, key, context)` | `Result<Bytes, CryptoError>` | `StorageKey.seal_bytes` of a `Plaintext<Bytes>` |
+| `Plaintext.unseal_from_storage(sealed, key, context)` | `Result<Plaintext<Bytes>, CryptoError>` | `StorageKey.unseal_bytes`, labeling what it opens |
+| `declassify(content, "reason")` | `T` | A deliberate disclosure, listed with its reason in the plaintext report |
 
 ### UUID
 

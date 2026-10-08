@@ -32,6 +32,9 @@ pub extern "C-unwind" fn mesh_panic(
             std::str::from_utf8_unchecked(std::slice::from_raw_parts(file, file_len as usize));
         // Compiled code passes no line (0): `file` names the function that
         // panicked.
+        if computing_on_plaintext() {
+            panic!("Mesh panic in {file}: {WITHHELD}");
+        }
         panic!("Mesh panic in {}: {}", file, msg);
     }
 }
@@ -41,7 +44,37 @@ pub extern "C-unwind" fn mesh_panic(
 /// `mesh_panic` does, so an actor crashes alone and a test fails alone; the
 /// runtime function raising it must be `extern "C-unwind"`.
 pub(crate) fn raise(message: std::fmt::Arguments<'_>) -> ! {
+    if computing_on_plaintext() {
+        panic!("Mesh panic: {WITHHELD}");
+    }
     panic!("Mesh panic: {message}")
+}
+
+/// What a panic inside `Plaintext.map` says instead of its message, which
+/// may carry what the content made of it (`List.get` names its index).
+const WITHHELD: &str = "a computation on plaintext failed; its message is withheld";
+
+thread_local! {
+    /// How many `Plaintext.map` computations this thread is inside.
+    static PLAINTEXT_DEPTH: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+/// Compiled code entered a `Plaintext.map`.
+#[no_mangle]
+pub extern "C" fn mesh_plaintext_enter() {
+    PLAINTEXT_DEPTH.with(|depth| depth.set(depth.get() + 1));
+}
+
+/// Compiled code left a `Plaintext.map`.
+#[no_mangle]
+pub extern "C" fn mesh_plaintext_leave() {
+    PLAINTEXT_DEPTH.with(|depth| depth.set(depth.get().saturating_sub(1)));
+}
+
+/// Whether the panic being raised comes from a computation on plaintext.
+/// The panic unwinds out of all of them, so it leaves them.
+fn computing_on_plaintext() -> bool {
+    PLAINTEXT_DEPTH.with(|depth| depth.replace(0) > 0)
 }
 
 /// `panic(message)`: end the actor, or the program with status 101.

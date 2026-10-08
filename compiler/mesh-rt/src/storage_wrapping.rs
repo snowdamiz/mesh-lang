@@ -7,6 +7,7 @@ use parking_lot::Mutex;
 
 use crate::actor::Process;
 use crate::bytes::MeshBytes;
+use crate::crypto::blind_rsa;
 use crate::crypto::provider::{CryptoProvider, SystemProvider};
 use crate::crypto::{
     bytes_value, crypto_result, failure, provider_failure, required_bytes, resource_failure,
@@ -15,11 +16,12 @@ use crate::crypto::{
 use crate::io::MeshResult;
 use crate::library::{secure_store_delete_raw, secure_store_get_raw, secure_store_put_raw};
 use crate::secret::{
-    commit_storage_counter, insert_ephemeral_storage_key_resource, insert_owned_resource,
-    insert_storage_key_resource, prepare_owned_resource, prepare_storage_key_resource,
-    validate_prepared_owned_resource, validate_prepared_storage_key_resource, CryptoErrorTag,
-    MeshSecretHandle, MeshStorageCounterReserve, PreparedOwnedResource, PreparedStorageKey,
-    ResourceKind, StorageKeyError,
+    commit_storage_counter, consume_owned_resource, insert_derived_storage_key_resource,
+    insert_ephemeral_storage_key_resource, insert_owned_resource, insert_storage_key_resource,
+    prepare_owned_resource, prepare_storage_key_resource, validate_prepared_owned_resource,
+    validate_prepared_storage_key_resource, CryptoErrorTag, MeshSecretHandle,
+    MeshStorageCounterReserve, PreparedOwnedResource, PreparedStorageKey, ResourceKind,
+    StorageKeyError,
 };
 use subtle::ConstantTimeEq;
 use zeroize::Zeroizing;
@@ -42,6 +44,10 @@ const PLATFORM_RECORD_BYTES: usize = STORAGE_KEY_MATERIAL_BYTES + 8;
 const PLATFORM_KEY_ID: &[u8] = b"mesh/storage-key/v1";
 const PLATFORM_COUNTER_ID: &[u8] = b"mesh/storage-counter/v1";
 const HOST_NOT_FOUND: i32 = 2;
+/// A key derived from a secret: `HKDF-SHA-256(secret, salt, context)`.
+const DERIVED_KEY_SALT: &[u8] = b"mesh/storage-key/derived/v1";
+const DERIVED_KEY_CONTEXT_BYTES: usize = 256;
+const MIN_DERIVED_SECRET_BYTES: usize = 16;
 
 static PLATFORM_STORAGE_LOCK: Mutex<()> = Mutex::new(());
 
@@ -84,6 +90,7 @@ enum SecretPurpose {
     PostQuantumPrekey,
     GroupEpochSecret,
     GroupTreeKemKey,
+    BlindRsaIssuerKey,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -127,6 +134,7 @@ impl SecretPurpose {
             15 => Ok(Self::PostQuantumPrekey),
             16 => Ok(Self::GroupEpochSecret),
             17 => Ok(Self::GroupTreeKemKey),
+            18 => Ok(Self::BlindRsaIssuerKey),
             _ => Err(failure(CryptoErrorTag::UnsupportedOperation, 0, id as i64)),
         }
     }
@@ -151,6 +159,7 @@ impl SecretPurpose {
             | Self::GroupTreeKemKey => ResourceKind::X25519PrivateKey.into(),
             Self::LocalData => StorageValueKind::Bytes,
             Self::PostQuantumPrekey => ResourceKind::MlKemPrivateKey.into(),
+            Self::BlindRsaIssuerKey => ResourceKind::BlindRsaSecretKey.into(),
         }
     }
 
@@ -164,6 +173,7 @@ impl SecretPurpose {
                 | Self::SignedPrekey
                 | Self::OneTimePrekey
                 | Self::PostQuantumPrekey
+                | Self::BlindRsaIssuerKey
         )
     }
 }
@@ -186,6 +196,15 @@ fn validate_plaintext_length(
         StorageValueKind::Resource(ResourceKind::MlKemPrivateKey) => {
             if length != MLKEM_PRIVATE_SEED_BYTES {
                 return Err(invalid_length(MLKEM_PRIVATE_SEED_BYTES, length));
+            }
+        }
+        // A 2,048-bit key's canonical PKCS#8 DER.
+        StorageValueKind::Resource(ResourceKind::BlindRsaSecretKey) => {
+            if length < blind_rsa::MIN_SECRET_KEY_BYTES {
+                return Err(invalid_length(blind_rsa::MIN_SECRET_KEY_BYTES, length));
+            }
+            if length > blind_rsa::MAX_SECRET_KEY_BYTES {
+                return Err(invalid_length(blind_rsa::MAX_SECRET_KEY_BYTES, length));
             }
         }
         StorageValueKind::Resource(_) if length != PLAINTEXT_BYTES => {
@@ -613,6 +632,57 @@ pub extern "C" fn mesh_storage_key_ephemeral() -> *mut MeshResult {
     crypto_result(result)
 }
 
+/// Derive a storage key from a secret someone holds, such as the key a
+/// recovery code yields, so that what it seals can be opened on another device
+/// or after a reinstall from that secret alone. The key is
+/// `HKDF-SHA-256(secret, "mesh/storage-key/derived/v1", context)`; `context`
+/// (1 to 256 bytes) separates the uses of one secret. Every derivation of the
+/// same secret and context has the same key, and none has a durable counter,
+/// so each draws a random 4-byte nonce prefix and a random starting counter
+/// below 2^63: two derivations share a nonce with probability about 2^-95 per
+/// seal. The secret (at least 16 bytes) is consumed on every path.
+#[no_mangle]
+pub extern "C" fn mesh_storage_key_from_secret(
+    material: *mut MeshSecretHandle,
+    context: *const MeshBytes,
+) -> *mut MeshResult {
+    let result = (|| {
+        let process = current_process()?;
+        let secret = {
+            let process = process.lock();
+            consume_owned_resource(&process, material, ResourceKind::SecretBytes)
+                .map_err(resource_failure)?
+        };
+        let context = unsafe { copy_mesh_bytes(context, DERIVED_KEY_CONTEXT_BYTES) }?;
+        if context.is_empty() {
+            return Err(invalid_length(DERIVED_KEY_CONTEXT_BYTES, 0));
+        }
+        if secret.len() < MIN_DERIVED_SECRET_BYTES {
+            return Err(invalid_length(MIN_DERIVED_SECRET_BYTES, secret.len()));
+        }
+        let mut material = Zeroizing::new(vec![0u8; STORAGE_KEY_MATERIAL_BYTES]);
+        SystemProvider
+            .hkdf_sha256(&secret, DERIVED_KEY_SALT, &context, &mut material[..32])
+            .map_err(provider_failure)?;
+        SystemProvider
+            .fill_random(&mut material[32..])
+            .map_err(provider_failure)?;
+        let mut start = [0u8; 8];
+        SystemProvider
+            .fill_random(&mut start)
+            .map_err(provider_failure)?;
+        let next_counter = u64::from_be_bytes(start) >> 1;
+        let material = Zeroizing::new(std::mem::take(&mut *material).into_boxed_slice());
+        let handle = {
+            let mut process = process.lock();
+            insert_derived_storage_key_resource(&mut process, material, next_counter)
+                .map_err(resource_failure)?
+        };
+        Ok(handle)
+    })();
+    crypto_result(result)
+}
+
 fn platform_failure(status: i32) -> CryptoFailure {
     failure(CryptoErrorTag::InternalFailure, 0, status as i64)
 }
@@ -942,6 +1012,39 @@ storage_seal_abi!(
     ResourceKind::MlKemPrivateKey
 );
 
+/// Seal a blind RSA issuer key (purpose 18). Servers only, as the key is.
+#[no_mangle]
+pub extern "C" fn mesh_blind_rsa_secret_key_seal_for_storage(
+    secret: *const MeshSecretHandle,
+    wrapping_key: *const MeshSecretHandle,
+    context: *const MeshBytes,
+) -> *mut MeshResult {
+    crypto_result(
+        blind_rsa::server_target()
+            .and_then(|()| {
+                seal_for_current_actor(
+                    secret,
+                    wrapping_key,
+                    context,
+                    ResourceKind::BlindRsaSecretKey,
+                )
+            })
+            .map(|blob| bytes_value(&blob)),
+    )
+}
+
+/// Restore a blind RSA issuer key sealed under purpose 18. Servers only.
+#[no_mangle]
+pub extern "C" fn mesh_blind_rsa_secret_key_unseal_from_storage(
+    blob: *const MeshBytes,
+    wrapping_key: *const MeshSecretHandle,
+    context: *const MeshBytes,
+) -> *mut MeshResult {
+    crypto_result(blind_rsa::server_target().and_then(|()| {
+        unseal_for_current_actor(blob, wrapping_key, context, ResourceKind::BlindRsaSecretKey)
+    }))
+}
+
 storage_unseal_abi!(mesh_secret_unseal_from_storage, ResourceKind::SecretBytes);
 storage_unseal_abi!(mesh_secret_map_unseal_from_storage, ResourceKind::SecretMap);
 storage_unseal_abi!(
@@ -1150,19 +1253,20 @@ mod tests {
     fn every_registered_purpose_round_trips_to_its_exact_resource_kind() {
         let material = material();
 
-        for purpose in (1..=13).chain([15, 16, 17]) {
+        for purpose in (1..=13).chain([15, 16, 17, 18]) {
             let kind = match purpose {
                 1..=5 | 11 | 16 => ResourceKind::SecretBytes,
                 12 => ResourceKind::SecretMap,
                 6..=7 => ResourceKind::SigningPrivateKey,
                 8..=10 | 13 | 17 => ResourceKind::X25519PrivateKey,
                 15 => ResourceKind::MlKemPrivateKey,
+                18 => ResourceKind::BlindRsaSecretKey,
                 _ => unreachable!(),
             };
-            let plaintext_length = if kind == ResourceKind::MlKemPrivateKey {
-                MLKEM_PRIVATE_SEED_BYTES
-            } else {
-                PLAINTEXT_BYTES
+            let plaintext_length = match kind {
+                ResourceKind::MlKemPrivateKey => MLKEM_PRIVATE_SEED_BYTES,
+                ResourceKind::BlindRsaSecretKey => 1_217,
+                _ => PLAINTEXT_BYTES,
             };
             let plaintext = vec![purpose as u8; plaintext_length];
             let context = context(purpose);
@@ -1674,6 +1778,18 @@ mod tests {
                 32,
             ),
             (StorageValueKind::Resource(ResourceKind::SecretBytes), 64),
+            (
+                StorageValueKind::Resource(ResourceKind::BlindRsaSecretKey),
+                blind_rsa::MIN_SECRET_KEY_BYTES - 1,
+            ),
+            (
+                StorageValueKind::Resource(ResourceKind::BlindRsaSecretKey),
+                blind_rsa::MAX_SECRET_KEY_BYTES + 1,
+            ),
+            (
+                StorageValueKind::Resource(ResourceKind::BlindRsaSecretKey),
+                PLAINTEXT_BYTES,
+            ),
         ] {
             assert_tag(
                 validate_plaintext_length(kind, length).unwrap_err(),
@@ -1718,6 +1834,7 @@ mod tests {
             CryptoErrorTag::ResourceLimitExceeded,
             CryptoErrorTag::UnsupportedOperation,
             CryptoErrorTag::InternalFailure,
+            CryptoErrorTag::UnsupportedTarget,
         ][tag as usize]
     }
 
@@ -1746,6 +1863,179 @@ mod tests {
         let counter = PROVISIONED_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         counter_out.write(counter);
         0
+    }
+
+    /// A blind RSA issuer key seals under purpose 18 only and comes back as
+    /// the same key: its public key and signatures are unchanged.
+    #[test]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    fn blind_rsa_issuer_keys_seal_and_unseal_as_the_same_key() {
+        use crate::crypto::{
+            mesh_crypto_blind_rsa_generate, mesh_crypto_blind_rsa_public, MeshBlindRsaPublicKey,
+        };
+        mesh_rt_init();
+        crate::secret::as_test_actor(|_| unsafe {
+            let wrapping_key = created(mesh_storage_key_ephemeral());
+            let issuer = created(mesh_crypto_blind_rsa_generate());
+            let issuer_context = mesh_bytes(&context(18));
+            let sealed: *mut MeshBytes = created(mesh_blind_rsa_secret_key_seal_for_storage(
+                issuer,
+                wrapping_key,
+                issuer_context,
+            ));
+            let length = (*sealed).len as usize;
+            assert!((FIXED_OVERHEAD_BYTES + blind_rsa::MIN_SECRET_KEY_BYTES
+                ..=FIXED_OVERHEAD_BYTES + blind_rsa::MAX_SECRET_KEY_BYTES)
+                .contains(&length));
+            let restored = created(mesh_blind_rsa_secret_key_unseal_from_storage(
+                sealed,
+                wrapping_key,
+                issuer_context,
+            ));
+            assert_eq!(
+                revealed(restored, ResourceKind::BlindRsaSecretKey),
+                revealed(issuer, ResourceKind::BlindRsaSecretKey)
+            );
+            let original: *mut MeshBlindRsaPublicKey =
+                created(mesh_crypto_blind_rsa_public(issuer));
+            let reopened: *mut MeshBlindRsaPublicKey =
+                created(mesh_crypto_blind_rsa_public(restored));
+            assert_eq!(
+                (*(*original).bytes).as_slice(),
+                (*(*reopened).bytes).as_slice()
+            );
+            for purpose in [7, 15] {
+                assert_eq!(
+                    refused(mesh_blind_rsa_secret_key_seal_for_storage(
+                        issuer,
+                        wrapping_key,
+                        mesh_bytes(&context(purpose)),
+                    )),
+                    CryptoErrorTag::UnsupportedOperation
+                );
+            }
+            let mlkem_blob = mesh_mlkem_private_key_seal_for_storage(
+                resource(ResourceKind::MlKemPrivateKey, &[4; 64]),
+                wrapping_key,
+                mesh_bytes(&context(15)),
+            );
+            assert_eq!(
+                refused(mesh_blind_rsa_secret_key_unseal_from_storage(
+                    created(mlkem_blob),
+                    wrapping_key,
+                    issuer_context,
+                )),
+                CryptoErrorTag::AuthenticationFailed
+            );
+        });
+    }
+
+    /// A storage key derived from a secret someone holds opens what any other
+    /// derivation of the same secret and context sealed, and nothing sealed
+    /// under another secret or context. Its key is HKDF-SHA-256 of the secret
+    /// with the fixed salt and the context; each derivation draws its own
+    /// nonce prefix and starting counter, so two derivations never share a
+    /// nonce. The secret is consumed on every path, refusals included.
+    #[test]
+    fn keys_derived_from_one_secret_open_each_others_blobs() {
+        mesh_rt_init();
+        assert_eq!(
+            refused(mesh_storage_key_from_secret(
+                ptr::null_mut(),
+                mesh_bytes(b"x")
+            )),
+            CryptoErrorTag::InternalFailure
+        );
+        crate::secret::as_test_actor(|owner| {
+            let derive = |secret: &[u8], label: &[u8]| -> *mut MeshSecretHandle {
+                created(mesh_storage_key_from_secret(
+                    resource(ResourceKind::SecretBytes, secret),
+                    mesh_bytes(label),
+                ))
+            };
+            let first = derive(&[7; 32], b"backup-keys/v1");
+            let again = derive(&[7; 32], b"backup-keys/v1");
+            let other_secret = derive(&[8; 32], b"backup-keys/v1");
+            let other_context = derive(&[7; 32], b"backup-keys/v2");
+
+            let (first_material, again_material) = {
+                let process = crate::actor::current_process().expect("an actor");
+                let process = process.lock();
+                let material = |key| {
+                    prepare_storage_key_resource(&process, key)
+                        .ok()
+                        .expect("derived key")
+                        .material
+                        .to_vec()
+                };
+                (material(first), material(again))
+            };
+            let mut expected = [0u8; 32];
+            SystemProvider
+                .hkdf_sha256(&[7; 32], DERIVED_KEY_SALT, b"backup-keys/v1", &mut expected)
+                .expect("hkdf");
+            assert_eq!(first_material[..32], expected);
+            assert_eq!(again_material[..32], expected);
+
+            let signing = resource(ResourceKind::SigningPrivateKey, &[5; 32]);
+            let signing_context = mesh_bytes(&context(6));
+            let sealed: *mut MeshBytes = created(mesh_signing_private_key_seal_for_storage(
+                signing,
+                first,
+                signing_context,
+            ));
+            let opened = created(mesh_signing_private_key_unseal_from_storage(
+                sealed,
+                again,
+                signing_context,
+            ));
+            assert_eq!(revealed(opened, ResourceKind::SigningPrivateKey), [5; 32]);
+            for key in [other_secret, other_context] {
+                assert_eq!(
+                    refused(mesh_signing_private_key_unseal_from_storage(
+                        sealed,
+                        key,
+                        signing_context,
+                    )),
+                    CryptoErrorTag::AuthenticationFailed
+                );
+            }
+            let resealed: *mut MeshBytes = created(mesh_signing_private_key_seal_for_storage(
+                signing,
+                again,
+                signing_context,
+            ));
+            let nonce = |blob: *mut MeshBytes| unsafe {
+                (*blob).as_slice()[BLOB_NONCE_OFFSET..BLOB_BINDING_OFFSET].to_vec()
+            };
+            assert_ne!(nonce(sealed), nonce(resealed));
+
+            let before = crate::secret::owned_secret_count_for_test(owner);
+            for (secret, label) in [
+                (&[7u8; 15][..], &b"backup-keys/v1"[..]),
+                (&[7u8; 32][..], &b""[..]),
+                (&[7u8; 32][..], &[b'x'; DERIVED_KEY_CONTEXT_BYTES + 1][..]),
+            ] {
+                let material = resource(ResourceKind::SecretBytes, secret);
+                assert_eq!(
+                    refused(mesh_storage_key_from_secret(material, mesh_bytes(label))),
+                    CryptoErrorTag::InvalidLength
+                );
+                assert_eq!(
+                    refused(mesh_storage_key_from_secret(material, mesh_bytes(b"x"))),
+                    CryptoErrorTag::SecretDestroyed
+                );
+            }
+            let wrong_kind = resource(ResourceKind::SigningPrivateKey, &[7; 32]);
+            assert_eq!(
+                refused(mesh_storage_key_from_secret(wrong_kind, mesh_bytes(b"x"))),
+                CryptoErrorTag::InvalidKey
+            );
+            assert_eq!(
+                crate::secret::owned_secret_count_for_test(owner),
+                before + 1
+            );
+        });
     }
 
     /// The entry points seal and unseal for the calling actor with an

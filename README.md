@@ -220,6 +220,8 @@ Important operational distinctions:
 - `File.read_bytes` and `File.write_bytes` provide
   [bounded binary range I/O](docs/bounded-binary-file-io.md) without a text or
   host-language conversion.
+- `File.sync` and `File.rename` give crash-safe saves: write a temporary
+  file, sync it, then rename it over the old one.
 - Wide integers use parse/compare/checked arithmetic functions; they are not
   ordinary `Int` literals with unchecked operators.
 - `Checked` returns `Result` for overflow, division, rescaling, and explicit

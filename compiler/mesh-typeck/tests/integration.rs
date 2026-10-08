@@ -429,6 +429,23 @@ fn test_slot_pipe_constrains_closure_before_field_access() {
     );
 }
 
+/// `File.sync(path)` and `File.rename(from, to)` return `Result<(), String>`
+/// and take only strings.
+#[test]
+fn test_file_sync_and_rename_types() {
+    let result = check_source(
+        "fn save(temp :: String, path :: String) do\n\
+           File.sync(temp)?\n\
+           File.rename(temp, path)\n\
+         end\n\
+         save(\"a.tmp\", \"a\")",
+    );
+    assert_result_type(&result, Ty::result(Ty::Tuple(vec![]), Ty::string()));
+    for source in ["File.sync(1)", "File.rename(\"a\", 1)"] {
+        assert!(!check_source(source).errors.is_empty(), "{source}");
+    }
+}
+
 /// Bare pipe (no call, just function ref) still works: `5 |> double`.
 #[test]
 fn test_pipe_bare_function_ref() {

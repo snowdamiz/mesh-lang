@@ -140,6 +140,9 @@ pub struct TraitRegistry {
     /// Declared type names: a single-letter name here (`struct P`) is a
     /// type, not a type parameter, when impl types are matched.
     nominal: FxHashSet<String>,
+    /// The structs and sum types that hold plaintext (see
+    /// `elements_have_it`).
+    plaintext_types: FxHashSet<String>,
 }
 
 impl TraitRegistry {
@@ -167,6 +170,22 @@ impl TraitRegistry {
     /// Record a declared struct or sum type name.
     pub fn register_nominal(&mut self, name: &str) {
         self.nominal.insert(name.to_string());
+    }
+
+    /// Record which structs and sum types hold plaintext.
+    pub fn set_plaintext_types(&mut self, names: FxHashSet<String>) {
+        self.plaintext_types = names;
+    }
+
+    /// Whether a value of `ty` is or holds `Plaintext`.
+    fn holds_plaintext(&self, ty: &Ty) -> bool {
+        match ty {
+            Ty::Con(con) => {
+                con.name == crate::ty::PLAINTEXT || self.plaintext_types.contains(&con.name)
+            }
+            Ty::Fun(..) => false,
+            _ => ty.parts().any(|part| self.holds_plaintext(part)),
+        }
     }
 
     /// Whether an impl for `impl_type` could match a type headed by
@@ -594,6 +613,33 @@ impl TraitRegistry {
     /// `Some(f) == Some(g)` asks for functions' `Eq`. An element not known
     /// yet may still get it.
     fn elements_have_it(&self, impl_def: &ImplDef, ty: &Ty) -> bool {
+        // A generic impl given plaintext (`Box<Plaintext<String>>`'s derived
+        // Display) would show, compare, hash or serialize it: it is one for
+        // the type only when each type it is given has the trait itself,
+        // which plaintext never does (a program's own impl for a type
+        // holding plaintext cannot read it, and counts).
+        let value_trait = matches!(
+            impl_def.trait_name.as_str(),
+            "Display"
+                | "Debug"
+                | "Eq"
+                | "Ord"
+                | "Hash"
+                | "Json"
+                | "ToJson"
+                | "FromJson"
+                | "FromRow"
+        );
+        if value_trait && self.holds_plaintext(ty) {
+            let given: &[Ty] = match ty {
+                Ty::Tuple(elements) => elements,
+                Ty::App(_, args) => args,
+                _ => &[],
+            };
+            return given
+                .iter()
+                .all(|arg| matches!(arg, Ty::Var(_)) || self.has_impl(&impl_def.trait_name, arg));
+        }
         let structural = matches!(
             impl_def.impl_type_name.as_str(),
             "Option" | "Result" | "List" | "Map" | "Set" | "Tuple"

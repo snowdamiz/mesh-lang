@@ -221,3 +221,372 @@ fn crypto_v2_public_api_compiles_and_executes_natively() {
         )
     );
 }
+
+// ── Blind RSA (profile BR1) ────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct BlindRsaVectorFile {
+    schema_version: u64,
+    suite: String,
+    profile: String,
+    token_type: String,
+    source: BlindRsaVectorSource,
+    vectors: Vec<BlindRsaVector>,
+}
+
+#[derive(Deserialize)]
+struct BlindRsaVectorSource {
+    name: String,
+    url: String,
+}
+
+#[derive(Deserialize)]
+#[allow(non_snake_case)]
+struct BlindRsaVector {
+    skI: String,
+    pkI: String,
+    token_challenge: String,
+    nonce: String,
+    salt: String,
+    blind: String,
+    token_request: String,
+    token_response: String,
+    token: String,
+}
+
+fn blind_rsa_vectors() -> BlindRsaVectorFile {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/vectors/blind-rsa/rfc9578-type2.json");
+    serde_json::from_str(&fs::read_to_string(path).expect("failed to read RFC 9578 vectors"))
+        .expect("failed to parse RFC 9578 vectors")
+}
+
+fn decode_hex(value: &str) -> Vec<u8> {
+    (0..value.len())
+        .step_by(2)
+        .map(|index| u8::from_str_radix(&value[index..index + 2], 16).expect("hex"))
+        .collect()
+}
+
+fn encode_hex(value: &[u8]) -> String {
+    value.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+/// The DER inside a PEM document, as hex.
+fn pem_der_hex(pem_hex: &str) -> String {
+    use base64::Engine as _;
+    let pem = String::from_utf8(decode_hex(pem_hex)).expect("PEM text");
+    let body: String = pem
+        .lines()
+        .filter(|line| !line.starts_with("-----"))
+        .collect();
+    encode_hex(
+        &base64::engine::general_purpose::STANDARD
+            .decode(body)
+            .expect("PEM base64"),
+    )
+}
+
+/// Build `source` as a project and run it with `envs`: its stdout.
+fn build_and_run(name: &str, source: &str, envs: &[(&str, &str)]) -> String {
+    let temp = tempfile::tempdir().expect("failed to create temp directory");
+    let project = temp.path().join(name);
+    fs::create_dir_all(&project).expect("failed to create project directory");
+    fs::write(project.join("main.mpl"), source).expect("failed to write fixture");
+    let build = Command::new(meshc_bin())
+        .args(["build", project.to_str().expect("non-UTF-8 project path")])
+        .output()
+        .expect("failed to invoke meshc");
+    assert!(
+        build.status.success(),
+        "meshc build failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+    let run = Command::new(project.join(name))
+        .envs(envs.iter().copied())
+        .output()
+        .expect("failed to execute compiled Mesh program");
+    assert!(
+        run.status.success() && run.stderr.is_empty(),
+        "compiled program failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    );
+    String::from_utf8(run.stdout).expect("UTF-8 output")
+}
+
+/// RFC 9578 Appendix A.2 through the public Mesh API in compiled Mesh: the
+/// issuer key imports from secret bytes to the vector's SPKI, signing each
+/// token request gives the vector's response, each token verifies, and a
+/// fresh blind/sign/finalize round trip, the refusals and sealed storage of
+/// the key hold.
+#[test]
+fn blind_rsa_rfc9578_type2_vectors_run_through_the_public_mesh_api() {
+    let file = blind_rsa_vectors();
+    assert_eq!(
+        (
+            file.schema_version,
+            file.suite.as_str(),
+            file.profile.as_str(),
+            file.token_type.as_str(),
+            file.source.name.as_str(),
+            file.source.url.as_str(),
+            file.vectors.len(),
+        ),
+        (
+            1,
+            "RSABSSA-SHA384-PSS-Deterministic",
+            "BR1",
+            "0x0002",
+            "RFC 9578 Appendix A.2, Issuance Protocol 2 - Blind RSA (2048-bit)",
+            "https://www.rfc-editor.org/rfc/rfc9578.txt",
+            5,
+        )
+    );
+    let issuer = pem_der_hex(&file.vectors[0].skI);
+    let mut checks = String::new();
+    let mut expected = String::new();
+    for (index, vector) in file.vectors.iter().enumerate() {
+        assert_eq!(pem_der_hex(&vector.skI), issuer, "one issuer key");
+        assert_eq!((vector.salt.len(), vector.blind.len()), (96, 512));
+        checks.push_str(&format!(
+            "check_vector({index}, issuer, \"{}\", \"{}\", \"{}\", \"{}\", \"{}\", \"{}\") ?\n  ",
+            vector.pkI,
+            vector.token_challenge,
+            vector.nonce,
+            vector.token_request,
+            vector.token_response,
+            vector.token
+        ));
+        for check in ["key", "request", "input", "sign", "verify"] {
+            expected.push_str(&format!("rfc9578-type2-{index}-{check}:ok\n"));
+        }
+    }
+    for check in [
+        "blind-rsa-round-trip",
+        "blind-rsa-unlinkable-requests",
+        "blind-rsa-verify-tampered",
+        "blind-rsa-finalize-tampered",
+        "blind-rsa-spki-length",
+        "blind-rsa-spki-exponent",
+        "blind-rsa-sign-length",
+        "blind-rsa-sign-range",
+        "blind-rsa-verify-length",
+        "blind-rsa-import-invalid",
+        "blind-rsa-storage",
+    ] {
+        expected.push_str(&format!("{check}:ok\n"));
+    }
+    let first = &file.vectors[0];
+    let source = fs::read_to_string(fixture("blind_rsa.mpl"))
+        .expect("failed to read blind RSA fixture")
+        .replace("__RFC9578_VECTOR_CHECKS__", &checks)
+        .replace("__RFC9578_SPKI_HEX__", &first.pkI)
+        .replace("__RFC9578_NONCE_HEX__", &first.nonce)
+        .replace("__RFC9578_CHALLENGE_HEX__", &first.token_challenge);
+
+    let output = build_and_run(
+        "blind-rsa-public-api",
+        &source,
+        &[("MESH_BLIND_RSA_ISSUER_PKCS8_HEX", issuer.as_str())],
+    );
+    assert_eq!(output, expected);
+}
+
+/// One RFC 9578 token issued and redeemed through compiled Mesh on a server
+/// target: generate, publish, blind, sign, finalize, verify, nullify.
+#[test]
+fn blind_rsa_token_issue_and_redeem_round_trip() {
+    let source = fs::read_to_string(fixture("blind_rsa_token_round_trip.mpl"))
+        .expect("failed to read round-trip fixture");
+    let output = build_and_run("blind-rsa-token-round-trip", &source, &[]);
+    assert_eq!(output, "token:354\nnullifier:32\nforged:refused\n");
+}
+
+/// Finalizing twice with one blinding state does not compile: the state is
+/// affine and finalize consumes it.
+#[test]
+fn blind_rsa_finalize_with_a_consumed_state_is_a_compile_error() {
+    let temp = tempfile::tempdir().expect("failed to create temp directory");
+    let project = temp.path().join("blind-rsa-consumed-state");
+    fs::create_dir_all(&project).expect("failed to create project directory");
+    fs::write(
+        project.join("main.mpl"),
+        "fn twice(key :: BlindRsaPublicKey, message :: Bytes, response :: Bytes) -> Bytes ! CryptoError do\n\
+         \x20 let blinded = Crypto.blind_rsa_blind(key, message) ?\n\
+         \x20 let first = Crypto.blind_rsa_finalize(key, message, response, blinded.state) ?\n\
+         \x20 Crypto.blind_rsa_finalize(key, message, response, blinded.state)\n\
+         end\n\
+         fn main() do\n\
+         \x20 nil\n\
+         end\n",
+    )
+    .expect("failed to write fixture");
+    let build = Command::new(meshc_bin())
+        .args(["build", project.to_str().expect("non-UTF-8 project path")])
+        .output()
+        .expect("failed to invoke meshc");
+    let diagnostics = format!(
+        "{}{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+    assert!(!build.status.success(), "{diagnostics}");
+    assert!(
+        diagnostics.contains("resource `blinded` was used after it moved"),
+        "{diagnostics}"
+    );
+}
+
+fn openssl() -> String {
+    std::env::var("MESH_OPENSSL").unwrap_or_else(|_| "openssl".to_string())
+}
+
+fn run_openssl(arguments: &[&str]) -> std::process::Output {
+    Command::new(openssl())
+        .args(arguments)
+        .output()
+        .expect("the OpenSSL CLI is required for the blind RSA differential test")
+}
+
+/// Differential against the OpenSSL CLI: a Mesh-generated key's SPKI and a
+/// finalized signature verify with `openssl dgst -sha384` under RSASSA-PSS
+/// with a 48-byte salt (and a changed signature does not), and raw signing
+/// with an OpenSSL-generated key equals OpenSSL's own raw private-key
+/// operation on the same input.
+#[test]
+fn blind_rsa_agrees_with_the_openssl_cli() {
+    let temp = tempfile::tempdir().expect("failed to create temp directory");
+    let path = |name: &str| temp.path().join(name).to_str().unwrap().to_string();
+    let generated = run_openssl(&[
+        "genpkey",
+        "-algorithm",
+        "RSA",
+        "-pkeyopt",
+        "rsa_keygen_bits:2048",
+        "-outform",
+        "DER",
+        "-out",
+        &path("key.der"),
+    ]);
+    assert!(generated.status.success(), "{generated:?}");
+    // Some OpenSSL releases write a DER key as PKCS#1: Mesh imports PKCS#8.
+    let converted = run_openssl(&[
+        "pkcs8",
+        "-topk8",
+        "-nocrypt",
+        "-inform",
+        "DER",
+        "-in",
+        &path("key.der"),
+        "-outform",
+        "DER",
+        "-out",
+        &path("key.p8"),
+    ]);
+    assert!(converted.status.success(), "{converted:?}");
+    let pkcs8_hex = encode_hex(&fs::read(path("key.p8")).expect("OpenSSL key"));
+    // Below every 2,048-bit modulus: a leading zero byte.
+    let raw_input: Vec<u8> = std::iter::once(0)
+        .chain((1..256u32).map(|index| (index * 131 + 7) as u8))
+        .collect();
+    let source = fs::read_to_string(fixture("blind_rsa_differential.mpl"))
+        .expect("failed to read differential fixture")
+        .replace("__RAW_INPUT_HEX__", &encode_hex(&raw_input));
+    let output = build_and_run(
+        "blind-rsa-differential",
+        &source,
+        &[("MESH_BLIND_RSA_OPENSSL_PKCS8_HEX", pkcs8_hex.as_str())],
+    );
+    let value = |label: &str| {
+        let prefix = format!("{label}:");
+        decode_hex(
+            output
+                .lines()
+                .find_map(|line| line.strip_prefix(prefix.as_str()))
+                .unwrap_or_else(|| panic!("no {label} in {output}")),
+        )
+    };
+
+    fs::write(path("spki.der"), value("spki")).unwrap();
+    fs::write(path("message.bin"), value("message")).unwrap();
+    let signature = value("signature");
+    fs::write(path("signature.bin"), &signature).unwrap();
+    let mut changed = signature.clone();
+    changed[7] ^= 1;
+    fs::write(path("changed.bin"), &changed).unwrap();
+    let verify = |signature: &str| {
+        run_openssl(&[
+            "dgst",
+            "-sha384",
+            "-sigopt",
+            "rsa_padding_mode:pss",
+            "-sigopt",
+            "rsa_pss_saltlen:48",
+            "-keyform",
+            "DER",
+            "-verify",
+            &path("spki.der"),
+            "-signature",
+            &path(signature),
+            &path("message.bin"),
+        ])
+    };
+    let accepted = verify("signature.bin");
+    assert!(
+        accepted.status.success()
+            && String::from_utf8_lossy(&accepted.stdout).contains("Verified OK"),
+        "{accepted:?}"
+    );
+    assert!(!verify("changed.bin").status.success());
+
+    let modulus = run_openssl(&[
+        "rsa",
+        "-inform",
+        "DER",
+        "-in",
+        &path("key.der"),
+        "-noout",
+        "-modulus",
+    ]);
+    let modulus = String::from_utf8(modulus.stdout).expect("modulus");
+    assert_eq!(
+        modulus
+            .trim()
+            .strip_prefix("Modulus=")
+            .expect("modulus line")
+            .to_lowercase(),
+        encode_hex(&value("imported-spki")[81..337])
+    );
+
+    fs::write(path("raw.bin"), &raw_input).unwrap();
+    let key = path("key.p8");
+    let raw_sign = |operation: &str| {
+        run_openssl(&[
+            "pkeyutl",
+            operation,
+            "-inkey",
+            &key,
+            "-keyform",
+            "DER",
+            "-pkeyopt",
+            "rsa_padding_mode:none",
+            "-in",
+            &path("raw.bin"),
+            "-out",
+            &path("openssl-raw.bin"),
+        ])
+    };
+    // OpenSSL 3.0-3.4 sign raw input of the modulus length; 3.5 and later
+    // refuse it as an oversized digest, and the same private-key operation
+    // (RSASP1 = RSADP) is `-decrypt` with no padding.
+    if !raw_sign("-sign").status.success() {
+        let decrypted = raw_sign("-decrypt");
+        assert!(decrypted.status.success(), "{decrypted:?}");
+    }
+    assert_eq!(
+        fs::read(path("openssl-raw.bin")).expect("OpenSSL raw signature"),
+        value("raw-signature")
+    );
+}

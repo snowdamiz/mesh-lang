@@ -11,6 +11,7 @@
 //! - `meshc lint [path]` - Report code that compiles but should be written differently
 //! - `meshc test [path]` - Run *.test.mpl files from a project root, tests directory, or specific test file
 //! - `meshc migrate [up|down|status|generate]` - Database migration management
+//! - `meshc plaintext-report [dir] [--output PATH] [--check PATH]` - List every `declassify` and `@display` export
 //! - `meshc repl` - Start an interactive REPL with LLVM JIT
 //! - `meshc lsp` - Start the LSP server (communicates via stdin/stdout)
 //!
@@ -34,6 +35,7 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 mod cluster;
 mod library_bindings;
 mod migrate;
+mod plaintext_report;
 mod proof;
 mod proof_gates;
 mod test_runner;
@@ -95,6 +97,24 @@ enum Commands {
         /// Disable colorized output
         #[arg(long = "no-color")]
         no_color: bool,
+
+        /// Write the plaintext report (every `declassify` and `@display` export) here
+        #[arg(long = "plaintext-report")]
+        plaintext_report: Option<PathBuf>,
+    },
+    /// List every `declassify` and `@display` export of a project, as JSON
+    PlaintextReport {
+        /// Project directory (default: current directory)
+        #[arg(default_value = ".")]
+        dir: PathBuf,
+
+        /// Write the report here instead of printing it
+        #[arg(long)]
+        output: Option<PathBuf>,
+
+        /// Fail if the report differs from this committed one (line numbers aside)
+        #[arg(long)]
+        check: Option<PathBuf>,
     },
     /// Initialize a new Mesh project
     Init {
@@ -313,6 +333,7 @@ fn run() {
             artifact,
             json,
             no_color,
+            plaintext_report,
         } => {
             // Diagnostics go to stderr: color them only for a terminal, and
             // not when `NO_COLOR` is set.
@@ -325,7 +346,7 @@ fn run() {
                 json,
                 display_paths: Vec::new(),
             };
-            if let Err(e) = build(
+            if let Err(e) = build_with_report(
                 &dir,
                 opt_level,
                 emit_llvm,
@@ -334,6 +355,7 @@ fn run() {
                 artifact,
                 false,
                 &diag_opts,
+                plaintext_report.as_deref(),
             ) {
                 if json {
                     // In JSON mode, emit the final error as JSON too.
@@ -398,6 +420,18 @@ fn run() {
                 process::exit(1);
             }
         }
+        Commands::PlaintextReport { dir, output, check } => {
+            let prepared = or_exit(prepare_project_build(
+                &dir,
+                false,
+                &DiagnosticOptions::colorless(),
+            ));
+            or_exit(plaintext_report::run(
+                &prepared.plaintext_report,
+                output.as_deref(),
+                check.as_deref(),
+            ));
+        }
         Commands::Repl => or_exit(mesh_repl::run_repl(&mesh_repl::ReplConfig::default())),
         Commands::Lsp => {
             let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
@@ -448,6 +482,8 @@ pub(crate) struct PreparedBuild {
     pub(crate) clustered_execution_plan: Vec<ClusteredExecutionMetadata>,
     pub(crate) clustered_route_handler_plan: Vec<mesh_codegen::DeclaredHandlerPlanEntry>,
     pub(crate) autonomous_config_json: Option<String>,
+    /// Every `declassify` and `@display` export, for `--plaintext-report`.
+    pub(crate) plaintext_report: plaintext_report::Report,
 }
 
 fn runtime_autonomous_config_json(
@@ -596,6 +632,32 @@ pub(crate) fn build(
     test_builtins: bool,
     diag_opts: &DiagnosticOptions,
 ) -> Result<(), String> {
+    build_with_report(
+        dir,
+        opt_level,
+        emit_llvm,
+        output,
+        target,
+        artifact,
+        test_builtins,
+        diag_opts,
+        None,
+    )
+}
+
+/// `build`, writing the plaintext report to `plaintext_report` once the
+/// artifact is built.
+pub(crate) fn build_with_report(
+    dir: &Path,
+    opt_level: u8,
+    emit_llvm: bool,
+    output: Option<&Path>,
+    target: Option<&str>,
+    artifact: BuildArtifact,
+    test_builtins: bool,
+    diag_opts: &DiagnosticOptions,
+    plaintext_report: Option<&Path>,
+) -> Result<(), String> {
     let mut prepared = prepare_project_build(dir, test_builtins, diag_opts)?;
     // Without an entry function codegen emits no C `main`, and the linker's
     // "_main not found" is all the user would see.
@@ -695,6 +757,10 @@ pub(crate) fn build(
     // `meshc test` builds each file to a throwaway temp binary; its path is noise there.
     if !test_builtins {
         eprintln!("  Compiled: {}", output_path.display());
+    }
+    if let Some(path) = plaintext_report {
+        plaintext_report::write(&prepared.plaintext_report, path)?;
+        eprintln!("  Plaintext report: {}", path.display());
     }
 
     Ok(())
@@ -865,6 +931,16 @@ pub(crate) fn prepare_project_build(
 
     reject_duplicate_pub_functions(&project, &all_exports)?;
 
+    let package = manifest.as_ref().map_or_else(
+        || {
+            dir.file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_default()
+        },
+        |manifest| manifest.package.name.clone(),
+    );
+    let plaintext_report = plaintext_report::collect(dir, &package, &project, &all_typeck);
+
     // `@cluster` and `HTTP.clustered` without a count take the manifest's
     // `[cluster].default_replicas`.
     let default_replicas = manifest
@@ -1011,6 +1087,7 @@ pub(crate) fn prepare_project_build(
                 .as_ref()
                 .and_then(|manifest| manifest.autonomous_cluster.as_ref()),
         )?,
+        plaintext_report,
     })
 }
 

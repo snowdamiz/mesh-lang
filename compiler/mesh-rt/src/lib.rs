@@ -79,6 +79,7 @@ pub mod process_signal;
 pub mod random;
 pub mod regex;
 pub mod secret;
+pub mod secret_memory;
 pub mod stack_overflow;
 pub mod storage_wrapping;
 pub mod string;
@@ -278,7 +279,7 @@ pub use env::{
 };
 pub use file::{
     mesh_file_append, mesh_file_delete, mesh_file_exists, mesh_file_read, mesh_file_read_bytes,
-    mesh_file_size, mesh_file_write, mesh_file_write_bytes,
+    mesh_file_rename, mesh_file_size, mesh_file_sync, mesh_file_write, mesh_file_write_bytes,
 };
 pub use finance::{
     mesh_checked_abs, mesh_checked_add, mesh_checked_div, mesh_checked_mul, mesh_checked_mul_div,
@@ -328,17 +329,19 @@ pub use regex::{
     mesh_regex_replace, mesh_regex_split,
 };
 pub use secret::{
-    mesh_resource_destroy, mesh_secret_concat, mesh_secret_destroy, mesh_secret_map_contains,
-    mesh_secret_map_copy, mesh_secret_map_delete, mesh_secret_map_fork, mesh_secret_map_insert,
-    mesh_secret_map_merge, mesh_secret_map_new, mesh_secret_random, MeshSecretHandle,
+    mesh_resource_destroy, mesh_secret_concat, mesh_secret_destroy, mesh_secret_from_bytes,
+    mesh_secret_map_contains, mesh_secret_map_copy, mesh_secret_map_delete, mesh_secret_map_fork,
+    mesh_secret_map_insert, mesh_secret_map_merge, mesh_secret_map_new, mesh_secret_random,
+    MeshSecretHandle,
 };
 pub use storage_wrapping::{
+    mesh_blind_rsa_secret_key_seal_for_storage, mesh_blind_rsa_secret_key_unseal_from_storage,
     mesh_mlkem_private_key_seal_for_storage, mesh_mlkem_private_key_unseal_from_storage,
     mesh_secret_map_seal_for_storage, mesh_secret_map_unseal_from_storage,
     mesh_secret_seal_for_storage, mesh_secret_unseal_from_storage,
     mesh_signing_private_key_seal_for_storage, mesh_signing_private_key_unseal_from_storage,
-    mesh_storage_key_ephemeral, mesh_storage_key_platform, mesh_storage_key_provision,
-    mesh_storage_key_seal_bytes, mesh_storage_key_unseal_bytes,
+    mesh_storage_key_ephemeral, mesh_storage_key_from_secret, mesh_storage_key_platform,
+    mesh_storage_key_provision, mesh_storage_key_seal_bytes, mesh_storage_key_unseal_bytes,
     mesh_x25519_private_key_seal_for_storage, mesh_x25519_private_key_unseal_from_storage,
 };
 pub use string::{

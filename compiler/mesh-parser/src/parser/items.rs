@@ -249,6 +249,20 @@ fn parse_abi_symbol_decorator_decl(
     }
 }
 
+/// `@display`, which takes no arguments, and the newlines after it;
+/// whether it was there.
+fn parse_display_decorator_decl(p: &mut Parser) -> bool {
+    if !(p.at(SyntaxKind::AT) && p.nth(1) == SyntaxKind::IDENT && p.nth_text(1) == "display") {
+        return false;
+    }
+    let marker = p.open();
+    p.advance(); // @
+    p.advance(); // display
+    p.close(marker, SyntaxKind::DISPLAY_DECORATOR_DECL);
+    p.eat_newlines();
+    true
+}
+
 fn reject_removed_clustered_work_decl(p: &mut Parser) -> FnDeclPrefixState {
     if !(p.at(SyntaxKind::IDENT) && p.current_text() == "clustered") {
         return FnDeclPrefixState::Absent;
@@ -310,10 +324,13 @@ fn parse_optional_fn_decl(p: &mut Parser) -> FnDeclPrefixState {
 pub(crate) fn parse_fn_def(p: &mut Parser) {
     let m = p.open();
 
+    // `@display` goes with an `@export`, before or after it.
+    let displayed = parse_display_decorator_decl(p);
     let declaration_prefix = parse_optional_fn_decl(p);
     if !matches!(declaration_prefix, FnDeclPrefixState::Absent) {
         p.eat_newlines();
     }
+    let displayed = parse_display_decorator_decl(p) || displayed;
 
     // Optional visibility.
     parse_optional_visibility(p);
@@ -324,6 +341,8 @@ pub(crate) fn parse_fn_def(p: &mut Parser) {
     } else {
         if let Some(message) = declaration_prefix.missing_fn_message() {
             p.error(message);
+        } else if displayed {
+            p.error("expected `fn` or `def` after `@display`");
         }
         p.close(m, SyntaxKind::FN_DEF);
         return;

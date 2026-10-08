@@ -31,6 +31,7 @@ pub mod error;
 pub mod exhaustiveness;
 pub mod infer;
 mod ownership;
+mod plaintext;
 pub mod traits;
 pub mod ty;
 pub mod unify;
@@ -52,6 +53,9 @@ pub use crate::infer::{
 };
 // Re-export trait registry for downstream trait resolution (codegen dispatch).
 pub use crate::traits::TraitRegistry;
+// What a module's `declassify` calls and `@display` exports are, for the
+// plaintext build report.
+pub use crate::plaintext::{DeclassifySite, DisplayExport, PlaintextFacts};
 
 // ── Cross-Module Type Checking Types ────────────────────────────────────
 
@@ -121,6 +125,12 @@ pub struct ModuleExports {
     /// Affine resource type names exported by this module.
     pub resource_types: FxHashSet<String>,
 
+    /// Exported structs and sum types that hold plaintext.
+    pub plaintext_types: FxHashSet<String>,
+
+    /// Exported functions with no exits, which `Plaintext.map` may apply.
+    pub pure_functions: FxHashSet<String>,
+
     /// Parameter ownership modes for exported functions.
     pub function_ownership: FxHashMap<String, Vec<ParamOwnership>>,
 
@@ -145,6 +155,8 @@ impl ModuleExports {
             private_names: exports.private_names.clone(),
             type_aliases: exports.type_aliases.clone(),
             resource_types: exports.resource_types.clone(),
+            plaintext_types: exports.plaintext_types.clone(),
+            pure_functions: exports.pure_functions.clone(),
             function_ownership: exports.function_ownership.clone(),
             function_constraints: exports.function_constraints.clone(),
             interfaces: exports
@@ -179,6 +191,10 @@ pub struct ExportedSymbols {
     pub type_aliases: FxHashMap<String, TypeAliasInfo>,
     /// Affine resource type names exported by this module.
     pub resource_types: FxHashSet<String>,
+    /// Exported structs and sum types that hold plaintext.
+    pub plaintext_types: FxHashSet<String>,
+    /// Exported functions with no exits, which `Plaintext.map` may apply.
+    pub pure_functions: FxHashSet<String>,
     /// Parameter ownership modes for exported functions.
     pub function_ownership: FxHashMap<String, Vec<ParamOwnership>>,
     /// What exported functions require of a call's arguments beyond their
@@ -317,6 +333,9 @@ pub struct TypeckResult {
     /// standing for the type, trait, associated type name, receiver type).
     /// A specialization knows the receiver, and so the associated type.
     pub assoc_projections: Vec<(Ty, String, String, Ty)>,
+    /// The module's `declassify` calls, `@display` exports and functions
+    /// with no exits.
+    pub plaintext: PlaintextFacts,
 }
 
 impl TypeckResult {
@@ -400,6 +419,9 @@ pub fn collect_exports(parse: &mesh_parser::Parse, typeck: &TypeckResult) -> Exp
                 };
                 // Each arity of an overloaded name is its own function.
                 let params = fn_def.param_list();
+                if typeck.plaintext.pure_functions.contains(&name) {
+                    exports.pure_functions.insert(name.clone());
+                }
                 let export_name = if typeck.overloaded_fn_names.contains(&name) {
                     let arity = params.iter().flat_map(|list| list.params()).count();
                     format!("{name}__{arity}")
@@ -425,10 +447,16 @@ pub fn collect_exports(parse: &mesh_parser::Parse, typeck: &TypeckResult) -> Exp
                 if registry.is_resource_name(&name) {
                     exports.resource_types.insert(name.clone());
                 }
+                if registry.plaintext_types.contains(&name) {
+                    exports.plaintext_types.insert(name.clone());
+                }
                 let def = registry.struct_defs.get(&name).cloned();
                 exports.struct_defs.extend(def.map(|def| (name, def)));
             }
             Item::SumTypeDef(_) => {
+                if registry.plaintext_types.contains(&name) {
+                    exports.plaintext_types.insert(name.clone());
+                }
                 let def = registry.sum_type_defs.get(&name).cloned();
                 exports.sum_type_defs.extend(def.map(|def| (name, def)));
             }

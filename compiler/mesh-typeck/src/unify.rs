@@ -122,6 +122,10 @@ pub struct InferCtx {
     pub errors: Vec<TypeError>,
     /// Warnings accumulated during inference (e.g. redundant match arms).
     pub warnings: Vec<TypeError>,
+    /// The message type of each typed `Pid<M>` unified with an untyped
+    /// `Pid`, with where: a pid for plaintext messages converts neither way
+    /// (see `plaintext.rs`).
+    pub untyped_pid_conversions: Vec<(Ty, ConstraintOrigin)>,
     /// Current loop nesting depth (0 = not inside any loop).
     /// Incremented when entering a while body, reset to 0 when entering a closure body.
     pub loop_depth: u32,
@@ -640,9 +644,14 @@ impl InferCtx {
 
             // Pid escape hatch: untyped Pid (Con) unifies with typed Pid<M> (App).
             // This allows: let untyped :: Pid = typed_pid  (typed -> untyped).
-            (Ty::Con(ref c), Ty::App(ref con, _)) | (Ty::App(ref con, _), Ty::Con(ref c))
+            (Ty::Con(ref c), Ty::App(ref con, ref args))
+            | (Ty::App(ref con, ref args), Ty::Con(ref c))
                 if c.name == "Pid" && matches!(con.as_ref(), Ty::Con(tc) if tc.name == "Pid") =>
             {
+                if let [message] = args.as_slice() {
+                    self.untyped_pid_conversions
+                        .push((message.clone(), origin.clone()));
+                }
                 Ok(())
             }
 

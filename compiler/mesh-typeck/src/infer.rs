@@ -165,6 +165,9 @@ pub struct TypeRegistry {
     pub sum_type_defs: FxHashMap<String, SumTypeDefInfo>,
     /// Nominal types whose values have affine resource ownership.
     pub resource_types: FxHashSet<String>,
+    /// Structs and sum types that hold a `Plaintext` value, directly or
+    /// through another such type: plaintext themselves (see `plaintext.rs`).
+    pub plaintext_types: FxHashSet<String>,
 }
 
 impl TypeRegistry {
@@ -200,7 +203,60 @@ impl TypeRegistry {
         }
     }
 
+    /// Whether a value of `ty` is or holds `Plaintext`. A function's type
+    /// says nothing of what it captured; sealing its code in is what keeps
+    /// a closure local (a message cannot take code to another node).
+    pub fn is_plaintext_type(&self, ty: &Ty) -> bool {
+        match ty {
+            Ty::Con(con) => {
+                con.name == crate::ty::PLAINTEXT || self.plaintext_types.contains(&con.name)
+            }
+            Ty::Fun(..) => false,
+            _ => ty.parts().any(|part| self.is_plaintext_type(part)),
+        }
+    }
+
+    /// The structs and sum types a field of which is plaintext, until no
+    /// more are found: a type holding one of them holds plaintext too.
+    fn propagate_plaintext_containment(&mut self) {
+        loop {
+            let found: Vec<String> = self
+                .struct_defs
+                .iter()
+                .filter(|(name, definition)| {
+                    !self.plaintext_types.contains(*name)
+                        && definition
+                            .fields
+                            .iter()
+                            .any(|(_, field_ty)| self.is_plaintext_type(field_ty))
+                })
+                .map(|(name, _)| name.clone())
+                .chain(
+                    self.sum_type_defs
+                        .iter()
+                        .filter(|(name, definition)| {
+                            !self.plaintext_types.contains(*name)
+                                && definition.variants.iter().any(|variant| {
+                                    variant.fields.iter().any(|field| match field {
+                                        VariantFieldInfo::Positional(ty)
+                                        | VariantFieldInfo::Named(_, ty) => {
+                                            self.is_plaintext_type(ty)
+                                        }
+                                    })
+                                })
+                        })
+                        .map(|(name, _)| name.clone()),
+                )
+                .collect();
+            if found.is_empty() {
+                break;
+            }
+            self.plaintext_types.extend(found);
+        }
+    }
+
     fn propagate_resource_containment(&mut self) {
+        self.propagate_plaintext_containment();
         loop {
             let mut newly_affine: Vec<String> = self
                 .struct_defs
@@ -670,6 +726,11 @@ pub fn method_module(ty: &Ty) -> Option<&'static str> {
     modules.iter().copied().find(|module| *module == name)
 }
 
+/// Whether `name` is a standard-library module (`String`, `IO`, ...).
+pub(crate) fn is_stdlib_module(name: &str) -> bool {
+    stdlib_modules(true).contains_key(name)
+}
+
 fn stdlib_modules(test_builtins: bool) -> std::rc::Rc<StdlibModules> {
     thread_local! {
         static MODULES: std::cell::RefCell<[Option<std::rc::Rc<StdlibModules>>; 2]> =
@@ -680,6 +741,24 @@ fn stdlib_modules(test_builtins: bool) -> std::rc::Rc<StdlibModules> {
             .get_or_insert_with(|| std::rc::Rc::new(build_stdlib_modules(test_builtins)))
             .clone()
     })
+}
+
+/// Report each derive a type holding plaintext asks for (only `Schema`,
+/// field names, is harmless); whether there was one.
+fn refuse_plaintext_derives(
+    ctx: &mut InferCtx,
+    name: &str,
+    derive_list: &[String],
+    definition: &mesh_parser::SyntaxNode,
+) -> bool {
+    let refused: Vec<&String> = derive_list.iter().filter(|t| *t != "Schema").collect();
+    for trait_name in &refused {
+        ctx.errors.push(TypeError::PlaintextViolation {
+            reason: format!("`{name}` holds plaintext and cannot derive `{trait_name}`"),
+            span: deriving_span(definition),
+        });
+    }
+    !refused.is_empty()
 }
 
 /// Build the stdlib module namespace registry.
@@ -1044,6 +1123,13 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
         Scheme::mono(Ty::fun(vec![Ty::secret_bytes()], Ty::Tuple(vec![]))),
     );
     secret_mod.insert(
+        "from_bytes".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::bytes()],
+            Ty::result(Ty::secret_bytes(), Ty::crypto_error()),
+        )),
+    );
+    secret_mod.insert(
         "concat".to_string(),
         Scheme::mono(Ty::fun(
             vec![Ty::secret_bytes(), Ty::secret_bytes()],
@@ -1146,6 +1232,13 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
             Ty::result(Ty::storage_key(), Ty::crypto_error()),
         )),
     );
+    storage_key_mod.insert(
+        "from_secret".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::secret_bytes(), Ty::bytes()],
+            Ty::result(Ty::storage_key(), Ty::crypto_error()),
+        )),
+    );
     for name in ["seal_bytes", "unseal_bytes"] {
         storage_key_mod.insert(
             name.to_string(),
@@ -1157,10 +1250,69 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
     }
     modules.insert("StorageKey".to_string(), storage_key_mod);
 
+    // ── Plaintext module ──────────────────────────────────────────────
+    // `Plaintext<T>` is message content. `from` labels a value, `map` and
+    // `map2` compute on content with a function that has no exits (checked
+    // in `plaintext.rs`), and the storage seal is one of its exits.
+    let (a, b, c) = (
+        TyVar(u32::MAX - 40),
+        TyVar(u32::MAX - 41),
+        TyVar(u32::MAX - 42),
+    );
+    let labeled = |var: TyVar| Ty::plaintext(Ty::Var(var));
+    let mut plaintext_mod = HashMap::new();
+    plaintext_mod.insert(
+        "from".to_string(),
+        Scheme {
+            vars: vec![a],
+            ty: Ty::fun(vec![Ty::Var(a)], labeled(a)),
+        },
+    );
+    plaintext_mod.insert(
+        "map".to_string(),
+        Scheme {
+            vars: vec![a, b],
+            ty: Ty::fun(
+                vec![labeled(a), Ty::fun(vec![Ty::Var(a)], Ty::Var(b))],
+                labeled(b),
+            ),
+        },
+    );
+    plaintext_mod.insert(
+        "map2".to_string(),
+        Scheme {
+            vars: vec![a, b, c],
+            ty: Ty::fun(
+                vec![
+                    labeled(a),
+                    labeled(b),
+                    Ty::fun(vec![Ty::Var(a), Ty::Var(b)], Ty::Var(c)),
+                ],
+                labeled(c),
+            ),
+        },
+    );
+    plaintext_mod.insert(
+        "seal_for_storage".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::plaintext(Ty::bytes()), Ty::storage_key(), Ty::bytes()],
+            Ty::result(Ty::bytes(), Ty::crypto_error()),
+        )),
+    );
+    plaintext_mod.insert(
+        "unseal_from_storage".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::bytes(), Ty::storage_key(), Ty::bytes()],
+            Ty::result(Ty::plaintext(Ty::bytes()), Ty::crypto_error()),
+        )),
+    );
+    modules.insert(crate::ty::PLAINTEXT.to_string(), plaintext_mod);
+
     for (module, private_key) in [
         ("X25519PrivateKey", Ty::x25519_private_key()),
         ("SigningPrivateKey", Ty::signing_private_key()),
         ("MlKemPrivateKey", Ty::mlkem_private_key()),
+        ("BlindRsaSecretKey", Ty::blind_rsa_secret_key()),
     ] {
         let mut private_mod = HashMap::new();
         private_mod.insert(
@@ -1662,6 +1814,20 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
     );
     file_mod.insert(
         "delete".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string()],
+            Ty::result(Ty::Tuple(vec![]), Ty::string()),
+        )),
+    );
+    file_mod.insert(
+        "rename".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string(), Ty::string()],
+            Ty::result(Ty::Tuple(vec![]), Ty::string()),
+        )),
+    );
+    file_mod.insert(
+        "sync".to_string(),
         Scheme::mono(Ty::fun(
             vec![Ty::string()],
             Ty::result(Ty::Tuple(vec![]), Ty::string()),
@@ -4439,6 +4605,9 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         for resource_type in &mod_exports.resource_types {
             type_registry.register_resource_type(resource_type.clone());
         }
+        type_registry
+            .plaintext_types
+            .extend(mod_exports.plaintext_types.iter().cloned());
         for (name, struct_def) in &mod_exports.struct_defs {
             type_registry.register_struct(struct_def.clone());
             // Register struct constructor in env with display_prefix set to source module
@@ -4616,6 +4785,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         type_registry.register_sum_type(info);
     }
     type_registry.propagate_resource_containment();
+    trait_registry.set_plaintext_types(type_registry.plaintext_types.clone());
 
     // Validate that all type aliases reference known types (ALIAS-04).
     validate_type_aliases(
@@ -4924,6 +5094,34 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         &ctx.overloaded_call_targets,
     );
     ctx.errors.extend(ownership.errors);
+    let untyped_pid_conversions = std::mem::take(&mut ctx.untyped_pid_conversions)
+        .into_iter()
+        .map(|(message, origin)| (ctx.resolve(message), origin))
+        .collect();
+    let plaintext = crate::plaintext::check(
+        parse,
+        &resolved_types,
+        &type_registry,
+        import_ctx,
+        &ctx.stdlib_imports,
+        untyped_pid_conversions,
+    );
+    ctx.errors.extend(plaintext.errors);
+    // Plaintext has no trait impls, and a type holding it none it did not
+    // write: that, not a missing `deriving`, is why it lacks one.
+    for error in &mut ctx.errors {
+        if let TypeError::TraitNotSatisfied {
+            ty,
+            trait_name,
+            origin,
+            ..
+        } = error
+        {
+            if type_registry.is_plaintext_type(ty) {
+                *error = crate::plaintext::missing_trait(ty, trait_name, origin);
+            }
+        }
+    }
     // A call whose callee failed is inferred again as a method call, which
     // reports the same error a second time; each error is reported once.
     let mut seen = FxHashSet::default();
@@ -4975,6 +5173,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         function_ownership: ownership.function_ownership,
         fn_constraints,
         assoc_projections,
+        plaintext: plaintext.facts,
     }
 }
 
@@ -4987,6 +5186,8 @@ fn register_crypto_v2_types(type_registry: &mut TypeRegistry) {
         "MlKemPrivateKey",
         "SigningPrivateKey",
         "AeadKey",
+        "BlindRsaSecretKey",
+        "BlindRsaBlindingState",
     ] {
         type_registry.register_resource_type(resource);
     }
@@ -4995,6 +5196,14 @@ fn register_crypto_v2_types(type_registry: &mut TypeRegistry) {
         ("X25519PublicKey", vec![("bytes", Ty::bytes())]),
         ("MlKemPublicKey", vec![("bytes", Ty::bytes())]),
         ("MlKemCiphertext", vec![("bytes", Ty::bytes())]),
+        ("BlindRsaPublicKey", vec![("bytes", Ty::bytes())]),
+        (
+            "BlindRsaBlinded",
+            vec![
+                ("blinded", Ty::bytes()),
+                ("state", Ty::blind_rsa_blinding_state()),
+            ],
+        ),
         ("SigningPublicKey", vec![("bytes", Ty::bytes())]),
         ("Signature", vec![("bytes", Ty::bytes())]),
         (
@@ -5144,6 +5353,11 @@ fn register_builtin_sum_types(
         },
         VariantInfo {
             name: "InternalFailure".to_string(),
+            fields: vec![],
+        },
+        // Appended: the variants above keep their tags.
+        VariantInfo {
+            name: "UnsupportedTarget".to_string(),
             fields: vec![],
         },
     ];
@@ -6352,6 +6566,13 @@ fn register_struct_def(
     if is_affine_resource {
         type_registry.register_resource_type(name.clone());
     }
+    // A struct holding plaintext shows, compares and serializes nothing of
+    // itself unless the program writes the impl (which cannot read the
+    // plaintext): no default derives, and none it asks for.
+    let holds_plaintext = type_registry.plaintext_types.contains(&name)
+        || fields
+            .iter()
+            .any(|(_, field_ty)| type_registry.is_plaintext_type(field_ty));
     let has_deriving = struct_def.has_deriving_clause();
     let derive_list = struct_def.deriving_traits();
     let fn_field = fields
@@ -6362,9 +6583,19 @@ fn register_struct_def(
         ctx,
         &name,
         derive_list,
-        !has_deriving && !is_affine_resource,
+        !has_deriving && !is_affine_resource && !holds_plaintext,
         fn_field,
     );
+    if holds_plaintext && refuse_plaintext_derives(ctx, &name, &derive_list, struct_def.syntax()) {
+        trait_registry.register_nominal(&name);
+        type_registry.register_struct(StructDefInfo {
+            name,
+            generic_params,
+            fields,
+            schema: None,
+        });
+        return;
+    }
 
     // Validate derive trait names.
     let valid_derives = [
@@ -7110,6 +7341,7 @@ fn register_sum_type_def(
     trait_registry.register_nominal(&name);
     type_registry.propagate_resource_containment();
     let is_affine_resource = type_registry.is_resource_name(&name);
+    let holds_plaintext = type_registry.plaintext_types.contains(&name);
 
     // A variant declared twice in the type.
     let mut declared: Vec<String> = Vec::new();
@@ -7187,9 +7419,12 @@ fn register_sum_type_def(
         ctx,
         &name,
         derive_list,
-        !has_deriving && !is_affine_resource,
+        !has_deriving && !is_affine_resource && !holds_plaintext,
         fn_field,
     );
+    if holds_plaintext && refuse_plaintext_derives(ctx, &name, &derive_list, sum_def.syntax()) {
+        return;
+    }
 
     // Validate derive trait names.
     let valid_derives = [
@@ -8612,10 +8847,16 @@ fn validate_export_abi_types(
     params: &[Ty],
     return_type: Option<&Ty>,
 ) {
-    let valid_params = matches!(params, [Ty::Con(con)] if con.name == "Bytes");
+    // `Plaintext<Bytes>` is `Bytes` at run time; which exports may carry it
+    // (those marked `@display`) is `plaintext.rs`'s to say.
+    let bytes = |ty: &Ty| {
+        matches!(ty, Ty::Con(con) if con.name == "Bytes")
+            || matches!(ty.args_of(crate::ty::PLAINTEXT), Some([Ty::Con(con)]) if con.name == "Bytes")
+    };
+    let valid_params = matches!(params, [param] if bytes(param));
     let valid_return = matches!(
         return_type.and_then(|ty| ty.args_of("Result")),
-        Some([Ty::Con(ok), Ty::Con(error)]) if ok.name == "Bytes" && error.name == "String"
+        Some([ok, Ty::Con(error)]) if bytes(ok) && error.name == "String"
     );
     if !valid_params || !valid_return {
         ctx.errors.push(TypeError::ExportDeclarationInvalid {
@@ -14302,6 +14543,21 @@ fn infer_service_def(
     }
 
     env.pop_scope();
+
+    // A service that takes plaintext is reached through its own typed pid,
+    // which an untyped `Pid` (a registry lookup, perhaps of another node's
+    // service) does not become (see `plaintext.rs`).
+    let takes_plaintext = call_handler_info
+        .iter()
+        .map(|(_, params, _)| params)
+        .chain(cast_handler_info.iter().map(|(_, params)| params))
+        .flatten()
+        .any(|param| type_registry.is_plaintext_type(&ctx.resolve(param.clone())));
+    let pid_ty = if takes_plaintext {
+        Ty::pid(Ty::plaintext(Ty::Tuple(vec![])))
+    } else {
+        pid_ty
+    };
 
     // ── The service's helper functions ────────────────────────────────
     // `Service.start(init_args...)`, and for each handler

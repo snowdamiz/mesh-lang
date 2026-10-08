@@ -562,6 +562,9 @@ pub enum TypeError {
     /// A value with affine resource ownership crossed an invalid boundary or
     /// was used in an invalid ownership state.
     ResourceViolation { reason: String, span: TextRange },
+    /// A `Plaintext` value, or one holding it, reaches a way out of the
+    /// program other than a seal, an `@display` export or `declassify`.
+    PlaintextViolation { reason: String, span: TextRange },
 }
 
 impl TypeError {
@@ -662,7 +665,8 @@ impl TypeError {
             | TypeError::OverloadedFunctionValue { span, .. }
             | TypeError::GenericImplTarget { span, .. }
             | TypeError::AssertReceiveOutsideTest { span }
-            | TypeError::ResourceViolation { span, .. } => Some(*span),
+            | TypeError::ResourceViolation { span, .. }
+            | TypeError::PlaintextViolation { span, .. } => Some(*span),
         }
     }
 }
@@ -1360,6 +1364,9 @@ impl fmt::Display for TypeError {
             }
             TypeError::ResourceViolation { reason, .. } => {
                 write!(f, "resource ownership violation: {reason}")
+            }
+            TypeError::PlaintextViolation { reason, .. } => {
+                write!(f, "plaintext cannot leave here: {reason}")
             }
         }
     }

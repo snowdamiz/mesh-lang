@@ -157,6 +157,24 @@ pub(crate) fn check(
     };
     signatures.insert("Secret.concat".to_string(), concat_signature.clone());
     signatures.insert("secret_concat".to_string(), concat_signature);
+    let from_bytes_signature = FunctionSignature {
+        modes: vec![ParamOwnership::Move],
+        formal_types: vec![Some(Ty::bytes())],
+    };
+    signatures.insert(
+        "Secret.from_bytes".to_string(),
+        from_bytes_signature.clone(),
+    );
+    signatures.insert("secret_from_bytes".to_string(), from_bytes_signature);
+    let derive_signature = FunctionSignature {
+        modes: vec![ParamOwnership::Consume, ParamOwnership::Move],
+        formal_types: vec![Some(Ty::secret_bytes()), Some(Ty::bytes())],
+    };
+    signatures.insert(
+        "StorageKey.from_secret".to_string(),
+        derive_signature.clone(),
+    );
+    signatures.insert("storage_key_from_secret".to_string(), derive_signature);
     let secret_map = Ty::secret_map();
     for name in ["insert", "contains", "copy", "delete", "fork"] {
         let arity = if name == "insert" {
@@ -203,6 +221,11 @@ pub(crate) fn check(
             "MlKemPrivateKey",
             "mlkem_private_key",
             Ty::mlkem_private_key(),
+        ),
+        (
+            "BlindRsaSecretKey",
+            "blind_rsa_secret_key",
+            Ty::blind_rsa_secret_key(),
         ),
     ] {
         let seal = FunctionSignature {
@@ -290,6 +313,12 @@ pub(crate) fn check(
     register_crypto_signature(
         &mut signatures,
         "hmac_sha256",
+        vec![ParamOwnership::Borrow, ParamOwnership::Move],
+        vec![Ty::secret_bytes(), Ty::bytes()],
+    );
+    register_crypto_signature(
+        &mut signatures,
+        "hmac_sha256_tag",
         vec![ParamOwnership::Borrow, ParamOwnership::Move],
         vec![Ty::secret_bytes(), Ty::bytes()],
     );
@@ -416,6 +445,49 @@ pub(crate) fn check(
     );
     register_crypto_signature(
         &mut signatures,
+        "hpke_seal_export",
+        vec![ParamOwnership::Move; 5],
+        vec![
+            Ty::x25519_public_key(),
+            Ty::bytes(),
+            Ty::bytes(),
+            Ty::bytes(),
+            Ty::bytes(),
+        ],
+    );
+    register_crypto_signature(
+        &mut signatures,
+        "hpke_open_export",
+        vec![
+            ParamOwnership::Borrow,
+            ParamOwnership::Move,
+            ParamOwnership::Move,
+            ParamOwnership::Move,
+            ParamOwnership::Move,
+        ],
+        vec![
+            Ty::x25519_private_key(),
+            Ty::bytes(),
+            Ty::bytes(),
+            Ty::bytes(),
+            Ty::bytes(),
+        ],
+    );
+    for operation in ["hkdf_aead_seal", "hkdf_aead_open"] {
+        register_crypto_signature(
+            &mut signatures,
+            operation,
+            vec![
+                ParamOwnership::Borrow,
+                ParamOwnership::Move,
+                ParamOwnership::Move,
+                ParamOwnership::Move,
+            ],
+            vec![Ty::secret_bytes(), Ty::bytes(), Ty::bytes(), Ty::bytes()],
+        );
+    }
+    register_crypto_signature(
+        &mut signatures,
         "mlkem_decapsulate",
         vec![ParamOwnership::Borrow, ParamOwnership::Move],
         vec![Ty::mlkem_private_key(), Ty::mlkem_ciphertext()],
@@ -432,6 +504,62 @@ pub(crate) fn check(
         vec![ParamOwnership::Consume],
         vec![Ty::secret_bytes()],
     );
+    register_crypto_signature(
+        &mut signatures,
+        "blind_rsa_from_secret",
+        vec![ParamOwnership::Consume],
+        vec![Ty::secret_bytes()],
+    );
+    register_crypto_signature(
+        &mut signatures,
+        "blind_rsa_public",
+        vec![ParamOwnership::Borrow],
+        vec![Ty::blind_rsa_secret_key()],
+    );
+    register_crypto_signature(
+        &mut signatures,
+        "blind_rsa_public_from_spki",
+        vec![ParamOwnership::Move],
+        vec![Ty::bytes()],
+    );
+    register_crypto_signature(
+        &mut signatures,
+        "blind_rsa_blind",
+        vec![ParamOwnership::Move, ParamOwnership::Move],
+        vec![Ty::blind_rsa_public_key(), Ty::bytes()],
+    );
+    register_crypto_signature(
+        &mut signatures,
+        "blind_rsa_sign",
+        vec![ParamOwnership::Borrow, ParamOwnership::Move],
+        vec![Ty::blind_rsa_secret_key(), Ty::bytes()],
+    );
+    register_crypto_signature(
+        &mut signatures,
+        "blind_rsa_finalize",
+        vec![
+            ParamOwnership::Move,
+            ParamOwnership::Move,
+            ParamOwnership::Move,
+            ParamOwnership::Consume,
+        ],
+        vec![
+            Ty::blind_rsa_public_key(),
+            Ty::bytes(),
+            Ty::bytes(),
+            Ty::blind_rsa_blinding_state(),
+        ],
+    );
+    register_crypto_signature(
+        &mut signatures,
+        "blind_rsa_verify",
+        vec![
+            ParamOwnership::Move,
+            ParamOwnership::Move,
+            ParamOwnership::Move,
+        ],
+        vec![Ty::blind_rsa_public_key(), Ty::bytes(), Ty::bytes()],
+    );
     for operation in ["aead_seal", "aead_open"] {
         register_crypto_signature(
             &mut signatures,
@@ -443,6 +571,52 @@ pub(crate) fn check(
                 ParamOwnership::Move,
             ],
             vec![Ty::aead_key(), Ty::bytes(), Ty::bytes(), Ty::bytes()],
+        );
+    }
+    // The plaintext seals and opens borrow their keys as the others do.
+    let content = Ty::plaintext(Ty::bytes());
+    for (operation, key, payload) in [
+        ("aead_seal_plaintext", Ty::aead_key(), content.clone()),
+        ("aead_open_plaintext", Ty::aead_key(), Ty::bytes()),
+        ("hpke_open_plaintext", Ty::x25519_private_key(), Ty::bytes()),
+    ] {
+        register_crypto_signature(
+            &mut signatures,
+            operation,
+            vec![
+                ParamOwnership::Borrow,
+                ParamOwnership::Move,
+                ParamOwnership::Move,
+                ParamOwnership::Move,
+            ],
+            vec![key, Ty::bytes(), Ty::bytes(), payload],
+        );
+    }
+    register_crypto_signature(
+        &mut signatures,
+        "hpke_seal_plaintext",
+        vec![ParamOwnership::Move; 4],
+        vec![
+            Ty::x25519_public_key(),
+            Ty::bytes(),
+            Ty::bytes(),
+            content.clone(),
+        ],
+    );
+    for (operation, sealed) in [
+        ("seal_for_storage", content),
+        ("unseal_from_storage", Ty::bytes()),
+    ] {
+        signatures.insert(
+            format!("Plaintext.{operation}"),
+            FunctionSignature {
+                modes: vec![
+                    ParamOwnership::Move,
+                    ParamOwnership::Borrow,
+                    ParamOwnership::Move,
+                ],
+                formal_types: vec![Some(sealed), Some(Ty::storage_key()), Some(Ty::bytes())],
+            },
         );
     }
     register_imported_signatures(parse, import_ctx, &mut signatures);

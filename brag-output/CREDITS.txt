@@ -1,0 +1,10 @@
+Music (brag-a-cluster-extended.mp4)
+  "Futuristic Pulse" by Universfield
+  https://pixabay.com/music/pulses-futuristic-pulse-212484/
+  Pixabay Content License (https://pixabay.com/service/license-summary/): free to use, no attribution required,
+  may be modified; not to be redistributed on its own. Not registered with Content ID on its Pixabay page.
+  Edited on its bar lines to the picture: 0:00.055-0:34.611, 0:45.845-0:51.464, 0:57.083-1:05.509, 1:30.792-end.
+  Effects underneath are synthesised (work/a2/music.py).
+
+Music (brag-a-cluster.mp4, brag-c-editorial.mp4)
+  Original scores synthesised for these videos (work/a/music.py, work/c/music.py).

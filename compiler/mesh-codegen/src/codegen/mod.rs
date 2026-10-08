@@ -142,6 +142,10 @@ pub struct CodeGen<'ctx> {
     /// Versioned, compiler-normalized autonomous runtime configuration.
     pub(crate) autonomous_config_json: Option<String>,
 
+    /// Release builds (`--opt-level 2` and above): the generated `main`
+    /// turns core dumps off before anything else runs.
+    pub(crate) disable_core_dumps: bool,
+
     /// Bodyful Mesh functions exposed through the stable binary library ABI.
     pub(crate) library_exports: Vec<crate::LibraryExport>,
 
@@ -254,6 +258,7 @@ impl<'ctx> CodeGen<'ctx> {
             declared_handlers: Vec::new(),
             startup_work_registrations: Vec::new(),
             autonomous_config_json: None,
+            disable_core_dumps: opt_level >= 2,
             library_exports: Vec::new(),
             tce_loop_header: None,
             tce_param_slots: Vec::new(),
@@ -940,6 +945,14 @@ impl<'ctx> CodeGen<'ctx> {
 
         let entry = self.context.append_basic_block(main_fn, "entry");
         self.builder.position_at_end(entry);
+
+        // A release build keeps secrets out of core files from the start.
+        if self.disable_core_dumps {
+            let disable = intrinsics::get_intrinsic(&self.module, "mesh_rt_disable_core_dumps");
+            self.builder
+                .build_call(disable, &[], "")
+                .map_err(|e| e.to_string())?;
+        }
 
         // Call mesh_rt_init()
         let rt_init = intrinsics::get_intrinsic(&self.module, "mesh_rt_init");

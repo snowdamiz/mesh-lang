@@ -738,7 +738,7 @@ pub extern "C" fn mesh_bytes_write_uint_le(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::gc::mesh_rt_init;
 
@@ -1016,20 +1016,20 @@ mod tests {
     use std::time::Instant;
 
     #[derive(Default)]
-    struct TimingStats {
+    pub(crate) struct TimingStats {
         count: f64,
         sum: f64,
         sum_squares: f64,
     }
 
     impl TimingStats {
-        fn record(&mut self, value: f64) {
+        pub(crate) fn record(&mut self, value: f64) {
             self.count += 1.0;
             self.sum += value;
             self.sum_squares += value * value;
         }
 
-        fn mean(&self) -> f64 {
+        pub(crate) fn mean(&self) -> f64 {
             self.sum / self.count
         }
 
@@ -1038,7 +1038,7 @@ mod tests {
         }
     }
 
-    fn welch_t(left: &TimingStats, right: &TimingStats) -> f64 {
+    pub(crate) fn welch_t(left: &TimingStats, right: &TimingStats) -> f64 {
         let standard_error = (left.variance() / left.count + right.variance() / right.count).sqrt();
         if standard_error == 0.0 {
             return if left.mean() == right.mean() {

@@ -88,6 +88,11 @@ const BUILTIN_TYPES: &[&str] = &[
     "SigningKeyPair",
     "Signature",
     "AeadKey",
+    "BlindRsaSecretKey",
+    "BlindRsaPublicKey",
+    "BlindRsaBlinded",
+    "BlindRsaBlindingState",
+    "Plaintext",
 ];
 
 /// Snippet definitions: (label, snippet_body).
@@ -439,6 +444,9 @@ mod tests {
             "X25519PrivateKey",
             "SigningPrivateKey",
             "AeadKey",
+            "BlindRsaSecretKey",
+            "BlindRsaBlindingState",
+            "Plaintext",
         ] {
             assert!(
                 labels.contains(&expected),

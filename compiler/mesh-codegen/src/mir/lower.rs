@@ -576,6 +576,24 @@ impl<'a> Lowerer<'a> {
                 .entry(alias.to_string())
                 .or_insert_with(|| vec![ParamOwnership::Consume, ParamOwnership::Consume]);
         }
+        for alias in [
+            "StorageKey.from_secret",
+            "storage_key_from_secret",
+            "mesh_storage_key_from_secret",
+        ] {
+            ownership_signatures
+                .entry(alias.to_string())
+                .or_insert_with(|| vec![ParamOwnership::Consume, ParamOwnership::Move]);
+        }
+        for alias in [
+            "Secret.from_bytes",
+            "secret_from_bytes",
+            "mesh_secret_from_bytes",
+        ] {
+            ownership_signatures
+                .entry(alias.to_string())
+                .or_insert_with(|| vec![ParamOwnership::Move]);
+        }
         for operation in ["insert", "contains", "copy", "delete", "fork"] {
             let mut modes = if operation == "fork" {
                 vec![ParamOwnership::Borrow]
@@ -610,6 +628,7 @@ impl<'a> Lowerer<'a> {
             ("X25519PrivateKey", "x25519_private_key"),
             ("SigningPrivateKey", "signing_private_key"),
             ("MlKemPrivateKey", "mlkem_private_key"),
+            ("BlindRsaSecretKey", "blind_rsa_secret_key"),
         ] {
             for alias in [
                 format!("{module}.seal_for_storage"),
@@ -2041,6 +2060,14 @@ impl<'a> Lowerer<'a> {
             _ => false,
         });
 
+        // A map over plaintext tells the runtime it computes on content.
+        for name in ["mesh_plaintext_enter", "mesh_plaintext_leave"] {
+            self.known_functions.insert(
+                name.to_string(),
+                MirType::FnPtr(vec![], Box::new(MirType::Unit)),
+            );
+        }
+
         // Register builtin I/O functions as known functions.
         self.known_functions.insert(
             "println".to_string(),
@@ -2179,6 +2206,17 @@ impl<'a> Lowerer<'a> {
             "mesh_file_delete".to_string(),
             MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr)),
         );
+        self.known_functions.insert(
+            "mesh_file_rename".to_string(),
+            MirType::FnPtr(
+                vec![MirType::String, MirType::String],
+                Box::new(MirType::Ptr),
+            ),
+        );
+        self.known_functions.insert(
+            "mesh_file_sync".to_string(),
+            MirType::FnPtr(vec![MirType::String], Box::new(MirType::Ptr)),
+        );
         // IO functions
         self.known_functions.insert(
             "mesh_io_read_line".to_string(),
@@ -2263,6 +2301,10 @@ impl<'a> Lowerer<'a> {
         );
         self.known_functions.insert(
             "mesh_crypto_hmac_sha256".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
+            "mesh_crypto_hmac_sha256_tag".to_string(),
             MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)),
         );
         self.known_functions.insert(
@@ -2370,6 +2412,29 @@ impl<'a> Lowerer<'a> {
             ),
         );
         self.known_functions.insert(
+            "mesh_crypto_hpke_seal_export".to_string(),
+            MirType::FnPtr(
+                vec![
+                    MirType::Struct("X25519PublicKey".to_string()),
+                    MirType::Ptr,
+                    MirType::Ptr,
+                    MirType::Ptr,
+                    MirType::Ptr,
+                ],
+                Box::new(MirType::Ptr),
+            ),
+        );
+        self.known_functions.insert(
+            "mesh_crypto_hpke_open_export".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr; 5], Box::new(MirType::Ptr)),
+        );
+        for name in ["mesh_crypto_hkdf_aead_seal", "mesh_crypto_hkdf_aead_open"] {
+            self.known_functions.insert(
+                name.to_string(),
+                MirType::FnPtr(vec![MirType::Ptr; 4], Box::new(MirType::Ptr)),
+            );
+        }
+        self.known_functions.insert(
             "mesh_crypto_mlkem_encapsulate".to_string(),
             MirType::FnPtr(
                 vec![MirType::Struct("MlKemPublicKey".to_string())],
@@ -2386,6 +2451,52 @@ impl<'a> Lowerer<'a> {
         self.known_functions.insert(
             "mesh_crypto_sign".to_string(),
             MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)),
+        );
+        // Blind RSA (BR1): a public key is passed by pointer to its struct.
+        let blind_rsa_public_key = || MirType::Struct("BlindRsaPublicKey".to_string());
+        self.known_functions.insert(
+            "mesh_crypto_blind_rsa_generate".to_string(),
+            MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
+        );
+        for name in [
+            "mesh_crypto_blind_rsa_from_secret",
+            "mesh_crypto_blind_rsa_public",
+            "mesh_crypto_blind_rsa_public_from_spki",
+        ] {
+            self.known_functions.insert(
+                name.to_string(),
+                MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
+            );
+        }
+        self.known_functions.insert(
+            "mesh_crypto_blind_rsa_blind".to_string(),
+            MirType::FnPtr(
+                vec![blind_rsa_public_key(), MirType::Ptr],
+                Box::new(MirType::Ptr),
+            ),
+        );
+        self.known_functions.insert(
+            "mesh_crypto_blind_rsa_sign".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
+            "mesh_crypto_blind_rsa_finalize".to_string(),
+            MirType::FnPtr(
+                vec![
+                    blind_rsa_public_key(),
+                    MirType::Ptr,
+                    MirType::Ptr,
+                    MirType::Ptr,
+                ],
+                Box::new(MirType::Ptr),
+            ),
+        );
+        self.known_functions.insert(
+            "mesh_crypto_blind_rsa_verify".to_string(),
+            MirType::FnPtr(
+                vec![blind_rsa_public_key(), MirType::Ptr, MirType::Ptr],
+                Box::new(MirType::Ptr),
+            ),
         );
         self.known_functions.insert(
             "mesh_crypto_verify".to_string(),
@@ -2606,6 +2717,14 @@ impl<'a> Lowerer<'a> {
             MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
         );
         self.known_functions.insert(
+            "mesh_storage_key_from_secret".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
+            "mesh_secret_from_bytes".to_string(),
+            MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
+        );
+        self.known_functions.insert(
             "mesh_storage_key_platform".to_string(),
             MirType::FnPtr(vec![], Box::new(MirType::Ptr)),
         );
@@ -2656,6 +2775,7 @@ impl<'a> Lowerer<'a> {
             "x25519_private_key",
             "signing_private_key",
             "mlkem_private_key",
+            "blind_rsa_secret_key",
         ] {
             for operation in ["seal_for_storage", "unseal_from_storage"] {
                 self.known_functions.insert(
@@ -8502,6 +8622,88 @@ impl<'a> Lowerer<'a> {
         MirExpr::Call { func, args, ty }
     }
 
+    /// `declassify(value, reason)`, `Plaintext.from(value)` and
+    /// `Plaintext.map`/`map2`: a `Plaintext` is its value at run time, so
+    /// the first two are the value, and a map applies its function to the
+    /// values, with the runtime told that it computes on plaintext (a panic
+    /// then withholds its message). The type checker saw each called
+    /// directly.
+    fn lower_plaintext_call(&mut self, call: &CallExpr) -> Option<MirExpr> {
+        let operation = match call.callee()? {
+            Expr::NameRef(name) if name.text().as_deref() == Some("declassify") => "declassify",
+            Expr::FieldAccess(access) => {
+                let Some(Expr::NameRef(base)) = access.base() else {
+                    return None;
+                };
+                if base.text().as_deref() != Some(mesh_typeck::ty::PLAINTEXT)
+                    || self.lookup_var(mesh_typeck::ty::PLAINTEXT).is_some()
+                {
+                    return None;
+                }
+                match access.field()?.text() {
+                    "from" => "from",
+                    "map" | "map2" => "map",
+                    _ => return None,
+                }
+            }
+            _ => return None,
+        };
+        if operation == "declassify" && self.lookup_var("declassify").is_some() {
+            return None;
+        }
+        let mut args = call.args();
+        if operation != "map" {
+            // The value; a reason is a literal, with nothing to run.
+            return Some(self.lower_expr(args.first()?));
+        }
+        let function = args.pop()?;
+        let values: Vec<MirExpr> = args.iter().map(|arg| self.lower_expr(arg)).collect();
+        let function = self.lower_expr(&function);
+        let ty = self.resolve_range(call.syntax().text_range());
+        let applied = match function.ty() {
+            MirType::Closure(..) => MirExpr::ClosureCall {
+                closure: Box::new(function),
+                args: values,
+                ty: ty.clone(),
+            },
+            _ => MirExpr::Call {
+                func: Box::new(function),
+                args: values,
+                ty: ty.clone(),
+            },
+        };
+        let runtime = |name: &str| MirExpr::Call {
+            func: Box::new(MirExpr::Var(
+                name.to_string(),
+                MirType::FnPtr(vec![], Box::new(MirType::Unit)),
+            )),
+            args: vec![],
+            ty: MirType::Unit,
+        };
+        let result = format!(
+            "__plaintext_{}",
+            u32::from(call.syntax().text_range().start())
+        );
+        Some(MirExpr::Block(
+            vec![
+                runtime("mesh_plaintext_enter"),
+                MirExpr::Let {
+                    name: result.clone(),
+                    ty: ty.clone(),
+                    value: Box::new(applied),
+                    body: Box::new(MirExpr::Block(
+                        vec![
+                            runtime("mesh_plaintext_leave"),
+                            MirExpr::Var(result, ty.clone()),
+                        ],
+                        ty.clone(),
+                    )),
+                },
+            ],
+            ty,
+        ))
+    }
+
     /// The source of the two arguments an `assert_eq`/`assert_ne` compares,
     /// joined by `op`: `x + 1 == 2`.
     fn compared_source(call: &CallExpr, op: &str) -> String {
@@ -8514,6 +8716,9 @@ impl<'a> Lowerer<'a> {
     }
 
     fn lower_call_expr_unshaped(&mut self, call: &CallExpr) -> MirExpr {
+        if let Some(lowered) = self.lower_plaintext_call(call) {
+            return lowered;
+        }
         // `panic(message)`: the runtime raises it, and nothing runs after it.
         if let Some(Expr::NameRef(callee)) = call.callee() {
             if callee.text().as_deref() == Some("panic") && self.lookup_var("panic").is_none() {
@@ -9285,6 +9490,7 @@ impl<'a> Lowerer<'a> {
             "X25519PrivateKey" => "x25519_private_key".to_string(),
             "SigningPrivateKey" => "signing_private_key".to_string(),
             "MlKemPrivateKey" => "mlkem_private_key".to_string(),
+            "BlindRsaSecretKey" => "blind_rsa_secret_key".to_string(),
             _ => base_name.to_lowercase(),
         };
         let prefixed = format!("{prefix}_{field}");
@@ -14184,10 +14390,12 @@ const STDLIB_MODULES: &[&str] = &[
     "X25519PrivateKey",
     "SigningPrivateKey",
     "MlKemPrivateKey",
+    "BlindRsaSecretKey",
     "U64",
     "U128",
     "I128",
-    "Crypto",   // Phase 135
+    "Crypto", // Phase 135
+    "Plaintext",
     "Base64",   // Phase 135
     "Hex",      // Phase 135
     "DateTime", // Phase 136
@@ -14240,6 +14448,8 @@ fn map_builtin_name(name: &str) -> String {
         "file_append" => "mesh_file_append".to_string(),
         "file_exists" => "mesh_file_exists".to_string(),
         "file_delete" => "mesh_file_delete".to_string(),
+        "file_rename" => "mesh_file_rename".to_string(),
+        "file_sync" => "mesh_file_sync".to_string(),
         // IO functions
         "io_read_line" => "mesh_io_read_line".to_string(),
         "io_eprintln" => "mesh_io_eprintln".to_string(),
@@ -14265,6 +14475,7 @@ fn map_builtin_name(name: &str) -> String {
         "crypto_sha512_hex" => "mesh_crypto_sha512_hex".to_string(),
         "crypto_random_bytes" => "mesh_crypto_random_bytes".to_string(),
         "crypto_hmac_sha256" => "mesh_crypto_hmac_sha256".to_string(),
+        "crypto_hmac_sha256_tag" => "mesh_crypto_hmac_sha256_tag".to_string(),
         "crypto_hkdf_sha256" => "mesh_crypto_hkdf_sha256".to_string(),
         "crypto_argon2id" => "mesh_crypto_argon2id".to_string(),
         "crypto_x25519_generate" => "mesh_crypto_x25519_generate".to_string(),
@@ -14276,6 +14487,10 @@ fn map_builtin_name(name: &str) -> String {
         "crypto_hpke_open" => "mesh_crypto_hpke_open".to_string(),
         "crypto_hpke_seal_secret" => "mesh_crypto_hpke_seal_secret".to_string(),
         "crypto_hpke_open_secret" => "mesh_crypto_hpke_open_secret".to_string(),
+        "crypto_hpke_seal_export" => "mesh_crypto_hpke_seal_export".to_string(),
+        "crypto_hpke_open_export" => "mesh_crypto_hpke_open_export".to_string(),
+        "crypto_hkdf_aead_seal" => "mesh_crypto_hkdf_aead_seal".to_string(),
+        "crypto_hkdf_aead_open" => "mesh_crypto_hkdf_aead_open".to_string(),
         "crypto_mlkem_generate" => "mesh_crypto_mlkem_generate".to_string(),
         "crypto_mlkem_from_seed" => "mesh_crypto_mlkem_from_seed".to_string(),
         "crypto_mlkem_from_secret" => "mesh_crypto_mlkem_from_secret".to_string(),
@@ -14289,6 +14504,21 @@ fn map_builtin_name(name: &str) -> String {
         "crypto_aead_key" => "mesh_crypto_aead_key".to_string(),
         "crypto_aead_seal" => "mesh_crypto_aead_seal".to_string(),
         "crypto_aead_open" => "mesh_crypto_aead_open".to_string(),
+        // The plaintext seals are the seals: `Plaintext<Bytes>` is `Bytes`.
+        "crypto_aead_seal_plaintext" => "mesh_crypto_aead_seal".to_string(),
+        "crypto_aead_open_plaintext" => "mesh_crypto_aead_open".to_string(),
+        "crypto_hpke_seal_plaintext" => "mesh_crypto_hpke_seal".to_string(),
+        "crypto_hpke_open_plaintext" => "mesh_crypto_hpke_open".to_string(),
+        "plaintext_seal_for_storage" => "mesh_storage_key_seal_bytes".to_string(),
+        "plaintext_unseal_from_storage" => "mesh_storage_key_unseal_bytes".to_string(),
+        "crypto_blind_rsa_generate"
+        | "crypto_blind_rsa_from_secret"
+        | "crypto_blind_rsa_public"
+        | "crypto_blind_rsa_public_from_spki"
+        | "crypto_blind_rsa_blind"
+        | "crypto_blind_rsa_sign"
+        | "crypto_blind_rsa_finalize"
+        | "crypto_blind_rsa_verify" => format!("mesh_{name}"),
         "crypto_hmac_sha512" => "mesh_crypto_hmac_sha512".to_string(),
         "crypto_uuid4" => "mesh_crypto_uuid4".to_string(),
         // Base64 functions (Phase 135)
@@ -14344,6 +14574,7 @@ fn map_builtin_name(name: &str) -> String {
         "host_wall_clock" => "mesh_host_wall_clock".to_string(),
         "host_log_redacted" => "mesh_host_log_redacted".to_string(),
         "secret_random" => "mesh_secret_random".to_string(),
+        "secret_from_bytes" => "mesh_secret_from_bytes".to_string(),
         "secret_concat" => "mesh_secret_concat".to_string(),
         "secret_destroy" => "mesh_secret_destroy".to_string(),
         "secret_map_new"
@@ -14354,6 +14585,7 @@ fn map_builtin_name(name: &str) -> String {
         | "secret_map_delete"
         | "secret_map_merge" => format!("mesh_{name}"),
         "storage_key_ephemeral"
+        | "storage_key_from_secret"
         | "storage_key_platform"
         | "storage_key_seal_bytes"
         | "storage_key_unseal_bytes" => format!("mesh_{name}"),
@@ -14366,7 +14598,9 @@ fn map_builtin_name(name: &str) -> String {
         | "x25519_private_key_seal_for_storage"
         | "x25519_private_key_unseal_from_storage"
         | "mlkem_private_key_seal_for_storage"
-        | "mlkem_private_key_unseal_from_storage" => format!("mesh_{name}"),
+        | "mlkem_private_key_unseal_from_storage"
+        | "blind_rsa_secret_key_seal_for_storage"
+        | "blind_rsa_secret_key_unseal_from_storage" => format!("mesh_{name}"),
         "u64_parse" | "u64_compare" | "u64_add" | "u64_subtract" | "u64_multiply"
         | "u64_divide" | "u64_to_int" | "u64_to_string" | "u128_parse" | "u128_compare"
         | "u128_add" | "u128_subtract" | "u128_multiply" | "u128_divide" | "u128_to_int"
@@ -15862,6 +16096,8 @@ pub fn lower_module_to_mir<'a>(
         "X25519PublicKey",
         "MlKemPublicKey",
         "MlKemCiphertext",
+        "BlindRsaPublicKey",
+        "BlindRsaBlinded",
         "SigningPublicKey",
         "Signature",
         "X25519KeyPair",
@@ -16624,6 +16860,73 @@ mod tests {
                 if name == "Result_SecretBytes_CryptoError"
                     && matches!(args.first(), Some(MirExpr::ResourceBorrow { .. }))
         ));
+    }
+
+    #[test]
+    fn blind_rsa_calls_use_runtime_symbols_and_resource_modes() {
+        let mir = lower(
+            "fn import_key(material :: SecretBytes) -> Result<BlindRsaSecretKey, CryptoError> do\n\
+               Crypto.blind_rsa_from_secret(material)\n\
+             end\n\
+             fn issue(key :: borrow BlindRsaSecretKey, blinded :: Bytes) -> Result<Bytes, CryptoError> do\n\
+               Crypto.blind_rsa_sign(key, blinded)\n\
+             end\n\
+             fn redeem(key :: BlindRsaPublicKey, message :: Bytes, response :: Bytes, state :: BlindRsaBlindingState) -> Result<Bytes, CryptoError> do\n\
+               Crypto.blind_rsa_finalize(key, message, response, state)\n\
+             end\n\
+             fn persist(key :: borrow BlindRsaSecretKey, wrapping_key :: borrow StorageKey, context :: Bytes) -> Result<Bytes, CryptoError> do\n\
+               BlindRsaSecretKey.seal_for_storage(key, wrapping_key, context)\n\
+             end",
+        );
+
+        fn find_call<'a>(expression: &'a MirExpr, callee: &str) -> Option<&'a MirExpr> {
+            match expression {
+                MirExpr::Call { func, .. } if matches!(func.as_ref(), MirExpr::Var(name, _) if name == callee) => {
+                    Some(expression)
+                }
+                MirExpr::Let { value, body, .. } => {
+                    find_call(value, callee).or_else(|| find_call(body, callee))
+                }
+                MirExpr::Block(expressions, _) => {
+                    expressions.iter().find_map(|item| find_call(item, callee))
+                }
+                _ => None,
+            }
+        }
+        let call = |function: &str, callee: &str| {
+            find_call(
+                &mir.functions
+                    .iter()
+                    .find(|candidate| candidate.name == function)
+                    .unwrap()
+                    .body,
+                callee,
+            )
+            .unwrap_or_else(|| panic!("{function} calls {callee}"))
+            .clone()
+        };
+
+        assert!(matches!(
+            call("import_key", "mesh_crypto_blind_rsa_from_secret"),
+            MirExpr::Call { args, .. } if matches!(args.first(), Some(MirExpr::ResourceMove { .. }))
+        ));
+        assert!(matches!(
+            call("issue", "mesh_crypto_blind_rsa_sign"),
+            MirExpr::Call { args, .. } if matches!(args.first(), Some(MirExpr::ResourceBorrow { .. }))
+        ));
+        assert!(matches!(
+            call("redeem", "mesh_crypto_blind_rsa_finalize"),
+            MirExpr::Call { args, .. } if args.len() == 4 && matches!(args.last(), Some(MirExpr::ResourceMove { .. }))
+        ));
+        call("persist", "mesh_blind_rsa_secret_key_seal_for_storage");
+        assert!(mir.structs.iter().any(|definition| {
+            definition.name == "BlindRsaBlinded"
+                && definition.fields
+                    == vec![
+                        ("blinded".to_string(), MirType::Ptr),
+                        ("state".to_string(), MirType::Ptr),
+                    ]
+        }));
     }
 
     #[test]

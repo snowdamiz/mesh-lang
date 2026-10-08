@@ -747,6 +747,8 @@ let h512 = Crypto.sha512(input)             # Bytes
 let h256_text = Crypto.sha256_hex(input)    # String presentation
 let secret = Secret.random(32)              # Result<SecretBytes, CryptoError>
 let id = Crypto.uuid4()                    # UUID v4 string
+# Blind RSA (RFC 9474 BR1): blind, sign on a server, finalize, verify
+let issuer = Crypto.blind_rsa_generate()    # Result<BlindRsaSecretKey, CryptoError>
 
 # Encoding
 let raw = Bytes.from_utf8("hello")

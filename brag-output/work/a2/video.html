@@ -1,0 +1,566 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Mesh · living cluster</title>
+<style>
+@font-face { font-family: 'Inter'; font-weight: 100 900; src: url('https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7W0Q5nw.woff2') format('woff2'); }
+@font-face { font-family: 'Archivo'; font-weight: 100 900; font-stretch: 62% 125%; src: url('https://fonts.gstatic.com/s/archivo/v25/k3kQo8UDI-1M0wlSfdnoLmvDIaI.woff2') format('woff2'); }
+@font-face { font-family: 'JetBrains Mono'; font-weight: 400 700; src: url('https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxDcwgknk-4.woff2') format('woff2'); }
+:root { --mint: oklch(0.8 0.15 163); --mint-hi: oklch(0.9 0.14 160); --err: oklch(0.7 0.2 25); }
+* { box-sizing: border-box; margin: 0; }
+html, body { width: 1920px; height: 1080px; overflow: hidden; background: #000; color: #fff; font-family: Inter, sans-serif; -webkit-font-smoothing: antialiased; }
+canvas { position: absolute; inset: 0; }
+.mono { font-family: 'JetBrains Mono', monospace; font-variant-ligatures: none; }
+.grain { position: absolute; inset: 0; pointer-events: none; opacity: 0.08; mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='300'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='300' height='300' filter='url(%23n)'/></svg>"); }
+.vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse 78% 72% at 50% 50%, transparent 52%, rgba(0,0,0,0.8)); }
+#shade { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse 62% 58% at 12% 88%, rgba(0,0,0,0.75), transparent 70%); }
+.title { position: absolute; left: 124px; bottom: 128px; font-family: Archivo; font-weight: 300; font-size: 112px; letter-spacing: -0.04em; line-height: 0.98; white-space: nowrap; }
+.title b { font-weight: 700; color: var(--mint-hi); }
+.title i { font-style: normal; font-weight: 700; color: #ff7c68; }
+.title .ln { display: block; }
+.hud { position: absolute; font-size: 20px; letter-spacing: 0.12em; color: rgba(255,255,255,0.62); text-transform: uppercase; white-space: nowrap; }
+.tag3d { position: absolute; left: 0; top: 0; font-size: 34px; white-space: nowrap; color: rgba(255,255,255,0.95); text-shadow: 0 0 22px rgba(0,0,0,0.95), 0 0 6px rgba(0,0,0,0.9); }
+.pill { font-size: 40px; font-weight: 700; padding: 6px 18px; border-radius: 999px; background: rgba(0,0,0,0.72); border: 2px solid currentColor; text-shadow: none; }
+.errcard { position: absolute; left: 0; top: 0; padding: 26px 34px; border: 2px solid rgba(255,110,90,0.8); border-radius: 14px; background: rgba(36,5,4,0.84); box-shadow: 0 0 80px rgba(255,70,50,0.35); font-size: 30px; line-height: 1.55; white-space: nowrap; }
+#num { position: absolute; left: 118px; bottom: 262px; font-family: Archivo; font-weight: 800; font-stretch: 80%; font-size: 250px; letter-spacing: -0.03em; line-height: 0.85; color: #fff; }
+#num-cap { position: absolute; left: 128px; bottom: 206px; font-size: 26px; letter-spacing: 0.1em; color: rgba(255,255,255,0.75); text-transform: uppercase; }
+#num-x { position: absolute; left: 128px; bottom: 124px; font-family: Archivo; font-weight: 700; font-size: 64px; letter-spacing: -0.02em; color: var(--mint-hi); }
+#wordmark { position: absolute; font-family: Archivo; font-weight: 600; font-stretch: 112%; font-size: 230px; letter-spacing: -0.045em; line-height: 1; }
+#sub { position: absolute; left: 0; right: 0; text-align: center; font-size: 46px; font-weight: 300; color: rgba(255,255,255,0.85); letter-spacing: -0.01em; }
+#sub b { font-weight: 600; color: #fff; }
+#url { position: absolute; left: 0; right: 0; text-align: center; font-size: 30px; color: rgba(255,255,255,0.6); }
+#url span { color: var(--mint-hi); }
+</style>
+</head>
+<body>
+<canvas id="gl" width="1920" height="1080"></canvas>
+<div class="vignette"></div>
+<div id="shade"></div>
+<div id="shade2" style="position:absolute; inset:0; pointer-events:none; opacity:0; background: radial-gradient(ellipse 72% 66% at 14% 80%, rgba(0,0,0,0.88), transparent 74%)"></div>
+
+<div class="hud mono" id="hud-l" style="left:124px; top:80px"></div>
+<div class="hud mono" style="right:124px; top:80px">meshlang.dev</div>
+
+<div class="tag3d mono" id="tag-pid">Pid&lt;Int&gt;</div>
+<div class="tag3d mono pill" id="tag-5" style="color:var(--mint-hi)">5</div>
+<div class="tag3d mono pill" id="tag-42" style="color:var(--mint-hi)">42</div>
+<div class="tag3d mono pill" id="tag-five" style="color:#ff9a88">"five"</div>
+<div class="errcard mono" id="err"><span style="color:#ff8a78; font-weight:700">error[E0014]</span> message type mismatch<br><span style="color:rgba(255,255,255,0.65)">expected</span> Int<span style="color:rgba(255,255,255,0.65)">, found</span> String</div>
+<div class="tag3d mono" id="tag-sup">supervisor</div>
+<div class="tag3d mono" id="tag-crash" style="color:#ff9a88">crashed</div>
+<div class="tag3d mono" id="tag-restart" style="color:var(--mint-hi)">restarted</div>
+
+<div class="title" id="t1"><span class="ln">One actor.</span><span class="ln" id="t1b"><b>Then a hundred thousand.</b></span></div>
+<div class="title" id="t2"><span class="ln">Every light is an actor.</span><span class="ln" id="t2b"><b>Every trail, a message.</b></span></div>
+<div class="title" id="t3"><span class="ln">Mailboxes are <b>typed.</b></span></div>
+<div class="title" id="t3x"><span class="ln">Wrong message?</span><span class="ln" id="t3xb"><i>It won’t compile.</i></span></div>
+<div class="title" id="tS"><span class="ln">One actor crashes.</span><span class="ln" id="tSb"><b>Its supervisor restarts it.</b></span></div>
+<div class="title" id="t4"><span class="ln">Clustering lives</span><span class="ln" id="t4b"><b>in the runtime.</b></span></div>
+<div class="title" id="t5"><span class="ln">Lose a node.</span><span class="ln" id="t5b"><b>The runtime reroutes.</b></span></div>
+<div class="title" id="t6" style="bottom:500px; font-size:70px; font-weight:500"><span class="ln">Compiled to native.</span></div>
+<div id="num">0</div>
+<div id="num-cap" class="mono">requests / second · GET /text · 2 vCPU · benchmarks/RESULTS.md</div>
+<div id="num-x">2.3× Elixir.</div>
+
+<div id="wordmark">Mesh</div>
+<div id="sub">Typed actors. Native binaries. <b>Clustering built in.</b></div>
+<div id="url" class="mono">curl -sSf https://<span>meshlang.dev</span>/install.sh | sh</div>
+
+<div class="grain"></div>
+
+<script>
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x))
+const lerp = (a, b, k) => a + (b - a) * k
+const lerp3 = (a, b, k) => [lerp(a[0], b[0], k), lerp(a[1], b[1], k), lerp(a[2], b[2], k)]
+const P = (t, s, d) => clamp((t - s) / d)
+function bezier(x1, y1, x2, y2) {
+  const cx = 3 * x1, bx = 3 * (x2 - x1) - cx, ax = 1 - cx - bx, cy = 3 * y1, by = 3 * (y2 - y1) - cy, ay = 1 - cy - by
+  return (x) => { if (x <= 0) return 0; if (x >= 1) return 1; let u = x; for (let i = 0; i < 8; i++) { const d = (3 * ax * u + 2 * bx) * u + cx; if (Math.abs(d) < 1e-6) break; u -= (((ax * u + bx) * u + cx) * u - x) / d } return ((ay * u + by) * u + cy) * u }
+}
+const eo = bezier(0.22, 1, 0.36, 1), eio = bezier(0.65, 0, 0.35, 1), eioSoft = bezier(0.45, 0, 0.55, 1)
+const $ = (s) => document.querySelector(s)
+function mulberry(a) { return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296 } }
+const rnd = mulberry(20260928)
+const gauss = () => { let u = 0, v = 0; while (!u) u = rnd(); while (!v) v = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v) }
+const sphere = () => { const th = rnd() * Math.PI * 2, z = 2 * rnd() - 1, r = Math.sqrt(1 - z * z); return [r * Math.cos(th), z * 0.8, r * Math.sin(th)] }
+const V = { sub: (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], add: (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]], mul: (a, k) => [a[0] * k, a[1] * k, a[2] * k], norm: (a) => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l] }, cross: (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]], dot: (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2] }
+
+/* ───────── timeline, on the edited track's downbeats (85.43 BPM, 4/4) ───────── */
+const BEAT = 60 / 85.43, BAR = 4 * BEAT, DB0 = 0.139 + BEAT
+const db = (k) => DB0 + k * BAR
+const DUR = 57.6
+const T = {
+  first: db(0), cascade: db(1), msgs: db(2), dive: db(5),
+  m5: db(6) - 0.6, m42: db(6) + 2 * BEAT - 0.6, bad0: db(7) - 0.72, reject: db(7),
+  sup: db(8), crash: db(8) + 2 * BEAT, restartGo: db(8) + 3 * BEAT, reborn: db(9),
+  pull: db(10), seed: db(10) + 0.1, die: db(12), grow: db(12) + 1.7,
+  warp: db(15), conv: db(15) + 0.3, logo: db(17),
+}
+const CL = [[0, 0, 0], [-17, -3, -14], [16, 4, -12]]
+const LOGO_C = [-6.0, 0.2, -70], LOGO_S = 6.2
+
+/* ───────── actors ───────── */
+const A = []
+function addPool(cl, n, t0, genStep, rMax, seedsFrom) {
+  const base = A.length
+  for (let i = 0; i < n; i++) {
+    const g = Math.floor(Math.log2(i + 1))
+    const dir = sphere()
+    const r = (0.25 + rMax * Math.pow((g + rnd()) / Math.log2(n + 1), 1.1)) * (0.55 + 0.7 * rnd()) + Math.abs(gauss()) * 0.25
+    const home = [CL[cl][0] + dir[0] * r, CL[cl][1] + dir[1] * r, CL[cl][2] + dir[2] * r]
+    const parent = i === 0 ? -1 : base + Math.floor((i - 1) / 2)
+    A.push({ cl, home, parent, birth: t0 + g * genStep + (i ? rnd() * genStep * 0.8 : 0), bright: rnd() < 0.07, ph: rnd() * 6.283, w: 0.6 + rnd() * 1.6, size: 0.055 + rnd() * 0.035, seed: seedsFrom != null ? seedsFrom : null })
+  }
+  for (let i = base; i < base + n; i++) { const a = A[i]; a.origin = a.parent < 0 ? (a.seed || a.home) : A[a.parent].home }
+  return [base, base + n]
+}
+const pool0 = addPool(0, 6000, T.cascade, 0.16, 4.6)
+const pool1 = addPool(1, 3500, T.seed + 0.5, 0.075, 4.0, CL[0])
+const pool2 = addPool(2, 3500, T.seed + 0.55, 0.075, 4.0, CL[0])
+function addGrowth(cl, n) {
+  for (let i = 0; i < n; i++) {
+    const dir = sphere(), r = 3.6 + rnd() * 2.6
+    A.push({ cl, home: [CL[cl][0] + dir[0] * r, CL[cl][1] + dir[1] * r, CL[cl][2] + dir[2] * r], origin: [CL[cl][0] + dir[0] * 1.5, CL[cl][1] + dir[1] * 1.5, CL[cl][2] + dir[2] * 1.5], birth: T.grow + rnd() * 1.4, bright: rnd() < 0.07, ph: rnd() * 6.283, w: 0.6 + rnd() * 1.6, size: 0.055 + rnd() * 0.035 })
+  }
+}
+addGrowth(0, 1500); addGrowth(1, 1500)
+const NA = A.length
+
+A[0].home = [0, 0, 0]; A[0].origin = [0, 0, 0]; A[0].size = 0.16; A[0].bright = true; A[0].birth = T.first
+const F = 37
+A[F].home = [1.3, 0.5, 2.9]; A[F].size = 0.1; A[F].bright = true
+const S5 = 700, S42 = 1500, SBAD = 2600
+A[S5].home = [-0.4, 1.6, 2.2]; A[S42].home = [2.9, -0.9, 1.9]; A[SBAD].home = [-0.9, -0.8, 3.6]
+for (const i of [S5, S42, SBAD]) A[i].birth = Math.min(A[i].birth, 5.0)
+
+// logo targets
+const LP = { top: [50, 17], right: [88.1, 83], left: [11.9, 83], hub: [50, 61] }
+const toW = ([x, y]) => [LOGO_C[0] + (x - 50) / 100 * LOGO_S, LOGO_C[1] - (y - 50) / 100 * LOGO_S, LOGO_C[2]]
+const EDGES = [['top', 'right'], ['right', 'left'], ['left', 'top'], ['hub', 'top'], ['hub', 'right'], ['hub', 'left']]
+for (let i = 0; i < NA; i++) {
+  const a = A[i]
+  if (a.cl === 2) continue
+  let p
+  if (rnd() < 0.64) {
+    const [e0, e1] = EDGES[Math.floor(rnd() * 6)], u = rnd()
+    const q = [lerp(LP[e0][0], LP[e1][0], u), lerp(LP[e0][1], LP[e1][1], u)]
+    const ang = rnd() * 6.283, rr = Math.sqrt(rnd()) * 4.9
+    p = [q[0] + Math.cos(ang) * rr, q[1] + Math.sin(ang) * rr]
+  } else {
+    const k = ['top', 'right', 'left', 'hub'][Math.floor(rnd() * 4)]
+    const R = k === 'hub' ? 13.61 : 10.89, ang = rnd() * 6.283, rr = Math.sqrt(rnd()) * R
+    p = [LP[k][0] + Math.cos(ang) * rr, LP[k][1] + Math.sin(ang) * rr]
+    a.hub = k === 'hub'
+  }
+  a.target = toW(p); a.target[2] += gauss() * 0.08; a.delay = rnd() * 0.6
+}
+
+// supervision scene: everything but the tree steps back
+const supDim = (t) => lerp(1, 0.22, P(t, T.sup + 0.2, 0.8) * (1 - P(t, T.pull - 0.2, 0.9)))
+
+function actor(i, t, out) {
+  const a = A[i]
+  if (t < a.birth) return 0
+  const k = eo(P(t, a.birth, 0.6))
+  let x = lerp(a.origin[0], a.home[0], k), y = lerp(a.origin[1], a.home[1], k), z = lerp(a.origin[2], a.home[2], k)
+  const d = i === F ? 0 : 0.09
+  x += d * Math.sin(t * a.w + a.ph); y += d * Math.sin(t * a.w * 1.3 + a.ph * 2); z += d * Math.cos(t * a.w * 0.9 + a.ph)
+  let alpha = clamp((t - a.birth) / 0.12)
+  let col = a.bright ? [0.9, 1, 0.96] : [0.34, 0.98, 0.72]
+  if (a.cl === 2 && t > T.die) {
+    const kd = P(t, T.die, 1.6)
+    x += (a.home[0] - CL[2][0]) * 0.35 * eo(kd); y += (a.home[1] - CL[2][1]) * 0.35 * eo(kd) - 1.5 * kd * kd; z += (a.home[2] - CL[2][2]) * 0.35 * eo(kd)
+    col = [1, 0.3, 0.26]
+    const flick = t < T.die + 0.14 ? 2.4 : t < T.die + 0.6 ? (Math.sin(t * 90 + a.ph * 10) > 0 ? 1.6 : 0.4) : 1
+    alpha *= (1 - P(t, T.die + 0.5, 1.4)) * flick
+  }
+  if (a.target && t > T.conv + a.delay) {
+    const kc = eioSoft(P(t, T.conv + a.delay, 4.4))
+    x = lerp(x, a.target[0], kc); y = lerp(y, a.target[1], kc) + Math.sin(kc * Math.PI) * 2.2; z = lerp(z, a.target[2], kc)
+    if (kc > 0.98) col = a.hub ? [0.4, 1, 0.75] : [0.92, 1, 0.97]
+  }
+  if (i !== F) alpha *= supDim(t)
+  out[0] = x; out[1] = y; out[2] = z; out[3] = col[0]; out[4] = col[1]; out[5] = col[2]
+  return alpha * (a.bright ? 1 : 0.55 + 0.25 * Math.sin(t * 3 * a.w + a.ph))
+}
+
+/* ───────── messages ───────── */
+const M = []
+const born = (i, t) => A[i].birth + 0.4 < t
+const pick = (range, t) => { for (let k = 0; k < 20; k++) { const i = range[0] + Math.floor(rnd() * (range[1] - range[0])); if (born(i, t)) return i } return range[0] }
+const alive = (t) => (t < T.die ? [pool0, pool1, pool2] : [pool0, pool1])
+// the traffic schedule keeps its original end so the random sequence (and every earlier frame) is unchanged
+const MSG_END = db(16) - 0.9
+for (let t = T.msgs; t < MSG_END; ) {
+  let rate
+  if (t < T.pull) rate = lerp(10, 85, P(t, T.msgs, 1.8)) * (t > T.dive ? 0.4 : 1) * (t > T.sup ? 0.5 : 1)
+  else rate = t < T.pull + 1.3 ? 0 : 140
+  if (rate === 0) { t += 0.05; continue }
+  t += -Math.log(1 - rnd()) / rate
+  let ra, rb
+  if (t < T.pull) { ra = rb = pool0 } else {
+    const pools = alive(t); ra = pools[Math.floor(rnd() * pools.length)]; rb = rnd() < 0.5 ? ra : pools[Math.floor(rnd() * pools.length)]
+  }
+  const a = pick(ra, t), b = pick(rb, t)
+  const dur = ra === rb ? 0.5 + rnd() * 0.5 : 0.9 + rnd() * 0.6
+  M.push({ a, b, t0: t, dur, lift: ra === rb ? 0.6 + rnd() * 1.4 : 5 + rnd() * 5, kind: 'm', alt: pick(rnd() < 0.5 ? pool0 : pool1, T.die + 0.5) })
+}
+for (let k = 0; k < 110; k++) {
+  const cl = k % 2 ? 1 : 2
+  M.push({ a: pick(pool0, T.seed), b: pick(cl === 1 ? pool1 : pool2, 99), t0: T.seed + rnd() * 0.4, dur: 0.6 + rnd() * 0.25, lift: 4 + rnd() * 5, kind: 'seed' })
+}
+M.push({ a: S5, b: F, t0: T.m5, dur: 0.6, lift: 0.5, kind: '5' })
+M.push({ a: S42, b: F, t0: T.m42, dur: 0.6, lift: 0.6, kind: '42' })
+M.push({ a: SBAD, b: F, t0: T.bad0, dur: T.reject - T.bad0, lift: 0.4, kind: 'bad' })
+
+const tmp = new Float32Array(6), tmpB = new Float32Array(6)
+function msgPoints(m, t, emit) {
+  if (t < m.t0) return
+  let u = (t - m.t0) / m.dur, fade = 1
+  if (m.kind === 'bad') { if (u > 1) { u = 1 - 0.45 * eo(clamp((t - T.reject) / 0.7)); fade = 1 - P(t, T.reject + 0.15, 0.9) } }
+  else if (u > 1) return
+  if (fade <= 0) return
+  if (m.kind === 'm' && t > T.sup && t < T.pull) fade *= supDim(t)
+  actor(m.a, m.t0, tmp); const pa = [tmp[0], tmp[1], tmp[2]]
+  actor(m.b, Math.min(t, m.t0 + m.dur), tmpB); let pb = [tmpB[0], tmpB[1], tmpB[2]]
+  if (m.alt != null && A[m.b].cl === 2 && m.t0 + m.dur > T.die) { actor(m.alt, t, tmp); pb = lerp3(pb, [tmp[0], tmp[1], tmp[2]], eio(P(t, T.die, 0.6))) }
+  if (m.kind === 'bad') pb = lerp3(pa, pb, 0.93)
+  const mid = [(pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2 + m.lift, (pa[2] + pb[2]) / 2]
+  const col = m.kind === 'bad' ? [1, 0.35, 0.3] : m.kind === 'seed' ? [0.7, 1, 0.9] : [0.4, 1, 0.78]
+  const tail = m.kind === 'seed' ? 40 : 30
+  const ue = m.kind === 'bad' ? u : eioSoft(clamp(u))
+  const big = m.lift > 3 ? 2.2 : m.kind === 'm' ? 1 : 1.4
+  for (let k = 0; k < tail; k++) {
+    const s = ue - k * (m.kind === 'seed' ? 0.014 : 0.016)
+    if (s < 0) break
+    const v = 1 - s, f = 1 - k / tail
+    const p = [0, 1, 2].map((j) => v * v * pa[j] + 2 * v * s * mid[j] + s * s * pb[j])
+    emit(p, k === 0 ? [1, 1, 1] : col, (k === 0 ? 2.2 : 1.3 * f * f) * fade, (k === 0 ? 0.2 : 0.075 * f + 0.03) * big)
+    if (k === 0) emit(p, col, 0.3 * fade, (m.kind === 'bad' ? 1.2 : 0.8) * big)
+  }
+  return pb
+}
+
+/* ───────── camera ───────── */
+function orbitEye(t) {
+  const k = P(t, 7.5, T.dive - 7.5), a = lerp(0, 0.95, eioSoft(k)), R = lerp(13, 11.6, k)
+  return [R * Math.sin(a), 0.9 + 1.3 * k, R * Math.cos(a)]
+}
+const Fh = () => A[F].home
+function diveEye(t) {
+  const base = orbitEye(T.dive), dir = V.norm(V.sub(base, Fh()))
+  const ang = 0.3 * eioSoft(P(t, T.dive + 1.5, T.sup - T.dive - 1.5)), c = Math.cos(ang), s = Math.sin(ang)
+  const d = [dir[0] * c + dir[2] * s, dir[1] + 0.05, -dir[0] * s + dir[2] * c]
+  return V.add(Fh(), V.mul(d, 2.1))
+}
+// supervision tree, laid out in the plane facing the camera at the start of the scene
+const SUP_DIR = V.norm(V.sub(diveEye(T.sup), Fh()))
+const SUP_R = V.norm(V.cross([0, 1, 0], SUP_DIR)), SUP_U = V.cross(SUP_DIR, SUP_R)
+const TC = V.add(Fh(), V.mul(SUP_U, 0.5))
+const SUPV = V.add(Fh(), V.mul(SUP_U, 1.45))
+const KIDS = [0, 1, 2, 3, 4].map((k) => (k === 2 ? Fh() : V.add(V.add(Fh(), V.mul(SUP_R, (k - 2) * 1.05)), V.mul(SUP_U, -0.12 * Math.abs(k - 2)))))
+const CRASHED = 3
+const supEye = (t) => V.add(V.add(TC, V.mul(SUP_DIR, 5.0)), V.mul(SUP_R, 0.4 * eioSoft(P(t, T.sup, T.pull - T.sup))))
+const WIDE0 = [2, 7, 31], WIDE1 = [-3, 5, 27], WIDE_TGT = [-6.5, -4.5, -8.5]
+const WARP_END = [LOGO_C[0] + 6.0, LOGO_C[1] - 0.2, LOGO_C[2] + 18]
+const LOGO_LOOK = [LOGO_C[0] + 6.0, LOGO_C[1], LOGO_C[2]]
+function cam(t) {
+  let eye, tgt, fov = 0.9, focus
+  if (t < 7.5) {
+    const k = eioSoft(P(t, 0, 7.5)); eye = [0, lerp(0.15, 0.9, k), lerp(4.2, 13, k)]; tgt = [lerp(0, -1.6, k), lerp(0, -1.0, k), 0]
+  } else if (t < T.dive) {
+    eye = orbitEye(t); tgt = [-1.6, -1.0, 0]
+  } else if (t < T.sup) {
+    const k = eio(P(t, T.dive, 1.5)); eye = lerp3(orbitEye(T.dive), diveEye(t), k); tgt = lerp3([-1.6, -1.0, 0], Fh(), k)
+    focus = lerp(Math.hypot(...V.sub(orbitEye(T.dive), [0, 0, 0])), 2.1, k)
+  } else if (t < T.pull) {
+    const k = eio(P(t, T.sup, 1.2)); eye = lerp3(diveEye(T.sup), supEye(t), k); tgt = lerp3(Fh(), TC, k)
+  } else if (t < T.warp) {
+    const k = eio(P(t, T.pull, 1.9))
+    const wide = lerp3(WIDE0, WIDE1, eioSoft(P(t, T.pull + 1.9, T.warp - T.pull - 1.9)))
+    eye = lerp3(supEye(T.pull), wide, k); tgt = lerp3(TC, WIDE_TGT, k)
+  } else if (t < T.logo) {
+    const k = eio(P(t, T.warp, T.logo - T.warp))
+    eye = lerp3(WIDE1, WARP_END, k)
+    tgt = lerp3(WIDE_TGT, LOGO_LOOK, eio(P(t, T.warp + 0.8, 3.8)))
+    fov = 0.9 + 0.4 * Math.sin(Math.PI * k) ** 2
+  } else {
+    eye = lerp3(WARP_END, V.add(WARP_END, [0, 0, -0.8]), eioSoft(P(t, T.logo, DUR - T.logo))); tgt = LOGO_LOOK
+  }
+  if (focus == null) focus = Math.hypot(...V.sub(eye, tgt))
+  return { eye, tgt, fov, focus }
+}
+function matrices(c) {
+  const f = 1 / Math.tan(c.fov / 2), asp = 1920 / 1080, n = 0.05, far = 400
+  const proj = [f / asp, 0, 0, 0, 0, f, 0, 0, 0, 0, (far + n) / (n - far), -1, 0, 0, (2 * far * n) / (n - far), 0]
+  const z = V.norm(V.sub(c.eye, c.tgt)), x = V.norm(V.cross([0, 1, 0], z)), y = V.cross(z, x)
+  const view = [x[0], y[0], z[0], 0, x[1], y[1], z[1], 0, x[2], y[2], z[2], 0, -V.dot(x, c.eye), -V.dot(y, c.eye), -V.dot(z, c.eye), 1]
+  const m = new Array(16).fill(0)
+  for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) for (let k = 0; k < 4; k++) m[j * 4 + i] += proj[k * 4 + i] * view[j * 4 + k]
+  return { m, right: x, up: y }
+}
+function project(m, p) {
+  const X = m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12], Y = m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13], W = m[3] * p[0] + m[7] * p[1] + m[11] * p[2] + m[15]
+  return [(X / W * 0.5 + 0.5) * 1920, (1 - (Y / W * 0.5 + 0.5)) * 1080, W]
+}
+
+/* ───────── GL ───────── */
+const gl = $('#gl').getContext('webgl2', { antialias: false, preserveDrawingBuffer: true })
+const vs = `#version 300 es
+in vec3 p; in vec3 q; in vec4 c; in float s;
+uniform mat4 m; uniform float focus, mix_, passA;
+out vec4 vc;
+void main() {
+  vec3 w = mix(p, q, mix_);
+  vec4 h = m * vec4(w, 1.0);
+  gl_Position = h;
+  float coc = abs(h.w - focus) / max(focus, 1.0) * 1.1;
+  gl_PointSize = clamp(s * 2000.0 / max(h.w, 0.05) * (1.0 + coc * 1.3), 1.2, 240.0);
+  vc = vec4(c.rgb, c.a * passA / pow(1.0 + coc * 1.5, 2.6));
+  if (h.w < 0.15) vc.a = 0.0;
+}`
+const fs = `#version 300 es
+precision highp float; in vec4 vc; out vec4 o;
+void main() { float d = length(gl_PointCoord - 0.5) * 2.0; float a = exp(-d * d * 3.4) * smoothstep(1.0, 0.55, d); o = vec4(vc.rgb * vc.a * a, 1.0); }`
+const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s }
+const prog = gl.createProgram(); gl.attachShader(prog, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(prog); gl.useProgram(prog)
+const CAP = NA + 40000
+const bufP = new Float32Array(CAP * 3), bufQ = new Float32Array(CAP * 3), bufC = new Float32Array(CAP * 4), bufS = new Float32Array(CAP)
+const mk = (name, n) => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, CAP * n * 4, gl.DYNAMIC_DRAW); const l = gl.getAttribLocation(prog, name); gl.enableVertexAttribArray(l); gl.vertexAttribPointer(l, n, gl.FLOAT, false, 0, 0); return b }
+const gP = mk('p', 3), gQ = mk('q', 3), gC = mk('c', 4), gS = mk('s', 1)
+const U = { m: gl.getUniformLocation(prog, 'm'), focus: gl.getUniformLocation(prog, 'focus'), mix: gl.getUniformLocation(prog, 'mix_'), passA: gl.getUniformLocation(prog, 'passA') }
+gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE)
+
+const SHUTTER = 1 / 55
+let n = 0
+const put = (p, q, col, a, s) => {
+  bufP[n * 3] = p[0]; bufP[n * 3 + 1] = p[1]; bufP[n * 3 + 2] = p[2]
+  bufQ[n * 3] = q[0]; bufQ[n * 3 + 1] = q[1]; bufQ[n * 3 + 2] = q[2]
+  bufC[n * 4] = col[0]; bufC[n * 4 + 1] = col[1]; bufC[n * 4 + 2] = col[2]; bufC[n * 4 + 3] = a
+  bufS[n] = s; n++
+}
+const dot = (p, col, a, s) => put(p, p, col, a, s)
+const pulse = (t, at, rate = 6) => (t > at ? Math.exp(-(t - at) * rate) : 0)
+
+function fill(t, tPrev) {
+  n = 0
+  const o = new Float32Array(6), op = new Float32Array(6)
+  for (let i = 0; i < NA; i++) {
+    const a = actor(i, t, o)
+    if (a <= 0.003) continue
+    const ap = actor(i, tPrev, op)
+    const q = ap > 0 ? [op[0], op[1], op[2]] : [o[0], o[1], o[2]]
+    let s = A[i].size * (A[i].bright ? 1.5 : 1)
+    if (i === F) s *= 1 + 0.9 * (pulse(t, T.m5 + 0.6) + pulse(t, T.m42 + 0.6))
+    put([o[0], o[1], o[2]], q, [o[3], o[4], o[5]], a, s)
+  }
+  for (const m of M) msgPoints(m, t, dot)
+  CL.forEach((c, ci) => {
+    let g = ci === 0 ? P(t, 0.3, 4.0) : P(t, T.seed + 0.5, 1.0)
+    if (ci === 2) g *= 1 - P(t, T.die + 0.2, 1.2)
+    g *= (1 - P(t, T.conv, 1.2)) * supDim(t)
+    if (g <= 0) return
+    for (let k = 0; k < 14; k++) {
+      const ang = k * 2.4, r = 0.4 + (k % 5) * 0.35
+      dot([c[0] + Math.cos(ang) * r, c[1] + Math.sin(ang * 1.7) * r * 0.6, c[2] + Math.sin(ang) * r], ci === 2 && t > T.die ? [1, 0.3, 0.25] : [0.3, 1, 0.7], 0.045 * g, 2.2 + (k % 3) * 0.8)
+    }
+  })
+}
+
+function ring(center, radius, col, a, count, basis) {
+  for (let k = 0; k < count; k++) {
+    const ang = (k / count) * Math.PI * 2
+    dot([0, 1, 2].map((j) => center[j] + (basis.right[j] * Math.cos(ang) + basis.up[j] * Math.sin(ang)) * radius), col, a, 0.028)
+  }
+}
+const along = (a, b, u) => lerp3(a, b, u)
+function comet(a, b, u, col, alpha, size = 0.09) {
+  for (let k = 0; k < 18; k++) { const s = u - k * 0.03; if (s < 0) break; const f = 1 - k / 18; dot(along(a, b, s), k ? col : [1, 1, 1], (k ? 1.2 * f * f : 2.2) * alpha, k ? size * 0.5 * f + 0.015 : size) }
+}
+
+// the supervision tree: supervisor, links, five children; one crashes and is restarted
+const FRAG = Array.from({ length: 60 }, () => ({ v: V.mul(sphere(), 0.6 + rnd() * 1.4), s: 0.02 + rnd() * 0.04 }))
+function tree(t, mats) {
+  const a = P(t, T.sup + 0.3, 0.7) * (1 - P(t, T.pull + 0.2, 0.8))
+  if (a <= 0) return
+  const crashed = t >= T.crash && t < T.reborn
+  KIDS.forEach((kid, k) => {
+    const hot = k === CRASHED && t >= T.crash - 0.02 && t < T.crash + 0.9
+    for (let j = 1; j < 40; j++) dot(along(SUPV, kid, j / 40), hot ? [1, 0.35, 0.3] : [0.35, 1, 0.75], (hot ? 1.1 : 0.75) * a, 0.02)
+    if (k === 2) return
+    if (k === CRASHED) {
+      if (t < T.crash) { dot(kid, [0.8, 1, 0.9], 1.4 * a, 0.12); dot(kid, [0.4, 1, 0.75], 0.3 * a, 0.6) }
+      else if (t < T.crash + 0.12) dot(kid, [1, 0.4, 0.3], 2.4 * a, 0.3)
+      if (t >= T.reborn) { const p = pulse(t, T.reborn, 5); dot(kid, [0.8, 1, 0.9], 1.4 * a, 0.12 * (1 + 1.2 * p)); dot(kid, [0.4, 1, 0.75], 0.35 * a, 0.6 + p) }
+    } else {
+      dot(kid, [0.8, 1, 0.9], 1.4 * a, 0.12); dot(kid, [0.4, 1, 0.75], 0.3 * a, 0.6)
+    }
+  })
+  // supervisor
+  const sp = pulse(t, T.crash + 0.55, 4)
+  dot(SUPV, [0.9, 1, 0.95], a, 0.13 * (1 + 0.6 * sp)); dot(SUPV, sp > 0.05 ? [1, 0.6, 0.5] : [0.4, 1, 0.75], 0.35 * a, 0.8 + sp)
+  ring(SUPV, 0.22, [0.5, 1, 0.8], 0.45 * a, 120, mats)
+  // the crash: fragments fly, an exit signal climbs to the supervisor
+  if (t >= T.crash && t < T.crash + 1.4) {
+    const dt = t - T.crash, f = 1 - P(t, T.crash + 0.2, 1.2)
+    for (const fr of FRAG) dot(V.add(KIDS[CRASHED], [fr.v[0] * dt, fr.v[1] * dt - 0.6 * dt * dt, fr.v[2] * dt]), [1, 0.45, 0.3], 1.4 * f * a, fr.s)
+    const k = P(t, T.crash + 0.03, 0.55)
+    if (k > 0 && k < 1) comet(KIDS[CRASHED], SUPV, eio(k), [1, 0.4, 0.3], a, 0.1)
+    ring(KIDS[CRASHED], 0.1 + eo(P(t, T.crash, 0.8)) * 1.3, [1, 0.35, 0.3], 0.8 * (1 - P(t, T.crash, 0.8)) * a, 160, mats)
+  }
+  // the restart: a new child travels down the link and lights up
+  const rk = P(t, T.restartGo, T.reborn - T.restartGo)
+  if (rk > 0 && rk < 1) comet(SUPV, KIDS[CRASHED], eio(rk), [0.4, 1, 0.78], a, 0.12)
+  if (t >= T.reborn && t < T.reborn + 1.0) ring(KIDS[CRASHED], 0.1 + eo(P(t, T.reborn, 1.0)) * 1.0, [0.5, 1, 0.8], 0.8 * (1 - P(t, T.reborn, 1.0)) * a, 160, mats)
+}
+
+function draw(t) {
+  const c = cam(t), mats = matrices(c)
+  fill(t, t - SHUTTER)
+  const Fp = new Float32Array(6); actor(F, t, Fp)
+  const fpos = [Fp[0], Fp[1], Fp[2]]
+  const ringA = P(t, T.dive + 0.8, 0.6) * (1 - P(t, T.sup, 0.6))
+  if (ringA > 0) {
+    const hit = t > T.reject ? Math.exp(-(t - T.reject) * 3) : 0
+    ring(fpos, 0.34, [lerp(0.35, 1, hit), lerp(1, 0.35, hit), lerp(0.75, 0.3, hit)], 0.55 * ringA, 160, mats)
+    if (t > T.reject && t < T.reject + 1.1) {
+      const k = P(t, T.reject, 1.1)
+      ring(fpos, 0.34 + eo(k) * 2.6, [1, 0.35, 0.3], 0.6 * (1 - k), 220, mats)
+      ring(fpos, 0.34 + eo(clamp(k * 1.4)) * 1.4, [1, 0.5, 0.4], 0.4 * (1 - k), 160, mats)
+    }
+  }
+  tree(t, mats)
+  if (t > T.die && t < T.die + 1.5) {
+    const k = P(t, T.die, 1.5)
+    ring(CL[2], 1 + eo(k) * 11, [1, 0.3, 0.25], 0.9 * (1 - k), 400, mats)
+    ring(CL[2], 1 + eo(clamp(k * 1.5)) * 6, [1, 0.5, 0.4], 0.6 * (1 - k), 300, mats)
+  }
+  if (t > T.first && t < T.first + 1.4) {
+    const k = P(t, T.first, 1.4)
+    ring([0, 0, 0], 0.1 + eo(k) * 1.4, [0.5, 1, 0.8], 0.8 * (1 - k), 200, mats)
+  }
+  gl.bindBuffer(gl.ARRAY_BUFFER, gP); gl.bufferSubData(gl.ARRAY_BUFFER, 0, bufP, 0, n * 3)
+  gl.bindBuffer(gl.ARRAY_BUFFER, gQ); gl.bufferSubData(gl.ARRAY_BUFFER, 0, bufQ, 0, n * 3)
+  gl.bindBuffer(gl.ARRAY_BUFFER, gC); gl.bufferSubData(gl.ARRAY_BUFFER, 0, bufC, 0, n * 4)
+  gl.bindBuffer(gl.ARRAY_BUFFER, gS); gl.bufferSubData(gl.ARRAY_BUFFER, 0, bufS, 0, n)
+  gl.viewport(0, 0, 1920, 1080)
+  gl.clearColor(0.004, 0.01, 0.009, 1); gl.clear(gl.COLOR_BUFFER_BIT)
+  const fast = (t > T.dive && t < T.dive + 1.5) || (t > T.pull && t < T.pull + 1.9) || (t > T.warp && t < T.logo + 0.4)
+  const K = fast ? 9 : 3
+  gl.uniform1f(U.focus, c.focus)
+  for (let j = 0; j < K; j++) {
+    const s = j / (K - 1)
+    gl.uniformMatrix4fv(U.m, false, matrices(cam(t - s * SHUTTER)).m)
+    gl.uniform1f(U.mix, s)
+    gl.uniform1f(U.passA, 1 / K * (fast ? 1.25 : 1))
+    gl.drawArrays(gl.POINTS, 0, n)
+  }
+  return { mats, fpos }
+}
+
+/* ───────── overlay ───────── */
+function rise(el, t, s, e, { dy = 30, blur = 10 } = {}) {
+  const k = eo(P(t, s, 0.8)), out = eio(P(t, e - 0.35, 0.35))
+  el.style.opacity = clamp((t - s) / 0.3) * (1 - out)
+  el.style.transform = `translateY(${(1 - k) * dy - out * 14}px)`
+  el.style.filter = `blur(${(1 - k) * blur + out * 6}px)`
+}
+const show = (el, on) => { el.style.display = on ? '' : 'none' }
+const place = (el, xy, dx, dy, a) => { el.style.transform = `translate(${xy[0] + dx}px, ${xy[1] + dy}px)`; el.style.opacity = a }
+const fmt = (v) => Math.round(v).toLocaleString('en-US')
+let ERR_W = 0
+
+const TITLES = [['#t1', T.first + 0.35, 8.1], ['#t2', 8.6, 14.6], ['#t3', T.dive + 0.9, T.reject - 0.05], ['#t3x', T.reject + 0.15, T.sup - 0.2],
+  ['#tS', T.crash + 0.25, T.pull - 0.15], ['#t4', T.pull + 1.0, T.die - 0.15], ['#t5', T.die + 0.45, T.warp - 0.25]]
+const SECOND = { '#t1b': T.cascade + 0.7, '#t2b': 11.0, '#t3xb': T.reject + 0.75, '#tSb': T.reborn + 0.15, '#t4b': T.pull + 1.7, '#t5b': T.grow + 0.8 }
+
+function render(t) {
+  const { mats, fpos } = draw(t)
+  const m = mats.m
+  const hud = t < T.msgs ? 'spawn(counter, 0)' : t < T.dive ? 'spawn · send · receive' : t < T.sup ? 'let pid :: Pid<Int>' : t < T.pull ? 'supervisor · strategy: one_for_one' : t < T.die ? 'node-1 · node-2 · node-3' : t < T.warp ? '<span style="color:#ff7a6a">●</span> node-3 lost · rerouting' : t < T.logo ? 'meshc build → native binary' : ''
+  $('#hud-l').innerHTML = hud
+  $('#hud-l').style.opacity = P(t, 0.6, 0.6) * (1 - P(t, T.logo - 0.4, 0.4))
+
+  for (const [id, s, e] of TITLES) { const el = $(id); show(el, t >= s && t < e); if (t >= s && t < e) rise(el, t, s, e) }
+  for (const [id, s] of Object.entries(SECOND)) { const el = $(id), k = eo(P(t, s, 0.7)); el.style.opacity = clamp((t - s) / 0.25); el.style.transform = `translateY(${(1 - k) * 24}px)` }
+
+  // mailbox tags
+  const fp = project(m, fpos)
+  const tagA = P(t, T.dive + 1.0, 0.5) * (1 - P(t, T.sup - 0.1, 0.4))
+  show($('#tag-pid'), tagA > 0); if (tagA > 0) place($('#tag-pid'), fp, -72, -205, tagA)
+  const tagFor = (id, kind) => {
+    const msg = M.find((x) => x.kind === kind), el = $(id)
+    const on = t > msg.t0 + 0.05 && (kind === 'bad' ? t < T.reject + 0.6 : t < msg.t0 + msg.dur + 0.35)
+    show(el, on)
+    if (!on) return
+    const pts = []; msgPoints(msg, Math.min(t, kind === 'bad' ? t : msg.t0 + msg.dur - 0.01), (p) => pts.push(p))
+    if (!pts.length) return show(el, false)
+    place(el, project(m, pts[0]), 34, -78, clamp((t - msg.t0) / 0.15) * (kind === 'bad' ? 1 - P(t, T.reject + 0.3, 0.3) : 1 - P(t, msg.t0 + msg.dur, 0.35)))
+  }
+  tagFor('#tag-5', '5'); tagFor('#tag-42', '42'); tagFor('#tag-five', 'bad')
+  const err = $('#err'), ek = eo(P(t, T.reject + 0.05, 0.6))
+  show(err, t > T.reject && t < T.sup + 0.3)
+  if (t > T.reject) place(err, [Math.min(fp[0] + 130, 1920 - 110 - ERR_W), fp[1] + 120 + (1 - ek) * 24], 0, 0, clamp((t - T.reject) / 0.15) * (1 - P(t, T.sup - 0.2, 0.4)))
+
+  // supervision tags
+  const supA = P(t, T.sup + 0.6, 0.5) * (1 - P(t, T.pull - 0.1, 0.4))
+  show($('#tag-sup'), supA > 0); if (supA > 0) place($('#tag-sup'), project(m, SUPV), 44, -26, supA)
+  const kp = project(m, KIDS[CRASHED])
+  const cA = P(t, T.crash + 0.05, 0.2) * (1 - P(t, T.reborn - 0.35, 0.3))
+  show($('#tag-crash'), cA > 0); if (cA > 0) place($('#tag-crash'), kp, 36, 30, cA)
+  const rA = P(t, T.reborn + 0.05, 0.25) * (1 - P(t, T.pull - 0.1, 0.4))
+  show($('#tag-restart'), rA > 0); if (rA > 0) place($('#tag-restart'), kp, 36, 30, rA)
+
+  // native speed: a darker pool so the streams do not wash out the type
+  $('#shade2').style.opacity = P(t, T.warp, 0.6) * (1 - P(t, T.logo - 0.6, 0.5))
+  const numOn = t > T.warp + 0.3 && t < T.logo - 0.5
+  for (const id of ['#t6', '#num', '#num-cap', '#num-x']) show($(id), numOn)
+  if (numOn) {
+    const e = T.logo - 0.5
+    rise($('#t6'), t, T.warp + 0.35, e, { dy: 20 })
+    rise($('#num'), t, T.warp + 0.9, e, { dy: 40, blur: 16 })
+    $('#num').textContent = fmt(29108 * eo(P(t, T.warp + 0.9, 1.5)))
+    rise($('#num-cap'), t, T.warp + 1.5, e, { dy: 14, blur: 4 })
+    rise($('#num-x'), t, T.warp + 2.5, e, { dy: 18, blur: 6 })
+  }
+
+  // lockup
+  const lockOn = t > T.logo + 0.2
+  for (const id of ['#wordmark', '#sub', '#url']) show($(id), lockOn)
+  if (lockOn) {
+    const r = project(m, [LOGO_C[0] + LOGO_S * 0.52, LOGO_C[1], LOGO_C[2]])
+    const lb = project(m, [LOGO_C[0], LOGO_C[1] - LOGO_S * 0.5, LOGO_C[2]])
+    const wm = $('#wordmark'), k = eo(P(t, T.logo + 0.4, 0.9))
+    wm.style.left = `${r[0] + 60}px`; wm.style.top = `${r[1] - 128}px`
+    wm.style.opacity = clamp((t - T.logo - 0.4) / 0.25)
+    wm.style.clipPath = `inset(-20% ${(1 - k) * 100}% -20% 0)`
+    wm.style.transform = `translateX(${(1 - k) * -40}px)`
+    wm.style.filter = `blur(${(1 - k) * 10}px)`
+    $('#sub').style.top = `${lb[1] + 64}px`; $('#url').style.top = `${lb[1] + 142}px`
+    rise($('#sub'), t, T.logo + 1.6, 99, { dy: 20 })
+    rise($('#url'), t, T.logo + 2.6, 99, { dy: 14, blur: 4 })
+  }
+}
+
+window.EVENTS = {
+  births: A.map((a) => [a.birth, a.cl]).filter(([b]) => b < 7 || (b > T.pull && b < T.warp)),
+  arrivals: M.map((m) => [m.t0 + m.dur, m.kind, A[m.b].cl, A[m.b].home[1], A[m.b].cl === 2 && m.t0 + m.dur > T.die]).filter(([t]) => t < DUR),
+  T, DUR,
+}
+window.render = render
+window.ready = (async () => {
+  await document.fonts.load('300 100px Archivo'); await document.fonts.load('700 100px Archivo'); await document.fonts.load('800 100px Archivo')
+  await document.fonts.load("400 20px 'JetBrains Mono'"); await document.fonts.load('300 20px Inter'); await document.fonts.ready
+  ERR_W = $('#err').getBoundingClientRect().width
+  return true
+})()
+const q = new URLSearchParams(location.search)
+if (!q.has('capture')) window.ready.then(() => {
+  if (q.has('t')) return render(parseFloat(q.get('t')))
+  const t0 = performance.now(); const loop = () => { render(((performance.now() - t0) / 1000) % DUR); requestAnimationFrame(loop) }; loop()
+})
+</script>
+</body>
+</html>

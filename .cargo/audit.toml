@@ -1,0 +1,10 @@
+# Reviewed exceptions for `cargo audit --deny warnings`. Each one has a
+# disposition in docs/security/dependency-policy.md.
+[advisories]
+ignore = [
+  # proc-macro-error2 2.0.1 is unmaintained. It is a `cfg(hax)` dependency of
+  # hax-lib-macros (through libcrux-ml-kem), compiled only by the hax proof
+  # toolchain and never by a Mesh build; it stays in Cargo.lock because the
+  # lockfile lists every target's dependencies.
+  "RUSTSEC-2026-0173",
+]
