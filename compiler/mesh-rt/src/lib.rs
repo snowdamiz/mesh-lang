@@ -70,6 +70,7 @@ pub mod hash;
 pub mod http;
 pub mod io;
 pub mod iter;
+pub(crate) mod jobs;
 pub mod json;
 pub mod library;
 pub mod monotonic;
