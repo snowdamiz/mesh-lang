@@ -648,6 +648,13 @@ pub fn build_import_context(
             .extend(exports.trait_defs.iter().cloned());
         ctx.all_trait_impls
             .extend(exports.trait_impls.iter().cloned());
+        ctx.all_plaintext_from_functions.extend(
+            exports
+                .plaintext_functions
+                .iter()
+                .filter(|(name, _)| name.starts_with("@From<"))
+                .map(|(name, summary)| (name.clone(), summary.clone())),
+        );
     }
     for module_name in extract_imports(&parse.tree()) {
         // A module not in the graph is reported by the type checker.

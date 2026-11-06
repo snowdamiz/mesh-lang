@@ -110,7 +110,15 @@ tracked, so this exception cannot clear a label or privilege a user-defined
 function with the same name.
 
 Implicit early returns through `?` carry tag dependencies, including through
-nested calls, blocks, and let initializers. A public error/status that depends on content still needs a
+nested calls, blocks, and let initializers. When `?` converts an error through
+`From`, the selected implementation's checked output shape and effects apply,
+including across module imports. A fixed wrapper constructor can have a public
+tag while keeping its original error payload private. Choosing the wrapper's
+variant from private error data keeps that tag private, and logging inside the
+conversion is checked with the original data and caller control. Unknown
+conversion bodies remain conservative. Propagation with the same error type
+does not invoke `From`.
+A public error/status that depends on content still needs a
 reviewed metadata-only disclosure. Pure framing helpers may return labeled
 bytes for sealing without clearing that label.
 

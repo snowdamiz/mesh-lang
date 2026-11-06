@@ -5,7 +5,7 @@
 //! Unknown boundaries are conservative; trusted sealing is resolved before any
 //! spelling-based standard-library rule, so imported lookalikes are not seals.
 
-use crate::{error::TypeError, infer::TypeRegistry, ty::Ty, ImportContext};
+use crate::{error::TypeError, infer::TypeRegistry, traits::TraitRegistry, ty::Ty, ImportContext};
 use mesh_parser::ast::{
     expr::Expr,
     item::{Block, FnDef, Item, LetBinding},
@@ -472,6 +472,7 @@ impl ShapeInstantiation {
 struct Checker<'a> {
     types: &'a FxHashMap<TextRange, Ty>,
     registry: &'a TypeRegistry,
+    traits: &'a TraitRegistry,
     type_names: FxHashSet<String>,
     source_types: BTreeMap<String, SourceType>,
     summaries: FxHashMap<String, PlaintextSummary>,
@@ -497,10 +498,19 @@ struct Checker<'a> {
     emit: bool,
 }
 
+pub(crate) fn from_summary_name(implementation: &crate::traits::ImplDef) -> Option<String> {
+    let [source] = implementation.trait_type_args.as_slice() else {
+        return None;
+    };
+    (implementation.trait_name == "From")
+        .then(|| format!("@From<{source}>:{}", implementation.impl_type))
+}
+
 pub(crate) fn check(
     parse: &Parse,
     types: &FxHashMap<TextRange, Ty>,
     registry: &TypeRegistry,
+    traits: &TraitRegistry,
     imports: &ImportContext,
     overloaded: &FxHashSet<String>,
     call_targets: &FxHashMap<TextRange, String>,
@@ -513,9 +523,10 @@ pub(crate) fn check(
     let mut checker = Checker {
         types,
         registry,
+        traits,
         type_names: FxHashSet::default(),
         source_types: BTreeMap::new(),
-        summaries: FxHashMap::default(),
+        summaries: imports.all_plaintext_from_functions.clone(),
         imported_namespaces: FxHashSet::default(),
         imported_function_names: FxHashSet::default(),
         locals: FxHashSet::default(),
@@ -586,6 +597,12 @@ pub(crate) fn check(
         }
         checker.imported_namespaces.insert(namespace.clone());
         for (name, summary) in &exports.plaintext_functions {
+            // Impl selection is type-directed, independent of the import's
+            // namespace or selected ordinary function names.
+            if name.starts_with("@From<") {
+                checker.summaries.insert(name.clone(), summary.clone());
+                continue;
+            }
             if let Some(actor) = name.strip_prefix("@actor.") {
                 if selected
                     .as_ref()
@@ -1077,6 +1094,28 @@ impl Checker<'_> {
 
     fn function_name(&self, function: &FnDef) -> Option<String> {
         let name = function.name()?.text()?;
+        if name == "from" {
+            if let Some(implementation) = function
+                .syntax()
+                .ancestors()
+                .skip(1)
+                .take_while(|node| node.kind() != SyntaxKind::FN_DEF)
+                .find_map(mesh_parser::ast::item::ImplDef::cast)
+            {
+                if implementation.interface_name()?.text() == "From" {
+                    let written = implementation
+                        .syntax()
+                        .children()
+                        .find(|node| node.kind() == SyntaxKind::GENERIC_ARG_LIST)?;
+                    let arguments = self.types.get(&written.text_range())?.args_of("From")?;
+                    let target = Ty::Con(crate::ty::TyCon::new(implementation.type_name()?.text()));
+                    let selected = self
+                        .traits
+                        .find_impl_with_type_args("From", arguments, &target)?;
+                    return from_summary_name(selected);
+                }
+            }
+        }
         let name = if self.overloaded.contains(&name) {
             format!(
                 "{name}__{}",
@@ -2202,13 +2241,11 @@ impl Checker<'_> {
                 output.control(&tag);
                 output.builders = input.builders.clone();
                 output.exits = input.exits.clone().union(&tag);
+                let payload = self.try_error(value, &input, pc);
                 let mut error = Value::dependent(tag.clone());
                 error.variants = Some(BTreeSet::from(["Err".into()]));
                 error.put(Projection::Tag, &Value::dependent(tag));
-                error.put(
-                    Projection::Variant("Err".into(), 0),
-                    &input.project(Projection::Variant("Err".into(), 0)),
-                );
+                error.put(Projection::Variant("Err".into(), 0), &payload);
                 self.returned.push(error);
                 output
             }
@@ -2499,6 +2536,65 @@ impl Checker<'_> {
                 value
             })
             .collect()
+    }
+
+    /// Apply exactly the error conversion that `?` lowers to. Its shape and
+    /// effects are ordinary checked call facts, not a declassification.
+    fn try_error(
+        &mut self,
+        expression: &mesh_parser::ast::expr::TryExpr,
+        input: &Value,
+        pc: &Dependencies,
+    ) -> Value {
+        let payload = input.project(Projection::Variant("Err".into(), 0));
+        let operand_type = expression
+            .operand()
+            .and_then(|operand| self.types.get(&operand.syntax().text_range()));
+        let enclosing = expression.syntax().ancestors().find(|node| {
+            matches!(
+                node.kind(),
+                SyntaxKind::FN_DEF | SyntaxKind::CLOSURE_EXPR | SyntaxKind::ACTOR_DEF
+            )
+        });
+        let return_type = enclosing
+            .and_then(|node| self.types.get(&node.text_range()))
+            .and_then(|ty| match ty {
+                Ty::Fun(_, output) => Some(output.as_ref()),
+                _ => None,
+            });
+        let (Some([_, source]), Some([_, target])) = (
+            operand_type.and_then(|ty| ty.args_of("Result")),
+            return_type.and_then(|ty| ty.args_of("Result")),
+        ) else {
+            return payload;
+        };
+        // Match lowering's equality rule, including Con versus App with no
+        // arguments for a non-generic nominal type. No From call in this case.
+        let same = source == target
+            || match (source, target) {
+                (Ty::Con(con), Ty::App(app, args)) | (Ty::App(app, args), Ty::Con(con)) => {
+                    args.is_empty() && matches!(app.as_ref(), Ty::Con(app) if app == con)
+                }
+                _ => false,
+            };
+        if same {
+            return payload;
+        }
+        let selected = self
+            .traits
+            .find_impl_with_type_args("From", std::slice::from_ref(source), target)
+            .and_then(from_summary_name);
+        let control = pc
+            .clone()
+            .union(&input.project(Projection::Tag).deps)
+            .union(&input.exits);
+        self.call(
+            selected.as_deref(),
+            &[],
+            &[payload],
+            &control,
+            expression.syntax().text_range(),
+        )
     }
 
     fn call(

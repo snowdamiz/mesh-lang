@@ -70,6 +70,9 @@ pub struct ImportContext {
     /// Trait impls from ALL processed modules (globally visible, XMOD-05).
     pub all_trait_impls: Vec<TraitImplDef>,
 
+    /// Checked conversion summaries with the same visibility as trait impls.
+    pub all_plaintext_from_functions: FxHashMap<String, plaintext::PlaintextSummary>,
+
     /// The name of the current module being type-checked (e.g., "Geometry").
     /// None for single-file mode (backward compat). Used to name clustered
     /// route handlers.
@@ -605,6 +608,11 @@ pub fn collect_exports(parse: &mesh_parser::Parse, typeck: &TypeckResult) -> Exp
                         && i.trait_type_args == impl_def.trait_type_args
                 }) {
                     exports.trait_impls.push(impl_def.clone());
+                    if let Some(name) = crate::plaintext::from_summary_name(impl_def) {
+                        if let Some(summary) = typeck.plaintext.functions.get(&name) {
+                            exports.plaintext_functions.insert(name, summary.clone());
+                        }
+                    }
                 }
             }
         }

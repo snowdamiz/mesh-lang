@@ -5187,6 +5187,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         parse,
         &resolved_types,
         &type_registry,
+        &trait_registry,
         import_ctx,
         &ctx.overloaded_fn_names,
         &ctx.overloaded_call_targets,
