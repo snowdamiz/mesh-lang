@@ -32,15 +32,15 @@ does not satisfy the row.
 | Queue atomicity | Batch enqueue commits all jobs or none; documentation states the boundary with application databases | Pending |
 | Selective receive | Unmatched application messages remain queued in order until a later matching receive | In progress |
 | Actor stack exhaustion | An actor exhausts its stack without aborting unrelated actors or the native process | Feasibility evidence integrated; containment pending |
-| Mutual tail calls | Mutually recursive functions and actor state transitions execute in bounded stack space | Direct SCC focused checks passed; review pending |
+| Mutual tail calls | Mutually recursive functions and actor state transitions execute in bounded stack space | Argument representation regression reproduced; correction running |
 | Map patterns | Partial map destructuring matches keys and typed values correctly | Pending |
 | Pinned patterns | A pinned expression compares with an existing binding rather than rebinding it | Pending |
 | Bitstring patterns | Binary construction and destructuring honor segment widths, bounds, and byte order | Pending |
-| Test selection | Test names, source locations, and tags select actual test cases | Implemented in isolated branch; review pending |
-| Concurrent tests | Explicitly asynchronous cases run with bounded concurrency and isolated fixtures | Implemented in isolated branch; review pending |
-| Documentation tests | Executable documentation examples run with expected result checks | Implemented in isolated branch; review pending |
+| Test selection | Test names, source locations, and tags select actual test cases | Review corrections implemented; fresh review and verification pending |
+| Concurrent tests | Explicitly asynchronous cases run with bounded concurrency and isolated fixtures | Implemented in isolated branch; combined correction review pending |
+| Documentation tests | Executable documentation examples run with expected result checks | Review corrections implemented; fresh review and verification pending |
 | Coverage | Mesh source execution produces an accurate coverage report with unexecuted code visible | Pending |
-| Editor references and rename | Scope-aware references and rename work through the actual LSP transport | Review corrections implemented; fresh review and verification pending |
+| Editor references and rename | Scope-aware references and rename work through the actual LSP transport | Second correction running for remaining context identities |
 | Persistent REPL values | Reading a previous value does not rerun its initializer or effects | Pending |
 | Typed query results | Queries decode directly to declared row types and report incompatible rows | Pending |
 | Transaction composition | Named dependent database operations use one connection and roll back together | Pending |
