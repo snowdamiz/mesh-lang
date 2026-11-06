@@ -13,12 +13,16 @@ use super::model::*;
 const META: TableDefinition<&str, &[u8]> = TableDefinition::new("jobs_meta_v1");
 const JOBS: TableDefinition<&str, &[u8]> = TableDefinition::new("jobs_rows_v1");
 const QUEUES: TableDefinition<&str, &[u8]> = TableDefinition::new("jobs_queues_v1");
-const REQUESTS: TableDefinition<&str, &[u8]> = TableDefinition::new("jobs_requests_v1");
+const REQUESTS: TableDefinition<&str, &[u8]> = TableDefinition::new("jobs_requests_v2");
 const UNIQUE: TableDefinition<&str, &[u8]> = TableDefinition::new("jobs_unique_v1");
 const DUE: TableDefinition<&str, &[u8]> = TableDefinition::new("jobs_due_v1");
 const LEASES: TableDefinition<&str, &[u8]> = TableDefinition::new("jobs_leases_v1");
 const BY_QUEUE: TableDefinition<&str, &[u8]> = TableDefinition::new("jobs_by_queue_v1");
-const APPLIED: TableDefinition<u64, &[u8]> = TableDefinition::new("jobs_applied_v1");
+const STREAMS: TableDefinition<&str, &[u8]> = TableDefinition::new("jobs_streams_v2");
+const TABLES: [TableDefinition<&str, &[u8]>; 9] = [
+    META, JOBS, QUEUES, REQUESTS, UNIQUE, DUE, LEASES, BY_QUEUE, STREAMS,
+];
+const SCHEMA: u32 = 2;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 struct Metadata {
@@ -26,13 +30,14 @@ struct Metadata {
     deployment: DeploymentId,
     limits: StoreLimits,
     last_index: u64,
-    commands: u64,
+    latest: Option<Applied>,
+    receipts: u64,
     retained_jobs: u64,
     queues: u64,
     tick: u64,
     utc_ms: u64,
 }
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 struct Applied {
     hash: [u8; 32],
     receipt: Receipt,
@@ -116,65 +121,55 @@ impl JobStore {
         write
             .set_durability(Durability::Immediate)
             .map_err(storage_error)?;
-        let existing: Option<Metadata> = read(&write, META, "state")?;
-        if let Some(meta) = existing {
-            if meta.schema != 1 || meta.deployment != deployment || meta.limits != limits {
+        let names = write
+            .list_tables()
+            .map_err(storage_error)?
+            .map(|table| {
+                use redb::TableHandle;
+                table.name().to_owned()
+            })
+            .collect::<BTreeSet<_>>();
+        if !names.is_empty() {
+            use redb::TableHandle;
+            if !names.contains(META.name()) {
+                return Err(Error::Storage("missing metadata table".into()));
+            }
+            #[derive(Deserialize)]
+            struct Version {
+                schema: u32,
+            }
+            let version: Version = read(&write, META, "state")?
+                .ok_or_else(|| Error::Storage("missing metadata".into()))?;
+            if version.schema != SCHEMA {
                 return Err(Error::IncompatibleStore);
             }
-            // Opening existing tables must not silently repair a missing authoritative index.
-            let names = write
-                .list_tables()
-                .map_err(storage_error)?
-                .map(|t| {
-                    use redb::TableHandle;
-                    t.name().to_owned()
-                })
-                .collect::<BTreeSet<_>>();
-            for name in [
-                "jobs_rows_v1",
-                "jobs_queues_v1",
-                "jobs_requests_v1",
-                "jobs_unique_v1",
-                "jobs_due_v1",
-                "jobs_leases_v1",
-                "jobs_by_queue_v1",
-                "jobs_applied_v1",
-            ] {
-                if !names.contains(name) {
-                    return Err(Error::Storage(format!("missing table {name}")));
+            let meta: Metadata = read(&write, META, "state")?.unwrap();
+            if meta.deployment != deployment || meta.limits != limits {
+                return Err(Error::IncompatibleStore);
+            }
+            if (meta.last_index == 0) != meta.latest.is_none() {
+                return Err(Error::Storage("inconsistent applied checkpoint".into()));
+            }
+            for table in TABLES {
+                if !names.contains(table.name()) {
+                    return Err(Error::Storage(format!("missing table {}", table.name())));
                 }
             }
         } else {
-            for table in [JOBS, QUEUES, REQUESTS, UNIQUE, DUE, LEASES, BY_QUEUE] {
-                if write
-                    .open_table(table)
-                    .map_err(storage_error)?
-                    .len()
-                    .map_err(storage_error)?
-                    != 0
-                {
-                    return Err(Error::Storage("missing store metadata".into()));
-                }
-            }
-            if write
-                .open_table(APPLIED)
-                .map_err(storage_error)?
-                .len()
-                .map_err(storage_error)?
-                != 0
-            {
-                return Err(Error::Storage("missing store metadata".into()));
+            for table in TABLES {
+                write.open_table(table).map_err(storage_error)?;
             }
             put(
                 &write,
                 META,
                 "state",
                 &Metadata {
-                    schema: 1,
+                    schema: SCHEMA,
                     deployment,
                     limits,
                     last_index: 0,
-                    commands: 0,
+                    latest: None,
+                    receipts: 0,
                     retained_jobs: 0,
                     queues: 0,
                     tick: 0,
@@ -195,7 +190,9 @@ impl JobStore {
     }
 
     pub(crate) fn apply(&self, index: u64, command: &Command) -> Result<Receipt, Error> {
-        command.validate()?;
+        if index == 0 {
+            return Err(Error::LogConflict);
+        }
         let hash = command.hash()?;
         let mut write = self.database.begin_write().map_err(storage_error)?;
         write
@@ -203,59 +200,241 @@ impl JobStore {
             .map_err(storage_error)?;
         let mut meta: Metadata = read(&write, META, "state")?
             .ok_or_else(|| Error::Storage("missing metadata".into()))?;
-        if index <= meta.last_index {
-            let table = write.open_table(APPLIED).map_err(storage_error)?;
-            let record = table
-                .get(index)
-                .map_err(storage_error)?
-                .ok_or(Error::LogConflict)?;
-            let applied: Applied = decode(record.value())?;
+        if index < meta.last_index {
+            return Ok(Receipt {
+                index,
+                result: Ok(Effect::AlreadyApplied {
+                    through: meta.last_index,
+                }),
+            });
+        }
+        if index == meta.last_index {
+            let applied = meta
+                .latest
+                .ok_or_else(|| Error::Storage("missing applied checkpoint".into()))?;
             return if applied.hash == hash {
                 Ok(applied.receipt)
             } else {
                 Err(Error::LogConflict)
             };
         }
-        if meta.commands >= meta.limits.max_commands {
-            return Err(Error::AdmissionFull);
-        }
-        let request_key = command.key();
-        let prior: Option<Applied> = read(&write, REQUESTS, &request_key)?;
-        let receipt = if let Some(prior) = &prior {
-            if prior.hash == hash {
-                prior.receipt.clone()
-            } else {
-                Receipt {
-                    index,
-                    result: Err(Rejection::RequestConflict),
-                }
-            }
-        } else {
-            let mut changes = Changes::new();
-            let result = self.plan(&write, &meta, index, &command.operation, &mut changes)?;
-            if result.is_ok() {
-                persist(&write, &mut meta, changes)?;
-            }
-            Receipt { index, result }
-        };
-        let applied = Applied {
+        let receipt = self.apply_command(&write, &mut meta, index, command, hash)?;
+        meta.last_index = index;
+        meta.latest = Some(Applied {
             hash,
             receipt: receipt.clone(),
-        };
-        if prior.is_none() {
-            put(&write, REQUESTS, &request_key, &applied)?;
-        }
-        let encoded = encode(&applied)?;
-        write
-            .open_table(APPLIED)
-            .map_err(storage_error)?
-            .insert(index, encoded.as_slice())
-            .map_err(storage_error)?;
-        meta.last_index = index;
-        meta.commands += 1;
+        });
         put(&write, META, "state", &meta)?;
         write.commit().map_err(storage_error)?;
         Ok(receipt)
+    }
+
+    fn apply_command(
+        &self,
+        write: &WriteTransaction,
+        meta: &mut Metadata,
+        index: u64,
+        command: &Command,
+        hash: [u8; 32],
+    ) -> Result<Receipt, Error> {
+        let result = match command {
+            Command::Request {
+                stream,
+                sequence,
+                operation,
+            } => {
+                let row: Option<StreamStatus> = read(write, STREAMS, &stream.slot.to_string())?;
+                let (retired_through, last_sequence) = match request_window(row.as_ref(), *stream) {
+                    Ok(window) => window,
+                    Err(reason) => {
+                        return Ok(Receipt {
+                            index,
+                            result: Err(Rejection::NotAdmitted(reason)),
+                        })
+                    }
+                };
+                if *sequence <= retired_through {
+                    Err(Rejection::NotAdmitted(AdmissionRejection::RetiredRequest))
+                } else if *sequence <= last_sequence {
+                    let prior: Applied =
+                        read(write, REQUESTS, &request_key(*stream, *sequence))?
+                            .ok_or_else(|| Error::Storage("missing unretired receipt".into()))?;
+                    return Ok(if prior.hash == hash {
+                        prior.receipt
+                    } else {
+                        Receipt {
+                            index,
+                            result: Err(Rejection::RequestConflict),
+                        }
+                    });
+                } else if last_sequence.checked_add(1) != Some(*sequence) {
+                    Err(Rejection::NotAdmitted(AdmissionRejection::SequenceGap {
+                        next: last_sequence + 1,
+                    }))
+                } else if last_sequence - retired_through >= meta.limits.receipts_per_stream {
+                    Err(Rejection::NotAdmitted(AdmissionRejection::WindowFull))
+                } else {
+                    let result = match command.validate() {
+                        Ok(()) => self.apply_operation(write, meta, index, operation)?,
+                        Err(Error::Invalid(_)) => Err(Rejection::InvalidCommand),
+                        Err(error) => return Err(error),
+                    };
+                    let receipt = Receipt { index, result };
+                    put(
+                        write,
+                        REQUESTS,
+                        &request_key(*stream, *sequence),
+                        &Applied {
+                            hash,
+                            receipt: receipt.clone(),
+                        },
+                    )?;
+                    put(
+                        write,
+                        STREAMS,
+                        &stream.slot.to_string(),
+                        &StreamStatus {
+                            generation: stream.generation,
+                            phase: StreamPhase::Open {
+                                retired_through,
+                                last_sequence: *sequence,
+                            },
+                        },
+                    )?;
+                    meta.receipts += 1;
+                    return Ok(receipt);
+                }
+            }
+            Command::Internal(operation) => match command.validate() {
+                Ok(()) => self.apply_operation(write, meta, index, operation)?,
+                Err(Error::Invalid(_)) => Err(Rejection::InvalidCommand),
+                Err(error) => return Err(error),
+            },
+            Command::Register { stream } => {
+                if stream.slot > meta.limits.max_streams {
+                    Err(Rejection::StreamLimit)
+                } else {
+                    let row: Option<StreamStatus> = read(write, STREAMS, &stream.slot.to_string())?;
+                    match row {
+                        Some(row)
+                            if row.generation > stream.generation
+                                || (row.generation == stream.generation
+                                    && row.phase == StreamPhase::Closed) =>
+                        {
+                            Err(Rejection::NotAdmitted(AdmissionRejection::RetiredStream))
+                        }
+                        Some(row) if row.generation == stream.generation => {
+                            Ok(Effect::StreamRegistered)
+                        }
+                        Some(row) if row.phase != StreamPhase::Closed => {
+                            Err(Rejection::StreamInUse)
+                        }
+                        row if row
+                            .as_ref()
+                            .map_or(Some(1), |r| r.generation.checked_add(1))
+                            != Some(stream.generation) =>
+                        {
+                            Err(Rejection::GenerationGap)
+                        }
+                        _ => {
+                            put(
+                                write,
+                                STREAMS,
+                                &stream.slot.to_string(),
+                                &StreamStatus {
+                                    generation: stream.generation,
+                                    phase: StreamPhase::Open {
+                                        retired_through: 0,
+                                        last_sequence: 0,
+                                    },
+                                },
+                            )?;
+                            Ok(Effect::StreamRegistered)
+                        }
+                    }
+                }
+            }
+            Command::Retire { stream, through } => {
+                let row: Option<StreamStatus> = read(write, STREAMS, &stream.slot.to_string())?;
+                match request_window(row.as_ref(), *stream) {
+                    Err(reason) => Err(Rejection::NotAdmitted(reason)),
+                    Ok((_, last)) if *through > last => Err(Rejection::InvalidRetirement),
+                    Ok((retired, last)) => {
+                        if *through > retired {
+                            for sequence in (retired + 1)..=*through {
+                                let key = request_key(*stream, sequence);
+                                let _: Applied = read(write, REQUESTS, &key)?.ok_or_else(|| {
+                                    Error::Storage("missing unretired receipt".into())
+                                })?;
+                                remove(write, REQUESTS, &key)?;
+                            }
+                            meta.receipts = meta
+                                .receipts
+                                .checked_sub(through - retired)
+                                .ok_or_else(|| Error::Storage("receipt count underflow".into()))?;
+                            put(
+                                write,
+                                STREAMS,
+                                &stream.slot.to_string(),
+                                &StreamStatus {
+                                    generation: stream.generation,
+                                    phase: StreamPhase::Open {
+                                        retired_through: *through,
+                                        last_sequence: last,
+                                    },
+                                },
+                            )?;
+                        }
+                        Ok(Effect::Retired {
+                            through: retired.max(*through),
+                        })
+                    }
+                }
+            }
+            Command::Close { stream } => {
+                let row: Option<StreamStatus> = read(write, STREAMS, &stream.slot.to_string())?;
+                if row.as_ref().is_some_and(|r| {
+                    r.generation == stream.generation && r.phase == StreamPhase::Closed
+                }) {
+                    Ok(Effect::StreamClosed)
+                } else {
+                    match request_window(row.as_ref(), *stream) {
+                        Err(reason) => Err(Rejection::NotAdmitted(reason)),
+                        Ok((retired, last)) if retired != last => {
+                            Err(Rejection::UnacknowledgedRequests)
+                        }
+                        Ok(_) => {
+                            put(
+                                write,
+                                STREAMS,
+                                &stream.slot.to_string(),
+                                &StreamStatus {
+                                    generation: stream.generation,
+                                    phase: StreamPhase::Closed,
+                                },
+                            )?;
+                            Ok(Effect::StreamClosed)
+                        }
+                    }
+                }
+            }
+        };
+        Ok(Receipt { index, result })
+    }
+
+    fn apply_operation(
+        &self,
+        write: &WriteTransaction,
+        meta: &mut Metadata,
+        index: u64,
+        operation: &Operation,
+    ) -> Result<Result<Effect, Rejection>, Error> {
+        let mut changes = Changes::new();
+        let result = self.plan(write, meta, index, operation, &mut changes)?;
+        if result.is_ok() {
+            persist(write, meta, changes)?;
+        }
+        Ok(result)
     }
 
     fn plan(
@@ -421,11 +600,7 @@ impl JobStore {
             applied_index: meta.last_index,
             tick: meta.tick,
             utc_ms: meta.utc_ms,
-            remaining_commands: meta
-                .limits
-                .max_commands
-                .checked_sub(meta.commands)
-                .ok_or_else(|| Error::Storage("command count exceeds bound".into()))?,
+            retained_receipts: meta.receipts,
             remaining_jobs: meta
                 .limits
                 .max_jobs
@@ -451,17 +626,45 @@ impl JobStore {
             .ok_or_else(|| Error::Storage("missing metadata".into()))?;
         Ok((meta.tick, meta.utc_ms))
     }
-    pub(crate) fn receipt(&self, command: &Command) -> Result<Option<Receipt>, Error> {
-        command.validate()?;
-        let record: Option<Applied> = self.read_row(REQUESTS, &command.key())?;
-        record
-            .map(|record| {
-                if record.hash != command.hash()? {
-                    return Err(Error::Invalid("request body conflicts".into()));
-                }
-                Ok(record.receipt)
-            })
-            .transpose()
+    pub(crate) fn stream(&self, slot: u32) -> Result<Option<StreamStatus>, Error> {
+        self.read_row(STREAMS, &slot.to_string())
+    }
+    pub(crate) fn receipt(&self, command: &Command) -> Result<ReceiptLookup, Error> {
+        let Command::Request {
+            stream, sequence, ..
+        } = command
+        else {
+            return Err(Error::Invalid(
+                "internal commands have no request receipt".into(),
+            ));
+        };
+        let read = self.database.begin_read().map_err(storage_error)?;
+        let streams = read.open_table(STREAMS).map_err(storage_error)?;
+        let row: Option<StreamStatus> = streams
+            .get(stream.slot.to_string().as_str())
+            .map_err(storage_error)?
+            .map(|value| decode(value.value()))
+            .transpose()?;
+        match request_window(row.as_ref(), *stream) {
+            Err(AdmissionRejection::RetiredStream) => Ok(ReceiptLookup::Retired),
+            Err(_) => Ok(ReceiptLookup::NotAdmitted),
+            Ok((retired, _)) if *sequence <= retired => Ok(ReceiptLookup::Retired),
+            Ok((_, last)) if *sequence > last => Ok(ReceiptLookup::NotAdmitted),
+            Ok(_) => {
+                let table = read.open_table(REQUESTS).map_err(storage_error)?;
+                let key = request_key(*stream, *sequence);
+                let value = table
+                    .get(key.as_str())
+                    .map_err(storage_error)?
+                    .ok_or_else(|| Error::Storage("missing unretired receipt".into()))?;
+                let record: Applied = decode(value.value())?;
+                Ok(if record.hash == command.hash()? {
+                    ReceiptLookup::Recorded(record.receipt)
+                } else {
+                    ReceiptLookup::Conflict
+                })
+            }
+        }
     }
     fn read_row<T: DeserializeOwned>(
         &self,
@@ -575,6 +778,27 @@ impl JobStore {
                     .collect()
             })
             .unwrap_or_default())
+    }
+}
+
+fn request_key(stream: ClientStream, sequence: u64) -> String {
+    format!("{}/{}/{sequence:020}", stream.slot, stream.generation)
+}
+fn request_window(
+    row: Option<&StreamStatus>,
+    stream: ClientStream,
+) -> Result<(u64, u64), AdmissionRejection> {
+    match row {
+        None => Err(AdmissionRejection::UnknownStream),
+        Some(row) if row.generation < stream.generation => Err(AdmissionRejection::UnknownStream),
+        Some(row) if row.generation > stream.generation => Err(AdmissionRejection::RetiredStream),
+        Some(row) => match row.phase {
+            StreamPhase::Closed => Err(AdmissionRejection::RetiredStream),
+            StreamPhase::Open {
+                retired_through,
+                last_sequence,
+            } => Ok((retired_through, last_sequence)),
+        },
     }
 }
 

@@ -19,41 +19,128 @@ after initialization. Directory protection and authentication belong to the
 runtime adapter. The file lock is local protection, not proof of remote-node
 exclusion.
 
-Metadata persists schema version 1, deployment identity, admission limits,
-applied command position, retained-job and queue counts, logical time, and UTC
-schedule time. Opening with a different deployment, schema, or limits fails.
-A missing authoritative table fails instead of silently rebuilding an empty
-index. There is no migration or snapshot installation API in this unit.
+Metadata persists schema version 2, deployment identity, admission limits,
+a latest-applied checkpoint, retained-job and queue counts, receipt count,
+logical time, and UTC schedule time. Opening with a different deployment,
+schema, or limits fails. Opening inventories existing tables before any table
+creation. Only a database with no tables can initialize. Missing metadata,
+even with otherwise empty tables, or a missing authoritative index fails
+without changing the schema. Version 1 is rejected before decoding version 2
+fields or creating tables. There is no migration or snapshot installation API.
 
-The future Raft adapter calls `apply` only for committed jobs commands, in
-increasing log-index order. Index zero is invalid. Gaps are allowed for entries
-owned by the adapter, such as membership entries. The returned applied position
-covers jobs commands only. It is not a replacement for Raft membership or term
-metadata. Reapplying a recorded index requires the exact command hash. An
-unrecorded old index or a changed command at an old index returns `LogConflict`.
+The future Raft adapter calls `apply` only for committed jobs commands in
+increasing log-index order. Index zero and a changed command at the latest
+applied index are log corruption and return `LogConflict`. Gaps are allowed
+for entries owned by the adapter, such as membership entries. The applied
+position covers jobs commands only, not Raft membership or term metadata.
 
-A command contains `ClientId`, `RequestId`, and a typed `Operation`. Its SHA-256
-hash covers the deterministic serde JSON representation of all three fields.
-The schema version fixes this representation. Renaming enum variants or changing
-their encoding requires a storage migration. The adapter must authenticate the
-client identity and must not infer authorization from the identifier alone.
+The checkpoint stores only the latest index, command hash, and receipt. Repeating
+that index requires an exact hash and returns its receipt. An older index returns
+`AlreadyApplied { through }` without applying or verifying that command's body.
+This is a coverage result, **not an enqueue receipt or dispatch authority**.
+The adapter must verify committed log identity and resume after the checkpoint.
+It resolves old client results through `receipt`, not through old log indexes.
+Bounded checkpoint storage cannot also verify arbitrary historical log bodies.
 
-`apply` returns `Result<Receipt, Error>`. A receipt contains the original command
-index and `Result<Effect, Rejection>`. A domain rejection is durably recorded and
-advances the applied position. A storage, encoding, invalid-envelope, log
-conflict, or admission-full error does not report acceptance.
+The command hash covers the deterministic serde JSON encoding. The schema
+version fixes this representation. Changing variant names or encoding requires
+a storage migration. Unknown command versions or undecodable persisted data
+require recovery, not interpretation as a new request.
 
-Repeating the same client/request identity and body returns the original
-receipt, including its original index and rejection. A different body returns
-`RequestConflict` without replacing the original receipt. Repeated commands at
-new log positions record their positions but never repeat the state change.
-`receipt(&command)` resolves a previously uncertain result and checks the hash.
+`apply` returns `Result<Receipt, Error>`. Policy and typed-command validation
+rejections are receipts and advance the checkpoint. They never halt application
+because receipt capacity is full. Storage and encoding failures, incompatible
+storage, and log corruption halt application. An I/O error can have an uncertain
+commit outcome. The adapter must stop application and dispatch, recover or reopen,
+and replay the same committed index. It must not generate a new identity or turn
+an error into success. Successful commits use `Durability::Immediate`.
 
-A storage error can have an uncertain commit outcome. The adapter must stop
-application and dispatch, reopen or recover the database, and replay the same
-index and identity. It must not turn the error into success or generate a new
-request identity. Successful application uses `Durability::Immediate`; no
-in-memory fallback exists.
+## Client streams and retirement
+
+`ClientStream` is a bounded slot number and a nonzero generation. `Register`
+opens generation 1 of an unused slot. An open generation can be registered again
+to resolve a lost registration response. It does not reset sequence progress.
+A slot can open exactly the next generation only after its current generation
+is closed. A closed generation and every older generation are rejected forever.
+The retained slot row is a generation watermark, so reuse needs no growing list
+of retired client IDs. Generations never wrap.
+
+The future adapter allocates slots, durably binds each generation to its owner,
+and authenticates registration, requests, retirement, and closure. These numeric
+identities grant no authority. This store does not implement an ownership registry.
+
+`Command::enqueue(stream, sequence, jobs)` creates the replayable request.
+Sequences start at 1 and must become admitted in contiguous order. Each stream
+retains at most `receipts_per_stream` outstanding receipts. A request at the next
+sequence with room in the window binds its complete body hash and original
+receipt atomically with its job changes. Domain failures, including job capacity,
+unknown queues, invalid batches, and duplicates, also bind a negative receipt.
+A changed body for a bound sequence returns `RequestConflict`. Repeating the
+original body returns the original receipt and index, including negative results.
+Neither case adds another receipt row.
+
+Requests outside the admitted window return `NotAdmitted(reason)` and still
+advance the committed checkpoint. `WindowFull`, `SequenceGap`, and `UnknownStream`
+do not bind a sequence or body and do not promise a permanent negative outcome.
+For example, sequence 2 can be admitted after sequence 1 arrives, or after the
+client retires enough receipts. A committed non-admission is distinct from a
+finalized negative receipt. A client must retain and retry its original body
+while its outcome is uncertain. Concurrent proposals for one sequence are ordered
+by the committed log. The first admitted body wins. Later changed bodies conflict.
+The client serializes sequence admission or retries gaps after their predecessors.
+
+`Retire { stream, through }` is the owner's acknowledgement that it no longer
+needs any result through that sequence, including negative results. It atomically
+removes those receipt rows and advances `retired_through`. Retirement cannot pass
+the last admitted sequence. Repeating an acknowledgement or sending an older
+one is harmless. Every sequence at or below the watermark is rejected forever,
+even with another body or job ID. Retirement uses no receipt slot and can run
+when the window is full. Each retirement removes at most one bounded window.
+
+`Close` requires all admitted receipts to be retired. It fences all remaining
+in-flight proposals from that generation, including previously non-admitted
+requests. Repeated closure of that generation succeeds until the slot moves to
+a newer generation. A client may explicitly abandon an uncertain result by
+acknowledging it, but the adapter must never infer acknowledgement from timeout,
+disconnect, or age. Sequence exhaustion requires closing and opening a fresh
+generation. Generation exhaustion permanently retires that slot. Neither blocks
+accepted-work lifecycle.
+
+`receipt(&request)` uses one read transaction and returns `Recorded`, `Conflict`,
+`Retired`, or `NotAdmitted`. `Retired` never means that work can be inserted again.
+`NotAdmitted` describes this read, not the cancellation of an in-flight proposal.
+The future adapter provides a consensus read barrier before using it to resolve
+uncertainty. It must not blindly mint a new identity when a response is lost.
+`stream(slot)` exposes the durable generation and acknowledgement progress.
+
+This design replaces the architecture document's provisional lifetime receipt
+bound before adapter integration. A separate lifecycle reserve would eventually
+exhaust. Expiring arbitrary identities would permit duplicate work. Registered
+generations and acknowledged contiguous windows bound both results and retirement
+history while preserving permanent rejection of old identities.
+
+## Internal command contract
+
+All non-enqueue job operations use `Command::internal(operation)`. Enqueue cannot
+use this path. Registration, retirement, and closure are separate commands.
+Internal commands use no client receipt window. Completion, cancellation, renewal,
+expiration, recovery, and their deterministic rejections therefore advance even
+when every client window and retained-job slot is full.
+
+Internal retries at the latest committed index return the checkpoint receipt.
+At a new index they are new intents, not transport receipt replay. Claims,
+cancellation, retry, and discard recheck revisions. Completion and renewal recheck
+the current lease token and deadline. A repeated renewal can extend a still-valid
+lease at the current tick. Repeated clock commands can sweep another page.
+Configuration and pause commands set desired state. The adapter must not resubmit
+an old configuration intent over a newer one to recover a lost response.
+It retries the committed index or reads current state and issues a fresh intent.
+Long-term exact-result replay for internal operations is not offered.
+
+The adapter authenticates worker ownership and operator permissions before
+proposal. A replayed claim receipt describes historical authority. An executor
+must check the current lease and suppress duplicate starts. No identifier or
+receipt independently authorizes dispatch.
 
 ## Durable rows and atomicity
 
@@ -61,11 +148,11 @@ The database has these tables.
 
 | Table | Key and value |
 | --- | --- |
-| `jobs_meta_v1` | One bounded metadata record |
+| `jobs_meta_v1` | One versioned metadata record and latest checkpoint |
 | `jobs_rows_v1` | Job ID to one job, its arguments, and bounded history |
 | `jobs_queues_v1` | Queue ID to policy, pause state, active leases, and retained count |
-| `jobs_requests_v1` | Client/request to command hash and original receipt |
-| `jobs_applied_v1` | Committed index to hash and receipt |
+| `jobs_requests_v2` | Stream generation and sequence to hash and original receipt |
+| `jobs_streams_v2` | Bounded slot to generation, phase, and sequence watermarks |
 | `jobs_unique_v1` | Queue/uniqueness key to job ID |
 | `jobs_due_v1` | Queue/UTC schedule timestamp/job ID to job ID |
 | `jobs_leases_v1` | Expiration tick/job ID to job ID |
@@ -73,8 +160,8 @@ The database has these tables.
 
 An operation first computes a bounded change set inside the write transaction.
 Only a successful plan writes job rows, queue rows, and affected indexes.
-Those writes, the replay receipt, the applied-index row, and metadata commit in
-one transaction. No transaction serializes all retained jobs into one value.
+Those writes, any replay receipt, stream watermarks, and the checkpoint commit
+in one transaction. No transaction serializes all retained jobs into one value.
 No transaction invokes a worker, reads a clock, or calls application code.
 
 `Enqueue` accepts a nonempty batch across configured queues. An unknown queue,
@@ -83,17 +170,15 @@ entire planned batch. No member inserts a job, due index, queue index, uniquenes
 claim, or changes a queue/job counter. Duplicate members within one batch also
 reject the whole batch.
 
-Rejected batches retain a negative request receipt and an applied-index record.
-This is the interpretation of replay protection in v1. These records consume a
-command slot; they do not reserve job IDs or uniqueness keys. A corrected batch
-uses a new request identity. Reusing the rejected identity returns its original
-rejection. Thus “no dedupe claims on rejection” applies to job admission and
-uniqueness, not to the durable record of the rejected command.
+An admitted rejected batch retains its negative request receipt. It reserves no
+job IDs or uniqueness keys. A corrected batch uses the next sequence. Reusing
+the original sequence replays the rejection or rejects a changed body. A batch
+that never entered its stream window instead receives `NotAdmitted`, as above.
 
 Terminal rows remain as tombstones with their arguments. Uniqueness is scoped
 to a queue and lasts for the retained lifetime, including terminal jobs. There
-is no automatic reuse, pruning, or receipt expiry. Manual retry reuses the job
-identity and starts a new run.
+is no automatic job reuse or pruning. Receipt retirement is explicit.
+Manual retry reuses the job identity and starts a new run.
 
 ## Job states and operations
 
@@ -129,6 +214,10 @@ within their deployment and do not independently authorize callers.
 Renewal extends the expiration using the current queue policy and never shortens
 it. Renewal during cancellation fails. Success completes the job. Failure
 schedules exponential backoff, capped by the retry policy, or exhausts the job.
+If the next retry deadline exceeds `MAX_TIME`, the job becomes terminally
+`Exhausted` and releases its slot. The same rule applies during expiration, so
+one unrepresentable retry cannot abort a clock update or strand other expired
+jobs. Claims and renewals with unrepresentable lease deadlines still reject.
 No completion payload or worker result codec is defined in this unit.
 
 `Cancel` requires the current revision. Pending or blocked work becomes
@@ -164,7 +253,7 @@ unless the adapter commits progress.
 A tick examines at most `expire_limit` entries from the lease-expiration index.
 It reads the current lease in the same transaction and checks its latest
 expiration. An earlier observation cannot revoke an intervening renewal.
-Additional pages can use the same tick with fresh request identities. Leases
+Additional pages can use the same tick at new committed indexes. Leases
 whose deadline passed but have not reached the sweep remain counted, and their
 renewals and completions fail. Capacity becomes available when their expiration
 commits. Cancellation intent becomes terminal cancellation on expiration.
@@ -175,32 +264,34 @@ idempotency. The store does not enforce an absolute physical execution cap.
 
 ## Bounds and inspection
 
-Identifiers contain 1 to 96 ASCII letters, digits, dots, underscores, or hyphens.
+Text identifiers contain 1 to 96 ASCII letters, digits, dots, underscores, or hyphens.
+Client slots are nonzero `u32` values. Generations and request sequences are
+nonzero `u64` values. A retirement watermark may be zero.
 Worker versions are nonzero `u32` values. A schema ID is an opaque validated
 identifier; the worker/compiler adapter supplies and verifies its actual schema
 meaning. Encoded arguments are opaque bytes limited to 64 KiB. A batch has at
 most 128 members and a serialized command has at most 1 MiB. Constructors and
 serde decoding validate bounded value types; command validation also checks
-batch, timestamp, and encoded-envelope bounds before opening a transaction.
+batch, timestamp, and encoded-envelope bounds at construction. If an invalid
+typed command nevertheless reaches the committed log, application records its
+rejection and advances. The adapter must bound the wire envelope before decoding.
 
 Concurrency is 1 to 1024. Lease duration is 1 to 1,000,000 ticks. Retry policy
 permits 1 to 100 attempts with positive base and maximum delays no greater than
 1,000,000 ticks. Arithmetic is checked. Times cannot exceed `i64::MAX`.
 
-Default retention limits are 100,000 jobs, 1,000,000 command positions, and
-1,024 queues. Hard configuration maxima are 1,000,000 jobs, 10,000,000 command
-positions, and 4,096 queues. `status()` reports remaining capacity and time in
-one read transaction. Domain rejections and transport repeats at new committed
-positions consume command capacity. Replaying the same recorded position does
-not.
+Default limits are 100,000 retained jobs, 1,024 stream slots, 128 outstanding
+receipts per stream, and 1,024 queues. Hard maxima are 1,000,000 jobs, 4,096 slots,
+1,024 receipts per stream, and 4,096 queues. Receipt rows never exceed the product
+of the stream and window limits. Stream rows never exceed the slot limit.
+Applied-index history occupies one checkpoint regardless of command count.
+`status()` reports the receipt count, remaining job and queue capacity, applied
+position, and time in one read transaction.
 
-The command bound is a hard lifetime bound. At exhaustion, new application
-positions fail with `AdmissionFull`, including lifecycle commands and ticks.
-Reads and existing-index replay still work. The proposer must account for
-in-flight reservations and stop admission before committing beyond this bound.
-The integration must budget lifecycle capacity. There is no online limit change
-or safe receipt-retirement protocol yet; this finite-lifetime constraint must
-not be hidden by a public API.
+Retained jobs and queues remain bounded with no pruning in this unit. Their
+admission limits cannot prevent draining accepted work. Retirement and closure
+remain possible at full receipt capacity. No lifecycle reserve or per-command
+lifetime counter exists.
 
 `inspect(queue, after_job_id, limit)` reads a queue-index page. `due(queue,
 after_cursor, limit)` scans at most `limit` due-index entries and excludes jobs
@@ -212,20 +303,32 @@ cursor. Claims always revalidate.
 
 Inspection and due pages permit 1 to 128 entries. `history` returns at most
 that page bound from the newest 32 changes retained per job. Older history is
-truncated; jobs, arguments, uniqueness, and replay receipts are not.
+truncated. Jobs, arguments, and uniqueness remain retained. Request receipts
+remain until explicit acknowledgement.
 
 ## Verification and remaining integration
 
-The initial focused test failed to compile because the store types did not
-exist. After implementation it verified that an accepted job and its exact
-arguments, identity, state, and replay receipt survive reopening.
+The original unit failed four tiny-bound regressions. An enqueue and claim
+succeeded, repeats and a rejected batch filled command capacity, and completion,
+cancellation, renewal, and expiration each returned `AdmissionFull`. The corrected
+tests fill a two-receipt window and verify that all four lifecycle operations
+advance. Original metadata-row and metadata-table deletion tests also failed,
+as did a final-tick sweep of two expired jobs across queues.
 
-The jobs tests exercise atomic cross-queue batches, duplicate members, identity
-conflicts, lease replacement, both renewal/expiration orders, cancellation races,
-queue draining, worker compatibility, retention bounds, and bounded history.
+The jobs tests retain atomic cross-queue batches, duplicate members, lease
+replacement, both renewal and expiration orders, cancellation races, queue
+draining, worker compatibility, retention bounds, and bounded history.
 Barrier-controlled threads hold stale observations across committed claims and
-renewals. Exhaustive three-step sequences cover 343 command combinations and
-check stored counters against authoritative lease rows after each step.
+renewals. Exhaustive three-step sequences cover 343 job-command combinations.
+A further 512 replay traces check retirement, generation rejection, single
+admission per identity, and receipt bounds. These are bounded executable checks,
+not a proof over unbounded executions.
+
+Replay tests cover out-of-order concurrent proposals, changed bodies, lost
+responses, negative receipts, full windows, acknowledgement, slot reuse,
+restart, and old-log coverage. A sustained test applies more than 1,600 commands
+across 64 generations and reads actual table counts. Receipt rows stay at two
+or fewer, the slot table stays at one row, and metadata stays at one checkpoint.
 
 The process proof starts the real test binary, commits an enqueue and claim,
 flushes an acknowledgement over a pipe, and blocks. The parent kills that
@@ -236,28 +339,32 @@ boundary only, not a public queue or cluster failover.
 Fault tests wrap redb's real file backend and inject read, write, and sync errors.
 They require errors to reach the caller. After reopening they accept either
 atomic commit outcome for an uncertain write and replay to one admitted job.
-Corrupt rows, incompatible metadata, and missing indexes also refuse success.
+Retirement fault tests require receipt deletion and watermark progress to recover
+atomically. Corrupt rows, incompatible metadata, and missing indexes refuse
+success. Missing metadata in an otherwise unused store cannot reinitialize it
+under another deployment or limit set, and failed open does not change its schema.
 
 The local verification commands are:
 
 ```sh
 export PATH=/Users/andreyyurlov/.rustup/toolchains/stable-aarch64-apple-darwin/bin:/opt/homebrew/opt/llvm@21/bin:$PATH
 export LLVM_SYS_211_PREFIX=/opt/homebrew/opt/llvm@21
-export CARGO_TARGET_DIR="$PWD/.tmp/jobs-state-store/target"
+export CARGO_TARGET_DIR="$PWD/.tmp/jobs-progress/target"
 export CARGO_BUILD_JOBS=2
 export CARGO_PROFILE_DEV_DEBUG=0
 export CARGO_PROFILE_TEST_DEBUG=0
 export CARGO_INCREMENTAL=0
-cargo test --locked -p mesh-rt jobs
-cargo fmt --all -- --check
+cargo test --locked -p mesh-rt --lib jobs
+rustfmt --edition 2021 --check compiler/mesh-rt/src/jobs/*.rs
 git diff --check
 ```
 
 Tests use this checkout's private Cargo target. Local logs are under
-`.tmp/jobs-state-store/evidence/` and are not release evidence.
+`.tmp/jobs-progress/evidence/` and are not release evidence.
 
 Raft integration, authenticated RPC, logical-time leadership handling, worker
 execution, compiler serialization, public/operator APIs, recurring schedules,
-snapshot creation/install, and safe retention are separate units. No recurring
-scheduler or snapshot stub is exposed. The parent owns independent review and
-workspace/proof gates on the integrated commit.
+snapshot creation and installation, job pruning, and the external client
+retirement protocol are separate units. No recurring scheduler or snapshot stub
+is exposed. The parent owns independent review and workspace/proof gates on the
+integrated commit.

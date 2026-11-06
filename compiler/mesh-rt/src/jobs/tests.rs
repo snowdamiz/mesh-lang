@@ -7,16 +7,17 @@ fn jobs_reopen_preserves_accepted_arguments_and_identity() {
     let deployment = DeploymentId::new("example").unwrap();
     let store = JobStore::open(&path, deployment.clone(), StoreLimits::default()).unwrap();
     let queue = QueueId::new("mail").unwrap();
-    let configure = Command::new(
-        ClientId::new("client").unwrap(),
-        RequestId::new("configure").unwrap(),
-        Operation::ConfigureQueue {
-            queue: queue.clone(),
-            policy: QueuePolicy::new(2, 10).unwrap(),
-        },
-    )
+    store
+        .apply(1, &Command::Register { stream: client() })
+        .unwrap()
+        .result
+        .unwrap();
+    let configure = Command::internal(Operation::ConfigureQueue {
+        queue: queue.clone(),
+        policy: QueuePolicy::new(2, 10).unwrap(),
+    })
     .unwrap();
-    store.apply(1, &configure).unwrap();
+    store.apply(2, &configure).unwrap();
     let job = NewJob::new(
         JobId::new("welcome").unwrap(),
         queue,
@@ -26,22 +27,15 @@ fn jobs_reopen_preserves_accepted_arguments_and_identity() {
         RetryPolicy::new(3, 2, 10).unwrap(),
         None,
     );
-    let submit = Command::new(
-        ClientId::new("client").unwrap(),
-        RequestId::new("submit").unwrap(),
-        Operation::Enqueue {
-            jobs: vec![job.clone()],
-        },
-    )
-    .unwrap();
-    let receipt = store.apply(2, &submit).unwrap();
+    let submit = Command::enqueue(client(), 1, vec![job.clone()]).unwrap();
+    let receipt = store.apply(3, &submit).unwrap();
     assert!(receipt.result.is_ok());
     drop(store);
     let store = JobStore::open(&path, deployment, StoreLimits::default()).unwrap();
     let saved = store.job(&job.id).unwrap().unwrap();
     assert_eq!(saved.spec, job);
     assert_eq!(saved.state, JobState::Pending);
-    assert_eq!(store.apply(2, &submit).unwrap(), receipt);
+    assert_eq!(store.apply(3, &submit).unwrap(), receipt);
 }
 
 struct Fixture {
@@ -69,13 +63,14 @@ fn spec(name: &str, q: &str) -> NewJob {
         None,
     )
 }
-fn command(request: &str, operation: Operation) -> Command {
-    Command::new(
-        ClientId::new("client").unwrap(),
-        RequestId::new(request).unwrap(),
-        operation,
-    )
-    .unwrap()
+fn client() -> ClientStream {
+    ClientStream::new(1, 1).unwrap()
+}
+fn command(sequence: u64, operation: Operation) -> Command {
+    match operation {
+        Operation::Enqueue { jobs } => Command::enqueue(client(), sequence, jobs).unwrap(),
+        operation => Command::internal(operation).unwrap(),
+    }
 }
 fn token(job: &Job) -> LeaseToken {
     let JobState::Leased(lease) = &job.state else {
@@ -95,16 +90,25 @@ impl Fixture {
             limits,
         )
         .unwrap();
+        store
+            .apply(1, &Command::Register { stream: client() })
+            .unwrap()
+            .result
+            .unwrap();
         Self {
             _directory: directory,
             store,
-            index: 0,
+            index: 1,
         }
     }
     fn apply(&mut self, operation: Operation) -> Receipt {
         self.index += 1;
+        let StreamPhase::Open { last_sequence, .. } = self.store.stream(1).unwrap().unwrap().phase
+        else {
+            panic!("open stream")
+        };
         self.store
-            .apply(self.index, &command(&format!("r{}", self.index), operation))
+            .apply(self.index, &command(last_sequence + 1, operation))
             .unwrap()
     }
     fn ok(&mut self, operation: Operation) -> Effect {
@@ -167,31 +171,39 @@ fn jobs_replay_returns_original_receipt_and_conflicting_body_never_mutates() {
     let mut f = Fixture::new();
     f.configure("mail", 2);
     let submit = command(
-        "submit",
+        1,
         Operation::Enqueue {
             jobs: vec![spec("a", "mail")],
         },
     );
-    let original = f.store.apply(2, &submit).unwrap();
-    assert_eq!(f.store.apply(2, &submit).unwrap(), original);
+    let original = f.store.apply(3, &submit).unwrap();
     assert_eq!(f.store.apply(3, &submit).unwrap(), original);
+    assert_eq!(f.store.apply(4, &submit).unwrap(), original);
     let conflict = command(
-        "submit",
+        1,
         Operation::Enqueue {
             jobs: vec![spec("b", "mail")],
         },
     );
-    assert_eq!(
-        f.store.apply(4, &conflict).unwrap().result,
-        Err(Rejection::RequestConflict)
-    );
     assert!(matches!(
-        f.store.apply(2, &conflict),
+        f.store.apply(4, &conflict),
         Err(Error::LogConflict)
     ));
+    assert_eq!(
+        f.store.apply(5, &conflict).unwrap().result,
+        Err(Rejection::RequestConflict)
+    );
+    assert_eq!(
+        f.store.apply(3, &conflict).unwrap().result,
+        Ok(Effect::AlreadyApplied { through: 5 })
+    );
     assert!(f.store.job(&id("b")).unwrap().is_none());
-    assert_eq!(f.store.receipt(&submit).unwrap(), Some(original));
-    assert_eq!(f.store.applied_index().unwrap(), 4);
+    assert_eq!(
+        f.store.receipt(&submit).unwrap(),
+        ReceiptLookup::Recorded(original)
+    );
+    assert_eq!(f.store.receipt(&conflict).unwrap(), ReceiptLookup::Conflict);
+    assert_eq!(f.store.applied_index().unwrap(), 5);
     assert_eq!(
         f.store
             .queue(&queue("mail"))
@@ -200,13 +212,14 @@ fn jobs_replay_returns_original_receipt_and_conflicting_body_never_mutates() {
             .retained_jobs,
         1
     );
-    let other = Command::new(
-        ClientId::new("other-client").unwrap(),
-        RequestId::new("submit").unwrap(),
-        conflict.operation,
-    )
-    .unwrap();
-    assert!(f.store.apply(5, &other).unwrap().result.is_ok());
+    let other = ClientStream::new(2, 1).unwrap();
+    f.store
+        .apply(6, &Command::Register { stream: other })
+        .unwrap()
+        .result
+        .unwrap();
+    let other = Command::enqueue(other, 1, vec![spec("b", "mail")]).unwrap();
+    assert!(f.store.apply(7, &other).unwrap().result.is_ok());
 }
 
 #[test]
@@ -217,7 +230,7 @@ fn jobs_rejected_batches_leave_no_job_indexes_counters_or_uniqueness_claims() {
     let mut a = spec("a", "mail");
     a.unique = Some(UniquenessKey::new("welcome").unwrap());
     let invalid = command(
-        "bad-batch",
+        1,
         Operation::Enqueue {
             jobs: vec![a.clone(), spec("b", "missing")],
         },
@@ -624,7 +637,8 @@ fn jobs_inspection_schedule_and_history_are_bounded_and_persistent() {
 #[test]
 fn jobs_validates_wire_values_metadata_and_explicit_retention_bounds() {
     assert!(JobId::new("bad/id").is_err());
-    assert!(RequestId::new("").is_err());
+    assert!(ClientStream::new(0, 1).is_err());
+    assert!(ClientStream::new(1, 0).is_err());
     assert!(WorkerKey::new("mail", 0, "schema").is_err());
     assert!(QueuePolicy::new(0, 1).is_err());
     assert!(RetryPolicy::new(101, 1, 2).is_err());
@@ -634,7 +648,8 @@ fn jobs_validates_wire_values_metadata_and_explicit_retention_bounds() {
     assert!(serde_json::from_str::<RetryPolicy>("[1,5,2]").is_err());
     let mut f = Fixture::with_limits(StoreLimits {
         max_jobs: 1,
-        max_commands: 4,
+        max_streams: 1,
+        receipts_per_stream: 2,
         max_queues: 1,
     });
     f.configure("mail", 1);
@@ -654,11 +669,8 @@ fn jobs_validates_wire_values_metadata_and_explicit_retention_bounds() {
         .result,
         Err(Rejection::QueueLimit)
     );
-    assert!(matches!(
-        f.store.apply(5, &command("full", f.claim_op("a"))),
-        Err(Error::AdmissionFull)
-    ));
-    assert_eq!(f.store.applied_index().unwrap(), 4);
+    f.ok(f.claim_op("a"));
+    assert_eq!(f.store.applied_index().unwrap(), 6);
     let path = f._directory.path().join("jobs.redb");
     drop(f.store);
     assert!(matches!(
@@ -810,10 +822,15 @@ fn jobs_subprocess_commit_helper() {
     )
     .unwrap();
     store
+        .apply(1, &Command::Register { stream: client() })
+        .unwrap()
+        .result
+        .unwrap();
+    store
         .apply(
-            1,
+            2,
             &command(
-                "configure",
+                1,
                 Operation::ConfigureQueue {
                     queue: queue("mail"),
                     policy: QueuePolicy::new(1, 10).unwrap(),
@@ -824,22 +841,22 @@ fn jobs_subprocess_commit_helper() {
         .result
         .unwrap();
     let accepted = command(
-        "submit",
+        1,
         Operation::Enqueue {
             jobs: vec![spec("survived", "mail")],
         },
     );
-    store.apply(2, &accepted).unwrap().result.unwrap();
+    store.apply(3, &accepted).unwrap().result.unwrap();
     let claim = command(
-        "claim",
+        1,
         Operation::Claim {
             id: id("survived"),
-            revision: Revision(2),
+            revision: Revision(3),
             holder: WorkerSession::new("dead-process").unwrap(),
             worker: Some(worker()),
         },
     );
-    store.apply(3, &claim).unwrap().result.unwrap();
+    store.apply(4, &claim).unwrap().result.unwrap();
     use std::io::{Read, Write};
     let mut out = std::io::stdout().lock();
     writeln!(out, "JOBS_COMMIT_ACCEPTED").unwrap();
@@ -891,7 +908,7 @@ fn jobs_reopens_after_real_process_death_following_accepted_commit() {
     .unwrap();
     let saved = store.job(&id("survived")).unwrap().unwrap();
     assert_eq!(saved.spec, spec("survived", "mail"));
-    assert_eq!(saved.revision, Revision(3));
+    assert_eq!(saved.revision, Revision(4));
     assert_eq!(
         token(&saved).holder,
         WorkerSession::new("dead-process").unwrap()
@@ -901,20 +918,23 @@ fn jobs_reopens_after_real_process_death_following_accepted_commit() {
         1
     );
     let accepted = command(
-        "submit",
+        1,
         Operation::Enqueue {
             jobs: vec![spec("survived", "mail")],
         },
     );
     assert_eq!(
-        store.apply(2, &accepted).unwrap(),
-        store.receipt(&accepted).unwrap().unwrap()
+        store.receipt(&accepted).unwrap(),
+        ReceiptLookup::Recorded(Receipt {
+            index: 3,
+            result: Ok(Effect::Enqueued(vec![id("survived")]))
+        })
     );
     store
         .apply(
-            4,
+            5,
             &command(
-                "expire",
+                1,
                 Operation::Tick {
                     tick: 10,
                     utc_ms: 0,
@@ -951,9 +971,9 @@ fn jobs_barrier_holds_stale_expiration_observation_across_committed_renewal() {
             renewed.wait();
             store
                 .apply(
-                    6,
+                    7,
                     &command(
-                        "expire-after-observation",
+                        1,
                         Operation::Tick {
                             tick: old.expires_at_tick,
                             utc_ms: 0,
@@ -966,9 +986,9 @@ fn jobs_barrier_holds_stale_expiration_observation_across_committed_renewal() {
         observed.wait();
         let receipt = store
             .apply(
-                5,
+                6,
                 &command(
-                    "renew-after-observation",
+                    1,
                     Operation::Renew {
                         token: lease.clone(),
                     },
@@ -1005,9 +1025,9 @@ fn jobs_barrier_orders_two_claims_that_observed_the_same_revision() {
             let job = store.job(&id("a")).unwrap().unwrap();
             observed.wait();
             let result = store.apply(
-                3,
+                4,
                 &command(
-                    "first-claim",
+                    1,
                     Operation::Claim {
                         id: job.spec.id,
                         revision: job.revision,
@@ -1026,9 +1046,9 @@ fn jobs_barrier_orders_two_claims_that_observed_the_same_revision() {
             committed_rx.recv().unwrap();
             store
                 .apply(
-                    4,
+                    5,
                     &command(
-                        "second-claim",
+                        1,
                         Operation::Claim {
                             id: job.spec.id,
                             revision: job.revision,
@@ -1140,3 +1160,176 @@ fn jobs_cross_queue_expiration_updates_each_counter_in_one_commit() {
     assert_eq!(f.job("a").state, JobState::Pending);
     assert_eq!(f.job("b").state, JobState::Pending);
 }
+
+fn saturated_lifecycle(operation: impl FnOnce(&Fixture, LeaseToken) -> Operation) {
+    let mut f = Fixture::with_limits(StoreLimits {
+        max_jobs: 1,
+        max_streams: 1,
+        receipts_per_stream: 2,
+        ..StoreLimits::default()
+    });
+    f.configure("mail", 1);
+    f.enqueue(vec![spec("accepted", "mail")]);
+    let lease = f.claim("accepted");
+    let repeat = command(
+        1,
+        Operation::Enqueue {
+            jobs: vec![spec("accepted", "mail")],
+        },
+    );
+    f.store.apply(5, &repeat).unwrap().result.unwrap();
+    let rejected = command(
+        2,
+        Operation::Enqueue {
+            jobs: vec![spec("rejected", "missing")],
+        },
+    );
+    assert_eq!(
+        f.store.apply(6, &rejected).unwrap().result,
+        Err(Rejection::JobLimit)
+    );
+    f.store
+        .apply(
+            7,
+            &command(
+                0,
+                Operation::Tick {
+                    tick: 5,
+                    utc_ms: 0,
+                    expire_limit: 1,
+                },
+            ),
+        )
+        .unwrap()
+        .result
+        .unwrap();
+    let operation = operation(&f, lease.clone());
+    let next = command(0, operation.clone());
+    let result = f.store.apply(8, &next);
+    assert!(
+        result.is_ok(),
+        "accepted-work lifecycle must advance at saturation, got {result:?}"
+    );
+    result.unwrap().result.unwrap();
+    assert_eq!(f.store.applied_index().unwrap(), 8);
+    match operation {
+        Operation::Complete { .. } => {
+            assert_eq!(
+                f.job("accepted").state,
+                JobState::Terminal(TerminalOutcome::Completed)
+            );
+            assert_eq!(f.active("mail"), 0);
+        }
+        Operation::Cancel { .. } => {
+            assert!(matches!(
+                f.job("accepted").state,
+                JobState::Leased(Lease {
+                    cancel_requested: true,
+                    ..
+                })
+            ));
+            assert_eq!(f.active("mail"), 1);
+            f.store
+                .apply(
+                    9,
+                    &command(
+                        0,
+                        Operation::Complete {
+                            token: lease,
+                            outcome: Finish::Success,
+                        },
+                    ),
+                )
+                .unwrap()
+                .result
+                .unwrap();
+            assert_eq!(
+                f.job("accepted").state,
+                JobState::Terminal(TerminalOutcome::Cancelled)
+            );
+            assert_eq!(f.active("mail"), 0);
+        }
+        Operation::Renew { .. } => {
+            assert!(matches!(
+                f.job("accepted").state,
+                JobState::Leased(Lease {
+                    expires_at_tick: 15,
+                    ..
+                })
+            ));
+            assert_eq!(f.active("mail"), 1);
+        }
+        Operation::Tick { .. } => {
+            assert_eq!(f.job("accepted").state, JobState::Pending);
+            assert_eq!(f.active("mail"), 0);
+        }
+        _ => panic!("lifecycle regression"),
+    }
+    assert_eq!(f.store.status().unwrap().retained_receipts, 2);
+}
+
+#[test]
+fn jobs_saturated_completion_advances() {
+    saturated_lifecycle(|_, token| Operation::Complete {
+        token,
+        outcome: Finish::Success,
+    });
+}
+#[test]
+fn jobs_saturated_cancellation_advances() {
+    saturated_lifecycle(|f, _| Operation::Cancel {
+        id: id("accepted"),
+        revision: f.job("accepted").revision,
+    });
+}
+#[test]
+fn jobs_saturated_renewal_advances() {
+    saturated_lifecycle(|_, token| Operation::Renew { token });
+}
+#[test]
+fn jobs_saturated_expiry_advances() {
+    saturated_lifecycle(|_, _| Operation::Tick {
+        tick: 10,
+        utc_ms: 10,
+        expire_limit: 1,
+    });
+}
+
+#[test]
+fn jobs_retry_deadline_exhaustion_releases_all_expired_queues() {
+    let mut f = Fixture::new();
+    for q in ["first", "second"] {
+        f.ok(Operation::ConfigureQueue {
+            queue: queue(q),
+            policy: QueuePolicy::new(1, 1).unwrap(),
+        });
+    }
+    f.tick(MAX_TIME - 1, 0);
+    let mut a = spec("a", "first");
+    let mut b = spec("b", "second");
+    a.retry = RetryPolicy::new(2, 1, 1).unwrap();
+    b.retry = a.retry.clone();
+    f.enqueue(vec![a, b]);
+    f.claim("a");
+    f.claim("b");
+    let result = f.apply(Operation::Tick {
+        tick: MAX_TIME,
+        utc_ms: 0,
+        expire_limit: 2,
+    });
+    assert!(
+        result.result.is_ok(),
+        "retry deadline exhaustion must not abort a committed sweep, got {result:?}"
+    );
+    for (name, q) in [("a", "first"), ("b", "second")] {
+        assert_eq!(
+            f.job(name).state,
+            JobState::Terminal(TerminalOutcome::Exhausted)
+        );
+        assert_eq!(f.active(q), 0);
+    }
+    assert_eq!(f.store.clock().unwrap(), (MAX_TIME, 0));
+}
+
+#[path = "replay_tests.rs"]
+mod replay_tests;

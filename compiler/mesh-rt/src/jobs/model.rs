@@ -15,7 +15,6 @@ pub(crate) enum Error {
     Storage(String),
     IncompatibleStore,
     LogConflict,
-    AdmissionFull,
 }
 
 impl std::fmt::Display for Error {
@@ -63,8 +62,6 @@ macro_rules! identifier {
 identifier!(DeploymentId);
 identifier!(JobId);
 identifier!(QueueId);
-identifier!(ClientId);
-identifier!(RequestId);
 identifier!(WorkerName);
 identifier!(SchemaId);
 identifier!(WorkerSession);
@@ -366,41 +363,105 @@ pub(crate) enum Operation {
     },
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "(u32, u64)", into = "(u32, u64)")]
+pub(crate) struct ClientStream {
+    pub(super) slot: u32,
+    pub(super) generation: u64,
+}
+impl ClientStream {
+    pub(crate) fn new(slot: u32, generation: u64) -> Result<Self, Error> {
+        if slot == 0 || generation == 0 {
+            return Err(Error::Invalid("client stream".into()));
+        }
+        Ok(Self { slot, generation })
+    }
+}
+impl TryFrom<(u32, u64)> for ClientStream {
+    type Error = Error;
+    fn try_from(value: (u32, u64)) -> Result<Self, Error> {
+        Self::new(value.0, value.1)
+    }
+}
+impl From<ClientStream> for (u32, u64) {
+    fn from(value: ClientStream) -> Self {
+        (value.slot, value.generation)
+    }
+}
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub(crate) struct Command {
-    pub(super) client: ClientId,
-    pub(super) request: RequestId,
-    pub(super) operation: Operation,
+pub(crate) enum StreamPhase {
+    Open {
+        retired_through: u64,
+        last_sequence: u64,
+    },
+    Closed,
+}
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub(crate) struct StreamStatus {
+    pub(crate) generation: u64,
+    pub(crate) phase: StreamPhase,
+}
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub(crate) enum Command {
+    Register {
+        stream: ClientStream,
+    },
+    Request {
+        stream: ClientStream,
+        sequence: u64,
+        operation: Operation,
+    },
+    Retire {
+        stream: ClientStream,
+        through: u64,
+    },
+    Close {
+        stream: ClientStream,
+    },
+    Internal(Operation),
 }
 impl Command {
-    pub(crate) fn new(
-        client: ClientId,
-        request: RequestId,
-        operation: Operation,
+    pub(crate) fn enqueue(
+        stream: ClientStream,
+        sequence: u64,
+        jobs: Vec<NewJob>,
     ) -> Result<Self, Error> {
-        let result = Self {
-            client,
-            request,
-            operation,
+        let command = Self::Request {
+            stream,
+            sequence,
+            operation: Operation::Enqueue { jobs },
         };
-        result.validate()?;
-        Ok(result)
+        command.validate()?;
+        Ok(command)
+    }
+    pub(crate) fn internal(operation: Operation) -> Result<Self, Error> {
+        let command = Self::Internal(operation);
+        command.validate()?;
+        Ok(command)
     }
     pub(super) fn validate(&self) -> Result<(), Error> {
-        match &self.operation {
-            Operation::Enqueue { jobs } => {
-                if jobs.is_empty()
+        match self {
+            Self::Request {
+                sequence,
+                operation: Operation::Enqueue { jobs },
+                ..
+            } => {
+                if *sequence == 0
+                    || jobs.is_empty()
                     || jobs.len() > MAX_BATCH
                     || jobs.iter().any(|j| j.scheduled_at_ms > MAX_TIME)
                 {
-                    return Err(Error::Invalid("batch bounds".into()));
+                    return Err(Error::Invalid("request bounds".into()));
                 }
             }
-            Operation::Tick {
+            Self::Request { .. } | Self::Internal(Operation::Enqueue { .. }) => {
+                return Err(Error::Invalid("command source".into()));
+            }
+            Self::Internal(Operation::Tick {
                 tick,
                 utc_ms,
                 expire_limit,
-            } => {
+            }) => {
                 if *tick > MAX_TIME || *utc_ms > MAX_TIME || !(1..=MAX_PAGE).contains(expire_limit)
                 {
                     return Err(Error::Invalid("tick bounds".into()));
@@ -416,13 +477,33 @@ impl Command {
     pub(super) fn hash(&self) -> Result<[u8; 32], Error> {
         Ok(Sha256::digest(serde_json::to_vec(self).map_err(storage_error)?).into())
     }
-    pub(super) fn key(&self) -> String {
-        format!("{}/{}", self.client.as_str(), self.request.as_str())
-    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub(crate) enum AdmissionRejection {
+    UnknownStream,
+    RetiredStream,
+    RetiredRequest,
+    SequenceGap { next: u64 },
+    WindowFull,
+}
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum ReceiptLookup {
+    Recorded(Receipt),
+    NotAdmitted,
+    Retired,
+    Conflict,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub(crate) enum Rejection {
+    NotAdmitted(AdmissionRejection),
+    InvalidCommand,
+    StreamLimit,
+    StreamInUse,
+    GenerationGap,
+    UnacknowledgedRequests,
+    InvalidRetirement,
     RequestConflict,
     UnknownQueue,
     UnknownJob,
@@ -441,6 +522,14 @@ pub(crate) enum Rejection {
 }
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub(crate) enum Effect {
+    AlreadyApplied {
+        through: u64,
+    },
+    StreamRegistered,
+    Retired {
+        through: u64,
+    },
+    StreamClosed,
     QueueConfigured,
     Enqueued(Vec<JobId>),
     Changed {
@@ -462,7 +551,7 @@ pub(crate) struct StoreStatus {
     pub(crate) applied_index: u64,
     pub(crate) tick: u64,
     pub(crate) utc_ms: u64,
-    pub(crate) remaining_commands: u64,
+    pub(crate) retained_receipts: u64,
     pub(crate) remaining_jobs: u64,
     pub(crate) remaining_queues: u64,
 }
@@ -470,14 +559,16 @@ pub(crate) struct StoreStatus {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub(crate) struct StoreLimits {
     pub(crate) max_jobs: u64,
-    pub(crate) max_commands: u64,
+    pub(crate) max_streams: u32,
+    pub(crate) receipts_per_stream: u64,
     pub(crate) max_queues: u64,
 }
 impl Default for StoreLimits {
     fn default() -> Self {
         Self {
             max_jobs: 100_000,
-            max_commands: 1_000_000,
+            max_streams: 1024,
+            receipts_per_stream: 128,
             max_queues: 1024,
         }
     }
@@ -485,10 +576,12 @@ impl Default for StoreLimits {
 impl StoreLimits {
     pub(super) fn validate(&self) -> Result<(), Error> {
         if self.max_jobs == 0
-            || self.max_commands == 0
+            || self.max_streams == 0
+            || self.receipts_per_stream == 0
             || self.max_queues == 0
             || self.max_jobs > 1_000_000
-            || self.max_commands > 10_000_000
+            || self.max_streams > 4096
+            || self.receipts_per_stream > 1024
             || self.max_queues > 4096
         {
             return Err(Error::Invalid("store limits".into()));
@@ -551,14 +644,18 @@ impl Job {
             _ => Err(Rejection::StaleLease),
         }
     }
-    fn failed(&mut self, tick: u64) -> Result<(), Rejection> {
+    fn failed(&mut self, tick: u64) {
         if self.attempts >= self.spec.retry.max_attempts {
             self.state = JobState::Terminal(TerminalOutcome::Exhausted);
         } else {
-            self.ready_at_tick = add_time(tick, self.spec.retry.delay(self.attempts))?;
-            self.state = JobState::Pending;
+            match add_time(tick, self.spec.retry.delay(self.attempts)) {
+                Ok(deadline) => {
+                    self.ready_at_tick = deadline;
+                    self.state = JobState::Pending;
+                }
+                Err(_) => self.state = JobState::Terminal(TerminalOutcome::Exhausted),
+            }
         }
-        Ok(())
     }
     pub(super) fn transition(
         &self,
@@ -630,7 +727,7 @@ impl Job {
                         Finish::Success => {
                             next.state = JobState::Terminal(TerminalOutcome::Completed)
                         }
-                        Finish::Failure => next.failed(ctx.tick)?,
+                        Finish::Failure => next.failed(ctx.tick),
                         Finish::Cancelled => return Err(Rejection::InvalidState),
                     }
                 }
@@ -672,7 +769,7 @@ impl Job {
                 if lease.cancel_requested {
                     next.state = JobState::Terminal(TerminalOutcome::Cancelled);
                 } else {
-                    next.failed(ctx.tick)?;
+                    next.failed(ctx.tick);
                 }
             }
             _ => return Err(Rejection::InvalidState),
