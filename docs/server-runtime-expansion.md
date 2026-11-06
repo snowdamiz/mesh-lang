@@ -63,6 +63,12 @@ does not satisfy the row.
 7. Run independent adversarial review and the applicable authoritative workspace,
    documentation, editor, and runtime proof gates on the integrated commit.
 
+The Whatsdown project may concurrently produce Mesh fixes in another session.
+Keep this effort on its isolated branch. Before each integration stage, inspect
+new shared Mesh commits and compare overlapping changes. Preserve external
+fixes, reconcile behavior deliberately, and rerun the affected checks after
+integration. Never rewrite another session's branch or discard its changes.
+
 ## Verification boundary
 
 Focused tests guide each implementation. The authoritative commands are owned
