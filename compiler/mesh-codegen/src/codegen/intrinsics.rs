@@ -235,6 +235,24 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    module.add_function(
+        "mesh_actor_receive_begin",
+        void_type.fn_type(&[i64_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_actor_receive_next",
+        ptr_type.fn_type(&[], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    for name in ["mesh_actor_receive_accept", "mesh_actor_receive_abort"] {
+        module.add_function(
+            name,
+            void_type.fn_type(&[], false),
+            Some(inkwell::module::Linkage::External),
+        );
+    }
+
     // mesh_actor_self() -> i64
     let self_ty = i64_type.fn_type(&[], false);
     module.add_function(

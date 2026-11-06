@@ -344,3 +344,21 @@ fn test_only_an_actor_can_be_spawned() {
         "SpawnNotActor",
     );
 }
+
+#[test]
+fn matching_receive_allows_missing_variants_but_plain_receive_and_case_do_not() {
+    let source = "type Message do One(Int) Two(String) end\nactor worker() do\n receive matching do One(n) -> n end\nend\nfn main() do let p :: Pid<Message> = spawn(worker) end";
+    assert_no_errors(&check_source(source));
+    let plain = check_source(&source.replace("receive matching", "receive"));
+    assert_has_error(
+        &plain,
+        |error| matches!(error, TypeError::NonExhaustiveMatch { .. }),
+        "plain receive remains exhaustive",
+    );
+    let case = check_source("type Message do One(Int) Two(String) end\nfn check(m :: Message) do case m do One(n) -> n end end");
+    assert_has_error(
+        &case,
+        |error| matches!(error, TypeError::NonExhaustiveMatch { .. }),
+        "case remains exhaustive",
+    );
+}

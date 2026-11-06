@@ -6,6 +6,7 @@
 
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 use parking_lot::Mutex;
 
@@ -62,6 +63,7 @@ pub enum MailboxPushError {
 struct MailboxState {
     queue: VecDeque<Message>,
     bytes: usize,
+    retained: usize,
 }
 
 /// A thread-safe FIFO mailbox for an actor.
@@ -86,6 +88,7 @@ impl Mailbox {
             state: Mutex::new(MailboxState {
                 queue: VecDeque::new(),
                 bytes: 0,
+                retained: 0,
             }),
             max_items,
             max_bytes,
@@ -134,7 +137,7 @@ impl Mailbox {
             let max_bytes = self
                 .max_bytes
                 .saturating_add(if control { message_bytes } else { 0 });
-            if state.queue.len() >= max_items
+            if state.queue.len() + state.retained >= max_items
                 || state.bytes.saturating_add(message_bytes) > max_bytes
                 || !reserve_global(message_bytes, global_max_items, global_max_bytes)
             {
@@ -142,7 +145,7 @@ impl Mailbox {
             }
             state.bytes += message_bytes;
             state.queue.push_back(msg);
-            state.queue.len()
+            state.queue.len() + state.retained
         };
         crate::dist::telemetry::runtime_telemetry().record_mailbox_enqueue(depth);
         Ok(())
@@ -169,16 +172,43 @@ impl Mailbox {
 
     /// Check if the mailbox is empty.
     pub fn is_empty(&self) -> bool {
-        self.state.lock().queue.is_empty()
+        self.len() == 0
     }
 
     /// Return the number of messages in the mailbox.
     pub fn len(&self) -> usize {
-        self.state.lock().queue.len()
+        let state = self.state.lock();
+        state.queue.len() + state.retained
     }
 
     pub fn byte_len(&self) -> usize {
         self.state.lock().bytes
+    }
+
+    pub(crate) fn application_len(&self) -> usize {
+        self.state
+            .lock()
+            .queue
+            .iter()
+            .filter(|msg| msg.buffer.type_tag == super::PROGRAM_MESSAGE_TAG)
+            .count()
+    }
+
+    /// Transfer ownership without freeing capacity. The reservation follows the
+    /// message until consumption, including while it lives in the saved queue.
+    pub(crate) fn retain_application(self: &Arc<Self>) -> Option<(Message, Reservation)> {
+        let mut state = self.state.lock();
+        let index = state
+            .queue
+            .iter()
+            .position(|msg| msg.buffer.type_tag == super::PROGRAM_MESSAGE_TAG)?;
+        let message = state.queue.remove(index).unwrap();
+        state.retained += 1;
+        let reservation = Reservation {
+            mailbox: Arc::clone(self),
+            bytes: message.buffer.data.len(),
+        };
+        Some((message, reservation))
     }
 
     /// Selectively remove the first message matching a predicate.
@@ -209,6 +239,22 @@ impl Mailbox {
             }
         }
         None
+    }
+}
+
+pub(crate) struct Reservation {
+    mailbox: Arc<Mailbox>,
+    bytes: usize,
+}
+
+impl Drop for Reservation {
+    fn drop(&mut self) {
+        let mut state = self.mailbox.state.lock();
+        state.retained -= 1;
+        state.bytes -= self.bytes;
+        release_global(self.bytes, 1);
+        drop(state);
+        crate::dist::telemetry::runtime_telemetry().record_mailbox_dequeue(1);
     }
 }
 

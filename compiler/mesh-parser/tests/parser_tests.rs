@@ -2207,6 +2207,24 @@ fn send_expr_simple() {
 // -- Receive Expression --
 
 #[test]
+fn receive_matching_is_contextual() {
+    use mesh_parser::ast::{expr::ReceiveExpr, AstNode};
+    let parsed = mesh_parser::parse(
+        "receive matching do Some(value) when value > 0 -> value after 0 -> 0 end",
+    );
+    assert!(parsed.errors().is_empty(), "{:?}", parsed.errors());
+    let receive = parsed
+        .syntax()
+        .descendants()
+        .find_map(ReceiveExpr::cast)
+        .unwrap();
+    assert!(receive.is_matching());
+    assert_eq!(receive.arms().count(), 1);
+    assert!(receive.after_clause().is_some());
+    assert!(mesh_parser::parse("let matching = 1").errors().is_empty());
+}
+
+#[test]
 fn receive_expr_single_arm() {
     assert_snapshot!(parse_and_debug("receive do\n  x -> x\nend"));
 }

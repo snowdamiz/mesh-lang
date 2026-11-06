@@ -14985,9 +14985,10 @@ fn infer_receive(
         env.pop_scope();
     }
 
-    // A receive takes whatever message arrives next, so its arms must cover
-    // the whole message type, as a case's arms cover its scrutinee.
+    // Plain receive covers the whole message type. Matching receive keeps
+    // the same redundancy checks while allowing messages it cannot select.
     if !arm_patterns.is_empty() {
+        let error_start = ctx.errors.len();
         check_arm_coverage(
             ctx,
             &actor_msg_ty,
@@ -14998,6 +14999,14 @@ fn infer_receive(
             type_registry,
             false,
         );
+        if recv.is_matching() {
+            let coverage_errors = ctx.errors.split_off(error_start);
+            ctx.errors.extend(
+                coverage_errors
+                    .into_iter()
+                    .filter(|error| !matches!(error, TypeError::NonExhaustiveMatch { .. })),
+            );
+        }
         // `assert_receive` adds a catch-all arm that fails the test; it is
         // redundant whenever the asserted pattern matches everything.
         if ctx.test_builtins {

@@ -35,6 +35,11 @@ pub mod link;
 pub mod mailbox;
 pub(crate) mod msg_shape;
 pub mod process;
+mod receive;
+pub use receive::{
+    mesh_actor_receive_abort, mesh_actor_receive_accept, mesh_actor_receive_begin,
+    mesh_actor_receive_next,
+};
 pub mod registry;
 pub mod scheduler;
 pub mod service;
@@ -414,7 +419,10 @@ fn try_trigger_gc() {
         register_roots.as_ptr() as usize,
     ) as *const u8;
 
-    proc.heap.collect(stack_bottom, stack_top);
+    let process = &mut *proc;
+    process
+        .heap
+        .collect_with_roots(stack_bottom, stack_top, process.receive.roots());
     std::hint::black_box(&register_roots);
 }
 
@@ -740,7 +748,7 @@ fn send_application_frame(session: &crate::dist::node::NodeSession, payload: Vec
 /// actor (a job's result, a service's reply) waits for what asked for it.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_actor_receive(timeout_ms: i64) -> *const u8 {
-    actor_receive_matching(timeout_ms, |message| {
+    receive_with_saved(timeout_ms, true, |message| {
         message.buffer.type_tag == PROGRAM_MESSAGE_TAG
     })
 }
@@ -762,7 +770,7 @@ where
 /// A blocking receive of any message, for the runtime's own actors
 /// (supervisors, WebSocket connections), which read the tags themselves.
 pub(crate) fn receive_any() -> *const u8 {
-    actor_receive_matching(-1, |_| true)
+    receive_with_saved(-1, true, |_| true)
 }
 
 /// Stop a generated actor without returning a fabricated receive value.
@@ -779,8 +787,16 @@ pub(crate) fn actor_receive_matching<F>(timeout_ms: i64, predicate: F) -> *const
 where
     F: Fn(&Message) -> bool,
 {
+    receive_with_saved(timeout_ms, false, predicate)
+}
+
+fn receive_with_saved<F>(timeout_ms: i64, saved: bool, predicate: F) -> *const u8
+where
+    F: Fn(&Message) -> bool,
+{
     let sched = global_scheduler();
     let (my_pid, me) = running_process();
+    me.lock().receive.assert_idle();
     let deadline = (timeout_ms > 0)
         .then(|| std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms as u64));
     // `main` is not a coroutine: it polls its mailbox instead of yielding.
@@ -792,6 +808,11 @@ where
     loop {
         let ending = in_coroutine && sched.is_shutdown() && !others_running(sched, my_pid);
         let mut proc = me.lock();
+        if saved {
+            if let Some(message) = proc.receive.pop_front() {
+                return message;
+            }
+        }
         if let Some(msg) = proc.mailbox.remove_first(&predicate) {
             drop(proc);
             return copy_msg_to_actor_heap(sched, my_pid, msg);
@@ -1033,15 +1054,15 @@ unsafe impl Send for SendOnTimer {}
 
 /// Deep-copy a message into the actor's heap and return a pointer to the
 /// heap-allocated layout: `[u64 type_tag, u64 data_len, u8... data]`.
-pub(crate) fn copy_msg_to_actor_heap(
-    sched: &Scheduler,
-    pid: ProcessId,
-    mut msg: Message,
-) -> *const u8 {
+pub(crate) fn copy_msg_to_actor_heap(sched: &Scheduler, pid: ProcessId, msg: Message) -> *const u8 {
     let proc_arc = sched
         .get_process(pid)
         .expect("a message is copied into the running process, which is in the table");
-    let mut proc = proc_arc.lock();
+    let mut process = proc_arc.lock();
+    copy_message(&mut process, msg)
+}
+
+fn copy_message(proc: &mut Process, mut msg: Message) -> *const u8 {
     // Layout: [u64 type_tag][u64 data_len][u8... data]
     let header_size = 16; // 8 bytes type_tag + 8 bytes data_len
     let total_size = header_size + msg.buffer.data.len();

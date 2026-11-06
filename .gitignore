@@ -1,5 +1,6 @@
 # Rust build artifacts
 /target
+/target-selective-receive/
 
 # Insta snapshot review files
 *.snap.new

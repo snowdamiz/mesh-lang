@@ -1044,6 +1044,8 @@ test('shared grammar covers the complete compiler token surface and current lang
   ]
 
   const negativeProbes = [
+    { id: 'matching-receive', code: 'receive matching do', token: 'matching', expectedScopes: ['keyword.control.mesh'] },
+    { id: 'matching-binding', code: 'let matching = 1', token: 'matching', expectedScopes: [VARIABLE_SCOPE], unexpectedScopes: ['keyword.control.mesh'] },
     { id: 'invalid-uppercase-atom', code: ':Invalid', token: ':Invalid', unexpectedScopes: [ATOM_SCOPE] },
     { id: 'missing-regex-delimiter', code: '~r', token: '~r', unexpectedScopes: [REGEX_SCOPE] },
     { id: 'invalid-regex-flag', code: '~r/value/z', token: '~r/value/z', unexpectedScopes: [REGEX_SCOPE] },

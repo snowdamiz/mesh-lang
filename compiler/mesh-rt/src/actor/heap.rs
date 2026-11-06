@@ -647,12 +647,21 @@ impl ActorHeap {
     /// This method is guarded against re-entrancy: if `gc_in_progress` is
     /// already set, the call is a no-op.
     pub fn collect(&mut self, stack_bottom: *const u8, stack_top: *const u8) {
+        self.collect_with_roots(stack_bottom, stack_top, std::iter::empty());
+    }
+
+    pub(crate) fn collect_with_roots(
+        &mut self,
+        stack_bottom: *const u8,
+        stack_top: *const u8,
+        roots: impl Iterator<Item = usize>,
+    ) {
         if self.gc_in_progress {
             return;
         }
         self.gc_in_progress = true;
 
-        self.mark_from_roots(stack_bottom, stack_top);
+        self.mark_from_roots(stack_bottom, stack_top, roots);
         self.sweep();
 
         self.gc_in_progress = false;
@@ -670,7 +679,12 @@ impl ActorHeap {
     ///
     /// The worklist is a `Vec` allocated on the system heap (via Rust's
     /// allocator), NOT on the GC heap, to avoid re-entrancy issues.
-    fn mark_from_roots(&mut self, stack_bottom: *const u8, stack_top: *const u8) {
+    fn mark_from_roots(
+        &mut self,
+        stack_bottom: *const u8,
+        stack_top: *const u8,
+        roots: impl Iterator<Item = usize>,
+    ) {
         // Worklist lives on the system heap (Rust Vec -> malloc).
         let mut worklist: Vec<*mut GcHeader> = Vec::new();
 
@@ -686,6 +700,10 @@ impl ActorHeap {
             let word = unsafe { *(addr as *const usize) };
             self.mark_word(word, &mut worklist);
             addr += 8;
+        }
+
+        for root in roots {
+            self.mark_word(root, &mut worklist);
         }
 
         // Objects lent to spawned actors are roots for as long as the

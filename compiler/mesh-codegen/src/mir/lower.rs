@@ -14320,6 +14320,7 @@ impl<'a> Lowerer<'a> {
         };
 
         MirExpr::ActorReceive {
+            matching: recv.is_matching(),
             handler,
             timeout_ms,
             timeout_body,

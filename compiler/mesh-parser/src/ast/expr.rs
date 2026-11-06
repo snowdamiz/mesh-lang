@@ -778,6 +778,14 @@ impl SendExpr {
 ast_node!(ReceiveExpr, RECEIVE_EXPR);
 
 impl ReceiveExpr {
+    pub fn is_matching(&self) -> bool {
+        self.syntax.children_with_tokens().any(|it| {
+            it.into_token().is_some_and(|token| {
+                token.kind() == SyntaxKind::IDENT && token.text() == "matching"
+            })
+        })
+    }
+
     /// The receive arms.
     pub fn arms(&self) -> impl Iterator<Item = ReceiveArm> + '_ {
         child_nodes(&self.syntax)

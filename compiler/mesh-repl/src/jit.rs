@@ -67,6 +67,22 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             "mesh_actor_receive",
             mesh_rt::mesh_actor_receive as *const (),
         ),
+        (
+            "mesh_actor_receive_begin",
+            mesh_rt::actor::mesh_actor_receive_begin as *const (),
+        ),
+        (
+            "mesh_actor_receive_next",
+            mesh_rt::actor::mesh_actor_receive_next as *const (),
+        ),
+        (
+            "mesh_actor_receive_accept",
+            mesh_rt::actor::mesh_actor_receive_accept as *const (),
+        ),
+        (
+            "mesh_actor_receive_abort",
+            mesh_rt::actor::mesh_actor_receive_abort as *const (),
+        ),
         ("mesh_actor_self", mesh_rt::mesh_actor_self as *const ()),
         ("mesh_actor_send", mesh_rt::mesh_actor_send as *const ()),
         (

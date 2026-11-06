@@ -566,6 +566,7 @@
     },
     "contextual-keywords": {
       "patterns": [
+        { "match": "(?<![\\p{Alphabetic}\\p{N}_]receive)(?<=receive)[\\t ]+(matching)(?![\\p{Alphabetic}\\p{N}_])", "captures": { "1": { "name": "keyword.control.mesh" } } },
         {
           "match": "(?<![\\p{Alphabetic}\\p{N}_])(end)((?:[\\t ]|#=.*=#)+)(deriving)(?![\\p{Alphabetic}\\p{N}_])(?=(?:[\\t ]|#=.*=#)*\\()",
           "captures": {

@@ -358,12 +358,18 @@ fn make_leaf_or_guard(
     let arm_index = row.arm_index;
     let bindings = row.bindings.clone();
     match &row.guard {
-        Some(guard_expr) => DecisionTree::Guard {
-            guard_expr: guard_expr.clone(),
-            arm_index,
-            bindings,
-            failure: Box::new(compile_matrix(rest, file, line, sum_type_defs)),
-        },
+        Some(guard_expr) => {
+            let mut rest = rest;
+            // Or-pattern alternatives share one arm and one guard evaluation.
+            rest.rows
+                .retain(|alternative| alternative.arm_index != arm_index);
+            DecisionTree::Guard {
+                guard_expr: guard_expr.clone(),
+                arm_index,
+                bindings,
+                failure: Box::new(compile_matrix(rest, file, line, sum_type_defs)),
+            }
+        }
         None => DecisionTree::Leaf {
             arm_index,
             bindings,

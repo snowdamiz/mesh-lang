@@ -156,11 +156,13 @@ impl<'ctx> CodeGen<'ctx> {
             } => self.codegen_actor_send(target, message),
 
             MirExpr::ActorReceive {
+                matching,
                 handler,
                 timeout_ms,
                 timeout_body,
                 ty,
             } => self.codegen_actor_receive(
+                *matching,
                 handler.as_ref(),
                 timeout_ms.as_deref(),
                 timeout_body.as_deref(),
@@ -1817,6 +1819,7 @@ impl<'ctx> CodeGen<'ctx> {
                 result_ty: ty,
                 result: result_alloca,
                 merge_bb,
+                retry_receive: None,
             },
         )?;
 
@@ -1881,6 +1884,7 @@ impl<'ctx> CodeGen<'ctx> {
                 result_ty: ty,
                 result: result_alloca,
                 merge_bb,
+                retry_receive: None,
             },
         )?;
         self.merged_value(merge_bb, result_ty, result_alloca, "match_val")
@@ -2320,6 +2324,15 @@ impl<'ctx> CodeGen<'ctx> {
             .get_return_type()
             .expect("a Mesh function returns a value");
         let return_val = self.coerce_value_to_type(val, ret_ty)?;
+        if self.receive_guard_loop_depth.is_some() {
+            self.builder
+                .build_call(
+                    get_intrinsic(&self.module, "mesh_actor_receive_abort"),
+                    &[],
+                    "",
+                )
+                .map_err(|e| e.to_string())?;
+        }
 
         self.builder
             .build_return(Some(&return_val))
@@ -2775,6 +2788,7 @@ impl<'ctx> CodeGen<'ctx> {
 
     fn codegen_actor_receive(
         &mut self,
+        matching: bool,
         handler: Option<&(String, MirType, Box<MirExpr>)>,
         timeout_ms: Option<&MirExpr>,
         timeout_body: Option<&MirExpr>,
@@ -2789,6 +2803,10 @@ impl<'ctx> CodeGen<'ctx> {
             // Infinite wait: -1
             i64_ty.const_int(u64::MAX, true) // -1 as i64
         };
+
+        if matching {
+            return self.codegen_matching_receive(handler, timeout_val, timeout_body, result_ty);
+        }
 
         // Call mesh_actor_receive(timeout_ms) -> ptr (null when timeout fires)
         let msg_ptr = self
@@ -2868,6 +2886,113 @@ impl<'ctx> CodeGen<'ctx> {
             let msg_val = self.codegen_recv_load_message(msg_ptr, result_ty)?;
             self.codegen_recv_handler(handler, msg_ptr, msg_val)
         }
+    }
+
+    fn codegen_matching_receive(
+        &mut self,
+        handler: Option<&(String, MirType, Box<MirExpr>)>,
+        timeout: inkwell::values::IntValue<'ctx>,
+        timeout_body: Option<&MirExpr>,
+        result_ty: &MirType,
+    ) -> Result<BasicValueEnum<'ctx>, String> {
+        let function = self.current_function();
+        let next = self.context.append_basic_block(function, "receive_next");
+        let candidate = self
+            .context
+            .append_basic_block(function, "receive_candidate");
+        let expired = self.context.append_basic_block(function, "receive_expired");
+        let merge_bb = self.context.append_basic_block(function, "receive_merge");
+        let llvm_result = self.llvm_type(result_ty);
+        let result = self
+            .builder
+            .build_alloca(llvm_result, "receive_result")
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_call(
+                get_intrinsic(&self.module, "mesh_actor_receive_begin"),
+                &[timeout.into()],
+                "",
+            )
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_unconditional_branch(next)
+            .map_err(|e| e.to_string())?;
+        self.builder.position_at_end(next);
+        let message = self
+            .codegen_runtime_call("mesh_actor_receive_next", &[], "receive_message")
+            .into_pointer_value();
+        let empty = self
+            .builder
+            .build_is_null(message, "receive_empty")
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_conditional_branch(empty, expired, candidate)
+            .map_err(|e| e.to_string())?;
+
+        self.builder.position_at_end(candidate);
+        if let Some((_, message_ty, body)) = handler {
+            let MirExpr::Match { arms, .. } = body.as_ref() else {
+                return Err("receive matching requires a pattern decision tree".into());
+            };
+            let value = if matches!(message_ty, MirType::Unit | MirType::Never) {
+                self.llvm_type(message_ty).const_zero()
+            } else {
+                let word = self.codegen_recv_load_message(message, message_ty)?;
+                self.codegen_recv_message_as(message, message_ty, word)?
+            };
+            let scrutinee = self
+                .builder
+                .build_alloca(self.llvm_type(message_ty), "receive_value")
+                .map_err(|e| e.to_string())?;
+            self.builder
+                .build_store(scrutinee, value)
+                .map_err(|e| e.to_string())?;
+            let tree = compile_match(
+                message_ty,
+                arms,
+                &self.current_function_name(),
+                0,
+                &self.sum_type_defs,
+            );
+            self.codegen_decision_tree(
+                &tree,
+                MatchTarget {
+                    scrutinee,
+                    scrutinee_ty: message_ty,
+                    arms,
+                    result_ty,
+                    result,
+                    merge_bb,
+                    retry_receive: Some(next),
+                },
+            )?;
+        } else {
+            self.builder
+                .build_unconditional_branch(next)
+                .map_err(|e| e.to_string())?;
+        }
+
+        self.builder.position_at_end(expired);
+        if let Some(body) = timeout_body {
+            let value = self.codegen_expr(body)?;
+            if self.block_is_open() {
+                let value = self.coerce_value_to_type(value, llvm_result)?;
+                self.builder
+                    .build_store(result, value)
+                    .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_unconditional_branch(merge_bb)
+                    .map_err(|e| e.to_string())?;
+            }
+        } else {
+            self.builder
+                .build_call(get_intrinsic(&self.module, "mesh_actor_stop"), &[], "")
+                .map_err(|e| e.to_string())?;
+            self.builder
+                .build_unreachable()
+                .map_err(|e| e.to_string())?;
+        }
+        self.merged_value(merge_bb, llvm_result, result, "receive_value")
     }
 
     /// Load the message data from the received message pointer.
@@ -3372,6 +3497,18 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     fn codegen_break(&mut self) -> Result<BasicValueEnum<'ctx>, String> {
+        if self
+            .receive_guard_loop_depth
+            .is_some_and(|depth| self.loop_stack.len() <= depth)
+        {
+            self.builder
+                .build_call(
+                    get_intrinsic(&self.module, "mesh_actor_receive_abort"),
+                    &[],
+                    "",
+                )
+                .map_err(|e| e.to_string())?;
+        }
         let (_, merge_bb) = self
             .loop_stack
             .last()
@@ -3387,6 +3524,18 @@ impl<'ctx> CodeGen<'ctx> {
     }
 
     fn codegen_continue(&mut self) -> Result<BasicValueEnum<'ctx>, String> {
+        if self
+            .receive_guard_loop_depth
+            .is_some_and(|depth| self.loop_stack.len() <= depth)
+        {
+            self.builder
+                .build_call(
+                    get_intrinsic(&self.module, "mesh_actor_receive_abort"),
+                    &[],
+                    "",
+                )
+                .map_err(|e| e.to_string())?;
+        }
         let (cond_bb, _) = self
             .loop_stack
             .last()

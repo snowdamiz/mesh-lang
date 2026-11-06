@@ -311,6 +311,8 @@ pub struct Process {
     /// and enable per-actor memory reclamation.
     pub heap: ActorHeap,
 
+    pub(crate) receive: super::receive::ReceiveState,
+
     /// Embedded calls have no coroutine GC and release their heap on return.
     pub(crate) library_call: bool,
     /// The main thread's process. It is not a coroutine and never yields, so
@@ -409,6 +411,7 @@ impl Process {
             monitored_by: FxHashMap::default(),
             mailbox: Arc::new(Mailbox::new()),
             heap: ActorHeap::new(),
+            receive: super::receive::ReceiveState::default(),
             library_call: false,
             collects_at_safepoints: false,
             worker: None,
@@ -463,6 +466,7 @@ impl Process {
                 fallback_reason
             }
         };
+        self.receive = super::receive::ReceiveState::default();
         self.exit_finalization_started = true;
         Some(reason)
     }

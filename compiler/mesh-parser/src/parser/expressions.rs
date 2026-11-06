@@ -1823,6 +1823,9 @@ fn parse_send_expr(p: &mut Parser) -> MarkClosed {
 fn parse_receive_expr(p: &mut Parser) -> MarkClosed {
     let m = p.open();
     p.advance(); // RECEIVE_KW
+    if p.at(SyntaxKind::IDENT) && p.current_text() == "matching" {
+        p.advance();
+    }
 
     let do_span = p.current_span();
     p.expect(SyntaxKind::DO_KW);

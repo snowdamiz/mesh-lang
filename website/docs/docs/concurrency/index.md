@@ -132,6 +132,23 @@ actor worker() do
 end
 ```
 
+Use `receive matching` to leave unmatched messages queued. Its arms can omit
+variants. The next ordinary receive reads the oldest retained application message.
+
+```mesh
+receive matching do
+  Ready(value) when value > 0 -> println("ready #{value}")
+  after 1_000 -> println("no ready message")
+end
+```
+
+Patterns and guards use the same rules as `case`. Each applicable guard runs once
+per candidate in one receive invocation. A guard cannot receive, including through
+`Job.await` or a service call. The selected arm body can receive normally.
+Unmatched messages remain GC roots and still count against mailbox limits.
+`after 0` scans the messages already queued. A positive timeout keeps one deadline
+across scans and wakeups.
+
 Actors can also perform computation before responding. Here is an actor that runs a function when it receives a message:
 
 ```mesh

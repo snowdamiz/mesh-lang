@@ -127,6 +127,8 @@ pub struct CodeGen<'ctx> {
         inkwell::basic_block::BasicBlock<'ctx>,
     )>,
 
+    pub(crate) receive_guard_loop_depth: Option<usize>,
+
     /// Service dispatch tables.
     /// Maps service loop function name -> (call_handlers, cast_handlers).
     /// Each entry: (type_tag, handler_fn_name, num_args).
@@ -254,6 +256,7 @@ impl<'ctx> CodeGen<'ctx> {
             mir_functions: Vec::new(),
             mir_struct_defs: FxHashMap::default(),
             loop_stack: Vec::new(),
+            receive_guard_loop_depth: None,
             service_dispatch: std::collections::HashMap::new(),
             declared_handlers: Vec::new(),
             startup_work_registrations: Vec::new(),
@@ -3045,6 +3048,7 @@ mod tests {
     #[test]
     fn test_actor_receive_codegen() {
         let body = MirExpr::ActorReceive {
+            matching: false,
             handler: None,
             timeout_ms: None,
             timeout_body: None,

@@ -474,6 +474,7 @@ pub enum MirExpr {
     /// body)`, the message is bound to `name` for `body`, which matches on
     /// it; without one the message itself is the value.
     ActorReceive {
+        matching: bool,
         handler: Option<(String, MirType, Box<MirExpr>)>,
         /// Timeout in milliseconds (None = infinite wait).
         timeout_ms: Option<Box<MirExpr>>,

@@ -19,6 +19,7 @@ use inkwell::basic_block::BasicBlock;
 use inkwell::values::{BasicValueEnum, IntValue, PointerValue};
 use inkwell::IntPredicate;
 
+use super::intrinsics::get_intrinsic;
 use super::types::variant_struct_type;
 use super::{CodeGen, SavedLocal};
 use crate::mir::{MirLiteral, MirMatchArm, MirType};
@@ -36,6 +37,7 @@ pub(crate) struct MatchTarget<'a, 'ctx> {
     pub(crate) result: PointerValue<'ctx>,
     /// Where an arm branches once it is done.
     pub(crate) merge_bb: BasicBlock<'ctx>,
+    pub(crate) retry_receive: Option<BasicBlock<'ctx>>,
 }
 
 type Binding = (String, MirType, AccessPath);
@@ -80,7 +82,16 @@ impl<'ctx> CodeGen<'ctx> {
                 message,
                 file,
                 line,
-            } => self.codegen_panic(message, file, *line).map(drop),
+            } => {
+                if let Some(retry) = target.retry_receive {
+                    self.builder
+                        .build_unconditional_branch(retry)
+                        .map(drop)
+                        .map_err(|e| e.to_string())
+                } else {
+                    self.codegen_panic(message, file, *line).map(drop)
+                }
+            }
         }
     }
 
@@ -113,6 +124,15 @@ impl<'ctx> CodeGen<'ctx> {
         // Bind variables from access paths. A binding shadows an outer name
         // only for the arm body.
         let saved = self.bind_pattern_values(bindings, target)?;
+        if target.retry_receive.is_some() {
+            self.builder
+                .build_call(
+                    get_intrinsic(&self.module, "mesh_actor_receive_accept"),
+                    &[],
+                    "",
+                )
+                .map_err(|e| e.to_string())?;
+        }
         let body_val = self.codegen_expr(&target.arms[arm_index].body);
         self.restore_locals(saved);
         let body_val = body_val?;
@@ -205,6 +225,11 @@ impl<'ctx> CodeGen<'ctx> {
         match default {
             Some(default_tree) => self.codegen_decision_tree(default_tree, target),
             // Default: unreachable (exhaustive match guaranteed by type checker)
+            None if target.retry_receive.is_some() => self
+                .builder
+                .build_unconditional_branch(target.retry_receive.unwrap())
+                .map(drop)
+                .map_err(|e| e.to_string()),
             None => {
                 let fn_name = self.current_function_name();
                 self.codegen_panic("non-exhaustive match in switch", &fn_name, 0)
@@ -309,9 +334,18 @@ impl<'ctx> CodeGen<'ctx> {
         let fn_val = self.current_function();
 
         let saved = self.bind_pattern_values(bindings, target)?;
+        let previous_guard = self.receive_guard_loop_depth;
+        if target.retry_receive.is_some() {
+            self.receive_guard_loop_depth = Some(self.loop_stack.len());
+        }
         let guard_val = self.codegen_expr(guard_expr);
+        self.receive_guard_loop_depth = previous_guard;
         self.restore_locals(saved);
-        let guard_val = guard_val?.into_int_value();
+        let guard_val = guard_val?;
+        if !self.block_is_open() {
+            return Ok(());
+        }
+        let guard_val = guard_val.into_int_value();
 
         let success_bb = self.context.append_basic_block(fn_val, "guard_pass");
         let failure_bb = self.context.append_basic_block(fn_val, "guard_fail");

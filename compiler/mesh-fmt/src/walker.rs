@@ -622,6 +622,10 @@ fn walk_arms_expr(node: &SyntaxNode) -> FormatIR {
                     parts.push(sp());
                     parts.push(ir::text("do"));
                 }
+                SyntaxKind::IDENT if tok.text() == "matching" => {
+                    parts.push(sp());
+                    parts.push(ir::text("matching"));
+                }
                 // Arms separated by `;` go on lines of their own.
                 SyntaxKind::END_KW | SyntaxKind::SEMICOLON => {}
                 // The other tokens are comments.
@@ -3089,6 +3093,14 @@ mod tests {
         formats_to(
             "fn f(s) do\n%{s | # c\na: 1, # c\n# own line\nb: 2 # c\n}\nend",
             "fn f(s) do\n  %{s | # c\n    a: 1, # c\n    # own line\n    b: 2 # c\n  }\nend\n",
+        );
+    }
+
+    #[test]
+    fn receive_matching_preserves_contextual_keyword() {
+        formats_to(
+            "actor w() do\nreceive matching do\n1 -> 1\nafter 0 -> 0\nend\nend",
+            "actor w() do\n  receive matching do\n    1 -> 1\n    after 0 -> 0\n  end\nend\n",
         );
     }
 
