@@ -32,7 +32,7 @@ does not satisfy the row.
 | Queue atomicity | Batch enqueue commits all jobs or none; documentation states the boundary with application databases | Pending |
 | Selective receive | Unmatched application messages remain queued in order until a later matching receive | Pending |
 | Actor stack exhaustion | An actor exhausts its stack without aborting unrelated actors or the native process | Feasibility proof in progress |
-| Mutual tail calls | Mutually recursive functions and actor state transitions execute in bounded stack space | Pending |
+| Mutual tail calls | Mutually recursive functions and actor state transitions execute in bounded stack space | In progress, direct SCC unit |
 | Map patterns | Partial map destructuring matches keys and typed values correctly | Pending |
 | Pinned patterns | A pinned expression compares with an existing binding rather than rebinding it | Pending |
 | Bitstring patterns | Binary construction and destructuring honor segment widths, bounds, and byte order | Pending |
