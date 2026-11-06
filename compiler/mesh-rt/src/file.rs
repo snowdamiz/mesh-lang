@@ -351,6 +351,28 @@ mod tests {
 
     // Each potentially blocking FIFO operation runs in its own process. A
     // reached marker distinguishes an actual open hang from test setup failure.
+    // The marker is renamed into place after its body is complete, because
+    // `fs::write` creates the path before the bytes are visible. A refusal can
+    // publish that marker and exit between the parent's read and `try_wait`,
+    // so exit means "before the call" only when the finished marker is absent.
+    #[cfg(unix)]
+    fn publish_fifo_call_marker(marker: &std::path::Path, operation: &str) {
+        let mut file_name = marker.file_name().unwrap().to_os_string();
+        file_name.push(".pending");
+        let pending = marker.with_file_name(file_name);
+        fs::write(&pending, operation.as_bytes()).unwrap();
+        fs::rename(&pending, marker).unwrap();
+    }
+
+    #[cfg(unix)]
+    fn fifo_call_marker_published(marker: &std::path::Path, operation: &str) -> bool {
+        match fs::read(marker) {
+            Ok(bytes) => bytes == operation.as_bytes(),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+            Err(error) => panic!("FIFO call marker unreadable: {error}"),
+        }
+    }
+
     #[cfg(unix)]
     #[test]
     #[ignore = "subprocess probe invoked only by the bounded FIFO tests"]
@@ -361,7 +383,7 @@ mod tests {
         let marker = std::env::var("FILE_QUOTA_FIFO_REACHED").unwrap();
         let native = mesh_str(&path);
         let bytes = crate::bytes::mesh_bytes_new(b"x".as_ptr(), 1);
-        fs::write(marker, operation.as_bytes()).unwrap();
+        publish_fifo_call_marker(std::path::Path::new(&marker), &operation);
         let result = match operation.as_str() {
             "read" => mesh_file_read_bytes_v2(native, 0, 1, 16),
             "write" => mesh_file_write_bytes_v2(native, 0, bytes, 1, 16),
@@ -415,11 +437,19 @@ mod tests {
             .unwrap();
         let mut child = OwnedProbe(child);
         let setup_deadline = Instant::now() + Duration::from_secs(5);
-        while !reached.exists() {
-            assert!(
-                child.0.try_wait().unwrap().is_none(),
-                "FIFO probe exited before call marker"
-            );
+        let mut early_status = None;
+        loop {
+            if fifo_call_marker_published(&reached, operation) {
+                break;
+            }
+            if let Some(status) = child.0.try_wait().unwrap() {
+                assert!(
+                    fifo_call_marker_published(&reached, operation),
+                    "FIFO probe exited before call marker"
+                );
+                early_status = Some(status);
+                break;
+            }
             assert!(
                 Instant::now() < setup_deadline,
                 "FIFO probe did not reach actual call"
@@ -428,14 +458,18 @@ mod tests {
         }
         assert_eq!(fs::read(&reached).unwrap(), operation.as_bytes());
         let deadline = Instant::now() + Duration::from_secs(2);
-        let status = loop {
-            if let Some(status) = child.0.try_wait().unwrap() {
-                break Some(status);
+        let status = if let Some(status) = early_status {
+            Some(status)
+        } else {
+            loop {
+                if let Some(status) = child.0.try_wait().unwrap() {
+                    break Some(status);
+                }
+                if Instant::now() >= deadline {
+                    break None;
+                }
+                std::thread::sleep(Duration::from_millis(10));
             }
-            if Instant::now() >= deadline {
-                break None;
-            }
-            std::thread::sleep(Duration::from_millis(10));
         };
         if status.is_none() {
             child.0.kill().unwrap();
