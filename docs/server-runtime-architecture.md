@@ -41,8 +41,8 @@ concrete groups and replace the singleton RPC slot with a group registry.
 One state-machine application owns job rows, due and lease indexes, queue
 counters, uniqueness, request receipts, and schedule cursors. A successful
 submission follows durable consensus commit and durable state application.
-Storage failure prevents success and dispatch. Replaying an applied command
-returns its original result. No worker, operator, or transport path may update
+Storage failure prevents success and dispatch. Replaying a retained client
+request returns its original result. No worker, operator, or transport path may update
 these records independently.
 
 Records are updated individually. Do not reuse the control store's serialized
@@ -89,16 +89,34 @@ barrier. Absolute schedules retain UTC instants and documented clock assumptions
 Recurring schedule definition, revision, occurrence identity, and cursor are
 durable. Firing inserts the job and advances the cursor atomically.
 
-Transport retries reuse a client-minted durable identity and command digest. A timeout can
-mean the command committed, so the API can resolve an uncertain receipt. Receipt
-retirement must reject expired identities instead of treating them as new work.
+Transport retries reuse a durable request identity and command digest. A timeout
+can mean the command committed, so the API can resolve an uncertain receipt.
+Runtime-managed client streams use bounded slots, generations, and contiguous
+sequence windows. Explicit acknowledgement retires receipts through a persisted
+watermark. Old generations and retired sequences remain rejected. Timeouts and
+disconnects cannot imply acknowledgement. Full windows stop new enqueue admission
+while internal lifecycle commands and retirement continue. A lifetime command
+ceiling or finite lifecycle reserve cannot preserve progress.
+
+Internal operations revalidate current revision or lease authority. Replaying an
+old log position may establish applied coverage without returning the original
+operation result. Coverage is never an enqueue acknowledgement or dispatch grant.
+The Raft adapter verifies log identity, applies committed entries in order, and
+persists membership and term metadata as well as the jobs checkpoint. It cannot
+skip a failed application and advance to a later entry. Recovery tests must cover
+blank and membership entries between job commands and I/O failure at each boundary.
+
 Retention cannot discard active arguments or erase replay protection silently.
-Snapshots include every authoritative index, receipt, and schedule cursor.
-The first version retains replay records and refuses admission at its configured
-bound rather than introducing a new client-session retirement protocol. A later
-retention unit must preserve rejection of retired identities. Reclaim commands
-recheck the current lease expiry or renewal revision during application; checking
-only a token would incorrectly revoke an intervening successful renewal.
+Snapshots include every authoritative index, stream watermark, retained receipt,
+and schedule cursor. Reclaim commands recheck the current lease expiry or renewal
+revision during application; checking only a token would incorrectly revoke an
+intervening successful renewal.
+
+Due scans bound examined rows, including jobs still in backoff. Their cursors are
+temporary pagination state, not a durable readiness watermark. The scheduler
+repeats bounded scans and starts another scan after relevant committed changes,
+including logical clock advancement. A backoff deadline can pass without changing
+the due index key. Reaching the end of a page sequence cannot establish quiescence.
 
 ## Application database transactions
 
