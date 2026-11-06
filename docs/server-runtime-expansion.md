@@ -30,17 +30,17 @@ does not satisfy the row.
 | Queue lifecycle | Scheduling, recurring jobs, retries, uniqueness, cancellation, pause, resume, retry, discard, and inspection operate on persisted jobs | Pending |
 | Queue ownership | Competing claims, stale completion, crash recovery, and cluster owner loss preserve attempt authority | Pending |
 | Queue atomicity | Batch enqueue commits all jobs or none; documentation states the boundary with application databases | Pending |
-| Selective receive | Unmatched application messages remain queued in order until a later matching receive | Pending |
-| Actor stack exhaustion | An actor exhausts its stack without aborting unrelated actors or the native process | Feasibility proof in progress |
+| Selective receive | Unmatched application messages remain queued in order until a later matching receive | In progress |
+| Actor stack exhaustion | An actor exhausts its stack without aborting unrelated actors or the native process | Feasibility evidence integrated; containment pending |
 | Mutual tail calls | Mutually recursive functions and actor state transitions execute in bounded stack space | In progress, direct SCC unit |
 | Map patterns | Partial map destructuring matches keys and typed values correctly | Pending |
 | Pinned patterns | A pinned expression compares with an existing binding rather than rebinding it | Pending |
 | Bitstring patterns | Binary construction and destructuring honor segment widths, bounds, and byte order | Pending |
-| Test selection | Test names, source locations, and tags select actual test cases | In progress |
-| Concurrent tests | Explicitly asynchronous cases run with bounded concurrency and isolated fixtures | In progress |
-| Documentation tests | Executable documentation examples run with expected result checks | In progress |
+| Test selection | Test names, source locations, and tags select actual test cases | Implemented in isolated branch; review pending |
+| Concurrent tests | Explicitly asynchronous cases run with bounded concurrency and isolated fixtures | Implemented in isolated branch; review pending |
+| Documentation tests | Executable documentation examples run with expected result checks | Implemented in isolated branch; review pending |
 | Coverage | Mesh source execution produces an accurate coverage report with unexecuted code visible | Pending |
-| Editor references and rename | Scope-aware references and rename work through the actual LSP transport | In progress |
+| Editor references and rename | Scope-aware references and rename work through the actual LSP transport | Focused checks passed; review and integration pending |
 | Persistent REPL values | Reading a previous value does not rerun its initializer or effects | Pending |
 | Typed query results | Queries decode directly to declared row types and report incompatible rows | Pending |
 | Transaction composition | Named dependent database operations use one connection and roll back together | Pending |
