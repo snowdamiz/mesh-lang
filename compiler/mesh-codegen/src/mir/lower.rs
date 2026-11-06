@@ -13259,12 +13259,19 @@ impl<'a> Lowerer<'a> {
             MirType::Struct(_) => MirType::Ptr,
             other => other,
         };
-        let from_fn = mangle_trait_method(
-            "From",
-            &[trait_arg_name(&source)],
-            "from",
-            &trait_arg_name(&target),
-        );
+        let from_fn = self
+            .trait_registry
+            .find_impl_with_type_args("From", std::slice::from_ref(&source), &target)
+            .and_then(mesh_typeck::builtins::primitive_from_runtime)
+            .map(str::to_string)
+            .unwrap_or_else(|| {
+                mangle_trait_method(
+                    "From",
+                    &[trait_arg_name(&source)],
+                    "from",
+                    &trait_arg_name(&target),
+                )
+            });
         let converted = MirExpr::Call {
             func: Box::new(MirExpr::Var(
                 from_fn,

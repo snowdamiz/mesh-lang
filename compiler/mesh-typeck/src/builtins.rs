@@ -3860,93 +3860,54 @@ fn register_compiler_known_traits(registry: &mut TraitRegistry) {
     // Each registers a From impl with trait_type_args; synthetic Into
     // generation in register_impl automatically creates corresponding Into impls.
 
-    // impl From<Int> for Float
-    {
+    for (source, target, _) in primitive_from_conversions() {
         let mut methods = FxHashMap::default();
         methods.insert(
             "from".to_string(),
             ImplMethodSig {
                 has_self: false,
                 param_count: 1,
-                return_type: Some(Ty::float()),
+                return_type: Some(target.clone()),
                 param_types: None,
             },
         );
         let _ = registry.register_impl(ImplDef {
             trait_name: "From".to_string(),
-            trait_type_args: vec![Ty::int()],
-            impl_type: Ty::float(),
-            impl_type_name: "Float".to_string(),
+            trait_type_args: vec![source],
+            impl_type_name: target.to_string(),
+            impl_type: target,
             methods,
             associated_types: FxHashMap::default(),
         });
     }
+}
 
-    // impl From<Int> for String
-    {
-        let mut methods = FxHashMap::default();
-        methods.insert(
-            "from".to_string(),
-            ImplMethodSig {
-                has_self: false,
-                param_count: 1,
-                return_type: Some(Ty::string()),
-                param_types: None,
-            },
-        );
-        let _ = registry.register_impl(ImplDef {
-            trait_name: "From".to_string(),
-            trait_type_args: vec![Ty::int()],
-            impl_type: Ty::string(),
-            impl_type_name: "String".to_string(),
-            methods,
-            associated_types: FxHashMap::default(),
-        });
-    }
+/// The pure primitive conversions registered above. These exact primitive
+/// type pairs cannot be replaced by user impls: overlap checking rejects them.
+fn primitive_from_conversions() -> [(Ty, Ty, &'static str); 4] {
+    [
+        (Ty::int(), Ty::float(), "mesh_int_to_float"),
+        (Ty::int(), Ty::string(), "mesh_int_to_string"),
+        (Ty::float(), Ty::string(), "mesh_float_to_string"),
+        (Ty::bool(), Ty::string(), "mesh_bool_to_string"),
+    ]
+}
 
-    // impl From<Float> for String
-    {
-        let mut methods = FxHashMap::default();
-        methods.insert(
-            "from".to_string(),
-            ImplMethodSig {
-                has_self: false,
-                param_count: 1,
-                return_type: Some(Ty::string()),
-                param_types: None,
-            },
-        );
-        let _ = registry.register_impl(ImplDef {
-            trait_name: "From".to_string(),
-            trait_type_args: vec![Ty::float()],
-            impl_type: Ty::string(),
-            impl_type_name: "String".to_string(),
-            methods,
-            associated_types: FxHashMap::default(),
-        });
+/// Resolve a selected `From` impl to a pure runtime primitive, using the same
+/// concrete type identities as builtin registration, never a method name or a
+/// missing body. User conversions retain their checked summaries and effects.
+pub fn primitive_from_runtime(implementation: &ImplDef) -> Option<&'static str> {
+    if implementation.trait_name != "From" {
+        return None;
     }
-
-    // impl From<Bool> for String
-    {
-        let mut methods = FxHashMap::default();
-        methods.insert(
-            "from".to_string(),
-            ImplMethodSig {
-                has_self: false,
-                param_count: 1,
-                return_type: Some(Ty::string()),
-                param_types: None,
-            },
-        );
-        let _ = registry.register_impl(ImplDef {
-            trait_name: "From".to_string(),
-            trait_type_args: vec![Ty::bool()],
-            impl_type: Ty::string(),
-            impl_type_name: "String".to_string(),
-            methods,
-            associated_types: FxHashMap::default(),
-        });
-    }
+    let [source] = implementation.trait_type_args.as_slice() else {
+        return None;
+    };
+    primitive_from_conversions()
+        .into_iter()
+        .find_map(|(input, output, runtime)| {
+            (source == &input && implementation.impl_type == output).then_some(runtime)
+        })
 }
 
 /// The `Channel` module: a `Channel<T>` carries values of any one type.

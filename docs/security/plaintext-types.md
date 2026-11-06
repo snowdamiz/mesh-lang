@@ -117,7 +117,12 @@ tag while keeping its original error payload private. Choosing the wrapper's
 variant from private error data keeps that tag private, and logging inside the
 conversion is checked with the original data and caller control. Unknown
 conversion bodies remain conservative. Propagation with the same error type
-does not invoke `From`.
+does not invoke `From`. The builtin `Int`, `Float`, and `Bool` conversions to
+`String`, and `Int` to `Float`, are pure primitive conversions: implicit `?`
+and explicit `from` retain the error payload and caller control dependencies
+without adding an unknown effect. A public result tag can be observed while
+the converted private payload remains private. This rule uses the registered
+primitive type pairs; user implementations still require checked summaries.
 A public error/status that depends on content still needs a
 reviewed metadata-only disclosure. Pure framing helpers may return labeled
 bytes for sealing without clearing that label.

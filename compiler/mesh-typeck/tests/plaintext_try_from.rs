@@ -269,3 +269,79 @@ end"#
         }
     }
 }
+
+#[test]
+fn primitive_from_preserves_private_payload_and_public_tag() {
+    for (source, target) in [
+        ("Int", "String"),
+        ("Float", "String"),
+        ("Bool", "String"),
+        ("Int", "Float"),
+    ] {
+        for body in ["Ok(value?)".to_string(), format!("case value do Ok(number) -> Ok(number) Err(error) -> Err({target}.from(error)) end")] {
+            let propagate = format!("fn propagate(value :: Result<Int,Plaintext<{source}>>) -> Int!{target} do {body} end");
+            let printed = if target == "String" { "error" } else { "String.from(error)" };
+            allowed(&format!(r#"{propagate}
+fn observe(value :: Result<Int,Plaintext<{source}>>) do
+  case propagate(value) do Ok(_) -> println("ok") Err(_) -> println("err") end
+end"#));
+            refused(&format!(r#"{propagate}
+fn observe(value :: Result<Int,Plaintext<{source}>>) do
+  case propagate(value) do Ok(_) -> nil Err(error) -> println({printed}) end
+end"#));
+        }
+    }
+}
+
+#[test]
+fn primitive_from_preserves_private_selection_and_caller_control() {
+    for source in ["Int", "Float", "Bool"] {
+        for (input, body) in [
+            (format!("value :: Plaintext<Result<Int,{source}>>"), "Ok(value?)"),
+            (format!("secret :: Plaintext<Bool>, one :: Result<Int,{source}>, two :: Result<Int,{source}>"), "Ok((if secret do one else two end)?)"),
+            (format!("secret :: Plaintext<Bool>, one :: Result<Int,{source}>, two :: Result<Int,{source}>"), "if secret do Ok(one?) else Ok(two?) end"),
+        ] {
+            let args = if input.starts_with("value") { "value" } else { "secret,one,two" };
+            refused(&format!(r#"
+fn propagate({input}) -> Int!String do {body} end
+fn observe({input}) do
+  case propagate({args}) do Ok(_) -> println("ok") Err(_) -> println("err") end
+end"#));
+        }
+        refused(&format!(
+            r#"
+type Custom do Converted end
+impl From<{source}> for Custom do
+  fn from(error :: {source}) -> Custom do println(String.from(error))
+Converted end
+end
+fn propagate(value :: Result<Int,Plaintext<{source}>>) -> Int!Custom do Ok(value?) end"#
+        ));
+    }
+}
+
+#[test]
+fn user_code_cannot_replace_primitive_from() {
+    for (source, target) in [
+        ("Int", "String"),
+        ("Float", "String"),
+        ("Bool", "String"),
+        ("Int", "Float"),
+    ] {
+        let result = checked(&format!(
+            r#"
+impl From<{source}> for {target} do
+  fn from(error :: {source}) -> {target} do println("user conversion")
+{target}.from(error) end
+end"#
+        ));
+        assert!(
+            result
+                .errors
+                .iter()
+                .any(|error| matches!(error, TypeError::DuplicateImpl { .. })),
+            "{:?}",
+            result.errors
+        );
+    }
+}

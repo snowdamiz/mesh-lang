@@ -2580,16 +2580,26 @@ impl Checker<'_> {
         if same {
             return payload;
         }
-        let selected = self
-            .traits
-            .find_impl_with_type_args("From", std::slice::from_ref(source), target)
-            .and_then(from_summary_name);
+        let selected =
+            self.traits
+                .find_impl_with_type_args("From", std::slice::from_ref(source), target);
         let control = pc
             .clone()
             .union(&input.project(Projection::Tag).deps)
             .union(&input.exits);
+        if selected
+            .and_then(crate::builtins::primitive_from_runtime)
+            .is_some()
+        {
+            // A primitive conversion reads the payload but has no observable
+            // effect. Its result keeps every payload and control dependency.
+            let mut converted = Value::dependent(payload.deps.clone().union(&control));
+            converted.exits = payload.exits;
+            return converted;
+        }
+        let summary = selected.and_then(from_summary_name);
         self.call(
-            selected.as_deref(),
+            summary.as_deref(),
             &[],
             &[payload],
             &control,
