@@ -24,7 +24,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::Instant;
 
-use mesh_parser::test_harness::{plan_test_source, TestCase, TestPlan, TestPolicy};
+use mesh_parser::test_harness::{plan_test_source, TestCase, TestExecution, TestPlan, TestPolicy};
 use mesh_pkg::manifest::{
     resolve_entrypoint, rewrite_test_manifest_source, Manifest, DEFAULT_ENTRYPOINT,
 };
@@ -153,6 +153,7 @@ fn prepare_documentation_entry(
     tmp: &Path,
     source_file: &Path,
     source: &str,
+    control: Option<&str>,
 ) -> Result<(PathBuf, String, String), String> {
     let relative = source_file
         .strip_prefix(&test_project.project_dir)
@@ -166,16 +167,7 @@ fn prepare_documentation_entry(
         copied.strip_prefix(&original).unwrap_or("")
     };
     let generated = format!("{source}\n{support}");
-    let mut control = format!("{original}\n{support}");
-    let parse = mesh_parser::parse(&original);
-    if !parse.syntax().children().any(|node| {
-        node.kind() == mesh_parser::SyntaxKind::FN_DEF
-            && node.children().any(|n| {
-                n.kind() == mesh_parser::SyntaxKind::NAME && n.text().to_string() == "main"
-            })
-    }) {
-        control.push_str("\nfn main() do\nend\n");
-    }
+    let control = format!("{}\n{support}", control.unwrap_or(""));
     let manifest_path = tmp.join("mesh.toml");
     let manifest = std::fs::read_to_string(&manifest_path).map_err(|e| e.to_string())?;
     let mut manifest: toml::Value = toml::from_str(&manifest).map_err(|e| e.to_string())?;
@@ -254,10 +246,10 @@ fn resolve_doc_files(target: &Path) -> Result<Vec<PathBuf>, String> {
     Ok(files)
 }
 
-fn documentation_plans(source: &str) -> Result<Vec<(TestPlan, bool)>, String> {
+fn documentation_plans(source: &str) -> Result<Vec<(TestPlan, Option<String>)>, String> {
     Ok(mesh_parser::test_harness::plan_documentation_tests(source)?
         .into_iter()
-        .map(|doc| (doc.plan, doc.compile_fail))
+        .map(|doc| (doc.plan, doc.compile_fail_control))
         .collect())
 }
 
@@ -265,7 +257,7 @@ struct TestUnit {
     path: PathBuf,
     plan: TestPlan,
     selected: Vec<TestCase>,
-    compile_fail: bool,
+    compile_fail_control: Option<String>,
 }
 
 pub fn run_tests(target: Option<&Path>, options: &TestOptions) -> Result<TestSummary, String> {
@@ -308,21 +300,24 @@ pub fn run_tests(target: Option<&Path>, options: &TestOptions) -> Result<TestSum
         let plans = if options.doc {
             documentation_plans(&source)
         } else {
-            plan_test_source(&source).map(|plan| vec![(plan, false)])
+            plan_test_source(&source).map(|plan| vec![(plan, None)])
         };
         match plans {
             Ok(plans) => {
-                for (plan, compile_fail) in plans {
+                for (plan, compile_fail_control) in plans {
                     let selected = select_cases(&plan, options, line);
                     if !selected.is_empty()
                         || (!options.doc && plan.has_parse_errors())
-                        || (!explicit && !options.doc && plan.cases.is_empty())
+                        || (!options.doc
+                            && !options.has_selection()
+                            && line.is_none()
+                            && plan.execution == TestExecution::Program)
                     {
                         units.push(TestUnit {
                             path: path.clone(),
                             plan,
                             selected,
-                            compile_fail,
+                            compile_fail_control,
                         });
                     }
                 }
@@ -360,7 +355,13 @@ pub fn run_tests(target: Option<&Path>, options: &TestOptions) -> Result<TestSum
             continue;
         }
         let (entry, source, control) = if options.doc {
-            prepare_documentation_entry(&test_project, tmp.path(), &unit.path, &source)?
+            prepare_documentation_entry(
+                &test_project,
+                tmp.path(),
+                &unit.path,
+                &source,
+                unit.compile_fail_control.as_deref(),
+            )?
         } else {
             (tmp.path().join(DEFAULT_ENTRYPOINT), source, String::new())
         };
@@ -373,7 +374,7 @@ pub fn run_tests(target: Option<&Path>, options: &TestOptions) -> Result<TestSum
             ],
         };
         let bin = tmp.path().join("test_bin");
-        if unit.compile_fail {
+        if unit.compile_fail_control.is_some() {
             // A broken dependency or missing compiler prerequisite cannot satisfy a negative example.
             write_file(&entry, &control)?;
             let control = crate::build(
@@ -405,9 +406,12 @@ pub fn run_tests(target: Option<&Path>, options: &TestOptions) -> Result<TestSum
             true,
             &diag_opts,
         );
-        if unit.compile_fail {
+        if unit.compile_fail_control.is_some() {
             match compiled {
-                Err(error) if error == "Compilation failed due to errors above." => {
+                Err(error)
+                    if error == "Compilation failed due to errors above."
+                        && documentation_has_frontend_errors(tmp.path(), &entry)? =>
+                {
                     println!(
                         "PASS: {label}:{} (expected compile failure)",
                         unit.selected[0].span.start_line
@@ -432,7 +436,15 @@ pub fn run_tests(target: Option<&Path>, options: &TestOptions) -> Result<TestSum
             summary.failed += 1;
             continue;
         }
-        let failures = execute_cases(&bin, tmp.path(), &unit.selected, &label, options, color)?;
+        let failures = match unit.plan.execution {
+            TestExecution::Program => {
+                let mut process = start_cases(&bin, tmp.path(), &[], options, color)?;
+                finish_cases(&mut process, &label)?
+            }
+            TestExecution::Cases => {
+                execute_cases(&bin, tmp.path(), &unit.selected, &label, options, color)?
+            }
+        };
         if failures == 0 {
             summary.passed += 1;
         } else {
@@ -468,6 +480,30 @@ pub fn run_tests(target: Option<&Path>, options: &TestOptions) -> Result<TestSum
         );
     }
     Ok(summary)
+}
+
+fn documentation_has_frontend_errors(dir: &Path, entry: &Path) -> Result<bool, String> {
+    let native = mesh_pkg::resolve_native_bindings(dir)?;
+    let project = mesh_pkg::project::build_project(
+        dir,
+        entry.strip_prefix(dir).map_err(|e| e.to_string())?,
+        &native,
+        true,
+        &mesh_pkg::project::read_file,
+    )?;
+    let entry_id = project
+        .compilation_order
+        .iter()
+        .find(|id| project.graph.get(**id).is_entry)
+        .ok_or("doctest entry module is missing")?;
+    if !project.module_parses[entry_id.0 as usize].ok() {
+        return Ok(true);
+    }
+    if project.module_parses.iter().any(|parse| !parse.ok()) {
+        return Ok(false);
+    }
+    let checked = mesh_pkg::project::check_project(&project, true);
+    Ok(!checked.typeck[entry_id.0 as usize].errors.is_empty())
 }
 
 fn select_cases(plan: &TestPlan, options: &TestOptions, line: Option<usize>) -> Vec<TestCase> {
@@ -563,6 +599,13 @@ fn finish_cases(process: &mut CaseProcess, label: &str) -> Result<usize, String>
     let stderr = read_file(&process.directory.path().join("stderr"))?;
     print!("{}", String::from_utf8_lossy(&stdout));
     eprint!("{}", String::from_utf8_lossy(&stderr));
+    // Raw programs report their exit status, without DSL completion records.
+    if process.cases.is_empty() {
+        if !status.success() {
+            println!("FAIL: {label} ({status})");
+        }
+        return Ok(usize::from(!status.success()));
+    }
     let events =
         std::fs::read_to_string(process.directory.path().join("results")).unwrap_or_default();
     let events: Vec<_> = events.lines().collect();

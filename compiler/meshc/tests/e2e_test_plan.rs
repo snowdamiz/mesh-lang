@@ -540,3 +540,290 @@ fn explicit_file_parse_errors_keep_original_diagnostics() {
         assert!(!text.contains("No test cases match"), "{text}");
     }
 }
+
+#[test]
+fn raw_test_programs_execute_and_cannot_match_case_filters() {
+    let dir = project("fn main() do\n  panic(\"RAW_MUST_FAIL\")\nend\n");
+    let file = dir.path().join("cases.test.mpl");
+    for target in [dir.path(), file.as_path()] {
+        let output = run(target, &[]);
+        assert!(!output.status.success(), "{}", text(&output));
+        assert!(text(&output).contains("RAW_MUST_FAIL"), "{}", text(&output));
+        for args in [
+            &["--filter", "raw"][..],
+            &["--include-tag", "network"],
+            &["--exclude-tag", "network"],
+        ] {
+            let output = run(target, args);
+            assert!(!output.status.success(), "{}", text(&output));
+            assert!(
+                text(&output).contains("No test cases match"),
+                "{}",
+                text(&output)
+            );
+            assert!(
+                !text(&output).contains("RAW_MUST_FAIL"),
+                "{}",
+                text(&output)
+            );
+        }
+    }
+    let output = run(&PathBuf::from(format!("{}:2", file.display())), &[]);
+    assert!(
+        !output.status.success() && text(&output).contains("No test cases match"),
+        "{}",
+        text(&output)
+    );
+    std::fs::write(&file, "fn main() do\n  println(\"RAW_RAN\")\nend\n").unwrap();
+    let output = run(&file, &[]);
+    assert!(
+        output.status.success() && text(&output).contains("RAW_RAN"),
+        "{}",
+        text(&output)
+    );
+    assert!(!text(&output).contains("INCOMPLETE"), "{}", text(&output));
+    std::fs::write(&file, "").unwrap();
+    for target in [dir.path(), file.as_path()] {
+        let output = run(target, &[]);
+        assert!(
+            !output.status.success() && text(&output).contains("no `fn main()`"),
+            "{}",
+            text(&output)
+        );
+    }
+}
+
+#[test]
+fn standalone_doc_expectations_strip_comments_but_keep_hashes_in_strings() {
+    let dir = project("");
+    let file = dir.path().join("docs.mpl");
+    std::fs::write(
+        &file,
+        r###"## ```mesh,doctest
+## 1 + 1 # explanation
+## # => 2
+## "keep # explanation" # actual comment
+## # => "keep # explanation"
+## "keep # => text" # => "keep # => text"
+## "#{"nested # literal"}" # trailing comment
+## # => "nested # literal"
+## ```
+"###,
+    )
+    .unwrap();
+    let output = run(&file, &["--doc"]);
+    assert!(output.status.success(), "{}", text(&output));
+}
+
+#[test]
+fn negative_fences_check_user_code_without_expectation_rewriting() {
+    let dir = project("");
+    let file = dir.path().join("docs.mpl");
+    for snippet in [
+        "1 + 1 # explanation\n## # => 2",
+        "1 + 1 # => true",
+        "1 + 1 # => (",
+        "# =>",
+    ] {
+        std::fs::write(
+            &file,
+            format!("## ```mesh,compile_fail\n## {snippet}\n## ```\n"),
+        )
+        .unwrap();
+        let output = run(&file, &["--doc"]);
+        assert!(
+            !output.status.success() && text(&output).contains("successful compilation"),
+            "{}",
+            text(&output)
+        );
+        assert!(
+            !text(&output).contains("expected compile failure"),
+            "{}",
+            text(&output)
+        );
+    }
+    for snippet in [
+        "1 + true # => 2",
+        "let broken = (1 # explanation\n## # => 2",
+    ] {
+        std::fs::write(
+            &file,
+            format!("## ```mesh,compile_fail\n## {snippet}\n## ```\n"),
+        )
+        .unwrap();
+        let output = run(&file, &["--doc"]);
+        assert!(
+            output.status.success() && text(&output).contains("expected compile failure"),
+            "{}",
+            text(&output)
+        );
+        assert!(text(&output).contains("docs.mpl:"), "{}", text(&output));
+    }
+}
+
+#[test]
+fn doctests_preserve_multiline_literal_bytes_and_interpolation() {
+    let dir = project("");
+    let file = dir.path().join("docs.mpl");
+    std::fs::write(
+        &file,
+        r###"  ## ```mesh,doctest
+  ## let text = "a
+  ## b"
+  ## assert_eq(text, "a\nb")
+  ## let triple = """
+  ##   a
+  ##   b
+  ##   """
+  ## assert_eq(triple, "a\nb")
+  ## let interpolated = "a
+  ## #{"b
+  ## c"}
+  ## d"
+  ## assert_eq(interpolated, "a\nb\nc\nd")
+  ## let triple_interpolated = """
+  ##   a
+  ##   #{"b"}
+  ##   c
+  ##   """
+  ## assert_eq(triple_interpolated, "a\nb\nc")
+  ## ```
+"###,
+    )
+    .unwrap();
+    let output = run(&file, &["--doc"]);
+    assert!(output.status.success(), "{}", text(&output));
+}
+
+#[test]
+fn static_metadata_uses_runtime_string_values() {
+    let dir = project(
+        r###"test("""network""", tags: ["""network""", "\u{1F389}", "hash\#tag", "quote\"tag"]) do
+  println("EXCLUDED_RAN")
+end
+test("normal", tags: ["local"]) do
+  println("NORMAL_RAN")
+end
+"###,
+    );
+    for tag in ["network", "🎉", "hash#tag", "quote\"tag"] {
+        let output = run(dir.path(), &["--exclude-tag", tag]);
+        assert!(output.status.success(), "{}", text(&output));
+        assert!(
+            !text(&output).contains("EXCLUDED_RAN") && text(&output).contains("NORMAL_RAN"),
+            "{}",
+            text(&output)
+        );
+        let output = run(dir.path(), &["--include-tag", tag]);
+        assert!(output.status.success(), "{}", text(&output));
+        assert!(
+            text(&output).contains("EXCLUDED_RAN") && !text(&output).contains("NORMAL_RAN"),
+            "{}",
+            text(&output)
+        );
+    }
+    std::fs::write(
+        dir.path().join("cases.test.mpl"),
+        r###"test("""
+  heredoc
+  """, tags: ["""
+  network
+  """]) do
+  println("HEREDOC_RAN")
+end
+"###,
+    )
+    .unwrap();
+    let output = run(
+        dir.path(),
+        &["--filter", "heredoc", "--include-tag", "network"],
+    );
+    assert!(
+        output.status.success() && text(&output).contains("HEREDOC_RAN"),
+        "{}",
+        text(&output)
+    );
+    for source in [
+        "test(\"name\", tags: [\"#{1}\"]) do\nend\n",
+        "test(\"\"\"#{1}\"\"\") do\nend\n",
+    ] {
+        std::fs::write(dir.path().join("cases.test.mpl"), source).unwrap();
+        let output = run(dir.path(), &[]);
+        assert!(
+            !output.status.success() && text(&output).contains("static strings"),
+            "{}",
+            text(&output)
+        );
+    }
+}
+
+#[test]
+fn negative_fences_cannot_pass_without_compiler_tools_or_valid_context() {
+    let dir = project("");
+    let file = dir.path().join("docs.mpl");
+    std::fs::write(&file, "## ```mesh,compile_fail\n## 1 + true\n## ```\n").unwrap();
+    let output = Command::new(artifacts::meshc_bin())
+        .args(["test", file.to_str().unwrap(), "--doc"])
+        .env("PATH", dir.path().join("missing-tools"))
+        .output()
+        .unwrap();
+    assert!(
+        !output.status.success() && text(&output).contains("doctest prerequisites"),
+        "{}",
+        text(&output)
+    );
+    assert!(
+        !text(&output).contains("expected compile failure"),
+        "{}",
+        text(&output)
+    );
+    std::fs::write(
+        &file,
+        "fn broken() -> Int do\n  true\nend\n## ```mesh,compile_fail\n## 1 + true\n## ```\n",
+    )
+    .unwrap();
+    let output = run(&file, &["--doc"]);
+    assert!(
+        !output.status.success() && text(&output).contains("doctest prerequisites"),
+        "{}",
+        text(&output)
+    );
+}
+
+#[test]
+fn negative_fences_preserve_the_existing_main_context() {
+    let dir = project("");
+    let file = dir.path().join("docs.mpl");
+    std::fs::write(&file, "## ```mesh,compile_fail\n## true # => false\n## ```\nfn main() -> Int do\n  42\nend\nfn answer() -> Int do\n  main()\nend\n").unwrap();
+    let output = run(&file, &["--doc"]);
+    assert!(
+        !output.status.success() && text(&output).contains("successful compilation"),
+        "{}",
+        text(&output)
+    );
+}
+
+#[test]
+fn doctest_diagnostics_keep_columns_after_continued_strings() {
+    let dir = project("");
+    let file = dir.path().join("docs.mpl");
+    for source in [
+        "  ## ```mesh,doctest\n  ## let text = \"a\n  ## b\" + )\n  ## ```\n",
+        "  ## ```mesh,doctest\n  ## let text = \"a\n  ## #{missing}\"\n  ## ```\n",
+    ] {
+        std::fs::write(&file, source).unwrap();
+        let output = run(&file, &["--doc"]);
+        let needle = if source.contains("missing") {
+            "missing"
+        } else {
+            ")"
+        };
+        let column = source.lines().nth(2).unwrap().find(needle).unwrap() + 1;
+        assert!(!output.status.success(), "{}", text(&output));
+        assert!(
+            text(&output).contains(&format!("docs.mpl:3:{column}")),
+            "{}",
+            text(&output)
+        );
+    }
+}

@@ -9,6 +9,7 @@ pub mod ast;
 pub mod cst;
 pub mod error;
 mod parser;
+pub mod string_content;
 pub mod syntax_kind;
 pub mod test_harness;
 

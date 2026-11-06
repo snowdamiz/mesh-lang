@@ -49,6 +49,12 @@ compile, and 0 otherwise, including when there are no test files (`No
 *.test.mpl files found.`). Output is colored only on a terminal with `NO_COLOR`
 unset.
 
+A `*.test.mpl` file containing an ordinary `fn main()` and no test cases runs
+as a raw program. Its exit status determines success, both for directory runs
+and explicit file targets. Raw programs have no selectable case names, tags,
+or lines, so case filters skip them. An empty file fails because it has no
+`main` function. Raw programs do not use DSL completion records.
+
 `--quiet` prints a `.` for each passing test and an `F` for each failing one,
 then the `Failures:` list and the counts.
 
@@ -94,7 +100,10 @@ describe("arithmetic", tags: ["unit"], async: true) do
 end
 ```
 
-Names and tags must be static strings. Tags inherit through nested describes.
+Names and tags must be static strings, including triple-quoted strings.
+Escapes, Unicode, and heredoc indentation have the same meaning as in runtime
+string values. Interpolated names and tags are rejected. Tags inherit through
+nested describes.
 `async: true` inherits too; `async: false` overrides it. Cases are synchronous
 by default. Unknown or repeated options are errors.
 
@@ -140,13 +149,17 @@ on that expression's line or the next documentation line. Ordinary assertions
 and test runtime fixtures are also available. Each fence starts fresh fixture
 state. The examples can call private declarations in their source module,
 use that module's imports, and access its `.test-support.mpl` fragment.
-The runner reserves `main` for dispatch.
+Runnable fences reserve `main` for dispatch. Documentation prefixes are removed
+without adding bytes to multiline strings, including interpolated strings.
 
 Runnable fences in a source file share one compilation. Each `compile_fail`
 fence compiles separately and passes only when the compiler reports a parse
-or type error. A control build first checks the original module and its
-dependencies. A missing runtime or a broken dependency therefore cannot satisfy
-an expected compilation failure. A successfully compiled negative example
+or type error in the example's module. Negative examples retain the original
+`main` and compile in a separate function. A control build checks that same
+function with an empty body, the original module, and its dependencies. A
+missing compiler tool, a missing runtime, or invalid surrounding code cannot
+satisfy an expected compilation failure. `# =>` remains a comment in negative
+fences and never creates assertions. A successfully compiled negative example
 fails and does not execute. Compiler diagnostics retain original documentation
 lines. Runtime failures identify the fence's original opening line.
 

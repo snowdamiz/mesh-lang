@@ -59,8 +59,15 @@ pub struct TestCase {
     run: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TestExecution {
+    Program,
+    Cases,
+}
+
 #[derive(Debug, Clone)]
 pub struct TestPlan {
+    pub execution: TestExecution,
     pub cases: Vec<TestCase>,
     source: String,
     parsed: bool,
@@ -83,7 +90,7 @@ impl TestPlan {
 
     fn render(&self, selected: bool) -> String {
         let mut out = self.source.clone();
-        if self.cases.is_empty() || !self.parsed {
+        if self.execution == TestExecution::Program || !self.parsed {
             return out;
         }
         if !out.ends_with('\n') {
@@ -122,6 +129,7 @@ pub fn plan_test_source(source: &str) -> Result<TestPlan, String> {
     let parse = crate::parse(source);
     if !parse.errors().is_empty() {
         return Ok(TestPlan {
+            execution: TestExecution::Program,
             source: source.to_string(),
             cases: Vec::new(),
             parsed: false,
@@ -176,6 +184,7 @@ pub fn plan_test_source(source: &str) -> Result<TestPlan, String> {
     }
     if tests.is_empty() {
         return Ok(TestPlan {
+            execution: TestExecution::Program,
             source: source.to_string(),
             cases: tests,
             parsed: true,
@@ -187,6 +196,7 @@ pub fn plan_test_source(source: &str) -> Result<TestPlan, String> {
         out.replace_range(range, &text);
     }
     Ok(TestPlan {
+        execution: TestExecution::Cases,
         source: out,
         cases: tests,
         parsed: true,
@@ -197,7 +207,7 @@ pub fn plan_test_source(source: &str) -> Result<TestPlan, String> {
 #[derive(Debug, Clone)]
 pub struct DocumentationTest {
     pub plan: TestPlan,
-    pub compile_fail: bool,
+    pub compile_fail_control: Option<String>,
 }
 
 pub fn plan_documentation_tests(source: &str) -> Result<Vec<DocumentationTest>, String> {
@@ -217,7 +227,7 @@ pub fn plan_documentation_tests(source: &str) -> Result<Vec<DocumentationTest>, 
         ) {
             continue;
         }
-        let range = token.span.start as usize..token.span.end as usize;
+        let mut range = token.span.start as usize..token.span.end as usize;
         let line = line_of(source, range.start);
         if open.is_some() && line != previous_line + 1 {
             return Err(format!(
@@ -231,21 +241,33 @@ pub fn plan_documentation_tests(source: &str) -> Result<Vec<DocumentationTest>, 
             .or_else(|| comment.strip_prefix("##"))
             .expect("documentation token prefix");
         let text = text.strip_prefix(' ').unwrap_or(text);
+        let line_start = source[..range.start].rfind('\n').map_or(0, |at| at + 1);
+        if source[line_start..range.start].trim().is_empty() {
+            range.start = line_start;
+        }
         if let Some(fence) = &mut open {
             if text.trim() == "```" {
                 fence.span.end = range.end;
                 fence.edits.push((range, "end".into()));
-                expand_doc_expectations(&mut fence.edits, source)?;
+                pad_doc_code(&mut fence.edits, source);
+                if !fence.compile_fail {
+                    expand_doc_expectations(&mut fence.edits, source)?;
+                }
                 fences.push(open.take().unwrap());
             } else {
-                let padding = " ".repeat(source[range.clone()].len() - text.len());
-                fence.edits.push((range, format!("{padding}{text}")));
+                fence.edits.push((range, text.to_string()));
             }
         } else if matches!(text.trim(), "```mesh,doctest" | "```mesh,compile_fail") {
+            let compile_fail = text.trim() == "```mesh,compile_fail";
+            let header = if compile_fail {
+                format!("fn __mesh_doctest_line_{line}() do")
+            } else {
+                format!("test(\"doctest line {line}\") do")
+            };
             open = Some(Fence {
                 span: range.clone(),
-                compile_fail: text.trim() == "```mesh,compile_fail",
-                edits: vec![(range, format!("test(\"doctest line {line}\") do"))],
+                compile_fail,
+                edits: vec![(range, header)],
             });
         }
     }
@@ -316,15 +338,47 @@ pub fn plan_documentation_tests(source: &str) -> Result<Vec<DocumentationTest>, 
     groups
         .into_iter()
         .map(|group| {
-            let mut edits = without_main.clone();
+            let compile_fail = group[0].1.compile_fail;
+            let mut edits = if compile_fail {
+                Vec::new()
+            } else {
+                without_main.clone()
+            };
             edits.extend(group.iter().flat_map(|(_, fence)| fence.edits.clone()));
             edits.sort_by_key(|(range, _)| std::cmp::Reverse(range.start));
             let mut generated = source.to_string();
             for (range, text) in edits {
                 generated.replace_range(range, &text);
             }
-            let mut plan = plan_test_source(&generated)?;
-            if !plan.parsed {
+            let compile_fail_control = compile_fail.then(|| {
+                let fence = group[0].1;
+                let mut control = source.to_string();
+                for (index, (range, text)) in fence.edits.iter().enumerate().rev() {
+                    let text = if index == 0 || index + 1 == fence.edits.len() {
+                        text.clone()
+                    } else {
+                        " ".repeat(range.len())
+                    };
+                    control.replace_range(range.clone(), &text);
+                }
+                if without_main.is_empty() {
+                    let main = "\nfn main() do\nend\n";
+                    control.push_str(main);
+                    generated.push_str(main);
+                }
+                control
+            });
+            let mut plan = if compile_fail {
+                TestPlan {
+                    execution: TestExecution::Program,
+                    parsed: crate::parse(&generated).ok(),
+                    source: generated,
+                    cases: Vec::new(),
+                }
+            } else {
+                plan_test_source(&generated)?
+            };
+            if compile_fail || !plan.parsed {
                 plan.cases = group
                     .iter()
                     .map(|(id, fence)| TestCase {
@@ -343,14 +397,58 @@ pub fn plan_documentation_tests(source: &str) -> Result<Vec<DocumentationTest>, 
                 case.id = *id;
                 case.span = TestSpan::new(source, fence.span.clone());
                 case.name = format!("doctest line {}", case.span.start_line);
-                case.label = case.name.clone();
+                case.label = escape_label(&case.name);
             }
             Ok(DocumentationTest {
                 plan,
-                compile_fail: group[0].1.compile_fail,
+                compile_fail_control,
             })
         })
         .collect()
+}
+
+fn pad_doc_code(edits: &mut [(Range<usize>, String)], source: &str) {
+    use mesh_common::token::TokenKind;
+    let snippet = edits
+        .iter()
+        .map(|(_, code)| code.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let tokens: Vec<_> = mesh_lexer::Lexer::new(&snippet).collect();
+    let mut offset = 0;
+    let last = edits.len() - 1;
+    for (index, (range, code)) in edits.iter_mut().enumerate() {
+        let next = offset + code.len() + 1;
+        if index > 0 && index < last {
+            let inside_string = tokens.iter().any(|token| {
+                matches!(
+                    token.kind,
+                    TokenKind::StringContent | TokenKind::StringEnd | TokenKind::InterpolationStart
+                ) && (token.span.start as usize..token.span.end as usize).contains(&offset)
+            });
+            // Keep source columns in code. Move padding past a continued literal,
+            // or into its interpolation, so it cannot change the literal's bytes.
+            let insertion = if inside_string {
+                tokens
+                    .iter()
+                    .find(|token| {
+                        matches!(
+                            token.kind,
+                            TokenKind::StringEnd | TokenKind::InterpolationStart
+                        ) && token.span.start as usize >= offset
+                            && (token.span.end as usize) < next
+                    })
+                    .map(|token| token.span.end as usize - offset)
+            } else {
+                Some(0)
+            };
+            if let Some(at) = insertion {
+                let prefix = source[range.clone()].len() - code.len();
+                code.insert_str(at, &" ".repeat(prefix));
+            }
+        }
+        offset = next;
+    }
 }
 
 fn expand_doc_expectations(
@@ -365,7 +463,9 @@ fn expand_doc_expectations(
         snippet.push_str(code);
         snippet.push('\n');
     }
-    let markers: Vec<_> = mesh_lexer::Lexer::new(&snippet)
+    let tokens: Vec<_> = mesh_lexer::Lexer::new(&snippet).collect();
+    let markers: Vec<_> = tokens
+        .iter()
         .filter(|token| {
             token.kind == TokenKind::Comment
                 && snippet[token.span.start as usize..token.span.end as usize].starts_with("# =>")
@@ -395,8 +495,21 @@ fn expand_doc_expectations(
         let expression = if target == index {
             expression.to_string()
         } else {
-            edits[target].1.trim().to_string()
+            let end = tokens
+                .iter()
+                .find(|token| {
+                    token.kind == TokenKind::Comment
+                        && (starts[target]..starts[target] + edits[target].1.len())
+                            .contains(&(token.span.start as usize))
+                })
+                .map_or(edits[target].1.len(), |token| {
+                    token.span.start as usize - starts[target]
+                });
+            edits[target].1[..end].trim().to_string()
         };
+        if expression.is_empty() {
+            return Err(format!("line {line}: # => needs a preceding expression"));
+        }
         let spaces = " ".repeat(edits[target].1.len() - edits[target].1.trim_start().len());
         edits[target].1 = format!("{spaces}assert_eq({expression}, {expected})");
     }
@@ -576,8 +689,8 @@ impl BlockCall {
     ) -> TestCase {
         TestCase {
             id,
-            name: decode_string(label),
-            label: label.to_string(),
+            name: label.to_string(),
+            label: escape_label(label),
             span: TestSpan::new(source, range_of(&self.call)),
             tags: metadata.tags,
             policy: metadata.policy,
@@ -646,7 +759,7 @@ impl BlockCall {
         Ok(metadata)
     }
 
-    /// The first argument's string literal, as written between its quotes.
+    /// The first argument's decoded string value.
     fn label(&self, default: &str) -> String {
         self.call
             .children()
@@ -655,19 +768,7 @@ impl BlockCall {
                 args.children()
                     .find(|child| child.kind() == SyntaxKind::STRING_EXPR)
             })
-            .map(|string| {
-                string
-                    .descendants_with_tokens()
-                    .filter_map(|element| element.into_token())
-                    .filter(|token| {
-                        !matches!(
-                            token.kind(),
-                            SyntaxKind::STRING_START | SyntaxKind::STRING_END
-                        )
-                    })
-                    .map(|token| token.text().to_string())
-                    .collect()
-            })
+            .and_then(|string| literal_string(&string))
             .unwrap_or_else(|| default.to_string())
     }
 
@@ -686,35 +787,18 @@ fn literal_string(node: &SyntaxNode) -> Option<String> {
     if node.kind() != SyntaxKind::STRING_EXPR || node.children().next().is_some() {
         return None;
     }
-    let text = node.text().to_string();
-    Some(decode_string(text.strip_prefix('"')?.strip_suffix('"')?))
+    Some(crate::string_content::extract_simple_string_content(node))
 }
 
-fn decode_string(text: &str) -> String {
-    let mut result = String::new();
-    let mut chars = text.chars();
-    while let Some(c) = chars.next() {
-        if c != '\\' {
-            result.push(c);
-            continue;
-        }
-        match chars.next() {
-            Some('n') => result.push('\n'),
-            Some('r') => result.push('\r'),
-            Some('t') => result.push('\t'),
-            Some('0') => result.push('\0'),
-            Some('u') => {
-                chars.next();
-                let hex: String = chars.by_ref().take_while(|c| *c != '}').collect();
-                if let Some(c) = u32::from_str_radix(&hex, 16).ok().and_then(char::from_u32) {
-                    result.push(c);
-                }
-            }
-            Some(c) => result.push(c),
-            None => {}
-        }
-    }
-    result
+fn escape_label(text: &str) -> String {
+    text.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+        .replace('\t', "\\t")
+        .replace('\0', "\\0")
+        .replace('#', "\\#")
+        .replace('$', "\\$")
 }
 
 fn range_of(node: &SyntaxNode) -> Range<usize> {
@@ -990,5 +1074,41 @@ mod tests {
         assert!(program.contains("# => this is string content"));
         assert!(!program.contains("assert_eq"));
         assert!(crate::parse(&program).errors().is_empty(), "{program}");
+    }
+    #[test]
+    fn raw_programs_and_case_programs_have_distinct_execution_kinds() {
+        let raw = "fn main() do\n  panic(\"fail\")\nend\n";
+        let plan = plan_test_source(raw).unwrap();
+        assert_eq!(plan.execution, TestExecution::Program);
+        assert_eq!(plan.executable(), raw);
+        let plan = plan_test_source("test(\"ok\") do\nend\n").unwrap();
+        assert_eq!(plan.execution, TestExecution::Cases);
+    }
+
+    #[test]
+    fn negative_fences_never_expand_expectations() {
+        let docs = plan_documentation_tests(
+            "## ```mesh,compile_fail\n## 1 + 1 # explanation\n## # => true\n## ```\n",
+        )
+        .unwrap();
+        let program = docs[0].plan.program();
+        assert!(crate::parse(&program).ok(), "{program}");
+        assert!(!program.contains("assert_eq"));
+        assert!(program.contains("1 + 1 # explanation"));
+    }
+
+    #[test]
+    fn continued_literals_keep_code_columns_without_padding_their_value() {
+        let source = "  ## ```mesh,doctest\n  ## let text = \"a\n  ## b\" + true\n  ## let interp = \"a\n  ## #{missing}\"\n  ## ```\n";
+        let docs = plan_documentation_tests(source).unwrap();
+        let program = docs[0].plan.program();
+        for (original, generated) in source.lines().zip(program.lines()) {
+            for needle in ["true", "missing"] {
+                if let Some(at) = original.find(needle) {
+                    assert_eq!(generated.find(needle), Some(at), "{program}");
+                }
+            }
+        }
+        assert!(program.contains("\"a\nb\""), "{program}");
     }
 }
