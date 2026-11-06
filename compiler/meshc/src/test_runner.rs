@@ -21,10 +21,10 @@
 //! `mesh_typeck::builtins` and `mesh_codegen::mir::lower`.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Child, Command, Stdio};
 use std::time::Instant;
 
-use mesh_parser::test_harness::preprocess_test_source;
+use mesh_parser::test_harness::{plan_test_source, TestCase, TestPlan, TestPolicy};
 use mesh_pkg::manifest::{
     resolve_entrypoint, rewrite_test_manifest_source, Manifest, DEFAULT_ENTRYPOINT,
 };
@@ -148,6 +148,51 @@ fn prepare_temp_test_project(
     write_file(&tmp_dir.join(DEFAULT_ENTRYPOINT), preprocessed_source)
 }
 
+fn prepare_documentation_entry(
+    test_project: &ResolvedTestProject,
+    tmp: &Path,
+    source_file: &Path,
+    source: &str,
+) -> Result<(PathBuf, String, String), String> {
+    let relative = source_file
+        .strip_prefix(&test_project.project_dir)
+        .map_err(|e| e.to_string())?;
+    let entry = tmp.join(relative);
+    let original = std::fs::read_to_string(source_file).map_err(|e| e.to_string())?;
+    let copied = std::fs::read_to_string(&entry).unwrap_or_else(|_| original.clone());
+    let support = if relative == Path::new(DEFAULT_ENTRYPOINT) {
+        ""
+    } else {
+        copied.strip_prefix(&original).unwrap_or("")
+    };
+    let generated = format!("{source}\n{support}");
+    let mut control = format!("{original}\n{support}");
+    let parse = mesh_parser::parse(&original);
+    if !parse.syntax().children().any(|node| {
+        node.kind() == mesh_parser::SyntaxKind::FN_DEF
+            && node.children().any(|n| {
+                n.kind() == mesh_parser::SyntaxKind::NAME && n.text().to_string() == "main"
+            })
+    }) {
+        control.push_str("\nfn main() do\nend\n");
+    }
+    let manifest_path = tmp.join("mesh.toml");
+    let manifest = std::fs::read_to_string(&manifest_path).map_err(|e| e.to_string())?;
+    let mut manifest: toml::Value = toml::from_str(&manifest).map_err(|e| e.to_string())?;
+    manifest["package"]["entrypoint"] =
+        toml::Value::String(relative.to_string_lossy().into_owned());
+    write_file(
+        &manifest_path,
+        toml::to_string(&manifest).map_err(|e| e.to_string())?,
+    )?;
+    if entry != tmp.join(DEFAULT_ENTRYPOINT) {
+        std::fs::remove_file(tmp.join(DEFAULT_ENTRYPOINT)).map_err(|e| e.to_string())?;
+    }
+    std::fs::create_dir_all(entry.parent().unwrap()).map_err(|e| e.to_string())?;
+    write_file(&entry, &generated)?;
+    Ok((entry, generated, control))
+}
+
 fn read_file(path: &Path) -> Result<Vec<u8>, String> {
     std::fs::read(path).map_err(|e| format!("Failed to read '{}': {e}", path.display()))
 }
@@ -156,151 +201,452 @@ fn write_file(path: &Path, contents: impl AsRef<[u8]>) -> Result<(), String> {
     std::fs::write(path, contents).map_err(|e| format!("Failed to write '{}': {e}", path.display()))
 }
 
-/// Run tests from the current project, a project root, a test directory, or a specific test file.
-///
-/// - `target`: optional project root, directory, or specific `*.test.mpl` file.
-/// - `quiet`: compact output (a dot per passing test instead of its name).
-/// - `coverage`: currently unsupported and returns an explicit error.
-pub fn run_tests(
-    target: Option<&Path>,
-    quiet: bool,
-    coverage: bool,
-) -> Result<TestSummary, String> {
-    if coverage {
-        return Err(
-            "coverage reporting is not implemented for `meshc test`; run the command without --coverage"
-                .to_string(),
-        );
+pub struct TestOptions {
+    pub quiet: bool,
+    pub coverage: bool,
+    pub filter: Option<String>,
+    pub include_tags: Vec<String>,
+    pub exclude_tags: Vec<String>,
+    pub test_threads: usize,
+    pub doc: bool,
+}
+
+impl TestOptions {
+    fn selects(&self, case: &TestCase) -> bool {
+        self.filter
+            .as_ref()
+            .is_none_or(|name| case.name.contains(name))
+            && self.include_tags.iter().all(|tag| case.tags.contains(tag))
+            && !self.exclude_tags.iter().any(|tag| case.tags.contains(tag))
     }
 
-    let target = resolve_target_path(target)?;
-    let test_project = resolve_test_project(&target)?;
-    let project_dir = &test_project.project_dir;
-    let test_files = resolve_test_files(&target)?;
+    fn has_selection(&self) -> bool {
+        self.filter.is_some() || !self.include_tags.is_empty() || !self.exclude_tags.is_empty()
+    }
+}
 
-    if test_files.is_empty() {
-        println!("No *.test.mpl files found.");
+fn target_and_line(target: Option<&Path>) -> Result<(PathBuf, Option<usize>), String> {
+    if let Some(target) = target.filter(|p| !p.exists()) {
+        if let Some((file, line)) = target.to_str().and_then(|text| text.rsplit_once(':')) {
+            if let Ok(line) = line.parse::<usize>() {
+                let path = resolve_target_path(Some(Path::new(file)))?;
+                if line == 0 || !path.is_file() {
+                    return Err("file:line requires a file and a positive, one-based line".into());
+                }
+                return Ok((path, Some(line)));
+            }
+        }
+    }
+    Ok((resolve_target_path(target)?, None))
+}
+
+fn resolve_doc_files(target: &Path) -> Result<Vec<PathBuf>, String> {
+    if target.is_file() {
+        if target.extension().is_some_and(|ext| ext == "mpl") {
+            return Ok(vec![target.to_path_buf()]);
+        }
+        return Err("documentation tests require a *.mpl source file or directory".into());
+    }
+    let mut files = Vec::new();
+    discover_recursive_mode(target, &mut files, true)
+        .map_err(|e| format!("Failed to walk '{}': {e}", target.display()))?;
+    files.sort();
+    Ok(files)
+}
+
+fn documentation_plans(source: &str) -> Result<Vec<(TestPlan, bool)>, String> {
+    Ok(mesh_parser::test_harness::plan_documentation_tests(source)?
+        .into_iter()
+        .map(|doc| (doc.plan, doc.compile_fail))
+        .collect())
+}
+
+struct TestUnit {
+    path: PathBuf,
+    plan: TestPlan,
+    selected: Vec<TestCase>,
+    compile_fail: bool,
+}
+
+pub fn run_tests(target: Option<&Path>, options: &TestOptions) -> Result<TestSummary, String> {
+    if options.coverage {
+        return Err("coverage reporting is not implemented for `meshc test`; run the command without --coverage".into());
+    }
+    let (target, line) = target_and_line(target)?;
+    let test_project = resolve_test_project(&target)?;
+    let files = if options.doc {
+        resolve_doc_files(&target)?
+    } else {
+        resolve_test_files(&target)?
+    };
+    let explicit = options.has_selection() || line.is_some() || target.is_file();
+    if files.is_empty() && !explicit {
+        println!(
+            "{}",
+            if options.doc {
+                "No marked documentation tests found."
+            } else {
+                "No *.test.mpl files found."
+            }
+        );
         return Ok(TestSummary {
             passed: 0,
             failed: 0,
         });
     }
-
-    let start = Instant::now();
-    let mut passed = 0usize;
-    let mut failed = 0usize;
     let color = use_color();
     let (green, red, bold, reset) = palette(color);
-
-    for test_file in &test_files {
-        // The project root is an ancestor of every test file.
-        let label = test_file
-            .strip_prefix(project_dir)
-            .unwrap_or(test_file)
+    let start = Instant::now();
+    let mut summary = TestSummary {
+        passed: 0,
+        failed: 0,
+    };
+    let mut units = Vec::new();
+    for path in files {
+        let source = std::fs::read_to_string(&path)
+            .map_err(|e| format!("Failed to read '{}': {e}", path.display()))?;
+        let plans = if options.doc {
+            documentation_plans(&source)
+        } else {
+            plan_test_source(&source).map(|plan| vec![(plan, false)])
+        };
+        match plans {
+            Ok(plans) => {
+                for (plan, compile_fail) in plans {
+                    let selected = select_cases(&plan, options, line);
+                    if !selected.is_empty()
+                        || (!options.doc && plan.has_parse_errors())
+                        || (!explicit && !options.doc && plan.cases.is_empty())
+                    {
+                        units.push(TestUnit {
+                            path: path.clone(),
+                            plan,
+                            selected,
+                            compile_fail,
+                        });
+                    }
+                }
+            }
+            Err(error) => {
+                println!(
+                    "{red}{bold}COMPILE ERROR{reset}: {}\n  {error}",
+                    path.strip_prefix(&test_project.project_dir)
+                        .unwrap_or(&path)
+                        .display()
+                );
+                summary.failed += 1;
+            }
+        }
+    }
+    if units.is_empty() && summary.failed == 0 {
+        if explicit {
+            return Err("No test cases match the explicit selection".into());
+        }
+        println!("No marked documentation tests found.");
+        return Ok(summary);
+    }
+    for unit in units {
+        let label = unit
+            .path
+            .strip_prefix(&test_project.project_dir)
+            .unwrap_or(&unit.path)
             .display()
             .to_string();
-
-        // Read the .test.mpl source and preprocess it into a valid Mesh program.
-        let source = std::fs::read_to_string(test_file)
-            .map_err(|e| format!("Failed to read '{}': {}", test_file.display(), e))?;
-
-        let preprocessed = match preprocess_test_source(&source) {
-            Ok(preprocessed) => preprocessed,
-            Err(e) => {
-                println!("{red}{bold}COMPILE ERROR{reset}: {label}");
-                println!("  {e}");
-                failed += 1;
-                continue;
-            }
-        };
-
-        // Compile the preprocessed source to a temp binary.
-        let tmp_dir =
-            tempfile::tempdir().map_err(|e| format!("Failed to create temp dir: {}", e))?;
-        let bin_path = tmp_dir.path().join("test_bin");
-
-        if let Err(e) = prepare_temp_test_project(&test_project, tmp_dir.path(), &preprocessed) {
-            println!("{red}{bold}SETUP ERROR{reset}: {label}");
-            println!("  {}", e);
-            failed += 1;
+        let tmp = tempfile::tempdir().map_err(|e| format!("Failed to create temp dir: {e}"))?;
+        let source = unit.plan.executable();
+        if let Err(error) = prepare_temp_test_project(&test_project, tmp.path(), &source) {
+            println!("{red}{bold}SETUP ERROR{reset}: {label}\n  {error}");
+            summary.failed += 1;
             continue;
         }
-
-        // Diagnostics name the test file and the project's files, not
-        // their copies in the temporary project.
+        let (entry, source, control) = if options.doc {
+            prepare_documentation_entry(&test_project, tmp.path(), &unit.path, &source)?
+        } else {
+            (tmp.path().join(DEFAULT_ENTRYPOINT), source, String::new())
+        };
         let diag_opts = DiagnosticOptions {
             color,
             json: false,
             display_paths: vec![
-                (tmp_dir.path().join(DEFAULT_ENTRYPOINT), test_file.clone()),
-                (tmp_dir.path().to_path_buf(), project_dir.to_path_buf()),
+                (entry.clone(), unit.path.clone()),
+                (tmp.path().to_path_buf(), test_project.project_dir.clone()),
             ],
         };
-        let compile_result = crate::build(
-            tmp_dir.path(),
-            0,     // opt_level: debug
-            false, // emit_llvm
-            Some(&bin_path),
-            None, // target: native
+        let bin = tmp.path().join("test_bin");
+        if unit.compile_fail {
+            // A broken dependency or missing compiler prerequisite cannot satisfy a negative example.
+            write_file(&entry, &control)?;
+            let control = crate::build(
+                tmp.path(),
+                0,
+                false,
+                Some(&bin),
+                None,
+                crate::BuildArtifact::Executable,
+                true,
+                &diag_opts,
+            );
+            write_file(&entry, &source)?;
+            if let Err(error) = control {
+                println!(
+                    "{red}{bold}COMPILE ERROR{reset}: {label} (doctest prerequisites)\n  {error}"
+                );
+                summary.failed += 1;
+                continue;
+            }
+        }
+        let compiled = crate::build(
+            tmp.path(),
+            0,
+            false,
+            Some(&bin),
+            None,
             crate::BuildArtifact::Executable,
-            true, // test-only compiler builtins
+            true,
             &diag_opts,
         );
-
-        if let Err(e) = compile_result {
-            println!("{red}{bold}COMPILE ERROR{reset}: {label}");
-            println!("  {}", e);
-            failed += 1;
+        if unit.compile_fail {
+            match compiled {
+                Err(error) if error == "Compilation failed due to errors above." => {
+                    println!(
+                        "PASS: {label}:{} (expected compile failure)",
+                        unit.selected[0].span.start_line
+                    );
+                    summary.passed += 1;
+                }
+                result => {
+                    println!(
+                        "FAIL: {label}:{} expected a parse or type error, got {}",
+                        unit.selected[0].span.start_line,
+                        result
+                            .err()
+                            .unwrap_or_else(|| "successful compilation".into())
+                    );
+                    summary.failed += 1;
+                }
+            }
             continue;
         }
-
-        // Execute the compiled binary. It prints a line per test, or a `.`
-        // or `F` in quiet mode.
-        let output = Command::new(&bin_path)
-            .env("MESH_TEST_QUIET", if quiet { "1" } else { "0" })
-            .env("MESH_TEST_COLOR", if color { "1" } else { "0" })
-            .output()
-            .map_err(|e| format!("Failed to execute '{}': {}", bin_path.display(), e))?;
-
-        // Pass stdout/stderr through to terminal
-        if !output.stdout.is_empty() {
-            print!("{}", String::from_utf8_lossy(&output.stdout));
+        if let Err(error) = compiled {
+            println!("{red}{bold}COMPILE ERROR{reset}: {label}\n  {error}");
+            summary.failed += 1;
+            continue;
         }
-        if !output.stderr.is_empty() {
-            eprint!("{}", String::from_utf8_lossy(&output.stderr));
-        }
-
-        if output.status.success() {
-            passed += 1;
+        let failures = execute_cases(&bin, tmp.path(), &unit.selected, &label, options, color)?;
+        if failures == 0 {
+            summary.passed += 1;
         } else {
-            // A binary killed by a signal reported nothing itself, and lost
-            // the output it had buffered: say what happened to it.
-            if output.status.code().is_none() {
-                println!("{red}{bold}CRASHED{reset}: {label} ({})", output.status);
-            }
-            failed += 1;
+            summary.failed += 1;
         }
     }
-
-    let elapsed = start.elapsed();
-    let elapsed_secs = elapsed.as_secs_f64();
-
-    // Summary line. It counts files: each file's binary already printed its
-    // own test counts, so a bare "1 passed" here read like a lost test.
-    let files = |n: usize| if n == 1 { "test file" } else { "test files" };
-    if failed > 0 {
+    let elapsed = start.elapsed().as_secs_f64();
+    let noun = |n| {
+        if options.doc {
+            if n == 1 {
+                "doctest group"
+            } else {
+                "doctest groups"
+            }
+        } else if n == 1 {
+            "test file"
+        } else {
+            "test files"
+        }
+    };
+    if summary.failed > 0 {
         println!(
-            "\n{red}{bold}{failed} {} failed{reset}, {passed} passed in {elapsed_secs:.2}s",
-            files(failed)
+            "\n{red}{bold}{} {} failed{reset}, {} passed in {elapsed:.2}s",
+            summary.failed,
+            noun(summary.failed),
+            summary.passed
         );
     } else {
         println!(
-            "\n{green}{bold}{passed} {} passed{reset} in {elapsed_secs:.2}s",
-            files(passed)
+            "\n{green}{bold}{} {} passed{reset} in {elapsed:.2}s",
+            summary.passed,
+            noun(summary.passed)
         );
     }
+    Ok(summary)
+}
 
-    Ok(TestSummary { passed, failed })
+fn select_cases(plan: &TestPlan, options: &TestOptions, line: Option<usize>) -> Vec<TestCase> {
+    // A line inside a case selects that case, even inside a describe. A fixture or
+    // describe line selects the cases in its narrowest enclosing fixture scope.
+    let direct =
+        line.is_some_and(|line| plan.cases.iter().any(|case| case.span.contains_line(line)));
+    let scope = line.and_then(|line| {
+        plan.cases
+            .iter()
+            .flat_map(|case| &case.fixtures)
+            .filter(|fixture| fixture.scope.contains_line(line))
+            .min_by_key(|fixture| fixture.scope.bytes.len())
+            .map(|fixture| &fixture.scope)
+    });
+    plan.cases
+        .iter()
+        .filter(|case| {
+            options.selects(case)
+                && line.is_none_or(|line| {
+                    if direct {
+                        case.span.contains_line(line)
+                    } else {
+                        scope.is_some_and(|scope| {
+                            case.fixtures.iter().any(|fixture| &fixture.scope == scope)
+                        })
+                    }
+                })
+        })
+        .cloned()
+        .collect()
+}
+
+struct CaseProcess {
+    child: Child,
+    cases: Vec<TestCase>,
+    directory: tempfile::TempDir,
+}
+
+impl Drop for CaseProcess {
+    fn drop(&mut self) {
+        if !matches!(self.child.try_wait(), Ok(Some(_))) {
+            let _ = self.child.kill();
+        }
+        let _ = self.child.wait();
+    }
+}
+
+fn start_cases(
+    bin: &Path,
+    tmp: &Path,
+    cases: &[TestCase],
+    options: &TestOptions,
+    color: bool,
+) -> Result<CaseProcess, String> {
+    let directory = tempfile::tempdir_in(tmp).map_err(|e| e.to_string())?;
+    let data = directory.path().join("data");
+    std::fs::create_dir(&data).map_err(|e| e.to_string())?;
+    let output_file = |name| {
+        std::fs::File::create(directory.path().join(name))
+            .map(Stdio::from)
+            .map_err(|e| e.to_string())
+    };
+    let ids = format!(
+        ",{},",
+        cases
+            .iter()
+            .map(|case| case.id.to_string())
+            .collect::<Vec<_>>()
+            .join(",")
+    );
+    let child = Command::new(bin)
+        .env("MESH_TEST_CASES", ids)
+        .env("MESH_DATA_DIR", data)
+        .env("MESH_TEST_RESULTS", directory.path().join("results"))
+        .env("MESH_TEST_QUIET", if options.quiet { "1" } else { "0" })
+        .env("MESH_TEST_COLOR", if color { "1" } else { "0" })
+        .stdin(Stdio::null())
+        .stdout(output_file("stdout")?)
+        .stderr(output_file("stderr")?)
+        .spawn()
+        .map_err(|e| format!("Failed to execute '{}': {e}", bin.display()))?;
+    Ok(CaseProcess {
+        child,
+        cases: cases.to_vec(),
+        directory,
+    })
+}
+
+fn finish_cases(process: &mut CaseProcess, label: &str) -> Result<usize, String> {
+    let status = process.child.wait().map_err(|e| e.to_string())?;
+    let stdout = read_file(&process.directory.path().join("stdout"))?;
+    let stderr = read_file(&process.directory.path().join("stderr"))?;
+    print!("{}", String::from_utf8_lossy(&stdout));
+    eprint!("{}", String::from_utf8_lossy(&stderr));
+    let events =
+        std::fs::read_to_string(process.directory.path().join("results")).unwrap_or_default();
+    let events: Vec<_> = events.lines().collect();
+    let complete = events.len() == process.cases.len() + 1 && events.last() == Some(&"done");
+    let mut failed = 0;
+    for (index, case) in process.cases.iter().enumerate() {
+        if events.get(index) != Some(&"pass") {
+            failed += 1;
+            let reason = if events.get(index) == Some(&"fail") {
+                "FAIL"
+            } else {
+                "INCOMPLETE"
+            };
+            println!(
+                "{reason}: {label}:{} [case {}] {}",
+                case.span.start_line, case.id, case.name
+            );
+        }
+    }
+    if !status.success() || !complete {
+        if status.code().is_none() {
+            println!("CRASHED: {label} ({status})");
+        } else if !complete {
+            println!("INCOMPLETE: {label} (missing test completion, {status})");
+        }
+        failed = failed.max(1);
+    }
+    Ok(failed)
+}
+
+fn execute_cases(
+    bin: &Path,
+    tmp: &Path,
+    cases: &[TestCase],
+    label: &str,
+    options: &TestOptions,
+    color: bool,
+) -> Result<usize, String> {
+    let mut failed = 0;
+    let mut offset = 0;
+    while offset < cases.len() {
+        let asynchronous = cases[offset].policy == TestPolicy::Asynchronous;
+        let end = cases[offset..]
+            .iter()
+            .position(|case| (case.policy == TestPolicy::Asynchronous) != asynchronous)
+            .map_or(cases.len(), |n| offset + n);
+        if !asynchronous {
+            let mut process = start_cases(bin, tmp, &cases[offset..end], options, color)?;
+            failed += finish_cases(&mut process, label)?;
+        } else {
+            let mut active = Vec::new();
+            let mut next = offset;
+            while next < end || !active.is_empty() {
+                while next < end && active.len() < options.test_threads {
+                    active.push(start_cases(
+                        bin,
+                        tmp,
+                        &cases[next..next + 1],
+                        options,
+                        color,
+                    )?);
+                    next += 1;
+                }
+                let mut index = 0;
+                while index < active.len() {
+                    if active[index]
+                        .child
+                        .try_wait()
+                        .map_err(|e| e.to_string())?
+                        .is_some()
+                    {
+                        failed += finish_cases(&mut active.remove(index), label)?;
+                    } else {
+                        index += 1;
+                    }
+                }
+                if !active.is_empty() {
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
+            }
+        }
+        offset = end;
+    }
+    Ok(failed)
 }
 
 // ── Source Preprocessor ───────────────────────────────────────────────────
@@ -439,6 +785,14 @@ fn discover_test_files(root: &Path) -> Result<Vec<PathBuf>, String> {
 }
 
 fn discover_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> std::io::Result<()> {
+    discover_recursive_mode(dir, files, false)
+}
+
+fn discover_recursive_mode(
+    dir: &Path,
+    files: &mut Vec<PathBuf>,
+    docs: bool,
+) -> std::io::Result<()> {
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
@@ -448,12 +802,26 @@ fn discover_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> std::io::Result<(
         if name_str.starts_with('.') || name_str == "target" {
             continue;
         }
+        if entry.file_type()?.is_symlink() {
+            return Err(std::io::Error::other(format!(
+                "symbolic link '{}' is not a test source",
+                path.display()
+            )));
+        }
         if path.is_dir() {
-            discover_recursive(&path, files)?;
+            discover_recursive_mode(&path, files, docs)?;
         } else if path
             .file_name()
             .and_then(|n| n.to_str())
-            .map(|n| n.ends_with(".test.mpl"))
+            .map(|n| {
+                if docs {
+                    n.ends_with(".mpl")
+                        && !n.ends_with(".test.mpl")
+                        && !n.ends_with(".test-support.mpl")
+                } else {
+                    n.ends_with(".test.mpl")
+                }
+            })
             .unwrap_or(false)
         {
             files.push(path);

@@ -190,6 +190,26 @@ enum Commands {
         /// Request coverage reporting (currently unsupported; exits with an error)
         #[arg(long)]
         coverage: bool,
+
+        /// Select cases whose full name contains this text
+        #[arg(long, alias = "name")]
+        filter: Option<String>,
+
+        /// Require a tag (repeat to require every tag)
+        #[arg(long = "include-tag", alias = "tag")]
+        include_tags: Vec<String>,
+
+        /// Exclude cases with any of these tags
+        #[arg(long = "exclude-tag")]
+        exclude_tags: Vec<String>,
+
+        /// Maximum number of asynchronous case processes
+        #[arg(long = "test-threads", default_value = "2", value_parser = clap::value_parser!(u16).range(1..=256))]
+        test_threads: u16,
+
+        /// Run marked documentation examples in *.mpl source files
+        #[arg(long = "doc", alias = "doctests")]
+        doc: bool,
     },
     /// Run database migrations
     Migrate {
@@ -443,8 +463,22 @@ fn run() {
             path,
             quiet,
             coverage,
+            filter,
+            include_tags,
+            exclude_tags,
+            test_threads,
+            doc,
         } => {
-            if or_exit(test_runner::run_tests(path.as_deref(), quiet, coverage)).failed > 0 {
+            let options = test_runner::TestOptions {
+                quiet,
+                coverage,
+                filter,
+                include_tags,
+                exclude_tags,
+                test_threads: usize::from(test_threads),
+                doc,
+            };
+            if or_exit(test_runner::run_tests(path.as_deref(), &options)).failed > 0 {
                 process::exit(1);
             }
         }

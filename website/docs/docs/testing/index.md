@@ -1,6 +1,6 @@
 ---
 title: Testing
-description: Write and run tests in Mesh with meshc test — assertions, grouping, mock actors, and receive expectations
+description: Select Mesh test cases, run isolated asynchronous tests, and check documentation examples
 ---
 
 # Testing
@@ -24,10 +24,10 @@ nearest enclosing directory with a `mesh.toml`, and without one the run fails
 with "Could not resolve a Mesh project root". `meshc test` finds every
 `*.test.mpl` file under the path, skipping hidden directories and `target/`,
 and runs the files in path order. Each file is compiled, at debug optimization
-and together with the project's modules, into a program of its own, and run as
-its own process; the tests of one file run one after another in that process.
-It prints each file's results when the file finishes, then a summary across
-files:
+and together with the project's modules, into one executable. Selected consecutive synchronous cases run in declaration
+order in one process. Each asynchronous case runs in its own process from that
+same executable. The runner prints captured output when each process finishes,
+then a summary across files:
 
 ```
   ✓ arithmetic is correct
@@ -60,6 +60,101 @@ tree so test-only APIs cannot leak into production artifacts.
 Mesh source discovery does not follow symbolic links. A visible symbolic link
 under the requested project root is rejected instead of being used as an alias
 to test-only or out-of-project source.
+
+## Selecting cases
+
+```bash
+meshc test my-app --filter "string operations > length"
+meshc test my-app/tests/config.test.mpl:18
+meshc test my-app --include-tag unit --exclude-tag network
+```
+
+`--filter` matches a substring of the full case name, including its describe
+names. `--name` is an alias. Duplicate names select every matching case; a
+`file:line` location distinguishes cases on different lines. A line inside a
+case selects that case. A describe or fixture line selects the cases in its
+innermost enclosing describe. Locations use one-based original source lines.
+
+Each repeated `--include-tag` must match an inherited or case tag. `--tag` is
+an alias. Any matching `--exclude-tag` removes the case. Name, location, and tag
+conditions combine. Explicit filters or a file location that match no cases
+exit with an error. An ordinary directory run with no test files still succeeds.
+The compiler checks the entire selected file, including unselected bodies;
+only selected cases and their fixtures execute.
+
+```mesh
+describe("arithmetic", tags: ["unit"], async: true) do
+  test("adds", tags: ["fast"]) do
+    assert_eq(1 + 1, 2)
+  end
+
+  test("ordered", async: false) do
+    assert(true)
+  end
+end
+```
+
+Names and tags must be static strings. Tags inherit through nested describes.
+`async: true` inherits too; `async: false` overrides it. Cases are synchronous
+by default. Unknown or repeated options are errors.
+
+## Asynchronous cases
+
+`--test-threads N` limits concurrent asynchronous children to `N`, from 1 to
+256; the default is 2. Each child has a fresh `MESH_DATA_DIR`, host fixtures,
+actor registry, and captured stdout and stderr. Temporary runtime data is
+removed after the child exits. All cases in a test file use the same compiled
+executable, selected by case IDs rather than by their printed names.
+
+Consecutive synchronous cases run together in declaration order. The runner
+waits for the preceding asynchronous group to finish before starting a
+synchronous group. It waits for that synchronous group before starting the
+next asynchronous group. Files run in path order. A failed child does not
+cancel other children. Failures name the original file, line, case ID, and
+full name. A child that exits without reporting completion fails even if it
+exits with status 0.
+
+## Documentation examples
+
+`meshc test --doc my-app` runs marked fences in `##` and `##!` source
+documentation. `--doctests` is an alias. Ordinary unmarked `mesh` fences are
+illustrative and do not execute.
+
+````text
+## ```mesh,doctest
+## add(20, 22) # => 42
+## add(1, 1)
+## # => 2
+## ```
+## ```mesh,compile_fail
+## add(true, 1)
+## ```
+pub fn add(a :: Int, b :: Int) -> Int do
+  a + b
+end
+````
+
+A runnable fence at module scope contains Mesh statements. `# => expression`
+compares the preceding single-line expression with the expected value using `assert_eq`. It may appear
+on that expression's line or the next documentation line. Ordinary assertions
+and test runtime fixtures are also available. Each fence starts fresh fixture
+state. The examples can call private declarations in their source module,
+use that module's imports, and access its `.test-support.mpl` fragment.
+The runner reserves `main` for dispatch.
+
+Runnable fences in a source file share one compilation. Each `compile_fail`
+fence compiles separately and passes only when the compiler reports a parse
+or type error. A control build first checks the original module and its
+dependencies. A missing runtime or a broken dependency therefore cannot satisfy
+an expected compilation failure. A successfully compiled negative example
+fails and does not execute. Compiler diagnostics retain original documentation
+lines. Runtime failures identify the fence's original opening line.
+
+Fences must contain consecutive documentation lines. Names are `doctest line N`,
+where `N` is the opening line, and support `--filter` and `file:line` selection.
+`--doc` accepts ordinary modules and rejects files containing test DSL blocks.
+It selects documentation tests instead of `*.test.mpl` tests. Coverage
+remains unsupported; `--coverage` exits with an explicit error.
 
 ## Writing Tests
 
@@ -146,12 +241,14 @@ with the next test. A panic's message is the failure: `panicked: <message>`,
 so `panic("...")` fails a test with a message of your own. Inside
 `assert_raises`, a failed assertion is the raise it expects.
 
-A failure that ends the whole process, such as a stack overflow, ends the file
-without its summary, and the file counts as failed. There is no per-test
-timeout: a test that never finishes stops the run. The tests of a file share
-one process, so actors they spawn and names they register carry over to the
-next test; only mock actors and the host fixtures below are reset between
-tests.
+A failure that ends the whole process, such as a stack overflow or
+`Process.exit`, fails that process's unfinished cases. The runner still drains
+other asynchronous children and runs later groups. There is no per-test timeout.
+A test that never finishes blocks its group. Synchronous cases in one consecutive
+group share process state. Mock actors and host fixtures reset between cases.
+Asynchronous cases share neither actors nor runtime data with other cases.
+User-selected external resources, such as an explicit database URL or file
+path, remain shared.
 
 ```mesh
 test("assertions") do
@@ -213,7 +310,7 @@ describe("counter") do
 end
 ```
 
-`setup` and `teardown` are scoped to the `describe` block — they do not affect tests outside of it. A `describe` may have several `setup` blocks, which run in order, and at most one `teardown`; every `setup` must come before the first test or nested `describe` of its `describe`, or the file does not compile. Values a `setup` binds are visible in each test and in `teardown`. A failing `setup` fails the test without running its body or `teardown`; after the body, `teardown` runs whether the test passed or not.
+`setup` and `teardown` are scoped to the `describe` block — they do not affect tests outside of it. A `describe` may have several `setup` blocks, which run in order, and at most one `teardown`; every `setup` must come before the first test or nested `describe` of its `describe`, or the file does not compile. Values a `setup` binds are visible in each test and in `teardown`. A failing `setup` fails the test without running its body or `teardown`; after the body, `teardown` runs whether the test passed or not. If a nested setup fails, acquired outer scopes still run their teardowns. A process exit or signal cannot run Mesh teardown code; the parent still reaps the process and removes its temporary data.
 
 ### Nested describe
 

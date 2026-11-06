@@ -328,6 +328,22 @@ pub unsafe extern "C-unwind" fn mesh_test_assert_raises(
     }
 }
 
+// A separate channel lets the CLI distinguish completed cases from a crash or early exit.
+fn report_case_event(event: &str) {
+    let Some(path) = std::env::var_os("MESH_TEST_RESULTS") else {
+        return;
+    };
+    let result = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .and_then(|mut file| writeln!(file, "{event}"));
+    if let Err(error) = result {
+        eprintln!("cannot report test completion: {error}");
+        std::process::exit(2);
+    }
+}
+
 /// Print the run summary and exit the process with the appropriate code.
 ///
 /// First reprints all accumulated failure messages in a `Failures:` section,
@@ -340,6 +356,7 @@ pub unsafe extern "C-unwind" fn mesh_test_assert_raises(
 /// `_elapsed_ms`.
 #[no_mangle]
 pub extern "C" fn mesh_test_summary(passed: i64, failed: i64, _elapsed_ms: i64) {
+    report_case_event("done");
     let Palette {
         green,
         red,
@@ -439,6 +456,9 @@ pub extern "C" fn mesh_test_end() {
     run_test_case_cleanup_hook();
     if !CURRENT_FAILED.with(|failed| failed.get()) {
         mesh_test_pass();
+        report_case_event("pass");
+    } else {
+        report_case_event("fail");
     }
 }
 
