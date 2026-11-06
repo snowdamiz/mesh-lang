@@ -24,11 +24,19 @@ certified. Explicit heap continuations are a broader fallback.
 
 ## Reproduce the observations
 
-Run from this checkout on Darwin arm64 with the installed LLVM 21 and Rust tools.
+Run from this checkout on Darwin arm64 with LLVM 21.1 and a native Rust compiler.
+Put `rustc` on `PATH`, or set `RUSTC` to its executable path. LLVM tools come from
+`LLVM_SYS_211_PREFIX/bin` when that override is set, or from `PATH` otherwise.
 
 ```sh
 LLVM_SYS_211_PREFIX=/opt/homebrew/opt/llvm@21 python3 proof/stack-containment/run.py
 ```
+
+The driver checks for `llc`, `opt`, `clang`, `clang++`, `llvm-config`, `rustc`, and
+`git` before generating inputs. An explicit override never falls back to another
+installation. Missing tools, an incompatible LLVM version or Rust host, and any
+native host other than Darwin arm64 fail before the probes run. Linux and Windows
+remain cross-target codegen cases. Their runtime behavior is not tested.
 
 The driver runs serially. Each child has a 30-second CPU limit, a 45-second wall
 timeout, and disabled core dumps. It never runs cross-target code. The native
@@ -40,10 +48,26 @@ their `llc` child processes.
 
 Inputs are in `proof/stack-containment/`. Full commands, LLVM IR, assembly, final
 machine IR, logs, and binaries are regenerated under `.tmp/stack-containment/run/`.
-`results.json` is written only after the entire experiment succeeds. The retained
-`proof/stack-containment/observed.json` records one run, including input hashes,
-LLVM and Rust versions, the source commit, and output. It is historical evidence.
-Rerun the command for a new toolchain or source baseline.
+The driver removes any previous `results.json` at startup and replaces it only
+after all exit-code and content assertions pass. Failed attempts leave diagnostic
+logs but no successful result. The retained `proof/stack-containment/observed.json`
+is unchanged historical evidence from proof commit
+`6a2f1c8b437ccd36fa485ae1aec9a239f7caf6e7`. Its recorded baseline is
+`7a7feda2594593eb6318c17cfb612c8016a99342`, and its recorded driver SHA-256 is
+`ea326c18f391f79ae26232ce2463a7cfc1e7cdaf9527ef39b7a0bd7f062e89b0`.
+Those input hashes, versions, and observations describe the original driver run,
+not a run of the strengthened assertions. Rerun the command for fresh evidence.
+
+Success now checks diagnostic function identities, cap acceptance and rejection,
+error promotion, nonempty object buffers, lazy JIT materialization, and the
+reported absence of publication or execution. It compares measured fixed frames
+and dynamic allocation gaps, bounds realignment padding and checks its assembly
+mask, and compares x86 outgoing pushes with final machine-frame accounting.
+Both unwind call forms must report a caught unwind, positive matching entry and
+drop counts below the thread's frame capacity, bounded slack below the synthetic
+reserve, and continued process execution. Exact randomized SP values and an
+exact recursion count are not required. These checks qualify only the synthetic
+probes, not actor finalization, corosensei, or a full runtime stack budget.
 
 The 24 main cases cover four targets, O0 and O2, and three attribute settings.
 O2 runs `opt -passes=default<O2>` before `llc -O2`. Settings are no probe attribute,
