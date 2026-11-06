@@ -1,0 +1,4 @@
+ts	phase	decision	why	evidence	result
+2026-11-06T21:00:00Z	frame	Retain every capability in the comparison as an implementation unit	The user requested all reported gaps and runtime-owned jobs	docs/server-runtime-expansion.md	open
+2026-11-06T21:07:49Z	frame	The initial row used a manually entered time; this row records the actual checkpoint time	Keep the evidence chronology accurate without rewriting the append-only record	docs/server-runtime-decisions.tsv	corrected
+2026-11-06T21:07:49Z	baseline	Use installed Rust stable and Homebrew LLVM 21 through explicit paths	The tools already exist; only the shell and repository LLVM paths differ	.tmp/server-runtime/evidence/baseline-build.log	workspace build passed
