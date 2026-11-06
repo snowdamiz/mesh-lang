@@ -42,10 +42,15 @@ use codegen::CodeGen;
 use mir::lower::lower_to_mir;
 use mir::mono::monomorphize;
 
+pub use mesh_parser::ast::item::ExportBindingAudience;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LibraryExport {
     pub function: String,
     pub symbol: String,
+    pub max_input: u64,
+    pub max_output: u64,
+    pub binding_audience: ExportBindingAudience,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

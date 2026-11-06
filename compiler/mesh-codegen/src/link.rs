@@ -5,6 +5,7 @@
 //! while Windows MSVC targets use `clang`/`clang.exe` so the installed
 //! compiler does not assume Unix tool names or library naming.
 
+use std::ffi::OsString;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -42,6 +43,7 @@ pub(crate) struct LinkPlan {
     target: LinkTarget,
     rt_path: PathBuf,
     linker_program: PathBuf,
+    linker_args: Vec<OsString>,
     native_archives: Vec<PathBuf>,
 }
 
@@ -93,9 +95,11 @@ fn prepare_link_for_runtime(
             .map_err(|error| fail(error, Some(path)))?,
         None => find_mesh_rt(&target, runtime_flavor).map_err(|error| fail(error, None))?,
     };
-    let linker_program = target
-        .linker_program()
+    let linker_command = target
+        .compiler_command()
         .map_err(|error| fail(error, Some(&rt_path)))?;
+    let linker_program = PathBuf::from(linker_command.get_program());
+    let linker_args = linker_command.get_args().map(ToOwned::to_owned).collect();
     let runtime_exists = rt_path.exists();
     build_trace::set_link_context(
         &target.display_triple(),
@@ -126,6 +130,7 @@ fn prepare_link_for_runtime(
         target,
         rt_path,
         linker_program,
+        linker_args,
         native_archives: native_archives.to_vec(),
     })
 }
@@ -289,7 +294,8 @@ fn dynamic_link_command(
         }
         return Ok(command);
     }
-    let mut command = plan.target.dynamic_linker_command()?;
+    let mut command = Command::new(&plan.linker_program);
+    command.args(&plan.linker_args);
     command.arg(object_path).args(&plan.native_archives);
     if plan.target.is_apple() {
         command
@@ -333,6 +339,7 @@ fn finish_library_link(
 
 fn build_link_command(object_path: &Path, output_path: &Path, plan: &LinkPlan) -> Command {
     let mut cmd = Command::new(&plan.linker_program);
+    cmd.args(&plan.linker_args);
     cmd.arg(object_path);
     for archive in &plan.native_archives {
         cmd.arg(archive);
@@ -478,12 +485,22 @@ fn mesh_rt_candidates(
         }
     }
 
-    for profile in profiles {
-        candidates.push(
-            target_dir
-                .join(profile)
-                .join(target.runtime_filename(runtime_flavor)),
-        );
+    // A host archive can share a CPU architecture with a cross target while
+    // using a different ABI/platform (notably macOS versus iOS simulator).
+    // Archiving alone does not detect that mismatch. Never search the host
+    // profile directory for an explicitly different target.
+    if target
+        .requested_triple
+        .as_deref()
+        .is_none_or(|triple| triple == host_target_triple())
+    {
+        for profile in profiles {
+            candidates.push(
+                target_dir
+                    .join(profile)
+                    .join(target.runtime_filename(runtime_flavor)),
+            );
+        }
     }
 
     candidates
@@ -623,23 +640,30 @@ impl LinkTarget {
         }
     }
 
-    fn dynamic_linker_command(&self) -> Result<Command, String> {
-        let Some(triple) = self.requested_triple.as_deref() else {
+    fn compiler_command(&self) -> Result<Command, String> {
+        if self.kind == LinkTargetKind::WindowsMsvc {
+            return self.linker_program().map(Command::new);
+        }
+        let native_macos =
+            (self.requested_triple.is_none() && cfg!(target_os = "macos")).then(host_target_triple);
+        let Some(triple) = self.requested_triple.as_deref().or(native_macos.as_deref()) else {
             return Ok(Command::new("cc"));
         };
         if triple.contains("apple-ios") {
-            let sdk = if triple.ends_with("-sim") {
+            let llvm_triple = llvm_target_triple(triple);
+            let sdk = if llvm_triple.ends_with("-simulator") {
                 "iphonesimulator"
             } else {
                 "iphoneos"
             };
             let mut command = Command::new("xcrun");
-            command.args(["--sdk", sdk, "clang", "-target", triple]);
+            command.args(["--sdk", sdk, "clang", "-target", &llvm_triple]);
             return Ok(command);
         }
         if triple.contains("apple-darwin") {
+            let llvm_triple = llvm_target_triple(triple);
             let mut command = Command::new("xcrun");
-            command.args(["--sdk", "macosx", "clang", "-target", triple]);
+            command.args(["--sdk", "macosx", "clang", "-target", &llvm_triple]);
             return Ok(command);
         }
         if triple.contains("linux-android") {
@@ -647,9 +671,42 @@ impl LinkTarget {
             return android_tool(&clang_name).map(Command::new);
         }
         let mut command = Command::new("cc");
-        command.args(["-target", triple]);
+        if triple != host_target_triple() {
+            command.args(["-target", triple]);
+        }
         Ok(command)
     }
+}
+
+/// Runtime archives use Rust's target names. LLVM and Clang need an explicit
+/// Apple platform/deployment version to emit object metadata. Bare canonical
+/// macOS targets default to 11.0; the iOS simulator spelling also differs.
+pub(crate) fn llvm_target_triple(triple: &str) -> String {
+    let deployment = if triple.ends_with("-apple-darwin") {
+        std::env::var("MACOSX_DEPLOYMENT_TARGET").ok()
+    } else {
+        std::env::var("IPHONEOS_DEPLOYMENT_TARGET").ok()
+    };
+    apple_llvm_triple(triple, deployment.as_deref())
+}
+
+fn apple_llvm_triple(triple: &str, deployment: Option<&str>) -> String {
+    if let Some(arch) = triple.strip_suffix("-apple-darwin") {
+        if matches!(arch, "aarch64" | "x86_64") {
+            return format!("{arch}-apple-macosx{}", deployment.unwrap_or("11.0"));
+        }
+    }
+    if let Some((arch, suffix)) = triple.split_once("-apple-ios") {
+        if suffix.is_empty() || suffix == "-sim" {
+            let environment = if suffix == "-sim" || matches!(arch, "x86_64" | "i386") {
+                "-simulator"
+            } else {
+                ""
+            };
+            return format!("{arch}-apple-ios{}{environment}", deployment.unwrap_or(""));
+        }
+    }
+    triple.to_string()
 }
 
 /// The NDK names its 32-bit ARM compiler `armv7a-...`, where Rust's triple
@@ -978,7 +1035,7 @@ mod tests {
         fs::create_dir_all(runtime.parent().unwrap()).unwrap();
         fs::write(&runtime, b"fake").unwrap();
 
-        let target = LinkTarget::detect(Some("x86_64-unknown-linux-gnu")).unwrap();
+        let target = LinkTarget::detect(Some(&host_target_triple())).unwrap();
         let found = find_mesh_rt_in(
             std::slice::from_ref(&temp_target),
             &target,
@@ -992,13 +1049,39 @@ mod tests {
     }
 
     #[test]
+    fn cross_target_runtime_search_never_falls_back_to_a_host_archive() {
+        let target_dir = PathBuf::from("/workspace/target");
+        for triple in [
+            "aarch64-apple-ios",
+            "aarch64-apple-ios-sim",
+            "aarch64-linux-android",
+            "x86_64-linux-android",
+        ] {
+            let target = LinkTarget::detect(Some(triple)).unwrap();
+            let candidates = mesh_rt_candidates(
+                &target_dir,
+                &target,
+                &["debug", "release"],
+                RuntimeFlavor::Standard,
+            );
+            assert_eq!(
+                candidates,
+                vec![
+                    target_dir.join(triple).join("debug/libmesh_rt.a"),
+                    target_dir.join(triple).join("release/libmesh_rt.a")
+                ]
+            );
+        }
+    }
+
+    #[test]
     fn test_runtime_uses_a_distinct_archive_name_and_package_hint() {
         let temp_target = unique_temp_target_dir("test-runtime-name");
         let runtime = temp_target.join("debug").join("libmesh_test_rt.a");
         fs::create_dir_all(runtime.parent().unwrap()).unwrap();
         fs::write(&runtime, b"fake").unwrap();
 
-        let target = LinkTarget::detect(Some("x86_64-unknown-linux-gnu")).unwrap();
+        let target = LinkTarget::detect(Some(&host_target_triple())).unwrap();
         let found = find_mesh_rt_in(
             std::slice::from_ref(&temp_target),
             &target,
@@ -1067,6 +1150,7 @@ mod tests {
             target: LinkTarget::detect(Some("aarch64-apple-darwin")).unwrap(),
             rt_path: PathBuf::from("/tmp/libmesh_rt.a"),
             linker_program: PathBuf::from("cc"),
+            linker_args: Vec::new(),
             native_archives: vec![PathBuf::from("/tmp/libnative_math.a")],
         };
         let command = build_link_command(Path::new("/tmp/main.o"), Path::new("/tmp/app"), &plan);
@@ -1096,6 +1180,7 @@ mod tests {
                 target: LinkTarget::detect(Some(triple)).unwrap(),
                 rt_path: PathBuf::from("/tmp/libmesh_rt.a"),
                 linker_program: PathBuf::from("cc"),
+                linker_args: Vec::new(),
                 native_archives: Vec::new(),
             };
             build_link_command(Path::new("/tmp/main.o"), Path::new("/tmp/app"), &plan)
@@ -1149,10 +1234,91 @@ mod tests {
         assert_eq!(android.archiver_program(), android_tool("llvm-ar"));
         assert_eq!(
             android
-                .dynamic_linker_command()
+                .compiler_command()
                 .map(|c| c.get_program().to_owned()),
             android_tool("aarch64-linux-android26-clang").map(Into::into)
         );
+    }
+
+    #[test]
+    fn rust_ios_targets_map_to_llvm_platform_and_deployment_version() {
+        assert_eq!(
+            apple_llvm_triple("aarch64-apple-ios-sim", None),
+            "aarch64-apple-ios-simulator"
+        );
+        assert_eq!(
+            apple_llvm_triple("aarch64-apple-ios-sim", Some("16.4")),
+            "aarch64-apple-ios16.4-simulator"
+        );
+        assert_eq!(
+            apple_llvm_triple("x86_64-apple-ios", Some("16.4")),
+            "x86_64-apple-ios16.4-simulator"
+        );
+        assert_eq!(
+            apple_llvm_triple("aarch64-apple-ios", Some("16.4")),
+            "aarch64-apple-ios16.4"
+        );
+        for triple in [
+            "aarch64-apple-macosx11.0",
+            "aarch64-linux-android",
+            "x86_64-unknown-linux-gnu",
+            "aarch64-apple-ios17.0-simulator",
+        ] {
+            assert_eq!(apple_llvm_triple(triple, Some("16.4")), triple);
+        }
+    }
+
+    #[test]
+    fn rust_macos_targets_map_to_llvm_platform_and_deployment_version() {
+        for arch in ["aarch64", "x86_64"] {
+            let rust = format!("{arch}-apple-darwin");
+            assert_eq!(
+                apple_llvm_triple(&rust, None),
+                format!("{arch}-apple-macosx11.0")
+            );
+            assert_eq!(
+                apple_llvm_triple(&rust, Some("12.3")),
+                format!("{arch}-apple-macosx12.3")
+            );
+        }
+        for triple in [
+            "aarch64-apple-macosx12.3",
+            "x86_64-apple-macosx10.15",
+            "aarch64-apple-darwin23.0.0",
+        ] {
+            assert_eq!(apple_llvm_triple(triple, Some("11.0")), triple);
+        }
+    }
+
+    #[test]
+    fn ios_simulator_executables_select_the_simulator_sdk_and_llvm_target() {
+        let root = unique_temp_target_dir("ios-simulator-link");
+        fs::create_dir_all(&root).unwrap();
+        let runtime = root.join("libmesh_rt.a");
+        fs::write(&runtime, b"test runtime").unwrap();
+        let plan =
+            prepare_link_with_native(Some("aarch64-apple-ios-sim"), Some(&runtime), &[]).unwrap();
+        let command = build_link_command(Path::new("/tmp/main.o"), Path::new("/tmp/app"), &plan);
+        assert_eq!(command.get_program(), "xcrun");
+        let args: Vec<_> = command
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(&args[..4], ["--sdk", "iphonesimulator", "clang", "-target"]);
+        assert!(args[4].starts_with("aarch64-apple-ios"), "{args:?}");
+        assert!(args[4].ends_with("-simulator"), "{args:?}");
+        let dynamic = dynamic_link_command(
+            Path::new("/tmp/main.o"),
+            Path::new("/tmp/libapp.dylib"),
+            &plan,
+        )
+        .unwrap();
+        assert_eq!(dynamic.get_program(), command.get_program());
+        assert_eq!(
+            dynamic.get_args().take(5).collect::<Vec<_>>(),
+            command.get_args().take(5).collect::<Vec<_>>()
+        );
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -1166,7 +1332,7 @@ mod tests {
         let command = |triple: &str| {
             let command = LinkTarget::detect(Some(triple))
                 .unwrap()
-                .dynamic_linker_command()
+                .compiler_command()
                 .unwrap();
             let args = command
                 .get_args()
@@ -1178,15 +1344,24 @@ mod tests {
         };
         assert_eq!(
             command("aarch64-apple-ios"),
-            "xcrun --sdk iphoneos clang -target aarch64-apple-ios"
+            format!(
+                "xcrun --sdk iphoneos clang -target {}",
+                llvm_target_triple("aarch64-apple-ios")
+            )
         );
         assert_eq!(
             command("aarch64-apple-ios-sim"),
-            "xcrun --sdk iphonesimulator clang -target aarch64-apple-ios-sim"
+            format!(
+                "xcrun --sdk iphonesimulator clang -target {}",
+                llvm_target_triple("aarch64-apple-ios-sim")
+            )
         );
         assert_eq!(
             command("x86_64-apple-darwin"),
-            "xcrun --sdk macosx clang -target x86_64-apple-darwin"
+            format!(
+                "xcrun --sdk macosx clang -target {}",
+                llvm_target_triple("x86_64-apple-darwin")
+            )
         );
         assert_eq!(
             command("x86_64-unknown-linux-musl"),
@@ -1450,6 +1625,7 @@ mod tests {
             target: LinkTarget::detect(Some(triple)).unwrap(),
             rt_path: PathBuf::from("/tmp/libmesh_rt.a"),
             linker_program: PathBuf::from("cc"),
+            linker_args: Vec::new(),
             native_archives: Vec::new(),
         }
     }
@@ -1524,6 +1700,176 @@ mod tests {
         assert!(error.contains("Linking failed for target"), "{error}");
         assert!(error.contains("stderr:"), "{error}");
         fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(target_os = "macos")]
+    fn native_deployment_cargo_cc_probe(deployment: Option<&str>) -> (String, (u32, u32)) {
+        let root = unique_temp_target_dir("deployment-probe");
+        struct Cleanup(PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(root.clone());
+        let repository = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap();
+        let lock = fs::read_to_string(repository.join("Cargo.lock")).unwrap();
+        let cc = lock
+            .split("[[package]]")
+            .find(|block| block.lines().any(|line| line == "name = \"cc\""))
+            .expect("workspace lock must contain the actual cc dependency");
+        let version = cc
+            .lines()
+            .find_map(|line| line.strip_prefix("version = "))
+            .unwrap()
+            .trim_matches('"');
+        fs::create_dir_all(root.join(".cargo")).unwrap();
+        fs::copy(
+            repository.join(".cargo/config.toml"),
+            root.join(".cargo/config.toml"),
+        )
+        .unwrap();
+        // Cargo updates only this owned fixture lock; its existing versions come
+        // from the workspace lock and all resolution is offline.
+        fs::write(root.join("Cargo.lock"), &lock).unwrap();
+        fs::write(root.join("Cargo.toml"), format!(
+            "[package]\nname = \"mesh-deployment-probe\"\nversion = \"0.0.0\"\nedition = \"2021\"\n[workspace]\n[build-dependencies]\ncc = \"={version}\"\n"
+        )).unwrap();
+        fs::create_dir(root.join("src")).unwrap();
+        fs::write(root.join("src/lib.rs"), "pub fn probe() {}\n").unwrap();
+        fs::write(
+            root.join("probe.c"),
+            "int deployment_probe(void) { return 7; }\n",
+        )
+        .unwrap();
+        fs::write(root.join("build.rs"), r#"
+fn main() {
+    cc::Build::new().file("probe.c").compile("deployment_probe");
+    let root = std::path::PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap());
+    let output = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
+    let observed = match std::env::var("MACOSX_DEPLOYMENT_TARGET") {
+        Ok(value) => value,
+        Err(std::env::VarError::NotPresent) => "unset".to_owned(),
+        Err(error) => panic!("invalid deployment environment: {error}"),
+    };
+    std::fs::write(root.join("observed-deployment"), observed).unwrap();
+    std::fs::write(root.join("probe-archive"), output.join("libdeployment_probe.a").to_str().unwrap()).unwrap();
+}
+"#).unwrap();
+        let mut cargo = Command::new("cargo");
+        cargo
+            .current_dir(&root)
+            .args(["build", "--offline"])
+            .env("CARGO_TARGET_DIR", root.join("target"))
+            .env("CARGO_BUILD_JOBS", "1")
+            .env_remove("MACOSX_DEPLOYMENT_TARGET");
+        if let Some(value) = deployment {
+            cargo.env("MACOSX_DEPLOYMENT_TARGET", value);
+        }
+        for (name, _) in std::env::vars_os() {
+            let value = name.to_string_lossy();
+            if value.contains("RUSTFLAGS")
+                || value.starts_with("RUSTC_")
+                || value.contains("CARGO_LLVM_COV")
+            {
+                cargo.env_remove(name);
+            }
+        }
+        let output = cargo.output().expect("run owned offline Cargo/cc fixture");
+        assert!(
+            output.status.success(),
+            "Cargo/cc setup failed:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let archive = fs::read_to_string(root.join("probe-archive")).unwrap();
+        let bytes = fs::read(archive).unwrap();
+        assert!(bytes.starts_with(b"!<arch>\n"));
+        let mut member = 8;
+        let mut platform = None;
+        while member + 60 <= bytes.len() {
+            let header = &bytes[member..member + 60];
+            assert_eq!(&header[58..], b"`\n");
+            let size: usize = std::str::from_utf8(&header[48..58])
+                .unwrap()
+                .trim()
+                .parse()
+                .unwrap();
+            let name = std::str::from_utf8(&header[..16]).unwrap().trim();
+            let name_bytes = name
+                .strip_prefix("#1/")
+                .map(|value| value.parse::<usize>().unwrap())
+                .unwrap_or(0);
+            let start = member + 60 + name_bytes;
+            let end = member + 60 + size;
+            assert!(start <= end && end <= bytes.len());
+            let object = &bytes[start..end];
+            if object.starts_with(&0xfeedfacfu32.to_le_bytes()) {
+                let word =
+                    |offset| u32::from_le_bytes(object[offset..offset + 4].try_into().unwrap());
+                let mut offset = 32;
+                for _ in 0..word(16) {
+                    let command = word(offset);
+                    let length = word(offset + 4) as usize;
+                    assert!(length >= 8 && offset + length <= object.len());
+                    if command == 0x32 {
+                        platform = Some((word(offset + 8), word(offset + 12)));
+                    } else if command == 0x24 {
+                        platform = Some((1, word(offset + 8)));
+                    }
+                    offset += length;
+                }
+            }
+            member = end + (size & 1);
+        }
+        let platform = platform.expect("actual C object must declare its platform/minimum");
+        let observed = fs::read_to_string(root.join("observed-deployment")).unwrap();
+        eprintln!("NATIVE_DEPLOYMENT_PROBE_READY");
+        (observed, platform)
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn native_deployment_workspace_cargo_defaults_c_objects_to_macos11() {
+        let (observed, platform) = native_deployment_cargo_cc_probe(None);
+        assert_eq!(platform, (1, 11 << 16));
+        assert_eq!(observed, "11.0");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn native_deployment_workspace_cargo_preserves_explicit_caller_minimum() {
+        let (observed, platform) = native_deployment_cargo_cc_probe(Some("12.3"));
+        assert_eq!(platform, (1, (12 << 16) | (3 << 8)));
+        assert_eq!(observed, "12.3");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn native_deployment_default_linker_selects_the_resolved_platform() {
+        let command = LinkTarget::detect(None)
+            .unwrap()
+            .compiler_command()
+            .unwrap();
+        let text = std::iter::once(command.get_program().to_string_lossy().into_owned())
+            .chain(
+                command
+                    .get_args()
+                    .map(|arg| arg.to_string_lossy().into_owned()),
+            )
+            .collect::<Vec<_>>()
+            .join(" ");
+        let canonical = effective_target_triple(None).unwrap();
+        assert_eq!(
+            text,
+            format!(
+                "xcrun --sdk macosx clang -target {}",
+                llvm_target_triple(&canonical)
+            )
+        );
     }
 
     fn unique_temp_target_dir(name: &str) -> PathBuf {

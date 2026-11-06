@@ -46,6 +46,8 @@ struct Checker<'a> {
     call_targets: &'a FxHashMap<TextRange, String>,
     scopes: Vec<FxHashMap<String, Binding>>,
     signatures: FxHashMap<String, FunctionSignature>,
+    result_tag_builtin_available: bool,
+    test_outcome_builtin_available: bool,
     errors: Vec<TypeError>,
 }
 
@@ -186,9 +188,36 @@ pub(crate) fn check(
     };
     signatures.insert("SecretMap.merge".to_string(), merge_signature.clone());
     signatures.insert("secret_map_merge".to_string(), merge_signature);
+    for (operation, mode) in [
+        ("commitment", ParamOwnership::Borrow),
+        ("reveal", ParamOwnership::Consume),
+    ] {
+        let signature = FunctionSignature {
+            modes: vec![mode],
+            formal_types: vec![Some(Ty::hash_preimage())],
+        };
+        signatures.insert(format!("HashPreimage.{operation}"), signature.clone());
+        signatures.insert(format!("hash_preimage_{operation}"), signature);
+    }
     for (module, prefix, resource) in [
+        ("HashPreimage", "hash_preimage", Ty::hash_preimage()),
+        (
+            "MlKemEncapsulationState",
+            "mlkem_encapsulation_state",
+            Ty::mlkem_encapsulation_state(),
+        ),
         ("Secret", "secret", Ty::secret_bytes()),
         ("SecretMap", "secret_map", Ty::secret_map()),
+        (
+            "BlindRsaSecretKey",
+            "blind_rsa_secret_key",
+            Ty::blind_rsa_secret_key(),
+        ),
+        (
+            "BlindRsaBlindingState",
+            "blind_rsa_blinding_state",
+            Ty::blind_rsa_blinding_state(),
+        ),
         (
             "X25519PrivateKey",
             "x25519_private_key",
@@ -246,6 +275,20 @@ pub(crate) fn check(
         signatures.insert(format!("StorageKey.{name}"), signature.clone());
         signatures.insert(format!("storage_key_{name}"), signature);
     }
+    let storage_index = FunctionSignature {
+        modes: vec![
+            ParamOwnership::Borrow,
+            ParamOwnership::Move,
+            ParamOwnership::Move,
+        ],
+        formal_types: vec![
+            Some(Ty::storage_key()),
+            Some(Ty::bytes()),
+            Some(Ty::bytes()),
+        ],
+    };
+    signatures.insert("StorageKey.index_tag".to_string(), storage_index.clone());
+    signatures.insert("storage_key_index_tag".to_string(), storage_index);
     let bytes_builder = Ty::bytes_builder();
     for name in [
         "bytes_builder_write_u8",
@@ -290,6 +333,12 @@ pub(crate) fn check(
     register_crypto_signature(
         &mut signatures,
         "hmac_sha256",
+        vec![ParamOwnership::Borrow, ParamOwnership::Move],
+        vec![Ty::secret_bytes(), Ty::bytes()],
+    );
+    register_crypto_signature(
+        &mut signatures,
+        "hmac_sha512_tag",
         vec![ParamOwnership::Borrow, ParamOwnership::Move],
         vec![Ty::secret_bytes(), Ty::bytes()],
     );
@@ -416,6 +465,41 @@ pub(crate) fn check(
     );
     register_crypto_signature(
         &mut signatures,
+        "mlkem_public_parts",
+        vec![ParamOwnership::Borrow],
+        vec![Ty::mlkem_private_key()],
+    );
+    register_crypto_signature(
+        &mut signatures,
+        "mlkem_encapsulate1",
+        vec![ParamOwnership::Move],
+        vec![Ty::mlkem_header64()],
+    );
+    register_crypto_signature(
+        &mut signatures,
+        "mlkem_encapsulate2",
+        vec![ParamOwnership::Borrow, ParamOwnership::Move],
+        vec![
+            Ty::mlkem_encapsulation_state(),
+            Ty::mlkem_public_vector1152(),
+        ],
+    );
+    register_crypto_signature(
+        &mut signatures,
+        "mlkem_decapsulate_parts",
+        vec![
+            ParamOwnership::Borrow,
+            ParamOwnership::Move,
+            ParamOwnership::Move,
+        ],
+        vec![
+            Ty::mlkem_private_key(),
+            Ty::mlkem_ciphertext1_960(),
+            Ty::mlkem_ciphertext2_128(),
+        ],
+    );
+    register_crypto_signature(
+        &mut signatures,
         "mlkem_decapsulate",
         vec![ParamOwnership::Borrow, ParamOwnership::Move],
         vec![Ty::mlkem_private_key(), Ty::mlkem_ciphertext()],
@@ -432,7 +516,12 @@ pub(crate) fn check(
         vec![ParamOwnership::Consume],
         vec![Ty::secret_bytes()],
     );
-    for operation in ["aead_seal", "aead_open"] {
+    for operation in [
+        "aead_seal",
+        "aead_open",
+        "xchacha20poly1305_seal",
+        "xchacha20poly1305_open",
+    ] {
         register_crypto_signature(
             &mut signatures,
             operation,
@@ -445,7 +534,168 @@ pub(crate) fn check(
             vec![Ty::aead_key(), Ty::bytes(), Ty::bytes(), Ty::bytes()],
         );
     }
+    register_crypto_signature(&mut signatures, "blind_rsa_generate", vec![], vec![]);
+    register_crypto_signature(
+        &mut signatures,
+        "blind_rsa_from_secret",
+        vec![ParamOwnership::Consume],
+        vec![Ty::secret_bytes()],
+    );
+    register_crypto_signature(
+        &mut signatures,
+        "blind_rsa_public",
+        vec![ParamOwnership::Borrow],
+        vec![Ty::blind_rsa_secret_key()],
+    );
+    register_crypto_signature(
+        &mut signatures,
+        "blind_rsa_public_from_spki",
+        vec![ParamOwnership::Move],
+        vec![Ty::bytes()],
+    );
+    register_crypto_signature(
+        &mut signatures,
+        "blind_rsa_blind",
+        vec![ParamOwnership::Move, ParamOwnership::Move],
+        vec![Ty::blind_rsa_public_key(), Ty::bytes()],
+    );
+    register_crypto_signature(
+        &mut signatures,
+        "blind_rsa_sign",
+        vec![ParamOwnership::Borrow, ParamOwnership::Move],
+        vec![Ty::blind_rsa_secret_key(), Ty::bytes()],
+    );
+    register_crypto_signature(
+        &mut signatures,
+        "blind_rsa_finalize",
+        vec![
+            ParamOwnership::Move,
+            ParamOwnership::Move,
+            ParamOwnership::Move,
+            ParamOwnership::Consume,
+        ],
+        vec![
+            Ty::blind_rsa_public_key(),
+            Ty::bytes(),
+            Ty::bytes(),
+            Ty::blind_rsa_blinding_state(),
+        ],
+    );
+    register_crypto_signature(
+        &mut signatures,
+        "blind_rsa_verify",
+        vec![
+            ParamOwnership::Move,
+            ParamOwnership::Move,
+            ParamOwnership::Move,
+        ],
+        vec![Ty::blind_rsa_public_key(), Ty::bytes(), Ty::bytes()],
+    );
     register_imported_signatures(parse, import_ctx, &mut signatures);
+    for (qualified, flat, modes, types) in [
+        (
+            "Crypto.hkdf_sha256_secret_salt",
+            "crypto_hkdf_sha256_secret_salt",
+            vec![
+                ParamOwnership::Borrow,
+                ParamOwnership::Borrow,
+                ParamOwnership::Move,
+                ParamOwnership::Move,
+            ],
+            vec![
+                Ty::secret_bytes(),
+                Ty::secret_bytes(),
+                Ty::bytes(),
+                Ty::int(),
+            ],
+        ),
+        (
+            "Crypto.hmac_sha256_tag",
+            "crypto_hmac_sha256_tag",
+            vec![ParamOwnership::Borrow, ParamOwnership::Move],
+            vec![Ty::secret_bytes(), Ty::bytes()],
+        ),
+        (
+            "Secret.split_at",
+            "secret_split_at",
+            vec![ParamOwnership::Consume, ParamOwnership::Move],
+            vec![Ty::secret_bytes(), Ty::int()],
+        ),
+    ] {
+        let signature = FunctionSignature {
+            modes,
+            formal_types: types.into_iter().map(Some).collect(),
+        };
+        signatures
+            .entry(qualified.into())
+            .or_insert_with(|| signature.clone());
+        signatures.entry(flat.into()).or_insert(signature);
+    }
+
+    for (name, modes, types) in [
+        (
+            "encapsulate_request",
+            vec![ParamOwnership::Move; 3],
+            vec![Ty::int(), Ty::x25519_public_key(), Ty::bytes()],
+        ),
+        (
+            "decapsulate_request",
+            vec![
+                ParamOwnership::Borrow,
+                ParamOwnership::Move,
+                ParamOwnership::Move,
+            ],
+            vec![Ty::x25519_private_key(), Ty::int(), Ty::bytes()],
+        ),
+        (
+            "encapsulate_response",
+            vec![ParamOwnership::Consume, ParamOwnership::Move],
+            vec![Ty::ohttp_gateway_context(), Ty::bytes()],
+        ),
+        (
+            "decapsulate_response",
+            vec![ParamOwnership::Consume, ParamOwnership::Move],
+            vec![Ty::ohttp_client_context(), Ty::bytes()],
+        ),
+    ] {
+        let signature = FunctionSignature {
+            modes,
+            formal_types: types.into_iter().map(Some).collect(),
+        };
+        // Source declarations keep their own ownership contract. Only fill
+        // absent builtin names after imports have kept their source contracts.
+        signatures
+            .entry(format!("Ohttp.{name}"))
+            .or_insert_with(|| signature.clone());
+        signatures
+            .entry(format!("ohttp_{name}"))
+            .or_insert(signature);
+    }
+
+    // Qualified module imports also register bare linker aliases in
+    // `signatures`; those aliases do not shadow a genuine source builtin.
+    // Only source declarations and explicit unqualified imports do so.
+    let result_tag_builtin_available = !functions.iter().any(|function| {
+        function.name().and_then(|name| name.text()).as_deref() == Some("declassify_discriminant")
+    }) && !parse.tree().items().any(|item| match item {
+        Item::FromImportDecl(import) => import.import_list().is_some_and(|list| {
+            list.names()
+                .any(|name| name.text().as_deref() == Some("declassify_discriminant"))
+        }),
+        _ => false,
+    });
+
+    let test_outcome_builtin_available = import_ctx.test_builtins
+        && !functions.iter().any(|function| {
+            function.name().and_then(|name| name.text()).as_deref() == Some("__test_check_result")
+        })
+        && !parse.tree().items().any(|item| match item {
+            Item::FromImportDecl(import) => import.import_list().is_some_and(|list| {
+                list.names()
+                    .any(|name| name.text().as_deref() == Some("__test_check_result"))
+            }),
+            _ => false,
+        });
 
     let mut checker = Checker {
         types,
@@ -453,6 +703,8 @@ pub(crate) fn check(
         call_targets,
         scopes: vec![FxHashMap::default()],
         signatures,
+        result_tag_builtin_available,
+        test_outcome_builtin_available,
         errors: Vec::new(),
     };
 
@@ -496,10 +748,10 @@ fn register_imported_signatures(
             }
             _ => continue,
         };
-        let namespace = path.and_then(|path| path.segments().last().cloned());
-        let Some((namespace, exports)) = namespace.and_then(|namespace| {
-            let exports = import_ctx.module_exports.get(&namespace)?;
-            Some((namespace, exports))
+        let segments = path.map(|path| path.segments()).unwrap_or_default();
+        let Some((namespace, exports)) = segments.last().and_then(|namespace| {
+            let exports = import_ctx.exports_for_path(&segments.join("."))?;
+            Some((namespace.clone(), exports))
         }) else {
             continue;
         };
@@ -1069,9 +1321,32 @@ impl Checker<'_> {
         if let Some(callee) = &callee {
             self.check_expr(callee, Usage::Read);
         }
-        let signature = callee_name
-            .as_ref()
-            .and_then(|name| self.signatures.get(name).cloned());
+        // The genuine Result-tag review is an owning identity, not an
+        // unrestricted generic boundary. Shadowed/imported/indirect calls do
+        // not gain this transfer rule; their own formal ownership still wins.
+        let result_tag_identity = self.result_tag_builtin_available
+            && matches!(&callee, Some(Expr::NameRef(name))
+                if name.text().as_deref() == Some("declassify_discriminant"))
+            && !self
+                .scopes
+                .iter()
+                .any(|scope| scope.contains_key("declassify_discriminant"));
+        // Only the generated test observer owns arbitrary returned payloads.
+        // Ordinary/indirect/shadowed generic calls keep their existing refusal.
+        let test_outcome = self.test_outcome_builtin_available
+            && matches!(&callee, Some(Expr::NameRef(name))
+                if name.text().as_deref() == Some("__test_check_result"))
+            && !self
+                .scopes
+                .iter()
+                .any(|scope| scope.contains_key("__test_check_result"));
+        let signature = if result_tag_identity || test_outcome {
+            None
+        } else {
+            callee_name
+                .as_ref()
+                .and_then(|name| self.signatures.get(name).cloned())
+        };
         let forbidden_reason = signature
             .is_none()
             .then(|| callee_name.as_deref().and_then(forbidden_call_reason))
@@ -1118,7 +1393,8 @@ impl Checker<'_> {
                     && forbidden_reason.is_none()
                     && !formal_is_resource
                     && !allowed_resource_constructor
-                    && !awaits_job;
+                    && !awaits_job
+                    && !((result_tag_identity || test_outcome) && index == 0);
                 if lacks_resource_aware_formal {
                     self.errors.push(TypeError::ResourceViolation {
                         reason: format!(
@@ -1221,30 +1497,100 @@ impl Checker<'_> {
         }
     }
 
+    /// A function exit cannot carry a moved binding into the next statement.
+    /// Do not use Never alone: break/continue also have that type but their
+    /// resource state still matters when the enclosing loop exits or repeats.
+    fn exits_function(&self, expr: &Expr) -> bool {
+        if Self::has_loop_exit(expr.syntax()) {
+            return false;
+        }
+        match expr {
+            Expr::ReturnExpr(_) => true,
+            Expr::CallExpr(_) => self.types.get(&expr.syntax().text_range()) == Some(&Ty::Never),
+            Expr::Block(block) => self.block_exits_function(block),
+            Expr::IfExpr(value) => self.if_exits_function(value),
+            Expr::CaseExpr(value) => {
+                let arms: Vec<_> = value.arms().collect();
+                !arms.is_empty()
+                    && arms
+                        .iter()
+                        .all(|arm| arm.body().is_some_and(|body| self.exits_function(&body)))
+            }
+            _ => false,
+        }
+    }
+
+    fn block_exits_function(&self, block: &Block) -> bool {
+        if Self::has_loop_exit(block.syntax()) {
+            return false;
+        }
+        block.syntax().children().any(|child| {
+            if let Some(Item::LetBinding(binding)) = Item::cast(child.clone()) {
+                binding
+                    .initializer()
+                    .is_some_and(|value| self.exits_function(&value))
+            } else {
+                Expr::cast(child).is_some_and(|expr| self.exits_function(&expr))
+            }
+        })
+    }
+
+    fn has_loop_exit(node: &SyntaxNode) -> bool {
+        node.descendants().any(|child| {
+            matches!(
+                child.kind(),
+                SyntaxKind::BREAK_EXPR | SyntaxKind::CONTINUE_EXPR
+            )
+        })
+    }
+
+    fn if_exits_function(&self, value: &IfExpr) -> bool {
+        !Self::has_loop_exit(value.syntax())
+            && value
+                .then_branch()
+                .is_some_and(|block| self.block_exits_function(&block))
+            && value.else_branch().is_some_and(|branch| {
+                branch
+                    .block()
+                    .is_some_and(|block| self.block_exits_function(&block))
+                    || branch
+                        .if_expr()
+                        .is_some_and(|nested| self.if_exits_function(&nested))
+            })
+    }
+
     fn check_if(&mut self, if_expr: &IfExpr) {
         if let Some(condition) = if_expr.condition() {
             self.check_expr(&condition, Usage::Read);
         }
 
         let before_branches = self.scopes.clone();
+        let mut continuing = Vec::new();
         self.scopes = before_branches.clone();
         if let Some(then_branch) = if_expr.then_branch() {
             self.check_block(&then_branch);
+            if !self.block_exits_function(&then_branch) {
+                continuing.push(self.scopes.clone());
+            }
         }
-        let then_scopes = self.scopes.clone();
 
         self.scopes = before_branches.clone();
+        let mut else_exits = false;
         if let Some(else_branch) = if_expr.else_branch() {
             if let Some(block) = else_branch.block() {
                 self.check_block(&block);
+                else_exits = self.block_exits_function(&block);
             } else if let Some(nested) = else_branch.if_expr() {
                 self.check_if(&nested);
+                else_exits = self.if_exits_function(&nested);
             }
         }
-        let else_scopes = self.scopes.clone();
+        if !else_exits {
+            continuing.push(self.scopes.clone());
+        }
 
         self.scopes = before_branches;
-        self.merge_branch_states(&[then_scopes, else_scopes]);
+        self.merge_branch_states(&continuing);
     }
 
     fn check_case(&mut self, case_expr: &CaseExpr) {
@@ -1278,7 +1624,9 @@ impl Checker<'_> {
                 self.check_expr(&body, Usage::Move);
             }
             self.scopes.pop();
-            arm_states.push(self.scopes.clone());
+            if !arm.body().is_some_and(|body| self.exits_function(&body)) {
+                arm_states.push(self.scopes.clone());
+            }
         }
 
         self.scopes = before_arms;
@@ -1303,7 +1651,9 @@ impl Checker<'_> {
                 self.check_expr(&body, Usage::Move);
             }
             self.scopes.pop();
-            arm_states.push(self.scopes.clone());
+            if !arm.body().is_some_and(|body| self.exits_function(&body)) {
+                arm_states.push(self.scopes.clone());
+            }
         }
 
         if let Some(after) = receive_expr.after_clause() {
@@ -1314,7 +1664,9 @@ impl Checker<'_> {
             if let Some(body) = after.body() {
                 self.check_expr(&body, Usage::Move);
             }
-            arm_states.push(self.scopes.clone());
+            if !after.body().is_some_and(|body| self.exits_function(&body)) {
+                arm_states.push(self.scopes.clone());
+            }
         }
 
         self.scopes = before_arms;

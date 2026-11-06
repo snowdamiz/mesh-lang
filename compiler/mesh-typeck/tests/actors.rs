@@ -71,6 +71,53 @@ fn test_actor_def_registers_in_env() {
     assert_no_errors(&result);
 }
 
+#[test]
+fn actor_forward_reference_survives_a_shadowed_helper_name() {
+    let result = check_source(
+        "actor worker(run :: Int) do\n  println(Int.to_string(run))\nend\n\
+         fn run() do\n  spawn(worker, 42)\nend\nfn main() do\n  run()\nend\n",
+    );
+    assert_no_errors(&result);
+}
+
+#[test]
+fn actor_and_spawning_helper_can_be_mutually_recursive() {
+    let result = check_source(
+        "actor worker(remaining :: Int) do\n\
+           if remaining > 0 do launch(remaining - 1) end\n\
+         end\n\
+         fn launch(remaining :: Int) do spawn(worker, remaining) end\n\
+         fn main() do launch(2) end\n",
+    );
+    assert_no_errors(&result);
+}
+
+#[test]
+fn forward_actor_reference_preserves_state_and_message_constraints() {
+    for call in ["spawn(worker, true)", "send(spawn(worker, 1), true)"] {
+        let source = format!(
+            "actor worker(launch :: Int) do\n\
+               receive do message -> println(Int.to_string(message + launch)) end\n\
+             end\n\
+             fn launch() do {call} end\nfn main() do launch() end\n"
+        );
+        let result = check_source(&source);
+        assert_has_error(
+            &result,
+            |error| matches!(error, TypeError::Mismatch { .. }),
+            "Mismatch",
+        );
+        assert!(
+            !result
+                .errors
+                .iter()
+                .any(|error| matches!(error, TypeError::UnboundVariable { .. })),
+            "the actor must be resolved before checking its constraints: {:?}",
+            result.errors
+        );
+    }
+}
+
 // ── Spawn Returns Pid<M> ──────────────────────────────────────────────
 
 #[test]

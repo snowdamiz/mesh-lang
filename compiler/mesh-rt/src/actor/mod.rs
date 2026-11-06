@@ -145,6 +145,31 @@ pub(crate) fn cooperative_channel<T>() -> (CooperativeSender<T>, std::sync::mpsc
     (CooperativeSender { sender, waiter }, receiver)
 }
 
+/// Receive an externally completed reply without allocating a timer entry.
+/// The owner of the reply must send an error before dropping the last sender.
+pub(crate) fn cooperative_recv<T>(
+    receiver: &std::sync::mpsc::Receiver<T>,
+) -> Result<T, std::sync::mpsc::RecvError> {
+    use std::sync::mpsc::{RecvError, TryRecvError};
+    if !stack::CURRENT_YIELDER.with(|current| current.yielder.get().is_some()) {
+        return receiver.recv();
+    }
+    let (_, me) = running_process();
+    loop {
+        me.lock().set_live_state(ProcessState::Waiting);
+        let answer = match receiver.try_recv() {
+            Ok(value) => Some(Ok(value)),
+            Err(TryRecvError::Disconnected) => Some(Err(RecvError)),
+            Err(TryRecvError::Empty) => None,
+        };
+        if let Some(answer) = answer {
+            me.lock().set_live_state(ProcessState::Ready);
+            return answer;
+        }
+        stack::yield_current();
+    }
+}
+
 /// Receive a reply with a monotonic timeout while yielding a Mesh coroutine.
 ///
 /// This is the scheduler-aware equivalent of `Receiver::recv_timeout`: an
@@ -1188,6 +1213,52 @@ pub extern "C" fn mesh_process_whereis(name: *const crate::string::MeshString) -
     match registry::global_registry().whereis(name_str) {
         Some(pid) => pid.as_u64(),
         None => 0,
+    }
+}
+
+/// Typed registry lookup. Absence is None, rather than a sentinel PID that
+/// cannot be compared with an Int in Mesh. Like whereis, this is a snapshot;
+/// the process may exit after it is returned.
+#[no_mangle]
+pub extern "C" fn mesh_process_lookup(
+    name: *const crate::string::MeshString,
+) -> *mut crate::option::MeshOption {
+    let pid = mesh_process_whereis(name);
+    if pid == 0 {
+        crate::option::alloc_option(1, std::ptr::null_mut())
+    } else {
+        let boxed = crate::gc::mesh_gc_alloc_actor(8, 8) as *mut u64;
+        unsafe {
+            *boxed = pid;
+        }
+        crate::option::alloc_option(0, boxed.cast())
+    }
+}
+
+#[cfg(test)]
+mod lookup_tests {
+    use super::*;
+
+    #[test]
+    fn process_lookup_preserves_full_pid_and_explicit_absence() {
+        crate::gc::mesh_rt_init();
+        let name = format!("typed-lookup-{}", std::process::id());
+        let text = crate::string::mesh_str(&name);
+        unsafe {
+            let absent = &*mesh_process_lookup(text);
+            assert_eq!(absent.tag, 1);
+            assert!(absent.value.is_null());
+            let pid = ProcessId(u64::MAX - 71);
+            registry::global_registry()
+                .register(name.clone(), pid)
+                .unwrap();
+            let found = &*mesh_process_lookup(text);
+            assert_eq!(found.tag, 0);
+            assert_eq!(*(found.value as *const u64), pid.as_u64());
+            assert_eq!(mesh_process_whereis(text), pid.as_u64());
+            assert!(registry::global_registry().unregister(&name));
+            assert_eq!((*mesh_process_lookup(text)).tag, 1);
+        }
     }
 }
 

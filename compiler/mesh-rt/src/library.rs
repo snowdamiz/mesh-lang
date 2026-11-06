@@ -8,7 +8,7 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::ptr;
 
 use parking_lot::{Mutex, RwLock};
-use zeroize::Zeroizing;
+use zeroize::{Zeroize, Zeroizing};
 
 use crate::actor::{self, stack, ProcessId};
 use crate::bytes::{mesh_bytes_new, MeshBytes};
@@ -28,8 +28,9 @@ pub const MESH_LIBRARY_ERR_ABI: i32 = 7;
 pub const MESH_LIBRARY_ERR_CALLBACK_MISSING: i32 = 8;
 pub const MESH_LIBRARY_ERR_APPLICATION: i32 = 9;
 
-// ponytail: one fixed 1 MiB host buffer; add negotiated sizing if mobile payloads exceed it.
+// Callback buffers remain fixed and small independently of exported file payloads.
 const MAX_BOUNDARY_BYTES: usize = 1024 * 1024;
+const MAX_EXPORT_BYTES: u64 = 64 * 1024 * 1024;
 
 #[repr(C)]
 #[derive(Debug, Default)]
@@ -135,6 +136,37 @@ static HOST_CALLBACKS: RwLock<Option<RegisteredCallbacks>> = RwLock::new(None);
 struct CallContext {
     pid: ProcessId,
     previous_pid: Option<ProcessId>,
+    // Dropped after CallContext::drop restores the PID and allocation cache.
+    thread_state: CallThreadState,
+}
+
+/// A library call is synchronous, even when a native caller happens to be on
+/// a Mesh coroutine stack. Never yield that outer coroutine with the call's
+/// temporary PID installed. Its stack cannot use native-thread GC bounds.
+struct CallThreadState {
+    yielder: Option<*const ()>,
+    reductions: u32,
+    gc_wanted: bool,
+}
+
+impl CallThreadState {
+    fn enter() -> Self {
+        stack::CURRENT_YIELDER.with(|slot| Self {
+            yielder: slot.yielder.replace(None),
+            reductions: slot.reductions.get(),
+            gc_wanted: slot.gc_wanted.replace(false),
+        })
+    }
+}
+
+impl Drop for CallThreadState {
+    fn drop(&mut self) {
+        stack::CURRENT_YIELDER.with(|slot| {
+            slot.yielder.set(self.yielder);
+            slot.reductions.set(self.reductions);
+            slot.gc_wanted.set(self.gc_wanted);
+        });
+    }
 }
 
 impl Drop for CallContext {
@@ -282,11 +314,40 @@ pub unsafe extern "C" fn mesh_library_invoke(
     input_len: u64,
     output: *mut MeshLibraryBytes,
 ) -> i32 {
+    mesh_library_invoke_bounded(
+        entrypoint,
+        input,
+        input_len,
+        output,
+        MAX_BOUNDARY_BYTES as u64,
+        MAX_BOUNDARY_BYTES as u64,
+    )
+}
+
+/// Invoke with compiler-declared request and response/error limits. The original
+/// entry point and generated host ABI retain their 1 MiB defaults and ownership.
+/// Limits must be in 1..=64 MiB; they do not enlarge host callback buffers.
+///
+/// # Safety
+/// Same pointer requirements as `mesh_library_invoke`.
+#[no_mangle]
+pub unsafe extern "C" fn mesh_library_invoke_bounded(
+    entrypoint: MeshLibraryEntrypoint,
+    input: *const u8,
+    input_len: u64,
+    output: *mut MeshLibraryBytes,
+    max_input: u64,
+    max_output: u64,
+) -> i32 {
     if output.is_null() || (input.is_null() && input_len != 0) {
         return MESH_LIBRARY_ERR_INVALID_ARGUMENT;
     }
     (*output) = MeshLibraryBytes::default();
-    if input_len > MAX_BOUNDARY_BYTES as u64 {
+    if !(1..=MAX_EXPORT_BYTES).contains(&max_input) || !(1..=MAX_EXPORT_BYTES).contains(&max_output)
+    {
+        return MESH_LIBRARY_ERR_INVALID_ARGUMENT;
+    }
+    if input_len > max_input {
         return MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE;
     }
     let Some(_call) = CALL_LOCK.try_lock() else {
@@ -303,9 +364,19 @@ pub unsafe extern "C" fn mesh_library_invoke(
     let context = CallContext {
         pid: scheduler.create_main_process(),
         previous_pid: stack::get_current_pid(),
+        thread_state: CallThreadState::enter(),
     };
     if let Some(process) = scheduler.get_process(context.pid) {
-        process.lock().library_call = true;
+        let mut process = process.lock();
+        process.library_call = true;
+        // Use the same safe-point collector as native-thread main, never the
+        // allocator: runtime temporaries are not all visible GC roots. Calls
+        // from a coroutine retain their heap until return, with its inherited
+        // yielder isolated above; OS bounds do not describe coroutine stacks.
+        if context.thread_state.yielder.is_none() {
+            process.stack_base = stack::current_thread_stack_base();
+            process.collects_at_safepoints = !process.stack_base.is_null();
+        }
     }
     stack::set_current_pid(context.pid);
     let managed_input = mesh_bytes_new(input, input_len);
@@ -319,9 +390,11 @@ pub unsafe extern "C" fn mesh_library_invoke(
         result
     }));
     match result {
-        Ok(result) if result.tag == 0 => copy_mesh_value(result.value, true, output, malloc),
+        Ok(result) if result.tag == 0 => {
+            copy_mesh_value(result.value, true, output, max_output, malloc)
+        }
         Ok(result) if result.tag == 1 => {
-            let status = copy_mesh_value(result.value, false, output, malloc);
+            let status = copy_mesh_value(result.value, false, output, max_output, malloc);
             if status == MESH_LIBRARY_OK {
                 MESH_LIBRARY_ERR_APPLICATION
             } else {
@@ -333,10 +406,36 @@ pub unsafe extern "C" fn mesh_library_invoke(
     }
 }
 
-/// The C allocator the host frees returned bytes with
-/// (`mesh_library_free_returned_bytes`).
+// Keep the actual allocation length private: a host can change the public
+// response length before releasing it. The 16-byte prefix preserves native
+// malloc alignment for these byte buffers on supported targets.
+#[repr(C)]
+struct ReturnedBytesHeader {
+    len: usize,
+    _padding: [u8; 16 - std::mem::size_of::<usize>()],
+}
+
+/// The C allocator paired only with `mesh_library_free_returned_bytes`.
 unsafe fn malloc(len: usize) -> *mut u8 {
-    libc::malloc(len).cast()
+    let header_len = std::mem::size_of::<ReturnedBytesHeader>();
+    let Some(total) = len
+        .checked_add(header_len)
+        .filter(|total| *total <= isize::MAX as usize)
+    else {
+        return ptr::null_mut();
+    };
+    if len == 0 {
+        return ptr::null_mut();
+    }
+    let allocation = libc::malloc(total).cast::<ReturnedBytesHeader>();
+    if allocation.is_null() {
+        return ptr::null_mut();
+    }
+    allocation.write(ReturnedBytesHeader {
+        len,
+        _padding: [0; 16 - std::mem::size_of::<usize>()],
+    });
+    allocation.cast::<u8>().add(header_len)
 }
 
 /// Copy the Bytes (or, for an error, the String) an entry point returned into
@@ -345,6 +444,7 @@ unsafe fn copy_mesh_value(
     value: *mut u8,
     bytes: bool,
     output: *mut MeshLibraryBytes,
+    max_output: u64,
     allocate: unsafe fn(usize) -> *mut u8,
 ) -> i32 {
     if value.is_null() {
@@ -357,7 +457,7 @@ unsafe fn copy_mesh_value(
         let value = &*value.cast::<MeshString>();
         (value.data_ptr(), value.len)
     };
-    if len > MAX_BOUNDARY_BYTES as u64 {
+    if len > max_output {
         return MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE;
     }
     if len == 0 {
@@ -374,15 +474,26 @@ unsafe fn copy_mesh_value(
 
 #[no_mangle]
 pub extern "C" fn mesh_library_free_returned_bytes(bytes: *mut MeshLibraryBytes) {
+    unsafe { free_returned_bytes_with(bytes, |data| libc::free(data)) }
+}
+
+unsafe fn free_returned_bytes_with(
+    bytes: *mut MeshLibraryBytes,
+    release: impl FnOnce(*mut c_void),
+) {
     if bytes.is_null() {
         return;
     }
-    unsafe {
-        if !(*bytes).data.is_null() {
-            libc::free((*bytes).data.cast());
-        }
-        *bytes = MeshLibraryBytes::default();
+    if !(*bytes).data.is_null() {
+        // Only pointers produced by this runtime's allocator are admissible.
+        // Caller-controlled `len` never determines the erase or free extent.
+        let header_len = std::mem::size_of::<ReturnedBytesHeader>();
+        let allocation = (*bytes).data.sub(header_len);
+        let len = allocation.cast::<ReturnedBytesHeader>().read().len;
+        std::slice::from_raw_parts_mut(allocation, header_len + len).zeroize();
+        release(allocation.cast());
     }
+    *bytes = MeshLibraryBytes::default();
 }
 
 #[no_mangle]
@@ -450,6 +561,176 @@ host_entrypoint!(mesh_host_log_redacted, 9);
 mod tests {
     use super::*;
 
+    #[test]
+    fn nested_thread_state_isolates_and_restores_gc_and_yield_notifications() {
+        std::thread::spawn(|| {
+            let outer = 1usize as *const ();
+            stack::CURRENT_YIELDER.with(|slot| {
+                slot.yielder.set(Some(outer));
+                slot.reductions.set(17);
+                slot.gc_wanted.set(true);
+            });
+            let result = catch_unwind(|| {
+                let state = CallThreadState::enter();
+                assert_eq!(state.yielder, Some(outer));
+                stack::CURRENT_YIELDER.with(|slot| {
+                    assert!(slot.yielder.get().is_none());
+                    assert!(!slot.gc_wanted.get());
+                    slot.reductions.set(3);
+                    slot.gc_wanted.set(true);
+                });
+                panic!("test call unwinding");
+            });
+            assert!(result.is_err());
+            stack::CURRENT_YIELDER.with(|slot| {
+                assert_eq!(slot.yielder.get(), Some(outer));
+                assert_eq!(slot.reductions.get(), 17);
+                assert!(slot.gc_wanted.get());
+                slot.yielder.set(None);
+            });
+            // The same guard restores a native thread's empty state too.
+            {
+                let _state = CallThreadState::enter();
+                stack::CURRENT_YIELDER.with(|slot| slot.gc_wanted.set(false));
+            }
+            stack::CURRENT_YIELDER.with(|slot| assert!(slot.gc_wanted.get()));
+            stack::CURRENT_YIELDER.with(|slot| slot.gc_wanted.set(false));
+            {
+                let _state = CallThreadState::enter();
+                stack::CURRENT_YIELDER.with(|slot| slot.gc_wanted.set(true));
+            }
+            stack::CURRENT_YIELDER.with(|slot| assert!(!slot.gc_wanted.get()));
+        })
+        .join()
+        .unwrap();
+    }
+
+    // Observe the bytes while they are still allocated, immediately before the
+    // production release hook frees them. This never reads freed memory.
+    unsafe fn release_and_observe_erasure(output: &mut MeshLibraryBytes, length: usize) -> bool {
+        let payload = output.data;
+        let mut erased = false;
+        free_returned_bytes_with(output, |allocation| {
+            let prefix = usize::try_from(payload.offset_from(allocation.cast::<u8>()))
+                .expect("release receives the allocation base before the payload");
+            erased = std::slice::from_raw_parts(allocation.cast::<u8>(), prefix + length)
+                .iter()
+                .all(|byte| *byte == 0);
+            libc::free(allocation);
+        });
+        assert!(output.data.is_null());
+        assert_eq!(output.len, 0);
+        erased
+    }
+
+    #[test]
+    fn returned_bytes_and_error_buffers_are_erased_before_release() {
+        crate::gc::mesh_rt_init();
+        let secret = b"private!";
+        let values = [
+            (
+                mesh_bytes_new(secret.as_ptr(), secret.len() as u64).cast(),
+                true,
+            ),
+            (
+                crate::string::mesh_string_new(secret.as_ptr(), secret.len() as u64).cast(),
+                false,
+            ),
+        ];
+        let mut erased = Vec::new();
+        for (value, bytes) in values {
+            let mut output = MeshLibraryBytes::default();
+            unsafe {
+                assert_eq!(
+                    copy_mesh_value(value, bytes, &mut output, MAX_EXPORT_BYTES, malloc),
+                    MESH_LIBRARY_OK
+                );
+                assert_eq!(
+                    std::slice::from_raw_parts(output.data, secret.len()),
+                    secret
+                );
+                erased.push(release_and_observe_erasure(&mut output, secret.len()));
+            }
+        }
+        assert_eq!(
+            erased,
+            [true, true],
+            "both success and application-error copies must be erased"
+        );
+    }
+
+    #[test]
+    fn returned_wipe_uses_owned_length_not_public_length() {
+        let secret = b"private!";
+        let mut erased = Vec::new();
+        for public_length in [0, u64::MAX] {
+            unsafe {
+                let payload = malloc(secret.len());
+                assert!(!payload.is_null());
+                ptr::copy_nonoverlapping(secret.as_ptr(), payload, secret.len());
+                let mut output = MeshLibraryBytes {
+                    data: payload,
+                    len: public_length,
+                };
+                erased.push(release_and_observe_erasure(&mut output, secret.len()));
+            }
+        }
+        assert_eq!(
+            erased,
+            [true, true],
+            "caller-mutated length must not truncate or enlarge erasure"
+        );
+    }
+
+    #[test]
+    fn returned_empty_and_null_outputs_do_not_allocate() {
+        unsafe fn unexpected_allocation(_len: usize) -> *mut u8 {
+            panic!("empty returned values must not allocate");
+        }
+        crate::gc::mesh_rt_init();
+        let values = [
+            (mesh_bytes_new(ptr::null(), 0).cast(), true),
+            (crate::string::mesh_string_new(ptr::null(), 0).cast(), false),
+        ];
+        for (value, bytes) in values {
+            let mut output = MeshLibraryBytes::default();
+            unsafe {
+                assert_eq!(
+                    copy_mesh_value(
+                        value,
+                        bytes,
+                        &mut output,
+                        MAX_EXPORT_BYTES,
+                        unexpected_allocation
+                    ),
+                    MESH_LIBRARY_OK
+                );
+            }
+            assert!(output.data.is_null());
+            assert_eq!(output.len, 0);
+            mesh_library_free_returned_bytes(&mut output);
+            mesh_library_free_returned_bytes(&mut output);
+        }
+        mesh_library_free_returned_bytes(ptr::null_mut());
+    }
+
+    #[test]
+    fn returned_allocation_alignment_and_overflow_are_bounded() {
+        unsafe {
+            let payload = malloc(1);
+            assert!(!payload.is_null());
+            payload.write(1);
+            let aligned = payload as usize % std::mem::align_of::<u128>() == 0;
+            let mut output = MeshLibraryBytes {
+                data: payload,
+                len: 1,
+            };
+            free_returned_bytes_with(&mut output, |allocation| libc::free(allocation));
+            assert!(aligned);
+            assert!(malloc(usize::MAX).is_null());
+        }
+    }
+
     /// A host whose allocator cannot give the returned bytes their memory
     /// gets an error, not a copy into nothing.
     #[test]
@@ -460,7 +741,15 @@ mod tests {
         crate::gc::mesh_rt_init();
         let value = mesh_bytes_new(b"x".as_ptr(), 1);
         let mut output = MeshLibraryBytes::default();
-        let status = unsafe { copy_mesh_value(value.cast(), true, &mut output, out_of_memory) };
+        let status = unsafe {
+            copy_mesh_value(
+                value.cast(),
+                true,
+                &mut output,
+                MAX_BOUNDARY_BYTES as u64,
+                out_of_memory,
+            )
+        };
         assert_eq!(status, MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE);
         assert!(output.data.is_null());
     }

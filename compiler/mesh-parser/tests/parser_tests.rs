@@ -4362,3 +4362,120 @@ fn a_call_without_parentheses_says_to_add_them() {
         }
     }
 }
+
+#[test]
+fn nested_block_record_update_ends_the_preceding_let() {
+    let block = "for x in [1, 2] do\n  let row = Row { value: x }\n  %{row | value: x + 1}\nend";
+    for source in [
+        block.to_owned(),
+        format!("Batch {{ rows: {block} }}"),
+        format!("[{block}]"),
+        format!("identity({block})"),
+    ] {
+        let p = parse_expr(&source);
+        assert!(p.ok(), "{source}: {:?}", p.errors());
+        let body = p
+            .syntax()
+            .descendants()
+            .find(|node| node.kind() == SyntaxKind::FOR_IN_EXPR)
+            .unwrap()
+            .children()
+            .find(|node| node.kind() == SyntaxKind::BLOCK)
+            .unwrap();
+        let statements: Vec<_> = body.children().map(|node| node.kind()).collect();
+        assert_eq!(
+            statements,
+            [SyntaxKind::LET_BINDING, SyntaxKind::STRUCT_UPDATE_EXPR],
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn nested_block_unary_minus_is_a_separate_statement() {
+    let source = "map(xs, fn x do\n  let y = x\n  -y\nend)";
+    let p = parse_expr(source);
+    assert!(p.ok(), "{:?}", p.errors());
+    let body = p
+        .syntax()
+        .descendants()
+        .filter_map(ClosureExpr::cast)
+        .next()
+        .unwrap()
+        .body()
+        .unwrap();
+    let statements: Vec<_> = body.syntax().children().map(|node| node.kind()).collect();
+    assert_eq!(
+        statements,
+        [SyntaxKind::LET_BINDING, SyntaxKind::UNARY_EXPR]
+    );
+}
+
+#[test]
+fn nested_block_keeps_local_and_outer_operator_continuations() {
+    let source = "identity(for x in xs do\n  let a = (8\n    % 3)\n  let b = 8 %\n    3\n  let c = x\n    + 1\n  a + b + c\nend\n  ++ [4])";
+    let p = parse_expr(source);
+    assert!(p.ok(), "{:?}", p.errors());
+    let operators: Vec<_> = p
+        .syntax()
+        .descendants()
+        .filter_map(BinaryExpr::cast)
+        .map(|expr| expr.op().unwrap().text().to_owned())
+        .collect();
+    assert_eq!(operators.iter().filter(|op| op.as_str() == "%").count(), 2);
+    assert_eq!(operators.iter().filter(|op| op.as_str() == "++").count(), 1);
+    assert_eq!(operators.iter().filter(|op| op.as_str() == "+").count(), 3);
+}
+
+#[test]
+fn nested_block_control_and_function_bodies_keep_statement_boundaries() {
+    for source in [
+        "Wrap { value: if ready do\n  let row = Row { value: 1 }\n  %{row | value: 2}\nelse Row { value: 0 } end }",
+        "Wrap { value: case ready do\n  _ -> do\n    let row = Row { value: 1 }\n    %{row | value: 2}\n  end\nend }",
+        "identity(fn do\n  fn inner() do\n    let row = Row { value: 1 }\n    %{row | value: 2}\n  end\n  inner()\nend)",
+    ] {
+        let p = parse_expr(source);
+        assert!(p.ok(), "{source}: {:?}", p.errors());
+        assert_eq!(p.syntax().descendants().filter(|node| node.kind() == SyntaxKind::STRUCT_UPDATE_EXPR).count(), 1);
+    }
+}
+
+#[test]
+fn nested_block_implicit_match_arms_keep_statement_boundaries() {
+    for block in [
+        "case flag do\n  _ ->\n    let row = Row { value: 1 }\n    %{row | value: 2}\nend",
+        "receive do\n  value ->\n    let row = Row { value: 1 }\n    %{row | value: 2}\nafter 0 -> Row { value: 0 }\nend",
+    ] {
+        for source in [block.to_owned(), format!("Wrap {{ value: {block} }}"), format!("[{block}]"), format!("identity({block})")] {
+            let p = parse_expr(&source);
+            assert!(p.ok(), "{source}: {:?}", p.errors());
+            assert_eq!(p.syntax().descendants().filter(|node| node.kind() == SyntaxKind::STRUCT_UPDATE_EXPR).count(), 1);
+        }
+    }
+}
+
+#[test]
+fn nested_block_signed_match_patterns_start_new_arms() {
+    for (source, kind, count) in [
+        (
+            "identity(case x do\n  0 -> 10\n  -1 -> 20\n  _ -> 0\nend)",
+            SyntaxKind::MATCH_ARM,
+            3,
+        ),
+        (
+            "[receive do\n  0 -> 10\n  -1 -> 20\nafter 0 -> 0\nend]",
+            SyntaxKind::RECEIVE_ARM,
+            2,
+        ),
+    ] {
+        let p = parse_expr(source);
+        assert!(p.ok(), "{source}: {:?}", p.errors());
+        assert_eq!(
+            p.syntax()
+                .descendants()
+                .filter(|node| node.kind() == kind)
+                .count(),
+            count
+        );
+    }
+}

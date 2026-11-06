@@ -52,6 +52,23 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    // Declared per-export byte limits; public export signatures remain unchanged.
+    module.add_function(
+        "mesh_library_invoke_bounded",
+        i32_type.fn_type(
+            &[
+                ptr_type.into(),
+                ptr_type.into(),
+                i64_type.into(),
+                ptr_type.into(),
+                i64_type.into(),
+                i64_type.into(),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
+
     for name in [
         "mesh_host_secure_store_put",
         "mesh_host_secure_store_get",
@@ -494,6 +511,36 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    let file_read_bytes_v2_ty = ptr_type.fn_type(
+        &[
+            ptr_type.into(),
+            i64_type.into(),
+            i64_type.into(),
+            i64_type.into(),
+        ],
+        false,
+    );
+    module.add_function(
+        "mesh_file_read_bytes_v2",
+        file_read_bytes_v2_ty,
+        Some(inkwell::module::Linkage::External),
+    );
+    let file_write_bytes_v2_ty = ptr_type.fn_type(
+        &[
+            ptr_type.into(),
+            i64_type.into(),
+            ptr_type.into(),
+            i8_type.into(),
+            i64_type.into(),
+        ],
+        false,
+    );
+    module.add_function(
+        "mesh_file_write_bytes_v2",
+        file_write_bytes_v2_ty,
+        Some(inkwell::module::Linkage::External),
+    );
+
     // mesh_file_size(path: ptr) -> ptr (MeshResult)
     let file_size_ty = ptr_type.fn_type(&[ptr_type.into()], false);
     module.add_function(
@@ -523,6 +570,17 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     module.add_function(
         "mesh_file_exists",
         file_exists_ty,
+        Some(inkwell::module::Linkage::External),
+    );
+
+    module.add_function(
+        "mesh_file_rename",
+        ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_file_sync",
+        ptr_type.fn_type(&[ptr_type.into()], false),
         Some(inkwell::module::Linkage::External),
     );
 
@@ -645,6 +703,25 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
 
     // ── Standard library: Crypto functions (Phase 135) ──────────────────────
 
+    // Blind RSA wrappers pass opaque handles and public aggregate pointers.
+    // Every operation returns a boxed MeshResult, including verification.
+    for (operation, arity) in [
+        ("generate", 0),
+        ("from_secret", 1),
+        ("public", 1),
+        ("public_from_spki", 1),
+        ("blind", 2),
+        ("sign", 2),
+        ("finalize", 4),
+        ("verify", 3),
+    ] {
+        module.add_function(
+            &format!("mesh_crypto_blind_rsa_{operation}"),
+            ptr_type.fn_type(&vec![ptr_type.into(); arity], false),
+            Some(inkwell::module::Linkage::External),
+        );
+    }
+
     // mesh_crypto_sha256(s: ptr) -> ptr
     let sha256_ty = ptr_type.fn_type(&[ptr_type.into()], false);
     module.add_function(
@@ -683,6 +760,45 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    module.add_function(
+        "mesh_crypto_hmac_sha256_tag",
+        hmac256_ty,
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_crypto_hkdf_sha256_secret_salt",
+        ptr_type.fn_type(
+            &[
+                ptr_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+                i64_type.into(),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
+
+    module.add_function(
+        "mesh_recovery_code_generate",
+        ptr_type.fn_type(&[], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_recovery_code_parse",
+        ptr_type.fn_type(&[ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_secret_split_at",
+        ptr_type.fn_type(&[ptr_type.into(), i64_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_crypto_hmac_sha512_tag",
+        hmac256_ty,
+        Some(inkwell::module::Linkage::External),
+    );
     module.add_function(
         "mesh_crypto_hkdf_sha256",
         ptr_type.fn_type(
@@ -761,10 +877,24 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    for (name, arity) in [
+        ("mesh_crypto_mlkem_validate_public_parts", 2),
+        ("mesh_crypto_mlkem_public_parts", 1),
+        ("mesh_crypto_mlkem_encapsulate1", 1),
+        ("mesh_crypto_mlkem_encapsulate2", 2),
+        ("mesh_crypto_mlkem_decapsulate_parts", 3),
+    ] {
+        module.add_function(
+            name,
+            ptr_type.fn_type(&vec![ptr_type.into(); arity], false),
+            Some(inkwell::module::Linkage::External),
+        );
+    }
     for name in [
         "mesh_crypto_x25519_public",
         "mesh_crypto_mlkem_encapsulate",
         "mesh_crypto_aead_key",
+        "mesh_crypto_ed25519_is_on_curve",
     ] {
         module.add_function(
             name,
@@ -791,7 +921,12 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
-    for name in ["mesh_crypto_aead_seal", "mesh_crypto_aead_open"] {
+    for name in [
+        "mesh_crypto_aead_seal",
+        "mesh_crypto_aead_open",
+        "mesh_crypto_xchacha20poly1305_seal",
+        "mesh_crypto_xchacha20poly1305_open",
+    ] {
         module.add_function(
             name,
             ptr_type.fn_type(
@@ -803,6 +938,27 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
                 ],
                 false,
             ),
+            Some(inkwell::module::Linkage::External),
+        );
+    }
+
+    module.add_function(
+        "mesh_ohttp_encapsulate_request",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_ohttp_decapsulate_request",
+        ptr_type.fn_type(&[ptr_type.into(), i64_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    for name in [
+        "mesh_ohttp_encapsulate_response",
+        "mesh_ohttp_decapsulate_response",
+    ] {
+        module.add_function(
+            name,
+            ptr_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
             Some(inkwell::module::Linkage::External),
         );
     }
@@ -934,6 +1090,11 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
     module.add_function(
+        "mesh_bytes_concat_many",
+        ptr_type.fn_type(&[ptr_type.into(), i64_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
         "mesh_bytes_secure_equals",
         i8_type.fn_type(&[ptr_type.into(), ptr_type.into()], false),
         Some(inkwell::module::Linkage::External),
@@ -1054,7 +1215,13 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         ptr_type.fn_type(&[], false),
         Some(inkwell::module::Linkage::External),
     );
+    module.add_function(
+        "mesh_storage_key_file",
+        ptr_type.fn_type(&[ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
     for name in [
+        "mesh_storage_key_index_tag",
         "mesh_storage_key_seal_bytes",
         "mesh_storage_key_unseal_bytes",
     ] {
@@ -1110,12 +1277,28 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
             Some(inkwell::module::Linkage::External),
         );
     }
+    module.add_function(
+        "mesh_hash_preimage_generate",
+        ptr_type.fn_type(&[], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    for name in ["mesh_hash_preimage_commitment", "mesh_hash_preimage_reveal"] {
+        module.add_function(
+            name,
+            ptr_type.fn_type(&[ptr_type.into()], false),
+            Some(inkwell::module::Linkage::External),
+        );
+    }
     for prefix in [
+        "hash_preimage",
         "secret",
         "secret_map",
         "x25519_private_key",
         "signing_private_key",
         "mlkem_private_key",
+        "mlkem_encapsulation_state",
+        "blind_rsa_secret_key",
+        "blind_rsa_blinding_state",
     ] {
         for operation in ["seal_for_storage", "unseal_from_storage"] {
             module.add_function(
@@ -1129,6 +1312,13 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     // ── Checked wide integers ────────────────────────────────────────────────
 
     for prefix in ["u64", "u128", "i128"] {
+        if prefix != "i128" {
+            module.add_function(
+                &format!("mesh_{prefix}_multiply_divide"),
+                ptr_type.fn_type(&[ptr_type.into(), ptr_type.into(), ptr_type.into()], false),
+                Some(inkwell::module::Linkage::External),
+            );
+        }
         for operation in ["parse", "to_int", "to_string"] {
             module.add_function(
                 &format!("mesh_{prefix}_{operation}"),
@@ -1209,6 +1399,11 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     );
 
     // mesh_datetime_add(dt_ms: i64, n: i64, unit: ptr) -> i64
+    module.add_function(
+        "mesh_datetime_add_months",
+        ptr_type.fn_type(&[i64_type.into(), i64_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
     let add_ty = i64_type.fn_type(&[i64_type.into(), i64_type.into(), ptr_type.into()], false);
     module.add_function(
         "mesh_datetime_add",
@@ -1348,6 +1543,12 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
 
     // ── Http client functions (Phase 137) ──────────────────────────────────────
 
+    module.add_function(
+        "mesh_http_url_origin",
+        ptr_type.fn_type(&[ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+
     // mesh_http_build(method: ptr, url: ptr) -> i64 (MeshRequest handle)
     let build_ty = i64_type.fn_type(&[ptr_type.into(), ptr_type.into()], false);
     module.add_function(
@@ -1373,6 +1574,12 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     );
     module.add_function(
         "mesh_http_body_bytes",
+        body_ty,
+        Some(inkwell::module::Linkage::External),
+    );
+
+    module.add_function(
+        "mesh_http_trust_root_pem",
         body_ty,
         Some(inkwell::module::Linkage::External),
     );
@@ -2458,6 +2665,61 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    module.add_function(
+        "mesh_http_serve_on",
+        void_type.fn_type(&[ptr_type.into(), ptr_type.into(), i64_type.into()], false),
+        None,
+    );
+    module.add_function(
+        "mesh_http_serve_tls_on",
+        void_type.fn_type(
+            &[
+                ptr_type.into(),
+                ptr_type.into(),
+                i64_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+            ],
+            false,
+        ),
+        None,
+    );
+    module.add_function(
+        "mesh_ws_serve_on",
+        void_type.fn_type(
+            &[
+                ptr_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+                i64_type.into(),
+            ],
+            false,
+        ),
+        None,
+    );
+    module.add_function(
+        "mesh_ws_serve_tls_on",
+        void_type.fn_type(
+            &[
+                ptr_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+                i64_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+            ],
+            false,
+        ),
+        None,
+    );
     // mesh_ws_send(conn: ptr, msg: ptr) -> i64
     module.add_function(
         "mesh_ws_send",
@@ -2485,6 +2747,12 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    module.add_function(
+        "mesh_lightning_invoice_details",
+        ptr_type.fn_type(&[ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+
     // ── Bounded WebSocket client ─────────────────────────────────────────
     module.add_function(
         "mesh_ws_client_options",
@@ -2503,6 +2771,11 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
             Some(inkwell::module::Linkage::External),
         );
     }
+    module.add_function(
+        "mesh_ws_client_header",
+        ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
     module.add_function(
         "mesh_ws_client_connect",
         ptr_type.fn_type(&[ptr_type.into(), i64_type.into()], false),
@@ -2786,6 +3059,25 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         module.add_function(
             name,
             ptr_type.fn_type(&[i64_type.into(), ptr_type.into(), ptr_type.into()], false),
+            Some(inkwell::module::Linkage::External),
+        );
+    }
+
+    for name in [
+        "mesh_sqlite_execute_values_v2",
+        "mesh_sqlite_query_values_v2",
+    ] {
+        module.add_function(
+            name,
+            ptr_type.fn_type(
+                &[
+                    i64_type.into(),
+                    ptr_type.into(),
+                    ptr_type.into(),
+                    i64_type.into(),
+                ],
+                false,
+            ),
             Some(inkwell::module::Linkage::External),
         );
     }
@@ -3563,6 +3855,13 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
     module.add_function(
         "mesh_process_whereis",
         i64_type.fn_type(&[ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+
+    // mesh_process_lookup(name: ptr) -> Option<Pid> with a boxed scalar payload.
+    module.add_function(
+        "mesh_process_lookup",
+        ptr_type.fn_type(&[ptr_type.into()], false),
         Some(inkwell::module::Linkage::External),
     );
 
@@ -4847,6 +5146,27 @@ mod tests {
     use inkwell::context::Context;
 
     #[test]
+    fn http_trust_root_intrinsic_keeps_the_builder_abi() {
+        let context = Context::create();
+        let module = context.create_module("http-explicit-roots");
+        declare_intrinsics(&module);
+        let function = module.get_function("mesh_http_trust_root_pem").unwrap();
+        let function_type = function.get_type();
+        assert_eq!(function_type.count_param_types(), 2);
+        let parameters = function_type.get_param_types();
+        assert_eq!(parameters[0].into_int_type().get_bit_width(), 64);
+        assert!(parameters[1].is_pointer_type());
+        assert_eq!(
+            function_type
+                .get_return_type()
+                .unwrap()
+                .into_int_type()
+                .get_bit_width(),
+            64
+        );
+    }
+
+    #[test]
     fn test_declare_all_intrinsics() {
         let context = Context::create();
         let module = context.create_module("test");
@@ -5361,6 +5681,7 @@ mod tests {
             ("mesh_crypto_sha512_hex", 1),
             ("mesh_crypto_random_bytes", 1),
             ("mesh_crypto_hmac_sha256", 2),
+            ("mesh_crypto_hmac_sha512_tag", 2),
             ("mesh_crypto_hkdf_sha256", 4),
             ("mesh_crypto_argon2id", 6),
             ("mesh_crypto_x25519_generate", 0),
@@ -5368,6 +5689,13 @@ mod tests {
             ("mesh_crypto_x25519_from_secret", 1),
             ("mesh_crypto_x25519_public", 1),
             ("mesh_crypto_x25519_shared", 2),
+            ("mesh_crypto_mlkem_validate_public_parts", 2),
+            ("mesh_crypto_mlkem_public_parts", 1),
+            ("mesh_crypto_mlkem_encapsulate1", 1),
+            ("mesh_crypto_mlkem_encapsulate2", 2),
+            ("mesh_crypto_mlkem_decapsulate_parts", 3),
+            ("mesh_mlkem_encapsulation_state_seal_for_storage", 3),
+            ("mesh_mlkem_encapsulation_state_unseal_from_storage", 3),
             ("mesh_crypto_mlkem_generate", 0),
             ("mesh_crypto_mlkem_from_seed", 1),
             ("mesh_crypto_mlkem_from_secret", 1),
@@ -5378,9 +5706,24 @@ mod tests {
             ("mesh_crypto_signing_from_secret", 1),
             ("mesh_crypto_sign", 2),
             ("mesh_crypto_verify", 3),
+            ("mesh_crypto_ed25519_is_on_curve", 1),
+            ("mesh_crypto_blind_rsa_generate", 0),
+            ("mesh_crypto_blind_rsa_from_secret", 1),
+            ("mesh_crypto_blind_rsa_public", 1),
+            ("mesh_crypto_blind_rsa_public_from_spki", 1),
+            ("mesh_crypto_blind_rsa_blind", 2),
+            ("mesh_crypto_blind_rsa_sign", 2),
+            ("mesh_crypto_blind_rsa_finalize", 4),
+            ("mesh_crypto_blind_rsa_verify", 3),
+            ("mesh_blind_rsa_secret_key_seal_for_storage", 3),
+            ("mesh_blind_rsa_secret_key_unseal_from_storage", 3),
+            ("mesh_blind_rsa_blinding_state_seal_for_storage", 3),
+            ("mesh_blind_rsa_blinding_state_unseal_from_storage", 3),
             ("mesh_crypto_aead_key", 1),
             ("mesh_crypto_aead_seal", 4),
             ("mesh_crypto_aead_open", 4),
+            ("mesh_crypto_xchacha20poly1305_seal", 4),
+            ("mesh_crypto_xchacha20poly1305_open", 4),
             ("mesh_crypto_hpke_seal", 4),
             ("mesh_crypto_hpke_open", 4),
             ("mesh_crypto_hpke_seal_secret", 4),
@@ -5401,6 +5744,16 @@ mod tests {
                     .is_some_and(|return_type| return_type.is_pointer_type()),
                 "{name} must return a runtime pointer"
             );
+            if name.contains("blind_rsa") {
+                assert!(
+                    function
+                        .get_type()
+                        .get_param_types()
+                        .iter()
+                        .all(|ty| ty.is_pointer_type()),
+                    "{name} arguments must use the pointer ABI"
+                );
+            }
         }
     }
 

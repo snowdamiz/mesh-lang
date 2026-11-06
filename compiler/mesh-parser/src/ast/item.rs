@@ -194,12 +194,140 @@ impl AstNode for ExportDecl {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ExportBindingAudience {
+    #[default]
+    All,
+    Native,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExportOptions {
+    pub max_input: u64,
+    pub max_output: u64,
+    pub binding_audience: ExportBindingAudience,
+}
+
 impl ExportDecl {
+    /// Byte limits and binding audience are compile-time metadata.
+    /// Neither changes the runtime ABI or authorizes a host call.
+    pub fn options(&self) -> Result<ExportOptions, &'static str> {
+        let mut input = None;
+        let mut output = None;
+        let mut audience = None;
+        let mut tokens = self
+            .syntax
+            .children_with_tokens()
+            .filter_map(|element| element.into_token())
+            .filter(|token| {
+                !matches!(
+                    token.kind(),
+                    SyntaxKind::WHITESPACE | SyntaxKind::NEWLINE | SyntaxKind::COMMENT
+                )
+            });
+        let mut symbol_closed = false;
+        for token in tokens.by_ref() {
+            if token.kind() == SyntaxKind::STRING_END {
+                symbol_closed = true;
+                break;
+            }
+        }
+        if !symbol_closed {
+            return Err("missing export symbol");
+        }
+        let mut closed = false;
+        while let Some(token) = tokens.next() {
+            if token.kind() == SyntaxKind::R_PAREN {
+                closed = true;
+                break;
+            }
+            if token.kind() != SyntaxKind::COMMA {
+                return Err("expected comma before export option");
+            }
+            let name = tokens.next().ok_or("missing export option")?;
+            if name.kind() != SyntaxKind::IDENT
+                || tokens
+                    .next()
+                    .is_none_or(|token| token.kind() != SyntaxKind::COLON)
+            {
+                return Err("expected named export option");
+            }
+            let value = tokens.next().ok_or("missing export option value")?;
+            if name.text() == "bindings" {
+                if audience.is_some() {
+                    return Err("duplicate export bindings option");
+                }
+                if value.kind() != SyntaxKind::STRING_START {
+                    return Err("export bindings must be the literal \"all\" or \"native\"");
+                }
+                let mut text = String::new();
+                let mut string_closed = false;
+                for token in tokens.by_ref() {
+                    match token.kind() {
+                        SyntaxKind::STRING_CONTENT => text.push_str(token.text()),
+                        SyntaxKind::STRING_END => {
+                            string_closed = true;
+                            break;
+                        }
+                        _ => return Err("export bindings must be a literal without interpolation"),
+                    }
+                }
+                if !string_closed {
+                    return Err("missing export bindings closing quote");
+                }
+                audience = Some(match text.as_str() {
+                    "all" => ExportBindingAudience::All,
+                    "native" => ExportBindingAudience::Native,
+                    _ => return Err("export bindings must be \"all\" or \"native\""),
+                });
+                continue;
+            }
+            let slot = match name.text() {
+                "max_input" => &mut input,
+                "max_output" => &mut output,
+                _ => return Err("unknown export option; use max_input, max_output, or bindings"),
+            };
+            if slot.is_some() {
+                return Err("duplicate export limit");
+            }
+            let text = value.text().replace('_', "");
+            if value.kind() != SyntaxKind::INT_LITERAL
+                || text.is_empty()
+                || !text.bytes().all(|byte| byte.is_ascii_digit())
+            {
+                return Err("export limits must be decimal integer literals");
+            }
+            let value: u64 = text
+                .parse()
+                .map_err(|_| "export byte limit is out of range")?;
+            if !(1..=67_108_864).contains(&value) {
+                return Err("export limits must be between 1 and 67108864 bytes (64 MiB)");
+            }
+            *slot = Some(value);
+        }
+        if !closed || tokens.next().is_some() {
+            return Err("invalid export option framing");
+        }
+        Ok(ExportOptions {
+            max_input: input.unwrap_or(1_048_576),
+            max_output: output.unwrap_or(1_048_576),
+            binding_audience: audience.unwrap_or_default(),
+        })
+    }
+
+    /// Preserve the existing caller API while validating every option centrally.
+    pub fn boundary_limits(&self) -> Result<(u64, u64), &'static str> {
+        let options = self.options()?;
+        Ok((options.max_input, options.max_output))
+    }
+
     pub fn symbol(&self) -> Option<String> {
+        // Later string-valued options must never become part of the C symbol.
         let symbol = self
             .syntax
             .children_with_tokens()
             .filter_map(|element| element.into_token())
+            .take_while(|token| token.kind() != SyntaxKind::STRING_END)
             .filter(|token| token.kind() == SyntaxKind::STRING_CONTENT)
             .map(|token| token.text().to_string())
             .collect::<String>();
@@ -208,6 +336,21 @@ impl ExportDecl {
 }
 
 ast_node!(FnDef, FN_DEF);
+
+ast_node!(DisplayDecl, DISPLAY_DECORATOR_DECL);
+
+impl DisplayDecl {
+    pub fn reason(&self) -> Option<String> {
+        let reason = self
+            .syntax
+            .children_with_tokens()
+            .filter_map(|element| element.into_token())
+            .filter(|token| token.kind() == SyntaxKind::STRING_CONTENT)
+            .map(|token| token.text().to_string())
+            .collect::<String>();
+        (!reason.is_empty()).then_some(reason)
+    }
+}
 
 impl FnDef {
     /// The visibility modifier (`pub`), if present.
@@ -227,6 +370,11 @@ impl FnDef {
 
     /// A stable mobile/library ABI export (`@export("symbol")`), if present.
     pub fn export_decl(&self) -> Option<ExportDecl> {
+        child_node(&self.syntax)
+    }
+
+    /// A reviewed plaintext display boundary, valid only on a bodyful export.
+    pub fn display_decl(&self) -> Option<DisplayDecl> {
         child_node(&self.syntax)
     }
 

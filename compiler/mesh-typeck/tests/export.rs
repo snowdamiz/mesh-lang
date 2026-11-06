@@ -1,6 +1,48 @@
 use mesh_typeck::{check, error::TypeError};
 
 #[test]
+fn export_limits_are_explicit_bounded_constants() {
+    for options in [
+        ", max_input: 16_782_000",
+        ", max_output: 16794632, max_input: 4096",
+    ] {
+        let source = format!("@export(\"large_frame\"{options})\npub fn echo(request :: Bytes) -> Bytes!String do\n Ok(request)\nend\n");
+        let parsed = mesh_parser::parse(&source);
+        assert!(parsed.errors().is_empty(), "{:?}", parsed.errors());
+        assert!(check(&parsed).errors.is_empty());
+    }
+    for options in [
+        ", max_input: 0",
+        ", max_output: 67108865",
+        ", max_input: 18446744073709551616",
+        ", max_output: 0xff",
+        ", max_input: 1, max_input: 2",
+        ", max_request: 10",
+    ] {
+        let source = format!("@export(\"large_frame\"{options})\npub fn echo(request :: Bytes) -> Bytes!String do\n Ok(request)\nend\n");
+        let parsed = mesh_parser::parse(&source);
+        assert!(parsed.errors().is_empty(), "{:?}", parsed.errors());
+        assert!(
+            check(&parsed)
+                .errors
+                .iter()
+                .any(|e| matches!(e, TypeError::ExportDeclarationInvalid { .. })),
+            "{source}"
+        );
+    }
+    for options in [
+        ", max_input: -1",
+        ", max_input: 1 + 2",
+        ", max_input: limit",
+        ", 10",
+        ", max_input: 10,",
+    ] {
+        let parsed = mesh_parser::parse(&format!("@export(\"large_frame\"{options})\npub fn echo(request :: Bytes) -> Bytes!String do\n Ok(request)\nend\n"));
+        assert!(!parsed.errors().is_empty(), "accepted {options}");
+    }
+}
+
+#[test]
 fn export_declaration_accepts_the_stable_binary_boundary() {
     let parsed = mesh_parser::parse(
         "@export(\"mesh_mobile_echo\")\npub fn echo(request :: Bytes) -> Bytes!String do\n  Ok(request)\nend\n",
@@ -74,4 +116,25 @@ fn export_declarations_are_plain_functions() {
             result.errors
         );
     }
+}
+
+#[test]
+fn export_binding_audience_keeps_stable_abi_and_plaintext_checks() {
+    for audience in ["all", "native"] {
+        let parsed = mesh_parser::parse(&format!("@export(\"audience_echo\", bindings: \"{audience}\")\npub fn echo(request :: Bytes) -> Bytes!String do\n  Ok(request)\nend\n"));
+        assert!(parsed.errors().is_empty(), "{:?}", parsed.errors());
+        assert!(check(&parsed).errors.is_empty());
+    }
+    let private = mesh_parser::parse("@export(\"audience_private\", bindings: \"native\")\npub fn hidden(request :: Plaintext<Bytes>) -> Bytes!String do\n  Ok(request)\nend\n");
+    assert!(private.errors().is_empty());
+    assert!(check(&private)
+        .errors
+        .iter()
+        .any(|error| matches!(error, TypeError::PlaintextViolation { .. })));
+    let invalid_abi = mesh_parser::parse("@export(\"audience_unstable\", bindings: \"native\")\npub fn unstable(request :: String) -> Bytes!String do\n  Ok(Bytes.from_utf8(request))\nend\n");
+    assert!(invalid_abi.errors().is_empty());
+    assert!(check(&invalid_abi)
+        .errors
+        .iter()
+        .any(|error| matches!(error, TypeError::ExportDeclarationInvalid { .. })));
 }

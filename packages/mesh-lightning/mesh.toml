@@ -1,0 +1,5 @@
+[package]
+name = "mesh-lightning"
+version = "0.1.0"
+description = "Verified BOLT 11 invoice fields and integer Lightning payment policy"
+license = "MIT"

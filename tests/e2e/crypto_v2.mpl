@@ -253,16 +253,16 @@ fn check_x25519_and_aead() -> Int ! CryptoError do
     Err(error) -> report("aead-nonce-length", invalid_length_is(error, 12, 11))
     _ -> report("aead-nonce-length", false)
   end
-  case Bytes.repeat(0, 65537) do
+  case Bytes.repeat(0, 131073) do
     Ok(too_long) -> case Crypto.aead_seal(alice_key, nonce, associated_data, too_long) do
-      Err(error) -> report("aead-plaintext-length", invalid_length_is(error, 65536, 65537))
+      Err(error) -> report("aead-plaintext-length", invalid_length_is(error, 131072, 131073))
       _ -> report("aead-plaintext-length", false)
     end
     Err(_) -> report("aead-plaintext-length", false)
   end
-  case Bytes.repeat(0, 65553) do
+  case Bytes.repeat(0, 131089) do
     Ok(too_long) -> case Crypto.aead_open(bob_key, nonce, associated_data, too_long) do
-      Err(error) -> report("aead-ciphertext-bound", invalid_length_is(error, 65552, 65553))
+      Err(error) -> report("aead-ciphertext-bound", invalid_length_is(error, 131088, 131089))
       _ -> report("aead-ciphertext-bound", false)
     end
     Err(_) -> report("aead-ciphertext-bound", false)

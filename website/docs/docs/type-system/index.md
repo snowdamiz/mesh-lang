@@ -976,7 +976,7 @@ A struct or sum type with a field that holds a resource is a resource too, and s
 
 ### Moves and Parameter Modes
 
-Binding a resource to another name, passing it to a function, returning it, storing it in a struct, variant or tuple, and updating it with `%{value | field: new}` all move it. After a move the old name cannot be used. If either branch of an `if` or `case` moves a resource, it counts as moved afterwards, and a loop cannot move a resource from outside the loop, because the loop could run more than once. Reading a field that is not itself a resource, such as `session.id`, does not move the value; taking out a field that holds a resource moves the whole value, unless the field goes straight to a `borrow` parameter.
+Binding a resource to another name, passing it to a function, returning it, storing it in a struct, variant or tuple, and updating it with `%{value | field: new}` all move it. After a move the old name cannot be used. If a continuing branch of an `if` or `case` moves a resource, it counts as moved afterwards. A branch that returns from the function does not move it on the other paths. Loop exits remain conservative: a loop cannot move a resource from outside the loop, because it could run more than once. Reading a field that is not itself a resource, such as `session.id`, does not move the value; taking out a field that holds a resource moves the whole value, unless the field goes straight to a `borrow` parameter.
 
 A parameter's mode says what a call does with a resource argument:
 

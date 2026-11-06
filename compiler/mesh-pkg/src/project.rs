@@ -657,13 +657,8 @@ pub fn build_import_context(
         else {
             continue;
         };
-        let last_segment = module_name
-            .rsplit('.')
-            .next()
-            .unwrap_or_default()
-            .to_string();
         ctx.module_exports.insert(
-            last_segment,
+            module_name.clone(),
             mesh_typeck::ModuleExports::new(module_name, exports),
         );
     }

@@ -30,6 +30,10 @@ mimalloc = { workspace = true }
 openssl-sys = { version = "0.9", features = ["vendored"] }
 
 [dev-dependencies]
+solana-address = { version = "=2.7.0", features = ["curve25519", "decode"] }
+solana-address-lookup-table-interface = { version = "=3.2.0", features = ["wincode"] }
+solana-slot-hashes = { version = "=3.2.0", features = ["wincode"] }
+wincode = "=0.6.2"
 base64 = "0.22"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 tempfile = "3"

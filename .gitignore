@@ -1,6 +1,10 @@
 # Rust build artifacts
 /target
 
+# Local compiler experiments, build caches and proof workspaces.
+/.codex-work/
+/.morse/
+
 # Insta snapshot review files
 *.snap.new
 
@@ -77,6 +81,11 @@ __pycache__/
 venv/
 target/
 vendor/
+# Reviewed HTTP protocol source is checked in; other vendor trees stay local.
+!/vendor/
+/vendor/*
+!/vendor/ureq-proto/
+!/vendor/core-models/
 *.log
 coverage/
 .cache/

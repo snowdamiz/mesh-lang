@@ -51,6 +51,36 @@ end
 
 SQLite placeholders are `?`, and a statement takes exactly as many parameters as it has placeholders. Values in direct-query row maps are strings, and a `NULL` column reads as `""` (`Sqlite.query_values` tells the two apart); decode them manually or apply a struct's generated `from_row` function with `List.map`. The size limits under [Binary and NULL Values](#binary-and-null-values) apply here too.
 
+### Explicit SQLite value quotas
+
+The existing SQLite APIs limit each parameter and result value to 16 MiB.
+For larger encrypted containers, the typed `_v2` calls require an explicit
+`max_value_bytes` from 1 through 33,554,432 (32 MiB), inclusive. The quota
+applies to both text and binary parameters and result columns; it is a public
+resource limit, not a plaintext disclosure permission.
+
+V2 calls refuse invalid quotas and parameter batches larger than 67,108,864
+bytes before preparing or executing SQL. Query results retain the existing
+64-MiB aggregate budget (including row and column overhead), 100,000-row limit,
+and 32,766-parameter limit. Result columns are checked before allocating Mesh
+values; invalid UTF-8 replacement must fit the same value and result budgets.
+A query refusal does not undo side effects from SQL already executed, so use a
+transaction when statements combine mutations and returned rows.
+
+```mesh
+fn store_container(db :: SqliteConn, sealed :: Bytes) -> Int!String do
+  Sqlite.execute_values_v2(db,
+    "INSERT INTO archives (payload) VALUES (?)",
+    [Binary(sealed)],
+    33554432)
+end
+```
+
+The flat names `sqlite_execute_values_v2` and `sqlite_query_values_v2` have the
+same signatures. The earlier SQLite functions and PostgreSQL limits are
+unchanged. Applications should select the smallest quota that fits their
+format and validate aggregate storage budgets separately.
+
 ## PostgreSQL Connections and Pools
 
 For a one-off connection, use `Pg.connect`. For an HTTP service or other concurrent application, open a bounded pool:
@@ -157,6 +187,8 @@ end
 |----------|---------|-------------|
 | `Sqlite.execute_values(connection, sql, params)` | `Result<Int, String>` | Execute with `DbValue` parameters and return the affected-row count |
 | `Sqlite.query_values(connection, sql, params)` | `Result<List<Map<String, DbValue>>, String>` | Query rows as `DbValue` maps |
+| `Sqlite.execute_values_v2(connection, sql, params, max_value_bytes)` | `Result<Int, String>` | Execute with an explicit per-value byte quota |
+| `Sqlite.query_values_v2(connection, sql, params, max_value_bytes)` | `Result<List<Map<String, DbValue>>, String>` | Query with an explicit per-parameter and per-column byte quota |
 | `Pg.execute_values(connection, sql, params)` | `Result<Int, String>` | Borrow the connection to execute with `DbValue` parameters |
 | `Pg.query_values(connection, sql, params)` | `Result<List<Map<String, DbValue>>, String>` | Borrow the connection to query rows as `DbValue` maps |
 | `Pool.execute_values(pool, sql, params)` | `Result<Int, String>` | Execute using a checked-out connection |

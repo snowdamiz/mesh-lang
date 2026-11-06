@@ -112,6 +112,33 @@ fn invoke(entry: MeshLibraryEntrypoint, input: &[u8]) -> (i32, Vec<u8>) {
     (status, bytes)
 }
 
+fn bounded(
+    entry: MeshLibraryEntrypoint,
+    input: &[u8],
+    max_input: u64,
+    max_output: u64,
+) -> (i32, Vec<u8>) {
+    let mut output = MeshLibraryBytes::default();
+    let status = unsafe {
+        mesh_library_invoke_bounded(
+            entry,
+            input.as_ptr(),
+            input.len() as u64,
+            &mut output,
+            max_input,
+            max_output,
+        )
+    };
+    let bytes = if output.data.is_null() {
+        Vec::new()
+    } else {
+        unsafe { std::slice::from_raw_parts(output.data, output.len as usize) }.to_vec()
+    };
+    mesh_library_free_returned_bytes(&mut output);
+    assert!(output.data.is_null() && output.len == 0);
+    (status, bytes)
+}
+
 #[test]
 fn the_embedding_abi_refuses_what_it_cannot_do() {
     // Before startup: no callbacks, and nothing to register them with.
@@ -198,6 +225,44 @@ fn the_embedding_abi_refuses_what_it_cannot_do() {
     assert_eq!(
         invoke(huge_error, b"x").0,
         MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE
+    );
+
+    // An export may opt into a larger byte boundary without growing callbacks.
+    let large = vec![37; 2 * MIB];
+    let size = large.len() as u64;
+    assert_eq!(
+        bounded(echo, &large, size, size),
+        (MESH_LIBRARY_OK, large.clone())
+    );
+    assert_eq!(
+        bounded(echo, &large, size - 1, size),
+        (MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE, vec![])
+    );
+    assert_eq!(
+        bounded(echo, &large, size, size - 1),
+        (MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE, vec![])
+    );
+    assert_eq!(
+        bounded(huge_error, b"x", 1, size),
+        (MESH_LIBRARY_ERR_APPLICATION, vec![b'e'; size as usize])
+    );
+    assert_eq!(
+        bounded(huge_error, b"x", 1, size - 1),
+        (MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE, vec![])
+    );
+    for (input, output) in [(0, size), (size, 0), (67_108_865, size), (size, u64::MAX)] {
+        assert_eq!(
+            bounded(echo, b"", input, output),
+            (MESH_LIBRARY_ERR_INVALID_ARGUMENT, vec![])
+        );
+    }
+    assert_eq!(
+        host_call(6, &large),
+        Err("host_callback_input_too_large".into())
+    );
+    assert_eq!(
+        invoke(echo, &large),
+        (MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE, vec![])
     );
 
     // One invocation at a time.

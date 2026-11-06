@@ -15,6 +15,8 @@ use ureq::unversioned::transport::{
 use ureq::{Agent, Error as UreqError, RequestBuilder};
 use url::Url;
 
+use super::trust_roots::{parse_root_pem, TrustRoots};
+
 use crate::actor::{cooperative_channel, cooperative_recv_timeout, CooperativeSender};
 use crate::bytes::{mesh_bytes_new, MeshBytes};
 use crate::collections::map::{mesh_map_new_typed, mesh_map_put};
@@ -63,6 +65,7 @@ struct MeshRequestData {
     max_redirects: Option<u32>,
     max_response_bytes: usize,
     config_error: Option<String>,
+    trust_roots: Option<TrustRoots>,
 }
 
 impl MeshRequestData {
@@ -78,6 +81,7 @@ impl MeshRequestData {
             max_redirects: None,
             max_response_bytes: DEFAULT_MAX_RESPONSE_BYTES,
             config_error: None,
+            trust_roots: None,
         }
     }
 }
@@ -249,15 +253,33 @@ impl<T: Transport> Transport for TimedTlsTransport<T> {
 }
 
 fn http_agent() -> Agent {
+    http_agent_with_config(ureq::config::Config::default())
+}
+
+fn http_agent_with_config(config: ureq::config::Config) -> Agent {
     let connector =
         ().chain(ConnectProxyConnector::default())
             .chain(TimedConnector(TcpConnector::default()))
             .chain(TimedTlsConnector(RustlsConnector::default()));
-    Agent::with_parts(
-        ureq::config::Config::default(),
-        connector,
-        TimedResolver(DefaultResolver::default()),
-    )
+    Agent::with_parts(config, connector, TimedResolver(DefaultResolver::default()))
+}
+
+// A per-request explicit trust set never borrows a pooled TLS connection from
+// the default client or from another explicit-root request, including send_with.
+fn agent_for_request(default: &Agent, request: &MeshRequestData) -> Agent {
+    match &request.trust_roots {
+        None => default.clone(),
+        Some(roots) => http_agent_with_config(
+            Agent::config_builder()
+                .https_only(true)
+                .tls_config(
+                    ureq::tls::TlsConfig::builder()
+                        .root_certs(ureq::tls::RootCerts::Specific(Arc::clone(roots)))
+                        .build(),
+                )
+                .build(),
+        ),
+    }
 }
 
 struct InFlight;
@@ -336,6 +358,23 @@ fn set_timeout(
     }
 }
 
+/// Parse an HTTP(S) URL and return its serialized origin without DNS or I/O.
+/// Credentials, path, query and fragment do not belong to an origin.
+#[no_mangle]
+pub extern "C" fn mesh_http_url_origin(input: *const MeshString) -> *mut u8 {
+    if input.is_null() {
+        return err_result("INVALID_URL: missing URL");
+    }
+    let input = unsafe { (*input).as_str() };
+    match Url::parse(input) {
+        Ok(url) if matches!(url.scheme(), "http" | "https") && url.host().is_some() => {
+            let origin = url.origin().ascii_serialization();
+            alloc_result(0, mesh_str(&origin).cast()).cast()
+        }
+        _ => err_result("INVALID_URL: expected an absolute HTTP(S) URL"),
+    }
+}
+
 #[no_mangle]
 pub extern "C" fn mesh_http_build(method: *const MeshString, url: *const MeshString) -> u64 {
     let mut registry = requests().lock();
@@ -358,6 +397,21 @@ pub extern "C" fn mesh_http_header(
     let key = unsafe { (*key).as_str().to_string() };
     let value = unsafe { (*value).as_str().to_string() };
     update_request(handle, |request| request.headers.push((key, value)))
+}
+
+/// Select explicit X509 trust anchors for this HTTPS request only. Invalid
+/// roots permanently poison the builder, just like invalid timeout bounds.
+#[no_mangle]
+pub extern "C" fn mesh_http_trust_root_pem(handle: u64, pem: *const MeshBytes) -> u64 {
+    let parsed = match unsafe { pem.as_ref() } {
+        // The generated ABI supplies a live MeshBytes; parsing copies roots before returning.
+        Some(pem) => parse_root_pem(unsafe { pem.as_slice() }),
+        None => Err("INVALID_TLS_ROOTS: missing PEM bytes"),
+    };
+    update_request(handle, |request| match parsed {
+        Ok(roots) => request.trust_roots = Some(roots),
+        Err(error) => request.config_error = Some(error.to_owned()),
+    })
 }
 
 #[no_mangle]
@@ -513,6 +567,9 @@ fn request_url(request: &MeshRequestData) -> Result<String, String> {
     if !matches!(url.scheme(), "http" | "https") {
         return Err("INVALID_URL: HTTP URL must use http:// or https://".to_string());
     }
+    if request.trust_roots.is_some() && url.scheme() != "https" {
+        return Err("INVALID_URL: explicit TLS roots require HTTPS".to_owned());
+    }
     if !request.query_params.is_empty() {
         let mut query = url.query_pairs_mut();
         for (key, value) in &request.query_params {
@@ -652,6 +709,13 @@ fn format_error(error: &UreqError) -> String {
     }
 }
 
+// RFC 9110 sections 6.4.1 and 15.3.6: these responses have no content,
+// even when their headers describe an encoded representation. In particular,
+// passing an empty HEAD/204/304 body to a gzip decoder produces a false EOF.
+fn bodyless_response(method: &str, status: u16) -> bool {
+    method == "head" || (100..200).contains(&status) || matches!(status, 204 | 205 | 304)
+}
+
 fn execute_request(
     agent: &Agent,
     request: MeshRequestData,
@@ -666,7 +730,8 @@ fn execute_request(
         return Err("CANCELLED: HTTP request".to_string());
     }
 
-    let mut response = match dispatch(agent, &request, &url) {
+    let agent = agent_for_request(agent, &request);
+    let mut response = match dispatch(&agent, &request, &url) {
         Ok(response) => response,
         Err(error) => {
             record_error(&error);
@@ -691,19 +756,23 @@ fn execute_request(
     // would reach it: a body of up to the maximum is read, a longer one is
     // refused.
     let maximum = request.max_response_bytes;
-    let body = response
-        .body_mut()
-        .with_config()
-        .limit(maximum as u64 + 1)
-        .read_to_vec()
-        .map_err(|error| {
-            record_error(&error);
-            if matches!(error, UreqError::BodyExceedsLimit(_)) {
-                format!("RESPONSE_TOO_LARGE: limit is {maximum} bytes")
-            } else {
-                format_error(&error)
-            }
-        })?;
+    let body = if bodyless_response(&request.method, response.status().as_u16()) {
+        Vec::new()
+    } else {
+        response
+            .body_mut()
+            .with_config()
+            .limit(maximum as u64 + 1)
+            .read_to_vec()
+            .map_err(|error| {
+                record_error(&error);
+                if matches!(error, UreqError::BodyExceedsLimit(_)) {
+                    format!("RESPONSE_TOO_LARGE: limit is {maximum} bytes")
+                } else {
+                    format_error(&error)
+                }
+            })?
+    };
     if cancel.is_some_and(|flag| flag.load(Ordering::Acquire)) {
         return Err("CANCELLED: HTTP request".to_string());
     }
@@ -871,6 +940,7 @@ fn execute_stream(
     let started = Instant::now();
     let _total = TotalTimer(started);
     let _in_flight = InFlight::begin();
+    let agent = agent_for_request(&agent, &request);
     let mut response = match dispatch(&agent, &request, &url) {
         Ok(response) => response,
         Err(error) => {
@@ -881,6 +951,12 @@ fn execute_stream(
     metrics()
         .first_byte_micros
         .fetch_add(duration_micros(started), Ordering::Relaxed);
+    if cancel.load(Ordering::Acquire) {
+        return Err("CANCELLED: HTTP stream".to_string());
+    }
+    if bodyless_response(&request.method, response.status().as_u16()) {
+        return Ok(());
+    }
     let mut reader = response
         .body_mut()
         .with_config()
@@ -1205,6 +1281,47 @@ mod tests {
     }
 
     #[test]
+    fn bodyless_responses_do_not_decode_representation_metadata() {
+        let cases: [(&str, &[u8], i64); 4] = [
+            ("head", b"HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\nETag: bodyless-test\r\nContent-Length: 128\r\n\r\n", 200),
+            ("put", b"HTTP/1.1 204 No Content\r\nContent-Encoding: gzip\r\nETag: bodyless-test\r\n\r\n", 204),
+            ("get", b"HTTP/1.1 304 Not Modified\r\nContent-Encoding: gzip\r\nETag: bodyless-test\r\nContent-Length: 128\r\n\r\n", 304),
+            ("post", b"HTTP/1.1 205 Reset Content\r\nContent-Encoding: gzip\r\nETag: bodyless-test\r\nContent-Length: 0\r\n\r\n", 205),
+        ];
+        for (method, wire, status) in cases {
+            let (port, server) = serve_once(wire);
+            let request = MeshRequestData::new(method, &format!("http://127.0.0.1:{port}/"));
+            let response = execute_request(&http_agent(), request, None);
+            server.join().unwrap();
+            let response = response.unwrap_or_else(|error| panic!("{method} {status}: {error}"));
+            assert_eq!(response.status, status);
+            assert!(response.body.is_empty());
+            assert!(response
+                .headers
+                .iter()
+                .any(|(key, value)| key == "etag" && value == "bodyless-test"));
+
+            let (port, server) = serve_once(wire);
+            let request = MeshRequestData::new(method, &format!("http://127.0.0.1:{port}/"));
+            let state = StreamState {
+                calls: AtomicU64::new(0),
+                bytes: AtomicU64::new(0),
+            };
+            let result = execute_stream(
+                http_agent(),
+                request,
+                Arc::new(AtomicBool::new(false)),
+                slow_bytes_callback as *const () as usize,
+                &state as *const _ as usize,
+                true,
+            );
+            server.join().unwrap();
+            result.unwrap_or_else(|error| panic!("stream {method} {status}: {error}"));
+            assert_eq!(state.calls.load(Ordering::Relaxed), 0);
+        }
+    }
+
+    #[test]
     fn response_body_limit_fails_closed() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -1258,6 +1375,7 @@ mod tests {
 
     #[test]
     fn redirect_limit_rejects_counts_above_bound() {
+        let _api = API.lock();
         let handle = next_handle();
         requests()
             .lock()
@@ -1394,7 +1512,7 @@ mod tests {
 
     /// Held by the tests that use the runtime API's registries, which are
     /// the process's: one test filling them must not refuse another.
-    static API: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
+    pub(super) static API: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
 
     /// A server answering one request with `response`: its port, and the
     /// request it received.
@@ -1927,3 +2045,7 @@ mod tests {
         drop(release);
     }
 }
+
+#[cfg(test)]
+#[path = "client_trust_tests.rs"]
+mod trust_tests;

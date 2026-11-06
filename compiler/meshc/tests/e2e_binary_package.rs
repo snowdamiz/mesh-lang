@@ -65,7 +65,7 @@ fn reject_builder_value() -> Int ! BinaryError do
 end
 
 fn reject_builder_limit() -> Int ! BinaryError do
-  let _ = BytesBuilder.new(65537) ?
+  let _ = BytesBuilder.new(1048577) ?
   Ok(0)
 end
 

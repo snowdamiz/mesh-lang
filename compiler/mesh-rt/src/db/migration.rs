@@ -300,7 +300,7 @@ pub(crate) fn build_drop_index_sql(table: &str, columns: &[String]) -> Result<St
 /// Create a table with the given column definitions (a `List<String>` of
 /// colon-separated definitions).
 #[no_mangle]
-pub extern "C" fn mesh_migration_create_table(
+pub extern "C-unwind" fn mesh_migration_create_table(
     pool: u64,
     table: *const MeshString,
     columns: *mut u8,
@@ -313,13 +313,13 @@ pub extern "C" fn mesh_migration_create_table(
 
 /// Drop a table.
 #[no_mangle]
-pub extern "C" fn mesh_migration_drop_table(pool: u64, table: *const MeshString) -> *mut u8 {
+pub extern "C-unwind" fn mesh_migration_drop_table(pool: u64, table: *const MeshString) -> *mut u8 {
     unsafe { execute_ddl(pool, Ok(build_drop_table_sql(text_of(table)))) }
 }
 
 /// Add a column to an existing table.
 #[no_mangle]
-pub extern "C" fn mesh_migration_add_column(
+pub extern "C-unwind" fn mesh_migration_add_column(
     pool: u64,
     table: *const MeshString,
     column_def: *const MeshString,
@@ -332,7 +332,7 @@ pub extern "C" fn mesh_migration_add_column(
 
 /// Drop a column from an existing table.
 #[no_mangle]
-pub extern "C" fn mesh_migration_drop_column(
+pub extern "C-unwind" fn mesh_migration_drop_column(
     pool: u64,
     table: *const MeshString,
     column: *const MeshString,
@@ -345,7 +345,7 @@ pub extern "C" fn mesh_migration_drop_column(
 
 /// Rename a column in an existing table.
 #[no_mangle]
-pub extern "C" fn mesh_migration_rename_column(
+pub extern "C-unwind" fn mesh_migration_rename_column(
     pool: u64,
     table: *const MeshString,
     old_name: *const MeshString,
@@ -361,7 +361,7 @@ pub extern "C" fn mesh_migration_rename_column(
 ///
 /// Options: `"unique:true"` for unique index, `"where:condition"` for partial.
 #[no_mangle]
-pub extern "C" fn mesh_migration_create_index(
+pub extern "C-unwind" fn mesh_migration_create_index(
     pool: u64,
     table: *const MeshString,
     columns: *mut u8,
@@ -375,7 +375,7 @@ pub extern "C" fn mesh_migration_create_index(
 
 /// Drop an index (derived name: idx_{table}_{col1}_{col2}).
 #[no_mangle]
-pub extern "C" fn mesh_migration_drop_index(
+pub extern "C-unwind" fn mesh_migration_drop_index(
     pool: u64,
     table: *const MeshString,
     columns: *mut u8,
@@ -390,7 +390,7 @@ pub extern "C" fn mesh_migration_drop_index(
 
 /// Execute raw SQL (escape hatch for operations not covered by the DSL).
 #[no_mangle]
-pub extern "C" fn mesh_migration_execute(pool: u64, sql: *const MeshString) -> *mut u8 {
+pub extern "C-unwind" fn mesh_migration_execute(pool: u64, sql: *const MeshString) -> *mut u8 {
     mesh_pool_execute(pool, sql, mesh_list_new())
 }
 

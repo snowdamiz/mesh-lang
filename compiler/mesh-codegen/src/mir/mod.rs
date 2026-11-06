@@ -1130,3 +1130,12 @@ mod tests {
         assert_eq!(MirType::Ptr.function_parts(), None);
     }
 }
+
+#[cfg(test)]
+mod mlkem_incremental_lower_tests;
+
+#[cfg(test)]
+mod secret_primitives_lower_tests;
+
+#[cfg(test)]
+mod recovery_code_lower_tests;

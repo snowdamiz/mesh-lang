@@ -19,7 +19,7 @@ members = [
 # mesh-rt uses libsqlite3-sys 0.36 (bundled) while sqlx-sqlite requires 0.28.x.
 # Both crates define links = "sqlite3", which Cargo does not allow in the same dep graph.
 # registry/Cargo.toml declares its own [workspace] root to be resolved independently.
-exclude = ["registry"]
+exclude = ["registry", "vendor/ureq-proto", "vendor/core-models"]
 resolver = "2"
 
 [workspace.dependencies]
@@ -45,5 +45,14 @@ flate2 = "1"
 indicatif = "0.18"
 colored = "2"
 dirs = "5"
-ureq = { version = "3", features = ["gzip"] }
+ureq = { version = "=3.2.0", features = ["gzip"] }
 sha2 = "0.10"
+
+# Retain protocol-correct response persistence until the upstream fix is released.
+# Provenance and the minimal downstream patch are in vendor/ureq-proto/PATCH.md.
+[patch.crates-io]
+ureq-proto = { path = "vendor/ureq-proto" }
+
+# Align the inactive proof model metadata with libcrux's pinned workspace.
+# No upstream Rust/proof body changes; see vendor/core-models/PATCH.md.
+core-models = { path = "vendor/core-models" }

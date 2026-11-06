@@ -2,3 +2,12 @@
 corpus/
 artifacts/
 coverage/
+
+# Keep the small public BR1 regression seeds reviewable; generated coverage
+# corpus entries and every other target's generated corpus remain ignored.
+!corpus/
+corpus/*
+!corpus/crypto_provider/
+corpus/crypto_provider/*
+!corpus/crypto_provider/basic
+!corpus/crypto_provider/br1-*

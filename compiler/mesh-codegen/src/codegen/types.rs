@@ -121,7 +121,8 @@ pub fn llvm_closure_fn_type<'ctx>(
 ///
 /// For sum types with pointer-sized payloads (Result, Option from runtime),
 /// the layout uses `{ i8, ptr }` which correctly aligns the pointer field.
-/// For other sum types, uses `{ i8, [N x i8] }` as a byte array.
+/// Other sum types use `{ i8, [N x i64] }`. Payload pointers must remain whole,
+/// aligned words for conservative GC, including inside an enclosing struct.
 pub fn create_sum_type_layout<'ctx>(
     context: &'ctx Context,
     sum_type: &MirSumTypeDef,
@@ -158,7 +159,7 @@ pub fn create_sum_type_layout<'ctx>(
     }
 
     // Calculate max variant overlay size across all variants.
-    // We use the full overlay type { i8 tag, field0, field1, ... } to account
+    // We use the full overlay type { i64 tag space, field0, field1, ... } to account
     // for alignment padding between the tag and the first field.
     let max_overlay_size = sum_type
         .variants
@@ -180,27 +181,32 @@ pub fn create_sum_type_layout<'ctx>(
         // Enum with no payloads (all nullary variants) -- just the tag.
         context.struct_type(&[tag_type.into()], false)
     } else {
-        // Allocate enough bytes for the largest variant overlay.
-        // Subtract 1 for the tag byte we add explicitly.
-        let payload_bytes = max_overlay_size - 1;
-        let payload_type = context.i8_type().array_type(payload_bytes as u32);
+        // The overlay reserves a full word for its tag, so even Bool payloads
+        // begin in the first represented payload word rather than padding.
+        // Byte arrays had alignment 1 and let LLVM scalarize pointers into
+        // separate bytes, both of which hide live objects from conservative GC.
+        let payload_words = (max_overlay_size - 8).div_ceil(8);
+        let payload_type = context.i64_type().array_type(payload_words as u32);
         context.struct_type(&[tag_type.into(), payload_type.into()], false)
     }
 }
 
 /// Create the variant overlay struct type for a specific variant.
 ///
-/// Layout: `{ i8 tag, field0_type, field1_type, ... }`
+/// Layout: `{ i64 tag_space, field0_type, field1_type, ... }`
 ///
 /// This is used when constructing or destructuring a specific variant --
-/// the payload bytes are reinterpreted through this struct type via GEP.
+/// the payload words are reinterpreted through this struct type via GEP. The
+/// actual tag remains one byte at offset zero; its reserved word makes every
+/// payload start outside the tagged union's padding. Pointer-only runtime
+/// Result/Option layouts retain their existing tag/pointer offsets and ABI.
 pub fn variant_struct_type<'ctx>(
     context: &'ctx Context,
     field_types: &[MirType],
     struct_types: &FxHashMap<String, StructType<'ctx>>,
     sum_type_layouts: &FxHashMap<String, StructType<'ctx>>,
 ) -> StructType<'ctx> {
-    let tag_type = context.i8_type();
+    let tag_type = context.i64_type();
     let mut fields: Vec<BasicTypeEnum<'ctx>> = vec![tag_type.into()];
     for f in field_types {
         fields.push(if matches!(f, MirType::Struct(_)) {
@@ -284,6 +290,41 @@ mod tests {
     }
 
     #[test]
+    fn mixed_sum_payloads_are_aligned_words_and_narrow_fields_are_not_padding() {
+        let context = Context::create();
+        let structs = FxHashMap::default();
+        let sums = FxHashMap::default();
+        let td = inkwell::targets::TargetData::create("e-p:64:64-i64:64");
+        let definition = MirSumTypeDef {
+            name: "Mixed".into(),
+            variants: vec![
+                MirVariantDef {
+                    name: "Flag".into(),
+                    fields: vec![MirType::Bool],
+                    tag: 0,
+                },
+                MirVariantDef {
+                    name: "Pair".into(),
+                    fields: vec![MirType::Bool, MirType::String],
+                    tag: 1,
+                },
+            ],
+        };
+        let layout = create_sum_type_layout(&context, &definition, &structs, &sums, &td);
+        assert_eq!(td.get_abi_alignment(&layout), 8);
+        let words = layout.get_field_type_at_index(1).unwrap().into_array_type();
+        assert_eq!(words.get_element_type().into_int_type().get_bit_width(), 64);
+        assert_eq!(words.len(), 2);
+        let container = context.struct_type(&[context.bool_type().into(), layout.into()], false);
+        assert_eq!(td.offset_of_element(&container, 1), Some(8));
+        let overlay =
+            variant_struct_type(&context, &[MirType::Bool, MirType::String], &structs, &sums);
+        assert_eq!(td.offset_of_element(&overlay, 1), Some(8));
+        assert_eq!(td.offset_of_element(&overlay, 2), Some(16));
+        assert_eq!(td.get_store_size(&layout), td.get_store_size(&overlay));
+    }
+
+    #[test]
     fn test_sum_type_layout_nullary() {
         let context = Context::create();
         let structs = FxHashMap::default();
@@ -335,7 +376,7 @@ mod tests {
 
         let td = inkwell::targets::TargetData::create("");
         let layout = create_sum_type_layout(&context, &sum_def, &structs, &sums, &td);
-        // { i8 tag, [N x i8] payload }
+        // { i8 tag, [N x i64] payload }
         assert_eq!(layout.count_fields(), 2);
     }
 
@@ -384,7 +425,7 @@ mod tests {
     /// in variant construction (see `codegen_construct_variant`), so they qualify
     /// as pointer-sized for the `all_single_ptr` check.
     ///
-    /// The byte-array path `{i8, [N x i8]}` is only used for sum types with
+    /// The word-array path `{i8, [N x i64]}` is only used for sum types with
     /// multi-field variants or primitive (non-pointer) payload types like Int/Bool.
     #[test]
     fn test_sum_type_layout_struct_payload() {
@@ -470,7 +511,7 @@ mod tests {
 
         // Case 3: Sum type with a multi-field (Int) variant.
         // Int is not pointer-sized for all_single_ptr purposes.
-        // This forces the byte-array path.
+        // This forces the word-array path.
         let int_result = MirSumTypeDef {
             name: "IntResult".to_string(),
             variants: vec![
@@ -488,7 +529,7 @@ mod tests {
         };
 
         let int_layout = create_sum_type_layout(&context, &int_result, &structs, &sums, &td);
-        // Int is not pointer-sized, so all_single_ptr is false -> byte-array layout
+        // Int is not pointer-sized, so all_single_ptr is false -> word-array layout
         assert_eq!(
             int_layout.count_fields(),
             2,
@@ -499,7 +540,7 @@ mod tests {
                 .get_field_type_at_index(1)
                 .unwrap()
                 .is_array_type(),
-            "Int-payload sum type field 1 should be byte array"
+            "Int-payload sum type field 1 should be word array"
         );
 
         // Case 4: The variant overlay for Ptr fields matches the {i8, ptr} layout.

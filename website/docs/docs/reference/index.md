@@ -276,6 +276,11 @@ the rest of it, as `Err(e) -> Err(wrap(e))` changes the error type. The pattern
 must name a whole value: names, literals, constructors, and nullary
 constructors such as `None`; `_` and a bare `Ok` are rejected (E0056).
 
+After an implicit multiline arm body, keep the next arm's `->` (or `when`
+guard): a bare pattern there would be another expression in the preceding body.
+Alternatively, wrap the preceding body in an explicit `do ... end` block before
+using pattern-only arms.
+
 ## Control flow
 
 | Form | Result |
@@ -538,7 +543,10 @@ end
 built with `meshc build --artifact staticlib` or `--artifact cdylib`. The
 function must be `pub`, the symbol a C identifier, and the signature exactly
 `(Bytes) -> Bytes!String`, without generic parameters, `where`, or a guard;
-anything else is error E0055. See [Library Builds](/docs/library-builds/).
+anything else is error E0055. `bindings: "native"` keeps the native bindings and
+omits the JavaScript helper. The default is `bindings: "all"`. See
+[Library Builds](/docs/library-builds/#binding-audience) for all generated files
+and the separate host authorization requirements.
 
 ## Standard-library module index
 

@@ -123,7 +123,8 @@ jobs:
           # keep their integration and snapshot tests beside the library, and
           # the runtime's own suite covers the distribution transport.
           cargo test --locked -p mesh-parser -p mesh-typeck -p mesh-codegen -p mesh-fmt -p mesh-lint
-          cargo test --locked -p mesh-rt --lib --test library --test library_memory
+          cargo test --locked --manifest-path vendor/ureq-proto/Cargo.toml --lib
+          cargo test --locked -p mesh-rt --lib --test library --test library_memory --test http_response_persistence
           cargo build --workspace --locked
           # The fuzz crate is its own workspace and only runs at release:
           # compile its targets here, or a runtime rename breaks the release.
@@ -135,7 +136,8 @@ jobs:
             ./target/debug/meshc fmt --check "$path"
           done
           # e2e_library builds static and dynamic libraries and runs a C host.
-          cargo test --locked -p meshc --test e2e --test tooling_e2e --test e2e_language_fixes --test e2e_performance --test e2e_library
+          cargo test --locked -p meshc --test e2e --test tooling_e2e --test e2e_language_fixes --test e2e_performance --test e2e_library --test e2e_crypto_v2 --test e2e_secret --test e2e_solana_read_package --test e2e_http_client --test e2e_http_response_persistence --test e2e_stdlib
+          ./target/debug/meshc test packages/mesh-solana/tests
 
   # The ```mesh examples on the docs site must parse, lint and format cleanly.
   # rust-core runs these tests with the rest of the mesh-lint and mesh-fmt

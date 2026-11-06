@@ -290,6 +290,18 @@ fn e2e_file_binary_ranges_are_bounded() {
     );
 }
 
+#[test]
+#[cfg(unix)] // Directory sync is explicitly platform-dependent.
+fn e2e_file_sync_and_atomic_rename_preserve_the_old_file_on_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let source = read_fixture("stdlib_file_atomic_replace.mpl")
+        .replace("$ROOT", dir.path().to_str().unwrap());
+    assert_eq!(
+        compile_and_run(&source),
+        "new\nfalse\nmissing source\nmissing sync\nnew\n"
+    );
+}
+
 // ── IO E2E Tests ────────────────────────────────────────────────────────
 
 #[test]
@@ -1143,6 +1155,191 @@ fn free_port() -> u16 {
         .and_then(|listener| listener.local_addr())
         .expect("no free port")
         .port()
+}
+
+fn server_bind_exchange(stream: impl Read + Write, websocket: bool) {
+    if websocket {
+        TestWsClient::open(stream, "/chat").converse();
+    } else {
+        let mut stream = stream;
+        stream
+            .write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+            .unwrap();
+        let mut head = Vec::new();
+        while !head.ends_with(b"\r\n\r\n") {
+            let mut byte = [0];
+            stream.read_exact(&mut byte).unwrap();
+            head.push(byte[0]);
+            assert!(head.len() <= 8192);
+        }
+        let head = String::from_utf8(head).unwrap();
+        assert!(head.starts_with("HTTP/1.1 200 OK"), "{head}");
+        let length: usize = head
+            .lines()
+            .find_map(|line| {
+                let (name, value) = line.split_once(':')?;
+                name.eq_ignore_ascii_case("Content-Length")
+                    .then(|| value.trim().parse().unwrap())
+            })
+            .expect("response Content-Length");
+        assert_eq!(length, 5);
+        let mut body = vec![0; length];
+        stream.read_exact(&mut body).unwrap();
+        assert_eq!(body, b"bound");
+    }
+}
+
+#[test]
+fn e2e_server_bind_all_four_apis_select_only_the_requested_ipv4_address() {
+    let certificates = tempfile::tempdir().unwrap();
+    let (ca, cert, key) = localhost_certificate(certificates.path());
+    for websocket in [false, true] {
+        for tls in [false, true] {
+            let port = free_port();
+            let suffix = if tls { "tls_on" } else { "on" };
+            let files = if tls {
+                format!(", \"{}\", \"{}\"", cert.display(), key.display())
+            } else {
+                String::new()
+            };
+            let source = if websocket {
+                websocket_server_source(&format!("Ws.serve_{suffix}(on_connect, on_message, on_close, \"127.0.0.1\", {port}{files})"))
+            } else {
+                format!("fn handler(_request) do\n HTTP.response(200, \"bound\")\nend\nfn main() do\n HTTP.serve_{suffix}(HTTP.router() |> HTTP.on_get(\"/\", handler), \"127.0.0.1\", {port}{files})\nend\n")
+            };
+            let mut guard = compile_and_start_server(&source);
+            wait_for_server_ready(&mut guard);
+            let other = std::net::SocketAddr::from(([127, 0, 0, 2], port));
+            assert!(std::net::TcpStream::connect_timeout(&other, std::time::Duration::from_millis(300)).is_err(),
+                "explicit 127.0.0.1 listener also accepted another local address; ws={websocket} tls={tls}");
+            let tcp = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+            tcp.set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                .unwrap();
+            tcp.set_write_timeout(Some(std::time::Duration::from_secs(5)))
+                .unwrap();
+            if tls {
+                use rustls::pki_types::pem::PemObject as _;
+                let mut roots = rustls::RootCertStore::empty();
+                for certificate in rustls::pki_types::CertificateDer::pem_file_iter(&ca).unwrap() {
+                    roots.add(certificate.unwrap()).unwrap();
+                }
+                let config = rustls::ClientConfig::builder_with_provider(std::sync::Arc::new(
+                    rustls::crypto::ring::default_provider(),
+                ))
+                .with_safe_default_protocol_versions()
+                .unwrap()
+                .with_root_certificates(roots)
+                .with_no_client_auth();
+                let connection = rustls::ClientConnection::new(
+                    std::sync::Arc::new(config),
+                    rustls::pki_types::ServerName::try_from("localhost").unwrap(),
+                )
+                .unwrap();
+                server_bind_exchange(rustls::StreamOwned::new(connection, tcp), websocket);
+            } else {
+                server_bind_exchange(tcp, websocket);
+            }
+        }
+    }
+}
+
+#[test]
+fn e2e_server_bind_ipv6_literal_serves_http_and_websocket() {
+    for websocket in [false, true] {
+        let port = std::net::TcpListener::bind(("::1", 0))
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let source = if websocket {
+            websocket_server_source(&format!(
+                "Ws.serve_on(on_connect, on_message, on_close, \"::1\", {port})"
+            ))
+        } else {
+            format!("fn handler(_request) do\n HTTP.response(200, \"bound\")\nend\nfn main() do\n HTTP.serve_on(HTTP.router() |> HTTP.on_get(\"/\", handler), \"::1\", {port})\nend\n")
+        };
+        let mut guard = compile_and_start_server(&source);
+        wait_for_server_ready(&mut guard);
+        let tcp = std::net::TcpStream::connect(("::1", port)).unwrap();
+        tcp.set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .unwrap();
+        server_bind_exchange(tcp, websocket);
+    }
+}
+
+#[test]
+fn e2e_server_bind_address_argument_is_typed_for_all_four_apis() {
+    for call in [
+        "HTTP.serve_on(HTTP.router(), 123, 0)",
+        "HTTP.serve_tls_on(HTTP.router(), 123, 0, \"cert.pem\", \"key.pem\")",
+        "Ws.serve_on(on_connect, on_message, on_close, 123, 0)",
+        "Ws.serve_tls_on(on_connect, on_message, on_close, 123, 0, \"cert.pem\", \"key.pem\")",
+    ] {
+        let source = format!("fn on_connect(_conn, _path, _headers) do 1 end\nfn on_message(_conn, _message) do nil end\nfn on_close(_conn, _code, _reason) do nil end\nfn main() do\n {call}\nend\n");
+        let result = compile_only(&source);
+        let diagnostic = String::from_utf8_lossy(&result.stderr);
+        assert!(
+            !result.status.success(),
+            "an Int was accepted as a bind address: {call}"
+        );
+        assert!(
+            diagnostic.contains("String") && diagnostic.contains("Int"),
+            "{diagnostic}"
+        );
+        assert!(!diagnostic.contains("has no function"), "{diagnostic}");
+    }
+}
+
+#[test]
+fn e2e_server_bind_invalid_literals_and_ports_return_without_starting() {
+    let source = r#"
+fn on_connect(_conn, _path, _headers) do 1 end
+fn on_message(_conn, _message) do nil end
+fn on_close(_conn, _code, _reason) do nil end
+fn main() do
+  HTTP.serve_on(HTTP.router(), "localhost", 0)
+  HTTP.serve_tls_on(HTTP.router(), "127.0.0.1:80", 0, "missing.pem", "missing.key")
+  Ws.serve_on(on_connect, on_message, on_close, "[::1]", 0)
+  Ws.serve_tls_on(on_connect, on_message, on_close, " 127.0.0.1", 0, "missing.pem", "missing.key")
+  HTTP.serve_on(HTTP.router(), "127.0.0.1", -1)
+  HTTP.serve_tls_on(HTTP.router(), "127.0.0.1", 65536, "missing.pem", "missing.key")
+  Ws.serve_on(on_connect, on_message, on_close, "::1", -1)
+  Ws.serve_tls_on(on_connect, on_message, on_close, "::1", 65536, "missing.pem", "missing.key")
+end
+"#;
+    let mut guard = compile_and_start_server(source);
+    let deadline =
+        std::time::Instant::now() + artifacts::LAUNCH_ALLOWANCE + std::time::Duration::from_secs(3);
+    loop {
+        if let Some(status) = guard.child.try_wait().unwrap() {
+            assert!(status.success());
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "invalid bind input started a server instead of returning"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    let mut stderr = String::new();
+    guard
+        .child
+        .stderr
+        .take()
+        .unwrap()
+        .read_to_string(&mut stderr)
+        .unwrap();
+    assert_eq!(
+        stderr.matches("invalid server bind address").count(),
+        4,
+        "{stderr}"
+    );
+    assert_eq!(
+        stderr.matches("invalid server bind port").count(),
+        4,
+        "{stderr}"
+    );
+    assert!(!stderr.contains("server listening on"), "{stderr}");
 }
 
 /// Build and start `source` with its fixed `port` replaced by a free one, and

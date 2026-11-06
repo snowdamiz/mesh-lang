@@ -10,6 +10,7 @@ Rules:
 2. `HTTP.route(router, path, handler)` registers a handler for a path — returns updated router (rebind).
 3. `HTTP.on_get`, `HTTP.on_post`, `HTTP.on_put`, and `HTTP.on_delete` register method-specific handlers — each returns updated router (rebind).
 4. `HTTP.serve(router, port)` starts the HTTP server on the given port (blocks).
+   `HTTP.serve_on(router, "127.0.0.1", port)` selects an explicit IPv4/IPv6 literal; `HTTP.serve_tls_on(router, address, port, cert, key)` adds TLS. `Ws.serve_on` and `Ws.serve_tls_on` take the address before their port, after the three callbacks. Hostnames, brackets, whitespace, zone IDs and ports outside 0..65535 are refused with a diagnostic and return `()`; these APIs never fall back to a wildcard. Existing HTTP defaults to `[::]` and WebSocket defaults to `0.0.0.0`.
 5. Handler signature: `fn handler(request) do ... HTTP.response(status, body) end`.
 6. `HTTP.response(status_code, body_string)` creates a Response — return this from handlers.
 7. For JSON responses, use `json { }` literals — they are type-safe, and a `Json` passed as a String argument is its JSON text: `HTTP.response(200, json { status: "ok", id: record_id })`.

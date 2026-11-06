@@ -175,6 +175,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::NativeDeclarationInvalid { .. } => "E0052",
         TypeError::ExportDeclarationInvalid { .. } => "E0055",
         TypeError::ResourceViolation { .. } => "E0053",
+        TypeError::PlaintextViolation { .. } => "E0093",
         TypeError::InvalidLetPattern { .. } => "E0054",
         TypeError::InvalidPassThroughArm { .. } => "E0056",
         TypeError::DuplicateBinding { .. } => "E0057",
@@ -1681,6 +1682,11 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
             let range = clamp(text_range_to_range(*span));
             Description::error(range, "this arm")
                 .with_help("write the value after `->`: `pattern -> value`")
+        }
+        TypeError::PlaintextViolation { sink, reason, span } => {
+            let range = clamp(text_range_to_range(*span));
+            Description::error(range, format!("plaintext reaches `{sink}` here"))
+                .with_help(reason.clone())
         }
         TypeError::ResourceViolation { reason, span } => {
             let range = clamp(text_range_to_range(*span));

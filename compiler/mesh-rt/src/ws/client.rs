@@ -31,6 +31,10 @@ const MAX_QUEUE_CAPACITY: usize = 65_536;
 const MAX_INBOUND_QUEUE_BYTES: usize = 32 * 1024 * 1024;
 const MAX_OPEN_HANDLES: usize = 4_096;
 const MAX_CONNECT_WORKERS: usize = 64;
+const MAX_CUSTOM_HEADERS: usize = 16;
+const MAX_HEADER_NAME_BYTES: usize = 64;
+const MAX_HEADER_VALUE_BYTES: usize = 4_096;
+const MAX_CUSTOM_HEADER_BYTES: usize = 8_192;
 
 #[derive(Clone)]
 struct WsClientOptions {
@@ -38,6 +42,7 @@ struct WsClientOptions {
     heartbeat_timeout: Duration,
     max_message_bytes: usize,
     queue_capacity: usize,
+    headers: Vec<(String, String)>,
 }
 
 impl Default for WsClientOptions {
@@ -47,6 +52,7 @@ impl Default for WsClientOptions {
             heartbeat_timeout: Duration::from_secs(30),
             max_message_bytes: 1024 * 1024,
             queue_capacity: 256,
+            headers: Vec::new(),
         }
     }
 }
@@ -235,6 +241,82 @@ pub extern "C" fn mesh_ws_client_queue_capacity(handle: i64, capacity: i64) -> i
     })
 }
 
+fn add_header(options: &mut WsClientOptions, name: &str, value: &str) -> Result<(), String> {
+    if name.is_empty()
+        || name.len() > MAX_HEADER_NAME_BYTES
+        || !name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&byte))
+    {
+        return Err("invalid WebSocket header name".into());
+    }
+    if value.is_empty()
+        || value.len() > MAX_HEADER_VALUE_BYTES
+        || !value.bytes().all(|byte| (0x20..=0x7e).contains(&byte))
+    {
+        return Err("invalid WebSocket header value".into());
+    }
+    let name = name.to_ascii_lowercase();
+    if name.starts_with("sec-websocket-")
+        || matches!(
+            name.as_str(),
+            "host"
+                | "keep-alive"
+                | "connection"
+                | "upgrade"
+                | "content-length"
+                | "transfer-encoding"
+                | "trailer"
+                | "te"
+                | "expect"
+                | "proxy-authorization"
+                | "proxy-connection"
+        )
+    {
+        return Err("reserved WebSocket handshake header".into());
+    }
+    if options
+        .headers
+        .iter()
+        .any(|(existing, _)| existing == &name)
+    {
+        return Err("duplicate WebSocket header".into());
+    }
+    let bytes: usize = options
+        .headers
+        .iter()
+        .map(|(name, value)| name.len() + value.len() + 4)
+        .sum();
+    if options.headers.len() >= MAX_CUSTOM_HEADERS
+        || bytes + name.len() + value.len() + 4 > MAX_CUSTOM_HEADER_BYTES
+    {
+        return Err("WebSocket custom header budget exceeded".into());
+    }
+    options.headers.push((name, value.to_owned()));
+    Ok(())
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_ws_client_header(
+    handle: i64,
+    name: *const MeshString,
+    value: *const MeshString,
+) -> *mut MeshResult {
+    let result = {
+        let mut registry = options().lock();
+        match registry.get_mut(&(handle as u64)) {
+            None => Err("invalid or already-consumed WebSocket options handle".to_string()),
+            Some(options) => add_header(options, unsafe { (*name).as_str() }, unsafe {
+                (*value).as_str()
+            }),
+        }
+    };
+    match result {
+        Ok(()) => ok_int(handle),
+        Err(reason) => error(reason),
+    }
+}
+
 fn duration_from_millis(value: i64) -> Duration {
     Duration::from_millis(u64::try_from(value).unwrap_or(u64::MAX))
 }
@@ -362,7 +444,8 @@ fn connect_until(
     } else {
         None
     };
-    let (request, key) = handshake_request(&parsed, &host, port, secure)?;
+    let (request, key) =
+        handshake_request_with_headers(&parsed, &host, port, secure, &options.headers)?;
 
     let addresses = (host.as_str(), port)
         .to_socket_addrs()
@@ -434,11 +517,22 @@ fn tls_error(reason: impl std::fmt::Display) -> String {
     format!("TLS_ERROR: {reason}")
 }
 
+#[cfg(test)]
 fn handshake_request(
     url: &Url,
     host: &str,
     port: u16,
     secure: bool,
+) -> Result<(Vec<u8>, String), String> {
+    handshake_request_with_headers(url, host, port, secure, &[])
+}
+
+fn handshake_request_with_headers(
+    url: &Url,
+    host: &str,
+    port: u16,
+    secure: bool,
+    headers: &[(String, String)],
 ) -> Result<(Vec<u8>, String), String> {
     let nonce: [u8; 16] = rand::random();
     let key = STANDARD.encode(nonce);
@@ -449,10 +543,16 @@ fn handshake_request(
         path.push_str(query);
     }
     let host_header = host_header(host, port, secure);
-    let request = format!(
-        "GET {path} HTTP/1.1\r\nHost: {host_header}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n"
-    )
-    .into_bytes();
+    let mut request = format!(
+        "GET {path} HTTP/1.1\r\nHost: {host_header}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n"
+    ).into_bytes();
+    for (name, value) in headers {
+        request.extend_from_slice(name.as_bytes());
+        request.extend_from_slice(b": ");
+        request.extend_from_slice(value.as_bytes());
+        request.extend_from_slice(b"\r\n");
+    }
+    request.extend_from_slice(b"\r\n");
     if request.len() > MAX_HANDSHAKE_BYTES {
         Err(format!(
             "WebSocket handshake request exceeds {MAX_HANDSHAKE_BYTES} bytes"
@@ -1209,7 +1309,19 @@ mod tests {
             tcp.set_write_timeout(Some(Duration::from_secs(3))).unwrap();
             let connection = ServerConnection::new(server_config).unwrap();
             let mut stream = StreamOwned::new(connection, tcp);
-            complete_handshake(&mut stream).unwrap();
+            let mut request = Vec::new();
+            let mut byte = [0u8; 1];
+            while !request.ends_with(b"\r\n\r\n") {
+                stream.read_exact(&mut byte).unwrap();
+                request.push(byte[0]);
+            }
+            let request = String::from_utf8(request).unwrap();
+            assert!(request.contains("\r\nauthorization: MeshMailbox tls-bound\r\n"));
+            let key = request
+                .lines()
+                .find_map(|line| line.strip_prefix("Sec-WebSocket-Key: "))
+                .unwrap();
+            write_handshake_response(&mut stream, key).unwrap();
 
             let (frame, masked) = read_frame_with_mask(&mut stream).unwrap();
             assert!(masked);
@@ -1242,7 +1354,17 @@ mod tests {
             ready: Mutex::new(Some(ready_sender)),
         });
         let url = Url::parse(&format!("wss://localhost:{port}/feed")).unwrap();
-        let (request, key) = handshake_request(&url, "localhost", port, true).unwrap();
+        let (request, key) = handshake_request_with_headers(
+            &url,
+            "localhost",
+            port,
+            true,
+            &[(
+                "authorization".to_string(),
+                "MeshMailbox tls-bound".to_string(),
+            )],
+        )
+        .unwrap();
         let io = register_client(
             stream,
             request,
@@ -1271,6 +1393,177 @@ mod tests {
         );
         drop(inbound);
         server.join().unwrap();
+    }
+
+    #[test]
+    fn custom_headers_validate_names_values_reserved_fields_and_duplicates() {
+        let _api = API.lock();
+        crate::gc::mesh_rt_init();
+        let handle = mesh_ws_client_options();
+        assert_eq!(
+            api_int(mesh_ws_client_header(
+                handle,
+                mesh_str("Authorization"),
+                mesh_str("MeshMailbox secret")
+            )),
+            handle
+        );
+        assert!(api_error(mesh_ws_client_header(
+            handle,
+            mesh_str("authorization"),
+            mesh_str("other")
+        ))
+        .contains("duplicate"));
+        for name in [
+            "",
+            "bad name",
+            "bad:name",
+            "bad\r\nx",
+            "é",
+            "Host",
+            "hOsT",
+            "Keep-Alive",
+            "Connection",
+            "Upgrade",
+            "Sec-WebSocket-Key",
+            "sec-websocket-protocol",
+            "SEC-WEBSOCKET-Extensions",
+            "Content-Length",
+            "Transfer-Encoding",
+            "Trailer",
+            "TE",
+            "Expect",
+            "Proxy-Authorization",
+            "Proxy-Connection",
+        ] {
+            assert!(
+                outcome(mesh_ws_client_header(
+                    handle,
+                    mesh_str(name),
+                    mesh_str("test")
+                ))
+                .is_err(),
+                "accepted {name:?}"
+            );
+        }
+        for value in [
+            "a\r\nAuthorization: injected",
+            "a\n",
+            "\0",
+            "\t",
+            "é",
+            "\u{7f}",
+        ] {
+            assert!(
+                outcome(mesh_ws_client_header(
+                    handle,
+                    mesh_str("X-Test"),
+                    mesh_str(value)
+                ))
+                .is_err(),
+                "accepted {value:?}"
+            );
+        }
+        assert!(outcome(mesh_ws_client_header(
+            handle,
+            mesh_str(&"a".repeat(65)),
+            mesh_str("x")
+        ))
+        .is_err());
+        assert!(outcome(mesh_ws_client_header(
+            handle,
+            mesh_str("X-Test"),
+            mesh_str(&"x".repeat(4097))
+        ))
+        .is_err());
+        assert_eq!(options().lock()[&(handle as u64)].headers.len(), 1);
+        options().lock().remove(&(handle as u64));
+    }
+    #[test]
+    fn custom_header_budgets_are_atomic_and_consumed_options_refuse_mutation() {
+        let _api = API.lock();
+        crate::gc::mesh_rt_init();
+        let handle = mesh_ws_client_options();
+        assert_eq!(
+            api_int(mesh_ws_client_header(
+                handle,
+                mesh_str("X-Large"),
+                mesh_str(&"x".repeat(4096))
+            )),
+            handle
+        );
+        assert!(outcome(mesh_ws_client_header(
+            handle,
+            mesh_str("X-Other"),
+            mesh_str(&"x".repeat(4096))
+        ))
+        .is_err());
+        assert_eq!(options().lock()[&(handle as u64)].headers.len(), 1);
+        options().lock().remove(&(handle as u64));
+        let handle = mesh_ws_client_options();
+        for index in 0..16 {
+            assert_eq!(
+                api_int(mesh_ws_client_header(
+                    handle,
+                    mesh_str(&format!("X-{index}")),
+                    mesh_str("x")
+                )),
+                handle
+            );
+        }
+        assert!(outcome(mesh_ws_client_header(
+            handle,
+            mesh_str("X-Overflow"),
+            mesh_str("x")
+        ))
+        .is_err());
+        assert_eq!(options().lock()[&(handle as u64)].headers.len(), 16);
+        let _ = mesh_ws_client_connect(
+            mesh_str("ws://127.0.0.1:9"),
+            mesh_ws_client_queue_capacity(handle, 0),
+        );
+        assert!(api_error(mesh_ws_client_header(
+            handle,
+            mesh_str("X-New"),
+            mesh_str("x")
+        ))
+        .contains("consumed"));
+        assert!(outcome(mesh_ws_client_header(
+            0,
+            mesh_str("Authorization"),
+            mesh_str("private")
+        ))
+        .is_err());
+    }
+    #[test]
+    fn authorization_header_stays_on_original_upgrade_and_redirects_never_replay_it() {
+        let destination = TcpListener::bind("127.0.0.1:0").unwrap();
+        destination.set_nonblocking(true).unwrap();
+        let location = destination.local_addr().unwrap();
+        let (port, server) = peer(move |mut stream| {
+            let mut request = Vec::new();
+            let mut one = [0u8; 1];
+            while !request.ends_with(b"\r\n\r\n") {
+                stream.read_exact(&mut one).unwrap();
+                request.push(one[0]);
+            }
+            write!(stream,"HTTP/1.1 302 Found\r\nLocation: ws://{location}/stolen\r\nContent-Length: 0\r\n\r\n").unwrap();
+            String::from_utf8(request).unwrap()
+        });
+        let mut settings = WsClientOptions::default();
+        add_header(&mut settings, "Authorization", "MeshMailbox private").unwrap();
+        assert!(connect(&format!("ws://127.0.0.1:{port}/mailbox/stream"), settings).is_err());
+        let request = server.join().unwrap();
+        assert!(request.starts_with("GET /mailbox/stream HTTP/1.1\r\n"));
+        assert!(
+            request.contains("\r\nauthorization: MeshMailbox private\r\n"),
+            "{request}"
+        );
+        assert_eq!(request.matches("MeshMailbox private").count(), 1);
+        assert_eq!(
+            destination.accept().unwrap_err().kind(),
+            std::io::ErrorKind::WouldBlock
+        );
     }
 
     /// Each option outside its range refuses the connect that consumes it,
@@ -1457,14 +1750,22 @@ mod tests {
         let (server_config, _) = crate::dist::node::ws_test_tls_configs();
         let (port, server) = peer(move |tcp| {
             let mut stream = StreamOwned::new(ServerConnection::new(server_config).unwrap(), tcp);
-            let _ = stream.read(&mut [0u8; 1]);
+            let read = stream.read(&mut [0u8; 1]);
+            assert!(
+                !matches!(read,Ok(n) if n>0),
+                "an untrusted TLS peer received application data"
+            );
         });
-        let error = connect(
-            &format!("wss://127.0.0.1:{port}/"),
-            WsClientOptions::default(),
+        let mut settings = WsClientOptions::default();
+        add_header(
+            &mut settings,
+            "Authorization",
+            "MeshMailbox never-disclosed",
         )
-        .err()
         .unwrap();
+        let error = connect(&format!("wss://127.0.0.1:{port}/"), settings)
+            .err()
+            .unwrap();
         assert!(error.contains("invalid peer certificate"), "{error}");
         server.join().unwrap();
     }

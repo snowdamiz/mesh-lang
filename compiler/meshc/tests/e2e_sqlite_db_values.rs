@@ -18,21 +18,21 @@ fn meshc_bin() -> PathBuf {
     path.join("meshc")
 }
 
-fn fixture() -> PathBuf {
+fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
         .join("tests")
         .join("e2e")
-        .join("sqlite_db_values.mpl")
+        .join(format!("{name}.mpl"))
 }
 
-fn build() -> (tempfile::TempDir, PathBuf, Output) {
+fn build(name: &str) -> (tempfile::TempDir, PathBuf, Output) {
     artifacts::ensure_mesh_rt_staticlib();
     let temp = tempfile::tempdir().expect("failed to create temp directory");
     let project = temp.path().join("sqlite-db-values");
     std::fs::create_dir_all(&project).expect("failed to create project directory");
-    std::fs::copy(fixture(), project.join("main.mpl"))
+    std::fs::copy(fixture(name), project.join("main.mpl"))
         .expect("failed to copy SQLite DbValue fixture");
     let output = Command::new(meshc_bin())
         .args(["build", project.to_str().expect("non-UTF-8 project path")])
@@ -43,7 +43,7 @@ fn build() -> (tempfile::TempDir, PathBuf, Output) {
 
 #[test]
 fn sqlite_db_values_round_trip_through_public_mesh_api() {
-    let (_temp, project, output) = build();
+    let (_temp, project, output) = build("sqlite_db_values");
     assert!(
         output.status.success(),
         "meshc build failed:\nstdout: {}\nstderr: {}",
@@ -63,4 +63,23 @@ fn sqlite_db_values_round_trip_through_public_mesh_api() {
         String::from_utf8_lossy(&run.stdout),
         "binary:00ff80\nempty:\ntext:typed\nnull:null\nlegacy:blob:blob\ndone\n"
     );
+}
+
+#[test]
+fn sqlite_explicit_quota_round_trips_large_values_in_compiled_mesh() {
+    let (_temp, project, built) = build("sqlite_quota_v2");
+    assert!(
+        built.status.success(),
+        "{}",
+        String::from_utf8_lossy(&built.stderr)
+    );
+    let run = Command::new(project.join("sqlite-db-values"))
+        .output()
+        .unwrap();
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "sqlite-v2:ok\n");
 }

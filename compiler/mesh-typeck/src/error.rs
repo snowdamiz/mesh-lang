@@ -562,6 +562,13 @@ pub enum TypeError {
     /// A value with affine resource ownership crossed an invalid boundary or
     /// was used in an invalid ownership state.
     ResourceViolation { reason: String, span: TextRange },
+    /// A labelled value, or control flow derived from one, reached an
+    /// unaudited public boundary; includes invalid declassification reasons.
+    PlaintextViolation {
+        sink: String,
+        reason: String,
+        span: TextRange,
+    },
 }
 
 impl TypeError {
@@ -662,7 +669,8 @@ impl TypeError {
             | TypeError::OverloadedFunctionValue { span, .. }
             | TypeError::GenericImplTarget { span, .. }
             | TypeError::AssertReceiveOutsideTest { span }
-            | TypeError::ResourceViolation { span, .. } => Some(*span),
+            | TypeError::ResourceViolation { span, .. }
+            | TypeError::PlaintextViolation { span, .. } => Some(*span),
         }
     }
 }
@@ -1357,6 +1365,9 @@ impl fmt::Display for TypeError {
                     f,
                     "this arm has no `->` and its pattern is not a value: {reason}"
                 )
+            }
+            TypeError::PlaintextViolation { sink, reason, .. } => {
+                write!(f, "plaintext flow to `{sink}` is refused: {reason}")
             }
             TypeError::ResourceViolation { reason, .. } => {
                 write!(f, "resource ownership violation: {reason}")

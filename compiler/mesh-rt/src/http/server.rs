@@ -1152,7 +1152,9 @@ fn drain_accepted_connections() {
         .http_connections;
     eprintln!("[mesh-rt] draining {connections} accepted HTTP connections");
     while connections != 0 {
-        std::thread::sleep(Duration::from_millis(10));
+        // The serving actor must release its worker so queued/in-flight
+        // connection actors can finish, including on a single-worker runtime.
+        actor::mesh_timer_sleep(10);
         connections = crate::dist::telemetry::runtime_telemetry()
             .snapshot()
             .http_connections;
@@ -1170,8 +1172,44 @@ fn drain_accepted_connections() {
 /// - If handler_env is null: `fn(request_ptr) -> response_ptr`
 /// - If handler_env is non-null: `fn(handler_env, request_ptr) -> response_ptr`
 #[no_mangle]
-pub extern "C" fn mesh_http_serve(router: *mut u8, port: i64) {
+pub extern "C-unwind" fn mesh_http_serve(router: *mut u8, port: i64) {
     serve(router, port, None);
+}
+
+/// Serve only the explicit IPv4/IPv6 literal. Invalid input logs and returns.
+#[no_mangle]
+pub extern "C-unwind" fn mesh_http_serve_on(router: *mut u8, host: *const MeshString, port: i64) {
+    let addr = match crate::server_bind::address(unsafe { (*host).as_str() }, port) {
+        Ok(addr) => addr,
+        Err(error) => {
+            eprintln!("[mesh-rt] {error}");
+            return;
+        }
+    };
+    serve_at(router, addr, None);
+}
+
+/// Serve TLS on only the explicit literal, using the ordinary TLS configuration.
+#[no_mangle]
+pub extern "C-unwind" fn mesh_http_serve_tls_on(
+    router: *mut u8,
+    host: *const MeshString,
+    port: i64,
+    cert_path: *const MeshString,
+    key_path: *const MeshString,
+) {
+    let addr = match crate::server_bind::address(unsafe { (*host).as_str() }, port) {
+        Ok(addr) => addr,
+        Err(error) => {
+            eprintln!("[mesh-rt] {error}");
+            return;
+        }
+    };
+    let (cert_path, key_path) = unsafe { ((*cert_path).as_str(), (*key_path).as_str()) };
+    match build_server_config(cert_path, key_path) {
+        Ok(tls) => serve_at(router, addr, Some(tls)),
+        Err(error) => eprintln!("[mesh-rt] Failed to load TLS certificates: {error}"),
+    }
 }
 
 // ── HTTPS Server ────────────────────────────────────────────────────────
@@ -1187,7 +1225,7 @@ pub extern "C" fn mesh_http_serve(router: *mut u8, port: i64) {
 /// handshake occurs on the first `read` call inside the actor's coroutine,
 /// ensuring the accept loop is never blocked by slow TLS clients.
 #[no_mangle]
-pub extern "C" fn mesh_http_serve_tls(
+pub extern "C-unwind" fn mesh_http_serve_tls(
     router: *mut u8,
     port: i64,
     cert_path: *const MeshString,
@@ -1209,11 +1247,18 @@ pub(crate) const ACCEPT_PAUSE: Duration = Duration::from_millis(25);
 /// requested: each accepted connection (in TLS when `tls` is given) is
 /// admitted and handled on an actor of its own, or refused.
 fn serve(router: *mut u8, port: i64, tls: Option<Arc<ServerConfig>>) {
+    serve_at(router, format!("[::]:{port}"), tls);
+}
+
+fn serve_at<A: std::net::ToSocketAddrs + std::fmt::Display>(
+    router: *mut u8,
+    addr: A,
+    tls: Option<Arc<ServerConfig>>,
+) {
     // Ensure the actor scheduler is initialized (idempotent).
     crate::actor::mesh_rt_init_actor(0);
     let scheme = if tls.is_some() { "HTTPS" } else { "HTTP" };
 
-    let addr = format!("[::]:{}", port);
     let listener = match std::net::TcpListener::bind(&addr)
         .and_then(|listener| listener.set_nonblocking(true).map(|()| listener))
     {
@@ -1235,7 +1280,10 @@ fn serve(router: *mut u8, port: i64, tls: Option<Arc<ServerConfig>>) {
                 if e.kind() != std::io::ErrorKind::WouldBlock {
                     eprintln!("[mesh-rt] accept error: {}", e);
                 }
-                std::thread::sleep(ACCEPT_PAUSE);
+                // A listener in a Mesh actor cannot occupy a scheduler worker
+                // while idle: its own connection handlers need that worker.
+                // Timer.sleep retains ordinary sleep behavior outside actors.
+                actor::mesh_timer_sleep(ACCEPT_PAUSE.as_millis() as i64);
             }
         }
     }

@@ -733,6 +733,16 @@ See [Testing](/docs/testing/) for full guide.
 
 ## Standard Library
 
+`Plaintext<T>` tracks private source data without changing its runtime layout.
+Reviewed exits use `declassify(value, "literal reason")` for a whole value or
+`declassify_discriminant(result, "literal reason")` for only a `Result`'s
+success/error tag. Tag review preserves private payloads, caller and prior
+selection control, and affine ownership. Both support pipes and are recorded
+separately in build reports. A whole `Plaintext<Result<T, E>>` source contract
+remains conservative even after tag review. See the repository security guide
+`docs/security/plaintext-types.md` for policy limits; compiling unlabeled code
+does not establish a plaintext guarantee.
+
 ```mesh
 # Conversions
 let a = Int.to_string(42)      # "42"
@@ -747,6 +757,25 @@ let h512 = Crypto.sha512(input)             # Bytes
 let h256_text = Crypto.sha256_hex(input)    # String presentation
 let secret = Secret.random(32)              # Result<SecretBytes, CryptoError>
 let id = Crypto.uuid4()                    # UUID v4 string
+
+# Keyed local indexes: borrows an opaque storage key; returns 32 public bytes.
+# Use a versioned namespace. Equal inputs leak equality; this is not encryption.
+fn index(key :: borrow StorageKey, canonical_label :: Bytes) -> Bytes!CryptoError do
+  StorageKey.index_tag(key, Bytes.from_utf8("example/local-index/v1"), canonical_label)
+end
+
+# Blind RSA BR1 issuer/client roundtrip (Linux/macOS)
+# All calls return typed CryptoError. Client operations also run on phones/Windows.
+# See the standard library for authenticated issuer keys and durable pending state.
+fn blind_issue() -> Bool!CryptoError do
+  let issuer = Crypto.blind_rsa_generate()?
+  let public_key = Crypto.blind_rsa_public(issuer)?
+  let message = Bytes.from_utf8("application token input")
+  let pending = Crypto.blind_rsa_blind(public_key, message)?
+  let response = Crypto.blind_rsa_sign(issuer, pending.blinded)?
+  let signature = Crypto.blind_rsa_finalize(public_key, message, response, pending.state)?
+  Crypto.blind_rsa_verify(public_key, message, signature)
+end
 
 # Encoding
 let raw = Bytes.from_utf8("hello")

@@ -55,6 +55,10 @@ end
 
 Mesh infers `Pid<T>` from the actor's received message type. Sending a value of the wrong type is a compile-time error. Inside an actor, `self()` returns its own PID.
 
+Actors can be referenced before their declaration, including from a helper that
+the actor itself calls. All spawns constrain the same actor's state and message
+types; declaration order does not weaken those checks.
+
 PIDs compare with `==` and `!=`, and show as `<0.12>` in an interpolation (`<node.id.creation>` for a process on another node). No process has PID `0`: it is what a lookup that finds nothing and a remote spawn that fails return, shown as `<0.0>`, and a send to it goes nowhere.
 
 ## Message Passing
@@ -528,6 +532,7 @@ A queued value takes eight bytes plus the size of whatever it references: a `Str
 |----------|---------|-------------|
 | `Process.register(name, pid)` | `Int` | Register a local name; `0` is success and `1` is failure |
 | `Process.whereis(name)` | `Pid` | Resolve a local name; PID `0` (`<0.0>`) means not found |
+| `Process.lookup(name)` | `Option<Pid>` | Resolve a local name with explicit `Some(pid)` or `None` |
 | `Process.monitor(pid, message)` | `Int` | Send the calling actor `message` when `pid` ends; returns the monitor's reference |
 | `Process.demonitor(reference)` | `Int` | Remove a monitor; `0` is success and `1` is failure |
 | `Process.install_shutdown_signals()` | `Unit` | Treat native `SIGINT` and `SIGTERM` as shutdown requests |

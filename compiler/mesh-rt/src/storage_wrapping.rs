@@ -1,8 +1,27 @@
 //! Versioned storage wrapping for actor-owned private resources.
 
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+mod file;
+
+pub(crate) mod spqr;
+#[cfg(test)]
+#[path = "storage_wrapping/spqr_tests.rs"]
+mod spqr_tests;
+
+mod braid_epoch;
+mod braid_responder;
+
+#[cfg(test)]
+#[path = "storage_wrapping/braid_epoch_tests.rs"]
+mod braid_epoch_tests;
+
 use std::ffi::c_void;
 use std::sync::Arc;
 
+use chacha20poly1305::{
+    aead::{AeadInPlace, KeyInit},
+    ChaCha20Poly1305, Tag,
+};
 use parking_lot::Mutex;
 
 use crate::actor::Process;
@@ -14,6 +33,7 @@ use crate::crypto::{
 };
 use crate::io::MeshResult;
 use crate::library::{secure_store_delete_raw, secure_store_get_raw, secure_store_put_raw};
+use crate::protected_memory::ProtectedBytes;
 use crate::secret::{
     commit_storage_counter, insert_ephemeral_storage_key_resource, insert_owned_resource,
     insert_storage_key_resource, prepare_owned_resource, prepare_storage_key_resource,
@@ -21,6 +41,7 @@ use crate::secret::{
     MeshSecretHandle, MeshStorageCounterReserve, PreparedOwnedResource, PreparedStorageKey,
     ResourceKind, StorageKeyError,
 };
+use crate::string::MeshString;
 use subtle::ConstantTimeEq;
 use zeroize::Zeroizing;
 
@@ -84,6 +105,15 @@ enum SecretPurpose {
     PostQuantumPrekey,
     GroupEpochSecret,
     GroupTreeKemKey,
+    BlindRsaSecretKey,
+    BlindRsaBlindingState,
+    HashPreimage,
+    // Provisional C1 runtime-only purpose, not exposed to Mesh yet.
+    MlKemEncapsulationState,
+    BraidResponderSecrets,
+    BraidEpochPrivateKey,
+    SpqrChains,
+    SpqrSkippedKeys,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -127,6 +157,14 @@ impl SecretPurpose {
             15 => Ok(Self::PostQuantumPrekey),
             16 => Ok(Self::GroupEpochSecret),
             17 => Ok(Self::GroupTreeKemKey),
+            18 => Ok(Self::BlindRsaSecretKey),
+            19 => Ok(Self::BlindRsaBlindingState),
+            20 => Ok(Self::HashPreimage),
+            21 => Ok(Self::MlKemEncapsulationState),
+            22 => Ok(Self::BraidResponderSecrets),
+            23 => Ok(Self::BraidEpochPrivateKey),
+            24 => Ok(Self::SpqrChains),
+            25 => Ok(Self::SpqrSkippedKeys),
             _ => Err(failure(CryptoErrorTag::UnsupportedOperation, 0, id as i64)),
         }
     }
@@ -140,7 +178,10 @@ impl SecretPurpose {
             | Self::AttachmentKey
             | Self::SkippedMessageKey
             | Self::GroupEpochSecret => ResourceKind::SecretBytes.into(),
-            Self::SkippedKeyMap => ResourceKind::SecretMap.into(),
+            Self::SkippedKeyMap
+            | Self::BraidResponderSecrets
+            | Self::SpqrChains
+            | Self::SpqrSkippedKeys => ResourceKind::SecretMap.into(),
             Self::AccountAuthorizationKey | Self::DeviceSigningKey => {
                 ResourceKind::SigningPrivateKey.into()
             }
@@ -150,7 +191,13 @@ impl SecretPurpose {
             | Self::RatchetDhKey
             | Self::GroupTreeKemKey => ResourceKind::X25519PrivateKey.into(),
             Self::LocalData => StorageValueKind::Bytes,
-            Self::PostQuantumPrekey => ResourceKind::MlKemPrivateKey.into(),
+            Self::PostQuantumPrekey | Self::BraidEpochPrivateKey => {
+                ResourceKind::MlKemPrivateKey.into()
+            }
+            Self::BlindRsaSecretKey => ResourceKind::BlindRsaSecretKey.into(),
+            Self::BlindRsaBlindingState => ResourceKind::BlindRsaBlindingState.into(),
+            Self::HashPreimage => ResourceKind::HashPreimage.into(),
+            Self::MlKemEncapsulationState => ResourceKind::MlKemEncapsulationState.into(),
         }
     }
 
@@ -164,6 +211,9 @@ impl SecretPurpose {
                 | Self::SignedPrekey
                 | Self::OneTimePrekey
                 | Self::PostQuantumPrekey
+                | Self::BlindRsaSecretKey
+                | Self::BlindRsaBlindingState
+                | Self::HashPreimage
         )
     }
 }
@@ -188,10 +238,39 @@ fn validate_plaintext_length(
                 return Err(invalid_length(MLKEM_PRIVATE_SEED_BYTES, length));
             }
         }
+        StorageValueKind::Resource(ResourceKind::MlKemEncapsulationState) => {
+            if length != crate::crypto::mlkem_incremental::CONTINUATION_BYTES {
+                return Err(invalid_length(
+                    crate::crypto::mlkem_incremental::CONTINUATION_BYTES,
+                    length,
+                ));
+            }
+        }
+        StorageValueKind::Resource(ResourceKind::BlindRsaSecretKey) => {
+            if length == 0 || length > MAX_PLAINTEXT_BYTES {
+                return Err(invalid_length(MAX_PLAINTEXT_BYTES, length));
+            }
+        }
+        StorageValueKind::Resource(ResourceKind::BlindRsaBlindingState) => {
+            if length != crate::crypto::blind_rsa::STATE_LEN {
+                return Err(invalid_length(crate::crypto::blind_rsa::STATE_LEN, length));
+            }
+        }
         StorageValueKind::Resource(_) if length != PLAINTEXT_BYTES => {
             return Err(invalid_length(PLAINTEXT_BYTES, length));
         }
         StorageValueKind::Resource(_) => {}
+    }
+    Ok(())
+}
+
+fn validate_material(kind: StorageValueKind, bytes: &[u8]) -> Result<(), CryptoFailure> {
+    validate_plaintext_length(kind, bytes.len())?;
+    if kind == ResourceKind::BlindRsaSecretKey.into() {
+        crate::crypto::blind_rsa::public_from_secret(bytes).map_err(provider_failure)?;
+    }
+    if kind == ResourceKind::MlKemEncapsulationState.into() {
+        crate::crypto::mlkem_incremental::validate_continuation(bytes)?;
     }
     Ok(())
 }
@@ -201,6 +280,12 @@ fn validate_context<K: Into<StorageValueKind>>(
     expected_kind: K,
 ) -> Result<SecretPurpose, CryptoFailure> {
     let expected_kind = expected_kind.into();
+    if spqr::is_context(context) {
+        return spqr::validate_context(context, expected_kind);
+    }
+    if braid_responder::is_context(context) {
+        return braid_responder::validate_context(context, expected_kind);
+    }
     if context.len() != CONTEXT_BYTES {
         return Err(invalid_length(CONTEXT_BYTES, context.len()));
     }
@@ -238,6 +323,15 @@ fn validate_context<K: Into<StorageValueKind>>(
     {
         return Err(failure(CryptoErrorTag::InvalidLength, 0, 32));
     }
+    if matches!(
+        purpose,
+        SecretPurpose::MlKemEncapsulationState | SecretPurpose::BraidEpochPrivateKey
+    ) && context[CONTEXT_SESSION_OFFSET..CONTEXT_SESSION_END]
+        .iter()
+        .all(|byte| *byte == 0)
+    {
+        return Err(failure(CryptoErrorTag::InvalidLength, 32, 0));
+    }
     Ok(purpose)
 }
 
@@ -267,8 +361,29 @@ fn seal_value<K: Into<StorageValueKind> + Copy>(
     expected_kind: K,
 ) -> Result<Vec<u8>, CryptoFailure> {
     let expected_kind = expected_kind.into();
+    if spqr::is_context(context) {
+        validate_context(context, expected_kind)?;
+        return spqr::seal(provider, plaintext, storage_key_material, counter, context);
+    }
+    if braid_epoch::is_context(context) {
+        validate_context(context, expected_kind)?;
+        return braid_epoch::seal(provider, plaintext, storage_key_material, counter, context);
+    }
+    if braid_responder::is_context(context) {
+        validate_context(context, expected_kind)?;
+        return braid_responder::seal(provider, plaintext, storage_key_material, counter, context);
+    }
+    if expected_kind == ResourceKind::MlKemEncapsulationState.into() {
+        return seal_continuation_value(
+            provider,
+            plaintext,
+            storage_key_material,
+            counter,
+            context,
+        );
+    }
     validate_context(context, expected_kind)?;
-    validate_plaintext_length(expected_kind, plaintext.len())?;
+    validate_material(expected_kind, plaintext)?;
 
     let mut key = Zeroizing::new([0u8; 32]);
     key.copy_from_slice(&storage_key_material[..32]);
@@ -302,6 +417,25 @@ fn open_value<K: Into<StorageValueKind> + Copy>(
     expected_kind: K,
 ) -> Result<Zeroizing<Box<[u8]>>, CryptoFailure> {
     let expected_kind = expected_kind.into();
+    // New fixed-role maps must also never enter an ordinary plaintext owner.
+    if braid_responder::is_context(context)
+        || braid_epoch::is_context(context)
+        || spqr::is_context(context)
+    {
+        return Err(failure(
+            CryptoErrorTag::UnsupportedOperation,
+            0,
+            expected_kind.code(),
+        ));
+    }
+    // Never route this private continuation through an ordinary plaintext owner.
+    if expected_kind == ResourceKind::MlKemEncapsulationState.into() {
+        return Err(failure(
+            CryptoErrorTag::UnsupportedOperation,
+            0,
+            expected_kind.code(),
+        ));
+    }
     // The validation order here is part of the on-disk format contract.
     if blob.len() < FIXED_OVERHEAD_BYTES {
         return Err(invalid_length(FIXED_OVERHEAD_BYTES, blob.len()));
@@ -362,10 +496,120 @@ fn open_value<K: Into<StorageValueKind> + Copy>(
         .map_err(provider_failure)?;
 
     // Purpose and plaintext semantics are checked only after authentication.
-    validate_plaintext_length(expected_kind, plaintext.len())?;
+    validate_material(expected_kind, &plaintext)?;
     validate_context(context, expected_kind)?;
     let plaintext = std::mem::take(&mut *plaintext).into_boxed_slice();
     Ok(Zeroizing::new(plaintext))
+}
+
+/// Only the new continuation uses this route. Existing storage kinds retain
+/// their older provider/temporary-buffer guarantees. The frame and AAD stay v1.
+fn seal_continuation_value(
+    provider: &impl CryptoProvider,
+    plaintext: &[u8],
+    material: &[u8; STORAGE_KEY_MATERIAL_BYTES],
+    counter: u64,
+    context: &[u8],
+) -> Result<Vec<u8>, CryptoFailure> {
+    let kind = ResourceKind::MlKemEncapsulationState;
+    validate_context(context, kind)?;
+    validate_material(kind.into(), plaintext)?;
+    // Fallible protected allocation happens before copying private material.
+    let mut working = ProtectedBytes::copy_from(plaintext)
+        .map_err(crate::secret::ResourceError::from)
+        .map_err(resource_failure)?;
+    let mut key = Zeroizing::new([0u8; 32]);
+    key.copy_from_slice(&material[..32]);
+    let mut nonce = [0u8; NONCE_BYTES];
+    nonce[..4].copy_from_slice(&material[32..]);
+    nonce[4..].copy_from_slice(&counter.to_be_bytes());
+    let binding = context_binding(provider, context);
+    let length = u32::try_from(working.len()).expect("bounded continuation");
+    let aad = associated_data(&binding, length);
+    let cipher = ChaCha20Poly1305::new((&*key).into());
+    let tag = cipher
+        .encrypt_in_place_detached((&nonce).into(), &aad, &mut working)
+        .map_err(|_| failure(CryptoErrorTag::InternalFailure, 0, 0))?;
+    // Only authenticated ciphertext and its public framing enter an ordinary Vec.
+    let mut blob = Vec::with_capacity(FIXED_OVERHEAD_BYTES + working.len());
+    blob.push(FORMAT_VERSION);
+    blob.extend_from_slice(&ALGORITHM_CHACHA20_POLY1305.to_be_bytes());
+    blob.extend_from_slice(&nonce);
+    blob.extend_from_slice(&binding);
+    blob.extend_from_slice(&length.to_be_bytes());
+    blob.extend_from_slice(&working);
+    blob.extend_from_slice(&tag);
+    Ok(blob)
+}
+
+fn open_continuation_value(
+    provider: &impl CryptoProvider,
+    blob: &[u8],
+    material: &[u8; STORAGE_KEY_MATERIAL_BYTES],
+    context: &[u8],
+) -> Result<ProtectedBytes, CryptoFailure> {
+    // Preserve open_value's public-frame, binding, authentication, private
+    // material, then semantic-context order. No handle exists at this stage.
+    if blob.len() < FIXED_OVERHEAD_BYTES {
+        return Err(invalid_length(FIXED_OVERHEAD_BYTES, blob.len()));
+    }
+    if blob[0] != FORMAT_VERSION {
+        return Err(failure(
+            CryptoErrorTag::UnsupportedOperation,
+            FORMAT_VERSION as i64,
+            blob[0] as i64,
+        ));
+    }
+    let algorithm =
+        u16::from_be_bytes([blob[BLOB_ALGORITHM_OFFSET], blob[BLOB_ALGORITHM_OFFSET + 1]]);
+    if algorithm != ALGORITHM_CHACHA20_POLY1305 {
+        return Err(failure(
+            CryptoErrorTag::UnsupportedOperation,
+            ALGORITHM_CHACHA20_POLY1305 as i64,
+            algorithm as i64,
+        ));
+    }
+    let length = u32::from_be_bytes(
+        blob[BLOB_LENGTH_OFFSET..BLOB_CIPHERTEXT_OFFSET]
+            .try_into()
+            .expect("fixed length range"),
+    ) as usize;
+    if length > MAX_PLAINTEXT_BYTES {
+        return Err(invalid_length(MAX_PLAINTEXT_BYTES, length));
+    }
+    let total = FIXED_OVERHEAD_BYTES + length;
+    if blob.len() != total {
+        return Err(invalid_length(total, blob.len()));
+    }
+    let supplied: &[u8; BINDING_BYTES] = blob[BLOB_BINDING_OFFSET..BLOB_LENGTH_OFFSET]
+        .try_into()
+        .expect("fixed binding range");
+    let binding = context_binding(provider, context);
+    if supplied.ct_eq(&binding).unwrap_u8() != 1 {
+        return Err(failure(CryptoErrorTag::AuthenticationFailed, 0, 0));
+    }
+    let mut key = Zeroizing::new([0u8; 32]);
+    key.copy_from_slice(&material[..32]);
+    let nonce: &[u8; NONCE_BYTES] = blob[BLOB_NONCE_OFFSET..BLOB_BINDING_OFFSET]
+        .try_into()
+        .expect("fixed nonce range");
+    let aad = associated_data(&binding, u32::try_from(length).expect("bounded ciphertext"));
+    let tag_offset = BLOB_CIPHERTEXT_OFFSET + length;
+    let mut plaintext = ProtectedBytes::copy_from(&blob[BLOB_CIPHERTEXT_OFFSET..tag_offset])
+        .map_err(crate::secret::ResourceError::from)
+        .map_err(resource_failure)?;
+    let cipher = ChaCha20Poly1305::new((&*key).into());
+    cipher
+        .decrypt_in_place_detached(
+            nonce.into(),
+            &aad,
+            &mut plaintext,
+            Tag::from_slice(&blob[tag_offset..]),
+        )
+        .map_err(|_| failure(CryptoErrorTag::AuthenticationFailed, 0, 0))?;
+    validate_material(ResourceKind::MlKemEncapsulationState.into(), &plaintext)?;
+    validate_context(context, ResourceKind::MlKemEncapsulationState)?;
+    Ok(plaintext)
 }
 
 /// The material of a storage key resource, which is always its 32-byte key
@@ -400,7 +644,7 @@ fn prepare_seal(
     validate_context(context, expected_kind)?;
     let secret =
         prepare_owned_resource(process, secret, expected_kind).map_err(resource_failure)?;
-    validate_plaintext_length(expected_kind.into(), secret.bytes.len())?;
+    validate_material(expected_kind.into(), &secret.bytes)?;
     let storage_key =
         prepare_storage_key_resource(process, wrapping_key).map_err(storage_key_failure)?;
     Ok(SealPreparation {
@@ -445,6 +689,53 @@ fn open_for_process(
 ) -> Result<*mut MeshSecretHandle, CryptoFailure> {
     let storage_key = prepare_owned_resource(process, wrapping_key, ResourceKind::StorageKey)
         .map_err(resource_failure)?;
+    if spqr::is_context(context) {
+        let plaintext = spqr::open(
+            provider,
+            blob,
+            storage_key_material(&storage_key.bytes),
+            context,
+            expected_kind,
+        )?;
+        validate_prepared_owned_resource(process, &storage_key, ResourceKind::StorageKey)
+            .map_err(resource_failure)?;
+        return insert_owned_resource(process, expected_kind, plaintext).map_err(resource_failure);
+    }
+    if braid_epoch::is_context(context) {
+        let plaintext = braid_epoch::open(
+            provider,
+            blob,
+            storage_key_material(&storage_key.bytes),
+            context,
+            expected_kind,
+        )?;
+        validate_prepared_owned_resource(process, &storage_key, ResourceKind::StorageKey)
+            .map_err(resource_failure)?;
+        return insert_owned_resource(process, expected_kind, plaintext).map_err(resource_failure);
+    }
+    if braid_responder::is_context(context) {
+        let plaintext = braid_responder::open(
+            provider,
+            blob,
+            storage_key_material(&storage_key.bytes),
+            context,
+            expected_kind,
+        )?;
+        validate_prepared_owned_resource(process, &storage_key, ResourceKind::StorageKey)
+            .map_err(resource_failure)?;
+        return insert_owned_resource(process, expected_kind, plaintext).map_err(resource_failure);
+    }
+    if expected_kind == ResourceKind::MlKemEncapsulationState {
+        let plaintext = open_continuation_value(
+            provider,
+            blob,
+            storage_key_material(&storage_key.bytes),
+            context,
+        )?;
+        validate_prepared_owned_resource(process, &storage_key, ResourceKind::StorageKey)
+            .map_err(resource_failure)?;
+        return insert_owned_resource(process, expected_kind, plaintext).map_err(resource_failure);
+    }
     let plaintext = open_value(
         provider,
         blob,
@@ -526,7 +817,21 @@ fn seal_for_current_actor(
     context: *const MeshBytes,
     expected_kind: ResourceKind,
 ) -> Result<Vec<u8>, CryptoFailure> {
-    let context = unsafe { copy_mesh_bytes(context, CONTEXT_BYTES) }?;
+    let context = unsafe { spqr::copy_resource_context(context) }?;
+    if spqr::is_context(&context) {
+        return spqr::seal_for_current_actor(secret, wrapping_key, &context, expected_kind);
+    }
+    if braid_epoch::is_context(&context) {
+        return braid_epoch::seal_for_current_actor(secret, wrapping_key, &context, expected_kind);
+    }
+    if braid_responder::is_context(&context) {
+        return braid_responder::seal_for_current_actor(
+            secret,
+            wrapping_key,
+            &context,
+            expected_kind,
+        );
+    }
     let process = current_process()?;
     let mut preparation = {
         let process = process.lock();
@@ -543,8 +848,18 @@ fn seal_for_current_actor(
         commit_reserved_seal(&process, &preparation, counter, expected_kind)?;
     }
 
-    // prepare_seal checked the context and the plaintext: sealing them
-    // cannot fail.
+    if expected_kind == ResourceKind::MlKemEncapsulationState {
+        let blob = seal_continuation_value(
+            &SystemProvider,
+            &preparation.secret.bytes,
+            storage_key_material(&preparation.storage_key.material),
+            counter,
+            &context,
+        )?;
+        revalidate_seal_inputs(&process.lock(), &preparation, expected_kind)?;
+        return Ok(blob);
+    }
+    // Existing kinds preserve their existing provider/error contract.
     let blob = seal_value(
         &SystemProvider,
         &preparation.secret.bytes,
@@ -568,13 +883,68 @@ fn unseal_for_current_actor(
     expected_kind: ResourceKind,
 ) -> Result<*mut MeshSecretHandle, CryptoFailure> {
     let blob = unsafe { copy_mesh_bytes(blob, MAX_BLOB_BYTES) }?;
-    let context = unsafe { copy_mesh_bytes(context, CONTEXT_BYTES) }?;
+    let context = unsafe { spqr::copy_resource_context(context) }?;
     let process = current_process()?;
     let storage_key = {
         let process = process.lock();
         prepare_owned_resource(&process, wrapping_key, ResourceKind::StorageKey)
             .map_err(resource_failure)?
     };
+    if spqr::is_context(&context) {
+        let plaintext = spqr::open(
+            &SystemProvider,
+            &blob,
+            storage_key_material(&storage_key.bytes),
+            &context,
+            expected_kind,
+        )?;
+        let mut process = process.lock();
+        validate_prepared_owned_resource(&process, &storage_key, ResourceKind::StorageKey)
+            .map_err(resource_failure)?;
+        return insert_owned_resource(&mut process, expected_kind, plaintext)
+            .map_err(resource_failure);
+    }
+    if braid_epoch::is_context(&context) {
+        let plaintext = braid_epoch::open(
+            &SystemProvider,
+            &blob,
+            storage_key_material(&storage_key.bytes),
+            &context,
+            expected_kind,
+        )?;
+        let mut process = process.lock();
+        validate_prepared_owned_resource(&process, &storage_key, ResourceKind::StorageKey)
+            .map_err(resource_failure)?;
+        return insert_owned_resource(&mut process, expected_kind, plaintext)
+            .map_err(resource_failure);
+    }
+    if braid_responder::is_context(&context) {
+        let plaintext = braid_responder::open(
+            &SystemProvider,
+            &blob,
+            storage_key_material(&storage_key.bytes),
+            &context,
+            expected_kind,
+        )?;
+        let mut process = process.lock();
+        validate_prepared_owned_resource(&process, &storage_key, ResourceKind::StorageKey)
+            .map_err(resource_failure)?;
+        return insert_owned_resource(&mut process, expected_kind, plaintext)
+            .map_err(resource_failure);
+    }
+    if expected_kind == ResourceKind::MlKemEncapsulationState {
+        let plaintext = open_continuation_value(
+            &SystemProvider,
+            &blob,
+            storage_key_material(&storage_key.bytes),
+            &context,
+        )?;
+        let mut process = process.lock();
+        validate_prepared_owned_resource(&process, &storage_key, ResourceKind::StorageKey)
+            .map_err(resource_failure)?;
+        return insert_owned_resource(&mut process, expected_kind, plaintext)
+            .map_err(resource_failure);
+    }
     let plaintext = open_value(
         &SystemProvider,
         &blob,
@@ -760,6 +1130,40 @@ pub extern "C" fn mesh_storage_key_platform() -> *mut MeshResult {
     crypto_result(result)
 }
 
+/// Open a durable private filesystem key on Linux/macOS. The runtime owns the
+/// material, stable advisory lock and durable counter; Mesh receives only an
+/// actor-owned capability. Other targets have no filesystem fallback.
+#[no_mangle]
+pub extern "C" fn mesh_storage_key_file(path: *const MeshString) -> *mut MeshResult {
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    let result = (|| {
+        let process = current_process()?;
+        if path.is_null() {
+            return Err(platform_failure(libc::EINVAL));
+        }
+        let length = unsafe { (*path).len };
+        if length > file::MAX_PATH_BYTES as u64 {
+            return Err(invalid_length(
+                file::MAX_PATH_BYTES,
+                usize::try_from(length).unwrap_or(usize::MAX),
+            ));
+        }
+        let bytes = unsafe { std::slice::from_raw_parts((*path).data_ptr(), length as usize) };
+        let path = std::str::from_utf8(bytes).map_err(|_| platform_failure(libc::EINVAL))?;
+        let (material, source) = file::load(path)
+            .map_err(|error| platform_failure(error.raw_os_error().unwrap_or(libc::EPERM)))?;
+        let mut process = process.lock();
+        crate::secret::insert_managed_storage_key_resource(&mut process, material, source)
+            .map_err(resource_failure)
+    })();
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    let result: Result<*mut MeshSecretHandle, CryptoFailure> = {
+        let _ = path;
+        Err(failure(CryptoErrorTag::UnsupportedTarget, 0, 0))
+    };
+    crypto_result(result)
+}
+
 fn seal_bytes_for_current_actor(
     value: *const MeshBytes,
     wrapping_key: *const MeshSecretHandle,
@@ -823,6 +1227,71 @@ fn unseal_bytes_for_current_actor(
             .map_err(resource_failure)?;
     }
     Ok(plaintext)
+}
+
+const INDEX_DOMAIN: &[u8] = b"mesh/storage-index/v1";
+const MAX_INDEX_NAMESPACE_BYTES: usize = 256;
+const MAX_INDEX_VALUE_BYTES: usize = 65_536;
+
+// A separate PRF domain, not the AEAD wrapping key or nonce namespace. Only the
+// final tag is public; derived material is zeroized and never becomes Mesh Bytes.
+fn index_tag_value(
+    provider: &impl CryptoProvider,
+    material: &[u8; STORAGE_KEY_MATERIAL_BYTES],
+    namespace: &[u8],
+    value: &[u8],
+) -> Result<[u8; 32], CryptoFailure> {
+    if namespace.is_empty() || namespace.len() > MAX_INDEX_NAMESPACE_BYTES {
+        return Err(invalid_length(MAX_INDEX_NAMESPACE_BYTES, namespace.len()));
+    }
+    if value.len() > MAX_INDEX_VALUE_BYTES {
+        return Err(invalid_length(MAX_INDEX_VALUE_BYTES, value.len()));
+    }
+    let mut derived = Zeroizing::new([0u8; 32]);
+    provider
+        .hkdf_sha256(&material[..32], INDEX_DOMAIN, namespace, derived.as_mut())
+        .map_err(provider_failure)?;
+    let mut tag = [0u8; 32];
+    provider
+        .hmac_sha256(derived.as_ref(), value, &mut tag)
+        .map_err(provider_failure)?;
+    Ok(tag)
+}
+
+fn index_tag_for_process(
+    process: &Process,
+    key: *const MeshSecretHandle,
+    namespace: &[u8],
+    value: &[u8],
+) -> Result<[u8; 32], CryptoFailure> {
+    let prepared =
+        prepare_owned_resource(process, key, ResourceKind::StorageKey).map_err(resource_failure)?;
+    let tag = index_tag_value(
+        &SystemProvider,
+        storage_key_material(&prepared.bytes),
+        namespace,
+        value,
+    )?;
+    validate_prepared_owned_resource(process, &prepared, ResourceKind::StorageKey)
+        .map_err(resource_failure)?;
+    Ok(tag)
+}
+
+/// Deterministic domain-separated index tag. Borrows the key without reserving
+/// a storage nonce; namespace is 1..=256 bytes and value is 0..=65536 bytes.
+#[no_mangle]
+pub extern "C" fn mesh_storage_key_index_tag(
+    key: *const MeshSecretHandle,
+    namespace: *const MeshBytes,
+    value: *const MeshBytes,
+) -> *mut MeshResult {
+    crypto_result((|| {
+        let namespace = unsafe { copy_mesh_bytes(namespace, MAX_INDEX_NAMESPACE_BYTES) }?;
+        let value = unsafe { copy_mesh_bytes(value, MAX_INDEX_VALUE_BYTES) }?;
+        let process = current_process()?;
+        let tag = index_tag_for_process(&process.lock(), key, &namespace, &value)?;
+        Ok(bytes_value(&tag))
+    })())
 }
 
 #[no_mangle]
@@ -928,6 +1397,14 @@ macro_rules! storage_unseal_abi {
 }
 
 storage_seal_abi!(mesh_secret_seal_for_storage, ResourceKind::SecretBytes);
+storage_seal_abi!(
+    mesh_hash_preimage_seal_for_storage,
+    ResourceKind::HashPreimage
+);
+storage_unseal_abi!(
+    mesh_hash_preimage_unseal_from_storage,
+    ResourceKind::HashPreimage
+);
 storage_seal_abi!(mesh_secret_map_seal_for_storage, ResourceKind::SecretMap);
 storage_seal_abi!(
     mesh_signing_private_key_seal_for_storage,
@@ -956,6 +1433,31 @@ storage_unseal_abi!(
     mesh_mlkem_private_key_unseal_from_storage,
     ResourceKind::MlKemPrivateKey
 );
+
+storage_seal_abi!(
+    mesh_blind_rsa_secret_key_seal_for_storage,
+    ResourceKind::BlindRsaSecretKey
+);
+storage_unseal_abi!(
+    mesh_blind_rsa_secret_key_unseal_from_storage,
+    ResourceKind::BlindRsaSecretKey
+);
+storage_seal_abi!(
+    mesh_blind_rsa_blinding_state_seal_for_storage,
+    ResourceKind::BlindRsaBlindingState
+);
+storage_unseal_abi!(
+    mesh_blind_rsa_blinding_state_unseal_from_storage,
+    ResourceKind::BlindRsaBlindingState
+);
+
+#[cfg(test)]
+#[path = "storage_wrapping/index_tests.rs"]
+mod index_tests;
+
+#[cfg(test)]
+#[path = "storage_wrapping/mlkem_incremental_tests.rs"]
+mod mlkem_incremental_tests;
 
 #[cfg(test)]
 mod tests {
@@ -1859,4 +2361,210 @@ mod tests {
             );
         });
     }
+    #[test]
+    fn blind_rsa_storage_purposes_authenticate_type_context_and_material() {
+        let vectors: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tests/vectors/blind-rsa/rfc9578-type2.json"
+        ))
+        .unwrap();
+        let vector = &vectors["vectors"][0];
+        let decode = |s: &str| {
+            s.as_bytes()
+                .chunks_exact(2)
+                .map(|c| u8::from_str_radix(std::str::from_utf8(c).unwrap(), 16).unwrap())
+                .collect::<Vec<_>>()
+        };
+        let secret = decode(vector["pkcs8_der"].as_str().unwrap());
+        let public = decode(vector["pkI"].as_str().unwrap());
+        let (request, state) =
+            crate::crypto::blind_rsa::blind(&SystemProvider, &public, b"recovery").unwrap();
+        let response = crate::crypto::blind_rsa::sign(&secret, &request).unwrap();
+        for (kind, purpose, value) in [
+            (ResourceKind::BlindRsaSecretKey, 18, secret.as_slice()),
+            (ResourceKind::BlindRsaBlindingState, 19, state.as_slice()),
+        ] {
+            let context = context(purpose);
+            let blob = seal_value(&SystemProvider, value, &material(), 41, &context, kind).unwrap();
+            let restored = open_value(&SystemProvider, &blob, &material(), &context, kind).unwrap();
+            assert_eq!(&**restored, value);
+            let restored_again =
+                open_value(&SystemProvider, &blob, &material(), &context, kind).unwrap();
+            assert_eq!(&**restored_again, value);
+            let other_kind = if purpose == 18 {
+                ResourceKind::BlindRsaBlindingState
+            } else {
+                ResourceKind::BlindRsaSecretKey
+            };
+            assert!(open_value(&SystemProvider, &blob, &material(), &context, other_kind).is_err());
+            let mut wrong_context = context.clone();
+            wrong_context[1] ^= 1;
+            assert_tag(
+                open_value(&SystemProvider, &blob, &material(), &wrong_context, kind).unwrap_err(),
+                CryptoErrorTag::AuthenticationFailed,
+            );
+            let mut session = context.clone();
+            session[CONTEXT_SESSION_OFFSET] = 1;
+            assert_tag(
+                seal_value(&SystemProvider, value, &material(), 42, &session, kind).unwrap_err(),
+                CryptoErrorTag::InvalidLength,
+            );
+            let mut tampered = blob.clone();
+            tampered[BLOB_CIPHERTEXT_OFFSET] ^= 1;
+            assert_tag(
+                open_value(&SystemProvider, &tampered, &material(), &context, kind).unwrap_err(),
+                CryptoErrorTag::AuthenticationFailed,
+            );
+            if purpose == 19 {
+                let signature =
+                    crate::crypto::blind_rsa::finalize(&public, b"recovery", &response, &restored)
+                        .unwrap();
+                let repeated = crate::crypto::blind_rsa::finalize(
+                    &public,
+                    b"recovery",
+                    &response,
+                    &restored_again,
+                )
+                .unwrap();
+                assert_eq!(signature, repeated);
+            }
+        }
+        assert!(seal_value(
+            &SystemProvider,
+            b"invalid PKCS8",
+            &material(),
+            44,
+            &context(18),
+            ResourceKind::BlindRsaSecretKey
+        )
+        .is_err());
+        for length in [0, 335, 337, 65536] {
+            assert!(seal_value(
+                &SystemProvider,
+                &vec![0; length],
+                &material(),
+                44,
+                &context(19),
+                ResourceKind::BlindRsaBlindingState
+            )
+            .is_err());
+        }
+        for function in [
+            mesh_blind_rsa_secret_key_seal_for_storage,
+            mesh_blind_rsa_blinding_state_seal_for_storage,
+        ] {
+            let _: extern "C" fn(
+                *const MeshSecretHandle,
+                *const MeshSecretHandle,
+                *const MeshBytes,
+            ) -> *mut MeshResult = function;
+        }
+        for function in [
+            mesh_blind_rsa_secret_key_unseal_from_storage,
+            mesh_blind_rsa_blinding_state_unseal_from_storage,
+        ] {
+            let _: extern "C" fn(
+                *const MeshBytes,
+                *const MeshSecretHandle,
+                *const MeshBytes,
+            ) -> *mut MeshResult = function;
+        }
+    }
+
+    #[test]
+    fn hash_preimage_storage_is_distinct_and_requires_exactly_random_material_width() {
+        let binding = context(20);
+        let value = [0x7d; 32];
+        let blob = seal_value(
+            &SystemProvider,
+            &value,
+            &material(),
+            43,
+            &binding,
+            ResourceKind::HashPreimage,
+        )
+        .unwrap();
+        assert_eq!(
+            &**open_value(
+                &SystemProvider,
+                &blob,
+                &material(),
+                &binding,
+                ResourceKind::HashPreimage
+            )
+            .unwrap(),
+            &value
+        );
+        for kind in [
+            ResourceKind::SecretBytes,
+            ResourceKind::SigningPrivateKey,
+            ResourceKind::AeadKey,
+            ResourceKind::BlindRsaBlindingState,
+        ] {
+            assert!(open_value(&SystemProvider, &blob, &material(), &binding, kind).is_err());
+        }
+        for length in [0, 31, 33, 64] {
+            assert!(seal_value(
+                &SystemProvider,
+                &vec![0; length],
+                &material(),
+                44,
+                &binding,
+                ResourceKind::HashPreimage
+            )
+            .is_err());
+        }
+        for offset in [1, CONTEXT_SESSION_OFFSET, 81, binding.len() - 1] {
+            let mut wrong = binding.clone();
+            wrong[offset] ^= 1;
+            assert!(open_value(
+                &SystemProvider,
+                &blob,
+                &material(),
+                &wrong,
+                ResourceKind::HashPreimage
+            )
+            .is_err());
+        }
+        let mut tampered = blob;
+        tampered[BLOB_CIPHERTEXT_OFFSET] ^= 1;
+        assert!(open_value(
+            &SystemProvider,
+            &tampered,
+            &material(),
+            &binding,
+            ResourceKind::HashPreimage
+        )
+        .is_err());
+        // Existing SecretBytes storage cannot be reinterpreted as a preimage.
+        let old = seal_value(
+            &SystemProvider,
+            &value,
+            &material(),
+            45,
+            &context(1),
+            ResourceKind::SecretBytes,
+        )
+        .unwrap();
+        assert!(open_value(
+            &SystemProvider,
+            &old,
+            &material(),
+            &binding,
+            ResourceKind::HashPreimage
+        )
+        .is_err());
+    }
 }
+
+storage_seal_abi!(
+    mesh_mlkem_encapsulation_state_seal_for_storage,
+    ResourceKind::MlKemEncapsulationState
+);
+storage_unseal_abi!(
+    mesh_mlkem_encapsulation_state_unseal_from_storage,
+    ResourceKind::MlKemEncapsulationState
+);
+
+#[cfg(test)]
+#[path = "storage_wrapping/braid_responder_tests.rs"]
+mod braid_responder_tests;

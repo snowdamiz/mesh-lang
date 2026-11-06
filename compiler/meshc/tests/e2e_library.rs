@@ -149,8 +149,19 @@ fn assert_no_test_fixtures(artifact: &Path, dynamic: bool, description: &str) {
 }
 
 fn build(fixture: &Path, output: &Path, artifact: &str) -> Output {
+    build_at(fixture, output, artifact, "0")
+}
+
+fn build_at(fixture: &Path, output: &Path, artifact: &str, level: &str) -> Output {
     let mut command = Command::new(artifacts::meshc_bin());
-    command.args(["build", fixture.to_str().unwrap(), "--artifact", artifact]);
+    command.args([
+        "build",
+        fixture.to_str().unwrap(),
+        "--artifact",
+        artifact,
+        "--opt-level",
+        level,
+    ]);
     // The compatibility runner builds its runtime in target/<triple>/release.
     #[cfg(windows)]
     command.args(["--target", "x86_64-pc-windows-msvc"]);
@@ -161,6 +172,43 @@ fn build(fixture: &Path, output: &Path, artifact: &str) -> Output {
         .expect("meshc build")
 }
 
+#[test]
+#[cfg(unix)]
+fn optimized_exports_enforce_declared_bounds_through_c() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/library");
+    let temp = tempfile::tempdir().unwrap();
+    let library = temp.path().join("libmesh_library.a");
+    assert_success(
+        build_at(&fixture, &library, "staticlib", "2"),
+        "optimized static build",
+    );
+    let host = temp.path().join("host");
+    let mut command = Command::new("cc");
+    command
+        .arg(fixture.join("host.c"))
+        .arg("-I")
+        .arg(temp.path())
+        .arg(&library)
+        .arg("-o")
+        .arg(&host);
+    if cfg!(target_os = "macos") {
+        command.args([
+            "-framework",
+            "Security",
+            "-framework",
+            "CoreFoundation",
+            "-liconv",
+        ]);
+    } else {
+        command.args(["-lpthread", "-ldl", "-lm"]);
+    }
+    assert_success(command.output().unwrap(), "optimized C host link");
+    assert_success(
+        Command::new(host).output().unwrap(),
+        "optimized C host boundaries",
+    );
+}
+
 fn assert_success(output: Output, operation: &str) {
     assert!(
         output.status.success(),
@@ -169,4 +217,53 @@ fn assert_success(output: Output, operation: &str) {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
+}
+
+#[test]
+#[cfg(unix)]
+fn native_thread_exports_collect_garbage_and_keep_live_roots_in_debug_and_optimized_code() {
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/library_gc");
+    for optimization in ["0", "2"] {
+        let temp = tempfile::tempdir().unwrap();
+        let library = temp.path().join(if cfg!(target_os = "macos") {
+            "libmesh_gc.dylib"
+        } else {
+            "libmesh_gc.so"
+        });
+        assert_success(
+            build_at(&fixture, &library, "cdylib", optimization),
+            "GC fixture build",
+        );
+        let host = temp.path().join("host");
+        let mut command = Command::new("cc");
+        command
+            .arg(fixture.join("host.c"))
+            .arg("-I")
+            .arg(temp.path())
+            .arg("-L")
+            .arg(temp.path())
+            .arg("-lmesh_gc")
+            .arg(format!("-Wl,-rpath,{}", temp.path().display()))
+            .arg("-pthread")
+            .arg("-o")
+            .arg(&host);
+        if cfg!(target_os = "macos") {
+            command.args(["-framework", "Security", "-framework", "CoreFoundation"]);
+        }
+        assert_success(command.output().unwrap(), "GC C host link");
+        for stress in [false, true] {
+            let mut command = Command::new(&host);
+            if stress {
+                command.env("MESH_GC_STRESS", "1");
+            } else {
+                command.env_remove("MESH_GC_STRESS");
+            }
+            // A fresh process ensures the stress threshold is configured
+            // before its OnceLock, independent of other integration tests.
+            assert_success(
+                command.output().unwrap(),
+                &format!("GC native host opt={optimization} stress={stress}"),
+            );
+        }
+    }
 }

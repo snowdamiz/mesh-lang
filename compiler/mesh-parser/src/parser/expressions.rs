@@ -799,6 +799,7 @@ fn parse_string_expr(p: &mut Parser) -> MarkClosed {
 /// Each statement is either a let binding, return expression, or an
 /// expression-statement.
 pub(crate) fn parse_block_body(p: &mut Parser) {
+    let previous_boundary = p.enter_statement_block();
     let m = p.open();
     let mut statements = 0;
 
@@ -830,6 +831,7 @@ pub(crate) fn parse_block_body(p: &mut Parser) {
     } else {
         p.close(m, SyntaxKind::BLOCK);
     }
+    p.leave_statement_block(previous_boundary);
 }
 
 // ── Let Binding ───────────────────────────────────────────────────────
@@ -1057,6 +1059,7 @@ fn parse_match_arm(p: &mut Parser) {
 ///     x
 ///   end
 fn parse_arm_body(p: &mut Parser) {
+    let previous_boundary = p.enter_statement_block();
     if p.at(SyntaxKind::DO_KW) {
         p.advance(); // DO_KW
         parse_block_body(p);
@@ -1072,6 +1075,7 @@ fn parse_arm_body(p: &mut Parser) {
     } else {
         expr(p);
     }
+    p.leave_statement_block(previous_boundary);
 }
 
 /// Parse the body of a match arm that starts on the line after `->`:

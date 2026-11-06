@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 typedef struct {
@@ -122,6 +123,24 @@ int main(void) {
   }
   fputs("encrypted storage roundtrip passed\n", stderr);
   mesh_library_free_returned_bytes(&response);
+
+  const size_t large_len = 16782000;
+  uint8_t *large = malloc(large_len + 1);
+  if (large == NULL) return 10;
+  memset(large, 37, large_len + 1);
+  if (mesh_fixture_large(large, large_len, &response) != MESH_LIBRARY_OK ||
+      response.len != large_len || memcmp(response.data, large, large_len) != 0) return 11;
+  mesh_library_free_returned_bytes(&response);
+  if (mesh_fixture_large(large, large_len + 1, &response) != MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE ||
+      response.data != NULL || response.len != 0) return 12;
+  if (mesh_fixture_echo(large, 1048577, &response) != MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE) return 13;
+  if (mesh_fixture_input_only(large, 1048577, &response) != MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE ||
+      response.data != NULL || response.len != 0) return 14;
+  if (mesh_fixture_small_output(large, 2, &response) != MESH_LIBRARY_OK || response.len != 2) return 15;
+  mesh_library_free_returned_bytes(&response);
+  if (mesh_fixture_small_output(large, 3, &response) != MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE) return 16;
+  free(large);
+  fputs("declared export input/output bounds passed\n", stderr);
   if (mesh_library_shutdown() != MESH_LIBRARY_OK ||
       mesh_library_shutdown() != MESH_LIBRARY_OK) {
     return 4;

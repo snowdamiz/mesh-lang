@@ -65,6 +65,8 @@ end
 | `File.append(path, text)` | `Result<Unit, String>` | Append text, creating the file when needed |
 | `File.exists(path)` | `Bool` | Test whether a path exists |
 | `File.delete(path)` | `Result<Unit, String>` | Delete a file |
+| `File.rename(source, target)` | `Result<Unit, String>` | Rename on the same filesystem, replacing an existing target |
+| `File.sync(path)` | `Result<Unit, String>` | Flush file data and metadata, or directory changes |
 | `File.read_bytes(path, offset, length)` | `Result<Bytes, String>` | Read up to `length` bytes starting at `offset` |
 | `File.write_bytes(path, offset, bytes, truncate)` | `Result<Unit, String>` | Write bytes at `offset`, creating the file when needed |
 | `File.size(path)` | `Result<Int, String>` | Byte length of a regular file |
@@ -77,6 +79,17 @@ case File.read("settings.txt") do
   Err(error) -> IO.eprintln("settings: #{error}")
 end
 ```
+
+`File.rename` uses the operating system's rename operation and never falls back
+to copying across filesystems. To durably replace a file, write a temporary file
+in the same directory, `File.sync(temporary)`, `File.rename(temporary, target)`,
+then `File.sync(parent_directory)`. Coordinate writers separately: rename does
+not compare the old contents or acquire an application lock. `File.sync` opens
+regular files with write access; it does not create a missing path. It returns
+filesystem and platform errors, including unsupported directory synchronization.
+These operations follow Rust's [rename](https://doc.rust-lang.org/std/fs/fn.rename.html)
+and [sync_all](https://doc.rust-lang.org/std/fs/struct.File.html#method.sync_all)
+semantics and the filesystem's durability guarantees.
 
 The byte functions work on bounded ranges without decoding UTF-8. Each call reads or writes 1 byte to 64 KiB, the offset must not be negative, and the range must end within the first 16 MiB of the file; any other range returns `Err("invalid binary file range")`. `File.read_bytes` returns fewer bytes near the end of the file and empty `Bytes` at or past it. `File.write_bytes` overwrites in place and keeps later bytes; writing past the end fills the gap with zero bytes. `truncate = true` empties the file first and is accepted only at offset `0`. Because a write needs at least one byte, use `File.write(path, "")` to empty a file. `File.size` returns an error for directories and other non-regular files.
 
@@ -232,6 +245,7 @@ end
 | `Bytes.get(bytes, index)` | `Result<Int, String>` | Byte value at a checked index |
 | `Bytes.slice(bytes, start, length)` | `Result<Bytes, String>` | Checked subrange |
 | `Bytes.concat(left, right)` | `Result<Bytes, String>` | Concatenate two byte sequences |
+| `Bytes.concat_many(parts, maximum)` | `Result<Bytes, BytesError>` | Join a `List<Bytes>` in order after checking its total byte length against `maximum` |
 | `Bytes.secure_equals(left, right)` | `Bool` | Constant-time equality |
 | `Bytes.from_utf8(text)` | `Bytes` | Copy UTF-8 string bytes |
 | `Bytes.to_utf8(bytes)` | `Result<String, String>` | Validate and decode UTF-8 |
@@ -256,6 +270,14 @@ end
 Checked construction and fixed-width APIs use the nominal `BytesError` type;
 handle failures with `Err(_)` without depending on runtime error text.
 
+`Bytes.concat_many` checks the entire length before allocating its output and
+copies each part once. It preserves the input list and bytes, including list
+views and repeated references. `maximum` must be nonnegative and representable
+on the target; it is a limit, not a reservation. Empty input with limit zero
+succeeds. An invalid limit, length overflow, or total above the limit returns a
+`BytesError`. The operation inherits plaintext dependencies from its inputs,
+including its result tag and length; it does not disclose private data.
+
 ### Building binary values
 
 `BytesBuilder` appends fields into a buffer with a fixed capacity, then
@@ -274,7 +296,7 @@ end
 
 | Function | Returns | Description |
 |----------|---------|-------------|
-| `BytesBuilder.new(capacity)` | `Result<BytesBuilder, BinaryError>` | Start an empty builder that holds at most `capacity` bytes (0 through 65,536) |
+| `BytesBuilder.new(capacity)` | `Result<BytesBuilder, BinaryError>` | Start an empty builder that holds at most `capacity` bytes (0 through 1,048,576) |
 | `BytesBuilder.write_u8(builder, value)` | `Result<Unit, BinaryError>` | Append one byte |
 | `BytesBuilder.write_u16_be(builder, value)` | `Result<Unit, BinaryError>` | Append a big-endian 16-bit integer |
 | `BytesBuilder.write_u32_be(builder, value)` | `Result<Unit, BinaryError>` | Append a big-endian 32-bit integer |
@@ -284,7 +306,7 @@ end
 `BytesBuilder` is move-only: the write functions borrow it and `finish`
 consumes it. A failed write appends nothing. The runtime returns these
 `BinaryError` variants: `InvalidLimit` for a capacity outside 0 through
-65,536, `InvalidValue` for an integer that does not fit the field width,
+1,048,576, `InvalidValue` for an integer that does not fit the field width,
 `OutputTooLarge` for a write past the capacity, and `InvalidLength` for a
 builder that is no longer usable.
 
@@ -335,6 +357,17 @@ Replace `U64` with `U128` or `I128` for the corresponding width and
 signedness: for example, `U128.multiply(left, right)` performs checked
 128-bit unsigned multiplication. `Bytes.read_uint_le` decimal output can be
 passed to `U64.parse`.
+
+Unsigned `U64` and `U128` additionally expose
+`multiply_divide(left, right, divisor) -> Result<same type, String>`.
+It returns `floor(left * right / divisor)` using the complete double-width
+product. An intermediate multiplication that exceeds the input type is allowed;
+only a zero divisor or an out-of-range final quotient returns an error. For
+example, `U128.multiply_divide(maximum, maximum, maximum)` returns `maximum`.
+This is useful for integer allocations and exchange ratios without floating-point
+rounding or an artificial intermediate overflow. The operation is not a
+constant-time primitive and must not be used for secret arithmetic. `I128`
+does not expose this unsigned operation.
 
 ## Checked Integer Arithmetic
 
@@ -428,6 +461,7 @@ end
 | `Secret.random(length)` | `Result<SecretBytes, CryptoError>` | OS-backed move-only secret bytes |
 | `Secret.concat(first, second)` | `Result<SecretBytes, CryptoError>` | Consume two secrets and join them, up to 64 KiB |
 | `Crypto.hmac_sha256(key, message)` | `Result<SecretBytes, CryptoError>` | HMAC with a borrowed secret key |
+| `Crypto.hmac_sha512_tag(key, message)` | `Result<Bytes, CryptoError>` | Public 64-byte authentication tag with a borrowed `SecretBytes` key and binary message |
 | `Crypto.hkdf_sha256(key, salt, info, length)` | `Result<SecretBytes, CryptoError>` | Bounded HKDF output |
 | `Crypto.argon2id(password, salt, memory_kib, iterations, parallelism, length)` | `Result<SecretBytes, CryptoError>` | Argon2id v1.3 password KDF with a borrowed secret |
 | `Crypto.x25519_generate()` | `Result<X25519KeyPair, CryptoError>` | Generate an X25519 key pair |
@@ -442,6 +476,7 @@ end
 | `Crypto.mlkem_from_secret(material)` | `Result<MlKemKeyPair, CryptoError>` | Consume 64 secret bytes as an ML-KEM-768 private key |
 | `Crypto.sign(key, message)` | `Result<Signature, CryptoError>` | Sign with a borrowed private key |
 | `Crypto.verify(key, message, signature)` | `Result<Bool, CryptoError>` | Strict signature verification |
+| `Crypto.ed25519_is_on_curve(bytes)` | `Result<Bool, CryptoError>` | Compressed Edwards25519 point decompression; exactly 32 public bytes |
 | `Crypto.aead_key(material)` | `Result<AeadKey, CryptoError>` | Consume 32 secret bytes as an AEAD key |
 | `Crypto.aead_seal(key, nonce, aad, plaintext)` | `Result<Bytes, CryptoError>` | ChaCha20-Poly1305 encryption |
 | `Crypto.aead_open(key, nonce, aad, ciphertext)` | `Result<Bytes, CryptoError>` | Authenticate before returning plaintext |
@@ -451,10 +486,31 @@ and the `*_from_secret` constructors consume their input, including on error.
 Use `Secret.destroy` for early destruction; otherwise the compiler inserts
 destruction on every scope exit.
 
+`Crypto.ed25519_is_on_curve` checks public compressed-point decompression only.
+It accepts weak and noncanonical encodings that decompress, so `true` does not
+establish that a key is safe, trusted or controlled by anyone. It returns
+`InvalidPublicKey` for lengths other than 32, and `Ok(false)` for a 32-byte
+off-curve input. Use `Crypto.verify` for signatures. The public Solana package
+uses this predicate to derive addresses that cannot be signing keys.
+
 `Crypto.hmac_sha512(key, message)` is a legacy helper kept from the earlier
 string API: it takes two `String` values, returns the HMAC-SHA-512 as
-lowercase hex, and treats the key as ordinary data. Use `Crypto.hmac_sha256`
-with a `SecretBytes` key in new code.
+lowercase hex, and treats the key as ordinary data. For protocol authentication,
+use `Crypto.hmac_sha512_tag` with a `SecretBytes` key in new code. It publishes
+only the authentication tag, retains the key's actor ownership, and limits both
+key and message to 65,536 bytes. Empty messages are allowed. Load server keys
+through `Env.get_secret_hex`; do not decode private material into ordinary Mesh
+strings or bytes. Tags are public data intended for authenticated requests;
+do not use this API to derive secret keys. `Crypto.hmac_sha256` and
+`Crypto.hkdf_sha256` retain secret outputs for key derivation.
+
+`Crypto.aead_seal` accepts plaintext up to 131,072 bytes (128 KiB), and
+`Crypto.aead_open` accepts its ciphertext up to 131,088 bytes, including the
+16-byte authentication tag. Both require a 12-byte nonce and limit associated
+data to 65,536 bytes. The caller must never reuse a nonce with the same key.
+Failed authentication returns no plaintext. These AEAD limits are independent
+of HPKE, HMAC, signing, secrets and storage wrapping, whose existing bounds
+remain unchanged; in particular HPKE plaintext remains limited to 64 KiB.
 
 `Crypto.argon2id` accepts salts from 8 through 64 bytes, memory from
 `8 * parallelism` through 65,536 KiB, 1 through 10 iterations, 1 through 8
@@ -532,13 +588,81 @@ Decapsulation uses the implicit rejection of FIPS 203: a modified ciphertext
 still returns `Ok`, with a different secret. Authenticate the result before
 trusting it, for example by opening an AEAD message with it as above.
 
+### Blind RSA (BR1)
+
+BR1 implements [RFC 9474's RSABSSA-SHA384-PSS-Deterministic](https://www.rfc-editor.org/rfc/rfc9474.html#section-5)
+for [RFC 9578 Type 2](https://www.rfc-editor.org/rfc/rfc9578.html#section-6):
+exactly 2,048-bit RSA, exponent 65,537, SHA-384, MGF1-SHA-384 and a 48-byte PSS
+salt. “Deterministic” selects identity message preparation; blinding still uses
+fresh random salt and a fresh secret factor. Other variants, key sizes and
+exponents are rejected, with no fallback.
+
+```mesh
+fn issue_example() -> Bool!CryptoError do
+  let issuer = Crypto.blind_rsa_generate()?
+  let public_key = Crypto.blind_rsa_public(issuer)?
+  let message = Bytes.from_utf8("application-framed token input")
+  let pending = Crypto.blind_rsa_blind(public_key, message)?
+  let response = Crypto.blind_rsa_sign(issuer, pending.blinded)?
+  let signature = Crypto.blind_rsa_finalize(public_key, message, response, pending.state)?
+  Crypto.blind_rsa_verify(public_key, message, signature)
+end
+```
+
+| Function | Returns | Ownership and target |
+|----------|---------|----------------------|
+| `Crypto.blind_rsa_generate()` | `Result<BlindRsaSecretKey, CryptoError>` | Linux/macOS issuer |
+| `Crypto.blind_rsa_from_secret(material)` | `Result<BlindRsaSecretKey, CryptoError>` | Consume PKCS#8 DER `SecretBytes`; Linux/macOS |
+| `Crypto.blind_rsa_public(key)` | `Result<BlindRsaPublicKey, CryptoError>` | Borrow private key; Linux/macOS |
+| `Crypto.blind_rsa_public_from_spki(bytes)` | `Result<BlindRsaPublicKey, CryptoError>` | Parse public canonical SPKI; all targets |
+| `Crypto.blind_rsa_blind(public_key, message)` | `Result<BlindRsaBlinded, CryptoError>` | Fresh client blinding; all targets |
+| `Crypto.blind_rsa_sign(key, blinded)` | `Result<Bytes, CryptoError>` | Borrow private key; Linux/macOS |
+| `Crypto.blind_rsa_finalize(public_key, message, response, state)` | `Result<Bytes, CryptoError>` | Consume state, including on failure; all targets |
+| `Crypto.blind_rsa_verify(public_key, message, signature)` | `Result<Bool, CryptoError>` | All targets |
+
+`BlindRsaPublicKey` has one public `bytes :: Bytes` field containing the exact
+RFC 9578 RSASSA-PSS SPKI template. The key ID is `Crypto.sha256(key.bytes)`.
+Parsing establishes encoding and parameters; applications still authenticate
+which issuer key they trust. `BlindRsaBlinded` has `blinded :: Bytes` and
+`state :: BlindRsaBlindingState`. The state retains the secret inverse and binds
+the issuer key and message. This containing value is affine: it cannot be
+copied, printed, serialized or sent to another actor. The client sends only
+`pending.blinded` to the issuer, which returns the blind response. Read the
+public request field before consuming the aggregate's state field. Direct
+`Secret.destroy(key)` and `Secret.destroy(state)` calls support these opaque
+resources for early cleanup; normal scope exits destroy them automatically.
+
+Messages may contain zero through 65,536 bytes. Blinded inputs, responses and
+signatures are exactly 256 bytes. Signing rejects representatives greater than
+or equal to the modulus. Finalization authenticates the unblinded signature
+before returning it; a wrong key, message or response returns
+`AuthenticationFailed`. A malformed signature returns `InvalidSignature`;
+a correctly sized signature that fails verification returns `Ok(false)`.
+
+Import private keys with `Env.get_secret_hex` and `Crypto.blind_rsa_from_secret`,
+never ordinary `Bytes`. `BlindRsaSecretKey.seal_for_storage` uses storage purpose
+18 on Linux/macOS. `BlindRsaBlindingState.seal_for_storage` uses purpose 19 on
+all targets. Both have matching `unseal_from_storage(blob, key, context)`
+functions and use the context and authentication rules below. Persist the
+sealed blinding state and exact public request before a paid issuance request,
+so a crash can recover that same request. Storage authentication does not
+provide application replay or rollback protection; the application owns its
+issuance journal. Use a durable platform storage key for recovery across
+process exits.
+
+Issuer operations and private-key storage return `UnsupportedTarget` on iOS,
+Android and Windows. Client blinding, finalization, verification and sealed
+blinding-state storage use the same API there. Target compilation is separate
+from executing vectors on a device; see the
+[cryptographic release gates](https://github.com/snowdamiz/mesh-lang/blob/main/docs/security/cryptographic-release-gates.md).
+
 ### Key types and errors
 
 `X25519KeyPair`, `SigningKeyPair` (Ed25519), and `MlKemKeyPair` have a
 move-only `private_key` field and a public `public_key` field.
 `X25519PublicKey`, `SigningPublicKey`, `MlKemPublicKey`, `MlKemCiphertext`,
-and `Signature` each hold one `bytes :: Bytes` field. Build one from received
-bytes with, for example, `X25519PublicKey { bytes: received }`; the operation
+`BlindRsaPublicKey`, and `Signature` each hold one `bytes :: Bytes` field.
+Build one from received bytes with, for example, `X25519PublicKey { bytes: received }`; the operation
 that uses it checks the length.
 
 `CryptoError` has these variants:
@@ -555,6 +679,7 @@ that uses it checks the length.
 | `ResourceLimitExceeded` | A resource quota, a `SecretMap` capacity, or a storage-key counter is exhausted |
 | `UnsupportedOperation` | A storage blob or context has an unknown version, algorithm, or purpose, or the purpose does not match the sealed value |
 | `InternalFailure` | An unexpected runtime failure, including a platform storage key without host callbacks |
+| `UnsupportedTarget` | A BR1 issuer or private-key storage operation is unavailable on this target |
 
 ```mesh
 fn describe(error :: CryptoError) -> String do
@@ -655,15 +780,17 @@ end
 |----------|---------|-------------|
 | `StorageKey.ephemeral()` | `Result<StorageKey, CryptoError>` | Random key that exists only in this process |
 | `StorageKey.platform()` | `Result<StorageKey, CryptoError>` | Load or create the application's durable key through the host secure store |
+| `StorageKey.index_tag(storage_key, namespace, value)` | `Result<Bytes, CryptoError>` | Borrow the key to derive a deterministic 32-byte index tag; namespace 1–256 bytes, value 0–65,536 bytes |
 | `StorageKey.seal_bytes(value, storage_key, context)` | `Result<Bytes, CryptoError>` | Seal public `Bytes` of up to 64 KiB |
 | `StorageKey.unseal_bytes(blob, storage_key, context)` | `Result<Bytes, CryptoError>` | Authenticate a blob and return its `Bytes` |
 
 `Secret`, `SecretMap`, `X25519PrivateKey`, `SigningPrivateKey`, and
-`MlKemPrivateKey` each provide `seal_for_storage(value, storage_key,
+`MlKemPrivateKey`, `BlindRsaSecretKey`, and `BlindRsaBlindingState` each provide `seal_for_storage(value, storage_key,
 context) -> Result<Bytes, CryptoError>`, which borrows the value and the key,
 and `unseal_from_storage(blob, storage_key, context)`, which returns a new
 resource of that type. `Secret.seal_for_storage` accepts exactly 32 bytes and
-`MlKemPrivateKey` seals its 64-byte seed.
+`MlKemPrivateKey` seals its 64-byte seed. `BlindRsaSecretKey` seals validated
+PKCS#8 DER; `BlindRsaBlindingState` seals its inverse and key/message bindings.
 
 The context is exactly 123 bytes and names what the blob holds:
 
@@ -683,8 +810,10 @@ key), 11 (skipped message key), or 16 (group epoch secret); `SecretMap` takes
 12 (skipped-key map); `SigningPrivateKey` takes 6 (account authorization key)
 or 7 (device signing key); `X25519PrivateKey` takes 8 (device DH key), 9
 (signed prekey), 10 (one-time prekey), 13 (ratchet DH key), or 17 (group
-TreeKEM key); `MlKemPrivateKey` takes 15 (ML-KEM prekey seed); and
-`StorageKey.seal_bytes` takes 14 (local data). The runtime checks the version,
+TreeKEM key); `MlKemPrivateKey` takes 15 (ML-KEM prekey seed);
+`BlindRsaSecretKey` takes 18 (BR1 issuer key); `BlindRsaBlindingState` takes
+19 (pending BR1 blinding state); and `StorageKey.seal_bytes` takes 14 (local
+data). The runtime checks the version,
 purpose, session rule, and snapshot; the IDs are opaque bytes that you choose.
 
 The blob records a SHA-256 binding of the whole context, so unsealing needs
@@ -708,6 +837,16 @@ and rewriting it to reserve each counter. It needs the host's secure-store
 callbacks (see [Host Capabilities](#host-capabilities)) and returns
 `Err(InternalFailure)` without them. In `meshc test`,
 `Test.install_in_memory_secure_store()` provides them.
+
+`StorageKey.index_tag` (flat alias `storage_key_index_tag`) derives a separate
+index key using HKDF-SHA256 with salt `mesh/storage-index/v1` and the exact
+namespace as its info, then returns HMAC-SHA256 of the value. Use a versioned,
+application-specific namespace and canonical input encoding. It does not reserve
+a sealing nonce or expose either key. Equal inputs under the same key and
+namespace produce equal tags; this leaks equality, so it is not encryption or
+an automatic plaintext declassification. Empty namespaces and either oversized
+input return `InvalidLength`. The complete derivation and threat model are
+recorded in the repository's `docs/security/storage-index.md`.
 
 ### UUID
 
@@ -915,6 +1054,7 @@ end
 | `DateTime.to_unix_ms(dt)` | `Int` | To Unix milliseconds |
 | `DateTime.to_unix_secs(dt)` | `Int` | To Unix seconds |
 | `DateTime.add(dt, n, unit)` | `DateTime` | Add duration (`:ms`, `:second`, `:minute`, `:hour`, `:day`, `:week`) |
+| `DateTime.add_months(dt, months)` | `Result<DateTime, String>` | Add signed calendar months in UTC, clamping the day to the destination month's last day and preserving time of day; out-of-range results return an error |
 | `DateTime.diff(dt1, dt2, unit)` | `Float` | Signed difference in given unit |
 | `DateTime.is_before(dt1, dt2)` | `Bool` | True if dt1 is before dt2 |
 | `DateTime.is_after(dt1, dt2)` | `Bool` | True if dt1 is after dt2 |
@@ -922,6 +1062,11 @@ end
 ## Monotonic Time and Durations
 
 Use `DateTime` for timestamps that people or external systems need to read. Use `Monotonic` for elapsed time and deadlines; it cannot jump when the wall clock changes.
+
+For recurring anniversaries, compute each date from the original start. January
+31 plus one month clamps to February's last day, while January 31 plus two
+months is March 31. Adding one month repeatedly from the clamped February date
+would retain that earlier day instead.
 
 | Function | Returns | Description |
 |----------|---------|-------------|

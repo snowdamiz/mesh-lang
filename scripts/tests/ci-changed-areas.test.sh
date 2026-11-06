@@ -17,6 +17,7 @@ expect() {
 
 expect $'website/docs/index.md\nwebsite/docs/.vitepress/theme/components/landing/Hero.vue' "docs_site"
 expect "compiler/mesh-typeck/src/infer.rs" "compiler"
+expect "vendor/ureq-proto/src/client/recvresp.rs" "compiler"
 expect "somewhere/new.txt" "compiler"
 expect "registry/src/main.rs" "registry"
 expect "packages-website/src/app.html" "packages_site"

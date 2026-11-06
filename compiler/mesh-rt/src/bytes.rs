@@ -25,7 +25,7 @@ pub struct MeshBytes {
 }
 
 // ponytail: one 64 KiB frame ceiling; add per-actor public-byte quotas before raising it.
-const MAX_BYTES_BUILDER_BYTES: usize = 64 * 1024;
+const MAX_BYTES_BUILDER_BYTES: usize = 1024 * 1024;
 const BYTES_BUILDER_MAGIC: u64 = 0x4d45_5348_4255_494c;
 
 #[repr(u8)]
@@ -490,6 +490,54 @@ pub extern "C" fn mesh_bytes_concat(
     }
 }
 
+/// Join immutable byte sequences in list order with one output allocation.
+/// Check the complete extent before copying or allocating its storage; the
+/// caller's maximum is a bound, never an allocation reservation.
+#[no_mangle]
+pub extern "C" fn mesh_bytes_concat_many(parts: *mut u8, maximum: i64) -> *mut MeshResult {
+    let Ok(maximum) = usize::try_from(maximum) else {
+        return binary_error(BinaryErrorTag::InvalidLimit);
+    };
+    if parts.is_null() {
+        return binary_error(BinaryErrorTag::InvalidValue);
+    }
+    let count = mesh_list_length(parts);
+    let mut total = 0usize;
+    for index in 0..count {
+        let part = mesh_list_get(parts, index) as *const MeshBytes;
+        if part.is_null() {
+            return binary_error(BinaryErrorTag::InvalidValue);
+        }
+        let Ok(length) = usize::try_from(unsafe { (*part).len }) else {
+            return binary_error(BinaryErrorTag::OutputTooLarge);
+        };
+        let Some(next) = total.checked_add(length).filter(|&n| n <= maximum) else {
+            return binary_error(BinaryErrorTag::OutputTooLarge);
+        };
+        total = next;
+    }
+    let output = allocate(total);
+    if output.is_null() {
+        return binary_error(BinaryErrorTag::OutputTooLarge);
+    }
+    let mut offset = 0;
+    for index in 0..count {
+        // Mesh lists and byte values are immutable; the preflight validated
+        // every length and the sum without a collection or callback boundary.
+        let part = mesh_list_get(parts, index) as *const MeshBytes;
+        unsafe {
+            let length = (*part).len as usize;
+            ptr::copy_nonoverlapping(
+                (*part).data_ptr(),
+                (*output).data_ptr_mut().add(offset),
+                length,
+            );
+            offset += length;
+        }
+    }
+    alloc_result(0, output.cast())
+}
+
 #[no_mangle]
 pub extern "C" fn mesh_bytes_secure_equals(left: *const MeshBytes, right: *const MeshBytes) -> i8 {
     unsafe {
@@ -861,6 +909,89 @@ mod tests {
         slice_of(accepted(result).cast())
     }
 
+    #[test]
+    fn concat_many_checks_bounds_before_allocating_or_reading_payloads() {
+        crate::secret::as_test_actor(|_| {
+            let empty = mesh_list_builder_new(0);
+            assert!(accepted_bytes(mesh_bytes_concat_many(empty, 0)).is_empty());
+            if usize::BITS == 64 {
+                assert!(accepted_bytes(mesh_bytes_concat_many(empty, i64::MAX)).is_empty());
+            }
+            assert_eq!(
+                refused_as(mesh_bytes_concat_many(empty, -1)),
+                BinaryErrorTag::InvalidLimit as u8
+            );
+            let huge = MeshBytes { len: u64::MAX };
+            let huge_parts = mesh_list_builder_new(1);
+            mesh_list_builder_push(huge_parts, &huge as *const MeshBytes as u64);
+            assert_eq!(
+                refused_as(mesh_bytes_concat_many(huge_parts, i64::MAX)),
+                BinaryErrorTag::OutputTooLarge as u8
+            );
+            let large = MeshBytes {
+                len: isize::MAX as u64,
+            };
+            let large_parts = mesh_list_builder_new(1);
+            mesh_list_builder_push(large_parts, &large as *const MeshBytes as u64);
+            assert_eq!(
+                refused_as(mesh_bytes_concat_many(large_parts, i64::MAX)),
+                BinaryErrorTag::OutputTooLarge as u8
+            );
+            let bytes = mesh_bytes_copy_from([0, 0xff, 3].as_ptr(), 3);
+            let parts = mesh_list_builder_new(3);
+            for part in [bytes, mesh_bytes_empty(), bytes] {
+                mesh_list_builder_push(parts, part as u64);
+            }
+            assert_eq!(
+                refused_as(mesh_bytes_concat_many(parts, 5)),
+                BinaryErrorTag::OutputTooLarge as u8
+            );
+            assert_eq!(
+                accepted_bytes(mesh_bytes_concat_many(parts, 6)),
+                [0, 0xff, 3, 0, 0xff, 3]
+            );
+            assert_eq!(slice_of(bytes), [0, 0xff, 3]);
+            assert_eq!(mesh_list_length(parts), 3);
+            assert_eq!(mesh_list_get(parts, 0), bytes as u64);
+            let view = crate::collections::list::mesh_list_drop(parts, 1);
+            assert_eq!(
+                accepted_bytes(mesh_bytes_concat_many(view, 3)),
+                [0, 0xff, 3]
+            );
+            let empty_view = crate::collections::list::mesh_list_take(view, 1);
+            assert!(accepted_bytes(mesh_bytes_concat_many(empty_view, 0)).is_empty());
+        });
+    }
+
+    #[test]
+    fn concat_many_uses_one_output_buffer_for_thousands_of_parts() {
+        crate::secret::as_test_actor(|_| {
+            let bytes = mesh_bytes_copy_from([0x5a; 1870].as_ptr(), 1870);
+            let parts = mesh_list_builder_new(8192);
+            for _ in 0..8192 {
+                mesh_list_builder_push(parts, bytes as u64);
+            }
+            let allocated = || {
+                crate::actor::current_process()
+                    .unwrap()
+                    .lock()
+                    .heap
+                    .total_bytes()
+            };
+            let before = allocated();
+            let value = accepted_bytes(mesh_bytes_concat_many(parts, 8192 * 1870));
+            assert_eq!(value.len(), 8192 * 1870);
+            assert!(value.iter().all(|&byte| byte == 0x5a));
+            assert!(allocated() - before <= value.len() + 128);
+            let before_refusal = allocated();
+            assert_eq!(
+                refused_as(mesh_bytes_concat_many(parts, 8192 * 1870 - 1)),
+                BinaryErrorTag::OutputTooLarge as u8
+            );
+            assert!(allocated() - before_refusal <= 128);
+        });
+    }
+
     fn text<'a>(value: *mut MeshString) -> &'a str {
         unsafe { (*value).as_str() }
     }
@@ -938,6 +1069,29 @@ mod tests {
         assert_eq!(accepted_bytes(mesh_bytes_write_u64_be(large))[3], 1);
         let written = mesh_bytes_write_uint_le(mesh_str("258"), 2);
         assert_eq!(accepted_bytes(written), [2, 1]);
+    }
+
+    #[test]
+    fn bounded_builders_support_one_mebibyte_batches_without_partial_overflow() {
+        mesh_rt_init();
+        crate::secret::as_test_actor(|_| {
+            let chunk = mesh_bytes_copy_from(vec![0x5a; 65536].as_ptr(), 65536);
+            let builder = accepted(mesh_bytes_builder_new(1048576));
+            for _ in 0..16 {
+                accepted(mesh_bytes_builder_write_bytes(builder, chunk));
+            }
+            assert_eq!(
+                refused_as(mesh_bytes_builder_write_u8(builder, 0)),
+                BinaryErrorTag::OutputTooLarge as u8
+            );
+            let output = accepted_bytes(mesh_bytes_builder_finish(builder));
+            assert_eq!(output.len(), 1048576);
+            assert!(output.iter().all(|byte| *byte == 0x5a));
+            assert_eq!(
+                refused_as(mesh_bytes_builder_new(1048577)),
+                BinaryErrorTag::InvalidLimit as u8
+            );
+        });
     }
 
     /// A builder is looked up by its address: a write does not read every

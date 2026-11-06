@@ -407,6 +407,23 @@ mod tests {
     }
 
     #[test]
+    fn resolve_blind_rsa_handles_and_affine_aggregate() {
+        let checked = mesh_typeck::check(&mesh_parser::parse(""));
+        for name in ["BlindRsaSecretKey", "BlindRsaBlindingState"] {
+            assert_eq!(
+                resolve_type(&Ty::Con(TyCon::new(name)), &checked.type_registry),
+                MirType::Ptr
+            );
+        }
+        for name in ["BlindRsaPublicKey", "BlindRsaBlinded"] {
+            assert_eq!(
+                resolve_type(&Ty::Con(TyCon::new(name)), &checked.type_registry),
+                MirType::Struct(name.to_string())
+            );
+        }
+    }
+
+    #[test]
     fn resolve_registered_crypto_error_as_sum_type() {
         use mesh_typeck::SumTypeDefInfo;
 

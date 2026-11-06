@@ -1,6 +1,6 @@
 //! SQLite C FFI wrapper functions for the Mesh runtime.
 //!
-//! Provides six extern "C" functions that Mesh programs call to interact
+//! Provides eight extern "C" functions that Mesh programs call to interact
 //! with SQLite databases:
 //! - `mesh_sqlite_open`: Open a database connection
 //! - `mesh_sqlite_close`: Close a connection
@@ -8,6 +8,8 @@
 //! - `mesh_sqlite_query`: Execute a read query (SELECT), returns rows
 //! - `mesh_sqlite_execute_values`: Execute with typed `DbValue` parameters
 //! - `mesh_sqlite_query_values`: Query typed `DbValue` rows
+//! - `mesh_sqlite_execute_values_v2`: Execute within an explicit value quota
+//! - `mesh_sqlite_query_values_v2`: Query within an explicit value quota
 //!
 //! Connection handles are opaque u64 values (Box::into_raw as u64) for GC
 //! safety. The GC never traces integer values, so the connection won't be
@@ -23,8 +25,8 @@ use crate::bytes::mesh_bytes_new;
 use crate::collections::list::mesh_list_from_array;
 use crate::collections::map::mesh_map_from_string_entries;
 use crate::db::pg::{
-    alloc_db_value, db_values, text_values, BindValue, MeshDbValue, DB_VALUE_BINARY, DB_VALUE_NULL,
-    DB_VALUE_TEXT, MAX_DB_VALUE_BYTES,
+    alloc_db_value, db_values_bounded, text_values, BindValue, MeshDbValue, DB_VALUE_BINARY,
+    DB_VALUE_NULL, DB_VALUE_TEXT, MAX_DB_VALUE_BYTES,
 };
 use crate::io::{alloc_result, box_scalar, err_result};
 use crate::string::text_of;
@@ -34,6 +36,30 @@ use crate::string::{mesh_str, MeshString};
 const MAX_SQLITE_RESULT_BYTES: usize = 64 * 1024 * 1024;
 const MAX_SQLITE_VALUES: usize = 32_766;
 const MAX_SQLITE_ROWS: usize = 100_000;
+const MAX_SQLITE_V2_VALUE_BYTES: usize = 32 * 1024 * 1024;
+
+#[derive(Clone, Copy)]
+struct ValueLimits {
+    value_bytes: usize,
+    parameter_bytes: Option<usize>,
+}
+
+const LEGACY_LIMITS: ValueLimits = ValueLimits {
+    value_bytes: MAX_DB_VALUE_BYTES,
+    parameter_bytes: None,
+};
+
+fn v2_limits(max_value_bytes: i64) -> Result<ValueLimits, String> {
+    if !(1..=MAX_SQLITE_V2_VALUE_BYTES as i64).contains(&max_value_bytes) {
+        return Err(format!(
+            "SQLite value quota must be within 1..={MAX_SQLITE_V2_VALUE_BYTES}"
+        ));
+    }
+    Ok(ValueLimits {
+        value_bytes: max_value_bytes as usize,
+        parameter_bytes: Some(MAX_SQLITE_RESULT_BYTES),
+    })
+}
 
 /// Wrapper around a raw SQLite database pointer.
 struct SqliteConn {
@@ -156,12 +182,27 @@ unsafe fn prepared(
     sql: *const MeshString,
     params: *mut u8,
     values: Values,
+    limits: ValueLimits,
 ) -> Result<(*mut sqlite3, StmtGuard), String> {
     let db = (*(conn_handle as *const SqliteConn)).db;
-    let guard = prepare_statement(db, text_of(sql))?;
+    let legacy_statement = if limits.parameter_bytes.is_none() {
+        Some(prepare_statement(db, text_of(sql))?)
+    } else {
+        None
+    };
     let params = match values {
         Values::Text => text_values(params, MAX_SQLITE_VALUES, "SQLite")?,
-        Values::Typed => db_values(params, MAX_SQLITE_VALUES, "SQLite")?,
+        Values::Typed => db_values_bounded(
+            params,
+            MAX_SQLITE_VALUES,
+            "SQLite",
+            limits.value_bytes,
+            limits.parameter_bytes,
+        )?,
+    };
+    let guard = match legacy_statement {
+        Some(statement) => statement,
+        None => prepare_statement(db, text_of(sql))?,
     };
     bind_values(db, guard.stmt, params)?;
     Ok((db, guard))
@@ -173,13 +214,15 @@ unsafe fn execute(
     sql: *const MeshString,
     params: *mut u8,
     values: Values,
+    limits: ValueLimits,
 ) -> *mut u8 {
-    let changes = prepared(conn_handle, sql, params, values).and_then(|(db, guard)| {
-        match sqlite3_step(guard.stmt) {
-            SQLITE_DONE | SQLITE_ROW => Ok(sqlite3_changes(db) as i64),
-            _ => Err(sqlite_err_string(db)),
-        }
-    });
+    let changes =
+        prepared(conn_handle, sql, params, values, limits).and_then(
+            |(db, guard)| match sqlite3_step(guard.stmt) {
+                SQLITE_DONE | SQLITE_ROW => Ok(sqlite3_changes(db) as i64),
+                _ => Err(sqlite_err_string(db)),
+            },
+        );
     match changes {
         Ok(changes) => alloc_result(0, box_scalar(changes)) as *mut u8,
         Err(error) => err_result(&error),
@@ -193,9 +236,10 @@ unsafe fn query(
     sql: *const MeshString,
     params: *mut u8,
     values: Values,
+    limits: ValueLimits,
 ) -> *mut u8 {
-    let rows = prepared(conn_handle, sql, params, values)
-        .and_then(|(db, guard)| read_rows(db, guard.stmt, values));
+    let rows = prepared(conn_handle, sql, params, values, limits)
+        .and_then(|(db, guard)| read_rows(db, guard.stmt, values, limits));
     match rows {
         Ok(rows) => {
             alloc_result(0, mesh_list_from_array(rows.as_ptr(), rows.len() as i64)) as *mut u8
@@ -208,6 +252,7 @@ unsafe fn read_rows(
     db: *mut sqlite3,
     stmt: *mut sqlite3_stmt,
     values: Values,
+    limits: ValueLimits,
 ) -> Result<Vec<u64>, String> {
     let column_count = sqlite3_column_count(stmt) as usize;
     let column_names = (0..column_count)
@@ -243,11 +288,15 @@ unsafe fn read_rows(
         for (column, name) in column_names.iter().enumerate() {
             let column = column as c_int;
             let value = match values {
-                Values::Typed => typed_column_value(stmt, column, &mut result_bytes)? as u64,
+                Values::Typed => {
+                    typed_column_value(stmt, column, &mut result_bytes, limits.value_bytes)? as u64
+                }
                 Values::Text if sqlite3_column_type(stmt, column) == SQLITE_NULL => {
                     mesh_str("") as u64
                 }
-                Values::Text => column_text(stmt, column, &mut result_bytes)? as u64,
+                Values::Text => {
+                    column_text(stmt, column, &mut result_bytes, limits.value_bytes)? as u64
+                }
             };
             if let Some(index) = indexes.get(name.as_str()).copied() {
                 entries[index][1] = value;
@@ -271,11 +320,12 @@ unsafe fn typed_column_value(
     stmt: *mut sqlite3_stmt,
     column: c_int,
     result_bytes: &mut usize,
+    maximum_value_bytes: usize,
 ) -> Result<*mut MeshDbValue, String> {
     match sqlite3_column_type(stmt, column) {
         SQLITE_NULL => Ok(alloc_db_value(DB_VALUE_NULL, std::ptr::null_mut())),
         SQLITE_BLOB => {
-            let len = column_len(stmt, column, result_bytes)?;
+            let len = column_len(stmt, column, result_bytes, maximum_value_bytes)?;
             // The blob is null when empty, or when SQLite runs out of memory:
             // `mesh_bytes_new` refuses (null) a null pointer with a length.
             let bytes = sqlite3_column_blob(stmt, column) as *const u8;
@@ -285,7 +335,7 @@ unsafe fn typed_column_value(
         }
         _ => Ok(alloc_db_value(
             DB_VALUE_TEXT,
-            column_text(stmt, column, result_bytes)? as *mut u8,
+            column_text(stmt, column, result_bytes, maximum_value_bytes)? as *mut u8,
         )),
     }
 }
@@ -295,11 +345,12 @@ unsafe fn column_len(
     stmt: *mut sqlite3_stmt,
     column: c_int,
     result_bytes: &mut usize,
+    maximum_value_bytes: usize,
 ) -> Result<usize, String> {
     let len = sqlite3_column_bytes(stmt, column) as usize;
-    if len > MAX_DB_VALUE_BYTES {
+    if len > maximum_value_bytes {
         return Err(format!(
-            "SQLite column {column} exceeds {MAX_DB_VALUE_BYTES} byte limit"
+            "SQLite column {column} exceeds {maximum_value_bytes} byte limit"
         ));
     }
     *result_bytes = add_result_bytes(*result_bytes, len)?;
@@ -312,15 +363,16 @@ unsafe fn column_text(
     stmt: *mut sqlite3_stmt,
     column: c_int,
     result_bytes: &mut usize,
+    maximum_value_bytes: usize,
 ) -> Result<*mut MeshString, String> {
     // Null only when SQLite runs out of memory: a NULL column is read before.
     let bytes = NonNull::new(sqlite3_column_text(stmt, column) as *mut u8)
         .ok_or_else(|| format!("failed to read SQLite text column {column}"))?;
-    let len = column_len(stmt, column, result_bytes)?;
+    let len = column_len(stmt, column, result_bytes, maximum_value_bytes)?;
     let text = String::from_utf8_lossy(std::slice::from_raw_parts(bytes.as_ptr(), len));
-    if text.len() > MAX_DB_VALUE_BYTES {
+    if text.len() > maximum_value_bytes {
         return Err(format!(
-            "SQLite column {column} exceeds {MAX_DB_VALUE_BYTES} byte limit"
+            "SQLite column {column} exceeds {maximum_value_bytes} byte limit"
         ));
     }
     if text.len() > len {
@@ -400,7 +452,7 @@ pub extern "C" fn mesh_sqlite_execute(
     sql: *const MeshString,
     params: *mut u8,
 ) -> *mut u8 {
-    unsafe { execute(conn_handle, sql, params, Values::Text) }
+    unsafe { execute(conn_handle, sql, params, Values::Text, LEGACY_LIMITS) }
 }
 
 /// Execute a read SQL statement (SELECT) and return rows.
@@ -419,7 +471,7 @@ pub extern "C" fn mesh_sqlite_query(
     sql: *const MeshString,
     params: *mut u8,
 ) -> *mut u8 {
-    unsafe { query(conn_handle, sql, params, Values::Text) }
+    unsafe { query(conn_handle, sql, params, Values::Text, LEGACY_LIMITS) }
 }
 
 /// Execute a statement with `DbValue` parameters.
@@ -429,7 +481,7 @@ pub extern "C" fn mesh_sqlite_execute_values(
     sql: *const MeshString,
     params: *mut u8,
 ) -> *mut u8 {
-    unsafe { execute(conn_handle, sql, params, Values::Typed) }
+    unsafe { execute(conn_handle, sql, params, Values::Typed, LEGACY_LIMITS) }
 }
 
 /// Query rows as `Map<String, DbValue>`, preserving BLOB and NULL values.
@@ -439,8 +491,38 @@ pub extern "C" fn mesh_sqlite_query_values(
     sql: *const MeshString,
     params: *mut u8,
 ) -> *mut u8 {
-    unsafe { query(conn_handle, sql, params, Values::Typed) }
+    unsafe { query(conn_handle, sql, params, Values::Typed, LEGACY_LIMITS) }
 }
+
+#[no_mangle]
+pub extern "C" fn mesh_sqlite_execute_values_v2(
+    conn_handle: u64,
+    sql: *const MeshString,
+    params: *mut u8,
+    max_value_bytes: i64,
+) -> *mut u8 {
+    match v2_limits(max_value_bytes) {
+        Ok(limits) => unsafe { execute(conn_handle, sql, params, Values::Typed, limits) },
+        Err(error) => err_result(&error),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_sqlite_query_values_v2(
+    conn_handle: u64,
+    sql: *const MeshString,
+    params: *mut u8,
+    max_value_bytes: i64,
+) -> *mut u8 {
+    match v2_limits(max_value_bytes) {
+        Ok(limits) => unsafe { query(conn_handle, sql, params, Values::Typed, limits) },
+        Err(error) => err_result(&error),
+    }
+}
+
+#[cfg(test)]
+#[path = "sqlite_quota_tests.rs"]
+mod quota_v2_tests;
 
 // ── Transaction Management ──────────────────────────────────────────────
 

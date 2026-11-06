@@ -33,4 +33,12 @@ grep -Fq 'known-answer-vectors.log' "${SCRIPT_PATH}" ||
 grep -Fq 'known_answer_vectors' "${SCRIPT_PATH}" ||
   fail "release record does not name the vector result"
 
+grep -Fq 'tests/vectors/blind-rsa/rfc9578-type2.json' "${SCRIPT_PATH}" ||
+  fail "release evidence omits the public BR1 vectors"
+grep -Fq 'tests/vectors/blind-rsa/rfc9474-appendix-a.json' "${SCRIPT_PATH}" ||
+  fail "release evidence omits the RFC9474 helper vectors"
+grep -Fq -- '--test e2e_crypto_v2 blind_rsa_' "${SCRIPT_PATH}" ||
+  fail "release evidence omits public BR1/OpenSSL execution"
+grep -Fq 'blind_rsa_sign_timing' "${SCRIPT_PATH}" ||
+  fail "release record omits raw RSA signing timing"
 printf 'release evidence contract passed\n'

@@ -742,7 +742,13 @@ impl<'ctx> CodeGen<'ctx> {
         // with no environment; typed `FnPtr`, the bare pointer.
         let fn_ptr = self
             .fn_item_pointer(name)
-            .expect("lowering names only bound variables and functions");
+            .ok_or_else(|| {
+                if matches!(name, "assert" | "assert_eq" | "assert_ne" | "assert_raises" | "__test_check_result") {
+                    format!("`{name}` is unavailable in a normal build; test assertions require `meshc test`")
+                } else {
+                    format!("function `{name}` has no implementation available in this build")
+                }
+            })?;
         if matches!(ty, MirType::Closure(..)) {
             let null_env = self
                 .context
@@ -2043,6 +2049,11 @@ impl<'ctx> CodeGen<'ctx> {
         let alloca = self
             .builder
             .build_alloca(sum_layout.as_basic_type_enum(), "variant")
+            .map_err(|e| e.to_string())?;
+        // Narrow fields and smaller variants leave unused bits in the payload
+        // words. Initialize them before loading/copying the complete union.
+        self.builder
+            .build_store(alloca, sum_layout.const_zero())
             .map_err(|e| e.to_string())?;
 
         // Store the tag at field 0

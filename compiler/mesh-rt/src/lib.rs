@@ -67,11 +67,13 @@ pub mod file;
 pub mod finance;
 pub mod gc;
 pub mod hash;
+pub mod hash_preimage;
 pub mod http;
 pub mod io;
 pub mod iter;
 pub mod json;
 pub mod library;
+pub mod lightning;
 pub mod monotonic;
 pub mod option;
 pub mod panic;
@@ -187,8 +189,9 @@ pub use db::repo::{
     mesh_repo_update_where, mesh_repo_update_where_expr,
 };
 pub use db::sqlite::{
-    mesh_sqlite_close, mesh_sqlite_execute, mesh_sqlite_execute_values, mesh_sqlite_open,
-    mesh_sqlite_query, mesh_sqlite_query_values,
+    mesh_sqlite_close, mesh_sqlite_execute, mesh_sqlite_execute_values,
+    mesh_sqlite_execute_values_v2, mesh_sqlite_open, mesh_sqlite_query, mesh_sqlite_query_values,
+    mesh_sqlite_query_values_v2,
 };
 pub use dist::autonomous::{
     autonomous_controller_status, embedded_autonomous_config, mesh_register_autonomous_config_json,
@@ -278,7 +281,8 @@ pub use env::{
 };
 pub use file::{
     mesh_file_append, mesh_file_delete, mesh_file_exists, mesh_file_read, mesh_file_read_bytes,
-    mesh_file_size, mesh_file_write, mesh_file_write_bytes,
+    mesh_file_read_bytes_v2, mesh_file_rename, mesh_file_size, mesh_file_sync, mesh_file_write,
+    mesh_file_write_bytes, mesh_file_write_bytes_v2,
 };
 pub use finance::{
     mesh_checked_abs, mesh_checked_add, mesh_checked_div, mesh_checked_mul, mesh_checked_mul_div,
@@ -333,11 +337,14 @@ pub use secret::{
     mesh_secret_map_merge, mesh_secret_map_new, mesh_secret_random, MeshSecretHandle,
 };
 pub use storage_wrapping::{
-    mesh_mlkem_private_key_seal_for_storage, mesh_mlkem_private_key_unseal_from_storage,
-    mesh_secret_map_seal_for_storage, mesh_secret_map_unseal_from_storage,
-    mesh_secret_seal_for_storage, mesh_secret_unseal_from_storage,
-    mesh_signing_private_key_seal_for_storage, mesh_signing_private_key_unseal_from_storage,
-    mesh_storage_key_ephemeral, mesh_storage_key_platform, mesh_storage_key_provision,
+    mesh_blind_rsa_blinding_state_seal_for_storage,
+    mesh_blind_rsa_blinding_state_unseal_from_storage, mesh_blind_rsa_secret_key_seal_for_storage,
+    mesh_blind_rsa_secret_key_unseal_from_storage, mesh_mlkem_private_key_seal_for_storage,
+    mesh_mlkem_private_key_unseal_from_storage, mesh_secret_map_seal_for_storage,
+    mesh_secret_map_unseal_from_storage, mesh_secret_seal_for_storage,
+    mesh_secret_unseal_from_storage, mesh_signing_private_key_seal_for_storage,
+    mesh_signing_private_key_unseal_from_storage, mesh_storage_key_ephemeral,
+    mesh_storage_key_file, mesh_storage_key_platform, mesh_storage_key_provision,
     mesh_storage_key_seal_bytes, mesh_storage_key_unseal_bytes,
     mesh_x25519_private_key_seal_for_storage, mesh_x25519_private_key_unseal_from_storage,
 };
@@ -355,3 +362,14 @@ pub use test::{
     mesh_test_fail_msg, mesh_test_mock_actor, mesh_test_pass, mesh_test_pass_count,
     mesh_test_run_body, mesh_test_summary,
 };
+
+pub use crypto::{
+    mesh_crypto_blind_rsa_blind, mesh_crypto_blind_rsa_finalize, mesh_crypto_blind_rsa_from_secret,
+    mesh_crypto_blind_rsa_generate, mesh_crypto_blind_rsa_public,
+    mesh_crypto_blind_rsa_public_from_spki, mesh_crypto_blind_rsa_sign,
+    mesh_crypto_blind_rsa_verify, MeshBlindRsaBlinded, MeshBlindRsaPublicKey,
+};
+
+mod protected_memory;
+
+mod server_bind;

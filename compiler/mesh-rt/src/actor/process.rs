@@ -311,7 +311,9 @@ pub struct Process {
     /// and enable per-actor memory reclamation.
     pub heap: ActorHeap,
 
-    /// Embedded calls have no coroutine GC and release their heap on return.
+    /// Embedded calls release their heap on return unless a spawned actor
+    /// borrows it. Native-thread calls may collect at compiler safe points;
+    /// coroutine-origin calls retain their heap through synchronous execution.
     pub(crate) library_call: bool,
     /// The main thread's process. It is not a coroutine and never yields, so
     /// instead of collecting at a yield it collects at a reduction check, once

@@ -201,7 +201,11 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         let triple = match target_triple {
-            Some(triple_str) => TargetTriple::create(triple_str),
+            Some(triple_str) => TargetTriple::create(&crate::link::llvm_target_triple(triple_str)),
+            // A Darwin kernel version can imply a newer macOS deployment minimum.
+            None if cfg!(target_os = "macos") => TargetTriple::create(
+                &crate::link::llvm_target_triple(&crate::link::effective_target_triple(None)?),
+            ),
             None => TargetMachine::get_default_triple(),
         };
 
@@ -409,7 +413,7 @@ impl<'ctx> CodeGen<'ctx> {
         let i32_type = self.context.i32_type();
         let wrapper_type =
             i32_type.fn_type(&[ptr_type.into(), i64_type.into(), ptr_type.into()], false);
-        let invoke = intrinsics::get_intrinsic(&self.module, "mesh_library_invoke");
+        let invoke = intrinsics::get_intrinsic(&self.module, "mesh_library_invoke_bounded");
 
         for export in exports {
             // Type checking made the export a lowered, public function.
@@ -477,6 +481,8 @@ impl<'ctx> CodeGen<'ctx> {
                         input.into(),
                         input_len.into(),
                         output.into(),
+                        i64_type.const_int(export.max_input, false).into(),
+                        i64_type.const_int(export.max_output, false).into(),
                     ],
                     "library_status",
                 )
@@ -1306,6 +1312,113 @@ mod tests {
         MirType, MirVariantDef, MsgShape, UnaryOp,
     };
 
+    #[cfg(target_os = "macos")]
+    fn native_deployment_object_version(target: Option<&str>) -> Option<(u32, u32)> {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "deployment_probe", 0, target).unwrap();
+        codegen.compile(&empty_mir_module()).unwrap();
+        let object = codegen
+            .target_machine
+            .write_to_memory_buffer(&codegen.module, FileType::Object)
+            .unwrap();
+        let bytes = object.as_slice();
+        let word = |offset| u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap());
+        assert_eq!(word(0), 0xfeedfacf, "expected actual 64-bit Mach-O object");
+        let mut offset = 32;
+        for _ in 0..word(16) {
+            let command = word(offset);
+            let length = word(offset + 4) as usize;
+            assert!(length >= 8 && offset + length <= bytes.len());
+            if command == 0x32 {
+                assert!(length >= 24);
+                return Some((word(offset + 8), word(offset + 12)));
+            }
+            if command == 0x24 {
+                assert!(length >= 16);
+                return Some((1, word(offset + 8)));
+            }
+            offset += length;
+        }
+        None
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn native_deployment_default_matches_the_explicit_canonical_host_object() {
+        let canonical = crate::link::effective_target_triple(None).unwrap();
+        let explicit = native_deployment_object_version(Some(&canonical));
+        let default = native_deployment_object_version(None);
+        assert_eq!(
+            default, explicit,
+            "default and named native builds must share their platform/deployment basis"
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn native_deployment_host_objects_include_platform_metadata_for_external_linkers() {
+        for target in [
+            None,
+            Some("aarch64-apple-darwin"),
+            Some("x86_64-apple-darwin"),
+        ] {
+            let metadata = native_deployment_object_version(target);
+            assert_eq!(
+                metadata.map(|(platform, _)| platform),
+                Some(1),
+                "{target:?} must identify macOS to external linkers without a platform-assumption warning"
+            );
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn native_deployment_named_host_object_is_supported_by_this_host() {
+        let canonical = crate::link::effective_target_triple(None).unwrap();
+        let metadata = native_deployment_object_version(Some(&canonical));
+        let output = std::process::Command::new("/usr/bin/sw_vers")
+            .arg("-productVersion")
+            .output()
+            .unwrap();
+        assert!(output.status.success() && output.stderr.is_empty());
+        let version = std::str::from_utf8(&output.stdout).unwrap().trim();
+        let parts: Vec<u32> = version
+            .split('.')
+            .map(|part| part.parse().unwrap())
+            .collect();
+        assert!((2..=3).contains(&parts.len()));
+        let host = (parts[0] << 16) | (parts[1] << 8) | parts.get(2).copied().unwrap_or(0);
+        if let Some((platform, minimum)) = metadata {
+            assert_eq!(platform, 1);
+            assert!(
+                minimum <= host,
+                "canonical object requires {minimum:#x}, host is {host:#x}"
+            );
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn native_deployment_explicit_ios_device_and_simulator_objects_keep_their_platforms() {
+        assert_eq!(
+            native_deployment_object_version(Some("aarch64-apple-ios16.4")),
+            Some((2, (16 << 16) | (4 << 8)))
+        );
+        assert_eq!(
+            native_deployment_object_version(Some("aarch64-apple-ios16.4-simulator")),
+            Some((7, (16 << 16) | (4 << 8)))
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn native_deployment_explicit_macos_object_keeps_its_requested_minimum() {
+        assert_eq!(
+            native_deployment_object_version(Some("aarch64-apple-macosx11.0")),
+            Some((1, 11 << 16))
+        );
+    }
+
     fn empty_mir_module() -> MirModule {
         MirModule {
             functions: vec![],
@@ -1336,6 +1449,9 @@ mod tests {
             codegen.set_library_exports(&[crate::LibraryExport {
                 function: "echo".to_string(),
                 symbol: "mesh_mobile_echo".to_string(),
+                max_input: 16_782_000,
+                max_output: 1_048_576,
+                binding_audience: crate::ExportBindingAudience::All,
             }]);
             codegen.compile(&mir).unwrap();
             let ir = codegen.get_llvm_ir();
@@ -1349,6 +1465,7 @@ mod tests {
                 "{ir}"
             );
             assert!(ir.contains("call i32 @mesh_library_invoke"), "{ir}");
+            assert!(ir.contains("i64 16782000, i64 1048576"), "{ir}");
             assert!(
                 ir.contains("define internal void @__mesh_library_entry_mesh_mobile_echo(ptr")
                     && ir.contains("store ptr"),

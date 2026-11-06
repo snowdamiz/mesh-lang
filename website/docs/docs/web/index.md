@@ -25,7 +25,33 @@ fn main() do
 end
 ```
 
-The server listens on the specified port and dispatches incoming requests to the matching handler function. Each handler receives a `Request` and returns a `Response`.
+The server listens on the specified port and dispatches incoming requests to the matching handler function. Each handler receives a `Request` and returns a `Response`. When `HTTP.serve` or `HTTP.serve_tls` runs inside an actor, idle accept waits and graceful shutdown draining yield to other actors, including on a single scheduler worker. Calling either function from the main thread still keeps that thread in the serving loop until shutdown.
+
+### Binding an interface
+
+`HTTP.serve` and `HTTP.serve_tls` listen on the IPv6 wildcard address `[::]`. `Ws.serve` and `Ws.serve_tls` listen on the IPv4 wildcard address `0.0.0.0`. To select an interface explicitly, pass its IP literal before the port:
+
+```mesh
+fn handler(_request) do
+  HTTP.response(200, "Local server")
+end
+
+fn main() do
+  let router = HTTP.router() |> HTTP.on_get("/", handler)
+  HTTP.serve_on(router, "127.0.0.1", 8080)
+end
+```
+
+| Function | Arguments |
+| --- | --- |
+| `HTTP.serve_on` | `(router, address, port)` |
+| `HTTP.serve_tls_on` | `(router, address, port, certificate_path, key_path)` |
+| `Ws.serve_on` | `(on_connect, on_message, on_close, address, port)` |
+| `Ws.serve_tls_on` | `(on_connect, on_message, on_close, address, port, certificate_path, key_path)` |
+
+The address is a `String` containing an unbracketed IPv4 or IPv6 literal, such as `"127.0.0.1"` or `"::1"`. Hostnames, embedded ports, whitespace and interface zone IDs are rejected; no DNS lookup or wildcard fallback occurs. Use `"0.0.0.0"` or `"::"` explicitly to listen on every interface for that address family. Ports are `Int` values from 0 through 65535; port 0 asks the operating system to choose an ephemeral port.
+
+These functions return `()`, matching the existing server APIs. Invalid bind input prints a diagnostic and returns without starting a listener. Bind failures or unreadable TLS certificate/key files are also reported and return without serving. HTTP keeps the calling thread in the accept loop until shutdown; WebSocket returns after starting its accept thread. TLS negotiation, callbacks and graceful shutdown follow the corresponding `serve` or `serve_tls` behavior.
 
 ### Creating Responses
 
@@ -490,6 +516,7 @@ end
 | `WsClient.heartbeat_timeout(options, ms)` | `Int` | Set the ping/pong liveness timeout |
 | `WsClient.max_message_bytes(options, bytes)` | `Int` | Bound inbound and outbound text or binary messages, including fragments |
 | `WsClient.queue_capacity(options, messages)` | `Int` | Bound unread inbound messages |
+| `WsClient.header(options, name, value)` | `Result<Int, String>` | Add a bounded handshake header; failure leaves the options unchanged |
 | `WsClient.connect(url, options)` | `Result<Int, String>` | Connect, consume the options handle, and return a connection handle |
 | `WsClient.send_text(connection, text)` | `Result<Unit, String>` | Send a masked text frame |
 | `WsClient.send_bytes(connection, bytes)` | `Result<Unit, String>` | Send a masked binary frame |
@@ -498,6 +525,15 @@ end
 | `WsClient.reconnect_delay(attempt, base_ms, max_ms, jitter_ppm)` | `Result<Int, String>` | Return a bounded exponential backoff delay in milliseconds, with jitter |
 
 Options default to a 10-second connect timeout, 30-second heartbeat timeout, 1 MiB message limit, and 256-message queue. Connect timeouts must be 1–120,000 ms, heartbeat timeouts 1,000–300,000 ms, message limits 1 byte–16 MiB, and queue capacities 1–65,536. Setters retain the fluent handle; `connect` performs validation and consumes it.
+
+Handshake headers can carry native client authorization without putting credentials in a URL:
+
+```mesh
+let options = WsClient.header(WsClient.options(), "Authorization", authorization)?
+let connection = WsClient.connect("wss://example.com/feed", options)?
+```
+
+Custom headers are limited to 16 unique case-insensitive names and 8,192 total bytes, including framing. Names must be ASCII HTTP tokens of 1–64 bytes; values must be printable ASCII of 1–4,096 bytes. CRLF, other controls, duplicate names, and headers controlled by the upgrade or HTTP framing (`Host`, `Connection`, `Upgrade`, `Sec-WebSocket-*`, `Content-Length`, `Transfer-Encoding`, and proxy framing/authentication fields) are refused. Errors do not echo header values. A consumed or invalid options handle is refused. The client requires an actual 101 upgrade and does not follow redirects, so authorization is never replayed to a redirect target. Use `wss://` for authorization over the network; it verifies the server certificate before sending the upgrade.
 
 `WsMessage` has four fields:
 
@@ -566,16 +602,37 @@ end
 | `Http.query(req, key, value)` | Add a percent-encoded query parameter |
 | `Http.body(req, value)` | Set a POST, PUT, or PATCH body |
 | `Http.body_bytes(req, value)` | Set a byte-exact POST, PUT, or PATCH body |
+| `Http.trust_root_pem(req, pem)` | Select request-specific X509 trust anchors from bounded PEM `Bytes` |
 | `Http.json(req, value)` | Set a body and the JSON content type |
 | `Http.timeout(req, ms)` | Set the total timeout |
 | `Http.stage_timeout(req, stage, ms)` | Set `:resolve`, `:connect`, `:send`, `:first_byte`, or `:body` timeout |
 | `Http.max_redirects(req, count)` | Set the request-local redirect limit; `0` disables redirects |
 | `Http.max_response_bytes(req, bytes)` | Set the buffered or streamed response limit |
+| `Http.url_origin(url)` | Parse an absolute HTTP(S) URL without network I/O; return `Result<String, String>` containing its normalized scheme, host and non-default port |
 | `Http.send(req)` | Yield while executing; return `Result<HttpResponse, String>` |
 
 `HttpResponse` has `status`, `body`, `body_bytes`, and `headers` fields. `body_bytes` always preserves the exact response bytes; `body` is empty when the payload is not valid UTF-8. HTTP status errors such as 404 are successful protocol responses and therefore return `Ok`; inspect `status`. Network, timeout, and body-limit failures return `Err`.
 
+HEAD responses and statuses without content (including 204, 205 and 304) have empty `body` and `body_bytes`, even if `Content-Encoding` or `Content-Length` describes the representation. Their headers remain available. Streaming these responses completes without calling the chunk callback. This follows [HTTP content semantics](https://www.rfc-editor.org/rfc/rfc9110.html#section-6.4.1).
+
 Timeouts must be between 1 and 120,000 milliseconds. Requests follow the HTTP client's default of up to 10 redirects unless `Http.max_redirects` sets a request-local limit from 0 through 20. Responses default to an 8 MiB limit and cannot be configured above 64 MiB.
+
+### Explicit HTTPS Trust Roots
+
+For a private HTTPS service, `Http.trust_root_pem(request, pem_bytes)` selects the supplied certificates as that request's trust anchors. They **replace** the default webPKI root set. Other requests and client handles retain their existing trust policy. Use roots obtained from trusted deployment configuration, rather than roots supplied by a remote response or an untrusted caller.
+
+The bundle must contain one through eight complete `CERTIFICATE` PEM blocks and at most 65,536 bytes. Each certificate must parse as an X509 trust anchor. Private-key blocks, unrelated text and malformed certificates poison the request builder: `Http.send` returns an `INVALID_TLS_ROOTS:` error before network I/O. A later valid configuration does not clear an earlier builder error. Repeated valid calls replace the previously selected roots.
+
+Explicit-root requests require HTTPS. Standard certificate-chain, server-name and server-certificate validity checks remain enabled, including for redirects. `Http.send_with` and streaming use the same policy. An explicit-root request uses its own connection pool, so it cannot reuse a connection authenticated under another root policy. This means an explicit-root call does not reuse a client handle's existing keep-alive connection.
+
+```mesh
+fn private_request(root_pem :: Bytes) -> Int do
+  Http.build(:get, "https://private.example/status")
+    |> Http.trust_root_pem(root_pem)
+    |> Http.max_redirects(0)
+    |> Http.max_response_bytes(4096)
+end
+```
 
 ### POST Requests
 

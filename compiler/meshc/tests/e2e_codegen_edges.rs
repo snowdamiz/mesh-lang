@@ -2358,7 +2358,8 @@ fn keep(e :: BinaryError) -> Fun() -> BinaryError do
 end
 
 fn main() do
-  case BytesBuilder.new(100000) do
+  # Exceed the current 1 MiB limit so this still exercises the opaque error.
+  case BytesBuilder.new(1048577) do
     Ok(_) -> println("built")
     Err(e) -> do
       let again = keep(e)
@@ -2787,4 +2788,102 @@ end
             stderr(&output)
         );
     }
+}
+
+/// Shortening must keep an implicit multiline arm's next delimiter. Explicit
+/// blocks and `when` guards still permit bare identity arms. The final `Refuse`
+/// in `guarded` is a legitimate body expression, not a new arm.
+#[test]
+fn identity_arm_lint_preserves_multiline_boundaries_at_runtime() {
+    let source = r##"type Action do
+  Fetch(part :: Int)
+  Refuse
+  Done
+  PublishReady
+end
+
+fn selected(action :: Action) -> Action do
+  case action do
+    Fetch(part) ->
+      if part > 0 do
+        Fetch(part + 1)
+      else
+        Refuse
+      end
+    Refuse -> Refuse
+    Done
+    PublishReady
+  end
+end
+
+fn explicit(action :: Action) -> Action do
+  case action do
+    Fetch(part) -> do
+      if part > 0 do
+        Fetch(part + 1)
+      else
+        Refuse
+      end
+    end
+    Refuse
+    Done
+    PublishReady
+  end
+end
+
+fn guarded(action :: Action, ready :: Bool) -> Action do
+  case action do
+    Fetch(part) ->
+      let observed = part
+      Refuse
+    Refuse when ready
+    Refuse
+    Done
+    PublishReady
+  end
+end
+
+fn label(action :: Action) -> String do
+  case action do
+    Fetch(part) -> "fetch/#{part}"
+    Refuse -> "refuse"
+    Done -> "done"
+    PublishReady -> "publish"
+  end
+end
+
+fn main() do
+  for action in [Fetch(0), Fetch(3), Refuse, Done, PublishReady] do
+    println(label(selected(action)))
+    println(label(explicit(action)))
+    println(label(guarded(action, true)))
+  end
+end
+"##;
+    let (_guard, project_dir) = project(source);
+    let lint = Command::new(artifacts::meshc_bin())
+        .args(["lint", project_dir.join("main.mpl").to_str().unwrap()])
+        .output()
+        .expect("lint source");
+    assert!(
+        lint.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&lint.stdout),
+        stderr(&lint)
+    );
+    let built = meshc_build(&project_dir, &[])
+        .output()
+        .expect("compile source");
+    assert!(
+        built.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&built.stdout),
+        stderr(&built)
+    );
+    let run = Command::new(project_dir.join("project"))
+        .output()
+        .expect("run source");
+    assert!(run.status.success(), "{}", stderr(&run));
+    assert_eq!(String::from_utf8_lossy(&run.stdout),
+        "refuse\nrefuse\nrefuse\nfetch/4\nfetch/4\nrefuse\nrefuse\nrefuse\nrefuse\ndone\ndone\ndone\npublish\npublish\npublish\n");
 }

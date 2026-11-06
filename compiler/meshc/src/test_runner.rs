@@ -159,10 +159,12 @@ fn write_file(path: &Path, contents: impl AsRef<[u8]>) -> Result<(), String> {
 /// Run tests from the current project, a project root, a test directory, or a specific test file.
 ///
 /// - `target`: optional project root, directory, or specific `*.test.mpl` file.
+/// - `opt_level`: optimization applied to each test binary, as with `meshc build`.
 /// - `quiet`: compact output (a dot per passing test instead of its name).
 /// - `coverage`: currently unsupported and returns an explicit error.
 pub fn run_tests(
     target: Option<&Path>,
+    opt_level: u8,
     quiet: bool,
     coverage: bool,
 ) -> Result<TestSummary, String> {
@@ -238,7 +240,7 @@ pub fn run_tests(
         };
         let compile_result = crate::build(
             tmp_dir.path(),
-            0,     // opt_level: debug
+            opt_level,
             false, // emit_llvm
             Some(&bin_path),
             None, // target: native

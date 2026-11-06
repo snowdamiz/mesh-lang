@@ -30,6 +30,12 @@ fn register_wide_integer(env: &mut TypeEnv, prefix: &str, ty: Ty) {
             Scheme::mono(Ty::fun(vec![ty.clone(), ty.clone()], result())),
         );
     }
+    if matches!(prefix, "u64" | "u128") {
+        env.insert(
+            format!("{prefix}_multiply_divide"),
+            Scheme::mono(Ty::fun(vec![ty.clone(), ty.clone(), ty.clone()], result())),
+        );
+    }
     env.insert(
         format!("{prefix}_to_int"),
         Scheme::mono(Ty::fun(
@@ -41,6 +47,40 @@ fn register_wide_integer(env: &mut TypeEnv, prefix: &str, ty: Ty) {
         format!("{prefix}_to_string"),
         Scheme::mono(Ty::fun(vec![ty], Ty::string())),
     );
+}
+
+pub(crate) fn ohttp_functions() -> Vec<(&'static str, Scheme)> {
+    let result = |value| Ty::result(value, Ty::crypto_error());
+    vec![
+        (
+            "encapsulate_request",
+            Scheme::mono(Ty::fun(
+                vec![Ty::int(), Ty::x25519_public_key(), Ty::bytes()],
+                result(Ty::ohttp_request()),
+            )),
+        ),
+        (
+            "decapsulate_request",
+            Scheme::mono(Ty::fun(
+                vec![Ty::x25519_private_key(), Ty::int(), Ty::bytes()],
+                result(Ty::ohttp_request_opening()),
+            )),
+        ),
+        (
+            "encapsulate_response",
+            Scheme::mono(Ty::fun(
+                vec![Ty::ohttp_gateway_context(), Ty::bytes()],
+                result(Ty::bytes()),
+            )),
+        ),
+        (
+            "decapsulate_response",
+            Scheme::mono(Ty::fun(
+                vec![Ty::ohttp_client_context(), Ty::bytes()],
+                result(Ty::bytes()),
+            )),
+        ),
+    ]
 }
 
 pub(crate) fn crypto_functions() -> Vec<(&'static str, Scheme)> {
@@ -75,6 +115,32 @@ pub(crate) fn crypto_functions() -> Vec<(&'static str, Scheme)> {
             )),
         ),
         (
+            "hmac_sha512_tag",
+            Scheme::mono(Ty::fun(
+                vec![Ty::secret_bytes(), Ty::bytes()],
+                crypto_result(Ty::bytes()),
+            )),
+        ),
+        (
+            "hmac_sha256_tag",
+            Scheme::mono(Ty::fun(
+                vec![Ty::secret_bytes(), Ty::bytes()],
+                crypto_result(Ty::bytes()),
+            )),
+        ),
+        (
+            "hkdf_sha256_secret_salt",
+            Scheme::mono(Ty::fun(
+                vec![
+                    Ty::secret_bytes(),
+                    Ty::secret_bytes(),
+                    Ty::bytes(),
+                    Ty::int(),
+                ],
+                crypto_result(Ty::secret_bytes()),
+            )),
+        ),
+        (
             "hkdf_sha256",
             Scheme::mono(Ty::fun(
                 vec![Ty::secret_bytes(), Ty::bytes(), Ty::bytes(), Ty::int()],
@@ -93,6 +159,64 @@ pub(crate) fn crypto_functions() -> Vec<(&'static str, Scheme)> {
                     Ty::int(),
                 ],
                 crypto_result(Ty::secret_bytes()),
+            )),
+        ),
+        (
+            "blind_rsa_generate",
+            Scheme::mono(Ty::fun(vec![], crypto_result(Ty::blind_rsa_secret_key()))),
+        ),
+        (
+            "blind_rsa_from_secret",
+            Scheme::mono(Ty::fun(
+                vec![Ty::secret_bytes()],
+                crypto_result(Ty::blind_rsa_secret_key()),
+            )),
+        ),
+        (
+            "blind_rsa_public",
+            Scheme::mono(Ty::fun(
+                vec![Ty::blind_rsa_secret_key()],
+                crypto_result(Ty::blind_rsa_public_key()),
+            )),
+        ),
+        (
+            "blind_rsa_public_from_spki",
+            Scheme::mono(Ty::fun(
+                vec![Ty::bytes()],
+                crypto_result(Ty::blind_rsa_public_key()),
+            )),
+        ),
+        (
+            "blind_rsa_blind",
+            Scheme::mono(Ty::fun(
+                vec![Ty::blind_rsa_public_key(), Ty::bytes()],
+                crypto_result(Ty::blind_rsa_blinded()),
+            )),
+        ),
+        (
+            "blind_rsa_sign",
+            Scheme::mono(Ty::fun(
+                vec![Ty::blind_rsa_secret_key(), Ty::bytes()],
+                crypto_result(Ty::bytes()),
+            )),
+        ),
+        (
+            "blind_rsa_finalize",
+            Scheme::mono(Ty::fun(
+                vec![
+                    Ty::blind_rsa_public_key(),
+                    Ty::bytes(),
+                    Ty::bytes(),
+                    Ty::blind_rsa_blinding_state(),
+                ],
+                crypto_result(Ty::bytes()),
+            )),
+        ),
+        (
+            "blind_rsa_verify",
+            Scheme::mono(Ty::fun(
+                vec![Ty::blind_rsa_public_key(), Ty::bytes(), Ty::bytes()],
+                crypto_result(Ty::bool()),
             )),
         ),
         (
@@ -176,6 +300,55 @@ pub(crate) fn crypto_functions() -> Vec<(&'static str, Scheme)> {
             )),
         ),
         (
+            "mlkem_validate_public_parts",
+            Scheme::mono(Ty::fun(
+                vec![Ty::mlkem_header64(), Ty::mlkem_public_vector1152()],
+                crypto_result(Ty::Tuple(vec![])),
+            )),
+        ),
+        (
+            "mlkem_public_parts",
+            Scheme::mono(Ty::fun(
+                vec![Ty::mlkem_private_key()],
+                crypto_result(Ty::Tuple(vec![
+                    Ty::mlkem_header64(),
+                    Ty::mlkem_public_vector1152(),
+                ])),
+            )),
+        ),
+        (
+            "mlkem_encapsulate1",
+            Scheme::mono(Ty::fun(
+                vec![Ty::mlkem_header64()],
+                crypto_result(Ty::Tuple(vec![
+                    Ty::mlkem_encapsulation_state(),
+                    Ty::mlkem_ciphertext1_960(),
+                    Ty::secret_bytes(),
+                ])),
+            )),
+        ),
+        (
+            "mlkem_encapsulate2",
+            Scheme::mono(Ty::fun(
+                vec![
+                    Ty::mlkem_encapsulation_state(),
+                    Ty::mlkem_public_vector1152(),
+                ],
+                crypto_result(Ty::mlkem_ciphertext2_128()),
+            )),
+        ),
+        (
+            "mlkem_decapsulate_parts",
+            Scheme::mono(Ty::fun(
+                vec![
+                    Ty::mlkem_private_key(),
+                    Ty::mlkem_ciphertext1_960(),
+                    Ty::mlkem_ciphertext2_128(),
+                ],
+                crypto_result(Ty::secret_bytes()),
+            )),
+        ),
+        (
             "mlkem_generate",
             Scheme::mono(Ty::fun(vec![], crypto_result(Ty::mlkem_key_pair()))),
         ),
@@ -240,6 +413,10 @@ pub(crate) fn crypto_functions() -> Vec<(&'static str, Scheme)> {
             )),
         ),
         (
+            "ed25519_is_on_curve",
+            Scheme::mono(Ty::fun(vec![Ty::bytes()], crypto_result(Ty::bool()))),
+        ),
+        (
             "aead_key",
             Scheme::mono(Ty::fun(
                 vec![Ty::secret_bytes()],
@@ -255,6 +432,20 @@ pub(crate) fn crypto_functions() -> Vec<(&'static str, Scheme)> {
         ),
         (
             "aead_open",
+            Scheme::mono(Ty::fun(
+                vec![Ty::aead_key(), Ty::bytes(), Ty::bytes(), Ty::bytes()],
+                crypto_result(Ty::bytes()),
+            )),
+        ),
+        (
+            "xchacha20poly1305_seal",
+            Scheme::mono(Ty::fun(
+                vec![Ty::aead_key(), Ty::bytes(), Ty::bytes(), Ty::bytes()],
+                crypto_result(Ty::bytes()),
+            )),
+        ),
+        (
+            "xchacha20poly1305_open",
             Scheme::mono(Ty::fun(
                 vec![Ty::aead_key(), Ty::bytes(), Ty::bytes(), Ty::bytes()],
                 crypto_result(Ty::bytes()),
@@ -336,6 +527,33 @@ pub fn register_builtins(
         "print".into(),
         Scheme::mono(Ty::fun(vec![Ty::string()], Ty::Tuple(vec![]))),
     );
+
+    // The flow checker validates the literal review reason and records every
+    // direct or piped site; lowering is identity, without a runtime ABI.
+    {
+        let value = TyVar(98999);
+        env.insert(
+            "declassify".into(),
+            Scheme {
+                vars: vec![value],
+                ty: Ty::fun(vec![Ty::Var(value), Ty::string()], Ty::Var(value)),
+            },
+        );
+    }
+    // Reviewing Ok/Err selection leaves both payload types and ownership intact.
+    // The flow pass validates the reason and clears only the Result tag path.
+    {
+        let success = TyVar(98997);
+        let failure = TyVar(98998);
+        let result = Ty::result(Ty::Var(success), Ty::Var(failure));
+        env.insert(
+            "declassify_discriminant".into(),
+            Scheme {
+                vars: vec![success, failure],
+                ty: Ty::fun(vec![result.clone(), Ty::string()], result),
+            },
+        );
+    }
 
     // ── Default protocol: static trait method ──────────────────────
     //
@@ -520,6 +738,20 @@ pub fn register_builtins(
         )),
     );
     env.insert(
+        "file_read_bytes_v2".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string(), Ty::int(), Ty::int(), Ty::int()],
+            Ty::result(Ty::bytes(), Ty::string()),
+        )),
+    );
+    env.insert(
+        "file_write_bytes_v2".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string(), Ty::int(), Ty::bytes(), Ty::bool(), Ty::int()],
+            Ty::result(Ty::Tuple(vec![]), Ty::string()),
+        )),
+    );
+    env.insert(
         "file_size".into(),
         Scheme::mono(Ty::fun(
             vec![Ty::string()],
@@ -546,6 +778,21 @@ pub fn register_builtins(
     );
     env.insert(
         "file_delete".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string()],
+            Ty::result(Ty::Tuple(vec![]), Ty::string()),
+        )),
+    );
+
+    env.insert(
+        "file_rename".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string(), Ty::string()],
+            Ty::result(Ty::Tuple(vec![]), Ty::string()),
+        )),
+    );
+    env.insert(
+        "file_sync".into(),
         Scheme::mono(Ty::fun(
             vec![Ty::string()],
             Ty::result(Ty::Tuple(vec![]), Ty::string()),
@@ -676,6 +923,13 @@ pub fn register_builtins(
         Scheme::mono(Ty::fun(vec![Ty::bytes(), Ty::bytes()], bytes_result())),
     );
     env.insert(
+        "bytes_concat_many".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::list(Ty::bytes()), Ty::int()],
+            checked_bytes_result(),
+        )),
+    );
+    env.insert(
         "bytes_secure_equals".into(),
         Scheme::mono(Ty::fun(vec![Ty::bytes(), Ty::bytes()], Ty::bool())),
     );
@@ -798,6 +1052,34 @@ pub fn register_builtins(
             Ty::result(Ty::secret_bytes(), Ty::crypto_error()),
         )),
     );
+
+    env.insert(
+        "recovery_code_generate".into(),
+        Scheme::mono(Ty::fun(
+            vec![],
+            Ty::result(
+                Ty::Tuple(vec![Ty::secret_bytes(), Ty::string()]),
+                Ty::crypto_error(),
+            ),
+        )),
+    );
+    env.insert(
+        "recovery_code_parse".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string()],
+            Ty::result(Ty::secret_bytes(), Ty::crypto_error()),
+        )),
+    );
+    env.insert(
+        "secret_split_at".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::secret_bytes(), Ty::int()],
+            Ty::result(
+                Ty::Tuple(vec![Ty::secret_bytes(), Ty::secret_bytes()]),
+                Ty::crypto_error(),
+            ),
+        )),
+    );
     env.insert(
         "storage_key_ephemeral".into(),
         Scheme::mono(Ty::fun(
@@ -812,6 +1094,20 @@ pub fn register_builtins(
             Ty::result(Ty::storage_key(), Ty::crypto_error()),
         )),
     );
+    env.insert(
+        "storage_key_file".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string()],
+            Ty::result(Ty::storage_key(), Ty::crypto_error()),
+        )),
+    );
+    env.insert(
+        "storage_key_index_tag".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::storage_key(), Ty::bytes(), Ty::bytes()],
+            Ty::result(Ty::bytes(), Ty::crypto_error()),
+        )),
+    );
     for name in ["storage_key_seal_bytes", "storage_key_unseal_bytes"] {
         env.insert(
             name.into(),
@@ -821,8 +1117,44 @@ pub fn register_builtins(
             )),
         );
     }
+    env.insert(
+        "hash_preimage_generate".into(),
+        Scheme::mono(Ty::fun(
+            vec![],
+            Ty::result(Ty::hash_preimage(), Ty::crypto_error()),
+        )),
+    );
+    for name in ["hash_preimage_commitment", "hash_preimage_reveal"] {
+        env.insert(
+            name.into(),
+            Scheme::mono(Ty::fun(
+                vec![Ty::hash_preimage()],
+                Ty::result(Ty::bytes(), Ty::crypto_error()),
+            )),
+        );
+    }
     for (name, input, output) in [
+        (
+            "hash_preimage_seal_for_storage",
+            Ty::hash_preimage(),
+            Ty::bytes(),
+        ),
+        (
+            "mlkem_encapsulation_state_seal_for_storage",
+            Ty::mlkem_encapsulation_state(),
+            Ty::bytes(),
+        ),
         ("secret_seal_for_storage", Ty::secret_bytes(), Ty::bytes()),
+        (
+            "blind_rsa_secret_key_seal_for_storage",
+            Ty::blind_rsa_secret_key(),
+            Ty::bytes(),
+        ),
+        (
+            "blind_rsa_blinding_state_seal_for_storage",
+            Ty::blind_rsa_blinding_state(),
+            Ty::bytes(),
+        ),
         ("secret_map_seal_for_storage", Ty::secret_map(), Ty::bytes()),
         (
             "signing_private_key_seal_for_storage",
@@ -849,7 +1181,20 @@ pub fn register_builtins(
         );
     }
     for (name, output) in [
+        ("hash_preimage_unseal_from_storage", Ty::hash_preimage()),
+        (
+            "mlkem_encapsulation_state_unseal_from_storage",
+            Ty::mlkem_encapsulation_state(),
+        ),
         ("secret_unseal_from_storage", Ty::secret_bytes()),
+        (
+            "blind_rsa_secret_key_unseal_from_storage",
+            Ty::blind_rsa_secret_key(),
+        ),
+        (
+            "blind_rsa_blinding_state_unseal_from_storage",
+            Ty::blind_rsa_blinding_state(),
+        ),
         ("secret_map_unseal_from_storage", Ty::secret_map()),
         (
             "signing_private_key_unseal_from_storage",
@@ -926,6 +1271,9 @@ pub fn register_builtins(
 
     // ── Standard library: Crypto V2 functions ──────────────────────────────
 
+    for (name, scheme) in ohttp_functions() {
+        env.insert(format!("ohttp_{name}"), scheme);
+    }
     for (name, scheme) in crypto_functions() {
         env.insert(format!("crypto_{name}"), scheme);
     }
@@ -1021,6 +1369,13 @@ pub fn register_builtins(
         Scheme::mono(Ty::fun(vec![dt_t.clone()], Ty::int())),
     );
     // DateTime.add(dt, n, unit) -> DateTime
+    env.insert(
+        "datetime_add_months".into(),
+        Scheme::mono(Ty::fun(
+            vec![dt_t.clone(), Ty::int()],
+            Ty::result(dt_t.clone(), Ty::string()),
+        )),
+    );
     // The unit parameter uses Atom type (e.g. :day, :hour) — Atom resolves to String at MIR level.
     let atom_t = Ty::Con(TyCon::new("Atom"));
     env.insert(
@@ -1118,6 +1473,13 @@ pub fn register_builtins(
     let http_atom_t = Ty::Con(TyCon::new("Atom"));
 
     // Http.build(:method_atom, url) -> Request (Int handle)
+    env.insert(
+        "http_url_origin".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string()],
+            Ty::result(Ty::string(), Ty::string()),
+        )),
+    );
     // First arg is Atom (e.g. :get, :post) — Atom resolves to String at MIR level.
     env.insert(
         "http_build".into(),
@@ -1141,6 +1503,13 @@ pub fn register_builtins(
     );
     env.insert(
         "http_body_bytes".into(),
+        Scheme::mono(Ty::fun(
+            vec![http_req_t.clone(), Ty::bytes()],
+            http_req_t.clone(),
+        )),
+    );
+    env.insert(
+        "http_trust_root_pem".into(),
         Scheme::mono(Ty::fun(
             vec![http_req_t.clone(), Ty::bytes()],
             http_req_t.clone(),
@@ -1256,6 +1625,13 @@ pub fn register_builtins(
 
     // ── Scheduler-aware WebSocket client ─────────────────────────────────
     let ws_message_t = Ty::Con(TyCon::new("WsMessage"));
+    env.insert(
+        "lightning_invoice_details".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string()],
+            Ty::result(Ty::bytes(), Ty::string()),
+        )),
+    );
     env.insert("WsMessage".into(), Scheme::mono(ws_message_t.clone()));
     env.insert(
         "ws_client_options".into(),
@@ -1272,6 +1648,13 @@ pub fn register_builtins(
             Scheme::mono(Ty::fun(vec![Ty::int(), Ty::int()], Ty::int())),
         );
     }
+    env.insert(
+        "ws_client_header".into(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::int(), Ty::string(), Ty::string()],
+            Ty::result(Ty::int(), Ty::string()),
+        )),
+    );
     env.insert(
         "ws_client_connect".into(),
         Scheme::mono(Ty::fun(
@@ -1935,6 +2318,26 @@ pub fn register_builtins(
             Ty::Tuple(vec![]),
         )),
     );
+    env.insert(
+        "http_serve_on".into(),
+        Scheme::mono(Ty::fun(
+            vec![router_t.clone(), Ty::string(), Ty::int()],
+            Ty::Tuple(vec![]),
+        )),
+    );
+    env.insert(
+        "http_serve_tls_on".into(),
+        Scheme::mono(Ty::fun(
+            vec![
+                router_t.clone(),
+                Ty::string(),
+                Ty::int(),
+                Ty::string(),
+                Ty::string(),
+            ],
+            Ty::Tuple(vec![]),
+        )),
+    );
     // HTTP.serve_tls(Router, Int, String, String) -> () (Phase 56)
     env.insert(
         "http_serve_tls".into(),
@@ -2094,6 +2497,34 @@ pub fn register_builtins(
                 sqlite_conn_t.clone(),
                 Ty::string(),
                 Ty::list(Ty::db_value()),
+            ],
+            Ty::result(
+                Ty::list(Ty::map(Ty::string(), Ty::db_value())),
+                Ty::string(),
+            ),
+        )),
+    );
+
+    env.insert(
+        "sqlite_execute_values_v2".into(),
+        Scheme::mono(Ty::fun(
+            vec![
+                sqlite_conn_t.clone(),
+                Ty::string(),
+                Ty::list(Ty::db_value()),
+                Ty::int(),
+            ],
+            Ty::result(Ty::int(), Ty::string()),
+        )),
+    );
+    env.insert(
+        "sqlite_query_values_v2".into(),
+        Scheme::mono(Ty::fun(
+            vec![
+                sqlite_conn_t.clone(),
+                Ty::string(),
+                Ty::list(Ty::db_value()),
+                Ty::int(),
             ],
             Ty::result(
                 Ty::list(Ty::map(Ty::string(), Ty::db_value())),
@@ -2360,8 +2791,8 @@ pub fn register_builtins(
     // These builtins are available in ALL .mpl source files (not just .test.mpl).
     // They're registered globally so typeck doesn't reject them. The lowerer
     // (mesh-codegen) intercepts them in test mode and expands them to proper
-    // mesh_test_assert_* runtime calls. In non-test mode they're mapped to
-    // the runtime functions via map_builtin_name (no-op unless is_test_mode).
+    // mesh_test_assert_* runtime calls. A normal build reports that these
+    // test-only functions require `meshc test`; it never silently drops them.
     let unit_t = Ty::Tuple(vec![]);
     let bool_t = Ty::bool();
     let str_t = Ty::string();
@@ -2426,6 +2857,19 @@ pub fn register_builtins(
         "test_fail_msg".into(),
         Scheme::mono(Ty::fun(vec![str_t.clone()], unit_t.clone())),
     );
+
+    // Internal generated test step observer. Lowering checks Result's tag,
+    // destroys owned payloads, then uses the existing fixed failure signal.
+    let outcome = TyVar(99020);
+    if _ctx.test_builtins {
+        env.insert(
+            "__test_check_result".into(),
+            Scheme {
+                vars: vec![outcome],
+                ty: Ty::fun(vec![Ty::Var(outcome)], unit_t.clone()),
+            },
+        );
+    }
 
     // test_run_body(body: fn() -> Unit) -> Unit
     // (used by the generated harness in fn main())

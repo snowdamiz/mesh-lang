@@ -143,6 +143,10 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             mesh_rt::bytes::mesh_bytes_concat as *const (),
         ),
         (
+            "mesh_bytes_concat_many",
+            mesh_rt::bytes::mesh_bytes_concat_many as *const (),
+        ),
+        (
             "mesh_bytes_empty",
             mesh_rt::bytes::mesh_bytes_empty as *const (),
         ),
@@ -423,6 +427,46 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             mesh_rt::crypto::mesh_crypto_aead_seal as *const (),
         ),
         (
+            "mesh_crypto_xchacha20poly1305_seal",
+            mesh_rt::crypto::mesh_crypto_xchacha20poly1305_seal as *const (),
+        ),
+        (
+            "mesh_crypto_xchacha20poly1305_open",
+            mesh_rt::crypto::mesh_crypto_xchacha20poly1305_open as *const (),
+        ),
+        (
+            "mesh_crypto_blind_rsa_generate",
+            mesh_rt::crypto::mesh_crypto_blind_rsa_generate as *const (),
+        ),
+        (
+            "mesh_crypto_blind_rsa_from_secret",
+            mesh_rt::crypto::mesh_crypto_blind_rsa_from_secret as *const (),
+        ),
+        (
+            "mesh_crypto_blind_rsa_public",
+            mesh_rt::crypto::mesh_crypto_blind_rsa_public as *const (),
+        ),
+        (
+            "mesh_crypto_blind_rsa_public_from_spki",
+            mesh_rt::crypto::mesh_crypto_blind_rsa_public_from_spki as *const (),
+        ),
+        (
+            "mesh_crypto_blind_rsa_blind",
+            mesh_rt::crypto::mesh_crypto_blind_rsa_blind as *const (),
+        ),
+        (
+            "mesh_crypto_blind_rsa_sign",
+            mesh_rt::crypto::mesh_crypto_blind_rsa_sign as *const (),
+        ),
+        (
+            "mesh_crypto_blind_rsa_finalize",
+            mesh_rt::crypto::mesh_crypto_blind_rsa_finalize as *const (),
+        ),
+        (
+            "mesh_crypto_blind_rsa_verify",
+            mesh_rt::crypto::mesh_crypto_blind_rsa_verify as *const (),
+        ),
+        (
             "mesh_crypto_argon2id",
             mesh_rt::crypto::mesh_crypto_argon2id as *const (),
         ),
@@ -431,8 +475,24 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             mesh_rt::crypto::mesh_crypto_hkdf_sha256 as *const (),
         ),
         (
+            "mesh_crypto_hkdf_sha256_secret_salt",
+            mesh_rt::crypto::mesh_crypto_hkdf_sha256_secret_salt as *const (),
+        ),
+        (
+            "mesh_crypto_hmac_sha256_tag",
+            mesh_rt::crypto::mesh_crypto_hmac_sha256_tag as *const (),
+        ),
+        (
+            "mesh_secret_split_at",
+            mesh_rt::secret::mesh_secret_split_at as *const (),
+        ),
+        (
             "mesh_crypto_hmac_sha256",
             mesh_rt::crypto::mesh_crypto_hmac_sha256 as *const (),
+        ),
+        (
+            "mesh_crypto_hmac_sha512_tag",
+            mesh_rt::crypto::mesh_crypto_hmac_sha512_tag as *const (),
         ),
         (
             "mesh_crypto_hmac_sha512",
@@ -445,6 +505,22 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
         (
             "mesh_crypto_hpke_open_secret",
             mesh_rt::crypto::mesh_crypto_hpke_open_secret as *const (),
+        ),
+        (
+            "mesh_ohttp_encapsulate_request",
+            mesh_rt::crypto::mesh_ohttp_encapsulate_request as *const (),
+        ),
+        (
+            "mesh_ohttp_decapsulate_request",
+            mesh_rt::crypto::mesh_ohttp_decapsulate_request as *const (),
+        ),
+        (
+            "mesh_ohttp_encapsulate_response",
+            mesh_rt::crypto::mesh_ohttp_encapsulate_response as *const (),
+        ),
+        (
+            "mesh_ohttp_decapsulate_response",
+            mesh_rt::crypto::mesh_ohttp_decapsulate_response as *const (),
         ),
         (
             "mesh_crypto_hpke_seal",
@@ -469,6 +545,26 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
         (
             "mesh_crypto_mlkem_from_seed",
             mesh_rt::crypto::mesh_crypto_mlkem_from_seed as *const (),
+        ),
+        (
+            "mesh_crypto_mlkem_validate_public_parts",
+            mesh_rt::crypto::mesh_crypto_mlkem_validate_public_parts as *const (),
+        ),
+        (
+            "mesh_crypto_mlkem_public_parts",
+            mesh_rt::crypto::mesh_crypto_mlkem_public_parts as *const (),
+        ),
+        (
+            "mesh_crypto_mlkem_encapsulate1",
+            mesh_rt::crypto::mesh_crypto_mlkem_encapsulate1 as *const (),
+        ),
+        (
+            "mesh_crypto_mlkem_encapsulate2",
+            mesh_rt::crypto::mesh_crypto_mlkem_encapsulate2 as *const (),
+        ),
+        (
+            "mesh_crypto_mlkem_decapsulate_parts",
+            mesh_rt::crypto::mesh_crypto_mlkem_decapsulate_parts as *const (),
         ),
         (
             "mesh_crypto_mlkem_generate",
@@ -519,6 +615,10 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             mesh_rt::crypto::mesh_crypto_verify as *const (),
         ),
         (
+            "mesh_crypto_ed25519_is_on_curve",
+            mesh_rt::crypto::mesh_crypto_ed25519_is_on_curve as *const (),
+        ),
+        (
             "mesh_crypto_x25519_from_secret",
             mesh_rt::crypto::mesh_crypto_x25519_from_secret as *const (),
         ),
@@ -541,6 +641,10 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
         (
             "mesh_datetime_add",
             mesh_rt::datetime::mesh_datetime_add as *const (),
+        ),
+        (
+            "mesh_datetime_add_months",
+            mesh_rt::datetime::mesh_datetime_add_months as *const (),
         ),
         (
             "mesh_datetime_after",
@@ -666,17 +770,27 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
         ),
         ("mesh_file_append", mesh_rt::mesh_file_append as *const ()),
         ("mesh_file_delete", mesh_rt::mesh_file_delete as *const ()),
+        ("mesh_file_rename", mesh_rt::mesh_file_rename as *const ()),
+        ("mesh_file_sync", mesh_rt::mesh_file_sync as *const ()),
         ("mesh_file_exists", mesh_rt::mesh_file_exists as *const ()),
         ("mesh_file_read", mesh_rt::mesh_file_read as *const ()),
         (
             "mesh_file_read_bytes",
             mesh_rt::file::mesh_file_read_bytes as *const (),
         ),
+        (
+            "mesh_file_read_bytes_v2",
+            mesh_rt::mesh_file_read_bytes_v2 as *const (),
+        ),
         ("mesh_file_size", mesh_rt::file::mesh_file_size as *const ()),
         ("mesh_file_write", mesh_rt::mesh_file_write as *const ()),
         (
             "mesh_file_write_bytes",
             mesh_rt::file::mesh_file_write_bytes as *const (),
+        ),
+        (
+            "mesh_file_write_bytes_v2",
+            mesh_rt::mesh_file_write_bytes_v2 as *const (),
         ),
         (
             "mesh_float_to_string",
@@ -761,6 +875,10 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             mesh_rt::http::client::mesh_http_build as *const (),
         ),
         (
+            "mesh_http_url_origin",
+            mesh_rt::http::client::mesh_http_url_origin as *const (),
+        ),
+        (
             "mesh_http_cancel",
             mesh_rt::http::client::mesh_http_cancel as *const (),
         ),
@@ -787,6 +905,10 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
         (
             "mesh_http_max_redirects",
             mesh_rt::http::client::mesh_http_max_redirects as *const (),
+        ),
+        (
+            "mesh_http_trust_root_pem",
+            mesh_rt::http::client::mesh_http_trust_root_pem as *const (),
         ),
         (
             "mesh_http_max_response_bytes",
@@ -877,6 +999,22 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
         (
             "mesh_http_send_with",
             mesh_rt::http::client::mesh_http_send_with as *const (),
+        ),
+        (
+            "mesh_http_serve_on",
+            mesh_rt::http::server::mesh_http_serve_on as *const (),
+        ),
+        (
+            "mesh_http_serve_tls_on",
+            mesh_rt::http::server::mesh_http_serve_tls_on as *const (),
+        ),
+        (
+            "mesh_ws_serve_on",
+            mesh_rt::ws::server::mesh_ws_serve_on as *const (),
+        ),
+        (
+            "mesh_ws_serve_tls_on",
+            mesh_rt::ws::server::mesh_ws_serve_tls_on as *const (),
         ),
         ("mesh_http_serve", mesh_rt::mesh_http_serve as *const ()),
         (
@@ -1145,6 +1283,10 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             "mesh_library_invoke",
             mesh_rt::library::mesh_library_invoke as *const (),
         ),
+        (
+            "mesh_library_invoke_bounded",
+            mesh_rt::library::mesh_library_invoke_bounded as *const (),
+        ),
         ("mesh_list_all", mesh_rt::mesh_list_all as *const ()),
         ("mesh_list_any", mesh_rt::mesh_list_any as *const ()),
         ("mesh_list_append", mesh_rt::mesh_list_append as *const ()),
@@ -1349,6 +1491,32 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
         (
             "mesh_migration_rename_column",
             mesh_rt::mesh_migration_rename_column as *const (),
+        ),
+        (
+            "mesh_blind_rsa_secret_key_seal_for_storage",
+            mesh_rt::storage_wrapping::mesh_blind_rsa_secret_key_seal_for_storage as *const (),
+        ),
+        (
+            "mesh_blind_rsa_secret_key_unseal_from_storage",
+            mesh_rt::storage_wrapping::mesh_blind_rsa_secret_key_unseal_from_storage as *const (),
+        ),
+        (
+            "mesh_blind_rsa_blinding_state_seal_for_storage",
+            mesh_rt::storage_wrapping::mesh_blind_rsa_blinding_state_seal_for_storage as *const (),
+        ),
+        (
+            "mesh_blind_rsa_blinding_state_unseal_from_storage",
+            mesh_rt::storage_wrapping::mesh_blind_rsa_blinding_state_unseal_from_storage
+                as *const (),
+        ),
+        (
+            "mesh_mlkem_encapsulation_state_seal_for_storage",
+            mesh_rt::storage_wrapping::mesh_mlkem_encapsulation_state_seal_for_storage as *const (),
+        ),
+        (
+            "mesh_mlkem_encapsulation_state_unseal_from_storage",
+            mesh_rt::storage_wrapping::mesh_mlkem_encapsulation_state_unseal_from_storage
+                as *const (),
         ),
         (
             "mesh_mlkem_private_key_seal_for_storage",
@@ -1585,6 +1753,10 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             mesh_rt::actor::mesh_process_whereis as *const (),
         ),
         (
+            "mesh_process_lookup",
+            mesh_rt::actor::mesh_process_lookup as *const (),
+        ),
+        (
             "mesh_query_fragment",
             mesh_rt::mesh_query_fragment as *const (),
         ),
@@ -1739,6 +1911,14 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
         (
             "mesh_regex_captures",
             mesh_rt::mesh_regex_captures as *const (),
+        ),
+        (
+            "mesh_recovery_code_generate",
+            mesh_rt::secret::mesh_recovery_code_generate as *const (),
+        ),
+        (
+            "mesh_recovery_code_parse",
+            mesh_rt::secret::mesh_recovery_code_parse as *const (),
         ),
         (
             "mesh_regex_compile",
@@ -2048,6 +2228,14 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             mesh_rt::db::sqlite::mesh_sqlite_execute_values as *const (),
         ),
         (
+            "mesh_sqlite_execute_values_v2",
+            mesh_rt::db::sqlite::mesh_sqlite_execute_values_v2 as *const (),
+        ),
+        (
+            "mesh_sqlite_query_values_v2",
+            mesh_rt::db::sqlite::mesh_sqlite_query_values_v2 as *const (),
+        ),
+        (
             "mesh_sqlite_open",
             mesh_rt::db::sqlite::mesh_sqlite_open as *const (),
         ),
@@ -2070,6 +2258,14 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
         (
             "mesh_storage_key_platform",
             mesh_rt::storage_wrapping::mesh_storage_key_platform as *const (),
+        ),
+        (
+            "mesh_storage_key_file",
+            mesh_rt::storage_wrapping::mesh_storage_key_file as *const (),
+        ),
+        (
+            "mesh_storage_key_index_tag",
+            mesh_rt::storage_wrapping::mesh_storage_key_index_tag as *const (),
         ),
         (
             "mesh_storage_key_seal_bytes",
@@ -2257,6 +2453,10 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             mesh_rt::wide_num::mesh_u128_multiply as *const (),
         ),
         (
+            "mesh_u128_multiply_divide",
+            mesh_rt::wide_num::mesh_u128_multiply_divide as *const (),
+        ),
+        (
             "mesh_u128_parse",
             mesh_rt::wide_num::mesh_u128_parse as *const (),
         ),
@@ -2286,6 +2486,10 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             mesh_rt::wide_num::mesh_u64_multiply as *const (),
         ),
         (
+            "mesh_u64_multiply_divide",
+            mesh_rt::wide_num::mesh_u64_multiply_divide as *const (),
+        ),
+        (
             "mesh_u64_parse",
             mesh_rt::wide_num::mesh_u64_parse as *const (),
         ),
@@ -2310,8 +2514,36 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             mesh_rt::ws::rooms::mesh_ws_broadcast_except as *const (),
         ),
         (
+            "mesh_hash_preimage_generate",
+            mesh_rt::hash_preimage::mesh_hash_preimage_generate as *const (),
+        ),
+        (
+            "mesh_hash_preimage_commitment",
+            mesh_rt::hash_preimage::mesh_hash_preimage_commitment as *const (),
+        ),
+        (
+            "mesh_hash_preimage_reveal",
+            mesh_rt::hash_preimage::mesh_hash_preimage_reveal as *const (),
+        ),
+        (
+            "mesh_hash_preimage_seal_for_storage",
+            mesh_rt::storage_wrapping::mesh_hash_preimage_seal_for_storage as *const (),
+        ),
+        (
+            "mesh_hash_preimage_unseal_from_storage",
+            mesh_rt::storage_wrapping::mesh_hash_preimage_unseal_from_storage as *const (),
+        ),
+        (
+            "mesh_lightning_invoice_details",
+            mesh_rt::lightning::mesh_lightning_invoice_details as *const (),
+        ),
+        (
             "mesh_ws_client_close",
             mesh_rt::ws::client::mesh_ws_client_close as *const (),
+        ),
+        (
+            "mesh_ws_client_header",
+            mesh_rt::ws::client::mesh_ws_client_header as *const (),
         ),
         (
             "mesh_ws_client_connect",
@@ -2667,6 +2899,189 @@ mod tests {
     }
 
     #[test]
+    fn extended_nonce_aead_executes_both_public_names_through_the_jit() {
+        // The REPL starts its process-global runtime on its designated thread.
+        // Rust's parallel test threads do not share that thread-local PID.
+        // Isolate the actual JIT execution, rather than inventing a PID fallback.
+        if std::env::var_os("MESH_C4_JIT_RESOURCE_CHILD").is_none() {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "jit::tests::extended_nonce_aead_executes_both_public_names_through_the_jit",
+                    "--nocapture",
+                ])
+                .env("MESH_C4_JIT_RESOURCE_CHILD", "1")
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            assert!(
+                stdout
+                    .lines()
+                    .any(|line| line == "mesh:c4:jit:both-public-names-validated"),
+                "child did not execute both API paths: {stdout}"
+            );
+            assert!(
+                stdout.contains("1 passed; 0 failed"),
+                "child did not run exactly one passing case: {stdout}"
+            );
+            return;
+        }
+        init_runtime();
+        for (seal, open) in [
+            (
+                "Crypto.xchacha20poly1305_seal",
+                "Crypto.xchacha20poly1305_open",
+            ),
+            (
+                "crypto_xchacha20poly1305_seal",
+                "crypto_xchacha20poly1305_open",
+            ),
+        ] {
+            let mut session = ReplSession::new();
+            let definition = format!("fn extended_nonce_probe() -> Int!CryptoError do\nlet key = Crypto.aead_key(Secret.random(32)?)?\nlet nonce = Crypto.random_bytes(24)?\nlet body = Bytes.from_utf8(\"header\")\nlet encrypted = {seal}(key, nonce, Bytes.empty(), body)?\nlet clear = {open}(key, nonce, Bytes.empty(), encrypted)?\nlet refused = case {seal}(key, Bytes.empty(), Bytes.empty(), body) do Err(InvalidLength(expected, actual)) -> expected == 24 && actual == 0 _ -> false end\nOk(if Bytes.secure_equals(clear, body) && refused do 71 else 0 end) end");
+            jit_eval(&definition, &mut session)
+                .unwrap_or_else(|error| panic!("{definition}: {error}"));
+            let result = jit_eval("Result.unwrap_or(extended_nonce_probe(), 0)", &mut session)
+                .unwrap_or_else(|error| panic!("{seal}: {error}"));
+            assert_eq!(result.value, "71", "{seal}");
+            assert_eq!(result.ty, "Int");
+        }
+        let symbols = runtime_symbols();
+        for name in [
+            "mesh_crypto_xchacha20poly1305_seal",
+            "mesh_crypto_xchacha20poly1305_open",
+        ] {
+            assert!(
+                symbols
+                    .iter()
+                    .any(|(registered, pointer)| *registered == name && !pointer.is_null()),
+                "missing runtime symbol {name}"
+            );
+        }
+        println!("\nmesh:c4:jit:both-public-names-validated");
+    }
+
+    #[test]
+    fn blind_rsa_client_errors_execute_through_the_jit() {
+        init_runtime();
+        let mut session = ReplSession::new();
+        for source in [
+            "case Crypto.blind_rsa_public_from_spki(Bytes.empty()) do Err(_) -> 71 Ok(_) -> 0 end",
+            "case crypto_blind_rsa_verify(BlindRsaPublicKey { bytes: Bytes.empty() }, Bytes.empty(), Bytes.empty()) do Err(_) -> 71 Ok(_) -> 0 end",
+        ] {
+            let result = jit_eval(source, &mut session).unwrap_or_else(|error| panic!("{source}: {error}"));
+            assert_eq!(result.value, "71");
+            assert_eq!(result.ty, "Int");
+        }
+    }
+
+    #[test]
+    fn blind_rsa_runtime_symbols_are_registered() {
+        let symbols = runtime_symbols();
+        for name in [
+            "mesh_crypto_blind_rsa_generate",
+            "mesh_crypto_blind_rsa_from_secret",
+            "mesh_crypto_blind_rsa_public",
+            "mesh_crypto_blind_rsa_public_from_spki",
+            "mesh_crypto_blind_rsa_blind",
+            "mesh_crypto_blind_rsa_sign",
+            "mesh_crypto_blind_rsa_finalize",
+            "mesh_crypto_blind_rsa_verify",
+            "mesh_blind_rsa_secret_key_seal_for_storage",
+            "mesh_blind_rsa_secret_key_unseal_from_storage",
+            "mesh_blind_rsa_blinding_state_seal_for_storage",
+            "mesh_blind_rsa_blinding_state_unseal_from_storage",
+        ] {
+            assert!(
+                symbols
+                    .iter()
+                    .any(|(registered, pointer)| *registered == name && !pointer.is_null()),
+                "missing runtime symbol {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn http_trust_root_builder_executes_and_poisoning_survives_the_jit() {
+        init_runtime();
+        let symbols = runtime_symbols();
+        assert!(symbols
+            .iter()
+            .any(|(name, pointer)| *name == "mesh_http_trust_root_pem" && !pointer.is_null()));
+        let mut session = ReplSession::new();
+        for configure in ["Http.trust_root_pem", "http_trust_root_pem"] {
+            let source = format!(
+                r#"case Http.send({configure}(Http.build(:get, "https://127.0.0.1:1/"), Bytes.empty())) do
+                Err(error) -> if String.starts_with(error, "INVALID_TLS_ROOTS:") do 71 else 0 end
+                Ok(_) -> 0
+            end"#
+            );
+            let result = jit_eval(&source, &mut session).unwrap_or_else(|error| panic!("{error}"));
+            assert_eq!(result.value, "71");
+            assert_eq!(result.ty, "Int");
+        }
+    }
+
+    #[test]
+    fn process_lookup_none_executes_through_the_jit() {
+        init_runtime();
+        let symbols = runtime_symbols();
+        assert!(symbols
+            .iter()
+            .any(|(name, pointer)| *name == "mesh_process_lookup" && !pointer.is_null()));
+        let mut session = ReplSession::new();
+        let result = jit_eval(
+            r#"case Process.lookup("mesh-repl-missing-lookup") do None -> 71 Some(_) -> 0 end"#,
+            &mut session,
+        )
+        .unwrap();
+        assert_eq!(result.value, "71");
+        assert_eq!(result.ty, "Int");
+    }
+
+    #[test]
+    fn websocket_header_errors_execute_through_the_jit() {
+        init_runtime();
+        let mut session = ReplSession::new();
+        let result=jit_eval(r#"case WsClient.header(WsClient.options(), "Host", "attacker.invalid") do Err(_) -> 71 Ok(_) -> 0 end"#, &mut session).unwrap();
+        assert_eq!(result.value, "71");
+        assert_eq!(result.ty, "Int");
+    }
+
+    #[test]
+    fn lightning_invoice_errors_execute_through_the_jit() {
+        init_runtime();
+        let mut session = ReplSession::new();
+        let result = jit_eval(
+            r#"case Lightning.invoice_details("invalid") do Err(_) -> 127 Ok(_) -> 0 end"#,
+            &mut session,
+        )
+        .unwrap();
+        assert_eq!(result.value, "127");
+        assert_eq!(result.ty, "Int");
+    }
+
+    #[test]
+    fn websocket_header_runtime_symbol_is_registered() {
+        assert!(runtime_symbols()
+            .iter()
+            .any(|(name, pointer)| *name == "mesh_ws_client_header" && !pointer.is_null()));
+    }
+
+    #[test]
+    fn file_storage_key_runtime_symbol_is_registered() {
+        assert!(runtime_symbols()
+            .iter()
+            .any(|(name, pointer)| *name == "mesh_storage_key_file" && !pointer.is_null()));
+    }
+
+    #[test]
     fn every_declared_runtime_function_is_registered() {
         let context = inkwell::context::Context::create();
         let module = context.create_module("symbols");
@@ -2790,6 +3205,16 @@ mod tests {
         eval("let twice = fn (n :: Int) -> n * 2 end");
         eval("let x = 4");
         assert_eq!(eval("double(x) + twice(x)"), "16 :: Int");
+        eval("fn ratio() -> String!String do\nlet n = U128.parse(\"340282366920938463463374607431768211455\")?\nOk(U128.to_string(U128.multiply_divide(n, n, n)?))\nend");
+        assert_eq!(
+            eval("case ratio() do Ok(s) -> s Err(e) -> e end"),
+            "\"340282366920938463463374607431768211455\" :: String"
+        );
+        eval("fn month() -> String!String do Ok(DateTime.to_iso8601(DateTime.add_months(DateTime.from_iso8601(\"2024-01-31T00:00:00Z\")?, 1)?)) end");
+        assert_eq!(
+            eval("case month() do Ok(s) -> s Err(e) -> e end"),
+            "\"2024-02-29T00:00:00.000Z\" :: String"
+        );
     }
 
     #[test]
@@ -2800,9 +3225,59 @@ mod tests {
     }
 
     #[test]
+    fn test_bytes_concat_many_through_jit_symbol_registration() {
+        init_runtime();
+        let mut session = ReplSession::new();
+        let value = jit_eval(
+            "case Bytes.concat_many([Bytes.from_utf8(\"a\"),Bytes.from_utf8(\"b\")],2) do Ok(value) -> Bytes.to_hex(value) Err(_) -> \"failed\" end",
+            &mut session,
+        ).expect("bounded byte join through the JIT");
+        assert_eq!(value.value, "\"6162\"");
+        let refused = jit_eval(
+            "Result.is_err(Bytes.concat_many([Bytes.from_utf8(\"ab\")],1))",
+            &mut session,
+        )
+        .expect("bounded byte join refusal through the JIT");
+        assert_eq!(refused.value, "true");
+    }
+
+    #[test]
+    fn test_server_bind_apis_through_jit_symbol_registration() {
+        init_runtime();
+        let mut session = ReplSession::new();
+        for definition in [
+            "fn on_bind_connect(_conn :: Int, _path :: String, _headers :: Map<String, String>) -> Int do 1 end",
+            "fn on_bind_message(_conn :: Int, _message :: String) do nil end",
+            "fn on_bind_close(_conn :: Int, _code :: Int, _reason :: String) do nil end",
+        ] {
+            jit_eval(definition, &mut session).unwrap();
+        }
+        for source in [
+            "HTTP.serve_on(HTTP.router(), \"localhost\", 0)",
+            "HTTP.serve_tls_on(HTTP.router(), \"localhost\", 0, \"missing.pem\", \"missing.key\")",
+            "Ws.serve_on(on_bind_connect, on_bind_message, on_bind_close, \"localhost\", 0)",
+            "Ws.serve_tls_on(on_bind_connect, on_bind_message, on_bind_close, \"localhost\", 0, \"missing.pem\", \"missing.key\")",
+        ] {
+            let value = jit_eval(source, &mut session).unwrap_or_else(|error| panic!("{source}: {error}"));
+            assert_eq!(value.value, "()");
+        }
+    }
+
+    #[test]
     fn test_repl_config_default() {
         let config = crate::ReplConfig::default();
         assert_eq!(config.prompt, "mesh> ");
         assert_eq!(config.continuation, "  ... ");
     }
 }
+
+#[cfg(test)]
+#[path = "mlkem_incremental_jit_tests.rs"]
+mod incremental_tests;
+
+#[cfg(test)]
+mod ohttp_tests;
+
+#[cfg(test)]
+#[path = "secret_primitives_jit_tests.rs"]
+mod secret_primitives_tests;

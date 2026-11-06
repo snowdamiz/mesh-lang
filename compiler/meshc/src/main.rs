@@ -34,6 +34,7 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 mod cluster;
 mod library_bindings;
 mod migrate;
+mod plaintext_report;
 mod proof;
 mod proof_gates;
 mod test_runner;
@@ -79,6 +80,11 @@ enum Commands {
         /// Output path for the compiled binary
         #[arg(short, long)]
         output: Option<PathBuf>,
+
+        /// Write the deterministic plaintext disclosure audit to this path.
+        /// Defaults to <output>.plaintext.json.
+        #[arg(long = "plaintext-report")]
+        plaintext_report: Option<PathBuf>,
 
         /// Target triple for cross-compilation (e.g., x86_64-unknown-linux-gnu)
         #[arg(long)]
@@ -162,6 +168,10 @@ enum Commands {
     Test {
         /// Path to a Mesh project, test directory, or specific *.test.mpl file (default: current directory)
         path: Option<PathBuf>,
+
+        /// Optimization level for test binaries (0 = debug, 2 = release)
+        #[arg(long = "opt-level", default_value = "0", value_parser = clap::value_parser!(u8).range(0..=3))]
+        opt_level: u8,
 
         /// Show dots instead of test names (compact output)
         #[arg(long)]
@@ -309,6 +319,7 @@ fn run() {
             opt_level,
             emit_llvm,
             output,
+            plaintext_report,
             target,
             artifact,
             json,
@@ -325,7 +336,7 @@ fn run() {
                 json,
                 display_paths: Vec::new(),
             };
-            if let Err(e) = build(
+            if let Err(e) = build_with_plaintext_report(
                 &dir,
                 opt_level,
                 emit_llvm,
@@ -334,6 +345,7 @@ fn run() {
                 artifact,
                 false,
                 &diag_opts,
+                plaintext_report.as_deref(),
             ) {
                 if json {
                     // In JSON mode, emit the final error as JSON too.
@@ -407,10 +419,19 @@ fn run() {
         }
         Commands::Test {
             path,
+            opt_level,
             quiet,
             coverage,
         } => {
-            if or_exit(test_runner::run_tests(path.as_deref(), quiet, coverage)).failed > 0 {
+            if or_exit(test_runner::run_tests(
+                path.as_deref(),
+                opt_level,
+                quiet,
+                coverage,
+            ))
+            .failed
+                > 0
+            {
                 process::exit(1);
             }
         }
@@ -448,6 +469,7 @@ pub(crate) struct PreparedBuild {
     pub(crate) clustered_execution_plan: Vec<ClusteredExecutionMetadata>,
     pub(crate) clustered_route_handler_plan: Vec<mesh_codegen::DeclaredHandlerPlanEntry>,
     pub(crate) autonomous_config_json: Option<String>,
+    pub(crate) plaintext_report: plaintext_report::PlaintextReport,
 }
 
 fn runtime_autonomous_config_json(
@@ -596,6 +618,30 @@ pub(crate) fn build(
     test_builtins: bool,
     diag_opts: &DiagnosticOptions,
 ) -> Result<(), String> {
+    build_with_plaintext_report(
+        dir,
+        opt_level,
+        emit_llvm,
+        output,
+        target,
+        artifact,
+        test_builtins,
+        diag_opts,
+        None,
+    )
+}
+
+fn build_with_plaintext_report(
+    dir: &Path,
+    opt_level: u8,
+    emit_llvm: bool,
+    output: Option<&Path>,
+    target: Option<&str>,
+    artifact: BuildArtifact,
+    test_builtins: bool,
+    diag_opts: &DiagnosticOptions,
+    report: Option<&Path>,
+) -> Result<(), String> {
     let mut prepared = prepare_project_build(dir, test_builtins, diag_opts)?;
     // Without an entry function codegen emits no C `main`, and the linker's
     // "_main not found" is all the user would see.
@@ -620,6 +666,12 @@ pub(crate) fn build(
         || default_output_path(dir, artifact, target),
         Path::to_path_buf,
     );
+    let report_path = report
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| plaintext_report::default_path(&output_path));
+    if !test_builtins {
+        plaintext_report::validate_path(&report_path, &output_path)?;
+    }
 
     // Emit LLVM IR if requested
     if emit_llvm {
@@ -694,6 +746,7 @@ pub(crate) fn build(
 
     // `meshc test` builds each file to a throwaway temp binary; its path is noise there.
     if !test_builtins {
+        prepared.plaintext_report.write(&report_path)?;
         eprintln!("  Compiled: {}", output_path.display());
     }
 
@@ -863,6 +916,8 @@ pub(crate) fn prepare_project_build(
         return Err("Compilation failed due to errors above.".to_string());
     }
 
+    let plaintext_report = plaintext_report::PlaintextReport::collect(dir, &project, &all_typeck);
+
     reject_duplicate_pub_functions(&project, &all_exports)?;
 
     // `@cluster` and `HTTP.clustered` without a count take the manifest's
@@ -1001,6 +1056,7 @@ pub(crate) fn prepare_project_build(
         mesh_codegen::merge_mir_modules(mir_modules, entry_mir_idx, &declared_executable_symbols);
 
     Ok(PreparedBuild {
+        plaintext_report,
         merged_mir,
         entry_relative_path,
         library_exports,
@@ -1176,9 +1232,13 @@ fn collect_library_exports(
             if !symbols.insert(symbol.clone()) {
                 return Err(format!("duplicate exported symbol '{symbol}'"));
             }
+            let options = declaration.options()?;
             exports.push(mesh_codegen::LibraryExport {
                 function: function_name,
                 symbol,
+                max_input: options.max_input,
+                max_output: options.max_output,
+                binding_audience: options.binding_audience,
             });
         }
     }
@@ -1560,6 +1620,131 @@ mod autonomous_config_tests {
         .contains("duplicate exported symbol"));
     }
 
+    fn export_binding_audience_emit(source: &str) -> std::collections::BTreeMap<String, String> {
+        let parsed = mesh_parser::parse(source);
+        assert!(
+            parsed.errors().is_empty(),
+            "valid audience source: {:?}",
+            parsed.errors()
+        );
+        let exports = collect_library_exports(&[parsed]).expect("valid binding audience");
+        let temporary = tempfile::tempdir().expect("owned binding fixture");
+        let artifact = temporary.path().join("libaudience.a");
+        library_bindings::write(&artifact, &exports, Some("x86_64-unknown-linux-gnu"))
+            .expect("all binding emitters");
+        ["h", "swift", "kt", "jni.c", "ts", "abi.json"]
+            .into_iter()
+            .map(|extension| {
+                (
+                    extension.to_string(),
+                    std::fs::read_to_string(artifact.with_extension(extension))
+                        .expect("emitted binding"),
+                )
+            })
+            .collect()
+    }
+
+    fn export_binding_audience_source(options: &str) -> String {
+        format!("@export(\"mesh_public_echo\"{options})\npub fn public_echo(request :: Bytes) -> Bytes!String do\n  Ok(request)\nend\n")
+    }
+
+    fn export_binding_audience_default_row() -> serde_json::Value {
+        serde_json::json!({
+            "meshFunction": "public_echo", "symbol": "mesh_public_echo",
+            "request": "bytes", "response": "result<bytes,string>",
+            "maxInputBytes": 1048576, "maxOutputBytes": 1048576
+        })
+    }
+
+    #[test]
+    fn export_binding_audience_default_keeps_all_bindings_and_legacy_metadata() {
+        let emitted = export_binding_audience_emit(&export_binding_audience_source(""));
+        for extension in ["h", "swift", "kt", "jni.c", "ts"] {
+            assert!(emitted[extension].contains("public_echo"), "{extension}");
+        }
+        let manifest: serde_json::Value = serde_json::from_str(&emitted["abi.json"]).unwrap();
+        assert_eq!(manifest["abiVersion"], 1);
+        assert_eq!(
+            manifest["exports"],
+            serde_json::json!([export_binding_audience_default_row()])
+        );
+    }
+
+    #[test]
+    fn export_binding_audience_native_omits_only_javascript_and_keeps_symbol_exact() {
+        let mut source = export_binding_audience_source("");
+        source.push_str("@export(\"mesh_native_echo\", max_input: 4096, bindings: \"native\", max_output: 8192)\npub fn native_echo(request :: Bytes) -> Bytes!String do\n  Ok(request)\nend\n");
+        let emitted = export_binding_audience_emit(&source);
+        for extension in ["h", "swift", "kt", "jni.c"] {
+            assert!(emitted[extension].contains("native_echo"), "{extension}");
+        }
+        assert!(emitted["ts"].contains("public_echo"));
+        assert!(!emitted["ts"].contains("native_echo"));
+        let manifest: serde_json::Value = serde_json::from_str(&emitted["abi.json"]).unwrap();
+        assert_eq!(
+            manifest["exports"][0],
+            export_binding_audience_default_row()
+        );
+        assert_eq!(
+            manifest["exports"][1],
+            serde_json::json!({
+                "meshFunction": "native_echo", "symbol": "mesh_native_echo",
+                "request": "bytes", "response": "result<bytes,string>",
+                "maxInputBytes": 4096, "maxOutputBytes": 8192,
+                "bindingAudience": "native"
+            })
+        );
+    }
+
+    #[test]
+    fn export_binding_audience_explicit_all_is_byte_exact_default() {
+        let default = export_binding_audience_emit(&export_binding_audience_source(""));
+        let explicit =
+            export_binding_audience_emit(&export_binding_audience_source(", bindings: \"all\""));
+        assert_eq!(explicit, default);
+    }
+
+    #[test]
+    fn export_binding_audience_all_native_typescript_is_inert() {
+        let emitted =
+            export_binding_audience_emit(&export_binding_audience_source(", bindings: \"native\""));
+        assert!(emitted["ts"].contains("export {}"));
+        for forbidden in [
+            "public_echo",
+            "mesh_public_echo",
+            "requireNativeModule",
+            "MeshMessenger",
+            "native.invoke",
+        ] {
+            assert!(!emitted["ts"].contains(forbidden), "{forbidden}");
+        }
+        for extension in ["h", "swift", "kt", "jni.c"] {
+            assert!(emitted[extension].contains("public_echo"));
+        }
+    }
+
+    #[test]
+    fn export_binding_audience_invalid_or_duplicate_values_never_fall_back() {
+        for options in [
+            ", bindings: \"browser\"",
+            ", bindings: \"Native\"",
+            ", bindings: \"\"",
+            ", bindings: true",
+            ", bindings: 1",
+            ", bindings: :native",
+            ", bindings: \"all\", bindings: \"native\"",
+            ", bindings: \"native\", bindings: \"native\"",
+            ", bindings: \"na#{1}tive\"",
+            ", audience: \"native\"",
+        ] {
+            let parsed = mesh_parser::parse(&export_binding_audience_source(options));
+            assert!(
+                !parsed.errors().is_empty() || collect_library_exports(&[parsed]).is_err(),
+                "{options}"
+            );
+        }
+    }
+
     #[test]
     fn artifacts_are_named_for_their_project_and_target() {
         let dir = Path::new("/work/app");
@@ -1585,6 +1770,24 @@ mod autonomous_config_tests {
             default_output_path(Path::new("/"), BuildArtifact::Executable, None),
             Path::new("/output")
         );
+    }
+
+    #[test]
+    fn test_cli_defaults_to_debug_and_bounds_explicit_optimization() {
+        let cli = Cli::try_parse_from(["meshc", "test", "tests"]).expect("default tests");
+        assert!(matches!(cli.command, Commands::Test { opt_level: 0, .. }));
+        for level in 0..=3 {
+            let text = level.to_string();
+            let cli = Cli::try_parse_from(["meshc", "test", "--opt-level", &text, "tests"])
+                .expect("supported optimization");
+            let Commands::Test { opt_level, .. } = cli.command else {
+                panic!("test command")
+            };
+            assert_eq!(opt_level, level);
+        }
+        for level in ["4", "255", "-1", "release"] {
+            assert!(Cli::try_parse_from(["meshc", "test", "--opt-level", level]).is_err());
+        }
     }
 
     #[test]

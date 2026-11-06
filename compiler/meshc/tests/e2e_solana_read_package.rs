@@ -31,6 +31,70 @@ fn account_json(data: &[u8], owner: &str, lamports: u64) -> String {
 }
 
 #[test]
+fn solana_pda_and_curve_membership_match_the_pinned_official_sdk() {
+    use sha2::{Digest, Sha256};
+    use solana_address::Address;
+    let hex = |bytes: &[u8]| bytes.iter().map(|b| format!("{b:02x}")).collect::<String>();
+    let mut curves = Vec::new();
+    let mut addresses = Vec::new();
+    for index in 0..256u16 {
+        let candidates = [
+            [index as u8; 32],
+            Sha256::digest(index.to_le_bytes()).into(),
+        ];
+        for bytes in candidates {
+            curves.push(json!({"bytes": hex(&bytes), "on_curve": Address::new_from_array(bytes).is_on_curve()}));
+        }
+        let program = Address::new_from_array(Sha256::digest(index.to_be_bytes()).into());
+        let seeds = match index % 4 {
+            0 => vec![],
+            1 => vec![b"example".to_vec(), index.to_le_bytes().to_vec()],
+            2 => vec![vec![index as u8; 32], vec![]],
+            _ => vec![vec![index as u8; 32]; 15],
+        };
+        let refs: Vec<&[u8]> = seeds.iter().map(Vec::as_slice).collect();
+        let (address, bump) = Address::find_program_address(&refs, &program);
+        addresses.push(json!({"program": hex(program.as_ref()), "seeds": seeds.iter().map(|s| hex(s)).collect::<Vec<_>>(), "address": hex(address.as_ref()), "bump": bump}));
+    }
+    let temp = tempfile::tempdir().unwrap();
+    let project = temp.path().join("solana-pda-proof");
+    fs::create_dir(&project).unwrap();
+    fs::write(project.join("mesh.toml"), format!("[package]\nname = \"solana-pda-proof\"\nversion = \"0.1.0\"\n[dependencies]\nmesh-solana = {{ path = {:?} }}\n", package_source())).unwrap();
+    let fixture_path = project.join("oracle.json");
+    fs::write(
+        &fixture_path,
+        json!({"curves":curves,"addresses":addresses}).to_string(),
+    )
+    .unwrap();
+    fs::write(
+        project.join("main.mpl"),
+        include_str!("../../../tests/e2e/solana_pda.mpl"),
+    )
+    .unwrap();
+    let build = Command::new(meshc_bin())
+        .args(["build", project.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(
+        build.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+    let run = Command::new(project.join("solana-pda-proof"))
+        .env("MESH_SOLANA_PDA_FIXTURE", &fixture_path)
+        .output()
+        .unwrap();
+    assert!(
+        run.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "solana-pda:ok\n");
+}
+
+#[test]
 fn solana_read_package_decodes_rpc_spl_and_jitosol_state() {
     let package_text = fs::read_to_string(package_source().join("solana/read.mpl")).unwrap();
     let package_parse = mesh_parser::parse(&package_text);
@@ -592,5 +656,248 @@ end
             "8001000102000000000000000000000000000000000000000000000000000000000000000001010101010101010101010101010101010101010101010101010101010101010202020202020202020202020202020202020202020202020202020202020202010102000202aabb01030303030303030303030303030303030303030303030303030303030303030301040105\n",
             "{\"schemaVersion\":1,\"version\":\"v0\",\"requiredSignatures\":1,\"staticAccountKeys\":[\"11111111111111111111111111111111\",\"4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi\"],\"accountKeys\":[\"11111111111111111111111111111111\",\"4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi\",\"GgBaCs3NCBuZN12kCJgAW63ydqohFkHEdfdEXBPzLHq\",\"LbUiWL3xVV8hTFYBVdbTNrpDo41NKS6o3LHHuDzjfcY\"],\"programIds\":[\"4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi\"],\"instructionCount\":1,\"lookupTableKeys\":[\"CktRuQ2mttgRGkXJtyksdKHjUdc2C4TgDzyB98oEzy8\"],\"loadedWritableAccounts\":1,\"loadedReadonlyAccounts\":1,\"loadedWritableAccountKeys\":[\"GgBaCs3NCBuZN12kCJgAW63ydqohFkHEdfdEXBPzLHq\"],\"loadedReadonlyAccountKeys\":[\"LbUiWL3xVV8hTFYBVdbTNrpDo41NKS6o3LHHuDzjfcY\"],\"messageBytes\":146}\n",
         )
+    );
+}
+
+#[test]
+fn solana_lookup_table_instructions_and_accounts_match_the_pinned_sdk() {
+    use solana_address::Address;
+    use solana_address_lookup_table_interface::{
+        instruction::*,
+        state::{AddressLookupTable, LookupTableMeta},
+    };
+    use std::borrow::Cow;
+    let hex = |bytes: &[u8]| bytes.iter().map(|b| format!("{b:02x}")).collect::<String>();
+    let mut cases = Vec::new();
+    for index in 0..64u8 {
+        let authority = Address::new_from_array([index; 32]);
+        let payer = Address::new_from_array([index.wrapping_add(1); 32]);
+        let slot = match index % 4 {
+            0 => 0,
+            1 => u64::MAX,
+            2 => 9007199254740993,
+            _ => u64::from(index),
+        };
+        let (create, table) = create_lookup_table(authority, payer, slot);
+        let addresses: Vec<_> = (0..=index)
+            .map(|n| Address::new_from_array([n; 32]))
+            .collect();
+        let mut item = json!({"authority":authority.to_string(),"payer":payer.to_string(),"slot":slot.to_string(),"table":table.to_string(),"addresses":addresses.iter().map(ToString::to_string).collect::<Vec<_>>()});
+        for (name, ix) in [
+            ("create", create),
+            (
+                "extend",
+                extend_lookup_table(table, authority, Some(payer), addresses.clone()),
+            ),
+            (
+                "extend_no_payer",
+                extend_lookup_table(table, authority, None, addresses.clone()),
+            ),
+            ("deactivate", deactivate_lookup_table(table, authority)),
+            ("close", close_lookup_table(table, authority, payer)),
+        ] {
+            item[name] = json!({"program":ix.program_id.to_string(),"data":STANDARD.encode(ix.data),
+                "accounts":ix.accounts.iter().map(|a|json!({"address":a.pubkey.to_string(),"signer":a.is_signer,"writable":a.is_writable})).collect::<Vec<_>>()});
+        }
+        for (name, authority) in [("account", Some(authority)), ("frozen_account", None)] {
+            item[name] = hex(&AddressLookupTable {
+                meta: LookupTableMeta {
+                    authority,
+                    last_extended_slot: slot,
+                    ..LookupTableMeta::default()
+                },
+                addresses: Cow::Borrowed(&addresses),
+            }
+            .serialize_for_tests()
+            .unwrap())
+            .into();
+        }
+        cases.push(item);
+    }
+    let temp = tempfile::tempdir().unwrap();
+    let project = temp.path().join("solana-lookup-proof");
+    fs::create_dir(&project).unwrap();
+    fs::write(project.join("mesh.toml"),format!("[package]\nname = \"solana-lookup-proof\"\nversion = \"0.1.0\"\n[dependencies]\nmesh-solana = {{ path = {:?} }}\n",package_source())).unwrap();
+    let fixture = project.join("oracle.json");
+    fs::write(&fixture, serde_json::to_vec(&cases).unwrap()).unwrap();
+    fs::write(
+        project.join("main.mpl"),
+        include_str!("../../../tests/e2e/solana_lookup_table.mpl"),
+    )
+    .unwrap();
+    let build = Command::new(meshc_bin())
+        .args(["build", project.to_str().unwrap(), "--opt-level", "2"])
+        .output()
+        .unwrap();
+    assert!(
+        build.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+    let run = Command::new(project.join("solana-lookup-proof"))
+        .env("MESH_SOLANA_LOOKUP_FIXTURE", fixture)
+        .output()
+        .unwrap();
+    assert!(
+        run.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&run.stdout), "solana-lookup:ok\n");
+}
+
+#[test]
+fn solana_sdk_account_serialization_preserves_fixed_wire_vectors_and_padding() {
+    use solana_address_lookup_table_interface::state::{AddressLookupTable, LookupTableMeta};
+    use solana_slot_hashes::SlotHashes;
+    use std::borrow::Cow;
+    let decode = |hex: &str| {
+        hex.as_bytes()
+            .chunks_exact(2)
+            .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
+            .collect::<Vec<_>>()
+    };
+    // Fixed legacy Solana account bytes: u64 count, then (u64 slot, 32-byte hash).
+    // The high slot distinguishes fixed-width u64 from a lossy floating-point or
+    // variable-length codec. Nonzero account padding must remain acceptable.
+    let hashes = SlotHashes::new(&[
+        (1, [0x11; 32].into()),
+        (9_007_199_254_740_993, [0x22; 32].into()),
+    ]);
+    let expected = decode(concat!(
+        "0200000000000000",
+        "0100000000002000",
+        "2222222222222222222222222222222222222222222222222222222222222222",
+        "0100000000000000",
+        "1111111111111111111111111111111111111111111111111111111111111111",
+    ));
+    assert_eq!(wincode::serialize(&hashes).unwrap(), expected);
+    let mut padded = expected.clone();
+    padded.resize(solana_slot_hashes::SIZE, 0xa5);
+    assert_eq!(wincode::deserialize::<SlotHashes>(&padded).unwrap(), hashes);
+    assert!(wincode::deserialize_exact::<SlotHashes>(&padded).is_err());
+    assert!(wincode::deserialize::<SlotHashes>(&expected[..expected.len() - 1]).is_err());
+
+    let addresses = [[0x44; 32].into()];
+    let table = AddressLookupTable {
+        meta: LookupTableMeta {
+            deactivation_slot: u64::MAX,
+            last_extended_slot: 9_007_199_254_740_993,
+            last_extended_slot_start_index: 3,
+            authority: Some([0x33; 32].into()),
+            _padding: 0,
+        },
+        addresses: Cow::Borrowed(&addresses),
+    };
+    assert_eq!(
+        table.serialize_for_tests().unwrap(),
+        decode(concat!(
+            "01000000",
+            "ffffffffffffffff",
+            "0100000000002000",
+            "0301",
+            "3333333333333333333333333333333333333333333333333333333333333333",
+            "0000",
+            "4444444444444444444444444444444444444444444444444444444444444444",
+        ))
+    );
+}
+
+#[test]
+fn solana_slot_hashes_and_lookup_cooldown_match_the_pinned_sdk() {
+    use solana_address_lookup_table_interface::state::{
+        AddressLookupTable, LookupTableMeta, LookupTableStatus,
+    };
+    use solana_slot_hashes::SlotHashes;
+    use std::borrow::Cow;
+    let hex = |bytes: &[u8]| bytes.iter().map(|b| format!("{b:02x}")).collect::<String>();
+    let mut cases = Vec::new();
+    for current in [0u64, 1, 10_000, 9_007_199_254_740_993, u64::MAX] {
+        for count in [0usize, 1, 2, 512] {
+            let newest = current.saturating_sub(1);
+            if count > 0 && newest < (count as u64 - 1) * 2 {
+                continue;
+            }
+            let pairs: Vec<_> = (0..count)
+                .map(|n| (newest - n as u64 * 2, [n as u8; 32].into()))
+                .collect();
+            let hashes = SlotHashes::new(&pairs);
+            let compact = wincode::serialize(&hashes).unwrap();
+            let mut padded = compact.clone();
+            padded.resize(solana_slot_hashes::SIZE, 0xa5);
+            assert_eq!(wincode::deserialize::<SlotHashes>(&padded).unwrap(), hashes);
+            let oldest = pairs.last().map_or(0, |value| value.0);
+            let mut deactivations = vec![
+                u64::MAX,
+                current,
+                newest,
+                current.saturating_sub(2),
+                oldest,
+                oldest.saturating_sub(1),
+                0,
+            ];
+            deactivations.sort_unstable();
+            deactivations.dedup();
+            for deactivation_slot in deactivations {
+                let meta = LookupTableMeta {
+                    deactivation_slot,
+                    ..LookupTableMeta::default()
+                };
+                let (status, remaining) = match meta.status(current, &hashes) {
+                    LookupTableStatus::Activated => ("active", 0),
+                    LookupTableStatus::Deactivating { remaining_blocks } => {
+                        ("cooling", remaining_blocks)
+                    }
+                    LookupTableStatus::Deactivated => ("closed", 0),
+                };
+                let table = AddressLookupTable {
+                    meta,
+                    addresses: Cow::Borrowed(&[]),
+                }
+                .serialize_for_tests()
+                .unwrap();
+                cases.push(json!({"current":current.to_string(),"compact":hex(&compact),"padded":hex(&padded),
+                    "entries":pairs.iter().map(|(slot,hash)|json!({"slot":slot.to_string(),"hash":hex(hash.as_ref())})).collect::<Vec<_>>(),
+                    "table":hex(&table),"status":status,"remaining":remaining}));
+            }
+        }
+    }
+    assert!(cases.len() > 64);
+    let temp = tempfile::tempdir().unwrap();
+    let project = temp.path().join("solana-slot-hashes-proof");
+    fs::create_dir(&project).unwrap();
+    fs::write(project.join("mesh.toml"),format!("[package]\nname = \"solana-slot-hashes-proof\"\nversion = \"0.1.0\"\n[dependencies]\nmesh-solana = {{ path = {:?} }}\n",package_source())).unwrap();
+    let fixture = project.join("oracle.json");
+    fs::write(&fixture, serde_json::to_vec(&cases).unwrap()).unwrap();
+    fs::write(
+        project.join("main.mpl"),
+        include_str!("../../../tests/e2e/solana_slot_hashes.mpl"),
+    )
+    .unwrap();
+    let build = Command::new(meshc_bin())
+        .args(["build", project.to_str().unwrap(), "--opt-level", "2"])
+        .output()
+        .unwrap();
+    assert!(
+        build.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&build.stdout),
+        String::from_utf8_lossy(&build.stderr)
+    );
+    let run = Command::new(project.join("solana-slot-hashes-proof"))
+        .env("MESH_SLOT_HASHES_FIXTURE", fixture)
+        .output()
+        .unwrap();
+    assert!(
+        run.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&run.stdout),
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&run.stdout),
+        "solana-slot-hashes:ok\n"
     );
 }

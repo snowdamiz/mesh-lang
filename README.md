@@ -150,14 +150,21 @@ meshc fmt .
 meshc fmt . --check
 meshc lint .
 meshc test .
+meshc test . --opt-level 2
 meshc deps .
 meshc repl
 meshc migrate . status
 ```
 
+Tests use debug optimization (`0`) by default. Use `--opt-level 2` to exercise
+the same optimization as a release build; supported levels are `0` through `3`.
+This preserves test fixtures and assertion failures. Measure debug and release
+test performance separately.
+
 See [Developer Tools](https://meshlang.dev/docs/tooling/) for build targets,
 LLVM output, JSON diagnostics, migrations, the LSP, the registry CLI, and the
-full command reference.
+full command reference. Internal aggregate layouts and rebuilding requirements
+are documented in [GC value layout](docs/gc-value-layout.md).
 
 ## Pick a starter
 

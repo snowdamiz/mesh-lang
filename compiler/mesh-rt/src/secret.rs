@@ -9,12 +9,13 @@ use crate::crypto::{
 };
 use crate::gc::mesh_gc_alloc_actor;
 use crate::io::{alloc_result, MeshResult};
+use crate::protected_memory::{ProtectedBytes, ProtectionError};
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::fmt;
 use std::mem;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use zeroize::{Zeroize, Zeroizing};
 
 pub(crate) const MAX_SECRET_BYTES: usize = 64 * 1024;
@@ -40,6 +41,7 @@ pub(crate) enum CryptoErrorTag {
     ResourceLimitExceeded = 7,
     UnsupportedOperation = 8,
     InternalFailure = 9,
+    UnsupportedTarget = 10,
 }
 
 /// Runtime representation of the largest `CryptoError` variant.
@@ -109,6 +111,110 @@ pub extern "C" fn mesh_secret_concat(
         concat_for_process(&mut process, first, second)
     };
     crypto_result(result)
+}
+
+/// The ordinary C/compiled entry uses this same core as failure injection tests.
+fn split_for_process(
+    process: &mut Process,
+    source: *mut MeshSecretHandle,
+    index: i64,
+) -> Result<(*mut MeshSecretHandle, *mut MeshSecretHandle), CryptoFailure> {
+    split_for_process_with_allocator(process, source, index, |_, length| {
+        ProtectedBytes::zeroed(length).map_err(ResourceError::from)
+    })
+}
+
+fn split_for_process_with_allocator(
+    process: &mut Process,
+    source: *mut MeshSecretHandle,
+    index: i64,
+    mut allocate: impl FnMut(&mut Process, usize) -> Result<ProtectedBytes, ResourceError>,
+) -> Result<(*mut MeshSecretHandle, *mut MeshSecretHandle), CryptoFailure> {
+    let owner = live_owner(process).map_err(resource_failure)?;
+    let handle = validate_handle_pointer(process, source)
+        .ok_or_else(|| resource_failure(ResourceError::StaleHandle))?;
+    // Consume under a short guard. No guard/table borrow survives into allocation.
+    let original = {
+        secret_table()
+            .lock()
+            .consume(owner, handle, ResourceKind::SecretBytes)
+    }
+    .map_err(resource_failure)?;
+    if index <= 0 || index > (MAX_SECRET_BYTES - 1) as i64 {
+        return Err(failure(
+            CryptoErrorTag::InvalidLength,
+            (MAX_SECRET_BYTES - 1) as i64,
+            index,
+        ));
+    }
+    let index = index as usize;
+    if index >= original.len() {
+        // Do not put the private extent in an error payload.
+        return Err(failure(CryptoErrorTag::InvalidKey, 0, 0));
+    }
+    let mut left = allocate(process, index).map_err(resource_failure)?;
+    if left.len() != index {
+        return Err(failure(CryptoErrorTag::InternalFailure, 0, 0));
+    }
+    left.copy_from_slice(&original[..index]);
+    let mut right = allocate(process, original.len() - index).map_err(resource_failure)?;
+    if right.len() != original.len() - index {
+        return Err(failure(CryptoErrorTag::InternalFailure, 0, 0));
+    }
+    right.copy_from_slice(&original[index..]);
+    drop(original);
+    let (left, right) = {
+        let mut table = secret_table().lock();
+        let current = live_owner(process).map_err(resource_failure)?;
+        if current != owner {
+            return Err(resource_failure(ResourceError::WrongOwner));
+        }
+        // Quotas/slots are checked now, not from an earlier allocation snapshot.
+        table
+            .insert_secret_pair(owner, left, right)
+            .map_err(resource_failure)?
+    };
+    Ok((
+        allocate_handle(process, left),
+        allocate_handle(process, right),
+    ))
+}
+
+#[repr(C)]
+pub(crate) struct MeshSecretSplitTuple {
+    pub(crate) len: u64,
+    pub(crate) left: *mut MeshSecretHandle,
+    pub(crate) right: *mut MeshSecretHandle,
+}
+
+/// Consume a secret on success or failure and return its exact nonempty halves.
+#[no_mangle]
+pub extern "C" fn mesh_secret_split_at(
+    source: *mut MeshSecretHandle,
+    index: i64,
+) -> *mut MeshResult {
+    let Some(process) = crate::actor::current_process() else {
+        return crypto_error(CryptoErrorTag::InternalFailure, 0, 0);
+    };
+    let result = {
+        let mut process = process.lock();
+        split_for_process(&mut process, source, index)
+    };
+    // Result/tuple allocation must not recursively acquire the Process lock.
+    crypto_result(result.map(|(left, right)| {
+        let tuple = mesh_gc_alloc_actor(
+            mem::size_of::<MeshSecretSplitTuple>() as u64,
+            mem::align_of::<MeshSecretSplitTuple>() as u64,
+        ) as *mut MeshSecretSplitTuple;
+        unsafe {
+            tuple.write(MeshSecretSplitTuple {
+                len: 2,
+                left,
+                right,
+            });
+        }
+        tuple
+    }))
 }
 
 fn concat_for_process(
@@ -365,6 +471,14 @@ pub(crate) enum ResourceKind {
     StorageKey = 5,
     SecretMap = 6,
     MlKemPrivateKey = 8,
+    BlindRsaSecretKey = 9,
+    BlindRsaBlindingState = 10,
+    HashPreimage = 11,
+    // Provisional C1 runtime-only assignment; no compiler/FFI exposure.
+    MlKemEncapsulationState = 12,
+    // Runtime-only, single-response RFC 9458 contexts. Never storage purposes.
+    OhttpClientContext = 13,
+    OhttpGatewayContext = 14,
 }
 
 impl ResourceKind {
@@ -377,6 +491,16 @@ impl ResourceKind {
             value if value == Self::StorageKey as u32 => Some(Self::StorageKey),
             value if value == Self::SecretMap as u32 => Some(Self::SecretMap),
             value if value == Self::MlKemPrivateKey as u32 => Some(Self::MlKemPrivateKey),
+            value if value == Self::BlindRsaSecretKey as u32 => Some(Self::BlindRsaSecretKey),
+            value if value == Self::BlindRsaBlindingState as u32 => {
+                Some(Self::BlindRsaBlindingState)
+            }
+            value if value == Self::HashPreimage as u32 => Some(Self::HashPreimage),
+            value if value == Self::MlKemEncapsulationState as u32 => {
+                Some(Self::MlKemEncapsulationState)
+            }
+            value if value == Self::OhttpClientContext as u32 => Some(Self::OhttpClientContext),
+            value if value == Self::OhttpGatewayContext as u32 => Some(Self::OhttpGatewayContext),
             _ => None,
         }
     }
@@ -474,11 +598,21 @@ impl Limits {
 pub(crate) type MeshStorageCounterReserve =
     unsafe extern "C" fn(context: *mut c_void, counter_out: *mut u64) -> i32;
 
-#[derive(Clone, Copy)]
+/// Runtime-owned reservation sources stay alive while an unlocked reservation
+/// is in flight, even when the actor destroys its capability concurrently.
+pub(crate) trait StorageCounterReservation: Send + Sync {
+    fn reserve(&self) -> Result<u64, StorageKeyError>;
+}
+
+#[derive(Clone)]
 enum StorageCounterSource {
     Production {
         reserve: MeshStorageCounterReserve,
         context: usize,
+        last_counter: Option<u64>,
+    },
+    Managed {
+        source: Arc<dyn StorageCounterReservation>,
         last_counter: Option<u64>,
     },
     Ephemeral {
@@ -489,7 +623,7 @@ enum StorageCounterSource {
 struct Entry {
     owner: ProcessId,
     kind: ResourceKind,
-    bytes: Zeroizing<Box<[u8]>>,
+    bytes: ProtectedBytes,
     /// A storage key's nonce counter; no other kind has one.
     counter: Option<StorageCounterSource>,
 }
@@ -512,6 +646,41 @@ pub(crate) enum ResourceError {
     WrongOwner,
     WrongKind,
     OwnerExited,
+    ProtectionUnavailable,
+    UnsupportedProtectionTarget,
+}
+
+impl From<ProtectionError> for ResourceError {
+    fn from(error: ProtectionError) -> Self {
+        match error {
+            ProtectionError::Limit => Self::ResourceLimitExceeded,
+            ProtectionError::OperatingSystem => Self::ProtectionUnavailable,
+            ProtectionError::Unsupported => Self::UnsupportedProtectionTarget,
+        }
+    }
+}
+
+/// Existing provider buffers are erased after protected import; an already
+/// protected consumed resource moves without another plaintext allocation.
+pub(crate) trait SecretInput {
+    fn len(&self) -> usize;
+    fn into_protected(self) -> Result<ProtectedBytes, ResourceError>;
+}
+impl SecretInput for Zeroizing<Box<[u8]>> {
+    fn len(&self) -> usize {
+        self.as_ref().len()
+    }
+    fn into_protected(self) -> Result<ProtectedBytes, ResourceError> {
+        ProtectedBytes::copy_from(&self).map_err(Into::into)
+    }
+}
+impl SecretInput for ProtectedBytes {
+    fn len(&self) -> usize {
+        self.as_ref().len()
+    }
+    fn into_protected(self) -> Result<ProtectedBytes, ResourceError> {
+        Ok(self)
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -524,7 +693,7 @@ pub(crate) enum StorageKeyError {
 
 pub(crate) struct PreparedStorageKey {
     pub(crate) handle: ResourceHandle,
-    pub(crate) material: Zeroizing<Box<[u8]>>,
+    pub(crate) material: ProtectedBytes,
     counter: Option<PreparedStorageCounter>,
 }
 
@@ -533,7 +702,7 @@ pub(crate) struct PreparedStorageKey {
 /// pointer that could have been recycled while a host/provider call ran.
 pub(crate) struct PreparedOwnedResource {
     handle: ResourceHandle,
-    pub(crate) bytes: Zeroizing<Box<[u8]>>,
+    pub(crate) bytes: ProtectedBytes,
 }
 
 impl PreparedStorageKey {
@@ -545,12 +714,13 @@ impl PreparedStorageKey {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 enum PreparedStorageCounter {
     Production {
         reserve: MeshStorageCounterReserve,
         context: usize,
     },
+    Managed(Arc<dyn StorageCounterReservation>),
     Reserved(u64),
 }
 
@@ -566,6 +736,7 @@ impl PreparedStorageCounter {
                     Err(StorageKeyError::ReservationFailed)
                 }
             }
+            Self::Managed(source) => source.reserve(),
             Self::Reserved(counter) => Ok(counter),
         }
     }
@@ -573,13 +744,8 @@ impl PreparedStorageCounter {
 
 pub(crate) enum RetypeError<E> {
     Resource(ResourceError),
-    Rejected {
-        error: E,
-        removed: Zeroizing<Box<[u8]>>,
-    },
-    GenerationExhausted {
-        removed: Zeroizing<Box<[u8]>>,
-    },
+    Rejected { error: E, removed: ProtectedBytes },
+    GenerationExhausted { removed: ProtectedBytes },
 }
 
 impl<E: fmt::Debug> fmt::Debug for RetypeError<E> {
@@ -617,7 +783,7 @@ impl From<ResourceError> for SecretMapError {
 
 struct SecretMapData {
     capacity: u16,
-    entries: Vec<(Vec<u8>, Zeroizing<Box<[u8]>>)>,
+    entries: Vec<(Vec<u8>, ProtectedBytes)>,
 }
 
 impl SecretMapData {
@@ -677,7 +843,10 @@ impl SecretMapData {
             if entries.iter().any(|(existing, _)| existing == &key) {
                 return Err(SecretMapError::InvalidEncoding);
             }
-            entries.push((key, Zeroizing::new(value.to_vec().into_boxed_slice())));
+            entries.push((
+                key,
+                ProtectedBytes::copy_from(value).map_err(ResourceError::from)?,
+            ));
             offset = value_end;
         }
         if offset != bytes.len() {
@@ -686,26 +855,34 @@ impl SecretMapData {
         Ok(Self { capacity, entries })
     }
 
-    fn encode(&self) -> Result<Zeroizing<Box<[u8]>>, SecretMapError> {
-        let mut encoded = Vec::with_capacity(4);
-        encoded.extend_from_slice(&self.capacity.to_be_bytes());
-        encoded.extend_from_slice(&(self.entries.len() as u16).to_be_bytes());
+    fn encode(&self) -> Result<ProtectedBytes, SecretMapError> {
+        let mut length = 4usize;
         for (key, value) in &self.entries {
-            let key_length = u16::try_from(key.len()).map_err(|_| SecretMapError::InvalidKey)?;
-            let value_length =
-                u32::try_from(value.len()).map_err(|_| SecretMapError::InvalidEncoding)?;
-            encoded.extend_from_slice(&key_length.to_be_bytes());
-            encoded.extend_from_slice(&value_length.to_be_bytes());
-            encoded.extend_from_slice(key);
-            encoded.extend_from_slice(value);
+            u16::try_from(key.len()).map_err(|_| SecretMapError::InvalidKey)?;
+            u32::try_from(value.len()).map_err(|_| SecretMapError::InvalidEncoding)?;
+            length = length
+                .checked_add(6)
+                .and_then(|n| n.checked_add(key.len()))
+                .and_then(|n| n.checked_add(value.len()))
+                .filter(|&n| n <= MAX_SECRET_BYTES)
+                .ok_or(SecretMapError::Resource(
+                    ResourceError::ResourceLimitExceeded,
+                ))?;
         }
-        if encoded.len() > MAX_SECRET_BYTES {
-            encoded.zeroize();
-            return Err(SecretMapError::Resource(
-                ResourceError::ResourceLimitExceeded,
-            ));
+        let mut encoded = ProtectedBytes::zeroed(length).map_err(ResourceError::from)?;
+        encoded[..2].copy_from_slice(&self.capacity.to_be_bytes());
+        encoded[2..4].copy_from_slice(&(self.entries.len() as u16).to_be_bytes());
+        let mut offset = 4;
+        for (key, value) in &self.entries {
+            encoded[offset..offset + 2].copy_from_slice(&(key.len() as u16).to_be_bytes());
+            encoded[offset + 2..offset + 6].copy_from_slice(&(value.len() as u32).to_be_bytes());
+            offset += 6;
+            encoded[offset..offset + key.len()].copy_from_slice(key);
+            offset += key.len();
+            encoded[offset..offset + value.len()].copy_from_slice(value);
+            offset += value.len();
         }
-        Ok(Zeroizing::new(encoded.into_boxed_slice()))
+        Ok(encoded)
     }
 }
 
@@ -744,18 +921,50 @@ fn live_owner(process: &Process) -> Result<ProcessId, ResourceError> {
 pub(crate) fn insert_owned_resource(
     process: &mut Process,
     kind: ResourceKind,
-    bytes: Zeroizing<Box<[u8]>>,
+    bytes: impl SecretInput,
 ) -> Result<*mut MeshSecretHandle, ResourceError> {
     let owner = live_owner(process)?;
     let handle = { secret_table().lock().insert(owner, kind, bytes) }?;
     Ok(allocate_handle(process, handle))
 }
 
+/// Publish a derived secret only while both prepared input generations are live.
+pub(crate) fn insert_owned_secret_after_borrows(
+    process: &mut Process,
+    first: &PreparedOwnedResource,
+    second: &PreparedOwnedResource,
+    output: ProtectedBytes,
+) -> Result<*mut MeshSecretHandle, ResourceError> {
+    let handle = {
+        let mut table = secret_table().lock();
+        let owner = live_owner(process)?;
+        table.insert_secret_after_borrows(owner, &[first.handle, second.handle], output)?
+    };
+    Ok(allocate_handle(process, handle))
+}
+
+/// Publish the two private outputs of incremental Encaps1 together. No opaque
+/// handle escapes until both table entries exist; compiler API is still absent.
+pub(crate) fn insert_owned_mlkem_encapsulation(
+    process: &mut Process,
+    state: crate::crypto::mlkem_incremental::EncapsulationState,
+    shared: ProtectedBytes,
+) -> Result<(*mut MeshSecretHandle, *mut MeshSecretHandle), ResourceError> {
+    let owner = live_owner(process)?;
+    let (state, shared) = secret_table()
+        .lock()
+        .insert_mlkem_encapsulation(owner, state, shared)?;
+    Ok((
+        allocate_handle(process, state),
+        allocate_handle(process, shared),
+    ))
+}
+
 /// Register a platform-provisioned storage-wrapping capability. The 36-byte
 /// material is the wrapping key followed by its per-key nonce prefix.
 pub(crate) fn insert_storage_key_resource(
     process: &mut Process,
-    material: Zeroizing<Box<[u8]>>,
+    material: impl SecretInput,
     reserve: MeshStorageCounterReserve,
     context: *mut c_void,
 ) -> Result<*mut MeshSecretHandle, ResourceError> {
@@ -772,9 +981,26 @@ pub(crate) fn insert_storage_key_resource(
     Ok(allocate_handle(process, handle))
 }
 
+pub(crate) fn insert_managed_storage_key_resource(
+    process: &mut Process,
+    material: impl SecretInput,
+    source: Arc<dyn StorageCounterReservation>,
+) -> Result<*mut MeshSecretHandle, ResourceError> {
+    let owner = live_owner(process)?;
+    let handle = secret_table().lock().insert_storage_key(
+        owner,
+        material,
+        StorageCounterSource::Managed {
+            source,
+            last_counter: None,
+        },
+    )?;
+    Ok(allocate_handle(process, handle))
+}
+
 pub(crate) fn insert_ephemeral_storage_key_resource(
     process: &mut Process,
-    material: Zeroizing<Box<[u8]>>,
+    material: impl SecretInput,
 ) -> Result<*mut MeshSecretHandle, ResourceError> {
     let owner = live_owner(process)?;
     let handle = secret_table().lock().insert_storage_key(
@@ -788,7 +1014,7 @@ pub(crate) fn insert_ephemeral_storage_key_resource(
 #[cfg(test)]
 pub(crate) fn insert_test_storage_key_resource(
     process: &mut Process,
-    material: Zeroizing<Box<[u8]>>,
+    material: impl SecretInput,
     next_counter: u64,
 ) -> Result<*mut MeshSecretHandle, ResourceError> {
     let owner = live_owner(process)?;
@@ -838,6 +1064,226 @@ pub(crate) fn with_owned_resource<R>(
     Ok(read(&prepared.bytes))
 }
 
+/// Dedicated preparation for the new SecretBytes crypto primitives.
+pub(crate) fn prepare_secret_bytes_for_crypto(
+    process: &mut Process,
+    pointer: *const MeshSecretHandle,
+) -> Result<PreparedOwnedResource, ResourceError> {
+    prepare_secret_bytes_for_crypto_with_allocator(process, pointer, |_, n| {
+        ProtectedBytes::zeroed(n).map_err(ResourceError::from)
+    })
+}
+
+fn prepare_secret_bytes_for_crypto_with_allocator(
+    process: &mut Process,
+    pointer: *const MeshSecretHandle,
+    mut allocate: impl FnMut(&mut Process, usize) -> Result<ProtectedBytes, ResourceError>,
+) -> Result<PreparedOwnedResource, ResourceError> {
+    let owner = live_owner(process)?;
+    let handle = validate_handle_pointer(process, pointer).ok_or(ResourceError::StaleHandle)?;
+    let length = {
+        let table = secret_table().lock();
+        table
+            .validate(owner, handle, ResourceKind::SecretBytes)?
+            .len()
+    };
+    // Protected allocation must not run with the global resource table held.
+    // The second guard authenticates the original borrow again before copying.
+    let mut bytes = allocate(process, length)?;
+    if bytes.len() != length {
+        return Err(ResourceError::WrongKind);
+    }
+    {
+        let table = secret_table().lock();
+        if live_owner(process)? != owner {
+            return Err(ResourceError::WrongOwner);
+        }
+        let source = table.validate(owner, handle, ResourceKind::SecretBytes)?;
+        if source.len() != length {
+            return Err(ResourceError::StaleHandle);
+        }
+        bytes.copy_from_slice(source);
+    }
+    Ok(PreparedOwnedResource { handle, bytes })
+}
+
+/// Role-23 key copy: allocate outside the table, then authenticate the same
+/// owner/kind/generation/length before copying any private byte.
+pub(crate) fn prepare_braid_epoch_key(
+    process: &mut Process,
+    pointer: *const MeshSecretHandle,
+) -> Result<PreparedOwnedResource, ResourceError> {
+    prepare_braid_epoch_key_with_allocator(process, pointer, |_, n| {
+        ProtectedBytes::zeroed(n).map_err(Into::into)
+    })
+}
+
+fn prepare_braid_epoch_key_with_allocator(
+    process: &mut Process,
+    pointer: *const MeshSecretHandle,
+    mut allocate: impl FnMut(&mut Process, usize) -> Result<ProtectedBytes, ResourceError>,
+) -> Result<PreparedOwnedResource, ResourceError> {
+    let owner = live_owner(process)?;
+    let handle = validate_handle_pointer(process, pointer).ok_or(ResourceError::StaleHandle)?;
+    let length = {
+        let table = secret_table().lock();
+        table
+            .validate(owner, handle, ResourceKind::MlKemPrivateKey)?
+            .len()
+    };
+    if length != 64 {
+        return Err(ResourceError::WrongKind);
+    }
+    let mut bytes = allocate(process, length)?;
+    if bytes.len() != length {
+        return Err(ResourceError::WrongKind);
+    }
+    {
+        let table = secret_table().lock();
+        if live_owner(process)? != owner {
+            return Err(ResourceError::WrongOwner);
+        }
+        let source = table.validate(owner, handle, ResourceKind::MlKemPrivateKey)?;
+        if source.len() != length {
+            return Err(ResourceError::StaleHandle);
+        }
+        bytes.copy_from_slice(source);
+    }
+    Ok(PreparedOwnedResource { handle, bytes })
+}
+
+pub(crate) fn validate_prepared_braid_epoch_key(
+    process: &Process,
+    prepared: &PreparedOwnedResource,
+) -> Result<(), ResourceError> {
+    let owner = live_owner(process)?;
+    let table = secret_table().lock();
+    let source = table.validate(owner, prepared.handle, ResourceKind::MlKemPrivateKey)?;
+    if source.len() != 64
+        || prepared.bytes.len() != 64
+        || subtle::ConstantTimeEq::ct_eq(source, &prepared.bytes[..]).unwrap_u8() != 1
+    {
+        return Err(ResourceError::StaleHandle);
+    }
+    Ok(())
+}
+
+/// Role-22 map copy: allocate outside the table, then authenticate the same
+/// owner/kind/generation/length before copying any private byte.
+pub(crate) fn prepare_braid_responder_map(
+    process: &mut Process,
+    pointer: *const MeshSecretHandle,
+) -> Result<PreparedOwnedResource, ResourceError> {
+    prepare_braid_map_with_allocator(process, pointer, |_, n| {
+        ProtectedBytes::zeroed(n).map_err(Into::into)
+    })
+}
+fn prepare_braid_map_with_allocator(
+    process: &mut Process,
+    pointer: *const MeshSecretHandle,
+    mut allocate: impl FnMut(&mut Process, usize) -> Result<ProtectedBytes, ResourceError>,
+) -> Result<PreparedOwnedResource, ResourceError> {
+    let owner = live_owner(process)?;
+    let handle = validate_handle_pointer(process, pointer).ok_or(ResourceError::StaleHandle)?;
+    let n = {
+        secret_table()
+            .lock()
+            .validate(owner, handle, ResourceKind::SecretMap)?
+            .len()
+    };
+    // This new fixed-role copy cannot allocate for an arbitrary legacy map.
+    // Exact slot/phase validation follows in protected material.
+    if n != 87 && n != 131 {
+        return Err(ResourceError::WrongKind);
+    }
+    let mut bytes = allocate(process, n)?;
+    if bytes.len() != n {
+        return Err(ResourceError::WrongKind);
+    }
+    {
+        let table = secret_table().lock();
+        if live_owner(process)? != owner {
+            return Err(ResourceError::WrongOwner);
+        }
+        let source = table.validate(owner, handle, ResourceKind::SecretMap)?;
+        if source.len() != n {
+            return Err(ResourceError::StaleHandle);
+        }
+        bytes.copy_from_slice(source);
+    }
+    Ok(PreparedOwnedResource { handle, bytes })
+}
+/// A SecretMap can be edited in place without recycling its handle. Role-22
+/// sealing therefore rechecks the captured material as well as its identity.
+pub(crate) fn validate_prepared_braid_map(
+    process: &Process,
+    prepared: &PreparedOwnedResource,
+) -> Result<(), ResourceError> {
+    let owner = live_owner(process)?;
+    let table = secret_table().lock();
+    let source = table.validate(owner, prepared.handle, ResourceKind::SecretMap)?;
+    if source.len() != prepared.bytes.len()
+        || subtle::ConstantTimeEq::ct_eq(source, &prepared.bytes[..]).unwrap_u8() != 1
+    {
+        return Err(ResourceError::StaleHandle);
+    }
+    Ok(())
+}
+/// Validate this role directly in protected encoded material. Never decode its
+/// values into ordinary Vecs or publish a partially validated resource.
+pub(crate) fn validate_braid_responder_map(bytes: &[u8], phase: u8) -> Result<(), ResourceError> {
+    let bad = ResourceError::WrongKind;
+    let count = if phase <= 1 {
+        2usize
+    } else if phase == 2 {
+        3
+    } else {
+        return Err(bad);
+    };
+    if bytes.len() < 4
+        || bytes[..2] != 3u16.to_be_bytes()
+        || bytes[2..4] != (count as u16).to_be_bytes()
+    {
+        return Err(bad);
+    }
+    let mut offset = 4usize;
+    let mut seen = 0u8;
+    for _ in 0..count {
+        let header = bytes
+            .get(offset..offset + 6)
+            .ok_or(ResourceError::WrongKind)?;
+        let name_len = u16::from_be_bytes([header[0], header[1]]) as usize;
+        let value_len = u32::from_be_bytes(header[2..6].try_into().expect("fixed entry")) as usize;
+        if value_len != 32 || name_len > 6 {
+            return Err(ResourceError::WrongKind);
+        }
+        offset += 6;
+        let name = bytes
+            .get(offset..offset + name_len)
+            .ok_or(ResourceError::WrongKind)?;
+        let bit = match name {
+            b"root" => 1,
+            b"mac" => 2,
+            b"output" if phase == 2 => 4,
+            _ => return Err(ResourceError::WrongKind),
+        };
+        if seen & bit != 0 {
+            return Err(ResourceError::WrongKind);
+        }
+        seen |= bit;
+        offset = offset
+            .checked_add(name_len + 32)
+            .ok_or(ResourceError::WrongKind)?;
+        if offset > bytes.len() {
+            return Err(ResourceError::WrongKind);
+        }
+    }
+    if offset != bytes.len() || seen != if phase == 2 { 7 } else { 3 } {
+        return Err(ResourceError::WrongKind);
+    }
+    Ok(())
+}
+
 pub(crate) fn prepare_owned_resource(
     process: &Process,
     pointer: *const MeshSecretHandle,
@@ -848,8 +1294,8 @@ pub(crate) fn prepare_owned_resource(
     let bytes = secret_table()
         .lock()
         .with_resource(owner, handle, expected_kind, |bytes| {
-            Zeroizing::new(bytes.to_vec().into_boxed_slice())
-        })?;
+            ProtectedBytes::copy_from(bytes).map_err(ResourceError::from)
+        })??;
     Ok(PreparedOwnedResource { handle, bytes })
 }
 
@@ -882,12 +1328,11 @@ pub(crate) fn validate_prepared_storage_key_resource(
 /// Remove a private resource from its owner table and invalidate its handle.
 /// The returned allocation remains zeroizing so callers cannot accidentally
 /// free live key material without wiping it.
-#[cfg(test)]
 pub(crate) fn consume_owned_resource(
     process: &Process,
     pointer: *const MeshSecretHandle,
     expected_kind: ResourceKind,
-) -> Result<Zeroizing<Box<[u8]>>, ResourceError> {
+) -> Result<ProtectedBytes, ResourceError> {
     if expected_kind == ResourceKind::StorageKey {
         return Err(ResourceError::WrongKind);
     }
@@ -998,7 +1443,7 @@ impl ResourceTable {
         &mut self,
         owner: ProcessId,
         kind: ResourceKind,
-        bytes: Zeroizing<Box<[u8]>>,
+        bytes: impl SecretInput,
     ) -> Result<ResourceHandle, ResourceError> {
         if kind == ResourceKind::StorageKey {
             return Err(ResourceError::WrongKind);
@@ -1006,10 +1451,151 @@ impl ResourceTable {
         self.insert_with_counter(owner, kind, bytes, None)
     }
 
+    /// All outputs already have protected backing. No allocator callback here.
+    fn insert_secret_pair(
+        &mut self,
+        owner: ProcessId,
+        left: ProtectedBytes,
+        right: ProtectedBytes,
+    ) -> Result<(ResourceHandle, ResourceHandle), ResourceError> {
+        if left.is_empty() || right.is_empty() {
+            return Err(ResourceError::WrongKind);
+        }
+        let combined = left
+            .len()
+            .checked_add(right.len())
+            .ok_or(ResourceError::ResourceLimitExceeded)?;
+        let usage = self.usage.get(&owner);
+        let next_count = usage
+            .map_or(0, |u| u.secrets)
+            .checked_add(2)
+            .ok_or(ResourceError::ResourceLimitExceeded)?;
+        let next_bytes = usage
+            .map_or(0, |u| u.bytes)
+            .checked_add(combined)
+            .ok_or(ResourceError::ResourceLimitExceeded)?;
+        let next_total = self
+            .total_bytes
+            .checked_add(combined)
+            .ok_or(ResourceError::ResourceLimitExceeded)?;
+        let available = self
+            .free_slots
+            .len()
+            .checked_add(
+                self.limits
+                    .max_slots
+                    .min(u32::MAX as usize)
+                    .saturating_sub(self.slots.len()),
+            )
+            .ok_or(ResourceError::ResourceLimitExceeded)?;
+        if left.len() > self.limits.max_secret_bytes
+            || right.len() > self.limits.max_secret_bytes
+            || next_count > self.limits.max_secrets_per_actor
+            || next_bytes > self.limits.max_bytes_per_actor
+            || next_total > self.limits.max_total_bytes
+            || available < 2
+        {
+            return Err(ResourceError::ResourceLimitExceeded);
+        }
+        let left = self.insert(owner, ResourceKind::SecretBytes, left)?;
+        match self.insert(owner, ResourceKind::SecretBytes, right) {
+            Ok(right) => Ok((left, right)),
+            Err(error) => {
+                drop(
+                    self.consume(owner, left, ResourceKind::SecretBytes)
+                        .expect("unpublished first output remains owned"),
+                );
+                Err(error)
+            }
+        }
+    }
+
+    fn insert_secret_after_borrows(
+        &mut self,
+        owner: ProcessId,
+        inputs: &[ResourceHandle],
+        output: ProtectedBytes,
+    ) -> Result<ResourceHandle, ResourceError> {
+        if inputs.len() != 2 {
+            return Err(ResourceError::WrongKind);
+        }
+        for input in inputs {
+            self.validate(owner, *input, ResourceKind::SecretBytes)?;
+        }
+        self.insert(owner, ResourceKind::SecretBytes, output)
+    }
+
+    fn insert_mlkem_encapsulation(
+        &mut self,
+        owner: ProcessId,
+        state: crate::crypto::mlkem_incremental::EncapsulationState,
+        shared: ProtectedBytes,
+    ) -> Result<(ResourceHandle, ResourceHandle), ResourceError> {
+        if state.len() != crate::crypto::mlkem_incremental::CONTINUATION_BYTES || shared.len() != 32
+        {
+            return Err(ResourceError::WrongKind);
+        }
+        let combined = state
+            .len()
+            .checked_add(shared.len())
+            .ok_or(ResourceError::ResourceLimitExceeded)?;
+        let usage = self.usage.get(&owner);
+        let next_count = usage
+            .map_or(0, |u| u.secrets)
+            .checked_add(2)
+            .ok_or(ResourceError::ResourceLimitExceeded)?;
+        let next_bytes = usage
+            .map_or(0, |u| u.bytes)
+            .checked_add(combined)
+            .ok_or(ResourceError::ResourceLimitExceeded)?;
+        let next_total = self
+            .total_bytes
+            .checked_add(combined)
+            .ok_or(ResourceError::ResourceLimitExceeded)?;
+        let available_slots = self
+            .free_slots
+            .len()
+            .checked_add(
+                self.limits
+                    .max_slots
+                    .min(u32::MAX as usize)
+                    .saturating_sub(self.slots.len()),
+            )
+            .ok_or(ResourceError::ResourceLimitExceeded)?;
+        if state.len() > self.limits.max_secret_bytes
+            || shared.len() > self.limits.max_secret_bytes
+            || next_count > self.limits.max_secrets_per_actor
+            || next_bytes > self.limits.max_bytes_per_actor
+            || next_total > self.limits.max_total_bytes
+            || available_slots < 2
+        {
+            return Err(ResourceError::ResourceLimitExceeded);
+        }
+        // &mut self is protected by the caller's one table lock. Both inputs
+        // are already protected, so neither insertion needs a new mapping.
+        let state = self.insert(
+            owner,
+            ResourceKind::MlKemEncapsulationState,
+            state.into_protected(),
+        )?;
+        match self.insert(owner, ResourceKind::SecretBytes, shared) {
+            Ok(shared) => Ok((state, shared)),
+            Err(error) => {
+                // Defensive rollback if a future insertion rule grows beyond
+                // the preflight. No ABI handle has been allocated yet.
+                drop(
+                    self.consume(owner, state, ResourceKind::MlKemEncapsulationState)
+                        .expect("unpublished first output remains owned"),
+                );
+                Err(error)
+            }
+        }
+    }
+
     fn insert_storage_key(
         &mut self,
         owner: ProcessId,
-        bytes: Zeroizing<Box<[u8]>>,
+        bytes: impl SecretInput,
         source: StorageCounterSource,
     ) -> Result<ResourceHandle, ResourceError> {
         if bytes.len() != 36 {
@@ -1022,7 +1608,7 @@ impl ResourceTable {
         &mut self,
         owner: ProcessId,
         kind: ResourceKind,
-        bytes: Zeroizing<Box<[u8]>>,
+        bytes: impl SecretInput,
         counter: Option<StorageCounterSource>,
     ) -> Result<ResourceHandle, ResourceError> {
         let byte_count = bytes.len();
@@ -1049,6 +1635,7 @@ impl ResourceTable {
             return Err(ResourceError::ResourceLimitExceeded);
         }
 
+        let bytes = bytes.into_protected()?;
         let slot_index = if let Some(slot) = self.free_slots.pop() {
             slot
         } else {
@@ -1089,7 +1676,7 @@ impl ResourceTable {
         owner: ProcessId,
         handle: ResourceHandle,
         expected_kind: ResourceKind,
-        bytes: Zeroizing<Box<[u8]>>,
+        bytes: impl SecretInput,
     ) -> Result<(), ResourceError> {
         let old_length = self
             .validate_entry(owner, handle, expected_kind)?
@@ -1121,6 +1708,7 @@ impl ResourceTable {
             .get_mut(handle.slot as usize)
             .and_then(|slot| slot.entry.as_mut())
             .ok_or(ResourceError::StaleHandle)?;
+        let bytes = bytes.into_protected()?;
         let old = mem::replace(&mut entry.bytes, bytes);
         self.usage
             .get_mut(&owner)
@@ -1147,11 +1735,9 @@ impl ResourceTable {
         owner: ProcessId,
         map: ResourceHandle,
     ) -> Result<ResourceHandle, SecretMapError> {
-        let bytes = Zeroizing::new(
-            self.validate(owner, map, ResourceKind::SecretMap)?
-                .to_vec()
-                .into_boxed_slice(),
-        );
+        let bytes =
+            ProtectedBytes::copy_from(self.validate(owner, map, ResourceKind::SecretMap)?)
+                .map_err(ResourceError::from)?;
         self.insert(owner, ResourceKind::SecretMap, bytes)
             .map_err(SecretMapError::Resource)
     }
@@ -1168,7 +1754,8 @@ impl ResourceTable {
             .entries
             .iter()
             .find(|(candidate, _)| candidate == key)
-            .map(|(_, value)| Zeroizing::new(value.to_vec().into_boxed_slice()))
+            .map(|(_, value)| ProtectedBytes::copy_from(value).map_err(ResourceError::from))
+            .transpose()?
             .ok_or(SecretMapError::InvalidKey)?;
         self.insert(owner, ResourceKind::SecretBytes, value)
             .map_err(SecretMapError::Resource)
@@ -1337,15 +1924,20 @@ impl ResourceTable {
         let entry = self
             .validate_entry(owner, handle, ResourceKind::StorageKey)
             .map_err(StorageKeyError::Resource)?;
-        let material = Zeroizing::new(entry.bytes.to_vec().into_boxed_slice());
+        let material = ProtectedBytes::copy_from(&entry.bytes)
+            .map_err(ResourceError::from)
+            .map_err(StorageKeyError::Resource)?;
         let source = entry
             .counter
+            .as_ref()
+            .cloned()
             .ok_or(StorageKeyError::Resource(ResourceError::WrongKind))?;
 
         let counter = match source {
             StorageCounterSource::Production {
                 reserve, context, ..
             } => PreparedStorageCounter::Production { reserve, context },
+            StorageCounterSource::Managed { source, .. } => PreparedStorageCounter::Managed(source),
             StorageCounterSource::Ephemeral { next_counter } => {
                 let incremented = next_counter
                     .checked_add(1)
@@ -1387,7 +1979,8 @@ impl ResourceTable {
             .as_mut()
             .ok_or(StorageKeyError::Resource(ResourceError::WrongKind))?;
         match source {
-            StorageCounterSource::Production { last_counter, .. } => {
+            StorageCounterSource::Production { last_counter, .. }
+            | StorageCounterSource::Managed { last_counter, .. } => {
                 if last_counter.is_some_and(|last| counter <= last) {
                     return Err(StorageKeyError::CounterNotMonotonic);
                 }
@@ -1412,7 +2005,7 @@ impl ResourceTable {
         &mut self,
         owner: ProcessId,
         handle: ResourceHandle,
-    ) -> Result<Option<Zeroizing<Box<[u8]>>>, ResourceError> {
+    ) -> Result<Option<ProtectedBytes>, ResourceError> {
         let kind = ResourceKind::from_raw(handle.kind).ok_or(ResourceError::WrongKind)?;
         self.destroy_kind(owner, handle, kind)
     }
@@ -1422,7 +2015,7 @@ impl ResourceTable {
         owner: ProcessId,
         handle: ResourceHandle,
         expected_kind: ResourceKind,
-    ) -> Result<Option<Zeroizing<Box<[u8]>>>, ResourceError> {
+    ) -> Result<Option<ProtectedBytes>, ResourceError> {
         match self.consume(owner, handle, expected_kind) {
             Ok(mut bytes) => {
                 bytes.zeroize();
@@ -1438,7 +2031,7 @@ impl ResourceTable {
         owner: ProcessId,
         handle: ResourceHandle,
         expected_kind: ResourceKind,
-    ) -> Result<Zeroizing<Box<[u8]>>, ResourceError> {
+    ) -> Result<ProtectedBytes, ResourceError> {
         self.validate(owner, handle, expected_kind)?;
         let slot = &mut self.slots[handle.slot as usize];
         let entry = slot.entry.take().ok_or(ResourceError::StaleHandle)?;
@@ -1491,7 +2084,9 @@ impl ResourceTable {
             ));
         }
 
-        let mut combined = Zeroizing::new(vec![0; total_length].into_boxed_slice());
+        let mut combined = ProtectedBytes::zeroed(total_length)
+            .map_err(ResourceError::from)
+            .map_err(resource_failure)?;
         combined[..first_length].copy_from_slice(&first_bytes);
         combined[first_length..].copy_from_slice(&second_bytes);
         self.insert(owner, ResourceKind::SecretBytes, combined)
@@ -1614,7 +2209,9 @@ fn create_random_secret_entry(
     length: usize,
 ) -> Result<ResourceHandle, CryptoFailure> {
     let owner = live_owner(process).map_err(resource_failure)?;
-    let mut bytes = Zeroizing::new(vec![0u8; length].into_boxed_slice());
+    let mut bytes = ProtectedBytes::zeroed(length)
+        .map_err(ResourceError::from)
+        .map_err(resource_failure)?;
     SystemProvider
         .fill_random(&mut bytes)
         .map_err(provider_failure)?;
@@ -1622,6 +2219,10 @@ fn create_random_secret_entry(
         .insert(owner, ResourceKind::SecretBytes, bytes)
         .map_err(resource_failure)
 }
+
+#[cfg(test)]
+#[path = "secret/mlkem_incremental_tests.rs"]
+mod mlkem_incremental_tests;
 
 #[cfg(test)]
 mod tests {
@@ -1683,6 +2284,8 @@ mod tests {
             (ResourceKind::SigningPrivateKey, 0x33),
             (ResourceKind::AeadKey, 0x44),
             (ResourceKind::MlKemPrivateKey, 0x55),
+            (ResourceKind::BlindRsaSecretKey, 0x66),
+            (ResourceKind::BlindRsaBlindingState, 0x77),
         ];
 
         for (kind, marker) in cases {
@@ -2041,17 +2644,25 @@ mod tests {
     #[test]
     fn destroy_zeroizes_secret_allocation_before_removal() {
         let owner = ProcessId(71);
-        let mut table = ResourceTable::new(Limits::for_tests(4, 4, 64, 64, 64));
-        let handle = table
-            .insert_secret(owner, vec![0xA5; 16].into_boxed_slice())
-            .expect("insert sentinel secret");
-
-        let removed = table
-            .destroy(owner, handle)
-            .expect("destroy secret")
-            .expect("live allocation");
-
-        assert!(removed.iter().all(|byte| *byte == 0));
+        let mut table = ResourceTable::new(Limits::for_tests(4, 4, 8192, 4096, 8192));
+        for (kind, length) in [
+            (ResourceKind::SecretBytes, 16),
+            (ResourceKind::BlindRsaSecretKey, 1217),
+            (ResourceKind::BlindRsaBlindingState, 336),
+        ] {
+            let handle = table
+                .insert(
+                    owner,
+                    kind,
+                    Zeroizing::new(vec![0xA5; length].into_boxed_slice()),
+                )
+                .expect("insert sentinel resource");
+            let removed = table
+                .destroy(owner, handle)
+                .expect("destroy resource")
+                .expect("live allocation");
+            assert!(removed.iter().all(|byte| *byte == 0));
+        }
     }
 
     #[test]
@@ -2181,7 +2792,7 @@ mod tests {
         let leaked_debug = format!("{:?}", sentinel.as_slice());
         let error = RetypeError::Rejected {
             error: "invalid length",
-            removed: Zeroizing::new(sentinel.to_vec().into_boxed_slice()),
+            removed: ProtectedBytes::copy_from(sentinel).unwrap(),
         };
         let diagnostic = format!("{error:?}");
 
@@ -2192,7 +2803,7 @@ mod tests {
             panic!(
                 "{1}: {:?}",
                 RetypeError::<&'static str>::GenerationExhausted {
-                    removed: Zeroizing::new(sentinel.to_vec().into_boxed_slice()),
+                    removed: ProtectedBytes::copy_from(sentinel).unwrap(),
                 },
                 "forced secret-resource panic"
             );
@@ -2365,6 +2976,53 @@ mod tests {
             Some((1, 8))
         );
         assert_eq!(table.destroy_owned(owner), 0);
+    }
+
+    #[test]
+    fn managed_storage_context_survives_preparation_and_is_released_after_actor_exit() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        struct Source(Arc<AtomicUsize>);
+        impl StorageCounterReservation for Source {
+            fn reserve(&self) -> Result<u64, StorageKeyError> {
+                Ok(7)
+            }
+        }
+        impl Drop for Source {
+            fn drop(&mut self) {
+                self.0.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+        let dropped = Arc::new(AtomicUsize::new(0));
+        let owner = ProcessId(103);
+        let mut table = ResourceTable::new(Limits::for_tests(8, 8, 128, 64, 160));
+        let handle = table
+            .insert_storage_key(
+                owner,
+                Zeroizing::new(vec![0x42; 36].into_boxed_slice()),
+                StorageCounterSource::Managed {
+                    source: Arc::new(Source(dropped.clone())),
+                    last_counter: None,
+                },
+            )
+            .unwrap();
+        let mut prepared = table.prepare_storage_key(owner, handle).unwrap();
+        assert_eq!(table.destroy_owned(owner), 1);
+        assert_eq!(
+            dropped.load(Ordering::SeqCst),
+            0,
+            "in-flight preparation owns its source"
+        );
+        assert_eq!(prepared.reserve_counter(), Ok(7));
+        assert_eq!(
+            dropped.load(Ordering::SeqCst),
+            1,
+            "source is released after reservation, no raw callback leak"
+        );
+        assert_eq!(
+            table.commit_storage_counter(owner, handle, 7),
+            Err(StorageKeyError::Resource(ResourceError::StaleHandle))
+        );
+        assert_eq!(table.total_bytes, 0);
     }
 
     #[test]
@@ -2559,6 +3217,9 @@ mod tests {
             ResourceKind::X25519PrivateKey,
             ResourceKind::SigningPrivateKey,
             ResourceKind::AeadKey,
+            ResourceKind::MlKemPrivateKey,
+            ResourceKind::BlindRsaSecretKey,
+            ResourceKind::BlindRsaBlindingState,
         ];
         let resources: Vec<_> = kinds
             .into_iter()
@@ -2734,7 +3395,7 @@ mod tests {
             capacity: 1,
             entries: vec![(
                 b"k".to_vec(),
-                Zeroizing::new(vec![1; MAX_SECRET_BYTES].into_boxed_slice()),
+                ProtectedBytes::copy_from(&vec![1; MAX_SECRET_BYTES]).unwrap(),
             )],
         };
         assert_eq!(
@@ -2830,7 +3491,7 @@ mod tests {
         let source = StorageCounterSource::Ephemeral { next_counter: 3 };
         let short = Zeroizing::new(vec![0; 35].into_boxed_slice());
         assert_eq!(
-            table.insert_storage_key(owner, short, source),
+            table.insert_storage_key(owner, short, source.clone()),
             Err(ResourceError::WrongKind)
         );
         let material = Zeroizing::new(vec![0; 36].into_boxed_slice());
@@ -2985,3 +3646,252 @@ mod tests {
         });
     }
 }
+
+#[cfg(all(
+    test,
+    any(
+        target_os = "macos",
+        target_os = "ios",
+        target_os = "linux",
+        target_os = "android"
+    )
+))]
+mod protected_memory_os_tests {
+    use super::*;
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    fn wired(address: *const u8) -> bool {
+        // Darwin's public vm_region_basic_info_64 ABI uses 4-byte packing.
+        #[repr(C, packed(4))]
+        struct RegionInfo {
+            protection: i32,
+            max_protection: i32,
+            inheritance: i32,
+            shared: i32,
+            reserved: i32,
+            offset: u64,
+            behavior: i32,
+            user_wired_count: u16,
+        }
+        extern "C" {
+            fn mach_vm_region(
+                task: u32,
+                address: *mut u64,
+                size: *mut u64,
+                flavor: i32,
+                info: *mut i32,
+                count: *mut u32,
+                object: *mut u32,
+            ) -> i32;
+            fn mach_port_deallocate(task: u32, name: u32) -> i32;
+        }
+        let mut region = address as u64;
+        let mut size = 0;
+        let mut info: RegionInfo = unsafe { std::mem::zeroed() };
+        let mut count = (std::mem::size_of::<RegionInfo>() / 4) as u32;
+        let mut object = 0;
+        let task = unsafe { libc::mach_task_self() };
+        let result = unsafe {
+            mach_vm_region(
+                task,
+                &mut region,
+                &mut size,
+                9,
+                (&mut info as *mut RegionInfo).cast(),
+                &mut count,
+                &mut object,
+            )
+        };
+        if object != 0 {
+            unsafe {
+                mach_port_deallocate(task, object);
+            }
+        }
+        assert_eq!(result, 0, "query an allocation owned by this test process");
+        assert!(region <= address as u64 && (address as u64) < region + size);
+        info.user_wired_count != 0
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    fn wired(address: *const u8) -> bool {
+        let address = address as usize;
+        let smaps = std::fs::read_to_string("/proc/self/smaps").unwrap();
+        let mut selected = false;
+        for line in smaps.lines() {
+            if let Some((start, end)) = line
+                .split_whitespace()
+                .next()
+                .and_then(|range| range.split_once('-'))
+            {
+                if let (Ok(start), Ok(end)) = (
+                    usize::from_str_radix(start, 16),
+                    usize::from_str_radix(end, 16),
+                ) {
+                    selected = start <= address && address < end;
+                }
+            }
+            if selected && line.starts_with("VmFlags:") {
+                let flags: Vec<_> = line.split_whitespace().collect();
+                return ["lo", "dd", "dc"]
+                    .iter()
+                    .all(|required| flags.contains(required));
+            }
+        }
+        false
+    }
+
+    fn table() -> ResourceTable {
+        ResourceTable::new(Limits::for_tests(16, 16, 4096, 1024, 4096))
+    }
+    #[test]
+    fn retained_table_entry_is_locked() {
+        let owner = ProcessId(40001);
+        let mut table = table();
+        let handle = table
+            .insert_secret(owner, vec![0x6d; 32].into_boxed_slice())
+            .unwrap();
+        let pointer = table
+            .with_resource(owner, handle, ResourceKind::SecretBytes, |bytes| {
+                bytes.as_ptr()
+            })
+            .unwrap();
+        assert!(
+            wired(pointer),
+            "retained runtime resource must be OS locked"
+        );
+    }
+    #[test]
+    fn prepared_storage_key_copy_is_locked() {
+        let owner = ProcessId(40002);
+        let mut table = table();
+        let handle = table
+            .insert_storage_key(
+                owner,
+                Zeroizing::new(vec![0x6e; 36].into_boxed_slice()),
+                StorageCounterSource::Ephemeral { next_counter: 0 },
+            )
+            .unwrap();
+        let prepared = table.prepare_storage_key(owner, handle).unwrap();
+        table.destroy(owner, handle).unwrap();
+        assert!(
+            wired(prepared.material.as_ptr()),
+            "prepared copy must remain locked after destroying table entry"
+        );
+    }
+    #[test]
+    fn consumed_resource_remains_locked_until_drop() {
+        let owner = ProcessId(40003);
+        let mut table = table();
+        let handle = table
+            .insert_secret(owner, vec![0x6f; 32].into_boxed_slice())
+            .unwrap();
+        let bytes = table
+            .consume(owner, handle, ResourceKind::SecretBytes)
+            .unwrap();
+        assert!(
+            wired(bytes.as_ptr()),
+            "consumed resource must remain locked through provider use"
+        );
+    }
+
+    #[test]
+    fn secret_map_decoding_and_reencoding_keep_values_locked() {
+        let owner = ProcessId(40004);
+        let mut table = table();
+        let map = table.insert_secret_map(owner, 2).unwrap();
+        let secret = table
+            .insert_secret(owner, vec![0x70; 32].into_boxed_slice())
+            .unwrap();
+        table
+            .secret_map_insert(owner, map, b"message-key", secret)
+            .unwrap();
+        let decoded = table
+            .with_resource(owner, map, ResourceKind::SecretMap, SecretMapData::decode)
+            .unwrap()
+            .unwrap();
+        table.destroy(owner, map).unwrap();
+        assert!(
+            wired(decoded.entries[0].1.as_ptr()),
+            "decoded map values must remain protected independently"
+        );
+        let encoded = decoded.encode().unwrap();
+        drop(decoded);
+        assert!(
+            wired(encoded.as_ptr()),
+            "encoded map staging must be protected before table insertion"
+        );
+        let restored = SecretMapData::decode(&encoded).unwrap();
+        assert_eq!(&*restored.entries[0].1, &[0x70; 32]);
+    }
+
+    #[test]
+    fn denied_protection_does_not_publish_a_handle_or_charge_actor_usage() {
+        const CHILD: &str = "MESH_C7_TABLE_DENIAL_CHILD";
+        if std::env::var_os(CHILD).is_some() {
+            let mut old: libc::rlimit = unsafe { std::mem::zeroed() };
+            assert_eq!(
+                unsafe { libc::getrlimit(libc::RLIMIT_MEMLOCK, &mut old) },
+                0
+            );
+            let denied = libc::rlimit {
+                rlim_cur: 0,
+                rlim_max: old.rlim_max,
+            };
+            assert_eq!(unsafe { libc::setrlimit(libc::RLIMIT_MEMLOCK, &denied) }, 0);
+            let owner = ProcessId(40005);
+            let mut table = table();
+            assert_eq!(
+                table.insert_secret(owner, vec![0x71; 32].into_boxed_slice()),
+                Err(ResourceError::ProtectionUnavailable)
+            );
+            assert!(table.slots.is_empty());
+            assert!(table.usage.is_empty());
+            assert_eq!(table.total_bytes, 0);
+            assert_eq!(unsafe { libc::setrlimit(libc::RLIMIT_MEMLOCK, &old) }, 0);
+            let handle = table
+                .insert_secret(owner, vec![0x72; 32].into_boxed_slice())
+                .unwrap();
+            let pointer = table
+                .with_resource(owner, handle, ResourceKind::SecretBytes, |bytes| {
+                    bytes.as_ptr()
+                })
+                .unwrap();
+            assert!(
+                wired(pointer),
+                "retry after protection becomes available must succeed without stale reservations"
+            );
+            eprintln!("C7_TABLE_DENIAL_CHECKED");
+            return;
+        }
+        let result = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "secret::protected_memory_os_tests::denied_protection_does_not_publish_a_handle_or_charge_actor_usage", "--nocapture"])
+            .env(CHILD, "1").output().unwrap();
+        assert!(
+            result.status.success()
+                && String::from_utf8_lossy(&result.stderr).contains("C7_TABLE_DENIAL_CHECKED"),
+            "child failed: {} {}",
+            String::from_utf8_lossy(&result.stdout),
+            String::from_utf8_lossy(&result.stderr)
+        );
+    }
+}
+
+#[cfg(test)]
+#[path = "secret/split_contract_tests.rs"]
+mod split_contract_tests;
+
+#[cfg(test)]
+#[path = "secret/braid_responder_tests.rs"]
+mod braid_responder_tests;
+
+#[cfg(test)]
+#[path = "secret/braid_epoch_tests.rs"]
+mod braid_epoch_tests;
+
+mod spqr_storage;
+pub(crate) use spqr_storage::{
+    prepare_spqr_storage_map, validate_prepared_spqr_storage_map, validate_spqr_storage_map,
+    validate_spqr_storage_metadata, SpqrMapRole, SpqrStorageMetadata, SpqrStorageSlot,
+};
+
+mod recovery_code;
+pub use recovery_code::{mesh_recovery_code_generate, mesh_recovery_code_parse};

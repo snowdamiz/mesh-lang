@@ -21,6 +21,49 @@ fn resource_violations(result: &TypeckResult) -> Vec<&str> {
         .collect()
 }
 
+#[test]
+fn returning_branches_do_not_move_resources_on_the_continuing_path() {
+    let result = check_source(
+        r#"
+resource Handle
+fn destroy(handle :: consume Handle) do nil end
+fn conditional(handle :: Handle, stop :: Bool) -> Int do
+  if stop do
+    destroy(handle)
+    return 1
+  end
+  destroy(handle)
+  2
+end
+fn matched(handle :: Handle, stop :: Bool) -> Int do
+  case stop do
+    true -> do destroy(handle); return 1 end
+    false -> nil
+  end
+  destroy(handle)
+  2
+end
+"#,
+    );
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+}
+
+#[test]
+fn a_move_on_any_continuing_path_or_loop_exit_still_rejects_reuse() {
+    for branch in [
+        "if stop do destroy(handle) else return 1 end",
+        "while stop do destroy(handle); break end",
+        "while stop do if stop do destroy(handle); break end end",
+        "while stop do if stop do destroy(handle); break; return 1 end end",
+        "while stop do if stop do destroy(handle); continue; return 1 end end",
+        "if stop do destroy(handle); destroy(handle); return 1 end",
+    ] {
+        let source = format!("resource Handle\nfn destroy(handle :: consume Handle) do nil end\nfn misuse(handle :: Handle, stop :: Bool) -> Int do\n{branch}\ndestroy(handle)\n2\nend");
+        let result = check_source(&source);
+        assert!(!resource_violations(&result).is_empty(), "{branch}");
+    }
+}
+
 fn check_with_module(module_name: &str, module_source: &str, source: &str) -> TypeckResult {
     let module_parse = mesh_parser::parse(module_source);
     assert!(

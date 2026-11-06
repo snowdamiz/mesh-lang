@@ -730,6 +730,8 @@ end
     );
 
     assert_meshc_test_target_succeeds(&project);
+    // Keep the public package's RPC rejection cases on this dependency proof lane.
+    assert_meshc_test_target_succeeds(&package.join("tests"));
 }
 
 #[test]
@@ -781,6 +783,47 @@ fn test_test_specific_file_target_fails_closed_when_no_project_root_exists() {
         stderr
     );
     assert!(stderr.contains(orphan.to_str().unwrap()), "{}", stderr);
+}
+
+#[test]
+fn test_test_release_optimization_preserves_test_builtins_and_failures() {
+    let project = tempfile::tempdir().unwrap();
+    write_file(
+        &project.path().join("mesh.toml"),
+        "[package]\nname = \"optimized-tests\"\nversion = \"0.1.0\"\n",
+    );
+    write_file(&project.path().join("main.mpl"), "fn main() do\nend\n");
+    let test = project.path().join("tests/storage.test.mpl");
+    write_file(
+        &test,
+        "test(\"optimized storage fixture\") do\n  assert(Test.install_in_memory_secure_store())\nend\n",
+    );
+    let run = || {
+        Command::new(meshc_bin())
+            .args(["test", "--opt-level", "2", test.to_str().unwrap()])
+            .output()
+            .expect("run optimized Mesh tests")
+    };
+    let output = run();
+    assert!(
+        output.status.success(),
+        "optimized test fixture must execute: {}",
+        artifacts::command_output_text(&output)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("1 passed"));
+
+    // Optimization must not turn a failed assertion into a successful run.
+    write_file(
+        &test,
+        "test(\"intentional failure\") do\n  assert(false)\nend\n",
+    );
+    let output = run();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("1 failed"),
+        "{}",
+        artifacts::command_output_text(&output)
+    );
 }
 
 #[test]

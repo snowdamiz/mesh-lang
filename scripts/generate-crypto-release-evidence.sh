@@ -3,7 +3,9 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly ROOT_DIR
-readonly PROFILE="crypto-v2-development-baseline"
+readonly PROFILE="crypto-v2-and-br1-development-baseline"
+readonly BR1_VECTOR_PATH="tests/vectors/blind-rsa/rfc9578-type2.json"
+readonly RFC9474_VECTOR_PATH="tests/vectors/blind-rsa/rfc9474-appendix-a.json"
 readonly MLKEM_VECTOR_PATH="tests/vectors/mlkem/mlkem768-keygen-acvp-tc26.json"
 readonly MLKEM_VECTOR_FILE="mlkem768-keygen-acvp-tc26.json"
 readonly MLKEM_VECTOR_TEST="crypto_v2_public_api_compiles_and_executes_natively"
@@ -35,6 +37,7 @@ readonly OUTPUT_DIR="${output_parent}/${output_name}"
 for command_name in cargo cargo-audit cargo-cyclonedx cp git python3 rustc tar; do
   command -v "${command_name}" >/dev/null || fail "required command is unavailable: ${command_name}" 69
 done
+command -v "${MESH_OPENSSL_BIN:-openssl}" >/dev/null || fail "OpenSSL is required (MESH_OPENSSL_BIN)" 69
 
 cd "${ROOT_DIR}"
 [[ -z "$(git status --porcelain --untracked-files=no)" ]] || fail "release evidence requires a clean tracked worktree" 65
@@ -85,6 +88,10 @@ readonly MLKEM_VECTOR_SOURCE="${SOURCE_A}/${MLKEM_VECTOR_PATH}"
 readonly MLKEM_VECTOR_ARTIFACT="${OUTPUT_DIR}/${MLKEM_VECTOR_FILE}"
 [[ -s "${MLKEM_VECTOR_SOURCE}" ]] || fail "release revision is missing ${MLKEM_VECTOR_PATH}"
 cp "${MLKEM_VECTOR_SOURCE}" "${MLKEM_VECTOR_ARTIFACT}"
+for vector_path in "${BR1_VECTOR_PATH}" "${RFC9474_VECTOR_PATH}"; do
+  [[ -s "${SOURCE_A}/${vector_path}" ]] || fail "release revision is missing ${vector_path}"
+  cp "${SOURCE_A}/${vector_path}" "${OUTPUT_DIR}/$(basename "${vector_path}")"
+done
 
 audit_status=0
 (cd "${SOURCE_A}" && cargo audit --json >"${OUTPUT_DIR}/cargo-audit.json") || audit_status=$?
@@ -197,6 +204,23 @@ run_known_answer_vectors() {
       cargo test --locked --release -p meshc \
         --test e2e_crypto_v2 "${MLKEM_VECTOR_TEST}" \
         --target-dir "${target_root}" -- --exact
+    CARGO_INCREMENTAL=0 \
+      SOURCE_DATE_EPOCH="${COMMIT_EPOCH}" \
+      RUSTFLAGS="${remap_flags}" \
+      MESH_RT_LIB_PATH="${target_root}/release/libmesh_rt.a" \
+      cargo test --locked --release -p meshc \
+        --test e2e_crypto_v2 blind_rsa_ --target-dir "${target_root}" -- --nocapture
+    CARGO_INCREMENTAL=0 \
+      SOURCE_DATE_EPOCH="${COMMIT_EPOCH}" \
+      RUSTFLAGS="${remap_flags}" \
+      cargo test --locked --release -p mesh-rt --lib \
+        crypto::blind_rsa::tests --target-dir "${target_root}"
+    CARGO_INCREMENTAL=0 \
+      SOURCE_DATE_EPOCH="${COMMIT_EPOCH}" \
+      RUSTFLAGS="${remap_flags}" \
+      cargo test --locked --release -p mesh-rt --lib \
+        mlkem --target-dir "${target_root}" \
+        -- --include-ignored --nocapture --test-threads=1
   )
 }
 
@@ -207,6 +231,24 @@ build_once "${SOURCE_A}" "${BUILD_A}" "${OUTPUT_DIR}/build-a.log"
 readonly BINARY_A="${BUILD_A}/release/${binary_name}"
 [[ -s "${BINARY_A}" ]] || fail "first release build did not produce ${binary_name}"
 run_known_answer_vectors "${SOURCE_A}" "${BUILD_A}" >"${OUTPUT_DIR}/known-answer-vectors.log" 2>&1
+python3 - "${OUTPUT_DIR}/known-answer-vectors.log" <<'PYCHECK'
+from pathlib import Path
+import re
+import sys
+
+log = Path(sys.argv[1]).read_text()
+for test in [
+    "crypto_v2_public_api_compiles_and_executes_natively",
+    "blind_rsa_public_api_rfc9578_and_roundtrip",
+    "blind_rsa_openssl_differential",
+    "blind_rsa_client_public_api_all_targets",
+    "crypto::mlkem_conformance_tests::c6_nist_acvp_mlkem768_keygen_tc26_matches_public_key",
+]:
+    if not re.search(r"^test " + re.escape(test) + r" \.\.\. ok$", log, re.MULTILINE):
+        raise SystemExit(f"required public known-answer proof did not execute successfully: {test}")
+if log.count("C6_OPENSSL_INTEROP=passed") != 1:
+    raise SystemExit("required ML-KEM OpenSSL differential did not complete exactly once")
+PYCHECK
 SHA_A="$(sha256_file "${BINARY_A}")"
 readonly SHA_A
 SIZE_A="$(wc -c <"${BINARY_A}" | tr -d ' ')"
@@ -264,7 +306,10 @@ readonly VECTOR_TEST_SHA
 
 python3 - "${OUTPUT_DIR}/release-record.json" "${PROFILE}" "${REVISION}" "${COMMIT_EPOCH}" "${HOST_TARGET}" "${RUSTC_VERSION}" "${CARGO_VERSION}" "${AUDIT_VERSION}" "${CYCLONEDX_VERSION}" "${AUDIT_SHA}" "${SBOM_SHA}" "${TIMING_SHA}" "${SHA_A}" "${VECTOR_SHA}" "${VECTOR_TEST_SHA}" <<'PY'
 from datetime import datetime, timezone
+import hashlib
+from pathlib import Path
 import json
+import re
 import sys
 
 (
@@ -285,15 +330,31 @@ import sys
     vector_test_sha,
 ) = sys.argv[1:]
 
+output_dir = Path(path).parent
+openssl_versions = re.findall(r"^BR1_OPENSSL=(.+)$", (output_dir / "known-answer-vectors.log").read_text(), re.MULTILINE)
+mlkem_openssl_versions = re.findall(r"C6_OPENSSL=(.+)$", (output_dir / "known-answer-vectors.log").read_text(), re.MULTILINE)
+if len(mlkem_openssl_versions) != 1:
+    raise SystemExit("expected exactly one ML-KEM OpenSSL version record")
+if len(openssl_versions) != 1:
+    raise SystemExit("missing independent OpenSSL tool version")
+with (output_dir / "constant-time.json").open() as timing_file:
+    timing = json.load(timing_file)
+if timing.get("schema_version") != 3:
+    raise SystemExit("release record requires both timing boundaries")
+timing_status = {
+    item["boundary"]: "inconclusive" if item.get("inconclusive") else "passed"
+    for item in timing["boundaries"]
+}
+
 record = {
-    "schema_version": 1,
+    "schema_version": 2,
     "generated_at": datetime.now(timezone.utc).isoformat(),
     "profile": profile,
     "mesh_revision": revision,
     "source_date_epoch": int(epoch),
     "target": target,
     "toolchain": {"rustc": rustc, "cargo": cargo},
-    "tools": {"cargo_audit": audit_tool, "cargo_cyclonedx": cyclonedx_tool},
+    "tools": {"cargo_audit": audit_tool, "cargo_cyclonedx": cyclonedx_tool, "openssl": openssl_versions[0], "mlkem_openssl": mlkem_openssl_versions[0]},
     "accepted_named_licenses": ["Apache-2.0/MIT", "MIT/Apache-2.0"],
     "vector_sets": [
         {
@@ -302,9 +363,35 @@ record = {
             "artifact": "mlkem768-keygen-acvp-tc26.json",
             "sha256": vector_sha,
             "runner": "public Mesh Crypto V2 end-to-end proof",
+        },
+        {
+            "suite": "BR1 / RSABSSA-SHA384-PSS-Deterministic",
+            "version": "RFC 9578 Appendix A.2",
+            "artifact": "rfc9578-type2.json",
+            "sha256": hashlib.sha256((output_dir / "rfc9578-type2.json").read_bytes()).hexdigest(),
+            "runner": "compiled public Mesh known-answer/sign/verify and fresh blind/sign/finalize; OpenSSL differential",
+        },
+        {
+            "suite": "RSABSSA Appendix A variants (4096-bit helper conformance)",
+            "version": "RFC 9474 Appendix A.1-A.4",
+            "artifact": "rfc9474-appendix-a.json",
+            "sha256": hashlib.sha256((output_dir / "rfc9474-appendix-a.json").read_bytes()).hexdigest(),
+            "runner": "test/fuzz-only runtime helper/provider vectors; not public BR1 key acceptance",
         }
     ],
     "primitive_profiles": {
+        "blind_rsa": {
+            "profile": "BR1",
+            "algorithm": "RSABSSA-SHA384-PSS-Deterministic",
+            "modulus_bits": 2048,
+            "public_exponent": 65537,
+            "hash": "SHA-384",
+            "mgf": "MGF1-SHA-384",
+            "salt_bytes": 48,
+            "message_bytes_maximum": 65536,
+            "public_key_encoding": "canonical RFC9578 RSASSA-PSS SPKI",
+            "private_targets": ["Linux", "macOS"],
+        },
         "argon2id": {
             "algorithm": "Argon2id",
             "version": "1.3",
@@ -322,7 +409,8 @@ record = {
     "results": {
         "dependency_audit": {"status": "passed", "sha256": audit_sha},
         "sbom": {"status": "passed", "format": "CycloneDX 1.5 JSON", "sha256": sbom_sha},
-        "secure_equals_timing": {"status": "passed", "sha256": timing_sha},
+        "secure_equals_timing": {"status": timing_status["Bytes.secure_equals"], "sha256": timing_sha},
+        "blind_rsa_sign_timing": {"status": timing_status["Crypto.blind_rsa_sign"], "sha256": timing_sha},
         "reproducible_meshc_build": {"status": "passed", "sha256": artifact_sha},
         "known_answer_vectors": {
             "status": "passed",
@@ -331,9 +419,10 @@ record = {
         },
     },
     "known_limitations": [
-        "The published external vector set currently covers ML-KEM-768 key generation; other Crypto V2 embedded KATs are not yet exported as versioned vector artifacts.",
+        "Published external vectors cover ML-KEM-768 key generation and blind RSA; other Crypto V2 embedded KATs are not yet exported as versioned vector artifacts.",
         "This record does not embed the separate native fuzz-smoke evidence or the complete generated-Mesh fuzz and secret-leak sentinel suites.",
-        "This record covers the current host target only, not the advertised mobile and host matrix.",
+        "This record covers the current host target only, not the advertised mobile and host matrix; verify-crypto-mobile.sh proves compilation/provider exclusion only, not on-device vectors.",
+        "An inconclusive timing result is a missing measurement, not constant-time assurance; rerun on a quiet host before release approval.",
         "This record is not an independent cryptographic, protocol, server, or mobile security review.",
     ],
 }
@@ -345,7 +434,7 @@ PY
 
 (
   cd "${OUTPUT_DIR}"
-  for evidence_file in cargo-audit.json meshc.cdx.json constant-time.json reproducibility.json "${MLKEM_VECTOR_FILE}" known-answer-vectors.log release-record.json; do
+  for evidence_file in cargo-audit.json meshc.cdx.json constant-time.json reproducibility.json "${MLKEM_VECTOR_FILE}" rfc9578-type2.json rfc9474-appendix-a.json known-answer-vectors.log release-record.json; do
     printf '%s  %s\n' "$(sha256_file "${evidence_file}")" "${evidence_file}"
   done
 ) >"${OUTPUT_DIR}/SHA256SUMS"

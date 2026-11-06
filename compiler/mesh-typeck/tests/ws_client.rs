@@ -36,3 +36,25 @@ end
     let result = check(&parsed);
     assert!(result.errors.is_empty(), "{:?}", result.errors);
 }
+
+#[test]
+fn websocket_client_header_is_a_fallible_typed_option() {
+    let parsed = mesh_parser::parse(
+        r#"
+fn configure() -> Int!String do
+  let options = WsClient.options()
+  let selected = WsClient.header(options, "Authorization", "MeshMailbox token")?
+  Ok(selected)
+end
+fn main() do
+  case configure() do
+    Ok(_) -> nil
+    Err(_) -> nil
+  end
+end
+"#,
+    );
+    assert!(parsed.errors().is_empty(), "{:?}", parsed.errors());
+    let result = check(&parsed);
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+}

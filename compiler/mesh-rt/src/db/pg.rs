@@ -15,9 +15,10 @@
 //! (local development). The wire protocol is implemented from scratch using
 //! `std::net::TcpStream` and crypto crates from the RustCrypto project.
 
+use super::transport::{connect_tcp, CooperativeTcp};
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::net::{TcpStream, ToSocketAddrs};
+use std::net::TcpStream;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -68,8 +69,8 @@ pub struct MeshDbValue {
 
 /// A PostgreSQL connection stream that may be plain TCP or TLS-wrapped.
 enum PgStream {
-    Plain(TcpStream),
-    Tls(StreamOwned<ClientConnection, TcpStream>),
+    Plain(CooperativeTcp),
+    Tls(StreamOwned<ClientConnection, CooperativeTcp>),
 }
 
 impl Read for PgStream {
@@ -82,10 +83,11 @@ impl Read for PgStream {
 }
 
 impl PgStream {
+    #[cfg(test)]
     fn tcp(&self) -> &TcpStream {
         match self {
-            PgStream::Plain(s) => s,
-            PgStream::Tls(s) => &s.sock,
+            PgStream::Plain(s) => &s.socket,
+            PgStream::Tls(s) => &s.sock.socket,
         }
     }
 }
@@ -125,13 +127,12 @@ impl PgConn {
         }
         // Flushed: TLS may hold what it was given, and report failing to
         // send it only on the next read.
+        self.broken = true;
         let result = self
             .stream
             .write_all(bytes)
             .and_then(|()| self.stream.flush());
-        if result.is_err() {
-            self.broken = true;
-        }
+        self.broken = result.is_err();
         result
     }
 
@@ -139,10 +140,9 @@ impl PgConn {
         if self.broken {
             return Err("PostgreSQL connection is unusable".to_string());
         }
+        self.broken = true;
         let result = read_message(&mut self.stream);
-        if result.is_err() {
-            self.broken = true;
-        }
+        self.broken = result.is_err();
         result
     }
 
@@ -152,13 +152,16 @@ impl PgConn {
 
     /// Wait at most `timeout` for each read (`None`: as long as it takes).
     pub(super) fn set_read_timeout(&self, timeout: Option<Duration>) {
-        let _ = self.stream.tcp().set_read_timeout(timeout);
+        match &self.stream {
+            PgStream::Plain(s) => s.set_read_timeout(timeout),
+            PgStream::Tls(s) => s.sock.set_read_timeout(timeout),
+        }
     }
 
     #[cfg(test)]
     pub(super) fn from_test_stream(stream: TcpStream) -> Self {
         Self {
-            stream: PgStream::Plain(stream),
+            stream: PgStream::Plain(CooperativeTcp::new(stream).unwrap()),
             txn_status: b'I',
             broken: false,
         }
@@ -344,15 +347,7 @@ pub(crate) enum BindValue<'a> {
     Null,
 }
 
-/// Write a Bind of the unnamed statement: each parameter in text or binary
-/// format as its value is, and the result columns in `result_formats` (none:
-/// all text), which come from a RowDescription and so number at most
-/// `MAX_PG_VALUES`, each 0 or 1.
-fn write_bind_values(
-    buf: &mut Vec<u8>,
-    params: &[BindValue<'_>],
-    result_formats: &[i16],
-) -> Result<(), String> {
+fn bind_body_len(params: &[BindValue<'_>], result_formats: &[i16]) -> Result<usize, String> {
     if params.len() > MAX_PG_VALUES {
         return Err(format!(
             "too many PostgreSQL parameters: {} (maximum {MAX_PG_VALUES})",
@@ -383,6 +378,20 @@ fn write_bind_values(
         ));
     }
 
+    Ok(body_len)
+}
+
+/// Write a Bind of the unnamed statement: each parameter in text or binary
+/// format as its value is, and the result columns in `result_formats` (none:
+/// all text), which come from a RowDescription and so number at most
+/// `MAX_PG_VALUES`, each 0 or 1.
+fn write_bind_values(
+    buf: &mut Vec<u8>,
+    params: &[BindValue<'_>],
+    result_formats: &[i16],
+) -> Result<(), String> {
+    let body_len = bind_body_len(params, result_formats)?;
+    let message_len = body_len + 4;
     let mut body = Vec::with_capacity(body_len);
     body.push(0); // unnamed portal
     body.push(0); // unnamed statement
@@ -495,10 +504,10 @@ fn write_terminate(buf: &mut Vec<u8>) {
 /// Upgrade a TCP stream to a TLS-wrapped stream using rustls, trusting the
 /// public roots and the CAs in `root_cert` (a PEM file), if any.
 fn upgrade_to_tls(
-    stream: TcpStream,
+    stream: CooperativeTcp,
     hostname: &str,
     root_cert: Option<&str>,
-) -> Result<StreamOwned<ClientConnection, TcpStream>, String> {
+) -> Result<StreamOwned<ClientConnection, CooperativeTcp>, String> {
     let mut root_store = RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
     if let Some(path) = root_cert {
         let unreadable = |error: &dyn std::fmt::Display| format!("sslrootcert {path}: {error}");
@@ -524,7 +533,8 @@ fn upgrade_to_tls(
 /// For prefer/require, sends the SSLRequest message and reads the 1-byte response.
 /// 'S' = server accepts SSL -> upgrade to TLS.
 /// 'N' = server declines -> error on require, fallback on prefer.
-fn negotiate_tls(mut stream: TcpStream, url: &PgUrl) -> Result<PgStream, String> {
+fn negotiate_tls(stream: TcpStream, url: &PgUrl) -> Result<PgStream, String> {
+    let mut stream = CooperativeTcp::new(stream).map_err(|e| e.to_string())?;
     let sslmode = url.sslmode;
     if sslmode == SslMode::Disable {
         return Ok(PgStream::Plain(stream));
@@ -817,7 +827,7 @@ fn format_pg_error_string(pg_err: &PgError) -> String {
     )
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct PgColumn {
     name: String,
     oid: u32,
@@ -973,6 +983,11 @@ pub(crate) unsafe fn alloc_db_value(tag: u8, payload: *mut u8) -> *mut MeshDbVal
     value
 }
 
+fn column_text<'a>(column: &PgColumn, bytes: &'a [u8]) -> Result<&'a str, String> {
+    std::str::from_utf8(bytes)
+        .map_err(|_| format!("PostgreSQL text column `{}` is not UTF-8", column.name))
+}
+
 /// A row as a `Map<String, String>` or, typed, a `Map<String, DbValue>`. A
 /// later column of the same name wins.
 unsafe fn row_map(columns: &[PgColumn], row: Vec<RowValue>, values: Values) -> Result<u64, String> {
@@ -982,9 +997,7 @@ unsafe fn row_map(columns: &[PgColumn], row: Vec<RowValue>, values: Values) -> R
         let value = match (values, value) {
             (Values::Text, value) => mesh_str(&value.lossy()) as u64,
             (Values::Typed, RowValue::Text(bytes)) => {
-                let text = std::str::from_utf8(bytes).map_err(|_| {
-                    format!("PostgreSQL text column `{}` is not UTF-8", column.name)
-                })?;
+                let text = column_text(column, bytes)?;
                 alloc_db_value(DB_VALUE_TEXT, mesh_str(text) as *mut u8) as u64
             }
             (Values::Typed, RowValue::Binary(bytes)) => alloc_db_value(
@@ -1218,17 +1231,36 @@ pub(crate) unsafe fn db_values<'a>(
     maximum: usize,
     database: &str,
 ) -> Result<Vec<BindValue<'a>>, String> {
-    list_values(params, maximum, database, |slot| {
-        let value = &*(slot as *const MeshDbValue);
-        match value.tag {
-            DB_VALUE_TEXT => {
-                BindValue::Text((*(value.payload as *const MeshString)).as_str().as_bytes())
+    db_values_bounded(params, maximum, database, MAX_DB_VALUE_BYTES, None)
+}
+
+pub(crate) unsafe fn db_values_bounded<'a>(
+    params: *mut u8,
+    maximum: usize,
+    database: &str,
+    maximum_value_bytes: usize,
+    maximum_total_bytes: Option<usize>,
+) -> Result<Vec<BindValue<'a>>, String> {
+    list_values(
+        params,
+        maximum,
+        database,
+        maximum_value_bytes,
+        maximum_total_bytes,
+        |slot| {
+            let value = &*(slot as *const MeshDbValue);
+            match value.tag {
+                DB_VALUE_TEXT => {
+                    BindValue::Text((*(value.payload as *const MeshString)).as_str().as_bytes())
+                }
+                DB_VALUE_BINARY => {
+                    BindValue::Binary((*(value.payload as *const MeshBytes)).as_slice())
+                }
+                // `DB_VALUE_NULL`, the one other tag a DbValue has.
+                _ => BindValue::Null,
             }
-            DB_VALUE_BINARY => BindValue::Binary((*(value.payload as *const MeshBytes)).as_slice()),
-            // `DB_VALUE_NULL`, the one other tag a DbValue has.
-            _ => BindValue::Null,
-        }
-    })
+        },
+    )
 }
 
 /// A `List<String>` as text values, bounded as `db_values` bounds them.
@@ -1237,15 +1269,22 @@ pub(crate) unsafe fn text_values<'a>(
     maximum: usize,
     database: &str,
 ) -> Result<Vec<BindValue<'a>>, String> {
-    list_values(params, maximum, database, |slot| {
-        BindValue::Text((*(slot as *const MeshString)).as_str().as_bytes())
-    })
+    list_values(
+        params,
+        maximum,
+        database,
+        MAX_DB_VALUE_BYTES,
+        None,
+        |slot| BindValue::Text((*(slot as *const MeshString)).as_str().as_bytes()),
+    )
 }
 
 unsafe fn list_values<'a>(
     params: *mut u8,
     maximum: usize,
     database: &str,
+    maximum_value_bytes: usize,
+    maximum_total_bytes: Option<usize>,
     decode: impl Fn(u64) -> BindValue<'a>,
 ) -> Result<Vec<BindValue<'a>>, String> {
     // Through `list_slots`: the list may be a view of another's buffer.
@@ -1255,14 +1294,20 @@ unsafe fn list_values<'a>(
             "too many {database} parameters: {len} (maximum {maximum})"
         ));
     }
+    let mut total_bytes = 0usize;
     (0..len)
         .map(|index| {
             let value = decode(*slots.add(index));
             if let BindValue::Text(bytes) | BindValue::Binary(bytes) = value {
-                if bytes.len() > MAX_DB_VALUE_BYTES {
+                if bytes.len() > maximum_value_bytes {
                     return Err(format!(
-                        "{database} parameter at index {index} exceeds {MAX_DB_VALUE_BYTES} byte limit"
+                        "{database} parameter at index {index} exceeds {maximum_value_bytes} byte limit"
                     ));
+                }
+                if let Some(maximum) = maximum_total_bytes {
+                    total_bytes = total_bytes.checked_add(bytes.len())
+                        .filter(|total| *total <= maximum)
+                        .ok_or_else(|| format!("{database} parameter aggregate exceeds {maximum} byte limit"))?;
                 }
             }
             Ok(value)
@@ -1293,7 +1338,7 @@ fn parse_command_tag(tag: &str) -> i64 {
 /// Returns MeshResult with tag 0 (Ok) containing the connection handle as
 /// a u64, or tag 1 (Err) containing an error message string.
 #[no_mangle]
-pub extern "C" fn mesh_pg_connect(url: *const MeshString) -> *mut u8 {
+pub extern "C-unwind" fn mesh_pg_connect(url: *const MeshString) -> *mut u8 {
     match open(unsafe { text_of(url) }) {
         // Result payloads with integer semantics are represented by pointers
         // to boxed integers, as SQLite's handles are.
@@ -1312,20 +1357,7 @@ pub(super) fn open(url: &str) -> Result<u64, String> {
 fn connect(url: &str) -> Result<PgConn, String> {
     let pg_url = parse_pg_url(url)?;
 
-    let addrs = (pg_url.host.as_str(), pg_url.port)
-        .to_socket_addrs()
-        .map_err(|e| format!("DNS resolution failed: {}", e))?;
-    // Each address in turn, as libpq tries them: `localhost` can name ::1
-    // first for a server that listens on 127.0.0.1 alone.
-    let mut failure = "could not resolve host".to_string();
-    let stream = addrs
-        .filter_map(|addr| {
-            TcpStream::connect_timeout(&addr, Duration::from_secs(10))
-                .map_err(|e| failure = format!("connection failed: {}", e))
-                .ok()
-        })
-        .next();
-    let stream = stream.ok_or(failure)?;
+    let stream = connect_tcp(&pg_url.host, pg_url.port)?;
     // Set before TLS wrapping (StreamOwned inherits them).
     let _ = stream.set_read_timeout(Some(ANSWER_TIMEOUT));
     let _ = stream.set_write_timeout(Some(Duration::from_secs(10)));
@@ -1447,6 +1479,11 @@ fn connect(url: &str) -> Result<PgConn, String> {
     Ok(conn)
 }
 
+/// Release an unusable/cancelled connection without any I/O or suspension.
+pub(super) fn discard(handle: u64) {
+    drop(unsafe { Box::from_raw(handle as *mut PgConn) });
+}
+
 /// Close a PostgreSQL connection.
 ///
 /// # Signature
@@ -1456,7 +1493,7 @@ fn connect(url: &str) -> Result<PgConn, String> {
 /// Recovers the Box<PgConn> from the handle, sends Terminate message,
 /// and lets Box::drop free the Rust memory and close the TcpStream.
 #[no_mangle]
-pub extern "C" fn mesh_pg_close(conn_handle: u64) {
+pub extern "C-unwind" fn mesh_pg_close(conn_handle: u64) {
     close(*unsafe { Box::from_raw(conn_handle as *mut PgConn) });
 }
 
@@ -1483,6 +1520,44 @@ unsafe fn mesh_execute(
     }
 }
 
+// Rust-owned values remain live while a socket wait may collect the actor
+// heap. In particular, a Vec of GC row handles is not itself a GC root.
+enum OwnedValue {
+    Text(Vec<u8>),
+    Binary(Vec<u8>),
+    Null,
+}
+impl OwnedValue {
+    fn from_bind(value: BindValue<'_>) -> Self {
+        match value {
+            BindValue::Text(bytes) => Self::Text(bytes.to_vec()),
+            BindValue::Binary(bytes) => Self::Binary(bytes.to_vec()),
+            BindValue::Null => Self::Null,
+        }
+    }
+    fn from_row(value: RowValue<'_>) -> Self {
+        match value {
+            RowValue::Text(bytes) => Self::Text(bytes.to_vec()),
+            RowValue::Binary(bytes) => Self::Binary(bytes.to_vec()),
+            RowValue::Null => Self::Null,
+        }
+    }
+    fn bind(&self) -> BindValue<'_> {
+        match self {
+            Self::Text(bytes) => BindValue::Text(bytes),
+            Self::Binary(bytes) => BindValue::Binary(bytes),
+            Self::Null => BindValue::Null,
+        }
+    }
+    fn row(&self) -> RowValue<'_> {
+        match self {
+            Self::Text(bytes) => RowValue::Text(bytes),
+            Self::Binary(bytes) => RowValue::Binary(bytes),
+            Self::Null => RowValue::Null,
+        }
+    }
+}
+
 /// `Pg.query` and `Pg.query_values`: `Ok(rows)`.
 unsafe fn mesh_query(
     conn_handle: u64,
@@ -1492,9 +1567,37 @@ unsafe fn mesh_query(
 ) -> *mut u8 {
     let conn = &mut *(conn_handle as *mut PgConn);
     let rows = bind_params(params, values).and_then(|params| {
-        query(conn, text_of(sql), &params, values, |columns, row| {
-            row_map(columns, row, values)
-        })
+        // Typed preparation itself waits for the server before encoding Bind.
+        // Copy inputs out of the actor heap before that first suspension.
+        bind_body_len(&params, &[])?;
+        let owned: Vec<_> = params.into_iter().map(OwnedValue::from_bind).collect();
+        let params: Vec<_> = owned.iter().map(OwnedValue::bind).collect();
+        let sql = text_of(sql);
+        validate_sql(sql)?;
+        let sql = sql.to_owned();
+        let rows = query(conn, &sql, &params, values, |columns, row| {
+            if values == Values::Typed {
+                for (column, value) in columns.iter().zip(&row) {
+                    if let RowValue::Text(bytes) = value {
+                        column_text(column, bytes)?;
+                    }
+                }
+            }
+            Ok((
+                columns.to_vec(),
+                row.into_iter()
+                    .map(OwnedValue::from_row)
+                    .collect::<Vec<_>>(),
+            ))
+        })?;
+        // No more network waits from here to the returned GC list. Fresh
+        // maps/DbValues never survive a safepoint hidden in a Rust Vec.
+        rows.into_iter()
+            .map(|(columns, row)| {
+                row_map(&columns, row.iter().map(OwnedValue::row).collect(), values)
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(Failure::from)
     });
     match rows {
         Ok(rows) => {
@@ -1514,7 +1617,7 @@ unsafe fn mesh_query(
 /// Parameters are bound via the Extended Query protocol using $1, $2, etc.
 /// Returns the number of rows affected from the CommandComplete tag.
 #[no_mangle]
-pub extern "C" fn mesh_pg_execute(
+pub extern "C-unwind" fn mesh_pg_execute(
     conn_handle: u64,
     sql: *const MeshString,
     params: *mut u8,
@@ -1533,7 +1636,7 @@ pub extern "C" fn mesh_pg_execute(
 /// are the text representation of column values. NULL columns become empty
 /// strings.
 #[no_mangle]
-pub extern "C" fn mesh_pg_query(
+pub extern "C-unwind" fn mesh_pg_query(
     conn_handle: u64,
     sql: *const MeshString,
     params: *mut u8,
@@ -1543,7 +1646,7 @@ pub extern "C" fn mesh_pg_query(
 
 /// Execute an unnamed prepared statement with typed `DbValue` parameters.
 #[no_mangle]
-pub extern "C" fn mesh_pg_execute_values(
+pub extern "C-unwind" fn mesh_pg_execute_values(
     conn_handle: u64,
     sql: *const MeshString,
     params: *mut u8,
@@ -1553,7 +1656,7 @@ pub extern "C" fn mesh_pg_execute_values(
 
 /// Query typed values while keeping non-BYTEA columns in PostgreSQL text format.
 #[no_mangle]
-pub extern "C" fn mesh_pg_query_values(
+pub extern "C-unwind" fn mesh_pg_query_values(
     conn_handle: u64,
     sql: *const MeshString,
     params: *mut u8,
@@ -1590,7 +1693,7 @@ fn commit(conn: &mut PgConn) -> Result<(), String> {
 ///
 /// Sends `BEGIN` and returns Ok(()) or Err(error_message).
 #[no_mangle]
-pub extern "C" fn mesh_pg_begin(conn_handle: u64) -> *mut u8 {
+pub extern "C-unwind" fn mesh_pg_begin(conn_handle: u64) -> *mut u8 {
     let conn = unsafe { &mut *(conn_handle as *mut PgConn) };
     unit_result(pg_simple_command(conn, "BEGIN"))
 }
@@ -1604,7 +1707,7 @@ pub extern "C" fn mesh_pg_begin(conn_handle: u64) -> *mut u8 {
 /// Sends `COMMIT` and returns Ok(()) or Err(error_message), an error too
 /// when a failed statement had aborted the transaction.
 #[no_mangle]
-pub extern "C" fn mesh_pg_commit(conn_handle: u64) -> *mut u8 {
+pub extern "C-unwind" fn mesh_pg_commit(conn_handle: u64) -> *mut u8 {
     let conn = unsafe { &mut *(conn_handle as *mut PgConn) };
     unit_result(commit(conn))
 }
@@ -1617,7 +1720,7 @@ pub extern "C" fn mesh_pg_commit(conn_handle: u64) -> *mut u8 {
 ///
 /// Sends `ROLLBACK` and returns Ok(()) or Err(error_message).
 #[no_mangle]
-pub extern "C" fn mesh_pg_rollback(conn_handle: u64) -> *mut u8 {
+pub extern "C-unwind" fn mesh_pg_rollback(conn_handle: u64) -> *mut u8 {
     let conn = unsafe { &mut *(conn_handle as *mut PgConn) };
     unit_result(pg_simple_command(conn, "ROLLBACK"))
 }
@@ -1653,16 +1756,18 @@ pub(crate) unsafe fn invoke_transaction_callback(
 /// 4. On Err result from closure: ROLLBACK and propagate the Err.
 /// 5. On panic: ROLLBACK and return Err("transaction aborted: panic in callback").
 #[no_mangle]
-pub extern "C" fn mesh_pg_transaction(
+pub extern "C-unwind" fn mesh_pg_transaction(
     conn_handle: u64,
     fn_ptr: *const u8,
     env_ptr: *const u8,
 ) -> *mut u8 {
     unsafe {
-        let conn = &mut *(conn_handle as *mut PgConn);
+        // The callback may query this handle. Keep only its raw pointer
+        // across the callback, not an overlapping Rust mutable reference.
+        let conn_ptr = conn_handle as *mut PgConn;
 
         // 1. BEGIN
-        if let Err(e) = pg_simple_command(conn, "BEGIN") {
+        if let Err(e) = pg_simple_command(&mut *conn_ptr, "BEGIN") {
             return err_result(&format!("BEGIN: {}", e));
         }
 
@@ -1673,6 +1778,7 @@ pub extern "C" fn mesh_pg_transaction(
 
         match result {
             Ok(result_ptr) => {
+                let conn = &mut *conn_ptr;
                 // Check if closure returned Ok or Err via MeshResult tag
                 let r = &*(result_ptr as *const crate::io::MeshResult);
                 if r.tag == 0 {
@@ -1688,10 +1794,17 @@ pub extern "C" fn mesh_pg_transaction(
                     result_ptr // propagate the Err result
                 }
             }
-            Err(_) => {
-                // Panic -> ROLLBACK
-                let _ = pg_simple_command(conn, "ROLLBACK");
+            Err(payload) if payload.is::<String>() || payload.is::<&str>() => {
+                // A user panic -> ROLLBACK
+                let _ = pg_simple_command(&mut *conn_ptr, "ROLLBACK");
                 err_result("transaction aborted: panic in callback")
+            }
+            Err(payload) => {
+                // Actor stop and coroutine cancellation are control flow, not
+                // callback failures. Never swallow a forced stack unwind or
+                // perform socket I/O while its stack is being destroyed.
+                (*conn_ptr).broken = true;
+                std::panic::resume_unwind(payload)
             }
         }
     }
@@ -1734,7 +1847,7 @@ pub(crate) unsafe fn decode_rows(
 /// 4. Collects all per-row results into a new list.
 /// 5. Returns Ok(list_of_results).
 #[no_mangle]
-pub extern "C" fn mesh_pg_query_as(
+pub extern "C-unwind" fn mesh_pg_query_as(
     conn_handle: u64,
     sql: *mut u8,
     params: *mut u8,
@@ -1844,7 +1957,7 @@ mod tests {
             socket.read_exact(&mut length).unwrap();
             let mut startup = vec![0; u32::from_be_bytes(length) as usize - 4];
             socket.read_exact(&mut startup).unwrap();
-            let mut stream = PgStream::Plain(socket);
+            let mut stream = PgStream::Plain(CooperativeTcp::new(socket).unwrap());
             fn auth(output: &mut Vec<u8>, kind: i32, data: &[u8]) {
                 output.push(b'R');
                 output.extend_from_slice(&(8 + data.len() as i32).to_be_bytes());
@@ -2143,7 +2256,7 @@ mod tests {
         let (url, peer) = wire_peer("sslmode=disable", |mut socket| {
             read_startup(&mut socket);
             socket.write_all(&auth(5, b"salt")).unwrap();
-            let mut stream = PgStream::Plain(socket);
+            let mut stream = PgStream::Plain(CooperativeTcp::new(socket).unwrap());
             let (tag, body) = read_message(&mut stream).unwrap();
             assert_eq!(tag, b'p');
             let expected = compute_md5_password("user", "password", b"salt");
@@ -2340,6 +2453,35 @@ mod tests {
             .err()
             .unwrap();
         assert!(error.contains("certificate"), "{error}");
+    }
+
+    #[test]
+    #[ignore = "requires MESH_TEST_DATABASE_URL and MESH_TEST_DATABASE_CA"]
+    fn tls_query_wait_does_not_block_the_actor_worker() {
+        let ca = std::env::var("MESH_TEST_DATABASE_CA").expect("MESH_TEST_DATABASE_CA");
+        let url = test_database_url(None, &format!("sslmode=verify-full&sslrootcert={ca}"));
+        crate::actor::in_actor(move || {
+            type Work = Box<dyn FnOnce() + Send>;
+            extern "C-unwind" fn tick(args: *const u8) {
+                let body = unsafe { Box::from_raw(args as *mut Work) };
+                crate::actor::mesh_timer_sleep(10);
+                body();
+            }
+            let mut conn = native_pg_connect(&url).unwrap();
+            let progressed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let flag = progressed.clone();
+            let work: Work =
+                Box::new(move || flag.store(true, std::sync::atomic::Ordering::Release));
+            crate::actor::global_scheduler().spawn(
+                tick as *const u8,
+                Box::into_raw(Box::new(work)).cast(),
+                0,
+                1,
+            );
+            native_pg_query(&mut conn, "SELECT pg_sleep(0.05)", &[]).unwrap();
+            assert!(progressed.load(std::sync::atomic::Ordering::Acquire));
+            native_pg_close(conn);
+        });
     }
 
     /// MESH_TEST_DATABASE_URL with its database replaced by `name`.
@@ -2799,6 +2941,51 @@ mod tests {
         })
     }
 
+    #[test]
+    fn query_rows_survive_collection_between_fragmented_replies() {
+        let (handle, peer) = peer_connection(move |mut socket| {
+            let columns = row_description(&[("payload", 25, 0)]);
+            socket
+                .write_all(&[message(b'T', &columns), ready(b'I')].concat())
+                .unwrap();
+            std::thread::sleep(Duration::from_millis(10));
+            socket.write_all(&message(b'T', &columns)).unwrap();
+            for index in 0..12 {
+                let value = format!("{index:02}:{}", "x".repeat(128 * 1024));
+                socket
+                    .write_all(&message(b'D', &data_row(&[Some(value.as_bytes())])))
+                    .unwrap();
+                // Every row is separated by a genuine socket suspension and
+                // enough allocations would collect the old GC row Vec.
+                std::thread::sleep(Duration::from_millis(3));
+            }
+            socket
+                .write_all(&[complete("SELECT 12"), ready(b'I')].concat())
+                .unwrap();
+            let _ = socket.read_to_end(&mut Vec::new());
+        });
+        let actual = crate::actor::in_actor(move || {
+            crate::actor::current_process()
+                .unwrap()
+                .lock()
+                .heap
+                .set_gc_threshold(0);
+            let sql = mesh_str("SELECT $1::text AS payload");
+            let value = mesh_str(&"argument".repeat(64 * 1024));
+            let param = unsafe { alloc_db_value(DB_VALUE_TEXT, value.cast()) } as u64;
+            let params = mesh_list_from_array(&param, 1);
+            let result = outcome(mesh_pg_query_values(handle, sql, params)).unwrap();
+            let rows = rows_of(result, true);
+            mesh_pg_close(handle);
+            rows
+        });
+        peer.join().unwrap();
+        let expected: Vec<_> = (0..12)
+            .map(|index| format!("payload=Text({index:02}:{})", "x".repeat(128 * 1024)))
+            .collect();
+        assert_eq!(actual, expected);
+    }
+
     fn conn_of(handle: u64) -> &'static mut PgConn {
         unsafe { &mut *(handle as *mut PgConn) }
     }
@@ -3097,6 +3284,30 @@ mod tests {
     }
 
     #[test]
+    fn typed_row_failure_precedes_a_later_server_error() {
+        let names = row_description(&[("label", 25, 0)]);
+        let replies = [
+            message(b'T', &names),
+            ready(b'I'),
+            message(b'T', &names),
+            message(b'D', &data_row(&[Some(b"\xff")])),
+            error_response("later server error"),
+            ready(b'I'),
+        ]
+        .concat();
+        let (handle, peer) = scripted(replies);
+        let error = outcome(mesh_pg_query_values(
+            handle,
+            mesh_str("SELECT label"),
+            mesh_list_new(),
+        ))
+        .unwrap_err();
+        mesh_pg_close(handle);
+        peer.join().unwrap();
+        assert_eq!(error, "PostgreSQL text column `label` is not UTF-8");
+    }
+
+    #[test]
     fn results_stay_within_the_row_and_byte_limits() {
         let one = row_description(&[("a", 25, 0)]);
         let row = message(b'D', &data_row(&[Some(b"1")]));
@@ -3185,7 +3396,7 @@ mod tests {
         let PgStream::Plain(stream) = &conn_of(handle).stream else {
             unreachable!()
         };
-        stream.shutdown(std::net::Shutdown::Write).unwrap();
+        stream.socket.shutdown(std::net::Shutdown::Write).unwrap();
         let error = outcome(mesh_pg_execute(handle, sql, mesh_list_new())).unwrap_err();
         assert!(error.starts_with("send execute: "), "{error}");
         assert!(conn_of(handle).is_broken());

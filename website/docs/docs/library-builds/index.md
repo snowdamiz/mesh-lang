@@ -257,6 +257,34 @@ text with status `9`. Use `Bytes` for structured data and choose the encoding
 yourself, such as JSON text or a length-prefixed binary format built with
 [`BytesBuilder`](/docs/stdlib/#building-binary-values).
 
+### Binding audience
+
+The `bindings` option selects the generated helper functions. Its default is
+`"all"`. An explicit `bindings: "all"` produces the same files and ABI metadata
+as an omitted option.
+
+```mesh
+@export("greeter_native_echo", bindings: "native")
+pub fn echo_native(request :: Bytes) -> Bytes!String do
+  Ok(request)
+end
+```
+
+`bindings: "native"` retains the C header, Swift helpers, Kotlin helpers, JNI
+glue, and ABI manifest. The TypeScript file omits that export's helper. If every
+export uses `"native"`, the TypeScript file contains an inert `export {};`
+module with no native bridge import or initialization.
+
+The native export's ABI row records `"bindingAudience": "native"`. Default
+exports omit this field, preserving their existing metadata. The option accepts
+only the string literals `"all"` and `"native"`. Duplicate options, other
+values, expressions, and values of another type fail the build.
+
+This option controls generated helpers. The C symbol, calling convention,
+ownership, and byte limits remain unchanged. Host bridge allowlists enforce
+runtime authorization separately and must reject native-only symbols on
+JavaScript invocation routes.
+
 ## Generated files
 
 | File | Contents |
@@ -265,7 +293,7 @@ yourself, such as JSON text or a length-prefixed binary format built with
 | `<out>.swift` | `MeshLibrary` enum and `MeshLibraryFailure` error for Swift |
 | `<out>.kt` | `mesh.MeshLibrary` object with JNI `external` functions |
 | `<out>.jni.c` | JNI glue that implements the Kotlin functions in C |
-| `<out>.ts` | One `Promise`-returning function per export for an Expo native module |
+| `<out>.ts` | `Promise`-returning functions for exports with `bindings: "all"`, for an Expo native module |
 | `<out>.abi.json` | Machine-readable description of the library |
 
 The manifest for the example above:
@@ -291,7 +319,25 @@ The manifest for the example above:
 ```
 
 `exports` lists every export; this excerpt shows one. `target` is the
-`--target` triple, or the host triple without one.
+`--target` triple, or the host triple without one. On macOS, default host builds
+use the same canonical native platform target for object code and runtime/link
+selection. Bare `aarch64-apple-darwin` and `x86_64-apple-darwin` targets emit
+explicit macOS object metadata using `MACOSX_DEPLOYMENT_TARGET`, or 11.0 without
+an override. Explicit versioned targets retain their requested deployment version.
+
+Cargo builds started in this repository or its child directories also receive a
+non-forcing macOS 11.0 deployment default from the workspace `.cargo/config.toml`.
+An explicit `MACOSX_DEPLOYMENT_TARGET` remains authoritative for Rust and native
+C dependencies, and the default macOS linker uses the same resolved deployment
+target as the object generator.
+
+Cargo discovers configuration from its working directory and parent directories.
+Building these runtime crates as dependencies in another workspace, or using
+`--manifest-path` from an unrelated directory, does not inherit this repository's
+configuration. Those builds must configure a deployment target that matches the
+intended Mesh application target. Installed runtime archives retain the minimum
+chosen when they were built; changing a consumer's environment does not lower an
+already built archive's deployment requirement.
 
 ## The C ABI
 
@@ -352,12 +398,31 @@ int32_t symbol(const uint8_t *request, uint64_t request_len, MeshLibraryBytes *r
   `*response` to `{NULL, 0}` before anything else. When it rejects them with
   status `1`, it leaves `*response` untouched, so initialize it to `{0}`.
 - The Mesh function runs on the calling thread, as a new Mesh process that ends
-  when the call returns. Values it creates are released then.
+  when the call returns. On supported native threads, unreachable managed
+  values can be collected at compiler safe points during the call. Remaining
+  values are released on return, except objects still borrowed by spawned
+  actors. Return bytes are copied before this cleanup.
+- A synchronous library call originating on a Mesh coroutine temporarily
+  isolates its outer scheduler context. It retains its call heap until return
+  rather than scanning the coroutine with native-thread stack bounds, and
+  restores the outer context on success, error or panic. It does not yield the
+  outer coroutine while the call is in progress. Threads whose stack bounds
+  cannot be determined also retain their call heap until return.
 - For `Ok(bytes)`, the call returns `0` and `*response` holds a copy of the
   bytes. For `Err(message)`, it returns `9` and `*response` holds the message's
   UTF-8 bytes. An empty result is `{NULL, 0}`.
-- Requests and results, including error messages, are limited to 1 MiB
-  (1,048,576 bytes). A larger request or result returns `6` with an empty
+- Requests and results, including error messages, default to 1 MiB
+  (1,048,576 bytes). An export can declare independent `max_input` and
+  `max_output` limits, for example
+  `@export("file_upload", max_input: 16_782_000, max_output: 4096)`.
+  These are decimal integer literals from 1 through 67,108,864 bytes (64 MiB);
+  underscores are allowed. Omitted limits retain the default. Duplicate or
+  unknown options, expressions and out-of-range values fail compilation.
+  Limits appear in the generated C header and ABI manifest (`maxInputBytes`,
+  `maxOutputBytes`). They do not change the C signature, ABI version, ownership,
+  or the separate 1 MiB host callback buffers. Choose a limit for the complete
+  encoded frame, including its framing overhead. A request or result exceeding
+  its declared limit returns `6` with an empty
   response.
 - A panic returns `4` with an empty response. The runtime prints the panic
   message to standard error and stays usable.
@@ -366,6 +431,13 @@ The caller owns the response. Release it with
 `mesh_library_free_returned_bytes`, not `free`, after every call, including
 failed ones. The function frees the data, resets the struct to `{NULL, 0}`, and
 accepts `NULL` or an already released struct.
+
+Use the free function from the same runtime that produced the buffer, and keep
+its data pointer unchanged. It erases the original returned allocation before
+releasing it; changing the public length does not change that erase extent.
+Generated JNI glue uses and erases its own bounded native request copy and
+exception-formatting buffer, while preserving the caller's Java array. These
+native erasures do not erase copies retained by host code or managed by the JVM.
 
 State that must outlive a call belongs in storage or in an actor the call
 spawns. A registered [service](/docs/concurrency/#services-genserver) keeps its
@@ -413,7 +485,7 @@ and `3`. A second `counter_start` returns status `9` with `already started`.
 | `3` | `MESH_LIBRARY_ERR_BUSY` | Another exported call is in progress in this process |
 | `4` | `MESH_LIBRARY_ERR_PANIC` | The Mesh function panicked |
 | `5` | `MESH_LIBRARY_ERR_HOST_CALLBACK` | Reserved in ABI 1; no function returns it yet |
-| `6` | `MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE` | The request or result is larger than 1 MiB, or the response could not be allocated |
+| `6` | `MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE` | The request or result exceeds its export limit (default 1 MiB), or the response could not be allocated |
 | `7` | `MESH_LIBRARY_ERR_ABI` | The callback table's `abi_version` is not `1` or its `struct_size` is wrong |
 | `8` | `MESH_LIBRARY_ERR_CALLBACK_MISSING` | Reserved for the host side; the runtime uses it internally when a capability has no callback, and Mesh code sees that as `Err("host_callback_missing")` |
 | `9` | `MESH_LIBRARY_ERR_APPLICATION` | The Mesh function returned `Err`; the response holds its message |

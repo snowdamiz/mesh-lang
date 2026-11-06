@@ -55,6 +55,50 @@ pub struct AccountsAtSlot do
   accounts :: List<AccountInfo>
 end
 
+pub struct OptionalAccountsAtSlot do
+  slot :: U64
+  accounts :: List<Option<AccountInfo>>
+end
+
+pub struct KeyedAccountInfo do
+  address :: Pubkey
+  account :: AccountInfo
+end
+
+pub struct ProgramAccountsAtSlot do
+  slot :: U64
+  accounts :: List<KeyedAccountInfo>
+end
+
+pub struct AccountAtSlot do
+  slot :: U64
+  account :: AccountInfo
+end
+
+## A data slice plus the full account allocation reported by RPC.
+pub struct AccountSlice do
+  info :: AccountInfo
+  space :: U64
+end
+
+pub struct AccountSliceAtSlot do
+  slot :: U64
+  account :: Option<AccountSlice>
+end
+
+pub struct OptionalAccountSlicesAtSlot do
+  slot :: U64
+  accounts :: List<Option<AccountSlice>>
+end
+
+pub struct SolanaClock do
+  slot :: U64
+  epoch_start_timestamp :: Int
+  epoch :: U64
+  leader_schedule_epoch :: U64
+  unix_timestamp :: Int
+end
+
 pub struct TokenAccount do
   mint :: Pubkey
   owner :: Pubkey
@@ -204,13 +248,13 @@ fn u64_text(value :: String, label :: String) -> U64!String do
 end
 
 fn u64_field(raw :: String, field :: String, label :: String) -> U64!String do
-  let value = Json.get(raw, field)
-  if value == "" do
-    Err("SOLANA_#{label}: missing field #{field}")
-  else
-    value
-      |> u64_text(label)
+  let root = Json.parse(raw)?
+  let value = case Json.object_get(root, field) do
+    Err(_) -> return Err("SOLANA_#{label}: missing field #{field}")
+    Ok(value) -> value
   end
+  # Preserve the JSON type: a quoted number is not RPC integer metadata.
+  u64_text(Json.encode(value), label)
 end
 
 fn int_field(raw :: String, field :: String, label :: String) -> Int!String do
@@ -257,7 +301,7 @@ pub fn account_info(raw :: String) -> AccountInfo!String do
     if encoding != "base64" do
       Err("SOLANA_ACCOUNT: data encoding must be base64")
     else
-      let owner_text = Json.get(raw, "owner")
+      let owner_text = Json.as_string(Json.object_get(root, "owner")?)?
       if owner_text == "" do
         Err("SOLANA_ACCOUNT: missing owner")
       else
@@ -286,6 +330,38 @@ fn read_u64(data :: Bytes, offset :: Int, label :: String) -> U64!String do
       |> u64_text(label)
     Err(_) -> Err("SOLANA_#{label}: u64 read is out of bounds")
   end
+end
+
+pub fn clock_sysvar_address() -> Pubkey!String do
+  pubkey("SysvarC1ock11111111111111111111111111111111")
+end
+
+fn clock_timestamp(data :: Bytes, offset :: Int) -> Int!String do
+  let number = read_u64(data, offset, "CLOCK")?
+  if U64.compare(number, U64.parse("9223372036854775807")?) <= 0 do
+    U64.to_int(number)
+  else
+    I128.to_int(I128.subtract(I128.parse(U64.to_string(number))?,
+      I128.parse("18446744073709551616")?)?)
+  end
+end
+
+## Decode the standard 40-byte Clock sysvar, including negative i64 timestamps.
+## The caller authenticates the requested address, RPC context and provider.
+pub fn clock_sysvar(account :: AccountInfo) -> SolanaClock!String do
+  if !pubkey_equal(account.owner, pubkey("Sysvar1111111111111111111111111111111111111")?)
+    || account.executable
+    || account.lamports == U64.parse("0")?
+    || Bytes.length(account.data) != 40 do
+    return Err("SOLANA_CLOCK: invalid sysvar account")
+  end
+  Ok(SolanaClock {
+    slot: read_u64(account.data, 0, "CLOCK")?,
+    epoch_start_timestamp: clock_timestamp(account.data, 8)?,
+    epoch: read_u64(account.data, 16, "CLOCK")?,
+    leader_schedule_epoch: read_u64(account.data, 24, "CLOCK")?,
+    unix_timestamp: clock_timestamp(account.data, 32)?
+  })
 end
 
 fn read_byte(data :: Bytes, offset :: Int, label :: String) -> Int!String do
@@ -493,6 +569,31 @@ pub fn get_account_info_request(id :: Int,
       |> account_params(commitment))?)
 end
 
+## Read one bounded byte range while preserving a minimum RPC context slot.
+## The caller still verifies the returned owner, context and exact slice length.
+pub fn get_account_info_slice_request(id :: Int,
+  address :: Pubkey,
+  commitment :: String,
+  offset :: Int,
+  length :: Int,
+  min_context_slot :: Option<U64>) -> RpcRequest!String do
+  validate_commitment(commitment)?
+  if Bytes.length(address.bytes) != 32
+    || offset < 0
+    || length < 0
+    || offset > 10485760
+    || length > 10485760 - offset do
+    return Err("SOLANA_RPC: invalid account slice")
+  end
+  let minimum = case min_context_slot do
+    None -> ""
+    Some(slot) -> ",\"minContextSlot\":#{U64.to_string(slot)}"
+  end
+  rpc_request(id,
+    "getAccountInfo",
+    "[#{Json.encode_string(pubkey_string(address))},{\"commitment\":#{Json.encode_string(commitment)},\"encoding\":\"base64\",\"dataSlice\":{\"offset\":#{offset},\"length\":#{length}}#{minimum}}]")
+end
+
 fn pubkeys_json_loop(values :: List<Pubkey>,
   index :: Int,
   total :: Int,
@@ -519,15 +620,53 @@ end
 pub fn get_multiple_accounts_request(id :: Int,
   addresses :: List<Pubkey>,
   commitment :: String) -> RpcRequest!String do
-  (commitment
-    |> validate_commitment())?
-  if List.length(addresses) == 0 do
-    Err("SOLANA_RPC: getMultipleAccounts requires at least one address")
-  else
-    rpc_request(id,
-      "getMultipleAccounts",
-      "[#{pubkeys_json(addresses)},{\"commitment\":#{Json.encode_string(commitment)},\"encoding\":\"base64\"}]")
+  get_multiple_accounts_context_request(id, addresses, commitment, None)
+end
+
+## Read an ordered batch from one bank, optionally requiring a minimum context.
+## Providers may return null for missing accounts. Callers still authenticate
+## ownership, response ID, account count, minimum context and provider trust.
+pub fn get_multiple_accounts_context_request(id :: Int,
+  addresses :: List<Pubkey>,
+  commitment :: String,
+  min_context_slot :: Option<U64>) -> RpcRequest!String do
+  validate_commitment(commitment)?
+  if List.length(addresses) < 1 || List.length(addresses) > 100 do
+    return Err("SOLANA_RPC: getMultipleAccounts requires 1 to 100 addresses")
   end
+  for address in addresses do
+    if Bytes.length(address.bytes) != 32 do
+      return Err("SOLANA_RPC: invalid account address")
+    end
+  end
+  let minimum = case min_context_slot do
+    None -> ""
+    Some(slot) -> ",\"minContextSlot\":#{U64.to_string(slot)}"
+  end
+  rpc_request(id,
+    "getMultipleAccounts",
+    "[#{pubkeys_json(addresses)},{\"commitment\":#{Json.encode_string(commitment)},\"encoding\":\"base64\"#{minimum}}]")
+end
+
+## Read the same bounded byte range from an ordered batch in one bank.
+## Full account space is retained by optional_accounts_slice_from_response.
+pub fn get_multiple_accounts_slice_request(id :: Int,
+  addresses :: List<Pubkey>,
+  commitment :: String,
+  offset :: Int,
+  length :: Int,
+  min_context_slot :: Option<U64>) -> RpcRequest!String do
+  let request = get_multiple_accounts_context_request(id, addresses, commitment, min_context_slot)?
+  if offset < 0 || length < 0 || offset > 10485760 || length > 10485760 - offset do
+    return Err("SOLANA_RPC: invalid account slice")
+  end
+  let minimum = case min_context_slot do
+    None -> ""
+    Some(slot) -> ",\"minContextSlot\":#{U64.to_string(slot)}"
+  end
+  Ok(%{request |
+    params_json: "[#{pubkeys_json(addresses)},{\"commitment\":#{Json.encode_string(commitment)},\"encoding\":\"base64\",\"dataSlice\":{\"offset\":#{offset},\"length\":#{length}}#{minimum}}]"
+  })
 end
 
 fn commitment_params(commitment :: String) -> String!String do
@@ -548,6 +687,11 @@ pub fn get_block_height_request(id :: Int, commitment :: String) -> RpcRequest!S
     "getBlockHeight",
     (commitment
       |> commitment_params())?)
+end
+
+# getBlockTime takes a slot only; callers establish finality separately.
+pub fn get_block_time_request(id :: Int, slot :: U64) -> RpcRequest!String do
+  rpc_request(id, "getBlockTime", "[#{U64.to_string(slot)}]")
 end
 
 pub fn get_epoch_info_request(id :: Int, commitment :: String) -> RpcRequest!String do
@@ -622,6 +766,26 @@ pub fn program_accounts_request(id :: Int,
     "[#{Json.encode_string(pubkey_string(program))},{\"commitment\":#{Json.encode_string(commitment)},\"encoding\":\"base64\",\"filters\":#{filters_json(filters)}}]")
 end
 
+## Discover keyed program accounts with a finalized-bank context. Callers must
+## still check response IDs, minimum context, owners, filters and provider trust.
+pub fn program_accounts_context_request(id :: Int,
+  program :: Pubkey,
+  filters :: List<ProgramAccountFilter>,
+  commitment :: String,
+  min_context_slot :: Option<U64>) -> RpcRequest!String do
+  validate_commitment(commitment)?
+  if Bytes.length(program.bytes) != 32 do
+    return Err("SOLANA_RPC: invalid program address")
+  end
+  let minimum = case min_context_slot do
+    None -> ""
+    Some(value) -> ",\"minContextSlot\":" <> U64.to_string(value)
+  end
+  rpc_request(id,
+    "getProgramAccounts",
+    "[#{Json.encode_string(pubkey_string(program))},{\"commitment\":#{Json.encode_string(commitment)},\"encoding\":\"base64\",\"filters\":#{filters_json(filters)},\"withContext\":true#{minimum}}]")
+end
+
 pub fn account_subscribe_request(id :: Int,
   address :: Pubkey,
   commitment :: String) -> RpcRequest!String do
@@ -672,17 +836,30 @@ pub fn send_program_subscription(connection :: Int,
 end
 
 pub fn rpc_response(raw :: String) -> RpcResponse!String do
-  (raw
-    |> Json.parse())?
-  if Json.get(raw, "jsonrpc") != "2.0" do
+  let parsed = Json.parse(raw)?
+  if Json.as_string(Json.object_get(parsed, "jsonrpc")?)? != "2.0" do
     Err("SOLANA_RPC: response jsonrpc must be 2.0")
   else
-    let id = (raw
-      |> int_field("id", "RPC"))?
-    let error = Json.get(raw, "error")
-    let result = Json.get(raw, "result")
+    let id = case String.to_int(Json.encode(Json.object_get(parsed, "id")?)) do
+      Some(value) when value >= 0 -> value
+      _ -> return Err("SOLANA_RPC: response id must be a non-negative integer")
+    end
+    # Preserve the JSON type of a result. Json.get unwraps strings, which
+    # otherwise makes a quoted number indistinguishable from an integer.
+    let error = case Json.object_get(parsed, "error") do
+      Err(_) -> ""
+      Ok(value) -> Json.encode(value)
+    end
+    let result = case Json.object_get(parsed, "result") do
+      Err(_) -> ""
+      Ok(value) -> Json.encode(value)
+    end
     if error != "" && error != "null" do
-      Ok(RpcResponse { id: id, ok: false, result_json: "", error_json: error })
+      if result != "" do
+        Err("SOLANA_RPC: response has both result and error")
+      else
+        Ok(RpcResponse { id: id, ok: false, result_json: "", error_json: error })
+      end
     else if result == "" do
       Err("SOLANA_RPC: response has neither result nor error")
     else
@@ -699,6 +876,41 @@ fn require_rpc_result(response :: RpcResponse) -> String!String do
   end
 end
 
+pub fn account_from_response(response :: RpcResponse) -> AccountAtSlot!String do
+  let result = Json.parse(require_rpc_result(response)?)?
+  let context = Json.object_get(result, "context")?
+  let slot = u64_text(Json.encode(Json.object_get(context, "slot")?), "RPC")?
+  let value = Json.object_get(result, "value")?
+  if Json.is_null(value) do
+    return Err("SOLANA_RPC: account was not found")
+  end
+  Ok(AccountAtSlot { slot: slot, account: account_info(Json.encode(value))? })
+end
+
+fn account_slice(value :: Json) -> AccountSlice!String do
+  let info = account_info(Json.encode(value))?
+  let space = u64_text(Json.encode(Json.object_get(value, "space")?), "ACCOUNT_SPACE")?
+  if U64.compare(space, U64.parse(Int.to_string(Bytes.length(info.data)))?) < 0 do
+    return Err("SOLANA_ACCOUNT: data exceeds full account space")
+  end
+  Ok(AccountSlice { info: info, space: space })
+end
+
+## Preserve absence and full allocation while decoding only the returned bytes.
+## Callers bind the response to requested addresses, slice bounds and trust.
+pub fn account_slice_from_response(response :: RpcResponse) -> AccountSliceAtSlot!String do
+  let result = Json.parse(require_rpc_result(response)?)?
+  let context = Json.object_get(result, "context")?
+  let slot = u64_text(Json.encode(Json.object_get(context, "slot")?), "RPC")?
+  let value = Json.object_get(result, "value")?
+  let account = if Json.is_null(value) do
+    None
+  else
+    Some(account_slice(value)?)
+  end
+  Ok(AccountSliceAtSlot { slot: slot, account: account })
+end
+
 pub fn slot_from_response(response :: RpcResponse) -> Slot!String do
   Ok(Slot {
     value: ((response
@@ -713,6 +925,19 @@ pub fn block_height_from_response(response :: RpcResponse) -> BlockHeight!String
       |> require_rpc_result())?
       |> u64_text("BLOCK_HEIGHT"))?
   })
+end
+
+# Unknown/pruned time is None, not the Unix epoch. Errors remain errors.
+pub fn block_time_from_response(response :: RpcResponse) -> Option<Int>!String do
+  let result = require_rpc_result(response)?
+  if result == "null" do
+    Ok(None)
+  else
+    case String.to_int(result) do
+      Some(value) -> Ok(Some(value))
+      None -> Err("SOLANA_BLOCK_TIME: expected signed integer seconds or null")
+    end
+  end
 end
 
 pub fn epoch_info_from_response(response :: RpcResponse) -> EpochInfo!String do
@@ -771,18 +996,92 @@ fn accounts_loop(values :: Json,
 end
 
 pub fn multiple_accounts_from_response(response :: RpcResponse) -> AccountsAtSlot!String do
-  let result = (response
-    |> require_rpc_result())?
-  let context = Json.get(result, "context")
-  let values = (Json.get(result, "value")
-    |> Json.parse())?
+  let result = Json.parse(require_rpc_result(response)?)?
+  let context = Json.object_get(result, "context")?
+  let values = Json.object_get(result, "value")?
   let total = (values
     |> Json.array_length())?
   Ok(AccountsAtSlot {
-    slot: (context
-      |> u64_field("slot", "RPC"))?,
+    slot: u64_text(Json.encode(Json.object_get(context, "slot")?), "RPC")?,
     accounts: (accounts_loop(values, 0, total, List.new()))?
   })
+end
+
+## Decode a sliced batch without erasing missing positions or allocation size.
+pub fn optional_accounts_slice_from_response(response :: RpcResponse) -> OptionalAccountSlicesAtSlot!String do
+  let result = Json.parse(require_rpc_result(response)?)?
+  let context = Json.object_get(result, "context")?
+  let slot = u64_text(Json.encode(Json.object_get(context, "slot")?), "RPC")?
+  let values = Json.object_get(result, "value")?
+  let count = Json.array_length(values)?
+  if count > 100 do
+    return Err("SOLANA_RPC: too many accounts")
+  end
+  let accounts = for index in 0..count do
+    let value = Json.array_get(values, index)?
+    if Json.is_null(value) do
+      None
+    else
+      Some(account_slice(value)?)
+    end
+  end
+  Ok(OptionalAccountSlicesAtSlot { slot: slot, accounts: accounts })
+end
+
+## Preserve missing entries and their positions; malformed entries and RPC
+## errors remain errors. A missing account must not become an empty account.
+pub fn optional_accounts_from_response(response :: RpcResponse) -> OptionalAccountsAtSlot!String do
+  let result = Json.parse(require_rpc_result(response)?)?
+  let context = Json.object_get(result, "context")?
+  let slot = u64_text(Json.encode(Json.object_get(context, "slot")?), "RPC")?
+  let values = Json.object_get(result, "value")?
+  let count = Json.array_length(values)?
+  if count > 100 do
+    return Err("SOLANA_RPC: too many accounts")
+  end
+  let accounts = for index in 0..count do
+    let value = Json.array_get(values, index)?
+    if Json.is_null(value) do
+      None
+    else
+      Some(account_info(Json.encode(value))?)
+    end
+  end
+  Ok(OptionalAccountsAtSlot { slot: slot, accounts: accounts })
+end
+
+## Decode a withContext program-account response without assuming RPC ordering.
+## Refuse duplicate addresses and responses exceeding the caller's bound rather
+## than silently truncating a discovery result. HTTP byte limits remain required.
+pub fn program_accounts_from_response(response :: RpcResponse,
+  maximum_accounts :: Int) -> ProgramAccountsAtSlot!String do
+  if maximum_accounts < 0 || maximum_accounts > 1000 do
+    return Err("SOLANA_RPC: invalid program account bound")
+  end
+  let result = Json.parse(require_rpc_result(response)?)?
+  let context = Json.object_get(result, "context")?
+  let slot = u64_text(Json.encode(Json.object_get(context, "slot")?), "RPC")?
+  let values = Json.object_get(result, "value")?
+  let count = Json.array_length(values)?
+  if count > maximum_accounts do
+    return Err("SOLANA_RPC: too many program accounts")
+  end
+  let accounts = for index in 0..count do
+    let item = Json.array_get(values, index)?
+    let address = pubkey(Json.as_string(Json.object_get(item, "pubkey")?)?)?
+    KeyedAccountInfo {
+      address: address,
+      account: account_info(Json.encode(Json.object_get(item, "account")?))?
+    }
+  end
+  for index in 0..count do
+    for previous in 0..index do
+      if pubkey_equal(List.get(accounts, index).address, List.get(accounts, previous).address) do
+        return Err("SOLANA_RPC: duplicate program account")
+      end
+    end
+  end
+  Ok(ProgramAccountsAtSlot { slot: slot, accounts: accounts })
 end
 
 pub fn rpc_send(client :: Int,
@@ -795,12 +1094,17 @@ pub fn rpc_send(client :: Int,
     |> Http.body(request
       |> rpc_request_json())
     |> Http.timeout(timeout_ms)
+    |> Http.max_redirects(0)
     |> Http.max_response_bytes(max_response_bytes) |2> Http.send_with(client))?
   if response.status != 200 do
     Err("SOLANA_RPC: HTTP status #{response.status}")
   else
-    response.body
-      |> rpc_response()
+    let parsed = rpc_response(response.body)?
+    if parsed.id != request.id do
+      Err("SOLANA_RPC: response id does not match request")
+    else
+      Ok(parsed)
+    end
   end
 end
 

@@ -21,3 +21,19 @@ messenger codecs, storage blobs, ratchet and handshake messages, attachments,
 and transparency proofs still need coverage-guided harnesses through their
 actual public Mesh entrypoints. Release records must keep that limitation until
 those targets run from the release revision.
+
+## Blind RSA BR1
+
+The BR1 boundary set must exercise canonical SPKI parsing, blind, finalize,
+verify and signing rejection through `fuzz_crypto_boundaries`. Seed inputs
+should include the public RFC 9578 Type 2 SPKI/signature/blinded-message
+fixtures, a truncated SPKI, an altered PSS parameter, short and over-modulus
+representatives, and modified signatures. Server calls remain target-gated;
+client parsing and verification belong in every supported target build.
+
+A checked-in corpus and a compiling harness are coverage preparation. A
+release record must separately identify an executed fuzz run, its exact
+revision, duration, target, sanitizer configuration, corpus and crash results.
+No corpus or smoke-test result alone establishes complete cryptographic fuzz
+coverage. Published test issuer private keys are public fixture material and
+must never be provisioned as application credentials.

@@ -43,3 +43,7 @@ bench = false
 
 [workspace]
 members = ["."]
+
+# This is an independent workspace; use the same reviewed HTTP protocol fix.
+[patch.crates-io]
+ureq-proto = { path = "../vendor/ureq-proto" }

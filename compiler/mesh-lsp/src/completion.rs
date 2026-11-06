@@ -88,6 +88,10 @@ const BUILTIN_TYPES: &[&str] = &[
     "SigningKeyPair",
     "Signature",
     "AeadKey",
+    "BlindRsaSecretKey",
+    "BlindRsaBlindingState",
+    "BlindRsaPublicKey",
+    "BlindRsaBlinded",
 ];
 
 /// Snippet definitions: (label, snippet_body).
@@ -400,6 +404,25 @@ mod tests {
         );
         assert!(!keyword_labels.contains(&"fn"), "should not contain 'fn'");
         assert!(!keyword_labels.contains(&"let"), "should not contain 'let'");
+    }
+
+    #[test]
+    fn blind_rsa_types_are_completed() {
+        let items = completions_at("BlindRsa", 0, 8);
+        let labels: Vec<&str> = items
+            .iter()
+            .filter(|item| item.kind == Some(CompletionItemKind::STRUCT))
+            .map(|item| item.label.as_str())
+            .collect();
+        assert_eq!(
+            labels,
+            [
+                "BlindRsaSecretKey",
+                "BlindRsaBlindingState",
+                "BlindRsaPublicKey",
+                "BlindRsaBlinded"
+            ]
+        );
     }
 
     #[test]

@@ -11,10 +11,139 @@ fn find_meshc() -> PathBuf {
     artifacts::meshc_bin()
 }
 
+#[test]
+fn test_assertions_in_a_normal_build_report_an_error_without_a_compiler_panic() {
+    let result = build("fn main() do assert(true) end\n", false);
+    assert!(!result.ok);
+    assert!(
+        result
+            .stderr
+            .contains("test assertions require `meshc test`"),
+        "{}",
+        result.stderr
+    );
+    assert!(!result.stderr.contains("panicked at"), "{}", result.stderr);
+}
+
+#[test]
+fn actor_parameter_shadowing_a_spawning_helper_compiles_and_runs() {
+    let output = run("actor worker(launch :: Int) do\n\
+           println(Int.to_string(launch))\n\
+         end\n\
+         fn launch() do spawn(worker, 42) end\n\
+         fn main() do\n launch()\n Timer.sleep(200)\n end\n");
+    assert_eq!(output.trim(), "42");
+}
+
+#[test]
+fn comprehensions_store_the_body_result_not_its_first_binding_type() {
+    let source = r##"
+fn lengths() -> List<Int>!String do
+  let xs = for i in 0..3 do
+    let bytes = Bytes.from_utf8("hello")
+    let part = Bytes.slice(bytes, 0, i)?
+    4 + Bytes.length(part)
+  end
+  Ok(xs)
+end
+fn main() do
+  println("#{lengths()}")
+  println("#{for n in [1, 2] do let s = Int.to_string(n); n + String.length(s) end}")
+  println("#{for (n, s) in [(3, "x")] do let text = s; n + String.length(text) end}")
+  println("#{for {k, v} in %{1 => 2} do let text = "x"; k + v + String.length(text) end}")
+  println("#{for n in Set.from_list([2]) do let text = "x"; n + String.length(text) end}")
+  println("#{for n in Iter.from([3]) do let text = "x"; n + String.length(text) end}")
+  println("#{for n in [1] do let x = n; "#{x}" end}")
+end
+"##;
+    assert_eq!(
+        run(source).trim(),
+        "Ok([4, 5, 6])\n[2, 3]\n[4]\n[4]\n[3]\n[4]\n[1]"
+    );
+}
+
 struct Build {
     dir: tempfile::TempDir,
     ok: bool,
     stderr: String,
+}
+
+/// Pipelines and function values must select string key equality before the
+/// first insertion, exactly as a direct Map.put call does.
+#[test]
+fn string_map_pipelines_and_function_values_compare_keys_by_content() {
+    let source = r##"
+fn add(map :: Map<String, Int>, key :: String, value :: Int) -> Map<String, Int> do
+  let put = Map.put
+  put(map, key, value)
+end
+fn main() do
+  let key = "#{"item"}#{1}"
+  let map = Map.new() |> Map.put("item1", 10) |> Map.put("item2", 20)
+  println("#{map |> Map.has_key(key)} #{map |> Map.get(key)}")
+  let replaced = 30 |3> Map.put(map, key)
+  println("#{Map.size(replaced)} #{key |2> Map.get(replaced)}")
+  let get = Map.get
+  println("#{get(add(map, key, 40), key)}")
+  let has = Map.has_key
+  let delete = Map.delete
+  println("#{has(delete(replaced, key), key)} #{Map.size(map |> Map.delete(key))}")
+end
+"##;
+    assert_eq!(run(source), "true 10\n2 30\n40\nfalse 1\n");
+}
+
+#[test]
+fn resources_moved_in_returning_branches_survive_on_other_paths() {
+    let source = r##"
+fn dispose(stop :: Bool) -> Int do
+  let secret = case Secret.random(32) do
+    Err(_) -> return 0
+    Ok(value) -> value
+  end
+  if stop do
+    Secret.destroy(secret)
+    return 1
+  end
+  Secret.destroy(secret)
+  2
+end
+fn matched(stop :: Bool) -> Int do
+  let secret = case Secret.random(32) do
+    Err(_) -> return 0
+    Ok(value) -> value
+  end
+  case stop do
+    true -> do Secret.destroy(secret); return 3 end
+    false -> nil
+  end
+  Secret.destroy(secret)
+  4
+end
+fn main() do
+  println("#{dispose(true)} #{dispose(false)} #{matched(true)} #{matched(false)}")
+end
+"##;
+    assert_eq!(run(source), "1 2 3 4\n");
+}
+
+#[test]
+fn http_url_origin_parses_without_making_a_request() {
+    let source = r##"
+fn main() do
+  println("#{Http.url_origin("https://Example.COM:443/rpc?key=public")}")
+  println("#{Http.url_origin("http://127.0.0.1:8080/a")}")
+  println("#{Http.url_origin("https://[2001:db8::1]:9443/a")}")
+  println("#{Http.url_origin("https://user:pass@example.com/a#b")}")
+  for bad in ["/relative", "file:///tmp/file", "https://[broken", "https://host:99999/"] do
+    case Http.url_origin(bad) do
+      Err(_) -> println("invalid")
+      Ok(_) -> println("unexpected")
+    end
+  end
+end
+"##;
+    assert_eq!(run(source).trim(), "Ok(https://example.com)\nOk(http://127.0.0.1:8080)\nOk(https://[2001:db8::1]:9443)\nOk(https://example.com)\ninvalid\ninvalid\ninvalid\ninvalid");
 }
 
 fn build(source: &str, json: bool) -> Build {
@@ -4260,6 +4389,32 @@ end
 }
 
 #[test]
+fn runtime_builtin_function_values_preserve_mesh_result_and_scalar_abis() {
+    let source = r##"
+fn decode(f :: Fun(String) -> Result<Bytes, String>, input :: String) -> String do
+  case f(input) do
+    Ok(bytes) -> Bytes.to_hex(bytes)
+    Err(_) -> "invalid"
+  end
+end
+fn main() do
+  let from_hex = Bytes.from_hex
+  let flat_hex = bytes_from_hex
+  println("#{decode(from_hex, "00ff")} #{decode(flat_hex, "zz")}")
+  println("#{decode(Bytes.from_hex, "abcd")} #{decode(bytes_from_hex, "?")}")
+  let parse = String.to_int
+  println("#{parse("42")} #{parse("bad")}")
+  let contains = String.contains
+  println("#{contains("abc", "b")} #{contains("abc", "x")}")
+end
+"##;
+    assert_eq!(
+        run(source),
+        "00ff invalid\nabcd invalid\nSome(42) None\ntrue false\n"
+    );
+}
+
+#[test]
 fn builtins_expanded_inline_can_be_used_as_values() {
     // "Undefined variable 'mesh_math_sqrt'": these have no function of
     // their own to point at.
@@ -6156,4 +6311,59 @@ fn main() do
 end
 "##;
     assert_eq!(run(source), "Point(1)\n2\n");
+}
+
+/// A mixed sum payload must remain a word-aligned GC root, even when preceded
+/// by a Bool in its enclosing struct. Byte-array union storage hid its boxed
+/// record pointer from the collector and let optimization split live pointers.
+#[test]
+fn mixed_sum_payloads_remain_gc_roots_in_optimized_and_debug_builds() {
+    let source = include_str!("../../../tests/e2e/gc_mixed_sum_payload.mpl");
+    let expected = "6178600\n0:7061796c6f61642d30\n1:7061796c6f61642d31\n2:7061796c6f61642d32\n3:7061796c6f61642d33\n4:7061796c6f61642d34\n5:7061796c6f61642d35\n6:7061796c6f61642d36\n7:7061796c6f61642d37\nflag-true\ncount-99\ntrue:pair-10:10\n";
+    for opt in ["0", "2"] {
+        let (code, out, err) = run_status(source, &["--opt-level", opt]);
+        assert_eq!(code, Some(0), "--opt-level {opt}\n{err}");
+        assert_eq!(out, expected, "--opt-level {opt}");
+    }
+}
+
+#[test]
+fn lexical_blocks_restore_shadowed_option_and_scalar_bindings_at_every_optimization_level() {
+    let source = r##"
+struct Marker do flag :: Bool end
+fn scoped(flag :: Bool) -> Option<Marker> do
+  let value = Some(Marker { flag: true })
+  let result = if flag do
+    let value = case value do None -> return None Some(item) -> item end
+    value.flag
+  else if false do
+    let value = "hidden"
+    String.length(value) == 6
+  else
+    case value do None -> false Some(item) -> item.flag end
+  end
+  println("#{result}")
+  value
+end
+fn scalar(flag :: Bool) -> Int do
+  let value = 42
+  if flag do let value = "inner"; println(value) end
+  while false do let value = false; println("#{value}") end
+  value
+end
+fn main() do
+  let left = case scoped(true) do None -> false Some(item) -> item.flag end
+  let right = case scoped(false) do None -> false Some(item) -> item.flag end
+  println("#{left} #{right}")
+  println("#{scalar(true)} #{scalar(false)}")
+end
+"##;
+    for opt in ["0", "2"] {
+        let built = build_with_args(source, &["--opt-level", opt]);
+        assert_eq!(
+            run_built(&built),
+            "true\ntrue\ntrue true\ninner\n42 42\n",
+            "--opt-level {opt}"
+        );
+    }
 }

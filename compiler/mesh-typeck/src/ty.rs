@@ -249,6 +249,26 @@ impl Ty {
         Ty::Con(TyCon::new("MlKemCiphertext"))
     }
 
+    pub fn mlkem_header64() -> Ty {
+        Ty::Con(TyCon::new("MlKemHeader64"))
+    }
+
+    pub fn mlkem_public_vector1152() -> Ty {
+        Ty::Con(TyCon::new("MlKemPublicVector1152"))
+    }
+
+    pub fn mlkem_ciphertext1_960() -> Ty {
+        Ty::Con(TyCon::new("MlKemCiphertext1_960"))
+    }
+
+    pub fn mlkem_ciphertext2_128() -> Ty {
+        Ty::Con(TyCon::new("MlKemCiphertext2_128"))
+    }
+
+    pub fn mlkem_encapsulation_state() -> Ty {
+        Ty::Con(TyCon::new("MlKemEncapsulationState"))
+    }
+
     pub fn mlkem_key_pair() -> Ty {
         Ty::Con(TyCon::new("MlKemKeyPair"))
     }
@@ -267,6 +287,39 @@ impl Ty {
 
     pub fn signing_key_pair() -> Ty {
         Ty::Con(TyCon::new("SigningKeyPair"))
+    }
+
+    pub fn blind_rsa_secret_key() -> Ty {
+        Ty::Con(TyCon::new("BlindRsaSecretKey"))
+    }
+
+    pub fn blind_rsa_blinding_state() -> Ty {
+        Ty::Con(TyCon::new("BlindRsaBlindingState"))
+    }
+
+    pub fn hash_preimage() -> Ty {
+        Ty::Con(TyCon::new("HashPreimage"))
+    }
+
+    pub fn blind_rsa_public_key() -> Ty {
+        Ty::Con(TyCon::new("BlindRsaPublicKey"))
+    }
+
+    pub fn blind_rsa_blinded() -> Ty {
+        Ty::Con(TyCon::new("BlindRsaBlinded"))
+    }
+
+    pub fn ohttp_client_context() -> Ty {
+        Ty::Con(TyCon::new("OhttpClientContext"))
+    }
+    pub fn ohttp_gateway_context() -> Ty {
+        Ty::Con(TyCon::new("OhttpGatewayContext"))
+    }
+    pub fn ohttp_request() -> Ty {
+        Ty::Con(TyCon::new("OhttpRequest"))
+    }
+    pub fn ohttp_request_opening() -> Ty {
+        Ty::Con(TyCon::new("OhttpRequestOpening"))
     }
 
     pub fn aead_key() -> Ty {

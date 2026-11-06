@@ -31,6 +31,7 @@ pub mod error;
 pub mod exhaustiveness;
 pub mod infer;
 mod ownership;
+pub mod plaintext;
 pub mod traits;
 pub mod ty;
 pub mod unify;
@@ -59,9 +60,8 @@ pub use crate::traits::TraitRegistry;
 /// Pre-seeds the type checker's environments before inference begins.
 #[derive(Debug, Default)]
 pub struct ImportContext {
-    /// Module namespace -> exported symbols.
-    /// Key is the namespace name used for qualified access (last path segment
-    /// for `import Math.Vector` -> key is "Vector").
+    /// Full imported module path -> exported symbols. Import resolution must
+    /// not collapse `A.Shared` and `B.Shared` into one `Shared` entry.
     pub module_exports: FxHashMap<String, ModuleExports>,
 
     /// Trait definitions from ALL processed modules (globally visible).
@@ -88,6 +88,18 @@ impl ImportContext {
     pub fn empty() -> Self {
         Self::default()
     }
+
+    /// Resolve the written import path. Legacy embedding callers may key their
+    /// context by namespace, but that entry must name this exact module (or
+    /// omit its origin), never a different module with the same final segment.
+    pub fn exports_for_path(&self, path: &str) -> Option<&ModuleExports> {
+        self.module_exports.get(path).or_else(|| {
+            let namespace = path.rsplit('.').next()?;
+            self.module_exports
+                .get(namespace)
+                .filter(|exports| exports.module_name.is_empty() || exports.module_name == path)
+        })
+    }
 }
 
 /// Exports from a single module.
@@ -101,6 +113,10 @@ pub struct ModuleExports {
 
     /// Struct definitions exported by this module.
     pub struct_defs: FxHashMap<String, StructDefInfo>,
+
+    /// Reachable public type layouts needed to understand exported signatures.
+    /// These are metadata, not names or constructors re-exported by this module.
+    pub type_context: TypeRegistry,
 
     /// Sum type definitions exported by this module.
     pub sum_type_defs: FxHashMap<String, SumTypeDefInfo>,
@@ -123,6 +139,11 @@ pub struct ModuleExports {
 
     /// Parameter ownership modes for exported functions.
     pub function_ownership: FxHashMap<String, Vec<ParamOwnership>>,
+    /// Parameter-dependency/effect proofs for imported plaintext checking.
+    pub plaintext_functions: FxHashMap<String, plaintext::PlaintextSummary>,
+    /// Reachable aggregate/alias names whose values contain plaintext.
+    pub plaintext_type_names: FxHashSet<String>,
+    pub plaintext_source_types: std::collections::BTreeMap<String, plaintext::SourceType>,
 
     /// What exported functions require of a call's arguments beyond their
     /// types: a where-clause, the bounds a body infers of them.
@@ -139,6 +160,7 @@ impl ModuleExports {
             module_name,
             functions: exports.functions.clone(),
             struct_defs: exports.struct_defs.clone(),
+            type_context: exports.type_context.clone(),
             sum_type_defs: exports.sum_type_defs.clone(),
             service_defs: exports.service_defs.clone(),
             actor_defs: exports.actor_defs.clone(),
@@ -146,6 +168,9 @@ impl ModuleExports {
             type_aliases: exports.type_aliases.clone(),
             resource_types: exports.resource_types.clone(),
             function_ownership: exports.function_ownership.clone(),
+            plaintext_functions: exports.plaintext_functions.clone(),
+            plaintext_type_names: exports.plaintext_type_names.clone(),
+            plaintext_source_types: exports.plaintext_source_types.clone(),
             function_constraints: exports.function_constraints.clone(),
             interfaces: exports
                 .trait_defs
@@ -163,6 +188,8 @@ pub struct ExportedSymbols {
     pub functions: FxHashMap<String, Scheme>,
     /// Struct definitions.
     pub struct_defs: FxHashMap<String, StructDefInfo>,
+    /// Reachable public layouts; kept separate from source-visible exports.
+    pub type_context: TypeRegistry,
     /// Sum type definitions.
     pub sum_type_defs: FxHashMap<String, SumTypeDefInfo>,
     /// Service definitions with helper function info.
@@ -181,6 +208,11 @@ pub struct ExportedSymbols {
     pub resource_types: FxHashSet<String>,
     /// Parameter ownership modes for exported functions.
     pub function_ownership: FxHashMap<String, Vec<ParamOwnership>>,
+    /// Parameter-dependency/effect proofs for imported plaintext checking.
+    pub plaintext_functions: FxHashMap<String, plaintext::PlaintextSummary>,
+    /// Reachable aggregate/alias names whose values contain plaintext.
+    pub plaintext_type_names: FxHashSet<String>,
+    pub plaintext_source_types: std::collections::BTreeMap<String, plaintext::SourceType>,
     /// What exported functions require of a call's arguments beyond their
     /// types: a where-clause, the bounds a body infers of them.
     pub function_constraints: FxHashMap<String, FnConstraints>,
@@ -309,6 +341,8 @@ pub struct TypeckResult {
     pub json_text_arguments: FxHashSet<TextRange>,
     /// Ownership modes keyed by the direct callee spelling/symbol used by lowering.
     pub function_ownership: FxHashMap<String, Vec<ParamOwnership>>,
+    /// Copyable plaintext labels, effect summaries and audited exits.
+    pub plaintext: plaintext::PlaintextCheck,
     /// What each function requires of a call's arguments beyond their types
     /// (its where-clause, the bounds its body infers of them), by the name
     /// `collect_exports` exports it under.
@@ -361,14 +395,40 @@ pub fn check_with_imports(parse: &mesh_parser::Parse, import_ctx: &ImportContext
 /// names of the definitions it keeps private.
 pub fn collect_exports(parse: &mesh_parser::Parse, typeck: &TypeckResult) -> ExportedSymbols {
     use mesh_parser::ast::item::Item;
+    use mesh_parser::AstNode;
 
     let tree = parse.tree();
     let mut exports = ExportedSymbols::default();
+    exports.plaintext_type_names = typeck.plaintext.type_names.clone();
+    exports.plaintext_source_types = typeck.plaintext.source_types.clone();
 
     // What the module makes public, and the names of what it keeps private
     // (an import of one is "private", not "not found"). Actors and services
     // have no `pub` and are always exported; `Option`, `Result` and
     // `Ordering` are the built-in types, whatever a module says.
+    for item in parse.tree().items() {
+        if let Item::ActorDef(actor) = &item {
+            if let Some(name) = actor.name().and_then(|name| name.text()) {
+                let symbol = format!("@actor.{name}");
+                if let Some(summary) = typeck.plaintext.functions.get(&symbol) {
+                    exports.plaintext_functions.insert(symbol, summary.clone());
+                }
+            }
+        }
+        if let Item::FnDef(function) = item {
+            if function.visibility().is_some() {
+                if let Some(name) = function.name().and_then(|name| name.text()) {
+                    for (symbol, summary) in &typeck.plaintext.functions {
+                        if crate::ownership::source_function_name(symbol) == name {
+                            exports
+                                .plaintext_functions
+                                .insert(symbol.clone(), summary.clone());
+                        }
+                    }
+                }
+            }
+        }
+    }
     let registry = &typeck.type_registry;
     for item in tree.items() {
         let (name, public) = match &item {
@@ -452,7 +512,7 @@ pub fn collect_exports(parse: &mesh_parser::Parse, typeck: &TypeckResult) -> Exp
 
     // For trait impls: collect from explicit `impl Trait for Type` AST nodes,
     // plus impls generated by `deriving(...)` clauses on structs/sum types.
-    let mut local_impl_traits: Vec<(String, String)> = Vec::new(); // (trait_name, type_name)
+    let mut local_impl_traits: Vec<(String, String, Vec<Ty>)> = Vec::new();
 
     // 1. Explicit impl blocks in the AST.
     for item in tree.items() {
@@ -461,7 +521,21 @@ pub fn collect_exports(parse: &mesh_parser::Parse, typeck: &TypeckResult) -> Exp
             let type_name = impl_def.type_name().map(|t| t.text().to_string());
 
             if let (Some(tn), Some(ty)) = (trait_name, type_name) {
-                local_impl_traits.push((tn, ty));
+                // Inference records the full, alias-resolved interface arguments
+                // at this node. Reading names alone loses tuples/nested types;
+                // matching only the trait/target also selects imported siblings.
+                let written_args = impl_def
+                    .syntax()
+                    .children()
+                    .find(|node| node.kind() == mesh_parser::SyntaxKind::GENERIC_ARG_LIST);
+                let args = match written_args {
+                    Some(node) => match typeck.types.get(&node.text_range()) {
+                        Some(Ty::App(_, args)) => args.clone(),
+                        _ => continue,
+                    },
+                    None => Vec::new(),
+                };
+                local_impl_traits.push((tn, ty, args));
             }
         }
     }
@@ -508,10 +582,10 @@ pub fn collect_exports(parse: &mesh_parser::Parse, typeck: &TypeckResult) -> Exp
                     }
                 };
                 if internal_traits.is_empty() {
-                    local_impl_traits.push((trait_name, type_name.clone()));
+                    local_impl_traits.push((trait_name, type_name.clone(), Vec::new()));
                 } else {
                     for &t in internal_traits {
-                        local_impl_traits.push((t.to_string(), type_name.clone()));
+                        local_impl_traits.push((t.to_string(), type_name.clone(), Vec::new()));
                     }
                 }
             }
@@ -519,12 +593,16 @@ pub fn collect_exports(parse: &mesh_parser::Parse, typeck: &TypeckResult) -> Exp
     }
 
     for impl_def in typeck.trait_registry.all_impls() {
-        for (tn, ty) in &local_impl_traits {
-            if impl_def.trait_name == *tn && impl_def.impl_type_name == *ty {
+        for (tn, ty, args) in &local_impl_traits {
+            if impl_def.trait_name == *tn
+                && impl_def.impl_type_name == *ty
+                && impl_def.trait_type_args == *args
+            {
                 // Avoid duplicates (explicit impl + deriving could overlap)
                 if !exports.trait_impls.iter().any(|i| {
                     i.trait_name == impl_def.trait_name
-                        && i.impl_type_name == impl_def.impl_type_name
+                        && i.impl_type == impl_def.impl_type
+                        && i.trait_type_args == impl_def.trait_type_args
                 }) {
                     exports.trait_impls.push(impl_def.clone());
                 }
@@ -532,5 +610,76 @@ pub fn collect_exports(parse: &mesh_parser::Parse, typeck: &TypeckResult) -> Exp
         }
     }
 
+    exports.type_context = exported_type_context(&exports, registry);
     exports
+}
+
+/// Follow nominal types from public signatures and definitions. Imported public
+/// layouts travel across further modules, while locally private definitions
+/// never become introspectable merely because a public function returns one.
+fn exported_type_context(exports: &ExportedSymbols, registry: &TypeRegistry) -> TypeRegistry {
+    fn names(ty: &Ty, ignored: &[String], pending: &mut Vec<String>) {
+        if let Ty::Con(con) = ty {
+            if !ignored.contains(&con.name) {
+                pending.push(con.name.clone());
+            }
+        }
+        for part in ty.parts() {
+            names(part, ignored, pending);
+        }
+    }
+    let mut pending = Vec::new();
+    for scheme in exports
+        .functions
+        .values()
+        .chain(exports.actor_defs.values())
+    {
+        names(&scheme.ty, &[], &mut pending);
+    }
+    for service in exports.service_defs.values() {
+        for helper in service.helpers.values() {
+            names(&helper.ty, &[], &mut pending);
+        }
+    }
+    pending.extend(exports.struct_defs.keys().cloned());
+    pending.extend(exports.sum_type_defs.keys().cloned());
+    pending.extend(exports.type_aliases.keys().cloned());
+    pending.extend(exports.resource_types.iter().cloned());
+    let mut visited = FxHashSet::default();
+    let mut context = TypeRegistry::default();
+    while let Some(name) = pending.pop() {
+        if !visited.insert(name.clone()) || exports.private_names.contains(&name) {
+            continue;
+        }
+        if registry.is_resource_name(&name) {
+            context.register_resource_type(name.clone());
+        }
+        if let Some(definition) = registry.struct_defs.get(&name) {
+            for (_, ty) in &definition.fields {
+                names(ty, &definition.generic_params, &mut pending);
+            }
+            context.register_struct(definition.clone());
+        }
+        if let Some(definition) = registry.sum_type_defs.get(&name) {
+            for variant in &definition.variants {
+                for field in &variant.fields {
+                    let ty = match field {
+                        infer::VariantFieldInfo::Positional(ty)
+                        | infer::VariantFieldInfo::Named(_, ty) => ty,
+                    };
+                    names(ty, &definition.generic_params, &mut pending);
+                }
+            }
+            context.register_sum_type(definition.clone());
+        }
+        if let Some(definition) = registry.type_aliases.get(&name) {
+            names(
+                &definition.aliased_type,
+                &definition.generic_params,
+                &mut pending,
+            );
+            context.register_alias(definition.clone());
+        }
+    }
+    context
 }

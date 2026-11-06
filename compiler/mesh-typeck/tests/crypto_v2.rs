@@ -23,6 +23,48 @@ fn resource_violations(result: &TypeckResult) -> Vec<&str> {
 }
 
 #[test]
+fn file_storage_key_is_an_affine_string_to_crypto_result() {
+    let result = check_source(
+        "fn open(directory :: String) -> StorageKey ! CryptoError do StorageKey.file(directory) end\n\
+         fn raw(directory :: String) -> StorageKey ! CryptoError do storage_key_file(directory) end",
+    );
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+    for source in [
+        "fn bad() do StorageKey.file(Bytes.empty()) end",
+        "fn bad(path :: String) -> StorageKey do StorageKey.file(path) end",
+        "fn bad(path :: String) do let key = StorageKey.file(path)?\nSecret.destroy(key)\nSecret.destroy(key) end",
+    ] {
+        assert!(!check_source(source).errors.is_empty(), "accepted {source}");
+    }
+}
+
+#[test]
+fn ed25519_curve_membership_is_a_public_bytes_to_boolean_result() {
+    let result = check_source(
+        r#"
+fn point(value :: Bytes) -> Result<Bool, CryptoError> do
+  Crypto.ed25519_is_on_curve(value)
+end
+fn raw(value :: Bytes) -> Result<Bool, CryptoError> do
+  crypto_ed25519_is_on_curve(value)
+end
+fn indirect(value :: Bytes) -> Result<Bool, CryptoError> do
+  let check = Crypto.ed25519_is_on_curve
+  check(value)
+end
+"#,
+    );
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+    for source in [
+        "fn wrong() do Crypto.ed25519_is_on_curve(\"key\") end",
+        "fn wrong(key :: SigningPublicKey) do Crypto.ed25519_is_on_curve(key) end",
+        "fn wrong(key :: Bytes) -> Bool do Crypto.ed25519_is_on_curve(key) end",
+    ] {
+        assert!(!check_source(source).errors.is_empty());
+    }
+}
+
+#[test]
 fn signing_seed_constructor_is_typed_as_an_affine_key_pair_result() {
     let result = check_source(
         r#"
@@ -162,6 +204,7 @@ fn crypto_error_uses_the_public_plan_order_and_payload() {
             "ResourceLimitExceeded",
             "UnsupportedOperation",
             "InternalFailure",
+            "UnsupportedTarget",
         ]
     );
     assert!(matches!(
@@ -192,6 +235,14 @@ fn crypto_public_structs_have_exact_fields_and_keypairs_are_affine() {
         ("MlKemCiphertext", vec![("bytes", Ty::bytes())]),
         ("SigningPublicKey", vec![("bytes", Ty::bytes())]),
         ("Signature", vec![("bytes", Ty::bytes())]),
+        ("BlindRsaPublicKey", vec![("bytes", Ty::bytes())]),
+        (
+            "BlindRsaBlinded",
+            vec![
+                ("blinded", Ty::bytes()),
+                ("state", con("BlindRsaBlindingState")),
+            ],
+        ),
         (
             "X25519KeyPair",
             vec![
@@ -235,6 +286,9 @@ fn crypto_public_structs_have_exact_fields_and_keypairs_are_affine() {
         "MlKemPrivateKey",
         "SigningPrivateKey",
         "AeadKey",
+        "BlindRsaSecretKey",
+        "BlindRsaBlindingState",
+        "BlindRsaBlinded",
         "X25519KeyPair",
         "MlKemKeyPair",
         "SigningKeyPair",
@@ -250,6 +304,7 @@ fn crypto_public_structs_have_exact_fields_and_keypairs_are_affine() {
         "MlKemCiphertext",
         "SigningPublicKey",
         "Signature",
+        "BlindRsaPublicKey",
     ] {
         assert!(
             !registry.is_resource_name(value),
@@ -553,5 +608,210 @@ end
             .iter()
             .any(|reason| reason.contains("unsupported")),
         "Result<R, CryptoError> must be accepted for resource outputs"
+    );
+}
+
+#[test]
+fn blind_rsa_public_signatures_and_persistent_resources_typecheck() {
+    for prefix in ["Crypto.", "crypto_"] {
+        let source = format!(
+            r#"
+fn generate() -> BlindRsaSecretKey ! CryptoError do {prefix}blind_rsa_generate() end
+fn import_key(material :: SecretBytes) -> BlindRsaSecretKey ! CryptoError do {prefix}blind_rsa_from_secret(material) end
+fn public(key :: borrow BlindRsaSecretKey) -> BlindRsaPublicKey ! CryptoError do {prefix}blind_rsa_public(key) end
+fn parse_key(spki :: Bytes) -> BlindRsaPublicKey ! CryptoError do {prefix}blind_rsa_public_from_spki(spki) end
+fn blind(key :: BlindRsaPublicKey, message :: Bytes) -> BlindRsaBlinded ! CryptoError do {prefix}blind_rsa_blind(key, message) end
+fn sign(key :: borrow BlindRsaSecretKey, message :: Bytes) -> Bytes ! CryptoError do {prefix}blind_rsa_sign(key, message) end
+fn finalize(key :: BlindRsaPublicKey, message :: Bytes, signature :: Bytes, state :: BlindRsaBlindingState) -> Bytes ! CryptoError do {prefix}blind_rsa_finalize(key, message, signature, state) end
+fn verify(key :: BlindRsaPublicKey, message :: Bytes, signature :: Bytes) -> Bool ! CryptoError do {prefix}blind_rsa_verify(key, message, signature) end
+fn reuse(key :: borrow BlindRsaSecretKey, message :: Bytes) do
+  {prefix}blind_rsa_public(key)
+  {prefix}blind_rsa_sign(key, message)
+  {prefix}blind_rsa_public(key)
+end
+fn indirect(key :: BlindRsaPublicKey, message :: Bytes, signature :: Bytes) -> Bool ! CryptoError do
+  let verify = {prefix}blind_rsa_verify
+  verify(key, message, signature)
+end
+"#
+        );
+        let result = check_source(&source);
+        assert!(result.errors.is_empty(), "{prefix}: {:?}", result.errors);
+    }
+    for (module, prefix) in [
+        ("BlindRsaSecretKey", "blind_rsa_secret_key"),
+        ("BlindRsaBlindingState", "blind_rsa_blinding_state"),
+    ] {
+        for function_prefix in [format!("{module}."), format!("{prefix}_")] {
+            let source = format!(
+                r#"
+fn persist(value :: borrow {module}, wrapping_key :: borrow StorageKey, context :: Bytes) -> Bytes ! CryptoError do
+  {function_prefix}seal_for_storage(value, wrapping_key, context)
+  {function_prefix}seal_for_storage(value, wrapping_key, context)
+end
+fn restore(blob :: Bytes, wrapping_key :: borrow StorageKey, context :: Bytes) -> {module} ! CryptoError do
+  {function_prefix}unseal_from_storage(blob, wrapping_key, context)
+end
+"#
+            );
+            let result = check_source(&source);
+            assert!(
+                result.errors.is_empty(),
+                "{function_prefix}: {:?}",
+                result.errors
+            );
+        }
+    }
+}
+
+#[test]
+fn blind_rsa_private_import_and_finalize_consume_on_qualified_and_flat_calls() {
+    for prefix in ["Crypto.", "crypto_"] {
+        let result = check_source(&format!(
+            r#"
+fn import_twice(material :: SecretBytes) do
+  {prefix}blind_rsa_from_secret(material)
+  {prefix}blind_rsa_from_secret(material)
+end
+fn finalize_twice(key :: BlindRsaPublicKey, message :: Bytes, signature :: Bytes, state :: BlindRsaBlindingState) do
+  {prefix}blind_rsa_finalize(key, message, signature, state)
+  {prefix}blind_rsa_finalize(key, message, signature, state)
+end
+fn borrowed_state(key :: BlindRsaPublicKey, message :: Bytes, signature :: Bytes, state :: borrow BlindRsaBlindingState) do
+  {prefix}blind_rsa_finalize(key, message, signature, state)
+end
+"#
+        ));
+        assert_eq!(
+            resource_violations(&result),
+            [
+                "resource `material` was used after it moved",
+                "resource `state` was used after it moved",
+                "borrowed resource `state` cannot be moved",
+            ],
+            "{prefix}: {:?}",
+            result.errors
+        );
+    }
+}
+
+#[test]
+fn blind_rsa_result_aggregate_and_projected_state_are_affine() {
+    let result = check_source(
+        r#"
+fn take(value :: consume BlindRsaBlinded) do nil end
+fn take_state(value :: consume BlindRsaBlindingState) do nil end
+fn duplicate(key :: BlindRsaPublicKey, message :: Bytes) do
+  case Crypto.blind_rsa_blind(key, message) do
+    Ok(blinded) -> (take(blinded), take(blinded))
+    Err(_) -> (nil, nil)
+  end
+end
+fn duplicate_state(blinded :: BlindRsaBlinded) do
+  take_state(blinded.state)
+  take_state(blinded.state)
+end
+"#,
+    );
+    let violations = resource_violations(&result);
+    assert_eq!(violations.len(), 2, "{:?}", result.errors);
+    assert!(
+        violations[0].contains("used after it moved"),
+        "{violations:?}"
+    );
+    assert!(
+        violations[1].contains("used after it moved"),
+        "{violations:?}"
+    );
+}
+
+#[test]
+fn blind_rsa_rejects_fabrication_exposure_and_wrong_argument_order() {
+    for source in [
+        "fn bad(value :: Bytes) do Crypto.blind_rsa_from_secret(value) end",
+        "fn bad(key :: BlindRsaSecretKey) -> Bytes do key end",
+        "fn bad(state :: BlindRsaBlindingState) -> Bytes do state end",
+        "fn bad() do BlindRsaSecretKey {} end",
+        "fn bad() do BlindRsaBlindingState {} end",
+        "fn bad(key :: BlindRsaPublicKey, message :: Bytes, signature :: Bytes, state :: BlindRsaBlindingState) do Crypto.blind_rsa_finalize(key, message, state, signature) end",
+        "fn bad(key :: BlindRsaPublicKey, message :: Bytes, signature :: Bytes) -> Bool do Crypto.blind_rsa_verify(key, message, signature) end",
+    ] {
+        assert!(!check_source(source).errors.is_empty(), "accepted: {source}");
+    }
+}
+
+#[test]
+fn blind_rsa_request_bytes_and_sealed_state_can_precede_finalize() {
+    let result = check_source(
+        r#"
+fn round_trip(key :: borrow BlindRsaSecretKey, message :: Bytes, wrapping :: borrow StorageKey) -> Bytes ! CryptoError do
+  let public = Crypto.blind_rsa_public(key)?
+  let blinded = Crypto.blind_rsa_blind(public, message)?
+  let request = blinded.blinded
+  let _recovery = BlindRsaBlindingState.seal_for_storage(blinded.state, wrapping, message)?
+  let signature = Crypto.blind_rsa_sign(key, request)?
+  Crypto.blind_rsa_finalize(public, message, signature, blinded.state)
+end
+"#,
+    );
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+}
+
+#[test]
+fn secret_destroy_accepts_only_the_builtin_opaque_secret_handle_family() {
+    for resource in [
+        "SecretBytes",
+        "X25519PrivateKey",
+        "SigningPrivateKey",
+        "AeadKey",
+        "StorageKey",
+        "SecretMap",
+        "MlKemPrivateKey",
+        "BlindRsaSecretKey",
+        "BlindRsaBlindingState",
+    ] {
+        for call in [
+            "Secret.destroy(value)",
+            "secret_destroy(value)",
+            "value |> Secret.destroy",
+        ] {
+            let source = format!("fn discard(value :: {resource}) do {call} end");
+            let result = check_source(&source);
+            assert!(result.errors.is_empty(), "{source}: {:?}", result.errors);
+        }
+    }
+    for source in [
+        "fn bad(value :: Bytes) do Secret.destroy(value) end",
+        "fn bad(value :: BlindRsaBlinded) do Secret.destroy(value) end",
+        "fn bad(value :: X25519KeyPair) do secret_destroy(value) end",
+        "fn bad(value :: BytesBuilder) do secret_destroy(value) end",
+        "fn bad(value :: PgConn) do Secret.destroy(value) end",
+        "resource Custom\nfn bad(value :: Custom) do Secret.destroy(value) end",
+        "fn bad(value :: BlindRsaSecretKey) do let destroy = Secret.destroy\ndestroy(value) end",
+    ] {
+        assert!(
+            !check_source(source).errors.is_empty(),
+            "accepted: {source}"
+        );
+    }
+}
+
+#[test]
+fn secret_destroy_consumes_blind_rsa_handles_and_rejects_borrows() {
+    let result = check_source(
+        r#"
+fn duplicate(key :: BlindRsaSecretKey) do Secret.destroy(key)
+secret_destroy(key) end
+fn borrow_state(state :: borrow BlindRsaBlindingState) do Secret.destroy(state) end
+"#,
+    );
+    assert_eq!(
+        resource_violations(&result),
+        [
+            "resource `key` was used after it moved",
+            "borrowed resource `state` cannot be moved"
+        ],
+        "{:?}",
+        result.errors
     );
 }

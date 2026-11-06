@@ -139,6 +139,7 @@ fn pass_through_arm(arm: &SyntaxNode, lints: &mut Vec<Lint>) {
         .zip(arm.last_child())
         .is_some_and(|(pattern, body)| {
             has_arrow
+                && !needs_arm_delimiter(arm)
                 && pattern != body
                 && stands_for_its_value(&pattern)
                 && significant_text(&pattern) == significant_text(&body)
@@ -150,6 +151,27 @@ fn pass_through_arm(arm: &SyntaxNode, lints: &mut Vec<Lint>) {
             offset: arm.text_range().start().into(),
         });
     }
+}
+
+/// A bare pattern after an implicit multiline body would become another
+/// statement in that body. Keep its arrow unless a `when` remains a delimiter.
+/// Explicit `do ... end` blocks already close the previous arm.
+fn needs_arm_delimiter(arm: &SyntaxNode) -> bool {
+    if arm
+        .children_with_tokens()
+        .any(|element| element.kind() == SyntaxKind::WHEN_KW)
+    {
+        return false;
+    }
+    arm.prev_sibling().is_some_and(|previous| {
+        previous.kind() == SyntaxKind::MATCH_ARM
+            && previous
+                .children()
+                .any(|child| child.kind() == SyntaxKind::BLOCK)
+            && !previous
+                .children_with_tokens()
+                .any(|element| element.kind() == SyntaxKind::DO_KW)
+    })
 }
 
 /// Whether a pattern alone can be an arm's value, as the type checker
@@ -458,10 +480,96 @@ end
             vec![
                 ("pass-through-arm", 3),
                 ("pass-through-arm", 4),
-                ("pass-through-arm", 6),
+                // Line6 keeps the delimiter after the preceding implicit body.
+                // It can shorten after that earlier suggestion is applied.
                 ("pass-through-arm", 7),
             ]
         );
+    }
+
+    #[test]
+    fn pass_through_arm_keeps_the_first_delimiter_after_a_multiline_body() {
+        let source = "\
+type Action do
+  Fetch(part :: Int)
+  Refuse
+  Done
+  PublishReady
+end
+
+fn observe(action :: Action) -> Action do
+  case action do
+    Fetch(part) ->
+      if part > 0 do
+        Fetch(part)
+      else
+        Refuse
+      end
+    Refuse -> Refuse
+    Done -> Done
+    PublishReady -> PublishReady
+  end
+end
+";
+        assert_eq!(
+            findings(source),
+            vec![("pass-through-arm", 17), ("pass-through-arm", 18)]
+        );
+    }
+
+    #[test]
+    fn pass_through_arm_guards_and_explicit_blocks_keep_their_delimiters() {
+        let source = "\
+fn guarded(action, ready) do
+  case action do
+    Fetch(part) ->
+      let observed = part
+      Refuse
+    Refuse when ready -> Refuse
+    Refuse -> Refuse
+    Done -> Done
+  end
+end
+
+fn explicit(action) do
+  case action do
+    Fetch(part) -> do
+      let observed = part
+      Refuse
+    end
+    Refuse -> Refuse
+    Done -> Done
+  end
+end
+";
+        assert_eq!(
+            findings(source),
+            vec![
+                ("pass-through-arm", 6),
+                ("pass-through-arm", 7),
+                ("pass-through-arm", 8),
+                ("pass-through-arm", 18),
+                ("pass-through-arm", 19),
+            ]
+        );
+    }
+
+    #[test]
+    fn pass_through_arm_does_not_shorten_required_receive_arrows() {
+        let source = "\
+fn mailbox() do
+  receive do
+    Fetch(part) ->
+      let retained = Refuse
+      retained
+    Refuse -> Refuse
+    Done -> Done
+  after 1 ->
+    Refuse
+  end
+end
+";
+        assert_eq!(findings(source), vec![]);
     }
 
     #[test]

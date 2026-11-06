@@ -639,6 +639,12 @@ fn wide_integer_module(ty: Ty) -> HashMap<String, Scheme> {
             Scheme::mono(Ty::fun(vec![ty.clone(), ty.clone()], result())),
         );
     }
+    if matches!(ty.con_name(), Some("U64" | "U128")) {
+        module.insert(
+            "multiply_divide".to_string(),
+            Scheme::mono(Ty::fun(vec![ty.clone(), ty.clone(), ty.clone()], result())),
+        );
+    }
     module.insert(
         "to_int".to_string(),
         Scheme::mono(Ty::fun(
@@ -913,6 +919,13 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
         )),
     );
     bytes_mod.insert(
+        "concat_many".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::list(bytes_t.clone()), Ty::int()],
+            checked_bytes_result(),
+        )),
+    );
+    bytes_mod.insert(
         "secure_equals".to_string(),
         Scheme::mono(Ty::fun(vec![bytes_t.clone(), bytes_t.clone()], Ty::bool())),
     );
@@ -1064,7 +1077,38 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
             Ty::result(Ty::secret_bytes(), Ty::crypto_error()),
         )),
     );
+    secret_mod.insert(
+        "split_at".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::secret_bytes(), Ty::int()],
+            Ty::result(
+                Ty::Tuple(vec![Ty::secret_bytes(), Ty::secret_bytes()]),
+                Ty::crypto_error(),
+            ),
+        )),
+    );
     modules.insert("Secret".to_string(), secret_mod);
+
+    // Deliberate new recovery-code disclosure; no existing-secret export.
+    let mut recovery_code_mod = HashMap::new();
+    recovery_code_mod.insert(
+        "generate".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![],
+            Ty::result(
+                Ty::Tuple(vec![Ty::secret_bytes(), Ty::string()]),
+                Ty::crypto_error(),
+            ),
+        )),
+    );
+    recovery_code_mod.insert(
+        "parse".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string()],
+            Ty::result(Ty::secret_bytes(), Ty::crypto_error()),
+        )),
+    );
+    modules.insert("RecoveryCode".to_string(), recovery_code_mod);
 
     let secret_map = Ty::secret_map();
     let secret_map_result = |value| Ty::result(value, Ty::crypto_error());
@@ -1146,6 +1190,13 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
             Ty::result(Ty::storage_key(), Ty::crypto_error()),
         )),
     );
+    storage_key_mod.insert(
+        "file".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string()],
+            Ty::result(Ty::storage_key(), Ty::crypto_error()),
+        )),
+    );
     for name in ["seal_bytes", "unseal_bytes"] {
         storage_key_mod.insert(
             name.to_string(),
@@ -1155,12 +1206,23 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
             )),
         );
     }
+    storage_key_mod.insert(
+        "index_tag".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::storage_key(), Ty::bytes(), Ty::bytes()],
+            Ty::result(Ty::bytes(), Ty::crypto_error()),
+        )),
+    );
     modules.insert("StorageKey".to_string(), storage_key_mod);
 
     for (module, private_key) in [
         ("X25519PrivateKey", Ty::x25519_private_key()),
         ("SigningPrivateKey", Ty::signing_private_key()),
         ("MlKemPrivateKey", Ty::mlkem_private_key()),
+        ("MlKemEncapsulationState", Ty::mlkem_encapsulation_state()),
+        ("BlindRsaSecretKey", Ty::blind_rsa_secret_key()),
+        ("BlindRsaBlindingState", Ty::blind_rsa_blinding_state()),
+        ("HashPreimage", Ty::hash_preimage()),
     ] {
         let mut private_mod = HashMap::new();
         private_mod.insert(
@@ -1177,12 +1239,38 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
                 Ty::result(private_key, Ty::crypto_error()),
             )),
         );
+        if module == "HashPreimage" {
+            private_mod.insert(
+                "generate".to_string(),
+                Scheme::mono(Ty::fun(
+                    vec![],
+                    Ty::result(Ty::hash_preimage(), Ty::crypto_error()),
+                )),
+            );
+            for operation in ["commitment", "reveal"] {
+                private_mod.insert(
+                    operation.to_string(),
+                    Scheme::mono(Ty::fun(
+                        vec![Ty::hash_preimage()],
+                        Ty::result(Ty::bytes(), Ty::crypto_error()),
+                    )),
+                );
+            }
+        }
         modules.insert(module.to_string(), private_mod);
     }
 
     modules.insert("U64".to_string(), wide_integer_module(Ty::u64()));
     modules.insert("U128".to_string(), wide_integer_module(Ty::u128()));
     modules.insert("I128".to_string(), wide_integer_module(Ty::i128()));
+
+    modules.insert(
+        "Ohttp".to_string(),
+        builtins::ohttp_functions()
+            .into_iter()
+            .map(|(name, scheme)| (name.to_string(), scheme))
+            .collect(),
+    );
 
     // ── Crypto V2 module ──────────────────────────────────────────────
     let crypto_mod = builtins::crypto_functions()
@@ -1280,6 +1368,13 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
         Scheme::mono(Ty::fun(vec![dt_t.clone()], Ty::int())),
     );
     // The unit parameter uses Atom type (e.g. :day, :hour) — Atom resolves to String at MIR level.
+    datetime_mod.insert(
+        "add_months".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![dt_t.clone(), Ty::int()],
+            Ty::result(dt_t.clone(), Ty::string()),
+        )),
+    );
     let atom_t = Ty::Con(TyCon::new("Atom"));
     datetime_mod.insert(
         "add".to_string(),
@@ -1389,6 +1484,14 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
     let http_method_atom_t = Ty::Con(TyCon::new("Atom"));
     let mut http_client_mod = HashMap::new();
 
+    http_client_mod.insert(
+        "url_origin".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string()],
+            Ty::result(Ty::string(), Ty::string()),
+        )),
+    );
+
     // Http.build(:method, url) -> Request
     // First arg is Atom — atoms are lowered to String at MIR/codegen level.
     http_client_mod.insert(
@@ -1414,6 +1517,13 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
     );
     http_client_mod.insert(
         "body_bytes".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![http_req_t.clone(), Ty::bytes()],
+            http_req_t.clone(),
+        )),
+    );
+    http_client_mod.insert(
+        "trust_root_pem".to_string(),
         Scheme::mono(Ty::fun(
             vec![http_req_t.clone(), Ty::bytes()],
             http_req_t.clone(),
@@ -1541,6 +1651,13 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
         );
     }
     ws_client_mod.insert(
+        "header".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::int(), Ty::string(), Ty::string()],
+            Ty::result(Ty::int(), Ty::string()),
+        )),
+    );
+    ws_client_mod.insert(
         "connect".to_string(),
         Scheme::mono(Ty::fun(
             vec![Ty::string(), Ty::int()],
@@ -1583,6 +1700,15 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
         )),
     );
     modules.insert("WsClient".to_string(), ws_client_mod);
+    let mut lightning_mod = HashMap::new();
+    lightning_mod.insert(
+        "invoice_details".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string()],
+            Ty::result(Ty::bytes(), Ty::string()),
+        )),
+    );
+    modules.insert("Lightning".to_string(), lightning_mod);
 
     // ── Test module (Phase 138) ──────────────────────────────────────
     // assert/assert_eq/assert_ne/assert_raises are test-mode DSL builtins lowered
@@ -1636,6 +1762,20 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
         )),
     );
     file_mod.insert(
+        "read_bytes_v2".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string(), Ty::int(), Ty::int(), Ty::int()],
+            Ty::result(Ty::bytes(), Ty::string()),
+        )),
+    );
+    file_mod.insert(
+        "write_bytes_v2".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string(), Ty::int(), Ty::bytes(), Ty::bool(), Ty::int()],
+            Ty::result(Ty::Tuple(vec![]), Ty::string()),
+        )),
+    );
+    file_mod.insert(
         "size".to_string(),
         Scheme::mono(Ty::fun(
             vec![Ty::string()],
@@ -1662,6 +1802,20 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
     );
     file_mod.insert(
         "delete".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string()],
+            Ty::result(Ty::Tuple(vec![]), Ty::string()),
+        )),
+    );
+    file_mod.insert(
+        "rename".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![Ty::string(), Ty::string()],
+            Ty::result(Ty::Tuple(vec![]), Ty::string()),
+        )),
+    );
+    file_mod.insert(
+        "sync".to_string(),
         Scheme::mono(Ty::fun(
             vec![Ty::string()],
             Ty::result(Ty::Tuple(vec![]), Ty::string()),
@@ -2202,6 +2356,26 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
             Ty::Tuple(vec![]),
         )),
     );
+    http_mod.insert(
+        "serve_on".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![router_t.clone(), Ty::string(), Ty::int()],
+            Ty::Tuple(vec![]),
+        )),
+    );
+    http_mod.insert(
+        "serve_tls_on".to_string(),
+        Scheme::mono(Ty::fun(
+            vec![
+                router_t.clone(),
+                Ty::string(),
+                Ty::int(),
+                Ty::string(),
+                Ty::string(),
+            ],
+            Ty::Tuple(vec![]),
+        )),
+    );
     // Phase 56: HTTPS TLS server
     http_mod.insert(
         "serve_tls".to_string(),
@@ -2609,6 +2783,34 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
             ),
         )),
     );
+    sqlite_mod.insert(
+        "execute_values_v2".into(),
+        Scheme::mono(Ty::fun(
+            vec![
+                sqlite_conn_t.clone(),
+                Ty::string(),
+                Ty::list(Ty::db_value()),
+                Ty::int(),
+            ],
+            Ty::result(Ty::int(), Ty::string()),
+        )),
+    );
+    sqlite_mod.insert(
+        "query_values_v2".into(),
+        Scheme::mono(Ty::fun(
+            vec![
+                sqlite_conn_t.clone(),
+                Ty::string(),
+                Ty::list(Ty::db_value()),
+                Ty::int(),
+            ],
+            Ty::result(
+                Ty::list(Ty::map(Ty::string(), Ty::db_value())),
+                Ty::string(),
+            ),
+        )),
+    );
+
     // Sqlite.begin: fn(SqliteConn) -> Result<Unit, String>
     sqlite_mod.insert(
         "begin".to_string(),
@@ -3022,6 +3224,10 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
         Scheme::mono(Ty::fun(vec![Ty::string()], Ty::Con(TyCon::new("Pid")))),
     );
     process_mod.insert(
+        "lookup".to_string(),
+        Scheme::mono(Ty::fun(vec![Ty::string()], Ty::option(Ty::untyped_pid()))),
+    );
+    process_mod.insert(
         "install_shutdown_signals".to_string(),
         Scheme::mono(Ty::fun(vec![], Ty::Tuple(vec![]))),
     );
@@ -3150,6 +3356,17 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
             Ty::Tuple(vec![]),
         )),
     );
+    for (name, tls) in [("serve_on", false), ("serve_tls_on", true)] {
+        let mut args = ws_callbacks[..3].to_vec();
+        args.extend([Ty::string(), Ty::int()]);
+        if tls {
+            args.extend([Ty::string(), Ty::string()]);
+        }
+        ws_mod.insert(
+            name.to_string(),
+            Scheme::mono(Ty::fun(args, Ty::Tuple(vec![]))),
+        );
+    }
     // ── WebSocket Room functions (Phase 90) ────────────────────────
     // Ws.join: fn(Int, String) -> Int  (conn_handle, room_name -> 0 success)
     ws_mod.insert(
@@ -4434,15 +4651,43 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         trait_registry.register_imported_impl(impl_def.clone());
     }
 
+    // Supporting layouts describe public result/field types transitively. They
+    // do not add constructors, variant names or re-exports to the environment.
+    // Explicitly imported module definitions below take precedence.
+    for exports in import_ctx.module_exports.values() {
+        for (name, definition) in &exports.type_context.struct_defs {
+            type_registry
+                .struct_defs
+                .entry(name.clone())
+                .or_insert_with(|| definition.clone());
+        }
+        for (name, definition) in &exports.type_context.sum_type_defs {
+            type_registry
+                .sum_type_defs
+                .entry(name.clone())
+                .or_insert_with(|| definition.clone());
+        }
+        for (name, definition) in &exports.type_context.type_aliases {
+            type_registry
+                .type_aliases
+                .entry(name.clone())
+                .or_insert_with(|| definition.clone());
+        }
+        type_registry
+            .resource_types
+            .extend(exports.type_context.resource_types.iter().cloned());
+    }
+
     // Pre-seed TypeRegistry and TypeEnv with imported struct definitions
     for (mod_namespace, mod_exports) in &import_ctx.module_exports {
+        let mod_namespace = mod_namespace.rsplit('.').next().unwrap_or(mod_namespace);
         for resource_type in &mod_exports.resource_types {
             type_registry.register_resource_type(resource_type.clone());
         }
         for (name, struct_def) in &mod_exports.struct_defs {
             type_registry.register_struct(struct_def.clone());
             // Register struct constructor in env with display_prefix set to source module
-            let tycon = TyCon::with_module(name, mod_namespace.as_str());
+            let tycon = TyCon::with_module(name, mod_namespace);
             let struct_ty = if struct_def.generic_params.is_empty() {
                 Ty::App(Box::new(Ty::Con(tycon)), vec![])
             } else {
@@ -4477,6 +4722,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
     // ("Types.UserId") so that annotations like `:: Types.UserId` resolve
     // correctly when the annotation parser emits a qualified key.
     for (mod_namespace, mod_exports) in &import_ctx.module_exports {
+        let mod_namespace = mod_namespace.rsplit('.').next().unwrap_or(mod_namespace);
         for alias_info in mod_exports.type_aliases.values() {
             // Unqualified: `UserId`
             type_registry.register_alias(alias_info.clone());
@@ -4805,6 +5051,19 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
     }
     check_derive_needs(&mut ctx, &mut trait_registry);
 
+    // Actors participate in the same dependency cycles as functions (an actor
+    // can call a helper that spawns it). A conservative dependency scan can
+    // also form a cycle when a local parameter shadows a helper's name. Keep
+    // a monomorphic placeholder so every spawn and send constrains the one
+    // actor body, regardless of which item in the cycle is checked first.
+    for item in singles() {
+        if let Item::ActorDef(actor) = item {
+            if let Some(name) = actor.name().and_then(|name| name.text()) {
+                env.insert(name, Scheme::mono(ctx.fresh_var()));
+            }
+        }
+    }
+
     // Check the items and expressions in source order, except that a
     // function, top-level `let`, actor or service comes after those it names
     // further down (see `dependency_order`, which gives each multi-clause
@@ -4924,6 +5183,15 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         &ctx.overloaded_call_targets,
     );
     ctx.errors.extend(ownership.errors);
+    let plaintext = crate::plaintext::check(
+        parse,
+        &resolved_types,
+        &type_registry,
+        import_ctx,
+        &ctx.overloaded_fn_names,
+        &ctx.overloaded_call_targets,
+    );
+    ctx.errors.extend(plaintext.errors.iter().cloned());
     // A call whose callee failed is inferred again as a method call, which
     // reports the same error a second time; each error is reported once.
     let mut seen = FxHashSet::default();
@@ -4973,6 +5241,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         discarded_callback_results: ctx.discarded_callback_results,
         json_text_arguments: ctx.json_text_arguments,
         function_ownership: ownership.function_ownership,
+        plaintext,
         fn_constraints,
         assoc_projections,
     }
@@ -4985,18 +5254,50 @@ fn register_crypto_v2_types(type_registry: &mut TypeRegistry) {
         "StorageKey",
         "X25519PrivateKey",
         "MlKemPrivateKey",
+        "MlKemEncapsulationState",
+        "OhttpClientContext",
+        "OhttpGatewayContext",
         "SigningPrivateKey",
         "AeadKey",
+        "BlindRsaSecretKey",
+        "BlindRsaBlindingState",
+        "HashPreimage",
     ] {
         type_registry.register_resource_type(resource);
     }
 
     for (name, fields) in [
+        (
+            "OhttpRequest",
+            vec![
+                ("wire", Ty::bytes()),
+                ("response_context", Ty::ohttp_client_context()),
+            ],
+        ),
+        (
+            "OhttpRequestOpening",
+            vec![
+                ("plaintext", Ty::bytes()),
+                ("response_context", Ty::ohttp_gateway_context()),
+            ],
+        ),
         ("X25519PublicKey", vec![("bytes", Ty::bytes())]),
         ("MlKemPublicKey", vec![("bytes", Ty::bytes())]),
         ("MlKemCiphertext", vec![("bytes", Ty::bytes())]),
+        ("MlKemHeader64", vec![("bytes", Ty::bytes())]),
+        ("MlKemPublicVector1152", vec![("bytes", Ty::bytes())]),
+        ("MlKemCiphertext1_960", vec![("bytes", Ty::bytes())]),
+        ("MlKemCiphertext2_128", vec![("bytes", Ty::bytes())]),
         ("SigningPublicKey", vec![("bytes", Ty::bytes())]),
         ("Signature", vec![("bytes", Ty::bytes())]),
+        ("BlindRsaPublicKey", vec![("bytes", Ty::bytes())]),
+        (
+            "BlindRsaBlinded",
+            vec![
+                ("blinded", Ty::bytes()),
+                ("state", Ty::blind_rsa_blinding_state()),
+            ],
+        ),
         (
             "X25519KeyPair",
             vec![
@@ -5144,6 +5445,10 @@ fn register_builtin_sum_types(
         },
         VariantInfo {
             name: "InternalFailure".to_string(),
+            fields: vec![],
+        },
+        VariantInfo {
+            name: "UnsupportedTarget".to_string(),
             fields: vec![],
         },
     ];
@@ -6029,9 +6334,9 @@ fn register_import(
             let Some(module) = segments.last().cloned() else {
                 return;
             };
-            let Some(mod_exports) = import_ctx.module_exports.get(&module) else {
+            let Some(mod_exports) = import_ctx.exports_for_path(&segments.join(".")) else {
                 // A standard module's functions are found where they are used.
-                if !stdlib_modules(import_ctx.test_builtins).contains_key(&module) {
+                if !stdlib_modules(import_ctx.test_builtins).contains_key(&segments.join(".")) {
                     ctx.errors.push(TypeError::ImportModuleNotFound {
                         module_name: segments.join("."),
                         span: import_decl.syntax().text_range(),
@@ -6040,6 +6345,18 @@ fn register_import(
                 }
                 return;
             };
+            if ctx
+                .qualified_module_origins
+                .get(&module)
+                .is_some_and(|origin| origin != &mod_exports.module_name)
+            {
+                ctx.errors.push(TypeError::DuplicateDefinition {
+                    kind: "module namespace",
+                    name: module,
+                    span: import_decl.syntax().text_range(),
+                });
+                return;
+            }
             // The module's functions, structs and variants, for `Module.name`.
             let mut functions = mod_exports.functions.clone();
             for (name, def) in &mod_exports.struct_defs {
@@ -6077,7 +6394,7 @@ fn register_import(
                 .iter()
                 .flat_map(|list| list.names())
                 .filter_map(|node| Some((node.text()?, node.syntax().text_range())));
-            if let Some(mod_exports) = import_ctx.module_exports.get(&module) {
+            if let Some(mod_exports) = import_ctx.exports_for_path(&segments.join(".")) {
                 for (name, span) in names {
                     import_name(
                         ctx,
@@ -6091,7 +6408,9 @@ fn register_import(
                         span,
                     );
                 }
-            } else if let Some(functions) = stdlib_modules(import_ctx.test_builtins).get(&module) {
+            } else if let Some(functions) =
+                stdlib_modules(import_ctx.test_builtins).get(&segments.join("."))
+            {
                 // A standard module's function comes in under its own name
                 // and with the module's prefix (`length`, `string_length`).
                 for (name, span) in names {
@@ -6751,6 +7070,7 @@ fn is_known_type(name: &str, type_registry: &TypeRegistry) -> bool {
             | "Atom"
             | "Regex"
             | "Bytes"
+            | "Plaintext"
             | "SecretBytes"
             | "SecretMap"
             | "StorageKey"
@@ -6942,7 +7262,10 @@ fn names_a_type(
         return true;
     }
     if let Some((module, short)) = name.rsplit_once('.') {
-        return import_ctx.module_exports.contains_key(module)
+        return import_ctx
+            .module_exports
+            .keys()
+            .any(|path| path == module || path.rsplit('.').next() == Some(module))
             && is_known_type(short, type_registry);
     }
     // The type parameters of the enclosing items.
@@ -8565,6 +8888,11 @@ fn validate_export_declaration(ctx: &mut InferCtx, function: &FnDef) {
 
     if function.visibility().is_none() {
         reject("exported functions must be public");
+    }
+    if let Some(declaration) = function.export_decl() {
+        if let Err(reason) = declaration.boundary_limits() {
+            reject(reason);
+        }
     }
     let symbol = function
         .export_decl()
@@ -10462,6 +10790,71 @@ fn check_call(
         args.insert(index.min(args.len()), (expr, Some(ty)));
     }
 
+    // Direct destruction accepts the opaque secret-table handle family. Keep
+    // the function value's SecretBytes signature: a generic/indirect call must
+    // not erase resource ownership or pass an aggregate to the opaque ABI.
+    let secret_destroy = matches!(callee_expr, Expr::NameRef(name) if name.text().as_deref() == Some("secret_destroy"))
+        || matches!(http_field_access_name(callee_expr), Some((module, field)) if module == "Secret" && field == "destroy");
+    if secret_destroy
+        && args.len() == 1
+        && ctx.resolve(callee_ty.clone()) == Ty::fun(vec![Ty::secret_bytes()], Ty::Tuple(vec![]))
+    {
+        let (argument, piped_ty) = &args[0];
+        let argument_ty = match piped_ty {
+            Some(ty) => ty.clone(),
+            None => infer_expr(
+                ctx,
+                env,
+                argument,
+                types,
+                type_registry,
+                trait_registry,
+                fn_constraints,
+            )?,
+        };
+        let resolved = ctx.resolve(argument_ty.clone());
+        let opaque_secret = resolved.con_name().is_some_and(|name| {
+            matches!(
+                name,
+                "SecretBytes"
+                    | "X25519PrivateKey"
+                    | "SigningPrivateKey"
+                    | "AeadKey"
+                    | "StorageKey"
+                    | "SecretMap"
+                    | "MlKemPrivateKey"
+                    | "MlKemEncapsulationState"
+                    | "OhttpClientContext"
+                    | "OhttpGatewayContext"
+                    | "BlindRsaSecretKey"
+                    | "BlindRsaBlindingState"
+                    | "HashPreimage"
+            ) && type_registry.is_resource_name(name)
+                && type_registry
+                    .struct_defs
+                    .get(name)
+                    .is_none_or(|definition| definition.fields.is_empty())
+        });
+        if !opaque_secret {
+            // This also preserves inference for an unannotated SecretBytes
+            // parameter while rejecting ordinary values and other resources.
+            ctx.unify(
+                Ty::secret_bytes(),
+                argument_ty.clone(),
+                ConstraintOrigin::FnArg {
+                    call_site: significant_range(argument.syntax()),
+                    param_idx: 0,
+                },
+            )?;
+        }
+        let unit = Ty::Tuple(vec![]);
+        types.insert(
+            callee_expr.syntax().text_range(),
+            Ty::fun(vec![ctx.resolve(argument_ty)], unit.clone()),
+        );
+        return Ok(unit);
+    }
+
     let ret_var = ctx.fresh_var();
     let origin = ConstraintOrigin::FnArg {
         call_site: call_range,
@@ -11621,6 +12014,10 @@ fn infer_block(
     trait_registry: &TraitRegistry,
     fn_constraints: &FxHashMap<String, FnConstraints>,
 ) -> Ty {
+    // A lexical block owns its lets. Its result type escapes; bindings do not.
+    // In particular, an if branch must not overwrite an outer Option binding
+    // with the unwrapped value or make it visible to its sibling branch.
+    env.push_scope();
     // The block's value is its last expression's; a `let` last gives unit.
     let mut last_ty = Ty::Tuple(vec![]);
     for child in block.syntax().children() {
@@ -11665,6 +12062,7 @@ fn infer_block(
                 .push(TypeError::AssertReceiveOutsideTest { span: keyword });
         }
     }
+    env.pop_scope();
     last_ty
 }
 
@@ -13878,7 +14276,10 @@ fn infer_actor_def(
     let msg_ty = ctx.fresh_var();
 
     // Pre-bind the actor name as a self-recursive function (for tail calls).
-    let self_var = ctx.fresh_var();
+    let self_var = env
+        .lookup(&actor_name)
+        .map(|scheme| scheme.ty.clone())
+        .unwrap_or_else(|| ctx.fresh_var());
     env.insert(actor_name.clone(), Scheme::mono(self_var.clone()));
 
     env.push_scope();
@@ -15408,6 +15809,17 @@ fn annotation_type_param(
 }
 
 /// Resolve a type annotation using the type registry (supports struct types, aliases).
+pub(crate) fn raw_annotation_type(ann: &mesh_parser::ast::item::TypeAnnotation) -> Option<Ty> {
+    let mut tokens = Vec::new();
+    collect_annotation_tokens(ann.syntax(), &mut tokens);
+    let mut start = usize::from(
+        tokens
+            .first()
+            .is_some_and(|token| token.0 == SyntaxKind::ARROW),
+    );
+    (start < tokens.len()).then(|| parse_type_tokens(&tokens, &mut start))
+}
+
 fn resolve_type_annotation(
     ctx: &mut InferCtx,
     ann: &mesh_parser::ast::item::TypeAnnotation,
@@ -15463,7 +15875,7 @@ fn annotated_type_range(ann: &mesh_parser::ast::item::TypeAnnotation) -> TextRan
 /// `None` for any other type.
 fn type_arity(name: &str, type_registry: &TypeRegistry) -> Option<usize> {
     match name {
-        "List" | "Set" | "Queue" | "Iter" | "Option" | "Pid" | "Channel" => Some(1),
+        "List" | "Set" | "Queue" | "Iter" | "Option" | "Pid" | "Channel" | "Plaintext" => Some(1),
         "Map" | "Result" => Some(2),
         _ => declared_param_count(type_registry, name).or_else(|| {
             type_registry
@@ -15595,7 +16007,7 @@ fn collect_type_element(
 
 /// The type written after the `=` of `node`: `String` in `type Url =
 /// String`, `List<Int>` in an impl's `type Item = List<Int>`.
-fn type_after_eq(node: &mesh_parser::SyntaxNode) -> Option<Ty> {
+pub(crate) fn type_after_eq(node: &mesh_parser::SyntaxNode) -> Option<Ty> {
     let mut tokens = Vec::new();
     node.children_with_tokens()
         .skip_while(|element| element.kind() != SyntaxKind::EQ)
@@ -15740,6 +16152,12 @@ fn resolve_alias_within(
         Ty::App(_, args) => args.into_iter().map(|arg| again(ctx, arg)).collect(),
         _ => Vec::new(),
     };
+    // Plaintext is a compile-time copyable label. Its original annotation and
+    // cross-module flow proof are retained by plaintext::check, independently
+    // of the ordinary ABI/layout type used by inference and lowering.
+    if tc.name == "Plaintext" {
+        return args.into_iter().next().unwrap_or_else(|| ctx.fresh_var());
+    }
     if let Some(alias) = type_registry.lookup_alias(&tc.name) {
         // Named with another number of arguments than it takes (reported
         // where it is written) or with none, its parameters are not known.

@@ -22,3 +22,17 @@ pub fn storage_roundtrip(request :: Bytes) -> Bytes ! String do
     Ok(value) -> Ok(value)
   end
 end
+@export("mesh_fixture_large", max_input: 16_782_000, max_output: 16_782_000)
+pub fn large(request :: Bytes) -> Bytes ! String do
+  Ok(request)
+end
+
+@export("mesh_fixture_input_only", max_input: 16_782_000)
+pub fn input_only(request :: Bytes) -> Bytes ! String do
+  Ok(request)
+end
+
+@export("mesh_fixture_small_output", max_output: 2)
+pub fn small_output(request :: Bytes) -> Bytes ! String do
+  Ok(request)
+end

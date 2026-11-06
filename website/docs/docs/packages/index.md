@@ -274,7 +274,7 @@ Core value types:
   conversion;
 - `Slot`, `BlockHeight`, `EpochInfo`, and `LatestBlockhash`;
 - `RpcRequest` and `RpcResponse`;
-- `AccountInfo`, `AccountsAtSlot`, `TokenAccount`, `Mint`, and
+- `AccountInfo`, `AccountsAtSlot`, `OptionalAccountsAtSlot`, `TokenAccount`, `Mint`, and
   `StakePoolState`;
 - `ProgramAccountFilter`, `AccountNotification`, and `SlotNotification`.
 
@@ -289,16 +289,22 @@ Request builders and response decoders:
 
 - generic: `rpc_request`, `rpc_request_json`, `rpc_response`, `rpc_send`;
 - reads: `get_account_info_request`, `get_multiple_accounts_request`,
-  `get_slot_request`, `get_block_height_request`, `get_epoch_info_request`,
+  `get_multiple_accounts_context_request`,
+  `get_slot_request`, `get_block_height_request`, `get_block_time_request`, `get_epoch_info_request`,
   `get_latest_blockhash_request`, `program_accounts_request`;
 - filters: `memcmp_filter`, `data_size_filter`, `filters_json`;
-- response decoding: `account_info`, `multiple_accounts_from_response`,
-  `slot_from_response`, `block_height_from_response`,
+- response decoding: `account_info`, `multiple_accounts_from_response`, `optional_accounts_from_response`,
+  `slot_from_response`, `block_height_from_response`, `block_time_from_response`,
   `epoch_info_from_response`, `latest_blockhash_from_response`;
 - subscriptions: `account_subscribe_request`, `program_subscribe_request`,
   `slot_subscribe_request`, `send_account_subscription`,
   `send_program_subscription`, `send_slot_subscription`,
   `account_notification`, and `slot_notification`.
+
+Block time is `Option<Int>` in Unix seconds; `None` means unknown time, and RPC
+errors remain errors. Establish slot finality and provider trust separately.
+RPC result JSON preserves value types and the complete u64 range; quoted numbers
+are not accepted as block times.
 
 SPL and JitoSOL helpers:
 
@@ -308,6 +314,23 @@ SPL and JitoSOL helpers:
 - `jitosol_nav`, which validates the deployed pool and mint, owner programs,
   mint supply, nine-decimal configuration, and current epoch before using
   checked `U128` arithmetic.
+
+### `Solana.Address`
+
+`create_program_address(program, seeds)` returns a `Pubkey` or an error if the
+seeds hash to a curve point. `find_program_address(program, seeds)` returns
+`ProgramDerivedAddress { address, bump }`, using the canonical highest bump
+from the `solana-address 2.7.0` search (255 through 1). The program key must be
+32 bytes, seeds at most 32 bytes each, with at most 16 for creation or 15 for
+finding. Creation accepts caller-supplied bump bytes, including zero.
+
+Seeds are concatenated without lengths. Use fixed-width fields or explicit
+framing; `["ab", "c"]` and `["a", "bc"]` deliberately derive the same address.
+The package uses public SHA-256 and `Crypto.ed25519_is_on_curve`; it performs
+no network calls, signing or account creation. Curve membership accepts
+small-order and noncanonical encodings that decompress; it is not signature
+or signing-key validation. Wrong-length input to the Crypto predicate returns
+`InvalidPublicKey` rather than `false`.
 
 ### `Solana.Tx`
 

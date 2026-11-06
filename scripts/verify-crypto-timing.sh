@@ -39,18 +39,20 @@ cleanup() {
 }
 trap cleanup EXIT
 
-status=0
-(
-  cd "${ROOT_DIR}"
-  CARGO_INCREMENTAL=0 cargo test --locked --release -p mesh-rt \
-    bytes::tests::secure_equals_timing_distribution -- \
-    --ignored --exact --nocapture
-) >"${LOG_FILE}" 2>&1 || status=$?
-
-if [[ "${status}" -ne 0 ]]; then
-  sed -n '1,240p' "${LOG_FILE}" >&2
-  fail "release timing test exited ${status}"
-fi
+for timing_test in \
+  bytes::tests::secure_equals_timing_distribution \
+  crypto::blind_rsa::tests::blind_rsa_sign_timing_distribution; do
+  status=0
+  (
+    cd "${ROOT_DIR}"
+    CARGO_INCREMENTAL=0 cargo test --locked --release -p mesh-rt \
+      "${timing_test}" -- --ignored --exact --nocapture
+  ) >>"${LOG_FILE}" 2>&1 || status=$?
+  if [[ "${status}" -ne 0 ]]; then
+    tail -n 160 "${LOG_FILE}" >&2
+    fail "release timing test ${timing_test} exited ${status}"
+  fi
+done
 
 python3 - "${LOG_FILE}" "${OUTPUT_JSON}" <<'PY'
 import json
@@ -61,30 +63,32 @@ log_path, output_path = sys.argv[1:]
 with open(log_path, encoding="utf-8") as log_file:
     matches = re.findall(r"MESH_TIMING_JSON=(\{[^\n]+\})", log_file.read())
 
-if len(matches) != 1:
-    raise SystemExit(f"expected one timing JSON record, found {len(matches)}")
-
-record = json.loads(matches[0])
-if record.get("schema_version") != 2 or record.get("boundary") != "Bytes.secure_equals":
-    raise SystemExit("timing record has an unexpected schema or boundary")
-if record.get("samples_per_group", 0) < 200 or record.get("passed") is not True:
-    raise SystemExit("timing record did not satisfy the release contract")
-if record.get("inconclusive") is True:
-    # Not a leak and not a clean bill of health: the control group -- an
-    # identical workload in its own allocation -- separated by as much as the
-    # real comparison, so this host cannot resolve the boundary at all. Say so
-    # in the evidence rather than recording a pass that was never measured.
-    print(
-        "warning: timing boundary was INCONCLUSIVE on this host "
-        f"(control |t|={record.get('control_t')}, "
-        f"first-vs-last |t|={record.get('welch_t')}); "
-        "re-run on a quiet machine before treating it as evidence",
-        file=sys.stderr,
-    )
+expected = {"Bytes.secure_equals", "Crypto.blind_rsa_sign"}
+records = [json.loads(match) for match in matches]
+if len(records) != 2 or {r.get("boundary") for r in records} != expected:
+    raise SystemExit("expected exactly one timing record for secure_equals and blind_rsa_sign")
+for record in records:
+    if record.get("schema_version") != 2:
+        raise SystemExit("timing record has an unexpected schema")
+    if record.get("samples_per_group", 0) < 200 or record.get("passed") is not True:
+        raise SystemExit("timing record did not satisfy the release contract")
+    if record.get("inconclusive") is True:
+        print(
+            f"warning: {record['boundary']} timing was INCONCLUSIVE on this host "
+            f"(control |t|={record.get('control_t')}, measured |t|={record.get('welch_t')}); "
+            "re-run on a quiet machine before treating it as evidence",
+            file=sys.stderr,
+        )
+record = {
+    "schema_version": 3,
+    "boundaries": records,
+    "passed": True,
+    "inconclusive": any(r.get("inconclusive") is True for r in records),
+}
 
 with open(output_path, "x", encoding="utf-8") as output_file:
     json.dump(record, output_file, indent=2, sort_keys=True)
     output_file.write("\n")
 PY
 
-printf 'timing verification passed: %s\n' "${OUTPUT_JSON}"
+printf 'timing evidence recorded: %s\n' "${OUTPUT_JSON}"

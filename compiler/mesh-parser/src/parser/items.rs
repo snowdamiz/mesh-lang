@@ -32,6 +32,8 @@ enum FnDeclPrefixState {
     NativeDecoratorInvalid,
     ExportDecoratorValid,
     ExportDecoratorInvalid,
+    DisplayDecoratorValid,
+    DisplayDecoratorInvalid,
     RemovedSyntaxInvalid,
 }
 
@@ -46,6 +48,9 @@ impl FnDeclPrefixState {
             }
             Self::ExportDecoratorValid | Self::ExportDecoratorInvalid => {
                 Some("expected `fn` or `def` after `@export`")
+            }
+            Self::DisplayDecoratorValid | Self::DisplayDecoratorInvalid => {
+                Some("expected `fn` or `def` after `@display`")
             }
             // The removed spelling is reported where it is, and a function
             // without a prefix is only started at its `fn` or `def`.
@@ -213,7 +218,41 @@ fn parse_abi_symbol_decorator_decl(
             ));
             valid = false;
         }
-        if p.at(SyntaxKind::COMMA) {
+        if decorator == "export" {
+            while p.eat(SyntaxKind::COMMA) {
+                let name = p.current_text().to_string();
+                if !p.eat(SyntaxKind::IDENT) || !p.eat(SyntaxKind::COLON) {
+                    p.error("expected one literal export symbol followed only by named options");
+                    recover_cluster_decorator_args(p);
+                    valid = false;
+                    break;
+                }
+                if name == "bindings" {
+                    if !p.eat(SyntaxKind::STRING_START) {
+                        p.error("expected literal export bindings \"all\" or \"native\"");
+                        recover_cluster_decorator_args(p);
+                        valid = false;
+                        break;
+                    }
+                    while p.at(SyntaxKind::STRING_CONTENT) {
+                        p.advance();
+                    }
+                    if !p.eat(SyntaxKind::STRING_END) {
+                        p.error("export bindings must be one literal without interpolation");
+                        recover_cluster_decorator_args(p);
+                        valid = false;
+                        break;
+                    }
+                } else if !p.eat(SyntaxKind::INT_LITERAL) {
+                    p.error(
+                        "expected a decimal export byte limit or bindings: \"all\" or \"native\"",
+                    );
+                    recover_cluster_decorator_args(p);
+                    valid = false;
+                    break;
+                }
+            }
+        } else if p.at(SyntaxKind::COMMA) {
             p.error(&format!("expected exactly one literal {decorator} symbol"));
             recover_cluster_decorator_args(p);
             valid = false;
@@ -291,6 +330,14 @@ fn parse_optional_fn_decl(p: &mut Parser) -> FnDeclPrefixState {
             parse_native_decorator_decl(p)
         } else if p.nth(1) == SyntaxKind::IDENT && p.nth_text(1) == "export" {
             parse_export_decorator_decl(p)
+        } else if p.nth(1) == SyntaxKind::IDENT && p.nth_text(1) == "display" {
+            parse_abi_symbol_decorator_decl(
+                p,
+                "display",
+                SyntaxKind::DISPLAY_DECORATOR_DECL,
+                FnDeclPrefixState::DisplayDecoratorValid,
+                FnDeclPrefixState::DisplayDecoratorInvalid,
+            )
         } else {
             parse_cluster_decorator_decl(p)
         }
@@ -310,8 +357,33 @@ fn parse_optional_fn_decl(p: &mut Parser) -> FnDeclPrefixState {
 pub(crate) fn parse_fn_def(p: &mut Parser) {
     let m = p.open();
 
-    let declaration_prefix = parse_optional_fn_decl(p);
-    if !matches!(declaration_prefix, FnDeclPrefixState::Absent) {
+    let mut declaration_prefix = parse_optional_fn_decl(p);
+    let mut has_display = matches!(
+        declaration_prefix,
+        FnDeclPrefixState::DisplayDecoratorValid | FnDeclPrefixState::DisplayDecoratorInvalid
+    );
+    if declaration_prefix != FnDeclPrefixState::Absent {
+        p.eat_newlines();
+    }
+    while p.at(SyntaxKind::AT) {
+        let next = parse_optional_fn_decl(p);
+        let display = matches!(
+            next,
+            FnDeclPrefixState::DisplayDecoratorValid | FnDeclPrefixState::DisplayDecoratorInvalid
+        );
+        if display {
+            if has_display {
+                p.error("duplicate `@display` declaration");
+            }
+            has_display = true;
+        } else if matches!(
+            declaration_prefix,
+            FnDeclPrefixState::DisplayDecoratorValid | FnDeclPrefixState::DisplayDecoratorInvalid
+        ) {
+            declaration_prefix = next;
+        } else {
+            p.error("only `@display` may be combined with another function decorator");
+        }
         p.eat_newlines();
     }
 

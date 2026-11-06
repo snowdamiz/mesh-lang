@@ -7,7 +7,10 @@
 
 use std::ops::Range;
 
+use crate::ast::expr::Expr;
 use crate::{SyntaxKind, SyntaxNode};
+
+const CHECK_OUTCOME: &str = "__test_check_result";
 
 /// Preprocess a .test.mpl source file into a valid Mesh program. The file is
 /// rewritten in place, so each of its lines keeps its line and column and a
@@ -33,6 +36,18 @@ pub fn preprocess_test_source(source: &str) -> Result<String, String> {
         return Ok(source.to_string());
     }
 
+    // This internal polymorphic observer is emitted only by this harness.
+    // Refuse source collisions rather than let a test shadow its outcome check.
+    if parse
+        .syntax()
+        .descendants_with_tokens()
+        .filter_map(|e| e.into_token())
+        .any(|t| t.kind() == SyntaxKind::IDENT && t.text() == CHECK_OUTCOME)
+    {
+        return Err(format!(
+            "`{CHECK_OUTCOME}` is reserved for the generated test harness"
+        ));
+    }
     let mut edits: Vec<(Range<usize>, String)> = Vec::new();
     // Each test: its label, and the call in `main` that runs it.
     let mut tests: Vec<(String, String)> = Vec::new();
@@ -61,7 +76,7 @@ pub fn preprocess_test_source(source: &str) -> Result<String, String> {
                 call.rewrite(
                     &mut edits,
                     &format!("fn __test_describe_{d}(__case :: Int) do"),
-                    teardown_end(teardown),
+                    &teardown_end(teardown, true),
                 );
             }
             _ => continue,
@@ -93,7 +108,7 @@ pub fn preprocess_test_source(source: &str) -> Result<String, String> {
     out.push_str("\nfn main() do\n");
     for (label, run) in &tests {
         out.push_str(&format!(
-            "  test_cleanup_actors()\n  test_begin(\"{label}\")\n  test_run_body(fn() do {run} end)\n  test_end()\n"
+            "  test_cleanup_actors()\n  test_begin(\"{label}\")\n  test_run_body(fn() do {CHECK_OUTCOME}({run}) end)\n  test_end()\n"
         ));
     }
     // Pass 0 for elapsed_ms; accurate timing is cosmetic and can be added later.
@@ -130,7 +145,22 @@ impl Group<'_> {
                         "line {line}: `setup` must come before the tests of its describe"
                     ));
                 }
-                "setup" => inner.rewrite(self.edits, "", ""),
+                "setup" => {
+                    inner.rewrite(self.edits, "", "");
+                    // Keep setup bindings in the describe scope, checking its
+                    // final expression rather than moving setup into a closure.
+                    if let Some(last) = inner.block.children().last().and_then(Expr::cast) {
+                        if !matches!(last, Expr::ReturnExpr(_)) {
+                            let node = last.syntax();
+                            let range = range_of(node);
+                            // Boundary insertions compose with descendant
+                            // rewrites such as nested assert_receive expansion.
+                            self.edits
+                                .push((range.start..range.start, format!("{CHECK_OUTCOME}(")));
+                            self.edits.push((range.end..range.end, ")".into()));
+                        }
+                    }
+                }
                 "teardown" if teardown => {
                     return Err(format!("line {line}: a describe has one `teardown`"));
                 }
@@ -143,8 +173,10 @@ impl Group<'_> {
                     let case = self.cases;
                     inner.rewrite(
                         self.edits,
-                        &format!("if __case == {case} do test_run_body(fn() do"),
-                        "end) end",
+                        &format!(
+                            "if __case == {case} do test_run_body(fn() do {CHECK_OUTCOME}((fn() do"
+                        ),
+                        "end)()) end) end",
                     );
                     self.tests.push((
                         format!("{label} > {}", inner.label("unnamed")),
@@ -158,7 +190,7 @@ impl Group<'_> {
                     let nested = format!("{label} > {}", inner.label("describe"));
                     let teardown = self.describe(&inner, &nested)?;
                     let header = format!("if __case >= {first} && __case < {} do", self.cases);
-                    inner.rewrite(self.edits, &header, teardown_end(teardown));
+                    inner.rewrite(self.edits, &header, &teardown_end(teardown, false));
                 }
                 _ => {}
             }
@@ -168,12 +200,15 @@ impl Group<'_> {
 }
 
 /// A describe's `end`: its teardown runs after the test.
-fn teardown_end(teardown: bool) -> &'static str {
-    if teardown {
-        "test_run_body(__teardown) end"
+fn teardown_end(teardown: bool, top_level: bool) -> String {
+    let cleanup = if teardown {
+        format!("test_run_body(fn() do {CHECK_OUTCOME}(__teardown()) end); ")
     } else {
-        "end"
-    }
+        String::new()
+    };
+    // A selected describe must propagate setup `?`/return Err to the outer
+    // observer. This is generated test syntax, not ordinary closure coercion.
+    format!("{cleanup}{}end", if top_level { "Ok(nil) " } else { "" })
 }
 
 /// A `name(...) do ... end` or `name do ... end` statement, as `test`,
@@ -246,10 +281,25 @@ impl BlockCall {
 
     /// Replace the header and the `end`, keeping the header's line breaks.
     fn rewrite(&self, edits: &mut Vec<(Range<usize>, String)>, header: &str, end: &str) {
-        let header = (
-            self.header.clone(),
-            keep_lines(header, &self.call, self.header.clone()),
-        );
+        let mut replacement = keep_lines(header, &self.call, self.header.clone());
+        // An inline block has no retained newline/trivia after its header.
+        // Keep `do` separate from the first body token without adding lines.
+        if !header.is_empty()
+            && replacement
+                .chars()
+                .last()
+                .is_some_and(|c| !c.is_whitespace())
+            && !self
+                .block
+                .text()
+                .to_string()
+                .chars()
+                .next()
+                .is_some_and(char::is_whitespace)
+        {
+            replacement.push(' ');
+        }
+        let header = (self.header.clone(), replacement);
         edits.push(header);
         edits.push((self.end.clone(), end.to_string()));
     }
@@ -318,7 +368,7 @@ mod tests {
         }
         assert!(
             out[source.len()..].contains(
-                "test_begin(\"pick\")\n  test_run_body(fn() do __test_body_0() end)\n  test_end()"
+                "test_begin(\"pick\")\n  test_run_body(fn() do __test_check_result(__test_body_0()) end)\n  test_end()"
             ),
             "{out}"
         );
@@ -351,7 +401,7 @@ mod tests {
         assert_eq!(out_lines[9], "  ", "{out}");
         assert_eq!(out_lines[10], "  let __teardown = fn() do", "{out}");
         assert_eq!(
-            out_lines[13], "  if __case == 0 do test_run_body(fn() do",
+            out_lines[13], "  if __case == 0 do test_run_body(fn() do __test_check_result((fn() do",
             "{out}"
         );
         assert!(
@@ -364,12 +414,16 @@ mod tests {
             ),
             "{out}"
         );
-        assert_eq!(out_lines[15], "  end) end", "{out}");
-        assert_eq!(out_lines[16], "test_run_body(__teardown) end", "{out}");
+        assert_eq!(out_lines[15], "  end)()) end) end", "{out}");
+        assert_eq!(
+            out_lines[16],
+            "test_run_body(fn() do __test_check_result(__teardown()) end); Ok(nil) end",
+            "{out}"
+        );
         assert_eq!(out_lines[18], "fn __test_body_1() do", "{out}");
         assert!(
             out.contains(
-                "test_begin(\"group > one\")\n  test_run_body(fn() do __test_describe_0(0) end)"
+                "test_begin(\"group > one\")\n  test_run_body(fn() do __test_check_result(__test_describe_0(0)) end)"
             ),
             "{out}"
         );
@@ -386,16 +440,19 @@ mod tests {
         let lines: Vec<&str> = out.lines().collect();
         assert_eq!(lines[7], "  if __case >= 1 && __case < 3 do", "{out}");
         assert_eq!(lines[8], "    let __teardown = fn() do", "{out}");
-        assert_eq!(lines[13], "    end) end", "{out}");
-        assert_eq!(lines[17], "  test_run_body(__teardown) end", "{out}");
-        assert_eq!(lines[18], "end", "{out}");
+        assert_eq!(lines[13], "    end)()) end) end", "{out}");
+        assert_eq!(
+            lines[17], "  test_run_body(fn() do __test_check_result(__teardown()) end); end",
+            "{out}"
+        );
+        assert_eq!(lines[18], "Ok(nil) end", "{out}");
         for (label, case) in [
             ("outer > a", 0),
             ("outer > inner > b", 1),
             ("outer > inner > c", 2),
         ] {
             let run = format!(
-                "test_begin(\"{label}\")\n  test_run_body(fn() do __test_describe_0({case}) end)"
+                "test_begin(\"{label}\")\n  test_run_body(fn() do __test_check_result(__test_describe_0({case})) end)"
             );
             assert!(out.contains(&run), "{out}");
         }
@@ -427,7 +484,10 @@ mod tests {
             out.contains("\n  let x = 1\n  run() do\n    x\n  end\n"),
             "{out}"
         );
-        assert!(out.contains("  end) end\nend\n\nfn main() do"), "{out}");
+        assert!(
+            out.contains("  end)()) end) end\nOk(nil) end\n\nfn main() do"),
+            "{out}"
+        );
     }
 
     #[test]
@@ -438,5 +498,84 @@ mod tests {
             err.starts_with("line 5: a describe has one `teardown`"),
             "{err}"
         );
+    }
+    #[test]
+    fn test_outcomes_are_checked_at_each_generated_boundary() {
+        let source="describe(\"g\") do\n  setup do\n    let held=42\n    step()\n  end\n  teardown do\n    step()\n  end\n  test(\"t\") do\n    step()?\n    Ok(nil)\n  end\nend\n";
+        let out = preprocess_test_source(source).unwrap();
+        assert!(
+            out.contains("    let held=42\n    __test_check_result(step())\n"),
+            "{out}"
+        );
+        assert!(
+            out.contains("__test_check_result((fn() do\n    step()?\n    Ok(nil)\n  end)())"),
+            "{out}"
+        );
+        assert!(
+            out.contains(
+                "test_run_body(fn() do __test_check_result(__teardown()) end); Ok(nil) end"
+            ),
+            "{out}"
+        );
+        assert_eq!(
+            source.lines().count(),
+            out.lines().take(source.lines().count()).count()
+        );
+        assert!(
+            crate::parse(&out).errors().is_empty(),
+            "{:?}\n{out}",
+            crate::parse(&out).errors()
+        );
+    }
+    #[test]
+    fn test_outcome_internal_observer_cannot_be_shadowed_by_test_source() {
+        for source in [
+            "fn __test_check_result(x) do x end\ntest(\"x\") do nil end",
+            "test(\"x\") do\n let __test_check_result=fn(x) do x end\n nil\nend",
+        ] {
+            assert!(preprocess_test_source(source)
+                .unwrap_err()
+                .contains("reserved for the generated test harness"));
+        }
+        assert!(
+            preprocess_test_source("test(\"x\") do println(\"__test_check_result\") end").is_ok()
+        );
+    }
+    #[test]
+    fn test_rewritten_inline_blocks_keep_a_lexical_header_boundary() {
+        let input="test(\"inline\") do assert(true) end\ndescribe(\"inline group\") do\n setup do Ok(nil) end\n teardown do Ok(nil) end\n test(\"inner\") do Ok(nil) end\nend\n";
+        let output = preprocess_test_source(input).unwrap();
+        assert!(
+            crate::parse(&output).errors().is_empty(),
+            "{:?}\n{output}",
+            crate::parse(&output).errors()
+        );
+        assert!(
+            output.contains("fn __test_body_0() do assert(true) end"),
+            "{output}"
+        );
+        assert_eq!(
+            input.lines().count(),
+            output.lines().take(input.lines().count()).count()
+        );
+    }
+    #[test]
+    fn test_setup_outcome_wrapper_preserves_nested_assert_receive_edits() {
+        for expression in [
+            "if true do\n assert_receive 40, 50\nend",
+            "case 40 do\n 40 -> do\n assert_receive 40, 50\n end\nend",
+            "fn() do\n assert_receive 40, 50\nend",
+        ] {
+            let input=format!("describe(\"g\") do\n setup do\n {expression}\n end\n test(\"t\") do nil end\nend\n");
+            let output = preprocess_test_source(&input).unwrap();
+            assert!(
+                crate::parse(&output).errors().is_empty(),
+                "{:?}\n{output}",
+                crate::parse(&output).errors()
+            );
+            assert!(output.contains("__test_check_result("), "{output}");
+            assert!(output.contains("receive do 40 -> ()"), "{output}");
+            assert!(!output.contains("assert_receive 40, 50"), "{output}");
+        }
     }
 }

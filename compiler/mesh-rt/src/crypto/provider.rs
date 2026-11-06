@@ -1,10 +1,10 @@
 use argon2::{Algorithm, Argon2, Block, Params, Version};
 use chacha20poly1305::aead::{AeadInPlace, KeyInit};
-use chacha20poly1305::{ChaCha20Poly1305, Tag};
+use chacha20poly1305::{ChaCha20Poly1305, Tag, XChaCha20Poly1305};
 use ed25519_dalek::{Signature, Signer as _, SigningKey, VerifyingKey};
 use ring::digest::{digest, SHA256, SHA512};
 use ring::hkdf::{KeyType, Salt, HKDF_SHA256};
-use ring::hmac::{sign, Key, HMAC_SHA256};
+use ring::hmac::{sign, Key, HMAC_SHA256, HMAC_SHA512};
 use ring::rand::{SecureRandom, SystemRandom};
 use x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret};
 use zeroize::{Zeroize, Zeroizing};
@@ -20,7 +20,17 @@ pub(crate) const MAX_ARGON2_PARALLELISM: u32 = 8;
 pub(crate) const MIN_ARGON2_OUTPUT_BYTES: usize = 16;
 pub(crate) const MAX_ARGON2_OUTPUT_BYTES: usize = 64;
 const AEAD_TAG_BYTES: usize = 16;
-const MAX_AEAD_CIPHERTEXT_BYTES: usize = MAX_INPUT_BYTES + AEAD_TAG_BYTES;
+// AEAD transports may wrap a bounded 64-KiB application payload plus framing.
+// Authenticated framing may itself be up to 128 KiB. Other primitive inputs
+// retain their independent 64-KiB bounds.
+pub(crate) const MAX_AEAD_AAD_BYTES: usize = 128 * 1024;
+pub(crate) const MAX_AEAD_PLAINTEXT_BYTES: usize = 128 * 1024;
+pub(crate) const MAX_AEAD_CIPHERTEXT_BYTES: usize = MAX_AEAD_PLAINTEXT_BYTES + AEAD_TAG_BYTES;
+// Dedicated OHTTP transport bound, independent of generic AEAD and HPKE.
+// A response has the smallest outer overhead: 32 nonce bytes plus its AEAD tag.
+pub(crate) const MAX_OHTTP_WIRE_BYTES: usize = 1024 * 1024;
+const MAX_OHTTP_CIPHERTEXT_BYTES: usize = MAX_OHTTP_WIRE_BYTES - 32;
+const MAX_OHTTP_PLAINTEXT_BYTES: usize = MAX_OHTTP_CIPHERTEXT_BYTES - AEAD_TAG_BYTES;
 
 struct HkdfOutputLength(usize);
 
@@ -46,10 +56,24 @@ pub(crate) enum ProviderError {
     ResourceLimitExceeded,
     InvalidPublicKey,
     AuthenticationFailed,
+    InvalidKey,
+    InvalidSignature,
+    // Constructed only on client-only targets.
+    #[cfg_attr(any(target_os = "linux", target_os = "macos"), allow(dead_code))]
+    UnsupportedTarget,
+    InternalFailure,
 }
 
 pub(crate) trait CryptoProvider {
     fn fill_random(&self, output: &mut [u8]) -> Result<(), ProviderError>;
+
+    fn blind_rsa_blind(
+        &self,
+        public: &[u8],
+        message: &[u8],
+    ) -> Result<(Vec<u8>, Zeroizing<Vec<u8>>), ProviderError> {
+        super::blind_rsa::blind(self, public, message)
+    }
 
     fn sha256(&self, input: &[u8]) -> [u8; 32] {
         let value = digest(&SHA256, input);
@@ -76,6 +100,21 @@ pub(crate) trait CryptoProvider {
             return Err(ProviderError::InvalidLength);
         }
         let tag = sign(&Key::new(HMAC_SHA256, key), message);
+        output.copy_from_slice(tag.as_ref());
+        Ok(())
+    }
+
+    fn hmac_sha512(
+        &self,
+        key: &[u8],
+        message: &[u8],
+        output: &mut [u8; 64],
+    ) -> Result<(), ProviderError> {
+        if key.len() > MAX_INPUT_BYTES || message.len() > MAX_INPUT_BYTES {
+            output.zeroize();
+            return Err(ProviderError::InvalidLength);
+        }
+        let tag = sign(&Key::new(HMAC_SHA512, key), message);
         output.copy_from_slice(tag.as_ref());
         Ok(())
     }
@@ -201,6 +240,67 @@ pub(crate) trait CryptoProvider {
         Ok(public_key.verify_strict(message, &signature).is_ok())
     }
 
+    // VerifyingKey::from_bytes only decompresses CompressedEdwardsY here;
+    // unlike verify_strict it does not exclude weak points. Keep that exact
+    // predicate: public address derivation needs curve membership, not trust.
+    fn ed25519_is_on_curve(&self, encoded: &[u8; 32]) -> bool {
+        VerifyingKey::from_bytes(encoded).is_ok()
+    }
+
+    fn ohttp_chacha20poly1305_seal(
+        &self,
+        key: &[u8; 32],
+        nonce: &[u8; 12],
+        plaintext: &[u8],
+    ) -> Result<Vec<u8>, ProviderError> {
+        if plaintext.len() > MAX_OHTTP_PLAINTEXT_BYTES {
+            return Err(ProviderError::InvalidLength);
+        }
+        let cipher = ChaCha20Poly1305::new(key.into());
+        let mut working = Zeroizing::new(plaintext.to_vec());
+        let tag = cipher
+            .encrypt_in_place_detached(nonce.into(), &[], &mut working[..])
+            .map_err(|_| ProviderError::InvalidLength)?;
+        let mut ciphertext = Vec::with_capacity(working.len() + AEAD_TAG_BYTES);
+        ciphertext.extend_from_slice(&working);
+        ciphertext.extend_from_slice(&tag);
+        Ok(ciphertext)
+    }
+
+    fn ohttp_chacha20poly1305_open(
+        &self,
+        key: &[u8; 32],
+        nonce: &[u8; 12],
+        ciphertext: &mut Zeroizing<Vec<u8>>,
+    ) -> Result<(), ProviderError> {
+        if ciphertext.len() > MAX_OHTTP_CIPHERTEXT_BYTES {
+            ciphertext.zeroize();
+            return Err(ProviderError::InvalidLength);
+        }
+        if ciphertext.len() < AEAD_TAG_BYTES {
+            ciphertext.zeroize();
+            return Err(ProviderError::AuthenticationFailed);
+        }
+        let cipher = ChaCha20Poly1305::new(key.into());
+        let tag_offset = ciphertext.len() - AEAD_TAG_BYTES;
+        let mut tag = [0; AEAD_TAG_BYTES];
+        tag.copy_from_slice(&ciphertext[tag_offset..]);
+        ciphertext.truncate(tag_offset);
+        if cipher
+            .decrypt_in_place_detached(
+                nonce.into(),
+                &[],
+                &mut ciphertext[..],
+                Tag::from_slice(&tag),
+            )
+            .is_err()
+        {
+            ciphertext.zeroize();
+            return Err(ProviderError::AuthenticationFailed);
+        }
+        Ok(())
+    }
+
     fn chacha20poly1305_seal(
         &self,
         key: &[u8; 32],
@@ -208,7 +308,8 @@ pub(crate) trait CryptoProvider {
         associated_data: &[u8],
         plaintext: &[u8],
     ) -> Result<Vec<u8>, ProviderError> {
-        if associated_data.len() > MAX_INPUT_BYTES || plaintext.len() > MAX_INPUT_BYTES {
+        if associated_data.len() > MAX_AEAD_AAD_BYTES || plaintext.len() > MAX_AEAD_PLAINTEXT_BYTES
+        {
             return Err(ProviderError::InvalidLength);
         }
         let cipher = ChaCha20Poly1305::new(key.into());
@@ -229,7 +330,9 @@ pub(crate) trait CryptoProvider {
         associated_data: &[u8],
         ciphertext: &mut Zeroizing<Vec<u8>>,
     ) -> Result<(), ProviderError> {
-        if associated_data.len() > MAX_INPUT_BYTES || ciphertext.len() > MAX_AEAD_CIPHERTEXT_BYTES {
+        if associated_data.len() > MAX_AEAD_AAD_BYTES
+            || ciphertext.len() > MAX_AEAD_CIPHERTEXT_BYTES
+        {
             ciphertext.zeroize();
             return Err(ProviderError::InvalidLength);
         }
@@ -238,6 +341,65 @@ pub(crate) trait CryptoProvider {
             return Err(ProviderError::AuthenticationFailed);
         }
         let cipher = ChaCha20Poly1305::new(key.into());
+        let tag_offset = ciphertext.len() - AEAD_TAG_BYTES;
+        let mut tag = [0; AEAD_TAG_BYTES];
+        tag.copy_from_slice(&ciphertext[tag_offset..]);
+        ciphertext.truncate(tag_offset);
+        if cipher
+            .decrypt_in_place_detached(
+                nonce.into(),
+                associated_data,
+                &mut ciphertext[..],
+                Tag::from_slice(&tag),
+            )
+            .is_err()
+        {
+            ciphertext.zeroize();
+            return Err(ProviderError::AuthenticationFailed);
+        }
+        Ok(())
+    }
+
+    fn xchacha20poly1305_seal(
+        &self,
+        key: &[u8; 32],
+        nonce: &[u8; 24],
+        associated_data: &[u8],
+        plaintext: &[u8],
+    ) -> Result<Vec<u8>, ProviderError> {
+        if associated_data.len() > MAX_AEAD_AAD_BYTES || plaintext.len() > MAX_AEAD_PLAINTEXT_BYTES
+        {
+            return Err(ProviderError::InvalidLength);
+        }
+        let cipher = XChaCha20Poly1305::new(key.into());
+        let mut working = Zeroizing::new(plaintext.to_vec());
+        let tag = cipher
+            .encrypt_in_place_detached(nonce.into(), associated_data, &mut working[..])
+            .map_err(|_| ProviderError::InvalidLength)?;
+        let mut ciphertext = Vec::with_capacity(working.len() + AEAD_TAG_BYTES);
+        ciphertext.extend_from_slice(&working);
+        ciphertext.extend_from_slice(&tag);
+        Ok(ciphertext)
+    }
+
+    fn xchacha20poly1305_open(
+        &self,
+        key: &[u8; 32],
+        nonce: &[u8; 24],
+        associated_data: &[u8],
+        ciphertext: &mut Zeroizing<Vec<u8>>,
+    ) -> Result<(), ProviderError> {
+        if associated_data.len() > MAX_AEAD_AAD_BYTES
+            || ciphertext.len() > MAX_AEAD_CIPHERTEXT_BYTES
+        {
+            ciphertext.zeroize();
+            return Err(ProviderError::InvalidLength);
+        }
+        if ciphertext.len() < AEAD_TAG_BYTES {
+            ciphertext.zeroize();
+            return Err(ProviderError::AuthenticationFailed);
+        }
+        let cipher = XChaCha20Poly1305::new(key.into());
         let tag_offset = ciphertext.len() - AEAD_TAG_BYTES;
         let mut tag = [0; AEAD_TAG_BYTES];
         tag.copy_from_slice(&ciphertext[tag_offset..]);
@@ -793,13 +955,48 @@ mod tests {
     }
 
     #[test]
+    fn aead_plaintext_boundary_roundtrips_and_clears_tampered_output() {
+        let key = [0x65; 32];
+        for length in [65_536usize, 65_537, 65_606, 128 * 1024] {
+            let mut nonce = [0x32; 12];
+            nonce[..8].copy_from_slice(&(length as u64).to_be_bytes());
+            let input = vec![0x71; length];
+            let sealed = SystemProvider
+                .chacha20poly1305_seal(&key, &nonce, b"bounded transport frame", &input)
+                .expect("bounded AEAD plaintext must seal");
+            assert_eq!(sealed.len(), length + 16);
+            let mut opened = Zeroizing::new(sealed.clone());
+            SystemProvider
+                .chacha20poly1305_open(&key, &nonce, b"bounded transport frame", &mut opened)
+                .expect("bounded AEAD ciphertext must open");
+            assert_eq!(&opened[..], &input);
+            let mut tampered = Zeroizing::new(sealed);
+            tampered[length + 15] ^= 1;
+            assert_eq!(
+                SystemProvider.chacha20poly1305_open(
+                    &key,
+                    &nonce,
+                    b"bounded transport frame",
+                    &mut tampered,
+                ),
+                Err(ProviderError::AuthenticationFailed)
+            );
+            assert!(
+                tampered.is_empty(),
+                "authentication failure must clear output"
+            );
+        }
+    }
+
+    #[test]
     fn chacha20poly1305_seal_rejects_oversized_plaintext_and_associated_data() {
-        let oversized = vec![0; 64 * 1024 + 1];
+        let oversized_plaintext = vec![0; 128 * 1024 + 1];
+        let oversized_aad = vec![0; 128 * 1024 + 1];
 
         let plaintext_result =
-            SystemProvider.chacha20poly1305_seal(&[0; 32], &[0; 12], b"aad", &oversized);
+            SystemProvider.chacha20poly1305_seal(&[0; 32], &[0; 12], b"aad", &oversized_plaintext);
         let associated_data_result =
-            SystemProvider.chacha20poly1305_seal(&[0; 32], &[0; 12], &oversized, b"plaintext");
+            SystemProvider.chacha20poly1305_seal(&[0; 32], &[0; 12], &oversized_aad, b"plaintext");
 
         assert_eq!(
             (plaintext_result, associated_data_result),
@@ -812,7 +1009,8 @@ mod tests {
 
     #[test]
     fn chacha20poly1305_open_rejects_oversized_ciphertext_and_associated_data() {
-        let oversized = vec![0; 64 * 1024 + 16 + 1];
+        let oversized = vec![0; 128 * 1024 + 16 + 1];
+        let oversized_aad = vec![0; 128 * 1024 + 1];
         let valid_ciphertext = SystemProvider
             .chacha20poly1305_seal(&[0; 32], &[0; 12], b"aad", b"plaintext")
             .unwrap();
@@ -828,10 +1026,12 @@ mod tests {
         let associated_data_result = SystemProvider.chacha20poly1305_open(
             &[0; 32],
             &[0; 12],
-            &oversized,
+            &oversized_aad,
             &mut valid_ciphertext,
         );
         let errors = (ciphertext_result.err(), associated_data_result.err());
+        assert!(oversized_ciphertext.is_empty());
+        assert!(valid_ciphertext.is_empty());
 
         assert_eq!(
             errors,

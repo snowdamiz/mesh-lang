@@ -1,0 +1,7 @@
+{
+  "source": "https://raw.githubusercontent.com/lightning/bolts/191462825ae341f0a27098765c075f01ca9bc6c2/bolt11/invoice-test.json",
+  "commit": "191462825ae341f0a27098765c075f01ca9bc6c2",
+  "sha256": "5d6af32b7dfb84722e4e8a94d633d1597b9504a836c32046219b82c1edb7824a",
+  "license": "CC-BY-4.0",
+  "specification": "https://github.com/lightning/bolts/blob/191462825ae341f0a27098765c075f01ca9bc6c2/11-payment-encoding.md"
+}

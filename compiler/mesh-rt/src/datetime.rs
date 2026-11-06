@@ -11,7 +11,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::io::{err_result, ok_int, MeshResult};
 use crate::string::{mesh_str, MeshString};
-use chrono::{DateTime, SecondsFormat, TimeDelta, Utc};
+use chrono::{DateTime, Months, SecondsFormat, TimeDelta, Utc};
 
 // ── utc_now ──────────────────────────────────────────────────────────────────
 
@@ -104,6 +104,25 @@ pub extern "C" fn mesh_datetime_to_unix_secs(ms: i64) -> i64 {
 
 // ── Duration arithmetic ───────────────────────────────────────────────────────
 
+/// Checked calendar arithmetic in UTC. The day is clamped to the destination
+/// month's last day; time of day and milliseconds are preserved.
+#[no_mangle]
+pub extern "C" fn mesh_datetime_add_months(ms: i64, months: i64) -> *mut MeshResult {
+    let result = DateTime::<Utc>::from_timestamp_millis(ms)
+        .zip(u32::try_from(months.unsigned_abs()).ok())
+        .and_then(|(dt, count)| {
+            if months < 0 {
+                dt.checked_sub_months(Months::new(count))
+            } else {
+                dt.checked_add_months(Months::new(count))
+            }
+        });
+    match result {
+        Some(dt) => ok_int(dt.timestamp_millis()),
+        None => err_result("calendar month arithmetic out of range"),
+    }
+}
+
 /// DateTime.add(dt, n, unit) -> DateTime
 ///
 /// Supported units (atom literals without leading colon): ms, second, minute, hour, day, week
@@ -189,6 +208,32 @@ pub extern "C" fn mesh_datetime_after(dt1_ms: i64, dt2_ms: i64) -> i8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn calendar_months_clamp_days_preserve_time_and_fail_without_panicking() {
+        crate::gc::mesh_rt_init();
+        for (start, months, end) in [
+            ("2026-01-31T12:34:56.789Z", 1, "2026-02-28T12:34:56.789Z"),
+            ("2026-01-31T12:34:56.789Z", 2, "2026-03-31T12:34:56.789Z"),
+            ("2024-02-29T00:00:00Z", 12, "2025-02-28T00:00:00.000Z"),
+            ("2026-01-31T00:00:00Z", -1, "2025-12-31T00:00:00.000Z"),
+        ] {
+            let ms = DateTime::parse_from_rfc3339(start)
+                .unwrap()
+                .timestamp_millis();
+            unsafe {
+                let result = mesh_datetime_add_months(ms, months);
+                assert_eq!((*result).tag, 0);
+                let out = *(*result).value.cast::<i64>();
+                assert_eq!((*mesh_datetime_to_iso8601(out)).as_str(), end);
+            }
+        }
+        for (ms, months) in [(0, i64::MIN), (0, i64::MAX), (i64::MAX, 0)] {
+            unsafe {
+                assert_eq!((*mesh_datetime_add_months(ms, months)).tag, 1);
+            }
+        }
+    }
 
     /// A timestamp chrono cannot hold is an error; a difference is in the
     /// unit asked for, and an unknown unit is a Mesh panic.

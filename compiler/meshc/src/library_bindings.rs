@@ -56,12 +56,20 @@ fn render(artifact: &Path, exports: &[LibraryExport], target: Option<&str>) -> B
                 "request": "borrowed-for-call",
                 "response": "caller-owned; release with mesh_library_free_returned_bytes"
             },
-            "exports": exports.iter().map(|export| serde_json::json!({
-                "meshFunction": export.function,
-                "symbol": export.symbol,
-                "request": "bytes",
-                "response": "result<bytes,string>"
-            })).collect::<Vec<_>>()
+            "exports": exports.iter().map(|export| {
+                let mut row = serde_json::json!({
+                    "meshFunction": export.function,
+                    "symbol": export.symbol,
+                    "request": "bytes",
+                    "response": "result<bytes,string>",
+                    "maxInputBytes": export.max_input,
+                    "maxOutputBytes": export.max_output
+                });
+                if export.binding_audience == mesh_codegen::ExportBindingAudience::Native {
+                    row["bindingAudience"] = serde_json::json!("native");
+                }
+                row
+            }).collect::<Vec<_>>()
         }))
         .expect("ABI manifest is serializable")
             + "\n",
@@ -83,8 +91,8 @@ fn render_header(stem: &str, exports: &[LibraryExport]) -> String {
         .iter()
         .map(|export| {
             format!(
-                "int32_t {}(const uint8_t *request, uint64_t request_len, MeshLibraryBytes *response);",
-                export.symbol
+                "/* Request limit: {} bytes. Response/error limit: {} bytes. */\nint32_t {}(const uint8_t *request, uint64_t request_len, MeshLibraryBytes *response);",
+                export.max_input, export.max_output, export.symbol
             )
         })
         .collect::<Vec<_>>()
@@ -138,20 +146,106 @@ fn render_jni(artifact: &Path, exports: &[LibraryExport]) -> String {
         .map(|export| {
             let jni_function = export.function.replace('_', "_1");
             format!(
-                "JNIEXPORT jbyteArray JNICALL Java_mesh_MeshLibrary_{}(JNIEnv *env, jclass cls, jbyteArray request) {{\n  (void)cls;\n  jsize request_len = (*env)->GetArrayLength(env, request);\n  jbyte *request_data = (*env)->GetByteArrayElements(env, request, NULL);\n  MeshLibraryBytes response = {{0}};\n  int32_t status = {}((const uint8_t *)request_data, (uint64_t)request_len, &response);\n  (*env)->ReleaseByteArrayElements(env, request, request_data, JNI_ABORT);\n  if (status != MESH_LIBRARY_OK) {{\n    mesh_throw_library_failure(env, status, &response);\n    mesh_library_free_returned_bytes(&response);\n    return NULL;\n  }}\n  jbyteArray result = (*env)->NewByteArray(env, (jsize)response.len);\n  if (response.len != 0) (*env)->SetByteArrayRegion(env, result, 0, (jsize)response.len, (const jbyte *)response.data);\n  mesh_library_free_returned_bytes(&response);\n  return result;\n}}",
-                jni_function, export.symbol
+                r#"JNIEXPORT jbyteArray JNICALL Java_mesh_MeshLibrary_{}(JNIEnv *env, jclass cls, jbyteArray request) {{
+  (void)cls;
+  MeshLibraryBytes response = {{0}};
+  if ((*env)->ExceptionCheck(env)) return NULL;
+  if (request == NULL) {{
+    mesh_throw_library_failure(env, MESH_LIBRARY_ERR_INVALID_ARGUMENT, &response);
+    return NULL;
+  }}
+  jsize request_len = (*env)->GetArrayLength(env, request);
+  if ((*env)->ExceptionCheck(env)) return NULL;
+  if (request_len < 0 || (uint64_t)request_len > {}ULL) {{
+    mesh_throw_library_failure(env, MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE, &response);
+    return NULL;
+  }}
+  uint8_t *request_data = NULL;
+  if (request_len != 0) {{
+    request_data = (uint8_t *)malloc((size_t)request_len);
+    if (request_data == NULL) {{
+      mesh_throw_library_failure(env, MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE, &response);
+      return NULL;
+    }}
+    (*env)->GetByteArrayRegion(env, request, 0, request_len, (jbyte *)request_data);
+    if ((*env)->ExceptionCheck(env)) {{
+      mesh_erase_and_free(request_data, (size_t)request_len);
+      return NULL;
+    }}
+  }}
+  int32_t status = {}((const uint8_t *)request_data, (uint64_t)request_len, &response);
+  mesh_erase_and_free(request_data, (size_t)request_len);
+  if ((*env)->ExceptionCheck(env)) {{
+    mesh_library_free_returned_bytes(&response);
+    return NULL;
+  }}
+  if (response.len > {}ULL || response.len > INT32_MAX || (response.len != 0 && response.data == NULL)) {{
+    MeshLibraryBytes invalid_response = {{0}};
+    mesh_throw_library_failure(env, MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE, &invalid_response);
+    mesh_library_free_returned_bytes(&response);
+    return NULL;
+  }}
+  if (status != MESH_LIBRARY_OK) {{
+    mesh_throw_library_failure(env, status, &response);
+    mesh_library_free_returned_bytes(&response);
+    return NULL;
+  }}
+  jbyteArray result = (*env)->NewByteArray(env, (jsize)response.len);
+  if (result == NULL || (*env)->ExceptionCheck(env)) {{
+    mesh_library_free_returned_bytes(&response);
+    return NULL;
+  }}
+  if (response.len != 0) (*env)->SetByteArrayRegion(env, result, 0, (jsize)response.len, (const jbyte *)response.data);
+  mesh_library_free_returned_bytes(&response);
+  if ((*env)->ExceptionCheck(env)) return NULL;
+  return result;
+}}"#,
+                jni_function, export.max_input, export.symbol, export.max_output
             )
         })
         .collect::<Vec<_>>()
         .join("\n\n");
     format!(
-        "#include <jni.h>\n#include <stdio.h>\n#include <stdlib.h>\n#include \"{header}\"\n\nstatic void mesh_throw_library_failure(JNIEnv *env, int32_t status, const MeshLibraryBytes *response) {{\n  jclass error = (*env)->FindClass(env, \"java/lang/IllegalStateException\");\n  size_t payload_len = response->len > 1048576 ? 1048576 : (size_t)response->len;\n  size_t message_len = payload_len + 64;\n  char *message = (char *)malloc(message_len);\n  if (message == NULL) {{\n    (*env)->ThrowNew(env, error, \"Mesh library call failed\");\n    return;\n  }}\n  snprintf(message, message_len, \"Mesh library call failed (status=%d): %.*s\", (int)status, (int)payload_len, response->data == NULL ? \"\" : (const char *)response->data);\n  (*env)->ThrowNew(env, error, message);\n  free(message);\n}}\n\nJNIEXPORT jint JNICALL Java_mesh_MeshLibrary_initializeNative(JNIEnv *env, jclass cls) {{ (void)env; (void)cls; return mesh_library_init(); }}\nJNIEXPORT jint JNICALL Java_mesh_MeshLibrary_shutdownNative(JNIEnv *env, jclass cls) {{ (void)env; (void)cls; return mesh_library_shutdown(); }}\n\n{functions}\n"
+        r#"#include <jni.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include "{header}"
+
+static void mesh_erase_and_free(void *allocation, size_t length) {{
+  if (allocation == NULL) return;
+  volatile uint8_t *bytes = (volatile uint8_t *)allocation;
+  while (length != 0) {{ *bytes++ = 0; --length; }}
+  free(allocation);
+}}
+
+static void mesh_throw_library_failure(JNIEnv *env, int32_t status, const MeshLibraryBytes *response) {{
+  if ((*env)->ExceptionCheck(env)) return;
+  jclass error = (*env)->FindClass(env, "java/lang/IllegalStateException");
+  if (error == NULL || (*env)->ExceptionCheck(env)) return;
+  size_t payload_len = response->data == NULL ? 0 : response->len > 1048576 ? 1048576 : (size_t)response->len;
+  size_t message_len = payload_len + 64;
+  char *message = (char *)malloc(message_len);
+  if (message == NULL) {{
+    (*env)->ThrowNew(env, error, "Mesh library call failed");
+    return;
+  }}
+  snprintf(message, message_len, "Mesh library call failed (status=%d): %.*s", (int)status, (int)payload_len, response->data == NULL ? "" : (const char *)response->data);
+  (*env)->ThrowNew(env, error, message);
+  mesh_erase_and_free(message, message_len);
+}}
+
+JNIEXPORT jint JNICALL Java_mesh_MeshLibrary_initializeNative(JNIEnv *env, jclass cls) {{ (void)env; (void)cls; return mesh_library_init(); }}
+JNIEXPORT jint JNICALL Java_mesh_MeshLibrary_shutdownNative(JNIEnv *env, jclass cls) {{ (void)env; (void)cls; return mesh_library_shutdown(); }}
+
+{functions}
+"#
     )
 }
 
 fn render_typescript(exports: &[LibraryExport]) -> String {
     let functions = exports
         .iter()
+        .filter(|export| export.binding_audience == mesh_codegen::ExportBindingAudience::All)
         .map(|export| {
             format!(
                 "export const {} = (request: Uint8Array): Promise<Uint8Array> => native.invoke('{}', request);",
@@ -160,6 +254,9 @@ fn render_typescript(exports: &[LibraryExport]) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n");
+    if functions.is_empty() {
+        return "// No JavaScript bindings were requested.\nexport {};\n".to_string();
+    }
     format!(
         "import {{ requireNativeModule }} from 'expo-modules-core';\n\ntype MeshNativeModule = {{\n  invoke(symbol: string, request: Uint8Array): Promise<Uint8Array>;\n}};\n\nconst native = requireNativeModule<MeshNativeModule>('MeshMessenger');\n\n{functions}\n"
     )
@@ -177,10 +274,16 @@ mod tests {
                 LibraryExport {
                     function: "echo".to_string(),
                     symbol: "mesh_mobile_echo".to_string(),
+                    max_input: 16_782_000,
+                    max_output: 1_048_576,
+                    binding_audience: mesh_codegen::ExportBindingAudience::All,
                 },
                 LibraryExport {
                     function: "validate_outer".to_string(),
                     symbol: "mesh_mobile_validate_outer".to_string(),
+                    max_input: 1_048_576,
+                    max_output: 1_048_576,
+                    binding_audience: mesh_codegen::ExportBindingAudience::All,
                 },
             ],
             Some("aarch64-apple-ios"),
@@ -199,6 +302,12 @@ mod tests {
         assert!(bindings.jni.contains("response->data"));
         assert!(bindings.typescript.contains("mesh_mobile_echo"));
         assert!(bindings.manifest.contains("caller-owned"));
+        assert!(bindings
+            .header
+            .contains("Request limit: 16782000 bytes. Response/error limit: 1048576 bytes."));
+        let manifest: serde_json::Value = serde_json::from_str(&bindings.manifest).unwrap();
+        assert_eq!(manifest["exports"][0]["maxInputBytes"], 16_782_000);
+        assert_eq!(manifest["exports"][0]["maxOutputBytes"], 1_048_576);
         for status in [
             "MESH_LIBRARY_ERR_INVALID_ARGUMENT",
             "MESH_LIBRARY_ERR_NOT_INITIALIZED",
@@ -216,5 +325,128 @@ mod tests {
         let host = mesh_codegen::link::effective_target_triple(None).unwrap();
         let host_bindings = render(Path::new("/tmp/libmessenger.a"), &[], None);
         assert!(host_bindings.manifest.contains(&host));
+    }
+    #[cfg(unix)]
+    fn run_jni_ownership_cases(cases: &[&str]) {
+        let fixture = tempfile::tempdir().expect("owned JNI fixture directory");
+        let root = fixture.path();
+        let bindings = render(
+            &root.join("bindings.a"),
+            &[LibraryExport {
+                function: "echo".to_string(),
+                symbol: "mesh_test_echo".to_string(),
+                max_input: 8,
+                max_output: 16,
+                binding_audience: mesh_codegen::ExportBindingAudience::All,
+            }],
+            None,
+        );
+        for (name, contents) in [
+            ("bindings.h", bindings.header.as_str()),
+            ("bindings.jni.c", bindings.jni.as_str()),
+            (
+                "jni.h",
+                include_str!("../tests/fixtures/library/jni_ownership/jni.h"),
+            ),
+            (
+                "host.c",
+                include_str!("../tests/fixtures/library/jni_ownership/host.c"),
+            ),
+        ] {
+            std::fs::write(root.join(name), contents).expect("write owned JNI fixture");
+        }
+        let executable = root.join("jni-ownership");
+        let compile =
+            std::process::Command::new(std::env::var_os("CC").unwrap_or_else(|| "cc".into()))
+                .args(["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "-I"])
+                .arg(root)
+                .arg(root.join("host.c"))
+                .arg("-o")
+                .arg(&executable)
+                .output()
+                .expect("run real C compiler for generated JNI fixture");
+        assert!(
+            compile.status.success(),
+            "generated JNI C fixture did not compile: {}{}",
+            String::from_utf8_lossy(&compile.stdout),
+            String::from_utf8_lossy(&compile.stderr)
+        );
+        eprintln!("JNI_OWNERSHIP_COMPILED");
+        let outcomes: Vec<_> = cases
+            .iter()
+            .map(|case| {
+                let result = std::process::Command::new(&executable)
+                    .arg(case)
+                    .output()
+                    .expect("execute compiled generated JNI ownership fixture");
+                eprintln!(
+                    "JNI_OWNERSHIP_RESULT {}",
+                    serde_json::json!({
+                        "case": case,
+                        "exit": result.status.code(),
+                        "stdout": String::from_utf8_lossy(&result.stdout),
+                        "stderr": String::from_utf8_lossy(&result.stderr),
+                    })
+                );
+                (
+                    *case,
+                    result.status.code(),
+                    String::from_utf8_lossy(&result.stdout).into_owned(),
+                    String::from_utf8_lossy(&result.stderr).into_owned(),
+                )
+            })
+            .collect();
+        assert!(
+            outcomes.iter().all(|(case, status, stdout, stderr)| {
+                *status == Some(0)
+                    && stdout.starts_with(&format!("JNI_OWNERSHIP_CASE {case} valid=1 "))
+                    && stdout.lines().count() == 1
+                    && stderr.is_empty()
+            }),
+            "actual generated JNI ownership outcomes: {outcomes:?}"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn generated_jni_request_copy_is_owned_bounded_and_erased_on_every_exit() {
+        run_jni_ownership_cases(&[
+            "owned-success",
+            "empty-request",
+            "oversized-request",
+            "request-allocation-failure",
+            "request-copy-exception",
+            "initial-exception",
+            "null-request",
+        ]);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn generated_jni_responses_are_released_on_output_jni_exceptions() {
+        run_jni_ownership_cases(&[
+            "output-allocation-exception",
+            "output-copy-exception",
+            "oversized-response",
+            "int32-overflow-response",
+            "null-response-data",
+        ]);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn generated_jni_formatted_application_error_is_erased_before_free() {
+        run_jni_ownership_cases(&[
+            "application-error",
+            "error-class-exception",
+            "message-allocation-failure",
+            "throw-new-exception",
+        ]);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn generated_jni_ordinary_response_protocol_is_preserved() {
+        run_jni_ownership_cases(&["ordinary-protocol"]);
     }
 }

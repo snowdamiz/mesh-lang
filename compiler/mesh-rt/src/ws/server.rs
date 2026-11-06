@@ -72,7 +72,7 @@ const WS_POLICY_VIOLATION: u16 = 1008;
 
 /// WebSocket handler containing three Mesh closure pairs (on_connect,
 /// on_message, on_close). Each closure is a `{fn_ptr, env_ptr}` pair.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct WsHandler {
     on_connect_fn: *mut u8,
     on_connect_env: *mut u8,
@@ -80,6 +80,10 @@ struct WsHandler {
     on_message_env: *mut u8,
     on_close_fn: *mut u8,
     on_close_env: *mut u8,
+    // The accept thread and every connection own these loans. A serving actor
+    // may return immediately; its captured values must remain rooted until the
+    // final server/connection copy drops.
+    captures: Arc<Vec<crate::actor::process::HeapBorrow>>,
 }
 
 // WsHandler contains raw function pointers transferred between threads.
@@ -264,13 +268,94 @@ pub extern "C" fn mesh_ws_serve(
         on_message_env,
         on_close_fn,
         on_close_env,
+        captures: Arc::default(),
     };
     ws_serve(callbacks, port, None);
 }
 
+/// Serve only the explicit IPv4/IPv6 literal; invalid input logs and returns.
+#[no_mangle]
+pub extern "C" fn mesh_ws_serve_on(
+    on_connect_fn: *mut u8,
+    on_connect_env: *mut u8,
+    on_message_fn: *mut u8,
+    on_message_env: *mut u8,
+    on_close_fn: *mut u8,
+    on_close_env: *mut u8,
+    host: *const MeshString,
+    port: i64,
+) {
+    let addr = match crate::server_bind::address(unsafe { (*host).as_str() }, port) {
+        Ok(addr) => addr,
+        Err(error) => {
+            eprintln!("[mesh-rt] {error}");
+            return;
+        }
+    };
+    let tls = None;
+    let callbacks = WsHandler {
+        on_connect_fn,
+        on_connect_env,
+        on_message_fn,
+        on_message_env,
+        on_close_fn,
+        on_close_env,
+        captures: Arc::default(),
+    };
+    ws_serve_at(callbacks, addr, tls);
+}
+
+/// Serve only the explicit IPv4/IPv6 literal; invalid input logs and returns.
+#[no_mangle]
+pub extern "C" fn mesh_ws_serve_tls_on(
+    on_connect_fn: *mut u8,
+    on_connect_env: *mut u8,
+    on_message_fn: *mut u8,
+    on_message_env: *mut u8,
+    on_close_fn: *mut u8,
+    on_close_env: *mut u8,
+    host: *const MeshString,
+    port: i64,
+    cert_path: *const MeshString,
+    key_path: *const MeshString,
+) {
+    let addr = match crate::server_bind::address(unsafe { (*host).as_str() }, port) {
+        Ok(addr) => addr,
+        Err(error) => {
+            eprintln!("[mesh-rt] {error}");
+            return;
+        }
+    };
+    let (cert_path, key_path) = unsafe { ((*cert_path).as_str(), (*key_path).as_str()) };
+    let tls = match crate::http::server::build_server_config(cert_path, key_path) {
+        Ok(tls) => Some(tls),
+        Err(error) => {
+            eprintln!("[mesh-rt] Failed to load TLS certificates: {error}");
+            return;
+        }
+    };
+    let callbacks = WsHandler {
+        on_connect_fn,
+        on_connect_env,
+        on_message_fn,
+        on_message_env,
+        on_close_fn,
+        on_close_env,
+        captures: Arc::default(),
+    };
+    ws_serve_at(callbacks, addr, tls);
+}
+
 /// Bind `port`, then serve on it (`ws_start`), in TLS when `tls` is given.
 fn ws_serve(callbacks: WsHandler, port: i64, tls: Option<Arc<ServerConfig>>) {
-    let addr = format!("0.0.0.0:{}", port);
+    ws_serve_at(callbacks, format!("0.0.0.0:{port}"), tls);
+}
+
+fn ws_serve_at<A: std::net::ToSocketAddrs + std::fmt::Display>(
+    callbacks: WsHandler,
+    addr: A,
+    tls: Option<Arc<ServerConfig>>,
+) {
     match TcpListener::bind(&addr) {
         Ok(listener) => ws_start(listener, callbacks, tls, super::spawn_thread),
         Err(e) => eprintln!(
@@ -298,6 +383,12 @@ fn ws_start(
 ) {
     // Ensure the actor scheduler is initialized (idempotent).
     crate::actor::mesh_rt_init_actor(0);
+    let mut callbacks = callbacks;
+    let mut captures = Vec::new();
+    captures.extend(crate::actor::lend_closure_env(callbacks.on_connect_env));
+    captures.extend(crate::actor::lend_closure_env(callbacks.on_message_env));
+    captures.extend(crate::actor::lend_closure_env(callbacks.on_close_env));
+    callbacks.captures = Arc::new(captures);
     let kind = ws_kind(&tls);
     let addr = listener
         .local_addr()
@@ -324,7 +415,7 @@ impl ServerHandshakeHandler for ServerOpenHandler {
     ) -> Arc<dyn ReactorEventSink> {
         let sink = Arc::new(ServerSink::new());
         let args = WsConnectionArgs {
-            handler: self.callbacks,
+            handler: self.callbacks.clone(),
             connection,
             sink: Arc::clone(&sink),
             path,
@@ -421,6 +512,7 @@ pub extern "C" fn mesh_ws_serve_tls(
         on_message_env,
         on_close_fn,
         on_close_env,
+        captures: Arc::default(),
     };
     ws_serve(callbacks, port, Some(tls));
 }
@@ -845,6 +937,7 @@ mod tests {
             on_message_env,
             on_close_fn: on_close,
             on_close_env,
+            captures: Arc::default(),
         }
     }
 
@@ -1021,6 +1114,7 @@ mod tests {
             on_message_env: std::ptr::null_mut(),
             on_close_fn: on_close,
             on_close_env: std::ptr::null_mut(),
+            captures: Arc::default(),
         }
     }
 
@@ -1434,6 +1528,7 @@ mod tests {
                         on_message_env: std::ptr::null_mut(),
                         on_close_fn: noop_on_close as *mut u8,
                         on_close_env: std::ptr::null_mut(),
+                        captures: Arc::default(),
                     },
                 });
                 register_server(
@@ -1484,6 +1579,7 @@ mod tests {
                     on_message_env: std::ptr::null_mut(),
                     on_close_fn: noop_on_close as *mut u8,
                     on_close_env: std::ptr::null_mut(),
+                    captures: Arc::default(),
                 },
             });
             register_server(

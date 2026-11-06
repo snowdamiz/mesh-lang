@@ -333,10 +333,19 @@ Other Windows triples are rejected. A cross build also needs the Mesh runtime
 compiled for that target: `meshc` looks for it in `lib/<triple>/` beside the
 installed toolchain, then in a Cargo target directory (`CARGO_TARGET_DIR`, or a
 `target/` above the `meshc` binary) under `<triple>/release` and
-`<triple>/debug`. `MESH_RT_LIB_PATH` names the runtime library explicitly
+`<triple>/debug`. Cross builds never fall back to the host runtime archive:
+if the target runtime is missing, build it with
+`cargo build --locked -p mesh-rt --lib --target <triple>` in the Mesh checkout
+or install a toolchain that includes it. `MESH_RT_LIB_PATH` names the runtime library explicitly
 (`MESH_TEST_RT_LIB_PATH` for `meshc test`); its file name must be the target's
-(`libmesh_rt.a`, or `mesh_rt.lib` for Windows MSVC). See
+(`libmesh_rt.a`, or `mesh_rt.lib` for Windows MSVC), and the caller must ensure
+that an explicit override contains code for the requested target. See
 [Environment Variables](/docs/environment-variables/) for the rest.
+
+For iOS, set `IPHONEOS_DEPLOYMENT_TARGET` for both the Rust runtime build and
+`meshc build`. Mesh translates Rust's `aarch64-apple-ios-sim` target into LLVM's
+simulator target and records the deployment version in its object files.
+Executables and dynamic libraries use the same SDK selection.
 
 ### Resolve git and path dependencies
 
@@ -599,6 +608,15 @@ Use compact output for a large suite, a `.` per passing test and an `F` per fail
 meshc test . --quiet
 ```
 
+Tests default to debug optimization (`0`). To run the same tests with release
+optimization while retaining fixtures and assertions:
+
+```bash
+meshc test . --opt-level 2
+```
+
+`--opt-level` accepts `0` through `3`; it changes test binary optimization only.
+
 Coverage requests are intentionally honest today:
 
 ```bash
@@ -712,7 +730,10 @@ the limit is reported, so fixing it may reveal a deeper one.
 
 `pass-through-arm` fires only where the pattern alone would compile as the
 arm's value: a name, a literal, or a constructor of those. A tuple or list
-pattern such as `(0, b) -> (0, b)` is left alone.
+pattern such as `(0, b) -> (0, b)` is left alone. The lint also keeps the first
+arm's `->` after an implicit multiline arm body, so shortening does not turn the
+arm into a statement in that body. A `when` guard or the preceding body's
+explicit `do ... end` keeps that boundary without the arrow.
 
 Findings go to standard output, one per line, with 1-based line and byte
 columns; the count, `N problem(s) found`, goes to standard error. A file that

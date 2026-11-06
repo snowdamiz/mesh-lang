@@ -7,3 +7,7 @@
 # Homebrew LLVM 21 on Apple Silicon macOS.
 # Change to /usr/local/opt/llvm on Intel Macs.
 LLVM_SYS_211_PREFIX = "/opt/homebrew/opt/llvm"
+
+# Match the Mesh macOS object/link default instead of the installed SDK version.
+# A caller-supplied deployment target remains authoritative.
+MACOSX_DEPLOYMENT_TARGET = { value = "11.0", force = false }

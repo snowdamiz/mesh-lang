@@ -228,7 +228,11 @@ jobs:
         shell: pwsh
         run: |
           cargo build --release --locked -p mesh-rt --target x86_64-pc-windows-msvc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo test --release --locked -p meshc --target x86_64-pc-windows-msvc --test e2e_library
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test --release --locked -p meshc --target x86_64-pc-windows-msvc --test e2e_crypto_v2 blind_rsa_client_public_api_all_targets -- --exact
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Preserve Windows LLVM after a test failure
         if: failure() && runner.os == 'Windows' && steps.cache-llvm.outputs.cache-hit != 'true'

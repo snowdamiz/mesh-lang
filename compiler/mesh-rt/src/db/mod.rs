@@ -10,6 +10,7 @@ pub mod query;
 pub mod repo;
 pub mod row;
 pub mod sqlite;
+mod transport;
 
 /// A SQL identifier, double-quoted with its quotes doubled (PostgreSQL).
 pub(crate) fn quote_ident(name: &str) -> String {

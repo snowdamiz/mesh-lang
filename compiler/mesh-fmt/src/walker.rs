@@ -313,7 +313,8 @@ fn walk_fn_def(node: &SyntaxNode) -> FormatIR {
                 match n.kind() {
                     SyntaxKind::CLUSTER_DECORATOR_DECL
                     | SyntaxKind::NATIVE_DECORATOR_DECL
-                    | SyntaxKind::EXPORT_DECORATOR_DECL => {
+                    | SyntaxKind::EXPORT_DECORATOR_DECL
+                    | SyntaxKind::DISPLAY_DECORATOR_DECL => {
                         parts.push(walk_decorator(&n));
                         // Keep the decorator on the fn's line or its own, as written.
                         let own_line = std::iter::successors(n.next_sibling_or_token(), |e| {
@@ -356,7 +357,7 @@ fn walk_fn_def(node: &SyntaxNode) -> FormatIR {
     ir::concat(parts)
 }
 
-/// `@cluster`, `@cluster(3)`, `@native("sym")`, `@export`: no spaces inside.
+/// Function decorators retain literal arguments without interior spaces.
 fn walk_decorator(node: &SyntaxNode) -> FormatIR {
     ir::concat(
         node.descendants_with_tokens()
@@ -365,6 +366,8 @@ fn walk_decorator(node: &SyntaxNode) -> FormatIR {
             .map(|t| {
                 if t.kind().is_trivia() {
                     inline_comment(&t)
+                } else if matches!(t.kind(), SyntaxKind::COMMA | SyntaxKind::COLON) {
+                    ir::concat(vec![ir::text(t.text()), sp()])
                 } else {
                     ir::text(t.text())
                 }
@@ -2602,6 +2605,12 @@ mod tests {
         // `@cluster pub fn` used to become `@ clusterpub fn`, which does not parse.
         let source = "@cluster pub fn add() -> Int do\n  1\nend\n\n@cluster(3)\npub fn sync() -> Int do\n  3\nend\n\n@native(\"mesh_math_add\")\npub fn native_add(a :: Int, b :: Int) -> Int\n";
         assert_eq!(fmt(source), source);
+        let display = "@display(\"chat text shown to the user\")\n@export(\"chat_display\")\npub fn show(value :: Plaintext<Bytes>) -> Result<Bytes, String> do\n  Ok(value)\nend\n";
+        assert_eq!(fmt(display), display);
+        let bounded = "@export(\"large_frame\", max_input: 16_782_000, max_output: 4096)\npub fn echo(request :: Bytes) -> Bytes!String do\n  Ok(request)\nend\n";
+        assert_eq!(fmt(bounded), bounded);
+        let native = "@export(\"native_frame\", bindings: \"native\", max_input: 4096)\npub fn frame(request :: Bytes) -> Bytes!String do\n  Ok(request)\nend\n";
+        assert_eq!(fmt(native), native);
     }
 
     #[test]

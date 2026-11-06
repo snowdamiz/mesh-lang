@@ -192,10 +192,116 @@ wide_abi!(
     mesh_i128_to_string
 );
 
+// Divide the full 256-bit product by a 128-bit divisor. Reject only a zero
+// divisor or a quotient outside u128, never an overflowing intermediate.
+// The remainder stays below divisor; a carried top bit is accounted for by
+// wrapping subtraction. This API is for public numeric data, not secrets.
+fn multiply_divide(a: u128, b: u128, divisor: u128) -> Result<u128, &'static str> {
+    if divisor == 0 {
+        return Err("division by zero");
+    }
+    let mask = u64::MAX as u128;
+    let low_product = (a & mask) * (b & mask);
+    let cross_a = (a >> 64) * (b & mask);
+    let cross_b = (a & mask) * (b >> 64);
+    let middle = (low_product >> 64) + (cross_a & mask) + (cross_b & mask);
+    let low = (middle << 64) | (low_product & mask);
+    let high = (a >> 64) * (b >> 64) + (cross_a >> 64) + (cross_b >> 64) + (middle >> 64);
+    if high >= divisor {
+        return Err("quotient overflow");
+    }
+    let mut remainder = high;
+    let mut quotient = 0u128;
+    for bit in (0..128).rev() {
+        let carry = remainder >> 127;
+        remainder = (remainder << 1) | ((low >> bit) & 1);
+        if carry != 0 || remainder >= divisor {
+            remainder = remainder.wrapping_sub(divisor);
+            quotient |= 1u128 << bit;
+        }
+    }
+    Ok(quotient)
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_u128_multiply_divide(
+    left: *const MeshWideNum,
+    right: *const MeshWideNum,
+    divisor: *const MeshWideNum,
+) -> *mut MeshResult {
+    match unsafe { multiply_divide(bits(left), bits(right), bits(divisor)) } {
+        Ok(value) => ok_wide(value),
+        Err(error) => err_result(&format!("u128 multiply_divide {error}")),
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_u64_multiply_divide(
+    left: *const MeshWideNum,
+    right: *const MeshWideNum,
+    divisor: *const MeshWideNum,
+) -> *mut MeshResult {
+    unsafe {
+        let divisor = bits(divisor) as u64;
+        if divisor == 0 {
+            return err_result("u64 multiply_divide division by zero");
+        }
+        let value = (bits(left) as u64 as u128) * (bits(right) as u64 as u128) / divisor as u128;
+        if value > u64::MAX as u128 {
+            err_result("u64 multiply_divide quotient overflow")
+        } else {
+            ok_wide(value)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::gc::mesh_rt_init;
+
+    #[test]
+    fn multiply_divide_matches_python_unbounded_integer_vectors() {
+        mesh_rt_init();
+        let vectors: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../tests/fixtures/wide_multiply_divide.json"
+        ))
+        .unwrap();
+        for row in vectors.as_array().unwrap() {
+            unsafe {
+                let width = row["bits"].as_u64().unwrap();
+                let parse = |field: &str| {
+                    value(if width == 64 {
+                        mesh_u64_parse(mesh_str(row[field].as_str().unwrap()))
+                    } else {
+                        mesh_u128_parse(mesh_str(row[field].as_str().unwrap()))
+                    })
+                };
+                let result = if width == 64 {
+                    mesh_u64_multiply_divide(parse("a"), parse("b"), parse("divisor"))
+                } else {
+                    mesh_u128_multiply_divide(parse("a"), parse("b"), parse("divisor"))
+                };
+                if let Some(expected) = row["value"].as_str() {
+                    let actual = if width == 64 {
+                        mesh_u64_to_string(value(result))
+                    } else {
+                        mesh_u128_to_string(value(result))
+                    };
+                    assert_eq!(text(actual), expected, "{row}");
+                } else {
+                    assert_eq!(
+                        error(result),
+                        format!(
+                            "u{width} multiply_divide {}",
+                            row["error"].as_str().unwrap()
+                        ),
+                        "{row}"
+                    );
+                }
+            }
+        }
+    }
 
     unsafe fn value(result: *mut MeshResult) -> *const MeshWideNum {
         assert_eq!((*result).tag, 0, "expected Ok");

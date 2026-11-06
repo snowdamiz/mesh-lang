@@ -20,7 +20,8 @@
 //! # Newline Significance
 //!
 //! Newlines are significant in Mesh (they act as statement terminators) UNLESS
-//! the parser is inside delimiters (`()`, `[]`, `{}`). The `current()` and
+//! the parser is inside expression delimiters (`()`, `[]`, `{}`). A nested
+//! statement block starts a fresh delimiter baseline. The `current()` and
 //! `nth()` methods transparently skip insignificant newlines. Comments are
 //! always skipped by lookahead. The `advance()` method emits Advance events
 //! for all skipped trivia tokens so they appear in the CST.
@@ -97,6 +98,8 @@ pub(crate) struct Parser<'src> {
     bracket_depth: u32,
     /// Brace nesting depth for newline significance.
     brace_depth: u32,
+    /// Delimiter depths at entry to the current statement block.
+    newline_boundary: [u32; 3],
     /// Collected parse errors.
     errors: Vec<ParseError>,
     /// Whether an error has been encountered (first-error-only strategy).
@@ -122,6 +125,7 @@ impl<'src> Parser<'src> {
             paren_depth: 0,
             bracket_depth: 0,
             brace_depth: 0,
+            newline_boundary: [0; 3],
             errors: Vec::new(),
             has_error: false,
             suppress_trailing_closure: false,
@@ -443,9 +447,23 @@ impl<'src> Parser<'src> {
 
     // ── Newline significance ───────────────────────────────────────────
 
-    /// Whether newlines are currently insignificant (inside delimiters).
+    /// Start a statement block whose outer expression delimiters do not hide newlines.
+    pub(crate) fn enter_statement_block(&mut self) -> [u32; 3] {
+        std::mem::replace(
+            &mut self.newline_boundary,
+            [self.paren_depth, self.bracket_depth, self.brace_depth],
+        )
+    }
+
+    pub(crate) fn leave_statement_block(&mut self, previous_boundary: [u32; 3]) {
+        self.newline_boundary = previous_boundary;
+    }
+
+    /// Whether newlines are inside delimiters opened within this statement block.
     pub(crate) fn is_newline_insignificant(&self) -> bool {
-        self.paren_depth > 0 || self.bracket_depth > 0 || self.brace_depth > 0
+        self.paren_depth > self.newline_boundary[0]
+            || self.bracket_depth > self.newline_boundary[1]
+            || self.brace_depth > self.newline_boundary[2]
     }
 
     /// Whether a token should be skipped by lookahead methods.

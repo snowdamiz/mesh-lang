@@ -98,6 +98,11 @@ static ARENA: Mutex<Option<Arena>> = Mutex::new(None);
 /// This function is safe to call multiple times; subsequent calls are no-ops.
 #[no_mangle]
 pub extern "C" fn mesh_rt_init() {
+    #[cfg(not(debug_assertions))]
+    if crate::protected_memory::initialize_release_policy().is_err() {
+        eprintln!("mesh runtime could not establish secret memory protection");
+        std::process::abort();
+    }
     crate::stack_overflow::install_for_current_thread();
     crate::panic::install_hook();
     #[cfg(all(mesh_coverage, unix))]
@@ -351,6 +356,49 @@ mod tests {
             data_ptr as usize - header_ptr as usize,
             GC_HEADER_SIZE,
             "data pointer should be GC_HEADER_SIZE bytes past the header"
+        );
+    }
+}
+
+#[cfg(all(test, not(debug_assertions), unix))]
+mod release_secret_memory_tests {
+    #[test]
+    fn runtime_init_disables_core_dumps_before_secret_creation() {
+        const CHILD: &str = "MESH_C7_RELEASE_INIT_CHILD";
+        if std::env::var_os(CHILD).is_some() {
+            super::mesh_rt_init();
+            let mut limit: libc::rlimit = unsafe { std::mem::zeroed() };
+            assert_eq!(unsafe { libc::getrlimit(libc::RLIMIT_CORE, &mut limit) }, 0);
+            assert_eq!(limit.rlim_cur, 0);
+            assert_eq!(
+                limit.rlim_max, 0,
+                "release runtime must disable core dumps before a secret exists"
+            );
+            #[cfg(any(target_os = "linux", target_os = "android"))]
+            assert_eq!(
+                unsafe {
+                    libc::prctl(
+                        libc::PR_GET_DUMPABLE,
+                        0 as libc::c_long,
+                        0 as libc::c_long,
+                        0 as libc::c_long,
+                        0 as libc::c_long,
+                    )
+                },
+                0
+            );
+            eprintln!("C7_RELEASE_POLICY_CHECKED");
+            return;
+        }
+        let result = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "gc::release_secret_memory_tests::runtime_init_disables_core_dumps_before_secret_creation", "--nocapture"])
+            .env(CHILD, "1").output().unwrap();
+        assert!(
+            result.status.success()
+                && String::from_utf8_lossy(&result.stderr).contains("C7_RELEASE_POLICY_CHECKED"),
+            "release child failed: {} {}",
+            String::from_utf8_lossy(&result.stdout),
+            String::from_utf8_lossy(&result.stderr)
         );
     }
 }

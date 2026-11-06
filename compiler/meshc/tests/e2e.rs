@@ -2679,6 +2679,43 @@ end
     assert_eq!(output, "42\n99\n");
 }
 
+/// Full paths select named imports even when both modules end in `Shared`.
+/// Resource ownership must resolve the same module as ordinary inference.
+#[test]
+fn e2e_full_import_paths_with_same_final_segment() {
+    let output = compile_multifile_and_run(&[
+        ("a/shared.mpl", "pub struct Left do value :: Int end\npub fn left_size(key :: borrow SecretBytes) -> Int do 32 end\n"),
+        ("b/shared.mpl", "pub struct Right do value :: Int end\npub fn right_size(key :: borrow SecretBytes) -> Int do 33 end\n"),
+        ("main.mpl", r##"
+from A.Shared import Left, left_size
+from B.Shared import Right, right_size
+fn main() do
+  let key = case Secret.random(32) do Err(_) -> return; Ok(value) -> value end
+  let left = Left { value: left_size(key) }
+  let right = Right { value: right_size(key) }
+  println("#{left.value} #{right.value} #{left_size(key)}")
+end
+"##),
+    ]);
+    assert_eq!(output, "32 33 32\n");
+}
+
+#[test]
+fn e2e_colliding_explicit_module_namespaces_are_rejected() {
+    let error = compile_multifile_expect_error(&[
+        ("a/shared.mpl", "pub fn left() -> Int do 1 end\n"),
+        ("b/shared.mpl", "pub fn right() -> Int do 2 end\n"),
+        (
+            "main.mpl",
+            "import A.Shared\nimport B.Shared\nfn main() do println(Shared.right()) end\n",
+        ),
+    ]);
+    assert!(
+        error.contains("module namespace") && error.contains("Shared"),
+        "{error}"
+    );
+}
+
 /// A private function is qualified by its module whatever its name. Names
 /// that began like the runtime's (`mesh_`) or a trait impl's (`Display__`)
 /// kept their bare names: two modules' `mesh_helper`s collided, and the
@@ -6575,6 +6612,41 @@ fn e2e_crypto_hmac() {
     assert_eq!(lines[1], "164b7a7bfcf819e2e395fbe73b56e0a387bd64222e831fd610270cd7ea2505549758bf75c05a994a6d034f65f8f0e6fdcaeab1a34d4a6b4b636e070a38bce737");
 }
 
+/// Public Kraken authentication vector proves arbitrary binary message bytes,
+/// secret-key import, repeated borrowing, public tag encoding and input bounds.
+#[test]
+fn e2e_crypto_hmac_sha512_tag() {
+    let source = read_fixture("crypto_hmac_sha512_tag.mpl");
+    let output = compile_and_run_with_env(&source, &[("MESH_HMAC_TEST_KEY", "9101f91d6ffca75b863958db81603b16e9c09863bc96c4945cdb2eddea30efab33f38435f1f5b19f247304709dde97799c4f6a6bdf47019b6e66e8fa17586e5e")]);
+    assert_eq!(output, "4/dpxb3iT4tp/ZCVEwSnEsLxx0bqyhLpdfOpc6fn7OR8+UClSV5n9E6aSS8MPtnRfp32bAb0nmbRn6H8ndwLUQ==\n");
+}
+
+#[test]
+fn e2e_crypto_hmac_sha512_tag_rejects_ordinary_keys_and_destroyed_secrets() {
+    let ordinary = compile_expect_error(
+        r#"
+fn main() do
+  Crypto.hmac_sha512_tag(Bytes.from_utf8("key"), Bytes.from_utf8("message"))
+end
+"#,
+    );
+    assert!(ordinary.contains("SecretBytes"), "{ordinary}");
+    let destroyed = compile_expect_error(
+        r#"
+fn forbidden() -> Int!CryptoError do
+  let key = Secret.random(32)?
+  Secret.destroy(key)
+  let tag = Crypto.hmac_sha512_tag(key, Bytes.empty())?
+  Ok(Bytes.length(tag))
+end
+"#,
+    );
+    assert!(
+        destroyed.contains("resource ownership violation"),
+        "{destroyed}"
+    );
+}
+
 #[test]
 fn e2e_crypto_rejects_string_secret_comparison() {
     let error = compile_expect_error(
@@ -6661,6 +6733,24 @@ fn e2e_bytes_operations() {
 }
 
 #[test]
+fn e2e_bytes_concat_many_preserves_order_bounds_and_aliases() {
+    let output = compile_and_run(&read_fixture("bytes_concat_many.mpl"));
+    assert_eq!(
+        output,
+        "616200ff6162\n6162\n4\n4/5\nempty/0\ntoo-large\ninvalid-limit\n16384\n00000001\n1ffe1fff\n"
+    );
+}
+
+#[test]
+fn e2e_bytes_concat_many_errors_are_nominal() {
+    let error = compile_expect_error(
+        "fn consume(value :: Bytes!String) do nil end\nfn main() do consume(Bytes.concat_many([],0)) end",
+    );
+    assert!(error.contains("BytesError"), "unexpected error: {error}");
+    assert!(error.contains("String"), "unexpected error: {error}");
+}
+
+#[test]
 fn e2e_bytes_errors_are_nominal() {
     let error = compile_expect_error(
         r#"
@@ -6709,6 +6799,14 @@ fn e2e_wide_integer_operations() {
         output,
         "18446744073709551615\n7\nu64 addition overflow\nu64 does not fit Int\n340282366920938463463374607431768211455\nu128 subtraction overflow\n-1\n1234567890\nu128 division by zero\n-170141183460469231731687303715884105728\n-42\ni128 addition overflow\n-42\n"
     );
+}
+
+#[test]
+fn e2e_wide_integer_multiply_divide() {
+    let output = compile_and_run(&read_fixture("wide_integer_multiply_divide.mpl"));
+    assert_eq!(output, "18446744073709551615\n340282366920938463463374607431768211455\n15\nu128 multiply_divide quotient overflow\nu64 multiply_divide division by zero\n");
+    let error = compile_expect_error("fn main() do\n U128.multiply_divide(U64.parse(\"1\")?, U128.parse(\"1\")?, U128.parse(\"1\")?)\nend");
+    assert!(error.contains("expected `U128`, found `U64`"), "{error}");
 }
 
 #[test]
@@ -6834,6 +6932,31 @@ fn e2e_datetime_add_diff() {
     let source = read_fixture("datetime_add_diff.mpl");
     let output = compile_and_run(&source);
     assert_eq!(output, "7.0\n1.0\n");
+}
+
+#[test]
+fn e2e_datetime_calendar_months() {
+    let output = compile_and_run(
+        r#"
+fn proof() -> String!String do
+  let start = DateTime.from_iso8601("2024-01-31T12:00:00Z")?
+  let february = DateTime.add_months(start, 1)?
+  Ok(DateTime.to_iso8601(february))
+end
+fn main() do
+  case proof() do
+    Ok(text) -> println(text)
+    Err(error) -> println(error)
+  end
+end
+"#,
+    );
+    assert_eq!(output, "2024-02-29T12:00:00.000Z\n");
+    let error = compile_expect_error("fn main() do DateTime.add_months(1, 1) end");
+    assert!(
+        error.contains("expected `DateTime`, found `Int`"),
+        "{error}"
+    );
 }
 
 /// Phase 136: DateTime.is_before and DateTime.is_after comparisons (DTIME-08).

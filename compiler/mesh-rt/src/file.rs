@@ -194,6 +194,144 @@ pub extern "C" fn mesh_file_delete(path: *const MeshString) -> *mut MeshResult {
     unsafe { unit_result(fs::remove_file((*path).as_str())) }
 }
 
+/// Atomically renames on the same filesystem, replacing an existing target.
+/// No copy/delete fallback is used for cross-filesystem errors. Durability is
+/// separate: sync the source before renaming and the parent directory after.
+#[no_mangle]
+pub extern "C" fn mesh_file_rename(
+    source: *const MeshString,
+    target: *const MeshString,
+) -> *mut MeshResult {
+    unsafe { unit_result(fs::rename((*source).as_str(), (*target).as_str())) }
+}
+
+/// Flushes an existing file's data and metadata, or a directory entry update,
+/// to the operating system's durable-storage boundary. Unsupported filesystem
+/// and platform operations are errors; they are never reported as success.
+#[no_mangle]
+pub extern "C" fn mesh_file_sync(path: *const MeshString) -> *mut MeshResult {
+    let result = (|| -> std::io::Result<()> {
+        let path = unsafe { (*path).as_str() };
+        let directory = fs::metadata(path)?.is_dir();
+        let mut options = OpenOptions::new();
+        options.read(true).write(!directory);
+        #[cfg(windows)]
+        if directory {
+            use std::os::windows::fs::OpenOptionsExt;
+            options.custom_flags(0x0200_0000); // FILE_FLAG_BACKUP_SEMANTICS
+        }
+        options.open(path)?.sync_all()
+    })();
+    unit_result(result)
+}
+
+// Version two requires an explicit quota. It never widens the legacy API's
+// ceiling or allocates a whole file: individual operations remain <=64 KiB.
+const MAX_BINARY_V2_FILE_BYTES: i64 = 1024 * 1024 * 1024;
+
+fn valid_range_v2(offset: i64, length: i64, maximum_size: i64) -> Option<(u64, usize)> {
+    let end = offset.checked_add(length)?;
+    if maximum_size <= 0
+        || maximum_size > MAX_BINARY_V2_FILE_BYTES
+        || offset < 0
+        || length <= 0
+        || length > MAX_BINARY_CHUNK_BYTES
+        || end > maximum_size
+    {
+        None
+    } else {
+        Some((offset as u64, length as usize))
+    }
+}
+
+// Nonblocking open reaches the same-descriptor type check even for a Unix
+// FIFO with no peer. Regular-file I/O keeps its normal semantics; this is not
+// a deadline guarantee for arbitrary devices or filesystems.
+fn open_binary_v2(options: &mut OpenOptions, path: &str) -> std::io::Result<fs::File> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NONBLOCK);
+    }
+    options.open(path)
+}
+
+fn check_file_quota(file: &fs::File, maximum_size: i64) -> std::io::Result<()> {
+    let metadata = file.metadata()?;
+    if !metadata.is_file() {
+        return Err(std::io::Error::other("path is not a regular file"));
+    }
+    if metadata.len() > maximum_size as u64 {
+        return Err(std::io::Error::other("binary file exceeds explicit quota"));
+    }
+    Ok(())
+}
+
+/// Reads a bounded range under an explicit quota of at most 1 GiB.
+/// Descriptor metadata is checked before reading; concurrent writers are not
+/// serialized, and this call does not promise an atomic file snapshot.
+#[no_mangle]
+pub extern "C" fn mesh_file_read_bytes_v2(
+    path: *const MeshString,
+    offset: i64,
+    length: i64,
+    maximum_size: i64,
+) -> *mut MeshResult {
+    let Some((offset, length)) = valid_range_v2(offset, length, maximum_size) else {
+        return err_result("invalid binary file quota or range");
+    };
+    let result = (|| -> std::io::Result<Vec<u8>> {
+        let mut file = open_binary_v2(OpenOptions::new().read(true), unsafe { (*path).as_str() })?;
+        check_file_quota(&file, maximum_size)?;
+        file.seek(SeekFrom::Start(offset))?;
+        let mut output = Vec::with_capacity(length);
+        file.take(length as u64).read_to_end(&mut output)?;
+        Ok(output)
+    })();
+    match result {
+        Ok(output) => alloc_result(
+            0,
+            mesh_bytes_new(output.as_ptr(), output.len() as u64).cast(),
+        ),
+        Err(error) => err_result(&error.to_string()),
+    }
+}
+
+/// Writes a bounded range under an explicit quota of at most 1 GiB.
+/// Invalid arguments are refused before opening the path. An existing regular
+/// file must fit the quota before truncation or writing can begin.
+#[no_mangle]
+pub extern "C" fn mesh_file_write_bytes_v2(
+    path: *const MeshString,
+    offset: i64,
+    bytes: *const MeshBytes,
+    truncate: i8,
+    maximum_size: i64,
+) -> *mut MeshResult {
+    if !matches!(truncate, 0 | 1) || (truncate == 1 && offset != 0) {
+        return err_result("invalid binary file write");
+    }
+    let input = unsafe { (*bytes).as_slice() };
+    let Some((offset, _)) = valid_range_v2(offset, input.len() as i64, maximum_size) else {
+        return err_result("invalid binary file quota or range");
+    };
+    let result = (|| -> std::io::Result<()> {
+        // Never set OpenOptions::truncate here: inspect this same descriptor
+        // first so an oversized destination survives a refused operation.
+        let mut file = open_binary_v2(
+            OpenOptions::new().create(true).write(true).truncate(false),
+            unsafe { (*path).as_str() },
+        )?;
+        check_file_quota(&file, maximum_size)?;
+        if truncate == 1 {
+            file.set_len(0)?;
+        }
+        file.seek(SeekFrom::Start(offset))?;
+        file.write_all(input)
+    })();
+    unit_result(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -204,6 +342,269 @@ mod tests {
         let result = unsafe { &*result };
         (result.tag == 1)
             .then(|| unsafe { (*(result.value as *const MeshString)).as_str() }.to_string())
+    }
+
+    fn bytes_of(result: *mut MeshResult) -> Vec<u8> {
+        assert_eq!(error_of(result), None, "expected successful byte read");
+        unsafe { (*((*result).value as *const MeshBytes)).as_slice().to_vec() }
+    }
+
+    // Each potentially blocking FIFO operation runs in its own process. A
+    // reached marker distinguishes an actual open hang from test setup failure.
+    #[cfg(unix)]
+    #[test]
+    #[ignore = "subprocess probe invoked only by the bounded FIFO tests"]
+    fn quota_v2_fifo_subprocess_probe() {
+        mesh_rt_init();
+        let path = std::env::var("FILE_QUOTA_FIFO_PATH").unwrap();
+        let operation = std::env::var("FILE_QUOTA_FIFO_OPERATION").unwrap();
+        let marker = std::env::var("FILE_QUOTA_FIFO_REACHED").unwrap();
+        let native = mesh_str(&path);
+        let bytes = crate::bytes::mesh_bytes_new(b"x".as_ptr(), 1);
+        fs::write(marker, operation.as_bytes()).unwrap();
+        let result = match operation.as_str() {
+            "read" => mesh_file_read_bytes_v2(native, 0, 1, 16),
+            "write" => mesh_file_write_bytes_v2(native, 0, bytes, 1, 16),
+            _ => panic!("invalid test-only FIFO operation"),
+        };
+        assert!(
+            error_of(result).is_some(),
+            "FIFO must be refused as non-regular"
+        );
+        println!("FIFO_{operation}_REFUSED");
+    }
+
+    #[cfg(unix)]
+    fn assert_fifo_refuses_without_peer(operation: &str) {
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
+        use std::os::unix::fs::FileTypeExt;
+        use std::process::{Child, Command, Stdio};
+        use std::time::{Duration, Instant};
+
+        struct OwnedProbe(Child);
+        impl Drop for OwnedProbe {
+            fn drop(&mut self) {
+                // kill is harmless after an already reaped exit. Never leave
+                // the no-peer child behind on an assertion or setup failure.
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let fifo = dir.path().join("no-peer");
+        let native_path = CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(native_path.as_ptr(), 0o600) }, 0);
+        let reached = dir.path().join("reached");
+        let stdout_path = dir.path().join("stdout");
+        let stderr_path = dir.path().join("stderr");
+        let child = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "file::tests::quota_v2_fifo_subprocess_probe",
+                "--ignored",
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env("FILE_QUOTA_FIFO_PATH", &fifo)
+            .env("FILE_QUOTA_FIFO_OPERATION", operation)
+            .env("FILE_QUOTA_FIFO_REACHED", &reached)
+            .stdout(Stdio::from(fs::File::create(&stdout_path).unwrap()))
+            .stderr(Stdio::from(fs::File::create(&stderr_path).unwrap()))
+            .spawn()
+            .unwrap();
+        let mut child = OwnedProbe(child);
+        let setup_deadline = Instant::now() + Duration::from_secs(5);
+        while !reached.exists() {
+            assert!(
+                child.0.try_wait().unwrap().is_none(),
+                "FIFO probe exited before call marker"
+            );
+            assert!(
+                Instant::now() < setup_deadline,
+                "FIFO probe did not reach actual call"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(fs::read(&reached).unwrap(), operation.as_bytes());
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let status = loop {
+            if let Some(status) = child.0.try_wait().unwrap() {
+                break Some(status);
+            }
+            if Instant::now() >= deadline {
+                break None;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        };
+        if status.is_none() {
+            child.0.kill().unwrap();
+            child.0.wait().unwrap();
+        }
+        let stdout = fs::read_to_string(stdout_path).unwrap();
+        let stderr = fs::read_to_string(stderr_path).unwrap();
+        println!("FIFO_{operation}_REACHED; child stdout={stdout:?}; stderr={stderr:?}");
+        assert!(
+            status.is_some(),
+            "FIFO {operation} hung after actual call marker; killed and reaped"
+        );
+        assert!(
+            status.unwrap().success(),
+            "FIFO {operation} refusal probe failed"
+        );
+        assert!(stdout.contains(&format!("FIFO_{operation}_REFUSED")));
+        assert!(fs::symlink_metadata(fifo).unwrap().file_type().is_fifo());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn quota_v2_fifo_read_refuses_without_peer() {
+        assert_fifo_refuses_without_peer("read");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn quota_v2_fifo_write_refuses_without_peer() {
+        assert_fifo_refuses_without_peer("write");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn quota_v2_refuses_socket_and_character_device() {
+        use std::os::unix::net::UnixListener;
+        mesh_rt_init();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("socket");
+        let _listener = UnixListener::bind(&path).unwrap();
+        let one = crate::bytes::mesh_bytes_new(b"x".as_ptr(), 1);
+        for path in [path.as_path(), std::path::Path::new("/dev/null")] {
+            let native = mesh_str(path.to_str().unwrap());
+            assert!(error_of(mesh_file_read_bytes_v2(native, 0, 1, 16)).is_some());
+            assert!(error_of(mesh_file_write_bytes_v2(native, 0, one, 1, 16)).is_some());
+        }
+    }
+
+    #[test]
+    fn quota_v2_allows_the_exact_framed_tail_beyond_legacy_limit() {
+        mesh_rt_init();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("framed-backup");
+        let native = mesh_str(path.to_str().unwrap());
+        let quota = 16_796_864;
+        let tail = vec![0xa7; 19_648];
+        let bytes = crate::bytes::mesh_bytes_new(tail.as_ptr(), tail.len() as u64);
+        assert_eq!(
+            error_of(mesh_file_write_bytes_v2(
+                native, 16_777_216, bytes, 0, quota
+            )),
+            None
+        );
+        assert_eq!(fs::metadata(&path).unwrap().len(), quota as u64);
+        assert_eq!(
+            bytes_of(mesh_file_read_bytes_v2(native, 16_777_216, 19_648, quota)),
+            tail
+        );
+        let before = fs::metadata(&path).unwrap().len();
+        assert!(error_of(mesh_file_write_bytes_v2(
+            native, 16_777_217, bytes, 0, quota
+        ))
+        .is_some());
+        assert_eq!(fs::metadata(&path).unwrap().len(), before);
+    }
+
+    #[test]
+    fn quota_v2_invalid_arguments_refuse_before_creating_a_file() {
+        mesh_rt_init();
+        let dir = tempfile::tempdir().unwrap();
+        let one = crate::bytes::mesh_bytes_new(b"x".as_ptr(), 1);
+        let large_data = vec![0u8; 65_537];
+        let large = crate::bytes::mesh_bytes_new(large_data.as_ptr(), large_data.len() as u64);
+        let empty = crate::bytes::mesh_bytes_new(b"".as_ptr(), 0);
+        let cases = [
+            (0, one, 0, 0),
+            (0, one, 0, -1),
+            (0, one, 0, 1_073_741_825),
+            (-1, one, 0, 16),
+            (16, one, 0, 16),
+            (i64::MAX, one, 0, 16),
+            (0, large, 0, 1_073_741_824),
+            (0, empty, 0, 16),
+            (1, one, 1, 16),
+            (0, one, 2, 16),
+        ];
+        for (index, (offset, bytes, truncate, quota)) in cases.into_iter().enumerate() {
+            let path = dir.path().join(format!("invalid-{index}"));
+            let native = mesh_str(path.to_str().unwrap());
+            assert!(
+                error_of(mesh_file_write_bytes_v2(
+                    native, offset, bytes, truncate, quota
+                ))
+                .is_some(),
+                "case {index}"
+            );
+            assert!(!path.exists(), "invalid case {index} created a destination");
+        }
+        let path = dir.path().join("read-source");
+        fs::write(&path, b"ok").unwrap();
+        let native = mesh_str(path.to_str().unwrap());
+        for (offset, length, quota) in [
+            (0, 1, 0),
+            (0, 1, -1),
+            (0, 1, 1_073_741_825),
+            (-1, 1, 16),
+            (0, 0, 16),
+            (0, 65_537, 1_073_741_824),
+            (16, 1, 16),
+            (i64::MAX, 1, 16),
+        ] {
+            assert!(error_of(mesh_file_read_bytes_v2(native, offset, length, quota)).is_some());
+        }
+        assert_eq!(fs::read(&path).unwrap(), b"ok");
+    }
+
+    #[test]
+    fn quota_v2_checks_open_file_before_truncation_and_preserves_eof() {
+        mesh_rt_init();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("existing");
+        fs::write(&path, b"preserve-me").unwrap();
+        let native = mesh_str(path.to_str().unwrap());
+        let bytes = crate::bytes::mesh_bytes_new(b"x".as_ptr(), 1);
+        for truncate in [0, 1] {
+            assert!(error_of(mesh_file_write_bytes_v2(native, 0, bytes, truncate, 4)).is_some());
+            assert_eq!(fs::read(&path).unwrap(), b"preserve-me");
+        }
+        assert!(error_of(mesh_file_read_bytes_v2(native, 0, 1, 4)).is_some());
+        let directory = mesh_str(dir.path().to_str().unwrap());
+        assert!(error_of(mesh_file_read_bytes_v2(directory, 0, 1, 16)).is_some());
+        assert!(error_of(mesh_file_write_bytes_v2(directory, 0, bytes, 1, 16)).is_some());
+        assert_eq!(bytes_of(mesh_file_read_bytes_v2(native, 9, 4, 16)), b"me");
+        assert_eq!(bytes_of(mesh_file_read_bytes_v2(native, 11, 1, 16)), b"");
+        assert_eq!(
+            error_of(mesh_file_write_bytes_v2(native, 0, bytes, 1, 11)),
+            None
+        );
+        assert_eq!(fs::read(&path).unwrap(), b"x");
+    }
+
+    #[test]
+    fn quota_v2_preserves_legacy_limit_and_propagates_os_errors() {
+        mesh_rt_init();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("legacy");
+        let native = mesh_str(path.to_str().unwrap());
+        let bytes = crate::bytes::mesh_bytes_new(b"x".as_ptr(), 1);
+        assert_eq!(
+            error_of(mesh_file_write_bytes(native, 16_777_215, bytes, 0)),
+            None
+        );
+        assert_eq!(bytes_of(mesh_file_read_bytes(native, 16_777_215, 1)), b"x");
+        assert!(error_of(mesh_file_write_bytes(native, 16_777_216, bytes, 0)).is_some());
+        assert!(error_of(mesh_file_read_bytes(native, 16_777_216, 1)).is_some());
+        let missing = mesh_str(dir.path().join("missing/child").to_str().unwrap());
+        assert!(error_of(mesh_file_write_bytes_v2(missing, 0, bytes, 0, 16)).is_some());
+        assert!(error_of(mesh_file_read_bytes_v2(missing, 0, 1, 16)).is_some());
+        assert_eq!(fs::metadata(&path).unwrap().len(), 16_777_216);
     }
 
     /// What the file functions say for a directory, a missing file or

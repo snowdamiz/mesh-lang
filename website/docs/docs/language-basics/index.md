@@ -103,7 +103,7 @@ A newline ends a statement. To put two statements on one line, separate them wit
 let x = 1; let y = 2
 ```
 
-Newlines are not statement boundaries inside parentheses, brackets, or braces. A line that ends in `=` or an infix operator continues on the next one (`let total = price +`), and so does a line followed by one that starts with an infix operator other than `-` and `%` (`and ready`, `|> f()`), which both start statements of their own; see also [Multi-Line Pipes](#multi-line-pipes).
+Newlines are not statement boundaries inside parentheses, brackets, or braces. `do … end` and multiline match-arm statement blocks start fresh: their newlines separate statements even when the block is inside a call, list, or struct. Delimiters opened within that block still allow expression continuation. A line that ends in `=` or an infix operator continues on the next one (`let total = price +`), and so does a line followed by one that starts with an infix operator other than `-` and `%` (`and ready`, `|> f()`), which both start statements of their own; see also [Multi-Line Pipes](#multi-line-pipes).
 
 ## Basic Types
 
@@ -856,6 +856,10 @@ end
 
 Every `for` expression returns a list containing one body result per accepted element, making it a list comprehension even when the body is used primarily for side effects.
 
+The body's final expression determines the collected element type. Earlier
+`let` bindings may have different types, and `?` in the body still propagates
+an error out of the enclosing function.
+
 #### Destructuring Loop Variables
 
 A tuple or struct pattern in the loop header takes each element apart, exactly as `let (a, b) = ...` does. Over a map the pattern receives a `(key, value)` pair:
@@ -1210,6 +1214,13 @@ from Geometry import (
 
 Glob imports are not supported. Private names cannot be imported.
 
+Selective imports resolve the full module path: `from Mobile.Gossip import observe`
+and `from Transparency.Gossip import decode` can coexist. Two plain `import`
+statements cannot bind different modules to the same namespace (`Gossip` here);
+use selective imports to name their distinct public definitions.
+An unresolved dotted path never falls back to a standard module with the same
+last segment: `Missing.String` is an error, not an alias for `String`.
+
 A few kinds of names are shared by every module of a project: public functions, and structs, sum types, interfaces, actors, services and supervisors, private ones included. Two modules cannot define the same one; the build names both definitions. A struct or sum type defined identically in several modules (a private helper copied into each) is fine.
 
 You can define a module explicitly with `module ... do ... end` and export declarations with `pub`:
@@ -1295,6 +1306,9 @@ end
 ```
 
 Note that `Map.put` returns a new map -- all collections in Mesh are immutable.
+String keys compare by their contents in direct calls, pipelines, slot pipes,
+and functions passed as values. A separately constructed string with the same
+contents retrieves or replaces the same entry.
 
 Map literals use `%{key => value}`:
 

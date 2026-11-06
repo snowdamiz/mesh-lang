@@ -2932,7 +2932,7 @@ fn imports_of_what_is_not_there_are_errors() {
     let errors = errors_importing(
         "Store",
         STORE,
-        "from Store import secret, Nope\nfrom String import length, lenght\nfrom Nowhere import thing\nimport Elsewhere\n",
+        "from Store import secret, Nope\nfrom String import length, lenght\nfrom Nowhere import thing\nimport Elsewhere\nfrom Missing.String import length\nimport Missing.List\n",
     );
     let headlines: Vec<&str> = errors
         .iter()
@@ -2946,6 +2946,8 @@ fn imports_of_what_is_not_there_are_errors() {
             "module `String` has no function `lenght`",
             "module `Nowhere` not found",
             "module `Elsewhere` not found",
+            "module `Missing.String` not found",
+            "module `Missing.List` not found",
         ]
     );
     assert_eq!(
@@ -3406,4 +3408,33 @@ fn an_unfinished_supervisor_is_checked_as_far_as_it_goes() {
         assert!(!parse.ok(), "{source}");
         mesh_typeck::check(&parse);
     }
+}
+
+#[test]
+fn branch_blocks_restore_shadowed_outer_types_and_isolate_siblings() {
+    assert_clean(
+        r#"
+struct Marker do flag :: Bool end
+fn scoped(flag :: Bool) -> Option<Marker> do
+  let value = Some(Marker { flag: true })
+  let result = if flag do
+    let value = case value do None -> return None Some(item) -> item end
+    value.flag
+  else if false do
+    let value = "branch"
+    String.length(value) == 6
+  else
+    case value do None -> false Some(item) -> item.flag end
+  end
+  value
+end
+"#,
+    );
+    let diagnostics=errors("fn scoped() do let x = if true do let branch_only = 1; branch_only else branch_only end end");
+    assert!(
+        diagnostics
+            .iter()
+            .any(|error| error.contains("branch_only")),
+        "{diagnostics:?}"
+    );
 }

@@ -16,6 +16,7 @@ meshc test my-app
 meshc test my-app/tests
 meshc test my-app/tests/config.test.mpl
 meshc test --quiet my-app
+meshc test --opt-level 2 my-app
 ```
 
 The path is optional and defaults to the current directory. It may be a
@@ -23,9 +24,14 @@ project, a directory inside one, or one `*.test.mpl` file; the project is the
 nearest enclosing directory with a `mesh.toml`, and without one the run fails
 with "Could not resolve a Mesh project root". `meshc test` finds every
 `*.test.mpl` file under the path, skipping hidden directories and `target/`,
-and runs the files in path order. Each file is compiled, at debug optimization
-and together with the project's modules, into a program of its own, and run as
+and runs the files in path order. Each file is compiled together with the project's modules into a program of
+its own, and run as
 its own process; the tests of one file run one after another in that process.
+Optimization defaults to debug (`0`). Use `--opt-level 2` to exercise release
+optimization; levels `0` through `3` are supported. Test-only fixtures and
+assertion failures remain enabled at every level. Compare performance only
+within the same optimization setting.
+
 It prints each file's results when the file finishes, then a summary across
 files:
 
@@ -139,6 +145,16 @@ the project tree.
 
 `assert_eq` and `assert_ne` take two values of the same type and compare them
 as `"#{value}"` shows them, through `Display`, so both sides must implement it.
+
+A test, setup, or teardown step that returns a `Result` fails on `Err`.
+The failure is `test step returned Err`; the error payload is never formatted.
+`Ok` and ordinary Unit outcomes succeed unless an assertion or panic failed.
+When using `?` in a test or teardown, finish its successful path with `Ok(nil)`,
+as in an ordinary Result-returning function. A failed setup skips its test and
+teardown; a failed test still runs its teardown, and later tests continue.
+As with a failed assertion in nested setup, a nested setup error also skips
+the enclosing describes' teardowns; it does not unwind them as cleanup handlers.
+The name `__test_check_result` is reserved for the generated harness.
 
 A failed assertion ends its test and fails it, as a runtime error (a panic,
 such as `List.get` past the end or a division by zero) does; the run goes on
