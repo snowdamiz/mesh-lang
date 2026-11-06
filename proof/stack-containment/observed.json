@@ -1,0 +1,702 @@
+{
+  "metadata": {
+    "base_commit": "7a7feda2594593eb6318c17cfb612c8016a99342",
+    "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+    "host_page_size": 16384,
+    "llvm": "Homebrew LLVM version 21.1.8\n  Optimized build.\n  Default target: arm64-apple-darwin27.0.0\n  Host CPU: apple-m4\n\n  Registered Targets:\n    aarch64     - AArch64 (little endian)\n    aarch64_32  - AArch64 (little endian ILP32)\n    aarch64_be  - AArch64 (big endian)\n    amdgcn      - AMD GCN GPUs\n    arm         - ARM\n    arm64       - ARM64 (little endian)\n    arm64_32    - ARM64 (little endian ILP32)\n    armeb       - ARM (big endian)\n    avr         - Atmel AVR Microcontroller\n    bpf         - BPF (host endian)\n    bpfeb       - BPF (big endian)\n    bpfel       - BPF (little endian)\n    hexagon     - Hexagon\n    lanai       - Lanai\n    loongarch32 - 32-bit LoongArch\n    loongarch64 - 64-bit LoongArch\n    mips        - MIPS (32-bit big endian)\n    mips64      - MIPS (64-bit big endian)\n    mips64el    - MIPS (64-bit little endian)\n    mipsel      - MIPS (32-bit little endian)\n    msp430      - MSP430 [experimental]\n    nvptx       - NVIDIA PTX 32-bit\n    nvptx64     - NVIDIA PTX 64-bit\n    ppc32       - PowerPC 32\n    ppc32le     - PowerPC 32 LE\n    ppc64       - PowerPC 64\n    ppc64le     - PowerPC 64 LE\n    r600        - AMD GPUs HD2XXX-HD6XXX\n    riscv32     - 32-bit RISC-V\n    riscv64     - 64-bit RISC-V\n    sparc       - Sparc\n    sparcel     - Sparc LE\n    sparcv9     - Sparc V9\n    spirv       - SPIR-V Logical\n    spirv32     - SPIR-V 32-bit\n    spirv64     - SPIR-V 64-bit\n    systemz     - SystemZ\n    thumb       - Thumb\n    thumbeb     - Thumb (big endian)\n    ve          - VE\n    wasm32      - WebAssembly 32-bit\n    wasm64      - WebAssembly 64-bit\n    x86         - 32-bit X86: Pentium-Pro and above\n    x86-64      - 64-bit X86: EM64T and AMD64\n    xcore       - XCore\n",
+    "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+    "source_sha256": {
+      "diagnostics.cpp": "5f4469eb18b6ade39c8119f8512207263118755bac356b0073a50563ceb889db",
+      "frames.ll": "10e41bc4828b0a713c5ebd8dd1a793b773f5919f8739505fd7e0268d95bd0eb0",
+      "measure.c": "bf19f254467f478e71a11771b0de33679d5f65057a35bb5b2a5d5899fbefbb0f",
+      "run.py": "ea326c18f391f79ae26232ce2463a7cfc1e7cdaf9527ef39b7a0bd7f062e89b0",
+      "unwind.ll": "1f444c85fdc9ef1a7c7c0220fe4fae61c104f706068f110478e9e33245425c45",
+      "unwind.rs": "0492b5ab822422df2321d479c6414fb111ebb67b10a3886a202082f98696ea58"
+    }
+  },
+  "matrix": [
+    {
+      "target": "darwin-arm64",
+      "optimization": "O0",
+      "mode": "none",
+      "frames": {
+        "leaf": 32784,
+        "direct": 32800,
+        "indirect": 32800,
+        "runtime_call": 32800,
+        "dynamic": 16,
+        "aligned": 65536,
+        "small_leaf": 64,
+        "loop_alloca": 32,
+        "body_check": 32800,
+        "outgoing": 6368
+      },
+      "outgoing_pushes": 0,
+      "leaf_probe_instructions": [],
+      "assembly_sha256": "1b877a661d01680ee74ec83a740720879c4743db79ac3f6874dc7a9d7bd6325b"
+    },
+    {
+      "target": "darwin-arm64",
+      "optimization": "O0",
+      "mode": "inline",
+      "frames": {
+        "leaf": 32784,
+        "direct": 32800,
+        "indirect": 32800,
+        "runtime_call": 32800,
+        "dynamic": 32,
+        "aligned": 65536,
+        "small_leaf": 64,
+        "loop_alloca": 64,
+        "body_check": 32800,
+        "outgoing": 6368
+      },
+      "outgoing_pushes": 0,
+      "leaf_probe_instructions": [
+        "str\txzr, [sp]"
+      ],
+      "assembly_sha256": "37ce9ac0bcda20f5e4d089c6eba5b9d9ea253bdc9e189ad9138c20bbd1576f72"
+    },
+    {
+      "target": "darwin-arm64",
+      "optimization": "O0",
+      "mode": "strict",
+      "frames": {
+        "leaf": 32784,
+        "direct": 32800,
+        "indirect": 32800,
+        "runtime_call": 32800,
+        "dynamic": 32,
+        "aligned": 65536,
+        "small_leaf": 64,
+        "loop_alloca": 64,
+        "body_check": 32800,
+        "outgoing": 6368
+      },
+      "outgoing_pushes": 0,
+      "leaf_probe_instructions": [
+        "str\txzr, [sp]"
+      ],
+      "assembly_sha256": "37ce9ac0bcda20f5e4d089c6eba5b9d9ea253bdc9e189ad9138c20bbd1576f72"
+    },
+    {
+      "target": "darwin-arm64",
+      "optimization": "O2",
+      "mode": "none",
+      "frames": {
+        "leaf": 32784,
+        "direct": 32800,
+        "indirect": 32800,
+        "runtime_call": 32800,
+        "dynamic": 16,
+        "aligned": 65536,
+        "small_leaf": 64,
+        "loop_alloca": 16,
+        "body_check": 32784,
+        "outgoing": 6368
+      },
+      "outgoing_pushes": 0,
+      "leaf_probe_instructions": [],
+      "assembly_sha256": "0839824172ea581722adff624f0e4558d222d7eb5d24b23b8f04b8951a028490"
+    },
+    {
+      "target": "darwin-arm64",
+      "optimization": "O2",
+      "mode": "inline",
+      "frames": {
+        "leaf": 32784,
+        "direct": 32800,
+        "indirect": 32800,
+        "runtime_call": 32800,
+        "dynamic": 16,
+        "aligned": 65536,
+        "small_leaf": 64,
+        "loop_alloca": 16,
+        "body_check": 32784,
+        "outgoing": 6368
+      },
+      "outgoing_pushes": 0,
+      "leaf_probe_instructions": [
+        "str\txzr, [sp]"
+      ],
+      "assembly_sha256": "f9d574dfcb7822810a39eb57b1a3be755aa20837f3ec995b4a13c1297cf15086"
+    },
+    {
+      "target": "darwin-arm64",
+      "optimization": "O2",
+      "mode": "strict",
+      "frames": {
+        "leaf": 32784,
+        "direct": 32800,
+        "indirect": 32800,
+        "runtime_call": 32800,
+        "dynamic": 16,
+        "aligned": 65536,
+        "small_leaf": 64,
+        "loop_alloca": 16,
+        "body_check": 32784,
+        "outgoing": 6368
+      },
+      "outgoing_pushes": 0,
+      "leaf_probe_instructions": [
+        "str\txzr, [sp]"
+      ],
+      "assembly_sha256": "f9d574dfcb7822810a39eb57b1a3be755aa20837f3ec995b4a13c1297cf15086"
+    },
+    {
+      "target": "linux-arm64",
+      "optimization": "O0",
+      "mode": "none",
+      "frames": {
+        "leaf": 32784,
+        "direct": 32784,
+        "indirect": 32784,
+        "runtime_call": 32784,
+        "dynamic": 16,
+        "aligned": 65536,
+        "small_leaf": 64,
+        "loop_alloca": 32,
+        "body_check": 32800,
+        "outgoing": 6368
+      },
+      "outgoing_pushes": 0,
+      "leaf_probe_instructions": [],
+      "assembly_sha256": "b8518f4e4dbd0b91a26308a0062d12fff9f4d1f6940a8d198eeb73b8f8aebb54"
+    },
+    {
+      "target": "linux-arm64",
+      "optimization": "O0",
+      "mode": "inline",
+      "frames": {
+        "leaf": 32784,
+        "direct": 32784,
+        "indirect": 32784,
+        "runtime_call": 32784,
+        "dynamic": 32,
+        "aligned": 65536,
+        "small_leaf": 64,
+        "loop_alloca": 64,
+        "body_check": 32800,
+        "outgoing": 6368
+      },
+      "outgoing_pushes": 0,
+      "leaf_probe_instructions": [
+        "str\txzr, [sp]"
+      ],
+      "assembly_sha256": "2d281718b1d6c1ae46a9941eef18cf77fea464b488f0bc9e746b9f8ebc4d689c"
+    },
+    {
+      "target": "linux-arm64",
+      "optimization": "O0",
+      "mode": "strict",
+      "frames": {
+        "leaf": 32784,
+        "direct": 32784,
+        "indirect": 32784,
+        "runtime_call": 32784,
+        "dynamic": 32,
+        "aligned": 65536,
+        "small_leaf": 64,
+        "loop_alloca": 64,
+        "body_check": 32800,
+        "outgoing": 6368
+      },
+      "outgoing_pushes": 0,
+      "leaf_probe_instructions": [
+        "str\txzr, [sp]"
+      ],
+      "assembly_sha256": "6e9aef8f2d3a8a5a5e93a540f0b43ccc77ddb1f6e23e513d7ef709508e9fbd62"
+    },
+    {
+      "target": "linux-arm64",
+      "optimization": "O2",
+      "mode": "none",
+      "frames": {
+        "leaf": 32784,
+        "direct": 32784,
+        "indirect": 32784,
+        "runtime_call": 32784,
+        "dynamic": 16,
+        "aligned": 65536,
+        "small_leaf": 64,
+        "loop_alloca": 16,
+        "body_check": 32784,
+        "outgoing": 6368
+      },
+      "outgoing_pushes": 0,
+      "leaf_probe_instructions": [],
+      "assembly_sha256": "9ccabdd7bb2bb597d6217766868c92059b0f4a82f6692042c771eb5a22276276"
+    },
+    {
+      "target": "linux-arm64",
+      "optimization": "O2",
+      "mode": "inline",
+      "frames": {
+        "leaf": 32784,
+        "direct": 32784,
+        "indirect": 32784,
+        "runtime_call": 32784,
+        "dynamic": 16,
+        "aligned": 65536,
+        "small_leaf": 64,
+        "loop_alloca": 16,
+        "body_check": 32784,
+        "outgoing": 6368
+      },
+      "outgoing_pushes": 0,
+      "leaf_probe_instructions": [
+        "str\txzr, [sp]"
+      ],
+      "assembly_sha256": "553e249bca392b414b019f5f0a1bab6e1b198241425121b31fec52c2a1618370"
+    },
+    {
+      "target": "linux-arm64",
+      "optimization": "O2",
+      "mode": "strict",
+      "frames": {
+        "leaf": 32784,
+        "direct": 32784,
+        "indirect": 32784,
+        "runtime_call": 32784,
+        "dynamic": 16,
+        "aligned": 65536,
+        "small_leaf": 64,
+        "loop_alloca": 16,
+        "body_check": 32784,
+        "outgoing": 6368
+      },
+      "outgoing_pushes": 0,
+      "leaf_probe_instructions": [
+        "str\txzr, [sp]"
+      ],
+      "assembly_sha256": "c3c77675ea5afc277a201547347332928ecc0e0bca792f592b47c7b1b229cbd2"
+    },
+    {
+      "target": "linux-x86_64",
+      "optimization": "O0",
+      "mode": "none",
+      "frames": {
+        "leaf": 32648,
+        "direct": 32776,
+        "indirect": 32776,
+        "runtime_call": 32776,
+        "dynamic": 8,
+        "aligned": 65528,
+        "loop_alloca": 24,
+        "body_check": 32664,
+        "outgoing": 6360
+      },
+      "outgoing_pushes": 0,
+      "leaf_probe_instructions": [],
+      "assembly_sha256": "7833307e6f19cf5b7b0adb693904aee29408de4d3d3ea2a51da409c49650b0f2"
+    },
+    {
+      "target": "linux-x86_64",
+      "optimization": "O0",
+      "mode": "inline",
+      "frames": {
+        "leaf": 32648,
+        "direct": 32776,
+        "indirect": 32776,
+        "runtime_call": 32776,
+        "dynamic": 24,
+        "aligned": 65528,
+        "loop_alloca": 40,
+        "body_check": 32664,
+        "outgoing": 6360
+      },
+      "outgoing_pushes": 0,
+      "leaf_probe_instructions": [],
+      "assembly_sha256": "978d95886b4e74bfc1a759da4d4196f79cb3c9cb788cf1fd0e179070973f6141"
+    },
+    {
+      "target": "linux-x86_64",
+      "optimization": "O0",
+      "mode": "strict",
+      "frames": {
+        "leaf": 32776,
+        "direct": 32776,
+        "indirect": 32776,
+        "runtime_call": 32776,
+        "dynamic": 24,
+        "aligned": 65528,
+        "small_leaf": 72,
+        "loop_alloca": 40,
+        "body_check": 32792,
+        "outgoing": 6360
+      },
+      "outgoing_pushes": 0,
+      "leaf_probe_instructions": [],
+      "assembly_sha256": "8573f8e1ada87cb22398154ac0e0d1d1180fbdc1e88574074e9da9b4d1dee9a1"
+    },
+    {
+      "target": "linux-x86_64",
+      "optimization": "O2",
+      "mode": "none",
+      "frames": {
+        "leaf": 32648,
+        "direct": 32776,
+        "indirect": 32776,
+        "runtime_call": 32776,
+        "dynamic": 8,
+        "aligned": 65528,
+        "loop_alloca": 8,
+        "body_check": 32648,
+        "outgoing": 8
+      },
+      "outgoing_pushes": 795,
+      "leaf_probe_instructions": [],
+      "assembly_sha256": "b8e37e46b14f94862c3d2ae1ae250d36825cebedb6939968f82eab6bf3621f2f"
+    },
+    {
+      "target": "linux-x86_64",
+      "optimization": "O2",
+      "mode": "inline",
+      "frames": {
+        "leaf": 32648,
+        "direct": 32776,
+        "indirect": 32776,
+        "runtime_call": 32776,
+        "dynamic": 8,
+        "aligned": 65528,
+        "loop_alloca": 8,
+        "body_check": 32648,
+        "outgoing": 8
+      },
+      "outgoing_pushes": 795,
+      "leaf_probe_instructions": [],
+      "assembly_sha256": "371fc8886c2b873c5b8c3b3864a2871e64040d5bf4b907fb8a87c024902cc1f0"
+    },
+    {
+      "target": "linux-x86_64",
+      "optimization": "O2",
+      "mode": "strict",
+      "frames": {
+        "leaf": 32776,
+        "direct": 32776,
+        "indirect": 32776,
+        "runtime_call": 32776,
+        "dynamic": 8,
+        "aligned": 65528,
+        "small_leaf": 72,
+        "loop_alloca": 8,
+        "body_check": 32776,
+        "outgoing": 8
+      },
+      "outgoing_pushes": 795,
+      "leaf_probe_instructions": [],
+      "assembly_sha256": "e8ea691d73f15adca9a32507736541a6c2098a0108449545738094a68b504bc1"
+    },
+    {
+      "target": "windows-x86_64",
+      "optimization": "O0",
+      "mode": "none",
+      "frames": {
+        "leaf": 32776,
+        "direct": 32808,
+        "indirect": 32808,
+        "runtime_call": 32808,
+        "dynamic": 8,
+        "aligned": 65528,
+        "small_leaf": 72,
+        "loop_alloca": 40,
+        "body_check": 32792,
+        "outgoing": 6408
+      },
+      "outgoing_pushes": 0,
+      "leaf_probe_instructions": [
+        "callq\t__chkstk"
+      ],
+      "assembly_sha256": "3313328105f4aa2d6889487f492e21245ce51780da453a5a6c5c42598ad243c9"
+    },
+    {
+      "target": "windows-x86_64",
+      "optimization": "O0",
+      "mode": "inline",
+      "frames": {
+        "leaf": 32776,
+        "direct": 32808,
+        "indirect": 32808,
+        "runtime_call": 32808,
+        "dynamic": 8,
+        "aligned": 65528,
+        "small_leaf": 72,
+        "loop_alloca": 40,
+        "body_check": 32792,
+        "outgoing": 6408
+      },
+      "outgoing_pushes": 0,
+      "leaf_probe_instructions": [
+        "callq\t\"inline-asm\""
+      ],
+      "assembly_sha256": "1f65aaf3d57a676b687292ff53b35e4e5298d412b36184263edcfe0a8207f912"
+    },
+    {
+      "target": "windows-x86_64",
+      "optimization": "O0",
+      "mode": "strict",
+      "frames": {
+        "leaf": 32776,
+        "direct": 32808,
+        "indirect": 32808,
+        "runtime_call": 32808,
+        "dynamic": 8,
+        "aligned": 65528,
+        "small_leaf": 72,
+        "loop_alloca": 40,
+        "body_check": 32792,
+        "outgoing": 6408
+      },
+      "outgoing_pushes": 0,
+      "leaf_probe_instructions": [
+        "callq\t\"inline-asm\""
+      ],
+      "assembly_sha256": "e2541aadd0ae5a9adb1485ff249509c103b8bc4ae171c9f5f1ab470cb44c9714"
+    },
+    {
+      "target": "windows-x86_64",
+      "optimization": "O2",
+      "mode": "none",
+      "frames": {
+        "leaf": 32776,
+        "direct": 32808,
+        "indirect": 32808,
+        "runtime_call": 32808,
+        "dynamic": 8,
+        "aligned": 65528,
+        "small_leaf": 72,
+        "loop_alloca": 8,
+        "body_check": 32776,
+        "outgoing": 6408
+      },
+      "outgoing_pushes": 0,
+      "leaf_probe_instructions": [
+        "callq\t__chkstk"
+      ],
+      "assembly_sha256": "5af00f1f94e283131d1b4aa3808198663f89f4b924a945fd7dd434ba0ecfef1f"
+    },
+    {
+      "target": "windows-x86_64",
+      "optimization": "O2",
+      "mode": "inline",
+      "frames": {
+        "leaf": 32776,
+        "direct": 32808,
+        "indirect": 32808,
+        "runtime_call": 32808,
+        "dynamic": 8,
+        "aligned": 65528,
+        "small_leaf": 72,
+        "loop_alloca": 8,
+        "body_check": 32776,
+        "outgoing": 6408
+      },
+      "outgoing_pushes": 0,
+      "leaf_probe_instructions": [
+        "callq\t\"inline-asm\""
+      ],
+      "assembly_sha256": "fef757a3c1a9dfc76a9b7a09dc69c1ce9e7d34ae7092a916ef87cd779c43aac8"
+    },
+    {
+      "target": "windows-x86_64",
+      "optimization": "O2",
+      "mode": "strict",
+      "frames": {
+        "leaf": 32776,
+        "direct": 32808,
+        "indirect": 32808,
+        "runtime_call": 32808,
+        "dynamic": 8,
+        "aligned": 65528,
+        "small_leaf": 72,
+        "loop_alloca": 8,
+        "body_check": 32776,
+        "outgoing": 6408
+      },
+      "outgoing_pushes": 0,
+      "leaf_probe_instructions": [
+        "callq\t\"inline-asm\""
+      ],
+      "assembly_sha256": "607f60a39964b677d5a9495d50169352346050a7601eb72d005ef18d7c905ce4"
+    }
+  ],
+  "observations": [
+    {
+      "name": "darwin-arm64-O0-inline-measure",
+      "command": "<checkout>/.tmp/stack-containment/run/measure-O0",
+      "rc": 0,
+      "stdout": "leaf sp_delta=32784\ndirect sp_delta=32800\nindirect sp_delta=32800\nruntime_call sp_delta=32800\ndynamic_32768 sp_delta=32800\naligned sp_delta=124800\nsmall_leaf sp_delta=64\nloop_alloca_32 sp_delta=32832\nbody_check sp_delta=32800\n",
+      "stderr": ""
+    },
+    {
+      "name": "darwin-arm64-O2-inline-measure",
+      "command": "<checkout>/.tmp/stack-containment/run/measure-O2",
+      "rc": 0,
+      "stdout": "leaf sp_delta=32784\ndirect sp_delta=32800\nindirect sp_delta=32800\nruntime_call sp_delta=32800\ndynamic_32768 sp_delta=32784\naligned sp_delta=108416\nsmall_leaf sp_delta=64\nloop_alloca_32 sp_delta=32784\nbody_check sp_delta=32784\n",
+      "stderr": ""
+    },
+    {
+      "name": "darwin-arm64-named-probe",
+      "command": "/opt/homebrew/opt/llvm@21/bin/llc -O2 -mtriple=arm64-apple-darwin <checkout>/.tmp/stack-containment/run/darwin-arm64-named.ll -o <checkout>/.tmp/stack-containment/run/darwin-arm64-named.s",
+      "rc": -6,
+      "stdout": "",
+      "stderr": "LLVM ERROR: Unsupported stack probing method\nPLEASE submit a bug report to https://github.com/Homebrew/homebrew-core/issues and include the crash backtrace.\n[backtrace omitted; full log is regenerated under .tmp]\n",
+      "full_stderr_sha256": "3f3f348d3135b8db05eb4a6df8b7da10f5d886d2831e5bff87a5b0be0588d870"
+    },
+    {
+      "name": "linux-arm64-named-probe",
+      "command": "/opt/homebrew/opt/llvm@21/bin/llc -O2 -mtriple=aarch64-unknown-linux-gnu <checkout>/.tmp/stack-containment/run/linux-arm64-named.ll -o <checkout>/.tmp/stack-containment/run/linux-arm64-named.s",
+      "rc": -6,
+      "stdout": "",
+      "stderr": "LLVM ERROR: Unsupported stack probing method\nPLEASE submit a bug report to https://github.com/Homebrew/homebrew-core/issues and include the crash backtrace.\n[backtrace omitted; full log is regenerated under .tmp]\n",
+      "full_stderr_sha256": "fed11c66f81ad505fee89a4ecd6a859bfdf1eae0ce050b5431fe939b8fb70649"
+    },
+    {
+      "name": "linux-x86_64-named-probe",
+      "command": "/opt/homebrew/opt/llvm@21/bin/llc -O2 -mtriple=x86_64-unknown-linux-gnu <checkout>/.tmp/stack-containment/run/linux-x86_64-named.ll -o <checkout>/.tmp/stack-containment/run/linux-x86_64-named.s",
+      "rc": 0,
+      "stdout": "",
+      "stderr": "warning: <unknown>:0:0: stack frame size (32776) exceeds limit (4096) in function 'leaf'\nwarning: <unknown>:0:0: stack frame size (32776) exceeds limit (4096) in function 'direct'\nwarning: <unknown>:0:0: stack frame size (32776) exceeds limit (4096) in function 'indirect'\nwarning: <unknown>:0:0: stack frame size (32776) exceeds limit (4096) in function 'runtime_call'\nwarning: <unknown>:0:0: stack frame size (65528) exceeds limit (4096) in function 'aligned'\nwarning: <unknown>:0:0: stack frame size (32776) exceeds limit (4096) in function 'body_check'\nwarning: <unknown>:0:0: stack frame size (6360) exceeds limit (4096) in function 'outgoing'\n"
+    },
+    {
+      "name": "windows-x86_64-named-probe",
+      "command": "/opt/homebrew/opt/llvm@21/bin/llc -O2 -mtriple=x86_64-pc-windows-msvc <checkout>/.tmp/stack-containment/run/windows-x86_64-named.ll -o <checkout>/.tmp/stack-containment/run/windows-x86_64-named.s",
+      "rc": 0,
+      "stdout": "",
+      "stderr": "warning: <unknown>:0:0: stack frame size (32776) exceeds limit (4096) in function 'leaf'\nwarning: <unknown>:0:0: stack frame size (32808) exceeds limit (4096) in function 'direct'\nwarning: <unknown>:0:0: stack frame size (32808) exceeds limit (4096) in function 'indirect'\nwarning: <unknown>:0:0: stack frame size (32808) exceeds limit (4096) in function 'runtime_call'\nwarning: <unknown>:0:0: stack frame size (65528) exceeds limit (4096) in function 'aligned'\nwarning: <unknown>:0:0: stack frame size (32776) exceeds limit (4096) in function 'body_check'\nwarning: <unknown>:0:0: stack frame size (6408) exceeds limit (4096) in function 'outgoing'\n"
+    },
+    {
+      "name": "linux-x86_64-no-call-frame-opt",
+      "command": "/opt/homebrew/opt/llvm@21/bin/llc -O2 -mtriple=x86_64-unknown-linux-gnu -no-x86-call-frame-opt <checkout>/.tmp/stack-containment/run/strict.ll -o <checkout>/.tmp/stack-containment/run/linux-x86_64-no-call-frame-opt.s",
+      "rc": 0,
+      "stdout": "",
+      "stderr": "warning: <unknown>:0:0: stack frame size (32776) exceeds limit (0) in function 'leaf'\nwarning: <unknown>:0:0: stack frame size (32776) exceeds limit (0) in function 'direct'\nwarning: <unknown>:0:0: stack frame size (32776) exceeds limit (0) in function 'indirect'\nwarning: <unknown>:0:0: stack frame size (32776) exceeds limit (0) in function 'runtime_call'\nwarning: <unknown>:0:0: stack frame size (8) exceeds limit (0) in function 'dynamic'\nwarning: <unknown>:0:0: stack frame size (65528) exceeds limit (0) in function 'aligned'\nwarning: <unknown>:0:0: stack frame size (72) exceeds limit (0) in function 'small_leaf'\nwarning: <unknown>:0:0: stack frame size (8) exceeds limit (0) in function 'loop_alloca'\nwarning: <unknown>:0:0: stack frame size (32776) exceeds limit (0) in function 'body_check'\nwarning: <unknown>:0:0: stack frame size (6360) exceeds limit (0) in function 'outgoing'\n"
+    },
+    {
+      "name": "leaf-cap-32783-object",
+      "command": "<checkout>/.tmp/stack-containment/run/diagnostics object <checkout>/.tmp/stack-containment/run/leaf-cap-32783.ll O2",
+      "rc": 2,
+      "stdout": "frame=leaf bytes=32784 severity=1\nemit_rc=0 output_bytes=752 rejected=1 published=0\nstack_diagnostics=1 error_diagnostics=0 context_has_errors=0\n",
+      "stderr": ""
+    },
+    {
+      "name": "leaf-cap-32783-jit",
+      "command": "<checkout>/.tmp/stack-containment/run/diagnostics jit <checkout>/.tmp/stack-containment/run/leaf-cap-32783.ll O2",
+      "rc": 2,
+      "stdout": "create_rc=0 diagnostics_before_lookup=0\nframe=leaf bytes=32784 severity=1\naddress_nonzero=1 diagnostics_after_lookup=1 rejected=1 executed=0\nstack_diagnostics=1 error_diagnostics=0 context_has_errors=0\n",
+      "stderr": ""
+    },
+    {
+      "name": "leaf-cap-32784-object",
+      "command": "<checkout>/.tmp/stack-containment/run/diagnostics object <checkout>/.tmp/stack-containment/run/leaf-cap-32784.ll O2",
+      "rc": 0,
+      "stdout": "emit_rc=0 output_bytes=752 rejected=0 published=0\nstack_diagnostics=0 error_diagnostics=0 context_has_errors=0\n",
+      "stderr": ""
+    },
+    {
+      "name": "leaf-cap-32784-jit",
+      "command": "<checkout>/.tmp/stack-containment/run/diagnostics jit <checkout>/.tmp/stack-containment/run/leaf-cap-32784.ll O2",
+      "rc": 0,
+      "stdout": "create_rc=0 diagnostics_before_lookup=0\naddress_nonzero=1 diagnostics_after_lookup=0 rejected=0 executed=0\nstack_diagnostics=0 error_diagnostics=0 context_has_errors=0\n",
+      "stderr": ""
+    },
+    {
+      "name": "diagnostics-object-O0",
+      "command": "<checkout>/.tmp/stack-containment/run/diagnostics object <checkout>/.tmp/stack-containment/run/cap.ll O0",
+      "rc": 2,
+      "stdout": "frame=leaf bytes=32784 severity=1\nframe=direct bytes=32800 severity=1\nframe=indirect bytes=32800 severity=1\nframe=runtime_call bytes=32800 severity=1\nframe=aligned bytes=65536 severity=1\nframe=body_check bytes=32800 severity=1\nframe=outgoing bytes=6368 severity=1\nemit_rc=0 output_bytes=6040 rejected=1 published=0\nstack_diagnostics=7 error_diagnostics=0 context_has_errors=0\n",
+      "stderr": ""
+    },
+    {
+      "name": "diagnostics-jit-O0",
+      "command": "<checkout>/.tmp/stack-containment/run/diagnostics jit <checkout>/.tmp/stack-containment/run/cap.ll O0",
+      "rc": 2,
+      "stdout": "create_rc=0 diagnostics_before_lookup=0\nframe=leaf bytes=32784 severity=1\nframe=direct bytes=32800 severity=1\nframe=indirect bytes=32800 severity=1\nframe=runtime_call bytes=32800 severity=1\nframe=aligned bytes=65536 severity=1\nframe=body_check bytes=32800 severity=1\nframe=outgoing bytes=6368 severity=1\naddress_nonzero=1 diagnostics_after_lookup=7 rejected=1 executed=0\nstack_diagnostics=7 error_diagnostics=0 context_has_errors=0\n",
+      "stderr": ""
+    },
+    {
+      "name": "diagnostics-object-error-O0",
+      "command": "<checkout>/.tmp/stack-containment/run/diagnostics object-error <checkout>/.tmp/stack-containment/run/cap.ll O0",
+      "rc": 2,
+      "stdout": "frame=leaf bytes=32784 severity=1\nframe=direct bytes=32800 severity=1\nframe=indirect bytes=32800 severity=1\nframe=runtime_call bytes=32800 severity=1\nframe=aligned bytes=65536 severity=1\nframe=body_check bytes=32800 severity=1\nframe=outgoing bytes=6368 severity=1\nemit_rc=0 output_bytes=6040 rejected=1 published=0\nstack_diagnostics=7 error_diagnostics=7 context_has_errors=1\n",
+      "stderr": ""
+    },
+    {
+      "name": "diagnostics-jit-error-O0",
+      "command": "<checkout>/.tmp/stack-containment/run/diagnostics jit-error <checkout>/.tmp/stack-containment/run/cap.ll O0",
+      "rc": 2,
+      "stdout": "create_rc=0 diagnostics_before_lookup=0\nframe=leaf bytes=32784 severity=1\nframe=direct bytes=32800 severity=1\nframe=indirect bytes=32800 severity=1\nframe=runtime_call bytes=32800 severity=1\nframe=aligned bytes=65536 severity=1\nframe=body_check bytes=32800 severity=1\nframe=outgoing bytes=6368 severity=1\naddress_nonzero=1 diagnostics_after_lookup=7 rejected=1 executed=0\nstack_diagnostics=7 error_diagnostics=7 context_has_errors=1\n",
+      "stderr": ""
+    },
+    {
+      "name": "dynamic-only-object-O0",
+      "command": "<checkout>/.tmp/stack-containment/run/diagnostics object <checkout>/.tmp/stack-containment/run/dynamic-only.ll O0",
+      "rc": 0,
+      "stdout": "emit_rc=0 output_bytes=808 rejected=0 published=0\nstack_diagnostics=0 error_diagnostics=0 context_has_errors=0\n",
+      "stderr": ""
+    },
+    {
+      "name": "dynamic-only-jit-O0",
+      "command": "<checkout>/.tmp/stack-containment/run/diagnostics jit <checkout>/.tmp/stack-containment/run/dynamic-only.ll O0",
+      "rc": 0,
+      "stdout": "create_rc=0 diagnostics_before_lookup=0\naddress_nonzero=1 diagnostics_after_lookup=0 rejected=0 executed=0\nstack_diagnostics=0 error_diagnostics=0 context_has_errors=0\n",
+      "stderr": ""
+    },
+    {
+      "name": "unwind-runtime-O0",
+      "command": "<checkout>/.tmp/stack-containment/run/unwind-O0",
+      "rc": 0,
+      "stdout": "indirect=0 caught=1 entered=50 dropped=50 failure_slack=61760\nindirect=1 caught=1 entered=50 dropped=50 failure_slack=61760\nprocess_after_unwinds=alive\n",
+      "stderr": ""
+    },
+    {
+      "name": "diagnostics-object-O2",
+      "command": "<checkout>/.tmp/stack-containment/run/diagnostics object <checkout>/.tmp/stack-containment/run/cap.ll O2",
+      "rc": 2,
+      "stdout": "frame=leaf bytes=32784 severity=1\nframe=direct bytes=32800 severity=1\nframe=indirect bytes=32800 severity=1\nframe=runtime_call bytes=32800 severity=1\nframe=aligned bytes=65536 severity=1\nframe=body_check bytes=32784 severity=1\nframe=outgoing bytes=6368 severity=1\nemit_rc=0 output_bytes=5744 rejected=1 published=0\nstack_diagnostics=7 error_diagnostics=0 context_has_errors=0\n",
+      "stderr": ""
+    },
+    {
+      "name": "diagnostics-jit-O2",
+      "command": "<checkout>/.tmp/stack-containment/run/diagnostics jit <checkout>/.tmp/stack-containment/run/cap.ll O2",
+      "rc": 2,
+      "stdout": "create_rc=0 diagnostics_before_lookup=0\nframe=leaf bytes=32784 severity=1\nframe=direct bytes=32800 severity=1\nframe=indirect bytes=32800 severity=1\nframe=runtime_call bytes=32800 severity=1\nframe=aligned bytes=65536 severity=1\nframe=body_check bytes=32784 severity=1\nframe=outgoing bytes=6368 severity=1\naddress_nonzero=1 diagnostics_after_lookup=7 rejected=1 executed=0\nstack_diagnostics=7 error_diagnostics=0 context_has_errors=0\n",
+      "stderr": ""
+    },
+    {
+      "name": "diagnostics-object-error-O2",
+      "command": "<checkout>/.tmp/stack-containment/run/diagnostics object-error <checkout>/.tmp/stack-containment/run/cap.ll O2",
+      "rc": 2,
+      "stdout": "frame=leaf bytes=32784 severity=1\nframe=direct bytes=32800 severity=1\nframe=indirect bytes=32800 severity=1\nframe=runtime_call bytes=32800 severity=1\nframe=aligned bytes=65536 severity=1\nframe=body_check bytes=32784 severity=1\nframe=outgoing bytes=6368 severity=1\nemit_rc=0 output_bytes=5744 rejected=1 published=0\nstack_diagnostics=7 error_diagnostics=7 context_has_errors=1\n",
+      "stderr": ""
+    },
+    {
+      "name": "diagnostics-jit-error-O2",
+      "command": "<checkout>/.tmp/stack-containment/run/diagnostics jit-error <checkout>/.tmp/stack-containment/run/cap.ll O2",
+      "rc": 2,
+      "stdout": "create_rc=0 diagnostics_before_lookup=0\nframe=leaf bytes=32784 severity=1\nframe=direct bytes=32800 severity=1\nframe=indirect bytes=32800 severity=1\nframe=runtime_call bytes=32800 severity=1\nframe=aligned bytes=65536 severity=1\nframe=body_check bytes=32784 severity=1\nframe=outgoing bytes=6368 severity=1\naddress_nonzero=1 diagnostics_after_lookup=7 rejected=1 executed=0\nstack_diagnostics=7 error_diagnostics=7 context_has_errors=1\n",
+      "stderr": ""
+    },
+    {
+      "name": "dynamic-only-object-O2",
+      "command": "<checkout>/.tmp/stack-containment/run/diagnostics object <checkout>/.tmp/stack-containment/run/dynamic-only.ll O2",
+      "rc": 0,
+      "stdout": "emit_rc=0 output_bytes=776 rejected=0 published=0\nstack_diagnostics=0 error_diagnostics=0 context_has_errors=0\n",
+      "stderr": ""
+    },
+    {
+      "name": "dynamic-only-jit-O2",
+      "command": "<checkout>/.tmp/stack-containment/run/diagnostics jit <checkout>/.tmp/stack-containment/run/dynamic-only.ll O2",
+      "rc": 0,
+      "stdout": "create_rc=0 diagnostics_before_lookup=0\naddress_nonzero=1 diagnostics_after_lookup=0 rejected=0 executed=0\nstack_diagnostics=0 error_diagnostics=0 context_has_errors=0\n",
+      "stderr": ""
+    },
+    {
+      "name": "unwind-runtime-O2",
+      "command": "<checkout>/.tmp/stack-containment/run/unwind-O2",
+      "rc": 0,
+      "stdout": "indirect=0 caught=1 entered=50 dropped=50 failure_slack=61760\nindirect=1 caught=1 entered=50 dropped=50 failure_slack=61760\nprocess_after_unwinds=alive\n",
+      "stderr": ""
+    }
+  ]
+}
