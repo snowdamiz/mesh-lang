@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use std::io::Cursor;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, OnceLock, RwLock as StdRwLock};
+use std::sync::Arc;
 use std::time::Duration;
 
 use openraft::error::{InstallSnapshotError, RPCError, RaftError, RemoteError, Unreachable};
@@ -26,6 +26,10 @@ use super::consensus_store::{
     open_durable_consensus_store, DurableConsensusLogStore, DurableConsensusStateMachine,
 };
 use super::scaling::{ControlLogEntry, ControlMutation, ControlTerm};
+
+#[path = "consensus_registry.rs"]
+pub(crate) mod registry;
+use registry::{raft_rpc_registry, AuthorizedRaftPeer, RaftGroup, RaftRpcIdentity};
 
 pub type ConsensusNodeId = u64;
 
@@ -121,11 +125,17 @@ impl MeshConsensusRpcReply {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct MeshConsensusRpcEnvelope {
+    #[serde(default, skip_serializing_if = "is_control_group")]
+    group: RaftGroup,
     cluster_name: String,
     source_id: ConsensusNodeId,
     source_name: String,
     target_id: ConsensusNodeId,
     rpc: MeshConsensusRpc,
+}
+
+fn is_control_group(group: &RaftGroup) -> bool {
+    *group == RaftGroup::Control
 }
 
 #[derive(Clone)]
@@ -138,13 +148,17 @@ struct MeshConsensusRpcServer {
     runtime: tokio::runtime::Handle,
 }
 
-static MESH_CONSENSUS_RPC_SERVER: OnceLock<StdRwLock<Option<MeshConsensusRpcServer>>> =
-    OnceLock::new();
-static MESH_CONSENSUS_RUNTIME_STARTED: AtomicBool = AtomicBool::new(false);
-
-fn consensus_rpc_server() -> &'static StdRwLock<Option<MeshConsensusRpcServer>> {
-    MESH_CONSENSUS_RPC_SERVER.get_or_init(|| StdRwLock::new(None))
+impl MeshConsensusRpcServer {
+    fn identity(&self) -> RaftRpcIdentity {
+        RaftRpcIdentity {
+            cluster_name: self.cluster_name.clone(),
+            node_id: self.node_id,
+            node_name: self.node_name.clone(),
+        }
+    }
 }
+
+static MESH_CONSENSUS_RUNTIME_STARTED: AtomicBool = AtomicBool::new(false);
 
 /// Serves this node's Raft to its peers' RPCs. Only a durable node's start
 /// registers one, after it checked the node's identity and the cluster's
@@ -155,15 +169,17 @@ fn register_mesh_consensus_rpc_server(
     node_name: &str,
     raft: MeshRaft,
     state_machine: DurableConsensusStateMachine,
-) {
-    *consensus_rpc_server().write().unwrap() = Some(MeshConsensusRpcServer {
-        cluster_name: cluster_name.to_string(),
-        node_id,
-        node_name: node_name.to_string(),
-        raft,
-        state_machine,
-        runtime: tokio::runtime::Handle::current(),
-    });
+) -> Result<(), String> {
+    raft_rpc_registry()
+        .register_control(MeshConsensusRpcServer {
+            cluster_name: cluster_name.to_string(),
+            node_id,
+            node_name: node_name.to_string(),
+            raft,
+            state_machine,
+            runtime: tokio::runtime::Handle::current(),
+        })
+        .map(|_| ())
 }
 
 fn encode_consensus_rpc_reply(reply: MeshConsensusRpcReply) -> Vec<u8> {
@@ -180,20 +196,18 @@ fn accepted_consensus_rpc(
     server: Option<MeshConsensusRpcServer>,
     local_node: &str,
 ) -> Result<(MeshConsensusRpcServer, MeshConsensusRpc), String> {
-    if !autonomous_enabled {
-        return Err("consensus_rpc_capability_unavailable".to_string());
-    }
+    let peer = AuthorizedRaftPeer::control(autonomous_enabled, remote_name, local_node)?;
     let request: MeshConsensusRpcEnvelope = serde_json::from_slice(payload)
         .map_err(|error| format!("consensus_rpc_request_decode_failed:{error}"))?;
     let server = server.ok_or_else(|| "consensus_rpc_server_unavailable".to_string())?;
-    if request.cluster_name != server.cluster_name
-        || request.target_id != server.node_id
-        || request.source_id == 0
-        || request.source_name != remote_name
-        || server.node_name != local_node
-    {
-        return Err("consensus_rpc_identity_mismatch".to_string());
-    }
+    peer.validate(
+        &request.group,
+        &server.identity(),
+        &request.cluster_name,
+        request.source_id,
+        &request.source_name,
+        request.target_id,
+    )?;
     Ok((server, request.rpc))
 }
 
@@ -219,10 +233,7 @@ pub(crate) fn handle_mesh_consensus_rpc(
     correlation_id: u64,
     payload: Vec<u8>,
 ) -> Option<tokio::task::JoinHandle<()>> {
-    let server = consensus_rpc_server()
-        .read()
-        .ok()
-        .and_then(|server| server.clone());
+    let server = raft_rpc_registry().control().ok().flatten();
     let accepted = accepted_consensus_rpc(
         session.negotiated_protocol.autonomous_enabled,
         &session.remote_name,
@@ -376,6 +387,7 @@ impl MeshConsensusConnection {
             return Err("consensus_rpc_target_invalid".to_string());
         }
         let payload = serde_json::to_vec(&MeshConsensusRpcEnvelope {
+            group: RaftGroup::Control,
             cluster_name: self.cluster_name.clone(),
             source_id: self.source_id,
             source_name: self.source_name.clone(),
@@ -516,13 +528,16 @@ pub async fn start_mesh_durable_consensus_node(
     )
     .await
     .map_err(|error| format!("consensus_start_failed:{error}"))?;
-    register_mesh_consensus_rpc_server(
+    if let Err(error) = register_mesh_consensus_rpc_server(
         cluster_name,
         node_id,
         node_name,
         raft.clone(),
         state_machine.clone(),
-    );
+    ) {
+        let _ = raft.shutdown().await;
+        return Err(error);
+    }
     Ok(DurableEmbeddedConsensusNode {
         node_id,
         raft,
@@ -544,7 +559,7 @@ pub struct ConsensusRuntimeSnapshot {
 }
 
 pub fn consensus_runtime_snapshot() -> Option<ConsensusRuntimeSnapshot> {
-    let server = consensus_rpc_server().read().ok()?.clone()?;
+    let server = raft_rpc_registry().control().ok()??;
     let metrics = server.raft.metrics();
     let metrics = metrics.borrow();
     let state = server.state_machine.state().ok()?;
@@ -568,10 +583,8 @@ pub fn commit_consensus_command(
     if timeout.is_zero() {
         return Err("consensus_commit_timeout_invalid".to_string());
     }
-    let server = consensus_rpc_server()
-        .read()
-        .map_err(|_| "consensus_rpc_server_lock_poisoned".to_string())?
-        .clone()
+    let server = raft_rpc_registry()
+        .control()?
         .ok_or_else(|| "consensus_rpc_server_unavailable".to_string())?;
     let (sender, receiver) = std::sync::mpsc::channel();
     server.runtime.spawn(async move {
@@ -1111,6 +1124,7 @@ mod tests {
         };
         let envelope = |cluster: &str, source_id, source: &str, target_id| {
             serde_json::to_vec(&MeshConsensusRpcEnvelope {
+                group: RaftGroup::Control,
                 cluster_name: cluster.to_string(),
                 source_id,
                 source_name: source.to_string(),
@@ -1130,6 +1144,21 @@ mod tests {
             .map(|(_, rpc)| matches!(rpc, MeshConsensusRpc::Vote(_)))
         };
         let valid = envelope("cluster", 3, "peer@host:4370", 9);
+        assert!(!serde_json::from_slice::<serde_json::Value>(&valid)
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .contains_key("group"));
+        let mut jobs_payload: serde_json::Value = serde_json::from_slice(&valid).unwrap();
+        jobs_payload["group"] = serde_json::json!({"Jobs": "deployment-a"});
+        assert_eq!(
+            accept(
+                true,
+                &serde_json::to_vec(&jobs_payload).unwrap(),
+                Some(server.clone())
+            ),
+            Err("consensus_rpc_group_mismatch".to_string())
+        );
         assert_eq!(accept(true, &valid, Some(server.clone())), Ok(true));
         assert_eq!(
             accept(false, &valid, Some(server.clone())),

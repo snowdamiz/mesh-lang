@@ -2,6 +2,7 @@
 
 use std::fmt::Debug;
 use std::io::Cursor;
+use std::marker::PhantomData;
 use std::ops::RangeBounds;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -150,8 +151,20 @@ fn secure_consensus_store(_path: &Path) -> Result<(), String> {
 }
 
 #[derive(Clone, Debug)]
-pub struct DurableConsensusLogStore {
+pub struct DurableRaftLogStore<C: RaftTypeConfig> {
     inner: DurableConsensusDatabase,
+    config: PhantomData<C>,
+}
+
+pub type DurableConsensusLogStore = DurableRaftLogStore<MeshRaftConfig>;
+
+impl<C: RaftTypeConfig<NodeId = ConsensusNodeId, Entry = Entry<C>>> DurableRaftLogStore<C> {
+    pub fn open(path: &Path) -> Result<Self, String> {
+        Ok(Self {
+            inner: DurableConsensusDatabase::open(path)?,
+            config: PhantomData,
+        })
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -164,8 +177,9 @@ pub fn open_durable_consensus_store(
 ) -> Result<(DurableConsensusLogStore, DurableConsensusStateMachine), String> {
     let inner = DurableConsensusDatabase::open(path)?;
     Ok((
-        DurableConsensusLogStore {
+        DurableRaftLogStore {
             inner: inner.clone(),
+            config: PhantomData,
         },
         DurableConsensusStateMachine { inner },
     ))
@@ -179,11 +193,13 @@ impl DurableConsensusStateMachine {
     }
 }
 
-impl RaftLogReader<MeshRaftConfig> for DurableConsensusLogStore {
+impl<C: RaftTypeConfig<NodeId = ConsensusNodeId, Entry = Entry<C>>> RaftLogReader<C>
+    for DurableRaftLogStore<C>
+{
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug>(
         &mut self,
         range: RB,
-    ) -> Result<Vec<Entry<MeshRaftConfig>>, StorageError<ConsensusNodeId>> {
+    ) -> Result<Vec<Entry<C>>, StorageError<ConsensusNodeId>> {
         let read = self
             .inner
             .database
@@ -199,12 +215,12 @@ impl RaftLogReader<MeshRaftConfig> for DurableConsensusLogStore {
     }
 }
 
-impl RaftLogStorage<MeshRaftConfig> for DurableConsensusLogStore {
+impl<C: RaftTypeConfig<NodeId = ConsensusNodeId, Entry = Entry<C>>> RaftLogStorage<C>
+    for DurableRaftLogStore<C>
+{
     type LogReader = Self;
 
-    async fn get_log_state(
-        &mut self,
-    ) -> Result<LogState<MeshRaftConfig>, StorageError<ConsensusNodeId>> {
+    async fn get_log_state(&mut self) -> Result<LogState<C>, StorageError<ConsensusNodeId>> {
         let last_purged_log_id = self.inner.read_meta(META_LAST_PURGED)?;
         let read = self
             .inner
@@ -216,7 +232,7 @@ impl RaftLogStorage<MeshRaftConfig> for DurableConsensusLogStore {
             .last()
             .map_err(storage_read_error)?
             .map(|(_, value)| {
-                serde_json::from_slice::<Entry<MeshRaftConfig>>(value.value())
+                serde_json::from_slice::<Entry<C>>(value.value())
                     .map(|entry| *entry.get_log_id())
                     .map_err(storage_read_error)
             })
@@ -257,10 +273,10 @@ impl RaftLogStorage<MeshRaftConfig> for DurableConsensusLogStore {
     async fn append<I>(
         &mut self,
         entries: I,
-        callback: LogFlushed<MeshRaftConfig>,
+        callback: LogFlushed<C>,
     ) -> Result<(), StorageError<ConsensusNodeId>>
     where
-        I: IntoIterator<Item = Entry<MeshRaftConfig>>,
+        I: IntoIterator<Item = Entry<C>>,
     {
         let entries: Vec<_> = entries.into_iter().collect();
         let write = self
@@ -483,8 +499,203 @@ mod tests {
         start_durable_consensus_node, wait_for_consensus_leader, InProcessConsensusNetwork,
     };
     use crate::dist::scaling::{ControlMutation, DesiredCapacity, DesiredRevision};
+    use openraft::storage::RaftLogStorageExt;
     use std::collections::BTreeMap;
     use std::time::Duration;
+
+    #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+    struct CounterCommand {
+        counter: String,
+        increment: u64,
+    }
+
+    openraft::declare_raft_types!(
+        CounterConfig:
+            D = CounterCommand,
+            R = (),
+    );
+
+    async fn exercise_log<C>(path: &Path, data: C::D)
+    where
+        C: RaftTypeConfig<NodeId = ConsensusNodeId, Entry = Entry<C>>,
+        C::D: PartialEq + Clone + Debug,
+    {
+        let entry = |index| Entry::<C> {
+            log_id: LogId::new(openraft::CommittedLeaderId::new(7, 9), index),
+            payload: openraft::EntryPayload::Normal(data.clone()),
+        };
+        let vote = Vote::new_committed(7, 9);
+        let mut log = DurableRaftLogStore::<C>::open(path).unwrap();
+        assert!(log.read_vote().await.unwrap().is_none());
+        assert!(log.get_log_state().await.unwrap().last_log_id.is_none());
+        log.save_vote(&vote).await.unwrap();
+        log.blocking_append((1..=5).map(entry)).await.unwrap();
+        log.save_committed(Some(entry(3).log_id)).await.unwrap();
+        drop(log);
+
+        let mut log = DurableRaftLogStore::<C>::open(path).unwrap();
+        assert_eq!(log.read_vote().await.unwrap(), Some(vote));
+        assert_eq!(log.read_committed().await.unwrap(), Some(entry(3).log_id));
+        let entries = log.try_get_log_entries(..).await.unwrap();
+        assert_eq!(entries.len(), 5);
+        for (index, stored) in entries.iter().enumerate() {
+            assert_eq!(stored.log_id, entry(index as u64 + 1).log_id);
+            let openraft::EntryPayload::Normal(stored_data) = &stored.payload else {
+                panic!("normal command was lost");
+            };
+            assert_eq!(stored_data, &data);
+        }
+        log.truncate(entry(4).log_id).await.unwrap();
+        drop(log);
+
+        let mut log = DurableRaftLogStore::<C>::open(path).unwrap();
+        assert_eq!(
+            log.get_log_state().await.unwrap().last_log_id,
+            Some(entry(3).log_id)
+        );
+        assert!(log.try_get_log_entries(4..).await.unwrap().is_empty());
+        log.blocking_append([entry(4)]).await.unwrap();
+        log.purge(entry(2).log_id).await.unwrap();
+        drop(log);
+
+        let mut log = DurableRaftLogStore::<C>::open(path).unwrap();
+        let state = log.get_log_state().await.unwrap();
+        assert_eq!(state.last_purged_log_id, Some(entry(2).log_id));
+        assert_eq!(state.last_log_id, Some(entry(4).log_id));
+        let mut reader = log.get_log_reader().await;
+        assert_eq!(
+            reader
+                .try_get_log_entries(..)
+                .await
+                .unwrap()
+                .iter()
+                .map(|e| e.log_id.index)
+                .collect::<Vec<_>>(),
+            [3, 4]
+        );
+        log.purge(entry(4).log_id).await.unwrap();
+        drop(reader);
+        drop(log);
+
+        let mut log = DurableRaftLogStore::<C>::open(path).unwrap();
+        assert!(log.try_get_log_entries(..).await.unwrap().is_empty());
+        let state = log.get_log_state().await.unwrap();
+        assert_eq!(state.last_purged_log_id, Some(entry(4).log_id));
+        assert_eq!(state.last_log_id, Some(entry(4).log_id));
+        assert_eq!(log.read_vote().await.unwrap(), Some(vote));
+        assert_eq!(log.read_committed().await.unwrap(), Some(entry(3).log_id));
+    }
+
+    #[tokio::test]
+    async fn two_command_domains_persist_independently_through_reopen() {
+        let directory = tempfile::tempdir().unwrap();
+        let control = directory.path().join("control.redb");
+        let counter = directory.path().join("counter.redb");
+        tokio::join!(
+            exercise_log::<MeshRaftConfig>(&control, command("control", 3)),
+            exercise_log::<CounterConfig>(
+                &counter,
+                CounterCommand {
+                    counter: "requests".to_string(),
+                    increment: 17,
+                }
+            ),
+        );
+        let (mut control_log, machine) = open_durable_consensus_store(&control).unwrap();
+        let mut counter_log = DurableRaftLogStore::<CounterConfig>::open(&counter).unwrap();
+        control_log.save_vote(&Vote::new(8, 1)).await.unwrap();
+        assert_eq!(
+            counter_log.read_vote().await.unwrap(),
+            Some(Vote::new_committed(7, 9))
+        );
+        assert!(machine.state().unwrap().entries.is_empty());
+    }
+
+    #[tokio::test]
+    async fn legacy_control_bytes_reopen_without_a_schema_migration() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("legacy.redb");
+        let vote_bytes = br#"{"leader_id":{"term":7,"node_id":9},"committed":true}"#;
+        let log_bytes =
+            br#"{"log_id":{"leader_id":{"term":7,"node_id":9},"index":1},"payload":"Blank"}"#;
+        let state_bytes = br#"{"last_applied_log":null,"last_membership":{"log_id":null,"membership":{"configs":[],"nodes":{}}},"entries":[],"command_results":{}}"#;
+        let meta_bytes = br#"{"last_log_id":null,"last_membership":{"log_id":null,"membership":{"configs":[],"nodes":{}}},"snapshot_id":"empty-1"}"#;
+        let database = Database::create(&path).unwrap();
+        let write = database.begin_write().unwrap();
+        {
+            let mut meta = write
+                .open_table(TableDefinition::<&str, &[u8]>::new("mesh_raft_meta_v1"))
+                .unwrap();
+            meta.insert("vote", vote_bytes.as_slice()).unwrap();
+            meta.insert("state_machine", state_bytes.as_slice())
+                .unwrap();
+            meta.insert("snapshot_data", state_bytes.as_slice())
+                .unwrap();
+            meta.insert("snapshot_meta", meta_bytes.as_slice()).unwrap();
+            meta.insert("snapshot_index", b"1".as_slice()).unwrap();
+            let mut logs = write
+                .open_table(TableDefinition::<u64, &[u8]>::new("mesh_raft_log_v1"))
+                .unwrap();
+            logs.insert(1, log_bytes.as_slice()).unwrap();
+        }
+        write.commit().unwrap();
+        drop(database);
+
+        let (mut log, mut machine) = open_durable_consensus_store(&path).unwrap();
+        assert_eq!(
+            log.read_vote().await.unwrap(),
+            Some(Vote::new_committed(7, 9))
+        );
+        let entries = log.try_get_log_entries(..).await.unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(serde_json::to_vec(&entries[0]).unwrap(), log_bytes);
+        let snapshot = machine.get_current_snapshot().await.unwrap().unwrap();
+        assert_eq!(snapshot.snapshot.get_ref().as_slice(), state_bytes);
+        assert_eq!(serde_json::to_vec(&snapshot.meta).unwrap(), meta_bytes);
+        assert!(machine.state().unwrap().entries.is_empty());
+        assert_eq!(
+            machine.build_snapshot().await.unwrap().meta.snapshot_id,
+            "empty-2"
+        );
+        log.save_vote(&Vote::new_committed(7, 9)).await.unwrap();
+        assert_eq!(
+            log.inner.read_raw_meta(META_VOTE).unwrap().unwrap(),
+            vote_bytes
+        );
+    }
+
+    struct DurableStoreBuilder;
+
+    impl
+        openraft::testing::StoreBuilder<
+            MeshRaftConfig,
+            DurableConsensusLogStore,
+            DurableConsensusStateMachine,
+            tempfile::TempDir,
+        > for DurableStoreBuilder
+    {
+        async fn build(
+            &self,
+        ) -> Result<
+            (
+                tempfile::TempDir,
+                DurableConsensusLogStore,
+                DurableConsensusStateMachine,
+            ),
+            StorageError<ConsensusNodeId>,
+        > {
+            let directory = tempfile::tempdir().map_err(storage_write_error)?;
+            let (log, machine) =
+                open_durable_consensus_store(&directory.path().join("conformance.redb"))
+                    .map_err(storage_write_error)?;
+            Ok((directory, log, machine))
+        }
+    }
+
+    #[test]
+    fn durable_control_passes_openraft_storage_conformance() {
+        openraft::testing::Suite::test_all(DurableStoreBuilder).unwrap();
+    }
 
     fn command(id: &str, workers: u16) -> ConsensusCommand {
         ConsensusCommand {
@@ -600,18 +811,9 @@ mod tests {
         let (mut log, _) =
             open_durable_consensus_store(&directory.path().join("log.redb")).expect("store");
         assert!(format!("{log:?}").contains("log.redb"));
-        // Written as `append` writes them: only Raft can make its callback.
-        let write = log.inner.database.begin_write().unwrap();
-        {
-            let mut table = write.open_table(LOG_TABLE).unwrap();
-            for entry in (1..=5).map(blank_entry) {
-                let encoded = serde_json::to_vec(&entry).unwrap();
-                table
-                    .insert(&entry.log_id.index, encoded.as_slice())
-                    .unwrap();
-            }
-        }
-        write.commit().unwrap();
+        log.blocking_append((1..=5).map(blank_entry))
+            .await
+            .expect("append and flush");
 
         log.truncate(blank_entry(4).log_id).await.expect("truncate");
         assert_eq!(
