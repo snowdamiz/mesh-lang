@@ -56,7 +56,14 @@ constructing that authorization. A remote selector is not an authorization.
 
 The existing control frame handler always selects the Control registration.
 Legacy envelopes omit `group` and retain their exact encoding. An explicit
-`Jobs` group is rejected on the control handler. Control command commits and
+`Jobs` group is rejected on this version's control handler. Older peers ignore
+unknown JSON fields, so adding `group` does not distinguish Jobs traffic for
+them: a Jobs vote could decode as a control vote. The Jobs transport must use a
+separate frame discriminator that old peers reject, and negotiate Jobs support
+and deployment authorization before sending any Jobs RPC. It must never send
+Jobs payloads on the legacy `DIST_CONSENSUS_RPC` frame merely because a selector
+is present. Mixed-version rejection needs a real old-decoder compatibility test.
+Control command commits and
 runtime snapshots read only the Control registration. The existing production
 factory retains its registration for the process lifetime.
 
