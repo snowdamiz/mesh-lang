@@ -1,0 +1,381 @@
+{
+  "results": [
+    {
+      "case": "control",
+      "command": [
+        "python3",
+        "compiler/meshc/tests/fixtures/library_authority/check.py",
+        "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/libauthority.dylib",
+        "control",
+        "--stack-probe=/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/stack-probe.so"
+      ],
+      "exit": 0,
+      "log_sha256": "0987d7a7523191516cda679c027b7d302d7eeaef0752496d2a6fbc3fec5c9c94"
+    },
+    {
+      "case": "write",
+      "command": [
+        "python3",
+        "compiler/meshc/tests/fixtures/library_authority/check.py",
+        "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/libauthority.dylib",
+        "write",
+        "--stack-probe=/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/stack-probe.so"
+      ],
+      "exit": 0,
+      "log_sha256": "356a82a9a79aa0915e34ea79a5bb4a1a37b5ed95fdf59f884d0ea53e20c0edfb"
+    },
+    {
+      "case": "query-write",
+      "command": [
+        "python3",
+        "compiler/meshc/tests/fixtures/library_authority/check.py",
+        "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/libauthority.dylib",
+        "query-write",
+        "--stack-probe=/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/stack-probe.so"
+      ],
+      "exit": 0,
+      "log_sha256": "4fcf2cebe909b9390793ec4962d6d924dcb3f5942120597469ef9c16a2e27563"
+    },
+    {
+      "case": "schema",
+      "command": [
+        "python3",
+        "compiler/meshc/tests/fixtures/library_authority/check.py",
+        "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/libauthority.dylib",
+        "schema",
+        "--stack-probe=/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/stack-probe.so"
+      ],
+      "exit": 0,
+      "log_sha256": "9671622040a0bbe57fe1e8a5d390ce71588418d218e4a27721a807670b674a05"
+    },
+    {
+      "case": "commit",
+      "command": [
+        "python3",
+        "compiler/meshc/tests/fixtures/library_authority/check.py",
+        "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/libauthority.dylib",
+        "commit",
+        "--stack-probe=/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/stack-probe.so"
+      ],
+      "exit": 0,
+      "log_sha256": "07a88dc6aec3e19377e190082b0999ee804fa6873d134fcdbd4c06d426d0b9c8"
+    },
+    {
+      "case": "raw-commit",
+      "command": [
+        "python3",
+        "compiler/meshc/tests/fixtures/library_authority/check.py",
+        "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/libauthority.dylib",
+        "raw-commit",
+        "--stack-probe=/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/stack-probe.so"
+      ],
+      "exit": 0,
+      "log_sha256": "55c876da7fcd382c2fb56e42f25923975d9ff32ad5920eaca2ef0b133d7fe6ad"
+    },
+    {
+      "case": "release",
+      "command": [
+        "python3",
+        "compiler/meshc/tests/fixtures/library_authority/check.py",
+        "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/libauthority.dylib",
+        "release",
+        "--stack-probe=/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/stack-probe.so"
+      ],
+      "exit": 0,
+      "log_sha256": "b5f0611b2561a8d42e1d6618215140f3292ced27bf7846e036f3191c8933b198"
+    },
+    {
+      "case": "accepted-commit",
+      "command": [
+        "python3",
+        "compiler/meshc/tests/fixtures/library_authority/check.py",
+        "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/libauthority.dylib",
+        "accepted-commit",
+        "--stack-probe=/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/stack-probe.so"
+      ],
+      "exit": 0,
+      "log_sha256": "e76fafcc5d44e1461ca5cfeb4fae7e5a7f57651f5451827f062b5f7dd926f248"
+    },
+    {
+      "case": "http",
+      "command": [
+        "python3",
+        "compiler/meshc/tests/fixtures/library_authority/check.py",
+        "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/libauthority.dylib",
+        "http",
+        "--stack-probe=/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/stack-probe.so"
+      ],
+      "exit": 0,
+      "log_sha256": "08221a2e3bf57839f4c6e2c1be94a399f2159d239efbbc6d6b742f2efe9da5c1"
+    },
+    {
+      "case": "store",
+      "command": [
+        "python3",
+        "compiler/meshc/tests/fixtures/library_authority/check.py",
+        "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/libauthority.dylib",
+        "store",
+        "--stack-probe=/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/stack-probe.so"
+      ],
+      "exit": 0,
+      "log_sha256": "8644ae35ccca4db234304761df58145904fd3e27adabdb298250c2ed241740f2"
+    },
+    {
+      "case": "accepted-store",
+      "command": [
+        "python3",
+        "compiler/meshc/tests/fixtures/library_authority/check.py",
+        "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/libauthority.dylib",
+        "accepted-store",
+        "--stack-probe=/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/stack-probe.so"
+      ],
+      "exit": 0,
+      "log_sha256": "b7f52e7d1434b861eab4b0f8b7734b7c121e4b5357924ec3da96cbce8c1bad3b"
+    },
+    {
+      "case": "nonce",
+      "command": [
+        "python3",
+        "compiler/meshc/tests/fixtures/library_authority/check.py",
+        "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/libauthority.dylib",
+        "nonce",
+        "--stack-probe=/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/stack-probe.so"
+      ],
+      "exit": 0,
+      "log_sha256": "920b23c79e8fcffa8c074006d4d156232aae81185669ff5cc0cf64fa7a5a308f"
+    },
+    {
+      "case": "accepted-nonce",
+      "command": [
+        "python3",
+        "compiler/meshc/tests/fixtures/library_authority/check.py",
+        "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/libauthority.dylib",
+        "accepted-nonce",
+        "--stack-probe=/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/stack-probe.so"
+      ],
+      "exit": 0,
+      "log_sha256": "b13877d0de98f6ece7aa2f0e2314354295298ccaaeaef115e71b98aa5b407cb0"
+    },
+    {
+      "case": "actor",
+      "command": [
+        "python3",
+        "compiler/meshc/tests/fixtures/library_authority/check.py",
+        "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/libauthority.dylib",
+        "actor",
+        "--stack-probe=/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/stack-probe.so"
+      ],
+      "exit": 0,
+      "log_sha256": "f98fbd482be5e6f9377dd8a3887ae608b78a0697f9f71cfe46460c6bd67babd7"
+    },
+    {
+      "case": "timer",
+      "command": [
+        "python3",
+        "compiler/meshc/tests/fixtures/library_authority/check.py",
+        "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/libauthority.dylib",
+        "timer",
+        "--stack-probe=/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/stack-probe.so"
+      ],
+      "exit": 0,
+      "log_sha256": "0a0eecff1eacde84080793ac48bb752b7f67e01033ab488f7f2fd0ef0740c4fb"
+    },
+    {
+      "case": "missing",
+      "command": [
+        "python3",
+        "compiler/meshc/tests/fixtures/library_authority/check.py",
+        "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/libauthority.dylib",
+        "missing",
+        "--stack-probe=/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/stack-probe.so"
+      ],
+      "exit": 0,
+      "log_sha256": "94d9d08ee59ff08e2d2dee4043674df684d35d635767b03b15c4ebd15eb78a9e"
+    },
+    {
+      "case": "error",
+      "command": [
+        "python3",
+        "compiler/meshc/tests/fixtures/library_authority/check.py",
+        "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/libauthority.dylib",
+        "error",
+        "--stack-probe=/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/stack-probe.so"
+      ],
+      "exit": 0,
+      "log_sha256": "190f960acdea361ebc29b6c5df3fa9e9202e38f63a6db3b0af08bff1dff1bc9d"
+    },
+    {
+      "case": "unsupported",
+      "command": [
+        "python3",
+        "compiler/meshc/tests/fixtures/library_authority/check.py",
+        "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/libauthority.dylib",
+        "unsupported",
+        "--stack-probe=/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/stack-probe.so"
+      ],
+      "exit": 0,
+      "log_sha256": "a7e58dca5a6cab6a55d3571aa48db355483da7e8452d5f3169aec417aba35cf6"
+    },
+    {
+      "case": "generations",
+      "command": [
+        "python3",
+        "compiler/meshc/tests/fixtures/library_authority/check.py",
+        "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/libauthority.dylib",
+        "generations",
+        "--stack-probe=/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/stack-probe.so"
+      ],
+      "exit": 0,
+      "log_sha256": "cac497b14651b96ef19d14053d32a1bdeb220fb3a88af876c9f6f6e15600a35c"
+    },
+    {
+      "case": "registration",
+      "command": [
+        "python3",
+        "compiler/meshc/tests/fixtures/library_authority/check.py",
+        "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/libauthority.dylib",
+        "registration",
+        "--stack-probe=/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/stack-probe.so"
+      ],
+      "exit": 0,
+      "log_sha256": "fe1924a205165168a41d40c53da1215bd0352af4e40b4c56fd75fdc9018a0cd1"
+    },
+    {
+      "case": "hot-journal",
+      "command": [
+        "python3",
+        "compiler/meshc/tests/fixtures/library_authority/check.py",
+        "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/libauthority.dylib",
+        "hot-journal",
+        "--stack-probe=/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/stack-probe.so"
+      ],
+      "exit": 0,
+      "log_sha256": "708c2af7812faa93d0f7ac8d6d0324c71b033162ef328a7c7bd90423b8766a0b"
+    },
+    {
+      "case": "terminate",
+      "command": [
+        "python3",
+        "compiler/meshc/tests/fixtures/library_authority/check.py",
+        "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/libauthority.dylib",
+        "terminate",
+        "--stack-probe=/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/stack-probe.so"
+      ],
+      "exit": 0,
+      "log_sha256": "6c1ef69715cee1f25c6a4f76f8cb8c9fec08cff4db3d78ba2464356b0ef3bc06"
+    },
+    {
+      "case": "v1-6",
+      "command": [
+        "python3",
+        "compiler/meshc/tests/fixtures/library_authority/check.py",
+        "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/libauthority.dylib",
+        "v1-6",
+        "--stack-probe=/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/stack-probe.so"
+      ],
+      "exit": 0,
+      "log_sha256": "bbafe82f59ef687a493c21d43df86e37926daf26f17453b6653a783d0e660b82"
+    },
+    {
+      "case": "v1-8",
+      "command": [
+        "python3",
+        "compiler/meshc/tests/fixtures/library_authority/check.py",
+        "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/libauthority.dylib",
+        "v1-8",
+        "--stack-probe=/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/stack-probe.so"
+      ],
+      "exit": 0,
+      "log_sha256": "c8896881160dd9fef7a6dd49528f4337cdec5e669a95380ea6be8734a2048551"
+    },
+    {
+      "case": "v1-output",
+      "command": [
+        "python3",
+        "compiler/meshc/tests/fixtures/library_authority/check.py",
+        "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/libauthority.dylib",
+        "v1-output",
+        "--stack-probe=/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/stack-probe.so"
+      ],
+      "exit": 0,
+      "log_sha256": "dd55a6c523ba8e1a7b826f96318a89d9f010622900a6d54185c72f440ebde644"
+    },
+    {
+      "case": "v1-missing",
+      "command": [
+        "python3",
+        "compiler/meshc/tests/fixtures/library_authority/check.py",
+        "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/libauthority.dylib",
+        "v1-missing",
+        "--stack-probe=/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/stack-probe.so"
+      ],
+      "exit": 0,
+      "log_sha256": "b91c94bf0d30dafd8dbf088a33f2a7479fad9b671dc4d36d7c6d82bcb1d97397"
+    },
+    {
+      "case": "ancestry",
+      "command": [
+        "python3",
+        "compiler/meshc/tests/fixtures/library_authority/check.py",
+        "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/libauthority.dylib",
+        "ancestry",
+        "--stack-probe=/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/stack-probe.so"
+      ],
+      "exit": 0,
+      "log_sha256": "f6f6926ba61c14135a92e386bea80a64dbed338f6df7888a4d706eeb6004cc2a"
+    },
+    {
+      "case": "gc",
+      "command": [
+        "python3",
+        "compiler/meshc/tests/fixtures/library_authority/check.py",
+        "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/libauthority.dylib",
+        "gc",
+        "--stack-probe=/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/stack-probe.so"
+      ],
+      "exit": 0,
+      "log_sha256": "e2d71ff1390fb8c2ea36ea46255fa4066a91956ee1e95184609fe177ceb4d505"
+    },
+    {
+      "case": "panic",
+      "command": [
+        "python3",
+        "compiler/meshc/tests/fixtures/library_authority/check.py",
+        "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/libauthority.dylib",
+        "panic",
+        "--stack-probe=/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/stack-probe.so"
+      ],
+      "exit": 0,
+      "log_sha256": "024e137b47705b8e8ecab5c20728cb5221e5eea38597634c0008ae20de88c61a"
+    },
+    {
+      "case": "request-refusal",
+      "command": [
+        "python3",
+        "compiler/meshc/tests/fixtures/library_authority/check.py",
+        "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/libauthority.dylib",
+        "request-refusal",
+        "--stack-probe=/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/stack-probe.so"
+      ],
+      "exit": 0,
+      "log_sha256": "7d7963d6fc38ed6e632e0249c9222d4e33eb2fb0937733bca26dccf81f816987"
+    },
+    {
+      "case": "stream-refusal",
+      "command": [
+        "python3",
+        "compiler/meshc/tests/fixtures/library_authority/check.py",
+        "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/libauthority.dylib",
+        "stream-refusal",
+        "--stack-probe=/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/stack-probe.so"
+      ],
+      "exit": 0,
+      "log_sha256": "0f31bb689bf337de9a68f586c0307f4947603621120bb60ce8adeecbc2473b41"
+    }
+  ],
+  "files": {
+    "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/libauthority.dylib": "1d5af0920725bc0449977060a270393192193b09ce896f96049ce3226299bf5d",
+    "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/generated-abi-1794012766838904000/stack-probe.so": "faae4e8d379ca0b351ca4b39f84bc1c983d8bdec46f7f255a064341015b5a58e",
+    "/Users/andreyyurlov/Documents/dev/mesh-lang/compiler/meshc/tests/fixtures/library_authority/check.py": "2c24a6590f66db318e2c3d4a1b0cf40a566e94293b5d8e072aa5999263011f76"
+  }
+}

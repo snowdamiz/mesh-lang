@@ -187,6 +187,10 @@ fn route_with_method(
     handler_env: *mut u8,
     method: Option<&str>,
 ) -> *mut u8 {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return std::ptr::null_mut();
+    }
     crate::actor::pin_closure_env(handler_env);
     let clustered_metadata = crate::dist::node::lookup_declared_handler_route_metadata(handler_fn);
     unsafe {
@@ -215,6 +219,10 @@ fn route_with_method(
 /// Create an empty router. Returns a pointer to a heap-allocated MeshRouter.
 #[no_mangle]
 pub extern "C" fn mesh_http_router() -> *mut u8 {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return std::ptr::null_mut();
+    }
     let router = Box::new(MeshRouter::new(Vec::new(), Vec::new()));
     Box::into_raw(router) as *mut u8
 }
@@ -287,6 +295,10 @@ pub extern "C" fn mesh_http_use_middleware(
     middleware_fn: *mut u8,
     middleware_env: *mut u8,
 ) -> *mut u8 {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return std::ptr::null_mut();
+    }
     crate::actor::pin_closure_env(middleware_env);
     unsafe {
         let old = &*(router as *const MeshRouter);

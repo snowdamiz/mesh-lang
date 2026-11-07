@@ -414,6 +414,43 @@ impl<'ctx> CodeGen<'ctx> {
         let wrapper_type =
             i32_type.fn_type(&[ptr_type.into(), i64_type.into(), ptr_type.into()], false);
         let invoke = intrinsics::get_intrinsic(&self.module, "mesh_library_invoke_bounded");
+        let submit = intrinsics::get_intrinsic(&self.module, "mesh_library_submit_bounded_v2");
+        let mut names = std::collections::HashSet::new();
+        for export in &exports {
+            for symbol in [
+                export.symbol.clone(),
+                format!("{}_submit_v2", export.symbol),
+                format!("__mesh_library_entry_{}", export.symbol),
+            ] {
+                if [
+                    "mesh_library_init",
+                    "mesh_library_shutdown",
+                    "mesh_library_register_host_callbacks",
+                    "mesh_library_free_returned_bytes",
+                    "mesh_library_capabilities_v2",
+                    "mesh_library_enable_protected_v2",
+                    "mesh_library_call_scoped_v2",
+                    "mesh_library_current_invocation_v2",
+                    "mesh_library_invocation_take_v2",
+                    "mesh_library_invocation_cancel_v2",
+                    "mesh_library_invocation_release_v2",
+                    "mesh_authority_domain_create_v2",
+                    "mesh_authority_generation_v2",
+                    "mesh_authority_bind_v2",
+                    "mesh_authority_retire_v2",
+                    "mesh_authority_local_inflight_v2",
+                    "mesh_authority_domain_release_v2",
+                    "mesh_authority_generation_release_v2",
+                    "mesh_authority_release_v2",
+                ]
+                .contains(&symbol.as_str())
+                    || self.module.get_function(&symbol).is_some()
+                    || !names.insert(symbol.clone())
+                {
+                    return Err(format!("Exported symbol '{symbol}' conflicts with another generated or runtime symbol"));
+                }
+            }
+        }
 
         for export in exports {
             // Type checking made the export a lowered, public function.
@@ -490,6 +527,55 @@ impl<'ctx> CodeGen<'ctx> {
                 .try_as_basic_value()
                 .basic()
                 .ok_or("mesh_library_invoke must return a status")?;
+            self.builder
+                .build_return(Some(&status))
+                .map_err(|error| error.to_string())?;
+
+            let companion = self.module.add_function(
+                &format!("{}_submit_v2", export.symbol),
+                i32_type.fn_type(
+                    &[
+                        ptr_type.into(),
+                        ptr_type.into(),
+                        i64_type.into(),
+                        ptr_type.into(),
+                    ],
+                    false,
+                ),
+                None,
+            );
+            if self
+                .module
+                .get_triple()
+                .as_str()
+                .to_string_lossy()
+                .contains("windows-msvc")
+            {
+                companion
+                    .as_global_value()
+                    .set_dll_storage_class(inkwell::DLLStorageClass::Export);
+            }
+            self.builder
+                .position_at_end(self.context.append_basic_block(companion, "entry"));
+            let status = self
+                .builder
+                .build_call(
+                    submit,
+                    &[
+                        companion.get_nth_param(0).unwrap().into(),
+                        entrypoint.as_global_value().as_pointer_value().into(),
+                        companion.get_nth_param(1).unwrap().into(),
+                        companion.get_nth_param(2).unwrap().into(),
+                        companion.get_nth_param(3).unwrap().into(),
+                        i64_type.const_int(export.max_input, false).into(),
+                        i64_type.const_int(export.max_output, false).into(),
+                    ],
+                    "submission_status",
+                )
+                .map_err(|error| error.to_string())?
+                .try_as_basic_value()
+                .basic()
+                .ok_or("scheduled submission must return a status")?;
             self.builder
                 .build_return(Some(&status))
                 .map_err(|error| error.to_string())?;

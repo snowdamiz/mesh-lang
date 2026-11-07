@@ -14,6 +14,7 @@ use ureq::unversioned::transport::{
 };
 use ureq::{Agent, Error as UreqError, RequestBuilder};
 use url::Url;
+use zeroize::Zeroizing;
 
 use super::trust_roots::{parse_root_pem, TrustRoots};
 
@@ -55,6 +56,7 @@ impl Default for RequestTimeouts {
 }
 
 struct MeshRequestData {
+    owner: Option<u64>,
     method: String,
     url: String,
     headers: Vec<(String, String)>,
@@ -71,6 +73,7 @@ struct MeshRequestData {
 impl MeshRequestData {
     fn new(method: &str, url: &str) -> Self {
         Self {
+            owner: crate::authority::current().map(|context| context.id),
             method: method.to_ascii_lowercase(),
             url: url.to_string(),
             headers: Vec::new(),
@@ -89,16 +92,17 @@ impl MeshRequestData {
 #[derive(Debug)]
 struct WorkerResponse {
     status: i64,
-    body: Vec<u8>,
-    headers: Vec<(String, String)>,
+    body: Zeroizing<Vec<u8>>,
+    headers: Zeroizing<Vec<(String, String)>>,
 }
 
 enum WorkerEvent {
-    Complete(Result<WorkerResponse, String>),
+    Complete(Result<WorkerResponse, Zeroizing<String>>),
     Cancelled,
 }
 
 struct ActiveRequest {
+    owner: Option<u64>,
     cancel: Arc<AtomicBool>,
     sender: CooperativeSender<WorkerEvent>,
 }
@@ -309,6 +313,35 @@ fn requests() -> &'static Mutex<HashMap<u64, MeshRequestData>> {
     REQUESTS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+pub(crate) fn close_pending_invocation(id: u64) {
+    let removed: Vec<_> = {
+        let mut pending = requests().lock();
+        let handles: Vec<_> = pending
+            .iter()
+            .filter_map(|(handle, request)| (request.owner == Some(id)).then_some(*handle))
+            .collect();
+        handles
+            .into_iter()
+            .filter_map(|handle| pending.remove(&handle))
+            .collect()
+    };
+    drop(removed);
+}
+
+fn owns_request(owner: Option<u64>) -> bool {
+    if owner == crate::authority::current().map(|context| context.id) {
+        true
+    } else {
+        crate::authority::refuse();
+        false
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn pending_request_count() -> usize {
+    requests().lock().len()
+}
+
 fn active_requests() -> &'static Mutex<HashMap<u64, ActiveRequest>> {
     ACTIVE_REQUESTS.get_or_init(|| Mutex::new(HashMap::new()))
 }
@@ -334,6 +367,9 @@ fn update_request(handle: u64, update: impl FnOnce(&mut MeshRequestData)) -> u64
     let Some(request) = registry.get_mut(&handle) else {
         return 0;
     };
+    if !owns_request(request.owner) {
+        return 0;
+    }
     update(request);
     handle
 }
@@ -377,6 +413,10 @@ pub extern "C" fn mesh_http_url_origin(input: *const MeshString) -> *mut u8 {
 
 #[no_mangle]
 pub extern "C" fn mesh_http_build(method: *const MeshString, url: *const MeshString) -> u64 {
+    if crate::authority::current().is_some_and(|context| !context.live()) {
+        crate::authority::refuse();
+        return 0;
+    }
     let mut registry = requests().lock();
     if registry.len() >= MAX_OPEN_HANDLES {
         return 0;
@@ -520,8 +560,14 @@ pub extern "C" fn mesh_http_max_redirects(handle: u64, count: i64) -> u64 {
 }
 
 fn take_request(handle: u64) -> Result<MeshRequestData, String> {
-    requests()
-        .lock()
+    let mut pending = requests().lock();
+    if pending
+        .get(&handle)
+        .is_some_and(|request| !owns_request(request.owner))
+    {
+        return Err(crate::authority::refuse().into());
+    }
+    pending
         .remove(&handle)
         .ok_or_else(|| "invalid or already-consumed HTTP request handle".to_string())
 }
@@ -532,6 +578,12 @@ fn activate_request(
     sender: CooperativeSender<WorkerEvent>,
 ) -> Result<MeshRequestData, String> {
     let mut requests = requests().lock();
+    if requests
+        .get(&handle)
+        .is_some_and(|request| !owns_request(request.owner))
+    {
+        return Err(crate::authority::refuse().into());
+    }
     let request = requests
         .remove(&handle)
         .ok_or_else(|| "invalid or already-consumed HTTP request handle".to_string())?;
@@ -539,7 +591,14 @@ fn activate_request(
     if active.len() >= MAX_OPEN_HANDLES {
         return Err("too many active HTTP requests".to_string());
     }
-    active.insert(handle, ActiveRequest { cancel, sender });
+    active.insert(
+        handle,
+        ActiveRequest {
+            owner: request.owner,
+            cancel,
+            sender,
+        },
+    );
     Ok(request)
 }
 
@@ -769,37 +828,41 @@ fn execute_request(
         .first_byte_micros
         .fetch_add(duration_micros(started), Ordering::Relaxed);
     let status = response.status().as_u16() as i64;
-    let headers = response
-        .headers()
-        .iter()
-        .map(|(name, value)| {
-            (
-                name.as_str().to_string(),
-                value.to_str().unwrap_or_default().to_string(),
-            )
-        })
-        .collect();
+    let headers = Zeroizing::new(
+        response
+            .headers()
+            .iter()
+            .map(|(name, value)| {
+                (
+                    name.as_str().to_string(),
+                    value.to_str().unwrap_or_default().to_string(),
+                )
+            })
+            .collect::<Vec<_>>(),
+    );
     // A reader limited to one byte past the maximum refuses the byte that
     // would reach it: a body of up to the maximum is read, a longer one is
     // refused.
     let maximum = request.max_response_bytes;
-    let body = if bodyless_response(&request.method, response.status().as_u16()) {
-        Vec::new()
-    } else {
-        response
-            .body_mut()
-            .with_config()
-            .limit(maximum as u64 + 1)
-            .read_to_vec()
-            .map_err(|error| {
-                record_error(&error);
-                if matches!(error, UreqError::BodyExceedsLimit(_)) {
-                    format!("RESPONSE_TOO_LARGE: limit is {maximum} bytes")
-                } else {
-                    format_error(&error)
-                }
-            })?
-    };
+    let body = Zeroizing::new(
+        if bodyless_response(&request.method, response.status().as_u16()) {
+            Vec::new()
+        } else {
+            response
+                .body_mut()
+                .with_config()
+                .limit(maximum as u64 + 1)
+                .read_to_vec()
+                .map_err(|error| {
+                    record_error(&error);
+                    if matches!(error, UreqError::BodyExceedsLimit(_)) {
+                        format!("RESPONSE_TOO_LARGE: limit is {maximum} bytes")
+                    } else {
+                        format_error(&error)
+                    }
+                })?
+        },
+    );
     if cancel.is_some_and(|flag| flag.load(Ordering::Acquire)) {
         return Err("CANCELLED: HTTP request".to_string());
     }
@@ -823,7 +886,7 @@ fn mesh_response(response: WorkerResponse) -> *mut u8 {
         let body = mesh_str(body_text);
         let body_bytes = mesh_bytes_new(response.body.as_ptr(), response.body.len() as u64);
         let mut headers = mesh_map_new_typed(1);
-        for (name, value) in response.headers {
+        for (name, value) in response.headers.iter() {
             let name = mesh_str(&name);
             let value = mesh_str(&value);
             headers = mesh_map_put(headers, name as u64, value as u64);
@@ -840,10 +903,26 @@ fn mesh_response(response: WorkerResponse) -> *mut u8 {
     }
 }
 
+struct ActiveRequestGuard(u64);
+impl Drop for ActiveRequestGuard {
+    fn drop(&mut self) {
+        let active = active_requests().lock().remove(&self.0);
+        if let Some(active) = active {
+            active.cancel.store(true, Ordering::Release);
+        }
+    }
+}
+
 fn send_cooperatively(agent: Agent, handle: u64) -> *mut u8 {
     if !crate::authority::may_suspend() {
         drop(take_request(handle));
-        return mesh_error(crate::authority::refuse());
+        // Native callbacks cannot unwind across their C frame. They receive a
+        // refusal and return to the original Mesh continuation, which remains
+        // refused at every later sink and suspension point.
+        if crate::authority::in_callback() {
+            return mesh_error(crate::authority::refuse());
+        }
+        crate::authority::suspend_or_stop();
     }
     let invocation = crate::authority::current();
     let (sender, receiver) = cooperative_channel();
@@ -852,6 +931,7 @@ fn send_cooperatively(agent: Agent, handle: u64) -> *mut u8 {
         Ok(request) => request,
         Err(error) => return mesh_error(error),
     };
+    let _active = ActiveRequestGuard(handle);
     let wait = request
         .timeouts
         .global
@@ -859,26 +939,23 @@ fn send_cooperatively(agent: Agent, handle: u64) -> *mut u8 {
     let worker_cancel = Arc::clone(&cancel);
     std::thread::spawn(move || {
         let _invocation = crate::authority::enter(invocation);
-        let _ = sender.send(WorkerEvent::Complete(execute_request(
-            &agent,
-            request,
-            Some(&worker_cancel),
-        )));
+        let _ = sender.send(WorkerEvent::Complete(
+            execute_request(&agent, request, Some(&worker_cancel)).map_err(Zeroizing::new),
+        ));
     });
     // The worker answers by the global timeout, which ureq keeps; the wait
     // outlasts it by a second, a net under that.
     let event = cooperative_recv_timeout(&receiver, wait).unwrap_or_else(|_| {
         cancel.store(true, Ordering::Release);
-        WorkerEvent::Complete(Err(
-            "TIMEOUT_TOTAL: HTTP worker exceeded global timeout".to_string()
-        ))
+        WorkerEvent::Complete(Err(Zeroizing::new(
+            "TIMEOUT_TOTAL: HTTP worker exceeded global timeout".to_string(),
+        )))
     });
     let result = match event {
         WorkerEvent::Complete(Ok(response)) => mesh_response(response),
-        WorkerEvent::Complete(Err(error)) => mesh_error(error),
+        WorkerEvent::Complete(Err(error)) => mesh_error(error.as_str()),
         WorkerEvent::Cancelled => mesh_error("CANCELLED: HTTP request"),
     };
-    active_requests().lock().remove(&handle);
     result
 }
 
@@ -1090,14 +1167,27 @@ pub extern "C" fn mesh_http_stream_bytes(
 
 #[no_mangle]
 pub extern "C" fn mesh_http_cancel(handle: u64) {
-    if requests().lock().remove(&handle).is_some() {
+    if take_request(handle).is_ok() {
         metrics().cancellations.fetch_add(1, Ordering::Relaxed);
         return;
     }
-    if let Some(active) = active_requests().lock().remove(&handle) {
+    let active = {
+        let mut active = active_requests().lock();
+        if active
+            .get(&handle)
+            .is_some_and(|request| !owns_request(request.owner))
+        {
+            return;
+        }
+        active.remove(&handle)
+    };
+    if let Some(active) = active {
         active.cancel.store(true, Ordering::Release);
         let _ = active.sender.send(WorkerEvent::Cancelled);
         metrics().cancellations.fetch_add(1, Ordering::Relaxed);
+        return;
+    }
+    if crate::authority::current().is_some() {
         return;
     }
     if let Some(cancel) = streams().lock().remove(&handle) {
@@ -1400,7 +1490,7 @@ mod tests {
 
         let response = execute_request(&http_agent(), request, None).unwrap();
 
-        assert_eq!(response.body, b"final");
+        assert_eq!(response.body.as_slice(), b"final");
         redirect_server.join().unwrap();
         target_server.join().unwrap();
     }
@@ -1776,6 +1866,7 @@ mod tests {
                 active_requests().lock().insert(
                     handle,
                     ActiveRequest {
+                        owner: None,
                         cancel: Arc::new(AtomicBool::new(false)),
                         sender: sender.clone(),
                     },

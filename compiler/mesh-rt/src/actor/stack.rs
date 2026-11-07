@@ -97,6 +97,7 @@ pub fn clear_current_pid() {
 // inlining it would put that prologue on `mesh_reduction_check`'s fast path.
 #[inline(never)]
 pub fn yield_current() {
+    crate::authority::suspend_or_stop();
     // Every suspension is a safe cooperative collection point, including
     // blocking receive in long-lived actors that may never exhaust reductions.
     super::try_trigger_gc();
@@ -151,8 +152,12 @@ pub(crate) fn on_native_stack<F: FnOnce() -> R + Send, R>(f: F) -> R {
 /// `CoroutineHandle` is `!Send` because corosensei coroutines cannot be moved
 /// across threads. The scheduler ensures coroutines stay on the thread that
 /// created them.
+#[cfg(test)]
+pub(crate) static FAIL_NEXT_STACK: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
 pub struct CoroutineHandle {
-    coro: Coroutine<(), (), ()>,
+    coro: Option<Coroutine<(), (), ()>>,
     /// Lowest address of the coroutine's stack (its guard page).
     stack_limit: usize,
 }
@@ -166,8 +171,17 @@ impl CoroutineHandle {
     /// The coroutine installs its Yielder into the thread-local before
     /// calling the entry function, so `mesh_reduction_check()` can yield.
     pub fn new(entry_fn: *const u8, args_ptr: *const u8) -> Self {
-        let stack =
-            DefaultStack::new(DEFAULT_STACK_SIZE).expect("failed to allocate coroutine stack");
+        Self::try_new(entry_fn, args_ptr).expect("failed to allocate coroutine stack")
+    }
+
+    pub(crate) fn try_new(entry_fn: *const u8, args_ptr: *const u8) -> std::io::Result<Self> {
+        #[cfg(test)]
+        if FAIL_NEXT_STACK.swap(false, std::sync::atomic::Ordering::SeqCst) {
+            return Err(std::io::Error::other(
+                "injected coroutine stack allocation failure",
+            ));
+        }
+        let stack = DefaultStack::new(DEFAULT_STACK_SIZE)?;
         let stack_limit = {
             use corosensei::stack::Stack;
             stack.limit().get()
@@ -205,7 +219,10 @@ impl CoroutineHandle {
             // on this thread if it ran between our yield and resume.
         });
 
-        CoroutineHandle { coro, stack_limit }
+        Ok(CoroutineHandle {
+            coro: Some(coro),
+            stack_limit,
+        })
     }
 
     /// Resume the coroutine.
@@ -214,7 +231,9 @@ impl CoroutineHandle {
     /// `false` if it completed (returned from entry function).
     pub fn resume(&mut self) -> bool {
         let limit = self.stack_limit;
-        let result = crate::stack_overflow::on_stack(limit, || self.coro.resume(()));
+        let result = crate::stack_overflow::on_stack(limit, || {
+            self.coro.as_mut().expect("live coroutine").resume(())
+        });
         match result {
             CoroutineResult::Yield(()) => true,
             CoroutineResult::Return(()) => false,
@@ -241,9 +260,20 @@ impl CoroutineHandle {
         }
     }
 
+    pub(crate) fn cancel(&mut self) {
+        self.coro.as_mut().expect("live coroutine").force_unwind();
+        crate::stack_overflow::back_on_thread_stack();
+    }
+
+    /// Release the finished stack before publishing the root's completion.
+    pub(crate) fn release_finished(&mut self) {
+        assert!(self.done());
+        drop(self.coro.take());
+    }
+
     /// Check whether the coroutine has finished.
     pub fn done(&self) -> bool {
-        self.coro.done()
+        self.coro.as_ref().is_none_or(Coroutine::done)
     }
 }
 

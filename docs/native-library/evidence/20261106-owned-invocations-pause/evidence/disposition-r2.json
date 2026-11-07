@@ -1,0 +1,12 @@
+{
+  "verdict": "REQUEST_CHANGES",
+  "accepted": false,
+  "review": "implementation-review-r2/REVIEW.md",
+  "family": "evidence/final-family-r2.json",
+  "retained_tool_relocation": "retained-tools-r2/relocation.json",
+  "findings": [
+    "F1 shared reply heap cycle",
+    "F2 never-sent HTTP request ownership"
+  ],
+  "mask": 1
+}

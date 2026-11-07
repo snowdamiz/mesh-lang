@@ -214,6 +214,9 @@ fn checkout(pool: &PgPool) -> Result<u64, String> {
 /// The scoped lease covers callbacks as well as protocol I/O. Cancellation
 /// unwinds it even when it occurs inside Pg.transaction's callback.
 pub(crate) fn with_connection(pool_handle: u64, run: impl FnOnce(u64) -> *mut u8) -> *mut u8 {
+    if crate::authority::current().is_some() {
+        return err_result(crate::authority::refuse());
+    }
     let pool = unsafe { &*(pool_handle as *const PgPool) };
     match checkout(pool) {
         Ok(handle) => {
@@ -256,6 +259,10 @@ pub extern "C-unwind" fn mesh_pool_open(
     max_conns: i64,
     timeout_ms: i64,
 ) -> *mut u8 {
+    if crate::authority::current().is_some() {
+        return err_result(crate::authority::refuse());
+    }
+
     let url = unsafe { text_of(url) }.to_owned();
     // Clamp parameters to reasonable values
     let min = min_conns.max(0) as usize;
@@ -308,6 +315,10 @@ pub extern "C-unwind" fn mesh_pool_open(
 /// connections before returning them.
 #[cfg(test)]
 pub(crate) fn mesh_pool_checkout(pool_handle: u64) -> *mut u8 {
+    if crate::authority::current().is_some() {
+        return err_result(crate::authority::refuse());
+    }
+
     match checkout(unsafe { &*(pool_handle as *const PgPool) }) {
         Ok(handle) => alloc_result(0, box_scalar(handle)) as *mut u8,
         Err(error) => err_result(&error),
@@ -324,6 +335,11 @@ pub(crate) fn mesh_pool_checkout(pool_handle: u64) -> *mut u8 {
 /// sends ROLLBACK to clean it up. If ROLLBACK fails, the connection
 /// is destroyed instead of returned to idle.
 pub(crate) fn mesh_pool_checkin(pool_handle: u64, conn_handle: u64) {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return;
+    }
+
     let pool = unsafe { &*(pool_handle as *const PgPool) };
     // Reject foreign and already-returned handles before dereferencing
     // them. This is the runtime backstop for pool provenance.
@@ -362,6 +378,10 @@ pub extern "C-unwind" fn mesh_pool_query(
     sql: *const MeshString,
     params: *mut u8,
 ) -> *mut u8 {
+    if crate::authority::current().is_some() {
+        return err_result(crate::authority::refuse());
+    }
+
     with_connection(pool_handle, |conn| mesh_pg_query(conn, sql, params))
 }
 
@@ -377,6 +397,10 @@ pub extern "C-unwind" fn mesh_pool_execute(
     sql: *const MeshString,
     params: *mut u8,
 ) -> *mut u8 {
+    if crate::authority::current().is_some() {
+        return err_result(crate::authority::refuse());
+    }
+
     with_connection(pool_handle, |conn| mesh_pg_execute(conn, sql, params))
 }
 
@@ -386,6 +410,10 @@ pub extern "C-unwind" fn mesh_pool_query_values(
     sql: *const MeshString,
     params: *mut u8,
 ) -> *mut u8 {
+    if crate::authority::current().is_some() {
+        return err_result(crate::authority::refuse());
+    }
+
     with_connection(pool_handle, |conn| mesh_pg_query_values(conn, sql, params))
 }
 
@@ -395,6 +423,10 @@ pub extern "C-unwind" fn mesh_pool_execute_values(
     sql: *const MeshString,
     params: *mut u8,
 ) -> *mut u8 {
+    if crate::authority::current().is_some() {
+        return err_result(crate::authority::refuse());
+    }
+
     with_connection(pool_handle, |conn| {
         mesh_pg_execute_values(conn, sql, params)
     })
@@ -417,6 +449,10 @@ pub extern "C-unwind" fn mesh_pool_query_as(
     fn_ptr: *mut u8,
     env_ptr: *mut u8,
 ) -> *mut u8 {
+    if crate::authority::current().is_some() {
+        return err_result(crate::authority::refuse());
+    }
+
     // The rows are decoded after the connection is back: a decoder that
     // queries the pool itself then finds it there.
     let query_result = mesh_pool_query(pool_handle, sql as *const MeshString, params);
@@ -434,6 +470,11 @@ pub extern "C-unwind" fn mesh_pool_query_as(
 /// Active connections will be closed when checked in.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_pool_close(pool_handle: u64) {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return;
+    }
+
     let pool = unsafe { &*(pool_handle as *const PgPool) };
     let idle = {
         let mut inner = pool.inner.lock();
@@ -1006,6 +1047,85 @@ mod tests {
             Box::into_raw(Box::new(PgConn::from_test_stream(socket))) as u64,
             peer,
         )
+    }
+    #[test]
+    fn scoped_repo_transaction_refuses_before_pool_lease_or_health_query() {
+        mesh_rt_init();
+        for initially_idle in [false, true] {
+            for retired in [false, true] {
+                let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+                let url = format!(
+                    "postgres://u@{}/d?sslmode=disable",
+                    listener.local_addr().unwrap()
+                );
+                let frames = std::sync::Arc::new(AtomicUsize::new(0));
+                let received = frames.clone();
+                let peer = thread::spawn(move || {
+                    let (mut socket, _) = listener.accept().unwrap();
+                    socket
+                        .set_read_timeout(Some(Duration::from_secs(3)))
+                        .unwrap();
+                    let mut length = [0; 4];
+                    socket.read_exact(&mut length).unwrap();
+                    socket
+                        .read_exact(&mut vec![0; u32::from_be_bytes(length) as usize - 4])
+                        .unwrap();
+                    received.fetch_add(1, Ordering::SeqCst);
+                    socket.write_all(AUTHENTICATED).unwrap();
+                    while let Some(tag) = next_request(&mut socket) {
+                        received.fetch_add(1, Ordering::SeqCst);
+                        if tag == b'Q' || tag == b'S' {
+                            socket.write_all(SELECTED).unwrap();
+                        }
+                    }
+                });
+                let opened = mesh_pool_open(mk_str(url.as_bytes()), initially_idle as i64, 1, 100);
+                let handle = unsafe { unbox_u64_payload((*(opened as *const MeshResult)).value) };
+                let before = frames.load(Ordering::SeqCst);
+                let result = {
+                    let context = crate::authority::test_invocation();
+                    if retired {
+                        context.cancel();
+                    }
+                    let _scope = crate::authority::enter(Some(context));
+                    crate::db::repo::mesh_repo_transaction(
+                        handle,
+                        std::ptr::null(),
+                        std::ptr::null(),
+                    )
+                };
+                let refused = unsafe { (*(result as *const MeshResult)).tag == 1 };
+                let untouched = {
+                    let inner = pool(handle).inner.lock();
+                    inner.idle.len() == initially_idle as usize
+                        && inner.leased.is_empty()
+                        && inner.total_created == initially_idle as usize
+                };
+                let after_scope = frames.load(Ordering::SeqCst);
+                // Existing standalone callers can still open/use the one slot.
+                let ordinary = mesh_pool_query(handle, mk_str(b"SELECT 1"), mesh_list_new());
+                let ordinary_ok = unsafe { (*(ordinary as *const MeshResult)).tag == 0 };
+                // Reclaim even an implementation's leaked lease before reporting failure.
+                let owned_pool = unsafe { Box::from_raw(handle as *mut PgPool) };
+                let inner = owned_pool.inner.lock();
+                for connection in inner.idle.iter().chain(inner.leased.iter()) {
+                    super::super::pg::discard(*connection);
+                }
+                drop(inner);
+                drop(owned_pool);
+                peer.join().unwrap();
+                assert!(refused);
+                assert_eq!(
+                    after_scope, before,
+                    "refusal precedes connection and health queries"
+                );
+                assert!(
+                    untouched,
+                    "refusal preserves the standalone pool's capacity"
+                );
+                assert!(ordinary_ok, "the next ordinary query can use the pool");
+            }
+        }
     }
     #[test]
     fn cancelling_an_opening_handshake_releases_reserved_slot() {

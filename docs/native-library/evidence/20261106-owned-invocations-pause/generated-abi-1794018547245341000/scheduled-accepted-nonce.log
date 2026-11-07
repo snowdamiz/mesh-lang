@@ -1,0 +1,6 @@
+status: Some(0)
+stdout:
+{"case": "accepted-nonce", "baseline": false, "status": 10, "rows": 0, "later_schema": 0, "requests": [], "mutations": ["put", "put"], "mutations_before_retire": ["put"], "retired": true}
+PASS accepted-nonce
+
+stderr:

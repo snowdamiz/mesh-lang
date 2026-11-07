@@ -1,0 +1,15 @@
+{
+  "checked_at": "2026-11-07T02:39:10.326931+00:00",
+  "source_manifest_sha256": "48fd7392c87319a97aed03489f1016525476209398ff27468ea4b0afde1cbee6",
+  "source_members": 33,
+  "source_mismatches": [],
+  "evidence_source_drift": [],
+  "report_sha256": "a9542fb82b2b35dc90481d123a3c67315a5e49a8d58bf70f150f3c99da7c0e97",
+  "executed_builds": false,
+  "executed_tests": false,
+  "network": false,
+  "children": false,
+  "git_mutations": false,
+  "write_root": "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-owned-invocations/implementation-review-r2",
+  "final_family_identity_supplied": false
+}

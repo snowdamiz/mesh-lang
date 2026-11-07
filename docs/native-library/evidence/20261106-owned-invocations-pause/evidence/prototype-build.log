@@ -1,0 +1,555 @@
+   Compiling libc v0.2.180
+   Compiling cfg-if v1.0.4
+   Compiling typenum v1.20.1
+   Compiling serde_core v1.0.228
+   Compiling subtle v2.6.1
+   Compiling zeroize v1.8.2
+   Compiling zerofrom v0.1.6
+   Compiling generic-array v0.14.7
+   Compiling memchr v2.8.0
+   Compiling crypto-common v0.1.7
+   Compiling smallvec v1.15.1
+   Compiling stable_deref_trait v1.2.1
+   Compiling yoke v0.8.1
+   Compiling log v0.4.29
+   Compiling zerovec v0.11.5
+   Compiling block-buffer v0.10.4
+   Compiling once_cell v1.21.3
+   Compiling digest v0.10.7
+   Compiling getrandom v0.2.17
+   Compiling pin-project-lite v0.2.16
+   Compiling tinystr v0.8.2
+   Compiling errno v0.3.14
+   Compiling serde v1.0.228
+   Compiling itoa v1.0.17
+   Compiling litemap v0.8.1
+   Compiling arrayvec v0.7.8
+   Compiling writeable v0.6.2
+   Compiling potential_utf v0.1.4
+   Compiling zerotrie v0.2.3
+   Compiling icu_locale_core v2.1.1
+   Compiling bytes v1.11.1
+   Compiling scopeguard v1.2.0
+   Compiling futures-sink v0.3.31
+   Compiling rustc-hash v2.1.1
+   Compiling futures-core v0.3.31
+   Compiling icu_collections v2.1.1
+   Compiling futures-channel v0.3.31
+   Compiling icu_normalizer_data v2.1.1
+   Compiling icu_properties_data v2.1.2
+   Compiling parking_lot_core v0.9.12
+   Compiling zmij v1.0.19
+   Compiling lock_api v0.4.14
+   Compiling futures-task v0.3.31
+   Compiling icu_provider v2.1.1
+   Compiling percent-encoding v2.3.2
+   Compiling slab v0.4.12
+   Compiling httparse v1.10.1
+   Compiling pin-utils v0.1.0
+   Compiling hashbrown v0.14.5
+   Compiling futures-io v0.3.31
+   Compiling icu_properties v2.1.2
+   Compiling futures-util v0.3.31
+   Compiling icu_normalizer v2.1.1
+   Compiling serde_json v1.0.149
+   Compiling bitcoin-io v0.1.101
+   Compiling zerocopy v0.8.39
+   Compiling hex-conservative v0.2.3
+   Compiling rustls-pki-types v1.14.0
+   Compiling untrusted v0.9.0
+   Compiling utf8parse v0.2.2
+   Compiling ring v0.17.14
+   Compiling pin-project v1.1.10
+   Compiling bitcoin_hashes v0.14.101
+   Compiling idna_adapter v1.2.1
+   Compiling num-traits v0.2.19
+   Compiling parking_lot v0.12.5
+   Compiling mesh-common v0.1.8 (/Users/andreyyurlov/Documents/dev/mesh-lang/compiler/mesh-common)
+   Compiling signal-hook-registry v1.4.8
+   Compiling cpufeatures v0.2.17
+   Compiling socket2 v0.6.2
+   Compiling mio v1.1.1
+   Compiling ppv-lite86 v0.2.21
+   Compiling tracing-core v0.1.36
+   Compiling simd-adler32 v0.3.8
+   Compiling countme v3.0.1
+   Compiling adler2 v2.0.1
+   Compiling bitflags v2.10.0
+   Compiling text-size v1.1.1
+   Compiling anyhow v1.0.104
+   Compiling rustc-hash v1.1.0
+   Compiling utf8_iter v1.0.4
+   Compiling miniz_oxide v0.8.9
+   Compiling rowan v0.16.1
+   Compiling idna v1.1.0
+   Compiling tracing v0.1.44
+   Compiling tokio v1.49.0
+   Compiling mesh-lexer v0.1.8 (/Users/andreyyurlov/Documents/dev/mesh-lang/compiler/mesh-lexer)
+   Compiling rustls-webpki v0.103.16
+   Compiling futures-executor v0.3.31
+   Compiling secp256k1-sys v0.10.1
+   Compiling crc32fast v1.5.0
+   Compiling getrandom v0.3.4
+   Compiling anstyle-parse v0.2.7
+   Compiling form_urlencoded v1.2.2
+   Compiling http v1.4.0
+   Compiling rand_core v0.6.4
+   Compiling colorchoice v1.0.4
+   Compiling anstyle v1.0.13
+   Compiling anstyle-query v1.1.5
+   Compiling rand_core v0.10.1
+   Compiling base64 v0.22.1
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling anstream v0.6.21
+   Compiling ureq-proto v0.5.3 (/Users/andreyyurlov/Documents/dev/mesh-lang/vendor/ureq-proto)
+   Compiling rand v0.10.3
+   Compiling url v2.5.8
+   Compiling flate2 v1.1.9
+   Compiling rustls v0.23.46
+   Compiling secp256k1 v0.29.1
+   Compiling futures v0.3.31
+   Compiling mesh-parser v0.1.8 (/Users/andreyyurlov/Documents/dev/mesh-lang/compiler/mesh-parser)
+   Compiling hex_lit v0.1.1
+   Compiling crossbeam-utils v0.8.21
+   Compiling sha2 v0.10.9
+   Compiling base58ck v0.1.101
+   Compiling webpki-roots v1.0.10
+   Compiling libz-sys v1.1.23
+   Compiling inout v0.1.4
+   Compiling lazy_static v1.5.0
+   Compiling strsim v0.11.1
+   Compiling unicode-width v0.2.2
+   Compiling clap_lex v0.7.7
+   Compiling utf-8 v0.7.6
+   Compiling regex-lite v0.1.9
+   Compiling bitcoin-units v0.1.101
+   Compiling bech32 v0.11.1
+   Compiling libcrux-secrets v0.0.7
+   Compiling bitcoin v0.32.102
+   Compiling libcrux-traits v0.0.9
+   Compiling ureq v3.2.0
+   Compiling llvm-sys v211.0.0
+   Compiling clap_builder v4.5.57
+   Compiling cipher v0.4.4
+   Compiling curve25519-dalek v4.1.3
+   Compiling rust_decimal v1.43.0
+   Compiling libcrux-intrinsics v0.0.9
+   Compiling rand_chacha v0.3.1
+   Compiling rand_core v0.9.5
+   Compiling anyerror v0.1.13
+   Compiling libcrux-platform v0.0.4
+   Compiling universal-hash v0.5.1
+   Compiling aho-corasick v1.1.4
+   Compiling regex-syntax v0.8.10
+   Compiling opaque-debug v0.3.1
+   Compiling rustix v1.1.3
+   Compiling utf8-width v0.1.9
+   Compiling signature v2.2.0
+   Compiling yansi v1.0.1
+   Compiling ed25519 v2.2.3
+   Compiling ariadne v0.6.0
+   Compiling byte-unit v5.2.5
+   Compiling poly1305 v0.8.0
+   Compiling thiserror v1.0.69
+   Compiling libcrux-sha3 v0.0.11
+   Compiling validit v0.2.6
+   Compiling rand v0.8.7
+   Compiling rand_chacha v0.9.0
+   Compiling regex-automata v0.4.14
+   Compiling lightning-types v0.3.5
+   Compiling clap v4.5.57
+   Compiling chacha20 v0.9.1
+   Compiling crossbeam-epoch v0.9.20
+   Compiling derive_more v1.0.0
+   Compiling tracing-futures v0.2.5
+   Compiling chrono v0.4.44
+   Compiling hmac v0.12.1
+   Compiling blake2 v0.10.6
+   Compiling ena v0.14.3
+   Compiling libgit2-sys v0.18.7+1.9.6
+   Compiling aead v0.5.2
+   Compiling hashbrown v0.16.1
+   Compiling base64ct v1.8.3
+   Compiling thiserror v2.0.18
+   Compiling equivalent v1.0.2
+   Compiling maplit v1.0.2
+   Compiling cfg_aliases v0.2.1
+   Compiling openraft v0.9.24
+   Compiling nix v0.29.0
+   Compiling indexmap v2.13.0
+   Compiling argon2 v0.5.3
+   Compiling regex v1.12.3
+   Compiling chacha20poly1305 v0.10.1
+   Compiling mesh-typeck v0.1.8 (/Users/andreyyurlov/Documents/dev/mesh-lang/compiler/mesh-typeck)
+   Compiling pbkdf2 v0.12.2
+   Compiling crossbeam-deque v0.8.6
+   Compiling aws-lc-sys v0.46.0
+   Compiling lightning-invoice v0.34.1
+   Compiling rand v0.9.4
+   Compiling libcrux-ml-kem v0.0.11
+   Compiling libsqlite3-sys v0.36.0
+   Compiling corosensei v0.3.2
+   Compiling redb v4.1.0
+   Compiling ed25519-dalek v2.1.1
+   Compiling x25519-dalek v2.0.1
+   Compiling crossbeam-channel v0.5.15
+   Compiling sha1 v0.10.6
+   Compiling crypto-bigint v0.6.1
+   Compiling toml_datetime v0.6.11
+   Compiling serde_spanned v0.6.9
+   Compiling md-5 v0.10.6
+   Compiling hostname v0.4.2
+   Compiling thiserror-impl v2.0.18
+   Compiling inkwell v0.8.0
+   Compiling winnow v0.7.14
+   Compiling toml_write v0.1.2
+   Compiling mesh-rt v0.1.8 (/Users/andreyyurlov/Documents/dev/mesh-lang/compiler/mesh-rt)
+   Compiling toml_edit v0.22.27
+   Compiling nibble_vec v0.1.0
+   Compiling serde_repr v0.1.20
+   Compiling inkwell_internals v0.13.0
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+    --> compiler/mesh-rt/src/actor/scheduler.rs:1017:10
+     |
+1017 |         .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
+     |          ^^^^^^^^^^^^
+     |
+     = note: `#[warn(deprecated)]` on by default
+help: replace the use of the deprecated method
+     |
+1017 -         .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
+1017 +         .try_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
+     |
+
+   Compiling tower-service v0.3.3
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+  --> compiler/mesh-rt/src/authority.rs:79:34
+   |
+79 |         let id = NEXT_INVOCATION.fetch_update(SeqCst, SeqCst, |n| n.checked_add(1)).map_err(|_| REFUSED)?;
+   |                                  ^^^^^^^^^^^^
+   |
+help: replace the use of the deprecated method
+   |
+79 -         let id = NEXT_INVOCATION.fetch_update(SeqCst, SeqCst, |n| n.checked_add(1)).map_err(|_| REFUSED)?;
+79 +         let id = NEXT_INVOCATION.try_update(SeqCst, SeqCst, |n| n.checked_add(1)).map_err(|_| REFUSED)?;
+   |
+
+   Compiling tower-layer v0.3.3
+   Compiling endian-type v0.1.2
+   Compiling bitflags v1.3.2
+   Compiling tower v0.4.13
+   Compiling lsp-types v0.94.1
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/db/sqlite.rs:649:42
+    |
+649 |         let Ok(handle) = NEXT_CONNECTION.fetch_update(SeqCst, SeqCst, |value| value.checked_add(1))
+    |                                          ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+649 -         let Ok(handle) = NEXT_CONNECTION.fetch_update(SeqCst, SeqCst, |value| value.checked_add(1))
+649 +         let Ok(handle) = NEXT_CONNECTION.try_update(SeqCst, SeqCst, |value| value.checked_add(1))
+    |
+
+   Compiling radix_trie v0.2.1
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/dist/driver_service.rs:849:22
+    |
+849 |                     .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+    |                      ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+849 -                     .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+849 +                     .try_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+  --> compiler/mesh-rt/src/dist/identity.rs:72:14
+   |
+72 |             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+   |              ^^^^^^^^^^^^
+   |
+help: replace the use of the deprecated method
+   |
+72 -             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+72 +             .try_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+   |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+    --> compiler/mesh-rt/src/dist/node.rs:1308:10
+     |
+1308 |         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+     |          ^^^^^^^^^^^^
+     |
+help: replace the use of the deprecated method
+     |
+1308 -         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+1308 +         .try_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+     |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+    --> compiler/mesh-rt/src/dist/node.rs:5978:14
+     |
+5978 |             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+     |              ^^^^^^^^^^^^
+     |
+help: replace the use of the deprecated method
+     |
+5978 -             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+5978 +             .try_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+     |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/dist/operator.rs:312:10
+    |
+312 |         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+    |          ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+312 -         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+312 +         .try_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/dist/telemetry.rs:375:18
+    |
+375 |                 .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+    |                  ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+375 -                 .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+375 +                 .try_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u32>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/dist/telemetry.rs:530:14
+    |
+530 |             .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+    |              ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+530 -             .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+530 +             .try_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/dist/telemetry.rs:735:14
+    |
+735 |             .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+    |              ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+735 -             .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+735 +             .try_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/ws/client.rs:142:14
+    |
+142 |             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+    |              ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+142 -             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+142 +             .try_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/ws/reactor.rs:304:10
+    |
+304 |         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+    |          ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+304 -         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+304 +         .try_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+  --> compiler/mesh-rt/src/protected_memory.rs:41:14
+   |
+41 |             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |used| {
+   |              ^^^^^^^^^^^^
+   |
+help: replace the use of the deprecated method
+   |
+41 -             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |used| {
+41 +             .try_update(Ordering::AcqRel, Ordering::Acquire, |used| {
+   |
+
+   Compiling toml v0.8.23
+   Compiling fd-lock v4.0.4
+   Compiling tokio-util v0.7.18
+warning: methods `spawn_owned_invocation` and `cancel_invocation` are never used
+   --> compiler/mesh-rt/src/actor/scheduler.rs:297:19
+    |
+172 | impl Scheduler {
+    | -------------- methods in this implementation
+...
+297 |     pub(crate) fn spawn_owned_invocation(&self, owned: Arc<crate::library::OwnedInvocation>) -> ProcessId {
+    |                   ^^^^^^^^^^^^^^^^^^^^^^
+...
+301 |     pub(crate) fn cancel_invocation(&self, id: u64) {
+    |                   ^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `cancel` is never used
+  --> compiler/mesh-rt/src/authority.rs:82:19
+   |
+74 | impl InvocationContext {
+   | ---------------------- method in this implementation
+...
+82 |     pub(crate) fn cancel(&self) {
+   |                   ^^^^^^
+
+warning: associated function `from_protected` is never used
+  --> compiler/mesh-rt/src/crypto/mlkem_incremental.rs:34:19
+   |
+29 | impl EncapsulationState {
+   | ----------------------- associated function in this implementation
+...
+34 |     pub(crate) fn from_protected(material: ProtectedBytes) -> Result<Self, CryptoFailure> {
+   |                   ^^^^^^^^^^^^^^
+
+warning: function `finish` is never used
+   --> compiler/mesh-rt/src/crypto/mlkem_incremental.rs:115:15
+    |
+115 | pub(crate) fn finish(
+    |               ^^^^^^
+
+warning: constant `PENDING` is never used
+ --> compiler/mesh-rt/src/library/invocation.rs:9:18
+  |
+9 | pub(crate) const PENDING: i32 = 12;
+  |                  ^^^^^^^
+
+warning: constant `TAKEN` is never used
+  --> compiler/mesh-rt/src/library/invocation.rs:10:18
+   |
+10 | pub(crate) const TAKEN: i32 = 13;
+   |                  ^^^^^
+
+warning: fields `status` and `bytes` are never read
+  --> compiler/mesh-rt/src/library/invocation.rs:13:5
+   |
+12 | struct Outcome {
+   |        ------- fields in this struct
+13 |     status: i32,
+   |     ^^^^^^
+14 |     bytes: Zeroizing<Vec<u8>>,
+   |     ^^^^^
+
+warning: field `0` is never read
+  --> compiler/mesh-rt/src/library/invocation.rs:23:11
+   |
+23 |     Ready(Outcome),
+   |     ----- ^^^^^^^
+   |     |
+   |     field in this variant
+   |
+help: consider changing the field to be of unit type to suppress this warning while preserving the field numbering, or remove the field
+   |
+23 -     Ready(Outcome),
+23 +     Ready(()),
+   |
+
+warning: variants `Running` and `Taken` are never constructed
+  --> compiler/mesh-rt/src/library/invocation.rs:22:5
+   |
+21 | enum Completion {
+   |      ---------- variants in this enum
+22 |     Running(Option<Outcome>),
+   |     ^^^^^^^
+23 |     Ready(Outcome),
+24 |     Taken,
+   |     ^^^^^
+
+warning: fields `entrypoint`, `input`, and `max_output` are never read
+  --> compiler/mesh-rt/src/library/invocation.rs:29:5
+   |
+27 | pub(crate) struct OwnedInvocation {
+   |                   --------------- fields in this struct
+28 |     pub(crate) context: Arc<InvocationContext>,
+29 |     entrypoint: MeshLibraryEntrypoint,
+   |     ^^^^^^^^^^
+30 |     input: Zeroizing<Vec<u8>>,
+   |     ^^^^^
+31 |     max_output: u64,
+   |     ^^^^^^^^^^
+
+warning: methods `cancel` and `take` are never used
+  --> compiler/mesh-rt/src/library/invocation.rs:50:19
+   |
+35 | impl OwnedInvocation {
+   | -------------------- methods in this implementation
+...
+50 |     pub(crate) fn cancel(&self) {
+   |                   ^^^^^^
+...
+61 |     pub(crate) unsafe fn take(&self, output: *mut MeshLibraryBytes) -> i32 {
+   |                          ^^^^
+
+warning: function `submit` is never used
+  --> compiler/mesh-rt/src/library/invocation.rs:82:22
+   |
+82 | pub(crate) unsafe fn submit(
+   |                      ^^^^^^
+
+warning: function `run` is never used
+   --> compiler/mesh-rt/src/library/invocation.rs:114:33
+    |
+114 | pub(crate) extern "C-unwind" fn run(_args: *const u8) {
+    |                                 ^^^
+
+warning: function `initialize_release_policy` is never used
+  --> compiler/mesh-rt/src/protected_memory.rs:21:15
+   |
+21 | pub(crate) fn initialize_release_policy() -> Result<(), ProtectionError> {
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: variant `Unsupported` is never constructed
+  --> compiler/mesh-rt/src/protected_memory.rs:29:5
+   |
+27 | pub(crate) enum ProtectionError {
+   |                 --------------- variant in this enum
+28 |     Limit,
+29 |     Unsupported,
+   |     ^^^^^^^^^^^
+   |
+   = note: `ProtectionError` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: function `initialize_release_policy` is never used
+   --> compiler/mesh-rt/src/protected_memory.rs:302:19
+    |
+302 |     pub(super) fn initialize_release_policy() -> Result<(), ProtectionError> {
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+   Compiling dashmap v5.5.3
+   Compiling auto_impl v1.3.0
+   Compiling tower-lsp-macros v0.9.0
+   Compiling async-trait v0.1.89
+   Compiling home v0.5.12
+   Compiling unicode-segmentation v1.12.0
+   Compiling tower-lsp v0.20.0
+   Compiling rustyline v15.0.0
+   Compiling mesh-codegen v0.1.8 (/Users/andreyyurlov/Documents/dev/mesh-lang/compiler/mesh-codegen)
+   Compiling mesh-fmt v0.1.8 (/Users/andreyyurlov/Documents/dev/mesh-lang/compiler/mesh-fmt)
+   Compiling fastrand v2.3.0
+   Compiling tempfile v3.24.0
+   Compiling mesh-lint v0.1.8 (/Users/andreyyurlov/Documents/dev/mesh-lang/compiler/mesh-lint)
+warning: `mesh-rt` (lib) generated 30 warnings (run `cargo fix --lib -p mesh-rt` to apply 14 suggestions)
+   Compiling mesh-test-rt v0.1.8 (/Users/andreyyurlov/Documents/dev/mesh-lang/compiler/mesh-test-rt)
+   Compiling mesh-repl v0.1.8 (/Users/andreyyurlov/Documents/dev/mesh-lang/compiler/mesh-repl)
+   Compiling git2 v0.21.0
+   Compiling mesh-pkg v0.1.8 (/Users/andreyyurlov/Documents/dev/mesh-lang/compiler/mesh-pkg)
+   Compiling mesh-lsp v0.1.8 (/Users/andreyyurlov/Documents/dev/mesh-lang/compiler/mesh-lsp)
+   Compiling meshc v0.1.8 (/Users/andreyyurlov/Documents/dev/mesh-lang/compiler/meshc)
+    Finished `dev` profile [unoptimized] target(s) in 1m 23s

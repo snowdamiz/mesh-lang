@@ -1339,6 +1339,10 @@ fn parse_command_tag(tag: &str) -> i64 {
 /// a u64, or tag 1 (Err) containing an error message string.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_pg_connect(url: *const MeshString) -> *mut u8 {
+    if crate::authority::current().is_some() {
+        return err_result(crate::authority::refuse());
+    }
+
     match open(unsafe { text_of(url) }) {
         // Result payloads with integer semantics are represented by pointers
         // to boxed integers, as SQLite's handles are.
@@ -1494,6 +1498,11 @@ pub(super) fn discard(handle: u64) {
 /// and lets Box::drop free the Rust memory and close the TcpStream.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_pg_close(conn_handle: u64) {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return;
+    }
+
     close(*unsafe { Box::from_raw(conn_handle as *mut PgConn) });
 }
 
@@ -1622,6 +1631,10 @@ pub extern "C-unwind" fn mesh_pg_execute(
     sql: *const MeshString,
     params: *mut u8,
 ) -> *mut u8 {
+    if crate::authority::current().is_some() {
+        return err_result(crate::authority::refuse());
+    }
+
     unsafe { mesh_execute(conn_handle, sql, params, Values::Text) }
 }
 
@@ -1641,6 +1654,10 @@ pub extern "C-unwind" fn mesh_pg_query(
     sql: *const MeshString,
     params: *mut u8,
 ) -> *mut u8 {
+    if crate::authority::current().is_some() {
+        return err_result(crate::authority::refuse());
+    }
+
     unsafe { mesh_query(conn_handle, sql, params, Values::Text) }
 }
 
@@ -1651,6 +1668,10 @@ pub extern "C-unwind" fn mesh_pg_execute_values(
     sql: *const MeshString,
     params: *mut u8,
 ) -> *mut u8 {
+    if crate::authority::current().is_some() {
+        return err_result(crate::authority::refuse());
+    }
+
     unsafe { mesh_execute(conn_handle, sql, params, Values::Typed) }
 }
 
@@ -1661,6 +1682,10 @@ pub extern "C-unwind" fn mesh_pg_query_values(
     sql: *const MeshString,
     params: *mut u8,
 ) -> *mut u8 {
+    if crate::authority::current().is_some() {
+        return err_result(crate::authority::refuse());
+    }
+
     unsafe { mesh_query(conn_handle, sql, params, Values::Typed) }
 }
 
@@ -1694,6 +1719,10 @@ fn commit(conn: &mut PgConn) -> Result<(), String> {
 /// Sends `BEGIN` and returns Ok(()) or Err(error_message).
 #[no_mangle]
 pub extern "C-unwind" fn mesh_pg_begin(conn_handle: u64) -> *mut u8 {
+    if crate::authority::current().is_some() {
+        return err_result(crate::authority::refuse());
+    }
+
     let conn = unsafe { &mut *(conn_handle as *mut PgConn) };
     unit_result(pg_simple_command(conn, "BEGIN"))
 }
@@ -1708,6 +1737,10 @@ pub extern "C-unwind" fn mesh_pg_begin(conn_handle: u64) -> *mut u8 {
 /// when a failed statement had aborted the transaction.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_pg_commit(conn_handle: u64) -> *mut u8 {
+    if crate::authority::current().is_some() {
+        return err_result(crate::authority::refuse());
+    }
+
     let conn = unsafe { &mut *(conn_handle as *mut PgConn) };
     unit_result(commit(conn))
 }
@@ -1721,6 +1754,10 @@ pub extern "C-unwind" fn mesh_pg_commit(conn_handle: u64) -> *mut u8 {
 /// Sends `ROLLBACK` and returns Ok(()) or Err(error_message).
 #[no_mangle]
 pub extern "C-unwind" fn mesh_pg_rollback(conn_handle: u64) -> *mut u8 {
+    if crate::authority::current().is_some() {
+        return err_result(crate::authority::refuse());
+    }
+
     let conn = unsafe { &mut *(conn_handle as *mut PgConn) };
     unit_result(pg_simple_command(conn, "ROLLBACK"))
 }
@@ -1761,6 +1798,10 @@ pub extern "C-unwind" fn mesh_pg_transaction(
     fn_ptr: *const u8,
     env_ptr: *const u8,
 ) -> *mut u8 {
+    if crate::authority::current().is_some() {
+        return err_result(crate::authority::refuse());
+    }
+
     unsafe {
         // The callback may query this handle. Keep only its raw pointer
         // across the callback, not an overlapping Rust mutable reference.
@@ -1854,6 +1895,10 @@ pub extern "C-unwind" fn mesh_pg_query_as(
     fn_ptr: *mut u8,
     env_ptr: *mut u8,
 ) -> *mut u8 {
+    if crate::authority::current().is_some() {
+        return err_result(crate::authority::refuse());
+    }
+
     unsafe {
         let query_result = mesh_pg_query(conn_handle, sql as *const MeshString, params);
         decode_rows(query_result, fn_ptr, env_ptr)

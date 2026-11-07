@@ -1,0 +1,246 @@
+   Compiling getrandom v0.2.17
+   Compiling futures-sink v0.3.31
+   Compiling futures-core v0.3.31
+   Compiling getrandom v0.3.4
+   Compiling futures-channel v0.3.31
+   Compiling cpufeatures v0.2.17
+   Compiling rand_core v0.6.4
+   Compiling ring v0.17.14
+   Compiling rand_core v0.9.5
+   Compiling futures-util v0.3.31
+   Compiling rand_chacha v0.3.1
+   Compiling httparse v1.10.1
+   Compiling libcrux-platform v0.0.4
+   Compiling ureq-proto v0.5.3 (/Users/andreyyurlov/Documents/dev/mesh-lang/vendor/ureq-proto)
+   Compiling libcrux-sha3 v0.0.11
+   Compiling tokio v1.49.0
+   Compiling rand v0.8.7
+   Compiling rand_chacha v0.9.0
+   Compiling rustls-webpki v0.103.16
+   Compiling parking_lot_core v0.9.12
+   Compiling sha2 v0.10.9
+   Compiling ed25519-dalek v2.1.1
+   Compiling rustls v0.23.46
+   Compiling parking_lot v0.12.5
+   Compiling futures-executor v0.3.31
+   Compiling url v2.5.8
+   Compiling futures v0.3.31
+   Compiling rand v0.9.4
+   Compiling corosensei v0.3.2
+   Compiling libcrux-ml-kem v0.0.11
+   Compiling x25519-dalek v2.0.1
+   Compiling openraft v0.9.24
+   Compiling sha1 v0.10.6
+   Compiling mio v1.1.1
+   Compiling errno v0.3.14
+   Compiling hostname v0.4.2
+   Compiling rustix v1.1.3
+   Compiling ureq v3.2.0
+   Compiling tempfile v3.24.0
+   Compiling mesh-rt v0.1.8 (/Users/andreyyurlov/Documents/dev/mesh-lang/compiler/mesh-rt)
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+    --> compiler/mesh-rt/src/actor/scheduler.rs:1017:10
+     |
+1017 |         .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
+     |          ^^^^^^^^^^^^
+     |
+     = note: `#[warn(deprecated)]` on by default
+help: replace the use of the deprecated method
+     |
+1017 -         .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
+1017 +         .try_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
+     |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+  --> compiler/mesh-rt/src/authority.rs:79:34
+   |
+79 |         let id = NEXT_INVOCATION.fetch_update(SeqCst, SeqCst, |n| n.checked_add(1)).map_err(|_| REFUSED)?;
+   |                                  ^^^^^^^^^^^^
+   |
+help: replace the use of the deprecated method
+   |
+79 -         let id = NEXT_INVOCATION.fetch_update(SeqCst, SeqCst, |n| n.checked_add(1)).map_err(|_| REFUSED)?;
+79 +         let id = NEXT_INVOCATION.try_update(SeqCst, SeqCst, |n| n.checked_add(1)).map_err(|_| REFUSED)?;
+   |
+
+warning: use of deprecated function `libc::mach_task_self`: Use the `mach2` crate instead
+    --> compiler/mesh-rt/src/secret.rs:3692:35
+     |
+3692 |         let task = unsafe { libc::mach_task_self() };
+     |                                   ^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/db/sqlite.rs:649:42
+    |
+649 |         let Ok(handle) = NEXT_CONNECTION.fetch_update(SeqCst, SeqCst, |value| value.checked_add(1))
+    |                                          ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+649 -         let Ok(handle) = NEXT_CONNECTION.fetch_update(SeqCst, SeqCst, |value| value.checked_add(1))
+649 +         let Ok(handle) = NEXT_CONNECTION.try_update(SeqCst, SeqCst, |value| value.checked_add(1))
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+    --> compiler/mesh-rt/src/actor/scheduler.rs:1017:10
+     |
+1017 |         .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
+     |          ^^^^^^^^^^^^
+     |
+help: replace the use of the deprecated method
+     |
+1017 -         .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
+1017 +         .try_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
+     |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/dist/driver_service.rs:849:22
+    |
+849 |                     .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+    |                      ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+849 -                     .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+849 +                     .try_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+  --> compiler/mesh-rt/src/dist/identity.rs:72:14
+   |
+72 |             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+   |              ^^^^^^^^^^^^
+   |
+help: replace the use of the deprecated method
+   |
+72 -             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+72 +             .try_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+   |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+    --> compiler/mesh-rt/src/dist/node.rs:1310:10
+     |
+1310 |         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+     |          ^^^^^^^^^^^^
+     |
+help: replace the use of the deprecated method
+     |
+1310 -         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+1310 +         .try_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+     |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+    --> compiler/mesh-rt/src/dist/node.rs:5980:14
+     |
+5980 |             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+     |              ^^^^^^^^^^^^
+     |
+help: replace the use of the deprecated method
+     |
+5980 -             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+5980 +             .try_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+     |
+
+error[E0308]: mismatched types
+    --> compiler/mesh-rt/src/dist/node.rs:6241:55
+     |
+6240 | ) -> i64 {
+     |      --- expected `i64` because of return type
+6241 |     if crate::authority::current().is_some() { return crate::io::err_result(crate::authority::refuse()) }
+     |                                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `i64`, found `*mut _`
+     |
+     = note:     expected type `i64`
+             found raw pointer `*mut _`
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/dist/operator.rs:312:10
+    |
+312 |         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+    |          ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+312 -         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+312 +         .try_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/dist/telemetry.rs:375:18
+    |
+375 |                 .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+    |                  ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+375 -                 .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+375 +                 .try_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u32>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/dist/telemetry.rs:530:14
+    |
+530 |             .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+    |              ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+530 -             .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+530 +             .try_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/dist/telemetry.rs:735:14
+    |
+735 |             .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+    |              ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+735 -             .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+735 +             .try_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/ws/client.rs:142:14
+    |
+142 |             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+    |              ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+142 -             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+142 +             .try_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/ws/reactor.rs:304:10
+    |
+304 |         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+    |          ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+304 -         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+304 +         .try_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+  --> compiler/mesh-rt/src/protected_memory.rs:41:14
+   |
+41 |             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |used| {
+   |              ^^^^^^^^^^^^
+   |
+help: replace the use of the deprecated method
+   |
+41 -             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |used| {
+41 +             .try_update(Ordering::AcqRel, Ordering::Acquire, |used| {
+   |
+
+For more information about this error, try `rustc --explain E0308`.
+warning: `mesh-rt` (lib) generated 14 warnings
+error: could not compile `mesh-rt` (lib) due to 1 previous error; 14 warnings emitted
+warning: build failed, waiting for other jobs to finish...
+warning: `mesh-rt` (lib test) generated 15 warnings (13 duplicates)
+error: could not compile `mesh-rt` (lib test) due to 1 previous error; 15 warnings emitted

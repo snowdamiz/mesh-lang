@@ -44,6 +44,9 @@ use super::stack::{
     clear_current_pid, get_current_pid, set_current_pid, CoroutineHandle, CURRENT_YIELDER,
 };
 
+#[cfg(test)]
+pub(crate) static BEFORE_OWNED_REMOVAL: Mutex<Option<Box<dyn FnOnce() + Send>>> = Mutex::new(None);
+
 // ---------------------------------------------------------------------------
 // SpawnRequest
 // ---------------------------------------------------------------------------
@@ -274,7 +277,7 @@ impl Scheduler {
         priority: u8,
         shape: *const u32,
     ) -> ProcessId {
-        self.spawn_process(fn_ptr, args_ptr, args_size, priority, shape, None)
+        self.spawn_process(fn_ptr, args_ptr, args_size, priority, shape, None, None)
     }
 
     /// `spawn` of an actor linked to `parent` from the start: a link made once
@@ -291,7 +294,39 @@ impl Scheduler {
         parent_traps: bool,
     ) -> ProcessId {
         let (shape, link) = (std::ptr::null(), Some((parent, parent_traps)));
-        self.spawn_process(fn_ptr, args_ptr, args_size, priority, shape, link)
+        self.spawn_process(fn_ptr, args_ptr, args_size, priority, shape, link, None)
+    }
+
+    pub(crate) fn spawn_owned_invocation(
+        &self,
+        owned: Arc<crate::library::OwnedInvocation>,
+    ) -> ProcessId {
+        self.spawn_process(
+            crate::library::invocation::run as *const u8,
+            std::ptr::null(),
+            0,
+            1,
+            std::ptr::null(),
+            None,
+            Some(owned),
+        )
+    }
+
+    pub(crate) fn cancel_invocation(&self, id: u64) {
+        let processes: Vec<_> = self.process_table.read().values().cloned().collect();
+        for process in processes {
+            let mut process = process.lock();
+            if process
+                .invocation
+                .as_ref()
+                .is_some_and(|context| context.id == id)
+            {
+                process.mark_exited(ExitReason::Killed);
+                let pid = process.pid;
+                drop(process);
+                self.wake_process(pid);
+            }
+        }
     }
 
     fn spawn_process(
@@ -302,13 +337,29 @@ impl Scheduler {
         priority: u8,
         shape: *const u32,
         link: Option<(ProcessId, bool)>,
+        owned: Option<Arc<crate::library::OwnedInvocation>>,
     ) -> ProcessId {
         let pid = self.fresh_pid();
         let priority = Priority::from_u8(priority);
 
         // Create process entry in the table.
         let mut process = Process::new(pid, priority);
-        process.invocation = crate::authority::current();
+        process.invocation = owned
+            .as_ref()
+            .map(|root| Arc::clone(&root.context))
+            .or_else(crate::authority::current);
+        if let Some(invocation) = &process.invocation {
+            invocation.process_started();
+        }
+        process.library_call = owned.is_some();
+        process.owned_invocation = owned;
+        if process
+            .invocation
+            .as_ref()
+            .is_some_and(|context| !context.live())
+        {
+            process.mark_exited(ExitReason::Killed);
+        }
         if let Some((parent, parent_traps)) = link {
             process.links.insert(parent);
             if let Some(parent) = self.get_process(parent) {
@@ -728,12 +779,24 @@ fn worker_loop(
                     }
                 }
             };
+            drop(process);
 
             if let Some(reason) = exited_reason {
                 finalize_managed_process(&process_table, &active_count, req.pid, reason);
             } else {
                 // Create the coroutine only after confirming the queued actor is live.
-                let mut handle = CoroutineHandle::new(req.fn_ptr, req.args_ptr);
+                let mut handle = match CoroutineHandle::try_new(req.fn_ptr, req.args_ptr) {
+                    Ok(handle) => handle,
+                    Err(_) => {
+                        finalize_managed_process(
+                            &process_table,
+                            &active_count,
+                            req.pid,
+                            ExitReason::Error("coroutine allocation failed".into()),
+                        );
+                        continue;
+                    }
+                };
                 match resume_process(&process_table, &active_count, req.pid, &mut handle) {
                     Resumed::Runnable => runnable.push((req.pid, handle)),
                     Resumed::Waiting => {
@@ -920,25 +983,33 @@ fn resume_process(
     pid: ProcessId,
     handle: &mut CoroutineHandle,
 ) -> Resumed {
-    let exited_reason =
-        process_table
-            .read()
-            .get(&pid)
-            .and_then(|process| match &process.lock().state {
-                ProcessState::Exited(reason) => Some(reason.clone()),
-                _ => None,
-            });
+    let process = process_table.read().get(&pid).cloned().expect(IN_TABLE);
+    let (invocation, exited_reason) = {
+        let mut process = process.lock();
+        if process
+            .invocation
+            .as_ref()
+            .is_some_and(|context| !context.live())
+        {
+            process.mark_exited(ExitReason::Killed);
+        }
+        let reason = match &process.state {
+            ProcessState::Exited(reason) => Some(reason.clone()),
+            _ => None,
+        };
+        (process.invocation.clone(), reason)
+    };
+    drop(process);
+    let _invocation = crate::authority::enter(invocation.clone());
+    set_current_pid(pid);
     if let Some(reason) = exited_reason {
+        handle.cancel();
+        clear_current_pid();
+        CURRENT_YIELDER.with(|current| current.yielder.set(None));
+        handle.release_finished();
         finalize_managed_process(process_table, active_count, pid, reason);
         return Resumed::Finished;
     }
-
-    let invocation = process_table
-        .read()
-        .get(&pid)
-        .and_then(|process| process.lock().invocation.clone());
-    let _invocation = crate::authority::enter(invocation);
-    set_current_pid(pid);
     let result = handle.resume_catching_panic();
     clear_current_pid();
     CURRENT_YIELDER.with(|current| current.yielder.set(None));
@@ -963,6 +1034,11 @@ fn resume_process(
                 }
             };
             if let Some(reason) = exited_reason {
+                set_current_pid(pid);
+                handle.cancel();
+                clear_current_pid();
+                CURRENT_YIELDER.with(|current| current.yielder.set(None));
+                handle.release_finished();
                 finalize_managed_process(process_table, active_count, pid, reason);
                 return Resumed::Finished;
             }
@@ -974,6 +1050,7 @@ fn resume_process(
                 Err(message) => ExitReason::Error(message),
                 Ok(true) => unreachable!(),
             };
+            handle.release_finished();
             finalize_managed_process(process_table, active_count, pid, reason);
             Resumed::Finished
         }
@@ -1057,7 +1134,7 @@ fn handle_process_exit(
     fallback_reason: ExitReason,
 ) -> bool {
     // Claim finalization and extract callback/notification state under one lock.
-    let (reason, terminate_cb, linked_pids, monitored_by_entries, invocation) = {
+    let (reason, terminate_cb, linked_pids, monitored_by_entries, invocation, owned) = {
         if let Some(proc_arc) = process_table.read().get(&pid) {
             let mut proc = proc_arc.lock();
             let reason = proc
@@ -1066,13 +1143,20 @@ fn handle_process_exit(
             let cb = proc.terminate_callback.take();
             let links = std::mem::take(&mut proc.links);
             let monitored_by = std::mem::take(&mut proc.monitored_by);
-            (reason, cb, links, monitored_by, proc.invocation.take())
+            (
+                reason,
+                cb,
+                links,
+                monitored_by,
+                proc.invocation.take(),
+                proc.owned_invocation.take(),
+            )
         } else {
             return false;
         }
     };
 
-    let _invocation = crate::authority::enter(invocation);
+    let _invocation = crate::authority::enter(invocation.clone());
     // Step 1: Invoke terminate callback (panic-safe).
     if let Some(cb) = terminate_cb {
         invoke_terminate_callback(cb, &reason);
@@ -1140,9 +1224,22 @@ fn handle_process_exit(
         }
     }
 
+    #[cfg(test)]
+    if owned.is_some() {
+        let barrier = BEFORE_OWNED_REMOVAL.lock().take();
+        if let Some(barrier) = barrier {
+            barrier();
+        }
+    }
     // Step 4: Release the completed actor and its private heap.
     let removed = process_table.write().remove(&pid);
     drop(removed);
+    if let Some(invocation) = invocation {
+        invocation.process_finished();
+    }
+    if let Some(owned) = owned {
+        owned.finish(&reason);
+    }
     true
 }
 

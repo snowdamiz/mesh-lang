@@ -3,6 +3,10 @@
 //! Each invocation owns a short-lived runtime process. Only copied response
 //! bytes cross the ABI; persistent state belongs in storage or spawned actors.
 
+pub(crate) mod invocation;
+pub use invocation::mesh_library_submit_bounded_v2;
+pub(crate) use invocation::OwnedInvocation;
+
 use std::ffi::c_void;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::ptr;
@@ -148,6 +152,7 @@ impl RegisteredCallbacks {
 enum Lifecycle {
     New,
     Running(ProcessId),
+    Stopping,
     Shutdown,
 }
 
@@ -205,6 +210,10 @@ impl Drop for CallContext {
 
 #[no_mangle]
 pub extern "C" fn mesh_library_enable_protected_v2(required: u64) -> i32 {
+    if crate::authority::in_owned_callback() {
+        return MESH_LIBRARY_ERR_BUSY;
+    }
+
     if required == 0 || required & !crate::authority::mesh_library_capabilities_v2() != 0 {
         return crate::authority::UNSUPPORTED;
     }
@@ -218,10 +227,14 @@ pub extern "C" fn mesh_library_enable_protected_v2(required: u64) -> i32 {
 
 #[no_mangle]
 pub extern "C" fn mesh_library_init() -> i32 {
+    if crate::authority::in_owned_callback() {
+        return MESH_LIBRARY_ERR_BUSY;
+    }
+
     let mut lifecycle = LIFECYCLE.lock();
     match *lifecycle {
         Lifecycle::Running(_) => MESH_LIBRARY_OK,
-        Lifecycle::Shutdown => MESH_LIBRARY_ERR_NOT_INITIALIZED,
+        Lifecycle::Stopping | Lifecycle::Shutdown => MESH_LIBRARY_ERR_NOT_INITIALIZED,
         Lifecycle::New => {
             mesh_rt_init();
             actor::mesh_rt_init_actor(1);
@@ -240,12 +253,18 @@ pub extern "C" fn mesh_library_init() -> i32 {
 
 #[no_mangle]
 pub extern "C" fn mesh_library_shutdown() -> i32 {
+    if crate::authority::in_callback() || crate::authority::current().is_some() {
+        return MESH_LIBRARY_ERR_BUSY;
+    }
     let _call = CALL_LOCK.lock();
-    let mut lifecycle = LIFECYCLE.lock();
-    let Lifecycle::Running(pid) = *lifecycle else {
-        return MESH_LIBRARY_OK;
+    let pid = {
+        let mut lifecycle = LIFECYCLE.lock();
+        let Lifecycle::Running(pid) = *lifecycle else {
+            return MESH_LIBRARY_OK;
+        };
+        *lifecycle = Lifecycle::Stopping;
+        pid
     };
-
     if let Some(scheduler) = actor::GLOBAL_SCHEDULER.get() {
         scheduler.finalize_host_process(pid);
         scheduler.signal_shutdown();
@@ -255,7 +274,7 @@ pub extern "C" fn mesh_library_shutdown() -> i32 {
         stack::clear_current_pid();
     }
     *HOST_CALLBACKS.write() = None;
-    *lifecycle = Lifecycle::Shutdown;
+    *LIFECYCLE.lock() = Lifecycle::Shutdown;
     MESH_LIBRARY_OK
 }
 
@@ -263,6 +282,10 @@ pub extern "C" fn mesh_library_shutdown() -> i32 {
 pub extern "C" fn mesh_library_register_host_callbacks(
     callbacks: *const MeshLibraryHostCallbacksV1,
 ) -> i32 {
+    if crate::authority::in_owned_callback() {
+        return MESH_LIBRARY_ERR_BUSY;
+    }
+
     if callbacks.is_null() {
         return MESH_LIBRARY_ERR_INVALID_ARGUMENT;
     }
@@ -360,6 +383,7 @@ impl crate::authority::FixedEffect for HostCall<'_> {
     const LOCAL: bool = false;
     fn execute(self) -> Self::Output {
         crate::actor::stack::on_native_stack(move || {
+            let _callback = crate::authority::callback_scope(crate::authority::current().is_some());
             let mut output_len = 0;
             let status = unsafe {
                 (self.callback)(
@@ -427,6 +451,9 @@ pub unsafe extern "C" fn mesh_library_invoke_bounded(
         return MESH_LIBRARY_ERR_INVALID_ARGUMENT;
     }
     (*output) = MeshLibraryBytes::default();
+    if crate::authority::in_callback() {
+        return MESH_LIBRARY_ERR_BUSY;
+    }
     if !(1..=MAX_EXPORT_BYTES).contains(&max_input) || !(1..=MAX_EXPORT_BYTES).contains(&max_output)
     {
         return MESH_LIBRARY_ERR_INVALID_ARGUMENT;
@@ -435,6 +462,9 @@ pub unsafe extern "C" fn mesh_library_invoke_bounded(
         return MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE;
     }
     let invocation = crate::authority::current();
+    if invocation.as_ref().is_some_and(|context| context.scheduled) {
+        return MESH_LIBRARY_ERR_BUSY;
+    }
     if crate::authority::protected() && invocation.as_ref().is_none_or(|context| !context.live()) {
         return crate::authority::REFUSED;
     }
@@ -458,6 +488,9 @@ pub unsafe extern "C" fn mesh_library_invoke_bounded(
         let mut process = process.lock();
         process.library_call = true;
         process.invocation = invocation.clone();
+        if let Some(invocation) = &process.invocation {
+            invocation.process_started();
+        }
         // Use the same safe-point collector as native-thread main, never the
         // allocator: runtime temporaries are not all visible GC roots. Calls
         // from a coroutine retain their heap until return, with its inherited

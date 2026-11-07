@@ -1,0 +1,410 @@
+//! Corosensei-based stackful coroutine management for Mesh actors.
+//!
+//! Each actor runs as a stackful coroutine with a 64 KiB stack. The coroutine
+//! yields when its reduction counter is exhausted, allowing the scheduler to
+//! run other actors on the same OS thread.
+//!
+//! ## Thread-local State
+//!
+//! Two thread-locals track the current execution context:
+//! - `CURRENT_YIELDER`: pointer to the active coroutine's Yielder (for yield on reduction exhaustion)
+//! - `CURRENT_PID`: the PID of the currently running actor (for `mesh_actor_self()`)
+//!
+//! The base of a coroutine's stack, where the collector's scan ends, is kept
+//! on its process (`Process::stack_base`).
+
+use corosensei::stack::DefaultStack;
+use corosensei::{Coroutine, CoroutineResult, Yielder};
+
+use super::process::{ProcessId, DEFAULT_STACK_SIZE};
+
+use std::cell::Cell;
+
+// ---------------------------------------------------------------------------
+// Thread-local current-actor context
+// ---------------------------------------------------------------------------
+
+/// Private unwind marker for a normal stop, distinct from an actor failure.
+pub(crate) struct ActorStopped;
+
+/// The running coroutine's yielder and this thread's reduction countdown.
+///
+/// They share one thread-local because `mesh_reduction_check` reads both at
+/// every call site and loop back-edge, and each thread-local access is a
+/// function call on some targets.
+pub struct YielderSlot {
+    pub(crate) yielder: Cell<Option<*const ()>>,
+    pub(crate) reductions: Cell<u32>,
+    /// Raised by the allocator when the main thread's heap is due a
+    /// collection. The main thread is no coroutine and never yields, which is
+    /// where an actor collects, so it collects at its next reduction check.
+    pub(crate) gc_wanted: Cell<bool>,
+}
+
+thread_local! {
+    /// Raw pointer to the current coroutine's Yielder.
+    ///
+    /// Set before resuming a coroutine, cleared after it yields or completes.
+    /// Used by `mesh_reduction_check()` to yield the current actor.
+    ///
+    /// Safety: The pointer is valid only while the coroutine is running.
+    /// We store it as `*const ()` to erase the lifetime; the Yielder is
+    /// borrowed from within the coroutine body and remains valid for the
+    /// duration of that resume.
+    pub static CURRENT_YIELDER: YielderSlot = const {
+        YielderSlot {
+            yielder: Cell::new(None),
+            reductions: Cell::new(super::process::DEFAULT_REDUCTIONS),
+            gc_wanted: Cell::new(false),
+        }
+    };
+
+    /// PID of the currently executing actor on this thread.
+    pub static CURRENT_PID: Cell<Option<ProcessId>> = const { Cell::new(None) };
+}
+
+/// Set the current actor PID on this thread.
+pub fn set_current_pid(pid: ProcessId) {
+    CURRENT_PID.with(|c| c.set(Some(pid)));
+}
+
+/// Get the current actor PID on this thread.
+pub fn get_current_pid() -> Option<ProcessId> {
+    CURRENT_PID.with(|c| c.get())
+}
+
+/// Clear the current actor PID on this thread.
+pub fn clear_current_pid() {
+    CURRENT_PID.with(|c| c.set(None));
+    crate::gc::forget_current_process();
+}
+
+// ---------------------------------------------------------------------------
+// Yield support
+// ---------------------------------------------------------------------------
+
+/// Yield the current coroutine (called from `mesh_reduction_check`).
+///
+/// After `suspend()` returns (coroutine is resumed), we re-install the yielder
+/// into the thread-local because another coroutine may have run on this thread
+/// in between and overwritten it.
+///
+/// # Safety
+///
+/// Must only be called from within a running coroutine (i.e., CURRENT_YIELDER
+/// is set). Panics if called outside of a coroutine context.
+// Never inlined: a context switch saves every callee-saved register, and
+// inlining it would put that prologue on `mesh_reduction_check`'s fast path.
+#[inline(never)]
+pub fn yield_current() {
+    crate::authority::suspend_or_stop();
+    // Every suspension is a safe cooperative collection point, including
+    // blocking receive in long-lived actors that may never exhaust reductions.
+    super::try_trigger_gc();
+
+    CURRENT_YIELDER.with(|c| {
+        let c = &c.yielder;
+        let ptr = c
+            .get()
+            .expect("yield_current called outside of coroutine context");
+        // Safety: The pointer is valid because we are inside the coroutine body
+        // that set it, and the Yielder is borrowed for the duration of the body.
+        let yielder: &Yielder<(), ()> = unsafe { &*(ptr as *const Yielder<(), ()>) };
+        yielder.suspend(());
+        // Re-install the yielder after resume. Another coroutine may have
+        // overwritten the thread-local while we were suspended.
+        c.set(Some(ptr));
+    });
+}
+
+/// Synchronous native callbacks use the worker's native stack, never another
+/// thread's PID/yielder. Borrowed buffers and original context remain pinned
+/// until the callback returns. No Mesh callback or suspension is permitted here.
+pub(crate) fn on_native_stack<F: FnOnce() -> R + Send, R>(f: F) -> R {
+    let yielder = CURRENT_YIELDER.with(|slot| slot.yielder.get());
+    match yielder {
+        None => f(),
+        Some(ptr) => {
+            let yielder = unsafe { &*(ptr as *const Yielder<(), ()>) };
+            yielder.on_parent_stack(move || {
+                struct Restore(Option<*const ()>);
+                impl Drop for Restore {
+                    fn drop(&mut self) {
+                        CURRENT_YIELDER.with(|slot| slot.yielder.set(self.0));
+                    }
+                }
+                let _restore = Restore(CURRENT_YIELDER.with(|slot| slot.yielder.replace(None)));
+                crate::stack_overflow::on_stack(current_thread_stack_bounds().0, f)
+            })
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// CoroutineHandle
+// ---------------------------------------------------------------------------
+
+/// A handle wrapping a corosensei `Coroutine` for an actor.
+///
+/// The coroutine runs the actor's entry function on a dedicated 64 KiB stack.
+/// It yields when its reduction counter is exhausted and resumes later.
+///
+/// `CoroutineHandle` is `!Send` because corosensei coroutines cannot be moved
+/// across threads. The scheduler ensures coroutines stay on the thread that
+/// created them.
+#[cfg(test)]
+pub(crate) static FAIL_NEXT_STACK: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+pub struct CoroutineHandle {
+    coro: Option<Coroutine<(), (), ()>>,
+    /// Lowest address of the coroutine's stack (its guard page).
+    stack_limit: usize,
+}
+
+impl CoroutineHandle {
+    /// Create a new coroutine that will call `entry_fn(args_ptr)`.
+    ///
+    /// The entry function signature matches the Mesh actor ABI:
+    /// `extern "C" fn(args: *const u8)`.
+    ///
+    /// The coroutine installs its Yielder into the thread-local before
+    /// calling the entry function, so `mesh_reduction_check()` can yield.
+    pub fn new(entry_fn: *const u8, args_ptr: *const u8) -> Self {
+        Self::try_new(entry_fn, args_ptr).expect("failed to allocate coroutine stack")
+    }
+
+    pub(crate) fn try_new(entry_fn: *const u8, args_ptr: *const u8) -> std::io::Result<Self> {
+        #[cfg(test)]
+        if FAIL_NEXT_STACK.swap(false, std::sync::atomic::Ordering::SeqCst) {
+            return Err(std::io::Error::other(
+                "injected coroutine stack allocation failure",
+            ));
+        }
+        let stack = DefaultStack::new(DEFAULT_STACK_SIZE)?;
+        let stack_limit = {
+            use corosensei::stack::Stack;
+            stack.limit().get()
+        };
+
+        // Capture the function pointer and args for the closure.
+        let fn_ptr = entry_fn as usize;
+        let args = args_ptr as usize;
+
+        let coro = Coroutine::with_stack(stack, move |yielder: &Yielder<(), ()>, _input: ()| {
+            // Capture the stack base at the very start of the coroutine body.
+            // This local variable is near the base of the coroutine stack, so
+            // its address serves as the upper bound for GC stack scanning.
+            let stack_anchor: u64 = 0;
+            let _ = std::hint::black_box(&stack_anchor);
+            if let Some(process) = crate::actor::current_process() {
+                process.lock().stack_base = &stack_anchor as *const u64 as *const u8;
+            }
+
+            // Install yielder in thread-local so mesh_reduction_check can access it.
+            CURRENT_YIELDER.with(|c| {
+                c.yielder
+                    .set(Some(yielder as *const Yielder<(), ()> as *const ()));
+            });
+
+            // Call the actor entry function.
+            // Safety: The fn_ptr was provided by the scheduler from a valid extern "C" fn.
+            let func: extern "C-unwind" fn(*const u8) =
+                unsafe { std::mem::transmute::<usize, extern "C-unwind" fn(*const u8)>(fn_ptr) };
+            func(args as *const u8);
+
+            // No need to clear CURRENT_YIELDER here -- the scheduler clears
+            // the thread-local context after resume returns (whether yield or
+            // completion). Clearing here would interfere with the next coroutine
+            // on this thread if it ran between our yield and resume.
+        });
+
+        Ok(CoroutineHandle {
+            coro: Some(coro),
+            stack_limit,
+        })
+    }
+
+    /// Resume the coroutine.
+    ///
+    /// Returns `true` if the coroutine yielded (still has work to do),
+    /// `false` if it completed (returned from entry function).
+    pub fn resume(&mut self) -> bool {
+        let limit = self.stack_limit;
+        let result = crate::stack_overflow::on_stack(limit, || {
+            self.coro.as_mut().expect("live coroutine").resume(())
+        });
+        match result {
+            CoroutineResult::Yield(()) => true,
+            CoroutineResult::Return(()) => false,
+        }
+    }
+
+    /// Resume an actor while converting an unwinding Mesh panic into an exit
+    /// reason that the scheduler can propagate to links and supervisors.
+    pub(crate) fn resume_catching_panic(&mut self) -> Result<bool, String> {
+        let resumed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.resume()));
+        if resumed.is_err() {
+            crate::stack_overflow::back_on_thread_stack();
+        }
+        match resumed {
+            Ok(value) => Ok(value),
+            Err(panic) if panic.is::<ActorStopped>() => Ok(false),
+            Err(panic) => Err(if let Some(message) = panic.downcast_ref::<String>() {
+                message.clone()
+            } else if let Some(message) = panic.downcast_ref::<&str>() {
+                (*message).to_string()
+            } else {
+                "actor panicked".to_string()
+            }),
+        }
+    }
+
+    pub(crate) fn cancel(&mut self) {
+        self.coro.as_mut().expect("live coroutine").force_unwind();
+        crate::stack_overflow::back_on_thread_stack();
+    }
+
+    /// Release the finished stack before publishing the root's completion.
+    pub(crate) fn release_finished(&mut self) {
+        assert!(self.done());
+        drop(self.coro.take());
+    }
+
+    /// Check whether the coroutine has finished.
+    pub fn done(&self) -> bool {
+        self.coro.as_ref().is_none_or(Coroutine::done)
+    }
+}
+
+/// The highest address of the calling thread's stack, where a conservative
+/// scan of it has to stop, or null where the platform offers no way to ask
+/// (the thread then never collects, as the main thread used not to).
+pub(crate) fn current_thread_stack_base() -> *const u8 {
+    current_thread_stack_bounds().1 as *const u8
+}
+
+/// The lowest and the highest address of the calling thread's stack, or
+/// zeros where the platform does not say.
+pub(crate) fn current_thread_stack_bounds() -> (usize, usize) {
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    unsafe {
+        let thread = libc::pthread_self();
+        let top = libc::pthread_get_stackaddr_np(thread) as usize;
+        (
+            top.saturating_sub(libc::pthread_get_stacksize_np(thread)),
+            top,
+        )
+    }
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    unsafe {
+        // Unknown (zeros) if either query fails: nothing is written then.
+        let mut attr: libc::pthread_attr_t = std::mem::zeroed();
+        let mut lowest: *mut libc::c_void = std::ptr::null_mut();
+        let mut size: libc::size_t = 0;
+        if libc::pthread_getattr_np(libc::pthread_self(), &mut attr) == 0 {
+            libc::pthread_attr_getstack(&attr, &mut lowest, &mut size);
+            libc::pthread_attr_destroy(&mut attr);
+        }
+        (lowest as usize, lowest as usize + size)
+    }
+    #[cfg(windows)]
+    unsafe {
+        extern "system" {
+            fn GetCurrentThreadStackLimits(low: *mut usize, high: *mut usize);
+        }
+        let (mut low, mut high) = (0usize, 0usize);
+        GetCurrentThreadStackLimits(&mut low, &mut high);
+        (low, high)
+    }
+    #[cfg(not(any(
+        target_os = "macos",
+        target_os = "ios",
+        target_os = "linux",
+        target_os = "android",
+        windows
+    )))]
+    {
+        (0, 0)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A panic that carries neither a String nor a &str is still an exit
+    /// reason.
+    #[test]
+    fn a_panic_of_any_other_payload_is_an_actor_panic() {
+        extern "C-unwind" fn panics(_args: *const u8) {
+            std::panic::panic_any(42);
+        }
+        let mut handle = CoroutineHandle::new(panics as *const u8, std::ptr::null());
+        assert_eq!(
+            handle.resume_catching_panic(),
+            Err("actor panicked".to_string())
+        );
+    }
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    #[test]
+    fn test_coroutine_runs_to_completion() {
+        // Use a test-specific counter to avoid interference from concurrent tests.
+        static COMPLETION_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+        extern "C" fn completion_entry(_args: *const u8) {
+            COMPLETION_COUNTER.fetch_add(1, Ordering::SeqCst);
+        }
+
+        COMPLETION_COUNTER.store(0, Ordering::SeqCst);
+        let mut handle = CoroutineHandle::new(completion_entry as *const u8, std::ptr::null());
+
+        let yielded = handle.resume();
+        // Simple function should run to completion without yielding
+        assert!(!yielded, "simple function should complete without yielding");
+        assert!(handle.done());
+        assert_eq!(COMPLETION_COUNTER.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn test_coroutine_yield_and_resume() {
+        // Use a test-specific counter to avoid interference from concurrent tests.
+        static YIELD_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+        extern "C" fn yield_entry(_args: *const u8) {
+            YIELD_COUNTER.fetch_add(1, Ordering::SeqCst);
+            yield_current();
+            YIELD_COUNTER.fetch_add(1, Ordering::SeqCst);
+        }
+
+        YIELD_COUNTER.store(0, Ordering::SeqCst);
+        let mut handle = CoroutineHandle::new(yield_entry as *const u8, std::ptr::null());
+
+        // First resume: runs to yield point
+        let yielded = handle.resume();
+        assert!(yielded);
+        assert!(!handle.done());
+        assert_eq!(YIELD_COUNTER.load(Ordering::SeqCst), 1);
+
+        // Second resume: completes
+        let yielded = handle.resume();
+        assert!(!yielded);
+        assert!(handle.done());
+        assert_eq!(YIELD_COUNTER.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn test_current_pid_thread_local() {
+        assert!(get_current_pid().is_none());
+        let pid = ProcessId::next();
+        set_current_pid(pid);
+        assert_eq!(get_current_pid().unwrap(), pid);
+        clear_current_pid();
+        assert!(get_current_pid().is_none());
+    }
+}

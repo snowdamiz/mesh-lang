@@ -1,0 +1,16 @@
+{
+  "artifact": "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-owned-invocations/generated-abi-1794016967512686000/libprogress.dylib",
+  "sha256_before": "a767b82c80a3189274b0e2a0e80dc76210086a878301d59803b17c74b2a988af",
+  "peer_frames": [
+    {
+      "kind": "startup",
+      "bytes": 44
+    }
+  ],
+  "probe_kind": "native scoped export; not generated scheduled entry",
+  "direct_pg_error": "native_effect_refused",
+  "direct_pg_no_connection": true,
+  "repo_error": "native_effect_refused",
+  "subsequent_unscoped_query_error": "pool checkout timeout",
+  "sha256_after": "a767b82c80a3189274b0e2a0e80dc76210086a878301d59803b17c74b2a988af"
+}

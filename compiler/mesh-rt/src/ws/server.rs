@@ -261,6 +261,11 @@ pub extern "C" fn mesh_ws_serve(
     on_close_env: *mut u8,
     port: i64,
 ) {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return;
+    }
+
     let callbacks = WsHandler {
         on_connect_fn,
         on_connect_env,
@@ -285,6 +290,11 @@ pub extern "C" fn mesh_ws_serve_on(
     host: *const MeshString,
     port: i64,
 ) {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return;
+    }
+
     let addr = match crate::server_bind::address(unsafe { (*host).as_str() }, port) {
         Ok(addr) => addr,
         Err(error) => {
@@ -319,6 +329,11 @@ pub extern "C" fn mesh_ws_serve_tls_on(
     cert_path: *const MeshString,
     key_path: *const MeshString,
 ) {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return;
+    }
+
     let addr = match crate::server_bind::address(unsafe { (*host).as_str() }, port) {
         Ok(addr) => addr,
         Err(error) => {
@@ -497,6 +512,11 @@ pub extern "C" fn mesh_ws_serve_tls(
     cert_path: *const MeshString,
     key_path: *const MeshString,
 ) {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return;
+    }
+
     let (cert_path, key_path) = unsafe { ((*cert_path).as_str(), (*key_path).as_str()) };
     let tls = match crate::http::server::build_server_config(cert_path, key_path) {
         Ok(tls) => tls,
@@ -526,6 +546,11 @@ pub extern "C" fn mesh_ws_serve_tls(
 /// Returns 0 on success, -1 on error.
 #[no_mangle]
 pub extern "C" fn mesh_ws_send(conn: *mut u8, msg: *const MeshString) -> i64 {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return -1;
+    }
+
     if conn.is_null() {
         return -1;
     }

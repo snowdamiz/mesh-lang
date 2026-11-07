@@ -131,7 +131,9 @@ fn send_job_result(caller_pid: u64, result: i64, result_shape: *const u32) {
     msg_data.extend_from_slice(&u64::from(!result_shape.is_null()).to_le_bytes());
 
     let mut buffer = MessageBuffer::new(msg_data, JOB_RESULT_TAG);
-    super::detach_from_sender(sched, &mut buffer, RESULT_OFFSET, result_shape);
+    if !super::detach_from_sender(sched, &mut buffer, RESULT_OFFSET, result_shape) {
+        return;
+    }
 
     // The caller waits for this: it goes in even when the mailbox is full. A
     // caller that has gone takes no result.

@@ -1,0 +1,2 @@
+{"case": "accepted-commit", "baseline": false, "status": 10, "rows": 1, "later_schema": 0, "requests": [], "mutations": [], "mutations_before_retire": [], "retired": true}
+PASS accepted-commit

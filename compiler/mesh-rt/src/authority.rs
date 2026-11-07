@@ -9,7 +9,7 @@
 //! scan. Refused scans execute nothing. This monotone snapshot is invalid for
 //! revivable nodes; consequently there is deliberately no reset/rebind API.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering::SeqCst};
 use std::sync::Arc;
@@ -52,7 +52,11 @@ pub struct NativeAuthority {
 impl Drop for NativeAuthority {
     fn drop(&mut self) {
         if let (Some(callbacks), Some(release)) = (&self.callbacks, self.release) {
-            unsafe { release(callbacks.context as *mut c_void) };
+            let context = callbacks.context;
+            crate::actor::stack::on_native_stack(move || {
+                let _callback = callback_scope(true);
+                unsafe { release(context as *mut c_void) };
+            });
         }
     }
 }
@@ -65,15 +69,79 @@ impl NativeAuthority {
 pub(crate) struct InvocationContext {
     pub(crate) original: Arc<NativeAuthority>,
     pub(crate) id: u64,
+    pub(crate) scheduled: bool,
     sequence: AtomicU64,
     refused: AtomicBool,
     pub(crate) transactions: AtomicU64,
+    resources: AtomicU64,
+    // Disposal ownership only; never consulted for effect admission.
+    process_owners: AtomicU64,
 }
 impl InvocationContext {
+    pub(crate) unsafe fn bind(
+        authority: *const NativeAuthority,
+        scheduled: bool,
+    ) -> Result<Arc<Self>, i32> {
+        Arc::increment_strong_count(authority);
+        let original = Arc::from_raw(authority);
+        if !original.live() {
+            return Err(REFUSED);
+        }
+        let id = NEXT_INVOCATION
+            .fetch_update(SeqCst, SeqCst, |n| n.checked_add(1))
+            .map_err(|_| REFUSED)?;
+        Ok(Arc::new(Self {
+            original,
+            id,
+            scheduled,
+            sequence: AtomicU64::new(0),
+            refused: AtomicBool::new(false),
+            transactions: AtomicU64::new(0),
+            resources: AtomicU64::new(0),
+            process_owners: AtomicU64::new(0),
+        }))
+    }
+    pub(crate) fn cancel(&self) {
+        self.refused.store(true, SeqCst);
+    }
     pub(crate) fn live(&self) -> bool {
         !self.refused.load(SeqCst) && self.original.live()
     }
+    pub(crate) fn process_started(&self) {
+        self.process_owners.fetch_add(1, SeqCst);
+    }
+    pub(crate) fn process_finished(&self) {
+        let previous = self.process_owners.fetch_sub(1, SeqCst);
+        assert!(previous != 0, "invocation process ownership is balanced");
+        if previous == 1 {
+            crate::http::client::close_pending_invocation(self.id);
+        }
+    }
 }
+impl Drop for InvocationContext {
+    fn drop(&mut self) {
+        crate::http::client::close_pending_invocation(self.id);
+    }
+}
+thread_local! {
+    static IN_CALLBACK: Cell<u8> = const { Cell::new(0) };
+}
+pub(crate) fn in_callback() -> bool {
+    IN_CALLBACK.with(Cell::get) != 0
+}
+pub(crate) fn in_owned_callback() -> bool {
+    IN_CALLBACK.with(Cell::get) == 2
+}
+pub(crate) struct CallbackScope(u8);
+pub(crate) fn callback_scope(owned: bool) -> CallbackScope {
+    CallbackScope(IN_CALLBACK.with(|slot| slot.replace(if owned { 2 } else { 1 })))
+}
+impl Drop for CallbackScope {
+    fn drop(&mut self) {
+        IN_CALLBACK.with(|slot| slot.set(self.0));
+    }
+}
+
 thread_local! {
     static CURRENT: RefCell<Option<Arc<InvocationContext>>> = const { RefCell::new(None) };
 }
@@ -100,7 +168,69 @@ pub(crate) fn refuse() -> &'static str {
     "native_effect_refused"
 }
 pub(crate) fn may_suspend() -> bool {
-    current().is_none_or(|context| context.transactions.load(SeqCst) == 0)
+    current().is_none_or(|context| {
+        context.live()
+            && context.transactions.load(SeqCst) == 0
+            && context.resources.load(SeqCst) == 0
+    })
+}
+
+pub(crate) fn suspend_or_stop() {
+    if !may_suspend() {
+        refuse();
+        std::panic::resume_unwind(Box::new(crate::actor::stack::ActorStopped));
+    }
+}
+
+pub(crate) struct ResourceScope(Option<Arc<InvocationContext>>);
+pub(crate) fn resource_scope() -> ResourceScope {
+    let context = current();
+    if let Some(context) = &context {
+        context.resources.fetch_add(1, SeqCst);
+    }
+    ResourceScope(context)
+}
+impl Drop for ResourceScope {
+    fn drop(&mut self) {
+        if let Some(context) = &self.0 {
+            context.resources.fetch_sub(1, SeqCst);
+        }
+    }
+}
+
+/// A process can receive application work only from its original invocation.
+/// Runtime cleanup/control notices have separate delivery paths.
+pub(crate) fn compatible(other: Option<&Arc<InvocationContext>>) -> bool {
+    let original = current();
+    let compatible = match (original.as_ref(), other) {
+        (None, None) => true,
+        (Some(left), Some(right)) => Arc::ptr_eq(left, right) && left.live(),
+        _ => false,
+    };
+    if !compatible {
+        refuse();
+    }
+    compatible
+}
+
+#[cfg(test)]
+pub(crate) fn test_invocation() -> Arc<InvocationContext> {
+    unsafe {
+        let mut domain = std::ptr::null();
+        let mut generation = std::ptr::null();
+        let mut authority = std::ptr::null();
+        assert_eq!(mesh_authority_domain_create_v2(&mut domain), 0);
+        assert_eq!(mesh_authority_generation_v2(domain, &mut generation), 0);
+        assert_eq!(
+            mesh_authority_bind_v2(domain, &generation, 1, std::ptr::null(), &mut authority),
+            0
+        );
+        let context = InvocationContext::bind(authority, true).unwrap();
+        mesh_authority_release_v2(authority);
+        mesh_authority_generation_release_v2(generation);
+        mesh_authority_domain_release_v2(domain);
+        context
+    }
 }
 
 /// Implemented only by concrete runtime sinks with fixed operands and exclusive
@@ -235,7 +365,11 @@ pub unsafe extern "C" fn mesh_authority_bind_v2(
         let (Some(retain), Some(release)) = (callbacks.retain, callbacks.release) else {
             return 1;
         };
-        retain(callbacks.callbacks.context);
+        let context = callbacks.callbacks.context as usize;
+        crate::actor::stack::on_native_stack(move || {
+            let _callback = callback_scope(true);
+            retain(context as *mut c_void);
+        });
         (
             Some(RegisteredCallbacks::from(&callbacks.callbacks)),
             Some(release),
@@ -299,23 +433,13 @@ pub unsafe extern "C" fn mesh_library_call_scoped_v2(
     if authority.is_null() || (input.is_null() && input_len != 0) {
         return 1;
     }
-    if current().is_some() {
+    if in_callback() || current().is_some() {
         return 3;
     }
-    Arc::increment_strong_count(authority);
-    let original = Arc::from_raw(authority);
-    if !original.live() {
-        return REFUSED;
-    }
-    let Ok(id) = NEXT_INVOCATION.fetch_update(SeqCst, SeqCst, |n| n.checked_add(1)) else {
-        return REFUSED;
+    let context = match InvocationContext::bind(authority, false) {
+        Ok(context) => context,
+        Err(status) => return status,
     };
-    let _scope = enter(Some(Arc::new(InvocationContext {
-        original,
-        id,
-        sequence: AtomicU64::new(0),
-        refused: AtomicBool::new(false),
-        transactions: AtomicU64::new(0),
-    })));
+    let _scope = enter(Some(context));
     export(input, input_len, output)
 }

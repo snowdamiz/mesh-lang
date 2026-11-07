@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "policy": "plaintext-v1",
+  "compiler_version": "0.1.8",
+  "modules": [
+    {
+      "module": "Main",
+      "file": "main.mpl",
+      "source_sha256": "45af4839b685c8f6531c2478f2ad15cda276f413d3a23d5b5db957d9e219d808",
+      "sites": []
+    }
+  ]
+}

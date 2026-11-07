@@ -1,0 +1,11 @@
+{"name": "three independently rooted owned TLS peers ready", "status": "PASS", "origins": ["https://127.0.0.1:51319", "https://127.0.0.1:51320", "https://127.0.0.1:51321"], "root_sha256": ["9990513ed4b0813ae2a10062372baa8551866703309d5801f236a21d453eb42c", "953563c881038a5483feed3a2fcfdc85c2fa361d722196459db162d5341e69a6", "3ed0ba4ef9abd0652fa3edd97b12c3eeb7e683133505e5ed5241063dc3875db5"], "frame_sha256": "c1d58663e86078f1e997a9e81417770bdaae41d6e2f7f52fc6f8b2d1f32a9644"}
+Traceback (most recent call last):
+  File "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-owned-invocations/core-bootstrap/core_check.py", line 378, in <module>
+    run(Path(sys.argv[1]),Path(sys.argv[2]),"--scheduled" in sys.argv)
+    ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-owned-invocations/core-bootstrap/core_check.py", line 334, in run
+    expected = client.invoke('mesh_messenger_create_account',vector(path)+vector(b'bootstrap-reader'))
+  File "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-owned-invocations/core-bootstrap/owned_native.py", line 105, in invoke
+    assert result[0]==(9 if rejected else 0),(symbol,result[0],len(result[1]),self.errors)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ('mesh_messenger_create_account', 10, 0, [])

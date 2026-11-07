@@ -1,0 +1,8 @@
+{
+  "base": "9b844dbab34e61f6de575af2b25b0ed0f321059e",
+  "branch": "fix/native-owned-invocations",
+  "df": "Filesystem   1024-blocks      Used Available Capacity  iused     ifree %iused  Mounted on\n/dev/disk3s5   971298980 894563904  41640216    96% 28596799 416402160    6%   /System/Volumes/Data\n",
+  "footprint": "8\t.tmp/native-owned-invocations\n",
+  "R1writer": "T3 completed confirmed live",
+  "r1_header": "5bbaf429dbd3749924b041847aba40ce40ee33c5a13a5c97f454601d79f87843"
+}

@@ -1,0 +1,5 @@
+# Review r3 candidate status
+
+Mask1 only, exact accepted amendment3/native-only companion API unchanged. Full original source contract and all prior audit/API/implementation review findings remain part of the review brief. F1/F2 responses in PROVENANCE_LEDGER-r3.md. All12 focused tests pass and workspace library/binary gate passes. Final runtime includes additional SQLite-across-HTTP positive; generated and runtime integration checks finish before final-family-r3.json publication. Only that final family belongs to this source pin. R2 family and exact tools retained/unqualified (retained-tools-r2 relocation). R1 immutable44 family files unchanged in prior close audit; fresh close audit follows.
+
+Review must distinguish bounded primitive acceptance from unqualified capability4/Core/product. Actual unchanged Core refuses schema PRAGMAs beforeRPC. Separate SQLite proposal44ffe and amendment5df2 remain UNAPPLIED and outside this runtime source review. Native adapters/serializers untouched. App176 compatibility binaries predate latest runtime fixes and establish bindings only, not final runtime qualification.

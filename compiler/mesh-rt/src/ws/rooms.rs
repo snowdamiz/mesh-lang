@@ -231,6 +231,10 @@ pub(crate) fn broadcast_room_to_cluster(room: &str, msg: &str) {
 /// Returns 0 on success, -1 for a null handle.
 #[no_mangle]
 pub extern "C" fn mesh_ws_join(conn: *mut u8, room_name: *const MeshString) -> i64 {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return -1;
+    }
     if conn.is_null() {
         return -1;
     }
@@ -243,6 +247,10 @@ pub extern "C" fn mesh_ws_join(conn: *mut u8, room_name: *const MeshString) -> i
 /// Unsubscribe a WebSocket connection from a named room. Returns 0.
 #[no_mangle]
 pub extern "C" fn mesh_ws_leave(conn: *mut u8, room_name: *const MeshString) -> i64 {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return -1;
+    }
     let room = unsafe { (*room_name).as_str() };
     global_room_registry().leave(conn as usize, room);
     0
@@ -272,6 +280,10 @@ pub extern "C" fn mesh_ws_broadcast_except(
     msg: *const MeshString,
     except_conn: *mut u8,
 ) -> i64 {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return -1;
+    }
     let room = unsafe { (*room_name).as_str() };
     let text = unsafe { (*msg).as_str() };
     let failures = deliver_locally(room, text, except_conn as usize);
@@ -500,6 +512,50 @@ mod tests {
         unsafe {
             drop(Box::from_raw(open as *mut WsConnection));
             drop(Box::from_raw(closed as *mut WsConnection));
+        }
+    }
+
+    #[test]
+    fn scoped_room_operations_cannot_send_or_change_membership() {
+        use std::io::Read;
+        crate::gc::mesh_rt_init();
+        let name = "scoped-room-refusal";
+        let room = crate::string::mesh_str(name);
+        let text = crate::string::mesh_str("private-room-payload");
+        let (connection, mut peer) = connection();
+        let connection = Box::into_raw(connection).cast();
+        assert_eq!(mesh_ws_join(connection, room), 0);
+        {
+            let context = crate::authority::test_invocation();
+            let _scope = crate::authority::enter(Some(context));
+            assert_eq!(mesh_ws_broadcast(room, text), -1);
+            assert_eq!(mesh_ws_leave(connection, room), -1);
+            assert_eq!(
+                global_room_registry().members(name),
+                vec![connection as usize]
+            );
+            assert_eq!(
+                mesh_ws_join(connection, crate::string::mesh_str("refused-new-room")),
+                -1
+            );
+            assert!(global_room_registry()
+                .members("refused-new-room")
+                .is_empty());
+        }
+        peer.set_read_timeout(Some(std::time::Duration::from_millis(50)))
+            .unwrap();
+        let error = peer.read(&mut [0; 128]).unwrap_err();
+        assert!(matches!(
+            error.kind(),
+            std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+        ));
+        assert_eq!(mesh_ws_broadcast(room, text), 0);
+        peer.set_read_timeout(Some(std::time::Duration::from_secs(2)))
+            .unwrap();
+        assert!(peer.read(&mut [0; 128]).unwrap() > 0);
+        assert_eq!(mesh_ws_leave(connection, room), 0);
+        unsafe {
+            drop(Box::from_raw(connection.cast::<WsConnection>()));
         }
     }
 

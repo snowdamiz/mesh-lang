@@ -1,0 +1,1617 @@
+{
+  "abiVersion": 1,
+  "artifact": "libmessenger_mobile.dylib",
+  "exports": [
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "initialize",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_initialize_submit_v2",
+      "symbol": "mesh_messenger_initialize"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "validate_outer",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_validate_outer_submit_v2",
+      "symbol": "mesh_messenger_validate_outer"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "persist_envelope",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_store_envelope_submit_v2",
+      "symbol": "mesh_messenger_store_envelope"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "create_account_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_create_account_submit_v2",
+      "symbol": "mesh_messenger_create_account"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "load_profile_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_load_profile_submit_v2",
+      "symbol": "mesh_messenger_load_profile"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "create_signup_draft_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_create_signup_draft_submit_v2",
+      "symbol": "mesh_messenger_create_signup_draft"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "signup_draft_state_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_signup_draft_state_submit_v2",
+      "symbol": "mesh_messenger_signup_draft_state"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_action_recovery_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_action_recovery_submit_v2",
+      "symbol": "mesh_messenger_credit_action_recovery"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_signup_policy_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_signup_policy_submit_v2",
+      "symbol": "mesh_messenger_credit_signup_policy"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_signup_policy_view_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_signup_policy_view_submit_v2",
+      "symbol": "mesh_messenger_credit_signup_policy_view"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "signup_draft_rename_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_signup_draft_rename_submit_v2",
+      "symbol": "mesh_messenger_signup_draft_rename"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "signup_draft_free_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_signup_draft_free_submit_v2",
+      "symbol": "mesh_messenger_signup_draft_free"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "signup_draft_free_complete_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_signup_draft_free_complete_submit_v2",
+      "symbol": "mesh_messenger_signup_draft_free_complete"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_signup_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_signup_submit_v2",
+      "symbol": "mesh_messenger_credit_signup"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_signup_recover_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_signup_recover_submit_v2",
+      "symbol": "mesh_messenger_credit_signup_recover"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "register_signup_policy_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_register_signup_policy_submit_v2",
+      "symbol": "mesh_messenger_register_signup_policy"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_attachment_prepare_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_attachment_prepare_submit_v2",
+      "symbol": "mesh_messenger_credit_attachment_prepare"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_attachment_recover_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_attachment_recover_submit_v2",
+      "symbol": "mesh_messenger_credit_attachment_recover"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_attachment_receipt_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_attachment_receipt_submit_v2",
+      "symbol": "mesh_messenger_credit_attachment_receipt"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_attachment_part_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_attachment_part_submit_v2",
+      "symbol": "mesh_messenger_credit_attachment_part"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_attachment_part_recover_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_attachment_part_recover_submit_v2",
+      "symbol": "mesh_messenger_credit_attachment_part_recover"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_attachment_prune_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_attachment_prune_submit_v2",
+      "symbol": "mesh_messenger_credit_attachment_prune"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_attachment_preview_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_attachment_preview_submit_v2",
+      "symbol": "mesh_messenger_credit_attachment_preview"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_attachments_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_attachments_submit_v2",
+      "symbol": "mesh_messenger_credit_attachments"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "attachment_download_plan_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_attachment_download_plan_submit_v2",
+      "symbol": "mesh_messenger_attachment_download_plan"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "replenish_prekeys_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_replenish_prekeys_submit_v2",
+      "symbol": "mesh_messenger_replenish_prekeys"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "reconcile_prekeys_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_reconcile_prekeys_submit_v2",
+      "symbol": "mesh_messenger_reconcile_prekeys"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "create_link_request_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_create_link_request_submit_v2",
+      "symbol": "mesh_messenger_create_link_request"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "device_link_sas_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_device_link_sas_submit_v2",
+      "symbol": "mesh_messenger_device_link_sas"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "authorize_device_link_for_set_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_authorize_device_link_for_set_submit_v2",
+      "symbol": "mesh_messenger_authorize_device_link_for_set"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "complete_device_link_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_complete_device_link_submit_v2",
+      "symbol": "mesh_messenger_complete_device_link"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "inspect_device_set_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_inspect_device_set_submit_v2",
+      "symbol": "mesh_messenger_inspect_device_set"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "create_device_revocation_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_create_device_revocation_submit_v2",
+      "symbol": "mesh_messenger_create_device_revocation"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "account_deletion_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_account_deletion_submit_v2",
+      "symbol": "mesh_messenger_account_deletion"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "erase_account_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_erase_account_submit_v2",
+      "symbol": "mesh_messenger_erase_account"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "device_departure_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_device_departure_submit_v2",
+      "symbol": "mesh_messenger_device_departure"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "forget_on_proof_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_forget_on_proof_submit_v2",
+      "symbol": "mesh_messenger_forget_on_proof"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "receive_initial_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_receive_initial_submit_v2",
+      "symbol": "mesh_messenger_receive_initial"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "prepare_fanout_prekeys_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_prepare_fanout_prekeys_submit_v2",
+      "symbol": "mesh_messenger_prepare_fanout_prekeys"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "send_fanout_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_send_fanout_submit_v2",
+      "symbol": "mesh_messenger_send_fanout"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "group_key_package_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_group_key_package_submit_v2",
+      "symbol": "mesh_messenger_group_key_package"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "group_invite_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_group_invite_submit_v2",
+      "symbol": "mesh_messenger_group_invite"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "group_invitation_accept_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_group_invitation_accept_submit_v2",
+      "symbol": "mesh_messenger_group_invitation_accept"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "group_invitation_complete_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_group_invitation_complete_submit_v2",
+      "symbol": "mesh_messenger_group_invitation_complete"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "group_invitation_decline_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_group_invitation_decline_submit_v2",
+      "symbol": "mesh_messenger_group_invitation_decline"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "group_invitations_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_group_invitations_submit_v2",
+      "symbol": "mesh_messenger_group_invitations"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "group_create_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_group_create_submit_v2",
+      "symbol": "mesh_messenger_group_create"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "group_add_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_group_add_submit_v2",
+      "symbol": "mesh_messenger_group_add"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "group_remove_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_group_remove_submit_v2",
+      "symbol": "mesh_messenger_group_remove"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "group_send_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_group_send_submit_v2",
+      "symbol": "mesh_messenger_group_send"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "group_receive_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_group_receive_submit_v2",
+      "symbol": "mesh_messenger_group_receive"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "group_list_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_group_list_submit_v2",
+      "symbol": "mesh_messenger_group_list"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "group_inspect_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_group_inspect_submit_v2",
+      "symbol": "mesh_messenger_group_inspect"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "group_history_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_group_history_submit_v2",
+      "symbol": "mesh_messenger_group_history"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "group_forget_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_group_forget_submit_v2",
+      "symbol": "mesh_messenger_group_forget"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "receive_message_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_receive_message_submit_v2",
+      "symbol": "mesh_messenger_receive_message"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "update_conversation_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_update_conversation_submit_v2",
+      "symbol": "mesh_messenger_update_conversation"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "push_intent_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_push_intent_submit_v2",
+      "symbol": "mesh_messenger_push_intent"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "push_action_complete_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_push_action_complete_submit_v2",
+      "symbol": "mesh_messenger_push_action_complete"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "push_status_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_push_status_submit_v2",
+      "symbol": "mesh_messenger_push_status"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "list_conversations_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_list_conversations_submit_v2",
+      "symbol": "mesh_messenger_list_conversations"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 16794632,
+      "meshFunction": "load_history_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_load_history_submit_v2",
+      "symbol": "mesh_messenger_load_history"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "safety_number_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_safety_number_submit_v2",
+      "symbol": "mesh_messenger_safety_number"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "import_contact_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_import_contact_submit_v2",
+      "symbol": "mesh_messenger_import_contact"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "directory_entry_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_directory_entry_submit_v2",
+      "symbol": "mesh_messenger_directory_entry"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "directory_lookup_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_directory_lookup_submit_v2",
+      "symbol": "mesh_messenger_directory_lookup"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "transparency_lookup_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_transparency_lookup_submit_v2",
+      "symbol": "mesh_messenger_transparency_lookup"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "register_request_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_register_request_submit_v2",
+      "symbol": "mesh_messenger_register_request"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "renew_devices_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_renew_devices_submit_v2",
+      "symbol": "mesh_messenger_renew_devices"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "resolve_request_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_resolve_request_submit_v2",
+      "symbol": "mesh_messenger_resolve_request"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "resolve_plan_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_resolve_plan_submit_v2",
+      "symbol": "mesh_messenger_resolve_plan"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "verify_transparency_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_verify_transparency_submit_v2",
+      "symbol": "mesh_messenger_verify_transparency"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "transparency_fork_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_transparency_fork_submit_v2",
+      "symbol": "mesh_messenger_transparency_fork"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "bounty_status_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_bounty_status_submit_v2",
+      "symbol": "mesh_messenger_bounty_status"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "bounty_set_enabled_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_bounty_set_enabled_submit_v2",
+      "symbol": "mesh_messenger_bounty_set_enabled"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "bounty_commit_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_bounty_commit_submit_v2",
+      "symbol": "mesh_messenger_bounty_commit"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "bounty_unavailable_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_bounty_unavailable_submit_v2",
+      "symbol": "mesh_messenger_bounty_unavailable"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "bounty_transfer_status_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_bounty_transfer_status_submit_v2",
+      "symbol": "mesh_messenger_bounty_transfer_status"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "bounty_transfer_recover_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_bounty_transfer_recover_submit_v2",
+      "symbol": "mesh_messenger_bounty_transfer_recover"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "bounty_transfer_cancel_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_bounty_transfer_cancel_submit_v2",
+      "symbol": "mesh_messenger_bounty_transfer_cancel"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "bounty_transfer_prepare_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_bounty_transfer_prepare_submit_v2",
+      "symbol": "mesh_messenger_bounty_transfer_prepare"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "bounty_transfer_commit_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_bounty_transfer_commit_submit_v2",
+      "symbol": "mesh_messenger_bounty_transfer_commit"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "bounty_transfer_submit_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_bounty_transfer_submit_submit_v2",
+      "symbol": "mesh_messenger_bounty_transfer_submit"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "anchor_check_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_anchor_check_submit_v2",
+      "symbol": "mesh_messenger_anchor_check"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "fork_filing_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_fork_filing_submit_v2",
+      "symbol": "mesh_messenger_fork_filing"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "privacy_submission_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_privacy_submission_submit_v2",
+      "symbol": "mesh_messenger_privacy_submission"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "mailbox_fetch_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_mailbox_fetch_submit_v2",
+      "symbol": "mesh_messenger_mailbox_fetch"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "mailbox_synchronize_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_mailbox_synchronize_submit_v2",
+      "symbol": "mesh_messenger_mailbox_synchronize"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "mailbox_stream_open_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_mailbox_stream_open_submit_v2",
+      "symbol": "mesh_messenger_mailbox_stream_open"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "mailbox_stream_poll_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_mailbox_stream_poll_submit_v2",
+      "symbol": "mesh_messenger_mailbox_stream_poll"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "mailbox_stream_close_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_mailbox_stream_close_submit_v2",
+      "symbol": "mesh_messenger_mailbox_stream_close"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "process_delivery_batch_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_process_delivery_batch_submit_v2",
+      "symbol": "mesh_messenger_process_delivery_batch"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "outbox_list_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_outbox_list_submit_v2",
+      "symbol": "mesh_messenger_outbox_list"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "outbox_drain_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_outbox_drain_submit_v2",
+      "symbol": "mesh_messenger_outbox_drain"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "outbox_ack_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_outbox_ack_submit_v2",
+      "symbol": "mesh_messenger_outbox_ack"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "outbox_fail_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_outbox_fail_submit_v2",
+      "symbol": "mesh_messenger_outbox_fail"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "outbox_page_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_outbox_page_submit_v2",
+      "symbol": "mesh_messenger_outbox_page"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "journal_load_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_journal_load_submit_v2",
+      "symbol": "mesh_messenger_journal_load"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "journal_save_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_journal_save_submit_v2",
+      "symbol": "mesh_messenger_journal_save"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "presentation_load_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_presentation_load_submit_v2",
+      "symbol": "mesh_messenger_presentation_load"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "presentation_save_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_presentation_save_submit_v2",
+      "symbol": "mesh_messenger_presentation_save"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "attachment_prepare_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_attachment_prepare_submit_v2",
+      "symbol": "mesh_messenger_attachment_prepare"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "attachment_seal_chunk_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_attachment_seal_chunk_submit_v2",
+      "symbol": "mesh_messenger_attachment_seal_chunk"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_discover_online_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_discover_online_submit_v2",
+      "symbol": "mesh_messenger_credit_discover_online"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_purchase_continue_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_purchase_continue_submit_v2",
+      "symbol": "mesh_messenger_credit_purchase_continue"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_payment_handoff_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_payment_handoff_submit_v2",
+      "symbol": "mesh_messenger_credit_payment_handoff"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_action_continue_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_action_continue_submit_v2",
+      "symbol": "mesh_messenger_credit_action_continue"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_signup_policy_online_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_signup_policy_online_submit_v2",
+      "symbol": "mesh_messenger_credit_signup_policy_online"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_discovery_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_discovery_submit_v2",
+      "symbol": "mesh_messenger_credit_discovery"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_admit_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_admit_submit_v2",
+      "symbol": "mesh_messenger_credit_admit"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_prepare_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_prepare_submit_v2",
+      "symbol": "mesh_messenger_credit_prepare"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_prepare_again_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_prepare_again_submit_v2",
+      "symbol": "mesh_messenger_credit_prepare_again"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_quote_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_quote_submit_v2",
+      "symbol": "mesh_messenger_credit_quote"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_payment_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_payment_submit_v2",
+      "symbol": "mesh_messenger_credit_payment"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_finalize_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_finalize_submit_v2",
+      "symbol": "mesh_messenger_credit_finalize"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_recover_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_recover_submit_v2",
+      "symbol": "mesh_messenger_credit_recover"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_purchases_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_purchases_submit_v2",
+      "symbol": "mesh_messenger_credit_purchases"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_balance_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_balance_submit_v2",
+      "symbol": "mesh_messenger_credit_balance"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_reserve_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_reserve_submit_v2",
+      "symbol": "mesh_messenger_credit_reserve"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_reservation_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_reservation_submit_v2",
+      "symbol": "mesh_messenger_credit_reservation"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_retention_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_retention_submit_v2",
+      "symbol": "mesh_messenger_credit_retention"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_retention_recover_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_retention_recover_submit_v2",
+      "symbol": "mesh_messenger_credit_retention_recover"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_receipt_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_receipt_submit_v2",
+      "symbol": "mesh_messenger_credit_receipt"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_payment_url_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_payment_url_submit_v2",
+      "symbol": "mesh_messenger_credit_payment_url"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_payment_signature_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_payment_signature_submit_v2",
+      "symbol": "mesh_messenger_credit_payment_signature"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_wallet_quote_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_wallet_quote_submit_v2",
+      "symbol": "mesh_messenger_credit_wallet_quote"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_wallet_prepare_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_wallet_prepare_submit_v2",
+      "symbol": "mesh_messenger_credit_wallet_prepare"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_wallet_commit_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_wallet_commit_submit_v2",
+      "symbol": "mesh_messenger_credit_wallet_commit"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_wallet_submit_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_wallet_submit_submit_v2",
+      "symbol": "mesh_messenger_credit_wallet_submit"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_postage_candidate_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_postage_candidate_submit_v2",
+      "symbol": "mesh_messenger_credit_postage_candidate"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_postage_preview_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_postage_preview_submit_v2",
+      "symbol": "mesh_messenger_credit_postage_preview"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_postage_prepare_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_postage_prepare_submit_v2",
+      "symbol": "mesh_messenger_credit_postage_prepare"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_postage_recover_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_postage_recover_submit_v2",
+      "symbol": "mesh_messenger_credit_postage_recover"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_postage_receipt_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_postage_receipt_submit_v2",
+      "symbol": "mesh_messenger_credit_postage_receipt"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_postage_inventory_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_postage_inventory_submit_v2",
+      "symbol": "mesh_messenger_credit_postage_inventory"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "postage_policy_view_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_postage_policy_view_submit_v2",
+      "symbol": "mesh_messenger_postage_policy_view"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "postage_policy_prepare_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_postage_policy_prepare_submit_v2",
+      "symbol": "mesh_messenger_postage_policy_prepare"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_postage_continue_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_postage_continue_submit_v2",
+      "symbol": "mesh_messenger_credit_postage_continue"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "postage_policy_publish_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_postage_policy_publish_submit_v2",
+      "symbol": "mesh_messenger_postage_policy_publish"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "directory_register_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_directory_register_submit_v2",
+      "symbol": "mesh_messenger_directory_register"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "prekeys_synchronize_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_prekeys_synchronize_submit_v2",
+      "symbol": "mesh_messenger_prekeys_synchronize"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_attachment_grant_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_attachment_grant_submit_v2",
+      "symbol": "mesh_messenger_credit_attachment_grant"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_attachment_upload_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_attachment_upload_submit_v2",
+      "symbol": "mesh_messenger_credit_attachment_upload"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_attachment_complete_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_attachment_complete_submit_v2",
+      "symbol": "mesh_messenger_credit_attachment_complete"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "credit_attachment_delete_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_credit_attachment_delete_submit_v2",
+      "symbol": "mesh_messenger_credit_attachment_delete"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "attachment_fetch_chunk_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_attachment_fetch_chunk_submit_v2",
+      "symbol": "mesh_messenger_attachment_fetch_chunk"
+    },
+    {
+      "maxInputBytes": 16830000,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "attachment_upload_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_attachment_upload_submit_v2",
+      "symbol": "mesh_messenger_attachment_upload"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "attachment_discard_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_attachment_discard_submit_v2",
+      "symbol": "mesh_messenger_attachment_discard"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "directory_resolve_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_directory_resolve_submit_v2",
+      "symbol": "mesh_messenger_directory_resolve"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "push_flow_intent_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_push_flow_intent_submit_v2",
+      "symbol": "mesh_messenger_push_flow_intent"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "push_flow_complete_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_push_flow_complete_submit_v2",
+      "symbol": "mesh_messenger_push_flow_complete"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "push_flow_send_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_push_flow_send_submit_v2",
+      "symbol": "mesh_messenger_push_flow_send"
+    },
+    {
+      "maxInputBytes": 40243,
+      "maxOutputBytes": 4096,
+      "meshFunction": "push_flow_begin_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_push_flow_begin_submit_v2",
+      "symbol": "mesh_messenger_push_flow_begin"
+    },
+    {
+      "maxInputBytes": 4154,
+      "maxOutputBytes": 4096,
+      "meshFunction": "push_flow_validate_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_push_flow_validate_submit_v2",
+      "symbol": "mesh_messenger_push_flow_validate"
+    },
+    {
+      "maxInputBytes": 40238,
+      "maxOutputBytes": 4096,
+      "meshFunction": "account_delete_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_account_delete_submit_v2",
+      "symbol": "mesh_messenger_account_delete"
+    },
+    {
+      "maxInputBytes": 40238,
+      "maxOutputBytes": 4096,
+      "meshFunction": "account_discard_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_account_discard_submit_v2",
+      "symbol": "mesh_messenger_account_discard"
+    },
+    {
+      "maxInputBytes": 40238,
+      "maxOutputBytes": 4096,
+      "meshFunction": "account_capabilities_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_account_capabilities_submit_v2",
+      "symbol": "mesh_messenger_account_capabilities"
+    },
+    {
+      "maxInputBytes": 309364,
+      "maxOutputBytes": 4096,
+      "meshFunction": "devices_renew_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_devices_renew_submit_v2",
+      "symbol": "mesh_messenger_devices_renew"
+    },
+    {
+      "maxInputBytes": 309384,
+      "maxOutputBytes": 4096,
+      "meshFunction": "device_revoke_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_device_revoke_submit_v2",
+      "symbol": "mesh_messenger_device_revoke"
+    },
+    {
+      "maxInputBytes": 40498,
+      "maxOutputBytes": 262144,
+      "meshFunction": "journal_load_bound_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_journal_load_bound_submit_v2",
+      "symbol": "mesh_messenger_journal_load_bound"
+    },
+    {
+      "maxInputBytes": 302646,
+      "maxOutputBytes": 4096,
+      "meshFunction": "journal_save_bound_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_journal_save_bound_submit_v2",
+      "symbol": "mesh_messenger_journal_save_bound"
+    },
+    {
+      "maxInputBytes": 88740,
+      "maxOutputBytes": 4096,
+      "meshFunction": "fanout_send_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_fanout_send_submit_v2",
+      "symbol": "mesh_messenger_fanout_send"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "network_counter_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_network_counter_submit_v2",
+      "symbol": "mesh_messenger_network_counter"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "group_policy_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_group_policy_submit_v2",
+      "symbol": "mesh_messenger_group_policy"
+    },
+    {
+      "maxInputBytes": 42004,
+      "maxOutputBytes": 16801001,
+      "meshFunction": "backup_create_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_backup_create_submit_v2",
+      "symbol": "mesh_messenger_backup_create"
+    },
+    {
+      "maxInputBytes": 16841207,
+      "maxOutputBytes": 8192,
+      "meshFunction": "backup_preview_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_backup_preview_submit_v2",
+      "symbol": "mesh_messenger_backup_preview"
+    },
+    {
+      "maxInputBytes": 16841239,
+      "maxOutputBytes": 4096,
+      "meshFunction": "backup_import_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_backup_import_submit_v2",
+      "symbol": "mesh_messenger_backup_import"
+    },
+    {
+      "maxInputBytes": 40239,
+      "maxOutputBytes": 4096,
+      "meshFunction": "backup_list_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_backup_list_submit_v2",
+      "symbol": "mesh_messenger_backup_list"
+    },
+    {
+      "maxInputBytes": 40271,
+      "maxOutputBytes": 4096,
+      "meshFunction": "backup_remove_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_backup_remove_submit_v2",
+      "symbol": "mesh_messenger_backup_remove"
+    },
+    {
+      "maxInputBytes": 40271,
+      "maxOutputBytes": 8192,
+      "meshFunction": "backup_overview_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_backup_overview_submit_v2",
+      "symbol": "mesh_messenger_backup_overview"
+    },
+    {
+      "maxInputBytes": 40313,
+      "maxOutputBytes": 135168,
+      "meshFunction": "backup_page_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_backup_page_submit_v2",
+      "symbol": "mesh_messenger_backup_page"
+    },
+    {
+      "maxInputBytes": 40239,
+      "maxOutputBytes": 46,
+      "meshFunction": "backup_pending_state_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_backup_pending_state_submit_v2",
+      "symbol": "mesh_messenger_backup_pending_state"
+    },
+    {
+      "maxInputBytes": 44371,
+      "maxOutputBytes": 16796869,
+      "meshFunction": "backup_pending_resume_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_backup_pending_resume_submit_v2",
+      "symbol": "mesh_messenger_backup_pending_resume"
+    },
+    {
+      "maxInputBytes": 40271,
+      "maxOutputBytes": 34,
+      "meshFunction": "backup_pending_discard_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_backup_pending_discard_submit_v2",
+      "symbol": "mesh_messenger_backup_pending_discard"
+    },
+    {
+      "maxInputBytes": 40239,
+      "maxOutputBytes": 32,
+      "meshFunction": "backup_pending_repair_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_backup_pending_repair_submit_v2",
+      "symbol": "mesh_messenger_backup_pending_repair"
+    },
+    {
+      "bindingAudience": "native",
+      "maxInputBytes": 40271,
+      "maxOutputBytes": 16777225,
+      "meshFunction": "view_once_consume_native_export",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_messenger_view_once_consume_submit_v2",
+      "symbol": "mesh_messenger_view_once_consume"
+    }
+  ],
+  "nativeAuthorityExtension": {
+    "abiVersion": 2,
+    "activationSymbol": "mesh_library_enable_protected_v2",
+    "capabilitiesSymbol": "mesh_library_capabilities_v2",
+    "completeEffectInventory": false,
+    "dispatchTrust": "native descriptor validation required",
+    "invocationSymbol": "mesh_library_call_scoped_v2",
+    "publication": "not qualified",
+    "refusalStatus": 10,
+    "scheduledInvocations": {
+      "audience": "native-only; trusted descriptor selection",
+      "codeLifetime": "process-lifetime; dynamic unloading unsupported",
+      "completion": "once-only; handle lifetime is not effect or publication permission",
+      "header": "libmessenger_mobile.invocations.h",
+      "release": "nonjoining; does not cancel",
+      "request": "copied-before-submit-return",
+      "requiredCapability": 4
+    },
+    "scheduling": "synchronous; existing call serialization",
+    "unsupportedStatus": 11
+  },
+  "ownership": {
+    "request": "borrowed-for-call",
+    "response": "caller-owned; release with mesh_library_free_returned_bytes"
+  },
+  "target": "aarch64-apple-darwin"
+}

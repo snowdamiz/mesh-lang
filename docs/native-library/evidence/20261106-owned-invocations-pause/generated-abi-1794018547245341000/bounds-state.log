@@ -1,0 +1,5 @@
+status: Some(0)
+stdout:
+{"bounds": "PASS", "state": "PASS", "post_shutdown_bytes": "PASS", "unsupported_bits": [2, 4, 8, 16, 32]}
+
+stderr:

@@ -1,0 +1,320 @@
+   Compiling mesh-rt v0.1.8 (/Users/andreyyurlov/Documents/dev/mesh-lang/compiler/mesh-rt)
+warning: use of deprecated function `libc::mach_task_self`: Use the `mach2` crate instead
+    --> compiler/mesh-rt/src/secret.rs:3692:35
+     |
+3692 |         let task = unsafe { libc::mach_task_self() };
+     |                                   ^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+    --> compiler/mesh-rt/src/actor/scheduler.rs:1067:10
+     |
+1067 |         .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
+     |          ^^^^^^^^^^^^
+     |
+help: replace the use of the deprecated method
+     |
+1067 -         .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
+1067 +         .try_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
+     |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+  --> compiler/mesh-rt/src/authority.rs:89:14
+   |
+89 |             .fetch_update(SeqCst, SeqCst, |n| n.checked_add(1))
+   |              ^^^^^^^^^^^^
+   |
+help: replace the use of the deprecated method
+   |
+89 -             .fetch_update(SeqCst, SeqCst, |n| n.checked_add(1))
+89 +             .try_update(SeqCst, SeqCst, |n| n.checked_add(1))
+   |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/db/sqlite.rs:649:42
+    |
+649 |         let Ok(handle) = NEXT_CONNECTION.fetch_update(SeqCst, SeqCst, |value| value.checked_add(1))
+    |                                          ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+649 -         let Ok(handle) = NEXT_CONNECTION.fetch_update(SeqCst, SeqCst, |value| value.checked_add(1))
+649 +         let Ok(handle) = NEXT_CONNECTION.try_update(SeqCst, SeqCst, |value| value.checked_add(1))
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/dist/driver_service.rs:849:22
+    |
+849 |                     .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+    |                      ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+849 -                     .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+849 +                     .try_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+  --> compiler/mesh-rt/src/dist/identity.rs:72:14
+   |
+72 |             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+   |              ^^^^^^^^^^^^
+   |
+help: replace the use of the deprecated method
+   |
+72 -             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+72 +             .try_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+   |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+    --> compiler/mesh-rt/src/dist/node.rs:1313:10
+     |
+1313 |         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+     |          ^^^^^^^^^^^^
+     |
+help: replace the use of the deprecated method
+     |
+1313 -         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+1313 +         .try_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+     |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+    --> compiler/mesh-rt/src/dist/node.rs:6000:14
+     |
+6000 |             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+     |              ^^^^^^^^^^^^
+     |
+help: replace the use of the deprecated method
+     |
+6000 -             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+6000 +             .try_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+     |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/dist/operator.rs:312:10
+    |
+312 |         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+    |          ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+312 -         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+312 +         .try_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/dist/telemetry.rs:375:18
+    |
+375 |                 .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+    |                  ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+375 -                 .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+375 +                 .try_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u32>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/dist/telemetry.rs:530:14
+    |
+530 |             .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+    |              ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+530 -             .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+530 +             .try_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/dist/telemetry.rs:735:14
+    |
+735 |             .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+    |              ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+735 -             .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+735 +             .try_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/ws/client.rs:142:14
+    |
+142 |             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+    |              ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+142 -             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+142 +             .try_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/ws/reactor.rs:304:10
+    |
+304 |         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+    |          ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+304 -         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+304 +         .try_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+  --> compiler/mesh-rt/src/protected_memory.rs:41:14
+   |
+41 |             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |used| {
+   |              ^^^^^^^^^^^^
+   |
+help: replace the use of the deprecated method
+   |
+41 -             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |used| {
+41 +             .try_update(Ordering::AcqRel, Ordering::Acquire, |used| {
+   |
+
+warning: variant `Unsupported` is never constructed
+  --> compiler/mesh-rt/src/protected_memory.rs:29:5
+   |
+27 | pub(crate) enum ProtectionError {
+   |                 --------------- variant in this enum
+28 |     Limit,
+29 |     Unsupported,
+   |     ^^^^^^^^^^^
+   |
+   = note: `ProtectionError` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `mesh-rt` (lib test) generated 16 warnings (run `cargo fix --lib -p mesh-rt --tests` to apply 14 suggestions)
+    Finished `test` profile [unoptimized] target(s) in 31.54s
+     Running unittests src/lib.rs (.tmp/native-owned-invocations/target/debug/deps/mesh_rt-3bf9f93c3f2f7781)
+
+running 9 tests
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+
+running 1 test
+test library::invocation::tests::completion_waits_for_root_removal_and_reclaims_unborrowed_heap ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1692 filtered out; finished in 0.01s
+
+
+running 1 test
+
+running 1 test
+test library::invocation::tests::owned_submission_failures_and_once_only_results ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1692 filtered out; finished in 0.01s
+
+
+running 1 test
+test library::invocation::tests::standalone_callback_preserves_init_and_registration ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1692 filtered out; finished in 0.01s
+
+test library::invocation::tests::completion_waits_for_root_removal_and_reclaims_unborrowed_heap ... ok
+test library::invocation::tests::owned_submission_failures_and_once_only_results ... ok
+test library::invocation::tests::standalone_callback_preserves_init_and_registration ... ok
+test library::invocation::tests::all_nine_callbacks_and_lifetimes_use_original_context_and_native_stack ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1692 filtered out; finished in 0.00s
+
+test library::invocation::tests::all_nine_callbacks_and_lifetimes_use_original_context_and_native_stack ... ok
+test library::invocation::tests::writer_transaction_aborts_http_before_dispatch ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1692 filtered out; finished in 0.01s
+
+test library::invocation::tests::unsupported_captures_do_not_retain_root_heaps_or_context ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1692 filtered out; finished in 0.00s
+
+test library::invocation::tests::actual_http_cancellation_keeps_fresh_process_runnable ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1692 filtered out; finished in 0.01s
+
+test library::invocation::tests::same_original_service_and_root_descendants_reject_new_invocation_work ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1692 filtered out; finished in 0.01s
+
+
+running 1 test
+
+running 1 test
+test library::invocation::tests::same_original_service_and_root_descendants_reject_new_invocation_work ... ok
+test library::invocation::tests::unsupported_captures_do_not_retain_root_heaps_or_context ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1692 filtered out; finished in 0.00s
+
+test library::invocation::tests::writer_transaction_aborts_http_before_dispatch ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1692 filtered out; finished in 0.00s
+
+test library::invocation::tests::unsupported_captures_do_not_retain_root_heaps_or_context ... ok
+
+running 1 test
+
+running 1 test
+test library::invocation::tests::actual_http_cancellation_keeps_fresh_process_runnable ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1692 filtered out; finished in 0.01s
+
+test library::invocation::tests::cancellation_settles_accepted_writes_and_never_starts_cancelled_queued_roots ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1692 filtered out; finished in 0.03s
+
+test library::invocation::tests::cancellation_settles_accepted_writes_and_never_starts_cancelled_queued_roots ... ok
+test library::invocation::tests::actual_http_cancellation_keeps_fresh_process_runnable ... ok
+test library::invocation::tests::writer_transaction_aborts_http_before_dispatch ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1692 filtered out; finished in 0.01s
+
+
+running 1 test
+test library::invocation::tests::writer_transaction_aborts_http_before_dispatch ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1692 filtered out; finished in 0.00s
+
+
+running 1 test
+test library::invocation::tests::writer_transaction_aborts_http_before_dispatch ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1692 filtered out; finished in 0.00s
+
+
+running 1 test
+test library::invocation::tests::writer_transaction_aborts_http_before_dispatch ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1692 filtered out; finished in 0.01s
+
+
+running 1 test
+test library::invocation::tests::writer_transaction_aborts_http_before_dispatch ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1692 filtered out; finished in 0.00s
+
+
+running 1 test
+test library::invocation::tests::writer_transaction_aborts_http_before_dispatch ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1692 filtered out; finished in 0.00s
+
+
+running 1 test
+test library::invocation::tests::writer_transaction_aborts_http_before_dispatch ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 1692 filtered out; finished in 0.01s
+
+test library::invocation::tests::writer_transaction_aborts_http_before_dispatch ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 1684 filtered out; finished in 0.13s
+

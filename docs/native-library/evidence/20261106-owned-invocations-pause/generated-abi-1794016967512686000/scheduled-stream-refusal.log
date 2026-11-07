@@ -1,0 +1,5 @@
+status: Some(0)
+stdout:
+PASS stream-refusal
+
+stderr:

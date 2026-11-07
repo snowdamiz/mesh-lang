@@ -1,0 +1,122 @@
+{
+  "abiVersion": 1,
+  "artifact": "libauthority.dylib",
+  "exports": [
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "sql",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "authority_sql_submit_v2",
+      "symbol": "authority_sql"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "http",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "authority_http_submit_v2",
+      "symbol": "authority_http"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "store",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "authority_store_submit_v2",
+      "symbol": "authority_store"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "nonce",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "authority_nonce_submit_v2",
+      "symbol": "authority_nonce"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "actor_start",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "authority_actor_submit_v2",
+      "symbol": "authority_actor"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "private_error",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "authority_error_submit_v2",
+      "symbol": "authority_error"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "timer_start",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "authority_timer_submit_v2",
+      "symbol": "authority_timer"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "terminate_start",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "authority_terminate_submit_v2",
+      "symbol": "authority_terminate"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "gc",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "authority_gc_submit_v2",
+      "symbol": "authority_gc"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "unwind",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "authority_panic_submit_v2",
+      "symbol": "authority_panic"
+    }
+  ],
+  "nativeAuthorityExtension": {
+    "abiVersion": 2,
+    "activationSymbol": "mesh_library_enable_protected_v2",
+    "capabilitiesSymbol": "mesh_library_capabilities_v2",
+    "completeEffectInventory": false,
+    "dispatchTrust": "native descriptor validation required",
+    "invocationSymbol": "mesh_library_call_scoped_v2",
+    "publication": "not qualified",
+    "refusalStatus": 10,
+    "scheduledInvocations": {
+      "audience": "native-only; trusted descriptor selection",
+      "codeLifetime": "process-lifetime; dynamic unloading unsupported",
+      "completion": "once-only; handle lifetime is not effect or publication permission",
+      "header": "libauthority.invocations.h",
+      "release": "nonjoining; does not cancel",
+      "request": "copied-before-submit-return",
+      "requiredCapability": 4
+    },
+    "scheduling": "synchronous; existing call serialization",
+    "unsupportedStatus": 11
+  },
+  "ownership": {
+    "request": "borrowed-for-call",
+    "response": "caller-owned; release with mesh_library_free_returned_bytes"
+  },
+  "target": "aarch64-apple-darwin"
+}

@@ -1651,9 +1651,41 @@ mod autonomous_config_tests {
     fn export_binding_audience_default_row() -> serde_json::Value {
         serde_json::json!({
             "meshFunction": "public_echo", "symbol": "mesh_public_echo",
+            "scheduledSymbol": "mesh_public_echo_submit_v2",
             "request": "bytes", "response": "result<bytes,string>",
             "maxInputBytes": 1048576, "maxOutputBytes": 1048576
         })
+    }
+
+    #[test]
+    fn scheduled_companions_are_separate_from_legacy_bindings() {
+        let parsed = mesh_parser::parse(&export_binding_audience_source(""));
+        let exports = collect_library_exports(&[parsed]).unwrap();
+        let temporary = tempfile::tempdir().unwrap();
+        let artifact = temporary.path().join("libaudience.a");
+        library_bindings::write(&artifact, &exports, Some("x86_64-unknown-linux-gnu")).unwrap();
+        let extension = std::fs::read_to_string(artifact.with_extension("invocations.h"))
+            .expect("scheduled API has an opt-in header");
+        assert!(extension.contains("#include \"libaudience.h\""));
+        assert!(extension.contains("mesh_public_echo_submit_v2("));
+        for suffix in ["h", "swift", "kt", "jni.c", "ts"] {
+            let legacy = std::fs::read_to_string(artifact.with_extension(suffix)).unwrap();
+            assert!(
+                !legacy.contains("_submit_v2"),
+                "legacy {suffix} routes companions"
+            );
+            assert!(!legacy.contains("invocations.h"));
+        }
+        let manifest: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(artifact.with_extension("abi.json")).unwrap())
+                .unwrap();
+        assert_eq!(manifest["exports"].as_array().unwrap().len(), 1);
+        assert_eq!(manifest["exports"][0]["symbol"], "mesh_public_echo");
+        assert_eq!(
+            manifest["exports"][0]["scheduledSymbol"],
+            "mesh_public_echo_submit_v2"
+        );
+        assert_eq!(manifest["ownership"]["request"], "borrowed-for-call");
     }
 
     #[test]
@@ -1689,6 +1721,7 @@ mod autonomous_config_tests {
             manifest["exports"][1],
             serde_json::json!({
                 "meshFunction": "native_echo", "symbol": "mesh_native_echo",
+                "scheduledSymbol": "mesh_native_echo_submit_v2",
                 "request": "bytes", "response": "result<bytes,string>",
                 "maxInputBytes": 4096, "maxOutputBytes": 8192,
                 "bindingAudience": "native"

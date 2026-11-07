@@ -1,0 +1,77 @@
+{
+  "abiVersion": 1,
+  "artifact": "libmesh_library.dylib",
+  "exports": [
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "echo",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_fixture_echo_submit_v2",
+      "symbol": "mesh_fixture_echo"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "storage_roundtrip",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_fixture_storage_roundtrip_submit_v2",
+      "symbol": "mesh_fixture_storage_roundtrip"
+    },
+    {
+      "maxInputBytes": 16782000,
+      "maxOutputBytes": 16782000,
+      "meshFunction": "large",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_fixture_large_submit_v2",
+      "symbol": "mesh_fixture_large"
+    },
+    {
+      "maxInputBytes": 16782000,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "input_only",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_fixture_input_only_submit_v2",
+      "symbol": "mesh_fixture_input_only"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 2,
+      "meshFunction": "small_output",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "mesh_fixture_small_output_submit_v2",
+      "symbol": "mesh_fixture_small_output"
+    }
+  ],
+  "nativeAuthorityExtension": {
+    "abiVersion": 2,
+    "activationSymbol": "mesh_library_enable_protected_v2",
+    "capabilitiesSymbol": "mesh_library_capabilities_v2",
+    "completeEffectInventory": false,
+    "dispatchTrust": "native descriptor validation required",
+    "invocationSymbol": "mesh_library_call_scoped_v2",
+    "publication": "not qualified",
+    "refusalStatus": 10,
+    "scheduledInvocations": {
+      "audience": "native-only; trusted descriptor selection",
+      "codeLifetime": "process-lifetime; dynamic unloading unsupported",
+      "completion": "once-only; handle lifetime is not effect or publication permission",
+      "header": "libmesh_library.invocations.h",
+      "release": "nonjoining; does not cancel",
+      "request": "copied-before-submit-return",
+      "requiredCapability": 4
+    },
+    "scheduling": "synchronous; existing call serialization",
+    "unsupportedStatus": 11
+  },
+  "ownership": {
+    "request": "borrowed-for-call",
+    "response": "caller-owned; release with mesh_library_free_returned_bytes"
+  },
+  "target": "aarch64-apple-darwin"
+}

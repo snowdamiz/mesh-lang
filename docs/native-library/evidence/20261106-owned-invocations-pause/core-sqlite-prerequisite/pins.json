@@ -1,0 +1,9 @@
+{
+  "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-owned-invocations/core-sqlite-prerequisite/PROPOSAL.md": "44ffe912c31e299392abad1aecf9431e619fafd15833b73508a2c1dcb94eae12",
+  "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-owned-invocations/core-sqlite-prerequisite/prepare_probe.py": "e886d2de9bde0ba972e56664f69462d2c0e1812164de96c2387d11a511e85d1f",
+  "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-owned-invocations/core-sqlite-prerequisite/prepare-probe.json": "6567d284844d10b5af93776939e37f9730f944a9814b996bd2aaa8e0de7bad91",
+  "/Users/andreyyurlov/Documents/dev/mesh-lang/compiler/mesh-rt/src/db/sqlite.rs": "d443bf83725d3ea824dbfee7ae86b4ae69eac2012d82f30e14593690ec116dde",
+  "/Users/andreyyurlov/Documents/dev/mesh-lang/compiler/mesh-rt/src/authority.rs": "d80426feeec87bf5337624608dc822036132ebfff7554fb7a4e9e07f7ec8344d",
+  "/Users/andreyyurlov/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/libsqlite3-sys-0.36.0/sqlite3/sqlite3.c": "ff57e8d0a1572b35c17cab9a7dea34616bc12b6fb8b29acf5cb00b6ecf025149",
+  "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-owned-invocations/core-bootstrap/mobile-core/storage/blobs.mpl": "1f0ee7e205bb5dc6b686c6a448989d7db19224b1728002c6aeac8351ed12a054"
+}

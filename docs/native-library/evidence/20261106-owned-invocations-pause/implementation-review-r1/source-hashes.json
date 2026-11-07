@@ -1,0 +1,142 @@
+{
+  "base": "9b844dbab34e61f6de575af2b25b0ed0f321059e",
+  "source_pin_sha256": "8e21f320b3c2891606dfe5cbfea3c3e0c7116f397edfb5135b560b346fff6f1c",
+  "files": {
+    "compiler/mesh-codegen/src/codegen/intrinsics.rs": {
+      "expected": "1eff13ccf02d88db8bb37bdba43fb5135931c11339f16af3b28084e5310ff6f6",
+      "observed": "1eff13ccf02d88db8bb37bdba43fb5135931c11339f16af3b28084e5310ff6f6"
+    },
+    "compiler/mesh-codegen/src/codegen/mod.rs": {
+      "expected": "a7efe08484346d6ed6e456b46dc62dd01438c29c8f88ae0016604424feb7db63",
+      "observed": "a7efe08484346d6ed6e456b46dc62dd01438c29c8f88ae0016604424feb7db63"
+    },
+    "compiler/mesh-rt/src/actor/mod.rs": {
+      "expected": "324eea148e0f71d94b3f44fbef05f45b9f75ab18cca091ff2617925d6be5542f",
+      "observed": "324eea148e0f71d94b3f44fbef05f45b9f75ab18cca091ff2617925d6be5542f"
+    },
+    "compiler/mesh-rt/src/actor/process.rs": {
+      "expected": "7067c9b152282b3c70f932b9511213c9991769284cfb22360fa29373433adc4d",
+      "observed": "7067c9b152282b3c70f932b9511213c9991769284cfb22360fa29373433adc4d"
+    },
+    "compiler/mesh-rt/src/actor/scheduler.rs": {
+      "expected": "d56bcbb19564f6e0e63df92cf71a8f723115a8a2c4ac3158d87826a8630dae46",
+      "observed": "d56bcbb19564f6e0e63df92cf71a8f723115a8a2c4ac3158d87826a8630dae46"
+    },
+    "compiler/mesh-rt/src/actor/service.rs": {
+      "expected": "3fb889d4e2fd20ff354ca3056943ebcba0b9c3ce8cecd8ddd6fa0ddba360c454",
+      "observed": "3fb889d4e2fd20ff354ca3056943ebcba0b9c3ce8cecd8ddd6fa0ddba360c454"
+    },
+    "compiler/mesh-rt/src/actor/stack.rs": {
+      "expected": "b8a4e9c443b6b6496413ba780c549b9ca56e618c622704c9013a83ab777cb461",
+      "observed": "b8a4e9c443b6b6496413ba780c549b9ca56e618c622704c9013a83ab777cb461"
+    },
+    "compiler/mesh-rt/src/authority.rs": {
+      "expected": "d80426feeec87bf5337624608dc822036132ebfff7554fb7a4e9e07f7ec8344d",
+      "observed": "d80426feeec87bf5337624608dc822036132ebfff7554fb7a4e9e07f7ec8344d"
+    },
+    "compiler/mesh-rt/src/channel.rs": {
+      "expected": "115925eb42aefdb0fc4d7fc1279b0fa98687e0afd6683e4f335b401956557189",
+      "observed": "115925eb42aefdb0fc4d7fc1279b0fa98687e0afd6683e4f335b401956557189"
+    },
+    "compiler/mesh-rt/src/db/pg.rs": {
+      "expected": "d42de2e9fa11cac6caa1250b28edc4e1b264b7d7cdac9e4536a61bbedb1fd2f5",
+      "observed": "d42de2e9fa11cac6caa1250b28edc4e1b264b7d7cdac9e4536a61bbedb1fd2f5"
+    },
+    "compiler/mesh-rt/src/db/pool.rs": {
+      "expected": "3c986aa7f5284fb39818684c3a53344cdf315f8c0527354eb0015eb5e1ff2159",
+      "observed": "3c986aa7f5284fb39818684c3a53344cdf315f8c0527354eb0015eb5e1ff2159"
+    },
+    "compiler/mesh-rt/src/dist/continuity.rs": {
+      "expected": "97619a41f3adccac30f0ef69f6cb39d721f27a8889b54401cb7b996cabe126d6",
+      "observed": "97619a41f3adccac30f0ef69f6cb39d721f27a8889b54401cb7b996cabe126d6"
+    },
+    "compiler/mesh-rt/src/dist/node.rs": {
+      "expected": "affe4b63584c95fea92c1cf177c6cdef243063cc30aa18d77c551e48b6b5a17b",
+      "observed": "affe4b63584c95fea92c1cf177c6cdef243063cc30aa18d77c551e48b6b5a17b"
+    },
+    "compiler/mesh-rt/src/http/client.rs": {
+      "expected": "ef4ba84fcc3ea36e56d44f79913703ee596892f16edff17b9757054b20d566d9",
+      "observed": "ef4ba84fcc3ea36e56d44f79913703ee596892f16edff17b9757054b20d566d9"
+    },
+    "compiler/mesh-rt/src/http/client_trust_tests.rs": {
+      "expected": "10536211ec8628a7bce65d2b2bed6f4be7c90045320e703dc9a18ecde1e578d1",
+      "observed": "10536211ec8628a7bce65d2b2bed6f4be7c90045320e703dc9a18ecde1e578d1"
+    },
+    "compiler/mesh-rt/src/http/router.rs": {
+      "expected": "3f3a3b33c0ae0ff1d6b556d9b6521db062e78793a29e9ab8a27dd9c3a8e6139d",
+      "observed": "3f3a3b33c0ae0ff1d6b556d9b6521db062e78793a29e9ab8a27dd9c3a8e6139d"
+    },
+    "compiler/mesh-rt/src/http/server.rs": {
+      "expected": "94d55b45c8f400e87ad8ad82691aab70d018043abb01f58543e55289525124ff",
+      "observed": "94d55b45c8f400e87ad8ad82691aab70d018043abb01f58543e55289525124ff"
+    },
+    "compiler/mesh-rt/src/library.rs": {
+      "expected": "4e93d3102dc19b7bc559be31fd1975992a46754cdea13b3d4cb7b9bbb0e367d0",
+      "observed": "4e93d3102dc19b7bc559be31fd1975992a46754cdea13b3d4cb7b9bbb0e367d0"
+    },
+    "compiler/mesh-rt/src/library/invocation.rs": {
+      "expected": "b9f719dac81e95de7156573acb475573b42d4e3dbc05a297bc0f2aae4e149197",
+      "observed": "b9f719dac81e95de7156573acb475573b42d4e3dbc05a297bc0f2aae4e149197"
+    },
+    "compiler/mesh-rt/src/storage_wrapping.rs": {
+      "expected": "3029fbd46c0dd43e47db66f353aa9d85549d5e04f0ad39f8806875445b21bcfa",
+      "observed": "3029fbd46c0dd43e47db66f353aa9d85549d5e04f0ad39f8806875445b21bcfa"
+    },
+    "compiler/mesh-rt/src/ws/client.rs": {
+      "expected": "e8c58113440a3afe998a6845c7aa88a0ce519c63bf824754f9fd614f0e993cb6",
+      "observed": "e8c58113440a3afe998a6845c7aa88a0ce519c63bf824754f9fd614f0e993cb6"
+    },
+    "compiler/mesh-rt/src/ws/rooms.rs": {
+      "expected": "c25ae4c01106f8d5026162e6cad470a0955b3ba8f14247675bb7cac8952add9a",
+      "observed": "c25ae4c01106f8d5026162e6cad470a0955b3ba8f14247675bb7cac8952add9a"
+    },
+    "compiler/mesh-rt/src/ws/server.rs": {
+      "expected": "f3d55d38587d14f016e8f42b9806be1968e8ac1d7384a79db2e7b86a86514b9a",
+      "observed": "f3d55d38587d14f016e8f42b9806be1968e8ac1d7384a79db2e7b86a86514b9a"
+    },
+    "compiler/meshc/src/library_bindings.rs": {
+      "expected": "baa2eb56657c044c5b756dfec0eae05e86ad5d7195d51cdcafc9d81aa616f09c",
+      "observed": "baa2eb56657c044c5b756dfec0eae05e86ad5d7195d51cdcafc9d81aa616f09c"
+    },
+    "compiler/meshc/src/main.rs": {
+      "expected": "8b1c6cfd9cee2ececffeea359a7d46134ad2542cd0ec5f7b5cd9a5859fc85227",
+      "observed": "8b1c6cfd9cee2ececffeea359a7d46134ad2542cd0ec5f7b5cd9a5859fc85227"
+    },
+    "compiler/meshc/tests/e2e_native_invocations.rs": {
+      "expected": "eb6ba8cedbd0a8ee7faa50eefadd5f07a1e5e5ba5f80ca01bcf4ebb3d2cd8892",
+      "observed": "eb6ba8cedbd0a8ee7faa50eefadd5f07a1e5e5ba5f80ca01bcf4ebb3d2cd8892"
+    },
+    "compiler/meshc/tests/fixtures/library_authority/check.py": {
+      "expected": "e18b6623a213e31c6707ce725963d8744cca1c57fa4ef951c63eab998f40ed03",
+      "observed": "e18b6623a213e31c6707ce725963d8744cca1c57fa4ef951c63eab998f40ed03"
+    },
+    "compiler/meshc/tests/fixtures/library_invocations/check.py": {
+      "expected": "f2e4a0a17ca2d1e79106baf7e7277a08f494a981821c3f4cae02095d42b9b930",
+      "observed": "f2e4a0a17ca2d1e79106baf7e7277a08f494a981821c3f4cae02095d42b9b930"
+    },
+    "compiler/meshc/tests/fixtures/library_invocations/main.mpl": {
+      "expected": "45af4839b685c8f6531c2478f2ad15cda276f413d3a23d5b5db957d9e219d808",
+      "observed": "45af4839b685c8f6531c2478f2ad15cda276f413d3a23d5b5db957d9e219d808"
+    },
+    "compiler/meshc/tests/fixtures/library_invocations/mesh.toml": {
+      "expected": "45cb8afcb585406db7f044e4390a824fd23629710ff3179d41eba21cccfcc275",
+      "observed": "45cb8afcb585406db7f044e4390a824fd23629710ff3179d41eba21cccfcc275"
+    },
+    "docs/native-library/owned-invocations.md": {
+      "expected": "c4a5d9cfe1151cdad92d7a2bb9913cae64c112fe8000b9a21d00f2327821de6e",
+      "observed": "c4a5d9cfe1151cdad92d7a2bb9913cae64c112fe8000b9a21d00f2327821de6e"
+    }
+  },
+  "unchanged_base_files": {
+    "compiler/meshc/src/library_authority.h": "5bbaf429dbd3749924b041847aba40ce40ee33c5a13a5c97f454601d79f87843",
+    "docs/native-library/effect-authority.md": "9b93825a4c7bcc17309feafee15d979f3eea43e07f3a7bd35e3db1c8b6a624e1",
+    "compiler/mesh-repl/src/jit.rs": "92235281c5d9d56127ccfdb2cbe7d127e9882887e4ae978aa89da2b47daa822a",
+    "compiler/mesh-rt/src/db/repo.rs": "da8a8518145f253456b89947f5035eeb0103e5ada8227178d1f7d460b0fcde9d",
+    "compiler/mesh-rt/src/db/transport.rs": "689c8bc5e9de708a5c04d25e864d2727b95c1905fa33823edcacc224c9526ea7",
+    "compiler/mesh-rt/src/db/sqlite.rs": "d443bf83725d3ea824dbfee7ae86b4ae69eac2012d82f30e14593690ec116dde",
+    "compiler/mesh-rt/src/actor/job.rs": "2d0050953e47a8bfd5d686a13ae27c5138ef8b9782548c275c51f556e2d125aa",
+    "compiler/mesh-rt/src/stack_overflow.rs": "5ab517fbc9b6a456cb13fadb8beb66bfc45788d7126e6831bae717ad1a162c46",
+    "compiler/mesh-rt/src/string.rs": "c2aea12a3584e221e8432a6d718f61b12abb7a5428be3478383d35eb38e38afe"
+  },
+  "all_frozen_hashes_match": true
+}

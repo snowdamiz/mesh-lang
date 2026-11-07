@@ -1,0 +1,32 @@
+{
+  "state": "candidate checks complete; independent implementation review r2 pending",
+  "base": "9b844dbab34e61f6de575af2b25b0ed0f321059e",
+  "branch": "fix/native-owned-invocations",
+  "observed_mask": 1,
+  "source_pin_sha256": "48fd7392c87319a97aed03489f1016525476209398ff27468ea4b0afde1cbee6",
+  "family_sha256": "f71f64e08795020034c3bd14b0962af0ddaa8e32d2eb8018c0f72fdde70f291c",
+  "runtime": {
+    "passed": 1673,
+    "failed": 0,
+    "ignored": 20
+  },
+  "generated": {
+    "library_tests": 3,
+    "owned_tests": 2,
+    "retained_authority_runs": 62,
+    "progress_branches": 2
+  },
+  "core_composition": "blocked before RPC by accepted PRAGMA refusal; separate unapplied proposal",
+  "app_binding_compatibility": "176same rows/limits/audiences; legacyh/ts/swift/kt/jni.c byte-identical; actualapp175public/164scoped output same",
+  "r1_preserved_files": 44,
+  "not_claimed": [
+    "cap4 qualification",
+    "full effects bit2",
+    "native/publication bits8/32",
+    "shared services bit16",
+    "JNI/SDK/JSI/WK adoption",
+    "whole-product closure",
+    "full release CI matrix",
+    "direct late-buffer memory-erasure instrumentation"
+  ]
+}

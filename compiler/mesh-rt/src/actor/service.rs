@@ -73,6 +73,10 @@ pub extern "C-unwind" fn mesh_service_call_shaped(
     shape: *const u32,
 ) -> *const u8 {
     let sched = super::global_scheduler();
+    if !super::allows_target(sched, ProcessId(target_pid)) || !crate::authority::may_suspend() {
+        crate::authority::refuse();
+        std::panic::resume_unwind(Box::new(super::stack::ActorStopped));
+    }
     let (caller, me) = super::running_process();
     let target = ProcessId(target_pid);
     if !target.is_local() {
@@ -88,7 +92,9 @@ pub extern "C-unwind" fn mesh_service_call_shaped(
     // The service reads the handler's tag from the data; its receive takes
     // a program's messages.
     let mut buffer = MessageBuffer::new(data, super::PROGRAM_MESSAGE_TAG);
-    super::detach_from_sender(sched, &mut buffer, PAYLOAD_OFFSET, shape);
+    if !super::detach_from_sender(sched, &mut buffer, PAYLOAD_OFFSET, shape) {
+        super::mesh_actor_stop();
+    }
 
     // Watched before the call is queued, so that however the service ends,
     // the caller hears of it rather than waiting for good.
@@ -153,11 +159,16 @@ pub extern "C" fn mesh_service_reply_shaped(
     shape: *const u32,
 ) {
     let sched = super::global_scheduler();
+    if !super::allows_target(sched, ProcessId(caller_pid)) {
+        return;
+    }
     let mut buffer = MessageBuffer::new(
         super::message_bytes(reply_ptr, reply_size),
         SERVICE_REPLY_TAG,
     );
-    super::detach_from_sender(sched, &mut buffer, 0, shape);
+    if !super::detach_from_sender(sched, &mut buffer, 0, shape) {
+        return;
+    }
     // The caller waits for this and nothing else: it goes in even when its
     // mailbox is full. A caller that has gone takes no reply.
     if let Some(caller) = sched.get_process(ProcessId(caller_pid)) {
@@ -179,9 +190,14 @@ pub extern "C" fn mesh_service_cast_shaped(
     shape: *const u32,
 ) {
     let sched = super::global_scheduler();
+    if !super::allows_target(sched, ProcessId(target_pid)) {
+        return;
+    }
     let bytes = super::message_bytes(data, size);
     let mut buffer = MessageBuffer::new(bytes, super::PROGRAM_MESSAGE_TAG);
-    super::detach_from_sender(sched, &mut buffer, PAYLOAD_OFFSET, shape);
+    if !super::detach_from_sender(sched, &mut buffer, PAYLOAD_OFFSET, shape) {
+        return;
+    }
     super::deliver_local(sched, ProcessId(target_pid), Message { buffer });
 }
 

@@ -1,0 +1,5 @@
+status: Some(0)
+stdout:
+
+stderr:
+  Compiled: /Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-owned-invocations/generated-abi-1794016967512686000/libauthority.dylib

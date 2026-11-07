@@ -12,6 +12,7 @@ pub(crate) fn write(
     let bindings = render(artifact, exports, target);
     for (extension, contents) in [
         ("h", bindings.header),
+        ("invocations.h", bindings.invocations),
         ("swift", bindings.swift),
         ("kt", bindings.kotlin),
         ("jni.c", bindings.jni),
@@ -27,6 +28,7 @@ pub(crate) fn write(
 
 struct Bindings {
     header: String,
+    invocations: String,
     swift: String,
     kotlin: String,
     jni: String,
@@ -44,6 +46,7 @@ fn render(artifact: &Path, exports: &[LibraryExport], target: Option<&str>) -> B
     let load_name = stem.strip_prefix("lib").unwrap_or(stem);
     Bindings {
         header: render_header(stem, exports),
+        invocations: render_invocations(artifact, exports),
         swift: render_swift(exports),
         kotlin: render_kotlin(load_name, exports),
         jni: render_jni(artifact, exports),
@@ -60,6 +63,15 @@ fn render(artifact: &Path, exports: &[LibraryExport], target: Option<&str>) -> B
                 "completeEffectInventory": false,
                 "dispatchTrust": "native descriptor validation required",
                 "scheduling": "synchronous; existing call serialization",
+                "scheduledInvocations": {
+                    "requiredCapability": 4,
+                    "header": artifact.with_extension("invocations.h").file_name().and_then(|name| name.to_str()),
+                    "audience": "native-only; trusted descriptor selection",
+                    "request": "copied-before-submit-return",
+                    "completion": "once-only; handle lifetime is not effect or publication permission",
+                    "release": "nonjoining; does not cancel",
+                    "codeLifetime": "process-lifetime; dynamic unloading unsupported"
+                },
                 "publication": "not qualified"
             },
             "artifact": artifact.file_name().and_then(|name| name.to_str()),
@@ -72,6 +84,7 @@ fn render(artifact: &Path, exports: &[LibraryExport], target: Option<&str>) -> B
                 let mut row = serde_json::json!({
                     "meshFunction": export.function,
                     "symbol": export.symbol,
+                    "scheduledSymbol": format!("{}_submit_v2", export.symbol),
                     "request": "bytes",
                     "response": "result<bytes,string>",
                     "maxInputBytes": export.max_input,
@@ -86,6 +99,25 @@ fn render(artifact: &Path, exports: &[LibraryExport], target: Option<&str>) -> B
         .expect("ABI manifest is serializable")
             + "\n",
     }
+}
+
+fn render_invocations(artifact: &Path, exports: &[LibraryExport]) -> String {
+    let legacy = artifact.with_extension("h");
+    let legacy = legacy.file_name().unwrap().to_string_lossy();
+    let guard: String = legacy
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_uppercase()
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let declarations = exports.iter().map(|export| format!(
+        "int32_t {}_submit_v2(const MeshNativeAuthority *, const uint8_t *, uint64_t, MeshOwnedInvocationV2 **);", export.symbol
+    )).collect::<Vec<_>>().join("\n");
+    format!("#ifndef {guard}_INVOCATIONS_H\n#define {guard}_INVOCATIONS_H\n\n#include \"{legacy}\"\n\n#ifdef __cplusplus\nextern \"C\" {{\n#endif\n\n/* Native-only opt-in. Require scheduler capability before qualified use.\n * Pin module/runtime/callback code until process exit. Shutdown joins the\n * scheduler, not detached HTTP; it is not an unload or publication fence.\n * Submit copies bounded input and returns one owned handle on status 0.\n * Every failure clears valid output. A handle is lifetime, not permission.\n * Take requires an empty destination, consumes terminal status once, and\n * returns private bytes only on success. Free bytes with the legacy free API.\n * Keep the caller reference alive during concurrent take/cancel; exclude\n * release from those uses. Release does not cancel or wait for execution.\n * Callback/nested Mesh take/cancel returns BUSY without mutating the handle.\n * See docs/native-library/owned-invocations.md for the full status contract. */\n#define MESH_LIBRARY_ERR_PENDING 12\n#define MESH_LIBRARY_ERR_TAKEN 13\ntypedef struct MeshOwnedInvocationV2 MeshOwnedInvocationV2;\nint32_t mesh_library_invocation_take_v2(MeshOwnedInvocationV2 *, MeshLibraryBytes *);\nint32_t mesh_library_invocation_cancel_v2(MeshOwnedInvocationV2 *);\nvoid mesh_library_invocation_release_v2(MeshOwnedInvocationV2 *);\n{declarations}\n\n#ifdef __cplusplus\n}}\n#endif\n#endif\n")
 }
 
 fn render_header(stem: &str, exports: &[LibraryExport]) -> String {

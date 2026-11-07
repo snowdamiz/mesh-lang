@@ -348,6 +348,10 @@ pub extern "C-unwind" fn mesh_ws_client_connect(
     url: *const MeshString,
     options_handle: i64,
 ) -> *mut MeshResult {
+    if crate::authority::current().is_some() {
+        return error(crate::authority::refuse());
+    }
+
     client_connect(url, options_handle, super::spawn_thread)
 }
 
@@ -634,6 +638,10 @@ pub extern "C" fn mesh_ws_client_send_text(
     handle: i64,
     body: *const MeshString,
 ) -> *mut MeshResult {
+    if crate::authority::current().is_some() {
+        return error(crate::authority::refuse());
+    }
+
     let body = unsafe { (*body).as_str().as_bytes() };
     send_frame(handle, WsOpcode::Text, body)
 }
@@ -643,12 +651,20 @@ pub extern "C" fn mesh_ws_client_send_bytes(
     handle: i64,
     body: *const MeshBytes,
 ) -> *mut MeshResult {
+    if crate::authority::current().is_some() {
+        return error(crate::authority::refuse());
+    }
+
     let body = unsafe { (*body).as_slice() };
     send_frame(handle, WsOpcode::Binary, body)
 }
 
 #[no_mangle]
 pub extern "C-unwind" fn mesh_ws_client_recv(handle: i64, timeout_ms: i64) -> *mut MeshResult {
+    if crate::authority::current().is_some() {
+        return error(crate::authority::refuse());
+    }
+
     let Ok(timeout_ms) = u64::try_from(timeout_ms) else {
         return error("WebSocket receive timeout must be non-negative");
     };
@@ -703,6 +719,10 @@ pub extern "C" fn mesh_ws_client_close(
     code: i64,
     reason: *const MeshString,
 ) -> *mut MeshResult {
+    if crate::authority::current().is_some() {
+        return error(crate::authority::refuse());
+    }
+
     let Some(code) = u16::try_from(code)
         .ok()
         .filter(|code| is_valid_close_code(*code))

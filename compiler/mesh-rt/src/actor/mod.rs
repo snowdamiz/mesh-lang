@@ -151,6 +151,7 @@ pub(crate) fn cooperative_recv<T>(
     receiver: &std::sync::mpsc::Receiver<T>,
 ) -> Result<T, std::sync::mpsc::RecvError> {
     use std::sync::mpsc::{RecvError, TryRecvError};
+    crate::authority::suspend_or_stop();
     if !stack::CURRENT_YIELDER.with(|current| current.yielder.get().is_some()) {
         return receiver.recv();
     }
@@ -180,6 +181,7 @@ pub(crate) fn cooperative_recv_timeout<T>(
     timeout: std::time::Duration,
 ) -> Result<T, std::sync::mpsc::RecvTimeoutError> {
     use std::sync::mpsc::{RecvTimeoutError, TryRecvError};
+    crate::authority::suspend_or_stop();
     let in_coroutine = stack::CURRENT_YIELDER.with(|current| current.yielder.get().is_some());
     if !in_coroutine {
         return receiver.recv_timeout(timeout);
@@ -595,16 +597,23 @@ pub(crate) fn detach_from_sender(
     buffer: &mut MessageBuffer,
     base: usize,
     shape: *const u32,
-) {
+) -> bool {
     if shape.is_null() {
-        return;
+        return true;
     }
     let sender = stack::get_current_pid()
         .and_then(|pid| sched.get_process(pid))
         .expect("a message with a shape comes from compiled code, which runs in a process");
     let captured = unsafe { msg_shape::capture(&sender.lock().heap, &buffer.data, base, shape) };
+    // Scoped messages must copy their values. Lending an opaque child object
+    // back to its root can create a strong Process cycle through spawn loans.
+    if crate::authority::current().is_some() && !captured.lend.is_empty() {
+        crate::authority::refuse();
+        return false;
+    }
     buffer.borrows = scheduler::lend_words(&sender, &captured.lend);
     buffer.captured = captured;
+    true
 }
 
 /// Local send path -- the original mesh_actor_send body, unchanged.
@@ -628,16 +637,17 @@ fn local_send_with_scheduler(
     msg_size: u64,
     shape: *const u32,
 ) -> i64 {
-    let buffer = message_buffer(sched, message_bytes(msg_ptr, msg_size), shape);
+    let Some(buffer) = message_buffer(sched, message_bytes(msg_ptr, msg_size), shape) else {
+        return crate::authority::REFUSED as i64;
+    };
     deliver_local(sched, ProcessId(target_pid), Message { buffer })
 }
 
 /// A message of bytes `data`, detached from the running actor's heap as
 /// `shape` describes.
-fn message_buffer(sched: &Scheduler, data: Vec<u8>, shape: *const u32) -> MessageBuffer {
+fn message_buffer(sched: &Scheduler, data: Vec<u8>, shape: *const u32) -> Option<MessageBuffer> {
     let mut buffer = MessageBuffer::new(data, PROGRAM_MESSAGE_TAG);
-    detach_from_sender(sched, &mut buffer, 0, shape);
-    buffer
+    detach_from_sender(sched, &mut buffer, 0, shape).then_some(buffer)
 }
 
 /// Header tag of a message a program sent. The runtime's own messages (exit
@@ -647,7 +657,24 @@ pub(crate) const PROGRAM_MESSAGE_TAG: u64 = 0;
 
 /// Queue a prepared message for a local actor and wake it. Returns the
 /// observable send status.
+pub(crate) fn allows_target(sched: &Scheduler, pid: ProcessId) -> bool {
+    if !pid.is_local() {
+        if crate::authority::current().is_some() {
+            crate::authority::refuse();
+            return false;
+        }
+        return true;
+    }
+    let context = sched
+        .get_process(pid)
+        .and_then(|process| process.lock().invocation.clone());
+    crate::authority::compatible(context.as_ref())
+}
+
 fn deliver_local(sched: &Scheduler, pid: ProcessId, mut msg: Message) -> i64 {
+    if !allows_target(sched, pid) {
+        return crate::authority::REFUSED as i64;
+    }
     // Look up the target process and push message.
     if let Some(proc_arc) = sched.get_process(pid) {
         msg.buffer.addressed_to(&proc_arc);
@@ -676,6 +703,10 @@ fn deliver_local(sched: &Scheduler, pid: ProcessId, mut msg: Message) -> i64 {
 /// or the write fails.
 #[cold]
 fn dist_send(target_pid: u64, msg_ptr: *const u8, msg_size: u64, shape: *const u32) -> i64 {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return crate::authority::REFUSED as i64;
+    }
     let target = ProcessId(target_pid);
     let data = message_bytes(msg_ptr, msg_size);
     match capture_for_node(target, &data, shape) {
@@ -804,6 +835,9 @@ pub(crate) fn actor_receive_matching<F>(timeout_ms: i64, predicate: F) -> *const
 where
     F: Fn(&Message) -> bool,
 {
+    if timeout_ms != 0 {
+        crate::authority::suspend_or_stop();
+    }
     let sched = global_scheduler();
     let (my_pid, me) = running_process();
     let deadline = (timeout_ms > 0)
@@ -928,6 +962,8 @@ fn timer_reactor(receiver: crossbeam_channel::Receiver<TimerWake>) {
 /// actors do not create runnable pressure or busy-resume loops.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_timer_sleep(ms: i64) {
+    crate::authority::suspend_or_stop();
+
     if ms <= 0 {
         return;
     }
@@ -1022,12 +1058,22 @@ pub extern "C" fn mesh_timer_send_after_shaped(
     msg_size: i64,
     shape: *const u32,
 ) {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return;
+    }
+    if !allows_target(global_scheduler(), ProcessId(target_pid as u64)) {
+        return;
+    }
     let data = message_bytes(msg_ptr, msg_size.max(0) as u64);
     let target = ProcessId(target_pid as u64);
     let delay = std::time::Duration::from_millis(if ms > 0 { ms as u64 } else { 0 });
 
     let prepared = if target.is_local() {
-        SendOnTimer::Local(message_buffer(global_scheduler(), data, shape))
+        let Some(buffer) = message_buffer(global_scheduler(), data, shape) else {
+            return;
+        };
+        SendOnTimer::Local(buffer)
     } else {
         match capture_for_node(target, &data, shape) {
             Some(captured) => SendOnTimer::Remote(data, captured),
@@ -1109,6 +1155,10 @@ pub(crate) fn copy_msg_to_actor_heap(
 /// - `target_pid`: the PID of the actor to link with
 #[no_mangle]
 pub extern "C" fn mesh_actor_link(target_pid: u64) {
+    if !allows_target(global_scheduler(), ProcessId(target_pid)) {
+        return;
+    }
+
     let (my_pid, me) = running_process();
     let target = ProcessId(target_pid);
 
@@ -1135,6 +1185,10 @@ pub extern "C" fn mesh_actor_link(target_pid: u64) {
 ///   with signature `extern "C" fn(state_ptr: *const u8, reason_ptr: *const u8)`
 #[no_mangle]
 pub extern "C" fn mesh_actor_set_terminate(pid: u64, callback_fn_ptr: *const u8) {
+    if !allows_target(global_scheduler(), ProcessId(pid)) {
+        return;
+    }
+
     let sched = global_scheduler();
     let target = ProcessId(pid);
 
@@ -1191,6 +1245,11 @@ pub extern "C" fn mesh_rt_run_scheduler() {
 /// Returns 0 on success, 1 on error.
 #[no_mangle]
 pub extern "C" fn mesh_process_register(name: *const crate::string::MeshString, pid: u64) -> u64 {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return 1;
+    }
+
     if pid == 0 {
         return 1;
     }
@@ -1209,6 +1268,11 @@ pub extern "C" fn mesh_process_register(name: *const crate::string::MeshString, 
 /// Returns the PID as u64, or 0 if not found.
 #[no_mangle]
 pub extern "C" fn mesh_process_whereis(name: *const crate::string::MeshString) -> u64 {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return 0;
+    }
+
     let name_str = unsafe { (*name).as_str() };
     match registry::global_registry().whereis(name_str) {
         Some(pid) => pid.as_u64(),
@@ -1326,6 +1390,11 @@ extern "C-unwind" fn supervisor_entry(args: *const u8) {
 /// malformed one is a bug: it panics.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_supervisor_start(config_ptr: *const u8, config_size: u64) -> u64 {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return u64::MAX;
+    }
+
     let data = unsafe { std::slice::from_raw_parts(config_ptr, config_size as usize) };
     let config = parse_supervisor_config(data);
     let sched = global_scheduler();
@@ -1367,6 +1436,11 @@ pub extern "C-unwind" fn mesh_supervisor_start_child(
     _args_ptr: *const u8,
     _args_size: u64,
 ) -> u64 {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return u64::MAX;
+    }
+
     u64::MAX
 }
 
@@ -1378,6 +1452,11 @@ pub extern "C-unwind" fn mesh_supervisor_start_child(
 /// Returns 0 on success, 1 on failure.
 #[no_mangle]
 pub extern "C" fn mesh_supervisor_terminate_child(sup_pid: u64, child_pid: u64) -> u64 {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return u64::MAX;
+    }
+
     let sup_pid = ProcessId(sup_pid);
     let child_pid = ProcessId(child_pid);
     let sched = global_scheduler();
@@ -1406,6 +1485,11 @@ pub extern "C" fn mesh_supervisor_terminate_child(sup_pid: u64, child_pid: u64) 
 /// supervisor PID is not found.
 #[no_mangle]
 pub extern "C" fn mesh_supervisor_count_children(sup_pid: u64) -> u64 {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return 0;
+    }
+
     let sup_pid = ProcessId(sup_pid);
 
     match supervisor::get_supervisor_state(sup_pid) {
@@ -1469,6 +1553,10 @@ pub(crate) fn deliver_exit_signal(sched: &Scheduler, pid: ProcessId, reason: Exi
 
 #[no_mangle]
 pub extern "C" fn mesh_actor_exit(target_pid: u64, reason_tag: u8) {
+    if !allows_target(global_scheduler(), ProcessId(target_pid)) {
+        return;
+    }
+
     let reason = match reason_tag {
         0 => ExitReason::Normal,
         1 => ExitReason::Error("exit signal".to_string()),
@@ -1491,9 +1579,15 @@ pub extern "C" fn mesh_process_monitor(
     msg_size: u64,
     shape: *const u32,
 ) -> u64 {
+    if !allows_target(global_scheduler(), ProcessId(target_pid)) {
+        return 0;
+    }
+
     let sched = global_scheduler();
     let (my_pid, me) = running_process();
-    let message = message_buffer(sched, message_bytes(msg_ptr, msg_size), shape);
+    let Some(message) = message_buffer(sched, message_bytes(msg_ptr, msg_size), shape) else {
+        return 0;
+    };
     watch(sched, &me, my_pid, ProcessId(target_pid), message)
 }
 
@@ -1587,13 +1681,20 @@ pub extern "C" fn mesh_node_monitor(
     msg_size: u64,
     shape: *const u32,
 ) -> u64 {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return 0;
+    }
+
     let sched = global_scheduler();
     let (my_pid, me) = running_process();
     let Some(state) = crate::dist::node::node_state() else {
         return 1;
     };
     let node_name = mesh_str(node_ptr, node_len);
-    let mut message = message_buffer(sched, message_bytes(msg_ptr, msg_size), shape);
+    let Some(mut message) = message_buffer(sched, message_bytes(msg_ptr, msg_size), shape) else {
+        return 0;
+    };
     message.addressed_to(&me);
     // Checked and recorded under the lock a disconnect takes its monitors
     // under, so the disconnect either finds this one or came first.
@@ -1626,6 +1727,11 @@ pub extern "C" fn mesh_node_monitor(
 /// - `pid`: raw u64 PID value
 #[no_mangle]
 pub extern "C" fn mesh_global_register(name_ptr: *const u8, name_len: u64, pid: u64) -> u64 {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return 1;
+    }
+
     let Some(name) = global_name(name_ptr, name_len) else {
         return 1;
     };
@@ -1668,6 +1774,11 @@ fn global_name<'a>(ptr: *const u8, len: u64) -> Option<&'a str> {
 /// - `name_len`: length of the name in bytes
 #[no_mangle]
 pub extern "C" fn mesh_global_whereis(name_ptr: *const u8, name_len: u64) -> u64 {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return 0;
+    }
+
     global_name(name_ptr, name_len)
         .and_then(|name| crate::dist::global::global_name_registry().whereis(name))
         .map_or(0, ProcessId::as_u64)
@@ -1682,6 +1793,11 @@ pub extern "C" fn mesh_global_whereis(name_ptr: *const u8, name_len: u64) -> u64
 /// - `name_len`: length of the name in bytes
 #[no_mangle]
 pub extern "C" fn mesh_global_unregister(name_ptr: *const u8, name_len: u64) -> u64 {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return 1;
+    }
+
     let Some(name) = global_name(name_ptr, name_len) else {
         return 1;
     };

@@ -1,0 +1,1975 @@
+//! The Mesh compiler CLI.
+//!
+//! Provides the `meshc` command with the following subcommands:
+//!
+//! - `meshc build <dir>` - Compile a Mesh project to a native binary
+//! - `meshc init [--clustered] [--template <name>] [--db <sqlite|postgres>] <name>` - Initialize a new Mesh project (`todo-api` defaults to local SQLite; `--db postgres` opts into the clustered/deployable starter)
+//! - `meshc cluster <status|continuity|diagnostics> ...` - Inspect runtime-owned clustered operator surfaces
+//! - `meshc deps [dir]` - Resolve and fetch dependencies
+//! - `meshc update` - Refresh installed `meshc` and `meshpkg` through the canonical installer path
+//! - `meshc fmt <path>` - Format Mesh source files in-place
+//! - `meshc lint [path]` - Report code that compiles but should be written differently
+//! - `meshc test [path]` - Run *.test.mpl files from a project root, tests directory, or specific test file
+//! - `meshc migrate [up|down|status|generate]` - Database migration management
+//! - `meshc repl` - Start an interactive REPL with LLVM JIT
+//! - `meshc lsp` - Start the LSP server (communicates via stdin/stdout)
+//!
+//! Options:
+//! - `--opt-level` - Optimization level (0 = debug, 2 = release)
+//! - `--emit-llvm` - Emit LLVM IR (.ll) alongside the binary
+//! - `--output` - Output path for the compiled binary
+//! - `--target` - Target triple for cross-compilation
+//! - `--artifact` - Build an executable, static library, or dynamic library
+//! - `--json` - Output diagnostics as JSON (one object per line)
+//! - `--no-color` - Disable colorized output
+
+// The build pipeline threads its state through many parameters, and some
+// intermediate shapes are spelled out where they are built.
+#![allow(clippy::too_many_arguments, clippy::type_complexity)]
+
+#[cfg(target_env = "musl")]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
+mod cluster;
+mod library_bindings;
+mod migrate;
+mod plaintext_report;
+mod proof;
+mod proof_gates;
+mod test_runner;
+
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
+use std::process;
+
+use clap::{Parser, Subcommand, ValueEnum};
+use mesh_parser::ast::expr::{FieldAccess, NameRef};
+use mesh_parser::ast::AstNode;
+use mesh_parser::syntax_kind::SyntaxKind;
+use mesh_pkg::manifest::{
+    plan_cluster_declarations, resolve_entrypoint, ClusteredDeclarationError,
+    ClusteredExecutionMetadata, Manifest,
+};
+
+use mesh_typeck::diagnostics::DiagnosticOptions;
+use mesh_typeck::ty::Ty;
+
+#[derive(Parser)]
+#[command(name = "meshc", version, about = "The Mesh compiler")]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Compile a Mesh project to a native binary
+    Build {
+        /// Path to the project directory (must contain the resolved Mesh entrypoint)
+        dir: PathBuf,
+
+        /// Optimization level (0 = debug, 2 = release)
+        #[arg(long = "opt-level", default_value = "0")]
+        opt_level: u8,
+
+        /// Emit LLVM IR (.ll file) alongside the binary
+        #[arg(long = "emit-llvm")]
+        emit_llvm: bool,
+
+        /// Output path for the compiled binary
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Write the deterministic plaintext disclosure audit to this path.
+        /// Defaults to <output>.plaintext.json.
+        #[arg(long = "plaintext-report")]
+        plaintext_report: Option<PathBuf>,
+
+        /// Target triple for cross-compilation (e.g., x86_64-unknown-linux-gnu)
+        #[arg(long)]
+        target: Option<String>,
+
+        /// Artifact kind
+        #[arg(long, value_enum, default_value_t = BuildArtifact::Executable)]
+        artifact: BuildArtifact,
+
+        /// Output diagnostics as JSON (one object per line) instead of human-readable format
+        #[arg(long)]
+        json: bool,
+
+        /// Disable colorized output
+        #[arg(long = "no-color")]
+        no_color: bool,
+    },
+    /// Initialize a new Mesh project
+    Init {
+        /// Generate the minimal clustered app scaffold instead of the hello-world app
+        #[arg(long)]
+        clustered: bool,
+
+        /// Generate a named starter template (currently: todo-api; default SQLite is local-only)
+        #[arg(long)]
+        template: Option<String>,
+
+        /// Select the todo-api database backend (sqlite = local default, postgres = clustered/deployable)
+        #[arg(long, value_enum)]
+        db: Option<InitTodoDb>,
+
+        /// Project name (creates directory with this name)
+        name: String,
+    },
+    /// Inspect runtime-owned clustered operator surfaces
+    Cluster {
+        #[command(subcommand)]
+        action: cluster::ClusterCommand,
+    },
+    /// Run repository-owned production proof scenarios.
+    Proof {
+        #[command(subcommand)]
+        action: proof::ProofCommand,
+    },
+    /// Resolve and fetch dependencies
+    Deps {
+        /// Project directory (default: current directory)
+        #[arg(default_value = ".")]
+        dir: PathBuf,
+    },
+    /// Refresh installed meshc and meshpkg through the canonical installer path
+    Update,
+    /// Format Mesh source files
+    Fmt {
+        /// Path to a Mesh source file (or directory to format all .mpl files)
+        path: PathBuf,
+
+        /// Check if files are formatted (exit 1 if not, don't modify)
+        #[arg(long)]
+        check: bool,
+
+        /// Maximum line width (default: 100)
+        #[arg(long = "line-width", default_value = "100")]
+        line_width: usize,
+
+        /// Indent size in spaces (default: 2)
+        #[arg(long = "indent-size", default_value = "2")]
+        indent_size: usize,
+    },
+    /// Lint Mesh source files (exit 1 if anything is reported)
+    Lint {
+        /// Path to a Mesh source file or directory (default: current directory)
+        #[arg(default_value = ".")]
+        path: PathBuf,
+    },
+    /// Start an interactive REPL with LLVM JIT compilation
+    Repl,
+    /// Start the LSP server (communicates via stdin/stdout)
+    Lsp,
+    /// Run test files (*.test.mpl) from a project root, tests directory, or specific test file
+    Test {
+        /// Path to a Mesh project, test directory, or specific *.test.mpl file (default: current directory)
+        path: Option<PathBuf>,
+
+        /// Optimization level for test binaries (0 = debug, 2 = release)
+        #[arg(long = "opt-level", default_value = "0", value_parser = clap::value_parser!(u8).range(0..=3))]
+        opt_level: u8,
+
+        /// Show dots instead of test names (compact output)
+        #[arg(long)]
+        quiet: bool,
+
+        /// Request coverage reporting (currently unsupported; exits with an error)
+        #[arg(long)]
+        coverage: bool,
+    },
+    /// Run database migrations
+    Migrate {
+        #[command(subcommand)]
+        action: Option<MigrateAction>,
+
+        /// Project directory (default: current directory)
+        #[arg(default_value = ".")]
+        dir: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+enum MigrateAction {
+    /// Apply all pending migrations (default)
+    Up,
+    /// Rollback the last applied migration
+    Down,
+    /// Show migration status (applied vs pending)
+    Status,
+    /// Generate a new migration scaffold
+    Generate {
+        /// Migration name (e.g., "create_users")
+        name: String,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum InitTodoDb {
+    Sqlite,
+    Postgres,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
+enum BuildArtifact {
+    #[default]
+    Executable,
+    Staticlib,
+    Cdylib,
+}
+
+impl std::fmt::Display for BuildArtifact {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::Executable => "executable",
+            Self::Staticlib => "staticlib",
+            Self::Cdylib => "cdylib",
+        })
+    }
+}
+
+impl From<InitTodoDb> for mesh_pkg::TodoApiDatabase {
+    fn from(value: InitTodoDb) -> Self {
+        match value {
+            InitTodoDb::Sqlite => mesh_pkg::TodoApiDatabase::Sqlite,
+            InitTodoDb::Postgres => mesh_pkg::TodoApiDatabase::Postgres,
+        }
+    }
+}
+
+enum InitTarget {
+    HelloWorld,
+    Clustered,
+    TodoApi(mesh_pkg::TodoApiDatabase),
+}
+
+fn resolve_init_target(
+    clustered: bool,
+    template: Option<&str>,
+    db: Option<InitTodoDb>,
+) -> Result<InitTarget, String> {
+    match (template, db) {
+        (Some("todo-api"), _) if clustered => Err(
+            "`meshc init --clustered` cannot be combined with `--template todo-api` or `--db`; use `meshc init --template todo-api <name>` for the local SQLite starter, `meshc init --template todo-api --db postgres <name>` for the clustered/deployable Todo starter, or `meshc init --clustered <name>` for the minimal clustered scaffold."
+                .to_string(),
+        ),
+        (Some("todo-api"), db) => Ok(InitTarget::TodoApi(
+            db.map_or(mesh_pkg::TodoApiDatabase::Sqlite, Into::into),
+        )),
+        (Some(template_name), db) => {
+            let db_guidance = if db.is_some() {
+                " `--db` is only supported with `--template todo-api`."
+            } else {
+                ""
+            };
+            Err(format!(
+                "unknown init template '{template_name}'; supported templates: todo-api.{db_guidance}"
+            ))
+        }
+        (None, Some(_)) => Err(
+            "`--db` is only supported with `meshc init --template todo-api <name>`; omit `--db` for hello-world or `--clustered`, or add `--template todo-api` (sqlite stays the local default, postgres opts into the clustered/deployable starter)."
+                .to_string(),
+        ),
+        (None, None) if clustered => Ok(InitTarget::Clustered),
+        (None, None) => Ok(InitTarget::HelloWorld),
+    }
+}
+
+fn run_init_command(
+    clustered: bool,
+    template: Option<&str>,
+    db: Option<InitTodoDb>,
+    name: &str,
+    dir: &Path,
+) -> Result<(), String> {
+    match resolve_init_target(clustered, template, db)? {
+        InitTarget::HelloWorld => mesh_pkg::scaffold_project(name, dir),
+        InitTarget::Clustered => mesh_pkg::scaffold_clustered_project(name, dir),
+        InitTarget::TodoApi(database) => {
+            mesh_pkg::scaffold_todo_api_project_with_db(name, dir, database)
+        }
+    }
+}
+
+/// The compiler recurses over expression trees (a string with hundreds of
+/// interpolations, a long `a <> b <> ...` chain), deeper than a main
+/// thread's default stack allows; it runs on a thread with room for them.
+const COMPILER_STACK_BYTES: usize = 512 * 1024 * 1024;
+
+fn main() {
+    let compiler = std::thread::Builder::new()
+        .name("meshc".to_string())
+        .stack_size(COMPILER_STACK_BYTES)
+        .spawn(run)
+        .expect("failed to start the compiler thread");
+    if let Err(panic) = compiler.join() {
+        std::panic::resume_unwind(panic);
+    }
+}
+
+fn run() {
+    let cli = Cli::parse();
+
+    match cli.command {
+        Commands::Build {
+            dir,
+            opt_level,
+            emit_llvm,
+            output,
+            plaintext_report,
+            target,
+            artifact,
+            json,
+            no_color,
+        } => {
+            // Diagnostics go to stderr: color them only for a terminal, and
+            // not when `NO_COLOR` is set.
+            let color = !no_color
+                && !json
+                && std::env::var_os("NO_COLOR").is_none()
+                && std::io::IsTerminal::is_terminal(&std::io::stderr());
+            let diag_opts = DiagnosticOptions {
+                color,
+                json,
+                display_paths: Vec::new(),
+            };
+            if let Err(e) = build_with_plaintext_report(
+                &dir,
+                opt_level,
+                emit_llvm,
+                output.as_deref(),
+                target.as_deref(),
+                artifact,
+                false,
+                &diag_opts,
+                plaintext_report.as_deref(),
+            ) {
+                if json {
+                    // In JSON mode, emit the final error as JSON too.
+                    let msg = serde_json::json!({
+                        "code": "C0001",
+                        "severity": "error",
+                        "message": e,
+                        "file": "",
+                        "spans": [],
+                        "fix": null
+                    });
+                    eprintln!("{}", msg);
+                } else {
+                    eprintln!("error: {}", e);
+                }
+                process::exit(1);
+            }
+        }
+        Commands::Init {
+            clustered,
+            template,
+            db,
+            name,
+        } => {
+            let dir = std::env::current_dir().unwrap_or_default();
+            or_exit(run_init_command(
+                clustered,
+                template.as_deref(),
+                db,
+                &name,
+                &dir,
+            ));
+        }
+        Commands::Cluster { action } => or_exit(cluster::run_cluster_command(action)),
+        Commands::Proof { action } => or_exit(
+            proof::run_proof_command(action).map_err(|error| format!("proof failed: {error}")),
+        ),
+        Commands::Deps { dir } => or_exit(deps_command(&dir)),
+        Commands::Update => or_exit(run_update_command()),
+        Commands::Fmt {
+            path,
+            check,
+            line_width,
+            indent_size,
+        } => {
+            let config = mesh_fmt::FormatConfig {
+                indent_size,
+                max_width: line_width,
+            };
+            let stats = or_exit(fmt_command(&path, check, &config));
+            if !check {
+                eprintln!("Formatted {} file(s)", stats.total);
+            } else if stats.unformatted > 0 {
+                eprintln!("{} file(s) would be reformatted", stats.unformatted);
+                process::exit(1);
+            }
+        }
+        Commands::Lint { path } => {
+            let problems = or_exit(lint_command(&path));
+            if problems > 0 {
+                eprintln!("{} problem(s) found", problems);
+                process::exit(1);
+            }
+        }
+        Commands::Repl => or_exit(mesh_repl::run_repl(&mesh_repl::ReplConfig::default())),
+        Commands::Lsp => {
+            let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
+            rt.block_on(mesh_lsp::run_server());
+            // Its stdin read cannot be cancelled: do not wait for it.
+            rt.shutdown_background();
+        }
+        Commands::Test {
+            path,
+            opt_level,
+            quiet,
+            coverage,
+        } => {
+            if or_exit(test_runner::run_tests(
+                path.as_deref(),
+                opt_level,
+                quiet,
+                coverage,
+            ))
+            .failed
+                > 0
+            {
+                process::exit(1);
+            }
+        }
+        Commands::Migrate { action, dir } => {
+            let action = action.unwrap_or(MigrateAction::Up);
+            or_exit(match action {
+                MigrateAction::Up => migrate::run_migrations_up(&dir),
+                MigrateAction::Down => migrate::run_migrations_down(&dir),
+                MigrateAction::Status => migrate::show_migration_status(&dir),
+                MigrateAction::Generate { name } => migrate::generate_migration(&dir, &name),
+            })
+        }
+    }
+}
+
+/// A command's value, or its error reported and the process ended.
+fn or_exit<T>(result: Result<T, String>) -> T {
+    result.unwrap_or_else(|error| {
+        eprintln!("error: {error}");
+        process::exit(1)
+    })
+}
+
+fn run_update_command() -> Result<(), String> {
+    let outcome = mesh_pkg::run_toolchain_update().map_err(|error| error.to_string())?;
+    println!("{}", outcome.mode);
+    Ok(())
+}
+
+pub(crate) struct PreparedBuild {
+    pub(crate) merged_mir: mesh_codegen::mir::MirModule,
+    /// The entrypoint, relative to the project root, as resolved from the manifest.
+    pub(crate) entry_relative_path: PathBuf,
+    pub(crate) library_exports: Vec<mesh_codegen::LibraryExport>,
+    pub(crate) clustered_execution_plan: Vec<ClusteredExecutionMetadata>,
+    pub(crate) clustered_route_handler_plan: Vec<mesh_codegen::DeclaredHandlerPlanEntry>,
+    pub(crate) autonomous_config_json: Option<String>,
+    pub(crate) plaintext_report: plaintext_report::PlaintextReport,
+}
+
+fn runtime_autonomous_config_json(
+    config: Option<&mesh_pkg::AutonomousClusterConfig>,
+) -> Result<Option<String>, String> {
+    use mesh_pkg::{
+        CapacityDriverKind, ClusterMode, DurabilityMode, ForcedTerminationPolicy, ManagedRole,
+        RoutingAlgorithm,
+    };
+    use mesh_rt::{
+        RuntimeAutonomousConfig, RuntimeCapacityDriverConfig, RuntimeContinuityConfig,
+        RuntimeFeatureGates, RuntimeRoutingConfig, RuntimeSchedulerConfig, ScalingPolicy,
+        AUTONOMOUS_CONFIG_SCHEMA_VERSION,
+    };
+
+    let Some(config) = config.filter(|config| config.mode == ClusterMode::Autonomous) else {
+        return Ok(None);
+    };
+    let capacity = &config.capacity;
+    let (driver, template_revision) = match (
+        config.autoscaling.enabled,
+        capacity.driver,
+        &capacity.process,
+        &capacity.docker,
+    ) {
+        (false, ..) => (
+            RuntimeCapacityDriverConfig::Disabled,
+            "disabled-v1".to_string(),
+        ),
+        (true, Some(CapacityDriverKind::Process), Some(process), _) => (
+            RuntimeCapacityDriverConfig::Process {
+                command: process.command.clone(),
+                working_directory: process.working_directory.clone(),
+            },
+            "process-v1".to_string(),
+        ),
+        (true, Some(CapacityDriverKind::Docker), _, Some(docker)) => (
+            RuntimeCapacityDriverConfig::Docker {
+                image: docker.image.clone(),
+                pool: docker.pool.clone(),
+                network: docker.network.clone(),
+                environment: docker.env.clone(),
+            },
+            docker.template_revision.clone(),
+        ),
+        _ => return Err("autoscaling needs a configured capacity driver".to_string()),
+    };
+    let runtime = RuntimeAutonomousConfig {
+        schema_version: AUTONOMOUS_CONFIG_SCHEMA_VERSION,
+        enabled: true,
+        features: RuntimeFeatureGates {
+            protocol_two: config.features.protocol_two,
+            durable_continuity: config.features.durable_continuity,
+            telemetry: config.features.telemetry,
+            local_scheduler_autoscaling: config.features.local_scheduler_autoscaling,
+            adaptive_routing: config.features.adaptive_routing,
+            controller_quorum: config.features.controller_quorum,
+            horizontal_autoscaling: config.autoscaling.enabled,
+            horizontal_observe_only: config.features.horizontal_observe_only,
+            automatic_scale_up: config.features.automatic_scale_up,
+            automatic_scale_down: config.features.automatic_scale_down,
+        },
+        policy_revision: 1,
+        policy: ScalingPolicy {
+            min_nodes: config.autoscaling.min_nodes,
+            max_nodes: config.autoscaling.max_nodes,
+            target_inflight_per_node: config.autoscaling.target_inflight_per_node,
+            scale_up_window_millis: config.autoscaling.scale_up_window.as_millis(),
+            scale_down_window_millis: config.autoscaling.scale_down_window.as_millis(),
+            cooldown_millis: config.autoscaling.cooldown.as_millis(),
+            max_scale_up_step: config.autoscaling.max_scale_up_step,
+            max_scale_down_step: config.autoscaling.max_scale_down_step,
+            max_unavailable: config.autoscaling.max_unavailable,
+        },
+        managed_roles: config
+            .autoscaling
+            .managed_roles
+            .iter()
+            .map(|role| match role {
+                ManagedRole::Gateway => "gateway".to_string(),
+                ManagedRole::Worker => "worker".to_string(),
+            })
+            .collect(),
+        gateway_nodes: if config
+            .autoscaling
+            .managed_roles
+            .contains(&ManagedRole::Gateway)
+        {
+            0
+        } else {
+            u16::from(config.roles.gateway)
+        },
+        template_revision,
+        reconcile_interval_millis: config.routing.load_report_interval.as_millis().max(100),
+        startup_timeout_millis: config.capacity.startup_timeout.as_millis(),
+        drain_timeout_millis: config.capacity.drain_timeout.as_millis(),
+        termination_timeout_millis: config.capacity.termination_timeout.as_millis(),
+        force_termination_after_drain_timeout: config.capacity.forced_termination
+            == ForcedTerminationPolicy::AfterDrainTimeout,
+        scheduler: RuntimeSchedulerConfig {
+            min_workers: config.scheduler.min_workers,
+            max_workers: config.scheduler.max_workers,
+            target_runnable_per_worker: config.scheduler.target_runnable_per_worker,
+            target_queue_wait_millis: config.autoscaling.target_queue_wait.as_millis(),
+            scale_up_window_millis: config.scheduler.scale_up_window.as_millis(),
+            scale_down_window_millis: config.scheduler.scale_down_window.as_millis(),
+            cooldown_millis: config.autoscaling.cooldown.as_millis(),
+        },
+        routing: RuntimeRoutingConfig {
+            adaptive: config.features.adaptive_routing
+                && config.routing.algorithm == RoutingAlgorithm::Adaptive,
+            load_report_interval_millis: config.routing.load_report_interval.as_millis(),
+            load_report_ttl_millis: config.routing.load_report_ttl.as_millis(),
+            target_inflight: config.autoscaling.target_inflight_per_node,
+            target_queue_wait_millis: config.autoscaling.target_queue_wait.as_millis(),
+            max_inflight: config.routing.max_inflight_per_node,
+            max_queued_items: config.routing.max_queued_per_node,
+            max_queued_bytes: config.routing.max_queued_bytes_per_node.as_bytes(),
+            retry_budget_percent: config.routing.retry_budget_percent,
+        },
+        continuity: RuntimeContinuityConfig {
+            strict_durability: config.durability == DurabilityMode::Strict,
+            terminal_retention_millis: config.continuity.terminal_retention.as_millis(),
+            tombstone_retention_millis: config.continuity.tombstone_retention.as_millis(),
+            max_terminal_records: config.continuity.max_terminal_records,
+            max_disk_bytes: config.continuity.max_disk_bytes.as_bytes(),
+            snapshot_chunk_bytes: config.continuity.snapshot_chunk_bytes.as_bytes(),
+            path: config.continuity.path.clone(),
+        },
+        driver,
+    };
+    runtime.validate()?;
+    serde_json::to_string(&runtime)
+        .map(Some)
+        .map_err(|error| format!("autonomous runtime config encode failed: {error}"))
+}
+
+/// Execute the build pipeline: discover all .mpl files -> parse -> typecheck entry -> codegen -> link.
+pub(crate) fn build(
+    dir: &Path,
+    opt_level: u8,
+    emit_llvm: bool,
+    output: Option<&Path>,
+    target: Option<&str>,
+    artifact: BuildArtifact,
+    test_builtins: bool,
+    diag_opts: &DiagnosticOptions,
+) -> Result<(), String> {
+    build_with_plaintext_report(
+        dir,
+        opt_level,
+        emit_llvm,
+        output,
+        target,
+        artifact,
+        test_builtins,
+        diag_opts,
+        None,
+    )
+}
+
+fn build_with_plaintext_report(
+    dir: &Path,
+    opt_level: u8,
+    emit_llvm: bool,
+    output: Option<&Path>,
+    target: Option<&str>,
+    artifact: BuildArtifact,
+    test_builtins: bool,
+    diag_opts: &DiagnosticOptions,
+    report: Option<&Path>,
+) -> Result<(), String> {
+    let mut prepared = prepare_project_build(dir, test_builtins, diag_opts)?;
+    // Without an entry function codegen emits no C `main`, and the linker's
+    // "_main not found" is all the user would see.
+    if artifact == BuildArtifact::Executable && prepared.merged_mir.entry_function.is_none() {
+        return Err(format!(
+            "{} has no `fn main()`: an executable starts there",
+            prepared.entry_relative_path.display()
+        ));
+    }
+    let declared_handler_plan = prepare_declared_handler_plan(
+        &prepared.clustered_execution_plan,
+        &prepared.clustered_route_handler_plan,
+    );
+    let startup_work_registrations =
+        mesh_codegen::prepare_startup_work_registrations(&declared_handler_plan);
+    let declared_handlers = mesh_codegen::prepare_declared_runtime_handlers(
+        &mut prepared.merged_mir,
+        &declared_handler_plan,
+    )?;
+
+    let output_path = output.map_or_else(
+        || default_output_path(dir, artifact, target),
+        Path::to_path_buf,
+    );
+    let report_path = report
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| plaintext_report::default_path(&output_path));
+    if !test_builtins {
+        plaintext_report::validate_path(&report_path, &output_path)?;
+    }
+
+    // Emit LLVM IR if requested
+    if emit_llvm {
+        let ll_path = output_path.with_extension("ll");
+        let mut llvm_mir = prepared.merged_mir.clone();
+        if artifact != BuildArtifact::Executable {
+            llvm_mir.entry_function = None;
+        }
+        mesh_codegen::compile_mir_to_llvm_ir(
+            &llvm_mir,
+            &declared_handlers,
+            &startup_work_registrations,
+            prepared.autonomous_config_json.as_deref(),
+            &prepared.library_exports,
+            &ll_path,
+            target,
+        )?;
+        eprintln!("  LLVM IR: {}", ll_path.display());
+    }
+
+    // Compile to native binary
+    let runtime_flavor = if test_builtins {
+        mesh_codegen::link::RuntimeFlavor::Test
+    } else {
+        mesh_codegen::link::RuntimeFlavor::Standard
+    };
+    let runtime_override = runtime_lib_override_from_env(runtime_flavor)?;
+    let native_archives = if dir.join("mesh.toml").is_file() {
+        let effective_target = mesh_codegen::link::effective_target_triple(target)?;
+        mesh_pkg::resolve_native_archives(dir, &effective_target)?
+            .into_iter()
+            .map(|archive| archive.path)
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
+    match artifact {
+        BuildArtifact::Executable => mesh_codegen::compile_mir_to_binary(
+            &prepared.merged_mir,
+            &declared_handlers,
+            &startup_work_registrations,
+            prepared.autonomous_config_json.as_deref(),
+            &prepared.library_exports,
+            &output_path,
+            opt_level,
+            target,
+            runtime_flavor,
+            runtime_override.as_deref(),
+            &native_archives,
+        )?,
+        BuildArtifact::Staticlib | BuildArtifact::Cdylib => {
+            mesh_codegen::compile_mir_to_library(
+                &prepared.merged_mir,
+                &declared_handlers,
+                &startup_work_registrations,
+                prepared.autonomous_config_json.as_deref(),
+                &prepared.library_exports,
+                if artifact == BuildArtifact::Staticlib {
+                    mesh_codegen::LibraryArtifact::Static
+                } else {
+                    mesh_codegen::LibraryArtifact::Dynamic
+                },
+                &output_path,
+                opt_level,
+                target,
+                runtime_override.as_deref(),
+                &native_archives,
+            )?;
+            library_bindings::write(&output_path, &prepared.library_exports, target)?;
+        }
+    }
+
+    // `meshc test` builds each file to a throwaway temp binary; its path is noise there.
+    if !test_builtins {
+        prepared.plaintext_report.write(&report_path)?;
+        eprintln!("  Compiled: {}", output_path.display());
+    }
+
+    Ok(())
+}
+
+fn prepare_declared_handler_plan(
+    entries: &[ClusteredExecutionMetadata],
+    clustered_route_entries: &[mesh_codegen::DeclaredHandlerPlanEntry],
+) -> Vec<mesh_codegen::DeclaredHandlerPlanEntry> {
+    let mut plan = entries
+        .iter()
+        .map(|entry| mesh_codegen::DeclaredHandlerPlanEntry {
+            kind: mesh_codegen::DeclaredHandlerKind::Work,
+            runtime_registration_name: entry.runtime_registration_name.clone(),
+            executable_symbol: entry.executable_symbol.clone(),
+            replication_count: entry.replication_count.value as u64,
+        })
+        .collect::<Vec<_>>();
+    plan.extend(clustered_route_entries.iter().cloned());
+    plan
+}
+
+pub(crate) fn prepare_project_build(
+    dir: &Path,
+    test_builtins: bool,
+    diag_opts: &DiagnosticOptions,
+) -> Result<PreparedBuild, String> {
+    // Validate the project directory
+    if !dir.exists() {
+        return Err(format!(
+            "Project directory '{}' does not exist",
+            dir.display()
+        ));
+    }
+    if !dir.is_dir() {
+        return Err(format!("'{}' is not a directory", dir.display()));
+    }
+
+    let manifest_path = dir.join("mesh.toml");
+    let manifest = if manifest_path.exists() {
+        Some(Manifest::from_file(&manifest_path)?)
+    } else {
+        None
+    };
+    let native_bindings = if manifest.is_some() {
+        mesh_pkg::resolve_native_bindings(dir)?
+    } else {
+        Vec::new()
+    };
+    let entry_relative_path = resolve_entrypoint(dir, manifest.as_ref())?;
+
+    // Build the project: discover all files, parse, build module graph.
+    // `meshc test` builds the helpers under `tests/` too.
+    let project = mesh_pkg::project::build_project(
+        dir,
+        &entry_relative_path,
+        &native_bindings,
+        test_builtins,
+        &mesh_pkg::project::read_file,
+    )?;
+
+    // Check parse errors in ALL modules (not just entry)
+    let mut has_errors = false;
+    for id in &project.compilation_order {
+        let idx = id.0 as usize;
+        let parse = &project.module_parses[idx];
+        let source = &project.module_sources[idx];
+        let module_path = dir.join(&project.graph.get(*id).path);
+
+        for error in parse.errors() {
+            has_errors = true;
+            let file_name = diag_opts.display_path(&module_path);
+            if diag_opts.json {
+                let start = error.span.start as usize;
+                let end = (error.span.end as usize).max(start + 1);
+                let json_diag = serde_json::json!({
+                    "code": "P0001",
+                    "severity": "error",
+                    "message": format!("Parse error: {}", error.message),
+                    "file": file_name,
+                    "spans": [{
+                        "start": start,
+                        "end": end,
+                        "label": error.message
+                    }],
+                    "fix": null
+                });
+                eprintln!("{}", json_diag);
+            } else {
+                use ariadne::{Label, Report, ReportKind, Source};
+                let range = mesh_typeck::diagnostics::report_span(
+                    source,
+                    error.span.start as usize..error.span.end as usize,
+                );
+                let span = (file_name.clone(), range);
+                let _ = Report::build(ReportKind::Error, span.clone())
+                    .with_message("Parse error")
+                    .with_config(diag_opts.report_config())
+                    .with_label(Label::new(span).with_message(&error.message))
+                    .finish()
+                    .eprint((file_name.clone(), Source::from(source.as_str())));
+            }
+        }
+    }
+
+    // If any parse errors exist, skip type checking entirely
+    if has_errors {
+        return Err("Compilation failed due to errors above.".to_string());
+    }
+
+    let allowed_native_bindings = native_bindings
+        .iter()
+        .map(|binding| binding.path.as_path())
+        .collect::<HashSet<_>>();
+    for id in &project.compilation_order {
+        let idx = id.0 as usize;
+        if !project.module_parses[idx]
+            .tree()
+            .fn_defs()
+            .any(|function| function.native_decl().is_some())
+        {
+            continue;
+        }
+        let source_path = &project.graph.get(*id).path;
+        let full_path = if source_path.is_absolute() {
+            source_path.clone()
+        } else {
+            dir.join(source_path)
+        };
+        // A file that cannot be resolved is no declared binding either.
+        let canonical = full_path.canonicalize().ok();
+        if !canonical.is_some_and(|path| allowed_native_bindings.contains(path.as_path())) {
+            return Err(format!(
+                "Native declaration in '{}' is outside a manifest-declared native binding",
+                diag_opts.display_path(&full_path)
+            ));
+        }
+    }
+
+    reject_duplicate_type_names(&project)?;
+
+    // Type-check every module in compilation order, and report each one's
+    // errors and warnings.
+    let mesh_pkg::project::CheckedProject {
+        typeck: mut all_typeck,
+        exports: all_exports,
+    } = mesh_pkg::project::check_project(&project, test_builtins);
+    let mut has_type_errors = false;
+    for &id in &project.compilation_order {
+        let idx = id.0 as usize;
+        let source = &project.module_sources[idx];
+        let file_name = diag_opts.display_path(&dir.join(&project.graph.get(id).path));
+        let typeck = &all_typeck[idx];
+        has_type_errors |= !typeck.errors.is_empty();
+        for diagnostic in typeck.errors.iter().chain(&typeck.warnings) {
+            eprint!(
+                "{}",
+                mesh_typeck::diagnostics::render_diagnostic(
+                    diagnostic, source, &file_name, diag_opts, None,
+                )
+            );
+        }
+    }
+
+    if has_type_errors {
+        return Err("Compilation failed due to errors above.".to_string());
+    }
+
+    let plaintext_report = plaintext_report::PlaintextReport::collect(dir, &project, &all_typeck);
+
+    reject_duplicate_pub_functions(&project, &all_exports)?;
+
+    // `@cluster` and `HTTP.clustered` without a count take the manifest's
+    // `[cluster].default_replicas`.
+    let default_replicas = manifest
+        .as_ref()
+        .and_then(|manifest| manifest.autonomous_cluster.as_ref())
+        .map_or(mesh_pkg::DEFAULT_CLUSTER_REPLICATION_COUNT, |cluster| {
+            cluster.default_replicas
+        });
+    let mut clustered_execution_plan =
+        match plan_cluster_declarations(&project.graph, &project.module_parses) {
+            Ok(plan) => plan,
+            Err(issues) => {
+                emit_clustered_declaration_diagnostics(dir, &project, &issues, diag_opts);
+                return Err("Compilation failed due to errors above.".to_string());
+            }
+        };
+    for entry in &mut clustered_execution_plan {
+        if entry.replication_count.source == mesh_pkg::ClusteredReplicationCountSource::Default {
+            entry.replication_count.value = default_replicas;
+        }
+    }
+    let clustered_route_handler_plan =
+        mesh_codegen::prepare_clustered_route_handler_plan(all_typeck.iter(), default_replicas)?;
+
+    let inferred_export_names: HashSet<String> = all_exports
+        .iter()
+        .filter_map(|exports_opt| exports_opt.as_ref())
+        .flat_map(|exports| {
+            exports.functions.iter().filter_map(|(name, scheme)| {
+                if ty_contains_var(&scheme.ty) {
+                    Some(name.clone())
+                } else {
+                    None
+                }
+            })
+        })
+        .collect();
+    let mut inferred_fn_usage_types = collect_inferred_fn_usage_types(
+        &project.module_parses,
+        &all_typeck,
+        &inferred_export_names,
+    );
+
+    let library_exports = collect_library_exports(&project.module_parses)?;
+
+    // A module is checked before the modules that come later, so its trait
+    // registry lacks their impls (it has its own and the earlier modules').
+    // Lowering specializes its generic functions for the types those modules
+    // use them at (`show_it(Rect)`, `where T: Display`, with `Rect` declared
+    // later), so the later modules' impls are added for it. (Adding an impl
+    // twice would make a lookup see two.)
+    let order = &project.compilation_order;
+    for (position, &id) in order.iter().enumerate() {
+        let later_impls: Vec<_> = order[position + 1..]
+            .iter()
+            .filter_map(|later| all_exports[later.0 as usize].as_ref())
+            .flat_map(|exports| exports.trait_impls.iter().cloned())
+            .collect();
+        for impl_def in later_impls {
+            let _ = all_typeck[id.0 as usize]
+                .trait_registry
+                .register_impl(impl_def);
+        }
+    }
+
+    // Pub function names, for module-qualified naming (Phase 41).
+    let pub_fns_of = |idx: usize| -> HashSet<String> {
+        all_exports[idx]
+            .as_ref()
+            .map(|e| e.functions.keys().cloned().collect())
+            .unwrap_or_default()
+    };
+
+    // A generic function called from another module's generic function
+    // needs a specialization for each type that one is specialized at.
+    for &id in project.compilation_order.iter().rev() {
+        let idx = id.0 as usize;
+        let requests = mesh_codegen::imported_specializations(
+            &project.module_parses[idx],
+            &all_typeck[idx],
+            &project.graph.get(id).name,
+            &pub_fns_of(idx),
+            &inferred_fn_usage_types,
+        );
+        for (name, tys) in requests {
+            for ty in &tys {
+                push_usage_type(&mut inferred_fn_usage_types, &name, ty);
+            }
+        }
+    }
+
+    // Lower ALL modules to MIR and merge into a single module for codegen.
+    let mut mir_modules = Vec::new();
+    let mut entry_mir_idx = 0;
+    for (i, &id) in project.compilation_order.iter().enumerate() {
+        let idx = id.0 as usize;
+        let parse = &project.module_parses[idx];
+        let typeck = &all_typeck[idx];
+        let module_name = &project.graph.get(id).name;
+        let pub_fns = pub_fns_of(idx);
+
+        let other_modules: Vec<_> = project
+            .module_parses
+            .iter()
+            .zip(&all_typeck)
+            .enumerate()
+            .filter(|(other, _)| *other != idx)
+            .map(|(_, modules)| modules)
+            .collect();
+        let mir = mesh_codegen::lower_module_to_mir_raw(
+            parse,
+            typeck,
+            module_name,
+            &pub_fns,
+            &inferred_fn_usage_types,
+            &other_modules,
+        )?;
+        if project.graph.get(id).is_entry {
+            entry_mir_idx = i;
+        }
+        mir_modules.push(mir);
+    }
+    let declared_executable_symbols = clustered_execution_plan
+        .iter()
+        .map(|entry| entry.executable_symbol.clone())
+        .chain(
+            clustered_route_handler_plan
+                .iter()
+                .map(|entry| entry.executable_symbol.clone()),
+        )
+        .chain(library_exports.iter().map(|export| export.function.clone()))
+        .collect::<Vec<_>>();
+    let merged_mir =
+        mesh_codegen::merge_mir_modules(mir_modules, entry_mir_idx, &declared_executable_symbols);
+
+    Ok(PreparedBuild {
+        plaintext_report,
+        merged_mir,
+        entry_relative_path,
+        library_exports,
+        clustered_execution_plan,
+        clustered_route_handler_plan,
+        autonomous_config_json: runtime_autonomous_config_json(
+            manifest
+                .as_ref()
+                .and_then(|manifest| manifest.autonomous_cluster.as_ref()),
+        )?,
+    })
+}
+
+/// Reject programs where two modules export a `pub fn` under the same symbol.
+///
+/// `Lowerer::qualify_name` deliberately leaves `pub` function names unqualified so
+/// importing modules can call them by their bare name, and `merge_mir_modules` then
+/// keys merged functions by that bare name, keeping the first one it sees. Two modules
+/// exporting the same name therefore collapse into one symbol: the later module's body
+/// is dropped, and every call site — including `from B import f` — binds to the earlier
+/// module's body while the type checker went on believing it had `B`'s signature. That
+/// mismatch is silent, and when the signatures differ it reinterprets values across
+/// types (an `Int` returned where a `String` was expected becomes a wild pointer).
+///
+/// Until pub symbols are module-qualified, refuse to compile the ambiguous program.
+/// Reject a struct, sum type, interface, actor, service or supervisor name
+/// that more than one module defines, public or not. These names are one
+/// namespace across a project: the type checker took two `State` structs
+/// for one type and codegen emitted one of them, so `Z.run_z()` showed its
+/// `State` laid out as `A`'s, and a module's `spawn(worker)` could start
+/// another module's `worker`.
+fn reject_duplicate_type_names(project: &mesh_pkg::project::ProjectData) -> Result<(), String> {
+    use mesh_parser::ast::item::Item;
+
+    // A struct or sum type copied verbatim into several modules (a private
+    // helper) is one layout, so its definitions are compared by their
+    // tokens; code (actors, services) may call each module's own functions.
+    let fingerprint = |item: &Item| -> Option<String> {
+        if !matches!(item, Item::StructDef(_) | Item::SumTypeDef(_)) {
+            return None;
+        }
+        let tokens: Vec<String> = item
+            .syntax()
+            .descendants_with_tokens()
+            .filter_map(|element| element.into_token())
+            .filter(|token| !token.kind().is_trivia() && token.kind() != SyntaxKind::PUB_KW)
+            .map(|token| token.text().to_string())
+            .collect();
+        Some(tokens.join(" "))
+    };
+    let mut owners: std::collections::BTreeMap<
+        String,
+        Vec<(
+            &'static str,
+            &mesh_common::module_graph::ModuleInfo,
+            Option<String>,
+        )>,
+    > = Default::default();
+    for &id in &project.compilation_order {
+        let module = project.graph.get(id);
+        for item in project.module_parses[id.0 as usize].tree().items() {
+            let (kind, name) = match &item {
+                Item::StructDef(def) => ("struct", def.name().and_then(|n| n.text())),
+                Item::SumTypeDef(def) => ("type", def.name().and_then(|n| n.text())),
+                Item::InterfaceDef(def) => ("interface", def.name().and_then(|n| n.text())),
+                Item::ActorDef(def) => ("actor", def.name().and_then(|n| n.text())),
+                Item::ServiceDef(def) => ("service", def.name().and_then(|n| n.text())),
+                Item::SupervisorDef(def) => ("supervisor", def.name().and_then(|n| n.text())),
+                _ => continue,
+            };
+            if let Some(name) = name {
+                owners
+                    .entry(name)
+                    .or_default()
+                    .push((kind, module, fingerprint(&item)));
+            }
+        }
+    }
+
+    let mut conflicted = false;
+    for (name, defs) in &owners {
+        let first = defs[0].1.name.as_str();
+        if defs.iter().all(|(_, module, _)| module.name == first) {
+            // One module (a duplicate there is the type checker's E0068).
+            continue;
+        }
+        if defs[0].2.is_some() && defs.iter().all(|(_, _, print)| *print == defs[0].2) {
+            continue;
+        }
+        conflicted = true;
+        eprintln!("error: `{name}` is defined in more than one module:");
+        for (kind, module, _) in defs {
+            eprintln!(
+                "  - {kind} in `{}` ({})",
+                module.name,
+                module.path.display()
+            );
+        }
+        eprintln!(
+            "note: struct, type, interface, actor, service and supervisor names share one \
+             namespace across the project, private ones too, so these definitions would be \
+             taken for one (a struct or type defined identically in each is fine)."
+        );
+        eprintln!("help: rename all but one of them.");
+    }
+
+    if conflicted {
+        return Err("Compilation failed due to errors above.".to_string());
+    }
+    Ok(())
+}
+
+fn reject_duplicate_pub_functions(
+    project: &mesh_pkg::project::ProjectData,
+    all_exports: &[Option<mesh_typeck::ExportedSymbols>],
+) -> Result<(), String> {
+    // Export keys are exactly the `pub_fns` handed to the lowerer, so a key collision
+    // is a symbol collision. Same-name/different-arity pub fns inside one module are
+    // already disambiguated by `collect_exports` as `name__<arity>`.
+    let mut owners: std::collections::BTreeMap<&str, Vec<&mesh_common::module_graph::ModuleInfo>> =
+        Default::default();
+    for &id in &project.compilation_order {
+        let module = project.graph.get(id);
+        let exports = all_exports[id.0 as usize].iter();
+        for name in exports.flat_map(|exports| exports.functions.keys()) {
+            owners.entry(name.as_str()).or_default().push(module);
+        }
+    }
+
+    let mut conflicted = false;
+    for (symbol, modules) in owners.iter().filter(|(_, m)| m.len() > 1) {
+        conflicted = true;
+        // Strip the `__<arity>` suffix `collect_exports` adds to overloaded pub fns.
+        let display = symbol
+            .rsplit_once("__")
+            .filter(|(_, arity)| !arity.is_empty() && arity.chars().all(|c| c.is_ascii_digit()))
+            .map(|(base, _)| base)
+            .unwrap_or(symbol);
+        eprintln!("error: public function `{display}` is defined in more than one module:");
+        for module in modules {
+            eprintln!("  - `{}` ({})", module.name, module.path.display());
+        }
+        eprintln!(
+            "note: public function names share one global symbol space, so a call to \
+             `{display}` would silently run only one of these definitions."
+        );
+        eprintln!("help: rename all but one of them, or make the others private.");
+    }
+
+    if conflicted {
+        return Err("Compilation failed due to errors above.".to_string());
+    }
+    Ok(())
+}
+
+fn collect_library_exports(
+    parses: &[mesh_parser::Parse],
+) -> Result<Vec<mesh_codegen::LibraryExport>, String> {
+    let mut symbols = HashSet::new();
+    let mut exports = Vec::new();
+    for parse in parses {
+        for function in parse.tree().fn_defs() {
+            let Some(declaration) = function.export_decl() else {
+                continue;
+            };
+            let function_name = function
+                .name()
+                .and_then(|name| name.text())
+                .ok_or("exported function is missing a name")?;
+            let symbol = declaration
+                .symbol()
+                .ok_or("exported function is missing a symbol")?;
+            if !symbols.insert(symbol.clone()) {
+                return Err(format!("duplicate exported symbol '{symbol}'"));
+            }
+            let options = declaration.options()?;
+            exports.push(mesh_codegen::LibraryExport {
+                function: function_name,
+                symbol,
+                max_input: options.max_input,
+                max_output: options.max_output,
+                binding_audience: options.binding_audience,
+            });
+        }
+    }
+    Ok(exports)
+}
+
+/// Where `meshc build` writes an artifact when `--output` is not given:
+/// named after the project directory, in the platform's library naming.
+fn default_output_path(dir: &Path, artifact: BuildArtifact, target: Option<&str>) -> PathBuf {
+    let project_name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("output");
+    let targets = |vendor: &str, host: bool| target.map_or(host, |triple| triple.contains(vendor));
+    match artifact {
+        BuildArtifact::Executable => dir.join(project_name),
+        BuildArtifact::Staticlib => dir.join(format!("lib{project_name}.a")),
+        BuildArtifact::Cdylib => {
+            let extension = if targets("apple", cfg!(target_os = "macos")) {
+                "dylib"
+            } else if targets("windows", cfg!(target_os = "windows")) {
+                "dll"
+            } else {
+                "so"
+            };
+            dir.join(format!("lib{project_name}.{extension}"))
+        }
+    }
+}
+
+fn runtime_lib_override_from_env(
+    runtime_flavor: mesh_codegen::link::RuntimeFlavor,
+) -> Result<Option<PathBuf>, String> {
+    let variable = match runtime_flavor {
+        mesh_codegen::link::RuntimeFlavor::Standard => "MESH_RT_LIB_PATH",
+        mesh_codegen::link::RuntimeFlavor::Test => "MESH_TEST_RT_LIB_PATH",
+    };
+    let Some(raw) = std::env::var_os(variable) else {
+        return Ok(None);
+    };
+
+    if raw.is_empty() {
+        return Err(format!(
+            "{variable} was set but empty. Provide an absolute path to the selected Mesh runtime static library or unset it."
+        ));
+    }
+
+    Ok(Some(PathBuf::from(raw)))
+}
+
+fn ty_contains_var(ty: &Ty) -> bool {
+    match ty {
+        Ty::Var(_) => true,
+        Ty::Con(_) | Ty::Never => false,
+        Ty::Fun(params, ret) => params.iter().any(ty_contains_var) || ty_contains_var(ret),
+        Ty::App(con, args) => ty_contains_var(con) || args.iter().any(ty_contains_var),
+        Ty::Tuple(elems) => elems.iter().any(ty_contains_var),
+    }
+}
+
+fn is_concrete_fn_ty(ty: &Ty) -> bool {
+    matches!(ty, Ty::Fun(..)) && !ty_contains_var(ty)
+}
+
+fn push_usage_type(map: &mut HashMap<String, Vec<Ty>>, name: &str, ty: &Ty) {
+    if !is_concrete_fn_ty(ty) {
+        return;
+    }
+    let entry = map.entry(name.to_string()).or_default();
+    if !entry.contains(ty) {
+        entry.push(ty.clone());
+    }
+}
+
+fn collect_inferred_fn_usage_types(
+    parses: &[mesh_parser::Parse],
+    typecks: &[mesh_typeck::TypeckResult],
+    candidate_names: &HashSet<String>,
+) -> HashMap<String, Vec<Ty>> {
+    let mut usage = HashMap::new();
+    if candidate_names.is_empty() {
+        return usage;
+    }
+
+    for (parse, typeck) in parses.iter().zip(typecks) {
+        // A callee of a call to an overloaded fn names the arity the call
+        // runs (`name__N`).
+        let overload_target = |callee: &mesh_parser::SyntaxNode| {
+            let call = callee
+                .parent()
+                .and_then(mesh_parser::ast::expr::CallExpr::cast)?;
+            (call.callee()?.syntax() == callee)
+                .then(|| {
+                    typeck
+                        .overloaded_call_targets
+                        .get(&call.syntax().text_range())
+                })?
+                .cloned()
+        };
+        for name_ref in parse.syntax().descendants().filter_map(NameRef::cast) {
+            let name = overload_target(name_ref.syntax()).or_else(|| name_ref.text());
+            let Some(name) = name.filter(|name| candidate_names.contains(name)) else {
+                continue;
+            };
+            if let Some(ty) = typeck.types.get(&name_ref.syntax().text_range()) {
+                push_usage_type(&mut usage, &name, ty);
+            }
+        }
+        for field_access in parse.syntax().descendants().filter_map(FieldAccess::cast) {
+            // `Module.name`: the base names an imported module.
+            let base = match field_access.base() {
+                Some(mesh_parser::ast::expr::Expr::NameRef(base)) => base.text(),
+                _ => None,
+            };
+            if !base.is_some_and(|name| typeck.qualified_modules.contains_key(&name)) {
+                continue;
+            }
+            let Some(field_name) = overload_target(field_access.syntax())
+                .or_else(|| field_access.field().map(|t| t.text().to_string()))
+                .filter(|name| candidate_names.contains(name))
+            else {
+                continue;
+            };
+            if let Some(ty) = typeck.types.get(&field_access.syntax().text_range()) {
+                push_usage_type(&mut usage, &field_name, ty);
+            }
+        }
+    }
+
+    usage
+}
+
+fn offset_to_line_col(source: &str, offset: usize) -> (usize, usize) {
+    let offset = offset.min(source.len());
+    let prefix = &source[..offset];
+    let line = prefix.bytes().filter(|byte| *byte == b'\n').count() + 1;
+    let col = prefix
+        .rsplit_once('\n')
+        .map(|(_, line_text)| line_text.chars().count() + 1)
+        .unwrap_or_else(|| prefix.chars().count() + 1);
+    (line, col)
+}
+
+fn emit_clustered_declaration_diagnostics(
+    dir: &Path,
+    project: &mesh_pkg::project::ProjectData,
+    issues: &[ClusteredDeclarationError],
+    diag_opts: &DiagnosticOptions,
+) {
+    for issue in issues {
+        let file_name = dir.join(&issue.file).display().to_string();
+        let span = issue.span.start as usize..issue.span.end as usize;
+
+        if diag_opts.json {
+            let json_diag = serde_json::json!({
+                "code": "CFG0001",
+                "severity": "error",
+                "message": issue.to_string(),
+                "file": file_name,
+                "spans": [{"start": span.start, "end": span.end, "label": issue.reason}],
+                "fix": null
+            });
+            eprintln!("{}", json_diag);
+            continue;
+        }
+
+        use ariadne::{Label, Report, ReportKind, Source};
+        // The source the decorator was parsed from.
+        let (_, source) = project
+            .graph
+            .modules
+            .iter()
+            .zip(&project.module_sources)
+            .find(|(module, _)| module.path == issue.file)
+            .expect("an `@cluster` decorator is in a module of the project");
+        let (line, col) = offset_to_line_col(source, span.start);
+        eprintln!("error: {}", issue);
+        eprintln!("  --> {}:{}:{}", file_name, line, col);
+        let _ = Report::<std::ops::Range<usize>>::build(ReportKind::Error, span.clone())
+            .with_message("Invalid clustered declaration")
+            .with_config(diag_opts.report_config())
+            .with_label(Label::new(span).with_message(&issue.reason))
+            .finish()
+            .eprint(Source::from(source.as_str()));
+    }
+}
+
+// ── Deps subcommand ──────────────────────────────────────────────────
+
+/// Execute the `deps` subcommand: resolve dependencies and generate mesh.lock.
+///
+/// If mesh.lock already exists and the manifest hasn't changed, skips resolution.
+fn deps_command(dir: &Path) -> Result<(), String> {
+    let manifest_path = dir.join("mesh.toml");
+    if !manifest_path.exists() {
+        return Err(format!(
+            "No 'mesh.toml' found in '{}'. Run `meshc init` to create a project.",
+            dir.display()
+        ));
+    }
+
+    let lock_path = dir.join("mesh.lock");
+
+    // The lockfile is fresh when the manifest has not changed since it was
+    // written and every git dependency is checked out: `meshpkg install`
+    // writes it too, without fetching git dependencies.
+    let git_checkouts_present = mesh_pkg::Manifest::from_file(&manifest_path)?
+        .dependencies
+        .iter()
+        .filter(|(_, dep)| matches!(dep, mesh_pkg::manifest::Dependency::Git { .. }))
+        .all(|(name, _)| dir.join(".mesh").join("deps").join(name).is_dir());
+    // A time that cannot be read is no proof of freshness.
+    let modified = |path: &Path| std::fs::metadata(path).and_then(|m| m.modified()).ok();
+    if git_checkouts_present
+        && modified(&manifest_path)
+            .zip(modified(&lock_path))
+            .is_some_and(|(manifest_time, lock_time)| manifest_time <= lock_time)
+    {
+        eprintln!("Dependencies up to date");
+        return Ok(());
+    }
+
+    let (resolved, lockfile) = mesh_pkg::resolve_dependencies(dir)?;
+
+    lockfile.write(&lock_path)?;
+
+    if resolved.is_empty() {
+        eprintln!("No dependencies");
+    } else {
+        eprintln!("Resolved {} dependencies", resolved.len());
+    }
+
+    Ok(())
+}
+
+// ── Format subcommand ─────────────────────────────────────────────────
+
+/// Statistics from a format operation.
+struct FmtStats {
+    /// Total number of files processed.
+    total: usize,
+    /// Number of files that were not already formatted (check mode).
+    unformatted: usize,
+}
+
+/// Execute the `fmt` subcommand: format Mesh source files in-place or check formatting.
+fn fmt_command(
+    path: &Path,
+    check: bool,
+    config: &mesh_fmt::FormatConfig,
+) -> Result<FmtStats, String> {
+    let files = collect_mesh_files(path)?;
+
+    // Format every file before writing any: a file that cannot be formatted
+    // leaves the whole tree as it was.
+    let mut changed = Vec::new();
+    for file in &files {
+        let source = std::fs::read_to_string(file)
+            .map_err(|e| format!("Failed to read '{}': {}", file.display(), e))?;
+        let formatted = mesh_fmt::try_format(&source, config)
+            .map_err(|reason| format!("Cannot format '{}': {}", file.display(), reason))?;
+        if formatted != source {
+            changed.push((file, formatted));
+        }
+    }
+
+    for (file, formatted) in &changed {
+        if check {
+            eprintln!("  would reformat: {}", file.display());
+        } else {
+            std::fs::write(file, formatted)
+                .map_err(|e| format!("Failed to write '{}': {}", file.display(), e))?;
+        }
+    }
+
+    Ok(FmtStats {
+        total: files.len(),
+        unformatted: if check { changed.len() } else { 0 },
+    })
+}
+
+/// Execute the `lint` subcommand: print each finding (and each file that does
+/// not parse) as `path:line:column: rule: message` and return how many there were.
+fn lint_command(path: &Path) -> Result<usize, String> {
+    let files = collect_mesh_files(path)?;
+
+    let mut problems = 0;
+    for file in &files {
+        let source = std::fs::read_to_string(file)
+            .map_err(|e| format!("Failed to read '{}': {}", file.display(), e))?;
+        let findings = match mesh_lint::lint(&source) {
+            Ok(lints) => lints
+                .into_iter()
+                .map(|lint| (lint.offset, lint.rule, lint.message))
+                .collect(),
+            Err(error) => vec![(error.span.start, "parse-error", error.message)],
+        };
+        let lines = mesh_common::span::LineIndex::new(&source);
+        for (offset, rule, message) in findings {
+            let (line, column) = lines.line_col(offset);
+            println!("{}:{line}:{column}: {rule}: {message}", file.display());
+            problems += 1;
+        }
+    }
+    Ok(problems)
+}
+
+/// Collect `.mpl` files from a path: the file itself, or every one under a
+/// directory. Finding none is an error.
+fn collect_mesh_files(path: &Path) -> Result<Vec<PathBuf>, String> {
+    if !path.exists() {
+        return Err(format!("Path '{}' does not exist", path.display()));
+    }
+
+    if path.is_file() {
+        if path.extension().and_then(|e| e.to_str()) == Some("mpl") {
+            return Ok(vec![path.to_path_buf()]);
+        } else {
+            return Err(format!("'{}' is not a .mpl file", path.display()));
+        }
+    }
+
+    if !path.is_dir() {
+        return Err(format!("'{}' is not a file or directory", path.display()));
+    }
+    let mut files = Vec::new();
+    collect_mesh_files_recursive(path, &mut files)
+        .map_err(|e| format!("Failed to walk directory '{}': {}", path.display(), e))?;
+    if files.is_empty() {
+        return Err(format!("No .mpl files found at '{}'", path.display()));
+    }
+    files.sort();
+    Ok(files)
+}
+
+/// Recursively collect `.mpl` files from a directory, skipping hidden entries
+/// as a build does: `.git`, installed packages under `.mesh`, and editor or
+/// filesystem sidecar files are not the project's source.
+fn collect_mesh_files_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> std::io::Result<()> {
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        if entry.file_name().to_string_lossy().starts_with('.') {
+            continue;
+        }
+        let entry_path = entry.path();
+        if entry_path.is_dir() {
+            collect_mesh_files_recursive(&entry_path, files)?;
+        } else if entry_path.extension().and_then(|e| e.to_str()) == Some("mpl") {
+            files.push(entry_path);
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod autonomous_config_tests {
+    use super::*;
+    use std::str::FromStr;
+
+    #[test]
+    fn library_exports_are_collected_as_reachability_roots_and_symbols_are_unique() {
+        let first = mesh_parser::parse(
+            "@export(\"mesh_mobile_echo\")\npub fn echo(request :: Bytes) -> Bytes ! String do\n  Ok(request)\nend\n",
+        );
+        let second = mesh_parser::parse(
+            "@export(\"mesh_mobile_status\")\npub fn status(request :: Bytes) -> Bytes ! String do\n  Ok(request)\nend\n",
+        );
+        let exports = collect_library_exports(&[first, second]).expect("valid exports");
+        assert_eq!(exports[0].function, "echo");
+        assert_eq!(exports[0].symbol, "mesh_mobile_echo");
+
+        let duplicate = mesh_parser::parse(
+            "@export(\"mesh_mobile_echo\")\npub fn again(request :: Bytes) -> Bytes ! String do\n  Ok(request)\nend\n",
+        );
+        assert!(collect_library_exports(&[
+            mesh_parser::parse(
+                "@export(\"mesh_mobile_echo\")\npub fn echo(request :: Bytes) -> Bytes ! String do\n  Ok(request)\nend\n",
+            ),
+            duplicate,
+        ])
+        .unwrap_err()
+        .contains("duplicate exported symbol"));
+    }
+
+    fn export_binding_audience_emit(source: &str) -> std::collections::BTreeMap<String, String> {
+        let parsed = mesh_parser::parse(source);
+        assert!(
+            parsed.errors().is_empty(),
+            "valid audience source: {:?}",
+            parsed.errors()
+        );
+        let exports = collect_library_exports(&[parsed]).expect("valid binding audience");
+        let temporary = tempfile::tempdir().expect("owned binding fixture");
+        let artifact = temporary.path().join("libaudience.a");
+        library_bindings::write(&artifact, &exports, Some("x86_64-unknown-linux-gnu"))
+            .expect("all binding emitters");
+        ["h", "swift", "kt", "jni.c", "ts", "abi.json"]
+            .into_iter()
+            .map(|extension| {
+                (
+                    extension.to_string(),
+                    std::fs::read_to_string(artifact.with_extension(extension))
+                        .expect("emitted binding"),
+                )
+            })
+            .collect()
+    }
+
+    fn export_binding_audience_source(options: &str) -> String {
+        format!("@export(\"mesh_public_echo\"{options})\npub fn public_echo(request :: Bytes) -> Bytes!String do\n  Ok(request)\nend\n")
+    }
+
+    fn export_binding_audience_default_row() -> serde_json::Value {
+        serde_json::json!({
+            "meshFunction": "public_echo", "symbol": "mesh_public_echo",
+            "scheduledSymbol": "mesh_public_echo_submit_v2",
+            "request": "bytes", "response": "result<bytes,string>",
+            "maxInputBytes": 1048576, "maxOutputBytes": 1048576
+        })
+    }
+
+    #[test]
+    fn scheduled_companions_are_separate_from_legacy_bindings() {
+        let parsed = mesh_parser::parse(&export_binding_audience_source(""));
+        let exports = collect_library_exports(&[parsed]).unwrap();
+        let temporary = tempfile::tempdir().unwrap();
+        let artifact = temporary.path().join("libaudience.a");
+        library_bindings::write(&artifact, &exports, Some("x86_64-unknown-linux-gnu")).unwrap();
+        let extension = std::fs::read_to_string(artifact.with_extension("invocations.h"))
+            .expect("scheduled API has an opt-in header");
+        assert!(extension.contains("#include \"libaudience.h\""));
+        assert!(extension.contains("mesh_public_echo_submit_v2("));
+        for suffix in ["h", "swift", "kt", "jni.c", "ts"] {
+            let legacy = std::fs::read_to_string(artifact.with_extension(suffix)).unwrap();
+            assert!(
+                !legacy.contains("_submit_v2"),
+                "legacy {suffix} routes companions"
+            );
+            assert!(!legacy.contains("invocations.h"));
+        }
+        let manifest: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(artifact.with_extension("abi.json")).unwrap())
+                .unwrap();
+        assert_eq!(manifest["exports"].as_array().unwrap().len(), 1);
+        assert_eq!(manifest["exports"][0]["symbol"], "mesh_public_echo");
+        assert_eq!(
+            manifest["exports"][0]["scheduledSymbol"],
+            "mesh_public_echo_submit_v2"
+        );
+        assert_eq!(manifest["ownership"]["request"], "borrowed-for-call");
+    }
+
+    #[test]
+    fn export_binding_audience_default_keeps_all_bindings_and_legacy_metadata() {
+        let emitted = export_binding_audience_emit(&export_binding_audience_source(""));
+        for extension in ["h", "swift", "kt", "jni.c", "ts"] {
+            assert!(emitted[extension].contains("public_echo"), "{extension}");
+        }
+        let manifest: serde_json::Value = serde_json::from_str(&emitted["abi.json"]).unwrap();
+        assert_eq!(manifest["abiVersion"], 1);
+        assert_eq!(
+            manifest["exports"],
+            serde_json::json!([export_binding_audience_default_row()])
+        );
+    }
+
+    #[test]
+    fn export_binding_audience_native_omits_only_javascript_and_keeps_symbol_exact() {
+        let mut source = export_binding_audience_source("");
+        source.push_str("@export(\"mesh_native_echo\", max_input: 4096, bindings: \"native\", max_output: 8192)\npub fn native_echo(request :: Bytes) -> Bytes!String do\n  Ok(request)\nend\n");
+        let emitted = export_binding_audience_emit(&source);
+        for extension in ["h", "swift", "kt", "jni.c"] {
+            assert!(emitted[extension].contains("native_echo"), "{extension}");
+        }
+        assert!(emitted["ts"].contains("public_echo"));
+        assert!(!emitted["ts"].contains("native_echo"));
+        let manifest: serde_json::Value = serde_json::from_str(&emitted["abi.json"]).unwrap();
+        assert_eq!(
+            manifest["exports"][0],
+            export_binding_audience_default_row()
+        );
+        assert_eq!(
+            manifest["exports"][1],
+            serde_json::json!({
+                "meshFunction": "native_echo", "symbol": "mesh_native_echo",
+                "scheduledSymbol": "mesh_native_echo_submit_v2",
+                "request": "bytes", "response": "result<bytes,string>",
+                "maxInputBytes": 4096, "maxOutputBytes": 8192,
+                "bindingAudience": "native"
+            })
+        );
+    }
+
+    #[test]
+    fn export_binding_audience_explicit_all_is_byte_exact_default() {
+        let default = export_binding_audience_emit(&export_binding_audience_source(""));
+        let explicit =
+            export_binding_audience_emit(&export_binding_audience_source(", bindings: \"all\""));
+        assert_eq!(explicit, default);
+    }
+
+    #[test]
+    fn export_binding_audience_all_native_typescript_is_inert() {
+        let emitted =
+            export_binding_audience_emit(&export_binding_audience_source(", bindings: \"native\""));
+        assert!(emitted["ts"].contains("export {}"));
+        for forbidden in [
+            "public_echo",
+            "mesh_public_echo",
+            "requireNativeModule",
+            "MeshMessenger",
+            "native.invoke",
+        ] {
+            assert!(!emitted["ts"].contains(forbidden), "{forbidden}");
+        }
+        for extension in ["h", "swift", "kt", "jni.c"] {
+            assert!(emitted[extension].contains("public_echo"));
+        }
+    }
+
+    #[test]
+    fn export_binding_audience_invalid_or_duplicate_values_never_fall_back() {
+        for options in [
+            ", bindings: \"browser\"",
+            ", bindings: \"Native\"",
+            ", bindings: \"\"",
+            ", bindings: true",
+            ", bindings: 1",
+            ", bindings: :native",
+            ", bindings: \"all\", bindings: \"native\"",
+            ", bindings: \"native\", bindings: \"native\"",
+            ", bindings: \"na#{1}tive\"",
+            ", audience: \"native\"",
+        ] {
+            let parsed = mesh_parser::parse(&export_binding_audience_source(options));
+            assert!(
+                !parsed.errors().is_empty() || collect_library_exports(&[parsed]).is_err(),
+                "{options}"
+            );
+        }
+    }
+
+    #[test]
+    fn artifacts_are_named_for_their_project_and_target() {
+        let dir = Path::new("/work/app");
+        let named = |artifact, target| default_output_path(dir, artifact, target);
+        assert_eq!(named(BuildArtifact::Executable, None), dir.join("app"));
+        assert_eq!(named(BuildArtifact::Staticlib, None), dir.join("libapp.a"));
+        for (target, file) in [
+            ("aarch64-apple-ios", "libapp.dylib"),
+            ("x86_64-pc-windows-msvc", "libapp.dll"),
+            ("aarch64-linux-android", "libapp.so"),
+        ] {
+            assert_eq!(named(BuildArtifact::Cdylib, Some(target)), dir.join(file));
+        }
+        let host = if cfg!(target_os = "macos") {
+            "libapp.dylib"
+        } else if cfg!(target_os = "windows") {
+            "libapp.dll"
+        } else {
+            "libapp.so"
+        };
+        assert_eq!(named(BuildArtifact::Cdylib, None), dir.join(host));
+        assert_eq!(
+            default_output_path(Path::new("/"), BuildArtifact::Executable, None),
+            Path::new("/output")
+        );
+    }
+
+    #[test]
+    fn test_cli_defaults_to_debug_and_bounds_explicit_optimization() {
+        let cli = Cli::try_parse_from(["meshc", "test", "tests"]).expect("default tests");
+        assert!(matches!(cli.command, Commands::Test { opt_level: 0, .. }));
+        for level in 0..=3 {
+            let text = level.to_string();
+            let cli = Cli::try_parse_from(["meshc", "test", "--opt-level", &text, "tests"])
+                .expect("supported optimization");
+            let Commands::Test { opt_level, .. } = cli.command else {
+                panic!("test command")
+            };
+            assert_eq!(opt_level, level);
+        }
+        for level in ["4", "255", "-1", "release"] {
+            assert!(Cli::try_parse_from(["meshc", "test", "--opt-level", level]).is_err());
+        }
+    }
+
+    #[test]
+    fn build_cli_accepts_all_library_artifact_modes() {
+        for artifact in ["executable", "staticlib", "cdylib"] {
+            let cli = Cli::try_parse_from(["meshc", "build", ".", "--artifact", artifact])
+                .expect("artifact mode");
+            let Commands::Build {
+                artifact: parsed, ..
+            } = cli.command
+            else {
+                panic!("build command")
+            };
+            assert_eq!(parsed.to_string(), artifact);
+        }
+    }
+
+    #[test]
+    fn autonomous_data_plane_embeds_feature_gates_without_driver_authority() {
+        let manifest = Manifest::from_str(
+            r#"
+[package]
+name = "data-plane-only"
+version = "0.1.0"
+
+[cluster]
+mode = "autonomous"
+
+[cluster.controllers]
+voters = 3
+
+[cluster.autoscaling]
+enabled = false
+"#,
+        )
+        .expect("manifest");
+        let encoded = runtime_autonomous_config_json(manifest.autonomous_cluster.as_ref())
+            .expect("runtime config")
+            .expect("embedded config");
+        let runtime: mesh_rt::RuntimeAutonomousConfig =
+            serde_json::from_str(&encoded).expect("decode runtime config");
+
+        assert!(!runtime.features.horizontal_autoscaling);
+        assert!(runtime.features.protocol_two);
+        assert!(runtime.features.durable_continuity);
+        assert!(matches!(
+            runtime.driver,
+            mesh_rt::RuntimeCapacityDriverConfig::Disabled
+        ));
+    }
+
+    #[test]
+    fn observe_only_and_independent_action_gates_reach_runtime_schema() {
+        let manifest = Manifest::from_str(
+            r#"
+[package]
+name = "observe-only"
+version = "0.1.0"
+
+[cluster]
+mode = "autonomous"
+
+[cluster.controllers]
+voters = 3
+
+[cluster.features]
+horizontal_observe_only = true
+automatic_scale_up = true
+automatic_scale_down = false
+
+[cluster.autoscaling]
+enabled = true
+min_nodes = 2
+max_nodes = 5
+
+[cluster.capacity]
+driver = "docker"
+
+[cluster.capacity.docker]
+image = "worker@sha256:abc"
+pool = "workers"
+template_revision = "v1"
+"#,
+        )
+        .expect("manifest");
+        let encoded = runtime_autonomous_config_json(manifest.autonomous_cluster.as_ref())
+            .expect("runtime config")
+            .expect("embedded config");
+        let runtime: mesh_rt::RuntimeAutonomousConfig =
+            serde_json::from_str(&encoded).expect("decode runtime config");
+
+        assert!(runtime.features.horizontal_autoscaling);
+        assert!(runtime.features.horizontal_observe_only);
+        assert!(runtime.features.automatic_scale_up);
+        assert!(!runtime.features.automatic_scale_down);
+    }
+
+    /// A process driver that also manages gateways: the runtime starts none
+    /// of its own, and a config that skipped validation is refused.
+    #[test]
+    fn process_driver_managing_gateways_reaches_runtime_schema() {
+        let manifest = Manifest::from_str(
+            r#"
+[package]
+name = "process-pool"
+version = "0.1.0"
+
+[cluster]
+mode = "autonomous"
+
+[cluster.controllers]
+voters = 3
+
+[cluster.autoscaling]
+enabled = true
+managed_roles = ["worker", "gateway"]
+
+[cluster.capacity]
+driver = "process"
+
+[cluster.capacity.process]
+command = ["./worker", "--join"]
+working_directory = "/srv/pool"
+"#,
+        )
+        .expect("manifest");
+        let mut config = manifest.autonomous_cluster.expect("autonomous config");
+        let encoded = runtime_autonomous_config_json(Some(&config))
+            .expect("runtime config")
+            .expect("embedded config");
+        let runtime: mesh_rt::RuntimeAutonomousConfig =
+            serde_json::from_str(&encoded).expect("decode runtime config");
+        assert_eq!(runtime.managed_roles, ["worker", "gateway"]);
+        assert_eq!(runtime.gateway_nodes, 0);
+        assert_eq!(runtime.template_revision, "process-v1");
+        let mesh_rt::RuntimeCapacityDriverConfig::Process {
+            command,
+            working_directory,
+        } = runtime.driver
+        else {
+            panic!("process driver: {:?}", runtime.driver)
+        };
+        assert_eq!(command, ["./worker", "--join"]);
+        assert_eq!(working_directory, Path::new("/srv/pool"));
+
+        config.capacity.process = None;
+        assert_eq!(
+            runtime_autonomous_config_json(Some(&config)).unwrap_err(),
+            "autoscaling needs a configured capacity driver"
+        );
+    }
+}

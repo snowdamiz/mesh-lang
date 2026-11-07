@@ -34,7 +34,7 @@ fn http_trust_root_validates_chain_hostname_and_expired_leaf() {
         None,
     )
     .unwrap();
-    assert_eq!(response.body, b"ok");
+    assert_eq!(response.body.as_slice(), b"ok");
     for request in [
         request(url.clone(), None),
         request(url, Some(wrong)),
@@ -70,7 +70,8 @@ fn http_trust_root_cannot_reuse_a_connection_from_another_root_policy() {
     assert_eq!(
         execute_request(&pooled, request(url.clone(), None), None)
             .unwrap()
-            .body,
+            .body
+            .as_slice(),
         b"ok"
     );
     let error = execute_request(&pooled, request(url, Some(wrong)), None).unwrap_err();

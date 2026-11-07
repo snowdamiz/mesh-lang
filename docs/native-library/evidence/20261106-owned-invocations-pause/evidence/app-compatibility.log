@@ -1,0 +1,42 @@
+{
+  "logical_rows": 176,
+  "same_rows_limits_audiences": true,
+  "legacy_bindings": {
+    "h": {
+      "identical": true,
+      "sha256": "d78e13b3f7e97245a30824e97cbb60e9bc6e5cc48d25736e9b6c441aa4bde212"
+    },
+    "ts": {
+      "identical": true,
+      "sha256": "65fa91e63c83b2c9db286e92c1c169f3a82dba9799b2de800c8e15b385a61077"
+    },
+    "swift": {
+      "identical": true,
+      "sha256": "03ba3a09ee1704c7bab33d948bfdc7397a09a3d97e917aa2bc935404ef50f88d"
+    },
+    "kt": {
+      "identical": true,
+      "sha256": "2fcdd3fb0e35ff0c1dc18563fc7a7022e80ebcaf2fb4990ca9d65380a3f91673"
+    },
+    "jni.c": {
+      "identical": true,
+      "sha256": "a285c3597f9336e366fc153abad81f480277e393436635631fb7adb74a0ab667"
+    }
+  },
+  "same_legacy_ownership": true,
+  "all_legacy_and_companion_symbols_present": true,
+  "physical_app_companions": 176,
+  "desktop_literal_membership_rejects_companions": true,
+  "families": {
+    "baseline": {
+      "library_sha256": "a5b9825e22c18fe4907951ed108c6b01359f486c984dab1698ed2267cb05b65d",
+      "manifest_sha256": "39708b8f0783d23e556d46d8ca4c45f47dfef4eedeaa7e004e587192a45ead93",
+      "observed_capability_mask": 1
+    },
+    "candidate": {
+      "library_sha256": "19062f211d2470fa4f40c7c6327b3f94d2c2dbbc1b4b9b39b980cd730aa0179a",
+      "manifest_sha256": "5ca2e8f801caad2201e5643b3a33b8b62a2ba3e256ae7e368d42a01266b57d23",
+      "observed_capability_mask": 1
+    }
+  }
+}

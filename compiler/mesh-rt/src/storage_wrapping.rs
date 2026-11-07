@@ -1086,6 +1086,7 @@ fn load_platform_material() -> Result<Zeroizing<Box<[u8]>>, CryptoFailure> {
 // ponytail: one process-wide lock; use a host atomic-increment callback if app
 // extensions ever share this storage key concurrently.
 unsafe extern "C" fn reserve_platform_counter(_context: *mut c_void, counter_out: *mut u64) -> i32 {
+    let _resource = crate::authority::resource_scope();
     let _guard = PLATFORM_STORAGE_LOCK.lock();
     let result = (|| {
         let mut record = read_platform_record(PLATFORM_RECORD_ID, PLATFORM_RECORD_BYTES)?
@@ -1114,6 +1115,7 @@ unsafe extern "C" fn reserve_platform_counter(_context: *mut c_void, counter_out
 #[no_mangle]
 pub extern "C" fn mesh_storage_key_platform() -> *mut MeshResult {
     let result = (|| {
+        let _resource = crate::authority::resource_scope();
         let _guard = PLATFORM_STORAGE_LOCK.lock();
         let material = load_platform_material()?;
         let process = current_process()?;

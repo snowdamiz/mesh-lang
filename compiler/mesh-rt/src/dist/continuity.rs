@@ -3063,6 +3063,10 @@ pub extern "C-unwind" fn mesh_continuity_submit_with_durability(
     routed_remotely: i8,
     fell_back_locally: i8,
 ) -> *mut MeshResult {
+    if crate::authority::current().is_some() {
+        return crate::io::err_result(crate::authority::refuse());
+    }
+
     let authority = current_authority_config();
     let request = SubmitRequest {
         request_key: mesh_string_to_owned(request_key),
@@ -3091,6 +3095,10 @@ pub extern "C-unwind" fn mesh_continuity_submit_declared_work(
     payload_hash: *const MeshString,
     required_replica_count: i64,
 ) -> *mut MeshResult {
+    if crate::authority::current().is_some() {
+        return crate::io::err_result(crate::authority::refuse());
+    }
+
     let runtime_name = mesh_string_to_owned(runtime_name);
     let request_key = mesh_string_to_owned(request_key);
     let payload_hash = mesh_string_to_owned(payload_hash);
@@ -3123,6 +3131,10 @@ pub extern "C-unwind" fn mesh_continuity_submit(
     routed_remotely: i8,
     fell_back_locally: i8,
 ) -> *mut MeshResult {
+    if crate::authority::current().is_some() {
+        return crate::io::err_result(crate::authority::refuse());
+    }
+
     mesh_continuity_submit_with_durability(
         request_key,
         payload_hash,
@@ -3137,6 +3149,10 @@ pub extern "C-unwind" fn mesh_continuity_submit(
 
 #[no_mangle]
 pub extern "C-unwind" fn mesh_continuity_status(request_key: *const MeshString) -> *mut MeshResult {
+    if crate::authority::current().is_some() {
+        return crate::io::err_result(crate::authority::refuse());
+    }
+
     let request_key = mesh_string_to_owned(request_key);
     match continuity_registry().record(&request_key) {
         Some(record) => continuity_ok_record(&record),
@@ -3146,6 +3162,10 @@ pub extern "C-unwind" fn mesh_continuity_status(request_key: *const MeshString) 
 
 #[no_mangle]
 pub extern "C-unwind" fn mesh_continuity_authority_status() -> *mut MeshResult {
+    if crate::authority::current().is_some() {
+        return crate::io::err_result(crate::authority::refuse());
+    }
+
     continuity_ok_authority_status(continuity_registry().authority_status())
 }
 
@@ -3155,6 +3175,10 @@ pub extern "C-unwind" fn mesh_continuity_mark_completed(
     attempt_id: *const MeshString,
     execution_node: *const MeshString,
 ) -> *mut MeshResult {
+    if crate::authority::current().is_some() {
+        return crate::io::err_result(crate::authority::refuse());
+    }
+
     let request_key = mesh_string_to_owned(request_key);
     let attempt_id = mesh_string_to_owned(attempt_id);
     let execution_node = mesh_string_to_owned(execution_node);
@@ -3169,6 +3193,10 @@ pub extern "C-unwind" fn mesh_continuity_complete_declared_work(
     request_key: *const MeshString,
     attempt_id: *const MeshString,
 ) -> *mut MeshResult {
+    if crate::authority::current().is_some() {
+        return crate::io::err_result(crate::authority::refuse());
+    }
+
     let request_key = mesh_string_to_owned(request_key);
     let attempt_id = mesh_string_to_owned(attempt_id);
     match super::node::complete_declared_work(&request_key, &attempt_id) {
@@ -3182,6 +3210,10 @@ pub extern "C-unwind" fn mesh_continuity_acknowledge_replica(
     request_key: *const MeshString,
     attempt_id: *const MeshString,
 ) -> *mut MeshResult {
+    if crate::authority::current().is_some() {
+        return crate::io::err_result(crate::authority::refuse());
+    }
+
     let request_key = mesh_string_to_owned(request_key);
     let attempt_id = mesh_string_to_owned(attempt_id);
     match continuity_registry().acknowledge_replica_prepare(&request_key, &attempt_id) {

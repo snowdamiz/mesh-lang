@@ -1,0 +1,39 @@
+{
+  "build_defaults": {
+    "busy_timeout": 0,
+    "secure_delete": 0
+  },
+  "reopened_secure_delete": 0,
+  "scope": "direct embedded SQLite only; Mesh policy unchanged",
+  "sqlite_version_number": 3051001,
+  "library": "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-owned-invocations/generated-abi-1794018547245341000/libprogress.dylib",
+  "library_sha256": "47e70c745ba233e2a62b0d2f5d8c707a14540824db872149e0cd6be79a278856",
+  "cases": [
+    {
+      "pragma": "busy_timeout",
+      "before": 0,
+      "prepare_without_step": 1000,
+      "authorizer_denied_status": 23,
+      "after_denied_prepare": 0,
+      "authorizer_arguments": [
+        [
+          "busy_timeout",
+          "1000"
+        ]
+      ]
+    },
+    {
+      "pragma": "secure_delete",
+      "before": 0,
+      "prepare_without_step": 1,
+      "authorizer_denied_status": 23,
+      "after_denied_prepare": 0,
+      "authorizer_arguments": [
+        [
+          "secure_delete",
+          "ON"
+        ]
+      ]
+    }
+  ]
+}

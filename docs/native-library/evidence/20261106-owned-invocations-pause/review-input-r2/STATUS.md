@@ -1,0 +1,15 @@
+# Review r2 status
+
+Mask1 only. Public API exact accepted amendment3 unchanged. Pin33 files SHA48fd7392c87319a97aed03489f1016525476209398ff27468ea4b0afde1cbee6. No app edits/activation.
+
+R1 implementation findings fixed:
+- F1 Repo: internal with_connection now refuses before checkout/dereference, including Repo.transaction. Independent old-family loopback startup/lease-leak reproduction retained. Own repo-refusal-red.log shows actual health query1 vs0; green focused pool suite15passed/4ignored. Expanded real Repo matrix covers empty+idle pools, live+cancelled original context, no pre-refusal frames/capacity mutation and successful next ordinary query. First expanded fake-peer run omitted PostgreSQL extended Sync reply, causing ordinary query timeout; fake peer corrected, workspace-lib-bins4.log now passes the matrix. No production policy change for that test issue.
+- F2 JIT: exact submit support re-export through library + real JIT registry entry. jit-submit-green2.log passes existing invariant; workspace-lib-bins4.log passes all library/binary units, including70repl/1672runtime with20ignored. This run predates only new service test and companion bounds test, not production changes.
+
+G2 additional fix: root-completion-red.log actual take0 before registered root removal; green after releasing finished coroutine stack and worker Process refs, removing/dropping process before publishing Ready. Test barrier checks Pending before removal, weak unborrowed root reclaimed at terminal take. Descendant loans remain intentional; new same-original service/descendant test proves root Ready while child owns root heap, five foreign invocation routes refuse, cancel after Taken stops child and releases loan.
+
+owned-lifetime-gates3.log: nine focused tests pass, including all9Host callbacks/native stacks, actual late success/error HTTP retaining Host through cancel+shutdown, preparation/stack failures/once-only state, accepted Host write cancellation, root ordering, service/descendants and nine suspension-resource modes. Full runtime final-r2 and generated-library-final-r2 currently running. Generated family will include actual bounds/state tests and all31 retained cases in legacy/scheduled modes. Existing old candidate62-run+heldHTTP controls remain retained but are not relabeled fresh.
+
+Actual app176 compatibility: app-compatibility.json and app-consumer.json. All originalrows/limits/audiences and h/ts/swift/kt/jni.c bytes identical. Actual app parser generates same175public/164scoped bindings. Both actualCDLL masks1. These libraries predate new Repo/Ready fix; valid binding comparison, not final runtime qualification.
+
+See PROVENANCE_LEDGER-r2.md for complete candidate classification and explicit evidence gaps. Same-Core heldRPC blocked by accepted PRAGMA refusal; separate prerequisite proposal is requested, initially unapplied. Final source-derived family must be pinned after fresh generated gates. Parent now has recovered space; last df36,766,560KiB. No new target/family reuse/deletion.

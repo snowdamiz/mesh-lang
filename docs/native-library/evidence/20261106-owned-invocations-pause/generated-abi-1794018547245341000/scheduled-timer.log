@@ -1,0 +1,6 @@
+status: Some(0)
+stdout:
+{"case": "timer", "baseline": false, "status": 0, "rows": 0, "later_schema": 0, "requests": [], "mutations": [], "mutations_before_retire": [], "retired": true}
+PASS timer
+
+stderr:

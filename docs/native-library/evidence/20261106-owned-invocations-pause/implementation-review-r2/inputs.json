@@ -1,0 +1,220 @@
+{
+  "captured_at": "2026-11-07T02:36:23.065006+00:00",
+  "inputs": {
+    "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-owned-invocations/API_PROPOSAL.md": {
+      "sha256": "544325a5eb2c656741e40da7524edc1ed645a1b7aeaea7219814e2a7bfbe79dc",
+      "bytes": 16171,
+      "copy": "inputs/00-API_PROPOSAL.md"
+    },
+    "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-owned-invocations/review-input-r2/STATUS.md": {
+      "sha256": "8f50bac6160c30ed4fdd746e6b06d0fdb4b1e84f63963be43e75e2293dccee2d",
+      "bytes": 3028,
+      "copy": "inputs/01-STATUS.md"
+    },
+    "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-owned-invocations/PROVENANCE_LEDGER-r2.md": {
+      "sha256": "49239023def768faf3f2c3cc8a202b87a0a8fda9f02bdb93af29ea92d6f97318",
+      "bytes": 6031,
+      "copy": "inputs/02-PROVENANCE_LEDGER-r2.md"
+    },
+    "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-owned-invocations/review-input-r2/source-pin.json": {
+      "sha256": "48fd7392c87319a97aed03489f1016525476209398ff27468ea4b0afde1cbee6",
+      "bytes": 3878,
+      "copy": "inputs/03-source-pin.json"
+    },
+    "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-owned-invocations/implementation-review-r1/REVIEW.md": {
+      "sha256": "95f277524fafe8c217f9219833c2c42a4f59bdfaf5f50349edb4c62af11cc505",
+      "bytes": 17223,
+      "copy": "inputs/04-REVIEW.md"
+    },
+    "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-owned-invocations/implementation-review-r1/probe_repo_refusal.py": {
+      "sha256": "899fad9637d325b94db290a7df90bb2f53294e2f078fe600fd63b0e0d6f358ba",
+      "bytes": 4762,
+      "copy": "inputs/05-probe_repo_refusal.py"
+    },
+    "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-owned-invocations/implementation-review-r1/repo-refusal-probe.json": {
+      "sha256": "a8b83382f2a53ced19473c62ad436185bbdf5a134df7e579a14171bf5d0aa6a9",
+      "bytes": 653,
+      "copy": "inputs/06-repo-refusal-probe.json"
+    },
+    "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-owned-invocations/audit-r1/REVIEW.md": {
+      "sha256": "50dfcebdd81b9ab730f57dd495fbb7350d82b43d21c6fcc6e81dc26c39b0d809",
+      "bytes": 19697,
+      "copy": "inputs/07-REVIEW.md"
+    },
+    "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-owned-invocations/app-compatibility.json": {
+      "sha256": "166e0842b81050b31dcae242c1fcd3d975f92d7ff19ebe1aa84947763c45801b",
+      "bytes": 1420,
+      "copy": "inputs/08-app-compatibility.json"
+    },
+    "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-owned-invocations/app-consumer.json": {
+      "sha256": "ed6c5cf7eef6748950a9f836a9e55a9cccba558dc2177b3a12ed08e111b8631f",
+      "bytes": 197,
+      "copy": "inputs/09-app-consumer.json"
+    },
+    "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-owned-invocations/baseline/success/receipt.json": {
+      "sha256": "307d102ba600e150f224ef4580979ec784ea17dce742cb325bf09107b0538a05",
+      "bytes": 254,
+      "copy": "inputs/10-receipt.json"
+    },
+    "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-owned-invocations/baseline/error/receipt.json": {
+      "sha256": "b44e429dc20408881b0d98186973695aa9b94991620f135d670c764faac4c097",
+      "bytes": 253,
+      "copy": "inputs/11-receipt.json"
+    },
+    "/Users/andreyyurlov/.t3/worktrees/whatsdown/t3-f9098070/.morse/continuation-20261106/native-authority-closure-design/README.md": {
+      "sha256": "17ca7a0a3e323214ec9f13313ff43c0bc701efc1b74c7ff6b61bd04d8516aad5",
+      "bytes": 7342,
+      "copy": "inputs/12-README.md"
+    },
+    "/Users/andreyyurlov/.t3/worktrees/whatsdown/t3-f9098070/.morse/continuation-20261106/native-authority-closure-design/CONTRACT.md": {
+      "sha256": "a848962558e0ee1c639747063eede5312afc863d11c80b6a2a5b3caa0d21a0cb",
+      "bytes": 13311,
+      "copy": "inputs/13-CONTRACT.md"
+    },
+    "/Users/andreyyurlov/.t3/worktrees/whatsdown/t3-f9098070/.morse/continuation-20261106/native-authority-closure-design/SKETCH.md": {
+      "sha256": "2189f1ef8e6a25e62bc5d4bf792744d8fbe0c54dd3b63e89dd8c2bcb227e9c70",
+      "bytes": 7720,
+      "copy": "inputs/14-SKETCH.md"
+    },
+    "/Users/andreyyurlov/.t3/worktrees/whatsdown/t3-f9098070/.morse/continuation-20261106/native-authority-closure-design/ALLOCATIONS.md": {
+      "sha256": "cd33e98e50fed45435074bb124381e2867b32b7769a09f0cd6e3f61c387f33e9",
+      "bytes": 12397,
+      "copy": "inputs/15-ALLOCATIONS.md"
+    },
+    "/Users/andreyyurlov/.t3/worktrees/whatsdown/t3-f9098070/.morse/continuation-20261106/native-authority-closure-design/API_CONSTRAINTS.md": {
+      "sha256": "6b2d67277a4ef2220b3b6696e5fd3622e2475ca68141e59b73a22e39b6dd90c8",
+      "bytes": 5051,
+      "copy": "inputs/16-API_CONSTRAINTS.md"
+    },
+    "/Users/andreyyurlov/.t3/worktrees/whatsdown/t3-f9098070/.morse/continuation-20261106/native-authority-closure-design/PROOF_MATRIX.md": {
+      "sha256": "40dda63cf76a7d0fe946daf06f39dde7e720ca51ab99c7f4ae1e7667ddacaa51",
+      "bytes": 6739,
+      "copy": "inputs/17-PROOF_MATRIX.md"
+    },
+    "/Users/andreyyurlov/.t3/worktrees/whatsdown/t3-f9098070/.morse/continuation-20261106/native-authority-closure-design/review/SYNTHESIS.md": {
+      "sha256": "1ebffaa11837756d14e924b1456f73d6f65591caabe871ac38d588efe0f48e0d",
+      "bytes": 7406,
+      "copy": "inputs/18-SYNTHESIS.md"
+    },
+    "/Users/andreyyurlov/.t3/worktrees/whatsdown/t3-f9098070/.morse/continuation-20261106/native-authority-closure-design/review/final-contract-review-r2.md": {
+      "sha256": "6e10966876d85a6d0bf8ada3fd6945f4d9550ba5d756708b6425021bdf156f55",
+      "bytes": 10510,
+      "copy": "inputs/19-final-contract-review-r2.md"
+    },
+    "/Users/andreyyurlov/.t3/worktrees/whatsdown/t3-f9098070/.morse/continuation-20261106/owned-invocation-api-review-r1/REVIEW.md": {
+      "sha256": "fa4418a92da00c791232f66fd90b249a22a7f7375c63728ba6d9dab4d17c974f",
+      "bytes": 17112,
+      "copy": "inputs/20-REVIEW.md"
+    },
+    "/Users/andreyyurlov/.t3/worktrees/whatsdown/t3-f9098070/.morse/continuation-20261106/owned-invocation-api-review-r2/REVIEW.md": {
+      "sha256": "038e507efee976f62ed81190f8e1d5bb03b0ba3b7acaeea781b8ccf9fd028cee",
+      "bytes": 22548,
+      "copy": "inputs/21-REVIEW.md"
+    },
+    "/Users/andreyyurlov/.t3/worktrees/whatsdown/t3-f9098070/.morse/continuation-20261106/owned-invocation-api-review-r3/REVIEW.md": {
+      "sha256": "b0b5406a0da29ec46f18c31b1e72a06ad8b8e4dcad2bb568dc8c327c0079963a",
+      "bytes": 14765,
+      "copy": "inputs/22-REVIEW.md"
+    },
+    "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/evidence/FINAL_HANDOFF.md": {
+      "sha256": "1eaeaa4a5e99ec78f37df7b7fbde4705552d05449c3746e79359f1c248fb3c5c",
+      "bytes": 5963,
+      "copy": "inputs/23-FINAL_HANDOFF.md"
+    },
+    "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/evidence/final-qualification.json": {
+      "sha256": "c456de10c3828098b53fb2d68eb53a6798962ca977a06d135ba23252ada62d17",
+      "bytes": 4842,
+      "copy": "inputs/24-final-qualification.json"
+    },
+    "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/evidence/final-family.json": {
+      "sha256": "652b8475fec8e4391c7f178b26923661e109c18b73c0008d4b84718e03cbbb59",
+      "bytes": 10939,
+      "copy": "inputs/25-final-family.json"
+    },
+    "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/evidence/review-r4.json": {
+      "sha256": "655528883b5c37affb15fa4975ff8e591a234ed898d217a23317136b0127aa25",
+      "bytes": 5611,
+      "copy": "inputs/26-review-r4.json"
+    },
+    "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-effect-authority/evidence/review-r5.json": {
+      "sha256": "de80c81bfc3f2fc78abb54ea3c203f51570eb7fd15fb306153acea5aa0900168",
+      "bytes": 4762,
+      "copy": "inputs/27-review-r5.json"
+    }
+  },
+  "base_commit": "9b844dbab34e61f6de575af2b25b0ed0f321059e",
+  "base_files": {
+    "compiler/meshc/src/library_authority.h": {
+      "sha256": "5bbaf429dbd3749924b041847aba40ce40ee33c5a13a5c97f454601d79f87843",
+      "bytes": 3057
+    },
+    "compiler/meshc/tests/support/test_artifacts.rs": {
+      "sha256": "d3925e96dd0e31f75cfc4f1a98851ea5a310a23262683fc23bfdbbd2ab040d2d",
+      "bytes": 8253
+    },
+    "compiler/mesh-rt/src/lib.rs": {
+      "sha256": "c25e2c0a79359ae9974e82e4347cdc060f415f855aabebf2274dadcb06b5fd74",
+      "bytes": 18493
+    },
+    "compiler/mesh-rt/src/gc.rs": {
+      "sha256": "9de7820e2bed23250a3ccb827bd3efff45addf63a6f48f384eb6be245be2bcc9",
+      "bytes": 14186
+    },
+    "compiler/mesh-rt/src/iter.rs": {
+      "sha256": "bd9377f83816d02cdd4b78c19f483a56ce32d0c4dde1b0143b42bfabc250fa0a",
+      "bytes": 23777
+    },
+    "compiler/mesh-rt/src/callback.rs": {
+      "sha256": "df15ffa767b754738b3c794185e7a2be3035166410e1aec651b5ba80687ab743",
+      "bytes": 3113
+    },
+    "compiler/mesh-rt/src/stack_overflow.rs": {
+      "sha256": "5ab517fbc9b6a456cb13fadb8beb66bfc45788d7126e6831bae717ad1a162c46",
+      "bytes": 5094
+    },
+    "compiler/mesh-rt/src/db/sqlite.rs": {
+      "sha256": "d443bf83725d3ea824dbfee7ae86b4ae69eac2012d82f30e14593690ec116dde",
+      "bytes": 42628
+    },
+    "compiler/mesh-rt/src/db/transport.rs": {
+      "sha256": "689c8bc5e9de708a5c04d25e864d2727b95c1905fa33823edcacc224c9526ea7",
+      "bytes": 16728
+    },
+    "compiler/mesh-rt/src/db/repo.rs": {
+      "sha256": "da8a8518145f253456b89947f5035eeb0103e5ada8227178d1f7d460b0fcde9d",
+      "bytes": 117586
+    },
+    "compiler/mesh-rt/src/actor/msg_shape.rs": {
+      "sha256": "5b876043f9c08ad25d79283b849164d202469973af33bc49d684cfc47d74b94c",
+      "bytes": 53110
+    },
+    "compiler/mesh-rt/src/actor/job.rs": {
+      "sha256": "2d0050953e47a8bfd5d686a13ae27c5138ef8b9782548c275c51f556e2d125aa",
+      "bytes": 17828
+    },
+    "compiler/mesh-rt/src/actor/heap.rs": {
+      "sha256": "b29099461a5fbb295635001bb0bd3e38431d3801b940deb37f41c399a9aa911d",
+      "bytes": 59315
+    },
+    "compiler/mesh-rt/src/actor/link.rs": {
+      "sha256": "0be1689f420ea5c839f0930e8097faf9429a25e7c6aaa5e9353ae60801c347fa",
+      "bytes": 27226
+    },
+    "compiler/mesh-rt/src/actor/mailbox.rs": {
+      "sha256": "fa79f188bcc391ca0dd75ae7e2d3a3297f11e95dd0af0acb44836c778903373c",
+      "bytes": 12400
+    },
+    "compiler/mesh-codegen/src/codegen/msg_shape.rs": {
+      "sha256": "af08170339ccd457f5a75dd93e497f397a3b2ae41c51bbb0413e40d36aa58cad",
+      "bytes": 17466
+    },
+    "compiler/mesh-codegen/src/mir/lower.rs": {
+      "sha256": "286b232f120fb5293877d3d7634b88d88ecadea04f75ac484b8f56664997e8ef",
+      "bytes": 868760
+    },
+    "docs/native-library/effect-authority.md": {
+      "sha256": "9b93825a4c7bcc17309feafee15d979f3eea43e07f3a7bd35e3db1c8b6a624e1",
+      "bytes": 9907
+    }
+  }
+}

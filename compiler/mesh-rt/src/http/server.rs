@@ -1173,12 +1173,22 @@ fn drain_accepted_connections() {
 /// - If handler_env is non-null: `fn(handler_env, request_ptr) -> response_ptr`
 #[no_mangle]
 pub extern "C-unwind" fn mesh_http_serve(router: *mut u8, port: i64) {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return;
+    }
+
     serve(router, port, None);
 }
 
 /// Serve only the explicit IPv4/IPv6 literal. Invalid input logs and returns.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_http_serve_on(router: *mut u8, host: *const MeshString, port: i64) {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return;
+    }
+
     let addr = match crate::server_bind::address(unsafe { (*host).as_str() }, port) {
         Ok(addr) => addr,
         Err(error) => {
@@ -1198,6 +1208,11 @@ pub extern "C-unwind" fn mesh_http_serve_tls_on(
     cert_path: *const MeshString,
     key_path: *const MeshString,
 ) {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return;
+    }
+
     let addr = match crate::server_bind::address(unsafe { (*host).as_str() }, port) {
         Ok(addr) => addr,
         Err(error) => {
@@ -1231,6 +1246,11 @@ pub extern "C-unwind" fn mesh_http_serve_tls(
     cert_path: *const MeshString,
     key_path: *const MeshString,
 ) {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return;
+    }
+
     let (cert_path, key_path) = unsafe { ((*cert_path).as_str(), (*key_path).as_str()) };
     match build_server_config(cert_path, key_path) {
         Ok(tls) => serve(router, port, Some(tls)),

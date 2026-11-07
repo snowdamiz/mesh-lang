@@ -1,0 +1,27 @@
+{
+  "status": "FAIL",
+  "checks": [],
+  "scope": "LOCAL compiled MobileCore C ABI",
+  "not_run": [
+    "native platform packages and phone UI",
+    "production/funded/external RPC",
+    "production C ABI next-day clock boundary",
+    "bounded native context path (owned by production context tests)",
+    "pause exactly after receive/before dispatch inside Mesh",
+    "next-due retained-mismatch retry under production wall clock"
+  ],
+  "error": "AssertionError('native host exited 1')",
+  "rpc_http_requests": 0,
+  "directory_requests": 0,
+  "tls_handshakes": [],
+  "server_errors": [],
+  "lookup_previous_sizes": [],
+  "public_fixture_hashes": {
+    "network": "0030fa16207012284af4e977d9ba01e41515c59d5be27e7fc7209d540ecdb91c",
+    "ca.pem": "15e8124fbbc91a0eab51cd49dafb2f8d38077465624766f6c9f1175d12eb4a0e",
+    "pki-0/ca.pem": "674daa7d220c2d2a8fe34fb83005d6621aee08275d04aed38966b712b5bfbb3a",
+    "pki-1/ca.pem": "b8c6eadc9c1437d5d865f224bd4589ade68e1962603b6e87563c908a6fe200a3",
+    "pki-3/ca.pem": "fcd7d95bb7849a82beabd4001f3c212a4bdebeb16da441d14b1b6fd56979ba67",
+    "pki-2/ca.pem": "85d744ca1509fdb851b57a4c298d88490e66f20508a0c948abca3b6b58c77e2f"
+  }
+}

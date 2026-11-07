@@ -316,6 +316,7 @@ pub struct Process {
     /// coroutine-origin calls retain their heap through synchronous execution.
     pub(crate) library_call: bool,
     pub(crate) invocation: Option<Arc<crate::authority::InvocationContext>>,
+    pub(crate) owned_invocation: Option<Arc<crate::library::OwnedInvocation>>,
     /// The main thread's process. It is not a coroutine and never yields, so
     /// instead of collecting at a yield it collects at a reduction check, once
     /// the allocator has asked for it (`YielderSlot::gc_wanted`).
@@ -414,6 +415,7 @@ impl Process {
             heap: ActorHeap::new(),
             library_call: false,
             invocation: None,
+            owned_invocation: None,
             collects_at_safepoints: false,
             worker: None,
             library_heap_owner: None,
@@ -447,7 +449,15 @@ impl Process {
             self.state = ProcessState::Exited(reason);
             true
         };
-        crate::secret::destroy_owned(self.pid);
+        // Scheduled roots/descendants may still be executing an admitted finite
+        // effect. Their owning worker unwinds before final resource destruction.
+        if !self
+            .invocation
+            .as_ref()
+            .is_some_and(|context| context.scheduled)
+        {
+            crate::secret::destroy_owned(self.pid);
+        }
         transitioned
     }
 

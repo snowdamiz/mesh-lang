@@ -1,0 +1,1203 @@
+   Compiling mesh-rt v0.1.8 (/Users/andreyyurlov/Documents/dev/mesh-lang/compiler/mesh-rt)
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+    --> compiler/mesh-rt/src/actor/scheduler.rs:1059:10
+     |
+1059 |         .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
+     |          ^^^^^^^^^^^^
+     |
+     = note: `#[warn(deprecated)]` on by default
+help: replace the use of the deprecated method
+     |
+1059 -         .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
+1059 +         .try_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
+     |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+  --> compiler/mesh-rt/src/authority.rs:89:14
+   |
+89 |             .fetch_update(SeqCst, SeqCst, |n| n.checked_add(1))
+   |              ^^^^^^^^^^^^
+   |
+help: replace the use of the deprecated method
+   |
+89 -             .fetch_update(SeqCst, SeqCst, |n| n.checked_add(1))
+89 +             .try_update(SeqCst, SeqCst, |n| n.checked_add(1))
+   |
+
+warning: use of deprecated function `libc::mach_task_self`: Use the `mach2` crate instead
+    --> compiler/mesh-rt/src/secret.rs:3692:35
+     |
+3692 |         let task = unsafe { libc::mach_task_self() };
+     |                                   ^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/db/sqlite.rs:649:42
+    |
+649 |         let Ok(handle) = NEXT_CONNECTION.fetch_update(SeqCst, SeqCst, |value| value.checked_add(1))
+    |                                          ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+649 -         let Ok(handle) = NEXT_CONNECTION.fetch_update(SeqCst, SeqCst, |value| value.checked_add(1))
+649 +         let Ok(handle) = NEXT_CONNECTION.try_update(SeqCst, SeqCst, |value| value.checked_add(1))
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/dist/driver_service.rs:849:22
+    |
+849 |                     .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+    |                      ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+849 -                     .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+849 +                     .try_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+    --> compiler/mesh-rt/src/actor/scheduler.rs:1059:10
+     |
+1059 |         .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
+     |          ^^^^^^^^^^^^
+     |
+help: replace the use of the deprecated method
+     |
+1059 -         .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
+1059 +         .try_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
+     |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+  --> compiler/mesh-rt/src/dist/identity.rs:72:14
+   |
+72 |             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+   |              ^^^^^^^^^^^^
+   |
+help: replace the use of the deprecated method
+   |
+72 -             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+72 +             .try_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+   |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+    --> compiler/mesh-rt/src/dist/node.rs:1313:10
+     |
+1313 |         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+     |          ^^^^^^^^^^^^
+     |
+help: replace the use of the deprecated method
+     |
+1313 -         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+1313 +         .try_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+     |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+    --> compiler/mesh-rt/src/dist/node.rs:6000:14
+     |
+6000 |             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+     |              ^^^^^^^^^^^^
+     |
+help: replace the use of the deprecated method
+     |
+6000 -             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+6000 +             .try_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+     |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/dist/operator.rs:312:10
+    |
+312 |         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+    |          ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+312 -         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+312 +         .try_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/dist/telemetry.rs:375:18
+    |
+375 |                 .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+    |                  ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+375 -                 .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+375 +                 .try_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u32>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/dist/telemetry.rs:530:14
+    |
+530 |             .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+    |              ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+530 -             .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+530 +             .try_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/dist/telemetry.rs:735:14
+    |
+735 |             .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+    |              ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+735 -             .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+735 +             .try_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/ws/client.rs:142:14
+    |
+142 |             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+    |              ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+142 -             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+142 +             .try_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/ws/reactor.rs:304:10
+    |
+304 |         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+    |          ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+304 -         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+304 +         .try_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+  --> compiler/mesh-rt/src/protected_memory.rs:41:14
+   |
+41 |             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |used| {
+   |              ^^^^^^^^^^^^
+   |
+help: replace the use of the deprecated method
+   |
+41 -             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |used| {
+41 +             .try_update(Ordering::AcqRel, Ordering::Acquire, |used| {
+   |
+
+warning: associated function `from_protected` is never used
+  --> compiler/mesh-rt/src/crypto/mlkem_incremental.rs:34:19
+   |
+29 | impl EncapsulationState {
+   | ----------------------- associated function in this implementation
+...
+34 |     pub(crate) fn from_protected(material: ProtectedBytes) -> Result<Self, CryptoFailure> {
+   |                   ^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `finish` is never used
+   --> compiler/mesh-rt/src/crypto/mlkem_incremental.rs:115:15
+    |
+115 | pub(crate) fn finish(
+    |               ^^^^^^
+
+warning: function `initialize_release_policy` is never used
+  --> compiler/mesh-rt/src/protected_memory.rs:21:15
+   |
+21 | pub(crate) fn initialize_release_policy() -> Result<(), ProtectionError> {
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: variant `Unsupported` is never constructed
+  --> compiler/mesh-rt/src/protected_memory.rs:29:5
+   |
+27 | pub(crate) enum ProtectionError {
+   |                 --------------- variant in this enum
+28 |     Limit,
+29 |     Unsupported,
+   |     ^^^^^^^^^^^
+   |
+   = note: `ProtectionError` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: function `initialize_release_policy` is never used
+   --> compiler/mesh-rt/src/protected_memory.rs:302:19
+    |
+302 |     pub(super) fn initialize_release_policy() -> Result<(), ProtectionError> {
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `mesh-rt` (lib) generated 19 warnings (run `cargo fix --lib -p mesh-rt` to apply 14 suggestions)
+   Compiling mesh-test-rt v0.1.8 (/Users/andreyyurlov/Documents/dev/mesh-lang/compiler/mesh-test-rt)
+   Compiling mesh-repl v0.1.8 (/Users/andreyyurlov/Documents/dev/mesh-lang/compiler/mesh-repl)
+warning: variant `Unsupported` is never constructed
+  --> compiler/mesh-rt/src/protected_memory.rs:29:5
+   |
+27 | pub(crate) enum ProtectionError {
+   |                 --------------- variant in this enum
+28 |     Limit,
+29 |     Unsupported,
+   |     ^^^^^^^^^^^
+   |
+   = note: `ProtectionError` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+   Compiling meshc v0.1.8 (/Users/andreyyurlov/Documents/dev/mesh-lang/compiler/meshc)
+warning: `mesh-rt` (lib test) generated 16 warnings (13 duplicates) (run `cargo fix --lib -p mesh-rt --tests` to apply 1 suggestion)
+    Finished `test` profile [unoptimized] target(s) in 24.43s
+     Running unittests src/lib.rs (.tmp/native-owned-invocations/target/debug/deps/mesh_codegen-e8ff11b5fbbdf2d2)
+
+running 349 tests
+test codegen::intrinsics::tests::test_get_intrinsic ... ok
+test codegen::intrinsics::tests::http_trust_root_intrinsic_keeps_the_builder_abi ... ok
+test codegen::intrinsics::tests::crypto_v2_intrinsics_match_runtime_arity ... ok
+test codegen::intrinsics::tests::test_nonreturning_intrinsics_are_marked_noreturn ... ok
+test codegen::intrinsics::tests::test_declare_all_intrinsics ... ok
+test codegen::tests::android_targets_initialize_for_cross_codegen ... ok
+test codegen::tests::codegen_rejects_declared_handler_without_lowered_symbol ... ok
+test codegen::tests::nested_resource_field_move_destroys_siblings_at_every_level ... ok
+test codegen::tests::resource_move_zeros_slot_and_drop_calls_destroy_only_when_non_null ... ok
+test codegen::tests::codegen_declared_route_registration_emits_runtime_name_and_count_marker ... ok
+test codegen::tests::resource_field_move_destroys_resource_siblings_before_zeroing_parent ... ok
+test codegen::tests::remote_spawn_registration_carries_the_argument_signature ... ok
+test codegen::tests::codegen_declared_handler_registration_emits_replication_count_marker ... ok
+test codegen::tests::native_bindings_share_a_symbol_only_with_one_signature ... ok
+test codegen::tests::resource_result_drop_checks_each_resource_variant_then_destroys_payload ... ok
+test codegen::tests::native_deployment_explicit_macos_object_keeps_its_requested_minimum ... ok
+test codegen::tests::struct_layouts_allow_forward_references ... ok
+test codegen::tests::sum_types_holding_each_other_by_value_are_rejected ... ok
+test codegen::tests::resource_struct_update_destroys_the_replaced_value ... ok
+test codegen::tests::library_export_wraps_mesh_binary_result_in_the_stable_runtime_boundary ... ok
+test codegen::tests::test_actor_link_codegen ... ok
+test codegen::tests::structs_holding_themselves_by_value_are_rejected ... ok
+test codegen::tests::native_deployment_default_matches_the_explicit_canonical_host_object ... ok
+test codegen::tests::test_actor_receive_codegen ... ok
+test codegen::tests::native_deployment_explicit_ios_device_and_simulator_objects_keep_their_platforms ... ok
+test codegen::tests::test_actor_send_codegen ... ok
+test codegen::tests::test_actor_send_describes_the_pids_in_a_message ... ok
+test codegen::tests::test_actor_spawn_with_terminate_callback ... ok
+test codegen::tests::test_actor_spawn_codegen ... ok
+test codegen::tests::test_actor_send_copies_string_messages ... ok
+test codegen::tests::test_closure_creation ... ok
+test codegen::tests::test_boolean_not ... ok
+test codegen::tests::test_construct_sum_type_variant ... ok
+test codegen::tests::test_comparison_operators ... ok
+test codegen::tests::test_closure_environment_describes_itself ... ok
+test codegen::tests::test_empty_module_verifies ... ok
+test codegen::tests::native_deployment_host_objects_include_platform_metadata_for_external_linkers ... ok
+test codegen::tests::test_float_arithmetic ... ok
+test codegen::tests::test_emit_object_file ... ok
+test codegen::tests::test_for_in_range_reduction_check_in_latch ... ok
+test codegen::tests::test_for_in_range_slt_comparison ... ok
+test codegen::tests::test_for_in_range_basic_blocks ... ok
+test codegen::tests::test_emit_llvm_ir ... ok
+test codegen::tests::test_for_in_range_returns_list ... ok
+test codegen::tests::test_invalid_triple_error ... ok
+test codegen::tests::test_for_in_list_basic_blocks ... ok
+test codegen::tests::test_function_call ... ok
+test codegen::tests::test_hello_world_module_verifies ... ok
+test codegen::tests::test_int_arithmetic ... ok
+test codegen::tests::test_native_target_init ... ok
+test codegen::tests::test_if_else_branching ... ok
+test codegen::tests::test_int_constant_folding ... ok
+test codegen::tests::test_int_in_result_pointer_boxing ... ok
+test codegen::tests::test_match_on_integer_literal ... ok
+test codegen::tests::test_let_binding ... ok
+test codegen::tests::test_main_wrapper_init_actor ... ok
+test codegen::tests::test_match_on_sum_type ... ok
+test codegen::tests::test_negation ... ok
+test codegen::tests::test_pid_is_i64_in_ir ... ok
+test codegen::tests::test_one_word_struct_is_described_inline_in_a_tuple_slot ... ok
+test codegen::tests::test_reduction_check_after_call ... ok
+test codegen::tests::test_string_literal_is_a_static_mesh_string ... ok
+test codegen::tests::test_println_hello_world ... ok
+test codegen::tests::nested_sum_pattern_inside_generic_result_codegen_dereferences_payload ... ok
+test codegen::tests::undescribed_aggregates_keep_their_pointers_alive ... ok
+test codegen::tests::verification_names_the_function_it_fails_in ... ok
+test codegen::types::tests::mixed_sum_payloads_are_aligned_words_and_narrow_fields_are_not_padding ... ok
+test codegen::types::tests::names_without_a_layout_have_placeholder_types ... ok
+test codegen::types::tests::test_closure_type_shape ... ok
+test codegen::tests::test_while_loop_reduction_check ... ok
+test codegen::types::tests::test_fn_type ... ok
+test codegen::tests::test_struct_in_result_construct_and_match_ir ... ok
+test codegen::types::tests::test_pid_type_is_i64 ... ok
+test codegen::types::tests::test_scalar_types ... ok
+test codegen::types::tests::test_sum_type_layout_nullary ... ok
+test codegen::types::tests::test_sum_type_layout_struct_payload ... ok
+test codegen::types::tests::test_sum_type_layout_with_payload ... ok
+test codegen::tests::test_struct_in_result_pointer_boxing ... ok
+test codegen::types::tests::test_tuple_type ... ok
+test codegen::tests::test_while_loop_basic_blocks ... ok
+test declared::tests::declared_route_handlers_reject_missing_lowered_symbol_before_registration ... ok
+test codegen::tests::test_while_with_break ... ok
+test declared::tests::declared_runtime_handlers_preserve_default_and_explicit_replication_counts ... ok
+test declared::tests::declared_runtime_handlers_preserve_route_runtime_name_and_counts ... ok
+test declared::tests::declared_runtime_handlers_reject_missing_lowered_symbol_before_registration ... ok
+test declared::tests::declared_runtime_handlers_reject_public_continuity_parameters ... ok
+test declared::tests::declared_runtime_handlers_wrap_zero_arg_work_with_hidden_metadata ... ok
+test declared::tests::startup_work_registrations_filter_out_route_handlers ... ok
+test codegen::tests::test_while_with_continue ... ok
+test link::tests::a_compiler_outside_any_target_directory_has_none ... ok
+test link::tests::a_missing_runtime_lists_where_it_was_looked_for ... ok
+test link::tests::android_triples_name_the_ndk_compiler ... ok
+test link::tests::classify_requested_target_should_reject_unknown_windows_flavor ... ok
+test codegen::tests::the_autonomous_configuration_is_registered_at_startup ... ok
+test link::tests::cross_target_runtime_search_never_falls_back_to_a_host_archive ... ok
+test link::tests::dynamic_libraries_are_named_by_file_not_build_path ... ok
+test link::tests::dynamic_libraries_link_the_whole_runtime_and_export_the_host_abi ... ok
+test link::tests::each_target_has_its_archiver_and_dynamic_linker ... ok
+test link::tests::each_target_links_its_own_system_libraries ... ok
+test link::tests::elf_executables_drop_unreachable_sections ... ok
+test link::tests::explicit_runtime_override_should_reject_wrong_filename_for_windows_target ... ok
+test link::tests::installed_runtime_is_found_in_lib_beside_bin ... ok
+test link::tests::libraries_take_the_native_archives_before_the_runtime ... ok
+test link::tests::link_command_passes_native_archives_as_paths_before_runtime ... ok
+test link::tests::mobile_targets_use_unix_library_abi ... ok
+test link::tests::native_deployment_default_linker_selects_the_resolved_platform ... ok
+test link::tests::rust_ios_targets_map_to_llvm_platform_and_deployment_version ... ok
+test link::tests::a_finished_library_link_removes_its_object_or_says_what_failed ... ok
+test link::tests::rust_macos_targets_map_to_llvm_platform_and_deployment_version ... ok
+test link::tests::find_mesh_rt_in_should_report_target_specific_runtime_name_when_missing ... ok
+test link::tests::runtime_and_native_archive_paths_are_checked_before_linking ... ok
+test link::tests::ios_simulator_executables_select_the_simulator_sdk_and_llvm_target ... ok
+test link::tests::mesh_rt_candidates_should_keep_unix_runtime_name_in_profile_root ... ok
+test link::tests::unsupported_targets_are_refused ... ok
+test link::tests::workspace_target_dirs_are_found_during_cargo_test ... ok
+test link::tests::mesh_rt_candidates_should_use_windows_runtime_name_inside_target_subdir ... ok
+test link::tests::test_runtime_uses_a_distinct_archive_name_and_package_hint ... ok
+test link::tests::android_tools_come_from_the_ndk_prebuilt_toolchain ... ok
+test link::tests::windows_links_with_the_clang_of_the_named_llvm_or_the_path ... ok
+test link::tests::target_dirs_start_with_the_tagged_one_meshc_was_built_in ... ok
+test declared::tests::clustered_route_handler_plan_dedupes_identical_wrappers ... ok
+test codegen::tests::native_deployment_named_host_object_is_supported_by_this_host ... ok
+test mir::lower::tests::a_constructor_pattern_matches_the_instance_it_is_matched_as ... ok
+test mir::lower::tests::a_closure_of_several_clauses_captures_what_its_clauses_use ... ok
+test declared::tests::clustered_route_handler_plan_rejects_conflicting_replication_counts_across_modules ... ok
+test mir::lower::tests::a_clustered_route_nothing_lowers_is_refused ... ok
+test mir::lower::tests::a_default_method_without_a_result_type_returns_unit ... ok
+test mir::lower::tests::a_message_of_an_open_type_is_shared ... ok
+test mir::lower::tests::a_relationship_to_a_struct_without_a_schema_uses_the_default_table ... ok
+test mir::lower::tests::a_service_init_without_parentheses_takes_no_arguments ... ok
+test mir::lower::tests::a_tuple_type_has_one_hash_and_one_compare_function ... ok
+test mir::lower::tests::builtin_crypto_struct_layouts_are_registered_without_source_declarations ... ok
+test mir::lower::tests::binop_on_user_type_emits_trait_call ... ok
+test mir::lower::tests::blind_rsa_blinded_drop_plan_destroys_only_the_opaque_state ... ok
+test mir::lower::tests::a_generic_channel_send_uses_the_helper_of_each_use ... ok
+test mir::lower::tests::call_site_rewrites_to_mangled_name ... ok
+test mir::lower::tests::clause_functions_drop_the_resources_they_are_given ... ok
+test mir::lower::tests::closures_capture_locals_but_not_top_level_functions ... ok
+test mir::lower::tests::compare_primitive_functions_generated ... ok
+test mir::lower::tests::compare_call_dispatches_by_operand_type ... ok
+test mir::lower::tests::compare_struct_generated_for_user_types ... ok
+test mir::lower::tests::closure_captures_are_shaped_by_a_typed_use ... ok
+test mir::lower::tests::blind_rsa_calls_lower_with_affine_modes_and_nominal_results ... ok
+test mir::lower::tests::callable_variant_is_not_lowered_as_an_imported_nullary_namesake ... ok
+test mir::lower::tests::compare_sum_generated_for_user_sum_types ... ok
+test mir::lower::tests::custom_sum_resource_drop_plan_uses_each_variant_field_layout ... ok
+test mir::lower::tests::debug_inspect_struct_generates_mir_function ... ok
+test mir::lower::tests::default_int_short_circuits_to_literal ... ok
+test mir::lower::tests::default_float_short_circuits_to_literal ... ok
+test mir::lower::tests::default_bool_short_circuits_to_literal ... ok
+test mir::lower::tests::debug_inspect_sum_type_generates_mir_function ... ok
+test mir::lower::tests::case_arm_resources_drop_where_the_arm_ends ... ok
+test mir::lower::tests::crypto_v2_calls_use_runtime_symbols_and_resource_modes ... ok
+test mir::lower::tests::closures_capture_only_what_they_do_not_bind ... ok
+test mir::lower::tests::default_method_skips_missing_error ... ok
+test mir::lower::tests::default_string_short_circuits_to_literal ... ok
+test mir::lower::tests::default_method_body_lowered_for_concrete_type ... ok
+test mir::lower::tests::direct_resource_calls_lower_borrow_consume_and_default_move_explicitly ... ok
+test link::tests::a_link_that_cannot_run_or_fails_says_why ... ok
+test mir::lower::tests::e2e_mangled_names_in_mir ... ok
+test mir::lower::tests::e2e_method_dot_syntax_basic ... ok
+test mir::lower::tests::e2e_method_dot_syntax_equivalence ... ok
+test mir::lower::tests::e2e_depth_limit_field_exists ... ok
+test mir::lower::tests::e2e_method_dot_syntax_field_access_preserved ... ok
+test mir::lower::tests::e2e_qualified_type_higher_order_conforming ... ok
+test mir::lower::tests::e2e_method_dot_syntax_module_qualified_preserved ... ok
+test mir::lower::tests::e2e_qualified_type_higher_order_apply ... ok
+test mir::lower::tests::e2e_qualified_type_higher_order_let_alias ... ok
+test mir::lower::tests::e2e_method_dot_syntax_with_args ... ok
+test mir::lower::tests::e2e_multiple_traits_different_types ... ok
+test mir::lower::tests::e2e_qualified_type_higher_order_violation ... ok
+test mir::lower::tests::e2e_qualified_type_nested_higher_order ... ok
+test mir::lower::tests::e2e_self_param_has_concrete_type ... ok
+test mir::lower::tests::e2e_trait_method_call_compiles ... ok
+test mir::lower::tests::e2e_where_clause_alias_propagation ... ok
+test mir::lower::tests::e2e_where_clause_enforcement ... ok
+test mir::lower::tests::e2e_where_clause_chain_alias ... ok
+test mir::lower::tests::eq_sum_no_variants_returns_true ... ok
+test mir::lower::tests::eq_sum_generates_mir_function ... ok
+test mir::lower::tests::eq_sum_unit_variants_only ... ok
+test mir::lower::tests::eq_empty_struct_returns_true ... ok
+test mir::lower::tests::eq_struct_generates_mir_function ... ok
+test mir::lower::tests::e2e_where_clause_alias_user_trait ... ok
+test mir::lower::tests::explicit_blind_rsa_destroy_uses_the_generic_opaque_destructor ... ok
+test mir::lower::tests::explicit_secret_destroy_lowers_to_resource_destroy_not_a_raw_call ... ok
+test mir::lower::tests::hash_empty_struct_returns_constant ... ok
+test mir::lower::tests::file_storage_key_lowers_to_one_string_pointer_intrinsic ... ok
+test link::tests::a_linker_that_fails_quietly_or_on_stdout_is_reported ... ok
+test mir::lower::tests::hash_struct_generates_mir_function ... ok
+test mir::lower::tests::hash_struct_field_chaining ... ok
+test mir::lower::tests::impl_method_produces_mangled_mir_function ... ok
+test mir::lower::tests::http_trust_root_lowers_handle_and_bytes_to_handle ... ok
+test mir::lower::tests::json_types_get_one_from_json_wrapper ... ok
+test mir::lower::tests::imported_borrow_call_keeps_the_resource_owned_for_destroy ... ok
+test mir::lower::tests::lower_case_expr ... ok
+test mir::lower::tests::lower_break_expr ... ok
+test mir::lower::tests::list_display_emits_runtime_call ... ok
+test mir::lower::tests::lower_continue_expr ... ok
+test mir::lower::tests::lower_closure_produces_lifted_function ... ok
+test mir::lower::tests::imported_result_discriminant_function_is_not_builtin_identity ... ok
+test mir::lower::tests::lower_clustered_route_wrapper_uses_imported_runtime_identity_for_shim_name ... ok
+test mir::lower::tests::lower_clustered_route_wrapper_rewrites_direct_and_pipe_forms_to_one_bare_shim ... ok
+test mir::lower::tests::lower_for_in_range_expr ... ok
+test mir::lower::tests::lower_function_def ... ok
+test mir::lower::tests::lower_if_expr ... ok
+test mir::lower::tests::lower_int_literal ... ok
+test mir::lower::tests::lower_main_sets_entry_function ... ok
+test mir::lower::tests::lower_pid_type_resolves ... ok
+test mir::lower::tests::lower_self_expr ... ok
+test mir::lower::tests::lower_pipe_desugars_to_call ... ok
+test mir::lower::tests::lower_service_def_generates_functions ... ok
+test mir::lower::tests::map_and_set_keys_need_their_types_eq_unless_words ... ok
+test mir::lower::tests::lower_service_dispatch_table_populated ... ok
+test mir::lower::tests::lower_string_interpolation_desugars_to_concat ... ok
+test mir::lower::tests::lower_spawn_produces_actor_spawn ... ok
+test mir::lower::tests::lower_while_expr ... ok
+test mir::lower::tests::lower_service_field_access_resolves ... ok
+test mir::lower::tests::lowering_fails_closed_for_resource_closure_capture ... ok
+test mir::lower::tests::lowering_an_index_relies_on_the_checker_rejecting_it - should panic ... ok
+test mir::lower::tests::lowering_a_rebuilt_tuple_relies_on_the_checker_rejecting_it - should panic ... ok
+test mir::lower::tests::map_display_emits_runtime_call ... ok
+test mir::lower::tests::map_put_with_struct_key_compares_by_eq ... ok
+test mir::lower::tests::methods_drop_owned_resource_parameters_but_not_self ... ok
+test mir::lower::tests::moving_nested_resource_field_keeps_one_rooted_projection ... ok
+test mir::lower::tests::mobile_storage_calls_lower_to_runtime_intrinsics ... ok
+test mir::lower::tests::moving_resource_field_records_sibling_cleanup_and_invalidates_parent ... ok
+test mir::lower::tests::opaque_resources_have_no_struct_layout_but_resource_structs_do ... ok
+test mir::lower::tests::option_resource_drop_plan_destroys_some_but_not_none ... ok
+test mir::lower::tests::nested_list_callback_generates_wrapper ... ok
+test mir::lower::tests::ord_empty_struct_returns_false ... ok
+test mir::lower::tests::nested_resource_scopes_preserve_generic_result_return_type ... ok
+test mir::lower::tests::ord_struct_generates_mir_function ... ok
+test mir::lower::tests::ord_sum_generates_mir_function ... ok
+test mir::lower::tests::ord_sum_no_variants_returns_false ... ok
+test mir::lower::tests::ordering_sum_type_registered_in_mir ... ok
+test mir::lower::tests::override_replaces_default ... ok
+test mir::lower::tests::owned_resource_params_drop_on_normal_and_early_return_paths ... ok
+test mir::lower::tests::pattern_match_ordering_variants ... ok
+test mir::lower::tests::owned_resource_drops_when_try_returns_from_a_let_initializer ... ok
+test mir::lower::tests::pattern_match_some_extracts_field ... ok
+test mir::lower::tests::pg_connection_result_drop_keeps_boxed_sum_storage_and_handle_semantics ... ok
+test mir::lower::tests::pids_of_resource_messages_are_not_dropped ... ok
+test mir::lower::tests::pipe_calls_apply_resource_borrow_modes ... ok
+test mir::lower::tests::resource_result_drop_plan_destroys_both_resource_variants ... ok
+test mir::lower::tests::primitive_binop_unchanged ... ok
+test mir::lower::tests::resource_result_drop_plan_destroys_resource_err_payload ... ok
+test mir::lower::tests::process_lookup_lowers_to_optional_pid_runtime ... ok
+test mir::lower::tests::resource_struct_drop_plan_only_recurses_into_resource_fields ... ok
+test mir::lower::tests::resource_result_drop_plan_destroys_resource_ok_payload ... ok
+test mir::lower::tests::string_escapes_are_their_characters ... ok
+test mir::lower::tests::resource_struct_update_records_the_replaced_field_destructor ... ok
+test mir::lower::tests::resource_structs_do_not_generate_exposing_trait_functions ... ok
+test mir::lower::tests::owned_resources_drop_before_break_continue_and_tail_calls ... ok
+test mir::lower::tests::secret_concat_lowers_to_the_runtime_and_moves_both_inputs ... ok
+test mir::lower::tests::resource_types_holding_themselves_get_a_destroy_function ... ok
+test mir::lower::tests::result_discriminant_review_is_identity_once_for_direct_and_both_pipes ... ok
+test mir::lower::tests::struct_eq_operator_dispatches_to_trait_call ... ok
+test mir::lower::tests::set_display_emits_runtime_call ... ok
+test mir::lower::tests::struct_lt_operator_dispatches_to_ord ... ok
+test mir::lower::tests::struct_neq_operator_negates_eq ... ok
+test mir::lower::tests::sum_eq_operator_dispatches_to_trait_call ... ok
+test mir::lower::tests::sum_lt_operator_dispatches_to_ord ... ok
+test mir::lower::tests::sum_neq_operator_negates_eq ... ok
+test mir::lower::tests::test_outcome_drops_both_owned_result_variants_before_failure_signal ... ok
+test mir::mono::library_tests::actors_are_kept_though_nothing_here_spawns_them ... ok
+test mir::mono::library_tests::explicit_library_roots_prune_unrelated_functions_without_main ... ok
+test mir::mono::tests::monomorphize_keeps_reachable_functions ... ok
+test mir::mono::tests::monomorphize_keeps_all_without_entry ... ok
+test mir::lower::tests::test_secure_store_builtin_lowers_to_runtime_symbol ... ok
+test mir::lower::tests::test_push_token_builtin_lowers_to_runtime_symbol ... ok
+test mir::lower::tests::try_on_same_non_generic_error_does_not_call_from_itself ... ok
+test mir::lower::tests::user_result_discriminant_function_is_not_lowered_as_builtin_identity ... ok
+test mir::recovery_code_lower_tests::recovery_code_intrinsics_use_exact_pointer_abi ... ok
+test mir::mlkem_incremental_lower_tests::c1_mir_opaque_state_and_nested_tuple_drop_use_generic_resource_destructor ... ok
+test mir::secret_primitives_lower_tests::secret_primitives_intrinsic_declarations_have_exact_pointer_and_i64_abi ... ok
+test mir::lower::tests::websocket_header_lowers_to_handle_and_two_string_pointers ... ok
+test mir::tests::expressions_that_carry_no_type_have_theirs ... ok
+test mir::tests::function_types_have_parameters_and_a_result ... ok
+test mir::mlkem_incremental_lower_tests::c1_mir_maps_six_genuine_symbols_and_wrapper_layouts ... ok
+test mir::tests::mir_types_display_as_their_names ... ok
+test mir::tests::only_an_aggregate_destructor_has_fields ... ok
+test mir::types::tests::a_function_type_is_a_closure_wherever_it_appears ... ok
+test mir::types::tests::generic_resource_result_keeps_nominal_payload_identity ... ok
+test mir::types::tests::mangle_generic_type ... ok
+test mir::types::tests::mir_type_to_impl_name_primitives ... ok
+test mir::types::tests::mir_type_to_impl_name_struct ... ok
+test mir::types::tests::mir_type_to_impl_name_sum_type ... ok
+test mir::types::tests::mir_type_to_impl_name_unknown_fallback ... ok
+test mir::types::tests::mir_type_to_ty_bool ... ok
+test mir::types::tests::mir_type_to_ty_float ... ok
+test mir::types::tests::mir_type_to_ty_int ... ok
+test mir::types::tests::mir_type_to_ty_string ... ok
+test mir::types::tests::mir_type_to_ty_struct ... ok
+test mir::types::tests::mir_type_to_ty_sum_type ... ok
+test mir::types::tests::mir_type_to_ty_unknown_fallback ... ok
+test mir::types::tests::resolve_bool ... ok
+test mir::recovery_code_lower_tests::recovery_code_lower_tuple_drop_only_destroys_opaque_secret_field ... ok
+test mir::types::tests::resolve_float ... ok
+test mir::types::tests::resolve_int ... ok
+test mir::secret_primitives_lower_tests::secret_primitives_mir_local_lookalike_names_are_not_intrinsics ... ok
+test mir::types::tests::resolve_never ... ok
+test mir::types::tests::resolve_opaque_nominal_resource_to_ptr ... ok
+test mir::types::tests::resolve_option_sum_type ... ok
+test mir::types::tests::resolve_registered_crypto_error_as_sum_type ... ok
+test mir::types::tests::resolve_registered_pg_conn_resource_to_int ... ok
+test mir::types::tests::resolve_resource_sum_as_sum_type ... ok
+test mir::types::tests::resolve_sqlite_conn_to_int ... ok
+test mir::types::tests::resolve_string ... ok
+test mir::types::tests::resolve_tuple ... ok
+test mir::types::tests::resolve_struct_no_args ... ok
+test mir::types::tests::resolve_typed_pid ... ok
+test mir::types::tests::resolve_unit_tuple ... ok
+test mir::types::tests::resolve_untyped_pid ... ok
+test mir::types::tests::resolve_var_falls_back_to_unit ... ok
+test pattern::compile::tests::nested_sum_inside_generic_variant_keeps_its_concrete_access_type ... ok
+test pattern::compile::tests::test_as_pattern_binds_the_whole_value ... ok
+test pattern::compile::tests::test_boolean_literals ... ok
+test mir::secret_primitives_lower_tests::secret_primitives_mir_whole_pair_implicit_drop_destroys_both_fields ... ok
+test pattern::compile::tests::test_constructor_with_wildcard_default ... ok
+test pattern::compile::tests::test_constructor_switch ... ok
+test pattern::compile::tests::test_field_type_from_sum_type_def ... ok
+test pattern::compile::tests::test_guard_expression ... ok
+test pattern::compile::tests::test_guard_with_fail_fallback ... ok
+test pattern::compile::tests::test_integer_literals ... ok
+test pattern::compile::tests::test_multiple_guards ... ok
+test pattern::compile::tests::test_nested_tuple_constructor ... ok
+test pattern::compile::tests::test_or_pattern_constructors ... ok
+test pattern::compile::tests::test_or_pattern_duplicates_arms ... ok
+test pattern::compile::tests::test_string_literals ... ok
+test pattern::compile::tests::test_tag_from_sum_type_def ... ok
+test pattern::compile::tests::test_tuple_pattern ... ok
+test mir::types::tests::resolve_blind_rsa_handles_and_affine_aggregate ... ok
+test pattern::compile::tests::test_variable_binding ... ok
+test pattern::compile::tests::test_wildcard_arm ... ok
+test tests::merge_mir_modules_prefers_entry_module_mesh_main_when_multiple_modules_define_main ... ok
+test mir::recovery_code_lower_tests::recovery_code_lower_both_public_spellings_have_exact_runtime_calls ... ok
+test mir::recovery_code_lower_tests::recovery_code_import_and_local_shadowing_keep_user_functions ... ok
+test mir::secret_primitives_lower_tests::secret_primitives_mir_three_exact_symbols_both_hkdf_borrows_and_split_move ... ok
+test mir::mlkem_incremental_lower_tests::c1_mir_user_crypto_names_are_not_rewritten_to_runtime_symbols ... ok
+test mir::recovery_code_lower_tests::recovery_code_types_reject_wrong_argument_and_generated_secret_reuse ... ok
+test mir::mlkem_incremental_lower_tests::c1_public_validation_mir_genuine_calls_have_two_ordinary_wrappers ... ok
+test link::tests::static_libraries_are_archived_from_an_mri_script ... ok
+test tests::native_binding_lowers_to_an_external_symbol_declaration ... ok
+test tests::llvm_codegen_prefers_local_string_binding_over_same_named_function ... ok
+test tests::a_resource_slot_is_emptied_as_its_own_type ... ok
+test tests::a_resource_scope_ending_in_tail_calls_has_nothing_after_them ... ok
+test mir::secret_primitives_lower_tests::secret_primitives_mir_imported_qualified_lookalikes_do_not_gain_native_symbols ... ok
+test link::tests::native_deployment_workspace_cargo_defaults_c_objects_to_macos11 ... ok
+test link::tests::native_deployment_workspace_cargo_preserves_explicit_caller_minimum ... ok
+
+test result: ok. 349 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.28s
+
+     Running unittests src/lib.rs (.tmp/native-owned-invocations/target/debug/deps/mesh_common-339e94633683a751)
+
+running 19 tests
+test module_graph::tests::test_resolve_unknown ... ok
+test module_graph::tests::test_add_and_resolve ... ok
+test module_graph::tests::test_add_dependency ... ok
+test module_graph::tests::test_entry_module ... ok
+test module_graph::tests::test_toposort_independent ... ok
+test module_graph::tests::test_toposort_entry_last ... ok
+test module_graph::tests::test_toposort_linear ... ok
+test module_graph::tests::test_toposort_self_dep_ignored ... ok
+test module_graph::tests::test_toposort_cycle ... ok
+test span::tests::line_index_multiple_lines ... ok
+test module_graph::tests::test_toposort_preserves_ready_batches_and_deduplicates_edges ... ok
+test module_graph::tests::test_toposort_diamond ... ok
+test span::tests::line_index_newline_at_offset ... ok
+test span::tests::line_index_single_line ... ok
+test span::tests::span_new ... ok
+test token::tests::keyword_from_str_recognizes_all_keywords ... ok
+test token::tests::keyword_from_str_rejects_non_keywords ... ok
+test token::tests::token_kind_variant_count ... ok
+test token::tests::token_new_constructor ... ok
+
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (.tmp/native-owned-invocations/target/debug/deps/mesh_fmt-a35bbdcf0e7369b7)
+
+running 173 tests
+test edge_case_tests::empty_file_produces_empty_output ... ok
+test edge_case_tests::blank_lines_in_sum_types_have_no_indentation ... ok
+test edge_case_tests::trailing_whitespace_removal ... ok
+test edge_case_tests::long_string_literal_not_wrapped ... ok
+test edge_case_tests::blank_lines_collapse_between_items ... ok
+test edge_case_tests::trailing_newline ... ok
+test edge_case_tests::comments_only_file ... ok
+test idempotency_tests::idempotent_call_expression ... ok
+test idempotency_tests::idempotent_actor_block ... ok
+test idempotency_tests::idempotent_binary_expressions ... ok
+test idempotency_tests::idempotent_assoc_type_binding ... ok
+test edge_case_tests::consistent_newline_at_end ... ok
+test idempotency_tests::idempotent_empty_file ... ok
+test idempotency_tests::idempotent_dotted_from_import ... ok
+test idempotency_tests::idempotent_field_access ... ok
+test idempotency_tests::idempotent_case_multiple_arms ... ok
+test idempotency_tests::idempotent_from_import ... ok
+test edge_case_tests::deeply_nested_5_levels ... ok
+test idempotency_tests::idempotent_fn_with_do_end ... ok
+test idempotency_tests::closure_statement_and_return_arm_format ... ok
+test idempotency_tests::idempotent_inline_comment ... ok
+test idempotency_tests::idempotent_closure_expr ... ok
+test idempotency_tests::empty_bodies_and_comments_among_keyword_arguments ... ok
+test idempotency_tests::idempotent_impl_def ... ok
+test idempotency_tests::idempotent_list_literal ... ok
+test idempotency_tests::idempotent_interface_def ... ok
+test idempotency_tests::idempotent_line_comment ... ok
+test idempotency_tests::idempotent_let_with_type_annotation ... ok
+test idempotency_tests::idempotent_map_literal ... ok
+test idempotency_tests::idempotent_not_expr ... ok
+test idempotency_tests::idempotent_pipe_chain ... ok
+test idempotency_tests::idempotent_pub_type_alias ... ok
+test idempotency_tests::idempotent_multiple_blank_lines ... ok
+test idempotency_tests::idempotent_parenthesized_dotted_from_import ... ok
+test idempotency_tests::idempotent_nested_list ... ok
+test idempotency_tests::idempotent_single_let_binding ... ok
+test idempotency_tests::idempotent_module_with_imports ... ok
+test idempotency_tests::idempotent_receive_expr ... ok
+test idempotency_tests::idempotent_return_expr ... ok
+test idempotency_tests::idempotent_nested_if_else ... ok
+test idempotency_tests::idempotent_supervisor_block ... ok
+test idempotency_tests::idempotent_string_interpolation ... ok
+test idempotency_tests::idempotent_service_definition ... ok
+test idempotency_tests::idempotent_struct_with_fields ... ok
+test idempotency_tests::idempotent_sum_type ... ok
+test idempotency_tests::idempotent_type_alias ... ok
+test idempotency_tests::idempotent_tuple_expr ... ok
+test idempotency_tests::idempotent_resource_declarations_and_parameter_ownership ... ok
+test idempotency_tests::invalid_source_is_preserved_including_following_declarations ... ok
+test printer::tests::empty_produces_nothing ... ok
+test printer::tests::group_exceeds_width_breaks ... ok
+test idempotency_tests::idempotent_unary_expr ... ok
+test printer::tests::group_fits_renders_flat ... ok
+test printer::tests::grouped_hardline_breaks_instead_of_overflowing ... ok
+test printer::tests::hardline_always_breaks ... ok
+test printer::tests::if_break_broken_mode ... ok
+test printer::tests::if_break_flat_mode ... ok
+test idempotency_tests::idempotent_supervisor_child_spec ... ok
+test printer::tests::indent_adds_spaces ... ok
+test printer::tests::measure_flat_hardline_returns_max ... ok
+test printer::tests::nested_groups ... ok
+test printer::tests::nested_indent ... ok
+test idempotency_tests::output_must_be_the_same_program ... ok
+test printer::tests::space_in_broken_mode_uses_indent ... ok
+test snapshot_tests::assert_receive_is_formatted ... ok
+test snapshot_tests::bare_setup_and_teardown_are_formatted ... ok
+test idempotency_tests::match_arm_block_body_stays_on_following_lines ... ok
+test snapshot_tests::layouts_are_kept ... ok
+test walker::tests::a_child_spec_has_a_pair_per_line ... ok
+test walker::tests::a_closure_is_spelled_like_a_function_type ... ok
+test walker::tests::a_comment_ending_a_header_or_list_line_stays_there ... ok
+test walker::tests::a_deriving_clause_keeps_comments_and_drops_a_trailing_comma ... ok
+test walker::tests::a_list_that_does_not_fit_has_one_element_per_line ... ok
+test walker::tests::a_map_entry_binding_keeps_comments_and_drops_a_trailing_comma ... ok
+test walker::tests::a_struct_literal_is_on_one_line_when_it_fits ... ok
+test walker::tests::actor_bodies_have_a_statement_per_line ... ok
+test walker::tests::annotated_pattern_parameters ... ok
+test walker::tests::arms_separated_by_semicolons_go_on_lines_of_their_own ... ok
+test walker::tests::binary_expression ... ok
+test walker::tests::blank_line_between_top_level_items ... ok
+test walker::tests::break_in_while ... ok
+test walker::tests::call_with_args ... ok
+test walker::tests::case_arm_do_block ... ok
+test walker::tests::case_expression ... ok
+test walker::tests::closure_clauses_are_spaced ... ok
+test walker::tests::closure_clauses_keep_guards_parens_and_do_bodies ... ok
+test walker::tests::comment_preserved ... ok
+test walker::tests::continue_in_while ... ok
+test walker::tests::decorators_keep_their_spelling_and_line ... ok
+test walker::tests::empty_list_literal ... ok
+test walker::tests::empty_map_literal ... ok
+test walker::tests::fields_separated_by_new_lines_get_commas ... ok
+test walker::tests::fn_def_multiple_statements ... ok
+test walker::tests::fn_def_with_body ... ok
+test walker::tests::fn_expr_body_form ... ok
+test walker::tests::fn_expr_body_guard_idempotent ... ok
+test walker::tests::fn_expr_body_idempotent ... ok
+test walker::tests::fn_expr_body_literal_pattern ... ok
+test walker::tests::fn_expr_body_with_guard ... ok
+test walker::tests::for_in_destructure_binding ... ok
+test walker::tests::for_in_destructure_binding_idempotent ... ok
+test walker::tests::for_in_filter_basic ... ok
+test walker::tests::for_in_filter_basic_idempotent ... ok
+test walker::tests::for_in_filter_destructure ... ok
+test walker::tests::for_in_filter_destructure_idempotent ... ok
+test walker::tests::for_in_filter_range ... ok
+test walker::tests::for_in_filter_range_idempotent ... ok
+test walker::tests::for_in_range_basic ... ok
+test walker::tests::for_in_range_idempotent ... ok
+test walker::tests::for_in_range_normalize_whitespace ... ok
+test walker::tests::from_import ... ok
+test walker::tests::from_import_paren_multiline ... ok
+test walker::tests::from_import_paren_single_line ... ok
+test walker::tests::from_import_paren_trailing_comma ... ok
+test walker::tests::handler_state_parameter_follows_do_with_a_space ... ok
+test walker::tests::idempotent_case ... ok
+test walker::tests::idempotent_fn_def ... ok
+test walker::tests::idempotent_if_else ... ok
+test walker::tests::idempotent_let ... ok
+test walker::tests::idempotent_module ... ok
+test walker::tests::idempotent_struct ... ok
+test walker::tests::if_else_expression ... ok
+test walker::tests::items_separated_by_semicolons_go_on_lines_of_their_own ... ok
+test walker::tests::json_literal_braces_stay_balanced ... ok
+test walker::tests::keyword_arguments_stay_keyword_arguments ... ok
+test walker::tests::let_with_type_annotation ... ok
+test walker::tests::line_comments_inside_expressions_never_swallow_code ... ok
+test walker::tests::list_literal_formatting ... ok
+test walker::tests::long_imports_and_struct_updates_break_one_item_per_line ... ok
+test walker::tests::long_json_literals_break_one_field_per_line ... ok
+test walker::tests::long_operator_chains_break_before_each_operator ... ok
+test walker::tests::map_literal_formatting ... ok
+test walker::tests::match_keeps_its_keyword_and_cons_patterns_are_spaced ... ok
+test walker::tests::multi_clause_fn_formatted ... ok
+test walker::tests::nested_trailing_closure_blocks ... ok
+test walker::tests::pipe_expression ... ok
+test walker::tests::pipe_with_closure_and_struct_literal_breaks_cleanly ... ok
+test walker::tests::pub_sum_type_keeps_visibility_spacing ... ok
+test walker::tests::pub_type_alias ... ok
+test walker::tests::qualified_constructor_patterns_keep_their_dot ... ok
+test walker::tests::receive_after_clause_is_an_arm_and_end_closes_the_block ... ok
+test walker::tests::schema_option_table_keeps_space_before_string_literal ... ok
+test walker::tests::semicolon_separated_statements_get_their_own_lines ... ok
+test walker::tests::simple_let_binding ... ok
+test walker::tests::struct_definition ... ok
+test walker::tests::struct_patterns_fit_on_one_line_or_take_a_line_per_field ... ok
+test walker::tests::the_clauses_of_a_function_stay_together ... ok
+test walker::tests::top_level_comment_block_stays_compact_before_imports ... ok
+test walker::tests::top_level_comments_keep_their_blank_lines ... ok
+test walker::tests::top_level_imports_stay_compact ... ok
+test walker::tests::trailing_comma_arg_list ... ok
+test walker::tests::tuple_types_are_spaced_like_other_types ... ok
+test walker::tests::typed_fn_def ... ok
+test walker::tests::types_operators_and_trailing_comments_keep_their_documented_spelling ... ok
+test walker::tests::walk_path_preserves_dotted_import_and_impl_paths ... ok
+test walker::tests::while_loop ... ok
+test walker::tests::while_loop_idempotent ... ok
+test walker::tests::while_loop_with_body ... ok
+test walker::tests::wrapped_arguments_sit_one_level_in ... ok
+test snapshot_tests::snapshot_fn_with_body ... ok
+test snapshot_tests::snapshot_dotted_from_import ... ok
+test snapshot_tests::snapshot_comment_preserved ... ok
+test snapshot_tests::snapshot_from_import ... ok
+test snapshot_tests::snapshot_binary_ops ... ok
+test snapshot_tests::snapshot_let_with_type ... ok
+test snapshot_tests::snapshot_case_expr ... ok
+test snapshot_tests::snapshot_opaque_resource ... ok
+test snapshot_tests::snapshot_if_else ... ok
+test snapshot_tests::snapshot_parenthesized_dotted_from_import ... ok
+test snapshot_tests::snapshot_multiple_top_level ... ok
+test snapshot_tests::snapshot_struct_def ... ok
+test snapshot_tests::snapshot_module_with_fn ... ok
+test snapshot_tests::snapshot_resource_struct_and_parameter_ownership ... ok
+
+test result: ok. 173 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running unittests src/lib.rs (.tmp/native-owned-invocations/target/debug/deps/mesh_lexer-6f7bf9d8174f33bd)
+
+running 20 tests
+test cursor::tests::new_cursor_starts_at_zero ... ok
+test cursor::tests::advance_tracks_multibyte_utf8 ... ok
+test cursor::tests::peek_does_not_advance ... ok
+test cursor::tests::slice_extracts_text ... ok
+test cursor::tests::eat_while_consumes_matching ... ok
+test cursor::tests::peek_next_looks_ahead ... ok
+test cursor::tests::advance_moves_position ... ok
+test cursor::tests::empty_source ... ok
+test tests::lex_bar_unchanged ... ok
+test tests::lex_nested_block_comment ... ok
+test tests::lex_newlines_emitted ... ok
+test tests::lex_regular_pipe_unchanged ... ok
+test tests::lex_simple_expression ... ok
+test tests::lex_simple_string ... ok
+test tests::lex_slot_pipe_basic ... ok
+test tests::lex_slot_pipe_multidigit ... ok
+test tests::lex_slot_pipe_one_is_error ... ok
+test tests::lex_slot_pipe_zero_is_error ... ok
+test tests::lex_spans_accurate ... ok
+test tests::lex_string_interpolation_basic ... ok
+
+test result: ok. 20 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (.tmp/native-owned-invocations/target/debug/deps/mesh_lint-88de2f8fdeea4d77)
+
+running 14 tests
+test tests::a_test_file_using_assert_receive_parses ... ok
+test tests::pass_through_arm_does_not_shorten_required_receive_arrows ... ok
+test tests::a_describe_with_bare_setup_parses ... ok
+test tests::a_nested_test_call_does_not_start_over ... ok
+test tests::parse_errors_are_returned ... ok
+test tests::four_levels_pass ... ok
+test tests::collapsible_else_if_needs_a_lone_if ... ok
+test tests::every_definition_starts_over ... ok
+test tests::pass_through_arm_guards_and_explicit_blocks_keep_their_delimiters ... ok
+test tests::bool_comparison_flags_literals_only ... ok
+test tests::closures_and_loops_count_but_else_if_chains_do_not ... ok
+test tests::pass_through_arm_keeps_the_first_delimiter_after_a_multiline_body ... ok
+test tests::deep_nesting_reports_the_first_level_past_the_limit_once ... ok
+test tests::pass_through_arm_matches_tokens_not_layout ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (.tmp/native-owned-invocations/target/debug/deps/mesh_lsp-7f386a70ad3e4bd4)
+
+running 89 tests
+test analysis::tests::analyze_parse_error_produces_diagnostic ... ok
+test analysis::tests::analyze_impl_errors_are_shown_at_the_impl ... ok
+test analysis::tests::analyze_valid_function_no_diagnostics ... ok
+test analysis::tests::analyze_resource_violation_produces_diagnostic ... ok
+test analysis::tests::analyze_valid_source_no_diagnostics ... ok
+test analysis::tests::a_top_level_let_is_reported_in_a_project ... ok
+test analysis::tests::analyze_type_error_produces_diagnostic ... ok
+test analysis::tests::find_project_root_uses_manifest_ancestor ... ok
+test analysis::tests::analyze_multiple_errors_all_reported ... ok
+test analysis::tests::a_path_dependency_analyzes_cleanly ... ok
+test analysis::tests::analyze_type_error_has_range ... ok
+test analysis::tests::a_module_block_is_checked_in_its_file ... ok
+test analysis::tests::clustered_route_wrapper_reports_wrapper_range_in_lsp ... ok
+test analysis::tests::clustered_route_wrapper_project_keeps_imported_origin_metadata ... ok
+test analysis::tests::goto_def_function_defined_then_called ... ok
+test analysis::tests::goto_def_struct_name_resolves ... ok
+test analysis::tests::goto_def_let_binding_used_later ... ok
+test analysis::tests::offset_to_position_at_end ... ok
+test analysis::tests::offset_to_position_first_line ... ok
+test analysis::tests::offset_to_position_multiline ... ok
+test analysis::tests::a_document_outside_a_project_is_built_like_one ... ok
+test analysis::tests::position_past_eof_returns_none ... ok
+test analysis::tests::position_to_offset_multiline ... ok
+test analysis::tests::position_to_offset_roundtrip ... ok
+test analysis::tests::position_to_offset_single_line ... ok
+test analysis::tests::position_to_offset_stays_on_its_line ... ok
+test analysis::tests::a_module_implementing_an_unimported_interface_analyzes_cleanly ... ok
+test analysis::tests::goto_def_variable_shadowing_inner_scope ... ok
+test analysis::tests::hover_integer_literal ... ok
+test analysis::tests::hover_names_a_generic_type_variables ... ok
+test analysis::tests::hover_over_empty_space_returns_none ... ok
+test analysis::tests::missing_configured_entry_reports_project_diagnostic ... ok
+test analysis::tests::goto_def_unknown_identifier_returns_none ... ok
+test analysis::tests::manifest_source_duplicate_reports_declaration_range ... ok
+test analysis::tests::invalid_manifest_entrypoint_reports_project_diagnostic ... ok
+test analysis::tests::removed_manifest_cluster_section_reports_project_diagnostic ... ok
+test analysis::tests::private_source_decorator_reports_declaration_range ... ok
+test analysis::tests::removed_clustered_work_reports_parse_diagnostic_at_source_range ... ok
+test analysis::tests::warnings_are_reported_as_warnings ... ok
+test analysis::tests::scoped_installed_package_analyzes_cleanly ... ok
+test completion::tests::a_binding_shadowing_a_parameter_is_offered_once ... ok
+test analysis::tests::override_only_project_marks_nested_entry_executable_and_analyzes_cleanly ... ok
+test analysis::tests::unsaved_documents_under_a_symlink_belong_to_their_project ... ok
+test analysis::tests::a_test_file_is_analyzed_as_meshc_test_compiles_it ... ok
+test analysis::tests::source_decorated_work_still_analyzes_without_diagnostics ... ok
+test analysis::tests::scoped_installed_package_flat_layout_analyzes_cleanly ... ok
+test analysis::tests::override_precedence_keeps_root_main_path_derived_but_not_executable ... ok
+test completion::tests::a_position_past_the_document_offers_nothing ... ok
+test completion::tests::a_definition_still_being_typed_offers_no_name ... ok
+test completion::tests::builtin_type_completion ... ok
+test completion::tests::empty_prefix_returns_all_completions ... ok
+test completion::tests::blind_rsa_types_are_completed ... ok
+test definition::tests::a_field_of_an_expression_has_no_definition ... ok
+test definition::tests::a_name_a_let_pattern_binds_has_a_definition ... ok
+test analysis::tests::source_decorated_work_analyzes_without_diagnostics ... ok
+test definition::tests::find_def_function_call ... ok
+test definition::tests::find_def_function_param ... ok
+test definition::tests::find_def_nested_scope_shadowing ... ok
+test definition::tests::find_def_returns_none_for_builtins ... ok
+test analysis::tests::open_documents_are_read_in_place_of_their_files ... ok
+test definition::tests::find_def_returns_none_for_unknown ... ok
+test definition::tests::find_def_module_function_and_other_definitions ... ok
+test definition::tests::find_def_type_in_annotation ... ok
+test definition::tests::find_def_variable_let_binding ... ok
+test server::tests::an_incomplete_impl_is_named_for_what_it_has ... ok
+test completion::tests::keyword_completion_prefix_filter ... ok
+test server::tests::every_definition_kind_is_a_document_symbol ... ok
+test completion::tests::ownership_syntax_and_resource_types_are_completed ... ok
+test completion::tests::names_a_let_pattern_binds_are_offered ... ok
+test server::tests::server_capabilities ... ok
+test completion::tests::scope_completion_finds_fn_params ... ok
+test completion::tests::scope_completion_finds_let_bindings ... ok
+test completion::tests::scope_completion_includes_fn_defs ... ok
+test completion::tests::snippet_completions_filtered_by_prefix ... ok
+test analysis::tests::documents_that_cannot_be_analyzed_as_modules_say_why ... ok
+test completion::tests::every_kind_of_definition_is_offered_as_what_it_is ... ok
+test signature_help::tests::a_pattern_parameter_leaves_the_other_names_in_place ... ok
+test signature_help::tests::a_standard_library_function_is_labelled_by_its_types ... ok
+test tests::the_server_stops_when_the_client_says_exit ... ok
+test signature_help::tests::signature_help_first_parameter ... ok
+test signature_help::tests::signature_help_is_the_callees_not_a_closure_arguments ... ok
+test signature_help::tests::signature_help_active_parameter_after_comma ... ok
+test signature_help::tests::signature_help_has_parameter_names ... ok
+test signature_help::tests::signature_help_names_a_variable_once_across_the_signature ... ok
+test signature_help::tests::signature_help_no_call ... ok
+test signature_help::tests::signature_help_simple_call ... ok
+test signature_help::tests::a_callee_without_a_name_or_type_has_no_help ... ok
+test signature_help::tests::signature_help_names_a_module_functions_parameters ... ok
+test signature_help::tests::an_unclosed_call_has_signature_help ... ok
+
+test result: ok. 89 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+
+     Running unittests src/lib.rs (.tmp/native-owned-invocations/target/debug/deps/mesh_parser-acd7752b13343c88)
+
+running 30 tests
+test cst::tests::kinds_round_trip_through_rowan ... ok
+test error::tests::parse_error_with_related ... ok
+test parser::tests::parser_eat_consumes_on_match ... ok
+test parser::tests::parser_comments_are_trivia ... ok
+test parser::tests::parser_eat_newlines_consumes_significant_newlines ... ok
+test parser::tests::parser_current_text_returns_token_text ... ok
+test error::tests::parse_error_new ... ok
+test error::tests::parse_error_display ... ok
+test parser::tests::parser_newline_significant_at_top_level ... ok
+test syntax_kind::tests::all_token_kinds_convert_to_syntax_kind ... ok
+test parser::tests::parser_expect_success_and_failure ... ok
+test parser::tests::parser_open_before_wraps_completed_node ... ok
+test parser::tests::parser_newline_significance_inside_parens ... ok
+test parser::tests::parser_delimiter_depth_tracking ... ok
+test parser::tests::smoke_test_parser_produces_green_node ... ok
+test syntax_kind::tests::sentinel_kinds_are_first_values ... ok
+test syntax_kind::tests::syntax_kind_has_enough_variants ... ok
+test syntax_kind::tests::tokens_are_described_as_written ... ok
+test syntax_kind::tests::trivia_kinds_identified ... ok
+test test_harness::tests::preprocess_test_source_reads_strings_in_interpolations ... ok
+test test_harness::tests::preprocess_test_source_refuses_a_second_teardown ... ok
+test test_harness::tests::preprocess_test_source_refuses_a_late_setup_and_passes_parse_errors ... ok
+test test_harness::tests::preprocess_test_source_leaves_what_is_not_a_test ... ok
+test test_harness::tests::test_outcome_internal_observer_cannot_be_shadowed_by_test_source ... ok
+test test_harness::tests::preprocess_test_source_keeps_every_line_in_place ... ok
+test test_harness::tests::preprocess_test_source_runs_a_describe_by_case ... ok
+test test_harness::tests::test_outcomes_are_checked_at_each_generated_boundary ... ok
+test test_harness::tests::preprocess_test_source_nests_describes ... ok
+test test_harness::tests::test_rewritten_inline_blocks_keep_a_lexical_header_boundary ... ok
+test test_harness::tests::test_setup_outcome_wrapper_preserves_nested_assert_receive_edits ... ok
+
+test result: ok. 30 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (.tmp/native-owned-invocations/target/debug/deps/mesh_pkg-c37992eaed787e1c)
+
+running 120 tests
+test autonomous::tests::byte_size_round_trips_canonically ... ok
+test autonomous::tests::durations_and_sizes_name_what_is_wrong_with_them ... ok
+test lockfile::tests::lockfile_determinism ... ok
+test autonomous::tests::the_default_cluster_config_is_valid ... ok
+test autonomous::tests::duration_parser_rejects_fractional_values ... ok
+test lockfile::tests::lockfile_backward_compat_no_sha256 ... ok
+test autonomous::tests::autonomous_data_plane_can_stage_without_horizontal_driver_authority ... ok
+test lockfile::tests::lockfile_with_path_dep ... ok
+test lockfile::tests::lockfile_registry_package_with_sha256 ... ok
+test lockfile::tests::lockfile_empty ... ok
+test autonomous::tests::horizontal_autoscaling_rejects_disabled_safety_prerequisite ... ok
+test autonomous::tests::autonomous_config_accepts_combined_gateway_worker_pool ... ok
+test autonomous::tests::autonomous_config_rejects_scale_down_shorter_than_scale_up ... ok
+test autonomous::tests::production_autonomous_config_accepts_typed_docker_driver ... ok
+test manifest::tests::an_entrypoint_that_is_only_dots_is_blank ... ok
+test manifest::tests::manifest_without_removed_cluster_section_still_parses ... ok
+test manifest::tests::an_entrypoint_that_is_a_directory_is_refused ... ok
+test manifest::tests::parse_git_dep_bare ... ok
+test manifest::tests::parse_git_dep_with_rev ... ok
+test manifest::tests::manifest_rejects_removed_cluster_section_with_migration_guidance ... ok
+test manifest::tests::parse_license_field ... ok
+test manifest::tests::parse_full_manifest ... ok
+test manifest::tests::parse_minimal_manifest ... ok
+test manifest::tests::parse_manifest_entrypoint_override ... ok
+test lockfile::tests::lockfile_round_trip ... ok
+test autonomous::tests::a_cluster_config_round_trips_through_toml ... ok
+test manifest::tests::parse_mixed_dependency_types ... ok
+test manifest::tests::parse_registry_shorthand ... ok
+test manifest::tests::parse_registry_table_form ... ok
+test manifest::tests::reject_absolute_entrypoint ... ok
+test manifest::tests::cluster_decorators_on_functions_that_cannot_run_are_refused_where_they_are ... ok
+test manifest::tests::reject_blank_entrypoint ... ok
+test manifest::tests::reject_escaping_entrypoint ... ok
+test manifest::tests::cluster_decorators_plan_public_functions_with_their_counts ... ok
+test manifest::tests::reject_missing_name ... ok
+test manifest::tests::reject_missing_package_section ... ok
+test manifest::tests::reject_missing_version ... ok
+test manifest::tests::parse_native_package_contract ... ok
+test manifest::tests::a_test_manifest_builds_the_default_entrypoint_with_absolute_path_dependencies ... ok
+test manifest::tests::reject_non_mpl_entrypoint ... ok
+test manifest::tests::reject_unstable_native_abi_and_unsafe_artifact_paths ... ok
+test manifest::tests::reject_test_only_native_members ... ok
+test manifest::tests::native_libraries_are_refused_for_what_is_wrong_with_them ... ok
+test project::tests::module_names_come_from_the_path ... ok
+test manifest::tests::resolve_entrypoint_rejects_missing_configured_file ... ok
+test project::tests::project_files_name_their_modules ... ok
+test project::tests::an_entrypoint_outside_the_project_is_refused ... ok
+test manifest::tests::resolve_entrypoint_defaults_to_root_main ... ok
+test autonomous::tests::every_setting_the_runtime_cannot_honour_is_refused ... ok
+test native::tests::resolve_native_bindings_rejects_top_level_test_helpers ... ok
+test manifest::tests::resolve_entrypoint_prefers_manifest_override_when_both_entry_files_exist ... ok
+test project::tests::a_private_module_block_is_not_imported_from_another_file ... ok
+test project::tests::a_module_block_named_like_a_file_module_is_refused ... ok
+test project::tests::test_build_module_graph_self_import ... ok
+test project::tests::test_build_module_graph_cycle ... ok
+test project::tests::test_build_module_graph_simple ... ok
+test project::tests::test_build_module_graph_unknown_import_skipped ... ok
+test project::tests::test_build_module_graph_diamond ... ok
+test native::tests::resolve_native_archive_is_target_exact_and_checksum_verified ... ok
+test project::tests::test_build_project_parse_error_retained ... ok
+test project::tests::test_build_project_single_file ... ok
+test project::tests::test_build_project_with_entrypoint_missing_override_reports_resolved_path ... ok
+test project::tests::test_build_project_simple ... ok
+test project::tests::test_extract_imports_both_forms ... ok
+test project::tests::test_path_to_module_name_deeply_nested ... ok
+test project::tests::test_path_to_module_name_main ... ok
+test project::tests::test_path_to_module_name_nested ... ok
+test project::tests::test_path_to_module_name_simple ... ok
+test project::tests::test_path_to_module_name_snake_case ... ok
+test project::tests::test_to_pascal_case ... ok
+test project::tests::test_build_project_with_entrypoint_override_marks_non_root_entry_without_renaming ... ok
+test project::tests::test_build_project_with_entrypoint_override_wins_when_both_entry_files_exist ... ok
+test project::tests::native_bindings_join_the_project_once ... ok
+test manifest::tests::source_dependency_roots_follow_path_and_git_dependencies_once ... ok
+test project::tests::test_build_project_discovers_scoped_installed_package_modules ... ok
+test project::tests::test_build_project_discovers_path_dependency_modules ... ok
+test project::tests::test_build_project_discovers_git_dependency_checkouts ... ok
+test project::tests::a_project_is_checked_module_by_module ... ok
+test native::tests::resolve_native_bindings_rejects_symlink_aliases ... ok
+test resolver::tests::a_missing_path_dependency_is_named ... ok
+test project::tests::unreadable_packages_and_unnameable_files_are_errors ... ok
+test project::tests::using_an_interface_adds_no_edge_that_would_close_a_cycle ... ok
+test resolver::tests::no_deps_produces_empty_lockfile ... ok
+test project::tests::using_an_interface_orders_its_module_first ... ok
+test resolver::tests::a_path_dependency_without_a_manifest_is_a_leaf ... ok
+test resolver::tests::detect_cycle ... ok
+test project::tests::test_discover_mesh_files ... ok
+test resolver::tests::resolve_dependencies_e2e ... ok
+test project::tests::test_discover_mesh_files_rejects_visible_symlink_aliases ... ok
+test project::tests::test_discover_installed_package_roots_scoped_and_flat ... ok
+test resolver::tests::registry_deps_are_left_to_meshpkg_and_keep_their_pins ... ok
+test resolver::tests::diamond_same_source_ok ... ok
+test scaffold::tests::scaffold_clustered_error_when_directory_exists ... ok
+test resolver::tests::resolve_path_dependency ... ok
+test resolver::tests::detect_diamond_conflict ... ok
+test native::tests::native_paths_stay_inside_their_packages ... ok
+test resolver::tests::resolve_transitive_path_deps ... ok
+test scaffold::tests::scaffold_creates_directory_structure ... ok
+test scaffold::tests::scaffolds_refuse_existing_directories_and_report_write_failures ... ok
+test scaffold::tests::sqlite_scaffold_rejects_existing_directory ... ok
+test scaffold::tests::scaffold_main_mesh_content ... ok
+test toolchain_update::tests::each_outcome_says_where_the_update_is ... ok
+test scaffold::tests::scaffold_mesh_toml_is_valid ... ok
+test scaffold::tests::scaffold_clustered_project_writes_public_cluster_contract ... ok
+test toolchain_update::tests::forwards_only_supported_mesh_install_overrides_in_fixed_order ... ok
+test toolchain_update::tests::installer_urls_are_the_public_ones_unless_overridden ... ok
+test toolchain_update::tests::launchers_run_the_installer_as_the_platform_does ... ok
+test toolchain_update::tests::downloads_are_refused_for_what_is_wrong_with_them ... ok
+test toolchain_update::tests::an_update_downloads_and_runs_the_installer ... ok
+test toolchain_update::tests::updates_run_by_platform ... ok
+test scaffold::tests::sqlite_scaffold_database_selector_routes_to_local_contract ... ok
+test scaffold::tests::sqlite_scaffold_writes_local_only_template_and_package_tests ... ok
+test scaffold::tests::postgres_scaffold_writes_migration_first_file_set ... ok
+test scaffold::tests::postgres_scaffold_omits_sqlite_markers_and_secret_leaks ... ok
+test toolchain_update::tests::the_unix_installer_runs_to_its_end ... ok
+test native::tests::native_dependencies_resolve_only_from_their_pinned_installed_copies ... ok
+test resolver::tests::resolve_git_dep_local_repo ... ok
+test resolver::tests::resolve_git_dep_with_branch ... ok
+test resolver::tests::git_dependencies_are_pinned_by_rev_tag_or_branch ... ok
+test toolchain_update::tests::the_windows_bootstrap_is_written_then_started ... ok
+
+test result: ok. 120 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+     Running unittests src/lib.rs (.tmp/native-owned-invocations/target/debug/deps/mesh_repl-a1e74d1f3aa5afdc)
+
+running 70 tests
+test jit::tests::file_storage_key_runtime_symbol_is_registered ... ok
+test jit::tests::blind_rsa_runtime_symbols_are_registered ... ok
+test jit::incremental_tests::c1_incremental_runtime_symbols_are_registered ... ok
+test jit::secret_primitives_tests::c1_secret_primitives_jit_three_symbols_are_registered ... ok
+test jit::tests::test_eval_empty_input ... ok
+test jit::tests::test_eval_whitespace_input ... ok
+test jit::tests::test_format_jit_result_bool ... ok
+test jit::tests::test_format_jit_result_int ... ok
+test jit::tests::test_format_jit_result_unit ... ok
+test jit::tests::test_extract_definition_name ... ok
+test jit::tests::results_of_other_types_and_nameless_definitions_are_described ... ok
+test jit::tests::test_is_definition_fn ... ok
+test jit::tests::test_is_definition_let ... ok
+test jit::tests::test_is_definition_others ... ok
+test jit::tests::test_is_definition_type ... ok
+test jit::tests::test_is_not_definition ... ok
+test jit::tests::test_repl_config_default ... ok
+test jit::tests::every_declared_runtime_function_is_registered ... FAILED
+test jit::tests::websocket_header_runtime_symbol_is_registered ... ok
+test session::tests::test_add_definition ... ok
+test session::tests::test_new_session_is_empty ... ok
+test session::tests::test_record_result ... ok
+test jit::tests::test_init_runtime_is_idempotent ... ok
+test session::tests::test_reset_clears_everything ... ok
+test session::tests::test_wrap_expression_basic ... ok
+test session::tests::test_wrap_expression_includes_definitions ... ok
+test session::tests::test_wrap_expression_increments_counter ... ok
+test session::tests::test_wrap_expression_replays_bindings_inside_the_wrapper ... ok
+test tests::load_reports_a_file_that_does_not_parse ... ok
+test jit::tests::errors_are_reported_before_anything_runs ... ok
+test tests::open_brackets_and_braces_continue_the_input ... ok
+test tests::test_clear_command ... ok
+test tests::test_format_result_bool ... ok
+test tests::a_source_without_items_has_a_unit_result ... ok
+test tests::test_format_result_definition ... ok
+test tests::test_format_result_expression ... ok
+test tests::test_format_result_unit ... ok
+test tests::test_help_command ... ok
+test tests::test_help_shorthand ... ok
+test tests::test_is_command ... ok
+test tests::test_load_command_missing_arg ... ok
+test tests::test_load_command_nonexistent_file ... ok
+test tests::test_matched_do_end_is_complete ... ok
+test tests::test_matched_parens_complete ... ok
+test tests::test_nested_do_end_incomplete ... ok
+test tests::test_nested_do_end_is_complete ... ok
+test tests::test_quit_command ... ok
+test tests::test_quit_shorthand ... ok
+test tests::test_reset_command ... ok
+test tests::test_simple_expression_is_complete ... ok
+test tests::test_string_balance ... ok
+test tests::test_unknown_command ... ok
+test tests::test_type_command_missing_arg ... ok
+test tests::test_unmatched_do_is_incomplete ... ok
+test tests::test_unmatched_paren_is_incomplete ... ok
+test tests::test_type_command_with_expression ... ok
+test tests::type_command_sees_definitions_and_reports_errors ... ok
+test jit::tests::process_lookup_none_executes_through_the_jit ... ok
+test jit::tests::lightning_invoice_errors_execute_through_the_jit ... ok
+[mesh-rt] invalid server bind address
+test jit::tests::websocket_header_errors_execute_through_the_jit ... ok
+[mesh-rt] invalid server bind address
+test jit::tests::blind_rsa_client_errors_execute_through_the_jit ... ok
+test jit::tests::test_bytes_concat_many_through_jit_symbol_registration ... ok
+test tests::the_loop_evaluates_cancels_and_stops ... ok
+test jit::tests::http_trust_root_builder_executes_and_poisoning_survives_the_jit ... ok
+[mesh-rt] invalid server bind address
+[mesh-rt] invalid server bind address
+test jit::tests::test_server_bind_apis_through_jit_symbol_registration ... ok
+test jit::tests::extended_nonce_aead_executes_both_public_names_through_the_jit ... ok
+test jit::secret_primitives_tests::c1_secret_primitives_execute_in_one_marked_fresh_child ... ok
+test jit::ohttp_tests::ohttp_both_public_names_execute_all_four_opaque_context_operations ... ok
+test jit::incremental_tests::c1_incremental_tuple_retry_and_storage_execute_in_a_fresh_jit_child ... ok
+test jit::tests::test_eval_expressions_through_the_jit ... ok
+
+failures:
+
+---- jit::tests::every_declared_runtime_function_is_registered stdout ----
+
+thread 'jit::tests::every_declared_runtime_function_is_registered' (72701462) panicked at compiler/mesh-repl/src/jit.rs:3105:9:
+not registered with the JIT: ["mesh_library_submit_bounded_v2"]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    jit::tests::every_declared_runtime_function_is_registered
+
+test result: FAILED. 69 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+error: test failed, to rerun pass `-p mesh-repl --lib`

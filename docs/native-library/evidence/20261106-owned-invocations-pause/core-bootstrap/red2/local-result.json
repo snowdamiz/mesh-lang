@@ -1,0 +1,77 @@
+{
+  "status": "FAIL",
+  "checks": [
+    {
+      "name": "three independently rooted owned TLS peers ready",
+      "status": "PASS",
+      "origins": [
+        "https://127.0.0.1:51319",
+        "https://127.0.0.1:51320",
+        "https://127.0.0.1:51321"
+      ],
+      "root_sha256": [
+        "9990513ed4b0813ae2a10062372baa8551866703309d5801f236a21d453eb42c",
+        "953563c881038a5483feed3a2fcfdc85c2fa361d722196459db162d5341e69a6",
+        "3ed0ba4ef9abd0652fa3edd97b12c3eeb7e683133505e5ed5241063dc3875db5"
+      ],
+      "frame_sha256": "c1d58663e86078f1e997a9e81417770bdaae41d6e2f7f52fc6f8b2d1f32a9644"
+    }
+  ],
+  "scope": "LOCAL compiled MobileCore C ABI",
+  "not_run": [
+    "native platform packages and phone UI",
+    "production/funded/external RPC",
+    "production C ABI next-day clock boundary",
+    "bounded native context path (owned by production context tests)",
+    "pause exactly after receive/before dispatch inside Mesh",
+    "next-due retained-mismatch retry under production wall clock"
+  ],
+  "error": "AssertionError(('mesh_messenger_create_account', 10, 0, []))",
+  "rpc_http_requests": 0,
+  "directory_requests": 1,
+  "tls_handshakes": [
+    {
+      "scenario": "setup",
+      "peer": 0,
+      "tls": "accepted"
+    },
+    {
+      "scenario": "setup",
+      "peer": 1,
+      "tls": "accepted"
+    },
+    {
+      "scenario": "setup",
+      "peer": 2,
+      "tls": "accepted"
+    }
+  ],
+  "server_errors": [],
+  "lookup_previous_sizes": [],
+  "public_fixture_hashes": {
+    "devices.hex": "326121a2666bd5ace420b85925270080e2e25b798874e058de155ae9c168c32f",
+    "security": "e2fe071e764cf449e7a84254074150de16724497e529a539b5a3c902e63e46e8",
+    "forged-1.hex": "6fa4c93ab46d8dc1f8c39161d7095988510d78e731ad175eb915b00fdc54e14a",
+    "forged-0.hex": "454c9e2e3e5bbd25ce213092bd4fe50e34269d55a8488d07c933840c9fbaa5df",
+    "network": "70a0e72ef05808dd9e2984c64d375a5b9923b1a733c49e668e41165bfe481ee1",
+    "evidence-1.hex": "4ac6fba38ff916556acf861ed5c63ea5606eff3ec37a5e3da277a988c4fde06f",
+    "evidence-0.hex": "3b3f1c1d6debd2b5e9fbe5a789515633e9f1bede6ae012c8d2b9b66b55ae79dc",
+    "checkpoint.hex": "ab8b2a833b29f9697e332e528638d3c74b97a88deaa0c16222ac5b0d85439207",
+    "ca.pem": "b4d45b2e4606857dce62949d01b31f7da08e48b314ae8ab1b97c34bd55462f25",
+    "log.hex": "e6f6cf4453ac8ca4aae20b6cff45f6acaa31a030fef1145943340493e838ced7",
+    "ring-entry.hex": "1a1965a6a605a3dc91ec6cc39bb8c045a2a1cd5b054b5399c175072d210e61d0",
+    "header.hex": "b871f1c9175c46a3d1679b3cfb93ea55c6f8fe301cbf69fd15be85ebccf22a14",
+    "http-events.jsonl": "c560bceb4d1dc6a9e92a2b0cff60072e132999b2b349645d9528885472fdcd41",
+    "ohttp": "dd1f7a66bce44d2ad4d7d73c95c36e45ce2bcd004b5285b9f7c36eeb95c4ba1b",
+    "entry.hex": "52e8d5860f3be7a7be4cb05f63d8e7467ac2327a96bd54b4c525e5a98451b3b5",
+    "rpc-tls": "c1d58663e86078f1e997a9e81417770bdaae41d6e2f7f52fc6f8b2d1f32a9644",
+    "pki-0/ca.pem": "9990513ed4b0813ae2a10062372baa8551866703309d5801f236a21d453eb42c",
+    "pki-1/ca.pem": "953563c881038a5483feed3a2fcfdc85c2fa361d722196459db162d5341e69a6",
+    "owned-success/security": "e2fe071e764cf449e7a84254074150de16724497e529a539b5a3c902e63e46e8",
+    "owned-success/network": "70a0e72ef05808dd9e2984c64d375a5b9923b1a733c49e668e41165bfe481ee1",
+    "owned-success/ohttp": "dd1f7a66bce44d2ad4d7d73c95c36e45ce2bcd004b5285b9f7c36eeb95c4ba1b",
+    "owned-success/rpc-tls": "c1d58663e86078f1e997a9e81417770bdaae41d6e2f7f52fc6f8b2d1f32a9644",
+    "pki-3/ca.pem": "8d8cc66b47a19dd5d9c81b89fb443861c2d5a4f83e3c4f880df857f12ed3d14b",
+    "pki-2/ca.pem": "3ed0ba4ef9abd0652fa3edd97b12c3eeb7e683133505e5ed5241063dc3875db5"
+  }
+}

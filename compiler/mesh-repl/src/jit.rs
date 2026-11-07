@@ -1287,6 +1287,10 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             "mesh_library_invoke_bounded",
             mesh_rt::library::mesh_library_invoke_bounded as *const (),
         ),
+        (
+            "mesh_library_submit_bounded_v2",
+            mesh_rt::library::mesh_library_submit_bounded_v2 as *const (),
+        ),
         ("mesh_list_all", mesh_rt::mesh_list_all as *const ()),
         ("mesh_list_any", mesh_rt::mesh_list_any as *const ()),
         ("mesh_list_append", mesh_rt::mesh_list_append as *const ()),

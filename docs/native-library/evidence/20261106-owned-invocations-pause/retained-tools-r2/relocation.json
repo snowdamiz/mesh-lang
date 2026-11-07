@@ -1,0 +1,14 @@
+{
+  "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-owned-invocations/target/debug/meshc": {
+    "retained": "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-owned-invocations/retained-tools-r2/meshc",
+    "sha256": "f8069154168cf15771ba8ee4cbdefdd7f0e96aa645d98df7fae2048909dbb830"
+  },
+  "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-owned-invocations/target/debug/libmesh_rt.a": {
+    "retained": "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-owned-invocations/retained-tools-r2/libmesh_rt.a",
+    "sha256": "013c256fc4cef1d98d49b0a735c4f0e935814c1d7e840a6813516f00618be0ac"
+  },
+  "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-owned-invocations/target/debug/libmesh_test_rt.a": {
+    "retained": "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-owned-invocations/retained-tools-r2/libmesh_test_rt.a",
+    "sha256": "d04ee734ab2649f68e0375608ae3e7f12e403d2f3fa427b431be4aee0b4e2443"
+  }
+}

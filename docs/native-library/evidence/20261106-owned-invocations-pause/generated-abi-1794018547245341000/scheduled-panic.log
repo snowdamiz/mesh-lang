@@ -1,0 +1,6 @@
+status: Some(0)
+stdout:
+PASS panic
+
+stderr:
+Mesh panic: synthetic-panic

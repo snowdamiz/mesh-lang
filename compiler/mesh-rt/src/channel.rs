@@ -175,6 +175,10 @@ fn register_channel(
     byte_capacity: Option<i64>,
     policy: *const MeshString,
 ) -> Result<i64, &'static str> {
+    if crate::authority::current().is_some() {
+        return Err(crate::authority::refuse());
+    }
+
     if capacity <= 0 {
         return Err("channel capacity must be positive");
     }
@@ -231,6 +235,10 @@ pub extern "C" fn mesh_channel_try_send_shaped(
     value: i64,
     shape: *const u32,
 ) -> *mut MeshResult {
+    if crate::authority::current().is_some() {
+        return err_result(crate::authority::refuse());
+    }
+
     let mut buffer = MessageBuffer::new(value.to_le_bytes().to_vec(), 0);
     if let Some(scheduler) = GLOBAL_SCHEDULER.get() {
         actor::detach_from_sender(scheduler, &mut buffer, 0, shape);
@@ -270,6 +278,10 @@ pub extern "C" fn mesh_channel_try_send_shaped(
 /// `try_send` wakes either.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_channel_recv(handle: i64, timeout_nanos: i64) -> *mut MeshResult {
+    if crate::authority::current().is_some() {
+        return err_result(crate::authority::refuse());
+    }
+
     if timeout_nanos < 0 {
         return err_result("invalid timeout");
     }

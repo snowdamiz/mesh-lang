@@ -1,0 +1,3995 @@
+//! LLVM IR generation from MIR.
+//!
+//! This module implements the core code generation pass that transforms
+//! desugared, monomorphized MIR into LLVM IR using Inkwell 0.8.0.
+//!
+//! ## Architecture
+//!
+//! - [`CodeGen`]: Main codegen struct holding LLVM context, module, builder
+//! - [`types`]: MirType to LLVM type mapping
+//! - [`intrinsics`]: Runtime function declarations
+//! - [`expr`]: Expression codegen (implemented in Task 2)
+//! - [`pattern`]: Decision tree codegen (implemented in Task 2)
+
+pub mod expr;
+pub mod intrinsics;
+mod msg_shape;
+pub mod pattern;
+pub mod types;
+
+use std::path::Path;
+
+use inkwell::builder::Builder;
+use inkwell::context::Context;
+use inkwell::module::Module;
+use inkwell::passes::PassBuilderOptions;
+use inkwell::targets::{
+    CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple,
+};
+use inkwell::types::StructType;
+use inkwell::values::{BasicValueEnum, FunctionValue, InstructionOpcode, PointerValue};
+use inkwell::OptimizationLevel;
+use rustc_hash::{FxHashMap, FxHashSet};
+
+use crate::mir::{
+    by_sum_type_name, sum_type_base, MirFunction, MirModule, MirNativeFunction, MirStructDef,
+    MirSumTypeDef, MirType,
+};
+use crate::DeclaredRuntimeRegistration;
+use crate::StartupWorkRegistration;
+
+use self::types::{create_sum_type_layout, llvm_closure_fn_type, llvm_fn_type, llvm_type};
+
+/// Runtime `REMOTE_SPAWN_ARG_*` marker for a parameter that cannot be supplied
+/// through the remote spawn wire format. The runtime never spawns an entry
+/// whose registered signature contains it.
+const REMOTE_SPAWN_ARG_UNSUPPORTED: u8 = 0;
+
+/// Whether the struct `start` reaches itself through fields of struct type,
+/// which are held by value.
+fn holds_itself(start: &MirStructDef, structs: &[MirStructDef]) -> bool {
+    let fields_of = |name: &str| {
+        structs
+            .iter()
+            .find(|s| s.name == name)
+            .into_iter()
+            .flat_map(|s| s.fields.iter())
+            .filter_map(|(_, ty)| match ty {
+                MirType::Struct(field) => Some(field.as_str()),
+                _ => None,
+            })
+    };
+    let mut seen = FxHashSet::default();
+    let mut next: Vec<&str> = fields_of(&start.name).collect();
+    while let Some(name) = next.pop() {
+        if name == start.name {
+            return true;
+        }
+        if seen.insert(name) {
+            next.extend(fields_of(name));
+        }
+    }
+    false
+}
+
+/// The builder refuses an instruction only without an insertion point or
+/// with an index outside its aggregate: codegen builds inside a block, with
+/// indices from the layouts it made itself.
+const BUILT: &str = "codegen builds its instructions in a block, from its own layouts";
+
+// ── CodeGen ──────────────────────────────────────────────────────────
+
+/// The main LLVM code generation context.
+///
+/// Holds the LLVM context, module, builder, and all cached type/function
+/// mappings needed during IR generation.
+pub struct CodeGen<'ctx> {
+    /// The LLVM context (lifetime anchor for all LLVM values).
+    pub(crate) context: &'ctx Context,
+    /// The LLVM module being built.
+    pub(crate) module: Module<'ctx>,
+    /// The LLVM IR builder.
+    pub(crate) builder: Builder<'ctx>,
+    /// The target machine (for optimization and object file emission).
+    pub(crate) target_machine: TargetMachine,
+
+    // ── Type caches ──────────────────────────────────────────────────
+    /// Cache of named struct types (MIR struct name -> LLVM struct type).
+    pub(crate) struct_types: FxHashMap<String, StructType<'ctx>>,
+    /// Cache of sum type tagged union layouts (MIR sum type name -> LLVM struct type).
+    pub(crate) sum_type_layouts: FxHashMap<String, StructType<'ctx>>,
+    /// Cache of sum type definitions for variant lookup.
+    pub(crate) sum_type_defs: FxHashMap<String, MirSumTypeDef>,
+
+    // ── Function tracking ────────────────────────────────────────────
+    /// Map from MIR function name to LLVM function value.
+    pub(crate) functions: FxHashMap<String, FunctionValue<'ctx>>,
+    /// The current function being compiled.
+    pub(crate) current_fn: Option<FunctionValue<'ctx>>,
+
+    // ── Local variable tracking ──────────────────────────────────────
+    /// Local variable allocas in the current function (name -> alloca pointer).
+    pub(crate) locals: FxHashMap<String, PointerValue<'ctx>>,
+    /// Local variable types (name -> MirType) for loading with correct types.
+    pub(crate) local_types: FxHashMap<String, MirType>,
+
+    // ── MIR reference ────────────────────────────────────────────────
+    /// The MIR module being compiled (borrowed for arm body lookup).
+    pub(crate) mir_functions: Vec<MirFunction>,
+
+    /// MIR struct definitions (for field name -> index lookup).
+    pub(crate) mir_struct_defs: FxHashMap<String, Vec<(String, MirType)>>,
+
+    /// Loop context stack for break/continue targets.
+    /// Each entry is (cond_bb, merge_bb) for the innermost enclosing while loop.
+    pub(crate) loop_stack: Vec<(
+        inkwell::basic_block::BasicBlock<'ctx>,
+        inkwell::basic_block::BasicBlock<'ctx>,
+    )>,
+
+    /// Service dispatch tables.
+    /// Maps service loop function name -> (call_handlers, cast_handlers).
+    /// Each entry: (type_tag, handler_fn_name, num_args).
+    pub(crate) service_dispatch:
+        std::collections::HashMap<String, (Vec<(u64, String, usize)>, Vec<(u64, String, usize)>)>,
+
+    /// Manifest-approved declared handler registrations to install at startup.
+    pub(crate) declared_handlers: Vec<DeclaredRuntimeRegistration>,
+
+    /// Clustered work registrations that should auto-trigger after `mesh_main`.
+    pub(crate) startup_work_registrations: Vec<StartupWorkRegistration>,
+
+    /// Versioned, compiler-normalized autonomous runtime configuration.
+    pub(crate) autonomous_config_json: Option<String>,
+
+    /// Bodyful Mesh functions exposed through the stable binary library ABI.
+    pub(crate) library_exports: Vec<crate::LibraryExport>,
+
+    /// TCE loop header block for the current tail-recursive function.
+    /// Set during compile_function when has_tail_calls is true. NOT on loop_stack
+    /// (separate from user while/for loops so break/continue don't interfere).
+    pub(crate) tce_loop_header: Option<inkwell::basic_block::BasicBlock<'ctx>>,
+
+    /// The parameters' slots of the current tail-recursive function, in
+    /// order, which a TailCall stores its arguments into. Taken at entry, not
+    /// looked up by name at the call: a `let` shadowing a parameter took the
+    /// new value, and the loop read the parameter unchanged.
+    pub(crate) tce_param_slots: Vec<PointerValue<'ctx>>,
+}
+
+/// Whether a variant field of type `ty` can be laid out yet: a sum type held
+/// by value needs its own layout first. (A tuple field is a pointer.)
+fn sum_type_layout_dependencies_ready(
+    ty: &MirType,
+    known_names: &FxHashSet<String>,
+    layouts: &FxHashMap<String, StructType<'_>>,
+) -> bool {
+    let MirType::SumType(name) = ty else {
+        return true;
+    };
+    [name.as_str(), sum_type_base(name)]
+        .into_iter()
+        .find(|name| known_names.contains(*name))
+        .is_none_or(|dependency| layouts.contains_key(dependency))
+}
+
+impl<'ctx> CodeGen<'ctx> {
+    /// Create a new CodeGen instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `context` - The LLVM context (must outlive the CodeGen)
+    /// * `module_name` - Name for the LLVM module
+    /// * `opt_level` - Optimization level (0 = none, 2 = default)
+    /// * `target_triple` - Optional target triple; None = host default
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if target initialization fails or the triple is invalid.
+    pub fn new(
+        context: &'ctx Context,
+        module_name: &str,
+        opt_level: u8,
+        target_triple: Option<&str>,
+    ) -> Result<Self, String> {
+        let initialization = InitializationConfig::default();
+        if target_triple.is_some() {
+            Target::initialize_all(&initialization);
+        } else {
+            Target::initialize_native(&initialization)
+                .map_err(|e| format!("Failed to initialize native target: {}", e))?;
+        }
+
+        let triple = match target_triple {
+            Some(triple_str) => TargetTriple::create(&crate::link::llvm_target_triple(triple_str)),
+            // A Darwin kernel version can imply a newer macOS deployment minimum.
+            None if cfg!(target_os = "macos") => TargetTriple::create(
+                &crate::link::llvm_target_triple(&crate::link::effective_target_triple(None)?),
+            ),
+            None => TargetMachine::get_default_triple(),
+        };
+
+        let target = Target::from_triple(&triple)
+            .map_err(|e| format!("Invalid target triple '{}': {}", triple, e))?;
+
+        let opt = match opt_level {
+            0 => OptimizationLevel::None,
+            1 => OptimizationLevel::Less,
+            _ => OptimizationLevel::Default,
+        };
+
+        let target_machine = target
+            .create_target_machine(
+                &triple,
+                "generic",
+                "",
+                opt,
+                RelocMode::PIC,
+                CodeModel::Default,
+            )
+            .ok_or_else(|| format!("Failed to create target machine for '{}'", triple))?;
+
+        let module = context.create_module(module_name);
+        module.set_triple(&triple);
+        // Set the data layout so LLVM uses correct alignment for the target.
+        // Without this, LLVM defaults to a generic layout where i64 has 4-byte
+        // alignment, causing SIGBUS on ARM64 (which requires 8-byte alignment
+        // for 8-byte loads/stores).
+        module.set_data_layout(&target_machine.get_target_data().get_data_layout());
+
+        let builder = context.create_builder();
+
+        Ok(CodeGen {
+            context,
+            module,
+            builder,
+            target_machine,
+            struct_types: FxHashMap::default(),
+            sum_type_layouts: FxHashMap::default(),
+            sum_type_defs: FxHashMap::default(),
+            functions: FxHashMap::default(),
+            current_fn: None,
+            locals: FxHashMap::default(),
+            local_types: FxHashMap::default(),
+            mir_functions: Vec::new(),
+            mir_struct_defs: FxHashMap::default(),
+            loop_stack: Vec::new(),
+            service_dispatch: std::collections::HashMap::new(),
+            declared_handlers: Vec::new(),
+            startup_work_registrations: Vec::new(),
+            autonomous_config_json: None,
+            library_exports: Vec::new(),
+            tce_loop_header: None,
+            tce_param_slots: Vec::new(),
+        })
+    }
+
+    /// Set manifest-approved declared handler registrations for startup.
+    pub fn set_declared_handlers(&mut self, declared_handlers: &[DeclaredRuntimeRegistration]) {
+        self.declared_handlers = declared_handlers.to_vec();
+    }
+
+    /// Set clustered work registrations that should auto-trigger after `mesh_main`.
+    pub fn set_startup_work_registrations(
+        &mut self,
+        startup_work_registrations: &[StartupWorkRegistration],
+    ) {
+        self.startup_work_registrations = startup_work_registrations.to_vec();
+    }
+
+    pub fn set_autonomous_config_json(&mut self, config: Option<&str>) {
+        self.autonomous_config_json = config.map(str::to_string);
+    }
+
+    pub fn set_library_exports(&mut self, exports: &[crate::LibraryExport]) {
+        self.library_exports = exports.to_vec();
+    }
+
+    /// Compile a MIR module to LLVM IR.
+    ///
+    /// This is the main compilation entry point. It:
+    /// 1. Declares runtime intrinsics
+    /// 2. Creates type layouts for structs and sum types
+    /// 3. Forward-declares all functions
+    /// 4. Compiles function bodies
+    /// 5. Generates a main wrapper (if entry function exists)
+    /// 6. Verifies the LLVM module
+    pub fn compile(&mut self, mir: &MirModule) -> Result<(), String> {
+        // Store MIR functions for arm body lookup during pattern codegen.
+        self.mir_functions = mir.functions.clone();
+
+        // Store service dispatch tables for codegen.
+        self.service_dispatch = mir.service_dispatch.clone();
+
+        // Step 1: Declare runtime intrinsics.
+        intrinsics::declare_intrinsics(&self.module);
+
+        // Step 2: Create type layouts and store MIR struct defs for field lookup.
+        //
+        // Order matters here due to cross-dependencies:
+        //   - Sum type layouts for Option/Result need to know if variant fields are
+        //     pointer-sized (to choose { i8, ptr } vs { i8, [N x i8] } layout).
+        //     Struct fields are always heap-allocated pointers, so they don't need
+        //     the struct size — just the opaque struct type as a placeholder.
+        //   - Struct LLVM types need sum type layouts for fields like
+        //     `exception :: Option<ExceptionInfo>` to use { i8, ptr } correctly.
+        //
+        // Solution: three-pass type creation:
+        //   Pass A: register opaque struct placeholders (forward declarations)
+        //   Pass B: create sum type layouts (can reference opaque struct types)
+        //   Pass C: set struct type bodies (can reference sum type layouts)
+        for s in &mir.structs {
+            let struct_type = self.context.opaque_struct_type(&s.name);
+            self.struct_types.insert(s.name.clone(), struct_type);
+        }
+        self.create_sum_type_layouts(&mir.sum_types)?;
+        self.create_struct_types(&mir.structs)?;
+        for s in &mir.structs {
+            self.mir_struct_defs
+                .insert(s.name.clone(), s.fields.clone());
+        }
+
+        // Step 3: Forward-declare all functions.
+        self.declare_native_functions(&mir.native_functions)?;
+        self.declare_functions(&mir.functions)?;
+
+        // Step 4: Compile function bodies.
+        for func in &mir.functions {
+            self.compile_function(func)?;
+        }
+
+        // Step 5: Generate stable binary ABI wrappers for library exports.
+        self.generate_library_export_wrappers()?;
+
+        // Step 6: Generate main wrapper if entry function exists.
+        if let Some(entry_name) = &mir.entry_function {
+            self.generate_main_wrapper(entry_name)?;
+        }
+
+        // Step 7: Keep every stack slot a static, entry-block allocation.
+        self.hoist_static_allocas();
+
+        // Step 8: Verify the module.
+        self.verify()
+    }
+
+    /// Verify the module, naming the function verification fails in.
+    fn verify(&self) -> Result<(), String> {
+        self.module.verify().map_err(|error| {
+            let function = self
+                .module
+                .get_functions()
+                .find(|function| !function.verify(false))
+                .map(|function| format!(" in `{}`", function.get_name().to_string_lossy()))
+                .unwrap_or_default();
+            format!("LLVM module verification failed{function}: {error}")
+        })
+    }
+
+    /// Move every fixed-size `alloca` into its function's entry block.
+    ///
+    /// An alloca outside the entry block is a dynamic stack allocation: it
+    /// runs again on every loop trip and is only released when the function
+    /// returns. Struct literals, variants, field temporaries and `for`/`while`
+    /// state inside a loop therefore leaked stack per iteration until the
+    /// actor's coroutine stack overflowed. Entry-block allocas are also the
+    /// only ones mem2reg/SROA promote to registers. Each slot is written
+    /// before it is read, so sharing one slot across iterations is safe.
+    fn hoist_static_allocas(&self) {
+        for function in self.module.get_functions() {
+            // A declaration has no body; a compiled function's entry block
+            // holds at least its terminator.
+            let Some(anchor) = function
+                .get_first_basic_block()
+                .and_then(|entry| entry.get_first_instruction())
+            else {
+                continue;
+            };
+            for block in function.get_basic_block_iter().skip(1) {
+                let mut next = block.get_first_instruction();
+                while let Some(instruction) = next {
+                    next = instruction.get_next_instruction();
+                    let is_static_alloca = instruction.get_opcode() == InstructionOpcode::Alloca
+                        && instruction
+                            .get_operand(0)
+                            .and_then(|size| size.value())
+                            .is_some_and(|size| {
+                                size.is_int_value() && size.into_int_value().is_const()
+                            });
+                    if is_static_alloca {
+                        instruction.remove_from_basic_block();
+                        self.builder.position_before(&anchor);
+                        self.builder.insert_instruction(&instruction, None);
+                    }
+                }
+            }
+        }
+    }
+
+    fn generate_library_export_wrappers(&mut self) -> Result<(), String> {
+        let exports = self.library_exports.clone();
+        let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+        let i64_type = self.context.i64_type();
+        let i32_type = self.context.i32_type();
+        let wrapper_type =
+            i32_type.fn_type(&[ptr_type.into(), i64_type.into(), ptr_type.into()], false);
+        let invoke = intrinsics::get_intrinsic(&self.module, "mesh_library_invoke_bounded");
+        let submit = intrinsics::get_intrinsic(&self.module, "mesh_library_submit_bounded_v2");
+        let mut names = std::collections::HashSet::new();
+        for export in &exports {
+            for symbol in [
+                export.symbol.clone(),
+                format!("{}_submit_v2", export.symbol),
+                format!("__mesh_library_entry_{}", export.symbol),
+            ] {
+                if [
+                    "mesh_library_init",
+                    "mesh_library_shutdown",
+                    "mesh_library_register_host_callbacks",
+                    "mesh_library_free_returned_bytes",
+                    "mesh_library_capabilities_v2",
+                    "mesh_library_enable_protected_v2",
+                    "mesh_library_call_scoped_v2",
+                    "mesh_library_current_invocation_v2",
+                    "mesh_library_invocation_take_v2",
+                    "mesh_library_invocation_cancel_v2",
+                    "mesh_library_invocation_release_v2",
+                    "mesh_authority_domain_create_v2",
+                    "mesh_authority_generation_v2",
+                    "mesh_authority_bind_v2",
+                    "mesh_authority_retire_v2",
+                    "mesh_authority_local_inflight_v2",
+                    "mesh_authority_domain_release_v2",
+                    "mesh_authority_generation_release_v2",
+                    "mesh_authority_release_v2",
+                ]
+                .contains(&symbol.as_str())
+                    || self.module.get_function(&symbol).is_some()
+                    || !names.insert(symbol.clone())
+                {
+                    return Err(format!("Exported symbol '{symbol}' conflicts with another generated or runtime symbol"));
+                }
+            }
+        }
+
+        for export in exports {
+            // Type checking made the export a lowered, public function.
+            let function = self.functions[&export.function];
+            if self.module.get_function(&export.symbol).is_some() {
+                return Err(format!(
+                    "Exported symbol '{}' conflicts with another generated or runtime symbol",
+                    export.symbol
+                ));
+            }
+            // LLVM's aggregate return convention is not the platform C ABI on
+            // Windows. Cross the runtime boundary with pointers on every target.
+            let entrypoint = self.module.add_function(
+                &format!("__mesh_library_entry_{}", export.symbol),
+                self.context
+                    .void_type()
+                    .fn_type(&[ptr_type.into(), ptr_type.into()], false),
+                Some(inkwell::module::Linkage::Internal),
+            );
+            self.builder
+                .position_at_end(self.context.append_basic_block(entrypoint, "entry"));
+            let result = self
+                .builder
+                .build_call(
+                    function,
+                    &[entrypoint.get_nth_param(0).unwrap().into()],
+                    "result",
+                )
+                .map_err(|error| error.to_string())?
+                .try_as_basic_value()
+                .basic()
+                .ok_or("Library entrypoint must return a result")?;
+            self.builder
+                .build_store(
+                    entrypoint.get_nth_param(1).unwrap().into_pointer_value(),
+                    result,
+                )
+                .map_err(|error| error.to_string())?;
+            self.builder
+                .build_return(None)
+                .map_err(|error| error.to_string())?;
+            let wrapper = self.module.add_function(&export.symbol, wrapper_type, None);
+            if self
+                .module
+                .get_triple()
+                .as_str()
+                .to_string_lossy()
+                .contains("windows-msvc")
+            {
+                wrapper
+                    .as_global_value()
+                    .set_dll_storage_class(inkwell::DLLStorageClass::Export);
+            }
+            let entry = self.context.append_basic_block(wrapper, "entry");
+            self.builder.position_at_end(entry);
+            let input = wrapper.get_nth_param(0).expect("library input pointer");
+            let input_len = wrapper.get_nth_param(1).expect("library input length");
+            let output = wrapper.get_nth_param(2).expect("library output pointer");
+            let status = self
+                .builder
+                .build_call(
+                    invoke,
+                    &[
+                        entrypoint.as_global_value().as_pointer_value().into(),
+                        input.into(),
+                        input_len.into(),
+                        output.into(),
+                        i64_type.const_int(export.max_input, false).into(),
+                        i64_type.const_int(export.max_output, false).into(),
+                    ],
+                    "library_status",
+                )
+                .map_err(|error| error.to_string())?
+                .try_as_basic_value()
+                .basic()
+                .ok_or("mesh_library_invoke must return a status")?;
+            self.builder
+                .build_return(Some(&status))
+                .map_err(|error| error.to_string())?;
+
+            let companion = self.module.add_function(
+                &format!("{}_submit_v2", export.symbol),
+                i32_type.fn_type(
+                    &[
+                        ptr_type.into(),
+                        ptr_type.into(),
+                        i64_type.into(),
+                        ptr_type.into(),
+                    ],
+                    false,
+                ),
+                None,
+            );
+            if self
+                .module
+                .get_triple()
+                .as_str()
+                .to_string_lossy()
+                .contains("windows-msvc")
+            {
+                companion
+                    .as_global_value()
+                    .set_dll_storage_class(inkwell::DLLStorageClass::Export);
+            }
+            self.builder
+                .position_at_end(self.context.append_basic_block(companion, "entry"));
+            let status = self
+                .builder
+                .build_call(
+                    submit,
+                    &[
+                        companion.get_nth_param(0).unwrap().into(),
+                        entrypoint.as_global_value().as_pointer_value().into(),
+                        companion.get_nth_param(1).unwrap().into(),
+                        companion.get_nth_param(2).unwrap().into(),
+                        companion.get_nth_param(3).unwrap().into(),
+                        i64_type.const_int(export.max_input, false).into(),
+                        i64_type.const_int(export.max_output, false).into(),
+                    ],
+                    "submission_status",
+                )
+                .map_err(|error| error.to_string())?
+                .try_as_basic_value()
+                .basic()
+                .ok_or("scheduled submission must return a status")?;
+            self.builder
+                .build_return(Some(&status))
+                .map_err(|error| error.to_string())?;
+        }
+        Ok(())
+    }
+
+    /// Run LLVM optimization passes on the module (none at level 0).
+    pub fn run_optimization_passes(&self, opt_level: u8) -> Result<(), String> {
+        let passes = match opt_level {
+            0 => return Ok(()),
+            1 => "default<O1>",
+            _ => "default<O2>",
+        };
+        self.module
+            .run_passes(passes, &self.target_machine, PassBuilderOptions::create())
+            .map_err(|e| format!("Optimization passes failed: {}", e))
+    }
+
+    /// Emit the LLVM module as an object file.
+    pub fn emit_object(&self, path: &Path) -> Result<(), String> {
+        self.target_machine
+            .write_to_file(&self.module, FileType::Object, path)
+            .map_err(|e| format!("Failed to emit object file: {}", e))
+    }
+
+    /// Emit the LLVM module as human-readable LLVM IR (.ll file).
+    pub fn emit_llvm_ir(&self, path: &Path) -> Result<(), String> {
+        self.module
+            .print_to_file(path)
+            .map_err(|e| format!("Failed to emit LLVM IR: {}", e))
+    }
+
+    /// Get the LLVM IR as a string (for testing).
+    pub fn get_llvm_ir(&self) -> String {
+        self.module.print_to_string().to_string()
+    }
+
+    /// Consume the CodeGen and return the underlying LLVM module.
+    ///
+    /// This is used by the REPL JIT engine to create an execution engine
+    /// from the compiled module.
+    pub fn into_module(self) -> Module<'ctx> {
+        self.module
+    }
+
+    // ── Type layout creation ─────────────────────────────────────────
+
+    /// Give each struct its fields. A struct that holds itself by value,
+    /// directly or through other structs, has no size: no value of it can
+    /// exist, and every use of one failed LLVM's verification.
+    fn create_struct_types(&mut self, structs: &[MirStructDef]) -> Result<(), String> {
+        for s in structs {
+            let field_types: Vec<inkwell::types::BasicTypeEnum<'ctx>> = s
+                .fields
+                .iter()
+                .map(|(_, ty)| {
+                    llvm_type(self.context, ty, &self.struct_types, &self.sum_type_layouts)
+                })
+                .collect();
+            let struct_ty = self.struct_types[&s.name];
+            struct_ty.set_body(&field_types, false);
+        }
+        match structs.iter().find(|s| holds_itself(s, structs)) {
+            Some(s) => Err(format!(
+                "struct `{}` holds itself by value, so no value of it can exist: hold it in an \
+                 Option or a List instead",
+                s.name
+            )),
+            None => Ok(()),
+        }
+    }
+
+    /// Look up a sum type layout by name, falling back to the base name
+    /// for monomorphized types (e.g., `Result_String_String` -> `Result`).
+    pub(crate) fn lookup_sum_type_layout(&self, name: &str) -> Option<&StructType<'ctx>> {
+        by_sum_type_name(&self.sum_type_layouts, name)
+    }
+
+    /// Look up a sum type definition by name, falling back to the base name
+    /// for monomorphized types.
+    pub(crate) fn lookup_sum_type_def(&self, name: &str) -> Option<&MirSumTypeDef> {
+        by_sum_type_name(&self.sum_type_defs, name)
+    }
+
+    /// The definition of the sum type `name` (or of its base), which every
+    /// sum type a value has, builtin or instance, has.
+    pub(crate) fn defined_sum_type(&self, name: &str) -> MirSumTypeDef {
+        self.lookup_sum_type_def(name)
+            .cloned()
+            .expect("every sum type a value has is defined")
+    }
+
+    fn create_sum_type_layouts(&mut self, sum_types: &[MirSumTypeDef]) -> Result<(), String> {
+        let known_names = sum_types
+            .iter()
+            .map(|sum_type| sum_type.name.clone())
+            .collect::<FxHashSet<_>>();
+        let mut remaining = sum_types.iter().collect::<Vec<_>>();
+
+        while !remaining.is_empty() {
+            let Some(index) = remaining.iter().position(|sum_type| {
+                sum_type.variants.iter().all(|variant| {
+                    variant.fields.iter().all(|field| {
+                        sum_type_layout_dependencies_ready(
+                            field,
+                            &known_names,
+                            &self.sum_type_layouts,
+                        )
+                    })
+                })
+            }) else {
+                let names = remaining
+                    .iter()
+                    .map(|sum_type| sum_type.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                return Err(format!(
+                    "recursive by-value sum type layout dependency: {names}"
+                ));
+            };
+
+            let st = remaining.remove(index);
+            let target_data = self.target_machine.get_target_data();
+            let layout = create_sum_type_layout(
+                self.context,
+                st,
+                &self.struct_types,
+                &self.sum_type_layouts,
+                &target_data,
+            );
+            self.sum_type_layouts.insert(st.name.clone(), layout);
+            self.sum_type_defs.insert(st.name.clone(), st.clone());
+        }
+
+        Ok(())
+    }
+
+    // ── Function declaration and compilation ─────────────────────────
+
+    /// Declare every MIR function. A public function keeps its bare name
+    /// (so does any function of a single-file program), which a runtime
+    /// function may already have: LLVM would rename the program's, and a
+    /// call of the runtime's would run it instead.
+    fn declare_functions(&mut self, functions: &[MirFunction]) -> Result<(), String> {
+        for func in functions {
+            if self.module.get_function(&func.name).is_some() {
+                return Err(format!(
+                    "`{}` is already the name of a runtime or native function; rename the function",
+                    func.name
+                ));
+            }
+            let fn_type = if func.is_closure_fn {
+                // Closure functions: (env_ptr, params...) -> ret
+                // The first param in MIR is __env, skip it for user params
+                let user_params: Vec<MirType> = func
+                    .params
+                    .iter()
+                    .skip(1) // skip __env
+                    .map(|(_, ty)| ty.clone())
+                    .collect();
+                llvm_closure_fn_type(
+                    self.context,
+                    &user_params,
+                    &func.return_type,
+                    &self.struct_types,
+                    &self.sum_type_layouts,
+                )
+            } else {
+                let param_types: Vec<MirType> =
+                    func.params.iter().map(|(_, ty)| ty.clone()).collect();
+                llvm_fn_type(
+                    self.context,
+                    &param_types,
+                    &func.return_type,
+                    &self.struct_types,
+                    &self.sum_type_layouts,
+                )
+            };
+
+            let fn_val = self.module.add_function(&func.name, fn_type, None);
+            self.functions.insert(func.name.clone(), fn_val);
+        }
+        Ok(())
+    }
+
+    fn declare_native_functions(&mut self, functions: &[MirNativeFunction]) -> Result<(), String> {
+        for function in functions {
+            let params = function
+                .params
+                .iter()
+                .map(|(_, ty)| ty.clone())
+                .collect::<Vec<_>>();
+            let function_type = llvm_fn_type(
+                self.context,
+                &params,
+                &function.return_type,
+                &self.struct_types,
+                &self.sum_type_layouts,
+            );
+            let value = if let Some(existing) = self.module.get_function(&function.symbol) {
+                if existing.get_type() != function_type {
+                    return Err(format!(
+                        "Native symbol `{}` is declared with incompatible signatures",
+                        function.symbol
+                    ));
+                }
+                existing
+            } else {
+                self.module.add_function(
+                    &function.symbol,
+                    function_type,
+                    Some(inkwell::module::Linkage::External),
+                )
+            };
+            if self
+                .functions
+                .insert(function.name.clone(), value)
+                .is_some()
+            {
+                return Err(format!(
+                    "Native binding `{}` is declared more than once",
+                    function.name
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn compile_function(&mut self, func: &MirFunction) -> Result<(), String> {
+        let fn_val = *self
+            .functions
+            .get(&func.name)
+            .ok_or_else(|| format!("Function '{}' not declared", func.name))?;
+
+        self.current_fn = Some(fn_val);
+        self.locals.clear();
+        self.local_types.clear();
+
+        // Create entry basic block.
+        let entry = self.context.append_basic_block(fn_val, "entry");
+        self.builder.position_at_end(entry);
+
+        // Alloca for each parameter and store incoming values.
+        for (i, (name, ty)) in func.params.iter().enumerate() {
+            let param_val = fn_val
+                .get_nth_param(i as u32)
+                .ok_or_else(|| format!("Missing parameter {} for function '{}'", i, func.name))?;
+            self.bind_local(name, ty, param_val)?;
+        }
+
+        // For closure functions, load captured variables from the __env struct.
+        if func.is_closure_fn && !func.captures.is_empty() {
+            let env_alloca = self
+                .locals
+                .get("__env")
+                .copied()
+                .ok_or("Missing __env parameter in closure function")?;
+            let env_ptr = self
+                .builder
+                .build_load(
+                    self.context.ptr_type(inkwell::AddressSpace::default()),
+                    env_alloca,
+                    "env_ptr",
+                )
+                .map_err(|e| e.to_string())?
+                .into_pointer_value();
+
+            // The env struct, as `codegen_make_closure` lays it out: the
+            // pointer to its shape table, then the captures.
+            let mut cap_llvm_types: Vec<inkwell::types::BasicTypeEnum<'ctx>> = vec![self
+                .context
+                .ptr_type(inkwell::AddressSpace::default())
+                .into()];
+            cap_llvm_types.extend(func.captures.iter().map(|(_, ty)| {
+                llvm_type(self.context, ty, &self.struct_types, &self.sum_type_layouts)
+            }));
+            let env_struct_ty = self.context.struct_type(&cap_llvm_types, false);
+
+            // Load each captured variable from the env struct and create a local alloca.
+            for (i, (name, ty)) in func.captures.iter().enumerate() {
+                let cap_llvm_ty =
+                    llvm_type(self.context, ty, &self.struct_types, &self.sum_type_layouts);
+                let field_ptr = self
+                    .builder
+                    .build_struct_gep(
+                        env_struct_ty,
+                        env_ptr,
+                        i as u32 + 1,
+                        &format!("cap_{}", name),
+                    )
+                    .map_err(|e| e.to_string())?;
+                let val = self
+                    .builder
+                    .build_load(cap_llvm_ty, field_ptr, name)
+                    .map_err(|e| e.to_string())?;
+                self.bind_local(name, ty, val)?;
+            }
+        }
+
+        // TCE: If this function has tail calls, wrap body in a loop.
+        // Create a loop header block that the TailCall codegen will branch back to.
+        if func.has_tail_calls {
+            let tce_loop_bb = self.context.append_basic_block(fn_val, "tce_loop");
+            self.builder
+                .build_unconditional_branch(tce_loop_bb)
+                .map_err(|e| e.to_string())?;
+            self.builder.position_at_end(tce_loop_bb);
+            self.tce_loop_header = Some(tce_loop_bb);
+            self.tce_param_slots = func
+                .params
+                .iter()
+                .map(|(name, _)| self.locals[name])
+                .collect();
+        }
+
+        // A service's loop function dispatches its calls and casts.
+        if let Some((calls, casts)) = self.service_dispatch.get(&func.name).cloned() {
+            return self.codegen_service_loop(&calls, &casts);
+        }
+
+        // Check if this is an actor wrapper function that needs arg deserialization.
+        // Actor wrappers have a single __args_ptr param and a matching __actor_{name}_body function.
+        {
+            let actor_body_name = format!("__actor_{}_body", func.name);
+            if func.params.len() == 1
+                && func.params[0].0 == "__args_ptr"
+                && func.params[0].1 == MirType::Ptr
+                && self.functions.contains_key(&actor_body_name)
+            {
+                return self.codegen_actor_wrapper(&func.name, &actor_body_name);
+            }
+        }
+
+        // Compile the function body.
+        let result = self.codegen_expr(&func.body)?;
+
+        // Build return instruction (if not already terminated). A function
+        // returning Never has ended its block: a value of type Never ends
+        // the block it would come into being in (a call of such a function,
+        // and an `if` or `case` whose every branch ends so, close it with
+        // `unreachable`).
+        if self.block_is_open() {
+            match func.return_type {
+                MirType::Unit => {
+                    let unit_val = self.context.struct_type(&[], false).const_zero();
+                    self.builder
+                        .build_return(Some(&unit_val))
+                        .map_err(|e| e.to_string())?;
+                }
+                _ => {
+                    // Coerce the return value to match the function's declared return type.
+                    // This handles mismatches like ptr vs { i8, ptr } (Result type).
+                    let fn_ret_ty = fn_val
+                        .get_type()
+                        .get_return_type()
+                        .expect("a Mesh function returns a value");
+                    let coerced_result = self.coerce_value_to_type(result, fn_ret_ty)?;
+                    self.builder
+                        .build_return(Some(&coerced_result))
+                        .map_err(|e| e.to_string())?;
+                }
+            }
+        }
+
+        // Clear TCE state after function compilation.
+        self.tce_loop_header = None;
+        self.tce_param_slots.clear();
+
+        Ok(())
+    }
+
+    /// Coerce a value to the LLVM representation expected at a typed boundary.
+    ///
+    /// Handles common mismatches:
+    /// - ptr result, struct return type: load struct from pointer
+    /// - struct result, ptr return type: heap-alloc + store + return pointer
+    /// - struct result, different struct return type: bitcast via alloca
+    fn coerce_value_to_type(
+        &self,
+        result: inkwell::values::BasicValueEnum<'ctx>,
+        expected_ty: inkwell::types::BasicTypeEnum<'ctx>,
+    ) -> Result<inkwell::values::BasicValueEnum<'ctx>, String> {
+        use inkwell::values::BasicValueEnum;
+
+        let result_ty = result.get_type();
+
+        // Types already match - no coercion needed
+        if result_ty == expected_ty {
+            return Ok(result);
+        }
+
+        match (result, expected_ty) {
+            // ptr -> struct (e.g., ptr -> { i8, ptr } Result type):
+            // Load the struct from the pointer
+            (BasicValueEnum::PointerValue(pv), expected) if expected.is_struct_type() => self
+                .builder
+                .build_load(expected, pv, "ret_coerce_load")
+                .map_err(|e| e.to_string()),
+
+            // struct -> ptr: heap-alloc + store + return pointer
+            (BasicValueEnum::StructValue(sv), expected) if expected.is_pointer_type() => {
+                self.box_value(sv.into(), "ret_coerce_heap")
+            }
+
+            // int -> ptr: inttoptr
+            (BasicValueEnum::IntValue(iv), expected) if expected.is_pointer_type() => {
+                let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
+                let cast = self
+                    .builder
+                    .build_int_to_ptr(iv, ptr_ty, "ret_coerce_inttoptr")
+                    .map_err(|e| e.to_string())?;
+                Ok(cast.into())
+            }
+
+            // ptr -> int: ptrtoint
+            (BasicValueEnum::PointerValue(pv), expected) if expected.is_int_type() => {
+                let cast = self
+                    .builder
+                    .build_ptr_to_int(pv, expected.into_int_type(), "ret_coerce_ptrtoint")
+                    .map_err(|e| e.to_string())?;
+                Ok(cast.into())
+            }
+
+            // Struct -> different struct: bitcast via alloca
+            // (e.g., { %ProcessorState, { i8, ptr } } vs expected struct layout)
+            (BasicValueEnum::StructValue(sv), expected) if expected.is_struct_type() => {
+                let alloca = self
+                    .builder
+                    .build_alloca(sv.get_type(), "ret_coerce_tmp")
+                    .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_store(alloca, sv)
+                    .map_err(|e| e.to_string())?;
+                self.builder
+                    .build_load(expected, alloca, "ret_coerce_reinterpret")
+                    .map_err(|e| e.to_string())
+            }
+
+            // No coercion possible - return as-is (LLVM may still error)
+            (val, _) => Ok(val),
+        }
+    }
+
+    /// Generate the C-level `main` function wrapper.
+    ///
+    /// Creates: `main(argc: i32, argv: ptr) -> i32` that calls
+    /// `mesh_rt_init()`, then calls the Mesh entry function, then returns 0.
+    fn generate_main_wrapper(&mut self, entry_name: &str) -> Result<(), String> {
+        let i32_type = self.context.i32_type();
+        let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+        let main_type = i32_type.fn_type(&[i32_type.into(), ptr_type.into()], false);
+        let main_fn = self.module.add_function("main", main_type, None);
+
+        let entry = self.context.append_basic_block(main_fn, "entry");
+        self.builder.position_at_end(entry);
+
+        // Call mesh_rt_init()
+        let rt_init = intrinsics::get_intrinsic(&self.module, "mesh_rt_init");
+        self.builder
+            .build_call(rt_init, &[], "")
+            .map_err(|e| e.to_string())?;
+
+        // Register the validated manifest before any runtime subsystem reads
+        // scheduler, routing, admission, or continuity defaults.
+        if let Some(config_json) = &self.autonomous_config_json {
+            let register_config =
+                intrinsics::get_intrinsic(&self.module, "mesh_register_autonomous_config_json");
+            let config_global = self
+                .builder
+                .build_global_string_ptr(config_json, "mesh_autonomous_config_json")
+                .map_err(|error| error.to_string())?;
+            let config_len = self
+                .context
+                .i64_type()
+                .const_int(config_json.len() as u64, false);
+            self.builder
+                .build_call(
+                    register_config,
+                    &[config_global.as_pointer_value().into(), config_len.into()],
+                    "",
+                )
+                .map_err(|error| error.to_string())?;
+        }
+
+        // Call mesh_rt_init_actor(0) after configuration registration so the
+        // elastic scheduler starts with the manifest's declared bounds.
+        let rt_init_actor = intrinsics::get_intrinsic(&self.module, "mesh_rt_init_actor");
+        let zero = self.context.i32_type().const_int(0, false);
+        self.builder
+            .build_call(rt_init_actor, &[zero.into()], "")
+            .map_err(|e| e.to_string())?;
+
+        // Register all top-level functions for remote spawn (Phase 67).
+        // Must happen before the entry function runs because the entry function
+        // may call Node.spawn which needs the registry populated.
+        let register_fn = intrinsics::get_intrinsic(&self.module, "mesh_register_function");
+        let declared_remote_spawnables = self
+            .declared_handlers
+            .iter()
+            .map(|handler| handler.executable_symbol.as_str())
+            .collect::<std::collections::HashSet<_>>();
+        for mir_fn in &self.mir_functions {
+            let is_declared_remote_spawnable =
+                declared_remote_spawnables.contains(mir_fn.name.as_str());
+
+            // Skip closure/lambda functions (they capture environment pointers,
+            // cannot be spawned remotely) and compiler-internal functions.
+            // Manifest-approved declared wrappers are the one internal exception:
+            // they are intentionally private-looking symbols, but the remote
+            // DIST_SPAWN path must still be able to resolve them by executable
+            // name on the owner node.
+            if mir_fn.is_closure_fn
+                || (mir_fn.name.starts_with("__") && !is_declared_remote_spawnable)
+            {
+                continue;
+            }
+
+            // Create a global string constant for the function name.
+            let name_global = self
+                .builder
+                .build_global_string_ptr(&mir_fn.name, &format!("fn_reg_{}", mir_fn.name))
+                .map_err(|e| e.to_string())?;
+
+            let name_len = self
+                .context
+                .i64_type()
+                .const_int(mir_fn.name.len() as u64, false);
+
+            let fn_val = self.functions[&mir_fn.name];
+            let (arg_tags_ptr, arg_count) = self.remote_spawn_signature_constant(mir_fn);
+            self.builder
+                .build_call(
+                    register_fn,
+                    &[
+                        name_global.as_pointer_value().into(),
+                        name_len.into(),
+                        fn_val.as_global_value().as_pointer_value().into(),
+                        arg_tags_ptr.into(),
+                        arg_count.into(),
+                    ],
+                    "",
+                )
+                .map_err(|e| e.to_string())?;
+        }
+
+        let register_declared_handler =
+            intrinsics::get_intrinsic(&self.module, "mesh_register_declared_handler");
+        for handler in &self.declared_handlers {
+            let Some(fn_val) = self.functions.get(&handler.executable_symbol) else {
+                return Err(format!(
+                    "Declared handler executable '{}' was not lowered into the LLVM module",
+                    handler.executable_symbol
+                ));
+            };
+
+            let runtime_name_global = self
+                .builder
+                .build_global_string_ptr(
+                    &handler.runtime_registration_name,
+                    &format!(
+                        "declared_runtime_reg_{}",
+                        handler
+                            .runtime_registration_name
+                            .replace(|c: char| !c.is_ascii_alphanumeric(), "_")
+                    ),
+                )
+                .map_err(|e| e.to_string())?;
+            let runtime_name_len = self
+                .context
+                .i64_type()
+                .const_int(handler.runtime_registration_name.len() as u64, false);
+            let executable_name_global = self
+                .builder
+                .build_global_string_ptr(
+                    &handler.executable_symbol,
+                    &format!("declared_exec_reg_{}", handler.executable_symbol),
+                )
+                .map_err(|e| e.to_string())?;
+            let executable_name_len = self
+                .context
+                .i64_type()
+                .const_int(handler.executable_symbol.len() as u64, false);
+            let replication_count = self
+                .context
+                .i64_type()
+                .const_int(handler.replication_count, false);
+
+            self.builder
+                .build_call(
+                    register_declared_handler,
+                    &[
+                        runtime_name_global.as_pointer_value().into(),
+                        runtime_name_len.into(),
+                        executable_name_global.as_pointer_value().into(),
+                        executable_name_len.into(),
+                        replication_count.into(),
+                        fn_val.as_global_value().as_pointer_value().into(),
+                    ],
+                    "",
+                )
+                .map_err(|e| e.to_string())?;
+        }
+
+        if !self.startup_work_registrations.is_empty() {
+            let register_startup_work =
+                intrinsics::get_intrinsic(&self.module, "mesh_register_startup_work");
+            // Each is a declared handler too, registered above: both come
+            // from the same plan's work entries.
+            for registration in &self.startup_work_registrations {
+                let runtime_name_global = self
+                    .builder
+                    .build_global_string_ptr(
+                        &registration.runtime_registration_name,
+                        &format!(
+                            "startup_work_reg_{}",
+                            registration
+                                .runtime_registration_name
+                                .replace(|c: char| !c.is_ascii_alphanumeric(), "_")
+                        ),
+                    )
+                    .map_err(|e| e.to_string())?;
+                let runtime_name_len = self
+                    .context
+                    .i64_type()
+                    .const_int(registration.runtime_registration_name.len() as u64, false);
+
+                self.builder
+                    .build_call(
+                        register_startup_work,
+                        &[
+                            runtime_name_global.as_pointer_value().into(),
+                            runtime_name_len.into(),
+                        ],
+                        "",
+                    )
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+
+        // Call the Mesh entry function on the main thread, through the runtime
+        // so that a panic in it ends the process cleanly.
+        // mesh_main runs synchronously, spawning service/job actors along the way.
+        // The runtime handles service calls from the main thread context by using
+        // a dedicated main process entry in the process table.
+        let mesh_main = self
+            .functions
+            .get(entry_name)
+            .ok_or_else(|| format!("Entry function '{}' not found", entry_name))?;
+        let run_main = intrinsics::get_intrinsic(&self.module, "mesh_run_main");
+        self.builder
+            .build_call(
+                run_main,
+                &[mesh_main.as_global_value().as_pointer_value().into()],
+                "",
+            )
+            .map_err(|e| e.to_string())?;
+
+        if !self.startup_work_registrations.is_empty() {
+            let trigger_startup_work =
+                intrinsics::get_intrinsic(&self.module, "mesh_trigger_startup_work");
+            self.builder
+                .build_call(trigger_startup_work, &[], "")
+                .map_err(|e| e.to_string())?;
+        }
+
+        // Run the actor scheduler to process all spawned actors.
+        // This blocks until all actors have completed.
+        let rt_run_scheduler = intrinsics::get_intrinsic(&self.module, "mesh_rt_run_scheduler");
+        self.builder
+            .build_call(rt_run_scheduler, &[], "")
+            .map_err(|e| e.to_string())?;
+
+        // Return 0
+        self.builder
+            .build_return(Some(&i32_type.const_int(0, false)))
+            .map_err(|e| e.to_string())?;
+
+        Ok(())
+    }
+
+    /// Argument signature the runtime must enforce before spawning `mir_fn`
+    /// on behalf of a remote node.
+    ///
+    /// Only actor wrappers (a single `__args_ptr` parameter plus a matching
+    /// `__actor_{name}_body`) read typed arguments out of the args buffer, so
+    /// they advertise their body parameter tags. Zero-parameter functions take
+    /// no arguments. Anything else cannot be entered through the actor ABI with
+    /// remote arguments, so every parameter is marked unsupported and the
+    /// runtime refuses to spawn it remotely.
+    fn remote_spawn_signature(&self, mir_fn: &MirFunction) -> Vec<u8> {
+        let actor_body_name = format!("__actor_{}_body", mir_fn.name);
+        let is_actor_wrapper = mir_fn.params.len() == 1
+            && mir_fn.params[0].0 == "__args_ptr"
+            && mir_fn.params[0].1 == MirType::Ptr;
+        let actor_body = is_actor_wrapper
+            .then(|| {
+                self.mir_functions
+                    .iter()
+                    .find(|function| function.name == actor_body_name)
+            })
+            .flatten();
+
+        match actor_body {
+            Some(body) => body
+                .params
+                .iter()
+                .map(|(_, ty)| {
+                    self.remote_spawn_arg_tag(ty)
+                        .unwrap_or(REMOTE_SPAWN_ARG_UNSUPPORTED)
+                })
+                .collect(),
+            None => vec![REMOTE_SPAWN_ARG_UNSUPPORTED; mir_fn.params.len()],
+        }
+    }
+
+    /// Emit the remote spawn signature of `mir_fn` as a private constant and
+    /// return the `(arg_tags_ptr, arg_count)` pair for `mesh_register_function`.
+    fn remote_spawn_signature_constant(
+        &self,
+        mir_fn: &MirFunction,
+    ) -> (PointerValue<'ctx>, inkwell::values::IntValue<'ctx>) {
+        let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
+        let i64_type = self.context.i64_type();
+        let signature = self.remote_spawn_signature(mir_fn);
+        if signature.is_empty() {
+            return (ptr_type.const_null(), i64_type.const_int(0, false));
+        }
+
+        let signature_data = self.context.const_string(&signature, false);
+        let signature_global = self.module.add_global(
+            signature_data.get_type(),
+            None,
+            &format!("fn_sig_{}", mir_fn.name),
+        );
+        signature_global.set_initializer(&signature_data);
+        signature_global.set_constant(true);
+        signature_global.set_unnamed_addr(true);
+        signature_global.set_linkage(inkwell::module::Linkage::Private);
+        (
+            signature_global.as_pointer_value(),
+            i64_type.const_int(signature.len() as u64, false),
+        )
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────
+
+    /// Get the LLVM type for a MIR type, using the cached struct/sum type layouts.
+    pub(crate) fn llvm_type(&self, ty: &MirType) -> inkwell::types::BasicTypeEnum<'ctx> {
+        llvm_type(self.context, ty, &self.struct_types, &self.sum_type_layouts)
+    }
+
+    /// Get the current function being compiled.
+    pub(crate) fn current_function(&self) -> FunctionValue<'ctx> {
+        self.current_fn.expect("No current function during codegen")
+    }
+
+    /// The current function's symbol, which a panic in it is reported by.
+    pub(crate) fn current_function_name(&self) -> String {
+        self.current_function()
+            .get_name()
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    /// Whether the block being built can take more code: a `return`,
+    /// `break`, `continue` or panic ends it.
+    pub(crate) fn block_is_open(&self) -> bool {
+        self.builder
+            .get_insert_block()
+            .is_some_and(|bb| bb.get_terminator().is_none())
+    }
+
+    /// Bind `name` to a new stack slot holding `value`. Returns what the
+    /// name meant before, for `restore_locals`.
+    pub(crate) fn bind_local(
+        &mut self,
+        name: &str,
+        ty: &MirType,
+        value: BasicValueEnum<'ctx>,
+    ) -> Result<SavedLocal<'ctx>, String> {
+        let slot = self
+            .builder
+            .build_alloca(self.llvm_type(ty), name)
+            .map_err(|e| e.to_string())?;
+        self.builder
+            .build_store(slot, value)
+            .map_err(|e| e.to_string())?;
+        Ok((
+            name.to_string(),
+            self.locals.insert(name.to_string(), slot),
+            self.local_types.insert(name.to_string(), ty.clone()),
+        ))
+    }
+
+    /// Undo `bind_local`s, the last one first.
+    pub(crate) fn restore_locals(&mut self, saved: Vec<SavedLocal<'ctx>>) {
+        for (name, slot, ty) in saved.into_iter().rev() {
+            match slot {
+                Some(slot) => self.locals.insert(name.clone(), slot),
+                None => self.locals.remove(&name),
+            };
+            match ty {
+                Some(ty) => self.local_types.insert(name, ty),
+                None => self.local_types.remove(&name),
+            };
+        }
+    }
+}
+
+/// What a local name meant before a binding shadowed it: its slot and type.
+pub(crate) type SavedLocal<'ctx> = (String, Option<PointerValue<'ctx>>, Option<MirType>);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mir::{
+        BinOp, MirExpr, MirLiteral, MirMatchArm, MirModule, MirPattern, MirResourceDestructor,
+        MirResourceField, MirResourceMoveSource, MirResourceVariant, MirStructDef, MirSumTypeDef,
+        MirType, MirVariantDef, MsgShape, UnaryOp,
+    };
+
+    #[cfg(target_os = "macos")]
+    fn native_deployment_object_version(target: Option<&str>) -> Option<(u32, u32)> {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "deployment_probe", 0, target).unwrap();
+        codegen.compile(&empty_mir_module()).unwrap();
+        let object = codegen
+            .target_machine
+            .write_to_memory_buffer(&codegen.module, FileType::Object)
+            .unwrap();
+        let bytes = object.as_slice();
+        let word = |offset| u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap());
+        assert_eq!(word(0), 0xfeedfacf, "expected actual 64-bit Mach-O object");
+        let mut offset = 32;
+        for _ in 0..word(16) {
+            let command = word(offset);
+            let length = word(offset + 4) as usize;
+            assert!(length >= 8 && offset + length <= bytes.len());
+            if command == 0x32 {
+                assert!(length >= 24);
+                return Some((word(offset + 8), word(offset + 12)));
+            }
+            if command == 0x24 {
+                assert!(length >= 16);
+                return Some((1, word(offset + 8)));
+            }
+            offset += length;
+        }
+        None
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn native_deployment_default_matches_the_explicit_canonical_host_object() {
+        let canonical = crate::link::effective_target_triple(None).unwrap();
+        let explicit = native_deployment_object_version(Some(&canonical));
+        let default = native_deployment_object_version(None);
+        assert_eq!(
+            default, explicit,
+            "default and named native builds must share their platform/deployment basis"
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn native_deployment_host_objects_include_platform_metadata_for_external_linkers() {
+        for target in [
+            None,
+            Some("aarch64-apple-darwin"),
+            Some("x86_64-apple-darwin"),
+        ] {
+            let metadata = native_deployment_object_version(target);
+            assert_eq!(
+                metadata.map(|(platform, _)| platform),
+                Some(1),
+                "{target:?} must identify macOS to external linkers without a platform-assumption warning"
+            );
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn native_deployment_named_host_object_is_supported_by_this_host() {
+        let canonical = crate::link::effective_target_triple(None).unwrap();
+        let metadata = native_deployment_object_version(Some(&canonical));
+        let output = std::process::Command::new("/usr/bin/sw_vers")
+            .arg("-productVersion")
+            .output()
+            .unwrap();
+        assert!(output.status.success() && output.stderr.is_empty());
+        let version = std::str::from_utf8(&output.stdout).unwrap().trim();
+        let parts: Vec<u32> = version
+            .split('.')
+            .map(|part| part.parse().unwrap())
+            .collect();
+        assert!((2..=3).contains(&parts.len()));
+        let host = (parts[0] << 16) | (parts[1] << 8) | parts.get(2).copied().unwrap_or(0);
+        if let Some((platform, minimum)) = metadata {
+            assert_eq!(platform, 1);
+            assert!(
+                minimum <= host,
+                "canonical object requires {minimum:#x}, host is {host:#x}"
+            );
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn native_deployment_explicit_ios_device_and_simulator_objects_keep_their_platforms() {
+        assert_eq!(
+            native_deployment_object_version(Some("aarch64-apple-ios16.4")),
+            Some((2, (16 << 16) | (4 << 8)))
+        );
+        assert_eq!(
+            native_deployment_object_version(Some("aarch64-apple-ios16.4-simulator")),
+            Some((7, (16 << 16) | (4 << 8)))
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn native_deployment_explicit_macos_object_keeps_its_requested_minimum() {
+        assert_eq!(
+            native_deployment_object_version(Some("aarch64-apple-macosx11.0")),
+            Some((1, 11 << 16))
+        );
+    }
+
+    fn empty_mir_module() -> MirModule {
+        MirModule {
+            functions: vec![],
+            structs: vec![],
+            sum_types: vec![],
+            entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
+            native_functions: vec![],
+        }
+    }
+
+    #[test]
+    fn library_export_wraps_mesh_binary_result_in_the_stable_runtime_boundary() {
+        let mut mir = empty_mir_module();
+        mir.functions.push(MirFunction {
+            name: "echo".to_string(),
+            params: vec![("request".to_string(), MirType::Ptr)],
+            return_type: MirType::Ptr,
+            body: MirExpr::Var("request".to_string(), MirType::Ptr),
+            is_closure_fn: false,
+            captures: vec![],
+            has_tail_calls: false,
+        });
+        for target in [None, Some("x86_64-pc-windows-msvc")] {
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "library_export", 0, target).unwrap();
+            codegen.set_library_exports(&[crate::LibraryExport {
+                function: "echo".to_string(),
+                symbol: "mesh_mobile_echo".to_string(),
+                max_input: 16_782_000,
+                max_output: 1_048_576,
+                binding_audience: crate::ExportBindingAudience::All,
+            }]);
+            codegen.compile(&mir).unwrap();
+            let ir = codegen.get_llvm_ir();
+            let export = if target.is_some() || cfg!(windows) {
+                "dllexport "
+            } else {
+                ""
+            };
+            assert!(
+                ir.contains(&format!("define {export}i32 @mesh_mobile_echo(ptr")),
+                "{ir}"
+            );
+            assert!(ir.contains("call i32 @mesh_library_invoke"), "{ir}");
+            assert!(ir.contains("i64 16782000, i64 1048576"), "{ir}");
+            assert!(
+                ir.contains("define internal void @__mesh_library_entry_mesh_mobile_echo(ptr")
+                    && ir.contains("store ptr"),
+                "The runtime callback must write through an explicit result pointer: {ir}"
+            );
+        }
+    }
+
+    fn hello_world_mir() -> MirModule {
+        MirModule {
+            functions: vec![MirFunction {
+                name: "mesh_main".to_string(),
+                params: vec![],
+                return_type: MirType::Unit,
+                body: MirExpr::Unit,
+                is_closure_fn: false,
+                captures: vec![],
+                has_tail_calls: false,
+            }],
+            structs: vec![],
+            sum_types: vec![],
+            entry_function: Some("mesh_main".to_string()),
+            service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
+            native_functions: vec![],
+        }
+    }
+
+    /// An aggregate a shape does not describe (a shared value laid out as a
+    /// struct) keeps every pointer in it alive; one with no pointers needs
+    /// no table.
+    #[test]
+    fn undescribed_aggregates_keep_their_pointers_alive() {
+        let context = Context::create();
+        let codegen = CodeGen::new(&context, "shapes", 0, None).unwrap();
+        let ptr = context.ptr_type(inkwell::AddressSpace::default());
+        let pointers = context.struct_type(&[ptr.into(), ptr.into()], false);
+        let words = context.struct_type(&[context.i64_type().into()], false);
+        assert!(codegen
+            .shape_table_for_value(&MsgShape::Shared, pointers.into())
+            .is_some());
+        assert!(codegen
+            .shape_table_for_value(&MsgShape::Shared, words.into())
+            .is_none());
+    }
+
+    #[test]
+    fn test_empty_module_verifies() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        let mir = empty_mir_module();
+        codegen.compile(&mir).unwrap();
+    }
+
+    #[test]
+    fn struct_layouts_allow_forward_references() {
+        let inner = MirType::Struct("Inner".to_string());
+        let outer = MirType::Struct("Outer".to_string());
+        let mut mir = empty_mir_module();
+        mir.structs = vec![
+            MirStructDef {
+                name: "Outer".to_string(),
+                fields: vec![("inner".to_string(), inner.clone())],
+            },
+            MirStructDef {
+                name: "Inner".to_string(),
+                fields: vec![("value".to_string(), MirType::Int)],
+            },
+        ];
+        mir.functions.push(MirFunction {
+            name: "make_outer".to_string(),
+            params: vec![],
+            return_type: outer.clone(),
+            body: MirExpr::StructLit {
+                name: "Outer".to_string(),
+                fields: vec![(
+                    "inner".to_string(),
+                    MirExpr::StructLit {
+                        name: "Inner".to_string(),
+                        fields: vec![("value".to_string(), MirExpr::IntLit(1, MirType::Int))],
+                        ty: inner,
+                    },
+                )],
+                ty: outer,
+            },
+            is_closure_fn: false,
+            captures: vec![],
+            has_tail_calls: false,
+        });
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "forward_struct", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+    }
+
+    /// Two bindings of one native symbol share its declaration when their
+    /// signatures agree; different signatures, or one binding name twice,
+    /// are errors.
+    #[test]
+    fn native_bindings_share_a_symbol_only_with_one_signature() {
+        let binding = |name: &str, ret: MirType| crate::mir::MirNativeFunction {
+            name: name.to_string(),
+            symbol: "c_native".to_string(),
+            params: vec![("x".to_string(), MirType::Int)],
+            return_type: ret,
+        };
+        let compile = |natives: Vec<crate::mir::MirNativeFunction>| {
+            let mut mir = empty_mir_module();
+            mir.native_functions = natives;
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "natives", 0, None).unwrap();
+            codegen.compile(&mir)
+        };
+        compile(vec![
+            binding("first", MirType::Int),
+            binding("second", MirType::Int),
+        ])
+        .unwrap();
+        assert_eq!(
+            compile(vec![
+                binding("first", MirType::Int),
+                binding("second", MirType::Bool)
+            ])
+            .unwrap_err(),
+            "Native symbol `c_native` is declared with incompatible signatures"
+        );
+        assert_eq!(
+            compile(vec![
+                binding("first", MirType::Int),
+                binding("first", MirType::Int)
+            ])
+            .unwrap_err(),
+            "Native binding `first` is declared more than once"
+        );
+    }
+
+    /// Sum types holding each other by value have no finite layout: the
+    /// build says so instead of looping. (Lowering boxes recursive payloads,
+    /// so only MIR built by hand gets here.)
+    #[test]
+    fn sum_types_holding_each_other_by_value_are_rejected() {
+        let holding = |name: &str, other: &str| MirSumTypeDef {
+            name: name.to_string(),
+            variants: vec![MirVariantDef {
+                name: format!("{name}Of"),
+                fields: vec![MirType::SumType(other.to_string())],
+                tag: 0,
+            }],
+        };
+        let mut mir = empty_mir_module();
+        mir.sum_types = vec![holding("A", "B"), holding("B", "A")];
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "cyclic_sums", 0, None).unwrap();
+        let error = codegen.compile(&mir).unwrap_err();
+        assert_eq!(error, "recursive by-value sum type layout dependency: A, B");
+    }
+
+    /// A struct holding itself by value, directly or through another
+    /// struct, has no size and no value; it was accepted, and LLVM's
+    /// verification failed on the first function that used one.
+    #[test]
+    fn structs_holding_themselves_by_value_are_rejected() {
+        let holding = |name: &str, other: &str| MirStructDef {
+            name: name.to_string(),
+            fields: vec![("next".to_string(), MirType::Struct(other.to_string()))],
+        };
+        for structs in [
+            vec![holding("Node", "Node")],
+            vec![holding("A", "B"), holding("B", "A")],
+        ] {
+            let mut mir = empty_mir_module();
+            mir.structs = structs;
+            let context = Context::create();
+            let mut codegen = CodeGen::new(&context, "cyclic_structs", 0, None).unwrap();
+            let error = codegen.compile(&mir).unwrap_err();
+            assert!(
+                error.ends_with(
+                    "holds itself by value, so no value of it can exist: hold it in an Option \
+                     or a List instead"
+                ),
+                "{error}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_native_target_init() {
+        let context = Context::create();
+        let codegen = CodeGen::new(&context, "test", 0, None);
+        assert!(codegen.is_ok(), "Native target should initialize");
+    }
+
+    #[test]
+    fn android_targets_initialize_for_cross_codegen() {
+        for triple in ["aarch64-linux-android", "x86_64-linux-android"] {
+            let context = Context::create();
+            assert!(
+                CodeGen::new(&context, "android", 0, Some(triple)).is_ok(),
+                "{triple} should initialize"
+            );
+        }
+    }
+
+    #[test]
+    fn test_invalid_triple_error() {
+        let context = Context::create();
+        let result = CodeGen::new(&context, "test", 0, Some("invalid-triple-xxx"));
+        match result {
+            Ok(_) => panic!("Invalid triple should return error"),
+            Err(err) => {
+                assert!(
+                    err.contains("Invalid target triple") || err.contains("invalid-triple-xxx"),
+                    "Error should mention the invalid triple, got: {}",
+                    err
+                );
+            }
+        }
+    }
+
+    /// A module LLVM refuses is reported with the function it refuses.
+    #[test]
+    fn verification_names_the_function_it_fails_in() {
+        let context = Context::create();
+        let codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        // A block without a terminator.
+        let broken =
+            codegen
+                .module
+                .add_function("broken", context.void_type().fn_type(&[], false), None);
+        context.append_basic_block(broken, "entry");
+        let error = codegen.verify().unwrap_err();
+        assert!(
+            error.starts_with("LLVM module verification failed in `broken`: "),
+            "{error}"
+        );
+    }
+
+    /// A program with an autonomous cluster configuration registers it with
+    /// the runtime as its main starts, before anything reads it.
+    #[test]
+    fn the_autonomous_configuration_is_registered_at_startup() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.set_autonomous_config_json(Some("{\"min\":1}"));
+        codegen.compile(&hello_world_mir()).unwrap();
+        let ir = codegen.get_llvm_ir();
+        let init = ir.find("call void @mesh_rt_init").unwrap();
+        let register = ir
+            .find("call i32 @mesh_register_autonomous_config_json(ptr @mesh_autonomous_config_json, i64 9)")
+            .unwrap_or_else(|| panic!("{ir}"));
+        assert!(init < register, "{ir}");
+        assert!(ir.contains("c\"{\\22min\\22:1}\\00\""), "{ir}");
+    }
+
+    #[test]
+    fn test_hello_world_module_verifies() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        let mir = hello_world_mir();
+        codegen.compile(&mir).unwrap();
+
+        let ir = codegen.get_llvm_ir();
+        assert!(ir.contains("define i32 @main"), "Should have main wrapper");
+        assert!(ir.contains("mesh_rt_init"), "Should call mesh_rt_init");
+    }
+
+    #[test]
+    fn remote_spawn_registration_carries_the_argument_signature() {
+        let mut mir = hello_world_mir();
+        // Actor wrapper: reads (String, Int) out of the args buffer via its body.
+        mir.functions.push(MirFunction {
+            name: "greeter".to_string(),
+            params: vec![("__args_ptr".to_string(), MirType::Ptr)],
+            return_type: MirType::Unit,
+            body: MirExpr::Unit,
+            is_closure_fn: false,
+            captures: vec![],
+            has_tail_calls: false,
+        });
+        mir.functions.push(MirFunction {
+            name: "__actor_greeter_body".to_string(),
+            params: vec![
+                ("name".to_string(), MirType::String),
+                ("count".to_string(), MirType::Int),
+            ],
+            return_type: MirType::Unit,
+            body: MirExpr::Unit,
+            is_closure_fn: false,
+            captures: vec![],
+            has_tail_calls: false,
+        });
+        // Plain two-parameter function: not enterable through the actor ABI
+        // with remote arguments.
+        mir.functions.push(MirFunction {
+            name: "add".to_string(),
+            params: vec![
+                ("a".to_string(), MirType::Int),
+                ("b".to_string(), MirType::Int),
+            ],
+            return_type: MirType::Int,
+            body: MirExpr::Var("a".to_string(), MirType::Int),
+            is_closure_fn: false,
+            captures: vec![],
+            has_tail_calls: false,
+        });
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "remote_spawn_signature", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+        let ir = codegen.get_llvm_ir();
+
+        // Tags follow mesh-rt's REMOTE_SPAWN_ARG_* encoding: String = 4, Int = 1.
+        assert!(
+            ir.contains("@fn_sig_greeter = private unnamed_addr constant [2 x i8] c\"\\04\\01\""),
+            "{ir}"
+        );
+        assert!(
+            ir.contains(
+                "call void @mesh_register_function(ptr @fn_reg_greeter, i64 7, ptr @greeter, ptr @fn_sig_greeter, i64 2)"
+            ),
+            "{ir}"
+        );
+        // Every parameter of a non-actor function is marked unsupported (0), so
+        // the runtime refuses to spawn it remotely rather than guessing an ABI.
+        assert!(
+            ir.contains("@fn_sig_add = private unnamed_addr constant [2 x i8] zeroinitializer"),
+            "{ir}"
+        );
+        assert!(
+            ir.contains(
+                "call void @mesh_register_function(ptr @fn_reg_add, i64 3, ptr @add, ptr @fn_sig_add, i64 2)"
+            ),
+            "{ir}"
+        );
+        // Zero-parameter functions register an empty signature.
+        assert!(
+            ir.contains(
+                "call void @mesh_register_function(ptr @fn_reg_mesh_main, i64 9, ptr @mesh_main, ptr null, i64 0)"
+            ),
+            "{ir}"
+        );
+        // The actor body itself stays internal: only the wrapper is spawnable.
+        assert!(!ir.contains("@fn_reg___actor_greeter_body"), "{ir}");
+    }
+
+    #[test]
+    fn test_emit_llvm_ir() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        let mir = empty_mir_module();
+        codegen.compile(&mir).unwrap();
+
+        let tmp = std::env::temp_dir().join("mesh_test.ll");
+        codegen.emit_llvm_ir(&tmp).unwrap();
+        assert!(tmp.exists());
+        std::fs::remove_file(&tmp).ok();
+    }
+
+    #[test]
+    fn test_emit_object_file() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        let mir = empty_mir_module();
+        codegen.compile(&mir).unwrap();
+
+        let tmp = std::env::temp_dir().join("mesh_test.o");
+        codegen.emit_object(&tmp).unwrap();
+        assert!(tmp.exists());
+        std::fs::remove_file(&tmp).ok();
+    }
+
+    // ── Expression codegen tests ─────────────────────────────────────
+
+    /// Helper: compile a single function body and return the LLVM IR string.
+    fn compile_expr_to_ir(body: MirExpr, ret_ty: MirType) -> String {
+        let mir = MirModule {
+            functions: vec![MirFunction {
+                name: "test_fn".to_string(),
+                params: vec![],
+                return_type: ret_ty,
+                body,
+                is_closure_fn: false,
+                captures: vec![],
+                has_tail_calls: false,
+            }],
+            structs: vec![],
+            sum_types: vec![],
+            entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
+            native_functions: vec![],
+        };
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+        codegen.get_llvm_ir()
+    }
+
+    /// Helper: compile a function with parameters (to avoid constant folding).
+    fn compile_fn_to_ir(params: Vec<(String, MirType)>, body: MirExpr, ret_ty: MirType) -> String {
+        let mir = MirModule {
+            functions: vec![MirFunction {
+                name: "test_fn".to_string(),
+                params,
+                return_type: ret_ty,
+                body,
+                is_closure_fn: false,
+                captures: vec![],
+                has_tail_calls: false,
+            }],
+            structs: vec![],
+            sum_types: vec![],
+            entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
+            native_functions: vec![],
+        };
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+        codegen.get_llvm_ir()
+    }
+
+    #[test]
+    fn resource_move_zeros_slot_and_drop_calls_destroy_only_when_non_null() {
+        let resource = MirType::Ptr;
+        let body = MirExpr::Block(
+            vec![
+                MirExpr::ResourceMove {
+                    value: Box::new(MirExpr::Var("secret".to_string(), resource.clone())),
+                    ty: resource.clone(),
+                    source: MirResourceMoveSource::Slot("secret".to_string()),
+                },
+                MirExpr::ResourceDrop {
+                    value: Box::new(MirExpr::Var("secret".to_string(), resource.clone())),
+                    resource_ty: resource.clone(),
+                    destructor: MirResourceDestructor::Opaque,
+                },
+            ],
+            MirType::Unit,
+        );
+
+        let ir = compile_fn_to_ir(vec![("secret".to_string(), resource)], body, MirType::Unit);
+        assert!(
+            ir.contains("store ptr null"),
+            "move must invalidate its slot:\n{ir}"
+        );
+        assert!(
+            ir.contains("resource_is_null = icmp eq ptr"),
+            "drop must guard the destructor call:\n{ir}"
+        );
+        assert_eq!(ir.matches("call void @mesh_resource_destroy").count(), 1);
+    }
+
+    #[test]
+    fn resource_struct_update_destroys_the_replaced_value() {
+        let state_ty = MirType::Struct("KeyState".to_string());
+        let mir = MirModule {
+            functions: vec![MirFunction {
+                name: "replace_key".to_string(),
+                params: vec![
+                    ("state".to_string(), state_ty.clone()),
+                    ("next".to_string(), MirType::Ptr),
+                ],
+                return_type: state_ty.clone(),
+                body: MirExpr::StructUpdate {
+                    base: Box::new(MirExpr::ResourceMove {
+                        value: Box::new(MirExpr::Var("state".to_string(), state_ty.clone())),
+                        ty: state_ty.clone(),
+                        source: MirResourceMoveSource::Slot("state".to_string()),
+                    }),
+                    overrides: vec![(
+                        "current".to_string(),
+                        MirExpr::ResourceMove {
+                            value: Box::new(MirExpr::Var("next".to_string(), MirType::Ptr)),
+                            ty: MirType::Ptr,
+                            source: MirResourceMoveSource::Slot("next".to_string()),
+                        },
+                    )],
+                    resource_overrides: vec![MirResourceField {
+                        index: 0,
+                        ty: MirType::Ptr,
+                        destructor: MirResourceDestructor::Opaque,
+                    }],
+                    ty: state_ty.clone(),
+                },
+                is_closure_fn: false,
+                captures: vec![],
+                has_tail_calls: false,
+            }],
+            structs: vec![MirStructDef {
+                name: "KeyState".to_string(),
+                fields: vec![
+                    ("current".to_string(), MirType::Ptr),
+                    ("previous".to_string(), MirType::Ptr),
+                ],
+            }],
+            sum_types: vec![],
+            entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
+            native_functions: vec![],
+        };
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+        let ir = codegen.get_llvm_ir();
+        assert_eq!(
+            ir.matches("call void @mesh_resource_destroy").count(),
+            1,
+            "the overwritten secret must be destroyed exactly once:\n{ir}"
+        );
+    }
+
+    #[test]
+    fn resource_field_move_destroys_resource_siblings_before_zeroing_parent() {
+        let pair_ty = MirType::Struct("DoubleSecret".to_string());
+        let destructor = MirResourceDestructor::Aggregate(vec![
+            MirResourceField {
+                index: 0,
+                ty: MirType::Ptr,
+                destructor: MirResourceDestructor::Opaque,
+            },
+            MirResourceField {
+                index: 1,
+                ty: MirType::Ptr,
+                destructor: MirResourceDestructor::Opaque,
+            },
+        ]);
+        let mir = MirModule {
+            functions: vec![MirFunction {
+                name: "take_first".to_string(),
+                params: vec![("pair".to_string(), pair_ty.clone())],
+                return_type: MirType::Ptr,
+                body: MirExpr::ResourceMove {
+                    value: Box::new(MirExpr::FieldAccess {
+                        object: Box::new(MirExpr::Var("pair".to_string(), pair_ty.clone())),
+                        field: "first".to_string(),
+                        ty: MirType::Ptr,
+                    }),
+                    ty: MirType::Ptr,
+                    source: MirResourceMoveSource::Projection {
+                        root: "pair".to_string(),
+                        parent_ty: pair_ty,
+                        parent_destructor: destructor,
+                        field_index: 0,
+                        nested_field_indices: vec![],
+                    },
+                },
+                is_closure_fn: false,
+                captures: vec![],
+                has_tail_calls: false,
+            }],
+            structs: vec![MirStructDef {
+                name: "DoubleSecret".to_string(),
+                fields: vec![
+                    ("first".to_string(), MirType::Ptr),
+                    ("second".to_string(), MirType::Ptr),
+                ],
+            }],
+            sum_types: vec![],
+            entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
+            native_functions: vec![],
+        };
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+        let ir = codegen.get_llvm_ir();
+        assert_eq!(
+            ir.matches("call void @mesh_resource_destroy").count(),
+            1,
+            "{ir}"
+        );
+        assert!(ir.contains("zeroinitializer, ptr %pair"), "{ir}");
+    }
+
+    #[test]
+    fn nested_resource_field_move_destroys_siblings_at_every_level() {
+        let inner_ty = MirType::Struct("InnerSecrets".to_string());
+        let outer_ty = MirType::Struct("OuterSecrets".to_string());
+        let inner_destructor = MirResourceDestructor::Aggregate(vec![
+            MirResourceField {
+                index: 0,
+                ty: MirType::Ptr,
+                destructor: MirResourceDestructor::Opaque,
+            },
+            MirResourceField {
+                index: 1,
+                ty: MirType::Ptr,
+                destructor: MirResourceDestructor::Opaque,
+            },
+        ]);
+        let outer_destructor = MirResourceDestructor::Aggregate(vec![
+            MirResourceField {
+                index: 0,
+                ty: inner_ty.clone(),
+                destructor: inner_destructor,
+            },
+            MirResourceField {
+                index: 1,
+                ty: MirType::Ptr,
+                destructor: MirResourceDestructor::Opaque,
+            },
+        ]);
+        let mir = MirModule {
+            functions: vec![MirFunction {
+                name: "take_nested".to_string(),
+                params: vec![("outer".to_string(), outer_ty.clone())],
+                return_type: MirType::Ptr,
+                body: MirExpr::ResourceMove {
+                    value: Box::new(MirExpr::FieldAccess {
+                        object: Box::new(MirExpr::FieldAccess {
+                            object: Box::new(MirExpr::Var("outer".to_string(), outer_ty.clone())),
+                            field: "inner".to_string(),
+                            ty: inner_ty.clone(),
+                        }),
+                        field: "selected".to_string(),
+                        ty: MirType::Ptr,
+                    }),
+                    ty: MirType::Ptr,
+                    source: MirResourceMoveSource::Projection {
+                        root: "outer".to_string(),
+                        parent_ty: outer_ty,
+                        parent_destructor: outer_destructor,
+                        field_index: 0,
+                        nested_field_indices: vec![0],
+                    },
+                },
+                is_closure_fn: false,
+                captures: vec![],
+                has_tail_calls: false,
+            }],
+            structs: vec![
+                MirStructDef {
+                    name: "InnerSecrets".to_string(),
+                    fields: vec![
+                        ("selected".to_string(), MirType::Ptr),
+                        ("inner_sibling".to_string(), MirType::Ptr),
+                    ],
+                },
+                MirStructDef {
+                    name: "OuterSecrets".to_string(),
+                    fields: vec![
+                        ("inner".to_string(), inner_ty),
+                        ("outer_sibling".to_string(), MirType::Ptr),
+                    ],
+                },
+            ],
+            sum_types: vec![],
+            entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
+            native_functions: vec![],
+        };
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+        let ir = codegen.get_llvm_ir();
+        assert_eq!(
+            ir.matches("call void @mesh_resource_destroy").count(),
+            2,
+            "one inner and one outer sibling must be destroyed:\n{ir}"
+        );
+        assert!(ir.contains("zeroinitializer, ptr %outer"), "{ir}");
+    }
+
+    #[test]
+    fn resource_result_drop_checks_each_resource_variant_then_destroys_payload() {
+        let result_ty = MirType::SumType("Result_SecretBytes_SecretBytes".to_string());
+        let mir = MirModule {
+            functions: vec![MirFunction {
+                name: "discard_result".to_string(),
+                params: vec![("result".to_string(), result_ty.clone())],
+                return_type: MirType::Unit,
+                body: MirExpr::ResourceDrop {
+                    value: Box::new(MirExpr::Var("result".to_string(), result_ty.clone())),
+                    resource_ty: result_ty,
+                    destructor: MirResourceDestructor::SumVariants(vec![
+                        MirResourceVariant {
+                            tag: 0,
+                            field_types: vec![MirType::Ptr],
+                            resource_fields: vec![MirResourceField {
+                                index: 0,
+                                ty: MirType::Ptr,
+                                destructor: MirResourceDestructor::Opaque,
+                            }],
+                        },
+                        MirResourceVariant {
+                            tag: 1,
+                            field_types: vec![MirType::Ptr],
+                            resource_fields: vec![MirResourceField {
+                                index: 0,
+                                ty: MirType::Ptr,
+                                destructor: MirResourceDestructor::Opaque,
+                            }],
+                        },
+                    ]),
+                },
+                is_closure_fn: false,
+                captures: vec![],
+                has_tail_calls: false,
+            }],
+            structs: vec![],
+            sum_types: vec![MirSumTypeDef {
+                name: "Result".to_string(),
+                variants: vec![
+                    MirVariantDef {
+                        name: "Ok".to_string(),
+                        fields: vec![MirType::Ptr],
+                        tag: 0,
+                    },
+                    MirVariantDef {
+                        name: "Err".to_string(),
+                        fields: vec![MirType::Ptr],
+                        tag: 1,
+                    },
+                ],
+            }],
+            entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
+            native_functions: vec![],
+        };
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+        let ir = codegen.get_llvm_ir();
+        assert_eq!(
+            ir.matches("icmp eq i8 %resource_sum_tag").count(),
+            2,
+            "{ir}"
+        );
+        assert_eq!(
+            ir.matches("call void @mesh_resource_destroy").count(),
+            2,
+            "{ir}"
+        );
+    }
+
+    /// Helper: compile a module with declared-handler registrations and return LLVM IR.
+    fn compile_with_declared_handlers_to_ir(
+        mir: MirModule,
+        declared_handlers: Vec<DeclaredRuntimeRegistration>,
+    ) -> String {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.set_declared_handlers(&declared_handlers);
+        codegen.compile(&mir).unwrap();
+        codegen.get_llvm_ir()
+    }
+
+    /// Helper: compile a module with declared-handler registrations and return any error.
+    fn compile_with_declared_handlers_error(
+        mir: MirModule,
+        declared_handlers: Vec<DeclaredRuntimeRegistration>,
+    ) -> String {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.set_declared_handlers(&declared_handlers);
+        codegen
+            .compile(&mir)
+            .expect_err("declared handler drift should fail compilation")
+    }
+
+    #[test]
+    fn codegen_declared_handler_registration_emits_replication_count_marker() {
+        let mir = MirModule {
+            functions: vec![
+                MirFunction {
+                    name: "mesh_main".to_string(),
+                    params: vec![],
+                    return_type: MirType::Unit,
+                    body: MirExpr::Unit,
+                    is_closure_fn: false,
+                    captures: vec![],
+                    has_tail_calls: false,
+                },
+                MirFunction {
+                    name: "__declared_work_work_handle_submit".to_string(),
+                    params: vec![("__args_ptr".to_string(), MirType::Ptr)],
+                    return_type: MirType::Unit,
+                    body: MirExpr::Unit,
+                    is_closure_fn: false,
+                    captures: vec![],
+                    has_tail_calls: false,
+                },
+                MirFunction {
+                    name: "__declared_work_work_handle_retry".to_string(),
+                    params: vec![("__args_ptr".to_string(), MirType::Ptr)],
+                    return_type: MirType::Unit,
+                    body: MirExpr::Unit,
+                    is_closure_fn: false,
+                    captures: vec![],
+                    has_tail_calls: false,
+                },
+            ],
+            structs: vec![],
+            sum_types: vec![],
+            entry_function: Some("mesh_main".to_string()),
+            service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
+            native_functions: vec![],
+        };
+
+        let ir = compile_with_declared_handlers_to_ir(
+            mir,
+            vec![
+                DeclaredRuntimeRegistration {
+                    runtime_registration_name: "Work.handle_submit".to_string(),
+                    executable_symbol: "__declared_work_work_handle_submit".to_string(),
+                    replication_count: 2,
+                },
+                DeclaredRuntimeRegistration {
+                    runtime_registration_name: "Work.handle_retry".to_string(),
+                    executable_symbol: "__declared_work_work_handle_retry".to_string(),
+                    replication_count: 3,
+                },
+            ],
+        );
+
+        assert!(
+            ir.contains("@mesh_register_declared_handler"),
+            "expected declared handler registration call in IR: {ir}"
+        );
+        assert!(
+            ir.contains("i64 2, ptr @__declared_work_work_handle_submit"),
+            "expected defaulted replication count marker in IR: {ir}"
+        );
+        assert!(
+            ir.contains("i64 3, ptr @__declared_work_work_handle_retry"),
+            "expected explicit replication count marker in IR: {ir}"
+        );
+    }
+
+    #[test]
+    fn codegen_declared_route_registration_emits_runtime_name_and_count_marker() {
+        let mir = MirModule {
+            functions: vec![
+                MirFunction {
+                    name: "mesh_main".to_string(),
+                    params: vec![],
+                    return_type: MirType::Unit,
+                    body: MirExpr::Unit,
+                    is_closure_fn: false,
+                    captures: vec![],
+                    has_tail_calls: false,
+                },
+                MirFunction {
+                    name: "__declared_route_api_todos_handle_list_todos".to_string(),
+                    params: vec![("__request".to_string(), MirType::Ptr)],
+                    return_type: MirType::Ptr,
+                    body: MirExpr::Var("__request".to_string(), MirType::Ptr),
+                    is_closure_fn: false,
+                    captures: vec![],
+                    has_tail_calls: false,
+                },
+            ],
+            structs: vec![],
+            sum_types: vec![],
+            entry_function: Some("mesh_main".to_string()),
+            service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
+            native_functions: vec![],
+        };
+
+        let ir = compile_with_declared_handlers_to_ir(
+            mir,
+            vec![DeclaredRuntimeRegistration {
+                runtime_registration_name: "Api.Todos.handle_list_todos".to_string(),
+                executable_symbol: "__declared_route_api_todos_handle_list_todos".to_string(),
+                replication_count: 2,
+            }],
+        );
+
+        assert!(
+            ir.contains("@mesh_register_declared_handler"),
+            "expected declared route registration call in IR: {ir}"
+        );
+        assert!(
+            ir.contains("i64 2, ptr @__declared_route_api_todos_handle_list_todos"),
+            "expected route replication count marker in IR: {ir}"
+        );
+        assert!(
+            ir.contains("Api.Todos.handle_list_todos"),
+            "expected real handler runtime name in IR globals: {ir}"
+        );
+    }
+
+    #[test]
+    fn codegen_rejects_declared_handler_without_lowered_symbol() {
+        let mir = hello_world_mir();
+        let error = compile_with_declared_handlers_error(
+            mir,
+            vec![DeclaredRuntimeRegistration {
+                runtime_registration_name: "Work.handle_submit".to_string(),
+                executable_symbol: "__declared_work_work_handle_submit".to_string(),
+                replication_count: 2,
+            }],
+        );
+
+        assert!(
+            error.contains(
+                "Declared handler executable '__declared_work_work_handle_submit' was not lowered into the LLVM module"
+            ),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn test_int_arithmetic() {
+        // Use parameters to avoid constant folding
+        let body = MirExpr::BinOp {
+            op: BinOp::Add,
+            lhs: Box::new(MirExpr::Var("a".to_string(), MirType::Int)),
+            rhs: Box::new(MirExpr::Var("b".to_string(), MirType::Int)),
+            ty: MirType::Int,
+        };
+        let ir = compile_fn_to_ir(
+            vec![
+                ("a".to_string(), MirType::Int),
+                ("b".to_string(), MirType::Int),
+            ],
+            body,
+            MirType::Int,
+        );
+        assert!(ir.contains("add i64"), "Should contain i64 add: {}", ir);
+    }
+
+    #[test]
+    fn test_int_constant_folding() {
+        // Constants should be folded by LLVM
+        let body = MirExpr::BinOp {
+            op: BinOp::Add,
+            lhs: Box::new(MirExpr::IntLit(1, MirType::Int)),
+            rhs: Box::new(MirExpr::IntLit(2, MirType::Int)),
+            ty: MirType::Int,
+        };
+        let ir = compile_expr_to_ir(body, MirType::Int);
+        assert!(
+            ir.contains("ret i64 3"),
+            "Constants should be folded to 3: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_float_arithmetic() {
+        let body = MirExpr::BinOp {
+            op: BinOp::Mul,
+            lhs: Box::new(MirExpr::Var("a".to_string(), MirType::Float)),
+            rhs: Box::new(MirExpr::Var("b".to_string(), MirType::Float)),
+            ty: MirType::Float,
+        };
+        let ir = compile_fn_to_ir(
+            vec![
+                ("a".to_string(), MirType::Float),
+                ("b".to_string(), MirType::Float),
+            ],
+            body,
+            MirType::Float,
+        );
+        assert!(ir.contains("fmul double"), "Should contain fmul: {}", ir);
+    }
+
+    #[test]
+    fn test_boolean_not() {
+        let body = MirExpr::UnaryOp {
+            op: UnaryOp::Not,
+            operand: Box::new(MirExpr::Var("b".to_string(), MirType::Bool)),
+            ty: MirType::Bool,
+        };
+        let ir = compile_fn_to_ir(vec![("b".to_string(), MirType::Bool)], body, MirType::Bool);
+        assert!(ir.contains("xor i1"), "Should contain xor for not: {}", ir);
+    }
+
+    #[test]
+    fn test_string_literal_is_a_static_mesh_string() {
+        let body = MirExpr::Block(
+            vec![MirExpr::StringLit(
+                "hello world".to_string(),
+                MirType::String,
+            )],
+            MirType::String,
+        );
+        let ir = compile_expr_to_ir(body, MirType::String);
+        // `{ len, bytes }` constant, returned without allocating or copying.
+        assert!(
+            ir.contains(
+                r#"constant { i64, [11 x i8] } { i64 11, [11 x i8] c"hello world" }, align 8"#
+            ),
+            "Should emit a static MeshString: {}",
+            ir
+        );
+        assert!(
+            !ir.contains("call ptr @mesh_string_new"),
+            "Literal must not allocate: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_if_else_branching() {
+        let body = MirExpr::If {
+            cond: Box::new(MirExpr::BoolLit(true, MirType::Bool)),
+            then_body: Box::new(MirExpr::IntLit(1, MirType::Int)),
+            else_body: Box::new(MirExpr::IntLit(2, MirType::Int)),
+            ty: MirType::Int,
+        };
+        let ir = compile_expr_to_ir(body, MirType::Int);
+        assert!(
+            ir.contains("br i1"),
+            "Should have conditional branch: {}",
+            ir
+        );
+        assert!(ir.contains("then"), "Should have then block: {}", ir);
+        assert!(ir.contains("else"), "Should have else block: {}", ir);
+        assert!(ir.contains("if_merge"), "Should have merge block: {}", ir);
+    }
+
+    #[test]
+    fn test_let_binding() {
+        let body = MirExpr::Let {
+            name: "x".to_string(),
+            ty: MirType::Int,
+            value: Box::new(MirExpr::IntLit(42, MirType::Int)),
+            body: Box::new(MirExpr::Var("x".to_string(), MirType::Int)),
+        };
+        let ir = compile_expr_to_ir(body, MirType::Int);
+        assert!(ir.contains("alloca i64"), "Should alloca for x: {}", ir);
+        assert!(ir.contains("store i64 42"), "Should store 42: {}", ir);
+    }
+
+    #[test]
+    fn test_function_call() {
+        // Create a module with an add function and a main that calls it
+        let mir = MirModule {
+            functions: vec![
+                MirFunction {
+                    name: "add".to_string(),
+                    params: vec![
+                        ("a".to_string(), MirType::Int),
+                        ("b".to_string(), MirType::Int),
+                    ],
+                    return_type: MirType::Int,
+                    body: MirExpr::BinOp {
+                        op: BinOp::Add,
+                        lhs: Box::new(MirExpr::Var("a".to_string(), MirType::Int)),
+                        rhs: Box::new(MirExpr::Var("b".to_string(), MirType::Int)),
+                        ty: MirType::Int,
+                    },
+                    is_closure_fn: false,
+                    captures: vec![],
+                    has_tail_calls: false,
+                },
+                MirFunction {
+                    name: "mesh_main".to_string(),
+                    params: vec![],
+                    return_type: MirType::Unit,
+                    body: MirExpr::Block(
+                        vec![MirExpr::Call {
+                            func: Box::new(MirExpr::Var(
+                                "add".to_string(),
+                                MirType::FnPtr(
+                                    vec![MirType::Int, MirType::Int],
+                                    Box::new(MirType::Int),
+                                ),
+                            )),
+                            args: vec![
+                                MirExpr::IntLit(1, MirType::Int),
+                                MirExpr::IntLit(2, MirType::Int),
+                            ],
+                            ty: MirType::Int,
+                        }],
+                        MirType::Unit,
+                    ),
+                    is_closure_fn: false,
+                    captures: vec![],
+                    has_tail_calls: false,
+                },
+            ],
+            structs: vec![],
+            sum_types: vec![],
+            entry_function: Some("mesh_main".to_string()),
+            service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
+            native_functions: vec![],
+        };
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+
+        let ir = codegen.get_llvm_ir();
+        assert!(ir.contains("define i64 @add"), "Should have add function");
+        assert!(ir.contains("call i64 @add"), "Should call add");
+    }
+
+    #[test]
+    fn test_println_hello_world() {
+        // Simulate: println("Hello, world!")
+        let body = MirExpr::Block(
+            vec![MirExpr::Call {
+                func: Box::new(MirExpr::Var(
+                    "mesh_println".to_string(),
+                    MirType::FnPtr(vec![MirType::String], Box::new(MirType::Unit)),
+                )),
+                args: vec![MirExpr::StringLit(
+                    "Hello, world!".to_string(),
+                    MirType::String,
+                )],
+                ty: MirType::Unit,
+            }],
+            MirType::Unit,
+        );
+
+        let mir = MirModule {
+            functions: vec![MirFunction {
+                name: "mesh_main".to_string(),
+                params: vec![],
+                return_type: MirType::Unit,
+                body,
+                is_closure_fn: false,
+                captures: vec![],
+                has_tail_calls: false,
+            }],
+            structs: vec![],
+            sum_types: vec![],
+            entry_function: Some("mesh_main".to_string()),
+            service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
+            native_functions: vec![],
+        };
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+
+        let ir = codegen.get_llvm_ir();
+        assert!(
+            !ir.contains("call ptr @mesh_string_new"),
+            "String literals are static and must not allocate"
+        );
+        assert!(ir.contains("mesh_println"), "Should call mesh_println");
+        assert!(
+            ir.contains("Hello, world!"),
+            "Should contain string literal"
+        );
+    }
+
+    #[test]
+    fn test_construct_sum_type_variant() {
+        let mir = MirModule {
+            functions: vec![MirFunction {
+                name: "test_fn".to_string(),
+                params: vec![],
+                return_type: MirType::SumType("Option".to_string()),
+                body: MirExpr::ConstructVariant {
+                    type_name: "Option".to_string(),
+                    variant: "Some".to_string(),
+                    fields: vec![MirExpr::IntLit(42, MirType::Int)],
+                    ty: MirType::SumType("Option".to_string()),
+                },
+                is_closure_fn: false,
+                captures: vec![],
+                has_tail_calls: false,
+            }],
+            structs: vec![],
+            sum_types: vec![MirSumTypeDef {
+                name: "Option".to_string(),
+                variants: vec![
+                    MirVariantDef {
+                        name: "Some".to_string(),
+                        fields: vec![MirType::Int],
+                        tag: 0,
+                    },
+                    MirVariantDef {
+                        name: "None".to_string(),
+                        fields: vec![],
+                        tag: 1,
+                    },
+                ],
+            }],
+            entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
+            native_functions: vec![],
+        };
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+
+        let ir = codegen.get_llvm_ir();
+        assert!(ir.contains("store i8 0"), "Should store tag 0 for Some");
+    }
+
+    #[test]
+    fn test_match_on_sum_type() {
+        let mir = MirModule {
+            functions: vec![MirFunction {
+                name: "test_fn".to_string(),
+                params: vec![],
+                return_type: MirType::Int,
+                body: MirExpr::Match {
+                    scrutinee: Box::new(MirExpr::ConstructVariant {
+                        type_name: "Option".to_string(),
+                        variant: "Some".to_string(),
+                        fields: vec![MirExpr::IntLit(42, MirType::Int)],
+                        ty: MirType::SumType("Option".to_string()),
+                    }),
+                    arms: vec![
+                        MirMatchArm {
+                            pattern: MirPattern::Constructor {
+                                type_name: "Option".to_string(),
+                                variant: "Some".to_string(),
+                                fields: vec![MirPattern::Var("x".to_string(), MirType::Int)],
+                                bindings: vec![("x".to_string(), MirType::Int)],
+                            },
+                            guard: None,
+                            body: MirExpr::Var("x".to_string(), MirType::Int),
+                        },
+                        MirMatchArm {
+                            pattern: MirPattern::Constructor {
+                                type_name: "Option".to_string(),
+                                variant: "None".to_string(),
+                                fields: vec![],
+                                bindings: vec![],
+                            },
+                            guard: None,
+                            body: MirExpr::IntLit(0, MirType::Int),
+                        },
+                    ],
+                    ty: MirType::Int,
+                },
+                is_closure_fn: false,
+                captures: vec![],
+                has_tail_calls: false,
+            }],
+            structs: vec![],
+            sum_types: vec![MirSumTypeDef {
+                name: "Option".to_string(),
+                variants: vec![
+                    MirVariantDef {
+                        name: "Some".to_string(),
+                        fields: vec![MirType::Int],
+                        tag: 0,
+                    },
+                    MirVariantDef {
+                        name: "None".to_string(),
+                        fields: vec![],
+                        tag: 1,
+                    },
+                ],
+            }],
+            entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
+            native_functions: vec![],
+        };
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+
+        let ir = codegen.get_llvm_ir();
+        assert!(
+            ir.contains("switch i8"),
+            "Should have switch on tag: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn nested_sum_pattern_inside_generic_result_codegen_dereferences_payload() {
+        let parse = mesh_parser::parse(
+            "fn classify(result :: Result<Bytes, CryptoError>) do\n\
+               case result do\n\
+                 Err(InvalidLength(_, _)) -> 1\n\
+                 _ -> 0\n\
+               end\n\
+             end",
+        );
+        let typeck = mesh_typeck::check(&parse);
+        assert!(typeck.errors.is_empty(), "type errors: {:?}", typeck.errors);
+        let mut mir = crate::mir::lower::lower_to_mir(
+            &parse,
+            &typeck,
+            "",
+            &std::collections::HashSet::new(),
+            &std::collections::HashMap::new(),
+        )
+        .expect("nested generic sum should lower");
+        mir.functions.retain(|function| function.name == "classify");
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+        let ir = codegen.get_llvm_ir();
+
+        assert_eq!(ir.matches("switch i8").count(), 2, "{ir}");
+        assert!(ir.contains("boxed_variant_payload"), "{ir}");
+    }
+
+    #[test]
+    fn test_closure_creation() {
+        let mir = MirModule {
+            functions: vec![
+                MirFunction {
+                    name: "__closure_0".to_string(),
+                    params: vec![
+                        ("__env".to_string(), MirType::Ptr),
+                        ("x".to_string(), MirType::Int),
+                    ],
+                    return_type: MirType::Int,
+                    body: MirExpr::Var("x".to_string(), MirType::Int),
+                    is_closure_fn: true,
+                    captures: vec![],
+                    has_tail_calls: false,
+                },
+                MirFunction {
+                    name: "test_fn".to_string(),
+                    params: vec![],
+                    return_type: MirType::Closure(vec![MirType::Int], Box::new(MirType::Int)),
+                    body: MirExpr::MakeClosure {
+                        fn_name: "__closure_0".to_string(),
+                        captures: vec![],
+                        ty: MirType::Closure(vec![MirType::Int], Box::new(MirType::Int)),
+                    },
+                    is_closure_fn: false,
+                    captures: vec![],
+                    has_tail_calls: false,
+                },
+            ],
+            structs: vec![],
+            sum_types: vec![],
+            entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
+            native_functions: vec![],
+        };
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+
+        let ir = codegen.get_llvm_ir();
+        assert!(
+            ir.contains("@__closure_0"),
+            "Should have closure function: {}",
+            ir
+        );
+        // Closure function takes ptr as first arg
+        assert!(
+            ir.contains("define { ptr, ptr } @test_fn"),
+            "test_fn should return closure struct: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_closure_environment_describes_itself() {
+        // A closure's type does not say what it captured, so its environment
+        // starts with a pointer to a shape table of its own, which is what
+        // lets the closure be copied to another actor. Here: `{table, name,
+        // count}` with a String at offset 8 and an Int nobody needs to follow.
+        let closure_ty = MirType::Closure(vec![], Box::new(MirType::String));
+        let captures = vec![
+            ("name".to_string(), MirType::String),
+            ("count".to_string(), MirType::Int),
+        ];
+        let mir = MirModule {
+            functions: vec![
+                MirFunction {
+                    name: "__closure_0".to_string(),
+                    params: vec![("__env".to_string(), MirType::Ptr)],
+                    return_type: MirType::String,
+                    body: MirExpr::Var("name".to_string(), MirType::String),
+                    is_closure_fn: true,
+                    captures: captures.clone(),
+                    has_tail_calls: false,
+                },
+                MirFunction {
+                    name: "test_fn".to_string(),
+                    params: captures.clone(),
+                    return_type: closure_ty.clone(),
+                    body: MirExpr::MakeClosure {
+                        fn_name: "__closure_0".to_string(),
+                        captures: captures
+                            .iter()
+                            .map(|(name, ty)| MirExpr::Var(name.clone(), ty.clone()))
+                            .collect(),
+                        ty: closure_ty,
+                    },
+                    is_closure_fn: false,
+                    captures: vec![],
+                    has_tail_calls: false,
+                },
+            ],
+            structs: vec![],
+            sum_types: vec![],
+            entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
+            native_functions: vec![],
+        };
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+        let ir = codegen.get_llvm_ir();
+        // [len, root AGG 1 (0 -> 7), STRING, SCALAR, env AGG 1 (8 -> 5)]: the
+        // String at offset 8 is followed, the Int at offset 16 is not listed.
+        assert!(
+            ir.contains(
+                "[11 x i32] [i32 11, i32 6, i32 1, i32 0, i32 7, i32 12, i32 0, i32 6, i32 1, \
+                 i32 8, i32 5]"
+            ),
+            "environment shape table, a String at offset 8: {}",
+            ir
+        );
+        assert!(
+            ir.contains("store ptr @msg_shape, ptr %env_raw"),
+            "the environment's first word is its table: {}",
+            ir
+        );
+        // The closure reads its captures past that word.
+        assert!(
+            ir.contains("getelementptr inbounds nuw { ptr, ptr, i64 }, ptr %env_ptr, i32 0, i32 1"),
+            "captures start at field 1: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_comparison_operators() {
+        let body = MirExpr::BinOp {
+            op: BinOp::Lt,
+            lhs: Box::new(MirExpr::Var("a".to_string(), MirType::Int)),
+            rhs: Box::new(MirExpr::Var("b".to_string(), MirType::Int)),
+            ty: MirType::Bool,
+        };
+        let ir = compile_fn_to_ir(
+            vec![
+                ("a".to_string(), MirType::Int),
+                ("b".to_string(), MirType::Int),
+            ],
+            body,
+            MirType::Bool,
+        );
+        assert!(
+            ir.contains("icmp slt"),
+            "Should contain signed less-than: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_negation() {
+        let body = MirExpr::UnaryOp {
+            op: UnaryOp::Neg,
+            operand: Box::new(MirExpr::Var("x".to_string(), MirType::Int)),
+            ty: MirType::Int,
+        };
+        let ir = compile_fn_to_ir(vec![("x".to_string(), MirType::Int)], body, MirType::Int);
+        assert!(
+            ir.contains("sub i64 0"),
+            "Should contain int negation: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_actor_spawn_codegen() {
+        // Test that ActorSpawn generates a call to mesh_actor_spawn
+        let body = MirExpr::ActorSpawn {
+            func: Box::new(MirExpr::Var(
+                "my_actor".to_string(),
+                MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Pid(None))),
+            )),
+            args: vec![MirExpr::IntLit(42, MirType::Int)],
+            priority: 1,
+            terminate_callback: None,
+            ty: MirType::Pid(None),
+        };
+
+        // Need to declare a "my_actor" function in the module
+        let mir = MirModule {
+            functions: vec![
+                MirFunction {
+                    name: "my_actor".to_string(),
+                    params: vec![("n".to_string(), MirType::Int)],
+                    return_type: MirType::Pid(None),
+                    body: MirExpr::ActorSelf {
+                        ty: MirType::Pid(None),
+                    },
+                    is_closure_fn: false,
+                    captures: vec![],
+                    has_tail_calls: false,
+                },
+                MirFunction {
+                    name: "test_fn".to_string(),
+                    params: vec![],
+                    return_type: MirType::Pid(None),
+                    body,
+                    is_closure_fn: false,
+                    captures: vec![],
+                    has_tail_calls: false,
+                },
+            ],
+            structs: vec![],
+            sum_types: vec![],
+            entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
+            native_functions: vec![],
+        };
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+
+        let ir = codegen.get_llvm_ir();
+        assert!(
+            ir.contains("mesh_actor_spawn"),
+            "Should call mesh_actor_spawn: {}",
+            ir
+        );
+        assert!(
+            ir.contains("mesh_actor_self"),
+            "Should call mesh_actor_self: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_actor_send_codegen() {
+        let body = MirExpr::ActorSend {
+            target: Box::new(MirExpr::Var("pid".to_string(), MirType::Pid(None))),
+            message: Box::new(MirExpr::IntLit(99, MirType::Int)),
+            ty: MirType::Int,
+        };
+        let ir = compile_fn_to_ir(
+            vec![("pid".to_string(), MirType::Pid(None))],
+            body,
+            MirType::Int,
+        );
+        assert!(
+            ir.contains("mesh_actor_send"),
+            "Should call mesh_actor_send: {}",
+            ir
+        );
+    }
+
+    /// A pid is plain bits to a copy on this node, but one for another node
+    /// has to find it: a message holding one gets a table.
+    #[test]
+    fn test_actor_send_describes_the_pids_in_a_message() {
+        let body = MirExpr::ActorSend {
+            target: Box::new(MirExpr::Var("pid".to_string(), MirType::Pid(None))),
+            message: Box::new(MirExpr::Shaped {
+                value: Box::new(MirExpr::Var("request".to_string(), MirType::Ptr)),
+                shape: MsgShape::Tuple(vec![MsgShape::Pid, MsgShape::String]),
+            }),
+            ty: MirType::Int,
+        };
+        let ir = compile_fn_to_ir(
+            vec![
+                ("pid".to_string(), MirType::Pid(None)),
+                ("request".to_string(), MirType::Ptr),
+            ],
+            body,
+            MirType::Int,
+        );
+        // [len, AGG 1 (0 -> 7), PID, STRING, TUPLE 2 (5, 6)]
+        assert!(
+            ir.contains(
+                "[11 x i32] [i32 11, i32 6, i32 1, i32 0, i32 7, i32 13, i32 12, i32 4, i32 2, \
+                 i32 5, i32 6]"
+            ),
+            "shape table for (Pid, String): {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_actor_send_copies_string_messages() {
+        let body = MirExpr::ActorSend {
+            target: Box::new(MirExpr::Var("pid".to_string(), MirType::Pid(None))),
+            message: Box::new(MirExpr::Var("text".to_string(), MirType::String)),
+            ty: MirType::Int,
+        };
+        let ir = compile_fn_to_ir(
+            vec![
+                ("pid".to_string(), MirType::Pid(None)),
+                ("text".to_string(), MirType::String),
+            ],
+            body,
+            MirType::Int,
+        );
+        // A String message is a pointer into the sender's heap; the shape
+        // tells the runtime to copy it for the receiver. The table is
+        // [len, AGG, 1 field, offset 0, node 5, STRING].
+        assert!(
+            ir.contains("call i64 @mesh_actor_send_shaped"),
+            "String messages should use the shaped send: {}",
+            ir
+        );
+        assert!(
+            ir.contains("[6 x i32] [i32 6, i32 6, i32 1, i32 0, i32 5, i32 12]"),
+            "shape table for a String: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_one_word_struct_is_described_inline_in_a_tuple_slot() {
+        // `Batch { names: List<String> }` is one word wide, so a tuple field
+        // holds its bits (the list pointer), not a box. Described as a box,
+        // the list would be copied as if it were the struct and its strings
+        // left behind in the sender's heap.
+        let batch = MsgShape::Struct(
+            "Batch".to_string(),
+            vec![MsgShape::List(Box::new(MsgShape::Leaf))],
+        );
+        let body = MirExpr::ActorSend {
+            target: Box::new(MirExpr::Var("pid".to_string(), MirType::Pid(None))),
+            message: Box::new(MirExpr::Shaped {
+                value: Box::new(MirExpr::Var("pair".to_string(), MirType::Ptr)),
+                shape: MsgShape::Tuple(vec![batch, MsgShape::Scalar]),
+            }),
+            ty: MirType::Int,
+        };
+        let mir = MirModule {
+            functions: vec![MirFunction {
+                name: "test_fn".to_string(),
+                params: vec![
+                    ("pid".to_string(), MirType::Pid(None)),
+                    ("pair".to_string(), MirType::Ptr),
+                ],
+                return_type: MirType::Int,
+                body,
+                is_closure_fn: false,
+                captures: vec![],
+                has_tail_calls: false,
+            }],
+            structs: vec![MirStructDef {
+                name: "Batch".to_string(),
+                fields: vec![("names".to_string(), MirType::Ptr)],
+            }],
+            sum_types: vec![],
+            entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
+            native_functions: vec![],
+        };
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+        let ir = codegen.get_llvm_ir();
+        // [len, AGG 1 (0 -> 13), Batch: AGG 1 (0 -> 10), LEAF, LIST 9, SCALAR,
+        //  TUPLE 2 (5, 12)]: the tuple's first field is the AGG itself.
+        assert!(
+            ir.contains(
+                "[17 x i32] [i32 17, i32 6, i32 1, i32 0, i32 13, i32 6, i32 1, i32 0, \
+                 i32 10, i32 1, i32 2, i32 9, i32 0, i32 4, i32 2, i32 5, i32 12]"
+            ),
+            "shape table for (Batch, Int): {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_actor_receive_codegen() {
+        let body = MirExpr::ActorReceive {
+            handler: None,
+            timeout_ms: None,
+            timeout_body: None,
+            ty: MirType::Int,
+        };
+        let ir = compile_expr_to_ir(body, MirType::Int);
+        assert!(
+            ir.contains("mesh_actor_receive"),
+            "Should call mesh_actor_receive: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_actor_link_codegen() {
+        let body = MirExpr::ActorLink {
+            target: Box::new(MirExpr::Var("pid".to_string(), MirType::Pid(None))),
+            ty: MirType::Unit,
+        };
+        let ir = compile_fn_to_ir(
+            vec![("pid".to_string(), MirType::Pid(None))],
+            body,
+            MirType::Unit,
+        );
+        assert!(
+            ir.contains("mesh_actor_link"),
+            "Should call mesh_actor_link: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_main_wrapper_init_actor() {
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        let mir = hello_world_mir();
+        codegen.compile(&mir).unwrap();
+
+        let ir = codegen.get_llvm_ir();
+        assert!(
+            ir.contains("mesh_rt_init_actor"),
+            "Main should call mesh_rt_init_actor: {}",
+            ir
+        );
+        assert!(
+            ir.contains("mesh_rt_run_scheduler"),
+            "Main should call mesh_rt_run_scheduler: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_reduction_check_after_call() {
+        // After a user function call, there should be a mesh_reduction_check
+        let mir = MirModule {
+            functions: vec![
+                MirFunction {
+                    name: "helper".to_string(),
+                    params: vec![],
+                    return_type: MirType::Int,
+                    body: MirExpr::IntLit(1, MirType::Int),
+                    is_closure_fn: false,
+                    captures: vec![],
+                    has_tail_calls: false,
+                },
+                MirFunction {
+                    name: "test_fn".to_string(),
+                    params: vec![],
+                    return_type: MirType::Int,
+                    body: MirExpr::Call {
+                        func: Box::new(MirExpr::Var(
+                            "helper".to_string(),
+                            MirType::FnPtr(vec![], Box::new(MirType::Int)),
+                        )),
+                        args: vec![],
+                        ty: MirType::Int,
+                    },
+                    is_closure_fn: false,
+                    captures: vec![],
+                    has_tail_calls: false,
+                },
+            ],
+            structs: vec![],
+            sum_types: vec![],
+            entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
+            native_functions: vec![],
+        };
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+
+        let ir = codegen.get_llvm_ir();
+        assert!(
+            ir.contains("mesh_reduction_check"),
+            "Should insert mesh_reduction_check after call: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_pid_is_i64_in_ir() {
+        // Verify that Pid type maps to i64 in the generated IR
+        let body = MirExpr::ActorSelf {
+            ty: MirType::Pid(None),
+        };
+        let ir = compile_expr_to_ir(body, MirType::Pid(None));
+        // mesh_actor_self returns i64
+        assert!(
+            ir.contains("i64 @mesh_actor_self"),
+            "mesh_actor_self should return i64: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_actor_spawn_with_terminate_callback() {
+        // Test that mesh_actor_set_terminate is called after spawn when callback exists
+        let body = MirExpr::ActorSpawn {
+            func: Box::new(MirExpr::Var(
+                "my_actor".to_string(),
+                MirType::FnPtr(vec![], Box::new(MirType::Pid(None))),
+            )),
+            args: vec![],
+            priority: 1,
+            terminate_callback: Some(Box::new(MirExpr::Var(
+                "__terminate_my_actor".to_string(),
+                MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Unit)),
+            ))),
+            ty: MirType::Pid(None),
+        };
+
+        let mir = MirModule {
+            functions: vec![
+                MirFunction {
+                    name: "my_actor".to_string(),
+                    params: vec![],
+                    return_type: MirType::Pid(None),
+                    body: MirExpr::ActorSelf {
+                        ty: MirType::Pid(None),
+                    },
+                    is_closure_fn: false,
+                    captures: vec![],
+                    has_tail_calls: false,
+                },
+                MirFunction {
+                    name: "__terminate_my_actor".to_string(),
+                    params: vec![
+                        ("state_ptr".to_string(), MirType::Ptr),
+                        ("reason_ptr".to_string(), MirType::Ptr),
+                    ],
+                    return_type: MirType::Unit,
+                    body: MirExpr::Unit,
+                    is_closure_fn: false,
+                    captures: vec![],
+                    has_tail_calls: false,
+                },
+                MirFunction {
+                    name: "test_fn".to_string(),
+                    params: vec![],
+                    return_type: MirType::Pid(None),
+                    body,
+                    is_closure_fn: false,
+                    captures: vec![],
+                    has_tail_calls: false,
+                },
+            ],
+            structs: vec![],
+            sum_types: vec![],
+            entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
+            native_functions: vec![],
+        };
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+
+        let ir = codegen.get_llvm_ir();
+        assert!(
+            ir.contains("mesh_actor_spawn"),
+            "Should call mesh_actor_spawn: {}",
+            ir
+        );
+        assert!(
+            ir.contains("mesh_actor_set_terminate"),
+            "Should call mesh_actor_set_terminate: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_match_on_integer_literal() {
+        let body = MirExpr::Match {
+            scrutinee: Box::new(MirExpr::IntLit(1, MirType::Int)),
+            arms: vec![
+                MirMatchArm {
+                    pattern: MirPattern::Literal(MirLiteral::Int(1)),
+                    guard: None,
+                    body: MirExpr::IntLit(10, MirType::Int),
+                },
+                MirMatchArm {
+                    pattern: MirPattern::Wildcard,
+                    guard: None,
+                    body: MirExpr::IntLit(0, MirType::Int),
+                },
+            ],
+            ty: MirType::Int,
+        };
+        let ir = compile_expr_to_ir(body, MirType::Int);
+        assert!(
+            ir.contains("icmp eq i64"),
+            "Should have int comparison for literal match: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_while_loop_basic_blocks() {
+        // While loop should produce cond/body/merge basic blocks
+        let body = MirExpr::While {
+            cond: Box::new(MirExpr::BoolLit(false, MirType::Bool)),
+            body: Box::new(MirExpr::IntLit(42, MirType::Int)),
+            ty: MirType::Unit,
+        };
+        let ir = compile_expr_to_ir(body, MirType::Unit);
+        assert!(
+            ir.contains("while_cond"),
+            "Should have while_cond block: {}",
+            ir
+        );
+        assert!(
+            ir.contains("while_body"),
+            "Should have while_body block: {}",
+            ir
+        );
+        assert!(
+            ir.contains("while_merge"),
+            "Should have while_merge block: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_while_loop_reduction_check() {
+        // While loop body should emit mesh_reduction_check at back-edge
+        let body = MirExpr::While {
+            cond: Box::new(MirExpr::BoolLit(false, MirType::Bool)),
+            body: Box::new(MirExpr::IntLit(42, MirType::Int)),
+            ty: MirType::Unit,
+        };
+        let ir = compile_expr_to_ir(body, MirType::Unit);
+        assert!(
+            ir.contains("mesh_reduction_check"),
+            "Should emit mesh_reduction_check at loop back-edge: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_while_with_break() {
+        // While with break should compile and have merge block reachable
+        let body = MirExpr::While {
+            cond: Box::new(MirExpr::BoolLit(true, MirType::Bool)),
+            body: Box::new(MirExpr::Break),
+            ty: MirType::Unit,
+        };
+        let ir = compile_expr_to_ir(body, MirType::Unit);
+        assert!(
+            ir.contains("while_merge"),
+            "Should have while_merge block: {}",
+            ir
+        );
+        // Break should branch to while_merge
+        assert!(
+            ir.contains("br label %while_merge"),
+            "Break should branch to while_merge: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_while_with_continue() {
+        // While with continue should emit reduction check and branch to cond
+        let body = MirExpr::While {
+            cond: Box::new(MirExpr::BoolLit(false, MirType::Bool)),
+            body: Box::new(MirExpr::Continue),
+            ty: MirType::Unit,
+        };
+        let ir = compile_expr_to_ir(body, MirType::Unit);
+        // Continue should emit reduction check before branching to cond
+        assert!(
+            ir.contains("mesh_reduction_check"),
+            "Continue should emit mesh_reduction_check: {}",
+            ir
+        );
+    }
+
+    // ── For-in range codegen tests ──────────────────────────────────
+
+    #[test]
+    fn test_for_in_range_basic_blocks() {
+        // For-in range should produce header/body/latch/merge basic blocks
+        let body = MirExpr::ForInRange {
+            var: "i".to_string(),
+            start: Box::new(MirExpr::IntLit(0, MirType::Int)),
+            end: Box::new(MirExpr::IntLit(10, MirType::Int)),
+            filter: None,
+            body: Box::new(MirExpr::IntLit(1, MirType::Int)),
+            ty: MirType::Ptr,
+        };
+        let ir = compile_expr_to_ir(body, MirType::Ptr);
+        assert!(
+            ir.contains("forin_header"),
+            "Should have forin_header block: {}",
+            ir
+        );
+        assert!(
+            ir.contains("forin_body"),
+            "Should have forin_body block: {}",
+            ir
+        );
+        assert!(
+            ir.contains("forin_latch"),
+            "Should have forin_latch block: {}",
+            ir
+        );
+        assert!(
+            ir.contains("forin_merge"),
+            "Should have forin_merge block: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_for_in_range_slt_comparison() {
+        // For-in range should use icmp slt (NOT sle) for half-open range
+        let body = MirExpr::ForInRange {
+            var: "i".to_string(),
+            start: Box::new(MirExpr::IntLit(0, MirType::Int)),
+            end: Box::new(MirExpr::IntLit(5, MirType::Int)),
+            filter: None,
+            body: Box::new(MirExpr::IntLit(1, MirType::Int)),
+            ty: MirType::Ptr,
+        };
+        let ir = compile_expr_to_ir(body, MirType::Ptr);
+        assert!(
+            ir.contains("icmp slt"),
+            "Should use icmp slt for half-open range: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_for_in_range_reduction_check_in_latch() {
+        // Latch block should contain mesh_reduction_check
+        let body = MirExpr::ForInRange {
+            var: "i".to_string(),
+            start: Box::new(MirExpr::IntLit(0, MirType::Int)),
+            end: Box::new(MirExpr::IntLit(10, MirType::Int)),
+            filter: None,
+            body: Box::new(MirExpr::IntLit(1, MirType::Int)),
+            ty: MirType::Ptr,
+        };
+        let ir = compile_expr_to_ir(body, MirType::Ptr);
+        assert!(
+            ir.contains("mesh_reduction_check"),
+            "Should emit mesh_reduction_check in latch block: {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_for_in_range_returns_list() {
+        // ForInRange now returns a list (Ptr), not Unit
+        let body = MirExpr::ForInRange {
+            var: "i".to_string(),
+            start: Box::new(MirExpr::IntLit(0, MirType::Int)),
+            end: Box::new(MirExpr::IntLit(3, MirType::Int)),
+            filter: None,
+            body: Box::new(MirExpr::Var("i".to_string(), MirType::Int)),
+            ty: MirType::Ptr,
+        };
+        let ir = compile_expr_to_ir(body, MirType::Ptr);
+        assert!(
+            ir.contains("mesh_list_builder_new"),
+            "ForInRange should use list builder: {}",
+            ir
+        );
+        assert!(
+            ir.contains("mesh_list_builder_push"),
+            "ForInRange should push body results to list: {}",
+            ir
+        );
+        assert!(
+            ir.contains("ret ptr"),
+            "ForInRange should return ptr (list): {}",
+            ir
+        );
+    }
+
+    #[test]
+    fn test_for_in_list_basic_blocks() {
+        // ForInList should produce four basic blocks and use list builder
+        let body = MirExpr::ForInList {
+            var: "x".to_string(),
+            collection: Box::new(MirExpr::ListLit {
+                elements: vec![],
+                ty: MirType::Ptr,
+            }),
+            filter: None,
+            body: Box::new(MirExpr::Var("x".to_string(), MirType::Int)),
+            elem_ty: MirType::Int,
+            ty: MirType::Ptr,
+        };
+        let ir = compile_expr_to_ir(body, MirType::Ptr);
+        assert!(
+            ir.contains("forin_header"),
+            "Should have forin_header block: {}",
+            ir
+        );
+        assert!(
+            ir.contains("forin_body"),
+            "Should have forin_body block: {}",
+            ir
+        );
+        assert!(
+            ir.contains("forin_latch"),
+            "Should have forin_latch block: {}",
+            ir
+        );
+        assert!(
+            ir.contains("forin_merge"),
+            "Should have forin_merge block: {}",
+            ir
+        );
+        assert!(
+            ir.contains("mesh_list_length"),
+            "Should call mesh_list_length: {}",
+            ir
+        );
+        assert!(
+            ir.contains("mesh_list_builder_new"),
+            "Should use list builder: {}",
+            ir
+        );
+        assert!(
+            ir.contains("mesh_list_get"),
+            "Should call mesh_list_get: {}",
+            ir
+        );
+    }
+
+    /// Verify that constructing a variant with a multi-field struct payload
+    /// generates pointer-boxing code (heap-allocate + store pointer) instead of
+    /// directly storing the oversized struct into the {i8, ptr} sum type slot.
+    ///
+    /// This tests the fix for the ABI segfault where Result<MultiFieldStruct, String>
+    /// caused a buffer overflow: the struct (>8 bytes) was written into the ptr slot
+    /// (8 bytes) of the {i8, ptr} sum type layout.
+    #[test]
+    fn test_struct_in_result_pointer_boxing() {
+        // Build a MIR module with:
+        // - struct TestPair { x: Int, y: Int } (16 bytes, > 8 byte ptr slot)
+        // - sum type Result with Ptr fields (like builtin registration)
+        // - function that constructs Ok(TestPair { x: 42, y: 99 })
+        let mir = MirModule {
+            functions: vec![MirFunction {
+                name: "make_ok".to_string(),
+                params: vec![],
+                return_type: MirType::SumType("Result".to_string()),
+                body: MirExpr::ConstructVariant {
+                    type_name: "Result".to_string(),
+                    variant: "Ok".to_string(),
+                    fields: vec![MirExpr::StructLit {
+                        name: "TestPair".to_string(),
+                        fields: vec![
+                            ("x".to_string(), MirExpr::IntLit(42, MirType::Int)),
+                            ("y".to_string(), MirExpr::IntLit(99, MirType::Int)),
+                        ],
+                        ty: MirType::Struct("TestPair".to_string()),
+                    }],
+                    ty: MirType::SumType("Result".to_string()),
+                },
+                is_closure_fn: false,
+                captures: vec![],
+                has_tail_calls: false,
+            }],
+            structs: vec![MirStructDef {
+                name: "TestPair".to_string(),
+                fields: vec![
+                    ("x".to_string(), MirType::Int),
+                    ("y".to_string(), MirType::Int),
+                ],
+            }],
+            sum_types: vec![MirSumTypeDef {
+                name: "Result".to_string(),
+                variants: vec![
+                    MirVariantDef {
+                        name: "Ok".to_string(),
+                        fields: vec![MirType::Ptr],
+                        tag: 0,
+                    },
+                    MirVariantDef {
+                        name: "Err".to_string(),
+                        fields: vec![MirType::Ptr],
+                        tag: 1,
+                    },
+                ],
+            }],
+            entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
+            native_functions: vec![],
+        };
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+
+        let ir = codegen.get_llvm_ir();
+
+        // The IR should contain a call to mesh_gc_alloc_actor for heap-allocating
+        // the struct before storing it into the variant's ptr slot.
+        assert!(
+            ir.contains("variant_box") && ir.contains("mesh_gc_alloc_actor"),
+            "Should heap-allocate struct via mesh_gc_alloc_actor (variant_box): {}",
+            ir
+        );
+
+        // The IR should store the struct into the heap pointer, not into the variant directly.
+        assert!(
+            ir.contains("store %TestPair") && ir.contains("variant_box"),
+            "Should store struct into heap allocation: {}",
+            ir
+        );
+
+        // The variant's ptr slot should receive the heap pointer, not the struct.
+        assert!(
+            ir.contains("store ptr %variant_box"),
+            "Should store heap pointer into variant ptr slot: {}",
+            ir
+        );
+    }
+
+    /// Verify that constructing a variant with a scalar payload in the generic
+    /// {i8, ptr} Result layout boxes the scalar before storing it.
+    ///
+    /// This covers helpers like:
+    /// `let applied = Sqlite.execute(...)?; Ok(applied)`
+    /// where the runtime returns a boxed integer pointer but source-level `Ok`
+    /// reconstruction would previously write the raw i64 into the ptr slot.
+    #[test]
+    fn test_int_in_result_pointer_boxing() {
+        let mir = MirModule {
+            functions: vec![MirFunction {
+                name: "make_ok_int".to_string(),
+                params: vec![],
+                return_type: MirType::SumType("Result".to_string()),
+                body: MirExpr::ConstructVariant {
+                    type_name: "Result".to_string(),
+                    variant: "Ok".to_string(),
+                    fields: vec![MirExpr::IntLit(42, MirType::Int)],
+                    ty: MirType::SumType("Result".to_string()),
+                },
+                is_closure_fn: false,
+                captures: vec![],
+                has_tail_calls: false,
+            }],
+            structs: vec![],
+            sum_types: vec![MirSumTypeDef {
+                name: "Result".to_string(),
+                variants: vec![
+                    MirVariantDef {
+                        name: "Ok".to_string(),
+                        fields: vec![MirType::Ptr],
+                        tag: 0,
+                    },
+                    MirVariantDef {
+                        name: "Err".to_string(),
+                        fields: vec![MirType::Ptr],
+                        tag: 1,
+                    },
+                ],
+            }],
+            entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
+            native_functions: vec![],
+        };
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+
+        let ir = codegen.get_llvm_ir();
+
+        assert!(
+            ir.contains("variant_box") && ir.contains("mesh_gc_alloc_actor"),
+            "Should heap-allocate scalar payload via mesh_gc_alloc_actor (variant_box): {}",
+            ir
+        );
+        assert!(
+            ir.contains("store i64 42, ptr %variant_box"),
+            "Should store the scalar into the boxed payload allocation: {}",
+            ir
+        );
+        assert!(
+            ir.contains("store ptr %variant_box"),
+            "Should store the boxed payload pointer into the Result ptr slot: {}",
+            ir
+        );
+    }
+
+    /// Verify that constructing a variant with a struct payload AND pattern matching
+    /// to extract it generates correct IR with pointer-boxing (construction) and
+    /// pointer dereferencing (destructuring).
+    #[test]
+    fn test_struct_in_result_construct_and_match_ir() {
+        // Build a MIR module that constructs Ok(TestPair{42, 99}) and pattern
+        // matches to extract pair.x + pair.y. This mirrors the real-world
+        // case that caused segfaults before the pointer-boxing fix.
+        let mir = MirModule {
+            functions: vec![MirFunction {
+                name: "roundtrip".to_string(),
+                params: vec![],
+                return_type: MirType::Int,
+                body: MirExpr::Match {
+                    scrutinee: Box::new(MirExpr::ConstructVariant {
+                        type_name: "Result".to_string(),
+                        variant: "Ok".to_string(),
+                        fields: vec![MirExpr::StructLit {
+                            name: "TestPair".to_string(),
+                            fields: vec![
+                                ("x".to_string(), MirExpr::IntLit(42, MirType::Int)),
+                                ("y".to_string(), MirExpr::IntLit(99, MirType::Int)),
+                            ],
+                            ty: MirType::Struct("TestPair".to_string()),
+                        }],
+                        ty: MirType::SumType("Result".to_string()),
+                    }),
+                    arms: vec![
+                        MirMatchArm {
+                            pattern: MirPattern::Constructor {
+                                type_name: "Result".to_string(),
+                                variant: "Ok".to_string(),
+                                fields: vec![MirPattern::Var(
+                                    "pair".to_string(),
+                                    MirType::Struct("TestPair".to_string()),
+                                )],
+                                bindings: vec![(
+                                    "pair".to_string(),
+                                    MirType::Struct("TestPair".to_string()),
+                                )],
+                            },
+                            guard: None,
+                            body: MirExpr::BinOp {
+                                op: BinOp::Add,
+                                lhs: Box::new(MirExpr::FieldAccess {
+                                    object: Box::new(MirExpr::Var(
+                                        "pair".to_string(),
+                                        MirType::Struct("TestPair".to_string()),
+                                    )),
+                                    field: "x".to_string(),
+                                    ty: MirType::Int,
+                                }),
+                                rhs: Box::new(MirExpr::FieldAccess {
+                                    object: Box::new(MirExpr::Var(
+                                        "pair".to_string(),
+                                        MirType::Struct("TestPair".to_string()),
+                                    )),
+                                    field: "y".to_string(),
+                                    ty: MirType::Int,
+                                }),
+                                ty: MirType::Int,
+                            },
+                        },
+                        MirMatchArm {
+                            pattern: MirPattern::Constructor {
+                                type_name: "Result".to_string(),
+                                variant: "Err".to_string(),
+                                fields: vec![MirPattern::Wildcard],
+                                bindings: vec![],
+                            },
+                            guard: None,
+                            body: MirExpr::IntLit(0, MirType::Int),
+                        },
+                    ],
+                    ty: MirType::Int,
+                },
+                is_closure_fn: false,
+                captures: vec![],
+                has_tail_calls: false,
+            }],
+            structs: vec![MirStructDef {
+                name: "TestPair".to_string(),
+                fields: vec![
+                    ("x".to_string(), MirType::Int),
+                    ("y".to_string(), MirType::Int),
+                ],
+            }],
+            sum_types: vec![MirSumTypeDef {
+                name: "Result".to_string(),
+                variants: vec![
+                    MirVariantDef {
+                        name: "Ok".to_string(),
+                        fields: vec![MirType::Ptr],
+                        tag: 0,
+                    },
+                    MirVariantDef {
+                        name: "Err".to_string(),
+                        fields: vec![MirType::Ptr],
+                        tag: 1,
+                    },
+                ],
+            }],
+            entry_function: None,
+            service_dispatch: std::collections::HashMap::new(),
+            actors: Vec::new(),
+            native_functions: vec![],
+        };
+
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "test", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+
+        let ir = codegen.get_llvm_ir();
+
+        // Construction: should heap-allocate the struct payload.
+        assert!(
+            ir.contains("variant_box"),
+            "Construction should heap-allocate struct (variant_box): {}",
+            ir
+        );
+
+        // Destructuring: should load through the heap pointer.
+        // The typed variant access path loads the pointer from the generic
+        // payload slot, then loads the actual struct from that allocation.
+        assert!(
+            ir.contains("boxed_variant_payload") && ir.contains("load %TestPair"),
+            "Destructuring should dereference the boxed variant payload: {}",
+            ir
+        );
+
+        // Should have switch on tag byte for pattern matching.
+        assert!(
+            ir.contains("switch i8"),
+            "Should switch on variant tag: {}",
+            ir
+        );
+
+        // Should have add instruction for pair.x + pair.y.
+        assert!(ir.contains("add i64"), "Should add pair.x + pair.y: {}", ir);
+    }
+}

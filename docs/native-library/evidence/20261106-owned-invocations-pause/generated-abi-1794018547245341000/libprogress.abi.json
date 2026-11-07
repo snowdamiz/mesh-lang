@@ -1,0 +1,68 @@
+{
+  "abiVersion": 1,
+  "artifact": "libprogress.dylib",
+  "exports": [
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "old",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "progress_old_submit_v2",
+      "symbol": "progress_old"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "old_error",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "progress_error_submit_v2",
+      "symbol": "progress_error"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "load",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "progress_load_submit_v2",
+      "symbol": "progress_load"
+    },
+    {
+      "maxInputBytes": 1048576,
+      "maxOutputBytes": 1048576,
+      "meshFunction": "status",
+      "request": "bytes",
+      "response": "result<bytes,string>",
+      "scheduledSymbol": "progress_status_submit_v2",
+      "symbol": "progress_status"
+    }
+  ],
+  "nativeAuthorityExtension": {
+    "abiVersion": 2,
+    "activationSymbol": "mesh_library_enable_protected_v2",
+    "capabilitiesSymbol": "mesh_library_capabilities_v2",
+    "completeEffectInventory": false,
+    "dispatchTrust": "native descriptor validation required",
+    "invocationSymbol": "mesh_library_call_scoped_v2",
+    "publication": "not qualified",
+    "refusalStatus": 10,
+    "scheduledInvocations": {
+      "audience": "native-only; trusted descriptor selection",
+      "codeLifetime": "process-lifetime; dynamic unloading unsupported",
+      "completion": "once-only; handle lifetime is not effect or publication permission",
+      "header": "libprogress.invocations.h",
+      "release": "nonjoining; does not cancel",
+      "request": "copied-before-submit-return",
+      "requiredCapability": 4
+    },
+    "scheduling": "synchronous; existing call serialization",
+    "unsupportedStatus": 11
+  },
+  "ownership": {
+    "request": "borrowed-for-call",
+    "response": "caller-owned; release with mesh_library_free_returned_bytes"
+  },
+  "target": "aarch64-apple-darwin"
+}

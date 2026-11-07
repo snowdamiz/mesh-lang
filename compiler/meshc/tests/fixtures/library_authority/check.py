@@ -15,10 +15,12 @@ import sqlite3
 import sys
 import tempfile
 import threading
+import time
 
 lib = C.CDLL(sys.argv[1])
 case = sys.argv[2]
 baseline = '--baseline' in sys.argv or case.startswith('v1-')
+scheduled = '--scheduled' in sys.argv
 stack_probe = next((C.CDLL(arg.split('=',1)[1]).native_stack_probe for arg in sys.argv if arg.startswith('--stack-probe=')), None)
 stack_results = []
 P = C.c_void_p
@@ -200,7 +202,24 @@ def invoke(symbol, payload=b'', scoped_call=True):
     fn = api(symbol, [P, U, C.POINTER(Bytes)])
     out = Bytes()
     if not baseline and scoped_call:
-        status = scoped(authority, C.cast(fn, P), payload, len(payload), C.byref(out))
+        if scheduled:
+            submit = api(symbol + '_submit_v2', [P, P, U, C.POINTER(P)])
+            take = api('mesh_library_invocation_take_v2', [P, C.POINTER(Bytes)])
+            release_handle = api('mesh_library_invocation_release_v2', [P], None)
+            handle = P()
+            status = submit(authority, payload, len(payload), C.byref(handle))
+            if status == 0:
+                try:
+                    deadline = time.monotonic() + 15
+                    while True:
+                        status = take(handle, C.byref(out))
+                        if status != 12: break
+                        assert time.monotonic() < deadline, 'scheduled completion deadline'
+                        time.sleep(.001)
+                finally:
+                    release_handle(handle)
+        else:
+            status = scoped(authority, C.cast(fn, P), payload, len(payload), C.byref(out))
     else:
         status = fn(payload, len(payload), C.byref(out))
     data = C.string_at(out.data, out.len) if out.len else b''

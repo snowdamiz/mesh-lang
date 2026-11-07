@@ -1,0 +1,31 @@
+{
+  "h": {
+    "equal": true,
+    "baseline": "61220251dcb0e9486c7dd52094719f121928cf0fb78552bcdb8605495cd58a7c",
+    "candidate": "61220251dcb0e9486c7dd52094719f121928cf0fb78552bcdb8605495cd58a7c"
+  },
+  "swift": {
+    "equal": true,
+    "baseline": "d78f03643491509af6b61a50c00ac50ebab2949dbc9ff1ffa9372b105a790844",
+    "candidate": "d78f03643491509af6b61a50c00ac50ebab2949dbc9ff1ffa9372b105a790844"
+  },
+  "kt": {
+    "equal": true,
+    "baseline": "224da9ef04c51ffbd8dcd58abb851d6aa79e225691ac7c484dc2516178f2dacf",
+    "candidate": "224da9ef04c51ffbd8dcd58abb851d6aa79e225691ac7c484dc2516178f2dacf"
+  },
+  "jni.c": {
+    "equal": true,
+    "baseline": "85cef06c4c3a2fb1c4803544955b364b34ca165888dee627695ffbdb7a85404a",
+    "candidate": "85cef06c4c3a2fb1c4803544955b364b34ca165888dee627695ffbdb7a85404a"
+  },
+  "ts": {
+    "equal": true,
+    "baseline": "518a3c7d8b105f5b6b947c1c3eca72a01b2114a5518a613e0ba16576e831d238",
+    "candidate": "518a3c7d8b105f5b6b947c1c3eca72a01b2114a5518a613e0ba16576e831d238"
+  },
+  "old_rows": 185,
+  "new_rows": 185,
+  "app_rows": 176,
+  "legacy_rows_unchanged": true
+}

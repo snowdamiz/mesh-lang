@@ -1,0 +1,629 @@
+//! WebSocket room registry for pub/sub broadcast messaging.
+//!
+//! Provides a global concurrent registry mapping room names to sets of
+//! connection handles. Connections can join named rooms, leave rooms, and
+//! broadcast text frames to all members of a room.
+//!
+//! ## Architecture
+//!
+//! Modeled on `ProcessRegistry` (`crates/mesh-rt/src/actor/registry.rs`):
+//! - `rooms: RwLock<FxHashMap<String, HashSet<usize>>>` -- room to connections
+//! - `conn_rooms: RwLock<FxHashMap<usize, HashSet<String>>>` -- reverse index
+//!
+//! Lock ordering: always acquire `rooms` first, then `conn_rooms` (nested,
+//! consistent order to prevent deadlock).
+//!
+//! ## Runtime Functions
+//!
+//! - `mesh_ws_join(conn, room)` -- subscribe connection to room
+//! - `mesh_ws_leave(conn, room)` -- unsubscribe connection from room
+//! - `mesh_ws_broadcast(room, msg)` -- send text frame to all in room
+//! - `mesh_ws_broadcast_except(room, msg, except)` -- send to all except one
+
+use parking_lot::RwLock;
+use rustc_hash::FxHashMap;
+use std::borrow::Borrow;
+use std::collections::HashSet;
+use std::hash::Hash;
+use std::sync::OnceLock;
+
+use super::server::WsConnection;
+use super::WsOpcode;
+use crate::string::MeshString;
+
+// ---------------------------------------------------------------------------
+// RoomRegistry
+// ---------------------------------------------------------------------------
+
+/// Global room registry for WebSocket pub/sub.
+///
+/// Maps room names to sets of connection handles (WsConnection pointer as
+/// usize), with a reverse index for O(rooms_per_conn) cleanup on disconnect.
+#[derive(Default)]
+pub struct RoomRegistry {
+    /// room_name -> set of connection handles
+    rooms: RwLock<FxHashMap<String, HashSet<usize>>>,
+    /// connection_handle -> set of room names (reverse index for cleanup)
+    conn_rooms: RwLock<FxHashMap<usize, HashSet<String>>>,
+}
+
+impl RoomRegistry {
+    /// Create a new empty registry.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Subscribe a connection to a named room.
+    ///
+    /// Lock ordering: rooms write, then conn_rooms write.
+    pub fn join(&self, conn: usize, room: String) {
+        let mut rooms = self.rooms.write();
+        let mut conn_rooms = self.conn_rooms.write();
+        rooms.entry(room.clone()).or_default().insert(conn);
+        conn_rooms.entry(conn).or_default().insert(room);
+    }
+
+    /// Unsubscribe a connection from a room.
+    ///
+    /// Removes the connection from the room's member set, and removes the
+    /// room from the connection's room set. Empty entries are cleaned up
+    /// to prevent memory leaks.
+    ///
+    /// Lock ordering: rooms write, then conn_rooms write.
+    pub fn leave(&self, conn: usize, room: &str) {
+        let mut rooms = self.rooms.write();
+        let mut conn_rooms = self.conn_rooms.write();
+        remove_member(&mut rooms, room, &conn);
+        remove_member(&mut conn_rooms, &conn, room);
+    }
+
+    /// Remove a connection from all rooms. Called on disconnect.
+    ///
+    /// Removes the connection from the reverse index, then removes it from
+    /// each room's member set. Empty rooms are cleaned up.
+    ///
+    /// Lock ordering: rooms write, then conn_rooms write.
+    pub fn cleanup_connection(&self, conn: usize) {
+        let mut rooms = self.rooms.write();
+        let mut conn_rooms = self.conn_rooms.write();
+
+        for room_name in conn_rooms.remove(&conn).unwrap_or_default() {
+            remove_member(&mut rooms, &room_name, &conn);
+        }
+    }
+
+    /// Get a snapshot of all connection handles in a room.
+    ///
+    /// Acquires only the rooms read lock, released before the caller iterates.
+    pub fn members(&self, room: &str) -> Vec<usize> {
+        self.rooms
+            .read()
+            .get(room)
+            .map(|s| s.iter().copied().collect())
+            .unwrap_or_default()
+    }
+
+    fn for_each_member(&self, room: &str, mut visit: impl FnMut(usize)) {
+        let rooms = self.rooms.read();
+        if let Some(members) = rooms.get(room) {
+            for &conn in members {
+                visit(conn);
+            }
+        }
+    }
+}
+
+/// Take `member` out of `key`'s set in `index`, and the set once empty.
+fn remove_member<K, Q, M, N>(index: &mut FxHashMap<K, HashSet<M>>, key: &Q, member: &N)
+where
+    K: Borrow<Q> + Hash + Eq,
+    Q: Hash + Eq + ?Sized,
+    M: Borrow<N> + Hash + Eq,
+    N: Hash + Eq + ?Sized,
+{
+    if let Some(members) = index.get_mut(key) {
+        members.remove(member);
+        if members.is_empty() {
+            index.remove(key);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Global instance
+// ---------------------------------------------------------------------------
+
+/// The global room registry, lazily initialized.
+static GLOBAL_ROOM_REGISTRY: OnceLock<RoomRegistry> = OnceLock::new();
+
+/// Get a reference to the global room registry.
+pub fn global_room_registry() -> &'static RoomRegistry {
+    GLOBAL_ROOM_REGISTRY.get_or_init(RoomRegistry::new)
+}
+
+// ---------------------------------------------------------------------------
+// Cluster-aware broadcast helpers (pub(crate) for use from dist::node reader)
+// ---------------------------------------------------------------------------
+
+/// Broadcast a text frame to local room members only.
+///
+/// Called by the reader loop when receiving `DIST_ROOM_BROADCAST` from a
+/// remote node (local-only delivery, no re-forwarding to prevent storms).
+///
+/// Returns the number of write failures (0 = all succeeded).
+pub(crate) fn local_room_broadcast(room: &str, msg: &str) -> i64 {
+    deliver_locally(room, msg, 0)
+}
+
+/// Send a text frame to this node's members of `room`, but `except` (a
+/// connection handle, 0 for none): the number of write failures.
+fn deliver_locally(room: &str, msg: &str, except: usize) -> i64 {
+    let mut failures = 0i64;
+    global_room_registry().for_each_member(room, |conn_usize| {
+        let conn = unsafe { &*(conn_usize as *const WsConnection) };
+        if conn_usize == except || conn.io.is_closed() {
+            return;
+        }
+        if conn.io.send(WsOpcode::Text, msg.as_bytes()).is_err() {
+            // The caller cannot retry a specific room member. Disconnect it so
+            // the peer can reconnect and recover instead of silently missing data.
+            conn.io.cancel("WebSocket room broadcast failed");
+            failures += 1;
+        }
+    });
+    failures
+}
+
+/// The `DIST_ROOM_BROADCAST` payload for `msg` to `room`:
+/// `[tag 0x1E][u16 room_name_len][room_name][u32 msg_len][msg]`. None when
+/// a length does not fit its field: the room stays local then.
+fn room_broadcast_payload(room: &str, msg: &str) -> Option<Vec<u8>> {
+    let room_len = u16::try_from(room.len()).ok()?;
+    let msg_len = u32::try_from(msg.len()).ok()?;
+    let mut payload = Vec::with_capacity(1 + 2 + room.len() + 4 + msg.len());
+    payload.push(crate::dist::node::DIST_ROOM_BROADCAST);
+    payload.extend_from_slice(&room_len.to_le_bytes());
+    payload.extend_from_slice(room.as_bytes());
+    payload.extend_from_slice(&msg_len.to_le_bytes());
+    payload.extend_from_slice(msg.as_bytes());
+    Some(payload)
+}
+
+/// Forward a room broadcast to all connected cluster nodes.
+///
+/// Follows the collect-then-iterate pattern from `global.rs::broadcast_global_register`:
+/// acquire sessions read lock, collect `Arc<NodeSession>` references, drop lock,
+/// then iterate and write to each session's stream.
+///
+/// Returns immediately (no-op) if distribution is not started (`node_state()` is None),
+/// or the payload cannot carry the room name.
+pub(crate) fn broadcast_room_to_cluster(room: &str, msg: &str) {
+    let Some((state, payload)) = crate::dist::node::node_state()
+        .and_then(|state| Some((state, room_broadcast_payload(room, msg)?)))
+    else {
+        return;
+    };
+
+    // Collect session references, then drop sessions lock before writing.
+    let sessions: Vec<std::sync::Arc<crate::dist::node::NodeSession>> = {
+        let map = state.sessions.read();
+        map.values().map(std::sync::Arc::clone).collect()
+    };
+
+    for session in &sessions {
+        let _ = session.send(
+            crate::dist::node::OutboundClass::Application,
+            payload.clone(),
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Runtime functions (extern "C" for Mesh codegen)
+// ---------------------------------------------------------------------------
+
+/// Subscribe a WebSocket connection to a named room.
+///
+/// `conn` is a connection handle (a pointer to a `WsConnection`). Mesh code
+/// may pass any Int, 0 among them, which is refused: a broadcast would
+/// follow it.
+///
+/// Returns 0 on success, -1 for a null handle.
+#[no_mangle]
+pub extern "C" fn mesh_ws_join(conn: *mut u8, room_name: *const MeshString) -> i64 {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return -1;
+    }
+    if conn.is_null() {
+        return -1;
+    }
+    // Extract room name as owned String to prevent GC dangling reference (Pitfall 4)
+    let room = unsafe { (*room_name).as_str().to_string() };
+    global_room_registry().join(conn as usize, room);
+    0
+}
+
+/// Unsubscribe a WebSocket connection from a named room. Returns 0.
+#[no_mangle]
+pub extern "C" fn mesh_ws_leave(conn: *mut u8, room_name: *const MeshString) -> i64 {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return -1;
+    }
+    let room = unsafe { (*room_name).as_str() };
+    global_room_registry().leave(conn as usize, room);
+    0
+}
+
+/// Broadcast a text frame to all connections in a named room, cluster-wide:
+/// this node's members first, then every connected cluster node's, via
+/// `DIST_ROOM_BROADCAST`.
+///
+/// Returns the number of local write failures (0 = all succeeded).
+#[no_mangle]
+pub extern "C" fn mesh_ws_broadcast(room_name: *const MeshString, msg: *const MeshString) -> i64 {
+    mesh_ws_broadcast_except(room_name, msg, std::ptr::null_mut())
+}
+
+/// Broadcast a text frame to all connections in a room except one, cluster-wide.
+///
+/// Same as `mesh_ws_broadcast` but skips the connection at `except_conn` for
+/// local delivery (null for none). The excluded connection is a local
+/// pointer: remote nodes deliver to ALL their local members, which is
+/// correct since the excluded connection is never on those nodes.
+///
+/// Returns the number of local write failures (0 = all succeeded).
+#[no_mangle]
+pub extern "C" fn mesh_ws_broadcast_except(
+    room_name: *const MeshString,
+    msg: *const MeshString,
+    except_conn: *mut u8,
+) -> i64 {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return -1;
+    }
+    let room = unsafe { (*room_name).as_str() };
+    let text = unsafe { (*msg).as_str() };
+    let failures = deliver_locally(room, text, except_conn as usize);
+    broadcast_room_to_cluster(room, text);
+    failures
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Create a fresh registry for testing (avoids global state interference).
+    fn fresh_registry() -> RoomRegistry {
+        RoomRegistry::new()
+    }
+
+    #[test]
+    fn test_join_and_members() {
+        let reg = fresh_registry();
+        reg.join(100, "lobby".to_string());
+        reg.join(200, "lobby".to_string());
+        reg.join(100, "chat".to_string());
+
+        let mut members = reg.members("lobby");
+        members.sort();
+        assert_eq!(members, vec![100, 200]);
+
+        let members = reg.members("chat");
+        assert_eq!(members, vec![100]);
+
+        assert!(reg.members("nonexistent").is_empty());
+    }
+
+    #[test]
+    fn test_leave() {
+        let reg = fresh_registry();
+        reg.join(100, "lobby".to_string());
+        reg.join(200, "lobby".to_string());
+
+        reg.leave(100, "lobby");
+
+        let members = reg.members("lobby");
+        assert_eq!(members, vec![200]);
+    }
+
+    #[test]
+    fn test_leave_removes_empty_room() {
+        let reg = fresh_registry();
+        reg.join(100, "temp".to_string());
+        reg.leave(100, "temp");
+
+        // Room should be removed entirely
+        assert!(reg.members("temp").is_empty());
+        assert!(reg.rooms.read().get("temp").is_none());
+    }
+
+    #[test]
+    fn test_cleanup_connection() {
+        let reg = fresh_registry();
+        reg.join(100, "lobby".to_string());
+        reg.join(100, "chat".to_string());
+        reg.join(100, "game".to_string());
+        reg.join(200, "lobby".to_string());
+
+        reg.cleanup_connection(100);
+
+        // 100 should be gone from all rooms
+        assert_eq!(reg.members("lobby"), vec![200]);
+        assert!(reg.members("chat").is_empty());
+        assert!(reg.members("game").is_empty());
+
+        // Empty rooms should be cleaned up
+        assert!(reg.rooms.read().get("chat").is_none());
+        assert!(reg.rooms.read().get("game").is_none());
+
+        // conn_rooms reverse index should be cleaned up
+        assert!(reg.conn_rooms.read().get(&100).is_none());
+    }
+
+    #[test]
+    fn cleanup_waits_for_active_member_iteration() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::{mpsc, Arc};
+        use std::time::Duration;
+
+        let reg = Arc::new(fresh_registry());
+        reg.join(100, "lobby".to_string());
+        let (entered_tx, entered_rx) = mpsc::sync_channel(0);
+        let (release_tx, release_rx) = mpsc::sync_channel(0);
+        let iter_reg = Arc::clone(&reg);
+        let iteration = std::thread::spawn(move || {
+            iter_reg.for_each_member("lobby", |_| {
+                entered_tx.send(()).unwrap();
+                release_rx.recv().unwrap();
+            });
+        });
+        entered_rx.recv().unwrap();
+
+        let cleaned = Arc::new(AtomicBool::new(false));
+        let cleanup_reg = Arc::clone(&reg);
+        let cleanup_done = Arc::clone(&cleaned);
+        let cleanup = std::thread::spawn(move || {
+            cleanup_reg.cleanup_connection(100);
+            cleanup_done.store(true, Ordering::SeqCst);
+        });
+        std::thread::sleep(Duration::from_millis(50));
+        assert!(!cleaned.load(Ordering::SeqCst));
+
+        release_tx.send(()).unwrap();
+        iteration.join().unwrap();
+        cleanup.join().unwrap();
+        assert!(cleaned.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn test_cleanup_nonexistent_connection_is_noop() {
+        let reg = fresh_registry();
+        // Should not panic
+        reg.cleanup_connection(999);
+    }
+
+    #[test]
+    fn test_join_same_room_twice_is_idempotent() {
+        let reg = fresh_registry();
+        reg.join(100, "lobby".to_string());
+        reg.join(100, "lobby".to_string());
+
+        let members = reg.members("lobby");
+        assert_eq!(members, vec![100]);
+    }
+
+    #[test]
+    fn test_leave_nonexistent_room_is_noop() {
+        let reg = fresh_registry();
+        reg.join(100, "lobby".to_string());
+        // Should not panic
+        reg.leave(100, "nonexistent");
+        // Original membership unchanged
+        assert_eq!(reg.members("lobby"), vec![100]);
+    }
+
+    #[test]
+    fn test_concurrent_join_leave() {
+        use std::sync::Arc;
+
+        let reg = Arc::new(fresh_registry());
+        let num_threads = 8;
+
+        let handles: Vec<_> = (0..num_threads)
+            .map(|t| {
+                let reg = Arc::clone(&reg);
+                std::thread::spawn(move || {
+                    let conn = (t + 1) * 100;
+                    reg.join(conn, "shared".to_string());
+                    // Verify own membership
+                    let members = reg.members("shared");
+                    assert!(members.contains(&conn));
+                })
+            })
+            .collect();
+
+        for h in handles {
+            h.join().unwrap();
+        }
+
+        let members = reg.members("shared");
+        assert_eq!(members.len(), num_threads);
+    }
+
+    /// A connection on the shared reactor, its peer at the other end.
+    fn connection() -> (Box<WsConnection>, std::net::TcpStream) {
+        use crate::ws::reactor::{
+            register_client, ReactorConfig, ReactorEvent, ReactorEventSink, ReactorTransport,
+            SinkFull,
+        };
+        struct Ignore;
+        impl ReactorEventSink for Ignore {
+            fn event(&self, _event: ReactorEvent) -> Result<(), SinkFull> {
+                Ok(())
+            }
+            fn terminated(&self, _reason: &str) {}
+        }
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let peer = std::net::TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (tcp, _) = listener.accept().unwrap();
+        let io = register_client(
+            ReactorTransport::plain(tcp),
+            Vec::new(),
+            String::new(),
+            std::sync::Arc::new(Ignore),
+            ReactorConfig::client(1024, std::time::Duration::from_secs(30)),
+        )
+        .unwrap();
+        (Box::new(WsConnection { io }), peer)
+    }
+
+    /// Ws.join refuses a null handle; Ws.leave takes a connection out.
+    /// Broadcasts skip the excluded connection and closed ones, which are
+    /// no failures.
+    #[test]
+    fn broadcasts_skip_the_excluded_and_the_closed() {
+        crate::gc::mesh_rt_init();
+        let room = crate::string::mesh_str("rooms-broadcast-skips");
+        let (open, _open_peer) = connection();
+        let (closed, _closed_peer) = connection();
+        closed.io.cancel("closed");
+        let open = Box::into_raw(open) as *mut u8;
+        let closed = Box::into_raw(closed) as *mut u8;
+        assert_eq!(mesh_ws_join(std::ptr::null_mut(), room), -1);
+        assert_eq!(mesh_ws_join(open, room), 0);
+        assert_eq!(mesh_ws_join(closed, room), 0);
+
+        let text = crate::string::mesh_str("hello");
+        assert_eq!(mesh_ws_broadcast_except(room, text, open), 0);
+        assert_eq!(mesh_ws_broadcast(room, text), 0);
+
+        assert_eq!(mesh_ws_leave(open, room), 0);
+        assert_eq!(mesh_ws_leave(closed, room), 0);
+        assert!(global_room_registry()
+            .members("rooms-broadcast-skips")
+            .is_empty());
+        unsafe {
+            drop(Box::from_raw(open as *mut WsConnection));
+            drop(Box::from_raw(closed as *mut WsConnection));
+        }
+    }
+
+    #[test]
+    fn scoped_room_operations_cannot_send_or_change_membership() {
+        use std::io::Read;
+        crate::gc::mesh_rt_init();
+        let name = "scoped-room-refusal";
+        let room = crate::string::mesh_str(name);
+        let text = crate::string::mesh_str("private-room-payload");
+        let (connection, mut peer) = connection();
+        let connection = Box::into_raw(connection).cast();
+        assert_eq!(mesh_ws_join(connection, room), 0);
+        {
+            let context = crate::authority::test_invocation();
+            let _scope = crate::authority::enter(Some(context));
+            assert_eq!(mesh_ws_broadcast(room, text), -1);
+            assert_eq!(mesh_ws_leave(connection, room), -1);
+            assert_eq!(
+                global_room_registry().members(name),
+                vec![connection as usize]
+            );
+            assert_eq!(
+                mesh_ws_join(connection, crate::string::mesh_str("refused-new-room")),
+                -1
+            );
+            assert!(global_room_registry()
+                .members("refused-new-room")
+                .is_empty());
+        }
+        peer.set_read_timeout(Some(std::time::Duration::from_millis(50)))
+            .unwrap();
+        let error = peer.read(&mut [0; 128]).unwrap_err();
+        assert!(matches!(
+            error.kind(),
+            std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+        ));
+        assert_eq!(mesh_ws_broadcast(room, text), 0);
+        peer.set_read_timeout(Some(std::time::Duration::from_secs(2)))
+            .unwrap();
+        assert!(peer.read(&mut [0; 128]).unwrap() > 0);
+        assert_eq!(mesh_ws_leave(connection, room), 0);
+        unsafe {
+            drop(Box::from_raw(connection.cast::<WsConnection>()));
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Cluster broadcast tests (Phase 69)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_local_room_broadcast_empty_room() {
+        // Calling local_room_broadcast on a non-existent room should return 0
+        // failures and not panic. Verifies graceful handling of empty rooms.
+        let failures = local_room_broadcast("empty_room_that_does_not_exist", "hello");
+        assert_eq!(failures, 0);
+    }
+
+    #[test]
+    fn test_broadcast_room_to_cluster_no_distribution() {
+        // When node distribution is not started (node_state() returns None),
+        // broadcast_room_to_cluster should return immediately without panic.
+        // In test context, NODE_STATE is typically not initialized (unless
+        // test_mesh_node_start_binds_listener ran first), so this tests the
+        // early-return guard.
+        broadcast_room_to_cluster("lobby", "hello");
+        // No panic = success. The function returns () so no value to check,
+        // but reaching this point means the early-return guard worked.
+    }
+
+    // -----------------------------------------------------------------------
+    // DIST_ROOM_BROADCAST wire format tests (Phase 69)
+    // -----------------------------------------------------------------------
+    //
+    // Follow the in-memory payload byte verification pattern from global.rs
+    // wire format tests. No network I/O, no NODE_STATE dependency.
+
+    /// The payload's layout, for the reader loop's decoder:
+    /// `[tag 0x1E][u16 room_name_len][room_name][u32 msg_len][msg]`, for
+    /// empty, ASCII and multi-byte names and messages.
+    #[test]
+    fn test_dist_room_broadcast_wire_roundtrip() {
+        use crate::dist::node::DIST_ROOM_BROADCAST;
+
+        for (room, msg) in [
+            ("lobby", ""),
+            ("chat_room_42", "hello world"),
+            ("\u{1F680}rocket", "blast off!"),
+            ("room", "\u{00E9}\u{00E8}\u{00EA}"),
+        ] {
+            let payload = room_broadcast_payload(room, msg).unwrap();
+            assert_eq!(payload[0], DIST_ROOM_BROADCAST);
+            let room_len = u16::from_le_bytes([payload[1], payload[2]]) as usize;
+            assert_eq!(&payload[3..3 + room_len], room.as_bytes());
+            let msg_start = 3 + room_len + 4;
+            let msg_len =
+                u32::from_le_bytes(payload[3 + room_len..msg_start].try_into().unwrap()) as usize;
+            assert_eq!(&payload[msg_start..], msg.as_bytes());
+            assert_eq!(msg_len, msg.len());
+        }
+    }
+
+    /// A room name longer than its u16 length field is not forwarded: its
+    /// length would wrap, and a remote node read the wrong room.
+    #[test]
+    fn an_overlong_room_name_is_not_forwarded() {
+        let room = format!("lobby{}", "x".repeat(usize::from(u16::MAX)));
+        assert!(room_broadcast_payload(&room, "hello").is_none());
+        assert!(room_broadcast_payload(&room[..usize::from(u16::MAX)], "hello").is_some());
+        // Whether or not another test started this process's node, the
+        // broadcast stops before its sessions.
+        broadcast_room_to_cluster(&room, "hello");
+    }
+}

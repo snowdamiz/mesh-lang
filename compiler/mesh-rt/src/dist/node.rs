@@ -489,6 +489,11 @@ pub extern "C" fn mesh_register_startup_work(runtime_name_ptr: *const u8, runtim
 
 #[no_mangle]
 pub extern "C" fn mesh_trigger_startup_work() {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return;
+    }
+
     let runtime_names = startup_work_registry().read().clone();
     if runtime_names.is_empty() {
         return;
@@ -2204,6 +2209,9 @@ fn handle_session_message(
                 match sched.get_process(to_pid) {
                     Some(target_arc) => {
                         let mut target_proc = target_arc.lock();
+                        if target_proc.invocation.is_some() {
+                            return;
+                        }
                         if matches!(target_proc.state, ProcessState::Exited(_)) {
                             // Target already dead -- send DIST_MONITOR_EXIT back with noproc.
                             drop(target_proc);
@@ -2230,7 +2238,11 @@ fn handle_session_message(
 
                 let sched = crate::actor::global_scheduler();
                 if let Some(target_arc) = sched.get_process(to_pid) {
-                    target_arc.lock().monitored_by.remove(&monitor_ref);
+                    let mut target = target_arc.lock();
+                    if target.invocation.is_some() {
+                        return;
+                    }
+                    target.monitored_by.remove(&monitor_ref);
                 }
             }
         }
@@ -2242,6 +2254,9 @@ fn handle_session_message(
                 let sched = crate::actor::global_scheduler();
                 if let Some(mon_arc) = sched.get_process(monitoring_pid) {
                     let mut mon_proc = mon_arc.lock();
+                    if mon_proc.invocation.is_some() {
+                        return;
+                    }
                     if mon_proc.fire_monitor(monitor_ref) {
                         sched.wake_if_waiting(monitoring_pid, mon_proc);
                     }
@@ -2256,7 +2271,11 @@ fn handle_session_message(
                 // Add from_pid to the local process's links set
                 let sched = crate::actor::global_scheduler();
                 if let Some(proc_arc) = sched.get_process(to_pid) {
-                    proc_arc.lock().links.insert(from_pid);
+                    let mut process = proc_arc.lock();
+                    if process.invocation.is_some() {
+                        return;
+                    }
+                    process.links.insert(from_pid);
                 }
             }
         }
@@ -2274,6 +2293,9 @@ fn handle_session_message(
                     let sched = crate::actor::global_scheduler();
                     if let Some(proc_arc) = sched.get_process(to_pid) {
                         let mut proc = proc_arc.lock();
+                        if proc.invocation.is_some() {
+                            return;
+                        }
                         if matches!(proc.state, ProcessState::Exited(_)) {
                             return; // Already dead, skip
                         }
@@ -6193,6 +6215,10 @@ pub fn start_from_env() -> Result<BootstrapStatus, String> {
 
 #[no_mangle]
 pub extern "C" fn mesh_node_start_from_env() -> *mut MeshResult {
+    if crate::authority::current().is_some() {
+        return crate::io::err_result(crate::authority::refuse());
+    }
+
     match start_from_env() {
         Ok(status) => bootstrap_ok_status(status),
         Err(reason) => err_result(&reason),
@@ -6234,6 +6260,11 @@ pub extern "C" fn mesh_node_start(
     cookie_ptr: *const u8,
     cookie_len: u64,
 ) -> i64 {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return -1;
+    }
+
     let text = |ptr: *const u8, len: u64| {
         std::str::from_utf8(unsafe { std::slice::from_raw_parts(ptr, len as usize) }).ok()
     };
@@ -6396,6 +6427,11 @@ const GLOBAL_NAMES_WAIT: Duration = Duration::from_secs(5);
 /// - `-3` if handshake failed (wrong cookie, I/O error, or invalid format)
 #[no_mangle]
 pub extern "C" fn mesh_node_connect(name_ptr: *const u8, name_len: u64) -> i64 {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return -1;
+    }
+
     // Check NODE_STATE is initialized
     let state = match NODE_STATE.get() {
         Some(s) => s,
@@ -7913,6 +7949,11 @@ pub extern "C-unwind" fn mesh_node_spawn(
     arg_count: u64,
     link_flag: u8,
 ) -> u64 {
+    if crate::authority::current().is_some() {
+        crate::authority::refuse();
+        return 0;
+    }
+
     use crate::actor::process::ProcessId;
 
     // The process asking, which a linked spawn links to. Outside an actor (a
@@ -10605,6 +10646,10 @@ mod tests {
                 .process_table()
                 .write()
                 .remove(&self.pid);
+            let invocation = self.process.lock().invocation.take();
+            if let Some(invocation) = invocation {
+                invocation.process_finished();
+            }
         }
     }
 
@@ -10768,6 +10813,66 @@ mod tests {
         let never = ProcessId::next();
         peer.receive(monitor(DIST_MONITOR, never, 43));
         assert_eq!(peer.sent(), vec![gone(never, 43)]);
+    }
+
+    #[test]
+    fn peer_control_frames_cannot_mutate_an_owned_invocation() {
+        let peer = TestPeer::new("owned-control-refusal@127.0.0.1:1");
+        let owned = ParkedProcess::new();
+        let invocation = crate::authority::test_invocation();
+        invocation.process_started();
+        owned.process.lock().invocation = Some(invocation);
+        let control = |tag| {
+            frame(
+                tag,
+                &[
+                    &5u64.to_le_bytes(),
+                    &owned.pid.as_u64().to_le_bytes(),
+                    &41u64.to_le_bytes(),
+                ],
+            )
+        };
+        peer.receive(control(DIST_MONITOR));
+        assert!(owned.process.lock().monitored_by.is_empty());
+        peer.receive(control(DIST_LINK));
+        assert!(owned.process.lock().links.is_empty());
+        owned.process.lock().monitored_by.insert(41, peer.pid(5));
+        peer.receive(control(DIST_DEMONITOR));
+        assert_eq!(
+            owned.process.lock().monitored_by.get(&41),
+            Some(&peer.pid(5))
+        );
+        owned.process.lock().monitors.insert(
+            41,
+            Monitor {
+                target: peer.pid(5),
+                message: MessageBuffer::new(b"must-not-deliver".to_vec(), 1),
+            },
+        );
+        let mut monitor_exit = control(DIST_MONITOR_EXIT);
+        crate::actor::link::encode_reason(&mut monitor_exit, &ExitReason::Normal);
+        peer.receive(monitor_exit);
+        assert!(owned.process.lock().monitors.contains_key(&41));
+        for trapping in [false, true] {
+            owned.process.lock().trap_exit = trapping;
+            let mut exit = frame(
+                DIST_EXIT,
+                &[&5u64.to_le_bytes(), &owned.pid.as_u64().to_le_bytes()],
+            );
+            crate::actor::link::encode_reason(
+                &mut exit,
+                &ExitReason::Error("private-error".into()),
+            );
+            peer.receive(exit);
+            assert!(matches!(owned.process.lock().state, ProcessState::Ready));
+            assert_eq!(owned.mailbox_len(), 0);
+        }
+        owned
+            .process
+            .lock()
+            .mark_exited(ExitReason::Error("private-error".into()));
+        peer.receive(control(DIST_MONITOR));
+        assert!(peer.sent().is_empty());
     }
 
     /// The peer telling of a watched process's end fires the monitor once.

@@ -1,0 +1,225 @@
+   Compiling mesh-rt v0.1.8 (/Users/andreyyurlov/Documents/dev/mesh-lang/compiler/mesh-rt)
+warning: use of deprecated function `libc::mach_task_self`: Use the `mach2` crate instead
+    --> compiler/mesh-rt/src/secret.rs:3692:35
+     |
+3692 |         let task = unsafe { libc::mach_task_self() };
+     |                                   ^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+    --> compiler/mesh-rt/src/actor/scheduler.rs:1025:10
+     |
+1025 |         .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
+     |          ^^^^^^^^^^^^
+     |
+help: replace the use of the deprecated method
+     |
+1025 -         .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
+1025 +         .try_update(Ordering::SeqCst, Ordering::SeqCst, |count| {
+     |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+  --> compiler/mesh-rt/src/authority.rs:83:34
+   |
+83 |         let id = NEXT_INVOCATION.fetch_update(SeqCst, SeqCst, |n| n.checked_add(1)).map_err(|_| REFUSED)?;
+   |                                  ^^^^^^^^^^^^
+   |
+help: replace the use of the deprecated method
+   |
+83 -         let id = NEXT_INVOCATION.fetch_update(SeqCst, SeqCst, |n| n.checked_add(1)).map_err(|_| REFUSED)?;
+83 +         let id = NEXT_INVOCATION.try_update(SeqCst, SeqCst, |n| n.checked_add(1)).map_err(|_| REFUSED)?;
+   |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/db/sqlite.rs:649:42
+    |
+649 |         let Ok(handle) = NEXT_CONNECTION.fetch_update(SeqCst, SeqCst, |value| value.checked_add(1))
+    |                                          ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+649 -         let Ok(handle) = NEXT_CONNECTION.fetch_update(SeqCst, SeqCst, |value| value.checked_add(1))
+649 +         let Ok(handle) = NEXT_CONNECTION.try_update(SeqCst, SeqCst, |value| value.checked_add(1))
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/dist/driver_service.rs:849:22
+    |
+849 |                     .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+    |                      ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+849 -                     .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+849 +                     .try_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+  --> compiler/mesh-rt/src/dist/identity.rs:72:14
+   |
+72 |             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+   |              ^^^^^^^^^^^^
+   |
+help: replace the use of the deprecated method
+   |
+72 -             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+72 +             .try_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+   |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+    --> compiler/mesh-rt/src/dist/node.rs:1310:10
+     |
+1310 |         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+     |          ^^^^^^^^^^^^
+     |
+help: replace the use of the deprecated method
+     |
+1310 -         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+1310 +         .try_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+     |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+    --> compiler/mesh-rt/src/dist/node.rs:5980:14
+     |
+5980 |             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+     |              ^^^^^^^^^^^^
+     |
+help: replace the use of the deprecated method
+     |
+5980 -             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+5980 +             .try_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+     |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/dist/operator.rs:312:10
+    |
+312 |         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+    |          ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+312 -         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+312 +         .try_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/dist/telemetry.rs:375:18
+    |
+375 |                 .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+    |                  ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+375 -                 .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+375 +                 .try_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u32>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/dist/telemetry.rs:530:14
+    |
+530 |             .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+    |              ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+530 -             .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+530 +             .try_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<u64>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/dist/telemetry.rs:735:14
+    |
+735 |             .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+    |              ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+735 -             .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+735 +             .try_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/ws/client.rs:142:14
+    |
+142 |             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+    |              ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+142 -             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+142 +             .try_update(Ordering::AcqRel, Ordering::Acquire, |active| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+   --> compiler/mesh-rt/src/ws/reactor.rs:304:10
+    |
+304 |         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+    |          ^^^^^^^^^^^^
+    |
+help: replace the use of the deprecated method
+    |
+304 -         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+304 +         .try_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+    |
+
+warning: use of deprecated method `std::sync::atomic::Atomic::<usize>::fetch_update`: renamed to `try_update` for consistency
+  --> compiler/mesh-rt/src/protected_memory.rs:41:14
+   |
+41 |             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |used| {
+   |              ^^^^^^^^^^^^
+   |
+help: replace the use of the deprecated method
+   |
+41 -             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |used| {
+41 +             .try_update(Ordering::AcqRel, Ordering::Acquire, |used| {
+   |
+
+warning: variant `Unsupported` is never constructed
+  --> compiler/mesh-rt/src/protected_memory.rs:29:5
+   |
+27 | pub(crate) enum ProtectionError {
+   |                 --------------- variant in this enum
+28 |     Limit,
+29 |     Unsupported,
+   |     ^^^^^^^^^^^
+   |
+   = note: `ProtectionError` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `mesh-rt` (lib test) generated 16 warnings (run `cargo fix --lib -p mesh-rt --tests` to apply 14 suggestions)
+    Finished `test` profile [unoptimized] target(s) in 15.38s
+     Running unittests src/lib.rs (.tmp/native-owned-invocations/target/debug/deps/mesh_rt-3bf9f93c3f2f7781)
+
+running 1 test
+
+running 1 test
+
+thread 'library::invocation::tests::standalone_callback_preserves_init_and_registration' (72258914) panicked at compiler/mesh-rt/src/library/invocation.rs:184:9:
+assertion `left == right` failed
+  left: [3, 3, 3]
+ right: [0, 0, 3]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test library::invocation::tests::standalone_callback_preserves_init_and_registration ... FAILED
+
+failures:
+
+failures:
+    library::invocation::tests::standalone_callback_preserves_init_and_registration
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1682 filtered out; finished in 0.01s
+
+
+thread 'library::invocation::tests::standalone_callback_preserves_init_and_registration' (72258912) panicked at compiler/mesh-rt/src/library/invocation.rs:163:13:
+assertion failed: status.success()
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test library::invocation::tests::standalone_callback_preserves_init_and_registration ... FAILED
+
+failures:
+
+failures:
+    library::invocation::tests::standalone_callback_preserves_init_and_registration
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 1682 filtered out; finished in 0.02s
+
+error: test failed, to rerun pass `-p mesh-rt --lib`

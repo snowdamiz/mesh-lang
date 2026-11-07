@@ -1,0 +1,2 @@
+{"case": "generations", "baseline": false, "status": 0, "rows": 1, "later_schema": 0, "requests": [["/hold", "exact-attempt"]], "mutations": [], "mutations_before_retire": [], "retired": false}
+PASS generations

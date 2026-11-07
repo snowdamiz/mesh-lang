@@ -1,0 +1,57 @@
+{
+  ".tmp/native-owned-invocations/evidence/repo-refusal-red.log": {
+    "sha256": "ed5f594c5d0fbf5a3aebe483896f0cbd5ea09c809ad52c4fa5f4ec0359be8748",
+    "bytes": 9327,
+    "review_copy": ".tmp/native-owned-invocations/implementation-review-r2/evidence/repo-refusal-red.log"
+  },
+  ".tmp/native-owned-invocations/evidence/repo-refusal-green.log": {
+    "sha256": "f0514b9b0b472ea759650e5057ac71ddf14a8b93b356c50609fababe9f66d2b8",
+    "bytes": 10524,
+    "review_copy": ".tmp/native-owned-invocations/implementation-review-r2/evidence/repo-refusal-green.log"
+  },
+  ".tmp/native-owned-invocations/evidence/root-completion-red.log": {
+    "sha256": "16286e775907cc4aaf34499aac64664d3722bbcdd4217f6af1b2753732e0c5f8",
+    "bytes": 10513,
+    "review_copy": ".tmp/native-owned-invocations/implementation-review-r2/evidence/root-completion-red.log"
+  },
+  ".tmp/native-owned-invocations/evidence/root-completion-green.log": {
+    "sha256": "d1c4450ccbcae3dc4ac82946b8d4c57ec2790737f46859c955fbbc23a99f3ea5",
+    "bytes": 8952,
+    "review_copy": ".tmp/native-owned-invocations/implementation-review-r2/evidence/root-completion-green.log"
+  },
+  ".tmp/native-owned-invocations/evidence/jit-submit-green2.log": {
+    "sha256": "6e30c78154528333581d9cc3f81f2cb8df2b6e5d549daf5615e130434ecca30b",
+    "bytes": 9555,
+    "review_copy": ".tmp/native-owned-invocations/implementation-review-r2/evidence/jit-submit-green2.log"
+  },
+  ".tmp/native-owned-invocations/evidence/owned-lifetime-gates3.log": {
+    "sha256": "b1007a0470bdfa40d8e0df76999c1c9043bd37026860a0efb71fd6d8bc795664",
+    "bytes": 13502,
+    "review_copy": ".tmp/native-owned-invocations/implementation-review-r2/evidence/owned-lifetime-gates3.log"
+  },
+  ".tmp/native-owned-invocations/evidence/workspace-lib-bins4.log": {
+    "sha256": "aeba038bbae6e00c67907f9776a6bc820a69914f2ca25e56595d5e8168289237",
+    "bytes": 428608,
+    "review_copy": ".tmp/native-owned-invocations/implementation-review-r2/evidence/workspace-lib-bins4.log"
+  },
+  ".tmp/native-owned-invocations/evidence/runtime-source-final-r2.log": {
+    "sha256": "53057eb96171190e49b8408ab04bd3ab946d4a498aef19165d8eaff731e2c60c",
+    "bytes": 339542,
+    "review_copy": ".tmp/native-owned-invocations/implementation-review-r2/evidence/runtime-source-final-r2.log"
+  },
+  ".tmp/native-owned-invocations/evidence/runtime-integrations-final-r2.log": {
+    "sha256": "4d8493bbb316ea98d97e195fe7f888926d32bb14899b47749f1c18b5f5855177",
+    "bytes": 11484,
+    "review_copy": ".tmp/native-owned-invocations/implementation-review-r2/evidence/runtime-integrations-final-r2.log"
+  },
+  ".tmp/native-owned-invocations/evidence/generated-library-final-r2.log": {
+    "sha256": "350a7e1e6caa8e88371ed621431577047dbdf33394a4d53bfcb9c3011327fb22",
+    "bytes": 10307,
+    "review_copy": ".tmp/native-owned-invocations/implementation-review-r2/evidence/generated-library-final-r2.log"
+  },
+  ".tmp/native-owned-invocations/evidence/core-baseline-red2.log": {
+    "sha256": "60ff7d900c03bf5c183febb5453fa6125b6d5ebbe04672522cacd945f568a416",
+    "bytes": 1355,
+    "review_copy": ".tmp/native-owned-invocations/implementation-review-r2/evidence/core-baseline-red2.log"
+  }
+}

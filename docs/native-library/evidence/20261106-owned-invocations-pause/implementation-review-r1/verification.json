@@ -1,0 +1,15 @@
+{
+  "finished_utc": "2026-11-07T02:19:20.129067+00:00",
+  "frozen_source_matches": true,
+  "mismatches": [],
+  "source_pin_sha256": "8e21f320b3c2891606dfe5cbfea3c3e0c7116f397edfb5135b560b346fff6f1c",
+  "report_sha256": "95f277524fafe8c217f9219833c2c42a4f59bdfaf5f50349edb4c62af11cc505",
+  "probe_sha256": "899fad9637d325b94db290a7df90bb2f53294e2f078fe600fd63b0e0d6f358ba",
+  "probe_result_sha256": "a8b83382f2a53ced19473c62ad436185bbdf5a134df7e579a14171bf5d0aa6a9",
+  "verdict": "REQUEST_CHANGES",
+  "blocking_findings": [
+    "F1",
+    "F2"
+  ],
+  "capability4_supported": false
+}

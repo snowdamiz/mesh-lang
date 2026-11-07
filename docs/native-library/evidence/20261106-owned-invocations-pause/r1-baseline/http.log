@@ -1,0 +1,2 @@
+{"case": "http", "baseline": false, "status": 10, "rows": 0, "later_schema": 0, "requests": [["/hold", "exact-attempt"]], "mutations": [], "mutations_before_retire": [], "retired": true}
+PASS http

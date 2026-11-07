@@ -1,0 +1,13 @@
+Traceback (most recent call last):
+  File "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-owned-invocations/core-bootstrap/core_check.py", line 378, in <module>
+    run(Path(sys.argv[1]),Path(sys.argv[2]),"--scheduled" in sys.argv)
+    ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-owned-invocations/core-bootstrap/core_check.py", line 287, in run
+    fixture_host = Native(library, root, root / 'fixture-custody')
+  File "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-owned-invocations/core-bootstrap/core_check.py", line 66, in __init__
+    assert self.read(20) == {'ready': True}
+           ~~~~~~~~~^^^^
+  File "/Users/andreyyurlov/Documents/dev/mesh-lang/.tmp/native-owned-invocations/core-bootstrap/core_check.py", line 71, in read
+    assert line, f'native host exited {self.process.poll()}'
+           ^^^^
+AssertionError: native host exited 1

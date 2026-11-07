@@ -1,0 +1,575 @@
+{
+  "time": "2026-11-07T01:42:31.487998+00:00",
+  "head": "9b844dbab34e61f6de575af2b25b0ed0f321059e",
+  "diff_sha256": "9b984ba82a3199bbbba7103773b47873c5b4eca1daeca95e0312675d9915733e",
+  "files": {
+    "compiler/mesh-rt/src/random.rs": {
+      "sha256": "b1a02be9f638216129de0048c4075818177a43a99bf5a94ffe0cc89fb290d28c",
+      "size": 3672
+    },
+    "compiler/mesh-rt/src/test.rs": {
+      "sha256": "9c3b47524c427f1fa10425aedd5508f7847ff66543c26e2f8cc2f005e989f997",
+      "size": 18944
+    },
+    "compiler/mesh-rt/src/panic.rs": {
+      "sha256": "db1125a1fa379f74b360420d9acdb00e7fcf5cc18ea6596335057f1ff702e440",
+      "size": 4873
+    },
+    "compiler/mesh-rt/src/process_signal.rs": {
+      "sha256": "5b08c7500886b87cb4c4b4f774d8419dbc5d8b631aee4dafa4d37cb418a86d70",
+      "size": 3017
+    },
+    "compiler/mesh-rt/src/io.rs": {
+      "sha256": "7218653f17bb69ee7a188586c3c9284b708594e4dbe8fc03d7d5c20940be6275",
+      "size": 5894
+    },
+    "compiler/mesh-rt/src/channel.rs": {
+      "sha256": "95e51cca0961cd4a0a8b92209a680ff55996fdc53a32b9fbca7602004175a544",
+      "size": 20895
+    },
+    "compiler/mesh-rt/src/library.rs": {
+      "sha256": "2b96e0f43eda6bcc6d45974f5e7965241bb81d6dffa3a47e3223f62f362f6607",
+      "size": 30469
+    },
+    "compiler/mesh-rt/src/wide_num.rs": {
+      "sha256": "c2dc6912bf4b1af1d56968d80ce3ac2ba6a562dc881f478fc66531df8d5309d0",
+      "size": 12651
+    },
+    "compiler/mesh-rt/src/env.rs": {
+      "sha256": "0b42e2a65aa421aa3417be7d00a5973bff45bc98e416b44362d3563e61f8e960",
+      "size": 9185
+    },
+    "compiler/mesh-rt/src/server_bind.rs": {
+      "sha256": "b47e92b93c6aea4379badbbf3af06be4a927b915ae7581c1189d5a14d472e7cb",
+      "size": 1466
+    },
+    "compiler/mesh-rt/src/finance.rs": {
+      "sha256": "bc881fc6de29e9220b1bceb4df600aaa0a8c8d9b158fbaf239c4d9f739591a2e",
+      "size": 8715
+    },
+    "compiler/mesh-rt/src/lib.rs": {
+      "sha256": "c25e2c0a79359ae9974e82e4347cdc060f415f855aabebf2274dadcb06b5fd74",
+      "size": 18493
+    },
+    "compiler/mesh-rt/src/option.rs": {
+      "sha256": "08a023e875e549847389788bbd7ed9430c72d50c11e677cf8abfdc6d0588f9ed",
+      "size": 1606
+    },
+    "compiler/mesh-rt/src/gc.rs": {
+      "sha256": "9de7820e2bed23250a3ccb827bd3efff45addf63a6f48f384eb6be245be2bcc9",
+      "size": 14186
+    },
+    "compiler/mesh-rt/src/iter.rs": {
+      "sha256": "bd9377f83816d02cdd4b78c19f483a56ce32d0c4dde1b0143b42bfabc250fa0a",
+      "size": 23777
+    },
+    "compiler/mesh-rt/src/callback.rs": {
+      "sha256": "df15ffa767b754738b3c794185e7a2be3035166410e1aec651b5ba80687ab743",
+      "size": 3113
+    },
+    "compiler/mesh-rt/src/monotonic.rs": {
+      "sha256": "28dafb71cfb1ade94444a8ba240552ec092e0bece33c49d97574e28df15e7b9d",
+      "size": 2434
+    },
+    "compiler/mesh-rt/src/regex.rs": {
+      "sha256": "7ff9aade72550b9157710d1433e390245cb4177e9455d79a980411aa15aaa9b5",
+      "size": 12237
+    },
+    "compiler/mesh-rt/src/json.rs": {
+      "sha256": "8eeec56d7d40cb92b4f5a904cc1bef8e3e6f1a29831046b908778991ab7e7351",
+      "size": 47298
+    },
+    "compiler/mesh-rt/src/string.rs": {
+      "sha256": "c2aea12a3584e221e8432a6d718f61b12abb7a5428be3478383d35eb38e38afe",
+      "size": 23658
+    },
+    "compiler/mesh-rt/src/datetime.rs": {
+      "sha256": "398cbaba01ba3287ae26199ae718e34288b3b25479a19a4437f40994f4efb611",
+      "size": 9898
+    },
+    "compiler/mesh-rt/src/bytes.rs": {
+      "sha256": "98348306a7dd4425942f67c4dd177c7750515632d5867959f9451f226a649f1f",
+      "size": 49981
+    },
+    "compiler/mesh-rt/src/lightning.rs": {
+      "sha256": "fef904c31d4e527a65ba540989414e9e7f147cf0324fe754c32e16de4ddf7532",
+      "size": 5956
+    },
+    "compiler/mesh-rt/src/authority.rs": {
+      "sha256": "89e3311c9066d805083c5043e57bc9ab5a8a90c537c7006e18e4df0eb7541640",
+      "size": 12924
+    },
+    "compiler/mesh-rt/src/protected_memory.rs": {
+      "sha256": "cf45fdb75f2f8a6064d843351fef5d89de926659a1a9005e332bd620e7f52440",
+      "size": 24422
+    },
+    "compiler/mesh-rt/src/storage_wrapping.rs": {
+      "sha256": "3c775013bc2d9e509d352c30f75fb82d18edb29d791e4bf813e9f13085e371ff",
+      "size": 92929
+    },
+    "compiler/mesh-rt/src/stack_overflow.rs": {
+      "sha256": "5ab517fbc9b6a456cb13fadb8beb66bfc45788d7126e6831bae717ad1a162c46",
+      "size": 5094
+    },
+    "compiler/mesh-rt/src/hash.rs": {
+      "sha256": "be64420e8d75def4e17cc18d56409ffa6ed3a14f17368c0e7b2db157e7169cbf",
+      "size": 1987
+    },
+    "compiler/mesh-rt/src/hash_preimage.rs": {
+      "sha256": "6688d62321eceb3fc34c73edbf701f8130ae6848475a270d38ad93efb8c1ae4a",
+      "size": 4192
+    },
+    "compiler/mesh-rt/src/secret.rs": {
+      "sha256": "f31e412764b42ca733a7d68f6316ca6609e5f1d026a54fb0ecd2a1fba94608fb",
+      "size": 141869
+    },
+    "compiler/mesh-rt/src/crypto.rs": {
+      "sha256": "a972a81e4ed35c510a7893125d09185735a08497687308906f86912bbe0fa960",
+      "size": 139422
+    },
+    "compiler/mesh-rt/src/file.rs": {
+      "sha256": "685d876ceaaed593b058c3e8a1f56842b66f9d46919f71d9ad99977fc5eba6c6",
+      "size": 31323
+    },
+    "compiler/mesh-rt/src/crypto/aead_aad_tests.rs": {
+      "sha256": "b0e0536110ffef3d499e28e82ef3ba7f97afe275590ed2885da6292f9ebc9922",
+      "size": 6622
+    },
+    "compiler/mesh-rt/src/crypto/ohttp_ffi_tests.rs": {
+      "sha256": "e72791677dc8448eb7d97a748d6d34f72aae9c9edee2026d6a98e3aad9b2b848",
+      "size": 6420
+    },
+    "compiler/mesh-rt/src/crypto/mlkem_incremental_tests.rs": {
+      "sha256": "6b88e56d647481eeddc68cec8ea36e0176b321321b1c6d27005bdd2071ac010f",
+      "size": 8756
+    },
+    "compiler/mesh-rt/src/crypto/mlkem_conformance_tests.rs": {
+      "sha256": "7148f152f7a0e3a0e5de2e5869b1d8d19824093b1aa01ec0248047ae4a145211",
+      "size": 7340
+    },
+    "compiler/mesh-rt/src/crypto/ohttp.rs": {
+      "sha256": "6319f9477c240637973df5f2d30b0ce6a72df810102b73f17b1988cb7c70a5f8",
+      "size": 11441
+    },
+    "compiler/mesh-rt/src/crypto/mlkem_incremental_ffi_tests.rs": {
+      "sha256": "29c483a60ee052dccfc07968b8f9457b46c6bf9ccb45b1adb2c223503203b717",
+      "size": 13607
+    },
+    "compiler/mesh-rt/src/crypto/provider.rs": {
+      "sha256": "fd4bdbe79f9aa373c3efbd18a3b47b57e5ab41a55f3bbdb1920d11ee00584d28",
+      "size": 36604
+    },
+    "compiler/mesh-rt/src/crypto/mlkem_incremental.rs": {
+      "sha256": "c3f1cb50211ca63697384e31c70fe02a2d4b3d5b9bce4852f6beea2b65782271",
+      "size": 6347
+    },
+    "compiler/mesh-rt/src/crypto/secret_primitives_contract_tests.rs": {
+      "sha256": "770ffadba18a00eb4d9663b9632a1baa06fb69c25ed53d97c0f6826920c7341d",
+      "size": 10530
+    },
+    "compiler/mesh-rt/src/crypto/xchacha20poly1305_tests.rs": {
+      "sha256": "55d0b140cb18f58fcab449511e66484e277c4e776e12b985dfc4eb289b029b51",
+      "size": 6486
+    },
+    "compiler/mesh-rt/src/crypto/mlkem_incremental_ffi.rs": {
+      "sha256": "0ff2813095ce12775de5d8210cfe2ddb32b644befc756b6080a928682a9e74f1",
+      "size": 5804
+    },
+    "compiler/mesh-rt/src/crypto/blind_rsa.rs": {
+      "sha256": "6c2234d945064b8689c4ae2b2348ae3cf2069dedc614c7881759afb869ff8e98",
+      "size": 30673
+    },
+    "compiler/mesh-rt/src/crypto/hmac_sha512_tag_tests.rs": {
+      "sha256": "7d25d2f5c92a8035992f7fe460ff4a905389979e3ed78fa35264b910e36ebd58",
+      "size": 4626
+    },
+    "compiler/mesh-rt/src/crypto/mlkem_backend.rs": {
+      "sha256": "cb27aa633c1a5baa0c694169bc8b61f9a8b7dbc245cb245ed10eab64e60458de",
+      "size": 5596
+    },
+    "compiler/mesh-rt/src/crypto/secret_primitives_ffi_tests.rs": {
+      "sha256": "49162d7ab5a3ce12a1dff0085d9ba4333bab5564a13299ce76d80f646ef276b9",
+      "size": 4517
+    },
+    "compiler/mesh-rt/src/crypto/ohttp_ffi.rs": {
+      "sha256": "e5de168810d131f5f299759f893c4d98f4a8084e01cf32237880a2c1f7784af8",
+      "size": 3677
+    },
+    "compiler/mesh-rt/src/crypto/ohttp_tests.rs": {
+      "sha256": "d5ede7bf960a9dd2f9b560f77f9ade2cf9d71b765a1cd0f9849b564de896885c",
+      "size": 26232
+    },
+    "compiler/mesh-rt/src/bin/mesh-capacity-driver.rs": {
+      "sha256": "1820529a5ebd2342b10c31980ea6589843cb7388c6a3af299a4bc76a972d3965",
+      "size": 347
+    },
+    "compiler/mesh-rt/src/dist/telemetry.rs": {
+      "sha256": "e895f9bab33051063a89b3ffecfcc0b51bcd6b183b531b65a09403caa7a65ac1",
+      "size": 38016
+    },
+    "compiler/mesh-rt/src/dist/operator.rs": {
+      "sha256": "d7507b6c65e459322bbbdc4a511a771172b2c9d3f04c8c54586102717a89310f",
+      "size": 120986
+    },
+    "compiler/mesh-rt/src/dist/driver_service.rs": {
+      "sha256": "b8bdfffa9e847db3c5ae3ff74b83080ec29e1218056b7c7c8d0129731e978968",
+      "size": 65927
+    },
+    "compiler/mesh-rt/src/dist/autonomous_model_tests.rs": {
+      "sha256": "6d1c082808237a55c5032761c956561daef39fe035da6fdeb329926d4db501e1",
+      "size": 9872
+    },
+    "compiler/mesh-rt/src/dist/protocol.rs": {
+      "sha256": "0a0176c8c8075362b151b1f6fcdceaa5a540d1882f975e87cb61506c60d3610d",
+      "size": 20083
+    },
+    "compiler/mesh-rt/src/dist/global.rs": {
+      "sha256": "fdc39a40fa92afb87d07c7e9cd079abd96b4399ef6a65151eaf24b33e290defa",
+      "size": 21218
+    },
+    "compiler/mesh-rt/src/dist/discovery.rs": {
+      "sha256": "93d56b7dbe0a8a793c62ebc83454e4b7cb04ae8cff2d374adb25890bd2c9727c",
+      "size": 19241
+    },
+    "compiler/mesh-rt/src/dist/scaling.rs": {
+      "sha256": "8ca4a5cd2df8559e4b5a2c5e8c9554bb23d92cdb4d7f7f694461fb16e02b2a42",
+      "size": 230883
+    },
+    "compiler/mesh-rt/src/dist/bootstrap.rs": {
+      "sha256": "fb6f88e14b67648a19ccb9a2c26b09ccfbe1aaab3cacecae5b61b9a7e7dc9d46",
+      "size": 19933
+    },
+    "compiler/mesh-rt/src/dist/continuity_store.rs": {
+      "sha256": "f12696b136a5bdad3740e280c561e8e2a19ad4ddc079da94bf662ee2e399d81d",
+      "size": 124113
+    },
+    "compiler/mesh-rt/src/dist/identity.rs": {
+      "sha256": "ede4ae10ff3c0b141482cf6810b0722d9e2554a5134d761f4be5e35072a5d8a7",
+      "size": 10304
+    },
+    "compiler/mesh-rt/src/dist/mod.rs": {
+      "sha256": "27b4a2513b50a6a01af11218fb66821e5fe5c69e72f82c6190000aad3ac71319",
+      "size": 1878
+    },
+    "compiler/mesh-rt/src/dist/readiness.rs": {
+      "sha256": "4b55fc34910fa7f471e812d7a638260f87c3436c1e5768389df4bf71dc5ff9ab",
+      "size": 10358
+    },
+    "compiler/mesh-rt/src/dist/node.rs": {
+      "sha256": "78531a7f1732de804f19cfac376eeef34d825de5377517af8cfc2eeae6a56814",
+      "size": 628777
+    },
+    "compiler/mesh-rt/src/dist/continuity.rs": {
+      "sha256": "973a0f10da703940cee45bb457eea68208a5110d5103ddf0a991f1b7e9d698c5",
+      "size": 223407
+    },
+    "compiler/mesh-rt/src/dist/autonomous.rs": {
+      "sha256": "b5dc7ece4eabffd8817078e279cccc47ee98089ecc4d465b4a251aadfec79387",
+      "size": 74220
+    },
+    "compiler/mesh-rt/src/dist/routing.rs": {
+      "sha256": "64128fe95c40a6f9817c21d312b89a43677fa3b6fc5003f54891d9139f7b7ded",
+      "size": 43513
+    },
+    "compiler/mesh-rt/src/dist/consensus.rs": {
+      "sha256": "76a4d0d0bc4fe015e609d9c08da88eabe84510bc3aa71c0c0677afd21ca1f917",
+      "size": 45517
+    },
+    "compiler/mesh-rt/src/dist/consensus_testing.rs": {
+      "sha256": "fa8dbd28ad701d0d31783de5ee86d8ade34e04ad78dba556355d7d0b027cc618",
+      "size": 21686
+    },
+    "compiler/mesh-rt/src/dist/cluster_api.rs": {
+      "sha256": "88313bf4d38d89f31ccf2811a2222484bf56bd3f68d02849060153c8892a13c5",
+      "size": 8719
+    },
+    "compiler/mesh-rt/src/dist/identity_claim.rs": {
+      "sha256": "57d7254cb14a9070ac1c8946cee0e3ec5c27bb3b4a461fdb06feffe5be46c411",
+      "size": 11609
+    },
+    "compiler/mesh-rt/src/dist/consensus_store.rs": {
+      "sha256": "f8bf9fdd5503c25681ff1879906e2f06904ec85880aa7af921c219ba852cbbe1",
+      "size": 25953
+    },
+    "compiler/mesh-rt/src/library/invocation.rs": {
+      "sha256": "1ac7a32719b59adfaa08266e96e04f74f46f1cb5c458cc1d2eb5db0df811122a",
+      "size": 11137
+    },
+    "compiler/mesh-rt/src/http/trust_roots.rs": {
+      "sha256": "e1fefa05999e58020abf0ee1020adba85cefe076de680cb2575ebec0a38024ce",
+      "size": 3074
+    },
+    "compiler/mesh-rt/src/http/client.rs": {
+      "sha256": "4c647dc8e9af50b0cd184bb4fe529c7bbac61d63da1c60436a734d6d214a0175",
+      "size": 74893
+    },
+    "compiler/mesh-rt/src/http/server.rs": {
+      "sha256": "4a3c40e463cb3a339b76abf252d7128117732039c6bbf78e48eaea1c3f42d085",
+      "size": 108746
+    },
+    "compiler/mesh-rt/src/http/mod.rs": {
+      "sha256": "94c539d9b137e2610a0f33ca0f005eae4999925b9f5d855c9791804043cd5346",
+      "size": 2140
+    },
+    "compiler/mesh-rt/src/http/client_trust_tests.rs": {
+      "sha256": "430fc13aa990608f29991e65c127be3eae6fb18b44f1d7f2651ead96549c309c",
+      "size": 5171
+    },
+    "compiler/mesh-rt/src/http/router.rs": {
+      "sha256": "dd152633e95a8506759d97279272ca274b41839a7d7dc178deb0f87e4053d250",
+      "size": 20067
+    },
+    "compiler/mesh-rt/src/storage_wrapping/mlkem_incremental_tests.rs": {
+      "sha256": "d98d160963d02fe6136e8cb462205889763f2525a10b75e6a52047af74bcf2bc",
+      "size": 15123
+    },
+    "compiler/mesh-rt/src/storage_wrapping/braid_responder.rs": {
+      "sha256": "0933da3c21f5af67406d1f2466e1f6d3a6b339bfd3b01ec9c9e304f496777240",
+      "size": 7976
+    },
+    "compiler/mesh-rt/src/storage_wrapping/braid_epoch_tests.rs": {
+      "sha256": "412693853e36948307d73f2d96d63d5db03eb077efea45b0d77dc86b420f349f",
+      "size": 12227
+    },
+    "compiler/mesh-rt/src/storage_wrapping/index_tests.rs": {
+      "sha256": "02cea631dc20221b0956629ef3e89d36355c7d36366f589a34072a05f11fddae",
+      "size": 3225
+    },
+    "compiler/mesh-rt/src/storage_wrapping/spqr.rs": {
+      "sha256": "7ffb11ce70c49a20d92b84d19d3a08b7b316d52798d1463a8e447b3fc860516e",
+      "size": 11992
+    },
+    "compiler/mesh-rt/src/storage_wrapping/braid_responder_tests.rs": {
+      "sha256": "8ed614da4eda137c96e92ec5d00cf95802c0871e5557101db336731e906d73a8",
+      "size": 9646
+    },
+    "compiler/mesh-rt/src/storage_wrapping/spqr_tests.rs": {
+      "sha256": "9b6836ef1dc90bab2e80aee9ea09767249e91867c483e51ed0ef71c8a565ea59",
+      "size": 35123
+    },
+    "compiler/mesh-rt/src/storage_wrapping/braid_epoch.rs": {
+      "sha256": "642de3ce8f7fadd722fe118224dde6805303cd695791b269744fb3bf27ec1217",
+      "size": 5852
+    },
+    "compiler/mesh-rt/src/storage_wrapping/file.rs": {
+      "sha256": "21b0a75eae5acf86e9ff8c2ccfa5a938f7e529271bced41f1ca66c94e374c139",
+      "size": 21962
+    },
+    "compiler/mesh-rt/src/db/sqlite.rs": {
+      "sha256": "d443bf83725d3ea824dbfee7ae86b4ae69eac2012d82f30e14593690ec116dde",
+      "size": 42628
+    },
+    "compiler/mesh-rt/src/db/changeset.rs": {
+      "sha256": "bc8b6ec6b8142b7f18905d385d741952f167fadd792111b79c86ea8f78c66040",
+      "size": 21337
+    },
+    "compiler/mesh-rt/src/db/orm.rs": {
+      "sha256": "717e94d7a7f771247f520354f9790627d8a14a85fde851228f9c7901b8ffbb51",
+      "size": 16207
+    },
+    "compiler/mesh-rt/src/db/pg.rs": {
+      "sha256": "2dd17c802176bfb2a51177673a85e248b5d5a2eb255f5d323648c0a8fa703218",
+      "size": 135460
+    },
+    "compiler/mesh-rt/src/db/transport.rs": {
+      "sha256": "689c8bc5e9de708a5c04d25e864d2727b95c1905fa33823edcacc224c9526ea7",
+      "size": 16728
+    },
+    "compiler/mesh-rt/src/db/query.rs": {
+      "sha256": "f53438fa1fdbf0e2dcf43fff7bbf4dbbea513b4af8b472a3609f3d50dcb3a093",
+      "size": 26968
+    },
+    "compiler/mesh-rt/src/db/pg_schema.rs": {
+      "sha256": "c7463ab912ac4a37b21123d3c4ca787e87bdc122d70b57f6ef2a1fc07b3a4e64",
+      "size": 14801
+    },
+    "compiler/mesh-rt/src/db/json.rs": {
+      "sha256": "fbe5d8792f4ce910e0e8a5193135dae674b90eb8d29bb50fc90d7be3c6ce6385",
+      "size": 8093
+    },
+    "compiler/mesh-rt/src/db/mod.rs": {
+      "sha256": "a0408715b85262988058f18c8c3a918f4e0f626c8d0eba9ca8983d6e511b3fa2",
+      "size": 1674
+    },
+    "compiler/mesh-rt/src/db/expr.rs": {
+      "sha256": "ff19664a8f9052ce78fa59ac1d1a24b2d9a394d1b3bd5ca5f74385951ecaef20",
+      "size": 18584
+    },
+    "compiler/mesh-rt/src/db/sqlite_quota_tests.rs": {
+      "sha256": "bdf4a7f8c67cb3b11414f9f8be9932ee1a39bb4d2fa005b69da9dcb40e8e90a9",
+      "size": 5135
+    },
+    "compiler/mesh-rt/src/db/pool.rs": {
+      "sha256": "b50a5c8a0ff6fca08bfc4a61933a325539ed846f00f58ae0931d2da0d6e05508",
+      "size": 44303
+    },
+    "compiler/mesh-rt/src/db/migration.rs": {
+      "sha256": "646c9e37ed648018f6af19c157e2fb071fdb671b53c553ed2f20d4c77f71cb7a",
+      "size": 23651
+    },
+    "compiler/mesh-rt/src/db/row.rs": {
+      "sha256": "22fceada43d59f03c2fa260e1823e824ae8d2bfaa9165bc58070207dc0891f0b",
+      "size": 10133
+    },
+    "compiler/mesh-rt/src/db/repo.rs": {
+      "sha256": "da8a8518145f253456b89947f5035eeb0103e5ada8227178d1f7d460b0fcde9d",
+      "size": 117586
+    },
+    "compiler/mesh-rt/src/secret/mlkem_incremental_tests.rs": {
+      "sha256": "44a051fe1ed760864bf76c110a2180f419504e16f9d866709d8178c9818b7b54",
+      "size": 5441
+    },
+    "compiler/mesh-rt/src/secret/recovery_code_tests.rs": {
+      "sha256": "d89183b90989ba2a9fbd6ceeda4bcf5026dd68953dae207758f429cd7f92fbff",
+      "size": 6328
+    },
+    "compiler/mesh-rt/src/secret/split_contract_tests.rs": {
+      "sha256": "6a32adb4f9df11de28c761374d1b5ad4d595d9c35893febcb94b651ea51ddbc2",
+      "size": 12575
+    },
+    "compiler/mesh-rt/src/secret/braid_epoch_tests.rs": {
+      "sha256": "9bb9daf17c09b032e0f2f3d9a18903a6e7483442098ceed817aae3b5116e342c",
+      "size": 4655
+    },
+    "compiler/mesh-rt/src/secret/spqr_storage.rs": {
+      "sha256": "b1ddb68adea0c745380c5e164b99316f956d7bbfec5cb0ea5eb9413387f44a64",
+      "size": 29127
+    },
+    "compiler/mesh-rt/src/secret/braid_responder_tests.rs": {
+      "sha256": "3cb238da65a97d967a56faae1610f8d39715bf18f7aae2b77c255b641da27932",
+      "size": 4599
+    },
+    "compiler/mesh-rt/src/secret/recovery_code.rs": {
+      "sha256": "15f2230993c919506d581131e6eb38fb5c0957db641b84b7c274978b2d97c583",
+      "size": 5161
+    },
+    "compiler/mesh-rt/src/collections/range.rs": {
+      "sha256": "3780bf872c40a39f6f1d547061482140d946af12d42b7d8cee619f1ddbfd7889",
+      "size": 7292
+    },
+    "compiler/mesh-rt/src/collections/list.rs": {
+      "sha256": "0c8b01aa4412be83c6992f7c1ba1589e8f1b214f717e0558c3af430f6c377a6b",
+      "size": 47262
+    },
+    "compiler/mesh-rt/src/collections/queue.rs": {
+      "sha256": "6704cfdcecb9b8fbbd16bbe01d2f8c975ae446c598e82644914cbef1b31c72ce",
+      "size": 7241
+    },
+    "compiler/mesh-rt/src/collections/tuple.rs": {
+      "sha256": "96d9c7d06a3a108d15341af55ae1b25a1f201d2dfb998d38217d10f1bd0483b7",
+      "size": 2881
+    },
+    "compiler/mesh-rt/src/collections/mod.rs": {
+      "sha256": "adc6e46245fbbf3f73e6538d1743217a9bb5d29ce2351da13559067d54cf6abc",
+      "size": 303
+    },
+    "compiler/mesh-rt/src/collections/table.rs": {
+      "sha256": "8a16da0f457343202e35c2ac8b8511b76bf58e1b4e8bbbf034638bb66c7e1065",
+      "size": 23901
+    },
+    "compiler/mesh-rt/src/collections/set.rs": {
+      "sha256": "bc9c7f2c2e26f3661a87f8d4b7c5ef6f1c31245260f7d4dfbe7f5b15cc720cca",
+      "size": 15360
+    },
+    "compiler/mesh-rt/src/collections/map.rs": {
+      "sha256": "e020f862764a201b290b921c9c848880df2294c20b6910db505cca554c362f54",
+      "size": 22651
+    },
+    "compiler/mesh-rt/src/actor/msg_shape.rs": {
+      "sha256": "5b876043f9c08ad25d79283b849164d202469973af33bc49d684cfc47d74b94c",
+      "size": 53110
+    },
+    "compiler/mesh-rt/src/actor/job.rs": {
+      "sha256": "2d0050953e47a8bfd5d686a13ae27c5138ef8b9782548c275c51f556e2d125aa",
+      "size": 17828
+    },
+    "compiler/mesh-rt/src/actor/registry.rs": {
+      "sha256": "e26a7d872633bb21c8be06ca062300ae106d1de98d0d8ddb23f986f150a2e276",
+      "size": 9599
+    },
+    "compiler/mesh-rt/src/actor/supervisor.rs": {
+      "sha256": "841c8b888e7a228101b4e7dba7924954abcc1aedc76625174087190224f7a7af",
+      "size": 43195
+    },
+    "compiler/mesh-rt/src/actor/heap.rs": {
+      "sha256": "b29099461a5fbb295635001bb0bd3e38431d3801b940deb37f41c399a9aa911d",
+      "size": 59315
+    },
+    "compiler/mesh-rt/src/actor/child_spec.rs": {
+      "sha256": "e511e4e2ec2885202c0669063c4272995fc194eb4e90d61de388104c463ef201",
+      "size": 7931
+    },
+    "compiler/mesh-rt/src/actor/link.rs": {
+      "sha256": "0be1689f420ea5c839f0930e8097faf9429a25e7c6aaa5e9353ae60801c347fa",
+      "size": 27226
+    },
+    "compiler/mesh-rt/src/actor/service.rs": {
+      "sha256": "1ad059b96c4c7656a940d115e77bd32baa723c0659d703774007ec676eabacb7",
+      "size": 15204
+    },
+    "compiler/mesh-rt/src/actor/mod.rs": {
+      "sha256": "ebaf16fdac672adce12732013fc948f7e90dec51ce3d3d6f332a4fb217ca232f",
+      "size": 112621
+    },
+    "compiler/mesh-rt/src/actor/scheduler.rs": {
+      "sha256": "62c365d1885165d731b7ec68a6cee4e3af2c9503d8bcc79ba5d3c5878332cbed",
+      "size": 74602
+    },
+    "compiler/mesh-rt/src/actor/stack.rs": {
+      "sha256": "5fb9da823f4a399c207c2bf0d640ca18f8b4e1c2871181f2e877e91e922ec443",
+      "size": 15254
+    },
+    "compiler/mesh-rt/src/actor/process.rs": {
+      "sha256": "1d50682a479bf908a08a619ddab83d504f84f39e6173a904658b0ae3761d1fea",
+      "size": 24354
+    },
+    "compiler/mesh-rt/src/actor/mailbox.rs": {
+      "sha256": "fa79f188bcc391ca0dd75ae7e2d3a3297f11e95dd0af0acb44836c778903373c",
+      "size": 12400
+    },
+    "compiler/mesh-rt/src/ws/client.rs": {
+      "sha256": "e3e3a40ec02f0e21a542350359ecfc351e849c6df0125e7e39648855d53e6b58",
+      "size": 70645
+    },
+    "compiler/mesh-rt/src/ws/close.rs": {
+      "sha256": "a0b4d6b6fc2c5666db2d5d0e6e453965cfcb5d239a6a8c15bc1bf867e042235b",
+      "size": 6843
+    },
+    "compiler/mesh-rt/src/ws/reactor.rs": {
+      "sha256": "a0264ee00672a7dd3cc87d7dc224e4ba62a049129aa2bf52676d311574fa88f2",
+      "size": 79132
+    },
+    "compiler/mesh-rt/src/ws/handshake.rs": {
+      "sha256": "5609769512f82762199097dece8bbbee5e810739aab80a1f86e95225367e64bd",
+      "size": 17279
+    },
+    "compiler/mesh-rt/src/ws/rooms.rs": {
+      "sha256": "f288227b15ac18540bab0dc7cf8313698298dbc6df142056237c984c77c3630a",
+      "size": 21353
+    },
+    "compiler/mesh-rt/src/ws/server.rs": {
+      "sha256": "f07653bd18717e1b8e429c0c03dc571722ce4a47dcb85a98e39f201166fea944",
+      "size": 64826
+    },
+    "compiler/mesh-rt/src/ws/mod.rs": {
+      "sha256": "62cbbab160b40f949f3cb26cac5f572168ae1c28bfea31bf2c014b334cc0e871",
+      "size": 1352
+    },
+    "compiler/mesh-rt/src/ws/frame.rs": {
+      "sha256": "51546477399d4e194bd3840700897a78482516a1504e8d4fab87ae9d25b833c7",
+      "size": 24700
+    },
+    ".tmp/native-owned-invocations/PROVENANCE_INVENTORY.md": {
+      "sha256": "d6dc9bdc738dc0701e39322996a70217e9af8143898f0aece1e5d14c142f5391",
+      "size": 16477
+    },
+    ".tmp/native-owned-invocations/API_PROPOSAL.md": {
+      "sha256": "544325a5eb2c656741e40da7524edc1ed645a1b7aeaea7219814e2a7bfbe79dc",
+      "size": 16171
+    },
+    "compiler/meshc/src/library_authority.h": {
+      "sha256": "5bbaf429dbd3749924b041847aba40ce40ee33c5a13a5c97f454601d79f87843",
+      "size": 3057
+    }
+  }
+}
