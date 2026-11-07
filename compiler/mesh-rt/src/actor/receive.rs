@@ -199,6 +199,47 @@ mod tests {
         unsafe { pointer.add(16).cast::<u64>().read() }
     }
 
+    fn nested_message() -> Message {
+        use actor::{heap::ActorHeap, msg_shape};
+        let text = b"nested-payload";
+        let size = 8 + text.len();
+        let mut sender = ActorHeap::new();
+        let string = sender.alloc(size, 8);
+        unsafe {
+            string.cast::<usize>().write(text.len());
+            std::ptr::copy_nonoverlapping(text.as_ptr(), string.add(8), text.len());
+        }
+        // Message.Keep(Inner.Payload(String, Int)) places the string at byte 9.
+        let mut data = vec![0; 25];
+        data[9..17].copy_from_slice(&(string as usize).to_ne_bytes());
+        data[17..25].copy_from_slice(&42u64.to_ne_bytes());
+        let shape = [
+            17,
+            msg_shape::SUM,
+            1,
+            0,
+            1,
+            1,
+            7,
+            msg_shape::SUM,
+            1,
+            0,
+            2,
+            8,
+            15,
+            16,
+            16,
+            msg_shape::STRING,
+            msg_shape::SCALAR,
+        ];
+        let captured = unsafe { msg_shape::capture(&sender, &data, 0, shape.as_ptr()) };
+        assert_eq!(captured.relocs, vec![(9, 0)]);
+        assert_eq!(captured.objects.len(), 1);
+        let mut buffer = MessageBuffer::new(data, 0);
+        buffer.captured = captured;
+        Message { buffer }
+    }
+
     #[test]
     fn saved_capacity_order_and_one_copy_survive_multiple_scans() {
         let main = MainProcess::new();
@@ -318,17 +359,223 @@ mod tests {
     #[test]
     fn guard_reentrancy_panics_and_finalization_releases_retained_capacity() {
         let main = MainProcess::new();
-        main.send(1);
+        let me = actor::global_scheduler().get_process(main.0).unwrap();
+        me.lock().mailbox.push(nested_message());
         mesh_actor_receive_begin(0);
         mesh_actor_receive_next();
         assert!(std::panic::catch_unwind(|| actor::mesh_actor_receive(0)).is_err());
         assert!(std::panic::catch_unwind(|| mesh_actor_receive_begin(0)).is_err());
-        let me = actor::global_scheduler().get_process(main.0).unwrap();
         let mut process = me.lock();
         process.begin_exit_finalization(actor::ExitReason::Killed);
         process.receive.assert_idle();
         assert_eq!(process.mailbox.len(), 0);
         assert_eq!(process.mailbox.byte_len(), 0);
+        assert_eq!(process.receive.roots().count(), 0);
+        process.heap.collect(std::ptr::null(), std::ptr::null());
+        assert_eq!(process.heap.total_bytes(), 0);
+    }
+
+    #[test]
+    fn nested_captured_payload_survives_saved_roots_without_stack_scanning() {
+        let main = MainProcess::new();
+        let me = actor::global_scheduler().get_process(main.0).unwrap();
+        let text = b"nested-payload";
+        let size = 8 + text.len();
+        me.lock().mailbox.push(nested_message());
+
+        mesh_actor_receive_begin(0);
+        let pointer = mesh_actor_receive_next();
+        let payload = unsafe { pointer.add(25).cast::<*const u8>().read_unaligned() };
+        let mut guard = me.lock();
+        let process = &mut *guard;
+        let before = process.heap.total_bytes();
+        let empty = std::ptr::null();
+        process
+            .heap
+            .collect_with_roots(empty, empty, process.receive.roots());
+        let live = process.heap.live_allocation_size(payload);
+        let after = process.heap.total_bytes();
+        let reused = process.heap.alloc(size, 8);
+        eprintln!(
+            "nested payload live={live:?}; bytes before={before}, after={after}; reused={}",
+            std::ptr::eq(reused, payload)
+        );
+        assert!(live.is_some(), "saved nested string was swept");
+        assert!(
+            !std::ptr::eq(reused, payload),
+            "saved nested string was reused"
+        );
+        assert_eq!(
+            unsafe { std::slice::from_raw_parts(payload.add(8), text.len()) },
+            text
+        );
+        assert_eq!(after, before, "all captured bytes remain accounted for");
+        assert!(process.heap_borrows.is_empty());
+        assert_eq!(process.mailbox.byte_len(), 25);
+        drop(guard);
+
+        mesh_actor_receive_abort();
+        {
+            let mut guard = me.lock();
+            let process = &mut *guard;
+            process
+                .heap
+                .collect_with_roots(empty, empty, process.receive.roots());
+            assert_eq!(process.heap.total_bytes(), before);
+        }
+        mesh_actor_receive_begin(0);
+        assert_eq!(mesh_actor_receive_next(), pointer, "no second copy");
+        mesh_actor_receive_accept();
+        let mut process = me.lock();
+        assert_eq!(process.mailbox.byte_len(), 0);
+        assert_eq!(process.receive.roots().count(), 0);
+        let value_root = [payload as usize];
+        process.heap.collect(
+            unsafe { value_root.as_ptr().add(1).cast() },
+            value_root.as_ptr().cast(),
+        );
+        assert_eq!(
+            process.heap.total_bytes(),
+            size + actor::heap::GC_HEADER_SIZE
+        );
+        process.heap.collect(empty, empty);
+        assert_eq!(process.heap.total_bytes(), 0);
+    }
+
+    #[test]
+    fn ordinary_receive_releases_saved_root_and_keeps_only_the_consumed_value() {
+        let main = MainProcess::new();
+        let me = actor::global_scheduler().get_process(main.0).unwrap();
+        me.lock().mailbox.push(nested_message());
+        mesh_actor_receive_begin(0);
+        let pointer = mesh_actor_receive_next();
+        assert!(mesh_actor_receive_next().is_null());
+        assert_eq!(actor::mesh_actor_receive(0), pointer);
+        let value_root = [unsafe { pointer.add(25).cast::<usize>().read_unaligned() }];
+        let mut process = me.lock();
+        assert_eq!(process.mailbox.len(), 0);
+        assert_eq!(process.mailbox.byte_len(), 0);
+        assert_eq!(process.receive.roots().count(), 0);
+        process.heap.collect(
+            unsafe { value_root.as_ptr().add(1).cast() },
+            value_root.as_ptr().cast(),
+        );
+        assert!(process.heap.live_allocation_size(pointer).is_none());
+        assert!(process
+            .heap
+            .live_allocation_size(value_root[0] as *const u8)
+            .is_some());
+        process.heap.collect(std::ptr::null(), std::ptr::null());
+        assert_eq!(process.heap.total_bytes(), 0);
+    }
+
+    #[test]
+    fn shared_and_interior_references_keep_the_existing_process_loan_lifetime() {
+        use actor::msg_shape;
+        let main = MainProcess::new();
+        let me = actor::global_scheduler().get_process(main.0).unwrap();
+        let owner = Arc::new(parking_lot::Mutex::new(Process::new(
+            ProcessId::next(),
+            Priority::Normal,
+        )));
+        let mut data = vec![0; 25];
+        let captured = {
+            let mut process = owner.lock();
+            let interior = unsafe { process.heap.alloc(16, 8).add(8) } as usize;
+            let shared = process.heap.alloc(16, 8) as usize;
+            data[1..9].copy_from_slice(&interior.to_ne_bytes());
+            data[9..17].copy_from_slice(&shared.to_ne_bytes());
+            data[17..25].copy_from_slice(&73usize.to_ne_bytes());
+            let shape = [
+                11,
+                msg_shape::AGG,
+                3,
+                1,
+                9,
+                9,
+                10,
+                17,
+                10,
+                msg_shape::STRING,
+                msg_shape::SHARED,
+            ];
+            let captured = unsafe { msg_shape::capture(&process.heap, &data, 0, shape.as_ptr()) };
+            assert!(captured.objects.is_empty());
+            assert_eq!(captured.lend, vec![interior, shared, 73]);
+            captured
+        };
+        let mut buffer = MessageBuffer::new(data, 0);
+        buffer.borrows = actor::scheduler::lend_words(&owner, &captured.lend);
+        buffer.captured = captured;
+        assert_eq!(buffer.borrows.len(), 1);
+        let loan = Arc::downgrade(&buffer.borrows[0]._lent);
+        me.lock().mailbox.push(Message { buffer });
+        mesh_actor_receive_begin(0);
+        mesh_actor_receive_next();
+        mesh_actor_receive_abort();
+        owner
+            .lock()
+            .heap
+            .collect(std::ptr::null(), std::ptr::null());
+        assert_eq!(owner.lock().heap.total_bytes(), 64);
+        actor::mesh_actor_receive(0);
+        assert_eq!(me.lock().mailbox.byte_len(), 0);
+        assert_eq!(
+            loan.strong_count(),
+            1,
+            "a consumed value can still borrow its owner"
+        );
+        owner
+            .lock()
+            .heap
+            .collect(std::ptr::null(), std::ptr::null());
+        assert_eq!(owner.lock().heap.total_bytes(), 64);
+        drop(me);
+        drop(main);
+        assert_eq!(loan.strong_count(), 0);
+        owner
+            .lock()
+            .heap
+            .collect(std::ptr::null(), std::ptr::null());
+        assert_eq!(owner.lock().heap.total_bytes(), 0);
+    }
+
+    #[test]
+    fn guard_panic_releases_nested_payload_and_capacity() {
+        actor::mesh_rt_init_actor(1);
+        extern "C-unwind" fn entry(args: *const u8) {
+            let barrier = unsafe { Box::from_raw(args as *mut Arc<Barrier>) };
+            let (_, me) = actor::running_process();
+            me.lock().mailbox.push(nested_message());
+            mesh_actor_receive_begin(-1);
+            mesh_actor_receive_next();
+            barrier.wait();
+            barrier.wait();
+            panic!("nested payload guard panic");
+        }
+        let barrier = Arc::new(Barrier::new(2));
+        let scheduler = actor::global_scheduler();
+        let pid = scheduler.spawn(
+            entry as *const u8,
+            Box::into_raw(Box::new(barrier.clone())).cast(),
+            0,
+            1,
+        );
+        let process = scheduler.get_process(pid).unwrap();
+        barrier.wait();
+        assert_eq!(process.lock().mailbox.byte_len(), 25);
+        barrier.wait();
+        let limit = Instant::now() + Duration::from_secs(5);
+        while scheduler.get_process(pid).is_some() {
+            assert!(Instant::now() < limit, "panicking actor was not finalized");
+            std::thread::yield_now();
+        }
+        let mut process = process.lock();
+        process.receive.assert_idle();
+        assert_eq!(process.mailbox.byte_len(), 0);
+        assert_eq!(process.receive.roots().count(), 0);
+        process.heap.collect(std::ptr::null(), std::ptr::null());
+        assert_eq!(process.heap.total_bytes(), 0);
     }
 
     #[test]
@@ -396,8 +643,8 @@ mod tests {
     fn cancellation_of_a_suspended_scan_releases_saved_reservations() {
         actor::mesh_rt_init_actor(1);
         extern "C-unwind" fn entry(_: *const u8) {
-            let (pid, _) = actor::running_process();
-            actor::local_send(pid.as_u64(), 1u64.to_le_bytes().as_ptr(), 8);
+            let (_, me) = actor::running_process();
+            me.lock().mailbox.push(nested_message());
             mesh_actor_receive_begin(-1);
             mesh_actor_receive_next();
             mesh_actor_receive_next();
@@ -412,6 +659,18 @@ mod tests {
         }
         let mailbox = process.lock().mailbox.clone();
         assert_eq!(mailbox.len(), 1);
+        assert_eq!(mailbox.byte_len(), 25);
+        {
+            let mut guard = process.lock();
+            let process = &mut *guard;
+            let bytes = process.heap.total_bytes();
+            process.heap.collect_with_roots(
+                std::ptr::null(),
+                std::ptr::null(),
+                process.receive.roots(),
+            );
+            assert_eq!(process.heap.total_bytes(), bytes);
+        }
         actor::deliver_exit_signal(scheduler, pid, actor::ExitReason::Killed);
         while scheduler.get_process(pid).is_some() {
             assert!(Instant::now() < limit, "cancelled actor was not finalized");
@@ -420,6 +679,10 @@ mod tests {
         process.lock().receive.assert_idle();
         assert_eq!(mailbox.len(), 0);
         assert_eq!(mailbox.byte_len(), 0);
+        let mut process = process.lock();
+        assert_eq!(process.receive.roots().count(), 0);
+        process.heap.collect(std::ptr::null(), std::ptr::null());
+        assert_eq!(process.heap.total_bytes(), 0);
     }
 
     #[test]
@@ -462,8 +725,8 @@ mod tests {
         }
         extern "C-unwind" fn entry(args: *const u8) {
             let gate = unsafe { Box::from_raw(args as *mut Gate) };
-            let (pid, _) = actor::running_process();
-            actor::local_send(pid.as_u64(), 1u64.to_le_bytes().as_ptr(), 8);
+            let (_, me) = actor::running_process();
+            me.lock().mailbox.push(nested_message());
             mesh_actor_receive_begin(-1);
             mesh_actor_receive_next();
             gate.barrier.wait();
@@ -489,7 +752,12 @@ mod tests {
             std::thread::yield_now();
         }
         assert!(!ran_body.load(Ordering::Acquire));
-        process.lock().receive.assert_idle();
-        assert_eq!(process.lock().mailbox.len(), 0);
+        let mut process = process.lock();
+        process.receive.assert_idle();
+        assert_eq!(process.mailbox.len(), 0);
+        assert_eq!(process.mailbox.byte_len(), 0);
+        assert_eq!(process.receive.roots().count(), 0);
+        process.heap.collect(std::ptr::null(), std::ptr::null());
+        assert_eq!(process.heap.total_bytes(), 0);
     }
 }

@@ -138,7 +138,7 @@ jobs:
           # e2e_crypto_v2 and e2e_secret run the published crypto vectors
           # (ML-KEM, RFC 9578 blind RSA), the OpenSSL differential and the
           # secret-resource contract through compiled Mesh.
-          cargo test --locked -p meshc --test e2e --test tooling_e2e --test e2e_test_plan --test e2e_language_fixes --test e2e_performance --test e2e_library --test e2e_crypto_v2 --test e2e_secret
+          cargo test --locked -p meshc --test e2e --test tooling_e2e --test e2e_test_plan --test e2e_language_fixes --test e2e_performance --test e2e_library --test e2e_crypto_v2 --test e2e_secret --test e2e_selective_receive
 
   # The ```mesh examples on the docs site must parse, lint and format cleanly.
   # rust-core runs these tests with the rest of the mesh-lint and mesh-fmt

@@ -85,6 +85,64 @@ end
 }
 
 #[test]
+fn nested_sum_relocations_survive_saving_guards_and_consumption() {
+    let source = r#"
+type Inner do
+  Payload(String, Int)
+end
+type Wrapper do
+  Wrapped(Inner)
+end
+type Message do
+  Keep(Inner)
+  Batch(List<Wrapper>, String)
+  Ready(Int)
+end
+fn reject(text :: String) -> Bool do
+  let pressure = for n in 0..2000 do "guard-${n}" end
+  println("reject ${text} ${List.length(pressure)}")
+  false
+end
+actor reader() do
+  let shared = "shared-${7}"
+  send(self(), Keep(Payload("kept-${42}", 42)))
+  send(self(), Batch([Wrapped(Payload(shared, 7)), Wrapped(Payload(shared, 8))], "batch-${9}"))
+  send(self(), Ready(1))
+  receive matching do Ready(n) -> println("ready ${n}") end
+  let pressure = for n in 0..2000 do "saved-${n}" end
+  println("saved ${List.length(pressure)}")
+  receive matching do
+    Keep(Payload(text, _)) when reject(text) -> println("unexpected")
+    after 0 -> println("retained")
+  end
+  let inner = receive matching do Keep(value) -> value end
+  let accepted_pressure = for n in 0..2000 do "accepted-${n}" end
+  println("accepted ${List.length(accepted_pressure)}")
+  case inner do Payload(text, n) -> println("${text} ${n}") end
+  let items = receive do
+    Batch(values, text) -> do
+      println(text)
+      values
+    end
+    _ -> panic("expected saved batch")
+  end
+  let consumed_pressure = for n in 0..2000 do "consumed-${n}" end
+  println("consumed ${List.length(consumed_pressure)}")
+  for item in items do
+    case item do Wrapped(Payload(text, n)) -> println("${text} ${n}") end
+  end
+end
+fn main() do let pid :: Pid<Message> = spawn(reader) end
+"#;
+    for optimized in [false, true] {
+        assert_eq!(
+            run(source, optimized),
+            "ready 1\nsaved 2000\nreject kept-42 2000\nretained\naccepted 2000\nkept-42 42\nbatch-9\nconsumed 2000\nshared-7 7\nshared-7 8\n"
+        );
+    }
+}
+
+#[test]
 fn zero_timeout_and_mixed_receives_retest_once_per_invocation() {
     let source = r#"
 fn reject(n :: Int) -> Bool do

@@ -260,10 +260,12 @@ impl Captured {
         for (object, &copy) in self.objects.iter().zip(&placed) {
             for &(offset, target) in &object.relocs {
                 (copy.add(offset) as *mut u64).write_unaligned(placed[target as usize] as u64);
+                heap.track_pointer_slot(copy.add(offset));
             }
         }
         for &(offset, target) in &self.relocs {
             (data.add(offset) as *mut u64).write_unaligned(placed[target as usize] as u64);
+            heap.track_pointer_slot(data.add(offset));
         }
     }
 }
@@ -785,6 +787,58 @@ mod tests {
 
     fn word_at(address: usize, offset: usize) -> usize {
         unsafe { ((address + offset) as *const usize).read_unaligned() }
+    }
+
+    #[test]
+    fn materialized_unaligned_graph_survives_value_roots_then_is_reclaimed() {
+        let mut sender = ActorHeap::new();
+        let first = string(&mut sender, "first");
+        let second = string(&mut sender, "second");
+        let object = sender.alloc(33, 8);
+        for (offset, value) in [(1, first), (9, second), (17, first), (25, object as usize)] {
+            unsafe { object.add(offset).cast::<usize>().write_unaligned(value) };
+        }
+        let shape = [14, BOXED, 3, AGG, 4, 1, 13, 9, 13, 17, 13, 25, 1, STRING];
+        let mut data = (object as usize).to_ne_bytes();
+        let captured = unsafe { capture(&sender, &data, 0, shape.as_ptr()) };
+        assert_eq!(captured.objects.len(), 3);
+        assert_eq!(
+            captured.objects[0].relocs,
+            vec![(1, 1), (9, 2), (17, 1), (25, 0)]
+        );
+        let mut receiver = ActorHeap::new();
+        unsafe { captured.materialize(&mut receiver, data.as_mut_ptr()) };
+        drop(sender);
+        let root = usize::from_ne_bytes(data);
+        let copied_first = word_at(root, 1);
+        let copied_second = word_at(root, 9);
+        let before = receiver.total_bytes();
+        let value_root = [root + 1];
+        let collect = |heap: &mut ActorHeap| {
+            heap.collect(
+                unsafe { value_root.as_ptr().add(1).cast() },
+                value_root.as_ptr().cast(),
+            );
+        };
+        collect(&mut receiver);
+        assert_eq!(receiver.total_bytes(), before);
+        assert_eq!(word_at(root, 17), copied_first);
+        assert_eq!(word_at(root, 25), root);
+        assert_eq!(unsafe { text(copied_first) }, "first");
+        assert_eq!(unsafe { text(copied_second) }, "second");
+
+        let replacement = string(&mut receiver, "replacement");
+        unsafe { ((root + 9) as *mut usize).write_unaligned(replacement) };
+        collect(&mut receiver);
+        assert!(receiver
+            .live_allocation_size(copied_second as *const u8)
+            .is_none());
+        assert!(receiver
+            .live_allocation_size(replacement as *const u8)
+            .is_some());
+        assert_eq!(unsafe { text(word_at(root, 9)) }, "replacement");
+        receiver.collect(std::ptr::null(), std::ptr::null());
+        assert_eq!(receiver.total_bytes(), 0, "cycles are not permanent roots");
     }
 
     /// `{literal, owned, pid}`: strings in and outside the heap, and a pid.

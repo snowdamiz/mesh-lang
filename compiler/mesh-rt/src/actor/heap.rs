@@ -13,6 +13,8 @@
 use std::ptr;
 use std::sync::{Arc, Weak};
 
+use rustc_hash::FxHashMap;
+
 /// Default page size for actor heaps: 64 KiB.
 const ACTOR_PAGE_SIZE: usize = 64 * 1024;
 
@@ -345,6 +347,8 @@ pub struct ActorHeap {
     free_bins: Option<Box<FreeBins>>,
     /// Roots held on behalf of spawned actors; see [`ActorHeap::lend`].
     lent: Vec<Lent>,
+    /// Captured pointer slots that aligned conservative tracing cannot see.
+    unaligned_slots: FxHashMap<usize, Vec<usize>>,
 
     /// Heap pressure threshold in bytes. When `total_allocated >= gc_threshold`,
     /// the GC should be triggered.
@@ -367,6 +371,7 @@ impl ActorHeap {
             all_objects: ptr::null_mut(),
             free_bins: None,
             lent: Vec::new(),
+            unaligned_slots: FxHashMap::default(),
             gc_threshold: min_gc_threshold(),
             gc_in_progress: false,
         }
@@ -507,6 +512,23 @@ impl ActorHeap {
         unsafe { std::ptr::eq((*header).data_ptr(), data).then(|| (*header).size as usize) }
     }
 
+    pub(crate) fn track_pointer_slot(&mut self, slot: *const u8) {
+        if (slot as usize).is_multiple_of(8) {
+            return;
+        }
+        // Spawn and channel buffers can live outside this heap. Their consumers
+        // own the top-level roots; slots inside materialized objects live here.
+        let Some(header) = self.find_object_containing(slot) else {
+            return;
+        };
+        let offset = slot as usize - (header as usize + GC_HEADER_SIZE);
+        assert!(offset + 8 <= unsafe { (*header).size } as usize);
+        self.unaligned_slots
+            .entry(header as usize)
+            .or_default()
+            .push(offset);
+    }
+
     /// Whether `ptr` lies in one of this heap's pages.
     pub(crate) fn contains_address(&self, ptr: *const u8) -> bool {
         let addr = ptr as usize;
@@ -569,6 +591,7 @@ impl ActorHeap {
         self.all_objects = ptr::null_mut();
         self.free_bins = None;
         self.lent.clear();
+        self.unaligned_slots.clear();
     }
 
     /// Returns the total number of bytes allocated from this heap
@@ -611,6 +634,7 @@ impl ActorHeap {
 
     /// Add a header to the free bins (used by sweep phase).
     pub fn add_to_free_list(&mut self, header: *mut GcHeader) {
+        self.unaligned_slots.remove(&(header as usize));
         self.free_bins
             .get_or_insert_with(FreeBins::new)
             .push(header);
@@ -727,6 +751,12 @@ impl ActorHeap {
                 let word = unsafe { *(data_start.add(offset) as *const usize) };
                 self.mark_word(word, &mut worklist);
                 offset += 8;
+            }
+            if let Some(slots) = self.unaligned_slots.get(&(header as usize)) {
+                for &offset in slots {
+                    let word = unsafe { data_start.add(offset).cast::<usize>().read_unaligned() };
+                    self.mark_word(word, &mut worklist);
+                }
             }
         }
     }
@@ -917,6 +947,35 @@ impl MessageBuffer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unaligned_slots_expire_before_allocation_reuse_and_on_reset() {
+        let mut heap = ActorHeap::new();
+        let owner = heap.alloc(24, 8);
+        heap.track_pointer_slot(unsafe { owner.add(1) });
+        let empty = std::ptr::null();
+        heap.collect(empty, empty);
+        assert!(heap.unaligned_slots.is_empty());
+        let reused = heap.alloc(24, 8);
+        assert_eq!(reused, owner);
+        let other = heap.alloc(8, 8);
+        unsafe {
+            reused
+                .add(1)
+                .cast::<usize>()
+                .write_unaligned(other as usize)
+        };
+        heap.collect_with_roots(empty, empty, [reused as usize].into_iter());
+        assert!(
+            heap.live_allocation_size(other).is_none(),
+            "reused bytes inherited a pointer slot"
+        );
+        assert_eq!(heap.total_bytes(), 24 + GC_HEADER_SIZE);
+        heap.track_pointer_slot(unsafe { reused.add(1) });
+        heap.reset();
+        assert!(heap.unaligned_slots.is_empty());
+        assert_eq!(heap.total_bytes(), 0);
+    }
 
     /// Under MESH_GC_STRESS a heap's threshold is 0 and stays 0; otherwise
     /// it is twice what survived a collection, but not below the default.
