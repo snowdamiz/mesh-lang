@@ -32,7 +32,7 @@ does not satisfy the row.
 | Queue atomicity | Batch enqueue commits all jobs or none; documentation states the boundary with application databases | Pending |
 | Selective receive | Unmatched application messages remain queued in order until a later matching receive | Reviewed and integrated; focused combined-branch checks pass; workspace gates pending |
 | Actor stack exhaustion | An actor exhausts its stack without aborting unrelated actors or the native process | Feasibility evidence integrated; containment pending |
-| Mutual tail calls | Mutually recursive functions and actor state transitions execute in bounded stack space | Lexical fix accepted. Local names still override resolved runtime calls and global ownership modes. Correction running. Integration blocked |
+| Mutual tail calls | Mutually recursive functions and actor state transitions execute in bounded stack space | Local call targets are committed as 0ca93e8e on the lexical fix. Independent review and a fresh execution are running. A baseline loop-result cleanup panic stays outside this correction. Not integrated |
 | Map patterns | Partial map destructuring matches keys and typed values correctly | Correction is committed as f12bdab9. Grok review of the parent found one diagnostic alias and no higher findings. Independent review and execution of the correction are running. Not integrated |
 | Pinned patterns | A pinned expression compares with an existing binding rather than rebinding it | The type-parameter pin is in the same correction, f12bdab9. Independent review and execution are running. Not integrated |
 | Bitstring patterns | Binary construction and destructuring honor segment widths, bounds, and byte order | Pending |
