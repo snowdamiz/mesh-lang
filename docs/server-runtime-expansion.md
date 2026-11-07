@@ -25,7 +25,7 @@ does not satisfy the row.
 
 | Unit | Required observable behavior | State |
 | --- | --- | --- |
-| Runtime-owned durable jobs | Accepted jobs and arguments survive process restart without an external database | ac80addc passed the independent suite. Grok confirms the confinement claims. An internally consistent rewritten state and log is still accepted, and the applied digest covers the log entry rather than the job rows. The OpenAI membership, purge, and publication defects remain in correction. Not integrated |
+| Runtime-owned durable jobs | Accepted jobs and arguments survive process restart without an external database | Recovery correction 99d5b8df is committed from ac80addc. It rejects a stale applied membership, rebuilds an intact snapshot behind the purge watermark, and checks snapshot rename inodes. Author tests are not the gate. Independent review and a fresh execution are running. A rewritten consistent state and log remains unauthenticated. Not combined with the runner. Not integrated |
 | Queue execution | Named workers execute on actors with bounded per-queue concurrency and durable results | Authority correction is committed as e27c1ed9 on fixture 79cd12fd. Author reports 26 runner tests passed. Independent review and a fresh execution are running. Not combined with the storage correction. Public API pending |
 | Queue lifecycle | Scheduling, recurring jobs, retries, uniqueness, cancellation, pause, resume, retry, discard, and inspection operate on persisted jobs | Pending |
 | Queue ownership | Competing claims, stale completion, crash recovery, and cluster owner loss preserve attempt authority | Pending |
