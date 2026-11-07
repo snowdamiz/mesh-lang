@@ -40,7 +40,7 @@ does not satisfy the row.
 | Concurrent tests | Explicitly asynchronous cases run with bounded concurrency and isolated fixtures | Reviewed and integrated; focused integrated tests pass; workspace gates pending |
 | Documentation tests | Executable documentation examples run with expected result checks | Reviewed and integrated; focused integrated tests pass; workspace gates pending |
 | Coverage | Mesh source execution produces an accurate coverage report with unexecuted code visible | Pending |
-| Editor references and rename | Scope-aware references and rename work through the actual LSP transport | Second correction passes fresh artifact checks and OpenAI review; Grok review pending |
+| Editor references and rename | Scope-aware references and rename work through the actual LSP transport | Invalid-pattern recovery gap reproduced; third focused correction running; integration pending |
 | Persistent REPL values | Reading a previous value does not rerun its initializer or effects | Implementation running in isolated worktree |
 | Typed query results | Queries decode directly to declared row types and report incompatible rows | Pending |
 | Transaction composition | Named dependent database operations use one connection and roll back together | Pending |
