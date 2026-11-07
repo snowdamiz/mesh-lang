@@ -32,7 +32,7 @@ does not satisfy the row.
 | Queue atomicity | Batch enqueue commits all jobs or none; documentation states the boundary with application databases | Pending |
 | Selective receive | Unmatched application messages remain queued in order until a later matching receive | Reviewed and integrated; focused combined-branch checks pass; workspace gates pending |
 | Actor stack exhaustion | An actor exhausts its stack without aborting unrelated actors or the native process | Feasibility evidence integrated; containment pending |
-| Mutual tail calls | Mutually recursive functions and actor state transitions execute in bounded stack space | Lexical-scope correction has a reproduced runtime-symbol collision; integration blocked pending final correction |
+| Mutual tail calls | Mutually recursive functions and actor state transitions execute in bounded stack space | Lexical fix accepted. Local names still override resolved runtime calls and global ownership modes. Correction running. Integration blocked |
 | Map patterns | Partial map destructuring matches keys and typed values correctly | Implementation running in isolated worktree |
 | Pinned patterns | A pinned expression compares with an existing binding rather than rebinding it | Implementation running in isolated worktree |
 | Bitstring patterns | Binary construction and destructuring honor segment widths, bounds, and byte order | Pending |
@@ -40,7 +40,7 @@ does not satisfy the row.
 | Concurrent tests | Explicitly asynchronous cases run with bounded concurrency and isolated fixtures | Reviewed and integrated; focused integrated tests pass; workspace gates pending |
 | Documentation tests | Executable documentation examples run with expected result checks | Reviewed and integrated; focused integrated tests pass; workspace gates pending |
 | Coverage | Mesh source execution produces an accurate coverage report with unexecuted code visible | Pending |
-| Editor references and rename | Scope-aware references and rename work through the actual LSP transport | Invalid-pattern recovery gap reproduced; third focused correction running; integration pending |
+| Editor references and rename | Scope-aware references and rename work through the actual LSP transport | Recovery commit c454584f passed both source reviews and independent stdio checks. The semantic stack is not on this branch. Integration waits for the current typechecker writers |
 | Persistent REPL values | Reading a previous value does not rerun its initializer or effects | Implementation running in isolated worktree |
 | Typed query results | Queries decode directly to declared row types and report incompatible rows | Pending |
 | Transaction composition | Named dependent database operations use one connection and roll back together | Pending |
