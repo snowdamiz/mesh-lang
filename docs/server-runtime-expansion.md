@@ -25,12 +25,12 @@ does not satisfy the row.
 
 | Unit | Required observable behavior | State |
 | --- | --- | --- |
-| Runtime-owned durable jobs | Accepted jobs and arguments survive process restart without an external database | Reviewed state/store integrated; Raft engine implementation running |
-| Queue execution | Named workers execute on actors with bounded per-queue concurrency and durable results | Pending |
+| Runtime-owned durable jobs | Accepted jobs and arguments survive process restart without an external database | Reviewed state/store integrated; local Raft engine under review and verification |
+| Queue execution | Named workers execute on actors with bounded per-queue concurrency and durable results | Actor runner implementation running; public API and durable result payloads pending |
 | Queue lifecycle | Scheduling, recurring jobs, retries, uniqueness, cancellation, pause, resume, retry, discard, and inspection operate on persisted jobs | Pending |
 | Queue ownership | Competing claims, stale completion, crash recovery, and cluster owner loss preserve attempt authority | Pending |
 | Queue atomicity | Batch enqueue commits all jobs or none; documentation states the boundary with application databases | Pending |
-| Selective receive | Unmatched application messages remain queued in order until a later matching receive | Focused execution passed; critical nested-payload GC finding under correction |
+| Selective receive | Unmatched application messages remain queued in order until a later matching receive | GC correction implemented; fresh fix review and artifact verification running |
 | Actor stack exhaustion | An actor exhausts its stack without aborting unrelated actors or the native process | Feasibility evidence integrated; containment pending |
 | Mutual tail calls | Mutually recursive functions and actor state transitions execute in bounded stack space | Representation fix implemented; public-function scope regression reproduced |
 | Map patterns | Partial map destructuring matches keys and typed values correctly | Implementation running in isolated worktree |
