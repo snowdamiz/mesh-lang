@@ -41,7 +41,7 @@ does not satisfy the row.
 | Documentation tests | Executable documentation examples run with expected result checks | Reviewed and integrated; focused integrated tests pass; workspace gates pending |
 | Coverage | Mesh source execution produces an accurate coverage report with unexecuted code visible | Pending |
 | Editor references and rename | Scope-aware references and rename work through the actual LSP transport | Recovery commit c454584f passed both source reviews and independent stdio checks. The semantic stack is not on this branch. Integration waits for the current typechecker writers |
-| Persistent REPL values | Reading a previous value does not rerun its initializer or effects | Evaluated slots are committed as cd2cc695 on t3/persistent-repl-values. Independent review and a fresh execution are running. Not integrated. Affine resources and opaque handles stay refused |
+| Persistent REPL values | Reading a previous value does not rerun its initializer or effects | cd2cc695 passed the independent REPL suite. Both reviews found Result-wrapped database handles still run. Slot-parameter names can also shadow user bindings. Correction is running. Not integrated |
 | Typed query results | Queries decode directly to declared row types and report incompatible rows | Pending |
 | Transaction composition | Named dependent database operations use one connection and roll back together | Pending |
 | Server-driven live UI | A compiled Mesh application renders a page, handles browser events, and sends state updates with reconnect behavior | Pending |
