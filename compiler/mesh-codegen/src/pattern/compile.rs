@@ -345,9 +345,8 @@ fn compile_matrix(
 // ── Leaf / Guard creation ───────────────────────────────────────────
 
 /// Create a Leaf node, possibly wrapping it in a Guard if the arm has a guard.
-/// If the guard fails, matching continues with the remaining rows: `rest` is
-/// the matrix without `row`, whose columns the rows have not been tested
-/// against yet.
+/// Guard failure skips other alternatives of this arm and continues with
+/// the remaining rows from other arms.
 fn make_leaf_or_guard(
     row: &PatRow,
     rest: PatMatrix,
