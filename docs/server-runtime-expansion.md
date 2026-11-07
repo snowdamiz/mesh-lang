@@ -33,8 +33,8 @@ does not satisfy the row.
 | Selective receive | Unmatched application messages remain queued in order until a later matching receive | Reviewed and integrated; focused combined-branch checks pass; workspace gates pending |
 | Actor stack exhaustion | An actor exhausts its stack without aborting unrelated actors or the native process | Feasibility evidence integrated; containment pending |
 | Mutual tail calls | Mutually recursive functions and actor state transitions execute in bounded stack space | Lexical fix accepted. Local names still override resolved runtime calls and global ownership modes. Correction running. Integration blocked |
-| Map patterns | Partial map destructuring matches keys and typed values correctly | Implementation running in isolated worktree |
-| Pinned patterns | A pinned expression compares with an existing binding rather than rebinding it | Implementation running in isolated worktree |
+| Map patterns | Partial map destructuring matches keys and typed values correctly | Artifact checks passed at c4779ab6. Four review triggers reproduced, including a loop crash and a 20-arm compiler that exceeded 11 GB. Correction running |
+| Pinned patterns | A pinned expression compares with an existing binding rather than rebinding it | Artifact checks passed at c4779ab6. A pinned type parameter panics in codegen. Correction running with the map findings |
 | Bitstring patterns | Binary construction and destructuring honor segment widths, bounds, and byte order | Pending |
 | Test selection | Test names, source locations, and tags select actual test cases | Reviewed and integrated; focused integrated tests pass; workspace gates pending |
 | Concurrent tests | Explicitly asynchronous cases run with bounded concurrency and isolated fixtures | Reviewed and integrated; focused integrated tests pass; workspace gates pending |
