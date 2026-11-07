@@ -315,6 +315,7 @@ pub struct Process {
     /// borrows it. Native-thread calls may collect at compiler safe points;
     /// coroutine-origin calls retain their heap through synchronous execution.
     pub(crate) library_call: bool,
+    pub(crate) invocation: Option<Arc<crate::authority::InvocationContext>>,
     /// The main thread's process. It is not a coroutine and never yields, so
     /// instead of collecting at a yield it collects at a reduction check, once
     /// the allocator has asked for it (`YielderSlot::gc_wanted`).
@@ -412,6 +413,7 @@ impl Process {
             mailbox: Arc::new(Mailbox::new()),
             heap: ActorHeap::new(),
             library_call: false,
+            invocation: None,
             collects_at_safepoints: false,
             worker: None,
             library_heap_owner: None,

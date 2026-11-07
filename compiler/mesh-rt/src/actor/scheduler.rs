@@ -308,6 +308,7 @@ impl Scheduler {
 
         // Create process entry in the table.
         let mut process = Process::new(pid, priority);
+        process.invocation = crate::authority::current();
         if let Some((parent, parent_traps)) = link {
             process.links.insert(parent);
             if let Some(parent) = self.get_process(parent) {
@@ -932,6 +933,11 @@ fn resume_process(
         return Resumed::Finished;
     }
 
+    let invocation = process_table
+        .read()
+        .get(&pid)
+        .and_then(|process| process.lock().invocation.clone());
+    let _invocation = crate::authority::enter(invocation);
     set_current_pid(pid);
     let result = handle.resume_catching_panic();
     clear_current_pid();
@@ -1051,7 +1057,7 @@ fn handle_process_exit(
     fallback_reason: ExitReason,
 ) -> bool {
     // Claim finalization and extract callback/notification state under one lock.
-    let (reason, terminate_cb, linked_pids, monitored_by_entries) = {
+    let (reason, terminate_cb, linked_pids, monitored_by_entries, invocation) = {
         if let Some(proc_arc) = process_table.read().get(&pid) {
             let mut proc = proc_arc.lock();
             let reason = proc
@@ -1060,12 +1066,13 @@ fn handle_process_exit(
             let cb = proc.terminate_callback.take();
             let links = std::mem::take(&mut proc.links);
             let monitored_by = std::mem::take(&mut proc.monitored_by);
-            (reason, cb, links, monitored_by)
+            (reason, cb, links, monitored_by, proc.invocation.take())
         } else {
             return false;
         }
     };
 
+    let _invocation = crate::authority::enter(invocation);
     // Step 1: Invoke terminate callback (panic-safe).
     if let Some(cb) = terminate_cb {
         invoke_terminate_callback(cb, &reason);
@@ -1073,6 +1080,7 @@ fn handle_process_exit(
 
     // Natural exits keep resources live through terminate. Forced exits may
     // already have destroyed them; this second cleanup is intentionally idempotent.
+    crate::db::sqlite::close_process(pid);
     crate::secret::destroy_owned(pid);
 
     // Step 3: Partition links into local and remote, then propagate.
@@ -1133,7 +1141,8 @@ fn handle_process_exit(
     }
 
     // Step 4: Release the completed actor and its private heap.
-    process_table.write().remove(&pid);
+    let removed = process_table.write().remove(&pid);
+    drop(removed);
     true
 }
 

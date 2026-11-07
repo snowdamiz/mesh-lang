@@ -289,6 +289,18 @@ fn dynamic_link_command(
             "mesh_library_shutdown",
             "mesh_library_register_host_callbacks",
             "mesh_library_free_returned_bytes",
+            "mesh_library_capabilities_v2",
+            "mesh_library_enable_protected_v2",
+            "mesh_library_current_invocation_v2",
+            "mesh_library_call_scoped_v2",
+            "mesh_authority_domain_create_v2",
+            "mesh_authority_domain_release_v2",
+            "mesh_authority_generation_v2",
+            "mesh_authority_generation_release_v2",
+            "mesh_authority_bind_v2",
+            "mesh_authority_retire_v2",
+            "mesh_authority_local_inflight_v2",
+            "mesh_authority_release_v2",
         ] {
             command.arg(format!("-Wl,/EXPORT:{symbol}"));
         }

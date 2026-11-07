@@ -54,6 +54,7 @@ macro_rules! eprint {
 }
 
 pub mod actor;
+pub mod authority;
 pub mod bytes;
 mod callback;
 pub mod channel;

@@ -1,6 +1,6 @@
 //! SQLite C FFI wrapper functions for the Mesh runtime.
 //!
-//! Provides eight extern "C" functions that Mesh programs call to interact
+//! Provides extern "C" functions that Mesh programs call to interact
 //! with SQLite databases:
 //! - `mesh_sqlite_open`: Open a database connection
 //! - `mesh_sqlite_close`: Close a connection
@@ -11,15 +11,17 @@
 //! - `mesh_sqlite_execute_values_v2`: Execute within an explicit value quota
 //! - `mesh_sqlite_query_values_v2`: Query within an explicit value quota
 //!
-//! Connection handles are opaque u64 values (Box::into_raw as u64) for GC
-//! safety. The GC never traces integer values, so the connection won't be
-//! corrupted by garbage collection.
+//! Connection handles are nonreused u64 registry keys. A statement owns a
+//! retained connection and its lock until finalize; close removes future access.
 
 use libsqlite3_sys::*;
+use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
 use std::ptr::NonNull;
+use std::sync::atomic::{AtomicU64, Ordering::SeqCst};
+use std::sync::{Arc, OnceLock};
 
 use crate::bytes::mesh_bytes_new;
 use crate::collections::list::mesh_list_from_array;
@@ -61,14 +63,145 @@ fn v2_limits(max_value_bytes: i64) -> Result<ValueLimits, String> {
     })
 }
 
-/// Wrapper around a raw SQLite database pointer.
 struct SqliteConn {
-    db: *mut sqlite3,
+    db: usize,
+    owner: Option<Arc<crate::authority::InvocationContext>>,
+    transaction: bool,
+    creator: Option<crate::actor::ProcessId>,
+}
+impl SqliteConn {
+    fn synchronize_transaction(&mut self) {
+        let active = unsafe { sqlite3_get_autocommit(self.db as *mut sqlite3) == 0 };
+        if let Some(owner) = &self.owner {
+            if active && !self.transaction {
+                owner.transactions.fetch_add(1, SeqCst);
+            }
+            if !active && self.transaction {
+                owner.transactions.fetch_sub(1, SeqCst);
+            }
+        }
+        self.transaction = active;
+    }
+    fn rollback(&mut self) {
+        unsafe {
+            sqlite3_exec(
+                self.db as *mut sqlite3,
+                c"ROLLBACK".as_ptr(),
+                None,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            );
+        }
+        self.synchronize_transaction();
+    }
+}
+impl Drop for SqliteConn {
+    fn drop(&mut self) {
+        if self.transaction {
+            self.rollback();
+        }
+        unsafe {
+            sqlite3_close(self.db as *mut sqlite3);
+        }
+    }
+}
+type Connection = Arc<Mutex<SqliteConn>>;
+fn connections() -> &'static Mutex<HashMap<u64, Connection>> {
+    static CONNECTIONS: OnceLock<Mutex<HashMap<u64, Connection>>> = OnceLock::new();
+    CONNECTIONS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+fn connection(handle: u64) -> Result<Connection, String> {
+    connections()
+        .lock()
+        .get(&handle)
+        .cloned()
+        .ok_or_else(|| "SQLite connection is closed".into())
+}
+pub(crate) fn close_process(pid: crate::actor::ProcessId) {
+    let entries: Vec<_> = connections()
+        .lock()
+        .iter()
+        .map(|(id, conn)| (*id, Arc::clone(conn)))
+        .collect();
+    for (id, connection) in entries {
+        let owned = {
+            let conn = connection.lock();
+            conn.owner.is_some() && conn.creator == Some(pid)
+        };
+        if owned {
+            let removed = connections().lock().remove(&id);
+            drop(removed);
+        }
+    }
+}
+fn owns(conn: &SqliteConn) -> bool {
+    match (&conn.owner, crate::authority::current()) {
+        (None, None) => !crate::authority::protected(),
+        (Some(owner), Some(current)) => Arc::ptr_eq(owner, &current),
+        _ => false,
+    }
+}
+// No unbounded busy waits or extension callbacks in the protected subset.
+unsafe extern "C" fn protected_authorizer(
+    _: *mut std::ffi::c_void,
+    action: c_int,
+    _one: *const c_char,
+    two: *const c_char,
+    _: *const c_char,
+    _: *const c_char,
+) -> c_int {
+    let verdict = match action {
+        SQLITE_PRAGMA | SQLITE_ATTACH | SQLITE_DETACH | SQLITE_CREATE_VTABLE
+        | SQLITE_DROP_VTABLE => SQLITE_DENY,
+        SQLITE_FUNCTION => {
+            let name = if two.is_null() {
+                &b""[..]
+            } else {
+                CStr::from_ptr(two).to_bytes()
+            };
+            if [
+                b"count".as_slice(),
+                b"sum",
+                b"min",
+                b"max",
+                b"avg",
+                b"length",
+                b"coalesce",
+                b"ifnull",
+                b"nullif",
+                b"abs",
+                b"hex",
+                b"lower",
+                b"upper",
+                b"substr",
+                b"substring",
+                b"typeof",
+                b"quote",
+                b"round",
+            ]
+            .contains(&name)
+            {
+                SQLITE_OK
+            } else {
+                SQLITE_DENY
+            }
+        }
+        _ => SQLITE_OK,
+    };
+    if verdict != SQLITE_OK {
+        crate::authority::refuse();
+    }
+    verdict
+}
+unsafe extern "C" fn progress_budget(context: *mut std::ffi::c_void) -> c_int {
+    let remaining = &mut *context.cast::<u32>();
+    *remaining = remaining.saturating_sub(1);
+    (*remaining == 0) as c_int
 }
 
 /// RAII guard ensuring sqlite3_finalize is always called on a prepared
 /// statement, even when an error causes an early return.
-struct StmtGuard {
+pub(crate) struct StmtGuard {
     stmt: *mut sqlite3_stmt,
 }
 
@@ -102,11 +235,6 @@ unsafe fn unbox_i64_payload(ptr: *mut u8) -> i64 {
     *(ptr as *const i64)
 }
 
-/// Create an error MeshResult from a sqlite3 error message.
-unsafe fn sqlite_err_result(db: *mut sqlite3) -> *mut u8 {
-    err_result(&sqlite_err_string(db))
-}
-
 /// The connection's last error. `sqlite3_errmsg` always returns text, "out
 /// of memory" when it cannot say more.
 unsafe fn sqlite_err_string(db: *mut sqlite3) -> String {
@@ -115,7 +243,7 @@ unsafe fn sqlite_err_string(db: *mut sqlite3) -> String {
         .into_owned()
 }
 
-unsafe fn prepare_statement(db: *mut sqlite3, sql: &str) -> Result<StmtGuard, String> {
+unsafe fn prepare_statement_unchecked(db: *mut sqlite3, sql: &str) -> Result<StmtGuard, String> {
     let sql = CString::new(sql).map_err(|_| "SQL contains null byte".to_string())?;
     let mut stmt = std::ptr::null_mut();
     let rc = sqlite3_prepare_v2(db, sql.as_ptr(), -1, &mut stmt, std::ptr::null_mut());
@@ -126,6 +254,23 @@ unsafe fn prepare_statement(db: *mut sqlite3, sql: &str) -> Result<StmtGuard, St
     } else {
         Ok(StmtGuard { stmt })
     }
+}
+
+// Preparing a statement can recover a hot journal while loading the schema.
+// It is its own exact local effect, BEFORE binding/statement execution admission.
+pub(crate) struct SqlPrepare<'a> {
+    db: *mut sqlite3,
+    sql: &'a str,
+}
+impl crate::authority::FixedEffect for SqlPrepare<'_> {
+    type Output = Result<StmtGuard, String>;
+    const LOCAL: bool = true;
+    fn execute(self) -> Self::Output {
+        unsafe { prepare_statement_unchecked(self.db, self.sql) }
+    }
+}
+unsafe fn prepare_statement(db: *mut sqlite3, sql: &str) -> Result<StmtGuard, String> {
+    crate::authority::perform(SqlPrepare { db, sql }).map_err(str::to_owned)?
 }
 
 /// Bind `values` to the statement's parameters, one for each.
@@ -178,13 +323,12 @@ enum Values {
 
 /// `sql` prepared on the connection, with `params` bound.
 unsafe fn prepared(
-    conn_handle: u64,
+    db: *mut sqlite3,
     sql: *const MeshString,
     params: *mut u8,
     values: Values,
     limits: ValueLimits,
 ) -> Result<(*mut sqlite3, StmtGuard), String> {
-    let db = (*(conn_handle as *const SqliteConn)).db;
     let legacy_statement = if limits.parameter_bytes.is_none() {
         Some(prepare_statement(db, text_of(sql))?)
     } else {
@@ -217,12 +361,10 @@ unsafe fn execute(
     limits: ValueLimits,
 ) -> *mut u8 {
     let changes =
-        prepared(conn_handle, sql, params, values, limits).and_then(
-            |(db, guard)| match sqlite3_step(guard.stmt) {
-                SQLITE_DONE | SQLITE_ROW => Ok(sqlite3_changes(db) as i64),
-                _ => Err(sqlite_err_string(db)),
-            },
-        );
+        run_statement(conn_handle, sql, params, values, limits, false).map(|result| match result {
+            StatementOutput::Changes(changes) => changes,
+            _ => unreachable!(),
+        });
     match changes {
         Ok(changes) => alloc_result(0, box_scalar(changes)) as *mut u8,
         Err(error) => err_result(&error),
@@ -238,14 +380,100 @@ unsafe fn query(
     values: Values,
     limits: ValueLimits,
 ) -> *mut u8 {
-    let rows = prepared(conn_handle, sql, params, values, limits)
-        .and_then(|(db, guard)| read_rows(db, guard.stmt, values, limits));
+    let rows =
+        run_statement(conn_handle, sql, params, values, limits, true).map(|result| match result {
+            StatementOutput::Rows(rows) => rows,
+            _ => unreachable!(),
+        });
     match rows {
         Ok(rows) => {
             alloc_result(0, mesh_list_from_array(rows.as_ptr(), rows.len() as i64)) as *mut u8
         }
         Err(error) => err_result(&error),
     }
+}
+
+pub(crate) enum StatementOutput {
+    Changes(i64),
+    Rows(Vec<u64>),
+}
+pub(crate) struct SqlStatement {
+    db: *mut sqlite3,
+    statement: StmtGuard,
+    values: Values,
+    limits: ValueLimits,
+    query: bool,
+}
+impl crate::authority::FixedEffect for SqlStatement {
+    type Output = Result<StatementOutput, String>;
+    const LOCAL: bool = true;
+    fn execute(self) -> Self::Output {
+        unsafe {
+            if self.query {
+                read_rows(self.db, self.statement.stmt, self.values, self.limits)
+                    .map(StatementOutput::Rows)
+            } else {
+                match sqlite3_step(self.statement.stmt) {
+                    SQLITE_DONE | SQLITE_ROW => {
+                        Ok(StatementOutput::Changes(sqlite3_changes(self.db) as i64))
+                    }
+                    _ => Err(sqlite_err_string(self.db)),
+                }
+            }
+        }
+    }
+}
+unsafe fn run_statement(
+    handle: u64,
+    sql: *const MeshString,
+    params: *mut u8,
+    values: Values,
+    limits: ValueLimits,
+    query: bool,
+) -> Result<StatementOutput, String> {
+    let connection = connection(handle)?;
+    let mut conn = connection.lock();
+    if !owns(&conn) {
+        return Err(crate::authority::refuse().into());
+    }
+    let db = conn.db as *mut sqlite3;
+    // Authorizer rejects prepare-time effects (notably PRAGMAs) BEFORE SQLite
+    // can run them. Every accepted statement, including raw COMMIT/RELEASE and
+    // RETURNING writes, still needs a distinct ready-statement admission.
+    let (_, statement) = match prepared(db, sql, params, values, limits) {
+        Ok(prepared) => prepared,
+        Err(error) => {
+            if conn.owner.is_some() && conn.transaction {
+                conn.rollback();
+            }
+            return Err(error);
+        }
+    };
+    let mut budget = 10_000u32;
+    if conn.owner.is_some() {
+        sqlite3_progress_handler(
+            db,
+            1000,
+            Some(progress_budget),
+            (&mut budget as *mut u32).cast(),
+        );
+    }
+    let operation = SqlStatement {
+        db,
+        statement,
+        values,
+        limits,
+        query,
+    };
+    let result = crate::authority::perform(operation)
+        .map_err(str::to_owned)
+        .and_then(|result| result);
+    sqlite3_progress_handler(db, 0, None, std::ptr::null_mut());
+    conn.synchronize_transaction();
+    if result.is_err() && conn.owner.is_some() && conn.transaction {
+        conn.rollback();
+    }
+    result
 }
 
 unsafe fn read_rows(
@@ -391,6 +619,11 @@ unsafe fn column_text(
 /// a u64, or tag 1 (Err) containing an error message string.
 #[no_mangle]
 pub extern "C" fn mesh_sqlite_open(path: *const MeshString) -> *mut u8 {
+    // A termination callback runs after the actor's PID/GC frame is removed.
+    // Until it has a resource-owning frame it cannot create retained resources.
+    if crate::authority::protected() && crate::actor::stack::get_current_pid().is_none() {
+        return err_result(crate::authority::refuse());
+    }
     unsafe {
         let path_str = text_of(path);
         let c_path = match CString::new(path_str) {
@@ -398,25 +631,66 @@ pub extern "C" fn mesh_sqlite_open(path: *const MeshString) -> *mut u8 {
             Err(_) => return err_result("path contains null byte"),
         };
 
-        let mut db: *mut sqlite3 = std::ptr::null_mut();
-        let rc = sqlite3_open_v2(
-            c_path.as_ptr(),
-            &mut db,
-            SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
-            std::ptr::null(),
-        );
-
-        if rc != SQLITE_OK {
-            let result = sqlite_err_result(db);
-            if !db.is_null() {
-                sqlite3_close(db);
-            }
-            return result;
+        let db = match crate::authority::perform(SqlOpen(c_path))
+            .map_err(str::to_owned)
+            .and_then(|result| result)
+        {
+            Ok(db) => db,
+            Err(error) => return err_result(&error),
+        };
+        let owner = crate::authority::current();
+        if owner.is_some() {
+            sqlite3_set_authorizer(db, Some(protected_authorizer), std::ptr::null_mut());
+            sqlite3_busy_timeout(db, 0);
+            sqlite3_limit(db, SQLITE_LIMIT_SQL_LENGTH, 1024 * 1024);
+            sqlite3_enable_load_extension(db, 0);
         }
-
-        let conn = Box::new(SqliteConn { db });
-        let handle = Box::into_raw(conn) as u64;
+        static NEXT_CONNECTION: AtomicU64 = AtomicU64::new(1);
+        let Ok(handle) = NEXT_CONNECTION.fetch_update(SeqCst, SeqCst, |value| value.checked_add(1))
+        else {
+            sqlite3_close(db);
+            return err_result("SQLite handle capacity exhausted");
+        };
+        connections().lock().insert(
+            handle,
+            Arc::new(Mutex::new(SqliteConn {
+                db: db as usize,
+                owner,
+                transaction: false,
+                creator: crate::actor::stack::get_current_pid(),
+            })),
+        );
         alloc_result(0, box_scalar(handle)) as *mut u8
+    }
+}
+
+pub(crate) struct SqlOpen(CString);
+impl crate::authority::FixedEffect for SqlOpen {
+    type Output = Result<*mut sqlite3, String>;
+    const LOCAL: bool = true;
+    fn execute(self) -> Self::Output {
+        unsafe {
+            let mut db = std::ptr::null_mut();
+            let rc = sqlite3_open_v2(
+                self.0.as_ptr(),
+                &mut db,
+                SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
+                std::ptr::null(),
+            );
+            if rc != SQLITE_OK {
+                let error = if db.is_null() {
+                    "SQLite open failed".into()
+                } else {
+                    sqlite_err_string(db)
+                };
+                if !db.is_null() {
+                    sqlite3_close(db);
+                }
+                Err(error)
+            } else {
+                Ok(db)
+            }
+        }
     }
 }
 
@@ -426,15 +700,13 @@ pub extern "C" fn mesh_sqlite_open(path: *const MeshString) -> *mut u8 {
 ///
 /// `mesh_sqlite_close(conn_handle: u64)`
 ///
-/// Recovers the Box<SqliteConn> from the handle, calls sqlite3_close,
-/// and lets Box::drop free the Rust memory.
+/// Removes the handle; the last statement owner closes the connection.
 #[no_mangle]
 pub extern "C" fn mesh_sqlite_close(conn_handle: u64) {
-    unsafe {
-        let conn = Box::from_raw(conn_handle as *mut SqliteConn);
-        sqlite3_close(conn.db);
-        // Box drops, freeing Rust memory
-    }
+    // Removing first stops new users; existing statement owners retain the
+    // connection until completion. Destruction/finalizers run outside registry.
+    let connection = connections().lock().remove(&conn_handle);
+    drop(connection);
 }
 
 /// Execute a write SQL statement (INSERT, UPDATE, DELETE, CREATE TABLE, etc.).
@@ -529,19 +801,33 @@ mod quota_v2_tests;
 /// Execute a bare SQL command (BEGIN/COMMIT/ROLLBACK) on a SQLite connection.
 /// Returns a MeshResult: Ok(null) on success, Err(message) on failure.
 fn sqlite_simple_exec(conn_handle: u64, sql: &CStr) -> *mut u8 {
+    if sql == c"ROLLBACK" {
+        let Ok(connection) = connection(conn_handle) else {
+            return err_result("SQLite connection is closed");
+        };
+        let mut conn = connection.lock();
+        if !owns(&conn) {
+            return err_result(crate::authority::refuse());
+        }
+        // Cleanup never grants a general statement/commit permission.
+        if conn.owner.is_some() {
+            conn.rollback();
+            return alloc_result(0, std::ptr::null_mut()).cast();
+        }
+    }
     unsafe {
-        let db = (*(conn_handle as *const SqliteConn)).db;
-        let rc = sqlite3_exec(
-            db,
-            sql.as_ptr(),
-            None,
-            std::ptr::null_mut(),
-            std::ptr::null_mut(),
-        );
-        if rc != SQLITE_OK {
-            sqlite_err_result(db)
-        } else {
-            alloc_result(0, std::ptr::null_mut()) as *mut u8
+        let text = mesh_str(sql.to_str().expect("static SQL"));
+        let params = crate::collections::list::mesh_list_new();
+        match run_statement(
+            conn_handle,
+            text,
+            params,
+            Values::Text,
+            LEGACY_LIMITS,
+            false,
+        ) {
+            Ok(_) => alloc_result(0, std::ptr::null_mut()).cast(),
+            Err(error) => err_result(&error),
         }
     }
 }
@@ -875,7 +1161,7 @@ mod tests {
             "UNIQUE constraint failed: t.id"
         );
 
-        let db = unsafe { (*(handle as *const SqliteConn)).db };
+        let db = connection(handle).unwrap().lock().db as *mut sqlite3;
         // SQLite lowers the length limit no further than 30 bytes.
         let limit = unsafe { sqlite3_limit(db, SQLITE_LIMIT_LENGTH, 30) };
         assert_eq!(

@@ -606,7 +606,7 @@ fn apply_headers<T>(
     builder
 }
 
-fn dispatch(
+fn dispatch_unchecked(
     agent: &Agent,
     request: &MeshRequestData,
     url: &str,
@@ -631,6 +631,35 @@ fn dispatch(
         // The one method validate_request admits that is left.
         _ => without_body(agent.options(url)),
     }
+}
+
+pub(crate) struct HttpAttempt<'a> {
+    agent: &'a Agent,
+    request: &'a MeshRequestData,
+    url: &'a str,
+}
+impl crate::authority::FixedEffect for HttpAttempt<'_> {
+    type Output = Result<ureq::http::Response<ureq::Body>, UreqError>;
+    const LOCAL: bool = false;
+    fn execute(self) -> Self::Output {
+        dispatch_unchecked(self.agent, self.request, self.url)
+    }
+}
+fn dispatch(
+    agent: &Agent,
+    request: &MeshRequestData,
+    url: &str,
+) -> Result<ureq::http::Response<ureq::Body>, String> {
+    crate::authority::perform(HttpAttempt {
+        agent,
+        request,
+        url,
+    })
+    .map_err(str::to_owned)?
+    .map_err(|error| {
+        record_error(&error);
+        format_error(&error)
+    })
 }
 
 fn duration_micros(started: Instant) -> u64 {
@@ -718,10 +747,14 @@ fn bodyless_response(method: &str, status: u16) -> bool {
 
 fn execute_request(
     agent: &Agent,
-    request: MeshRequestData,
+    mut request: MeshRequestData,
     cancel: Option<&AtomicBool>,
 ) -> Result<WorkerResponse, String> {
     validate_request(&request)?;
+    if crate::authority::protected() {
+        // Each admitted operation is ONE attempt. No hidden redirect replay.
+        request.max_redirects = Some(0);
+    }
     let url = request_url(&request)?;
     let started = Instant::now();
     let _total = TotalTimer(started);
@@ -731,13 +764,7 @@ fn execute_request(
     }
 
     let agent = agent_for_request(agent, &request);
-    let mut response = match dispatch(&agent, &request, &url) {
-        Ok(response) => response,
-        Err(error) => {
-            record_error(&error);
-            return Err(format_error(&error));
-        }
-    };
+    let mut response = dispatch(&agent, &request, &url)?;
     metrics()
         .first_byte_micros
         .fetch_add(duration_micros(started), Ordering::Relaxed);
@@ -814,6 +841,11 @@ fn mesh_response(response: WorkerResponse) -> *mut u8 {
 }
 
 fn send_cooperatively(agent: Agent, handle: u64) -> *mut u8 {
+    if !crate::authority::may_suspend() {
+        drop(take_request(handle));
+        return mesh_error(crate::authority::refuse());
+    }
+    let invocation = crate::authority::current();
     let (sender, receiver) = cooperative_channel();
     let cancel = Arc::new(AtomicBool::new(false));
     let request = match activate_request(handle, Arc::clone(&cancel), sender.clone()) {
@@ -826,6 +858,7 @@ fn send_cooperatively(agent: Agent, handle: u64) -> *mut u8 {
         .saturating_add(Duration::from_secs(1));
     let worker_cancel = Arc::clone(&cancel);
     std::thread::spawn(move || {
+        let _invocation = crate::authority::enter(invocation);
         let _ = sender.send(WorkerEvent::Complete(execute_request(
             &agent,
             request,
@@ -941,13 +974,7 @@ fn execute_stream(
     let _total = TotalTimer(started);
     let _in_flight = InFlight::begin();
     let agent = agent_for_request(&agent, &request);
-    let mut response = match dispatch(&agent, &request, &url) {
-        Ok(response) => response,
-        Err(error) => {
-            record_error(&error);
-            return Err(format_error(&error));
-        }
-    };
+    let mut response = dispatch(&agent, &request, &url)?;
     metrics()
         .first_byte_micros
         .fetch_add(duration_micros(started), Ordering::Relaxed);
@@ -1002,6 +1029,11 @@ fn start_stream(
     callback_env: *mut u8,
     binary: bool,
 ) -> i64 {
+    if crate::authority::protected() {
+        drop(take_request(request_handle));
+        crate::authority::refuse();
+        return 0;
+    }
     let Ok(request) = take_request(request_handle) else {
         return 0;
     };

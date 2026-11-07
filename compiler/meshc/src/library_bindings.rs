@@ -50,6 +50,18 @@ fn render(artifact: &Path, exports: &[LibraryExport], target: Option<&str>) -> B
         typescript: render_typescript(exports),
         manifest: serde_json::to_string_pretty(&serde_json::json!({
             "abiVersion": ABI_VERSION,
+            "nativeAuthorityExtension": {
+                "abiVersion": 2,
+                "capabilitiesSymbol": "mesh_library_capabilities_v2",
+                "activationSymbol": "mesh_library_enable_protected_v2",
+                "invocationSymbol": "mesh_library_call_scoped_v2",
+                "refusalStatus": 10,
+                "unsupportedStatus": 11,
+                "completeEffectInventory": false,
+                "dispatchTrust": "native descriptor validation required",
+                "scheduling": "synchronous; existing call serialization",
+                "publication": "not qualified"
+            },
             "artifact": artifact.file_name().and_then(|name| name.to_str()),
             "target": target,
             "ownership": {
@@ -87,6 +99,7 @@ fn render_header(stem: &str, exports: &[LibraryExport]) -> String {
             }
         })
         .collect::<String>();
+    let authority = include_str!("library_authority.h");
     let declarations = exports
         .iter()
         .map(|export| {
@@ -98,7 +111,7 @@ fn render_header(stem: &str, exports: &[LibraryExport]) -> String {
         .collect::<Vec<_>>()
         .join("\n");
     format!(
-        "#ifndef {guard}_H\n#define {guard}_H\n\n#include <stdint.h>\n\n#ifdef __cplusplus\nextern \"C\" {{\n#endif\n\n#define MESH_LIBRARY_ABI_VERSION {ABI_VERSION}\n#define MESH_LIBRARY_OK 0\n#define MESH_LIBRARY_ERR_INVALID_ARGUMENT 1\n#define MESH_LIBRARY_ERR_NOT_INITIALIZED 2\n#define MESH_LIBRARY_ERR_BUSY 3\n#define MESH_LIBRARY_ERR_PANIC 4\n#define MESH_LIBRARY_ERR_HOST_CALLBACK 5\n#define MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE 6\n#define MESH_LIBRARY_ERR_ABI 7\n#define MESH_LIBRARY_ERR_CALLBACK_MISSING 8\n#define MESH_LIBRARY_ERR_APPLICATION 9\n\ntypedef struct MeshLibraryBytes {{\n  uint8_t *data;\n  uint64_t len;\n}} MeshLibraryBytes;\n\ntypedef int32_t (*MeshLibraryHostCallback)(void *context, const uint8_t *input, uint64_t input_len, uint8_t *output, uint64_t output_capacity, uint64_t *output_len);\n\ntypedef struct MeshLibraryHostCallbacksV1 {{\n  uint32_t abi_version;\n  uint32_t struct_size;\n  void *context;\n  MeshLibraryHostCallback secure_store_put;\n  MeshLibraryHostCallback secure_store_get;\n  MeshLibraryHostCallback secure_store_delete;\n  MeshLibraryHostCallback push_get_token;\n  MeshLibraryHostCallback background_schedule;\n  MeshLibraryHostCallback network_state;\n  MeshLibraryHostCallback monotonic_clock;\n  MeshLibraryHostCallback wall_clock;\n  MeshLibraryHostCallback log_redacted;\n}} MeshLibraryHostCallbacksV1;\n\nint32_t mesh_library_init(void);\nint32_t mesh_library_shutdown(void);\nint32_t mesh_library_register_host_callbacks(const MeshLibraryHostCallbacksV1 *callbacks);\nvoid mesh_library_free_returned_bytes(MeshLibraryBytes *bytes);\n{declarations}\n\n#ifdef __cplusplus\n}}\n#endif\n\n#endif\n"
+        "#ifndef {guard}_H\n#define {guard}_H\n\n#include <stdint.h>\n\n#ifdef __cplusplus\nextern \"C\" {{\n#endif\n\n#define MESH_LIBRARY_ABI_VERSION {ABI_VERSION}\n#define MESH_LIBRARY_OK 0\n#define MESH_LIBRARY_ERR_INVALID_ARGUMENT 1\n#define MESH_LIBRARY_ERR_NOT_INITIALIZED 2\n#define MESH_LIBRARY_ERR_BUSY 3\n#define MESH_LIBRARY_ERR_PANIC 4\n#define MESH_LIBRARY_ERR_HOST_CALLBACK 5\n#define MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE 6\n#define MESH_LIBRARY_ERR_ABI 7\n#define MESH_LIBRARY_ERR_CALLBACK_MISSING 8\n#define MESH_LIBRARY_ERR_APPLICATION 9\n\ntypedef struct MeshLibraryBytes {{\n  uint8_t *data;\n  uint64_t len;\n}} MeshLibraryBytes;\n\ntypedef int32_t (*MeshLibraryHostCallback)(void *context, const uint8_t *input, uint64_t input_len, uint8_t *output, uint64_t output_capacity, uint64_t *output_len);\n\ntypedef struct MeshLibraryHostCallbacksV1 {{\n  uint32_t abi_version;\n  uint32_t struct_size;\n  void *context;\n  MeshLibraryHostCallback secure_store_put;\n  MeshLibraryHostCallback secure_store_get;\n  MeshLibraryHostCallback secure_store_delete;\n  MeshLibraryHostCallback push_get_token;\n  MeshLibraryHostCallback background_schedule;\n  MeshLibraryHostCallback network_state;\n  MeshLibraryHostCallback monotonic_clock;\n  MeshLibraryHostCallback wall_clock;\n  MeshLibraryHostCallback log_redacted;\n}} MeshLibraryHostCallbacksV1;\n\nint32_t mesh_library_init(void);\nint32_t mesh_library_shutdown(void);\nint32_t mesh_library_register_host_callbacks(const MeshLibraryHostCallbacksV1 *callbacks);\nvoid mesh_library_free_returned_bytes(MeshLibraryBytes *bytes);\n{authority}\n{declarations}\n\n#ifdef __cplusplus\n}}\n#endif\n\n#endif\n"
     )
 }
 

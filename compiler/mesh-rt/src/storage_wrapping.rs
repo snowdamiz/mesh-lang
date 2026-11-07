@@ -1135,6 +1135,14 @@ pub extern "C" fn mesh_storage_key_platform() -> *mut MeshResult {
 /// actor-owned capability. Other targets have no filesystem fallback.
 #[no_mangle]
 pub extern "C" fn mesh_storage_key_file(path: *const MeshString) -> *mut MeshResult {
+    if crate::authority::protected() {
+        crate::authority::refuse();
+        return crypto_result::<MeshSecretHandle>(Err(failure(
+            CryptoErrorTag::UnsupportedTarget,
+            0,
+            0,
+        )));
+    }
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     let result = (|| {
         let process = current_process()?;
@@ -1344,6 +1352,14 @@ pub extern "C" fn mesh_storage_key_provision(
     reserve_counter: Option<MeshStorageCounterReserve>,
     callback_context: *mut c_void,
 ) -> *mut MeshResult {
+    if crate::authority::protected() {
+        crate::authority::refuse();
+        return crypto_result::<MeshSecretHandle>(Err(failure(
+            CryptoErrorTag::UnsupportedTarget,
+            0,
+            0,
+        )));
+    }
     let result = (|| {
         let key = unsafe { copy_native_exact(key, key_length, 32) }?;
         let prefix = unsafe { copy_native_exact(nonce_prefix, nonce_prefix_length, 4) }?;

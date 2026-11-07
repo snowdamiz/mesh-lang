@@ -116,6 +116,29 @@ pub fn yield_current() {
     });
 }
 
+/// Synchronous native callbacks use the worker's native stack, never another
+/// thread's PID/yielder. Borrowed buffers and original context remain pinned
+/// until the callback returns. No Mesh callback or suspension is permitted here.
+pub(crate) fn on_native_stack<F: FnOnce() -> R + Send, R>(f: F) -> R {
+    let yielder = CURRENT_YIELDER.with(|slot| slot.yielder.get());
+    match yielder {
+        None => f(),
+        Some(ptr) => {
+            let yielder = unsafe { &*(ptr as *const Yielder<(), ()>) };
+            yielder.on_parent_stack(move || {
+                struct Restore(Option<*const ()>);
+                impl Drop for Restore {
+                    fn drop(&mut self) {
+                        CURRENT_YIELDER.with(|slot| slot.yielder.set(self.0));
+                    }
+                }
+                let _restore = Restore(CURRENT_YIELDER.with(|slot| slot.yielder.replace(None)));
+                crate::stack_overflow::on_stack(current_thread_stack_bounds().0, f)
+            })
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // CoroutineHandle
 // ---------------------------------------------------------------------------

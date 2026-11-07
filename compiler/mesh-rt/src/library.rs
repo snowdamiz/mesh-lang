@@ -93,8 +93,8 @@ impl Default for MeshLibraryHostCallbacksV1 {
 }
 
 #[derive(Clone, Copy)]
-struct RegisteredCallbacks {
-    context: usize,
+pub(crate) struct RegisteredCallbacks {
+    pub(crate) context: usize,
     secure_store_put: Option<MeshLibraryHostCallback>,
     secure_store_get: Option<MeshLibraryHostCallback>,
     secure_store_delete: Option<MeshLibraryHostCallback>,
@@ -104,6 +104,28 @@ struct RegisteredCallbacks {
     monotonic_clock: Option<MeshLibraryHostCallback>,
     wall_clock: Option<MeshLibraryHostCallback>,
     log_redacted: Option<MeshLibraryHostCallback>,
+}
+
+impl From<&MeshLibraryHostCallbacksV1> for RegisteredCallbacks {
+    fn from(callbacks: &MeshLibraryHostCallbacksV1) -> Self {
+        Self {
+            context: callbacks.context as usize,
+            secure_store_put: callbacks.secure_store_put,
+            secure_store_get: callbacks.secure_store_get,
+            secure_store_delete: callbacks.secure_store_delete,
+            push_get_token: callbacks.push_get_token,
+            background_schedule: callbacks.background_schedule,
+            network_state: callbacks.network_state,
+            monotonic_clock: callbacks.monotonic_clock,
+            wall_clock: callbacks.wall_clock,
+            log_redacted: callbacks.log_redacted,
+        }
+    }
+}
+
+pub(crate) fn valid_callbacks(callbacks: &MeshLibraryHostCallbacksV1) -> bool {
+    callbacks.abi_version == MESH_LIBRARY_ABI_VERSION
+        && callbacks.struct_size as usize == std::mem::size_of::<MeshLibraryHostCallbacksV1>()
 }
 
 impl RegisteredCallbacks {
@@ -182,6 +204,19 @@ impl Drop for CallContext {
 }
 
 #[no_mangle]
+pub extern "C" fn mesh_library_enable_protected_v2(required: u64) -> i32 {
+    if required == 0 || required & !crate::authority::mesh_library_capabilities_v2() != 0 {
+        return crate::authority::UNSUPPORTED;
+    }
+    let lifecycle = LIFECYCLE.lock();
+    if !matches!(*lifecycle, Lifecycle::New) {
+        return MESH_LIBRARY_ERR_BUSY;
+    }
+    crate::authority::activate();
+    MESH_LIBRARY_OK
+}
+
+#[no_mangle]
 pub extern "C" fn mesh_library_init() -> i32 {
     let mut lifecycle = LIFECYCLE.lock();
     match *lifecycle {
@@ -241,18 +276,7 @@ pub extern "C" fn mesh_library_register_host_callbacks(
         return MESH_LIBRARY_ERR_NOT_INITIALIZED;
     }
 
-    *HOST_CALLBACKS.write() = Some(RegisteredCallbacks {
-        context: callbacks.context as usize,
-        secure_store_put: callbacks.secure_store_put,
-        secure_store_get: callbacks.secure_store_get,
-        secure_store_delete: callbacks.secure_store_delete,
-        push_get_token: callbacks.push_get_token,
-        background_schedule: callbacks.background_schedule,
-        network_state: callbacks.network_state,
-        monotonic_clock: callbacks.monotonic_clock,
-        wall_clock: callbacks.wall_clock,
-        log_redacted: callbacks.log_redacted,
-    });
+    *HOST_CALLBACKS.write() = Some(RegisteredCallbacks::from(callbacks));
     MESH_LIBRARY_OK
 }
 
@@ -269,30 +293,90 @@ pub(crate) fn secure_store_delete_raw(input: &[u8]) -> Result<(), i32> {
     call_raw_host_callback(3, input, &mut []).map(|_| ())
 }
 
-fn call_raw_host_callback(capability: u32, input: &[u8], output: &mut [u8]) -> Result<usize, i32> {
-    // Its callers pass storage records of a few dozen bytes.
-    debug_assert!(input.len() <= MAX_BOUNDARY_BYTES && output.len() <= MAX_BOUNDARY_BYTES);
-    // No callbacks at all is a missing callback too, not status 2: a host's
-    // secure store answers 2 for "not found", which callers act on.
-    let callbacks = (*HOST_CALLBACKS.read()).ok_or(MESH_LIBRARY_ERR_CALLBACK_MISSING)?;
-    let callback = callbacks
-        .callback(capability)
-        .ok_or(MESH_LIBRARY_ERR_CALLBACK_MISSING)?;
-    let mut output_len = 0u64;
-    let status = unsafe {
-        callback(
-            callbacks.context as *mut c_void,
-            input.as_ptr(),
-            input.len() as u64,
-            output.as_mut_ptr(),
-            output.len() as u64,
-            &mut output_len,
-        )
-    };
-    if status != MESH_LIBRARY_OK {
-        return Err(status);
+#[derive(Debug)]
+pub(crate) enum HostFailure {
+    Missing,
+    Callback(i32),
+    OutputTooLarge,
+    Refused,
+}
+impl HostFailure {
+    fn status(self) -> i32 {
+        match self {
+            Self::Missing => MESH_LIBRARY_ERR_CALLBACK_MISSING,
+            Self::Callback(status) => status,
+            Self::OutputTooLarge => MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE,
+            Self::Refused => crate::authority::REFUSED,
+        }
     }
-    written_length(output_len, output.len()).ok_or(MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE)
+}
+fn call_raw_host_callback(capability: u32, input: &[u8], output: &mut [u8]) -> Result<usize, i32> {
+    call_host_callback(capability, input, output).map_err(HostFailure::status)
+}
+
+fn call_host_callback(
+    capability: u32,
+    input: &[u8],
+    output: &mut [u8],
+) -> Result<usize, HostFailure> {
+    debug_assert!(input.len() <= MAX_BOUNDARY_BYTES && output.len() <= MAX_BOUNDARY_BYTES);
+    let context = crate::authority::current();
+    let callbacks = match &context {
+        Some(context) => context.original.callbacks,
+        None if crate::authority::protected() => return Err(HostFailure::Refused),
+        None => *HOST_CALLBACKS.read(),
+    }
+    .ok_or(HostFailure::Missing)?;
+    let callback = callbacks.callback(capability).ok_or(HostFailure::Missing)?;
+    let call = HostCall {
+        callbacks,
+        callback,
+        input,
+        output,
+    };
+    if matches!(capability, 1 | 3) {
+        crate::authority::perform(StoreMutation(call)).map_err(|_| HostFailure::Refused)?
+    } else {
+        crate::authority::perform(call).map_err(|_| HostFailure::Refused)?
+    }
+}
+
+pub(crate) struct HostCall<'a> {
+    callbacks: RegisteredCallbacks,
+    callback: MeshLibraryHostCallback,
+    input: &'a [u8],
+    output: &'a mut [u8],
+}
+pub(crate) struct StoreMutation<'a>(HostCall<'a>);
+impl crate::authority::FixedEffect for StoreMutation<'_> {
+    type Output = Result<usize, HostFailure>;
+    const LOCAL: bool = true;
+    fn execute(self) -> Self::Output {
+        crate::authority::FixedEffect::execute(self.0)
+    }
+}
+impl crate::authority::FixedEffect for HostCall<'_> {
+    type Output = Result<usize, HostFailure>;
+    const LOCAL: bool = false;
+    fn execute(self) -> Self::Output {
+        crate::actor::stack::on_native_stack(move || {
+            let mut output_len = 0;
+            let status = unsafe {
+                (self.callback)(
+                    self.callbacks.context as *mut c_void,
+                    self.input.as_ptr(),
+                    self.input.len() as u64,
+                    self.output.as_mut_ptr(),
+                    self.output.len() as u64,
+                    &mut output_len,
+                )
+            };
+            if status != MESH_LIBRARY_OK {
+                return Err(HostFailure::Callback(status));
+            }
+            written_length(output_len, self.output.len()).ok_or(HostFailure::OutputTooLarge)
+        })
+    }
 }
 
 /// The length a host callback says it wrote, when it fits the `capacity`
@@ -350,6 +434,10 @@ pub unsafe extern "C" fn mesh_library_invoke_bounded(
     if input_len > max_input {
         return MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE;
     }
+    let invocation = crate::authority::current();
+    if crate::authority::protected() && invocation.as_ref().is_none_or(|context| !context.live()) {
+        return crate::authority::REFUSED;
+    }
     let Some(_call) = CALL_LOCK.try_lock() else {
         return MESH_LIBRARY_ERR_BUSY;
     };
@@ -369,6 +457,7 @@ pub unsafe extern "C" fn mesh_library_invoke_bounded(
     if let Some(process) = scheduler.get_process(context.pid) {
         let mut process = process.lock();
         process.library_call = true;
+        process.invocation = invocation.clone();
         // Use the same safe-point collector as native-thread main, never the
         // allocator: runtime temporaries are not all visible GC roots. Calls
         // from a coroutine retain their heap until return, with its inherited
@@ -389,10 +478,14 @@ pub unsafe extern "C" fn mesh_library_invoke_bounded(
         entrypoint(managed_input, &mut result);
         result
     }));
+    if invocation.as_ref().is_some_and(|context| !context.live()) {
+        return crate::authority::REFUSED;
+    }
     match result {
         Ok(result) if result.tag == 0 => {
             copy_mesh_value(result.value, true, output, max_output, malloc)
         }
+        Ok(result) if result.tag == 1 && invocation.is_some() => MESH_LIBRARY_ERR_APPLICATION,
         Ok(result) if result.tag == 1 => {
             let status = copy_mesh_value(result.value, false, output, max_output, malloc);
             if status == MESH_LIBRARY_OK {
@@ -501,37 +594,30 @@ pub extern "C" fn mesh_library_host_call(
     capability: u32,
     input: *const MeshBytes,
 ) -> *mut MeshResult {
-    let callbacks = *HOST_CALLBACKS.read();
-    let Some(callbacks) = callbacks else {
+    if !crate::authority::protected() && HOST_CALLBACKS.read().is_none() {
         return err_result("host_callback_not_registered");
-    };
-    let Some(callback) = callbacks.callback(capability) else {
-        return err_result("host_callback_missing");
-    };
+    }
+    if input.is_null() {
+        return err_result("host_callback_input_missing");
+    }
     let input = unsafe { (*input).as_slice() };
     if input.len() > MAX_BOUNDARY_BYTES {
         return err_result("host_callback_input_too_large");
     }
-
     let mut output = host_callback_output();
-    let mut output_len = 0u64;
-    let status = unsafe {
-        callback(
-            callbacks.context as *mut c_void,
-            input.as_ptr(),
-            input.len() as u64,
-            output.as_mut_ptr(),
-            output.len() as u64,
-            &mut output_len,
-        )
-    };
-    if status != MESH_LIBRARY_OK {
-        return err_result(&format!("host_callback_failed:{capability}:{status}"));
+    match call_host_callback(capability, input, &mut output) {
+        Ok(length) => alloc_result(0, mesh_bytes_new(output.as_ptr(), length as u64).cast()),
+        Err(status) if crate::authority::protected() => {
+            let _ = status;
+            err_result(crate::authority::refuse())
+        }
+        Err(HostFailure::Missing) => err_result("host_callback_missing"),
+        Err(HostFailure::OutputTooLarge) => err_result("host_callback_output_too_large"),
+        Err(HostFailure::Callback(status)) => {
+            err_result(&format!("host_callback_failed:{capability}:{status}"))
+        }
+        Err(HostFailure::Refused) => err_result("native_effect_refused"),
     }
-    let Some(output_len) = written_length(output_len, output.len()) else {
-        return err_result("host_callback_output_too_large");
-    };
-    alloc_result(0, mesh_bytes_new(output.as_ptr(), output_len as u64).cast())
 }
 
 fn host_callback_output() -> Zeroizing<Vec<u8>> {
