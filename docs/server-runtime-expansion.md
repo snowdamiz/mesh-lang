@@ -25,7 +25,7 @@ does not satisfy the row.
 
 | Unit | Required observable behavior | State |
 | --- | --- | --- |
-| Runtime-owned durable jobs | Accepted jobs and arguments survive process restart without an external database | Reviewed state/store integrated; local Raft artifact checks pass; source review and lifecycle proof follow-up running |
+| Runtime-owned durable jobs | Accepted jobs and arguments survive process restart without an external database | Runtime-owned store is integrated. Local Raft, lifecycle proofs, and storage confinement are on t3/jobs-engine-hardening at ac80addc. Independent review and a fresh execution are running. Not integrated |
 | Queue execution | Named workers execute on actors with bounded per-queue concurrency and durable results | Actor runner artifact check failed one renewal test at 1140270e. The fixture treats a durable revision as local timer completion. Correction running. Public API pending |
 | Queue lifecycle | Scheduling, recurring jobs, retries, uniqueness, cancellation, pause, resume, retry, discard, and inspection operate on persisted jobs | Pending |
 | Queue ownership | Competing claims, stale completion, crash recovery, and cluster owner loss preserve attempt authority | Pending |
