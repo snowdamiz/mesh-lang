@@ -25,7 +25,7 @@ does not satisfy the row.
 
 | Unit | Required observable behavior | State |
 | --- | --- | --- |
-| Runtime-owned durable jobs | Accepted jobs and arguments survive process restart without an external database | State/store correction verified; Raft engine implementation running |
+| Runtime-owned durable jobs | Accepted jobs and arguments survive process restart without an external database | Reviewed state/store integrated; Raft engine implementation running |
 | Queue execution | Named workers execute on actors with bounded per-queue concurrency and durable results | Pending |
 | Queue lifecycle | Scheduling, recurring jobs, retries, uniqueness, cancellation, pause, resume, retry, discard, and inspection operate on persisted jobs | Pending |
 | Queue ownership | Competing claims, stale completion, crash recovery, and cluster owner loss preserve attempt authority | Pending |
@@ -33,12 +33,12 @@ does not satisfy the row.
 | Selective receive | Unmatched application messages remain queued in order until a later matching receive | Focused execution passed; critical nested-payload GC finding under correction |
 | Actor stack exhaustion | An actor exhausts its stack without aborting unrelated actors or the native process | Feasibility evidence integrated; containment pending |
 | Mutual tail calls | Mutually recursive functions and actor state transitions execute in bounded stack space | Representation fix implemented; public-function scope regression reproduced |
-| Map patterns | Partial map destructuring matches keys and typed values correctly | Pending |
-| Pinned patterns | A pinned expression compares with an existing binding rather than rebinding it | Pending |
+| Map patterns | Partial map destructuring matches keys and typed values correctly | Implementation running in isolated worktree |
+| Pinned patterns | A pinned expression compares with an existing binding rather than rebinding it | Implementation running in isolated worktree |
 | Bitstring patterns | Binary construction and destructuring honor segment widths, bounds, and byte order | Pending |
-| Test selection | Test names, source locations, and tags select actual test cases | Review corrections implemented; fresh review and verification pending |
-| Concurrent tests | Explicitly asynchronous cases run with bounded concurrency and isolated fixtures | Implemented in isolated branch; combined correction review pending |
-| Documentation tests | Executable documentation examples run with expected result checks | Review corrections implemented; fresh review and verification pending |
+| Test selection | Test names, source locations, and tags select actual test cases | Reviewed and integrated; focused integrated tests pass; workspace gates pending |
+| Concurrent tests | Explicitly asynchronous cases run with bounded concurrency and isolated fixtures | Reviewed and integrated; focused integrated tests pass; workspace gates pending |
+| Documentation tests | Executable documentation examples run with expected result checks | Reviewed and integrated; focused integrated tests pass; workspace gates pending |
 | Coverage | Mesh source execution produces an accurate coverage report with unexecuted code visible | Pending |
 | Editor references and rename | Scope-aware references and rename work through the actual LSP transport | Second correction implemented; fresh review and artifact verification pending |
 | Persistent REPL values | Reading a previous value does not rerun its initializer or effects | Pending |
