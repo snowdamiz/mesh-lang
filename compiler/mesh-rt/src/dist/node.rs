@@ -11548,7 +11548,7 @@ mod tests {
     /// is not.
     #[test]
     fn a_peer_retained_response_is_kept_for_replay() {
-        let peer = TestPeer::new("response-peer@127.0.0.1:1");
+        let peer = TestPeer::new("response-replay-peer@127.0.0.1:1");
         peer.receive(encode_continuity_response_frame("peer-response-key", b"200 OK").unwrap());
         assert_eq!(
             crate::dist::continuity_store::replay_runtime_response("peer-response-key"),
