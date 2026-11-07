@@ -25,14 +25,14 @@ does not satisfy the row.
 
 | Unit | Required observable behavior | State |
 | --- | --- | --- |
-| Runtime-owned durable jobs | Accepted jobs and arguments survive process restart without an external database | In progress, state/store unit |
+| Runtime-owned durable jobs | Accepted jobs and arguments survive process restart without an external database | State/store correction verified; Raft engine implementation running |
 | Queue execution | Named workers execute on actors with bounded per-queue concurrency and durable results | Pending |
 | Queue lifecycle | Scheduling, recurring jobs, retries, uniqueness, cancellation, pause, resume, retry, discard, and inspection operate on persisted jobs | Pending |
 | Queue ownership | Competing claims, stale completion, crash recovery, and cluster owner loss preserve attempt authority | Pending |
 | Queue atomicity | Batch enqueue commits all jobs or none; documentation states the boundary with application databases | Pending |
-| Selective receive | Unmatched application messages remain queued in order until a later matching receive | In progress |
+| Selective receive | Unmatched application messages remain queued in order until a later matching receive | Focused execution passed; critical nested-payload GC finding under correction |
 | Actor stack exhaustion | An actor exhausts its stack without aborting unrelated actors or the native process | Feasibility evidence integrated; containment pending |
-| Mutual tail calls | Mutually recursive functions and actor state transitions execute in bounded stack space | Argument representation regression reproduced; correction running |
+| Mutual tail calls | Mutually recursive functions and actor state transitions execute in bounded stack space | Representation fix implemented; public-function scope regression reproduced |
 | Map patterns | Partial map destructuring matches keys and typed values correctly | Pending |
 | Pinned patterns | A pinned expression compares with an existing binding rather than rebinding it | Pending |
 | Bitstring patterns | Binary construction and destructuring honor segment widths, bounds, and byte order | Pending |
@@ -40,7 +40,7 @@ does not satisfy the row.
 | Concurrent tests | Explicitly asynchronous cases run with bounded concurrency and isolated fixtures | Implemented in isolated branch; combined correction review pending |
 | Documentation tests | Executable documentation examples run with expected result checks | Review corrections implemented; fresh review and verification pending |
 | Coverage | Mesh source execution produces an accurate coverage report with unexecuted code visible | Pending |
-| Editor references and rename | Scope-aware references and rename work through the actual LSP transport | Second correction running for remaining context identities |
+| Editor references and rename | Scope-aware references and rename work through the actual LSP transport | Second correction implemented; fresh review and artifact verification pending |
 | Persistent REPL values | Reading a previous value does not rerun its initializer or effects | Pending |
 | Typed query results | Queries decode directly to declared row types and report incompatible rows | Pending |
 | Transaction composition | Named dependent database operations use one connection and roll back together | Pending |
