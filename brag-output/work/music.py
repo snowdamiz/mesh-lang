@@ -330,7 +330,6 @@ place(bell(84, 1.2, bright=1.2), T_REBAL + 0.09, pan=0.2, gain=0.08, send=0.6)
 place(bell(79, 1.0, bright=1.0), T_BACK, pan=0.2, gain=0.06, send=0.6)
 place(bell(84, 1.0, bright=1.0), T_BACK + 0.09, pan=-0.2, gain=0.05, send=0.6)
 
-# benchmark rows land on C major, the stat on G
 for i, (at, m) in enumerate(zip(T_ROWS, (72, 76, 79, 84))):
     place(bell(m, 0.9, bright=1.6 if i != 2 else 2.6), at, pan=(i - 1.5) * 0.3, gain=0.07 if i != 2 else 0.11, send=0.5)
 place(bell(79, 1.8, bright=2.2), T_STAT, gain=0.09, send=0.6)

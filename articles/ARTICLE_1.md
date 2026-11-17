@@ -45,7 +45,7 @@ We built **Mesh**.
 
 ---
 
-## Mesh: Elixir's actor model. Faster. And distribution as a first-class citizen.
+## Mesh: Elixir's actor model. And distribution as a first-class citizen.
 
 Mesh combines the things we actually cared about:
 
@@ -53,7 +53,6 @@ Mesh combines the things we actually cared about:
 - Static Hindley-Milner type inference
 - BEAM-style concurrency and fault-tolerance
 - LLVM-compiled native binaries
-- **140% faster than Elixir** in our benchmarks
 
 But raw speed isn't the headline. The headline is what happens when you treat distribution as a core language concept instead of a library you bolt on later.
 

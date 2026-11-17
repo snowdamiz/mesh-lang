@@ -80,21 +80,3 @@ unexpected_cfgs = { level = "warn", check-cfg = ["cfg(mesh_coverage)"] }
 
 [dev-dependencies]
 tempfile = "3"
-
-[[bench]]
-name = "json_collections"
-harness = false
-required-features = ["fuzzing"]
-
-[[bench]]
-name = "collection_format"
-harness = false
-required-features = ["fuzzing"]
-
-[[bench]]
-name = "routing"
-harness = false
-
-[[bench]]
-name = "snapshot"
-harness = false

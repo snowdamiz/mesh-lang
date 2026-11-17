@@ -2,7 +2,6 @@
 import HeroSection from './HeroSection.vue'
 import FailoverSim from './FailoverSim.vue'
 import StdlibGrid from './StdlibGrid.vue'
-import BenchmarkSection from './BenchmarkSection.vue'
 import InstallCTA from './InstallCTA.vue'
 import LandingFooter from './LandingFooter.vue'
 </script>
@@ -13,7 +12,6 @@ import LandingFooter from './LandingFooter.vue'
       <HeroSection />
       <FailoverSim />
       <StdlibGrid />
-      <BenchmarkSection />
       <InstallCTA />
       <LandingFooter />
     </div>
