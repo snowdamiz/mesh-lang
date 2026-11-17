@@ -23,9 +23,6 @@ canvas { position: absolute; inset: 0; }
 .hud { position: absolute; font-size: 16px; letter-spacing: 0.14em; color: rgba(255,255,255,0.55); text-transform: uppercase; white-space: nowrap; }
 .tag3d { position: absolute; left: 0; top: 0; font-size: 24px; white-space: nowrap; color: rgba(255,255,255,0.92); text-shadow: 0 0 18px rgba(0,0,0,0.9); }
 .errcard { position: absolute; left: 0; top: 0; padding: 20px 26px; border: 1.5px solid rgba(255,110,90,0.75); border-radius: 12px; background: rgba(36,5,4,0.78); box-shadow: 0 0 70px rgba(255,70,50,0.35); font-size: 22px; line-height: 1.6; white-space: nowrap; }
-#num { position: absolute; left: 118px; bottom: 250px; font-family: Archivo; font-weight: 800; font-stretch: 80%; font-size: 250px; letter-spacing: -0.03em; line-height: 0.85; color: #fff; }
-#num-cap { position: absolute; left: 128px; bottom: 196px; font-size: 22px; letter-spacing: 0.12em; color: rgba(255,255,255,0.7); text-transform: uppercase; }
-#num-x { position: absolute; left: 128px; bottom: 130px; font-family: Archivo; font-weight: 700; font-size: 56px; letter-spacing: -0.02em; color: var(--mint-hi); }
 #wordmark { position: absolute; font-family: Archivo; font-weight: 600; font-stretch: 112%; font-size: 230px; letter-spacing: -0.045em; line-height: 1; }
 #sub { position: absolute; left: 0; right: 0; top: 700px; text-align: center; font-size: 38px; font-weight: 300; color: rgba(255,255,255,0.8); letter-spacing: -0.01em; }
 #sub b { font-weight: 600; color: #fff; }
@@ -54,9 +51,6 @@ canvas { position: absolute; inset: 0; }
 <div class="title" id="t4"><span class="ln" id="t4a">Clustering lives</span><span class="ln" id="t4b"><b>in the runtime.</b></span></div>
 <div class="title" id="t5"><span class="ln" id="t5a">Lose a node.</span><span class="ln" id="t5b"><b>The runtime reroutes.</b></span></div>
 <div class="title" id="t6" style="bottom:470px; font-size:64px"><span class="ln" id="t6a">Compiled to native.</span></div>
-<div id="num">0</div>
-<div id="num-cap" class="mono">requests / second · GET /text · 2 vCPU · benchmarks/RESULTS.md</div>
-<div id="num-x">2.3× Elixir.</div>
 
 <div id="wordmark">Mesh</div>
 <div id="sub">Typed actors. Native binaries. <b>Clustering built in.</b></div>
@@ -434,7 +428,6 @@ function rise(el, t, s, e, { dy = 30, blur = 10 } = {}) {
 }
 function show(el, on) { el.style.display = on ? '' : 'none' }
 function place(el, xy, dx, dy, a) { el.style.transform = `translate(${xy[0] + dx}px, ${xy[1] + dy}px)`; el.style.opacity = a }
-const fmt = (v) => Math.round(v).toLocaleString('en-US')
 
 function render(t) {
   const { mats, fpos } = draw(t)
@@ -469,15 +462,10 @@ function render(t) {
   show(err, t > T.reject && t < T.pull + 0.3)
   if (t > T.reject) { place(err, fp, 170, 40 + (1 - ek) * 20, clamp((t - T.reject) / 0.12) * (1 - P(t, T.pull, 0.3))) }
 
-  // native speed
-  const numOn = t > 15.2 && t < 17.7
-  for (const id of ['#t6', '#num', '#num-cap', '#num-x']) show($(id), numOn)
-  if (numOn) {
+  const nativeOn = t > 15.2 && t < 17.7
+  show($('#t6'), nativeOn)
+  if (nativeOn) {
     rise($('#t6'), t, 15.2, 17.7, { dy: 20 })
-    rise($('#num'), t, 15.7, 17.7, { dy: 40, blur: 16 })
-    $('#num').textContent = fmt(29108 * eo(P(t, 15.7, 1.1)))
-    rise($('#num-cap'), t, 16.0, 17.7, { dy: 14, blur: 4 })
-    rise($('#num-x'), t, 16.4, 17.7, { dy: 18, blur: 6 })
   }
 
   // lockup: the wordmark sits where the particle logo lands

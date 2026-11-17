@@ -94,24 +94,6 @@ html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; backgro
 #status i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
 #cursor { left: 0; top: 0; width: 40px; height: 40px; filter: drop-shadow(0 4px 8px oklch(0 0 0 / 0.5)); }
 
-/* S5 */
-#bench { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 25px; }
-#bench th { font-weight: 400; text-align: left; font-size: 18px; color: var(--muted); padding-bottom: 18px; }
-#bench td, #bench tbody th { border-top: 1px solid var(--line); padding: 26px 0; }
-#bench tbody th { font-size: 25px; color: var(--muted); width: 130px; }
-#bench .num { text-align: right; font-variant-numeric: tabular-nums; width: 110px; }
-#bench .bar-wrap { display: flex; align-items: center; gap: 18px; padding-right: 20px; }
-#bench .track { flex: 1; height: 16px; }
-#bench .bar { height: 100%; border-radius: 3px; background: color-mix(in oklab, var(--fg) 20%, transparent); transform-origin: left; }
-#bench .rps { width: 5ch; text-align: right; font-variant-numeric: tabular-nums; }
-#bench tr.mesh th, #bench tr.mesh td { color: var(--fg); font-weight: 700; }
-#bench tr.mesh .bar { background: var(--brand); box-shadow: 0 0 24px color-mix(in oklab, var(--brand) 55%, transparent); }
-#bench tr.other td { color: var(--muted); }
-#s5-stat { display: flex; align-items: center; gap: 24px; margin-top: 6px; }
-#s5-stat .lede { line-height: 1.25; }
-#s5-x { font-size: 112px; color: var(--brand-hi); font-stretch: 110%; }
-.cap { font-family: var(--mono); font-size: 18px; color: var(--muted); }
-
 /* S6 */
 #tabs { display: flex; position: relative; border-bottom: 1px solid var(--line); background: var(--panel-head); }
 #tabs span { padding: 18px 17px; font-family: var(--mono); font-size: 19px; color: var(--muted); white-space: nowrap; }
@@ -208,19 +190,11 @@ html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; backgro
     </div>
   </section>
 
-  <!-- S5 performance -->
   <section class="scene" id="s5">
     <div class="col-l">
-      <div class="label" id="s5-l">Performance</div>
-      <div class="h2" id="s5-h">Native speed,<br>measured.</div>
-      <div id="s5-stat"><span class="display" id="s5-x">2.3×</span><span class="lede">Elixir’s<br>throughput</span></div>
-    </div>
-    <div class="col-r" id="s5-r" style="position:absolute">
-      <table id="bench">
-        <thead><tr><th></th><th>requests / s</th><th class="num">p50</th><th class="num">p99</th></tr></thead>
-        <tbody id="bench-rows"></tbody>
-      </table>
-      <div class="cap" id="s5-cap">GET /text · 2 vCPU · 100 connections · latency in ms · benchmarks/RESULTS.md</div>
+      <div class="label" id="s5-l">Compilation</div>
+      <div class="h2" id="s5-h">Compiled<br>to native.</div>
+      <div class="lede" id="s5-p">LLVM-compiled binaries.</div>
     </div>
   </section>
 
@@ -517,18 +491,6 @@ const stamp = (at) => {
 $('#sim-log').innerHTML = LOG.map(([at, lv, msg]) => `<div class="row"><span class="ts">${stamp(at)}</span><span class="dot" style="background:${tone[lv]}"></span><span class="msg">${msg}</span></div>`).join('')
 const logRows = [...$('#sim-log').children]
 
-/* ───────── S5 ───────── */
-// benchmarks/RESULTS.md, Isolated Peak Throughput, /text (the landing page's figures)
-const BENCH = [
-  { lang: 'Rust', rps: 46244, p50: 2.06, p99: 4.55 }, { lang: 'Go', rps: 30306, p50: 2.95, p99: 8.51 },
-  { lang: 'Mesh', rps: 29108, p50: 2.77, p99: 16.94 }, { lang: 'Elixir', rps: 12441, p50: 6.74, p99: 25.14 },
-]
-const BMAX = Math.max(...BENCH.map((r) => r.rps))
-$('#bench-rows').innerHTML = BENCH.map((r) => `<tr class="${r.lang === 'Mesh' ? 'mesh' : 'other'}"><th>${r.lang}</th><td><div class="bar-wrap"><div class="track"><div class="bar" style="width:${r.rps / BMAX * 100}%"></div></div><span class="rps">0.0k</span></div></td><td class="num">${r.p50.toFixed(2)}</td><td class="num">${r.p99.toFixed(2)}</td></tr>`).join('')
-const benchRows = [...$('#bench-rows').children]
-const T_ROWS = [15.35, 15.5, 15.65, 15.8]
-const T_BADGE = 16.0
-
 /* ───────── S6 ───────── */
 const MODS = SNIPPETS.modules
 const FILES = ['clients/prices.mpl', 'api/live.mpl', 'storage/todos.mpl', 'storage/events.mpl', 'api/todos.mpl', 'workers/report.mpl', 'tests/slug.test.mpl']
@@ -770,17 +732,7 @@ function render(t) {
   // S5
   if (sceneFx($('#s5'), t, 15.0, 18.0)) {
     rise($('#s5-l'), t, 15.05); rise($('#s5-h'), t, 15.12, { dy: 36 })
-    rise($('#bench'), t, 15.1, { dy: 30 })
-    benchRows.forEach((r, i) => {
-      const s = T_ROWS[i]
-      const k = eo(P(t, s, 1.0))
-      r.querySelector('.bar').style.transform = `scaleX(${k})`
-      r.querySelector('.rps').textContent = `${(BENCH[i].rps * k / 1000).toFixed(1)}k`
-      r.style.opacity = 0.25 + 0.75 * clamp((t - s + 0.1) / 0.2)
-    })
-    rise($('#s5-cap'), t, 15.9, { dy: 10 })
-    rise($('#s5-stat'), t, T_BADGE - 0.05, { d: 0.6, dy: 20, blur: 6 })
-    $('#s5-x').textContent = `${(1 + 1.3 * eo(P(t, T_BADGE, 0.7))).toFixed(1)}×`
+    rise($('#s5-p'), t, 15.95, { d: 0.6, dy: 20, blur: 6 })
   }
 
   // S6

@@ -94,19 +94,8 @@ html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--
   </section>
 
   <!-- S3 native -->
-  <section class="card ink" id="c-speed">
-    <div style="position:absolute; left:1240px; top:0; bottom:0; right:0; background:var(--paper); color:var(--ink)">
-      <div class="tag" style="left:60px; top:130px">GET /text · req/s</div>
-      <div id="bars" style="position:absolute; left:60px; right:60px; top:200px"></div>
-      <div class="tag" style="left:60px; bottom:130px; font-size:15px; line-height:1.7">benchmarks/RESULTS.md<br>2 vCPU · 100 connections · one run</div>
-    </div>
-    <div class="tag" style="left:80px; top:130px; color:var(--mint)">03 / Native speed</div>
-    <div class="giant" id="g-num" style="left:66px; top:270px; font-size:440px; color:var(--paper)">0</div>
-    <div class="head" id="h-rps" style="left:80px; top:760px; font-size:70px; color:var(--paper)">Requests per second.</div>
-    <div class="head" id="h-x" style="left:80px; top:836px; font-size:70px; color:var(--mint)">2.3× Elixir.</div>
-  </section>
   <section class="card mintbg" id="c-llvm">
-    <div class="tag" style="left:64px; top:44px">03 / Native speed</div>
+    <div class="tag" style="left:64px; top:44px">03 / Native compilation</div>
     <div class="giant" id="g-llvm" style="left:50px; top:170px; font-size:560px">LLVM →</div>
     <div class="head" id="h-bin" style="left:64px; top:690px; font-size:170px">Native binary.</div>
     <div class="mono" id="build" style="position:absolute; right:64px; bottom:60px; font-size:30px; background:var(--ink); color:var(--paper); padding:16px 26px">$ meshc build . &amp;&amp; ./output</div>
@@ -150,12 +139,12 @@ const CARDS = [
   ['#c-m', 0.0, 0.25], ['#c-e', 0.25, 0.5], ['#c-s', 0.5, 0.75], ['#c-h', 0.75, 1.0], ['#c-mesh', 1.0, 2.5],
   ['#c-actors', 2.5, 4.0], ['#c-send', 4.0, 5.0], ['#c-err', 5.0, 6.5],
   ['#c-nodes', 6.5, 9.5], ['#c-clustered', 9.5, 10.5],
-  ['#c-speed', 10.5, 13.0], ['#c-llvm', 13.0, 14.0],
+  ['#c-llvm', 10.5, 14.0],
   ['#c-word', 14.0, 15.75], ['#c-box', 15.75, 17.0],
   ['#c-out', 17.0, 20.01],
 ]
 const WORDS = [['HTTP', 'paperbg'], ['WebSockets', 'ink'], ['Postgres', 'mintbg'], ['SQLite', 'paperbg'], ['JSON', 'ink'], ['Jobs', 'mintbg'], ['Tests', 'redbg']]
-const SLAMS = [0, 0.25, 0.5, 0.75, 1.0, 2.5, 3.0, 4.0, 4.5, 5.0, 6.5, 8.0, 8.5, 9.0, 9.5, 10.5, 12.0, 13.0, 13.5, ...WORDS.map((_, i) => 14 + i * 0.25), 15.75, 17.0, 17.5, 18.0]
+const SLAMS = [0, 0.25, 0.5, 0.75, 1.0, 2.5, 3.0, 4.0, 4.5, 5.0, 6.5, 8.0, 8.5, 9.0, 9.5, 10.5, 12.0, ...WORDS.map((_, i) => 14 + i * 0.25), 15.75, 17.0, 17.5, 18.0]
 const FLASHES = [1.0, 2.5, 5.0, 6.5, 10.5, 14.0, 17.0]
 window.CUES = { slams: SLAMS, flashes: FLASHES, words: WORDS.map((_, i) => 14 + i * 0.25) }
 
@@ -187,8 +176,6 @@ $('#net').innerHTML = `
     <text class="st" x="${x + 26}" y="${y + NH - 30}" font-family="JetBrains Mono" font-size="22" fill="oklch(0.8 0.15 163)" letter-spacing="3">● UP</text>
     <path class="x" d="M ${x - 30} ${y - 30} L ${x + NW + 30} ${y + NH + 30} M ${x + NW + 30} ${y - 30} L ${x - 30} ${y + NH + 30}" stroke="oklch(0.64 0.21 28)" stroke-width="26" fill="none" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1"/></g>`).join('')}`
 
-const BENCH = [['Rust', 46244], ['Go', 30306], ['Mesh', 29108], ['Elixir', 12441]]
-$('#bars').innerHTML = BENCH.map(([l, v]) => `<div class="row" style="margin-top:48px; font-family:'JetBrains Mono'; font-size:24px; ${l === 'Mesh' ? 'font-weight:700' : 'opacity:0.55'}">${l}<span style="float:right">${(v / 1000).toFixed(1)}k</span><div class="bar" style="height:${l === 'Mesh' ? 26 : 12}px; margin-top:12px; width:${v / 46244 * 100}%; transform-origin:left; background:${l === 'Mesh' ? 'var(--mint-deep)' : 'currentColor'}"></div></div>`).join('')
 $('#boxlist').innerHTML = WORDS.map(([w], i) => `<div class="head bx" style="position:relative; display:inline-block; font-size:108px; margin-right:44px; color:${i % 2 ? 'var(--paper)' : 'var(--mint)'}">${w}</div>`).join('')
 
 function shake(t) {
@@ -211,7 +198,6 @@ function wipe(el, t, s, d = 0.3) {
   el.style.clipPath = `inset(0 ${(1 - k) * 100}% 0 0)`
   el.style.opacity = t >= s ? 1 : 0
 }
-const fmt = (v) => Math.round(v).toLocaleString('en-US')
 
 function render(t) {
   for (const [id, s, e] of CARDS) $(id).style.display = t >= s && t < e ? 'block' : 'none'
@@ -283,16 +269,9 @@ function render(t) {
     wipe($('#cl-cm'), t, 9.6, 0.4); wipe($('#cl-tag'), t, 9.8, 0.4)
   }
 
-  // 03 native speed
-  if (t >= 10.5 && t < 13.0) {
-    const n = $('#g-num'); n.textContent = fmt(29108 * expo(P(t, 10.5, 1.2))); rgb(n, t, 10.5, 18)
-    document.querySelectorAll('#bars .bar').forEach((b, i) => { b.style.transform = `scaleX(${expo(P(t, 10.6 + i * 0.125, 0.6))})` })
-    const r = $('#h-rps'); r.style.visibility = t >= 11.0 ? 'visible' : 'hidden'; wipe(r, t, 11.0, 0.35)
-    const x = $('#h-x'); x.style.visibility = t >= 12.0 ? 'visible' : 'hidden'; slam(x, t, 12.0, { from: 1.4 }); rgb(x, t, 12.0)
-  }
-  if (t >= 13.0 && t < 14.0) {
-    const g = $('#g-llvm'); slam(g, t, 13.0, { from: 1.3, dx: 200 }); rgb(g, t, 13.0, 22)
-    const b = $('#h-bin'); b.style.visibility = t >= 13.5 ? 'visible' : 'hidden'; slam(b, t, 13.5, { from: 1.3 }); rgb(b, t, 13.5)
+  if (t >= 10.5 && t < 14.0) {
+    const g = $('#g-llvm'); slam(g, t, 10.5, { from: 1.3, dx: 200 }); rgb(g, t, 10.5, 22)
+    const b = $('#h-bin'); b.style.visibility = t >= 12.0 ? 'visible' : 'hidden'; slam(b, t, 12.0, { from: 1.3 }); rgb(b, t, 12.0)
     wipe($('#build'), t, 13.6, 0.3)
   }
 

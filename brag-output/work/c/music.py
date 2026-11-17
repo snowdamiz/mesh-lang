@@ -155,18 +155,12 @@ sfx.add(fft_filter(alarm, lambda fr: lp_weight(fr, 3000)) * 0.5, 8.0, gain=0.1)
 sfx.add(boom(1.0, 90, 38, rng=rng), 8.0, gain=0.4)
 sfx.add(reverse_cymbal(0.45), 8.05, gain=0.14)
 
-# counter: a rising run of blips; words: a stab per word climbing the scale
-for k in range(24):
-    at = 10.5 + 1.2 * (k / 24) ** 0.8
-    m = motif[k % len(motif)] + 12 * (k // len(motif))
-    stabs.add(np.sin(2 * np.pi * f(m) * tt(0.06)) * np.exp(-tt(0.06) / 0.02), at, pan=(k % 3 - 1) * 0.4, gain=0.12)
 for i, at in enumerate(cues["words"]):
     drums.add(K if i % 2 == 0 else SN, at, gain=0.7)
     stabs.add(stab([motif[i], motif[i] + 7], 0.22, bright=5000), at, pan=(-1) ** i * 0.3, gain=0.45)
 for k in range(8):  # snare roll into the outro
     drums.add(SN, 16.0 + 0.5 + k * 0.0625, gain=0.12 + 0.05 * k)
 sfx.add(noise_sweep(1.0, 500, 9000, lambda k: k ** 2.3, rng=rng), 16.0, gain=0.14)
-sfx.add(noise_sweep(0.5, 800, 6000, lambda k: np.sin(np.pi * k), rng=rng), 12.9, gain=0.1)
 
 # the outro hit and the final chord
 sfx.add(boom(2.0, 80, 36, rng=rng), 17.0, gain=0.45)
@@ -188,7 +182,7 @@ for bar, chord in enumerate(PROG):
         for det, pn in ((-8, -0.5), (8, 0.5)):
             pad.add(saw(f(m + 12), 2.2, fc=1600, detune=det, rng=rng) * env(2.2, a=0.08, dcy=1, s=1, r=0.3), t0, pan=pn, gain=0.03)
 bus = drums.x + bass.x * 0.75 + stabs.x * 3.0 + pad.x
-for at in (1.0, 5.0, 8.5, 13.0, 15.75, 17.0):
+for at in (1.0, 5.0, 8.5, 15.75, 17.0):
     i, w = int(at * SR), int(S16 / 2 * SR)
     seg = bus[:, i:i + w].copy()
     for k in range(1, 4):

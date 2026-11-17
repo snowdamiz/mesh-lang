@@ -338,19 +338,6 @@
   animation: l-rise 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-/* ── Benchmarks ─────────────────────────────────── */
-
-.l-bar {
-  height: 100%;
-  border-radius: 2px;
-  background: color-mix(in oklab, var(--foreground) 20%, transparent);
-  transform-origin: left;
-  transition: transform 1s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.l-bar.is-mesh {
-  background: var(--l-accent);
-}
-
 /* ── Failover simulation ────────────────────────── */
 
 .l-fault-btn {
@@ -389,9 +376,6 @@
   .l-enter,
   .l-blink {
     animation: none;
-  }
-  .l-bar {
-    transition: none;
   }
   .l-motion {
     display: none;

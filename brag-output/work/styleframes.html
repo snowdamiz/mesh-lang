@@ -116,15 +116,9 @@ send(pid, 5)
   <div class="tag mono" style="right:60px; bottom:44px">meshlang.dev</div>
 </section>
 <section class="frame" id="C2">
-  <div style="position:absolute; left:0; top:0; bottom:0; width:1240px; background:var(--ink)"></div>
-  <div style="position:absolute; left:1240px; top:0; bottom:0; right:0; background:var(--paper); color:var(--ink)">
-    <div class="tag mono" style="left:60px; top:130px">GET /text · req/s</div>
-    <div id="bars" style="position:absolute; left:60px; right:60px; top:200px"></div>
-    <div class="tag mono" style="left:60px; bottom:140px; font-size:14px; line-height:1.6">benchmarks/RESULTS.md<br>2 vCPU · 100 connections</div>
-  </div>
-  <div class="c-giant" style="left:70px; top:260px; font-size:520px; color:#fff">29,108</div>
-  <div class="tag mono" style="left:80px; top:130px; color:var(--mint)">Mesh — 03 / Native speed</div>
-  <div class="arch" style="position:absolute; left:80px; top:760px; font-size:64px; font-weight:800; font-stretch:75%; text-transform:uppercase; line-height:0.95">requests per second.<br><span style="color:var(--mint)">2.3× Elixir.</span></div>
+  <div class="c-giant" style="left:70px; top:260px; font-size:520px; color:#fff">LLVM →</div>
+  <div class="tag mono" style="left:80px; top:130px; color:var(--mint)">Mesh / 03 / Native compilation</div>
+  <div class="arch" style="position:absolute; left:80px; top:760px; font-size:64px; font-weight:800; font-stretch:75%; text-transform:uppercase; line-height:0.95">Compiled to <span style="color:var(--mint)">native binaries.</span></div>
 </section>
 
 <script>
@@ -224,12 +218,6 @@ function particles(canvasId, failover) {
   gl.clearColor(0.004, 0.012, 0.01, 1); gl.clear(gl.COLOR_BUFFER_BIT)
   gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE)
   gl.drawArrays(gl.POINTS, 0, S.length)
-}
-
-// C2 bars
-if (which === 'C2') {
-  const rows = [['Rust', 46244], ['Go', 30306], ['Mesh', 29108], ['Elixir', 12441]]
-  document.getElementById('bars').innerHTML = rows.map(([l, v]) => `<div style="margin-top:46px; font-family:'JetBrains Mono'; font-size:22px; ${l === 'Mesh' ? 'font-weight:700' : 'opacity:0.55'}">${l}<span style="float:right">${(v / 1000).toFixed(1)}k</span><div style="height:${l === 'Mesh' ? 22 : 10}px; margin-top:12px; width:${v / 46244 * 100}%; background:${l === 'Mesh' ? 'oklch(0.62 0.15 163)' : 'currentColor'}"></div></div>`).join('')
 }
 
 window.render = () => {}

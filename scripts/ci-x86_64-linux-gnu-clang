@@ -1,0 +1,2 @@
+#!/bin/sh
+exec "${LLVM_SYS_211_PREFIX:?}/bin/clang" -fuse-ld=lld --ld-path="${LLVM_SYS_211_PREFIX}/bin/ld.lld" "$@"
