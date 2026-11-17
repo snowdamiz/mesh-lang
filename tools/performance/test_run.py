@@ -50,7 +50,7 @@ class BenchmarkContractTests(unittest.TestCase):
             name: {"values": {"count": count}}
             for name, count in {
                 "score_started": 9996, "score_success": 9994, "score_errors": 1,
-                "score_within_50ms": 9980, "iterations": 9995, "dropped_iterations": 3,
+                "score_within_slo": 9980, "iterations": 9995, "dropped_iterations": 3,
             }.items()
         }
         metrics["score_e2e_ms"] = {"values": {"p(99)": 40}}

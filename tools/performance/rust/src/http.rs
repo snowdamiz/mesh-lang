@@ -1,4 +1,4 @@
-use std::convert::Infallible;
+use std::{convert::Infallible, time::Duration};
 
 use http_body_util::{BodyExt, Full, Limited};
 use hyper::{
@@ -57,7 +57,14 @@ fn json(status: StatusCode, body: impl Into<Bytes>) -> Response<Full<Bytes>> {
 pub(crate) async fn serve(port: u16) -> Result<()> {
     let listener = TcpListener::bind(("0.0.0.0", port)).await?;
     loop {
-        let (stream, _) = listener.accept().await?;
+        let stream = match listener.accept().await {
+            Ok((stream, _)) => stream,
+            Err(error) => {
+                eprintln!("HTTP accept: {error}");
+                tokio::time::sleep(Duration::from_millis(25)).await;
+                continue;
+            }
+        };
         tokio::spawn(async move {
             if let Err(error) = http1::Builder::new()
                 .keep_alive(false)

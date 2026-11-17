@@ -1,10 +1,15 @@
 defmodule PerformanceElixir.Actor do
   def run(pairs, iterations, warmup) do
+    if warmup > 0, do: phase(pairs, warmup, false)
+    phase(pairs, iterations, true)
+  end
+
+  defp phase(pairs, iterations, measure) do
     coordinator = self()
 
     callers =
       for _ <- 1..pairs do
-        spawn_link(fn -> caller(coordinator, iterations, warmup) end)
+        spawn_link(fn -> caller(coordinator, iterations, measure) end)
       end
 
     Enum.each(callers, fn _ ->
@@ -32,32 +37,29 @@ defmodule PerformanceElixir.Actor do
     }
   end
 
-  defp caller(coordinator, iterations, warmup) do
+  defp caller(coordinator, iterations, measure) do
     caller = self()
-    worker = spawn_link(fn -> counter(caller, 0) end)
 
-    exchange(worker, 1, warmup, 0, [], false)
-    send(worker, :reset)
+    worker =
+      spawn_link(fn ->
+        send(caller, :worker_ready)
+        counter(caller, 0)
+      end)
 
     receive do
-      :reset_done -> send(coordinator, :ready)
+      :worker_ready -> send(coordinator, :ready)
     end
 
     receive do
       :run ->
-        {counter, samples} = exchange(worker, 1, iterations, 0, [], true)
-        finish = System.monotonic_time(:nanosecond)
-        send(coordinator, {:done, counter, finish, Enum.reverse(samples)})
+        {counter, samples, final_reply_at} = exchange(worker, 1, iterations, 0, [], measure)
+        send(coordinator, {:done, counter, final_reply_at, Enum.reverse(samples)})
         send(worker, :stop)
     end
   end
 
-  defp exchange(_worker, iteration, limit, counter, samples, _sample?) when iteration > limit do
-    {counter, samples}
-  end
-
-  defp exchange(worker, iteration, limit, counter, samples, sample?) do
-    started = if sample? and rem(iteration - 1, 64) == 0, do: System.monotonic_time(:nanosecond)
+  defp exchange(worker, iteration, limit, counter, samples, measure) do
+    started = if measure and rem(iteration - 1, 64) == 0, do: System.monotonic_time(:nanosecond)
     send(worker, iteration)
 
     reply =
@@ -65,12 +67,9 @@ defmodule PerformanceElixir.Actor do
         {:counter, value} -> value
       end
 
-    samples =
-      if started do
-        [System.monotonic_time(:nanosecond) - started | samples]
-      else
-        samples
-      end
+    final = iteration == limit
+    received = if started || final, do: System.monotonic_time(:nanosecond)
+    samples = if started, do: [received - started | samples], else: samples
 
     expected = counter + iteration
 
@@ -78,15 +77,15 @@ defmodule PerformanceElixir.Actor do
       raise "actor reply mismatch at iteration #{iteration}: expected #{expected}, got #{reply}"
     end
 
-    exchange(worker, iteration + 1, limit, reply, samples, sample?)
+    if final do
+      {reply, samples, received}
+    else
+      exchange(worker, iteration + 1, limit, reply, samples, measure)
+    end
   end
 
   defp counter(caller, value) do
     receive do
-      :reset ->
-        send(caller, :reset_done)
-        counter(caller, 0)
-
       :stop ->
         :ok
 

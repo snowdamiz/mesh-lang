@@ -83,7 +83,7 @@ fn run() -> Result<()> {
         runtime.worker_threads(workers.get());
     }
 
-    runtime.enable_io().build()?.block_on(async {
+    runtime.enable_io().enable_time().build()?.block_on(async {
         match mode.as_str() {
             "actor" => print_trial(
                 actor::run(

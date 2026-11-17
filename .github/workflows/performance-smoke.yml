@@ -3,12 +3,17 @@ name: Performance suite smoke
 on:
   pull_request:
     paths:
+      - 'compiler/**'
+      - 'Cargo.lock'
+      - 'Cargo.toml'
       - 'tools/performance/**'
       - '.github/workflows/performance-smoke.yml'
   push:
     branches: [main]
     paths:
       - 'compiler/**'
+      - 'Cargo.lock'
+      - 'Cargo.toml'
       - 'tools/performance/**'
       - '.github/workflows/performance-smoke.yml'
   workflow_dispatch:

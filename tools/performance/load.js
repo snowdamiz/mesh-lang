@@ -2,7 +2,7 @@ import exec from 'k6/execution';
 import http from 'k6/http';
 import { Counter, Trend } from 'k6/metrics';
 
-// run.py supplies bench and the Python oracle in the stdin script.
+const bench = JSON.parse(__ENV.PERF_CONFIG);
 const cases = bench.cases.map(({record, expected}) => ({
   body: JSON.stringify(record),
   expected,
@@ -10,7 +10,7 @@ const cases = bench.cases.map(({record, expected}) => ({
 const started = new Counter('score_started');
 const success = new Counter('score_success');
 const errors = new Counter('score_errors');
-const good = new Counter('score_within_50ms');
+const good = new Counter('score_within_slo');
 const latency = new Trend('score_e2e_ms', true);
 
 export const options = {
@@ -37,26 +37,29 @@ export default function () {
     headers: {'Content-Type': 'application/json', 'Connection': 'close'},
     timeout: '2s',
   });
-  let valid = false;
-  if (response.status === 200 && response.proto === 'HTTP/1.1' &&
-      /^application\/json(?:\s*;|$)/i.test(response.headers['Content-Type'] || '')) {
-    try {
-      const actual = response.json();
-      valid = actual !== null && typeof actual === 'object' &&
-        Object.keys(actual).length === 2 &&
-        actual.id === expected.id && actual.score === expected.score;
-    } catch (_) {
-      // A malformed body is a failed request.
-    }
-  }
-  if (valid) {
+  if (matchesScore(response, expected)) {
     // k6 excludes the TCP dial from its HTTP duration.
     const elapsed = response.timings.connecting + response.timings.duration;
     latency.add(elapsed);
     success.add(1);
-    good.add(elapsed <= 50 ? 1 : 0);
+    good.add(elapsed <= bench.slo_ms ? 1 : 0);
   } else {
     errors.add(1);
+  }
+}
+
+function matchesScore(response, expected) {
+  if (response.status !== 200 || response.proto !== 'HTTP/1.1' ||
+      !/^application\/json(?:\s*;|$)/i.test(response.headers['Content-Type'] || '')) {
+    return false;
+  }
+  try {
+    const actual = response.json();
+    return actual !== null && typeof actual === 'object' &&
+      Object.keys(actual).length === 2 &&
+      actual.id === expected.id && actual.score === expected.score;
+  } catch (_) {
+    return false;
   }
 }
 

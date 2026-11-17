@@ -17,6 +17,7 @@ from pathlib import Path
 import platform
 import random
 import re
+import resource
 import shlex
 import shutil
 import signal
@@ -31,8 +32,12 @@ LANGUAGES = ("mesh", "elixir", "go", "rust")
 LOCAL = "127.0.0.1"
 HERE = Path(__file__).resolve().parent
 PROBE_TIMEOUT = 1
+PROBE_INTERVAL = 0.002
 SAMPLE_INTERVAL = 0.25
 BLOCKS = 5
+OPEN_FILES_LIMIT = 65_536
+SLO_MS = 50
+SLO_ERROR_FRACTION = 0.001
 
 
 @dataclass(frozen=True)
@@ -245,19 +250,25 @@ def expect_json(response, expected):
 def readiness(child, port, start_ns, readiness_timeout):
     deadline = time.monotonic() + readiness_timeout
     attempts = 0
+    lower_ns = 0
     while time.monotonic() < deadline:
         if child.poll() is not None:
             raise ValueError(f"Server exited before readiness with status {child.returncode}")
         attempts += 1
+        probe_started = time.monotonic_ns()
         try:
-            response = request(port, "/health", timeout=min(PROBE_TIMEOUT, deadline - time.monotonic()))
-        except (ConnectionRefusedError, ConnectionResetError):
-            time.sleep(0.02)
+            response = request(port, "/health", timeout=min(PROBE_TIMEOUT, max(0, deadline - time.monotonic())))
+        except (ConnectionRefusedError, ConnectionResetError, BrokenPipeError, TimeoutError):
+            lower_ns = probe_started - start_ns
+            time.sleep(PROBE_INTERVAL)
             continue
         expect_json(response, {"ok": True})
         if child.poll() is not None:
             raise ValueError("Server exited during readiness")
-        return {"ready_ns": time.monotonic_ns() - start_ns, "attempts": attempts, "at_utc": timestamp()}
+        return {
+            "ready_ns": time.monotonic_ns() - start_ns, "lower_ns": lower_ns,
+            "attempts": attempts, "at_utc": timestamp(),
+        }
     raise TimeoutError("Server did not become ready before the startup deadline")
 
 
@@ -266,6 +277,10 @@ def smoke_http(port, records):
     for record in records:
         response = request(port, "/score", compact(record).encode())
         expect_json(response, {"id": record["id"], "score": score(record)})
+    expect_json(
+        request(port, "/score", b'{"id":1.0,"values":[-1.0,3e0]}'),
+        {"id": 1, "score": 6},
+    )
     invalid = (
         b"{", b"[]", b"null", b"{}", b'{"id":1}', b'{"id":-1,"values":[1]}',
         b'{"id":"1","values":[1]}', b'{"id":1,"values":null}',
@@ -277,17 +292,17 @@ def smoke_http(port, records):
         status, _, _ = request(port, "/score", body)
         if status != 400:
             raise ValueError(f"Expected HTTP 400 for {body!r}, got {status}")
-    return {"validated": len(records), "rejected": len(invalid), "connection_close": True}
+    return {"validated": len(records) + 1, "rejected": len(invalid), "connection_close": True}
 
 
-def k6_command(args, seconds=None):
+def k6_command(args, config=None):
     command = [args.k6, "version"]
-    if seconds is not None:
-        command = [args.k6, "run", "--quiet", "--address=", "-"]
+    if config is not None:
+        command = [args.k6, "run", "--quiet", "--address=", "--env", f"PERF_CONFIG={compact(config)}", "-"]
     if not getattr(args, "load_host", None):
         return command
-    if seconds is not None:
-        command = ["timeout", "--kill-after=3s", f"{seconds + 20}s", *command]
+    if config is not None:
+        command = ["timeout", "--kill-after=3s", f"{config['seconds'] + 20}s", *command]
     clean = 'env -i PATH="$PATH" XDG_CONFIG_HOME=/nonexistent K6_NO_USAGE_REPORT=true '
     return ssh_command(args.load_host, clean + shlex.join(command))
 
@@ -346,7 +361,8 @@ def load_metadata(args, server_boot_id):
             args.load_host,
             "cat /proc/sys/kernel/random/boot_id && command -v timeout && uname -a &&"
             " date -u +%Y-%m-%dT%H:%M:%SZ && nproc && cat /proc/loadavg && lscpu"
-            " && cat /proc/sys/net/ipv4/ip_local_port_range /proc/sys/net/ipv4/tcp_tw_reuse",
+            " && cat /proc/sys/net/ipv4/ip_local_port_range /proc/sys/net/ipv4/tcp_tw_reuse"
+            " && ulimit -n",
         ))
         load_boot_id = report.splitlines()[0]
         if load_boot_id == server_boot_id:
@@ -367,7 +383,7 @@ def load_result(summary, target, seconds):
     started = count("score_started")
     success = count("score_success")
     errors = count("score_errors")
-    within_slo = count("score_within_50ms")
+    within_slo = count("score_within_slo")
     dropped = count("dropped_iterations")
     if within_slo > success or success + errors > started or started < count("iterations"):
         raise ValueError("Inconsistent k6 request counters")
@@ -383,9 +399,9 @@ def load_result(summary, target, seconds):
         "success": success, "errors": errors, "dropped": dropped,
         "interrupted": interrupted, "missing": missing,
         "error_fraction": error_fraction, "e2e_ms": latency,
-        "success_per_s": success / seconds, "within_50ms": within_slo,
+        "success_per_s": success / seconds, "within_slo": within_slo,
         "slo_goodput_per_s": within_slo / seconds,
-        "slo_met": p99 is not None and p99 <= 50 and error_fraction < 0.001,
+        "slo_met": p99 is not None and p99 <= SLO_MS and error_fraction < SLO_ERROR_FRACTION,
     }
 
 
@@ -394,19 +410,15 @@ def run_load(args, directory, server, samples, port, records, phase, rate, secon
         raise ValueError("Server exited before load")
     remote = bool(getattr(args, "load_host", None))
     address = args.server_address if remote else LOCAL
-    if ":" in address:
-        address = f"[{address}]"
     config = {
         "url": f"http://{address}:{port}/score",
         "rate": rate, "seconds": seconds,
+        "slo_ms": SLO_MS,
         "vus": getattr(args, "k6_vus", None) or max(4, math.ceil(rate / 5)),
         "cases": [{"record": record, "expected": {"id": record["id"], "score": score(record)}}
                   for record in records],
     }
     write_json(directory / f"{phase}.config.json", config)
-    with (directory / f"{phase}.js").open("x") as script:
-        script.write(f"const bench = {compact(config)};\n")
-        script.write((directory.parent / "load.js").read_text())
     start = timestamp()
     env = {**clean_env(), "XDG_CONFIG_HOME": "/nonexistent", "K6_NO_USAGE_REPORT": "true"}
 
@@ -415,8 +427,8 @@ def run_load(args, directory, server, samples, port, records, phase, rate, secon
             raise ValueError("Server exited under load")
         sample(samples, server, phase)
 
-    with (directory / f"{phase}.js").open("rb") as script, process(
-        k6_command(args, seconds), directory, phase, None if remote else env, stdin=script,
+    with (directory.parent / "load.js").open("rb") as script, process(
+        k6_command(args, config), directory, phase, None if remote else env, stdin=script,
     ) as child:
         code = wait(child, seconds + 40, tick)
         tick()
@@ -510,6 +522,11 @@ def run_suite(args):
     available = host.get("available_cpus", [])
     if not smoke and (len(available) < 4 or shutil.which("taskset") is None):
         raise ValueError("run requires Linux, taskset, and at least four available logical CPUs")
+    if not smoke:
+        _, hard_limit = resource.getrlimit(resource.RLIMIT_NOFILE)
+        limit = OPEN_FILES_LIMIT if hard_limit == resource.RLIM_INFINITY else min(hard_limit, OPEN_FILES_LIMIT)
+        resource.setrlimit(resource.RLIMIT_NOFILE, (limit, limit))
+        host["subject_open_files_limit"] = limit
     k6 = not smoke or args.require_k6 or args.k6_version or shutil.which(args.k6) is not None
     loadgen = load_metadata(args, host["boot_id"]) if k6 else None
     args.bin_dir = args.bin_dir.resolve()
@@ -523,6 +540,14 @@ def run_suite(args):
             for chunk in iter(lambda: file.read(1024 * 1024), b""):
                 digest.update(chunk)
         binary_hashes[language] = {"path": str(binary), "sha256": digest.hexdigest()}
+    release = args.bin_dir / "elixir-release"
+    if release.is_dir():
+        digest = hashlib.sha256()
+        for file in sorted(release.rglob("*")):
+            if file.is_file() and file.name != "COOKIE":
+                digest.update(compact([str(file.relative_to(release)),
+                                       hashlib.sha256(file.read_bytes()).hexdigest()]).encode())
+        binary_hashes["elixir"]["release_sha256"] = digest.hexdigest()
 
     records = fixture_records()
     trials = trial_order(args)
@@ -562,8 +587,6 @@ def run_suite(args):
                 "status": "failed", "started_at_utc": started_at,
                 "finished_at_utc": timestamp(), "error": str(error),
             })
-            if not smoke:
-                break
             continue
         write_json(directory / "result.json", {
             "status": "ok", "started_at_utc": started_at, "finished_at_utc": timestamp(), **result,
@@ -611,6 +634,9 @@ def resource_metrics(path, phase, tick_hz):
         values = [point[source] for point in points if source in point]
         if values:
             metrics[label] = max(values) / 1024
+    rss = [point["VmRSS_kib"] for point in points if "VmRSS_kib" in point]
+    if len(rss) > 1:
+        metrics["RSS change MiB"] = (rss[-1] - rss[0]) / 1024
     if len(points) > 1 and tick_hz:
         first, last = points[0], points[-1]
         ticks = last["user_ticks"] + last["system_ticks"] - first["user_ticks"] - first["system_ticks"]
@@ -632,7 +658,9 @@ def report_metrics(directory, trial, result, tick_hz):
             if "rtt_ns" in data:
                 values[f"RTT p{percent} ms"] = percentile(data["rtt_ns"], percent) / 1e6
     if "readiness" in result:
-        values["startup ms"] = result["readiness"]["ready_ns"] / 1e6
+        ready = result["readiness"]
+        values["startup upper bound ms"] = ready["ready_ns"] / 1e6
+        values["startup probe window ms"] = (ready["ready_ns"] - ready["lower_ns"]) / 1e6
     if "load" in result:
         data = result["load"]
         for key, name in (("med", "p50"), ("p(95)", "p95"), ("p(99)", "p99"), ("max", "max")):
@@ -682,14 +710,20 @@ def report(paths):
         print(f"Warmup: {settings['warmup_seconds']}s HTTP / {settings['warmup_ops']} untimed ops | "
               f"measurement: {settings['measure_seconds']}s HTTP / {settings['sustained_seconds']}s sustained")
         print("Values are block medians [min, max]. HTTP latency uses valid replies. "
-              "SLO blocks require p99 <= 50ms and <0.1% failures including dropped or missing load.")
+              f"SLO blocks require p99 <= {SLO_MS}ms and <{SLO_ERROR_FRACTION:.1%} failures "
+              "including dropped or missing load.")
         groups = defaultdict(list)
-        passing_rates = {}
+        tested_rates = defaultdict(dict)
         for index, trial in enumerate(metadata["trials"], 1):
             key = tuple(trial[name] for name in ("mode", "cpus", "pairs", "iterations", "rate", "language"))
             directory = path / f"{index:04}"
             file = directory / "result.json"
             groups[key].append((directory, trial, json.loads(file.read_text()) if file.exists() else {}))
+        results = [result for group in groups.values() for _, _, result in group]
+        failed = sum(result.get("status") == "failed" for result in results)
+        not_recorded = sum(not result for result in results)
+        if failed or not_recorded:
+            print(f"Incomplete results: {failed} failed and {not_recorded} unrecorded of {len(results)} trials.")
         for (mode, cpus, pairs, iters, rate, language), group in sorted(groups.items()):
             measured = defaultdict(list)
             passed = slo_blocks = 0
@@ -703,19 +737,22 @@ def report(paths):
             workload = f" {rate}/s" if rate else f" {iters} iterations" if iters else ""
             if pairs:
                 workload += f" × {pairs} pairs"
-            slo = f" | SLO {slo_blocks}/{len(group)}" if rate else ""
+            slo = f" | SLO {slo_blocks}/{passed} measured blocks" if rate and passed else ""
             if mode == "http":
-                key = (cpus, language)
-                passing_rates.setdefault(key, None)
-                if slo_blocks == len(group):
-                    passing_rates[key] = max(rate, passing_rates[key] or 0)
+                tested_rates[cpus, language][rate] = (
+                    slo_blocks == len(group) if passed == len(group) else None
+                )
             print(f"\n{mode} {cpus} CPU{workload} | {language} | {passed}/{len(group)} trials{slo}")
             for name, values in measured.items():
                 print(f"  {name}: {statistics.median(values):.4g} [{min(values):.4g}, {max(values):.4g}]"
                       f"{'' if len(values) == passed else f' (n={len(values)})'}")
         print("\nHighest tested HTTP rate meeting the SLO in every block")
-        for (cpus, language), rate in sorted(passing_rates.items()):
-            print(f"  {cpus} CPU | {language} | {f'{rate} req/s' if rate is not None else 'none'}")
+        for (cpus, language), rates in sorted(tested_rates.items()):
+            passed = [rate for rate, verdict in rates.items() if verdict is True]
+            result = f"{max(passed)} req/s" if passed else "none"
+            if None in rates.values():
+                result += " (some rates have unrecorded or failed trials)"
+            print(f"  {cpus} CPU | {language} | {result}")
     return 0
 
 
@@ -738,11 +775,9 @@ def private_address(text):
         address = ipaddress.ip_address(text)
     except ValueError as error:
         raise argparse.ArgumentTypeError(str(error)) from error
-    networks = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7")
-    if isinstance(address, ipaddress.IPv6Address) and address.scope_id:
-        raise argparse.ArgumentTypeError("Use a private IP without an interface scope")
+    networks = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
     if not any(address in ipaddress.ip_network(network) for network in networks):
-        raise argparse.ArgumentTypeError("Expected a private IPv4 or unique-local IPv6 address")
+        raise argparse.ArgumentTypeError("Expected a private IPv4 address")
     return str(address)
 
 

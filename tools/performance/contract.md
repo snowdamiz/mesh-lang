@@ -19,7 +19,8 @@ contain base-ten integers. The runner gives each trial a fresh process.
   starting the timer. Visit `PERF_ITERS` records in array order, wrapping at the
   end. The checksum is the sum of their scores. Each record contains a
   integer `id` from 0 through 1,000,000 and an array `values` of at most 256
-  integers from -1,000,000 through 1,000,000. Ignore other fields.
+  integers from -1,000,000 through 1,000,000. Accept integral JSON numbers
+  such as `1.0`. Use distinct keys and ignore other fields.
   The score is `id + sum((index + 1) * value)` with zero-based indices.
 - `serve` listens on the TCP port in `PERF_PORT`. `GET /health` returns
   `{"ok":true}`. `POST /score` decodes one record, computes its score, and

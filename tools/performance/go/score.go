@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"strconv"
@@ -16,7 +17,14 @@ type jsonInteger int64
 func (n *jsonInteger) UnmarshalJSON(data []byte) error {
 	value, err := strconv.ParseInt(string(data), 10, 64)
 	if err != nil {
-		return err
+		number, err := strconv.ParseFloat(string(data), 64)
+		if err != nil || number < -1_000_000 || number > 1_000_000 || number != math.Trunc(number) {
+			return errors.New("expected a bounded integral JSON number")
+		}
+		value = int64(number)
+	}
+	if value < -1_000_000 || value > 1_000_000 {
+		return errors.New("number outside score bounds")
 	}
 	*n = jsonInteger(value)
 	return nil
@@ -27,8 +35,7 @@ type record struct {
 	values []jsonInteger
 }
 
-// Keep the untimed scoring work observable to the compiler.
-var warmupChecksum int64
+var warmupResultSink int64
 
 func (r *record) UnmarshalJSON(data []byte) error {
 	var fields map[string]json.RawMessage
@@ -42,11 +49,6 @@ func (r *record) UnmarshalJSON(data []byte) error {
 	var values []jsonInteger
 	if err := json.Unmarshal(fields["values"], &values); err != nil || values == nil || len(values) > 256 {
 		return errors.New("values must be an array of up to 256 integers")
-	}
-	for _, value := range values {
-		if value < -1_000_000 || value > 1_000_000 {
-			return errors.New("values must be between -1000000 and 1000000")
-		}
 	}
 	*r = record{id: id, values: values}
 	return nil
@@ -72,7 +74,7 @@ func runCPU(path string, iters, warmup int) (result, error) {
 	if records == nil || (len(records) == 0 && (iters > 0 || warmup > 0)) {
 		return result{}, errors.New("fixtures must be a JSON array with records for the requested operations")
 	}
-	warmupChecksum = scoreRecords(records, warmup)
+	warmupResultSink = scoreRecords(records, warmup)
 	started := time.Now()
 	checksum := scoreRecords(records, iters)
 	elapsed := time.Since(started).Nanoseconds()

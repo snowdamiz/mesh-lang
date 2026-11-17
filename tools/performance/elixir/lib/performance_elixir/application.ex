@@ -45,7 +45,7 @@ defmodule PerformanceElixir.Application do
     )
   end
 
-  defp iterations, do: integer_env("PERF_ITERS", 0)
+  defp iterations, do: integer_env("PERF_ITERS", 1)
   defp warmup, do: parse_integer(System.get_env("PERF_WARMUP", "0"), "PERF_WARMUP", 0, :infinity)
 
   defp integer_env(name, min, max \\ :infinity) do

@@ -146,7 +146,7 @@ end
 
 type PairEvent do
   PairReady(caller :: Pid<Int>)
-  PairDone(counter :: Int, finish :: Int, samples :: List<Int>)
+  PairDone(counter :: Int, final_reply_at_ns :: Int, samples :: List<Int>)
 end
 
 actor counter_loop(caller :: Pid<Int>, total :: Int, remaining :: Int) do
@@ -237,7 +237,7 @@ actor actor_trial(pairs :: Int, iterations :: Int, warmup :: Int) do
   end
   let results = for _index in 0..pairs do
     receive do
-      PairDone(counter, finish, samples) -> (counter, finish, samples)
+      PairDone(counter, final_reply_at_ns, samples) -> (counter, final_reply_at_ns, samples)
       PairReady(_) -> fail("pair already started")
     end
   end
@@ -245,18 +245,17 @@ actor actor_trial(pairs :: Int, iterations :: Int, warmup :: Int) do
     actor_trial(pairs, iterations, 0)
   else
     let checksum = List.reduce(results, 0, fn total, (counter, _, _) -> total + counter end)
-    # Each caller timestamps its final reply before reporting to the coordinator.
-    let finish = List.reduce(results,
+    let final_reply_at_ns = List.reduce(results,
       started,
-      fn latest, (_, finish, _) -> if finish > latest do
-        finish
+      fn latest, (_, reply_at_ns, _) -> if reply_at_ns > latest do
+        reply_at_ns
       else
         latest
       end end)
     let samples = List.flat_map(results, fn((_, _, samples)) -> samples end)
     println(json {
       ops: pairs * iterations,
-      elapsed_ns: finish - started,
+      elapsed_ns: final_reply_at_ns - started,
       checksum: checksum,
       rtt_ns: samples
     })

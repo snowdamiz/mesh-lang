@@ -39,6 +39,8 @@ timings from a dedicated host.
    Confirm the load generator can deliver the offered rate without running
    out of CPU, virtual users, or sockets. Set the same rates for all subjects.
    Use `--blocks 1 --sustained-seconds 30` for a short pilot.
+   Raise `--k6-vus` if the client runs out of virtual users before the
+   load point you want to study. The report counts unsent arrivals as errors.
 4. Run five shuffled blocks for each CPU budget. Use 15 seconds of warm-up
    and 30 seconds of measurement as a starting point. Increase the window if
    observations drift or yield too few completions for p99. Run the sustained
@@ -86,6 +88,9 @@ python3 tools/performance/run.py report \
 - Confirm short actor and CPU cases ran long enough for memory samples. The
   runner polls the process every 250 ms. An omitted memory value means the
   process exited before a memory sample was available.
+- Startup uses a request probe. Compare the bound and probe window together.
+  The window reflects the time between the last failed probe and the first
+  correct response.
 - Before publishing numbers, record the host and CPU model, versions,
   affinity, runtime flags, observed limitations, and raw trial directory.
   Publish the benchmark commit with the results.

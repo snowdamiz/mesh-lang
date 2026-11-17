@@ -51,10 +51,12 @@ cp "$root/.tmp/performance/rust-target/release/performance-rust" "$out/rust"
   cd "$suite/elixir"
   export MIX_ENV=prod
   mix deps.get --check-locked
-  mix release --overwrite
+  mix release --path "$out/elixir-release" --overwrite
 )
-release="$suite/elixir/_build/prod/rel/performance_elixir"
-printf '#!/usr/bin/env bash\nexec %q start\n' "$release/bin/performance_elixir" > "$out/elixir"
+cat > "$out/elixir" <<'LAUNCHER'
+#!/usr/bin/env bash
+exec "${0%/*}/elixir-release/bin/performance_elixir" start
+LAUNCHER
 chmod +x "$out/elixir"
 
 {
