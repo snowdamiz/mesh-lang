@@ -153,6 +153,19 @@ jobs:
         if: matrix.llvm_method == 'tarball' && runner.os == 'Linux'
         run: echo "LLVM_SYS_211_PREFIX=$HOME/llvm" >> "$GITHUB_ENV"
 
+      - name: Configure LLVM linker (Linux x86_64)
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        shell: bash
+        run: |
+          test -x "$HOME/llvm/bin/llvm-config"
+          test -x "$HOME/llvm/bin/clang"
+          test -x "$HOME/llvm/bin/ld.lld"
+          "$HOME/llvm/bin/llvm-config" --version
+          "$HOME/llvm/bin/clang" --version
+          "$HOME/llvm/bin/ld.lld" --version
+          echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=$HOME/llvm/bin/clang" >> "$GITHUB_ENV"
+          echo "RUSTFLAGS=${RUSTFLAGS:+$RUSTFLAGS }-C link-arg=-fuse-ld=lld -C link-arg=--ld-path=$HOME/llvm/bin/ld.lld" >> "$GITHUB_ENV"
+
       - name: Set LLVM prefix (Windows tarball)
         if: matrix.llvm_method == 'tarball' && runner.os == 'Windows'
         shell: pwsh
