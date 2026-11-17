@@ -1,0 +1,113 @@
+name: Performance suite smoke
+
+on:
+  pull_request:
+    paths:
+      - 'compiler/**'
+      - 'Cargo.lock'
+      - 'Cargo.toml'
+      - 'tools/performance/**'
+      - '.github/workflows/performance-smoke.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'compiler/**'
+      - 'Cargo.lock'
+      - 'Cargo.toml'
+      - 'tools/performance/**'
+      - '.github/workflows/performance-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read toolchain versions
+        id: versions
+        shell: bash
+        run: cat tools/performance/versions.env >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        id: llvm
+        with:
+          path: ~/llvm
+          key: llvm-${{ steps.versions.outputs.PERF_LLVM_VERSION }}-v4-x86_64-unknown-linux-gnu
+
+      - name: Install LLVM
+        if: steps.llvm.outputs.cache-hit != 'true'
+        env:
+          LLVM_VERSION: ${{ steps.versions.outputs.PERF_LLVM_VERSION }}
+          LLVM_SHA256: ${{ steps.versions.outputs.PERF_LLVM_LINUX_AMD64_SHA256 }}
+        run: |
+          archive="LLVM-${LLVM_VERSION}-Linux-X64.tar.xz"
+          curl --fail --silent --show-error --location --retry 3 \
+            "https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_VERSION}/$archive" \
+            --output "$RUNNER_TEMP/$archive"
+          printf '%s  %s\n' "$LLVM_SHA256" "$RUNNER_TEMP/$archive" | sha256sum -c -
+          mkdir -p "$HOME/llvm"
+          tar -xJf "$RUNNER_TEMP/$archive" --strip-components=1 -C "$HOME/llvm"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ steps.versions.outputs.PERF_RUST_VERSION }}
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ steps.versions.outputs.PERF_GO_VERSION }}
+          cache: false
+
+      - uses: erlef/setup-beam@v1.24.1
+        with:
+          otp-version: ${{ steps.versions.outputs.PERF_OTP_VERSION }}
+          elixir-version: ${{ steps.versions.outputs.PERF_ELIXIR_VERSION }}
+          version-type: strict
+          install-hex: true
+          install-rebar: true
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: performance-suite-ubuntu-x86_64
+
+      - name: Install k6
+        env:
+          K6_VERSION: ${{ steps.versions.outputs.PERF_K6_VERSION }}
+          K6_SHA256: ${{ steps.versions.outputs.PERF_K6_LINUX_AMD64_SHA256 }}
+        run: |
+          cd "$RUNNER_TEMP"
+          archive="k6-v${K6_VERSION}-linux-amd64.tar.gz"
+          curl --fail --silent --show-error --location --retry 3 \
+            "https://github.com/grafana/k6/releases/download/v${K6_VERSION}/$archive" \
+            --output "$archive"
+          printf '%s  %s\n' "$K6_SHA256" "$archive" | sha256sum -c -
+          tar -xzf "$archive"
+          printf '%s\n' "$RUNNER_TEMP/${archive%.tar.gz}" >> "$GITHUB_PATH"
+
+      - name: Build all four implementations
+        env:
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: ${{ github.workspace }}/scripts/ci-x86_64-linux-gnu-clang
+        run: |
+          export LLVM_SYS_211_PREFIX="$HOME/llvm"
+          bash tools/performance/build.sh
+
+      - name: Verify workload parity
+        env:
+          K6_VERSION: ${{ steps.versions.outputs.PERF_K6_VERSION }}
+        run: |
+          python3 -m unittest discover -s tools/performance
+          python3 tools/performance/run.py smoke \
+            --bin-dir .tmp/performance/bin --out .tmp/performance/ci \
+            --require-k6 --k6-version "$K6_VERSION"
+
+      - name: Save smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-smoke
+          path: .tmp/performance/ci
+          if-no-files-found: ignore
