@@ -44,18 +44,14 @@ jobs:
           tar xf llvm.tar.xz --strip-components=1 -C "$HOME/llvm"
           rm llvm.tar.xz
 
-      - name: Set LLVM prefix
+      - name: Configure LLVM toolchain (Linux x86_64)
         shell: bash
         run: |
-          test -x "$HOME/llvm/bin/llvm-config"
-          test -x "$HOME/llvm/bin/clang"
-          test -x "$HOME/llvm/bin/ld.lld"
           "$HOME/llvm/bin/llvm-config" --version
           "$HOME/llvm/bin/clang" --version
           "$HOME/llvm/bin/ld.lld" --version
           echo "LLVM_SYS_211_PREFIX=$HOME/llvm" >> "$GITHUB_ENV"
-          echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=$HOME/llvm/bin/clang" >> "$GITHUB_ENV"
-          echo "RUSTFLAGS=${RUSTFLAGS:+$RUSTFLAGS }-C link-arg=-fuse-ld=lld -C link-arg=--ld-path=$HOME/llvm/bin/ld.lld" >> "$GITHUB_ENV"
+          echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=$GITHUB_WORKSPACE/scripts/ci-x86_64-linux-gnu-clang" >> "$GITHUB_ENV"
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
