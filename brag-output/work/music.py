@@ -134,7 +134,7 @@ CHORDS = {
     9: ("E", [56, 59, 64], 28), 10: ("Am", [57, 60, 64], 33), 11: ("Am", [57, 60, 64], 33),
 }
 T_DROP, T_LOGO, T_ERR, T_CLICK, T_DOWN, T_REBAL, T_BACK = 2.0, 4.0, 9.0, 11.92, 12.0, 13.0, 14.5
-T_ROWS, T_STAT, T_OUTRO, T_DRUMS_OUT = [15.35, 15.5, 15.65, 15.8], 16.0, 20.0, 22.0
+T_OUTRO, T_DRUMS_OUT = 20.0, 22.0
 CUTS = [3.5, 7.0, 11.0, 15.0, 18.0]
 
 pad, arp, bass, drums, sfx, verb_send = Bus(), Bus(), Bus(), Bus(), Bus(), Bus()
@@ -330,11 +330,6 @@ place(bell(84, 1.2, bright=1.2), T_REBAL + 0.09, pan=0.2, gain=0.08, send=0.6)
 place(bell(79, 1.0, bright=1.0), T_BACK, pan=0.2, gain=0.06, send=0.6)
 place(bell(84, 1.0, bright=1.0), T_BACK + 0.09, pan=-0.2, gain=0.05, send=0.6)
 
-for i, (at, m) in enumerate(zip(T_ROWS, (72, 76, 79, 84))):
-    place(bell(m, 0.9, bright=1.6 if i != 2 else 2.6), at, pan=(i - 1.5) * 0.3, gain=0.07 if i != 2 else 0.11, send=0.5)
-place(bell(79, 1.8, bright=2.2), T_STAT, gain=0.09, send=0.6)
-place(bell(86, 1.8, bright=2.2), T_STAT + 0.01, gain=0.065, send=0.6)
-
 # tab switches
 for i, at in enumerate(timing["tabs"]):
     place(tick(freq=4200, d=0.01, noise=0.3), at, pan=-0.3 + i * 0.12, gain=0.24, send=0.15)
@@ -406,6 +401,6 @@ print("peak", float(np.max(np.abs(mix))), "rms", float(np.sqrt(np.mean(mix ** 2)
 if __import__("sys").argv[1:] == ["--report"]:
     # effects vs music around each cue (short-term RMS, dB)
     for name, at in (("drop", T_DROP), ("logo", T_LOGO), ("typing", 8.3), ("error", T_ERR), ("click", T_CLICK), ("down", T_DOWN),
-                     ("rebal", T_REBAL), ("rows", 15.6), ("stat", T_STAT), ("tabs", 19.0), ("outro", T_OUTRO), ("cmd", 21.3)):
+                     ("rebal", T_REBAL), ("tabs", 19.0), ("outro", T_OUTRO), ("cmd", 21.3)):
         a, b = int((at - 0.05) * SR), int((at + 0.3) * SR)
         print(f"{name:7s} sfx {db(sfx.x[:, a:b]):6.1f}  music {db(music[:, a:b]):6.1f}")

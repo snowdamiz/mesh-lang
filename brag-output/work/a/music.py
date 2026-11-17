@@ -194,10 +194,6 @@ sfx.add(rev, T["grow"] - 0.6, gain=0.05)
 sfx.add(noise_sweep(0.6, 500, 5000, lambda k: k ** 2, rng=rng), T["grow"] - 0.6, gain=0.08)
 sfx.add(boom(1.2, 80, 38, rng=rng), T["grow"], gain=0.24)
 
-# ───── speed: the counter, the swarm climbing into the logo ─────
-for k in range(40):  # counter ticks, fast then settling
-    at = 15.7 + 1.1 * (1 - (1 - k / 40) ** 2)
-    sfx.add(click(0.006, 3000, 10000, rng=rng), at, pan=-0.4, gain=0.05)
 sfx.add(noise_sweep(3.2, 300, 9000, lambda k: k ** 2.2 * (1 - np.clip((k - 0.97) / 0.03, 0, 1)), rng=rng), T["logo"] - 3.2, gain=0.12)
 swarm = SECTIONS[4][4] + [m + 12 for m in SECTIONS[5][4]]
 for k in range(46):

@@ -40,7 +40,7 @@ The site's own promise, shown literally: **Write a server. Ship a fleet.** One n
 | 2 | 3.5–7.0 | Reveal | Fleet nodes converge into the logo; 4.0 "Mesh" slams; README line "An actor-based language for native services and distributed systems."; chips Native · Typed · Concurrent · Distributed | Swell → bell chord hit at 4.0 |
 | 3 | 7.0–11.0 | Typed mailboxes | Site's actor sample; `send(pid, "five")` types in; 9.0 real E0014 error from meshc | Key ticks; low dissonant thud at 9.0 |
 | 4 | 11.0–15.0 | Failover | Hero's `HTTP.clustered(hello)` line; site's failover sim: cursor clicks "Stop a node", node-2 goes offline, traffic reroutes, log streams, node rejoins. Footnote "Illustrative." kept | Click, glitch drop + filter dip, chime on "traffic rebalanced" |
-| 5 | 15.0–18.0 | Native compilation | "Compiled to native." LLVM-compiled binaries | In-key plucks; ping at 16.0 |
+| 5 | 15.0–18.0 | Native compilation | "Compiled to native." LLVM-compiled binaries | Music continues |
 | 6 | 18.0–20.0 | Stdlib | "Server primitives, included." tabs cycle HTTP client → Testing with real sample code | Soft ticks |
 | 7 | 20.0–24.0 | Outro | Logo + Mesh, "Write a server. Ship a fleet.", install command types, meshlang.dev | Full hit at 20.0, drums drop at 22.0, pad rings out |
 

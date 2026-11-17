@@ -99,8 +99,6 @@ whoosh(T["pull"] + 0.5, d=1.6, gain=0.06, f0=300, f1=6000)                      
 place(boom(1.8, 80, 34, rng=rng), T["die"], gain=0.3, wet=0.2)                        # a node dies
 place(fft_filter(rng.standard_normal(int(0.5 * SR)), lambda fr: hp_weight(fr, 1500)) * np.exp(-tt(0.5) / 0.12), T["die"], gain=0.03, wet=0.4)
 place(noise_sweep(1.7, 400, 8000, lambda k: k ** 2.2 * (1 - np.clip((k - 0.96) / 0.04, 0, 1)), rng=rng), T["warp"] - 1.7, gain=0.05, wet=0.5)
-for k in range(30):                                                                   # the counter
-    place(click(0.005, 3000, 10000, rng=rng), T["warp"] + 0.9 + 1.5 * (1 - (1 - k / 30) ** 2), pan=-0.4, gain=0.03, wet=0.05)
 for i, note in enumerate((59, 66, 71, 73, 74, 78)):                                   # the logo lands
     place(bell(note + 12, 3.2, bright=1.6), T["logo"] + i * 0.03, pan=(i - 2.5) * 0.25, gain=0.022, wet=0.9)
 # the traffic, as a faint crackle

@@ -37,9 +37,6 @@ website/docs/.vitepress/cache/
 
 # Compiled Mesh binaries (native LLVM output)
 mesher/mesher
-/benchmarks/
-/compiler/mesh-common/benches/
-/compiler/mesh-rt/benches/
 cluster-proof/cluster-proof
 tiny-cluster/tiny-cluster
 tiny-cluster-prefered/tiny-cluster
