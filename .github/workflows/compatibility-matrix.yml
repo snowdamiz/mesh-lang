@@ -38,7 +38,7 @@ jobs:
             llvm_method: brew
             build_meshpkg: true
           - target: aarch64-apple-darwin
-            os: macos-14
+            os: macos-15
             llvm_method: brew
             build_meshpkg: true
           - target: x86_64-unknown-linux-gnu
