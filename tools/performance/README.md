@@ -18,7 +18,8 @@ From the repository root, run:
 ```sh
 bash tools/performance/build.sh
 python3 tools/performance/run.py smoke \
-  --bin-dir .tmp/performance/bin --out .tmp/performance/smoke
+  --bin-dir .tmp/performance/bin --out .tmp/performance/smoke \
+  --require-k6 --k6-version 1.6.1
 ```
 
 The smoke command runs the workload oracle and checks the actual HTTP
@@ -37,6 +38,7 @@ timings from a dedicated host.
 3. Pilot the rate grid. Include a sparse rate and increase toward saturation.
    Confirm the load generator can deliver the offered rate without running
    out of CPU, virtual users, or sockets. Set the same rates for all subjects.
+   Use `--blocks 1 --sustained-seconds 30` for a short pilot.
 4. Run five shuffled blocks for each CPU budget. Use 15 seconds of warm-up
    and 30 seconds of measurement as a starting point. Increase the window if
    observations drift or yield too few completions for p99. Run the sustained
@@ -47,9 +49,23 @@ timings from a dedicated host.
    off them. See the [provider pricing](https://www.akamai.com/cloud/pricing/cpu)
    and [network transfer rules](https://techdocs.akamai.com/cloud-computing/docs/network-transfer-usage-and-costs).
 
-Use `python3 tools/performance/run.py run --help` for the rate, duration, and
-remote load host flags. Use `python3 tools/performance/run.py report --help`
-to render the captured runs. Use a fresh output directory for each attempt.
+Run the frozen comparison on the server host. Replace the example addresses
+and rates with the values from your pilot.
+
+```sh
+python3 tools/performance/run.py run \
+  --bin-dir .tmp/performance/bin --out .tmp/performance/host-a \
+  --load-host bench@10.0.1.20 --server-address 10.0.1.10 --port 18080 \
+  --http-rates 10 100 250 --sustained-rate 100 --k6-version 1.6.1
+```
+
+After you repeat the comparison, bring both run directories into one checkout.
+Use a fresh output directory for each attempt.
+
+```sh
+python3 tools/performance/run.py report \
+  .tmp/performance/host-a .tmp/performance/host-b
+```
 
 ## Interpret results
 
@@ -67,6 +83,9 @@ to render the captured runs. Use a fresh output directory for each attempt.
   fits inside the spread or changes direction on the fresh host, treat it as
   inconclusive. Profile a separate run before attributing a gap to a runtime
   or library.
+- Confirm short actor and CPU cases ran long enough for memory samples. The
+  runner polls the process every 250 ms. An omitted memory value means the
+  process exited before a memory sample was available.
 - Before publishing numbers, record the host and CPU model, versions,
   affinity, runtime flags, observed limitations, and raw trial directory.
   Publish the benchmark commit with the results.

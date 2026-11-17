@@ -96,7 +96,7 @@ def subject_env(trial, fixture_path, port, warmup):
         env["PERF_ITERS"] = str(trial.iterations)
     env.update({
         "mesh": {"MESH_SCHEDULER_MIN_WORKERS": workers, "MESH_SCHEDULER_MAX_WORKERS": workers},
-        "elixir": {"ELIXIR_ERL_OPTIONS": f"+S {workers}:{workers}", "RELEASE_DISTRIBUTION": "none"},
+        "elixir": {"ERL_FLAGS": f"+S {workers}:{workers}", "RELEASE_DISTRIBUTION": "none"},
         "go": {"GOMAXPROCS": workers},
         "rust": {},
     }[trial.language])
@@ -178,7 +178,8 @@ def validate_result(trial, records, result):
     if not isinstance(result, dict):
         raise ValueError("Expected one JSON result object")
     if trial.mode == "actor":
-        ops = checksum = trial.pairs * trial.iterations
+        ops = trial.pairs * trial.iterations
+        checksum = ops * (trial.iterations + 1) // 2
         count = trial.pairs * ((trial.iterations - 1) // 64 + 1)
         samples = result.get("rtt_ns")
         if not isinstance(samples, list) or len(samples) != count or any(
@@ -261,6 +262,7 @@ def readiness(child, port, start_ns, readiness_timeout):
 
 
 def smoke_http(port, records):
+    records = [*records, {"id": 1_000_000, "values": [-1_000_000, 1_000_000], "extra": True}]
     for record in records:
         response = request(port, "/score", compact(record).encode())
         expect_json(response, {"id": record["id"], "score": score(record)})
@@ -268,6 +270,8 @@ def smoke_http(port, records):
         b"{", b"[]", b"null", b"{}", b'{"id":1}', b'{"id":-1,"values":[1]}',
         b'{"id":"1","values":[1]}', b'{"id":1,"values":null}',
         b'{"id":1,"values":[true]}', b'{"id":1,"values":[1.5]}',
+        b'{"id":1000001,"values":[]}', b'{"id":1,"values":[-1000001]}',
+        compact({"id": 0, "values": [0] * 257}).encode(),
     )
     for body in invalid:
         status, _, _ = request(port, "/score", body)
@@ -321,6 +325,8 @@ def host_metadata():
         info["available_cpus"] = sorted(os.sched_getaffinity(0))
         info["clock_ticks_per_second"] = os.sysconf("SC_CLK_TCK")
         info["cpu_quota"] = read_if_present("/sys/fs/cgroup/cpu.max")
+        info["cpu_governor"] = read_if_present("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor")
+        info["smt_active"] = read_if_present("/sys/devices/system/cpu/smt/active")
         if shutil.which("lscpu"):
             info["lscpu"] = capture(["lscpu", "--json"], {**clean_env(), "LC_ALL": "C"})
     elif sys.platform == "darwin":
@@ -339,7 +345,8 @@ def load_metadata(args, server_boot_id):
         report = capture(ssh_command(
             args.load_host,
             "cat /proc/sys/kernel/random/boot_id && command -v timeout && uname -a &&"
-            " date -u +%Y-%m-%dT%H:%M:%SZ && nproc && cat /proc/loadavg && lscpu",
+            " date -u +%Y-%m-%dT%H:%M:%SZ && nproc && cat /proc/loadavg && lscpu"
+            " && cat /proc/sys/net/ipv4/ip_local_port_range /proc/sys/net/ipv4/tcp_tw_reuse",
         ))
         load_boot_id = report.splitlines()[0]
         if load_boot_id == server_boot_id:
@@ -468,7 +475,7 @@ def run_trial(args, directory, trial, cores, fixture_path, records, k6):
         return {"readiness": ready, "load": load}
 
 
-def trial_order(args, available):
+def trial_order(args):
     if args.command == "smoke":
         return [
             Trial(language, mode, 1, 1, pairs, iterations)
@@ -479,17 +486,19 @@ def trial_order(args, available):
         ]
     rng = random.Random(args.seed)
     trials = []
-    for block in range(1, BLOCKS + 1):
+    for block in range(1, args.blocks + 1):
         current = []
         for language in LANGUAGES:
             for cpus in (1, 4):
-                current.extend((
-                    Trial(language, "actor", cpus, block, args.pairs, args.actor_iters),
-                    Trial(language, "cpu", cpus, block, iterations=args.cpu_iters),
-                    Trial(language, "recovery", cpus, block),
-                ))
+                current.extend(
+                    Trial(language, "actor", cpus, block, pairs, args.actor_iters)
+                    for pairs in sorted({1, args.pairs})
+                )
+                current.append(Trial(language, "recovery", cpus, block))
                 current.extend(Trial(language, "http", cpus, block, rate=rate) for rate in args.http_rates)
-            current.append(Trial(language, "sustained", len(available), block, rate=args.sustained_rate))
+            current.append(Trial(language, "cpu", 1, block, iterations=args.cpu_iters))
+            if block == args.blocks:
+                current.append(Trial(language, "sustained", 4, block, rate=args.sustained_rate))
         rng.shuffle(current)
         trials.extend(current)
     return trials
@@ -516,7 +525,7 @@ def run_suite(args):
         binary_hashes[language] = {"path": str(binary), "sha256": digest.hexdigest()}
 
     records = fixture_records()
-    trials = trial_order(args, available)
+    trials = trial_order(args)
     out = args.out.resolve()
     out.mkdir(parents=True)
     fixture_path = out / "fixtures.json"
@@ -527,7 +536,10 @@ def run_suite(args):
     write_json(out / "run.json", {
         "schema": 1, "started_at_utc": timestamp(), "settings": metadata,
         "host": host, "load_generator": loadgen, "binaries": binary_hashes,
-        "kind": "smoke" if smoke else "remote" if args.load_host else "localhost diagnostic",
+        "build_versions": read_if_present(args.bin_dir / "versions.txt"),
+        "fixtures_sha256": hashlib.sha256(fixture_path.read_bytes()).hexdigest(),
+        "kind": "smoke" if smoke else "localhost diagnostic" if args.localhost else
+                "remote pilot" if args.blocks < BLOCKS else "remote",
         "trials": [asdict(trial) for trial in trials],
     })
     print(f"Artifacts {out}", flush=True)
@@ -638,6 +650,7 @@ def report_metrics(directory, trial, result, tick_hz):
 
 
 def report(paths):
+    baseline = None
     for path in paths:
         metadata = json.loads((path / "run.json").read_text())
         if metadata["schema"] != 1:
@@ -658,11 +671,20 @@ def report(paths):
             )
             print(f"Smoke correctness: {passed}/{len(metadata['trials'])} trials passed.")
             continue
+        comparison = (
+            metadata["trials"], metadata.get("fixtures_sha256"), metadata.get("build_versions"),
+            *(settings[key] for key in ("warmup_ops", "warmup_seconds", "measure_seconds",
+                                        "sustained_seconds", "k6_vus")),
+        )
+        if baseline is not None and comparison != baseline:
+            print("Comparison warning: the trial matrix, fixture, build, or load settings differ.")
+        baseline = comparison
         print(f"Warmup: {settings['warmup_seconds']}s HTTP / {settings['warmup_ops']} untimed ops | "
               f"measurement: {settings['measure_seconds']}s HTTP / {settings['sustained_seconds']}s sustained")
         print("Values are block medians [min, max]. HTTP latency uses valid replies. "
               "SLO blocks require p99 <= 50ms and <0.1% failures including dropped or missing load.")
         groups = defaultdict(list)
+        passing_rates = {}
         for index, trial in enumerate(metadata["trials"], 1):
             key = tuple(trial[name] for name in ("mode", "cpus", "pairs", "iterations", "rate", "language"))
             directory = path / f"{index:04}"
@@ -682,10 +704,18 @@ def report(paths):
             if pairs:
                 workload += f" × {pairs} pairs"
             slo = f" | SLO {slo_blocks}/{len(group)}" if rate else ""
+            if mode == "http":
+                key = (cpus, language)
+                passing_rates.setdefault(key, None)
+                if slo_blocks == len(group):
+                    passing_rates[key] = max(rate, passing_rates[key] or 0)
             print(f"\n{mode} {cpus} CPU{workload} | {language} | {passed}/{len(group)} trials{slo}")
             for name, values in measured.items():
                 print(f"  {name}: {statistics.median(values):.4g} [{min(values):.4g}, {max(values):.4g}]"
                       f"{'' if len(values) == passed else f' (n={len(values)})'}")
+        print("\nHighest tested HTTP rate meeting the SLO in every block")
+        for (cpus, language), rate in sorted(passing_rates.items()):
+            print(f"  {cpus} CPU | {language} | {f'{rate} req/s' if rate is not None else 'none'}")
     return 0
 
 
@@ -720,7 +750,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     smoke = commands.add_parser("smoke", help="verify all subjects without reporting comparative timings")
-    run = commands.add_parser("run", help="run five shuffled Linux blocks for each configuration")
+    run = commands.add_parser("run", help="run shuffled Linux blocks for each configuration")
     renderer = commands.add_parser("report", help="print a read-only report for each specified run directory")
     renderer.add_argument("runs", type=Path, nargs="+", metavar="RUN_DIR")
     for command in (smoke, run):
@@ -733,8 +763,9 @@ def parse_args():
         command.add_argument("--k6-version", help="require this exact version of k6")
     smoke.set_defaults(warmup_ops=3)
     smoke.add_argument("--require-k6", action="store_true", help="fail if local k6 is unavailable")
+    run.add_argument("--blocks", type=positive, default=BLOCKS, help="repeat blocks (use 1 for a pilot)")
     run.add_argument("--seed", type=int, default=26084)
-    run.add_argument("--pairs", type=positive, default=64)
+    run.add_argument("--pairs", type=positive, default=64, help="concurrent pair count tested alongside one pair")
     run.add_argument("--actor-iters", type=positive, default=10_000)
     run.add_argument("--cpu-iters", type=positive, default=200_000)
     run.add_argument("--warmup-ops", type=nonnegative, default=100)
@@ -743,7 +774,7 @@ def parse_args():
     run.add_argument("--warmup-seconds", type=nonnegative, default=15)
     run.add_argument("--measure-seconds", type=positive, default=30)
     run.add_argument("--sustained-rate", type=positive, required=True,
-                     help="shared sustained rate in requests per second on all available logical CPUs")
+                     help="shared sustained rate in requests per second on four CPUs")
     run.add_argument("--sustained-seconds", type=positive, default=300)
     run.add_argument("--k6-vus", type=positive, help="override preallocated VUs (default max(4, ceil(rate / 5)))")
     placement = run.add_mutually_exclusive_group(required=True)
@@ -763,6 +794,8 @@ def parse_args():
             parser.error("--port must be between 1 and 65535")
         if len(set(args.http_rates)) != len(args.http_rates):
             parser.error("--http-rates must be distinct")
+        if args.pairs > 64 or max(args.actor_iters, args.cpu_iters, args.warmup_ops) > 100_000_000:
+            parser.error("use at most 64 pairs and 100000000 iterations")
     return args
 
 

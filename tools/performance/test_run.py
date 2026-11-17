@@ -9,12 +9,12 @@ import run
 class BenchmarkContractTests(unittest.TestCase):
     def test_actor_checks_counter_and_sampling_boundary(self):
         trial = run.Trial("mesh", "actor", 1, 1, pairs=3, iterations=129)
-        result = {"ops": 387, "checksum": 387, "elapsed_ns": 1, "rtt_ns": [1] * 9}
+        result = {"ops": 387, "checksum": 25155, "elapsed_ns": 1, "rtt_ns": [1] * 9}
         run.validate_result(trial, [], result)
         with self.assertRaisesRegex(ValueError, "9 nonnegative integer RTT samples"):
             run.validate_result(trial, [], {**result, "rtt_ns": [1] * 6})
-        with self.assertRaisesRegex(ValueError, "checksum=387"):
-            run.validate_result(trial, [], {**result, "checksum": 386})
+        with self.assertRaisesRegex(ValueError, "checksum=25155"):
+            run.validate_result(trial, [], {**result, "checksum": 387})
 
     def test_cpu_oracle_wraps_and_checks_recovery_evidence(self):
         fixtures = run.fixture_records()
@@ -32,16 +32,18 @@ class BenchmarkContractTests(unittest.TestCase):
 
     def test_shuffled_blocks_include_every_configuration_once(self):
         args = argparse.Namespace(
-            command="run", seed=51, pairs=4, actor_iters=129, cpu_iters=13,
+            command="run", seed=51, blocks=5, pairs=64, actor_iters=129, cpu_iters=13,
             http_rates=[1, 100], sustained_rate=10,
         )
-        trials = run.trial_order(args, list(range(8)))
-        counts = Counter((t.language, t.mode, t.cpus, t.rate) for t in trials)
-        self.assertEqual(len(counts), 4 * (2 * (3 + 2) + 1))
-        self.assertEqual(set(counts.values()), {5})
+        trials = run.trial_order(args)
+        counts = Counter((t.language, t.mode, t.cpus, t.pairs, t.rate) for t in trials)
+        self.assertEqual(len(counts), 4 * (2 * (3 + 2) + 2))
+        self.assertEqual(set(counts.values()), {1, 5})
+        self.assertEqual({t.pairs for t in trials if t.mode == "actor"}, {1, 64})
         blocks = [[t.language for t in trials if t.block == n] for n in range(1, 6)]
         self.assertEqual(len({tuple(block) for block in blocks}), 5)
-        self.assertEqual({t.cpus for t in trials if t.mode == "sustained"}, {8})
+        self.assertEqual({t.cpus for t in trials if t.mode == "sustained"}, {4})
+        self.assertEqual(sum(t.mode == "sustained" for t in trials), 4)
 
     def test_goodput_and_slo_count_all_failed_load(self):
         metrics = {

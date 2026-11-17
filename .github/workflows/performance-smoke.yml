@@ -91,7 +91,13 @@ jobs:
           bash tools/performance/build.sh
 
       - name: Verify workload parity
-        run: python3 tools/performance/run.py smoke --bin-dir .tmp/performance/bin --out .tmp/performance/ci
+        env:
+          K6_VERSION: ${{ steps.versions.outputs.PERF_K6_VERSION }}
+        run: |
+          python3 -m unittest discover -s tools/performance
+          python3 tools/performance/run.py smoke \
+            --bin-dir .tmp/performance/bin --out .tmp/performance/ci \
+            --require-k6 --k6-version "$K6_VERSION"
 
       - name: Save smoke evidence
         if: always()
