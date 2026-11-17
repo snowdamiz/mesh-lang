@@ -35,7 +35,7 @@ fn required_env<T: FromStr>(name: &str) -> Result<T> {
     env_value(name)?.ok_or_else(|| format!("missing {name}").into())
 }
 
-fn cpu(iterations: usize, warmup: usize) -> Result<Trial<i128>> {
+fn cpu(iterations: usize, warmup: usize) -> Result<Trial<i64>> {
     let path: String = required_env("PERF_FIXTURES")?;
     let records: Vec<record::Record> = serde_json::from_reader(BufReader::new(File::open(path)?))?;
     if records.is_empty() && (iterations != 0 || warmup != 0) {
@@ -48,7 +48,7 @@ fn cpu(iterations: usize, warmup: usize) -> Result<Trial<i128>> {
             .cycle()
             .take(count)
             .map(record::Record::score)
-            .sum::<i128>()
+            .sum::<i64>()
     };
     if warmup != 0 {
         black_box(checksum(black_box(records.as_slice()), warmup));

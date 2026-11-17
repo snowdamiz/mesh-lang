@@ -8,14 +8,18 @@ contain base-ten integers. The runner gives each trial a fresh process.
 
 - `actor` starts `PERF_PAIRS` independent caller and worker pairs before the
   timer. Each caller sends the integers 1 through `PERF_ITERS`, one at a time,
-  and waits for the reply before sending the next. The worker owns a counter
-  and replies with its updated value. Check each reply. The checksum is the
+  and waits for the reply before sending the next. The worker adds the received
+  integer to its own counter and replies with the new value. Check each reply.
+  Start all callers from a barrier and time with a monotonic clock. Use Mesh
+  actors, Elixir processes, Go goroutines with capacity-one channels, and Rust
+  Tokio tasks with capacity-one channels. The checksum is the
   sum of the final counters. Measure wall time through the final reply. Sample
   round-trip latency every 64 iterations, starting at iteration 1.
 - `cpu` reads a JSON array of records from `PERF_FIXTURES` and decodes it before
   starting the timer. Visit `PERF_ITERS` records in array order, wrapping at the
   end. The checksum is the sum of their scores. Each record contains a
-  nonnegative integer `id` and an array of bounded integers `values`.
+  integer `id` from 0 through 1,000,000 and an array `values` of at most 256
+  integers from -1,000,000 through 1,000,000. Ignore other fields.
   The score is `id + sum((index + 1) * value)` with zero-based indices.
 - `serve` listens on the TCP port in `PERF_PORT`. `GET /health` returns
   `{"ok":true}`. `POST /score` decodes one record, computes its score, and
@@ -30,9 +34,11 @@ contain base-ten integers. The runner gives each trial a fresh process.
   failed worker in Go and Rust. The replacement starts with empty state.
 
 `PERF_WARMUP` specifies an optional number of untimed operations before the
-actor and CPU trials. Keep the timed actor counters separate from warm-up
-counters. `PERF_WORKERS` gives the runtime's scheduler worker count where
-applicable. The runner applies CPU affinity independently.
+trial, per pair for `actor` and in total for `cpu`. Keep the timed actor
+counters separate from warm-up counters. Use at most 100,000,000 iterations
+and 64 pairs so scores and checksums fit in a signed 64-bit integer.
+`PERF_WORKERS` gives the runtime's scheduler worker count where applicable.
+The runner sets the startup flags and applies CPU affinity independently.
 
 ## Results
 

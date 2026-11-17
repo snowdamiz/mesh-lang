@@ -3,6 +3,7 @@ set -euo pipefail
 
 suite="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(cd "$suite/../.." && pwd)"
+cd "$root"
 out="${PERF_BIN_DIR:-$root/.tmp/performance/bin}"
 mkdir -p "$out"
 out="$(cd "$out" && pwd)"
@@ -31,9 +32,9 @@ otp_version="$(erl +S 1:1 -noshell -eval '
 check_version OTP "$otp_version" "$PERF_OTP_VERSION"
 llvm_bin="${LLVM_SYS_211_PREFIX:+$LLVM_SYS_211_PREFIX/bin/}llvm-config"
 check_version LLVM "$("$llvm_bin" --version)" "$PERF_LLVM_VERSION"
-export LLVM_SYS_211_PREFIX="$("$llvm_bin" --prefix)"
+LLVM_SYS_211_PREFIX="$("$llvm_bin" --prefix)"
+export LLVM_SYS_211_PREFIX
 
-cd "$root"
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$root/target}"
 mkdir -p "$CARGO_TARGET_DIR"
 CARGO_TARGET_DIR="$(cd "$CARGO_TARGET_DIR" && pwd)"
@@ -58,10 +59,10 @@ chmod +x "$out/elixir"
 
 {
   printf 'mesh_commit=%s\n' "$(git rev-parse HEAD)"
-  if [[ -n "$(git status --porcelain -- "$suite")" ]]; then
-    printf 'suite_dirty=true\n'
+  if [[ -n "$(git status --porcelain)" ]]; then
+    printf 'source_dirty=true\n'
   else
-    printf 'suite_dirty=false\n'
+    printf 'source_dirty=false\n'
   fi
   printf 'mesh=%s\n' "$("$CARGO_TARGET_DIR/release/meshc" --version)"
   cat "$suite/versions.env"

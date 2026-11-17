@@ -2,23 +2,23 @@ use std::fmt;
 
 use serde::{
     Deserialize, Deserializer,
-    de::{MapAccess, Visitor, value::MapAccessDeserializer},
+    de::{Error, MapAccess, Visitor, value::MapAccessDeserializer},
 };
 
 pub(crate) struct Record {
-    pub(crate) id: u64,
+    pub(crate) id: i64,
     values: Vec<i64>,
 }
 
 impl Record {
-    pub(crate) fn score(&self) -> i128 {
-        let weighted_sum: i128 = self
+    pub(crate) fn score(&self) -> i64 {
+        let weighted_sum: i64 = self
             .values
             .iter()
             .enumerate()
-            .map(|(index, &value)| (index as i128 + 1) * i128::from(value))
+            .map(|(index, &value)| (index as i64 + 1) * value)
             .sum();
-        i128::from(self.id) + weighted_sum
+        self.id + weighted_sum
     }
 }
 
@@ -35,13 +35,20 @@ impl<'de> Deserialize<'de> for Record {
 
             fn visit_map<M: MapAccess<'de>>(self, map: M) -> Result<Record, M::Error> {
                 #[derive(Deserialize)]
-                #[serde(deny_unknown_fields)]
                 struct Fields {
-                    id: u64,
+                    id: i64,
                     values: Vec<i64>,
                 }
 
                 let Fields { id, values } = Fields::deserialize(MapAccessDeserializer::new(map))?;
+                if !(0..=1_000_000).contains(&id)
+                    || values.len() > 256
+                    || !values
+                        .iter()
+                        .all(|value| (-1_000_000..=1_000_000).contains(value))
+                {
+                    return Err(M::Error::custom("record outside score bounds"));
+                }
                 Ok(Record { id, values })
             }
         }

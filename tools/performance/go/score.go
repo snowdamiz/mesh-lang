@@ -36,12 +36,17 @@ func (r *record) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	var id jsonInteger
-	if err := json.Unmarshal(fields["id"], &id); err != nil || id < 0 {
-		return errors.New("id must be a nonnegative integer")
+	if err := json.Unmarshal(fields["id"], &id); err != nil || id < 0 || id > 1_000_000 {
+		return errors.New("id must be an integer between 0 and 1000000")
 	}
 	var values []jsonInteger
-	if err := json.Unmarshal(fields["values"], &values); err != nil || values == nil {
-		return errors.New("values must be an array of integers")
+	if err := json.Unmarshal(fields["values"], &values); err != nil || values == nil || len(values) > 256 {
+		return errors.New("values must be an array of up to 256 integers")
+	}
+	for _, value := range values {
+		if value < -1_000_000 || value > 1_000_000 {
+			return errors.New("values must be between -1000000 and 1000000")
+		}
 	}
 	*r = record{id: id, values: values}
 	return nil
@@ -95,7 +100,7 @@ func serve(port int) error {
 		}{OK: true})
 	})
 	mux.HandleFunc("POST /score", func(w http.ResponseWriter, r *http.Request) {
-		data, err := io.ReadAll(r.Body)
+		data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
 		var input record
 		if err != nil || json.Unmarshal(data, &input) != nil {
 			w.Header().Set("Content-Type", "application/json")

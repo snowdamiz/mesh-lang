@@ -14,8 +14,9 @@ defmodule PerformanceElixir.HTTP do
   end
 
   def call(%{method: "POST", request_path: "/score"} = conn, _opts) do
-    case read_json_body(conn, []) do
+    case read_body(conn, length: 1_048_576) do
       {:ok, body, conn} -> respond_with_score(conn, body)
+      {:more, _body, conn} -> json(conn, 400, %{error: "invalid body"})
       {:error, _reason} -> json(conn, 400, %{error: "invalid body"})
     end
   end
@@ -28,22 +29,6 @@ defmodule PerformanceElixir.HTTP do
       json(conn, 200, %{id: id, score: Score.compute(record)})
     else
       _ -> json(conn, 400, %{error: "invalid record"})
-    end
-  end
-
-  defp read_json_body(conn, chunks) do
-    case read_body(conn) do
-      {:ok, body, conn} when chunks == [] ->
-        {:ok, body, conn}
-
-      {:ok, body, conn} ->
-        {:ok, IO.iodata_to_binary(Enum.reverse(chunks, [body])), conn}
-
-      {:more, data, conn} ->
-        read_json_body(conn, [data | chunks])
-
-      {:error, reason} ->
-        {:error, reason}
     end
   end
 

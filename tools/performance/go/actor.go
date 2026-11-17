@@ -22,27 +22,23 @@ type callerResult struct {
 
 func runActor(pairs, iters, warmup int) (actorResult, error) {
 	if warmup != 0 {
-		if _, err := actorRound(pairs, warmup/pairs, warmup%pairs, false); err != nil {
+		if _, err := actorRound(pairs, warmup, false); err != nil {
 			return actorResult{}, err
 		}
 	}
-	return actorRound(pairs, iters, 0, true)
+	return actorRound(pairs, iters, true)
 }
 
-func actorRound(pairs, iters, extra int, timed bool) (actorResult, error) {
+func actorRound(pairs, iters int, timed bool) (actorResult, error) {
 	start := make(chan struct{})
 	callers := make([]callerResult, pairs)
 	var ready, done sync.WaitGroup
 	ready.Add(2 * pairs)
 	for i := range callers {
-		count := iters
-		if i < extra {
-			count++
-		}
 		requests := make(chan int64, 1)
 		replies := make(chan int64, 1)
-		if timed && count > 0 {
-			callers[i].samples = make([]int64, 0, (count-1)/sampleInterval+1)
+		if timed && iters > 0 {
+			callers[i].samples = make([]int64, 0, (iters-1)/sampleInterval+1)
 		}
 		done.Go(func() {
 			ready.Done()
@@ -56,7 +52,7 @@ func actorRound(pairs, iters, extra int, timed bool) (actorResult, error) {
 			defer close(requests)
 			ready.Done()
 			<-start
-			callers[i] = callWorker(requests, replies, count, timed, callers[i].samples)
+			callers[i] = callWorker(requests, replies, iters, timed, callers[i].samples)
 		})
 	}
 	ready.Wait()
@@ -68,7 +64,7 @@ func actorRound(pairs, iters, extra int, timed bool) (actorResult, error) {
 	done.Wait()
 
 	stats := actorResult{
-		result: result{Ops: int64(pairs)*int64(iters) + int64(extra)},
+		result: result{Ops: int64(pairs) * int64(iters)},
 		RTTNS:  make([]int64, 0),
 	}
 	finished := started

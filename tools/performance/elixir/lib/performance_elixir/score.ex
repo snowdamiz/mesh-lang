@@ -1,7 +1,12 @@
 defmodule PerformanceElixir.Score do
   def record(%{"id" => id, "values" => values})
-      when is_integer(id) and id >= 0 and is_list(values) do
-    if Enum.all?(values, &is_integer/1), do: {:ok, {id, values}}, else: :error
+      when is_integer(id) and id in 0..1_000_000 and is_list(values) do
+    if length(values) <= 256 and
+         Enum.all?(values, &(is_integer(&1) and &1 in -1_000_000..1_000_000)) do
+      {:ok, {id, values}}
+    else
+      :error
+    end
   end
 
   def record(_record), do: :error

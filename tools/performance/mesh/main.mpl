@@ -25,20 +25,28 @@ fn decode_values(array :: Json,
   else
     let item = Json.array_get(array, index)?
     let value = Json.as_int(item)?
-    decode_values(array, length, index + 1, List.append(values, value))
+    if value < -1000000 || value > 1000000 do
+      Err("value outside score bounds")
+    else
+      decode_values(array, length, index + 1, List.append(values, value))
+    end
   end
 end
 
 fn decode_record(json_value :: Json) -> Record!String do
   let id_json = Json.object_get(json_value, "id")?
   let id = Json.as_int(id_json)?
-  if id < 0 do
-    Err("id must be nonnegative")
+  if id < 0 || id > 1000000 do
+    Err("id outside score bounds")
   else
     let array = Json.object_get(json_value, "values")?
     let length = Json.array_length(array)?
-    let values = decode_values(array, length, 0, [])?
-    Ok(Record { id: id, values: values })
+    if length > 256 do
+      Err("too many values")
+    else
+      let values = decode_values(array, length, 0, [])?
+      Ok(Record { id: id, values: values })
+    end
   end
 end
 

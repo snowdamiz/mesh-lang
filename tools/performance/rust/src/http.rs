@@ -1,6 +1,6 @@
 use std::convert::Infallible;
 
-use http_body_util::{BodyExt, Full};
+use http_body_util::{BodyExt, Full, Limited};
 use hyper::{
     Method, Request, Response, StatusCode,
     body::{Bytes, Incoming},
@@ -16,8 +16,8 @@ use crate::{Result, record::Record};
 
 #[derive(Serialize)]
 struct ScoredRecord {
-    id: u64,
-    score: i128,
+    id: i64,
+    score: i64,
 }
 
 async fn handle(
@@ -32,7 +32,7 @@ async fn handle(
 }
 
 async fn score(body: Incoming) -> Response<Full<Bytes>> {
-    if let Ok(body) = body.collect().await
+    if let Ok(body) = Limited::new(body, 1 << 20).collect().await
         && let Ok(record) = serde_json::from_slice::<Record>(&body.to_bytes())
     {
         let result = ScoredRecord {
