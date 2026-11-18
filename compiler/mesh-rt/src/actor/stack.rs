@@ -197,12 +197,17 @@ pub(super) fn suspend_current() {
 /// across threads. The scheduler ensures coroutines stay on the thread that
 /// created them.
 pub struct CoroutineHandle {
-    coro: Coroutine<(), (), Result<(), PanicPayload>>,
+    coro: Option<ActorCoroutine>,
     /// Lowest address of the coroutine's stack (its guard page).
     stack_limit: usize,
 }
 
 type PanicPayload = Box<dyn Any + Send>;
+type ActorCoroutine = Coroutine<(), (), Result<(), PanicPayload>>;
+
+thread_local! {
+    static DROPPING_STACK_LIMIT: Cell<usize> = const { Cell::new(0) };
+}
 
 impl CoroutineHandle {
     /// Create a new coroutine that will call `entry_fn(args_ptr)`.
@@ -245,19 +250,20 @@ impl CoroutineHandle {
             let func: extern "C-unwind" fn(*const u8) =
                 unsafe { std::mem::transmute::<usize, extern "C-unwind" fn(*const u8)>(fn_ptr) };
 
-            // Return the panic payload across the stack switch to avoid resuming
-            // its unwind on the scheduler stack. When corosensei forcibly
-            // unwinds a suspended coroutine, it discards the return value.
-            let result = catch_unwind(AssertUnwindSafe(|| func(args as *const u8)));
-
-            // No need to clear CURRENT_YIELDER here -- the scheduler clears
-            // the thread-local context after resume returns (whether yield or
-            // completion). Clearing here would interfere with the next coroutine
-            // on this thread if it ran between our yield and resume.
-            result
+            // During cancellation corosensei must distinguish its own unwind
+            // from a new panic. During resume the scheduler can handle the
+            // payload as a return value across the stack switch.
+            // The scheduler clears CURRENT_YIELDER after either outcome.
+            match catch_unwind(AssertUnwindSafe(|| func(args as *const u8))) {
+                Err(panic) if DROPPING_STACK_LIMIT.get() == stack_limit => resume_unwind(panic),
+                result => result,
+            }
         });
 
-        CoroutineHandle { coro, stack_limit }
+        CoroutineHandle {
+            coro: Some(coro),
+            stack_limit,
+        }
     }
 
     /// Resume the coroutine.
@@ -274,7 +280,8 @@ impl CoroutineHandle {
 
     fn resume_once(&mut self) -> CoroutineResult<(), Result<(), PanicPayload>> {
         let limit = self.stack_limit;
-        crate::stack_overflow::on_stack(limit, || self.coro.resume(()))
+        let coro = self.coro.as_mut().expect("coroutine exists until drop");
+        crate::stack_overflow::on_stack(limit, || coro.resume(()))
     }
 
     /// Resume an actor while converting an unwinding Mesh panic into an exit
@@ -303,7 +310,21 @@ impl CoroutineHandle {
 
     /// Check whether the coroutine has finished.
     pub fn done(&self) -> bool {
-        self.coro.done()
+        self.coro
+            .as_ref()
+            .expect("coroutine exists until drop")
+            .done()
+    }
+}
+
+impl Drop for CoroutineHandle {
+    fn drop(&mut self) {
+        let coro = self.coro.take().expect("coroutine exists until drop");
+        if !coro.done() {
+            let previous = DROPPING_STACK_LIMIT.replace(self.stack_limit);
+            drop(coro);
+            DROPPING_STACK_LIMIT.set(previous);
+        }
     }
 }
 
@@ -409,6 +430,39 @@ mod tests {
         drop(handle);
         assert!(DROPPED.load(Ordering::Relaxed));
         assert!(!RESUMED.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn dropping_a_coroutine_with_a_replacement_panic_aborts() {
+        const CHILD: &str = "MESH_TEST_COROUTINE_DROP_PANIC";
+        if std::env::var_os(CHILD).is_some() {
+            extern "C-unwind" fn suspends_then_panics(_args: *const u8) {
+                let _ = catch_unwind(AssertUnwindSafe(yield_current));
+                panic!("replacement panic during coroutine cancellation");
+            }
+
+            let mut handle =
+                CoroutineHandle::new(suspends_then_panics as *const u8, std::ptr::null());
+            assert!(handle.resume());
+            drop(handle);
+            return;
+        }
+
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "actor::stack::tests::dropping_a_coroutine_with_a_replacement_panic_aborts",
+                "--nocapture",
+            ])
+            .env(CHILD, "1")
+            .output()
+            .expect("run cancellation panic probe");
+        assert!(!output.status.success(), "{output:?}");
+        assert!(
+            String::from_utf8_lossy(&output.stderr)
+                .contains("replacement panic during coroutine cancellation"),
+            "{output:?}"
+        );
     }
 
     #[test]
