@@ -432,8 +432,11 @@ mod tests {
         assert!(!RESUMED.load(Ordering::Relaxed));
     }
 
+    #[cfg(unix)]
     #[test]
     fn dropping_a_coroutine_with_a_replacement_panic_aborts() {
+        use std::os::unix::process::ExitStatusExt;
+
         const CHILD: &str = "MESH_TEST_COROUTINE_DROP_PANIC";
         if std::env::var_os(CHILD).is_some() {
             extern "C-unwind" fn suspends_then_panics(_args: *const u8) {
@@ -457,11 +460,15 @@ mod tests {
             .env(CHILD, "1")
             .output()
             .expect("run cancellation panic probe");
-        assert!(!output.status.success(), "{output:?}");
+        assert_eq!(output.status.signal(), Some(libc::SIGABRT), "{output:?}");
+        let stderr = String::from_utf8_lossy(&output.stderr);
         assert!(
-            String::from_utf8_lossy(&output.stderr)
-                .contains("replacement panic during coroutine cancellation"),
-            "{output:?}"
+            stderr.contains("replacement panic during coroutine cancellation"),
+            "{stderr}"
+        );
+        assert!(
+            stderr.contains("coroutine panic with #![no_std]"),
+            "{stderr}"
         );
     }
 
