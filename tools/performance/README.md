@@ -4,6 +4,9 @@ Run this suite to compare the four implementations of a fixed workload. The
 [workload contract](contract.md) defines which work each program completes.
 Use the correctness run before collecting performance data.
 
+The [Linode results](results.md) record the latest Mesh matrix alongside the
+earlier four-language results.
+
 ## Build and check the suite
 
 Install the toolchain versions in [versions.env](versions.env), Python 3.11
@@ -107,11 +110,11 @@ python3 tools/performance/run.py run \
   --http-rates 10 100 250 --sustained-rate 100 --k6-version 1.6.1
 ```
 
-After you repeat the comparison, bring both run directories into one checkout.
-Use a fresh output directory for each attempt.
-
 Pass `--languages mesh` to `smoke` and `run` to measure Mesh alone. The
 runner uses the same workload settings and requires only `mesh` in `--bin-dir`.
+
+After you repeat the comparison, bring both run directories into one checkout.
+Use a fresh output directory for each attempt.
 
 ```sh
 python3 tools/performance/run.py report \
