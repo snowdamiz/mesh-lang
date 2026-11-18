@@ -208,3 +208,34 @@ comparison shows no measurable runtime-only improvement.
 All four Mesh smoke cases and all 42 actor comparison trials passed. Median
 four-worker Mesh throughput over seven 64-pair blocks was 6.64M round trips/s
 before and 6.70M after, with overlapping ranges.
+
+## Local supervisor delivery and HTTP response follow-up
+
+This focused Linode run used the candidate changes through `310f5b67`.
+Recovery compares the same panic and sibling-state checks across 101
+interleaved trials per configuration. The Mesh baseline is `4ab85e7b`.
+The HTTP experiment used five eight-second measurement blocks per build at
+1,500 requests/s on four CPUs, with one connection per request.
+
+| Metric | Mesh baseline | Mesh candidate | Rust/Tokio in the same HTTP run |
+| --- | ---: | ---: | ---: |
+| Median recovery, 1 CPU (µs) | 141.1 | 137.1 | |
+| Median recovery, 4 CPUs (µs) | 249.1 | 191.9 | |
+| HTTP p99, median [min–max] (ms) | 1.136 [1.069–1.145] | 1.105 [1.085–1.176] | 1.017 [1.007–1.220] |
+
+The four-CPU recovery median fell by 23%. The candidate served 60,003
+HTTP requests without a failed arrival. The HTTP p99 ranges overlap.
+A response-write probe validated 100 scores and a health check per runtime
+build. The unwind attribution probe failed its assertion, so the recovery
+timings do not quantify the share spent unwinding. The peer recovery values
+in the full matrix come from the earlier run.
+
+A separate 101-block run compared actual panics in Mesh, Rust/Tokio and Go.
+The experimental peer variants emitted an intentional-failure diagnostic and
+checked replacement and sibling state. Mesh used the candidate runtime
+with the pre-fusion benchmark executable. All times are medians in µs.
+
+| CPUs | Mesh baseline | Mesh candidate runtime | Rust/Tokio panic | Go panic |
+| ---: | ---: | ---: | ---: | ---: |
+| 1 | 136.8 | 130.6 | 85.5 | 42.2 |
+| 4 | 256.9 | 185.7 | 132.0 | 56.2 |
