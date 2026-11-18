@@ -26,15 +26,6 @@ website/docs/.vitepress/cache/
 /playwright-report/
 /blob-report/
 
-/brag-output/**/*.mp4
-/brag-output/**/*.jpg
-/brag-output/**/*.png
-/brag-output/**/*.wav
-/brag-output/**/*.mp3
-/brag-output/**/events.json
-/brag-output/**/timing.json
-/brag-output/**/chrome-profile-*/
-
 # Compiled Mesh binaries (native LLVM output)
 mesher/mesher
 cluster-proof/cluster-proof
