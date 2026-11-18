@@ -180,10 +180,23 @@ where
     F: Fn(ProcessId) -> Option<Arc<Mutex<Process>>>,
 {
     let mut woken = Vec::new();
-    let signal_data = encode_exit_signal(exiting_pid, reason);
+    propagate_exit_and_notify(exiting_pid, reason, linked_pids, get_process, |proc| {
+        woken.push(proc.pid);
+    });
+    woken
+}
 
-    for linked_pid in &linked_pids {
-        if let Some(proc_arc) = get_process(*linked_pid) {
+pub(super) fn propagate_exit_and_notify(
+    exiting_pid: ProcessId,
+    reason: &ExitReason,
+    linked_pids: impl IntoIterator<Item = ProcessId>,
+    get_process: impl Fn(ProcessId) -> Option<Arc<Mutex<Process>>>,
+    mut notify: impl FnMut(&mut Process),
+) {
+    let mut signal_data = None;
+    let is_non_crashing = matches!(reason, ExitReason::Normal | ExitReason::Shutdown);
+    for linked_pid in linked_pids {
+        if let Some(proc_arc) = get_process(linked_pid) {
             let mut proc = proc_arc.lock();
 
             // Skip already-exited processes.
@@ -194,13 +207,14 @@ where
             // Remove the reverse link (the exiting process is gone).
             proc.links.remove(&exiting_pid);
 
-            let is_non_crashing = matches!(reason, ExitReason::Normal | ExitReason::Shutdown);
             let trapped = proc.trapped_links.remove(&exiting_pid) && !is_non_crashing;
             let waiting = matches!(proc.state, ProcessState::Waiting);
 
             if proc.trap_exit || trapped {
                 // Deliver as a regular message -- the process does not crash.
-                let buffer = MessageBuffer::new(signal_data.clone(), EXIT_SIGNAL_TAG);
+                let bytes =
+                    signal_data.get_or_insert_with(|| encode_exit_signal(exiting_pid, reason));
+                let buffer = MessageBuffer::from_slice(bytes, EXIT_SIGNAL_TAG);
                 proc.mailbox.push(Message { buffer });
 
                 if waiting {
@@ -214,12 +228,10 @@ where
             }
 
             if waiting {
-                woken.push(*linked_pid);
+                notify(&mut proc);
             }
         }
     }
-
-    woken
 }
 
 // ---------------------------------------------------------------------------
