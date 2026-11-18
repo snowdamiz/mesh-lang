@@ -272,6 +272,35 @@ impl ProcessTable {
             self.shards[index].entries.read()
         }))
     }
+
+    /// Check whether actors can still send during shutdown. A receive excludes
+    /// itself, while an idle worker checks every process.
+    pub(super) fn has_shutdown_work(&self, except: Option<ProcessId>) -> bool {
+        let table = self.read_all();
+        let processes = || table.iter().filter(|(pid, _)| Some(**pid) != except);
+        if processes().any(|(_, process)| {
+            process
+                .try_lock()
+                .is_none_or(|process| process.has_shutdown_work())
+        }) {
+            return true;
+        }
+
+        // Work can move to an actor we already checked. Confirm quiescence
+        // with all process states locked at once. Never wait for another
+        // lock while holding these guards.
+        let mut quiet = Vec::new();
+        for (_, process) in processes() {
+            let Some(process) = process.try_lock() else {
+                return true;
+            };
+            if process.has_shutdown_work() {
+                return true;
+            }
+            quiet.push(process);
+        }
+        false
+    }
 }
 
 pub struct ProcessTableRead<'a>([RwLockReadGuard<'a, ProcessMap>; PID_SHARDS]);
@@ -1055,7 +1084,7 @@ impl BoundedStep {
                 return true;
             }
             let ending = shutdown.load(Ordering::Relaxed)
-                && !super::others_running(table, get_current_pid().unwrap());
+                && !table.has_shutdown_work(Some(get_current_pid().unwrap()));
             let mut scratch = std::mem::MaybeUninit::uninit();
             let payload = {
                 let mut p = process.lock();
@@ -1357,32 +1386,25 @@ fn worker_loop(worker_index: usize, high_rx: Receiver<SpawnRequest>, shared: Wor
             // main actor has exited.
             let all_waiting = runnable.is_empty() && !suspended.is_empty();
 
-            if all_waiting {
-                let has_pending_work = process_table
-                    .read_all()
-                    .iter()
-                    .any(|(_, p)| p.lock().has_shutdown_work());
-
-                if !has_pending_work {
-                    // No processes can send more messages. Wake all Waiting
-                    // actors so they can detect shutdown and exit gracefully.
-                    // The mesh_actor_receive function checks is_shutdown()
-                    // and returns null when no other actors are active,
-                    // causing the service loop to exit cleanly.
-                    for (&pid, entry) in &mut suspended {
-                        entry
-                            .actor
-                            .process
-                            .lock()
-                            .set_live_state(ProcessState::Ready);
-                        entry.parked = false;
-                        runnable.push(pid);
-                    }
-                    idle.end();
-                    did_work = true;
-                    // The actors will be resumed in Phase 1 on the next
-                    // iteration, and will exit when receive returns null.
+            if all_waiting && !process_table.has_shutdown_work(None) {
+                // No processes can send more messages. Wake all Waiting
+                // actors so they can detect shutdown and exit gracefully.
+                // The mesh_actor_receive function checks is_shutdown()
+                // and returns null when no other actors are active,
+                // causing the service loop to exit cleanly.
+                for (&pid, entry) in &mut suspended {
+                    entry
+                        .actor
+                        .process
+                        .lock()
+                        .set_live_state(ProcessState::Ready);
+                    entry.parked = false;
+                    runnable.push(pid);
                 }
+                idle.end();
+                did_work = true;
+                // The actors will be resumed in Phase 1 on the next
+                // iteration, and will exit when receive returns null.
             }
 
             // Also: if this worker has an empty suspended list, no pending
@@ -2308,6 +2330,20 @@ mod tests {
             }
             assert_eq!(scheduler.active_count(), 0);
         }
+    }
+
+    #[test]
+    fn shutdown_waits_when_it_cannot_check_a_process_state() {
+        let scheduler = Scheduler::new(1);
+        let pid = scheduler.create_main_process();
+        let process = scheduler.get_process(pid).unwrap();
+        let mut locked = process.lock();
+        locked.set_live_state(ProcessState::Waiting);
+
+        assert!(scheduler.process_table().has_shutdown_work(None));
+
+        drop(locked);
+        assert!(!scheduler.process_table().has_shutdown_work(None));
     }
 
     #[test]

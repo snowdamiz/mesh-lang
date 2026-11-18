@@ -939,8 +939,9 @@ fn receive_with(
     let mut timer_registered = false;
     let mut wait = MainThreadWait::new();
     loop {
-        let ending =
-            in_coroutine && sched.is_shutdown() && !others_running(sched.process_table(), my_pid);
+        let ending = in_coroutine
+            && sched.is_shutdown()
+            && !sched.process_table().has_shutdown_work(Some(my_pid));
         let mut proc = me.lock();
         if timer_registered {
             // Disarm before returning or publishing a new wait. An unrelated
@@ -984,14 +985,6 @@ fn receive_with(
             wait.pause();
         }
     }
-}
-
-/// Whether another process may still send `me` a message during shutdown.
-fn others_running(table: &scheduler::ProcessTable, me: ProcessId) -> bool {
-    table
-        .read_all()
-        .iter()
-        .any(|(pid, process)| *pid != me && process.lock().has_shutdown_work())
 }
 
 // ── Timer functions (Phase 44 Plan 02) ──────────────────────────────
@@ -2004,10 +1997,10 @@ mod tests {
             .begin_exit_finalization(ExitReason::Error("child failed".into()))
             .unwrap();
 
-        assert!(others_running(sched.process_table(), receiver));
+        assert!(sched.process_table().has_shutdown_work(Some(receiver)));
 
         sched.process_table().remove(sender);
-        assert!(!others_running(sched.process_table(), receiver));
+        assert!(!sched.process_table().has_shutdown_work(Some(receiver)));
     }
 
     #[inline(never)]
