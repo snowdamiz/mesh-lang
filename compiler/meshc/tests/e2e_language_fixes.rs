@@ -1009,6 +1009,34 @@ end
 // ── Lists ──────────────────────────────────────────────────────────────
 
 #[test]
+fn optimized_list_reads_respect_view_offsets_and_bounds() {
+    let source = r##"
+fn main() do
+  let owned = [10, 20, 30, 40]
+  let view = List.drop(List.tail(owned), 1)
+  println("#{List.get(owned, 0)} #{List.length(view)} #{List.get(view, 0)} #{List.get(view, 1)}")
+  println(List.get(List.tail(["a", "b", "c"]), 1))
+end
+"##;
+    let flags = ["--opt-level", "2"];
+    assert_eq!(
+        run_built(&build_with_args(source, &flags)),
+        "10 2 30 40\nc\n"
+    );
+    for index in [-1, 2] {
+        let source = format!(
+            "fn main() do\n  let value = List.get(List.tail([1, 2, 3]), {index})\n  println(\"#{{value}}\")\nend\n"
+        );
+        let (code, stdout, stderr) = run_status(&source, &flags);
+        assert_eq!(code, Some(101), "{stderr}");
+        assert!(stdout.is_empty());
+        assert!(stderr.contains(&format!(
+            "List.get: index {index} is out of bounds for a list of length 2"
+        )));
+    }
+}
+
+#[test]
 fn list_tail_is_a_view_so_cons_recursion_is_linear() {
     // 30k elements: with a copying tail this took seconds; a view makes each
     // step constant, and views behave as lists everywhere they flow.

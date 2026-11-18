@@ -15,6 +15,7 @@ pub mod expr;
 mod group_safety;
 mod grouped_step;
 pub mod intrinsics;
+mod list;
 mod msg_shape;
 pub mod pattern;
 pub mod types;
@@ -517,6 +518,10 @@ impl<'ctx> CodeGen<'ctx> {
             1 => "default<O1>",
             _ => "default<O2>",
         };
+        if opt_level >= 2 {
+            self.inline_list_reads()
+                .map_err(|error| error.to_string())?;
+        }
         self.module
             .run_passes(passes, &self.target_machine, PassBuilderOptions::create())
             .map_err(|e| format!("Optimization passes failed: {}", e))
