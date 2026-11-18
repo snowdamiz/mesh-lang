@@ -179,7 +179,7 @@ fn try_alloc_from_actor_heap(size: usize, align: usize) -> Option<*mut u8> {
         // temporaries no scan can see. Compiled code's next reduction check is
         // a point where every live value is on the stack or in a register.
         if process.collects_at_safepoints && process.heap.should_collect() {
-            crate::actor::stack::CURRENT_YIELDER.with(|slot| slot.gc_wanted.set(true));
+            crate::actor::stack::request_safepoint_gc();
         }
         ptr
     })

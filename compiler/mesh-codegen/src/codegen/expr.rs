@@ -288,9 +288,8 @@ impl<'ctx> CodeGen<'ctx> {
 
                 // Step 3: Emit reduction check for preemptive scheduling.
                 // Without this, tight tail-recursive loops would starve other actors.
-                self.emit_reduction_check();
-
                 if self.emitting_step {
+                    self.emit_reduction_check();
                     self.builder
                         .build_return(Some(&self.context.i8_type().const_int(1, false)))
                         .map_err(|e| e.to_string())?;
@@ -300,9 +299,14 @@ impl<'ctx> CodeGen<'ctx> {
                     .tce_loop_header
                     .ok_or("missing tail-call loop header")?;
                 // Step 4: Branch to loop header.
-                self.builder
-                    .build_unconditional_branch(tce_loop_bb)
-                    .map_err(|e| e.to_string())?;
+                if let Some(state) = self.tce_reduction_state {
+                    self.emit_inline_reduction_check(state, tce_loop_bb);
+                } else {
+                    self.emit_reduction_check();
+                    self.builder
+                        .build_unconditional_branch(tce_loop_bb)
+                        .expect(BUILT);
+                }
 
                 // Return a dummy value -- this block is terminated, the value is never used.
                 // Use i64 zero as the dummy (same pattern as Break/Continue).
@@ -3622,6 +3626,39 @@ impl<'ctx> CodeGen<'ctx> {
         };
         let check_fn = get_intrinsic(&self.module, name);
         let _ = self.builder.build_call(check_fn, &[], "");
+    }
+
+    fn emit_inline_reduction_check(&self, state: PointerValue<'ctx>, next: BasicBlock<'ctx>) {
+        let function = next.get_parent().expect("a loop belongs to its function");
+        let slow = self.context.append_basic_block(function, "reduction_slow");
+        let debit = self.context.append_basic_block(function, "reduction_debit");
+        let word = self.context.i32_type();
+        let remaining = self
+            .builder
+            .build_load(word, state, "reduction_remaining")
+            .expect(BUILT)
+            .into_int_value();
+        // mesh_reduction_state_v1 exposes a counter for actors and a GC request
+        // word for hosts. The zero case uses the original safepoint and leaves
+        // the slot untouched so the runtime can distinguish yield from GC.
+        self.builder
+            .build_switch(
+                remaining,
+                debit,
+                &[(word.const_zero(), slow), (word.const_all_ones(), next)],
+            )
+            .expect(BUILT);
+        self.builder.position_at_end(debit);
+        let remaining = self
+            .builder
+            .build_int_sub(remaining, word.const_int(1, false), "reduction_next")
+            .expect(BUILT);
+        self.builder.build_store(state, remaining).expect(BUILT);
+        self.builder.build_unconditional_branch(next).expect(BUILT);
+
+        self.builder.position_at_end(slow);
+        self.emit_reduction_check();
+        self.builder.build_unconditional_branch(next).expect(BUILT);
     }
 
     // ── Supervisor start ──────────────────────────────────────────────

@@ -1831,6 +1831,10 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             mesh_rt::mesh_reduction_check as *const (),
         ),
         (
+            "mesh_reduction_state_v1",
+            mesh_rt::actor::mesh_reduction_state_v1 as *const (),
+        ),
+        (
             "mesh_regex_captures",
             mesh_rt::mesh_regex_captures as *const (),
         ),

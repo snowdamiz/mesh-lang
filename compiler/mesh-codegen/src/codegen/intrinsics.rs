@@ -302,6 +302,12 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    module.add_function(
+        "mesh_reduction_state_v1",
+        ptr_type.fn_type(&[], false),
+        Some(inkwell::module::Linkage::External),
+    );
+
     // mesh_actor_set_terminate(pid: i64, callback_fn_ptr: ptr) -> void
     let set_terminate_ty = void_type.fn_type(&[i64_type.into(), ptr_type.into()], false);
     module.add_function(

@@ -151,7 +151,8 @@ fn allowed_leaf(execution: Execution, name: &str) -> bool {
         | "mesh_gc_alloc_actor"
         | "mesh_list_append"
         | "mesh_monotonic_now_nanos"
-        | "mesh_reduction_check" => true,
+        | "mesh_reduction_check"
+        | "mesh_reduction_state_v1" => true,
         "mesh_actor_receive"
         | "mesh_actor_receive_scalar"
         | "mesh_actor_wait_timeout"

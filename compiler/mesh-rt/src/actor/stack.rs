@@ -30,6 +30,9 @@ use std::sync::Arc;
 /// Private unwind marker for a normal stop, distinct from an actor failure.
 pub(crate) struct ActorStopped;
 
+// Part of the mesh_reduction_state_v1 ABI. Zero requests a runtime check.
+pub(super) const HOST_REDUCTION_IDLE: u32 = u32::MAX;
+
 /// The running coroutine's yielder and this thread's reduction countdown.
 ///
 /// They share one thread-local because `mesh_reduction_check` reads both at
@@ -38,10 +41,8 @@ pub(crate) struct ActorStopped;
 pub struct YielderSlot {
     pub(crate) yielder: Cell<Option<*const ()>>,
     pub(crate) reductions: Cell<u32>,
-    /// Raised by the allocator when the main thread's heap is due a
-    /// collection. The main thread is no coroutine and never yields, which is
-    /// where an actor collects, so it collects at its next reduction check.
-    pub(crate) gc_wanted: Cell<bool>,
+    /// The host's next reduction check collects when this is zero.
+    pub(super) host_gc: Cell<u32>,
 }
 
 struct CachedProcess {
@@ -64,13 +65,17 @@ thread_local! {
         YielderSlot {
             yielder: Cell::new(None),
             reductions: Cell::new(super::process::DEFAULT_REDUCTIONS),
-            gc_wanted: Cell::new(false),
+            host_gc: Cell::new(HOST_REDUCTION_IDLE),
         }
     };
 
     /// PID of the currently executing actor on this thread.
     pub static CURRENT_PID: Cell<Option<ProcessId>> = const { Cell::new(None) };
     static CURRENT_PROCESS: RefCell<Option<CachedProcess>> = const { RefCell::new(None) };
+}
+
+pub(crate) fn request_safepoint_gc() {
+    CURRENT_YIELDER.with(|slot| slot.host_gc.set(0));
 }
 
 /// Set the current actor PID on this thread.

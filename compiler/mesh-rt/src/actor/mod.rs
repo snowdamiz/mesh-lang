@@ -364,13 +364,35 @@ pub extern "C" fn mesh_pid_to_string(pid: u64) -> *mut crate::string::MeshString
     crate::string::mesh_str(&text)
 }
 
+/// Borrow the current thread's reduction word for a generated stack frame.
+///
+/// Zero requires calling `mesh_reduction_check` without modifying the word.
+/// `u32::MAX` is an idle host and must also be left alone. All other values
+/// must be decremented once per check. The caller must reload the word at each
+/// check because calls and other coroutines on the thread can update it.
+///
+/// A host frame stays a host frame. A coroutine is pinned to one thread, and
+/// its yielder is reinstalled before the suspended frame resumes. The cells
+/// live for the OS thread's lifetime, and the pointer must only be used from
+/// that thread and frame. Bounded steps have their own charging convention.
+#[no_mangle]
+pub extern "C" fn mesh_reduction_state_v1() -> *mut u32 {
+    stack::CURRENT_YIELDER.with(|slot| {
+        if slot.yielder.get().is_some() {
+            slot.reductions.as_ptr()
+        } else {
+            slot.host_gc.as_ptr()
+        }
+    })
+}
+
 /// Decrement the current actor's reduction counter and yield if exhausted.
 ///
 /// This function is inserted by the Mesh compiler at loop back-edges and
-/// function call sites. When the reduction counter reaches zero, the actor
+/// function call sites. On a check with a zero counter, the actor
 /// yields its timeslice to the scheduler, which can then run other actors.
 ///
-/// The reduction counter is reset to `DEFAULT_REDUCTIONS` (4000) after yield.
+/// The runtime resets the counter to `DEFAULT_REDUCTIONS` before yielding.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_reduction_check() {
     // This runs at every call site and loop back-edge. The yielder and a
@@ -390,7 +412,7 @@ pub extern "C-unwind" fn mesh_reduction_check() {
         // since the main thread now also has a PID for service call support).
         // It collects here instead, when the allocator has asked it to.
         if slot.yielder.get().is_none() {
-            return if slot.gc_wanted.get() { COLLECT } else { 0 };
+            return if slot.host_gc.get() == 0 { COLLECT } else { 0 };
         }
 
         let remaining = slot.reductions.get();
@@ -414,7 +436,7 @@ pub extern "C-unwind" fn mesh_reduction_check() {
 #[cold]
 #[inline(never)]
 fn collect_at_safepoint() {
-    stack::CURRENT_YIELDER.with(|slot| slot.gc_wanted.set(false));
+    stack::CURRENT_YIELDER.with(|slot| slot.host_gc.set(stack::HOST_REDUCTION_IDLE));
     try_trigger_gc();
 }
 
@@ -1907,6 +1929,39 @@ mod tests {
         // Use a no-op entry function.
         extern "C" fn noop(_args: *const u8) {}
         sched.spawn(noop as *const u8, std::ptr::null(), 0, 1)
+    }
+
+    #[test]
+    fn reduction_state_reloads_the_pinned_threads_budget_after_yield() {
+        extern "C-unwind" fn run(_args: *const u8) {
+            let state = mesh_reduction_state_v1();
+            // The generated backedge debits one reduction without yielding.
+            assert_eq!(unsafe { state.read() }, 1);
+            unsafe { state.write(0) };
+            mesh_reduction_check();
+            assert_eq!(state, mesh_reduction_state_v1());
+            assert_eq!(unsafe { state.read() }, 17);
+        }
+
+        let host = mesh_reduction_state_v1();
+        assert_eq!(unsafe { host.read() }, u32::MAX);
+        stack::request_safepoint_gc();
+        assert_eq!(unsafe { host.read() }, 0);
+        mesh_reduction_check();
+        assert_eq!(unsafe { host.read() }, u32::MAX);
+
+        stack::CURRENT_YIELDER.with(|slot| slot.reductions.set(1));
+        let mut coroutine = CoroutineHandle::new(run as *const u8, std::ptr::null());
+        assert!(coroutine.resume());
+        stack::CURRENT_YIELDER.with(|slot| {
+            slot.yielder.set(None);
+            assert_eq!(slot.reductions.get(), DEFAULT_REDUCTIONS);
+            // A peer on this worker can spend the refill before we resume.
+            slot.reductions.set(17);
+        });
+        assert_eq!(mesh_reduction_state_v1(), host);
+        assert!(!coroutine.resume());
+        stack::CURRENT_YIELDER.with(|slot| slot.yielder.set(None));
     }
 
     #[test]

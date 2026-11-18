@@ -160,6 +160,8 @@ pub struct CodeGen<'ctx> {
     /// Set during compile_function when has_tail_calls is true. NOT on loop_stack
     /// (separate from user while/for loops so break/continue don't interfere).
     pub(crate) tce_loop_header: Option<inkwell::basic_block::BasicBlock<'ctx>>,
+    inline_tail_reductions: bool,
+    tce_reduction_state: Option<PointerValue<'ctx>>,
 
     /// The parameters' slots of the current tail-recursive function, in
     /// order, which a TailCall stores its arguments into. Taken at entry, not
@@ -274,6 +276,8 @@ impl<'ctx> CodeGen<'ctx> {
             disable_core_dumps: opt_level >= 2,
             library_exports: Vec::new(),
             tce_loop_header: None,
+            inline_tail_reductions: opt_level >= 2,
+            tce_reduction_state: None,
             tce_param_slots: Vec::new(),
         })
     }
@@ -820,6 +824,12 @@ impl<'ctx> CodeGen<'ctx> {
         // TCE: If this function has tail calls, wrap body in a loop.
         // Create a loop header block that the TailCall codegen will branch back to.
         if func.has_tail_calls {
+            if self.inline_tail_reductions {
+                self.tce_reduction_state = Some(
+                    self.codegen_runtime_call("mesh_reduction_state_v1", &[], "reduction_state")
+                        .into_pointer_value(),
+                );
+            }
             let tce_loop_bb = self.context.append_basic_block(fn_val, "tce_loop");
             self.builder
                 .build_unconditional_branch(tce_loop_bb)
@@ -884,6 +894,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Clear TCE state after function compilation.
         self.tce_loop_header = None;
+        self.tce_reduction_state = None;
         self.tce_param_slots.clear();
 
         Ok(())
