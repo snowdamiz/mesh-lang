@@ -322,21 +322,28 @@ impl WorkerSleep {
 }
 
 /// A worker's stretch without work. It counts as idle for the whole stretch,
-/// scans included, so a wake during a scan is not lost: the unpark token it
-/// leaves makes the next park return at once. Only a wake that lands before
-/// the first park of a stretch waits out that one park, as every wake used to.
+/// scans included. After publishing idle, scan once more before parking.
+/// An earlier push is visible to the scan. A later push can unpark the worker.
 struct IdleStretch<'a> {
     worker: &'a WorkerSleep,
+    published: bool,
 }
 
 impl IdleStretch<'_> {
     fn park(&mut self, timeout: std::time::Duration) {
-        self.worker.idle.store(true, Ordering::SeqCst);
+        if !self.published {
+            self.worker.idle.store(true, Ordering::SeqCst);
+            self.published = true;
+            return;
+        }
         std::thread::park_timeout(timeout);
     }
 
     fn end(&mut self) {
-        self.worker.idle.store(false, Ordering::SeqCst);
+        if self.published {
+            self.worker.idle.store(false, Ordering::SeqCst);
+            self.published = false;
+        }
     }
 }
 
@@ -664,7 +671,10 @@ impl Scheduler {
                 self.injector.push(request);
             }
             // Any worker can take a shared request: wake one that has none.
-            let _ = self.sleepers.iter().any(|worker| worker.wake());
+            let active_workers = self.active_threads.load(Ordering::Acquire);
+            let _ = self.sleepers[..active_workers]
+                .iter()
+                .any(|worker| worker.wake());
         }
 
         pid
@@ -1102,7 +1112,10 @@ fn worker_loop(worker_index: usize, high_rx: Receiver<SpawnRequest>, shared: Wor
     let sleep = &*sleepers[worker_index];
     CURRENT_WORKER.set(sleep);
     let _ = sleep.thread.set(std::thread::current());
-    let mut idle = IdleStretch { worker: sleep };
+    let mut idle = IdleStretch {
+        worker: sleep,
+        published: false,
+    };
 
     loop {
         let cycle_started_at = Instant::now();
@@ -1154,6 +1167,9 @@ fn worker_loop(worker_index: usize, high_rx: Receiver<SpawnRequest>, shared: Wor
             next_sweep = Instant::now() + (cost * 8).max(std::time::Duration::from_millis(1));
         }
         std::mem::swap(&mut ready, &mut runnable);
+        if !ready.is_empty() {
+            idle.end();
+        }
         for mut pid in ready.drain(..) {
             did_work = true;
             let mut entry = suspended.get_mut(&pid).expect("ready actor is suspended");
@@ -1245,6 +1261,7 @@ fn worker_loop(worker_index: usize, high_rx: Receiver<SpawnRequest>, shared: Wor
         };
 
         if let Some(req) = request {
+            idle.end();
             did_work = true;
             let process = process_table.get(req.pid).expect(IN_TABLE);
             let (exited_reason, ordinary) = {
@@ -1337,6 +1354,8 @@ fn worker_loop(worker_index: usize, high_rx: Receiver<SpawnRequest>, shared: Wor
                         entry.parked = false;
                         runnable.push(pid);
                     }
+                    idle.end();
+                    did_work = true;
                     // The actors will be resumed in Phase 1 on the next
                     // iteration, and will exit when receive returns null.
                 }
@@ -1358,17 +1377,14 @@ fn worker_loop(worker_index: usize, high_rx: Receiver<SpawnRequest>, shared: Wor
         if !did_work && defer_shared {
             std::thread::yield_now();
         } else if !did_work {
-            spin_count += 1;
-            if spin_count > 1000 {
+            spin_count = spin_count.saturating_add(1);
+            if spin_count > 100 {
                 idle.park(std::time::Duration::from_micros(1_100));
-            } else if spin_count > 100 {
-                idle.park(std::time::Duration::from_micros(100));
             } else {
                 std::hint::spin_loop();
             }
         } else {
             spin_count = 0;
-            idle.end();
         }
         crate::dist::telemetry::runtime_telemetry()
             .record_scheduler_cycle(did_work, cycle_started_at.elapsed());
@@ -2420,6 +2436,59 @@ mod tests {
         workers[1].shared_claims.fetch_add(1, Ordering::Relaxed);
         assert!(claim.defer(next, 4, &workers));
         assert_eq!(claim.offer.as_ref().unwrap().peer, 1);
+    }
+
+    #[test]
+    fn a_worker_stops_advertising_idle_before_entering_an_actor() {
+        use std::sync::mpsc::{channel, Receiver, Sender};
+
+        struct Blocker {
+            entered: Sender<bool>,
+            release: Mutex<Receiver<()>>,
+        }
+
+        extern "C-unwind" fn block(args: *const u8) {
+            let blocker = unsafe { &*args.cast::<Blocker>() };
+            let worker = unsafe { CURRENT_WORKER.get().as_ref().unwrap() };
+            blocker
+                .entered
+                .send(worker.idle.load(Ordering::SeqCst))
+                .unwrap();
+            let _ = blocker.release.lock().recv();
+        }
+
+        let scheduler = Scheduler::new(2);
+        let (entered, entry_event) = channel();
+        let (release, released) = channel();
+        let blocker = Blocker {
+            entered,
+            release: Mutex::new(released),
+        };
+        let timeout = Duration::from_secs(5);
+        scheduler.start();
+        let deadline = Instant::now() + timeout;
+        let all_idle = || {
+            scheduler
+                .sleepers
+                .iter()
+                .all(|worker| worker.idle.load(Ordering::SeqCst))
+        };
+        while !all_idle() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        let result = all_idle().then(|| {
+            scheduler.spawn(
+                block as *const u8,
+                std::ptr::from_ref(&blocker).cast(),
+                0,
+                1,
+            );
+            entry_event.recv_timeout(timeout)
+        });
+        scheduler.signal_shutdown();
+        drop(release);
+        scheduler.wait();
+        assert_eq!(result, Some(Ok(false)));
     }
 
     #[test]
