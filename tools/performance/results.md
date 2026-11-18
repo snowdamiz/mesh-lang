@@ -156,3 +156,55 @@ The Mesh executable SHA-256 was
 `086bad13a74a728bc4ff041d1bd6362bc3d3471670da0252cbd8d71d1767c809`.
 The fixture SHA-256 was
 `86cf426419cbce838ca6220da4eeda531ad3ee09dba4c37ff13a225f6ce5eb2f` in both runs.
+
+## Focused compiler and recovery follow-up
+
+These A/B measurements used the same Linode G6 pair and fixtures as the full
+matrix. Mesh used `-O2` code and a locked Linux release runtime. The compiler
+comparison isolates the fold change in `e86ced1c` against `e415bb4a` with the
+same runtime archive. The recovery comparison uses the complete changes
+through `e506837f`.
+
+### CPU scoring
+
+All seven interleaved blocks ran 8 million records per subject on CPU 2.
+Every trial returned checksum `137756312000000`. Rates are in millions of
+records per second.
+
+| Runtime | Median [min–max] |
+| --- | ---: |
+| Mesh baseline | 3.55 [3.54–3.56] |
+| Mesh with chunked list folds | 7.09 [7.05–7.11] |
+| Rust | 7.69 [7.67–7.70] |
+
+The compiler checks the fold's range once and resolves the backing storage
+once per chunk. It charges the same per-iteration reduction budget and keeps
+the original loop for inputs outside the valid range. The native regression
+test covers views, bounds errors, and an actor yield during a long fold.
+
+The HTTP comparison ran five 7-second measurement blocks per Mesh build at
+1,500 requests/s on four CPUs. Each build validated 52,504 replies without
+failed arrivals. Median p99 was 1.15 ms before and 1.12 ms after, with
+overlapping ranges.
+
+### Supervisor recovery
+
+Each configuration ran 101 interleaved trials. Every trial triggered a real
+panic, verified a fresh replacement, and checked the sibling's original state.
+Times are in µs, with the median and range across trials.
+
+| Workers | Previous benchmark and runtime | Corrected benchmark, previous runtime | Corrected benchmark and runtime |
+| ---: | ---: | ---: | ---: |
+| 1 | 148.0 [135.7–243.8] | 139.8 [128.5–254.0] | 130.3 [117.7–220.7] |
+| 4 | 333.9 [208.3–545.1] | 272.8 [158.6–456.4] | 272.9 [162.0–494.4] |
+
+The corrected benchmark waits for the coordinator to exit before main starts
+scheduler shutdown. The runtime returns a caught actor panic to the scheduler
+after one unwind. Both builds use the same panic diagnostic and supervisor
+restart policy. With the corrected benchmark, the runtime change won 74 of
+101 pairs on one worker and 52 of 101 pairs on four workers. The four-worker
+comparison shows no measurable runtime-only improvement.
+
+All four Mesh smoke cases and all 42 actor comparison trials passed. Median
+four-worker Mesh throughput over seven 64-pair blocks was 6.64M round trips/s
+before and 6.70M after, with overlapping ranges.
