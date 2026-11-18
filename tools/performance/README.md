@@ -110,6 +110,9 @@ python3 tools/performance/run.py run \
 After you repeat the comparison, bring both run directories into one checkout.
 Use a fresh output directory for each attempt.
 
+Pass `--languages mesh` to `smoke` and `run` to measure Mesh alone. The
+runner uses the same workload settings and requires only `mesh` in `--bin-dir`.
+
 ```sh
 python3 tools/performance/run.py report \
   .tmp/performance/host-a .tmp/performance/host-b

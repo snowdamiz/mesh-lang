@@ -501,7 +501,7 @@ def trial_order(args):
     if args.command == "smoke":
         return [
             Trial(language, mode, 1, 1, pairs, iterations)
-            for language in LANGUAGES
+            for language in args.languages
             for mode, pairs, iterations in (
                 ("actor", 3, 129), ("cpu", 0, 13), ("recovery", 0, 0), ("serve", 0, 0),
             )
@@ -510,7 +510,7 @@ def trial_order(args):
     trials = []
     for block in range(1, args.blocks + 1):
         current = []
-        for language in LANGUAGES:
+        for language in args.languages:
             for cpus in (1, 4):
                 current.extend(
                     Trial(language, "actor", cpus, block, pairs, args.actor_iters)
@@ -541,7 +541,7 @@ def run_suite(args):
     loadgen = load_metadata(args, host["boot_id"]) if k6 else None
     args.bin_dir = args.bin_dir.resolve()
     binary_hashes = {}
-    for language in LANGUAGES:
+    for language in args.languages:
         binary = args.bin_dir / language
         if not binary.is_file() or not os.access(binary, os.X_OK):
             raise ValueError(f"Expected executable {binary}")
@@ -551,7 +551,7 @@ def run_suite(args):
                 digest.update(chunk)
         binary_hashes[language] = {"path": str(binary), "sha256": digest.hexdigest()}
     release = args.bin_dir / "elixir-release"
-    if release.is_dir():
+    if "elixir" in binary_hashes and release.is_dir():
         digest = hashlib.sha256()
         for file in sorted(release.rglob("*")):
             if file.is_file() and file.name != "COOKIE":
@@ -794,13 +794,15 @@ def private_address(text):
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    smoke = commands.add_parser("smoke", help="verify all subjects without reporting comparative timings")
+    smoke = commands.add_parser("smoke", help="verify the selected subjects without reporting timings")
     run = commands.add_parser("run", help="run shuffled Linux blocks for each configuration")
     renderer = commands.add_parser("report", help="print a read-only report for each specified run directory")
     renderer.add_argument("runs", type=Path, nargs="+", metavar="RUN_DIR")
     for command in (smoke, run):
         command.add_argument("--out", type=Path, required=True, help="new artifact directory")
-        command.add_argument("--bin-dir", type=Path, required=True, help="directory with mesh, elixir, go and rust executables")
+        command.add_argument("--bin-dir", type=Path, required=True, help="directory with the selected executables")
+        command.add_argument("--languages", nargs="+", choices=LANGUAGES, default=LANGUAGES,
+                             help="subjects to run (default: all four)")
         command.add_argument("--label", default="unlabeled", help="build or host label recorded in the report")
         command.add_argument("--timeout", type=positive, default=120, help="per-process actor/CPU/recovery timeout in seconds")
         command.add_argument("--readiness-timeout", type=positive, default=15, help="server startup timeout in seconds")
@@ -828,6 +830,8 @@ def parse_args():
     run.add_argument("--server-address", type=private_address, help="private SUT address reachable from the load host")
     run.add_argument("--port", type=positive, default=0, help="fixed TCP port (default: ephemeral per trial)")
     args = parser.parse_args()
+    if args.command in ("run", "smoke") and len(set(args.languages)) != len(args.languages):
+        parser.error("--languages must be distinct")
     if args.command == "run":
         if args.load_host and (args.load_host.startswith("-") or any(char.isspace() for char in args.load_host)):
             parser.error("--load-host must be an SSH destination without whitespace")

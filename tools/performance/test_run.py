@@ -32,7 +32,7 @@ class BenchmarkContractTests(unittest.TestCase):
 
     def test_shuffled_blocks_include_every_configuration_once(self):
         args = argparse.Namespace(
-            command="run", seed=51, blocks=5, pairs=64, actor_iters=129, cpu_iters=13,
+            command="run", languages=run.LANGUAGES, seed=51, blocks=5, pairs=64, actor_iters=129, cpu_iters=13,
             http_rates=[1, 100], sustained_rate=10,
         )
         trials = run.trial_order(args)
@@ -44,6 +44,14 @@ class BenchmarkContractTests(unittest.TestCase):
         self.assertEqual(len({tuple(block) for block in blocks}), 5)
         self.assertEqual({t.cpus for t in trials if t.mode == "sustained"}, {4})
         self.assertEqual(sum(t.mode == "sustained" for t in trials), 4)
+
+        args.languages = ["mesh"]
+        selected = run.trial_order(args)
+        self.assertCountEqual(selected, [t for t in trials if t.language == "mesh"])
+        args.command = "smoke"
+        smoke = run.trial_order(args)
+        self.assertEqual({t.language for t in smoke}, {"mesh"})
+        self.assertEqual({t.mode for t in smoke}, {"actor", "cpu", "recovery", "serve"})
 
     def test_goodput_and_slo_count_all_failed_load(self):
         metrics = {
