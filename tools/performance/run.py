@@ -447,12 +447,15 @@ def choose_port(fixed):
         return sock.getsockname()[1]
 
 
-def run_trial(args, directory, trial, cores, fixture_path, records, k6):
+def run_trial(args, directory, trial, cores, fixture_path, records, k6, *,
+              executable=None, check_http=False, grouped_actor=False):
     server = trial.mode in ("http", "sustained", "serve")
     port = choose_port(getattr(args, "port", 0)) if server else 0
-    subject = str(args.bin_dir / trial.language)
+    subject = str(executable if executable is not None else args.bin_dir / trial.language)
     command = ["taskset", "--cpu-list", ",".join(map(str, cores)), subject] if cores else [subject]
     env = subject_env(trial, fixture_path, port, args.warmup_ops)
+    if grouped_actor:
+        env["PERF_ACTOR_PLACEMENT"] = "grouped"
     write_json(directory / "subject.json", {"command": command, "environment": env})
     start_ns = time.monotonic_ns()
     with process(command, directory, "subject", {**clean_env(), **env}) as child, (
@@ -465,6 +468,8 @@ def run_trial(args, directory, trial, cores, fixture_path, records, k6):
                 raise ValueError(f"Subject exited with status {code}")
             data = json.loads((directory / "subject.stdout").read_text())
             validate_result(trial, records, data)
+            if grouped_actor and data.get("actor_placement") != "grouped":
+                raise ValueError("Mesh executable did not report grouped actor placement")
             return {"subject": data, "process_wall_ns": finished_ns - start_ns}
 
         ready = readiness(child, port, start_ns, args.readiness_timeout)
@@ -480,8 +485,13 @@ def run_trial(args, directory, trial, cores, fixture_path, records, k6):
                 result["load"] = load
             return result
 
+        if check_http:
+            write_json(directory / "http-contract.json", smoke_http(port, records))
         if args.warmup_seconds:
-            run_load(args, directory, child, samples, port, records, "warmup", trial.rate, args.warmup_seconds)
+            warmup = run_load(args, directory, child, samples, port, records, "warmup",
+                              trial.rate, args.warmup_seconds)
+            if check_http and warmup["error_fraction"]:
+                raise ValueError(f"HTTP warmup had {warmup['error_fraction']:.2%} failed arrivals")
         seconds = args.sustained_seconds if trial.mode == "sustained" else args.measure_seconds
         load = run_load(args, directory, child, samples, port, records, "measure", trial.rate, seconds)
         return {"readiness": ready, "load": load}

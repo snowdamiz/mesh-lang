@@ -236,12 +236,14 @@ pub extern "C" fn mesh_channel_try_send_shaped(
         actor::detach_from_sender(scheduler, &mut buffer, 0, shape);
     }
     let bytes = SLOT_BYTES
-        + buffer
-            .captured
-            .objects
-            .iter()
-            .map(|object| object.bytes.len())
-            .sum::<usize>();
+        + buffer.references.as_ref().map_or(0, |references| {
+            references
+                .captured
+                .objects
+                .iter()
+                .map(|object| object.bytes.len())
+                .sum::<usize>()
+        });
     let entry = Entry {
         buffer,
         is_ref: !shape.is_null(),
@@ -330,16 +332,13 @@ fn received(mut entry: Entry) -> *mut MeshResult {
     if let Some(receiver) = actor::current_process() {
         entry.buffer.addressed_to(&receiver);
         let mut process = receiver.lock();
-        unsafe {
-            entry
-                .buffer
-                .captured
-                .materialize(&mut process.heap, entry.buffer.data.as_mut_ptr());
+        entry.buffer.materialize_in_place(&mut process.heap);
+        if let Some(references) = entry.buffer.references.take() {
+            process.heap_borrows.extend(references.borrows);
         }
-        process.heap_borrows.append(&mut entry.buffer.borrows);
     }
     let word = i64::from_le_bytes(
-        entry.buffer.data[..SLOT_BYTES]
+        entry.buffer.data()[..SLOT_BYTES]
             .try_into()
             .expect("a channel entry holds one slot"),
     );
@@ -390,7 +389,7 @@ mod tests {
         channel
             .values
             .iter()
-            .map(|entry| i64::from_le_bytes(entry.buffer.data[..8].try_into().unwrap()))
+            .map(|entry| i64::from_le_bytes(entry.buffer.data()[..8].try_into().unwrap()))
             .collect()
     }
 

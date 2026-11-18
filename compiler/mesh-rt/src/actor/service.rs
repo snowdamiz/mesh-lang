@@ -322,7 +322,7 @@ mod tests {
         assert_eq!(call(caller, service), Ok(42));
         assert_eq!(mailbox_tags(caller), [PROGRAM_MESSAGE_TAG]);
         let request = process(service).lock().mailbox.pop().unwrap();
-        assert_eq!(request.buffer.data[8..16], caller.as_u64().to_le_bytes());
+        assert_eq!(request.buffer.data()[8..16], caller.as_u64().to_le_bytes());
         assert!(process(service).lock().monitored_by.is_empty());
     }
 

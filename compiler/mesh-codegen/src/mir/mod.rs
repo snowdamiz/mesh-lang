@@ -10,6 +10,8 @@ pub mod lower;
 pub mod mono;
 pub mod types;
 
+pub use mesh_parser::ast::expr::SpawnPlacement;
+
 use std::fmt;
 
 use rustc_hash::FxHashMap;
@@ -45,7 +47,13 @@ pub struct MirModule {
     pub service_dispatch: ServiceDispatch,
     /// Every actor's entry function. Another node may spawn any of them by
     /// name, so none is pruned as unreachable.
-    pub actors: Vec<String>,
+    pub actors: Vec<MirActor>,
+}
+
+#[derive(Debug, Clone)]
+pub struct MirActor {
+    pub entry: String,
+    pub terminate: Option<String>,
 }
 
 /// Maps each service loop function's name to its call and cast handlers:
@@ -446,8 +454,9 @@ pub enum MirExpr {
         func: Box<MirExpr>,
         /// Arguments to pass (initial state).
         args: Vec<MirExpr>,
-        /// Priority level (0=normal, 1=high, 2=low).
+        /// Priority level for shared placement (0=high, 1=normal, 2=low).
         priority: u8,
+        placement: SpawnPlacement,
         /// Optional terminate callback function.
         /// When present, this is a function that takes (state, reason) and runs cleanup.
         terminate_callback: Option<Box<MirExpr>>,

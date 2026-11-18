@@ -13,8 +13,12 @@ contain base-ten integers. The runner gives each trial a fresh process.
   Start all callers from a barrier and time with a monotonic clock. Use Mesh
   actors, Elixir processes, Go goroutines with capacity-one channels, and Rust
   Tokio tasks with capacity-one channels. The checksum is the
-  sum of the final counters. Measure wall time through the final reply. Sample
-  round-trip latency every 64 iterations, starting at iteration 1.
+  sum of the final counters. Measure wall time through the final reply. Each
+  caller samples one round trip per chunk of 64 timed iterations, starting at
+  iteration 1. Within zero-based chunk `block`, sample at zero-based offset
+  `(block * 17) % 64`. If the offset falls past the end of a partial final
+  chunk, sample its last iteration. Keep the Mesh main function alive until
+  the coordinator exits so the timed workload runs before scheduler shutdown.
 - `cpu` reads a JSON array of records from `PERF_FIXTURES` and decodes it before
   starting the timer. Visit `PERF_ITERS` records in array order, wrapping at the
   end. The checksum is the sum of their scores. Each record contains a

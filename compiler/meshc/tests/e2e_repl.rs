@@ -104,6 +104,55 @@ fn end_of_input_ends_the_session() {
     assert!(stdout.ends_with("Goodbye!\n"), "{stdout}");
 }
 
+#[test]
+fn jit_resolves_memcpy_for_a_wide_actor_receive() {
+    let home = tempfile::tempdir().unwrap();
+    let session = r#"actor copy() do
+  let data = receive do
+    pair -> pair
+  after 4000 -> (0, 0)
+  end
+  let (left, right) = data
+  println("wide=#{left + right}")
+end
+fn launch() do
+  let pid = spawn(copy)
+  send(pid, (20, 22))
+  Timer.sleep(1000)
+end
+launch()
+:quit
+"#;
+    let (stdout, stderr) = repl(session, home.path());
+    assert!(stdout.contains("wide=42\n"), "{stdout}\n{stderr}");
+}
+
+#[test]
+fn timed_actor_panics_are_isolated_in_the_jit() {
+    for spawn in ["spawn(parked)", "spawn grouped(parked)"] {
+        let home = tempfile::tempdir().unwrap();
+        // Keep the evaluation active until the timed receive has had time to
+        // panic, so the test exercises unwinding through live JIT code.
+        let session = format!(
+            "actor parked() do receive do after 30 -> panic(\"jit timed actor\") end end\n\
+             fn launch() do {spawn}; Timer.sleep(500) end\n\
+             launch()\n\
+             20 + 22\n\
+             :quit\n"
+        );
+        let (stdout, stderr) = repl(&session, home.path());
+        assert!(
+            stderr.contains("Mesh panic: jit timed actor"),
+            "{spawn}: {stderr}"
+        );
+        assert!(stdout.contains("42 :: Int"), "{spawn}: {stdout}\n{stderr}");
+        assert!(
+            stdout.ends_with("Goodbye!\n"),
+            "{spawn}: {stdout}\n{stderr}"
+        );
+    }
+}
+
 /// A value the result word does not show is printed as `inspect` shows it:
 /// a list, an Option, a tuple, a map and a struct were `<List<Int> at
 /// 0x...>` (an Option `at 0x0`). A function, which has no `inspect`,

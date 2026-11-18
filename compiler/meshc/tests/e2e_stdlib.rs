@@ -1648,10 +1648,29 @@ end
         .expect("the server did not start");
     // More idle connections than the server has descriptors: each one it
     // accepts holds one, waiting for a request.
-    let _clients = (0..100)
-        .filter_map(|_| std::net::TcpStream::connect(("127.0.0.1", port)).ok())
+    let address = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    let mut clients = (0..100)
+        .map(|_| {
+            std::net::TcpStream::connect_timeout(&address, std::time::Duration::from_secs(2))
+                .unwrap()
+        })
         .collect::<Vec<_>>();
+    let mut queued = clients.pop().unwrap();
     std::thread::sleep(std::time::Duration::from_secs(1));
+    queued
+        .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+        .unwrap();
+    queued
+        .write_all(b"GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+        .unwrap();
+    // Free descriptors while this request is already queued. No later
+    // connection should be needed to wake up the listener.
+    drop(clients);
+    let mut response = String::new();
+    queued.read_to_string(&mut response).unwrap();
+    assert!(response.starts_with("HTTP/1.1 200 OK\r\n"), "{response}");
+    assert!(response.ends_with("\r\n\r\nhello"), "{response}");
+
     drop(guard);
     let errors = errors.join().unwrap();
     assert!(errors > 0, "the server never ran out of descriptors");

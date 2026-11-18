@@ -1016,7 +1016,7 @@ mod tests {
         let (mut trapping, trapping_process) = start("trapping");
         let (mut gone, _) = start("gone");
         trapping_process.lock().trap_exit = true;
-        sched.process_table().write().remove(&gone.pid.unwrap());
+        sched.process_table().remove(gone.pid.unwrap());
 
         terminate_single_child(&mut obedient, &sched, sup_pid);
         let waited_from = Instant::now();

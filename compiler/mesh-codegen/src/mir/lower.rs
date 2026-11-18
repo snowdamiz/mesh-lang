@@ -32,7 +32,7 @@ use super::{
     sum_type_base, BinOp, MirChildSpec, MirExpr, MirFunction, MirLiteral, MirMatchArm, MirModule,
     MirNativeFunction, MirPattern, MirResourceDestructor, MirResourceField, MirResourceMoveSource,
     MirResourceVariant, MirStructDef, MirSumTypeDef, MirType, MirVariantDef, MsgShape,
-    ServiceDispatch, UnaryOp,
+    ServiceDispatch, SpawnPlacement, UnaryOp,
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -379,7 +379,9 @@ struct Lowerer<'a> {
     /// argument count.
     service_dispatch: ServiceDispatch,
     /// Entry functions of the actors lowered so far; see `MirModule::actors`.
-    actors: Vec<String>,
+    actors: Vec<super::MirActor>,
+    /// Actors with terminate clauses, collected before lowering their callers.
+    actor_terminate_callbacks: HashSet<String>,
     /// While lowering a supervisor child's start: the `spawn` that ends it,
     /// which runs the spawned actor in place (`supervisor_child_entry`).
     supervised_spawn: Option<TextRange>,
@@ -734,6 +736,7 @@ impl<'a> Lowerer<'a> {
             supervised_spawn: None,
             service_dispatch: HashMap::new(),
             actors: Vec::new(),
+            actor_terminate_callbacks: HashSet::new(),
         }
     }
 
@@ -1981,6 +1984,9 @@ impl<'a> Lowerer<'a> {
                 }
                 Item::ActorDef(actor_def) => {
                     if let Some(name) = actor_def.name().and_then(|n| n.text()) {
+                        if actor_def.terminate_clause().is_some() {
+                            self.actor_terminate_callbacks.insert(name.clone());
+                        }
                         // Actor definitions produce a function with the actor name
                         let fn_ty = self.resolve_range(actor_def.syntax().text_range());
                         self.known_functions.insert(name.clone(), fn_ty.clone());
@@ -13216,12 +13222,25 @@ impl<'a> Lowerer<'a> {
 
     // ── Actor definition lowering ──────────────────────────────────────
 
+    fn actor_terminate_symbol(&self, actor: &str) -> String {
+        if self.module_name.is_empty() {
+            format!("__terminate.{actor}")
+        } else {
+            format!("__terminate.{}.{actor}", self.module_name)
+        }
+    }
+
     fn lower_actor_def(&mut self, actor_def: &ActorDef) {
         let name = actor_def
             .name()
             .and_then(|n| n.text())
             .unwrap_or_else(|| "<anonymous_actor>".to_string());
-        self.actors.push(name.clone());
+        self.actors.push(super::MirActor {
+            entry: name.clone(),
+            terminate: actor_def
+                .terminate_clause()
+                .map(|_| self.actor_terminate_symbol(&name)),
+        });
 
         let actor_ty = self
             .get_ty(actor_def.syntax().text_range())
@@ -13265,8 +13284,8 @@ impl<'a> Lowerer<'a> {
         self.actor_body_target = saved_target;
 
         // Handle terminate clause: lower to a separate callback function.
-        let terminate_callback_name = if let Some(term_clause) = actor_def.terminate_clause() {
-            let cb_name = format!("__terminate_{}", name);
+        if let Some(term_clause) = actor_def.terminate_clause() {
+            let cb_name = self.actor_terminate_symbol(&name);
             let cb_body = self.lower_block(
                 &term_clause
                     .body()
@@ -13275,7 +13294,7 @@ impl<'a> Lowerer<'a> {
 
             // Terminate callback signature: (state_ptr: Ptr, reason_ptr: Ptr) -> Unit
             self.functions.push(MirFunction {
-                name: cb_name.clone(),
+                name: cb_name,
                 params: vec![
                     ("state_ptr".to_string(), MirType::Ptr),
                     ("reason_ptr".to_string(), MirType::Ptr),
@@ -13286,22 +13305,9 @@ impl<'a> Lowerer<'a> {
                 captures: Vec::new(),
                 has_tail_calls: false,
             });
-
-            Some(cb_name)
-        } else {
-            None
-        };
+        }
 
         self.pop_scope();
-
-        // Store the terminate callback name for use by spawn codegen.
-        // We attach it as a known function and store a mapping.
-        if let Some(ref cb_name) = terminate_callback_name {
-            self.known_functions.insert(
-                cb_name.clone(),
-                MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Unit)),
-            );
-        }
 
         // For actors WITH parameters, generate a wrapper + body pair (Phase 93.2).
         // The runtime calls actor entry functions with signature `extern "C" fn(*const u8)`,
@@ -13520,6 +13526,13 @@ impl<'a> Lowerer<'a> {
             ));
             return None;
         };
+        if spawn.placement() == SpawnPlacement::Grouped {
+            self.lowering_errors.push(format!(
+                "`spawn grouped` cannot start child `{child}` of supervisor `{supervisor}` \
+                 because the supervisor runs the actor inside the process it starts"
+            ));
+            return None;
+        }
         let entry = format!("__supervisor_{supervisor}_{child}");
         let outer = self.supervised_spawn.replace(spawn.syntax().text_range());
         self.push_scope();
@@ -13996,6 +14009,7 @@ impl<'a> Lowerer<'a> {
                         init_ret_ty.clone(),
                     )],
                     priority: 1,
+                    placement: SpawnPlacement::Shared,
                     terminate_callback: None,
                     ty: MirType::Pid(None),
                 }),
@@ -14157,15 +14171,12 @@ impl<'a> Lowerer<'a> {
             })
             .collect();
 
-        // Check if the spawned function has a terminate callback.
-        // Look up by function name in known functions to find matching __terminate_<name>.
         let fn_name = func
             .var_name()
             .expect("the type checker spawns an actor by its name (E0089)");
-        let cb_name = format!("__terminate_{fn_name}");
-        let terminate_callback = self.known_functions.contains_key(&cb_name).then(|| {
+        let terminate_callback = self.actor_terminate_callbacks.contains(fn_name).then(|| {
             Box::new(MirExpr::Var(
-                cb_name,
+                self.actor_terminate_symbol(fn_name),
                 MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Unit)),
             ))
         });
@@ -14174,6 +14185,7 @@ impl<'a> Lowerer<'a> {
             func,
             args: state_args,
             priority: 1, // Normal priority
+            placement: spawn.placement(),
             terminate_callback,
             ty,
         }

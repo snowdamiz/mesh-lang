@@ -197,6 +197,39 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    // mesh_actor_spawn_grouped(fn_ptr, args, args_size, shape, terminate) -> i64
+    module.add_function(
+        "mesh_actor_spawn_grouped",
+        i64_type.fn_type(
+            &[
+                ptr_type.into(),
+                ptr_type.into(),
+                i64_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+            ],
+            false,
+        ),
+        Some(inkwell::module::Linkage::External),
+    );
+
+    module.add_function(
+        "mesh_actor_spawn_step",
+        i64_type.fn_type(
+            &[
+                ptr_type.into(),
+                ptr_type.into(),
+                i32_type.into(),
+                ptr_type.into(),
+                i64_type.into(),
+                ptr_type.into(),
+            ],
+            false,
+        ),
+        None,
+    );
+    module.add_function("mesh_step_charge", void_type.fn_type(&[], false), None);
+
     // mesh_actor_send(target_pid: i64, msg_ptr: ptr, msg_size: i64) -> i64
     let send_ty = i64_type.fn_type(&[i64_type.into(), ptr_type.into(), i64_type.into()], false);
     module.add_function(
@@ -229,6 +262,16 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         Some(inkwell::module::Linkage::External),
     );
 
+    module.add_function(
+        "mesh_actor_receive_scalar",
+        ptr_type.fn_type(&[i64_type.into(), i64_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_actor_wait_timeout",
+        void_type.fn_type(&[i64_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
     module.add_function(
         "mesh_actor_stop",
         void_type.fn_type(&[], false),

@@ -59,7 +59,11 @@ defmodule PerformanceElixir.Actor do
   end
 
   defp exchange(worker, iteration, limit, counter, samples, measure) do
-    started = if measure and rem(iteration - 1, 64) == 0, do: System.monotonic_time(:nanosecond)
+    offset = rem(iteration - 1, 64)
+    phase = rem(div(iteration - 1, 64) * 17, 64)
+    final = iteration == limit
+    sampled = measure and (offset == phase or (final and offset < phase))
+    started = if sampled, do: System.monotonic_time(:nanosecond)
     send(worker, iteration)
 
     reply =
@@ -67,7 +71,6 @@ defmodule PerformanceElixir.Actor do
         {:counter, value} -> value
       end
 
-    final = iteration == limit
     received = if started || final, do: System.monotonic_time(:nanosecond)
     samples = if started, do: [received - started | samples], else: samples
 

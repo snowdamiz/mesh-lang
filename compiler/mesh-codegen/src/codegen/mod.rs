@@ -12,6 +12,8 @@
 //! - [`pattern`]: Decision tree codegen (implemented in Task 2)
 
 pub mod expr;
+mod group_safety;
+mod grouped_step;
 pub mod intrinsics;
 mod msg_shape;
 pub mod pattern;
@@ -106,6 +108,10 @@ pub struct CodeGen<'ctx> {
     pub(crate) functions: FxHashMap<String, FunctionValue<'ctx>>,
     /// The current function being compiled.
     pub(crate) current_fn: Option<FunctionValue<'ctx>>,
+    grouped_spawns: Vec<group_safety::GroupedSpawn<'ctx>>,
+    grouped_step_enabled: bool,
+    step_sites: Vec<grouped_step::SpawnSite<'ctx>>,
+    emitting_step: bool,
 
     // ── Local variable tracking ──────────────────────────────────────
     /// Local variable allocas in the current function (name -> alloca pointer).
@@ -249,6 +255,12 @@ impl<'ctx> CodeGen<'ctx> {
             sum_type_defs: FxHashMap::default(),
             functions: FxHashMap::default(),
             current_fn: None,
+            grouped_spawns: Vec::new(),
+            grouped_step_enabled: opt_level >= 2
+                && std::env::var_os("MESH_GROUPED_STEP").as_deref()
+                    != Some(std::ffi::OsStr::new("0")),
+            step_sites: Vec::new(),
+            emitting_step: false,
             locals: FxHashMap::default(),
             local_types: FxHashMap::default(),
             mir_functions: Vec::new(),
@@ -348,6 +360,8 @@ impl<'ctx> CodeGen<'ctx> {
         }
 
         // Step 7: Keep every stack slot a static, entry-block allocation.
+        group_safety::certify(&self.grouped_spawns, &mir.actors, &mir.native_functions)?;
+        self.lower_grouped_steps(mir)?;
         self.hoist_static_allocas();
 
         // Step 8: Verify the module.
@@ -677,6 +691,15 @@ impl<'ctx> CodeGen<'ctx> {
 
     fn declare_native_functions(&mut self, functions: &[MirNativeFunction]) -> Result<(), String> {
         for function in functions {
+            if matches!(
+                function.symbol.as_str(),
+                "mesh_actor_spawn_step" | "mesh_step_charge"
+            ) {
+                return Err(format!(
+                    "Native symbol `{}` is reserved for grouped actor codegen",
+                    function.symbol
+                ));
+            }
             let params = function
                 .params
                 .iter()
@@ -2852,6 +2875,7 @@ mod tests {
             )),
             args: vec![MirExpr::IntLit(42, MirType::Int)],
             priority: 1,
+            placement: crate::mir::SpawnPlacement::Shared,
             terminate_callback: None,
             ty: MirType::Pid(None),
         };
@@ -3052,10 +3076,45 @@ mod tests {
         };
         let ir = compile_expr_to_ir(body, MirType::Int);
         assert!(
-            ir.contains("mesh_actor_receive"),
+            ir.contains("call ptr @mesh_actor_receive(i64"),
             "Should call mesh_actor_receive: {}",
             ir
         );
+    }
+
+    #[test]
+    fn scalar_receive_codegen_uses_the_binding_type() {
+        // Each arm returns Int, including the arm that receives a pointer.
+        for (binding, load, width) in [
+            (MirType::Int, "i64", 8),
+            (MirType::Pid(None), "i64", 8),
+            (MirType::Float, "double", 8),
+            (MirType::Bool, "i1", 1),
+            (MirType::String, "ptr", 0),
+        ] {
+            let receive = MirExpr::ActorReceive {
+                handler: Some((
+                    "bound".into(),
+                    binding,
+                    Box::new(MirExpr::IntLit(17, MirType::Int)),
+                )),
+                timeout_ms: None,
+                timeout_body: None,
+                ty: MirType::Int,
+            };
+            let ir = compile_expr_to_ir(receive, MirType::Int);
+            if width == 0 {
+                assert!(ir.contains("call ptr @mesh_actor_receive(i64 -1)"));
+                assert!(!ir.contains("call ptr @mesh_actor_receive_scalar"));
+            } else {
+                assert!(ir.contains("alloca i64, align 8"));
+                assert!(ir.contains(&format!(
+                    "call ptr @mesh_actor_receive_scalar(i64 -1, i64 {width},"
+                )));
+                assert!(ir.contains(&format!("load {load}, ptr %scalar_ptr")));
+                assert!(ir.contains("call void @mesh_actor_stop()"));
+            }
+        }
     }
 
     #[test]
@@ -3172,6 +3231,7 @@ mod tests {
             )),
             args: vec![],
             priority: 1,
+            placement: crate::mir::SpawnPlacement::Shared,
             terminate_callback: Some(Box::new(MirExpr::Var(
                 "__terminate_my_actor".to_string(),
                 MirType::FnPtr(vec![MirType::Ptr, MirType::Ptr], Box::new(MirType::Unit)),

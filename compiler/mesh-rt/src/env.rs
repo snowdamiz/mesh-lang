@@ -196,6 +196,21 @@ mod tests {
 
     #[test]
     fn secret_hex_rejects_oversized_values_with_a_typed_length_error() {
+        // Linux refuses to exec any child inheriting this oversized variable.
+        // Exercise the public ABI in a process that runs only this test.
+        const CHILD: &str = "MESH_TEST_OVERSIZED_HEX_CHILD";
+        if std::env::var_os(CHILD).is_none() {
+            let status = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "env::tests::secret_hex_rejects_oversized_values_with_a_typed_length_error",
+                ])
+                .env(CHILD, "1")
+                .status()
+                .expect("start isolated environment test");
+            assert!(status.success());
+            return;
+        }
         mesh_rt_init();
         let name = "MESH_SECRET_HEX_OVERSIZED_TEST";
         std::env::set_var(name, "00".repeat(MAX_SECRET_BYTES + 1));

@@ -5,12 +5,22 @@ use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
+use crossbeam_utils::CachePadded;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
+use crate::actor::mailbox::MailboxUsage;
+
 const HISTOGRAM_SAMPLES: usize = 512;
+const MAILBOX_DEPTH_SHARDS: usize = 16;
 const MAX_REPORTED_WORKER_QUEUES: usize = 256;
 const CAPACITY_DRIVER_OPERATION_KINDS: usize = 6;
+
+static NEXT_MAILBOX_DEPTH_SHARD: AtomicU32 = AtomicU32::new(0);
+thread_local! {
+    static MAILBOX_DEPTH_SHARD: usize =
+        NEXT_MAILBOX_DEPTH_SHARD.fetch_add(1, Ordering::Relaxed) as usize % MAILBOX_DEPTH_SHARDS;
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct NodeRoles(u8);
@@ -171,17 +181,68 @@ impl BoundedHistogram {
     }
 
     fn percentile_value(&self, percentile: f64) -> u64 {
-        if self.samples.is_empty() {
-            return 0;
-        }
         let mut samples: Vec<u64> = self.samples.iter().copied().collect();
         samples.sort_unstable();
-        let index = ((samples.len() - 1) as f64 * percentile.clamp(0.0, 1.0)).ceil() as usize;
-        samples[index]
+        sorted_percentile(&samples, percentile)
     }
 
     fn percentile_duration(&self, percentile: f64) -> Duration {
         Duration::from_micros(self.percentile_value(percentile))
+    }
+}
+
+fn sorted_percentile(samples: &[u64], percentile: f64) -> u64 {
+    if samples.is_empty() {
+        return 0;
+    }
+    let index = ((samples.len() - 1) as f64 * percentile.clamp(0.0, 1.0)).ceil() as usize;
+    samples[index]
+}
+
+#[derive(Debug)]
+struct MailboxDepth {
+    next_sequence: CachePadded<AtomicU64>,
+    shards: [CachePadded<Mutex<VecDeque<(u64, u64)>>>; MAILBOX_DEPTH_SHARDS],
+}
+
+impl MailboxDepth {
+    fn new() -> Self {
+        Self {
+            next_sequence: CachePadded::new(AtomicU64::new(0)),
+            shards: std::array::from_fn(|_| CachePadded::new(Mutex::new(VecDeque::new()))),
+        }
+    }
+
+    fn record(&self, depth: u64) {
+        let mut samples = self.shards[MAILBOX_DEPTH_SHARD.with(|shard| *shard)].lock();
+        if samples.len() == HISTOGRAM_SAMPLES {
+            samples.pop_front();
+        }
+        let sequence = self.next_sequence.fetch_add(1, Ordering::Relaxed);
+        samples.push_back((sequence, depth));
+    }
+
+    fn snapshot(&self) -> [u64; 3] {
+        let mut depths = Vec::with_capacity(HISTOGRAM_SAMPLES);
+        {
+            // Sequence assignment and publication both hold a shard lock.
+            // Holding every lock gives the snapshot one complete sequence window.
+            let shards = self.shards.each_ref().map(|shard| shard.lock());
+            let next = self.next_sequence.load(Ordering::Relaxed);
+            for samples in &shards {
+                depths.extend(
+                    samples
+                        .iter()
+                        .rev()
+                        .take_while(|(sequence, _)| {
+                            next.wrapping_sub(*sequence) <= HISTOGRAM_SAMPLES as u64
+                        })
+                        .map(|&(_, depth)| depth),
+                );
+            }
+        }
+        depths.sort_unstable();
+        [0.50, 0.95, 1.0].map(|percentile| sorted_percentile(&depths, percentile))
     }
 }
 
@@ -264,8 +325,8 @@ pub struct RuntimeTelemetry {
     worker_run_queue_depths: Mutex<Vec<u32>>,
     scheduler_busy_nanos: AtomicU64,
     scheduler_idle_nanos: AtomicU64,
-    mailbox_messages: AtomicU64,
-    mailbox_depth: Mutex<BoundedHistogram>,
+    pub(crate) mailbox_usage: MailboxUsage,
+    mailbox_depth: MailboxDepth,
     http_connections: AtomicU32,
     inflight_requests: AtomicU32,
     queued_requests: AtomicU32,
@@ -298,8 +359,8 @@ impl RuntimeTelemetry {
             worker_run_queue_depths: Mutex::new(Vec::new()),
             scheduler_busy_nanos: AtomicU64::new(0),
             scheduler_idle_nanos: AtomicU64::new(0),
-            mailbox_messages: AtomicU64::new(0),
-            mailbox_depth: Mutex::new(BoundedHistogram::new()),
+            mailbox_usage: MailboxUsage::default(),
+            mailbox_depth: MailboxDepth::new(),
             http_connections: AtomicU32::new(0),
             inflight_requests: AtomicU32::new(0),
             queued_requests: AtomicU32::new(0),
@@ -361,20 +422,8 @@ impl RuntimeTelemetry {
         }
     }
 
-    pub(crate) fn record_mailbox_enqueue(&self, depth: usize) {
-        self.mailbox_messages.fetch_add(1, Ordering::Relaxed);
-        self.mailbox_depth
-            .lock()
-            .record_value(depth.try_into().unwrap_or(u64::MAX));
-    }
-
-    pub(crate) fn record_mailbox_dequeue(&self, count: usize) {
-        let count = count.try_into().unwrap_or(u64::MAX);
-        let _ =
-            self.mailbox_messages
-                .fetch_update(Ordering::AcqRel, Ordering::Relaxed, |current| {
-                    Some(current.saturating_sub(count))
-                });
+    pub(crate) fn record_mailbox_depth_sample(&self, depth: usize) {
+        self.mailbox_depth.record(depth as u64);
     }
 
     pub fn begin_http_connection(&'static self) -> HttpConnectionPermit {
@@ -465,7 +514,8 @@ impl RuntimeTelemetry {
     }
 
     pub fn snapshot(&self) -> LocalTelemetrySnapshot {
-        let mailbox_depth = self.mailbox_depth.lock();
+        let [mailbox_depth_p50, mailbox_depth_p95, mailbox_depth_max] =
+            self.mailbox_depth.snapshot();
         LocalTelemetrySnapshot {
             active_workers: self.active_workers.load(Ordering::Relaxed) as u16,
             configured_workers: self.configured_workers.load(Ordering::Relaxed) as u16,
@@ -478,10 +528,10 @@ impl RuntimeTelemetry {
             scheduler_idle_time: Duration::from_nanos(
                 self.scheduler_idle_nanos.load(Ordering::Relaxed),
             ),
-            mailbox_messages: self.mailbox_messages.load(Ordering::Relaxed),
-            mailbox_depth_p50: mailbox_depth.percentile_value(0.50),
-            mailbox_depth_p95: mailbox_depth.percentile_value(0.95),
-            mailbox_depth_max: mailbox_depth.percentile_value(1.0),
+            mailbox_messages: self.mailbox_usage.messages(),
+            mailbox_depth_p50,
+            mailbox_depth_p95,
+            mailbox_depth_max,
             http_connections: self.http_connections.load(Ordering::Relaxed),
             inflight_requests: self.inflight_requests.load(Ordering::Relaxed),
             queued_requests: self.queued_requests.load(Ordering::Relaxed),
@@ -981,18 +1031,25 @@ mod tests {
     }
 
     #[test]
-    fn mailbox_snapshot_is_bounded_and_tracks_current_messages() {
+    fn mailbox_snapshot_reports_the_last_samples_across_threads() {
         let telemetry = RuntimeTelemetry::new(1, 1);
-        for depth in 1..=(HISTOGRAM_SAMPLES + 10) {
-            telemetry.record_mailbox_enqueue(depth);
-        }
-        telemetry.record_mailbox_dequeue(HISTOGRAM_SAMPLES + 9);
+        telemetry.record_mailbox_depth_sample(usize::MAX);
+        std::thread::scope(|scope| {
+            for depths in [1..=256, 257..=512] {
+                let telemetry = &telemetry;
+                scope.spawn(move || {
+                    for depth in depths {
+                        telemetry.record_mailbox_depth_sample(depth);
+                    }
+                });
+            }
+        });
 
         let snapshot = telemetry.snapshot();
 
-        assert_eq!(snapshot.mailbox_messages, 1);
-        assert_eq!(snapshot.mailbox_depth_max, (HISTOGRAM_SAMPLES + 10) as u64);
-        assert!(snapshot.mailbox_depth_p95 > 0);
+        assert_eq!(snapshot.mailbox_depth_p50, 257);
+        assert_eq!(snapshot.mailbox_depth_p95, 487);
+        assert_eq!(snapshot.mailbox_depth_max, 512);
     }
 
     #[test]

@@ -697,6 +697,7 @@ pub(crate) fn build_with_report(
             prepared.autonomous_config_json.as_deref(),
             &prepared.library_exports,
             &ll_path,
+            opt_level,
             target,
         )?;
         eprintln!("  LLVM IR: {}", ll_path.display());

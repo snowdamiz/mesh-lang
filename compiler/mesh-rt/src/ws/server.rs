@@ -366,9 +366,10 @@ fn ws_accept_loop(
     for tcp_stream in incoming {
         let tcp_stream = match tcp_stream {
             Ok(s) => s,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
             Err(e) => {
                 eprintln!("[mesh-rt] accept error: {}", e);
-                std::thread::sleep(crate::http::server::ACCEPT_PAUSE);
+                std::thread::sleep(crate::http::server::ACCEPT_ERROR_BACKOFF);
                 continue;
             }
         };
@@ -1257,7 +1258,7 @@ mod tests {
         let disconnect = process.lock().mailbox.pop().unwrap().buffer;
         assert_eq!(disconnect.type_tag, WS_DISCONNECT_TAG);
         assert_eq!(
-            decode_disconnect(&disconnect.data),
+            decode_disconnect(disconnect.data()),
             (1006, "WebSocket transport closed".to_string())
         );
 
@@ -1334,7 +1335,7 @@ mod tests {
         let close = process.mailbox.pop().unwrap().buffer;
         assert_eq!(close.type_tag, WS_DISCONNECT_TAG);
         assert_eq!(
-            decode_disconnect(&close.data),
+            decode_disconnect(close.data()),
             (1001, "leaving".to_string())
         );
     }

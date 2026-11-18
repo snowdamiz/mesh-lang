@@ -27,6 +27,52 @@ responses. CI runs this command on Ubuntu x86-64. Use smoke results to check
 behavior and process cleanup. Shared CI and laptops can produce different
 timings from a dedicated host.
 
+## Iterate on a runtime change
+
+Save the baseline Mesh executable before rebuilding. Build the candidate
+with the same compiler flags and benchmark source, and use one Elixir release
+as the reference for both builds.
+
+```sh
+python3 tools/performance/quick.py \
+  --baseline .tmp/performance/baseline/mesh \
+  --candidate .tmp/performance/candidate/mesh \
+  --elixir .tmp/performance/bin/elixir \
+  --out .tmp/performance/local-ab
+```
+
+The quick run shuffles the two Mesh builds and the reference in each block.
+Use `--rust .tmp/performance/bin/rust` in place of `--elixir` for a Tokio
+reference. The runner checks actor replies with one and four workers and uses
+k6 for a few seconds of connection-per-request HTTP load with four workers.
+Use `--workload actor`
+to skip HTTP and k6, or `--workload http` to measure the accept path alone.
+Compare medians and ranges across the blocks. This is a localhost diagnostic.
+
+To compare actor placement, pass the same current Mesh executable to
+`--baseline` and `--candidate`. Add `--workload actor --grouped-candidate`.
+The candidate puts each caller and counter in its own group. Both sides check
+the same replies and report the placement used. Each block reports round trips/s,
+sampled median and p99 latency, and the percentage of samples at or below 1 µs.
+That percentage shows whether a change in the median reflects a small shift in the share
+of messages getting an immediate reply.
+On Linux the runner pins subjects when `taskset` and four CPUs are available.
+
+To measure the compiler's grouped receive optimization in isolation, build
+the same program twice against one release runtime. Use the Rust executable
+from `build.sh`. Both Mesh executables use the same placement in this run.
+
+```sh
+export MESH_RT_LIB_PATH="$PWD/target/release/libmesh_rt.a"
+MESH_GROUPED_STEP=0 target/release/meshc build tools/performance/mesh --opt-level 2 --output .tmp/performance/bin/mesh-coroutine
+MESH_GROUPED_STEP=1 target/release/meshc build tools/performance/mesh --opt-level 2 --output .tmp/performance/bin/mesh-step
+python3 tools/performance/quick.py --workload actor \
+  --baseline .tmp/performance/bin/mesh-coroutine --grouped-baseline \
+  --candidate .tmp/performance/bin/mesh-step --grouped-candidate \
+  --rust .tmp/performance/bin/rust --pairs 64 --actor-iters 160000 \
+  --warmup-ops 2048 --blocks 11 --out .tmp/performance/actor-step-ab
+```
+
 ## Run on two dedicated hosts
 
 1. Create two Akamai Linode G8 Dedicated 8x4 instances in one North American

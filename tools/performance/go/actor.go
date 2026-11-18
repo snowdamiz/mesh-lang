@@ -88,14 +88,17 @@ func callWorker(requests chan<- int64, replies <-chan int64, count int, timed bo
 	for i := range count {
 		value := int64(i) + 1
 		expected += value
-		sample := timed && i%sampleInterval == 0
+		offset := i % sampleInterval
+		phase := (i / sampleInterval * 17) % sampleInterval
+		last := timed && i == count-1
+		sample := timed && (offset == phase || (last && offset < phase))
 		var sent, received time.Time
 		if sample {
 			sent = time.Now()
 		}
 		requests <- value
 		reply = <-replies
-		if sample || (timed && i == count-1) {
+		if sample || last {
 			received = time.Now()
 		}
 		if reply != expected {

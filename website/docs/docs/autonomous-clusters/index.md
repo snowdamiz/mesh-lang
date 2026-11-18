@@ -221,6 +221,12 @@ end
 
 All duration fields are nanoseconds. Process resident memory is `0` when the platform cannot report it. These values describe the local process; use the authenticated operator snapshots for a versioned cluster-wide operational view.
 
+`mailbox_messages` counts all queued messages. The mailbox depth fields summarize
+the most recent 512 observations. Each mailbox records its first successful
+enqueue, then samples about one of every 16 enqueues at varying intervals.
+The sampled maximum can miss a brief spike. Mailbox capacity limits account for
+every message.
+
 ### Request Identity Accessors
 
 ```mesh

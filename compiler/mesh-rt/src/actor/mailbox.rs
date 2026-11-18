@@ -5,53 +5,17 @@
 //! be sent from any actor on any worker thread.
 
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use parking_lot::Mutex;
 
 use super::process::Message;
+use crate::dist::telemetry::runtime_telemetry;
+
+mod quota;
+pub(crate) use quota::MailboxUsage;
 
 pub const DEFAULT_MAILBOX_MAX_ITEMS: usize = 1024;
 pub const DEFAULT_MAILBOX_MAX_BYTES: usize = 8 * 1024 * 1024;
-const GLOBAL_MAILBOX_MAX_BYTES: usize = 128 * 1024 * 1024;
-const GLOBAL_MAILBOX_MAX_ITEMS: usize = 65_536;
-const GLOBAL_MAILBOX_CONTROL_BYTES: usize = 8 * 1024 * 1024;
-const GLOBAL_MAILBOX_CONTROL_ITEMS: usize = 16_384;
-
-static GLOBAL_MAILBOX_BYTES: AtomicUsize = AtomicUsize::new(0);
-static GLOBAL_MAILBOX_ITEMS: AtomicUsize = AtomicUsize::new(0);
-
-fn reserve_counter(counter: &AtomicUsize, amount: usize, maximum: usize) -> bool {
-    let mut current = counter.load(Ordering::Acquire);
-    loop {
-        let Some(next) = current.checked_add(amount) else {
-            return false;
-        };
-        if next > maximum {
-            return false;
-        }
-        match counter.compare_exchange_weak(current, next, Ordering::AcqRel, Ordering::Acquire) {
-            Ok(_) => return true,
-            Err(observed) => current = observed,
-        }
-    }
-}
-
-fn reserve_global(bytes: usize, max_items: usize, max_bytes: usize) -> bool {
-    if !reserve_counter(&GLOBAL_MAILBOX_ITEMS, 1, max_items) {
-        return false;
-    }
-    if !reserve_counter(&GLOBAL_MAILBOX_BYTES, bytes, max_bytes) {
-        GLOBAL_MAILBOX_ITEMS.fetch_sub(1, Ordering::AcqRel);
-        return false;
-    }
-    true
-}
-
-fn release_global(bytes: usize, items: usize) {
-    GLOBAL_MAILBOX_BYTES.fetch_sub(bytes, Ordering::AcqRel);
-    GLOBAL_MAILBOX_ITEMS.fetch_sub(items, Ordering::AcqRel);
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MailboxPushError {
@@ -62,6 +26,36 @@ pub enum MailboxPushError {
 struct MailboxState {
     queue: VecDeque<Message>,
     bytes: usize,
+    depth_sampler: DepthSampler,
+}
+
+struct DepthSampler {
+    random_state: u32,
+    skip: u8,
+}
+
+impl DepthSampler {
+    fn new(pid: u64) -> Self {
+        Self {
+            random_state: (pid as u32 ^ (pid >> 32) as u32).wrapping_mul(0x9E37_79B9),
+            skip: 0,
+        }
+    }
+
+    fn sample(&mut self) -> bool {
+        if self.skip != 0 {
+            self.skip -= 1;
+            return false;
+        }
+        // Vary the interval so periodic mailbox traffic cannot always hit
+        // the same point in its cycle. Only advance the generator on samples.
+        self.random_state = self
+            .random_state
+            .wrapping_mul(1_664_525)
+            .wrapping_add(1_013_904_223);
+        self.skip = (self.random_state >> 27) as u8;
+        true
+    }
 }
 
 /// A thread-safe FIFO mailbox for an actor.
@@ -73,6 +67,7 @@ pub struct Mailbox {
     state: Mutex<MailboxState>,
     max_items: usize,
     max_bytes: usize,
+    quota_shard: usize,
 }
 
 impl Mailbox {
@@ -82,13 +77,28 @@ impl Mailbox {
     }
 
     pub fn bounded(max_items: usize, max_bytes: usize) -> Self {
+        Self::with_shard(max_items, max_bytes, 0, 0)
+    }
+
+    pub(super) fn for_process(local_pid: u64, quota_key: u64) -> Self {
+        Self::with_shard(
+            DEFAULT_MAILBOX_MAX_ITEMS,
+            DEFAULT_MAILBOX_MAX_BYTES,
+            MailboxUsage::shard_for(quota_key),
+            local_pid,
+        )
+    }
+
+    fn with_shard(max_items: usize, max_bytes: usize, quota_shard: usize, local_pid: u64) -> Self {
         Mailbox {
             state: Mutex::new(MailboxState {
                 queue: VecDeque::new(),
                 bytes: 0,
+                depth_sampler: DepthSampler::new(local_pid),
             }),
             max_items,
             max_bytes,
+            quota_shard,
         }
     }
 
@@ -100,51 +110,42 @@ impl Mailbox {
     }
 
     pub fn try_push(&self, msg: Message) -> Result<(), MailboxPushError> {
-        self.try_push_with_global_limits(
-            msg,
-            GLOBAL_MAILBOX_MAX_ITEMS,
-            GLOBAL_MAILBOX_MAX_BYTES,
-            false,
-        )
+        self.try_push_inner(msg, false)
     }
 
     pub(crate) fn try_push_control(&self, msg: Message) -> Result<(), MailboxPushError> {
-        self.try_push_with_global_limits(
-            msg,
-            GLOBAL_MAILBOX_MAX_ITEMS + GLOBAL_MAILBOX_CONTROL_ITEMS,
-            GLOBAL_MAILBOX_MAX_BYTES + GLOBAL_MAILBOX_CONTROL_BYTES,
-            true,
-        )
+        self.try_push_inner(msg, true)
     }
 
-    fn try_push_with_global_limits(
-        &self,
-        msg: Message,
-        global_max_items: usize,
-        global_max_bytes: usize,
-        control: bool,
-    ) -> Result<(), MailboxPushError> {
-        let message_bytes = msg.buffer.data.len();
-        let depth = {
-            let mut state = self.state.lock();
-            if message_bytes > self.max_bytes {
-                return Err(MailboxPushError::MessageTooLarge);
-            }
-            let max_items = self.max_items.saturating_add(if control { 1 } else { 0 });
-            let max_bytes = self
-                .max_bytes
-                .saturating_add(if control { message_bytes } else { 0 });
-            if state.queue.len() >= max_items
-                || state.bytes.saturating_add(message_bytes) > max_bytes
-                || !reserve_global(message_bytes, global_max_items, global_max_bytes)
-            {
-                return Err(MailboxPushError::Full);
-            }
-            state.bytes += message_bytes;
-            state.queue.push_back(msg);
-            state.queue.len()
+    fn try_push_inner(&self, msg: Message, control: bool) -> Result<(), MailboxPushError> {
+        let message_bytes = msg.buffer.data().len();
+        let mut state = self.state.lock();
+        if message_bytes > self.max_bytes {
+            return Err(MailboxPushError::MessageTooLarge);
+        }
+        let max_items = self.max_items.saturating_add(if control { 1 } else { 0 });
+        let max_bytes = self
+            .max_bytes
+            .saturating_add(if control { message_bytes } else { 0 });
+        if state.queue.len() >= max_items || state.bytes.saturating_add(message_bytes) > max_bytes {
+            return Err(MailboxPushError::Full);
+        }
+        let telemetry = runtime_telemetry();
+        let Some(reservation) =
+            telemetry
+                .mailbox_usage
+                .reserve(self.quota_shard, message_bytes, control)
+        else {
+            return Err(MailboxPushError::Full);
         };
-        crate::dist::telemetry::runtime_telemetry().record_mailbox_enqueue(depth);
+        state.bytes += message_bytes;
+        state.queue.push_back(msg);
+        let depth = state.depth_sampler.sample().then_some(state.queue.len());
+        drop(reservation);
+        drop(state);
+        if let Some(depth) = depth {
+            telemetry.record_mailbox_depth_sample(depth);
+        }
         Ok(())
     }
 
@@ -152,19 +153,11 @@ impl Mailbox {
     ///
     /// Returns `None` if the mailbox is empty.
     pub fn pop(&self) -> Option<Message> {
-        let message = {
-            let mut state = self.state.lock();
-            let message = state.queue.pop_front();
-            if let Some(message) = &message {
-                state.bytes -= message.buffer.data.len();
-                release_global(message.buffer.data.len(), 1);
-            }
-            message
-        };
-        if message.is_some() {
-            crate::dist::telemetry::runtime_telemetry().record_mailbox_dequeue(1);
+        let mut state = self.state.lock();
+        if state.queue.is_empty() {
+            return None;
         }
-        message
+        state.dequeue(self.quota_shard, VecDeque::pop_front)
     }
 
     /// Check if the mailbox is empty.
@@ -196,16 +189,7 @@ impl Mailbox {
         let mut state = self.state.lock();
         for i in 0..state.queue.len() {
             if predicate(&state.queue[i]) {
-                let message = state.queue.remove(i);
-                if let Some(message) = &message {
-                    state.bytes -= message.buffer.data.len();
-                    release_global(message.buffer.data.len(), 1);
-                }
-                drop(state);
-                if message.is_some() {
-                    crate::dist::telemetry::runtime_telemetry().record_mailbox_dequeue(1);
-                }
-                return message;
+                return state.dequeue(self.quota_shard, |queue| queue.remove(i));
             }
         }
         None
@@ -215,11 +199,27 @@ impl Mailbox {
 impl Drop for Mailbox {
     fn drop(&mut self) {
         let state = self.state.get_mut();
-        release_global(state.bytes, state.queue.len());
-        let remaining = state.queue.len();
-        if remaining > 0 {
-            crate::dist::telemetry::runtime_telemetry().record_mailbox_dequeue(remaining);
+        if !state.queue.is_empty() {
+            runtime_telemetry()
+                .mailbox_usage
+                .lock(self.quota_shard)
+                .release(state.queue.len(), state.bytes);
         }
+    }
+}
+
+impl MailboxState {
+    fn dequeue(
+        &mut self,
+        shard: usize,
+        remove: impl FnOnce(&mut VecDeque<Message>) -> Option<Message>,
+    ) -> Option<Message> {
+        let mut quota = runtime_telemetry().mailbox_usage.lock(shard);
+        let message = remove(&mut self.queue)?;
+        let bytes = message.buffer.data().len();
+        self.bytes -= bytes;
+        quota.release(1, bytes);
+        Some(message)
     }
 }
 
@@ -238,29 +238,18 @@ mod tests {
     use super::*;
     use crate::actor::heap::MessageBuffer;
 
-    /// A counter takes what fits under its maximum, and nothing that would
-    /// overflow; a global reservation that fails on bytes gives back its item.
     #[test]
-    fn reservations_refuse_what_does_not_fit() {
-        let counter = AtomicUsize::new(5);
-        assert!(
-            !reserve_counter(&counter, usize::MAX, usize::MAX),
-            "overflow"
-        );
-        assert!(!reserve_counter(&counter, 6, 10), "past the maximum");
-        assert!(reserve_counter(&counter, 5, 10));
-        assert_eq!(counter.load(Ordering::Acquire), 10);
-
-        assert!(!reserve_global(1, usize::MAX, 0));
-    }
-
-    /// A mailbox with room refuses a message the global bound has none for.
-    #[test]
-    fn a_full_runtime_refuses_a_message_a_mailbox_has_room_for() {
-        let mailbox = Mailbox::default();
-        let pushed = mailbox.try_push_with_global_limits(make_msg(&[1], 1), 0, 0, false);
-        assert_eq!(pushed, Err(MailboxPushError::Full));
-        assert!(mailbox.is_empty());
+    fn depth_sampling_starts_immediately_and_uses_bounded_variable_intervals() {
+        let sample_positions = |pid| {
+            let mut sampler = DepthSampler::new(pid);
+            (0..2048).filter(|_| sampler.sample()).collect::<Vec<_>>()
+        };
+        let samples = sample_positions(1);
+        assert_eq!(samples[0], 0);
+        assert_ne!(samples, sample_positions(2));
+        let intervals: Vec<_> = samples.windows(2).map(|pair| pair[1] - pair[0]).collect();
+        assert!(intervals.iter().all(|gap| (1..=32).contains(gap)));
+        assert!(intervals.iter().any(|gap| *gap != intervals[0]));
     }
 
     fn make_msg(data: &[u8], tag: u64) -> Message {
@@ -280,7 +269,7 @@ mod tests {
         // Messages should come out in FIFO order.
         let m1 = mb.pop().unwrap();
         assert_eq!(m1.buffer.type_tag, 1);
-        assert_eq!(m1.buffer.data, vec![1]);
+        assert_eq!(m1.buffer.data(), vec![1]);
 
         let m2 = mb.pop().unwrap();
         assert_eq!(m2.buffer.type_tag, 2);
@@ -334,12 +323,28 @@ mod tests {
             mb.try_push(make_msg(&[3, 4], 2)),
             Err(MailboxPushError::Full)
         );
-        assert_eq!(mb.pop().unwrap().buffer.data, [1, 2]);
+        assert_eq!(mb.pop().unwrap().buffer.data(), [1, 2]);
         assert_eq!(mb.byte_len(), 0);
         assert_eq!(
             mb.try_push(make_msg(&[1, 2, 3, 4], 3)),
             Err(MailboxPushError::MessageTooLarge)
         );
+    }
+
+    #[test]
+    fn selective_receive_restores_capacity_without_reordering_the_queue() {
+        let mb = Mailbox::bounded(3, 4);
+        mb.try_push(make_msg(&[1], 1)).unwrap();
+        mb.try_push(make_msg(&[2, 2], 2)).unwrap();
+        mb.try_push(make_msg(&[3], 3)).unwrap();
+
+        let removed = mb.remove_first(|msg| msg.buffer.type_tag == 2).unwrap();
+        assert_eq!(removed.buffer.data(), [2, 2]);
+        assert_eq!(mb.byte_len(), 2);
+        mb.try_push(make_msg(&[4, 4], 4)).unwrap();
+        for tag in [1, 3, 4] {
+            assert_eq!(mb.pop().unwrap().buffer.type_tag, tag);
+        }
     }
 
     #[test]

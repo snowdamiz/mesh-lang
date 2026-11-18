@@ -57,6 +57,62 @@ Mesh infers `Pid<T>` from the actor's received message type. Sending a value of 
 
 PIDs compare with `==` and `!=`, and show as `<0.12>` in an interpolation (`<node.id.creation>` for a process on another node). No process has PID `0`: it is what a lookup that finds nothing and a remote spawn that fails return, shown as `<0.0>`, and a send to it goes nowhere.
 
+### Keep communicating actors on one worker
+
+Ordinary `spawn` puts normal-priority work in a shared queue. A worker
+hosting many actors briefly gives a less occupied worker a chance to start
+the next one. Once a coroutine starts, it stays on that worker.
+
+Use `spawn grouped` for actors that exchange frequent messages on one node.
+A grouped spawn from `main` or an ordinary actor starts a group on one active
+scheduler worker. The scheduler distributes new groups across active workers.
+A grouped spawn from inside a group joins the caller's worker. Each actor
+keeps its own PID, mailbox, and heap.
+
+```mesh
+actor increment(requester :: Pid<Int>) do
+  receive do
+    value -> send(requester, value + 1)
+  end
+end
+
+actor pair(requester :: Pid<Int>) do
+  let counter = spawn grouped(increment, self())
+  send(counter, 41)
+  receive do
+    result -> send(requester, result)
+  end
+end
+
+actor coordinator() do
+  let _ = spawn grouped(pair, self())
+  receive do
+    result -> println("#{result}")
+  end
+end
+
+fn main() do
+  spawn(coordinator)
+end
+```
+
+Grouped actors use operations the compiler can verify will yield or return
+without blocking the worker. The compiler rejects native calls, blocking I/O,
+and calls through unknown function values in grouped code. Use ordinary
+`spawn` for actors that need those operations. Grouped and ordinary actors
+share scheduler workers, so an ordinary actor that blocks its thread can
+delay a group on that worker.
+
+At optimization level 2 or higher, the compiler can run a grouped actor's
+untimed scalar receive loop directly on its worker's stack. Between messages
+the worker saves the loop arguments. The actor keeps its PID and mailbox.
+Handlers outside the supported subset use the usual coroutine path. To compare
+the two implementations, set `MESH_GROUPED_STEP=0` when building the program.
+
+A send from a grouped actor to another node returns `7` without delivering
+the message. Existing groups keep their worker when the scheduler reduces its
+active worker count. New groups use the remaining active workers.
+
 ## Message Passing
 
 Actors communicate by sending and receiving messages. Use `send` to deliver a message to an actor's mailbox, and `receive` to wait for the next message:

@@ -83,7 +83,8 @@ pub fn walk_node(node: &SyntaxNode) -> FormatIR {
         SyntaxKind::SERVICE_DEF => walk_block_def(node),
         SyntaxKind::SUPERVISOR_DEF => walk_block_def(node),
         SyntaxKind::RECEIVE_ARM => walk_match_arm(node),
-        SyntaxKind::SPAWN_EXPR | SyntaxKind::SEND_EXPR | SyntaxKind::LINK_EXPR => walk_concat(node),
+        SyntaxKind::SPAWN_EXPR => walk_spawn(node),
+        SyntaxKind::SEND_EXPR | SyntaxKind::LINK_EXPR => walk_concat(node),
         SyntaxKind::WHILE_EXPR => walk_while_expr(node),
         SyntaxKind::FOR_IN_EXPR => walk_for_in_expr(node),
         SyntaxKind::BREAK_EXPR => walk_break_expr(node),
@@ -821,6 +822,32 @@ fn walk_concat(node: &SyntaxNode) -> FormatIR {
         match child {
             NodeOrToken::Token(tok) => add_token_with_context(&tok, &mut parts),
             NodeOrToken::Node(n) => parts.push(walk_node(&n)),
+        }
+    }
+    ir::concat(parts)
+}
+
+fn walk_spawn(node: &SyntaxNode) -> FormatIR {
+    let mut parts = Vec::new();
+    let mut after_line_comment = false;
+    for element in node.elements() {
+        match element {
+            NodeOrToken::Token(token) if token.kind() == SyntaxKind::IDENT => {
+                if !after_line_comment {
+                    parts.push(sp());
+                }
+                parts.push(ir::text(token.text()));
+                after_line_comment = false;
+            }
+            NodeOrToken::Token(token) => {
+                if after_line_comment {
+                    parts.push(inline_comment(&token));
+                } else {
+                    add_token_with_context(&token, &mut parts);
+                }
+                after_line_comment = token.kind().is_trivia() && !token.text().starts_with("#=");
+            }
+            NodeOrToken::Node(args) => parts.push(walk_node(&args)),
         }
     }
     ir::concat(parts)
@@ -2211,6 +2238,15 @@ mod tests {
 
     fn fmt(source: &str) -> String {
         format_source(source, &FormatConfig::default())
+    }
+
+    #[test]
+    fn grouped_spawn_is_contextual_and_preserves_comments() {
+        let source = "fn grouped(n)=n\nlet p=spawn #= keep =#  grouped(worker,grouped(1))\nlet q=spawn(grouped)";
+        let expected = "fn grouped(n) = n\n\nlet p = spawn #= keep =# grouped(worker, grouped(1))\n\nlet q = spawn(grouped)\n";
+        let formatted = crate::try_format(source, &FormatConfig::default()).unwrap();
+        assert_eq!(formatted, expected);
+        assert_eq!(fmt(&formatted), formatted);
     }
 
     #[test]
