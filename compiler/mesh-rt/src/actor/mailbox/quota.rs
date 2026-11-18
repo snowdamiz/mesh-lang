@@ -1,7 +1,7 @@
 use crossbeam_utils::CachePadded;
 use parking_lot::{Mutex, MutexGuard};
 
-const SHARDS: usize = 32;
+const SHARDS: usize = 128;
 const NORMAL_LIMIT: Quota = Quota {
     items: 65_536,
     bytes: 128 * 1024 * 1024,

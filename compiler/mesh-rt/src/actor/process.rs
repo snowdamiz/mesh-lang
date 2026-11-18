@@ -314,8 +314,7 @@ pub struct Process {
     pub monitored_by: FxHashMap<u64, ProcessId>,
 
     /// FIFO mailbox for incoming messages.
-    /// Wrapped in Arc for thread-safe access from sender threads.
-    pub mailbox: Arc<Mailbox>,
+    pub mailbox: Mailbox,
 
     /// Per-actor bump allocator heap for memory allocation.
     /// Each actor has its own heap to avoid global arena contention
@@ -337,6 +336,7 @@ pub struct Process {
 
     /// This actor's own copy of its spawn-argument buffer; see `Scheduler::spawn`.
     pub(crate) spawn_args: Option<Box<[u64]>>,
+    pub(super) movable_step: Option<super::scheduler::MovableStep>,
     /// Heaps that this actor's spawn arguments and received messages point
     /// into. Held until the process is dropped, not merely exited: an actor
     /// it lent to may still reach those heaps through objects in this one.
@@ -431,13 +431,14 @@ impl Process {
             trapped_links: HashSet::new(),
             monitors: FxHashMap::default(),
             monitored_by: FxHashMap::default(),
-            mailbox: Arc::new(Mailbox::for_process(pid.local_id(), mailbox_shard)),
+            mailbox: Mailbox::for_process(pid.local_id(), mailbox_shard),
             heap: ActorHeap::new(),
             library_call: false,
             collects_at_safepoints: false,
             worker: None,
             library_heap_owner: None,
             spawn_args: None,
+            movable_step: None,
             heap_borrows: Vec::new(),
             terminate_callback: None,
             host_managed: false,

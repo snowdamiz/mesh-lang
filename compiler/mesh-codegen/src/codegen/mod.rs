@@ -111,6 +111,7 @@ pub struct CodeGen<'ctx> {
     pub(crate) current_fn: Option<FunctionValue<'ctx>>,
     grouped_spawns: Vec<group_safety::GroupedSpawn<'ctx>>,
     grouped_step_enabled: bool,
+    movable_step_enabled: bool,
     step_sites: Vec<grouped_step::SpawnSite<'ctx>>,
     emitting_step: bool,
 
@@ -261,6 +262,9 @@ impl<'ctx> CodeGen<'ctx> {
             grouped_spawns: Vec::new(),
             grouped_step_enabled: opt_level >= 2
                 && std::env::var_os("MESH_GROUPED_STEP").as_deref()
+                    != Some(std::ffi::OsStr::new("0")),
+            movable_step_enabled: opt_level >= 2
+                && std::env::var_os("MESH_MOVABLE_STEP").as_deref()
                     != Some(std::ffi::OsStr::new("0")),
             step_sites: Vec::new(),
             emitting_step: false,
@@ -702,7 +706,7 @@ impl<'ctx> CodeGen<'ctx> {
         for function in functions {
             if matches!(
                 function.symbol.as_str(),
-                "mesh_actor_spawn_step" | "mesh_step_charge"
+                "mesh_actor_spawn_step" | "mesh_actor_spawn_movable_step" | "mesh_step_charge"
             ) {
                 return Err(format!(
                     "Native symbol `{}` is reserved for grouped actor codegen",

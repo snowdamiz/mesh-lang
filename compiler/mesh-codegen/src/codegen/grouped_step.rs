@@ -17,6 +17,7 @@ pub(super) struct SpawnSite<'ctx> {
     pub size: IntValue<'ctx>,
     pub shape: PointerValue<'ctx>,
     pub pid: IntValue<'ctx>,
+    pub shared_priority: Option<u8>,
 }
 
 pub(super) fn frame_word(ty: &MirType) -> bool {
@@ -123,6 +124,37 @@ fn handler<'a>(mir: &'a MirModule, entry: &str) -> Option<Handler<'a>> {
     })
 }
 
+// A movable step cannot call the blocking remote send path. At spawn the
+// runtime guards every Pid slot. The transition must preserve that invariant
+// and send must only use one of those slots or the current local PID.
+fn local_send_targets(expr: &MirExpr, h: &Handler<'_>) -> bool {
+    let local_pid = |value: &MirExpr| {
+        matches!(value, MirExpr::ActorSelf { .. })
+            || value.var_name().is_some_and(|var| {
+                h.params
+                    .iter()
+                    .any(|(name, ty)| name == var && matches!(ty, MirType::Pid(_)))
+            })
+    };
+    let allowed = match expr {
+        MirExpr::Let { name, .. } => !h
+            .params
+            .iter()
+            .any(|(param, ty)| name == param && matches!(ty, MirType::Pid(_))),
+        MirExpr::ActorSend { target, .. } => local_pid(target),
+        MirExpr::TailCall { args, .. } => args
+            .iter()
+            .zip(h.params)
+            .all(|(value, (_, ty))| !matches!(ty, MirType::Pid(_)) || local_pid(value)),
+        _ => true,
+    };
+    allowed
+        && expr
+            .children()
+            .iter()
+            .all(|child| local_send_targets(child, h))
+}
+
 impl<'ctx> CodeGen<'ctx> {
     fn step_expression_supported(
         &self,
@@ -213,6 +245,24 @@ impl<'ctx> CodeGen<'ctx> {
             if site.size.get_zero_extended_constant() != Some(h.params.len() as u64 * 8) {
                 continue;
             }
+            let mut pid_slots = 0u64;
+            if site.shared_priority.is_some() {
+                if h.params.len() > 64
+                    || h.binding.is_some_and(|binding| {
+                        h.params
+                            .iter()
+                            .any(|(name, ty)| binding == name && matches!(ty, MirType::Pid(_)))
+                    })
+                    || !local_send_targets(h.body, &h)
+                {
+                    continue;
+                }
+                for (index, (_, ty)) in h.params.iter().enumerate() {
+                    if matches!(ty, MirType::Pid(_)) {
+                        pid_slots |= 1 << index;
+                    }
+                }
+            }
             let (entry, bound) = if let Some(pair) = compiled.get(&site.actor) {
                 *pair
             } else {
@@ -232,23 +282,32 @@ impl<'ctx> CodeGen<'ctx> {
                 compiled.insert(site.actor.clone(), pair);
                 pair
             };
-            let old = site.pid.as_instruction_value().expect("grouped spawn call");
+            let old = site.pid.as_instruction_value().expect("actor spawn call");
             self.builder.position_before(&old);
-            let result = self.codegen_runtime_call(
-                "mesh_actor_spawn_step",
-                &[
-                    site.original.into(),
-                    entry.as_global_value().as_pointer_value().into(),
+            let mut args = vec![
+                site.original.into(),
+                entry.as_global_value().as_pointer_value().into(),
+                self.context
+                    .i32_type()
+                    .const_int(bound.into(), false)
+                    .into(),
+                site.args.into(),
+                site.size.into(),
+                site.shape.into(),
+            ];
+            let spawn_fn = if let Some(priority) = site.shared_priority {
+                args.push(self.context.i64_type().const_int(pid_slots, false).into());
+                args.push(
                     self.context
-                        .i32_type()
-                        .const_int(bound.into(), false)
+                        .i8_type()
+                        .const_int(priority.into(), false)
                         .into(),
-                    site.args.into(),
-                    site.size.into(),
-                    site.shape.into(),
-                ],
-                "step_pid",
-            );
+                );
+                "mesh_actor_spawn_movable_step"
+            } else {
+                "mesh_actor_spawn_step"
+            };
+            let result = self.codegen_runtime_call(spawn_fn, &args, "step_pid");
             site.pid.replace_all_uses_with(result.into_int_value());
             old.erase_from_basic_block();
         }

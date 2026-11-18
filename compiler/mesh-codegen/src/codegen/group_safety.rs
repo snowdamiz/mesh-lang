@@ -184,6 +184,10 @@ mod tests {
     }
 
     fn compile_steps(source: &str, enabled: bool) -> Result<String, String> {
+        compile_placements(source, enabled, false)
+    }
+
+    fn compile_placements(source: &str, grouped: bool, movable: bool) -> Result<String, String> {
         let parse = mesh_parser::parse(source);
         assert!(parse.ok(), "{:?}", parse.errors());
         let checked = mesh_typeck::check(&parse);
@@ -191,7 +195,8 @@ mod tests {
         let mir = lower_to_mir(&parse, &checked, "", &HashSet::new(), &HashMap::new())?;
         let context = Context::create();
         let mut codegen = CodeGen::new(&context, "grouped_spawn", 0, None).unwrap();
-        codegen.grouped_step_enabled = enabled;
+        codegen.grouped_step_enabled = grouped;
+        codegen.movable_step_enabled = movable;
         codegen.compile(&mir)?;
         Ok(codegen.get_llvm_ir())
     }
@@ -386,6 +391,24 @@ end
     }
 
     #[test]
+    fn ordinary_receive_step_requires_local_pid_provenance() {
+        let source = suite_counter().replace("spawn grouped", "spawn");
+        let ir = compile_placements(&source, false, true).unwrap();
+        assert!(ir.contains("call i64 @mesh_actor_spawn_movable_step(ptr @counter_loop, ptr @counter_loop.step, i32 2,"));
+        assert!(ir.lines().any(
+            |line| line.contains("call i64 @mesh_actor_spawn_movable_step(")
+                && line.ends_with("i64 1, i8 1)")
+        ));
+        let fallback = source.replace(
+            "send(caller, updated)",
+            "send(if updated == 0 do self() else caller end, updated)",
+        );
+        let ir = compile_placements(&fallback, false, true).unwrap();
+        assert!(ir.contains("call i64 @mesh_actor_spawn_shaped(ptr @counter_loop,"));
+        assert!(!ir.contains("call i64 @mesh_actor_spawn_movable_step("));
+    }
+
+    #[test]
     fn grouped_step_preserves_fallback_for_ineligible_handlers() {
         let source = suite_counter();
         for candidate in [
@@ -418,7 +441,11 @@ end
     }
     #[test]
     fn grouped_step_reserves_its_runtime_symbols_in_both_modes() {
-        for hook in ["mesh_actor_spawn_step", "mesh_step_charge"] {
+        for hook in [
+            "mesh_actor_spawn_step",
+            "mesh_actor_spawn_movable_step",
+            "mesh_step_charge",
+        ] {
             let source =
                 format!("@native(\"{hook}\")\npub fn foreign() -> Int\nfn main() do foreign() end");
             for enabled in [false, true] {

@@ -14,8 +14,9 @@
 //! 2. **Each worker thread** pops spawn requests, creates coroutines locally,
 //!    and runs them. Yielded coroutines stay in the worker's local suspended
 //!    list and are resumed on the same thread.
-//! 3. **Work-stealing** operates on spawn requests only -- new work is
-//!    distributed, but running coroutines are thread-pinned.
+//! 3. Ordinary bounded receive steps can run on any worker. While parked they
+//!    retain their frame in the process. A ready step is scheduled either in
+//!    the sender's ready queue or a shared continuation queue.
 //!
 //! ## Priority
 //!
@@ -55,6 +56,7 @@ use super::stack::{
 #[allow(dead_code)]
 struct SpawnRequest {
     step: Option<Box<BoundedStep>>,
+    movable: bool,
     pid: ProcessId,
     fn_ptr: *const u8,
     args_ptr: *const u8,
@@ -74,6 +76,7 @@ enum SpawnMode {
     },
     Grouped(Option<TerminateCallback>),
     Step(u32),
+    MovableStep(u32),
 }
 
 // Only a grouped actor resuming on its owner can hand off to another
@@ -104,6 +107,7 @@ thread_local! {
     // A terminate callback runs outside the actor coroutine. Carry only its
     // placement so actor APIs keep their existing callback context.
     static TERMINATING_GROUP_WORKER: Cell<Option<usize>> = const { Cell::new(None) };
+    static CURRENT_WORKER_INDEX: Cell<usize> = const { Cell::new(usize::MAX) };
     static CURRENT_WORKER: Cell<*const WorkerSleep> = const { Cell::new(std::ptr::null()) };
 }
 
@@ -113,7 +117,7 @@ struct CaptureHandoff<'a>(&'a WorkerSleep);
 impl Drop for CaptureHandoff<'_> {
     fn drop(&mut self) {
         if let HandoffSlot::Woken(pid) = GROUP_HANDOFF.replace(HandoffSlot::Disabled) {
-            self.0.woken.lock().push(pid);
+            self.0.woken.lock().ready.push(ReadyWake::Actor(pid));
         }
     }
 }
@@ -216,12 +220,14 @@ thread_local! {
 /// Shared process table for PID lookups across all worker threads.
 pub struct ProcessTable {
     shards: [CachePadded<ProcessShard>; PID_SHARDS],
+    steps: StepWakes,
 }
 
 impl ProcessTable {
     fn new() -> Self {
         Self {
             shards: std::array::from_fn(|_| CachePadded::new(ProcessShard::default())),
+            steps: StepWakes::default(),
         }
     }
 
@@ -327,8 +333,122 @@ struct WorkerSleep {
     /// Advances whenever this worker takes an ordinary shared spawn.
     shared_claims: AtomicUsize,
     /// Processes on this worker that need attention after waiting.
-    woken: Mutex<Vec<ProcessId>>,
+    woken: Mutex<WorkerWakes>,
     grouped: GroupedSpawns,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReadyWake {
+    Actor(ProcessId),
+    Step(u64),
+}
+
+#[derive(Default)]
+struct WorkerWakes {
+    ready: Vec<ReadyWake>,
+    /// A step's position is in the ready batch, but its turn stays here
+    /// until either the owner or a rescuer takes it.
+    steps: VecDeque<(u64, StepTarget)>,
+    next_step: u64,
+}
+
+enum StepTarget {
+    Process(Arc<Mutex<Process>>),
+    Pid(ProcessId),
+}
+
+impl StepTarget {
+    fn process(self, table: &ProcessTable) -> Arc<Mutex<Process>> {
+        match self {
+            Self::Process(process) => process,
+            Self::Pid(pid) => table.get(pid).expect(IN_TABLE),
+        }
+    }
+}
+
+impl WorkerWakes {
+    fn keep_step(&mut self, target: StepTarget) -> ReadyWake {
+        let id = self.next_step;
+        self.next_step = id.wrapping_add(1);
+        self.steps.push_back((id, target));
+        ReadyWake::Step(id)
+    }
+
+    fn offer_step(&mut self, target: StepTarget) {
+        let wake = self.keep_step(target);
+        self.ready.push(wake);
+    }
+
+    fn take_step(&mut self, expected: u64) -> Option<StepTarget> {
+        let front = self.steps.front()?.0;
+        let index = if front == expected {
+            0
+        } else {
+            self.steps.iter().position(|(id, _)| *id == expected)?
+        };
+        self.steps.remove(index).map(|(_, target)| target)
+    }
+}
+
+#[derive(Default)]
+struct StepWakes {
+    enabled: AtomicBool,
+    high: Injector<ProcessId>,
+    normal: Injector<ProcessId>,
+}
+
+impl StepWakes {
+    fn publish(&self, sleepers: &[CachePadded<WorkerSleep>], pid: ProcessId, priority: Priority) {
+        self.queue(priority).push(pid);
+        let _ = sleepers.iter().any(|worker| worker.wake());
+    }
+
+    fn queue(&self, priority: Priority) -> &Injector<ProcessId> {
+        match priority {
+            Priority::High => &self.high,
+            Priority::Normal | Priority::Low => &self.normal,
+        }
+    }
+
+    /// Called under the process lock after a wake or forced exit. An in-flight
+    /// turn must observe the state change and hand back its own frame.
+    fn notify(
+        &self,
+        sleepers: &[CachePadded<WorkerSleep>],
+        process: &mut Process,
+        sending_to: Option<&Arc<Mutex<Process>>>,
+    ) {
+        if let Some(step) = &mut process.movable_step {
+            if !matches!(process.state, ProcessState::Ready | ProcessState::Exited(_))
+                || !step.schedule()
+            {
+                return;
+            }
+            let sender = sending_to
+                .filter(|_| {
+                    process.priority == Priority::Normal
+                        && matches!(process.state, ProcessState::Ready)
+                })
+                .and_then(|_| sleepers.get(CURRENT_WORKER_INDEX.get()))
+                .filter(|worker| std::ptr::eq(CURRENT_WORKER.get(), &***worker));
+            // Wakes without a sending worker take the last owner's FIFO
+            // position, including timer, host and exit notifications.
+            if let Some(worker) = sender.or_else(|| process.worker.and_then(|id| sleepers.get(id)))
+            {
+                let target = sending_to.map_or(StepTarget::Pid(process.pid), |handle| {
+                    StepTarget::Process(Arc::clone(handle))
+                });
+                worker.woken.lock().offer_step(target);
+                if !std::ptr::eq(CURRENT_WORKER.get(), &**worker) {
+                    worker.wake();
+                }
+                return;
+            }
+            self.publish(sleepers, process.pid, process.priority);
+        } else {
+            notify_worker(sleepers, process.worker, process.pid);
+        }
+    }
 }
 
 fn notify_worker(sleepers: &[CachePadded<WorkerSleep>], worker: Option<usize>, pid: ProcessId) {
@@ -348,7 +468,7 @@ impl WorkerSleep {
     }
 
     fn notify(&self, pid: ProcessId) {
-        self.woken.lock().push(pid);
+        self.woken.lock().ready.push(ReadyWake::Actor(pid));
         if !std::ptr::eq(CURRENT_WORKER.get(), self) {
             self.wake();
         }
@@ -557,6 +677,25 @@ impl Scheduler {
         )
     }
 
+    pub(super) fn spawn_movable_step(
+        &self,
+        entry: *const u8,
+        bound: u32,
+        args: *const u8,
+        size: u64,
+        shape: *const u32,
+        priority: u8,
+    ) -> ProcessId {
+        self.spawn_process(
+            entry,
+            args,
+            size,
+            Priority::from_u8(priority),
+            shape,
+            SpawnMode::MovableStep(bound),
+        )
+    }
+
     pub(super) fn spawn_grouped(
         &self,
         fn_ptr: *const u8,
@@ -665,7 +804,7 @@ impl Scheduler {
         };
         // Take the relocated argument words when adoption produced them. Foreign
         // argument storage is valid during spawn, so copy it before enqueue.
-        let step = if let SpawnMode::Step(bound) = mode {
+        let mut step = if let SpawnMode::Step(bound) | SpawnMode::MovableStep(bound) = mode {
             let frame = process.spawn_args.take().unwrap_or_else(|| {
                 let mut frame = vec![0u64; args_size as usize / 8].into_boxed_slice();
                 if !frame.is_empty() {
@@ -688,6 +827,14 @@ impl Scheduler {
         } else {
             None
         };
+        let movable = matches!(mode, SpawnMode::MovableStep(_));
+        if movable {
+            process.movable_step = Some(MovableStep::Scheduled(step.take().unwrap()));
+            self.process_table
+                .steps
+                .enabled
+                .store(true, Ordering::Release);
+        }
         let process = Arc::new(Mutex::new(process));
         self.process_table.insert(pid, process);
 
@@ -698,6 +845,7 @@ impl Scheduler {
         // Enqueue spawn request.
         let request = SpawnRequest {
             step,
+            movable,
             pid,
             fn_ptr,
             args_ptr,
@@ -712,11 +860,20 @@ impl Scheduler {
             } else {
                 self.injector.push(request);
             }
-            // Any worker can take a shared request: wake one that has none.
+            // The shared queue can feed multiple idle workers during a burst.
             let active_workers = self.active_threads.load(Ordering::Acquire);
-            let _ = self.sleepers[..active_workers]
-                .iter()
-                .any(|worker| worker.wake());
+            let active = &self.sleepers[..active_workers];
+            let mut pending = if priority == Priority::High || active_workers == 1 {
+                1
+            } else {
+                self.injector.len().min(active.len())
+            };
+            for worker in active {
+                if pending == 0 {
+                    break;
+                }
+                pending -= usize::from(worker.wake());
+            }
         }
 
         pid
@@ -971,26 +1128,48 @@ impl Scheduler {
     ) {
         let waiting = matches!(process.state, ProcessState::Waiting);
         if process.mark_exited(reason) && waiting {
-            let worker = process.worker;
-            drop(process);
-            self.wake_worker(worker, pid);
+            debug_assert_eq!(process.pid, pid);
+            self.process_table
+                .steps
+                .notify(&self.sleepers, &mut process, None);
         }
     }
 
     /// Make `pid` Ready if it is Waiting and have its worker resume it.
     /// `process` is `pid`'s process, locked; the lock is released.
-    pub fn wake_if_waiting(
+    pub fn wake_if_waiting(&self, pid: ProcessId, process: parking_lot::MutexGuard<'_, Process>) {
+        self.wake_waiting(pid, process, None);
+    }
+
+    pub(super) fn wake_after_send(
+        &self,
+        pid: ProcessId,
+        process: parking_lot::MutexGuard<'_, Process>,
+        target: &Arc<Mutex<Process>>,
+    ) {
+        self.wake_waiting(pid, process, Some(target));
+    }
+
+    fn wake_waiting(
         &self,
         pid: ProcessId,
         mut process: parking_lot::MutexGuard<'_, Process>,
+        sending_to: Option<&Arc<Mutex<Process>>>,
     ) {
         if matches!(process.state, ProcessState::Waiting)
             && process.set_live_state(ProcessState::Ready)
         {
+            if process.movable_step.is_some() {
+                self.process_table
+                    .steps
+                    .notify(&self.sleepers, &mut process, sending_to);
+                return;
+            }
             let worker = process.worker;
-            if matches!(process.placement, Placement::Grouped { .. })
+            let grouped = matches!(process.placement, Placement::Grouped { .. });
+            if grouped
                 && worker
-                    .and_then(|i| self.sleepers.get(i))
+                    .and_then(|index| self.sleepers.get(index))
                     .is_some_and(|owner| HandoffSlot::offer(owner, pid))
             {
                 return;
@@ -1002,10 +1181,11 @@ impl Scheduler {
 
     /// `wake_worker` for a caller that has already let go of the process lock.
     pub fn wake_process(&self, pid: ProcessId) {
-        let worker = self
-            .get_process(pid)
-            .and_then(|process| process.lock().worker);
-        self.wake_worker(worker, pid);
+        if let Some(process) = self.get_process(pid) {
+            self.process_table
+                .steps
+                .notify(&self.sleepers, &mut process.lock(), None);
+        }
     }
 }
 
@@ -1024,11 +1204,32 @@ struct WorkerLoopShared {
 
 type StepFn = extern "C-unwind" fn(*mut u64, *const u8) -> u8;
 
-struct BoundedStep {
+pub(super) struct BoundedStep {
     deferred: bool,
     call: StepFn,
     bound: u32,
     frame: Box<[u64]>,
+}
+
+/// The process owns its frame outside an active turn. Only the transition
+/// from Parked to Scheduled publishes a wake, including to a stealable slot.
+pub(super) enum MovableStep {
+    Parked(Box<BoundedStep>),
+    Scheduled(Box<BoundedStep>),
+    InTurn,
+}
+
+impl MovableStep {
+    fn schedule(&mut self) -> bool {
+        if !matches!(self, Self::Parked(_)) {
+            return false;
+        }
+        let Self::Parked(frame) = std::mem::replace(self, Self::InTurn) else {
+            unreachable!();
+        };
+        *self = Self::Scheduled(frame);
+        true
+    }
 }
 
 enum Execution {
@@ -1064,6 +1265,41 @@ impl Execution {
 }
 
 impl BoundedStep {
+    fn refill_if_deferred(&mut self) {
+        if std::mem::take(&mut self.deferred) {
+            CURRENT_YIELDER.with(|slot| slot.reductions.set(slot.reductions.get().max(self.bound)));
+        }
+    }
+
+    fn has_budget(&self) -> bool {
+        CURRENT_YIELDER.with(|slot| slot.reductions.get() >= self.bound)
+    }
+
+    fn payload(
+        &self,
+        process: &mut Process,
+        scratch: &mut std::mem::MaybeUninit<u64>,
+    ) -> Option<*const u8> {
+        if process.heap.should_collect() {
+            let range = self.frame.as_ptr_range();
+            process.heap.collect(range.end.cast(), range.start.cast());
+        }
+        match process.mailbox.receive_scalar(8)? {
+            super::mailbox::ScalarDelivery::Bits(bits) => {
+                scratch.write(bits);
+                Some(scratch.as_ptr().cast())
+            }
+            super::mailbox::ScalarDelivery::Message(msg) => {
+                if let Some(bits) = msg.buffer.plain_scalar(1) {
+                    scratch.write(bits);
+                    Some(scratch.as_ptr().cast())
+                } else {
+                    Some(super::receive_scalar_payload(process, msg, 8, scratch))
+                }
+            }
+        }
+    }
+
     fn run(
         &mut self,
         process: &Arc<Mutex<Process>>,
@@ -1072,13 +1308,11 @@ impl BoundedStep {
     ) -> bool {
         // Another actor can spend the worker's refill before we run again.
         // Guarantee this deferred actor one complete segment on its next turn.
-        if std::mem::take(&mut self.deferred) {
-            CURRENT_YIELDER.with(|slot| slot.reductions.set(slot.reductions.get().max(self.bound)));
-        }
+        self.refill_if_deferred();
         loop {
             // Reserve enough reductions for the entire acyclic handler before
             // dequeue. All live continuation values are in the frame here.
-            if CURRENT_YIELDER.with(|slot| slot.reductions.get() < self.bound) {
+            if !self.has_budget() {
                 self.deferred = true;
                 CURRENT_YIELDER.with(|slot| slot.reductions.set(DEFAULT_REDUCTIONS));
                 return true;
@@ -1091,29 +1325,14 @@ impl BoundedStep {
                 // Like receive_with, a running actor may consume ready messages
                 // until it suspends. resume_process observes a forced exit at
                 // either edge of the turn, including a failed Waiting transition.
-                if p.heap.should_collect() {
-                    let range = self.frame.as_ptr_range();
-                    p.heap.collect(range.end.cast(), range.start.cast());
-                }
-                let Some(msg) = p
-                    .mailbox
-                    .remove_first(|m| m.buffer.type_tag == super::PROGRAM_MESSAGE_TAG)
-                else {
+                let Some(payload) = self.payload(&mut p, &mut scratch) else {
                     if ending {
                         return false;
                     }
                     p.set_live_state(ProcessState::Waiting);
                     return true;
                 };
-                // A handler can load a byte or a word. The inline byte is
-                // already zero-padded, and short materialized payloads also
-                // need a full readable word when their sender used another type.
-                if let Some(bits) = msg.buffer.plain_scalar(1) {
-                    scratch.write(bits);
-                    scratch.as_ptr().cast()
-                } else {
-                    super::receive_scalar_payload(&mut p, msg, 8, &mut scratch)
-                }
+                payload
             };
             if (self.call)(self.frame.as_mut_ptr(), payload) == 0 {
                 return false;
@@ -1135,6 +1354,50 @@ struct SuspendedActor {
     parked: bool,
 }
 
+/// Let the sender handle its own notification first. A peer can take a
+/// step seen on two scans, even if the owner blocked in an older ready actor.
+#[derive(Default)]
+struct StepRescue {
+    next_scan: Option<Instant>,
+    observed: Vec<Option<u64>>,
+    first_peer: usize,
+}
+
+impl StepRescue {
+    fn take(
+        &mut self,
+        now: Instant,
+        me: usize,
+        sleepers: &[CachePadded<WorkerSleep>],
+    ) -> Option<StepTarget> {
+        if self.next_scan.is_some_and(|next| now < next) {
+            return None;
+        }
+        self.next_scan = Some(now + Duration::from_micros(32));
+        self.observed.resize(sleepers.len(), None);
+        let start = self.first_peer % sleepers.len();
+        for i in (start..sleepers.len()).chain(0..start) {
+            if i == me {
+                continue;
+            }
+            let Some(mut wakes) = sleepers[i].woken.try_lock() else {
+                continue;
+            };
+            let pending = wakes.steps.front().map(|(id, _)| *id);
+            let previous = std::mem::replace(&mut self.observed[i], pending);
+            if let Some(id) = pending.filter(|_| pending == previous) {
+                if let Some(process) = wakes.take_step(id) {
+                    wakes.ready.retain(|wake| *wake != ReadyWake::Step(id));
+                    self.observed[i] = None;
+                    self.first_peer = i + 1;
+                    return Some(process);
+                }
+            }
+        }
+        None
+    }
+}
+
 fn worker_loop(worker_index: usize, high_rx: Receiver<SpawnRequest>, shared: WorkerLoopShared) {
     let WorkerLoopShared {
         injector,
@@ -1154,20 +1417,36 @@ fn worker_loop(worker_index: usize, high_rx: Receiver<SpawnRequest>, shared: Wor
     let mut ready_heads = worker_index;
     let mut recorded_residents = 0;
     let mut shared_claim = SharedClaim::default();
-    let mut runnable: Vec<ProcessId> = Vec::new();
+    let mut runnable = Vec::new();
     let mut ready = Vec::new();
     let mut woken = Vec::new();
     let mut suspended: FxHashMap<ProcessId, SuspendedActor> = FxHashMap::default();
     let mut next_sweep = Instant::now();
     let mut prefer_grouped = false;
+    let mut step_rescue = StepRescue::default();
 
     let mut spin_count: u32 = 0;
     let sleep = &*sleepers[worker_index];
     CURRENT_WORKER.set(sleep);
+    CURRENT_WORKER_INDEX.set(worker_index);
     let _ = sleep.thread.set(std::thread::current());
     let mut idle = IdleStretch {
         worker: sleep,
         published: false,
+    };
+    let dispatch_step = |step: Arc<Mutex<Process>>, runnable: &mut Vec<ReadyWake>| {
+        match resume_movable_step(&process_table, &step, &shutdown, worker_index) {
+            StepTurn::Parked => {}
+            StepTurn::Yielded => {
+                // As with a runnable coroutine, carry the continuation to
+                // the next pass ahead of notifications for parked actors.
+                let wake = sleep.woken.lock().keep_step(StepTarget::Process(step));
+                runnable.push(wake);
+            }
+            StepTurn::Finished(pid, reason) => {
+                finalize_managed_process(&process_table, &active_count, &sleepers, pid, reason);
+            }
+        }
     };
 
     loop {
@@ -1175,6 +1454,7 @@ fn worker_loop(worker_index: usize, high_rx: Receiver<SpawnRequest>, shared: Wor
         let mut did_work = false;
         let active_workers = active_threads.load(Ordering::Acquire);
         let accepting_new_work = worker_index < active_workers;
+        let movable = process_table.steps.enabled.load(Ordering::Acquire);
 
         if !accepting_new_work
             && runnable.is_empty()
@@ -1194,26 +1474,39 @@ fn worker_loop(worker_index: usize, high_rx: Receiver<SpawnRequest>, shared: Wor
         // Whoever made a waiting process Ready said so (`wake_worker`).
         {
             let mut notifications = sleep.woken.lock();
-            if !notifications.is_empty() {
-                std::mem::swap(&mut woken, &mut notifications);
+            if !notifications.ready.is_empty() {
+                std::mem::swap(&mut woken, &mut notifications.ready);
             }
         }
-        for pid in woken.drain(..) {
-            if let Some(entry) = suspended.get_mut(&pid) {
-                if std::mem::take(&mut entry.parked) {
-                    runnable.push(pid);
+        let mut runnable_coroutines = if movable {
+            runnable
+                .iter()
+                .filter(|wake| matches!(wake, ReadyWake::Actor(_)))
+                .count()
+        } else {
+            runnable.len()
+        };
+        for wake in woken.drain(..) {
+            if let ReadyWake::Actor(pid) = wake {
+                let Some(entry) = suspended.get_mut(&pid) else {
+                    continue;
+                };
+                if !std::mem::take(&mut entry.parked) {
+                    continue;
                 }
+                runnable_coroutines += 1;
             }
+            runnable.push(wake);
         }
         // The fallback sweep catches state changes without a notification.
         // Every nonparked entry is in runnable at this point.
-        if suspended.len() > runnable.len() && cycle_started_at >= next_sweep {
+        if suspended.len() > runnable_coroutines && cycle_started_at >= next_sweep {
             for (&pid, entry) in &mut suspended {
                 if entry.parked
                     && !matches!(entry.actor.process.lock().state, ProcessState::Waiting)
                 {
                     entry.parked = false;
-                    runnable.push(pid);
+                    runnable.push(ReadyWake::Actor(pid));
                 }
             }
             let cost = cycle_started_at.elapsed();
@@ -1223,7 +1516,18 @@ fn worker_loop(worker_index: usize, high_rx: Receiver<SpawnRequest>, shared: Wor
         if !ready.is_empty() {
             idle.end();
         }
-        for mut pid in ready.drain(..) {
+        for wake in ready.drain(..) {
+            let mut pid = match wake {
+                ReadyWake::Actor(pid) => pid,
+                ReadyWake::Step(id) => {
+                    let step = sleep.woken.lock().take_step(id);
+                    if let Some(step) = step {
+                        did_work = true;
+                        dispatch_step(step.process(&process_table), &mut runnable);
+                    }
+                    continue;
+                }
+            };
             did_work = true;
             let mut entry = suspended.get_mut(&pid).expect("ready actor is suspended");
             // After the last handoff, all wakes go back to the worker FIFO.
@@ -1252,7 +1556,7 @@ fn worker_loop(worker_index: usize, high_rx: Receiver<SpawnRequest>, shared: Wor
                     &shutdown,
                 );
                 match outcome {
-                    Resumed::Runnable => runnable.push(pid),
+                    Resumed::Runnable => runnable.push(ReadyWake::Actor(pid)),
                     Resumed::Waiting => entry.parked = true,
                     Resumed::Finished => {
                         ordinary_residents -= usize::from(entry.ordinary);
@@ -1271,22 +1575,51 @@ fn worker_loop(worker_index: usize, high_rx: Receiver<SpawnRequest>, shared: Wor
             }
         }
 
+        // Service shared continuations and rescue a blocked peer between
+        // ready batches. Shared spawns still get a turn below.
+        if movable && accepting_new_work {
+            if let Some(pid) = try_get_shared_request(&process_table.steps.high) {
+                idle.end();
+                did_work = true;
+                let step = process_table.get(pid).expect(IN_TABLE);
+                dispatch_step(step, &mut runnable);
+            }
+            if let Some(step) = step_rescue.take(cycle_started_at, worker_index, &sleepers) {
+                idle.end();
+                did_work = true;
+                dispatch_step(step.process(&process_table), &mut runnable);
+            }
+            if let Some(pid) = try_get_shared_request(&process_table.steps.normal) {
+                idle.end();
+                did_work = true;
+                let step = process_table.get(pid).expect(IN_TABLE);
+                dispatch_step(step, &mut runnable);
+            }
+        }
+
         // --- Phase 2: Try to get new spawn requests ---
         if suspended.len() != recorded_residents {
             recorded_residents = suspended.len();
             sleep.residents.store(recorded_residents, Ordering::Relaxed);
         }
         let mut defer_shared = false;
-        let request = if accepting_new_work {
+        let active_workers = active_threads.load(Ordering::Acquire);
+        let claim_policy = if movable {
+            MOVABLE_CLAIM
+        } else {
+            COROUTINE_CLAIM
+        };
+        let request = if worker_index < active_workers {
             high_rx.try_recv().ok().or_else(|| {
                 let mut shared = || {
                     defer_shared = active_workers > 1
-                        && recorded_residents >= 3
+                        && recorded_residents > claim_policy.resident_slack
                         && !injector.is_empty()
                         && shared_claim.defer(
                             Instant::now(),
                             recorded_residents,
                             &sleepers[..active_workers],
+                            claim_policy,
                         );
                     if defer_shared {
                         return None;
@@ -1318,57 +1651,69 @@ fn worker_loop(worker_index: usize, high_rx: Receiver<SpawnRequest>, shared: Wor
             idle.end();
             did_work = true;
             let process = process_table.get(req.pid).expect(IN_TABLE);
-            let (exited_reason, ordinary) = {
-                let mut process = process.lock();
-                let ordinary = matches!(process.placement, Placement::Shared);
-                if let Placement::Grouped { worker } = process.placement {
-                    debug_assert_eq!(worker, worker_index);
-                }
-                let exited = match &process.state {
-                    ProcessState::Exited(reason) => Some(reason.clone()),
-                    ProcessState::Ready | ProcessState::Running | ProcessState::Waiting => {
-                        process.set_live_state(ProcessState::Running);
-                        process.worker = Some(worker_index);
-                        None
-                    }
-                };
-                (exited, ordinary)
-            };
-
-            if let Some(reason) = exited_reason {
-                finalize_managed_process(&process_table, &active_count, &sleepers, req.pid, reason);
+            if req.movable {
+                dispatch_step(process, &mut runnable);
             } else {
-                // Create the coroutine only after confirming the queued actor is live.
-                let mut actor = ScheduledActor {
-                    process,
-                    handle: match req.step {
-                        Some(step) => Execution::Step(step),
-                        None => Execution::Stack(CoroutineHandle::new(req.fn_ptr, req.args_ptr)),
-                    },
+                let (exited_reason, ordinary) = {
+                    let mut process = process.lock();
+                    let ordinary = matches!(process.placement, Placement::Shared);
+                    if let Placement::Grouped { worker } = process.placement {
+                        debug_assert_eq!(worker, worker_index);
+                    }
+                    let exited = match &process.state {
+                        ProcessState::Exited(reason) => Some(reason.clone()),
+                        ProcessState::Ready | ProcessState::Running | ProcessState::Waiting => {
+                            process.set_live_state(ProcessState::Running);
+                            process.worker = Some(worker_index);
+                            None
+                        }
+                    };
+                    (exited, ordinary)
                 };
-                let outcome = resume_process(
-                    &process_table,
-                    &active_count,
-                    &sleepers,
-                    req.pid,
-                    &mut actor,
-                    None,
-                    &shutdown,
-                )
-                .0;
-                if !matches!(outcome, Resumed::Finished) {
-                    let parked = matches!(outcome, Resumed::Waiting);
-                    ordinary_residents += usize::from(ordinary);
-                    suspended.insert(
+
+                if let Some(reason) = exited_reason {
+                    finalize_managed_process(
+                        &process_table,
+                        &active_count,
+                        &sleepers,
                         req.pid,
-                        SuspendedActor {
-                            actor,
-                            parked,
-                            ordinary,
-                        },
+                        reason,
                     );
-                    if !parked {
-                        runnable.push(req.pid);
+                } else {
+                    // Create the coroutine only after confirming the queued actor is live.
+                    let mut actor = ScheduledActor {
+                        process,
+                        handle: match req.step {
+                            Some(step) => Execution::Step(step),
+                            None => {
+                                Execution::Stack(CoroutineHandle::new(req.fn_ptr, req.args_ptr))
+                            }
+                        },
+                    };
+                    let outcome = resume_process(
+                        &process_table,
+                        &active_count,
+                        &sleepers,
+                        req.pid,
+                        &mut actor,
+                        None,
+                        &shutdown,
+                    )
+                    .0;
+                    if !matches!(outcome, Resumed::Finished) {
+                        let parked = matches!(outcome, Resumed::Waiting);
+                        ordinary_residents += usize::from(ordinary);
+                        suspended.insert(
+                            req.pid,
+                            SuspendedActor {
+                                actor,
+                                parked,
+                                ordinary,
+                            },
+                        );
+                        if !parked {
+                            runnable.push(ReadyWake::Actor(req.pid));
+                        }
                     }
                 }
             }
@@ -1386,7 +1731,9 @@ fn worker_loop(worker_index: usize, high_rx: Receiver<SpawnRequest>, shared: Wor
             // main actor has exited.
             let all_waiting = runnable.is_empty() && !suspended.is_empty();
 
-            if all_waiting && !process_table.has_shutdown_work(None) {
+            if (all_waiting || (movable && accepting_new_work && !did_work))
+                && !process_table.has_shutdown_work(None)
+            {
                 // No processes can send more messages. Wake all Waiting
                 // actors so they can detect shutdown and exit gracefully.
                 // The mesh_actor_receive function checks is_shutdown()
@@ -1399,7 +1746,18 @@ fn worker_loop(worker_index: usize, high_rx: Receiver<SpawnRequest>, shared: Wor
                         .lock()
                         .set_live_state(ProcessState::Ready);
                     entry.parked = false;
-                    runnable.push(pid);
+                    runnable.push(ReadyWake::Actor(pid));
+                }
+                if movable {
+                    for (_, process) in process_table.read_all().iter() {
+                        let mut process = process.lock();
+                        if matches!(process.movable_step, Some(MovableStep::Parked(_)))
+                            && matches!(process.state, ProcessState::Waiting)
+                        {
+                            process.set_live_state(ProcessState::Ready);
+                            process_table.steps.notify(&sleepers, &mut process, None);
+                        }
+                    }
                 }
                 idle.end();
                 did_work = true;
@@ -1436,6 +1794,7 @@ fn worker_loop(worker_index: usize, high_rx: Receiver<SpawnRequest>, shared: Wor
             .record_scheduler_cycle(did_work, cycle_started_at.elapsed());
     }
     CURRENT_WORKER.set(std::ptr::null());
+    CURRENT_WORKER_INDEX.set(usize::MAX);
 }
 
 /// Have every heap that `words` point into keep those objects alive.
@@ -1621,6 +1980,89 @@ fn resume_process(
     (outcome, next)
 }
 
+enum StepTurn {
+    Parked,
+    Yielded,
+    Finished(ProcessId, ExitReason),
+}
+
+fn resume_movable_step(
+    table: &ProcessTable,
+    process: &Arc<Mutex<Process>>,
+    shutdown: &AtomicBool,
+    worker_index: usize,
+) -> StepTurn {
+    let mut initial = process.lock();
+    let pid = initial.pid;
+    if let ProcessState::Exited(reason) = &initial.state {
+        return StepTurn::Finished(pid, reason.clone());
+    }
+    let MovableStep::Scheduled(mut frame) = initial
+        .movable_step
+        .replace(MovableStep::InTurn)
+        .expect("movable process has a frame")
+    else {
+        unreachable!("a wake has exactly one claim");
+    };
+    initial.worker = Some(worker_index);
+    initial.set_live_state(ProcessState::Running);
+    super::stack::set_current_pid(pid);
+    let result = crate::panic::defer_diagnostics(|| {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+            let mut initial = Some(initial);
+            frame.refill_if_deferred();
+            loop {
+                let mut scratch = std::mem::MaybeUninit::uninit();
+                let ending = shutdown.load(Ordering::Relaxed) && {
+                    // Shutdown's coherent table scan must precede the process lock.
+                    drop(initial.take());
+                    !table.has_shutdown_work(Some(pid))
+                };
+                let mut p = initial.take().unwrap_or_else(|| process.lock());
+                if !frame.has_budget() {
+                    CURRENT_YIELDER.with(|slot| slot.reductions.set(DEFAULT_REDUCTIONS));
+                    if p.set_live_state(ProcessState::Ready) {
+                        frame.deferred = true;
+                        p.reductions = DEFAULT_REDUCTIONS;
+                        p.movable_step = Some(MovableStep::Scheduled(frame));
+                        return Resumed::Runnable;
+                    }
+                    return Resumed::Finished;
+                }
+                let Some(payload) = frame.payload(&mut p, &mut scratch) else {
+                    if !ending && p.set_live_state(ProcessState::Waiting) {
+                        p.reductions = DEFAULT_REDUCTIONS;
+                        p.movable_step = Some(MovableStep::Parked(frame));
+                        return Resumed::Waiting;
+                    }
+                    return Resumed::Finished;
+                };
+                // Effects of an active turn may continue until suspension or
+                // completion, including if a different worker records an exit.
+                drop(p);
+                if (frame.call)(frame.frame.as_mut_ptr(), payload) == 0 {
+                    return Resumed::Finished;
+                }
+            }
+        }))
+    });
+    clear_current_pid();
+    CURRENT_YIELDER.with(|slot| slot.yielder.set(None));
+    let reason = match result {
+        Ok(Resumed::Runnable) => return StepTurn::Yielded,
+        Ok(Resumed::Waiting) => return StepTurn::Parked,
+        Ok(Resumed::Finished) => ExitReason::Normal,
+        Err(e) if e.is::<super::stack::ActorStopped>() => ExitReason::Normal,
+        Err(e) => ExitReason::Error(
+            e.downcast_ref::<String>()
+                .cloned()
+                .or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string()))
+                .unwrap_or_else(|| "actor panicked".into()),
+        ),
+    };
+    StepTurn::Finished(pid, reason)
+}
+
 fn finalize_managed_process(
     process_table: &ProcessTable,
     active_count: &AtomicU64,
@@ -1640,8 +2082,26 @@ fn finalize_managed_process(
     crate::dist::telemetry::runtime_telemetry().set_runnable_actors(remaining);
 }
 
-const SHARED_CLAIM_GRACE: Duration = Duration::from_micros(24);
-const SHARED_CLAIM_RETRY: Duration = Duration::from_millis(1);
+#[derive(Clone, Copy)]
+struct ClaimPolicy {
+    grace: Duration,
+    retry: Duration,
+    resident_slack: usize,
+}
+
+const COROUTINE_CLAIM: ClaimPolicy = ClaimPolicy {
+    grace: Duration::from_micros(24),
+    retry: Duration::from_millis(1),
+    resident_slack: 2,
+};
+
+// A movable handler usually follows its caller, so skew in initial
+// coroutine placement persists after the shared spawn queue drains.
+const MOVABLE_CLAIM: ClaimPolicy = ClaimPolicy {
+    grace: Duration::from_micros(350),
+    retry: Duration::from_micros(32),
+    resident_slack: 0,
+};
 
 #[derive(Default)]
 struct SharedClaim {
@@ -1670,6 +2130,7 @@ impl SharedClaim {
         now: Instant,
         residents: usize,
         active: &[CachePadded<WorkerSleep>],
+        policy: ClaimPolicy,
     ) -> bool {
         if let Some(offer) = &self.offer {
             if let Some(peer) = active.get(offer.peer) {
@@ -1679,7 +2140,7 @@ impl SharedClaim {
                 if peer.shared_claims.load(Ordering::Relaxed) == offer.claims {
                     self.cooldowns[offer.peer] = Some(ClaimOfferStatus {
                         claims: offer.claims,
-                        retry_at: offer.deadline + SHARED_CLAIM_RETRY,
+                        retry_at: offer.deadline + policy.retry,
                     });
                 }
             }
@@ -1694,7 +2155,8 @@ impl SharedClaim {
         let start = self.next_peer % active.len();
         for index in (start..active.len()).chain(0..start) {
             let peer = &active[index];
-            if peer.residents.load(Ordering::Relaxed).saturating_add(2) >= residents {
+            let load = peer.residents.load(Ordering::Relaxed);
+            if load.saturating_add(policy.resident_slack) >= residents {
                 continue;
             }
             let claims = peer.shared_claims.load(Ordering::Relaxed);
@@ -1707,7 +2169,7 @@ impl SharedClaim {
             self.offer = Some(ClaimOffer {
                 peer: index,
                 claims,
-                deadline: now + SHARED_CLAIM_GRACE,
+                deadline: now + policy.grace,
             });
             peer.wake();
             return true;
@@ -1716,7 +2178,7 @@ impl SharedClaim {
     }
 }
 
-fn try_get_shared_request(injector: &Injector<SpawnRequest>) -> Option<SpawnRequest> {
+fn try_get_shared_request<T>(injector: &Injector<T>) -> Option<T> {
     loop {
         match injector.steal() {
             Steal::Success(req) => return Some(req),
@@ -1786,10 +2248,11 @@ fn handle_process_exit(
     });
 
     for linked_pid in woken {
-        let worker = process_table
-            .get(linked_pid)
-            .and_then(|process| process.lock().worker);
-        notify_worker(sleepers, worker, linked_pid);
+        if let Some(process) = process_table.get(linked_pid) {
+            process_table
+                .steps
+                .notify(sleepers, &mut process.lock(), None);
+        }
     }
 
     // Send DIST_EXIT for each remote link. Silently drops if node disconnected
@@ -1803,20 +2266,15 @@ fn handle_process_exit(
     for (monitor_ref, monitoring_pid) in &monitored_by_entries {
         if monitoring_pid.node_id() == 0 {
             // Local monitor: deliver DOWN message directly.
-            let worker = process_table
-                .with_process(*monitoring_pid, |mon_proc_arc| {
-                    let mut mon_proc = mon_proc_arc.lock();
-                    if mon_proc.fire_monitor(*monitor_ref)
-                        && matches!(mon_proc.state, ProcessState::Waiting)
-                    {
-                        mon_proc.set_live_state(ProcessState::Ready);
-                        mon_proc.worker
-                    } else {
-                        None
-                    }
-                })
-                .flatten();
-            notify_worker(sleepers, worker, *monitoring_pid);
+            process_table.with_process(*monitoring_pid, |mon_proc_arc| {
+                let mut mon_proc = mon_proc_arc.lock();
+                if mon_proc.fire_monitor(*monitor_ref)
+                    && matches!(mon_proc.state, ProcessState::Waiting)
+                {
+                    mon_proc.set_live_state(ProcessState::Ready);
+                    process_table.steps.notify(sleepers, &mut mon_proc, None);
+                }
+            });
         } else {
             // Remote monitor: send DIST_MONITOR_EXIT wire message.
             crate::dist::node::send_dist_monitor_exit_by_pid(
@@ -2205,8 +2663,11 @@ mod tests {
         assert!(matches!(process.state, ProcessState::Ready));
         let signal = process.mailbox.pop().unwrap();
         assert_eq!(signal.buffer.type_tag, link::EXIT_SIGNAL_TAG);
-        assert!(scheduler.sleepers[0].woken.lock().is_empty());
-        assert_eq!(*scheduler.sleepers[1].woken.lock(), [recipient_pid]);
+        assert!(scheduler.sleepers[0].woken.lock().ready.is_empty());
+        assert_eq!(
+            scheduler.sleepers[1].woken.lock().ready,
+            [ReadyWake::Actor(recipient_pid)]
+        );
     }
 
     #[test]
@@ -2306,7 +2767,7 @@ mod tests {
                 scheduler.signal_shutdown();
                 // Give C a receive turn while B's owner is still held before its claim.
                 let during_exit = resume_observer(&mut actor);
-                let b_wakes = std::mem::take(&mut *scheduler.sleepers[0].woken.lock());
+                let b_wakes = std::mem::take(&mut scheduler.sleepers[0].woken.lock().ready);
                 release_b.send(()).unwrap();
                 (during_exit, b_wakes)
             });
@@ -2315,8 +2776,11 @@ mod tests {
                 matches!(during_exit, Resumed::Waiting),
                 "C ended its receive before B could send its exit notification",
             );
-            assert_eq!(b_wakes, [b]);
-            assert_eq!(*scheduler.sleepers[1].woken.lock(), [c]);
+            assert_eq!(b_wakes, [ReadyWake::Actor(b)]);
+            assert_eq!(
+                scheduler.sleepers[1].woken.lock().ready,
+                [ReadyWake::Actor(c)]
+            );
             assert!(matches!(resume_observer(&mut actor), Resumed::Finished));
             let received = observer.received.into_inner().unwrap();
             if monitor {
@@ -2639,27 +3103,40 @@ mod tests {
 
     #[test]
     fn shared_claim_timeout_allows_work_until_lighter_peer_progresses() {
-        let workers: [CachePadded<WorkerSleep>; 2] = std::array::from_fn(|_| Default::default());
-        workers[0].residents.store(3, Ordering::Relaxed);
-        let mut claim = SharedClaim::default();
-        let start = Instant::now();
-        let deadline = start + SHARED_CLAIM_GRACE;
+        for (policy, residents) in [(COROUTINE_CLAIM, 3), (MOVABLE_CLAIM, 1)] {
+            let workers: [CachePadded<WorkerSleep>; 2] =
+                std::array::from_fn(|_| Default::default());
+            workers[0].residents.store(residents, Ordering::Relaxed);
+            let mut claim = SharedClaim::default();
+            let start = Instant::now();
+            let deadline = start + policy.grace;
 
-        assert!(claim.defer(start, 3, &workers));
-        assert!(claim.defer(deadline - Duration::from_micros(1), 3, &workers));
-        for i in 0..5 {
-            assert!(!claim.defer(deadline + Duration::from_micros(i), 3, &workers));
+            assert!(claim.defer(start, residents, &workers, policy));
+            assert!(claim.defer(
+                deadline - Duration::from_micros(1),
+                residents,
+                &workers,
+                policy
+            ));
+            for i in 0..5 {
+                assert!(!claim.defer(
+                    deadline + Duration::from_micros(i),
+                    residents,
+                    &workers,
+                    policy
+                ));
+            }
+
+            workers[1].shared_claims.fetch_add(1, Ordering::Relaxed);
+            let now = deadline + Duration::from_micros(5);
+            assert!(claim.defer(now, residents, &workers, policy));
+            assert!(!claim.defer(now, residents, &workers[..1], policy));
+
+            assert!(claim.defer(now, residents, &workers, policy));
+            let retry = now + policy.grace + policy.retry;
+            assert!(!claim.defer(retry, residents, &workers, policy));
+            assert!(claim.defer(retry, residents, &workers, policy));
         }
-
-        workers[1].shared_claims.fetch_add(1, Ordering::Relaxed);
-        let now = deadline + Duration::from_micros(5);
-        assert!(claim.defer(now, 3, &workers));
-        assert!(!claim.defer(now, 3, &workers[..1]));
-
-        assert!(claim.defer(now, 3, &workers));
-        let retry = now + SHARED_CLAIM_GRACE + SHARED_CLAIM_RETRY;
-        assert!(!claim.defer(retry, 3, &workers));
-        assert!(claim.defer(retry, 3, &workers));
     }
 
     #[test]
@@ -2668,19 +3145,19 @@ mod tests {
         workers[0].residents.store(4, Ordering::Relaxed);
         let mut claim = SharedClaim::default();
         let start = Instant::now();
-        assert!(claim.defer(start, 4, &workers));
+        assert!(claim.defer(start, 4, &workers, COROUTINE_CLAIM));
         assert_eq!(claim.offer.as_ref().unwrap().peer, 1);
 
-        let deadline = start + SHARED_CLAIM_GRACE;
-        assert!(!claim.defer(deadline, 4, &workers));
-        assert!(claim.defer(deadline, 4, &workers));
+        let deadline = start + COROUTINE_CLAIM.grace;
+        assert!(!claim.defer(deadline, 4, &workers, COROUTINE_CLAIM));
+        assert!(claim.defer(deadline, 4, &workers, COROUTINE_CLAIM));
         assert_eq!(claim.offer.as_ref().unwrap().peer, 2);
 
-        let next = deadline + SHARED_CLAIM_GRACE;
-        assert!(!claim.defer(next, 4, &workers));
-        assert!(!claim.defer(next, 4, &workers));
+        let next = deadline + COROUTINE_CLAIM.grace;
+        assert!(!claim.defer(next, 4, &workers, COROUTINE_CLAIM));
+        assert!(!claim.defer(next, 4, &workers, COROUTINE_CLAIM));
         workers[1].shared_claims.fetch_add(1, Ordering::Relaxed);
-        assert!(claim.defer(next, 4, &workers));
+        assert!(claim.defer(next, 4, &workers, COROUTINE_CLAIM));
         assert_eq!(claim.offer.as_ref().unwrap().peer, 1);
     }
 
@@ -3560,11 +4037,17 @@ mod tests {
             }));
             assert!(result.is_err());
             let after = wake(&scheduler, 0);
-            assert_eq!(*other.sleepers[0].woken.lock(), [foreign.unwrap()]);
-            assert_eq!(*scheduler.sleepers[1].woken.lock(), [remote.unwrap()]);
             assert_eq!(
-                *owner.woken.lock(),
-                [overflow.unwrap(), captured.unwrap(), after]
+                other.sleepers[0].woken.lock().ready,
+                [ReadyWake::Actor(foreign.unwrap())]
+            );
+            assert_eq!(
+                scheduler.sleepers[1].woken.lock().ready,
+                [ReadyWake::Actor(remote.unwrap())]
+            );
+            assert_eq!(
+                owner.woken.lock().ready,
+                [overflow.unwrap(), captured.unwrap(), after].map(ReadyWake::Actor)
             );
         }
     }

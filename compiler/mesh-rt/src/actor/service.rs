@@ -353,7 +353,7 @@ mod tests {
     #[test]
     fn a_call_to_a_full_mailbox_panics() {
         let (caller, service) = caller_and_service();
-        process(service).lock().mailbox = std::sync::Arc::new(Mailbox::bounded(0, 1024));
+        process(service).lock().mailbox = Mailbox::bounded(0, 1024);
 
         let error = call(caller, service).expect_err("no room for the call");
         assert!(error.contains("the service's mailbox is full"));
@@ -375,7 +375,7 @@ mod tests {
     #[test]
     fn a_reply_reaches_a_full_mailbox_and_skips_a_missing_caller() {
         let (caller, _) = caller_and_service();
-        process(caller).lock().mailbox = std::sync::Arc::new(Mailbox::bounded(0, 1024));
+        process(caller).lock().mailbox = Mailbox::bounded(0, 1024);
         let reply = 5u64.to_le_bytes();
 
         mesh_service_reply(caller.as_u64(), reply.as_ptr(), 8);

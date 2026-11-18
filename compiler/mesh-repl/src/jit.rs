@@ -99,6 +99,10 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             mesh_rt::actor::mesh_actor_spawn_step as *const (),
         ),
         (
+            "mesh_actor_spawn_movable_step",
+            mesh_rt::actor::mesh_actor_spawn_movable_step as *const (),
+        ),
+        (
             "mesh_step_charge",
             mesh_rt::actor::mesh_step_charge as *const (),
         ),

@@ -99,12 +99,13 @@ fn find_meshc() -> PathBuf {
 #[test]
 fn grouped_step_selection_and_fallback_in_generated_binaries() {
     let _guard = ACTOR_E2E_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    for (level, setting, expect_step) in [
-        ("2", None, true),
-        ("2", Some("0"), false),
-        ("0", None, false),
-        ("0", Some("1"), false),
-        ("1", None, false),
+    for (level, setting, movable_setting, expect_step, expect_movable) in [
+        ("2", None, None, true, true),
+        ("2", Some("0"), None, false, true),
+        ("2", None, Some("0"), true, false),
+        ("0", None, None, false, false),
+        ("0", Some("1"), Some("1"), false, false),
+        ("1", None, None, false, false),
     ] {
         let dir = tempfile::tempdir().unwrap();
         let binary = dir.path().join("actors");
@@ -115,6 +116,10 @@ fn grouped_step_selection_and_fallback_in_generated_binaries() {
         .unwrap();
         let mut build = Command::new(find_meshc());
         build.env_remove("MESH_GROUPED_STEP");
+        build.env_remove("MESH_MOVABLE_STEP");
+        if let Some(value) = movable_setting {
+            build.env("MESH_MOVABLE_STEP", value);
+        }
         if let Some(value) = setting {
             build.env("MESH_GROUPED_STEP", value);
         }
@@ -132,7 +137,9 @@ fn grouped_step_selection_and_fallback_in_generated_binaries() {
         );
 
         let ir = std::fs::read_to_string(binary.with_extension("ll")).unwrap();
-        let case = format!("O{level}, MESH_GROUPED_STEP={setting:?}");
+        let case = format!(
+            "O{level}, MESH_GROUPED_STEP={setting:?}, MESH_MOVABLE_STEP={movable_setting:?}"
+        );
         assert_eq!(
             ir.contains("call i64 @mesh_actor_spawn_step(ptr @rotate_words,"),
             expect_step,
@@ -143,8 +150,14 @@ fn grouped_step_selection_and_fallback_in_generated_binaries() {
             !expect_step,
             "{case}"
         );
-        assert!(
+        assert_eq!(
+            ir.contains("call i64 @mesh_actor_spawn_movable_step(ptr @rotate_words,"),
+            expect_movable,
+            "{case}"
+        );
+        assert_eq!(
             ir.contains("call i64 @mesh_actor_spawn_shaped(ptr @rotate_words,"),
+            !expect_movable,
             "{case}"
         );
         assert!(
@@ -170,7 +183,7 @@ fn grouped_step_selection_and_fallback_in_generated_binaries() {
                         Some("rotate_words.step" | "_rotate_words.step")
                     )
                 });
-            assert_eq!(has_handler, expect_step, "{case}");
+            assert_eq!(has_handler, expect_step || expect_movable, "{case}");
         }
         assert_eq!(
             run_actor_binary(&binary, 10).trim(),

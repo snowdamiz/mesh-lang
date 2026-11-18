@@ -338,6 +338,51 @@ pub extern "C" fn mesh_actor_spawn_step(
         .as_u64()
 }
 
+/// Spawn an ordinary actor with a certified movable receive step on a fixed-size
+/// scheduler. Elastic schedulers retain the coroutine so a retired worker can
+/// resume its parked actors. Remote PID arguments also retain the coroutine.
+#[no_mangle]
+pub extern "C" fn mesh_actor_spawn_movable_step(
+    original: *const u8,
+    entry: *const u8,
+    bound: u32,
+    args: *const u8,
+    size: u64,
+    shape: *const u32,
+    pid_slots: u64,
+    priority: u8,
+) -> u64 {
+    let sched = global_scheduler();
+    let (min_workers, max_workers) = sched.worker_bounds();
+    let valid = min_workers == max_workers
+        && bound > 0
+        && bound <= DEFAULT_REDUCTIONS
+        && size <= 64 * 8
+        && size % 8 == 0
+        && (size == 0 || !args.is_null());
+    if valid {
+        let mut slots = pid_slots;
+        while slots != 0 {
+            let index = slots.trailing_zeros() as usize;
+            if (index as u64) * 8 >= size
+                || !ProcessId(unsafe { args.add(index * 8).cast::<u64>().read_unaligned() })
+                    .is_local()
+            {
+                return sched
+                    .spawn_shaped(original, args, size, priority, shape)
+                    .as_u64();
+            }
+            slots &= slots - 1;
+        }
+        return sched
+            .spawn_movable_step(entry, bound, args, size, shape, priority)
+            .as_u64();
+    }
+    sched
+        .spawn_shaped(original, args, size, priority, shape)
+        .as_u64()
+}
+
 /// The step's acyclic CFG bounds these debits before dequeue. No suspension
 /// or collection may occur while generated locals live on the worker stack.
 #[no_mangle]
@@ -676,6 +721,22 @@ fn local_send_with_scheduler(
     } else {
         unsafe { std::slice::from_raw_parts(msg_ptr, msg_size as usize) }
     };
+    if shape.is_null() {
+        if let Some(scalar) = mailbox::ScalarMessage::from_bytes(data) {
+            let pid = ProcessId(target_pid);
+            let Some(target) = sched.send_target(pid) else {
+                return 1;
+            };
+            let mut proc = target.lock();
+            return match proc.mailbox.try_push_scalar(scalar) {
+                Ok(()) => {
+                    sched.wake_after_send(pid, proc, &target);
+                    0
+                }
+                Err(error) => mailbox_send_status(error),
+            };
+        }
+    }
     let mut buffer = MessageBuffer::from_slice(data, PROGRAM_MESSAGE_TAG);
     detach_from_sender(sched, &mut buffer, 0, shape);
     deliver_local(sched, ProcessId(target_pid), Message { buffer })
@@ -700,19 +761,23 @@ fn deliver_local(sched: &Scheduler, pid: ProcessId, mut msg: Message) -> i64 {
     // Look up the target process and push message.
     if let Some(proc_arc) = sched.send_target(pid) {
         msg.buffer.addressed_to(&proc_arc);
-        let proc = proc_arc.lock();
-        if let Err(error) = proc.mailbox.try_push(msg) {
-            return match error {
-                MailboxPushError::Full => 2,
-                MailboxPushError::MessageTooLarge => 3,
-            };
+        let mut proc = proc_arc.lock();
+        if let Err(error) = proc.mailbox.try_push_owned(msg) {
+            return mailbox_send_status(error);
         }
 
         // If the target is Waiting, wake it up.
-        sched.wake_if_waiting(pid, proc);
+        sched.wake_after_send(pid, proc, &proc_arc);
         0
     } else {
         1
+    }
+}
+
+fn mailbox_send_status(error: MailboxPushError) -> i64 {
+    match error {
+        MailboxPushError::Full => 2,
+        MailboxPushError::MessageTooLarge => 3,
     }
 }
 
@@ -842,11 +907,17 @@ pub unsafe extern "C-unwind" fn mesh_actor_receive_scalar(
     width: u64,
     scratch: &mut std::mem::MaybeUninit<u64>,
 ) -> *const u8 {
-    receive_matching_with(
-        timeout_ms,
-        |msg| msg.buffer.type_tag == PROGRAM_MESSAGE_TAG,
-        |proc, msg| receive_scalar_payload(proc, msg, width, scratch),
-    )
+    receive_with(global_scheduler(), timeout_ms, |proc| {
+        match proc.mailbox.receive_scalar(width)? {
+            mailbox::ScalarDelivery::Bits(bits) => {
+                scratch.write(bits);
+                Some(scratch.as_ptr().cast())
+            }
+            mailbox::ScalarDelivery::Message(msg) => {
+                Some(receive_scalar_payload(proc, msg, width, scratch))
+            }
+        }
+    })
 }
 
 fn receive_scalar_payload(
@@ -906,17 +977,9 @@ pub(crate) fn actor_receive_matching<F>(timeout_ms: i64, predicate: F) -> *const
 where
     F: Fn(&Message) -> bool,
 {
-    receive_matching_with(timeout_ms, predicate, copy_msg_to_actor_heap)
-}
-
-fn receive_matching_with(
-    timeout_ms: i64,
-    predicate: impl Fn(&Message) -> bool,
-    mut deliver: impl FnMut(&mut Process, Message) -> *const u8,
-) -> *const u8 {
     receive_with(global_scheduler(), timeout_ms, |proc| {
-        let msg = proc.mailbox.remove_first(&predicate)?;
-        Some(deliver(proc, msg))
+        let msg = proc.mailbox.remove_first_owned(&predicate)?;
+        Some(copy_msg_to_actor_heap(proc, msg))
     })
 }
 
@@ -2243,7 +2306,7 @@ mod tests {
         let sched = Scheduler::new(1);
         let target_pid = create_test_process(&sched);
         let process = sched.get_process(target_pid).unwrap();
-        process.lock().mailbox = Arc::new(Mailbox::bounded(1, 4));
+        process.lock().mailbox = Mailbox::bounded(1, 4);
         let four_bytes = [1, 2, 3, 4];
         let five_bytes = [1, 2, 3, 4, 5];
 

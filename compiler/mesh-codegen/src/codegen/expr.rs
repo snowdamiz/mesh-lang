@@ -2448,9 +2448,10 @@ impl<'ctx> CodeGen<'ctx> {
         };
         let pid_val = self.codegen_runtime_call(spawn_fn, &spawn_args, "pid");
 
-        if self.grouped_step_enabled
-            && placement == SpawnPlacement::Grouped
-            && terminate.is_none()
+        if (match placement {
+            SpawnPlacement::Grouped => self.grouped_step_enabled,
+            SpawnPlacement::Shared => self.movable_step_enabled,
+        }) && terminate.is_none()
             && args
                 .iter()
                 .all(|arg| super::grouped_step::frame_word(arg.ty()))
@@ -2462,6 +2463,7 @@ impl<'ctx> CodeGen<'ctx> {
                 size: args_size,
                 shape: shape.unwrap_or_else(|| ptr_ty.const_null()),
                 pid: pid_val.into_int_value(),
+                shared_priority: (placement == SpawnPlacement::Shared).then_some(priority),
             });
         }
 

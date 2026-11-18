@@ -24,9 +24,55 @@ pub enum MailboxPushError {
 }
 
 struct MailboxState {
+    scalar_head: Option<ScalarMessage>,
     queue: VecDeque<Message>,
     bytes: usize,
     depth_sampler: DepthSampler,
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum ScalarMessage {
+    Byte(u8),
+    Word(u64),
+}
+
+impl ScalarMessage {
+    pub(super) fn from_bytes(data: &[u8]) -> Option<Self> {
+        match data {
+            [byte] => Some(Self::Byte(*byte)),
+            [_, _, _, _, _, _, _, _] => {
+                Some(Self::Word(u64::from_ne_bytes(data.try_into().unwrap())))
+            }
+            _ => None,
+        }
+    }
+
+    fn len(self) -> usize {
+        match self {
+            Self::Byte(_) => 1,
+            Self::Word(_) => 8,
+        }
+    }
+
+    fn bits(self) -> u64 {
+        match self {
+            Self::Byte(byte) => u64::from_ne_bytes([byte, 0, 0, 0, 0, 0, 0, 0]),
+            Self::Word(word) => word,
+        }
+    }
+
+    fn into_message(self) -> Message {
+        use super::{MessageBuffer, PROGRAM_MESSAGE_TAG};
+        let bytes = self.bits().to_ne_bytes();
+        Message {
+            buffer: MessageBuffer::from_slice(&bytes[..self.len()], PROGRAM_MESSAGE_TAG),
+        }
+    }
+}
+
+pub(super) enum ScalarDelivery {
+    Bits(u64),
+    Message(Message),
 }
 
 struct DepthSampler {
@@ -92,6 +138,7 @@ impl Mailbox {
     fn with_shard(max_items: usize, max_bytes: usize, quota_shard: usize, local_pid: u64) -> Self {
         Mailbox {
             state: Mutex::new(MailboxState {
+                scalar_head: None,
                 queue: VecDeque::new(),
                 bytes: 0,
                 depth_sampler: DepthSampler::new(local_pid),
@@ -118,35 +165,59 @@ impl Mailbox {
     }
 
     fn try_push_inner(&self, msg: Message, control: bool) -> Result<(), MailboxPushError> {
-        let message_bytes = msg.buffer.data().len();
         let mut state = self.state.lock();
-        if message_bytes > self.max_bytes {
-            return Err(MailboxPushError::MessageTooLarge);
-        }
-        let max_items = self.max_items.saturating_add(if control { 1 } else { 0 });
-        let max_bytes = self
-            .max_bytes
-            .saturating_add(if control { message_bytes } else { 0 });
-        if state.queue.len() >= max_items || state.bytes.saturating_add(message_bytes) > max_bytes {
-            return Err(MailboxPushError::Full);
-        }
-        let telemetry = runtime_telemetry();
-        let Some(reservation) =
-            telemetry
-                .mailbox_usage
-                .reserve(self.quota_shard, message_bytes, control)
-        else {
-            return Err(MailboxPushError::Full);
-        };
-        state.bytes += message_bytes;
-        state.queue.push_back(msg);
-        let depth = state.depth_sampler.sample().then_some(state.queue.len());
-        drop(reservation);
+        let depth = self
+            .limits()
+            .push(&mut state, msg.buffer.data().len(), control, |state| {
+                state.queue.push_back(msg);
+            })?;
         drop(state);
-        if let Some(depth) = depth {
-            telemetry.record_mailbox_depth_sample(depth);
-        }
+        Self::record_depth(depth);
         Ok(())
+    }
+
+    pub(super) fn try_push_owned(&mut self, message: Message) -> Result<(), MailboxPushError> {
+        let size = message.buffer.data().len();
+        self.push_owned(size, |state| state.queue.push_back(message))
+    }
+
+    pub(super) fn try_push_scalar(
+        &mut self,
+        message: ScalarMessage,
+    ) -> Result<(), MailboxPushError> {
+        self.push_owned(message.len(), |state| {
+            if state.is_empty() {
+                state.scalar_head = Some(message);
+            } else {
+                state.queue.push_back(message.into_message());
+            }
+        })
+    }
+
+    fn push_owned(
+        &mut self,
+        bytes: usize,
+        append: impl FnOnce(&mut MailboxState),
+    ) -> Result<(), MailboxPushError> {
+        let depth = self
+            .limits()
+            .push(self.state.get_mut(), bytes, false, append)?;
+        Self::record_depth(depth);
+        Ok(())
+    }
+
+    fn limits(&self) -> MailboxLimits {
+        MailboxLimits {
+            items: self.max_items,
+            bytes: self.max_bytes,
+            quota_shard: self.quota_shard,
+        }
+    }
+
+    fn record_depth(depth: Option<usize>) {
+        if let Some(depth) = depth {
+            runtime_telemetry().record_mailbox_depth_sample(depth);
+        }
     }
 
     /// Remove and return the front message (FIFO dequeue).
@@ -154,6 +225,9 @@ impl Mailbox {
     /// Returns `None` if the mailbox is empty.
     pub fn pop(&self) -> Option<Message> {
         let mut state = self.state.lock();
+        if let Some(scalar) = state.take_scalar_head(self.quota_shard) {
+            return Some(scalar.into_message());
+        }
         if state.queue.is_empty() {
             return None;
         }
@@ -162,12 +236,12 @@ impl Mailbox {
 
     /// Check if the mailbox is empty.
     pub fn is_empty(&self) -> bool {
-        self.state.lock().queue.is_empty()
+        self.state.lock().is_empty()
     }
 
     /// Return the number of messages in the mailbox.
     pub fn len(&self) -> usize {
-        self.state.lock().queue.len()
+        self.state.lock().len()
     }
 
     pub fn byte_len(&self) -> usize {
@@ -187,23 +261,120 @@ impl Mailbox {
         F: Fn(&Message) -> bool,
     {
         let mut state = self.state.lock();
-        for i in 0..state.queue.len() {
-            if predicate(&state.queue[i]) {
-                return state.dequeue(self.quota_shard, |queue| queue.remove(i));
+        state.remove_first(self.quota_shard, predicate)
+    }
+
+    pub(super) fn remove_first_owned(
+        &mut self,
+        predicate: impl Fn(&Message) -> bool,
+    ) -> Option<Message> {
+        self.state
+            .get_mut()
+            .remove_first(self.quota_shard, predicate)
+    }
+
+    pub(super) fn receive_scalar(&mut self, width: u64) -> Option<ScalarDelivery> {
+        let state = self.state.get_mut();
+        if let Some(scalar) = state.take_scalar_head(self.quota_shard) {
+            return if scalar.len() as u64 == width {
+                Some(ScalarDelivery::Bits(scalar.bits()))
+            } else {
+                Some(ScalarDelivery::Message(scalar.into_message()))
+            };
+        }
+        state
+            .remove_first(self.quota_shard, |msg| {
+                msg.buffer.type_tag == super::PROGRAM_MESSAGE_TAG
+            })
+            .map(ScalarDelivery::Message)
+    }
+}
+
+struct MailboxLimits {
+    items: usize,
+    bytes: usize,
+    quota_shard: usize,
+}
+
+impl MailboxLimits {
+    fn push(
+        self,
+        state: &mut MailboxState,
+        message_bytes: usize,
+        control: bool,
+        append: impl FnOnce(&mut MailboxState),
+    ) -> Result<Option<usize>, MailboxPushError> {
+        if message_bytes > self.bytes {
+            return Err(MailboxPushError::MessageTooLarge);
+        }
+        let max_items = self.items.saturating_add(if control { 1 } else { 0 });
+        let max_bytes = self
+            .bytes
+            .saturating_add(if control { message_bytes } else { 0 });
+        if state.len() >= max_items || state.bytes.saturating_add(message_bytes) > max_bytes {
+            return Err(MailboxPushError::Full);
+        }
+        let Some(reservation) =
+            runtime_telemetry()
+                .mailbox_usage
+                .reserve(self.quota_shard, message_bytes, control)
+        else {
+            return Err(MailboxPushError::Full);
+        };
+        state.bytes += message_bytes;
+        append(state);
+        let depth = state.depth_sampler.sample().then_some(state.len());
+        drop(reservation);
+        Ok(depth)
+    }
+}
+
+impl MailboxState {
+    fn len(&self) -> usize {
+        self.queue.len() + usize::from(self.scalar_head.is_some())
+    }
+
+    fn is_empty(&self) -> bool {
+        self.scalar_head.is_none() && self.queue.is_empty()
+    }
+
+    fn take_scalar_head(&mut self, shard: usize) -> Option<ScalarMessage> {
+        let scalar = self.scalar_head?;
+        let mut quota = runtime_telemetry().mailbox_usage.lock(shard);
+        self.scalar_head = None;
+        self.bytes -= scalar.len();
+        quota.release(1, scalar.len());
+        Some(scalar)
+    }
+
+    fn remove_first(
+        &mut self,
+        shard: usize,
+        predicate: impl Fn(&Message) -> bool,
+    ) -> Option<Message> {
+        if let Some(scalar) = self.scalar_head {
+            let message = scalar.into_message();
+            if predicate(&message) {
+                self.take_scalar_head(shard);
+                return Some(message);
             }
         }
-        None
+        if predicate(self.queue.front()?) {
+            return self.dequeue(shard, VecDeque::pop_front);
+        }
+        let index = self.queue.iter().skip(1).position(predicate)? + 1;
+        self.dequeue(shard, |queue| queue.remove(index))
     }
 }
 
 impl Drop for Mailbox {
     fn drop(&mut self) {
         let state = self.state.get_mut();
-        if !state.queue.is_empty() {
+        if !state.is_empty() {
             runtime_telemetry()
                 .mailbox_usage
                 .lock(self.quota_shard)
-                .release(state.queue.len(), state.bytes);
+                .release(state.len(), state.bytes);
         }
     }
 }
@@ -256,6 +427,33 @@ mod tests {
         Message {
             buffer: MessageBuffer::new(data.to_vec(), tag),
         }
+    }
+
+    #[test]
+    fn a_scalar_head_participates_in_fifo_selection_and_admission() {
+        let mut mailbox = Mailbox::bounded(3, 9);
+        let word = u64::MAX - 1;
+        assert_eq!(mailbox.try_push_scalar(ScalarMessage::Word(word)), Ok(()));
+        assert_eq!(mailbox.try_push(make_msg(&[47], 17)), Ok(()));
+        assert_eq!(
+            mailbox.try_push_scalar(ScalarMessage::Byte(9)),
+            Err(MailboxPushError::Full)
+        );
+
+        let control = mailbox.remove_first(|msg| msg.buffer.type_tag == 17);
+        assert_eq!(control.unwrap().buffer.data(), &[47]);
+        assert_eq!(mailbox.try_push_scalar(ScalarMessage::Byte(9)), Ok(()));
+        assert_eq!(mailbox.len(), 2);
+        assert_eq!(mailbox.byte_len(), 9);
+        assert!(
+            matches!(mailbox.receive_scalar(8), Some(ScalarDelivery::Bits(bits)) if bits == word)
+        );
+        let Some(ScalarDelivery::Message(byte)) = mailbox.receive_scalar(1) else {
+            panic!("the second scalar was queued behind the first");
+        };
+        assert_eq!(byte.buffer.data(), &[9]);
+        assert!(mailbox.is_empty());
+        assert_eq!(mailbox.byte_len(), 0);
     }
 
     #[test]

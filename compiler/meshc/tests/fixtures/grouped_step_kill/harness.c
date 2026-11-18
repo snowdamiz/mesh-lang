@@ -5,6 +5,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef ORDINARY_ACTOR
+#include <pthread.h>
+#endif
 
 typedef uint64_t word;
 extern void mesh_rt_init(void), mesh_rt_init_actor(uint32_t), mesh_rt_run_scheduler(void);
@@ -15,6 +18,9 @@ typedef void (*callback)(const void *, const uint8_t *);
 extern void mesh_actor_set_terminate(word, callback);
 extern word mesh_actor_spawn_grouped(void (*)(const void *), const void *, word,
                                      const uint32_t *, callback);
+#ifdef ORDINARY_ACTOR
+extern word mesh_actor_spawn(void (*)(const void *), const void *, word, uint8_t);
+#endif
 extern word mesh_process_monitor(word, const void *, word, const uint32_t *);
 extern void *mesh_actor_receive_scalar(int64_t, word, word *);
 
@@ -25,6 +31,14 @@ static unsigned pause_at;
 static int fairness;
 static atomic_uint replies, consumed, callback_count, reason, witness_at;
 static atomic_bool released, peer_go, peer_ready, peer_done;
+#ifdef ORDINARY_ACTOR
+static pthread_t first_reply_worker;
+static unsigned worker_count;
+static word host;
+static int kill_ready_victim;
+static word blocked_peer;
+static atomic_bool holding_second_worker, release_second_worker, blocked_after_wake, release_after_wake;
+#endif
 
 static void check(int ok, const char *message) {
     if (!ok) {
@@ -43,8 +57,19 @@ static void send_delta(word to) {
     check(mesh_actor_send(to, &delta, sizeof(delta)) == 0, "send failed");
 }
 
+static word spawn_peer(void (*entry)(const void *)) {
+#ifdef ORDINARY_ACTOR
+    return mesh_actor_spawn(entry, NULL, 0, 1);
+#else
+    return mesh_actor_spawn_grouped(entry, NULL, 0, NULL, NULL);
+#endif
+}
+
 static void witness(const void *unused) {
     (void)unused;
+#ifdef ORDINARY_ACTOR
+    if (pause_at > 1 && !pthread_equal(first_reply_worker, pthread_self())) return;
+#endif
     atomic_store(&witness_at, atomic_load(&replies));
 }
 
@@ -55,9 +80,15 @@ int64_t observed_send(word to, const void *msg, word size) {
     check(status == 0, "fixture reply was rejected");
     unsigned n = atomic_fetch_add(&replies, 1) + 1;
     if (pause_at > 1 && n == 1) {
-        // A grouped child inherits this worker. Its first instruction proves
-        // the victim relinquished the worker before the host starts turn two.
+        // Wait for a witness on this worker. A shared actor's grouped
+        // children rotate across workers, so give every worker a witness.
+#ifdef ORDINARY_ACTOR
+        first_reply_worker = pthread_self();
+        for (unsigned i = 0; i < worker_count; ++i)
+            mesh_actor_spawn_grouped(witness, NULL, 0, NULL, NULL);
+#else
         mesh_actor_spawn_grouped(witness, NULL, 0, NULL, NULL);
+#endif
     }
     if (n == pause_at) wait_flag(&released);
     if (fairness && n < FAIR_TURNS) {
@@ -132,7 +163,7 @@ static void kill_during_reply(int linked, unsigned turn) {
     // Queue the remaining messages while the handler is active.
     for (unsigned i = 0; i < queued; ++i) send_delta(victim);
     if (linked) {
-        word peer = mesh_actor_spawn_grouped(killed_neighbor, NULL, 0, NULL, NULL);
+        word peer = spawn_peer(killed_neighbor);
         wait_flag(&peer_ready);
         word down = PEER_DOWN;
         mesh_process_monitor(peer, &down, sizeof(down), NULL);
@@ -200,7 +231,7 @@ static void concurrent(void) {
     start(count);
     send_delta(victim);
     while (!atomic_load(&replies)) sched_yield();
-    mesh_actor_spawn_grouped(produce, NULL, 0, NULL, NULL);
+    spawn_peer(produce);
     wait_flag(&peer_ready);
     atomic_store(&peer_go, 1);
     send_batch(1000);
@@ -225,18 +256,179 @@ static void concurrent(void) {
     expect_down(0, count);
 }
 
+#ifdef ORDINARY_ACTOR
+static void relay(const void *unused) {
+    (void)unused;
+    check(receive() == 1, "missing relay trigger");
+    send_delta(victim);
+}
+
+static void ready_peer(const void *unused) {
+    (void)unused;
+    check(receive() == 1, "missing peer trigger");
+    atomic_store(&peer_done, 1);
+}
+
+static void reply_recipient(const void *unused) {
+    (void)unused;
+    check(receive() == 1, "missing handler reply");
+    check(atomic_load(&peer_done), "ordinary reply jumped ahead of an already ready peer");
+}
+
+static void ordinary_wake_order(void) {
+    word recipient = spawn_peer(reply_recipient);
+    word peer = spawn_peer(ready_peer);
+    word sender = spawn_peer(relay);
+    victim = Main__start_victim(recipient, 1);
+    spawn_peer(occupy_worker);
+    wait_flag(&peer_ready);
+    // Both FIFO notifications reach the worker before it can take its batch.
+    send_delta(sender);
+    send_delta(peer);
+    atomic_store(&released, 1);
+    mesh_rt_run_scheduler();
+    check(atomic_load(&peer_done) && atomic_load(&replies) == 1, "missing ordered work");
+}
+
+static void older_start(const void *unused) {
+    (void)unused;
+    word reply = 7;
+    check(mesh_actor_send(host, &reply, sizeof(reply)) == 0, "older start send failed");
+}
+
+static void higher_start(const void *unused) {
+    (void)unused;
+    word reply = 99;
+    check(mesh_actor_send(host, &reply, sizeof(reply)) == 0, "high-priority send failed");
+}
+
+static void ordinary_spawn_order(void) {
+    host = mesh_actor_self();
+    spawn_peer(occupy_worker);
+    wait_flag(&peer_ready);
+    spawn_peer(older_start);
+    victim = Main__start_victim(host, 1);
+    mesh_actor_spawn(higher_start, NULL, 0, 0);
+    send_delta(victim);
+    atomic_store(&released, 1);
+    check(receive() == 99, "first turn bypassed high-priority spawn");
+    check(receive() == 7, "first turn bypassed an older ordinary spawn");
+    check(receive() == 1, "missing first-turn reply");
+    mesh_rt_run_scheduler();
+}
+
+static void ready_effect(const void *unused) {
+    (void)unused;
+    check(receive() == 1, "missing peer trigger");
+    if (kill_ready_victim) mesh_actor_exit(victim, KILLED);
+    word reply = 75;
+    check(mesh_actor_send(host, &reply, sizeof(reply)) == 0, "ready peer send failed");
+}
+
+static void ready_effect_order(int kill) {
+    host = mesh_actor_self();
+    kill_ready_victim = kill;
+    word sender = spawn_peer(relay);
+    word peer = spawn_peer(ready_effect);
+    start(1);
+    spawn_peer(occupy_worker);
+    wait_flag(&peer_ready);
+    send_delta(sender);
+    send_delta(peer);
+    atomic_store(&released, 1);
+    check(receive() == 75, "handler effects overtook an already ready peer");
+    if (!kill) check(receive() == 1, "missing ordered handler reply");
+    expect_down(kill ? KILLED : 0, kill ? 0 : 1);
+}
+
+static void host_effect_order(void) {
+    host = mesh_actor_self();
+    kill_ready_victim = 1;
+    start(1);
+    word peer = spawn_peer(ready_effect);
+    spawn_peer(occupy_worker);
+    wait_flag(&peer_ready);
+    send_delta(victim);
+    send_delta(peer);
+    atomic_store(&released, 1);
+    check(receive() == 1, "later host wake overtook the handler");
+    check(receive() == VICTIM_DOWN && atomic_load(&reason) == 0,
+          "host-woken handler missed normal finalization");
+    check(receive() == 75, "missing later host-woken peer");
+    mesh_rt_run_scheduler();
+    check(atomic_load(&callback_count) == 1, "host-woken handler finalized more than once");
+}
+
+static void hold_second_worker(const void *unused) {
+    (void)unused;
+    atomic_store(&holding_second_worker, 1);
+    wait_flag(&release_second_worker);
+}
+
+static void hold_after_wake(const void *unused) {
+    (void)unused;
+    check(receive() == 1, "missing blocker trigger");
+    atomic_store(&blocked_after_wake, 1);
+    wait_flag(&release_after_wake);
+}
+
+static void relay_with_blocker(const void *unused) {
+    (void)unused;
+    check(receive() == 1, "missing relay trigger");
+    send_delta(blocked_peer);
+    send_delta(victim);
+}
+
+static void rescue_from_ready_batch(void) {
+    spawn_peer(hold_second_worker);
+    wait_flag(&holding_second_worker);
+    blocked_peer = spawn_peer(hold_after_wake);
+    word sender = spawn_peer(relay_with_blocker);
+    start(1);
+    spawn_peer(occupy_worker);
+    wait_flag(&peer_ready);
+    send_delta(sender);
+    atomic_store(&released, 1);
+    wait_flag(&blocked_after_wake);
+    check(atomic_load(&replies) == 0 && atomic_load(&callback_count) == 0,
+          "handler overtook the blocker");
+    // The owner claimed the batch and blocked on the notification before
+    // the step. The other worker must still be able to claim the handler.
+    atomic_store(&release_second_worker, 1);
+    check(receive() == 1, "peer failed to rescue the handler");
+    check(receive() == VICTIM_DOWN && atomic_load(&callback_count) == 1,
+          "exit stayed on the blocked worker");
+    atomic_store(&release_after_wake, 1);
+    mesh_rt_run_scheduler();
+    check(atomic_load(&callback_count) == 1 && atomic_load(&replies) == 1,
+          "rescued handler ran again after unblocking the owner");
+}
+#endif
+
 int main(int argc, char **argv) {
     check(argc >= 2, "missing case name");
     int linked = strcmp(argv[1], "linked") == 0;
     int producers = strcmp(argv[1], "concurrent") == 0;
     mesh_rt_init();
-    mesh_rt_init_actor(linked || producers ? 2 : 1);
+    unsigned workers = linked || producers || strcmp(argv[1], "rescue_batch") == 0 ? 2 : 1;
+#ifdef ORDINARY_ACTOR
+    worker_count = workers;
+#endif
+    mesh_rt_init_actor(workers);
     if (linked || strcmp(argv[1], "direct") == 0) {
         check(argc == 3, "missing kill turn");
         kill_during_reply(linked, (unsigned)strtoul(argv[2], NULL, 10));
     } else if (producers) concurrent();
     else if (strcmp(argv[1], "prestart") == 0) prestart();
     else if (strcmp(argv[1], "fair") == 0) fair();
+#ifdef ORDINARY_ACTOR
+    else if (strcmp(argv[1], "wake_order") == 0) ordinary_wake_order();
+    else if (strcmp(argv[1], "spawn_order") == 0) ordinary_spawn_order();
+    else if (strcmp(argv[1], "effect_order") == 0) ready_effect_order(0);
+    else if (strcmp(argv[1], "effect_kill") == 0) ready_effect_order(1);
+    else if (strcmp(argv[1], "host_order") == 0) host_effect_order();
+    else if (strcmp(argv[1], "rescue_batch") == 0) rescue_from_ready_batch();
+#endif
     else check(0, "unknown case");
     return 0;
 }

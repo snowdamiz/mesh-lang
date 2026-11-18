@@ -228,6 +228,23 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         ),
         None,
     );
+    module.add_function(
+        "mesh_actor_spawn_movable_step",
+        i64_type.fn_type(
+            &[
+                ptr_type.into(),
+                ptr_type.into(),
+                i32_type.into(),
+                ptr_type.into(),
+                i64_type.into(),
+                ptr_type.into(),
+                i64_type.into(),
+                i8_type.into(),
+            ],
+            false,
+        ),
+        None,
+    );
     module.add_function("mesh_step_charge", void_type.fn_type(&[], false), None);
 
     // mesh_actor_send(target_pid: i64, msg_ptr: ptr, msg_size: i64) -> i64
