@@ -35,8 +35,8 @@ use inkwell::OptimizationLevel;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::mir::{
-    by_sum_type_name, sum_type_base, MirFunction, MirModule, MirNativeFunction, MirStructDef,
-    MirSumTypeDef, MirType,
+    by_sum_type_name, sum_type_base, MirExpr, MirFunction, MirModule, MirNativeFunction,
+    MirStructDef, MirSumTypeDef, MirType,
 };
 use crate::DeclaredRuntimeRegistration;
 use crate::StartupWorkRegistration;
@@ -824,7 +824,15 @@ impl<'ctx> CodeGen<'ctx> {
         // TCE: If this function has tail calls, wrap body in a loop.
         // Create a loop header block that the TailCall codegen will branch back to.
         if func.has_tail_calls {
-            if self.inline_tail_reductions {
+            // Receive loops already stop at the mailbox. Keeping the cached
+            // pointer live across receives can add spills to the message path.
+            if self.inline_tail_reductions
+                && !func
+                    .body
+                    .descendants()
+                    .iter()
+                    .any(|expr| matches!(expr, MirExpr::ActorReceive { .. }))
+            {
                 self.tce_reduction_state = Some(
                     self.codegen_runtime_call("mesh_reduction_state_v1", &[], "reduction_state")
                         .into_pointer_value(),
