@@ -312,6 +312,7 @@ type RecoveryRequest do
 end
 
 type RecoveryEvent do
+  StartRecovery
   WorkerReady(recovering :: Bool, worker :: Pid<RecoveryRequest>)
   Count(value :: Int)
 end
@@ -351,13 +352,16 @@ supervisor RecoverySupervisor do
 end
 
 actor recovery_trial() do
-  check(Process.register("perf_recovery_coordinator", self()) == 0,
-    "could not register recovery coordinator")
+  receive do
+    StartRecovery -> ()
+    _ -> fail("unexpected event before recovery start")
+  end
   let _ = spawn(RecoverySupervisor)
   let children = for _index in 0..2 do
     receive do
       WorkerReady(recovering, worker) -> (recovering, worker)
       Count(_) -> fail("unexpected reply before worker startup")
+      StartRecovery -> fail("recovery already started")
       after 5000 -> fail("supervisor did not start both children")
     end
   end
@@ -373,12 +377,14 @@ actor recovery_trial() do
   receive do
     Count(value) -> check(value == 3, "failed worker seed mismatch")
     WorkerReady(_, _) -> fail("worker restarted before failure")
+    StartRecovery -> fail("recovery already started")
     after 5000 -> fail("failed worker did not respond before timing")
   end
   check(send(sibling, AddCount(7)) == 0, "could not seed sibling")
   receive do
     Count(value) -> check(value == 7, "sibling seed mismatch")
     WorkerReady(_, _) -> fail("worker restarted before failure")
+    StartRecovery -> fail("recovery already started")
     after 5000 -> fail("sibling did not respond before timing")
   end
   let started = Monotonic.now_nanos()
@@ -387,6 +393,7 @@ actor recovery_trial() do
     WorkerReady(true, worker) -> worker
     WorkerReady(false, _) -> fail("sibling restarted")
     Count(_) -> fail("unexpected reply during restart")
+    StartRecovery -> fail("recovery already started")
     after 5000 -> fail("supervisor did not restart the failed worker")
   end
   check(replacement != failed, "supervisor returned the original worker")
@@ -394,6 +401,7 @@ actor recovery_trial() do
   let empty = receive do
     Count(value) -> value
     WorkerReady(_, _) -> fail("unexpected restart after replacement")
+    StartRecovery -> fail("recovery already started")
     after 5000 -> fail("replacement did not respond")
   end
   let elapsed = Monotonic.now_nanos() - started
@@ -402,6 +410,7 @@ actor recovery_trial() do
   receive do
     Count(value) -> check(value == 7, "sibling state changed across restart")
     WorkerReady(_, _) -> fail("unexpected restart during sibling check")
+    StartRecovery -> fail("recovery already started")
     after 5000 -> fail("sibling did not respond after replacement")
   end
   println(json { ops: 1, elapsed_ns: elapsed, checksum: 1 })
@@ -429,7 +438,13 @@ fn main() do
       run_cpu(iterations, warmup)
     "serve" -> run_server()
     "recovery" ->
-      let _ = spawn(recovery_trial)
+      let coordinator = spawn(recovery_trial)
+      check(Process.register("perf_recovery_coordinator", coordinator) == 0,
+        "could not register recovery coordinator")
+      check(send(coordinator, StartRecovery) == 0, "could not start recovery trial")
+      while Process.whereis("perf_recovery_coordinator") == coordinator do
+        Timer.sleep(1)
+      end
     _ -> fail("PERF_MODE must be actor, cpu, serve, or recovery")
   end
 end
