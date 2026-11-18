@@ -224,9 +224,15 @@ pub fn terminate_single_child(child: &mut ChildState, scheduler: &Scheduler, sup
         }
     }
     // A child that has ended keeps the reason it ended with.
-    if let Some(process) = scheduler.get_process(child_pid) {
-        process.lock().mark_exited(ExitReason::Killed);
-    }
+    let worker = scheduler.get_process(child_pid).and_then(|process| {
+        let mut process = process.lock();
+        let waiting = matches!(process.state, ProcessState::Waiting);
+        if process.mark_exited(ExitReason::Killed) && waiting {
+            process.worker
+        } else {
+            None
+        }
+    });
 
     // Unlink the supervisor from the child.
     let sup_proc = scheduler.get_process(sup_pid);
@@ -234,6 +240,7 @@ pub fn terminate_single_child(child: &mut ChildState, scheduler: &Scheduler, sup
     if let (Some(sp), Some(cp)) = (sup_proc, child_proc) {
         link::unlink(&sp, &cp, sup_pid, child_pid);
     }
+    scheduler.wake_worker(worker, child_pid);
 
     // Mark child as not running.
     child.running = false;

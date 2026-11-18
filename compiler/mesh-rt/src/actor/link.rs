@@ -168,7 +168,8 @@ pub(crate) fn decode_reason(data: &[u8]) -> Option<(ExitReason, usize)> {
 /// - Otherwise an abnormal exit marks the linked process
 ///   `Exited(Linked(exiting_pid, reason))`.
 ///
-/// Returns the set of linked PIDs so the caller can wake Waiting processes.
+/// Returns the linked PIDs whose workers need to deliver a message or finalize
+/// an exit for a process that had been Waiting.
 pub fn propagate_exit<F>(
     exiting_pid: ProcessId,
     reason: &ExitReason,
@@ -195,21 +196,25 @@ where
 
             let is_non_crashing = matches!(reason, ExitReason::Normal | ExitReason::Shutdown);
             let trapped = proc.trapped_links.remove(&exiting_pid) && !is_non_crashing;
+            let waiting = matches!(proc.state, ProcessState::Waiting);
 
             if proc.trap_exit || trapped {
                 // Deliver as a regular message -- the process does not crash.
                 let buffer = MessageBuffer::new(signal_data.clone(), EXIT_SIGNAL_TAG);
                 proc.mailbox.push(Message { buffer });
 
-                // Wake if Waiting.
-                if matches!(proc.state, ProcessState::Waiting)
-                    && proc.set_live_state(ProcessState::Ready)
-                {
-                    woken.push(*linked_pid);
+                if waiting {
+                    proc.set_live_state(ProcessState::Ready);
                 }
             } else if !is_non_crashing {
                 // Crash the linked process with a Linked exit reason.
                 proc.mark_exited(ExitReason::Linked(exiting_pid, Box::new(reason.clone())));
+            } else {
+                continue;
+            }
+
+            if waiting {
+                woken.push(*linked_pid);
             }
         }
     }

@@ -350,6 +350,9 @@ pub struct Process {
     /// Set when the actor defines a `terminate do ... end` block.
     pub terminate_callback: Option<TerminateCallback>,
 
+    /// Host entries have no worker to finalize a pending exit.
+    pub(super) host_managed: bool,
+
     /// Set when the scheduler has claimed responsibility for final callbacks,
     /// notifications, process-table removal, and active-count accounting.
     exit_finalization_started: bool,
@@ -437,6 +440,7 @@ impl Process {
             spawn_args: None,
             heap_borrows: Vec::new(),
             terminate_callback: None,
+            host_managed: false,
             exit_finalization_started: false,
             stack_base: std::ptr::null(),
         }
@@ -455,8 +459,11 @@ impl Process {
     /// A process can still send link or monitor messages after entering Exited.
     /// Finalization removes it from the process table after those sends.
     pub(super) fn has_shutdown_work(&self) -> bool {
-        self.exit_finalization_started
-            || matches!(self.state, ProcessState::Ready | ProcessState::Running)
+        match self.state {
+            ProcessState::Waiting => false,
+            ProcessState::Ready | ProcessState::Running => true,
+            ProcessState::Exited(_) => !self.host_managed || self.exit_finalization_started,
+        }
     }
 
     /// Transition this process to an exited state, preserving the first reason,

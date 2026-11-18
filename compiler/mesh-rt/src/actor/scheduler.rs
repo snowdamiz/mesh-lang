@@ -297,9 +297,15 @@ struct WorkerSleep {
     residents: AtomicUsize,
     /// Advances whenever this worker takes an ordinary shared spawn.
     shared_claims: AtomicUsize,
-    /// Processes of this worker that were Waiting and have been made Ready.
+    /// Processes on this worker that need attention after waiting.
     woken: Mutex<Vec<ProcessId>>,
     grouped: GroupedSpawns,
+}
+
+fn notify_worker(sleepers: &[CachePadded<WorkerSleep>], worker: Option<usize>, pid: ProcessId) {
+    if let Some(worker) = worker.and_then(|index| sleepers.get(index)) {
+        worker.notify(pid);
+    }
 }
 
 impl WorkerSleep {
@@ -844,6 +850,7 @@ impl Scheduler {
     pub fn create_main_process(&self) -> ProcessId {
         let pid = self.fresh_pid();
         let mut process = Process::new(pid, Priority::Normal);
+        process.host_managed = true;
         process.set_live_state(ProcessState::Running);
         let process = Arc::new(Mutex::new(process));
         self.process_table.insert(pid, process);
@@ -912,7 +919,7 @@ impl Scheduler {
     ///
     /// The wake mechanism is cooperative: the worker thread that owns the
     /// coroutine will see the Ready state on its next iteration and resume it.
-    /// Tell the worker that runs `pid` that it has become Ready.
+    /// Tell the worker that runs `pid` that a waiting process needs attention.
     ///
     /// The state change, made by the caller under the process lock, is what
     /// makes the process runnable. A worker does not look at its Waiting
@@ -923,8 +930,21 @@ impl Scheduler {
     /// read while the caller still held the lock; a process no worker has
     /// started yet sits in a queue, which has woken one already.
     pub fn wake_worker(&self, worker: Option<usize>, pid: ProcessId) {
-        if let Some(worker) = worker.and_then(|index| self.sleepers.get(index)) {
-            worker.notify(pid);
+        notify_worker(&self.sleepers, worker, pid);
+    }
+
+    /// Force an exit without leaving a parked actor for the fallback sweep.
+    pub(crate) fn force_exit(
+        &self,
+        pid: ProcessId,
+        mut process: parking_lot::MutexGuard<'_, Process>,
+        reason: ExitReason,
+    ) {
+        let waiting = matches!(process.state, ProcessState::Waiting);
+        if process.mark_exited(reason) && waiting {
+            let worker = process.worker;
+            drop(process);
+            self.wake_worker(worker, pid);
         }
     }
 
@@ -1156,8 +1176,8 @@ fn worker_loop(worker_index: usize, high_rx: Receiver<SpawnRequest>, shared: Wor
                 }
             }
         }
-        // Links, supervisors and shutdown may change process state without
-        // notifying us. Every nonparked entry is in runnable at this point.
+        // The fallback sweep catches state changes without a notification.
+        // Every nonparked entry is in runnable at this point.
         if suspended.len() > runnable.len() && cycle_started_at >= next_sweep {
             for (&pid, entry) in &mut suspended {
                 if entry.parked
@@ -1700,17 +1720,16 @@ fn handle_process_exit(
     let Some((reason, terminate_cb, linked_pids, monitored_by_entries)) = process_table
         .with_process(pid, |proc_arc| {
             let mut proc = proc_arc.lock();
-            let reason = proc
-                .begin_exit_finalization(fallback_reason)
-                .expect("a process is finalized once: by its worker, or by its host");
+            let reason = proc.begin_exit_finalization(fallback_reason)?;
             let cb = proc
                 .terminate_callback
                 .take()
                 .map(|cb| (cb, proc.placement));
             let links = std::mem::take(&mut proc.links);
             let monitored_by = std::mem::take(&mut proc.monitored_by);
-            (reason, cb, links, monitored_by)
+            Some((reason, cb, links, monitored_by))
         })
+        .flatten()
     else {
         return false;
     };
@@ -1748,9 +1767,7 @@ fn handle_process_exit(
         let worker = process_table
             .get(linked_pid)
             .and_then(|process| process.lock().worker);
-        if let Some(worker) = worker.and_then(|index| sleepers.get(index)) {
-            worker.notify(linked_pid);
-        }
+        notify_worker(sleepers, worker, linked_pid);
     }
 
     // Send DIST_EXIT for each remote link. Silently drops if node disconnected
@@ -1764,14 +1781,20 @@ fn handle_process_exit(
     for (monitor_ref, monitoring_pid) in &monitored_by_entries {
         if monitoring_pid.node_id() == 0 {
             // Local monitor: deliver DOWN message directly.
-            let _ = process_table.with_process(*monitoring_pid, |mon_proc_arc| {
-                let mut mon_proc = mon_proc_arc.lock();
-                if mon_proc.fire_monitor(*monitor_ref)
-                    && matches!(mon_proc.state, ProcessState::Waiting)
-                {
-                    mon_proc.set_live_state(ProcessState::Ready);
-                }
-            });
+            let worker = process_table
+                .with_process(*monitoring_pid, |mon_proc_arc| {
+                    let mut mon_proc = mon_proc_arc.lock();
+                    if mon_proc.fire_monitor(*monitor_ref)
+                        && matches!(mon_proc.state, ProcessState::Waiting)
+                    {
+                        mon_proc.set_live_state(ProcessState::Ready);
+                        mon_proc.worker
+                    } else {
+                        None
+                    }
+                })
+                .flatten();
+            notify_worker(sleepers, worker, *monitoring_pid);
         } else {
             // Remote monitor: send DIST_MONITOR_EXIT wire message.
             crate::dist::node::send_dist_monitor_exit_by_pid(
@@ -2117,6 +2140,29 @@ mod tests {
     }
 
     #[test]
+    fn a_repeated_exit_claim_leaves_pending_work_to_the_finalizer() {
+        let pid = ProcessId::next();
+        let table = ProcessTable::new();
+        let mut process = Process::new(pid, Priority::Normal);
+        assert_eq!(
+            process.begin_exit_finalization(ExitReason::Killed),
+            Some(ExitReason::Killed),
+        );
+        table.insert(pid, Arc::new(Mutex::new(process)));
+        let active_count = AtomicU64::new(1);
+
+        finalize_managed_process(&table, &active_count, &[], pid, ExitReason::Normal);
+
+        let process = table.get(pid).unwrap();
+        assert_eq!(
+            process.lock().state,
+            ProcessState::Exited(ExitReason::Killed)
+        );
+        assert!(process.lock().has_shutdown_work());
+        assert_eq!(active_count.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
     fn a_linked_exit_queues_the_waiting_recipients_worker() {
         let scheduler = Scheduler::new(2);
         let exiting_pid = scheduler.create_main_process();
@@ -2139,6 +2185,129 @@ mod tests {
         assert_eq!(signal.buffer.type_tag, link::EXIT_SIGNAL_TAG);
         assert!(scheduler.sleepers[0].woken.lock().is_empty());
         assert_eq!(*scheduler.sleepers[1].woken.lock(), [recipient_pid]);
+    }
+
+    #[test]
+    fn shutdown_receive_waits_for_a_linked_exit_before_its_worker_claims_it() {
+        use crate::actor::MessageBuffer;
+
+        struct Observer<'a> {
+            scheduler: &'a Scheduler,
+            received: Mutex<Option<MessageBuffer>>,
+        }
+
+        extern "C-unwind" fn observe(args: *const u8) {
+            let observer = unsafe { &*args.cast::<Observer<'_>>() };
+            super::super::receive_with(observer.scheduler, -1, |process| {
+                *observer.received.lock() = Some(process.mailbox.pop()?.buffer);
+                Some(std::ptr::dangling())
+            });
+        }
+
+        extern "C" fn noop(_: *const u8) {}
+
+        for monitor in [false, true] {
+            let scheduler = Scheduler::new(2);
+            let spawn = || scheduler.spawn(noop as *const u8, std::ptr::null(), 0, 1);
+            let (a, b, c) = (spawn(), spawn(), spawn());
+            let (proc_a, proc_b, proc_c) = (
+                scheduler.get_process(a).unwrap(),
+                scheduler.get_process(b).unwrap(),
+                scheduler.get_process(c).unwrap(),
+            );
+            {
+                let mut proc_b = proc_b.lock();
+                proc_b.worker = Some(0);
+                proc_b.set_live_state(ProcessState::Waiting);
+            }
+            proc_c.lock().worker = Some(1);
+            link::link(&proc_a, &proc_b, a, b);
+            if monitor {
+                super::super::watch(
+                    &scheduler,
+                    &proc_c,
+                    c,
+                    b,
+                    MessageBuffer::from_slice(b"DOWN", super::super::PROGRAM_MESSAGE_TAG),
+                );
+            } else {
+                proc_c.lock().trap_exit = true;
+                link::link(&proc_b, &proc_c, b, c);
+            }
+
+            let observer = Observer {
+                scheduler: &scheduler,
+                received: Mutex::new(None),
+            };
+            let mut actor = ScheduledActor {
+                process: proc_c,
+                handle: Execution::Stack(CoroutineHandle::new(
+                    observe as *const u8,
+                    std::ptr::from_ref(&observer).cast(),
+                )),
+            };
+            let resume_observer = |actor: &mut ScheduledActor| {
+                resume_process(
+                    scheduler.process_table(),
+                    &scheduler.active_count,
+                    &scheduler.sleepers,
+                    c,
+                    actor,
+                    None,
+                    &scheduler.shutdown,
+                )
+                .0
+            };
+            assert!(matches!(resume_observer(&mut actor), Resumed::Waiting));
+
+            let timeout = Duration::from_secs(10);
+            let (a_removed, wait_for_a) = crossbeam_channel::bounded(1);
+            let (release_b, wait_for_c) = crossbeam_channel::bounded(1);
+            let (during_exit, b_wakes) = std::thread::scope(|scope| {
+                let scheduler = &scheduler;
+                scope.spawn(move || {
+                    let finalize = |pid, reason| {
+                        finalize_managed_process(
+                            scheduler.process_table(),
+                            &scheduler.active_count,
+                            &scheduler.sleepers,
+                            pid,
+                            reason,
+                        );
+                    };
+                    finalize(a, ExitReason::Killed);
+                    a_removed.send(()).unwrap();
+                    wait_for_c.recv_timeout(timeout).unwrap();
+                    finalize(b, ExitReason::Normal);
+                });
+                wait_for_a.recv_timeout(timeout).unwrap();
+                scheduler.signal_shutdown();
+                // Give C a receive turn while B's owner is still held before its claim.
+                let during_exit = resume_observer(&mut actor);
+                let b_wakes = std::mem::take(&mut *scheduler.sleepers[0].woken.lock());
+                release_b.send(()).unwrap();
+                (during_exit, b_wakes)
+            });
+
+            assert!(
+                matches!(during_exit, Resumed::Waiting),
+                "C ended its receive before B could send its exit notification",
+            );
+            assert_eq!(b_wakes, [b]);
+            assert_eq!(*scheduler.sleepers[1].woken.lock(), [c]);
+            assert!(matches!(resume_observer(&mut actor), Resumed::Finished));
+            let received = observer.received.into_inner().unwrap();
+            if monitor {
+                assert_eq!(received.data(), b"DOWN");
+            } else {
+                assert_eq!(received.type_tag, link::EXIT_SIGNAL_TAG);
+                assert_eq!(
+                    link::decode_exit_signal(received.data()),
+                    Some((b, ExitReason::Linked(a, Box::new(ExitReason::Killed)))),
+                );
+            }
+            assert_eq!(scheduler.active_count(), 0);
+        }
     }
 
     #[test]

@@ -2292,7 +2292,11 @@ fn handle_session_message(
                             proc.mailbox.push(Message { buffer });
                             sched.wake_if_waiting(to_pid, proc);
                         } else {
-                            proc.mark_exited(ExitReason::Linked(from_pid, Box::new(reason)));
+                            sched.force_exit(
+                                to_pid,
+                                proc,
+                                ExitReason::Linked(from_pid, Box::new(reason)),
+                            );
                         }
                     }
                 }
@@ -2968,28 +2972,19 @@ fn handle_node_disconnect(node_name: &str, node_id: u16) {
 
         // Deliver :noconnection exit signal: to a process trapping exits,
         // one per link; any other exits on the first.
-        // Track whether we need to wake after processing all links.
-        let mut need_wake = false;
-        for remote_pid in remote_pids {
-            if proc.trap_exit {
+        if proc.trap_exit {
+            for remote_pid in remote_pids {
                 let signal_data = link::encode_exit_signal(*remote_pid, &noconnection);
                 let buffer = MessageBuffer::new(signal_data, link::EXIT_SIGNAL_TAG);
                 proc.mailbox.push(Message { buffer });
-                if matches!(proc.state, ProcessState::Waiting) {
-                    need_wake = proc.set_live_state(ProcessState::Ready);
-                }
-            } else {
-                proc.mark_exited(ExitReason::Linked(
-                    *remote_pid,
-                    Box::new(noconnection.clone()),
-                ));
-                break;
             }
-        }
-
-        if need_wake {
-            drop(proc);
-            sched.wake_process(*local_pid);
+            sched.wake_if_waiting(*local_pid, proc);
+        } else if let Some(&remote_pid) = remote_pids.first() {
+            sched.force_exit(
+                *local_pid,
+                proc,
+                ExitReason::Linked(remote_pid, Box::new(noconnection.clone())),
+            );
         }
     }
 

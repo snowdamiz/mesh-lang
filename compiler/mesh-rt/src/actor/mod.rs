@@ -1557,20 +1557,14 @@ pub extern "C" fn mesh_actor_trap_exit() {
 /// delivered as a message. Otherwise, the target is terminated immediately.
 pub(crate) fn deliver_exit_signal(sched: &Scheduler, pid: ProcessId, reason: ExitReason) {
     if let Some(proc_arc) = sched.get_process(pid) {
-        let mut proc = proc_arc.lock();
+        let proc = proc_arc.lock();
 
         // Skip already-exited processes.
         if matches!(proc.state, ProcessState::Exited(_)) {
             return;
         }
 
-        // Killed is untrappable.
-        if matches!(reason, ExitReason::Killed) {
-            proc.mark_exited(ExitReason::Killed);
-            return;
-        }
-
-        if proc.trap_exit {
+        if proc.trap_exit && !matches!(reason, ExitReason::Killed) {
             // Deliver as a message.
             let signal_data = link::encode_exit_signal(pid, &reason);
             let buffer = heap::MessageBuffer::new(signal_data, link::EXIT_SIGNAL_TAG);
@@ -1579,8 +1573,7 @@ pub(crate) fn deliver_exit_signal(sched: &Scheduler, pid: ProcessId, reason: Exi
             // Wake if Waiting.
             sched.wake_if_waiting(pid, proc);
         } else {
-            // Terminate immediately.
-            proc.mark_exited(reason);
+            sched.force_exit(pid, proc, reason);
         }
     }
 }
