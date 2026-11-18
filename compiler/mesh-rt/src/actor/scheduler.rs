@@ -312,6 +312,13 @@ impl WorkerSleep {
         idle
     }
 
+    fn notify(&self, pid: ProcessId) {
+        self.woken.lock().push(pid);
+        if !std::ptr::eq(CURRENT_WORKER.get(), self) {
+            self.wake();
+        }
+    }
+
     fn enqueue_grouped(&self, request: SpawnRequest) {
         self.grouped.push(request);
         // Retired workers can park outside the ordinary idle stretch.
@@ -845,7 +852,7 @@ impl Scheduler {
     }
 
     pub(crate) fn finalize_host_process(&self, pid: ProcessId) {
-        handle_process_exit(&self.process_table, pid, ExitReason::Normal);
+        handle_process_exit(&self.process_table, &self.sleepers, pid, ExitReason::Normal);
     }
 
     /// Look up a process by PID.
@@ -917,10 +924,7 @@ impl Scheduler {
     /// started yet sits in a queue, which has woken one already.
     pub fn wake_worker(&self, worker: Option<usize>, pid: ProcessId) {
         if let Some(worker) = worker.and_then(|index| self.sleepers.get(index)) {
-            worker.woken.lock().push(pid);
-            if !std::ptr::eq(CURRENT_WORKER.get(), &**worker) {
-                worker.wake();
-            }
+            worker.notify(pid);
         }
     }
 
@@ -1192,6 +1196,7 @@ fn worker_loop(worker_index: usize, high_rx: Receiver<SpawnRequest>, shared: Wor
                 let (outcome, next) = resume_process(
                     &process_table,
                     &active_count,
+                    &sleepers,
                     pid,
                     &mut entry.actor,
                     capture,
@@ -1282,7 +1287,7 @@ fn worker_loop(worker_index: usize, high_rx: Receiver<SpawnRequest>, shared: Wor
             };
 
             if let Some(reason) = exited_reason {
-                finalize_managed_process(&process_table, &active_count, req.pid, reason);
+                finalize_managed_process(&process_table, &active_count, &sleepers, req.pid, reason);
             } else {
                 // Create the coroutine only after confirming the queued actor is live.
                 let mut actor = ScheduledActor {
@@ -1295,6 +1300,7 @@ fn worker_loop(worker_index: usize, high_rx: Receiver<SpawnRequest>, shared: Wor
                 let outcome = resume_process(
                     &process_table,
                     &active_count,
+                    &sleepers,
                     req.pid,
                     &mut actor,
                     None,
@@ -1332,15 +1338,13 @@ fn worker_loop(worker_index: usize, high_rx: Receiver<SpawnRequest>, shared: Wor
             let all_waiting = runnable.is_empty() && !suspended.is_empty();
 
             if all_waiting {
-                // Check globally: are there any non-waiting active processes?
-                // Count Ready/Running processes in the process table.
-                let has_ready = process_table.read_all().iter().any(|(_, p)| {
-                    let state = p.lock().state.clone();
-                    matches!(state, ProcessState::Ready | ProcessState::Running)
-                });
+                let has_pending_work = process_table
+                    .read_all()
+                    .iter()
+                    .any(|(_, p)| p.lock().has_shutdown_work());
 
-                if !has_ready {
-                    // No Ready/Running processes remain. Wake all Waiting
+                if !has_pending_work {
+                    // No processes can send more messages. Wake all Waiting
                     // actors so they can detect shutdown and exit gracefully.
                     // The mesh_actor_receive function checks is_shutdown()
                     // and returns null when no other actors are active,
@@ -1498,6 +1502,7 @@ enum Resumed {
 fn resume_process(
     process_table: &ProcessTable,
     active_count: &AtomicU64,
+    sleepers: &[CachePadded<WorkerSleep>],
     pid: ProcessId,
     actor: &mut ScheduledActor,
     handoff_worker: Option<&WorkerSleep>,
@@ -1512,7 +1517,7 @@ fn resume_process(
         (reason, process.placement)
     };
     if let Some(reason) = exited_reason {
-        finalize_managed_process(process_table, active_count, pid, reason);
+        finalize_managed_process(process_table, active_count, sleepers, pid, reason);
         return (Resumed::Finished, None);
     }
 
@@ -1556,7 +1561,7 @@ fn resume_process(
                 }
             };
             if let Some(reason) = exited_reason {
-                finalize_managed_process(process_table, active_count, pid, reason);
+                finalize_managed_process(process_table, active_count, sleepers, pid, reason);
                 return (Resumed::Finished, next);
             }
             outcome
@@ -1567,7 +1572,7 @@ fn resume_process(
                 Err(message) => ExitReason::Error(message),
                 Ok(true) => unreachable!(),
             };
-            finalize_managed_process(process_table, active_count, pid, reason);
+            finalize_managed_process(process_table, active_count, sleepers, pid, reason);
             Resumed::Finished
         }
     };
@@ -1577,10 +1582,11 @@ fn resume_process(
 fn finalize_managed_process(
     process_table: &ProcessTable,
     active_count: &AtomicU64,
+    sleepers: &[CachePadded<WorkerSleep>],
     pid: ProcessId,
     reason: ExitReason,
 ) {
-    if !handle_process_exit(process_table, pid, reason) {
+    if !handle_process_exit(process_table, sleepers, pid, reason) {
         return;
     }
     let previous = active_count
@@ -1686,6 +1692,7 @@ fn try_get_shared_request(injector: &Injector<SpawnRequest>) -> Option<SpawnRequ
 /// 3. Destroy remaining secrets, notify links/monitors, and remove the process
 fn handle_process_exit(
     process_table: &ProcessTable,
+    sleepers: &[CachePadded<WorkerSleep>],
     pid: ProcessId,
     fallback_reason: ExitReason,
 ) -> bool {
@@ -1737,8 +1744,14 @@ fn handle_process_exit(
         process_table.get(linked_pid)
     });
 
-    // Wake processes that were in Waiting state.
-    let _ = woken;
+    for linked_pid in woken {
+        let worker = process_table
+            .get(linked_pid)
+            .and_then(|process| process.lock().worker);
+        if let Some(worker) = worker.and_then(|index| sleepers.get(index)) {
+            worker.notify(linked_pid);
+        }
+    }
 
     // Send DIST_EXIT for each remote link. Silently drops if node disconnected
     // (handle_node_disconnect already synthesized :noconnection locally).
@@ -1900,6 +1913,7 @@ mod tests {
             resume_process(
                 &process_table,
                 &active_count,
+                &[],
                 pid,
                 &mut actor,
                 None,
@@ -1919,6 +1933,7 @@ mod tests {
             resume_process(
                 &process_table,
                 &active_count,
+                &[],
                 pid,
                 &mut actor,
                 None,
@@ -1978,6 +1993,7 @@ mod tests {
             resume_process(
                 &process_table,
                 &active_count,
+                &[],
                 pid,
                 &mut actor,
                 None,
@@ -2093,11 +2109,36 @@ mod tests {
         process_table.insert(pid, Arc::new(Mutex::new(process)));
         let active_count = AtomicU64::new(1);
 
-        finalize_managed_process(&process_table, &active_count, pid, ExitReason::Normal);
-        finalize_managed_process(&process_table, &active_count, pid, ExitReason::Normal);
+        finalize_managed_process(&process_table, &active_count, &[], pid, ExitReason::Normal);
+        finalize_managed_process(&process_table, &active_count, &[], pid, ExitReason::Normal);
 
         assert_eq!(IDEMPOTENT_TERMINATE_COUNT.load(Ordering::SeqCst), 1);
         assert_eq!(active_count.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn a_linked_exit_queues_the_waiting_recipients_worker() {
+        let scheduler = Scheduler::new(2);
+        let exiting_pid = scheduler.create_main_process();
+        let recipient_pid = scheduler.create_main_process();
+        let exiting = scheduler.get_process(exiting_pid).unwrap();
+        let recipient = scheduler.get_process(recipient_pid).unwrap();
+        link::link(&exiting, &recipient, exiting_pid, recipient_pid);
+        {
+            let mut process = recipient.lock();
+            process.trap_exit = true;
+            process.worker = Some(1);
+            process.set_live_state(ProcessState::Waiting);
+        }
+
+        scheduler.finalize_host_process(exiting_pid);
+
+        let process = recipient.lock();
+        assert!(matches!(process.state, ProcessState::Ready));
+        let signal = process.mailbox.pop().unwrap();
+        assert_eq!(signal.buffer.type_tag, link::EXIT_SIGNAL_TAG);
+        assert!(scheduler.sleepers[0].woken.lock().is_empty());
+        assert_eq!(*scheduler.sleepers[1].woken.lock(), [recipient_pid]);
     }
 
     #[test]
@@ -3575,6 +3616,7 @@ mod stackless_probe {
                             if linked {
                                 assert!(handle_process_exit(
                                     scheduler.process_table(),
+                                    &scheduler.sleepers,
                                     sender,
                                     ExitReason::Killed
                                 ));
@@ -3588,6 +3630,7 @@ mod stackless_probe {
                         let outcome = resume_process(
                             scheduler.process_table(),
                             &count,
+                            &scheduler.sleepers,
                             pid,
                             &mut actor,
                             None,
@@ -3647,6 +3690,7 @@ mod stackless_probe {
             resume_process(
                 &table,
                 &count,
+                &[],
                 pid,
                 &mut actor,
                 None,
@@ -3669,6 +3713,7 @@ mod stackless_probe {
             resume_process(
                 &table,
                 &count,
+                &[],
                 pid,
                 &mut actor,
                 None,
@@ -3700,6 +3745,7 @@ mod stackless_probe {
             resume_process(
                 &table,
                 &count,
+                &[],
                 pid,
                 &mut actor,
                 None,
@@ -3726,6 +3772,7 @@ mod stackless_probe {
             resume_process(
                 &table,
                 &count,
+                &[],
                 pid,
                 &mut actor,
                 None,

@@ -986,16 +986,12 @@ fn receive_with(
     }
 }
 
-/// Whether a process other than `me` is neither waiting nor gone: one that
-/// could still send `me` a message.
+/// Whether another process may still send `me` a message during shutdown.
 fn others_running(table: &scheduler::ProcessTable, me: ProcessId) -> bool {
-    table.read_all().iter().any(|(pid, process)| {
-        *pid != me
-            && !matches!(
-                process.lock().state,
-                ProcessState::Waiting | ProcessState::Exited(_)
-            )
-    })
+    table
+        .read_all()
+        .iter()
+        .any(|(pid, process)| *pid != me && process.lock().has_shutdown_work())
 }
 
 // ── Timer functions (Phase 44 Plan 02) ──────────────────────────────
@@ -1999,6 +1995,26 @@ mod tests {
         crate::secret::destroy_owned(main_pid);
         assert!(state_is_exited);
         assert_eq!(remaining, 0);
+    }
+
+    #[test]
+    fn shutdown_counts_an_exit_that_can_still_send_a_signal() {
+        let sched = Scheduler::new(1);
+        let main = sched.create_main_process();
+        let receiver = create_test_process(&sched);
+        let sender = create_test_process(&sched);
+        exit_main_process(&sched, main);
+        sched
+            .get_process(sender)
+            .unwrap()
+            .lock()
+            .begin_exit_finalization(ExitReason::Error("child failed".into()))
+            .unwrap();
+
+        assert!(others_running(sched.process_table(), receiver));
+
+        sched.process_table().remove(sender);
+        assert!(!others_running(sched.process_table(), receiver));
     }
 
     #[inline(never)]

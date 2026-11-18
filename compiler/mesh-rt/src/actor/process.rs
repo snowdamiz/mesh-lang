@@ -452,6 +452,13 @@ impl Process {
         true
     }
 
+    /// A process can still send link or monitor messages after entering Exited.
+    /// Finalization removes it from the process table after those sends.
+    pub(super) fn has_shutdown_work(&self) -> bool {
+        self.exit_finalization_started
+            || matches!(self.state, ProcessState::Ready | ProcessState::Running)
+    }
+
     /// Transition this process to an exited state, preserving the first reason,
     /// and immediately destroy actor-owned secrets for forced exits.
     pub(crate) fn mark_exited(&mut self, reason: ExitReason) -> bool {
