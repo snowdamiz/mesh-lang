@@ -84,7 +84,11 @@ pub(crate) fn process(pid: ProcessId) -> Option<std::sync::Arc<parking_lot::Mute
 
 /// The process running on this thread.
 pub(crate) fn current_process() -> Option<std::sync::Arc<parking_lot::Mutex<Process>>> {
-    process(stack::get_current_pid()?)
+    current_process_handle(stack::get_current_pid()?)
+}
+
+fn current_process_handle(pid: ProcessId) -> Option<std::sync::Arc<parking_lot::Mutex<Process>>> {
+    stack::worker_process(pid).or_else(|| process(pid))
 }
 
 /// The process running on this thread and its PID, for runtime functions
@@ -93,9 +97,7 @@ pub(crate) fn current_process() -> Option<std::sync::Arc<parking_lot::Mutex<Proc
 pub(crate) fn running_process() -> (ProcessId, std::sync::Arc<parking_lot::Mutex<Process>>) {
     let pid = stack::get_current_pid()
         .expect("compiled code runs in a process: an actor, `main` or a library call");
-    let process = global_scheduler()
-        .get_process(pid)
-        .expect("a running process is in the process table");
+    let process = current_process_handle(pid).expect("a running process is in the process table");
     (pid, process)
 }
 
@@ -300,6 +302,49 @@ pub extern "C" fn mesh_actor_spawn_shaped(
         .as_u64()
 }
 
+/// Spawn a cooperative, node-local actor at normal priority. A grouped
+/// caller passes on its worker affinity. A null shape describes plain slots.
+#[no_mangle]
+pub extern "C" fn mesh_actor_spawn_grouped(
+    fn_ptr: *const u8,
+    args: *const u8,
+    args_size: u64,
+    shape: *const u32,
+    terminate: Option<process::TerminateCallback>,
+) -> u64 {
+    global_scheduler()
+        .spawn_grouped(fn_ptr, args, args_size, shape, terminate)
+        .as_u64()
+}
+
+/// Spawn a compiler-certified grouped actor. The compiler supplies a word frame and an
+/// entry returning 1 after a tail transfer or 0 on normal completion.
+#[no_mangle]
+pub extern "C" fn mesh_actor_spawn_step(
+    original: *const u8,
+    entry: *const u8,
+    bound: u32,
+    args: *const u8,
+    size: u64,
+    shape: *const u32,
+) -> u64 {
+    if bound == 0 || bound > DEFAULT_REDUCTIONS || size % 8 != 0 {
+        return global_scheduler()
+            .spawn_grouped(original, args, size, shape, None)
+            .as_u64();
+    }
+    global_scheduler()
+        .spawn_step(entry, bound, args, size, shape)
+        .as_u64()
+}
+
+/// The step's acyclic CFG bounds these debits before dequeue. No suspension
+/// or collection may occur while generated locals live on the worker stack.
+#[no_mangle]
+pub extern "C" fn mesh_step_charge() {
+    stack::CURRENT_YIELDER.with(|slot| slot.reductions.set(slot.reductions.get() - 1));
+}
+
 /// Get the PID of the currently running actor.
 ///
 /// Returns the PID as a `u64`. Returns `u64::MAX` if called outside of an
@@ -477,6 +522,7 @@ pub(crate) fn capture_register_roots() -> [usize; 0] {
 ///
 /// The message is tagged `PROGRAM_MESSAGE_TAG`, so its contents never make it
 /// pass for one of the runtime's own messages.
+/// Returns 7 for remote targets when called by a grouped actor.
 #[no_mangle]
 pub extern "C" fn mesh_actor_send(target_pid: u64, msg_ptr: *const u8, msg_size: u64) -> i64 {
     // Locality check: upper 16 bits == 0 means local PID.
@@ -562,7 +608,7 @@ pub(crate) fn pin_closure_env(env: *mut u8) {
 
 /// Detach a message from the sending actor's heap before it is queued.
 ///
-/// What `shape` describes at `buffer.data[base..]` is copied into the buffer;
+/// What `shape` describes at `buffer.data()[base..]` is copied into the buffer;
 /// references it cannot describe are lent by the heaps that own them. A null
 /// shape is a message of plain bits.
 pub(crate) fn detach_from_sender(
@@ -577,9 +623,9 @@ pub(crate) fn detach_from_sender(
     let sender = stack::get_current_pid()
         .and_then(|pid| sched.get_process(pid))
         .expect("a message with a shape comes from compiled code, which runs in a process");
-    let captured = unsafe { msg_shape::capture(&sender.lock().heap, &buffer.data, base, shape) };
-    buffer.borrows = scheduler::lend_words(&sender, &captured.lend);
-    buffer.captured = captured;
+    let captured = unsafe { msg_shape::capture(&sender.lock().heap, buffer.data(), base, shape) };
+    let borrows = scheduler::lend_words(&sender, &captured.lend);
+    buffer.set_references(captured, borrows);
 }
 
 /// Local send path -- the original mesh_actor_send body, unchanged.
@@ -603,7 +649,13 @@ fn local_send_with_scheduler(
     msg_size: u64,
     shape: *const u32,
 ) -> i64 {
-    let buffer = message_buffer(sched, message_bytes(msg_ptr, msg_size), shape);
+    let data = if msg_ptr.is_null() || msg_size == 0 {
+        &[]
+    } else {
+        unsafe { std::slice::from_raw_parts(msg_ptr, msg_size as usize) }
+    };
+    let mut buffer = MessageBuffer::from_slice(data, PROGRAM_MESSAGE_TAG);
+    detach_from_sender(sched, &mut buffer, 0, shape);
     deliver_local(sched, ProcessId(target_pid), Message { buffer })
 }
 
@@ -624,7 +676,7 @@ pub(crate) const PROGRAM_MESSAGE_TAG: u64 = 0;
 /// observable send status.
 fn deliver_local(sched: &Scheduler, pid: ProcessId, mut msg: Message) -> i64 {
     // Look up the target process and push message.
-    if let Some(proc_arc) = sched.get_process(pid) {
+    if let Some(proc_arc) = sched.send_target(pid) {
         msg.buffer.addressed_to(&proc_arc);
         let proc = proc_arc.lock();
         if let Err(error) = proc.mailbox.try_push(msg) {
@@ -651,12 +703,22 @@ fn deliver_local(sched: &Scheduler, pid: ProcessId, mut msg: Message) -> i64 {
 /// or the write fails.
 #[cold]
 fn dist_send(target_pid: u64, msg_ptr: *const u8, msg_size: u64, shape: *const u32) -> i64 {
+    if grouped_caller() {
+        return 7;
+    }
     let target = ProcessId(target_pid);
     let data = message_bytes(msg_ptr, msg_size);
     match capture_for_node(target, &data, shape) {
         Some(captured) => send_to_node(target, data, captured),
         None => 6,
     }
+}
+
+fn grouped_caller() -> bool {
+    scheduler::terminating_group_worker().is_some()
+        || current_process().is_some_and(|process| {
+            matches!(process.lock().placement, process::Placement::Grouped { .. })
+        })
 }
 
 /// What a message for `target`, on another node, takes with it from the
@@ -709,7 +771,7 @@ pub(crate) fn deliver_remote(
     captured: msg_shape::Captured,
 ) -> i64 {
     let mut buffer = MessageBuffer::new(data, PROGRAM_MESSAGE_TAG);
-    buffer.captured = captured;
+    buffer.set_references(captured, Vec::new());
     deliver_local(global_scheduler(), target, Message { buffer })
 }
 
@@ -743,6 +805,49 @@ pub extern "C-unwind" fn mesh_actor_receive(timeout_ms: i64) -> *const u8 {
     actor_receive_matching(timeout_ms, |message| {
         message.buffer.type_tag == PROGRAM_MESSAGE_TAG
     })
+}
+
+/// Receive scalar payload bytes. The returned pointer addresses either caller
+/// scratch or materialized actor storage and is null on timeout or shutdown.
+///
+/// # Safety
+/// `scratch` must be writable, exclusively owned, aligned u64 storage for the
+/// duration of the call. Generated code loads the payload before reusing it.
+/// `width` is the scalar storage width in bytes (1 or 8).
+#[no_mangle]
+pub unsafe extern "C-unwind" fn mesh_actor_receive_scalar(
+    timeout_ms: i64,
+    width: u64,
+    scratch: &mut std::mem::MaybeUninit<u64>,
+) -> *const u8 {
+    receive_matching_with(
+        timeout_ms,
+        |msg| msg.buffer.type_tag == PROGRAM_MESSAGE_TAG,
+        |proc, msg| receive_scalar_payload(proc, msg, width, scratch),
+    )
+}
+
+fn receive_scalar_payload(
+    proc: &mut Process,
+    msg: Message,
+    width: u64,
+    scratch: &mut std::mem::MaybeUninit<u64>,
+) -> *const u8 {
+    if let Some(bits) = msg.buffer.plain_scalar(width) {
+        scratch.write(bits);
+        return scratch.as_ptr().cast();
+    }
+    let len = msg.buffer.data().len();
+    // Captures must be relocated and heap loans transferred even for a
+    // scalar binding. Only the materialized payload is safe to inspect.
+    let data = unsafe { copy_msg_to_actor_heap(proc, msg).add(16) };
+    if (len as u64) < width {
+        let mut padded = [0; 8];
+        unsafe { std::ptr::copy_nonoverlapping(data, padded.as_mut_ptr(), len.min(8)) };
+        scratch.write(u64::from_ne_bytes(padded));
+        return scratch.as_ptr().cast();
+    }
+    data
 }
 
 /// `actor_receive_matching` without a deadline, for a wait of the runtime's
@@ -779,22 +884,49 @@ pub(crate) fn actor_receive_matching<F>(timeout_ms: i64, predicate: F) -> *const
 where
     F: Fn(&Message) -> bool,
 {
-    let sched = global_scheduler();
+    receive_matching_with(timeout_ms, predicate, copy_msg_to_actor_heap)
+}
+
+fn receive_matching_with(
+    timeout_ms: i64,
+    predicate: impl Fn(&Message) -> bool,
+    mut deliver: impl FnMut(&mut Process, Message) -> *const u8,
+) -> *const u8 {
+    receive_with(global_scheduler(), timeout_ms, |proc| {
+        let msg = proc.mailbox.remove_first(&predicate)?;
+        Some(deliver(proc, msg))
+    })
+}
+
+/// A receive with only an after clause never inspects the mailbox.
+#[no_mangle]
+pub extern "C-unwind" fn mesh_actor_wait_timeout(timeout_ms: i64) {
+    receive_with(global_scheduler(), timeout_ms, |_| None);
+}
+
+fn receive_with(
+    sched: &Scheduler,
+    timeout_ms: i64,
+    mut receive: impl FnMut(&mut Process) -> Option<*const u8>,
+) -> *const u8 {
     let (my_pid, me) = running_process();
     let deadline = (timeout_ms > 0)
         .then(|| std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms as u64));
     // `main` is not a coroutine: it polls its mailbox instead of yielding.
     let in_coroutine = stack::CURRENT_YIELDER.with(|c| c.yielder.get().is_some());
-    if let Some(deadline) = deadline.filter(|_| in_coroutine) {
-        wake_at(my_pid, deadline);
-    }
+    let mut timer_registered = false;
     let mut wait = MainThreadWait::new();
     loop {
-        let ending = in_coroutine && sched.is_shutdown() && !others_running(sched, my_pid);
+        let ending =
+            in_coroutine && sched.is_shutdown() && !others_running(sched.process_table(), my_pid);
         let mut proc = me.lock();
-        if let Some(msg) = proc.mailbox.remove_first(&predicate) {
-            drop(proc);
-            return copy_msg_to_actor_heap(sched, my_pid, msg);
+        if timer_registered {
+            // Disarm before returning or publishing a new wait. An unrelated
+            // wake can park again below with the same registered timer.
+            proc.receive_deadline = None;
+        }
+        if let Some(value) = receive(&mut proc) {
+            return value;
         }
         let expired = deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline);
         if timeout_ms == 0 || expired || ending {
@@ -802,12 +934,29 @@ where
             return std::ptr::null();
         }
         if in_coroutine {
+            let gc_due = proc.heap.should_collect();
             // Published under the lock senders take: a message sent from
             // here on finds the actor Waiting and wakes it, as the deadline
             // does.
             proc.set_live_state(ProcessState::Waiting);
+            if let Some(deadline) = deadline {
+                proc.receive_deadline = Some(deadline);
+                if !timer_registered {
+                    TimerWake {
+                        deadline,
+                        pid: my_pid,
+                        receive_only: true,
+                    }
+                    .register();
+                    timer_registered = true;
+                }
+            }
             drop(proc);
-            stack::yield_current();
+            if gc_due {
+                stack::yield_current();
+            } else {
+                stack::suspend_current();
+            }
         } else {
             drop(proc);
             wait.pause();
@@ -817,8 +966,8 @@ where
 
 /// Whether a process other than `me` is neither waiting nor gone: one that
 /// could still send `me` a message.
-fn others_running(sched: &Scheduler, me: ProcessId) -> bool {
-    sched.process_table().read().iter().any(|(pid, process)| {
+fn others_running(table: &scheduler::ProcessTable, me: ProcessId) -> bool {
+    table.read_all().iter().any(|(pid, process)| {
         *pid != me
             && !matches!(
                 process.lock().state,
@@ -833,6 +982,31 @@ fn others_running(sched: &Scheduler, me: ProcessId) -> bool {
 struct TimerWake {
     deadline: std::time::Instant,
     pid: ProcessId,
+    receive_only: bool,
+}
+
+impl TimerWake {
+    fn register(self) {
+        #[cfg(test)]
+        TIMER_REGISTRATIONS.with(|count| count.set(count.get() + 1));
+        timer_wake_sender()
+            .send(self)
+            .expect("the timer reactor runs for as long as the program");
+    }
+
+    fn fire(self, scheduler: &Scheduler) {
+        if let Some(process) = scheduler.get_process(self.pid) {
+            let proc = process.lock();
+            if !self.receive_only || proc.receive_deadline == Some(self.deadline) {
+                scheduler.wake_if_waiting(self.pid, proc);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    static TIMER_REGISTRATIONS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 impl Ord for TimerWake {
@@ -842,6 +1016,7 @@ impl Ord for TimerWake {
             .deadline
             .cmp(&self.deadline)
             .then_with(|| other.pid.as_u64().cmp(&self.pid.as_u64()))
+            .then_with(|| other.receive_only.cmp(&self.receive_only))
     }
 }
 
@@ -888,10 +1063,7 @@ fn timer_reactor(receiver: crossbeam_channel::Receiver<TimerWake>) {
             .is_some_and(|timer| timer.deadline <= std::time::Instant::now())
         {
             let timer = timers.pop().expect("timer was present");
-            let scheduler = global_scheduler();
-            if let Some(process) = scheduler.get_process(timer.pid) {
-                scheduler.wake_if_waiting(timer.pid, process.lock());
-            }
+            timer.fire(global_scheduler());
         }
     }
 }
@@ -929,9 +1101,12 @@ pub extern "C-unwind" fn mesh_timer_sleep(ms: i64) {
 /// Have the timer reactor make `pid` Ready at `deadline` if it is Waiting
 /// then.
 pub(crate) fn wake_at(pid: ProcessId, deadline: std::time::Instant) {
-    timer_wake_sender()
-        .send(TimerWake { deadline, pid })
-        .expect("the timer reactor runs for as long as the program");
+    TimerWake {
+        deadline,
+        pid,
+        receive_only: false,
+    }
+    .register();
 }
 
 /// Schedule a message to be sent to `target_pid` after `ms` milliseconds.
@@ -997,8 +1172,12 @@ pub extern "C" fn mesh_timer_send_after_shaped(
     msg_size: i64,
     shape: *const u32,
 ) {
-    let data = message_bytes(msg_ptr, msg_size.max(0) as u64);
     let target = ProcessId(target_pid as u64);
+    // The timer thread has no actor context, so check before detaching the send.
+    if !target.is_local() && grouped_caller() {
+        return;
+    }
+    let data = message_bytes(msg_ptr, msg_size.max(0) as u64);
     let delay = std::time::Duration::from_millis(if ms > 0 { ms as u64 } else { 0 });
 
     let prepared = if target.is_local() {
@@ -1033,39 +1212,30 @@ unsafe impl Send for SendOnTimer {}
 
 /// Deep-copy a message into the actor's heap and return a pointer to the
 /// heap-allocated layout: `[u64 type_tag, u64 data_len, u8... data]`.
-pub(crate) fn copy_msg_to_actor_heap(
-    sched: &Scheduler,
-    pid: ProcessId,
-    mut msg: Message,
-) -> *const u8 {
-    let proc_arc = sched
-        .get_process(pid)
-        .expect("a message is copied into the running process, which is in the table");
-    let mut proc = proc_arc.lock();
+fn copy_msg_to_actor_heap(proc: &mut Process, msg: Message) -> *const u8 {
     // Layout: [u64 type_tag][u64 data_len][u8... data]
     let header_size = 16; // 8 bytes type_tag + 8 bytes data_len
-    let total_size = header_size + msg.buffer.data.len();
+    let data = msg.buffer.data();
+    let total_size = header_size + data.len();
     let ptr = proc.heap.alloc(total_size, 8);
 
     unsafe {
         // Write type_tag.
         std::ptr::copy_nonoverlapping(msg.buffer.type_tag.to_le_bytes().as_ptr(), ptr, 8);
         // Write data_len.
-        let data_len = msg.buffer.data.len() as u64;
+        let data_len = data.len() as u64;
         std::ptr::copy_nonoverlapping(data_len.to_le_bytes().as_ptr(), ptr.add(8), 8);
         // Write data bytes.
-        std::ptr::copy_nonoverlapping(
-            msg.buffer.data.as_ptr(),
-            ptr.add(header_size),
-            msg.buffer.data.len(),
-        );
+        std::ptr::copy_nonoverlapping(data.as_ptr(), ptr.add(header_size), data.len());
         // Heap values the message references arrive detached from the
         // sender; rebuild them here and point the message at the copies.
-        msg.buffer
-            .captured
-            .materialize(&mut proc.heap, ptr.add(header_size));
+        if let Some(references) = msg.buffer.references {
+            references
+                .captured
+                .materialize(&mut proc.heap, ptr.add(header_size));
+            proc.heap_borrows.extend(references.borrows);
+        }
     }
-    proc.heap_borrows.append(&mut msg.buffer.borrows);
 
     ptr as *const u8
 }
@@ -1157,6 +1327,7 @@ pub extern "C" fn mesh_rt_run_scheduler() {
 
     // Wait for all worker threads to complete.
     sched.wait();
+    crate::panic::flush_deferred_diagnostics();
 }
 
 /// Register an actor under a name (MeshString variant).
@@ -1920,6 +2091,78 @@ mod tests {
     }
 
     #[test]
+    fn timed_scalar_mailbox_hits_register_no_timers() {
+        in_actor(|| {
+            let pid = running_process().0;
+            let before = TIMER_REGISTRATIONS.with(|count| count.get());
+            for n in 0..64u64 {
+                assert_eq!(local_send(pid.as_u64(), n.to_ne_bytes().as_ptr(), 8), 0);
+                let mut scratch = std::mem::MaybeUninit::uninit();
+                let received = unsafe { mesh_actor_receive_scalar(1000, 8, &mut scratch) };
+                assert_eq!(received, scratch.as_ptr().cast());
+                assert_eq!(unsafe { scratch.assume_init() }, n);
+            }
+            assert_eq!(TIMER_REGISTRATIONS.with(|count| count.get()), before);
+        });
+    }
+
+    #[test]
+    fn completed_receive_timer_cannot_wake_a_later_wait() {
+        use std::time::{Duration, Instant};
+
+        let (ready, receiver) = std::sync::mpsc::channel();
+        std::thread::scope(|scope| {
+            let actor = scope.spawn(move || {
+                in_actor(move || {
+                    let (pid, process) = running_process();
+                    ready.send(pid).unwrap();
+                    let mut scratch = std::mem::MaybeUninit::uninit();
+                    let received = unsafe { mesh_actor_receive_scalar(5000, 8, &mut scratch) };
+                    assert_eq!(received, scratch.as_ptr().cast());
+                    assert_eq!(unsafe { scratch.assume_init() }, 17);
+                    // Publish a later wait while holding the same process lock
+                    // the reactor must take to dispatch the old timer.
+                    let mut proc = process.lock();
+                    assert!(proc.receive_deadline.is_none());
+                    proc.set_live_state(ProcessState::Waiting);
+                    drop(proc);
+                    stack::yield_current();
+                })
+            });
+            let pid = receiver.recv_timeout(Duration::from_secs(5)).unwrap();
+            let scheduler = global_scheduler();
+            let process = scheduler.get_process(pid).unwrap();
+            let limit = Instant::now() + Duration::from_secs(5);
+            let deadline = loop {
+                if let Some(deadline) = process.lock().receive_deadline {
+                    break deadline;
+                }
+                assert!(Instant::now() < limit);
+                std::thread::yield_now();
+            };
+            assert_eq!(local_send(pid.as_u64(), 17u64.to_ne_bytes().as_ptr(), 8), 0);
+            loop {
+                let proc = process.lock();
+                if proc.receive_deadline.is_none() && matches!(proc.state, ProcessState::Waiting) {
+                    break;
+                }
+                drop(proc);
+                assert!(Instant::now() < limit);
+                std::thread::yield_now();
+            }
+            TimerWake {
+                deadline,
+                pid,
+                receive_only: true,
+            }
+            .fire(scheduler);
+            assert!(matches!(process.lock().state, ProcessState::Waiting));
+            scheduler.wake_if_waiting(pid, process.lock());
+            actor.join().unwrap();
+        });
+    }
+
+    #[test]
     fn test_send_delivers_to_mailbox() {
         let sched = Scheduler::new(1);
         let target_pid = create_test_process(&sched);
@@ -1935,7 +2178,7 @@ mod tests {
         // Verify message is in mailbox.
         let popped = proc_arc.lock().mailbox.pop().unwrap();
         assert_eq!(popped.buffer.type_tag, 99);
-        assert_eq!(popped.buffer.data, vec![42, 43, 44, 45]);
+        assert_eq!(popped.buffer.data(), vec![42, 43, 44, 45]);
     }
 
     #[test]
@@ -2017,7 +2260,7 @@ mod tests {
 
         let process = sched.get_process(target_pid).unwrap();
         let queued = process.lock().mailbox.pop().expect("message queued");
-        let delivered = copy_msg_to_actor_heap(&sched, target_pid, queued);
+        let delivered = copy_msg_to_actor_heap(&mut process.lock(), queued);
         let received = unsafe { *(delivered.add(16) as *const *const crate::string::MeshString) };
         assert_ne!(received as *const u8, sent as *const u8);
         assert_eq!(unsafe { (*received).as_str() }, text);
@@ -2070,7 +2313,7 @@ mod tests {
                 target.lock().mailbox.pop()
             })
             .expect("timer delivered the message");
-        let delivered = copy_msg_to_actor_heap(sched, target_pid, queued);
+        let delivered = copy_msg_to_actor_heap(&mut target.lock(), queued);
         let received = unsafe { *(delivered.add(16) as *const *const crate::string::MeshString) };
         assert_eq!(unsafe { (*received).as_str() }, text);
     }
@@ -2097,7 +2340,8 @@ mod tests {
             assert_eq!(status, 0);
             let process = sched.get_process(target).unwrap();
             let queued = process.lock().mailbox.pop().expect("message queued");
-            copy_msg_to_actor_heap(&sched, target, queued)
+            let delivered = copy_msg_to_actor_heap(&mut process.lock(), queued);
+            delivered
         };
 
         // To another actor: same pointer, kept alive by a loan that pins the sender.
@@ -2179,7 +2423,7 @@ mod tests {
                 "FIFO order violated at {}",
                 i
             );
-            assert_eq!(msg.buffer.data, vec![i]);
+            assert_eq!(msg.buffer.data(), vec![i]);
         }
 
         assert!(proc_arc.lock().mailbox.pop().is_none());
@@ -2219,7 +2463,7 @@ mod tests {
         let buffer = MessageBuffer::new(data.clone(), type_tag);
         let msg = Message { buffer };
 
-        let ptr = copy_msg_to_actor_heap(&sched, pid, msg);
+        let ptr = copy_msg_to_actor_heap(&mut sched.get_process(pid).unwrap().lock(), msg);
         assert!(!ptr.is_null());
 
         unsafe {
@@ -2586,7 +2830,7 @@ mod tests {
         // Verify message was delivered.
         let popped = proc_arc.lock().mailbox.pop().unwrap();
         assert_eq!(popped.buffer.type_tag, 99);
-        assert_eq!(popped.buffer.data, vec![42, 43, 44, 45]);
+        assert_eq!(popped.buffer.data(), vec![42, 43, 44, 45]);
     }
 
     /// Run `body` as a new process of the global scheduler, on this thread.
@@ -2624,6 +2868,90 @@ mod tests {
         assert_eq!((received, left), (7, Some(job::JOB_RESULT_TAG)));
     }
 
+    #[test]
+    fn host_timeout_only_wait_preserves_queued_message() {
+        as_process(|pid| {
+            local_send(pid.as_u64(), 17u64.to_ne_bytes().as_ptr(), 8);
+            let start = std::time::Instant::now();
+            mesh_actor_wait_timeout(5);
+            assert!(start.elapsed() >= std::time::Duration::from_millis(5));
+            let mut scratch = std::mem::MaybeUninit::uninit();
+            assert_eq!(
+                unsafe { mesh_actor_receive_scalar(0, 8, &mut scratch) },
+                scratch.as_ptr().cast()
+            );
+            assert_eq!(unsafe { scratch.assume_init() }, 17);
+        });
+    }
+
+    #[test]
+    fn scalar_receive_selects_program_messages_and_preserves_null() {
+        as_process(|me| {
+            let process = global_scheduler().get_process(me).unwrap();
+            process.lock().mailbox.push(Message {
+                buffer: MessageBuffer::from_slice(&[1], job::JOB_RESULT_TAG),
+            });
+            local_send(me.as_u64(), 42u64.to_ne_bytes().as_ptr(), 8);
+            let mut scratch = std::mem::MaybeUninit::uninit();
+            let received = unsafe { mesh_actor_receive_scalar(0, 8, &mut scratch) };
+            assert_eq!(received, scratch.as_ptr().cast());
+            assert_eq!(unsafe { scratch.assume_init() }, 42);
+            assert!(unsafe { mesh_actor_receive_scalar(0, 1, &mut scratch) }.is_null());
+            assert_eq!(
+                process.lock().mailbox.pop().unwrap().buffer.type_tag,
+                job::JOB_RESULT_TAG
+            );
+        });
+    }
+
+    #[test]
+    fn scalar_receive_materializes_mismatched_shaped_and_borrowed_payloads() {
+        let mut proc = Process::new(ProcessId::next(), Priority::Normal);
+        let mut scratch = std::mem::MaybeUninit::uninit();
+        let mut deliver = |proc: &mut Process, buffer, width| {
+            receive_scalar_payload(proc, Message { buffer }, width, &mut scratch)
+        };
+        let short = MessageBuffer::from_slice(&[17, 29], PROGRAM_MESSAGE_TAG);
+        let ptr = deliver(&mut proc, short, 8);
+        assert_eq!(
+            unsafe { ptr.cast::<[u8; 8]>().read() },
+            [17, 29, 0, 0, 0, 0, 0, 0]
+        );
+
+        let long = MessageBuffer::from_slice(&[9; 12], PROGRAM_MESSAGE_TAG);
+        let ptr = deliver(&mut proc, long, 1);
+        assert_eq!(unsafe { ptr.read() }, 9);
+        assert!(proc.heap.is_live_allocation(ptr.wrapping_sub(16), 28));
+
+        let mut pid = MessageBuffer::from_slice(&42u64.to_ne_bytes(), PROGRAM_MESSAGE_TAG);
+        pid.set_references(Default::default(), vec![]);
+        let ptr = deliver(&mut proc, pid, 8);
+        assert!(proc.heap.is_live_allocation(ptr.wrapping_sub(16), 24));
+
+        let mut shaped = MessageBuffer::from_slice(&[0; 8], PROGRAM_MESSAGE_TAG);
+        let captured = msg_shape::Captured {
+            objects: vec![msg_shape::OwnedObject {
+                bytes: vec![17; 8],
+                relocs: vec![],
+            }],
+            relocs: vec![(0, 0)],
+            ..Default::default()
+        };
+        let loan = std::sync::Arc::new(());
+        shaped.set_references(
+            captured,
+            vec![process::HeapBorrow {
+                owner: None,
+                _lent: loan.clone(),
+            }],
+        );
+        let ptr = deliver(&mut proc, shaped, 8);
+        let object = unsafe { ptr.cast::<*const u8>().read() };
+        assert!(proc.heap.is_live_allocation(object, 8));
+        assert_eq!(unsafe { object.read() }, 17);
+        assert!(std::sync::Arc::ptr_eq(&proc.heap_borrows[0]._lent, &loan));
+    }
+
     /// A message for another node needs a session to it (4) and must hold
     /// nothing that cannot leave this node (6); a delayed one of the latter
     /// is dropped as it is sent.
@@ -2643,6 +2971,56 @@ mod tests {
             )
         });
         assert_eq!((plain, code), (4, 6));
+    }
+
+    #[test]
+    fn grouped_actor_rejects_remote_sends_in_entry_and_terminate() {
+        use std::sync::atomic::{AtomicI64, Ordering};
+
+        type Probe = std::sync::mpsc::Sender<(i64, i64, i64)>;
+        static TERMINATE_STATUS: AtomicI64 = AtomicI64::new(-1);
+
+        extern "C" fn terminate(_state: *const u8, _reason: *const u8) {
+            let status = if mesh_actor_self() == u64::MAX {
+                mesh_actor_send(unknown_node_pid().as_u64(), std::ptr::null(), 0)
+            } else {
+                -2
+            };
+            TERMINATE_STATUS.store(status, Ordering::Release);
+        }
+
+        extern "C" fn entry(args: *const u8) {
+            let probe = unsafe { Box::from_raw(args as *mut Probe) };
+            let (pid, _) = running_process();
+            let remote = unknown_node_pid().as_u64();
+            let closure = [1u64, 0];
+            let shape = [2, msg_shape::CLOSURE];
+            let _ = probe.send((
+                mesh_actor_send(remote, std::ptr::null(), 0),
+                mesh_actor_send_shaped(remote, closure.as_ptr().cast(), 16, shape.as_ptr()),
+                mesh_actor_send(pid.as_u64(), std::ptr::null(), 0),
+            ));
+        }
+
+        mesh_rt_init_actor(1);
+        let (tx, rx) = std::sync::mpsc::channel::<(i64, i64, i64)>();
+        let args = Box::into_raw(Box::new(tx));
+        let pid = mesh_actor_spawn_grouped(
+            entry as *const u8,
+            args.cast(),
+            0,
+            std::ptr::null(),
+            Some(terminate),
+        );
+        let timeout = std::time::Duration::from_secs(5);
+        assert_eq!(rx.recv_timeout(timeout).unwrap(), (7, 7, 0));
+
+        let deadline = std::time::Instant::now() + timeout;
+        while process(ProcessId(pid)).is_some() {
+            assert!(std::time::Instant::now() < deadline, "actor did not exit");
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        assert_eq!(TERMINATE_STATUS.load(Ordering::Acquire), 7);
     }
 
     static PLAIN_FUNCTION_RAN: std::sync::atomic::AtomicBool =
@@ -2710,7 +3088,7 @@ mod tests {
             let mut reasons = Vec::new();
             while let Some(message) = process.lock().mailbox.pop() {
                 assert_eq!(message.buffer.type_tag, link::EXIT_SIGNAL_TAG);
-                reasons.push(link::decode_exit_signal(&message.buffer.data).unwrap().1);
+                reasons.push(link::decode_exit_signal(message.buffer.data()).unwrap().1);
             }
             mesh_actor_exit(me.as_u64(), 2);
             mesh_actor_exit(me.as_u64(), 1);
@@ -2745,7 +3123,11 @@ mod tests {
             let remote = unknown_node_pid().as_u64();
             mesh_process_monitor(remote, message.as_ptr(), 8, std::ptr::null());
             let process = global_scheduler().get_process(me).unwrap();
-            let queued = process.lock().mailbox.pop().map(|m| m.buffer.data);
+            let queued = process
+                .lock()
+                .mailbox
+                .pop()
+                .map(|m| m.buffer.data().to_vec());
             (queued, mesh_process_demonitor(u64::MAX))
         });
         assert_eq!(queued, Some(message.to_vec()));

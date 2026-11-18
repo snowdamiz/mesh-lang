@@ -9,8 +9,8 @@
 //! Since corosensei `Coroutine` is `!Send`, coroutines cannot move between
 //! threads. The scheduler addresses this by:
 //!
-//! 1. **Spawn requests** (function pointer + args) are placed in the global
-//!    queue and crossbeam-deque work-stealing deques. These are `Send`.
+//! 1. **Spawn requests** (function pointer + args) are `Send`. Ordinary
+//!    requests use a shared FIFO. Grouped requests use a worker's own FIFO.
 //! 2. **Each worker thread** pops spawn requests, creates coroutines locally,
 //!    and runs them. Yielded coroutines stay in the worker's local suspended
 //!    list and are resumed on the same thread.
@@ -22,26 +22,28 @@
 //! Three priority levels: High, Normal, Low.
 //! - High-priority spawn requests are placed in a dedicated channel and
 //!   checked first by each worker.
-//! - Low-priority requests go to the end of the global queue.
-//! - Normal priority uses the work-stealing deques for best locality.
+//! - Normal- and low-priority requests share the global FIFO.
 
-use crossbeam_channel::{Receiver, Sender, TryRecvError};
-use crossbeam_deque::{Injector, Steal, Stealer, Worker};
-use parking_lot::{Mutex, RwLock};
+use crossbeam_channel::{Receiver, Sender};
+use crossbeam_deque::{Injector, Steal};
+use crossbeam_utils::CachePadded;
+use parking_lot::{Mutex, RwLock, RwLockReadGuard};
 use rustc_hash::FxHashMap;
 
+use std::cell::{Cell, RefCell};
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
-use std::sync::Arc;
-use std::time::Instant;
+use std::sync::{Arc, Weak};
+use std::time::{Duration, Instant};
 
 use super::link;
 use super::process::{
-    ExitReason, HeapBorrow, Priority, Process, ProcessId, ProcessState, TerminateCallback,
-    DEFAULT_REDUCTIONS,
+    ExitReason, HeapBorrow, Placement, Priority, Process, ProcessId, ProcessState,
+    TerminateCallback, DEFAULT_REDUCTIONS,
 };
 use super::registry;
 use super::stack::{
-    clear_current_pid, get_current_pid, set_current_pid, CoroutineHandle, CURRENT_YIELDER,
+    clear_current_pid, get_current_pid, set_current_process, CoroutineHandle, CURRENT_YIELDER,
 };
 
 // ---------------------------------------------------------------------------
@@ -52,6 +54,7 @@ use super::stack::{
 /// across worker threads via work-stealing.
 #[allow(dead_code)]
 struct SpawnRequest {
+    step: Option<Box<BoundedStep>>,
     pid: ProcessId,
     fn_ptr: *const u8,
     args_ptr: *const u8,
@@ -63,21 +66,226 @@ struct SpawnRequest {
 // these pointers remain valid until the actor completes.
 unsafe impl Send for SpawnRequest {}
 
+enum SpawnMode {
+    Shared,
+    Linked {
+        parent: ProcessId,
+        parent_traps: bool,
+    },
+    Grouped(Option<TerminateCallback>),
+    Step(u32),
+}
+
+// Only a grouped actor resuming on its owner can hand off to another
+// suspended grouped actor there. Overflow takes the normal notification path.
+const MAX_GROUP_HANDOFFS: usize = 3;
+
+#[derive(Clone, Copy)]
+enum HandoffSlot {
+    Disabled,
+    Open(*const WorkerSleep),
+    Woken(ProcessId),
+}
+
+impl HandoffSlot {
+    fn offer(worker: &WorkerSleep, pid: ProcessId) -> bool {
+        match GROUP_HANDOFF.get() {
+            Self::Open(owner) if std::ptr::eq(owner, worker) => {
+                GROUP_HANDOFF.set(Self::Woken(pid));
+                true
+            }
+            _ => false,
+        }
+    }
+}
+
+thread_local! {
+    static GROUP_HANDOFF: Cell<HandoffSlot> = const { Cell::new(HandoffSlot::Disabled) };
+    // A terminate callback runs outside the actor coroutine. Carry only its
+    // placement so actor APIs keep their existing callback context.
+    static TERMINATING_GROUP_WORKER: Cell<Option<usize>> = const { Cell::new(None) };
+    static CURRENT_WORKER: Cell<*const WorkerSleep> = const { Cell::new(std::ptr::null()) };
+}
+
+// Restore the ordinary wake path even if the scheduler unwinds mid-resume.
+struct CaptureHandoff<'a>(&'a WorkerSleep);
+
+impl Drop for CaptureHandoff<'_> {
+    fn drop(&mut self) {
+        if let HandoffSlot::Woken(pid) = GROUP_HANDOFF.replace(HandoffSlot::Disabled) {
+            self.0.woken.lock().push(pid);
+        }
+    }
+}
+
+fn capture_handoff<T>(worker: &WorkerSleep, resume: impl FnOnce() -> T) -> (T, Option<ProcessId>) {
+    let _reset = CaptureHandoff(worker);
+    GROUP_HANDOFF.set(HandoffSlot::Open(worker));
+    let result = resume();
+    let next = match GROUP_HANDOFF.replace(HandoffSlot::Disabled) {
+        HandoffSlot::Woken(pid) => Some(pid),
+        _ => None,
+    };
+    (result, next)
+}
+
+pub(super) fn terminating_group_worker() -> Option<usize> {
+    TERMINATING_GROUP_WORKER.get()
+}
+
+/// Only the owning worker drains this FIFO. The flag avoids an empty lock on
+/// the usual shared path. Both flag transitions are serialized with the queue.
+#[derive(Default)]
+struct GroupedSpawns {
+    pending: AtomicBool,
+    queue: Mutex<VecDeque<SpawnRequest>>,
+}
+
+impl GroupedSpawns {
+    fn push(&self, request: SpawnRequest) {
+        let mut queue = self.queue.lock();
+        queue.push_back(request);
+        self.pending.store(true, Ordering::Release);
+    }
+
+    fn has_pending(&self) -> bool {
+        self.pending.load(Ordering::Acquire)
+    }
+
+    fn len(&self) -> usize {
+        if self.has_pending() {
+            self.queue.lock().len()
+        } else {
+            0
+        }
+    }
+
+    fn pop(&self) -> Option<SpawnRequest> {
+        if !self.has_pending() {
+            return None;
+        }
+        let mut queue = self.queue.lock();
+        let request = queue.pop_front();
+        if queue.is_empty() {
+            self.pending.store(false, Ordering::Release);
+        }
+        request
+    }
+}
+
 // ---------------------------------------------------------------------------
 // ProcessTable
 // ---------------------------------------------------------------------------
 
+const PID_SHARDS: usize = 16;
+type ProcessMap = FxHashMap<ProcessId, Arc<Mutex<Process>>>;
+
+#[derive(Default)]
+struct ProcessShard {
+    entries: RwLock<ProcessMap>,
+    /// Changed under the write lock whenever a previously valid hit can go stale.
+    revision: AtomicU64,
+}
+
+impl ProcessShard {
+    fn invalidate_peers(&self) {
+        let next = self.revision.load(Ordering::Relaxed).saturating_add(1);
+        self.revision.store(next, Ordering::Release);
+    }
+}
+
+struct Peer {
+    pid: ProcessId,
+    revision: u64,
+    handle: Weak<Mutex<Process>>,
+}
+
+const PEER_SLOTS: usize = 64;
+struct PeerCache {
+    table: Weak<ProcessTable>,
+    slots: [Option<Peer>; PEER_SLOTS],
+}
+
+thread_local! {
+    static PEERS: RefCell<PeerCache> = const { RefCell::new(PeerCache {
+        table: Weak::new(),
+        slots: [const { None }; PEER_SLOTS],
+    }) };
+}
+
 /// Shared process table for PID lookups across all worker threads.
-type ProcessTable = Arc<RwLock<FxHashMap<ProcessId, Arc<Mutex<Process>>>>>;
+pub struct ProcessTable {
+    shards: [CachePadded<ProcessShard>; PID_SHARDS],
+}
+
+impl ProcessTable {
+    fn new() -> Self {
+        Self {
+            shards: std::array::from_fn(|_| CachePadded::new(ProcessShard::default())),
+        }
+    }
+
+    fn shard(&self, pid: ProcessId) -> &ProcessShard {
+        // Local PIDs are sequential, so their low bits spread across shards.
+        &self.shards[pid.local_id() as usize % PID_SHARDS]
+    }
+
+    pub fn contains_key(&self, pid: ProcessId) -> bool {
+        self.shard(pid).entries.read().contains_key(&pid)
+    }
+
+    pub fn get(&self, pid: ProcessId) -> Option<Arc<Mutex<Process>>> {
+        self.with_process(pid, Arc::clone)
+    }
+
+    /// Keep this PID in the table during a process-local operation. The
+    /// callback may lock the process but must not reenter the table.
+    fn with_process<T>(
+        &self,
+        pid: ProcessId,
+        f: impl FnOnce(&Arc<Mutex<Process>>) -> T,
+    ) -> Option<T> {
+        self.shard(pid).entries.read().get(&pid).map(f)
+    }
+
+    pub fn insert(&self, pid: ProcessId, process: Arc<Mutex<Process>>) {
+        let shard = self.shard(pid);
+        let mut entries = shard.entries.write();
+        if entries.insert(pid, process).is_some() {
+            shard.invalidate_peers();
+        }
+    }
+
+    pub fn remove(&self, pid: ProcessId) {
+        let shard = self.shard(pid);
+        let mut entries = shard.entries.write();
+        if entries.remove(&pid).is_some() {
+            shard.invalidate_peers();
+        }
+    }
+
+    /// Freeze membership before visiting any process. Take shards in index
+    /// order and keep them all locked for the full scan. While holding this
+    /// guard, access entries through the guard itself.
+    pub fn read_all(&self) -> ProcessTableRead<'_> {
+        ProcessTableRead(std::array::from_fn(|index| {
+            self.shards[index].entries.read()
+        }))
+    }
+}
+
+pub struct ProcessTableRead<'a>([RwLockReadGuard<'a, ProcessMap>; PID_SHARDS]);
+
+impl ProcessTableRead<'_> {
+    pub fn iter(&self) -> impl Iterator<Item = (&ProcessId, &Arc<Mutex<Process>>)> {
+        self.0.iter().flat_map(|shard| shard.iter())
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Scheduler
 // ---------------------------------------------------------------------------
 
-/// The M:N work-stealing scheduler.
-///
-/// Manages a pool of OS worker threads, each with a local work-stealing deque.
-/// New actors are enqueued as spawn requests and distributed to workers.
 /// One per worker thread, so that whoever makes work can wake the worker that
 /// should run it rather than wait out its poll interval.
 #[derive(Default)]
@@ -85,8 +293,13 @@ struct WorkerSleep {
     thread: std::sync::OnceLock<std::thread::Thread>,
     /// Set from the worker's first park until it finds work again.
     idle: AtomicBool,
+    /// Approximate number of actors already pinned to this worker.
+    residents: AtomicUsize,
+    /// Advances whenever this worker takes an ordinary shared spawn.
+    shared_claims: AtomicUsize,
     /// Processes of this worker that were Waiting and have been made Ready.
     woken: Mutex<Vec<ProcessId>>,
+    grouped: GroupedSpawns,
 }
 
 impl WorkerSleep {
@@ -97,6 +310,14 @@ impl WorkerSleep {
             thread.unpark();
         }
         idle
+    }
+
+    fn enqueue_grouped(&self, request: SpawnRequest) {
+        self.grouped.push(request);
+        // Retired workers can park outside the ordinary idle stretch.
+        if let Some(thread) = self.thread.get() {
+            thread.unpark();
+        }
     }
 }
 
@@ -125,6 +346,7 @@ impl Drop for IdleStretch<'_> {
     }
 }
 
+/// The M:N scheduler. New shared actors stay in a single FIFO until claimed.
 pub struct Scheduler {
     /// Maximum number of initialized OS worker threads.
     num_threads: usize,
@@ -135,26 +357,19 @@ pub struct Scheduler {
     /// Current target number of active workers.
     active_threads: Arc<AtomicUsize>,
 
+    next_group_worker: AtomicUsize,
+
     /// Global injector queue for spawn requests (normal + low priority).
-    /// Workers steal from this when their local deque is empty.
     injector: Arc<Injector<SpawnRequest>>,
 
     /// High-priority channel -- checked first by all workers.
     high_priority_tx: Sender<SpawnRequest>,
     high_priority_rx: Receiver<SpawnRequest>,
 
-    /// Stealers for each worker's local deque (for cross-thread stealing).
-    stealers: Vec<Stealer<SpawnRequest>>,
-
-    /// Worker deques are created per-thread; stealers are extracted at creation.
-    /// We only store the stealers here; Workers are moved into their threads.
-    /// This vec is populated during `new()` and consumed during `run()`.
-    /// Wrapped in Mutex so `run()` can take `&self` instead of `&mut self`,
-    /// allowing the Scheduler to be shared without an outer Mutex.
-    workers: Mutex<Vec<Option<Worker<SpawnRequest>>>>,
+    started: AtomicBool,
 
     /// Shared process table for PID lookup.
-    process_table: ProcessTable,
+    process_table: Arc<ProcessTable>,
 
     /// Shutdown flag -- set when the main actor exits.
     shutdown: Arc<AtomicBool>,
@@ -166,7 +381,7 @@ pub struct Scheduler {
     worker_handles: Mutex<Vec<std::thread::JoinHandle<()>>>,
 
     /// Where each worker stands, indexed like the workers themselves.
-    sleepers: Arc<Vec<WorkerSleep>>,
+    sleepers: Arc<Vec<CachePadded<WorkerSleep>>>,
 }
 
 impl Scheduler {
@@ -197,29 +412,20 @@ impl Scheduler {
         let injector = Arc::new(Injector::new());
         let (high_tx, high_rx) = crossbeam_channel::unbounded();
 
-        let mut workers = Vec::with_capacity(max_threads);
-        let mut stealers = Vec::with_capacity(max_threads);
-
-        for _ in 0..max_threads {
-            let w = Worker::new_lifo();
-            stealers.push(w.stealer());
-            workers.push(Some(w));
-        }
-
         Scheduler {
             num_threads: max_threads,
             min_threads,
             active_threads: Arc::new(AtomicUsize::new(min_threads)),
+            next_group_worker: AtomicUsize::new(0),
             injector,
             high_priority_tx: high_tx,
             high_priority_rx: high_rx,
-            stealers,
-            workers: Mutex::new(workers),
-            process_table: Arc::new(RwLock::new(FxHashMap::default())),
+            started: AtomicBool::new(false),
+            process_table: Arc::new(ProcessTable::new()),
             shutdown: Arc::new(AtomicBool::new(false)),
             active_count: Arc::new(AtomicU64::new(0)),
             worker_handles: Mutex::new(Vec::new()),
-            sleepers: Arc::new((0..max_threads).map(|_| WorkerSleep::default()).collect()),
+            sleepers: Arc::new((0..max_threads).map(|_| CachePadded::default()).collect()),
         }
     }
 
@@ -274,7 +480,50 @@ impl Scheduler {
         priority: u8,
         shape: *const u32,
     ) -> ProcessId {
-        self.spawn_process(fn_ptr, args_ptr, args_size, priority, shape, None)
+        self.spawn_process(
+            fn_ptr,
+            args_ptr,
+            args_size,
+            Priority::from_u8(priority),
+            shape,
+            SpawnMode::Shared,
+        )
+    }
+
+    pub(super) fn spawn_step(
+        &self,
+        entry: *const u8,
+        bound: u32,
+        args: *const u8,
+        size: u64,
+        shape: *const u32,
+    ) -> ProcessId {
+        self.spawn_process(
+            entry,
+            args,
+            size,
+            Priority::Normal,
+            shape,
+            SpawnMode::Step(bound),
+        )
+    }
+
+    pub(super) fn spawn_grouped(
+        &self,
+        fn_ptr: *const u8,
+        args_ptr: *const u8,
+        args_size: u64,
+        shape: *const u32,
+        terminate: Option<TerminateCallback>,
+    ) -> ProcessId {
+        self.spawn_process(
+            fn_ptr,
+            args_ptr,
+            args_size,
+            Priority::Normal,
+            shape,
+            SpawnMode::Grouped(terminate),
+        )
     }
 
     /// `spawn` of an actor linked to `parent` from the start: a link made once
@@ -290,8 +539,17 @@ impl Scheduler {
         parent: ProcessId,
         parent_traps: bool,
     ) -> ProcessId {
-        let (shape, link) = (std::ptr::null(), Some((parent, parent_traps)));
-        self.spawn_process(fn_ptr, args_ptr, args_size, priority, shape, link)
+        self.spawn_process(
+            fn_ptr,
+            args_ptr,
+            args_size,
+            Priority::from_u8(priority),
+            std::ptr::null(),
+            SpawnMode::Linked {
+                parent,
+                parent_traps,
+            },
+        )
     }
 
     fn spawn_process(
@@ -299,16 +557,50 @@ impl Scheduler {
         fn_ptr: *const u8,
         args_ptr: *const u8,
         args_size: u64,
-        priority: u8,
+        priority: Priority,
         shape: *const u32,
-        link: Option<(ProcessId, bool)>,
+        mode: SpawnMode,
     ) -> ProcessId {
         let pid = self.fresh_pid();
-        let priority = Priority::from_u8(priority);
 
-        // Create process entry in the table.
-        let mut process = Process::new(pid, priority);
-        if let Some((parent, parent_traps)) = link {
+        let spawner = get_current_pid().and_then(|pid| self.get_process(pid));
+        // ponytail: pin the entire call heap for actors borrowing its arguments;
+        // use typed argument copying if long-lived actors make retention costly.
+        let (caller_placement, library_heap_owner) =
+            spawner.as_ref().map_or((Placement::Shared, None), |owner| {
+                let parent = owner.lock();
+                let heap_owner = if parent.library_call {
+                    Some(Arc::clone(owner))
+                } else {
+                    parent.library_heap_owner.clone()
+                };
+                (parent.placement, heap_owner)
+            });
+        let placement = if matches!(mode, SpawnMode::Grouped(_) | SpawnMode::Step(_)) {
+            let worker = match caller_placement {
+                Placement::Grouped { worker } => worker,
+                Placement::Shared => terminating_group_worker().unwrap_or_else(|| {
+                    let ticket = self.next_group_worker.fetch_add(1, Ordering::Relaxed);
+                    // A concurrent retirement can follow this selection. The
+                    // selected worker drains its FIFO through retirement.
+                    ticket % self.active_workers()
+                }),
+            };
+            Placement::Grouped { worker }
+        } else {
+            Placement::Shared
+        };
+
+        let mut process = Process::with_placement(pid, priority, placement);
+        process.library_heap_owner = library_heap_owner;
+        if let SpawnMode::Grouped(callback) = mode {
+            process.terminate_callback = callback;
+        }
+        if let SpawnMode::Linked {
+            parent,
+            parent_traps,
+        } = mode
+        {
             process.links.insert(parent);
             if let Some(parent) = self.get_process(parent) {
                 let mut parent = parent.lock();
@@ -318,23 +610,37 @@ impl Scheduler {
                 }
             }
         }
-        let spawner = get_current_pid().and_then(|pid| self.get_process(pid));
-        // ponytail: pin the entire call heap for actors borrowing its arguments;
-        // use typed argument copying if long-lived actors make retention costly.
-        process.library_heap_owner = spawner.as_ref().and_then(|owner| {
-            let parent = owner.lock();
-            if parent.library_call {
-                Some(Arc::clone(owner))
-            } else {
-                parent.library_heap_owner.clone()
-            }
-        });
         let args_ptr = match &spawner {
             Some(spawner) => adopt_spawn_args(&mut process, spawner, args_ptr, args_size, shape),
             None => args_ptr,
         };
+        // Take the relocated argument words when adoption produced them. Foreign
+        // argument storage is valid during spawn, so copy it before enqueue.
+        let step = if let SpawnMode::Step(bound) = mode {
+            let frame = process.spawn_args.take().unwrap_or_else(|| {
+                let mut frame = vec![0u64; args_size as usize / 8].into_boxed_slice();
+                if !frame.is_empty() {
+                    unsafe {
+                        std::ptr::copy_nonoverlapping(
+                            args_ptr,
+                            frame.as_mut_ptr().cast(),
+                            args_size as usize,
+                        )
+                    };
+                }
+                frame
+            });
+            Some(Box::new(BoundedStep {
+                deferred: false,
+                call: unsafe { std::mem::transmute::<*const u8, StepFn>(fn_ptr) },
+                bound,
+                frame,
+            }))
+        } else {
+            None
+        };
         let process = Arc::new(Mutex::new(process));
-        self.process_table.write().insert(pid, process);
+        self.process_table.insert(pid, process);
 
         // Track active process count.
         let active_count = self.active_count.fetch_add(1, Ordering::SeqCst) + 1;
@@ -342,22 +648,24 @@ impl Scheduler {
 
         // Enqueue spawn request.
         let request = SpawnRequest {
+            step,
             pid,
             fn_ptr,
             args_ptr,
             priority,
         };
 
-        match priority {
-            Priority::High => {
+        if let Placement::Grouped { worker } = placement {
+            self.sleepers[worker].enqueue_grouped(request);
+        } else {
+            if priority == Priority::High {
                 let _ = self.high_priority_tx.send(request);
-            }
-            _ => {
+            } else {
                 self.injector.push(request);
             }
+            // Any worker can take a shared request: wake one that has none.
+            let _ = self.sleepers.iter().any(|worker| worker.wake());
         }
-        // Any worker can take a queued request: wake one that has none.
-        let _ = self.sleepers.iter().any(WorkerSleep::wake);
 
         pid
     }
@@ -373,21 +681,14 @@ impl Scheduler {
     pub fn start(&self) {
         let num_threads = self.num_threads;
         let mut handles = self.worker_handles.lock();
+        assert!(
+            !self.started.swap(true, Ordering::Relaxed),
+            "worker already consumed"
+        );
 
         for i in 0..num_threads {
-            let worker = self.workers.lock()[i]
-                .take()
-                .expect("worker already consumed");
-
             let injector = Arc::clone(&self.injector);
             let high_rx = self.high_priority_rx.clone();
-            let stealers: Vec<_> = self
-                .stealers
-                .iter()
-                .enumerate()
-                .filter(|(idx, _)| *idx != i)
-                .map(|(_, s)| s.clone())
-                .collect();
             let shutdown = Arc::clone(&self.shutdown);
             let active_count = Arc::clone(&self.active_count);
             let process_table = Arc::clone(&self.process_table);
@@ -404,7 +705,7 @@ impl Scheduler {
                     active_threads,
                     sleepers,
                 };
-                worker_loop(i, worker, high_rx, stealers, shared);
+                worker_loop(i, high_rx, shared);
             });
             handles.push(handle);
         }
@@ -427,23 +728,16 @@ impl Scheduler {
     /// and executing actors. The scheduler shuts down when the shutdown flag
     /// is set and all active processes have exited.
     pub fn run(&self) {
+        assert!(
+            !self.started.swap(true, Ordering::Relaxed),
+            "worker already consumed"
+        );
         let num_threads = self.num_threads;
 
         crossbeam_utils::thread::scope(|scope| {
             for i in 0..num_threads {
-                let worker = self.workers.lock()[i]
-                    .take()
-                    .expect("worker already consumed");
-
                 let injector = Arc::clone(&self.injector);
                 let high_rx = self.high_priority_rx.clone();
-                let stealers: Vec<_> = self
-                    .stealers
-                    .iter()
-                    .enumerate()
-                    .filter(|(idx, _)| *idx != i)
-                    .map(|(_, s)| s.clone())
-                    .collect();
                 let shutdown = Arc::clone(&self.shutdown);
                 let active_count = Arc::clone(&self.active_count);
                 let process_table = Arc::clone(&self.process_table);
@@ -459,7 +753,7 @@ impl Scheduler {
                         active_threads,
                         sleepers,
                     };
-                    worker_loop(i, worker, high_rx, stealers, shared);
+                    worker_loop(i, high_rx, shared);
                 });
             }
         })
@@ -485,9 +779,9 @@ impl Scheduler {
     /// live but are intentionally excluded from runnable pressure.
     pub fn runnable_count(&self) -> u64 {
         self.process_table
-            .read()
-            .values()
-            .filter(|process| {
+            .read_all()
+            .iter()
+            .filter(|(_, process)| {
                 matches!(
                     process.lock().state,
                     ProcessState::Ready | ProcessState::Running
@@ -501,7 +795,11 @@ impl Scheduler {
     /// Refresh the bounded scheduler signals consumed by load reports and the
     /// authenticated operator runtime view.
     pub(crate) fn refresh_telemetry(&self) {
-        let worker_depths: Vec<_> = self.stealers.iter().map(Stealer::len).collect();
+        let worker_depths: Vec<_> = self
+            .sleepers
+            .iter()
+            .map(|worker| worker.grouped.len())
+            .collect();
         let global_depth = self
             .injector
             .len()
@@ -517,7 +815,7 @@ impl Scheduler {
 
     /// A PID no process in the table holds.
     fn fresh_pid(&self) -> ProcessId {
-        ProcessId::next_unused(|pid| self.process_table.read().contains_key(&pid))
+        ProcessId::next_unused(|pid| self.process_table.contains_key(pid))
     }
 
     /// Create a process entry for the main thread.
@@ -531,7 +829,7 @@ impl Scheduler {
         let mut process = Process::new(pid, Priority::Normal);
         process.set_live_state(ProcessState::Running);
         let process = Arc::new(Mutex::new(process));
-        self.process_table.write().insert(pid, process);
+        self.process_table.insert(pid, process);
         // Do NOT increment active_count -- main thread is not scheduler-managed.
         pid
     }
@@ -542,10 +840,49 @@ impl Scheduler {
 
     /// Look up a process by PID.
     pub fn get_process(&self, pid: ProcessId) -> Option<Arc<Mutex<Process>>> {
-        self.process_table.read().get(&pid).cloned()
+        self.process_table.get(pid)
     }
 
-    /// Get a reference to the process table (for shutdown checks).
+    /// A weak handle alone cannot establish membership: heap loans can keep
+    /// a removed process alive. Match both the table and the shard revision
+    /// observed under its read lock. A hit linearizes at the revision load,
+    /// just as an ordinary lookup can race with removal after the read.
+    pub(super) fn send_target(&self, pid: ProcessId) -> Option<Arc<Mutex<Process>>> {
+        let table = &self.process_table;
+        PEERS
+            .try_with(|cache| {
+                let mut cache = cache.borrow_mut();
+                if !std::ptr::eq(cache.table.as_ptr(), Arc::as_ptr(table)) {
+                    cache.slots.fill_with(|| None);
+                    cache.table = Arc::downgrade(table);
+                }
+                let shard = table.shard(pid);
+                let slot = &mut cache.slots[pid.local_id() as usize % PEER_SLOTS];
+                if let Some(peer) = slot {
+                    if peer.pid == pid && peer.revision == shard.revision.load(Ordering::Acquire) {
+                        if let Some(process) = peer.handle.upgrade() {
+                            return Some(process);
+                        }
+                    }
+                }
+
+                let entries = shard.entries.read();
+                let process = entries.get(&pid)?;
+                let revision = shard.revision.load(Ordering::Relaxed);
+                // Leave caching disabled on saturation, so a revision never repeats.
+                if revision != u64::MAX {
+                    *slot = Some(Peer {
+                        pid,
+                        revision,
+                        handle: Arc::downgrade(process),
+                    });
+                }
+                Some(Arc::clone(process))
+            })
+            .unwrap_or_else(|_| table.get(pid))
+    }
+
+    /// Get a reference to the process table (for full-table scans).
     pub fn process_table(&self) -> &ProcessTable {
         &self.process_table
     }
@@ -571,7 +908,9 @@ impl Scheduler {
     pub fn wake_worker(&self, worker: Option<usize>, pid: ProcessId) {
         if let Some(worker) = worker.and_then(|index| self.sleepers.get(index)) {
             worker.woken.lock().push(pid);
-            worker.wake();
+            if !std::ptr::eq(CURRENT_WORKER.get(), &**worker) {
+                worker.wake();
+            }
         }
     }
 
@@ -586,6 +925,13 @@ impl Scheduler {
             && process.set_live_state(ProcessState::Ready)
         {
             let worker = process.worker;
+            if matches!(process.placement, Placement::Grouped { .. })
+                && worker
+                    .and_then(|i| self.sleepers.get(i))
+                    .is_some_and(|owner| HandoffSlot::offer(owner, pid))
+            {
+                return;
+            }
             drop(process);
             self.wake_worker(worker, pid);
         }
@@ -604,31 +950,129 @@ impl Scheduler {
 // Worker loop
 // ---------------------------------------------------------------------------
 
-/// The main loop for each worker thread.
-///
-/// 1. Check high-priority channel
-/// 2. Pop from local deque (LIFO for cache locality)
-/// 3. Try to steal from global injector
-/// 4. Try to steal from other workers' deques
-/// 5. If a spawn request is found: create coroutine, run actor
-/// 6. After actor yields: add to local suspended list, re-run later
-/// 7. After actor completes: mark exited, decrement active count
 struct WorkerLoopShared {
     injector: Arc<Injector<SpawnRequest>>,
     shutdown: Arc<AtomicBool>,
     active_count: Arc<AtomicU64>,
-    process_table: ProcessTable,
+    process_table: Arc<ProcessTable>,
     active_threads: Arc<AtomicUsize>,
-    sleepers: Arc<Vec<WorkerSleep>>,
+    sleepers: Arc<Vec<CachePadded<WorkerSleep>>>,
 }
 
-fn worker_loop(
-    worker_index: usize,
-    local: Worker<SpawnRequest>,
-    high_rx: Receiver<SpawnRequest>,
-    stealers: Vec<Stealer<SpawnRequest>>,
-    shared: WorkerLoopShared,
-) {
+type StepFn = extern "C-unwind" fn(*mut u64, *const u8) -> u8;
+
+struct BoundedStep {
+    deferred: bool,
+    call: StepFn,
+    bound: u32,
+    frame: Box<[u64]>,
+}
+
+enum Execution {
+    Stack(CoroutineHandle),
+    Step(Box<BoundedStep>),
+}
+
+impl Execution {
+    fn resume(
+        &mut self,
+        process: &Arc<Mutex<Process>>,
+        table: &ProcessTable,
+        shutdown: &AtomicBool,
+    ) -> Result<bool, String> {
+        match self {
+            Self::Stack(handle) => handle.resume_catching_panic(),
+            Self::Step(step) => {
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    step.run(process, table, shutdown)
+                }));
+                match result {
+                    Err(e) if e.is::<super::stack::ActorStopped>() => Ok(false),
+                    other => other.map_err(|e| {
+                        e.downcast_ref::<String>()
+                            .cloned()
+                            .or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string()))
+                            .unwrap_or_else(|| "actor panicked".into())
+                    }),
+                }
+            }
+        }
+    }
+}
+
+impl BoundedStep {
+    fn run(
+        &mut self,
+        process: &Arc<Mutex<Process>>,
+        table: &ProcessTable,
+        shutdown: &AtomicBool,
+    ) -> bool {
+        // Another actor can spend the worker's refill before we run again.
+        // Guarantee this deferred actor one complete segment on its next turn.
+        if std::mem::take(&mut self.deferred) {
+            CURRENT_YIELDER.with(|slot| slot.reductions.set(slot.reductions.get().max(self.bound)));
+        }
+        loop {
+            // Reserve enough reductions for the entire acyclic handler before
+            // dequeue. All live continuation values are in the frame here.
+            if CURRENT_YIELDER.with(|slot| slot.reductions.get() < self.bound) {
+                self.deferred = true;
+                CURRENT_YIELDER.with(|slot| slot.reductions.set(DEFAULT_REDUCTIONS));
+                return true;
+            }
+            let ending = shutdown.load(Ordering::Relaxed)
+                && !super::others_running(table, get_current_pid().unwrap());
+            let mut scratch = std::mem::MaybeUninit::uninit();
+            let payload = {
+                let mut p = process.lock();
+                // Like receive_with, a running actor may consume ready messages
+                // until it suspends. resume_process observes a forced exit at
+                // either edge of the turn, including a failed Waiting transition.
+                if p.heap.should_collect() {
+                    let range = self.frame.as_ptr_range();
+                    p.heap.collect(range.end.cast(), range.start.cast());
+                }
+                let Some(msg) = p
+                    .mailbox
+                    .remove_first(|m| m.buffer.type_tag == super::PROGRAM_MESSAGE_TAG)
+                else {
+                    if ending {
+                        return false;
+                    }
+                    p.set_live_state(ProcessState::Waiting);
+                    return true;
+                };
+                // A handler can load a byte or a word. The inline byte is
+                // already zero-padded, and short materialized payloads also
+                // need a full readable word when their sender used another type.
+                if let Some(bits) = msg.buffer.plain_scalar(1) {
+                    scratch.write(bits);
+                    scratch.as_ptr().cast()
+                } else {
+                    super::receive_scalar_payload(&mut p, msg, 8, &mut scratch)
+                }
+            };
+            if (self.call)(self.frame.as_mut_ptr(), payload) == 0 {
+                return false;
+            }
+        }
+    }
+}
+
+struct ScheduledActor {
+    process: Arc<Mutex<Process>>,
+    handle: Execution,
+}
+
+// Keep suspended coroutines in place across turns. Queue entries carry only a
+// PID. A parked actor can accept exactly one wake before its next resume.
+struct SuspendedActor {
+    ordinary: bool,
+    actor: ScheduledActor,
+    parked: bool,
+}
+
+fn worker_loop(worker_index: usize, high_rx: Receiver<SpawnRequest>, shared: WorkerLoopShared) {
     let WorkerLoopShared {
         injector,
         shutdown,
@@ -643,21 +1087,34 @@ fn worker_loop(
     // until something makes them Ready: looking at each of them on every pass,
     // a table lookup and a lock apiece, is what let a backlog of waiting actors
     // bring every worker to a crawl.
-    let mut runnable: Vec<(ProcessId, CoroutineHandle)> = Vec::new();
-    let mut waiting: FxHashMap<ProcessId, CoroutineHandle> = FxHashMap::default();
+    let mut ordinary_residents = 0usize;
+    let mut ready_heads = worker_index;
+    let mut recorded_residents = 0;
+    let mut shared_claim = SharedClaim::default();
+    let mut runnable: Vec<ProcessId> = Vec::new();
+    let mut ready = Vec::new();
+    let mut woken = Vec::new();
+    let mut suspended: FxHashMap<ProcessId, SuspendedActor> = FxHashMap::default();
     let mut next_sweep = Instant::now();
+    let mut prefer_grouped = false;
 
     let mut spin_count: u32 = 0;
-    let sleep = &sleepers[worker_index];
+    let sleep = &*sleepers[worker_index];
+    CURRENT_WORKER.set(sleep);
     let _ = sleep.thread.set(std::thread::current());
     let mut idle = IdleStretch { worker: sleep };
 
     loop {
         let cycle_started_at = Instant::now();
         let mut did_work = false;
-        let accepting_new_work = worker_index < active_threads.load(Ordering::Acquire);
+        let active_workers = active_threads.load(Ordering::Acquire);
+        let accepting_new_work = worker_index < active_workers;
 
-        if !accepting_new_work && runnable.is_empty() && waiting.is_empty() {
+        if !accepting_new_work
+            && runnable.is_empty()
+            && suspended.is_empty()
+            && !sleep.grouped.has_pending()
+        {
             if shutdown.load(Ordering::SeqCst) && active_count.load(Ordering::SeqCst) == 0 {
                 break;
             }
@@ -669,76 +1126,178 @@ fn worker_loop(
 
         // --- Phase 1: Run suspended coroutines (they have priority) ---
         // Whoever made a waiting process Ready said so (`wake_worker`).
-        let woken = std::mem::take(&mut *sleep.woken.lock());
-        for pid in woken {
-            if let Some(handle) = waiting.remove(&pid) {
-                runnable.push((pid, handle));
+        {
+            let mut notifications = sleep.woken.lock();
+            if !notifications.is_empty() {
+                std::mem::swap(&mut woken, &mut notifications);
             }
         }
-        // Not every path does (links, supervisors, shutdown), so look at all of
-        // them now and then: seldom enough that however many are waiting, the
-        // looking stays a small part of this worker's time.
-        if !waiting.is_empty() && cycle_started_at >= next_sweep {
-            let ready: Vec<ProcessId> = waiting
-                .keys()
-                .copied()
-                .filter(|pid| {
-                    !process_table
-                        .read()
-                        .get(pid)
-                        .is_some_and(|p| matches!(p.lock().state, ProcessState::Waiting))
-                })
-                .collect();
-            for pid in ready {
-                if let Some(handle) = waiting.remove(&pid) {
-                    runnable.push((pid, handle));
+        for pid in woken.drain(..) {
+            if let Some(entry) = suspended.get_mut(&pid) {
+                if std::mem::take(&mut entry.parked) {
+                    runnable.push(pid);
+                }
+            }
+        }
+        // Links, supervisors and shutdown may change process state without
+        // notifying us. Every nonparked entry is in runnable at this point.
+        if suspended.len() > runnable.len() && cycle_started_at >= next_sweep {
+            for (&pid, entry) in &mut suspended {
+                if entry.parked
+                    && !matches!(entry.actor.process.lock().state, ProcessState::Waiting)
+                {
+                    entry.parked = false;
+                    runnable.push(pid);
                 }
             }
             let cost = cycle_started_at.elapsed();
             next_sweep = Instant::now() + (cost * 8).max(std::time::Duration::from_millis(1));
         }
-        for (pid, mut handle) in std::mem::take(&mut runnable) {
+        std::mem::swap(&mut ready, &mut runnable);
+        for mut pid in ready.drain(..) {
             did_work = true;
-            match resume_process(&process_table, &active_count, pid, &mut handle) {
-                Resumed::Runnable => runnable.push((pid, handle)),
-                Resumed::Waiting => {
-                    waiting.insert(pid, handle);
+            let mut entry = suspended.get_mut(&pid).expect("ready actor is suspended");
+            // After the last handoff, all wakes go back to the worker FIFO.
+            // Return one handoff to the FIFO every eighth ready actor. Fixed-length
+            // chains can leave the same peers waiting on successive passes.
+            ready_heads = ready_heads.wrapping_add(1);
+            // On a worker running only grouped actors, every other chain may use
+            // one extra turn. Check for queued starts at the handoff itself.
+            let spare = ordinary_residents == 0 && ready_heads % 2 == 1;
+            let budget =
+                MAX_GROUP_HANDOFFS + usize::from(spare) - usize::from(ready_heads % 8 == 0);
+            for turn in 0..=budget {
+                let can_continue = turn < budget
+                    && (turn < MAX_GROUP_HANDOFFS
+                        || (high_rx.is_empty()
+                            && injector.is_empty()
+                            && !sleep.grouped.has_pending()));
+                let capture = can_continue.then_some(sleep);
+                let (outcome, next) = resume_process(
+                    &process_table,
+                    &active_count,
+                    pid,
+                    &mut entry.actor,
+                    capture,
+                    &shutdown,
+                );
+                match outcome {
+                    Resumed::Runnable => runnable.push(pid),
+                    Resumed::Waiting => entry.parked = true,
+                    Resumed::Finished => {
+                        ordinary_residents -= usize::from(entry.ordinary);
+                        suspended.remove(&pid);
+                    }
                 }
-                Resumed::Finished => {}
+                let Some(next_pid) = next else { break };
+                let Some(target) = suspended.get_mut(&next_pid) else {
+                    break;
+                };
+                if !std::mem::take(&mut target.parked) {
+                    break;
+                }
+                pid = next_pid;
+                entry = target;
             }
         }
 
         // --- Phase 2: Try to get new spawn requests ---
-        let request = accepting_new_work
-            .then(|| try_get_request(&local, &injector, &high_rx, &stealers))
-            .flatten();
+        if suspended.len() != recorded_residents {
+            recorded_residents = suspended.len();
+            sleep.residents.store(recorded_residents, Ordering::Relaxed);
+        }
+        let mut defer_shared = false;
+        let request = if accepting_new_work {
+            high_rx.try_recv().ok().or_else(|| {
+                let mut shared = || {
+                    defer_shared = active_workers > 1
+                        && recorded_residents >= 3
+                        && !injector.is_empty()
+                        && shared_claim.defer(
+                            Instant::now(),
+                            recorded_residents,
+                            &sleepers[..active_workers],
+                        );
+                    if defer_shared {
+                        return None;
+                    }
+                    let request = try_get_shared_request(&injector);
+                    if request.is_some() {
+                        sleep.shared_claims.fetch_add(1, Ordering::Relaxed);
+                    }
+                    request
+                };
+                if !sleep.grouped.has_pending() {
+                    return shared();
+                }
+                // Each pass starts at most one actor. Alternate first choice
+                // while both normal-priority sources are competing.
+                let grouped = || sleep.grouped.pop();
+                prefer_grouped = !prefer_grouped;
+                if prefer_grouped {
+                    grouped().or_else(shared)
+                } else {
+                    shared().or_else(grouped)
+                }
+            })
+        } else {
+            sleep.grouped.pop()
+        };
 
         if let Some(req) = request {
             did_work = true;
-            let process = process_table.read().get(&req.pid).cloned().expect(IN_TABLE);
-            let exited_reason = {
+            let process = process_table.get(req.pid).expect(IN_TABLE);
+            let (exited_reason, ordinary) = {
                 let mut process = process.lock();
-                match &process.state {
+                let ordinary = matches!(process.placement, Placement::Shared);
+                if let Placement::Grouped { worker } = process.placement {
+                    debug_assert_eq!(worker, worker_index);
+                }
+                let exited = match &process.state {
                     ProcessState::Exited(reason) => Some(reason.clone()),
                     ProcessState::Ready | ProcessState::Running | ProcessState::Waiting => {
                         process.set_live_state(ProcessState::Running);
                         process.worker = Some(worker_index);
                         None
                     }
-                }
+                };
+                (exited, ordinary)
             };
 
             if let Some(reason) = exited_reason {
                 finalize_managed_process(&process_table, &active_count, req.pid, reason);
             } else {
                 // Create the coroutine only after confirming the queued actor is live.
-                let mut handle = CoroutineHandle::new(req.fn_ptr, req.args_ptr);
-                match resume_process(&process_table, &active_count, req.pid, &mut handle) {
-                    Resumed::Runnable => runnable.push((req.pid, handle)),
-                    Resumed::Waiting => {
-                        waiting.insert(req.pid, handle);
+                let mut actor = ScheduledActor {
+                    process,
+                    handle: match req.step {
+                        Some(step) => Execution::Step(step),
+                        None => Execution::Stack(CoroutineHandle::new(req.fn_ptr, req.args_ptr)),
+                    },
+                };
+                let outcome = resume_process(
+                    &process_table,
+                    &active_count,
+                    req.pid,
+                    &mut actor,
+                    None,
+                    &shutdown,
+                )
+                .0;
+                if !matches!(outcome, Resumed::Finished) {
+                    let parked = matches!(outcome, Resumed::Waiting);
+                    ordinary_residents += usize::from(ordinary);
+                    suspended.insert(
+                        req.pid,
+                        SuspendedActor {
+                            actor,
+                            parked,
+                            ordinary,
+                        },
+                    );
+                    if !parked {
+                        runnable.push(req.pid);
                     }
-                    Resumed::Finished => {}
                 }
             }
         }
@@ -753,12 +1312,12 @@ fn worker_loop(
             // no Ready actors remaining. If so, force-terminate them. This
             // handles service loops that block forever on receive after the
             // main actor has exited.
-            let all_waiting = runnable.is_empty() && !waiting.is_empty();
+            let all_waiting = runnable.is_empty() && !suspended.is_empty();
 
             if all_waiting {
                 // Check globally: are there any non-waiting active processes?
                 // Count Ready/Running processes in the process table.
-                let has_ready = process_table.read().values().any(|p| {
+                let has_ready = process_table.read_all().iter().any(|(_, p)| {
                     let state = p.lock().state.clone();
                     matches!(state, ProcessState::Ready | ProcessState::Running)
                 });
@@ -769,10 +1328,14 @@ fn worker_loop(
                     // The mesh_actor_receive function checks is_shutdown()
                     // and returns null when no other actors are active,
                     // causing the service loop to exit cleanly.
-                    for (pid, handle) in waiting.drain() {
-                        let process = process_table.read().get(&pid).cloned().expect(IN_TABLE);
-                        process.lock().set_live_state(ProcessState::Ready);
-                        runnable.push((pid, handle));
+                    for (&pid, entry) in &mut suspended {
+                        entry
+                            .actor
+                            .process
+                            .lock()
+                            .set_live_state(ProcessState::Ready);
+                        entry.parked = false;
+                        runnable.push(pid);
                     }
                     // The actors will be resumed in Phase 1 on the next
                     // iteration, and will exit when receive returns null.
@@ -782,7 +1345,7 @@ fn worker_loop(
             // Also: if this worker has an empty suspended list, no pending
             // requests, and shutdown is active, exit the worker loop.
             if runnable.is_empty()
-                && waiting.is_empty()
+                && suspended.is_empty()
                 && !did_work
                 && active_count.load(Ordering::SeqCst) == 0
             {
@@ -792,7 +1355,9 @@ fn worker_loop(
 
         // Backoff when idle to avoid burning CPU: spin, then park for as long
         // as this used to sleep. `WorkerSleep::wake` cuts the park short.
-        if !did_work {
+        if !did_work && defer_shared {
+            std::thread::yield_now();
+        } else if !did_work {
             spin_count += 1;
             if spin_count > 1000 {
                 idle.park(std::time::Duration::from_micros(1_100));
@@ -808,6 +1373,7 @@ fn worker_loop(
         crate::dist::telemetry::runtime_telemetry()
             .record_scheduler_cycle(did_work, cycle_started_at.elapsed());
     }
+    CURRENT_WORKER.set(std::ptr::null());
 }
 
 /// Have every heap that `words` point into keep those objects alive.
@@ -917,32 +1483,49 @@ fn resume_process(
     process_table: &ProcessTable,
     active_count: &AtomicU64,
     pid: ProcessId,
-    handle: &mut CoroutineHandle,
-) -> Resumed {
-    let exited_reason =
-        process_table
-            .read()
-            .get(&pid)
-            .and_then(|process| match &process.lock().state {
-                ProcessState::Exited(reason) => Some(reason.clone()),
-                _ => None,
-            });
+    actor: &mut ScheduledActor,
+    handoff_worker: Option<&WorkerSleep>,
+    shutdown: &AtomicBool,
+) -> (Resumed, Option<ProcessId>) {
+    let (exited_reason, placement) = {
+        let process = actor.process.lock();
+        let reason = match &process.state {
+            ProcessState::Exited(reason) => Some(reason.clone()),
+            _ => None,
+        };
+        (reason, process.placement)
+    };
     if let Some(reason) = exited_reason {
         finalize_managed_process(process_table, active_count, pid, reason);
-        return Resumed::Finished;
+        return (Resumed::Finished, None);
     }
 
-    set_current_pid(pid);
-    let result = handle.resume_catching_panic();
+    set_current_process(pid, &actor.process);
+    let (result, next) = match placement {
+        Placement::Shared => (
+            actor.handle.resume(&actor.process, process_table, shutdown),
+            None,
+        ),
+        Placement::Grouped { .. } => {
+            let mut resume = || {
+                crate::panic::defer_diagnostics(|| {
+                    actor.handle.resume(&actor.process, process_table, shutdown)
+                })
+            };
+            match handoff_worker {
+                Some(worker) => capture_handoff(worker, resume),
+                None => (resume(), None),
+            }
+        }
+    };
     clear_current_pid();
     CURRENT_YIELDER.with(|current| current.yielder.set(None));
 
-    match result {
+    let outcome = match result {
         Ok(true) => {
             let mut outcome = Resumed::Runnable;
             let exited_reason = {
-                let process = process_table.read().get(&pid).cloned().expect(IN_TABLE);
-                let mut process = process.lock();
+                let mut process = actor.process.lock();
                 process.reductions = DEFAULT_REDUCTIONS;
                 match &process.state {
                     ProcessState::Exited(reason) => Some(reason.clone()),
@@ -958,7 +1541,7 @@ fn resume_process(
             };
             if let Some(reason) = exited_reason {
                 finalize_managed_process(process_table, active_count, pid, reason);
-                return Resumed::Finished;
+                return (Resumed::Finished, next);
             }
             outcome
         }
@@ -971,7 +1554,8 @@ fn resume_process(
             finalize_managed_process(process_table, active_count, pid, reason);
             Resumed::Finished
         }
-    }
+    };
+    (outcome, next)
 }
 
 fn finalize_managed_process(
@@ -992,51 +1576,90 @@ fn finalize_managed_process(
     crate::dist::telemetry::runtime_telemetry().set_runnable_actors(remaining);
 }
 
-/// Try to get a spawn request from available sources.
-///
-/// Priority order:
-/// 1. High-priority channel
-/// 2. Local deque (LIFO for cache locality)
-/// 3. Global injector
-/// 4. Steal from other workers
-fn try_get_request(
-    local: &Worker<SpawnRequest>,
-    injector: &Injector<SpawnRequest>,
-    high_rx: &Receiver<SpawnRequest>,
-    stealers: &[Stealer<SpawnRequest>],
-) -> Option<SpawnRequest> {
-    // 1. High priority
-    match high_rx.try_recv() {
-        Ok(req) => return Some(req),
-        Err(TryRecvError::Empty | TryRecvError::Disconnected) => {}
-    }
+const SHARED_CLAIM_GRACE: Duration = Duration::from_micros(24);
+const SHARED_CLAIM_RETRY: Duration = Duration::from_millis(1);
 
-    // 2. Local deque
-    if let Some(req) = local.pop() {
-        return Some(req);
-    }
+#[derive(Default)]
+struct SharedClaim {
+    offer: Option<ClaimOffer>,
+    cooldowns: Vec<Option<ClaimOfferStatus>>,
+    next_peer: usize,
+}
 
-    // 3. Global injector
+#[derive(Clone, Copy)]
+struct ClaimOfferStatus {
+    claims: usize,
+    retry_at: Instant,
+}
+
+struct ClaimOffer {
+    peer: usize,
+    claims: usize,
+    deadline: Instant,
+}
+
+impl SharedClaim {
+    /// Give a much lighter worker one chance to take work from the same FIFO.
+    /// Check peers only when ordinary work is queued and this worker is loaded.
+    fn defer(
+        &mut self,
+        now: Instant,
+        residents: usize,
+        active: &[CachePadded<WorkerSleep>],
+    ) -> bool {
+        if let Some(offer) = &self.offer {
+            if let Some(peer) = active.get(offer.peer) {
+                if now < offer.deadline {
+                    return true;
+                }
+                if peer.shared_claims.load(Ordering::Relaxed) == offer.claims {
+                    self.cooldowns[offer.peer] = Some(ClaimOfferStatus {
+                        claims: offer.claims,
+                        retry_at: offer.deadline + SHARED_CLAIM_RETRY,
+                    });
+                }
+            }
+            // Always allow a claim between two offers.
+            self.offer = None;
+            return false;
+        }
+
+        if self.cooldowns.len() < active.len() {
+            self.cooldowns.resize(active.len(), None);
+        }
+        let start = self.next_peer % active.len();
+        for index in (start..active.len()).chain(0..start) {
+            let peer = &active[index];
+            if peer.residents.load(Ordering::Relaxed).saturating_add(2) >= residents {
+                continue;
+            }
+            let claims = peer.shared_claims.load(Ordering::Relaxed);
+            if self.cooldowns[index]
+                .is_some_and(|cooldown| now < cooldown.retry_at && cooldown.claims == claims)
+            {
+                continue;
+            }
+            self.next_peer = index + 1;
+            self.offer = Some(ClaimOffer {
+                peer: index,
+                claims,
+                deadline: now + SHARED_CLAIM_GRACE,
+            });
+            peer.wake();
+            return true;
+        }
+        false
+    }
+}
+
+fn try_get_shared_request(injector: &Injector<SpawnRequest>) -> Option<SpawnRequest> {
     loop {
-        match injector.steal_batch_and_pop(local) {
+        match injector.steal() {
             Steal::Success(req) => return Some(req),
-            Steal::Empty => break,
+            Steal::Empty => return None,
             Steal::Retry => continue,
         }
     }
-
-    // 4. Steal from other workers
-    for stealer in stealers {
-        loop {
-            match stealer.steal() {
-                Steal::Success(req) => return Some(req),
-                Steal::Empty => break,
-                Steal::Retry => continue,
-            }
-        }
-    }
-
-    None
 }
 
 /// Handle process exit: invoke terminate callback, propagate exit to links,
@@ -1051,24 +1674,34 @@ fn handle_process_exit(
     fallback_reason: ExitReason,
 ) -> bool {
     // Claim finalization and extract callback/notification state under one lock.
-    let (reason, terminate_cb, linked_pids, monitored_by_entries) = {
-        if let Some(proc_arc) = process_table.read().get(&pid) {
+    let Some((reason, terminate_cb, linked_pids, monitored_by_entries)) = process_table
+        .with_process(pid, |proc_arc| {
             let mut proc = proc_arc.lock();
             let reason = proc
                 .begin_exit_finalization(fallback_reason)
                 .expect("a process is finalized once: by its worker, or by its host");
-            let cb = proc.terminate_callback.take();
+            let cb = proc
+                .terminate_callback
+                .take()
+                .map(|cb| (cb, proc.placement));
             let links = std::mem::take(&mut proc.links);
             let monitored_by = std::mem::take(&mut proc.monitored_by);
             (reason, cb, links, monitored_by)
-        } else {
-            return false;
-        }
+        })
+    else {
+        return false;
     };
 
     // Step 1: Invoke terminate callback (panic-safe).
-    if let Some(cb) = terminate_cb {
-        invoke_terminate_callback(cb, &reason);
+    if let Some((cb, placement)) = terminate_cb {
+        match placement {
+            Placement::Shared => invoke_terminate_callback(cb, &reason),
+            Placement::Grouped { worker } => {
+                let previous = TERMINATING_GROUP_WORKER.replace(Some(worker));
+                invoke_terminate_callback(cb, &reason);
+                TERMINATING_GROUP_WORKER.set(previous);
+            }
+        }
     }
 
     // Natural exits keep resources live through terminate. Forced exits may
@@ -1085,7 +1718,7 @@ fn handle_process_exit(
 
     // Propagate exit signals to local linked processes.
     let woken = link::propagate_exit(pid, &reason, local_links, |linked_pid| {
-        process_table.read().get(&linked_pid).cloned()
+        process_table.get(linked_pid)
     });
 
     // Wake processes that were in Waiting state.
@@ -1102,14 +1735,14 @@ fn handle_process_exit(
     for (monitor_ref, monitoring_pid) in &monitored_by_entries {
         if monitoring_pid.node_id() == 0 {
             // Local monitor: deliver DOWN message directly.
-            if let Some(mon_proc_arc) = process_table.read().get(monitoring_pid) {
+            let _ = process_table.with_process(*monitoring_pid, |mon_proc_arc| {
                 let mut mon_proc = mon_proc_arc.lock();
                 if mon_proc.fire_monitor(*monitor_ref)
                     && matches!(mon_proc.state, ProcessState::Waiting)
                 {
                     mon_proc.set_live_state(ProcessState::Ready);
                 }
-            }
+            });
         } else {
             // Remote monitor: send DIST_MONITOR_EXIT wire message.
             crate::dist::node::send_dist_monitor_exit_by_pid(
@@ -1133,7 +1766,7 @@ fn handle_process_exit(
     }
 
     // Step 4: Release the completed actor and its private heap.
-    process_table.write().remove(&pid);
+    process_table.remove(pid);
     true
 }
 
@@ -1156,6 +1789,7 @@ fn invoke_terminate_callback(cb: TerminateCallback, reason: &ExitReason) {
 
 #[cfg(test)]
 mod tests {
+    use super::super::stack::set_current_pid;
     use super::*;
     use std::sync::atomic::{AtomicU64, AtomicUsize};
 
@@ -1192,6 +1826,35 @@ mod tests {
     }
 
     #[test]
+    fn send_target_tracks_table_membership_while_removed_handles_remain_live() {
+        let scheduler = Scheduler::new(1);
+        let other = Scheduler::new(1);
+        let pid = ProcessId::next();
+        let process = || Arc::new(Mutex::new(Process::new(pid, Priority::Normal)));
+        let first = process();
+        let second = process();
+        let table = scheduler.process_table();
+
+        table.insert(pid, first.clone());
+        for _ in 0..2 {
+            assert!(Arc::ptr_eq(&scheduler.send_target(pid).unwrap(), &first));
+        }
+        table.insert(pid, second.clone());
+        assert!(Arc::ptr_eq(&scheduler.send_target(pid).unwrap(), &second));
+        assert!(other.send_target(pid).is_none());
+        other.process_table().insert(pid, first.clone());
+        assert!(Arc::ptr_eq(&other.send_target(pid).unwrap(), &first));
+        assert!(Arc::ptr_eq(&scheduler.send_target(pid).unwrap(), &second));
+
+        std::thread::scope(|scope| {
+            scope.spawn(|| table.remove(pid)).join().unwrap();
+        });
+        assert!(scheduler.send_target(pid).is_none());
+        table.insert(pid, first.clone());
+        assert!(Arc::ptr_eq(&scheduler.send_target(pid).unwrap(), &first));
+    }
+
+    #[test]
     fn exited_suspended_actor_is_finalized_without_reentry() {
         static ENTRY_COUNT: AtomicU64 = AtomicU64::new(0);
 
@@ -1203,33 +1866,54 @@ mod tests {
 
         ENTRY_COUNT.store(0, Ordering::SeqCst);
         let pid = ProcessId::next();
-        let process_table: ProcessTable = Arc::new(RwLock::new(FxHashMap::default()));
-        process_table.write().insert(
+        let process_table = ProcessTable::new();
+        process_table.insert(
             pid,
             Arc::new(Mutex::new(Process::new(pid, Priority::Normal))),
         );
         let active_count = AtomicU64::new(1);
-        let mut handle = CoroutineHandle::new(yield_once as *const u8, std::ptr::null());
+        let mut actor = ScheduledActor {
+            process: process_table.get(pid).unwrap(),
+            handle: Execution::Stack(CoroutineHandle::new(
+                yield_once as *const u8,
+                std::ptr::null(),
+            )),
+        };
 
         assert!(matches!(
-            resume_process(&process_table, &active_count, pid, &mut handle),
+            resume_process(
+                &process_table,
+                &active_count,
+                pid,
+                &mut actor,
+                None,
+                &AtomicBool::new(false)
+            )
+            .0,
             Resumed::Runnable
         ));
         assert_eq!(ENTRY_COUNT.load(Ordering::SeqCst), 1);
         process_table
-            .read()
-            .get(&pid)
-            .unwrap()
-            .lock()
-            .mark_exited(ExitReason::Killed);
+            .with_process(pid, |process| {
+                process.lock().mark_exited(ExitReason::Killed)
+            })
+            .unwrap();
 
         assert!(matches!(
-            resume_process(&process_table, &active_count, pid, &mut handle),
+            resume_process(
+                &process_table,
+                &active_count,
+                pid,
+                &mut actor,
+                None,
+                &AtomicBool::new(false)
+            )
+            .0,
             Resumed::Finished
         ));
         assert_eq!(ENTRY_COUNT.load(Ordering::SeqCst), 1);
         assert_eq!(active_count.load(Ordering::SeqCst), 0);
-        assert!(!process_table.read().contains_key(&pid));
+        assert!(!process_table.contains_key(pid));
     }
 
     #[test]
@@ -1249,13 +1933,19 @@ mod tests {
         ENTRY_COUNT.store(0, Ordering::SeqCst);
         MAY_YIELD.store(false, Ordering::SeqCst);
         let pid = ProcessId::next();
-        let process_table: ProcessTable = Arc::new(RwLock::new(FxHashMap::default()));
-        process_table.write().insert(
+        let process_table = ProcessTable::new();
+        process_table.insert(
             pid,
             Arc::new(Mutex::new(Process::new(pid, Priority::Normal))),
         );
         let active_count = AtomicU64::new(1);
-        let mut handle = CoroutineHandle::new(yield_after_exit as *const u8, std::ptr::null());
+        let mut actor = ScheduledActor {
+            process: process_table.get(pid).unwrap(),
+            handle: Execution::Stack(CoroutineHandle::new(
+                yield_after_exit as *const u8,
+                std::ptr::null(),
+            )),
+        };
 
         let retained = std::thread::scope(|scope| {
             scope.spawn(|| {
@@ -1263,20 +1953,27 @@ mod tests {
                     std::thread::yield_now();
                 }
                 process_table
-                    .read()
-                    .get(&pid)
-                    .unwrap()
-                    .lock()
-                    .mark_exited(ExitReason::Killed);
+                    .with_process(pid, |process| {
+                        process.lock().mark_exited(ExitReason::Killed)
+                    })
+                    .unwrap();
                 MAY_YIELD.store(true, Ordering::SeqCst);
             });
-            resume_process(&process_table, &active_count, pid, &mut handle)
+            resume_process(
+                &process_table,
+                &active_count,
+                pid,
+                &mut actor,
+                None,
+                &AtomicBool::new(false),
+            )
+            .0
         });
 
         assert!(matches!(retained, Resumed::Finished));
         assert_eq!(ENTRY_COUNT.load(Ordering::SeqCst), 1);
         assert_eq!(active_count.load(Ordering::SeqCst), 0);
-        assert!(!process_table.read().contains_key(&pid));
+        assert!(!process_table.contains_key(pid));
     }
 
     #[test]
@@ -1287,74 +1984,97 @@ mod tests {
             ENTRY_COUNT.fetch_add(1, Ordering::SeqCst);
         }
 
-        ENTRY_COUNT.store(0, Ordering::SeqCst);
-        FORCED_TERMINATE_COUNT.store(0, Ordering::SeqCst);
-        FORCED_TERMINATE_REASON.store(u64::MAX, Ordering::SeqCst);
-        let scheduler = Scheduler::new(1);
-        let target = scheduler.spawn(should_not_run as *const u8, std::ptr::null(), 0, 1);
-        let observer = scheduler.create_main_process();
-        let monitor_ref = 77;
-
-        {
-            let target_process = scheduler.get_process(target).unwrap();
-            let mut target_process = target_process.lock();
-            target_process.terminate_callback = Some(observe_forced_terminate);
-            target_process.links.insert(observer);
-            target_process.monitored_by.insert(monitor_ref, observer);
+        extern "C-unwind" fn should_not_step(_: *mut u64, _: *const u8) -> u8 {
+            ENTRY_COUNT.fetch_add(1, Ordering::SeqCst);
+            0
         }
-        {
+
+        for step in [false, true] {
+            ENTRY_COUNT.store(0, Ordering::SeqCst);
+            FORCED_TERMINATE_COUNT.store(0, Ordering::SeqCst);
+            FORCED_TERMINATE_REASON.store(u64::MAX, Ordering::SeqCst);
+            let scheduler = Scheduler::new(1);
+            let target = if step {
+                scheduler.spawn_step(
+                    should_not_step as *const u8,
+                    1,
+                    std::ptr::null(),
+                    0,
+                    std::ptr::null(),
+                )
+            } else {
+                scheduler.spawn(should_not_run as *const u8, std::ptr::null(), 0, 1)
+            };
+            let target_handle = scheduler.get_process(target).unwrap();
+            target_handle.lock().mailbox.push(crate::actor::Message {
+                buffer: crate::actor::MessageBuffer::from_slice(
+                    &[1],
+                    crate::actor::PROGRAM_MESSAGE_TAG,
+                ),
+            });
+            let observer = scheduler.create_main_process();
+            let monitor_ref = 77;
+
+            {
+                let target_process = scheduler.get_process(target).unwrap();
+                let mut target_process = target_process.lock();
+                target_process.terminate_callback = Some(observe_forced_terminate);
+                target_process.links.insert(observer);
+                target_process.monitored_by.insert(monitor_ref, observer);
+            }
+            {
+                let observer_process = scheduler.get_process(observer).unwrap();
+                let mut observer_process = observer_process.lock();
+                observer_process.trap_exit = true;
+                observer_process.links.insert(target);
+                observer_process.monitors.insert(
+                    monitor_ref,
+                    crate::actor::process::Monitor {
+                        target,
+                        message: crate::actor::heap::MessageBuffer::new(vec![7], 99),
+                    },
+                );
+            }
+            crate::secret::insert_test_secret(target);
+            scheduler
+                .get_process(target)
+                .unwrap()
+                .lock()
+                .mark_exited(ExitReason::Killed);
+
+            scheduler.signal_shutdown();
+            scheduler.run();
+
+            assert_eq!(target_handle.lock().mailbox.len(), 1);
+            assert_eq!(ENTRY_COUNT.load(Ordering::SeqCst), 0);
+            assert_eq!(FORCED_TERMINATE_COUNT.load(Ordering::SeqCst), 1);
+            assert_eq!(FORCED_TERMINATE_REASON.load(Ordering::SeqCst), 2);
+            assert_eq!(scheduler.active_count(), 0);
+            assert!(scheduler.get_process(target).is_none());
+            assert_eq!(crate::secret::owned_secret_count_for_test(target), 0);
+
             let observer_process = scheduler.get_process(observer).unwrap();
-            let mut observer_process = observer_process.lock();
-            observer_process.trap_exit = true;
-            observer_process.links.insert(target);
-            observer_process.monitors.insert(
-                monitor_ref,
-                crate::actor::process::Monitor {
-                    target,
-                    message: crate::actor::heap::MessageBuffer::new(vec![7], 99),
-                },
+            let observer_process = observer_process.lock();
+            assert_eq!(observer_process.mailbox.len(), 2);
+            let first_tag = observer_process.mailbox.pop().unwrap().buffer.type_tag;
+            let second_tag = observer_process.mailbox.pop().unwrap().buffer.type_tag;
+            assert_eq!(
+                [first_tag, second_tag],
+                [link::EXIT_SIGNAL_TAG, 99],
+                "the exit signal, then the monitor's own message"
             );
         }
-        crate::secret::insert_test_secret(target);
-        scheduler
-            .get_process(target)
-            .unwrap()
-            .lock()
-            .mark_exited(ExitReason::Killed);
-
-        scheduler.signal_shutdown();
-        scheduler.run();
-
-        assert_eq!(ENTRY_COUNT.load(Ordering::SeqCst), 0);
-        assert_eq!(FORCED_TERMINATE_COUNT.load(Ordering::SeqCst), 1);
-        assert_eq!(FORCED_TERMINATE_REASON.load(Ordering::SeqCst), 2);
-        assert_eq!(scheduler.active_count(), 0);
-        assert!(scheduler.get_process(target).is_none());
-        assert_eq!(crate::secret::owned_secret_count_for_test(target), 0);
-
-        let observer_process = scheduler.get_process(observer).unwrap();
-        let observer_process = observer_process.lock();
-        assert_eq!(observer_process.mailbox.len(), 2);
-        let first_tag = observer_process.mailbox.pop().unwrap().buffer.type_tag;
-        let second_tag = observer_process.mailbox.pop().unwrap().buffer.type_tag;
-        assert_eq!(
-            [first_tag, second_tag],
-            [link::EXIT_SIGNAL_TAG, 99],
-            "the exit signal, then the monitor's own message"
-        );
     }
 
     #[test]
     fn managed_process_finalization_is_idempotent() {
         IDEMPOTENT_TERMINATE_COUNT.store(0, Ordering::SeqCst);
         let pid = ProcessId::next();
-        let process_table: ProcessTable = Arc::new(RwLock::new(FxHashMap::default()));
+        let process_table = ProcessTable::new();
         let mut process = Process::new(pid, Priority::Normal);
         process.terminate_callback = Some(observe_idempotent_terminate);
         process.mark_exited(ExitReason::Killed);
-        process_table
-            .write()
-            .insert(pid, Arc::new(Mutex::new(process)));
+        process_table.insert(pid, Arc::new(Mutex::new(process)));
         let active_count = AtomicU64::new(1);
 
         finalize_managed_process(&process_table, &active_count, pid, ExitReason::Normal);
@@ -1362,14 +2082,6 @@ mod tests {
 
         assert_eq!(IDEMPOTENT_TERMINATE_COUNT.load(Ordering::SeqCst), 1);
         assert_eq!(active_count.load(Ordering::SeqCst), 0);
-    }
-
-    /// Stable thread identifier using Hash of ThreadId.
-    fn thread_id_hash() -> u64 {
-        use std::hash::{Hash, Hasher};
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        std::thread::current().id().hash(&mut hasher);
-        hasher.finish()
     }
 
     #[test]
@@ -1414,7 +2126,7 @@ mod tests {
         assert!(!spawner.lock().heap.is_live_allocation(args, 16));
 
         // Once the child's process is gone the loan ends.
-        sched.process_table.write().remove(&child_pid);
+        sched.process_table.remove(child_pid);
         spawner.lock().heap.collect(stack, stack);
         assert!(!spawner.lock().heap.is_live_allocation(value, 24));
 
@@ -1545,7 +2257,7 @@ mod tests {
 
         // The parent goes away first; the child still holds the value.
         drop(parent);
-        sched.process_table.write().remove(&parent_pid);
+        sched.process_table.remove(parent_pid);
         let dummy: u64 = 0;
         let stack = &dummy as *const u64 as *const u8;
         grandparent.lock().heap.collect(stack, stack);
@@ -1616,6 +2328,387 @@ mod tests {
         elastic.wait();
     }
 
+    type SpawnTrace = Mutex<Vec<(usize, std::thread::ThreadId)>>;
+
+    struct SpawnProbe<'a> {
+        label: usize,
+        trace: &'a SpawnTrace,
+    }
+
+    extern "C" fn record_spawn(args: *const u8) {
+        let probe = unsafe { &*args.cast::<SpawnProbe<'_>>() };
+        probe
+            .trace
+            .lock()
+            .push((probe.label, std::thread::current().id()));
+    }
+
+    #[test]
+    fn ordinary_spawn_fifo_keeps_enqueue_order_behind_high_priority() {
+        let scheduler = Scheduler::new(1);
+        let trace = SpawnTrace::default();
+        let probes: [_; 12] = std::array::from_fn(|label| SpawnProbe {
+            label,
+            trace: &trace,
+        });
+        for probe in &probes {
+            let priority = match probe.label {
+                11 => 0,
+                n if n % 2 == 0 => 1,
+                _ => 2,
+            };
+            scheduler.spawn(
+                record_spawn as *const u8,
+                std::ptr::from_ref(probe).cast(),
+                0,
+                priority,
+            );
+        }
+        scheduler.signal_shutdown();
+        scheduler.run();
+
+        let labels: Vec<_> = trace
+            .into_inner()
+            .into_iter()
+            .map(|(label, _)| label)
+            .collect();
+        assert_eq!(labels, std::iter::once(11).chain(0..11).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn shared_claim_timeout_allows_work_until_lighter_peer_progresses() {
+        let workers: [CachePadded<WorkerSleep>; 2] = std::array::from_fn(|_| Default::default());
+        workers[0].residents.store(3, Ordering::Relaxed);
+        let mut claim = SharedClaim::default();
+        let start = Instant::now();
+        let deadline = start + SHARED_CLAIM_GRACE;
+
+        assert!(claim.defer(start, 3, &workers));
+        assert!(claim.defer(deadline - Duration::from_micros(1), 3, &workers));
+        for i in 0..5 {
+            assert!(!claim.defer(deadline + Duration::from_micros(i), 3, &workers));
+        }
+
+        workers[1].shared_claims.fetch_add(1, Ordering::Relaxed);
+        let now = deadline + Duration::from_micros(5);
+        assert!(claim.defer(now, 3, &workers));
+        assert!(!claim.defer(now, 3, &workers[..1]));
+
+        assert!(claim.defer(now, 3, &workers));
+        let retry = now + SHARED_CLAIM_GRACE + SHARED_CLAIM_RETRY;
+        assert!(!claim.defer(retry, 3, &workers));
+        assert!(claim.defer(retry, 3, &workers));
+    }
+
+    #[test]
+    fn an_unresponsive_peer_does_not_delay_an_offer_to_another_worker() {
+        let workers: [CachePadded<WorkerSleep>; 3] = std::array::from_fn(|_| Default::default());
+        workers[0].residents.store(4, Ordering::Relaxed);
+        let mut claim = SharedClaim::default();
+        let start = Instant::now();
+        assert!(claim.defer(start, 4, &workers));
+        assert_eq!(claim.offer.as_ref().unwrap().peer, 1);
+
+        let deadline = start + SHARED_CLAIM_GRACE;
+        assert!(!claim.defer(deadline, 4, &workers));
+        assert!(claim.defer(deadline, 4, &workers));
+        assert_eq!(claim.offer.as_ref().unwrap().peer, 2);
+
+        let next = deadline + SHARED_CLAIM_GRACE;
+        assert!(!claim.defer(next, 4, &workers));
+        assert!(!claim.defer(next, 4, &workers));
+        workers[1].shared_claims.fetch_add(1, Ordering::Relaxed);
+        assert!(claim.defer(next, 4, &workers));
+        assert_eq!(claim.offer.as_ref().unwrap().peer, 1);
+    }
+
+    #[test]
+    fn ordinary_children_progress_while_lighter_worker_is_blocked_after_resize() {
+        use std::sync::mpsc::{channel, Receiver, Sender};
+
+        const CHILDREN: usize = 16;
+        const TIMEOUT: Duration = Duration::from_secs(5);
+
+        struct Scenario {
+            scheduler: Scheduler,
+            parked: Sender<()>,
+            completed: Sender<std::thread::ThreadId>,
+        }
+
+        struct Blocker {
+            entered: Sender<std::thread::ThreadId>,
+            release: Mutex<Receiver<()>>,
+        }
+
+        extern "C-unwind" fn park(args: *const u8) {
+            let scenario = unsafe { &*args.cast::<Scenario>() };
+            let process = scenario
+                .scheduler
+                .get_process(get_current_pid().unwrap())
+                .unwrap();
+            process.lock().set_live_state(ProcessState::Waiting);
+            scenario.parked.send(()).unwrap();
+            super::super::stack::yield_current();
+        }
+
+        extern "C-unwind" fn block(args: *const u8) {
+            let blocker = unsafe { &*args.cast::<Blocker>() };
+            blocker.entered.send(std::thread::current().id()).unwrap();
+            let _ = blocker.release.lock().recv();
+        }
+
+        extern "C-unwind" fn child(args: *const u8) {
+            let scenario = unsafe { &*args.cast::<Scenario>() };
+            scenario
+                .completed
+                .send(std::thread::current().id())
+                .unwrap();
+        }
+
+        extern "C-unwind" fn parent(args: *const u8) {
+            let scenario = unsafe { &*args.cast::<Scenario>() };
+            for _ in 0..CHILDREN {
+                scenario.scheduler.spawn(child as *const u8, args, 0, 1);
+            }
+        }
+
+        let (parked, park_events) = channel();
+        let (completed, child_events) = channel();
+        let scenario = Scenario {
+            scheduler: Scheduler::new_elastic(1, 2).unwrap(),
+            parked,
+            completed,
+        };
+        let scheduler = &scenario.scheduler;
+        let args = std::ptr::from_ref(&scenario).cast();
+        let blocker = || {
+            let (entered, entry_event) = channel();
+            let (release, wait) = channel();
+            (
+                Blocker {
+                    entered,
+                    release: Mutex::new(wait),
+                },
+                entry_event,
+                release,
+            )
+        };
+        let (first, first_entry, release_first) = blocker();
+        let (second, second_entry, release_second) = blocker();
+
+        // Keep all the borrowed actor arguments alive until the scheduler joins.
+        let outcome = std::thread::scope(|scope| {
+            scope.spawn(|| scheduler.run());
+            let progress = (|| {
+                for _ in 0..3 {
+                    scheduler.spawn(park as *const u8, args, 0, 1);
+                    park_events.recv_timeout(TIMEOUT)?;
+                }
+                scheduler.spawn(block as *const u8, std::ptr::from_ref(&first).cast(), 0, 1);
+                let loaded = first_entry.recv_timeout(TIMEOUT)?;
+
+                // With the sole active worker blocked, the second blocker is queued
+                // until resize activates a lighter worker to claim it.
+                scheduler.spawn(block as *const u8, std::ptr::from_ref(&second).cast(), 0, 1);
+                scheduler.resize(2).unwrap();
+                let lighter = second_entry.recv_timeout(TIMEOUT)?;
+
+                scheduler.spawn(parent as *const u8, args, 0, 1);
+                drop(release_first);
+                let children = (0..CHILDREN)
+                    .map(|_| child_events.recv_timeout(TIMEOUT))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok::<_, std::sync::mpsc::RecvTimeoutError>((loaded, lighter, children))
+            })();
+            scheduler.signal_shutdown();
+            drop(release_second);
+            progress
+        });
+        let (loaded, lighter, children) =
+            outcome.expect("children finish while the lighter worker is blocked");
+        assert_ne!(loaded, lighter);
+        assert_eq!(children, vec![loaded; CHILDREN]);
+        assert_eq!(scheduler.active_count(), 0);
+    }
+
+    #[test]
+    fn grouped_roots_distribute_in_worker_fifo_order() {
+        let scheduler = Scheduler::new(3);
+        let trace = SpawnTrace::default();
+        let probes: [_; 12] = std::array::from_fn(|label| SpawnProbe {
+            label,
+            trace: &trace,
+        });
+        for probe in &probes {
+            scheduler.spawn_grouped(
+                record_spawn as *const u8,
+                std::ptr::from_ref(probe).cast(),
+                0,
+                std::ptr::null(),
+                None,
+            );
+        }
+        scheduler.signal_shutdown();
+        scheduler.run();
+
+        let trace = trace.lock();
+        for (worker, sleep) in scheduler.sleepers.iter().enumerate() {
+            let thread = sleep.thread.get().unwrap().id();
+            let labels: Vec<_> = trace
+                .iter()
+                .filter_map(|&(label, id)| (id == thread).then_some(label))
+                .collect();
+            assert_eq!(
+                labels,
+                (worker..probes.len()).step_by(3).collect::<Vec<_>>()
+            );
+        }
+        assert_eq!(scheduler.active_count(), 0);
+    }
+
+    #[test]
+    fn grouped_spawns_share_the_spawn_budget_behind_high_priority() {
+        let scheduler = Scheduler::new(1);
+        let trace = SpawnTrace::default();
+        let probes: [_; 7] = std::array::from_fn(|label| SpawnProbe {
+            label,
+            trace: &trace,
+        });
+        for probe in &probes {
+            let args = std::ptr::from_ref(probe).cast();
+            match probe.label {
+                0..=2 => {
+                    scheduler.spawn_grouped(
+                        record_spawn as *const u8,
+                        args,
+                        0,
+                        std::ptr::null(),
+                        None,
+                    );
+                }
+                3..=5 => {
+                    scheduler.spawn(record_spawn as *const u8, args, 0, 1);
+                }
+                _ => {
+                    scheduler.spawn(record_spawn as *const u8, args, 0, 0);
+                }
+            }
+        }
+        scheduler.signal_shutdown();
+        scheduler.run();
+
+        let labels: Vec<_> = trace
+            .into_inner()
+            .into_iter()
+            .map(|(label, _)| label)
+            .collect();
+        assert_eq!(labels[0], 6);
+        assert_eq!([labels[1], labels[3], labels[5]], [0, 1, 2]);
+        assert!(labels[2..]
+            .iter()
+            .step_by(2)
+            .all(|label| (3..=5).contains(label)));
+    }
+
+    #[test]
+    fn grouped_descendants_drain_after_resize_while_ordinary_spawns_use_active_worker() {
+        struct GroupTree<'a> {
+            scheduler: &'a Scheduler,
+            grouped: SpawnProbe<'a>,
+            ordinary: SpawnProbe<'a>,
+            next: Option<&'a GroupTree<'a>>,
+        }
+
+        extern "C" fn spawn_descendant(args: *const u8) {
+            let node = unsafe { &*args.cast::<GroupTree<'_>>() };
+            record_spawn(std::ptr::from_ref(&node.grouped).cast());
+            node.scheduler.spawn(
+                record_spawn as *const u8,
+                std::ptr::from_ref(&node.ordinary).cast(),
+                0,
+                1,
+            );
+            if let Some(next) = node.next {
+                node.scheduler.spawn_grouped(
+                    spawn_descendant as *const u8,
+                    std::ptr::from_ref(next).cast(),
+                    0,
+                    std::ptr::null(),
+                    None,
+                );
+            }
+        }
+
+        let scheduler = Scheduler::new_elastic(1, 2).unwrap();
+        let trace = SpawnTrace::default();
+        let node = |label, next| GroupTree {
+            scheduler: &scheduler,
+            grouped: SpawnProbe {
+                label,
+                trace: &trace,
+            },
+            ordinary: SpawnProbe {
+                label: label + 1,
+                trace: &trace,
+            },
+            next,
+        };
+        let grandchild = node(4, None);
+        let child = node(2, Some(&grandchild));
+        let parent = node(0, Some(&child));
+        let root = SpawnProbe {
+            label: 6,
+            trace: &trace,
+        };
+        let fresh = SpawnProbe {
+            label: 7,
+            trace: &trace,
+        };
+        scheduler.resize(2).unwrap();
+        scheduler.spawn_grouped(
+            record_spawn as *const u8,
+            std::ptr::from_ref(&root).cast(),
+            0,
+            std::ptr::null(),
+            None,
+        );
+        scheduler.spawn_grouped(
+            spawn_descendant as *const u8,
+            std::ptr::from_ref(&parent).cast(),
+            0,
+            std::ptr::null(),
+            None,
+        );
+        scheduler.resize(1).unwrap();
+        scheduler.spawn_grouped(
+            record_spawn as *const u8,
+            std::ptr::from_ref(&fresh).cast(),
+            0,
+            std::ptr::null(),
+            None,
+        );
+        scheduler.signal_shutdown();
+        scheduler.run();
+
+        let mut trace = trace.into_inner();
+        trace.sort_unstable_by_key(|&(label, _)| label);
+        let [active, retired] = [0, 1].map(|i| scheduler.sleepers[i].thread.get().unwrap().id());
+        assert_eq!(
+            trace,
+            vec![
+                (0, retired),
+                (1, active),
+                (2, retired),
+                (3, active),
+                (4, retired),
+                (5, active),
+                (6, active),
+                (7, active)
+            ]
+        );
+        assert_eq!(scheduler.active_count(), 0);
+    }
+
     /// The monitor of an actor that ends is dropped when the actor watching
     /// it has already left the table.
     #[test]
@@ -1656,7 +2749,7 @@ mod tests {
         sched.run();
 
         assert!(
-            sched.process_table.read().is_empty(),
+            sched.process_table.read_all().iter().next().is_none(),
             "completed actor heaps must not remain reachable"
         );
     }
@@ -1693,40 +2786,47 @@ mod tests {
     }
 
     #[test]
-    fn test_work_stealing_distributes() {
-        // Use a test-specific counter and thread-ID list to avoid
-        // interference from concurrent tests sharing the global statics.
-        static WS_COUNTER: AtomicU64 = AtomicU64::new(0);
-        static WS_THREAD_IDS: Mutex<Vec<u64>> = Mutex::new(Vec::new());
+    fn ordinary_spawns_can_be_claimed_while_another_worker_is_busy() {
+        use std::sync::mpsc::{channel, Receiver, Sender};
+        use std::thread::{self, ThreadId};
 
-        extern "C" fn ws_record_entry(_args: *const u8) {
-            WS_COUNTER.fetch_add(1, Ordering::SeqCst);
-            let tid = thread_id_hash();
-            WS_THREAD_IDS.lock().push(tid);
+        struct Probe {
+            claimed: Sender<ThreadId>,
+            release: Mutex<Receiver<()>>,
         }
 
-        WS_COUNTER.store(0, Ordering::SeqCst);
-        WS_THREAD_IDS.lock().clear();
-
-        let num_actors = 100;
-        let sched = Scheduler::new(4);
-        for _ in 0..num_actors {
-            sched.spawn(ws_record_entry as *const u8, std::ptr::null(), 0, 1);
+        extern "C-unwind" fn record_claim(args: *const u8) {
+            let probe = unsafe { &*args.cast::<Probe>() };
+            probe.claimed.send(thread::current().id()).unwrap();
+            let _ = probe.release.lock().recv();
         }
-        sched.signal_shutdown();
-        sched.run();
 
-        let thread_ids = WS_THREAD_IDS.lock();
-        let unique_threads: std::collections::HashSet<u64> = thread_ids.iter().cloned().collect();
+        let (claimed, claims) = channel();
+        let (release, wait) = channel();
+        let probe = Probe {
+            claimed,
+            release: Mutex::new(wait),
+        };
+        let scheduler = Scheduler::new(2);
+        let args = std::ptr::from_ref(&probe).cast();
+        for _ in 0..2 {
+            scheduler.spawn(record_claim as *const u8, args, 0, 1);
+        }
+        scheduler.signal_shutdown();
 
-        // With 100 actors across 4 threads, we should see work on multiple threads.
-        // Allow at least 2 since work-stealing is best-effort.
-        assert!(
-            unique_threads.len() >= 2,
-            "Expected work on at least 2 threads, got {} (thread IDs: {:?})",
-            unique_threads.len(),
-            unique_threads
+        let (first, second) = thread::scope(|scope| {
+            scope.spawn(|| scheduler.run());
+            let timeout = Duration::from_secs(5);
+            let first = claims.recv_timeout(timeout);
+            let second = claims.recv_timeout(timeout);
+            drop(release);
+            (first, second)
+        });
+        assert_ne!(
+            first.expect("first worker claims an actor"),
+            second.expect("second worker claims an actor while the first is blocked")
         );
+        assert_eq!(scheduler.active_count(), 0);
     }
 
     #[test]
@@ -1886,5 +2986,690 @@ mod tests {
         scheduler.wait();
 
         assert_eq!(ELASTIC_COUNTER.load(Ordering::SeqCst), 30);
+    }
+
+    mod handoff_fairness {
+        use super::*;
+        use crate::actor::stack::yield_current;
+
+        const CHAIN: usize = 12;
+        const ORDINARY: usize = 3;
+
+        struct Scenario {
+            scheduler: Scheduler,
+            ordinary: std::sync::OnceLock<Vec<ProcessId>>,
+            chain: std::sync::OnceLock<Vec<ProcessId>>,
+            trace: Mutex<Vec<&'static str>>,
+            started: AtomicBool,
+            panic_after_wakes: bool,
+            steps: bool,
+            block_request: std::sync::mpsc::SyncSender<()>,
+            unblock: Mutex<std::sync::mpsc::Receiver<()>>,
+        }
+
+        impl Scenario {
+            fn park(&self) {
+                let process = self
+                    .scheduler
+                    .get_process(get_current_pid().unwrap())
+                    .unwrap();
+                process.lock().set_live_state(ProcessState::Waiting);
+                yield_current();
+            }
+
+            fn wake(&self, pid: ProcessId) {
+                let process = self.scheduler.get_process(pid).unwrap();
+                let proc = process.lock();
+                if self.steps && self.chain.get().unwrap().contains(&pid) {
+                    proc.mailbox.push(crate::actor::Message {
+                        buffer: crate::actor::MessageBuffer::from_slice(
+                            &[1],
+                            crate::actor::PROGRAM_MESSAGE_TAG,
+                        ),
+                    });
+                }
+                self.scheduler.wake_if_waiting(pid, proc);
+            }
+        }
+
+        extern "C-unwind" fn ordinary(args: *const u8) {
+            let s = unsafe { &*args.cast::<Scenario>() };
+            let pid = get_current_pid().unwrap();
+            s.park();
+            let index = s
+                .ordinary
+                .get()
+                .unwrap()
+                .iter()
+                .position(|&p| p == pid)
+                .unwrap();
+            s.trace.lock().push(["remote", "local", "overflow"][index]);
+            if index == 1 {
+                s.block_request.send(()).unwrap();
+                s.unblock.lock().recv().unwrap();
+            }
+        }
+
+        extern "C-unwind" fn chain(args: *const u8) {
+            let s = unsafe { &*args.cast::<Scenario>() };
+            let pid = get_current_pid().unwrap();
+            s.park();
+            chain_hop(s, pid);
+        }
+
+        extern "C-unwind" fn step_hop(frame: *mut u64, payload: *const u8) -> u8 {
+            let s = unsafe { &*((*frame) as *const Scenario) };
+            assert_eq!(unsafe { payload.cast::<u64>().read() }, 1);
+            crate::actor::mesh_step_charge();
+            chain_hop(s, get_current_pid().unwrap());
+            0
+        }
+
+        fn chain_hop(s: &Scenario, pid: ProcessId) {
+            s.trace.lock().push("hop");
+            let index = s
+                .chain
+                .get()
+                .unwrap()
+                .iter()
+                .position(|&p| p == pid)
+                .unwrap();
+            if let Some(&next) = s.chain.get().unwrap().get(index + 1) {
+                s.wake(next);
+            }
+        }
+
+        extern "C-unwind" fn ready(args: *const u8) {
+            let s = unsafe { &*args.cast::<Scenario>() };
+            while !s.started.load(Ordering::Acquire) {
+                yield_current();
+            }
+            let process = s.scheduler.get_process(get_current_pid().unwrap()).unwrap();
+            let label = match process.lock().placement {
+                Placement::Shared => "ordinary ready",
+                Placement::Grouped { .. } => "grouped ready",
+            };
+            s.trace.lock().push(label);
+        }
+
+        extern "C-unwind" fn spawned(args: *const u8) {
+            let s = unsafe { &*args.cast::<Scenario>() };
+            s.trace.lock().push("spawn");
+        }
+
+        extern "C-unwind" fn sender(args: *const u8) {
+            let s = unsafe { &*args.cast::<Scenario>() };
+            // Handoffs are available for resumed actors. All recipients have parked.
+            yield_current();
+            std::thread::scope(|scope| {
+                scope.spawn(|| s.wake(s.ordinary.get().unwrap()[0]));
+            });
+            s.wake(s.ordinary.get().unwrap()[1]);
+            s.wake(s.chain.get().unwrap()[0]);
+            s.wake(s.ordinary.get().unwrap()[2]);
+            s.scheduler.spawn(spawned as *const u8, args, 0, 0);
+            s.started.store(true, Ordering::Release);
+            if s.panic_after_wakes {
+                panic!("sender exited after waking its peers");
+            }
+        }
+
+        fn run(panic_after_wakes: bool, steps: bool) -> Vec<&'static str> {
+            let (request, blocking) = std::sync::mpsc::sync_channel(0);
+            let (release, unblock) = std::sync::mpsc::channel();
+            let scenario = Scenario {
+                scheduler: Scheduler::new(1),
+                ordinary: Default::default(),
+                chain: Default::default(),
+                trace: Mutex::default(),
+                started: AtomicBool::new(false),
+                panic_after_wakes,
+                steps,
+                block_request: request,
+                unblock: Mutex::new(unblock),
+            };
+            // Actor arguments are borrowed until run joins the worker.
+            let args = std::ptr::from_ref(&scenario).cast();
+            scenario
+                .ordinary
+                .set(
+                    (0..ORDINARY)
+                        .map(|_| scenario.scheduler.spawn(ordinary as *const u8, args, 0, 0))
+                        .collect(),
+                )
+                .unwrap();
+            scenario.scheduler.spawn(ready as *const u8, args, 0, 0);
+            let grouped = |entry: *const u8| {
+                scenario
+                    .scheduler
+                    .spawn_grouped(entry, args, 0, std::ptr::null(), None)
+            };
+            scenario
+                .chain
+                .set(
+                    (0..CHAIN)
+                        .map(|_| {
+                            if steps {
+                                let frame = args as u64;
+                                scenario.scheduler.spawn_step(
+                                    step_hop as *const u8,
+                                    1,
+                                    std::ptr::from_ref(&frame).cast(),
+                                    8,
+                                    std::ptr::null(),
+                                )
+                            } else {
+                                grouped(chain as *const u8)
+                            }
+                        })
+                        .collect(),
+                )
+                .unwrap();
+            grouped(ready as *const u8);
+            grouped(sender as *const u8);
+            std::thread::scope(|scope| {
+                scope.spawn(move || {
+                    blocking
+                        .recv_timeout(std::time::Duration::from_secs(10))
+                        .unwrap();
+                    release.send(()).unwrap();
+                });
+                scenario.scheduler.signal_shutdown();
+                scenario.scheduler.run();
+            });
+            assert_eq!(scenario.scheduler.active_count(), 0);
+            scenario.trace.into_inner()
+        }
+
+        #[test]
+        fn ordinary_wakes_remain_fifo_across_remote_local_and_overflow() {
+            let trace = run(false, false);
+            let ordinary: Vec<_> = trace
+                .into_iter()
+                .filter(|label| matches!(*label, "remote" | "local" | "overflow"))
+                .collect();
+            assert_eq!(ordinary, ["remote", "local", "overflow"]);
+        }
+
+        #[test]
+        fn grouped_chain_yields_to_ready_actors_and_spawn_after_three_handoffs() {
+            for (panic_after_wakes, steps) in
+                [(false, false), (true, false), (false, true), (true, true)]
+            {
+                let trace = run(panic_after_wakes, steps);
+                let wake_order: Vec<_> = trace
+                    .iter()
+                    .copied()
+                    .filter(|label| matches!(*label, "remote" | "local" | "overflow"))
+                    .collect();
+                assert_eq!(wake_order, ["remote", "local", "overflow"]);
+                let position = |label| trace.iter().position(|&entry| entry == label).unwrap();
+                assert_eq!(trace.iter().filter(|&&entry| entry == "hop").count(), CHAIN);
+                assert_eq!(position("spawn"), 3, "{trace:?}");
+                for label in ["ordinary ready", "grouped ready", "remote", "overflow"] {
+                    let hops = trace[..position(label)]
+                        .iter()
+                        .filter(|&&entry| entry == "hop")
+                        .count();
+                    assert_eq!(hops, 3, "{label} waited for {hops} hops: {trace:?}");
+                }
+            }
+        }
+
+        #[test]
+        fn unwind_requeues_captured_wake_and_disarms_the_slot() {
+            let scheduler = Scheduler::new(2);
+            let other = Scheduler::new(1);
+            let wake = |sched: &Scheduler, worker| {
+                let pid = ProcessId::next();
+                let mut p =
+                    Process::with_placement(pid, Priority::Normal, Placement::Grouped { worker });
+                p.worker = Some(worker);
+                p.set_live_state(ProcessState::Waiting);
+                sched.wake_if_waiting(pid, Mutex::new(p).lock());
+                pid
+            };
+            let owner = &scheduler.sleepers[0];
+            let mut captured = None;
+            let mut overflow = None;
+            let mut foreign = None;
+            let mut remote = None;
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                capture_handoff(owner, || {
+                    foreign = Some(wake(&other, 0));
+                    remote = Some(wake(&scheduler, 1));
+                    captured = Some(wake(&scheduler, 0));
+                    overflow = Some(wake(&scheduler, 0));
+                    panic!("unwind with an occupied slot");
+                });
+            }));
+            assert!(result.is_err());
+            let after = wake(&scheduler, 0);
+            assert_eq!(*other.sleepers[0].woken.lock(), [foreign.unwrap()]);
+            assert_eq!(*scheduler.sleepers[1].woken.lock(), [remote.unwrap()]);
+            assert_eq!(
+                *owner.woken.lock(),
+                [overflow.unwrap(), captured.unwrap(), after]
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod stackless_probe {
+    use super::*;
+    use crate::actor::{mesh_actor_self, Message, MessageBuffer};
+
+    extern "C-unwind" fn step(frame: *mut u64, message: *const u8) -> u8 {
+        assert!(CURRENT_YIELDER.with(|tls| tls.yielder.get().is_none()));
+        let frame = unsafe { std::slice::from_raw_parts_mut(frame, 2) };
+        assert_eq!(mesh_actor_self(), frame[0]);
+        let current = unsafe { message.cast::<u64>().read() };
+        match current {
+            17 => {
+                super::super::mesh_step_charge();
+                super::super::mesh_step_charge();
+                // Only the loaded value may escape the caller-owned payload.
+                assert_eq!(
+                    crate::actor::current_process()
+                        .unwrap()
+                        .lock()
+                        .heap
+                        .total_bytes(),
+                    0
+                );
+                let owned = crate::gc::mesh_gc_alloc_actor(8, 8).cast::<u64>();
+                unsafe { owned.write(current) };
+                frame[1] = owned as u64;
+                1
+            }
+            23 => {
+                let previous = unsafe { (frame[1] as *const u64).read() };
+                assert_eq!(previous, 17);
+                panic!("probe crash after resume");
+            }
+            _ => panic!("unexpected message"),
+        }
+    }
+
+    fn push(actor: &Arc<Mutex<Process>>, value: u64, tag: u64) {
+        actor.lock().mailbox.push(Message {
+            buffer: MessageBuffer::from_slice(&value.to_le_bytes(), tag),
+        });
+    }
+
+    #[test]
+    fn kill_before_or_after_wake_finalizes_without_dequeuing() {
+        struct Kill {
+            scheduler: Scheduler,
+            pid: ProcessId,
+            wake_first: bool,
+        }
+
+        extern "C-unwind" fn wake_and_kill(args: *const u8) {
+            let kill = unsafe { &*args.cast::<Kill>() };
+            let target = kill.scheduler.get_process(kill.pid).unwrap();
+            assert!(matches!(target.lock().state, ProcessState::Waiting));
+            let wake = || {
+                push(&target, 23, 0);
+                kill.scheduler.wake_if_waiting(kill.pid, target.lock());
+            };
+            if kill.wake_first {
+                wake();
+            }
+            crate::actor::deliver_exit_signal(&kill.scheduler, kill.pid, ExitReason::Killed);
+            if !kill.wake_first {
+                wake();
+            }
+        }
+
+        extern "C-unwind" fn finished(_: *mut u64, _: *const u8) -> u8 {
+            0
+        }
+        for wake_first in [true, false] {
+            let scheduler = Scheduler::new(1);
+            let pid = scheduler.spawn_step(
+                finished as *const u8,
+                2,
+                std::ptr::null(),
+                0,
+                std::ptr::null(),
+            );
+            let target = scheduler.get_process(pid).unwrap();
+            let kill = Kill {
+                scheduler,
+                pid,
+                wake_first,
+            };
+            kill.scheduler.spawn_grouped(
+                wake_and_kill as *const u8,
+                std::ptr::from_ref(&kill).cast(),
+                0,
+                std::ptr::null(),
+                None,
+            );
+            kill.scheduler.signal_shutdown();
+            kill.scheduler.run();
+            assert_eq!(kill.scheduler.active_count(), 0);
+            assert!(kill.scheduler.get_process(pid).is_none());
+            let proc = target.lock();
+            assert!(matches!(
+                proc.state,
+                ProcessState::Exited(ExitReason::Killed)
+            ));
+            assert!(proc
+                .mailbox
+                .remove_first(|m| m.buffer.type_tag == 0)
+                .is_some());
+        }
+    }
+
+    #[test]
+    fn running_kill_takes_effect_at_suspension_or_completion() {
+        use crate::actor::{
+            deliver_exit_signal, mesh_reduction_check, receive_scalar_payload, receive_with,
+            PROGRAM_MESSAGE_TAG,
+        };
+        use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
+        use std::time::Duration;
+
+        #[derive(Clone, Copy, Debug)]
+        enum End {
+            Return,
+            Panic,
+            Wait,
+            Budget,
+        }
+
+        struct Probe<'a> {
+            scheduler: &'a Scheduler,
+            entered: SyncSender<()>,
+            killed: Mutex<Receiver<()>>,
+            effects: Mutex<Vec<u64>>,
+            end: End,
+        }
+
+        impl Probe<'_> {
+            fn handle(&self, value: u64) -> u8 {
+                self.effects.lock().push(value);
+                if value == 1 {
+                    self.entered.send(()).unwrap();
+                    self.killed
+                        .lock()
+                        .recv_timeout(Duration::from_secs(10))
+                        .unwrap();
+                }
+                match (value, self.end) {
+                    (2, End::Return) => 0,
+                    (2, End::Panic) => panic!("after forced exit"),
+                    _ => 1,
+                }
+            }
+        }
+
+        extern "C-unwind" fn coroutine(args: *const u8) {
+            let probe = unsafe { &*args.cast::<Probe>() };
+            loop {
+                mesh_reduction_check();
+                let mut scratch = std::mem::MaybeUninit::uninit();
+                let payload = receive_with(probe.scheduler, -1, |proc| {
+                    let msg = proc
+                        .mailbox
+                        .remove_first(|m| m.buffer.type_tag == PROGRAM_MESSAGE_TAG)?;
+                    Some(receive_scalar_payload(proc, msg, 8, &mut scratch))
+                });
+                if payload.is_null() || probe.handle(unsafe { payload.cast::<u64>().read() }) == 0 {
+                    return;
+                }
+            }
+        }
+
+        extern "C-unwind" fn step(frame: *mut u64, payload: *const u8) -> u8 {
+            crate::actor::mesh_step_charge();
+            let probe = unsafe { &*(*frame as *const Probe) };
+            probe.handle(unsafe { payload.cast::<u64>().read() })
+        }
+
+        static TERMINATIONS: AtomicU64 = AtomicU64::new(0);
+        static REASON: AtomicU64 = AtomicU64::new(0);
+        extern "C" fn terminate(_: *const u8, reason: *const u8) {
+            REASON.store(unsafe { *reason }.into(), Ordering::SeqCst);
+            TERMINATIONS.fetch_add(1, Ordering::SeqCst);
+        }
+
+        for stackless in [false, true] {
+            for linked in [false, true] {
+                for end in [End::Return, End::Panic, End::Wait, End::Budget] {
+                    let scheduler = Scheduler::new(1);
+                    let pid = scheduler.create_main_process();
+                    let target = scheduler.get_process(pid).unwrap();
+                    {
+                        let mut process = target.lock();
+                        process.placement = Placement::Grouped { worker: 0 };
+                        process.terminate_callback = Some(terminate);
+                    }
+                    let sender = scheduler.create_main_process();
+                    let reason = if linked {
+                        link::link(
+                            &target,
+                            &scheduler.get_process(sender).unwrap(),
+                            pid,
+                            sender,
+                        );
+                        ExitReason::Linked(sender, Box::new(ExitReason::Killed))
+                    } else {
+                        ExitReason::Killed
+                    };
+
+                    let (entered, running) = sync_channel(1);
+                    let (release, killed) = sync_channel(1);
+                    let probe = Probe {
+                        scheduler: &scheduler,
+                        entered,
+                        killed: Mutex::new(killed),
+                        effects: Mutex::default(),
+                        end,
+                    };
+                    let args = std::ptr::from_ref(&probe);
+                    let handle = if stackless {
+                        Execution::Step(Box::new(BoundedStep {
+                            deferred: false,
+                            call: step,
+                            bound: 1,
+                            frame: vec![args as u64].into(),
+                        }))
+                    } else {
+                        Execution::Stack(CoroutineHandle::new(coroutine as *const u8, args.cast()))
+                    };
+                    let mut actor = ScheduledActor {
+                        process: target.clone(),
+                        handle,
+                    };
+                    push(&target, 1, 0);
+                    push(&target, 2, 0);
+                    if matches!(end, End::Budget) {
+                        push(&target, 3, 0);
+                    }
+                    let count = AtomicU64::new(1);
+                    CURRENT_YIELDER.with(|tls| {
+                        tls.reductions.set(if matches!(end, End::Budget) {
+                            2
+                        } else {
+                            DEFAULT_REDUCTIONS
+                        })
+                    });
+                    let before = TERMINATIONS.load(Ordering::SeqCst);
+                    std::thread::scope(|scope| {
+                        let scheduler = &scheduler;
+                        scope.spawn(move || {
+                            running.recv_timeout(Duration::from_secs(10)).unwrap();
+                            if linked {
+                                assert!(handle_process_exit(
+                                    scheduler.process_table(),
+                                    sender,
+                                    ExitReason::Killed
+                                ));
+                            } else {
+                                deliver_exit_signal(scheduler, pid, ExitReason::Killed);
+                            }
+                            // A later signal must preserve the first reason.
+                            deliver_exit_signal(scheduler, pid, ExitReason::Shutdown);
+                            release.send(()).unwrap();
+                        });
+                        let outcome = resume_process(
+                            scheduler.process_table(),
+                            &count,
+                            pid,
+                            &mut actor,
+                            None,
+                            &AtomicBool::new(false),
+                        )
+                        .0;
+                        assert!(matches!(outcome, Resumed::Finished));
+                    });
+                    assert_eq!(
+                        *probe.effects.lock(),
+                        [1, 2],
+                        "stackless={stackless} linked={linked} end={end:?}"
+                    );
+                    assert_eq!(
+                        target.lock().mailbox.len(),
+                        usize::from(matches!(end, End::Budget))
+                    );
+                    assert_eq!(TERMINATIONS.load(Ordering::SeqCst), before + 1);
+                    assert_eq!(REASON.load(Ordering::SeqCst), u64::from(reason.tag()));
+                    assert_eq!(target.lock().state, ProcessState::Exited(reason));
+                    assert!(scheduler.get_process(pid).is_none());
+                    assert_eq!(count.load(Ordering::SeqCst), 0);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn continuation_survives_gc_wait_and_linked_exit() {
+        let table = ProcessTable::new();
+        let pid = ProcessId::next();
+        let neighbor = ProcessId::next();
+        let neighbor_state = Arc::new(Mutex::new(Process::new(neighbor, Priority::Normal)));
+        table.insert(neighbor, neighbor_state.clone());
+        let process = Arc::new(Mutex::new(Process::with_placement(
+            pid,
+            Priority::Normal,
+            Placement::Grouped { worker: 0 },
+        )));
+        table.insert(pid, process.clone());
+        super::link::link(&process, &neighbor_state, pid, neighbor);
+        let mut actor = ScheduledActor {
+            process: process.clone(),
+            handle: Execution::Step(Box::new(BoundedStep {
+                deferred: false,
+                call: step,
+                bound: 2,
+                frame: vec![pid.as_u64(), 0].into(),
+            })),
+        };
+        push(&process, 0, 99);
+        push(&process, 17, 0);
+        push(&process, 23, 0);
+        let count = AtomicU64::new(2);
+        CURRENT_YIELDER.with(|slot| slot.reductions.set(1));
+        assert!(matches!(
+            resume_process(
+                &table,
+                &count,
+                pid,
+                &mut actor,
+                None,
+                &AtomicBool::new(false)
+            )
+            .0,
+            Resumed::Runnable
+        ));
+        let Execution::Step(step) = &actor.handle else {
+            unreachable!()
+        };
+        assert_eq!(step.frame[1], 0, "insufficient budget executed an effect");
+        assert_eq!(
+            CURRENT_YIELDER.with(|slot| slot.reductions.get()),
+            DEFAULT_REDUCTIONS
+        );
+        // An intervening actor spent the entire worker refill.
+        CURRENT_YIELDER.with(|slot| slot.reductions.set(0));
+        assert!(matches!(
+            resume_process(
+                &table,
+                &count,
+                pid,
+                &mut actor,
+                None,
+                &AtomicBool::new(false)
+            )
+            .0,
+            Resumed::Runnable
+        ));
+        assert!(get_current_pid().is_none());
+        let Execution::Step(step) = &actor.handle else {
+            unreachable!()
+        };
+        let saved = step.frame[1] as *const u8;
+        // Two messages were ready. The forced reduction yield left the second queued.
+        let pending = process
+            .lock()
+            .mailbox
+            .remove_first(|m| m.buffer.type_tag == 0)
+            .unwrap();
+        let garbage = {
+            let mut proc = process.lock();
+            let garbage = proc.heap.alloc(512, 8);
+            while !proc.heap.should_collect() {
+                proc.heap.alloc(512, 8);
+            }
+            garbage
+        };
+        assert!(matches!(
+            resume_process(
+                &table,
+                &count,
+                pid,
+                &mut actor,
+                None,
+                &AtomicBool::new(false)
+            )
+            .0,
+            Resumed::Waiting
+        ));
+        {
+            let proc = process.lock();
+            assert!(proc.heap.is_live_allocation(saved, 8));
+            assert!(!proc.heap.is_live_allocation(garbage, 512));
+            assert!(proc
+                .mailbox
+                .remove_first(|m| m.buffer.type_tag == 99)
+                .is_some());
+        }
+        {
+            let mut proc = process.lock();
+            proc.mailbox.push(pending);
+            proc.set_live_state(ProcessState::Ready);
+        }
+        assert!(matches!(
+            resume_process(
+                &table,
+                &count,
+                pid,
+                &mut actor,
+                None,
+                &AtomicBool::new(false)
+            )
+            .0,
+            Resumed::Finished
+        ));
+        assert!(get_current_pid().is_none());
+        assert!(table.get(pid).is_none());
+        assert_eq!(count.load(Ordering::SeqCst), 1);
+        assert!(matches!(&neighbor_state.lock().state,
+            ProcessState::Exited(ExitReason::Linked(from, reason))
+                if *from == pid && matches!(reason.as_ref(), ExitReason::Error(msg) if msg == "probe crash after resume")));
     }
 }

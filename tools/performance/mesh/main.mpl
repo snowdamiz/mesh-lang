@@ -145,15 +145,22 @@ fn run_server() do
 end
 
 type PairEvent do
+  StartTrial
   PairReady(caller :: Pid<Int>)
   PairDone(counter :: Int, final_reply_at_ns :: Int, samples :: List<Int>)
+end
+
+fn check_actor_reply(condition :: Bool, message :: String) do
+  if !condition do
+    panic(message)
+  end
 end
 
 actor counter_loop(caller :: Pid<Int>, total :: Int, remaining :: Int) do
   receive do
     amount ->
       let updated = total + amount
-      check(send(caller, updated) == 0, "could not send counter reply")
+      check_actor_reply(send(caller, updated) == 0, "could not send counter reply")
       if remaining > 1 do
         counter_loop(caller, updated, remaining - 1)
       end
@@ -166,54 +173,78 @@ actor pair_caller(worker_pid :: Option<Pid<Int>>,
   iterations :: Int,
   expected :: Int,
   samples :: List<Int>,
-  sampling :: Bool) do
+  sampling :: Bool,
+  grouped :: Bool) do
   case worker_pid do
     None ->
       let caller = self()
-      let worker = spawn(counter_loop, caller, 0, iterations + 1)
-      check(send(worker, 0) == 0, "could not probe counter")
-      receive do
-        value -> check(value == 0, "counter must start at zero")
+      let worker = if grouped do
+        spawn grouped(counter_loop, caller, 0, iterations + 1)
+      else
+        spawn(counter_loop, caller, 0, iterations + 1)
       end
-      check(send(coordinator, PairReady(caller)) == 0, "could not send pair readiness")
+      check_actor_reply(send(worker, 0) == 0, "could not probe counter")
       receive do
-        command -> check(command == 1, "invalid pair start command")
+        value -> check_actor_reply(value == 0, "counter must start at zero")
       end
-      pair_caller(Some(worker), coordinator, 1, iterations, 0, samples, sampling)
+      check_actor_reply(send(coordinator, PairReady(caller)) == 0, "could not send pair readiness")
+      receive do
+        command -> check_actor_reply(command == 1, "invalid pair start command")
+      end
+      pair_caller(Some(worker), coordinator, 1, iterations, 0, samples, sampling, grouped)
     Some(worker) ->
-      let sampled = sampling && (index - 1) % 64 == 0
+      let offset = (index - 1) % 64
+      let phase = (((index - 1) / 64) * 17) % 64
+      let last = index == iterations
+      let sampled = sampling && (offset == phase || (last && offset < phase))
       let started = if sampled do
         Monotonic.now_nanos()
       else
         0
       end
-      check(send(worker, index) == 0, "could not send counter request")
+      check_actor_reply(send(worker, index) == 0, "could not send counter request")
       let reply = receive do
         value -> value
       end
-      let last = index == iterations
       let finish = if sampled || last do
         Monotonic.now_nanos()
       else
         0
       end
       let updated = expected + index
-      check(reply == updated, "counter reply mismatch")
+      check_actor_reply(reply == updated, "counter reply mismatch")
       let samples = if sampled do
         List.append(samples, finish - started)
       else
         samples
       end
       if last do
-        check(send(coordinator, PairDone(reply, finish, samples)) == 0,
+        check_actor_reply(send(coordinator, PairDone(reply, finish, samples)) == 0,
           "could not send pair result")
       else
-        pair_caller(worker_pid, coordinator, index + 1, iterations, updated, samples, sampling)
+        pair_caller(worker_pid,
+          coordinator,
+          index + 1,
+          iterations,
+          updated,
+          samples,
+          sampling,
+          grouped)
       end
   end
 end
 
-actor actor_trial(pairs :: Int, iterations :: Int, warmup :: Int) do
+actor actor_trial(pairs :: Int,
+  iterations :: Int,
+  warmup :: Int,
+  wait_for_start :: Bool,
+  grouped :: Bool) do
+  if wait_for_start do
+    receive do
+      StartTrial -> ()
+      _ -> fail("unexpected event before trial start")
+    end
+  end
   let warming = warmup > 0
   let count = if warming do
     warmup
@@ -222,12 +253,17 @@ actor actor_trial(pairs :: Int, iterations :: Int, warmup :: Int) do
   end
   let coordinator = self()
   for _index in 0..pairs do
-    spawn(pair_caller, None, coordinator, 0, count, 0, [], !warming)
+    if grouped do
+      spawn grouped(pair_caller, None, coordinator, 0, count, 0, [], !warming, grouped)
+    else
+      spawn(pair_caller, None, coordinator, 0, count, 0, [], !warming, grouped)
+    end
   end
   let callers = for _index in 0..pairs do
     receive do
       PairReady(caller) -> caller
       PairDone(_, _, _) -> fail("pair finished before start")
+      StartTrial -> fail("trial already started")
       after 5000 -> fail("pair did not become ready")
     end
   end
@@ -239,10 +275,11 @@ actor actor_trial(pairs :: Int, iterations :: Int, warmup :: Int) do
     receive do
       PairDone(counter, final_reply_at_ns, samples) -> (counter, final_reply_at_ns, samples)
       PairReady(_) -> fail("pair already started")
+      StartTrial -> fail("trial already started")
     end
   end
   if warming do
-    actor_trial(pairs, iterations, 0)
+    actor_trial(pairs, iterations, 0, false, grouped)
   else
     let checksum = List.reduce(results, 0, fn total, (counter, _, _) -> total + counter end)
     let final_reply_at_ns = List.reduce(results,
@@ -253,11 +290,17 @@ actor actor_trial(pairs :: Int, iterations :: Int, warmup :: Int) do
         latest
       end end)
     let samples = List.flat_map(results, fn((_, _, samples)) -> samples end)
+    let placement = if grouped do
+      "grouped"
+    else
+      "shared"
+    end
     println(json {
       ops: pairs * iterations,
       elapsed_ns: final_reply_at_ns - started,
       checksum: checksum,
-      rtt_ns: samples
+      rtt_ns: samples,
+      actor_placement: placement
     })
   end
 end
@@ -371,7 +414,14 @@ fn main() do
       let iterations = Env.get_int("PERF_ITERS", 0)
       let warmup = Env.get_int("PERF_WARMUP", 0)
       check(pairs > 0 && iterations > 0 && warmup >= 0, "invalid actor trial size")
-      let _ = spawn(actor_trial, pairs, iterations, warmup)
+      let grouped = Env.get("PERF_ACTOR_PLACEMENT", "shared") == "grouped"
+      let coordinator = spawn(actor_trial, pairs, iterations, warmup, true, grouped)
+      check(Process.register("perf_actor_trial", coordinator) == 0,
+        "could not register actor trial")
+      check(send(coordinator, StartTrial) == 0, "could not start actor trial")
+      while Process.whereis("perf_actor_trial") == coordinator do
+        Timer.sleep(5)
+      end
     "cpu" ->
       let iterations = Env.get_int("PERF_ITERS", 0)
       let warmup = Env.get_int("PERF_WARMUP", 0)

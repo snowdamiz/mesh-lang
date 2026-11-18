@@ -392,10 +392,11 @@ pub fn compile_mir_to_llvm_ir(
     autonomous_config_json: Option<&str>,
     library_exports: &[LibraryExport],
     output: &Path,
+    opt_level: u8,
     target_triple: Option<&str>,
 ) -> Result<(), String> {
     let context = Context::create();
-    let mut codegen = CodeGen::new(&context, "mesh_module", 0, target_triple)?;
+    let mut codegen = CodeGen::new(&context, "mesh_module", opt_level, target_triple)?;
     codegen.set_declared_handlers(declared_handlers);
     codegen.set_startup_work_registrations(startup_work_registrations);
     codegen.set_autonomous_config_json(autonomous_config_json);
@@ -482,6 +483,46 @@ pub fn merge_mir_modules(
             continue;
         }
         merge_module(module);
+    }
+
+    // Imported grouped spawns must certify the same callbacks as local spawns.
+    let mut actors = std::collections::HashMap::new();
+    for actor in &merged.actors {
+        actors
+            .entry(actor.entry.as_str())
+            .or_insert(actor.terminate.as_ref());
+    }
+    if actors.values().any(Option::is_some) {
+        let mut expressions: Vec<_> = merged
+            .functions
+            .iter_mut()
+            .map(|function| &mut function.body)
+            .collect();
+        while let Some(expr) = expressions.pop() {
+            if let mir::MirExpr::ActorSpawn {
+                func,
+                placement: mir::SpawnPlacement::Grouped,
+                terminate_callback,
+                ..
+            } = expr
+            {
+                if let Some(callback) = func
+                    .var_name()
+                    .and_then(|name| actors.get(name))
+                    .copied()
+                    .flatten()
+                {
+                    *terminate_callback = Some(Box::new(mir::MirExpr::Var(
+                        callback.clone(),
+                        mir::MirType::FnPtr(
+                            vec![mir::MirType::Ptr, mir::MirType::Ptr],
+                            Box::new(mir::MirType::Unit),
+                        ),
+                    )));
+                }
+            }
+            expressions.extend(expr.children_mut());
+        }
     }
 
     // Run monomorphization on the merged module to eliminate unreachable

@@ -265,6 +265,12 @@ pub const DEFAULT_STACK_SIZE: usize = 512 * 1024;
 // Process (the PCB)
 // ---------------------------------------------------------------------------
 
+#[derive(Clone, Copy)]
+pub(crate) enum Placement {
+    Shared,
+    Grouped { worker: usize },
+}
+
 /// The Process Control Block -- one per actor.
 ///
 /// Contains all per-actor state: identity, scheduling metadata, mailbox,
@@ -276,8 +282,13 @@ pub struct Process {
     /// Current execution state.
     pub state: ProcessState,
 
+    /// Deadline of the receive this actor is parked in, checked under the process lock.
+    pub(super) receive_deadline: Option<std::time::Instant>,
+
     /// Scheduling priority.
     pub priority: Priority,
+
+    pub(crate) placement: Placement,
 
     /// Remaining reductions before this process yields.
     /// Reset to `DEFAULT_REDUCTIONS` after each yield.
@@ -397,17 +408,27 @@ impl Process {
 
     /// Create a new process with the given PID and priority.
     pub fn new(pid: ProcessId, priority: Priority) -> Self {
+        Self::with_placement(pid, priority, Placement::Shared)
+    }
+
+    pub(super) fn with_placement(pid: ProcessId, priority: Priority, placement: Placement) -> Self {
+        let mailbox_shard = match placement {
+            Placement::Shared => pid.local_id(),
+            Placement::Grouped { worker } => worker as u64,
+        };
         Process {
             pid,
             state: ProcessState::Ready,
+            receive_deadline: None,
             priority,
+            placement,
             reductions: DEFAULT_REDUCTIONS,
             links: HashSet::new(),
             trap_exit: false,
             trapped_links: HashSet::new(),
             monitors: FxHashMap::default(),
             monitored_by: FxHashMap::default(),
-            mailbox: Arc::new(Mailbox::new()),
+            mailbox: Arc::new(Mailbox::for_process(pid.local_id(), mailbox_shard)),
             heap: ActorHeap::new(),
             library_call: false,
             collects_at_safepoints: false,

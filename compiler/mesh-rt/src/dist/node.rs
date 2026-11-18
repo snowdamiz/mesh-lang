@@ -2913,14 +2913,14 @@ fn handle_node_disconnect(node_name: &str, node_id: u16) {
 
     let noconnection = ExitReason::Noconnection;
 
-    // Phase 1: Collect under read lock.
+    // Phase 1: Collect while table membership is frozen.
     // For links: (local_pid, process, Vec<remote_pid_to_unlink>)
     let mut link_actions: Vec<(ProcessId, ProcessHandle, Vec<ProcessId>)> = Vec::new();
     // For monitors: (local_pid, process, Vec<monitor_ref>)
     let mut monitor_actions: Vec<(ProcessId, ProcessHandle, Vec<u64>)> = Vec::new();
 
     {
-        let table = sched.process_table().read();
+        let table = sched.process_table().read_all();
         for (&pid, proc_arc) in table.iter() {
             let proc = proc_arc.lock();
 
@@ -2949,7 +2949,7 @@ fn handle_node_disconnect(node_name: &str, node_id: u16) {
             }
         }
     }
-    // Process table read lock dropped here.
+    // Process table read guard dropped here.
 
     // Phase 2: Execute collected actions.
     // Process remote link disconnections.
@@ -10589,7 +10589,6 @@ mod tests {
             let process = Arc::new(parking_lot::Mutex::new(Process::new(pid, Priority::Normal)));
             crate::actor::global_scheduler()
                 .process_table()
-                .write()
                 .insert(pid, Arc::clone(&process));
             Self { pid, process }
         }
@@ -10603,8 +10602,7 @@ mod tests {
         fn drop(&mut self) {
             crate::actor::global_scheduler()
                 .process_table()
-                .write()
-                .remove(&self.pid);
+                .remove(self.pid);
         }
     }
 

@@ -6,19 +6,22 @@
 //!
 //! ## Thread-local State
 //!
-//! Two thread-locals track the current execution context:
+//! Thread-locals track the current execution context:
 //! - `CURRENT_YIELDER`: pointer to the active coroutine's Yielder (for yield on reduction exhaustion)
 //! - `CURRENT_PID`: the PID of the currently running actor (for `mesh_actor_self()`)
+//! - `CURRENT_PROCESS`: that actor's process handle, valid during its timeslice
 //!
 //! The base of a coroutine's stack, where the collector's scan ends, is kept
 //! on its process (`Process::stack_base`).
 
 use corosensei::stack::DefaultStack;
 use corosensei::{Coroutine, CoroutineResult, Yielder};
+use parking_lot::Mutex;
 
-use super::process::{ProcessId, DEFAULT_STACK_SIZE};
+use super::process::{Process, ProcessId, DEFAULT_STACK_SIZE};
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
+use std::sync::Arc;
 
 // ---------------------------------------------------------------------------
 // Thread-local current-actor context
@@ -41,6 +44,12 @@ pub struct YielderSlot {
     pub(crate) gc_wanted: Cell<bool>,
 }
 
+struct CachedProcess {
+    pid: ProcessId,
+    handle: Arc<Mutex<Process>>,
+    on_worker: bool,
+}
+
 thread_local! {
     /// Raw pointer to the current coroutine's Yielder.
     ///
@@ -61,6 +70,7 @@ thread_local! {
 
     /// PID of the currently executing actor on this thread.
     pub static CURRENT_PID: Cell<Option<ProcessId>> = const { Cell::new(None) };
+    static CURRENT_PROCESS: RefCell<Option<CachedProcess>> = const { RefCell::new(None) };
 }
 
 /// Set the current actor PID on this thread.
@@ -73,10 +83,55 @@ pub fn get_current_pid() -> Option<ProcessId> {
     CURRENT_PID.with(|c| c.get())
 }
 
+pub(crate) fn set_current_process(pid: ProcessId, process: &Arc<Mutex<Process>>) {
+    set_current_pid(pid);
+    CURRENT_PROCESS.with(|slot| {
+        *slot.borrow_mut() = Some(CachedProcess {
+            pid,
+            handle: Arc::clone(process),
+            on_worker: true,
+        });
+    });
+}
+
+/// Only a worker owns its current process until it leaves the timeslice.
+/// Host processes can be finalized by a different thread.
+pub(crate) fn worker_process(pid: ProcessId) -> Option<Arc<Mutex<Process>>> {
+    CURRENT_PROCESS
+        .try_with(|slot| {
+            slot.borrow()
+                .as_ref()
+                .filter(|cached| cached.on_worker && cached.pid == pid)
+                .map(|cached| Arc::clone(&cached.handle))
+        })
+        .ok()
+        .flatten()
+}
+
+/// Borrow the current allocation handle. Host allocation uses a lazy cache.
+/// The callback must not suspend the actor.
+pub(crate) fn with_allocation_process<T>(f: impl FnOnce(&Arc<Mutex<Process>>) -> T) -> Option<T> {
+    let pid = get_current_pid()?;
+    CURRENT_PROCESS
+        .try_with(|slot| {
+            let mut slot = slot.borrow_mut();
+            if slot.as_ref().is_none_or(|cached| cached.pid != pid) {
+                *slot = Some(CachedProcess {
+                    pid,
+                    handle: super::process(pid)?,
+                    on_worker: false,
+                });
+            }
+            slot.as_ref().map(|cached| f(&cached.handle))
+        })
+        .ok()
+        .flatten()
+}
+
 /// Clear the current actor PID on this thread.
 pub fn clear_current_pid() {
     CURRENT_PID.with(|c| c.set(None));
-    crate::gc::forget_current_process();
+    let _ = CURRENT_PROCESS.try_with(|slot| slot.borrow_mut().take());
 }
 
 // ---------------------------------------------------------------------------
@@ -101,6 +156,12 @@ pub fn yield_current() {
     // blocking receive in long-lived actors that may never exhaust reductions.
     super::try_trigger_gc();
 
+    suspend_current();
+}
+
+/// Suspend at a safe point that has already checked its actor's heap.
+#[inline(never)]
+pub(super) fn suspend_current() {
     CURRENT_YIELDER.with(|c| {
         let c = &c.yielder;
         let ptr = c

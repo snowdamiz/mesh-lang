@@ -86,6 +86,60 @@ pub extern "C-unwind" fn mesh_panic_str(message: *const crate::string::MeshStrin
 thread_local! {
     /// Set while the test runner runs a test body: it reports the panic.
     static QUIET: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static DEFER_DIAGNOSTICS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Report grouped actor failures without writing to stderr on their worker.
+/// The closure catches the actor's unwind before returning.
+pub(crate) fn defer_diagnostics<T>(f: impl FnOnce() -> T) -> T {
+    let previous = DEFER_DIAGNOSTICS.replace(true);
+    let result = f();
+    DEFER_DIAGNOSTICS.set(previous);
+    result
+}
+
+enum Diagnostic {
+    Message(String),
+    Flush(crossbeam_channel::Sender<()>),
+}
+
+static DIAGNOSTICS: std::sync::OnceLock<crossbeam_channel::Sender<Diagnostic>> =
+    std::sync::OnceLock::new();
+
+fn enqueue_diagnostic(message: &str) {
+    use std::io::Write;
+    let writer = DIAGNOSTICS.get_or_init(|| {
+        let (sender, receiver) = crossbeam_channel::bounded(16);
+        let _ = std::thread::Builder::new()
+            .name("mesh-diagnostics".to_string())
+            .spawn(move || {
+                while let Ok(diagnostic) = receiver.recv() {
+                    match diagnostic {
+                        Diagnostic::Message(message) => {
+                            let _ = writeln!(std::io::stderr(), "{message}");
+                        }
+                        Diagnostic::Flush(done) => {
+                            let _ = done.send(());
+                        }
+                    }
+                }
+            });
+        sender
+    });
+    let _ = writer.try_send(Diagnostic::Message(message.to_owned()));
+}
+
+pub(crate) fn flush_deferred_diagnostics() {
+    if let Some(writer) = DIAGNOSTICS.get() {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(20);
+        let (done, receiver) = crossbeam_channel::bounded(1);
+        if writer
+            .send_deadline(Diagnostic::Flush(done), deadline)
+            .is_ok()
+        {
+            let _ = receiver.recv_deadline(deadline);
+        }
+    }
 }
 
 /// Print a Mesh panic as its message alone: the default report's thread
@@ -98,8 +152,12 @@ pub(crate) fn install_hook() {
         std::panic::set_hook(Box::new(move |info| {
             match mesh_panic_message(info.payload()) {
                 Some(message) if !QUIET.with(|quiet| quiet.get()) => {
-                    use std::io::Write;
-                    let _ = writeln!(std::io::stderr(), "{message}");
+                    if DEFER_DIAGNOSTICS.get() {
+                        enqueue_diagnostic(message);
+                    } else {
+                        use std::io::Write;
+                        let _ = writeln!(std::io::stderr(), "{message}");
+                    }
                 }
                 Some(_) => {}
                 None => default(info),

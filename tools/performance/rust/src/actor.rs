@@ -76,10 +76,12 @@ async fn call(
     let mut counter = 0;
     let mut finished_at = None;
     for iteration in 1..=iterations {
-        let sample =
-            (measure && (iteration - 1).is_multiple_of(SAMPLE_INTERVAL)).then(Instant::now);
-        let reply = worker.add(iteration as u64).await?;
+        let offset = (iteration - 1) % SAMPLE_INTERVAL;
+        let phase = ((iteration - 1) / SAMPLE_INTERVAL * 17) % SAMPLE_INTERVAL;
         let finished = measure && iteration == iterations;
+        let sample =
+            (measure && (offset == phase || (finished && offset < phase))).then(Instant::now);
+        let reply = worker.add(iteration as u64).await?;
         if finished || sample.is_some() {
             let received_at = Instant::now();
             if let Some(started) = sample {

@@ -834,36 +834,115 @@ impl Default for ActorHeap {
 #[derive(Debug, Clone)]
 pub struct MessageBuffer {
     /// Raw serialized message bytes.
-    pub data: Vec<u8>,
+    data: MessageBytes,
     /// Type tag for pattern matching dispatch.
     ///
     /// In Phase 6, this is a simple hash of the type name. Future phases
     /// may use a more sophisticated type identification scheme.
     pub type_tag: u64,
-    /// Heap values the message references, detached from the sender's heap and
-    /// rebuilt in the receiver's; see `msg_shape`.
+    /// Only messages that carry heap objects or loans need this metadata.
+    pub(crate) references: Option<Box<MessageReferences>>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct MessageReferences {
     pub(crate) captured: super::msg_shape::Captured,
-    /// Loans for references that could not be copied. They travel with the
-    /// message and become the receiver's.
     pub(crate) borrows: Vec<super::process::HeapBorrow>,
+}
+
+#[derive(Debug, Clone)]
+enum MessageBytes {
+    Inline {
+        bytes: [u8; 16],
+        len: u8,
+        shaped: bool,
+    },
+    Vec(Vec<u8>),
 }
 
 impl MessageBuffer {
     /// Create a new message buffer from raw bytes and a type tag.
     pub fn new(data: Vec<u8>, type_tag: u64) -> Self {
         MessageBuffer {
-            data,
+            data: MessageBytes::Vec(data),
             type_tag,
-            captured: Default::default(),
-            borrows: Vec::new(),
+            references: None,
         }
+    }
+
+    pub(super) fn from_slice(data: &[u8], type_tag: u64) -> Self {
+        let mut bytes = [0; 16];
+        let Some(slot) = bytes.get_mut(..data.len()) else {
+            return Self::new(data.to_vec(), type_tag);
+        };
+        slot.copy_from_slice(data);
+        Self {
+            data: MessageBytes::Inline {
+                bytes,
+                len: data.len() as u8,
+                shaped: false,
+            },
+            type_tag,
+            references: None,
+        }
+    }
+
+    pub fn data(&self) -> &[u8] {
+        match &self.data {
+            MessageBytes::Inline { bytes, len, .. } => &bytes[..usize::from(*len)],
+            MessageBytes::Vec(bytes) => bytes,
+        }
+    }
+
+    /// Inline storage is fully initialized, including padding after a Bool.
+    pub(super) fn plain_scalar(&self, width: u64) -> Option<u64> {
+        match &self.data {
+            MessageBytes::Inline {
+                bytes,
+                len,
+                shaped: false,
+            } if u64::from(*len) == width && matches!(width, 1 | 8) => {
+                Some(u64::from_ne_bytes(bytes[..8].try_into().unwrap()))
+            }
+            _ => None,
+        }
+    }
+
+    pub(crate) fn set_references(
+        &mut self,
+        captured: super::msg_shape::Captured,
+        borrows: Vec<super::process::HeapBorrow>,
+    ) {
+        if let MessageBytes::Inline { shaped, .. } = &mut self.data {
+            *shaped = true;
+        }
+        // lend and pids are capture-time bookkeeping. Delivery only needs
+        // the object graph, its root relocations, and the resulting loans.
+        self.references =
+            (!captured.objects.is_empty() || !captured.relocs.is_empty() || !borrows.is_empty())
+                .then(|| Box::new(MessageReferences { captured, borrows }));
+    }
+
+    pub(crate) fn materialize_in_place(&mut self, heap: &mut ActorHeap) {
+        let Some(references) = &self.references else {
+            return;
+        };
+        let data = match &mut self.data {
+            MessageBytes::Inline { bytes, len, .. } => &mut bytes[..usize::from(*len)],
+            MessageBytes::Vec(bytes) => bytes,
+        };
+        // The captured offsets refer to the bytes originally captured from this buffer.
+        unsafe { references.captured.materialize(heap, data.as_mut_ptr()) };
     }
 
     /// Note who will receive this message. A loan from the receiver's own heap
     /// (a message to itself) drops its pin, or the process would own itself
     /// and never be freed.
     pub(crate) fn addressed_to(&mut self, receiver: &Arc<parking_lot::Mutex<super::Process>>) {
-        for loan in &mut self.borrows {
+        let Some(references) = &mut self.references else {
+            return;
+        };
+        for loan in &mut references.borrows {
             if loan
                 .owner
                 .as_ref()
@@ -880,13 +959,14 @@ impl MessageBuffer {
     /// automatically), copies the data bytes, and returns a pointer
     /// to the copy within the target heap.
     pub fn deep_copy_to_heap(&self, heap: &mut ActorHeap) -> *mut u8 {
-        if self.data.is_empty() {
+        let data = self.data();
+        if data.is_empty() {
             return std::ptr::null_mut();
         }
-        let ptr = heap.alloc(self.data.len(), 8);
-        // Safety: ptr points to a valid allocation of at least self.data.len() bytes.
+        let ptr = heap.alloc(data.len(), 8);
+        // Safety: ptr points to a valid allocation of at least data.len() bytes.
         unsafe {
-            std::ptr::copy_nonoverlapping(self.data.as_ptr(), ptr, self.data.len());
+            std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
         }
         ptr
     }

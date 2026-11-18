@@ -172,20 +172,7 @@ pub extern "C" fn mesh_gc_alloc_actor(size: u64, align: u64) -> *mut u8 {
 /// Returns `Some(ptr)` if running in an actor context and the allocation
 /// succeeded. Returns `None` if no actor context is available.
 fn try_alloc_from_actor_heap(size: usize, align: usize) -> Option<*mut u8> {
-    use crate::actor::stack::get_current_pid;
-
-    let pid = get_current_pid()?;
-
-    let alloc = |cached: &CachedProcess| {
-        let mut cached = cached.borrow_mut();
-        // Look the actor up in the global process table only when a different
-        // actor starts allocating on this thread. That table is one RwLock
-        // shared by every worker, so taking it per allocation serialized
-        // allocation-heavy actors across cores.
-        if cached.as_ref().map(|(owner, _)| *owner) != Some(pid) {
-            *cached = Some((pid, crate::actor::process(pid)?));
-        }
-        let (_, process) = cached.as_ref()?;
+    crate::actor::stack::with_allocation_process(|process| {
         let mut process = process.lock();
         let ptr = process.heap.alloc(size, align);
         // Not here: runtime functions keep fresh objects in Rust-side
@@ -194,10 +181,8 @@ fn try_alloc_from_actor_heap(size: usize, align: usize) -> Option<*mut u8> {
         if process.collects_at_safepoints && process.heap.should_collect() {
             crate::actor::stack::CURRENT_YIELDER.with(|slot| slot.gc_wanted.set(true));
         }
-        Some(ptr)
-    };
-    // `try_with`: a thread that is tearing down falls back to the global arena.
-    CURRENT_PROCESS.try_with(alloc).ok().flatten()
+        ptr
+    })
 }
 
 /// Whether a runtime function may change the object at `ptr` in place (a
@@ -210,42 +195,15 @@ fn try_alloc_from_actor_heap(size: usize, align: usize) -> Option<*mut u8> {
 pub(crate) fn may_update_in_place(ptr: *const u8) -> bool {
     use crate::actor::stack::get_current_pid;
 
-    let Some(pid) = get_current_pid() else {
+    if get_current_pid().is_none() {
         // Unit tests run off an actor and exercise the in-place paths.
         return cfg!(test);
-    };
-    let owns = |cached: &CachedProcess| {
-        let mut cached = cached.borrow_mut();
-        if cached.as_ref().map(|(owner, _)| *owner) != Some(pid) {
-            *cached = Some((pid, crate::actor::process(pid)?));
-        }
-        let (_, process) = cached.as_ref()?;
+    }
+    crate::actor::stack::with_allocation_process(|process| {
         let mut process = process.lock();
-        Some(process.heap.contains_address(ptr) && !process.heap.has_loans())
-    };
-    CURRENT_PROCESS
-        .try_with(owns)
-        .ok()
-        .flatten()
-        .unwrap_or(false)
-}
-
-thread_local! {
-    /// The process that last allocated on this thread, keyed by its PID.
-    static CURRENT_PROCESS: CachedProcess = const { std::cell::RefCell::new(None) };
-}
-
-type CachedProcess = std::cell::RefCell<
-    Option<(
-        crate::actor::ProcessId,
-        std::sync::Arc<parking_lot::Mutex<crate::actor::Process>>,
-    )>,
->;
-
-/// Release the cached process when its actor leaves this thread, so a finished
-/// actor's heap is not kept alive by an idle worker.
-pub(crate) fn forget_current_process() {
-    let _ = CURRENT_PROCESS.try_with(|cached| cached.borrow_mut().take());
+        process.heap.contains_address(ptr) && !process.heap.has_loans()
+    })
+    .unwrap_or(false)
 }
 
 #[cfg(test)]

@@ -1789,14 +1789,20 @@ fn parse_for_in_expr(p: &mut Parser) -> MarkClosed {
 
 // ── Actor Expression Parsing ──────────────────────────────────────────
 
-/// Parse a spawn expression: `spawn(func, args...)`
+/// Parse `spawn(func, args...)` or `spawn grouped(func, args...)`.
 fn parse_spawn_expr(p: &mut Parser) -> MarkClosed {
     let m = p.open();
     p.advance(); // SPAWN_KW
+    let grouped = p.at(SyntaxKind::IDENT) && p.current_text() == "grouped";
+    if grouped {
+        p.advance();
+    }
 
     // Expect argument list.
     if p.at(SyntaxKind::L_PAREN) {
         parse_arg_list(p);
+    } else if grouped {
+        p.error("expected `(` after `spawn grouped`");
     } else {
         p.error("expected `(` after `spawn`");
     }

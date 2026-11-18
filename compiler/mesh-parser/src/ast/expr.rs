@@ -759,7 +759,28 @@ impl DestructureBinding {
 
 ast_node!(SpawnExpr, SPAWN_EXPR);
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SpawnPlacement {
+    Shared,
+    Grouped,
+}
+
 impl SpawnExpr {
+    /// The scheduler placement requested by the spawn expression.
+    pub fn placement(&self) -> SpawnPlacement {
+        // A direct identifier belongs to the spawn prefix. The actor name
+        // and any other argument identifiers belong to the argument list.
+        if self.syntax.children_with_tokens().any(|child| {
+            child
+                .into_token()
+                .is_some_and(|token| token.kind() == SyntaxKind::IDENT && token.text() == "grouped")
+        }) {
+            SpawnPlacement::Grouped
+        } else {
+            SpawnPlacement::Shared
+        }
+    }
+
     /// The argument list (function reference + initial state args).
     pub fn arg_list(&self) -> Option<ArgList> {
         child_node(&self.syntax)

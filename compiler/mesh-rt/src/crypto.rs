@@ -421,10 +421,10 @@ pub extern "C" fn mesh_crypto_hmac_sha256_tag(
     key: *const MeshSecretHandle,
     message: *const MeshBytes,
 ) -> *mut MeshResult {
-    crypto_result(with_current_process(|process| {
+    let tag = with_current_process(|process| {
         hmac_sha256_tag_for_process(process, &SystemProvider, key, message)
-            .map(|tag| bytes_value(&tag))
-    }))
+    });
+    crypto_result(tag.map(|tag| bytes_value(&tag)))
 }
 
 fn hkdf_sha256_for_process(

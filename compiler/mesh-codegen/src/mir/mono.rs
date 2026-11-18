@@ -58,7 +58,7 @@ fn collect_reachable_functions(module: &MirModule, extra_roots: &[String]) -> Ha
     for root in extra_roots {
         worklist.push(root.clone());
     }
-    worklist.extend(module.actors.iter().cloned());
+    worklist.extend(module.actors.iter().map(|actor| actor.entry.clone()));
 
     while let Some(name) = worklist.pop() {
         if reachable.contains(&name) {
@@ -162,7 +162,10 @@ mod library_tests {
             sum_types: vec![],
             entry_function: Some("main".to_string()),
             service_dispatch: std::collections::HashMap::new(),
-            actors: vec!["relay".to_string()],
+            actors: vec![crate::mir::MirActor {
+                entry: "relay".to_string(),
+                terminate: None,
+            }],
         };
         monomorphize(&mut module);
         let kept: Vec<_> = module.functions.iter().map(|f| f.name.as_str()).collect();

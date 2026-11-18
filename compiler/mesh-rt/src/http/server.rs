@@ -1200,10 +1200,13 @@ pub extern "C" fn mesh_http_serve_tls(
     }
 }
 
-/// How long an accept loop with nothing to take waits before it looks
-/// again; one that failed waits as long, rather than failing again at once
-/// (out of descriptors, say) and again, a thread spinning on its log.
-pub(crate) const ACCEPT_PAUSE: Duration = Duration::from_millis(25);
+/// Back off on accept errors such as descriptor exhaustion, even if the
+/// listener is still readable.
+pub(crate) const ACCEPT_ERROR_BACKOFF: Duration = Duration::from_millis(25);
+
+/// Bound how long an idle server waits to observe the process shutdown flag.
+/// A readable listener wakes the poll immediately.
+const SHUTDOWN_CHECK_INTERVAL: Duration = Duration::from_millis(25);
 
 /// The accept loop HTTP.serve and HTTP.serve_tls share, until a shutdown is
 /// requested: each accepted connection (in TLS when `tls` is given) is
@@ -1214,10 +1217,8 @@ fn serve(router: *mut u8, port: i64, tls: Option<Arc<ServerConfig>>) {
     let scheme = if tls.is_some() { "HTTPS" } else { "HTTP" };
 
     let addr = format!("[::]:{}", port);
-    let listener = match std::net::TcpListener::bind(&addr)
-        .and_then(|listener| listener.set_nonblocking(true).map(|()| listener))
-    {
-        Ok(listener) => listener,
+    let (listener, mut poll) = match http_listener(&addr) {
+        Ok(ready) => ready,
         Err(e) => {
             eprintln!("[mesh-rt] Failed to start {scheme} server on {addr}: {e}");
             return;
@@ -1228,19 +1229,46 @@ fn serve(router: *mut u8, port: i64, tls: Option<Arc<ServerConfig>>) {
     crate::dist::node::mesh_trigger_startup_work();
 
     let admission = crate::dist::telemetry::global_admission_controller();
+    let mut events = mio::Events::with_capacity(1);
     while !crate::process_signal::shutdown_requested() {
-        match listener.accept() {
-            Ok((stream, _peer)) => admit(stream, router as usize, tls.as_ref(), admission),
+        match poll.poll(&mut events, Some(SHUTDOWN_CHECK_INTERVAL)) {
+            Ok(()) if events.is_empty() => continue,
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
             Err(e) => {
-                if e.kind() != std::io::ErrorKind::WouldBlock {
-                    eprintln!("[mesh-rt] accept error: {}", e);
+                eprintln!("[mesh-rt] {scheme} listener poll error: {e}");
+                break;
+            }
+        }
+
+        // Drain the backlog before polling again. Mio may only send another
+        // readiness event after accept reports WouldBlock.
+        while !crate::process_signal::shutdown_requested() {
+            match listener.accept() {
+                Ok((stream, _peer)) => {
+                    admit(stream.into(), router as usize, tls.as_ref(), admission)
                 }
-                std::thread::sleep(ACCEPT_PAUSE);
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(e) => {
+                    eprintln!("[mesh-rt] accept error: {e}");
+                    std::thread::sleep(ACCEPT_ERROR_BACKOFF);
+                }
             }
         }
     }
     drain_accepted_connections();
     eprintln!("[mesh-rt] {scheme} server stopped");
+}
+
+fn http_listener(addr: &str) -> std::io::Result<(mio::net::TcpListener, mio::Poll)> {
+    let listener = std::net::TcpListener::bind(addr)?;
+    listener.set_nonblocking(true)?;
+    let mut listener = mio::net::TcpListener::from_std(listener);
+    let poll = mio::Poll::new()?;
+    poll.registry()
+        .register(&mut listener, mio::Token(0), mio::Interest::READABLE)?;
+    Ok((listener, poll))
 }
 
 /// Hand an accepted connection to an actor of its own, as `admission`

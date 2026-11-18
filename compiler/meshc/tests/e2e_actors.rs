@@ -50,8 +50,11 @@ fn compile_and_run(source: &str, build_args: &[&str], timeout_secs: u64) -> Stri
     );
 
     // Run the compiled binary with a timeout
-    let binary = project_dir.join("project");
-    let child = Command::new(&binary)
+    run_actor_binary(&project_dir.join("project"), timeout_secs)
+}
+
+fn run_actor_binary(binary: &Path, timeout_secs: u64) -> String {
+    let child = Command::new(binary)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -91,6 +94,158 @@ fn read_fixture(name: &str) -> String {
 
 fn find_meshc() -> PathBuf {
     artifacts::meshc_bin()
+}
+
+#[test]
+fn grouped_step_selection_and_fallback_in_generated_binaries() {
+    let _guard = ACTOR_E2E_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    for (level, setting, expect_step) in [
+        ("2", None, true),
+        ("2", Some("0"), false),
+        ("0", None, false),
+        ("0", Some("1"), false),
+        ("1", None, false),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let binary = dir.path().join("actors");
+        std::fs::write(
+            dir.path().join("main.mpl"),
+            include_str!("fixtures/grouped_step.mpl"),
+        )
+        .unwrap();
+        let mut build = Command::new(find_meshc());
+        build.env_remove("MESH_GROUPED_STEP");
+        if let Some(value) = setting {
+            build.env("MESH_GROUPED_STEP", value);
+        }
+        let output = build
+            .arg("build")
+            .arg(dir.path())
+            .args(["--opt-level", level, "--emit-llvm", "-o"])
+            .arg(&binary)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let ir = std::fs::read_to_string(binary.with_extension("ll")).unwrap();
+        let case = format!("O{level}, MESH_GROUPED_STEP={setting:?}");
+        assert_eq!(
+            ir.contains("call i64 @mesh_actor_spawn_step(ptr @rotate_words,"),
+            expect_step,
+            "{case}"
+        );
+        assert_eq!(
+            ir.contains("call i64 @mesh_actor_spawn_grouped(ptr @rotate_words,"),
+            !expect_step,
+            "{case}"
+        );
+        assert!(
+            ir.contains("call i64 @mesh_actor_spawn_shaped(ptr @rotate_words,"),
+            "{case}"
+        );
+        assert!(
+            ir.contains("call i64 @mesh_actor_spawn_grouped(ptr @rotate_cleanup,"),
+            "{case}"
+        );
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
+        {
+            let symbols = Command::new("nm")
+                .arg(&binary)
+                .output()
+                .expect("binary symbols");
+            assert!(
+                symbols.status.success(),
+                "{case}: {}",
+                String::from_utf8_lossy(&symbols.stderr)
+            );
+            let has_handler = String::from_utf8_lossy(&symbols.stdout)
+                .lines()
+                .any(|line| {
+                    matches!(
+                        line.split_whitespace().last(),
+                        Some("rotate_words.step" | "_rotate_words.step")
+                    )
+                });
+            assert_eq!(has_handler, expect_step, "{case}");
+        }
+        assert_eq!(
+            run_actor_binary(&binary, 10).trim(),
+            "1\n4\n3\n7\n10\n10",
+            "{case}"
+        );
+    }
+}
+
+#[test]
+fn grouped_actors_exchange_typed_messages_with_an_ordinary_caller() {
+    let output = compile_and_run_with_timeout(
+        r#"
+actor child(parent :: Pid<String>, text :: String) do
+  receive do
+    _ -> send(parent, text)
+  end
+end
+
+actor pair(requester :: Pid<String>, text :: String) do
+  let peer = spawn grouped(child, self(), text)
+  send(peer, 1)
+  receive do
+    reply -> send(requester, reply)
+  end
+end
+
+actor coordinator() do
+  let _ = spawn grouped(pair, self(), String.repeat("hello", 2))
+  receive do
+    result -> println(result)
+    after 2000 -> panic("grouped actor did not reply")
+  end
+end
+
+fn main() do
+  spawn(coordinator)
+end
+"#,
+        10,
+    );
+    assert_eq!(output.trim(), "hellohello");
+}
+
+#[test]
+fn grouped_import_checks_the_terminate_callback() {
+    let project = tempfile::tempdir().unwrap();
+    std::fs::write(
+        project.path().join("workers.mpl"),
+        r#"
+actor worker() do
+  0
+  terminate do
+    println("worker stopped")
+  end
+end
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        project.path().join("main.mpl"),
+        "from Workers import worker\npub fn __terminate_worker() -> Int = 0\nfn main() do\n  spawn grouped(worker)\nend\n",
+    )
+    .unwrap();
+    let output = Command::new(find_meshc())
+        .arg("build")
+        .arg(project.path())
+        .output()
+        .unwrap();
+    let error = String::from_utf8_lossy(&output.stderr);
+    assert!(!output.status.success());
+    assert!(
+        error.contains("cannot certify terminate callback of `worker`"),
+        "{error}"
+    );
 }
 
 // ── Actor E2E Tests ─────────────────────────────────────────────────────
@@ -601,4 +756,106 @@ end
         ],
         "{output}"
     );
+}
+
+#[test]
+fn scalar_receives_bind_the_message_type_in_ordinary_and_grouped_actors() {
+    let source = r#"
+actor integer(done :: Pid<Int>) do
+  let reply = receive do
+    n -> n + 1
+  end
+  send(done, reply)
+  receive do
+    n -> if n != 123 do panic("received a fabricated value during shutdown") end
+  end
+end
+
+actor boolean(done :: Pid<Int>) do
+  let reply = receive do
+    b -> if b do 42 else 0 end
+  end
+  send(done, reply)
+end
+
+actor floating(done :: Pid<Int>) do
+  let reply = receive do
+    f -> if f == -0.25 do 42 else 0 end
+  end
+  send(done, reply)
+end
+
+actor process_id(done :: Pid<Int>) do
+  let reply = receive do
+    pid -> if pid == done do 42 else 0 end
+  end
+  send(done, reply)
+end
+
+actor coordinate() do
+  let i = SPAWN(integer, self())
+  let b = SPAWN(boolean, self())
+  let f = SPAWN(floating, self())
+  let p = SPAWN(process_id, self())
+  send(i, 41)
+  send(b, true)
+  send(f, -0.25)
+  send(p, self())
+  for i in 0..4 do
+    let reply = receive do
+      n -> n + 0
+    after 5000 -> -1
+    end
+    println(reply.to_string())
+  end
+  let empty = receive do
+    n -> n + 1
+  after 0 -> 99
+  end
+  println(empty.to_string())
+end
+
+fn main() do
+  spawn(coordinate)
+end
+"#;
+    for spawn in ["spawn", "spawn grouped"] {
+        let output = compile_and_run(&source.replace("SPAWN", spawn), &["--opt-level", "2"], 10);
+        assert_eq!(
+            output.lines().collect::<Vec<_>>(),
+            ["42", "42", "42", "42", "99"],
+            "{spawn}"
+        );
+    }
+}
+
+#[test]
+fn timeout_only_receive_waits_and_leaves_program_messages_queued() {
+    let source = r##"
+actor sleeper() do
+  send(self(), 17)
+  Timer.send_after(self(), 5, 23)
+  let start = Monotonic.now_nanos()
+  let result = receive do
+  after 30 -> 42
+  end
+  let elapsed = Monotonic.now_nanos() - start
+  let first = receive do
+    n -> n + 0
+  after 0 -> -1
+  end
+  let second = receive do
+    n -> n + 0
+  after 1000 -> -1
+  end
+  println("#{result} #{first} #{second} #{elapsed >= 30000000}")
+end
+
+fn main() do
+  let p = spawn(sleeper)
+  Timer.sleep(100)
+end
+"##;
+    let output = compile_and_run_with_timeout(source, 10);
+    assert_eq!(output.trim(), "42 17 23 true");
 }

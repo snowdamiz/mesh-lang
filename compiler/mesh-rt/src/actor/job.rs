@@ -184,7 +184,7 @@ fn from_job(job_pid: u64) -> impl Fn(&Message) -> bool {
             EXIT_SIGNAL_TAG => 0,
             _ => return false,
         };
-        let pid = &message.buffer.data[pid_offset..pid_offset + 8];
+        let pid = &message.buffer.data()[pid_offset..pid_offset + 8];
         u64::from_le_bytes(pid.try_into().unwrap()) == job_pid
     }
 }

@@ -8,10 +8,12 @@ use inkwell::basic_block::BasicBlock;
 use inkwell::intrinsics::Intrinsic;
 use inkwell::types::{BasicMetadataTypeEnum, BasicType, StructType};
 use inkwell::values::{
-    BasicMetadataValueEnum, BasicValueEnum, FunctionValue, IntValue, PointerValue, StructValue,
+    BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue, IntValue, PointerValue,
+    StructValue,
 };
 use inkwell::IntPredicate;
 
+use super::group_safety::GroupedSpawn;
 use super::intrinsics::get_intrinsic;
 use super::pattern::MatchTarget;
 use super::types::{closure_type, variant_struct_type};
@@ -19,7 +21,7 @@ use super::{CodeGen, BUILT};
 use crate::mir::types::mir_type_to_impl_name;
 use crate::mir::{
     BinOp, MirChildSpec, MirExpr, MirMatchArm, MirResourceDestructor, MirResourceField,
-    MirResourceMoveSource, MirType, UnaryOp,
+    MirResourceMoveSource, MirType, SpawnPlacement, UnaryOp,
 };
 use crate::pattern::compile::{self, compile_match};
 
@@ -145,9 +147,16 @@ impl<'ctx> CodeGen<'ctx> {
                 func,
                 args,
                 priority,
+                placement,
                 terminate_callback,
                 ty: _,
-            } => self.codegen_actor_spawn(func, args, *priority, terminate_callback.as_deref()),
+            } => self.codegen_actor_spawn(
+                func,
+                args,
+                *priority,
+                *placement,
+                terminate_callback.as_deref(),
+            ),
 
             MirExpr::ActorSend {
                 target,
@@ -262,10 +271,6 @@ impl<'ctx> CodeGen<'ctx> {
             ),
 
             MirExpr::TailCall { args, .. } => {
-                let tce_loop_bb = self
-                    .tce_loop_header
-                    .ok_or("TailCall encountered but no TCE loop header set")?;
-
                 // Step 1: Evaluate ALL arguments to temporary values FIRST.
                 // This is critical: if args reference current params (e.g., swap(b, a)),
                 // we must read all param values before overwriting any of them.
@@ -285,6 +290,15 @@ impl<'ctx> CodeGen<'ctx> {
                 // Without this, tight tail-recursive loops would starve other actors.
                 self.emit_reduction_check();
 
+                if self.emitting_step {
+                    self.builder
+                        .build_return(Some(&self.context.i8_type().const_int(1, false)))
+                        .map_err(|e| e.to_string())?;
+                    return Ok(self.context.i64_type().const_zero().into());
+                }
+                let tce_loop_bb = self
+                    .tce_loop_header
+                    .ok_or("missing tail-call loop header")?;
                 // Step 4: Branch to loop header.
                 self.builder
                     .build_unconditional_branch(tce_loop_bb)
@@ -741,7 +755,8 @@ impl<'ctx> CodeGen<'ctx> {
         // known function or runtime intrinsic. As a value it is a closure
         // with no environment; typed `FnPtr`, the bare pointer.
         let fn_ptr = self
-            .fn_item_pointer(name)
+            .fn_item(name)
+            .map(|function| function.as_global_value().as_pointer_value())
             .expect("lowering names only bound variables and functions");
         if matches!(ty, MirType::Closure(..)) {
             let null_env = self
@@ -755,8 +770,8 @@ impl<'ctx> CodeGen<'ctx> {
         Ok(fn_ptr.into())
     }
 
-    /// The code pointer `name` refers to, unless a local shadows it.
-    fn fn_item_pointer(&self, name: &str) -> Option<inkwell::values::PointerValue<'ctx>> {
+    /// The function `name` refers to, unless a local shadows it.
+    fn fn_item(&self, name: &str) -> Option<inkwell::values::FunctionValue<'ctx>> {
         if self.locals.contains_key(name) {
             return None;
         }
@@ -764,16 +779,15 @@ impl<'ctx> CodeGen<'ctx> {
             .get(name)
             .copied()
             .or_else(|| self.module.get_function(name))
-            .map(|function| function.as_global_value().as_pointer_value())
     }
 
     /// `arg` as the bare function pointer the runtime expects, when it is a
     /// known function by name. Only as a Mesh value is a function a closure.
     fn fn_item_arg(&self, arg: &MirExpr) -> Option<inkwell::values::PointerValue<'ctx>> {
         match arg {
-            MirExpr::Var(name, MirType::Closure(..) | MirType::FnPtr(..)) => {
-                self.fn_item_pointer(name)
-            }
+            MirExpr::Var(name, MirType::Closure(..) | MirType::FnPtr(..)) => self
+                .fn_item(name)
+                .map(|function| function.as_global_value().as_pointer_value()),
             _ => None,
         }
     }
@@ -2335,6 +2349,7 @@ impl<'ctx> CodeGen<'ctx> {
         func: &MirExpr,
         args: &[MirExpr],
         priority: u8,
+        placement: SpawnPlacement,
         terminate_callback: Option<&MirExpr>,
     ) -> Result<BasicValueEnum<'ctx>, String> {
         let ptr_ty = self.context.ptr_type(inkwell::AddressSpace::default());
@@ -2342,9 +2357,23 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Get function pointer for the actor entry function: by name, since a
         // function evaluated as a value is a closure.
-        let fn_ptr = self
-            .fn_item_arg(func)
+        let entry_name = func
+            .var_name()
             .expect("the type checker spawns an actor by its name (E0089)");
+        let entry = self
+            .fn_item(entry_name)
+            .ok_or_else(|| format!("unresolved spawn entry `{entry_name}`"))?;
+        let fn_ptr = entry.as_global_value().as_pointer_value();
+        let terminate = terminate_callback
+            .map(|callback| {
+                let name = callback
+                    .var_name()
+                    .ok_or("expected a named terminate callback")?;
+                self.module
+                    .get_function(name)
+                    .ok_or_else(|| format!("unresolved terminate callback `{name}`"))
+            })
+            .transpose()?;
 
         // Serialize arguments into a buffer of 8-byte slots, which is how the
         // actor wrapper reads them back. An aggregate that fits a word travels
@@ -2370,31 +2399,70 @@ impl<'ctx> CodeGen<'ctx> {
             (buffer, i64_ty.const_int(8 * slots.len() as u64, false))
         };
 
-        let priority_val = self.context.i8_type().const_int(priority as u64, false);
-
-        // Call mesh_actor_spawn[_shaped](fn_ptr, args, args_size, priority[, shape]) -> i64.
         // With a shape the new actor gets its own copy of what the arguments
         // reference; without one they are all plain values.
         let shapes: Vec<_> = args.iter().map(|arg| self.message_shape(arg)).collect();
-        let mut spawn_args: Vec<BasicMetadataValueEnum<'ctx>> = vec![
-            fn_ptr.into(),
-            args_ptr.into(),
-            args_size.into(),
-            priority_val.into(),
-        ];
-        let spawn_fn = match self.shape_table_for_slots(&shapes) {
-            Some(shape_table) => {
-                spawn_args.push(shape_table.into());
-                "mesh_actor_spawn_shaped"
+        let shape = self.shape_table_for_slots(&shapes);
+        let mut spawn_args: Vec<BasicMetadataValueEnum<'ctx>> =
+            vec![fn_ptr.into(), args_ptr.into(), args_size.into()];
+        let spawn_fn = match placement {
+            SpawnPlacement::Grouped => {
+                let expected = super::types::llvm_fn_type(
+                    self.context,
+                    &[MirType::Ptr, MirType::Ptr],
+                    &MirType::Unit,
+                    &self.struct_types,
+                    &self.sum_type_layouts,
+                );
+                if terminate.is_some_and(|callback| callback.get_type() != expected) {
+                    return Err(format!(
+                        "invalid terminate callback signature for `{entry_name}`"
+                    ));
+                }
+                self.grouped_spawns.push(GroupedSpawn { entry, terminate });
+                spawn_args.push(shape.unwrap_or_else(|| ptr_ty.const_null()).into());
+                let callback = terminate
+                    .map(|callback| callback.as_global_value().as_pointer_value())
+                    .unwrap_or_else(|| ptr_ty.const_null());
+                spawn_args.push(callback.into());
+                "mesh_actor_spawn_grouped"
             }
-            None => "mesh_actor_spawn",
+            SpawnPlacement::Shared => {
+                spawn_args.push(
+                    self.context
+                        .i8_type()
+                        .const_int(priority as u64, false)
+                        .into(),
+                );
+                if let Some(shape) = shape {
+                    spawn_args.push(shape.into());
+                    "mesh_actor_spawn_shaped"
+                } else {
+                    "mesh_actor_spawn"
+                }
+            }
         };
         let pid_val = self.codegen_runtime_call(spawn_fn, &spawn_args, "pid");
 
-        // If terminate callback exists, call mesh_actor_set_terminate(pid, callback_fn_ptr)
-        if let Some(cb_expr) = terminate_callback {
-            // The callback is a function, called by its bare pointer.
-            let cb_ptr = self.codegen_expr(cb_expr)?.into_pointer_value();
+        if self.grouped_step_enabled
+            && placement == SpawnPlacement::Grouped
+            && terminate.is_none()
+            && args
+                .iter()
+                .all(|arg| super::grouped_step::frame_word(arg.ty()))
+        {
+            self.step_sites.push(super::grouped_step::SpawnSite {
+                actor: entry_name.to_owned(),
+                original: fn_ptr,
+                args: args_ptr,
+                size: args_size,
+                shape: shape.unwrap_or_else(|| ptr_ty.const_null()),
+                pid: pid_val.into_int_value(),
+            });
+        }
+
+        if let (SpawnPlacement::Shared, Some(callback)) = (placement, terminate) {
+            let cb_ptr = callback.as_global_value().as_pointer_value();
             let set_terminate_fn = get_intrinsic(&self.module, "mesh_actor_set_terminate");
             self.builder
                 .build_call(set_terminate_fn, &[pid_val.into(), cb_ptr.into()], "")
@@ -2790,10 +2858,45 @@ impl<'ctx> CodeGen<'ctx> {
             i64_ty.const_int(u64::MAX, true) // -1 as i64
         };
 
-        // Call mesh_actor_receive(timeout_ms) -> ptr (null when timeout fires)
-        let msg_ptr = self
-            .codegen_runtime_call("mesh_actor_receive", &[timeout_val.into()], "msg_ptr")
-            .into_pointer_value();
+        if let (None, Some(body)) = (handler, timeout_body) {
+            let wait = get_intrinsic(&self.module, "mesh_actor_wait_timeout");
+            self.builder
+                .build_call(wait, &[timeout_val.into()], "")
+                .map_err(|e| e.to_string())?;
+            return self.codegen_expr(body);
+        }
+
+        // The handler binds the message type, independent of what its body returns.
+        let scalar_ty = handler.and_then(|(_, binding_ty, _)| match binding_ty {
+            MirType::Int | MirType::Bool | MirType::Pid(_) | MirType::Float => {
+                Some(self.llvm_type(binding_ty))
+            }
+            _ => None,
+        });
+        let msg_ptr = if let Some(ty) = scalar_ty {
+            let width = self.target_machine.get_target_data().get_store_size(&ty);
+            // hoist_static_allocas moves this fixed-size slot to the entry block.
+            let slot = self
+                .builder
+                .build_alloca(i64_ty, "recv_scalar")
+                .map_err(|e| e.to_string())?;
+            slot.as_instruction_value()
+                .unwrap()
+                .set_alignment(8)
+                .map_err(|e| e.to_string())?;
+            self.codegen_runtime_call(
+                "mesh_actor_receive_scalar",
+                &[
+                    timeout_val.into(),
+                    i64_ty.const_int(width, false).into(),
+                    slot.into(),
+                ],
+                "scalar_ptr",
+            )
+        } else {
+            self.codegen_runtime_call("mesh_actor_receive", &[timeout_val.into()], "msg_ptr")
+        }
+        .into_pointer_value();
 
         // When timeout_body is present, we need null-check branching:
         //   [mesh_actor_receive] -> [is_null?] -> timeout_bb (null) / msg_bb (non-null) -> recv_merge_bb
@@ -2833,8 +2936,7 @@ impl<'ctx> CodeGen<'ctx> {
 
             // msg_bb: process the received message (existing logic).
             self.builder.position_at_end(msg_bb);
-            let msg_val = self.codegen_recv_load_message(msg_ptr, result_ty)?;
-            let msg_result = self.codegen_recv_handler(handler, msg_ptr, msg_val)?;
+            let msg_result = self.codegen_recv_handler(handler, msg_ptr, result_ty, scalar_ty)?;
             if self.block_is_open() {
                 self.builder
                     .build_store(result_alloca, msg_result)
@@ -2865,8 +2967,7 @@ impl<'ctx> CodeGen<'ctx> {
                 .build_unreachable()
                 .map_err(|e| e.to_string())?;
             self.builder.position_at_end(received);
-            let msg_val = self.codegen_recv_load_message(msg_ptr, result_ty)?;
-            self.codegen_recv_handler(handler, msg_ptr, msg_val)
+            self.codegen_recv_handler(handler, msg_ptr, result_ty, scalar_ty)
         }
     }
 
@@ -3008,12 +3109,23 @@ impl<'ctx> CodeGen<'ctx> {
         &mut self,
         handler: Option<&(String, MirType, Box<MirExpr>)>,
         msg_ptr: inkwell::values::PointerValue<'ctx>,
-        msg_val: BasicValueEnum<'ctx>,
+        result_ty: &MirType,
+        scalar_ty: Option<inkwell::types::BasicTypeEnum<'ctx>>,
     ) -> Result<BasicValueEnum<'ctx>, String> {
-        let Some((name, ty, body)) = handler else {
+        let msg_val = if let Some(ty) = scalar_ty {
+            self.builder
+                .build_load(ty, msg_ptr, "msg_scalar")
+                .map_err(|e| e.to_string())?
+        } else {
+            let value = self.codegen_recv_load_message(msg_ptr, result_ty)?;
+            match handler {
+                Some((_, ty, _)) => self.codegen_recv_message_as(msg_ptr, ty, value)?,
+                None => value,
+            }
+        };
+        let Some((name, _, body)) = handler else {
             return Ok(msg_val);
         };
-        let msg_val = self.codegen_recv_message_as(msg_ptr, ty, msg_val)?;
         let alloca = self
             .builder
             .build_alloca(msg_val.get_type(), name)
@@ -3503,7 +3615,12 @@ impl<'ctx> CodeGen<'ctx> {
     /// Inserted after function call sites and closure calls to enable
     /// cooperative preemption of actor processes.
     fn emit_reduction_check(&self) {
-        let check_fn = get_intrinsic(&self.module, "mesh_reduction_check");
+        let name = if self.emitting_step {
+            "mesh_step_charge"
+        } else {
+            "mesh_reduction_check"
+        };
+        let check_fn = get_intrinsic(&self.module, name);
         let _ = self.builder.build_call(check_fn, &[], "");
     }
 

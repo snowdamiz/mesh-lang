@@ -164,7 +164,24 @@ fn repeated_library_calls_release_temporary_memory_on_success_error_and_panic() 
         LIVE_BYTES.load(Ordering::Relaxed) - baseline < 256 * 1024,
         "completed actor retained the call heap"
     );
-    assert_eq!(mesh_library_shutdown(), MESH_LIBRARY_OK);
+    // A receive on the initializing thread must not pin that process when a
+    // different thread shuts down the library.
+    assert!(mesh_rt::mesh_actor_receive(0).is_null());
+    let usage = mesh_rt::dist::telemetry::runtime_telemetry();
+    let queued_before = usage.snapshot().mailbox_messages;
+    let payload = [42];
+    assert_eq!(
+        mesh_rt::mesh_actor_send(mesh_rt::mesh_actor_self(), payload.as_ptr(), 1),
+        0
+    );
+    assert_eq!(usage.snapshot().mailbox_messages, queued_before + 1);
+    assert_eq!(
+        std::thread::spawn(|| mesh_library_shutdown())
+            .join()
+            .unwrap(),
+        MESH_LIBRARY_OK
+    );
+    assert_eq!(usage.snapshot().mailbox_messages, queued_before);
     let mut response = MeshLibraryBytes::default();
     assert_eq!(
         unsafe { mesh_library_invoke(echo, ptr::null(), 0, &mut response) },

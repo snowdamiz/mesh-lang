@@ -11,6 +11,9 @@
 use crate::session::ReplSession;
 use std::sync::Once;
 
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+mod orc;
+
 static RUNTIME_INIT: Once = Once::new();
 
 /// Initialize the Mesh runtime (GC + actor scheduler) and register all
@@ -25,9 +28,9 @@ pub fn init_runtime() {
         // Initialize the actor scheduler with default number of workers
         mesh_rt::mesh_rt_init_actor(0);
 
-        // Register mesh-rt symbols with LLVM's global symbol table so the
-        // JIT execution engine can resolve them. LLVM's MCJIT uses dlsym
-        // on some platforms, but explicit registration is more reliable.
+        // MCJIT resolves runtime symbols through LLVM's global symbol table.
+        // ORC registers them in each execution engine's symbol table.
+        #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
         register_runtime_symbols();
     });
 }
@@ -37,6 +40,7 @@ pub fn init_runtime() {
 /// This calls LLVMAddSymbol for each runtime function, making them
 /// available to JIT-compiled code. Without this, the JIT engine cannot
 /// resolve calls to runtime functions like mesh_gc_alloc, mesh_print, etc.
+#[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
 fn register_runtime_symbols() {
     // LLVMAddSymbol is the LLVM C API for registering symbols with the
     // JIT's symbol resolver. inkwell 0.8 doesn't expose it directly,
@@ -67,6 +71,10 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             "mesh_actor_receive",
             mesh_rt::mesh_actor_receive as *const (),
         ),
+        (
+            "mesh_actor_receive_scalar",
+            mesh_rt::mesh_actor_receive_scalar as *const (),
+        ),
         ("mesh_actor_self", mesh_rt::mesh_actor_self as *const ()),
         ("mesh_actor_send", mesh_rt::mesh_actor_send as *const ()),
         (
@@ -81,6 +89,22 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
         (
             "mesh_actor_spawn_shaped",
             mesh_rt::mesh_actor_spawn_shaped as *const (),
+        ),
+        (
+            "mesh_actor_spawn_grouped",
+            mesh_rt::actor::mesh_actor_spawn_grouped as *const (),
+        ),
+        (
+            "mesh_actor_spawn_step",
+            mesh_rt::actor::mesh_actor_spawn_step as *const (),
+        ),
+        (
+            "mesh_step_charge",
+            mesh_rt::actor::mesh_step_charge as *const (),
+        ),
+        (
+            "mesh_actor_wait_timeout",
+            mesh_rt::actor::mesh_actor_wait_timeout as *const (),
         ),
         (
             "mesh_actor_stop",
@@ -2649,36 +2673,48 @@ fn jit_execute(
     result_type: &str,
 ) -> Result<String, String> {
     use inkwell::context::Context;
-    use inkwell::targets::{InitializationConfig, Target};
     use mesh_codegen::codegen::CodeGen;
-
-    // Initialize native target for JIT
-    Target::initialize_native(&InitializationConfig::default())
-        .map_err(|e| format!("Failed to initialize native target: {}", e))?;
 
     let context = Context::create();
     let mut codegen = CodeGen::new(&context, "repl_jit", 0, None)?;
     codegen.compile(mir)?;
 
-    // Extract the LLVM module and create a JIT execution engine
     let module = codegen.into_module();
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+    let ee = {
+        use inkwell::context::AsContextRef;
+        use std::mem::ManuallyDrop;
+
+        let ee = orc::ExecutionEngine::new()?;
+        let module = ManuallyDrop::new(module).as_mut_ptr();
+        let context = ManuallyDrop::new(context);
+        // ORC takes ownership of both LLVM objects, even if adding the
+        // module fails. Inkwell must no longer dispose of either object.
+        unsafe { ee.add_module(module, (&*context).as_ctx_ref())? };
+        ee
+    };
+    #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
     let ee = module
         .create_jit_execution_engine(inkwell::OptimizationLevel::None)
         .map_err(|e| format!("Failed to create JIT engine: {}", e))?;
 
-    // `get_function` checks no signature: it fails only when the symbol is
-    // missing. A Unit wrapper returns nothing, and the register read as its
-    // result is ignored (`format_jit_result` prints `()`).
-    let not_found = |e| format!("Failed to find JIT function '{}': {}", wrapper_fn_name, e);
-    // A Float comes back in a floating-point register, not where an i64 does.
-    if result_type == "Float" {
-        let jit_fn = unsafe { ee.get_function::<unsafe extern "C" fn() -> f64>(wrapper_fn_name) }
-            .map_err(not_found)?;
-        return Ok(format!("{:?}", unsafe { jit_fn.call() }));
+    let address = ee
+        .get_function_address(wrapper_fn_name)
+        .map_err(|e| format!("Failed to find JIT function '{wrapper_fn_name}': {e}"))?;
+
+    // The compiled wrapper has no arguments. The result type determines
+    // which register the caller reads, or whether there is a return value.
+    if result_type == "Unit" || result_type == "()" {
+        let call: unsafe extern "C" fn() = unsafe { std::mem::transmute(address) };
+        unsafe { call() };
+        return Ok("()".to_string());
     }
-    let jit_fn = unsafe { ee.get_function::<unsafe extern "C" fn() -> i64>(wrapper_fn_name) }
-        .map_err(not_found)?;
-    Ok(format_jit_result(unsafe { jit_fn.call() }, result_type))
+    if result_type == "Float" {
+        let call: unsafe extern "C" fn() -> f64 = unsafe { std::mem::transmute(address) };
+        return Ok(format!("{:?}", unsafe { call() }));
+    }
+    let call: unsafe extern "C" fn() -> i64 = unsafe { std::mem::transmute(address) };
+    Ok(format_jit_result(unsafe { call() }, result_type))
 }
 
 /// The result type `jit_execute` is given for a value's `inspect` text,
