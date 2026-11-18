@@ -20,7 +20,9 @@ use parking_lot::Mutex;
 
 use super::process::{Process, ProcessId, DEFAULT_STACK_SIZE};
 
+use std::any::Any;
 use std::cell::{Cell, RefCell};
+use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
 use std::sync::Arc;
 
 // ---------------------------------------------------------------------------
@@ -195,10 +197,12 @@ pub(super) fn suspend_current() {
 /// across threads. The scheduler ensures coroutines stay on the thread that
 /// created them.
 pub struct CoroutineHandle {
-    coro: Coroutine<(), (), ()>,
+    coro: Coroutine<(), (), Result<(), PanicPayload>>,
     /// Lowest address of the coroutine's stack (its guard page).
     stack_limit: usize,
 }
+
+type PanicPayload = Box<dyn Any + Send>;
 
 impl CoroutineHandle {
     /// Create a new coroutine that will call `entry_fn(args_ptr)`.
@@ -240,12 +244,17 @@ impl CoroutineHandle {
             // Safety: The fn_ptr was provided by the scheduler from a valid extern "C" fn.
             let func: extern "C-unwind" fn(*const u8) =
                 unsafe { std::mem::transmute::<usize, extern "C-unwind" fn(*const u8)>(fn_ptr) };
-            func(args as *const u8);
+
+            // Return the panic payload across the stack switch to avoid resuming
+            // its unwind on the scheduler stack. When corosensei forcibly
+            // unwinds a suspended coroutine, it discards the return value.
+            let result = catch_unwind(AssertUnwindSafe(|| func(args as *const u8)));
 
             // No need to clear CURRENT_YIELDER here -- the scheduler clears
             // the thread-local context after resume returns (whether yield or
             // completion). Clearing here would interfere with the next coroutine
             // on this thread if it ran between our yield and resume.
+            result
         });
 
         CoroutineHandle { coro, stack_limit }
@@ -256,32 +265,40 @@ impl CoroutineHandle {
     /// Returns `true` if the coroutine yielded (still has work to do),
     /// `false` if it completed (returned from entry function).
     pub fn resume(&mut self) -> bool {
-        let limit = self.stack_limit;
-        let result = crate::stack_overflow::on_stack(limit, || self.coro.resume(()));
-        match result {
+        match self.resume_once() {
             CoroutineResult::Yield(()) => true,
-            CoroutineResult::Return(()) => false,
+            CoroutineResult::Return(Ok(())) => false,
+            CoroutineResult::Return(Err(panic)) => resume_unwind(panic),
         }
+    }
+
+    fn resume_once(&mut self) -> CoroutineResult<(), Result<(), PanicPayload>> {
+        let limit = self.stack_limit;
+        crate::stack_overflow::on_stack(limit, || self.coro.resume(()))
     }
 
     /// Resume an actor while converting an unwinding Mesh panic into an exit
     /// reason that the scheduler can propagate to links and supervisors.
     pub(crate) fn resume_catching_panic(&mut self) -> Result<bool, String> {
-        let resumed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.resume()));
-        if resumed.is_err() {
-            crate::stack_overflow::back_on_thread_stack();
+        let panic = match catch_unwind(AssertUnwindSafe(|| self.resume_once())) {
+            Ok(CoroutineResult::Yield(())) => return Ok(true),
+            Ok(CoroutineResult::Return(Ok(()))) => return Ok(false),
+            Ok(CoroutineResult::Return(Err(panic))) => panic,
+            Err(panic) => {
+                crate::stack_overflow::back_on_thread_stack();
+                panic
+            }
+        };
+        if panic.is::<ActorStopped>() {
+            return Ok(false);
         }
-        match resumed {
-            Ok(value) => Ok(value),
-            Err(panic) if panic.is::<ActorStopped>() => Ok(false),
-            Err(panic) => Err(if let Some(message) = panic.downcast_ref::<String>() {
-                message.clone()
-            } else if let Some(message) = panic.downcast_ref::<&str>() {
-                (*message).to_string()
-            } else {
-                "actor panicked".to_string()
-            }),
-        }
+        Err(match panic.downcast::<String>() {
+            Ok(message) => *message,
+            Err(panic) => panic.downcast_ref::<&str>().map_or_else(
+                || "actor panicked".to_string(),
+                |message| (*message).to_string(),
+            ),
+        })
     }
 
     /// Check whether the coroutine has finished.
@@ -364,6 +381,35 @@ mod tests {
         );
     }
     use std::sync::atomic::{AtomicU64, Ordering};
+
+    #[test]
+    fn dropping_a_suspended_coroutine_runs_its_destructors() {
+        use std::sync::atomic::AtomicBool;
+
+        static DROPPED: AtomicBool = AtomicBool::new(false);
+        static RESUMED: AtomicBool = AtomicBool::new(false);
+
+        struct OnStack;
+
+        impl Drop for OnStack {
+            fn drop(&mut self) {
+                DROPPED.store(true, Ordering::Relaxed);
+            }
+        }
+
+        extern "C-unwind" fn suspends(_args: *const u8) {
+            let _guard = OnStack;
+            yield_current();
+            RESUMED.store(true, Ordering::Relaxed);
+        }
+
+        let mut handle = CoroutineHandle::new(suspends as *const u8, std::ptr::null());
+        assert!(handle.resume());
+        assert!(!DROPPED.load(Ordering::Relaxed));
+        drop(handle);
+        assert!(DROPPED.load(Ordering::Relaxed));
+        assert!(!RESUMED.load(Ordering::Relaxed));
+    }
 
     #[test]
     fn test_coroutine_runs_to_completion() {
