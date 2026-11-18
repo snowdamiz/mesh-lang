@@ -16,6 +16,16 @@ fn check(condition :: Bool, message :: String) do
   end
 end
 
+fn decode_value(array :: Json, index :: Int) -> Int!String do
+  let item = Json.array_get(array, index)?
+  let value = Json.as_int(item)?
+  if value < -1000000 || value > 1000000 do
+    Err("value outside score bounds")
+  else
+    Ok(value)
+  end
+end
+
 fn decode_values(array :: Json,
   length :: Int,
   index :: Int,
@@ -23,17 +33,12 @@ fn decode_values(array :: Json,
   if index == length do
     Ok(values)
   else
-    let item = Json.array_get(array, index)?
-    let value = Json.as_int(item)?
-    if value < -1000000 || value > 1000000 do
-      Err("value outside score bounds")
-    else
-      decode_values(array, length, index + 1, List.append(values, value))
-    end
+    let value = decode_value(array, index)?
+    decode_values(array, length, index + 1, List.append(values, value))
   end
 end
 
-fn decode_record(json_value :: Json) -> Record!String do
+fn record_fields(json_value :: Json) -> (Int, Json, Int)!String do
   let id_json = Json.object_get(json_value, "id")?
   let id = Json.as_int(id_json)?
   if id < 0 || id > 1000000 do
@@ -44,10 +49,15 @@ fn decode_record(json_value :: Json) -> Record!String do
     if length > 256 do
       Err("too many values")
     else
-      let values = decode_values(array, length, 0, [])?
-      Ok(Record { id: id, values: values })
+      Ok((id, array, length))
     end
   end
+end
+
+fn decode_record(json_value :: Json) -> Record!String do
+  let (id, array, length) = record_fields(json_value)?
+  let values = decode_values(array, length, 0, [])?
+  Ok(Record { id: id, values: values })
 end
 
 fn decode_records(array :: Json,
@@ -121,14 +131,25 @@ fn health_handler(_request) do
   HTTP.response(200, json { ok: true })
 end
 
-fn score_body(body :: String) -> Record!String do
+fn score_json_values(array :: Json, length :: Int, index :: Int, total :: Int) -> Int!String do
+  if index == length do
+    Ok(total)
+  else
+    let value = decode_value(array, index)?
+    score_json_values(array, length, index + 1, total + (index + 1) * value)
+  end
+end
+
+fn score_body(body :: String) -> (Int, Int)!String do
   let value = Json.parse(body)?
-  decode_record(value)
+  let (id, array, length) = record_fields(value)?
+  let total = score_json_values(array, length, 0, id)?
+  Ok((id, total))
 end
 
 fn score_handler(request) do
   case score_body(Request.body(request)) do
-    Ok(record) -> HTTP.response(200, json { id: record.id, score: score(record) })
+    Ok((id, total)) -> HTTP.response(200, json { id: id, score: total })
     Err(_) -> HTTP.response(400, json { error: "invalid record" })
   end
 end

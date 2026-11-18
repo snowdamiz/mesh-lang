@@ -38,6 +38,9 @@ contain base-ten integers. The runner gives each trial a fresh process.
   supervisor in Mesh and Elixir. Use a dedicated restart loop watching the
   failed worker in Go and Rust. The replacement starts with empty state. Keep
   the Mesh main function alive until the recovery coordinator exits.
+  Mesh raises and logs a native panic, Elixir stops with a shutdown reason,
+  and Go and Rust report failure as a value. The timing includes each
+  program's failure path as well as replacement startup.
 
 `PERF_WARMUP` specifies an optional number of untimed operations before the
 trial, per pair for `actor` and in total for `cpu`. Keep the timed actor
