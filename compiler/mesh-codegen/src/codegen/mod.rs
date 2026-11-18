@@ -12,6 +12,7 @@
 //! - [`pattern`]: Decision tree codegen (implemented in Task 2)
 
 pub mod expr;
+mod fold;
 mod group_safety;
 mod grouped_step;
 pub mod intrinsics;
@@ -828,6 +829,10 @@ impl<'ctx> CodeGen<'ctx> {
         // TCE: If this function has tail calls, wrap body in a loop.
         // Create a loop header block that the TailCall codegen will branch back to.
         if func.has_tail_calls {
+            if self.inline_tail_reductions {
+                self.codegen_int_list_fold(func, fn_val)
+                    .map_err(|error| error.to_string())?;
+            }
             // Receive loops already stop at the mailbox. Keeping the cached
             // pointer live across receives can add spills to the message path.
             if self.inline_tail_reductions

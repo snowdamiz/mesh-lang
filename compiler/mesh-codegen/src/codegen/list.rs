@@ -1,7 +1,7 @@
 use inkwell::attributes::{Attribute, AttributeLoc};
-use inkwell::builder::BuilderError;
+use inkwell::builder::{Builder, BuilderError};
 use inkwell::module::Linkage;
-use inkwell::values::FunctionValue;
+use inkwell::values::{FunctionValue, PointerValue};
 use inkwell::{AddressSpace, IntPredicate};
 
 use super::CodeGen;
@@ -15,7 +15,6 @@ impl<'ctx> CodeGen<'ctx> {
             return Ok(());
         };
         let word = self.context.i64_type();
-        let ptr = self.context.ptr_type(AddressSpace::default());
         let builder = self.context.create_builder();
         let length = self.inline_list_intrinsic(length, "mesh_list_length.inline");
         builder.position_at_end(self.context.append_basic_block(length, "entry"));
@@ -28,8 +27,6 @@ impl<'ctx> CodeGen<'ctx> {
         let entry = self.context.append_basic_block(get, "entry");
         let bounds_error = self.context.append_basic_block(get, "bounds_error");
         let select_data = self.context.append_basic_block(get, "select_data");
-        let view = self.context.append_basic_block(get, "view");
-        let read = self.context.append_basic_block(get, "read");
         builder.position_at_end(entry);
         let list = get.get_nth_param(0).unwrap().into_pointer_value();
         let index = get.get_nth_param(1).unwrap().into_int_value();
@@ -41,10 +38,32 @@ impl<'ctx> CodeGen<'ctx> {
         builder.build_call(fallback, &[list.into(), index.into()], "bounds_panic")?;
         builder.build_unreachable()?;
 
+        builder.position_at_end(select_data);
+        let data = self.build_list_data(&builder, list)?;
+        let slot = unsafe { builder.build_gep(word, data, &[index], "element")? };
+        let element = builder.build_load(word, slot, "value")?;
+        builder.build_return(Some(&element))?;
+        Ok(())
+    }
+
+    pub(super) fn build_list_data(
+        &self,
+        builder: &Builder<'ctx>,
+        list: PointerValue<'ctx>,
+    ) -> Result<PointerValue<'ctx>, BuilderError> {
+        let select_data = builder
+            .get_insert_block()
+            .expect("list data has an entry block");
+        let function = select_data
+            .get_parent()
+            .expect("list data belongs to a function");
+        let view = self.context.append_basic_block(function, "list_view");
+        let read = self.context.append_basic_block(function, "list_data");
+        let word = self.context.i64_type();
+        let ptr = self.context.ptr_type(AddressSpace::default());
         // The layout mirrors mesh-rt's collections::list::list_data. An owned
         // list stores slots after its two header words. A view stores an owned
         // parent and an offset in slots after the same header.
-        builder.position_at_end(select_data);
         let slot_at = |base, offset| unsafe {
             builder.build_gep(word, base, &[word.const_int(offset, false)], "slot")
         };
@@ -75,11 +94,7 @@ impl<'ctx> CodeGen<'ctx> {
         builder.position_at_end(read);
         let data = builder.build_phi(ptr, "data")?;
         data.add_incoming(&[(&owned_data, select_data), (&view_data, view)]);
-        let data = data.as_basic_value().into_pointer_value();
-        let slot = unsafe { builder.build_gep(word, data, &[index], "element")? };
-        let element = builder.build_load(word, slot, "value")?;
-        builder.build_return(Some(&element))?;
-        Ok(())
+        Ok(data.as_basic_value().into_pointer_value())
     }
 
     fn inline_list_intrinsic(
