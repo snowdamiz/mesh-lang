@@ -1528,7 +1528,7 @@ pub extern "C-unwind" fn mesh_supervisor_start(config_ptr: *const u8, config_siz
     // The actor takes its state with it; the registry is for everyone else.
     let state = std::sync::Arc::new(parking_lot::Mutex::new(sup_state));
     let args = std::sync::Arc::into_raw(std::sync::Arc::clone(&state));
-    let sup_pid = sched.spawn(supervisor_entry as *const u8, args.cast(), 0, 1);
+    let sup_pid = sched.spawn_supervisor(supervisor_entry as *const u8, args.cast());
     // Before any child is linked to it, so it gets their exits as messages.
     sched
         .get_process(sup_pid)
@@ -1927,7 +1927,8 @@ fn parse_supervisor_config(data: &[u8]) -> supervisor::SupervisorConfig {
             let shutdown_tag = config.u8();
             let timeout = config.u64();
             let shutdown = [ShutdownType::BrutalKill, ShutdownType::Timeout(timeout)][shutdown_tag];
-            let child_type = [ChildType::Worker, ChildType::Supervisor][config.u8()];
+            let tag = config.u8();
+            let child_type = [ChildType::Worker, ChildType::Supervisor][tag & 0x7f];
             child_spec::ChildSpec {
                 id,
                 start_fn,
@@ -1936,6 +1937,7 @@ fn parse_supervisor_config(data: &[u8]) -> supervisor::SupervisorConfig {
                 restart_type,
                 shutdown,
                 child_type,
+                message_worker: tag & 0x80 != 0,
             }
         })
         .collect();

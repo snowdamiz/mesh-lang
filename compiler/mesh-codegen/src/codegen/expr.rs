@@ -3849,6 +3849,7 @@ impl<'ctx> CodeGen<'ctx> {
         // The fn_ptr will be patched at runtime or we can store a function index.
         // For now, store the child spec metadata; the start function is referenced by name.
         let mut fn_ptr_offsets: Vec<(usize, String)> = Vec::new();
+        let mut worker_tags = Vec::new();
 
         for child in children {
             // id_len (4 bytes LE)
@@ -3882,6 +3883,9 @@ impl<'ctx> CodeGen<'ctx> {
             }
 
             // child_type (1 byte)
+            if child.child_type == 0 {
+                worker_tags.push((config_bytes.len(), self.functions[&child.start_fn]));
+            }
             config_bytes.push(child.child_type);
         }
 
@@ -3953,6 +3957,13 @@ impl<'ctx> CodeGen<'ctx> {
                 .map_err(Diagnostic::internal)?;
             self.supervisor_entries.push((entry, store));
         }
+
+        self.supervisor_configs
+            .push(super::supervisor::ConfigTemplate {
+                global: config_global,
+                bytes: config_bytes,
+                worker_tags,
+            });
 
         // Call mesh_supervisor_start(config_ptr, config_size) -> i64 (PID)
         Ok(self.codegen_runtime_call(
