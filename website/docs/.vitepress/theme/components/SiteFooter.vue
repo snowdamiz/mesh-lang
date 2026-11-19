@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import lockup from '../assets/mesh-lockup.svg?raw'
-import { FOOTER_COLUMNS, RELEASE } from '../site'
+import { FOOTER_COLUMNS } from '../site'
 </script>
 
 <template>
@@ -14,6 +14,6 @@ import { FOOTER_COLUMNS, RELEASE } from '../site'
         </ul>
       </div>
     </div>
-    <div class="wrap footer-base"><span>MIT licensed</span><span>Mesh {{ RELEASE }} is in active development.</span></div>
+    <div class="wrap footer-base"><span>MIT licensed</span><span>Mesh is in active development.</span></div>
   </footer>
 </template>

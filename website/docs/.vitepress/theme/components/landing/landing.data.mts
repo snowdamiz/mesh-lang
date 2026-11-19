@@ -303,7 +303,7 @@ const COPY: Copy = {
   quote: {
     text: '\u201cIf a language can\u2019t power its own apps, it\u2019s not ready for yours.\u201d',
     author: 'The Morse team',
-    role: 'Makers of Morse',
+    role: 'Makers of Morse, an end-to-end encrypted messenger',
   },
   close: { title: 'Install Mesh.' },
 }

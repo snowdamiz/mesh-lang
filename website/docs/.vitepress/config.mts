@@ -1,3 +1,4 @@
+import fs from 'node:fs'
 import { defineConfig, type HeadConfig, type PageData } from 'vitepress'
 import meshGrammar from '../../../tools/editors/vscode-mesh/syntaxes/mesh.tmLanguage.json'
 import meshLight from './theme/shiki/mesh-light.json'
@@ -11,6 +12,10 @@ const SOCIAL_IMAGE_PATH = '/og-image-v3.png'
 const SOCIAL_IMAGE_URL = `${SITE_URL}${SOCIAL_IMAGE_PATH}`
 const SOCIAL_IMAGE_ALT = 'Mesh social card reading “Typed actors. Native binaries.” A statically typed, actor-based language for native services and distributed systems.'
 const SITE_LOGO_URL = `${SITE_URL}/icon-512.png`
+// The language version is the compiler's; the release workflow bumps it before deploying the site.
+const MESH_VERSION = fs
+  .readFileSync(new URL('../../../compiler/meshc/Cargo.toml', import.meta.url), 'utf8')
+  .match(/^version\s*=\s*"([^"]+)"/m)![1]
 const INDEX_ROBOTS ='index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1'
 
 // Runs before first paint: light unless the reader chose dark. 'auto' is what
@@ -144,6 +149,8 @@ export default defineConfig({
   // The theme owns appearance (THEME_SCRIPT and ThemeToggle.vue), so VitePress
   // adds no script of its own and isDark is a plain ref.
   appearance: false,
+
+  vite: { define: { __MESH_VERSION__: JSON.stringify(MESH_VERSION) } },
 
   // Anchor jumps land below the sticky header (and the docs menu bar on narrow screens)
   scrollOffset: { selector: '.site-top', padding: 16 },

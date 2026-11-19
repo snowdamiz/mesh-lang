@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { data } from './landing.data.mjs'
-import mark from '../../assets/mesh-mark.svg?raw'
+import morse from '../../assets/morse-avatar.svg?raw'
 import { vReveal } from '../../composables/motion'
 import InstallCard from './InstallCard.vue'
 import ProductDemo from './ProductDemo.vue'
@@ -64,7 +64,7 @@ const { hero, install, demo, features, art, distribution, toolchain, stdlib, quo
       <figure v-reveal class="quote wrap">
         <blockquote><p>{{ quote.text }}</p></blockquote>
         <figcaption>
-          <span class="avatar" aria-hidden="true" v-html="mark" />
+          <span class="avatar" aria-hidden="true" v-html="morse" />
           <span><b>{{ quote.author }}</b>{{ quote.role }}</span>
         </figcaption>
       </figure>

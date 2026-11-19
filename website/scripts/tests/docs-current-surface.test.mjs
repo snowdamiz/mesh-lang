@@ -36,7 +36,7 @@ test('public docs cover the current Mesh surface', () => {
     'website/docs/docs/reference/index.md',
   ].map(read).join('\n')
 
-  assert.match(readme, /version-v14\.0/)
+  assert.match(readme, /img\.shields\.io\/github\/v\/release\/hyperpush-org\/mesh-lang/)
   assert.match(readme, /\.\/output/)
   assert.doesNotMatch(readme, /AUTONOMOUS-SCALING-AND-LOAD-BALANCING-PLAN/)
   assert.match(gettingStarted, /\.\/output/)

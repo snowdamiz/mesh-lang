@@ -86,9 +86,10 @@ export function clusterFigure(callouts: Callout[], size: 'lg' | 'sm'): string {
   s.flat(cx(ig) - 22, cy(ig) - 16, PH + 36.2, 30, 4, 'f-bar')
   s.flat(cx(ig) - 22, cy(ig) - 6, PH + 36.2, 44, 4, 'f-bar-2')
 
-  s.shadow(cx(ex) - 32, cy(ex) - 32, 64, 64, 6, 0.16)
-  s.box(cx(ex) - 32, cy(ex) - 32, PH, 64, 64, 44, { top: 'f-hot', left: 'f-hot-l', right: 'f-hot-r', edge: 'edge-hot' })
-  s.planeText(cx(ex) - 26, cy(ex) + 32, PH + 17, 'show_account')
+  // The front face is wide enough for the handler name (12 mono glyphs, about 65 units at size 9).
+  s.shadow(cx(ex) - 42, cy(ex) - 32, 84, 64, 6, 0.16)
+  s.box(cx(ex) - 42, cy(ex) - 32, PH, 84, 64, 44, { top: 'f-hot', left: 'f-hot-l', right: 'f-hot-r', edge: 'edge-hot' })
+  s.planeText(cx(ex) - 32.5, cy(ex) + 32, PH + 17, 'show_account')
 
   for (let k = 0; k < 3; k++) {
     if (k === 0) s.shadow(cx(rp) - 34, cy(rp) - 26, 68, 52, 5, 0.14)

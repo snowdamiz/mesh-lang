@@ -144,5 +144,5 @@
       </div>
     {/each}
   </div>
-  <div class="app-wrap footer-base"><span>MIT licensed</span><span>Mesh 14 is in active development.</span></div>
+  <div class="app-wrap footer-base"><span>MIT licensed</span><span>Mesh is in active development.</span></div>
 </footer>

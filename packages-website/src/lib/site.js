@@ -5,7 +5,9 @@ const env = import.meta.env ?? {};
 export const MAIN_SITE = `${String(env.VITE_SITE_URL || (env.DEV ? 'http://localhost:5173' : 'https://meshlang.dev')).replace(/\/$/, '')}/`;
 export const REPO_URL = 'https://github.com/hyperpush-org/mesh-lang';
 export const AUTH_URL = 'https://api.packages.meshlang.dev/auth/github';
-export const STATUS = 'v14 · in active development';
+/* global __MESH_VERSION__ */
+const VERSION = typeof __MESH_VERSION__ === 'string' ? __MESH_VERSION__ : '';
+export const STATUS = `v${VERSION} · in active development`;
 
 const docs = (slug) => `${MAIN_SITE}docs/${slug}/`;
 export const STATUS_URL = docs('getting-started');

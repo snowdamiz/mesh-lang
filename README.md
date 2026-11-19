@@ -7,7 +7,7 @@
 
 # Mesh Language
 
-![Version](https://img.shields.io/badge/version-v14.0-ff5a1f.svg?style=flat-square)
+![Version](https://img.shields.io/github/v/release/hyperpush-org/mesh-lang?label=version&color=ff5a1f&style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-green.svg?style=flat-square)
 
 **A statically typed, actor-based language for native services and distributed systems.**
@@ -22,7 +22,7 @@ Elixir-inspired syntax · Hindley–Milner-style inference · LLVM native binari
 </div>
 
 > [!IMPORTANT]
-> Mesh 14 is in active development. The language, runtime, package format, and
+> Mesh is in active development. The language, runtime, package format, and
 > autonomous-cluster protocol can change before a stable release.
 
 ## What Mesh includes

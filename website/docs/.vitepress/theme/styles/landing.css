@@ -238,8 +238,8 @@ button.sup-node:hover { box-shadow: 0 0 0 1px var(--ink); }
 .quote blockquote p { margin: 0; }
 .quote figcaption { display: flex; align-items: center; gap: 14px; font-size: 15px; line-height: 1.4; color: var(--mute); text-align: left; }
 .quote figcaption b { display: block; color: var(--ink); font-weight: 600; }
-.avatar { width: 40px; height: 40px; border-radius: 50%; background: var(--ink); color: var(--paper-hi); display: grid; place-items: center; flex: none; }
-.avatar svg { width: 21px; height: auto; }
+.avatar { width: 40px; height: 40px; border-radius: 50%; overflow: hidden; display: block; flex: none; }
+.avatar svg { width: 100%; height: 100%; display: block; }
 
 /* closing */
 .close { display: grid; justify-items: center; gap: 40px; text-align: center; }

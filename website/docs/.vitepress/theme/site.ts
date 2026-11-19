@@ -14,9 +14,11 @@ export const THEME_KEY = 'vitepress-theme-appearance'
 /** Browser chrome colour per theme, matching --paper in tokens.css */
 export const THEME_COLOR = { light: '#f7f2ea', dark: '#141312' } as const
 
-export const RELEASE = 14
+declare const __MESH_VERSION__: string | undefined
+/** The compiler's version, injected by config.mts; absent when config.mts itself loads this file. */
+export const VERSION = typeof __MESH_VERSION__ === 'string' ? __MESH_VERSION__ : ''
 export const STATUS = {
-  label: `v${RELEASE} · in active development`,
+  label: `v${VERSION} · in active development`,
   detail: 'The language, runtime, package format, and cluster protocol can still change before a stable release.',
 }
 
