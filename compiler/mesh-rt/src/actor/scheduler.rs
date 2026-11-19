@@ -1798,9 +1798,10 @@ fn worker_loop(worker_index: usize, high_rx: Receiver<SpawnRequest>, shared: Wor
                                     CoroutineHandle::from_entry(entry),
                                     on_exit,
                                 ))),
-                                None => {
-                                    Execution::Stack(CoroutineHandle::new(req.fn_ptr, req.args_ptr))
-                                }
+                                None => Execution::Stack(CoroutineHandle::new_on_worker(
+                                    req.fn_ptr,
+                                    req.args_ptr,
+                                )),
                             },
                         },
                     };
