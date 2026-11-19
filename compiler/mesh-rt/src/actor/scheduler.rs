@@ -72,11 +72,18 @@ enum SpawnMode {
     Shared,
     Linked {
         parent: ProcessId,
-        parent_traps: bool,
+        child: LinkedChild,
     },
     Grouped(Option<TerminateCallback>),
     Step(u32),
     MovableStep(u32),
+}
+
+#[derive(Clone, Copy)]
+enum LinkedChild {
+    Ordinary,
+    TrapExit,
+    Job(super::job::JobRetention),
 }
 
 // Only a grouped actor resuming on its owner can hand off to another
@@ -735,7 +742,32 @@ impl Scheduler {
             std::ptr::null(),
             SpawnMode::Linked {
                 parent,
-                parent_traps,
+                child: if parent_traps {
+                    LinkedChild::TrapExit
+                } else {
+                    LinkedChild::Ordinary
+                },
+            },
+        )
+    }
+
+    pub(super) fn spawn_job(
+        &self,
+        fn_ptr: *const u8,
+        args_ptr: *const u8,
+        args_size: u64,
+        caller: ProcessId,
+        retention: super::job::JobRetention,
+    ) -> ProcessId {
+        self.spawn_process(
+            fn_ptr,
+            args_ptr,
+            args_size,
+            Priority::Normal,
+            std::ptr::null(),
+            SpawnMode::Linked {
+                parent: caller,
+                child: LinkedChild::Job(retention),
             },
         )
     }
@@ -749,7 +781,25 @@ impl Scheduler {
         shape: *const u32,
         mode: SpawnMode,
     ) -> ProcessId {
-        let pid = self.fresh_pid();
+        let linked_parent = match mode {
+            SpawnMode::Linked { parent, .. } => self.get_process(parent),
+            _ => None,
+        };
+        let pid = match (&mode, &linked_parent) {
+            (
+                SpawnMode::Linked {
+                    child: LinkedChild::Job(_),
+                    ..
+                },
+                Some(parent),
+            ) => {
+                // Completed job handles can outlive their process table entry.
+                ProcessId::next_unused(|pid| {
+                    self.process_table.contains_key(pid) || parent.lock().jobs.contains(pid)
+                })
+            }
+            _ => self.fresh_pid(),
+        };
 
         let spawner = get_current_pid().and_then(|pid| self.get_process(pid));
         // ponytail: pin the entire call heap for actors borrowing its arguments;
@@ -784,19 +834,8 @@ impl Scheduler {
         if let SpawnMode::Grouped(callback) = mode {
             process.terminate_callback = callback;
         }
-        if let SpawnMode::Linked {
-            parent,
-            parent_traps,
-        } = mode
-        {
+        if let SpawnMode::Linked { parent, .. } = mode {
             process.links.insert(parent);
-            if let Some(parent) = self.get_process(parent) {
-                let mut parent = parent.lock();
-                parent.links.insert(pid);
-                if parent_traps {
-                    parent.trapped_links.insert(pid);
-                }
-            }
         }
         let args_ptr = match &spawner {
             Some(spawner) => adopt_spawn_args(&mut process, spawner, args_ptr, args_size, shape),
@@ -841,6 +880,29 @@ impl Scheduler {
         // Track active process count.
         let active_count = self.active_count.fetch_add(1, Ordering::SeqCst) + 1;
         crate::dist::telemetry::runtime_telemetry().set_runnable_actors(active_count);
+
+        if let SpawnMode::Linked { child, .. } = mode {
+            let linked = linked_parent.is_some_and(|parent| {
+                let mut parent = parent.lock();
+                if matches!(parent.state, ProcessState::Exited(_)) {
+                    return false;
+                }
+                parent.links.insert(pid);
+                match child {
+                    LinkedChild::TrapExit => {
+                        parent.trapped_links.insert(pid);
+                    }
+                    LinkedChild::Job(retention) => parent.jobs.register(pid, retention),
+                    LinkedChild::Ordinary => {}
+                }
+                true
+            });
+            if matches!(child, LinkedChild::Job(_)) && !linked {
+                self.process_table.with_process(pid, |process| {
+                    process.lock().mark_exited(ExitReason::Shutdown);
+                });
+            }
+        }
 
         // Enqueue spawn request.
         let request = SpawnRequest {
@@ -2201,19 +2263,23 @@ fn handle_process_exit(
     fallback_reason: ExitReason,
 ) -> bool {
     // Claim finalization and extract callback/notification state under one lock.
-    let Some((reason, terminate_cb, linked_pids, monitored_by_entries)) = process_table
-        .with_process(pid, |proc_arc| {
-            let mut proc = proc_arc.lock();
-            let reason = proc.begin_exit_finalization(fallback_reason)?;
-            let cb = proc
-                .terminate_callback
-                .take()
-                .map(|cb| (cb, proc.placement));
-            let links = std::mem::take(&mut proc.links);
-            let monitored_by = std::mem::take(&mut proc.monitored_by);
-            Some((reason, cb, links, monitored_by))
-        })
-        .flatten()
+    let Some((reason, returned_normally, terminate_cb, linked_pids, monitored_by_entries)) =
+        process_table
+            .with_process(pid, |proc_arc| {
+                let mut proc = proc_arc.lock();
+                let forced = matches!(proc.state, ProcessState::Exited(_));
+                let reason = proc.begin_exit_finalization(fallback_reason)?;
+                let returned_normally = !forced && matches!(reason, ExitReason::Normal);
+                let cb = proc
+                    .terminate_callback
+                    .take()
+                    .map(|cb| (cb, proc.placement));
+                let links = std::mem::take(&mut proc.links);
+                let monitored_by = std::mem::take(&mut proc.monitored_by);
+                proc.jobs = super::job::JobSlots::default();
+                Some((reason, returned_normally, cb, links, monitored_by))
+            })
+            .flatten()
     else {
         return false;
     };
@@ -2242,6 +2308,7 @@ fn handle_process_exit(
     link::propagate_exit_and_notify(
         pid,
         &reason,
+        returned_normally,
         linked_pids.iter().copied().filter(|pid| pid.node_id() == 0),
         |linked_pid| process_table.get(linked_pid),
         |process| {
@@ -3600,6 +3667,34 @@ mod tests {
         assert!(links(parent).contains(&child));
         assert!(links(child).contains(&parent));
         assert!(links(orphan).contains(&gone));
+    }
+
+    #[test]
+    fn a_linked_spawn_with_a_trapping_parent_delivers_an_exit_message() {
+        extern "C-unwind" fn fail(_args: *const u8) {
+            crate::panic::raise(format_args!("linked child failed"));
+        }
+
+        let scheduler = Scheduler::new(1);
+        let parent = scheduler.create_main_process();
+        let child = scheduler.spawn_linked(fail as *const u8, std::ptr::null(), 0, 1, parent, true);
+        scheduler.signal_shutdown();
+        scheduler.run();
+
+        let parent = scheduler.get_process(parent).unwrap();
+        let message = parent
+            .lock()
+            .mailbox
+            .pop()
+            .expect("linked child exit message");
+        assert_eq!(message.buffer.type_tag, link::EXIT_SIGNAL_TAG);
+        assert_eq!(
+            link::decode_exit_signal(message.buffer.data()),
+            Some((
+                child,
+                ExitReason::Error("Mesh panic: linked child failed".into())
+            ))
+        );
     }
 
     #[test]

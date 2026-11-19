@@ -160,8 +160,8 @@ pub(crate) fn decode_reason(data: &[u8]) -> Option<(ExitReason, usize)> {
 ///
 /// For each linked PID:
 /// - A process with `trap_exit = true` (a supervisor) gets the signal as a
-///   message, whatever the reason; one that traps this link (a job's
-///   caller) gets it for an abnormal exit.
+///   message, whatever the reason. A job's caller gets its outcome in the
+///   completion slot reserved at spawn.
 /// - Otherwise a normal or shutdown exit is dropped: the process's own
 ///   `receive` would read the signal as one of its messages (a supervised
 ///   worker printed "got 2", its supervisor's pid, as `main` ended).
@@ -180,15 +180,23 @@ where
     F: Fn(ProcessId) -> Option<Arc<Mutex<Process>>>,
 {
     let mut woken = Vec::new();
-    propagate_exit_and_notify(exiting_pid, reason, linked_pids, get_process, |proc| {
-        woken.push(proc.pid);
-    });
+    propagate_exit_and_notify(
+        exiting_pid,
+        reason,
+        false,
+        linked_pids,
+        get_process,
+        |proc| {
+            woken.push(proc.pid);
+        },
+    );
     woken
 }
 
 pub(super) fn propagate_exit_and_notify(
     exiting_pid: ProcessId,
     reason: &ExitReason,
+    returned_normally: bool,
     linked_pids: impl IntoIterator<Item = ProcessId>,
     get_process: impl Fn(ProcessId) -> Option<Arc<Mutex<Process>>>,
     mut notify: impl FnMut(&mut Process),
@@ -206,11 +214,16 @@ pub(super) fn propagate_exit_and_notify(
 
             // Remove the reverse link (the exiting process is gone).
             proc.links.remove(&exiting_pid);
-
             let trapped = proc.trapped_links.remove(&exiting_pid) && !is_non_crashing;
+
             let waiting = matches!(proc.state, ProcessState::Waiting);
 
-            if proc.trap_exit || trapped {
+            let job_finished = proc.jobs.finish(exiting_pid, reason, returned_normally);
+            if job_finished {
+                if waiting {
+                    proc.set_live_state(ProcessState::Ready);
+                }
+            } else if proc.trap_exit || trapped {
                 // Deliver as a regular message -- the process does not crash.
                 let bytes =
                     signal_data.get_or_insert_with(|| encode_exit_signal(exiting_pid, reason));

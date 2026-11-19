@@ -1374,11 +1374,12 @@ pub extern "C" fn mesh_actor_set_terminate(pid: u64, callback_fn_ptr: *const u8)
 /// The scheduler shuts down when the active process count reaches zero
 /// (i.e., all spawned actors have completed or been force-terminated).
 fn exit_main_process(sched: &Scheduler, main_pid: ProcessId) {
-    sched
+    let main = sched
         .get_process(main_pid)
-        .expect("`main` has a process until the runtime ends")
-        .lock()
-        .mark_exited(ExitReason::Normal);
+        .expect("`main` has a process until the runtime ends");
+    let mut main = main.lock();
+    main.mark_exited(ExitReason::Normal);
+    main.jobs = job::JobSlots::default();
 }
 
 #[no_mangle]

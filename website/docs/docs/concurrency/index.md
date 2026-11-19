@@ -467,7 +467,9 @@ A call waits for its own reply only: messages already in the caller's mailbox st
 
 ## Jobs
 
-`Job` runs finite work on lightweight actors and returns failures through `Result`.
+`Job` runs short-lived work on actors in the current runtime and returns failures through `Result`.
+
+A runtime restart loses pending jobs and uncollected results. The caller decides whether to start another job after a failure. If you rerun a job after a crash, account for any external changes the first run already made. Work that must survive restart needs a durable queue or a record in your application database.
 
 ```mesh
 fn main() do
@@ -486,7 +488,9 @@ end
 | `Job.await_timeout(job, timeout_ms)` | `Result<T, String>` | Wait up to the given number of milliseconds |
 | `Job.map(values, fn)` | `List<Result<U, String>>` | Run one job per list element and return results in input order |
 
-Job replies go to the actor that started them, and each await selects the requested job without consuming unrelated mailbox messages; an actor's own `receive` never sees them. A job that fails (a panic, say) is an `Err` naming the failure to whoever awaits it, which goes on; a job whose caller fails is stopped with it. Await a job from its original caller. A timed-out job is not cancelled; its eventual reply remains available to a later await. `Job.map` exposes each completion's success or failure instead of failing the whole batch at the first error.
+Await a job from the actor that started it. Job replies use separate storage from application messages, so a full mailbox cannot drop them. Each caller can buffer up to 1,024 uncollected `Job.async` replies and 8 MiB of copied reply data. Mesh reserves the reply for any job the caller is actively awaiting. If a completed reply exceeds the caller's buffer limits and the caller is not awaiting it, a later await returns `Err("job result unavailable")`. The job may already have changed external state when you receive that error. Each reply can be read once.
+
+A job panic returns `Err` to its caller. If the caller fails, Mesh stops its linked jobs. A timeout leaves the job running, and a sleeping job can delay process exit after `main` returns. `Job.map` reserves the replies for its own jobs and returns each success or failure in input order.
 
 ## Timers
 

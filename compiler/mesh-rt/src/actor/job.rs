@@ -7,16 +7,9 @@
 //! - `Job.await_timeout(pid, ms)` same as await but with timeout
 //! - `Job.map(list, fn)` spawns parallel jobs and collects results in order
 //!
-//! ## Message Protocol
-//!
-//! Jobs use `JOB_RESULT_TAG` (u64::MAX - 1) to distinguish job results from
-//! exit signals (`EXIT_SIGNAL_TAG` = u64::MAX). A job actor is linked to its
-//! caller as it is spawned, and the caller traps that link: a job that fails
-//! sends its caller an exit signal, which its await reports, instead of
-//! taking the caller down. The job actor:
-//! 1. Calls fn_ptr(env_ptr) to get the result
-//! 2. Sends [JOB_RESULT_TAG][job_pid][result][is_pointer] to the caller
-//! 3. Exits normally
+//! The caller reserves a completion slot for each linked job before it runs.
+//! The child stages a detached result, and exit finalization publishes the
+//! result or exit reason in that slot.
 //!
 //! ## Result Layout
 //!
@@ -24,18 +17,173 @@
 //! - tag 0 = Ok (value is the job's return value)
 //! - tag 1 = Err (value is a string describing the crash reason)
 
+use std::task::Poll;
+
+use rustc_hash::FxHashMap;
+
 use crate::gc::mesh_gc_alloc_actor;
 use crate::io::{alloc_result, err_result};
 
 use super::heap::MessageBuffer;
-use super::link::EXIT_SIGNAL_TAG;
-use super::process::{Message, ProcessId};
+use super::process::{ExitReason, Message, ProcessId, ProcessState};
 
-/// Type tag for job result messages.
-///
-/// Distinct from EXIT_SIGNAL_TAG (u64::MAX) to allow the await logic to
-/// differentiate between "job completed with a value" and "job crashed".
+/// Type tag used to materialize a detached job result.
 pub const JOB_RESULT_TAG: u64 = u64::MAX - 1;
+
+const MAX_BUFFERED_REPLIES: usize = 1024;
+const MAX_BUFFERED_REPLY_BYTES: usize = 8 * 1024 * 1024;
+
+#[derive(Clone, Copy)]
+pub(super) enum JobRetention {
+    Buffered,
+    Reserved,
+}
+
+enum JobSlot {
+    Pending {
+        staged: Option<Message>,
+        retention: JobRetention,
+    },
+    Ready {
+        reply: Result<Message, ExitReason>,
+        buffered_bytes: Option<usize>,
+    },
+}
+
+enum JobFailure {
+    Exited(ExitReason),
+    Unavailable,
+}
+
+#[derive(Default)]
+pub(super) struct JobSlots {
+    slots: FxHashMap<ProcessId, JobSlot>,
+    buffered: usize,
+    buffered_bytes: usize,
+    waiting_for: Option<ProcessId>,
+}
+
+impl JobSlots {
+    pub(super) fn contains(&self, pid: ProcessId) -> bool {
+        self.slots.contains_key(&pid)
+    }
+
+    pub(super) fn register(&mut self, pid: ProcessId, retention: JobRetention) {
+        self.slots.insert(
+            pid,
+            JobSlot::Pending {
+                staged: None,
+                retention,
+            },
+        );
+    }
+
+    fn stage(&mut self, pid: ProcessId, message: Message) {
+        if let Some(JobSlot::Pending { staged, .. }) = self.slots.get_mut(&pid) {
+            *staged = Some(message);
+        }
+    }
+
+    pub(super) fn finish(
+        &mut self,
+        pid: ProcessId,
+        reason: &ExitReason,
+        returned_normally: bool,
+    ) -> bool {
+        let Some(JobSlot::Pending { staged, retention }) = self.slots.get_mut(&pid) else {
+            return false;
+        };
+
+        let buffered_bytes = matches!(retention, JobRetention::Buffered).then(|| {
+            if returned_normally {
+                staged.as_ref().map_or(0, |msg| {
+                    msg.buffer.data().len()
+                        + msg.buffer.references.as_ref().map_or(0, |refs| {
+                            refs.captured
+                                .objects
+                                .iter()
+                                .map(|obj| obj.bytes.len())
+                                .sum()
+                        })
+                })
+            } else {
+                exit_reason_bytes(reason)
+            }
+        });
+        if buffered_bytes.is_some_and(|bytes| {
+            self.buffered >= MAX_BUFFERED_REPLIES
+                || self.buffered_bytes.saturating_add(bytes) > MAX_BUFFERED_REPLY_BYTES
+        }) && self.waiting_for != Some(pid)
+        {
+            self.slots.remove(&pid);
+            return true;
+        }
+
+        let reply = if returned_normally {
+            staged.take().ok_or(ExitReason::Normal)
+        } else {
+            Err(reason.clone())
+        };
+        self.slots.insert(
+            pid,
+            JobSlot::Ready {
+                reply,
+                buffered_bytes,
+            },
+        );
+        if let Some(bytes) = buffered_bytes {
+            self.buffered += 1;
+            self.buffered_bytes += bytes;
+        }
+        true
+    }
+
+    fn poll(&mut self, pid: ProcessId, timeout_ms: i64) -> Poll<Result<Message, JobFailure>> {
+        match self.slots.get(&pid) {
+            None => return Poll::Ready(Err(JobFailure::Unavailable)),
+            Some(JobSlot::Pending { .. }) => {
+                if timeout_ms != 0 {
+                    self.waiting_for = Some(pid);
+                }
+                return Poll::Pending;
+            }
+            Some(JobSlot::Ready { .. }) => {}
+        }
+        let Some(JobSlot::Ready {
+            reply,
+            buffered_bytes,
+        }) = self.slots.remove(&pid)
+        else {
+            unreachable!("caller holds the completion slot lock");
+        };
+        if let Some(bytes) = buffered_bytes {
+            self.buffered -= 1;
+            self.buffered_bytes -= bytes;
+        }
+        Poll::Ready(reply.map_err(JobFailure::Exited))
+    }
+
+    fn end_wait(&mut self) {
+        if let Some(pid) = self.waiting_for.take() {
+            // A reply may arrive after the timeout wins but before the caller resumes.
+            if self.buffered > MAX_BUFFERED_REPLIES
+                || self.buffered_bytes > MAX_BUFFERED_REPLY_BYTES
+            {
+                let _ = self.poll(pid, 0);
+            }
+        }
+    }
+}
+
+fn exit_reason_bytes(mut reason: &ExitReason) -> usize {
+    while let ExitReason::Linked(_, inner) = reason {
+        reason = inner;
+    }
+    match reason {
+        ExitReason::Error(text) | ExitReason::Custom(text) => text.len(),
+        _ => 0,
+    }
+}
 
 /// Store a job's scalar result in owned payload memory.
 ///
@@ -84,19 +232,24 @@ pub extern "C" fn mesh_job_async_shaped(
         caller.as_u64(),
         result_shape as u64,
     ];
-    spawn_job(caller, job_entry as *const u8, &words)
+    spawn_job(
+        caller,
+        job_entry as *const u8,
+        &words,
+        JobRetention::Buffered,
+    )
 }
 
 /// Spawn a job actor for `caller`, which traps its link to it, handing
 /// `entry` the argument `words`. They go on the caller's heap, so that the
 /// job gets its own copy and what they point at stays alive for it (see
 /// `adopt_spawn_args`).
-fn spawn_job(caller: ProcessId, entry: *const u8, words: &[u64]) -> u64 {
+fn spawn_job(caller: ProcessId, entry: *const u8, words: &[u64], retention: JobRetention) -> u64 {
     let size = std::mem::size_of_val(words);
     let args = mesh_gc_alloc_actor(size as u64, 8) as *mut u64;
     unsafe { std::ptr::copy_nonoverlapping(words.as_ptr(), args, words.len()) };
     super::global_scheduler()
-        .spawn_linked(entry, args as *const u8, size as u64, 1, caller, true)
+        .spawn_job(entry, args as *const u8, size as u64, caller, retention)
         .as_u64()
 }
 
@@ -110,123 +263,87 @@ extern "C-unwind" fn job_entry(args: *const u8) {
     let user_fn: extern "C-unwind" fn(*const u8) -> i64 =
         unsafe { std::mem::transmute(arg(args, 0) as *const u8) };
     let result = user_fn(arg(args, 1) as *const u8);
-    send_job_result(arg(args, 2), result, arg(args, 3) as *const u32);
+    stage_job_result(arg(args, 2), result, arg(args, 3) as *const u32);
 }
 
-/// Send a finished job's result to its caller, tagged with JOB_RESULT_TAG.
-///
-/// The job actor is about to exit and take its heap with it, so whatever the
-/// result references leaves that heap first, guided by `result_shape`. The
-/// compiler gives a shape exactly when the result word is a reference.
-fn send_job_result(caller_pid: u64, result: i64, result_shape: *const u32) {
+/// Stage the return value for exit finalization. The value must leave the
+/// job's heap before the actor exits and takes its heap with it.
+fn stage_job_result(caller_pid: u64, result: i64, result_shape: *const u32) {
     let sched = super::global_scheduler();
-
-    // Message layout: [u64 JOB_RESULT_TAG][u64 job_pid][i64 result][u64 result_is_pointer]
-    const RESULT_OFFSET: usize = 16;
     let (job, _) = super::running_process();
-    let mut msg_data = Vec::with_capacity(32);
-    msg_data.extend_from_slice(&JOB_RESULT_TAG.to_le_bytes());
-    msg_data.extend_from_slice(&job.as_u64().to_le_bytes());
-    msg_data.extend_from_slice(&result.to_le_bytes());
-    msg_data.extend_from_slice(&u64::from(!result_shape.is_null()).to_le_bytes());
+    let Some(caller) = sched.get_process(ProcessId(caller_pid)) else {
+        return;
+    };
 
-    let mut buffer = MessageBuffer::new(msg_data, JOB_RESULT_TAG);
-    super::detach_from_sender(sched, &mut buffer, RESULT_OFFSET, result_shape);
+    let mut data = Vec::with_capacity(16);
+    data.extend_from_slice(&result.to_le_bytes());
+    data.extend_from_slice(&u64::from(!result_shape.is_null()).to_le_bytes());
+    let mut buffer = MessageBuffer::new(data, JOB_RESULT_TAG);
+    super::detach_from_sender(sched, &mut buffer, 0, result_shape);
+    buffer.addressed_to(&caller);
 
-    // The caller waits for this: it goes in even when the mailbox is full. A
-    // caller that has gone takes no result.
-    let target = ProcessId(caller_pid);
-    if let Some(proc_arc) = sched.get_process(target) {
-        buffer.addressed_to(&proc_arc);
-        let proc = proc_arc.lock();
-        let _ = proc.mailbox.try_push_control(Message { buffer });
-        sched.wake_if_waiting(target, proc);
+    let mut caller = caller.lock();
+    if !matches!(caller.state, ProcessState::Exited(_)) {
+        caller.jobs.stage(job, Message { buffer });
     }
 }
 
-/// Block until the job completes and return a `MeshResult`.
-///
-/// Receives messages from the job actor:
-/// - `JOB_RESULT_TAG` message: extract the value, return Ok(value)
-/// - `EXIT_SIGNAL_TAG` message: the job crashed, return Err(reason)
-///
-/// - `job_pid`: PID of the job actor to receive from
-///
-/// Returns a pointer to a heap-allocated MeshResult.
+/// Block until the job completes and return its result.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_job_await(job_pid: u64) -> *const u8 {
-    decode_job_message(super::receive_matching_or_stop(from_job(job_pid)))
+    await_job(job_pid, -1).unwrap_or_else(|| super::mesh_actor_stop())
 }
 
-/// Block until the job completes or timeout, returning a `MeshResult`.
-///
-/// Same as `mesh_job_await` but with a timeout in milliseconds.
-/// If timeout expires before a result arrives, returns Err("timeout").
-///
-/// - `job_pid`: PID of the job actor
-/// - `timeout_ms`: timeout in milliseconds
-///
-/// Returns a pointer to a heap-allocated MeshResult.
+/// Wait up to `timeout_ms` for the job's result without cancelling the job.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_job_await_timeout(job_pid: u64, timeout_ms: i64) -> *const u8 {
-    let msg_ptr = super::actor_receive_matching(timeout_ms, from_job(job_pid));
-    if msg_ptr.is_null() {
-        return err_result("timeout") as *const u8;
-    }
-    decode_job_message(msg_ptr)
+    await_job(job_pid, timeout_ms).unwrap_or_else(|| err_result("timeout") as *const u8)
 }
 
-/// Whether a message is job `job_pid`'s result, or its exit signal.
-fn from_job(job_pid: u64) -> impl Fn(&Message) -> bool {
-    move |message| {
-        let pid_offset = match message.buffer.type_tag {
-            JOB_RESULT_TAG => 8,
-            EXIT_SIGNAL_TAG => 0,
-            _ => return false,
-        };
-        let pid = &message.buffer.data()[pid_offset..pid_offset + 8];
-        u64::from_le_bytes(pid.try_into().unwrap()) == job_pid
-    }
-}
-
-/// Decode a received message into a MeshResult.
-///
-/// Message layout from actor_receive: [u64 type_tag][u64 data_len][u8... data]
-fn decode_job_message(msg_ptr: *const u8) -> *const u8 {
-    unsafe {
-        let word = |offset: usize| (msg_ptr.add(offset) as *const u64).read_unaligned();
-        if word(0) == JOB_RESULT_TAG {
-            // Data after the 16-byte header:
-            // [u64 JOB_RESULT_TAG][u64 job_pid][i64 result][u64 result_is_pointer]
-            // A `Result` payload is a pointer: a String, list or other
-            // reference IS that pointer, exactly as `err_result` stores its
-            // message, while a scalar sits in a box the consumer loads the
-            // concrete T from. Boxing a reference made every `Ok(text)` read
-            // the box as if it were the string.
-            let result_value = word(32) as i64;
-            let payload = if word(40) != 0 {
-                result_value as usize as *mut u8
-            } else {
-                box_job_value(result_value)
-            };
-            alloc_result(0, payload) as *const u8
-        } else {
-            // The job's exit signal, the only other message it is waited for
-            // by: its exit reason says what became of it.
-            let data = std::slice::from_raw_parts(msg_ptr.add(16), word(8) as usize);
-            let reason = match super::link::decode_exit_signal(data).map(|(_, reason)| reason) {
-                Some(super::process::ExitReason::Normal) => "normal".to_string(),
-                Some(super::process::ExitReason::Killed) => "killed".to_string(),
-                Some(super::process::ExitReason::Shutdown) => "shutdown".to_string(),
-                Some(
-                    super::process::ExitReason::Error(text)
-                    | super::process::ExitReason::Custom(text),
-                ) => text,
-                _ => "job crashed".to_string(),
-            };
-            err_result(&reason) as *const u8
+fn await_job(job_pid: u64, timeout_ms: i64) -> Option<*const u8> {
+    let job_pid = ProcessId(job_pid);
+    let reply = super::receive_with(super::global_scheduler(), timeout_ms, |caller| match caller
+        .jobs
+        .poll(job_pid, timeout_ms)
+    {
+        Poll::Pending => None,
+        Poll::Ready(reply) => {
+            Some(reply.map(|message| super::copy_msg_to_actor_heap(caller, message)))
         }
+    });
+    if timeout_ms != 0 {
+        super::running_process().1.lock().jobs.end_wait();
     }
+    Some(match reply? {
+        Ok(message) => decode_job_result(message),
+        Err(JobFailure::Exited(reason)) => job_exit_result(reason),
+        Err(JobFailure::Unavailable) => err_result("job result unavailable") as *const u8,
+    })
+}
+
+fn decode_job_result(message: *const u8) -> *const u8 {
+    unsafe {
+        // The 16-byte message header is followed by the result and a pointer flag.
+        let result = (message.add(16) as *const i64).read_unaligned();
+        let is_pointer = (message.add(24) as *const u64).read_unaligned() != 0;
+        let payload = if is_pointer {
+            result as usize as *mut u8
+        } else {
+            box_job_value(result)
+        };
+        alloc_result(0, payload) as *const u8
+    }
+}
+
+fn job_exit_result(reason: ExitReason) -> *const u8 {
+    let message = match &reason {
+        ExitReason::Normal => "normal",
+        ExitReason::Killed => "killed",
+        ExitReason::Shutdown => "shutdown",
+        ExitReason::Error(text) | ExitReason::Custom(text) => text,
+        _ => "job crashed",
+    };
+    err_result(message) as *const u8
 }
 
 /// Spawn parallel jobs for each element of a list, collect results in order.
@@ -265,23 +382,28 @@ pub extern "C-unwind" fn mesh_job_map_shaped(
         mesh_list_append, mesh_list_get, mesh_list_length, mesh_list_new,
     };
 
-    let (caller, _) = super::running_process();
+    let (caller, process) = super::running_process();
     let len = mesh_list_length(list_ptr as *mut u8);
     let jobs: Vec<u64> = (0..len)
         .map(|i| {
             let element = mesh_list_get(list_ptr as *mut u8, i);
             let (function, env, shape) = (fn_ptr as u64, env_ptr as u64, result_shape as u64);
             let words = [function, env, element, caller.as_u64(), shape];
-            spawn_job(caller, map_job_entry as *const u8, &words)
+            spawn_job(
+                caller,
+                map_job_entry as *const u8,
+                &words,
+                JobRetention::Reserved,
+            )
         })
         .collect();
 
     // Await each job in order and build the result list.
     let mut result_list = mesh_list_new();
     for job in jobs {
-        let message = super::receive_matching_or_stop(from_job(job));
-        result_list = mesh_list_append(result_list, decode_job_message(message) as u64);
+        result_list = mesh_list_append(result_list, mesh_job_await(job) as u64);
     }
+    process.lock().jobs.slots.shrink_to(MAX_BUFFERED_REPLIES);
     result_list as *const u8
 }
 
@@ -291,7 +413,7 @@ extern "C-unwind" fn map_job_entry(args: *const u8) {
     let user_fn: extern "C-unwind" fn(*const u8, i64) -> i64 =
         unsafe { std::mem::transmute(arg(args, 0) as *const u8) };
     let result = user_fn(arg(args, 1) as *const u8, arg(args, 2) as i64);
-    send_job_result(arg(args, 3), result, arg(args, 4) as *const u32);
+    stage_job_result(arg(args, 3), result, arg(args, 4) as *const u32);
 }
 
 #[cfg(test)]
@@ -362,6 +484,134 @@ mod tests {
         );
     }
 
+    #[test]
+    fn finished_jobs_keep_their_results_when_the_callers_mailbox_is_full() {
+        in_actor(|| {
+            let (caller, _) = super::super::running_process();
+            let send =
+                |n: u64| super::super::local_send(caller.as_u64(), n.to_le_bytes().as_ptr(), 8);
+            for n in 0..super::super::mailbox::DEFAULT_MAILBOX_MAX_ITEMS as u64 {
+                assert_eq!(send(n), 0);
+            }
+            assert_eq!(send(0), 2);
+
+            let start = |f: extern "C-unwind" fn(*const u8) -> i64| {
+                mesh_job_async(f as *const u8, std::ptr::null())
+            };
+            let jobs = [start(forty_two), start(forty_two), start(failing)];
+            let scheduler = super::super::global_scheduler();
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            for job in jobs {
+                while scheduler.get_process(ProcessId(job)).is_some() {
+                    assert!(std::time::Instant::now() < deadline, "job did not exit");
+                    super::super::mesh_timer_sleep(1);
+                }
+            }
+
+            assert_eq!(send(0), 2);
+            assert_eq!(
+                jobs.map(|job| outcome(mesh_job_await_timeout(job, 0))),
+                [
+                    (0, "42".into()),
+                    (0, "42".into()),
+                    (1, "Mesh panic: the job failed".into()),
+                ]
+            );
+            assert_eq!(
+                outcome(mesh_job_await_timeout(jobs[0], 0)),
+                (1, "job result unavailable".into())
+            );
+            assert_eq!(send(0), 2);
+        });
+    }
+
+    #[test]
+    fn an_explicit_exit_wins_over_a_jobs_late_return() {
+        extern "C-unwind" fn stop_before_return(_args: *const u8) -> i64 {
+            let (job, _) = super::super::running_process();
+            super::super::mesh_actor_exit(job.as_u64(), 0);
+            42
+        }
+
+        let result = in_actor(|| {
+            let job = mesh_job_async(stop_before_return as *const u8, std::ptr::null());
+            outcome(mesh_job_await_timeout(job, 5_000))
+        });
+        assert_eq!(result, (1, "normal".into()));
+    }
+
+    #[test]
+    fn unread_failures_respect_the_byte_limit_and_release_it_when_read() {
+        let mut slots = JobSlots::default();
+        let reason = ExitReason::Error("x".repeat(MAX_BUFFERED_REPLY_BYTES / 2));
+        for pid in 1..=3 {
+            slots.register(ProcessId(pid), JobRetention::Buffered);
+            assert!(slots.finish(ProcessId(pid), &reason, false));
+        }
+        assert!(matches!(
+            slots.poll(ProcessId(3), 0),
+            Poll::Ready(Err(JobFailure::Unavailable))
+        ));
+        assert!(matches!(
+            slots.poll(ProcessId(1), 0),
+            Poll::Ready(Err(JobFailure::Exited(_)))
+        ));
+        slots.register(ProcessId(4), JobRetention::Buffered);
+        assert!(slots.finish(ProcessId(4), &reason, false));
+        assert!(matches!(
+            slots.poll(ProcessId(4), 0),
+            Poll::Ready(Err(JobFailure::Exited(_)))
+        ));
+    }
+
+    #[test]
+    fn excess_uncollected_replies_are_unavailable_without_blocking_job_map() {
+        use crate::collections::list::{mesh_list_append, mesh_list_get, mesh_list_new};
+
+        extern "C-unwind" fn map_value(_env: *const u8, n: i64) -> i64 {
+            if n == 1 {
+                super::super::mesh_timer_sleep(50);
+            }
+            n * 10
+        }
+
+        in_actor(|| {
+            let jobs: Vec<_> = (0..=MAX_BUFFERED_REPLIES)
+                .map(|_| mesh_job_async(forty_two as *const u8, std::ptr::null()))
+                .collect();
+            let scheduler = super::super::global_scheduler();
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while jobs
+                .iter()
+                .any(|job| scheduler.get_process(ProcessId(*job)).is_some())
+            {
+                assert!(std::time::Instant::now() < deadline, "jobs did not exit");
+                super::super::mesh_timer_sleep(1);
+            }
+
+            let list = mesh_list_append(mesh_list_append(mesh_list_new(), 1), 2);
+            let mapped = mesh_job_map(list, map_value as *const u8, std::ptr::null()) as *mut u8;
+            assert_eq!(
+                outcome(mesh_list_get(mapped, 0) as *const u8),
+                (0, "10".into())
+            );
+            assert_eq!(
+                outcome(mesh_list_get(mapped, 1) as *const u8),
+                (0, "20".into())
+            );
+
+            let mut successes = 0;
+            for job in jobs {
+                match outcome(mesh_job_await_timeout(job, 0)) {
+                    (0, value) if value == "42" => successes += 1,
+                    (1, error) if error == "job result unavailable" => {}
+                    reply => panic!("unexpected reply: {reply:?}"),
+                }
+            }
+            assert_eq!(successes, MAX_BUFFERED_REPLIES);
+        });
+    }
+
     /// Job.map reports each element's job, a failed one among them.
     #[test]
     fn map_reports_each_element_in_order() {
@@ -389,7 +639,7 @@ mod tests {
     /// A job's result for a caller that has gone goes nowhere.
     #[test]
     fn a_result_for_a_caller_that_has_gone_is_dropped() {
-        in_actor(|| send_job_result(u64::MAX >> 24, 1, std::ptr::null()));
+        in_actor(|| stage_job_result(u64::MAX >> 24, 1, std::ptr::null()));
     }
 
     /// What a crashed job's `await` says, for each way its actor can end.
@@ -397,14 +647,6 @@ mod tests {
     fn a_crashed_job_is_an_error_naming_its_exit_reason() {
         use crate::actor::process::ExitReason;
         crate::gc::mesh_rt_init();
-        let error_of = |data: Vec<u8>| {
-            let mut message = EXIT_SIGNAL_TAG.to_le_bytes().to_vec();
-            message.extend_from_slice(&(data.len() as u64).to_le_bytes());
-            message.extend_from_slice(&data);
-            outcome(decode_job_message(message.as_ptr()))
-        };
-        let signal =
-            |reason: ExitReason| super::super::link::encode_exit_signal(ProcessId(9), &reason);
         for (reason, text) in [
             (ExitReason::Normal, "normal"),
             (ExitReason::Killed, "killed"),
@@ -413,20 +655,13 @@ mod tests {
             (ExitReason::Custom("mine".to_string()), "mine"),
             (ExitReason::Noconnection, "job crashed"),
         ] {
-            assert_eq!(error_of(signal(reason)), (1, text.to_string()));
+            assert_eq!(outcome(job_exit_result(reason)), (1, text.to_string()));
         }
-        assert_eq!(
-            error_of(vec![1, 2, 3]),
-            (1, "job crashed".to_string()),
-            "cut short"
-        );
     }
 
     #[test]
     fn test_job_result_tag_distinct_from_exit() {
-        assert_ne!(JOB_RESULT_TAG, EXIT_SIGNAL_TAG);
-        assert_eq!(JOB_RESULT_TAG, u64::MAX - 1);
-        assert_eq!(EXIT_SIGNAL_TAG, u64::MAX);
+        assert_ne!(JOB_RESULT_TAG, super::super::link::EXIT_SIGNAL_TAG);
     }
 
     #[test]
@@ -437,14 +672,12 @@ mod tests {
         // [u64 type_tag][u64 data_len][u64 JOB_RESULT_TAG][u64 job_pid][i64 result_value][u64 is_pointer]
         let mut msg = Vec::new();
         msg.extend_from_slice(&JOB_RESULT_TAG.to_le_bytes()); // type_tag
-        msg.extend_from_slice(&32u64.to_le_bytes()); // data_len
-        msg.extend_from_slice(&JOB_RESULT_TAG.to_le_bytes()); // data: tag
-        msg.extend_from_slice(&42u64.to_le_bytes()); // data: job pid
+        msg.extend_from_slice(&16u64.to_le_bytes()); // data_len
         msg.extend_from_slice(&99i64.to_le_bytes()); // data: value
         msg.extend_from_slice(&0u64.to_le_bytes()); // data: a scalar
 
         assert_eq!(
-            outcome(decode_job_message(msg.as_ptr())),
+            outcome(decode_job_result(msg.as_ptr())),
             (0, "99".to_string())
         );
     }

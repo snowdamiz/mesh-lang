@@ -190,7 +190,7 @@ Lists, maps and sets are immutable: `List.append`, `List.concat` (`++`), `Map.pu
 
 A tuple accessor returns the element's own type, taken from the tuple's type, so `Tuple.first(("a", 1))` is a `String`, and a helper with an unannotated parameter — `fn head(p) do Tuple.first(p) end` — works on any tuple long enough. A *computed* index needs every element to share one type, since any of them could be the one it selects; with a literal index the elements may differ. Where the tuple's type is not known at the accessor, such as an unannotated parameter indexed by a variable, the result is the declared `Int`, so annotate the parameter when the elements are not integers. `Queue.pop` returns a typed `(T, Queue<T>)`, so `let (front, rest) = Queue.pop(queue)` binds both. An index past the end panics at run time.
 
-`Queue.pop` and `Queue.peek` require a non-empty queue.
+`Queue<T>` is an immutable FIFO collection held in memory. `Queue.pop` and `Queue.peek` require a non-empty queue.
 
 ## Option and Result
 
