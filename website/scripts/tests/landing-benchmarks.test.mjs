@@ -33,11 +33,12 @@ const goActors = (csv) => benchmarkPanels(csv).find((panel) => panel.id === 'act
 test('the published run charts four runtimes on each of four workloads', () => {
   const panels = benchmarkPanels(published)
   assert.deepEqual(panels.map((panel) => panel.id), ['actors', 'cpu', 'recovery', 'http'])
-  assert.deepEqual(panels.map((panel) => panel.unit), ['M/s', 'M/s', 'µs', 'ms'])
+  assert.deepEqual(panels.map((panel) => panel.unit), ['M', 'M', 'µs', 'ms'])
   for (const panel of panels) {
     assert.deepEqual(panel.rows.map((row) => row.runtime), ['Mesh', 'Rust/Tokio', 'Go', 'Elixir'], panel.id)
     assert.deepEqual(panel.rows.filter((row) => row.highlighted).map((row) => row.runtime), ['Mesh'], panel.id)
     assert.equal(Math.max(...panel.rows.map((row) => row.share)), 1, `${panel.id}: the longest bar fills the track`)
+    assert.equal(panel.headline, panel.rows.find((row) => row.highlighted).figure, `${panel.id}: the headline is the highlighted runtime's figure`)
     for (const row of panel.rows) assert.match(row.figure, /^[\d.,]+$/, `${panel.id} ${row.runtime}`)
   }
 })
