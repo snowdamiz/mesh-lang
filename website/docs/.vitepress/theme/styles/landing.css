@@ -255,9 +255,6 @@ button.sup-node:hover { box-shadow: 0 0 0 1px var(--ink); }
 .ed-line { display: grid; grid-template-columns: 48px max-content minmax(0, 1fr); align-items: baseline; padding-right: 20px; transition: opacity .2s var(--ease), background-color .2s var(--ease); }
 .ed-num { padding-right: 18px; text-align: right; color: var(--mute); user-select: none; }
 .ed-hint { justify-self: end; padding-left: 28px; font-size: 11.5px; color: var(--mute); white-space: nowrap; transition: color .2s var(--ease); }
-.ed.has-active .ed-line { opacity: .3; }
-.ed.has-active .ed-line.on { opacity: 1; background: color-mix(in srgb, var(--accent-wash) 70%, transparent); }
-.ed-line.on .ed-hint { color: var(--accent-ink); }
 .ed-digest { display: none; padding: 14px 16px 16px 0; font-family: var(--mono); font-size: 12px; line-height: 1.9; }
 .ed-use { display: grid; grid-template-columns: 40px minmax(0, 1fr); align-items: baseline; }
 .ed-use .ed-num { padding-right: 14px; }
@@ -287,6 +284,11 @@ button.sup-node:hover { box-shadow: 0 0 0 1px var(--ink); }
 .close { display: grid; justify-items: center; gap: 40px; text-align: center; }
 .close .install { width: min(100%, 600px); text-align: left; }
 
+@media (min-width: 1181px) {
+  .ed.has-active .ed-line { opacity: .3; }
+  .ed.has-active .ed-line.on { opacity: 1; background: color-mix(in srgb, var(--accent-wash) 70%, transparent); }
+  .ed-line.on .ed-hint { color: var(--accent-ink); }
+}
 @media (max-width: 1180px) {
   .stdlib { grid-template-columns: 1fr; gap: 24px; }
   .legend { padding-top: 0; }
@@ -345,6 +347,11 @@ button.sup-node:hover { box-shadow: 0 0 0 1px var(--ink); }
   .bench-fig { grid-area: 1 / 2; font-size: 14px; }
   .bench-bar { grid-area: 2 / 1 / 3 / 3; width: calc(100% * var(--share)); height: 12px; border-radius: 0 4px 4px 0; }
   .quote figcaption { flex-direction: column; gap: 10px; text-align: center; }
+}
+@media (max-width: 359px) {
+  .ed-digest { padding-right: 12px; font-size: 11px; }
+  .ed-use { grid-template-columns: 30px minmax(0, 1fr); }
+  .ed-use .ed-num { padding-right: 10px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .caret { animation: none; }

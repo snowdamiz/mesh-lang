@@ -37,7 +37,7 @@ function pin(name: string) {
         :class="{ on: active !== null && line.groups.includes(active) }"
       ><span class="ed-num" aria-hidden="true">{{ i + 1 }}</span><code v-html="line.html || ' '" /><span v-if="line.modules.length" class="ed-hint" aria-hidden="true">{{ line.modules.join(' · ') }}</span></span></pre>
       <div class="ed-digest code">
-        <span v-for="use in digest" :key="use.line" class="ed-use"><span class="ed-num" aria-hidden="true">{{ use.line }}</span><code v-html="use.html" /></span>
+        <span v-for="(use, n) in digest" :key="n" class="ed-use"><span class="ed-num" aria-hidden="true">{{ use.line }}</span><code v-html="use.html" /></span>
       </div>
     </figure>
 
