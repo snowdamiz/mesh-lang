@@ -9,8 +9,11 @@ use std::sync::{mpsc, Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use libsqlite3_sys::*;
+use ring::digest::{digest, SHA256};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+
+use crate::crypto::provider::{CryptoProvider, SystemProvider};
 
 const SCHEMA_VERSION: u32 = 1;
 const SQLITE_TRANSIENT_VALUE: isize = -1;
@@ -194,7 +197,7 @@ pub struct ContinuityLogEntry {
 impl ContinuityLogEntry {
     pub fn verify(&self) -> bool {
         serde_json::to_vec(&self.record)
-            .map(|encoded| <[u8; 32]>::from(Sha256::digest(encoded)) == self.checksum)
+            .map(|encoded| digest(&SHA256, &encoded).as_ref() == self.checksum)
             .unwrap_or(false)
             && self.operation_key == self.record.operation_key
             && self.version == self.record.version
@@ -203,7 +206,7 @@ impl ContinuityLogEntry {
 
 impl SnapshotChunk {
     pub fn verify(&self) -> bool {
-        <[u8; 32]>::from(Sha256::digest(&self.payload)) == self.checksum
+        digest(&SHA256, &self.payload).as_ref() == self.checksum
     }
 }
 
@@ -485,7 +488,7 @@ impl SqliteContinuityStore {
         record.validate()?;
         let serialized = serde_json::to_vec(record)
             .map_err(|error| format!("continuity_store_record_encode_failed:{error}"))?;
-        let checksum = Sha256::digest(&serialized).to_vec();
+        let checksum = digest(&SHA256, &serialized).as_ref().to_vec();
         let attempts = serde_json::to_string(&record.attempts)
             .map_err(|_| "continuity_store_attempts_encode_failed".to_string())?;
         let replicas = serde_json::to_string(&record.replica_set)
@@ -980,7 +983,7 @@ impl ContinuityStore for SqliteContinuityStore {
         let final_sequence = payloads.len().saturating_sub(1);
         let checksums: Vec<[u8; 32]> = payloads
             .iter()
-            .map(|payload| Sha256::digest(payload).into())
+            .map(|payload| SystemProvider.sha256(payload))
             .collect();
         let mut snapshot_hasher = Sha256::new();
         for checksum in &checksums {
