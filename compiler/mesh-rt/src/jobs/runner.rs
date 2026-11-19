@@ -770,6 +770,7 @@ fn dispatch(runner: &Runner<'_>, pool: u64, workers: &str, handler: Handler) {
         .collect();
     let mut cursor = 0;
     let mut attempts = Vec::<Attempt>::new();
+    let mut next_drain_recovery = Instant::now();
     loop {
         let previous_count = attempts.len();
         attempts.retain_mut(|attempt| {
@@ -797,6 +798,16 @@ fn dispatch(runner: &Runner<'_>, pool: u64, workers: &str, handler: Handler) {
             running
         };
         if admitting {
+            // When a drain has no local attempts, reclaim expired capacity before polling.
+            // Regular runners do this on their maintenance thread.
+            if config.drain && attempts.is_empty() && Instant::now() >= next_drain_recovery {
+                match with_pool(pool, |db| recover(db, &config.namespace, 64)) {
+                    Ok(recovered) => runner.state.lock().counts.recovered += recovered,
+                    Err(error) => runner.record_error(error),
+                }
+                next_drain_recovery =
+                    Instant::now() + Duration::from_millis(config.poll_ms.clamp(10, 1000));
+            }
             let ready = (0..queues.len())
                 .map(|offset| (cursor + offset) % queues.len())
                 .find(|&index| {

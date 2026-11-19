@@ -579,14 +579,16 @@ pub(super) fn has_due(
     // A skipped lock, or a queue at capacity, can also produce an empty claim.
     response(
         db,
-        "SELECT EXISTS (
+        "WITH clock AS MATERIALIZED (SELECT mesh_jobs.now_ms() AS now_ms)
+         SELECT EXISTS (
              SELECT FROM mesh_jobs.jobs j JOIN mesh_jobs.queues q
-             ON q.namespace = j.namespace AND q.name = j.queue
+             ON q.namespace = j.namespace AND q.name = j.queue CROSS JOIN clock
              WHERE j.namespace = $1 AND j.queue = $2 AND q.state = 'active' AND q.concurrency > 0
-                 AND j.state IN ('available', 'scheduled', 'retryable')
-                 AND j.scheduled_at_ms <= mesh_jobs.now_ms() AND j.attempt < j.max_attempts
-                 AND EXISTS (SELECT FROM jsonb_to_recordset($3::jsonb) AS w(worker text, version bigint)
-                             WHERE w.worker = j.worker AND w.version = j.version)
+                 AND ((j.state = 'executing' AND j.lease_expires_at_ms <= now_ms)
+                     OR (j.state IN ('available', 'scheduled', 'retryable')
+                         AND j.scheduled_at_ms <= now_ms AND j.attempt < j.max_attempts
+                         AND EXISTS (SELECT FROM jsonb_to_recordset($3::jsonb) AS w(worker text, version bigint)
+                                     WHERE w.worker = j.worker AND w.version = j.version)))
          )::text",
         &[namespace, queue, workers],
     )

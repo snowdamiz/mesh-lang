@@ -597,7 +597,7 @@ Pass a JSON object to `Jobs.control` with an `action` and the fields required fo
 
 `get` returns the persisted job and its error history. `list` returns a page of summaries ordered by ID. A cancellation of an executing job records intent. The current runner observes the intent and stops the attempt, or the lease expires and recovery settles the cancellation.
 
-Set `prune_max_age_ms` in the runner config to remove old terminal jobs in bounded batches. Without it, jobs remain available for inspection until an operator prunes or deletes them. For tests or one-off scripts, enqueue and inspect jobs without starting a runner. Then use `drain: true` with `Jobs.start` and `Jobs.join` to process eligible, due work in the configured queues using the regular claim and retry path. A drain runner starts no cron or pruning tasks and leaves future jobs scheduled.
+Set `prune_max_age_ms` in the runner config to remove old terminal jobs in bounded batches. Without it, jobs remain available for inspection until an operator prunes or deletes them. For tests or one-off scripts, enqueue and inspect jobs without starting a runner. Then use `drain: true` with `Jobs.start` and `Jobs.join` to recover expired claims and process eligible, due work. A drain runner starts no cron or pruning tasks and leaves future jobs scheduled.
 
 ### Recurring jobs
 

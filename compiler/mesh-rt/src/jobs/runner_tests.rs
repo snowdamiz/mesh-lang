@@ -276,6 +276,21 @@ fn postgres_runner_executes_schedules_and_settles_renewed_timed_out_and_cancelle
     assert_eq!(report["scheduled"], 1);
     assert_eq!(join(id).unwrap(), report.to_string());
 
+    let abandoned = enqueue(10, 2000);
+    with_pool(pool, |db| {
+        let claimed = claim(
+            db,
+            &namespace,
+            "default",
+            r#"[{"worker":"test","version":1}]"#,
+            50,
+        )?
+        .unwrap();
+        assert_eq!(claimed.id, abandoned);
+        Ok(())
+    })
+    .unwrap();
+    std::thread::sleep(Duration::from_millis(75));
     let ready = enqueue(10, 2000);
     let later = enqueue(10, 2000);
     assert_eq!(
@@ -325,6 +340,10 @@ fn postgres_runner_executes_schedules_and_settles_renewed_timed_out_and_cancelle
     let report: serde_json::Value = serde_json::from_str(&join(one_shot).unwrap()).unwrap();
     assert_eq!(report["finished"], 1);
     assert_eq!(report["scheduled"], 0);
+    assert_eq!(report["recovered"], 1);
+    let recovered = control(json!({"action":"get","id":abandoned}));
+    assert_eq!(recovered["state"], "discarded");
+    assert_eq!(recovered["errors"][0]["reason"], "lease expired");
     assert_eq!(
         control(json!({"action":"get","id":ready}))["state"],
         "completed"
@@ -346,7 +365,7 @@ fn postgres_runner_executes_schedules_and_settles_renewed_timed_out_and_cancelle
     let deadline = Instant::now() + TEST_WAIT;
     loop {
         let report: serde_json::Value = serde_json::from_str(&status(pruner).unwrap()).unwrap();
-        if report["pruned"].as_u64().unwrap() >= 5 {
+        if report["pruned"].as_u64().unwrap() >= 6 {
             break;
         }
         assert!(Instant::now() < deadline, "prune status: {report}");
