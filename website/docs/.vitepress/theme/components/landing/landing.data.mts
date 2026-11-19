@@ -1,6 +1,7 @@
 // Everything the landing page shows, as data. Every Mesh sample is highlighted
 // here at build time with the grammar and themes the docs use, so the page
 // ships no highlighter.
+import { readFileSync } from 'node:fs'
 import { defineLoader } from 'vitepress'
 import { createHighlighter, type HighlighterCore } from 'shiki'
 import meshGrammar from '../../../../../../tools/editors/vscode-mesh/syntaxes/mesh.tmLanguage.json'
@@ -8,6 +9,8 @@ import meshLight from '../../shiki/mesh-light.json'
 import meshDark from '../../shiki/mesh-dark.json'
 import { compileStep, type Seg, type Step, type TermRow } from './demo'
 import { clusterFigure, type Callout } from './isometric'
+import { benchmarkPanels, RUN, type BenchmarkPanel } from './benchmarks'
+import { GITHUB_URL } from '../../site'
 
 const COUNTER = `type Message do
   Add(Int)
@@ -257,13 +260,14 @@ export interface LandingData {
     safety: { label: string; source: string; blocked: string[]; allowed: string[] }
   }
   distribution: { title: [string, string]; lead: string; link: { text: string; href: string }; figure: { lg: string; sm: string; label: string }; code: string }
+  benchmarks: { title: [string, string]; panels: BenchmarkPanel[]; footnote: string; link: { text: string; href: string } }
   toolchain: { title: [string, string]; commands: { id: string; command: string; gloss: string }[]; note: string }
   stdlib: { title: [string, string]; file: string; lines: { html: string; modules: string[]; groups: string[] }[]; groups: { name: string; modules: string[] }[]; link: { text: string; href: string } }
   quote: { text: string; author: string; role: string }
   close: { title: string }
 }
 
-type Copy = Omit<LandingData, 'demo' | 'art' | 'distribution' | 'stdlib'>
+type Copy = Omit<LandingData, 'demo' | 'art' | 'distribution' | 'benchmarks' | 'stdlib'>
 
 const COPY: Copy = {
   hero: {
@@ -389,6 +393,12 @@ export default defineLoader({
           label: 'A request enters the ingress node, the runtime runs it on an execution node, and its continuity record is replicated to a replica node',
         },
         code: html(ROUTER),
+      },
+      benchmarks: {
+        title: ['Actors at native speed.', 'Measured against Rust, Go and Elixir.'],
+        panels: benchmarkPanels(readFileSync(new URL(`../../../../../../${RUN.dir}/comparison.csv`, import.meta.url), 'utf8')),
+        footnote: RUN.footnote,
+        link: { text: 'Full results', href: `${GITHUB_URL}/blob/main/${RUN.dir}/README.md` },
       },
       stdlib: {
         title: ['Batteries included.', 'Built in, with no import.'],
