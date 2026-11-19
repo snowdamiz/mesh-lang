@@ -12,7 +12,7 @@ const { benchmarkPanels, RUN } = await import(`data:text/javascript;base64,${Buf
 
 const published = fs.readFileSync(path.join(root, RUN.dir, 'comparison.csv'), 'utf8')
 const GO_ACTORS = 'actor,4,64,0,M round trips/s,Go,'
-const COLUMN = { unit: 4, runtime: 5, blocks: 6, median: 7 }
+const COLUMN = { unit: 4, blocks: 6, median: 7 }
 
 function withRow(startsWith, replace) {
   const lines = published.split('\n')
@@ -33,6 +33,7 @@ const goActors = (csv) => benchmarkPanels(csv).find((panel) => panel.id === 'act
 test('the published run charts four runtimes on each of four workloads', () => {
   const panels = benchmarkPanels(published)
   assert.deepEqual(panels.map((panel) => panel.id), ['actors', 'cpu', 'recovery', 'http'])
+  assert.deepEqual(panels.map((panel) => panel.unit), ['M/s', 'M/s', 'µs', 'ms'])
   for (const panel of panels) {
     assert.deepEqual(panel.rows.map((row) => row.runtime), ['Mesh', 'Rust/Tokio', 'Go', 'Elixir'], panel.id)
     assert.deepEqual(panel.rows.filter((row) => row.highlighted).map((row) => row.runtime), ['Mesh'], panel.id)
@@ -64,7 +65,7 @@ const BROKEN = [
   ['the unit differs from the one the page prints', withRow(GO_ACTORS, (line) => [withCell(line, COLUMN.unit, 'K round trips/s')]), /needs one "Go" row.*found 0/],
   ['the trial count differs from the footnote', withRow(GO_ACTORS, (line) => [withCell(line, COLUMN.blocks, '3')]), /needs one "Go" row.*found 0/],
   ['a column is missing', published.replace('median', 'mean'), /no "median" column/],
-  ['a field is quoted', withRow(GO_ACTORS, (line) => [withCell(line, COLUMN.runtime, '"Go"')]), /quoted field/],
+  ['a row has more fields than the header', withRow(GO_ACTORS, (line) => [withCell(line, COLUMN.median, '1,234.5')]), /has 14 fields and the header has 13/],
 ]
 
 for (const [name, csv, message] of BROKEN) {

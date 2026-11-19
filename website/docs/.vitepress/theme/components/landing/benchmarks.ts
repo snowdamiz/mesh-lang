@@ -8,10 +8,12 @@ export interface BenchmarkPanel {
   rows: { runtime: string; figure: string; share: number; highlighted: boolean }[]
 }
 
+const TRIALS = '5'
+
 export const RUN = {
   dir: 'tools/performance/results/2026-11-19',
-  trials: '5',
-  footnote: 'Median of five trials on a dedicated 4-vCPU server. Rust, Go and Elixir were measured on the same hosts a day earlier.',
+  trials: TRIALS,
+  footnote: `Median of ${TRIALS} trials on a dedicated 4-vCPU server. Rust, Go and Elixir were measured on the same hosts a day earlier.`,
 }
 
 const RUNTIMES = ['Mesh', 'Rust/Tokio', 'Go', 'Elixir']
@@ -23,12 +25,14 @@ const COLUMNS = [...KEY_COLUMNS, 'runtime', 'median'] as const
 type Row = Record<(typeof COLUMNS)[number], string>
 type RowKey = Partial<Record<(typeof KEY_COLUMNS)[number], string>>
 
-const PANELS: (Omit<BenchmarkPanel, 'rows'> & { csvRow: RowKey })[] = [
+type PanelSpec = Omit<BenchmarkPanel, 'rows' | 'unit'> & { csvRow: RowKey & { metric_unit: string }; shortUnit?: string }
+
+const PANELS: PanelSpec[] = [
   {
     id: 'actors',
     label: 'Actor messaging',
     csvRow: { workload: 'actor', cpus: '4', pairs: '64', metric_unit: 'M round trips/s' },
-    unit: 'M/s',
+    shortUnit: 'M/s',
     better: 'higher',
     caption: 'Million message round trips per second between 64 actor pairs on 4 CPUs.',
   },
@@ -36,7 +40,7 @@ const PANELS: (Omit<BenchmarkPanel, 'rows'> & { csvRow: RowKey })[] = [
     id: 'cpu',
     label: 'CPU work',
     csvRow: { workload: 'cpu', cpus: '1', metric_unit: 'M records/s' },
-    unit: 'M/s',
+    shortUnit: 'M/s',
     better: 'higher',
     caption: 'Million records scored per second on 1 CPU.',
   },
@@ -44,7 +48,6 @@ const PANELS: (Omit<BenchmarkPanel, 'rows'> & { csvRow: RowKey })[] = [
     id: 'recovery',
     label: 'Crash recovery',
     csvRow: { workload: 'recovery', cpus: '4', metric_unit: 'µs' },
-    unit: 'µs',
     better: 'lower',
     caption: 'Microseconds from a worker failure until its supervised replacement answers, on 4 CPUs.',
     note: 'The Mesh worker panics. Elixir requests a supervised shutdown. Go and Rust signal the failure explicitly.',
@@ -53,7 +56,6 @@ const PANELS: (Omit<BenchmarkPanel, 'rows'> & { csvRow: RowKey })[] = [
     id: 'http',
     label: 'HTTP latency',
     csvRow: { workload: 'http', cpus: '4', offered_rps: '400', metric_unit: 'ms' },
-    unit: 'ms',
     better: 'lower',
     caption: 'p99 latency in milliseconds at 400 requests per second on 4 CPUs, one connection per request.',
   },
@@ -64,16 +66,16 @@ const FIGURE = new Intl.NumberFormat('en', { minimumSignificantDigits: 3, maximu
 const fail = (message: string): never => { throw new Error(`benchmarks: ${message}`) }
 
 function parseRows(csv: string): Row[] {
-  if (csv.includes('"')) fail('the CSV has a quoted field, and this parser splits on every comma')
   const [head, ...lines] = csv.trim().split(/\r?\n/)
   const names = head.split(',')
   const at = COLUMNS.map((column) => {
     const i = names.indexOf(column)
     return i < 0 ? fail(`the CSV has no "${column}" column`) : i
   })
-  return lines.map((line) => {
+  return lines.map((line, i) => {
     const cells = line.split(',')
-    return Object.fromEntries(COLUMNS.map((column, i) => [column, cells[at[i]] ?? ''])) as Row
+    if (cells.length !== names.length) fail(`CSV line ${i + 2} has ${cells.length} fields and the header has ${names.length}`)
+    return Object.fromEntries(COLUMNS.map((column, j) => [column, cells[at[j]]])) as Row
   })
 }
 
@@ -93,11 +95,12 @@ function medians(rows: Row[], id: string, key: RowKey): number[] {
 
 export function benchmarkPanels(csv: string): BenchmarkPanel[] {
   const rows = parseRows(csv)
-  return PANELS.map(({ csvRow, ...panel }) => {
+  return PANELS.map(({ csvRow, shortUnit, ...panel }) => {
     const values = medians(rows, panel.id, { ...csvRow, blocks: RUN.trials })
     const longest = Math.max(...values)
     return {
       ...panel,
+      unit: shortUnit ?? csvRow.metric_unit,
       rows: values.map((median, i) => ({
         runtime: RUNTIMES[i],
         figure: FIGURE.format(median),
