@@ -198,8 +198,8 @@ services:
     networks: [mesh]
 
   load-generator:
-    image: alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d
-    command: ["sh", "-c", "while true; do sleep 3600; done"]
+    image: ${MESH_PROOF_IMAGE:-mesh-autoscaling-proof:local}
+    entrypoint: ["sh", "-c", "exec sleep infinity"]
     read_only: true
     networks: [mesh]
 

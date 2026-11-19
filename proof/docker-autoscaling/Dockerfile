@@ -39,6 +39,8 @@ RUN --mount=type=cache,target=/root/.cargo/registry,sharing=locked \
     --mount=type=cache,target=/root/.cargo/git,sharing=locked \
     --mount=type=cache,target=/app/target,sharing=locked \
     cargo build --locked --release -q -p mesh-rt -p meshc \
+    && cargo build --locked --release -q -p meshc --example mesh-proof-http-burst \
+    && install -m 0755 ./target/release/examples/mesh-proof-http-burst /tmp/mesh-proof-http-burst \
     && test -x ./target/release/mesh-capacity-driver \
     && install -m 0755 ./target/release/mesh-capacity-driver /tmp/mesh-capacity-driver \
     && mkdir -p /tmp/coverage \
@@ -72,6 +74,7 @@ RUN apt-get update \
     && useradd --system --create-home mesh
 
 COPY --from=builder /tmp/mesh-autoscaling-proof /usr/local/bin/mesh-autoscaling-proof
+COPY --from=builder /tmp/mesh-proof-http-burst /usr/local/bin/mesh-proof-http-burst
 RUN chmod 0755 /usr/local/bin/mesh-autoscaling-proof
 
 USER mesh:mesh
