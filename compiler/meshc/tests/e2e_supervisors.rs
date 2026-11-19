@@ -12,6 +12,10 @@ use std::process::{Command, Output};
 /// Helper: compile a Mesh source file and assert it compiles successfully.
 /// Returns the path to the compiled binary.
 fn compile_mesh(source: &str) -> (tempfile::TempDir, PathBuf) {
+    compile_at_level(source, "0")
+}
+
+fn compile_at_level(source: &str, level: &str) -> (tempfile::TempDir, PathBuf) {
     let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
     let project_dir = temp_dir.path().join("project");
     std::fs::create_dir_all(&project_dir).expect("failed to create project dir");
@@ -22,7 +26,7 @@ fn compile_mesh(source: &str) -> (tempfile::TempDir, PathBuf) {
     // Build with meshc
     let meshc = find_meshc();
     let output = Command::new(&meshc)
-        .args(["build", project_dir.to_str().unwrap()])
+        .args(["build", "--opt-level", level, project_dir.to_str().unwrap()])
         .output()
         .expect("failed to invoke meshc");
 
@@ -219,6 +223,74 @@ end
                 .is_ok_and(|report| report["code"] == "R0102")
         }),
         "{stderr}"
+    );
+}
+
+#[test]
+fn optimized_explicit_panic_restarts_a_transient_child() {
+    let source = r#"
+actor worker(reason :: String) do
+  println("started")
+  Timer.sleep(5)
+  panic(reason)
+  println("continued")
+end
+
+supervisor Sup do
+  strategy: one_for_one
+  max_restarts: 1
+  max_seconds: 5
+  child worker do
+    start: fn -> spawn(worker, "child failed") end
+    restart: transient
+    shutdown: 100
+  end
+end
+
+actor watcher() do
+  receive do
+    "start" -> ()
+    _ -> panic("unexpected start message")
+  end
+  let sup = spawn(Sup)
+  Process.monitor(sup, "finished")
+  receive do
+    "finished" -> println("supervisor exited")
+    _ -> panic("unexpected monitor message")
+    after 5000 -> panic("supervisor did not exit")
+  end
+end
+
+fn main() do
+  let watcher_pid = spawn(watcher)
+  Process.register("watcher", watcher_pid)
+  send(watcher_pid, "start")
+  while Process.whereis("watcher") == watcher_pid do
+    Timer.sleep(1)
+  end
+end
+"#;
+    let (_temp_dir, binary) = compile_at_level(source, "2");
+    let child = Command::new(binary)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let output = artifacts::wait_with_timeout(child, std::time::Duration::from_secs(10)).unwrap();
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8(output.stdout)
+            .unwrap()
+            .lines()
+            .collect::<Vec<_>>(),
+        ["started", "started", "supervisor exited"]
+    );
+    assert_eq!(
+        String::from_utf8(output.stderr)
+            .unwrap()
+            .lines()
+            .collect::<Vec<_>>(),
+        ["Mesh panic: child failed"; 2]
     );
 }
 

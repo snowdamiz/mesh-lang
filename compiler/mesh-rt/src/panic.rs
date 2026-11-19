@@ -213,6 +213,70 @@ pub extern "C-unwind" fn mesh_panic_str_at(
     )
 }
 
+/// End the running supervised child with the panic `message` at 1-based
+/// `line` and `col` of `file`, without unwinding.
+///
+/// The compiler emits this only at a supervisor child's outermost entry,
+/// immediately before returning to the scheduler. All native calls on that
+/// stack have already returned, so there are no native frames to unwind.
+/// The child reports and exits exactly as a raised panic would.
+///
+/// # Safety
+///
+/// `message` must be a live Mesh string on the running child's heap or in
+/// static storage, and `file` must point to `file_len` valid UTF-8 bytes.
+#[no_mangle]
+pub unsafe extern "C" fn mesh_actor_fail_at(
+    message: *const crate::string::MeshString,
+    file: *const u8,
+    file_len: u64,
+    line: u32,
+    col: u32,
+) {
+    let file = unsafe { text(file, file_len) };
+    fail_actor(
+        || unsafe { (*message).as_str() }.to_string(),
+        file,
+        line,
+        col,
+    );
+}
+
+/// [`mesh_actor_fail_at`] for a panic at no known place.
+///
+/// # Safety
+///
+/// `message` must be a live Mesh string on the running child's heap or in
+/// static storage.
+#[no_mangle]
+pub unsafe extern "C" fn mesh_actor_fail(message: *const crate::string::MeshString) {
+    fail_actor(|| unsafe { (*message).as_str() }.to_string(), "", 0, 0);
+}
+
+/// Report the panic and mark the running actor exited with its reason, as
+/// the panic hook and [`actor_exit_reason`] would for a raised panic.
+fn fail_actor(message: impl FnOnce() -> String, file: &str, line: u32, col: u32) {
+    use crate::actor::process::{ExitReason, ProcessState};
+    let (reason, diagnostic) = match disclosed(message) {
+        Some(message) => (
+            format!("Mesh panic: {message}"),
+            located(Code::Panic, file, line, col, message),
+        ),
+        None => (
+            format!("Mesh panic: {WITHHELD}"),
+            Diagnostic::new(Code::Panic, WITHHELD),
+        ),
+    };
+    if !QUIET.with(|quiet| quiet.get()) {
+        report(&diagnostic);
+    }
+    let (_, process) = crate::actor::running_process();
+    let mut process = process.lock();
+    if !matches!(process.state, ProcessState::Exited(_)) {
+        process.state = ProcessState::Exited(ExitReason::Error(reason));
+    }
+}
+
 thread_local! {
     /// Set while the test runner runs a test body: it reports the panic.
     static QUIET: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };

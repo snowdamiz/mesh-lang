@@ -3890,6 +3890,25 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
             Some(inkwell::module::Linkage::External),
         );
     }
+    module.add_function(
+        "mesh_actor_fail",
+        void_type.fn_type(&[ptr_type.into()], false),
+        None,
+    );
+    module.add_function(
+        "mesh_actor_fail_at",
+        void_type.fn_type(
+            &[
+                ptr_type.into(),
+                ptr_type.into(),
+                i64_type.into(),
+                i32_type.into(),
+                i32_type.into(),
+            ],
+            false,
+        ),
+        None,
+    );
     // mesh_panic_str(message: ptr) -> ! (`panic(message)`)
     let panic_str = module.add_function(
         "mesh_panic_str",

@@ -1065,9 +1065,15 @@ impl TimerWake {
     fn register(self) {
         #[cfg(test)]
         TIMER_REGISTRATIONS.with(|count| count.set(count.get() + 1));
-        timer_wake_sender()
-            .send(self)
-            .expect("the timer reactor runs for as long as the program");
+        let queue = timer_queue();
+        let mut timers = queue.timers.lock();
+        let earlier = timers
+            .peek()
+            .is_none_or(|head| self.deadline < head.deadline);
+        timers.push(self);
+        if earlier {
+            queue.changed.notify_one();
+        }
     }
 
     fn fire(self, scheduler: &Scheduler) {
@@ -1102,45 +1108,44 @@ impl PartialOrd for TimerWake {
     }
 }
 
-static TIMER_WAKE_SENDER: OnceLock<crossbeam_channel::Sender<TimerWake>> = OnceLock::new();
+#[derive(Default)]
+struct TimerQueue {
+    timers: parking_lot::Mutex<std::collections::BinaryHeap<TimerWake>>,
+    changed: parking_lot::Condvar,
+}
 
-/// The timer reactor's queue. Unbounded: the reactor moves each timer into
-/// a heap of its own as it arrives, so a bound here would bound nothing, and
-/// a caller could only fall back to blocking its worker.
-fn timer_wake_sender() -> &'static crossbeam_channel::Sender<TimerWake> {
-    TIMER_WAKE_SENDER.get_or_init(|| {
-        let (sender, receiver) = crossbeam_channel::unbounded();
+/// Only an earlier deadline needs to interrupt the reactor's sleep.
+fn timer_queue() -> &'static TimerQueue {
+    use std::sync::Arc;
+    static QUEUE: OnceLock<Arc<TimerQueue>> = OnceLock::new();
+    QUEUE.get_or_init(|| {
+        let queue = Arc::new(TimerQueue::default());
+        let reactor = Arc::clone(&queue);
         std::thread::Builder::new()
             .name("mesh-timer-reactor".to_string())
-            .spawn(move || timer_reactor(receiver))
+            .spawn(move || timer_reactor(&reactor))
             .expect("failed to start Mesh timer reactor");
-        sender
+        queue
     })
 }
 
-fn timer_reactor(receiver: crossbeam_channel::Receiver<TimerWake>) {
-    let mut timers = std::collections::BinaryHeap::new();
+fn timer_reactor(queue: &TimerQueue) {
     loop {
-        let timeout = timers
-            .peek()
-            .map(|timer: &TimerWake| {
-                timer
-                    .deadline
-                    .saturating_duration_since(std::time::Instant::now())
-            })
-            .unwrap_or(std::time::Duration::from_secs(60));
-        match receiver.recv_timeout(timeout) {
-            Ok(timer) => timers.push(timer),
-            Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
-            Err(crossbeam_channel::RecvTimeoutError::Disconnected) => return,
-        }
-        while timers
-            .peek()
-            .is_some_and(|timer| timer.deadline <= std::time::Instant::now())
-        {
-            let timer = timers.pop().expect("timer was present");
-            timer.fire(global_scheduler());
-        }
+        let mut timers = queue.timers.lock();
+        let due = loop {
+            match timers.peek() {
+                None => queue.changed.wait(&mut timers),
+                Some(timer) => {
+                    let deadline = timer.deadline;
+                    if deadline <= std::time::Instant::now() {
+                        break timers.pop().unwrap();
+                    }
+                    queue.changed.wait_until(&mut timers, deadline);
+                }
+            }
+        };
+        drop(timers);
+        due.fire(global_scheduler());
     }
 }
 
