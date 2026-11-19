@@ -70,6 +70,13 @@ npm --prefix packages-website ci
 npm --prefix packages-website run build
 ```
 
+To work on both sites together, run `npm --prefix website run dev` (port 5173)
+and `npm --prefix packages-website run dev` (port 5174); the dev servers link
+to each other. A production build links to meshlang.dev and
+packages.meshlang.dev unless you set `VITE_PACKAGES_URL` (docs site) or
+`VITE_SITE_URL` (packages website) when you build it, for example to preview
+both builds locally.
+
 ### Repo-owned verification scripts
 
 This repo also carries many targeted verification rails under `scripts/verify-*.sh` and `scripts/verify-*.ps1`.
