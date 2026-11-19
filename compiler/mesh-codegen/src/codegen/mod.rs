@@ -116,6 +116,7 @@ pub struct CodeGen<'ctx> {
     movable_step_enabled: bool,
     step_sites: Vec<grouped_step::SpawnSite<'ctx>>,
     emitting_step: bool,
+    supervisor_configs: Vec<supervisor::ConfigTemplate<'ctx>>,
     supervisor_entries: Vec<(FunctionValue<'ctx>, inkwell::values::InstructionValue<'ctx>)>,
 
     // ── Local variable tracking ──────────────────────────────────────
@@ -272,6 +273,7 @@ impl<'ctx> CodeGen<'ctx> {
             step_sites: Vec::new(),
             emitting_step: false,
             supervisor_entries: Vec::new(),
+            supervisor_configs: Vec::new(),
             locals: FxHashMap::default(),
             local_types: FxHashMap::default(),
             mir_functions: Vec::new(),
@@ -374,6 +376,7 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Step 7: Keep every stack slot a static, entry-block allocation.
         group_safety::certify(&self.grouped_spawns, &mir.actors, &mir.native_functions)?;
+        self.mark_message_workers(&mir.native_functions);
         self.lower_grouped_steps(mir)?;
         self.hoist_static_allocas();
 
