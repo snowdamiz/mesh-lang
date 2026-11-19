@@ -127,6 +127,37 @@ fn id(value: &Value) -> &str {
 
 #[test]
 #[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
+fn bulk_actions_respect_filters_and_retry_opens_a_new_run() {
+    let mut fixture = Fixture::new();
+    let jobs = fixture.enqueue(json!([
+        {"worker":"Deliver"},
+        {"worker":"Deliver"},
+        {"worker":"Keep", "delay_ms": 3600000}
+    ]));
+    let cancelled =
+        fixture.ops(json!({"action":"cancel_all", "filter":{"worker":"Deliver", "limit":1}}));
+    assert_eq!(cancelled["changed"], 1);
+    let cancelled_id = cancelled["ids"][0].as_str().unwrap();
+    assert_eq!(fixture.get(cancelled_id)["state"], "cancelled");
+    assert_eq!(
+        fixture.ops(json!({"action":"cancel_all","filter":{"worker":"Deliver"}}))["changed"],
+        1
+    );
+    assert_eq!(
+        fixture.ops(json!({"action":"cancel_all","filter":{"worker":"Deliver"}}))["changed"],
+        0
+    );
+    assert_eq!(fixture.get(id(&jobs[2]))["state"], "scheduled");
+    let retried = fixture
+        .ops(json!({"action":"retry_all", "filter":{"state":"cancelled", "queue":"default"}}));
+    assert_eq!(retried["changed"], 2);
+    let job = fixture.get(cancelled_id);
+    assert_eq!(job["state"], "available");
+    assert_eq!(job["effect_key"], format!("{cancelled_id}/2"));
+}
+
+#[test]
+#[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
 fn enqueue_is_atomic_with_the_application_transaction_and_replays_after_pruning() {
     let mut f = Fixture::new();
     let mut observer = Connection::open(&f.url);

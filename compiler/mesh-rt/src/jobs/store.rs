@@ -441,6 +441,10 @@ enum Enqueue {
     Single(Box<JobSpec>),
 }
 
+pub(super) fn validate_enqueue_spec(spec: &str) -> Result<(), String> {
+    decode::<JobSpec>(spec)?.prepare().map(drop)
+}
+
 pub(super) fn enqueue(
     db: &mut impl Database,
     namespace: &str,
@@ -566,6 +570,29 @@ pub(super) fn claim(
     result.map_err(|error| rollback_error(error, db.simple("ROLLBACK")))
 }
 
+pub(super) fn has_due(
+    db: &mut impl Database,
+    namespace: &str,
+    queue: &str,
+    workers: &str,
+) -> Result<bool, String> {
+    // A skipped lock, or a queue at capacity, can also produce an empty claim.
+    response(
+        db,
+        "SELECT EXISTS (
+             SELECT FROM mesh_jobs.jobs j JOIN mesh_jobs.queues q
+             ON q.namespace = j.namespace AND q.name = j.queue
+             WHERE j.namespace = $1 AND j.queue = $2 AND q.state = 'active' AND q.concurrency > 0
+                 AND j.state IN ('available', 'scheduled', 'retryable')
+                 AND j.scheduled_at_ms <= mesh_jobs.now_ms() AND j.attempt < j.max_attempts
+                 AND EXISTS (SELECT FROM jsonb_to_recordset($3::jsonb) AS w(worker text, version bigint)
+                             WHERE w.worker = j.worker AND w.version = j.version)
+         )::text",
+        &[namespace, queue, workers],
+    )
+    .map(|due| due == "true")
+}
+
 pub(super) fn renew(
     db: &mut impl Database,
     namespace: &str,
@@ -643,6 +670,15 @@ pub(super) fn recover(db: &mut impl Database, namespace: &str, limit: u32) -> Re
     .map_err(|error| error.to_string())
 }
 
+#[derive(Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Selection {
+    queue: Option<String>,
+    worker: Option<String>,
+    state: Option<State>,
+    limit: Option<u32>,
+}
+
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 enum Control {
@@ -694,6 +730,14 @@ enum Control {
     },
     Retry {
         id: String,
+    },
+    CancelAll {
+        #[serde(default)]
+        filter: Selection,
+    },
+    RetryAll {
+        #[serde(default)]
+        filter: Selection,
     },
     Discard {
         id: String,
@@ -756,6 +800,38 @@ fn optional_number<T: ToString>(number: Option<T>) -> String {
     number.map(|value| value.to_string()).unwrap_or_default()
 }
 
+fn bulk_control(
+    db: &mut impl Database,
+    namespace: &str,
+    operation: &str,
+    filter: Selection,
+) -> Result<String, String> {
+    let state = serde_json::to_value(filter.state).map_err(|error| error.to_string())?;
+    response(
+        db,
+        "WITH eligible AS MATERIALIZED (
+             SELECT id FROM mesh_jobs.jobs
+             WHERE namespace = $1 AND ($3 = '' OR queue = $3)
+                 AND ($4 = '' OR worker = $4) AND ($5 = '' OR state = $5)
+                 AND CASE $2 WHEN 'cancel' THEN finished_at_ms IS NULL
+                     AND cancel_requested_at_ms IS NULL ELSE finished_at_ms IS NOT NULL END
+             ORDER BY id LIMIT $6::integer FOR NO KEY UPDATE SKIP LOCKED
+         ), changed AS MATERIALIZED (
+             SELECT id, mesh_jobs.job_control($1, id, $2, NULL, NULL) AS job
+             FROM eligible
+         ) SELECT jsonb_build_object('changed', count(job),
+             'ids', coalesce(jsonb_agg(id ORDER BY id), '[]'::jsonb))::text FROM changed",
+        &[
+            namespace,
+            operation,
+            filter.queue.as_deref().unwrap_or_default(),
+            filter.worker.as_deref().unwrap_or_default(),
+            state.as_str().unwrap_or_default(),
+            &page(filter.limit)?,
+        ],
+    )
+}
+
 fn page(limit: Option<u32>) -> Result<String, String> {
     let limit = limit.unwrap_or(100);
     if limit == 0 || limit > MAX_PAGE {
@@ -777,6 +853,40 @@ fn list_queues(
                WHERE namespace = $1 AND name > $2 ORDER BY name LIMIT $3::integer) q",
         &[namespace, after.unwrap_or_default(), &page(limit)?],
     )
+}
+
+pub(super) fn prune(
+    db: &mut impl Database,
+    namespace: &str,
+    queue: Option<&str>,
+    before_ms: Option<u64>,
+    max_age_ms: Option<u64>,
+    limit: Option<u32>,
+) -> Result<u64, String> {
+    scheduling(before_ms, max_age_ms)?;
+    response(
+        db,
+        "WITH cutoff AS MATERIALIZED (
+             SELECT coalesce(nullif($2, '')::bigint,
+                 mesh_jobs.now_ms() - coalesce(nullif($3, '')::bigint, 86400000)) AS at_ms
+         ), stale AS (
+             SELECT id FROM mesh_jobs.jobs CROSS JOIN cutoff
+             WHERE namespace = $1 AND finished_at_ms <= cutoff.at_ms AND ($4 = '' OR queue = $4)
+             ORDER BY finished_at_ms, id LIMIT $5::integer FOR UPDATE OF jobs SKIP LOCKED
+         ), removed AS (
+             DELETE FROM mesh_jobs.jobs j USING stale
+             WHERE j.namespace = $1 AND j.id = stale.id RETURNING j.id
+         ) SELECT count(*)::text FROM removed",
+        &[
+            namespace,
+            &optional_number(before_ms),
+            &optional_number(max_age_ms),
+            queue.unwrap_or_default(),
+            &page(limit)?,
+        ],
+    )?
+    .parse()
+    .map_err(|_| "invalid Jobs prune count".into())
 }
 
 pub(super) fn control(
@@ -872,6 +982,8 @@ pub(super) fn control(
         }
         Control::Cancel { id } => job_control(db, namespace, &id, "cancel", None, None),
         Control::Retry { id } => job_control(db, namespace, &id, "retry", None, None),
+        Control::CancelAll { filter } => bulk_control(db, namespace, "cancel", filter),
+        Control::RetryAll { filter } => bulk_control(db, namespace, "retry", filter),
         Control::Discard { id } => job_control(db, namespace, &id, "discard", None, None),
         Control::Reschedule {
             id,
@@ -885,25 +997,10 @@ pub(super) fn control(
             before_ms,
             max_age_ms,
             limit,
-        } => {
-            scheduling(before_ms, max_age_ms)?;
-            response(
-                db,
-                "WITH cutoff AS MATERIALIZED (
-                     SELECT coalesce(nullif($2, '')::bigint,
-                         mesh_jobs.now_ms() - coalesce(nullif($3, '')::bigint, 86400000)) AS at_ms
-                 ), stale AS (
-                     SELECT id FROM mesh_jobs.jobs CROSS JOIN cutoff
-                     WHERE namespace = $1 AND finished_at_ms <= cutoff.at_ms AND ($4 = '' OR queue = $4)
-                     ORDER BY finished_at_ms, id LIMIT $5::integer FOR UPDATE OF jobs SKIP LOCKED
-                 ), removed AS (
-                     DELETE FROM mesh_jobs.jobs j USING stale
-                     WHERE j.namespace = $1 AND j.id = stale.id RETURNING j.id
-                 ) SELECT jsonb_build_object('deleted', count(*))::text FROM removed",
-                &[namespace, &optional_number(before_ms), &optional_number(max_age_ms),
-                  queue.as_deref().unwrap_or_default(), &page(limit)?],
-            )
-        }
+        } => Ok(json!({
+            "deleted": prune(db, namespace, queue.as_deref(), before_ms, max_age_ms, limit)?
+        })
+        .to_string()),
         _ => Err("mesh jobs control target is missing or ambiguous".into()),
     }
 }

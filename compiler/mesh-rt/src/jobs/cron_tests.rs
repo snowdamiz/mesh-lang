@@ -356,27 +356,42 @@ fn failed_enqueue_rolls_back_the_occurrence_and_its_progress() {
     Connection::open().run(|db| {
         let ns = setup(db, "rollback")?;
         let now = ms("2025-05-01T12:00:00Z");
-        let schedule = register(db, &ns, "catch", "* * * * *", "Etc/UTC", "catch_up", 2)?;
+        register(db, &ns, "catch", "* * * * *", "Etc/UTC", "catch_up", 2)?;
         position_cursor(db, &ns, now - 2 * MINUTE_MS)?;
-        let key = format!(
-            "cron:{}:minute:{}",
-            schedule["id"].as_str().unwrap(),
-            now / MINUTE_MS
-        );
-        db.query(
-            "INSERT INTO mesh_jobs.receipts(namespace, request_key, fingerprint, receipt)
-             VALUES ($1, $2, 'unrelated', '{}'::jsonb)",
-            &[&ns, &key],
-        )?;
-        assert!(tick_with_clock(db, &ns, "owner", 8, Some(now)).is_err());
+        struct FailSecondEnqueue<'a, D>(&'a mut D, usize);
+        impl<D: Database> Database for FailSecondEnqueue<'_, D> {
+            fn query(&mut self, sql: &str, params: &[&str]) -> Result<Rows, String> {
+                if sql.contains("mesh_jobs.enqueue(") {
+                    self.1 += 1;
+                    if self.1 == 2 {
+                        return self.0.query("SELECT 1 / 0", &[]);
+                    }
+                }
+                self.0.query(sql, params)
+            }
+
+            fn simple(&mut self, sql: &str) -> Result<(), String> {
+                self.0.simple(sql)
+            }
+
+            fn in_transaction(&self) -> bool {
+                self.0.in_transaction()
+            }
+        }
+        let mut failing = FailSecondEnqueue(db, 0);
+        assert!(tick_with_clock(&mut failing, &ns, "owner", 8, Some(now)).is_err());
+        assert_eq!(failing.1, 2);
         assert!(times(db, &ns, "catch")?.is_empty());
-        db.query(
-            "DELETE FROM mesh_jobs.receipts WHERE namespace = $1 AND request_key = $2",
-            &[&ns, &key],
-        )?;
         assert_eq!(tick_with_clock(db, &ns, "owner", 8, Some(now))?, 2);
         assert_eq!(times(db, &ns, "catch")?, [now - MINUTE_MS, now]);
         assert_eq!(tick_with_clock(db, &ns, "owner", 8, Some(now))?, 0);
+        assert_eq!(
+            only_value(&db.query(
+                "SELECT count(*)::text FROM mesh_jobs.receipts WHERE namespace = $1",
+                &[&ns]
+            )?)?,
+            "0"
+        );
         Ok(())
     });
 }

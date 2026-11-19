@@ -2,7 +2,11 @@
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
-verify=(cargo test --locked -p meshc --test e2e_durable_jobs -- --nocapture)
+verify() {
+  export MESH_JOBS_TEST_PG_URL="$MESH_TEST_DATABASE_URL"
+  cargo test --locked -p mesh-rt --lib jobs:: -- --include-ignored --test-threads=1
+  cargo test --locked -p meshc --test e2e_durable_jobs -- --nocapture
+}
 
 if [[ -n "${PG_BIN_DIR:-}" ]]; then
   export PATH="$PG_BIN_DIR:$PATH"
@@ -14,7 +18,8 @@ elif ! command -v initdb >/dev/null && command -v pg_config >/dev/null; then
 fi
 
 if [[ -n "${MESH_TEST_DATABASE_URL:-}" ]]; then
-  exec "${verify[@]}"
+  verify
+  exit
 fi
 
 for tool in initdb pg_ctl createdb psql; do
@@ -69,4 +74,4 @@ done
 
 createdb -w -h 127.0.0.1 -p "$port" -U mesh_jobs_proof mesh_jobs_proof
 export MESH_TEST_DATABASE_URL="postgres://mesh_jobs_proof@127.0.0.1:$port/mesh_jobs_proof?sslmode=disable"
-"${verify[@]}"
+verify

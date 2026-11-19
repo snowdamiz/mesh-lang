@@ -11,7 +11,7 @@ use crate::actor::{self, ExitReason, ProcessId, ProcessState, Scheduler};
 use crate::string::MeshString;
 
 use super::cron;
-use super::store::{claim, finish, recover, renew, Claim, LeaseStatus, Outcome};
+use super::store::{claim, finish, has_due, prune, recover, renew, Claim, LeaseStatus, Outcome};
 use super::with_pool;
 
 const TICK: Duration = Duration::from_millis(10);
@@ -36,6 +36,8 @@ struct Config {
     lease_ms: u64,
     poll_ms: u64,
     shutdown_grace_ms: u64,
+    prune_max_age_ms: Option<u64>,
+    drain: bool,
 }
 
 #[derive(Deserialize, Serialize, PartialEq, Eq, Hash)]
@@ -54,6 +56,8 @@ impl Default for Config {
             lease_ms: 30_000,
             poll_ms: 100,
             shutdown_grace_ms: 15_000,
+            prune_max_age_ms: None,
+            drain: false,
         }
     }
 }
@@ -93,6 +97,12 @@ impl Config {
             return Err("runner poll_ms must be between 1 and 60000".into());
         }
         grace(config.shutdown_grace_ms)?;
+        if config
+            .prune_max_age_ms
+            .is_some_and(|age| age > MAX_DELAY_MS)
+        {
+            return Err("runner prune_max_age_ms must be at most 365 days".into());
+        }
         Ok(config)
     }
 }
@@ -138,6 +148,7 @@ struct Counts {
     stale_acks: u64,
     recovered: u64,
     scheduled: u64,
+    pruned: u64,
 }
 
 struct State {
@@ -230,6 +241,7 @@ impl Runner<'_> {
                 "stale_acks": state.counts.stale_acks,
                 "recovered": state.counts.recovered,
                 "scheduled": state.counts.scheduled,
+                "pruned": state.counts.pruned,
                 "last_error": state.last_error,
             })
             .to_string(),
@@ -282,6 +294,22 @@ pub(super) fn start(
     let scheduler = actor::GLOBAL_SCHEDULER
         .get()
         .ok_or("actor scheduler is unavailable")?;
+    with_pool(pool, |db| {
+        let rows = db.query(
+            "SELECT (version = 1 AND to_regclass('mesh_jobs.cron_schedules') IS NOT NULL)::text
+             FROM mesh_jobs.schema_version WHERE singleton",
+            &[],
+        )?;
+        if rows
+            .first()
+            .and_then(|row| row.first())
+            .is_some_and(|(_, ready)| ready == "true")
+        {
+            Ok(())
+        } else {
+            Err("Jobs requires the current schema. Run Jobs.migrate before starting workers".into())
+        }
+    })?;
 
     let mut registry = REGISTRY.lock();
     if !registry.accepting || scheduler.is_shutdown() || crate::process_signal::shutdown_requested()
@@ -328,7 +356,26 @@ pub(super) fn start(
     let thread = std::thread::Builder::new()
         .name(format!("mesh-jobs-{id}"))
         .spawn(move || {
-            dispatch(&dispatcher, pool, &workers, handler);
+            if dispatcher.config.drain {
+                dispatch(&dispatcher, pool, &workers, handler);
+            } else {
+                let maintenance_runner = Arc::clone(&dispatcher);
+                match std::thread::Builder::new()
+                    .name(format!("mesh-jobs-maintenance-{id}"))
+                    .spawn(move || maintain(&maintenance_runner, pool))
+                {
+                    Ok(maintenance) => {
+                        dispatch(&dispatcher, pool, &workers, handler);
+                        maintenance.thread().unpark();
+                        let _ = maintenance.join();
+                    }
+                    Err(error) => {
+                        dispatcher
+                            .record_error(format!("could not start job maintenance: {error}"));
+                        dispatcher.state.lock().phase = Phase::Stopped;
+                    }
+                }
+            }
             let _ = supervisor.join();
         });
     if let Err(error) = thread {
@@ -666,6 +713,47 @@ struct Queue<'a> {
     name: &'a str,
     limit: usize,
     next_claim: Instant,
+    checked_empty: bool,
+}
+
+fn maintain(runner: &Runner<'_>, pool: u64) {
+    let config = &runner.config;
+    let mut next_recovery = Instant::now();
+    let mut next_schedule = Instant::now();
+    let mut next_prune = Instant::now();
+    let producer = format!(
+        "{}:{}:{:032x}",
+        std::process::id(),
+        runner.id,
+        rand::random::<u128>()
+    );
+    while matches!(runner.state.lock().phase, Phase::Running) {
+        let now = Instant::now();
+        if now >= next_recovery {
+            match with_pool(pool, |db| recover(db, &config.namespace, 64)) {
+                Ok(recovered) => runner.state.lock().counts.recovered += recovered,
+                Err(error) => runner.record_error(error),
+            }
+            next_recovery = Instant::now() + Duration::from_millis(config.poll_ms.clamp(100, 1000));
+        }
+        if now >= next_schedule {
+            match with_pool(pool, |db| cron::tick(db, &config.namespace, &producer, 64)) {
+                Ok(scheduled) => runner.state.lock().counts.scheduled += u64::from(scheduled),
+                Err(error) => runner.record_error(error),
+            }
+            next_schedule = Instant::now() + Duration::from_secs(1);
+        }
+        if let Some(age) = config.prune_max_age_ms.filter(|_| now >= next_prune) {
+            match with_pool(pool, |db| {
+                prune(db, &config.namespace, None, None, Some(age), Some(1000))
+            }) {
+                Ok(count) => runner.state.lock().counts.pruned += count,
+                Err(error) => runner.record_error(error),
+            }
+            next_prune = Instant::now() + Duration::from_secs(60);
+        }
+        std::thread::park_timeout(TICK);
+    }
 }
 
 fn dispatch(runner: &Runner<'_>, pool: u64, workers: &str, handler: Handler) {
@@ -677,19 +765,13 @@ fn dispatch(runner: &Runner<'_>, pool: u64, workers: &str, handler: Handler) {
             name,
             limit: *limit,
             next_claim: Instant::now(),
+            checked_empty: false,
         })
         .collect();
     let mut cursor = 0;
     let mut attempts = Vec::<Attempt>::new();
-    let mut next_recovery = Instant::now();
-    let mut next_schedule = Instant::now();
-    let producer = format!(
-        "{}:{}:{:032x}",
-        std::process::id(),
-        runner.id,
-        rand::random::<u128>()
-    );
     loop {
+        let previous_count = attempts.len();
         attempts.retain_mut(|attempt| {
             if attempt.poll(runner, pool) {
                 true
@@ -698,54 +780,55 @@ fn dispatch(runner: &Runner<'_>, pool: u64, workers: &str, handler: Handler) {
                 false
             }
         });
+        if config.drain && attempts.len() != previous_count {
+            for queue in &mut queues {
+                queue.checked_empty = false;
+                queue.next_claim = Instant::now();
+            }
+        }
 
         let admitting = {
             let mut state = runner.state.lock();
             let running = matches!(state.phase, Phase::Running);
-            if !running && attempts.is_empty() {
+            let empty = config.drain && queues.iter().all(|queue| queue.checked_empty);
+            if attempts.is_empty() && (!running || empty) {
                 state.phase = Phase::Stopped;
                 return;
             }
             running
         };
         if admitting {
-            let now = Instant::now();
-            if now >= next_recovery {
-                match with_pool(pool, |db| recover(db, &config.namespace, 64)) {
-                    Ok(recovered) => runner.state.lock().counts.recovered += recovered,
-                    Err(error) => runner.record_error(error),
-                }
-                next_recovery =
-                    Instant::now() + Duration::from_millis(config.poll_ms.clamp(100, 1000));
-                continue;
-            }
-            if now >= next_schedule {
-                match with_pool(pool, |db| cron::tick(db, &config.namespace, &producer, 64)) {
-                    Ok(scheduled) => runner.state.lock().counts.scheduled += u64::from(scheduled),
-                    Err(error) => runner.record_error(error),
-                }
-                next_schedule = Instant::now() + Duration::from_secs(1);
-                continue;
-            }
-
             let ready = (0..queues.len())
                 .map(|offset| (cursor + offset) % queues.len())
                 .find(|&index| {
                     let queue = &queues[index];
                     let active = attempts.iter().filter(|attempt| attempt.queue == index);
-                    queue.next_claim <= Instant::now()
+                    (!config.drain || !queue.checked_empty)
+                        && queue.next_claim <= Instant::now()
                         && !active.clone().any(Attempt::blocks_claims)
                         && active.count() < queue.limit
                 });
             if let Some(index) = ready {
                 cursor = (index + 1) % queues.len();
-                if let Some(attempt) =
-                    claim_one(runner, pool, workers, index, queues[index].name, handler)
-                {
-                    attempts.push(attempt);
-                } else {
-                    queues[index].next_claim =
-                        Instant::now() + Duration::from_millis(config.poll_ms);
+                match claim_one(runner, pool, workers, index, queues[index].name, handler) {
+                    Ok(Some(attempt)) => attempts.push(attempt),
+                    Ok(None) => {
+                        if config.drain {
+                            match with_pool(pool, |db| {
+                                has_due(db, &config.namespace, queues[index].name, workers)
+                            }) {
+                                Ok(due) => queues[index].checked_empty = !due,
+                                Err(error) => runner.record_error(error),
+                            }
+                        }
+                        queues[index].next_claim =
+                            Instant::now() + Duration::from_millis(config.poll_ms);
+                    }
+                    Err(error) => {
+                        runner.record_error(error);
+                        queues[index].next_claim =
+                            Instant::now() + Duration::from_millis(config.poll_ms);
+                    }
                 }
                 continue;
             }
@@ -761,12 +844,12 @@ fn claim_one(
     queue: usize,
     queue_name: &str,
     handler: Handler,
-) -> Option<Attempt> {
+) -> Result<Option<Attempt>, String> {
     let config = &runner.config;
     {
         let mut state = runner.state.lock();
         if !matches!(state.phase, Phase::Running) || crate::process_signal::shutdown_requested() {
-            return None;
+            return Ok(None);
         }
         state.pending_claims = 1;
     }
@@ -787,12 +870,8 @@ fn claim_one(
         },
     ) = match acquired {
         Ok((started, Some(job))) => (started, job),
-        Ok((_, None)) => return None,
-        Err(error) => {
-            drop(state);
-            runner.record_error(error);
-            return None;
-        }
+        Ok((_, None)) => return Ok(None),
+        Err(error) => return Err(error),
     };
 
     let now = Instant::now();
@@ -838,13 +917,13 @@ fn claim_one(
         },
     );
     state.counts.claimed += 1;
-    Some(Attempt {
+    Ok(Some(Attempt {
         id,
         token,
         queue,
         lease: Some(lease),
         execution,
-    })
+    }))
 }
 
 #[cfg(test)]

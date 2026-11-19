@@ -182,7 +182,6 @@ enum Request {
 
 #[derive(Deserialize)]
 struct Schedule {
-    id: String,
     name: String,
     expression: String,
     timezone: String,
@@ -431,14 +430,7 @@ fn poll(
             .map_err(|err| format!("invalid cron schedule: {err}"))?;
         match Expression::parse(&schedule.expression)? {
             Expression::Reboot => {
-                enqueue_occurrence(
-                    db,
-                    namespace,
-                    &schedule,
-                    "epoch",
-                    activation.epoch,
-                    activation.activated_at_ms,
-                )?;
+                enqueue_occurrence(db, namespace, &schedule, activation.activated_at_ms)?;
                 db.query(
                     "UPDATE mesh_jobs.cron_schedules SET reboot_epoch = $3::bigint
                      WHERE namespace = $1 AND name = $2",
@@ -501,14 +493,7 @@ fn run_calendar(
         let occurrence: i64 = column(row)?
             .parse()
             .map_err(|_| "invalid cron occurrence")?;
-        enqueue_occurrence(
-            db,
-            namespace,
-            schedule,
-            "minute",
-            occurrence,
-            occurrence * MINUTE_MS,
-        )?;
+        enqueue_occurrence(db, namespace, schedule, occurrence * MINUTE_MS)?;
         if matches.len() > count as usize {
             cursor = occurrence;
         }
@@ -525,12 +510,9 @@ fn enqueue_occurrence(
     db: &mut impl Database,
     namespace: &str,
     schedule: &Schedule,
-    kind: &str,
-    occurrence: i64,
     scheduled_at_ms: i64,
 ) -> Result<(), String> {
     let mut job = schedule.job.clone();
-    job["request_key"] = json!(format!("cron:{}:{kind}:{occurrence}", schedule.id));
     job["scheduled_at_ms"] = json!(scheduled_at_ms);
     enqueue(db, namespace, &job.to_string())?;
     Ok(())

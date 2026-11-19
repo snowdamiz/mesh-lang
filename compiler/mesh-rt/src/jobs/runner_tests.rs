@@ -73,7 +73,8 @@ fn forced_suspended_exit_is_observed_after_unwinding_and_removal() {
     });
     scheduler.start();
     began.recv_timeout(TEST_WAIT).unwrap();
-    abort(&scheduler, pid, CANCELLED);
+    let process = scheduler.get_process(pid).unwrap();
+    scheduler.force_exit(pid, process.lock(), ExitReason::Custom(CANCELLED.into()));
     let exit = exited.recv_timeout(TEST_WAIT).unwrap();
     assert_eq!(exit.reason, ExitReason::Custom(CANCELLED.into()));
     assert_eq!(unwound.try_recv(), Ok(()));
@@ -274,6 +275,92 @@ fn postgres_runner_executes_schedules_and_settles_renewed_timed_out_and_cancelle
     assert_eq!(report["finished"], 4);
     assert_eq!(report["scheduled"], 1);
     assert_eq!(join(id).unwrap(), report.to_string());
+
+    let ready = enqueue(10, 2000);
+    let later = enqueue(10, 2000);
+    assert_eq!(
+        control(json!({"action":"reschedule","id":later,"delay_ms":3_600_000}))["state"],
+        "scheduled"
+    );
+    let mut drain_config = config;
+    drain_config["drain"] = json!(true);
+    let (locked, lock_acquired) = mpsc::channel();
+    let (release_lock, release) = mpsc::channel();
+    let lock_ns = namespace.clone();
+    let lock_holder = std::thread::spawn(move || {
+        with_pool(pool, |db| {
+            db.transaction(|tx| {
+                tx.query(
+                    "SELECT name FROM mesh_jobs.queues WHERE namespace = $1 FOR NO KEY UPDATE",
+                    &[&lock_ns],
+                )?;
+                locked.send(()).unwrap();
+                release.recv_timeout(TEST_WAIT).unwrap();
+                Ok(())
+            })
+        })
+        .unwrap();
+    });
+    lock_acquired.recv_timeout(TEST_WAIT).unwrap();
+    let one_shot = start(
+        pool,
+        &drain_config.to_string(),
+        handle as *const u8,
+        std::ptr::null(),
+    )
+    .unwrap();
+    std::thread::sleep(Duration::from_millis(100));
+    assert!(lookup(one_shot).unwrap().report(true).is_none());
+    release_lock.send(()).unwrap();
+    lock_holder.join().unwrap();
+    let deadline = Instant::now() + TEST_WAIT;
+    while lookup(one_shot).unwrap().report(true).is_none() {
+        assert!(
+            Instant::now() < deadline,
+            "drain status: {}",
+            status(one_shot).unwrap()
+        );
+        std::thread::sleep(TICK);
+    }
+    let report: serde_json::Value = serde_json::from_str(&join(one_shot).unwrap()).unwrap();
+    assert_eq!(report["finished"], 1);
+    assert_eq!(report["scheduled"], 0);
+    assert_eq!(
+        control(json!({"action":"get","id":ready}))["state"],
+        "completed"
+    );
+    assert_eq!(
+        control(json!({"action":"get","id":later}))["state"],
+        "scheduled"
+    );
+
+    drain_config["drain"] = json!(false);
+    drain_config["prune_max_age_ms"] = json!(1);
+    let pruner = start(
+        pool,
+        &drain_config.to_string(),
+        handle as *const u8,
+        std::ptr::null(),
+    )
+    .unwrap();
+    let deadline = Instant::now() + TEST_WAIT;
+    loop {
+        let report: serde_json::Value = serde_json::from_str(&status(pruner).unwrap()).unwrap();
+        if report["pruned"].as_u64().unwrap() >= 5 {
+            break;
+        }
+        assert!(Instant::now() < deadline, "prune status: {report}");
+        std::thread::sleep(TICK);
+    }
+    stop(pruner, 2000).unwrap();
+    assert_eq!(
+        control(json!({"action":"get","id":ready})),
+        serde_json::Value::Null
+    );
+    assert_eq!(
+        control(json!({"action":"get","id":later}))["state"],
+        "scheduled"
+    );
     with_pool(pool, |db| {
         db.transaction(|tx| {
             tx.query(

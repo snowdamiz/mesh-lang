@@ -1,5 +1,6 @@
 pub mod changeset;
 pub mod expr;
+pub(crate) mod jobs_connection;
 pub mod json;
 pub mod migration;
 pub mod orm;

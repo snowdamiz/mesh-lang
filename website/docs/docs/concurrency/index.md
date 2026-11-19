@@ -469,7 +469,7 @@ A call waits for its own reply only: messages already in the caller's mailbox st
 
 `Job` runs short-lived work on actors in the current runtime and returns failures through `Result`.
 
-A runtime restart loses pending jobs and uncollected results. The caller decides whether to start another job after a failure. If you rerun a job after a crash, account for any external changes the first run already made. Work that must survive restart needs a durable queue or a record in your application database.
+A runtime restart loses pending jobs and uncollected results. The caller decides whether to start another job after a failure. Use `Jobs` for work that must survive a restart.
 
 ```mesh
 fn main() do
@@ -491,6 +491,117 @@ end
 Await a job from the actor that started it. Job replies use separate storage from application messages, so a full mailbox cannot drop them. Each caller can buffer up to 1,024 uncollected `Job.async` replies and 8 MiB of copied reply data. Mesh reserves the reply for any job the caller is actively awaiting. If a completed reply exceeds the caller's buffer limits and the caller is not awaiting it, a later await returns `Err("job result unavailable")`. The job may already have changed external state when you receive that error. Each reply can be read once.
 
 A job panic returns `Err` to its caller. If the caller fails, Mesh stops its linked jobs. A timeout leaves the job running, and a sleeping job can delay process exit after `main` returns. `Job.map` reserves the replies for its own jobs and returns each success or failure in input order.
+
+## Durable jobs
+
+`Jobs` stores work in PostgreSQL 14 or newer. Use the application's database to commit an enqueue together with a business change. Use the same namespace on every process that serves the same queues. A namespace groups work in the database. Use separate database roles or databases for separate trust boundaries.
+
+Create the job tables with `Jobs.migrate(pool)` before starting workers. A job stores a worker name, payload version, arguments, queue, and scheduling and retry options. Keep the worker versions needed by outstanding jobs available during a rolling deploy. Workers claim jobs that match their registered names and versions.
+
+| Function | Result |
+| --- | --- |
+| `Jobs.migrate(pool)` | Initialize or migrate the jobs schema |
+| `Jobs.enqueue(pool, namespace, spec)` | Commit one job or a JSON array of jobs and return the receipts as JSON |
+| `Jobs.enqueue_in(conn, namespace, spec)` | Enqueue on a borrowed `PgConn` in its active transaction |
+| `Jobs.start(pool, config, handler)` | Start a runner and return its handle |
+| `Jobs.status(runner)` | Read the local runner state as JSON |
+| `Jobs.stop(runner, grace_ms)` | Stop claiming and wait for in-flight work up to the grace period |
+| `Jobs.join(runner)` | Wait for the runner to stop |
+| `Jobs.control(pool, namespace, request)` | Inspect jobs and control queues with a JSON operation |
+
+Pass a JSON object to enqueue one job. The default queue is `default` and the default payload version is `1`. A `request_key` lets an application retry an enqueue after losing its response. Reuse the same key and spec until the application knows the commit outcome.
+
+```mesh
+fn create_order(conn :: borrow PgConn) -> Int!String do
+  Pg.execute(conn, "INSERT INTO orders (id) VALUES ($1::bigint)", ["42"])?
+  Jobs.enqueue_in(conn,
+    "shop",
+    json { worker: "send-receipt", args: json { order_id: 42 }, request_key: "order-42-receipt" })?
+  Ok(42)
+end
+
+fn submit_order(pool :: PoolHandle) -> Int!String do
+  Repo.transaction(pool, create_order)
+end
+```
+
+The enqueue receipt inside `Repo.transaction` is provisional. Returning `Err` rolls back both writes. `Jobs.enqueue(pool, ...)` uses a separate connection and commits independently.
+
+Use `delay_ms` or `scheduled_at_ms` to defer a job. Absolute times are Unix epoch milliseconds. Priority ranges from `0` (highest) to `9` (lowest). Each job defaults to 20 attempts and a 60-second handler timeout, configurable with `max_attempts` and `timeout_ms`. `backoff_base_ms` and `backoff_max_ms` configure exponential retry delays.
+
+Use `unique` to reuse a matching retained job. A policy can specify `fields` (such as `worker`, `queue`, `args`, or `metadata`), JSON `keys`, `states`, a `period_ms`, and a `timestamp` of `inserted_at` or `scheduled_at`. `replace` can update selected fields of a matching job. Enqueue returns `id`, `effect_key`, `state`, `inserted`, and `conflict`. Request keys preserve the original receipt independently of job retention. Use them for operations whose clients may have to retry an uncertain commit.
+
+### Run workers and handle retries
+
+`Jobs.start` takes a named `fn(String) -> String` handler. The handler receives a JSON job with `id`, `effect_key`, `worker`, `version`, `queue`, `args`, `metadata`, `attempt`, and `max_attempts`. The runner config lists the queues and their concurrency and the worker versions the handler accepts.
+
+```mesh
+fn handle_receipt(job :: String) -> String do
+  let effect_key = Json.get(job, "effect_key")
+  println("processing receipt with key #{effect_key}")
+  Json.encode(json { action: "complete" })
+end
+
+fn start_receipts(pool :: PoolHandle) -> Int!String do
+  Jobs.start(pool,
+    json {
+      namespace: "shop",
+      queues: json { default: 4 },
+      workers: [json { worker: "send-receipt", version: 1 }],
+      lease_ms: 30000,
+      poll_ms: 250,
+      shutdown_grace_ms: 15000
+    },
+    handle_receipt)
+end
+```
+
+| Handler action | Effect |
+| --- | --- |
+| `complete` | Record success |
+| `fail` with `reason` | Retry with the job's backoff, or discard after the last attempt |
+| `retry_after` with `reason` and `delay_ms` | Retry after an explicit delay |
+| `snooze` with `delay_ms` | Reschedule and preserve the attempt budget |
+| `cancel` with `reason` | End the job as cancelled |
+| `discard` with `reason` | End the job and leave the failure available for inspection |
+
+A claim has a lease. A runner renews the lease while its handler runs and records an outcome only for the current unexpired claim. A runner recovers expired attempts until the job spends its attempt budget, then keeps it as `discarded`. Exceptions and timeouts count as failed attempts. Automatic retries keep the same `effect_key`. An operator retry of a terminal job starts a new run with a new effect key.
+
+Delivery is at least once within the attempt budget. If a handler sends a receipt and dies before acknowledging it, another attempt can send it again. Pass `effect_key` to a downstream idempotency mechanism or record it in the same transaction as the external effect when both use the same database.
+
+On `SIGTERM` or `Jobs.stop`, the runner stops claiming new work and tries to finish in-flight attempts within the grace period. An attempt that cannot finish remains recoverable through its lease. Blocking native calls may outlast a handler timeout or a shutdown deadline. `Jobs.stop` reports attempts that are still running. Use `Jobs.join` to keep a worker process running until shutdown. Close the PostgreSQL pool after stopping its runners.
+
+Use a writable PostgreSQL primary with durable commits (`synchronous_commit = on` or stronger) and enough pool connections for handlers, application transactions, and runner I/O. Durability during primary failure depends on the database's storage, replication, and failover configuration. Schedules and lease expiration use the primary's clock.
+
+### Inspect and operate queues
+
+Pass a JSON object to `Jobs.control` with an `action` and the fields required for that action. For example, use `json { action: "pause", queue: "default" }` to stop new claims without stopping active attempts. Queue settings apply to every runner in the namespace. The per-runner limits in `Jobs.start` still apply.
+
+| Action | Fields |
+| --- | --- |
+| `configure`, `scale` | `queue`, `concurrency` |
+| `pause`, `stop` | `queue` |
+| `start`, `resume` | `queue` |
+| `get` | `id` for a job or `queue` for a queue |
+| `list` | Optional `queue`, `worker`, `state`, `after_id`, `limit` |
+| `list_queues` | Optional `after`, `limit` |
+| `cancel`, `retry`, `discard`, `suspend`, `resume`, `delete` | `id` |
+| `cancel_all`, `retry_all` | Optional `filter` object with `queue`, `worker`, `state`, `limit` |
+| `reschedule` | `id` and either `delay_ms` or a UTC `scheduled_at_ms` |
+| `prune` | `before_ms` or `max_age_ms`, with optional `queue` and `limit` |
+| `schedule` | `name`, `expression`, `job`, and optional `timezone`, `misfire`, `lookback_minutes` |
+| `unschedule` | `name` |
+| `list_schedules` | Optional `after`, `limit` |
+
+`get` returns the persisted job and its error history. `list` returns a page of summaries ordered by ID. A cancellation of an executing job records intent. The current runner observes the intent and stops the attempt, or the lease expires and recovery settles the cancellation.
+
+Set `prune_max_age_ms` in the runner config to remove old terminal jobs in bounded batches. Without it, jobs remain available for inspection until an operator prunes or deletes them. For tests or one-off scripts, enqueue and inspect jobs without starting a runner. Then use `drain: true` with `Jobs.start` and `Jobs.join` to process eligible, due work in the configured queues using the regular claim and retry path. A drain runner starts no cron or pruning tasks and leaves future jobs scheduled.
+
+### Recurring jobs
+
+The `schedule` action stores a five-field cron expression or an alias such as `@daily`. It accepts an IANA time zone such as `America/New_York` and defaults to `Etc/UTC`. Runners enqueue each occurrence and advance its cursor in one transaction. Nonexistent local minutes during the spring clock change are skipped. Repeated local minutes in the fall can each enqueue a job.
+
+`misfire` controls missed occurrences within `lookback_minutes` (up to 1,440). `skip` checks the current minute, `coalesce` picks the most recent match, and `catch_up` enqueues all matches in order. `@reboot` enqueues once per namespace activation. A new activation begins after 60 seconds without a committed scheduler heartbeat.
 
 ## Timers
 
