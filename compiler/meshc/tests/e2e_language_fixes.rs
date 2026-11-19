@@ -1037,6 +1037,73 @@ end
 }
 
 #[test]
+fn optimized_integer_list_folds_preserve_views_and_bounds() {
+    let source = r##"
+fn fold(xs :: List<Int>, limit :: Int, index :: Int, acc :: Int) -> Int do
+  if index == limit do
+    acc
+  else
+    fold(xs, limit, index + 1, acc + (index + 1) * List.get(xs, index))
+  end
+end
+
+actor observe_fold_yield() do
+  receive do
+    1 -> println("observer ran")
+    _ -> panic("unexpected observer message")
+  end
+end
+
+actor fold_actor(xs :: List<Int>, observer :: Pid<Int>) do
+  let _ = send(observer, 1)
+  println("#{fold(xs, List.length(xs), 0, 0)}")
+end
+
+fn main() do
+  let xs = Range.to_list(1..10005)
+  let view = List.drop(xs, 9)
+  case Env.get("FOLD_TEST_MODE", "") do
+    "bad_range" -> println("#{fold(view, 9996, 9994, 0)}")
+    "actor" ->
+      let observer = spawn(observe_fold_yield)
+      let _ = spawn(fold_actor, view, observer)
+    _ ->
+      println("#{fold(xs, 5004, 0, 0)}")
+      println("#{fold(view, 4993, 3, 17)}")
+      println("#{fold([], 0, 0, 19)}")
+  end
+end
+"##;
+    let built = build_with_args(source, &["--opt-level", "2", "--emit-llvm"]);
+    assert_eq!(run_built(&built), "41779267530\n41616585047\n19\n");
+    let ir = std::fs::read_to_string(built.dir.path().join("project/project.ll")).unwrap();
+    assert!(ir.contains("fold_chunk:"), "the compiler skipped the fold");
+    let binary = built.dir.path().join("project/project");
+    let actor = Command::new(&binary)
+        .env("FOLD_TEST_MODE", "actor")
+        .env("MESH_SCHEDULER_MIN_WORKERS", "1")
+        .env("MESH_SCHEDULER_MAX_WORKERS", "1")
+        .output()
+        .expect("run fold across an actor timeslice");
+    assert!(actor.status.success(), "{actor:?}");
+    assert_eq!(
+        String::from_utf8_lossy(&actor.stdout),
+        "observer ran\n333333130060\n"
+    );
+    let output = Command::new(binary)
+        .env("FOLD_TEST_MODE", "bad_range")
+        .output()
+        .expect("run out-of-bounds fold");
+    assert_eq!(output.status.code(), Some(101));
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("List.get: index 9995 is out of bounds for a list of length 9995"),
+        "{:?}",
+        output
+    );
+}
+
+#[test]
 fn list_tail_is_a_view_so_cons_recursion_is_linear() {
     // 30k elements: with a copying tail this took seconds; a view makes each
     // step constant, and views behave as lists everywhere they flow.

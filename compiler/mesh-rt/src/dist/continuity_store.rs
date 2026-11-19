@@ -9,8 +9,11 @@ use std::sync::{mpsc, Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use libsqlite3_sys::*;
+use ring::digest::{digest, SHA256};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+
+use crate::crypto::provider::{CryptoProvider, SystemProvider};
 
 const SCHEMA_VERSION: u32 = 1;
 const SQLITE_TRANSIENT_VALUE: isize = -1;
@@ -194,7 +197,7 @@ pub struct ContinuityLogEntry {
 impl ContinuityLogEntry {
     pub fn verify(&self) -> bool {
         serde_json::to_vec(&self.record)
-            .map(|encoded| <[u8; 32]>::from(Sha256::digest(encoded)) == self.checksum)
+            .map(|encoded| digest(&SHA256, &encoded).as_ref() == self.checksum)
             .unwrap_or(false)
             && self.operation_key == self.record.operation_key
             && self.version == self.record.version
@@ -203,7 +206,7 @@ impl ContinuityLogEntry {
 
 impl SnapshotChunk {
     pub fn verify(&self) -> bool {
-        <[u8; 32]>::from(Sha256::digest(&self.payload)) == self.checksum
+        digest(&SHA256, &self.payload).as_ref() == self.checksum
     }
 }
 
@@ -299,6 +302,10 @@ impl Statement {
             }
         }
         Ok(())
+    }
+
+    fn reset(&mut self) -> Result<(), String> {
+        check_sqlite(self.database, unsafe { sqlite3_reset(self.raw) })
     }
 
     fn step(&mut self) -> Result<c_int, String> {
@@ -485,7 +492,7 @@ impl SqliteContinuityStore {
         record.validate()?;
         let serialized = serde_json::to_vec(record)
             .map_err(|error| format!("continuity_store_record_encode_failed:{error}"))?;
-        let checksum = Sha256::digest(&serialized).to_vec();
+        let checksum = digest(&SHA256, &serialized).as_ref().to_vec();
         let attempts = serde_json::to_string(&record.attempts)
             .map_err(|_| "continuity_store_attempts_encode_failed".to_string())?;
         let replicas = serde_json::to_string(&record.replica_set)
@@ -502,23 +509,17 @@ impl SqliteContinuityStore {
         })
     }
 
-    fn apply_prepared_upsert(
+    fn apply_prepared_upserts(
         connection: &Connection,
-        prepared: &PreparedContinuityRecord<'_>,
+        records: &[PreparedContinuityRecord<'_>],
     ) -> Result<(), String> {
-        let record = prepared.record;
+        if records.is_empty() {
+            return Ok(());
+        }
         let mut tombstone = Self::prepare(
             connection,
             "SELECT version FROM continuity_tombstones WHERE operation_key = ?1",
         )?;
-        tombstone.bind_text(1, &record.operation_key)?;
-        if tombstone.step()? == SQLITE_ROW
-            && unsigned_integer(tombstone.integer(0))? >= record.version
-        {
-            return Err("continuity_store_tombstone_fenced".to_string());
-        }
-        drop(tombstone);
-
         let mut statement = Self::prepare(
             connection,
             "INSERT INTO continuity_records(
@@ -548,46 +549,67 @@ impl SqliteContinuityStore {
              WHERE excluded.version > continuity_records.version
                AND excluded.ownership_generation >= continuity_records.ownership_generation",
         )?;
-        statement.bind_text(1, &record.operation_key)?;
-        statement.bind_text(2, &record.request_hash)?;
-        statement.bind_text(3, &record.owner_node)?;
-        statement.bind_i64(4, sqlite_integer(record.ownership_generation)?);
-        statement.bind_text(5, &prepared.attempts)?;
-        statement.bind_text(6, record.phase.as_str())?;
-        statement.bind_text(7, &prepared.replicas)?;
-        statement.bind_i64(8, sqlite_integer(record.created_at_millis)?);
-        statement.bind_i64(9, sqlite_integer(record.updated_at_millis)?);
-        statement.bind_optional_i64(10, record.terminal_at_millis)?;
-        statement.bind_optional_i64(11, record.expires_at_millis)?;
-        statement.bind_text(12, &prepared.response_metadata)?;
-        statement.bind_blob(13, &record.response_body)?;
-        statement.bind_i64(14, sqlite_integer(record.control_term)?);
-        statement.bind_i64(15, i64::from(record.schema_version));
-        statement.bind_i64(16, sqlite_integer(record.version)?);
-        statement.bind_blob(17, &record.request_body)?;
-        statement.bind_blob(18, &record.runtime_record)?;
-        statement.step()?;
-        let changed = unsafe { sqlite3_changes(connection.raw) } > 0;
-        drop(statement);
-
-        if !changed {
-            return Ok(());
-        }
         let mut log = Self::prepare(
             connection,
             "INSERT INTO continuity_log(operation_key, version, record_json, checksum)
              VALUES (?1, ?2, ?3, ?4)",
         )?;
-        log.bind_text(1, &record.operation_key)?;
-        log.bind_i64(2, sqlite_integer(record.version)?);
-        log.bind_blob(3, &prepared.serialized)?;
-        log.bind_blob(4, &prepared.checksum)?;
-        log.step()?;
+
+        for prepared in records {
+            let record = prepared.record;
+            tombstone.bind_text(1, &record.operation_key)?;
+            if tombstone.step()? == SQLITE_ROW
+                && unsigned_integer(tombstone.integer(0))? >= record.version
+            {
+                return Err("continuity_store_tombstone_fenced".to_string());
+            }
+            tombstone.reset()?;
+
+            statement.bind_text(1, &record.operation_key)?;
+            statement.bind_text(2, &record.request_hash)?;
+            statement.bind_text(3, &record.owner_node)?;
+            statement.bind_i64(4, sqlite_integer(record.ownership_generation)?);
+            statement.bind_text(5, &prepared.attempts)?;
+            statement.bind_text(6, record.phase.as_str())?;
+            statement.bind_text(7, &prepared.replicas)?;
+            statement.bind_i64(8, sqlite_integer(record.created_at_millis)?);
+            statement.bind_i64(9, sqlite_integer(record.updated_at_millis)?);
+            statement.bind_optional_i64(10, record.terminal_at_millis)?;
+            statement.bind_optional_i64(11, record.expires_at_millis)?;
+            statement.bind_text(12, &prepared.response_metadata)?;
+            statement.bind_blob(13, &record.response_body)?;
+            statement.bind_i64(14, sqlite_integer(record.control_term)?);
+            statement.bind_i64(15, i64::from(record.schema_version));
+            statement.bind_i64(16, sqlite_integer(record.version)?);
+            statement.bind_blob(17, &record.request_body)?;
+            statement.bind_blob(18, &record.runtime_record)?;
+            statement.step()?;
+            let changed = unsafe { sqlite3_changes(connection.raw) } > 0;
+            statement.reset()?;
+
+            if !changed {
+                continue;
+            }
+            log.bind_text(1, &record.operation_key)?;
+            log.bind_i64(2, sqlite_integer(record.version)?);
+            log.bind_blob(3, &prepared.serialized)?;
+            log.bind_blob(4, &prepared.checksum)?;
+            log.step()?;
+            log.reset()?;
+        }
         Ok(())
     }
 
     fn upsert_batch(&self, records: &[StoredContinuityRecord]) -> Result<(), String> {
-        if records.is_empty() {
+        self.commit_batch(records, &[])
+    }
+
+    fn commit_batch(
+        &self,
+        records: &[StoredContinuityRecord],
+        responses: &[(String, Vec<u8>)],
+    ) -> Result<(), String> {
+        if records.is_empty() && responses.is_empty() {
             return Ok(());
         }
         let prepared = records
@@ -596,12 +618,21 @@ impl SqliteContinuityStore {
             .collect::<Result<Vec<_>, _>>()?;
         let mut new_records = 0u64;
         let mut new_terminal_records = 0u64;
-        for record in records {
-            if self.get(&record.operation_key)?.is_none() {
-                new_records = new_records.saturating_add(1);
-                if !record.phase.is_active() {
-                    new_terminal_records = new_terminal_records.saturating_add(1);
+        if !records.is_empty() {
+            let connection = self.connection.lock().unwrap();
+            let mut exists = Self::prepare(
+                &connection,
+                "SELECT 1 FROM continuity_records WHERE operation_key = ?1",
+            )?;
+            for record in records {
+                exists.bind_text(1, &record.operation_key)?;
+                if exists.step()? == SQLITE_DONE {
+                    new_records = new_records.saturating_add(1);
+                    if !record.phase.is_active() {
+                        new_terminal_records = new_terminal_records.saturating_add(1);
+                    }
                 }
+                exists.reset()?;
             }
         }
         if new_records > 0 {
@@ -631,11 +662,15 @@ impl SqliteContinuityStore {
 
         let connection = self.connection.lock().unwrap();
         execute_batch(connection.raw, "BEGIN IMMEDIATE")?;
-        let result = prepared
-            .iter()
-            .try_for_each(|record| Self::apply_prepared_upsert(&connection, record));
+        let result = Self::apply_prepared_upserts(&connection, &prepared)
+            .and_then(|()| {
+                responses.iter().try_for_each(|(key, response)| {
+                    Self::apply_response(&connection, key, response)
+                })
+            })
+            .and_then(|()| execute_batch(connection.raw, "COMMIT"));
         match result {
-            Ok(()) => execute_batch(connection.raw, "COMMIT"),
+            Ok(()) => Ok(()),
             Err(error) => {
                 let _ = execute_batch(connection.raw, "ROLLBACK");
                 Err(error)
@@ -736,17 +771,22 @@ impl SqliteContinuityStore {
     }
 
     fn update_response(&self, operation_key: &str, response: &[u8]) -> Result<(), String> {
-        let metadata = serde_json::to_string(&vec![("replayable".to_string(), "true".to_string())])
-            .map_err(|_| "continuity_store_response_metadata_encode_failed".to_string())?;
-        let connection = self.connection.lock().unwrap();
+        Self::apply_response(&self.connection.lock().unwrap(), operation_key, response)
+    }
+
+    fn apply_response(
+        connection: &Connection,
+        operation_key: &str,
+        response: &[u8],
+    ) -> Result<(), String> {
         let mut statement = Self::prepare(
-            &connection,
+            connection,
             "UPDATE continuity_records
                 SET response_metadata_json = ?2, response_body = ?3, updated_at_millis = ?4
               WHERE operation_key = ?1",
         )?;
         statement.bind_text(1, operation_key)?;
-        statement.bind_text(2, &metadata)?;
+        statement.bind_text(2, r#"[["replayable","true"]]"#)?;
         statement.bind_blob(3, response)?;
         statement.bind_i64(4, sqlite_integer(SystemTimeMillis::now())?);
         statement.step()?;
@@ -961,7 +1001,7 @@ impl ContinuityStore for SqliteContinuityStore {
         let final_sequence = payloads.len().saturating_sub(1);
         let checksums: Vec<[u8; 32]> = payloads
             .iter()
-            .map(|payload| Sha256::digest(payload).into())
+            .map(|payload| SystemProvider.sha256(payload))
             .collect();
         let mut snapshot_hasher = Sha256::new();
         for checksum in &checksums {
@@ -1288,9 +1328,26 @@ const DURABLE_WRITE_QUEUE_ITEMS: usize = 8_192;
 const DURABLE_WRITE_BATCH_ITEMS: usize = 128;
 const DURABLE_WRITE_BATCH_WINDOW: Duration = Duration::from_millis(2);
 
+enum DurableWriteData {
+    StoredRecord(Box<StoredContinuityRecord>),
+    ReplicaRecord(Box<super::continuity::ContinuityRecord>),
+    Response(String, Vec<u8>),
+}
+
 struct DurableWrite {
-    record: StoredContinuityRecord,
-    reply: crate::actor::CooperativeSender<Result<(), String>>,
+    data: DurableWriteData,
+    reply: Option<crate::actor::CooperativeSender<Result<(), String>>>,
+}
+
+fn finish_durable_write(
+    reply: Option<crate::actor::CooperativeSender<Result<(), String>>>,
+    result: Result<(), String>,
+) {
+    if let Some(reply) = reply {
+        let _ = reply.send(result);
+    } else if let Err(error) = result {
+        eprintln!("mesh continuity: durable_replica_write_failed reason={error}");
+    }
 }
 
 const MAX_REPLAY_RESPONSES: usize = 10_000;
@@ -1542,12 +1599,33 @@ pub(crate) fn persist_runtime_response(operation_key: &str, response: &[u8]) -> 
     if operation_key.is_empty() || response.is_empty() {
         return Err("continuity_response_invalid".to_string());
     }
+    cache_runtime_response(operation_key, response);
+    configured_continuity_store().map_or(Ok(()), |store| {
+        configured_writer(store).persist_data(
+            DurableWriteData::Response(operation_key.to_string(), response.to_vec()),
+            "response",
+        )
+    })
+}
+
+fn cache_runtime_response(operation_key: &str, response: &[u8]) {
     response_replay_cache()
         .lock()
         .unwrap()
         .insert(operation_key, response);
+}
+
+pub(crate) fn queue_replica_response(
+    operation_key: String,
+    response: Vec<u8>,
+) -> Result<(), String> {
+    cache_runtime_response(&operation_key, &response);
     configured_continuity_store().map_or(Ok(()), |store| {
-        store.update_response(operation_key, response)
+        configured_writer(store).enqueue(
+            DurableWriteData::Response(operation_key, response),
+            None,
+            "response",
+        )
     })
 }
 
@@ -1716,11 +1794,11 @@ impl SqliteContinuityStore {
             .get(&record.request_key)
             .cloned();
         let (response_metadata, response_body) = match existing.as_ref() {
-            Some(stored) => (
+            Some(stored) if !stored.response_body.is_empty() => (
                 stored.response_metadata.clone(),
                 stored.response_body.clone(),
             ),
-            None => (
+            _ => (
                 cached_response
                     .as_ref()
                     .map(|_| vec![("replayable".to_string(), "true".to_string())])
@@ -1792,10 +1870,14 @@ impl DurableWriter {
 
     /// Persists `record` with the next group commit and waits for it;
     /// `operation` names the caller in errors.
-    fn persist(&self, record: StoredContinuityRecord, operation: &str) -> Result<(), String> {
-        let (reply, result) = crate::actor::cooperative_channel();
+    fn enqueue(
+        &self,
+        data: DurableWriteData,
+        reply: Option<crate::actor::CooperativeSender<Result<(), String>>>,
+        operation: &str,
+    ) -> Result<(), String> {
         self.sender
-            .try_send(DurableWrite { record, reply })
+            .try_send(DurableWrite { data, reply })
             .map_err(|error| match error {
                 crossbeam_channel::TrySendError::Full(_) => {
                     format!("continuity_{operation}_group_commit_queue_full")
@@ -1803,7 +1885,16 @@ impl DurableWriter {
                 crossbeam_channel::TrySendError::Disconnected(_) => {
                     format!("continuity_{operation}_group_commit_unavailable")
                 }
-            })?;
+            })
+    }
+
+    fn persist(&self, record: StoredContinuityRecord, operation: &str) -> Result<(), String> {
+        self.persist_data(DurableWriteData::StoredRecord(Box::new(record)), operation)
+    }
+
+    fn persist_data(&self, data: DurableWriteData, operation: &str) -> Result<(), String> {
+        let (reply, result) = crate::actor::cooperative_channel();
+        self.enqueue(data, Some(reply), operation)?;
         crate::actor::cooperative_recv_timeout(&result, Duration::from_secs(4)).map_err(
             |error| match error {
                 mpsc::RecvTimeoutError::Timeout => {
@@ -1818,30 +1909,67 @@ impl DurableWriter {
 }
 
 fn commit_durable_writes(store: &SqliteContinuityStore, writes: Vec<DurableWrite>) {
-    let records: Vec<_> = writes.iter().map(|write| write.record.clone()).collect();
-    match store.upsert_batch(&records) {
-        Ok(()) => {
-            for write in writes {
-                let _ = write.reply.send(Ok(()));
+    let mut records = Vec::new();
+    let mut record_replies = Vec::new();
+    let mut responses = Vec::new();
+    let mut response_replies = Vec::new();
+    for write in writes {
+        match write.data {
+            DurableWriteData::StoredRecord(record) => {
+                records.push(*record);
+                record_replies.push(write.reply);
             }
-        }
-        Err(error) if writes.len() == 1 => {
-            let _ = writes[0].reply.send(Err(error));
-        }
-        Err(_) => {
-            // A stale or fenced record must not roll back unrelated writes
-            // that merely arrived during the same group-commit window.
-            for write in writes {
-                let result = store.upsert(&write.record);
-                let _ = write.reply.send(result);
+            DurableWriteData::ReplicaRecord(record) => match store.stored_runtime_record(&record) {
+                Ok(record) => {
+                    records.push(record);
+                    record_replies.push(write.reply);
+                }
+                Err(error) => finish_durable_write(write.reply, Err(error)),
+            },
+            DurableWriteData::Response(key, response) => {
+                responses.push((key, response));
+                response_replies.push(write.reply);
             }
         }
     }
+
+    // Responses update the record for the same key. Commit the record
+    // versions first, including records that arrived in this batch.
+    let batch = store.commit_batch(&records, &responses);
+    for (record, reply) in records.into_iter().zip(record_replies) {
+        // A fenced record or missing response target must not roll back
+        // unrelated writes from the same group-commit window.
+        let result = if batch.is_err() {
+            store.upsert(&record)
+        } else {
+            Ok(())
+        };
+        finish_durable_write(reply, result);
+    }
+    for ((key, response), reply) in responses.into_iter().zip(response_replies) {
+        let result = if batch.is_err() {
+            store.update_response(&key, &response)
+        } else {
+            Ok(())
+        };
+        finish_durable_write(reply, result);
+    }
 }
 
-/// Persists `record` through `store`'s group commit.
+pub(crate) fn queue_replica_record(
+    record: super::continuity::ContinuityRecord,
+) -> Result<(), String> {
+    configured_continuity_store().map_or(Ok(()), |store| {
+        configured_writer(store).enqueue(
+            DurableWriteData::ReplicaRecord(Box::new(record)),
+            None,
+            "replica",
+        )
+    })
+}
+
 fn persist_runtime(
-    store: &Arc<SqliteContinuityStore>,
+    store: &SqliteContinuityStore,
     writer: &DurableWriter,
     record: &super::continuity::ContinuityRecord,
     operation: &str,
@@ -1961,6 +2089,7 @@ pub(crate) mod tests {
             .collect();
 
         store.upsert_batch(&records).expect("batch upsert");
+        store.upsert_batch(&records).expect("replayed batch");
 
         let stats = store.stats().expect("batch stats");
         assert_eq!(stats.records, 128);
@@ -2019,12 +2148,20 @@ pub(crate) mod tests {
             &store,
             vec![
                 DurableWrite {
-                    record: record("valid", 1, StoredContinuityPhase::Started),
-                    reply: valid_reply,
+                    data: DurableWriteData::StoredRecord(Box::new(record(
+                        "valid",
+                        1,
+                        StoredContinuityPhase::Started,
+                    ))),
+                    reply: Some(valid_reply),
                 },
                 DurableWrite {
-                    record: record("fenced", 1, StoredContinuityPhase::Started),
-                    reply: fenced_reply,
+                    data: DurableWriteData::StoredRecord(Box::new(record(
+                        "fenced",
+                        1,
+                        StoredContinuityPhase::Started,
+                    ))),
+                    reply: Some(fenced_reply),
                 },
             ],
         );
@@ -3086,6 +3223,44 @@ pub(crate) mod tests {
         assert_eq!(
             super::super::continuity::decode_record_payload(&records[1]).unwrap(),
             submitted
+        );
+    }
+
+    #[test]
+    fn replica_writes_queue_without_waiting_for_sqlite_and_keep_wire_order() {
+        use super::super::continuity::ContinuityPhase;
+        let store = Arc::new(store());
+        let writer = DurableWriter::start(Arc::clone(&store));
+        let key = "queued-replica-response";
+        let sqlite = store.connection.lock().unwrap();
+        writer
+            .enqueue(
+                DurableWriteData::ReplicaRecord(Box::new(runtime_record(
+                    key,
+                    ContinuityPhase::Completed,
+                ))),
+                None,
+                "replica",
+            )
+            .expect("queue replica record");
+        writer
+            .enqueue(
+                DurableWriteData::Response(key.to_string(), b"response".to_vec()),
+                None,
+                "response",
+            )
+            .expect("queue replica response");
+        drop(sqlite);
+
+        writer
+            .persist(
+                record("durability-barrier", 1, StoredContinuityPhase::Started),
+                "runtime",
+            )
+            .expect("finish queued writes");
+        assert_eq!(
+            store.replay_response(key).unwrap(),
+            Some(b"response".to_vec())
         );
     }
 

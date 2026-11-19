@@ -918,6 +918,7 @@ pub unsafe extern "C-unwind" fn mesh_actor_receive_scalar(
             }
         }
     })
+    .unwrap_or(std::ptr::null())
 }
 
 fn receive_scalar_payload(
@@ -981,19 +982,20 @@ where
         let msg = proc.mailbox.remove_first_owned(&predicate)?;
         Some(copy_msg_to_actor_heap(proc, msg))
     })
+    .unwrap_or(std::ptr::null())
 }
 
 /// A receive with only an after clause never inspects the mailbox.
 #[no_mangle]
 pub extern "C-unwind" fn mesh_actor_wait_timeout(timeout_ms: i64) {
-    receive_with(global_scheduler(), timeout_ms, |_| None);
+    receive_with::<()>(global_scheduler(), timeout_ms, |_| None);
 }
 
-fn receive_with(
+fn receive_with<T>(
     sched: &Scheduler,
     timeout_ms: i64,
-    mut receive: impl FnMut(&mut Process) -> Option<*const u8>,
-) -> *const u8 {
+    mut receive: impl FnMut(&mut Process) -> Option<T>,
+) -> Option<T> {
     let (my_pid, me) = running_process();
     let deadline = (timeout_ms > 0)
         .then(|| std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms as u64));
@@ -1012,12 +1014,12 @@ fn receive_with(
             proc.receive_deadline = None;
         }
         if let Some(value) = receive(&mut proc) {
-            return value;
+            return Some(value);
         }
         let expired = deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline);
         if timeout_ms == 0 || expired || ending {
             proc.set_live_state(ProcessState::Ready);
-            return std::ptr::null();
+            return None;
         }
         if in_coroutine {
             let gc_due = proc.heap.should_collect();
@@ -1447,21 +1449,16 @@ extern "C-unwind" fn supervisor_entry(args: *const u8) {
         std::sync::Arc::from_raw(args as *const parking_lot::Mutex<supervisor::SupervisorState>)
     };
     let (supervisor_pid, _) = running_process();
-    loop {
-        let message = receive_any();
-        if message.is_null() {
-            break;
-        }
+    let sched = global_scheduler();
+    while let Some(message) =
+        receive_with(sched, -1, |proc| proc.mailbox.remove_first_owned(|_| true))
+    {
         // A program's own message means nothing to a supervisor.
-        let type_tag = unsafe { std::ptr::read_unaligned(message.cast::<u64>()) };
-        if type_tag != link::EXIT_SIGNAL_TAG {
+        if message.buffer.type_tag != link::EXIT_SIGNAL_TAG {
             continue;
         }
-        let data_len = unsafe { std::ptr::read_unaligned(message.add(8).cast::<u64>()) } as usize;
-        let data = unsafe { std::slice::from_raw_parts(message.add(16), data_len) };
-        let (child_pid, reason) = link::decode_exit_signal(data)
+        let (child_pid, reason) = link::decode_exit_signal(message.buffer.data())
             .expect("the runtime encodes every exit signal it sends, and only it tags one");
-        let sched = global_scheduler();
         let mut state = state.lock();
         if supervisor::handle_child_exit(&mut state, child_pid, &reason, sched, supervisor_pid)
             .is_err()

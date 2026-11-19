@@ -2,7 +2,7 @@
 
 use std::time::{Duration, Instant};
 
-use sha2::{Digest, Sha256};
+use ring::digest::{digest, SHA256};
 
 pub const PROTOCOL_V1: u16 = 1;
 pub const PROTOCOL_V2: u16 = 2;
@@ -219,7 +219,7 @@ impl ProtocolEnvelope {
         if Self::HEADER_BYTES.saturating_add(self.payload.len()) > max_frame_bytes as usize {
             return Err("protocol_frame_bound_exceeded".to_string());
         }
-        let checksum: [u8; 32] = Sha256::digest(&self.payload).into();
+        let checksum = digest(&SHA256, &self.payload);
         let mut bytes = Vec::with_capacity(Self::HEADER_BYTES + self.payload.len());
         bytes.extend_from_slice(ENVELOPE_MAGIC);
         bytes.push(self.class as u8);
@@ -228,7 +228,7 @@ impl ProtocolEnvelope {
         bytes.extend_from_slice(&self.chunk_sequence.to_be_bytes());
         bytes.push(u8::from(self.final_chunk));
         bytes.extend_from_slice(&payload_len.to_be_bytes());
-        bytes.extend_from_slice(&checksum);
+        bytes.extend_from_slice(checksum.as_ref());
         bytes.extend_from_slice(&self.payload);
         Ok(bytes)
     }
@@ -244,9 +244,8 @@ impl ProtocolEnvelope {
         if Self::HEADER_BYTES.saturating_add(payload_len) != bytes.len() {
             return Err("protocol_payload_length_invalid".to_string());
         }
-        let payload = bytes[Self::HEADER_BYTES..].to_vec();
-        let expected: [u8; 32] = bytes[24..56].try_into().unwrap();
-        if <[u8; 32]>::from(Sha256::digest(&payload)) != expected {
+        let payload = &bytes[Self::HEADER_BYTES..];
+        if digest(&SHA256, payload).as_ref() != &bytes[24..Self::HEADER_BYTES] {
             return Err("protocol_payload_checksum_mismatch".to_string());
         }
         Ok(Self {
@@ -259,7 +258,7 @@ impl ProtocolEnvelope {
                 1 => true,
                 _ => return Err("protocol_final_chunk_flag_invalid".to_string()),
             },
-            payload,
+            payload: payload.to_vec(),
         })
     }
 }
@@ -447,6 +446,11 @@ mod tests {
             payload: b"payload".to_vec(),
         };
         let encoded = envelope.encode(1024).expect("encode");
+        use sha2::{Digest, Sha256};
+        assert_eq!(
+            &encoded[24..ProtocolEnvelope::HEADER_BYTES],
+            &Sha256::digest(b"payload")[..]
+        );
         assert_eq!(ProtocolEnvelope::decode(&encoded, 1024).unwrap(), envelope);
         let mut corrupted = encoded;
         *corrupted.last_mut().unwrap() ^= 1;

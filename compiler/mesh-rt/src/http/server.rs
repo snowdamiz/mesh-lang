@@ -1072,12 +1072,19 @@ fn write_response(
     }
     header.push_str("\r\n");
 
-    stream
-        .write_all(header.as_bytes())
-        .map_err(|e| format!("write response header: {}", e))?;
-    stream
-        .write_all(body)
-        .map_err(|e| format!("write response body: {}", e))?;
+    const MAX_COALESCED_RESPONSE: usize = 4096;
+    if header.len().saturating_add(body.len()) <= MAX_COALESCED_RESPONSE {
+        // One socket write for small responses. Use the scalar TCP write so
+        // an embedded host retains its own SIGPIPE disposition.
+        let mut bytes = header.into_bytes();
+        bytes.extend_from_slice(body);
+        stream.write_all(&bytes)
+    } else {
+        stream
+            .write_all(header.as_bytes())
+            .and_then(|()| stream.write_all(body))
+    }
+    .map_err(|e| format!("write response: {e}"))?;
     stream.flush().map_err(|e| format!("flush response: {}", e))
 }
 
@@ -1425,6 +1432,7 @@ fn process_request(
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+
     use crate::dist::continuity::{continuity_registry, ContinuityPhase, ContinuityResult};
     use crate::dist::node::{
         clear_declared_handler_registry_for_test, declared_handler_registry_test_lock,
@@ -1434,6 +1442,35 @@ pub(crate) mod tests {
     use crate::http::router::{mesh_http_route_get, mesh_http_router};
     use crate::string::mesh_string_new;
     use std::sync::atomic::{AtomicU64, Ordering};
+
+    #[test]
+    fn small_response_shares_a_write_and_large_response_streams_its_body() {
+        #[derive(Default)]
+        struct Writes(Vec<Vec<u8>>);
+
+        impl Write for Writes {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.0.push(bytes.to_vec());
+                Ok(bytes.len())
+            }
+
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let mut small = Writes::default();
+        write_response(&mut small, 200, b"body", &[]).unwrap();
+        assert_eq!(small.0.len(), 1);
+        assert!(small.0[0].ends_with(b"Content-Length: 4\r\nConnection: close\r\n\r\nbody"));
+
+        let mut large = Writes::default();
+        let body = vec![0xFF; 4096];
+        write_response(&mut large, 200, &body, &[]).unwrap();
+        assert_eq!(large.0.len(), 2);
+        assert!(large.0[0].ends_with(b"Content-Length: 4096\r\nConnection: close\r\n\r\n"));
+        assert_eq!(large.0[1], body);
+    }
 
     fn bytes_of(ptr: *mut u8) -> Vec<u8> {
         unsafe { (*(ptr as *const MeshBytes)).as_slice().to_vec() }

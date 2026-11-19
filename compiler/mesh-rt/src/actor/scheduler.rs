@@ -2234,21 +2234,26 @@ fn handle_process_exit(
     // already have destroyed them; this second cleanup is intentionally idempotent.
     crate::secret::destroy_owned(pid);
 
-    // Step 3: Partition links into local and remote, then propagate.
-    let (local_links, remote_links): (
-        std::collections::HashSet<ProcessId>,
-        std::collections::HashSet<ProcessId>,
-    ) = linked_pids
-        .into_iter()
-        .partition(|linked_pid| linked_pid.node_id() == 0);
-
-    // Propagate exit signals to local linked processes.
-    let woken = link::propagate_exit(pid, &reason, local_links, |linked_pid| {
-        process_table.get(linked_pid)
-    });
-
-    for linked_pid in woken {
-        if let Some(process) = process_table.get(linked_pid) {
+    // A single recipient can be woken under the lock that changes its state.
+    // With fan-out, finish local delivery before any recipient can propagate a
+    // chained exit ahead of this one.
+    let single_recipient = linked_pids.len() == 1;
+    let mut woken = Vec::new();
+    link::propagate_exit_and_notify(
+        pid,
+        &reason,
+        linked_pids.iter().copied().filter(|pid| pid.node_id() == 0),
+        |linked_pid| process_table.get(linked_pid),
+        |process| {
+            if single_recipient {
+                process_table.steps.notify(sleepers, process, None);
+            } else {
+                woken.push(process.pid);
+            }
+        },
+    );
+    for pid in woken {
+        if let Some(process) = process_table.get(pid) {
             process_table
                 .steps
                 .notify(sleepers, &mut process.lock(), None);
@@ -2257,8 +2262,8 @@ fn handle_process_exit(
 
     // Send DIST_EXIT for each remote link. Silently drops if node disconnected
     // (handle_node_disconnect already synthesized :noconnection locally).
-    for remote_pid in &remote_links {
-        crate::dist::node::send_dist_exit(pid, *remote_pid, &reason);
+    for remote_pid in linked_pids.into_iter().filter(|pid| pid.node_id() != 0) {
+        crate::dist::node::send_dist_exit(pid, remote_pid, &reason);
     }
 
     // Step 2.5: Deliver DOWN messages to monitoring processes.
@@ -2671,6 +2676,72 @@ mod tests {
     }
 
     #[test]
+    fn linked_exit_delivers_to_all_local_recipients_before_publishing_wakes() {
+        let scheduler = Scheduler::new(2);
+        let exiting_pid = scheduler.create_main_process();
+        let a = scheduler.create_main_process();
+        let b = scheduler.create_main_process();
+        let exiting = scheduler.get_process(exiting_pid).unwrap();
+        for pid in [a, b] {
+            link::link(
+                &exiting,
+                &scheduler.get_process(pid).unwrap(),
+                exiting_pid,
+                pid,
+            );
+        }
+        // Follow the set's traversal so we can pause the finalizer between
+        // changing the first recipient's state and delivering to the second.
+        let (first, second) = {
+            let process = exiting.lock();
+            let mut links = process.links.iter().copied();
+            (links.next().unwrap(), links.next().unwrap())
+        };
+        let first_process = scheduler.get_process(first).unwrap();
+        let second_process = scheduler.get_process(second).unwrap();
+        {
+            let mut process = first_process.lock();
+            process.worker = Some(0);
+            process.set_live_state(ProcessState::Waiting);
+        }
+        std::thread::scope(|scope| {
+            let mut recipient = second_process.lock();
+            recipient.trap_exit = true;
+            recipient.worker = Some(1);
+            recipient.set_live_state(ProcessState::Waiting);
+            let finalizer = scope.spawn(|| {
+                handle_process_exit(
+                    &scheduler.process_table,
+                    &scheduler.sleepers,
+                    exiting_pid,
+                    ExitReason::Killed,
+                )
+            });
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while !matches!(first_process.lock().state, ProcessState::Exited(_)) {
+                assert!(Instant::now() < deadline, "first exit was never delivered");
+                std::thread::yield_now();
+            }
+            assert!(scheduler.sleepers[0].woken.lock().ready.is_empty());
+            drop(recipient);
+            assert!(finalizer.join().unwrap());
+        });
+        assert_eq!(
+            scheduler.sleepers[0].woken.lock().ready,
+            [ReadyWake::Actor(first)]
+        );
+        assert_eq!(
+            scheduler.sleepers[1].woken.lock().ready,
+            [ReadyWake::Actor(second)]
+        );
+        let signal = second_process.lock().mailbox.pop().unwrap();
+        assert_eq!(
+            link::decode_exit_signal(signal.buffer.data()),
+            Some((exiting_pid, ExitReason::Killed))
+        );
+    }
+
+    #[test]
     fn shutdown_receive_waits_for_a_linked_exit_before_its_worker_claims_it() {
         use crate::actor::MessageBuffer;
 
@@ -2683,7 +2754,7 @@ mod tests {
             let observer = unsafe { &*args.cast::<Observer<'_>>() };
             super::super::receive_with(observer.scheduler, -1, |process| {
                 *observer.received.lock() = Some(process.mailbox.pop()?.buffer);
-                Some(std::ptr::dangling())
+                Some(())
             });
         }
 
@@ -4216,7 +4287,9 @@ mod stackless_probe {
                         .remove_first(|m| m.buffer.type_tag == PROGRAM_MESSAGE_TAG)?;
                     Some(receive_scalar_payload(proc, msg, 8, &mut scratch))
                 });
-                if payload.is_null() || probe.handle(unsafe { payload.cast::<u64>().read() }) == 0 {
+                if payload
+                    .is_none_or(|data| probe.handle(unsafe { data.cast::<u64>().read() }) == 0)
+                {
                     return;
                 }
             }

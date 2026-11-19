@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::io::{Read, Write};
-use std::net::TcpStream;
+use std::io::{BufRead, BufReader, Write};
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -17,10 +17,14 @@ use mesh_rt::{
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
+#[path = "proof/http.rs"]
+mod proof_http;
+
+use proof_http::{BurstResult, HttpResponse};
+
 const COOKIE: &str = "proof-cookie-0123456789abcdef0123";
 const OPERATOR_KEY: &str = "proof-operator-key-0123456789abcdef";
 const MIN_WORKERS: u16 = 2;
-const PROOF_HTTP_READ_TIMEOUT: Duration = Duration::from_secs(15);
 // The 1,000-request burst saturates the machine rather than measuring Mesh's
 // latency: on a GitHub runner placing all eleven proof containers on four
 // cores the median alone is around 3.8s, and p95 to max spans under a second,
@@ -117,6 +121,14 @@ trait ProofWorld: Send + Sync {
         body: &str,
         headers: &[(&str, &str)],
     ) -> Result<HttpResponse, String>;
+    fn bridge_burst(
+        &self,
+        _harness: &ProofHarness,
+        _requests: usize,
+        _probe: &dyn Fn() -> BurstIsolationProbe,
+    ) -> Option<Result<(Vec<BurstResult>, BurstIsolationProbe), String>> {
+        None
+    }
     /// Starts `work` on a thread of its own with `stack_size` bytes of
     /// stack, as the burst's requests run.
     fn spawn(
@@ -168,7 +180,22 @@ impl ProofWorld for LocalDocker {
         body: &str,
         headers: &[(&str, &str)],
     ) -> Result<HttpResponse, String> {
-        http_request(port, method, path, body, headers)
+        proof_http::http_request(
+            SocketAddr::from(([127, 0, 0, 1], port)),
+            method,
+            path,
+            body,
+            headers,
+        )
+    }
+
+    fn bridge_burst(
+        &self,
+        harness: &ProofHarness,
+        requests: usize,
+        probe: &dyn Fn() -> BurstIsolationProbe,
+    ) -> Option<Result<(Vec<BurstResult>, BurstIsolationProbe), String>> {
+        Some(run_bridge_burst(harness, requests, probe))
     }
 
     fn spawn(
@@ -1175,7 +1202,7 @@ fn run_proof(
         "capacity-peak-ready.json",
         serde_json::to_vec_pretty(&peak).expect("serialize ready peak"),
     )?;
-    let concurrent_burst = run_concurrent_remote_burst(&world, &controller_target, 1_000)?;
+    let concurrent_burst = run_concurrent_remote_burst(harness, &world, &controller_target, 1_000)?;
     harness.write(
         "concurrent-1000-summary.json",
         serde_json::to_vec_pretty(&concurrent_burst).expect("serialize concurrent request summary"),
@@ -1656,10 +1683,17 @@ fn open(gate: &StartGate) {
 /// operator query and a health check of each gateway, which a busy handler
 /// must not starve.
 fn run_concurrent_remote_burst(
+    harness: &ProofHarness,
     world: &Arc<dyn ProofWorld>,
     controller_target: &str,
     requests: usize,
 ) -> Result<ConcurrentBurstSummary, String> {
+    if let Some(result) = world.bridge_burst(harness, requests, &|| {
+        burst_isolation_probe(&**world, controller_target)
+    }) {
+        let (results, isolation_probe) = result?;
+        return summarize_burst(requests, results, isolation_probe);
+    }
     let start_gate: StartGate = Arc::new((Mutex::new(false), std::sync::Condvar::new()));
     let (sender, receiver) = std::sync::mpsc::channel();
     let mut workers: Vec<thread::JoinHandle<()>> = Vec::with_capacity(requests + 1);
@@ -1704,70 +1738,149 @@ fn run_concurrent_remote_burst(
         2 * 1024 * 1024,
         Box::new(move || {
             wait_at(&gate);
-            let world = probe_world;
-            let mut failure_reasons = Vec::new();
-            let operator_started = Instant::now();
-            let operator_query_succeeded =
-                match world.runtime(&controller_target, Duration::from_secs(3)) {
-                    Ok(snapshot) if !snapshot.nodes.is_empty() => true,
-                    Ok(_) => {
-                        failure_reasons.push("operator_query_returned_no_nodes".to_string());
-                        false
-                    }
-                    Err(error) => {
-                        failure_reasons.push(format!("operator_query_failed:{error}"));
-                        false
-                    }
-                };
-            let operator_query_latency_millis = operator_started
-                .elapsed()
-                .as_millis()
-                .try_into()
-                .unwrap_or(u64::MAX);
-
-            let mut gateway_health_successes = 0;
-            let mut gateway_health_max_latency_millis = 0;
-            for port in [18081, 18082] {
-                let health_started = Instant::now();
-                match world.http(port, "GET", "/health", "", &[]) {
-                    Ok(response) if response.status == 200 => gateway_health_successes += 1,
-                    Ok(response) => failure_reasons.push(format!(
-                        "gateway_{port}_health_status_{}:{}",
-                        response.status, response.body
-                    )),
-                    Err(error) => {
-                        failure_reasons.push(format!("gateway_{port}_health_failed:{error}"));
-                    }
-                }
-                gateway_health_max_latency_millis = gateway_health_max_latency_millis.max(
-                    health_started
-                        .elapsed()
-                        .as_millis()
-                        .try_into()
-                        .unwrap_or(u64::MAX),
-                );
-            }
-            let _ = probe_sender.send(BurstIsolationProbe {
-                operator_query_succeeded,
-                operator_query_latency_millis,
-                gateway_health_successes,
-                gateway_health_max_latency_millis,
-                failure_reasons,
-            });
+            let _ = probe_sender.send(burst_isolation_probe(&*probe_world, &controller_target));
         }),
     )
     .map_err(|error| format!("proof_isolation_probe_thread_start_failed:{error}"))?;
     open(&start_gate);
+    let mut results = Vec::with_capacity(requests);
+    for _ in 0..requests {
+        results.push(
+            receiver
+                .recv_timeout(Duration::from_secs(30))
+                .map_err(|error| format!("proof_concurrent_result_timeout:{error}"))?,
+        );
+    }
+    for worker in workers {
+        worker
+            .join()
+            .map_err(|_| "proof_concurrent_thread_panicked".to_string())?;
+    }
+    let isolation_probe = probe_receiver
+        .recv()
+        .map_err(|_| "proof_isolation_probe_thread_panicked".to_string())?;
+    summarize_burst(requests, results, isolation_probe)
+}
+
+// Docker Desktop forwards published ports through the host. Keep the burst
+// on the Compose network while the isolation probe still uses host ingress.
+fn run_bridge_burst(
+    harness: &ProofHarness,
+    requests: usize,
+    probe: &dyn Fn() -> BurstIsolationProbe,
+) -> Result<(Vec<BurstResult>, BurstIsolationProbe), String> {
+    let mut command = Command::new("docker");
+    command
+        .args(["compose", "-f"])
+        .arg(&harness.compose_file)
+        .args([
+            "exec",
+            "-T",
+            "load-generator",
+            "/usr/local/bin/mesh-proof-http-burst",
+        ])
+        .arg(requests.to_string())
+        .current_dir(&harness.root)
+        .envs(harness.proof_environment())
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit());
+    let mut child = command
+        .spawn()
+        .map_err(|error| format!("proof_bridge_burst_start_failed:{error}"))?;
+    let mut output = BufReader::new(child.stdout.take().expect("piped stdout"));
+    let mut ready = String::new();
+    let result = (|| {
+        output
+            .read_line(&mut ready)
+            .map_err(|error| error.to_string())?;
+        if ready.trim_end() != "ready" {
+            return Err("proof_bridge_burst_not_ready".to_string());
+        }
+        let isolation_probe = probe();
+        let results = serde_json::from_reader(output)
+            .map_err(|error| format!("proof_bridge_burst_output_invalid:{error}"))?;
+        Ok((results, isolation_probe))
+    })();
+    if result.is_err() {
+        let _ = child.kill();
+    }
+    let status = child.wait().map_err(|error| error.to_string())?;
+    if result.is_ok() && !status.success() {
+        return Err(format!("proof_bridge_burst_failed:{status}"));
+    }
+    result
+}
+
+fn burst_isolation_probe(world: &dyn ProofWorld, controller_target: &str) -> BurstIsolationProbe {
+    let mut failure_reasons = Vec::new();
+    let operator_started = Instant::now();
+    let operator_query_succeeded = match world.runtime(controller_target, Duration::from_secs(3)) {
+        Ok(snapshot) if !snapshot.nodes.is_empty() => true,
+        Ok(_) => {
+            failure_reasons.push("operator_query_returned_no_nodes".to_string());
+            false
+        }
+        Err(error) => {
+            failure_reasons.push(format!("operator_query_failed:{error}"));
+            false
+        }
+    };
+    let operator_query_latency_millis = operator_started
+        .elapsed()
+        .as_millis()
+        .try_into()
+        .unwrap_or(u64::MAX);
+
+    let mut gateway_health_successes = 0;
+    let mut gateway_health_max_latency_millis = 0;
+    for port in [18081, 18082] {
+        let health_started = Instant::now();
+        match world.http(port, "GET", "/health", "", &[]) {
+            Ok(response) if response.status == 200 => gateway_health_successes += 1,
+            Ok(response) => failure_reasons.push(format!(
+                "gateway_{port}_health_status_{}:{}",
+                response.status, response.body
+            )),
+            Err(error) => {
+                failure_reasons.push(format!("gateway_{port}_health_failed:{error}"));
+            }
+        }
+        gateway_health_max_latency_millis = gateway_health_max_latency_millis.max(
+            health_started
+                .elapsed()
+                .as_millis()
+                .try_into()
+                .unwrap_or(u64::MAX),
+        );
+    }
+    BurstIsolationProbe {
+        operator_query_succeeded,
+        operator_query_latency_millis,
+        gateway_health_successes,
+        gateway_health_max_latency_millis,
+        failure_reasons,
+    }
+}
+
+fn summarize_burst(
+    requests: usize,
+    results: Vec<BurstResult>,
+    isolation_probe: BurstIsolationProbe,
+) -> Result<ConcurrentBurstSummary, String> {
+    if results.len() != requests {
+        return Err(format!(
+            "proof_concurrent_result_count_mismatch:{}",
+            results.len()
+        ));
+    }
     let mut keys = BTreeSet::new();
     let mut successes = 0;
     let mut remote_executions = 0;
     let mut execution_nodes = BTreeMap::new();
     let mut failure_reasons = BTreeMap::new();
     let mut latencies = Vec::with_capacity(requests);
-    for _ in 0..requests {
-        let (result, elapsed) = receiver
-            .recv_timeout(Duration::from_secs(30))
-            .map_err(|error| format!("proof_concurrent_result_timeout:{error}"))?;
+    for (result, elapsed) in results {
         match result {
             Ok(response) if response.status == 200 => {
                 successes += 1;
@@ -1792,14 +1905,6 @@ fn run_concurrent_remote_burst(
             }
         }
     }
-    for worker in workers {
-        worker
-            .join()
-            .map_err(|_| "proof_concurrent_thread_panicked".to_string())?;
-    }
-    let isolation_probe = probe_receiver
-        .recv()
-        .map_err(|_| "proof_isolation_probe_thread_panicked".to_string())?;
     latencies.sort_unstable();
     Ok(ConcurrentBurstSummary {
         requests,
@@ -2634,73 +2739,6 @@ fn postgres_todo_count(harness: &ProofHarness) -> Result<u64, String> {
         .map_err(|_| format!("proof_database_count_invalid:{output}"))
 }
 
-struct HttpResponse {
-    status: u16,
-    headers: Vec<(String, String)>,
-    body: String,
-}
-
-impl HttpResponse {
-    fn header(&self, wanted: &str) -> Option<&str> {
-        self.headers
-            .iter()
-            .find(|(name, _)| name.eq_ignore_ascii_case(wanted))
-            .map(|(_, value)| value.as_str())
-    }
-}
-
-fn http_request(
-    port: u16,
-    method: &str,
-    path: &str,
-    body: &str,
-    extra_headers: &[(&str, &str)],
-) -> Result<HttpResponse, String> {
-    let mut stream = TcpStream::connect_timeout(
-        &std::net::SocketAddr::from(([127, 0, 0, 1], port)),
-        Duration::from_secs(2),
-    )
-    .map_err(|error| format!("proof_http_connect_failed:{port}:{error}"))?;
-    stream
-        .set_read_timeout(Some(PROOF_HTTP_READ_TIMEOUT))
-        .map_err(|error| format!("proof_http_timeout_failed:{error}"))?;
-    let mut request = format!(
-        "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\nContent-Length: {}\r\n",
-        body.len()
-    );
-    for (name, value) in extra_headers {
-        request.push_str(&format!("{name}: {value}\r\n"));
-    }
-    request.push_str("\r\n");
-    request.push_str(body);
-    stream
-        .write_all(request.as_bytes())
-        .map_err(|error| format!("proof_http_write_failed:{error}"))?;
-    let mut response = String::new();
-    stream
-        .read_to_string(&mut response)
-        .map_err(|error| format!("proof_http_read_failed:{error}"))?;
-    let (head, body) = response
-        .split_once("\r\n\r\n")
-        .unwrap_or((response.as_str(), ""));
-    let mut lines = head.lines();
-    let status = lines
-        .next()
-        .and_then(|line| line.split_whitespace().nth(1))
-        .and_then(|status| status.parse().ok())
-        .ok_or_else(|| "proof_http_status_invalid".to_string())?;
-    let headers = lines
-        .take_while(|line| !line.is_empty() && *line != "\r")
-        .filter_map(|line| line.trim_end_matches('\r').split_once(':'))
-        .map(|(name, value)| (name.trim().to_string(), value.trim().to_string()))
-        .collect();
-    Ok(HttpResponse {
-        status,
-        headers,
-        body: body.to_string(),
-    })
-}
-
 fn wait_for_http(
     world: &dyn ProofWorld,
     port: u16,
@@ -2776,6 +2814,7 @@ mod scripted;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Read;
 
     fn docker_args() -> DockerAutoscalingArgs {
         DockerAutoscalingArgs {
