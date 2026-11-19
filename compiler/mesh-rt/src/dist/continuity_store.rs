@@ -587,7 +587,15 @@ impl SqliteContinuityStore {
     }
 
     fn upsert_batch(&self, records: &[StoredContinuityRecord]) -> Result<(), String> {
-        if records.is_empty() {
+        self.commit_batch(records, &[])
+    }
+
+    fn commit_batch(
+        &self,
+        records: &[StoredContinuityRecord],
+        responses: &[(String, Vec<u8>)],
+    ) -> Result<(), String> {
+        if records.is_empty() && responses.is_empty() {
             return Ok(());
         }
         let prepared = records
@@ -633,9 +641,15 @@ impl SqliteContinuityStore {
         execute_batch(connection.raw, "BEGIN IMMEDIATE")?;
         let result = prepared
             .iter()
-            .try_for_each(|record| Self::apply_prepared_upsert(&connection, record));
+            .try_for_each(|record| Self::apply_prepared_upsert(&connection, record))
+            .and_then(|()| {
+                responses.iter().try_for_each(|(key, response)| {
+                    Self::apply_response(&connection, key, response)
+                })
+            })
+            .and_then(|()| execute_batch(connection.raw, "COMMIT"));
         match result {
-            Ok(()) => execute_batch(connection.raw, "COMMIT"),
+            Ok(()) => Ok(()),
             Err(error) => {
                 let _ = execute_batch(connection.raw, "ROLLBACK");
                 Err(error)
@@ -736,17 +750,22 @@ impl SqliteContinuityStore {
     }
 
     fn update_response(&self, operation_key: &str, response: &[u8]) -> Result<(), String> {
-        let metadata = serde_json::to_string(&vec![("replayable".to_string(), "true".to_string())])
-            .map_err(|_| "continuity_store_response_metadata_encode_failed".to_string())?;
-        let connection = self.connection.lock().unwrap();
+        Self::apply_response(&self.connection.lock().unwrap(), operation_key, response)
+    }
+
+    fn apply_response(
+        connection: &Connection,
+        operation_key: &str,
+        response: &[u8],
+    ) -> Result<(), String> {
         let mut statement = Self::prepare(
-            &connection,
+            connection,
             "UPDATE continuity_records
                 SET response_metadata_json = ?2, response_body = ?3, updated_at_millis = ?4
               WHERE operation_key = ?1",
         )?;
         statement.bind_text(1, operation_key)?;
-        statement.bind_text(2, &metadata)?;
+        statement.bind_text(2, r#"[["replayable","true"]]"#)?;
         statement.bind_blob(3, response)?;
         statement.bind_i64(4, sqlite_integer(SystemTimeMillis::now())?);
         statement.step()?;
@@ -1288,9 +1307,26 @@ const DURABLE_WRITE_QUEUE_ITEMS: usize = 8_192;
 const DURABLE_WRITE_BATCH_ITEMS: usize = 128;
 const DURABLE_WRITE_BATCH_WINDOW: Duration = Duration::from_millis(2);
 
+enum DurableWriteData {
+    StoredRecord(Box<StoredContinuityRecord>),
+    ReplicaRecord(Box<super::continuity::ContinuityRecord>),
+    Response(String, Vec<u8>),
+}
+
 struct DurableWrite {
-    record: StoredContinuityRecord,
-    reply: crate::actor::CooperativeSender<Result<(), String>>,
+    data: DurableWriteData,
+    reply: Option<crate::actor::CooperativeSender<Result<(), String>>>,
+}
+
+fn finish_durable_write(
+    reply: Option<crate::actor::CooperativeSender<Result<(), String>>>,
+    result: Result<(), String>,
+) {
+    if let Some(reply) = reply {
+        let _ = reply.send(result);
+    } else if let Err(error) = result {
+        eprintln!("mesh continuity: durable_replica_write_failed reason={error}");
+    }
 }
 
 const MAX_REPLAY_RESPONSES: usize = 10_000;
@@ -1542,12 +1578,33 @@ pub(crate) fn persist_runtime_response(operation_key: &str, response: &[u8]) -> 
     if operation_key.is_empty() || response.is_empty() {
         return Err("continuity_response_invalid".to_string());
     }
+    cache_runtime_response(operation_key, response);
+    configured_continuity_store().map_or(Ok(()), |store| {
+        configured_writer(store).persist_data(
+            DurableWriteData::Response(operation_key.to_string(), response.to_vec()),
+            "response",
+        )
+    })
+}
+
+fn cache_runtime_response(operation_key: &str, response: &[u8]) {
     response_replay_cache()
         .lock()
         .unwrap()
         .insert(operation_key, response);
+}
+
+pub(crate) fn queue_replica_response(
+    operation_key: String,
+    response: Vec<u8>,
+) -> Result<(), String> {
+    cache_runtime_response(&operation_key, &response);
     configured_continuity_store().map_or(Ok(()), |store| {
-        store.update_response(operation_key, response)
+        configured_writer(store).enqueue(
+            DurableWriteData::Response(operation_key, response),
+            None,
+            "response",
+        )
     })
 }
 
@@ -1716,11 +1773,11 @@ impl SqliteContinuityStore {
             .get(&record.request_key)
             .cloned();
         let (response_metadata, response_body) = match existing.as_ref() {
-            Some(stored) => (
+            Some(stored) if !stored.response_body.is_empty() => (
                 stored.response_metadata.clone(),
                 stored.response_body.clone(),
             ),
-            None => (
+            _ => (
                 cached_response
                     .as_ref()
                     .map(|_| vec![("replayable".to_string(), "true".to_string())])
@@ -1792,10 +1849,14 @@ impl DurableWriter {
 
     /// Persists `record` with the next group commit and waits for it;
     /// `operation` names the caller in errors.
-    fn persist(&self, record: StoredContinuityRecord, operation: &str) -> Result<(), String> {
-        let (reply, result) = crate::actor::cooperative_channel();
+    fn enqueue(
+        &self,
+        data: DurableWriteData,
+        reply: Option<crate::actor::CooperativeSender<Result<(), String>>>,
+        operation: &str,
+    ) -> Result<(), String> {
         self.sender
-            .try_send(DurableWrite { record, reply })
+            .try_send(DurableWrite { data, reply })
             .map_err(|error| match error {
                 crossbeam_channel::TrySendError::Full(_) => {
                     format!("continuity_{operation}_group_commit_queue_full")
@@ -1803,7 +1864,16 @@ impl DurableWriter {
                 crossbeam_channel::TrySendError::Disconnected(_) => {
                     format!("continuity_{operation}_group_commit_unavailable")
                 }
-            })?;
+            })
+    }
+
+    fn persist(&self, record: StoredContinuityRecord, operation: &str) -> Result<(), String> {
+        self.persist_data(DurableWriteData::StoredRecord(Box::new(record)), operation)
+    }
+
+    fn persist_data(&self, data: DurableWriteData, operation: &str) -> Result<(), String> {
+        let (reply, result) = crate::actor::cooperative_channel();
+        self.enqueue(data, Some(reply), operation)?;
         crate::actor::cooperative_recv_timeout(&result, Duration::from_secs(4)).map_err(
             |error| match error {
                 mpsc::RecvTimeoutError::Timeout => {
@@ -1818,30 +1888,67 @@ impl DurableWriter {
 }
 
 fn commit_durable_writes(store: &SqliteContinuityStore, writes: Vec<DurableWrite>) {
-    let records: Vec<_> = writes.iter().map(|write| write.record.clone()).collect();
-    match store.upsert_batch(&records) {
-        Ok(()) => {
-            for write in writes {
-                let _ = write.reply.send(Ok(()));
+    let mut records = Vec::new();
+    let mut record_replies = Vec::new();
+    let mut responses = Vec::new();
+    let mut response_replies = Vec::new();
+    for write in writes {
+        match write.data {
+            DurableWriteData::StoredRecord(record) => {
+                records.push(*record);
+                record_replies.push(write.reply);
             }
-        }
-        Err(error) if writes.len() == 1 => {
-            let _ = writes[0].reply.send(Err(error));
-        }
-        Err(_) => {
-            // A stale or fenced record must not roll back unrelated writes
-            // that merely arrived during the same group-commit window.
-            for write in writes {
-                let result = store.upsert(&write.record);
-                let _ = write.reply.send(result);
+            DurableWriteData::ReplicaRecord(record) => match store.stored_runtime_record(&record) {
+                Ok(record) => {
+                    records.push(record);
+                    record_replies.push(write.reply);
+                }
+                Err(error) => finish_durable_write(write.reply, Err(error)),
+            },
+            DurableWriteData::Response(key, response) => {
+                responses.push((key, response));
+                response_replies.push(write.reply);
             }
         }
     }
+
+    // Responses update the record for the same key. Commit the record
+    // versions first, including records that arrived in this batch.
+    let batch = store.commit_batch(&records, &responses);
+    for (record, reply) in records.into_iter().zip(record_replies) {
+        // A fenced record or missing response target must not roll back
+        // unrelated writes from the same group-commit window.
+        let result = if batch.is_err() {
+            store.upsert(&record)
+        } else {
+            Ok(())
+        };
+        finish_durable_write(reply, result);
+    }
+    for ((key, response), reply) in responses.into_iter().zip(response_replies) {
+        let result = if batch.is_err() {
+            store.update_response(&key, &response)
+        } else {
+            Ok(())
+        };
+        finish_durable_write(reply, result);
+    }
 }
 
-/// Persists `record` through `store`'s group commit.
+pub(crate) fn queue_replica_record(
+    record: super::continuity::ContinuityRecord,
+) -> Result<(), String> {
+    configured_continuity_store().map_or(Ok(()), |store| {
+        configured_writer(store).enqueue(
+            DurableWriteData::ReplicaRecord(Box::new(record)),
+            None,
+            "replica",
+        )
+    })
+}
+
 fn persist_runtime(
-    store: &Arc<SqliteContinuityStore>,
+    store: &SqliteContinuityStore,
     writer: &DurableWriter,
     record: &super::continuity::ContinuityRecord,
     operation: &str,
@@ -2019,12 +2126,20 @@ pub(crate) mod tests {
             &store,
             vec![
                 DurableWrite {
-                    record: record("valid", 1, StoredContinuityPhase::Started),
-                    reply: valid_reply,
+                    data: DurableWriteData::StoredRecord(Box::new(record(
+                        "valid",
+                        1,
+                        StoredContinuityPhase::Started,
+                    ))),
+                    reply: Some(valid_reply),
                 },
                 DurableWrite {
-                    record: record("fenced", 1, StoredContinuityPhase::Started),
-                    reply: fenced_reply,
+                    data: DurableWriteData::StoredRecord(Box::new(record(
+                        "fenced",
+                        1,
+                        StoredContinuityPhase::Started,
+                    ))),
+                    reply: Some(fenced_reply),
                 },
             ],
         );
@@ -3086,6 +3201,44 @@ pub(crate) mod tests {
         assert_eq!(
             super::super::continuity::decode_record_payload(&records[1]).unwrap(),
             submitted
+        );
+    }
+
+    #[test]
+    fn replica_writes_queue_without_waiting_for_sqlite_and_keep_wire_order() {
+        use super::super::continuity::ContinuityPhase;
+        let store = Arc::new(store());
+        let writer = DurableWriter::start(Arc::clone(&store));
+        let key = "queued-replica-response";
+        let sqlite = store.connection.lock().unwrap();
+        writer
+            .enqueue(
+                DurableWriteData::ReplicaRecord(Box::new(runtime_record(
+                    key,
+                    ContinuityPhase::Completed,
+                ))),
+                None,
+                "replica",
+            )
+            .expect("queue replica record");
+        writer
+            .enqueue(
+                DurableWriteData::Response(key.to_string(), b"response".to_vec()),
+                None,
+                "response",
+            )
+            .expect("queue replica response");
+        drop(sqlite);
+
+        writer
+            .persist(
+                record("durability-barrier", 1, StoredContinuityPhase::Started),
+                "runtime",
+            )
+            .expect("finish queued writes");
+        assert_eq!(
+            store.replay_response(key).unwrap(),
+            Some(b"response".to_vec())
         );
     }
 

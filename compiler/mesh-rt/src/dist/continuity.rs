@@ -1185,6 +1185,28 @@ impl ContinuityRegistry {
         next_attempt_token: u64,
         record: ContinuityRecord,
     ) -> Result<(), String> {
+        self.merge_remote_record_with(next_attempt_token, record, |watermark, record| {
+            super::continuity_store::persist_runtime_record(watermark, &record);
+            Ok(())
+        })
+    }
+
+    pub(crate) fn receive_remote_upsert(
+        &self,
+        next_attempt_token: u64,
+        record: ContinuityRecord,
+    ) -> Result<(), String> {
+        self.merge_remote_record_with(next_attempt_token, record, |_, record| {
+            super::continuity_store::queue_replica_record(record)
+        })
+    }
+
+    fn merge_remote_record_with(
+        &self,
+        next_attempt_token: u64,
+        record: ContinuityRecord,
+        persist: impl FnOnce(u64, ContinuityRecord) -> Result<(), String>,
+    ) -> Result<(), String> {
         record.validate()?;
         let incoming_authority = ContinuityAuthorityConfig::from_record(&record);
         let mut inner = self.inner.write();
@@ -1231,8 +1253,7 @@ impl ContinuityRegistry {
         // in-memory registry current leaves the node-local durable store with
         // an active predecessor, which can survive restart and falsely block
         // scale-down as an only-copy responsibility.
-        super::continuity_store::persist_runtime_record(watermark, &merged);
-        Ok(())
+        persist(watermark, merged)
     }
 
     pub fn merge_snapshot(&self, snapshot: ContinuitySnapshot) -> Result<(), String> {

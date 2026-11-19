@@ -2402,7 +2402,7 @@ fn handle_session_message(
         DIST_CONTINUITY_UPSERT => match crate::dist::continuity::decode_upsert_payload(&msg) {
             Ok((next_attempt_token, record)) => {
                 if let Err(error) = crate::dist::continuity::continuity_registry()
-                    .merge_remote_record(next_attempt_token, record)
+                    .receive_remote_upsert(next_attempt_token, record)
                 {
                     eprintln!(
                         "mesh continuity: transition=upsert_rejected remote={} error={}",
@@ -2599,14 +2599,10 @@ fn handle_session_message(
         }
         DIST_CONTINUITY_RESPONSE => match decode_continuity_response_frame(&msg) {
             Ok((operation_key, response)) => {
-                if let Err(error) = crate::dist::continuity_store::persist_runtime_response(
-                    &operation_key,
-                    &response,
-                ) {
-                    eprintln!(
-                        "mesh continuity: response_replica_failed operation={} reason={}",
-                        operation_key, error
-                    );
+                if let Err(error) =
+                    crate::dist::continuity_store::queue_replica_response(operation_key, response)
+                {
+                    eprintln!("mesh continuity: response_replica_failed reason={error}");
                 }
             }
             Err(error) => eprintln!(
