@@ -424,7 +424,7 @@ impl SqliteContinuityStore {
                (SELECT COALESCE(MAX(terminal_record_count), 0) FROM continuity_store_counters),
                (SELECT COUNT(*) FROM continuity_tombstones),
                (SELECT COUNT(*) FROM continuity_log),
-               (SELECT COALESCE(MAX(sequence), 0) FROM continuity_log),
+               (SELECT COALESCE(MAX(seq), 0) FROM sqlite_sequence WHERE name = 'continuity_log'),
                (SELECT MIN(high_water_mark) FROM continuity_replica_safe_points),
                (SELECT COUNT(*) FROM continuity_log WHERE sequence <=
                   (SELECT COALESCE(MIN(high_water_mark), 0) FROM continuity_replica_safe_points))",
@@ -455,10 +455,11 @@ impl SqliteContinuityStore {
         unsigned_integer(statement.integer(0))
     }
 
+    // AUTOINCREMENT retains the last sequence after every log entry is compacted.
     fn high_water(connection: &Connection) -> Result<u64, String> {
         Self::query_u64(
             connection,
-            "SELECT COALESCE(MAX(sequence), 0) FROM continuity_log",
+            "SELECT COALESCE(MAX(seq), 0) FROM sqlite_sequence WHERE name = 'continuity_log'",
         )
     }
 
@@ -2482,6 +2483,8 @@ pub(crate) mod tests {
         assert_eq!(caught_up.compaction_lag, 2);
         assert_eq!(store.compact_log_to_replica_safe_point().unwrap(), 2);
         assert!(store.log_entries_after(0, 10).unwrap().is_empty());
+        assert_eq!(store.high_water_mark(), Ok(3));
+        assert_eq!(store.stats().unwrap().high_water_mark, 3);
     }
 
     /// Runs `sql` on the store's own connection, to age or damage its data.
