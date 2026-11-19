@@ -76,6 +76,7 @@ pub extern "C" fn mesh_process_request_shutdown() {
 
 #[no_mangle]
 pub extern "C" fn mesh_process_exit(code: i64) -> ! {
+    crate::panic::flush_supervised_diagnostics();
     // A status out of range is a failure, 1.
     std::process::exit(u8::try_from(code).map_or(1, i32::from))
 }
