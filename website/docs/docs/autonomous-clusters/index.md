@@ -127,16 +127,26 @@ Replica counts include the owner:
 ```mesh
 # Three copies: one owner executes, two other nodes retain the continuity record
 @cluster(3)
-pub fn recompute_account(account_id :: String) -> Result<Account, String> do
-  Accounts.recompute(account_id)
+pub fn recompute_accounts() -> Int do
+  42
 end
 
-# Two copies of each request's record
-let router = HTTP.router()
-  |> HTTP.on_get("/accounts/:id", HTTP.clustered(2, handle_get_account))
+pub fn show_account(request :: Request) -> Response do
+  case Request.param(request, "id") do
+    Some(id) -> HTTP.response(200, json { id: id })
+    None -> HTTP.response(400, json { error: "missing id" })
+  end
+end
+
+fn main() do
+  # Two copies of each request's record
+  let router = HTTP.router()
+    |> HTTP.on_get("/accounts/:id", HTTP.clustered(2, show_account))
+  HTTP.serve(router, 8080)
+end
 ```
 
-Omitting the count uses `cluster.default_replicas`. Strict durability prepares the required record replicas before execution. If the acknowledgement threshold cannot be reached, Mesh rejects the request instead of silently running with weaker durability.
+A `@cluster` function takes no parameters, because the runtime owns its continuity metadata; a clustered route receives its request. Omitting the count uses `cluster.default_replicas`. Strict durability prepares the required record replicas before execution. If the acknowledgement threshold cannot be reached, Mesh rejects the request instead of silently running with weaker durability.
 
 ## Request identity and safe replay
 

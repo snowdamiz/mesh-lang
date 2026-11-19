@@ -74,14 +74,15 @@ Cluster-eligible work is explicit:
 
 ```mesh
 @cluster(2)
-pub fn load_account(id :: Int) -> String ! String do
-  Ok("account-#{id}")
+pub fn sync_accounts() -> String!String do
+  Ok("accounts synced")
 end
 ```
 
-`@cluster` declares the work and replica requirement. Node bootstrap, routing,
-continuity, security, and capacity policy still come from the runtime and the
-project manifest; the annotation is not a substitute for deployment
+`@cluster` declares the work and replica requirement on a public function that
+takes no parameters; the runtime owns its continuity metadata. Node bootstrap,
+routing, continuity, security, and capacity policy still come from the runtime
+and the project manifest; the annotation is not a substitute for deployment
 configuration. Start with the
 [clustered walkthrough](https://meshlang.dev/docs/getting-started/clustered-example/)
 and continue to [Autonomous Clusters](https://meshlang.dev/docs/autonomous-clusters/).
