@@ -1,6 +1,6 @@
 //! Corosensei-based stackful coroutine management for Mesh actors.
 //!
-//! Each actor runs as a stackful coroutine with a 64 KiB stack. The coroutine
+//! Stackful actors run on guarded coroutine stacks. The coroutine
 //! yields when its reduction counter is exhausted, allowing the scheduler to
 //! run other actors on the same OS thread.
 //!
@@ -200,12 +200,15 @@ pub struct CoroutineHandle {
     coro: Option<ActorCoroutine>,
     /// Lowest address of the coroutine's stack (its guard page).
     stack_limit: usize,
+    reuse_stack: bool,
 }
 
 type PanicPayload = Box<dyn Any + Send>;
 type ActorCoroutine = Coroutine<(), (), Result<(), PanicPayload>>;
 
 thread_local! {
+    // Keep at most one retired stack on each scheduler thread.
+    static FINISHED_WORKER_STACK: RefCell<Option<DefaultStack>> = const { RefCell::new(None) };
     static DROPPING_STACK_LIMIT: Cell<usize> = const { Cell::new(0) };
 }
 
@@ -218,8 +221,23 @@ impl CoroutineHandle {
     /// The coroutine installs its Yielder into the thread-local before
     /// calling the entry function, so `mesh_reduction_check()` can yield.
     pub fn new(entry_fn: *const u8, args_ptr: *const u8) -> Self {
-        let stack =
-            DefaultStack::new(DEFAULT_STACK_SIZE).expect("failed to allocate coroutine stack");
+        Self::with_stack(entry_fn, args_ptr, None, false)
+    }
+
+    pub(super) fn new_on_worker(entry_fn: *const u8, args_ptr: *const u8) -> Self {
+        let stack = FINISHED_WORKER_STACK.with(|slot| slot.borrow_mut().take());
+        Self::with_stack(entry_fn, args_ptr, stack, true)
+    }
+
+    fn with_stack(
+        entry_fn: *const u8,
+        args_ptr: *const u8,
+        stack: Option<DefaultStack>,
+        reuse_stack: bool,
+    ) -> Self {
+        let stack = stack.unwrap_or_else(|| {
+            DefaultStack::new(DEFAULT_STACK_SIZE).expect("failed to allocate coroutine stack")
+        });
         let stack_limit = {
             use corosensei::stack::Stack;
             stack.limit().get()
@@ -263,6 +281,7 @@ impl CoroutineHandle {
         CoroutineHandle {
             coro: Some(coro),
             stack_limit,
+            reuse_stack,
         }
     }
 
@@ -320,7 +339,14 @@ impl CoroutineHandle {
 impl Drop for CoroutineHandle {
     fn drop(&mut self) {
         let coro = self.coro.take().expect("coroutine exists until drop");
-        if !coro.done() {
+        if coro.done() {
+            if self.reuse_stack {
+                let stack = coro.into_stack();
+                let _ = FINISHED_WORKER_STACK.try_with(|slot| {
+                    slot.borrow_mut().replace(stack);
+                });
+            }
+        } else {
             let previous = DROPPING_STACK_LIMIT.replace(self.stack_limit);
             drop(coro);
             DROPPING_STACK_LIMIT.set(previous);
@@ -387,6 +413,27 @@ pub(crate) fn current_thread_stack_bounds() -> (usize, usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn worker_reuses_a_stack_after_actor_panic() {
+        extern "C-unwind" fn crash(_args: *const u8) {
+            resume_unwind(Box::new("worker failure"));
+        }
+        extern "C-unwind" fn complete(_args: *const u8) {}
+
+        let mut first = CoroutineHandle::new_on_worker(crash as *const u8, std::ptr::null());
+        let limit = first.stack_limit;
+        assert_eq!(
+            first.resume_catching_panic(),
+            Err("worker failure".to_string())
+        );
+        drop(first);
+        FINISHED_WORKER_STACK.with(|slot| assert!(slot.borrow().is_some()));
+
+        let mut second = CoroutineHandle::new_on_worker(complete as *const u8, std::ptr::null());
+        assert_eq!(second.stack_limit, limit);
+        assert!(!second.resume());
+    }
 
     /// A panic that carries neither a String nor a &str is still an exit
     /// reason.
