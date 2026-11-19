@@ -705,6 +705,9 @@ enum Control {
         after: Option<String>,
         limit: Option<u32>,
     },
+    QueueStats {
+        queue: String,
+    },
     Pause {
         queue: String,
     },
@@ -964,6 +967,20 @@ pub(super) fn control(
             queues: true,
         } => list_queues(db, namespace, after_id.as_deref(), limit),
         Control::ListQueues { after, limit } => list_queues(db, namespace, after.as_deref(), limit),
+        Control::QueueStats { queue } => response(
+            db,
+            "WITH clock AS MATERIALIZED (SELECT mesh_jobs.now_ms() AS now_ms), counts AS (
+                 SELECT state, count(*) AS count, min(scheduled_at_ms) FILTER (
+                     WHERE state IN ('available', 'scheduled', 'retryable') AND scheduled_at_ms <= now_ms
+                 ) AS oldest_due_ms
+                 FROM mesh_jobs.jobs CROSS JOIN clock WHERE namespace = $1 AND queue = $2 GROUP BY state
+             ) SELECT jsonb_build_object(
+                 'counts', coalesce(jsonb_object_agg(state, count), '{}'::jsonb),
+                 'oldest_due_ms', min(oldest_due_ms),
+                 'oldest_due_age_ms', (SELECT now_ms FROM clock) - min(oldest_due_ms)
+             )::text FROM counts",
+            &[namespace, &queue],
+        ),
         Control::Pause { queue } => queue_control(db, namespace, &queue, "pause", None),
         Control::Resume {
             queue: Some(queue),

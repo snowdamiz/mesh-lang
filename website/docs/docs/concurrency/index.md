@@ -543,6 +543,7 @@ fn handle_receipt(job :: String) -> String do
 end
 
 fn start_receipts(pool :: PoolHandle) -> Int!String do
+  Jobs.control(pool, "shop", json { action: "configure", queue: "default", concurrency: 4 })?
   Jobs.start(pool,
     json {
       namespace: "shop",
@@ -575,7 +576,7 @@ Use a writable PostgreSQL primary with durable commits (`synchronous_commit = on
 
 ### Inspect and operate queues
 
-Pass a JSON object to `Jobs.control` with an `action` and the fields required for that action. For example, use `json { action: "pause", queue: "default" }` to stop new claims without stopping active attempts. Queue settings apply to every runner in the namespace. The per-runner limits in `Jobs.start` still apply.
+Pass a JSON object to `Jobs.control` with an `action` and the fields required for that action. For example, use `json { action: "pause", queue: "default" }` to stop new claims without stopping active attempts. A new queue allows one concurrent attempt across all runners. Change that limit with `configure` or `scale`. The per-runner limits in `Jobs.start` still apply.
 
 | Action | Fields |
 | --- | --- |
@@ -585,6 +586,7 @@ Pass a JSON object to `Jobs.control` with an `action` and the fields required fo
 | `get` | `id` for a job or `queue` for a queue |
 | `list` | Optional `queue`, `worker`, `state`, `after_id`, `limit` |
 | `list_queues` | Optional `after`, `limit` |
+| `queue_stats` | `queue`. Returns counts by state and the age of the oldest due job |
 | `cancel`, `retry`, `discard`, `suspend`, `resume`, `delete` | `id` |
 | `cancel_all`, `retry_all` | Optional `filter` object with `queue`, `worker`, `state`, `limit` |
 | `reschedule` | `id` and either `delay_ms` or a UTC `scheduled_at_ms` |

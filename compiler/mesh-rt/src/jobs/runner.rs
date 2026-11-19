@@ -372,10 +372,10 @@ pub(super) fn start(
                     Err(error) => {
                         dispatcher
                             .record_error(format!("could not start job maintenance: {error}"));
-                        dispatcher.state.lock().phase = Phase::Stopped;
                     }
                 }
             }
+            dispatcher.state.lock().phase = Phase::Stopped;
             let _ = supervisor.join();
         });
     if let Err(error) = thread {
@@ -788,11 +788,10 @@ fn dispatch(runner: &Runner<'_>, pool: u64, workers: &str, handler: Handler) {
         }
 
         let admitting = {
-            let mut state = runner.state.lock();
+            let state = runner.state.lock();
             let running = matches!(state.phase, Phase::Running);
             let empty = config.drain && queues.iter().all(|queue| queue.checked_empty);
             if attempts.is_empty() && (!running || empty) {
-                state.phase = Phase::Stopped;
                 return;
             }
             running

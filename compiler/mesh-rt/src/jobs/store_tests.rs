@@ -439,6 +439,17 @@ fn schedules_versions_snoozes_and_retry_budget_use_primary_time() {
     ));
     let retryable = f.get(job_id);
     assert_eq!(retryable["state"], "retryable");
+    let metrics = f.ops(json!({"action":"queue_stats","queue":"default"}));
+    assert_eq!(
+        metrics["counts"],
+        json!({"available":1,"scheduled":1,"retryable":1})
+    );
+    assert!(metrics["oldest_due_age_ms"].as_u64().is_some());
+    let scheduled = f.get(id(&jobs[1]));
+    let mut reopened = Connection::open(&f.url);
+    migrate(&mut reopened).unwrap();
+    assert_eq!(f.get(id(&jobs[1])), scheduled);
+    assert_eq!(f.get(job_id), retryable);
     let now = response(&mut f.db, "SELECT mesh_jobs.now_ms()::text", &[])
         .unwrap()
         .parse::<u64>()
