@@ -3700,6 +3700,7 @@ impl<'ctx> CodeGen<'ctx> {
         // The fn_ptr will be patched at runtime or we can store a function index.
         // For now, store the child spec metadata; the start function is referenced by name.
         let mut fn_ptr_offsets: Vec<(usize, String)> = Vec::new();
+        let mut worker_tags = Vec::new();
 
         for child in children {
             // id_len (4 bytes LE)
@@ -3733,6 +3734,9 @@ impl<'ctx> CodeGen<'ctx> {
             }
 
             // child_type (1 byte)
+            if child.child_type == 0 {
+                worker_tags.push((config_bytes.len(), self.functions[&child.start_fn]));
+            }
             config_bytes.push(child.child_type);
         }
 
@@ -3774,7 +3778,8 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Patch function pointers into the stack copy.
         for (offset, fn_name) in &fn_ptr_offsets {
-            let fn_ptr_val = self.functions[fn_name].as_global_value().as_pointer_value();
+            let entry = self.functions[fn_name];
+            let fn_ptr_val = entry.as_global_value().as_pointer_value();
 
             // Convert fn_ptr to i64.
             let fn_ptr_int = self
@@ -3797,10 +3802,19 @@ impl<'ctx> CodeGen<'ctx> {
             };
 
             // Store the fn_ptr as i64 into the config buffer.
-            self.builder
+            let store = self
+                .builder
                 .build_store(elem_ptr, fn_ptr_int)
                 .map_err(|e| e.to_string())?;
+            self.supervisor_entries.push((entry, store));
         }
+
+        self.supervisor_configs
+            .push(super::supervisor::ConfigTemplate {
+                global: config_global,
+                bytes: config_bytes,
+                worker_tags,
+            });
 
         // Call mesh_supervisor_start(config_ptr, config_size) -> i64 (PID)
         Ok(self.codegen_runtime_call(

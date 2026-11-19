@@ -108,6 +108,8 @@ pub struct ChildSpec {
     pub shutdown: ShutdownType,
     /// Whether this child is a worker or a nested supervisor.
     pub child_type: ChildType,
+    /// Prefer the spawning worker for a short, receive-driven child.
+    pub message_worker: bool,
 }
 
 // Safety: ChildSpec's fn ptrs are owned by the runtime and valid for the
@@ -190,6 +192,7 @@ mod tests {
             restart_type: RestartType::Permanent,
             shutdown: ShutdownType::default(),
             child_type: ChildType::Worker,
+            message_worker: false,
         };
         assert_eq!(spec.id, "worker1");
         assert_eq!(spec.restart_type, RestartType::Permanent);
@@ -207,6 +210,7 @@ mod tests {
             restart_type: RestartType::Transient,
             shutdown: ShutdownType::BrutalKill,
             child_type: ChildType::Worker,
+            message_worker: false,
         };
         let state = ChildState {
             spec,

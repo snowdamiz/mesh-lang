@@ -83,6 +83,34 @@ pub extern "C-unwind" fn mesh_panic_str(message: *const crate::string::MeshStrin
     raise(format_args!("{}", unsafe { (*message).as_str() }))
 }
 
+/// The compiler emits this only at a supervisor child's outermost entry,
+/// immediately before returning to the scheduler. All native calls on that
+/// stack have already returned, so there are no native frames to unwind.
+///
+/// # Safety
+/// `message` must be a live Mesh string on the running child's heap or in static storage.
+#[no_mangle]
+pub unsafe extern "C" fn mesh_actor_fail(message: *const crate::string::MeshString) {
+    use crate::actor::process::{ExitReason, ProcessState};
+    let message = if computing_on_plaintext() {
+        WITHHELD
+    } else {
+        unsafe { (*message).as_str() }
+    };
+    let prefix = "Mesh panic: ";
+    let mut reason = String::with_capacity(prefix.len() + message.len() + 1);
+    reason.push_str(prefix);
+    reason.push_str(message);
+    if !QUIET.get() {
+        report_supervised(&reason);
+    }
+    let (_, process) = crate::actor::running_process();
+    let mut process = process.lock();
+    if !matches!(process.state, ProcessState::Exited(_)) {
+        process.state = ProcessState::Exited(ExitReason::Error(reason));
+    }
+}
+
 thread_local! {
     /// Set while the test runner runs a test body: it reports the panic.
     static QUIET: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
@@ -98,49 +126,11 @@ pub(crate) fn defer_diagnostics<T>(f: impl FnOnce() -> T) -> T {
     result
 }
 
-enum Diagnostic {
-    Message(String),
-    Flush(crossbeam_channel::Sender<()>),
-}
-
-static DIAGNOSTICS: std::sync::OnceLock<crossbeam_channel::Sender<Diagnostic>> =
-    std::sync::OnceLock::new();
-
-fn enqueue_diagnostic(message: &str) {
-    use std::io::Write;
-    let writer = DIAGNOSTICS.get_or_init(|| {
-        let (sender, receiver) = crossbeam_channel::bounded(16);
-        let _ = std::thread::Builder::new()
-            .name("mesh-diagnostics".to_string())
-            .spawn(move || {
-                while let Ok(diagnostic) = receiver.recv() {
-                    match diagnostic {
-                        Diagnostic::Message(message) => {
-                            let _ = writeln!(std::io::stderr(), "{message}");
-                        }
-                        Diagnostic::Flush(done) => {
-                            let _ = done.send(());
-                        }
-                    }
-                }
-            });
-        sender
-    });
-    let _ = writer.try_send(Diagnostic::Message(message.to_owned()));
-}
-
-pub(crate) fn flush_deferred_diagnostics() {
-    if let Some(writer) = DIAGNOSTICS.get() {
-        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(20);
-        let (done, receiver) = crossbeam_channel::bounded(1);
-        if writer
-            .send_deadline(Diagnostic::Flush(done), deadline)
-            .is_ok()
-        {
-            let _ = receiver.recv_deadline(deadline);
-        }
-    }
-}
+mod diagnostics;
+use diagnostics::{enqueue_diagnostic, report_supervised};
+pub(crate) use diagnostics::{
+    flush_deferred_diagnostics, flush_supervised_diagnostics, prepare_supervised_diagnostics,
+};
 
 /// Print a Mesh panic as its message alone: the default report's thread
 /// name and runtime source location say nothing about the Mesh program.
@@ -195,6 +185,7 @@ pub(crate) fn quietly<T>(f: impl FnOnce() -> T) -> T {
 pub extern "C" fn mesh_run_main(entry: extern "C-unwind" fn()) {
     ignore_sigpipe();
     if std::panic::catch_unwind(|| entry()).is_err() {
+        flush_supervised_diagnostics();
         std::process::exit(101);
     }
 }

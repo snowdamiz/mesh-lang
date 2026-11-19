@@ -357,7 +357,7 @@ pub struct ActorHeap {
 unsafe impl Send for ActorHeap {}
 
 impl ActorHeap {
-    /// Create a new, empty per-actor heap. Pages are 64 KiB.
+    /// Create an empty heap with a small first page and 64 KiB growth pages.
     pub fn new() -> Self {
         ActorHeap {
             pages: Vec::new(),
@@ -465,8 +465,14 @@ impl ActorHeap {
                 // Allocate a new page. If the total exceeds the default page
                 // size, allocate a page large enough (with room for alignment
                 // padding).
-                let max_padding = if align > GC_HEADER_SIZE { align } else { 0 };
-                self.push_page((total + max_padding).max(ACTOR_PAGE_SIZE))
+                let max_padding = align - GRANULE;
+                // Most actors need just a few messages and their startup arguments.
+                let page_size = if self.pages.is_empty() {
+                    1024
+                } else {
+                    ACTOR_PAGE_SIZE
+                };
+                self.push_page((total + max_padding).max(page_size))
                     .header_offset(0, align)
             }
         };

@@ -70,9 +70,11 @@ unsafe impl Send for SpawnRequest {}
 
 enum SpawnMode {
     Shared,
+    Supervisor,
     Linked {
         parent: ProcessId,
         parent_traps: bool,
+        message_worker: bool,
     },
     Grouped(Option<TerminateCallback>),
     Step(u32),
@@ -221,6 +223,7 @@ thread_local! {
 pub struct ProcessTable {
     shards: [CachePadded<ProcessShard>; PID_SHARDS],
     steps: StepWakes,
+    nearby_starts: AtomicUsize,
 }
 
 impl ProcessTable {
@@ -228,6 +231,7 @@ impl ProcessTable {
         Self {
             shards: std::array::from_fn(|_| CachePadded::new(ProcessShard::default())),
             steps: StepWakes::default(),
+            nearby_starts: AtomicUsize::new(0),
         }
     }
 
@@ -335,6 +339,8 @@ struct WorkerSleep {
     /// Processes on this worker that need attention after waiting.
     woken: Mutex<WorkerWakes>,
     grouped: GroupedSpawns,
+    nearby: Mutex<VecDeque<(Instant, SpawnRequest)>>,
+    has_nearby: AtomicBool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -458,6 +464,42 @@ fn notify_worker(sleepers: &[CachePadded<WorkerSleep>], worker: Option<usize>, p
 }
 
 impl WorkerSleep {
+    // Only small bursts of receive-driven children stay near their spawner.
+    // A busy owner loses unstarted work to peers after one short grace period.
+    fn offer_nearby(&self, request: SpawnRequest, pending: &AtomicUsize) -> Option<SpawnRequest> {
+        let mut starts = self.nearby.lock();
+        if self
+            .residents
+            .load(Ordering::Relaxed)
+            .saturating_add(starts.len())
+            >= 4
+        {
+            return Some(request);
+        }
+        starts.push_back((Instant::now(), request));
+        pending.fetch_add(1, Ordering::Relaxed);
+        self.has_nearby.store(true, Ordering::Release);
+        None
+    }
+
+    fn take_nearby(&self, pending: &AtomicUsize, now: Option<Instant>) -> Option<SpawnRequest> {
+        if !self.has_nearby.load(Ordering::Acquire) {
+            return None;
+        }
+        let mut starts = self.nearby.lock();
+        let &(queued, _) = starts.front()?;
+        if now.is_some_and(|now| now.saturating_duration_since(queued) < Duration::from_micros(160))
+        {
+            return None;
+        }
+        let (_, request) = starts.pop_front().unwrap();
+        if starts.is_empty() {
+            self.has_nearby.store(false, Ordering::Release);
+        }
+        pending.fetch_sub(1, Ordering::Relaxed);
+        Some(request)
+    }
+
     /// Unpark the worker if it is parked. Cheap for a busy one: an atomic load.
     fn wake(&self) -> bool {
         let idle = self.idle.load(Ordering::SeqCst);
@@ -659,6 +701,36 @@ impl Scheduler {
         )
     }
 
+    pub(super) fn spawn_supervisor(&self, entry: *const u8, args: *const u8) -> ProcessId {
+        self.spawn_process(
+            entry,
+            args,
+            0,
+            Priority::Normal,
+            std::ptr::null(),
+            SpawnMode::Supervisor,
+        )
+    }
+
+    pub(super) fn spawn_supervised(
+        &self,
+        spec: &super::child_spec::ChildSpec,
+        parent: ProcessId,
+    ) -> ProcessId {
+        self.spawn_process(
+            spec.start_fn,
+            spec.start_args_ptr,
+            spec.start_args_size,
+            Priority::Normal,
+            std::ptr::null(),
+            SpawnMode::Linked {
+                parent,
+                parent_traps: false,
+                message_worker: spec.message_worker,
+            },
+        )
+    }
+
     pub(super) fn spawn_step(
         &self,
         entry: *const u8,
@@ -736,6 +808,7 @@ impl Scheduler {
             SpawnMode::Linked {
                 parent,
                 parent_traps,
+                message_worker: false,
             },
         )
     }
@@ -787,6 +860,7 @@ impl Scheduler {
         if let SpawnMode::Linked {
             parent,
             parent_traps,
+            ..
         } = mode
         {
             process.links.insert(parent);
@@ -852,6 +926,23 @@ impl Scheduler {
             priority,
         };
 
+        let nearby = matches!(
+            mode,
+            SpawnMode::Supervisor
+                | SpawnMode::Linked {
+                    message_worker: true,
+                    ..
+                }
+        );
+        let request = if nearby {
+            let Some(overflow) = self.offer_to_spawner(request) else {
+                return pid;
+            };
+            overflow
+        } else {
+            request
+        };
+
         if let Placement::Grouped { worker } = placement {
             self.sleepers[worker].enqueue_grouped(request);
         } else {
@@ -877,6 +968,26 @@ impl Scheduler {
         }
 
         pid
+    }
+
+    fn offer_to_spawner(&self, request: SpawnRequest) -> Option<SpawnRequest> {
+        let active = &self.sleepers[..self.active_workers()];
+        let index = CURRENT_WORKER_INDEX.get();
+        let Some(worker) = active.get(index) else {
+            return Some(request);
+        };
+        if active.len() == 1 || !std::ptr::eq(CURRENT_WORKER.get(), &**worker) {
+            return Some(request);
+        }
+        if let Some(overflow) = worker.offer_nearby(request, &self.process_table.nearby_starts) {
+            return Some(overflow);
+        }
+        // A peer can rescue the start even if the spawner immediately blocks.
+        active
+            .iter()
+            .enumerate()
+            .any(|(peer, worker)| peer != index && worker.wake());
+        None
     }
 
     /// Start worker threads in the background.
@@ -1007,7 +1118,7 @@ impl Scheduler {
         let worker_depths: Vec<_> = self
             .sleepers
             .iter()
-            .map(|worker| worker.grouped.len())
+            .map(|worker| worker.grouped.len() + worker.nearby.lock().len())
             .collect();
         let global_depth = self
             .injector
@@ -1423,6 +1534,7 @@ fn worker_loop(worker_index: usize, high_rx: Receiver<SpawnRequest>, shared: Wor
     let mut suspended: FxHashMap<ProcessId, SuspendedActor> = FxHashMap::default();
     let mut next_sweep = Instant::now();
     let mut prefer_grouped = false;
+    let mut served_nearby = false;
     let mut step_rescue = StepRescue::default();
 
     let mut spin_count: u32 = 0;
@@ -1460,6 +1572,7 @@ fn worker_loop(worker_index: usize, high_rx: Receiver<SpawnRequest>, shared: Wor
             && runnable.is_empty()
             && suspended.is_empty()
             && !sleep.grouped.has_pending()
+            && !sleep.has_nearby.load(Ordering::Acquire)
         {
             if shutdown.load(Ordering::SeqCst) && active_count.load(Ordering::SeqCst) == 0 {
                 break;
@@ -1611,6 +1724,13 @@ fn worker_loop(worker_index: usize, high_rx: Receiver<SpawnRequest>, shared: Wor
         };
         let request = if worker_index < active_workers {
             high_rx.try_recv().ok().or_else(|| {
+                if !served_nearby {
+                    if let Some(request) = sleep.take_nearby(&process_table.nearby_starts, None) {
+                        served_nearby = true;
+                        return Some(request);
+                    }
+                }
+                served_nearby = false;
                 let mut shared = || {
                     defer_shared = active_workers > 1
                         && recorded_residents > claim_policy.resident_slack
@@ -1646,6 +1766,24 @@ fn worker_loop(worker_index: usize, high_rx: Receiver<SpawnRequest>, shared: Wor
         } else {
             sleep.grouped.pop()
         };
+        let request = request.or_else(|| {
+            if process_table.nearby_starts.load(Ordering::Relaxed) == 0 {
+                return None;
+            }
+            if let Some(local) = sleep.take_nearby(&process_table.nearby_starts, None) {
+                return Some(local);
+            }
+            if !accepting_new_work {
+                return None;
+            }
+            sleepers
+                .iter()
+                .enumerate()
+                .filter(|(index, _)| *index != worker_index)
+                .find_map(|(_, worker)| {
+                    worker.take_nearby(&process_table.nearby_starts, Some(cycle_started_at))
+                })
+        });
 
         if let Some(req) = request {
             idle.end();
@@ -1685,9 +1823,10 @@ fn worker_loop(worker_index: usize, high_rx: Receiver<SpawnRequest>, shared: Wor
                         process,
                         handle: match req.step {
                             Some(step) => Execution::Step(step),
-                            None => {
-                                Execution::Stack(CoroutineHandle::new(req.fn_ptr, req.args_ptr))
-                            }
+                            None => Execution::Stack(CoroutineHandle::new_on_worker(
+                                req.fn_ptr,
+                                req.args_ptr,
+                            )),
                         },
                     };
                     let outcome = resume_process(
@@ -3690,6 +3829,58 @@ mod tests {
             second.expect("second worker claims an actor while the first is blocked")
         );
         assert_eq!(scheduler.active_count(), 0);
+    }
+
+    #[test]
+    fn a_peer_runs_a_nearby_start_when_its_spawner_blocks() {
+        use std::sync::mpsc::{channel, Receiver, Sender};
+
+        struct Probe {
+            scheduler: Scheduler,
+            claimed: Sender<usize>,
+            release: Mutex<Receiver<()>>,
+        }
+        extern "C-unwind" fn child(args: *const u8) {
+            let probe = unsafe { &*args.cast::<Probe>() };
+            probe.claimed.send(CURRENT_WORKER_INDEX.get()).unwrap();
+        }
+        extern "C-unwind" fn parent(args: *const u8) {
+            let probe = unsafe { &*args.cast::<Probe>() };
+            probe.claimed.send(CURRENT_WORKER_INDEX.get()).unwrap();
+            probe.scheduler.spawn_supervisor(child as *const u8, args);
+            let _ = probe.release.lock().recv();
+        }
+
+        let (claimed, workers) = channel();
+        let (release, wait) = channel();
+        let probe = Probe {
+            scheduler: Scheduler::new(2),
+            claimed,
+            release: Mutex::new(wait),
+        };
+        probe
+            .scheduler
+            .spawn(parent as *const u8, std::ptr::from_ref(&probe).cast(), 0, 1);
+        probe.scheduler.start();
+        let timeout = Duration::from_secs(5);
+        let owner = workers.recv_timeout(timeout);
+        let rescuer = workers.recv_timeout(timeout);
+        drop(release);
+        probe.scheduler.signal_shutdown();
+        probe.scheduler.wait();
+        assert_ne!(
+            owner.expect("parent started"),
+            rescuer.expect("child started while parent blocked")
+        );
+        assert_eq!(
+            probe
+                .scheduler
+                .process_table
+                .nearby_starts
+                .load(Ordering::Relaxed),
+            0
+        );
+        assert_eq!(probe.scheduler.active_count(), 0);
     }
 
     #[test]
