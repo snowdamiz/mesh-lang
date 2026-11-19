@@ -31,6 +31,7 @@ use super::process::{ExitReason, Message, ProcessId, ProcessState};
 pub const JOB_RESULT_TAG: u64 = u64::MAX - 1;
 
 const MAX_BUFFERED_REPLIES: usize = 1024;
+const MAX_BUFFERED_REPLY_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Clone, Copy)]
 pub(super) enum JobRetention {
@@ -45,7 +46,7 @@ enum JobSlot {
     },
     Ready {
         reply: Result<Message, ExitReason>,
-        buffered: bool,
+        buffered_bytes: Option<usize>,
     },
 }
 
@@ -58,6 +59,7 @@ enum JobFailure {
 pub(super) struct JobSlots {
     slots: FxHashMap<ProcessId, JobSlot>,
     buffered: usize,
+    buffered_bytes: usize,
     waiting_for: Option<ProcessId>,
 }
 
@@ -92,8 +94,27 @@ impl JobSlots {
             return false;
         };
 
-        let buffered = matches!(retention, JobRetention::Buffered);
-        if buffered && self.buffered >= MAX_BUFFERED_REPLIES && self.waiting_for != Some(pid) {
+        let buffered_bytes = matches!(retention, JobRetention::Buffered).then(|| {
+            if returned_normally {
+                staged.as_ref().map_or(0, |msg| {
+                    msg.buffer.data().len()
+                        + msg.buffer.references.as_ref().map_or(0, |refs| {
+                            refs.captured
+                                .objects
+                                .iter()
+                                .map(|obj| obj.bytes.len())
+                                .sum()
+                        })
+                })
+            } else {
+                exit_reason_bytes(reason)
+            }
+        });
+        if buffered_bytes.is_some_and(|bytes| {
+            self.buffered >= MAX_BUFFERED_REPLIES
+                || self.buffered_bytes.saturating_add(bytes) > MAX_BUFFERED_REPLY_BYTES
+        }) && self.waiting_for != Some(pid)
+        {
             self.slots.remove(&pid);
             return true;
         }
@@ -103,8 +124,17 @@ impl JobSlots {
         } else {
             Err(reason.clone())
         };
-        self.slots.insert(pid, JobSlot::Ready { reply, buffered });
-        self.buffered += usize::from(buffered);
+        self.slots.insert(
+            pid,
+            JobSlot::Ready {
+                reply,
+                buffered_bytes,
+            },
+        );
+        if let Some(bytes) = buffered_bytes {
+            self.buffered += 1;
+            self.buffered_bytes += bytes;
+        }
         true
     }
 
@@ -119,21 +149,39 @@ impl JobSlots {
             }
             Some(JobSlot::Ready { .. }) => {}
         }
-        let Some(JobSlot::Ready { reply, buffered }) = self.slots.remove(&pid) else {
+        let Some(JobSlot::Ready {
+            reply,
+            buffered_bytes,
+        }) = self.slots.remove(&pid)
+        else {
             unreachable!("caller holds the completion slot lock");
         };
-        self.buffered -= usize::from(buffered);
+        if let Some(bytes) = buffered_bytes {
+            self.buffered -= 1;
+            self.buffered_bytes -= bytes;
+        }
         Poll::Ready(reply.map_err(JobFailure::Exited))
     }
 
     fn end_wait(&mut self) {
         if let Some(pid) = self.waiting_for.take() {
             // A reply may arrive after the timeout wins but before the caller resumes.
-            if self.buffered > MAX_BUFFERED_REPLIES {
-                self.slots.remove(&pid);
-                self.buffered -= 1;
+            if self.buffered > MAX_BUFFERED_REPLIES
+                || self.buffered_bytes > MAX_BUFFERED_REPLY_BYTES
+            {
+                let _ = self.poll(pid, 0);
             }
         }
+    }
+}
+
+fn exit_reason_bytes(mut reason: &ExitReason) -> usize {
+    while let ExitReason::Linked(_, inner) = reason {
+        reason = inner;
+    }
+    match reason {
+        ExitReason::Error(text) | ExitReason::Custom(text) => text.len(),
+        _ => 0,
     }
 }
 
@@ -334,7 +382,7 @@ pub extern "C-unwind" fn mesh_job_map_shaped(
         mesh_list_append, mesh_list_get, mesh_list_length, mesh_list_new,
     };
 
-    let (caller, _) = super::running_process();
+    let (caller, process) = super::running_process();
     let len = mesh_list_length(list_ptr as *mut u8);
     let jobs: Vec<u64> = (0..len)
         .map(|i| {
@@ -355,6 +403,7 @@ pub extern "C-unwind" fn mesh_job_map_shaped(
     for job in jobs {
         result_list = mesh_list_append(result_list, mesh_job_await(job) as u64);
     }
+    process.lock().jobs.slots.shrink_to(MAX_BUFFERED_REPLIES);
     result_list as *const u8
 }
 
@@ -489,6 +538,30 @@ mod tests {
             outcome(mesh_job_await_timeout(job, 5_000))
         });
         assert_eq!(result, (1, "normal".into()));
+    }
+
+    #[test]
+    fn unread_failures_respect_the_byte_limit_and_release_it_when_read() {
+        let mut slots = JobSlots::default();
+        let reason = ExitReason::Error("x".repeat(MAX_BUFFERED_REPLY_BYTES / 2));
+        for pid in 1..=3 {
+            slots.register(ProcessId(pid), JobRetention::Buffered);
+            assert!(slots.finish(ProcessId(pid), &reason, false));
+        }
+        assert!(matches!(
+            slots.poll(ProcessId(3), 0),
+            Poll::Ready(Err(JobFailure::Unavailable))
+        ));
+        assert!(matches!(
+            slots.poll(ProcessId(1), 0),
+            Poll::Ready(Err(JobFailure::Exited(_)))
+        ));
+        slots.register(ProcessId(4), JobRetention::Buffered);
+        assert!(slots.finish(ProcessId(4), &reason, false));
+        assert!(matches!(
+            slots.poll(ProcessId(4), 0),
+            Poll::Ready(Err(JobFailure::Exited(_)))
+        ));
     }
 
     #[test]

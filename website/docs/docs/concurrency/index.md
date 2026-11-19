@@ -488,7 +488,7 @@ end
 | `Job.await_timeout(job, timeout_ms)` | `Result<T, String>` | Wait up to the given number of milliseconds |
 | `Job.map(values, fn)` | `List<Result<U, String>>` | Run one job per list element and return results in input order |
 
-Await a job from the actor that started it. Job replies use separate storage from application messages, so a full mailbox cannot drop them. Mesh keeps up to 1,024 uncollected `Job.async` replies per caller and reserves the reply for any job the caller is actively awaiting. If the buffer is full when a job finishes and its caller is not awaiting it, a later await returns `Err("job result unavailable")`. The job may already have changed external state when you receive that error. Each reply can be read once.
+Await a job from the actor that started it. Job replies use separate storage from application messages, so a full mailbox cannot drop them. Each caller can buffer up to 1,024 uncollected `Job.async` replies and 8 MiB of copied reply data. Mesh reserves the reply for any job the caller is actively awaiting. If a completed reply exceeds the caller's buffer limits and the caller is not awaiting it, a later await returns `Err("job result unavailable")`. The job may already have changed external state when you receive that error. Each reply can be read once.
 
 A job panic returns `Err` to its caller. If the caller fails, Mesh stops its linked jobs. A timeout leaves the job running, and a sleeping job can delay process exit after `main` returns. `Job.map` reserves the replies for its own jobs and returns each success or failure in input order.
 
