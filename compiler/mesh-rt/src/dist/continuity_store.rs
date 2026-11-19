@@ -304,6 +304,10 @@ impl Statement {
         Ok(())
     }
 
+    fn reset(&mut self) -> Result<(), String> {
+        check_sqlite(self.database, unsafe { sqlite3_reset(self.raw) })
+    }
+
     fn step(&mut self) -> Result<c_int, String> {
         let result = unsafe { sqlite3_step(self.raw) };
         if matches!(result, SQLITE_ROW | SQLITE_DONE) {
@@ -505,23 +509,17 @@ impl SqliteContinuityStore {
         })
     }
 
-    fn apply_prepared_upsert(
+    fn apply_prepared_upserts(
         connection: &Connection,
-        prepared: &PreparedContinuityRecord<'_>,
+        records: &[PreparedContinuityRecord<'_>],
     ) -> Result<(), String> {
-        let record = prepared.record;
+        if records.is_empty() {
+            return Ok(());
+        }
         let mut tombstone = Self::prepare(
             connection,
             "SELECT version FROM continuity_tombstones WHERE operation_key = ?1",
         )?;
-        tombstone.bind_text(1, &record.operation_key)?;
-        if tombstone.step()? == SQLITE_ROW
-            && unsigned_integer(tombstone.integer(0))? >= record.version
-        {
-            return Err("continuity_store_tombstone_fenced".to_string());
-        }
-        drop(tombstone);
-
         let mut statement = Self::prepare(
             connection,
             "INSERT INTO continuity_records(
@@ -551,41 +549,54 @@ impl SqliteContinuityStore {
              WHERE excluded.version > continuity_records.version
                AND excluded.ownership_generation >= continuity_records.ownership_generation",
         )?;
-        statement.bind_text(1, &record.operation_key)?;
-        statement.bind_text(2, &record.request_hash)?;
-        statement.bind_text(3, &record.owner_node)?;
-        statement.bind_i64(4, sqlite_integer(record.ownership_generation)?);
-        statement.bind_text(5, &prepared.attempts)?;
-        statement.bind_text(6, record.phase.as_str())?;
-        statement.bind_text(7, &prepared.replicas)?;
-        statement.bind_i64(8, sqlite_integer(record.created_at_millis)?);
-        statement.bind_i64(9, sqlite_integer(record.updated_at_millis)?);
-        statement.bind_optional_i64(10, record.terminal_at_millis)?;
-        statement.bind_optional_i64(11, record.expires_at_millis)?;
-        statement.bind_text(12, &prepared.response_metadata)?;
-        statement.bind_blob(13, &record.response_body)?;
-        statement.bind_i64(14, sqlite_integer(record.control_term)?);
-        statement.bind_i64(15, i64::from(record.schema_version));
-        statement.bind_i64(16, sqlite_integer(record.version)?);
-        statement.bind_blob(17, &record.request_body)?;
-        statement.bind_blob(18, &record.runtime_record)?;
-        statement.step()?;
-        let changed = unsafe { sqlite3_changes(connection.raw) } > 0;
-        drop(statement);
-
-        if !changed {
-            return Ok(());
-        }
         let mut log = Self::prepare(
             connection,
             "INSERT INTO continuity_log(operation_key, version, record_json, checksum)
              VALUES (?1, ?2, ?3, ?4)",
         )?;
-        log.bind_text(1, &record.operation_key)?;
-        log.bind_i64(2, sqlite_integer(record.version)?);
-        log.bind_blob(3, &prepared.serialized)?;
-        log.bind_blob(4, &prepared.checksum)?;
-        log.step()?;
+
+        for prepared in records {
+            let record = prepared.record;
+            tombstone.bind_text(1, &record.operation_key)?;
+            if tombstone.step()? == SQLITE_ROW
+                && unsigned_integer(tombstone.integer(0))? >= record.version
+            {
+                return Err("continuity_store_tombstone_fenced".to_string());
+            }
+            tombstone.reset()?;
+
+            statement.bind_text(1, &record.operation_key)?;
+            statement.bind_text(2, &record.request_hash)?;
+            statement.bind_text(3, &record.owner_node)?;
+            statement.bind_i64(4, sqlite_integer(record.ownership_generation)?);
+            statement.bind_text(5, &prepared.attempts)?;
+            statement.bind_text(6, record.phase.as_str())?;
+            statement.bind_text(7, &prepared.replicas)?;
+            statement.bind_i64(8, sqlite_integer(record.created_at_millis)?);
+            statement.bind_i64(9, sqlite_integer(record.updated_at_millis)?);
+            statement.bind_optional_i64(10, record.terminal_at_millis)?;
+            statement.bind_optional_i64(11, record.expires_at_millis)?;
+            statement.bind_text(12, &prepared.response_metadata)?;
+            statement.bind_blob(13, &record.response_body)?;
+            statement.bind_i64(14, sqlite_integer(record.control_term)?);
+            statement.bind_i64(15, i64::from(record.schema_version));
+            statement.bind_i64(16, sqlite_integer(record.version)?);
+            statement.bind_blob(17, &record.request_body)?;
+            statement.bind_blob(18, &record.runtime_record)?;
+            statement.step()?;
+            let changed = unsafe { sqlite3_changes(connection.raw) } > 0;
+            statement.reset()?;
+
+            if !changed {
+                continue;
+            }
+            log.bind_text(1, &record.operation_key)?;
+            log.bind_i64(2, sqlite_integer(record.version)?);
+            log.bind_blob(3, &prepared.serialized)?;
+            log.bind_blob(4, &prepared.checksum)?;
+            log.step()?;
+            log.reset()?;
+        }
         Ok(())
     }
 
@@ -607,12 +618,21 @@ impl SqliteContinuityStore {
             .collect::<Result<Vec<_>, _>>()?;
         let mut new_records = 0u64;
         let mut new_terminal_records = 0u64;
-        for record in records {
-            if self.get(&record.operation_key)?.is_none() {
-                new_records = new_records.saturating_add(1);
-                if !record.phase.is_active() {
-                    new_terminal_records = new_terminal_records.saturating_add(1);
+        if !records.is_empty() {
+            let connection = self.connection.lock().unwrap();
+            let mut exists = Self::prepare(
+                &connection,
+                "SELECT 1 FROM continuity_records WHERE operation_key = ?1",
+            )?;
+            for record in records {
+                exists.bind_text(1, &record.operation_key)?;
+                if exists.step()? == SQLITE_DONE {
+                    new_records = new_records.saturating_add(1);
+                    if !record.phase.is_active() {
+                        new_terminal_records = new_terminal_records.saturating_add(1);
+                    }
                 }
+                exists.reset()?;
             }
         }
         if new_records > 0 {
@@ -642,9 +662,7 @@ impl SqliteContinuityStore {
 
         let connection = self.connection.lock().unwrap();
         execute_batch(connection.raw, "BEGIN IMMEDIATE")?;
-        let result = prepared
-            .iter()
-            .try_for_each(|record| Self::apply_prepared_upsert(&connection, record))
+        let result = Self::apply_prepared_upserts(&connection, &prepared)
             .and_then(|()| {
                 responses.iter().try_for_each(|(key, response)| {
                     Self::apply_response(&connection, key, response)
@@ -2071,6 +2089,7 @@ pub(crate) mod tests {
             .collect();
 
         store.upsert_batch(&records).expect("batch upsert");
+        store.upsert_batch(&records).expect("replayed batch");
 
         let stats = store.stats().expect("batch stats");
         assert_eq!(stats.records, 128);
