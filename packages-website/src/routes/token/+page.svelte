@@ -1,11 +1,13 @@
 <script>
   import { onMount } from 'svelte';
-  import { Copy, Check, AlertTriangle } from 'lucide-svelte';
+  import CopyCommand from '$lib/CopyCommand.svelte';
+  import Field from '$lib/Field.svelte';
+  import Icon from '$lib/Icon.svelte';
+  import Notice from '$lib/Notice.svelte';
 
-  let token = '';
+  // null until the URL has been read in the browser, so the empty state never flashes before the token.
+  let token = null;
   let login = '';
-  let tokenCopied = false;
-  let cmdCopied = false;
 
   onMount(() => {
     // The registry puts the token in the fragment, which the browser never
@@ -19,111 +21,70 @@
       history.replaceState({}, '', window.location.pathname);
     }
   });
-
-  function copyToken() {
-    navigator.clipboard.writeText(token);
-    tokenCopied = true;
-    setTimeout(() => tokenCopied = false, 2000);
-  }
-
-  function copyCmd() {
-    navigator.clipboard.writeText(`meshpkg login --token ${token}`);
-    cmdCopied = true;
-    setTimeout(() => cmdCopied = false, 2000);
-  }
 </script>
 
 <svelte:head>
-  <title>Your Publish Token — Mesh Packages</title>
+  <title>Your publish token · Mesh Packages</title>
   <meta name="robots" content="noindex, nofollow" />
 </svelte:head>
 
-<section class="border-b border-border/40 bg-gradient-to-b from-muted/30 to-background">
-  <div class="mx-auto max-w-xl px-4 py-16 sm:py-20 text-center">
-    {#if token}
-      <div class="text-xs font-mono uppercase tracking-widest text-muted-foreground">Ready to publish</div>
-      <h1 class="mt-3 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-        Your publish token{#if login}, <span class="text-muted-foreground">{login}</span>{/if}
-      </h1>
-      <p class="mx-auto mt-3 text-sm text-muted-foreground">
-        Copy it now — this token will not be shown again.
+<div class="page">
+  {#if token}
+    <header class="page-head">
+      <h1 class="app-title">Your publish token</h1>
+      <p class="lead">
+        {#if login}Signed in as <strong>{login}</strong>.{/if} Copy it now. The registry shows it only once.
       </p>
-    {:else}
-      <div class="text-xs font-mono uppercase tracking-widest text-muted-foreground">No token found</div>
-      <h1 class="mt-3 text-3xl font-bold tracking-tight text-foreground">
-        Nothing to show here
-      </h1>
-      <p class="mx-auto mt-3 text-sm text-muted-foreground">
-        To get a publish token, sign in via the <a href="/publish" class="text-foreground underline underline-offset-2">publish page</a>.
-      </p>
-    {/if}
-  </div>
-</section>
+    </header>
 
-{#if token}
-<section class="py-12 sm:py-16">
-  <div class="mx-auto max-w-xl px-4 space-y-6">
-
-    <!-- Warning banner -->
-    <div class="flex items-start gap-3 rounded-lg border border-border bg-card px-4 py-3">
-      <AlertTriangle class="size-4 shrink-0 mt-0.5 text-muted-foreground" />
-      <p class="text-sm text-muted-foreground">
-        Save this token — it cannot be retrieved later. If you lose it, sign in again to create a new one.
-      </p>
+    <div class="token-fields">
+      <Field label="Token">
+        <CopyCommand text={token} label="Copy token" />
+      </Field>
+      <Field label="Save it for meshpkg">
+        <CopyCommand text="meshpkg login --token {token}" label="Copy login command" />
+      </Field>
     </div>
 
-    <!-- Token box -->
-    <div>
-      <div class="mb-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground">Publish token</div>
-      <div class="flex items-center gap-2">
-        <pre class="flex-1 overflow-x-auto rounded-lg border border-border bg-card px-4 py-3 font-mono text-sm text-foreground">{token}</pre>
-        <button
-          on:click={copyToken}
-          class="flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-3 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          aria-label="Copy token"
-        >
-          {#if tokenCopied}
-            <Check class="size-4" />
-          {:else}
-            <Copy class="size-4" />
-          {/if}
-        </button>
-      </div>
+    <p class="note">
+      Then run <code class="ic">meshpkg publish</code> in your package directory. If you lose the token, sign in again to
+      create a new one.
+    </p>
+    <div class="page-links">
+      <a class="link-arrow" href="/publish">Publishing guide <Icon name="arrow" /></a>
+      <a class="link-arrow" href="/">Browse packages <Icon name="arrow" /></a>
     </div>
+  {:else if token === ''}
+    <Notice level={1} title="No token on this page.">
+      Tokens appear here once, right after you sign in from the publishing guide.
+      <a slot="actions" class="btn btn-ink" href="/publish">Publishing guide</a>
+    </Notice>
+  {/if}
+</div>
 
-    <!-- Login command -->
-    <div>
-      <div class="mb-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground">Save to meshpkg</div>
-      <div class="flex items-center gap-2">
-        <pre class="flex-1 overflow-x-auto rounded-lg border border-border bg-card px-4 py-3 font-mono text-sm text-foreground">meshpkg login --token {token}</pre>
-        <button
-          on:click={copyCmd}
-          class="flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-3 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          aria-label="Copy command"
-        >
-          {#if cmdCopied}
-            <Check class="size-4" />
-          {:else}
-            <Copy class="size-4" />
-          {/if}
-        </button>
-      </div>
-      <p class="mt-2 text-xs text-muted-foreground">
-        Run this in your terminal to save the token. Then use <code class="font-mono">meshpkg publish</code> from your package directory.
-      </p>
-    </div>
-
-    <!-- Back link -->
-    <div class="border-t border-border/30 pt-6 text-center">
-      <a href="/publish" class="text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors">
-        Publishing guide
-      </a>
-      <span class="mx-3 text-border">·</span>
-      <a href="/" class="text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors">
-        Browse packages
-      </a>
-    </div>
-
-  </div>
-</section>
-{/if}
+<style>
+  .token-fields {
+    display: grid;
+    gap: 22px;
+    max-width: 640px;
+  }
+  .note {
+    max-width: 640px;
+    margin-top: 28px;
+    padding: 16px 20px;
+    border-radius: var(--r);
+    background: var(--tint);
+    font-size: 14.5px;
+    line-height: 1.6;
+    color: var(--ink-2);
+  }
+  .note .ic {
+    background: var(--tint-2);
+  }
+  .page-links {
+    margin-top: 36px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 28px;
+  }
+</style>

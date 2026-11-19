@@ -1,97 +1,145 @@
 <script>
-  import { Github, ArrowRight } from 'lucide-svelte';
-
-  const AUTH_URL = 'https://api.packages.meshlang.dev/auth/github';
+  import CopyCommand from '$lib/CopyCommand.svelte';
+  import { AUTH_URL } from '$lib/site.js';
 </script>
 
 <svelte:head>
-  <title>Publish a Package — Mesh Packages</title>
-  <meta name="description" content="Share your Mesh library with the community. Sign in with GitHub, get a publish token, and ship in under a minute." />
-  <meta property="og:title" content="Publish a Package — Mesh Packages" />
-  <meta property="og:description" content="Share your Mesh library with the community. Publishing takes under a minute." />
+  <title>Publish a package · Mesh Packages</title>
+  <meta name="description" content="Publish a Mesh package: sign in with GitHub, save the token with meshpkg login, then run meshpkg publish." />
+  <meta property="og:title" content="Publish a package · Mesh Packages" />
+  <meta property="og:description" content="Sign in with GitHub, save the token with meshpkg login, then run meshpkg publish." />
   <meta property="og:url" content="https://packages.meshlang.dev/publish" />
   <link rel="canonical" href="https://packages.meshlang.dev/publish" />
 </svelte:head>
 
-<!-- Hero -->
-<section class="relative overflow-hidden border-b border-border/40">
-  <div class="absolute inset-0 bg-gradient-to-b from-muted/50 via-background to-background"></div>
-  <div class="relative mx-auto max-w-2xl px-4 py-16 sm:py-20 text-center">
-    <div class="text-xs font-mono uppercase tracking-widest text-muted-foreground">Publishing</div>
-    <h1 class="mt-3 text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
-      Publish a package
-    </h1>
-    <p class="mx-auto mt-4 max-w-lg text-lg text-muted-foreground">
-      Share your Mesh library with the community. Publishing takes under a minute.
-    </p>
-    <a
-      href={AUTH_URL}
-      class="mt-8 inline-flex items-center gap-2 rounded-lg bg-foreground px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-opacity hover:opacity-90 no-underline"
-    >
-      <Github class="size-4" />
-      Sign in with GitHub
-    </a>
-    <p class="mt-3 text-xs text-muted-foreground">
-      A publish token will be generated automatically after sign-in.
-    </p>
-  </div>
-</section>
+<div class="page">
+  <header class="page-head">
+    <h1 class="app-title">Publish a package</h1>
+    <p class="lead">Sign in with GitHub once, then publish from your package directory.</p>
+  </header>
 
-<!-- Steps -->
-<section class="py-12 sm:py-16">
-  <div class="mx-auto max-w-2xl px-4">
-    <ol class="space-y-10">
-
-      <li class="flex gap-4">
-        <span class="flex size-9 shrink-0 items-center justify-center rounded-full border border-border bg-card font-mono text-sm text-muted-foreground shadow-sm">1</span>
-        <div class="pt-1">
-          <h2 class="text-base font-semibold text-foreground">Sign in with GitHub</h2>
-          <p class="mt-1.5 text-sm text-muted-foreground leading-relaxed">
-            Click the button above. After authorizing, you'll be redirected back here with your publish token ready to copy.
-          </p>
-        </div>
-      </li>
-
-      <li class="flex gap-4">
-        <span class="flex size-9 shrink-0 items-center justify-center rounded-full border border-border bg-card font-mono text-sm text-muted-foreground shadow-sm">2</span>
-        <div class="pt-1">
-          <h2 class="text-base font-semibold text-foreground">Save your token</h2>
-          <p class="mt-1.5 text-sm text-muted-foreground leading-relaxed mb-3">
-            Run this command with the token shown after sign-in:
-          </p>
-          <pre class="rounded-lg border border-border bg-card px-4 py-3 font-mono text-sm text-foreground overflow-x-auto">meshpkg login --token &lt;your-token&gt;</pre>
-        </div>
-      </li>
-
-      <li class="flex gap-4">
-        <span class="flex size-9 shrink-0 items-center justify-center rounded-full border border-border bg-card font-mono text-sm text-muted-foreground shadow-sm">3</span>
-        <div class="pt-1">
-          <h2 class="text-base font-semibold text-foreground">Create a <code class="font-mono text-sm">mesh.toml</code></h2>
-          <p class="mt-1.5 text-sm text-muted-foreground leading-relaxed mb-3">
-            Your package name must be scoped to your GitHub username:
-          </p>
-          <pre class="rounded-lg border border-border bg-card px-4 py-3 font-mono text-sm text-foreground overflow-x-auto">[package]
+  <ol class="steps">
+    <li>
+      <h2>Sign in with GitHub</h2>
+      <p>Each sign-in creates a new publish token and shows it once on the next page.</p>
+      <div class="step-body"><a class="btn btn-ink" href={AUTH_URL}>Sign in with GitHub</a></div>
+    </li>
+    <li>
+      <h2>Save the token</h2>
+      <p>Paste the token when <code class="ic">meshpkg login</code> asks for it. It is stored in <code class="ic">~/.mesh/credentials</code>.</p>
+      <div class="step-body"><CopyCommand text="meshpkg login" label="Copy meshpkg login" /></div>
+    </li>
+    <li>
+      <h2>Publish</h2>
+      <p>Run it next to <code class="ic">mesh.toml</code>. The name must start with your GitHub login.</p>
+      <div class="step-body">
+        <figure class="codeblock">
+          <pre><code><span class="pr"># mesh.toml</span>
+[package]
 name = "your-login/your-package"
 version = "1.0.0"
 description = "What your package does"
-license = "MIT"</pre>
-        </div>
-      </li>
+license = "MIT"</code></pre>
+        </figure>
+        <CopyCommand text="meshpkg publish" label="Copy meshpkg publish" />
+      </div>
+    </li>
+  </ol>
 
-      <li class="flex gap-4">
-        <span class="flex size-9 shrink-0 items-center justify-center rounded-full border border-border bg-card font-mono text-sm text-muted-foreground shadow-sm">4</span>
-        <div class="pt-1">
-          <h2 class="text-base font-semibold text-foreground">Publish</h2>
-          <p class="mt-1.5 text-sm text-muted-foreground leading-relaxed mb-3">
-            Run from your project directory:
-          </p>
-          <pre class="rounded-lg border border-border bg-card px-4 py-3 font-mono text-sm text-foreground overflow-x-auto">meshpkg publish</pre>
-          <p class="mt-2 text-xs text-muted-foreground">
-            meshpkg reads <code class="font-mono">mesh.toml</code> and uploads your package. Your files will be live within seconds.
-          </p>
-        </div>
-      </li>
+  <section class="rules" aria-labelledby="rules-heading">
+    <h2 id="rules-heading">Rules</h2>
+    <ul>
+      <li>Your GitHub login must match the owner scope: <code class="ic">your-login/…</code>.</li>
+      <li>Published versions are immutable. Ship a fix as a new version.</li>
+      <li>A package upload can be at most 50 MiB.</li>
+    </ul>
+  </section>
+</div>
 
-    </ol>
-  </div>
-</section>
+<style>
+  .steps {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    border-top: 1px solid var(--line);
+    counter-reset: step;
+  }
+  .steps > li {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr);
+    gap: 4px 16px;
+    padding: 24px 0;
+    border-bottom: 1px solid var(--line);
+    counter-increment: step;
+  }
+  .steps > li::before {
+    content: counter(step);
+    grid-row: 1 / span 3;
+    width: 24px;
+    height: 24px;
+    margin-top: 1px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--tint);
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--ink-2);
+    font-variant-numeric: tabular-nums;
+  }
+  .steps h2 {
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+  }
+  .steps p {
+    font-size: var(--fs-sm);
+    color: var(--mute);
+  }
+  .steps .step-body {
+    margin-top: 12px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    justify-items: start;
+  }
+  .steps .step-body > :global(.cmd),
+  .steps .step-body > .codeblock {
+    justify-self: stretch;
+    margin: 0;
+  }
+  .rules {
+    margin-top: 56px;
+    display: grid;
+    gap: 14px;
+  }
+  .rules h2 {
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+  }
+  .rules ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 10px;
+  }
+  .rules li {
+    position: relative;
+    padding-left: 20px;
+    font-size: 15px;
+    color: var(--ink-2);
+  }
+  .rules li::before {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: 0.7em;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--faint);
+  }
+</style>

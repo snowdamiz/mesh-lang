@@ -16,3 +16,9 @@ test('renders markdown but not the HTML or script URLs a publisher puts in it', 
   assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;/);
   assert.doesNotMatch(html, /<img src=x|<b onclick|(href|src)="javascript:/i);
 });
+
+test('code blocks stay escaped inside a copyable frame, and tables scroll on their own', () => {
+  const html = renderReadme(['```mesh', 'fn main() { a < b }', '```', '', '| a | b |', '|---|---|', '| 1 | 2 |'].join('\n'));
+  assert.match(html, /<figure class="codeblock"><button[^>]*data-copy-code[^>]*>.*<\/button><pre><code class="language-mesh">fn main\(\) \{ a &lt; b \}/s);
+  assert.match(html, /<div class="table-wrap"><table>/);
+});

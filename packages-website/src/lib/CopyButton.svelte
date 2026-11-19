@@ -1,33 +1,21 @@
 <script>
-  import { Copy, Check } from 'lucide-svelte';
+  import { onDestroy } from 'svelte';
+  import { copyFeedback } from './clipboard.js';
+  import Icon from './Icon.svelte';
 
   export let text;
   export let label;
 
-  let copied = false;
-  let timer;
+  const ICON = { idle: 'copy', copied: 'check', failed: 'cross' };
+  const ANNOUNCEMENT = { idle: '', copied: 'Copied', failed: 'Copy failed' };
 
-  async function copy() {
-    await navigator.clipboard.writeText(text);
-    copied = true;
-    clearTimeout(timer);
-    timer = setTimeout(() => (copied = false), 1600);
-  }
+  /** @type {import('./clipboard.js').CopyState} */
+  let state = 'idle';
+  const feedback = copyFeedback((next) => (state = next));
+  onDestroy(feedback.stop);
 </script>
 
-<!-- z-10 keeps it clickable above a row's stretched link -->
-<button
-  type="button"
-  on:click={copy}
-  title={label}
-  aria-label={label}
-  class="relative z-10 inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-1.5 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
->
-  {#if copied}
-    <Check class="size-3.5 text-brand" />
-  {:else}
-    <Copy class="size-3.5" />
-  {/if}
-  <slot />
-  <span class="sr-only" aria-live="polite">{copied ? 'Copied' : ''}</span>
+<button type="button" class="icon-btn" data-state={state} on:click={() => feedback.copy(text)} title={label} aria-label={label}>
+  <Icon name={ICON[state]} />
+  <span class="sr-only" aria-live="polite">{ANNOUNCEMENT[state]}</span>
 </button>

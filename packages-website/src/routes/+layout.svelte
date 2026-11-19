@@ -1,123 +1,148 @@
 <script>
+  import '@fontsource-variable/geist';
+  import '@fontsource-variable/geist-mono';
   import '../app.css';
-  import { Search, Sun, Moon } from 'lucide-svelte';
-  import { onMount } from 'svelte';
+  import { afterNavigate } from '$app/navigation';
+  import { page } from '$app/stores';
+  import { onMount, tick } from 'svelte';
+  import BrandSymbol from '$lib/BrandSymbol.svelte';
+  import Icon from '$lib/Icon.svelte';
+  import SearchField from '$lib/SearchField.svelte';
+  import { FOOTER_COLUMNS, MAIN_SITE, NAV_LINKS, STATUS, STATUS_URL } from '$lib/site.js';
 
-  const syncDarkFromDocument = () => {
-    dark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
-  };
+  const THEME_COLOR = { light: '#f7f2ea', dark: '#141312' };
+  // Routes whose page leads with its own search field; every other page gets the header's.
+  const ROUTES_WITH_SEARCH = new Set(['/', '/search']);
 
-  let dark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
-  const languageRepoUrl = 'https://github.com/hyperpush-org/mesh-lang';
+  let dark = false;
+  let menuOpen = false;
+  let menuButton;
+  let navLinks;
+  let main;
+  let headerSearchField;
 
-  onMount(syncDarkFromDocument);
+  onMount(() => {
+    dark = document.documentElement.classList.contains('dark');
+    // The menu exists only below the nav breakpoint in app.css.
+    const narrow = matchMedia('(max-width: 980px)');
+    const onChange = () => {
+      if (!narrow.matches) closeMenu({ restoreFocus: false });
+    };
+    narrow.addEventListener('change', onChange);
+    return () => narrow.removeEventListener('change', onChange);
+  });
+  afterNavigate(() => {
+    if (!menuOpen) return;
+    menuOpen = false;
+    // The link that was followed is hidden with the menu, and SvelteKit parks focus on the body.
+    main.focus({ preventScroll: true });
+  });
 
-  function toggleDark() {
+  $: headerSearch = Boolean($page.error) || !ROUTES_WITH_SEARCH.has($page.route.id);
+
+  function toggleTheme() {
     dark = !dark;
+    const theme = dark ? 'dark' : 'light';
     document.documentElement.classList.toggle('dark', dark);
-    localStorage.setItem('theme', dark ? 'dark' : 'light');
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEME_COLOR[theme]);
+    localStorage.setItem('theme', theme);
   }
 
-  // "/" jumps to the page's own search box, or the header's when the page has none.
+  async function openMenu() {
+    menuOpen = true;
+    await tick();
+    navLinks.querySelector('a')?.focus();
+  }
+
+  function closeMenu({ restoreFocus = true } = {}) {
+    if (!menuOpen) return;
+    menuOpen = false;
+    if (restoreFocus) menuButton.focus();
+  }
+
+  function onKeydown(event) {
+    if (event.key === 'Escape' && menuOpen) closeMenu();
+    else focusSearch(event);
+  }
+
+  // "/" jumps to the one search field on the page, the page's own or the header's.
+  // Phones fold the header's field into a link, so it drops down first.
   function focusSearch(event) {
     const target = event.target;
     if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) return;
     if (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
-    const input = [...document.querySelectorAll('input[name="q"]')].findLast((el) => el.offsetParent);
-    if (!input) return;
-    event.preventDefault();
-    input.focus();
+    const input = [...document.querySelectorAll('input[name="q"]')].find((field) => field.getClientRects().length);
+    if (input) {
+      event.preventDefault();
+      input.focus();
+    } else if (headerSearchField) {
+      event.preventDefault();
+      closeMenu({ restoreFocus: false });
+      headerSearchField.reveal();
+    }
   }
 </script>
 
-<svelte:window on:keydown={focusSearch} />
+<svelte:window on:keydown={onKeydown} />
 
-<header class="sticky top-0 z-50 w-full border-b border-line bg-background/85 backdrop-blur-xl">
-  <div class="relative mx-auto flex h-14 max-w-6xl items-center gap-2 px-4 sm:px-6 lg:px-10">
-    <a href="/" class="relative z-10 flex shrink-0 items-center gap-2.5 no-underline">
-      <span class="themed-logo" aria-hidden="true">
-        <img src="/logo-black.svg" alt="" class="themed-logo__light h-5 w-auto" />
-        <img src="/logo-white.svg" alt="" class="themed-logo__dark h-5 w-auto" />
-      </span>
-      <span class="sr-only">Mesh</span>
-      <span class="select-none text-lg font-light text-muted-foreground/40" aria-hidden="true">/</span>
-      <span class="font-mono text-[13px] text-foreground">packages</span>
+<BrandSymbol />
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav" class:open={menuOpen}>
+  <div class="nav-in">
+    <a class="brand" href={MAIN_SITE} aria-label="Mesh home">
+      <svg viewBox="0 0 317.64 80.81" width="98" height="25" aria-hidden="true"><use href="#mesh-lockup" /></svg>
     </a>
-
-    <!-- Same links as meshlang.dev, centred on the viewport -->
-    <nav class="pointer-events-none absolute inset-0 hidden items-center justify-center gap-1.5 text-sm lg:flex" aria-label="Mesh">
-      <a href="https://meshlang.dev/docs/getting-started/" class="pointer-events-auto rounded-lg px-3 py-1.5 text-muted-foreground no-underline transition-colors hover:bg-muted hover:text-foreground">Docs</a>
-      <a href="/" aria-current="page" class="pointer-events-auto inline-flex items-center gap-2 rounded-lg bg-muted px-3 py-1.5 font-medium text-foreground no-underline">
-        <span class="size-1.5 rounded-full bg-brand" aria-hidden="true"></span>
-        Packages
-      </a>
-      <a href={languageRepoUrl} target="_blank" rel="noopener" class="pointer-events-auto rounded-lg px-3 py-1.5 text-muted-foreground no-underline transition-colors hover:bg-muted hover:text-foreground">GitHub</a>
+    <nav class="nav-links" id="nav-links" aria-label="Primary" bind:this={navLinks}>
+      {#each NAV_LINKS as link}
+        <a href={link.href} aria-current={link.current ? 'page' : undefined}>{link.label}</a>
+      {/each}
+      <a class="nav-status" href={STATUS_URL}><i></i>{STATUS}</a>
     </nav>
-
-    <div class="relative z-10 ml-auto flex items-center gap-1.5">
-      <form action="/search" method="GET" role="search" class="hidden sm:block">
-        <label class="relative block">
-          <span class="sr-only">Search packages</span>
-          <Search class="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <input
-            name="q"
-            placeholder="Search packages"
-            autocomplete="off"
-            class="h-9 w-48 rounded-lg border border-line-strong bg-muted/40 pl-9 pr-8 text-sm text-foreground transition-colors placeholder:text-muted-foreground/80 focus:border-brand/60 focus:bg-background focus:outline-none focus:ring-2 focus:ring-brand/20 xl:w-60"
-          />
-          <kbd class="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-line-strong px-1.5 font-mono text-[10px] leading-4 text-muted-foreground">/</kbd>
-        </label>
-      </form>
-      <a
-        href="/search"
-        class="flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:hidden"
-        aria-label="Search packages"
-      >
-        <Search class="size-4" />
-      </a>
+    <div class="nav-end">
+      {#if headerSearch}<SearchField compact bind:this={headerSearchField} />{/if}
+      <a class="status" href={STATUS_URL} title="The language, runtime, package format, and cluster protocol can still change before a stable release."><i></i>{STATUS}</a>
+      <button type="button" class="icon-btn theme-btn" on:click={toggleTheme} aria-pressed={dark} aria-label="Dark theme">
+        <Icon name="moon" class="when-light" />
+        <Icon name="sun" class="when-dark" />
+      </button>
+      <a class="btn btn-ink" href="/publish">Publish</a>
       <button
         type="button"
-        on:click={toggleDark}
-        class="flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        aria-label="Toggle dark mode"
+        class="menu-btn"
+        aria-label="Menu"
+        aria-controls="nav-links"
+        aria-expanded={menuOpen}
+        bind:this={menuButton}
+        on:click={() => (menuOpen ? closeMenu() : openMenu())}
       >
-        {#if dark}
-          <Sun class="size-4" />
-        {:else}
-          <Moon class="size-4" />
-        {/if}
+        <Icon name="menu" />
       </button>
-      <a
-        href="/publish"
-        class="hidden h-9 items-center rounded-lg bg-foreground px-3.5 text-sm font-medium text-background no-underline transition-opacity hover:opacity-90 md:inline-flex"
-      >
-        Publish
-      </a>
     </div>
   </div>
 </header>
 
-<main>
-  <div class="frame min-h-[calc(100vh-3.5rem-6rem)]">
-    <slot />
-  </div>
+<main id="main" tabindex="-1" bind:this={main}>
+  <slot />
 </main>
 
-<footer class="border-t border-line">
-  <div class="mx-auto flex max-w-6xl flex-col gap-5 px-4 py-9 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-10">
-    <a href="https://meshlang.dev" class="flex items-center gap-2.5 no-underline">
-      <span class="themed-logo opacity-60" aria-hidden="true">
-        <img src="/logo-black.svg" alt="" class="themed-logo__light h-3.5 w-auto" />
-        <img src="/logo-white.svg" alt="" class="themed-logo__dark h-3.5 w-auto" />
-      </span>
-      <span class="sr-only">Mesh</span>
-      <span class="font-mono text-xs text-muted-foreground">the Mesh programming language</span>
-    </a>
-    <nav class="flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted-foreground" aria-label="Footer">
-      <a href="https://meshlang.dev/docs/packages/" class="no-underline transition-colors hover:text-foreground">Packages guide</a>
-      <a href="https://meshlang.dev/docs/tooling/" class="no-underline transition-colors hover:text-foreground">meshpkg</a>
-      <a href="/publish" class="no-underline transition-colors hover:text-foreground">Publish</a>
-      <a href={languageRepoUrl} target="_blank" rel="noopener" class="no-underline transition-colors hover:text-foreground">GitHub</a>
-    </nav>
+<footer class="footer">
+  <div class="app-wrap footer-in">
+    <div class="footer-brand">
+      <a class="brand" href={MAIN_SITE} aria-label="Mesh home">
+        <svg viewBox="0 0 317.64 80.81" width="98" height="25" aria-hidden="true"><use href="#mesh-lockup" /></svg>
+      </a>
+    </div>
+    {#each FOOTER_COLUMNS as column}
+      <div>
+        <h2>{column.title}</h2>
+        <ul>
+          {#each column.links as link}
+            <li><a href={link.href}>{link.label}</a></li>
+          {/each}
+        </ul>
+      </div>
+    {/each}
   </div>
+  <div class="app-wrap footer-base"><span>MIT licensed</span><span>Mesh 14 is in active development.</span></div>
 </footer>

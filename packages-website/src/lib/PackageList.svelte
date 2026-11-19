@@ -1,49 +1,88 @@
 <script>
-  import { Download } from 'lucide-svelte';
-  import CopyButton from './CopyButton.svelte';
-  import { ago, dependencyLine } from './format.js';
+  import Icon from './Icon.svelte';
+  import PackageRow from './PackageRow.svelte';
+  import { SORTS, matches, sortPackages } from './packages.js';
 
+  /** @type {import('./packages.js').PackageSummary[]} */
   export let packages;
+  /** @type {(keyof typeof SORTS)[]} */
+  export let sorts;
+  export let filter = '';
+
+  let sort = sorts[0];
+
+  $: shown = sortPackages(packages.filter((pkg) => matches(pkg, filter)), sort);
 </script>
 
-<ol class="divide-y divide-line border-t border-line">
-  {#each packages as pkg, i (pkg.name)}
-    {@const [owner, slug] = pkg.name.split('/')}
-    <li
-      class="enter group relative px-4 py-5 transition-colors hover:bg-muted/40 has-[a:focus-visible]:bg-muted/60 has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-inset has-[a:focus-visible]:ring-brand/60 sm:flex sm:items-start sm:gap-10 sm:px-6 lg:px-10"
-      style="animation-delay: {Math.min(i, 10) * 35}ms"
-    >
-      <div class="min-w-0 flex-1">
-        <h3 class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <!-- The link stretches over the whole row -->
-          <a
-            href="/packages/{pkg.name}"
-            class="min-w-0 break-words font-mono text-[15px] font-semibold text-foreground no-underline transition-colors after:absolute after:inset-0 group-hover:text-brand focus-visible:outline-none"
-          >
-            <span class="font-normal text-muted-foreground">{owner}/</span>{slug}
-          </a>
-          <span class="max-w-full truncate font-mono text-xs text-muted-foreground">v{pkg.version}</span>
-        </h3>
-        <p class="mt-1.5 line-clamp-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-          {pkg.description || 'No description provided.'}
-        </p>
-      </div>
+<div class="list-bar">
+  <span aria-live="polite">{shown.length} {shown.length === 1 ? 'package' : 'packages'}</span>
+  {#if packages.length > 1}
+    <label class="select-wrap">
+      <span class="sr-only">Sort by</span>
+      <select class="select" bind:value={sort}>
+        {#each sorts as key}
+          <option value={key}>{SORTS[key].label}</option>
+        {/each}
+      </select>
+      <Icon name="chevron" />
+    </label>
+  {/if}
+</div>
 
-      <div class="mt-3 flex items-center gap-4 font-mono text-xs text-muted-foreground tabular-nums sm:mt-0 sm:shrink-0">
-        {#if pkg.download_count != null}
-          <span class="inline-flex items-center gap-1.5 sm:w-16 sm:justify-end">
-            <Download class="size-3" aria-hidden="true" />
-            <span class="sr-only">Downloads:</span>
-            {pkg.download_count.toLocaleString('en-US')}
-          </span>
-        {/if}
-        {#if pkg.updated_at}
-          <time datetime={pkg.updated_at} class="whitespace-nowrap sm:w-28 sm:text-right">{ago(pkg.updated_at)}</time>
-        {/if}
-        <span class="ml-auto sm:ml-0">
-          <CopyButton text={dependencyLine(pkg.name, pkg.version)} label="Copy the mesh.toml line for {pkg.name}">mesh.toml</CopyButton>
-        </span>
-      </div>
-    </li>
-  {/each}
-</ol>
+{#if shown.length}
+  <ul class="pkg-list">
+    {#each shown as pkg (pkg.name)}
+      <PackageRow {pkg} />
+    {/each}
+  </ul>
+{:else}
+  <slot name="empty" />
+{/if}
+
+<style>
+  .list-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    min-height: 44px;
+    padding: 0 0 12px;
+    font-size: var(--fs-sm);
+    color: var(--mute);
+  }
+  .select-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+  }
+  .select-wrap :global(svg) {
+    position: absolute;
+    right: 9px;
+    width: 14px;
+    height: 14px;
+    pointer-events: none;
+    color: var(--mute);
+  }
+  .select {
+    appearance: none;
+    -webkit-appearance: none;
+    height: 32px;
+    padding: 0 30px 0 12px;
+    border-radius: var(--r-sm);
+    border: 0;
+    background: var(--tint);
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .select:hover {
+    background: var(--tint-2);
+  }
+  .pkg-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border-top: 1px solid var(--line);
+  }
+</style>
