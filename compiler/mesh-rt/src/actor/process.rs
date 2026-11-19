@@ -338,6 +338,7 @@ pub struct Process {
 
     /// This actor's own copy of its spawn-argument buffer; see `Scheduler::spawn`.
     pub(crate) spawn_args: Option<Box<[u64]>>,
+    pub(super) exit_observer: Option<super::scheduler::ExitObserver>,
     pub(super) movable_step: Option<super::scheduler::MovableStep>,
     /// Heaps that this actor's spawn arguments and received messages point
     /// into. Held until the process is dropped, not merely exited: an actor
@@ -441,6 +442,7 @@ impl Process {
             worker: None,
             library_heap_owner: None,
             spawn_args: None,
+            exit_observer: None,
             movable_step: None,
             heap_borrows: Vec::new(),
             terminate_callback: None,

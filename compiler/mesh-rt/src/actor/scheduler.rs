@@ -70,6 +70,7 @@ unsafe impl Send for SpawnRequest {}
 
 enum SpawnMode {
     Shared,
+    Observed(ExitObserver),
     Linked {
         parent: ProcessId,
         child: LinkedChild,
@@ -77,6 +78,17 @@ enum SpawnMode {
     Grouped(Option<TerminateCallback>),
     Step(u32),
     MovableStep(u32),
+}
+
+pub(super) struct ExitObserver {
+    entry: Arc<dyn Send + Sync>,
+    exited: std::sync::mpsc::Sender<ObservedExit>,
+}
+
+pub(crate) struct ObservedExit {
+    pub(crate) reason: ExitReason,
+    pub(crate) at: Instant,
+    pub(crate) returned_normally: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -646,6 +658,31 @@ impl Scheduler {
         self.spawn_shaped(fn_ptr, args_ptr, args_size, priority, std::ptr::null())
     }
 
+    pub(crate) fn spawn_observed<F>(
+        &self,
+        entry: F,
+    ) -> (ProcessId, std::sync::mpsc::Receiver<ObservedExit>)
+    where
+        F: Fn() + Send + Sync + 'static,
+    {
+        extern "C-unwind" fn invoke<F: Fn()>(args: *const u8) {
+            unsafe { (&*args.cast::<F>())() };
+        }
+
+        let entry = Arc::new(entry);
+        let args = Arc::as_ptr(&entry).cast();
+        let (exited, receiver) = std::sync::mpsc::channel();
+        let pid = self.spawn_process(
+            invoke::<F> as *const u8,
+            args,
+            0,
+            Priority::Normal,
+            std::ptr::null(),
+            SpawnMode::Observed(ExitObserver { entry, exited }),
+        );
+        (pid, receiver)
+    }
+
     /// `spawn` for arguments that reference heap values: `shape` describes the
     /// argument slots (see `msg_shape`) so the new actor gets its own copy.
     pub fn spawn_shaped(
@@ -831,6 +868,13 @@ impl Scheduler {
 
         let mut process = Process::with_placement(pid, priority, placement);
         process.library_heap_owner = library_heap_owner;
+        let mode = match mode {
+            SpawnMode::Observed(observer) => {
+                process.exit_observer = Some(observer);
+                SpawnMode::Shared
+            }
+            mode => mode,
+        };
         if let SpawnMode::Grouped(callback) = mode {
             process.terminate_callback = callback;
         }
@@ -1408,6 +1452,17 @@ struct ScheduledActor {
     handle: Execution,
 }
 
+impl ScheduledActor {
+    fn unwind_observed(&mut self) {
+        // The observed entry stays in the table until its suspended stack unwinds.
+        if self.process.lock().exit_observer.is_some() {
+            if let Execution::Stack(handle) = &mut self.handle {
+                handle.unwind();
+            }
+        }
+    }
+}
+
 // Keep suspended coroutines in place across turns. Queue entries carry only a
 // PID. A parked actor can accept exactly one wake before its next resume.
 struct SuspendedActor {
@@ -1980,6 +2035,7 @@ fn resume_process(
         (reason, process.placement)
     };
     if let Some(reason) = exited_reason {
+        actor.unwind_observed();
         finalize_managed_process(process_table, active_count, sleepers, pid, reason);
         return (Resumed::Finished, None);
     }
@@ -2024,6 +2080,7 @@ fn resume_process(
                 }
             };
             if let Some(reason) = exited_reason {
+                actor.unwind_observed();
                 finalize_managed_process(process_table, active_count, sleepers, pid, reason);
                 return (Resumed::Finished, next);
             }
@@ -2263,23 +2320,33 @@ fn handle_process_exit(
     fallback_reason: ExitReason,
 ) -> bool {
     // Claim finalization and extract callback/notification state under one lock.
-    let Some((reason, returned_normally, terminate_cb, linked_pids, monitored_by_entries)) =
-        process_table
-            .with_process(pid, |proc_arc| {
-                let mut proc = proc_arc.lock();
-                let forced = matches!(proc.state, ProcessState::Exited(_));
-                let reason = proc.begin_exit_finalization(fallback_reason)?;
-                let returned_normally = !forced && matches!(reason, ExitReason::Normal);
-                let cb = proc
-                    .terminate_callback
-                    .take()
-                    .map(|cb| (cb, proc.placement));
-                let links = std::mem::take(&mut proc.links);
-                let monitored_by = std::mem::take(&mut proc.monitored_by);
-                proc.jobs = super::job::JobSlots::default();
-                Some((reason, returned_normally, cb, links, monitored_by))
-            })
-            .flatten()
+    let Some((
+        reason,
+        returned_normally,
+        terminate_cb,
+        linked_pids,
+        monitored_by_entries,
+        observer,
+    )) = process_table
+        .with_process(pid, |proc_arc| {
+            let mut proc = proc_arc.lock();
+            let forced = matches!(proc.state, ProcessState::Exited(_));
+            let reason = proc.begin_exit_finalization(fallback_reason)?;
+            let returned_normally = !forced && matches!(reason, ExitReason::Normal);
+            let cb = proc
+                .terminate_callback
+                .take()
+                .map(|cb| (cb, proc.placement));
+            let links = std::mem::take(&mut proc.links);
+            let monitored_by = std::mem::take(&mut proc.monitored_by);
+            proc.jobs = super::job::JobSlots::default();
+            let observer = proc
+                .exit_observer
+                .take()
+                .map(|entry| (entry, Instant::now()));
+            Some((reason, returned_normally, cb, links, monitored_by, observer))
+        })
+        .flatten()
     else {
         return false;
     };
@@ -2371,6 +2438,14 @@ fn handle_process_exit(
 
     // Step 4: Release the completed actor and its private heap.
     process_table.remove(pid);
+    if let Some((ExitObserver { entry, exited }, at)) = observer {
+        drop(entry);
+        let _ = exited.send(ObservedExit {
+            reason,
+            at,
+            returned_normally,
+        });
+    }
     true
 }
 
