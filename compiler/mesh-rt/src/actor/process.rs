@@ -13,6 +13,7 @@ use parking_lot::Mutex;
 use rustc_hash::FxHashMap;
 
 use super::heap::{ActorHeap, MessageBuffer};
+use super::job::JobSlots;
 use super::mailbox::Mailbox;
 
 // ---------------------------------------------------------------------------
@@ -303,10 +304,11 @@ pub struct Process {
     /// Used by supervisors to monitor child processes.
     pub trap_exit: bool,
 
-    /// Linked processes whose abnormal exit this process gets as an exit
-    /// signal message rather than dying of it: the jobs it started, whose
-    /// failures `Job.await` reports.
+    /// Links whose abnormal exits are delivered to the mailbox.
     pub trapped_links: HashSet<ProcessId>,
+
+    /// A private completion slot for each job this actor starts and has yet to await.
+    pub(super) jobs: JobSlots,
 
     /// The monitors this process set up, by reference.
     pub monitors: FxHashMap<u64, Monitor>,
@@ -429,6 +431,7 @@ impl Process {
             links: HashSet::new(),
             trap_exit: false,
             trapped_links: HashSet::new(),
+            jobs: JobSlots::default(),
             monitors: FxHashMap::default(),
             monitored_by: FxHashMap::default(),
             mailbox: Mailbox::for_process(pid.local_id(), mailbox_shard),
