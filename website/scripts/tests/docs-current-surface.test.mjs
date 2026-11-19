@@ -22,7 +22,7 @@ test('public docs cover the current Mesh surface', () => {
   const testing = read('website/docs/docs/testing/index.md')
   const home = read('website/docs/index.md')
   const landing = read('website/docs/.vitepress/theme/components/landing/landing.data.mts')
-  const socialImageSource = read('website/scripts/generate-og-image.py')
+  const socialImageSource = ['website/scripts/og-image.html', 'website/scripts/generate-og-image.mjs'].map(read).join('\n')
   const docs = [
     'website/docs/docs/language-basics/index.md',
     'website/docs/docs/type-system/index.md',
@@ -66,11 +66,13 @@ test('public docs cover the current Mesh surface', () => {
   assert.match(web, /Ws\.serve_tls\(on_connect, on_message, on_close, port, "cert\.pem", "key\.pem"\)/)
   assert.doesNotMatch(`${testing}\n${docs}`, /String\.downcase|IO\.puts/)
   assert.match(testing, /assert_raises[\s\S]+assert\(false\)/)
+  assert.match(landing, /let pid = spawn\(counter, 0\)/)
+  assert.match(landing, /actor client\(pid :: Pid<Message>\) do/)
+  assert.match(landing, /HTTP\.clustered\(2, show_account\)/)
+  assert.match(landing, /@cluster\(3\)\npub fn rebuild_index\(\)/)
   assert.doesNotMatch(landing, /Pg\.query\(pool|Env\.get\("DATABASE_URL"\)|Ws\.broadcast\(conn/)
   assert.doesNotMatch(landing, /Sqlite\.open\("app\.db"\)/)
-  assert.match(landing, /db :: SqliteConn/)
   assert.doesNotMatch(landing, /from [^\n]+ import [^(\n]*,\n/)
-  assert.match(landing, /Ws\.join\(conn, "updates"\)[\s\S]*?\n  1/)
   assert.doesNotMatch(landing, /Cluster\.telemetry\(\)[^\n]+continuity/)
   assert.doesNotMatch(`${home}\n${config}\n${socialImageSource}`, /Repo\.find|Continuity\.submit\(key, process_order\)|One public app URL/)
   assert.match(stdlib, /from_unix_(?:ms|secs).+Result<DateTime,\s*String>/s)
@@ -105,13 +107,59 @@ test('public docs cover the current Mesh surface', () => {
   }
 })
 
-test('every sidebar icon named in the config is imported', () => {
-  const config = read('website/docs/.vitepress/config.mts')
-  const sidebarItem = read('website/docs/.vitepress/theme/components/docs/DocsSidebarItem.vue')
-  const icons = [...config.matchAll(/icon: '(\w+)'/g)].map(([, icon]) => icon)
+const markdownUnder = (dir) => fs.readdirSync(path.join(root, dir), { withFileTypes: true }).flatMap((entry) => {
+  const relativePath = path.join(dir, entry.name)
+  if (entry.isDirectory()) return ['.vitepress', 'public', 'node_modules'].includes(entry.name) ? [] : markdownUnder(relativePath)
+  return entry.name.endsWith('.md') ? [relativePath] : []
+})
 
-  assert.ok(icons.length > 0)
-  for (const icon of icons) {
-    assert.match(sidebarItem, new RegExp(`\\b${icon}\\b`), `DocsSidebarItem.vue does not import sidebar icon ${icon}`)
+// meshc rejects declared work with parameters: the runtime owns its continuity metadata.
+test('every @cluster sample decorates a public function with no parameters', () => {
+  const DECLARATION = /@cluster(?:\(\d+\))?\s+(pub\s+)?(?:fn|def)\s+\w+\(([^)]*)\)/g
+  const LANDING = 'website/docs/.vitepress/theme/components/landing/landing.data.mts'
+  // The landing data keeps each Mesh sample in a top-level template-literal constant.
+  const landingSamples = new Map([...read(LANDING).matchAll(/^const ([A-Z_]+) = `([\s\S]*?)`$/gm)].map(([, name, code]) => [name, code]))
+  for (const name of ['COUNTER', 'CLUSTER', 'PIPES', 'ROUTER', 'STDLIB', 'WRONG_SEND']) {
+    assert.ok(landingSamples.has(name), `${LANDING}: no Mesh sample constant ${name}, so this test reads none of its code`)
+  }
+  const meshCode = (source, text) => (source === LANDING ? [...landingSamples.values()] : [...text.matchAll(/^```mesh\n([\s\S]*?)^```/gm)].map(([, code]) => code))
+  const surfaces = {
+    README: ['README.md'],
+    'landing page': [LANDING],
+    docs: markdownUnder('website/docs'),
+  }
+  for (const [surface, sources] of Object.entries(surfaces)) {
+    let declarations = 0
+    for (const source of sources) {
+      const text = read(source)
+      // Inline samples in prose, like `@cluster pub fn sync_todos()`, are held to the same rules as code.
+      for (const [declaration, pub, params] of text.matchAll(DECLARATION)) {
+        assert.ok(pub, `${source}: @cluster decorates a public function: ${declaration}`)
+        assert.equal(params.trim(), '', `${source}: @cluster functions take no parameters: ${declaration}`)
+      }
+      // Prose names `@cluster` freely; in Mesh code every one must decorate a function.
+      for (const code of meshCode(source, text)) {
+        const found = [...code.matchAll(DECLARATION)].length
+        assert.equal(found, (code.match(/@cluster\b/g) ?? []).length, `${source}: every @cluster in Mesh code decorates a function`)
+        declarations += found
+      }
+    }
+    assert.ok(declarations > 0, `the ${surface} shows no @cluster sample, so this test reads none of its Mesh code`)
+  }
+})
+
+test('every docs link in the sidebar and site chrome resolves to a page', () => {
+  const sources = [
+    'website/docs/.vitepress/config.mts',
+    'website/docs/.vitepress/theme/site.ts',
+    'website/docs/.vitepress/theme/components/NotFoundPage.vue',
+    'website/docs/.vitepress/theme/components/landing/landing.data.mts',
+  ].map(read).join('\n')
+  const links = new Set([...sources.matchAll(/['"`](\/docs\/[\w-][\w\-/]*)['"`#]/g)].map(([, link]) => link))
+
+  assert.ok(links.size > 20, `expected the sidebar's links, found ${links.size}`)
+  for (const link of links) {
+    const page = path.join('website/docs', link, 'index.md')
+    assert.ok(fs.existsSync(path.join(root, page)), `${link} has no page at ${page}`)
   }
 })

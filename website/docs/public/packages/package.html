@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mesh packages have moved</title>
+  <meta name="robots" content="noindex">
+  <script>
+    ;(() => {
+      const name = new URLSearchParams(location.search).get('name')?.trim() ?? ''
+      const target = /^[\w.-]+\/[\w.-]+$/.test(name)
+        ? '/packages/' + name.split('/').map(encodeURIComponent).join('/')
+        : name ? '/search?q=' + encodeURIComponent(name) : '/'
+      location.replace('https://packages.meshlang.dev' + target)
+    })()
+  </script>
+  <noscript><meta http-equiv="refresh" content="0; url=https://packages.meshlang.dev/"></noscript>
+</head>
+<body>
+  <p>Mesh packages live at <a href="https://packages.meshlang.dev/">packages.meshlang.dev</a>.</p>
+</body>
+</html>

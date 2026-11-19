@@ -1,24 +1,30 @@
 import { defineConfig, type HeadConfig, type PageData } from 'vitepress'
-import tailwindcss from '@tailwindcss/vite'
-import fs from 'node:fs'
-import path from 'node:path'
 import meshGrammar from '../../../tools/editors/vscode-mesh/syntaxes/mesh.tmLanguage.json'
 import meshLight from './theme/shiki/mesh-light.json'
 import meshDark from './theme/shiki/mesh-dark.json'
+import { THEME_COLOR, THEME_KEY } from './theme/site'
 
 const SITE_URL = 'https://meshlang.dev'
 const SITE_NAME = 'Mesh Programming Language'
 const DEFAULT_DESCRIPTION = 'Mesh is a statically typed, actor-based programming language for native services and distributed systems.'
-const SOCIAL_IMAGE_PATH = '/og-image-v2.png'
+const SOCIAL_IMAGE_PATH = '/og-image-v3.png'
 const SOCIAL_IMAGE_URL = `${SITE_URL}${SOCIAL_IMAGE_PATH}`
-const SOCIAL_IMAGE_ALT = 'Mesh social preview card reading “Typed systems. Native speed.” with current @cluster and Job examples.'
-const SITE_LOGO_URL = `${SITE_URL}/logo-icon-black.svg`
-// The language version is the compiler's; the release workflow bumps it before deploying the site.
-const MESH_VERSION = fs
-  .readFileSync(path.resolve(__dirname, '../../../compiler/meshc/Cargo.toml'), 'utf8')
-  .match(/^version\s*=\s*"([^"]+)"/m)![1]
+const SOCIAL_IMAGE_ALT = 'Mesh social card reading “Typed actors. Native binaries.” A statically typed, actor-based language for native services and distributed systems.'
+const SITE_LOGO_URL = `${SITE_URL}/icon-512.png`
 const INDEX_ROBOTS ='index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1'
-const NOINDEX_ROBOTS = 'noindex,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1'
+
+// Runs before first paint: light unless the reader chose dark. 'auto' is what
+// VitePress stored for readers who never chose, and they keep following the OS.
+const THEME_SCRIPT = `;(() => {
+  let choice = null
+  try { choice = localStorage.getItem('${THEME_KEY}') } catch {}
+  const dark = choice === 'dark' || (choice === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches)
+  document.documentElement.classList.toggle('dark', dark)
+  const meta = document.createElement('meta')
+  meta.name = 'theme-color'
+  meta.content = dark ? '${THEME_COLOR.dark}' : '${THEME_COLOR.light}'
+  document.head.append(meta)
+})()`
 
 function toCanonicalUrl(relativePath: string): string {
   if (!relativePath || relativePath === 'index.md') {
@@ -56,22 +62,12 @@ function pageOgType(relativePath: string): 'website' | 'article' {
   return relativePath.startsWith('docs/') ? 'article' : 'website'
 }
 
-function pageRobots(relativePath: string): string {
-  return relativePath === 'packages/package.md' ? NOINDEX_ROBOTS : INDEX_ROBOTS
-}
 
 function pageStructuredData(pageData: PageData, title: string, description: string, canonicalUrl: string): string {
   const relativePath = pageData.relativePath
   const isHome = relativePath === 'index.md'
   const isDocsPage = relativePath.startsWith('docs/')
-  const isPackagesIndex = relativePath === 'packages/index.md'
-
-  let pageType = 'WebPage'
-  if (isDocsPage) {
-    pageType = 'TechArticle'
-  } else if (isPackagesIndex) {
-    pageType = 'CollectionPage'
-  }
+  const pageType = isDocsPage ? 'TechArticle' : 'WebPage'
 
   const pageNode: Record<string, unknown> = {
     '@type': pageType,
@@ -145,8 +141,12 @@ export default defineConfig({
   titleTemplate: ':title | Mesh',
   description: DEFAULT_DESCRIPTION,
 
-  // Respect system preference by default; user can override via toggle
-  appearance: 'auto',
+  // The theme owns appearance (THEME_SCRIPT and ThemeToggle.vue), so VitePress
+  // adds no script of its own and isDark is a plain ref.
+  appearance: false,
+
+  // Anchor jumps land below the sticky header (and the docs menu bar on narrow screens)
+  scrollOffset: { selector: '.site-top', padding: 16 },
 
   // Enable clean URLs
   cleanUrls: true,
@@ -161,12 +161,13 @@ export default defineConfig({
 
   // Site-wide SEO defaults
   head: [
-    ['link', { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' }],
-    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/logo-icon-black.svg', media: '(prefers-color-scheme: light)' }],
-    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/logo-icon-white.svg', media: '(prefers-color-scheme: dark)' }],
+    ['link', { rel: 'icon', type: 'image/png', sizes: '64x64', href: '/favicon-64.png' }],
+    ['link', { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/favicon-32.png' }],
+    ['link', { rel: 'icon', type: 'image/png', sizes: '16x16', href: '/favicon-16.png' }],
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }],
+    ['link', { rel: 'apple-touch-icon', sizes: '180x180', href: '/icon-180.png' }],
     ['link', { rel: 'image_src', href: SOCIAL_IMAGE_URL }],
-    ['meta', { name: 'theme-color', content: '#ffffff', media: '(prefers-color-scheme: light)' }],
-    ['meta', { name: 'theme-color', content: '#0d0d0d', media: '(prefers-color-scheme: dark)' }],
+    ['script', { id: 'check-dark-mode' }, THEME_SCRIPT],
     ['meta', { property: 'og:site_name', content: SITE_NAME }],
     ['meta', { property: 'og:locale', content: 'en_US' }],
     ['meta', { property: 'og:image', content: SOCIAL_IMAGE_URL }],
@@ -188,12 +189,11 @@ export default defineConfig({
     const canonicalUrl = toCanonicalUrl(pageData.relativePath)
     const title = pageTitle(pageData)
     const description = pageDescription(pageData)
-    const robots = pageRobots(pageData.relativePath)
     const pageHead: HeadConfig[] = [
       ['link', { rel: 'canonical', href: canonicalUrl }],
       ['meta', { name: 'description', content: description }],
-      ['meta', { name: 'robots', content: robots }],
-      ['meta', { name: 'googlebot', content: robots }],
+      ['meta', { name: 'robots', content: INDEX_ROBOTS }],
+      ['meta', { name: 'googlebot', content: INDEX_ROBOTS }],
       ['meta', { property: 'og:title', content: title }],
       ['meta', { property: 'og:description', content: description }],
       ['meta', { property: 'og:url', content: canonicalUrl }],
@@ -208,6 +208,20 @@ export default defineConfig({
   },
 
   markdown: {
+    config(md) {
+      md.renderer.rules.table_open = () => '<div class="table-wrap"><table>\n'
+      md.renderer.rules.table_close = () => '</table></div>\n'
+      // The page description, as a dek under the page's H1.
+      md.core.ruler.push('mesh_dek', (state) => {
+        const description: string | undefined = state.env.frontmatter?.description
+        const h1 = state.tokens.findIndex((t) => t.type === 'heading_close' && t.tag === 'h1')
+        if (!description || h1 < 0) return
+        const dek = new state.Token('html_block', '', 0)
+        const sentence = /[.!?]$/.test(description) ? description : `${description}.`
+        dek.content = `<p class="dek">${md.utils.escapeHtml(sentence)}</p>\n`
+        state.tokens.splice(h1 + 1, 0, dek)
+      })
+    },
     languages: [
       {
         ...(meshGrammar as any),
@@ -221,119 +235,93 @@ export default defineConfig({
   },
 
   themeConfig: {
-    nav: [
-      { text: 'Docs', link: '/docs/getting-started/' },
-      { text: 'Packages', link: 'https://packages.meshlang.dev', target: '_blank' },
-    ],
-    search: { provider: 'local' },
+    search: {
+      provider: 'local',
+      options: { translations: { button: { buttonText: 'Search docs', buttonAriaLabel: 'Search docs' } } },
+    },
     editLink: {
       pattern: 'https://github.com/hyperpush-org/mesh-lang/edit/main/website/docs/:path',
       text: 'Edit this page on GitHub',
     },
-    meshVersion: MESH_VERSION,
     sidebar: {
       '/docs/': [
         {
           text: 'Getting Started',
           items: [
-            { text: 'Introduction', link: '/docs/getting-started/', icon: 'BookOpen' } as any,
-            { text: 'Clustered Example', link: '/docs/getting-started/clustered-example/', icon: 'Network' } as any,
+            { text: 'Introduction', link: '/docs/getting-started/' },
+            { text: 'Clustered Example', link: '/docs/getting-started/clustered-example/' },
           ],
         },
         {
           text: 'Language Guide',
-          collapsed: false,
           items: [
-            { text: 'Language Basics', link: '/docs/language-basics/', icon: 'Code2' } as any,
-            { text: 'Type System', link: '/docs/type-system/', icon: 'Shapes' } as any,
-            { text: 'Iterators', link: '/docs/iterators/', icon: 'Repeat' } as any,
-            { text: 'Concurrency', link: '/docs/concurrency/', icon: 'Workflow' } as any,
+            { text: 'Language Basics', link: '/docs/language-basics/' },
+            { text: 'Type System', link: '/docs/type-system/' },
+            { text: 'Iterators', link: '/docs/iterators/' },
+            { text: 'Concurrency', link: '/docs/concurrency/' },
           ],
         },
         {
           text: 'Web & Networking',
-          collapsed: false,
           items: [
-            { text: 'Web', link: '/docs/web/', icon: 'Globe' } as any,
+            { text: 'Web', link: '/docs/web/' },
           ],
         },
         {
           text: 'Data',
-          collapsed: false,
           items: [
-            { text: 'Databases', link: '/docs/databases/', icon: 'Database' } as any,
+            { text: 'Databases', link: '/docs/databases/' },
           ],
         },
         {
           text: 'Interop & Ecosystem',
-          collapsed: false,
           items: [
-            { text: 'Native Packages', link: '/docs/native-packages/', icon: 'Blocks' } as any,
-            { text: 'Library Builds', link: '/docs/library-builds/', icon: 'Plug' } as any,
-            { text: 'Packages & Registry', link: '/docs/packages/', icon: 'PackageOpen' } as any,
+            { text: 'Native Packages', link: '/docs/native-packages/' },
+            { text: 'Library Builds', link: '/docs/library-builds/' },
+            { text: 'Packages & Registry', link: '/docs/packages/' },
           ],
         },
         {
           text: 'Distribution',
-          collapsed: false,
           items: [
-            { text: 'Distributed Actors', link: '/docs/distributed/', icon: 'Network' } as any,
-            { text: 'Autonomous Clusters', link: '/docs/autonomous-clusters/', icon: 'Network' } as any,
-            { text: 'Cluster Operations', link: '/docs/cluster-operations/', icon: 'Wrench' } as any,
-            { text: 'Capacity Drivers', link: '/docs/capacity-drivers/', icon: 'Container' } as any,
-            { text: 'Cluster Migration', link: '/docs/cluster-migration/', icon: 'Workflow' } as any,
-            { text: 'Release Notes', link: '/docs/autonomous-release-notes/', icon: 'FileText' } as any,
+            { text: 'Distributed Actors', link: '/docs/distributed/' },
+            { text: 'Autonomous Clusters', link: '/docs/autonomous-clusters/' },
+            { text: 'Cluster Operations', link: '/docs/cluster-operations/' },
+            { text: 'Capacity Drivers', link: '/docs/capacity-drivers/' },
+            { text: 'Cluster Migration', link: '/docs/cluster-migration/' },
+            { text: 'Release Notes', link: '/docs/autonomous-release-notes/' },
           ],
         },
         {
           text: 'Tooling',
-          collapsed: false,
           items: [
-            { text: 'Developer Tools', link: '/docs/tooling/', icon: 'Wrench' } as any,
+            { text: 'Developer Tools', link: '/docs/tooling/' },
           ],
         },
         {
           text: 'Standard Library',
-          collapsed: false,
           items: [
-            { text: 'Standard Library', link: '/docs/stdlib/', icon: 'Library' } as any,
-            { text: 'Testing', link: '/docs/testing/', icon: 'FlaskConical' } as any,
+            { text: 'Standard Library', link: '/docs/stdlib/' },
+            { text: 'Testing', link: '/docs/testing/' },
           ],
         },
         {
           text: 'Reference',
-          collapsed: false,
           items: [
-            { text: 'Syntax Cheatsheet', link: '/docs/cheatsheet/', icon: 'ClipboardList' } as any,
-            { text: 'Complete Reference', link: '/docs/reference/', icon: 'ListTree' } as any,
-            { text: 'Environment Variables', link: '/docs/environment-variables/', icon: 'Variable' } as any,
+            { text: 'Syntax Cheatsheet', link: '/docs/cheatsheet/' },
+            { text: 'Complete Reference', link: '/docs/reference/' },
+            { text: 'Environment Variables', link: '/docs/environment-variables/' },
           ],
         },
         {
           text: 'Proof Surfaces',
-          collapsed: false,
           items: [
-            {
-              text: 'Distributed Proof',
-              link: '/docs/distributed-proof/',
-              icon: 'ShieldCheck',
-              includeInFooter: false,
-            } as any,
+            // Proof surfaces sit outside the reading order of the pager.
+            { text: 'Distributed Proof', link: '/docs/distributed-proof/', includeInFooter: false } as any,
           ],
         },
       ],
     },
     outline: { level: [2, 3], label: 'On this page' },
-  },
-
-  vite: {
-    plugins: [
-      tailwindcss(),
-    ],
-    resolve: {
-      alias: {
-        '@': path.resolve(__dirname, './theme'),
-      },
-    },
   },
 })

@@ -1,8 +1,5 @@
-import { computed, ref, watch } from 'vue'
-import { useData, useRoute } from 'vitepress'
-
-// Shared mobile sidebar state across NavBar, DocsLayout and MobileSidebar.
-const sharedSidebarOpen = ref(false)
+import { computed } from 'vue'
+import { useData } from 'vitepress'
 
 export interface SidebarItem {
   text?: string
@@ -11,12 +8,11 @@ export interface SidebarItem {
   collapsed?: boolean
   base?: string
   docFooterText?: string
-  icon?: string
+  includeInFooter?: boolean
 }
 
 export function useSidebar() {
   const { theme, page, frontmatter } = useData()
-  const route = useRoute()
 
   const sidebar = computed<SidebarItem[]>(() => {
     const sidebarConfig = theme.value.sidebar
@@ -40,53 +36,19 @@ export function useSidebar() {
     )
   })
 
-  // Auto-close mobile sidebar on route change
-  watch(
-    () => route.path,
-    () => {
-      sharedSidebarOpen.value = false
-    },
-  )
-
-  function open() {
-    sharedSidebarOpen.value = true
-  }
-  function close() {
-    sharedSidebarOpen.value = false
-  }
-  function toggle() {
-    sharedSidebarOpen.value ? close() : open()
-  }
-
-  return {
-    sidebar,
-    hasSidebar,
-    isOpen: sharedSidebarOpen,
-    open,
-    close,
-    toggle,
-  }
+  return { sidebar, hasSidebar }
 }
 
 function ensureStartingSlash(path: string): string {
   return path.startsWith('/') ? path : `/${path}`
 }
 
-/**
- * Check if a link matches the current page.
- * Normalizes both paths by stripping index.md, .md, .html extensions
- * and trailing slashes before comparison.
- */
+/** Whether a sidebar link is the current page. */
 export function isActive(currentPath: string, matchPath?: string): boolean {
   if (!matchPath) return false
-  const normalizedCurrent = ensureStartingSlash(
-    currentPath.replace(/(index)?\.(md|html)$/, ''),
-  )
-  const normalizedMatch = ensureStartingSlash(
-    matchPath.replace(/(index)?\.(md|html)$/, '').replace(/\/$/, ''),
-  )
-  return (
-    normalizedCurrent === normalizedMatch ||
-    normalizedCurrent.startsWith(normalizedMatch + '/')
-  )
+  return normalize(currentPath) === normalize(matchPath)
+}
+
+function normalize(path: string): string {
+  return ensureStartingSlash(path.replace(/(index)?\.(md|html)$/, '').replace(/\/$/, ''))
 }

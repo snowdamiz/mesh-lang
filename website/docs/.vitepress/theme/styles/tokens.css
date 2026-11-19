@@ -1,0 +1,127 @@
+:root {
+  --paper: #f7f2ea;
+  --paper-hi: #fcfaf6;
+  --tint: #f0eadf;
+  --tint-2: #e8e0d2;
+  --line: #e6ddcf;
+  --line-2: #d6cab8;
+  --ink: #181818;
+  --ink-2: #3d3934;
+  --mute: #6b645b;
+  /* large text and decoration only: 3.25:1 on paper, 3.03:1 on tint */
+  --faint: #8f8578;
+  --accent: #ff5a1f;
+  --accent-hi: #ff7a45;
+  --accent-ink: #b93c0d;
+  --accent-wash: #ffe6d9;
+  --error: #d23f27;
+  --error-wash: #fbe2da;
+  /* error-coloured text: 5.0:1 or more on paper, tint and error-wash */
+  --error-ink: #b3321c;
+  --ok: #3f7a32;
+
+  --night: #141312;
+  --night-2: #1a1917;
+  --night-line: #2c2a26;
+  --night-text: #e8e2d7;
+  --night-mute: #8e877c;
+  --night-faint: #5c574f;
+
+  /* text on night surfaces and on the accent never follows the theme */
+  --on-night: #fcfaf6;
+  --on-accent: #181818;
+  /* a selected pill or raised chip sitting on a tint track */
+  --raise: var(--paper-hi);
+  --ink-hover: #000;
+
+  --sans: "Geist Variable", "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "Geist Mono Variable", "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --fs-display: clamp(48px, 6vw, 88px);
+  --fs-h2: clamp(34px, 4.2vw, 58px);
+  --fs-h3: 20px;
+  --fs-lead: clamp(18px, 1.45vw, 21px);
+  --fs-body: 16px;
+  --fs-sm: 14px;
+  --fs-xs: 12.5px;
+  --fs-code: 13px;
+
+  --r-sm: 8px;
+  --r: 12px;
+  --r-lg: 16px;
+  --r-xl: 24px;
+  --pill: 999px;
+
+  --wrap: 1200px;
+  --app-wrap: 1360px;
+  --gutter: clamp(20px, 4vw, 40px);
+  --nav-h: 64px;
+  --mbar-h: 0px;
+  --top-h: calc(var(--nav-h) + var(--mbar-h));
+  --section-y: clamp(104px, 12vw, 176px);
+  --head-gap: clamp(40px, 5vw, 64px);
+
+  --shadow-soft: 0 1px 2px rgba(40, 26, 12, .06), 0 10px 28px -16px rgba(40, 26, 12, .22);
+  --shadow-win: 0 2px 4px rgba(20, 14, 8, .06), 0 28px 60px -24px rgba(40, 26, 12, .45), 0 60px 120px -40px rgba(40, 26, 12, .30);
+  --shadow-card: 0 2px 4px rgba(20, 14, 8, .05), 0 24px 48px -28px rgba(40, 26, 12, .5);
+  --shadow-chip: 0 1px 2px rgba(40, 26, 12, .14);
+  --win-edge: #000;
+  --ease: cubic-bezier(.2, .7, .1, 1);
+
+  color-scheme: light;
+}
+
+.dark {
+  --paper: #141312;
+  --paper-hi: #1a1917;
+  --tint: #1e1c19;
+  --tint-2: #27241f;
+  --line: #2c2a26;
+  --line-2: #3a3731;
+  --ink: #efe9df;
+  --ink-2: #d4ccbf;
+  --mute: #a39a8d;
+  --faint: #6f685e;
+  --accent: #ff6a33;
+  --accent-hi: #ff8a5c;
+  --accent-ink: #ff8a5c;
+  --accent-wash: #3a2016;
+  --error: #ff6b52;
+  --error-wash: #3b1e18;
+  --error-ink: #ff6b52;
+  --ok: #8cbf7a;
+
+  --night: #1c1a18;
+  --night-2: #22201d;
+  --night-line: #34312c;
+  --night-text: #e8e2d7;
+  --night-mute: #8e877c;
+  --night-faint: #5c574f;
+
+  --raise: #36322c;
+  --ink-hover: #fff;
+
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, .3), 0 10px 28px -16px rgba(0, 0, 0, .6);
+  --shadow-win: 0 2px 4px rgba(0, 0, 0, .3), 0 28px 60px -24px rgba(0, 0, 0, .7), 0 60px 120px -40px rgba(0, 0, 0, .5);
+  --shadow-card: 0 2px 4px rgba(0, 0, 0, .3), 0 24px 48px -28px rgba(0, 0, 0, .7);
+  --shadow-chip: 0 1px 2px rgba(0, 0, 0, .4);
+  --win-edge: var(--night-line);
+
+  color-scheme: dark;
+}
+
+/* Shiki emits --shiki-light / --shiki-dark per token. Light surfaces follow
+   the theme. Night surfaces (code windows, docs code blocks, dark tiles)
+   always use the dark palette. */
+.code span {
+  color: var(--shiki-light, inherit);
+  font-style: var(--shiki-light-font-style, inherit);
+  text-decoration: var(--shiki-light-text-decoration, inherit);
+}
+.dark .code span,
+.on-night .code span,
+.vp-code span {
+  color: var(--shiki-dark, inherit);
+  font-style: var(--shiki-dark-font-style, inherit);
+  text-decoration: var(--shiki-dark-text-decoration, inherit);
+}

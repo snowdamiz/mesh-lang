@@ -1,65 +1,39 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import { Content, useRoute } from 'vitepress'
-import { useSidebar } from '@/composables/useSidebar'
-import { useMediaQuery } from '@vueuse/core'
+import { computed } from 'vue'
+import { useData } from 'vitepress'
+import { isActive, useSidebar } from '../../composables/useSidebar'
+import { useMenu } from '../../composables/useMenu'
 import DocsSidebar from './DocsSidebar.vue'
-import DocsTableOfContents from './DocsTableOfContents.vue'
-import DocsPrevNext from './DocsPrevNext.vue'
-import DocsEditLink from './DocsEditLink.vue'
-import DocsLastUpdated from './DocsLastUpdated.vue'
-import DocsVersionBadge from './DocsVersionBadge.vue'
-import MobileSidebar from './MobileSidebar.vue'
+import DocsToc from './DocsToc.vue'
+import DocsPager from './DocsPager.vue'
 
-const { sidebar, hasSidebar, close } = useSidebar()
-// Layout switches in CSS so server and client render the same tree; this only
-// closes the mobile sheet if the window grows past the breakpoint.
-const isDesktop = useMediaQuery('(min-width: 960px)')
-watch(isDesktop, (desktop) => { if (desktop) close() })
+const { page, theme } = useData()
+const { sidebar } = useSidebar()
+const { isOpen: menuOpen } = useMenu('docs')
 
-const route = useRoute()
-const contentKey = ref(0)
-
-watch(() => route.path, () => {
-  contentKey.value++
+const group = computed(() =>
+  sidebar.value.find((g) => g.items?.some((item) => isActive(page.value.relativePath, item.link))),
+)
+const editLink = computed(() => {
+  const { editLink } = theme.value
+  if (!editLink?.pattern) return null
+  return { url: editLink.pattern.replace(':path', page.value.relativePath), text: editLink.text ?? 'Edit this page' }
 })
 </script>
 
 <template>
-  <div class="relative mx-auto flex max-w-[90rem]">
-    <!-- Desktop sidebar -->
-    <aside
-      v-if="hasSidebar"
-      class="hidden min-[960px]:block sticky top-14 h-[calc(100vh-3.5rem)] w-64 shrink-0 border-r border-border"
-    >
-      <DocsSidebar :items="sidebar" />
-    </aside>
-
-    <!-- Mobile sidebar -->
-    <MobileSidebar v-if="hasSidebar" :items="sidebar" />
-
-    <!-- Main content -->
-    <main class="min-w-0 flex-1 px-6 py-12 lg:px-12">
-      <div class="mx-auto max-w-3xl">
-        <div :key="contentKey" class="docs-content prose dark:prose-invert max-w-none animate-fade-in">
-          <Content />
-        </div>
-        <div class="mt-12 flex flex-wrap items-center justify-between gap-4 border-t border-border pt-5 not-prose">
-          <DocsEditLink />
-          <div class="flex items-center gap-3">
-            <DocsVersionBadge />
-            <DocsLastUpdated />
-          </div>
-        </div>
-        <DocsPrevNext class="mt-8" />
+  <div class="docs">
+    <DocsSidebar :groups="sidebar" />
+    <main id="main" class="article" :inert="menuOpen">
+      <div class="article-in">
+        <p v-if="group" class="article-kicker">{{ group.text }}</p>
+        <div class="prose docs-content"><Content /></div>
+        <footer class="article-foot">
+          <a v-if="editLink" class="edit-link" :href="editLink.url" target="_blank" rel="noopener">{{ editLink.text }}</a>
+          <DocsPager />
+        </footer>
       </div>
     </main>
-
-    <!-- Right aside: Table of Contents -->
-    <aside
-      class="hidden xl:block sticky top-14 h-[calc(100vh-3.5rem)] w-56 shrink-0"
-    >
-      <DocsTableOfContents />
-    </aside>
+    <DocsToc :inert="menuOpen" />
   </div>
 </template>

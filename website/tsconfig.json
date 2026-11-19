@@ -5,10 +5,15 @@
     "moduleResolution": "bundler",
     "strict": true,
     "jsx": "preserve",
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["./docs/.vitepress/theme/*"]
-    }
+    "skipLibCheck": true,
+    "types": [
+      "vite/client"
+    ]
   },
-  "include": ["docs/.vitepress/**/*.ts", "docs/.vitepress/**/*.vue", "docs/**/*.md"]
+  "include": [
+    "docs/.vitepress/**/*.ts",
+    "docs/.vitepress/**/*.mts",
+    "docs/.vitepress/**/*.vue",
+    "docs/**/*.md"
+  ]
 }

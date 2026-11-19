@@ -1,10 +1,7 @@
 import type { Theme } from 'vitepress'
-import Layout from './Layout.vue'
+import '@fontsource-variable/geist'
+import '@fontsource-variable/geist-mono'
 import './styles/main.css'
+import Layout from './Layout.vue'
 
-export default {
-  Layout,
-  enhanceApp({ app }) {
-    // Register global components if needed
-  },
-} satisfies Theme
+export default { Layout } satisfies Theme

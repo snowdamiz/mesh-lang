@@ -1,48 +1,34 @@
-import { ref, watch, onMounted, onUnmounted } from 'vue'
-import { useRoute } from 'vitepress'
+import { onMounted, onUnmounted, ref } from 'vue'
+import { onContentUpdated } from 'vitepress'
 
+const SELECTOR = '.docs-content :is(h2, h3)[id]'
+
+/** The id of the last heading above the top 28% of the viewport. */
 export function useActiveHeading() {
   const activeId = ref('')
-  const route = useRoute()
-  let observer: IntersectionObserver | null = null
+  let frame = 0
 
-  function observe() {
-    if (observer) {
-      observer.disconnect()
+  function sync() {
+    frame = 0
+    const line = window.innerHeight * 0.28
+    const headings = document.querySelectorAll<HTMLElement>(SELECTOR)
+    let current = headings[0]?.id ?? ''
+    for (const heading of headings) {
+      if (heading.getBoundingClientRect().top >= line) break
+      current = heading.id
     }
-
-    const headings = document.querySelectorAll('.docs-content h2[id], .docs-content h3[id]')
-    if (headings.length === 0) return
-
-    observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            activeId.value = entry.target.id
-          }
-        }
-      },
-      {
-        rootMargin: '-80px 0px -70% 0px',
-      }
-    )
-
-    headings.forEach((heading) => observer!.observe(heading))
+    activeId.value = current
   }
+  const onScroll = () => { if (!frame) frame = requestAnimationFrame(sync) }
 
   onMounted(() => {
-    observe()
+    sync()
+    window.addEventListener('scroll', onScroll, { passive: true })
   })
-
-  watch(() => route.path, () => {
-    // Re-observe after route change (DOM updates on next tick)
-    setTimeout(observe, 100)
-  })
-
+  onContentUpdated(sync)
   onUnmounted(() => {
-    if (observer) {
-      observer.disconnect()
-    }
+    window.removeEventListener('scroll', onScroll)
+    cancelAnimationFrame(frame)
   })
 
   return { activeId }
