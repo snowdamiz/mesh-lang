@@ -3108,6 +3108,42 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
     }
     modules.insert("Pool".to_string(), pool_mod);
 
+    let job_text_result = Ty::result(Ty::string(), Ty::string());
+    let mut jobs_mod = HashMap::new();
+    for (name, params, result) in [
+        (
+            "migrate",
+            vec![pool_handle_t.clone()],
+            Ty::result(Ty::Tuple(vec![]), Ty::string()),
+        ),
+        (
+            "enqueue",
+            vec![pool_handle_t.clone(), Ty::string(), Ty::string()],
+            job_text_result.clone(),
+        ),
+        (
+            "enqueue_in",
+            vec![pg_conn_t.clone(), Ty::string(), Ty::string()],
+            job_text_result.clone(),
+        ),
+        (
+            "control",
+            vec![pool_handle_t.clone(), Ty::string(), Ty::string()],
+            job_text_result.clone(),
+        ),
+        (
+            "start",
+            vec![pool_handle_t, Ty::string(), jobs_handler_type()],
+            Ty::result(Ty::int(), Ty::string()),
+        ),
+        ("stop", vec![Ty::int(), Ty::int()], job_text_result.clone()),
+        ("join", vec![Ty::int()], job_text_result.clone()),
+        ("status", vec![Ty::int()], job_text_result),
+    ] {
+        jobs_mod.insert(name.to_string(), Scheme::mono(Ty::fun(params, result)));
+    }
+    modules.insert("Jobs".to_string(), jobs_mod);
+
     // ── Node module (Phase 67) ──────────────────────────────────────
     let node_spawn_t = TyVar(u32::MAX - 30); // Synthetic type var T for Node.spawn
     let _node_t = Ty::Var(node_spawn_t);
@@ -5084,6 +5120,20 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         .map(|(range, ty)| (range, ctx.resolve(ty)))
         .collect();
 
+    for (span, called) in std::mem::take(&mut ctx.jobs_start_references) {
+        if !called {
+            ctx.errors.push(TypeError::JobsStartInvalid {
+                reason: "call Jobs.start directly so the compiler can check the handler",
+                span,
+            });
+        }
+    }
+    for (name, span) in std::mem::take(&mut ctx.jobs_local_handlers) {
+        if !is_jobs_handler_type(&mut ctx, env.lookup(&name)) {
+            ctx.errors.push(invalid_jobs_handler(span));
+        }
+    }
+
     type_registry.propagate_resource_containment();
     let ownership = crate::ownership::check(
         parse,
@@ -5092,6 +5142,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         import_ctx,
         &ctx.overloaded_fn_names,
         &ctx.overloaded_call_targets,
+        &ctx.stdlib_imports,
     );
     ctx.errors.extend(ownership.errors);
     let untyped_pid_conversions = std::mem::take(&mut ctx.untyped_pid_conversions)
@@ -9480,7 +9531,24 @@ fn infer_name_ref(ctx: &mut InferCtx, env: &TypeEnv, name_ref: &NameRef) -> Resu
     }
 
     match env.lookup(&name) {
-        Some(scheme) => Ok(ctx.instantiate(scheme)),
+        Some(scheme) => {
+            let jobs_start = name == "jobs_start"
+                || (name == "start"
+                    && ctx
+                        .stdlib_imports
+                        .get("start")
+                        .is_some_and(|module| module == "Jobs"));
+            if jobs_start
+                && !env.is_local(&name)
+                && !ctx.top_level_function_visibility.contains_key(&name)
+                && !ctx.imported_functions.contains(&name)
+            {
+                ctx.jobs_start_references
+                    .entry(name_ref.syntax().text_range())
+                    .or_default();
+            }
+            Ok(ctx.instantiate(scheme))
+        }
         None => {
             let arities = env.overload_arities(&name);
             let span = name_ref.syntax().text_range();
@@ -10703,6 +10771,16 @@ fn check_call(
         args.insert(index.min(args.len()), (expr, Some(ty)));
     }
 
+    if let Some(called) = ctx
+        .jobs_start_references
+        .get_mut(&callee_expr.syntax().text_range())
+    {
+        *called = true;
+        if let [_, _, (handler, _)] = args.as_slice() {
+            check_jobs_handler(ctx, env, handler)?;
+        }
+    }
+
     let ret_var = ctx.fresh_var();
     let origin = ConstraintOrigin::FnArg {
         call_site: call_range,
@@ -10855,6 +10933,64 @@ fn check_call(
     }
 
     Ok(ret_var)
+}
+
+fn jobs_handler_type() -> Ty {
+    Ty::fun(vec![Ty::string()], Ty::string())
+}
+
+/// The runner may call this function after its caller returns. Only a
+/// named function with a concrete signature is eligible.
+fn check_jobs_handler(ctx: &mut InferCtx, env: &TypeEnv, handler: &Expr) -> Result<(), TypeError> {
+    let span = handler.syntax().text_range();
+    let scheme = match handler {
+        Expr::NameRef(name) => match name.text() {
+            Some(name) if !env.is_local(&name) => {
+                if ctx.top_level_function_visibility.contains_key(&name) {
+                    ctx.jobs_local_handlers.push((name, span));
+                    return Ok(());
+                }
+                ctx.imported_function_origins
+                    .contains_key(&name)
+                    .then(|| env.lookup(&name))
+                    .flatten()
+            }
+            _ => None,
+        },
+        Expr::FieldAccess(access) => match access.base() {
+            Some(Expr::NameRef(base)) => base.text().and_then(|module| {
+                if env.is_local(&module) || !ctx.qualified_module_origins.contains_key(&module) {
+                    return None;
+                }
+                ctx.qualified_modules
+                    .get(&module)?
+                    .get(access.field()?.text())
+            }),
+            _ => None,
+        },
+        _ => None,
+    };
+    let scheme = scheme.cloned();
+    if is_jobs_handler_type(ctx, scheme.as_ref()) {
+        return Ok(());
+    }
+
+    let error = invalid_jobs_handler(span);
+    ctx.errors.push(error.clone());
+    Err(error)
+}
+
+fn is_jobs_handler_type(ctx: &mut InferCtx, scheme: Option<&Scheme>) -> bool {
+    scheme.is_some_and(|scheme| {
+        scheme.vars.is_empty() && ctx.resolve(scheme.ty.clone()) == jobs_handler_type()
+    })
+}
+
+fn invalid_jobs_handler(span: TextRange) -> TypeError {
+    TypeError::JobsStartInvalid {
+        reason: "pass a named function with type fn(String) -> String as the handler",
+        span,
+    }
 }
 
 /// A call to a fn defined at more than one arity (`area(2)`, `Geo.area(2)`,
@@ -12722,6 +12858,11 @@ fn infer_field_access(
             .get(&base_name)
             .and_then(|functions| functions.get(&field_name))
         {
+            if base_name == "Jobs" && field_name == "start" {
+                ctx.jobs_start_references
+                    .entry(fa.syntax().text_range())
+                    .or_default();
+            }
             return Ok(ctx.instantiate(scheme));
         }
 
