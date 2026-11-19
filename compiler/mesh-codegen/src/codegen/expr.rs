@@ -3774,7 +3774,8 @@ impl<'ctx> CodeGen<'ctx> {
 
         // Patch function pointers into the stack copy.
         for (offset, fn_name) in &fn_ptr_offsets {
-            let fn_ptr_val = self.functions[fn_name].as_global_value().as_pointer_value();
+            let entry = self.functions[fn_name];
+            let fn_ptr_val = entry.as_global_value().as_pointer_value();
 
             // Convert fn_ptr to i64.
             let fn_ptr_int = self
@@ -3797,9 +3798,11 @@ impl<'ctx> CodeGen<'ctx> {
             };
 
             // Store the fn_ptr as i64 into the config buffer.
-            self.builder
+            let store = self
+                .builder
                 .build_store(elem_ptr, fn_ptr_int)
                 .map_err(|e| e.to_string())?;
+            self.supervisor_entries.push((entry, store));
         }
 
         // Call mesh_supervisor_start(config_ptr, config_size) -> i64 (PID)

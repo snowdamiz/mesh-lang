@@ -382,6 +382,7 @@ struct Lowerer<'a> {
     actors: Vec<super::MirActor>,
     /// Actors with terminate clauses, collected before lowering their callers.
     actor_terminate_callbacks: HashSet<String>,
+    supervisor_starters: HashSet<String>,
     /// While lowering a supervisor child's start: the `spawn` that ends it,
     /// which runs the spawned actor in place (`supervisor_child_entry`).
     supervised_spawn: Option<TextRange>,
@@ -737,6 +738,7 @@ impl<'a> Lowerer<'a> {
             service_dispatch: HashMap::new(),
             actors: Vec::new(),
             actor_terminate_callbacks: HashSet::new(),
+            supervisor_starters: HashSet::new(),
         }
     }
 
@@ -1995,6 +1997,7 @@ impl<'a> Lowerer<'a> {
                 }
                 Item::SupervisorDef(sup_def) => {
                     if let Some(name) = sup_def.name().and_then(|n| n.text()) {
+                        self.supervisor_starters.insert(name.clone());
                         // Supervisor definitions produce a function that returns Pid
                         let fn_ty = self.resolve_range(sup_def.syntax().text_range());
                         self.known_functions.insert(name.clone(), fn_ty.clone());
@@ -14174,6 +14177,16 @@ impl<'a> Lowerer<'a> {
         let fn_name = func
             .var_name()
             .expect("the type checker spawns an actor by its name (E0089)");
+        // The starter already spawns the supervisor and returns its PID.
+        // Scheduling the starter as an actor instead returns its launcher's PID.
+        if spawn.placement() == SpawnPlacement::Shared && self.supervisor_starters.contains(fn_name)
+        {
+            return MirExpr::Call {
+                func,
+                args: state_args,
+                ty,
+            };
+        }
         let terminate_callback = self.actor_terminate_callbacks.contains(fn_name).then(|| {
             Box::new(MirExpr::Var(
                 self.actor_terminate_symbol(fn_name),

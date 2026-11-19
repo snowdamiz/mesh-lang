@@ -19,6 +19,7 @@ pub mod intrinsics;
 mod list;
 mod msg_shape;
 pub mod pattern;
+mod supervisor;
 pub mod types;
 
 use std::path::Path;
@@ -115,6 +116,7 @@ pub struct CodeGen<'ctx> {
     movable_step_enabled: bool,
     step_sites: Vec<grouped_step::SpawnSite<'ctx>>,
     emitting_step: bool,
+    supervisor_entries: Vec<(FunctionValue<'ctx>, inkwell::values::InstructionValue<'ctx>)>,
 
     // ── Local variable tracking ──────────────────────────────────────
     /// Local variable allocas in the current function (name -> alloca pointer).
@@ -269,6 +271,7 @@ impl<'ctx> CodeGen<'ctx> {
                     != Some(std::ffi::OsStr::new("0")),
             step_sites: Vec::new(),
             emitting_step: false,
+            supervisor_entries: Vec::new(),
             locals: FxHashMap::default(),
             local_types: FxHashMap::default(),
             mir_functions: Vec::new(),
@@ -528,6 +531,7 @@ impl<'ctx> CodeGen<'ctx> {
             _ => "default<O2>",
         };
         if opt_level >= 2 {
+            self.lower_supervisor_failures()?;
             self.inline_list_reads()
                 .map_err(|error| error.to_string())?;
         }

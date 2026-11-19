@@ -83,6 +83,37 @@ pub extern "C-unwind" fn mesh_panic_str(message: *const crate::string::MeshStrin
     raise(format_args!("{}", unsafe { (*message).as_str() }))
 }
 
+/// The compiler emits this only at a supervisor child's outermost entry,
+/// immediately before returning to the scheduler. All native calls on that
+/// stack have already returned, so there are no native frames to unwind.
+///
+/// # Safety
+/// `message` must be a live Mesh string on the running child's heap or in static storage.
+#[no_mangle]
+pub unsafe extern "C" fn mesh_actor_fail(message: *const crate::string::MeshString) {
+    use crate::actor::process::{ExitReason, ProcessState};
+    let message = if computing_on_plaintext() {
+        WITHHELD
+    } else {
+        unsafe { (*message).as_str() }
+    };
+    let prefix = "Mesh panic: ";
+    let mut reason = String::with_capacity(prefix.len() + message.len() + 1);
+    reason.push_str(prefix);
+    reason.push_str(message);
+    if !QUIET.get() {
+        use std::io::Write;
+        reason.push('\n');
+        let _ = std::io::stderr().write_all(reason.as_bytes());
+        reason.pop();
+    }
+    let (_, process) = crate::actor::running_process();
+    let mut process = process.lock();
+    if !matches!(process.state, ProcessState::Exited(_)) {
+        process.state = ProcessState::Exited(ExitReason::Error(reason));
+    }
+}
+
 thread_local! {
     /// Set while the test runner runs a test body: it reports the panic.
     static QUIET: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
