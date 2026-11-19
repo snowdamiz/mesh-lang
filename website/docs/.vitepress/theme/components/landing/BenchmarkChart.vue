@@ -27,9 +27,9 @@ const onTabKey = useRovingTabs((i) => { selected.value = i })
         @click="selected = i"
       >{{ p.label }}</button>
     </div>
-    <div :id="`${id}-panel`" class="bench-panel" role="tabpanel" tabindex="0" :aria-labelledby="`${id}-${panel.id}`" :aria-describedby="`${id}-about-${panel.id}`">
+    <div :id="`${id}-panel`" class="bench-panel" role="tabpanel" tabindex="0" :aria-labelledby="`${id}-${panel.id}`">
       <div class="stack">
-        <div v-for="(p, i) in benchmarks.panels" :id="`${id}-about-${p.id}`" :key="p.id" :class="{ on: i === selected }">
+        <div v-for="(p, i) in benchmarks.panels" :key="p.id" :class="{ on: i === selected }">
           <p class="bench-headline">{{ p.headline }}<span class="bench-headline-unit">{{ p.unit }}</span></p>
           <p class="bench-measure">{{ p.measure }}</p>
           <p class="bench-setup">{{ p.setup }}</p>

@@ -15,7 +15,7 @@ const TRIALS = '5'
 export const RUN = {
   dir: 'tools/performance/results/2026-11-19',
   trials: TRIALS,
-  footnote: `Median of ${TRIALS} trials on a dedicated 4-vCPU server.`,
+  footnote: `Median of ${TRIALS} trials on a dedicated 4-vCPU server. Rust, Go and Elixir were measured a day earlier.`,
 }
 
 const RUNTIMES = ['Mesh', 'Rust/Tokio', 'Go', 'Elixir']

@@ -353,7 +353,9 @@ function expressionUsing(line: string, module: string): string {
   const starts = [new RegExp(`\\b${module}\\.\\w+\\(`), ...LITERAL_STARTS.filter(([, owner]) => owner === module).map(([pattern]) => pattern)]
   for (const pattern of starts) {
     const match = pattern.exec(line)
-    if (match) return line.slice(match.index, closingBracket(line, match.index + match[0].length - 1) + 1)
+    if (!match) continue
+    const close = closingBracket(line, match.index + match[0].length - 1)
+    return line.slice(match.index, line[close + 1] === '?' ? close + 2 : close + 1)
   }
   return line.trim()
 }
