@@ -1,5 +1,9 @@
 # Linode performance results
 
+The [November 19 full comparison](results/2026-11-19/README.md) covers the supervised crash reporting changes through `25a991af`, including all 66 trials and the interactive chart.
+
+## November 18 matrix
+
 The full Mesh run took 29 minutes and recorded **66 of 66 trials** with zero
 runner errors. All four Mesh smoke trials passed before timing.
 Mesh completed 6.80 million actor round trips per second with 64
