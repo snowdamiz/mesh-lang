@@ -6,10 +6,11 @@ import InstallCard from './InstallCard.vue'
 import ProductDemo from './ProductDemo.vue'
 import FeatureBento from './FeatureBento.vue'
 import ClusterFigure from './ClusterFigure.vue'
+import BenchmarkChart from './BenchmarkChart.vue'
 import ToolchainTabs from './ToolchainTabs.vue'
 import StdlibEditor from './StdlibEditor.vue'
 
-const { hero, install, demo, features, art, distribution, toolchain, stdlib, quote, close } = data
+const { hero, install, demo, features, art, distribution, benchmarks, toolchain, stdlib, quote, close } = data
 </script>
 
 <template>
@@ -43,6 +44,13 @@ const { hero, install, demo, features, art, distribution, toolchain, stdlib, quo
         </div>
         <ClusterFigure :figure="distribution.figure" />
         <div v-reveal class="codecard on-night"><pre class="code"><code v-html="distribution.code" /></pre></div>
+      </div>
+    </section>
+
+    <section id="performance" class="section" aria-labelledby="h-perf">
+      <div class="wrap">
+        <h2 id="h-perf" v-reveal class="h2 section-title">{{ benchmarks.title[0] }} <span class="grey">{{ benchmarks.title[1] }}</span></h2>
+        <BenchmarkChart v-reveal :benchmarks="benchmarks" />
       </div>
     </section>
 
