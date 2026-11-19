@@ -494,7 +494,7 @@ A job panic returns `Err` to its caller. If the caller fails, Mesh stops its lin
 
 ## Durable jobs
 
-`Jobs` stores work in PostgreSQL 14 or newer. Use the application's database to commit an enqueue together with a business change. Use the same namespace on every process that serves the same queues. A namespace groups work in the database. Use separate database roles or databases for separate trust boundaries.
+`Jobs` stores work in PostgreSQL 14 or newer. Use the application's database to commit an enqueue together with a business change. Use the same namespace on every process that serves the same queues. A namespace groups work in the database. Processes with write access to the same job tables share authority. Use separate databases for applications that do not trust each other.
 
 Create the job tables with `Jobs.migrate(pool)` before starting workers. A job stores a worker name, payload version, arguments, queue, and scheduling and retry options. Keep the worker versions needed by outstanding jobs available during a rolling deploy. Workers claim jobs that match their registered names and versions.
 

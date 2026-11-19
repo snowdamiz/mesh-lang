@@ -43,6 +43,9 @@ fn record_effect(context :: String) -> String!String do
   let args = Json.object_get(decoded, "args")?
   let label = Json.as_string(Json.object_get(args, "label")?)?
   let attempt = Json.as_int(Json.object_get(decoded, "attempt")?)?
+  if label == "panic" do
+    panic("proof worker panicked")
+  end
   let worker = Env.get("MESH_JOBS_PROOF_WORKER", "")
   let conn = Pg.connect(database_url())?
   let result = Pg.execute(conn,

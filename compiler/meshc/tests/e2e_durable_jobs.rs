@@ -179,12 +179,20 @@ fn prove_retry_and_exhaustion(proof: &Proof) {
         {"worker": "proof", "args": {"label": "poison"}, "max_attempts": 2,
          "backoff_base_ms": 600, "backoff_max_ms": 600},
         {"worker": "proof", "args": {"label": "healthy"}, "delay_ms": 100},
+        {"worker": "proof", "args": {"label": "panic"}, "max_attempts": 1},
     ]));
     let mut worker = proof.worker("retry-worker", false);
+    let panicked = proof.wait_state("panic", "discarded");
     let poison = proof.wait_state("poison", "discarded");
     let retry = proof.wait_state("retry", "completed");
     let healthy = proof.wait_state("healthy", "completed");
     worker.stop();
+    assert_eq!(panicked["id"], receipts[3]["id"]);
+    assert_eq!(panicked["attempt"], 1);
+    assert!(panicked["errors"][0]["reason"]
+        .as_str()
+        .unwrap()
+        .contains("proof worker panicked"));
 
     for (index, (label, job, delay, reason)) in [
         ("retry", retry, 400, "proof worker requested a retry"),
