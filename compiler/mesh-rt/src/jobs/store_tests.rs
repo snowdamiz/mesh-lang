@@ -364,7 +364,7 @@ fn cancel_holds_capacity_until_ack_or_recovery_and_expired_tokens_are_fenced() {
     );
     assert!(!f.finish(&first, Outcome::Complete));
     assert!(f.try_claim().is_none());
-    assert_eq!(recover(&mut f.db, &f.ns, 1).unwrap(), 1);
+    assert_eq!(recover(&mut f.db, &f.ns, 1, None).unwrap(), 1);
     let replacement = f.claim();
     assert_eq!(first.id, replacement.id);
     assert_ne!(first.token, replacement.token);
@@ -404,7 +404,7 @@ fn cancel_holds_capacity_until_ack_or_recovery_and_expired_tokens_are_fenced() {
     let second = f.claim();
     f.ops(json!({"action":"cancel","id":second.id}));
     f.expire(&second.id);
-    assert_eq!(recover(&mut f.db, &f.ns, 1).unwrap(), 1);
+    assert_eq!(recover(&mut f.db, &f.ns, 1, None).unwrap(), 1);
     assert_eq!(f.get(&second.id)["state"], "cancelled");
     assert_ne!(f.claim().id, second.id);
 }
@@ -580,7 +580,7 @@ fn process_crash_retains_lease_and_recovery_enforces_exhaustion() {
         &[&f.ns, job_id],
     )
     .unwrap();
-    assert_eq!(recover(&mut f.db, &f.ns, 1).unwrap(), 1);
+    assert_eq!(recover(&mut f.db, &f.ns, 1, None).unwrap(), 1);
     assert_eq!(f.get(job_id)["state"], "discarded");
     assert_eq!(f.get(job_id)["errors"][0]["reason"], "lease expired");
     assert!(!finish(
@@ -646,5 +646,5 @@ fn finish_checks_the_deadline_after_waiting_for_the_row_lock() {
         assert!(!waiting.join().unwrap());
     });
     assert_eq!(f.get(&claim.id)["state"], "executing");
-    assert_eq!(recover(&mut f.db, &f.ns, 1).unwrap(), 1);
+    assert_eq!(recover(&mut f.db, &f.ns, 1, None).unwrap(), 1);
 }

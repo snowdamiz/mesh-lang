@@ -11,7 +11,9 @@ use crate::actor::{self, ExitReason, ProcessId, ProcessState, Scheduler};
 use crate::string::MeshString;
 
 use super::cron;
-use super::store::{claim, finish, has_due, prune, recover, renew, Claim, LeaseStatus, Outcome};
+use super::store::{
+    claim, drain_has_work, finish, prune, recover, renew, Claim, LeaseStatus, Outcome,
+};
 use super::with_pool;
 
 const TICK: Duration = Duration::from_millis(10);
@@ -713,7 +715,6 @@ struct Queue<'a> {
     name: &'a str,
     limit: usize,
     next_claim: Instant,
-    checked_empty: bool,
 }
 
 fn maintain(runner: &Runner<'_>, pool: u64) {
@@ -730,7 +731,7 @@ fn maintain(runner: &Runner<'_>, pool: u64) {
     while matches!(runner.state.lock().phase, Phase::Running) {
         let now = Instant::now();
         if now >= next_recovery {
-            match with_pool(pool, |db| recover(db, &config.namespace, 64)) {
+            match with_pool(pool, |db| recover(db, &config.namespace, 64, None)) {
                 Ok(recovered) => runner.state.lock().counts.recovered += recovered,
                 Err(error) => runner.record_error(error),
             }
@@ -765,11 +766,13 @@ fn dispatch(runner: &Runner<'_>, pool: u64, workers: &str, handler: Handler) {
             name,
             limit: *limit,
             next_claim: Instant::now(),
-            checked_empty: false,
         })
         .collect();
     let mut cursor = 0;
     let mut attempts = Vec::<Attempt>::new();
+    let drain_queues = config
+        .drain
+        .then(|| serde_json::json!(config.queues).to_string());
     let mut next_drain_recovery = Instant::now();
     loop {
         let previous_count = attempts.len();
@@ -783,26 +786,33 @@ fn dispatch(runner: &Runner<'_>, pool: u64, workers: &str, handler: Handler) {
         });
         if config.drain && attempts.len() != previous_count {
             for queue in &mut queues {
-                queue.checked_empty = false;
                 queue.next_claim = Instant::now();
             }
+            next_drain_recovery = Instant::now();
         }
 
         let admitting = {
             let state = runner.state.lock();
             let running = matches!(state.phase, Phase::Running);
-            let empty = config.drain && queues.iter().all(|queue| queue.checked_empty);
-            if attempts.is_empty() && (!running || empty) {
+            if attempts.is_empty() && !running {
                 return;
             }
             running
         };
         if admitting {
-            // When a drain has no local attempts, reclaim expired capacity before polling.
-            // Regular runners do this on their maintenance thread.
-            if config.drain && attempts.is_empty() && Instant::now() >= next_drain_recovery {
-                match with_pool(pool, |db| recover(db, &config.namespace, 64)) {
-                    Ok(recovered) => runner.state.lock().counts.recovered += recovered,
+            // Take one fresh snapshot of all selected queues after recovery.
+            // Individually empty claims can be stale or have skipped a lock.
+            if let Some(selected) = drain_queues
+                .as_deref()
+                .filter(|_| attempts.is_empty() && Instant::now() >= next_drain_recovery)
+            {
+                match with_pool(pool, |db| {
+                    let recovered = recover(db, &config.namespace, 64, Some(selected))?;
+                    runner.state.lock().counts.recovered += recovered;
+                    drain_has_work(db, &config.namespace, selected, workers)
+                }) {
+                    Ok(false) => return,
+                    Ok(true) => {}
                     Err(error) => runner.record_error(error),
                 }
                 next_drain_recovery =
@@ -813,8 +823,7 @@ fn dispatch(runner: &Runner<'_>, pool: u64, workers: &str, handler: Handler) {
                 .find(|&index| {
                     let queue = &queues[index];
                     let active = attempts.iter().filter(|attempt| attempt.queue == index);
-                    (!config.drain || !queue.checked_empty)
-                        && queue.next_claim <= Instant::now()
+                    queue.next_claim <= Instant::now()
                         && !active.clone().any(Attempt::blocks_claims)
                         && active.count() < queue.limit
                 });
@@ -823,14 +832,6 @@ fn dispatch(runner: &Runner<'_>, pool: u64, workers: &str, handler: Handler) {
                 match claim_one(runner, pool, workers, index, queues[index].name, handler) {
                     Ok(Some(attempt)) => attempts.push(attempt),
                     Ok(None) => {
-                        if config.drain {
-                            match with_pool(pool, |db| {
-                                has_due(db, &config.namespace, queues[index].name, workers)
-                            }) {
-                                Ok(due) => queues[index].checked_empty = !due,
-                                Err(error) => runner.record_error(error),
-                            }
-                        }
                         queues[index].next_claim =
                             Instant::now() + Duration::from_millis(config.poll_ms);
                     }

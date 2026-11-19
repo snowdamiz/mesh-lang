@@ -570,10 +570,10 @@ pub(super) fn claim(
     result.map_err(|error| rollback_error(error, db.simple("ROLLBACK")))
 }
 
-pub(super) fn has_due(
+pub(super) fn drain_has_work(
     db: &mut impl Database,
     namespace: &str,
-    queue: &str,
+    queues: &str,
     workers: &str,
 ) -> Result<bool, String> {
     // A skipped lock, or a queue at capacity, can also produce an empty claim.
@@ -583,14 +583,15 @@ pub(super) fn has_due(
          SELECT EXISTS (
              SELECT FROM mesh_jobs.jobs j JOIN mesh_jobs.queues q
              ON q.namespace = j.namespace AND q.name = j.queue CROSS JOIN clock
-             WHERE j.namespace = $1 AND j.queue = $2 AND q.state = 'active' AND q.concurrency > 0
+             WHERE j.namespace = $1 AND $2::jsonb ? j.queue
                  AND ((j.state = 'executing' AND j.lease_expires_at_ms <= now_ms)
-                     OR (j.state IN ('available', 'scheduled', 'retryable')
+                     OR (q.state = 'active' AND q.concurrency > 0
+                         AND j.state IN ('available', 'scheduled', 'retryable')
                          AND j.scheduled_at_ms <= now_ms AND j.attempt < j.max_attempts
                          AND EXISTS (SELECT FROM jsonb_to_recordset($3::jsonb) AS w(worker text, version bigint)
                                      WHERE w.worker = j.worker AND w.version = j.version)))
          )::text",
-        &[namespace, queue, workers],
+        &[namespace, queues, workers],
     )
     .map(|due| due == "true")
 }
@@ -657,7 +658,12 @@ pub(super) fn finish(
     .map_err(|error| error.to_string())
 }
 
-pub(super) fn recover(db: &mut impl Database, namespace: &str, limit: u32) -> Result<u64, String> {
+pub(super) fn recover(
+    db: &mut impl Database,
+    namespace: &str,
+    limit: u32,
+    queues: Option<&str>,
+) -> Result<u64, String> {
     standalone(db)?;
     name(namespace, "namespace")?;
     if limit > MAX_PAGE {
@@ -665,8 +671,8 @@ pub(super) fn recover(db: &mut impl Database, namespace: &str, limit: u32) -> Re
     }
     response(
         db,
-        "SELECT mesh_jobs.recover($1, $2::integer)::text AS recovered",
-        &[namespace, &limit.to_string()],
+        "SELECT mesh_jobs.recover($1, $2::integer, nullif($3, '')::jsonb)::text AS recovered",
+        &[namespace, &limit.to_string(), queues.unwrap_or_default()],
     )?
     .parse::<u64>()
     .map_err(|error| error.to_string())

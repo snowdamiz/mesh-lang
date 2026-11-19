@@ -227,19 +227,21 @@ fn postgres_runner_executes_schedules_and_settles_renewed_timed_out_and_cancelle
         serde_json::from_str(&output).unwrap()
     };
 
-    let enqueue = |wait_ms: u32, timeout_ms: u32| -> String {
-        let request = json!({
-            "worker": "test",
-            "args": {"wait_ms": wait_ms},
-            "max_attempts": 1,
-            "timeout_ms": timeout_ms,
-        });
+    let submit = |request: serde_json::Value| -> String {
         let output = with_pool(pool, |db| {
             db.transaction(|tx| super::super::store::enqueue(tx, &namespace, &request.to_string()))
         })
         .unwrap();
         let receipt: serde_json::Value = serde_json::from_str(&output).unwrap();
         receipt["id"].as_str().unwrap().to_string()
+    };
+    let enqueue = |wait_ms: u32, timeout_ms: u32| -> String {
+        submit(json!({
+            "worker": "test",
+            "args": {"wait_ms": wait_ms},
+            "max_attempts": 1,
+            "timeout_ms": timeout_ms,
+        }))
     };
 
     let wait_for = |job_id: &str, expected: &str| -> serde_json::Value {
@@ -351,6 +353,89 @@ fn postgres_runner_executes_schedules_and_settles_renewed_timed_out_and_cancelle
     assert_eq!(
         control(json!({"action":"get","id":later}))["state"],
         "scheduled"
+    );
+
+    let abandon = |queue: &str, max_attempts: u32| -> String {
+        let id = submit(json!({"worker":"test", "queue":queue, "args":{"wait_ms":1},
+            "max_attempts":max_attempts, "backoff_base_ms":0}));
+        with_pool(pool, |db| {
+            let claimed = claim(
+                db,
+                &namespace,
+                queue,
+                r#"[{"worker":"test","version":1}]"#,
+                60_000,
+            )?
+            .unwrap();
+            assert_eq!(claimed.id, id);
+            Ok(())
+        })
+        .unwrap();
+        id
+    };
+    let expires_later = abandon("default", 2);
+    let locked_job = abandon("blocked", 1);
+    let outside = abandon("outside", 1);
+    let expire = |id: &str| {
+        with_pool(pool, |db| {
+            db.query(
+                "UPDATE mesh_jobs.jobs SET lease_expires_at_ms = mesh_jobs.now_ms() - 1
+             WHERE namespace = $1 AND id = $2::uuid",
+                &[&namespace, id],
+            )
+        })
+        .unwrap();
+    };
+    expire(&locked_job);
+    expire(&outside);
+    let (locked, lock_acquired) = mpsc::channel();
+    let (release_lock, release) = mpsc::channel();
+    let lock_ns = namespace.clone();
+    let job_to_lock = locked_job.clone();
+    let lock_holder = std::thread::spawn(move || {
+        with_pool(pool, |db| db.transaction(|tx| {
+            tx.query("SELECT id FROM mesh_jobs.jobs WHERE namespace = $1 AND id = $2::uuid FOR NO KEY UPDATE",
+                &[&lock_ns, &job_to_lock])?;
+            locked.send(()).unwrap();
+            release.recv_timeout(TEST_WAIT).unwrap();
+            Ok(())
+        })).unwrap();
+    });
+    lock_acquired.recv_timeout(TEST_WAIT).unwrap();
+    let mut two_queues = drain_config.clone();
+    two_queues["queues"]["blocked"] = json!(1);
+    let one_shot = start(
+        pool,
+        &two_queues.to_string(),
+        handle as *const u8,
+        std::ptr::null(),
+    )
+    .unwrap();
+    std::thread::sleep(Duration::from_millis(200));
+    assert!(lookup(one_shot).unwrap().report(true).is_none());
+    expire(&expires_later);
+    assert_eq!(wait_for(&expires_later, "completed")["attempt"], 2);
+    release_lock.send(()).unwrap();
+    lock_holder.join().unwrap();
+    let deadline = Instant::now() + TEST_WAIT;
+    while lookup(one_shot).unwrap().report(true).is_none() {
+        assert!(
+            Instant::now() < deadline,
+            "drain status: {}",
+            status(one_shot).unwrap()
+        );
+        std::thread::sleep(TICK);
+    }
+    let report: serde_json::Value = serde_json::from_str(&join(one_shot).unwrap()).unwrap();
+    assert_eq!(report["recovered"], 2);
+    assert_eq!(report["finished"], 1);
+    assert_eq!(
+        control(json!({"action":"get","id":locked_job}))["state"],
+        "discarded"
+    );
+    assert_eq!(
+        control(json!({"action":"get","id":outside}))["state"],
+        "executing"
     );
 
     drain_config["drain"] = json!(false);
