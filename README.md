@@ -1,8 +1,13 @@
 <div align="center">
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="website/docs/public/mesh-lockup-cream.svg">
+  <img alt="Mesh" src="website/docs/public/mesh-lockup-ink.svg" width="196">
+</picture>
+
 # Mesh Language
 
-![Version](https://img.shields.io/badge/version-v14.0-blue.svg?style=flat-square)
+![Version](https://img.shields.io/badge/version-v14.0-ff5a1f.svg?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-green.svg?style=flat-square)
 
 **A statically typed, actor-based language for native services and distributed systems.**

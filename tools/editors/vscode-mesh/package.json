@@ -7,8 +7,8 @@
   "license": "MIT",
   "icon": "images/icon.png",
   "galleryBanner": {
-    "color": "#1a1a2e",
-    "theme": "dark"
+    "color": "#F7F2EA",
+    "theme": "light"
   },
   "repository": {
     "type": "git",
