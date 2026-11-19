@@ -1504,6 +1504,7 @@ extern "C-unwind" fn supervisor_entry(args: *const u8) {
 pub extern "C-unwind" fn mesh_supervisor_start(config_ptr: *const u8, config_size: u64) -> u64 {
     let data = unsafe { std::slice::from_raw_parts(config_ptr, config_size as usize) };
     let config = parse_supervisor_config(data);
+    crate::panic::prepare_supervised_diagnostics();
     let sched = global_scheduler();
 
     let mut sup_state =

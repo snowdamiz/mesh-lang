@@ -251,10 +251,13 @@ fn main() do
   while Process.whereis("watcher") == watcher_pid do
     Timer.sleep(1)
   end
+  if Env.get_int("EXIT_AFTER_CRASH", 0) == 1 do
+    Process.exit(17)
+  end
 end
 "#;
     let (_temp_dir, binary) = compile_at_level(source, "2");
-    let child = Command::new(binary)
+    let child = Command::new(&binary)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -274,6 +277,64 @@ end
             .lines()
             .collect::<Vec<_>>(),
         ["Mesh panic: child failed"; 2]
+    );
+    #[cfg(unix)]
+    for explicit_exit in [false, true] {
+        restart_with_blocked_stderr(&binary, explicit_exit);
+    }
+}
+
+#[cfg(unix)]
+fn restart_with_blocked_stderr(binary: &Path, explicit_exit: bool) {
+    use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
+    use std::os::{fd::OwnedFd, unix::net::UnixStream};
+    use std::process::Stdio;
+    use std::time::Duration;
+
+    let timeout = Duration::from_secs(10);
+    let (reader, stdout) = UnixStream::pair().unwrap();
+    reader.set_read_timeout(Some(timeout)).unwrap();
+    let (mut errors, mut stderr) = UnixStream::pair().unwrap();
+    errors.set_read_timeout(Some(timeout)).unwrap();
+    stderr.set_nonblocking(true).unwrap();
+    let mut filled = 0;
+    // Fill even the last few bytes so the first real diagnostic must wait.
+    for chunk in [&[0; 4096][..], &[0][..]] {
+        loop {
+            match stderr.write(chunk) {
+                Ok(n) if n > 0 => filled += n,
+                Err(e) if e.kind() == ErrorKind::WouldBlock => break,
+                result => panic!("could not fill stderr: {result:?}"),
+            }
+        }
+    }
+    stderr.set_nonblocking(false).unwrap();
+    let mut child = Command::new(binary)
+        .env("MESH_SCHEDULER_MIN_WORKERS", "1")
+        .env("MESH_SCHEDULER_MAX_WORKERS", "1")
+        .env("EXIT_AFTER_CRASH", if explicit_exit { "1" } else { "0" })
+        .stdout(Stdio::from(OwnedFd::from(stdout)))
+        .stderr(Stdio::from(OwnedFd::from(stderr)))
+        .spawn()
+        .unwrap();
+
+    let progress: std::io::Result<Vec<_>> = BufReader::new(reader).lines().take(3).collect();
+    // Release the writer even if recovery stalled, then reap the process.
+    let mut bytes = Vec::new();
+    let drained = errors.read_to_end(&mut bytes);
+    if drained.is_err() {
+        let _ = child.kill();
+    }
+    let status = child.wait().unwrap();
+    assert_eq!(
+        progress.unwrap(),
+        ["started", "started", "supervisor exited"]
+    );
+    drained.unwrap();
+    assert_eq!(status.code(), Some(if explicit_exit { 17 } else { 0 }));
+    assert_eq!(
+        &bytes[filled..],
+        b"Mesh panic: child failed\nMesh panic: child failed\n"
     );
 }
 
