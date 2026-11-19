@@ -4,7 +4,7 @@ import { computed, ref } from 'vue'
 type Stdlib = {
   file: string
   lines: { html: string; modules: string[]; groups: string[] }[]
-  groups: { name: string; modules: string[] }[]
+  groups: { name: string; modules: string[]; sample?: { line: number; html: string } }[]
   link: { text: string; href: string }
 }
 
@@ -15,6 +15,8 @@ const pinned = ref<string | null>(null)
 const active = computed(() => hovered.value ?? pinned.value)
 
 const used = computed(() => new Set(props.stdlib.lines.flatMap((line) => line.groups)))
+const moduleCount = computed(() => props.stdlib.groups.reduce((count, group) => count + group.modules.length, 0))
+const digest = computed(() => props.stdlib.groups.flatMap((group) => (group.sample ? [group.sample] : [])).sort((a, b) => a.line - b.line))
 
 function pin(name: string) {
   pinned.value = pinned.value === name ? null : name
@@ -34,6 +36,9 @@ function pin(name: string) {
         class="ed-line"
         :class="{ on: active !== null && line.groups.includes(active) }"
       ><span class="ed-num" aria-hidden="true">{{ i + 1 }}</span><code v-html="line.html || ' '" /><span v-if="line.modules.length" class="ed-hint" aria-hidden="true">{{ line.modules.join(' · ') }}</span></span></pre>
+      <div class="ed-digest code">
+        <span v-for="(use, n) in digest" :key="n" class="ed-use"><span class="ed-num" aria-hidden="true">{{ use.line }}</span><code v-html="use.html" /></span>
+      </div>
     </figure>
 
     <div class="legend">
@@ -54,7 +59,10 @@ function pin(name: string) {
           </button>
         </li>
       </ul>
-      <a class="link-arrow" :href="stdlib.link.href">{{ stdlib.link.text }} <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" /></svg></a>
+      <div class="legend-foot">
+        <p class="legend-count">{{ moduleCount }} modules built in.</p>
+        <a class="link-arrow" :href="stdlib.link.href">{{ stdlib.link.text }} <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4" /></svg></a>
+      </div>
     </div>
   </div>
 </template>

@@ -1,8 +1,10 @@
 export interface BenchmarkPanel {
   id: 'actors' | 'cpu' | 'recovery' | 'http'
   label: string
+  headline: string
   unit: string
-  caption: string
+  measure: string
+  setup: string
   better: 'higher' | 'lower'
   note?: string
   rows: { runtime: string; figure: string; share: number; highlighted: boolean }[]
@@ -13,7 +15,7 @@ const TRIALS = '5'
 export const RUN = {
   dir: 'tools/performance/results/2026-11-19',
   trials: TRIALS,
-  footnote: `Median of ${TRIALS} trials on a dedicated 4-vCPU server. Rust, Go and Elixir were measured on the same hosts a day earlier.`,
+  footnote: `Median of ${TRIALS} trials on a dedicated 4-vCPU server. Rust, Go and Elixir were measured a day earlier.`,
 }
 
 const RUNTIMES = ['Mesh', 'Rust/Tokio', 'Go', 'Elixir']
@@ -25,39 +27,43 @@ const COLUMNS = [...KEY_COLUMNS, 'runtime', 'median'] as const
 type Row = Record<(typeof COLUMNS)[number], string>
 type RowKey = Partial<Record<(typeof KEY_COLUMNS)[number], string>>
 
-type PanelSpec = Omit<BenchmarkPanel, 'rows' | 'unit'> & { csvRow: RowKey & { metric_unit: string }; shortUnit?: string }
+type PanelSpec = Omit<BenchmarkPanel, 'rows' | 'headline' | 'unit'> & { csvRow: RowKey & { metric_unit: string }; shortUnit?: string }
 
 const PANELS: PanelSpec[] = [
   {
     id: 'actors',
-    label: 'Actor messaging',
+    label: 'Actors',
     csvRow: { workload: 'actor', cpus: '4', pairs: '64', metric_unit: 'M round trips/s' },
-    shortUnit: 'M/s',
+    shortUnit: 'M',
     better: 'higher',
-    caption: 'Million message round trips per second between 64 actor pairs on 4 CPUs.',
+    measure: 'message round trips per second',
+    setup: 'Ping-pong between 64 actor pairs on 4 CPUs.',
   },
   {
     id: 'cpu',
-    label: 'CPU work',
+    label: 'CPU',
     csvRow: { workload: 'cpu', cpus: '1', metric_unit: 'M records/s' },
-    shortUnit: 'M/s',
+    shortUnit: 'M',
     better: 'higher',
-    caption: 'Million records scored per second on 1 CPU.',
+    measure: 'records scored per second',
+    setup: 'A CPU-bound scoring loop on 1 CPU.',
   },
   {
     id: 'recovery',
-    label: 'Crash recovery',
+    label: 'Recovery',
     csvRow: { workload: 'recovery', cpus: '4', metric_unit: 'µs' },
     better: 'lower',
-    caption: 'Microseconds from a worker failure until its supervised replacement answers, on 4 CPUs.',
-    note: 'The Mesh worker panics. Elixir requests a supervised shutdown. Go and Rust signal the failure explicitly.',
+    measure: 'to recover from a worker failure',
+    setup: 'From the failure until the supervised replacement answers, on 4 CPUs.',
+    note: 'Mesh panics. Elixir requests a supervised shutdown. Go and Rust signal the failure explicitly.',
   },
   {
     id: 'http',
-    label: 'HTTP latency',
+    label: 'HTTP',
     csvRow: { workload: 'http', cpus: '4', offered_rps: '400', metric_unit: 'ms' },
     better: 'lower',
-    caption: 'p99 latency in milliseconds at 400 requests per second on 4 CPUs, one connection per request.',
+    measure: 'p99 response time',
+    setup: '400 requests per second on 4 CPUs, one connection per request.',
   },
 ]
 
@@ -100,6 +106,7 @@ export function benchmarkPanels(csv: string): BenchmarkPanel[] {
     const longest = Math.max(...values)
     return {
       ...panel,
+      headline: FIGURE.format(values[RUNTIMES.indexOf(HIGHLIGHTED)]),
       unit: shortUnit ?? csvRow.metric_unit,
       rows: values.map((median, i) => ({
         runtime: RUNTIMES[i],

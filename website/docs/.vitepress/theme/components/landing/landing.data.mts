@@ -262,7 +262,7 @@ export interface LandingData {
   distribution: { title: [string, string]; lead: string; link: { text: string; href: string }; figure: { lg: string; sm: string; label: string }; code: string }
   benchmarks: { title: [string, string]; panels: BenchmarkPanel[]; footnote: string; link: { text: string; href: string } }
   toolchain: { title: [string, string]; commands: { id: string; command: string; gloss: string }[]; note: string }
-  stdlib: { title: [string, string]; file: string; lines: { html: string; modules: string[]; groups: string[] }[]; groups: { name: string; modules: string[] }[]; link: { text: string; href: string } }
+  stdlib: { title: [string, string]; file: string; lines: { html: string; modules: string[]; groups: string[] }[]; groups: { name: string; modules: string[]; sample?: { line: number; html: string } }[]; link: { text: string; href: string } }
   quote: { text: string; author: string; role: string }
   close: { title: string }
 }
@@ -331,6 +331,39 @@ function modulesIn(line: string): string[] {
   const found = [...line.matchAll(/\b([A-Z][A-Za-z0-9]*)\./g)].map((m) => m[1]).filter((name) => GROUP_OF.has(name))
   for (const [pattern, module] of LITERAL_MODULES) if (pattern.test(line)) found.push(module)
   return [...new Set(found)]
+}
+
+const LITERAL_STARTS: [RegExp, string][] = [[/\bjson \{/, 'Json'], [/\bderiving\(/, 'Json']]
+const CLOSER: Record<string, string> = { '(': ')', '{': '}', '[': ']' }
+
+function closingBracket(text: string, open: number): number {
+  const expected: string[] = []
+  for (let i = open; i < text.length; i++) {
+    if (text[i] === '"') {
+      const end = text.indexOf('"', i + 1)
+      if (end < 0) break
+      i = end
+    } else if (CLOSER[text[i]]) expected.push(CLOSER[text[i]])
+    else if (text[i] === expected.at(-1) && expected.pop() && expected.length === 0) return i
+  }
+  return text.length - 1
+}
+
+function expressionUsing(line: string, module: string): string {
+  const starts = [new RegExp(`\\b${module}\\.\\w+\\(`), ...LITERAL_STARTS.filter(([, owner]) => owner === module).map(([pattern]) => pattern)]
+  for (const pattern of starts) {
+    const match = pattern.exec(line)
+    if (!match) continue
+    const close = closingBracket(line, match.index + match[0].length - 1)
+    return line.slice(match.index, line[close + 1] === '?' ? close + 2 : close + 1)
+  }
+  return line.trim()
+}
+
+function shortestUse(group: { modules: string[] }, lines: string[]): { line: number; text: string } | undefined {
+  const uses = lines.flatMap((line, i) => modulesIn(line).filter((module) => group.modules.includes(module)).map((module) => ({ line: i + 1, text: expressionUsing(line, module) })))
+  const calls = uses.filter((use) => /^[A-Z]/.test(use.text))
+  return (calls.length > 0 ? calls : uses).sort((a, b) => a.text.length - b.text.length)[0]
 }
 
 declare const data: LandingData
@@ -407,7 +440,10 @@ export default defineLoader({
           const modules = modulesIn(STDLIB.split('\n')[i])
           return { html: lineHtml, modules, groups: [...new Set(modules.map((m) => GROUP_OF.get(m)!))] }
         }),
-        groups: MODULE_GROUPS,
+        groups: MODULE_GROUPS.map((group) => {
+          const use = shortestUse(group, STDLIB.split('\n'))
+          return { ...group, sample: use && { line: use.line, html: html(use.text) } }
+        }),
         link: { text: 'Standard library', href: '/docs/stdlib/' },
       },
     }
