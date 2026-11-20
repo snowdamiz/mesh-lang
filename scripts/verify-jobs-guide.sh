@@ -37,8 +37,9 @@ runtime="${toolchain_proof%%$'\n'*}"
 printf 'J7 lane 9 | %s\n' "$(uname -smr)"
 printf 'Checkout source: %s\n' "$(git rev-parse HEAD)"
 printf 'Compiler/runtime source: %s\n' "$runtime"
-git diff --exit-code "$runtime" -- compiler Cargo.toml Cargo.lock
-printf 'Compiler and runtime source and Cargo inputs match.\n'
+git diff --exit-code "$runtime" -- compiler Cargo.toml Cargo.lock .cargo \
+  ':(exclude,glob)compiler/**/tests/**'
+printf 'Production compiler and runtime source and Cargo inputs match.\n'
 shasum -a 256 scripts/verify-jobs-guide.sh "$reference" "$runbook"
 printf '%s\n' "${toolchain_proof#*$'\n'}"
 

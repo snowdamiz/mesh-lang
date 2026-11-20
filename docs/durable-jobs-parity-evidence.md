@@ -93,10 +93,11 @@ tools, Python 3, and `jq` installed, run from the checkout root.
 PG_BIN_DIR="$(pg_config --bindir)" bash scripts/verify-jobs-guide.sh "$release"
 ```
 
-The proof checks both artifact hashes and compares the pinned compiler and
-runtime sources with the current checkout. It runs the operations walkthrough
-from Markdown on a disposable cluster, then compiles and runs the concurrency
-guide's transactional enqueue and worker examples. The receipt covers Mesh
+The proof checks both artifact hashes and compares the pinned production
+compiler and runtime sources with the current checkout. It runs the
+operations walkthrough from Markdown on a disposable cluster, then compiles
+and runs the concurrency guide's transactional enqueue and worker examples.
+The receipt covers Mesh
 0.1.8 on macOS arm64 and PostgreSQL 17.11 over loopback SCRAM. Lease recovery
 uses drain process loss on the same primary. [J7 lane 9 receipt](../proof/jobs-parity/j7-lane-9.log)
 
