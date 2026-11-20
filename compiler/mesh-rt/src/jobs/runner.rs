@@ -2184,22 +2184,33 @@ fn claim_one(
     queue: &str,
     start_worker: &StartWorker,
 ) -> Result<(Option<Attempt>, Option<Instant>), String> {
+    dispatch_single_claim(runner, queue, start_worker, || {
+        with_pool(pool, |db| {
+            let next_due = runner.probe_due(db, queue, workers);
+            let lease = Lease::begin(Duration::from_millis(runner.config.lease_ms))?;
+            let job = claim_with_timing(
+                db,
+                &runner.config.namespace,
+                queue,
+                workers,
+                runner.config.lease_ms,
+                runner.events.is_some(),
+            )?;
+            Ok((lease, job, next_due))
+        })
+    })
+}
+
+fn dispatch_single_claim(
+    runner: &Runner,
+    queue: &str,
+    start_worker: &StartWorker,
+    acquire: impl FnOnce() -> Result<(Lease, Option<Claim>, Option<Instant>), String>,
+) -> Result<(Option<Attempt>, Option<Instant>), String> {
     if reserve_claims(runner, queue, 1) == 0 {
         return Ok((None, None));
     }
-    let acquired = with_pool(pool, |db| {
-        let next_due = runner.probe_due(db, queue, workers);
-        let lease = Lease::begin(Duration::from_millis(runner.config.lease_ms))?;
-        let job = claim_with_timing(
-            db,
-            &runner.config.namespace,
-            queue,
-            workers,
-            runner.config.lease_ms,
-            runner.events.is_some(),
-        )?;
-        Ok((lease, job, next_due))
-    });
+    let acquired = acquire();
     let mut state = runner.state.lock();
     state.pending = None;
     let (lease, job, next_due) = acquired?;
@@ -2215,17 +2226,13 @@ fn claim_attempt(
     start_worker: &StartWorker,
     acquire: impl FnOnce(&mut PgJobDb<'_>) -> Result<Option<Claim>, String>,
 ) -> Result<Option<Attempt>, String> {
-    if reserve_claims(runner, queue, 1) == 0 {
-        return Ok(None);
-    }
-    let acquired = with_pool(pool, |db| {
-        let lease = Lease::begin(Duration::from_millis(runner.config.lease_ms))?;
-        acquire(db).map(|job| (lease, job))
-    });
-    let mut state = runner.state.lock();
-    state.pending = None;
-    let (lease, job) = acquired?;
-    Ok(job.map(|job| launch_confirmed(runner, &mut state, queue, lease, job, start_worker)))
+    dispatch_single_claim(runner, queue, start_worker, || {
+        with_pool(pool, |db| {
+            let lease = Lease::begin(Duration::from_millis(runner.config.lease_ms))?;
+            acquire(db).map(|job| (lease, job, None))
+        })
+    })
+    .map(|(attempt, _)| attempt)
 }
 
 fn reserve_claims(runner: &Runner, queue: &str, slots: usize) -> usize {

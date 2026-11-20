@@ -725,6 +725,146 @@ fn batch_lifecycle_survives_an_exhausted_application_pool() {
 
 #[test]
 #[ignore = "requires MESH_TEST_DATABASE_URL"]
+fn committed_claim_without_confirmation_is_not_refunded_during_queue_stop() {
+    use crate::db::pool::{mesh_pool_close, mesh_pool_open, unbox_u64_payload};
+    use crate::io::MeshResult;
+    use crate::string::mesh_str;
+
+    crate::gc::mesh_rt_init();
+    actor::mesh_rt_init_actor(2);
+    let url = std::env::var("MESH_TEST_DATABASE_URL").expect("test PostgreSQL URL");
+    let pool = unsafe { &*mesh_pool_open(mesh_str(&url), 0, 3, 500).cast::<MeshResult>() };
+    assert_eq!(pool.tag, 0);
+    let pool = unsafe { unbox_u64_payload(pool.value) };
+    with_pool(pool, |db| super::super::store::migrate(db)).unwrap();
+    let namespace = format!("queue-stop-uncertain-{}", rand::random::<u64>());
+    let config = Config::parse(
+        &json!({"namespace":namespace,"queues":{"default":1,"sibling":1},
+                "workers":[{"worker":"test","version":1}],"lease_ms":60000})
+        .to_string(),
+    )
+    .unwrap();
+    let workers = serde_json::to_string(&config.workers).unwrap();
+    let runner = Runner {
+        state: Mutex::new(State::new(&config)),
+        config,
+        id: 0,
+        check_worker: || Ok(()),
+        dispatcher: OnceLock::new(),
+        reply_wake: crossbeam_channel::bounded(1).0,
+        events: None,
+        wakeups: None,
+    };
+    let enqueue = |queue| {
+        let spec = json!({"worker":"test","queue":queue,"args":{"wait_ms":0},
+                          "max_attempts":2,"backoff_base_ms":0,"backoff_max_ms":0});
+        let receipt = with_pool(pool, |db| {
+            db.transaction(|tx| super::super::store::enqueue(tx, &namespace, &spec.to_string()))
+        })
+        .unwrap();
+        serde_json::from_str::<serde_json::Value>(&receipt).unwrap()
+    };
+    let pending = enqueue("default");
+    let sibling = enqueue("sibling");
+    let id = pending["id"].as_str().unwrap();
+    let lost = dispatch_single_claim(
+        &runner,
+        "default",
+        &|_, _, _, _| panic!("a claim without a confirmation cannot start a worker"),
+        || {
+            let mut state = runner.state.lock();
+            assert_eq!(state.pending_for("default"), 1);
+            update_queue(
+                &mut state,
+                &runner.config,
+                "default".into(),
+                LocalAction::Stop { grace_ms: Some(0) },
+            )?;
+            assert!(matches!(
+                state.queues["default"].phase,
+                QueuePhase::Stopping(_)
+            ));
+            drop(state);
+            // Commit through the real store, then simulate failure at the caller boundary.
+            let committed = with_pool(pool, |db| {
+                claim(db, &namespace, "default", &workers, 60_000)
+            })?
+            .expect("the transaction must have claimed the original job");
+            assert_eq!(committed.id, id);
+            Err("claim confirmation unavailable".into())
+        },
+    );
+    assert!(matches!(lost, Err(error) if error == "claim confirmation unavailable"));
+    {
+        let mut state = runner.state.lock();
+        state.refresh_stopping_queues();
+        assert!(state.pending.is_none());
+        assert!(state.jobs.is_empty());
+        assert!(matches!(state.queues["default"].phase, QueuePhase::Stopped));
+        assert!(matches!(state.queues["sibling"].phase, QueuePhase::Running));
+        assert_eq!(state.counts.claimed, 0);
+    }
+    let first_token = with_pool(pool, |db| {
+        db.query("SELECT lease_token::text FROM mesh_jobs.jobs WHERE namespace = $1 AND id = $2::uuid
+                  AND state = 'executing' AND attempt = 1 AND lease_expires_at_ms > mesh_jobs.now_ms()",
+                 &[&namespace, id])
+    }).unwrap()[0][0].1.clone();
+    assert!(!first_token.is_empty());
+
+    let (sibling_attempt, _) =
+        claim_one(&runner, pool, &workers, "sibling", &TimedWorker::start).unwrap();
+    let mut sibling_attempt = sibling_attempt.expect("sibling queue should still claim");
+    assert_eq!(sibling_attempt.id, sibling["id"].as_str().unwrap());
+    runner.supervise(true);
+    assert!(!sibling_attempt.poll(
+        &runner,
+        &mut LifecycleIo {
+            pool,
+            session: None
+        }
+    ));
+    let sibling_state = with_pool(pool, |db| {
+        super::super::store::control(
+            db,
+            &namespace,
+            &json!({"action":"get","id":sibling["id"]}).to_string(),
+        )
+    })
+    .unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&sibling_state).unwrap()["state"],
+        "completed"
+    );
+
+    with_pool(pool, |db| {
+        db.query(
+            "UPDATE mesh_jobs.jobs SET lease_expires_at_ms = mesh_jobs.now_ms() - 1
+                  WHERE namespace = $1 AND id = $2::uuid AND lease_token = $3::uuid",
+            &[&namespace, id, &first_token],
+        )?;
+        assert_eq!(recover(db, &namespace, 1, Some(r#"{"default":1}"#))?, 1);
+        let replacement = claim(db, &namespace, "default", &workers, 60_000)?.unwrap();
+        assert_eq!(replacement.id, id);
+        assert_ne!(replacement.token, first_token);
+        assert_eq!(
+            finish(db, &namespace, id, &first_token, Outcome::Complete).unwrap(),
+            Settlement::Stale
+        );
+        let context: serde_json::Value = serde_json::from_str(&replacement.context).unwrap();
+        assert_eq!(context["attempt"], 2);
+        assert_eq!(context["effect_key"], pending["effect_key"]);
+        assert_eq!(
+            finish(db, &namespace, id, &replacement.token, Outcome::Complete).unwrap(),
+            Settlement::Completed
+        );
+        Ok(())
+    })
+    .unwrap();
+    mesh_pool_close(pool);
+}
+
+#[test]
+#[ignore = "requires MESH_TEST_DATABASE_URL"]
 fn postgres_runner_executes_schedules_and_settles_renewed_timed_out_and_cancelled_attempts() {
     use crate::db::pool::{mesh_pool_close, mesh_pool_open, unbox_u64_payload};
     use crate::io::MeshResult;
