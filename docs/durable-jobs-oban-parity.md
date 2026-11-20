@@ -413,7 +413,7 @@ OS spawn call and a gate at the existing native worker-start marker.
 - [x] Lane 1. On macOS arm64 and PostgreSQL 17.11, all 35 frozen profiles reconciled 43,080 jobs per runtime against the same input manifests. The receipt records three performance budget misses. [Receipt](../proof/jobs-parity/j7-lane-1.log)
 - [ ] Lane 2. Run the Linux compiled timeout and parent-death proof. Save `j7-lane-2.log`. Pass when the handler process terminates and the peer can recover the job.
 - [x] Lane 3. Run the macOS executable replacement and shutdown proof. Save `j7-lane-3.log`. Pass when an unstarted claim keeps its attempt budget.
-- [ ] Lane 4. Run real PostgreSQL on any advertised Windows configuration. Save `j7-lane-4.log`. Pass when timeout, parent death, and recovery are proved by a compiled executable.
+- Lane 4 applies when a Windows configuration is advertised. The first release scope covers Linux and macOS. Enable this lane when the compiled Windows timeout, parent-death, and recovery proof is ready.
 - [x] Lane 5. The rolling upgrade preserved existing attempts and schedules on macOS arm64 with PostgreSQL 17.11, 18.7, and 19.0. [Receipt](../proof/jobs-parity/j7-rolling-and-promotion.log)
 - [x] Lane 6. The previous runner settled its existing claim under its original grants on the updated schema. A fresh legacy runner completed the pending retry. [Receipt](../proof/jobs-parity/j7-rolling-and-promotion.log)
 - [x] Lane 7. Primary promotion fenced the old primary and reconciled all job and effect identities. Eligible work resumed within 1.23 seconds in all three macOS PostgreSQL runs against a 2-second budget. [Receipt](../proof/jobs-parity/j7-rolling-and-promotion.log)

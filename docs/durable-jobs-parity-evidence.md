@@ -52,7 +52,8 @@ becomes due. The busy queue has one free slot after that transaction commits.
 PostgreSQL must record the sparse admission before the next busy admission,
 with three due busy jobs unclaimed throughout. The compiled runner must
 start and settle every admitted job on attempt one. This lane covers one
-poll-only batch runner with fixed queue limits. Live proof is pending.
+poll-only batch runner with fixed queue limits. It passed on macOS arm64
+with PostgreSQL 17.11, 18.7, and 19.0. [Compiled receipts](../proof/jobs-parity/qualification-v1.json)
 
 The compiled process proof also includes J7 lane 8. On a schedulable host,
 run the verifier with its disposable loopback database and capture the
