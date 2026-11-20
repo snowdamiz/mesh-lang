@@ -3468,6 +3468,23 @@
     "passed": ["waiting-assert", "waiting-refute"],
     "scope": "compiled helpers read a no-match snapshot before an external commit"
   },
+  "compiled_jobs_input_bounds": {
+    "checkout": "55cf8f8fa1f2464e66142b75571699d378a1863e",
+    "host": "Darwin arm64",
+    "postgres_version": "17.11",
+    "transport": "SCRAM with verified TLS",
+    "command": "bash scripts/verify-postgres-jobs.sh --compatibility 17.11 --j6-roles --parity-driver-check",
+    "log": "target/jobs-parity/55cf8f8fa1f2464e66142b75571699d378a1863e/input-bounds/postgres-17.11.log",
+    "log_sha256": "2b4cbfc60f47d02673eb5e3bf671272faaacfc7844c024c2f5609d50e5f81010",
+    "runtime_tests_passed": 47,
+    "compiled_proofs_passed": 3,
+    "rejected": {
+      "limit": [0, 101],
+      "wait_ms": [-1, 60001],
+      "max_jobs": [0, 1001]
+    },
+    "marker": "J5 public helpers and drain rejected out-of-range inputs"
+  },
   "scoped_drain_and_cleanup": {
     "checkout": "308bb6cf1e24d9a60fc4a1e9c3d450dd74c8b91a",
     "fresh_and_upgraded_worker": [

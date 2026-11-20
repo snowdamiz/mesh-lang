@@ -1130,6 +1130,15 @@ match before a separate transaction committed. `Test.assert_enqueued`
 then succeeded and `Test.refute_enqueued` reported the matching job on
 PostgreSQL 17.11 with verified TLS. [Waiting assertion receipt](../proof/jobs-parity/qualification-v1.json)
 
+The compiled public API proof accepts inspection limits of 1 and 100,
+an assertion wait of 60,000 ms with a committed match, and a drain budget of
+1,000. It rejects inspection limits of 0 and 101, waits of −1 and 60,001 ms
+through both assertion helpers, and drain budgets of 0 and 1,001. Each
+rejected drain leaves the original job and its effect ledger untouched.
+The verifier passed 47 Jobs runtime tests and all three compiled suites on
+macOS arm64 with PostgreSQL 17.11 over verified TLS.
+[Input bounds receipt](../proof/jobs-parity/qualification-v1.json)
+
 The maintenance-join test pauses local admission and waits for any pending
 claim to clear before stopping with the cron lock held. This lets the test
 check that a drained runner still waits for maintenance. The corrected
