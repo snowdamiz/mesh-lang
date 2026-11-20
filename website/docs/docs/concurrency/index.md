@@ -551,11 +551,12 @@ end
 
 fn start_receipts(pool :: PoolHandle) -> Int!String do
   Jobs.control(pool, "shop", json { action: "configure", queue: "default", concurrency: 4 })?
+  let workers = Json.parse("""[{"worker":"send-receipt","version":1}]""")?
   Jobs.start(pool,
     json {
       namespace: "shop",
       queues: json { default: 4 },
-      workers: [json { worker: "send-receipt", version: 1 }],
+      workers: workers,
       lease_ms: 30000,
       poll_ms: 250,
       shutdown_grace_ms: 15000
@@ -679,8 +680,10 @@ Set `prune_max_age_ms` in the runner config to remove old terminal jobs in bound
 `Jobs.drain` takes the same named handler and runner config as `Jobs.start`. Give the config an explicit `namespace` and pass the drain options separately.
 
 ```mesh
-Jobs.drain(pool, config, handle_job,
-  json { max_jobs: 25, recursive: false, on_error: "stop" })
+fn drain_receipts(pool :: PoolHandle, config :: String) -> String!String do
+  Jobs.drain(pool, config, handle_receipt,
+    json { max_jobs: 25, recursive: false, on_error: "stop" })
+end
 ```
 
 The drain recovers up to `max_jobs` expired attempts in the selected queues and worker versions before claiming new work. It runs each claimed attempt in a separate process and waits for settlement before claiming another job. Queue state and database-wide concurrency limits apply.

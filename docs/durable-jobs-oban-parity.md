@@ -405,7 +405,7 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 - [ ] Lane 6. Roll back to the previous runtime against the updated schema. Save `j7-lane-6.log`. Pass when the previous runner can settle its existing claim with its original grants.
 - [ ] Lane 7. Fail over the primary with a committed queue and an ambiguous acknowledgement. Save `j7-lane-7.log`. Pass when the old primary is fenced, recovered job identities reconcile against the declared replication policy, and eligible work resumes within a lease plus two recovery intervals after the writable primary is ready.
 - [ ] Lane 8. Exhaust the database pool, then interrupt notifications and maintenance. Save `j7-lane-8.log`. Pass when `Jobs.stop` returns from API entry within grace plus 100 ms on a schedulable test host, `Jobs.join` finishes within the configured checkout and I/O bounds once access returns, and polling, leases, and the cron cursor recover eligible work.
-- [ ] Lane 9. Run the guides against disposable environments as a fresh application. Save `j7-lane-9.log`. Pass when the documented commands reproduce enqueue, retry, drain, and recovery.
+- [x] Lane 9. The guides reproduced enqueue, retry, drain, and lease recovery from a fresh application on macOS arm64 with PostgreSQL 17.11. [Receipt](../proof/jobs-parity/j7-lane-9.log) · [Rerun the guide proof](durable-jobs-parity-evidence.md#replay-the-fresh-application-guides)
 - [ ] Lane 10. Run the matched Oban comparison and inspect the raw results. Save `j7-lane-10.log`. Pass when each supported performance claim maps to a reproducible receipt.
 
 **Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.

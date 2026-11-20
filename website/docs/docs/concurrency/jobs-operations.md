@@ -59,6 +59,141 @@ functions continue to enforce the namespace pause.
    downstream system by `effect_key`. Automatic retry and `run_now` keep it.
    Operator `retry` on a terminal job starts a new run with a new key.
 
+## Try enqueue, retry, drain, and lease recovery
+
+Use an empty, disposable PostgreSQL database on macOS or Linux. Export
+`DATABASE_URL` to its connection URL. You need `meshc`, `psql`, and `jq`.
+Run the commands in Bash.
+
+```bash
+set -euo pipefail
+meshc init jobs_demo
+cd jobs_demo
+```
+
+Replace `main.mpl` with the following application. It runs one attempt per
+drain. The retry job asks to retry on its first attempt. The recovery job
+waits on its first attempt when you set `HOLD_JOB=1`.
+
+```mesh
+fn handle_job(job :: String) -> String do
+  let kind = Json.get_nested(job, "args", "kind")
+  let first = Json.get(job, "attempt") == "1"
+  if kind == "retry" && first do
+    return Json.encode(json { action: "retry_after", delay_ms: 60000, reason: "try again" })
+  end
+  if kind == "recovery" && first && Env.get("HOLD_JOB", "") == "1" do
+    IO.eprintln("handler started")
+    Timer.sleep(30000)
+  end
+  Json.encode(json { action: "complete" })
+end
+
+fn run(pool :: PoolHandle, action :: String, value :: String) -> String!String do
+  case action do
+    "migrate" ->
+      let _ = Jobs.migrate(pool)?
+      Ok("migrated")
+    "enqueue" -> Jobs.enqueue(pool, "jobs-demo",
+      json { worker: "demo", args: json { kind: value }, request_key: value,
+        max_attempts: 2, backoff_base_ms: 0 })
+    "drain" -> Jobs.drain(pool,
+      """{"namespace":"jobs-demo","queues":{"default":1},"workers":[{"worker":"demo","version":1}],"lease_ms":1500}""",
+      handle_job, json { max_jobs: 1, recursive: false, on_error: "stop" })
+    "get" | "run_now" | "retry" -> Jobs.control(pool, "jobs-demo",
+      json { action: action, id: value })
+    _ -> Err("expected migrate, enqueue, drain, get, run_now, or retry")
+  end
+end
+
+fn main() do
+  let args = Env.args()
+  let action = List.get(args, 1)
+  let value = if List.length(args) > 2 do List.get(args, 2) else "" end
+  case Pool.open(Env.get("DATABASE_URL", ""), 1, 2, 5000) do
+    Ok(pool) ->
+      let result = run(pool, action, value)
+      Pool.close(pool)
+      case result do
+        Ok(output) -> println(output)
+        Err(error) -> panic(error)
+      end
+    Err(error) -> panic(error)
+  end
+end
+```
+
+Build and migrate, then enqueue a job. The same request key and spec return
+the original receipt. The first drain records one retryable outcome. Use
+`run_now` to skip the retry delay and drain again. The job completes on
+attempt 2 with the same effect key.
+
+```bash
+meshc build . --output jobs_demo
+./jobs_demo migrate
+receipt=$(./jobs_demo enqueue retry)
+id=$(jq -er '.id' <<<"$receipt")
+key=$(jq -er '.effect_key' <<<"$receipt")
+test "$receipt" = "$(./jobs_demo enqueue retry)"
+printf '%s\n' "$receipt"
+printf 'Request-key replay returned the original receipt.\n'
+printf '%s\n' "$receipt" | jq -e '.inserted and .state == "available"'
+./jobs_demo drain | jq -ce 'select(.claimed == 1 and .outcomes.retryable == 1
+  and .stop_reason == "job_error")'
+./jobs_demo get "$id" | jq -ce --arg key "$key" \
+  'select(.state == "retryable" and .attempt == 1 and .effect_key == $key
+    and .scheduled_at_ms == .errors[0].at_ms + 60000)'
+./jobs_demo run_now "$id" | jq -ce --arg key "$key" \
+  'select(.state == "available" and .attempt == 1 and .effect_key == $key)'
+./jobs_demo drain | jq -ce 'select(.claimed == 1 and .outcomes.completed == 1)'
+./jobs_demo get "$id" | jq -ce --arg key "$key" \
+  'select(.state == "completed" and .attempt == 2 and .effect_key == $key)'
+```
+
+To simulate a crash, start a new drain with `HOLD_JOB=1`. Wait for its handler
+to start, then kill the drain process. Read the unfinished claim from a
+separate connection and wait for its lease to expire on PostgreSQL's clock.
+The replacement drain recovers the claim and completes attempt 2.
+
+```bash
+receipt=$(./jobs_demo enqueue recovery)
+id=$(jq -er '.id' <<<"$receipt")
+key=$(jq -er '.effect_key' <<<"$receipt")
+HOLD_JOB=1 ./jobs_demo drain > interrupted.out 2> interrupted.err &
+drain_pid=$!
+for ((i = 0; i < 100; i++)); do
+  if grep -q '^handler started$' interrupted.err; then break; fi
+  sleep 0.1
+done
+kill -KILL "$drain_pid"
+wait "$drain_pid" || test "$?" -eq 137
+grep '^handler started$' interrupted.err
+executing=$(./jobs_demo get "$id")
+printf '%s\n' "$executing"
+lease=$(jq -er 'select(.state == "executing" and .attempt == 1) | .lease_expires_at_ms' <<<"$executing")
+psql -XqAt -v ON_ERROR_STOP=1 -v lease="$lease" "$DATABASE_URL" <<'SQL'
+SELECT pg_sleep(greatest(0, :lease - mesh_jobs.now_ms() + 1) / 1000.0);
+SQL
+./jobs_demo drain | jq -ce 'select(.recovered == 1 and .claimed == 1 and .outcomes.completed == 1)'
+./jobs_demo get "$id" | jq -ce --arg key "$key" \
+  'select(.state == "completed" and .attempt == 2 and .effect_key == $key
+    and .errors[0].reason == "lease expired")'
+```
+
+Use the operator `retry` on that completed job to start a new run. It keeps
+the job ID, resets the attempt count, and assigns a new effect key. Drain the
+new run to completion.
+
+```bash
+restarted=$(./jobs_demo retry "$id")
+printf '%s\n' "$restarted" | jq -ce --arg id "$id" --arg key "$key" \
+  'select(.id == $id and .state == "available" and .attempt == 0 and .effect_key != $key)'
+new_key=$(jq -er '.effect_key' <<<"$restarted")
+./jobs_demo drain | jq -ce 'select(.claimed == 1 and .outcomes.completed == 1)'
+./jobs_demo get "$id" | jq -ce --arg key "$new_key" \
+  'select(.state == "completed" and .attempt == 1 and .effect_key == $key)'
+```
+
 ## Set maintenance limits
 
 Set these keys in the `Jobs.start` runner config. Each interval starts at the

@@ -46,6 +46,23 @@ bash scripts/verify-postgres-jobs.sh --compatibility 18.7 --parity-driver-check
 python3 scripts/jobs-parity.py --smoke --postgres-version 18.7 --mesh-ref 59f6a7b3
 ```
 
+## Replay the fresh-application guides
+
+Set `release` to the release directory for `53fb9189` containing `meshc`,
+`libmesh_rt.a`, and `jobs-parity-toolchain.json`. With PostgreSQL server
+tools, Python 3, and `jq` installed, run from the checkout root.
+
+```sh
+PG_BIN_DIR="$(pg_config --bindir)" bash scripts/verify-jobs-guide.sh "$release"
+```
+
+The proof checks both artifact hashes and compares the compiler and runtime
+sources with `c5ef7348`. It runs the operations walkthrough directly from
+Markdown on a disposable cluster, then compiles and runs the concurrency
+guide's transactional enqueue and worker examples. The receipt covers Mesh
+0.1.8 on macOS arm64 and PostgreSQL 17.11 over loopback SCRAM. Lease recovery
+uses drain process loss on the same primary. [J7 lane 9 receipt](../proof/jobs-parity/j7-lane-9.log)
+
 ## Record a baseline
 
 Run on an otherwise idle machine. Keep the database and both engines on the
