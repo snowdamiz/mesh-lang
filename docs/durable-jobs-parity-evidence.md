@@ -634,6 +634,14 @@ the experiment still missed the Oban throughput, pickup, and CPU limits.
 The candidate stays experimental because its per-child watcher descriptor
 can prevent a later launch under descriptor pressure. [Experiment receipts](../proof/jobs-parity/qualification-v1.json)
 
+The separate `4f7d702f` experiment schedules one supervisor recheck after
+an early reply and uses the existing watchdog for later reaps. Across five
+batch pairs, one-slot throughput was 73.4 jobs per second against 42.2 on
+`1b12243b`. The effect-to-settlement median was 1.73 ms against 11.36 ms.
+The 16-slot throughput medians were 429.8 and 404.1 jobs per second.
+Eleven runner unit cases and the release smoke passed. Full compatibility
+and Oban qualification for this experiment remain open. [Experiment receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Historical references
 
 On the same macOS arm64 host and PostgreSQL 17.11 configuration, the driver

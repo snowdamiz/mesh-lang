@@ -87,6 +87,126 @@
     "raw_receipt": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/bounded-drain-current/receipt.json",
     "runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287"
   },
+  "bounded_reply_reap_experiment": {
+    "baseline_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+    "candidate_revision": "4f7d702f4e24ca71250f35a12da1138a22984872",
+    "disposition": "isolated candidate, full compatibility and Oban qualification pending",
+    "matches": {
+      "short-1r-16s": {
+        "arms": {
+          "baseline": {
+            "cpu_seconds_per_job": {
+              "max": 0.0066483515625,
+              "median": 0.0064758203125,
+              "min": 0.0058132421875
+            },
+            "effect_commit_to_settlement_ms": 4.85546875,
+            "jobs_per_second": {
+              "max": 418.12017860831304,
+              "median": 404.128479261252,
+              "min": 360.54602345012546
+            },
+            "peak_host_load_average_1m": {
+              "max": 14.94091796875,
+              "median": 13.48876953125,
+              "min": 13.1494140625
+            },
+            "pickup_p99_ms": {
+              "max": 344.385986328125,
+              "median": 303.656005859375,
+              "min": 291.7939453125
+            }
+          },
+          "mesh": {
+            "cpu_seconds_per_job": {
+              "max": 0.006760109375,
+              "median": 0.006335734375,
+              "min": 0.005680632812499999
+            },
+            "effect_commit_to_settlement_ms": 3.3243408203125,
+            "jobs_per_second": {
+              "max": 483.5409695757875,
+              "median": 429.79287821081397,
+              "min": 251.57375147130588
+            },
+            "peak_host_load_average_1m": {
+              "max": 15.37109375,
+              "median": 14.384765625,
+              "min": 13.3017578125
+            },
+            "pickup_p99_ms": {
+              "max": 490.529052734375,
+              "median": 287.613037109375,
+              "min": 252.786865234375
+            }
+          }
+        },
+        "audit": {
+          "path": "target/jobs-parity/reply-reap-study/target/jobs-parity/4f7d702f4e24ca71250f35a12da1138a22984872/j1-load-t_ifmag4/profile-audit.json",
+          "sha256": "07d9a3312c8fc98051f11d2b8ec49f86bd9f2e03713f989692c3e63105793886"
+        }
+      },
+      "short-1r-1s": {
+        "arms": {
+          "baseline": {
+            "cpu_seconds_per_job": {
+              "max": 0.006948421874999999,
+              "median": 0.0064288125,
+              "min": 0.00613834375
+            },
+            "effect_commit_to_settlement_ms": 11.362548828125,
+            "jobs_per_second": {
+              "max": 42.58411143370981,
+              "median": 42.158669791556264,
+              "min": 41.466716800123
+            },
+            "peak_host_load_average_1m": {
+              "max": 8.6494140625,
+              "median": 7.880859375,
+              "min": 7.8388671875
+            },
+            "pickup_p99_ms": {
+              "max": 3043.55810546875,
+              "median": 3007.6708984375,
+              "min": 2964.31884765625
+            }
+          },
+          "mesh": {
+            "cpu_seconds_per_job": {
+              "max": 0.00627334375,
+              "median": 0.0060323124999999995,
+              "min": 0.0053594296875
+            },
+            "effect_commit_to_settlement_ms": 1.728515625,
+            "jobs_per_second": {
+              "max": 77.02199106771259,
+              "median": 73.37383938136726,
+              "min": 66.37489571319514
+            },
+            "peak_host_load_average_1m": {
+              "max": 8.27099609375,
+              "median": 7.75048828125,
+              "min": 7.4609375
+            },
+            "pickup_p99_ms": {
+              "max": 1906.674072265625,
+              "median": 1723.43896484375,
+              "min": 1640.818115234375
+            }
+          }
+        },
+        "audit": {
+          "path": "target/jobs-parity/reply-reap-study/target/jobs-parity/4f7d702f4e24ca71250f35a12da1138a22984872/j1-load-jq_nw24j/profile-audit.json",
+          "sha256": "3150271e7ab56b476fd62b0b1a2abd29a7f34fb692303231c3adff7e176b5d01"
+        }
+      }
+    },
+    "scope": "five release pairs per profile with batch claims on both arms and PostgreSQL 17.11 verified TLS",
+    "unit_test_log": {
+      "path": "target/jobs-parity/build/4f7d702f4e24ca71250f35a12da1138a22984872/reply-reap-unit.log",
+      "sha256": "5350db9c08b1d26191a5a0ff10555e4e579a77cd086a5c4ac654e317bc678ba3"
+    }
+  },
   "candidate_ref": "53fb9189e0dd71e0856f3ca6b5aad2d3bc4a5c8c",
   "combined_pool_outage": {
     "compiled_proofs": 2,
