@@ -179,7 +179,7 @@ OS spawn call and a gate at the existing native worker-start marker.
 - [x] Metric. The paired trials record claim round trips, throughput, and pickup p99. The compiled mixed-size case records a 25,166,688-byte peak of queued contexts. [Lane receipts](durable-jobs-parity-evidence.md#compiled-lane-receipts)
 - [x] Probe. The main and candidate matrix interleaves dense and sparse profiles. Batching is enabled on the candidate. [Matrix receipt](../proof/jobs-parity/j7-lane-1.log)
 - [x] Baseline. Main uses one-row claims with identical concurrency. Batch dispatch is opt-in on the candidate. [Matrix receipt](../proof/jobs-parity/j7-lane-1.log)
-- [ ] Rule. The full rerun reduced dense claim calls by 77.7%, and all seven sparse profiles met the 1.10× pickup p99 limit. After the owner replay fix, the short reference still met the 30% claim-call reduction and the one-runner, 16-slot sparse profile missed the relative pickup limit. The claim SQL budgets each reply below 32 MiB, and the compiled mixed-size proof observed a peak of 25,166,688 queued context bytes. [Rerun and earlier results](durable-jobs-parity-evidence.md#batch-comparison-against-pinned-main)
+- [ ] Rule. The full pre-replay rerun reduced dense claim calls by 77.7%, and all seven sparse profiles met the 1.10× pickup p99 limit. The post-replay short reference met the 30% claim-call reduction. The integrated sparse rerun met the pickup limit in six of seven profiles. The one-runner, one-slot profile measured 1.217× pinned main. The compiled mixed-size proof observed 25,166,688 queued context bytes against a 32 MiB limit. [Rerun and earlier results](durable-jobs-parity-evidence.md#batch-comparison-against-pinned-main)
 
 **Review gate.** None. This phase has no graphical interaction. Independent review uses the CLI receipts and database proof.
 
@@ -429,7 +429,7 @@ OS spawn call and a gate at the existing native worker-start marker.
 - [x] Metric. The release receipt records medians and resource budgets by profile. [Oban comparison](../proof/jobs-parity/j7-lane-10.log)
 - [x] Probe. The five measured pairs per profile alternate engine order. The group manifests record the harness pins and one-minute host load. [Evidence guide](durable-jobs-parity-evidence.md#matched-oban-release-comparison)
 - [x] Baseline. The candidate has separate paired comparisons with pinned main and Oban Basic on the same host and PostgreSQL 17.11. [Main comparison](../proof/jobs-parity/j7-lane-1.log) · [Oban comparison](../proof/jobs-parity/j7-lane-10.log)
-- [ ] Rule. Proposed parity gate. Require Mesh median throughput at least 90% of Oban and pickup p99 no greater than 1.25 times Oban on the declared PostgreSQL profiles, within J1's frozen absolute latency and resource budgets. Freeze or revise these budgets in J1 before optimizing. A failed profile limits the parity claim until resolved.
+- [ ] Rule. Require Mesh median throughput to exceed Oban in all 35 frozen PostgreSQL workload profiles. Require pickup p99 no greater than 1.25 times Oban, within J1's frozen absolute latency and resource budgets. Historical receipts retain the original 90% throughput floor. [Current manifest](../scripts/jobs-parity-profiles.json)
 
 **Review gate.** None. This phase has no graphical interaction. Independent review uses the CLI receipts and database proof.
 

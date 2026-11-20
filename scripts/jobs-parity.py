@@ -1887,7 +1887,10 @@ def profile_summary(trials, name, workload, settings, runners, slots, variants, 
         mesh = summary["mesh"][metric]["median"]
         baseline = summary[reference][metric]["median"]
         limit = settings[rule]
-        within_limit = mesh >= baseline * limit if rule.endswith("_min") else mesh <= baseline * limit
+        if rule == "core_throughput_ratio_min":
+            within_limit = mesh > baseline * limit
+        else:
+            within_limit = mesh >= baseline * limit if rule.endswith("_min") else mesh <= baseline * limit
         comparison[metric] = {"mesh_median": mesh, "reference": reference, "reference_median": baseline,
                               "ratio_limit": limit, "within_limit": within_limit}
     if mesh_listen and workload["mode"] == "sparse":
@@ -2509,6 +2512,22 @@ for number, line in enumerate(sys.stdin, 1):
                     mesh_event_buffer_report(status, "backpressured", log)
             with self.assertRaises(FixtureError):
                 mesh_event_buffer_report(dict(status, event_buffer_bytes=None), "backpressured", log)
+
+        def test_core_throughput_must_exceed_oban(self):
+            settings = json.loads(CONFIG.read_text())
+            workload = settings["workloads"]["short"]
+            base = {"jobs_per_second": 100, "pickup_p99_ms": 50, "cpu_seconds_per_job": 1,
+                    "peak_rss_bytes": 100, "peak_connections": 1, "peak_processes": 1,
+                    "peak_threads": 1}
+            for throughput, exceeds in ((99, False), (100, False), (101, True)):
+                with self.subTest(throughput=throughput):
+                    trials = [dict(base, engine="mesh", jobs_per_second=throughput),
+                              dict(base, engine="oban")]
+                    summary = profile_summary(trials, "short", workload, settings, 1, 16,
+                                              ("mesh", "oban"), False, False, None)
+                    comparison = summary["comparison"]["jobs_per_second"]
+                    self.assertEqual(comparison["ratio_limit"], 1.0)
+                    self.assertEqual(comparison["within_limit"], exceeds)
 
         def test_event_buffer_summary_keeps_estimate_bound_and_legacy_distinct(self):
             settings = json.loads(CONFIG.read_text())

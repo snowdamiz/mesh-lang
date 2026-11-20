@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "seed": 5938,
   "trial_pairs": 5,
   "runner_counts": [1, 4, 8],
@@ -21,7 +21,7 @@
   "events_disabled_throughput_ratio_min": 0.95,
   "events_disabled_pickup_ratio_max": 1.05,
   "events_enabled_throughput_ratio_min": 0.9,
-  "core_throughput_ratio_min": 0.9,
+  "core_throughput_ratio_min": 1.0,
   "core_pickup_p99_ratio_max": 1.25,
   "connection_slots_per_runner": 4,
   "processes_per_slot": 2,

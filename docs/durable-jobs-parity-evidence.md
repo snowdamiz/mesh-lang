@@ -953,8 +953,49 @@ The sparse-only retest used the integrated release `aa40fa5d` and the same
 pinned main. On PostgreSQL 17.11 over verified TLS, five alternating
 one-runner, 16-slot pairs reconciled 120 jobs per arm. Pickup p99 was
 261.5 ms versus 258.5 ms, within the 1.10× limit for this profile.
-The earlier miss remains recorded. The J2 gate still needs the other
-post-replay sparse profiles. [Sparse retest receipt](../proof/jobs-parity/qualification-v1.json)
+The integrated `c64eee8a` rerun covered all seven sparse profiles and
+reconciled 840 jobs per arm. Six profiles met the limit. The one-runner,
+one-slot profile measured 237.6 ms versus 195.2 ms, or 1.217× pinned main.
+The jobs defining those medians differed by 42.4 ms in pickup time,
+including 39.8 ms between enqueue commit and the recorded claim.
+The 16-slot profile met the limit in both integrated runs. Host load
+varied, and peak one-minute load reached 41.0 on 15 logical CPUs.
+The earlier miss and all seven new results remain in the receipt.
+[Sparse rerun receipts](../proof/jobs-parity/qualification-v1.json)
+
+The batch retry at `3f651c2c`, measured at `b81c2819`, uses a bounded retry when an empty
+claim can still see eligible work and open capacity. It keeps the
+PostgreSQL admission lock, lease checks, and confirmed commit boundary.
+The scoped SQL probe passed on PostgreSQL 17.11, 18.7, and 19.0. The
+compiled PostgreSQL 17.11 run passed 51 runtime tests and all three suites.
+The pinned release also passed the 12 lifecycle faults and the macOS
+launch-denial and interrupted-startup proof.
+
+The release comparison used five groups per profile, with a candidate and
+two arms running the same `c64eee8a` baseline binary. It reconciled 11,520
+jobs on macOS arm64 with PostgreSQL 17.11 over verified TLS. Peak
+one-minute host load was 20.0 on 15 logical CPUs.
+
+| Profile | Baseline jobs/s | Repeat jobs/s | Candidate jobs/s |
+| --- | ---: | ---: | ---: |
+| Short, four runners, 16 slots | 291 | 309 | 534 |
+| 100 ms, eight runners, 64 slots | 256 | 238 | 425 |
+| Short, one runner, 16 slots | 518 | 529 | 501 |
+
+The candidate exceeded both controls in all five pairs on each
+multi-runner profile. The median estimated slot utilization rose from
+36–38% to 76% for the short profile and from 52–53% to 89% for the
+100 ms profile. Claim calls per job rose from 0.711 to 0.883 and from
+0.496 to 0.686, respectively, against the first control. The one-runner
+control recorded zero contention hints.
+
+Separate frozen comparisons against Oban Basic 2.24.2 reached 86.3% and
+88.1% of its throughput on the two multi-runner profiles. Both met pickup
+and resource limits, with throughput below the historical 90% floor.
+The current performance gate requires throughput above Oban in every
+frozen profile. The short
+one-runner dense reference used 0.227 claim calls per job versus 1.023
+on pinned main. [Batch retry receipts](../proof/jobs-parity/qualification-v1.json)
 
 The follow-up verifier used the same runtime sources and passed 45 Jobs
 runtime tests and both compiled suites on PostgreSQL 17.11, 18.7, and 19.0.

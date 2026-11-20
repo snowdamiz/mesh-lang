@@ -3603,6 +3603,95 @@
     "within_limit": true,
     "scope": "targeted confirmation for one post-replay sparse profile"
   },
+  "main_integration_sparse_matrix": {
+    "harness": "c64eee8a83f70d458684fb53326370128340e213",
+    "candidate": "c64eee8a83f70d458684fb53326370128340e213",
+    "baseline": "7c1620563614a04a573aef806a6d019a2af4dfe9",
+    "host": "Darwin arm64",
+    "postgres_version": "17.11",
+    "transport": "SCRAM with verified TLS",
+    "profiles": 7,
+    "measured_trials": 70,
+    "reconciled_jobs_per_arm": 840,
+    "statement_counter_evictions": 0,
+    "load_at_start_1m": 13.52978515625,
+    "peak_load_1m": 41.03271484375,
+    "raw_path": "target/jobs-parity/c64eee8a83f70d458684fb53326370128340e213/j1-load-h9551_2q",
+    "manifest_sha256": "98b238ad643dcda0f00bccbdb6f4cff0a64303459af82a551946485510b434c0",
+    "result_sha256": "9e90783ec3b86ede1e30c991343565cabb170a2e48815d7a54fb63f3ffe43fba",
+    "pickup_p99_ratio_limit": 1.1,
+    "pickup_p99_ms": {
+      "sparse-1r-1s": {"candidate": 237.56591796875, "baseline": 195.18994140625, "within_limit": false},
+      "sparse-1r-16s": {"candidate": 260.551025390625, "baseline": 261.490966796875, "within_limit": true},
+      "sparse-1r-64s": {"candidate": 261.6240234375, "baseline": 253.9638671875, "within_limit": true},
+      "sparse-4r-16s": {"candidate": 219.197021484375, "baseline": 238.7548828125, "within_limit": true},
+      "sparse-4r-64s": {"candidate": 243.5078125, "baseline": 231.294921875, "within_limit": true},
+      "sparse-8r-16s": {"candidate": 207.132080078125, "baseline": 215.304931640625, "within_limit": true},
+      "sparse-8r-64s": {"candidate": 218.89013671875, "baseline": 208.94189453125, "within_limit": true}
+    }
+  },
+  "batch_contention_retry": {
+    "baseline": "c64eee8a83f70d458684fb53326370128340e213",
+    "candidate": "b81c2819deb8dec7c667bf2294491ded20b13125",
+    "integrated": "3f651c2cec4904f52dde9f2f72f9c2b5bb1854ce",
+    "host": "Darwin arm64",
+    "postgres_version": "17.11",
+    "transport": "SCRAM with verified TLS",
+    "runtime_tests_passed": 51,
+    "compiled_proofs_passed": 3,
+    "compiled_log": "target/jobs-parity/batch-contention-study/b81c2819deb8dec7c667bf2294491ded20b13125/postgres-17.11.log",
+    "compiled_log_sha256": "6a65a800e0ec3ab8d5b03ecf40e0e4d513a716ba1af3903b8279d8e9c4dc5d3d",
+    "scoped_sql_probes": {
+      "17.11": {"run": "sql-17.11-iquw31tq", "sha256": "a29e0bf9cc3248c47fd41d5f4605f9316ea0bc131d3ad4cab0a5294625f7f32b"},
+      "18.7": {"run": "sql-18.7-c_41g8rf", "sha256": "7b6a21727f8f04bf1e6986d9dda65218f49e287a12c6e1bdfa1b651950623564"},
+      "19.0": {"run": "sql-19.0-prdhhgxn", "sha256": "2298de8d18ac36d3e4b870043bad606efa8c56fea14a447906c4f60c819a94f8"}
+    },
+    "release_lifecycle_proofs": {
+      "transport": "loopback SCRAM",
+      "fault_cases_passed": 12,
+      "fault_result": "target/jobs-parity/b81c2819deb8dec7c667bf2294491ded20b13125/j1-fault-_12jbcqj/result.json",
+      "fault_result_sha256": "48436d736163c2f302623635e97fb6aa84793feff0999b47ecd49cb2b4851706",
+      "batch_startup_result": "target/jobs-parity/b81c2819deb8dec7c667bf2294491ded20b13125/j2-lane-7-o1gppkpp/j2-lane-7.log",
+      "batch_startup_result_sha256": "d0b4116dc19af77c89cef73bf73775b1964b71288226e729e7dee5a17fcb8400"
+    },
+    "matched_control": {
+      "raw_path": "target/jobs-parity/reply-reap-integration/comparison-6_gb2reu",
+      "manifest_sha256": "ef0c2921e6dca55e604f18f9d04288e4437a83d4e7eb4914ea43d2073f8e3a69",
+      "result_sha256": "618d2de6deb376234a900569f7ce6aa70a75e6adf31ea44b7d97c6877d9574ef",
+      "identical_baseline_artifacts": true,
+      "measured_trials": 45,
+      "reconciled_jobs": 11520,
+      "peak_one_minute_load": 20.01171875,
+      "median_jobs_per_second": {
+        "short-4r-16s": {"baseline": 291.221, "baseline_repeat": 309.147, "candidate": 533.869},
+        "slow-8r-64s": {"baseline": 255.585, "baseline_repeat": 238.326, "candidate": 424.607},
+        "short-1r-16s": {"baseline": 517.944, "baseline_repeat": 528.782, "candidate": 501.228}
+      }
+    },
+    "oban_comparison": {
+      "oban_version": "2.24.2",
+      "short-4r-16s": {
+        "run": "j1-load-ahfh3hkd", "candidate_jobs_per_second": 559.338, "oban_jobs_per_second": 648.314,
+        "manifest_sha256": "f3fb3870e8c5a875dae932c334354100e5c37eaa07fe474c320c64d848fa7fc5",
+        "result_sha256": "eda0dea8526d12a1e97a4edbf0b81b4220398d67031a8245e3d83f26c4dd2e2f",
+        "breaches": ["throughput"]
+      },
+      "slow-8r-64s": {
+        "run": "j1-load-3bc816fq", "candidate_jobs_per_second": 422.937, "oban_jobs_per_second": 480.153,
+        "manifest_sha256": "e9f3f059b6c1b9145ebc5d96d9d9dde33c9e2314547913a7f70b9ffe5ccb5f3f",
+        "result_sha256": "47a0f240772a4c05c76f939feef18ad23eb1db1409774cece84a935799aa1346",
+        "breaches": ["throughput"]
+      }
+    },
+    "dense_reference": {
+      "baseline": "7c1620563614a04a573aef806a6d019a2af4dfe9",
+      "run": "j1-load-krmvqtzn", "profile": "short-1r-16s",
+      "manifest_sha256": "e978ceaabb543b8112a3de0937d98944ba50b443f828d62c4dd6d7e73b664997",
+      "result_sha256": "b78d8ccf4a66d9031a51cf7faaad87b83c506b2c9b7a9a442cb6bd7476debff4",
+      "claim_calls_per_job": {"baseline": 1.0234375, "candidate": 0.2265625},
+      "within_limit": true
+    }
+  },
   "main_integration_postgres": {
     "checkout": "aa40fa5df5db9ca2df5ca706639973f900889906",
     "main": "7fe28906489a5b51085d3568d5fe1d8838cbdd3b",
