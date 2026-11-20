@@ -844,12 +844,33 @@ The matched comparison recorded workload-specific performance and resource
 misses. Broad Core parity remains open.
 [Qualification receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Producer commit and final claim faults
+
+The producer case cuts a connection after the fixture writes one business row
+and enqueues two jobs in the same transaction. When PostgreSQL never receives
+`COMMIT`, a separate connection sees zero rows and replay creates the batch.
+When PostgreSQL commits and the reply is lost, replay returns both original IDs
+and preserves the business write and both receipts. Each recovered job completes
+on attempt one with one effect.
+
+The final batch claim case gives one job a one-attempt budget. PostgreSQL commits
+the claim while the proxy withholds the response. Recovery discards the original
+job after lease expiration, with zero native worker starts, handler entries, and
+effects. Both cases passed on macOS arm64 with PostgreSQL 17.11, 18.7, and 19.0,
+using release runtime `1b12243b` and harness `cd4392a6`. The driver owns the
+disposable PostgreSQL instance and uses SCRAM on loopback.
+[Commit-loss receipt](../proof/jobs-parity/commit-loss-v1.json)
+
+Run the paired fault suite with already built toolchains. Set `PG_BIN_DIR` to the
+desired PostgreSQL installation.
+
+```bash
+python3 scripts/jobs-parity.py --faults --release --mesh-batch --poll-ms 100 \
+  --mesh-ref 1b12243b --against-ref 7c162056 --toolchains target/jobs-parity/build
+```
+
 ### Remaining failure cases
 
-- Lose the producer's commit response on both sides of commit, then replay
-  the same request key and reconcile the business write and enqueue receipt.
-- Lose the reply to a committed claim on its final attempt and verify
-  recovery discards the job without handler entry.
 - Exercise a surviving `Jobs.drain` caller on launch failure and unresolved
   settlement.
 - Expire queue-local stop grace, release a late claim reply during local

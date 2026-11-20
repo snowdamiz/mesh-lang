@@ -437,7 +437,7 @@ OS spawn call and a gate at the existing native worker-start marker.
 ## Close the program
 
 - [x] The evidence guide records the tested PostgreSQL and OS matrix, scope boundaries, and benchmark results by workload. [Evidence guide](durable-jobs-parity-evidence.md)
-- [ ] Confirm that all guarantees advertised in the reference docs have a reproducible positive case and an exercised failure case.
+- [ ] Confirm that all guarantees advertised in the reference docs have a reproducible positive case and an exercised failure case. [Current failure proofs and remaining cases](durable-jobs-parity-evidence.md#producer-commit-and-final-claim-faults)
 - [x] Track other database engines and Oban Pro in the [backlog beyond PostgreSQL Core](#backlog-beyond-postgresql-core).
 
 ## Appendix A. Prototype evidence
