@@ -544,8 +544,11 @@ def process_sample(processes):
         after = process_table()
         stable = {pid for pid in owned if pid in after and after[pid][2] == table[pid][2]}
         if all(counts.get(pid, 0) > 0 for pid in stable):
-            return {"processes": len(stable), "threads": sum(counts[pid] for pid in stable),
-                    "rss_bytes": 1024 * sum(table[pid][1] for pid in stable)}
+            # A process captured by the thread sampler can exit before the
+            # second process snapshot. Exclude recycled PIDs, not those exits.
+            sampled = {pid for pid in owned if counts.get(pid, 0) > 0 and (pid in stable or pid not in after)}
+            return {"processes": len(sampled), "threads": sum(counts[pid] for pid in sampled),
+                    "rss_bytes": 1024 * sum(table[pid][1] for pid in sampled)}
     raise FixtureError("runner thread capture omitted a live process")
 
 
@@ -699,28 +702,31 @@ WHERE engine = '{engine}' AND namespace = '{namespace}'
 
     queued_context = []
     wakeups = []
+    event_drops = []
     if engine == "mesh":
         for log in logs:
-            try:
-                status = json.loads(log.read_text().strip().splitlines()[-1])
-            except (IndexError, json.JSONDecodeError) as error:
-                raise FixtureError(f"missing Mesh shutdown report in {log}") from error
-            if not isinstance(status, dict) or status.get("state") != "stopped":
-                raise FixtureError(f"invalid Mesh shutdown report in {log}")
+            status = mesh_shutdown_report(log)
             peak = status.get("peak_queued_context_bytes")
             if peak is not None and (type(peak) is not int or peak < 0):
                 raise FixtureError(f"invalid queued context peak in {log}")
             queued_context.append(peak)
             wakeups.append(status.get("wakeups"))
+            event_drops.append({"reader": status.get("events_dropped"), "logger": status.get("event_logs_dropped")})
 
     listener_enabled = env.get("JOBS_PARITY_MESH_LISTEN") == "1" and engine == "mesh"
     if listener_enabled and not any(report and report.get("notification_scans", 0) > 0 for report in wakeups):
         raise FixtureError("listener trial did not record any notification-triggered scans")
+    event_mode = env.get("JOBS_PARITY_MESH_EVENTS") if engine == "mesh" else None
+    if event_mode in ("logged", "backpressured") and any(
+        type(count) is not int or count < 0 for runner in event_drops for count in runner.values()
+    ):
+        raise FixtureError("enabled telemetry did not report nonnegative event drop counters")
 
     raw = {"engine": engine, "variant": subject.variant, "namespace": namespace, "pair": pair, "case_sha256": case,
            "transactions": commits, "attempts": rows, "namespace_writes": writes,
            "samples": samples, "idle_samples": idle_samples,
            "poll_ms": int(env["JOBS_PARITY_POLL_MS"]), "wakeups": wakeups,
+           "event_drops": event_drops,
            "runner_peak_queued_context_bytes": queued_context,
            "runner_cpu_seconds_including_startup_and_idle": cpu, "raw_sql_calls": calls,
            "raw_runner_sql_calls": runner_calls, "raw_enqueue_sql_calls": enqueue_calls,
@@ -742,9 +748,22 @@ WHERE engine = '{engine}' AND namespace = '{namespace}'
         "peak_executing": max(sample["executing"] for sample in samples),
         "estimated_peak_executing": estimated_peak_executing(rows),
         "peak_queued_context_bytes": max(queued_context) if queued_context and None not in queued_context else None,
+        "events_dropped": sum(counts["reader"] or 0 for counts in event_drops),
+        "event_logs_dropped": sum(counts["logger"] or 0 for counts in event_drops),
         **{f"peak_{key}": max(sample[key] for sample in samples + idle_samples)
            for key in ("connections", "rss_bytes", "processes", "threads")},
     }
+
+
+def mesh_shutdown_report(log):
+    for line in reversed(log.read_text().splitlines()):
+        try:
+            status = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(status, dict) and status.get("state") == "stopped" and status.get("drained") is True:
+            return status
+    raise FixtureError(f"missing drained Mesh shutdown report in {log}")
 
 
 def run_fault(subject, scratch, evidence, settings):
@@ -1053,17 +1072,17 @@ def selection(args, settings):
     return [(name, r, s) for name in workloads for r in runners for s in slots if s >= r]
 
 
-def profile_summary(trials, name, workload, settings, runners, slots, variants, mesh_batch, mesh_listen):
+def profile_summary(trials, name, workload, settings, runners, slots, variants, mesh_batch, mesh_listen, mesh_events):
     keys = ("jobs_per_second", "pickup_p99_ms", "claim_p99_ms", "settlement_p99_ms",
             "sql_calls_per_job", "runner_sql_calls_per_job",
             "enqueue_sql_calls_per_job", "claim_calls_per_job", "idle_queries_per_minute",
-            "cpu_seconds_per_job", "peak_rss_bytes")
+            "cpu_seconds_per_job", "peak_rss_bytes", "events_dropped", "event_logs_dropped")
     summary = {}
     for engine in variants:
         values = [trial for trial in trials if trial["engine"] == engine]
         summary[engine] = {
             key: {"min": min(series), "median": statistics.median(series), "max": max(series)}
-            for key in keys if (series := [trial[key] for trial in values])
+            for key in keys if (series := [trial[key] for trial in values if key in trial])
         }
     limits = {}
     if "oban" in summary:
@@ -1109,6 +1128,11 @@ def profile_summary(trials, name, workload, settings, runners, slots, variants, 
         checks = [("claim_calls_per_job", "baseline", "batch_claim_calls_ratio_max")]
     elif mesh_batch and workload["mode"] == "sparse":
         checks = [("pickup_p99_ms", "baseline", "batch_sparse_pickup_p99_ratio_max")]
+    elif mesh_events == "disabled":
+        checks = [("jobs_per_second", "baseline", "events_disabled_throughput_ratio_min"),
+                  ("pickup_p99_ms", "baseline", "events_disabled_pickup_ratio_max")]
+    elif mesh_events and name == "short":
+        checks = [("jobs_per_second", "baseline", "events_enabled_throughput_ratio_min")]
     else:
         checks = []
     comparison = {}
@@ -1183,6 +1207,7 @@ def record(args):
                        MESH_SCHEDULER_MAX_WORKERS=str(settings["runner_schedulers"]),
                        JOBS_PARITY_MESH_BATCH="1" if args.mesh_batch else "0",
                        JOBS_PARITY_MESH_LISTEN="1" if args.mesh_listen else "0",
+                       JOBS_PARITY_MESH_EVENTS=args.mesh_events or "",
                        ERL_FLAGS=settings["oban_erl_flags"])
             env.pop("MESH_RT_LIB_PATH", None)
             env.pop("RUSTC_WRAPPER", None)
@@ -1224,6 +1249,7 @@ WHERE name IN ('server_version','server_version_num','shared_buffers','max_conne
                     "mesh_build_profile": "release" if args.load else "debug",
                     "mesh_batch": args.mesh_batch,
                     "mesh_listen": args.mesh_listen,
+                    "mesh_events": args.mesh_events,
                     "poll_ms": poll_ms,
                     "baseline_poll_ms": baseline_poll_ms if baseline_ref else None,
                     "mode": lane, "claim_timestamps": {"mesh": "database attempted_at_ms",
@@ -1239,7 +1265,8 @@ WHERE name IN ('server_version','server_version_num','shared_buffers','max_conne
                     subjects = {
                         "mesh": subjects["mesh"],
                         "baseline": Subject("mesh", [str(baseline)], ROOT, cluster,
-                                            dict(env, JOBS_PARITY_MESH_BATCH="0", JOBS_PARITY_MESH_LISTEN="0"),
+                                            dict(env, JOBS_PARITY_MESH_BATCH="0", JOBS_PARITY_MESH_LISTEN="0",
+                                                 JOBS_PARITY_MESH_EVENTS=""),
                                             variant="baseline", poll_ms=baseline_poll_ms),
                     }
                 variants = tuple(subjects)
@@ -1297,7 +1324,7 @@ WHERE name IN ('server_version','server_version_num','shared_buffers','max_conne
                     validate_pairs(trials, pair_count, variants)
                     write_json(case_evidence / "trials.json", trials)
                     summary = profile_summary(trials, name, workload, settings, runners, slots, variants,
-                                              args.mesh_batch, args.mesh_listen)
+                                              args.mesh_batch, args.mesh_listen, args.mesh_events)
                     write_json(case_evidence / "summary.json", summary)
                     for scope, values in summary.items():
                         for metric, verdict in values.items():
@@ -1409,6 +1436,8 @@ def main():
     parser.add_argument("--against-ref", help="compare with a second Mesh commit using single claims")
     parser.add_argument("--mesh-batch", action="store_true", help="enable batch claims for the Mesh runner")
     parser.add_argument("--mesh-listen", action="store_true", help="enable Mesh listener and transactional publishing")
+    parser.add_argument("--mesh-events", choices=("disabled", "logged", "backpressured"),
+                        help="measure Mesh telemetry with a log sink or an unread 128-event buffer")
     parser.add_argument("--poll-ms", type=int, help="override the dispatch poll interval")
     parser.add_argument("--baseline-poll-ms", type=int, help="override polling for the Mesh reference only")
     parser.add_argument("--postgres-version", metavar="MAJOR.PATCH",

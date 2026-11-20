@@ -204,7 +204,12 @@ fn serve(pool :: PoolHandle) -> String!String do
   })
   let batch = if Env.get("JOBS_PARITY_MESH_BATCH", "0") == "1" do ",\"claim_batch\":true" else "" end
   let listen = if Env.get("JOBS_PARITY_MESH_LISTEN", "0") == "1" do ",\"listen\":true" else "" end
-  let config = String.slice(base_config, 0, String.length(base_config) - 1) <> batch <> listen <> "}"
+  let events = case Env.get("JOBS_PARITY_MESH_EVENTS", "") do
+    "logged" -> ",\"event_log\":true"
+    "backpressured" -> ",\"event_buffer\":128"
+    _ -> ""
+  end
+  let config = String.slice(base_config, 0, String.length(base_config) - 1) <> batch <> listen <> events <> "}"
   let runner = Jobs.start(pool, config, handle)?
   println("READY")
   while !Process.shutdown_requested() do

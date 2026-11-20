@@ -88,6 +88,12 @@ cadence. The receipt records claim timing and notification-triggered scans.
 Use the compiled compatibility proof to exercise listener interruption and
 the reconnect catch-up scan.
 
+For telemetry comparisons, pair the candidate with pinned main and measure
+the same profile with `--mesh-events disabled`, `--mesh-events logged`,
+and `--mesh-events backpressured`. The logged variant writes JSON events
+to the runner's log. The backpressured variant leaves the 128-event reader
+buffer unread and records its drop count in the trial receipt.
+
 Each run prints its evidence directory under `target/jobs-parity/<sha>/`.
 `manifest.json` records the compiled SHA, fixture hashes, tool versions,
 database parameters, and host. `settings.json` records the frozen workload
