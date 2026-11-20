@@ -210,7 +210,9 @@ The raw attempt records include the commits of the handler's first attempt
 record and its effect. These timestamps split the interval between handler
 entry and settlement without adding work to the handler.
 The connection and operating system resource samples describe observed
-peaks at the configured sampling interval. Runner CPU includes the process
+peaks at the configured sampling interval. Each sample also records the
+host's one-minute load average. Read the trial peak alongside the CPU
+count and startup load in the manifest. Runner CPU includes the process
 startup, idle window, and shutdown. The timed settlement window comes from
 PostgreSQL's commit timestamps. The load generator and the observer are
 excluded from runner process measurements.

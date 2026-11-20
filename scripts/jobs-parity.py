@@ -688,6 +688,7 @@ def batch_files(scratch, batches):
 def take_sample(cluster, engine, namespace, processes, start):
     return {
         "offset_s": time.monotonic() - start,
+        "host_load_average_1m": os.getloadavg()[0],
         **cluster.observe(engine, namespace),
         **process_sample(processes),
     }
@@ -833,6 +834,8 @@ def run_trial(subject, allocation, workload, batches, scratch, evidence, setting
         "events_dropped": sum(counts["reader"] or 0 for counts in event_drops),
         "event_logs_dropped": sum(counts["logger"] or 0 for counts in event_drops),
         "event_buffer_bytes": max_event_buffer_bytes(event_buffers),
+        "peak_host_load_average_1m": max(
+            sample["host_load_average_1m"] for sample in samples + idle_samples),
         **{f"peak_{key}": max(sample[key] for sample in samples + idle_samples)
            for key in ("connections", "rss_bytes", "processes", "threads")},
     }
@@ -1221,7 +1224,8 @@ def profile_summary(trials, name, workload, settings, runners, slots, variants, 
     keys = ("jobs_per_second", "pickup_p99_ms", "claim_p99_ms", "settlement_p99_ms",
             "sql_calls_per_job", "runner_sql_calls_per_job",
             "enqueue_sql_calls_per_job", "claim_calls_per_job", "idle_queries_per_minute",
-            "cpu_seconds_per_job", "peak_rss_bytes", "events_dropped", "event_logs_dropped")
+            "cpu_seconds_per_job", "peak_rss_bytes", "events_dropped", "event_logs_dropped",
+            "peak_host_load_average_1m")
     summary = {}
     for engine in variants:
         values = [trial for trial in trials if trial["engine"] == engine]
