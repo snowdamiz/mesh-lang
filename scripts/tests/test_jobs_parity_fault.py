@@ -117,6 +117,64 @@ class SettlementProxyTests(unittest.TestCase):
                         self.expect_cut(batch)
                 self.assertEqual(proxy.fault["placement"], placement)
 
+    def test_claim_cut_forwards_commit_command_complete_and_only_drops_ready(self):
+        claim_sql = b"SELECT * FROM mesh_jobs.claim_batch_v1()"
+        claim = (message(b"P", b"\0" + claim_sql + b"\0\0\0")
+                 + message(b"B", b"\0\0\0\0\0\0\0\0")
+                 + message(b"E", b"\0\0\0\0\0") + SYNC)
+        claimed = message(b"1") + message(b"2") + COMPLETE + message(b"Z", b"T")
+        commit = message(b"Q", b"COMMIT\0")
+        complete = message(b"C", b"COMMIT\0")
+        notice = message(b"N", b"Msynthetic notice\0\0")
+        with probe("after_command_complete", b"COMMIT", prior=lambda sql: sql == claim_sql.decode()) as (server, proxy):
+            with self.session(server, proxy) as (batch, batch_db):
+                batch.sendall(claim)
+                self.expect_bytes(batch_db, claim)
+                batch_db.sendall(claimed)
+                self.expect_bytes(batch, claimed)
+                with self.session(server, proxy) as (other, other_db):
+                    other.sendall(commit)
+                    self.expect_bytes(other_db, commit)
+                    other_db.sendall(complete + IDLE)
+                    self.expect_bytes(other, complete + IDLE)
+                batch.sendall(commit)
+                self.expect_bytes(batch_db, commit)
+                batch_db.sendall(complete)
+                self.expect_bytes(batch, complete)
+                batch_db.sendall(notice + IDLE[:-1])
+                self.expect_bytes(batch, notice)
+                self.assertIsNone(proxy.fault)
+                batch_db.sendall(IDLE[-1:])
+                self.expect_cut(batch)
+                self.expect_cut(batch_db)
+            with self.session(server, proxy) as (retry, retry_db):
+                retry.sendall(claim + commit)
+                self.expect_bytes(retry_db, claim + commit)
+                retry_db.sendall(claimed + complete + IDLE)
+                self.expect_bytes(retry, claimed + complete + IDLE)
+        self.assertEqual(proxy.fault, {
+            "placement": "after_command_complete", "query_forwarded": True,
+            "command_complete": True, "ready_status": "I",
+            "command_complete_forwarded": True, "ready_for_query_forwarded": False,
+        })
+
+    def test_claim_cut_requires_a_successful_commit_and_idle_ready(self):
+        claim = message(b"Q", b"claim\0")
+        commit = message(b"Q", b"COMMIT\0")
+        complete = message(b"C", b"COMMIT\0")
+        for result in (message(b"C", b"ROLLBACK\0") + IDLE,
+                       message(b"E", b"\0") + IDLE,
+                       complete + message(b"Z", b"T")):
+            with self.subTest(result=result), probe(
+                    "after_command_complete", b"COMMIT", prior=lambda sql: sql == "claim") as (server, proxy):
+                with self.session(server, proxy) as (client, database):
+                    client.sendall(claim + commit)
+                    self.expect_bytes(database, claim + commit)
+                    claimed = COMPLETE + message(b"Z", b"T")
+                    database.sendall(claimed + result)
+                    self.expect_bytes(client, claimed + result)
+            self.assertIsNone(proxy.fault)
+
     def test_before_commit_cuts_only_one_of_two_matching_connections(self):
         with probe("before_commit") as (server, proxy):
             with self.session(server, proxy) as (first, first_db):

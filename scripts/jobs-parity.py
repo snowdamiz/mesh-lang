@@ -904,9 +904,13 @@ def run_settlement_fault(subject, scratch, evidence, settings, placement, proxy_
 
 def run_batch_claim_fault(subject, scratch, evidence, settings, placement, proxy_type):
     cluster = subject.cluster
+    if cluster.expected_version:
+        raise FixtureError("batch claim fault requires the driver's SCRAM-only loopback mode")
     cluster.prepare_database("mesh")
     namespace = f"parity_{secrets.token_hex(8)}"
     env = subject.environment(namespace, 1, 1, "fault", settings["poll_ms"])
+    if any(env.get(key) != "2" for key in ("MESH_SCHEDULER_MIN_WORKERS", "MESH_SCHEDULER_MAX_WORKERS")):
+        raise FixtureError("batch claim startup marker requires a 2/2 coordinator scheduler")
     subject.call("migrate", env, evidence / "migrate.log")
     if not cluster.owned("mesh"):
         raise FixtureError("batch claim fault requires the driver's nonce in a fresh database")
@@ -916,7 +920,7 @@ def run_batch_claim_fault(subject, scratch, evidence, settings, placement, proxy
     if count != 1 or committed is None:
         raise QueueMismatch("batch claim fault requires one committed job")
     before = cluster.claim_identity("mesh", namespace, "claim")
-    if not before or before["attempt"] != 0:
+    if not before or before["attempt"] != 0 or before["fence"] is not None:
         raise QueueMismatch(f"fault input has an unexpected initial state: {before}")
 
     log = evidence / "runner.log"
@@ -925,7 +929,8 @@ def run_batch_claim_fault(subject, scratch, evidence, settings, placement, proxy
         cluster.port, lambda sql: sql.strip().upper() == "COMMIT", placement,
         prior_query=lambda sql: "FROM mesh_jobs.claim_batch_v1(" in sql,
     ) as proxy:
-        process = subject.run(dict(env, JOBS_PARITY_DB_URL=cluster.url("mesh", port=proxy.port)), 0, log)
+        process = subject.run(dict(env, JOBS_PARITY_DB_URL=cluster.url("mesh", port=proxy.port),
+                                   JOBS_PARITY_MARK_WORKER_START="1"), 0, log)
         try:
             deadline = time.monotonic() + settings["trial_timeout_seconds"]
             wait_for(lambda: runner_ready([process], [log]), deadline, "batch claim fault runner")
@@ -933,7 +938,7 @@ def run_batch_claim_fault(subject, scratch, evidence, settings, placement, proxy
             wait_for(lambda: cluster.observe("mesh", namespace)["terminal"] == 1,
                      deadline, "settlement following an ambiguous claim")
             rows = cluster.rows("mesh", namespace)
-            expected_attempt = 2 if placement == "after_commit" else 1
+            expected_attempt = 1 if placement == "before_commit" else 2
             if (len(rows) != 1 or rows[0]["state"] != "completed" or rows[0]["id"] != before["id"]
                     or rows[0]["attempt"] != expected_attempt
                     or rows[0]["first_handler_attempt"] != expected_attempt or rows[0]["effect_keys"] != 1):
@@ -941,12 +946,25 @@ def run_batch_claim_fault(subject, scratch, evidence, settings, placement, proxy
             writes = cluster.reconcile_writes("mesh", namespace, {
                 "attempts": {"claim": 1}, "effects": {"claim": 1},
             })
-            write_json(evidence / "fault.json", {
-                "engine": "mesh", "fault": fault, "rows": rows, "namespace_writes": writes,
-            })
+            after = cluster.claim_identity("mesh", namespace, "claim")
+            if after != dict(before, state="completed", attempt=expected_attempt):
+                raise QueueMismatch(f"unexpected job identity or lease fence after {placement}: {after}")
+            worker_pid = int(cluster.sql("mesh", f"""
+SELECT worker_pid FROM public.mesh_jobs_parity_attempts
+WHERE engine = 'mesh' AND namespace = '{namespace}' AND job_key = 'claim'
+"""))
             completed = True
         finally:
             stop_runners([process], require_clean=completed)
+    with log.open("rb") as stream:
+        starts = [line.rstrip() for line in stream if line.startswith(b"PARITY_WORKER_START ")]
+    if worker_pid == process.pid or starts != [f"PARITY_WORKER_START {worker_pid}".encode()]:
+        raise QueueMismatch(f"expected exactly one worker startup for attempt {expected_attempt}, "
+                            f"PID {worker_pid}; see {log}")
+    write_json(evidence / "fault.json", {
+        "engine": "mesh", "fault": fault, "rows": rows, "namespace_writes": writes,
+        "worker_start_pids": [worker_pid],
+    })
 
 
 def materialize_commit(ref, path, archive, paths=()):
@@ -1215,7 +1233,7 @@ WHERE name IN ('server_version','server_version_num','shared_buffers','max_conne
                                 run_settlement_fault(subject, placement_scratch, placement_evidence,
                                                      settings, placement, proxy_module.SettlementProxy)
                     if args.mesh_batch and not cluster.expected_version:
-                        for placement in ("before_commit", "after_commit"):
+                        for placement in ("before_commit", "after_commit", "after_command_complete"):
                             case = evidence / "mesh" / f"claim-{placement}"
                             case.mkdir()
                             inputs_dir = scratch / f"claim-{placement}"

@@ -1,4 +1,4 @@
-"""One-shot PostgreSQL settlement disconnect for the driver's disposable cluster."""
+"""One-shot PostgreSQL claim and settlement disconnects for the driver's disposable cluster."""
 
 import selectors
 import socket
@@ -73,9 +73,10 @@ class _Frames:
 
 
 class _AfterCommit:
-    def __init__(self, proxy, matches):
+    def __init__(self, proxy, matches, *, ready_only):
         self.proxy = proxy
         self.matches = matches
+        self.ready_only = ready_only
         # Startup ends in ReadyForQuery, just as a Sync does.
         self.pending = deque([(b"S", False)])
         self.statements = set()
@@ -115,6 +116,8 @@ class _AfterCommit:
             matches = _cstring(body)[0] in self.portals
 
         if kind in _REPLY_END:
+            if self.ready_only and matches:
+                matches = kind == b"Q" and _cstring(body)[0].strip().upper() == b"COMMIT"
             cut = matches and self.proxy._reserve()
             if cut:
                 self.deadline = time.monotonic() + _CONFIRM_SECONDS
@@ -135,14 +138,14 @@ class _AfterCommit:
         request, cut = self.pending[0]
         if cut and self.held is None:
             # Postgrex can wait for Describe/Flush before sending Bind/Execute.
-            # Start withholding at Execute (or Query), after preparation replies.
+            # Follow the matched Execute (or Query) after preparation replies.
             self.held = bytearray()
         if kind == b"E":
             self.failed = self.held is not None
             if request not in (b"Q", b"S", b"F"):
                 self.skip_to_sync = True
         if kind == b"C" and cut:
-            self.completed = True
+            self.completed = not self.ready_only or body == b"COMMIT\0"
         if kind in _REPLY_END[request]:
             self.pending.popleft()
 
@@ -150,13 +153,14 @@ class _AfterCommit:
         if kind != b"Z" or self.held is None:
             return output, False
         confirmed = self.completed and not self.failed and body == b"I"
-        output = None if confirmed else self.held
+        if not self.ready_only:
+            output = self.held
         self.held = None
         self.deadline = float("inf")
-        return output, confirmed
+        return None if confirmed else output, confirmed
 
     def _hold_or_forward(self, frame):
-        if self.held is None:
+        if self.held is None or self.ready_only:
             return frame
         self.held.extend(frame)
         if len(self.held) > _MAX_FRAME:
@@ -171,18 +175,22 @@ class SettlementProxy:
     entering and supplies a fast predicate over UTF-8 Query or Parse SQL. Read
     ``port`` inside the context. ``fault`` is None until the cut finishes, and
     then holds the placement and protocol observations. The caller checks the
-    persisted settlement independently.
+    persisted outcome independently. The after_command_complete placement
+    requires a prior claim query and forwards the COMMIT tag while dropping
+    the idle ReadyForQuery.
     """
 
     def __init__(self, upstream_port, sql_matches, placement, *, prior_query=None):
         if type(upstream_port) is not int or not 1 <= upstream_port <= 65535:
             raise ValueError("upstream must be a loopback TCP port")
-        if placement not in ("before_commit", "after_commit"):
-            raise ValueError("invalid settlement fault placement")
+        if placement not in ("before_commit", "after_commit", "after_command_complete"):
+            raise ValueError("invalid fault placement")
         if not callable(sql_matches):
             raise TypeError("sql_matches must be callable")
         if prior_query is not None and not callable(prior_query):
             raise TypeError("prior_query must be callable")
+        if placement == "after_command_complete" and prior_query is None:
+            raise ValueError("after_command_complete requires a prior claim query")
         self._upstream_port = upstream_port
         self._sql_matches = sql_matches
         self._placement = placement
@@ -268,13 +276,16 @@ class SettlementProxy:
         except (OSError, _InvalidWire):
             return
         if injected:
-            confirmed = self._placement == "after_commit"
-            self.fault = {
+            confirmed = self._placement != "before_commit"
+            fault = {
                 "placement": self._placement,
                 "query_forwarded": confirmed,
                 "command_complete": confirmed,
                 "ready_status": "I" if confirmed else None,
             }
+            if self._placement == "after_command_complete":
+                fault.update(command_complete_forwarded=True, ready_for_query_forwarded=False)
+            self.fault = fault
 
     def _bridge(self, client, backend):
         armed = self._prior_query is None
@@ -286,7 +297,9 @@ class SettlementProxy:
                 return False
             return self._matches(sql, self._sql_matches)
 
-        after = _AfterCommit(self, matches) if self._placement == "after_commit" else None
+        after = None
+        if self._placement != "before_commit":
+            after = _AfterCommit(self, matches, ready_only=self._placement == "after_command_complete")
         with selectors.DefaultSelector() as selector:
             selector.register(client, selectors.EVENT_READ, (backend, _Frames(startup=True)))
             selector.register(backend, selectors.EVENT_READ, (client, _Frames()))
