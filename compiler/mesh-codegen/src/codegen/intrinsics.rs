@@ -3499,6 +3499,10 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
             "mesh_jobs_read_events",
             vec![i64_type.into(), i64_type.into()],
         ),
+        (
+            "mesh_jobs_local_control",
+            vec![i64_type.into(), ptr_type.into()],
+        ),
     ] {
         module.add_function(
             name,

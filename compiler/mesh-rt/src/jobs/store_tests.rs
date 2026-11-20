@@ -424,6 +424,109 @@ fn bulk_actions_respect_filters_and_retry_opens_a_new_run() {
 
 #[test]
 #[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
+fn edits_and_terminal_deletion_respect_claim_locks_and_keep_receipts() {
+    let mut f = Fixture::new();
+    let spec = json!({"worker":"Deliver", "request_key":"ops-key"});
+    let receipt = f.enqueue(spec.clone());
+    let id = id(&receipt);
+    for patch in [
+        json!({"args":null,"priority":1}),
+        json!({"priority":10}),
+        json!({"delay_ms":0,"scheduled_at_ms":0}),
+        json!({"lease_token":"fake"}),
+    ] {
+        let edit = json!({"action":"update","id":id,"patch":patch}).to_string();
+        assert!(control(&mut f.db, &f.ns, &edit).is_err(), "{edit}");
+    }
+    let edit = json!({
+        "action":"update","id":id,
+        "patch":{"args":{"task":"updated"},"priority":3,"delay_ms":1000}
+    })
+    .to_string();
+    let mut owner = Connection::open(&f.url);
+    owner.simple("BEGIN").unwrap();
+    let claimed = owner
+        .query(
+            "SELECT id, token FROM mesh_jobs.claim($1, 'default', $2::jsonb, 60000)",
+            &[&f.ns, WORKERS],
+        )
+        .unwrap();
+    assert_eq!(claimed[0][0].1, id);
+    assert!(control(&mut f.db, &f.ns, &edit)
+        .unwrap_err()
+        .contains("locked"));
+    assert_eq!(
+        f.ops(json!({"action":"delete_all","filter":{"queue":"default"}}))["deleted"],
+        0
+    );
+    owner.simple("ROLLBACK").unwrap();
+    let updated = parse(&control(&mut f.db, &f.ns, &edit).unwrap());
+    assert_eq!(updated["state"], "scheduled");
+    assert_eq!(updated["effect_key"], receipt["effect_key"]);
+    assert_eq!(updated["attempt"], 0);
+    assert_eq!(f.get(id)["args"], json!({"task":"updated"}));
+    f.ops(json!({"action":"run_now","id":id}));
+    let claim = f.claim();
+    assert!(control(&mut f.db, &f.ns, &edit).is_err());
+    assert_eq!(f.finish(&claim, Outcome::Complete), Settlement::Completed);
+    let second = f.enqueue(json!({"worker":"Unchanged"}));
+    let summaries = f.ops(json!({"action":"search","filter":{"limit":1}}));
+    let cursor = summaries[0]["id"].as_str().unwrap();
+    assert!(summaries[0].get("args").is_none());
+    let next = f.ops(json!({"action":"search","filter":{"limit":1},"after_id":cursor}));
+    assert_ne!(next[0]["id"], summaries[0]["id"]);
+    assert!(f
+        .ops(json!({"action":"search","after_id":next[0]["id"]}))
+        .as_array()
+        .unwrap()
+        .is_empty());
+    let removed = f.ops(json!({"action":"delete_all","filter":{"queue":"default","limit":1}}));
+    assert_eq!(removed, json!({"deleted":1,"ids":[id]}));
+    assert_eq!(f.get(second["id"].as_str().unwrap())["state"], "available");
+    assert_eq!(f.enqueue(spec), receipt);
+}
+
+#[test]
+#[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
+fn namespace_pause_fences_pending_transactions_and_respects_queue_state() {
+    let mut f = Fixture::new();
+    f.ops(json!({"action":"configure","queue":"other","concurrency":3}));
+    f.ops(json!({"action":"pause","queue":"other"}));
+    f.enqueue(json!({"worker":"Deliver"}));
+    let mut owner = Connection::open(&f.url);
+    owner.simple("BEGIN").unwrap();
+    owner
+        .query(
+            "SELECT id FROM mesh_jobs.claim($1, 'default', $2::jsonb, 60000)",
+            &[&f.ns, WORKERS],
+        )
+        .unwrap();
+    f.db.simple("SET lock_timeout = '50ms'").unwrap();
+    assert!(control(&mut f.db, &f.ns, r#"{"action":"pause_namespace"}"#)
+        .unwrap_err()
+        .contains("lock timeout"));
+    assert_eq!(f.ops(json!({"action":"namespace_status"}))["paused"], false);
+    owner.simple("ROLLBACK").unwrap();
+    assert_eq!(f.ops(json!({"action":"pause_namespace"}))["paused"], true);
+    let another = f.enqueue(json!({"worker":"Deliver","queue":"another"}));
+    assert!(f.try_claim().is_none());
+    assert!(
+        claim_batch(&mut f.db, &f.ns, "another", WORKERS, 60_000, 5, None)
+            .unwrap()
+            .claims
+            .is_empty()
+    );
+    assert_eq!(f.ops(json!({"action":"resume_namespace"}))["paused"], false);
+    assert_eq!(
+        f.ops(json!({"action":"inspect_queue","queue":"other"}))["state"],
+        "paused"
+    );
+    let batch = claim_batch(&mut f.db, &f.ns, "another", WORKERS, 60_000, 5, None).unwrap();
+    assert_eq!(batch.claims[0].id, another["id"]);
+}
+
+#[test]
+#[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
 fn enqueue_is_atomic_with_the_application_transaction_and_replays_after_pruning() {
     let mut f = Fixture::new();
     let mut observer = Connection::open(&f.url);

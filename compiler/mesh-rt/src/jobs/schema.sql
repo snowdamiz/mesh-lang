@@ -144,7 +144,7 @@ CREATE OR REPLACE TRIGGER mesh_jobs_queue_wake
     AFTER UPDATE OF state, concurrency ON mesh_jobs.queues
     FOR EACH ROW WHEN (
         lower(current_setting('mesh_jobs.publish_wakeups', true)) IN ('on', 'true', '1')
-        AND NEW.state = 'active' AND NEW.concurrency > 0
+        AND NEW.state = 'active' AND (NEW.concurrency > 0 OR NEW.name = '')
         AND (OLD.state <> 'active' OR OLD.concurrency < NEW.concurrency)
     ) EXECUTE FUNCTION mesh_jobs.publish_wake_v1();
 
@@ -299,6 +299,15 @@ DECLARE
     due_at bigint;
     started_at bigint;
 BEGIN
+    IF current_setting('transaction_isolation') <> 'read committed' THEN
+        RAISE EXCEPTION 'mesh jobs claim requires READ COMMITTED';
+    END IF;
+    -- An empty queue name is reserved for the namespace pause. Claimers share
+    -- this lock until commit, so the pause covers both existing and new queues.
+    IF NOT pg_try_advisory_xact_lock_shared(hashtextextended(ns, 1782495106)) THEN RETURN; END IF;
+    IF EXISTS (SELECT FROM mesh_jobs.queues WHERE namespace = ns AND name = '' AND state = 'paused')
+    THEN RETURN; END IF;
+
     -- Serialize capacity admission with queue controls without blocking enqueue's FK checks.
     SELECT * INTO q FROM mesh_jobs.queues
     WHERE namespace = ns AND name = queue_name FOR NO KEY UPDATE SKIP LOCKED;
@@ -381,6 +390,10 @@ BEGIN
     END IF;
     remaining := least(coalesce(slots, 0), 16);
     IF remaining <= 0 THEN RETURN; END IF;
+
+    IF NOT pg_try_advisory_xact_lock_shared(hashtextextended(ns, 1782495106)) THEN RETURN; END IF;
+    IF EXISTS (SELECT FROM mesh_jobs.queues WHERE namespace = ns AND name = '' AND state = 'paused')
+    THEN RETURN; END IF;
 
     SELECT * INTO q FROM mesh_jobs.queues
     WHERE namespace = ns AND name = queue_name FOR NO KEY UPDATE SKIP LOCKED;
@@ -730,5 +743,32 @@ BEGIN
 
     SELECT * INTO job FROM mesh_jobs.jobs WHERE namespace = ns AND id = job_id;
     RETURN mesh_jobs.job_json(job);
+END
+$$;
+
+-- Select-only roles can read these summaries without access to job payloads.
+CREATE OR REPLACE VIEW mesh_jobs.job_summaries AS
+    SELECT namespace, id, run, worker, version, queue, state, priority, attempt, max_attempts,
+        timeout_ms, backoff_base_ms, backoff_max_ms, inserted_at_ms, scheduled_at_ms,
+        attempted_at_ms, finished_at_ms, lease_expires_at_ms, cancel_requested_at_ms,
+        id::text || '/' || run::text AS effect_key
+    FROM mesh_jobs.jobs;
+
+CREATE OR REPLACE VIEW mesh_jobs.queue_summaries AS
+    SELECT q.namespace, q.name AS queue, q.concurrency, q.state,
+        EXISTS (SELECT FROM mesh_jobs.queues paused WHERE paused.namespace = q.namespace
+            AND paused.name = '' AND paused.state = 'paused') AS namespace_paused,
+        (SELECT count(*) FROM mesh_jobs.jobs j WHERE j.namespace = q.namespace
+            AND j.queue = q.name AND j.state = 'executing') AS running
+    FROM mesh_jobs.queues q WHERE q.name <> '';
+
+CREATE OR REPLACE FUNCTION mesh_jobs.set_namespace_paused(ns text, paused boolean) RETURNS jsonb
+LANGUAGE plpgsql VOLATILE STRICT SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+    PERFORM pg_advisory_xact_lock(hashtextextended(ns, 1782495106));
+    INSERT INTO mesh_jobs.queues (namespace, name, concurrency, state)
+        VALUES (ns, '', 0, CASE WHEN paused THEN 'paused' ELSE 'active' END)
+    ON CONFLICT (namespace, name) DO UPDATE SET state = excluded.state;
+    RETURN jsonb_build_object('paused', paused);
 END
 $$;

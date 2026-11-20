@@ -173,3 +173,14 @@ pub extern "C" fn mesh_jobs_read_events(runner: i64, limit: i64) -> *mut MeshRes
     }
     text_result(runner::read_events(runner as u64, limit))
 }
+
+#[no_mangle]
+pub extern "C" fn mesh_jobs_local_control(
+    runner: i64,
+    action: *const MeshString,
+) -> *mut MeshResult {
+    if runner <= 0 {
+        return err_result("invalid Jobs runner");
+    }
+    text_result(runner::control(runner as u64, unsafe { text_of(action) }))
+}

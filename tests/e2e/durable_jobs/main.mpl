@@ -26,6 +26,10 @@ end
 fn seed(pool :: PoolHandle) -> String!String do
   let _ = Jobs.migrate(pool)?
   let _ = Jobs.migrate(pool)?
+  seed_transaction(pool)
+end
+
+fn seed_transaction(pool :: PoolHandle) -> String!String do
   let receipt = Repo.transaction(pool, commit_job)?
   case Repo.transaction(pool, rollback_job) do
     Err(error) ->
@@ -70,6 +74,11 @@ fn stage_wake_rollback(pool :: PoolHandle) -> String!String do
   end
 end
 
+fn migrate(pool :: PoolHandle) -> String!String do
+  let _ = Jobs.migrate(pool)?
+  Ok("{}")
+end
+
 fn record_effect(context :: String) -> String!String do
   let decoded = Json.parse(context)?
   let args = Json.object_get(decoded, "args")?
@@ -105,7 +114,7 @@ fn record_effect(context :: String) -> String!String do
       Timer.sleep(10)
     end
   end
-  if label == "poison" do
+  if label == "poison" || label == "j6-held-retry" do
     Ok("""{"action":"fail","reason":"proof worker rejected poison"}""")
   else if (label == "retry" || label == "event-exhaustion" || label == "wake-retry") && attempt == 1 do
     Ok("""{"action":"retry_after","delay_ms":400,"reason":"proof worker requested a retry"}""")
@@ -169,6 +178,17 @@ fn serve(pool :: PoolHandle, config :: String) -> String!String do
   let status = Jobs.status(runner)?
   let _ = File.write(markers <> "/ready", status)?
   while !Process.shutdown_requested() do
+    let command = markers <> "/local-control"
+    if File.exists(command) do
+      let _ = File.rename(command, markers <> "/local-control-read")?
+      let action = File.read(markers <> "/local-control-read")?
+      let response = case Jobs.local_control(runner, action) do
+        Ok(report) -> report
+        Err(error) -> Json.encode(json { error: error })
+      end
+      let _ = File.write(markers <> "/local-control-result", response)?
+      ()
+    end
     let _ = File.write(markers <> "/status", Jobs.status(runner)?)?
     if capture_events do
       let batch = Jobs.read_events(runner, 128)?
@@ -198,6 +218,8 @@ fn run() -> String!String do
   let payload = Env.get("MESH_JOBS_PROOF_PAYLOAD", "")
   let result = case Env.get("MESH_JOBS_PROOF_COMMAND", "") do
     "seed" -> seed(pool)
+    "seed_transaction" -> seed_transaction(pool)
+    "migrate" -> migrate(pool)
     "enqueue" -> Jobs.enqueue(pool, namespace(), payload)
     "enqueue_file" -> Jobs.enqueue(pool, namespace(), File.read(payload)?)
     "control" -> Jobs.control(pool, namespace(), payload)

@@ -16,8 +16,10 @@ const ELIGIBLE: &str = "
         AND EXISTS (SELECT FROM jsonb_to_recordset($3::jsonb) AS w(worker text, version bigint)
                     WHERE w.worker = j.worker AND w.version = j.version)";
 
-const READY: &str =
-    "j.state IN ('available', 'scheduled', 'retryable') AND j.attempt < j.max_attempts";
+const READY: &str = "
+    j.state IN ('available', 'scheduled', 'retryable') AND j.attempt < j.max_attempts
+    AND NOT EXISTS (SELECT FROM mesh_jobs.queues paused
+                    WHERE paused.namespace = $1 AND paused.name = '' AND paused.state = 'paused')";
 
 impl Selection<'_> {
     pub(super) fn initial_ids(

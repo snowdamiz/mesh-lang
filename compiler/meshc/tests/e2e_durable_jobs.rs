@@ -52,6 +52,16 @@ fn durable_jobs_survive_process_boundaries() {
     prove_transaction_and_restart(&proof);
     prove_competing_processes(&proof);
     prove_batch_admission(&proof);
+    prove_local_controls(&proof, false);
+    prove_local_controls(&proof, true);
+    println!("J6 local queue controls passed with single and batch claims");
+    prove_job_operations(&proof);
+    println!("J6 namespace controls, active replacement, run-now, and receipt replay passed");
+    if std::env::var("MESH_JOBS_DISPOSABLE_ROLE_PROOF").as_deref() == Ok("1") {
+        prove_concurrent_reindex(&proof);
+        println!("J6 concurrent index swap, owner exclusion, and compiled traffic passed");
+        prove_scoped_compiled_roles(&proof);
+    }
     prove_busy_batch_connection_keeps_lease(&proof);
     prove_crash_and_stale_ack(&proof);
     prove_retry_and_exhaustion(&proof);
@@ -83,11 +93,15 @@ fn durable_jobs_survive_process_boundaries() {
 
 fn build_fixture(compiler: &Path, project: &Path, runtime: Option<&Path>) -> PathBuf {
     fs::create_dir(project).unwrap();
-    fs::copy(
-        artifacts::repo_root().join("tests/e2e/durable_jobs/main.mpl"),
-        project.join("main.mpl"),
-    )
-    .unwrap();
+    let mut source =
+        fs::read_to_string(artifacts::repo_root().join("tests/e2e/durable_jobs/main.mpl")).unwrap();
+    if runtime.is_some() {
+        // The pinned polling reference predates local queue control.
+        let local_control = "Jobs.local_control(runner, action)";
+        assert_eq!(source.matches(local_control).count(), 1);
+        source = source.replace(local_control, "Err(\"local queue control unavailable\")");
+    }
+    fs::write(project.join("main.mpl"), source).unwrap();
     let mut command = Command::new(compiler);
     command
         .arg("build")
@@ -326,6 +340,280 @@ fn prove_batch_admission(proof: &Proof) {
         worker.stop();
     }
     proof.control(json!({"action": "scale", "queue": "default", "concurrency": 1}));
+}
+
+fn prove_local_controls(proof: &Proof, batch: bool) {
+    let queue = format!("local-controlled-{batch}");
+    let other = format!("local-other-{batch}");
+    let first = format!("local-first-{batch}");
+    let second = format!("local-second-{batch}");
+    let third = format!("local-third-{batch}");
+    let unrelated = format!("local-unrelated-{batch}");
+    let config = json!({
+        "namespace": proof.namespace,
+        "queues": { (queue.clone()): 1 },
+        "workers": [{"worker":"proof","version":1}],
+        "poll_ms":25, "lease_ms":LEASE_MS, "shutdown_grace_ms":8000, "claim_batch":batch
+    });
+    let mut target =
+        proof.worker_with_config(&format!("local-target-{batch}"), true, config.clone());
+    let mut peer = proof.worker_with_config(&format!("local-peer-{batch}"), true, config);
+    let paused = target.local_control(json!({"action":"pause","queue":queue}));
+    assert_eq!(paused["queues"][&queue]["state"], "paused", "{paused}");
+    let runner_id = paused["runner_id"].clone();
+    proof.enqueue(json!({"worker":"proof","queue":queue,"args":{"label":first}}));
+    assert_eq!(
+        proof.wait_effects(&first, 1)[0]["process"],
+        format!("local-peer-{batch}")
+    );
+
+    let resumed = target.local_control(json!({"action":"resume","queue":queue}));
+    assert_eq!(resumed["runner_id"], runner_id);
+    let scaled = target.local_control(json!({"action":"scale","queue":queue,"limit":2}));
+    assert_eq!(scaled["queues"][&queue]["limit"], 2, "{scaled}");
+    proof.enqueue(json!({"worker":"proof","queue":queue,"args":{"label":second}}));
+    thread::sleep(Duration::from_millis(100));
+    assert_eq!(proof.job(&second)["state"], "available");
+    proof.control(json!({"action":"scale","queue":queue,"concurrency":2}));
+    assert_eq!(
+        proof.wait_effects(&second, 1)[0]["process"],
+        format!("local-target-{batch}")
+    );
+
+    let stopping = target.local_control(json!({"action":"stop","queue":queue}));
+    assert_eq!(
+        stopping["queues"][&queue]["state"], "stopping",
+        "{stopping}"
+    );
+    assert_eq!(stopping["queues"][&queue]["in_flight"], 1, "{stopping}");
+    let early_start = target.local_control(json!({"action":"start","queue":queue}));
+    assert!(early_start["error"]
+        .as_str()
+        .unwrap()
+        .contains("still stopping"));
+    let started = target.local_control(json!({"action":"start","queue":other}));
+    assert_eq!(started["queues"][&other]["state"], "running", "{started}");
+    proof.enqueue(json!({"worker":"proof","queue":other,"args":{"label":unrelated}}));
+    assert_eq!(
+        proof.wait_effects(&unrelated, 1)[0]["process"],
+        format!("local-target-{batch}")
+    );
+    assert_eq!(proof.job(&second)["state"], "executing");
+
+    target.release();
+    proof.wait_state(&second, "completed");
+    proof.wait_state(&unrelated, "completed");
+    eventually("only the named local queue to stop", || {
+        let status = target.status()?;
+        (status["queues"][&queue]["state"] == "stopped").then(|| {
+            assert_eq!(status["queues"][&queue]["drained"], true);
+            assert_eq!(status["queues"][&other]["state"], "running");
+        })
+    });
+    let restarted = target.local_control(json!({"action":"start","queue":queue,"limit":1}));
+    assert_eq!(restarted["queues"][&queue]["limit"], 1, "{restarted}");
+    proof.enqueue(json!({"worker":"proof","queue":queue,"args":{"label":third}}));
+    assert_eq!(
+        proof.wait_effects(&third, 1)[0]["process"],
+        format!("local-target-{batch}")
+    );
+    assert_eq!(proof.job(&first)["state"], "executing");
+    peer.release();
+    peer.stop();
+    target.stop();
+}
+
+fn prove_job_operations(proof: &Proof) {
+    let queue = "j6-new-queue-while-paused";
+    let mut runner =
+        proof.worker_with_options("j6-operations", true, json!({ (queue): 1 }), 8000, LEASE_MS);
+    assert_eq!(
+        proof.control(json!({"action":"pause_namespace"}))["paused"],
+        true
+    );
+    let spec = json!({
+        "worker":"proof", "queue":queue, "args":{"label":"j6-held-retry"}, "version":1,
+        "backoff_base_ms":60000, "backoff_max_ms":60000, "max_attempts":2,
+        "request_key":"j6-retained-receipt",
+        "unique":{"fields":["worker","queue"]}
+    });
+    let receipt = proof.enqueue(spec.clone());
+    let inspect = proof.control(json!({"action":"inspect_queue","queue":queue}));
+    assert_eq!(inspect["namespace_paused"], true);
+    assert_eq!(inspect["state"], "active");
+    thread::sleep(Duration::from_millis(100));
+    assert_eq!(proof.job("j6-held-retry")["state"], "available");
+    let summaries = proof.control(json!({"action":"search","filter":{"queue":queue,"limit":1}}));
+    assert_eq!(summaries[0]["id"], receipt["id"]);
+    assert!(summaries[0].get("args").is_none());
+    assert_eq!(
+        proof.control(json!({"action":"resume_namespace"}))["paused"],
+        false
+    );
+    let active = proof.wait_effects("j6-held-retry", 1);
+    let token = proof.lease(id(&receipt)).token;
+    let replacement = proof.enqueue(json!({
+        "worker":"proof", "queue":queue, "args":{"label":"run-now-updated"}, "version":1,
+        "unique":{"fields":["worker","queue"]}, "replace":{"executing":["args"]}
+    }));
+    assert_eq!(replacement["conflict"], true, "{replacement}");
+    assert_eq!(replacement["id"], receipt["id"]);
+    assert_eq!(proof.lease(id(&receipt)).token, token);
+    assert_eq!(active[0]["context"]["args"]["label"], "j6-held-retry");
+    assert_eq!(proof.job("run-now-updated")["state"], "executing");
+    assert_eq!(
+        proof.control(json!({"action":"delete_all","filter":{"queue":queue}}))["deleted"],
+        0
+    );
+    runner.release();
+    let retry = proof.wait_state("run-now-updated", "retryable");
+    let due = proof.control(json!({"action":"run_now","id":receipt["id"]}));
+    assert_eq!(due["effect_key"], receipt["effect_key"]);
+    assert_eq!(due["attempt"], 1);
+    assert_eq!(due["max_attempts"], 2);
+    assert!(due["scheduled_at_ms"].as_i64().unwrap() < retry["scheduled_at_ms"].as_i64().unwrap());
+    let next = proof.wait_effects("run-now-updated", 1);
+    assert_eq!(next[0]["context"]["effect_key"], receipt["effect_key"]);
+    assert_eq!(next[0]["context"]["attempt"], 2);
+    proof.wait_state("run-now-updated", "completed");
+    assert_eq!(
+        proof.control(json!({"action":"prune","queue":queue,"max_age_ms":0,"limit":1}))["deleted"],
+        1
+    );
+    assert_eq!(proof.enqueue(spec), receipt);
+    runner.stop();
+}
+
+fn prove_concurrent_reindex(proof: &Proof) {
+    let mut runner = proof.worker("j6-reindex-worker", false);
+    let mut snapshot = native_pg_connect(proof.url).unwrap();
+    native_pg_execute(&mut snapshot, "BEGIN ISOLATION LEVEL REPEATABLE READ", &[]).unwrap();
+    native_pg_query(&mut snapshot, "SELECT count(*) FROM mesh_jobs.jobs", &[]).unwrap();
+    let index = "'mesh_jobs.mesh_jobs_ready'::regclass";
+    let old_oid = proof.sql(&format!("SELECT {index}::oid"));
+    let reindex = || {
+        let mut cmd = Command::new("bash");
+        cmd.arg(artifacts::repo_root().join("scripts/jobs-reindex.sh"))
+            .arg("mesh_jobs_ready")
+            .env("PGDATABASE", proof.url)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        cmd
+    };
+    let mut admin = reindex().spawn().unwrap();
+    eventually(
+        "concurrent reindex to hold its administrative session",
+        || {
+            assert!(admin.try_wait().unwrap().is_none(), "reindex exited early");
+            (proof.sql(
+                "SELECT count(*) FROM pg_stat_progress_create_index
+                    WHERE command = 'REINDEX CONCURRENTLY'",
+            ) == "1")
+                .then_some(())
+        },
+    );
+    let competing = reindex().output().unwrap();
+    assert!(!competing.status.success());
+    assert!(artifacts::command_output_text(&competing).contains("already has an owner"));
+    proof.enqueue(spec("j6-reindex-traffic"));
+    proof.wait_state("j6-reindex-traffic", "completed");
+    assert!(admin.try_wait().unwrap().is_none());
+    native_pg_close(snapshot);
+    let output = admin.wait_with_output().unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        artifacts::command_output_text(&output)
+    );
+    assert_ne!(proof.sql(&format!("SELECT {index}::oid")), old_oid);
+    assert_eq!(
+        proof.sql(&format!(
+            "SELECT indisvalid FROM pg_index WHERE indexrelid = {index}"
+        )),
+        "t",
+    );
+    runner.stop();
+}
+
+fn prove_scoped_compiled_roles(proof: &Proof) {
+    let (bootstrap, path) = proof.url.rsplit_once('/').unwrap();
+    let (_, host) = bootstrap.rsplit_once('@').unwrap();
+    let (_, options) = path.split_once('?').unwrap();
+    let password = std::env::var("MESH_JOBS_TEST_ROLE_PASSWORD").unwrap();
+    for suffix in ["fresh", "upgrade"] {
+        let path = format!("jobs_role_{suffix}?{options}");
+        let scope_dir = proof.dir.join(format!("role-{suffix}"));
+        fs::create_dir(&scope_dir).unwrap();
+        let admin_url = format!("{bootstrap}/{path}");
+        let admin = Proof::new(&admin_url, proof.binary.clone(), &scope_dir);
+        let ns = &admin.namespace;
+        admin.sql(&format!(
+            "GRANT USAGE ON SCHEMA {ns} TO jobs_producer, jobs_worker;
+             GRANT INSERT ON {ns}.business TO jobs_producer;
+             GRANT INSERT ON {ns}.effects TO jobs_worker;"
+        ));
+
+        let role_url = |role| format!("postgres://jobs_{role}:{password}@{host}/{path}");
+        let migrate_url = role_url("migrator");
+        let producer_url = role_url("producer");
+        let worker_url = role_url("worker");
+        let operator_url = role_url("operator");
+        let inspector_url = role_url("inspector");
+        admin.on_connection(&migrate_url).run("migrate", "");
+        let producer = admin.on_connection(&producer_url);
+        let receipt = producer.run("seed_transaction", "");
+        assert_eq!(
+            admin.sql(&format!("SELECT value FROM {ns}.business ORDER BY value")),
+            "committed",
+        );
+
+        let operator = admin.on_connection(&operator_url);
+        let inspector = admin.on_connection(&inspector_url);
+        assert_eq!(
+            operator.control(json!({"action":"pause_namespace"}))["paused"],
+            true
+        );
+        assert_eq!(
+            inspector.control(json!({"action":"namespace_status"}))["paused"],
+            true
+        );
+        let rows = inspector.control(json!({"action":"search","filter":{"queue":"default"}}));
+        assert_eq!(rows[0]["id"], receipt["id"]);
+        assert!(rows[0].get("args").is_none());
+
+        let worker = admin.on_connection(&worker_url);
+        let mut runner = worker.worker_with_config(
+            "scoped-worker",
+            false,
+            json!({
+                "namespace": ns, "queues": {"default":1},
+                "workers": [{"worker":"proof","version":1}], "poll_ms":25,
+                "shutdown_grace_ms":8000, "claim_batch":true, "cron_interval_ms":0
+            }),
+        );
+        assert_eq!(
+            operator.control(json!({"action":"resume_namespace"}))["paused"],
+            false
+        );
+        assert_eq!(
+            admin.wait_effects("committed", 1)[0]["context"]["id"],
+            receipt["id"]
+        );
+        admin.wait_state("committed", "completed");
+        runner.stop();
+        assert_eq!(
+            inspector.control(json!({"action":"inspect_queue","queue":"default"}))["running"],
+            0,
+        );
+        assert_eq!(
+            operator.control(json!({"action":"delete_all", "filter":{"queue":"default"}}))
+                ["deleted"],
+            1,
+        );
+        assert_eq!(producer.run("enqueue", COMMITTED), receipt);
+        admin.clean().unwrap();
+        println!("J6 compiled scoped login proof passed on {suffix}");
+    }
 }
 
 fn prove_busy_batch_connection_keeps_lease(proof: &Proof) {
@@ -855,6 +1143,16 @@ struct Proof<'a> {
 }
 
 impl<'a> Proof<'a> {
+    fn on_connection<'b>(&'b self, url: &'b str) -> Proof<'b> {
+        Proof {
+            url,
+            binary: self.binary.clone(),
+            dir: self.dir,
+            namespace: self.namespace.clone(),
+            cleaned: std::cell::Cell::new(true),
+        }
+    }
+
     fn new(url: &'a str, binary: PathBuf, dir: &'a Path) -> Self {
         let stamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -1130,6 +1428,24 @@ struct Worker {
 }
 
 impl Worker {
+    fn status(&self) -> Option<Value> {
+        serde_json::from_slice(&fs::read(self.markers.join("status")).ok()?).ok()
+    }
+
+    fn local_control(&mut self, action: Value) -> Value {
+        let result = self.markers.join("local-control-result");
+        if result.exists() {
+            fs::remove_file(&result).unwrap();
+        }
+        let pending = self.markers.join("local-control-write");
+        fs::write(&pending, action.to_string()).unwrap();
+        fs::rename(pending, self.markers.join("local-control")).unwrap();
+        eventually("local queue control result", || {
+            self.assert_running();
+            serde_json::from_slice(&fs::read(&result).ok()?).ok()
+        })
+    }
+
     fn log(&self) -> String {
         fs::read_to_string(self.markers.join("output")).unwrap_or_default()
     }

@@ -9,6 +9,13 @@ DECLARE
     due_at bigint;
     started_at bigint;
 BEGIN
+    IF current_setting('transaction_isolation') <> 'read committed' THEN
+        RAISE EXCEPTION 'mesh jobs claim requires READ COMMITTED';
+    END IF;
+    IF NOT pg_try_advisory_xact_lock_shared(hashtextextended(ns, 1782495106)) THEN RETURN; END IF;
+    IF EXISTS (SELECT FROM mesh_jobs.queues WHERE namespace = ns AND name = '' AND state = 'paused')
+    THEN RETURN; END IF;
+
     -- Serialize capacity admission with queue controls without blocking enqueue's FK checks.
     SELECT * INTO q FROM mesh_jobs.queues
     WHERE namespace = ns AND name = queue_name FOR NO KEY UPDATE SKIP LOCKED;

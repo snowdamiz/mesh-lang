@@ -48,10 +48,33 @@ fn wake_hints_coalesce_to_one_bit_per_configured_queue() {
         assert!(!wakes.event(ListenEvent::Hint(&first)));
         assert!(!wakes.event(ListenEvent::Hint(&last)));
     }
-    assert_eq!(wakes.take(), (true, 1 | 1 << 63));
-    assert_eq!(wakes.take(), (false, 0));
+    assert_eq!(
+        wakes.take(),
+        WakeHints {
+            configured: 1 | 1 << 63,
+            rescan: true,
+            unknown: false,
+        }
+    );
+    assert_eq!(wakes.take(), WakeHints::default());
+
+    let mut queues = BTreeMap::from([
+        ("queue-63".into(), LocalQueue::new(1)),
+        ("added".into(), LocalQueue::new(1)),
+    ]);
+    let mut freed = HashSet::new();
     assert!(wakes.event(ListenEvent::Hint(&last)));
-    assert_eq!(wakes.take(), (false, 1 << 63));
+    wakes.apply(&mut queues, &mut freed);
+    assert!(matches!(queues["queue-63"].source, ClaimWake::Notification));
+    assert!(matches!(queues["added"].source, ClaimWake::Ready));
+    let added = wake_key("added");
+    assert!(wakes.event(ListenEvent::Hint(&added)));
+    for _ in 0..1024 {
+        assert!(!wakes.event(ListenEvent::Hint(&added)));
+    }
+    wakes.apply(&mut queues, &mut freed);
+    assert!(matches!(queues["added"].source, ClaimWake::Notification));
+    assert_eq!(wakes.take(), WakeHints::default());
     wakes.close();
     assert!(!wakes.event(ListenEvent::Subscribed));
     assert_eq!(wakes.report()["subscribed"], false);
@@ -70,25 +93,16 @@ fn confirmed_batch_launch_failure_stops_later_launches_and_keeps_refunds_tracked
         wakeups: None,
         state: Mutex::new(State {
             phase: Phase::Running,
-            jobs: BTreeMap::new(),
-            pending_claims: 3,
-            counts: Counts::default(),
-            last_error: None,
+            pending: Some(Reservation {
+                queue: "default".into(),
+                slots: 3,
+            }),
+            ..State::new(&Config::parse(TEST_CONFIG).unwrap())
         }),
     };
     let (requests, _) = mpsc::sync_channel(1);
     let (send, results) = mpsc::sync_channel(1);
-    let mut lane = BatchLane {
-        requests,
-        results,
-        pending: true,
-    };
-    let mut queues = [Queue {
-        name: "default",
-        limit: 3,
-        next_claim: Instant::now(),
-        source: ClaimWake::Ready,
-    }];
+    let lane = BatchLane { requests, results };
     let lease = Lease::begin(Duration::from_secs(30)).unwrap();
     let claims = (1..=3)
         .map(|index| Claim {
@@ -100,7 +114,7 @@ fn confirmed_batch_launch_failure_stops_later_launches_and_keeps_refunds_tracked
         })
         .collect();
     send.send((
-        0,
+        "default".into(),
         Ok((
             lease,
             ClaimBatch {
@@ -120,10 +134,10 @@ fn confirmed_batch_launch_failure_stops_later_launches_and_keeps_refunds_tracked
         }
     };
     let mut attempts = Vec::new();
-    lane.poll(&runner, &mut queues, &mut attempts, &launch);
+    lane.poll(&runner, &mut attempts, &launch);
     let state = runner.state.lock();
     assert!(matches!(state.phase, Phase::Stopping { .. }));
-    assert_eq!(state.pending_claims, 0);
+    assert!(state.pending.is_none());
     assert_eq!(state.counts.claimed, 3);
     assert_eq!(attempts.len(), 3);
     assert!(matches!(
@@ -171,7 +185,7 @@ fn polling_and_kill_errors_keep_an_attempt_undrained_until_reap() {
     let mut attempt = Attempt {
         id: "job-id".into(),
         token: "token".into(),
-        queue: 0,
+        queue: "default".into(),
         lease: None,
         submissions: 0,
     };
@@ -187,7 +201,7 @@ fn polling_and_kill_errors_keep_an_attempt_undrained_until_reap() {
                 "token".into(),
                 ActiveJob {
                     id: "job-id".into(),
-                    queue: 0,
+                    queue: "default".into(),
                     identity: None,
                     reported_lease_loss: false,
                     execution: Execution::Running(Running {
@@ -208,9 +222,7 @@ fn polling_and_kill_errors_keep_an_attempt_undrained_until_reap() {
                     }),
                 },
             )]),
-            pending_claims: 0,
-            counts: Counts::default(),
-            last_error: None,
+            ..State::new(&Config::parse(TEST_CONFIG).unwrap())
         }),
     };
 
@@ -255,9 +267,11 @@ fn reaped_worker_reply_survives_timeout_and_shutdown() {
             stop: None,
             started_at: None,
         };
-        assert!(running.poll(now, shutting_down, &mut None).is_none());
+        assert!(running
+            .poll(now, shutting_down.then_some(STOPPED), &mut None)
+            .is_none());
         publish.send(reply).unwrap();
-        match running.poll(now, shutting_down, &mut None) {
+        match running.poll(now, shutting_down.then_some(STOPPED), &mut None) {
             Some(Reply::Returned(output)) => assert_eq!(output, "done"),
             Some(Reply::Failed(_, reason)) => panic!("reaped worker failed: {reason}"),
             _ => panic!("reaped worker did not return its reply"),
@@ -280,7 +294,7 @@ fn reaped_worker_reply_survives_a_confirmed_late_renewal() {
             started_at: None,
         };
         if observed_exit {
-            assert!(running.poll(now, false, &mut None).is_none());
+            assert!(running.poll(now, None, &mut None).is_none());
         }
         if published_reply {
             publish.send(reply.clone()).unwrap();
@@ -292,7 +306,7 @@ fn reaped_worker_reply_survives_a_confirmed_late_renewal() {
             publish.send(reply).unwrap();
         }
         let result = match execution {
-            Execution::Running(mut worker) => worker.poll(now, false, &mut None),
+            Execution::Running(mut worker) => worker.poll(now, None, &mut None),
             Execution::Acknowledging { reply, .. } => Some(reply),
         };
         assert!(matches!(result, Some(Reply::Returned(output)) if output == "done"));
@@ -313,7 +327,7 @@ fn reaped_worker_keeps_a_previous_stop_while_awaiting_reply() {
         started_at: None,
     };
     assert!(matches!(
-        running.poll(now, true, &mut None),
+        running.poll(now, Some(STOPPED), &mut None),
         Some(Reply::Cancelled)
     ));
 }
@@ -352,11 +366,12 @@ fn acknowledgement_retry_preserves_token_without_reconstructing_a_commit() {
         let mut attempt = Attempt {
             id: job_id.into(),
             token: token.into(),
-            queue: 0,
+            queue: "default".into(),
             lease: Some(Lease::begin(TEST_WAIT).unwrap()),
             submissions: 0,
         };
         let config = Config::parse(TEST_CONFIG).unwrap();
+        let state = State::new(&config);
         let runner = Runner {
             id: 15,
             config,
@@ -369,7 +384,7 @@ fn acknowledgement_retry_preserves_token_without_reconstructing_a_commit() {
                     token.into(),
                     ActiveJob {
                         id: job_id.into(),
-                        queue: 0,
+                        queue: "default".into(),
                         identity: Some(Identity::new(&claim)),
                         reported_lease_loss: false,
                         execution: Execution::acknowledging(
@@ -378,9 +393,7 @@ fn acknowledgement_retry_preserves_token_without_reconstructing_a_commit() {
                         ),
                     },
                 )]),
-                pending_claims: 0,
-                counts: Counts::default(),
-                last_error: None,
+                ..state
             }),
         };
         let mut io = LifecycleIo {
@@ -511,7 +524,7 @@ fn a_late_renewal_cannot_extend_an_expired_local_lease() {
     };
     assert_eq!(worker.lease_deadline, now);
     assert!(matches!(
-        worker.poll(now, false, &mut None),
+        worker.poll(now, None, &mut None),
         Some(Reply::Failed(_, reason)) if reason == LEASE_LOST
     ));
 }

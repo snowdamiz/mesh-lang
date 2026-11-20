@@ -236,7 +236,7 @@ fn concurrent_producers_enqueue_one_job_per_minute_and_activation_epoch() {
         let start = |mut connection: Connection, owner: &'static str| {
             scope.spawn(move || {
                 barrier.wait();
-                connection.run(|db| tick_with_clock(db, ns, owner, 8, Some(now)))
+                connection.run(|db| tick_with_clock(db, ns, owner, 8, MAX_TICK_JOBS, Some(now)))
             })
         };
         let a = Connection::open();
@@ -248,15 +248,25 @@ fn concurrent_producers_enqueue_one_job_per_minute_and_activation_epoch() {
     assert_eq!(enqueued, 2);
     Connection::open().run(|db| {
         assert_eq!(
-            tick_with_clock(db, &ns, "restarted-owner", 8, Some(now + 30_000))?,
+            tick_with_clock(
+                db,
+                &ns,
+                "restarted-owner",
+                8,
+                MAX_TICK_JOBS,
+                Some(now + 30_000)
+            )?,
             0
         );
         assert_eq!(times(db, &ns, "reboot")?, [now]);
         assert_eq!(times(db, &ns, "every-minute")?, [now]);
         let restart = now + 90_000;
-        assert_eq!(tick_with_clock(db, &ns, "new-owner", 8, Some(restart))?, 2);
         assert_eq!(
-            tick_with_clock(db, &ns, "another-owner", 8, Some(restart))?,
+            tick_with_clock(db, &ns, "new-owner", 8, MAX_TICK_JOBS, Some(restart))?,
+            2
+        );
+        assert_eq!(
+            tick_with_clock(db, &ns, "another-owner", 8, MAX_TICK_JOBS, Some(restart))?,
             0
         );
         assert_eq!(times(db, &ns, "reboot")?, [now, restart]);
@@ -282,14 +292,28 @@ fn evaluates_dst_gaps_repeated_minutes_and_combined_day_fields() {
         register(db, &ns, "repeat", "30 1 * * *", zone, "catch_up", 180)?;
         position_cursor(db, &ns, ms("2025-03-09T06:59:00Z"))?;
         assert_eq!(
-            tick_with_clock(db, &ns, "owner", 8, Some(ms("2025-03-09T08:00:00Z")))?,
+            tick_with_clock(
+                db,
+                &ns,
+                "owner",
+                8,
+                MAX_TICK_JOBS,
+                Some(ms("2025-03-09T08:00:00Z"))
+            )?,
             1
         );
         assert!(times(db, &ns, "gap")?.is_empty());
         assert_eq!(times(db, &ns, "after-gap")?, [ms("2025-03-09T07:30:00Z")]);
         position_cursor(db, &ns, ms("2025-11-02T04:59:00Z"))?;
         assert_eq!(
-            tick_with_clock(db, &ns, "owner", 8, Some(ms("2025-11-02T07:00:00Z")))?,
+            tick_with_clock(
+                db,
+                &ns,
+                "owner",
+                8,
+                MAX_TICK_JOBS,
+                Some(ms("2025-11-02T07:00:00Z"))
+            )?,
             2
         );
         assert_eq!(
@@ -307,9 +331,30 @@ fn evaluates_dst_gaps_repeated_minutes_and_combined_day_fields() {
             60,
         )?;
         position_cursor(db, &ns, ms("2025-06-06T11:59:00Z"))?;
-        tick_with_clock(db, &ns, "owner", 8, Some(ms("2025-06-06T12:00:00Z")))?;
-        tick_with_clock(db, &ns, "owner", 8, Some(ms("2025-06-13T12:00:00Z")))?;
-        tick_with_clock(db, &ns, "owner", 8, Some(ms("2025-07-13T12:00:00Z")))?;
+        tick_with_clock(
+            db,
+            &ns,
+            "owner",
+            8,
+            MAX_TICK_JOBS,
+            Some(ms("2025-06-06T12:00:00Z")),
+        )?;
+        tick_with_clock(
+            db,
+            &ns,
+            "owner",
+            8,
+            MAX_TICK_JOBS,
+            Some(ms("2025-06-13T12:00:00Z")),
+        )?;
+        tick_with_clock(
+            db,
+            &ns,
+            "owner",
+            8,
+            MAX_TICK_JOBS,
+            Some(ms("2025-07-13T12:00:00Z")),
+        )?;
         assert_eq!(times(db, &ns, "friday-13th")?, [ms("2025-06-13T12:00:00Z")]);
         Ok(())
     });
@@ -325,12 +370,24 @@ fn resumes_bounded_catch_up_and_skips_or_coalesces_missed_matches() {
         register(db, &ns, "coalesce", "*/2 * * * *", "Etc/UTC", "coalesce", 5)?;
         register(db, &ns, "skip", "*/2 * * * *", "Etc/UTC", "skip", 5)?;
         position_cursor(db, &ns, ms("2024-01-01T00:00:00Z"))?;
-        assert_eq!(tick_with_clock(db, &ns, "owner", 0, Some(now))?, 0);
+        assert_eq!(
+            tick_with_clock(db, &ns, "owner", 0, MAX_TICK_JOBS, Some(now))?,
+            0
+        );
         assert!(times(db, &ns, "catch")?.is_empty());
-        assert_eq!(tick_with_clock(db, &ns, "owner", 1, Some(now))?, 1);
+        assert_eq!(
+            tick_with_clock(db, &ns, "owner", 1, MAX_TICK_JOBS, Some(now))?,
+            1
+        );
         assert_eq!(times(db, &ns, "catch")?, [now - 3 * MINUTE_MS]);
-        assert_eq!(tick_with_clock(db, &ns, "owner", 8, Some(now))?, 2);
-        assert_eq!(tick_with_clock(db, &ns, "owner", 8, Some(now))?, 0);
+        assert_eq!(
+            tick_with_clock(db, &ns, "owner", 8, MAX_TICK_JOBS, Some(now))?,
+            2
+        );
+        assert_eq!(
+            tick_with_clock(db, &ns, "owner", 8, MAX_TICK_JOBS, Some(now))?,
+            0
+        );
         assert_eq!(times(db, &ns, "coalesce")?, [now - MINUTE_MS]);
         assert!(times(db, &ns, "skip")?.is_empty());
         assert_eq!(
@@ -338,11 +395,18 @@ fn resumes_bounded_catch_up_and_skips_or_coalesces_missed_matches() {
             [now - 3 * MINUTE_MS, now - MINUTE_MS]
         );
         assert_eq!(
-            tick_with_clock(db, &ns, "owner", 8, Some(now - 10 * MINUTE_MS))?,
+            tick_with_clock(
+                db,
+                &ns,
+                "owner",
+                8,
+                MAX_TICK_JOBS,
+                Some(now - 10 * MINUTE_MS)
+            )?,
             0
         );
         assert_eq!(
-            tick_with_clock(db, &ns, "owner", 8, Some(now + MINUTE_MS))?,
+            tick_with_clock(db, &ns, "owner", 8, MAX_TICK_JOBS, Some(now + MINUTE_MS))?,
             3
         );
         assert_eq!(times(db, &ns, "skip")?, [now + MINUTE_MS]);
@@ -387,12 +451,18 @@ fn failed_enqueue_rolls_back_the_occurrence_and_its_progress() {
             }
         }
         let mut failing = FailSecondEnqueue(db, 0);
-        assert!(tick_with_clock(&mut failing, &ns, "owner", 8, Some(now)).is_err());
+        assert!(tick_with_clock(&mut failing, &ns, "owner", 8, MAX_TICK_JOBS, Some(now)).is_err());
         assert_eq!(failing.1, 2);
         assert!(times(db, &ns, "catch")?.is_empty());
-        assert_eq!(tick_with_clock(db, &ns, "owner", 8, Some(now))?, 2);
+        assert_eq!(
+            tick_with_clock(db, &ns, "owner", 8, MAX_TICK_JOBS, Some(now))?,
+            2
+        );
         assert_eq!(times(db, &ns, "catch")?, [now - MINUTE_MS, now]);
-        assert_eq!(tick_with_clock(db, &ns, "owner", 8, Some(now))?, 0);
+        assert_eq!(
+            tick_with_clock(db, &ns, "owner", 8, MAX_TICK_JOBS, Some(now))?,
+            0
+        );
         assert_eq!(
             only_value(&db.query(
                 "SELECT count(*)::text FROM mesh_jobs.receipts WHERE namespace = $1",
@@ -406,11 +476,62 @@ fn failed_enqueue_rolls_back_the_occurrence_and_its_progress() {
 
 #[test]
 #[ignore = "requires MESH_JOBS_TEST_PG_URL"]
+fn cron_pages_survive_owner_loss_before_and_after_commit() {
+    let mut observer = Connection::open();
+    let now = ms("2025-05-01T12:00:00Z");
+    let ns = observer.run(|db| {
+        let ns = setup(db, "takeover")?;
+        for name in ["alpha", "beta"] {
+            register(db, &ns, name, "* * * * *", "Etc/UTC", "catch_up", 2)?;
+        }
+        position_cursor(db, &ns, now - 2 * MINUTE_MS)?;
+        Ok(ns)
+    });
+    let mut first = Connection::open();
+    let first_pid = first.run(|db| {
+        db.simple("BEGIN")?;
+        assert_eq!(poll(db, &ns, "first", 1, 1, Some(now))?, 1);
+        Ok(only_value(&db.query("SELECT pg_backend_pid()::text", &[])?)?.to_string())
+    });
+    observer.run(|db| {
+        assert!(times(db, &ns, "alpha")?.is_empty());
+        assert_eq!(tick_with_clock(db, &ns, "blocked", 1, 1, Some(now))?, 0);
+        db.query(
+            "SELECT pg_terminate_backend($1::integer, 5000)",
+            &[&first_pid],
+        )?;
+        Ok(())
+    });
+
+    let mut second = Connection::open();
+    let second_pid = second.run(|db| {
+        assert_eq!(tick_with_clock(db, &ns, "second", 2, 1, Some(now))?, 2);
+        Ok(only_value(&db.query("SELECT pg_backend_pid()::text", &[])?)?.to_string())
+    });
+    observer.run(|db| {
+        db.query(
+            "SELECT pg_terminate_backend($1::integer, 5000)",
+            &[&second_pid],
+        )?;
+        assert_eq!(times(db, &ns, "alpha")?, [now - MINUTE_MS, now]);
+        assert!(times(db, &ns, "beta")?.is_empty());
+        assert_eq!(tick_with_clock(db, &ns, "third", 1, 1, Some(now))?, 1);
+        assert_eq!(times(db, &ns, "beta")?, [now - MINUTE_MS]);
+        assert_eq!(tick_with_clock(db, &ns, "third", 1, 1, Some(now))?, 1);
+        assert_eq!(tick_with_clock(db, &ns, "third", 1, 1, Some(now))?, 0);
+        assert_eq!(times(db, &ns, "alpha")?, [now - MINUTE_MS, now]);
+        assert_eq!(times(db, &ns, "beta")?, [now - MINUTE_MS, now]);
+        Ok(())
+    });
+}
+
+#[test]
+#[ignore = "requires MESH_JOBS_TEST_PG_URL"]
 fn production_tick_uses_database_clock() {
     Connection::open().run(|db| {
         let ns = setup(db, "clock")?;
         register(db, &ns, "same-minute", "* * * * *", "Etc/UTC", "skip", 60)?;
-        assert_eq!(tick(db, &ns, "owner", 8)?, 1);
+        assert_eq!(tick(db, &ns, "owner", 8, MAX_TICK_JOBS)?, 1);
         let rows = db.query(
             "SELECT (scheduled_at_ms % 60000 = 0 AND scheduled_at_ms <= inserted_at_ms
                      AND inserted_at_ms - scheduled_at_ms < 120000)::text

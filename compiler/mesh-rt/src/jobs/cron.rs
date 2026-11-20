@@ -30,7 +30,7 @@ use serde_json::{json, Value};
 
 const MINUTE_MS: i64 = 60_000;
 const ACTIVATION_IDLE_MS: i64 = 60_000;
-const MAX_TICK_JOBS: u32 = 128;
+pub(super) const MAX_TICK_JOBS: u32 = 128;
 const MAX_REQUEST_BYTES: usize = 32 * 1024;
 const DEFAULT_LOOKBACK: u32 = 60;
 const MAX_LOOKBACK: u32 = 1440;
@@ -331,8 +331,9 @@ pub(super) fn tick(
     namespace: &str,
     owner: &str,
     limit: u32,
+    schedule_limit: u32,
 ) -> Result<u32, String> {
-    tick_with_clock(db, namespace, owner, limit, None)
+    tick_with_clock(db, namespace, owner, limit, schedule_limit, None)
 }
 
 fn tick_with_clock(
@@ -340,6 +341,7 @@ fn tick_with_clock(
     namespace: &str,
     owner: &str,
     limit: u32,
+    schedule_limit: u32,
     now_ms: Option<i64>,
 ) -> Result<u32, String> {
     check_text(namespace, "namespace", 255)?;
@@ -348,7 +350,15 @@ fn tick_with_clock(
         return Err("cron tick needs an idle database connection".into());
     }
     db.simple("BEGIN ISOLATION LEVEL READ COMMITTED")?;
-    let result = poll(db, namespace, owner, limit.min(MAX_TICK_JOBS), now_ms).and_then(|count| {
+    let result = poll(
+        db,
+        namespace,
+        owner,
+        limit.min(MAX_TICK_JOBS),
+        schedule_limit.min(MAX_TICK_JOBS),
+        now_ms,
+    )
+    .and_then(|count| {
         if !db.in_transaction() {
             return Err("cron tick did not leave a committable transaction".into());
         }
@@ -365,6 +375,7 @@ fn poll(
     namespace: &str,
     owner: &str,
     limit: u32,
+    schedule_limit: u32,
     now_ms_override: Option<i64>,
 ) -> Result<u32, String> {
     // A transaction-scoped lock fences namespace reactivation and scheduling.
@@ -421,7 +432,7 @@ fn poll(
             namespace,
             &activation.epoch.to_string(),
             &minute.to_string(),
-            &MAX_TICK_JOBS.to_string(),
+            &schedule_limit.to_string(),
         ],
     )?;
     let mut count = 0;

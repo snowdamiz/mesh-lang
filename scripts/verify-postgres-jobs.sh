@@ -2,8 +2,10 @@
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
+unset MESH_JOBS_DISPOSABLE_ROLE_PROOF MESH_JOBS_TEST_ROLE_PASSWORD
 postgres_version=
 parity_driver_check=false
+j6_roles=false
 while (( $# > 0 )); do
   case "$1" in
     --compatibility)
@@ -18,8 +20,12 @@ while (( $# > 0 )); do
       parity_driver_check=true
       shift
       ;;
+    --j6-roles)
+      j6_roles=true
+      shift
+      ;;
     *)
-      printf 'Usage: %s [--compatibility VERSION] [--parity-driver-check]\n' "$0" >&2
+      printf 'Usage: %s [--compatibility VERSION] [--parity-driver-check] [--j6-roles]\n' "$0" >&2
       exit 2
       ;;
   esac
@@ -53,6 +59,10 @@ elif ! command -v initdb >/dev/null && command -v pg_config >/dev/null; then
 fi
 
 if [[ -n "${MESH_TEST_DATABASE_URL:-}" ]]; then
+  if "$j6_roles"; then
+    echo "--j6-roles requires a new disposable cluster. Unset MESH_TEST_DATABASE_URL." >&2
+    exit 2
+  fi
   verify
   exit
 fi
@@ -141,4 +151,11 @@ createdb -w --maintenance-db="$server_url/postgres?$connection_options" mesh_job
 export MESH_TEST_DATABASE_URL="$server_url/mesh_jobs_proof?$connection_options"
 server_version="$(psql -X -w -qAt -v ON_ERROR_STOP=1 "$MESH_TEST_DATABASE_URL" -c 'SHOW server_version')"
 printf 'Disposable Jobs proof server: PostgreSQL %s\n' "$server_version"
+if "$j6_roles"; then
+  export MESH_JOBS_DISPOSABLE_ROLE_PROOF=1
+  MESH_JOBS_TEST_ROLE_PASSWORD="$(psql -X -w -qAt -v ON_ERROR_STOP=1 "$MESH_TEST_DATABASE_URL" \
+    -c "SELECT replace(gen_random_uuid()::text, '-', '')")"
+  export MESH_JOBS_TEST_ROLE_PASSWORD
+  bash scripts/verify-jobs-roles.sh
+fi
 verify

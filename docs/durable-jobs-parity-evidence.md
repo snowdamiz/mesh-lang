@@ -25,8 +25,9 @@ available. Run with `--compatibility` to cover the same paths over verified TLS
 and SCRAM. To compare sparse pickup behavior with a pinned reference, build
 its `mesh-rt` static library and set `MESH_JOBS_REFERENCE_RT_LIB_PATH` to the
 absolute path of that library before running the verifier. It compiles the
-same fixture twice and checks the same committed input with polling on the
-reference and notifications on the candidate.
+same fixture twice, with local queue control disabled for the reference, and
+checks the same committed input with polling on the reference and notifications
+on the candidate.
 The smoke test runs one small matched pair. The fault test observes a claim
 and a committed effect before terminating the runner, then checks recovery
 from a separate database connection. Mesh recovers by lease expiry. Oban
@@ -91,3 +92,27 @@ excluded from runner process measurements.
 `--smoke` and `--faults` produce correctness evidence. Use the five-pair load
 receipts and the plan's separate live gates to assess performance and
 functional parity.
+
+## Run the J6 role and operations proof
+
+Use a local checkout with the pinned pre-J6 revision `74db988d` available.
+The proof starts a disposable cluster and creates separate databases for a
+fresh install and an upgrade.
+
+```sh
+env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
+  bash scripts/verify-postgres-jobs.sh --j6-roles
+```
+
+The role proof revokes default `PUBLIC EXECUTE` before migration. It
+checks a held legacy attempt across the upgrade, then runs the compiled
+producer, worker, operator, inspector, and migrator with scoped logins
+in both databases. The PostgreSQL proof also covers local queue control
+with single and batch claims, cron owner loss across commit, retained
+receipts after delete and prune, and a concurrent index swap while a
+compiled worker continues settling.
+
+Use this receipt as functional evidence for the host and PostgreSQL
+version printed by the script. Keep the separately measured maintenance
+latency, the paired comparison against main, and the remaining platform
+lanes in the parity plan.

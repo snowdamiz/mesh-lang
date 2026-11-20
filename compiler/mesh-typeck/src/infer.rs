@@ -3197,7 +3197,16 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
         ("stop", vec![Ty::int(), Ty::int()], job_text_result.clone()),
         ("join", vec![Ty::int()], job_text_result.clone()),
         ("status", vec![Ty::int()], job_text_result.clone()),
-        ("read_events", vec![Ty::int(), Ty::int()], job_text_result),
+        (
+            "read_events",
+            vec![Ty::int(), Ty::int()],
+            job_text_result.clone(),
+        ),
+        (
+            "local_control",
+            vec![Ty::int(), Ty::string()],
+            job_text_result,
+        ),
     ] {
         jobs_mod.insert(name.to_string(), Scheme::mono(Ty::fun(params, result)));
     }

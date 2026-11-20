@@ -31,6 +31,7 @@ const MAX_IN_FLIGHT: usize = 1024;
 const MAX_DELAY_MS: u64 = 365 * 24 * 60 * 60 * 1000;
 const TIMEOUT: &str = "job handler timed out";
 const STOPPED: &str = "job runner shutdown deadline elapsed";
+const QUEUE_STOPPED: &str = "job queue shutdown deadline elapsed";
 const CANCELLED: &str = "job cancelled";
 const LEASE_LOST: &str = "job lease lost";
 
@@ -65,7 +66,14 @@ struct Config {
     lease_ms: u64,
     poll_ms: u64,
     shutdown_grace_ms: u64,
+    recovery_interval_ms: Option<u64>,
+    recovery_page_size: u32,
+    cron_interval_ms: u64,
+    cron_page_size: u32,
+    cron_schedule_page_size: u32,
     prune_max_age_ms: Option<u64>,
+    prune_interval_ms: u64,
+    prune_page_size: u32,
     drain: bool,
     claim_batch: bool,
     event_buffer: usize,
@@ -89,7 +97,14 @@ impl Default for Config {
             lease_ms: 30_000,
             poll_ms: 100,
             shutdown_grace_ms: 15_000,
+            recovery_interval_ms: None,
+            recovery_page_size: 64,
+            cron_interval_ms: 1_000,
+            cron_page_size: 64,
+            cron_schedule_page_size: cron::MAX_TICK_JOBS,
             prune_max_age_ms: None,
+            prune_interval_ms: 60_000,
+            prune_page_size: 1000,
             drain: false,
             claim_batch: false,
             event_buffer: 0,
@@ -134,6 +149,23 @@ impl Config {
             return Err("runner poll_ms must be between 1 and 60000".into());
         }
         grace(config.shutdown_grace_ms)?;
+        if config
+            .recovery_interval_ms
+            .is_some_and(|ms| !(1..=60_000).contains(&ms))
+            || config.cron_interval_ms > 30_000
+            || !(1..=86_400_000).contains(&config.prune_interval_ms)
+        {
+            return Err("Jobs intervals require recovery 1..=60000 ms, cron 0..=30000 ms, and prune 1..=86400000 ms".into());
+        }
+        if !(1..=1000).contains(&config.recovery_page_size)
+            || !(1..=1000).contains(&config.prune_page_size)
+            || !(1..=cron::MAX_TICK_JOBS).contains(&config.cron_page_size)
+            || !(1..=cron::MAX_TICK_JOBS).contains(&config.cron_schedule_page_size)
+        {
+            return Err(
+                "Jobs page sizes require recovery and prune 1..=1000 and cron 1..=128".into(),
+            );
+        }
         if config
             .prune_max_age_ms
             .is_some_and(|age| age > MAX_DELAY_MS)
@@ -192,7 +224,7 @@ impl Phase {
 
 struct ActiveJob {
     id: String,
-    queue: usize,
+    queue: String,
     execution: Execution,
     identity: Option<Arc<Identity>>,
     reported_lease_loss: bool,
@@ -220,6 +252,48 @@ impl ActiveJob {
             self.reported_lease_loss = true;
         }
     }
+}
+
+struct LocalQueue {
+    limit: usize,
+    phase: QueuePhase,
+    next_claim: Instant,
+    source: ClaimWake,
+}
+
+#[derive(Clone, Copy)]
+enum QueuePhase {
+    Running,
+    Paused,
+    Stopping(Instant),
+    Stopped,
+}
+
+impl QueuePhase {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Running => "running",
+            Self::Paused => "paused",
+            Self::Stopping(_) => "stopping",
+            Self::Stopped => "stopped",
+        }
+    }
+}
+
+impl LocalQueue {
+    fn new(limit: usize) -> Self {
+        Self {
+            limit,
+            phase: QueuePhase::Running,
+            next_claim: Instant::now(),
+            source: ClaimWake::Ready,
+        }
+    }
+}
+
+struct Reservation {
+    queue: String,
+    slots: usize,
 }
 
 #[derive(Default)]
@@ -270,13 +344,50 @@ impl OutcomeCounts {
 
 struct State {
     phase: Phase,
+    queues: BTreeMap<String, LocalQueue>,
     jobs: BTreeMap<String, ActiveJob>,
-    pending_claims: usize,
+    pending: Option<Reservation>,
     counts: Counts,
     last_error: Option<String>,
 }
 
 impl State {
+    fn new(config: &Config) -> Self {
+        Self {
+            phase: Phase::Running,
+            queues: config
+                .queues
+                .iter()
+                .map(|(name, &limit)| (name.clone(), LocalQueue::new(limit)))
+                .collect(),
+            jobs: BTreeMap::new(),
+            pending: None,
+            counts: Counts::default(),
+            last_error: None,
+        }
+    }
+
+    fn pending_for(&self, queue: &str) -> usize {
+        self.pending
+            .as_ref()
+            .filter(|pending| pending.queue == queue)
+            .map_or(0, |pending| pending.slots)
+    }
+
+    fn refresh_stopping_queues(&mut self) {
+        for (name, queue) in &mut self.queues {
+            if matches!(queue.phase, QueuePhase::Stopping(_))
+                && !self.jobs.values().any(|job| &job.queue == name)
+                && self
+                    .pending
+                    .as_ref()
+                    .is_none_or(|pending| &pending.queue != name)
+            {
+                queue.phase = QueuePhase::Stopped;
+            }
+        }
+    }
+
     fn fail_launch(&mut self, error: String, grace_ms: u64) {
         self.last_error = Some(error.chars().take(1024).collect());
         if matches!(self.phase, Phase::Running) {
@@ -323,11 +434,22 @@ impl Runner {
             Phase::Stopped => return false,
         };
         let State {
-            jobs, last_error, ..
+            queues,
+            jobs,
+            last_error,
+            ..
         } = &mut *state;
         for job in jobs.values_mut() {
             if let Execution::Running(worker) = &mut job.execution {
-                if let Some(reply) = worker.poll(now, shutting_down, last_error) {
+                let queue_stopping = matches!(queues[&job.queue].phase, QueuePhase::Stopping(deadline) if now >= deadline);
+                let stop = if shutting_down {
+                    Some(STOPPED)
+                } else if queue_stopping {
+                    Some(QUEUE_STOPPED)
+                } else {
+                    None
+                };
+                if let Some(reply) = worker.poll(now, stop, last_error) {
                     job.execution = worker.acknowledging(reply, now);
                 }
                 job.observe_local_lease_loss(self);
@@ -337,21 +459,27 @@ impl Runner {
     }
 
     fn report(&self, state: &State) -> String {
-        let undrained = state.jobs.len() + state.pending_claims;
-        let queues: BTreeMap<_, _> = self
-            .config
-            .queues
+        let pending_claims = state.pending.as_ref().map_or(0, |pending| pending.slots);
+        let undrained = state.jobs.len() + pending_claims;
+        let queues: BTreeMap<_, _> = state.queues
             .iter()
-            .enumerate()
-            .map(|(index, (name, limit))| {
-                let in_flight = state.jobs.values().filter(|job| job.queue == index).count();
+            .map(|(name, queue)| {
+                let in_flight = state.jobs.values().filter(|job| &job.queue == name).count();
+                let pending = state.pending_for(name);
                 (
                     name,
-                    serde_json::json!({ "limit": limit, "in_flight": in_flight }),
+                    serde_json::json!({
+                        "limit": queue.limit,
+                        "in_flight": in_flight,
+                        "pending_claims": pending,
+                        "state": if state.phase.is_stopped() { "stopped" } else { queue.phase.name() },
+                        "drained": in_flight == 0 && pending == 0,
+                    }),
                 )
             })
             .collect();
-        let jobs: Vec<_> = state.jobs.values().map(|job| &job.id).collect();
+        let mut jobs: Vec<_> = state.jobs.values().map(|job| &job.id).collect();
+        jobs.sort_unstable();
         let mut report = serde_json::json!({
             "runner_id": self.id,
             "namespace": self.config.namespace,
@@ -359,7 +487,7 @@ impl Runner {
             "drained": undrained == 0,
             "undrained": undrained,
             "undrained_jobs": jobs,
-            "pending_claims": state.pending_claims,
+            "pending_claims": pending_claims,
             "queues": queues,
             "claimed": state.counts.claimed,
             "finished": state.counts.outcomes.total(),
@@ -400,6 +528,15 @@ impl Runner {
             "mesh jobs oversized claim context: job {} requires {} bytes",
             row.id, row.context_bytes,
         ));
+    }
+
+    fn defer_claim(&self, queue: &str, next_due: Option<Instant>) {
+        self.state
+            .lock()
+            .queues
+            .get_mut(queue)
+            .expect("known queue")
+            .backoff(self, next_due);
     }
 
     fn publish(&self, kind: Kind, identity: Option<&Arc<Identity>>) {
@@ -635,19 +772,14 @@ fn start_configured(
         .filter(|&next| next <= i64::MAX as u64)
         .ok_or("runner identifiers exhausted")?;
     let events = Events::new(config.event_buffer, config.event_log)?;
+    let state = Mutex::new(State::new(&config));
     let runner = Arc::new(Runner {
         id,
         config,
         check_worker,
         events,
         wakeups,
-        state: Mutex::new(State {
-            phase: Phase::Running,
-            jobs: BTreeMap::new(),
-            pending_claims: 0,
-            counts: Counts::default(),
-            last_error: None,
-        }),
+        state,
     });
     crate::process_signal::mesh_process_install_shutdown_signals();
     let supervised = Arc::clone(&runner);
@@ -744,6 +876,128 @@ pub(super) fn read_events(id: u64, limit: i64) -> Result<String, String> {
         .read(limit as usize)
 }
 
+#[derive(Deserialize)]
+#[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
+enum LocalAction {
+    Start { limit: Option<usize> },
+    Pause,
+    Resume,
+    Scale { limit: usize },
+    Stop { grace_ms: Option<u64> },
+}
+
+#[derive(Deserialize)]
+struct LocalControl {
+    queue: String,
+    #[serde(flatten)]
+    action: LocalAction,
+}
+
+pub(super) fn control(id: u64, request: &str) -> Result<String, String> {
+    if request.len() > 4096 {
+        return Err("local Jobs control exceeds 4 KiB".into());
+    }
+    let LocalControl { queue, action } =
+        serde_json::from_str(request).map_err(|error| error.to_string())?;
+    if !identifier(&queue) {
+        return Err("invalid local queue name".into());
+    }
+    let runner = lookup(id)?;
+    let mut state = runner.state.lock();
+    update_queue(&mut state, &runner.config, queue, action)?;
+    let report = runner.report(&state);
+    drop(state);
+    if let Some(dispatcher) = runner
+        .wakeups
+        .as_ref()
+        .and_then(|wakeups| wakeups.dispatcher.get())
+    {
+        dispatcher.unpark();
+    }
+    Ok(report)
+}
+
+fn update_queue(
+    state: &mut State,
+    config: &Config,
+    name: String,
+    action: LocalAction,
+) -> Result<(), String> {
+    if config.drain || !matches!(state.phase, Phase::Running) {
+        return Err("local queue control requires a running, non-drain runner".into());
+    }
+    state.refresh_stopping_queues();
+    let current = state.queues.get(&name);
+    let phase = current.map(|queue| queue.phase);
+    let limit = match action {
+        LocalAction::Start { limit } => {
+            if matches!(phase, Some(QueuePhase::Stopping(_))) {
+                return Err("local queue is still stopping".into());
+            }
+            Some(
+                limit
+                    .or_else(|| current.map(|queue| queue.limit))
+                    .unwrap_or(1),
+            )
+        }
+        LocalAction::Scale { limit } => {
+            if !matches!(phase, Some(QueuePhase::Running | QueuePhase::Paused)) {
+                return Err("local queue must be running or paused to scale".into());
+            }
+            Some(limit)
+        }
+        _ => None,
+    };
+    if let Some(limit) = limit {
+        let other_slots: usize = state
+            .queues
+            .iter()
+            .filter(|(key, queue)| **key != name && !matches!(queue.phase, QueuePhase::Stopped))
+            .map(|(_, queue)| queue.limit)
+            .sum();
+        if !(1..=MAX_IN_FLIGHT).contains(&limit) || other_slots + limit > MAX_IN_FLIGHT {
+            return Err("runner requires 1 to 1024 total local slots".into());
+        }
+    }
+
+    if matches!(action, LocalAction::Start { .. }) {
+        if current.is_none() && state.queues.len() >= 64 {
+            return Err("runner supports at most 64 local queue names".into());
+        }
+        state
+            .queues
+            .insert(name, LocalQueue::new(limit.expect("validated start limit")));
+        return Ok(());
+    }
+
+    let queue = state.queues.get_mut(&name).ok_or("unknown local queue")?;
+    match action {
+        LocalAction::Start { .. } => unreachable!(),
+        LocalAction::Pause if matches!(queue.phase, QueuePhase::Running | QueuePhase::Paused) => {
+            queue.phase = QueuePhase::Paused;
+        }
+        LocalAction::Resume if matches!(queue.phase, QueuePhase::Paused | QueuePhase::Running) => {
+            queue.phase = QueuePhase::Running;
+            queue.ready(ClaimWake::Ready);
+        }
+        LocalAction::Scale { limit } => {
+            queue.limit = limit;
+            queue.ready(ClaimWake::Ready);
+        }
+        LocalAction::Stop { grace_ms } => {
+            let deadline = Instant::now() + grace(grace_ms.unwrap_or(config.shutdown_grace_ms))?;
+            queue.phase = match queue.phase {
+                QueuePhase::Stopped => QueuePhase::Stopped,
+                QueuePhase::Stopping(current) => QueuePhase::Stopping(current.min(deadline)),
+                _ => QueuePhase::Stopping(deadline),
+            };
+            state.refresh_stopping_queues();
+        }
+        _ => return Err("local queue must be running or paused".into()),
+    }
+    Ok(())
+}
+
 pub(super) fn stop(id: u64, grace_ms: u64) -> Result<String, String> {
     let runner = lookup(id)?;
     runner.request_stop(grace(grace_ms)?);
@@ -817,7 +1071,7 @@ impl Running {
     fn poll(
         &mut self,
         now: Instant,
-        shutting_down: bool,
+        shutdown_reason: Option<&str>,
         last_error: &mut Option<String>,
     ) -> Option<Reply> {
         let poll_error = match self.process.poll(now) {
@@ -849,8 +1103,8 @@ impl Running {
                 Some(Reply::lease_lost())
             } else if now >= self.deadline {
                 Some(Reply::timed_out())
-            } else if shutting_down {
-                Some(Reply::Failed(FailureKind::Shutdown, STOPPED.into()))
+            } else if let Some(reason) = shutdown_reason {
+                Some(Reply::Failed(FailureKind::Shutdown, reason.into()))
             } else {
                 poll_error.map(|error| Reply::Failed(FailureKind::WorkerFailure, error))
             };
@@ -966,7 +1220,7 @@ impl Execution {
         let now = Instant::now();
         // The worker may have exited while PostgreSQL was processing the renewal.
         if now >= worker.lease_deadline && !worker.reaped {
-            if let Some(reply) = worker.poll(now, false, last_error) {
+            if let Some(reply) = worker.poll(now, None, last_error) {
                 *self = worker.acknowledging(reply, now);
                 return true;
             }
@@ -989,7 +1243,7 @@ impl Execution {
 struct Attempt {
     id: String,
     token: String,
-    queue: usize,
+    queue: String,
     lease: Option<Lease>,
     submissions: u32,
 }
@@ -1174,13 +1428,6 @@ fn retry_interval(config: &Config) -> Duration {
     Duration::from_millis(config.poll_ms.min(100).min(config.lease_ms / 6))
 }
 
-struct Queue<'a> {
-    name: &'a str,
-    limit: usize,
-    next_claim: Instant,
-    source: ClaimWake,
-}
-
 #[derive(Clone, Copy)]
 enum ClaimWake {
     Ready,
@@ -1190,7 +1437,7 @@ enum ClaimWake {
     Fallback,
 }
 
-impl Queue<'_> {
+impl LocalQueue {
     fn ready(&mut self, source: ClaimWake) {
         self.next_claim = Instant::now();
         self.source = source;
@@ -1217,14 +1464,26 @@ impl Queue<'_> {
 struct Wakeups {
     stop: ListenerStop,
     dispatcher: OnceLock<std::thread::Thread>,
-    queues: BTreeMap<String, u64>,
+    hint_bits: BTreeMap<String, u64>,
     state: Mutex<WakeState>,
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+struct WakeHints {
+    configured: u64,
+    rescan: bool,
+    unknown: bool,
+}
+
+impl WakeHints {
+    fn is_empty(&self) -> bool {
+        self.configured == 0 && !self.rescan && !self.unknown
+    }
 }
 
 #[derive(Default)]
 struct WakeState {
-    hints: u64,
-    rescan: bool,
+    hints: WakeHints,
     closed: bool,
     subscribed: bool,
     subscriptions: u64,
@@ -1236,14 +1495,14 @@ struct WakeState {
 
 impl Wakeups {
     fn new(config: &Config) -> Self {
-        let mut queues = BTreeMap::new();
+        let mut hint_bits = BTreeMap::new();
         for (index, name) in config.queues.keys().enumerate() {
-            *queues.entry(wake_key(name)).or_insert(0) |= 1 << index;
+            *hint_bits.entry(wake_key(name)).or_insert(0) |= 1 << index;
         }
         Self {
             stop: ListenerStop::default(),
             dispatcher: OnceLock::new(),
-            queues,
+            hint_bits,
             state: Mutex::default(),
         }
     }
@@ -1253,17 +1512,21 @@ impl Wakeups {
         if state.closed {
             return false;
         }
-        let was_empty = !state.rescan && state.hints == 0;
+        let was_empty = state.hints.is_empty();
         match event {
             ListenEvent::Subscribed => {
                 state.subscribed = true;
                 state.subscriptions += 1;
-                state.rescan = true;
+                state.hints.rescan = true;
             }
             ListenEvent::Disconnected => state.subscribed = false,
-            ListenEvent::Hint(key) => state.hints |= self.queues.get(key).copied().unwrap_or(0),
+            ListenEvent::Hint(key) if state.subscribed => match self.hint_bits.get(key) {
+                Some(bits) => state.hints.configured |= bits,
+                None => state.hints.unknown = true,
+            },
+            ListenEvent::Hint(_) => {}
         }
-        was_empty && (state.rescan || state.hints != 0)
+        was_empty && !state.hints.is_empty()
     }
 
     fn close(&self) {
@@ -1279,12 +1542,33 @@ impl Wakeups {
         }
     }
 
-    fn take(&self) -> (bool, u64) {
-        let mut state = self.state.lock();
-        (
-            std::mem::take(&mut state.rescan),
-            std::mem::take(&mut state.hints),
-        )
+    fn take(&self) -> WakeHints {
+        std::mem::take(&mut self.state.lock().hints)
+    }
+
+    fn apply(&self, queues: &mut BTreeMap<String, LocalQueue>, freed: &mut HashSet<String>) {
+        let hints = self.take();
+        if hints.is_empty() && freed.is_empty() {
+            return;
+        }
+        let now = Instant::now();
+        for (name, queue) in queues {
+            // A queue added by local control has no bit in the static map.
+            if hints.unknown
+                || (hints.configured != 0
+                    && self
+                        .hint_bits
+                        .get(&wake_key(name))
+                        .is_some_and(|bits| hints.configured & bits != 0))
+            {
+                queue.ready(ClaimWake::Notification);
+            } else if hints.rescan {
+                queue.ready(ClaimWake::Subscription);
+            } else if queue.next_claim > now && freed.contains(name) {
+                queue.ready(ClaimWake::Ready);
+            }
+        }
+        freed.clear();
     }
 
     fn record_scan(&self, source: ClaimWake) {
@@ -1360,49 +1644,70 @@ fn maintain(runner: &Runner, pool: u64) {
     while matches!(runner.state.lock().phase, Phase::Running) {
         let now = Instant::now();
         if now >= next_recovery {
-            match with_pool(pool, |db| recover(db, &config.namespace, 64, None)) {
+            match with_pool(pool, |db| {
+                recover(db, &config.namespace, config.recovery_page_size, None)
+            }) {
                 Ok(recovered) => runner.record_maintenance(Operation::Recover, recovered),
                 Err(error) => runner.storage_failure(Operation::Recover, error, None),
             }
-            next_recovery = Instant::now() + Duration::from_millis(config.poll_ms.clamp(100, 1000));
+            next_recovery = Instant::now()
+                + Duration::from_millis(
+                    config
+                        .recovery_interval_ms
+                        .unwrap_or_else(|| config.poll_ms.clamp(100, 1000)),
+                );
         }
-        if now >= next_schedule {
-            match with_pool(pool, |db| cron::tick(db, &config.namespace, &producer, 64)) {
+        if config.cron_interval_ms != 0 && now >= next_schedule {
+            match with_pool(pool, |db| {
+                cron::tick(
+                    db,
+                    &config.namespace,
+                    &producer,
+                    config.cron_page_size,
+                    config.cron_schedule_page_size,
+                )
+            }) {
                 Ok(scheduled) => runner.record_maintenance(Operation::Cron, u64::from(scheduled)),
                 Err(error) => runner.storage_failure(Operation::Cron, error, None),
             }
-            next_schedule = Instant::now() + Duration::from_secs(1);
+            next_schedule = Instant::now() + Duration::from_millis(config.cron_interval_ms);
         }
         if let Some(age) = config.prune_max_age_ms.filter(|_| now >= next_prune) {
             match with_pool(pool, |db| {
-                prune(db, &config.namespace, None, None, Some(age), Some(1000))
+                prune(
+                    db,
+                    &config.namespace,
+                    None,
+                    None,
+                    Some(age),
+                    Some(config.prune_page_size),
+                )
             }) {
                 Ok(count) => runner.record_maintenance(Operation::Prune, count),
                 Err(error) => runner.storage_failure(Operation::Prune, error, None),
             }
-            next_prune = Instant::now() + Duration::from_secs(60);
+            next_prune = Instant::now() + Duration::from_millis(config.prune_interval_ms);
         }
         std::thread::park_timeout(TICK);
     }
 }
 
 struct BatchRequest {
-    queue: usize,
+    queue: String,
     slots: usize,
 }
 
-type BatchReply = (usize, Result<(Lease, ClaimBatch, Option<Instant>), String>);
+type BatchReply = (String, Result<(Lease, ClaimBatch, Option<Instant>), String>);
 
 struct BatchLane {
     requests: SyncSender<BatchRequest>,
     results: Receiver<BatchReply>,
-    pending: bool,
 }
 
 impl BatchLane {
-    fn request(&mut self, runner: &Runner, queue: usize, slots: usize) -> Result<(), String> {
-        let slots = slots.min(MAX_CLAIM_BATCH);
-        if !reserve_claims(runner, slots) {
+    fn request(&self, runner: &Runner, queue: String) -> Result<(), String> {
+        let slots = reserve_claims(runner, &queue, MAX_CLAIM_BATCH);
+        if slots == 0 {
             return Ok(());
         }
         if self
@@ -1410,59 +1715,72 @@ impl BatchLane {
             .try_send(BatchRequest { queue, slots })
             .is_err()
         {
-            runner.state.lock().pending_claims = 0;
+            runner.state.lock().pending = None;
             runner.request_stop(Duration::from_millis(runner.config.shutdown_grace_ms));
             return Err("Jobs batch claim thread is unavailable".into());
         }
-        self.pending = true;
         Ok(())
     }
 
-    fn poll(
-        &mut self,
-        runner: &Runner,
-        queues: &mut [Queue<'_>],
-        attempts: &mut Vec<Attempt>,
-        start_worker: &StartWorker,
-    ) {
-        if !self.pending {
+    fn poll(&self, runner: &Runner, attempts: &mut Vec<Attempt>, start_worker: &StartWorker) {
+        if runner.state.lock().pending.is_none() {
             return;
         }
         match self.results.try_recv() {
-            Ok((index, result)) => {
-                self.pending = false;
-                match result {
-                    Ok((lease, batch, next_due)) => {
-                        if let Some(row) = batch.oversized.first() {
-                            runner.record_oversized(row);
-                        }
-                        runner.state.lock().pending_claims = batch.claims.len();
-                        if batch.claims.is_empty() {
-                            queues[index].backoff(runner, next_due);
-                        }
-                        for job in batch.claims {
-                            let mut state = runner.state.lock();
-                            state.pending_claims -= 1;
-                            attempts.push(launch_confirmed(
-                                runner,
-                                &mut state,
-                                index,
-                                lease,
-                                job,
-                                start_worker,
-                            ));
-                        }
+            Ok((queue, result)) => match result {
+                Ok((lease, batch, next_due)) => {
+                    if let Some(row) = batch.oversized.first() {
+                        runner.record_oversized(row);
                     }
-                    Err(error) => {
-                        runner.state.lock().pending_claims = 0;
-                        runner.storage_failure(Operation::Claim, error, None);
-                        queues[index].backoff(runner, None);
+                    if batch.claims.is_empty() {
+                        let mut state = runner.state.lock();
+                        state.pending = None;
+                        state
+                            .queues
+                            .get_mut(&queue)
+                            .expect("known queue")
+                            .backoff(runner, next_due);
+                    } else {
+                        runner
+                            .state
+                            .lock()
+                            .pending
+                            .as_mut()
+                            .expect("reserved batch")
+                            .slots = batch.claims.len();
+                    }
+                    for job in batch.claims {
+                        let mut state = runner.state.lock();
+                        let reservation = state.pending.as_mut().expect("reserved batch");
+                        reservation.slots -= 1;
+                        if reservation.slots == 0 {
+                            state.pending = None;
+                        }
+                        attempts.push(launch_confirmed(
+                            runner,
+                            &mut state,
+                            &queue,
+                            lease,
+                            job,
+                            start_worker,
+                        ));
                     }
                 }
-            }
+                Err(error) => {
+                    {
+                        let mut state = runner.state.lock();
+                        state.pending = None;
+                        state
+                            .queues
+                            .get_mut(&queue)
+                            .expect("known queue")
+                            .backoff(runner, None);
+                    }
+                    runner.storage_failure(Operation::Claim, error, None);
+                }
+            },
             Err(TryRecvError::Disconnected) => {
-                self.pending = false;
-                runner.state.lock().pending_claims = 0;
+                runner.state.lock().pending = None;
                 runner.storage_failure(
                     Operation::Claim,
                     "Jobs batch claim thread disconnected".into(),
@@ -1490,19 +1808,17 @@ fn dispatch(
         let (requests, receive) = mpsc::sync_channel::<BatchRequest>(1);
         let (send, results) = mpsc::sync_channel(1);
         let config = &runner.config;
-        let queue_names: Vec<_> = config.queues.keys().map(String::as_str).collect();
         let worker = std::thread::Builder::new()
             .name(format!("mesh-jobs-claim-{}", runner.id))
             .spawn_scoped(scope, move || {
                 while let Ok(request) = receive.recv() {
                     let result = session.with(|db| {
-                        let queue = queue_names[request.queue];
-                        let next_due = runner.probe_due(db, queue, workers);
+                        let next_due = runner.probe_due(db, &request.queue, workers);
                         let lease = Lease::begin(Duration::from_millis(config.lease_ms))?;
                         let batch = claim_batch_with_timing(
                             db,
                             &config.namespace,
-                            queue,
+                            &request.queue,
                             workers,
                             config.lease_ms,
                             request.slots,
@@ -1522,11 +1838,7 @@ fn dispatch(
                 pool,
                 workers,
                 start_worker,
-                Some(BatchLane {
-                    requests,
-                    results,
-                    pending: false,
-                }),
+                Some(BatchLane { requests, results }),
                 Some(lifecycle),
             ),
             Err(error) => {
@@ -1542,7 +1854,7 @@ fn dispatch_queues(
     pool: u64,
     workers: &str,
     start_worker: &StartWorker,
-    mut batch: Option<BatchLane>,
+    batch: Option<BatchLane>,
     lifecycle: Option<JobSession>,
 ) {
     let config = &runner.config;
@@ -1550,23 +1862,13 @@ fn dispatch_queues(
         pool,
         session: lifecycle,
     };
-    let mut queues: Vec<_> = config
-        .queues
-        .iter()
-        .map(|(name, limit)| Queue {
-            name,
-            limit: *limit,
-            next_claim: Instant::now(),
-            source: ClaimWake::Ready,
-        })
-        .collect();
-    let mut cursor = 0;
+    let mut last_queue = String::new();
     let mut attempts = Vec::<Attempt>::new();
     let drain_queues = config
         .drain
         .then(|| serde_json::json!(config.queues).to_string());
     let mut next_drain_recovery = Instant::now();
-    let mut freed = 0u64;
+    let mut freed = HashSet::new();
     loop {
         if config.claim_batch && !unsafe { crate::db::pool::is_open(pool) } {
             runner.request_stop(Duration::from_millis(config.shutdown_grace_ms));
@@ -1577,49 +1879,41 @@ fn dispatch_queues(
                 true
             } else {
                 runner.state.lock().jobs.remove(&attempt.token);
-                freed |= 1 << attempt.queue;
+                if runner.wakeups.is_some() {
+                    freed.insert(attempt.queue.clone());
+                }
                 false
             }
         });
-        if let Some(lane) = &mut batch {
-            lane.poll(runner, &mut queues, &mut attempts, start_worker);
+        if let Some(lane) = &batch {
+            lane.poll(runner, &mut attempts, start_worker);
         }
         if config.drain && attempts.len() != previous_count {
-            for queue in &mut queues {
+            for queue in runner.state.lock().queues.values_mut() {
                 queue.ready(ClaimWake::Ready);
             }
             next_drain_recovery = Instant::now();
         }
 
-        let admitting = {
-            let state = runner.state.lock();
+        let (admitting, pending) = {
+            let mut state = runner.state.lock();
+            state.refresh_stopping_queues();
             let running = matches!(state.phase, Phase::Running);
-            if attempts.is_empty() && state.pending_claims == 0 && !running {
+            if attempts.is_empty() && state.pending.is_none() && !running {
                 return;
             }
-            running
+            (running, state.pending.is_some())
         };
         if !admitting {
             if let Some(wakeups) = &runner.wakeups {
                 wakeups.close();
             }
         }
-        if admitting && batch.as_ref().is_none_or(|lane| !lane.pending) {
+        if admitting && !pending {
             if let Some(wakeups) = &runner.wakeups {
                 // Apply hints after the batch reply so an empty result from an
                 // older snapshot cannot overwrite a hint arriving in flight.
-                let (rescan, hints) = wakeups.take();
-                for (index, queue) in queues.iter_mut().enumerate() {
-                    let bit = 1 << index;
-                    if hints & bit != 0 {
-                        queue.ready(ClaimWake::Notification);
-                    } else if rescan {
-                        queue.ready(ClaimWake::Subscription);
-                    } else if freed & bit != 0 && queue.next_claim > Instant::now() {
-                        queue.ready(ClaimWake::Ready);
-                    }
-                }
-                freed = 0;
+                wakeups.apply(&mut runner.state.lock().queues, &mut freed);
             }
             // Take one fresh snapshot of all selected queues after recovery.
             // Individually empty claims can be stale or have skipped a lock.
@@ -1628,7 +1922,12 @@ fn dispatch_queues(
                 .filter(|_| attempts.is_empty() && Instant::now() >= next_drain_recovery)
             {
                 match io.with(|db| {
-                    match recover(db, &config.namespace, 64, Some(selected)) {
+                    match recover(
+                        db,
+                        &config.namespace,
+                        config.recovery_page_size,
+                        Some(selected),
+                    ) {
                         Ok(recovered) => runner.record_maintenance(Operation::Recover, recovered),
                         Err(error) => {
                             runner.storage_failure(Operation::Recover, error, None);
@@ -1649,73 +1948,77 @@ fn dispatch_queues(
                     Ok(None) => {}
                     Err(error) => runner.storage_failure(Operation::DrainCheck, error, None),
                 }
-                next_drain_recovery =
-                    Instant::now() + Duration::from_millis(config.poll_ms.clamp(10, 1000));
+                next_drain_recovery = Instant::now()
+                    + Duration::from_millis(
+                        config
+                            .recovery_interval_ms
+                            .unwrap_or_else(|| config.poll_ms.clamp(10, 1000)),
+                    );
             }
-            let ready = (0..queues.len())
-                .map(|offset| (cursor + offset) % queues.len())
-                .find_map(|index| {
-                    let queue = &queues[index];
-                    if queue.next_claim > Instant::now() {
-                        return None;
+            let ready = {
+                let state = runner.state.lock();
+                let now = Instant::now();
+                let eligible = |(name, queue): &(&String, &LocalQueue)| {
+                    if state.jobs.len() >= MAX_IN_FLIGHT
+                        || !matches!(queue.phase, QueuePhase::Running)
+                        || queue.next_claim > now
+                    {
+                        return false;
                     }
-                    let active = attempts.iter().filter(|attempt| attempt.queue == index);
-                    if active.clone().any(Attempt::blocks_claims) {
-                        return None;
-                    }
-                    let headroom = queue.limit.saturating_sub(active.count());
-                    (headroom > 0).then_some((index, headroom))
-                });
-            if let Some((index, slots)) = ready {
-                cursor = (index + 1) % queues.len();
-                if let Some(wakeups) = &runner.wakeups {
-                    wakeups.record_scan(queues[index].source);
-                    queues[index].source = ClaimWake::Ready;
-                }
-                if let Some(lane) = &mut batch {
-                    // A disconnected lifecycle session must reserve a new
-                    // connection before the claim thread can consume attempts.
+                    let active = attempts.iter().filter(|attempt| &attempt.queue == *name);
+                    !active.clone().any(Attempt::blocks_claims) && active.count() < queue.limit
+                };
+                state
+                    .queues
+                    .iter()
+                    .filter(|(name, _)| *name > &last_queue)
+                    .chain(
+                        state
+                            .queues
+                            .iter()
+                            .take_while(|(name, _)| *name <= &last_queue),
+                    )
+                    .find(eligible)
+                    .map(|(name, _)| name.clone())
+            };
+            if let Some(queue) = ready {
+                last_queue.clone_from(&queue);
+                if let Some(lane) = &batch {
+                    // Reserve lifecycle I/O before the claim thread can consume attempts.
                     if let Err(error) = io.with(|_| Ok(())) {
                         runner.record_error(error);
-                        queues[index].next_claim =
-                            Instant::now() + Duration::from_millis(config.poll_ms);
+                        runner.defer_claim(&queue, None);
                         continue;
                     }
-                    if let Err(error) = lane.request(runner, index, slots) {
+                    if let Err(error) = lane.request(runner, queue) {
                         runner.storage_failure(Operation::Claim, error, None);
                     }
                     continue;
                 }
-                match claim_one(
-                    runner,
-                    pool,
-                    workers,
-                    index,
-                    queues[index].name,
-                    start_worker,
-                ) {
+                match claim_one(runner, pool, workers, &queue, start_worker) {
                     Ok((Some(attempt), _)) => attempts.push(attempt),
-                    Ok((None, next_due)) => queues[index].backoff(runner, next_due),
+                    Ok((None, next_due)) => runner.defer_claim(&queue, next_due),
                     Err(error) => {
                         runner.storage_failure(Operation::Claim, error, None);
-                        queues[index].backoff(runner, None);
+                        runner.defer_claim(&queue, None);
                     }
                 }
                 continue;
             }
         }
-        let wait = if runner.wakeups.is_some()
-            && admitting
-            && attempts.is_empty()
-            && batch.as_ref().is_none_or(|lane| !lane.pending)
-        {
-            queues
-                .iter()
+        let tick = TICK.min(Duration::from_millis(config.poll_ms));
+        let wait = if runner.wakeups.is_some() && admitting && attempts.is_empty() && !pending {
+            runner
+                .state
+                .lock()
+                .queues
+                .values()
+                .filter(|queue| matches!(queue.phase, QueuePhase::Running))
                 .map(|queue| queue.next_claim.saturating_duration_since(Instant::now()))
                 .min()
-                .expect("at least one queue")
+                .unwrap_or(tick)
         } else {
-            TICK.min(Duration::from_millis(config.poll_ms))
+            tick
         };
         std::thread::park_timeout(wait);
     }
@@ -1785,7 +2088,7 @@ fn dispatch_bounded(
         let mut claimed = None;
         for offset in 0..queues.len() {
             let index = (cursor + offset) % queues.len();
-            claimed = claim_attempt(runner, pool, index, start_worker, |db| {
+            claimed = claim_attempt(runner, pool, queues[index], start_worker, |db| {
                 selection.claim(
                     db,
                     queues[index],
@@ -1837,20 +2140,19 @@ fn claim_one(
     runner: &Runner,
     pool: u64,
     workers: &str,
-    queue: usize,
-    queue_name: &str,
+    queue: &str,
     start_worker: &StartWorker,
 ) -> Result<(Option<Attempt>, Option<Instant>), String> {
-    if !reserve_claims(runner, 1) {
+    if reserve_claims(runner, queue, 1) == 0 {
         return Ok((None, None));
     }
     let acquired = with_pool(pool, |db| {
-        let next_due = runner.probe_due(db, queue_name, workers);
+        let next_due = runner.probe_due(db, queue, workers);
         let lease = Lease::begin(Duration::from_millis(runner.config.lease_ms))?;
         let job = claim_with_timing(
             db,
             &runner.config.namespace,
-            queue_name,
+            queue,
             workers,
             runner.config.lease_ms,
             runner.events.is_some(),
@@ -1858,7 +2160,7 @@ fn claim_one(
         Ok((lease, job, next_due))
     });
     let mut state = runner.state.lock();
-    state.pending_claims = 0;
+    state.pending = None;
     let (lease, job, next_due) = acquired?;
     let attempt =
         job.map(|job| launch_confirmed(runner, &mut state, queue, lease, job, start_worker));
@@ -1868,11 +2170,11 @@ fn claim_one(
 fn claim_attempt(
     runner: &Runner,
     pool: u64,
-    queue: usize,
+    queue: &str,
     start_worker: &StartWorker,
     acquire: impl FnOnce(&mut PgJobDb<'_>) -> Result<Option<Claim>, String>,
 ) -> Result<Option<Attempt>, String> {
-    if !reserve_claims(runner, 1) {
+    if reserve_claims(runner, queue, 1) == 0 {
         return Ok(None);
     }
     let acquired = with_pool(pool, |db| {
@@ -1880,31 +2182,49 @@ fn claim_attempt(
         acquire(db).map(|job| (lease, job))
     });
     let mut state = runner.state.lock();
-    state.pending_claims = 0;
+    state.pending = None;
     let (lease, job) = acquired?;
     Ok(job.map(|job| launch_confirmed(runner, &mut state, queue, lease, job, start_worker)))
 }
 
-fn reserve_claims(runner: &Runner, slots: usize) -> bool {
+fn reserve_claims(runner: &Runner, queue: &str, slots: usize) -> usize {
     if let Err(error) = (runner.check_worker)() {
         runner
             .state
             .lock()
             .fail_launch(error, runner.config.shutdown_grace_ms);
-        return false;
+        return 0;
     }
     let mut state = runner.state.lock();
-    if !matches!(state.phase, Phase::Running) || crate::process_signal::shutdown_requested() {
-        return false;
+    if !matches!(state.phase, Phase::Running)
+        || !matches!(state.queues[queue].phase, QueuePhase::Running)
+        || state.pending.is_some()
+        || crate::process_signal::shutdown_requested()
+    {
+        return 0;
     }
-    state.pending_claims = slots;
-    true
+    let active = state.jobs.values().filter(|job| job.queue == queue).count();
+    let slots = slots
+        .min(state.queues[queue].limit.saturating_sub(active))
+        .min(MAX_IN_FLIGHT.saturating_sub(state.jobs.len()));
+    if slots > 0 {
+        if let Some(wakeups) = &runner.wakeups {
+            let queue = state.queues.get_mut(queue).expect("known queue");
+            wakeups.record_scan(queue.source);
+            queue.source = ClaimWake::Ready;
+        }
+        state.pending = Some(Reservation {
+            queue: queue.into(),
+            slots,
+        });
+    }
+    slots
 }
 
 fn launch_confirmed(
     runner: &Runner,
     state: &mut State,
-    queue: usize,
+    queue: &str,
     lease: Lease,
     job: Claim,
     start_worker: &StartWorker,
@@ -1921,7 +2241,10 @@ fn launch_confirmed(
     let deadline = now.checked_add(Duration::from_millis(timeout_ms));
     let execution = if now >= lease.expires_at {
         Execution::acknowledging(Reply::Unstarted(FailureKind::LeaseLost), None)
-    } else if !matches!(state.phase, Phase::Running) || crate::process_signal::shutdown_requested()
+    } else if !matches!(state.phase, Phase::Running)
+        || !matches!(state.queues[queue].phase, QueuePhase::Running)
+        || state.jobs.values().filter(|job| job.queue == queue).count() >= state.queues[queue].limit
+        || crate::process_signal::shutdown_requested()
     {
         Execution::acknowledging(Reply::Unstarted(FailureKind::Shutdown), None)
     } else if let Some(deadline) = deadline {
@@ -1953,7 +2276,7 @@ fn launch_confirmed(
     };
     let mut job = ActiveJob {
         id: id.clone(),
-        queue,
+        queue: queue.into(),
         execution,
         identity,
         reported_lease_loss: false,
@@ -1964,7 +2287,7 @@ fn launch_confirmed(
     Attempt {
         id,
         token,
-        queue,
+        queue: queue.into(),
         lease: Some(lease),
         submissions: 0,
     }

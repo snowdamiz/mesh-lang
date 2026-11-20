@@ -831,6 +831,8 @@ pub(super) fn next_due_ms(
                  ON j.namespace = q.namespace AND j.queue = q.name
              CROSS JOIN clock
              WHERE q.namespace = $1 AND q.name = $2 AND q.state = 'active' AND q.concurrency > 0
+                 AND NOT EXISTS (SELECT FROM mesh_jobs.queues paused
+                     WHERE paused.namespace = $1 AND paused.name = '' AND paused.state = 'paused')
                  AND j.state IN ('available', 'scheduled', 'retryable')
                  AND j.scheduled_at_ms > now_ms AND j.attempt < j.max_attempts
                  AND EXISTS (SELECT FROM jsonb_to_recordset($3::jsonb) AS w(worker text, version bigint)
@@ -896,6 +898,8 @@ pub(super) fn drain_work(
              WHERE j.namespace = $1 AND $2::jsonb ? j.queue
                  AND ((j.state = 'executing' AND j.lease_expires_at_ms <= now_ms)
                      OR (q.state = 'active' AND q.concurrency > 0
+                         AND NOT EXISTS (SELECT FROM mesh_jobs.queues paused
+                             WHERE paused.namespace = $1 AND paused.name = '' AND paused.state = 'paused')
                          AND j.state IN ('available', 'scheduled', 'retryable')
                          AND j.scheduled_at_ms <= now_ms AND j.attempt < j.max_attempts
                          {blocked_filter}
@@ -1036,6 +1040,70 @@ struct Selection {
     limit: Option<u32>,
 }
 
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct JobPatch {
+    #[serde(
+        default,
+        deserialize_with = "patch_field",
+        skip_serializing_if = "Option::is_none"
+    )]
+    args: Option<Value>,
+    #[serde(
+        default,
+        deserialize_with = "patch_field",
+        skip_serializing_if = "Option::is_none"
+    )]
+    metadata: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tags: Option<Vec<String>>,
+    priority: Option<u8>,
+    timeout_ms: Option<u64>,
+    scheduled_at_ms: Option<u64>,
+    delay_ms: Option<u64>,
+}
+
+fn patch_field<'de, D: serde::Deserializer<'de>>(input: D) -> Result<Option<Value>, D::Error> {
+    Value::deserialize(input).map(Some)
+}
+
+impl JobPatch {
+    fn validate(&self) -> Result<(), String> {
+        if self
+            .args
+            .iter()
+            .chain(&self.metadata)
+            .any(|value| !value.is_object())
+        {
+            return Err("mesh jobs args and metadata must be JSON objects".into());
+        }
+        if let Some(tags) = &self.tags {
+            if tags.len() > 128 {
+                return Err("mesh jobs accepts at most 128 tags".into());
+            }
+            for tag in tags {
+                name(tag, "tag")?;
+            }
+        }
+        if self.priority.is_some_and(|priority| priority > 9) || self.timeout_ms == Some(0) {
+            return Err("mesh jobs requires priority 0..=9 and timeout_ms > 0".into());
+        }
+        duration(self.timeout_ms.unwrap_or_default(), "timeout_ms")?;
+        scheduling(self.scheduled_at_ms, self.delay_ms)?;
+        if self.args.is_none()
+            && self.metadata.is_none()
+            && self.tags.is_none()
+            && self.priority.is_none()
+            && self.timeout_ms.is_none()
+            && self.scheduled_at_ms.is_none()
+            && self.delay_ms.is_none()
+        {
+            return Err("mesh jobs requires at least one field to update".into());
+        }
+        Ok(())
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case", deny_unknown_fields)]
 enum Control {
@@ -1062,6 +1130,17 @@ enum Control {
         after: Option<String>,
         limit: Option<u32>,
     },
+    Search {
+        #[serde(default)]
+        filter: Selection,
+        after_id: Option<String>,
+    },
+    InspectQueue {
+        queue: String,
+    },
+    NamespaceStatus,
+    PauseNamespace,
+    ResumeNamespace,
     QueueStats {
         queue: String,
     },
@@ -1113,6 +1192,16 @@ enum Control {
     Delete {
         id: String,
     },
+    DeleteAll {
+        filter: Selection,
+    },
+    RunNow {
+        id: String,
+    },
+    Update {
+        id: String,
+        patch: JobPatch,
+    },
     Prune {
         queue: Option<String>,
         #[serde(alias = "older_than_ms")]
@@ -1158,6 +1247,149 @@ fn job_control(
 
 fn optional_number<T: ToString>(number: Option<T>) -> String {
     number.map(|value| value.to_string()).unwrap_or_default()
+}
+
+fn set_namespace_pause(
+    db: &mut impl Database,
+    namespace: &str,
+    paused: bool,
+) -> Result<String, String> {
+    response(
+        db,
+        "SELECT mesh_jobs.set_namespace_paused($1, $2::boolean)::text",
+        &[namespace, if paused { "true" } else { "false" }],
+    )
+}
+
+fn search(
+    db: &mut impl Database,
+    namespace: &str,
+    filter: Selection,
+    after_id: Option<&str>,
+) -> Result<String, String> {
+    let state = serde_json::to_value(filter.state).map_err(|error| error.to_string())?;
+    if let Some(queue) = &filter.queue {
+        name(queue, "queue")?;
+    }
+    if let Some(worker) = &filter.worker {
+        name(worker, "worker")?;
+    }
+    response(
+        db,
+        "SELECT coalesce(jsonb_agg(to_jsonb(j) - 'namespace' ORDER BY j.id), '[]')::text
+         FROM (SELECT * FROM mesh_jobs.job_summaries
+               WHERE namespace = $1 AND ($2 = '' OR queue = $2)
+                   AND ($3 = '' OR state = $3) AND ($4 = '' OR worker = $4)
+                   AND ($5 = '' OR id > nullif($5, '')::uuid)
+               ORDER BY id LIMIT $6::integer) j",
+        &[
+            namespace,
+            filter.queue.as_deref().unwrap_or_default(),
+            state.as_str().unwrap_or_default(),
+            filter.worker.as_deref().unwrap_or_default(),
+            after_id.unwrap_or_default(),
+            &page(filter.limit)?,
+        ],
+    )
+}
+
+fn update_job(
+    db: &mut impl Database,
+    namespace: &str,
+    id: &str,
+    patch: Option<JobPatch>,
+) -> Result<String, String> {
+    let patch = match patch {
+        Some(patch) => {
+            patch.validate()?;
+            serde_json::to_string(&patch).map_err(|error| error.to_string())?
+        }
+        None => String::new(),
+    };
+    let result = response(
+        db,
+        "WITH clock AS MATERIALIZED (SELECT mesh_jobs.now_ms() AS now_ms),
+         input AS MATERIALIZED (
+             SELECT nullif($3, '')::jsonb AS patch, now_ms FROM clock
+         ), eligible AS MATERIALIZED (
+             SELECT j.id, patch, now_ms,
+                 CASE WHEN patch IS NULL THEN now_ms ELSE coalesce(
+                     (patch ->> 'scheduled_at_ms')::bigint,
+                     now_ms + (patch ->> 'delay_ms')::bigint) END AS run_at
+             FROM mesh_jobs.jobs j CROSS JOIN input
+             WHERE j.namespace = $1 AND j.id = $2::uuid
+               AND j.state IN ('available', 'scheduled', 'retryable', 'suspended')
+               AND (patch IS NOT NULL OR (
+                   j.state IN ('scheduled', 'retryable') AND j.attempt < j.max_attempts))
+             FOR NO KEY UPDATE OF j SKIP LOCKED
+         ), changed AS (
+             UPDATE mesh_jobs.jobs j SET
+                 args = coalesce(e.patch -> 'args', j.args),
+                 metadata = coalesce(e.patch -> 'metadata', j.metadata),
+                 tags = coalesce(e.patch -> 'tags', j.tags),
+                 priority = coalesce((e.patch ->> 'priority')::integer, j.priority),
+                 timeout_ms = coalesce((e.patch ->> 'timeout_ms')::bigint, j.timeout_ms),
+                 scheduled_at_ms = coalesce(e.run_at, j.scheduled_at_ms),
+                 state = CASE WHEN e.run_at IS NULL OR j.state = 'suspended' THEN j.state
+                     WHEN e.run_at > e.now_ms THEN 'scheduled' ELSE 'available' END
+             FROM eligible e WHERE j.namespace = $1 AND j.id = e.id
+             RETURNING j.id, j.state, j.scheduled_at_ms, j.attempt, j.max_attempts,
+                 mesh_jobs.effect_key(j) AS effect_key
+         ) SELECT coalesce((SELECT to_jsonb(changed) FROM changed), 'null')::text",
+        &[namespace, id, &patch],
+    )?;
+    if result == "null" {
+        return Err("mesh jobs update target is missing, locked, or ineligible".into());
+    }
+    Ok(result)
+}
+
+fn delete_all(
+    db: &mut impl Database,
+    namespace: &str,
+    filter: Selection,
+) -> Result<String, String> {
+    if let Some(queue) = &filter.queue {
+        name(queue, "queue")?;
+    }
+    if let Some(worker) = &filter.worker {
+        name(worker, "worker")?;
+    }
+    if filter.queue.is_none() && filter.worker.is_none() && filter.state.is_none() {
+        return Err(
+            "mesh jobs delete_all requires a queue, worker, or terminal state filter".into(),
+        );
+    }
+    if filter.state.is_some_and(|state| {
+        !matches!(
+            state,
+            State::Completed | State::Cancelled | State::Discarded
+        )
+    }) {
+        return Err("mesh jobs delete_all accepts only terminal states".into());
+    }
+    let state = serde_json::to_value(filter.state).map_err(|error| error.to_string())?;
+    response(
+        db,
+        "WITH eligible AS MATERIALIZED (
+             SELECT id FROM mesh_jobs.jobs
+             WHERE namespace = $1 AND finished_at_ms IS NOT NULL
+                 AND ($2 = '' OR queue = $2) AND ($3 = '' OR worker = $3)
+                 AND ($4 = '' OR state = $4)
+             ORDER BY id LIMIT $5::integer FOR UPDATE SKIP LOCKED
+         ), removed AS (
+             DELETE FROM mesh_jobs.jobs j USING eligible e
+             WHERE j.namespace = $1 AND j.id = e.id RETURNING j.id
+         ) SELECT jsonb_build_object('deleted', count(*),
+             'ids', coalesce(jsonb_agg(id ORDER BY id), '[]'::jsonb))::text FROM removed",
+        &[
+            namespace,
+            filter.queue.as_deref().unwrap_or_default(),
+            filter.worker.as_deref().unwrap_or_default(),
+            state.as_str().unwrap_or_default(),
+            &page(filter.limit)?,
+        ],
+    )
 }
 
 fn bulk_control(
@@ -1283,7 +1515,7 @@ pub(super) fn control(
         } => response(
             db,
             "SELECT coalesce((SELECT mesh_jobs.queue_json(q) FROM mesh_jobs.queues q
-             WHERE namespace = $1 AND name = $2), 'null')::text",
+             WHERE namespace = $1 AND name = $2 AND name <> ''), 'null')::text",
             &[namespace, &queue],
         ),
         Control::List {
@@ -1324,6 +1556,24 @@ pub(super) fn control(
             queues: true,
         } => list_queues(db, namespace, after_id.as_deref(), limit),
         Control::ListQueues { after, limit } => list_queues(db, namespace, after.as_deref(), limit),
+        Control::Search { filter, after_id } => search(db, namespace, filter, after_id.as_deref()),
+        Control::InspectQueue { queue } => {
+            name(&queue, "queue")?;
+            response(
+                db,
+                "SELECT coalesce((SELECT to_jsonb(q) - 'namespace' FROM mesh_jobs.queue_summaries q
+                  WHERE namespace = $1 AND queue = $2), 'null')::text",
+                &[namespace, &queue],
+            )
+        }
+        Control::NamespaceStatus => response(
+            db,
+            "SELECT jsonb_build_object('paused', EXISTS (SELECT FROM mesh_jobs.queues
+                 WHERE namespace = $1 AND name = '' AND state = 'paused'))::text",
+            &[namespace],
+        ),
+        Control::PauseNamespace => set_namespace_pause(db, namespace, true),
+        Control::ResumeNamespace => set_namespace_pause(db, namespace, false),
         Control::QueueStats { queue } => response(
             db,
             "WITH clock AS MATERIALIZED (SELECT mesh_jobs.now_ms() AS now_ms), counts AS (
@@ -1366,6 +1616,9 @@ pub(super) fn control(
         } => job_control(db, namespace, &id, "reschedule", scheduled_at_ms, delay_ms),
         Control::Suspend { id } => job_control(db, namespace, &id, "suspend", None, None),
         Control::Delete { id } => job_control(db, namespace, &id, "delete", None, None),
+        Control::DeleteAll { filter } => delete_all(db, namespace, filter),
+        Control::RunNow { id } => update_job(db, namespace, &id, None),
+        Control::Update { id, patch } => update_job(db, namespace, &id, Some(patch)),
         Control::Prune {
             queue,
             before_ms,

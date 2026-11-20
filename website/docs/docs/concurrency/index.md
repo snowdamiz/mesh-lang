@@ -509,6 +509,7 @@ If your database revokes default function access, grant the worker role `EXECUTE
 | `Jobs.drain(pool, config, handler, options)` | Run a bounded drain and return its JSON report |
 | `Jobs.status(runner)` | Read the local runner state as JSON |
 | `Jobs.read_events(runner, limit)` | Read and remove up to `limit` events from an enabled runner buffer |
+| `Jobs.local_control(runner, request)` | Change one queue on the local runner and return its status |
 | `Jobs.stop(runner, grace_ms)` | Request shutdown and report the runner status when the runner stops or the grace period ends |
 | `Jobs.join(runner)` | Wait for the runner to stop and return its final status |
 | `Jobs.control(pool, namespace, request)` | Inspect jobs and control queues with a JSON operation |
@@ -627,6 +628,17 @@ Each sink drops new events when its buffer is full. The JSON logger buffers up t
 
 ### Inspect and operate queues
 
+Use `Jobs.local_control` and `Jobs.status` from the process that owns the runner handle. Local queue actions take `queue` and one of the following actions.
+
+| Local action | Behavior |
+| --- | --- |
+| `start` | Add a queue or start it again. An optional `limit` defaults to the prior limit or one for a new queue |
+| `pause`, `resume` | Change admission on this runner while existing attempts continue |
+| `scale` | Set the local `limit`. Existing attempts may finish before the new limit takes effect |
+| `stop` | Begin draining this queue with optional `grace_ms`. Check its status for `stopped` before starting it again |
+
+Each queue in the status response has a `state`, `limit`, `in_flight`, `pending_claims`, and `drained`. Local settings come from the runner config on every process start. A runner in drain mode uses the queues selected at startup.
+
 Pass a JSON object to `Jobs.control` with an `action` and the fields required for that action. For example, use `json { action: "pause", queue: "default" }` to stop new claims without stopping active attempts. A new queue allows one concurrent attempt across all runners. Change that limit with `configure` or `scale`. The per-runner limits in `Jobs.start` still apply.
 
 | Action | Fields |
@@ -636,17 +648,25 @@ Pass a JSON object to `Jobs.control` with an `action` and the fields required fo
 | `start`, `resume` | `queue` |
 | `get` | `id` for a job or `queue` for a queue |
 | `list` | Optional `queue`, `worker`, `state`, `after_id`, `limit` |
+| `search` | Optional `filter` with `queue`, `worker`, `state`, and `limit`, plus an optional top-level `after_id` |
 | `list_queues` | Optional `after`, `limit` |
 | `queue_stats` | `queue`. Returns counts by state and the age of the oldest due job |
+| `inspect_queue` | `queue`. Returns the queue limit, state, number of executing rows, and namespace pause flag |
+| `namespace_status`, `pause_namespace`, `resume_namespace` | Apply to the namespace passed to `Jobs.control` |
 | `cancel`, `retry`, `discard`, `suspend`, `resume`, `delete` | `id` |
 | `cancel_all`, `retry_all` | Optional `filter` object with `queue`, `worker`, `state`, `limit` |
+| `delete_all` | `filter` with a queue, worker, or terminal state, and optional `limit`. Deletes terminal jobs only |
+| `update` | `id` and a `patch` with any of `args`, `metadata`, `tags`, `priority`, `timeout_ms`, `scheduled_at_ms`, or `delay_ms` |
+| `run_now` | `id` of a scheduled or retryable job. Makes that job due on the primary's clock |
 | `reschedule` | `id` and either `delay_ms` or a UTC `scheduled_at_ms` |
 | `prune` | `before_ms` or `max_age_ms`, with optional `queue` and `limit` |
 | `schedule` | `name`, `expression`, `job`, and optional `timezone`, `misfire`, `lookback_minutes` |
 | `unschedule` | `name` |
 | `list_schedules` | Optional `after`, `limit` |
 
-`get` returns the persisted job and its error history. `list` returns a page of summaries ordered by ID. A cancellation of an executing job records intent. The current runner observes the intent and stops the attempt, or the lease expires and recovery settles the cancellation.
+`get` returns the persisted job and its error history. `list` and `search` return summaries ordered by ID. Pass the last ID as `after_id` for the next page. A cancellation of an executing job records intent. The current runner observes the intent and stops the attempt, or the lease expires and recovery settles the cancellation.
+
+`pause_namespace` covers every queue, including queues created while the namespace is paused. It leaves any existing attempt and queue setting in place. `resume_namespace` restores admission for active queues. `update` and `run_now` return an error for locked, missing, or ineligible jobs. Both keep the current effect key and attempt budget. An update that supplies a new schedule leaves suspended jobs suspended.
 
 Set `prune_max_age_ms` in the runner config to remove old terminal jobs in bounded batches. Without it, jobs remain available for inspection until an operator prunes or deletes them. Use `drain: true` with `Jobs.start` and `Jobs.join` to recover expired claims and process eligible, due work. This drain mode starts without cron or pruning tasks and leaves future jobs scheduled.
 
@@ -671,6 +691,8 @@ The drain recovers up to `max_jobs` expired attempts in the selected queues and 
 The report includes `claimed`, `finished`, `outcomes`, and `recovered`. The `finished` count sums the committed outcomes of attempts claimed by this call. `budget_hit` reports whether the call used all its claims. `remaining` reports eligible or executing work in the selected active queues and cutoff at the time of the final PostgreSQL query. It can be true when another runner holds capacity, a transaction holds a row lock, or the call drained only its initial IDs. The `stop_reason` is `budget`, `job_error`, `idle`, or `shutdown`. An idle drain returns after a pass with no claim and leaves locked or otherwise unavailable work for another call.
 
 Use a dedicated namespace for each test. See [Testing durable jobs](/docs/testing/#testing-durable-jobs) for enqueue assertions and direct handler tests.
+
+For maintenance settings, role grants, recovery, and concurrent reindex, use the [Jobs operations runbook](jobs-operations.md).
 
 ### Recurring jobs
 
