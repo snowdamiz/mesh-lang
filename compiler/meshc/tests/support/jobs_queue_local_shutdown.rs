@@ -5,15 +5,18 @@ use std::fs;
 
 const TARGET: &str = "target";
 const WITNESS: &str = "witness";
+const STOP_GRACE_MS: i64 = 250;
 
 pub(super) fn prove(shared: &Proof<'_>) {
     for (mode, batch) in [("single", false), ("batch", true)] {
         let dir = shared.dir.join(format!("queue-local-grace-{mode}"));
         fs::create_dir(&dir).unwrap();
         let proof = Proof::new(shared.url, shared.binary.clone(), &dir);
-        prove_grace_expiry(&proof, batch);
+        let elapsed_ms = prove_grace_expiry(&proof, batch);
         proof.clean().unwrap();
-        println!("J6 queue-local grace expiry passed ({mode})");
+        println!(
+            "J6 queue-local grace expiry passed ({mode}) after {elapsed_ms} ms with {STOP_GRACE_MS} ms grace"
+        );
 
         let dir = shared.dir.join(format!("queue-local-claim-{mode}"));
         fs::create_dir(&dir).unwrap();
@@ -63,7 +66,7 @@ fn stopped_queue(worker: &mut Worker) -> Value {
     })
 }
 
-fn prove_grace_expiry(proof: &Proof<'_>, batch: bool) {
+fn prove_grace_expiry(proof: &Proof<'_>, batch: bool) -> i64 {
     let held = "grace-held";
     let pending = "grace-pending";
     let receipt = enqueue(proof, TARGET, held, 0);
@@ -82,7 +85,12 @@ fn prove_grace_expiry(proof: &Proof<'_>, batch: bool) {
     assert_eq!(queued["state"], "available", "{queued}");
     assert_eq!(queued["attempt"], 0, "{queued}");
 
-    let stopping = worker.local_control(json!({"action":"stop", "queue":TARGET, "grace_ms":250}));
+    let requested_at_ms = proof
+        .sql("SELECT mesh_jobs.now_ms()")
+        .parse::<i64>()
+        .unwrap();
+    let stopping =
+        worker.local_control(json!({"action":"stop", "queue":TARGET, "grace_ms":STOP_GRACE_MS}));
     assert_eq!(
         stopping["queues"][TARGET]["state"], "stopping",
         "{stopping}"
@@ -99,6 +107,11 @@ fn prove_grace_expiry(proof: &Proof<'_>, batch: bool) {
         "{discarded}"
     );
     assert_eq!(discarded["attempt"], 1, "{discarded}");
+    let elapsed_ms = discarded["finished_at_ms"].as_i64().unwrap() - requested_at_ms;
+    assert!(
+        elapsed_ms >= STOP_GRACE_MS,
+        "queue discarded after {elapsed_ms} ms with {STOP_GRACE_MS} ms grace: {discarded}"
+    );
     assert_eq!(
         discarded["errors"][0]["reason"],
         "job queue shutdown deadline elapsed"
@@ -111,6 +124,7 @@ fn prove_grace_expiry(proof: &Proof<'_>, batch: bool) {
     assert_eq!(proof.job(pending), queued);
     assert!(proof.effects(pending).is_empty());
     assert_eq!(proof.effects(held), effects);
+    elapsed_ms
 }
 
 fn prove_late_claim(proof: &Proof<'_>, batch: bool) {
