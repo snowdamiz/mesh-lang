@@ -14,6 +14,8 @@ mod artifacts;
 mod linux_worker_exit;
 #[path = "support/jobs_pool_outage.rs"]
 mod pool_outage;
+#[path = "support/jobs_queue_local_shutdown.rs"]
+mod queue_local_shutdown;
 #[path = "support/jobs_queue_rotation.rs"]
 mod queue_rotation;
 #[path = "support/jobs_wakeups.rs"]
@@ -75,6 +77,7 @@ fn durable_jobs_survive_process_boundaries() {
     prove_local_controls(&proof, true);
     println!("J6 local queue controls passed with single and batch claims");
     prove_bulk_delete_during_claim(&proof);
+    queue_local_shutdown::prove(&proof);
     prove_job_operations(&proof);
     prove_cleanup_with_a_locked_terminal_row(&proof);
     println!("J6 lane 6 passed: bulk deletion overlapped a claim and active replacement preserved its fence");
