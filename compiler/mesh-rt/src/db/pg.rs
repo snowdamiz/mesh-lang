@@ -155,6 +155,18 @@ impl PgConn {
         let _ = self.stream.tcp().set_read_timeout(timeout);
     }
 
+    pub(super) fn set_write_timeout(&self, timeout: Option<Duration>) {
+        let _ = self.stream.tcp().set_write_timeout(timeout);
+    }
+
+    pub(super) fn socket_timeouts(&self) -> (Option<Duration>, Option<Duration>) {
+        let socket = self.stream.tcp();
+        (
+            socket.read_timeout().unwrap_or(None),
+            socket.write_timeout().unwrap_or(None),
+        )
+    }
+
     #[cfg(test)]
     pub(super) fn from_test_stream(stream: TcpStream) -> Self {
         Self {
@@ -1573,7 +1585,7 @@ fn unit_result(result: Result<(), String>) -> *mut u8 {
 
 /// COMMIT. A transaction a failed statement aborted cannot commit:
 /// PostgreSQL rolls it back instead, without an error, so it is one here.
-fn commit(conn: &mut PgConn) -> Result<(), String> {
+pub(super) fn commit(conn: &mut PgConn) -> Result<(), String> {
     let failed = conn.txn_status == b'E';
     pg_simple_command(conn, "COMMIT")?;
     if failed {
@@ -1786,8 +1798,16 @@ pub fn native_pg_query(
     sql: &str,
     params: &[&str],
 ) -> Result<Vec<Vec<(String, String)>>, String> {
+    pg_text_query(&mut conn.inner, sql, params)
+}
+
+pub(super) fn pg_text_query(
+    conn: &mut PgConn,
+    sql: &str,
+    params: &[&str],
+) -> Result<Vec<Vec<(String, String)>>, String> {
     query(
-        &mut conn.inner,
+        conn,
         sql,
         &text_params(params),
         Values::Text,

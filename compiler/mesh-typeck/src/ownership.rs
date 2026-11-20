@@ -61,6 +61,7 @@ pub(crate) fn check(
     import_ctx: &ImportContext,
     overloaded_fn_names: &FxHashSet<String>,
     call_targets: &FxHashMap<TextRange, String>,
+    stdlib_imports: &FxHashMap<String, String>,
 ) -> OwnershipCheck {
     let functions: Vec<FnDef> = parse
         .syntax()
@@ -620,6 +621,26 @@ pub(crate) fn check(
         );
     }
     register_imported_signatures(parse, import_ctx, &mut signatures);
+    let enqueue_in = pg_signature(vec![
+        ParamOwnership::Borrow,
+        ParamOwnership::Move,
+        ParamOwnership::Move,
+    ]);
+    for name in ["Jobs.enqueue_in", "mesh_jobs_enqueue_in"] {
+        signatures
+            .entry(name.to_string())
+            .or_insert_with(|| enqueue_in.clone());
+    }
+    if stdlib_imports
+        .get("enqueue_in")
+        .is_some_and(|module| module == "Jobs")
+    {
+        for name in ["enqueue_in", "jobs_enqueue_in"] {
+            signatures
+                .entry(name.to_string())
+                .or_insert_with(|| enqueue_in.clone());
+        }
+    }
 
     let mut checker = Checker {
         types,
@@ -753,18 +774,22 @@ fn register_pg_signature(
     name: &str,
     modes: Vec<ParamOwnership>,
 ) {
-    let mut formal_types = vec![None; modes.len()];
-    formal_types[0] = Some(Ty::Con(crate::ty::TyCon::new("PgConn")));
-    let signature = FunctionSignature {
-        modes,
-        formal_types,
-    };
+    let signature = pg_signature(modes);
     for alias in [
         format!("Pg.{name}"),
         format!("pg_{name}"),
         format!("mesh_pg_{name}"),
     ] {
         signatures.insert(alias, signature.clone());
+    }
+}
+
+fn pg_signature(modes: Vec<ParamOwnership>) -> FunctionSignature {
+    let mut formal_types = vec![None; modes.len()];
+    formal_types[0] = Some(Ty::Con(crate::ty::TyCon::new("PgConn")));
+    FunctionSignature {
+        modes,
+        formal_types,
     }
 }
 
@@ -1245,6 +1270,14 @@ impl Checker<'_> {
         }
         let signature = callee_name
             .as_ref()
+            .filter(|name| {
+                !matches!(name.as_str(), "enqueue_in" | "jobs_enqueue_in")
+                    || !self
+                        .scopes
+                        .iter()
+                        .rev()
+                        .any(|scope| scope.contains_key(*name))
+            })
             .and_then(|name| self.signatures.get(name).cloned());
         let forbidden_reason = signature
             .is_none()

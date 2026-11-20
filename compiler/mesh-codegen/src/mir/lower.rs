@@ -4820,6 +4820,33 @@ impl<'a> Lowerer<'a> {
             "mesh_migration_execute".to_string(),
             MirType::FnPtr(vec![MirType::Int, MirType::Ptr], Box::new(MirType::Ptr)),
         );
+        for (name, params) in [
+            ("mesh_jobs_migrate", vec![MirType::Int]),
+            (
+                "mesh_jobs_enqueue",
+                vec![MirType::Int, MirType::Ptr, MirType::Ptr],
+            ),
+            (
+                "mesh_jobs_enqueue_in",
+                vec![MirType::Int, MirType::Ptr, MirType::Ptr],
+            ),
+            (
+                "mesh_jobs_control",
+                vec![MirType::Int, MirType::Ptr, MirType::Ptr],
+            ),
+            (
+                "mesh_jobs_start",
+                vec![MirType::Int, MirType::Ptr, MirType::Ptr, MirType::Ptr],
+            ),
+            ("mesh_jobs_stop", vec![MirType::Int, MirType::Int]),
+            ("mesh_jobs_join", vec![MirType::Int]),
+            ("mesh_jobs_status", vec![MirType::Int]),
+        ] {
+            self.known_functions.insert(
+                name.to_string(),
+                MirType::FnPtr(params, Box::new(MirType::Ptr)),
+            );
+        }
         // ── Job functions (Phase 9 Plan 04) ──────────────────────────────
         // mesh_job_async takes (fn_ptr, env_ptr) -> i64 (PID)
         // But the closure splitting at codegen will expand the closure arg into (fn_ptr, env_ptr)
@@ -14374,6 +14401,7 @@ const STDLIB_MODULES: &[&str] = &[
     "Json",
     "Request",
     "Job",
+    "Jobs",
     "Math",
     "Int",
     "Float",
@@ -15017,6 +15045,14 @@ fn map_builtin_name(name: &str) -> String {
         "job_await" => "mesh_job_await".to_string(),
         "job_await_timeout" => "mesh_job_await_timeout".to_string(),
         "job_map" => "mesh_job_map".to_string(),
+        "jobs_migrate" => "mesh_jobs_migrate".to_string(),
+        "jobs_enqueue" => "mesh_jobs_enqueue".to_string(),
+        "jobs_enqueue_in" => "mesh_jobs_enqueue_in".to_string(),
+        "jobs_control" => "mesh_jobs_control".to_string(),
+        "jobs_start" => "mesh_jobs_start".to_string(),
+        "jobs_stop" => "mesh_jobs_stop".to_string(),
+        "jobs_join" => "mesh_jobs_join".to_string(),
+        "jobs_status" => "mesh_jobs_status".to_string(),
         // ── Math/Int/Float functions (Phase 43 Plan 01) ─────────────────
         "math_abs" => "mesh_math_abs".to_string(),
         "math_min" => "mesh_math_min".to_string(),

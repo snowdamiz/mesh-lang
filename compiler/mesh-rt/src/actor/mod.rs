@@ -1384,6 +1384,8 @@ fn exit_main_process(sched: &Scheduler, main_pid: ProcessId) {
 
 #[no_mangle]
 pub extern "C" fn mesh_rt_run_scheduler() {
+    crate::jobs::shutdown_all();
+
     // Preserve the main actor context until its owned resources are destroyed.
     let main_pid = stack::get_current_pid()
         .expect("`main` has a PID from mesh_rt_init_actor, which runs first");

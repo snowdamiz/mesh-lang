@@ -324,6 +324,11 @@ pub enum TypeError {
     },
     /// `HTTP.clustered(...)` received malformed arguments or a non-handler reference.
     HttpClusteredInvalidArguments { reason: String, span: TextRange },
+    /// Jobs.start was used indirectly or passed an unsupported handler.
+    JobsStartInvalid {
+        reason: &'static str,
+        span: TextRange,
+    },
     /// `HTTP.clustered(...)` referenced a private handler.
     HttpClusteredPrivateHandler {
         handler_name: String,
@@ -618,6 +623,7 @@ impl TypeError {
             | TypeError::ImportNameNotFound { span, .. }
             | TypeError::PrivateItem { span, .. }
             | TypeError::HttpClusteredInvalidArguments { span, .. }
+            | TypeError::JobsStartInvalid { span, .. }
             | TypeError::HttpClusteredPrivateHandler { span, .. }
             | TypeError::HttpClusteredOutsideRouteHandlerPosition { span }
             | TypeError::HttpClusteredConflictingReplicationCount { span, .. }
@@ -1075,6 +1081,7 @@ impl fmt::Display for TypeError {
             TypeError::HttpClusteredInvalidArguments { reason, .. } => {
                 write!(f, "invalid HTTP.clustered(...) usage: {}", reason)
             }
+            TypeError::JobsStartInvalid { reason, .. } => write!(f, "{reason}"),
             TypeError::HttpClusteredPrivateHandler { handler_name, .. } => {
                 write!(
                     f,

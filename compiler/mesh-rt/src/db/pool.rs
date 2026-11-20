@@ -136,6 +136,27 @@ fn with_connection(pool_handle: u64, run: impl FnOnce(u64) -> *mut u8) -> *mut u
     }
 }
 
+pub(super) struct NativeLease {
+    pool: u64,
+    pub(super) connection: u64,
+}
+
+impl NativeLease {
+    pub(super) unsafe fn checkout(pool: u64) -> Result<Self, String> {
+        if pool == 0 {
+            return Err("invalid PostgreSQL pool".into());
+        }
+        let connection = checkout(&*(pool as *const PgPool))?;
+        Ok(Self { pool, connection })
+    }
+}
+
+impl Drop for NativeLease {
+    fn drop(&mut self) {
+        mesh_pool_checkin(self.pool, self.connection);
+    }
+}
+
 // ── Public scoped API and runtime-internal leasing ───────────────────────
 
 /// Create a PostgreSQL connection pool.

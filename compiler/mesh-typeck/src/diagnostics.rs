@@ -213,6 +213,7 @@ fn error_code(err: &TypeError) -> &'static str {
         TypeError::DecodeTypeUnknown { .. } => "E0091",
         TypeError::UnderivableFieldType { .. } => "E0092",
         TypeError::PlaintextViolation { .. } => "E0093",
+        TypeError::JobsStartInvalid { .. } => "E0094",
     }
 }
 
@@ -1249,6 +1250,9 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
                 .with_help(
                     "use `HTTP.clustered(handler)` or `HTTP.clustered(<int>, handler)` with a public top-level route handler reference",
                 )
+        }
+        TypeError::JobsStartInvalid { span, .. } => {
+            Description::error(clamp(text_range_to_range(*span)), "here")
         }
 
         TypeError::HttpClusteredPrivateHandler { handler_name, span } => {

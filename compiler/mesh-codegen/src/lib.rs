@@ -560,6 +560,58 @@ mod tests {
     }
 
     #[test]
+    fn durable_jobs_emit_native_calls_and_a_bare_runner_callback() {
+        let llvm = llvm_of(
+            r#"
+from Jobs import start
+
+fn handle(job :: String) -> String do job end
+
+fn transaction_body(conn :: borrow PgConn) -> Result<String, String> do
+  Jobs.enqueue_in(conn, "app", "{}")
+end
+
+fn exercise(pool :: PoolHandle, runner :: Int) do
+  let _ = Jobs.migrate(pool)
+  let _ = Jobs.enqueue(pool, "app", "{}")
+  let _ = Repo.transaction(pool, transaction_body)
+  let _ = Jobs.control(pool, "app", "{}")
+  let _ = pool |> start("{}", handle)
+  let _ = Jobs.stop(runner, 100)
+  let _ = Jobs.join(runner)
+  Jobs.status(runner)
+end
+
+fn main() do
+  case Pool.open("postgres://localhost/db", 1, 2, 100) do
+    Ok(pool) -> inspect(exercise(pool, 1))
+    Err(error) -> error
+  end
+end
+"#,
+        );
+        for (symbol, arguments) in [
+            ("migrate", "i64"),
+            ("enqueue", "i64, ptr, ptr"),
+            ("enqueue_in", "i64, ptr, ptr"),
+            ("control", "i64, ptr, ptr"),
+            ("start", "i64, ptr, ptr, ptr"),
+            ("stop", "i64, i64"),
+            ("join", "i64"),
+            ("status", "i64"),
+        ] {
+            assert!(llvm.contains(&format!("declare ptr @mesh_jobs_{symbol}({arguments})")));
+            assert!(llvm.contains(&format!("call ptr @mesh_jobs_{symbol}(")));
+        }
+        assert!(
+            llvm.lines()
+                .any(|line| line.contains("call ptr @mesh_jobs_start(")
+                    && line.ends_with("ptr @handle, ptr null)")),
+            "{llvm}"
+        );
+    }
+
+    #[test]
     fn merge_mir_modules_prefers_entry_module_mesh_main_when_multiple_modules_define_main() {
         let merged = merge_mir_modules(
             vec![
