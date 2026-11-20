@@ -122,10 +122,11 @@ Commit the workload settings before using the baseline to evaluate changes.
 Both fixtures receive the same seeded inputs and write an attempt and an
 idempotent effect for each completed job.
 
-Sparse trials warm one producer connection before starting the runners.
-The driver submits one job at a time after the previous job settles and
-the configured gap elapses. The raw commit timestamps show the resulting
-spacing. Sparse throughput measures this serial submit-and-settle flow.
+Sparse trials start one producer process before starting the runners. Each
+enqueue opens and closes its database connections for that transaction.
+The driver submits one job at a time after the previous job settles and the
+configured gap elapses. The raw commit timestamps show the resulting spacing.
+Sparse throughput measures this serial submit-and-settle flow.
 
 The driver resets `pg_stat_statements` on its disposable cluster before each
 trial and checks for counter eviction during measurement. PostgreSQL can

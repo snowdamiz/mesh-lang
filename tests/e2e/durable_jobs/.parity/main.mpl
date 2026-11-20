@@ -124,22 +124,19 @@ fn enqueue(path :: String) -> String!String do
   result
 end
 
-fn enqueue_paths(conn :: borrow PgConn) -> String!String do
+fn enqueue_paths() -> String!String do
   let path = IO.read_line()?
   if path == "stop" do
     return Ok("{}")
   end
-  let receipt = transact_batch(conn, read_batch(path)?)?
+  let receipt = enqueue(path)?
   println(receipt)
-  enqueue_paths(conn)
+  enqueue_paths()
 end
 
 fn enqueue_stream() -> String!String do
-  let conn = Pg.connect(database_url())?
   println("PRODUCER_READY")
-  let result = enqueue_paths(conn)
-  Pg.close(conn)
-  result
+  enqueue_paths()
 end
 
 fn record_attempt(conn :: borrow PgConn, entered_us :: Int, key :: String, effect :: String, attempt :: Int) -> Int!String do

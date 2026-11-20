@@ -38,10 +38,10 @@ Use namespaces that match `[a-z][a-z0-9_]{0,62}`.
   after commit or intentional rollback. The count is the input job count.
   The xid comes from `pg_current_xact_id()` inside that transaction. The
   `ids` object maps input job keys to the IDs from enqueue receipts.
-  With `JOBS_PARITY_INPUT=-`, it opens one database connection, prints
-  `PRODUCER_READY`, and reads one absolute path per line from standard
-  input. Each path produces its own transaction and receipt. Send `stop`
-  on a line of its own to close the connection and exit.
+  With `JOBS_PARITY_INPUT=-`, the producer prints `PRODUCER_READY` and reads
+  one absolute path per line from standard input. Each request opens a
+  connection, runs one transaction, closes the connection, and prints its
+  receipt. Send `stop` on a line of its own to exit.
 - `run` starts a named isolated handler using `JOBS_PARITY_SLOTS` local
   slots and the fallback interval in `JOBS_PARITY_POLL_MS`. When startup
   succeeds, it prints `READY` to standard output. Send `SIGTERM` for shutdown.

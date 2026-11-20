@@ -999,7 +999,7 @@ def run_trial(subject, allocation, workload, batches, scratch, evidence, setting
         raise FixtureError("listener trial did not record any notification-triggered scans")
 
     raw = {"engine": engine, "variant": subject.variant, "namespace": namespace, "pair": pair, "case_sha256": case,
-           "producer_mode": "warm connection" if sparse else "one process per batch",
+           "producer_mode": "warm process" if sparse else "one process per batch",
            "transactions": commits, "enqueued_ids": enqueued_ids, "attempts": rows, "namespace_writes": writes,
            "samples": samples, "idle_samples": idle_samples,
            "poll_ms": int(env["JOBS_PARITY_POLL_MS"]), "wakeups": wakeups,
@@ -1860,7 +1860,7 @@ WHERE name IN ('server_version','server_version_num','shared_buffers','max_conne
                     "mesh_events": mesh_events,
                     "poll_ms": poll_ms,
                     "baseline_poll_ms": baseline_poll_ms if baseline_ref else None,
-                    "sparse_producer": "one warm database connection per trial",
+                    "sparse_producer": "one warm process with database connections scoped to each batch",
                     "mode": lane, "claim_timestamps": {"mesh": "database attempted_at_ms",
                                                        "oban": "Basic engine attempted_at"},
                     "settlement_timestamp": "durable commit timestamp of the terminal row version",

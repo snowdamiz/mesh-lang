@@ -31,10 +31,10 @@ records the dependency versions and package checksums.
   the rolled-back transaction. The XID has no commit timestamp.
   A repeated request can enqueue another Basic job. The product and effect
   tables deduplicate writes through their unique constraints.
-  With `JOBS_PARITY_INPUT=-`, a single database connection warms before
-  `PRODUCER_READY` is printed. Write one absolute path per line to standard
-  input for one transaction and receipt per path. Send `stop` on a line of
-  its own to shut down.
+  With `JOBS_PARITY_INPUT=-`, a warm producer prints `PRODUCER_READY` and
+  reads one absolute path per line from standard input. It opens and closes
+  its repository connections for each transaction before writing the receipt.
+  Send `stop` on a line of its own to shut down.
 - `run` writes `READY` after connecting to the migrated schema and starting
   its queue. `worker_pid` in attempt rows is the runner's OS PID. PostgreSQL
   sessions identify the fixture as `jobs_parity_oban:<namespace>:<runner>`,

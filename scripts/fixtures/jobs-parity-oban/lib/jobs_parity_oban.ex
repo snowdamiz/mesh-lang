@@ -37,16 +37,25 @@ defmodule JobsParityOban do
 
     namespace = System.fetch_env!("JOBS_PARITY_NAMESPACE")
     validate_namespace!(namespace)
+
+    case action do
+      "enqueue" ->
+        case System.fetch_env!("JOBS_PARITY_INPUT") do
+          "-" -> enqueue_stream(namespace)
+          path -> print_json(database_action(action, namespace, path))
+        end
+
+      _ ->
+        database_action(action, namespace, nil)
+    end
+  end
+
+  def run(_args), do: raise(ArgumentError, "expected one of: migrate, enqueue, run, versions")
+
+  defp database_action(action, namespace, path) do
     slots = if action == "run", do: env_integer!("JOBS_PARITY_SLOTS", 1)
     if slots, do: Process.flag(:trap_exit, true)
-
-    pool_size =
-      cond do
-        slots -> slots + 2
-        action == "enqueue" and System.get_env("JOBS_PARITY_INPUT") == "-" -> 1
-        true -> 2
-      end
-
+    pool_size = if slots, do: slots + 2, else: 2
     runner = if slots, do: System.fetch_env!("JOBS_PARITY_RUNNER"), else: action
 
     {:ok, repo} =
@@ -62,15 +71,13 @@ defmodule JobsParityOban do
     try do
       case action do
         "migrate" -> migrate(namespace)
-        "enqueue" -> enqueue(namespace, runner)
+        "enqueue" -> enqueue(namespace, runner, path)
         "run" -> run_producer(namespace, runner, slots)
       end
     after
       Supervisor.stop(repo)
     end
   end
-
-  def run(_args), do: raise(ArgumentError, "expected one of: migrate, enqueue, run, versions")
 
   defp migrate(namespace) do
     Repo.query!(~s(CREATE SCHEMA IF NOT EXISTS "#{namespace}"))
@@ -82,20 +89,18 @@ defmodule JobsParityOban do
     )
   end
 
-  defp enqueue(namespace, runner) do
-    path = System.fetch_env!("JOBS_PARITY_INPUT")
+  defp enqueue(namespace, runner, path) do
     {:ok, oban} =
       Oban.start_link(oban_options(namespace, runner) ++ [stager: false, peer: false])
 
     try do
-      if path == "-", do: enqueue_stream(namespace), else: enqueue_file(namespace, path)
+      enqueue_file(namespace, path)
     after
       Supervisor.stop(oban)
     end
   end
 
   defp enqueue_stream(namespace) do
-    Repo.query!("SELECT 1")
     IO.puts("PRODUCER_READY")
 
     Enum.reduce_while(IO.stream(:stdio, :line), :ok, fn line, :ok ->
@@ -104,7 +109,7 @@ defmodule JobsParityOban do
           {:halt, :ok}
 
         path ->
-          enqueue_file(namespace, path)
+          print_json(database_action("enqueue", namespace, path))
           {:cont, :ok}
       end
     end)
@@ -143,7 +148,7 @@ defmodule JobsParityOban do
         if rollback, do: Repo.rollback(receipt), else: receipt
       end)
 
-    print_json(receipt)
+    receipt
   end
 
   defp new_job(
