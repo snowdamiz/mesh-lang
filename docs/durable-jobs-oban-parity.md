@@ -82,7 +82,7 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 
 **Build.**
 
-- [ ] Record an exact Mesh SHA, Oban and Erlang versions, PostgreSQL server version, host and runner settings, and workload seed with every receipt. Use `db606548` as the pre-reliability reference and `59f6a7b3` as the post-reliability starting point. Capture both engines on the same machine and database configuration using separate job namespaces or databases.
+- [x] Each manifest pins the Mesh source, Oban, Erlang, PostgreSQL, runner settings, host, and seed. The historical `db606548` and `59f6a7b3` replays use isolated databases on the same host and cover the one-runner, 16-slot short and sparse profiles. [Reference receipts](../proof/jobs-parity/qualification-v1.json)
 - [x] Both engines use the same slot allocations, inputs, transaction boundaries, and fault barriers. Pickup includes Mesh's per-attempt process startup. [Fixture interface](../tests/e2e/durable_jobs/parity-interface.md) · [Load receipt](../proof/jobs-parity/j7-lane-10.log)
 - [x] The release comparison covers all 35 frozen profiles with a warmup and five alternating pairs per profile. It includes short, 100 ms, and sparse workloads and separate no-op and 512 KiB stress cases. [Load receipt](../proof/jobs-parity/j7-lane-10.log)
 - [x] The frozen profiles fix slot allocation, pool, notifier, and maintenance settings and the absolute sparse pickup budget. The driver measures pickup from the enqueue transaction's durable commit to first handler entry. It records claim and settlement timestamps separately and rejects samples outside the clock tolerance. [Profiles](../scripts/jobs-parity-profiles.json) · [Measurement guide](durable-jobs-parity-evidence.md)

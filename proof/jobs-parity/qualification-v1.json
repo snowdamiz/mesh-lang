@@ -519,6 +519,126 @@
     "runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
     "status": "passed"
   },
+  "historical_reference_replays": {
+    "59f6a7b3db705dfd7adb1e614f40d2690c6f3e03": {
+      "audit": "target/jobs-parity/59f6a7b3db705dfd7adb1e614f40d2690c6f3e03/j1-load-8m7delgh/group-audit.json",
+      "audit_sha256": "9b49d9a72acf3fc9360bb22316c6bc2a38cd3da793e2394dc3a5b289cb536441",
+      "budget_breaches": [
+        {
+          "metric": "cpu_seconds_per_job",
+          "profile": "short-1r-16s",
+          "scope": "budgets"
+        },
+        {
+          "metric": "jobs_per_second",
+          "profile": "short-1r-16s",
+          "scope": "comparison"
+        },
+        {
+          "metric": "pickup_p99_ms",
+          "profile": "short-1r-16s",
+          "scope": "comparison"
+        }
+      ],
+      "harness_revision": "965b967809abfe629b0707f5d978d23a58367d41",
+      "max_one_minute_load": 13.83251953125,
+      "measured_trials": 20,
+      "one_minute_load_at_start": 10.81103515625,
+      "postgresql_version": "17.11 (Homebrew)",
+      "profiles": {
+        "short-1r-16s": {
+          "pickup_p99_median_ms": {
+            "mesh": 353.72314453125,
+            "oban": 244.092041015625
+          },
+          "summary_path": "target/jobs-parity/59f6a7b3db705dfd7adb1e614f40d2690c6f3e03/j1-load-8m7delgh/short-1r-16s/summary.json",
+          "throughput_median": {
+            "mesh": 340.36564013640907,
+            "oban": 517.3100053379958
+          },
+          "trials_path": "target/jobs-parity/59f6a7b3db705dfd7adb1e614f40d2690c6f3e03/j1-load-8m7delgh/short-1r-16s/trials.json"
+        },
+        "sparse-1r-16s": {
+          "pickup_p99_median_ms": {
+            "mesh": 196.3720703125,
+            "oban": 213.56494140625
+          },
+          "summary_path": "target/jobs-parity/59f6a7b3db705dfd7adb1e614f40d2690c6f3e03/j1-load-8m7delgh/sparse-1r-16s/summary.json",
+          "throughput_median": {
+            "mesh": 1.9562005222544376,
+            "oban": 2.0254627602608593
+          },
+          "trials_path": "target/jobs-parity/59f6a7b3db705dfd7adb1e614f40d2690c6f3e03/j1-load-8m7delgh/sparse-1r-16s/trials.json"
+        }
+      },
+      "raw_result": "target/jobs-parity/59f6a7b3db705dfd7adb1e614f40d2690c6f3e03/j1-load-8m7delgh/result.json",
+      "reconciled_jobs": {
+        "mesh": 760,
+        "oban": 760
+      },
+      "result": "passed",
+      "transport": "SCRAM with verified TLS"
+    },
+    "db60654813a52bf11064116a83998bbabed4510b": {
+      "audit": "target/jobs-parity/db60654813a52bf11064116a83998bbabed4510b/j1-load-0mucm60i/group-audit.json",
+      "audit_sha256": "24184022b79365c6dd9fad798cb072f1bb055ed643f9e5571087887577c24d0a",
+      "budget_breaches": [
+        {
+          "metric": "cpu_seconds_per_job",
+          "profile": "short-1r-16s",
+          "scope": "budgets"
+        },
+        {
+          "metric": "jobs_per_second",
+          "profile": "short-1r-16s",
+          "scope": "comparison"
+        },
+        {
+          "metric": "pickup_p99_ms",
+          "profile": "short-1r-16s",
+          "scope": "comparison"
+        }
+      ],
+      "harness_revision": "dd7db6d3dbf2422f0b9cd696c47c64e4900ae7aa",
+      "max_one_minute_load": 14.09912109375,
+      "measured_trials": 20,
+      "one_minute_load_at_start": 9.56982421875,
+      "postgresql_version": "17.11 (Homebrew)",
+      "profiles": {
+        "short-1r-16s": {
+          "pickup_p99_median_ms": {
+            "mesh": 397.916015625,
+            "oban": 277.614013671875
+          },
+          "summary_path": "target/jobs-parity/db60654813a52bf11064116a83998bbabed4510b/j1-load-0mucm60i/short-1r-16s/summary.json",
+          "throughput_median": {
+            "mesh": 298.5616549908146,
+            "oban": 451.0202168009091
+          },
+          "trials_path": "target/jobs-parity/db60654813a52bf11064116a83998bbabed4510b/j1-load-0mucm60i/short-1r-16s/trials.json"
+        },
+        "sparse-1r-16s": {
+          "pickup_p99_median_ms": {
+            "mesh": 204.5478515625,
+            "oban": 257.34814453125
+          },
+          "summary_path": "target/jobs-parity/db60654813a52bf11064116a83998bbabed4510b/j1-load-0mucm60i/sparse-1r-16s/summary.json",
+          "throughput_median": {
+            "mesh": 1.9759973727339621,
+            "oban": 1.7640429285617703
+          },
+          "trials_path": "target/jobs-parity/db60654813a52bf11064116a83998bbabed4510b/j1-load-0mucm60i/sparse-1r-16s/trials.json"
+        }
+      },
+      "raw_result": "target/jobs-parity/db60654813a52bf11064116a83998bbabed4510b/j1-load-0mucm60i/result.json",
+      "reconciled_jobs": {
+        "mesh": 760,
+        "oban": 760
+      },
+      "result": "passed",
+      "transport": "SCRAM with verified TLS"
+    }
+  },
   "latest_macos_linux_postgresql_matrix": {
     "platforms": [
       "macOS arm64",
@@ -943,7 +1063,6 @@
     "Oban throughput and pickup budgets in the matched matrix",
     "one-slot Oban process budget",
     "batch sparse pickup variance between the full matrix and the targeted rerun",
-    "historical reference reruns with the corrected harness",
     "hosted Linux x64 proof"
   ],
   "postgresql_versions": [

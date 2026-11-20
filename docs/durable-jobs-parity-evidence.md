@@ -587,6 +587,17 @@ PG_BIN_DIR=/opt/homebrew/opt/postgresql@17/bin \
   --workload sparse --postgres-version 17.11
 ```
 
+### Historical references
+
+On the same macOS arm64 host and PostgreSQL 17.11 configuration, the driver
+replayed pre-reliability `db606548` and post-reliability `59f6a7b3` with
+release builds and single-row claims. Each revision ran five pairs against
+Oban for the one-runner, 16-slot short and sparse profiles and reconciled
+760 measured jobs per engine. Both short profiles missed the CPU,
+throughput, and pickup limits. Both sparse profiles met their limits.
+The receipts preserve the exact inputs, toolchains, and host-load samples
+for each run. [Historical receipts](../proof/jobs-parity/qualification-v1.json)
+
 ## Compare bounded drain
 
 `scripts/jobs-drain-perf.py` accepts the pinned main and candidate compiler
