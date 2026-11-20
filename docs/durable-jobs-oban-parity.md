@@ -410,7 +410,7 @@ OS spawn call and a gate at the existing native worker-start marker.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `gpt-6.2-sol high` at the PR head using the compiled fixtures and the PostgreSQL boot recipe.
 
-- [ ] Lane 1. Regression lane against main. Run the full J1 matrix on main and the release candidate. Save `j7-lane-1.log`. Pass when the same input manifests reconcile without lost jobs or stale writes.
+- [x] Lane 1. On macOS arm64 and PostgreSQL 17.11, all 35 frozen profiles reconciled 43,080 jobs per runtime against the same input manifests. The receipt records three performance budget misses. [Receipt](../proof/jobs-parity/j7-lane-1.log)
 - [ ] Lane 2. Run the Linux compiled timeout and parent-death proof. Save `j7-lane-2.log`. Pass when the handler process terminates and the peer can recover the job.
 - [x] Lane 3. Run the macOS executable replacement and shutdown proof. Save `j7-lane-3.log`. Pass when an unstarted claim keeps its attempt budget.
 - [ ] Lane 4. Run real PostgreSQL on any advertised Windows configuration. Save `j7-lane-4.log`. Pass when timeout, parent death, and recovery are proved by a compiled executable.

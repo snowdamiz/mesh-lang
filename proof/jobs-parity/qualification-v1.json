@@ -561,6 +561,14 @@
     "postgresql_version": "17.11",
     "runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287"
   },
+  "main_head_matrix": {
+    "measured_trials": 350,
+    "performance_budget_breaches": 3,
+    "profiles": 35,
+    "receipt": "proof/jobs-parity/j7-lane-1.log",
+    "reconciled_jobs_per_runtime": 43080,
+    "runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287"
+  },
   "main_ref": "7c1620563614a04a573aef806a6d019a2af4dfe9",
   "maintenance": {
     "claim_gap_within_limit": true,

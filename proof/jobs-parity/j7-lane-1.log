@@ -1,0 +1,72 @@
+{
+  "budget_breaches": [
+    {
+      "candidate_to_main_ratio": 1.0,
+      "mesh_median": 1.0078125,
+      "metric": "claim_calls_per_job",
+      "profile": "short-1r-1s",
+      "ratio_limit": 0.7,
+      "reference": "baseline",
+      "reference_median": 1.0078125,
+      "scope": "comparison",
+      "within_limit": false
+    },
+    {
+      "candidate_to_main_ratio": 0.8163265306122449,
+      "mesh_median": 0.9375,
+      "metric": "claim_calls_per_job",
+      "profile": "short-8r-16s",
+      "ratio_limit": 0.7,
+      "reference": "baseline",
+      "reference_median": 1.1484375,
+      "scope": "comparison",
+      "within_limit": false
+    },
+    {
+      "candidate_to_main_ratio": 1.1739473981261994,
+      "mesh_median": 241.2109375,
+      "metric": "pickup_p99_ms",
+      "profile": "sparse-4r-64s",
+      "ratio_limit": 1.1,
+      "reference": "baseline",
+      "reference_median": 205.469970703125,
+      "scope": "comparison",
+      "within_limit": false
+    }
+  ],
+  "candidate_sha": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+  "harness_sha": "eb472832c0971896adc5793a0b12a6bfde809534",
+  "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "logical_cpus": 15,
+  "main_sha": "7c1620563614a04a573aef806a6d019a2af4dfe9",
+  "max_one_minute_load": 32.61181640625,
+  "measured_trials": 350,
+  "one_minute_load_at_start": 13.19189453125,
+  "pairs_per_profile": 5,
+  "postgresql_version": "17.11 (Homebrew)",
+  "profile_count": 35,
+  "raw_audit": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/lane-evidence/17.11/j7-lane-1.log",
+  "raw_audit_sha256": "e365013d6359d906bff76a9019452327d5ea5007cde7a176d8230848cde06a01",
+  "raw_result": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-load-b6vnxdis/result.json",
+  "reconciled_jobs": {
+    "baseline": 43080,
+    "mesh": 43080
+  },
+  "reference_profile": {
+    "candidate_jobs_per_second": 463.45245061727303,
+    "claim_calls_per_job": {
+      "mesh_median": 0.453125,
+      "ratio_limit": 0.7,
+      "reference": "baseline",
+      "reference_median": 1.0078125,
+      "within_limit": true
+    },
+    "main_jobs_per_second": 334.8874048666136,
+    "profile": "short-1r-16s"
+  },
+  "result": "passed",
+  "run": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-load-b6vnxdis",
+  "scope": "matched durable identities, outcomes and saved metrics",
+  "seed": 5938,
+  "transport": "SCRAM with verified TLS"
+}

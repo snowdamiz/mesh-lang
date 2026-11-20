@@ -543,6 +543,15 @@ Five profiles met the 30% reduction threshold in the driver. The
 one-slot profile had no reduction, and eight runners with 16 slots used
 18.4% fewer calls. The lane receipt links all seven raw summaries.
 
+J7 lane 1 covers all 35 frozen profiles, including 100 ms jobs, sparse
+pickup, no-op stress, and 512 KiB payloads. There were five alternating
+pairs after warm-up per profile. PostgreSQL 17.11 ran with verified TLS
+and SCRAM on macOS arm64. Each runtime reconciled 43,080 jobs. The two
+short-profile claim-call misses persisted in the full matrix. Sparse pickup
+p99 with four runners and 64 slots was 241.2 ms on the candidate and
+205.5 ms on main, above the 1.10 ratio limit. The run started at a one-minute
+host load of 13.2 and reached 32.6 on 15 logical CPUs. [Matrix receipt](../proof/jobs-parity/j7-lane-1.log)
+
 ### Verified PostgreSQL workflows
 
 The following cases passed on macOS arm64 with PostgreSQL 17.11, 18.7, and
