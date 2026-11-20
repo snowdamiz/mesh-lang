@@ -1279,6 +1279,7 @@ def workspace(evidence):
 
 def record(args):
     settings = json.loads(CONFIG.read_text())
+    release = args.load or args.release
     poll_ms = args.poll_ms or settings["poll_ms"]
     baseline_poll_ms = args.baseline_poll_ms or poll_ms
     profiles = [(args.workload[0] if args.workload else "short", 1, 1)] if args.smoke else selection(args, settings)
@@ -1312,7 +1313,7 @@ def record(args):
             env.pop("MESH_RT_LIB_PATH", None)
             env.pop("RUSTC_WRAPPER", None)
             env.pop("RUSTC_WORKSPACE_WRAPPER", None)
-            executable = build_mesh(ref, scratch, evidence, env, args.load,
+            executable = build_mesh(ref, scratch, evidence, env, release,
                                     harness / MESH_SOURCE.relative_to(ROOT), args.toolchains)
             baseline = executable
             if baseline_ref and baseline_ref != ref:
@@ -1320,7 +1321,7 @@ def record(args):
                 baseline_dir.mkdir()
                 baseline_evidence = evidence / "baseline-build"
                 baseline_evidence.mkdir()
-                baseline = build_mesh(baseline_ref, baseline_dir, baseline_evidence, env, args.load,
+                baseline = build_mesh(baseline_ref, baseline_dir, baseline_evidence, env, release,
                                       harness / MESH_SOURCE.relative_to(ROOT), args.toolchains)
             command, mix_env, versions = compile_oban(scratch, evidence, env, oban_fixture)
             max_connections = max((s + r * settings["connection_slots_per_runner"]
@@ -1346,7 +1347,7 @@ WHERE name IN ('server_version','server_version_num','shared_buffers','max_conne
                     "session_transport": "SCRAM with verified TLS" if args.postgres_version else "SCRAM",
                     "reference_shas": {name: checked(["git", "rev-parse", name]) for name in REFERENCE},
                     "seed": settings["seed"], "profiles": profiles,
-                    "mesh_build_profile": "release" if args.load else "debug",
+                    "mesh_build_profile": "release" if release else "debug",
                     "mesh_batch": args.mesh_batch,
                     "mesh_listen": args.mesh_listen,
                     "mesh_events": args.mesh_events,
@@ -1642,6 +1643,7 @@ def main():
     parser.add_argument("--mesh-ref", default="HEAD", help="Git commit from which to compile Mesh")
     parser.add_argument("--toolchains", type=lambda value: Path(value).resolve(),
                         help="reuse verified compiler/runtime pairs from a previous Jobs comparison build")
+    parser.add_argument("--release", action="store_true", help="use a release toolchain for smoke and fault probes")
     parser.add_argument("--against-ref", help="compare with a second Mesh commit using single claims")
     parser.add_argument("--mesh-batch", action="store_true", help="enable batch claims for the Mesh runner")
     parser.add_argument("--mesh-listen", action="store_true", help="enable Mesh listener and transactional publishing")
