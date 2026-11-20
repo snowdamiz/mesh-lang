@@ -639,6 +639,11 @@ operator, and inspector logins, plus cron takeover and reindex.
 | macOS arm64, runtime `1b12243b` | 17.11, 18.7, 19.0 | 45 Jobs runtime cases, both compiled suites, fresh and upgraded scoped roles, and combined pool, listener, and maintenance interruption over verified TLS |
 | macOS arm64, release runtime `1b12243b` with main `7c162056` for the upgrade | 17.11, 18.7, 19.0 | Rolling upgrade, legacy settlement and rollback under scoped grants, and primary promotion with an uncertain acknowledgement. [Receipt](../proof/jobs-parity/j7-rolling-and-promotion.log) |
 
+The Linux process proof captured the worker PID and kernel start time for
+each held attempt before injecting parent death or waiting for the hard
+timeout. It checked that both original processes exited and reconciled a
+replacement attempt for each job. [Linux process receipt](../proof/jobs-parity/j7-lane-2.log)
+
 The listener promotion runs resumed eligible work within 1.31 seconds of writability
 against a 2-second budget. Replication and direct sessions used verified
 TLS and SCRAM. The loopback response-loss relay used SCRAM without TLS.

@@ -479,6 +479,11 @@
     "worst_promotion_resume_upper_ms": 1228.2
   },
   "latest_runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+  "linux_compiled_worker_exit": {
+    "checkout": "d3ac450e333ef5386fed9d9b47844feae0df3c46",
+    "receipt": "proof/jobs-parity/j7-lane-2.log",
+    "runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287"
+  },
   "listener_against_main": {
     "candidate_ref": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
     "jobs_per_trial": 24,

@@ -1,0 +1,12 @@
+{
+  "checkout": "d3ac450e333ef5386fed9d9b47844feae0df3c46",
+  "line": 951,
+  "log_path": "target/jobs-parity/linux-7c162056/final-d3ac450e333ef5386fed9d9b47844feae0df3c46-c1v542r8/postgres-17.11.log",
+  "log_sha256": "5487fb223731d77e92e05a3b3e8840d32e94295518d1134f1b513dd7cebb7b46",
+  "platform": "Linux arm64 in Docker locally",
+  "postgresql_version": "17.11",
+  "result": "J7 lane 2 passed: observed the Linux attempt processes exit after parent death and native timeout, with recovery of each original job",
+  "runtime": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+  "status": "passed",
+  "transport": "SCRAM with verified TLS"
+}
