@@ -153,6 +153,7 @@ def account(rows, expected, commits, tolerance):
         ))
         if any(value is None for value in (claimed, entered, recorded, effected, settled)):
             raise FixtureError(f"{key}: missing clock sample")
+        within_clock(settled - entered, tolerance)
         samples.append({"job_key": key, "commit_ms": committed, **row,
                         "commit_to_claim_ms": within_clock(claimed - committed, tolerance),
                         "pickup_ms": within_clock(entered - committed, tolerance),
@@ -1494,6 +1495,9 @@ def self_check():
                 account([dict(row, recorded_ms=None)], expected, {"batch": 100}, 5)
             with self.assertRaises(FixtureError):
                 account([dict(row, effected_ms=131)], expected, {"batch": 100}, 5)
+            with self.assertRaises(FixtureError):
+                account([dict(row, entered_ms=115, recorded_ms=111, effected_ms=107, settled_ms=103)],
+                        expected, {"batch": 100}, 5)
             with self.assertRaises(FixtureError):
                 percentile([], 0.99)
 
