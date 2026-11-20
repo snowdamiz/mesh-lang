@@ -33,6 +33,17 @@ expression: rendered
 ───╯
 {"code":"E0003","severity":"error","message":"arity mismatch: expected 2 arguments, found 3","file":"main.mpl","spans":[{"start":27,"end":40,"label":"expected 2 argument(s)"}],"fix":"1 extra argument(s)"}
 
+[E0003] Error: arity mismatch: expected 2 arguments, found 3
+   ╭─[ main.mpl:2:15 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │               ──────┬──────
+   │                     ╰──────── expected 2 argument(s)
+   │
+   │ Help: `|>` passes the piped value as the first argument. The call counts `_` as a written argument. Use `|2>` and remove `_` from the call to pass the value as argument 2. See `meshc guide syntax`.
+───╯
+{"code":"E0003","severity":"error","message":"arity mismatch: expected 2 arguments, found 3","file":"main.mpl","spans":[{"start":27,"end":40,"label":"expected 2 argument(s)"}],"fix":"`|>` passes the piped value as the first argument. The call counts `_` as a written argument. Use `|2>` and remove `_` from the call to pass the value as argument 2. See `meshc guide syntax`."}
+
 [E0044] Error: slot position 4 is out of range: `fn_name` takes 2 arguments, so valid slot positions are 2–2
    ╭─[ main.mpl:2:7 ]
    │
@@ -188,9 +199,9 @@ expression: rendered
    │       ──┬──
    │         ╰──── missing: missing_patterns_a, missing_patterns_b
    │
-   │ Help: add the missing patterns or a wildcard `_` arm
+   │ Help: add arms for `missing_patterns_a`, `missing_patterns_b`. Use a wildcard `_` arm for an intentional default that also covers future variants.
 ───╯
-{"code":"E0012","severity":"error","message":"non-exhaustive match on `scrutinee_type`: missing patterns [missing_patterns_a, missing_patterns_b]","file":"main.mpl","spans":[{"start":19,"end":24,"label":"missing: missing_patterns_a, missing_patterns_b"}],"fix":"add the missing patterns or a wildcard `_` arm"}
+{"code":"E0012","severity":"error","message":"non-exhaustive match on `scrutinee_type`: missing patterns [missing_patterns_a, missing_patterns_b]","file":"main.mpl","spans":[{"start":19,"end":24,"label":"missing: missing_patterns_a, missing_patterns_b"}],"fix":"add arms for `missing_patterns_a`, `missing_patterns_b`. Use a wildcard `_` arm for an intentional default that also covers future variants."}
 
 [W0003] Warning: clauses do not cover every `scrutinee_type`: missing patterns [missing_patterns_a, missing_patterns_b]
    ╭─[ main.mpl:2:7 ]

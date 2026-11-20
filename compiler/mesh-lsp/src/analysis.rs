@@ -9,13 +9,14 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use rowan::TextRange;
-use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, Position, Range, Url};
+use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString, Position, Range, Url};
 
 use mesh_common::module_graph::ModuleId;
 use mesh_pkg::manifest::{plan_cluster_declarations, resolve_entrypoint, Manifest};
 use mesh_pkg::project::{
     build_import_context, build_project, check_project, single_source_project, ProjectData,
 };
+use mesh_typeck::diagnostics::{error_code, repair_hint};
 use mesh_typeck::error::TypeError;
 use mesh_typeck::ty::Ty;
 use mesh_typeck::TypeckResult;
@@ -177,11 +178,18 @@ fn type_error_to_diagnostic(
     error: &TypeError,
     severity: DiagnosticSeverity,
 ) -> Option<Diagnostic> {
+    let range = text_range_to_range(source, error.span()?);
+    let mut message = error.to_string();
+    if let Some(hint) = repair_hint(error) {
+        message.push('\n');
+        message.push_str(&hint);
+    }
     Some(Diagnostic {
-        range: text_range_to_range(source, error.span()?),
+        range,
         severity: Some(severity),
+        code: Some(NumberOrString::String(error_code(error).to_string())),
         source: Some("mesh".to_string()),
-        message: format!("{}", error),
+        message,
         ..Default::default()
     })
 }

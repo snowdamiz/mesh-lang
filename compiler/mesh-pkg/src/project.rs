@@ -13,6 +13,8 @@ use mesh_parser::syntax_kind::SyntaxKind;
 use crate::manifest::DEFAULT_ENTRYPOINT;
 use crate::native::ResolvedNativeBinding;
 
+pub mod laws;
+
 /// Convert a snake_case string to PascalCase.
 ///
 /// Splits on `_`, capitalizes the first character of each non-empty part,
@@ -142,6 +144,9 @@ fn discover_recursive(
             if !include_test_helpers && dir == root && name_str == "tests" {
                 continue;
             }
+            if is_package_boundary(&entry_path)? {
+                continue;
+            }
             discover_recursive(root, &entry_path, files, include_test_helpers)?;
         } else if file_type.is_file()
             && entry_path.extension().and_then(|e| e.to_str()) == Some("mpl")
@@ -159,6 +164,15 @@ fn discover_recursive(
         }
     }
     Ok(())
+}
+
+/// A nested Mesh manifest marks a separate package.
+pub fn is_package_boundary(dir: &Path) -> std::io::Result<bool> {
+    match std::fs::symlink_metadata(dir.join("mesh.toml")) {
+        Ok(metadata) => Ok(metadata.is_file() || metadata.is_symlink()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error),
+    }
 }
 
 fn discover_installed_package_roots(packages_dir: &Path) -> Result<Vec<PathBuf>, String> {
@@ -287,30 +301,45 @@ pub fn build_project(
     include_test_helpers: bool,
     read_source: &dyn Fn(&Path) -> Result<String, String>,
 ) -> Result<ProjectData, String> {
-    if entry_relative_path.as_os_str().is_empty()
-        || entry_relative_path.components().any(|component| {
-            matches!(
-                component,
-                Component::ParentDir | Component::RootDir | Component::Prefix(_)
-            )
-        })
-    {
-        return Err(format!(
-            "Resolved entrypoint '{}' must stay within project '{}'",
-            entry_relative_path.display(),
-            project_root.display()
-        ));
-    }
+    load_modules(
+        project_root,
+        Some(entry_relative_path),
+        native_bindings,
+        include_test_helpers,
+        read_source,
+    )
+}
 
-    // Phase 1: Discover files, register modules, read and parse source.
+/// Load all checked project modules. A library can omit its executable entry.
+pub fn load_modules(
+    project_root: &Path,
+    entry_relative_path: Option<&Path>,
+    native_bindings: &[ResolvedNativeBinding],
+    include_test_helpers: bool,
+    read_source: &dyn Fn(&Path) -> Result<String, String>,
+) -> Result<ProjectData, String> {
+    if let Some(entry) = entry_relative_path {
+        if entry.as_os_str().is_empty()
+            || entry.components().any(|component| {
+                matches!(
+                    component,
+                    Component::ParentDir | Component::RootDir | Component::Prefix(_)
+                )
+            })
+        {
+            return Err(format!(
+                "Resolved entrypoint '{}' must stay within project '{}'",
+                entry.display(),
+                project_root.display()
+            ));
+        }
+    }
     let files = discover_mesh_files_with_test_helpers(project_root, include_test_helpers)?;
-    if !files
-        .iter()
-        .any(|relative_path| relative_path == entry_relative_path)
+    if let Some(entry) = entry_relative_path.filter(|entry| !files.iter().any(|path| path == entry))
     {
         return Err(format!(
             "Resolved entrypoint '{}' was not found under project '{}'",
-            entry_relative_path.display(),
+            entry.display(),
             project_root.display()
         ));
     }
@@ -320,11 +349,11 @@ pub fn build_project(
 
     for relative_path in &files {
         let source = read_source(&project_root.join(relative_path))?;
-        let is_entry = relative_path == entry_relative_path;
+        let is_entry = Some(relative_path.as_path()) == entry_relative_path;
         let name = project_module_name(relative_path)?;
 
         let parse = mesh_parser::parse(&source);
-        let _id = graph.add_module(name, relative_path.clone(), is_entry);
+        add_file_module(&mut graph, name, relative_path.clone(), is_entry)?;
 
         module_sources.push(source);
         module_parses.push(parse);
@@ -349,7 +378,7 @@ pub fn build_project(
             let full_path = package_root.join(relative_path);
             let source = read_source(&full_path)?;
             let parse = mesh_parser::parse(&source);
-            let _id = graph.add_module(name, full_path, false);
+            add_file_module(&mut graph, name, full_path, false)?;
             module_sources.push(source);
             module_parses.push(parse);
         }
@@ -380,12 +409,35 @@ pub fn build_project(
         }
         let source = read_source(&extra.path)?;
         let parse = mesh_parser::parse(&source);
-        graph.add_module(name, extra.path.clone(), false);
+        let local = project_root.join(&extra.relative_path).canonicalize().ok();
+        let path = if local.as_ref() == Some(&extra.path) {
+            extra.relative_path.clone()
+        } else {
+            extra.path.clone()
+        };
+        graph.add_module(name, path, false);
         module_sources.push(source);
         module_parses.push(parse);
     }
 
     link(graph, module_sources, module_parses)
+}
+
+fn add_file_module(
+    graph: &mut ModuleGraph,
+    name: String,
+    path: PathBuf,
+    is_entry: bool,
+) -> Result<(), String> {
+    if let Some(existing) = graph.resolve(&name) {
+        return Err(format!(
+            "Ambiguous module `{name}`: '{}' and '{}'",
+            graph.get(existing).path.display(),
+            path.display()
+        ));
+    }
+    graph.add_module(name, path, is_entry);
+    Ok(())
 }
 
 /// A file outside any project, built as meshc builds a directory holding
@@ -448,6 +500,18 @@ fn link(
         let id = ModuleId(index as u32);
         let imports = extract_imports(&parse.tree());
         let module_name = graph.get(id).name.clone();
+        let mut qualifiers = std::collections::BTreeMap::new();
+        for path in whole_module_imports(parse).filter(|path| graph.resolve(path).is_some()) {
+            let qualifier = path.rsplit('.').next().unwrap_or(&path).to_string();
+            if let Some(previous) = qualifiers.insert(qualifier.clone(), path.clone()) {
+                if previous != path {
+                    return Err(format!(
+                        "Ambiguous module qualifier `{qualifier}` in '{}': `{previous}` and `{path}`. Use selective imports.",
+                        graph.get(id).path.display()
+                    ));
+                }
+            }
+        }
 
         for import_name in imports {
             match graph.resolve(&import_name) {
@@ -657,17 +721,29 @@ pub fn build_import_context(
         else {
             continue;
         };
-        let last_segment = module_name
-            .rsplit('.')
-            .next()
-            .unwrap_or_default()
-            .to_string();
         ctx.module_exports.insert(
-            last_segment,
+            module_name.clone(),
             mesh_typeck::ModuleExports::new(module_name, exports),
         );
     }
+    for path in whole_module_imports(parse).filter(|path| ctx.module_exports.contains_key(path)) {
+        let qualifier = path.rsplit('.').next().unwrap_or(&path).to_string();
+        ctx.module_qualifiers.insert(qualifier, path);
+    }
     ctx
+}
+
+fn whole_module_imports(parse: &mesh_parser::Parse) -> impl Iterator<Item = String> {
+    parse
+        .tree()
+        .items()
+        .filter_map(|item| match item {
+            Item::ImportDecl(decl) => decl.module_path(),
+            _ => None,
+        })
+        .map(|path| path.segments().join("."))
+        .collect::<Vec<_>>()
+        .into_iter()
 }
 
 #[cfg(test)]

@@ -586,6 +586,10 @@ provenance, and explicit non-goals.
 | `meshc fmt` | Format or check `.mpl` files |
 | `meshc lint` | Report deep nesting and other lint findings in `.mpl` files |
 | `meshc test` | Run `.test.mpl` tests |
+| `meshc guide [topic]` | Read the offline guide embedded in the compiler |
+| `meshc skills setup` | Choose coding tools and install the Mesh skill |
+| `meshc skills refresh` | Update eligible account copies of the Mesh skill |
+| `meshc verify [dir]` | List, prove, or check preservation of pure policy laws |
 | `meshc repl` | Start the LLVM-backed REPL |
 | `meshc lsp` | Run the language server over stdio |
 | `meshc migrate` | Generate, inspect, apply, or roll back migrations |

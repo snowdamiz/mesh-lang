@@ -1,8 +1,3 @@
----
-name: mesh-types
-description: Mesh type system: primitive types, structs, ADTs (sum types), generics, Option, Result, and type annotations.
----
-
 # Mesh Types
 
 ## Primitive Types

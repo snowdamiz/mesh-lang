@@ -63,10 +63,11 @@ pub use crate::plaintext::{DeclassifySite, DisplayExport, PlaintextFacts};
 /// Pre-seeds the type checker's environments before inference begins.
 #[derive(Debug, Default)]
 pub struct ImportContext {
-    /// Module namespace -> exported symbols.
-    /// Key is the namespace name used for qualified access (last path segment
-    /// for `import Math.Vector` -> key is "Vector").
+    /// Exported symbols keyed by full module path.
     pub module_exports: FxHashMap<String, ModuleExports>,
+
+    /// Short qualifiers declared by whole-module imports.
+    pub module_qualifiers: FxHashMap<String, String>,
 
     /// Trait definitions from ALL processed modules (globally visible).
     pub all_trait_defs: Vec<TraitDef>,
@@ -91,6 +92,28 @@ impl ImportContext {
     /// Create an empty import context (for single-file / backward compat).
     pub fn empty() -> Self {
         Self::default()
+    }
+
+    pub(crate) fn module_at_path(&self, path: &str) -> Option<&ModuleExports> {
+        self.module_exports.get(path).or_else(|| {
+            let short = path.rsplit('.').next()?;
+            self.module_exports
+                .get(short)
+                .filter(|exports| exports.module_name == path)
+        })
+    }
+
+    pub(crate) fn module_at_qualifier(&self, qualifier: &str) -> Option<&ModuleExports> {
+        if let Some(path) = self.module_qualifiers.get(qualifier) {
+            return self.module_at_path(path);
+        }
+        let mut matches = self
+            .module_exports
+            .iter()
+            .filter(|(path, _)| path.rsplit('.').next() == Some(qualifier))
+            .map(|(_, exports)| exports);
+        let only = matches.next()?;
+        matches.next().is_none().then_some(only)
     }
 }
 

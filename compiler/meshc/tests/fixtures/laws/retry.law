@@ -1,0 +1,9 @@
+from Policy import retry
+
+law retry(status :: Int, left :: Int) -> Bool do
+  case status do
+    429 -> left > 0
+    503 -> left > 0
+    _ -> false
+  end
+end

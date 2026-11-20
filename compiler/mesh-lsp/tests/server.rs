@@ -226,3 +226,81 @@ async fn the_server_answers_what_an_editor_asks() {
     assert!(client.request("shutdown", Value::Null).await.is_null());
     client.notify("exit", Value::Null).await;
 }
+
+#[tokio::test]
+async fn pipe_placeholder_diagnostic_has_its_code_and_utf16_range() {
+    let mut client = Client::start();
+    client
+        .request("initialize", json!({"capabilities": {}}))
+        .await;
+    client.notify("initialized", json!({})).await;
+
+    let source = r#"fn triple(a :: String, b :: String, c :: String) do
+  a <> b <> c
+end
+fn main() do
+  println("é😀" |> triple("a", _, "c"))
+  triple("a", "b", "c", "d")
+end
+"#;
+    client
+        .notify(
+            "textDocument/didOpen",
+            json!({"textDocument": {"uri": URI, "languageId": "mesh", "version": 1, "text": source}}),
+        )
+        .await;
+    let published = client.notification("textDocument/publishDiagnostics").await;
+    let diagnostics = published["diagnostics"].as_array().unwrap();
+    assert_eq!(diagnostics.len(), 2, "{published}");
+    let pipe = &diagnostics[0];
+    assert_eq!(pipe["code"], "E0003");
+    assert_eq!(pipe["severity"], 1);
+    assert_eq!(
+        pipe["range"],
+        json!({"start": {"line": 4, "character": 19}, "end": {"line": 4, "character": 38}})
+    );
+    let message = pipe["message"].as_str().unwrap();
+    assert!(message.contains("Use `|2>` and remove `_`"), "{message}");
+    let ordinary = &diagnostics[1];
+    assert_eq!(ordinary["code"], "E0003");
+    assert_eq!(
+        ordinary["message"],
+        "arity mismatch: expected 3 arguments, found 4"
+    );
+
+    let repaired = source
+        .replace("|> triple(\"a\", _, \"c\")", "|2> triple(\"a\", \"c\")")
+        .replace(", \"d\"", "");
+    client
+        .notify(
+            "textDocument/didChange",
+            json!({"textDocument": {"uri": URI, "version": 2}, "contentChanges": [{"text": repaired}]}),
+        )
+        .await;
+    let published = client.notification("textDocument/publishDiagnostics").await;
+    assert_eq!(published["diagnostics"], json!([]));
+}
+
+#[tokio::test]
+async fn non_exhaustive_match_diagnostic_explains_the_wildcard_default() {
+    let mut client = Client::start();
+    client
+        .request("initialize", json!({"capabilities": {}}))
+        .await;
+    client.notify("initialized", json!({})).await;
+
+    let source = "fn main() do\n  case Some(1) do\n    Some(n) -> n\n  end\nend\n";
+    client
+        .notify(
+            "textDocument/didOpen",
+            json!({"textDocument": {"uri": URI, "languageId": "mesh", "version": 1, "text": source}}),
+        )
+        .await;
+    let published = client.notification("textDocument/publishDiagnostics").await;
+    let diagnostics = published["diagnostics"].as_array().unwrap();
+    assert_eq!(diagnostics.len(), 1, "{published}");
+    assert_eq!(diagnostics[0]["code"], "E0012");
+    let message = diagnostics[0]["message"].as_str().unwrap();
+    assert!(message.contains("add an arm for `None`"), "{message}");
+    assert!(message.contains("also covers future variants"), "{message}");
+}

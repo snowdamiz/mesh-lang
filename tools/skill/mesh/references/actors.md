@@ -1,7 +1,4 @@
----
-name: mesh-actors
-description: Mesh actor model: actor blocks, spawn, send, receive, typed PIDs, actor loops, linking, and preemption.
----
+# Mesh actors
 
 ## What are Actors
 
@@ -239,5 +236,5 @@ end
 
 ## See Also
 
-- `skills/supervisors` — supervisors manage and restart crashed actors
-- `skills/types` — Pid<T> and typed message patterns
+- [supervisors](supervisors.md) — supervisors manage and restart crashed actors
+- [types](types.md) — Pid<T> and typed message patterns

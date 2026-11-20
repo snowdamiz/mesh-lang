@@ -1,7 +1,4 @@
----
-name: mesh-supervisors
-description: Mesh supervisor model: supervisor blocks, restart strategies (one_for_one, one_for_all), child specs, and fault tolerance.
----
+# Mesh supervisors
 
 ## What are Supervisors
 
@@ -134,5 +131,5 @@ end
 
 ## See Also
 
-- `skills/actors` — actor primitives that supervisors manage
-- `skills/error-handling` — Result and Option for non-fatal error handling
+- [actors](actors.md) — actor primitives that supervisors manage
+- [error-handling](error-handling.md) — Result and Option for non-fatal error handling

@@ -1,7 +1,4 @@
----
-name: mesh-collections
-description: Mesh collections: List, Map, Set, Range, Queue APIs and the Iter pipeline for functional transformations.
----
+# Mesh collections
 
 ## List<T>
 
@@ -146,5 +143,5 @@ Rules:
 
 ## See Also
 
-- `skills/types` — List<T>, Map<K,V>, Set<T> type signatures
-- `skills/syntax` — |> pipe operator used in Iter pipelines
+- [types](types.md) — List<T>, Map<K,V>, Set<T> type signatures
+- [syntax](syntax.md) — |> pipe operator used in Iter pipelines

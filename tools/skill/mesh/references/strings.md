@@ -1,7 +1,4 @@
----
-name: mesh-strings
-description: Mesh string features: interpolation (#{} and ${}), heredocs, json { } object literals, String stdlib, Env.get/get_int, and the Regex module.
----
+# Mesh strings
 
 ## String Interpolation
 

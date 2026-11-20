@@ -30,8 +30,11 @@ offers them.
 | `LLVM_SYS_211_PREFIX` | Source builds; `meshc` on Windows MSVC | LLVM 21 install prefix | `clang` from `PATH` | Locates LLVM 21 for a source build. On Windows MSVC, `meshc` links with `<prefix>\bin\clang.exe` and fails if that file is missing. See [Build from source](/docs/getting-started/#alternative-build-from-source). |
 | `ANDROID_NDK_HOME`, `ANDROID_NDK_ROOT` | `meshc build --target *-linux-android` | Android NDK root | None | Required for Android targets; `ANDROID_NDK_HOME` wins. `meshc` uses the NDK's API 26 `clang` from `toolchains/llvm/prebuilt/*/bin`. |
 | `MESH_BUILD_TRACE_PATH` | `meshc` | File path | Unset: no trace | Writes a JSON record of the build's last stage, target, runtime path, and error to this file. Use it to diagnose a failing build. |
+| `MESH_VERIFY_Z3` | `meshc verify` | Executable name or path | `z3` on `PATH` | Selects the trusted Z3 4.15.7 executable. `--list` works without a solver. |
+| `MESH_VERIFY_TIMEOUT_MS` | `meshc verify` | Unsigned 32-bit integer (milliseconds) | `5000` | Sets the solver budget per law. `0` exhausts the budget immediately. |
 | `DATABASE_URL` | `meshc migrate up`, `down`, `status` | PostgreSQL URL | None; required | **Secret.** The database migrations run against. `meshc migrate generate` does not need it. See [Database migrations](/docs/tooling/#database-migrations). |
 | `HOME` | `meshc repl`, `meshpkg` | Directory | None | The REPL keeps history in `$HOME/.mesh_repl_history` and keeps none when `HOME` is unset, Windows included. On macOS and Linux, `meshpkg` stores its registry token in `$HOME/.mesh/credentials`. |
+| `HOME`, `USERPROFILE` | `meshc skills` | Absolute directory | Inherited from the shell | Selects the account root for skill setup and refresh. Windows uses `USERPROFILE`. Other platforms use `HOME`. |
 
 ## Installers and updates
 

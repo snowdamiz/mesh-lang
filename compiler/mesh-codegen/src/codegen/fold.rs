@@ -69,7 +69,7 @@ impl<'a> IntListFold<'a> {
             || !is_var(next_end, end)
             || !matches!(
                 single(next_index),
-                MirExpr::BinOp { op: BinOp::Add, lhs, rhs, ty: MirType::Int }
+                MirExpr::BinOp { op: BinOp::Add, lhs, rhs, ty: MirType::Int, .. }
                     if is_var(lhs, index) && matches!(single(rhs), MirExpr::IntLit(1, _))
             )
         {
@@ -94,11 +94,13 @@ impl<'a> IntListFold<'a> {
                 lhs,
                 rhs,
                 ty: MirType::Int,
+                ..
             } => self.check_update(lhs, reads_element) && self.check_update(rhs, reads_element),
             MirExpr::Call {
                 func,
                 args,
                 ty: MirType::Int,
+                ..
             } if is_var(func, "mesh_list_get") => {
                 let [list, index] = args.as_slice() else {
                     return false;

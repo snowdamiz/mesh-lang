@@ -86,6 +86,10 @@ fn publish_archive_members(project_dir: &Path) -> Result<Vec<PathBuf>, String> {
     archive_members.push(PathBuf::from("mesh.toml"));
     archive_members.extend(source_members);
     let manifest = Manifest::from_file(&project_dir.join("mesh.toml"))?;
+    let laws = mesh_pkg::project::laws::discover(project_dir, Some(&manifest))?;
+    // Preserve explicit roots even when they contain no archive members.
+    archive_members.extend(laws.roots.into_iter().filter(|root| root != Path::new(".")));
+    archive_members.extend(laws.paths);
     if let Some(native) = manifest.native {
         for binding in native.bindings {
             let member = declared_package_member(project_dir, &binding)?;
@@ -157,6 +161,11 @@ fn discover_publish_source_members(
 
         if file_type.is_dir() {
             if dir == project_root && name == "tests" {
+                continue;
+            }
+            if mesh_pkg::project::is_package_boundary(&path)
+                .map_err(failed("inspect package boundary", &path))?
+            {
                 continue;
             }
             child_dirs.push(path);
@@ -338,6 +347,91 @@ mod tests {
             .collect::<Vec<_>>();
         members.sort();
         members
+    }
+
+    #[test]
+    fn publish_archive_round_trip_preserves_the_selected_law_inventory() {
+        let temp = tempfile::tempdir().unwrap();
+        let project = temp.path().join("source");
+        let unpacked = temp.path().join("unpacked");
+        let manifest_text = format!(
+            "{}\n[verify]\nlaw_roots = [\"empty\", \"specs\", \"specs/nested\", \"tests\"]\n",
+            manifest("round-trip-laws", "main.mpl")
+        );
+        write_project_file(&project, "mesh.toml", &manifest_text);
+        write_project_file(
+            &project,
+            "main.mpl",
+            "fn first() -> Bool do true end\nfn second() -> Bool do false end\nfn main() do nil end\n",
+        );
+        fs::create_dir_all(project.join("empty")).unwrap();
+        write_project_file(
+            &project,
+            "specs/nested/first.law",
+            "from Main import private first\nlaw first() -> Bool do true end\n",
+        );
+        write_project_file(
+            &project,
+            "tests/second.law",
+            "from Main import private second\nlaw second() -> Bool do false end\n",
+        );
+        write_project_file(&project, "outside/unselected.law", "unselected");
+        write_project_file(&project, "specs/.hidden/unselected.law", "hidden");
+        write_project_file(
+            &project,
+            "specs/other/mesh.toml",
+            &manifest("other", "main.mpl"),
+        );
+        write_project_file(&project, "specs/other/retry.law", "nested");
+
+        let (archive, _) = create_tarball(&project).unwrap();
+        Archive::new(GzDecoder::new(archive.as_slice()))
+            .unpack(&unpacked)
+            .unwrap();
+        let inventory = |dir: &Path| {
+            let manifest = Manifest::from_file(&dir.join("mesh.toml")).unwrap();
+            mesh_pkg::project::laws::discover(dir, Some(&manifest)).unwrap()
+        };
+        let base = inventory(&project);
+        let installed = inventory(&unpacked);
+        assert_eq!(installed.roots, base.roots);
+        assert_eq!(
+            installed.paths,
+            [
+                PathBuf::from("specs/nested/first.law"),
+                PathBuf::from("tests/second.law")
+            ]
+        );
+        assert_eq!(installed.paths, base.paths);
+        for law in installed.paths {
+            assert_eq!(
+                fs::read(unpacked.join(&law)).unwrap(),
+                fs::read(project.join(&law)).unwrap(),
+            );
+        }
+        assert!(!unpacked.join("outside/unselected.law").exists());
+        assert!(!unpacked.join("specs/.hidden/unselected.law").exists());
+        assert!(!unpacked.join("specs/other").exists());
+
+        // Run the compiler comparison when the workspace proof supplies the
+        // matching meshc binary. The archive test also runs in meshpkg alone.
+        if let Some(meshc) = std::env::var_os("MESH_LAW_TEST_MESHC") {
+            let list = |dir: &Path| {
+                let output = std::process::Command::new(&meshc)
+                    .arg("verify")
+                    .arg(dir)
+                    .args(["--list", "--json"])
+                    .output()
+                    .unwrap();
+                assert!(
+                    output.status.success(),
+                    "{}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap()
+            };
+            assert_eq!(list(&unpacked), list(&project));
+        }
     }
 
     #[test]

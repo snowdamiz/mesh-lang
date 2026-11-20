@@ -7,9 +7,12 @@
 //! - `meshc cluster <status|continuity|diagnostics> ...` - Inspect runtime-owned clustered operator surfaces
 //! - `meshc deps [dir]` - Resolve and fetch dependencies
 //! - `meshc update` - Refresh installed `meshc` and `meshpkg` through the canonical installer path
+//! - `meshc guide [topic]` - Read the guide embedded in this compiler
+//! - `meshc skills setup` - Install this compiler's Mesh skill for coding tools
 //! - `meshc fmt <path>` - Format Mesh source files in-place
 //! - `meshc lint [path]` - Report code that compiles but should be written differently
 //! - `meshc test [path]` - Run *.test.mpl files from a project root, tests directory, or specific test file
+//! - `meshc verify [dir]` - Verify pure policy laws in a Mesh project
 //! - `meshc migrate [up|down|status|generate]` - Database migration management
 //! - `meshc plaintext-report [dir] [--output PATH] [--check PATH]` - List every `declassify` and `@display` export
 //! - `meshc repl` - Start an interactive REPL with LLVM JIT
@@ -33,12 +36,16 @@
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 mod cluster;
+mod guide;
 mod library_bindings;
 mod migrate;
 mod plaintext_report;
 mod proof;
 mod proof_gates;
+mod skills;
 mod test_runner;
+mod verify;
+mod verify_solver;
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -65,6 +72,34 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Read the guide embedded in this compiler
+    Guide {
+        /// Topic name, such as syntax or testing
+        topic: Option<String>,
+    },
+    /// Manage the Mesh skill for coding tools
+    Skills {
+        #[command(subcommand)]
+        action: skills::SkillsCommand,
+    },
+    /// List or verify the project's pure policy laws
+    Verify {
+        /// Project directory
+        #[arg(default_value = ".")]
+        dir: PathBuf,
+
+        /// List the resolved laws without running a solver
+        #[arg(long)]
+        list: bool,
+
+        /// Output a machine-readable inventory and verdicts
+        #[arg(long)]
+        json: bool,
+
+        /// Require the candidate to retain each law in a trusted inventory
+        #[arg(long, conflicts_with = "list")]
+        preserve: Option<PathBuf>,
+    },
     /// Compile a Mesh project to a native binary
     Build {
         /// Path to the project directory (must contain the resolved Mesh entrypoint)
@@ -395,6 +430,14 @@ fn run() {
         ),
         Commands::Deps { dir } => or_exit(deps_command(&dir)),
         Commands::Update => or_exit(run_update_command()),
+        Commands::Guide { topic } => or_exit(guide::show(topic.as_deref())),
+        Commands::Skills { action } => or_exit(skills::run(action)),
+        Commands::Verify {
+            dir,
+            list,
+            json,
+            preserve,
+        } => or_exit(verify::run(&dir, list, json, preserve.as_deref())),
         Commands::Fmt {
             path,
             check,
@@ -784,11 +827,19 @@ fn prepare_declared_handler_plan(
     plan
 }
 
-pub(crate) fn prepare_project_build(
+struct CheckedBuild {
+    manifest: Option<Manifest>,
+    entry_relative_path: Option<PathBuf>,
+    project: mesh_pkg::project::ProjectData,
+    checked: mesh_pkg::project::CheckedProject,
+}
+
+fn load_checked_project(
     dir: &Path,
     test_builtins: bool,
+    require_entrypoint: bool,
     diag_opts: &DiagnosticOptions,
-) -> Result<PreparedBuild, String> {
+) -> Result<CheckedBuild, String> {
     // Validate the project directory
     if !dir.exists() {
         return Err(format!(
@@ -811,13 +862,23 @@ pub(crate) fn prepare_project_build(
     } else {
         Vec::new()
     };
-    let entry_relative_path = resolve_entrypoint(dir, manifest.as_ref())?;
+    let has_configured_entrypoint = manifest
+        .as_ref()
+        .is_some_and(|manifest| manifest.package.entrypoint.is_some());
+    let entry_relative_path = if require_entrypoint
+        || has_configured_entrypoint
+        || dir.join(mesh_pkg::manifest::DEFAULT_ENTRYPOINT).exists()
+    {
+        Some(resolve_entrypoint(dir, manifest.as_ref())?)
+    } else {
+        None
+    };
 
     // Build the project: discover all files, parse, build module graph.
     // `meshc test` builds the helpers under `tests/` too.
-    let project = mesh_pkg::project::build_project(
+    let project = mesh_pkg::project::load_modules(
         dir,
-        &entry_relative_path,
+        entry_relative_path.as_deref(),
         &native_bindings,
         test_builtins,
         &mesh_pkg::project::read_file,
@@ -905,16 +966,13 @@ pub(crate) fn prepare_project_build(
 
     // Type-check every module in compilation order, and report each one's
     // errors and warnings.
-    let mesh_pkg::project::CheckedProject {
-        typeck: mut all_typeck,
-        exports: all_exports,
-    } = mesh_pkg::project::check_project(&project, test_builtins);
+    let checked = mesh_pkg::project::check_project(&project, test_builtins);
     let mut has_type_errors = false;
     for &id in &project.compilation_order {
         let idx = id.0 as usize;
         let source = &project.module_sources[idx];
         let file_name = diag_opts.display_path(&dir.join(&project.graph.get(id).path));
-        let typeck = &all_typeck[idx];
+        let typeck = &checked.typeck[idx];
         has_type_errors |= !typeck.errors.is_empty();
         for diagnostic in typeck.errors.iter().chain(&typeck.warnings) {
             eprint!(
@@ -930,7 +988,27 @@ pub(crate) fn prepare_project_build(
         return Err("Compilation failed due to errors above.".to_string());
     }
 
-    reject_duplicate_pub_functions(&project, &all_exports)?;
+    reject_duplicate_pub_functions(&project, &checked.exports)?;
+    Ok(CheckedBuild {
+        manifest,
+        entry_relative_path,
+        project,
+        checked,
+    })
+}
+
+pub(crate) fn prepare_project_build(
+    dir: &Path,
+    test_builtins: bool,
+    diag_opts: &DiagnosticOptions,
+) -> Result<PreparedBuild, String> {
+    let CheckedBuild {
+        manifest,
+        entry_relative_path,
+        project,
+        mut checked,
+    } = load_checked_project(dir, test_builtins, true, diag_opts)?;
+    let entry_relative_path = entry_relative_path.expect("build requires an entrypoint");
 
     let package = manifest.as_ref().map_or_else(
         || {
@@ -940,7 +1018,7 @@ pub(crate) fn prepare_project_build(
         },
         |manifest| manifest.package.name.clone(),
     );
-    let plaintext_report = plaintext_report::collect(dir, &package, &project, &all_typeck);
+    let plaintext_report = plaintext_report::collect(dir, &package, &project, &checked.typeck);
 
     // `@cluster` and `HTTP.clustered` without a count take the manifest's
     // `[cluster].default_replicas`.
@@ -963,9 +1041,56 @@ pub(crate) fn prepare_project_build(
             entry.replication_count.value = default_replicas;
         }
     }
-    let clustered_route_handler_plan =
-        mesh_codegen::prepare_clustered_route_handler_plan(all_typeck.iter(), default_replicas)?;
+    let clustered_route_handler_plan = mesh_codegen::prepare_clustered_route_handler_plan(
+        checked.typeck.iter(),
+        default_replicas,
+    )?;
+    let library_exports = collect_library_exports(&project.module_parses)?;
+    let mir_modules = lower_checked_modules(&project, &mut checked, |_| None)?;
+    let entry_mir_idx = project
+        .compilation_order
+        .iter()
+        .position(|id| project.graph.get(*id).is_entry)
+        .expect("checked project has an entry module");
+    let declared_executable_symbols = clustered_execution_plan
+        .iter()
+        .map(|entry| entry.executable_symbol.clone())
+        .chain(
+            clustered_route_handler_plan
+                .iter()
+                .map(|entry| entry.executable_symbol.clone()),
+        )
+        .chain(library_exports.iter().map(|export| export.function.clone()))
+        .collect::<Vec<_>>();
+    let merged_mir =
+        mesh_codegen::merge_mir_modules(mir_modules, entry_mir_idx, &declared_executable_symbols);
 
+    Ok(PreparedBuild {
+        merged_mir,
+        entry_relative_path,
+        library_exports,
+        clustered_execution_plan,
+        clustered_route_handler_plan,
+        autonomous_config_json: runtime_autonomous_config_json(
+            manifest
+                .as_ref()
+                .and_then(|manifest| manifest.autonomous_cluster.as_ref()),
+        )?,
+        plaintext_report,
+    })
+}
+
+/// Lower checked modules in compilation order, before the native build prunes
+/// unreachable functions. Verification also needs unused function bodies.
+fn lower_checked_modules(
+    project: &mesh_pkg::project::ProjectData,
+    checked: &mut mesh_pkg::project::CheckedProject,
+    source_id: impl Fn(&mesh_parser::Parse) -> Option<mesh_codegen::mir::MirSourceId>,
+) -> Result<Vec<mesh_codegen::mir::MirModule>, String> {
+    let mesh_pkg::project::CheckedProject {
+        typeck: all_typeck,
+        exports: all_exports,
+    } = checked;
     let inferred_export_names: HashSet<String> = all_exports
         .iter()
         .filter_map(|exports_opt| exports_opt.as_ref())
@@ -979,13 +1104,8 @@ pub(crate) fn prepare_project_build(
             })
         })
         .collect();
-    let mut inferred_fn_usage_types = collect_inferred_fn_usage_types(
-        &project.module_parses,
-        &all_typeck,
-        &inferred_export_names,
-    );
-
-    let library_exports = collect_library_exports(&project.module_parses)?;
+    let mut inferred_fn_usage_types =
+        collect_inferred_fn_usage_types(&project.module_parses, all_typeck, &inferred_export_names);
 
     // A module is checked before the modules that come later, so its trait
     // registry lacks their impls (it has its own and the earlier modules').
@@ -1033,10 +1153,8 @@ pub(crate) fn prepare_project_build(
         }
     }
 
-    // Lower ALL modules to MIR and merge into a single module for codegen.
     let mut mir_modules = Vec::new();
-    let mut entry_mir_idx = 0;
-    for (i, &id) in project.compilation_order.iter().enumerate() {
+    for &id in &project.compilation_order {
         let idx = id.0 as usize;
         let parse = &project.module_parses[idx];
         let typeck = &all_typeck[idx];
@@ -1046,50 +1164,23 @@ pub(crate) fn prepare_project_build(
         let other_modules: Vec<_> = project
             .module_parses
             .iter()
-            .zip(&all_typeck)
+            .zip(all_typeck.iter())
             .enumerate()
             .filter(|(other, _)| *other != idx)
             .map(|(_, modules)| modules)
             .collect();
-        let mir = mesh_codegen::lower_module_to_mir_raw(
+        let mir = mesh_codegen::mir::lower::lower_module_to_mir_with_sources(
             parse,
             typeck,
             module_name,
             &pub_fns,
             &inferred_fn_usage_types,
             &other_modules,
+            &source_id,
         )?;
-        if project.graph.get(id).is_entry {
-            entry_mir_idx = i;
-        }
         mir_modules.push(mir);
     }
-    let declared_executable_symbols = clustered_execution_plan
-        .iter()
-        .map(|entry| entry.executable_symbol.clone())
-        .chain(
-            clustered_route_handler_plan
-                .iter()
-                .map(|entry| entry.executable_symbol.clone()),
-        )
-        .chain(library_exports.iter().map(|export| export.function.clone()))
-        .collect::<Vec<_>>();
-    let merged_mir =
-        mesh_codegen::merge_mir_modules(mir_modules, entry_mir_idx, &declared_executable_symbols);
-
-    Ok(PreparedBuild {
-        merged_mir,
-        entry_relative_path,
-        library_exports,
-        clustered_execution_plan,
-        clustered_route_handler_plan,
-        autonomous_config_json: runtime_autonomous_config_json(
-            manifest
-                .as_ref()
-                .and_then(|manifest| manifest.autonomous_cluster.as_ref()),
-        )?,
-        plaintext_report,
-    })
+    Ok(mir_modules)
 }
 
 /// Reject programs where two modules export a `pub fn` under the same symbol.

@@ -1540,10 +1540,12 @@ mod tests {
             params: vec![],
             return_type: outer.clone(),
             body: MirExpr::StructLit {
+                source_span: None,
                 name: "Outer".to_string(),
                 fields: vec![(
                     "inner".to_string(),
                     MirExpr::StructLit {
+                        source_span: None,
                         name: "Inner".to_string(),
                         fields: vec![("value".to_string(), MirExpr::IntLit(1, MirType::Int))],
                         ty: inner,
@@ -1898,6 +1900,7 @@ mod tests {
         let body = MirExpr::Block(
             vec![
                 MirExpr::ResourceMove {
+                    source_span: None,
                     value: Box::new(MirExpr::Var("secret".to_string(), resource.clone())),
                     ty: resource.clone(),
                     source: MirResourceMoveSource::Slot("secret".to_string()),
@@ -1935,7 +1938,9 @@ mod tests {
                 ],
                 return_type: state_ty.clone(),
                 body: MirExpr::StructUpdate {
+                    source_span: None,
                     base: Box::new(MirExpr::ResourceMove {
+                        source_span: None,
                         value: Box::new(MirExpr::Var("state".to_string(), state_ty.clone())),
                         ty: state_ty.clone(),
                         source: MirResourceMoveSource::Slot("state".to_string()),
@@ -1943,6 +1948,7 @@ mod tests {
                     overrides: vec![(
                         "current".to_string(),
                         MirExpr::ResourceMove {
+                            source_span: None,
                             value: Box::new(MirExpr::Var("next".to_string(), MirType::Ptr)),
                             ty: MirType::Ptr,
                             source: MirResourceMoveSource::Slot("next".to_string()),
@@ -2005,7 +2011,9 @@ mod tests {
                 params: vec![("pair".to_string(), pair_ty.clone())],
                 return_type: MirType::Ptr,
                 body: MirExpr::ResourceMove {
+                    source_span: None,
                     value: Box::new(MirExpr::FieldAccess {
+                        source_span: None,
                         object: Box::new(MirExpr::Var("pair".to_string(), pair_ty.clone())),
                         field: "first".to_string(),
                         ty: MirType::Ptr,
@@ -2083,8 +2091,11 @@ mod tests {
                 params: vec![("outer".to_string(), outer_ty.clone())],
                 return_type: MirType::Ptr,
                 body: MirExpr::ResourceMove {
+                    source_span: None,
                     value: Box::new(MirExpr::FieldAccess {
+                        source_span: None,
                         object: Box::new(MirExpr::FieldAccess {
+                            source_span: None,
                             object: Box::new(MirExpr::Var("outer".to_string(), outer_ty.clone())),
                             field: "inner".to_string(),
                             ty: inner_ty.clone(),
@@ -2387,6 +2398,7 @@ mod tests {
     fn test_int_arithmetic() {
         // Use parameters to avoid constant folding
         let body = MirExpr::BinOp {
+            source_span: None,
             op: BinOp::Add,
             lhs: Box::new(MirExpr::Var("a".to_string(), MirType::Int)),
             rhs: Box::new(MirExpr::Var("b".to_string(), MirType::Int)),
@@ -2407,6 +2419,7 @@ mod tests {
     fn test_int_constant_folding() {
         // Constants should be folded by LLVM
         let body = MirExpr::BinOp {
+            source_span: None,
             op: BinOp::Add,
             lhs: Box::new(MirExpr::IntLit(1, MirType::Int)),
             rhs: Box::new(MirExpr::IntLit(2, MirType::Int)),
@@ -2423,6 +2436,7 @@ mod tests {
     #[test]
     fn test_float_arithmetic() {
         let body = MirExpr::BinOp {
+            source_span: None,
             op: BinOp::Mul,
             lhs: Box::new(MirExpr::Var("a".to_string(), MirType::Float)),
             rhs: Box::new(MirExpr::Var("b".to_string(), MirType::Float)),
@@ -2442,6 +2456,7 @@ mod tests {
     #[test]
     fn test_boolean_not() {
         let body = MirExpr::UnaryOp {
+            source_span: None,
             op: UnaryOp::Not,
             operand: Box::new(MirExpr::Var("b".to_string(), MirType::Bool)),
             ty: MirType::Bool,
@@ -2456,6 +2471,7 @@ mod tests {
             vec![MirExpr::StringLit(
                 "hello world".to_string(),
                 MirType::String,
+                None,
             )],
             MirType::String,
         );
@@ -2478,6 +2494,7 @@ mod tests {
     #[test]
     fn test_if_else_branching() {
         let body = MirExpr::If {
+            source_span: None,
             cond: Box::new(MirExpr::BoolLit(true, MirType::Bool)),
             then_body: Box::new(MirExpr::IntLit(1, MirType::Int)),
             else_body: Box::new(MirExpr::IntLit(2, MirType::Int)),
@@ -2520,6 +2537,7 @@ mod tests {
                     ],
                     return_type: MirType::Int,
                     body: MirExpr::BinOp {
+                        source_span: None,
                         op: BinOp::Add,
                         lhs: Box::new(MirExpr::Var("a".to_string(), MirType::Int)),
                         rhs: Box::new(MirExpr::Var("b".to_string(), MirType::Int)),
@@ -2535,6 +2553,7 @@ mod tests {
                     return_type: MirType::Unit,
                     body: MirExpr::Block(
                         vec![MirExpr::Call {
+                            source_span: None,
                             func: Box::new(MirExpr::Var(
                                 "add".to_string(),
                                 MirType::FnPtr(
@@ -2577,6 +2596,7 @@ mod tests {
         // Simulate: println("Hello, world!")
         let body = MirExpr::Block(
             vec![MirExpr::Call {
+                source_span: None,
                 func: Box::new(MirExpr::Var(
                     "mesh_println".to_string(),
                     MirType::FnPtr(vec![MirType::String], Box::new(MirType::Unit)),
@@ -2584,6 +2604,7 @@ mod tests {
                 args: vec![MirExpr::StringLit(
                     "Hello, world!".to_string(),
                     MirType::String,
+                    None,
                 )],
                 ty: MirType::Unit,
             }],
@@ -2632,6 +2653,7 @@ mod tests {
                 params: vec![],
                 return_type: MirType::SumType("Option".to_string()),
                 body: MirExpr::ConstructVariant {
+                    source_span: None,
                     type_name: "Option".to_string(),
                     variant: "Some".to_string(),
                     fields: vec![MirExpr::IntLit(42, MirType::Int)],
@@ -2679,7 +2701,9 @@ mod tests {
                 params: vec![],
                 return_type: MirType::Int,
                 body: MirExpr::Match {
+                    source_span: None,
                     scrutinee: Box::new(MirExpr::ConstructVariant {
+                        source_span: None,
                         type_name: "Option".to_string(),
                         variant: "Some".to_string(),
                         fields: vec![MirExpr::IntLit(42, MirType::Int)],
@@ -2799,6 +2823,7 @@ mod tests {
                     params: vec![],
                     return_type: MirType::Closure(vec![MirType::Int], Box::new(MirType::Int)),
                     body: MirExpr::MakeClosure {
+                        source_span: None,
                         fn_name: "__closure_0".to_string(),
                         captures: vec![],
                         ty: MirType::Closure(vec![MirType::Int], Box::new(MirType::Int)),
@@ -2861,6 +2886,7 @@ mod tests {
                     params: captures.clone(),
                     return_type: closure_ty.clone(),
                     body: MirExpr::MakeClosure {
+                        source_span: None,
                         fn_name: "__closure_0".to_string(),
                         captures: captures
                             .iter()
@@ -2911,6 +2937,7 @@ mod tests {
     #[test]
     fn test_comparison_operators() {
         let body = MirExpr::BinOp {
+            source_span: None,
             op: BinOp::Lt,
             lhs: Box::new(MirExpr::Var("a".to_string(), MirType::Int)),
             rhs: Box::new(MirExpr::Var("b".to_string(), MirType::Int)),
@@ -2934,6 +2961,7 @@ mod tests {
     #[test]
     fn test_negation() {
         let body = MirExpr::UnaryOp {
+            source_span: None,
             op: UnaryOp::Neg,
             operand: Box::new(MirExpr::Var("x".to_string(), MirType::Int)),
             ty: MirType::Int,
@@ -2950,6 +2978,7 @@ mod tests {
     fn test_actor_spawn_codegen() {
         // Test that ActorSpawn generates a call to mesh_actor_spawn
         let body = MirExpr::ActorSpawn {
+            source_span: None,
             func: Box::new(MirExpr::Var(
                 "my_actor".to_string(),
                 MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Pid(None))),
@@ -2969,6 +2998,7 @@ mod tests {
                     params: vec![("n".to_string(), MirType::Int)],
                     return_type: MirType::Pid(None),
                     body: MirExpr::ActorSelf {
+                        source_span: None,
                         ty: MirType::Pid(None),
                     },
                     is_closure_fn: false,
@@ -3013,6 +3043,7 @@ mod tests {
     #[test]
     fn test_actor_send_codegen() {
         let body = MirExpr::ActorSend {
+            source_span: None,
             target: Box::new(MirExpr::Var("pid".to_string(), MirType::Pid(None))),
             message: Box::new(MirExpr::IntLit(99, MirType::Int)),
             ty: MirType::Int,
@@ -3034,6 +3065,7 @@ mod tests {
     #[test]
     fn test_actor_send_describes_the_pids_in_a_message() {
         let body = MirExpr::ActorSend {
+            source_span: None,
             target: Box::new(MirExpr::Var("pid".to_string(), MirType::Pid(None))),
             message: Box::new(MirExpr::Shaped {
                 value: Box::new(MirExpr::Var("request".to_string(), MirType::Ptr)),
@@ -3063,6 +3095,7 @@ mod tests {
     #[test]
     fn test_actor_send_copies_string_messages() {
         let body = MirExpr::ActorSend {
+            source_span: None,
             target: Box::new(MirExpr::Var("pid".to_string(), MirType::Pid(None))),
             message: Box::new(MirExpr::Var("text".to_string(), MirType::String)),
             ty: MirType::Int,
@@ -3101,6 +3134,7 @@ mod tests {
             vec![MsgShape::List(Box::new(MsgShape::Leaf))],
         );
         let body = MirExpr::ActorSend {
+            source_span: None,
             target: Box::new(MirExpr::Var("pid".to_string(), MirType::Pid(None))),
             message: Box::new(MirExpr::Shaped {
                 value: Box::new(MirExpr::Var("pair".to_string(), MirType::Ptr)),
@@ -3150,6 +3184,7 @@ mod tests {
     #[test]
     fn test_actor_receive_codegen() {
         let body = MirExpr::ActorReceive {
+            source_span: None,
             handler: None,
             timeout_ms: None,
             timeout_body: None,
@@ -3174,6 +3209,7 @@ mod tests {
             (MirType::String, "ptr", 0),
         ] {
             let receive = MirExpr::ActorReceive {
+                source_span: None,
                 handler: Some((
                     "bound".into(),
                     binding,
@@ -3201,6 +3237,7 @@ mod tests {
     #[test]
     fn test_actor_link_codegen() {
         let body = MirExpr::ActorLink {
+            source_span: None,
             target: Box::new(MirExpr::Var("pid".to_string(), MirType::Pid(None))),
             ty: MirType::Unit,
         };
@@ -3255,6 +3292,7 @@ mod tests {
                     params: vec![],
                     return_type: MirType::Int,
                     body: MirExpr::Call {
+                        source_span: None,
                         func: Box::new(MirExpr::Var(
                             "helper".to_string(),
                             MirType::FnPtr(vec![], Box::new(MirType::Int)),
@@ -3291,6 +3329,7 @@ mod tests {
     fn test_pid_is_i64_in_ir() {
         // Verify that Pid type maps to i64 in the generated IR
         let body = MirExpr::ActorSelf {
+            source_span: None,
             ty: MirType::Pid(None),
         };
         let ir = compile_expr_to_ir(body, MirType::Pid(None));
@@ -3306,6 +3345,7 @@ mod tests {
     fn test_actor_spawn_with_terminate_callback() {
         // Test that mesh_actor_set_terminate is called after spawn when callback exists
         let body = MirExpr::ActorSpawn {
+            source_span: None,
             func: Box::new(MirExpr::Var(
                 "my_actor".to_string(),
                 MirType::FnPtr(vec![], Box::new(MirType::Pid(None))),
@@ -3327,6 +3367,7 @@ mod tests {
                     params: vec![],
                     return_type: MirType::Pid(None),
                     body: MirExpr::ActorSelf {
+                        source_span: None,
                         ty: MirType::Pid(None),
                     },
                     is_closure_fn: false,
@@ -3383,6 +3424,7 @@ mod tests {
     #[test]
     fn test_match_on_integer_literal() {
         let body = MirExpr::Match {
+            source_span: None,
             scrutinee: Box::new(MirExpr::IntLit(1, MirType::Int)),
             arms: vec![
                 MirMatchArm {
@@ -3410,6 +3452,7 @@ mod tests {
     fn test_while_loop_basic_blocks() {
         // While loop should produce cond/body/merge basic blocks
         let body = MirExpr::While {
+            source_span: None,
             cond: Box::new(MirExpr::BoolLit(false, MirType::Bool)),
             body: Box::new(MirExpr::IntLit(42, MirType::Int)),
             ty: MirType::Unit,
@@ -3436,6 +3479,7 @@ mod tests {
     fn test_while_loop_reduction_check() {
         // While loop body should emit mesh_reduction_check at back-edge
         let body = MirExpr::While {
+            source_span: None,
             cond: Box::new(MirExpr::BoolLit(false, MirType::Bool)),
             body: Box::new(MirExpr::IntLit(42, MirType::Int)),
             ty: MirType::Unit,
@@ -3452,6 +3496,7 @@ mod tests {
     fn test_while_with_break() {
         // While with break should compile and have merge block reachable
         let body = MirExpr::While {
+            source_span: None,
             cond: Box::new(MirExpr::BoolLit(true, MirType::Bool)),
             body: Box::new(MirExpr::Break),
             ty: MirType::Unit,
@@ -3474,6 +3519,7 @@ mod tests {
     fn test_while_with_continue() {
         // While with continue should emit reduction check and branch to cond
         let body = MirExpr::While {
+            source_span: None,
             cond: Box::new(MirExpr::BoolLit(false, MirType::Bool)),
             body: Box::new(MirExpr::Continue),
             ty: MirType::Unit,
@@ -3493,6 +3539,7 @@ mod tests {
     fn test_for_in_range_basic_blocks() {
         // For-in range should produce header/body/latch/merge basic blocks
         let body = MirExpr::ForInRange {
+            source_span: None,
             var: "i".to_string(),
             start: Box::new(MirExpr::IntLit(0, MirType::Int)),
             end: Box::new(MirExpr::IntLit(10, MirType::Int)),
@@ -3527,6 +3574,7 @@ mod tests {
     fn test_for_in_range_slt_comparison() {
         // For-in range should use icmp slt (NOT sle) for half-open range
         let body = MirExpr::ForInRange {
+            source_span: None,
             var: "i".to_string(),
             start: Box::new(MirExpr::IntLit(0, MirType::Int)),
             end: Box::new(MirExpr::IntLit(5, MirType::Int)),
@@ -3546,6 +3594,7 @@ mod tests {
     fn test_for_in_range_reduction_check_in_latch() {
         // Latch block should contain mesh_reduction_check
         let body = MirExpr::ForInRange {
+            source_span: None,
             var: "i".to_string(),
             start: Box::new(MirExpr::IntLit(0, MirType::Int)),
             end: Box::new(MirExpr::IntLit(10, MirType::Int)),
@@ -3565,6 +3614,7 @@ mod tests {
     fn test_for_in_range_returns_list() {
         // ForInRange now returns a list (Ptr), not Unit
         let body = MirExpr::ForInRange {
+            source_span: None,
             var: "i".to_string(),
             start: Box::new(MirExpr::IntLit(0, MirType::Int)),
             end: Box::new(MirExpr::IntLit(3, MirType::Int)),
@@ -3594,8 +3644,10 @@ mod tests {
     fn test_for_in_list_basic_blocks() {
         // ForInList should produce four basic blocks and use list builder
         let body = MirExpr::ForInList {
+            source_span: None,
             var: "x".to_string(),
             collection: Box::new(MirExpr::ListLit {
+                source_span: None,
                 elements: vec![],
                 ty: MirType::Ptr,
             }),
@@ -3661,9 +3713,11 @@ mod tests {
                 params: vec![],
                 return_type: MirType::SumType("Result".to_string()),
                 body: MirExpr::ConstructVariant {
+                    source_span: None,
                     type_name: "Result".to_string(),
                     variant: "Ok".to_string(),
                     fields: vec![MirExpr::StructLit {
+                        source_span: None,
                         name: "TestPair".to_string(),
                         fields: vec![
                             ("x".to_string(), MirExpr::IntLit(42, MirType::Int)),
@@ -3749,6 +3803,7 @@ mod tests {
                 params: vec![],
                 return_type: MirType::SumType("Result".to_string()),
                 body: MirExpr::ConstructVariant {
+                    source_span: None,
                     type_name: "Result".to_string(),
                     variant: "Ok".to_string(),
                     fields: vec![MirExpr::IntLit(42, MirType::Int)],
@@ -3817,10 +3872,13 @@ mod tests {
                 params: vec![],
                 return_type: MirType::Int,
                 body: MirExpr::Match {
+                    source_span: None,
                     scrutinee: Box::new(MirExpr::ConstructVariant {
+                        source_span: None,
                         type_name: "Result".to_string(),
                         variant: "Ok".to_string(),
                         fields: vec![MirExpr::StructLit {
+                            source_span: None,
                             name: "TestPair".to_string(),
                             fields: vec![
                                 ("x".to_string(), MirExpr::IntLit(42, MirType::Int)),
@@ -3846,8 +3904,10 @@ mod tests {
                             },
                             guard: None,
                             body: MirExpr::BinOp {
+                                source_span: None,
                                 op: BinOp::Add,
                                 lhs: Box::new(MirExpr::FieldAccess {
+                                    source_span: None,
                                     object: Box::new(MirExpr::Var(
                                         "pair".to_string(),
                                         MirType::Struct("TestPair".to_string()),
@@ -3856,6 +3916,7 @@ mod tests {
                                     ty: MirType::Int,
                                 }),
                                 rhs: Box::new(MirExpr::FieldAccess {
+                                    source_span: None,
                                     object: Box::new(MirExpr::Var(
                                         "pair".to_string(),
                                         MirType::Struct("TestPair".to_string()),

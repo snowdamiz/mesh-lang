@@ -293,7 +293,7 @@ end
     let mut import_ctx = ImportContext::empty();
     import_ctx.current_module = Some("App.Router".to_string());
     import_ctx.module_exports.insert(
-        "Todos".to_string(),
+        "Api.Todos".to_string(),
         module_exports("", &["handle_list_todos"], &[]),
     );
 

@@ -1,7 +1,4 @@
----
-name: mesh-database
-description: Mesh database access: SQLite (Sqlite module), PostgreSQL (Pg module), and ORM patterns with deriving Row and query builder.
----
+# Mesh database access
 
 ## SQLite
 

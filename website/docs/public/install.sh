@@ -191,16 +191,14 @@ check_update_needed() {
 extract_expected_checksum() {
     local _checksum_file="$1"
     local _archive="$2"
-    local _line _hash
+    local _hash
 
-    _line="$(awk -v archive="$_archive" '$2 == archive { print; exit }' "$_checksum_file")"
-    if [ -z "$_line" ]; then
-        return 1
-    fi
-
-    _hash="$(printf '%s\n' "$_line" | awk '{print $1}')"
+    _hash="$(awk -v archive="$_archive" '
+        { sub(/\r$/, "") }
+        NF == 2 && ($2 == archive || $2 == "./" archive) { print $1; exit }
+    ' "$_checksum_file")"
     if [ -z "$_hash" ]; then
-        return 2
+        return 1
     fi
     if [ "${#_hash}" -ne 64 ]; then
         return 2
@@ -209,7 +207,7 @@ extract_expected_checksum() {
         return 2
     fi
 
-    printf '%s\n' "$_hash"
+    printf '%s\n' "$_hash" | tr 'A-F' 'a-f'
 }
 
 verify_checksum() {
@@ -222,6 +220,10 @@ verify_checksum() {
     elif command -v shasum > /dev/null 2>&1; then
         _actual="$(shasum -a 256 "$_file" | cut -d' ' -f1)"
     else
+        if proof_mode_enabled; then
+            say_red "error: No SHA-256 tool found in staged-proof mode."
+            return 1
+        fi
         say "warning: No SHA-256 tool found, skipping checksum verification."
         return 0
     fi
@@ -309,7 +311,7 @@ uninstall() {
 
 # --- Install binary helper ---
 
-install_binary() {
+install_binary() (
     local _bin_name="$1"
     local _bin_version="$2"
     local _platform _archive _url _tmpdir _checksum_file _checksum_url _expected_hash _extract_status
@@ -321,6 +323,7 @@ install_binary() {
     _archive="${_bin_name}-v${_bin_version}-${_platform}.tar.gz"
     _url="${RELEASE_BASE_URL}/v${_bin_version}/${_archive}"
     _tmpdir="$(mktemp -d)"
+    trap 'rm -rf "$_tmpdir"' EXIT
 
     if ! download "$_url" "$_tmpdir/$_archive"; then
         say_red "error: Failed to download ${_bin_name} v${_bin_version}."
@@ -397,14 +400,47 @@ install_binary() {
             xattr -d com.apple.quarantine "$INSTALL_DIR/${_bin_name}" 2>/dev/null || true
             ;;
     esac
+)
 
-    rm -rf "$_tmpdir"
+configure_skills() {
+    local _accept_defaults="$1"
+    local _meshc="$INSTALL_DIR/meshc"
+    local _output _status _answer
+
+    if _output="$("$_meshc" skills refresh </dev/null 2>&1)"; then
+        if [ -n "$_output" ]; then
+            say "$_output"
+        fi
+    else
+        _status=$?
+        # Published compilers predating skills report this specific Clap error.
+        if [ "$_status" -eq 2 ] && printf '%s\n' "$_output" | grep -Fxq "error: unrecognized subcommand 'skills'"; then
+            return 0
+        fi
+        say_red "$_output"
+        return "$_status"
+    fi
+
+    # The installer's stdin may still be carrying the script itself.
+    if [ "$_accept_defaults" = 0 ] && ( : </dev/tty ) 2>/dev/null; then
+        printf '%s' 'Set up the Mesh skill for your coding tools? [y/N] ' >/dev/tty
+        if IFS= read -r _answer </dev/tty; then
+            case "$_answer" in
+                [yY] | [yY][eE][sS])
+                    "$_meshc" skills setup </dev/tty
+                    return $?
+                    ;;
+            esac
+        fi
+    fi
+    say "Optional: run 'meshc skills setup' to set up the Mesh skill for your coding tools."
 }
 
 # --- Install ---
 
 install() {
     local _version="$1"
+    local _accept_defaults="$2"
 
     detect_downloader
 
@@ -414,6 +450,7 @@ install() {
     fi
 
     if ! check_update_needed "$_version"; then
+        configure_skills "$_accept_defaults"
         return 0
     fi
 
@@ -427,6 +464,7 @@ install() {
 
     say_green "Installed meshc and meshpkg v${_version} to ~/.mesh/bin/"
     say "Run 'meshc --version' and 'meshpkg --version' to verify, or restart your shell."
+    configure_skills "$_accept_defaults"
 }
 
 # --- Usage ---
@@ -439,7 +477,7 @@ usage() {
     say "Options:"
     say "  --version VERSION  Install a specific version (default: latest)"
     say "  --uninstall        Remove meshc and meshpkg and clean up PATH changes"
-    say "  --yes              Accept defaults (for CI, already non-interactive)"
+    say "  --yes              Accept defaults and skip interactive prompts"
     say "  --help             Show this help message"
 }
 
@@ -448,6 +486,7 @@ usage() {
 main() {
     local _version=""
     local _do_uninstall=0
+    local _accept_defaults=0
 
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -464,6 +503,7 @@ main() {
                 shift
                 ;;
             --yes | -y)
+                _accept_defaults=1
                 shift
                 ;;
             --help | -h)
@@ -481,7 +521,7 @@ main() {
     if [ "$_do_uninstall" = "1" ]; then
         uninstall
     else
-        install "$_version"
+        install "$_version" "$_accept_defaults"
     fi
 }
 

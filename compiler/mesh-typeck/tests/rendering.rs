@@ -30,6 +30,14 @@ fn one_of_each() -> Vec<TypeError> {
             found: 3,
             origin: ConstraintOrigin::Expr { span: span(27, 40) },
         },
+        TypeError::ArityMismatch {
+            expected: 2,
+            found: 3,
+            origin: ConstraintOrigin::PipePlaceholder {
+                call_site: span(27, 40),
+                placeholder_slot: 2,
+            },
+        },
         TypeError::SlotPipeOutOfRange {
             slot: 4,
             fn_name: "fn_name".to_string(),

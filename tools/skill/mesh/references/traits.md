@@ -1,8 +1,3 @@
----
-name: mesh-traits
-description: Mesh trait system: interface definitions, impl blocks, deriving macros (Json, Row, Display, Eq, Ord), and associated types.
----
-
 # Mesh Traits
 
 See also: skills/types for struct definitions used in deriving examples.

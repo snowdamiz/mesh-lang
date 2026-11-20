@@ -1553,6 +1553,28 @@ end
     assert_eq!(output, "0\n1\n4\n9\ndone\n");
 }
 
+/// A comprehension collects each nested list after evaluating its local bindings.
+#[test]
+fn e2e_for_in_comprehension_retains_nested_lists() {
+    let source = r##"
+fn main() do
+  let nested = for i in 0..2 do
+    let base = i * 10
+    for j in [1, 2] do
+      base + j
+    end
+  end
+  for row in nested do
+    for value in row do
+      println("#{value}")
+    end
+    println("---")
+  end
+end
+"##;
+    assert_eq!(compile_and_run(source), "1\n2\n---\n11\n12\n---\n");
+}
+
 /// Empty map iteration produces empty list (no error).
 #[test]
 fn e2e_for_in_map_empty() {

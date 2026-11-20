@@ -83,6 +83,15 @@ fn assert_meshc_test_target_succeeds(target: &Path) {
     assert_meshc_test_target_reports_passes(target, "1 passed");
 }
 
+fn run_meshc_test_file(test_file: &Path) -> std::process::Output {
+    Command::new(meshc_bin())
+        .arg("test")
+        .arg(test_file)
+        .env("NO_COLOR", "1")
+        .output()
+        .expect("failed to run meshc test")
+}
+
 fn assert_local_sqlite_todo_template(project_dir: &Path, starter_name: &str) {
     let manifest_path = project_dir.join("mesh.toml");
     let main_path = project_dir.join("main.mpl");
@@ -2026,6 +2035,132 @@ fn test_a_file_of_describes_runs() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(output.status.success(), "{stdout}{stderr}");
     assert!(stdout.contains("2 passed"), "{stdout}");
+}
+
+#[test]
+fn test_nested_comprehension_checks_run_and_report_assertion_failures() {
+    let project = tempfile::tempdir().unwrap();
+    write_file(
+        &project.path().join("mesh.toml"),
+        "[package]\nname = \"nested-checks\"\nversion = \"0.1.0\"\n",
+    );
+    write_file(&project.path().join("main.mpl"), "fn main() do\nend\n");
+    let test_file = project.path().join("tests/nested.test.mpl");
+    let source = r#"test("nested checks") do
+  for status in 100..102 do
+    let eligible = true
+    for left in [0, 1] do
+      assert_eq(left, left)
+    end
+  end
+end
+"#;
+    let run_test = |source: &str| {
+        write_file(&test_file, source);
+        run_meshc_test_file(&test_file)
+    };
+
+    let pass = run_test(source);
+    let details = artifacts::command_output_text(&pass);
+    assert_eq!(pass.status.code(), Some(0), "{details}");
+    let stdout = String::from_utf8_lossy(&pass.stdout);
+    assert!(stdout.contains("✓ nested checks"), "{details}");
+    assert!(stdout.contains("1 test file passed"), "{details}");
+
+    let fail = run_test(&source.replace("assert_eq(left, left)", "assert_eq(left, 0)"));
+    let details = artifacts::command_output_text(&fail);
+    assert_eq!(fail.status.code(), Some(1), "{details}");
+    assert!(details.contains("✗ nested checks"), "{details}");
+    assert!(details.contains("assert_eq failed: left == 0"), "{details}");
+    assert!(
+        details.contains("left:  1") && details.contains("right: 0"),
+        "{details}"
+    );
+}
+
+#[test]
+fn test_retry_policy_nested_budget_sweep_rejects_mutants() {
+    let project = tempfile::tempdir().unwrap();
+    let project = project.path();
+    for (path, source) in [
+        ("mesh.toml", include_str!("fixtures/retry_policy/mesh.toml")),
+        ("main.mpl", include_str!("fixtures/retry_policy/main.mpl")),
+        (
+            "tests/budget.test.mpl",
+            include_str!("fixtures/retry_policy/tests/budget.test.mpl"),
+        ),
+    ] {
+        write_file(&project.join(path), source);
+    }
+
+    let policy = include_str!("fixtures/retry_policy/policy.mpl");
+    let policy_file = project.join("policy.mpl");
+    let test_file = project.join("tests/budget.test.mpl");
+    let test_name = "retry eligibility across HTTP statuses and remaining budgets";
+    let run_policy = |source: &str| {
+        write_file(&policy_file, source);
+        run_meshc_test_file(&test_file)
+    };
+    let assert_sweep_passes = |output: &std::process::Output| {
+        let details = artifacts::command_output_text(output);
+        assert_eq!(output.status.code(), Some(0), "{details}");
+        assert!(details.contains(&format!("✓ {test_name}")), "{details}");
+        assert!(details.contains("1 test file passed"), "{details}");
+    };
+
+    assert_sweep_passes(&run_policy(policy));
+    let binary = project.join(format!("retry-policy{}", std::env::consts::EXE_SUFFIX));
+    let build = Command::new(meshc_bin())
+        .arg("build")
+        .arg(project)
+        .arg("--output")
+        .arg(&binary)
+        .output()
+        .expect("failed to build the retry policy example");
+    assert!(
+        build.status.success(),
+        "{}",
+        artifacts::command_output_text(&build)
+    );
+    let run = Command::new(&binary)
+        .output()
+        .expect("failed to run the retry policy example");
+    assert!(
+        run.status.success(),
+        "{}",
+        artifacts::command_output_text(&run)
+    );
+    assert_eq!(run.stdout, b"true\nfalse\ntrue\nfalse\nfalse\n");
+
+    for (wrong_policy, actual, expected) in [
+        (
+            policy.replace("(status == 503 || status == 429)", "status == 503"),
+            "429/1: false",
+            "429/1: true",
+        ),
+        (
+            policy.replace(
+                "(status == 503 || status == 429)",
+                "status == 503 || status == 429",
+            ),
+            "503/-1: true",
+            "503/-1: false",
+        ),
+        (
+            policy.replace("left > 0", "left == 1"),
+            "429/2: false",
+            "429/2: true",
+        ),
+    ] {
+        let fail = run_policy(&wrong_policy);
+        let details = artifacts::command_output_text(&fail);
+        assert_eq!(fail.status.code(), Some(1), "{details}");
+        assert!(details.contains(&format!("✗ {test_name}")), "{details}");
+        assert!(details.contains("assert_eq failed:"), "{details}");
+        assert!(details.contains(&format!("left:  {actual}")), "{details}");
+        assert!(details.contains(&format!("right: {expected}")), "{details}");
+    }
+    assert_sweep_passes(&run_policy(policy));
 }
 
 #[test]

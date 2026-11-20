@@ -46,10 +46,19 @@ that every program links against in `~/.mesh/lib` (`libmesh_rt.a` and
 finds them in the `lib` directory beside its own `bin` directory, so keep the
 two together if you move the installation.
 
+If you extract the compiler archive manually, place the `meshc` executable in
+`<prefix>/bin` and the two runtime archives in `<prefix>/lib`. The executable
+and archives need this layout for `meshc build` and `meshc test`.
+
 `meshc build` links with the system C compiler driver: `cc` on macOS and Linux
 (the Xcode Command Line Tools, or `build-essential` and its equivalents), and
 `clang` from LLVM 21 on Windows, taken from `LLVM_SYS_211_PREFIX\bin` when that
 variable is set and from `PATH` otherwise.
+
+The installers check both archives against the release's `SHA256SUMS`. A
+manifest entry can use the archive basename or prefix it with `./`. A checksum
+mismatch stops the install. Set `MESH_INSTALL_STRICT_PROOF=1` to require a valid
+checksum entry for each archive. See [installer environment variables](/docs/environment-variables/#installers-and-updates).
 
 ### Update an installed toolchain
 
@@ -82,6 +91,145 @@ If you are contributing to Mesh or need an unsupported target, see the
 [source-build prerequisites](/docs/getting-started/#alternative-build-from-source).
 Source builds require LLVM 21 and a working native linker; they are an
 alternative workflow, not the primary public install contract.
+
+## Read the offline guide and install the Mesh skill
+
+Run `meshc guide` to list topics or `meshc guide syntax` for examples such as
+the slot pipe. The guide comes from the running compiler and works offline
+with just the executable. Its SHA-256 identifies the guide content, including
+when two builds report the same compiler version.
+
+After an interactive installation, Mesh offers to set up its skill for your
+coding tools. You can run the picker at any time, including with a
+source-built or manually extracted compiler.
+
+```bash
+meshc skills setup
+```
+
+Choose one or more hosts, select account or project scope, then confirm the
+displayed destinations. Project scope uses the nearest enclosing Mesh
+project or Git repository, falling back to the current directory. Hosts
+that share a directory can discover the same installed copy.
+
+| Host | Project directory | Account directory |
+| --- | --- | --- |
+| Codex | `.agents/skills/mesh` | `~/.agents/skills/mesh` |
+| Claude Code | `.claude/skills/mesh` | `~/.claude/skills/mesh` |
+| Cursor | `.agents/skills/mesh` | `~/.cursor/skills/mesh` |
+| Gemini CLI | `.gemini/skills/mesh` | `~/.gemini/skills/mesh` |
+| GitHub Copilot CLI | `.github/skills/mesh` | `~/.copilot/skills/mesh` |
+
+On Windows, `~` refers to `%USERPROFILE%`. Your coding tool manages its own
+workspace trust and permissions.
+
+Fresh unattended installs, including `--yes` and `-Yes`, leave skill setup
+optional. Upgrades refresh account copies that Mesh installed and whose
+files match the recorded digest. Mesh reports paths with local edits, extra
+files, symlinks, or an existing skill managed by another tool. Project
+copies stay pinned until you rerun setup and confirm the project scope.
+Run `meshc skills refresh` to apply the same account refresh with your current
+compiler without reinstalling it.
+
+## Verify a pure policy
+
+`meshc verify` is an experimental check for pure functions on `Int` and
+`Bool` inputs with a `Bool` result. A `.law` file identifies the function and
+defines an independent expected result. Libraries can verify laws without
+an executable entrypoint.
+
+### Run the retry law
+
+In an empty project directory, save the implementation as `policy.mpl`.
+
+```mesh
+pub fn retry(status :: Int, left :: Int) -> Bool do
+  (status == 429 || status == 503) && left > 0
+end
+```
+
+Create `laws/http/eligibility.law` with the expected result.
+
+```text
+from Policy import retry
+
+law retry(status :: Int, left :: Int) -> Bool do
+  case status do
+    429 -> left > 0
+    503 -> left > 0
+    _ -> false
+  end
+end
+```
+
+For a private function in the same package, write
+`from Policy import private retry` in the law. The function retains its
+visibility in application imports.
+
+List the resolved target without a solver.
+
+```sh
+meshc verify . --list
+```
+
+Put Z3 4.15.7 on `PATH` or set `MESH_VERIFY_Z3` to your trusted Z3 executable.
+Then run `meshc verify .`. The result is `verified`. Builds and tests run
+without Z3. Set `MESH_VERIFY_TIMEOUT_MS` to change the default solver budget of
+5,000 milliseconds per law.
+
+Append `&& left <= 8` to the implementation's expression and run
+`meshc verify . --json` again. The command exits with code 1 and reports
+`falsified`. The report's `inputs`, `expected`, and `actual` fields show a
+counterexample. Call the compiled function with the reported inputs to replay
+it. For instance, at status 429 with a budget of 9, the law expects `true` and
+the capped function returns `false`. Restore the original implementation and
+run `meshc verify .` again.
+
+### Choose which laws to check
+
+By default, Mesh scans the project recursively for visible `.law` files. It
+skips build output, hidden dependency directories, and nested packages. A
+`[verify]` table in `mesh.toml` replaces the default scan with the listed
+directories. Use existing package-relative directories. Overlapping roots
+count each file once.
+
+```toml
+[verify]
+law_roots = ["laws"]
+```
+
+### Read the verdict
+
+The verifier reports `verified` when the modeled function agrees with the
+law for every input. The model uses signed 64-bit `Int` comparisons and
+handles Boolean expressions, conditionals, and direct calls to supported
+helpers. A `falsified` result includes inputs and both values. An `unverified`
+result gives the reason, such as an exhausted solver budget, division,
+recursion, or a clock read. For unsupported source expressions, the text
+report shows the file, line, and column. JSON includes these fields and byte
+offsets under `unsupported_at`. Verification succeeds when it proves at
+least one law and every discovered law verifies. `--list --json` emits an
+inventory with each target, its source location, and its requirement digest.
+
+### Preserve requirements in CI
+
+For an implementation change in CI, generate the baseline with the same
+trusted compiler and keep the inventory outside the candidate's writable
+checkout.
+
+```sh
+meshc verify "$BASE_CHECKOUT" --list --json > "$TRUSTED_ARTIFACTS/base-laws.json"
+meshc verify "$CANDIDATE_CHECKOUT" --preserve "$TRUSTED_ARTIFACTS/base-laws.json" --json
+```
+
+The preservation check allows law-file moves and requires new laws to verify.
+It fails if the candidate drops a baseline target or changes its requirement
+digest. The digest covers the resolved requirement. Moving a law or changing
+its whitespace or comments keeps the digest. A change to the owning package,
+module, name, or signature changes the target identity.
+
+Use the [retry regression test](/docs/testing/#test-a-change-to-a-retry-policy)
+to exercise the executable alongside the law.
 
 ## Create a project
 
@@ -852,8 +1000,10 @@ The authenticated GitHub login must match the package-name scope, such as
 
 The publish archive preserves package-relative `.mpl` paths, including nested
 modules and an override entrypoint. Hidden paths, `*.test.mpl` files, and
-`*.test-support.mpl` fragments are excluded. Manifest-declared native bindings
-and static libraries are included and their hashes are verified before upload.
+`*.test-support.mpl` fragments are excluded. The archive includes `.law` files
+selected by [law discovery](#choose-which-laws-to-check), plus all explicitly
+configured law roots. Manifest-declared native bindings and static libraries
+are included and their hashes are verified before upload.
 `README.md` is not currently included by `meshpkg publish`.
 
 Target another compatible registry with `--registry`:
@@ -1231,6 +1381,10 @@ The verifier persists the candidate and hosted-run evidence under:
 | Cluster operations | `meshc cluster <command>` | Inspect or mutate runtime-owned cluster state |
 | Release gates | `meshc proof <command>` | Run Docker, chaos, performance, and continuity proof commands |
 | Toolchain update | `meshc update` or `meshpkg update` | Refresh both installed commands |
+| Offline guide | `meshc guide [topic]` | Read guidance from the running compiler |
+| Coding tool setup | `meshc skills setup` | Choose hosts and install the Mesh skill |
+| Skill refresh | `meshc skills refresh` | Update eligible account copies of the Mesh skill |
+| Policy verification | `meshc verify [dir]` | List or verify pure policy laws |
 | Package CLI | `meshpkg <login \| publish \| install \| search \| update>` | Authenticate with and use a registry |
 | VS Code Extension | Marketplace or VSIX | First-class VS Code host for the shared grammar and Mesh LSP |
 | Neovim Pack | Native package runtime | First-class Neovim host for classic syntax and `meshc lsp` |

@@ -1,8 +1,3 @@
----
-name: mesh-syntax
-description: Mesh language syntax: functions, closures, pipe operators (|> and |N>), control flow, operators, and let bindings.
----
-
 # Mesh Syntax
 
 ## Functions
@@ -35,7 +30,7 @@ Rules:
 1. `@cluster` and `@cluster(N)` are decorator forms attached directly to function declarations.
 2. Use them in source (`work.mpl`) for the canonical clustered-runtime surface rather than treating clustering as manifest-owned config.
 3. `Node.start_from_env()` is the matching bootstrap entrypoint for packages that participate in the clustered runtime.
-4. For scaffold, operator, or routed clustered-runtime guidance, load `skills/clustering`; this syntax skill only calls out the decorator surface.
+4. For scaffold, operator, or routed clustered-runtime guidance, load [clustering](clustering.md); this syntax skill only calls out the decorator surface.
 
 Code example:
 ```mesh
@@ -83,35 +78,30 @@ let result = Iter.from(list)
 6. Use when the natural "subject" argument is not in position 1.
 
 ```mesh
-fn add(a :: Int, b :: Int) -> Int do
-  a + b
-end
-
-fn concat3(a :: String, b :: String, c :: String) -> String do
-  a <> b <> c
+fn format_three(left :: String, middle :: String, right :: String) -> String do
+  left <> ":" <> middle <> ":" <> right
 end
 
 fn main() do
-  # 10 |2> add(1) = add(1, 10) = 11
-  let result1 = 10 |2> add(1)
-  println("#{result1}")
-
-  # "world" |2> concat3("hello ", " !") = concat3("hello ", "world", " !")
-  let result2 = "world" |2> concat3("hello ", " !")
-  println(result2)
+  println("middle" |2> format_three("left", "right"))
 end
 ```
+
+Save this as `main.mpl` in a new project. Run `meshc build . -o output && ./output`.
+The program prints `left:middle:right`. The slot pipe inserts the value among
+the written arguments. An underscore in the argument list does not select a
+slot.
 
 ## Let Bindings
 1. `let name = expr` binds a value. Bindings are immutable by default.
 2. Rebinding with the same name shadows the previous binding: `let x = 1` then `let x = x + 1`.
 3. Type inference is automatic — explicit type annotation rarely needed.
-4. Destructuring in let: `let Ok(v) = result` (use `case` for safe exhaustive matching).
+4. Destructure tuples with `let (left, right) = pair`. Use `case` to bind a sum-type variant's payload.
 
 ## Control Flow
 1. `if condition do ... else ... end` — condition is a Bool expression.
 2. `if` is an expression: both branches return a value of the same type.
-3. `case expr do pattern -> value ... end` for pattern matching (see skills/pattern-matching).
+3. `case expr do pattern -> value ... end` for pattern matching (see [pattern matching](pattern-matching.md)).
 4. `for item in collection do ... end` for iteration over lists, maps, sets, ranges.
 5. `while condition do ... end` for imperative loops.
 6. `break` and `continue` work inside `for` and `while`.

@@ -27,7 +27,8 @@ curl -sSf https://meshlang.dev/install.sh | sh
 irm https://meshlang.dev/install.ps1 | iex
 ```
 
-The installers place both binaries in `~/.mesh/bin` on Unix-like systems and `~\.mesh\bin` on Windows.
+The installers put the binaries in `~/.mesh/bin` and the runtime libraries in
+`~/.mesh/lib`. On Windows, these directories are under `%USERPROFILE%\.mesh`.
 
 ### Verify the install
 
@@ -39,6 +40,18 @@ meshpkg --version
 ```
 
 You should see the Mesh version number printed for each command.
+
+### Read the guide and set up your coding tools
+
+Run `meshc guide` to browse the compiler's offline guide. Use
+`meshc guide syntax` or `meshc guide testing` to open a topic directly.
+If `meshc guide` reports an unrecognized command, use a
+[source build](#alternative-build-from-source) for these features.
+
+If you skip skill setup during installation, run `meshc skills setup` later.
+Choose your coding tools, select account or project scope, and confirm the
+directories. See the [Mesh skill setup reference](/docs/tooling/#read-the-offline-guide-and-install-the-mesh-skill)
+for supported tools and what happens to installed copies on upgrade.
 
 ### Alternative: Build from source
 

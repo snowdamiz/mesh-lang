@@ -116,8 +116,8 @@ pub struct JsonDiagnostic {
 
 // ── Error Codes ────────────────────────────────────────────────────────
 
-/// Assign a unique error code to each TypeError variant.
-fn error_code(err: &TypeError) -> &'static str {
+/// The code shared by terminal, JSON and LSP type diagnostics.
+pub fn error_code(err: &TypeError) -> &'static str {
     match err {
         TypeError::Mismatch { .. } => "E0001",
         TypeError::InfiniteType { .. } => "E0002",
@@ -556,10 +556,62 @@ impl Description {
 fn describe(error: &TypeError, source: &str, suggestions: Option<&[String]>) -> Description {
     let mut description = describe_spans(error, source, suggestions);
     description.message = error.to_string();
+    if let Some(hint) = repair_hint(error) {
+        description.set_help(hint);
+    }
     if mentions_plaintext(error) && !matches!(error, TypeError::PlaintextViolation { .. }) {
         description.notes.push(PLAINTEXT_EXITS.to_string());
     }
     description
+}
+
+/// Repair advice where the source form or intended behavior matters.
+pub fn repair_hint(error: &TypeError) -> Option<String> {
+    match error {
+        TypeError::ArityMismatch {
+            origin:
+                ConstraintOrigin::PipePlaceholder {
+                    placeholder_slot, ..
+                },
+            ..
+        } => {
+            let repair = if *placeholder_slot == 1 {
+                "Keep `|>` and remove `_` from the call to use the piped value as argument 1."
+                    .to_string()
+            } else {
+                format!(
+                    "Use `|{placeholder_slot}>` and remove `_` from the call \
+                     to pass the value as argument {placeholder_slot}."
+                )
+            };
+            Some(format!(
+                "`|>` passes the piped value as the first argument. The call counts `_` as a written argument. \
+                 {repair} See `meshc guide syntax`."
+            ))
+        }
+        TypeError::NonExhaustiveMatch {
+            missing_patterns, ..
+        } => {
+            if missing_patterns.iter().any(|pattern| pattern == "_") {
+                return Some("add a wildcard `_` arm to handle the remaining cases".to_string());
+            }
+            let patterns = missing_patterns
+                .iter()
+                .map(|pattern| format!("`{pattern}`"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let arms = if missing_patterns.len() == 1 {
+                "an arm"
+            } else {
+                "arms"
+            };
+            Some(format!(
+                "add {arms} for {patterns}. Use a wildcard `_` arm for an intentional default \
+                 that also covers future variants."
+            ))
+        }
+        _ => None,
+    }
 }
 
 /// Where a `Plaintext` value may go, noted on every error about one.
@@ -964,7 +1016,6 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
             let range = clamp(text_range_to_range(*span));
 
             Description::error(range, format!("missing: {}", missing_patterns.join(", ")))
-                .with_help("add the missing patterns or a wildcard `_` arm")
         }
 
         TypeError::NonExhaustiveClauses {

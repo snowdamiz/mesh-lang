@@ -94,6 +94,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # The pull request merge commit has the trusted base as a parent.
+          fetch-depth: 2
 
       - name: Cache LLVM
         uses: actions/cache@v4
@@ -130,6 +133,51 @@ jobs:
         with:
           targets: x86_64-unknown-linux-gnu
 
+      - name: Install pinned law verifier solver
+        shell: bash
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          z3_archive=z3-4.15.7-x64-glibc-2.39.zip
+          cd "$RUNNER_TEMP"
+          curl -fsSLO "https://github.com/Z3Prover/z3/releases/download/z3-4.15.7/$z3_archive"
+          printf '%s  %s\n' '4436ab6381f0b9c68075a267ab13a5f3ad25f7c25f7626dec959c76805c9f2cb' "$z3_archive" | sha256sum --check
+          unzip -q "$z3_archive"
+          echo "MESH_VERIFY_Z3=$RUNNER_TEMP/${z3_archive%.zip}/bin/z3" >> "$GITHUB_ENV"
+
+      - name: Preserve trusted retry policy laws
+        if: github.event_name == 'pull_request'
+        shell: bash
+        timeout-minutes: 15
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          policy=compiler/meshc/tests/fixtures/laws
+          git cat-file -e "$BASE_SHA^{commit}"
+          if git diff --quiet "$BASE_SHA" HEAD -- "$policy"; then
+            exit 0
+          fi
+          if [[ "$(git cat-file -t "$BASE_SHA:$policy" 2>/dev/null)" != tree ]]; then
+            echo 'The base revision predates the retry policy pilot.'
+            exit 0
+          fi
+          test "$(git cat-file -t "HEAD:$policy")" = tree
+
+          trusted_dir=$(mktemp -d "$RUNNER_TEMP/mesh-policy-laws.XXXXXXXX")
+          trap 'rm -rf -- "$trusted_dir"' EXIT
+          mkdir "$trusted_dir/base"
+          git archive "$BASE_SHA" | tar -xf - -C "$trusted_dir/base"
+          (
+            cd "$trusted_dir/base"
+            export CARGO_TARGET_DIR="$trusted_dir/target"
+            export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER="$PWD/scripts/ci-x86_64-linux-gnu-clang"
+            cargo build --locked -p meshc --bin meshc
+          )
+          verifier="$trusted_dir/target/debug/meshc"
+          "$verifier" verify "$trusted_dir/base/$policy" --list --json > "$trusted_dir/base-laws.json"
+          "$verifier" verify "$policy" --preserve "$trusted_dir/base-laws.json"
+
       - name: Cargo cache
         uses: Swatinem/rust-cache@v2
         with:
@@ -159,6 +207,14 @@ jobs:
           # (ML-KEM, RFC 9578 blind RSA), the OpenSSL differential and the
           # secret-resource contract through compiled Mesh.
           cargo test --locked -p meshc --test e2e --test tooling_e2e --test e2e_language_fixes --test e2e_performance --test e2e_library --test e2e_crypto_v2 --test e2e_secret
+
+      - name: Check skill updates and verify policy laws
+        shell: bash
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          cargo test --locked -p meshc --bin meshc --test e2e_laws
+          cargo test --locked -p meshc --bin meshc verify_solver::tests::pinned_z3 -- --ignored
 
       - name: Prove durable jobs on PostgreSQL
         timeout-minutes: 10

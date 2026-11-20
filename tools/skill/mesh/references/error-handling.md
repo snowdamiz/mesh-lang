@@ -1,8 +1,3 @@
----
-name: mesh-error-handling
-description: Mesh error handling: Result type, Option type, ? propagation operator, chaining, and From/Try conversion traits.
----
-
 # Mesh Error Handling
 
 See also: skills/types for Result/Option type definitions.

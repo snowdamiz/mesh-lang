@@ -700,11 +700,13 @@ fn register_imported_signatures(
             }
             _ => continue,
         };
-        let namespace = path.and_then(|path| path.segments().last().cloned());
-        let Some((namespace, exports)) = namespace.and_then(|namespace| {
-            let exports = import_ctx.module_exports.get(&namespace)?;
-            Some((namespace, exports))
-        }) else {
+        let Some(segments) = path.map(|path| path.segments()) else {
+            continue;
+        };
+        let (Some(namespace), Some(exports)) = (
+            segments.last(),
+            import_ctx.module_at_path(&segments.join(".")),
+        ) else {
             continue;
         };
         let Some(names) = names else {

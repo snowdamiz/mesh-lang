@@ -25,6 +25,9 @@ serde_json = { workspace = true }
 sha2 = { workspace = true }
 tokio = { workspace = true }
 
+[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
+libc = "0.2"
+
 [target.'cfg(target_env = "musl")'.dependencies]
 mimalloc = { workspace = true }
 openssl-sys = { version = "0.9", features = ["vendored"] }

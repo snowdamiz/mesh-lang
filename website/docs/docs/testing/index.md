@@ -53,9 +53,9 @@ unset.
 then the `Failures:` list and the counts.
 
 The top-level `tests/` directory may also contain ordinary `.mpl` helper
-modules imported by test files. `meshc test` includes those helpers, while
-normal builds and published packages exclude the entire top-level `tests/`
-tree so test-only APIs cannot leak into production artifacts.
+modules imported by test files. `meshc test` includes those helpers. Normal
+builds and published packages exclude the Mesh source files in that tree.
+`meshpkg publish` includes any `.law` files selected by law discovery.
 
 Mesh source discovery does not follow symbolic links. A visible symbolic link
 under the requested project root is rejected instead of being used as an alias
@@ -371,6 +371,64 @@ assert_receive "done"
 `assert_receive` is a statement of its own, written in a `test`, `setup`, or
 `teardown` block; anywhere else, even in a helper function in the test file, it
 is error E0077. Names its pattern binds are not available after it.
+
+## Test a change to a retry policy
+
+Suppose the current production policy is `status == 503 && left > 0`.
+The request is to handle 429 under the same budget rule. Both statuses still
+require a strictly positive budget. Every other status remains ineligible.
+
+Keep the original arguments and return type. To import the policy in a test,
+put the production function in `policy.mpl` and use
+`from Policy import retry` in `main.mpl` and the test. If the policy is already
+in a module, import it from there. For a private function in an ordinary
+module, a sibling `.test-support.mpl` can expose a test-only wrapper.
+
+Save the following test as `tests/budget.test.mpl`. The expected decision
+comes from the request and the old budget rule.
+
+```mesh
+from Policy import retry
+
+test("retry eligibility across HTTP statuses and remaining budgets") do
+  for status in 100..600 do
+    let eligible = case status do
+      429 -> true
+      503 -> true
+      _ -> false
+    end
+    for left in [-1, 0, 1, 2, 8] do
+      assert_eq(retry(status, left), eligible && left > 0)
+    end
+  end
+end
+```
+
+Run `meshc test tests/budget.test.mpl`. Expect an assertion failure on the
+original 503-only implementation. If compilation fails or the runner
+discovers no tests, fix the setup before using the result.
+
+Update the policy in `policy.mpl`.
+
+```mesh
+pub fn retry(status :: Int, left :: Int) -> Bool do
+  (status == 503 || status == 429) && left > 0
+end
+```
+
+Run the same test again. Check the named pass and the one passing test file.
+Build and run the original program if it already exercises the policy.
+For calls `(503, 1)`, `(503, 0)`, `(429, 1)`, `(429, 0)`, and
+`(500, 1)`, expect `true`, `false`, `true`, `false`, and `false`
+respectively.
+
+To check that the test catches a regression, temporarily change the policy
+to accept only budget 1 or remove the parentheses around the allowed
+statuses. Expect a failing assertion and exit 1. Restore the policy and
+rerun the test. Report the change, the named test result, and any assumptions
+about the request. The sweep covers the listed budgets and HTTP statuses. Read
+the recipe offline with `meshc guide testing`. To check the pure policy across
+all supported inputs as well, see [Run the retry law](/docs/tooling/#run-the-retry-law).
 
 ## Coverage
 

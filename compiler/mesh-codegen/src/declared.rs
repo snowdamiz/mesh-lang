@@ -143,6 +143,7 @@ fn generate_declared_work_wrapper(
     // continuity metadata it receives.
     let wrapper_name = declared_work_wrapper_name(runtime_registration_name);
     let call = MirExpr::Call {
+        source_span: None,
         func: Box::new(MirExpr::Var(
             executable_symbol.to_string(),
             MirType::FnPtr(Vec::new(), Box::new(return_type.clone())),

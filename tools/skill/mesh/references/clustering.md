@@ -1,7 +1,4 @@
----
-name: mesh-clustering
-description: Mesh clustered runtime: source-first `@cluster` / `@cluster(N)`, `Node.start_from_env()`, `meshc init --clustered`, `meshc init --template todo-api --db postgres`, Mesh operator CLI surfaces, the SQLite local-only boundary, and bounded `HTTP.clustered(...)` guidance.
----
+# Mesh clustering
 
 ## Canonical Clustered Contract
 
@@ -70,7 +67,7 @@ Rules:
 3. The shipped PostgreSQL Todo starter uses explicit total-replica counts. `HTTP.clustered(1, ...)` has no redundant record copy; `HTTP.clustered(2, ...)` requests an owner plus one record replica.
 4. `meshc init --template todo-api --db sqlite` is intentionally local-only and does not make `HTTP.clustered(...)` part of its public contract.
 5. Use `HTTP.clustered(...)` when you need routed clustered reads; use `@cluster` / `Node.start_from_env()` for runtime bootstrapping and background clustered work.
-6. For route helper details load `skills/http`; for decorator syntax load `skills/syntax`.
+6. For route helper details load [http](http.md); for decorator syntax load [syntax](syntax.md).
 
 Code example (shipped PostgreSQL Todo starter shape):
 ```mesh
