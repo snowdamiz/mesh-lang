@@ -233,12 +233,12 @@ fn held_checkout(proof: &Proof<'_>) -> Option<u32> {
 }
 
 fn stage_cron(proof: &Proof<'_>) -> i64 {
-    // Use a single past calendar occurrence even if the wall clock crosses
-    // a minute boundary while the process proof is running.
+    // Use a single past calendar occurrence with a 24-hour cron hour, even
+    // if the wall clock crosses a minute boundary during the proof.
     let (occurrence, expression): (i64, String) = serde_json::from_str(&proof.sql(
         "WITH target(minute) AS (SELECT mesh_jobs.now_ms() / 60000 - 1)
          SELECT json_build_array(minute,
-           to_char(to_timestamp(minute * 60) AT TIME ZONE 'UTC', 'MI HH DD MM') || ' *')
+           to_char(to_timestamp(minute * 60) AT TIME ZONE 'UTC', 'MI HH24 DD MM') || ' *')
          FROM target",
     ))
     .unwrap();
