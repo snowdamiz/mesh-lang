@@ -21,7 +21,11 @@ mod msg_shape;
 pub mod pattern;
 pub mod types;
 
-use std::{collections::BTreeMap, path::Path};
+use std::{
+    collections::BTreeMap,
+    hash::{DefaultHasher, Hash, Hasher},
+    path::Path,
+};
 
 use inkwell::builder::Builder;
 use inkwell::context::Context;
@@ -367,15 +371,15 @@ impl<'ctx> CodeGen<'ctx> {
         // Step 5: Generate stable binary ABI wrappers for library exports.
         self.generate_library_export_wrappers()?;
 
-        // Step 6: Generate main wrapper if entry function exists.
-        if let Some(entry_name) = &mir.entry_function {
-            self.generate_main_wrapper(entry_name)?;
-        }
-
-        // Step 7: Keep every stack slot a static, entry-block allocation.
+        // Step 6: Verify and lower grouped actor code before fingerprinting the program.
         group_safety::certify(&self.grouped_spawns, &mir.actors, &mir.native_functions)?;
         self.lower_grouped_steps(mir)?;
         self.hoist_static_allocas();
+
+        // Step 7: Generate main wrapper if entry function exists.
+        if let Some(entry_name) = &mir.entry_function {
+            self.generate_main_wrapper(entry_name)?;
+        }
 
         // Step 8: Verify the module.
         self.verify()
@@ -997,6 +1001,13 @@ impl<'ctx> CodeGen<'ctx> {
     /// Creates: `main(argc: i32, argv: ptr) -> i32` that calls
     /// `mesh_rt_init()`, then calls the Mesh entry function, then returns 0.
     fn generate_main_wrapper(&mut self, entry_name: &str) -> Result<(), String> {
+        let jobs_fingerprint = if self.jobs_handlers.is_empty() {
+            String::new()
+        } else {
+            let mut hasher = DefaultHasher::new();
+            self.module.print_to_string().to_bytes().hash(&mut hasher);
+            format!("{:016x}:", hasher.finish())
+        };
         let i32_type = self.context.i32_type();
         let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
         let main_type = i32_type.fn_type(&[i32_type.into(), ptr_type.into()], false);
@@ -1198,10 +1209,11 @@ impl<'ctx> CodeGen<'ctx> {
 
         let register_jobs_handler =
             intrinsics::get_intrinsic(&self.module, "mesh_jobs_register_handler");
-        for (name, handler) in &self.jobs_handlers {
+        for (symbol, handler) in &self.jobs_handlers {
+            let name = format!("{jobs_fingerprint}{symbol}");
             let name_global = self
                 .builder
-                .build_global_string_ptr(name, &format!("jobs_handler_{name}"))
+                .build_global_string_ptr(&name, &format!("jobs_handler_{symbol}"))
                 .map_err(|e| e.to_string())?;
             let name_len = self.context.i64_type().const_int(name.len() as u64, false);
             self.builder

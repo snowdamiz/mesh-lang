@@ -559,6 +559,17 @@ mod tests {
         llvm
     }
 
+    fn jobs_handler_key<'a>(llvm: &'a str, symbol: &str) -> &'a str {
+        let global = format!("@jobs_handler_{symbol} = ");
+        llvm.lines()
+            .find_map(|line| {
+                let (_, string) = line.strip_prefix(&global)?.split_once(" c\"")?;
+                let (name, _) = string.split_once("\\00\"")?;
+                Some(name)
+            })
+            .unwrap_or_else(|| panic!("missing registry key for {symbol}"))
+    }
+
     #[test]
     fn durable_jobs_emit_native_calls_and_a_bare_runner_callback() {
         let llvm = llvm_of(
@@ -697,11 +708,17 @@ end
             .filter(|line| line.starts_with("call void @mesh_jobs_register_handler("))
             .collect();
         assert_eq!(registrations, [
-            "call void @mesh_jobs_register_handler(ptr @jobs_handler_Main__local, i64 11, ptr @Main__local)",
-            "call void @mesh_jobs_register_handler(ptr @jobs_handler_imported, i64 8, ptr @imported)",
+            "call void @mesh_jobs_register_handler(ptr @jobs_handler_Main__local, i64 28, ptr @Main__local)",
+            "call void @mesh_jobs_register_handler(ptr @jobs_handler_imported, i64 25, ptr @imported)",
         ]);
-        assert!(llvm.contains("[12 x i8] c\"Main__local\\00\""));
-        assert!(llvm.contains("[9 x i8] c\"imported\\00\""));
+        let local_key = jobs_handler_key(&llvm, "Main__local");
+        let fingerprint = local_key.strip_suffix(":Main__local").unwrap();
+        assert_eq!(fingerprint.len(), 16);
+        assert!(fingerprint.bytes().all(|byte| byte.is_ascii_hexdigit()));
+        assert_eq!(
+            jobs_handler_key(&llvm, "imported"),
+            format!("{fingerprint}:imported")
+        );
         assert!(llvm.contains("call ptr @Main__ordinary("));
         let starts: Vec<_> = llvm
             .lines()
@@ -732,6 +749,26 @@ end
                 .unwrap_or_else(|| panic!("missing or out of order: {call}\n{wrapper}"));
             remaining = after;
         }
+    }
+
+    #[test]
+    fn durable_jobs_keys_change_with_compiled_code() {
+        let source = r#"
+fn handler(_job :: String) -> String do "first build" end
+
+fn main() do
+  case Pool.open("postgres://localhost/db", 1, 2, 100) do
+    Ok(pool) -> inspect(Jobs.start(pool, "{}", handler))
+    Err(error) -> error
+  end
+end
+"#;
+        let first = llvm_of(source);
+        let repeated = llvm_of(source);
+        let changed = llvm_of(&source.replace("first build", "other build"));
+        let key = jobs_handler_key(&first, "handler");
+        assert_eq!(jobs_handler_key(&repeated, "handler"), key);
+        assert_ne!(jobs_handler_key(&changed, "handler"), key);
     }
 
     #[test]
