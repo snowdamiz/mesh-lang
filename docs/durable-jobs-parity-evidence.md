@@ -48,7 +48,7 @@ python3 scripts/jobs-parity.py --smoke --postgres-version 18.7 --mesh-ref 59f6a7
 
 ## Replay the fresh-application guides
 
-Set `release` to the release directory for `53fb9189` containing `meshc`,
+Set `release` to a release directory containing `meshc`,
 `libmesh_rt.a`, and `jobs-parity-toolchain.json`. With PostgreSQL server
 tools, Python 3, and `jq` installed, run from the checkout root.
 
@@ -56,9 +56,9 @@ tools, Python 3, and `jq` installed, run from the checkout root.
 PG_BIN_DIR="$(pg_config --bindir)" bash scripts/verify-jobs-guide.sh "$release"
 ```
 
-The proof checks both artifact hashes and compares the compiler and runtime
-sources with `c5ef7348`. It runs the operations walkthrough directly from
-Markdown on a disposable cluster, then compiles and runs the concurrency
+The proof checks both artifact hashes and compares the pinned compiler and
+runtime sources with the current checkout. It runs the operations walkthrough
+from Markdown on a disposable cluster, then compiles and runs the concurrency
 guide's transactional enqueue and worker examples. The receipt covers Mesh
 0.1.8 on macOS arm64 and PostgreSQL 17.11 over loopback SCRAM. Lease recovery
 uses drain process loss on the same primary. [J7 lane 9 receipt](../proof/jobs-parity/j7-lane-9.log)
@@ -134,6 +134,11 @@ the unread buffer dropped 130 events in every measured trial. Host load
 varied across the runs. These comparisons include the combined changes
 to dispatch and maintenance.
 
+A second disabled run with the same binaries recorded 326.5 jobs per second
+against 311.7 on main, with pickup p99 of 365.9 ms against 385.9 ms. Both
+metrics met their limits on the rerun. Its startup one-minute load was 17.5
+on 15 logical CPUs. Raw receipts are in run `j1-load-7tn1vav3`.
+
 Each run prints its evidence directory under `target/jobs-parity/<sha>/`.
 `manifest.json` records the compiled SHA, fixture hashes, tool versions,
 database parameters, and host. `settings.json` records the frozen workload
@@ -154,6 +159,9 @@ fails the trial. The timestamp reconstruction stays available separately.
 
 Pickup uses the interval between the enqueue transaction's commit timestamp
 and the first handler entry. Claim and settlement are tracked separately.
+The raw attempt records include the commits of the handler's first attempt
+record and its effect. These timestamps split the interval between handler
+entry and settlement without adding work to the handler.
 The connection and operating system resource samples describe observed
 peaks at the configured sampling interval. Runner CPU includes the process
 startup, idle window, and shutdown. The timed settlement window comes from
@@ -295,6 +303,24 @@ was 25.1 on 15 logical CPUs. This profile missed both proposed Core parity
 thresholds. Raw receipts are in run `j1-load-pqsep8or`.
 The same run's sparse profile reconciled 24 jobs per trial and met its
 measured limits, with pickup p99 of 258.8 ms on Mesh and 252.1 ms on Oban.
+
+With four runners and 16 slots, another PostgreSQL 17.11 run reconciled all
+five pairs for each of the following profiles. Each missed both Core
+throughput and pickup limits. Startup one-minute load was 18.9 on 15
+logical CPUs. Raw receipts are in run `j1-load-5hx0vvd4`.
+
+| Profile | Jobs per trial | Mesh jobs/s | Oban jobs/s | Mesh pickup p99, ms | Oban pickup p99, ms |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 100 ms, 16 KiB | 128 | 91.2 | 124.1 | 1,277.0 | 926.4 |
+| No-op, 1 KiB | 256 | 266.3 | 959.7 | 913.9 | 266.1 |
+| Large-context stress, 512 KiB | 16 | 56.5 | 132.5 | 261.7 | 117.3 |
+
+The short-profile timing run `j1-load-6h3ntgfp` used the same release
+runtime and one runner with 16 slots. Median time from handler entry to
+the first attempt record's commit was 9.8 ms on Mesh and 0.3 ms on Oban.
+That interval includes connection setup for Mesh and a pool checkout
+for Oban. Median time from effect commit to settlement was 15.8 ms on
+Mesh and 0.5 ms on Oban. Each value is the median across five trial medians.
 
 ## Compare bounded drain
 

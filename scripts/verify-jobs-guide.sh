@@ -7,28 +7,22 @@ if [[ $# != 1 ]]; then
 fi
 release="$(cd "$1" && pwd)"
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
-runtime=53fb9189e0dd71e0856f3ca6b5aad2d3bc4a5c8c
-candidate=c5ef73487e2ca9db69e45def9d53569019f0ba7d
 runbook=website/docs/docs/concurrency/jobs-operations.md
 reference=website/docs/docs/concurrency/index.md
 
-printf 'J7 lane 9 | %s\n' "$(uname -smr)"
-printf 'Candidate source: %s\n' "$candidate"
-printf 'Compiler/runtime source: %s\n' "$runtime"
-git diff --exit-code "$runtime" "$candidate" -- compiler Cargo.toml Cargo.lock
-git diff --exit-code "$candidate" -- compiler Cargo.toml Cargo.lock
-printf 'Compiler and runtime source and Cargo inputs match.\n'
-shasum -a 256 scripts/verify-jobs-guide.sh "$reference" "$runbook"
-python3 - "$release" "$runtime" <<'PY'
+toolchain_proof="$(python3 - "$release" <<'PY'
 import hashlib
 import json
 from pathlib import Path
+import re
 import sys
 
 release = Path(sys.argv[1])
 pin = json.loads((release / "jobs-parity-toolchain.json").read_text())
-if pin["mesh_sha"] != sys.argv[2] or pin["profile"] != "release":
+revision = pin["mesh_sha"]
+if not re.fullmatch("[0-9a-f]{40}", revision) or pin["profile"] != "release":
     raise SystemExit("Unexpected Jobs release toolchain")
+print(revision)
 for name in ("meshc", "libmesh_rt.a"):
     with (release / name).open("rb") as stream:
         digest = hashlib.sha256()
@@ -38,6 +32,15 @@ for name in ("meshc", "libmesh_rt.a"):
         raise SystemExit(f"Pinned digest mismatch for {name}")
     print(f"{digest.hexdigest()}  {name}")
 PY
+)"
+runtime="${toolchain_proof%%$'\n'*}"
+printf 'J7 lane 9 | %s\n' "$(uname -smr)"
+printf 'Checkout source: %s\n' "$(git rev-parse HEAD)"
+printf 'Compiler/runtime source: %s\n' "$runtime"
+git diff --exit-code "$runtime" -- compiler Cargo.toml Cargo.lock
+printf 'Compiler and runtime source and Cargo inputs match.\n'
+shasum -a 256 scripts/verify-jobs-guide.sh "$reference" "$runbook"
+printf '%s\n' "${toolchain_proof#*$'\n'}"
 
 pg_bin="${PG_BIN_DIR:-$(pg_config --bindir)}"
 export PATH="$release:$pg_bin:$PATH"
