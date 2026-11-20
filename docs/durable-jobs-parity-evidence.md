@@ -242,6 +242,21 @@ post-reliability profiles.
 Release qualification still requires the matched candidate matrix on a
 host with capacity for the workload and its observers.
 
+## Release comparisons for batch dispatch
+
+Harness and runtime `53fb9189` completed five pairs per profile on
+PostgreSQL 17.11 with verified TLS, one runner, and 16 slots. Against main
+`7c162056`, the short profile used 0.102 claim calls per completed job with
+batching and 1.008 on main. Sparse pickup p99 was 252.5 ms with batching and
+269.7 ms on main. The largest queued context was 21,696 bytes in these
+profiles, below the 32 MiB limit. Raw receipts are in run `j1-load-l5_ot88g`.
+
+The dense short-job comparison against Oban Basic 2.24.2 reconciled 128
+jobs per trial. Mesh completed 235.9 jobs per second against Oban's 405.1,
+with pickup p99 of 493.0 ms against 311.0 ms. The startup one-minute load
+was 25.1 on 15 logical CPUs. This profile missed both proposed Core parity
+thresholds. Raw receipts are in run `j1-load-pqsep8or`.
+
 ## Compare bounded drain
 
 `scripts/jobs-drain-perf.py` accepts the pinned main and candidate compiler
