@@ -323,10 +323,10 @@ OS spawn call and a gate at the existing native worker-start marker.
 
 **Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] Metric. Direct-handler and committed drain duration per job, and default runtime throughput.
-- [ ] Probe. Interleave the existing due-only drain with the new drain at identical cutoff and concurrency. Time direct execution separately.
-- [ ] Baseline. Record main's due-only drain and direct worker fixture before adding helpers.
-- [ ] Rule. Require the comparable drain within 10% of main. Test-only assertions must add no query to production enqueue or claim.
+- [x] Metric. Direct-handler and committed drain duration per job, and default runtime throughput.
+- [x] Probe. Seven interleaved release pairs used equivalent due work and one slot. Separate compiled probes timed direct execution.
+- [x] Baseline. Pinned main ran the due-only drain and called the same handler with a prebuilt context.
+- [x] Rule. The median paired drain duration was 0.760 times main. The sampled default workload had equal enqueue SQL counts and equal median claim SQL counts. [Receipt index](../proof/jobs-parity/qualification-v1.json)
 
 **Review gate.** None. This phase has no graphical interaction. Independent review uses the CLI receipts and database proof.
 

@@ -12,6 +12,49 @@
     "pairs": 7,
     "raw_receipt": "target/jobs-parity/bfcc3451777b9bc24476d1b071c57cec074004ba/release-comparisons/drain/receipt.json"
   },
+  "bounded_drain_latest_release": {
+    "budget": {
+      "max_median_paired_ratio": 1.1,
+      "status": "pass"
+    },
+    "direct_main_ns_per_call": {
+      "max": 22.375,
+      "median": 22.0,
+      "min": 21.958
+    },
+    "direct_test_perform_job_ns_per_call": {
+      "max": 6185.375,
+      "median": 5906.333,
+      "min": 5860.708
+    },
+    "main_revision": "7c1620563614a04a573aef806a6d019a2af4dfe9",
+    "median_drain_ms_per_job": {
+      "candidate": 23.904536458333336,
+      "main": 30.759899291666667
+    },
+    "paired_ratio": {
+      "max": 0.8961210353469218,
+      "median": 0.7597815366224946,
+      "min": 0.6348997488872709
+    },
+    "pairs": 7,
+    "peak_one_minute_load": 15.52587890625,
+    "production_sql_observations": {
+      "by_arm": {
+        "baseline": {
+          "enqueue_sql_calls_per_job": 1.0546875,
+          "median_claim_sql_calls_per_job": 1.015625
+        },
+        "mesh": {
+          "enqueue_sql_calls_per_job": 1.0546875,
+          "median_claim_sql_calls_per_job": 1.015625
+        }
+      },
+      "raw_trials": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-load-krk1cjmw/short-1r-16s/trials.json"
+    },
+    "raw_receipt": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/bounded-drain-current/receipt.json",
+    "runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287"
+  },
   "candidate_ref": "53fb9189e0dd71e0856f3ca6b5aad2d3bc4a5c8c",
   "combined_pool_outage": {
     "compiled_proofs": 2,

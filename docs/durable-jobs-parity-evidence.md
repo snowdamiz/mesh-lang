@@ -529,15 +529,24 @@ when comparing two release toolchains.
 The local PostgreSQL 17.11 debug run with main `7c162056` and candidate
 `03990801` reconciled 24 completions and four future rows in each of seven
 pairs. The median paired duration was 1.294 times main, above the 1.10
-budget. Host load was about 30–34 on 15 logical CPUs. The inline helper took
-69.1 µs per call in that run. The pinned main direct-handler baseline
-remains open.
+budget. Host load was about 30–34 on 15 logical CPUs. The candidate's inline
+helper took 69.1 µs per call in that debug run.
 
 With release artifacts `7c162056` and `302cdce8`, all seven PostgreSQL 17.11
 pairs met the 1.10 budget. The median paired ratio was 1.002, with median
 drain durations of 29.0 ms per job on main and 28.4 ms on the candidate.
 The host's one-minute load was about 20–22 on 15 logical CPUs during this
 run.
+
+The `1b12243b` release rerun reconciled 24 effects and four untouched
+future rows in every trial. All seven pairs met the 1.10 duration budget.
+The median paired ratio was 0.760, with median durations of 30.8 ms per
+job on main and 23.9 ms on the candidate. The separate probes measured
+22 ns per direct call with a prebuilt context and 5.91 µs per call through
+`Test.perform_job`, including context construction and outcome decoding.
+The matched default short-job workload recorded 1.055 enqueue SQL calls
+per job in every trial and a median of 1.016 claim calls per job on both
+runtimes. [Drain and production SQL receipts](../proof/jobs-parity/qualification-v1.json)
 
 ## Compiled lane receipts
 
