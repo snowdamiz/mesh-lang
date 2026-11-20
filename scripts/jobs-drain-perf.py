@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare J5 committed drains using existing native/debug toolchains and local PG.
+"""Compare J5 committed drains using existing native toolchains and local PG.
 
 Creates a private SCRAM cluster and fresh databases inside this checkout. Build
 and seed outside the timed window. See receipt.json for timings and row proofs.
@@ -118,13 +118,14 @@ def artifact_hashes(directory, *, direct=False):
     return {name: sha256(directory / name) for name in names}
 
 
-def build(side, artifacts, scratch, evidence, env):
+def build(side, artifacts, scratch, evidence, env, build_profile):
     project = scratch / side
     project.mkdir()
     source = (FIXTURE / "common.mpl").read_text() + (FIXTURE / f"{side}-drain.mpl").read_text()
     (project / "main.mpl").write_text(source)
     binary = scratch / f"{side}-drain"
-    checked([artifacts / "meshc", "build", project, "--output", binary, "--opt-level", "0"],
+    checked([artifacts / "meshc", "build", project, "--output", binary, "--opt-level",
+             "2" if build_profile == "release" else "0"],
             env=dict(env, MESH_RT_LIB_PATH=str(artifacts / "libmesh_rt.a")),
             cwd=scratch, log=evidence / f"build-{side}.log", timeout=180)
     return binary
@@ -291,17 +292,18 @@ def run(args, receipt):
         env.update(TMPDIR=str(scratch))
         artifacts = {"main": args.main_artifacts, "candidate": args.candidate_artifacts}
         source = {"main": BASELINE, "candidate": git("rev-parse", args.candidate_source)}
-        require((artifacts["main"] / "source-sha").read_text().strip() == BASELINE,
-                "main artifact source-sha does not match the J5 pin")
         receipt["toolchains"] = {}
         for side in SIDES:
+            marker = artifacts[side] / "source-sha"
+            if side == "main" or marker.is_file():
+                require(marker.read_text().strip() == source[side], f"{side} artifact source-sha mismatch")
             digest = artifact_hashes(artifacts[side], direct=args.direct and side == "candidate")
             receipt["toolchains"][side] = {
                 "directory": str(artifacts[side]), "source_sha": source[side],
-                "source_evidence": "artifact source-sha" if side == "main" else "caller-supplied",
+                "source_evidence": "artifact source-sha" if marker.is_file() else "caller-supplied",
                 "file_sha256": digest,
             }
-        binaries = {side: build(side, artifacts[side], scratch, evidence, env) for side in SIDES}
+        binaries = {side: build(side, artifacts[side], scratch, evidence, env, args.build_profile) for side in SIDES}
         for side, binary in binaries.items():
             receipt["toolchains"][side]["fixture_binary_sha256"] = sha256(binary)
 
@@ -326,7 +328,8 @@ def run(args, receipt):
             ]
             receipt.update(cutoff_ms=cutoff, seed=seed)
             for pair in range(args.pairs + 1):
-                for side in SIDES:
+                order = SIDES if pair % 2 == 0 else reversed(SIDES)
+                for side in order:
                     sample = trial(side, pair, seed, cutoff, args.jobs, sql, url,
                                    binaries[side], env, evidence)
                     receipt["trials"].append(sample)
@@ -345,6 +348,7 @@ def main():
     for side in SIDES:
         parser.add_argument(f"--{side}-artifacts", required=True, type=lambda s: Path(s).resolve())
     parser.add_argument("--candidate-source", required=True, help="source commit of the supplied pair")
+    parser.add_argument("--build-profile", choices=("debug", "release"), default="debug")
     parser.add_argument("--pg-bin", required=True, type=lambda s: Path(s).resolve())
     parser.add_argument("--output", required=True, type=lambda s: Path(s).resolve(),
                         help="new receipt directory inside this checkout")
@@ -365,7 +369,8 @@ def main():
                           for path in [Path(__file__).resolve(), *sorted(FIXTURE.glob("*.mpl"))]},
         "host": {"platform": platform.platform(), "logical_cpus": os.cpu_count(), "start": load()},
         "scope": {
-            "build": "prebuilt native debug toolchains; fixture opt level 0",
+            "build": f"prebuilt native {args.build_profile} toolchains; fixture opt level "
+                     f"{2 if args.build_profile == 'release' else 0}",
             "timed_region": "start + join or Jobs.drain, with seed and pool open outside",
             "cutoff": "fixed on candidate; main uses database now, bracketed for equal eligibility",
             "workload": "one isolated worker per claim writes an effect over a fresh SCRAM connection",

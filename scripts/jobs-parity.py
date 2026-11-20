@@ -1094,17 +1094,35 @@ def snapshot_harness(scratch, evidence):
     return root, head, files
 
 
-def build_mesh(ref, scratch, evidence, env, release, mesh_fixture):
+def build_mesh(ref, scratch, evidence, env, release, mesh_fixture, toolchains):
     source = scratch / "mesh-source"
     materialize_commit(ref, source, scratch / "mesh-source.tar")
-    cargo_target = EVIDENCE / "build" / ref
-    build = cargo_target / ("release" if release else "debug")
-    rust_target = next(line.removeprefix("host: ") for line in checked(["rustc", "-vV"]).splitlines()
+    profile = "release" if release else "debug"
+    cargo_target = (toolchains or EVIDENCE / "build") / ref
+    build = cargo_target / profile
+    rustc = checked(["rustc", "-vV"], env=env)
+    rust_target = next(line.removeprefix("host: ") for line in rustc.splitlines()
                        if line.startswith("host: "))
-    options = ["--release"] if release else []
-    compiler_env = dict(env, CARGO_TARGET_DIR=str(cargo_target))
-    checked(["cargo", "build", "--locked", "-p", "meshc", "-p", "mesh-rt", *options],
-            cwd=source, env=compiler_env, timeout=2400, log=evidence / "meshc-build.log")
+    pin = build / "jobs-parity-toolchain.json"
+    if toolchains is None:
+        options = ["--release"] if release else []
+        checked(["cargo", "build", "--locked", "-p", "meshc", "-p", "mesh-rt", *options],
+                cwd=source, env=dict(env, CARGO_TARGET_DIR=str(cargo_target)), timeout=2400,
+                log=evidence / "meshc-build.log")
+    actual = {"mesh_sha": ref, "profile": profile, "rustc": rustc,
+              "files_sha256": {name: digest(build / name) for name in ("meshc", "libmesh_rt.a")}}
+    if toolchains is not None:
+        try:
+            recorded = json.loads(pin.read_text())
+        except (OSError, ValueError) as error:
+            raise FixtureError(f"cannot read prebuilt toolchain pin: {pin}") from error
+        if recorded != actual:
+            raise FixtureError(f"prebuilt toolchain differs from its source and artifact pin: {pin}")
+    else:
+        with tempfile.NamedTemporaryFile(mode="w", dir=build, delete=False) as manifest:
+            json.dump(actual, manifest, indent=2)
+        Path(manifest.name).replace(pin)
+    write_json(evidence / "mesh-toolchain.json", actual)
     project = scratch / "mesh-workload"
     shutil.copytree(mesh_fixture, project)
     checked(["cc", "-std=c11", "-O2", "-c", "worker_identity.c", "-o", "worker_identity.o"],
@@ -1117,6 +1135,8 @@ def build_mesh(ref, scratch, evidence, env, release, mesh_fixture):
              "--output", str(executable), "--opt-level", "2" if release else "0"], cwd=source,
             env=dict(env, MESH_RT_LIB_PATH=str(build / "libmesh_rt.a")),
             timeout=180, log=evidence / "mesh-fixture-build.log")
+    if any(digest(build / name) != checksum for name, checksum in actual["files_sha256"].items()):
+        raise FixtureError("toolchain artifacts changed while compiling the fixture")
     return executable
 
 
@@ -1292,7 +1312,7 @@ def record(args):
             env.pop("RUSTC_WRAPPER", None)
             env.pop("RUSTC_WORKSPACE_WRAPPER", None)
             executable = build_mesh(ref, scratch, evidence, env, args.load,
-                                    harness / MESH_SOURCE.relative_to(ROOT))
+                                    harness / MESH_SOURCE.relative_to(ROOT), args.toolchains)
             baseline = executable
             if baseline_ref and baseline_ref != ref:
                 baseline_dir = scratch / "baseline"
@@ -1300,7 +1320,7 @@ def record(args):
                 baseline_evidence = evidence / "baseline-build"
                 baseline_evidence.mkdir()
                 baseline = build_mesh(baseline_ref, baseline_dir, baseline_evidence, env, args.load,
-                                      harness / MESH_SOURCE.relative_to(ROOT))
+                                      harness / MESH_SOURCE.relative_to(ROOT), args.toolchains)
             command, mix_env, versions = compile_oban(scratch, evidence, env, oban_fixture)
             max_connections = max((s + r * settings["connection_slots_per_runner"]
                                    for _, r, s in profiles), default=5)
@@ -1588,6 +1608,8 @@ def main():
     mode.add_argument("--load", action="store_true", help="five alternating trials per selected profile")
     mode.add_argument("--faults", action="store_true", help="owned runner-death and rollback probe")
     parser.add_argument("--mesh-ref", default="HEAD", help="Git commit from which to compile Mesh")
+    parser.add_argument("--toolchains", type=lambda value: Path(value).resolve(),
+                        help="reuse verified compiler/runtime pairs from a previous Jobs comparison build")
     parser.add_argument("--against-ref", help="compare with a second Mesh commit using single claims")
     parser.add_argument("--mesh-batch", action="store_true", help="enable batch claims for the Mesh runner")
     parser.add_argument("--mesh-listen", action="store_true", help="enable Mesh listener and transactional publishing")

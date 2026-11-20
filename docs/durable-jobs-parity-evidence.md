@@ -64,6 +64,11 @@ Commit the workload settings before using the baseline to evaluate changes.
 Both fixtures receive the same seeded inputs and write an attempt and an
 idempotent effect for each completed job.
 
+For repeated comparisons, `--toolchains target/jobs-parity/build` reuses
+the compiler and runtime pairs recorded by a prior archive build. It
+checks the source SHA, build profile, Rust toolchain, and file hashes
+before linking each fixture.
+
 For a Mesh revision that includes batch claims, pass `--mesh-batch` to measure
 the opt-in runner. Omit the flag for the single-claim profile. Both modes
 record claim, runner, and producer SQL calls per completed job. Use
@@ -217,7 +222,8 @@ host with capacity for the workload and its observers.
 and runtime artifacts. It interleaves legacy due-only drain and the new
 bounded drain with one slot. Each trial checks the same completed jobs,
 their effects, and the untouched future rows. Pass `--direct` to time the
-compiled inline helper in a separate test.
+compiled inline helper in a separate test. Pass `--build-profile release`
+when comparing two release toolchains.
 
 The local PostgreSQL 17.11 debug run with main `7c162056` and candidate
 `03990801` reconciled 24 completions and four future rows in each of seven
