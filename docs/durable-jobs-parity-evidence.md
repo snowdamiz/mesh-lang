@@ -552,6 +552,24 @@ p99 with four runners and 64 slots was 241.2 ms on the candidate and
 205.5 ms on main, above the 1.10 ratio limit. The run started at a one-minute
 host load of 13.2 and reached 32.6 on 15 logical CPUs. [Matrix receipt](../proof/jobs-parity/j7-lane-1.log)
 
+The follow-up PostgreSQL 17.11 verifier used the same runtime sources and
+passed 45 Jobs runtime tests and both compiled suites. It covered batch
+pause, scaling, oversized contexts, queue rotation, stale acknowledgement
+events, and lease renewal while the reader buffer was full. The batch
+context test reached 25,166,688 queued bytes and completed the four
+admissible jobs. The oversized row retained attempt zero.
+
+The release fault harness recovered the same job ID and deduplicated the
+effect after runner death. The two Mesh revisions produced matching
+results in the pinned-main recovery comparison over verified TLS. The
+settlement and batch-claim cuts used SCRAM on plaintext loopback. Losing
+the reply before batch commit produced one native worker start at attempt
+one. Losing it after commit, including after `CommandComplete` and before
+`ReadyForQuery`, produced one start at attempt two. An uncertain settlement
+emitted `ack_uncertain`. Both engines left one durable effect in each
+settlement case. The `macos_follow_up_lanes` entry links the named receipts.
+[Qualification receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Verified PostgreSQL workflows
 
 The following cases passed on macOS arm64 with PostgreSQL 17.11, 18.7, and

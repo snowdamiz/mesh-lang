@@ -99,16 +99,16 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `gpt-6.2-sol high` at the PR head using the compiled fixtures and the PostgreSQL boot recipe.
 
-- [ ] Lane 1. Regression lane against main. Run the existing transaction and recovery proof on main and head. Save `j1-lane-1.log`. Pass when the added driver reports the same persisted effects.
+- [x] Lane 1. Regression lane against main. Run the existing transaction and recovery proof on main and head. Save `j1-lane-1.log`. Pass when the added driver reports the same persisted effects.
 - [ ] Lane 2. Run the compiled Jobs workload on PostgreSQL 17 on Linux and macOS. Save `j1-lane-2.log`. Pass when the recorded patch version matches the server and expected claims, persisted settlements, and recovery pass on both hosts.
 - [ ] Lane 3. Run PostgreSQL 18.7 with SCRAM over TLS on Linux and macOS. Save `j1-lane-3.log`. Pass when authentication and the compiled transaction, workload, settlement, and recovery checks pass.
 - [ ] Lane 4. Run PostgreSQL 19.0 with SCRAM over TLS on Linux and macOS. Save `j1-lane-4.log`. Pass when authentication and the compiled transaction, workload, settlement, and recovery checks pass.
 - [x] Lane 5. Run the Oban Basic fixture twice with the same seed. Save `j1-lane-5.log`. Pass when the derived inputs and total job counts match.
 - [ ] Lane 6. Run the matched sparse workload. Save `j1-lane-6.log`. Pass when every eligible committed job is accounted for.
 - [x] Lane 7. Run the matched dense workload. Save `j1-lane-7.log`. Pass when the run records occupancy and all completed jobs.
-- [ ] Lane 8. Kill a worker after its claim and before settlement. Save `j1-lane-8.log`. Pass when the same job identity is recovered and the old token cannot settle it.
-- [ ] Lane 9. Lose an acknowledgement on both sides of commit. Save `j1-lane-9.log`. Pass when the final persisted state accounts for each attempt.
-- [ ] Lane 10. Run a rolled-back enqueue and a duplicate effect. Save `j1-lane-10.log`. Pass when the rollback produces zero effects and the effect key deduplicates the retry.
+- [x] Lane 8. Kill a worker after its claim and before settlement. Save `j1-lane-8.log`. Pass when the same job identity is recovered and the old token cannot settle it.
+- [x] Lane 9. Lose an acknowledgement on both sides of commit. Save `j1-lane-9.log`. Pass when the final persisted state accounts for each attempt.
+- [x] Lane 10. Run a rolled-back enqueue and a duplicate effect. Save `j1-lane-10.log`. Pass when the rollback produces zero effects and the effect key deduplicates the retry.
 
 **Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
@@ -151,14 +151,14 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 
 - [x] Lane 1. Five paired trials per short-job profile reconciled all 20,480 job IDs, attempts, and effects across main and candidate. The receipt records each profile's claim-call budget separately. [Receipt index](../proof/jobs-parity/qualification-v1.json)
 - [x] Lane 2. Race four compiled runners on a queue at capacity. Save `j2-lane-2.log`. Pass when claims never exceed the configured global cap.
-- [ ] Lane 3. Pause and scale during a batch. Save `j2-lane-3.log`. Pass when no new claims bypass the committed queue control.
+- [x] Lane 3. Pause and scale during a batch. Save `j2-lane-3.log`. Pass when no new claims bypass the committed queue control.
 - [x] Lane 4. Hold one row through renewals and acknowledgements. Save `j2-lane-4.log`. Pass when an unrelated attempt completes on its first lease.
 - [x] Lane 5. Inject a blocked claim transport with separate renewal capacity. Save `j2-lane-5.log`. Pass when the active peer keeps its lease.
-- [ ] Lane 6. Inject lost claim responses before and after commit. Save `j2-lane-6.log`. Pass when the runner launches only confirmed claims and recovery handles ambiguous rows.
-- [ ] Lane 7. Fail a child launch partway through a batch, then kill the runner during a separate startup whose result is uncertain. Save `j2-lane-7.log`. Pass when only proven unstarted rows get refunds, held slots return, uncertain rows recover under a new token, and the runner never launches twice or settles stale with the old token.
-- [ ] Lane 8. Mix large and small contexts in a backlog. Save `j2-lane-8.log`. Pass when every successful reply stays within the byte budget and oversized input does not block the queue.
+- [x] Lane 6. Inject lost claim responses before and after commit. Save `j2-lane-6.log`. Pass when the runner launches only confirmed claims and recovery handles ambiguous rows.
+- [x] Lane 7. Fail a child launch partway through a batch, then kill the runner during a separate startup whose result is uncertain. Save `j2-lane-7.log`. Pass when only proven unstarted rows get refunds, held slots return, uncertain rows recover under a new token, and the runner never launches twice or settles stale with the old token.
+- [x] Lane 8. Mix large and small contexts in a backlog. Save `j2-lane-8.log`. Pass when every successful reply stays within the byte budget and oversized input does not block the queue.
 - [ ] Lane 9. Run old and new binaries with scoped function grants. Save `j2-lane-9.log`. Pass when both versions process their eligible jobs and the old migration cannot change new entry points.
-- [ ] Lane 10. Burden a busy queue while a sparse queue becomes due. Save `j2-lane-10.log`. Pass when the sparse queue claims on its next available rotation.
+- [x] Lane 10. Burden a busy queue while a sparse queue becomes due. Save `j2-lane-10.log`. Pass when the sparse queue claims on its next available rotation.
 
 Run lane 7 on macOS after checking out the proof commit. Set `PG_BIN_DIR`
 to the chosen PostgreSQL installation if it is outside the shell's path.
@@ -264,10 +264,10 @@ OS spawn call and a gate at the existing native worker-start marker.
 - [x] Lane 2. Complete a healthy attempt. Save `j4-lane-2.log`. Pass when the terminal event follows the durable completion.
 - [x] Lane 3. Request a retry on the last attempt. Save `j4-lane-3.log`. Pass when the event reports discard.
 - [x] Lane 4. Race operator cancellation and handler success. Save `j4-lane-4.log`. Pass when the terminal event reports cancellation.
-- [ ] Lane 5. Inject a stale token. Save `j4-lane-5.log`. Pass when only the stale acknowledgement indicator changes.
-- [ ] Lane 6. Drop a commit reply. Save `j4-lane-6.log`. Pass when an uncertainty event appears without a duplicate terminal disposition.
-- [ ] Lane 7. Run a cron tick and expired claim recovery. Save `j4-lane-7.log`. Pass when both maintenance events identify the action and their counts.
-- [ ] Lane 8. Use an intentionally blocked subscriber. Save `j4-lane-8.log`. Pass when the drop count advances while lease renewal and other queues continue.
+- [x] Lane 5. Inject a stale token. Save `j4-lane-5.log`. Pass when only the stale acknowledgement indicator changes.
+- [x] Lane 6. Drop a commit reply. Save `j4-lane-6.log`. Pass when an uncertainty event appears without a duplicate terminal disposition.
+- [x] Lane 7. Run a cron tick and expired claim recovery. Save `j4-lane-7.log`. Pass when both maintenance events identify the action and their counts.
+- [x] Lane 8. Use an intentionally blocked subscriber. Save `j4-lane-8.log`. Pass when the drop count advances while lease renewal and other queues continue.
 - [x] Lane 9. Enqueue synthetic sensitive arguments and metadata. Save `j4-lane-9.log`. Pass when default output contains none of those values.
 - [x] Lane 10. Stop a runner with subscribers attached. Save `j4-lane-10.log`. Pass when subscribers terminate cleanly and shutdown progress is observable.
 
@@ -310,7 +310,7 @@ OS spawn call and a gate at the existing native worker-start marker.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `gpt-6.2-sol high` at the PR head using the compiled fixtures and the PostgreSQL boot recipe.
 
-- [ ] Lane 1. Regression lane against main. Run an enqueue-and-inspect fixture on main and head. Save `j5-lane-1.log`. Pass when both persist the same job and the head assertion verifies it.
+- [x] Lane 1. Regression lane against main. Run an enqueue-and-inspect fixture on main and head. Save `j5-lane-1.log`. Pass when both persist the same job and the head assertion verifies it.
 - [x] Lane 2. Assert a job inside a borrowed transaction. Save `j5-lane-2.log`. Pass when the borrowed connection sees the row before commit.
 - [x] Lane 3. Rollback an asserted enqueue. Save `j5-lane-3.log`. Pass when a second connection never sees the job.
 - [x] Lane 4. Run parallel manual tests in separate namespaces. Save `j5-lane-4.log`. Pass when each test sees only its rows.
@@ -360,12 +360,12 @@ OS spawn call and a gate at the existing native worker-start marker.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `gpt-6.2-sol high` at the PR head using the compiled fixtures and the PostgreSQL boot recipe.
 
-- [ ] Lane 1. Regression lane against main. Run namespace pause and resume on main and head. Save `j6-lane-1.log`. Pass when both retain the documented persisted effect.
+- [x] Lane 1. Regression lane against main. Run namespace pause and resume on main and head. Save `j6-lane-1.log`. Pass when both retain the documented persisted effect.
 - [x] Lane 2. Pause one of two runners. Save `j6-lane-2.log`. Pass when the other process continues to claim within the namespace cap.
 - [x] Lane 3. Scale both local and global limits. Save `j6-lane-3.log`. Pass when the lower available headroom determines new admissions.
 - [x] Lane 4. Stop one queue with an active handler. Save `j6-lane-4.log`. Pass when stopping that queue leaves another queue able to make progress.
 - [x] Lane 5. Run-now a retryable job. Save `j6-lane-5.log`. Pass when the scheduled time moves and the existing effect key survives.
-- [ ] Lane 6. Race bulk edit or delete with claim, then separately enqueue a duplicate with allowed replacement fields while a compiled handler is active. Save `j6-lane-6.log`. Pass when bulk actions change only eligible rows, the replacement persists, the active context and token stay unchanged, and settlement and the next attempt use the documented stored values.
+- [x] Lane 6. Race bulk edit or delete with claim, then separately enqueue a duplicate with allowed replacement fields while a compiled handler is active. Save `j6-lane-6.log`. Pass when bulk actions change only eligible rows, the replacement persists, the active context and token stay unchanged, and settlement and the next attempt use the documented stored values.
 - [x] Lane 7. Kill the cron owner across cursor advancement. Save `j6-lane-7.log`. Pass when a new owner neither loses nor duplicates the committed occurrence.
 - [x] Lane 8. Prune terminal jobs and replay an existing request key. Save `j6-lane-8.log`. Pass when the receipt replay still resolves to the same identity.
 - [x] Lane 9. Reindex under concurrent enqueue and dispatch. Save `j6-lane-9.log`. Pass when normal application work keeps moving and a second reindex owner is refused.
