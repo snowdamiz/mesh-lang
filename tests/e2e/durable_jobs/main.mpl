@@ -56,7 +56,7 @@ fn record_effect(context :: String) -> String!String do
   if (label == "native-timeout" || label == "native-owner-paused") && attempt == 1 do
     let blocker = Pg.connect(database_url())?
     let _ = Pg.query(blocker, "SELECT set_config('application_name', $1, false)", [label])?
-    let blocked = Pg.query(blocker, "SELECT pg_sleep(4)", [])
+    let blocked = Pg.query(blocker, "SELECT pg_sleep(60)", [])
     let resumed = Pg.execute(blocker,
       "INSERT INTO "
         <> namespace()

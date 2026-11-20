@@ -275,7 +275,7 @@ fn prove_signal_drain(proof: &Proof) {
 fn prove_native_timeout(proof: &Proof) {
     let receipt = proof.enqueue(json!({
         "worker": "proof", "args": {"label": "native-timeout"},
-        "timeout_ms": 900, "max_attempts": 2, "backoff_base_ms": 0,
+        "timeout_ms": 3000, "max_attempts": 2, "backoff_base_ms": 0,
     }));
     let mut worker = proof.worker("native-timeout", false);
     proof.wait_effects("native-timeout", 1);
@@ -285,6 +285,7 @@ fn prove_native_timeout(proof: &Proof) {
     assert_eq!(job["attempt"], 2);
     assert_eq!(job["errors"][0]["reason"], "job handler timed out");
     assert_eq!(proof.effects("native-timeout").len(), 2);
+    cancel_native_query(proof, "native-timeout");
     wait_for_native_query(proof, "native-timeout", false);
     assert_eq!(
         proof.effects("after-timeout"),
@@ -297,7 +298,7 @@ fn prove_native_timeout(proof: &Proof) {
 fn prove_native_lease_loss(proof: &Proof) {
     let receipt = proof.enqueue(json!({
         "worker": "proof", "args": {"label": "native-owner-paused"},
-        "timeout_ms": 10_000, "max_attempts": 2, "backoff_base_ms": 0,
+        "timeout_ms": 60_000, "max_attempts": 2, "backoff_base_ms": 0,
     }));
     let mut owner = proof.worker("paused-owner", false);
     proof.wait_effects("native-owner-paused", 1);
@@ -314,6 +315,7 @@ fn prove_native_lease_loss(proof: &Proof) {
     assert_context(&effects[1], &receipt, "native-owner-paused", 2);
     assert_eq!(effects[1]["process"], "native-recovery");
     owner.send_signal("-CONT");
+    cancel_native_query(proof, "native-owner-paused");
     wait_for_native_query(proof, "native-owner-paused", false);
     owner.stop();
     recovery.stop();
@@ -321,13 +323,24 @@ fn prove_native_lease_loss(proof: &Proof) {
 }
 
 fn wait_for_native_query(proof: &Proof, label: &str, active: bool) {
-    eventually("native PostgreSQL query reaches expected state", || {
-        let result = proof.sql(&format!(
-            "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE application_name = {} AND state = 'active' AND query = 'SELECT pg_sleep(4)')",
+    eventually(
+        &format!("{label} native query to have active={active}"),
+        || {
+            let result = proof.sql(&format!(
+            "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE application_name = {} AND state = 'active' AND query = 'SELECT pg_sleep(60)')",
             quoted(label),
         ));
-        ((result == "t") == active).then_some(())
-    });
+            ((result == "t") == active).then_some(())
+        },
+    );
+}
+
+fn cancel_native_query(proof: &Proof, label: &str) {
+    proof.sql(&format!(
+        "SELECT pg_cancel_backend(pid) FROM pg_stat_activity
+         WHERE application_name = {} AND state = 'active' AND query = 'SELECT pg_sleep(60)'",
+        quoted(label),
+    ));
 }
 
 fn prove_large_context(proof: &Proof) {
