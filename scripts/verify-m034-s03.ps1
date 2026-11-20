@@ -524,6 +524,7 @@ function Test-InteractiveSkills {
             }
             powershell.exe -NoProfile -ExecutionPolicy Bypass -Command '
                 $ErrorActionPreference = [System.Management.Automation.ActionPreference]::Stop
+                $ProgressPreference = [System.Management.Automation.ActionPreference]::SilentlyContinue
                 Start-Transcript -LiteralPath $env:M034_S03_TRANSCRIPT | Out-Null
                 try { irm $env:M034_S03_INSTALLER_URL | iex }
                 finally { Stop-Transcript | Out-Null }
@@ -531,7 +532,8 @@ function Test-InteractiveSkills {
             if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath (Join-Path $env:USERPROFILE '.mesh/version'))) {
                 Fail-Phase 'skills' "interactive $choice installation failed" $transcript
             }
-            Assert-LogContains -Phase 'skills' -Needle 'Set up the Mesh skill for your coding tools?' -LogPath $transcript
+            # Windows PowerShell does not record Read-Host prompts in the transcript.
+            # The console driver checks each prompt before sending its response.
             Assert-NoSkillWrites -Root $Project -LogPath $transcript
             if ($choice -eq 'decline') {
                 Assert-LogContains -Phase 'skills' -Needle "Optional: run 'meshc skills setup'" -LogPath $transcript
