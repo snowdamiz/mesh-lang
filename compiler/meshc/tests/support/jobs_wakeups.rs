@@ -172,13 +172,11 @@ pub(super) fn prove(proof: &Proof<'_>) {
 }
 
 pub(super) fn prove_sparse_reference(proof: &Proof<'_>) {
-    proof.run("seed", "");
     let mut settings = config(proof, 100, false, false);
     let fields = settings.as_object_mut().unwrap();
     fields.remove("listen");
     fields.remove("claim_batch");
     let mut worker = proof.worker_with_config("wake-reference", false, settings);
-    proof.wait_state("committed", "completed");
     assert!(proof.job("wake-committed").is_null());
     let receipt = proof.enqueue(spec("wake-committed"));
     let completed = proof.wait_state("wake-committed", "completed");
