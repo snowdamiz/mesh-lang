@@ -1268,7 +1268,104 @@ def run_settlement_fault(subject, scratch, evidence, settings, placement, proxy_
     write_json(evidence / "fault.json", receipt)
 
 
-def run_batch_claim_fault(subject, scratch, evidence, settings, placement, proxy_type):
+def run_producer_commit_fault(subject, scratch, evidence, settings, placement, proxy_type):
+    cluster = subject.cluster
+    cluster.prepare_database("mesh")
+    namespace = f"parity_{secrets.token_hex(8)}"
+    env = subject.environment(namespace, 1, 1, "fault", settings["poll_ms"])
+    subject.call("migrate", env, evidence / "migrate.log")
+    if cluster.expected_version or not cluster.owned("mesh"):
+        raise FixtureError("producer commit fault requires a fresh owned SCRAM-only database")
+
+    keys = ("producer_first", "producer_second")
+    request = "producer_commit"
+    input_file = batch_files(scratch, [{"request_id": request, "rollback": False, "jobs": [
+        {"key": key, "hold_ms": 0, "fail_first": False, "payload": "synthetic"} for key in keys]}])[0]
+
+    def producer_state():
+        return json.loads(cluster.sql("mesh", """
+SELECT json_build_object(
+ 'business', (SELECT coalesce(json_agg(json_build_array(engine, namespace, request_id, xmin::text)), '[]')
+              FROM public.mesh_jobs_parity_product),
+ 'jobs', (SELECT coalesce(json_agg(json_build_array(namespace, args->>'key', id::text, xmin::text)
+                                ORDER BY args->>'key'), '[]') FROM mesh_jobs.jobs),
+ 'receipts', (SELECT coalesce(json_agg(json_build_array(namespace, request_key, receipt, xmin::text)
+                                    ORDER BY request_key), '[]') FROM mesh_jobs.receipts)
+)
+"""))
+
+    def reconcile(state):
+        ids = {key: receipt["id"] for _, key, receipt, _ in state["receipts"]}
+        if (set(ids) != set(keys) or len(state["receipts"]) != len(keys)
+                or len(state["business"]) != 1
+                or state["business"][0][:3] != ["mesh", namespace, request]):
+            raise QueueMismatch("producer transaction did not persist one business row and both receipts")
+        xid = state["business"][0][3]
+        if any(ns != namespace or receipt["effect_key"] != f"{ids[key]}/1" or receipt_xid != xid
+               for ns, key, receipt, receipt_xid in state["receipts"]):
+            raise QueueMismatch("enqueue receipts did not share the business write's transaction and identity")
+        if state["jobs"] != [[namespace, key, ids[key], xid] for key in sorted(keys)]:
+            raise QueueMismatch("enqueue jobs did not share the business write's transaction and identity")
+        cluster.reconcile_trial("mesh", namespace, ids, {}, (request,))
+        return ids
+
+    with proxy_type(
+        cluster.port, lambda sql: sql.strip().upper() == "COMMIT", placement,
+        prior_query=lambda sql: sql == "SELECT pg_current_xact_id()::text AS xid",
+    ) as proxy:
+        result = subprocess.run(
+            [*subject.command, "enqueue"], cwd=subject.cwd, text=True, capture_output=True,
+            env=dict(env, JOBS_PARITY_INPUT=str(input_file),
+                     JOBS_PARITY_DB_URL=cluster.url("mesh", "parity_producer", proxy.port)),
+            timeout=settings["trial_timeout_seconds"],
+        )
+        log = evidence / "lost-reply.log"
+        log.write_text(result.stdout + result.stderr)
+        if result.returncode != 1 or result.stdout.strip() or not result.stderr.startswith("parity error:"):
+            raise FixtureError(f"producer did not return an error without a receipt; see {log}")
+        fault = wait_for(lambda: proxy.fault, time.monotonic() + 5, f"{placement} producer commit cut")
+
+    first = producer_state()
+    if placement == "before_commit":
+        if any(first.values()):
+            raise QueueMismatch("producer transaction was visible despite the pre-commit cut")
+        cluster.reconcile_trial("mesh", namespace, {}, {}, ())
+    else:
+        reconcile(first)
+
+    receipt, committed = subject.enqueue_receipt(env, input_file, evidence / "replay.log")
+    replayed = producer_state()
+    ids = reconcile(replayed)
+    if committed is None or receipt["ids"] != ids:
+        raise QueueMismatch("producer replay did not return the durable job identities")
+    if placement != "before_commit" and replayed != first:
+        raise QueueMismatch("producer replay changed a committed business write or enqueue receipt")
+    if placement == "before_commit" and replayed["business"][0][3] != receipt["xid"]:
+        raise QueueMismatch("the replay did not create the transaction after the rolled-back attempt")
+
+    log = evidence / "runner.log"
+    process = subject.run(env, 0, log)
+    completed = False
+    try:
+        deadline = time.monotonic() + settings["trial_timeout_seconds"]
+        wait_for(lambda: runner_ready([process], [log]), deadline, "producer replay runner")
+        wait_for(lambda: cluster.observe("mesh", namespace)["terminal"] == len(keys),
+                 deadline, "settlement of replayed jobs")
+        completed = True
+    finally:
+        stop_runners([process], require_clean=completed)
+    rows = cluster.rows("mesh", namespace)
+    if any(row["state"] != "completed" or row["attempt"] != 1 for row in rows):
+        raise QueueMismatch(f"replayed producer jobs did not complete at attempt one: {rows}")
+    writes = cluster.reconcile_trial("mesh", namespace, ids, dict.fromkeys(keys, (1,)), (request,))
+    write_json(evidence / "fault.json", {
+        "engine": "mesh", "fault": fault, "producer_returncode": result.returncode,
+        "input_sha256": digest(input_file), "after_cut": first, "after_replay": replayed,
+        "replay_receipt": receipt, "rows": rows, "namespace_writes": writes,
+    })
+
+
+def run_batch_claim_fault(subject, scratch, evidence, settings, placement, proxy_type, *, final_attempt=False):
     cluster = subject.cluster
     if cluster.expected_version:
         raise FixtureError("batch claim fault requires the driver's SCRAM-only loopback mode")
@@ -1282,7 +1379,8 @@ def run_batch_claim_fault(subject, scratch, evidence, settings, placement, proxy
         raise FixtureError("batch claim fault requires the driver's nonce in a fresh database")
     input_file = batch_files(scratch, [{"request_id": "claim", "rollback": False, "jobs": [
         {"key": "claim", "hold_ms": 0, "fail_first": False, "payload": "synthetic"}]}])[0]
-    receipt, committed = subject.enqueue_receipt(env, input_file, evidence / "enqueue.log")
+    producer_env = dict(env, JOBS_PARITY_MODE="final_attempt") if final_attempt else env
+    receipt, committed = subject.enqueue_receipt(producer_env, input_file, evidence / "enqueue.log")
     enqueued = receipt["ids"]
     if set(enqueued) != {"claim"} or committed is None:
         raise QueueMismatch("batch claim fault requires one committed job")
@@ -1308,19 +1406,32 @@ def run_batch_claim_fault(subject, scratch, evidence, settings, placement, proxy
             completed = True
         finally:
             stop_runners([process], require_clean=completed)
-    expected_attempt = 1 if placement == "before_commit" else 2
+    discarded = final_attempt and placement != "before_commit"
+    expected_attempt = 1 if final_attempt or placement == "before_commit" else 2
     after = cluster.claim_identity("mesh", namespace, "claim")
-    if after != dict(before, state="completed", attempt=expected_attempt):
+    if after != dict(before, state="discarded" if discarded else "completed", attempt=expected_attempt):
         raise QueueMismatch(f"unexpected job identity or lease fence after {placement}: {after}")
     rows = cluster.rows("mesh", namespace)
-    writes = cluster.reconcile_trial("mesh", namespace, enqueued, {"claim": (expected_attempt,)}, ("claim",))
+    handler_attempts = {"claim": () if discarded else (expected_attempt,)}
+    writes = cluster.reconcile_trial("mesh", namespace, enqueued, handler_attempts, ("claim",))
     workers = cluster.worker_pids(namespace)
-    if len(workers) != 1 or process.pid in workers or native_worker_starts(log) != workers:
-        raise QueueMismatch(f"expected exactly one native worker for attempt {expected_attempt}; see {log}")
-    write_json(evidence / "fault.json", {
+    if len(workers) != int(not discarded) or process.pid in workers or native_worker_starts(log) != workers:
+        raise QueueMismatch(f"unexpected native worker starts after {placement}; see {log}")
+    result = {
         "engine": "mesh", "fault": fault, "rows": rows, "namespace_writes": writes,
         "enqueued_ids": enqueued, "worker_start_pids": workers,
-    })
+    }
+    if discarded:
+        lease = json.loads(cluster.sql("mesh", """
+SELECT json_build_object('max_attempts', max_attempts, 'elapsed_ms', finished_at_ms - attempted_at_ms,
+                         'lease_expires_at_ms', lease_expires_at_ms, 'errors', errors)
+FROM mesh_jobs.jobs
+"""))
+        if (lease["max_attempts"] != 1 or lease["elapsed_ms"] < 1500 or lease["lease_expires_at_ms"] is not None
+                or [(error["attempt"], error["reason"]) for error in lease["errors"]] != [(1, "lease expired")]):
+            raise QueueMismatch(f"the final claim did not discard through lease recovery: {lease}")
+        result["lease_recovery"] = lease
+    write_json(evidence / "fault.json", result)
 
 
 def startup_case(subject, scratch, evidence, keys, *, mode):
@@ -1914,14 +2025,26 @@ WHERE name IN ('server_version','server_version_num','shared_buffers','max_conne
                             "matching_result": {field: candidate[field] for field in fields},
                             "receipts": recovery_receipts,
                         })
-                    if args.mesh_batch and not cluster.expected_version:
-                        for placement in ("before_commit", "after_commit", "after_command_complete"):
-                            case = evidence / "mesh" / f"claim-{placement}"
+                    if not cluster.expected_version:
+                        for placement in ("before_commit", "after_commit"):
+                            case = evidence / "mesh" / f"producer-{placement}"
                             case.mkdir()
-                            inputs_dir = scratch / f"claim-{placement}"
+                            inputs_dir = scratch / case.name
+                            inputs_dir.mkdir()
+                            run_producer_commit_fault(subjects["mesh"], inputs_dir, case, settings,
+                                                      placement, proxy_module.SettlementProxy)
+                    if args.mesh_batch and not cluster.expected_version:
+                        for placement, final_attempt in (
+                            ("before_commit", False), ("after_commit", False), ("after_command_complete", False),
+                            ("after_commit", True),
+                        ):
+                            name = f"claim-{placement}" + ("-final-attempt" if final_attempt else "")
+                            case = evidence / "mesh" / name
+                            case.mkdir()
+                            inputs_dir = scratch / name
                             inputs_dir.mkdir()
                             run_batch_claim_fault(subjects["mesh"], inputs_dir, case, settings,
-                                                  placement, proxy_module.SettlementProxy)
+                                                  placement, proxy_module.SettlementProxy, final_attempt=final_attempt)
                 for name, runners, slots in profiles:
                     profile = f"{name}-{runners}r-{slots}s"
                     case_evidence = evidence / profile

@@ -27,8 +27,9 @@ fn job_spec(args :: Json) -> String!String do
   if hold < 0 do
     return Err("hold_ms must be nonnegative")
   end
+  let max_attempts = if Env.get("JOBS_PARITY_MODE", "") == "final_attempt" do 1 else 3 end
   Ok(Json.encode(json {
-    worker: "parity", args: args, request_key: key, max_attempts: 3,
+    worker: "parity", args: args, request_key: key, max_attempts: max_attempts,
     backoff_base_ms: 1000, backoff_max_ms: 1000
   }))
 end
