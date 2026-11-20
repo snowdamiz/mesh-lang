@@ -21,6 +21,9 @@ GRANT UPDATE (concurrency) ON mesh_jobs.queues TO :"worker";
 GRANT UPDATE (state, attempt, attempted_at_ms, scheduled_at_ms, metadata, finished_at_ms,
     lease_token, lease_expires_at_ms, cancel_requested_at_ms, errors)
     ON mesh_jobs.jobs TO :"worker";
+GRANT SELECT, INSERT (namespace, id, row_version, row_location, encoding, context_bytes),
+    UPDATE (row_version, row_location, context_bytes)
+    ON mesh_jobs.batch_context_blocks TO :"worker";
 GRANT EXECUTE ON FUNCTION mesh_jobs.claim(text,text,jsonb,bigint),
     mesh_jobs.claim_batch_v1(text,text,jsonb,bigint,integer,bigint),
     mesh_jobs.renew(text,uuid,uuid,bigint), mesh_jobs.try_renew(text,uuid,uuid,bigint),
