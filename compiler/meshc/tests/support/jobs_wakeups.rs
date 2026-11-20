@@ -94,7 +94,7 @@ pub(super) fn prove(proof: &Proof<'_>) {
     let mut rolled_back = stage(proof, "stage_rollback", "wake-rolled-back");
     assert!(proof.job("wake-rolled-back").is_null());
     release(&rolled_back);
-    assert!(rolled_back.join().is_null());
+    assert!(rolled_back.join_where(Value::is_null).is_null());
     thread::sleep(Duration::from_millis(100));
     assert_eq!(
         wake_status(&worker, |wake| wake["subscribed"] == true)["notification_scans"],

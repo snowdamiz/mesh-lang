@@ -1203,6 +1203,10 @@ impl Worker {
     }
 
     fn join_report(&mut self, field: &str) -> Value {
+        self.join_where(|value| value.get(field).is_some())
+    }
+
+    fn join_where(&mut self, matches: impl FnMut(&Value) -> bool) -> Value {
         let status: ExitStatus = eventually(&format!("{:?} to stop", self.markers), || {
             self.child.as_mut().unwrap().try_wait().unwrap()
         });
@@ -1216,7 +1220,7 @@ impl Worker {
         log.lines()
             .rev()
             .filter_map(|line| serde_json::from_str::<Value>(line).ok())
-            .find(|value| value.get(field).is_some())
+            .find(matches)
             .unwrap_or_else(|| panic!("worker did not print a JSON shutdown report:\n{log}"))
     }
 
