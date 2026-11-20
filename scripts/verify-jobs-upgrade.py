@@ -102,7 +102,7 @@ class RollingProof:
     def settings(self, role, database=DATABASE, **override):
         return dict(self.env, JOBS_UPGRADE_DB_URL=self.cluster.url(database, role),
                     JOBS_UPGRADE_NAMESPACE=NAMESPACE, JOBS_UPGRADE_GATE=str(self.gate),
-                    JOBS_UPGRADE_BATCH="0", **override)
+                    JOBS_UPGRADE_MODE="legacy", **override)
 
     def migrate(self, binary, label, role=MIGRATOR, database=DATABASE):
         return parity.checked([str(binary), "migrate"], cwd=self.scratch, timeout=25,
@@ -119,7 +119,10 @@ class RollingProof:
     @contextlib.contextmanager
     def runner(self, binary, role, queues, label, batch=False, *, database=DATABASE, expected_error=None):
         env = self.settings(role, database, JOBS_UPGRADE_QUEUES=json.dumps(queues))
-        env["JOBS_UPGRADE_BATCH"] = "1" if batch else "0"
+        if batch:
+            env["JOBS_UPGRADE_MODE"] = "batch"
+        elif binary == self.new:
+            env["JOBS_UPGRADE_MODE"] = "single"
         log = self.evidence / f"{label}.log"
         with log.open("wb") as stream:
             process = parity.RunnerProcess([str(binary), "run"], cwd=self.scratch, env=env,
@@ -519,7 +522,7 @@ SELECT mesh_jobs.set_namespace_paused('{NAMESPACE}',false)
                                  self.settings(OLD_WORKER))
             require(self.catalog() == upgraded, "the old scoped worker's migration changed upgraded SQL")
             batch_denied = self.settings(OLD_WORKER, JOBS_UPGRADE_QUEUES='{"next":1}')
-            batch_denied["JOBS_UPGRADE_BATCH"] = "1"
+            batch_denied["JOBS_UPGRADE_MODE"] = "batch"
             self.reject(self.new, "run", "batch-with-legacy-grants-denied",
                         "needs EXECUTE on mesh_jobs.claim_batch_v1", batch_denied)
             self.reject(self.new, "run", "single-with-legacy-grants-denied",

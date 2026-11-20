@@ -80,11 +80,13 @@ fn serve(pool :: PoolHandle) -> String!String do
     namespace: namespace(), queues: queues, workers: workers, lease_ms: 6000,
     poll_ms: 50, shutdown_grace_ms: 10000
   })
-  let config = if Env.get("JOBS_UPGRADE_BATCH", "0") == "1" do
-    String.slice(base, 0, String.length(base) - 1) <>
-      ",\"claim_batch\":true,\"cron_interval_ms\":0}"
-  else
-    base
+  let config = case Env.get("JOBS_UPGRADE_MODE", "legacy") do
+    "batch" ->
+      String.slice(base, 0, String.length(base) - 1) <>
+        ",\"claim_batch\":true,\"cron_interval_ms\":0}"
+    "single" ->
+      String.slice(base, 0, String.length(base) - 1) <> ",\"cron_interval_ms\":0}"
+    _ -> base
   end
   Process.install_shutdown_signals()
   let runner = Jobs.start(pool, config, handle)?
