@@ -494,7 +494,7 @@ A job panic returns `Err` to its caller. If the caller fails, Mesh stops its lin
 
 ## Durable jobs
 
-`Jobs` stores work in PostgreSQL 14 or newer. Use the application's database to commit an enqueue together with a business change. Use the same namespace on every process that serves the same queues. A namespace groups work in the database. Processes with write access to the same job tables share authority. Use separate databases for applications that do not trust each other.
+`Jobs` stores work in PostgreSQL, including PostgreSQL 18 and 19. Use the application's database to commit an enqueue together with a business change. Use the same namespace on every process that serves the same queues. A namespace groups work in the database. Processes with write access to the same job tables share authority. Use separate databases for applications that do not trust each other.
 
 Create the job tables with `Jobs.migrate(pool)` before starting workers. A job stores a worker name, payload version, arguments, queue, and scheduling and retry options. Keep the worker versions needed by outstanding jobs available during a rolling deploy. Workers claim jobs that match their registered names and versions.
 
@@ -533,7 +533,7 @@ Use `unique` to reuse a matching retained job. A policy can specify `fields` (su
 
 ### Run workers and handle retries
 
-`Jobs.start` takes a named `fn(String) -> String` handler. The handler receives a JSON job with `id`, `effect_key`, `worker`, `version`, `queue`, `args`, `metadata`, `attempt`, and `max_attempts`. The runner config lists the queues and their concurrency and the worker versions the handler accepts.
+`Jobs.start` takes a named `fn(String) -> String` handler in a compiled Mesh executable. Each attempt starts in a fresh process. The handler receives a JSON job with `id`, `effect_key`, `worker`, `version`, `queue`, `args`, `metadata`, `attempt`, and `max_attempts`. Open connections and initialize any other dependencies inside the handler. The process inherits the application's environment. It starts with its own actor registry and connection pools. The runner config lists the queues and their concurrency and the worker versions the handler accepts.
 
 ```mesh
 fn handle_receipt(job :: String) -> String do
@@ -570,7 +570,9 @@ A claim has a lease. A runner renews the lease while its handler runs and record
 
 Delivery is at least once within the attempt budget. If a handler sends a receipt and dies before acknowledging it, another attempt can send it again. Pass `effect_key` to a downstream idempotency mechanism or record it in the same transaction as the external effect when both use the same database.
 
-On `SIGTERM` or `Jobs.stop`, the runner stops claiming new work and tries to finish in-flight attempts within the grace period. An attempt that cannot finish remains recoverable through its lease. Blocking native calls may outlast a handler timeout or a shutdown deadline. `Jobs.stop` reports attempts that are still running. Use `Jobs.join` to keep a worker process running until shutdown. Close the PostgreSQL pool after stopping its runners.
+The runtime terminates the attempt process at its handler timeout or when it loses its lease or runner. Termination stops the handler and all its local actors, including code blocked in a native call. A running service may still finish a request it accepted before termination. Use the same `effect_key` to deduplicate those requests across retries.
+
+On `SIGTERM` or `Jobs.stop`, the runner stops claiming new work and tries to finish in-flight attempts within the grace period. It terminates attempts that are still running when the grace period ends. `Jobs.stop` reports attempts whose exit has yet to be observed. An unfinished claim remains recoverable through its lease. Use `Jobs.join` to keep a worker process running until shutdown. Close the PostgreSQL pool after stopping its runners.
 
 Use a writable PostgreSQL primary with durable commits (`synchronous_commit = on` or stronger) and enough pool connections for handlers, application transactions, and runner I/O. Durability during primary failure depends on the database's storage, replication, and failover configuration. Schedules and lease expiration use the primary's clock.
 

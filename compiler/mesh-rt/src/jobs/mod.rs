@@ -1,6 +1,7 @@
 mod cron;
 mod runner;
 mod store;
+mod worker;
 
 use crate::db::jobs_connection::{self, PgJobDb};
 use crate::io::{alloc_result, err_result, ok_int, MeshResult};
