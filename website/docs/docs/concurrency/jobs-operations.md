@@ -136,7 +136,7 @@ can retain an invalid index with a `_ccnew` or `_ccold` suffix after failure.
    a trusted application database.
 
 Run the disposable fresh and upgrade role proof with a local checkout that
-contains `74db988d`.
+contains the pinned main revision `7c162056`.
 
 ```sh
 env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \

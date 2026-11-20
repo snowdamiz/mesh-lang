@@ -7,9 +7,9 @@ if [[ "${MESH_JOBS_DISPOSABLE_ROLE_PROOF:-}" != 1 ]]; then
   exit 2
 fi
 
-pre_j6=74db988d
-git cat-file -e "$pre_j6:compiler/mesh-rt/src/jobs/schema.sql"
-git cat-file -e "$pre_j6:compiler/mesh-rt/src/jobs/cron_schema.sql"
+upgrade_from=7c1620563614a04a573aef806a6d019a2af4dfe9
+git cat-file -e "$upgrade_from:compiler/mesh-rt/src/jobs/schema.sql"
+git cat-file -e "$upgrade_from:compiler/mesh-rt/src/jobs/cron_schema.sql"
 psql_proof() {
   psql -XqAtw -v ON_ERROR_STOP=1 -v VERBOSITY=verbose "$MESH_TEST_DATABASE_URL" "$@"
 }
@@ -70,8 +70,8 @@ for database in jobs_role_fresh jobs_role_upgrade; do
   if [[ "$database" == jobs_role_upgrade ]]; then
     {
       printf 'BEGIN;\n'
-      git show "$pre_j6:compiler/mesh-rt/src/jobs/schema.sql"
-      git show "$pre_j6:compiler/mesh-rt/src/jobs/cron_schema.sql"
+      git show "$upgrade_from:compiler/mesh-rt/src/jobs/schema.sql"
+      git show "$upgrade_from:compiler/mesh-rt/src/jobs/cron_schema.sql"
       printf 'COMMIT;\n'
     } | as_role jobs_migrator >/dev/null
     statement jobs_migrator "

@@ -31,6 +31,11 @@ while (( $# > 0 )); do
   esac
 done
 
+if revision=$(git rev-parse --verify HEAD 2>/dev/null); then
+  printf 'Jobs proof checkout: %s\n' "$revision"
+fi
+printf 'Jobs proof host: %s\n' "$(uname -sm)"
+
 if "$parity_driver_check"; then
   python3 scripts/jobs-parity.py --self-check
   PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/tests -p test_jobs_parity_fault.py
@@ -38,6 +43,7 @@ fi
 
 verify() {
   export MESH_JOBS_TEST_PG_URL="$MESH_TEST_DATABASE_URL"
+  cargo build --locked -p meshc
   if [[ -n "$postgres_version" ]]; then
     MESH_TEST_POSTGRES_VERSION="$postgres_version" \
       cargo test --locked -p mesh-rt --test postgres_compatibility -- --ignored --nocapture

@@ -170,6 +170,22 @@ fn bounded_drain(pool :: PoolHandle, payload :: String) -> String!String do
   Jobs.drain(pool, config, bounded_handler, options)
 end
 
+fn hold_checkout(_conn :: borrow PgConn) -> Int!String do
+  let markers = Env.get("MESH_JOBS_PROOF_MARKERS", "")
+  let _ = File.write(markers <> "/pool-held", "held")?
+  while !File.exists(markers <> "/pool-release") do
+    Timer.sleep(10)
+  end
+  Ok(0)
+end
+
+actor exhaust_pool(pool :: PoolHandle) do
+  case Repo.transaction(pool, hold_checkout) do
+    Ok(_) -> ()
+    Err(error) -> println("pool checkout failed: " <> error)
+  end
+end
+
 fn serve(pool :: PoolHandle, config :: String) -> String!String do
   Process.install_shutdown_signals()
   let runner = Jobs.start(pool, config, handle)?
@@ -178,6 +194,11 @@ fn serve(pool :: PoolHandle, config :: String) -> String!String do
   let status = Jobs.status(runner)?
   let _ = File.write(markers <> "/ready", status)?
   while !Process.shutdown_requested() do
+    if File.exists(markers <> "/pool-hold") do
+      let _ = File.rename(markers <> "/pool-hold", markers <> "/pool-hold-started")?
+      let _ = spawn(exhaust_pool, pool)
+      ()
+    end
     let command = markers <> "/local-control"
     if File.exists(command) do
       let _ = File.rename(command, markers <> "/local-control-read")?
@@ -198,8 +219,11 @@ fn serve(pool :: PoolHandle, config :: String) -> String!String do
   end
   let _ = File.write(markers <> "/signal", "received")?
   let grace = Json.as_int(Json.object_get(Json.parse(config)?, "shutdown_grace_ms")?)?
+  let stop_start = Monotonic.now_nanos()
   let stopping = Jobs.stop(runner, grace)?
+  let stop_ns = Monotonic.now_nanos() - stop_start
   let _ = File.write(markers <> "/stop", stopping)?
+  let _ = File.write(markers <> "/stop-ns", "${stop_ns}")?
   let joined = Jobs.join(runner)?
   if capture_events do
     let batch = Jobs.read_events(runner, 128)?
@@ -210,7 +234,8 @@ fn serve(pool :: PoolHandle, config :: String) -> String!String do
 end
 
 fn run() -> String!String do
-  let pool = Pool.open(database_url(), 1, 8, 5000)?
+  let pool_size = if Env.get("MESH_JOBS_PROOF_ONE_SLOT", "") == "true" do 1 else 8 end
+  let pool = Pool.open(database_url(), 1, pool_size, 5000)?
   if Env.get("MESH_JOBS_PROOF_PUBLISH", "") == "on" do
     let _ = Repo.transaction(pool, enable_wakeups)?
     ()
