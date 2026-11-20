@@ -580,6 +580,8 @@ On `SIGTERM` or `Jobs.stop`, the runner stops claiming new work and tries to fin
 
 `Jobs.join` can wait past the grace period. It returns `stopped` after the runner reaps its local attempt processes and finishes its PostgreSQL work, including background maintenance. Before closing the PostgreSQL pool, wait for `Jobs.join` to return for every runner that uses it.
 
+`Jobs.status`, `Jobs.join`, and `Jobs.stop` report cumulative settlement counts for that runner in `outcomes`. The fields are `completed`, `cancelled`, `discarded`, `retryable`, `scheduled`, and `released_unstarted`. Each count reflects writes PostgreSQL confirmed to the runner. Their sum is `finished`. The top-level `scheduled` counts cron jobs enqueued. `stale_acks` counts acknowledgements that applied no write, and `recovered` counts expired attempts handled by this runner's recovery loop.
+
 Use a writable PostgreSQL primary with durable commits (`synchronous_commit = on` or stronger) and enough pool connections for handlers, application transactions, and runner I/O. Durability during primary failure depends on the database's storage, replication, and failover configuration. Schedules and lease expiration use the primary's clock.
 
 ### Inspect and operate queues

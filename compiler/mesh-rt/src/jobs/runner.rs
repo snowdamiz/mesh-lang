@@ -9,7 +9,7 @@ use crate::actor;
 
 use super::cron;
 use super::store::{
-    claim, drain_has_work, finish, prune, recover, renew, Claim, LeaseStatus, Outcome,
+    claim, drain_has_work, finish, prune, recover, renew, Claim, LeaseStatus, Outcome, Settlement,
 };
 use super::with_pool;
 use super::worker::{check_executable, handler_name, host_deadline, WorkerProcess};
@@ -175,11 +175,47 @@ struct ActiveJob {
 #[derive(Default)]
 struct Counts {
     claimed: u64,
-    finished: u64,
+    outcomes: OutcomeCounts,
     stale_acks: u64,
     recovered: u64,
     scheduled: u64,
     pruned: u64,
+}
+
+impl Counts {
+    fn record_settlement(&mut self, settlement: Settlement) {
+        let count = match settlement {
+            Settlement::Completed => &mut self.outcomes.completed,
+            Settlement::Cancelled => &mut self.outcomes.cancelled,
+            Settlement::Discarded => &mut self.outcomes.discarded,
+            Settlement::Retryable => &mut self.outcomes.retryable,
+            Settlement::Scheduled => &mut self.outcomes.scheduled,
+            Settlement::ReleasedUnstarted => &mut self.outcomes.released_unstarted,
+            Settlement::Stale => &mut self.stale_acks,
+        };
+        *count += 1;
+    }
+}
+
+#[derive(Default, Serialize)]
+struct OutcomeCounts {
+    completed: u64,
+    cancelled: u64,
+    discarded: u64,
+    retryable: u64,
+    scheduled: u64,
+    released_unstarted: u64,
+}
+
+impl OutcomeCounts {
+    fn total(&self) -> u64 {
+        self.completed
+            + self.cancelled
+            + self.discarded
+            + self.retryable
+            + self.scheduled
+            + self.released_unstarted
+    }
 }
 
 struct State {
@@ -269,7 +305,8 @@ impl Runner {
             "pending_claims": state.pending_claims,
             "queues": queues,
             "claimed": state.counts.claimed,
-            "finished": state.counts.finished,
+            "finished": state.counts.outcomes.total(),
+            "outcomes": state.counts.outcomes,
             "stale_acks": state.counts.stale_acks,
             "recovered": state.counts.recovered,
             "scheduled": state.counts.scheduled,
@@ -347,7 +384,9 @@ fn start_runner(
         .ok_or("actor scheduler is unavailable")?;
     with_pool(pool, |db| {
         let rows = db.query(
-            "SELECT (version = 1 AND to_regclass('mesh_jobs.cron_schedules') IS NOT NULL)::text
+            "SELECT (version = 1
+                     AND to_regclass('mesh_jobs.cron_schedules') IS NOT NULL
+                     AND to_regprocedure('mesh_jobs.settle_state(text,uuid,uuid,jsonb,boolean)') IS NOT NULL)::text
              FROM mesh_jobs.schema_version WHERE singleton",
             &[],
         )?;
@@ -659,13 +698,8 @@ impl Attempt {
         match with_pool(pool, |db| {
             finish(db, &runner.config.namespace, &self.id, &self.token, outcome)
         }) {
-            Ok(finished) => {
-                let mut state = runner.state.lock();
-                if finished {
-                    state.counts.finished += 1;
-                } else {
-                    state.counts.stale_acks += 1;
-                }
+            Ok(settlement) => {
+                runner.state.lock().counts.record_settlement(settlement);
                 false
             }
             Err(error) => {

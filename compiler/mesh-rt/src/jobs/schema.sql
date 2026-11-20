@@ -301,9 +301,9 @@ BEGIN
 END
 $$;
 
-CREATE OR REPLACE FUNCTION mesh_jobs.settle(
+CREATE OR REPLACE FUNCTION mesh_jobs.settle_state(
     ns text, job_id uuid, token uuid, outcome jsonb, recovering boolean
-) RETURNS boolean
+) RETURNS text
 LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
     job mesh_jobs.jobs%ROWTYPE;
@@ -315,9 +315,9 @@ DECLARE
 BEGIN
     SELECT * INTO job FROM mesh_jobs.jobs
     WHERE namespace = ns AND id = job_id AND lease_token = token FOR NO KEY UPDATE NOWAIT;
-    IF NOT FOUND THEN RETURN false; END IF;
+    IF NOT FOUND THEN RETURN NULL; END IF;
     now_at := mesh_jobs.now_ms();
-    IF (job.lease_expires_at_ms <= now_at) <> recovering THEN RETURN false; END IF;
+    IF (job.lease_expires_at_ms <= now_at) <> recovering THEN RETURN NULL; END IF;
 
     IF job.cancel_requested_at_ms IS NOT NULL THEN
         next_state := 'cancelled';
@@ -355,9 +355,17 @@ BEGIN
             CASE WHEN jsonb_array_length(job.errors) >= 100 THEN job.errors - 0 ELSE job.errors END ||
             jsonb_build_array(jsonb_build_object('at_ms', now_at, 'attempt', job.attempt, 'reason', reason))
             END
-    WHERE namespace = ns AND id = job_id;
-    RETURN true;
+    WHERE namespace = ns AND id = job_id AND lease_token = token
+    RETURNING state INTO next_state;
+    RETURN next_state;
 END
+$$;
+
+CREATE OR REPLACE FUNCTION mesh_jobs.settle(
+    ns text, job_id uuid, token uuid, outcome jsonb, recovering boolean
+) RETURNS boolean
+LANGUAGE sql VOLATILE SET search_path = pg_catalog, pg_temp AS $$
+    SELECT mesh_jobs.settle_state(ns, job_id, token, outcome, recovering) IS NOT NULL;
 $$;
 
 CREATE OR REPLACE FUNCTION mesh_jobs.recover(ns text, page_size integer, queue_filter jsonb) RETURNS bigint

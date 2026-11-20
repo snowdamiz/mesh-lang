@@ -88,7 +88,7 @@ impl Fixture {
         claim(&mut self.db, &self.ns, "default", WORKERS, 60_000).unwrap()
     }
 
-    fn finish(&mut self, claim: &Claim, outcome: Outcome) -> bool {
+    fn finish(&mut self, claim: &Claim, outcome: Outcome) -> Settlement {
         finish(&mut self.db, &self.ns, &claim.id, &claim.token, outcome).unwrap()
     }
 
@@ -133,8 +133,12 @@ fn release_before_execution_preserves_uniqueness_and_honors_cancellation() {
         "unique":{"fields":["worker", "metadata"], "states":"incomplete"}});
     let admitted = fixture.enqueue(spec.clone());
     let first = fixture.claim();
-    assert!(fixture.finish(&first, Outcome::ReleaseUnstarted));
+    assert_eq!(
+        fixture.finish(&first, Outcome::ReleaseUnstarted),
+        Settlement::ReleasedUnstarted
+    );
     let released = fixture.get(id(&admitted));
+    assert_eq!(released["state"], "available");
     assert_eq!(released["attempt"], 0);
     assert_eq!(released["metadata"], spec["metadata"]);
     assert_eq!(
@@ -144,10 +148,51 @@ fn release_before_execution_preserves_uniqueness_and_honors_cancellation() {
     assert_eq!(id(&fixture.enqueue(spec)), id(&admitted));
 
     let replacement = fixture.claim();
-    assert!(!fixture.finish(&first, Outcome::ReleaseUnstarted));
+    assert_eq!(
+        fixture.finish(&first, Outcome::ReleaseUnstarted),
+        Settlement::Stale
+    );
     fixture.ops(json!({"action":"cancel","id":replacement.id}));
-    assert!(fixture.finish(&replacement, Outcome::ReleaseUnstarted));
-    assert_eq!(fixture.get(id(&admitted))["state"], "cancelled");
+    assert_eq!(
+        fixture.finish(&replacement, Outcome::ReleaseUnstarted),
+        Settlement::Cancelled
+    );
+    let cancelled = fixture.get(id(&admitted));
+    assert_eq!(cancelled["state"], "cancelled");
+    assert_eq!(cancelled["attempt"], 1);
+}
+
+#[test]
+#[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
+fn migration_preserves_existing_attempts_and_legacy_boolean_settlement() {
+    let mut f = Fixture::new();
+    f.enqueue(json!({"worker":"Deliver","args":{"reference":"durable"}}));
+    let claim = f.claim();
+    let executing = f.get(&claim.id);
+
+    let mut legacy = Connection::open(&f.url);
+    migrate(&mut legacy).unwrap();
+    assert_eq!(
+        response(
+            &mut legacy,
+            "SELECT version::text FROM mesh_jobs.schema_version WHERE singleton",
+            &[]
+        )
+        .unwrap(),
+        "1"
+    );
+    assert_eq!(f.get(&claim.id), executing);
+
+    let settle = "SELECT mesh_jobs.settle($1, $2::uuid, $3::uuid,
+        '{\"action\":\"complete\"}'::jsonb, false)::text";
+    let params = [f.ns.as_str(), claim.id.as_str(), claim.token.as_str()];
+    assert_eq!(response(&mut legacy, settle, &params).unwrap(), "true");
+    assert_eq!(response(&mut legacy, settle, &params).unwrap(), "false");
+    assert_eq!(f.finish(&claim, Outcome::Complete), Settlement::Stale);
+    let completed = f.get(&claim.id);
+    assert_eq!(completed["state"], "completed");
+    assert_eq!(completed["args"], executing["args"]);
+    assert_eq!(completed["attempt"], executing["attempt"]);
 }
 
 #[test]
@@ -221,7 +266,7 @@ fn enqueue_is_atomic_with_the_application_transaction_and_replays_after_pruning(
     assert_eq!(claim.id, id(&receipt));
     assert_eq!(parse(&claim.context)["effect_key"], receipt["effect_key"]);
     assert_eq!(parse(&claim.context)["args"]["order"], "x'); SELECT 1; --");
-    assert!(f.finish(&claim, Outcome::Complete));
+    assert_eq!(f.finish(&claim, Outcome::Complete), Settlement::Completed);
     assert_eq!(
         f.ops(json!({"action":"prune","max_age_ms":0})),
         json!({"deleted":1})
@@ -356,11 +401,17 @@ fn competing_claims_obey_capacity_pause_stop_and_drain() {
     f.ops(json!({"action":"scale","queue":"default","concurrency":1}));
     f.ops(json!({"action":"resume","queue":"default"}));
     assert!(f.try_claim().is_none());
-    assert!(f.finish(&claimed[0], Outcome::Complete));
+    assert_eq!(
+        f.finish(&claimed[0], Outcome::Complete),
+        Settlement::Completed
+    );
     assert!(f.try_claim().is_none());
     f.ops(json!({"action":"stop","queue":"default"}));
     f.ops(json!({"action":"resume","queue":"default"}));
-    assert!(f.finish(&claimed[1], Outcome::Complete));
+    assert_eq!(
+        f.finish(&claimed[1], Outcome::Complete),
+        Settlement::Completed
+    );
     assert!(f.try_claim().is_none());
     f.ops(json!({"action":"start","queue":"default"}));
     assert_eq!(f.claim().id, id(&jobs[2]));
@@ -387,7 +438,7 @@ fn cancel_holds_capacity_until_ack_or_recovery_and_expired_tokens_are_fenced() {
         renew(&mut new_conn, &f.ns, &first.id, &first.token, 90_000).unwrap(),
         LeaseStatus::Lost
     );
-    assert!(!f.finish(&first, Outcome::Complete));
+    assert_eq!(f.finish(&first, Outcome::Complete), Settlement::Stale);
     assert!(f.try_claim().is_none());
     assert_eq!(recover(&mut f.db, &f.ns, 1, None).unwrap(), 1);
     let replacement = f.claim();
@@ -398,15 +449,26 @@ fn cancel_holds_capacity_until_ack_or_recovery_and_expired_tokens_are_fenced() {
         parse(&replacement.context)["effect_key"]
     );
     assert_eq!(parse(&replacement.context)["attempt"], 2);
-    assert!(!f.finish(&first, Outcome::Complete));
+    assert_eq!(f.finish(&first, Outcome::Complete), Settlement::Stale);
     assert_eq!(
         renew(&mut new_conn, &f.ns, &first.id, &first.token, 90_000).unwrap(),
         LeaseStatus::Lost
     );
 
+    new_conn.simple("SET statement_timeout = 1000").unwrap();
+    f.db.simple("BEGIN").unwrap();
     let requested = f.ops(json!({"action":"cancel","id":replacement.id}));
+    let racing_ack = finish(
+        &mut new_conn,
+        &f.ns,
+        &replacement.id,
+        &replacement.token,
+        Outcome::Complete,
+    );
+    f.db.simple("COMMIT").unwrap();
     assert_eq!(requested["state"], "executing");
     assert!(requested["cancel_requested_at_ms"].is_number());
+    assert!(racing_ack.unwrap_err().contains("could not obtain lock"));
     assert_eq!(
         renew(
             &mut new_conn,
@@ -423,7 +485,17 @@ fn cancel_holds_capacity_until_ack_or_recovery_and_expired_tokens_are_fenced() {
         f.ops(json!({"action":"delete","id":replacement.id}))["deleted"],
         false
     );
-    assert!(f.finish(&replacement, Outcome::Complete));
+    assert_eq!(
+        finish(
+            &mut new_conn,
+            &f.ns,
+            &replacement.id,
+            &replacement.token,
+            Outcome::Complete,
+        )
+        .unwrap(),
+        Settlement::Cancelled
+    );
     assert_eq!(f.get(&replacement.id)["state"], "cancelled");
 
     let second = f.claim();
@@ -450,18 +522,24 @@ fn schedules_versions_snoozes_and_retry_budget_use_primary_time() {
     let first = f.claim();
     assert_eq!(first.id, job_id);
     assert_eq!(first.timeout_ms, 1234);
-    assert!(f.finish(&first, Outcome::Snooze { delay_ms: 0 }));
+    assert_eq!(
+        f.finish(&first, Outcome::Snooze { delay_ms: 0 }),
+        Settlement::Scheduled
+    );
     let again = f.claim();
     let context = parse(&again.context);
     assert_eq!(context["metadata"]["snoozed"], 1);
     assert_eq!(context["attempt"], 1);
 
-    assert!(f.finish(
-        &again,
-        Outcome::Fail {
-            reason: "retry me".into()
-        }
-    ));
+    assert_eq!(
+        f.finish(
+            &again,
+            Outcome::Fail {
+                reason: "retry me".into()
+            }
+        ),
+        Settlement::Retryable
+    );
     let retryable = f.get(job_id);
     assert_eq!(retryable["state"], "retryable");
     let metrics = f.ops(json!({"action":"queue_stats","queue":"default"}));
@@ -484,13 +562,16 @@ fn schedules_versions_snoozes_and_retry_budget_use_primary_time() {
     f.ops(json!({"action":"reschedule","id":job_id,"scheduled_at_ms":0}));
     let last = f.claim();
     assert_eq!(parse(&last.context)["attempt"], 2);
-    assert!(f.finish(
-        &last,
-        Outcome::RetryAfter {
-            delay_ms: 1,
-            reason: "exhaust".into()
-        }
-    ));
+    assert_eq!(
+        f.finish(
+            &last,
+            Outcome::RetryAfter {
+                delay_ms: 1,
+                reason: "exhaust".into()
+            }
+        ),
+        Settlement::Discarded
+    );
     let discarded = f.get(job_id);
     assert_eq!(discarded["state"], "discarded");
     assert_eq!(discarded["errors"].as_array().unwrap().len(), 2);
@@ -513,7 +594,7 @@ fn schedules_versions_snoozes_and_retry_budget_use_primary_time() {
     .unwrap()
     .unwrap();
     assert_eq!(other.id, id(&jobs[0]));
-    assert!(f.finish(&other, Outcome::Complete));
+    assert_eq!(f.finish(&other, Outcome::Complete), Settlement::Completed);
     assert_eq!(f.get(id(&jobs[1]))["state"], "scheduled");
     assert_eq!(
         f.ops(json!({"action":"list_queues","limit":1}))[0]["queue"],
@@ -608,14 +689,17 @@ fn process_crash_retains_lease_and_recovery_enforces_exhaustion() {
     assert_eq!(recover(&mut f.db, &f.ns, 1, None).unwrap(), 1);
     assert_eq!(f.get(job_id)["state"], "discarded");
     assert_eq!(f.get(job_id)["errors"][0]["reason"], "lease expired");
-    assert!(!finish(
-        &mut f.db,
-        &f.ns,
-        job_id,
-        receipt["token"].as_str().unwrap(),
-        Outcome::Complete
-    )
-    .unwrap());
+    assert_eq!(
+        finish(
+            &mut f.db,
+            &f.ns,
+            job_id,
+            receipt["token"].as_str().unwrap(),
+            Outcome::Complete
+        )
+        .unwrap(),
+        Settlement::Stale
+    );
     assert_eq!(f.claim().id, id(&original[1]));
 }
 
@@ -653,14 +737,17 @@ fn locked_job_operations_leave_the_claim_for_retry() {
         &[&f.ns, &claim.id],
     )
     .unwrap();
-    assert!(!finish(
-        &mut worker,
-        &f.ns,
-        &claim.id,
-        &claim.token,
-        Outcome::Complete,
-    )
-    .unwrap());
+    assert_eq!(
+        finish(
+            &mut worker,
+            &f.ns,
+            &claim.id,
+            &claim.token,
+            Outcome::Complete,
+        )
+        .unwrap(),
+        Settlement::Stale
+    );
     assert_eq!(f.get(&claim.id)["state"], "executing");
     assert_eq!(recover(&mut f.db, &f.ns, 1, None).unwrap(), 1);
 }
