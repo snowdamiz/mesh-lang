@@ -668,6 +668,23 @@ listening reduced median time to first claim from 150.6 ms to 2.1 ms. The
 first-claim-to-final-settlement ranges overlapped at 158–459 ms with
 polling and 171–386 ms with notifications. [Notification diagnostic](../proof/jobs-parity/qualification-v1.json)
 
+### PostgreSQL socket experiment
+
+Release candidate `7e4666da` enabled `TCP_NODELAY` before TLS and SCRAM
+authentication. On PostgreSQL 17.11, five paired short-job trials with
+batch claims on both Mesh arms shortened the median interval from handler
+entry to its first committed write from 6.37 ms to 5.92 ms. All five
+paired differences favored the candidate. Throughput ranges overlapped
+at 386–614 jobs/s on `1b12243b` and 437–611 jobs/s on the candidate. The
+no-op profile's throughput medians were 621 and 618 jobs/s respectively.
+
+In separate frozen comparisons against Oban Basic 2.24.2, the socket
+candidate missed the short profile's throughput, pickup, and CPU limits.
+The no-op profile exceeded the CPU limit. Each comparison reconciled
+1,920 jobs per engine. These macOS arm64 runs used verified TLS and SCRAM
+on a busy host. The socket change remains experimental.
+[Socket experiment receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Historical references
 
 On the same macOS arm64 host and PostgreSQL 17.11 configuration, the driver
@@ -916,3 +933,9 @@ observes the limit after resume.
 Both proofs passed on macOS arm64 with PostgreSQL 17.11, 18.7, and 19.0
 using verified TLS and SCRAM.
 [Compiled failure receipts](../proof/jobs-parity/qualification-v1.json)
+
+The maintenance-join test pauses local admission and waits for any pending
+claim to clear before stopping with the cron lock held. This lets the test
+check that a drained runner still waits for maintenance. The corrected
+PostgreSQL 19.0 run passed all 45 Jobs runtime tests and both compiled
+proofs on macOS arm64. [Maintenance-join receipt](../proof/jobs-parity/qualification-v1.json)
