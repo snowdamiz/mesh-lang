@@ -105,6 +105,8 @@ end
     prove_bounded_cutoff(&proof, &other);
     prove_bounded_recursion(&proof);
     prove_bounded_error_policy(&proof);
+    prove_bounded_launch_failure(&proof);
+    prove_bounded_unconfirmed_settlement(&proof);
     prove_bounded_crash_recovery(&proof);
     proof.clean().unwrap();
     other.clean().unwrap();
@@ -140,6 +142,10 @@ fn prove_manual_reference(compiler: &Path, candidate: &Proof, runtime: &Path) {
 }
 
 fn bounded_request(proof: &Proof, queue: &str, options: Value) -> String {
+    bounded_payload(proof, queue, options).to_string()
+}
+
+fn bounded_payload(proof: &Proof, queue: &str, options: Value) -> Value {
     json!({
         "config": {
             "namespace": proof.namespace,
@@ -149,7 +155,22 @@ fn bounded_request(proof: &Proof, queue: &str, options: Value) -> String {
         },
         "options": options,
     })
-    .to_string()
+}
+
+fn start_drain(proof: &Proof, request: &str) -> Child {
+    proof
+        .command("drain", request)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap()
+}
+
+fn drain_error(output: std::process::Output) -> String {
+    let report = artifacts::command_output_text(&output);
+    assert_eq!(output.status.code(), Some(1), "{report}");
+    assert!(report.contains("proof error:"), "{report}");
+    report
 }
 
 pub(super) fn prove_scoped_drain(admin: &Proof, producer: &Proof, worker: &Proof) {
@@ -174,18 +195,11 @@ pub(super) fn prove_scoped_drain(admin: &Proof, producer: &Proof, worker: &Proof
     admin.sql(&format!(
         "REVOKE EXECUTE ON FUNCTION {CLAIM} FROM jobs_worker"
     ));
-    let child = worker
-        .command("drain", &request)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap();
+    let child = start_drain(worker, &request);
     let output = artifacts::wait_with_timeout(child, WAIT).unwrap();
-    let report = artifacts::command_output_text(&output);
-    assert_eq!(output.status.code(), Some(1), "{report}");
+    let report = drain_error(output);
     assert!(
-        report.contains("proof error:")
-            && report.contains("permission denied for function claim_drain_v1"),
+        report.contains("permission denied for function claim_drain_v1"),
         "{report}"
     );
     let untouched = admin.job(label);
@@ -322,6 +336,137 @@ fn prove_bounded_error_policy(proof: &Proof) {
     assert_eq!(proof.job("poison")["state"], "discarded");
     assert_eq!(proof.job("poison")["attempt"], 2);
     assert_eq!(proof.job("bounded-healthy")["state"], "completed");
+}
+
+fn prove_bounded_launch_failure(proof: &Proof) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let queue = "drain-launch-failure";
+    let receipt = proof.enqueue(json!({
+        "worker":"proof", "queue":queue, "args":{"label":queue}, "max_attempts":1
+    }));
+    let mut payload = bounded_payload(proof, queue, json!({"max_jobs":1,"recursive":true}));
+    payload["config"]["lease_ms"] = json!(8000);
+    let request = payload.to_string();
+    let (barrier, blocker) = proof.hold_claim(&receipt);
+    let mut child = start_drain(proof, &request);
+    eventually(
+        "the bounded drain claim to reach the launch barrier",
+        || {
+            assert!(
+                child.try_wait().unwrap().is_none(),
+                "drain caller exited early"
+            );
+            proof.claim_is_waiting(blocker).then_some(())
+        },
+    );
+    let permissions = fs::metadata(&proof.binary).unwrap().permissions();
+    fs::set_permissions(
+        &proof.binary,
+        fs::Permissions::from_mode(permissions.mode() & !0o111),
+    )
+    .unwrap();
+    native_pg_close(barrier);
+    let output = artifacts::wait_with_timeout(child, WAIT);
+    fs::set_permissions(&proof.binary, permissions).unwrap();
+    let error = drain_error(output.unwrap());
+    assert!(
+        error.contains("could not start job handler process") && error.contains("os error 13"),
+        "{error}"
+    );
+    let refunded = proof.wait_state(queue, "available");
+    assert_eq!(refunded["id"], receipt["id"]);
+    assert_eq!(refunded["effect_key"], receipt["effect_key"]);
+    assert_eq!(refunded["attempt"], 0);
+    assert_eq!(refunded["max_attempts"], 1);
+    assert!(proof.effects(queue).is_empty());
+
+    proof.sql("DROP TRIGGER hold_racing_claim ON mesh_jobs.jobs");
+    let completed = proof.run("drain", &request);
+    assert_eq!(completed["outcomes"]["completed"], 1, "{completed}");
+    let job = proof.wait_state(queue, "completed");
+    assert_eq!(job["id"], receipt["id"]);
+    assert_eq!(job["attempt"], 1);
+    let effects = proof.effects(queue);
+    assert_eq!(effects.len(), 1);
+    assert_job_context(&effects[0], &receipt, queue, queue, 1);
+    println!(
+        "J5 bounded drain returned a launch error and refunded the confirmed unstarted attempt"
+    );
+}
+
+fn prove_bounded_unconfirmed_settlement(proof: &Proof) {
+    let queue = "drain-unconfirmed";
+    let receipt = proof.enqueue(json!({
+        "worker":"proof", "queue":queue, "args":{"label":queue}, "max_attempts":2,
+        "backoff_base_ms":0, "backoff_max_ms":0
+    }));
+    proof.sql(&format!(
+        "CREATE FUNCTION {ns}.disconnect_drain_settlement() RETURNS trigger LANGUAGE plpgsql AS $cut$
+         BEGIN
+             PERFORM pg_terminate_backend(pg_backend_pid());
+             PERFORM pg_sleep(1);
+             RAISE EXCEPTION 'settlement backend did not exit';
+         END; $cut$;
+         CREATE TRIGGER disconnect_drain_settlement
+         BEFORE UPDATE OF state ON mesh_jobs.jobs FOR EACH ROW
+         WHEN (NEW.id = {id}::uuid AND NEW.namespace = {quoted_ns} AND NEW.state = 'completed')
+         EXECUTE FUNCTION {ns}.disconnect_drain_settlement()",
+        ns = proof.namespace,
+        quoted_ns = quoted(&proof.namespace),
+        id = quoted(id(&receipt)),
+    ));
+    let mut payload = bounded_payload(proof, queue, json!({"max_jobs":1,"recursive":true}));
+    payload["config"]["event_log"] = json!(true);
+    let request = payload.to_string();
+    let child = start_drain(proof, &request);
+    let error = drain_error(artifacts::wait_with_timeout(child, WAIT).unwrap());
+    let events: Vec<Value> = error
+        .lines()
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .filter(|event: &Value| event["attempt"]["job_id"] == receipt["id"])
+        .collect();
+    assert!(
+        events.iter().any(|event| event["event"] == "ack_uncertain"),
+        "{error}"
+    );
+    assert!(
+        events
+            .iter()
+            .all(|event| event["event"] != "settlement_committed"),
+        "{error}"
+    );
+
+    let pending = proof.wait_state(queue, "executing");
+    assert_eq!(pending["id"], receipt["id"]);
+    assert_eq!(pending["effect_key"], receipt["effect_key"]);
+    assert_eq!(pending["attempt"], 1);
+    let effects = proof.effects(queue);
+    assert_eq!(effects.len(), 1);
+    assert_job_context(&effects[0], &receipt, queue, queue, 1);
+    let old = proof.lease(id(&receipt));
+    assert!(!old.token.is_empty());
+    eventually("the unconfirmed drain attempt's lease to expire", || {
+        (proof
+            .sql("SELECT mesh_jobs.now_ms()")
+            .parse::<i64>()
+            .unwrap()
+            >= old.expires_at_ms)
+            .then_some(())
+    });
+
+    proof.sql("DROP TRIGGER disconnect_drain_settlement ON mesh_jobs.jobs");
+    let recovered = proof.run("drain", &request);
+    assert_eq!(recovered["recovered"], 1, "{recovered}");
+    assert_eq!(recovered["outcomes"]["completed"], 1, "{recovered}");
+    let job = proof.wait_state(queue, "completed");
+    assert_eq!(job["id"], receipt["id"]);
+    assert_eq!(job["attempt"], 2);
+    let effects = proof.effects(queue);
+    assert_eq!(effects.len(), 2);
+    assert_job_context(&effects[0], &receipt, queue, queue, 1);
+    assert_job_context(&effects[1], &receipt, queue, queue, 2);
+    println!("J5 bounded drain returned an unconfirmed settlement error and recovered the same job and effect key");
 }
 
 fn prove_bounded_crash_recovery(proof: &Proof) {

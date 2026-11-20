@@ -642,28 +642,7 @@ fn prove_bulk_delete_during_claim(shared: &Proof<'_>) {
     let active = proof.enqueue(json!({
         "worker":"proof", "queue":queue, "args":{"label":label}
     }));
-    proof.sql(&format!(
-        "CREATE FUNCTION {ns}.hold_racing_claim() RETURNS trigger LANGUAGE plpgsql AS $hold$
-         BEGIN
-             PERFORM pg_advisory_xact_lock(hashtextextended(NEW.namespace, 1461749649));
-             RETURN NEW;
-         END; $hold$;
-         CREATE TRIGGER hold_racing_claim
-         BEFORE UPDATE OF attempt ON mesh_jobs.jobs FOR EACH ROW
-         WHEN (NEW.id = {id}::uuid AND NEW.namespace = {quoted_ns} AND NEW.state = 'executing')
-         EXECUTE FUNCTION {ns}.hold_racing_claim()",
-        ns = proof.namespace,
-        quoted_ns = quoted(&proof.namespace),
-        id = quoted(id(&active)),
-    ));
-    let mut barrier = native_pg_connect(proof.url).unwrap();
-    let lock = native_pg_query(
-        &mut barrier,
-        "SELECT pg_advisory_lock(hashtextextended($1, 1461749649)), pg_backend_pid()::text",
-        &[&proof.namespace],
-    )
-    .unwrap();
-    let blocker = lock[0][1].1.parse::<u32>().unwrap();
+    let (barrier, blocker) = proof.hold_claim(&active);
     let mut worker = proof.worker_with_options(
         "bulk-delete-race",
         true,
@@ -671,25 +650,18 @@ fn prove_bulk_delete_during_claim(shared: &Proof<'_>) {
         8000,
         LEASE_MS,
     );
-    let claim_is_waiting = || {
-        proof.sql(&format!(
-            "SELECT EXISTS (SELECT FROM pg_stat_activity
-             WHERE datname = current_database() AND {blocker} = ANY(pg_blocking_pids(pid))
-             AND query LIKE '%mesh_jobs.claim%')"
-        )) == "t"
-    };
     eventually(
         "the compiled claim to wait while the terminal row is deleted",
         || {
             worker.assert_running();
-            claim_is_waiting().then_some(())
+            proof.claim_is_waiting(blocker).then_some(())
         },
     );
     let deleted = proof.control(json!({"action":"delete_all","filter":{"queue":queue}}));
     assert_eq!(deleted["deleted"], 1);
     assert_eq!(deleted["ids"], json!([terminal["id"]]));
     assert!(proof.job("delete-terminal").is_null());
-    assert!(claim_is_waiting());
+    assert!(proof.claim_is_waiting(blocker));
     let pending = proof.job(label);
     assert_eq!(pending["id"], active["id"]);
     assert_eq!(pending["state"], "available");
@@ -1696,6 +1668,10 @@ fn id(receipt: &Value) -> &str {
 }
 
 fn assert_context(effect: &Value, receipt: &Value, label: &str, attempt: u64) {
+    assert_job_context(effect, receipt, "default", label, attempt);
+}
+
+fn assert_job_context(effect: &Value, receipt: &Value, queue: &str, label: &str, attempt: u64) {
     let context = &effect["context"];
     assert_eq!(context["id"], id(receipt), "{context}");
     assert!(receipt["effect_key"]
@@ -1704,7 +1680,7 @@ fn assert_context(effect: &Value, receipt: &Value, label: &str, attempt: u64) {
     assert_eq!(context["effect_key"], receipt["effect_key"], "{context}");
     assert_eq!(context["worker"], "proof");
     assert_eq!(context["version"], 1);
-    assert_eq!(context["queue"], "default");
+    assert_eq!(context["queue"], queue);
     assert_eq!(context["args"], json!({"label": label}));
     assert_eq!(context["attempt"], attempt);
     assert!(context["max_attempts"]
@@ -1918,6 +1894,40 @@ impl<'a> Proof<'a> {
 
     fn control(&self, action: Value) -> Value {
         self.run("control", &action.to_string())
+    }
+
+    fn hold_claim(&self, receipt: &Value) -> (NativePgConn, u32) {
+        self.sql(&format!(
+            "CREATE FUNCTION {ns}.hold_racing_claim() RETURNS trigger LANGUAGE plpgsql AS $hold$
+             BEGIN
+                 PERFORM pg_advisory_xact_lock(hashtextextended(NEW.namespace, 1461749649));
+                 RETURN NEW;
+             END; $hold$;
+             CREATE TRIGGER hold_racing_claim
+             BEFORE UPDATE OF attempt ON mesh_jobs.jobs FOR EACH ROW
+             WHEN (NEW.id = {id}::uuid AND NEW.namespace = {quoted_ns} AND NEW.state = 'executing')
+             EXECUTE FUNCTION {ns}.hold_racing_claim()",
+            ns = self.namespace,
+            quoted_ns = quoted(&self.namespace),
+            id = quoted(id(receipt)),
+        ));
+        let mut barrier = native_pg_connect(self.url).unwrap();
+        let lock = native_pg_query(
+            &mut barrier,
+            "SELECT pg_advisory_lock(hashtextextended($1, 1461749649)), pg_backend_pid()::text",
+            &[&self.namespace],
+        )
+        .unwrap();
+        let blocker = lock[0][1].1.parse().unwrap();
+        (barrier, blocker)
+    }
+
+    fn claim_is_waiting(&self, blocker: u32) -> bool {
+        self.sql(&format!(
+            "SELECT EXISTS (SELECT FROM pg_stat_activity
+             WHERE datname = current_database() AND {blocker} = ANY(pg_blocking_pids(pid))
+             AND query LIKE '%mesh_jobs.claim%')"
+        )) == "t"
     }
 
     fn lock_job(&self, receipt: &Value) -> NativePgConn {
