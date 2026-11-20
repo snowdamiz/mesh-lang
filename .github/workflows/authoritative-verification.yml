@@ -95,8 +95,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - &cache-llvm
-        name: Cache LLVM
+      - name: Cache LLVM
         uses: actions/cache@v4
         id: cache-llvm
         with:
@@ -116,8 +115,7 @@ jobs:
           tar xf llvm.tar.xz --strip-components=1 -C "$HOME/llvm"
           rm llvm.tar.xz
 
-      - &configure-llvm
-        name: Configure LLVM toolchain (Linux x86_64)
+      - name: Configure LLVM toolchain (Linux x86_64)
         shell: bash
         run: |
           "$HOME/llvm/bin/llvm-config" --version
@@ -126,8 +124,7 @@ jobs:
           echo "LLVM_SYS_211_PREFIX=$HOME/llvm" >> "$GITHUB_ENV"
           echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=$GITHUB_WORKSPACE/scripts/ci-x86_64-linux-gnu-clang" >> "$GITHUB_ENV"
 
-      - &install-rust
-        name: Install Rust
+      - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         timeout-minutes: 10
         with:

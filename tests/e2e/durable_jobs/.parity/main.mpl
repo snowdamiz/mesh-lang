@@ -64,6 +64,10 @@ fn enqueue_batches(conn :: borrow PgConn, jobs :: Json, index :: Int, count :: I
 end
 
 fn write_batch(conn :: borrow PgConn, jobs :: Json, count :: Int, request_id :: String) -> String!String do
+  if Env.get("JOBS_PARITY_MESH_LISTEN", "0") == "1" do
+    let _ = Pg.execute(conn, "SET LOCAL mesh_jobs.publish_wakeups = on", [])?
+    ()
+  end
   let _ = Pg.execute(conn,
     "INSERT INTO public.mesh_jobs_parity_product (engine, namespace, request_id) VALUES ('mesh', $1, $2) ON CONFLICT DO NOTHING",
     [namespace(), request_id])?
@@ -198,11 +202,9 @@ fn serve(pool :: PoolHandle) -> String!String do
     workers: workers,
     lease_ms: lease, poll_ms: poll, shutdown_grace_ms: grace
   })
-  let config = if Env.get("JOBS_PARITY_MESH_BATCH", "0") == "1" do
-    String.slice(base_config, 0, String.length(base_config) - 1) <> ",\"claim_batch\":true}"
-  else
-    base_config
-  end
+  let batch = if Env.get("JOBS_PARITY_MESH_BATCH", "0") == "1" do ",\"claim_batch\":true" else "" end
+  let listen = if Env.get("JOBS_PARITY_MESH_LISTEN", "0") == "1" do ",\"listen\":true" else "" end
+  let config = String.slice(base_config, 0, String.length(base_config) - 1) <> batch <> listen <> "}"
   let runner = Jobs.start(pool, config, handle)?
   println("READY")
   while !Process.shutdown_requested() do

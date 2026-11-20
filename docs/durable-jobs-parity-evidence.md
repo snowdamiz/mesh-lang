@@ -73,6 +73,21 @@ commit, pass that commit to both `--mesh-ref` and `--against-ref`, then add
 `--mesh-batch`. To exercise batch commit-response loss, use
 `--faults --mesh-batch`.
 
+Measure committed wakeups with `--mesh-listen`. It enables the listener on
+the candidate and transactional publishing on its producer. The Mesh
+reference remains polling-only. `--poll-ms` and `--baseline-poll-ms` set
+the runner intervals without changing the workload's enqueue cadence.
+
+```sh
+python3 scripts/jobs-parity.py --load --workload sparse --runners 1 --slots 16 \
+  --mesh-listen --poll-ms 1000 --against-ref 7c162056 --baseline-poll-ms 250
+```
+
+Repeat with `--baseline-poll-ms 1000` to compare with polling at the same
+cadence. The receipt records claim timing and notification-triggered scans.
+Use the compiled compatibility proof to exercise listener interruption and
+the reconnect catch-up scan.
+
 Each run prints its evidence directory under `target/jobs-parity/<sha>/`.
 `manifest.json` records the compiled SHA, fixture hashes, tool versions,
 database parameters, and host. `settings.json` records the frozen workload
@@ -144,6 +159,22 @@ uses plaintext loopback with SCRAM so it can identify the settlement reply.
 The replay barrier in this proof preserves the observed commits before
 promotion. For a deployment with asynchronous replication, the failover
 operator must account for commits newer than the standby's replay position.
+
+## Exercise rolling upgrade and worker rollback
+
+Use `scripts/verify-jobs-upgrade.py --postgres-version 17.11` to compile the
+pinned main and candidate fixtures and run both under scoped database roles.
+Repeat with PostgreSQL 18.7 and 19.0. The proof keeps a legacy lease active
+through migration, checks the pending deadlines and attempt budget, and
+returns to a legacy worker on the upgraded schema. Keep schema migration on
+the newer binary during rollout and worker rollback. Running the old
+migration as schema owner restores the legacy claim body and bypasses the
+namespace pause for legacy claims until the new migrator reapplies it.
+
+The checked-in v1 receipts compare `7c162056` and `23a95b87` on macOS arm64
+with verified TLS. [PostgreSQL 17.11](../proof/jobs-parity/rolling-upgrade-v1.pg17.11.json) ·
+[PostgreSQL 18.7](../proof/jobs-parity/rolling-upgrade-v1.pg18.7.json) ·
+[PostgreSQL 19.0](../proof/jobs-parity/rolling-upgrade-v1.pg19.0.json)
 
 ## Recorded baseline
 

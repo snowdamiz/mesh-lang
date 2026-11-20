@@ -407,19 +407,20 @@ def job_relation(engine, namespace):
 
 
 class Subject:
-    def __init__(self, engine, command, cwd, cluster, env, *, variant=None):
+    def __init__(self, engine, command, cwd, cluster, env, *, variant=None, poll_ms=None):
         self.engine = engine
         self.variant = variant or engine
         self.command = command
         self.cwd = cwd
         self.cluster = cluster
         self.env = env
+        self.poll_ms = poll_ms
 
     def environment(self, namespace, slots, total_slots, mode, poll_ms):
         return dict(self.env, JOBS_PARITY_DB_URL=self.cluster.url(self.engine),
                     JOBS_PARITY_NAMESPACE=namespace, JOBS_PARITY_SLOTS=str(slots),
                     JOBS_PARITY_TOTAL_SLOTS=str(total_slots), JOBS_PARITY_MODE=mode,
-                    JOBS_PARITY_POLL_MS=str(poll_ms), JOBS_PARITY_RUNNER="controller")
+                    JOBS_PARITY_POLL_MS=str(self.poll_ms or poll_ms), JOBS_PARITY_RUNNER="controller")
 
     def call(self, action, env, log):
         return checked([*self.command, action], cwd=self.cwd, env=env, log=log)
@@ -697,6 +698,7 @@ WHERE engine = '{engine}' AND namespace = '{namespace}'
         cpu = stop_runners(processes, require_clean=completed)
 
     queued_context = []
+    wakeups = []
     if engine == "mesh":
         for log in logs:
             try:
@@ -709,10 +711,16 @@ WHERE engine = '{engine}' AND namespace = '{namespace}'
             if peak is not None and (type(peak) is not int or peak < 0):
                 raise FixtureError(f"invalid queued context peak in {log}")
             queued_context.append(peak)
+            wakeups.append(status.get("wakeups"))
+
+    listener_enabled = env.get("JOBS_PARITY_MESH_LISTEN") == "1" and engine == "mesh"
+    if listener_enabled and not any(report and report.get("notification_scans", 0) > 0 for report in wakeups):
+        raise FixtureError("listener trial did not record any notification-triggered scans")
 
     raw = {"engine": engine, "variant": subject.variant, "namespace": namespace, "pair": pair, "case_sha256": case,
            "transactions": commits, "attempts": rows, "namespace_writes": writes,
            "samples": samples, "idle_samples": idle_samples,
+           "poll_ms": int(env["JOBS_PARITY_POLL_MS"]), "wakeups": wakeups,
            "runner_peak_queued_context_bytes": queued_context,
            "runner_cpu_seconds_including_startup_and_idle": cpu, "raw_sql_calls": calls,
            "raw_runner_sql_calls": runner_calls, "raw_enqueue_sql_calls": enqueue_calls,
@@ -720,6 +728,7 @@ WHERE engine = '{engine}' AND namespace = '{namespace}'
     write_json(evidence / "raw.json", raw)
     return {
         "pair": pair, "engine": subject.variant, "input_sha256": case, "completed": len(rows),
+        "poll_ms": int(env["JOBS_PARITY_POLL_MS"]),
         "jobs_per_second": len(rows) / duration,
         "pickup_p99_ms": percentile([row["pickup_ms"] for row in rows], 0.99),
         "claim_p99_ms": percentile([row["commit_to_claim_ms"] for row in rows], 0.99),
@@ -1044,8 +1053,9 @@ def selection(args, settings):
     return [(name, r, s) for name in workloads for r in runners for s in slots if s >= r]
 
 
-def profile_summary(trials, name, workload, settings, runners, slots, variants, mesh_batch):
-    keys = ("jobs_per_second", "pickup_p99_ms", "sql_calls_per_job", "runner_sql_calls_per_job",
+def profile_summary(trials, name, workload, settings, runners, slots, variants, mesh_batch, mesh_listen):
+    keys = ("jobs_per_second", "pickup_p99_ms", "claim_p99_ms", "settlement_p99_ms",
+            "sql_calls_per_job", "runner_sql_calls_per_job",
             "enqueue_sql_calls_per_job", "claim_calls_per_job", "idle_queries_per_minute",
             "cpu_seconds_per_job", "peak_rss_bytes")
     summary = {}
@@ -1109,6 +1119,19 @@ def profile_summary(trials, name, workload, settings, runners, slots, variants, 
         within_limit = mesh >= baseline * limit if rule.endswith("_min") else mesh <= baseline * limit
         comparison[metric] = {"mesh_median": mesh, "reference": reference, "reference_median": baseline,
                               "ratio_limit": limit, "within_limit": within_limit}
+    if mesh_listen and workload["mode"] == "sparse":
+        observed = summary["mesh"]["claim_p99_ms"]["max"]
+        limit = settings["listener_claim_p99_ms_max"]
+        comparison["listener_claim_p99_ms"] = {"observed": observed, "limit": limit,
+                                               "within_limit": observed <= limit}
+        baseline_polls = {trial["poll_ms"] for trial in trials if trial["engine"] == "baseline"}
+        if baseline_polls == {settings["poll_ms"]}:
+            metric = "idle_queries_per_minute"
+            observed = summary["mesh"][metric]["median"]
+            baseline = summary["baseline"][metric]["median"]
+            limit = settings["listener_idle_query_ratio_max"]
+            comparison[metric] = {"mesh_median": observed, "reference_median": baseline,
+                                  "ratio_limit": limit, "within_limit": observed <= baseline * limit}
     if comparison:
         summary["comparison"] = comparison
     return summary
@@ -1132,6 +1155,8 @@ def workspace(evidence):
 
 def record(args):
     settings = json.loads(CONFIG.read_text())
+    poll_ms = args.poll_ms or settings["poll_ms"]
+    baseline_poll_ms = args.baseline_poll_ms or poll_ms
     profiles = [(args.workload[0] if args.workload else "short", 1, 1)] if args.smoke else selection(args, settings)
     if not profiles:
         raise FixtureError("no valid profiles for the chosen runner counts and slots")
@@ -1157,6 +1182,7 @@ def record(args):
                        MESH_SCHEDULER_MIN_WORKERS=str(settings["runner_schedulers"]),
                        MESH_SCHEDULER_MAX_WORKERS=str(settings["runner_schedulers"]),
                        JOBS_PARITY_MESH_BATCH="1" if args.mesh_batch else "0",
+                       JOBS_PARITY_MESH_LISTEN="1" if args.mesh_listen else "0",
                        ERL_FLAGS=settings["oban_erl_flags"])
             env.pop("MESH_RT_LIB_PATH", None)
             env.pop("RUSTC_WRAPPER", None)
@@ -1197,20 +1223,24 @@ WHERE name IN ('server_version','server_version_num','shared_buffers','max_conne
                     "seed": settings["seed"], "profiles": profiles,
                     "mesh_build_profile": "release" if args.load else "debug",
                     "mesh_batch": args.mesh_batch,
+                    "mesh_listen": args.mesh_listen,
+                    "poll_ms": poll_ms,
+                    "baseline_poll_ms": baseline_poll_ms if baseline_ref else None,
                     "mode": lane, "claim_timestamps": {"mesh": "database attempted_at_ms",
                                                        "oban": "Basic engine attempted_at"},
                     "settlement_timestamp": "durable commit timestamp of the terminal row version",
                     "resource_scope": "runner process trees; sampled RSS, processes, threads and connections",
                 })
                 subjects = {
-                    "mesh": Subject("mesh", [str(executable)], ROOT, cluster, env),
-                    "oban": Subject("oban", command, oban_fixture, cluster, mix_env),
+                    "mesh": Subject("mesh", [str(executable)], ROOT, cluster, env, poll_ms=poll_ms),
+                    "oban": Subject("oban", command, oban_fixture, cluster, mix_env, poll_ms=poll_ms),
                 }
                 if baseline_ref:
                     subjects = {
                         "mesh": subjects["mesh"],
                         "baseline": Subject("mesh", [str(baseline)], ROOT, cluster,
-                                            dict(env, JOBS_PARITY_MESH_BATCH="0"), variant="baseline"),
+                                            dict(env, JOBS_PARITY_MESH_BATCH="0", JOBS_PARITY_MESH_LISTEN="0"),
+                                            variant="baseline", poll_ms=baseline_poll_ms),
                     }
                 variants = tuple(subjects)
                 if args.faults:
@@ -1267,7 +1297,7 @@ WHERE name IN ('server_version','server_version_num','shared_buffers','max_conne
                     validate_pairs(trials, pair_count, variants)
                     write_json(case_evidence / "trials.json", trials)
                     summary = profile_summary(trials, name, workload, settings, runners, slots, variants,
-                                              args.mesh_batch)
+                                              args.mesh_batch, args.mesh_listen)
                     write_json(case_evidence / "summary.json", summary)
                     for scope, values in summary.items():
                         for metric, verdict in values.items():
@@ -1378,6 +1408,9 @@ def main():
     parser.add_argument("--mesh-ref", default="HEAD", help="Git commit from which to compile Mesh")
     parser.add_argument("--against-ref", help="compare with a second Mesh commit using single claims")
     parser.add_argument("--mesh-batch", action="store_true", help="enable batch claims for the Mesh runner")
+    parser.add_argument("--mesh-listen", action="store_true", help="enable Mesh listener and transactional publishing")
+    parser.add_argument("--poll-ms", type=int, help="override the dispatch poll interval")
+    parser.add_argument("--baseline-poll-ms", type=int, help="override polling for the Mesh reference only")
     parser.add_argument("--postgres-version", metavar="MAJOR.PATCH",
                         help="require exact server version and SCRAM over verified TLS")
     settings = json.loads(CONFIG.read_text())
@@ -1387,6 +1420,10 @@ def main():
     args = parser.parse_args()
     if args.self_check:
         return 0 if self_check() else 1
+    if any(interval is not None and not 1 <= interval <= 60_000 for interval in (args.poll_ms, args.baseline_poll_ms)):
+        parser.error("poll intervals must be between 1 and 60000 ms")
+    if args.baseline_poll_ms is not None and not args.against_ref:
+        parser.error("--baseline-poll-ms requires --against-ref")
     if args.postgres_version and not POSTGRES_VERSION.fullmatch(args.postgres_version):
         parser.error("--postgres-version requires MAJOR.PATCH")
     if not args.load and (args.runners is not None or args.slots is not None):
