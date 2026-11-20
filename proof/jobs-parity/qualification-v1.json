@@ -381,9 +381,9 @@
     "postgresql_version": "17.11",
     "receipt": "proof/jobs-parity/j7-lane-9.log",
     "result": "pass",
-    "runtime_revision": "83a76b7d4c615ca0f84c2801f0bf3407d8e3a173"
+    "runtime_revision": "e8fa00c0c6aa7ae6d4c807cccdd50a3f75f915bd"
   },
-  "latest_runtime_revision": "83a76b7d4c615ca0f84c2801f0bf3407d8e3a173",
+  "latest_runtime_revision": "e8fa00c0c6aa7ae6d4c807cccdd50a3f75f915bd",
   "local_platforms": [
     "macOS arm64",
     "Linux arm64 container"
@@ -406,7 +406,7 @@
     "within_limit": false
   },
   "open_gates": [
-    "dense Oban throughput and CPU per job",
+    "dense Oban throughput and pickup",
     "four-runner Oban throughput and pickup",
     "one-slot process budget",
     "telemetry buffer memory and enabled modes on current runtime",
@@ -706,6 +706,149 @@
       "18.7",
       "19.0"
     ]
+  },
+  "scram_optimization": {
+    "candidate_ref": "e8fa00c0c6aa7ae6d4c807cccdd50a3f75f915bd",
+    "correctness": {
+      "checkout": "e8fa00c0c6aa7ae6d4c807cccdd50a3f75f915bd",
+      "compiled_proofs_per_version": 2,
+      "fault_cases": 9,
+      "fault_directory": "target/jobs-parity/e8fa00c0c6aa7ae6d4c807cccdd50a3f75f915bd/j1-fault-k1yd8gnc",
+      "fault_transport": "SCRAM over loopback",
+      "jobs_runtime_tests_per_version": 43,
+      "locked_fuzz_build": "pass",
+      "postgresql_driver_tests_per_version": 36,
+      "raw_directory": "target/jobs-parity/e8fa00c0c6aa7ae6d4c807cccdd50a3f75f915bd/scram-verification",
+      "verified_tls_versions": [
+        "17.11",
+        "18.7",
+        "19.0"
+      ]
+    },
+    "platform": "macOS arm64",
+    "postgresql_version": "17.11",
+    "runs": {
+      "batch_vs_oban": {
+        "baseline_ref": null,
+        "budget_breaches": [
+          {
+            "metric": "jobs_per_second",
+            "profile": "short-1r-16s",
+            "scope": "comparison"
+          },
+          {
+            "metric": "pickup_p99_ms",
+            "profile": "short-1r-16s",
+            "scope": "comparison"
+          }
+        ],
+        "completed_per_trial": 128,
+        "harness_ref": "e8fa00c0c6aa7ae6d4c807cccdd50a3f75f915bd",
+        "metrics": {
+          "mesh": {
+            "cpu_seconds_per_job": {
+              "max": 0.0058607187500000005,
+              "median": 0.005631695312499999,
+              "min": 0.0054777343749999995
+            },
+            "entry_to_attempt_commit_ms": {
+              "max": 10.2220458984375,
+              "median": 8.363037109375,
+              "min": 7.8193359375
+            },
+            "jobs_per_second": {
+              "max": 373.7466049800754,
+              "median": 316.54646722313623,
+              "min": 249.87513106472215
+            },
+            "pickup_p99_ms": {
+              "max": 482.824951171875,
+              "median": 387.743896484375,
+              "min": 318.927978515625
+            }
+          },
+          "oban": {
+            "cpu_seconds_per_job": {
+              "max": 0.0058648515625000005,
+              "median": 0.00491596875,
+              "min": 0.0044400546875
+            },
+            "entry_to_attempt_commit_ms": {
+              "max": 0.842529296875,
+              "median": 0.2919921875,
+              "min": 0.27197265625
+            },
+            "jobs_per_second": {
+              "max": 898.5858475059945,
+              "median": 442.2303834325555,
+              "min": 346.207968578415
+            },
+            "pickup_p99_ms": {
+              "max": 364.012939453125,
+              "median": 286.5498046875,
+              "min": 139.448974609375
+            }
+          }
+        },
+        "one_minute_load_at_start": 8.4970703125,
+        "raw_directory": "target/jobs-parity/e8fa00c0c6aa7ae6d4c807cccdd50a3f75f915bd/j1-load-fycjmfc1"
+      },
+      "single_claim_vs_parent": {
+        "baseline_ref": "83a76b7d4c615ca0f84c2801f0bf3407d8e3a173",
+        "budget_breaches": [],
+        "completed_per_trial": 128,
+        "harness_ref": "e8fa00c0c6aa7ae6d4c807cccdd50a3f75f915bd",
+        "metrics": {
+          "baseline": {
+            "cpu_seconds_per_job": {
+              "max": 0.006626390624999999,
+              "median": 0.006411578124999999,
+              "min": 0.006222734375
+            },
+            "entry_to_attempt_commit_ms": {
+              "max": 7.2694091796875,
+              "median": 5.95751953125,
+              "min": 5.577880859375
+            },
+            "jobs_per_second": {
+              "max": 396.61639062502366,
+              "median": 382.18202281918724,
+              "min": 312.70756193457265
+            },
+            "pickup_p99_ms": {
+              "max": 396.80908203125,
+              "median": 317.9619140625,
+              "min": 309.544189453125
+            }
+          },
+          "mesh": {
+            "cpu_seconds_per_job": {
+              "max": 0.006100890625,
+              "median": 0.0057346484375,
+              "min": 0.0053739140625000004
+            },
+            "entry_to_attempt_commit_ms": {
+              "max": 5.4310302734375,
+              "median": 5.18798828125,
+              "min": 4.7515869140625
+            },
+            "jobs_per_second": {
+              "max": 378.7822194415164,
+              "median": 375.52949940191814,
+              "min": 282.1408756307685
+            },
+            "pickup_p99_ms": {
+              "max": 440.64501953125,
+              "median": 330.8740234375,
+              "min": 319.453857421875
+            }
+          }
+        },
+        "one_minute_load_at_start": 14.64599609375,
+        "raw_directory": "target/jobs-parity/e8fa00c0c6aa7ae6d4c807cccdd50a3f75f915bd/j1-load-6dnh2p3i"
+      }
+    },
+    "transport": "SCRAM with verified TLS"
   },
   "settlement_wakeup": {
     "candidate_ref": "83a76b7d4c615ca0f84c2801f0bf3407d8e3a173",

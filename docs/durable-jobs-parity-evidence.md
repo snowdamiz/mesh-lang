@@ -340,6 +340,20 @@ per second and 333.4 ms pickup p99. Oban recorded 438.7 jobs per second
 and 287.4 ms pickup p99. The batch profile met the pickup limit and missed
 the throughput and CPU limits. Raw receipts are in run `j1-load-if2jom40`.
 
+Runtime `e8fa00c0` uses ring for the SCRAM password derivation. In five
+single-claim pairs against `83a76b7d`, median CPU per completed job fell
+from 6.41 to 5.74 ms. Median handler entry to the first committed write
+fell from 5.96 to 5.19 ms. The throughput ranges overlap. Startup
+one-minute load was 14.6 on 15 logical CPUs. Raw receipts are in run
+`j1-load-6dnh2p3i`.
+
+In the separate batch comparison, Mesh used 1.15 times Oban's CPU per
+job, within the 1.25 limit. Median throughput was 316.5 jobs per second
+on Mesh and 442.2 on Oban. Pickup p99 was 387.7 ms on Mesh and 286.5 ms
+on Oban. Both Core performance limits still failed in this run. Startup
+one-minute load was 8.5 on 15 logical CPUs. Raw receipts are in run
+`j1-load-fycjmfc1`.
+
 ## Compare bounded drain
 
 `scripts/jobs-drain-perf.py` accepts the pinned main and candidate compiler
@@ -378,6 +392,7 @@ operator, and inspector logins, plus cron takeover and reindex.
 | macOS arm64, release candidate `53fb9189` against main `7c162056` | 17.11, 18.7, 19.0 | Compiled rolling upgrade and rollback with scoped roles and default function execution revoked |
 | macOS arm64, promotion harness `ebe14b91` and release runtime `302cdce8` | 17.11, 18.7, 19.0 | Lost settlement reply, replay barrier, old-primary fencing, listener subscription catch-up, and one effect per job |
 | macOS arm64, candidate `83a76b7d` | 17.11, 18.7, 19.0 | Repeat of the full-role proof with the settlement wakeup. All 43 Jobs runtime cases and both compiled suites passed on each version. |
+| macOS arm64, candidate `e8fa00c0` | 17.11, 18.7, 19.0 | Verified TLS and SCRAM after the derivation change, including all 36 PostgreSQL driver cases, 43 Jobs runtime cases, both compiled suites, and fresh and upgraded scoped roles |
 
 The listener promotion runs resumed eligible work within 1.31 seconds of writability
 against a 2-second budget. Replication and direct sessions used verified
@@ -391,7 +406,8 @@ of two. That configuration exceeds the frozen process budget.
 
 The `83a76b7d` release rerun also passed the nine SCRAM fault cases,
 including settlement response loss and the three batch claim response
-cuts. Raw receipts are in run `j1-fault-1akgie45`.
+cuts. All nine passed again on `e8fa00c0`. Raw receipts are in runs
+`j1-fault-1akgie45` and `j1-fault-k1yd8gnc`.
 
 The local workspace gate passed at `e5a5f3c8`, including formatter and
 linter checks, compiler and runtime tests, the workspace and fuzz builds,
