@@ -122,6 +122,28 @@ fn check_manual(pool :: PoolHandle) -> Unit!String do
   end
 end
 
+fn check_waiting(pool :: PoolHandle, label :: String) -> Unit!String do
+  let _ = Pool.query(pool, "SELECT set_config('application_name', $1, false)", [namespace()])?
+  let filter = Json.encode(json {
+    worker: "proof", version: 1, queue: "testing-wait", state: "available", args: json { label: label }
+  })
+  if label == "waiting-assert" do
+    check(Test.assert_enqueued(pool, namespace(), filter, 60000), "waiting assert")
+  else if label == "waiting-refute" do
+    case Test.refute_enqueued(pool, namespace(), filter, 60000) do
+      Err(error) ->
+        if error == "unexpected matching job in namespace " <> namespace() do
+          Ok(())
+        else
+          Err(error)
+        end
+      Ok(_) -> Err("waiting refute did not report the matching job")
+    end
+  else
+    Err("unknown waiting assertion label " <> label)
+  end
+end
+
 fn field(context :: String, key :: String) -> Json!String do
   Json.object_get(Json.parse(context)?, key)
 end
@@ -174,6 +196,22 @@ test("synthetic jobs use fresh identities, validated input and decoded outcomes"
   case run_inline() do
     Ok(_) -> assert(true)
     Err(error) -> panic(error)
+  end
+end
+
+test("waiting assertions observe work committed by another connection") do
+  let label = Env.get("MESH_JOBS_WAIT_LABEL", "")
+  if label != "" do
+    case Pool.open(database_url(), 1, 1, 5000) do
+      Ok(pool) ->
+        let tested = check_waiting(pool, label)
+        Pool.close(pool)
+        case tested do
+          Ok(_) -> assert(true)
+          Err(error) -> panic(error)
+        end
+      Err(error) -> panic(error)
+    end
   end
 end
 

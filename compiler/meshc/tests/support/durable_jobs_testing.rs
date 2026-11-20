@@ -55,28 +55,23 @@ end
 
     let url = std::env::var("MESH_TEST_DATABASE_URL").unwrap_or_default();
     let test = |namespace: &str, other: &str| {
-        let child = Command::new(&compiler)
+        let mut command = Command::new(&compiler);
+        command
             .arg("test")
             .arg(&project)
+            .env("TMPDIR", temp.path())
             .env("MESH_TEST_DATABASE_URL", &url)
             .env("MESH_JOBS_PROOF_NAMESPACE", namespace)
             .env("MESH_JOBS_OTHER_NAMESPACE", other)
+            .env_remove("MESH_JOBS_WAIT_LABEL")
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .unwrap();
-        let output = artifacts::wait_with_timeout(child, WAIT).unwrap();
-        let report = artifacts::command_output_text(&output);
-        assert!(output.status.success(), "{report}");
-        assert!(report.contains("2 passed"), "{report}");
-        assert!(
-            !report.contains("invalid synthetic handler ran"),
-            "{report}"
-        );
+            .stderr(Stdio::piped());
+        command
     };
     if url.is_empty() {
-        test("", "");
-        eprintln!("Set MESH_TEST_DATABASE_URL for the borrowed transaction and drain checks.");
+        let child = test("", "").spawn().unwrap();
+        check_testing_output(&artifacts::wait_with_timeout(child, WAIT).unwrap());
+        eprintln!("Set MESH_TEST_DATABASE_URL for the borrowed transaction, waiting assertion, and drain checks.");
         return;
     }
 
@@ -87,9 +82,13 @@ end
     let other = Proof::new(&url, binary, temp.path());
     let left = proof.namespace.as_str();
     let right = other.namespace.as_str();
+    let right_proof = other.on_connection(&url);
     thread::scope(|scope| {
-        let check = scope.spawn(|| test(left, right));
-        test(right, left);
+        let test = &test;
+        let check = scope.spawn(move || {
+            prove_waiting_assertion(&right_proof, "waiting-refute", &mut test(right, left));
+        });
+        prove_waiting_assertion(&proof, "waiting-assert", &mut test(left, right));
         check.join().unwrap();
     });
     for scope in [&proof, &other] {
@@ -112,6 +111,85 @@ end
     prove_bounded_crash_recovery(&proof);
     proof.clean().unwrap();
     other.clean().unwrap();
+}
+
+fn check_testing_output(output: &std::process::Output) {
+    let report = artifacts::command_output_text(output);
+    assert!(output.status.success(), "{report}");
+    assert!(report.contains("3 passed"), "{report}");
+    assert!(
+        !report.contains("invalid synthetic handler ran"),
+        "{report}"
+    );
+}
+
+fn prove_waiting_assertion(proof: &Proof<'_>, label: &str, command: &mut Command) {
+    let mut staged = wakeups::stage(proof, "stage_commit", "testing-wait", label);
+    assert!(
+        proof.job(label).is_null(),
+        "{label} became visible before commit"
+    );
+    let mut observer = native_pg_connect(proof.url).unwrap();
+    let mut child = command.env("MESH_JOBS_WAIT_LABEL", label).spawn().unwrap();
+    let observed = observe_waiting_read(&mut observer, &mut child, &proof.namespace);
+    let pid = match observed {
+        Ok(pid) => {
+            wakeups::release(&staged);
+            pid
+        }
+        Err(error) => {
+            drop(staged);
+            let output = artifacts::wait_with_timeout(child, WAIT).unwrap();
+            panic!(
+                "{label}: {error}\n{}",
+                artifacts::command_output_text(&output)
+            );
+        }
+    };
+    native_pg_close(observer);
+    let output = artifacts::wait_with_timeout(child, WAIT).unwrap();
+    check_testing_output(&output);
+    let receipt = staged.join();
+    assert_eq!(receipt["state"], "available");
+    assert_eq!(proof.job(label)["id"], receipt["id"]);
+    println!(
+        "{label} passed: PostgreSQL session {pid} completed a no-match read before external commit of job {} in {}",
+        id(&receipt),
+        proof.namespace,
+    );
+}
+
+fn observe_waiting_read(
+    observer: &mut NativePgConn,
+    child: &mut Child,
+    namespace: &str,
+) -> Result<String, String> {
+    let deadline = Instant::now() + WAIT + artifacts::LAUNCH_ALLOWANCE;
+    loop {
+        // The single-connection fixture pool is tagged just before the helper
+        // runs. An idle backend with this last query has completed a poll.
+        let rows = native_pg_query(
+            observer,
+            "SELECT pid::text FROM pg_stat_activity
+             WHERE datname = current_database() AND application_name = $1 AND state = 'idle'
+               AND query LIKE '%SELECT EXISTS (SELECT FROM matches)::text'",
+            &[namespace],
+        )?;
+        if let Some(status) = child.try_wait().map_err(|error| error.to_string())? {
+            return Err(format!(
+                "meshc test exited before the read was observed ({status})"
+            ));
+        }
+        if let Some(row) = rows.into_iter().next() {
+            return Ok(row[0].1.clone());
+        }
+        if Instant::now() >= deadline {
+            return Err(format!(
+                "timed out observing a completed assertion read in {namespace}"
+            ));
+        }
+        thread::sleep(Duration::from_millis(25));
+    }
 }
 
 fn prove_manual_reference(compiler: &Path, candidate: &Proof, runtime: &Path) {

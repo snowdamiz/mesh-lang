@@ -73,7 +73,7 @@ pub(super) fn prove(proof: &Proof<'_>) {
     let mut worker =
         proof.worker_with_config("wake-single", false, config(proof, 60_000, true, false));
     let mut baseline = await_subscription(&worker, 0);
-    let mut committed = stage(proof, "stage_commit", "wake-committed");
+    let mut committed = stage(proof, "stage_commit", QUEUE, "wake-committed");
     assert!(proof.job("wake-committed").is_null());
     assert!(proof.effects("wake-committed").is_empty());
     assert_eq!(
@@ -89,7 +89,7 @@ pub(super) fn prove(proof: &Proof<'_>) {
     assert_eq!(baseline["fallback_scans"], 0);
     eprintln!("J3 lane 2 passed: staged enqueue became visible and woke the runner after commit");
 
-    let mut rolled_back = stage(proof, "stage_rollback", "wake-rolled-back");
+    let mut rolled_back = stage(proof, "stage_rollback", QUEUE, "wake-rolled-back");
     assert!(proof.job("wake-rolled-back").is_null());
     release(&rolled_back);
     assert!(rolled_back.join_where(Value::is_null).is_null());
@@ -185,12 +185,13 @@ pub(super) fn prove_sparse_reference(proof: &Proof<'_>) {
     eprintln!("J3 lane 1 passed: the reference runner polled the same committed sparse job; the candidate reported a notification scan in lane 2");
 }
 
-fn stage(proof: &Proof<'_>, operation: &str, label: &str) -> Worker {
+pub(super) fn stage(proof: &Proof<'_>, operation: &str, queue: &str, label: &str) -> Worker {
     let markers = proof.dir.join(label);
     fs::create_dir(&markers).unwrap();
     let output = File::create(markers.join("output")).unwrap();
+    let payload = json!({"worker":"proof", "queue":queue, "args":{"label":label}});
     let child = proof
-        .command(operation, &spec(label).to_string())
+        .command(operation, &payload.to_string())
         .env("MESH_JOBS_PROOF_MARKERS", &markers)
         .process_group(0)
         .stdout(output.try_clone().unwrap())
@@ -208,7 +209,7 @@ fn stage(proof: &Proof<'_>, operation: &str, label: &str) -> Worker {
     staged
 }
 
-fn release(staged: &Worker) {
+pub(super) fn release(staged: &Worker) {
     File::create(staged.markers.join("commit")).unwrap();
 }
 
