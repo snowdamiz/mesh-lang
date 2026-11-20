@@ -144,13 +144,7 @@ fn prove_competing_processes(proof: &Proof) {
 fn prove_batch_admission(proof: &Proof) {
     proof.control(json!({"action": "scale", "queue": "default", "concurrency": 3}));
     let labels = ["batch-first", "batch-second", "batch-third", "batch-fourth"];
-    proof.enqueue(Value::Array(
-        labels.iter().map(|label| spec(label)).collect(),
-    ));
-    let mut worker = proof.worker_with_config(
-        "batch-admission",
-        true,
-        json!({
+    let config = json!({
             "namespace": proof.namespace,
             "queues": {"default": 4},
             "workers": [{"worker": "proof", "version": 1}],
@@ -158,8 +152,15 @@ fn prove_batch_admission(proof: &Proof) {
             "poll_ms": 25,
             "shutdown_grace_ms": 8000,
             "claim_batch": true,
-        }),
-    );
+    });
+    let mut workers: Vec<_> = (0..4)
+        .map(|index| {
+            proof.worker_with_config(&format!("batch-admission-{index}"), true, config.clone())
+        })
+        .collect();
+    proof.enqueue(Value::Array(
+        labels.iter().map(|label| spec(label)).collect(),
+    ));
     for label in &labels[..3] {
         proof.wait_effects(label, 1);
         assert_eq!(proof.job(label)["state"], "executing");
@@ -167,13 +168,17 @@ fn prove_batch_admission(proof: &Proof) {
     assert_eq!(proof.job(labels[3])["attempt"], 0);
     assert!(proof.effects(labels[3]).is_empty());
 
-    worker.release();
+    for worker in &workers {
+        worker.release();
+    }
     for label in labels {
         proof.wait_state(label, "completed");
         assert_eq!(proof.job(label)["attempt"], 1);
         assert_eq!(proof.effects(label).len(), 1);
     }
-    worker.stop();
+    for worker in &mut workers {
+        worker.stop();
+    }
     proof.control(json!({"action": "scale", "queue": "default", "concurrency": 1}));
 }
 

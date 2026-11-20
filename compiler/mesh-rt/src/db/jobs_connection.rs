@@ -7,8 +7,7 @@ const IO_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub(crate) struct PgJobDb<'a>(&'a mut PgConn);
 
-/// A runner's claim connection has its own socket and can reconnect without
-/// taking a lease from the pool that renews and settles attempts.
+/// A runner session with a dedicated socket outside the application pool.
 pub(crate) struct JobSession {
     url: String,
     connection: Option<PgConn>,

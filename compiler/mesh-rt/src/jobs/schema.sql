@@ -91,6 +91,17 @@ CREATE TABLE IF NOT EXISTS mesh_jobs.receipts (
     PRIMARY KEY (namespace, request_key)
 );
 
+CREATE TABLE IF NOT EXISTS mesh_jobs.batch_context_blocks (
+    namespace text NOT NULL,
+    id uuid NOT NULL,
+    row_version xid NOT NULL,
+    row_location tid NOT NULL,
+    encoding name NOT NULL,
+    context_bytes integer NOT NULL,
+    PRIMARY KEY (namespace, id),
+    FOREIGN KEY (namespace, id) REFERENCES mesh_jobs.jobs(namespace, id) ON DELETE CASCADE
+);
+
 CREATE OR REPLACE FUNCTION mesh_jobs.now_ms() RETURNS bigint
 LANGUAGE sql VOLATILE SET search_path = pg_catalog, pg_temp AS $$
     SELECT floor(extract(epoch FROM clock_timestamp()) * 1000)::bigint
@@ -286,6 +297,7 @@ LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
     q mesh_jobs.queues%ROWTYPE;
     job mesh_jobs.jobs%ROWTYPE;
+    candidate record;
     due_at bigint;
     started_at bigint;
     remaining integer;
@@ -297,13 +309,19 @@ DECLARE
     wire_encoding name := current_setting('client_encoding');
     same_encoding boolean := wire_encoding = current_setting('server_encoding');
     candidates NO SCROLL CURSOR FOR
-        SELECT j.* FROM mesh_jobs.jobs j
+        SELECT j AS job_row, j.xmin AS row_version, j.ctid AS row_location FROM mesh_jobs.jobs j
         WHERE j.namespace = ns AND j.queue = queue_name
             AND j.state IN ('available', 'scheduled', 'retryable') AND j.scheduled_at_ms <= due_at
             AND j.attempt < j.max_attempts
             AND EXISTS (
                 SELECT FROM jsonb_to_recordset(workers) AS w(worker text, version bigint)
                 WHERE w.worker = j.worker AND w.version = j.version
+            )
+            AND NOT EXISTS (
+                SELECT FROM mesh_jobs.batch_context_blocks b
+                WHERE b.namespace = j.namespace AND b.id = j.id
+                    AND b.row_version = j.xmin AND b.row_location = j.ctid
+                    AND b.encoding = wire_encoding
             )
         ORDER BY j.priority, j.scheduled_at_ms, j.position
         FOR NO KEY UPDATE OF j SKIP LOCKED;
@@ -330,8 +348,9 @@ BEGIN
     -- Fetch one row at a time so a cursor prefetch cannot lock work beyond the prefix.
     OPEN candidates;
     WHILE remaining > 0 LOOP
-        FETCH candidates INTO job;
+        FETCH candidates INTO candidate;
         EXIT WHEN NOT FOUND;
+        job := candidate.job_row;
         id := job.id::text;
         context := jsonb_build_object(
             'id', job.id, 'effect_key', mesh_jobs.effect_key(job), 'worker', job.worker,
@@ -348,15 +367,21 @@ BEGIN
         IF value_bytes > 16 * 1024 * 1024 THEN
             status := 'oversized';
             row_bytes := row_bytes + octet_length(status);
-            -- Bound diagnostics independently of slots while continuing past oversized jobs.
-            IF oversized_count < 16 AND row_bytes <= reply_bytes THEN
-                token := NULL;
-                context := NULL;
-                timeout_ms := NULL;
-                RETURN NEXT;
-                reply_bytes := reply_bytes - row_bytes;
-                oversized_count := oversized_count + 1;
-            END IF;
+            EXIT WHEN row_bytes > reply_bytes;
+            -- Mark this row version so another turn resumes past it. Edits
+            -- replace the tuple and make the new context eligible for sizing again.
+            INSERT INTO mesh_jobs.batch_context_blocks (namespace, id, row_version, row_location, encoding, context_bytes)
+            VALUES (ns, job.id, candidate.row_version, candidate.row_location, wire_encoding, value_bytes)
+            ON CONFLICT ON CONSTRAINT batch_context_blocks_pkey DO UPDATE
+            SET row_version = excluded.row_version, row_location = excluded.row_location, encoding = excluded.encoding,
+                context_bytes = excluded.context_bytes;
+            token := NULL;
+            context := NULL;
+            timeout_ms := NULL;
+            RETURN NEXT;
+            reply_bytes := reply_bytes - row_bytes;
+            oversized_count := oversized_count + 1;
+            EXIT WHEN oversized_count >= 4;
             CONTINUE;
         END IF;
 

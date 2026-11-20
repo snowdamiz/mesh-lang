@@ -7,12 +7,12 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
 use crate::actor;
-use crate::db::jobs_connection::JobSession;
+use crate::db::jobs_connection::{JobSession, PgJobDb};
 
 use super::cron;
 use super::store::{
-    claim, claim_batch, drain_has_work, finish, prune, recover, renew, Claim, ClaimBatch,
-    LeaseStatus, Outcome, Settlement, MAX_CLAIM_BATCH,
+    claim, claim_batch, drain_work, finish, prune, recover, renew, Claim, ClaimBatch, LeaseStatus,
+    Outcome, OversizedClaim, Settlement, MAX_CLAIM_BATCH,
 };
 use super::with_pool;
 use super::worker::{check_executable, handler_name, host_deadline, WorkerPoll, WorkerProcess};
@@ -335,6 +335,13 @@ impl Runner {
     fn record_error(&self, error: String) {
         self.state.lock().last_error = Some(error.chars().take(1024).collect());
     }
+
+    fn record_oversized(&self, row: &OversizedClaim) {
+        self.record_error(format!(
+            "mesh jobs oversized claim context: job {} requires {} bytes",
+            row.id, row.context_bytes,
+        ));
+    }
 }
 
 struct Registry {
@@ -422,10 +429,16 @@ fn start_runner(
             ),
         }
     })?;
-    let claim_session = config
-        .claim_batch
-        .then(|| unsafe { JobSession::from_pool(pool) })
-        .transpose()?;
+    let sessions = if config.claim_batch {
+        let claims = unsafe { JobSession::from_pool(pool)? };
+        let mut lifecycle = unsafe { JobSession::from_pool(pool)? };
+        lifecycle
+            .with(|_| Ok(()))
+            .map_err(|error| format!("could not reserve Jobs lifecycle session: {error}"))?;
+        Some((claims, lifecycle))
+    } else {
+        None
+    };
 
     let mut registry = REGISTRY.lock();
     if !registry.accepting || scheduler.is_shutdown() || crate::process_signal::shutdown_requested()
@@ -473,7 +486,7 @@ fn start_runner(
         .name(format!("mesh-jobs-{id}"))
         .spawn(move || {
             if dispatcher.config.drain {
-                dispatch(&dispatcher, pool, &workers, &*start_worker, claim_session);
+                dispatch(&dispatcher, pool, &workers, &*start_worker, sessions);
             } else {
                 let maintenance_runner = Arc::clone(&dispatcher);
                 match std::thread::Builder::new()
@@ -481,7 +494,7 @@ fn start_runner(
                     .spawn(move || maintain(&maintenance_runner, pool))
                 {
                     Ok(maintenance) => {
-                        dispatch(&dispatcher, pool, &workers, &*start_worker, claim_session);
+                        dispatch(&dispatcher, pool, &workers, &*start_worker, sessions);
                         maintenance.thread().unpark();
                         let _ = maintenance.join();
                     }
@@ -715,8 +728,25 @@ struct Attempt {
     lease: Option<Lease>,
 }
 
+struct LifecycleIo {
+    pool: u64,
+    session: Option<JobSession>,
+}
+
+impl LifecycleIo {
+    fn with<T>(
+        &mut self,
+        run: impl FnOnce(&mut PgJobDb<'_>) -> Result<T, String>,
+    ) -> Result<T, String> {
+        match &mut self.session {
+            Some(session) => session.with(run),
+            None => with_pool(self.pool, run),
+        }
+    }
+}
+
 impl Attempt {
-    fn poll(&mut self, runner: &Runner, pool: u64) -> bool {
+    fn poll(&mut self, runner: &Runner, io: &mut LifecycleIo) -> bool {
         let outcome = {
             let state = runner.state.lock();
             match &state.jobs[&self.token].execution {
@@ -741,12 +771,10 @@ impl Attempt {
             }
         };
         let Some(outcome) = outcome else {
-            self.renew(runner, pool);
+            self.renew(runner, io);
             return true;
         };
-        match with_pool(pool, |db| {
-            finish(db, &runner.config.namespace, &self.id, &self.token, outcome)
-        }) {
+        match io.with(|db| finish(db, &runner.config.namespace, &self.id, &self.token, outcome)) {
             Ok(settlement) => {
                 runner.state.lock().counts.record_settlement(settlement);
                 false
@@ -763,7 +791,7 @@ impl Attempt {
         }
     }
 
-    fn renew(&mut self, runner: &Runner, pool: u64) {
+    fn renew(&mut self, runner: &Runner, io: &mut LifecycleIo) {
         let Some(lease) = &mut self.lease else {
             return;
         };
@@ -772,7 +800,7 @@ impl Attempt {
             return;
         }
         let config = &runner.config;
-        let renewal = with_pool(pool, |db| {
+        let renewal = io.with(|db| {
             if Instant::now() >= lease.expires_at {
                 return Ok(None);
             }
@@ -926,10 +954,7 @@ impl BatchLane {
                 match result {
                     Ok((lease, batch)) => {
                         if let Some(row) = batch.oversized.first() {
-                            runner.record_error(format!(
-                                "mesh jobs oversized claim context: job {} requires {} bytes",
-                                row.id, row.context_bytes,
-                            ));
+                            runner.record_oversized(row);
                         }
                         runner.state.lock().pending_claims = batch.claims.len();
                         if batch.claims.is_empty() {
@@ -973,10 +998,10 @@ fn dispatch(
     pool: u64,
     workers: &str,
     start_worker: &StartWorker,
-    claim_session: Option<JobSession>,
+    sessions: Option<(JobSession, JobSession)>,
 ) {
-    let Some(mut session) = claim_session else {
-        dispatch_queues(runner, pool, workers, start_worker, None);
+    let Some((mut session, lifecycle)) = sessions else {
+        dispatch_queues(runner, pool, workers, start_worker, None, None);
         return;
     };
     std::thread::scope(|scope| {
@@ -1017,6 +1042,7 @@ fn dispatch(
                     results,
                     pending: false,
                 }),
+                Some(lifecycle),
             ),
             Err(error) => {
                 runner.record_error(format!("could not start Jobs batch claim thread: {error}"));
@@ -1032,8 +1058,13 @@ fn dispatch_queues(
     workers: &str,
     start_worker: &StartWorker,
     mut batch: Option<BatchLane>,
+    lifecycle: Option<JobSession>,
 ) {
     let config = &runner.config;
+    let mut io = LifecycleIo {
+        pool,
+        session: lifecycle,
+    };
     let mut queues: Vec<_> = config
         .queues
         .iter()
@@ -1050,9 +1081,12 @@ fn dispatch_queues(
         .then(|| serde_json::json!(config.queues).to_string());
     let mut next_drain_recovery = Instant::now();
     loop {
+        if config.claim_batch && !unsafe { crate::db::pool::is_open(pool) } {
+            runner.request_stop(Duration::from_millis(config.shutdown_grace_ms));
+        }
         let previous_count = attempts.len();
         attempts.retain_mut(|attempt| {
-            if attempt.poll(runner, pool) {
+            if attempt.poll(runner, &mut io) {
                 true
             } else {
                 runner.state.lock().jobs.remove(&attempt.token);
@@ -1084,13 +1118,19 @@ fn dispatch_queues(
                 .as_deref()
                 .filter(|_| attempts.is_empty() && Instant::now() >= next_drain_recovery)
             {
-                match with_pool(pool, |db| {
+                match io.with(|db| {
                     let recovered = recover(db, &config.namespace, 64, Some(selected))?;
                     runner.state.lock().counts.recovered += recovered;
-                    drain_has_work(db, &config.namespace, selected, workers)
+                    drain_work(db, &config.namespace, selected, workers, config.claim_batch)
                 }) {
-                    Ok(false) => return,
-                    Ok(true) => {}
+                    Ok(work) => {
+                        if let Some(row) = &work.oversized {
+                            runner.record_oversized(row);
+                        }
+                        if !work.pending {
+                            return;
+                        }
+                    }
                     Err(error) => runner.record_error(error),
                 }
                 next_drain_recovery =
@@ -1113,6 +1153,14 @@ fn dispatch_queues(
             if let Some((index, slots)) = ready {
                 cursor = (index + 1) % queues.len();
                 if let Some(lane) = &mut batch {
+                    // A disconnected lifecycle session must reserve a new
+                    // connection before the claim thread can consume attempts.
+                    if let Err(error) = io.with(|_| Ok(())) {
+                        runner.record_error(error);
+                        queues[index].next_claim =
+                            Instant::now() + Duration::from_millis(config.poll_ms);
+                        continue;
+                    }
                     if let Err(error) = lane.request(runner, index, slots) {
                         runner.record_error(error);
                     }

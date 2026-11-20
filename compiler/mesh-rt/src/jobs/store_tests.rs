@@ -146,7 +146,11 @@ fn batch_claim_preserves_order_and_uses_the_shared_capacity() {
     let batch = claim_batch(&mut db, &f.ns, "default", WORKERS, 60_000, 16, None).unwrap();
     assert!(batch.oversized.is_empty());
     assert_eq!(
-        batch.claims.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(),
+        batch
+            .claims
+            .iter()
+            .map(|c| c.id.as_str())
+            .collect::<Vec<_>>(),
         [id(&jobs[3]), id(&jobs[1])]
     );
     assert_ne!(batch.claims[0].token, batch.claims[1].token);
@@ -157,12 +161,156 @@ fn batch_claim_preserves_order_and_uses_the_shared_capacity() {
     assert!(f.try_claim().is_none());
     assert_eq!(f.get(id(&jobs[0]))["attempt"], 0);
 
-    assert_eq!(f.finish(&batch.claims[0], Outcome::ReleaseUnstarted), Settlement::ReleasedUnstarted);
+    assert_eq!(
+        f.finish(&batch.claims[0], Outcome::ReleaseUnstarted),
+        Settlement::ReleasedUnstarted
+    );
     let retried = f.claim();
     assert_eq!(retried.id, batch.claims[0].id);
     assert_ne!(retried.token, batch.claims[0].token);
     assert_eq!(parse(&retried.context), context);
-    assert_eq!(f.finish(&batch.claims[0], Outcome::Complete), Settlement::Stale);
+    assert_eq!(
+        f.finish(&batch.claims[0], Outcome::Complete),
+        Settlement::Stale
+    );
+}
+
+#[test]
+#[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
+fn legacy_and_batch_workers_keep_distinct_executes_after_schema_reapply() {
+    let mut fixture = Fixture::new();
+    fixture.ops(json!({"action":"configure","queue":"default","limit":2}));
+    let jobs = fixture.enqueue(json!([{"worker":"Deliver"}, {"worker":"Deliver"}]));
+    let suffix = rand::random::<u64>();
+    let old = format!("mesh_batch_legacy_{suffix}");
+    let new = format!("mesh_batch_v1_{suffix}");
+    let batch_signature = "mesh_jobs.claim_batch_v1(text,text,jsonb,bigint,integer,bigint)";
+    let mut db = Connection::open(&fixture.url);
+    db.simple("BEGIN ISOLATION LEVEL READ COMMITTED").unwrap();
+    for statement in [
+        format!("CREATE ROLE {old}"),
+        format!("CREATE ROLE {new} IN ROLE {old}"),
+        format!("REVOKE EXECUTE ON FUNCTION {batch_signature} FROM PUBLIC"),
+        format!("GRANT USAGE ON SCHEMA mesh_jobs TO {old}"),
+        format!("GRANT SELECT, UPDATE ON mesh_jobs.jobs, mesh_jobs.queues TO {old}"),
+        format!(
+            "GRANT EXECUTE ON FUNCTION mesh_jobs.claim(text,text,jsonb,bigint),
+             mesh_jobs.now_ms(), mesh_jobs.effect_key(mesh_jobs.jobs) TO {old}"
+        ),
+        format!("GRANT EXECUTE ON FUNCTION {batch_signature} TO {new}"),
+        format!("GRANT SELECT, INSERT, UPDATE ON mesh_jobs.batch_context_blocks TO {new}"),
+    ] {
+        db.simple(&statement).unwrap();
+    }
+    db.simple(include_str!("schema.sql")).unwrap();
+
+    db.simple(&format!("SET LOCAL ROLE {old}")).unwrap();
+    assert_eq!(
+        response(
+            &mut db,
+            "SELECT has_function_privilege($1, 'EXECUTE')::text",
+            &[batch_signature]
+        )
+        .unwrap(),
+        "false",
+    );
+    let legacy = response(
+        &mut db,
+        "SELECT id FROM mesh_jobs.claim($1, 'default', $2::jsonb, 60000)",
+        &[&fixture.ns, WORKERS],
+    )
+    .unwrap();
+    assert_eq!(legacy, id(&jobs[0]));
+
+    db.simple("RESET ROLE").unwrap();
+    db.simple(&format!("SET LOCAL ROLE {new}")).unwrap();
+    let claimed = response(
+        &mut db,
+        "SELECT id FROM mesh_jobs.claim_batch_v1($1, 'default', $2::jsonb, 60000, 16, NULL)",
+        &[&fixture.ns, WORKERS],
+    )
+    .unwrap();
+    assert_eq!(claimed, id(&jobs[1]));
+    db.simple("ROLLBACK").unwrap();
+}
+
+#[test]
+#[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
+fn batch_drain_steps_past_an_oversized_prefix_and_rechecks_replacements() {
+    let mut fixture = Fixture::new();
+    let jobs = fixture.enqueue(json!(vec![json!({"worker":"Deliver"}); 6]));
+    for job in &jobs.as_array().unwrap()[..5] {
+        fixture
+            .db
+            .query(
+                "UPDATE mesh_jobs.jobs SET args = jsonb_build_object('large', repeat('x', 16777216))
+                 WHERE namespace = $1 AND id = $2::uuid",
+                &[&fixture.ns, id(job)],
+            )
+            .unwrap();
+    }
+    let selected = r#"{"default":1}"#;
+    let first = claim_batch(
+        &mut fixture.db,
+        &fixture.ns,
+        "default",
+        WORKERS,
+        60_000,
+        1,
+        None,
+    )
+    .unwrap();
+    assert_eq!(first.oversized.len(), 4);
+    assert!(first.claims.is_empty());
+    assert!(
+        drain_work(&mut fixture.db, &fixture.ns, selected, WORKERS, true)
+            .unwrap()
+            .pending
+    );
+    let second = claim_batch(
+        &mut fixture.db,
+        &fixture.ns,
+        "default",
+        WORKERS,
+        60_000,
+        1,
+        None,
+    )
+    .unwrap();
+    assert_eq!(second.oversized.len(), 1);
+    assert_eq!(second.claims[0].id, id(&jobs[5]));
+    assert_eq!(
+        fixture.finish(&second.claims[0], Outcome::Complete),
+        Settlement::Completed
+    );
+    let remaining = drain_work(&mut fixture.db, &fixture.ns, selected, WORKERS, true).unwrap();
+    assert!(!remaining.pending);
+    assert!(remaining.oversized.is_some());
+
+    fixture
+        .db
+        .query(
+            "UPDATE mesh_jobs.jobs SET args = '{}' WHERE namespace = $1 AND id = $2::uuid",
+            &[&fixture.ns, id(&jobs[0])],
+        )
+        .unwrap();
+    assert!(
+        drain_work(&mut fixture.db, &fixture.ns, selected, WORKERS, true)
+            .unwrap()
+            .pending
+    );
+    let fixed = claim_batch(
+        &mut fixture.db,
+        &fixture.ns,
+        "default",
+        WORKERS,
+        60_000,
+        1,
+        None,
+    )
+    .unwrap();
+    assert_eq!(fixed.claims[0].id, id(&jobs[0]));
+    assert_eq!(parse(&fixed.claims[0].context)["attempt"], 1);
 }
 
 #[test]

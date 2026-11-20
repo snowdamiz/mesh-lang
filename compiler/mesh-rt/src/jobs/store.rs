@@ -19,7 +19,7 @@ pub(super) struct Claim {
 
 pub(super) const MAX_CLAIM_BATCH: usize = 16;
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
 pub(super) struct OversizedClaim {
     pub(super) id: String,
     pub(super) context_bytes: usize,
@@ -709,17 +709,48 @@ pub(super) fn claim_batch(
     result.map_err(|error| rollback_error(error, db.simple("ROLLBACK")))
 }
 
-pub(super) fn drain_has_work(
+#[derive(Deserialize)]
+pub(super) struct DrainWork {
+    pub(super) pending: bool,
+    pub(super) oversized: Option<OversizedClaim>,
+}
+
+pub(super) fn drain_work(
     db: &mut impl Database,
     namespace: &str,
     queues: &str,
     workers: &str,
-) -> Result<bool, String> {
+    batch: bool,
+) -> Result<DrainWork, String> {
+    let (blocked_filter, diagnostic) = if batch {
+        (
+            "AND NOT EXISTS (SELECT FROM mesh_jobs.batch_context_blocks b
+                WHERE b.namespace = j.namespace AND b.id = j.id
+                    AND b.row_version = j.xmin AND b.row_location = j.ctid
+                    AND b.encoding = current_setting('client_encoding'))",
+            "(SELECT json_build_object('id', b.id::text, 'context_bytes', b.context_bytes)
+              FROM mesh_jobs.batch_context_blocks b JOIN mesh_jobs.jobs j
+                ON j.namespace = b.namespace AND j.id = b.id
+                    AND j.xmin = b.row_version AND j.ctid = b.row_location
+              JOIN mesh_jobs.queues q ON q.namespace = j.namespace AND q.name = j.queue
+              CROSS JOIN clock
+              WHERE b.namespace = $1 AND $2::jsonb ? j.queue
+                  AND b.encoding = current_setting('client_encoding')
+                  AND q.state = 'active' AND q.concurrency > 0
+                  AND j.state IN ('available', 'scheduled', 'retryable')
+                  AND j.scheduled_at_ms <= now_ms AND j.attempt < j.max_attempts
+                  AND EXISTS (SELECT FROM jsonb_to_recordset($3::jsonb) AS w(worker text, version bigint)
+                              WHERE w.worker = j.worker AND w.version = j.version)
+              LIMIT 1)",
+        )
+    } else {
+        ("", "NULL")
+    };
     // A skipped lock, or a queue at capacity, can also produce an empty claim.
     response(
         db,
-        "WITH clock AS MATERIALIZED (SELECT mesh_jobs.now_ms() AS now_ms)
-         SELECT EXISTS (
+        &format!("WITH clock AS MATERIALIZED (SELECT mesh_jobs.now_ms() AS now_ms)
+         SELECT json_build_object('pending', EXISTS (
              SELECT FROM mesh_jobs.jobs j JOIN mesh_jobs.queues q
              ON q.namespace = j.namespace AND q.name = j.queue CROSS JOIN clock
              WHERE j.namespace = $1 AND $2::jsonb ? j.queue
@@ -727,12 +758,13 @@ pub(super) fn drain_has_work(
                      OR (q.state = 'active' AND q.concurrency > 0
                          AND j.state IN ('available', 'scheduled', 'retryable')
                          AND j.scheduled_at_ms <= now_ms AND j.attempt < j.max_attempts
+                         {blocked_filter}
                          AND EXISTS (SELECT FROM jsonb_to_recordset($3::jsonb) AS w(worker text, version bigint)
                                      WHERE w.worker = j.worker AND w.version = j.version)))
-         )::text",
+         ), 'oversized', {diagnostic})::text"),
         &[namespace, queues, workers],
     )
-    .map(|due| due == "true")
+    .and_then(|outcome| decode(&outcome))
 }
 
 pub(super) fn renew(

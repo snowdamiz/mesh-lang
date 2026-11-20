@@ -168,6 +168,10 @@ pub(super) unsafe fn connection_url(pool: u64) -> Result<String, String> {
     Ok(inner.url.clone())
 }
 
+pub(crate) unsafe fn is_open(pool: u64) -> bool {
+    pool != 0 && !(&*(pool as *const PgPool)).inner.lock().closed
+}
+
 // ── Public scoped API and runtime-internal leasing ───────────────────────
 
 /// Create a PostgreSQL connection pool.

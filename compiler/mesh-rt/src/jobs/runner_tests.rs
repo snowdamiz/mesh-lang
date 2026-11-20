@@ -172,7 +172,11 @@ fn polling_and_kill_errors_keep_an_attempt_undrained_until_reap() {
 
     runner.supervise();
     runner.request_stop(Duration::ZERO);
-    assert!(attempt.poll(&runner, 0));
+    let mut io = LifecycleIo {
+        pool: 0,
+        session: None,
+    };
+    assert!(attempt.poll(&runner, &mut io));
     let report: serde_json::Value =
         serde_json::from_str(&runner.report(&runner.state.lock())).unwrap();
     assert_eq!(report["state"], "stopping");
@@ -180,10 +184,10 @@ fn polling_and_kill_errors_keep_an_attempt_undrained_until_reap() {
     assert_eq!(report["finished"], 0);
 
     runner.supervise();
-    assert!(attempt.poll(&runner, 0));
+    assert!(attempt.poll(&runner, &mut io));
 
     runner.supervise();
-    assert!(!attempt.poll(&runner, 0));
+    assert!(!attempt.poll(&runner, &mut io));
     let state = runner.state.lock();
     let Execution::Acknowledging { reply, .. } = &state.jobs["token"].execution else {
         panic!("reaped worker must be eligible for settlement");
@@ -436,6 +440,80 @@ fn join_waits_for_maintenance_after_stop_grace() {
     })
     .unwrap();
     assert_eq!(activation.len(), 1);
+    mesh_pool_close(pool);
+}
+
+#[test]
+#[ignore = "requires MESH_TEST_DATABASE_URL"]
+fn batch_lifecycle_survives_an_exhausted_application_pool() {
+    use crate::db::pool::{mesh_pool_close, mesh_pool_open, unbox_u64_payload};
+    use crate::io::MeshResult;
+    use crate::string::mesh_str;
+
+    crate::gc::mesh_rt_init();
+    actor::mesh_rt_init_actor(2);
+    let url = std::env::var("MESH_TEST_DATABASE_URL").expect("test PostgreSQL URL");
+    let open_pool = || {
+        let result = unsafe { &*mesh_pool_open(mesh_str(&url), 0, 1, 100).cast::<MeshResult>() };
+        assert_eq!(result.tag, 0);
+        unsafe { unbox_u64_payload(result.value) }
+    };
+    let pool = open_pool();
+    let observer = open_pool();
+    with_pool(observer, |db| {
+        super::super::store::migrate(db)?;
+        db.transaction(|tx| super::super::cron::migrate(tx))
+    })
+    .unwrap();
+    let namespace = format!("batch-pool-{}", rand::random::<u64>());
+    let config = json!({
+        "namespace": namespace,
+        "queues": {"default": 1},
+        "workers": [{"worker":"test", "version":1}],
+        "poll_ms": 10,
+        "lease_ms": 500,
+        "claim_batch": true,
+    });
+    let runner = start_runner(
+        pool,
+        &config.to_string(),
+        || Ok(()),
+        Box::new(TimedWorker::start),
+    )
+    .unwrap();
+    with_pool(pool, |_| {
+        let receipt = with_pool(observer, |db| {
+            db.transaction(|tx| super::super::store::enqueue(
+                tx, &namespace,
+                r#"{"worker":"test","args":{"wait_ms":1100},"timeout_ms":3000,"max_attempts":1}"#,
+            ))
+        })?;
+        let receipt: serde_json::Value = serde_json::from_str(&receipt).unwrap();
+        let get = json!({"action":"get", "id": receipt["id"]}).to_string();
+        let deadline = Instant::now() + TEST_WAIT;
+        loop {
+            let job = with_pool(observer, |db| {
+                super::super::store::control(db, &namespace, &get)
+            })?;
+            let job: serde_json::Value = serde_json::from_str(&job).unwrap();
+            if job["state"] == "completed" {
+                assert_eq!(job["attempt"], 1);
+                break;
+            }
+            assert!(
+                Instant::now() < deadline && job["state"] != "discarded",
+                "{job}"
+            );
+            std::thread::sleep(TICK);
+        }
+        Ok(())
+    })
+    .unwrap();
+    stop(runner, 2000).unwrap();
+    let report: serde_json::Value = serde_json::from_str(&join(runner).unwrap()).unwrap();
+    assert_eq!(report["outcomes"]["completed"], 1);
+    assert_eq!(report["stale_acks"], 0);
+    mesh_pool_close(observer);
     mesh_pool_close(pool);
 }
 

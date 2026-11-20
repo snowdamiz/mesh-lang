@@ -330,7 +330,7 @@ FROM {relation} WHERE {scope}
         claim = "j.attempted_at_ms" if engine == "mesh" else "extract(epoch FROM j.attempted_at) * 1000"
         return json.loads(self.sql(engine, f"""
 WITH attempts AS (
- SELECT job_key, count(*) AS attempts, min(entered_at) AS entered_at,
+ SELECT job_key, count(*) AS attempts, min(attempt) AS first_handler_attempt, min(entered_at) AS entered_at,
         count(DISTINCT effect_key) AS effect_keys
  FROM public.mesh_jobs_parity_attempts
  WHERE engine = '{engine}' AND namespace = '{namespace}' GROUP BY job_key
@@ -343,6 +343,7 @@ SELECT coalesce(json_agg(summary ORDER BY summary.job_key), '[]') FROM (
    encode(sha256(convert_to(j.args->>'payload', 'UTF8')), 'hex') AS payload_sha256,
    (j.args->>'hold_ms')::integer AS hold_ms, (j.args->>'fail_first')::boolean AS fail_first,
    coalesce(a.attempts,0) AS attempts, coalesce(e.effects,0) AS effects,
+   a.first_handler_attempt,
    coalesce(a.effect_keys,0) AS effect_keys, ({claim}) AS claimed_ms,
    extract(epoch FROM a.entered_at)*1000 AS entered_ms,
    extract(epoch FROM pg_xact_commit_timestamp(j.xmin))*1000 AS settled_ms
@@ -889,7 +890,8 @@ def run_batch_claim_fault(subject, scratch, evidence, settings, placement, proxy
             rows = cluster.rows("mesh", namespace)
             expected_attempt = 2 if placement == "after_commit" else 1
             if (len(rows) != 1 or rows[0]["state"] != "completed" or rows[0]["id"] != before["id"]
-                    or rows[0]["attempt"] != expected_attempt or rows[0]["effect_keys"] != 1):
+                    or rows[0]["attempt"] != expected_attempt
+                    or rows[0]["first_handler_attempt"] != expected_attempt or rows[0]["effect_keys"] != 1):
                 raise QueueMismatch(f"unexpected durable batch claim after {placement}: {rows}")
             writes = cluster.reconcile_writes("mesh", namespace, {
                 "attempts": {"claim": 1}, "effects": {"claim": 1},
@@ -952,7 +954,7 @@ def compile_oban(scratch, evidence, env, oban_fixture):
     mix_state = EVIDENCE / "build" / "oban"
     mix_state.mkdir(parents=True, exist_ok=True)
     env = dict(env, MIX_ENV="prod", MIX_HOME=str(mix_state / "mix"), HEX_HOME=str(mix_state / "hex"),
-               MIX_BUILD_PATH=str(mix_state / "build"), MIX_DEPS_PATH=str(mix_state / "deps"),
+               MIX_BUILD_PATH=str(scratch / "oban-build"), MIX_DEPS_PATH=str(scratch / "oban-deps"),
                ERL_CRASH_DUMP=str(scratch / "erl_crash.dump"))
     if not list((mix_state / "mix").glob("archives/hex-*")):
         checked(["mix", "local.hex", "--force"], cwd=oban_fixture, env=env, log=evidence / "hex-bootstrap.log")
