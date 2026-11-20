@@ -12,7 +12,7 @@ use super::store::{
     claim, drain_has_work, finish, prune, recover, renew, Claim, LeaseStatus, Outcome,
 };
 use super::with_pool;
-use super::worker::{handler_name, WorkerProcess};
+use super::worker::{handler_name, host_deadline, WorkerProcess};
 
 const TICK: Duration = Duration::from_millis(10);
 const MAX_GRACE_MS: u64 = 300_000;
@@ -26,7 +26,7 @@ const LEASE_LOST: &str = "job lease lost";
 
 trait JobProcess: Send {
     fn poll(&mut self) -> Result<Option<Result<String, String>>, String>;
-    fn renew(&mut self, lease_deadline: Instant) -> Result<(), String>;
+    fn renew(&mut self, lease_deadline: u64) -> Result<(), String>;
     fn kill(&mut self) -> Result<(), String>;
 }
 
@@ -35,7 +35,7 @@ impl JobProcess for WorkerProcess {
         self.poll()
     }
 
-    fn renew(&mut self, lease_deadline: Instant) -> Result<(), String> {
+    fn renew(&mut self, lease_deadline: u64) -> Result<(), String> {
         self.renew(lease_deadline)
     }
 
@@ -44,7 +44,7 @@ impl JobProcess for WorkerProcess {
     }
 }
 
-type StartWorker = dyn Fn(String, Instant, Instant) -> Result<Box<dyn JobProcess>, String> + Send;
+type StartWorker = dyn Fn(String, Instant, u64) -> Result<Box<dyn JobProcess>, String> + Send;
 
 #[derive(Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -469,16 +469,19 @@ pub(super) fn shutdown_all() {
 struct Lease {
     renew_at: Option<Instant>,
     expires_at: Instant,
+    worker_expires_at: u64,
 }
 
 impl Lease {
-    fn new(from: Instant, duration: Duration) -> Self {
+    fn begin(duration: Duration) -> Result<Self, String> {
         // PostgreSQL starts the lease during the request, so its start time
-        // cannot precede our own monotonic request start.
-        Self {
+        // cannot precede either of the local deadlines sampled before the query.
+        let from = Instant::now();
+        Ok(Self {
             renew_at: Some(from + duration / 3),
             expires_at: from + duration,
-        }
+            worker_expires_at: host_deadline(from + duration)?,
+        })
     }
 }
 
@@ -490,12 +493,12 @@ struct Running {
 }
 
 impl Running {
-    fn renew_lease(&mut self, lease_deadline: Instant) -> Result<bool, String> {
+    fn renew_lease(&mut self, renewed: &Lease) -> Result<bool, String> {
         if Instant::now() >= self.lease_deadline {
             return Ok(false);
         }
-        self.process.renew(lease_deadline)?;
-        self.lease_deadline = lease_deadline;
+        self.process.renew(renewed.worker_expires_at)?;
+        self.lease_deadline = renewed.expires_at;
         Ok(true)
     }
 
@@ -668,10 +671,10 @@ impl Attempt {
         }
         let config = &runner.config;
         let renewal = with_pool(pool, |db| {
-            let started = Instant::now();
-            if started >= lease.expires_at {
+            if Instant::now() >= lease.expires_at {
                 return Ok(None);
             }
+            let renewed = Lease::begin(Duration::from_millis(config.lease_ms))?;
             renew(
                 db,
                 &config.namespace,
@@ -679,9 +682,9 @@ impl Attempt {
                 &self.token,
                 config.lease_ms,
             )
-            .map(|status| Some((started, status)))
+            .map(|status| Some((renewed, status)))
         });
-        let (started, status) = match renewal {
+        let (renewed, status) = match renewal {
             Ok(Some(result)) => result,
             Ok(None) => return,
             Err(error) => {
@@ -701,9 +704,8 @@ impl Attempt {
         };
         match status {
             LeaseStatus::Active => {
-                let renewed = Lease::new(started, Duration::from_millis(config.lease_ms));
                 if let Some(worker) = running {
-                    match worker.renew_lease(renewed.expires_at) {
+                    match worker.renew_lease(&renewed) {
                         Ok(true) => {}
                         Ok(false) => {
                             worker.stop(Reply::Failed(LEASE_LOST.into()), last_error);
@@ -906,13 +908,13 @@ fn claim_one(
     }
 
     let acquired = with_pool(pool, |db| {
-        let started = Instant::now();
-        claim(db, &config.namespace, queue_name, workers, config.lease_ms).map(|job| (started, job))
+        let lease = Lease::begin(Duration::from_millis(config.lease_ms))?;
+        claim(db, &config.namespace, queue_name, workers, config.lease_ms).map(|job| (lease, job))
     });
     let mut state = runner.state.lock();
     state.pending_claims = 0;
     let (
-        started,
+        lease,
         Claim {
             id,
             token,
@@ -920,13 +922,12 @@ fn claim_one(
             timeout_ms,
         },
     ) = match acquired {
-        Ok((started, Some(job))) => (started, job),
+        Ok((lease, Some(job))) => (lease, job),
         Ok((_, None)) => return Ok(None),
         Err(error) => return Err(error),
     };
 
     let now = Instant::now();
-    let lease = Lease::new(started, Duration::from_millis(config.lease_ms));
     let deadline = now.checked_add(Duration::from_millis(timeout_ms));
     let execution = if now >= lease.expires_at
         || !matches!(state.phase, Phase::Running)
@@ -934,7 +935,7 @@ fn claim_one(
     {
         Execution::acknowledging(Reply::Unstarted)
     } else if let Some(deadline) = deadline {
-        match start_worker(context, deadline, lease.expires_at) {
+        match start_worker(context, deadline, lease.worker_expires_at) {
             Ok(process) => Execution::Running(Running {
                 process,
                 deadline,

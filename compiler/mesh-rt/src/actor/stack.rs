@@ -319,15 +319,7 @@ impl CoroutineHandle {
 
 impl Drop for CoroutineHandle {
     fn drop(&mut self) {
-        self.unwind();
-    }
-}
-
-impl CoroutineHandle {
-    pub(super) fn unwind(&mut self) {
-        let Some(coro) = self.coro.take() else {
-            return;
-        };
+        let coro = self.coro.take().expect("coroutine exists until drop");
         if !coro.done() {
             let previous = DROPPING_STACK_LIMIT.replace(self.stack_limit);
             drop(coro);

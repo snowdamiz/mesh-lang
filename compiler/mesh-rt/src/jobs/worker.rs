@@ -1,10 +1,11 @@
 use std::collections::BTreeMap;
 use std::ffi::{c_char, CStr};
-use std::fs::File;
+use std::fs::{File, Metadata};
 use std::io::{self, Read, Write};
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, LazyLock};
+use std::sync::{Arc, LazyLock, OnceLock};
 use std::time::{Duration, Instant};
 
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
@@ -27,6 +28,45 @@ type Reply = Result<String, String>;
 
 static HANDLERS: LazyLock<Mutex<BTreeMap<String, Handler>>> =
     LazyLock::new(|| Mutex::new(BTreeMap::new()));
+static EXECUTABLE: OnceLock<Result<Executable, String>> = OnceLock::new();
+
+struct Executable {
+    path: PathBuf,
+    image: Metadata,
+}
+
+impl Executable {
+    fn locate() -> Result<Self, String> {
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        let path = PathBuf::from("/proc/self/exe");
+        #[cfg(not(any(target_os = "linux", target_os = "android")))]
+        let path = std::env::current_exe().map_err(|error| error.to_string())?;
+        let image = path.metadata().map_err(|error| error.to_string())?;
+        Ok(Self { path, image })
+    }
+
+    fn check(&self) -> Result<&Path, String> {
+        let current = self.path.metadata().map_err(|error| error.to_string())?;
+        if !same_image(&self.image, &current) {
+            return Err("Mesh executable changed while its job runner was active".into());
+        }
+        Ok(&self.path)
+    }
+}
+
+#[cfg(unix)]
+fn same_image(left: &Metadata, right: &Metadata) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    left.dev() == right.dev() && left.ino() == right.ino()
+}
+
+#[cfg(windows)]
+fn same_image(left: &Metadata, right: &Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    left.creation_time() == right.creation_time()
+        && left.last_write_time() == right.last_write_time()
+        && left.file_size() == right.file_size()
+}
 
 #[no_mangle]
 pub unsafe extern "C" fn mesh_jobs_register_handler(name: *const u8, len: u64, handler: *const u8) {
@@ -43,12 +83,22 @@ pub(super) fn handler_name(fn_ptr: *const u8, env_ptr: *const u8) -> Result<Stri
     if fn_ptr.is_null() || !env_ptr.is_null() {
         return Err("runner handler must be a named fn(String) -> String".into());
     }
-    HANDLERS
+    let name = HANDLERS
         .lock()
         .iter()
         .find(|(_, handler)| **handler as usize == fn_ptr as usize)
         .map(|(name, _)| name.clone())
-        .ok_or_else(|| "Jobs.start requires a handler in a compiled Mesh executable".into())
+        .ok_or("Jobs.start requires a handler in a compiled Mesh executable")?;
+    executable()?;
+    Ok(name)
+}
+
+fn executable() -> Result<&'static Path, String> {
+    EXECUTABLE
+        .get_or_init(Executable::locate)
+        .as_ref()
+        .map_err(String::clone)?
+        .check()
 }
 
 #[derive(Deserialize, Serialize)]
@@ -71,16 +121,15 @@ impl WorkerProcess {
         handler: &str,
         context: String,
         deadline: Instant,
-        lease_deadline: Instant,
+        lease_deadline: u64,
     ) -> Result<Self, String> {
         let request = Request {
             handler: handler.to_owned(),
             context,
-            deadline: boot_deadline(deadline)?,
-            lease_deadline: boot_deadline(lease_deadline)?,
+            deadline: host_deadline(deadline)?,
+            lease_deadline,
         };
-        let executable = std::env::current_exe().map_err(|error| error.to_string())?;
-        let child = Command::new(executable)
+        let child = Command::new(executable()?)
             .arg(WORKER_ARG)
             .env("MESH_SCHEDULER_MIN_WORKERS", "1")
             .env("MESH_SCHEDULER_MAX_WORKERS", "1")
@@ -127,9 +176,8 @@ impl WorkerProcess {
         Ok(worker)
     }
 
-    pub(super) fn renew(&mut self, lease_deadline: Instant) -> Result<(), String> {
-        self.lease_deadline
-            .store(boot_deadline(lease_deadline)?, Ordering::Release);
+    pub(super) fn renew(&mut self, lease_deadline: u64) -> Result<(), String> {
+        self.lease_deadline.store(lease_deadline, Ordering::Release);
         // A full notification already tells the writer to send the latest deadline.
         let _ = self.renewals.try_send(());
         Ok(())
@@ -173,12 +221,11 @@ impl Drop for WorkerProcess {
 
 #[no_mangle]
 pub unsafe extern "C" fn mesh_jobs_enter_worker(argc: i32, argv: *const *const c_char) {
-    if argc != 2 {
-        return;
-    }
-    let flag = unsafe { CStr::from_ptr(*argv.add(1)) };
-    if flag.to_bytes() == WORKER_ARG.as_bytes() {
+    if argc == 2 && unsafe { CStr::from_ptr(*argv.add(1)) }.to_bytes() == WORKER_ARG.as_bytes() {
         enter_worker();
+    }
+    if !HANDLERS.lock().is_empty() {
+        EXECUTABLE.get_or_init(Executable::locate);
     }
 }
 
@@ -244,6 +291,7 @@ fn run_worker() -> Result<(), String> {
             .take(1024)
             .collect()),
     };
+    remaining(deadline, u64::MAX);
     write_frame(&mut result, &reply, MAX_REPLY_FRAME).map_err(|error| error.to_string())?;
     Ok(())
 }
@@ -293,7 +341,7 @@ fn exit_worker(code: i32) -> ! {
     std::process::abort();
 }
 
-fn boot_deadline(deadline: Instant) -> Result<u64, String> {
+pub(super) fn host_deadline(deadline: Instant) -> Result<u64, String> {
     let now = boot_millis().map_err(|error| error.to_string())?;
     Ok(now.saturating_add(
         deadline

@@ -46,7 +46,7 @@ fn polling_and_kill_errors_keep_an_attempt_undrained_until_reap() {
             }
         }
 
-        fn renew(&mut self, _: Instant) -> Result<(), String> {
+        fn renew(&mut self, _: u64) -> Result<(), String> {
             unreachable!()
         }
     }
@@ -138,7 +138,7 @@ struct TimedWorker {
 }
 
 impl TimedWorker {
-    fn start(context: String, _: Instant, _: Instant) -> Result<Box<dyn JobProcess>, String> {
+    fn start(context: String, _: Instant, _: u64) -> Result<Box<dyn JobProcess>, String> {
         let context: serde_json::Value = serde_json::from_str(&context).unwrap();
         let wait_ms = context["args"]["wait_ms"].as_u64().unwrap();
         let kill_delay = context["args"]["kill_delay_ms"].as_u64().unwrap_or(0);
@@ -165,7 +165,7 @@ impl JobProcess for TimedWorker {
         Ok(())
     }
 
-    fn renew(&mut self, _: Instant) -> Result<(), String> {
+    fn renew(&mut self, _: u64) -> Result<(), String> {
         Ok(())
     }
 }
@@ -179,7 +179,9 @@ fn a_late_renewal_cannot_extend_an_expired_local_lease() {
         lease_deadline: now,
         stop: None,
     };
-    assert!(!worker.renew_lease(now + TEST_WAIT).unwrap());
+    assert!(!worker
+        .renew_lease(&Lease::begin(TEST_WAIT).unwrap())
+        .unwrap());
     assert_eq!(worker.lease_deadline, now);
     assert!(worker.poll(now, false, &mut None).is_none());
     assert!(matches!(
