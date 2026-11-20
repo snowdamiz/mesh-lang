@@ -100,9 +100,9 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `gpt-6.2-sol high` at the PR head using the compiled fixtures and the PostgreSQL boot recipe.
 
 - [x] Lane 1. Regression lane against main. Run the existing transaction and recovery proof on main and head. Save `j1-lane-1.log`. Pass when the added driver reports the same persisted effects.
-- [ ] Lane 2. Run the compiled Jobs workload on PostgreSQL 17 on Linux and macOS. Save `j1-lane-2.log`. Pass when the recorded patch version matches the server and expected claims, persisted settlements, and recovery pass on both hosts.
-- [ ] Lane 3. Run PostgreSQL 18.7 with SCRAM over TLS on Linux and macOS. Save `j1-lane-3.log`. Pass when authentication and the compiled transaction, workload, settlement, and recovery checks pass.
-- [ ] Lane 4. Run PostgreSQL 19.0 with SCRAM over TLS on Linux and macOS. Save `j1-lane-4.log`. Pass when authentication and the compiled transaction, workload, settlement, and recovery checks pass.
+- [x] Lane 2. PostgreSQL 17.11 passed the compiled transaction, claims, settlements, and recovery suites on Linux arm64 and macOS arm64 over verified TLS with SCRAM. [Receipt](../proof/jobs-parity/j1-postgres-matrix.log)
+- [x] Lane 3. PostgreSQL 18.7 passed the same suites and authentication checks on both platforms. [Receipt](../proof/jobs-parity/j1-postgres-matrix.log)
+- [x] Lane 4. PostgreSQL 19.0 passed the same suites and authentication checks on both platforms. [Receipt](../proof/jobs-parity/j1-postgres-matrix.log)
 - [x] Lane 5. Run the Oban Basic fixture twice with the same seed. Save `j1-lane-5.log`. Pass when the derived inputs and total job counts match.
 - [ ] Lane 6. Run the matched sparse workload. Save `j1-lane-6.log`. Pass when every eligible committed job is accounted for.
 - [x] Lane 7. Run the matched dense workload. Save `j1-lane-7.log`. Pass when the run records occupancy and all completed jobs.

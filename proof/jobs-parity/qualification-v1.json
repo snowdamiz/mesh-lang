@@ -455,6 +455,19 @@
     "result": "pass",
     "runtime_revision": "e8fa00c0c6aa7ae6d4c807cccdd50a3f75f915bd"
   },
+  "latest_macos_linux_postgresql_matrix": {
+    "platforms": [
+      "macOS arm64",
+      "Linux arm64 container"
+    ],
+    "postgresql_versions": [
+      "17.11",
+      "18.7",
+      "19.0"
+    ],
+    "receipt": "proof/jobs-parity/j1-postgres-matrix.log",
+    "runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287"
+  },
   "latest_rolling_and_promotion": {
     "postgresql_versions": [
       "17.11",
