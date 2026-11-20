@@ -294,7 +294,7 @@ fn prove_bounded_crash_recovery(proof: &Proof) {
         "f"
     );
     recovery.release();
-    let report = recovery.join();
+    let report = recovery.join_report("stop_reason");
     assert_eq!(report["recovered"], 1, "{report}");
     assert_eq!(report["outcomes"]["completed"], 1);
     assert_eq!(proof.job("bounded-crash")["state"], "completed");
