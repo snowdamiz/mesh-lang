@@ -105,6 +105,8 @@ end
     prove_bounded_cutoff(&proof, &other);
     prove_bounded_recursion(&proof);
     prove_bounded_error_policy(&proof);
+    prove_bounded_global_capacity(&proof);
+    prove_bounded_recovery_budget(&proof);
     prove_bounded_launch_failure(&proof);
     prove_bounded_unconfirmed_settlement(&proof);
     prove_bounded_crash_recovery(&proof);
@@ -336,6 +338,182 @@ fn prove_bounded_error_policy(proof: &Proof) {
     assert_eq!(proof.job("poison")["state"], "discarded");
     assert_eq!(proof.job("poison")["attempt"], 2);
     assert_eq!(proof.job("bounded-healthy")["state"], "completed");
+}
+
+fn prove_bounded_global_capacity(proof: &Proof) {
+    let queue = "drain-global-capacity";
+    let holder_label = "drain-slot-holder";
+    let pending_label = "drain-slot-pending";
+    let holder = proof.enqueue(json!({
+        "worker":"proof", "queue":queue, "args":{"label":holder_label},
+    }));
+    let mut peer = proof.worker_with_options(holder_label, true, json!({queue: 1}), 8000, 60_000);
+    let effects = proof.wait_effects(holder_label, 1);
+    assert_eq!(effects[0]["process"], holder_label);
+    assert_job_context(&effects[0], &holder, queue, holder_label, 1);
+
+    let pending = proof.enqueue(json!({
+        "worker":"proof", "queue":queue, "args":{"label":pending_label},
+    }));
+    let before = proof.job(pending_label);
+    assert_eq!(before["id"], pending["id"]);
+    assert_eq!(before["effect_key"], pending["effect_key"]);
+    assert_eq!(before["state"], "available");
+    assert_eq!(before["attempt"], 0);
+
+    let occupied_slot = || {
+        proof.sql(&format!(
+            "SELECT j.lease_token FROM mesh_jobs.jobs j
+             JOIN mesh_jobs.queues q ON q.namespace = j.namespace AND q.name = j.queue
+             WHERE j.namespace = {} AND j.id = {}::uuid
+                 AND q.state = 'active' AND q.concurrency = 1
+                 AND j.state = 'executing' AND j.attempt = 1
+                 AND j.lease_expires_at_ms > mesh_jobs.now_ms()",
+            quoted(&proof.namespace),
+            quoted(id(&holder)),
+        ))
+    };
+    let token = occupied_slot();
+    assert!(
+        !token.is_empty(),
+        "peer must hold the sole global queue slot"
+    );
+
+    let request = bounded_request(
+        proof,
+        queue,
+        json!({"max_jobs":1,"recursive":false,"on_error":"continue"}),
+    );
+    let idle = proof.run("drain", &request);
+    assert_eq!(idle["stop_reason"], "idle", "{idle}");
+    assert_eq!(idle["claimed"], 0, "{idle}");
+    assert_eq!(idle["recovered"], 0, "{idle}");
+    assert_eq!(idle["remaining"], true, "{idle}");
+    peer.assert_running();
+    assert_eq!(occupied_slot(), token);
+    assert_eq!(proof.job(pending_label), before);
+    assert!(proof.effects(pending_label).is_empty());
+
+    peer.signal();
+    eventually("the slot holder to receive SIGTERM", || {
+        peer.assert_running();
+        peer.markers.join("signal").is_file().then_some(())
+    });
+    peer.release();
+    let stopped = peer.join();
+    assert_eq!(stopped["drained"], true, "{stopped}");
+    assert_eq!(stopped["claimed"], 1, "{stopped}");
+    assert_eq!(proof.job(holder_label)["state"], "completed");
+
+    let completed = proof.run("drain", &request);
+    assert_eq!(completed["claimed"], 1, "{completed}");
+    assert_eq!(completed["outcomes"]["completed"], 1, "{completed}");
+    assert_eq!(completed["remaining"], false, "{completed}");
+    let job = proof.job(pending_label);
+    assert_eq!(job["id"], pending["id"]);
+    assert_eq!(job["effect_key"], pending["effect_key"]);
+    assert_eq!(job["state"], "completed");
+    assert_eq!(job["attempt"], 1);
+    let effects = proof.effects(pending_label);
+    assert_eq!(effects.len(), 1);
+    assert_job_context(&effects[0], &pending, queue, pending_label, 1);
+}
+
+fn prove_bounded_recovery_budget(proof: &Proof) {
+    let queue = "drain-recovery-budget";
+    let first_label = "drain-recover-first";
+    let excess_label = "drain-recover-excess";
+    let wrong_label = "drain-recover-wrong-version";
+    let attempted_at = proof
+        .sql("SELECT mesh_jobs.now_ms() - 60000")
+        .parse::<i64>()
+        .unwrap();
+    let specs: Vec<_> = [(first_label, 1), (excess_label, 1), (wrong_label, 2)]
+        .into_iter()
+        .map(|(label, version)| {
+            json!({
+                "worker":"proof", "queue":queue, "version":version, "args":{"label":label},
+                "scheduled_at_ms":attempted_at, "max_attempts":2,
+                "backoff_base_ms":0, "backoff_max_ms":0,
+            })
+        })
+        .collect();
+    let receipts = proof.enqueue(json!(specs));
+    let [first, excess, wrong] = receipts.as_array().unwrap().as_slice() else {
+        panic!("expected three enqueue receipts: {receipts}");
+    };
+    let scaled = proof.control(json!({"action":"scale", "queue":queue, "concurrency":3}));
+    assert_eq!(scaled["concurrency"], 3, "{scaled}");
+
+    // The wrong version expires first, and the second matching lease is beyond the budget.
+    proof.sql(&format!(
+        "UPDATE mesh_jobs.jobs j SET state = 'executing', attempt = 1,
+             attempted_at_ms = {attempted_at}, lease_token = gen_random_uuid(),
+             lease_expires_at_ms = {attempted_at} + seed.lease_ms
+         FROM (VALUES ({}::uuid, 2000), ({}::uuid, 3000), ({}::uuid, 1000)) AS seed(id, lease_ms)
+         WHERE j.namespace = {} AND j.id = seed.id",
+        quoted(id(first)),
+        quoted(id(excess)),
+        quoted(id(wrong)),
+        quoted(&proof.namespace),
+    ));
+    let stored_row = |receipt: &Value| -> Value {
+        serde_json::from_str(&proof.sql(&format!(
+            "SELECT to_jsonb(j) || jsonb_build_object('effect_key', mesh_jobs.effect_key(j),
+                     'expired', j.lease_expires_at_ms <= mesh_jobs.now_ms())
+             FROM mesh_jobs.jobs j WHERE j.namespace = {} AND j.id = {}::uuid",
+            quoted(&proof.namespace),
+            quoted(id(receipt)),
+        )))
+        .unwrap()
+    };
+    let seeded = [first, excess, wrong].map(stored_row);
+    for ((receipt, version), row) in [(first, 1), (excess, 1), (wrong, 2)]
+        .into_iter()
+        .zip(&seeded)
+    {
+        assert_eq!(row["id"], receipt["id"]);
+        assert_eq!(row["effect_key"], receipt["effect_key"]);
+        assert_eq!(row["version"], version);
+        assert_eq!(row["state"], "executing");
+        assert_eq!(row["attempt"], 1);
+        assert_eq!(row["expired"], true, "{row}");
+    }
+
+    let report = proof.run(
+        "drain",
+        &bounded_request(
+            proof,
+            queue,
+            json!({"max_jobs":1,"recursive":false,"on_error":"continue"}),
+        ),
+    );
+    assert_eq!(report["recovered"], 1, "{report}");
+    assert_eq!(report["claimed"], 1, "{report}");
+    assert_eq!(report["finished"], 1, "{report}");
+    assert_eq!(report["outcomes"]["completed"], 1, "{report}");
+    assert_eq!(report["stop_reason"], "budget", "{report}");
+    assert_eq!(report["budget_hit"], true, "{report}");
+    assert_eq!(report["remaining"], true, "{report}");
+
+    let completed = stored_row(first);
+    assert_eq!(completed["id"], first["id"]);
+    assert_eq!(completed["effect_key"], first["effect_key"]);
+    assert_eq!(completed["state"], "completed");
+    assert_eq!(completed["attempt"], 2);
+    assert!(completed["lease_token"].is_null());
+    let errors = completed["errors"].as_array().unwrap();
+    assert_eq!(errors.len(), 1);
+    assert_eq!(errors[0]["reason"], "lease expired");
+    assert_eq!(errors[0]["attempt"], 1);
+    let effects = proof.effects(first_label);
+    assert_eq!(effects.len(), 1);
+    assert_job_context(&effects[0], first, queue, first_label, 2);
+
+    assert_eq!(stored_row(excess), seeded[1]);
+    assert_eq!(stored_row(wrong), seeded[2]);
+    assert!(proof.effects(excess_label).is_empty());
+    assert!(proof.effects(wrong_label).is_empty());
 }
 
 fn prove_bounded_launch_failure(proof: &Proof) {
