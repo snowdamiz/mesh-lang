@@ -710,6 +710,21 @@
     "raw_receipt": "target/jobs-parity/53fb9189e0dd71e0856f3ca6b5aad2d3bc4a5c8c/program/collector/target/jobs-parity/maintenance-release-rerun/summary.json",
     "verdict": "diagnostic"
   },
+  "maintenance_latest_release": {
+    "diagnostic_reasons": [
+      "observed one-minute load per logical CPU exceeded the noise limit"
+    ],
+    "dispatch_p99_candidate_over_main_max": 0.9527840775563561,
+    "dispatch_p99_candidate_over_main_min": 0.920146343691499,
+    "max_script_claim_gap_ms": 120,
+    "minimum_dispatch_samples": 132,
+    "peak_one_minute_load_per_cpu": 0.8118489583333334,
+    "quiet_load_per_cpu_limit": 0.75,
+    "raw_receipt": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/maintenance-release-current/summary.json",
+    "rounds": 5,
+    "runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+    "verdict": "diagnostic"
+  },
   "oban_basic_version": "2.24.2",
   "one_slot_oban_process_budget": {
     "limit": 2,

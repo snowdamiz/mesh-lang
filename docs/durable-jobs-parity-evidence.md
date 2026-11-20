@@ -361,6 +361,12 @@ rounds too, with script-arm dispatch p99 from 0.972 to 1.021 times main.
 Host load reached 5.92 per logical CPU during the rerun, so its receipt
 also records a diagnostic verdict.
 
+The `1b12243b` release rerun completed five rounds. Script-arm dispatch
+p99 ranged from 0.920 to 0.953 times main. The largest observed claim gap
+was 120 ms against a 500 ms budget. All rounds met the measured limits.
+The host peaked at 0.812 one-minute load per logical CPU against the 0.75
+quiet-host limit, so the receipt records a diagnostic verdict. [Maintenance receipt](../proof/jobs-parity/qualification-v1.json)
+
 ## Exercise primary promotion
 
 Build the compiler and runtime from the revision under test. Set `PG_BIN_DIR`
