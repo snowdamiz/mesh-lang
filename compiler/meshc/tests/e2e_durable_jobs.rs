@@ -59,6 +59,8 @@ fn durable_jobs_survive_process_boundaries() {
     prove_competing_processes(&proof);
     prove_crash_and_stale_ack(&proof);
     prove_retry_and_exhaustion(&proof);
+    prove_native_timeout(&proof);
+    prove_native_lease_loss(&proof);
     prove_signal_drain(&proof);
     assert_eq!(proof.effects("committed").len(), 1);
     assert!(proof.effects("rolled-back").is_empty());
@@ -260,6 +262,64 @@ fn prove_signal_drain(proof: &Proof) {
     assert_eq!(pending_job["state"], "available");
     assert_eq!(pending_job["attempt"], 0);
     assert!(proof.effects("after-signal").is_empty());
+}
+
+fn prove_native_timeout(proof: &Proof) {
+    let receipt = proof.enqueue(json!({
+        "worker": "proof", "args": {"label": "native-timeout"},
+        "timeout_ms": 900, "max_attempts": 2, "backoff_base_ms": 0,
+    }));
+    let mut worker = proof.worker("native-timeout", false);
+    proof.wait_effects("native-timeout", 1);
+    wait_for_native_query(proof, "native-timeout", true);
+    let job = proof.wait_state("native-timeout", "completed");
+    assert_eq!(job["id"], receipt["id"]);
+    assert_eq!(job["attempt"], 2);
+    assert_eq!(job["errors"][0]["reason"], "job handler timed out");
+    assert_eq!(proof.effects("native-timeout").len(), 2);
+    wait_for_native_query(proof, "native-timeout", false);
+    assert_eq!(
+        proof.effects("after-timeout"),
+        Vec::<Value>::new(),
+        "timed-out handler published a side effect after returning from native I/O"
+    );
+    worker.stop();
+}
+
+fn prove_native_lease_loss(proof: &Proof) {
+    let receipt = proof.enqueue(json!({
+        "worker": "proof", "args": {"label": "native-owner-paused"},
+        "timeout_ms": 10_000, "max_attempts": 2, "backoff_base_ms": 0,
+    }));
+    let mut owner = proof.worker("paused-owner", false);
+    proof.wait_effects("native-owner-paused", 1);
+    wait_for_native_query(proof, "native-owner-paused", true);
+    owner.send_signal("-STOP");
+
+    let mut recovery = proof.worker("native-recovery", false);
+    let job = proof.wait_state("native-owner-paused", "completed");
+    assert_eq!(job["attempt"], 2);
+    assert_eq!(job["errors"][0]["reason"], "lease expired");
+    let effects = proof.effects("native-owner-paused");
+    assert_eq!(effects.len(), 2);
+    assert_context(&effects[0], &receipt, "native-owner-paused", 1);
+    assert_context(&effects[1], &receipt, "native-owner-paused", 2);
+    assert_eq!(effects[1]["process"], "native-recovery");
+    owner.send_signal("-CONT");
+    wait_for_native_query(proof, "native-owner-paused", false);
+    owner.stop();
+    recovery.stop();
+    assert!(proof.effects("after-timeout").is_empty());
+}
+
+fn wait_for_native_query(proof: &Proof, label: &str, active: bool) {
+    eventually("native PostgreSQL query reaches expected state", || {
+        let result = proof.sql(&format!(
+            "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE application_name = {} AND state = 'active' AND query = 'SELECT pg_sleep(4)')",
+            quoted(label),
+        ));
+        ((result == "t") == active).then_some(())
+    });
 }
 
 fn spec(label: &str) -> Value {
@@ -576,11 +636,15 @@ impl Worker {
     }
 
     fn signal(&mut self) {
+        self.send_signal("-TERM");
+    }
+
+    fn send_signal(&mut self, signal: &str) {
         self.assert_running();
         let pid = self.child.as_ref().unwrap().id();
         assert!(
             Command::new("kill")
-                .args(["-TERM", &pid.to_string()])
+                .args([signal, &pid.to_string()])
                 .status()
                 .unwrap()
                 .success(),

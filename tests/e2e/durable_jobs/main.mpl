@@ -53,6 +53,20 @@ fn record_effect(context :: String) -> String!String do
     [worker, label, context])
   Pg.close(conn)
   let _ = result?
+  if (label == "native-timeout" || label == "native-owner-paused") && attempt == 1 do
+    let blocker = Pg.connect(database_url())?
+    let _ = Pg.query(blocker, "SELECT set_config('application_name', $1, false)", [label])?
+    let blocked = Pg.query(blocker, "SELECT pg_sleep(4)", [])
+    let resumed = Pg.execute(blocker,
+      "INSERT INTO "
+        <> namespace()
+        <> ".effects(worker, label, context) VALUES ($1, 'after-timeout', $2::jsonb)",
+      [worker, context])
+    Pg.close(blocker)
+    let _ = blocked?
+    let _ = resumed?
+    ()
+  end
   let gate = Env.get("MESH_JOBS_PROOF_GATE", "")
   if gate != "" do
     while !File.exists(gate) do
