@@ -535,6 +535,14 @@ Each excerpt identifies the assertion source and the lines from the full
 log. The `macos_paired_workload_lanes` entry records the seed, input digest,
 and reconciliation for the selected pairing lanes. [Qualification receipt](../proof/jobs-parity/qualification-v1.json)
 
+J2 lane 1 uses all seven short-job profiles from the PostgreSQL 17.11
+main/head comparison. The audit matched 20,480 final job IDs to the
+enqueue receipts and verified one attempt and one effect per job. The
+one-runner, 16-slot reference profile used 55.0% fewer claim calls per job.
+Five profiles met the 30% reduction threshold in the driver. The
+one-slot profile had no reduction, and eight runners with 16 slots used
+18.4% fewer calls. The lane receipt links all seven raw summaries.
+
 ### Verified PostgreSQL workflows
 
 The following cases passed on macOS arm64 with PostgreSQL 17.11, 18.7, and

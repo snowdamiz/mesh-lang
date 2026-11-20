@@ -555,6 +555,7 @@
     "lane_logs": {
       "j1-lane-5": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/lane-evidence/17.11/j1-lane-5.log",
       "j1-lane-7": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/lane-evidence/17.11/j1-lane-7.log",
+      "j2-lane-1": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/lane-evidence/17.11/j2-lane-1.log",
       "j4-lane-1": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/lane-evidence/17.11/j4-lane-1.log"
     },
     "postgresql_version": "17.11",

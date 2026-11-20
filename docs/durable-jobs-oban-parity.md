@@ -149,7 +149,7 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `gpt-6.2-sol high` at the PR head using the compiled fixtures and the PostgreSQL boot recipe.
 
-- [ ] Lane 1. Regression lane against main. Run the mixed short-job workload on main and head. Save `j2-lane-1.log`. Pass when head preserves all job IDs and results.
+- [x] Lane 1. Five paired trials per short-job profile reconciled all 20,480 job IDs, attempts, and effects across main and candidate. The receipt records each profile's claim-call budget separately. [Receipt index](../proof/jobs-parity/qualification-v1.json)
 - [x] Lane 2. Race four compiled runners on a queue at capacity. Save `j2-lane-2.log`. Pass when claims never exceed the configured global cap.
 - [ ] Lane 3. Pause and scale during a batch. Save `j2-lane-3.log`. Pass when no new claims bypass the committed queue control.
 - [x] Lane 4. Hold one row through renewals and acknowledgements. Save `j2-lane-4.log`. Pass when an unrelated attempt completes on its first lease.
