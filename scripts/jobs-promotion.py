@@ -206,16 +206,18 @@ def enqueue(subject, env, scratch, evidence, request, jobs):
         for key, hold, fail_first in jobs
     ]}
     path = parity.batch_files(scratch, [batch])[0]
-    count, committed_ms = subject.enqueue(env, path, evidence / f"enqueue-{request}.log")
-    require(count == len(jobs) and committed_ms is not None, f"{request} enqueue did not commit")
-    return committed_ms
+    receipt, committed_ms = subject.enqueue_receipt(env, path, evidence / f"enqueue-{request}.log")
+    ids = receipt["ids"]
+    require(set(ids) == {key for key, _, _ in jobs} and committed_ms is not None,
+            f"{request} enqueue did not commit")
+    return ids
 
 
 def kill_runner(process):
     parity.remember_workers([process], parity.process_table())
     os.kill(process.pid, signal.SIGKILL)
     require(process.wait(timeout=10) == -signal.SIGKILL, "old Mesh runner did not die from SIGKILL")
-    parity.wait_for_worker_exit(process.observed_workers)
+    parity.wait_for_worker_exit(process.observed_workers, parity.fixture_executables([process]))
 
 
 def assert_original(snapshot):
@@ -239,7 +241,7 @@ def assert_original(snapshot):
 
 def before_promotion(primary, subject, env, namespace, scratch, evidence, log):
     require(primary.owned(ENGINE), "fault injection requires the driver's ownership nonce")
-    enqueue(subject, env, scratch, evidence, "ambiguous", [("ambiguous", 0, False)])
+    enqueued = enqueue(subject, env, scratch, evidence, "ambiguous", [("ambiguous", 0, False)])
     cut = {"placement": "after_commit", "query_forwarded": True, "command_complete": True, "ready_status": "I"}
     runner_log = evidence / "old-runner.log"
     with SettlementProxy(primary.port, lambda sql: "coalesce(mesh_jobs.settle_state(" in sql,
@@ -254,10 +256,10 @@ def before_promotion(primary, subject, env, namespace, scratch, evidence, log):
             require(ambiguous["state"] == "completed" and ambiguous["attempt"] == 1,
                     "the primary did not persist the ambiguous settlement")
             report(log, "settlement_reply_withheld", fault=cut, job=ambiguous)
-            enqueue(subject, env, scratch, evidence, "interrupted", [("interrupted", 30_000, True)])
+            enqueued.update(enqueue(subject, env, scratch, evidence, "interrupted", [("interrupted", 30_000, True)]))
             parity.wait_for(lambda: snapshot(primary, namespace)["effects"].get("interrupted"),
                             deadline, "committed effect from interrupted handler")
-            enqueue(subject, env, scratch, evidence, "queued", [("queued", 0, False)])
+            enqueued.update(enqueue(subject, env, scratch, evidence, "queued", [("queued", 0, False)]))
             require(runner.poll() is None, "old Mesh runner exited before the cut")
             kill_runner(runner)
         finally:
@@ -269,6 +271,8 @@ WHERE datname = 'mesh' AND usename IN ('parity_subject', 'parity_producer')
 """) == "t", time.monotonic() + 10, "old writer sessions to disappear")
     original = snapshot(primary, namespace)
     assert_original(original)
+    require({key: row["id"] for key, row in original["jobs"].items()} == enqueued,
+            "primary job IDs differ from the enqueue replies")
     require(original["jobs"]["ambiguous"] == ambiguous, "ambiguous settlement changed on the old primary")
     report(log, "old_primary_snapshot", **original)
     return original
@@ -322,36 +326,42 @@ WHERE usename = 'parity_subject' AND datname = current_database()
 
         parity.wait_for(lambda: standby.observe(ENGINE, namespace)["terminal"] == 3,
                         time.monotonic() + 10, "all promoted jobs to settle")
-        final = snapshot(standby, namespace)
-        jobs = final["jobs"]
-        require(jobs.keys() == original["jobs"].keys(), "job manifest changed across promotion")
-        require(final["business"] == original["business"] and final["receipts"] == original["receipts"],
-                "promotion changed committed business rows or job receipts")
-        attempts = {"ambiguous": 1, "interrupted": 2, "queued": 1}
-        for key, old in original["jobs"].items():
-            current = jobs[key]
-            require((current["id"], current["effect_key"], current["state"], current["attempt"])
-                    == (old["id"], old["effect_key"], "completed", attempts[key]),
-                    f"job did not reconcile after promotion: {key}: {current}")
-        require(jobs["ambiguous"] == original["jobs"]["ambiguous"], "ambiguous settlement was changed or replayed")
-        require(any(error["reason"] == "lease expired" for error in jobs["interrupted"]["errors"]),
-                "interrupted claim did not recover through lease expiry")
-        require(final["attempts"] == [[key, number, jobs[key]["effect_key"]]
-                                      for key, count in attempts.items() for number in range(1, count + 1)],
-                "handler attempts or their effect identities did not reconcile")
-        require({key: effect[0] for key, effect in final["effects"].items()}
-                == {key: row["effect_key"] for key, row in jobs.items()},
-                "durable effect identities did not reconcile")
-        require(all(final["effects"][key] == effect for key, effect in original["effects"].items()),
-                "an effect committed before promotion was replaced")
-        writes = standby.reconcile_writes(ENGINE, namespace, {
-            "attempts": attempts, "effects": dict.fromkeys(attempts, 1),
-        })
-        report(log, "promoted_final_snapshot", **final, write_counts=writes)
         success = True
     finally:
         gate.touch(exist_ok=True)
         parity.stop_runners([runner], require_clean=success)
+
+    if env.get("JOBS_PARITY_MESH_LISTEN") == "1":
+        wakeups = parity.mesh_shutdown_report(runner_log).get("wakeups", {})
+        require(wakeups.get("subscription_scans", 0) > 0,
+                "replacement listener did not scan after subscribing on the promoted primary")
+        report(log, "promoted_listener_caught_up", **wakeups)
+    final = snapshot(standby, namespace)
+    jobs = final["jobs"]
+    require(jobs.keys() == original["jobs"].keys(), "job manifest changed across promotion")
+    require(final["business"] == original["business"] and final["receipts"] == original["receipts"],
+            "promotion changed committed business rows or job receipts")
+    attempts = {"ambiguous": 1, "interrupted": 2, "queued": 1}
+    for key, old in original["jobs"].items():
+        current = jobs[key]
+        require((current["id"], current["effect_key"], current["state"], current["attempt"])
+                == (old["id"], old["effect_key"], "completed", attempts[key]),
+                f"job did not reconcile after promotion: {key}: {current}")
+    require(jobs["ambiguous"] == original["jobs"]["ambiguous"], "ambiguous settlement was changed or replayed")
+    require(any(error["reason"] == "lease expired" for error in jobs["interrupted"]["errors"]),
+            "interrupted claim did not recover through lease expiry")
+    require(final["attempts"] == [[key, number, jobs[key]["effect_key"]]
+                                  for key, count in attempts.items() for number in range(1, count + 1)],
+            "handler attempts or their effect identities did not reconcile")
+    require({key: effect[0] for key, effect in final["effects"].items()}
+            == {key: row["effect_key"] for key, row in jobs.items()},
+            "durable effect identities did not reconcile")
+    require(all(final["effects"][key] == effect for key, effect in original["effects"].items()),
+            "an effect committed before promotion was replaced")
+    enqueued = {key: receipt["id"] for key, receipt in original["receipts"].items()}
+    entries = {key: range(1, count + 1) for key, count in attempts.items()}
+    writes = standby.reconcile_trial(ENGINE, namespace, enqueued, entries, original["business"])
+    report(log, "promoted_final_snapshot", **final, write_counts=writes)
 
 
 def run(args, scratch, evidence, log):
@@ -397,6 +407,8 @@ def run(args, scratch, evidence, log):
                 "promotion changed replicated job, attempt, effect or receipt identities")
         replacement = parity.Subject(ENGINE, [str(executable)], scratch, standby, env)
         standby_env = replacement.environment(namespace, 1, 1, "fault", POLL_MS)
+        if args.listen:
+            standby_env["JOBS_PARITY_MESH_LISTEN"] = "1"
         recover(standby, replacement, standby_env, namespace, scratch, evidence, log, original, lower)
         fenced(primary, pid)
 
@@ -406,6 +418,7 @@ def main():
     parser.add_argument("--meshc", type=Path, default=parity.ROOT / "target/debug/meshc")
     parser.add_argument("--mesh-rt", type=Path, default=parity.ROOT / "target/debug/libmesh_rt.a")
     parser.add_argument("--postgres-version", default="17.11")
+    parser.add_argument("--listen", action="store_true", help="check subscription catch-up on the promoted primary")
     parser.add_argument("--evidence-dir", type=Path, required=True, help="new directory inside the checkout")
     args = parser.parse_args()
     args.meshc = args.meshc.resolve()

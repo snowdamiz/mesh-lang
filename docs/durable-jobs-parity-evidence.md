@@ -187,7 +187,7 @@ Choose a new evidence directory under the checkout for each run.
 ```sh
 cargo build --locked -p meshc -p mesh-rt
 python3 scripts/jobs-promotion.py --postgres-version 17.11 \
-  --evidence-dir target/jobs-parity/promotion-17.11
+  --listen --evidence-dir target/jobs-parity/promotion-17.11
 ```
 
 The proof starts a primary and a physical streaming standby. It loses a
@@ -197,6 +197,8 @@ standby. It checks receipts, job IDs, effect keys, and stale-token rejection
 while the replacement attempt holds its lease. Replication and direct
 database connections use verified TLS and SCRAM. The one-shot fault proxy
 uses plaintext loopback with SCRAM so it can identify the settlement reply.
+`--listen` also verifies that the replacement runner subscribes and scans
+for committed work on the promoted primary.
 
 The replay barrier in this proof preserves the observed commits before
 promotion. For a deployment with asynchronous replication, the failover
