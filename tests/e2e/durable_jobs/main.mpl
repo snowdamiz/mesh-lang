@@ -170,7 +170,8 @@ fn bounded_drain(pool :: PoolHandle, payload :: String) -> String!String do
   Jobs.drain(pool, config, bounded_handler, options)
 end
 
-fn hold_checkout(_conn :: borrow PgConn) -> Int!String do
+fn hold_checkout(conn :: borrow PgConn) -> Int!String do
+  let _ = Pg.query(conn, "SELECT set_config('application_name', $1, true)", [namespace()])?
   let markers = Env.get("MESH_JOBS_PROOF_MARKERS", "")
   let _ = File.write(markers <> "/pool-held", "held")?
   while !File.exists(markers <> "/pool-release") do
@@ -223,13 +224,13 @@ fn serve(pool :: PoolHandle, config :: String) -> String!String do
   let stopping = Jobs.stop(runner, grace)?
   let stop_ns = Monotonic.now_nanos() - stop_start
   let _ = File.write(markers <> "/stop", stopping)?
-  let _ = File.write(markers <> "/stop-ns", "${stop_ns}")?
+  let _ = File.write(markers <> "/stop-ns", "${stop_ns}\n")?
   let joined = Jobs.join(runner)?
+  let _ = File.write(markers <> "/joined", joined)?
   if capture_events do
     let batch = Jobs.read_events(runner, 128)?
     File.append(markers <> "/events", batch <> "\n")?
   end
-  let _ = File.write(markers <> "/joined", joined)?
   Ok(joined)
 end
 

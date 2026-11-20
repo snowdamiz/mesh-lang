@@ -33,6 +33,16 @@ and a committed effect before terminating the runner, then checks recovery
 from a separate database connection. Mesh recovers by lease expiry. Oban
 uses its Core Lifeline recovery policy.
 
+The compiled process proof also includes J7 lane 8. On a schedulable host,
+run the verifier with its disposable loopback database and capture the
+`J7 lane 8 passed` line in `j7-lane-8.log`. The lane holds the runner's sole
+application checkout open, interrupts the listener, and observes recovery and
+cron checkout failures. It times `Jobs.stop` from API entry and bounds
+`Jobs.join` from the release of the checkout. A replacement runner polls
+while the listener is still unavailable, then recovers an expired lease and
+catches up a persisted calendar occurrence. Independent PostgreSQL sessions
+observe the lease, the job attempts, and the cron cursor.
+
 The default fault run also cuts the settlement connection before the write
 reaches PostgreSQL and after PostgreSQL confirms the commit. This probe runs
 on the driver's disposable loopback database. With verified TLS enabled,

@@ -37,12 +37,10 @@ fn publisher(proof: &Proof<'_>, command: &str, value: &Value) -> Value {
     )
 }
 
-fn wake_status(worker: &Worker, ready: impl Fn(&Value) -> bool) -> Value {
+pub(super) fn wake_status(worker: &Worker, ready: impl Fn(&Value) -> bool) -> Value {
     eventually("runner to report the expected wake source", || {
-        fs::read(worker.markers.join("status"))
-            .ok()
-            .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
-            .and_then(|report| ready(&report["wakeups"]).then(|| report["wakeups"].clone()))
+        let mut report = worker.status()?;
+        ready(&report["wakeups"]).then(|| report["wakeups"].take())
     })
 }
 
@@ -63,7 +61,7 @@ fn listener_pid(proof: &Proof<'_>) -> Option<u32> {
     }
 }
 
-fn await_subscription(worker: &Worker, after: u64) -> Value {
+pub(super) fn await_subscription(worker: &Worker, after: u64) -> Value {
     wake_status(worker, |wake| {
         wake["subscribed"] == true
             && counter(wake, "subscriptions") > after
@@ -221,17 +219,7 @@ fn prove_reconnect(proof: &Proof<'_>, relay: &Relay, url: &str) {
         eventually("initial batch runner sessions to reach the relay", || {
             (relay.accepted() >= after + 3).then_some(())
         });
-        let gate = relay.hold_next();
-        let pid = listener_pid(proof).expect("listener before interruption");
-        assert_eq!(
-            proof.sql(&format!("SELECT pg_terminate_backend({pid})")),
-            "t"
-        );
-        gate.arrived
-            .recv_timeout(WAIT)
-            .expect("listener to start reconnecting");
-        assert_eq!(listener_pid(proof), None);
-        gate
+        relay.interrupt_listener(proof)
     };
     let accepted = relay.accepted();
     let mut polling = proof.worker_with_url(
@@ -277,7 +265,7 @@ fn prove_reconnect(proof: &Proof<'_>, relay: &Relay, url: &str) {
     );
 }
 
-struct Gate {
+pub(super) struct Gate {
     arrived: mpsc::Receiver<()>,
     release: mpsc::Sender<()>,
 }
@@ -287,7 +275,7 @@ type Pause = (mpsc::Sender<()>, mpsc::Receiver<()>);
 // The relay keeps the TLS/SCRAM bytes opaque. Once the server terminates the
 // idle listener, the first new connection is its reconnect. Hold only that
 // connection so both the claim session and the handler can still reach PG.
-struct Relay {
+pub(super) struct Relay {
     address: std::net::SocketAddr,
     next: Arc<Mutex<Option<Pause>>>,
     stopped: Arc<AtomicBool>,
@@ -296,7 +284,7 @@ struct Relay {
 }
 
 impl Relay {
-    fn new(url: &str) -> Option<(Self, String)> {
+    pub(super) fn new(url: &str) -> Option<(Self, String)> {
         let (scheme, rest) = url.split_once("://")?;
         let (authority, database) = rest.split_once('/')?;
         let (credentials, address) = authority.rsplit_once('@')?;
@@ -323,7 +311,7 @@ impl Relay {
                 count.fetch_add(1, Ordering::Release);
                 thread::spawn(move || {
                     if let Some((arrived, release)) = pause {
-                        if arrived.send(()).is_err() || release.recv_timeout(WAIT).is_err() {
+                        if arrived.send(()).is_err() || release.recv().is_err() {
                             return;
                         }
                     }
@@ -361,6 +349,22 @@ impl Relay {
         let (release, resume) = mpsc::channel();
         assert!(self.next.lock().unwrap().replace((start, resume)).is_none());
         Gate { arrived, release }
+    }
+
+    pub(super) fn interrupt_listener(&self, proof: &Proof<'_>) -> Gate {
+        let pid = listener_pid(proof).expect("listener before interruption");
+        let gate = self.hold_next();
+        assert_eq!(
+            proof.sql(&format!("SELECT pg_terminate_backend({pid})")),
+            "t"
+        );
+        gate.arrived
+            .recv_timeout(WAIT)
+            .expect("listener to start reconnecting");
+        eventually("terminated listener session to leave PostgreSQL", || {
+            listener_pid(proof).is_none().then_some(())
+        });
+        gate
     }
 
     fn accepted(&self) -> usize {

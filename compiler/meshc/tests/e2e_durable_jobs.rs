@@ -9,6 +9,8 @@
 
 #[path = "support/test_artifacts.rs"]
 mod artifacts;
+#[path = "support/jobs_pool_outage.rs"]
+mod pool_outage;
 #[path = "support/jobs_wakeups.rs"]
 mod wakeups;
 
@@ -57,7 +59,7 @@ fn durable_jobs_survive_process_boundaries() {
     println!("J6 local queue controls passed with single and batch claims");
     prove_job_operations(&proof);
     println!("J6 namespace controls, active replacement, run-now, and receipt replay passed");
-    prove_stop_with_exhausted_pool(&proof);
+    pool_outage::prove(&proof);
     prove_cron_process_takeover(&proof);
     println!("J6 compiled cron owner loss before and after commit passed");
     if std::env::var("MESH_JOBS_DISPOSABLE_ROLE_PROOF").as_deref() == Ok("1") {
@@ -1049,81 +1051,6 @@ fn prove_join_waits_after_grace(proof: &Proof) {
         "job runner shutdown deadline elapsed"
     );
     assert_eq!(proof.job("join-pending")["attempt"], 0);
-}
-
-fn prove_stop_with_exhausted_pool(proof: &Proof) {
-    let jobs = proof.enqueue(json!([
-        {"worker":"proof","queue":"exhausted","args":{"label":"exhausted-active"},"max_attempts":1},
-        {"worker":"proof","queue":"exhausted","args":{"label":"exhausted-pending"},"priority":1}
-    ]));
-    let grace_ms = 40;
-    let mut worker = proof.worker_with_environment(
-        "exhausted-pool",
-        true,
-        json!({
-            "namespace":proof.namespace, "queues":{"exhausted":1},
-            "workers":[{"worker":"proof","version":1}], "poll_ms":25,
-            "lease_ms":60_000, "shutdown_grace_ms":grace_ms,
-            "cron_interval_ms":0
-        }),
-        proof.url,
-        &[("MESH_JOBS_PROOF_ONE_SLOT", "true")],
-    );
-    assert_eq!(
-        proof.wait_effects("exhausted-active", 1)[0]["context"]["id"],
-        jobs[0]["id"]
-    );
-    File::create(worker.markers.join("pool-hold")).unwrap();
-    eventually(
-        "fixture to check out its sole application pool connection",
-        || {
-            worker.assert_running();
-            worker.markers.join("pool-held").exists().then_some(())
-        },
-    );
-    worker.signal();
-    let stop_ns: u64 = eventually("stop to return with the pool exhausted", || {
-        worker.assert_running();
-        fs::read_to_string(worker.markers.join("stop-ns"))
-            .ok()?
-            .parse()
-            .ok()
-    });
-    let stop = Duration::from_nanos(stop_ns);
-    assert!(
-        stop <= Duration::from_millis(grace_ms + 100),
-        "Jobs.stop took {stop:?}"
-    );
-    assert!(!worker.markers.join("joined").exists());
-    assert_eq!(proof.job("exhausted-active")["state"], "executing");
-    assert_eq!(proof.job("exhausted-pending")["attempt"], 0);
-
-    let released = Instant::now();
-    File::create(worker.markers.join("pool-release")).unwrap();
-    let report = worker.join();
-    let join_after_release = released.elapsed();
-    assert!(
-        join_after_release <= Duration::from_secs(10),
-        "Jobs.join took {join_after_release:?} after releasing the checkout"
-    );
-    assert_eq!(report["drained"], true, "{report}");
-    assert_eq!(report["outcomes"]["discarded"], 1, "{report}");
-    proof.wait_state("exhausted-active", "discarded");
-
-    let mut peer = proof.worker_with_options(
-        "exhausted-pool-peer",
-        false,
-        json!({"exhausted":1}),
-        8_000,
-        LEASE_MS,
-    );
-    assert_eq!(
-        proof.wait_state("exhausted-pending", "completed")["id"],
-        jobs[1]["id"]
-    );
-    assert_eq!(proof.effects("exhausted-pending").len(), 1);
-    peer.stop();
-    println!("J7 pool exhaustion proof passed, stop {stop:?}, join after checkout release {join_after_release:?}");
 }
 
 fn cancel_native_query(proof: &Proof, label: &str) {
