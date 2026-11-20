@@ -102,8 +102,12 @@ fn serve(pool :: PoolHandle, config :: String) -> String!String do
     Timer.sleep(10)
   end
   let _ = File.write(markers <> "/signal", "received")?
-  let _ = Jobs.stop(runner, 8000)?
-  Jobs.join(runner)
+  let grace = Json.as_int(Json.object_get(Json.parse(config)?, "shutdown_grace_ms")?)?
+  let stopping = Jobs.stop(runner, grace)?
+  let _ = File.write(markers <> "/stop", stopping)?
+  let joined = Jobs.join(runner)?
+  let _ = File.write(markers <> "/joined", joined)?
+  Ok(joined)
 end
 
 fn run() -> String!String do

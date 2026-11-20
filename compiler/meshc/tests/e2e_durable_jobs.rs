@@ -10,6 +10,9 @@
 #[path = "support/test_artifacts.rs"]
 mod artifacts;
 
+use mesh_rt::db::pg::{
+    native_pg_close, native_pg_connect, native_pg_execute, native_pg_query, NativePgConn,
+};
 use serde_json::{json, Value};
 use std::fs::{self, File};
 use std::os::unix::process::CommandExt;
@@ -63,6 +66,7 @@ fn durable_jobs_survive_process_boundaries() {
     prove_retry_and_exhaustion(&proof);
     prove_native_timeout(&proof);
     prove_native_lease_loss(&proof);
+    prove_locked_job_does_not_stall_runner(&proof);
     prove_large_context(&proof);
     #[cfg(target_os = "macos")]
     {
@@ -70,6 +74,7 @@ fn durable_jobs_survive_process_boundaries() {
         prove_launch_failure(&proof);
     }
     prove_signal_drain(&proof);
+    prove_join_waits_after_grace(&proof);
     assert_eq!(proof.effects("committed").len(), 1);
     assert!(proof.effects("rolled-back").is_empty());
     proof.clean().expect("delete durable jobs proof data");
@@ -333,6 +338,80 @@ fn wait_for_native_query(proof: &Proof, label: &str, active: bool) {
             ((result == "t") == active).then_some(())
         },
     );
+}
+
+fn prove_locked_job_does_not_stall_runner(proof: &Proof) {
+    proof.control(json!({"action":"scale","queue":"default","concurrency":2}));
+    let mut worker =
+        proof.worker_with_options("independent-leases", true, json!({"default":2}), 8000);
+    let held = proof.enqueue(spec("locked-attempt"));
+    proof.wait_effects("locked-attempt", 1);
+    let healthy = proof.enqueue(json!({
+        "worker": "proof", "args": {"label": "independent-attempt"}, "max_attempts": 1
+    }));
+    proof.wait_effects("independent-attempt", 1);
+
+    let lock = proof.lock_job(&held);
+    let job = proof.job("independent-attempt");
+    let before = job["lease_expires_at_ms"].as_i64().unwrap();
+    eventually(
+        "the independent job to renew while its peer is locked",
+        || {
+            let job = proof.job("independent-attempt");
+            assert_eq!(job["state"], "executing", "{job}");
+            assert_eq!(job["id"], healthy["id"], "{job}");
+            assert_eq!(job["attempt"], 1, "{job}");
+            let after = job["lease_expires_at_ms"].as_i64().unwrap();
+            (after >= before + LEASE_MS as i64).then_some(())
+        },
+    );
+    worker.release();
+    assert_eq!(
+        proof.wait_state("independent-attempt", "completed")["attempt"],
+        1
+    );
+    assert_eq!(proof.effects("independent-attempt").len(), 1);
+
+    native_pg_close(lock);
+    proof.wait_state("locked-attempt", "completed");
+    worker.stop();
+}
+
+fn prove_join_waits_after_grace(proof: &Proof) {
+    let jobs = proof.enqueue(json!([
+        {"worker":"proof","queue":"shutdown","args":{"label":"join-active"},"max_attempts":1},
+        {"worker":"proof","queue":"shutdown","args":{"label":"join-pending"}}
+    ]));
+    let mut worker =
+        proof.worker_with_options("zero-shutdown-grace", true, json!({"shutdown":1}), 0);
+    proof.wait_effects("join-active", 1);
+    let lock = proof.lock_job(&jobs[0]);
+
+    worker.signal();
+    let stop: Value = eventually("zero-grace stop report", || {
+        fs::read(worker.markers.join("stop"))
+            .ok()
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+    });
+    assert_eq!(stop["state"], "stopping", "{stop}");
+    assert_eq!(stop["undrained_jobs"], json!([jobs[0]["id"]]), "{stop}");
+    thread::sleep(Duration::from_millis(100));
+    assert!(
+        !worker.markers.join("joined").exists(),
+        "join returned while its job row was locked"
+    );
+    worker.assert_running();
+    native_pg_close(lock);
+
+    let report = worker.join();
+    assert_eq!(report["state"], "stopped", "{report}");
+    assert_eq!(report["drained"], true, "{report}");
+    let settled = proof.wait_state("join-active", "discarded");
+    assert_eq!(
+        settled["errors"][0]["reason"],
+        "job runner shutdown deadline elapsed"
+    );
+    assert_eq!(proof.job("join-pending")["attempt"], 0);
 }
 
 fn cancel_native_query(proof: &Proof, label: &str) {
@@ -665,17 +744,40 @@ impl<'a> Proof<'a> {
         self.run("control", &action.to_string())
     }
 
+    fn lock_job(&self, receipt: &Value) -> NativePgConn {
+        let mut lock = native_pg_connect(self.url).unwrap();
+        native_pg_execute(&mut lock, "BEGIN", &[]).unwrap();
+        let rows = native_pg_query(
+            &mut lock,
+            "SELECT 1 FROM mesh_jobs.jobs WHERE namespace = $1 AND id = $2::uuid FOR NO KEY UPDATE",
+            &[&self.namespace, id(receipt)],
+        )
+        .unwrap();
+        assert_eq!(rows.len(), 1);
+        lock
+    }
+
     fn worker(&self, name: &str, blocked: bool) -> Worker {
+        self.worker_with_options(name, blocked, json!({"default":1}), 8000)
+    }
+
+    fn worker_with_options(
+        &self,
+        name: &str,
+        blocked: bool,
+        queues: Value,
+        grace_ms: u32,
+    ) -> Worker {
         let markers = self.dir.join(name);
         fs::create_dir(&markers).unwrap();
         let output = File::create(markers.join("output")).unwrap();
         let config = json!({
             "namespace": self.namespace,
-            "queues": {"default": 1},
+            "queues": queues,
             "workers": [{"worker": "proof", "version": 1}],
             "lease_ms": LEASE_MS,
             "poll_ms": 25,
-            "shutdown_grace_ms": 8000,
+            "shutdown_grace_ms": grace_ms,
         });
         let mut command = self.command("serve", &config.to_string());
         command
