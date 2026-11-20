@@ -81,6 +81,7 @@ fn polling_and_kill_errors_keep_an_attempt_undrained_until_reap() {
                         }),
                         deadline: now + TEST_WAIT,
                         lease_deadline: now + TEST_WAIT,
+                        reaped: false,
                         stop: None,
                     }),
                 },
@@ -124,6 +125,7 @@ fn reaped_worker_reply_survives_timeout_and_shutdown() {
             process: Box::new(process),
             deadline,
             lease_deadline: now + TEST_WAIT,
+            reaped: false,
             stop: None,
         };
         assert!(running.poll(now, shutting_down, &mut None).is_none());
@@ -138,6 +140,29 @@ fn reaped_worker_reply_survives_timeout_and_shutdown() {
 
 #[test]
 #[cfg(unix)]
+fn reaped_worker_reply_survives_a_confirmed_late_renewal() {
+    let now = Instant::now();
+    let (process, publish, reply) = WorkerProcess::reaped_with_held_reply();
+    let mut running = Running {
+        process: Box::new(process),
+        deadline: now + TEST_WAIT,
+        lease_deadline: now,
+        reaped: false,
+        stop: None,
+    };
+    assert!(running.poll(now, false, &mut None).is_none());
+    assert!(running
+        .renew_lease(&Lease::begin(TEST_WAIT).unwrap())
+        .unwrap());
+    publish.send(reply).unwrap();
+    assert!(matches!(
+        running.poll(now, false, &mut None),
+        Some(Reply::Returned(output)) if output == "done"
+    ));
+}
+
+#[test]
+#[cfg(unix)]
 fn reaped_worker_keeps_a_previous_stop_while_awaiting_reply() {
     let now = Instant::now();
     let (process, _publish, _) = WorkerProcess::reaped_with_held_reply();
@@ -145,6 +170,7 @@ fn reaped_worker_keeps_a_previous_stop_while_awaiting_reply() {
         process: Box::new(process),
         deadline: now,
         lease_deadline: now + TEST_WAIT,
+        reaped: false,
         stop: Some(Reply::Cancelled),
     };
     assert!(matches!(
@@ -221,6 +247,7 @@ fn a_late_renewal_cannot_extend_an_expired_local_lease() {
         process: TimedWorker::start(r#"{"args":{"wait_ms":2000}}"#.into(), now, 0).unwrap(),
         deadline: now + TEST_WAIT,
         lease_deadline: now,
+        reaped: false,
         stop: None,
     };
     assert!(!worker

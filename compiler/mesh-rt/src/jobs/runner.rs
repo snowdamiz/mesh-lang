@@ -558,15 +558,18 @@ struct Running {
     process: Box<dyn JobProcess>,
     deadline: Instant,
     lease_deadline: Instant,
+    reaped: bool,
     stop: Option<Reply>,
 }
 
 impl Running {
     fn renew_lease(&mut self, renewed: &Lease) -> Result<bool, String> {
-        if Instant::now() >= self.lease_deadline {
-            return Ok(false);
+        if !self.reaped {
+            if Instant::now() >= self.lease_deadline {
+                return Ok(false);
+            }
+            self.process.renew(renewed.worker_expires_at)?;
         }
-        self.process.renew(renewed.worker_expires_at)?;
         self.lease_deadline = renewed.expires_at;
         Ok(true)
     }
@@ -584,7 +587,10 @@ impl Running {
                     Err(error) => Reply::Failed(error),
                 }));
             }
-            Ok(WorkerPoll::AwaitingReply) => return self.stop.take(),
+            Ok(WorkerPoll::AwaitingReply) => {
+                self.reaped = true;
+                return self.stop.take();
+            }
             Ok(WorkerPoll::Running) => None,
             Err(error) => {
                 *last_error = Some(error.chars().take(1024).collect());
@@ -1012,6 +1018,7 @@ fn claim_one(
                 process,
                 deadline,
                 lease_deadline: lease.expires_at,
+                reaped: false,
                 stop: None,
             }),
             Err(error) => {
