@@ -1635,7 +1635,10 @@ def compile_oban(scratch, evidence, env, oban_fixture):
         raise FixtureError("Oban fixture did not report version metadata") from error
     if versions.get("oban") != "2.24.2":
         raise FixtureError("Oban version differs from pin")
-    return command, env, versions
+    # Runtime connections use the disposable cluster's literal loopback host.
+    # Keep the default resolver available while fetching pinned dependencies.
+    env = dict(env, ERL_INETRC=str(oban_fixture / "inetrc"))
+    return command, env, {**versions, "oban_resolver": "fixture loopback hosts file"}
 
 
 def selection(args, settings):

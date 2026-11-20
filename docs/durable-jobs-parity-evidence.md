@@ -133,6 +133,11 @@ trial and checks for counter eviction during measurement. PostgreSQL can
 retain entries for dropped trial databases until a reset. The raw trial
 records the deallocation counter alongside the SQL call counts.
 
+The Oban fixture uses a private Erlang hosts entry for the disposable
+cluster's `127.0.0.1` address. The driver applies it after fetching
+dependencies. This avoids launching native DNS helpers for the numeric
+loopback address and keeps the TLS hostname and certificate checks.
+
 The grouped Oban comparison, the two historical replays, and the targeted
 sparse main rerun used the reset and eviction check. The full 35-profile
 main comparison used harness `eb472832` before those checks existed.
