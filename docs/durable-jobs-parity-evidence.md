@@ -455,6 +455,20 @@ drain durations of 29.0 ms per job on main and 28.4 ms on the candidate.
 The host's one-minute load was about 20–22 on 15 logical CPUs during this
 run.
 
+## Compiled lane receipts
+
+The macOS arm64 verifier passed the batch admission and lease isolation
+cases, the listener lanes, the selected telemetry and operations lanes,
+and the executable replacement and unstarted-claim proof. It ran with
+PostgreSQL 17.11, 18.7, and 19.0 over verified TLS and SCRAM. The listener
+framing case uses a scripted TCP peer that sends partial, coalesced, and
+malformed frames.
+
+The `macos_compiled_lanes` entry records the exact checkouts, full logs,
+and named excerpts under `target/jobs-parity/<checkout>/lane-evidence/`.
+Each excerpt identifies the assertion source and the lines from the full
+log. [Qualification receipt](../proof/jobs-parity/qualification-v1.json)
+
 ## Local correctness evidence
 
 The Jobs compatibility script exercises the compiled producer and worker,

@@ -5,6 +5,8 @@ Bring Mesh Jobs up to Oban 2.24.2 Core for PostgreSQL-backed applications. Prese
 PRs #37 and #38 are the starting implementation on main. J1 through J7 are future implementation phases. Compare their behavior against both Mesh main and the pinned Oban Basic engine. Track other database engines and Oban Pro features as separate targets.
 
 Commands, implemented behavior, and recorded qualification results are in the [PostgreSQL Jobs evidence guide](durable-jobs-parity-evidence.md).
+The [compiled lane receipts](durable-jobs-parity-evidence.md#compiled-lane-receipts)
+give the tested platform, PostgreSQL version, and assertion for the checked macOS lanes.
 
 ## How to read this
 
@@ -148,10 +150,10 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `gpt-6.2-sol high` at the PR head using the compiled fixtures and the PostgreSQL boot recipe.
 
 - [ ] Lane 1. Regression lane against main. Run the mixed short-job workload on main and head. Save `j2-lane-1.log`. Pass when head preserves all job IDs and results.
-- [ ] Lane 2. Race four compiled runners on a queue at capacity. Save `j2-lane-2.log`. Pass when claims never exceed the configured global cap.
+- [x] Lane 2. Race four compiled runners on a queue at capacity. Save `j2-lane-2.log`. Pass when claims never exceed the configured global cap.
 - [ ] Lane 3. Pause and scale during a batch. Save `j2-lane-3.log`. Pass when no new claims bypass the committed queue control.
-- [ ] Lane 4. Hold one row through renewals and acknowledgements. Save `j2-lane-4.log`. Pass when an unrelated attempt completes on its first lease.
-- [ ] Lane 5. Inject a blocked claim transport with separate renewal capacity. Save `j2-lane-5.log`. Pass when the active peer keeps its lease.
+- [x] Lane 4. Hold one row through renewals and acknowledgements. Save `j2-lane-4.log`. Pass when an unrelated attempt completes on its first lease.
+- [x] Lane 5. Inject a blocked claim transport with separate renewal capacity. Save `j2-lane-5.log`. Pass when the active peer keeps its lease.
 - [ ] Lane 6. Inject lost claim responses before and after commit. Save `j2-lane-6.log`. Pass when the runner launches only confirmed claims and recovery handles ambiguous rows.
 - [ ] Lane 7. Fail a child launch partway through a batch, then kill the runner during a separate startup whose result is uncertain. Save `j2-lane-7.log`. Pass when only proven unstarted rows get refunds, held slots return, uncertain rows recover under a new token, and the runner never launches twice or settles stale with the old token.
 - [ ] Lane 8. Mix large and small contexts in a backlog. Save `j2-lane-8.log`. Pass when every successful reply stays within the byte budget and oversized input does not block the queue.
@@ -197,16 +199,16 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `gpt-6.2-sol high` at the PR head using the compiled fixtures and the PostgreSQL boot recipe.
 
-- [ ] Lane 1. Regression lane against main. Run the sparse queue workload on main and head. Save `j3-lane-1.log`. Pass when both run the committed job and head also records its wake source.
-- [ ] Lane 2. Enqueue in a transaction and delay commit. Save `j3-lane-2.log`. Pass when the worker sees no job until commit.
-- [ ] Lane 3. Roll back a transaction with enqueue. Save `j3-lane-3.log`. Pass when there is no execution or committed notification.
-- [ ] Lane 4. Resume a paused queue from a second process. Save `j3-lane-4.log`. Pass when the eligible work wakes the configured worker.
-- [ ] Lane 5. Schedule work with no fresh enqueue. Save `j3-lane-5.log`. Pass when the due-time path claims it on schedule.
-- [ ] Lane 6. Interrupt the listener before an enqueue. Save `j3-lane-6.log`. Pass when fallback polling picks up the job.
-- [ ] Lane 7. Commit during listener reconnect. Save `j3-lane-7.log`. Pass when the resubscribe scan sees the job.
-- [ ] Lane 8. Split and interleave notification frames over the test transport. Save `j3-lane-8.log`. Pass when the listener sees valid hints and handles invalid frames without corrupting query state.
-- [ ] Lane 9. Use a transaction pooler or poll-only mode. Save `j3-lane-9.log`. Pass when jobs process without a held listener session.
-- [ ] Lane 10. Stop an idle runner with an active listener. Save `j3-lane-10.log`. Pass when its session is released and the process exits within its shutdown budget.
+- [x] Lane 1. Regression lane against main. Run the sparse queue workload on main and head. Save `j3-lane-1.log`. Pass when both run the committed job and head also records its wake source.
+- [x] Lane 2. Enqueue in a transaction and delay commit. Save `j3-lane-2.log`. Pass when the worker sees no job until commit.
+- [x] Lane 3. Roll back a transaction with enqueue. Save `j3-lane-3.log`. Pass when there is no execution or committed notification.
+- [x] Lane 4. Resume a paused queue from a second process. Save `j3-lane-4.log`. Pass when the eligible work wakes the configured worker.
+- [x] Lane 5. Schedule work with no fresh enqueue. Save `j3-lane-5.log`. Pass when the due-time path claims it on schedule.
+- [x] Lane 6. Interrupt the listener before an enqueue. Save `j3-lane-6.log`. Pass when fallback polling picks up the job.
+- [x] Lane 7. Commit during listener reconnect. Save `j3-lane-7.log`. Pass when the resubscribe scan sees the job.
+- [x] Lane 8. Split and interleave notification frames over the test transport. Save `j3-lane-8.log`. Pass when the listener sees valid hints and handles invalid frames without corrupting query state.
+- [x] Lane 9. Use a transaction pooler or poll-only mode. Save `j3-lane-9.log`. Pass when jobs process without a held listener session.
+- [x] Lane 10. Stop an idle runner with an active listener. Save `j3-lane-10.log`. Pass when its session is released and the process exits within its shutdown budget.
 
 **Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
@@ -248,15 +250,15 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `gpt-6.2-sol high` at the PR head using the compiled fixtures and the PostgreSQL boot recipe.
 
 - [ ] Lane 1. Regression lane against main. Compare default behavior on main and head under the same job stream. Save `j4-lane-1.log`. Pass when with telemetry off, both leave the same durable results.
-- [ ] Lane 2. Complete a healthy attempt. Save `j4-lane-2.log`. Pass when the terminal event follows the durable completion.
-- [ ] Lane 3. Request a retry on the last attempt. Save `j4-lane-3.log`. Pass when the event reports discard.
-- [ ] Lane 4. Race operator cancellation and handler success. Save `j4-lane-4.log`. Pass when the terminal event reports cancellation.
+- [x] Lane 2. Complete a healthy attempt. Save `j4-lane-2.log`. Pass when the terminal event follows the durable completion.
+- [x] Lane 3. Request a retry on the last attempt. Save `j4-lane-3.log`. Pass when the event reports discard.
+- [x] Lane 4. Race operator cancellation and handler success. Save `j4-lane-4.log`. Pass when the terminal event reports cancellation.
 - [ ] Lane 5. Inject a stale token. Save `j4-lane-5.log`. Pass when only the stale acknowledgement indicator changes.
 - [ ] Lane 6. Drop a commit reply. Save `j4-lane-6.log`. Pass when an uncertainty event appears without a duplicate terminal disposition.
 - [ ] Lane 7. Run a cron tick and expired claim recovery. Save `j4-lane-7.log`. Pass when both maintenance events identify the action and their counts.
 - [ ] Lane 8. Use an intentionally blocked subscriber. Save `j4-lane-8.log`. Pass when the drop count advances while lease renewal and other queues continue.
-- [ ] Lane 9. Enqueue synthetic sensitive arguments and metadata. Save `j4-lane-9.log`. Pass when default output contains none of those values.
-- [ ] Lane 10. Stop a runner with subscribers attached. Save `j4-lane-10.log`. Pass when subscribers terminate cleanly and shutdown progress is observable.
+- [x] Lane 9. Enqueue synthetic sensitive arguments and metadata. Save `j4-lane-9.log`. Pass when default output contains none of those values.
+- [x] Lane 10. Stop a runner with subscribers attached. Save `j4-lane-10.log`. Pass when subscribers terminate cleanly and shutdown progress is observable.
 
 **Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
@@ -348,15 +350,15 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `gpt-6.2-sol high` at the PR head using the compiled fixtures and the PostgreSQL boot recipe.
 
 - [ ] Lane 1. Regression lane against main. Run namespace pause and resume on main and head. Save `j6-lane-1.log`. Pass when both retain the documented persisted effect.
-- [ ] Lane 2. Pause one of two runners. Save `j6-lane-2.log`. Pass when the other process continues to claim within the namespace cap.
-- [ ] Lane 3. Scale both local and global limits. Save `j6-lane-3.log`. Pass when the lower available headroom determines new admissions.
-- [ ] Lane 4. Stop one queue with an active handler. Save `j6-lane-4.log`. Pass when stopping that queue leaves another queue able to make progress.
-- [ ] Lane 5. Run-now a retryable job. Save `j6-lane-5.log`. Pass when the scheduled time moves and the existing effect key survives.
+- [x] Lane 2. Pause one of two runners. Save `j6-lane-2.log`. Pass when the other process continues to claim within the namespace cap.
+- [x] Lane 3. Scale both local and global limits. Save `j6-lane-3.log`. Pass when the lower available headroom determines new admissions.
+- [x] Lane 4. Stop one queue with an active handler. Save `j6-lane-4.log`. Pass when stopping that queue leaves another queue able to make progress.
+- [x] Lane 5. Run-now a retryable job. Save `j6-lane-5.log`. Pass when the scheduled time moves and the existing effect key survives.
 - [ ] Lane 6. Race bulk edit or delete with claim, then separately enqueue a duplicate with allowed replacement fields while a compiled handler is active. Save `j6-lane-6.log`. Pass when bulk actions change only eligible rows, the replacement persists, the active context and token stay unchanged, and settlement and the next attempt use the documented stored values.
-- [ ] Lane 7. Kill the cron owner across cursor advancement. Save `j6-lane-7.log`. Pass when a new owner neither loses nor duplicates the committed occurrence.
-- [ ] Lane 8. Prune terminal jobs and replay an existing request key. Save `j6-lane-8.log`. Pass when the receipt replay still resolves to the same identity.
-- [ ] Lane 9. Reindex under concurrent enqueue and dispatch. Save `j6-lane-9.log`. Pass when normal application work keeps moving and a second reindex owner is refused.
-- [ ] Lane 10. Restart each role with default function execution revoked. Save `j6-lane-10.log`. Pass when supported commands succeed and workers cannot change roles, apply schema DDL, or reindex as administrators.
+- [x] Lane 7. Kill the cron owner across cursor advancement. Save `j6-lane-7.log`. Pass when a new owner neither loses nor duplicates the committed occurrence.
+- [x] Lane 8. Prune terminal jobs and replay an existing request key. Save `j6-lane-8.log`. Pass when the receipt replay still resolves to the same identity.
+- [x] Lane 9. Reindex under concurrent enqueue and dispatch. Save `j6-lane-9.log`. Pass when normal application work keeps moving and a second reindex owner is refused.
+- [x] Lane 10. Restart each role with default function execution revoked. Save `j6-lane-10.log`. Pass when supported commands succeed and workers cannot change roles, apply schema DDL, or reindex as administrators.
 
 **Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
@@ -399,7 +401,7 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 
 - [ ] Lane 1. Regression lane against main. Run the full J1 matrix on main and the release candidate. Save `j7-lane-1.log`. Pass when the same input manifests reconcile without lost jobs or stale writes.
 - [ ] Lane 2. Run the Linux compiled timeout and parent-death proof. Save `j7-lane-2.log`. Pass when the handler process terminates and the peer can recover the job.
-- [ ] Lane 3. Run the macOS executable replacement and shutdown proof. Save `j7-lane-3.log`. Pass when an unstarted claim keeps its attempt budget.
+- [x] Lane 3. Run the macOS executable replacement and shutdown proof. Save `j7-lane-3.log`. Pass when an unstarted claim keeps its attempt budget.
 - [ ] Lane 4. Run real PostgreSQL on any advertised Windows configuration. Save `j7-lane-4.log`. Pass when timeout, parent death, and recovery are proved by a compiled executable.
 - [ ] Lane 5. Upgrade a live namespace with old scheduled and retryable work. Save `j7-lane-5.log`. Pass when persisted attempts and schedules survive.
 - [ ] Lane 6. Roll back to the previous runtime against the updated schema. Save `j7-lane-6.log`. Pass when the previous runner can settle its existing claim with its original grants.
