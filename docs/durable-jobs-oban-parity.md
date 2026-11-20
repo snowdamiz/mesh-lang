@@ -103,9 +103,9 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 - [ ] Lane 2. Run the compiled Jobs workload on PostgreSQL 17 on Linux and macOS. Save `j1-lane-2.log`. Pass when the recorded patch version matches the server and expected claims, persisted settlements, and recovery pass on both hosts.
 - [ ] Lane 3. Run PostgreSQL 18.7 with SCRAM over TLS on Linux and macOS. Save `j1-lane-3.log`. Pass when authentication and the compiled transaction, workload, settlement, and recovery checks pass.
 - [ ] Lane 4. Run PostgreSQL 19.0 with SCRAM over TLS on Linux and macOS. Save `j1-lane-4.log`. Pass when authentication and the compiled transaction, workload, settlement, and recovery checks pass.
-- [ ] Lane 5. Run the Oban Basic fixture twice with the same seed. Save `j1-lane-5.log`. Pass when the derived inputs and total job counts match.
+- [x] Lane 5. Run the Oban Basic fixture twice with the same seed. Save `j1-lane-5.log`. Pass when the derived inputs and total job counts match.
 - [ ] Lane 6. Run the matched sparse workload. Save `j1-lane-6.log`. Pass when every eligible committed job is accounted for.
-- [ ] Lane 7. Run the matched dense workload. Save `j1-lane-7.log`. Pass when the run records occupancy and all completed jobs.
+- [x] Lane 7. Run the matched dense workload. Save `j1-lane-7.log`. Pass when the run records occupancy and all completed jobs.
 - [ ] Lane 8. Kill a worker after its claim and before settlement. Save `j1-lane-8.log`. Pass when the same job identity is recovered and the old token cannot settle it.
 - [ ] Lane 9. Lose an acknowledgement on both sides of commit. Save `j1-lane-9.log`. Pass when the final persisted state accounts for each attempt.
 - [ ] Lane 10. Run a rolled-back enqueue and a duplicate effect. Save `j1-lane-10.log`. Pass when the rollback produces zero effects and the effect key deduplicates the retry.
@@ -249,7 +249,7 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `gpt-6.2-sol high` at the PR head using the compiled fixtures and the PostgreSQL boot recipe.
 
-- [ ] Lane 1. Regression lane against main. Compare default behavior on main and head under the same job stream. Save `j4-lane-1.log`. Pass when with telemetry off, both leave the same durable results.
+- [x] Lane 1. Regression lane against main. Compare default behavior on main and head under the same job stream. Save `j4-lane-1.log`. Pass when with telemetry off, both leave the same durable results.
 - [x] Lane 2. Complete a healthy attempt. Save `j4-lane-2.log`. Pass when the terminal event follows the durable completion.
 - [x] Lane 3. Request a retry on the last attempt. Save `j4-lane-3.log`. Pass when the event reports discard.
 - [x] Lane 4. Race operator cancellation and handler success. Save `j4-lane-4.log`. Pass when the terminal event reports cancellation.
@@ -300,15 +300,15 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `gpt-6.2-sol high` at the PR head using the compiled fixtures and the PostgreSQL boot recipe.
 
 - [ ] Lane 1. Regression lane against main. Run an enqueue-and-inspect fixture on main and head. Save `j5-lane-1.log`. Pass when both persist the same job and the head assertion verifies it.
-- [ ] Lane 2. Assert a job inside a borrowed transaction. Save `j5-lane-2.log`. Pass when the borrowed connection sees the row before commit.
-- [ ] Lane 3. Rollback an asserted enqueue. Save `j5-lane-3.log`. Pass when a second connection never sees the job.
-- [ ] Lane 4. Run parallel manual tests in separate namespaces. Save `j5-lane-4.log`. Pass when each test sees only its rows.
-- [ ] Lane 5. Call a test helper from a production build. Save `j5-lane-5.log`. Pass when the compiler rejects the test-only capability.
-- [ ] Lane 6. Perform an inline job with invalid input. Save `j5-lane-6.log`. Pass when validation and outcome match the documented worker API.
-- [ ] Lane 7. Drain a known future cutoff. Save `j5-lane-7.log`. Pass when jobs on the allowed side execute and later jobs remain scheduled.
-- [ ] Lane 8. Enqueue recursively during a bounded drain. Save `j5-lane-8.log`. Pass when the documented budget stops further claims.
-- [ ] Lane 9. Drain with one failing and one healthy job. Save `j5-lane-9.log`. Pass when the error policy and both dispositions match durable state.
-- [ ] Lane 10. Kill a compiled test runner in the middle of a real drain. Save `j5-lane-10.log`. Pass when the next runner recovers eligible work without a stale write.
+- [x] Lane 2. Assert a job inside a borrowed transaction. Save `j5-lane-2.log`. Pass when the borrowed connection sees the row before commit.
+- [x] Lane 3. Rollback an asserted enqueue. Save `j5-lane-3.log`. Pass when a second connection never sees the job.
+- [x] Lane 4. Run parallel manual tests in separate namespaces. Save `j5-lane-4.log`. Pass when each test sees only its rows.
+- [x] Lane 5. Call a test helper from a production build. Save `j5-lane-5.log`. Pass when the compiler rejects the test-only capability.
+- [x] Lane 6. Perform an inline job with invalid input. Save `j5-lane-6.log`. Pass when validation and outcome match the documented worker API.
+- [x] Lane 7. Drain a known future cutoff. Save `j5-lane-7.log`. Pass when jobs on the allowed side execute and later jobs remain scheduled.
+- [x] Lane 8. Enqueue recursively during a bounded drain. Save `j5-lane-8.log`. Pass when the documented budget stops further claims.
+- [x] Lane 9. Drain with one failing and one healthy job. Save `j5-lane-9.log`. Pass when the error policy and both dispositions match durable state.
+- [x] Lane 10. Kill a compiled test runner in the middle of a real drain. Save `j5-lane-10.log`. Pass when the next runner recovers eligible work without a stale write.
 
 **Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 

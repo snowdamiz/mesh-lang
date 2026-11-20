@@ -444,6 +444,15 @@
           "j4-lane-3": "target/jobs-parity/1d639792b73d8fe670b7f40f27a1e5f952e9e714/lane-evidence/17.11/j4-lane-3.log",
           "j4-lane-4": "target/jobs-parity/1d639792b73d8fe670b7f40f27a1e5f952e9e714/lane-evidence/17.11/j4-lane-4.log",
           "j4-lane-9": "target/jobs-parity/1d639792b73d8fe670b7f40f27a1e5f952e9e714/lane-evidence/17.11/j4-lane-9.log",
+          "j5-lane-10": "target/jobs-parity/1d639792b73d8fe670b7f40f27a1e5f952e9e714/lane-evidence/17.11/j5-lane-10.log",
+          "j5-lane-2": "target/jobs-parity/1d639792b73d8fe670b7f40f27a1e5f952e9e714/lane-evidence/17.11/j5-lane-2.log",
+          "j5-lane-3": "target/jobs-parity/1d639792b73d8fe670b7f40f27a1e5f952e9e714/lane-evidence/17.11/j5-lane-3.log",
+          "j5-lane-4": "target/jobs-parity/1d639792b73d8fe670b7f40f27a1e5f952e9e714/lane-evidence/17.11/j5-lane-4.log",
+          "j5-lane-5": "target/jobs-parity/1d639792b73d8fe670b7f40f27a1e5f952e9e714/lane-evidence/17.11/j5-lane-5.log",
+          "j5-lane-6": "target/jobs-parity/1d639792b73d8fe670b7f40f27a1e5f952e9e714/lane-evidence/17.11/j5-lane-6.log",
+          "j5-lane-7": "target/jobs-parity/1d639792b73d8fe670b7f40f27a1e5f952e9e714/lane-evidence/17.11/j5-lane-7.log",
+          "j5-lane-8": "target/jobs-parity/1d639792b73d8fe670b7f40f27a1e5f952e9e714/lane-evidence/17.11/j5-lane-8.log",
+          "j5-lane-9": "target/jobs-parity/1d639792b73d8fe670b7f40f27a1e5f952e9e714/lane-evidence/17.11/j5-lane-9.log",
           "j6-lane-10": "target/jobs-parity/1d639792b73d8fe670b7f40f27a1e5f952e9e714/lane-evidence/17.11/j6-lane-10.log",
           "j6-lane-2": "target/jobs-parity/1d639792b73d8fe670b7f40f27a1e5f952e9e714/lane-evidence/17.11/j6-lane-2.log",
           "j6-lane-3": "target/jobs-parity/1d639792b73d8fe670b7f40f27a1e5f952e9e714/lane-evidence/17.11/j6-lane-3.log",
@@ -477,6 +486,15 @@
           "j4-lane-3": "target/jobs-parity/eb472832c0971896adc5793a0b12a6bfde809534/lane-evidence/18.7/j4-lane-3.log",
           "j4-lane-4": "target/jobs-parity/eb472832c0971896adc5793a0b12a6bfde809534/lane-evidence/18.7/j4-lane-4.log",
           "j4-lane-9": "target/jobs-parity/eb472832c0971896adc5793a0b12a6bfde809534/lane-evidence/18.7/j4-lane-9.log",
+          "j5-lane-10": "target/jobs-parity/eb472832c0971896adc5793a0b12a6bfde809534/lane-evidence/18.7/j5-lane-10.log",
+          "j5-lane-2": "target/jobs-parity/eb472832c0971896adc5793a0b12a6bfde809534/lane-evidence/18.7/j5-lane-2.log",
+          "j5-lane-3": "target/jobs-parity/eb472832c0971896adc5793a0b12a6bfde809534/lane-evidence/18.7/j5-lane-3.log",
+          "j5-lane-4": "target/jobs-parity/eb472832c0971896adc5793a0b12a6bfde809534/lane-evidence/18.7/j5-lane-4.log",
+          "j5-lane-5": "target/jobs-parity/eb472832c0971896adc5793a0b12a6bfde809534/lane-evidence/18.7/j5-lane-5.log",
+          "j5-lane-6": "target/jobs-parity/eb472832c0971896adc5793a0b12a6bfde809534/lane-evidence/18.7/j5-lane-6.log",
+          "j5-lane-7": "target/jobs-parity/eb472832c0971896adc5793a0b12a6bfde809534/lane-evidence/18.7/j5-lane-7.log",
+          "j5-lane-8": "target/jobs-parity/eb472832c0971896adc5793a0b12a6bfde809534/lane-evidence/18.7/j5-lane-8.log",
+          "j5-lane-9": "target/jobs-parity/eb472832c0971896adc5793a0b12a6bfde809534/lane-evidence/18.7/j5-lane-9.log",
           "j6-lane-10": "target/jobs-parity/eb472832c0971896adc5793a0b12a6bfde809534/lane-evidence/18.7/j6-lane-10.log",
           "j6-lane-2": "target/jobs-parity/eb472832c0971896adc5793a0b12a6bfde809534/lane-evidence/18.7/j6-lane-2.log",
           "j6-lane-3": "target/jobs-parity/eb472832c0971896adc5793a0b12a6bfde809534/lane-evidence/18.7/j6-lane-3.log",
@@ -510,6 +528,15 @@
           "j4-lane-3": "target/jobs-parity/eb472832c0971896adc5793a0b12a6bfde809534/lane-evidence/19.0/j4-lane-3.log",
           "j4-lane-4": "target/jobs-parity/eb472832c0971896adc5793a0b12a6bfde809534/lane-evidence/19.0/j4-lane-4.log",
           "j4-lane-9": "target/jobs-parity/eb472832c0971896adc5793a0b12a6bfde809534/lane-evidence/19.0/j4-lane-9.log",
+          "j5-lane-10": "target/jobs-parity/eb472832c0971896adc5793a0b12a6bfde809534/lane-evidence/19.0/j5-lane-10.log",
+          "j5-lane-2": "target/jobs-parity/eb472832c0971896adc5793a0b12a6bfde809534/lane-evidence/19.0/j5-lane-2.log",
+          "j5-lane-3": "target/jobs-parity/eb472832c0971896adc5793a0b12a6bfde809534/lane-evidence/19.0/j5-lane-3.log",
+          "j5-lane-4": "target/jobs-parity/eb472832c0971896adc5793a0b12a6bfde809534/lane-evidence/19.0/j5-lane-4.log",
+          "j5-lane-5": "target/jobs-parity/eb472832c0971896adc5793a0b12a6bfde809534/lane-evidence/19.0/j5-lane-5.log",
+          "j5-lane-6": "target/jobs-parity/eb472832c0971896adc5793a0b12a6bfde809534/lane-evidence/19.0/j5-lane-6.log",
+          "j5-lane-7": "target/jobs-parity/eb472832c0971896adc5793a0b12a6bfde809534/lane-evidence/19.0/j5-lane-7.log",
+          "j5-lane-8": "target/jobs-parity/eb472832c0971896adc5793a0b12a6bfde809534/lane-evidence/19.0/j5-lane-8.log",
+          "j5-lane-9": "target/jobs-parity/eb472832c0971896adc5793a0b12a6bfde809534/lane-evidence/19.0/j5-lane-9.log",
           "j6-lane-10": "target/jobs-parity/eb472832c0971896adc5793a0b12a6bfde809534/lane-evidence/19.0/j6-lane-10.log",
           "j6-lane-2": "target/jobs-parity/eb472832c0971896adc5793a0b12a6bfde809534/lane-evidence/19.0/j6-lane-2.log",
           "j6-lane-3": "target/jobs-parity/eb472832c0971896adc5793a0b12a6bfde809534/lane-evidence/19.0/j6-lane-3.log",
@@ -523,6 +550,15 @@
         "raw_log": "target/jobs-parity/eb472832c0971896adc5793a0b12a6bfde809534/combined-outage/postgres-19.0.log"
       }
     }
+  },
+  "macos_paired_workload_lanes": {
+    "lane_logs": {
+      "j1-lane-5": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/lane-evidence/17.11/j1-lane-5.log",
+      "j1-lane-7": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/lane-evidence/17.11/j1-lane-7.log",
+      "j4-lane-1": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/lane-evidence/17.11/j4-lane-1.log"
+    },
+    "postgresql_version": "17.11",
+    "runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287"
   },
   "main_ref": "7c1620563614a04a573aef806a6d019a2af4dfe9",
   "maintenance": {

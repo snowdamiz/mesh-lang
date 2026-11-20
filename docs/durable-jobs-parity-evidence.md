@@ -467,7 +467,25 @@ malformed frames.
 The `macos_compiled_lanes` entry records the exact checkouts, full logs,
 and named excerpts under `target/jobs-parity/<checkout>/lane-evidence/`.
 Each excerpt identifies the assertion source and the lines from the full
-log. [Qualification receipt](../proof/jobs-parity/qualification-v1.json)
+log. The `macos_paired_workload_lanes` entry records the seed, input digest,
+and reconciliation for the selected pairing lanes. [Qualification receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Verified PostgreSQL workflows
+
+The following cases passed on macOS arm64 with PostgreSQL 17.11, 18.7, and
+19.0 using runtime `1b12243b`. The proof includes both compiled Jobs
+suites and the PostgreSQL-backed runtime tests.
+
+| Workflow | Tested behavior |
+| --- | --- |
+| Transactional enqueue | A business write and its job commit together. Rollback leaves neither, and receipt replay returns the same job identity. |
+| Uniqueness and replacement | A permitted duplicate updates the stored args while the active attempt keeps its claim token and initial context. The retry receives the new args. |
+| Scheduled and recurring work | Scheduled and retryable jobs reach their due timers. A replacement cron owner preserves a committed occurrence and recovers an interrupted transaction. |
+| Retry, snooze, and exhaustion | Compiled retries preserve job and effect identities, honor the due time, and discard at exhaustion. The runtime store proof preserves the attempt count after a snooze. |
+| Cancellation and recovery | A committed cancellation wins over an acknowledgement. After runner death, the replacement holds a new token and PostgreSQL rejects the stale token. |
+| Queue controls and admission | Four compiled runners respect the global cap. Local pause leaves work for a peer, scale respects the lower limit, and stopping one queue leaves another able to work. |
+| Tests and bounded drain | Compilation rejects test helpers in a production build. The test runner verifies borrowed-transaction visibility and namespace isolation. Compiled drain cases cover cutoff, recursion, error policy, and restart. |
+| Telemetry and maintenance | The runner reports database-confirmed dispositions and redacts job data. Scoped role proofs cover fresh and upgraded databases. A concurrent index rebuild allows another job to settle and refuses a second rebuild owner. |
 
 ## Local correctness evidence
 
