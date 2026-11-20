@@ -441,12 +441,17 @@ pinned main and candidate fixtures and run both under scoped database roles.
 Repeat with PostgreSQL 18.7 and 19.0. The proof keeps a legacy lease active
 through migration, checks the pending deadlines and attempt budget, and
 returns to a legacy worker on the upgraded schema. Keep schema migration on
-the newer binary during rollout and worker rollback. Running the old
-migration as schema owner restores the legacy claim body and bypasses the
-namespace pause for legacy claims until the new migrator reapplies it.
+the newer binary during rollout and worker rollback. The owner replay probe
+compares legacy function definitions and OIDs, then checks that replaying
+the old migration preserves the installed catalog and legacy grants. It
+checks the namespace pause on existing and newly created queues while an
+old lease renews and settles. The same legacy runner observes a rejected
+claim and completes both queued jobs after resume. Its `last_error` retains
+the rejection after successful work.
 
-The checked-in v1 receipts compare `7c162056` and `23a95b87` on macOS arm64
-with verified TLS. [PostgreSQL 17.11](../proof/jobs-parity/rolling-upgrade-v1.pg17.11.json) ·
+The historical v1 receipts compare `7c162056` and `23a95b87` on macOS arm64
+with verified TLS. On those revisions, owner replay could replace the old
+claim body and bypass the namespace pause. [PostgreSQL 17.11](../proof/jobs-parity/rolling-upgrade-v1.pg17.11.json) ·
 [PostgreSQL 18.7](../proof/jobs-parity/rolling-upgrade-v1.pg18.7.json) ·
 [PostgreSQL 19.0](../proof/jobs-parity/rolling-upgrade-v1.pg19.0.json)
 

@@ -4,6 +4,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::process::{Child, Command, Stdio};
 use std::sync::Barrier;
 use std::thread;
+use std::time::{Duration, Instant};
 
 const WORKERS: &str = r#"[{"worker":"Deliver","version":1}]"#;
 const TEST_PG_URL: &str = "MESH_JOBS_TEST_PG_URL";
@@ -552,6 +553,7 @@ fn namespace_pause_fences_pending_transactions_and_respects_queue_state() {
     let original = f.enqueue(json!({"worker":"Deliver"}));
     let legacy_claim = "SELECT id FROM mesh_jobs.claim($1, 'default', $2::jsonb, 60000)";
     let mut owner = Connection::open(&f.url);
+    owner.simple("SET statement_timeout = '5s'").unwrap();
     owner.simple("BEGIN").unwrap();
     assert_eq!(
         response(&mut owner, legacy_claim, &[&f.ns, WORKERS]).unwrap(),
@@ -598,6 +600,82 @@ fn namespace_pause_fences_pending_transactions_and_respects_queue_state() {
     );
     let batch = claim_batch(&mut f.db, &f.ns, "another", WORKERS, 60_000, 5, None).unwrap();
     assert_eq!(batch.claims[0].id, another["id"]);
+}
+
+#[test]
+#[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
+fn legacy_claim_sees_pause_committed_after_its_statement_started() {
+    let mut f = Fixture::new();
+    let job = f.enqueue(json!({"worker":"Deliver"}));
+    let trigger = format!("hold_claim_{}", f.ns.replace('-', ""));
+    f.db.simple(&format!(
+        "CREATE FUNCTION mesh_jobs.{trigger}() RETURNS trigger LANGUAGE plpgsql AS $$
+         BEGIN
+             PERFORM pg_advisory_xact_lock(hashtextextended(NEW.namespace, 1782495114));
+             RETURN NEW;
+         END $$"
+    ))
+    .unwrap();
+    // PostgreSQL runs this trigger before mesh_jobs_fence_claim by name.
+    f.db.simple(&format!(
+        "CREATE TRIGGER {trigger} BEFORE UPDATE OF state ON mesh_jobs.jobs FOR EACH ROW
+         WHEN (NEW.namespace = '{}' AND NEW.state = 'executing')
+         EXECUTE FUNCTION mesh_jobs.{trigger}()",
+        f.ns,
+    ))
+    .unwrap();
+    f.db.query(
+        "SELECT pg_advisory_lock(hashtextextended($1, 1782495114))",
+        &[&f.ns],
+    )
+    .unwrap();
+
+    let (pid_tx, pid_rx) = std::sync::mpsc::channel();
+    let url = f.url.clone();
+    let namespace = f.ns.clone();
+    let claimant = thread::spawn(move || {
+        let mut db = Connection::open(&url);
+        db.simple("SET statement_timeout = '10s'").unwrap();
+        pid_tx
+            .send(response(&mut db, "SELECT pg_backend_pid()::text", &[]).unwrap())
+            .unwrap();
+        response(
+            &mut db,
+            "SELECT id FROM mesh_jobs.claim($1, 'default', $2::jsonb, 60000)",
+            &[&namespace, WORKERS],
+        )
+    });
+    let pid = pid_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while response(
+        &mut f.db,
+        "SELECT (pg_backend_pid() = ANY(pg_blocking_pids($1::integer)))::text",
+        &[&pid],
+    )
+    .unwrap()
+        != "true"
+    {
+        assert!(
+            Instant::now() < deadline,
+            "legacy claim did not reach the transition"
+        );
+        thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(f.ops(json!({"action":"pause_namespace"}))["paused"], true);
+    f.db.query(
+        "SELECT pg_advisory_unlock(hashtextextended($1, 1782495114))",
+        &[&f.ns],
+    )
+    .unwrap();
+    let error = claimant.join().unwrap().unwrap_err();
+    f.db.simple(&format!("DROP TRIGGER {trigger} ON mesh_jobs.jobs"))
+        .unwrap();
+    f.db.simple(&format!("DROP FUNCTION mesh_jobs.{trigger}()"))
+        .unwrap();
+    assert!(error.contains("namespace admission is paused"), "{error}");
+    let row = f.get(id(&job));
+    assert_eq!(row["state"], "available");
+    assert_eq!(row["attempt"], 0);
 }
 
 #[test]

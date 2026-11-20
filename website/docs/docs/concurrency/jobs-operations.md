@@ -26,9 +26,12 @@ Admission uses both the local and database queue limits. A scale-down leaves
 existing attempts running. The local queue state comes from `Jobs.start` on
 each restart. Namespace pause, queue state, and the database queue limit
 persist across process and node loss. For a rolling upgrade, run
-`Jobs.migrate` from the new binary before using namespace controls. Keep
-schema migration on the new binary during rollout so the installed claim
-functions continue to enforce the namespace pause.
+`Jobs.migrate` from the new binary before using namespace controls. The
+installed claim fence survives a replay of the older owner migration.
+An older runner may report a claim error in `last_error` while eligible
+work is paused. It rolls back the claim before spending an attempt and
+retries on its next poll. The last error can still be visible after work
+resumes.
 
 ## Investigate a job that did not start
 
@@ -254,7 +257,8 @@ can retain an invalid index with a `_ccnew` or `_ccold` suffix after failure.
    the migrator before running `Jobs.migrate`.
 2. Apply the checked-in grants as the object owner after migrating. Grant the
    producer its own application-table privileges separately. The worker
-   grants also cover bounded `Jobs.drain`. [Jobs grants](https://github.com/snowdamiz/mesh-lang/blob/main/scripts/fixtures/jobs-role-grants.sql)
+   grants include `claim_drain_v1` for current single-claim runners and
+   bounded `Jobs.drain`. [Jobs grants](https://github.com/snowdamiz/mesh-lang/blob/main/scripts/fixtures/jobs-role-grants.sql)
 
    ```sh
    psql -X -v ON_ERROR_STOP=1 -v producer=app_producer -v worker=app_worker \

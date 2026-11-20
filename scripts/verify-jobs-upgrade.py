@@ -36,6 +36,7 @@ OPERATOR = "upgrade_operator"
 INSPECTOR = "upgrade_inspector"
 ROLES = (MIGRATOR, PRODUCER, OLD_WORKER, NEW_WORKER, OPERATOR, INSPECTOR)
 BATCH = "claim_batch_v1(text,text,jsonb,bigint,integer,bigint)"
+PAUSED_CLAIM = "mesh jobs namespace admission is paused or changing"
 
 
 def require(condition, message):
@@ -116,7 +117,7 @@ class RollingProof:
         return message
 
     @contextlib.contextmanager
-    def runner(self, binary, role, queues, label, batch=False, *, database=DATABASE):
+    def runner(self, binary, role, queues, label, batch=False, *, database=DATABASE, expected_error=None):
         env = self.settings(role, database, JOBS_UPGRADE_QUEUES=json.dumps(queues))
         env["JOBS_UPGRADE_BATCH"] = "1" if batch else "0"
         log = self.evidence / f"{label}.log"
@@ -135,7 +136,9 @@ class RollingProof:
                 self.gate.touch()
             parity.stop_runners([process], require_clean=completed)
         summary = json.loads(log.read_text().splitlines()[-1])
-        require(summary["drained"] and summary["stale_acks"] == 0 and summary.get("last_error") is None,
+        error = summary.get("last_error")
+        error_matches = error is None if expected_error is None else expected_error in (error or "")
+        require(summary["drained"] and summary["stale_acks"] == 0 and error_matches,
                 f"unhealthy runner shutdown; see {log}")
 
     def enqueue(self, label, queue, *, schedule=None, database=DATABASE):
@@ -390,7 +393,7 @@ DO $$ BEGIN
     PERFORM id FROM mesh_jobs.claim('{NAMESPACE}','{queue}','{workers}',60000);
     RAISE EXCEPTION 'legacy claim escaped the pause';
 EXCEPTION WHEN object_not_in_prerequisite_state THEN
-    IF SQLERRM <> 'mesh jobs namespace admission is paused or changing' THEN RAISE; END IF;
+    IF SQLERRM <> '{PAUSED_CLAIM}' THEN RAISE; END IF;
 END $$;
 """, database)
             empty = self.sql(f"""
@@ -416,6 +419,12 @@ SELECT mesh_jobs.settle_state('{NAMESPACE}','{held}','{claim["token"]}',
     '{{"action":"complete"}}',false)
 """, database)
         require(settled == "completed", "legacy settlement failed while paused")
+        paused = self.rows(database)
+        finished = paused["replay-held"]
+        require(finished["state"] == "completed" and finished["finished_at_ms"] is not None
+                and finished["lease_token"] is None and finished["lease_expires_at_ms"] is None
+                and all(finished[key] == lease[key] for key in ("id", "effect_key", "attempt", "attempted_at_ms")),
+                "legacy settlement did not finish the original lease")
 
         queues = f"""
 SELECT jsonb_object_agg(name, jsonb_build_array(state,concurrency))
@@ -425,13 +434,20 @@ FROM mesh_jobs.queues WHERE namespace='{NAMESPACE}' AND name <> ''
         require(controls == {"legacy": ["active", 2], "disabled": ["paused", 3],
                              "created-while-paused": ["active", 1]},
                 "namespace pause changed a queue's state or limit")
-        self.sql(f"""SET ROLE {OPERATOR};
+        server_log = self.evidence / "postgres.log"
+        with server_log.open() as stream:
+            stream.seek(0, os.SEEK_END)
+            with self.runner(self.old, OLD_WORKER, queue_names, "replay-old-runner", database=database,
+                             expected_error=PAUSED_CLAIM) as runner:
+                parity.wait_for(lambda: PAUSED_CLAIM in stream.read(), time.monotonic() + 10,
+                                "legacy runner to reach the committed pause")
+                require(self.rows(database) == paused, "legacy runner changed paused work")
+                self.sql(f"""SET ROLE {OPERATOR};
 SELECT mesh_jobs.set_namespace_paused('{NAMESPACE}',false)
 """, database)
-        require(json.loads(self.sql(queues, database)) == controls, "resume changed a queue's controls")
-        with self.runner(self.old, OLD_WORKER, queue_names, "replay-old-runner", database=database) as runner:
-            for label in queued:
-                self.wait_row(label, "completed", runner, database=database)
+                require(json.loads(self.sql(queues, database)) == controls, "resume changed a queue's controls")
+                for label in queued:
+                    self.wait_row(label, "completed", runner, database=database)
         final = self.rows(database)
         for label, ident in queued.items():
             row = final[label]
@@ -452,6 +468,7 @@ SELECT mesh_jobs.set_namespace_paused('{NAMESPACE}',false)
             "upgraded_catalog_and_legacy_grants_unchanged": True,
             "paused_claims_fenced": ["legacy", "current_single", "current_batch"],
             "held_lease_renewed_and_settled_while_paused": True,
+            "same_legacy_runner_resumed": True,
             "queues_after_resume": controls, "resumed_jobs": queued, "resumed_writes": writes,
             "public_execute_count": self.no_public_execute(database),
         }
