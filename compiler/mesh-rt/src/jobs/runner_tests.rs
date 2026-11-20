@@ -28,12 +28,12 @@ fn config_matches_store_names_and_bounds_runner_capacity() {
 #[test]
 fn polling_and_kill_errors_keep_an_attempt_undrained_until_reap() {
     struct Worker {
-        polls: std::collections::VecDeque<Result<Option<Result<String, String>>, String>>,
+        polls: std::collections::VecDeque<Result<WorkerPoll, String>>,
         kills: usize,
     }
 
     impl JobProcess for Worker {
-        fn poll(&mut self) -> Result<Option<Result<String, String>>, String> {
+        fn poll(&mut self, _: Instant) -> Result<WorkerPoll, String> {
             self.polls.pop_front().unwrap()
         }
 
@@ -73,14 +73,15 @@ fn polling_and_kill_errors_keep_an_attempt_undrained_until_reap() {
                         process: Box::new(Worker {
                             polls: [
                                 Err("could not poll worker".into()),
-                                Ok(None),
-                                Ok(Some(Ok(r#"{"action":"complete"}"#.into()))),
+                                Ok(WorkerPoll::Running),
+                                Ok(WorkerPoll::Exited(Ok(r#"{"action":"complete"}"#.into()))),
                             ]
                             .into(),
                             kills: 0,
                         }),
                         deadline: now + TEST_WAIT,
                         lease_deadline: now + TEST_WAIT,
+                        reaped: false,
                         stop: None,
                     }),
                 },
@@ -94,7 +95,8 @@ fn polling_and_kill_errors_keep_an_attempt_undrained_until_reap() {
     runner.supervise();
     runner.request_stop(Duration::ZERO);
     assert!(attempt.poll(&runner, 0));
-    let report: serde_json::Value = serde_json::from_str(&runner.report(true).unwrap()).unwrap();
+    let report: serde_json::Value =
+        serde_json::from_str(&runner.report(&runner.state.lock())).unwrap();
     assert_eq!(report["state"], "stopping");
     assert_eq!(report["undrained_jobs"], json!(["job-id"]));
     assert_eq!(report["finished"], 0);
@@ -111,6 +113,80 @@ fn polling_and_kill_errors_keep_an_attempt_undrained_until_reap() {
     assert!(
         matches!(reply.outcome(), Outcome::Fail { reason } if reason == "could not poll worker")
     );
+}
+
+#[test]
+#[cfg(unix)]
+fn reaped_worker_reply_survives_timeout_and_shutdown() {
+    let now = Instant::now();
+    for (deadline, shutting_down) in [(now, false), (now + TEST_WAIT, true)] {
+        let (process, publish, reply) = WorkerProcess::reaped_with_held_reply();
+        let mut running = Running {
+            process: Box::new(process),
+            deadline,
+            lease_deadline: now + TEST_WAIT,
+            reaped: false,
+            stop: None,
+        };
+        assert!(running.poll(now, shutting_down, &mut None).is_none());
+        publish.send(reply).unwrap();
+        match running.poll(now, shutting_down, &mut None) {
+            Some(Reply::Returned(output)) => assert_eq!(output, "done"),
+            Some(Reply::Failed(reason)) => panic!("reaped worker failed: {reason}"),
+            _ => panic!("reaped worker did not return its reply"),
+        }
+    }
+}
+
+#[test]
+#[cfg(unix)]
+fn reaped_worker_reply_survives_a_confirmed_late_renewal() {
+    for (observed_exit, published_reply) in [(true, false), (false, false), (false, true)] {
+        let now = Instant::now();
+        let (process, publish, reply) = WorkerProcess::reaped_with_held_reply();
+        let mut running = Running {
+            process: Box::new(process),
+            deadline: now + TEST_WAIT,
+            lease_deadline: now,
+            reaped: false,
+            stop: None,
+        };
+        if observed_exit {
+            assert!(running.poll(now, false, &mut None).is_none());
+        }
+        if published_reply {
+            publish.send(reply.clone()).unwrap();
+        }
+
+        let mut execution = Execution::Running(running);
+        assert!(execution.apply_renewal(&Lease::begin(TEST_WAIT).unwrap(), &mut None));
+        if !published_reply {
+            publish.send(reply).unwrap();
+        }
+        let result = match execution {
+            Execution::Running(mut worker) => worker.poll(now, false, &mut None),
+            Execution::Acknowledging { reply, .. } => Some(reply),
+        };
+        assert!(matches!(result, Some(Reply::Returned(output)) if output == "done"));
+    }
+}
+
+#[test]
+#[cfg(unix)]
+fn reaped_worker_keeps_a_previous_stop_while_awaiting_reply() {
+    let now = Instant::now();
+    let (process, _publish, _) = WorkerProcess::reaped_with_held_reply();
+    let mut running = Running {
+        process: Box::new(process),
+        deadline: now,
+        lease_deadline: now + TEST_WAIT,
+        reaped: false,
+        stop: Some(Reply::Cancelled),
+    };
+    assert!(matches!(
+        running.poll(now, true, &mut None),
+        Some(Reply::Cancelled)
+    ));
 }
 
 #[test]
@@ -152,12 +228,15 @@ impl TimedWorker {
 }
 
 impl JobProcess for TimedWorker {
-    fn poll(&mut self) -> Result<Option<Result<String, String>>, String> {
+    fn poll(&mut self, _: Instant) -> Result<WorkerPoll, String> {
         let now = Instant::now();
-        if let Some(reaps_at) = self.reaps_at {
-            return Ok((now >= reaps_at).then(|| Err("worker killed".into())));
-        }
-        Ok((now >= self.completes_at).then(|| Ok(r#"{"action":"complete"}"#.into())))
+        Ok(match self.reaps_at {
+            Some(reaps_at) if now >= reaps_at => WorkerPoll::Exited(Err("worker killed".into())),
+            None if now >= self.completes_at => {
+                WorkerPoll::Exited(Ok(r#"{"action":"complete"}"#.into()))
+            }
+            _ => WorkerPoll::Running,
+        })
     }
 
     fn kill(&mut self) -> Result<(), String> {
@@ -174,21 +253,112 @@ impl JobProcess for TimedWorker {
 #[test]
 fn a_late_renewal_cannot_extend_an_expired_local_lease() {
     let now = Instant::now();
-    let mut worker = Running {
+    let mut execution = Execution::Running(Running {
         process: TimedWorker::start(r#"{"args":{"wait_ms":2000}}"#.into(), now, 0).unwrap(),
         deadline: now + TEST_WAIT,
         lease_deadline: now,
+        reaped: false,
         stop: None,
+    });
+    assert!(!execution.apply_renewal(&Lease::begin(TEST_WAIT).unwrap(), &mut None));
+    let Execution::Running(mut worker) = execution else {
+        panic!("worker must remain tracked until reaped");
     };
-    assert!(!worker
-        .renew_lease(&Lease::begin(TEST_WAIT).unwrap())
-        .unwrap());
     assert_eq!(worker.lease_deadline, now);
-    assert!(worker.poll(now, false, &mut None).is_none());
     assert!(matches!(
         worker.poll(now, false, &mut None),
         Some(Reply::Failed(reason)) if reason == LEASE_LOST
     ));
+}
+
+#[test]
+#[ignore = "requires MESH_TEST_DATABASE_URL"]
+fn join_waits_for_maintenance_after_stop_grace() {
+    use crate::db::pool::{mesh_pool_close, mesh_pool_open, unbox_u64_payload};
+    use crate::io::MeshResult;
+    use crate::string::mesh_str;
+
+    crate::gc::mesh_rt_init();
+    actor::mesh_rt_init_actor(2);
+    let url = std::env::var("MESH_TEST_DATABASE_URL").expect("test PostgreSQL URL");
+    let pool = unsafe { &*mesh_pool_open(mesh_str(&url), 0, 3, 500).cast::<MeshResult>() };
+    assert_eq!(pool.tag, 0);
+    let pool = unsafe { unbox_u64_payload(pool.value) };
+    with_pool(pool, |db| {
+        super::super::store::migrate(db)?;
+        db.transaction(|tx| super::super::cron::migrate(tx))
+    })
+    .unwrap();
+
+    let namespace = format!("runner-join-test-{}", rand::random::<u64>());
+    let mut config: serde_json::Value = serde_json::from_str(TEST_CONFIG).unwrap();
+    config["namespace"] = json!(namespace);
+    let (joined, join_result) = mpsc::channel();
+    let (stop_report, early_join) = with_pool(pool, |db| {
+        db.transaction(|tx| {
+            tx.simple("LOCK TABLE mesh_jobs.cron_activation IN ACCESS EXCLUSIVE MODE")?;
+            let id = start_runner(
+                pool,
+                &config.to_string(),
+                || Ok(()),
+                Box::new(TimedWorker::start),
+            )?;
+            let deadline = Instant::now() + TEST_WAIT;
+            loop {
+                let rows = tx.query(
+                    "SELECT EXISTS (SELECT 1 FROM pg_locks
+                     WHERE relation = 'mesh_jobs.cron_activation'::regclass AND NOT granted
+                     AND pg_backend_pid() = ANY(pg_blocking_pids(pid)))::text",
+                    &[],
+                )?;
+                if rows[0][0].1 == "true" {
+                    break;
+                }
+                if Instant::now() >= deadline {
+                    return Err("runner maintenance did not wait on the table lock".into());
+                }
+                std::thread::sleep(TICK);
+            }
+
+            let stop_report = stop(id, 0)?;
+            let (joining, started) = mpsc::channel();
+            std::thread::spawn(move || {
+                joining.send(()).unwrap();
+                joined.send(join(id)).unwrap();
+            });
+            started
+                .recv_timeout(TEST_WAIT)
+                .map_err(|error| error.to_string())?;
+            Ok((
+                stop_report,
+                join_result.recv_timeout(Duration::from_millis(100)),
+            ))
+        })
+    })
+    .unwrap();
+
+    let report: serde_json::Value = serde_json::from_str(&stop_report).unwrap();
+    assert_eq!(report["state"], "stopping");
+    assert_eq!(report["drained"], true);
+    assert!(
+        matches!(early_join, Err(mpsc::RecvTimeoutError::Timeout)),
+        "join returned while maintenance was blocked: {early_join:?}"
+    );
+
+    let report = join_result.recv_timeout(TEST_WAIT).unwrap().unwrap();
+    let report: serde_json::Value = serde_json::from_str(&report).unwrap();
+    assert_eq!(report["state"], "stopped");
+    assert_eq!(report["drained"], true);
+    assert_eq!(report["last_error"], serde_json::Value::Null);
+    let activation = with_pool(pool, |db| {
+        db.query(
+            "DELETE FROM mesh_jobs.cron_activation WHERE namespace = $1 RETURNING namespace",
+            &[&namespace],
+        )
+    })
+    .unwrap();
+    assert_eq!(activation.len(), 1);
+    mesh_pool_close(pool);
 }
 
 #[test]
@@ -298,8 +468,16 @@ fn postgres_runner_executes_schedules_and_settles_renewed_timed_out_and_cancelle
     assert_eq!(report["state"], "stopped");
     assert_eq!(report["drained"], true);
     assert_eq!(report["finished"], 4);
+    assert_eq!(
+        report["outcomes"],
+        json!({
+            "completed": 2, "cancelled": 1, "discarded": 1, "retryable": 0,
+            "scheduled": 0, "released_unstarted": 0,
+        })
+    );
     assert_eq!(report["scheduled"], 1);
     assert_eq!(join(id).unwrap(), report.to_string());
+    assert_eq!(status(id).unwrap(), report.to_string());
 
     let abandoned = enqueue(10, 2000);
     with_pool(pool, |db| {
@@ -350,11 +528,12 @@ fn postgres_runner_executes_schedules_and_settles_renewed_timed_out_and_cancelle
     )
     .unwrap();
     std::thread::sleep(Duration::from_millis(100));
-    assert!(lookup(one_shot).unwrap().report(true).is_none());
+    let runner = lookup(one_shot).unwrap();
+    assert!(!runner.state.lock().phase.is_stopped());
     release_lock.send(()).unwrap();
     lock_holder.join().unwrap();
     let deadline = Instant::now() + TEST_WAIT;
-    while lookup(one_shot).unwrap().report(true).is_none() {
+    while !runner.state.lock().phase.is_stopped() {
         assert!(
             Instant::now() < deadline,
             "drain status: {}",
@@ -366,6 +545,13 @@ fn postgres_runner_executes_schedules_and_settles_renewed_timed_out_and_cancelle
     assert_eq!(report["finished"], 1);
     assert_eq!(report["scheduled"], 0);
     assert_eq!(report["recovered"], 1);
+    assert_eq!(
+        report["outcomes"],
+        json!({
+            "completed": 1, "cancelled": 0, "discarded": 0, "retryable": 0,
+            "scheduled": 0, "released_unstarted": 0,
+        })
+    );
     let recovered = control(json!({"action":"get","id":abandoned}));
     assert_eq!(recovered["state"], "discarded");
     assert_eq!(recovered["errors"][0]["reason"], "lease expired");
@@ -435,13 +621,14 @@ fn postgres_runner_executes_schedules_and_settles_renewed_timed_out_and_cancelle
     )
     .unwrap();
     std::thread::sleep(Duration::from_millis(200));
-    assert!(lookup(one_shot).unwrap().report(true).is_none());
+    let runner = lookup(one_shot).unwrap();
+    assert!(!runner.state.lock().phase.is_stopped());
     expire(&expires_later);
     assert_eq!(wait_for(&expires_later, "completed")["attempt"], 2);
     release_lock.send(()).unwrap();
     lock_holder.join().unwrap();
     let deadline = Instant::now() + TEST_WAIT;
-    while lookup(one_shot).unwrap().report(true).is_none() {
+    while !runner.state.lock().phase.is_stopped() {
         assert!(
             Instant::now() < deadline,
             "drain status: {}",
@@ -452,6 +639,8 @@ fn postgres_runner_executes_schedules_and_settles_renewed_timed_out_and_cancelle
     let report: serde_json::Value = serde_json::from_str(&join(one_shot).unwrap()).unwrap();
     assert_eq!(report["recovered"], 2);
     assert_eq!(report["finished"], 1);
+    assert_eq!(report["outcomes"]["completed"], 1);
+    assert_eq!(report["outcomes"]["discarded"], 0);
     assert_eq!(
         control(json!({"action":"get","id":locked_job}))["state"],
         "discarded"

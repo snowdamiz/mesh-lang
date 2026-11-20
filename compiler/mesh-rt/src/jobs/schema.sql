@@ -279,7 +279,7 @@ BEGIN
 END
 $$;
 
-CREATE OR REPLACE FUNCTION mesh_jobs.renew(
+CREATE OR REPLACE FUNCTION mesh_jobs.try_renew(
     ns text, job_id uuid, token uuid, lease_ms bigint
 ) RETURNS text
 LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$
@@ -287,8 +287,9 @@ DECLARE
     job mesh_jobs.jobs%ROWTYPE;
     now_at bigint;
 BEGIN
+    -- A busy attempt must not delay lease renewals for the runner's other jobs.
     SELECT * INTO job FROM mesh_jobs.jobs
-    WHERE namespace = ns AND id = job_id AND lease_token = token FOR NO KEY UPDATE;
+    WHERE namespace = ns AND id = job_id AND lease_token = token FOR NO KEY UPDATE NOWAIT;
     IF NOT FOUND THEN RETURN 'lost'; END IF;
     now_at := mesh_jobs.now_ms();
     IF job.lease_expires_at_ms <= now_at THEN RETURN 'lost'; END IF;
@@ -300,9 +301,9 @@ BEGIN
 END
 $$;
 
-CREATE OR REPLACE FUNCTION mesh_jobs.settle(
+CREATE OR REPLACE FUNCTION mesh_jobs.settle_state(
     ns text, job_id uuid, token uuid, outcome jsonb, recovering boolean
-) RETURNS boolean
+) RETURNS text
 LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
     job mesh_jobs.jobs%ROWTYPE;
@@ -313,10 +314,10 @@ DECLARE
     now_at bigint;
 BEGIN
     SELECT * INTO job FROM mesh_jobs.jobs
-    WHERE namespace = ns AND id = job_id AND lease_token = token FOR NO KEY UPDATE;
-    IF NOT FOUND THEN RETURN false; END IF;
+    WHERE namespace = ns AND id = job_id AND lease_token = token FOR NO KEY UPDATE NOWAIT;
+    IF NOT FOUND THEN RETURN NULL; END IF;
     now_at := mesh_jobs.now_ms();
-    IF (job.lease_expires_at_ms <= now_at) <> recovering THEN RETURN false; END IF;
+    IF (job.lease_expires_at_ms <= now_at) <> recovering THEN RETURN NULL; END IF;
 
     IF job.cancel_requested_at_ms IS NOT NULL THEN
         next_state := 'cancelled';
@@ -354,10 +355,100 @@ BEGIN
             CASE WHEN jsonb_array_length(job.errors) >= 100 THEN job.errors - 0 ELSE job.errors END ||
             jsonb_build_array(jsonb_build_object('at_ms', now_at, 'attempt', job.attempt, 'reason', reason))
             END
-    WHERE namespace = ns AND id = job_id;
-    RETURN true;
+    WHERE namespace = ns AND id = job_id AND lease_token = token
+    RETURNING state INTO next_state;
+    RETURN next_state;
 END
 $$;
+
+DO $legacy$
+BEGIN
+    -- Standalone v1 bodies support workers with grants on only the legacy functions.
+    IF to_regprocedure('mesh_jobs.renew(text,uuid,uuid,bigint)') IS NULL THEN
+        CREATE FUNCTION mesh_jobs.renew(
+            ns text, job_id uuid, token uuid, lease_ms bigint
+        ) RETURNS text
+        LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $body$
+        DECLARE
+            job mesh_jobs.jobs%ROWTYPE;
+            now_at bigint;
+        BEGIN
+            SELECT * INTO job FROM mesh_jobs.jobs
+            WHERE namespace = ns AND id = job_id AND lease_token = token FOR NO KEY UPDATE;
+            IF NOT FOUND THEN RETURN 'lost'; END IF;
+            now_at := mesh_jobs.now_ms();
+            IF job.lease_expires_at_ms <= now_at THEN RETURN 'lost'; END IF;
+            IF job.cancel_requested_at_ms IS NOT NULL THEN RETURN 'cancelled'; END IF;
+
+            UPDATE mesh_jobs.jobs SET lease_expires_at_ms = greatest(lease_expires_at_ms, now_at + lease_ms)
+            WHERE namespace = ns AND id = job_id;
+            RETURN 'active';
+        END
+        $body$;
+    END IF;
+
+    IF to_regprocedure('mesh_jobs.settle(text,uuid,uuid,jsonb,boolean)') IS NULL THEN
+        CREATE FUNCTION mesh_jobs.settle(
+            ns text, job_id uuid, token uuid, outcome jsonb, recovering boolean
+        ) RETURNS boolean
+        LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $body$
+        DECLARE
+            job mesh_jobs.jobs%ROWTYPE;
+            action text := outcome ->> 'action';
+            reason text := outcome ->> 'reason';
+            next_state text;
+            delay_ms bigint := (outcome ->> 'delay_ms')::bigint;
+            now_at bigint;
+        BEGIN
+            SELECT * INTO job FROM mesh_jobs.jobs
+            WHERE namespace = ns AND id = job_id AND lease_token = token FOR NO KEY UPDATE;
+            IF NOT FOUND THEN RETURN false; END IF;
+            now_at := mesh_jobs.now_ms();
+            IF (job.lease_expires_at_ms <= now_at) <> recovering THEN RETURN false; END IF;
+
+            IF job.cancel_requested_at_ms IS NOT NULL THEN
+                next_state := 'cancelled';
+                reason := 'cancelled by operator';
+            ELSE
+                next_state := CASE action
+                    WHEN 'complete' THEN 'completed'
+                    WHEN 'cancel' THEN 'cancelled'
+                    WHEN 'discard' THEN 'discarded'
+                    WHEN 'snooze' THEN 'scheduled'
+                    WHEN 'fail' THEN CASE WHEN job.attempt < job.max_attempts
+                        THEN 'retryable' ELSE 'discarded' END
+                    WHEN 'retry_after' THEN CASE WHEN job.attempt < job.max_attempts
+                        THEN 'retryable' ELSE 'discarded' END
+                END;
+            END IF;
+            IF next_state = 'retryable' AND delay_ms IS NULL THEN
+                delay_ms := least(job.backoff_max_ms::numeric,
+                    job.backoff_base_ms::numeric * power(2::numeric, job.attempt - 1))::bigint;
+            END IF;
+
+            UPDATE mesh_jobs.jobs SET
+                state = next_state,
+                attempt = CASE WHEN next_state = 'scheduled' THEN job.attempt - 1 ELSE job.attempt END,
+                scheduled_at_ms = CASE WHEN next_state IN ('scheduled', 'retryable')
+                    THEN now_at + delay_ms ELSE job.scheduled_at_ms END,
+                finished_at_ms = CASE WHEN next_state IN ('completed', 'cancelled', 'discarded') THEN now_at END,
+                metadata = CASE WHEN next_state = 'scheduled' THEN job.metadata || jsonb_build_object(
+                    'snoozed', 1 + CASE WHEN jsonb_typeof(job.metadata -> 'snoozed') = 'number' THEN
+                        greatest(0, least(2147483646, trunc((job.metadata ->> 'snoozed')::numeric)))
+                        ELSE 0 END)
+                    ELSE job.metadata END,
+                lease_token = NULL, lease_expires_at_ms = NULL, cancel_requested_at_ms = NULL,
+                errors = CASE WHEN reason IS NULL THEN job.errors ELSE
+                    CASE WHEN jsonb_array_length(job.errors) >= 100 THEN job.errors - 0 ELSE job.errors END ||
+                    jsonb_build_array(jsonb_build_object('at_ms', now_at, 'attempt', job.attempt, 'reason', reason))
+                    END
+            WHERE namespace = ns AND id = job_id;
+            RETURN true;
+        END
+        $body$;
+    END IF;
+END
+$legacy$;
 
 CREATE OR REPLACE FUNCTION mesh_jobs.recover(ns text, page_size integer, queue_filter jsonb) RETURNS bigint
 LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$

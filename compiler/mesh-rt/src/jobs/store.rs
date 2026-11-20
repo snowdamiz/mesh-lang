@@ -48,6 +48,32 @@ pub(super) enum Outcome {
     ReleaseUnstarted,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Settlement {
+    Completed,
+    Cancelled,
+    Discarded,
+    Retryable,
+    Scheduled,
+    ReleasedUnstarted,
+    Stale,
+}
+
+impl Settlement {
+    fn from_sql(state: &str) -> Result<Self, String> {
+        match state {
+            "completed" => Ok(Self::Completed),
+            "cancelled" => Ok(Self::Cancelled),
+            "discarded" => Ok(Self::Discarded),
+            "retryable" => Ok(Self::Retryable),
+            "scheduled" => Ok(Self::Scheduled),
+            "released_unstarted" => Ok(Self::ReleasedUnstarted),
+            "stale" => Ok(Self::Stale),
+            _ => Err("mesh jobs invalid settlement state from PostgreSQL".into()),
+        }
+    }
+}
+
 const MAX_INPUT: usize = 1024 * 1024;
 const MAX_BATCH: usize = 128;
 const MAX_DURATION_MS: u64 = 365 * 24 * 60 * 60 * 1000;
@@ -621,7 +647,7 @@ pub(super) fn renew(
     lease_duration(lease_ms)?;
     match response(
         db,
-        "SELECT mesh_jobs.renew($1, $2::uuid, $3::uuid, $4::bigint) AS status",
+        "SELECT mesh_jobs.try_renew($1, $2::uuid, $3::uuid, $4::bigint) AS status",
         &[namespace, id, token, &lease_ms.to_string()],
     )?
     .as_str()
@@ -639,30 +665,32 @@ pub(super) fn finish(
     id: &str,
     token: &str,
     mut outcome: Outcome,
-) -> Result<bool, String> {
+) -> Result<Settlement, String> {
     standalone(db)?;
     name(namespace, "namespace")?;
     if matches!(outcome, Outcome::ReleaseUnstarted) {
-        return response(
+        let state = response(
             db,
             "WITH held AS MATERIALIZED (
                  SELECT lease_expires_at_ms, cancel_requested_at_ms FROM mesh_jobs.jobs
                  WHERE namespace = $1 AND id = $2::uuid AND lease_token = $3::uuid
-                 FOR NO KEY UPDATE
+                 FOR NO KEY UPDATE NOWAIT
              ), released AS (
                  UPDATE mesh_jobs.jobs j SET state = 'available', attempt = j.attempt - 1,
                      lease_token = NULL, lease_expires_at_ms = NULL
-                 FROM held WHERE j.namespace = $1 AND j.id = $2::uuid
+                 FROM held WHERE j.namespace = $1 AND j.id = $2::uuid AND j.lease_token = $3::uuid
                      AND held.cancel_requested_at_ms IS NULL
                      AND held.lease_expires_at_ms > mesh_jobs.now_ms()
-                 RETURNING 1
-             ) SELECT (CASE WHEN EXISTS (SELECT 1 FROM held WHERE cancel_requested_at_ms IS NOT NULL)
-                 THEN mesh_jobs.settle($1, $2::uuid, $3::uuid, '{\"action\":\"cancel\"}'::jsonb, false)
-                 ELSE EXISTS (SELECT 1 FROM released) END)::text",
+                 RETURNING j.state
+             ) SELECT coalesce(
+                 CASE WHEN EXISTS (SELECT 1 FROM held WHERE cancel_requested_at_ms IS NOT NULL)
+                     THEN mesh_jobs.settle_state($1, $2::uuid, $3::uuid, '{\"action\":\"cancel\"}'::jsonb, false)
+                     ELSE (SELECT CASE state WHEN 'available' THEN 'released_unstarted' ELSE state END
+                           FROM released)
+                 END, 'stale')",
             &[namespace, id, token],
-        )?
-        .parse::<bool>()
-        .map_err(|error| error.to_string());
+        )?;
+        return Settlement::from_sql(&state);
     }
     match &mut outcome {
         Outcome::RetryAfter { delay_ms, .. } | Outcome::Snooze { delay_ms } => {
@@ -684,13 +712,12 @@ pub(super) fn finish(
         _ => {}
     }
     let outcome = serde_json::to_string(&outcome).map_err(|error| error.to_string())?;
-    response(
+    let state = response(
         db,
-        "SELECT mesh_jobs.settle($1, $2::uuid, $3::uuid, $4::jsonb, false)::text AS settled",
+        "SELECT coalesce(mesh_jobs.settle_state($1, $2::uuid, $3::uuid, $4::jsonb, false), 'stale')",
         &[namespace, id, token, &outcome],
-    )?
-    .parse::<bool>()
-    .map_err(|error| error.to_string())
+    )?;
+    Settlement::from_sql(&state)
 }
 
 pub(super) fn recover(

@@ -9,10 +9,10 @@ use crate::actor;
 
 use super::cron;
 use super::store::{
-    claim, drain_has_work, finish, prune, recover, renew, Claim, LeaseStatus, Outcome,
+    claim, drain_has_work, finish, prune, recover, renew, Claim, LeaseStatus, Outcome, Settlement,
 };
 use super::with_pool;
-use super::worker::{check_executable, handler_name, host_deadline, WorkerProcess};
+use super::worker::{check_executable, handler_name, host_deadline, WorkerPoll, WorkerProcess};
 
 const TICK: Duration = Duration::from_millis(10);
 const MAX_GRACE_MS: u64 = 300_000;
@@ -25,14 +25,14 @@ const CANCELLED: &str = "job cancelled";
 const LEASE_LOST: &str = "job lease lost";
 
 trait JobProcess: Send {
-    fn poll(&mut self) -> Result<Option<Result<String, String>>, String>;
+    fn poll(&mut self, now: Instant) -> Result<WorkerPoll, String>;
     fn renew(&mut self, lease_deadline: u64) -> Result<(), String>;
     fn kill(&mut self) -> Result<(), String>;
 }
 
 impl JobProcess for WorkerProcess {
-    fn poll(&mut self) -> Result<Option<Result<String, String>>, String> {
-        self.poll()
+    fn poll(&mut self, now: Instant) -> Result<WorkerPoll, String> {
+        self.poll(now)
     }
 
     fn renew(&mut self, lease_deadline: u64) -> Result<(), String> {
@@ -152,6 +152,18 @@ impl Phase {
             Self::Stopped => "stopped",
         }
     }
+
+    fn is_stopped(&self) -> bool {
+        matches!(self, Self::Stopped)
+    }
+
+    fn stop_wait_complete(&self) -> bool {
+        match self {
+            Self::Running => false,
+            Self::Stopping { deadline } => Instant::now() >= *deadline,
+            Self::Stopped => true,
+        }
+    }
 }
 
 struct ActiveJob {
@@ -163,11 +175,47 @@ struct ActiveJob {
 #[derive(Default)]
 struct Counts {
     claimed: u64,
-    finished: u64,
+    outcomes: OutcomeCounts,
     stale_acks: u64,
     recovered: u64,
     scheduled: u64,
     pruned: u64,
+}
+
+impl Counts {
+    fn record_settlement(&mut self, settlement: Settlement) {
+        let count = match settlement {
+            Settlement::Completed => &mut self.outcomes.completed,
+            Settlement::Cancelled => &mut self.outcomes.cancelled,
+            Settlement::Discarded => &mut self.outcomes.discarded,
+            Settlement::Retryable => &mut self.outcomes.retryable,
+            Settlement::Scheduled => &mut self.outcomes.scheduled,
+            Settlement::ReleasedUnstarted => &mut self.outcomes.released_unstarted,
+            Settlement::Stale => &mut self.stale_acks,
+        };
+        *count += 1;
+    }
+}
+
+#[derive(Default, Serialize)]
+struct OutcomeCounts {
+    completed: u64,
+    cancelled: u64,
+    discarded: u64,
+    retryable: u64,
+    scheduled: u64,
+    released_unstarted: u64,
+}
+
+impl OutcomeCounts {
+    fn total(&self) -> u64 {
+        self.completed
+            + self.cancelled
+            + self.discarded
+            + self.retryable
+            + self.scheduled
+            + self.released_unstarted
+    }
 }
 
 struct State {
@@ -231,17 +279,8 @@ impl Runner {
         true
     }
 
-    fn report(&self, wait: bool) -> Option<String> {
-        let state = self.state.lock();
+    fn report(&self, state: &State) -> String {
         let undrained = state.jobs.len() + state.pending_claims;
-        if wait {
-            match state.phase {
-                Phase::Running => return None,
-                Phase::Stopping { deadline } if Instant::now() < deadline => return None,
-                _ => {}
-            }
-        }
-
         let queues: BTreeMap<_, _> = self
             .config
             .queues
@@ -256,33 +295,34 @@ impl Runner {
             })
             .collect();
         let jobs: Vec<_> = state.jobs.values().map(|job| &job.id).collect();
-        Some(
-            serde_json::json!({
-                "runner_id": self.id,
-                "namespace": self.config.namespace,
-                "state": state.phase.name(),
-                "drained": undrained == 0,
-                "undrained": undrained,
-                "undrained_jobs": jobs,
-                "pending_claims": state.pending_claims,
-                "queues": queues,
-                "claimed": state.counts.claimed,
-                "finished": state.counts.finished,
-                "stale_acks": state.counts.stale_acks,
-                "recovered": state.counts.recovered,
-                "scheduled": state.counts.scheduled,
-                "pruned": state.counts.pruned,
-                "last_error": state.last_error,
-            })
-            .to_string(),
-        )
+        serde_json::json!({
+            "runner_id": self.id,
+            "namespace": self.config.namespace,
+            "state": state.phase.name(),
+            "drained": undrained == 0,
+            "undrained": undrained,
+            "undrained_jobs": jobs,
+            "pending_claims": state.pending_claims,
+            "queues": queues,
+            "claimed": state.counts.claimed,
+            "finished": state.counts.outcomes.total(),
+            "outcomes": state.counts.outcomes,
+            "stale_acks": state.counts.stale_acks,
+            "recovered": state.counts.recovered,
+            "scheduled": state.counts.scheduled,
+            "pruned": state.counts.pruned,
+            "last_error": state.last_error,
+        })
+        .to_string()
     }
 
-    fn wait(&self) -> String {
+    fn wait_until(&self, ready: fn(&Phase) -> bool) -> String {
         loop {
-            if let Some(report) = self.report(true) {
-                return report;
+            let state = self.state.lock();
+            if ready(&state.phase) {
+                return self.report(&state);
             }
+            drop(state);
             actor::mesh_timer_sleep(TICK.as_millis() as i64);
         }
     }
@@ -344,18 +384,31 @@ fn start_runner(
         .ok_or("actor scheduler is unavailable")?;
     with_pool(pool, |db| {
         let rows = db.query(
-            "SELECT (version = 1 AND to_regclass('mesh_jobs.cron_schedules') IS NOT NULL)::text
-             FROM mesh_jobs.schema_version WHERE singleton",
+            "WITH functions AS (
+                 SELECT to_regprocedure('mesh_jobs.try_renew(text,uuid,uuid,bigint)') AS renew,
+                        to_regprocedure('mesh_jobs.settle_state(text,uuid,uuid,jsonb,boolean)') AS settle
+             ) SELECT CASE
+                 WHEN version <> 1 OR to_regclass('mesh_jobs.cron_schedules') IS NULL
+                     OR renew IS NULL OR settle IS NULL THEN 'migrate'
+                 WHEN NOT (has_function_privilege(renew, 'EXECUTE')
+                     AND has_function_privilege(settle, 'EXECUTE')) THEN 'permissions'
+                 ELSE 'ready'
+             END FROM mesh_jobs.schema_version CROSS JOIN functions WHERE singleton",
             &[],
         )?;
-        if rows
+        match rows
             .first()
             .and_then(|row| row.first())
-            .is_some_and(|(_, ready)| ready == "true")
+            .map(|(_, status)| status.as_str())
         {
-            Ok(())
-        } else {
-            Err("Jobs requires the current schema. Run Jobs.migrate before starting workers".into())
+            Some("ready") => Ok(()),
+            Some("permissions") => Err(
+                "Jobs runner needs EXECUTE on mesh_jobs.try_renew and mesh_jobs.settle_state"
+                    .into(),
+            ),
+            _ => Err(
+                "Jobs requires the current schema. Run Jobs.migrate before starting workers".into(),
+            ),
         }
     })?;
 
@@ -365,9 +418,10 @@ fn start_runner(
         return Err("runtime shutdown already requested".into());
     }
     if registry.runners.len() == MAX_RUNNERS {
-        let stopped = registry.runners.iter().find_map(|(id, runner)| {
-            matches!(runner.state.lock().phase, Phase::Stopped).then_some(*id)
-        });
+        let stopped = registry
+            .runners
+            .iter()
+            .find_map(|(id, runner)| runner.state.lock().phase.is_stopped().then_some(*id));
         registry
             .runners
             .remove(&stopped.ok_or("runner limit reached")?);
@@ -443,19 +497,19 @@ fn lookup(id: u64) -> Result<Arc<Runner>, String> {
 }
 
 pub(super) fn status(id: u64) -> Result<String, String> {
-    Ok(lookup(id)?
-        .report(false)
-        .expect("status is always available"))
+    let runner = lookup(id)?;
+    let state = runner.state.lock();
+    Ok(runner.report(&state))
 }
 
 pub(super) fn stop(id: u64, grace_ms: u64) -> Result<String, String> {
     let runner = lookup(id)?;
     runner.request_stop(grace(grace_ms)?);
-    Ok(runner.wait())
+    Ok(runner.wait_until(Phase::stop_wait_complete))
 }
 
 pub(super) fn join(id: u64) -> Result<String, String> {
-    Ok(lookup(id)?.wait())
+    Ok(lookup(id)?.wait_until(Phase::is_stopped))
 }
 
 pub(super) fn shutdown_all() {
@@ -468,7 +522,7 @@ pub(super) fn shutdown_all() {
         runner.request_stop(Duration::from_millis(runner.config.shutdown_grace_ms));
     }
     for runner in runners {
-        runner.wait();
+        runner.wait_until(Phase::stop_wait_complete);
         while runner
             .state
             .lock()
@@ -504,33 +558,29 @@ struct Running {
     process: Box<dyn JobProcess>,
     deadline: Instant,
     lease_deadline: Instant,
+    reaped: bool,
     stop: Option<Reply>,
 }
 
 impl Running {
-    fn renew_lease(&mut self, renewed: &Lease) -> Result<bool, String> {
-        if Instant::now() >= self.lease_deadline {
-            return Ok(false);
-        }
-        self.process.renew(renewed.worker_expires_at)?;
-        self.lease_deadline = renewed.expires_at;
-        Ok(true)
-    }
-
     fn poll(
         &mut self,
         now: Instant,
         shutting_down: bool,
         last_error: &mut Option<String>,
     ) -> Option<Reply> {
-        let poll_error = match self.process.poll() {
-            Ok(Some(result)) => {
+        let poll_error = match self.process.poll(now) {
+            Ok(WorkerPoll::Exited(result)) => {
                 return Some(self.stop.take().unwrap_or_else(|| match result {
                     Ok(output) => Reply::Returned(output),
                     Err(error) => Reply::Failed(error),
                 }));
             }
-            Ok(None) => None,
+            Ok(WorkerPoll::AwaitingReply) => {
+                self.reaped = true;
+                return self.stop.take();
+            }
+            Ok(WorkerPoll::Running) => None,
             Err(error) => {
                 *last_error = Some(error.chars().take(1024).collect());
                 Some(error)
@@ -614,6 +664,32 @@ impl Execution {
             retry_at: None,
         }
     }
+
+    fn apply_renewal(&mut self, renewed: &Lease, last_error: &mut Option<String>) -> bool {
+        let Self::Running(worker) = self else {
+            return true;
+        };
+        let now = Instant::now();
+        // The worker may have exited while PostgreSQL was processing the renewal.
+        if now >= worker.lease_deadline && !worker.reaped {
+            if let Some(reply) = worker.poll(now, false, last_error) {
+                *self = Self::acknowledging(reply);
+                return true;
+            }
+            if !worker.reaped {
+                return false;
+            }
+        }
+        if !worker.reaped {
+            if let Err(error) = worker.process.renew(renewed.worker_expires_at) {
+                *last_error = Some(error.chars().take(1024).collect());
+                worker.stop(Reply::Failed(error), last_error);
+                return false;
+            }
+        }
+        worker.lease_deadline = renewed.expires_at;
+        true
+    }
 }
 
 struct Attempt {
@@ -655,13 +731,8 @@ impl Attempt {
         match with_pool(pool, |db| {
             finish(db, &runner.config.namespace, &self.id, &self.token, outcome)
         }) {
-            Ok(finished) => {
-                let mut state = runner.state.lock();
-                if finished {
-                    state.counts.finished += 1;
-                } else {
-                    state.counts.stale_acks += 1;
-                }
+            Ok(settlement) => {
+                runner.state.lock().counts.record_settlement(settlement);
                 false
             }
             Err(error) => {
@@ -713,37 +784,21 @@ impl Attempt {
             jobs, last_error, ..
         } = &mut *state;
         let job = jobs.get_mut(&self.token).expect("tracked attempt");
-        let running = match &mut job.execution {
-            Execution::Running(worker) => Some(worker),
-            Execution::Acknowledging { .. } => None,
-        };
         match status {
             LeaseStatus::Active => {
-                if let Some(worker) = running {
-                    match worker.renew_lease(&renewed) {
-                        Ok(true) => {}
-                        Ok(false) => {
-                            worker.stop(Reply::Failed(LEASE_LOST.into()), last_error);
-                            return;
-                        }
-                        Err(error) => {
-                            *last_error = Some(error.chars().take(1024).collect());
-                            worker.stop(Reply::Failed(error), last_error);
-                            return;
-                        }
-                    }
+                if job.execution.apply_renewal(&renewed, last_error) {
+                    *lease = renewed;
                 }
-                *lease = renewed;
             }
             LeaseStatus::Cancelled => {
                 lease.renew_at = None;
-                if let Some(worker) = running {
+                if let Execution::Running(worker) = &mut job.execution {
                     worker.stop(Reply::Cancelled, last_error);
                 }
             }
             LeaseStatus::Lost => {
                 self.lease = None;
-                if let Some(worker) = running {
+                if let Execution::Running(worker) = &mut job.execution {
                     worker.stop(Reply::Failed(LEASE_LOST.into()), last_error);
                 }
             }
@@ -962,6 +1017,7 @@ fn claim_one(
                 process,
                 deadline,
                 lease_deadline: lease.expires_at,
+                reaped: false,
                 stop: None,
             }),
             Err(error) => {
