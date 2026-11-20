@@ -102,18 +102,18 @@ impl Settlement {
 const MAX_INPUT: usize = 1024 * 1024;
 const MAX_BATCH: usize = 128;
 const MAX_DURATION_MS: u64 = 365 * 24 * 60 * 60 * 1000;
-const MAX_TIMESTAMP_MS: u64 = 253_402_300_799_999;
+pub(super) const MAX_TIMESTAMP_MS: u64 = 253_402_300_799_999;
 const MAX_CONCURRENCY: u32 = 1024;
 const MAX_PAGE: u32 = 1000;
 
-fn decode<T: DeserializeOwned>(input: &str) -> Result<T, String> {
+pub(super) fn decode<T: DeserializeOwned>(input: &str) -> Result<T, String> {
     if input.len() > MAX_INPUT {
         return Err("mesh jobs JSON exceeds 1 MiB".into());
     }
     serde_json::from_str(input).map_err(|error| error.to_string())
 }
 
-fn name(value: &str, field: &str) -> Result<(), String> {
+pub(super) fn name(value: &str, field: &str) -> Result<(), String> {
     if value.trim().is_empty() || value.len() > 255 || value.contains('\0') {
         return Err(format!(
             "mesh jobs {field} must be nonblank text of at most 255 bytes"
@@ -145,7 +145,11 @@ fn scheduling(scheduled_at_ms: Option<u64>, delay_ms: Option<u64>) -> Result<(),
     duration(delay_ms.unwrap_or_default(), "delay_ms")
 }
 
-fn response(db: &mut impl Database, sql: &str, params: &[&str]) -> Result<String, String> {
+pub(super) fn response(
+    db: &mut impl Database,
+    sql: &str,
+    params: &[&str],
+) -> Result<String, String> {
     let mut rows = db.query(sql, params)?;
     if rows.len() != 1 || rows[0].len() != 1 {
         return Err("mesh jobs expected one result cell from PostgreSQL".into());
@@ -173,13 +177,14 @@ pub(super) fn migrate(db: &mut impl Database) -> Result<(), String> {
     let result = db
         .simple("SELECT pg_catalog.pg_advisory_xact_lock(1782495102, 1)")
         .and_then(|()| db.simple(include_str!("schema.sql")))
+        .and_then(|()| db.simple(include_str!("drain_schema.sql")))
         .and_then(|()| db.simple("COMMIT"));
     result.map_err(|error| rollback_error(error, db.simple("ROLLBACK")))
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
-enum State {
+pub(super) enum State {
     Available,
     Scheduled,
     Retryable,
@@ -437,7 +442,7 @@ impl Default for JobSpec {
 }
 
 impl JobSpec {
-    fn prepare(mut self) -> Result<Admission, String> {
+    fn prepare(&mut self) -> Result<Admission, String> {
         name(&self.worker, "worker")?;
         name(&self.queue, "queue")?;
         if self.version == 0 || !(1..=100).contains(&self.max_attempts) || self.priority > 9 {
@@ -505,6 +510,30 @@ enum Enqueue {
     Single(Box<JobSpec>),
 }
 
+pub(super) fn test_context(spec: &str, now_ms: u64) -> Result<String, String> {
+    let mut spec = decode::<JobSpec>(spec)?;
+    spec.prepare()?;
+    let scheduled_at_ms = spec
+        .scheduled_at_ms
+        .unwrap_or_else(|| now_ms + spec.delay_ms.unwrap_or_default());
+    scheduling(Some(scheduled_at_ms), None)?;
+    let id = crate::crypto::uuid4();
+    Ok(json!({
+        "id": id,
+        "effect_key": format!("{id}/1"),
+        "worker": spec.worker,
+        "version": spec.version,
+        "args": spec.args,
+        "attempt": 1,
+        "max_attempts": spec.max_attempts,
+        "queue": spec.queue,
+        "metadata": spec.metadata,
+        "tags": spec.tags,
+        "scheduled_at_ms": scheduled_at_ms
+    })
+    .to_string())
+}
+
 pub(super) fn validate_enqueue_spec(spec: &str) -> Result<(), String> {
     decode::<JobSpec>(spec)?.prepare().map(drop)
 }
@@ -527,7 +556,7 @@ pub(super) fn enqueue(
     }
     let admissions = specs
         .into_iter()
-        .map(JobSpec::prepare)
+        .map(|mut spec| spec.prepare())
         .collect::<Result<Vec<_>, _>>()?;
 
     db.simple("SAVEPOINT mesh_jobs_enqueue")?;
@@ -608,21 +637,33 @@ pub(super) fn claim_with_timing(
     if workers.is_empty() {
         return Ok(None);
     }
+    let sql = if observe {
+        "SELECT id, token, context, timeout_ms,
+                floor(extract(epoch FROM pg_catalog.clock_timestamp()) * 1000)::bigint::text
+         FROM mesh_jobs.claim($1, $2, $3::jsonb, $4::bigint)"
+    } else {
+        "SELECT id, token, context, timeout_ms FROM mesh_jobs.claim($1, $2, $3::jsonb, $4::bigint)"
+    };
+    claim_one_transaction(
+        db,
+        sql,
+        &[namespace, queue, workers_json, &lease_ms.to_string()],
+        observe,
+    )
+}
+
+pub(super) fn claim_one_transaction(
+    db: &mut impl Database,
+    sql: &str,
+    params: &[&str],
+    observe: bool,
+) -> Result<Option<Claim>, String> {
+    standalone(db)?;
     // The capacity query must see the preceding winner after the queue lock,
     // including on databases configured to default to repeatable read.
     db.simple("BEGIN ISOLATION LEVEL READ COMMITTED")?;
     let result = (|| {
-        let sql = if observe {
-            "SELECT id, token, context, timeout_ms,
-                    floor(extract(epoch FROM pg_catalog.clock_timestamp()) * 1000)::bigint::text
-             FROM mesh_jobs.claim($1, $2, $3::jsonb, $4::bigint)"
-        } else {
-            "SELECT id, token, context, timeout_ms FROM mesh_jobs.claim($1, $2, $3::jsonb, $4::bigint)"
-        };
-        let rows = db.query(
-            sql,
-            &[namespace, queue, workers_json, &lease_ms.to_string()],
-        )?;
+        let rows = db.query(sql, params)?;
         let claim = match rows.as_slice() {
             [] => None,
             [row] => {

@@ -91,6 +91,44 @@ fn handle(context :: String) -> String do
   end
 end
 
+fn chain_job(context :: String) -> String!String do
+  let args = Json.object_get(Json.parse(context)?, "args")?
+  let depth = Json.as_int(Json.object_get(args, "depth")?)?
+  if depth > 0 do
+    let pool = Pool.open(database_url(), 1, 1, 5000)?
+    let result = Jobs.enqueue(pool,
+      namespace(),
+      json { worker: "proof", queue: "chain", args: json { label: "chain", depth: depth - 1 } })
+    Pool.close(pool)
+    let _ = result?
+    ()
+  end
+  Ok("""{"action":"complete"}""")
+end
+
+fn bounded_outcome(context :: String) -> String!String do
+  let queue = Json.as_string(Json.object_get(Json.parse(context)?, "queue")?)?
+  if queue == "chain" do
+    chain_job(context)
+  else
+    Ok(handle(context))
+  end
+end
+
+fn bounded_handler(context :: String) -> String do
+  case bounded_outcome(context) do
+    Ok(outcome) -> outcome
+    Err(error) -> Json.encode(json { action: "discard", reason: error })
+  end
+end
+
+fn bounded_drain(pool :: PoolHandle, payload :: String) -> String!String do
+  let payload = Json.parse(payload)?
+  let config = Json.encode(Json.object_get(payload, "config")?)
+  let options = Json.encode(Json.object_get(payload, "options")?)
+  Jobs.drain(pool, config, bounded_handler, options)
+end
+
 fn serve(pool :: PoolHandle, config :: String) -> String!String do
   Process.install_shutdown_signals()
   let runner = Jobs.start(pool, config, handle)?
@@ -128,6 +166,7 @@ fn run() -> String!String do
     "enqueue_file" -> Jobs.enqueue(pool, namespace(), File.read(payload)?)
     "control" -> Jobs.control(pool, namespace(), payload)
     "serve" -> serve(pool, payload)
+    "drain" -> bounded_drain(pool, payload)
     _ -> Err("unknown proof command")
   end
   Pool.close(pool)

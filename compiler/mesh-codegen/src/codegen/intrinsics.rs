@@ -3435,6 +3435,63 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
                 ptr_type.into(),
             ],
         ),
+        (
+            "mesh_jobs_drain",
+            vec![
+                i64_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+            ],
+        ),
+        (
+            "mesh_test_jobs_inspect",
+            vec![i64_type.into(), ptr_type.into(), ptr_type.into()],
+        ),
+        (
+            "mesh_test_jobs_inspect_in",
+            vec![i64_type.into(), ptr_type.into(), ptr_type.into()],
+        ),
+        (
+            "mesh_test_assert_enqueued",
+            vec![
+                i64_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+                i64_type.into(),
+            ],
+        ),
+        (
+            "mesh_test_refute_enqueued",
+            vec![
+                i64_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+                i64_type.into(),
+            ],
+        ),
+        (
+            "mesh_test_assert_enqueued_in",
+            vec![i64_type.into(), ptr_type.into(), ptr_type.into()],
+        ),
+        (
+            "mesh_test_refute_enqueued_in",
+            vec![i64_type.into(), ptr_type.into(), ptr_type.into()],
+        ),
+        (
+            "mesh_test_build_job",
+            vec![ptr_type.into(), i64_type.into()],
+        ),
+        (
+            "mesh_test_perform_job",
+            vec![
+                ptr_type.into(),
+                i64_type.into(),
+                ptr_type.into(),
+                ptr_type.into(),
+            ],
+        ),
         ("mesh_jobs_stop", vec![i64_type.into(), i64_type.into()]),
         ("mesh_jobs_join", vec![i64_type.into()]),
         ("mesh_jobs_status", vec![i64_type.into()]),

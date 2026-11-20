@@ -506,6 +506,7 @@ If your database revokes default function access, grant the worker role `EXECUTE
 | `Jobs.enqueue(pool, namespace, spec)` | Commit one job or a JSON array of jobs and return the receipts as JSON |
 | `Jobs.enqueue_in(conn, namespace, spec)` | Enqueue on a borrowed `PgConn` in its active transaction |
 | `Jobs.start(pool, config, handler)` | Start a runner and return its handle |
+| `Jobs.drain(pool, config, handler, options)` | Run a bounded drain and return its JSON report |
 | `Jobs.status(runner)` | Read the local runner state as JSON |
 | `Jobs.read_events(runner, limit)` | Read and remove up to `limit` events from an enabled runner buffer |
 | `Jobs.stop(runner, grace_ms)` | Request shutdown and report the runner status when the runner stops or the grace period ends |
@@ -637,7 +638,29 @@ Pass a JSON object to `Jobs.control` with an `action` and the fields required fo
 
 `get` returns the persisted job and its error history. `list` returns a page of summaries ordered by ID. A cancellation of an executing job records intent. The current runner observes the intent and stops the attempt, or the lease expires and recovery settles the cancellation.
 
-Set `prune_max_age_ms` in the runner config to remove old terminal jobs in bounded batches. Without it, jobs remain available for inspection until an operator prunes or deletes them. For tests or one-off scripts, enqueue and inspect jobs without starting a runner. Then use `drain: true` with `Jobs.start` and `Jobs.join` to recover expired claims and process eligible, due work. A drain runner starts no cron or pruning tasks and leaves future jobs scheduled.
+Set `prune_max_age_ms` in the runner config to remove old terminal jobs in bounded batches. Without it, jobs remain available for inspection until an operator prunes or deletes them. Use `drain: true` with `Jobs.start` and `Jobs.join` to recover expired claims and process eligible, due work. This drain mode starts without cron or pruning tasks and leaves future jobs scheduled.
+
+### Run a bounded drain
+
+`Jobs.drain` takes the same named handler and runner config as `Jobs.start`. Give the config an explicit `namespace` and pass the drain options separately.
+
+```mesh
+Jobs.drain(pool, config, handle_job,
+  json { max_jobs: 25, recursive: false, on_error: "stop" })
+```
+
+The drain recovers up to `max_jobs` expired attempts in the selected queues and worker versions before claiming new work. It runs each claimed attempt in a separate process and waits for settlement before claiming another job. Queue state and database-wide concurrency limits apply.
+
+| Option | Meaning |
+|--------|---------|
+| `max_jobs` | Required. Limits the call to 1–1000 claims, including retries. Recovery counts separately. |
+| `cutoff_ms` | Optional inclusive UTC epoch timestamp in milliseconds. The drain may claim jobs scheduled through this time, including future jobs. When omitted, each claim uses PostgreSQL's current time. |
+| `recursive` | Required. With `false`, the drain takes up to `max_jobs` eligible IDs in priority, schedule, and insertion order at the start and attempts each at most once. With `true`, it can also claim newly eligible jobs until it reaches the budget. |
+| `on_error` | Required. `"stop"` stops after a committed retryable or discarded result. `"continue"` allows the drain to claim more jobs. Both return settlement counts. A claim, launch, or unconfirmed settlement error returns `Err`. |
+
+The report includes `claimed`, `finished`, `outcomes`, and `recovered`. The `finished` count sums the committed outcomes of attempts claimed by this call. `budget_hit` reports whether the call used all its claims. `remaining` reports eligible or executing work in the selected active queues and cutoff at the time of the final PostgreSQL query. It can be true when another runner holds capacity, a transaction holds a row lock, or the call drained only its initial IDs. The `stop_reason` is `budget`, `job_error`, `idle`, or `shutdown`. An idle drain returns after a pass with no claim and leaves locked or otherwise unavailable work for another call.
+
+Use a dedicated namespace for each test. See [Testing durable jobs](/docs/testing/#testing-durable-jobs) for enqueue assertions and direct handler tests.
 
 ### Recurring jobs
 

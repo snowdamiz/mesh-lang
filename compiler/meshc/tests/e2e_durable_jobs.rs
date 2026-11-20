@@ -10,6 +10,9 @@
 #[path = "support/test_artifacts.rs"]
 mod artifacts;
 
+#[path = "support/durable_jobs_testing.rs"]
+mod durable_jobs_testing;
+
 use mesh_rt::db::pg::{
     native_pg_close, native_pg_connect, native_pg_execute, native_pg_query, NativePgConn,
 };

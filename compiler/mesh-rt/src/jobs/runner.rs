@@ -11,6 +11,7 @@ use crate::db::jobs_connection::{JobSession, PgJobDb};
 use crate::db::pg::JobsAckError;
 
 use super::cron;
+use super::drain_store;
 use super::events::{
     self, Acknowledgement, Events, FailureKind, Identity, Kind, LeaseLoss, Operation,
 };
@@ -448,15 +449,81 @@ pub(super) fn start(
         pool,
         config_json,
         check_executable,
-        Box::new(move |context, deadline, lease_deadline| {
-            Ok(Box::new(WorkerProcess::start(
-                &handler,
-                context,
-                deadline,
-                lease_deadline,
-            )?))
-        }),
+        worker_launcher(handler),
     )
+}
+
+fn worker_launcher(handler: String) -> Box<StartWorker> {
+    Box::new(move |context, deadline, lease_deadline| {
+        Ok(Box::new(WorkerProcess::start(
+            &handler,
+            context,
+            deadline,
+            lease_deadline,
+        )?))
+    })
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DrainOptions {
+    max_jobs: u64,
+    cutoff_ms: Option<u64>,
+    recursive: bool,
+    on_error: ErrorPolicy,
+}
+
+#[derive(Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum ErrorPolicy {
+    Continue,
+    Stop,
+}
+
+type DrainResult = Result<String, String>;
+
+pub(super) fn drain(
+    pool: u64,
+    config_json: &str,
+    fn_ptr: *const u8,
+    env_ptr: *const u8,
+    options_json: &str,
+) -> DrainResult {
+    if pool == 0 {
+        return Err("Jobs.drain requires a PostgreSQL pool".into());
+    }
+    let mut config = Config::parse(config_json)?;
+    config.claim_batch = false;
+    let wire: serde_json::Value =
+        serde_json::from_str(config_json).map_err(|error| error.to_string())?;
+    if wire.get("namespace").is_none() || config.drain {
+        return Err(
+            "Jobs.drain requires an explicit namespace and uses separate drain options".into(),
+        );
+    }
+    let options: DrainOptions = super::store::decode(options_json)?;
+    if !(1..=1000).contains(&options.max_jobs) {
+        return Err("Jobs.drain max_jobs must be between 1 and 1000".into());
+    }
+    if options
+        .cutoff_ms
+        .is_some_and(|cutoff| cutoff > super::store::MAX_TIMESTAMP_MS)
+    {
+        return Err("Jobs.drain cutoff_ms must be a UTC timestamp through year 9999".into());
+    }
+    let handler = handler_name(fn_ptr, env_ptr)?;
+    let (publish, result) = crossbeam_channel::bounded(1);
+    let runner = start_configured(
+        pool,
+        config,
+        check_executable,
+        worker_launcher(handler),
+        Some((options, publish)),
+    )?;
+    runner.wait_until(Phase::is_stopped);
+    result
+        .try_recv()
+        .map_err(|_| "Jobs.drain runner exited without a report")?
 }
 
 fn start_runner(
@@ -465,7 +532,23 @@ fn start_runner(
     check_worker: fn() -> Result<(), String>,
     start_worker: Box<StartWorker>,
 ) -> Result<u64, String> {
-    let config = Config::parse(config_json)?;
+    start_configured(
+        pool,
+        Config::parse(config_json)?,
+        check_worker,
+        start_worker,
+        None,
+    )
+    .map(|runner| runner.id)
+}
+
+fn start_configured(
+    pool: u64,
+    config: Config,
+    check_worker: fn() -> Result<(), String>,
+    start_worker: Box<StartWorker>,
+    bounded: Option<(DrainOptions, crossbeam_channel::Sender<DrainResult>)>,
+) -> Result<Arc<Runner>, String> {
     let workers = serde_json::to_string(&config.workers).map_err(|error| error.to_string())?;
     let scheduler = actor::GLOBAL_SCHEDULER
         .get()
@@ -564,7 +647,15 @@ fn start_runner(
         .name(format!("mesh-jobs-{id}"))
         .spawn(move || {
             dispatcher.publish(Kind::RunnerStarted, None);
-            if dispatcher.config.drain {
+            if let Some((options, publish)) = bounded {
+                let _ = publish.send(dispatch_bounded(
+                    &dispatcher,
+                    pool,
+                    &workers,
+                    &*start_worker,
+                    options,
+                ));
+            } else if dispatcher.config.drain {
                 dispatch(&dispatcher, pool, &workers, &*start_worker, sessions);
             } else {
                 let maintenance_runner = Arc::clone(&dispatcher);
@@ -597,8 +688,8 @@ fn start_runner(
         runner.state.lock().phase = Phase::Stopped;
         return Err(format!("could not start job runner: {error}"));
     }
-    registry.runners.insert(id, runner);
-    Ok(id)
+    registry.runners.insert(id, Arc::clone(&runner));
+    Ok(runner)
 }
 
 fn lookup(id: u64) -> Result<Arc<Runner>, String> {
@@ -708,10 +799,11 @@ impl Running {
     ) -> Option<Reply> {
         let poll_error = match self.process.poll(now) {
             Ok(WorkerPoll::Exited(result)) => {
-                return Some(self.stop.take().unwrap_or_else(|| match result {
-                    Ok(output) => Reply::Returned(output),
-                    Err(error) => Reply::Failed(FailureKind::WorkerFailure, error),
-                }));
+                return Some(
+                    self.stop
+                        .take()
+                        .unwrap_or_else(|| Reply::from_worker(result)),
+                );
             }
             Ok(WorkerPoll::TimedOut) => {
                 return Some(self.stop.take().unwrap_or_else(|| Reply::timed_out()));
@@ -758,7 +850,7 @@ impl Running {
     }
 }
 
-enum Reply {
+pub(super) enum Reply {
     Returned(String),
     Failed(FailureKind, String),
     Cancelled,
@@ -766,6 +858,13 @@ enum Reply {
 }
 
 impl Reply {
+    pub(super) fn from_worker(result: Result<String, String>) -> Self {
+        match result {
+            Ok(output) => Self::Returned(output),
+            Err(error) => Self::Failed(FailureKind::WorkerFailure, error),
+        }
+    }
+
     fn lease_lost() -> Self {
         Self::Failed(FailureKind::LeaseLost, LEASE_LOST.into())
     }
@@ -774,7 +873,7 @@ impl Reply {
         Self::Failed(FailureKind::Timeout, TIMEOUT.into())
     }
 
-    fn outcome(&self) -> (Outcome, Option<FailureKind>) {
+    pub(super) fn outcome(&self) -> (Outcome, Option<FailureKind>) {
         match self {
             Self::Returned(json) => match serde_json::from_str(json) {
                 Ok(Outcome::RetryAfter { delay_ms, .. } | Outcome::Snooze { delay_ms })
@@ -1396,6 +1495,118 @@ fn dispatch_queues(
     }
 }
 
+fn dispatch_bounded(
+    runner: &Runner,
+    pool: u64,
+    workers: &str,
+    start_worker: &StartWorker,
+    options: DrainOptions,
+) -> DrainResult {
+    let config = &runner.config;
+    let queues_json = serde_json::json!(config.queues).to_string();
+    let selection = drain_store::Selection {
+        namespace: &config.namespace,
+        queues: &queues_json,
+        workers,
+        cutoff_ms: options
+            .cutoff_ms
+            .map(|cutoff| cutoff.to_string())
+            .unwrap_or_default(),
+    };
+    let queues: Vec<_> = config.queues.keys().collect();
+    let mut initial_ids = with_pool(pool, |db| {
+        runner.state.lock().counts.recovered = selection.recover(db, options.max_jobs)?;
+        if options.recursive {
+            Ok(None)
+        } else {
+            selection.initial_ids(db, options.max_jobs).map(Some)
+        }
+    })?;
+
+    let mut cursor = 0;
+    let mut io = LifecycleIo {
+        pool,
+        session: None,
+    };
+    let reason = loop {
+        {
+            let state = runner.state.lock();
+            if !matches!(state.phase, Phase::Running) {
+                if let Some(error) = &state.last_error {
+                    return Err(error.clone());
+                }
+                break "shutdown";
+            }
+            let counts = &state.counts;
+            if counts.outcomes.total() != counts.claimed || counts.outcomes.released_unstarted > 0 {
+                return Err(state.last_error.clone().unwrap_or_else(|| {
+                    "Jobs.drain attempt did not commit a worker settlement".into()
+                }));
+            }
+            if options.on_error == ErrorPolicy::Stop
+                && (counts.outcomes.retryable > 0 || counts.outcomes.discarded > 0)
+            {
+                break "job_error";
+            }
+            if counts.claimed >= options.max_jobs {
+                break "budget";
+            }
+        }
+        if initial_ids.as_ref().is_some_and(Vec::is_empty) {
+            break "idle";
+        }
+
+        let mut claimed = None;
+        for offset in 0..queues.len() {
+            let index = (cursor + offset) % queues.len();
+            claimed = claim_attempt(runner, pool, index, start_worker, |db| {
+                selection.claim(
+                    db,
+                    queues[index],
+                    config.lease_ms,
+                    initial_ids.as_deref(),
+                    runner.events.is_some(),
+                )
+            })?;
+            if claimed.is_some() {
+                cursor = (index + 1) % queues.len();
+                break;
+            }
+            if !matches!(runner.state.lock().phase, Phase::Running) {
+                break;
+            }
+        }
+        let Some(mut attempt) = claimed else {
+            if !matches!(runner.state.lock().phase, Phase::Running) {
+                continue;
+            }
+            break "idle";
+        };
+        if let Some(ids) = &mut initial_ids {
+            ids.retain(|id| *id != attempt.id);
+        }
+        while attempt.poll(runner, &mut io) {
+            std::thread::park_timeout(TICK);
+        }
+        runner.state.lock().jobs.remove(&attempt.token);
+    };
+
+    let remaining = with_pool(pool, |db| selection.remaining(db))?;
+    let state = runner.state.lock();
+    let counts = &state.counts;
+    Ok(serde_json::json!({
+        "namespace": config.namespace,
+        "stop_reason": reason,
+        "budget_hit": counts.claimed >= options.max_jobs,
+        "remaining": remaining,
+        "claimed": counts.claimed,
+        "finished": counts.outcomes.total(),
+        "outcomes": counts.outcomes,
+        "recovered": counts.recovered,
+    })
+    .to_string())
+}
+
 fn claim_one(
     runner: &Runner,
     pool: u64,
@@ -1404,12 +1615,8 @@ fn claim_one(
     queue_name: &str,
     start_worker: &StartWorker,
 ) -> Result<Option<Attempt>, String> {
-    if !reserve_claims(runner, 1) {
-        return Ok(None);
-    }
     let config = &runner.config;
-    let acquired = with_pool(pool, |db| {
-        let lease = Lease::begin(Duration::from_millis(config.lease_ms))?;
+    claim_attempt(runner, pool, queue, start_worker, |db| {
         claim_with_timing(
             db,
             &config.namespace,
@@ -1418,7 +1625,22 @@ fn claim_one(
             config.lease_ms,
             runner.events.is_some(),
         )
-        .map(|job| (lease, job))
+    })
+}
+
+fn claim_attempt(
+    runner: &Runner,
+    pool: u64,
+    queue: usize,
+    start_worker: &StartWorker,
+    acquire: impl FnOnce(&mut PgJobDb<'_>) -> Result<Option<Claim>, String>,
+) -> Result<Option<Attempt>, String> {
+    if !reserve_claims(runner, 1) {
+        return Ok(None);
+    }
+    let acquired = with_pool(pool, |db| {
+        let lease = Lease::begin(Duration::from_millis(runner.config.lease_ms))?;
+        acquire(db).map(|job| (lease, job))
     });
     let mut state = runner.state.lock();
     state.pending_claims = 0;

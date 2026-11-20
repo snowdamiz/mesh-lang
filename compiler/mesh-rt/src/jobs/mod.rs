@@ -1,7 +1,9 @@
 mod cron;
+mod drain_store;
 mod events;
 mod runner;
 mod store;
+pub mod testing;
 mod worker;
 
 use crate::db::jobs_connection::{self, PgJobDb};
@@ -126,6 +128,18 @@ pub extern "C" fn mesh_jobs_start(
         Ok(id) => ok_int(id as i64),
         Err(error) => err_result(&error),
     }
+}
+
+#[no_mangle]
+pub extern "C-unwind" fn mesh_jobs_drain(
+    pool: u64,
+    config: *const MeshString,
+    fn_ptr: *const u8,
+    env_ptr: *const u8,
+    options: *const MeshString,
+) -> *mut MeshResult {
+    let (config, options) = unsafe { (text_of(config), text_of(options)) };
+    text_result(runner::drain(pool, config, fn_ptr, env_ptr, options))
 }
 
 #[no_mangle]

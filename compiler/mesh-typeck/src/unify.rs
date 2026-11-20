@@ -159,8 +159,8 @@ pub struct InferCtx {
     pub clustered_route_wrappers: FxHashMap<TextRange, ClusteredRouteWrapperMetadata>,
     /// Wrapper call ranges that were consumed in the route-handler slot.
     pub consumed_clustered_route_wrappers: FxHashSet<TextRange>,
-    /// References to Jobs.start, marked when checked as direct calls.
-    pub jobs_start_references: FxHashMap<TextRange, bool>,
+    /// References to Jobs.start and Jobs.drain, marked when checked as direct calls.
+    pub jobs_runner_references: FxHashMap<TextRange, bool>,
     /// Handlers defined in this module, checked once their types are final.
     pub jobs_local_handlers: Vec<(String, TextRange)>,
     /// Function arguments passed where a callback returning `()` is expected

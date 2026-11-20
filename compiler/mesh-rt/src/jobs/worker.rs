@@ -361,8 +361,18 @@ fn run_worker() -> Result<(), String> {
         .map_err(|error| error.to_string())?;
     remaining(deadline, lease);
 
-    let outcome = std::panic::catch_unwind(|| {
-        let input = mesh_str(&context);
+    let reply = invoke(&context, |input| unsafe { handler(input) });
+    remaining(deadline, u64::MAX);
+    write_frame(&mut result, &reply, MAX_REPLY_FRAME).map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+pub(super) fn invoke(
+    context: &str,
+    handler: impl FnOnce(*const MeshString) -> *const MeshString,
+) -> Reply {
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let input = mesh_str(context);
         let output = unsafe { handler(input).as_ref() }.ok_or("job handler returned no outcome")?;
         let bytes = unsafe { output.as_bytes() };
         if bytes.len() > MAX_OUTCOME {
@@ -371,18 +381,15 @@ fn run_worker() -> Result<(), String> {
         std::str::from_utf8(bytes)
             .map(str::to_owned)
             .map_err(|_| "job handler returned invalid UTF-8")
-    });
-    let reply: Reply = match outcome {
+    }));
+    match outcome {
         Ok(value) => value.map_err(str::to_owned),
         Err(panic) => Err(crate::panic::mesh_panic_message(panic.as_ref())
             .unwrap_or("job handler panicked")
             .chars()
             .take(1024)
             .collect()),
-    };
-    remaining(deadline, u64::MAX);
-    write_frame(&mut result, &reply, MAX_REPLY_FRAME).map_err(|error| error.to_string())?;
-    Ok(())
+    }
 }
 
 fn enforce_deadlines(deadline: u64, mut lease: u64, updates: Receiver<u64>) {

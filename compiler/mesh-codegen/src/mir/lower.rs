@@ -4838,6 +4838,45 @@ impl<'a> Lowerer<'a> {
                 "mesh_jobs_start",
                 vec![MirType::Int, MirType::Ptr, MirType::Ptr, MirType::Ptr],
             ),
+            (
+                "mesh_jobs_drain",
+                vec![
+                    MirType::Int,
+                    MirType::Ptr,
+                    MirType::Ptr,
+                    MirType::Ptr,
+                    MirType::Ptr,
+                ],
+            ),
+            (
+                "mesh_test_jobs_inspect",
+                vec![MirType::Int, MirType::Ptr, MirType::Ptr],
+            ),
+            (
+                "mesh_test_jobs_inspect_in",
+                vec![MirType::Int, MirType::Ptr, MirType::Ptr],
+            ),
+            (
+                "mesh_test_assert_enqueued",
+                vec![MirType::Int, MirType::Ptr, MirType::Ptr, MirType::Int],
+            ),
+            (
+                "mesh_test_refute_enqueued",
+                vec![MirType::Int, MirType::Ptr, MirType::Ptr, MirType::Int],
+            ),
+            (
+                "mesh_test_assert_enqueued_in",
+                vec![MirType::Int, MirType::Ptr, MirType::Ptr],
+            ),
+            (
+                "mesh_test_refute_enqueued_in",
+                vec![MirType::Int, MirType::Ptr, MirType::Ptr],
+            ),
+            ("mesh_test_build_job", vec![MirType::Ptr, MirType::Int]),
+            (
+                "mesh_test_perform_job",
+                vec![MirType::Ptr, MirType::Int, MirType::Ptr, MirType::Ptr],
+            ),
             ("mesh_jobs_stop", vec![MirType::Int, MirType::Int]),
             ("mesh_jobs_join", vec![MirType::Int]),
             ("mesh_jobs_status", vec![MirType::Int]),
@@ -14730,6 +14769,14 @@ fn map_builtin_name(name: &str) -> String {
         "test_install_in_memory_secure_store" => {
             "mesh_test_install_in_memory_secure_store".to_string()
         }
+        "test_jobs_inspect"
+        | "test_jobs_inspect_in"
+        | "test_assert_enqueued"
+        | "test_refute_enqueued"
+        | "test_assert_enqueued_in"
+        | "test_refute_enqueued_in"
+        | "test_build_job"
+        | "test_perform_job" => format!("mesh_{name}"),
         "test_set_push_token" => "mesh_test_set_push_token".to_string(),
         "test_pass_count" => "mesh_test_pass_count".to_string(),
         "test_fail_count" => "mesh_test_fail_count".to_string(),
@@ -15051,6 +15098,7 @@ fn map_builtin_name(name: &str) -> String {
         "jobs_enqueue_in" => "mesh_jobs_enqueue_in".to_string(),
         "jobs_control" => "mesh_jobs_control".to_string(),
         "jobs_start" => "mesh_jobs_start".to_string(),
+        "jobs_drain" => "mesh_jobs_drain".to_string(),
         "jobs_stop" => "mesh_jobs_stop".to_string(),
         "jobs_join" => "mesh_jobs_join".to_string(),
         "jobs_status" => "mesh_jobs_status".to_string(),
