@@ -93,6 +93,13 @@ cadence. The receipt records claim timing and notification-triggered scans.
 Use the compiled compatibility proof to exercise listener interruption and
 the reconnect catch-up scan.
 
+At `53fb9189`, the five-pair sparse comparison with a 1-second listener
+fallback and main's 250 ms polling cadence recorded a worst trial
+commit-to-claim p99 of 30.9 ms. Median idle queries per minute were 709
+with listening and 1,781 on main. With both poll intervals set to one
+second, the listener's worst trial commit-to-claim p99 was 4.2 ms. The
+one-second polling control exceeded the configured 750 ms pickup budget.
+
 For telemetry comparisons, pair the candidate with pinned main and measure
 the same profile with `--mesh-events disabled`, `--mesh-events logged`,
 and `--mesh-events backpressured`. The logged variant writes JSON events
@@ -101,6 +108,14 @@ buffer unread and records its drop count in the trial receipt.
 Use `--faults --mesh-events logged` on a current runtime to verify that
 an acknowledgement lost after commit produces uncertainty without a
 commit confirmation from the runner.
+
+The five-pair short-job tests compared the combined `53fb9189` runtime
+with main `7c162056`. The disabled run missed both 5% limits, at 273.9
+versus 338.3 jobs per second and pickup p99 of 440.1 versus 354.2 ms.
+The logged and backpressured runs both met their throughput limit, and
+the unread buffer dropped 130 events in every measured trial. Host load
+varied across the runs. These comparisons include the combined changes
+to dispatch and maintenance.
 
 Each run prints its evidence directory under `target/jobs-parity/<sha>/`.
 `manifest.json` records the compiled SHA, fixture hashes, tool versions,
@@ -256,6 +271,8 @@ jobs per trial. Mesh completed 235.9 jobs per second against Oban's 405.1,
 with pickup p99 of 493.0 ms against 311.0 ms. The startup one-minute load
 was 25.1 on 15 logical CPUs. This profile missed both proposed Core parity
 thresholds. Raw receipts are in run `j1-load-pqsep8or`.
+The same run's sparse profile reconciled 24 jobs per trial and met its
+measured limits, with pickup p99 of 258.8 ms on Mesh and 252.1 ms on Oban.
 
 ## Compare bounded drain
 
