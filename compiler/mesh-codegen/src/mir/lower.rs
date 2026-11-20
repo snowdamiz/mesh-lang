@@ -5,6 +5,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use mesh_common::span::Span;
 use mesh_parser::ast::expr::{
     BinaryExpr, CallExpr, CaseExpr, ClosureExpr, Expr, FieldAccess, ForInExpr, IfExpr, JsonExpr,
     LinkExpr, ListLiteral, Literal, MapLiteral, MatchArm, NameRef, PipeExpr, ReceiveExpr,
@@ -31,8 +32,8 @@ use super::types::{mangle_type_name, mir_type_to_impl_name, mir_type_to_ty, reso
 use super::{
     sum_type_base, BinOp, MirChildSpec, MirExpr, MirFunction, MirLiteral, MirMatchArm, MirModule,
     MirNativeFunction, MirPattern, MirResourceDestructor, MirResourceField, MirResourceMoveSource,
-    MirResourceVariant, MirStructDef, MirSumTypeDef, MirType, MirVariantDef, MsgShape,
-    ServiceDispatch, SpawnPlacement, UnaryOp,
+    MirResourceVariant, MirSourceId, MirSourceSpan, MirStructDef, MirSumTypeDef, MirType,
+    MirVariantDef, MsgShape, ServiceDispatch, SpawnPlacement, UnaryOp,
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -205,6 +206,7 @@ fn is_scalar_word(ty: &MirType) -> bool {
 fn boxed_scalar_option(call: MirExpr) -> MirExpr {
     let ty = call.ty().clone();
     MirExpr::Call {
+        source_span: None,
         func: Box::new(MirExpr::Var(
             "mesh_option_box_scalar".to_string(),
             MirType::FnPtr(vec![MirType::Ptr], Box::new(ty.clone())),
@@ -266,6 +268,7 @@ struct Lowerer<'a> {
     /// (interface, method): that module's syntax tree, its types, and the
     /// method's range there.
     foreign_defaults: HashMap<(String, String), ForeignDefault<'a>>,
+    source_file: Option<MirSourceId>,
     /// Functions being built.
     functions: Vec<MirFunction>,
     /// Bodyless native archive functions.
@@ -387,17 +390,6 @@ struct Lowerer<'a> {
     supervised_spawn: Option<TextRange>,
 }
 
-/// Walk through Let/Block wrappers to find the effective return type of a MIR expression.
-/// Let { ty, body, .. } has `ty` as the binding's value type, but the effective type is body's type.
-/// Block(exprs, ty) already stores the last expression's type as `ty`.
-fn effective_return_type(expr: &MirExpr) -> MirType {
-    match expr {
-        MirExpr::Let { body, .. } => effective_return_type(body),
-        MirExpr::Block(_, ty) => ty.clone(),
-        other => other.ty().clone(),
-    }
-}
-
 fn runtime_value_type(ty: MirType) -> MirType {
     if matches!(ty, MirType::Tuple(_)) {
         MirType::Ptr
@@ -431,6 +423,7 @@ fn clause_scrutinee(params: &[(String, MirType)]) -> MirExpr {
         0 => MirExpr::Unit,
         1 => vars.pop().unwrap(),
         _ => MirExpr::Call {
+            source_span: None,
             func: Box::new(MirExpr::Var(
                 "__mesh_make_tuple".to_string(),
                 MirType::FnPtr(
@@ -447,7 +440,7 @@ fn clause_scrutinee(params: &[(String, MirType)]) -> MirExpr {
 /// A service's new state, `body`, and its type, as the service loop keeps
 /// it: a Unit state is the Int 0.
 fn service_state(body: MirExpr) -> (MirExpr, MirType) {
-    match effective_return_type(&body) {
+    match body.result_ty().clone() {
         MirType::Unit => (
             MirExpr::Block(vec![body, MirExpr::IntLit(0, MirType::Int)], MirType::Int),
             MirType::Int,
@@ -685,6 +678,7 @@ impl<'a> Lowerer<'a> {
             default_method_bodies: &typeck.default_method_bodies,
             parse,
             foreign_defaults: HashMap::new(),
+            source_file: None,
             functions: Vec::new(),
             native_functions: Vec::new(),
             structs: Vec::new(),
@@ -1019,9 +1013,9 @@ impl<'a> Lowerer<'a> {
         loop_depth: usize,
     ) -> MirExpr {
         match expression {
-            MirExpr::Return(value) => {
+            MirExpr::Return(value, source_span) => {
                 let value = self.cleanup_before_exits(*value, cleanup, loop_depth);
-                let ty = effective_return_type(&value);
+                let ty = value.result_ty().clone();
                 let name = self.next_resource_temp();
                 MirExpr::Let {
                     name: name.clone(),
@@ -1030,7 +1024,7 @@ impl<'a> Lowerer<'a> {
                     body: Box::new(MirExpr::Block(
                         vec![
                             cleanup.clone(),
-                            MirExpr::Return(Box::new(MirExpr::Var(name, ty))),
+                            MirExpr::Return(Box::new(MirExpr::Var(name, ty)), source_span),
                         ],
                         MirType::Never,
                     )),
@@ -1115,7 +1109,7 @@ impl<'a> Lowerer<'a> {
 
     fn can_fall_through(expression: &MirExpr) -> bool {
         match expression {
-            MirExpr::Return(_)
+            MirExpr::Return(_, _)
             | MirExpr::Panic { .. }
             | MirExpr::Break
             | MirExpr::Continue
@@ -1174,7 +1168,7 @@ impl<'a> Lowerer<'a> {
             return body;
         }
 
-        let result_ty = effective_return_type(&body);
+        let result_ty = body.result_ty().clone();
         let result_name = self.next_resource_temp();
         MirExpr::Let {
             name: result_name.clone(),
@@ -1200,20 +1194,7 @@ impl<'a> Lowerer<'a> {
     /// Every caller names a function the program defines, so a name that
     /// looks like the runtime's (`mesh_`) or an impl's is qualified too.
     fn qualify_name(&self, name: &str) -> String {
-        // Single-file mode: no prefix
-        if self.module_name.is_empty() {
-            return name.to_string();
-        }
-        // main is handled separately (renamed to mesh_main)
-        if name == "main" {
-            return name.to_string();
-        }
-        // Pub functions keep unqualified names for cross-module references
-        if self.pub_functions.contains(name) {
-            return name.to_string();
-        }
-        // Apply module prefix: ModuleName__function_name
-        format!("{}__{}", self.module_name.replace('.', "_"), name)
+        qualify_function_symbol(&self.module_name, name, self.pub_functions.contains(name))
     }
 
     // ── Type resolution helper ───────────────────────────────────────
@@ -1916,6 +1897,7 @@ impl<'a> Lowerer<'a> {
         if !self.known_functions.contains_key(&shim_name) {
             let request = "__request".to_string();
             let body = MirExpr::Call {
+                source_span: None,
                 func: Box::new(lowered_handler),
                 args: vec![MirExpr::Var(request.clone(), MirType::Ptr)],
                 ty: MirType::Ptr,
@@ -5029,6 +5011,8 @@ impl<'a> Lowerer<'a> {
                             // and types, for this module's type.
                             let parse = std::mem::replace(&mut self.parse, foreign.parse);
                             let types = std::mem::replace(&mut self.types, foreign.types);
+                            let source_file =
+                                std::mem::replace(&mut self.source_file, foreign.source_file);
                             self.lower_default_method(
                                 foreign.range,
                                 &trait_name,
@@ -5038,6 +5022,7 @@ impl<'a> Lowerer<'a> {
                             );
                             self.parse = parse;
                             self.types = types;
+                            self.source_file = source_file;
                         }
                     }
                 }
@@ -5076,12 +5061,14 @@ impl<'a> Lowerer<'a> {
             .cloned()
             .expect("the type checker types every function");
 
-        let base_name = if original_name == "main" {
+        if original_name == "main" {
             self.entry_function = Some("mesh_main".to_string());
-            "mesh_main".to_string()
-        } else {
-            self.qualify_name(&original_name)
-        };
+        }
+        let base_name = verification_function_symbol(
+            &self.module_name,
+            &original_name,
+            self.pub_functions.contains(&original_name),
+        );
 
         if let Some(native) = fn_def.native_decl() {
             let (param_tys, return_ty) = fun_parts(&fn_ty_raw);
@@ -5499,6 +5486,7 @@ impl<'a> Lowerer<'a> {
         }
 
         MirExpr::Match {
+            source_span: None,
             scrutinee: Box::new(clause_scrutinee(params)),
             arms,
             ty: return_type.clone(),
@@ -5874,7 +5862,7 @@ impl<'a> Lowerer<'a> {
             (true, false) => (format!("{display_name} {{ "), " }"),
             (false, _) => (format!("{display_name}("), ")"),
         };
-        let text = |s: &str| MirExpr::StringLit(s.to_string(), MirType::String);
+        let text = |s: &str| MirExpr::StringLit(s.to_string(), MirType::String, None);
         let mut parts = vec![text(&open)];
         for (i, (field, ty)) in fields.iter().enumerate() {
             if i > 0 {
@@ -5884,6 +5872,7 @@ impl<'a> Lowerer<'a> {
                 parts.push(text(&format!("{field}: ")));
             }
             let value = MirExpr::FieldAccess {
+                source_span: None,
                 object: Box::new(MirExpr::Var("self".to_string(), struct_ty.clone())),
                 field: field.clone(),
                 ty: self.binding_type(ty),
@@ -5936,6 +5925,7 @@ impl<'a> Lowerer<'a> {
             // Nothing to compare (no fields, no variants): never less.
             MirExpr::IntLit(0, _) => MirExpr::BoolLit(false, MirType::Bool),
             cmp => MirExpr::BinOp {
+                source_span: None,
                 op: BinOp::Lt,
                 lhs: Box::new(cmp),
                 rhs: Box::new(MirExpr::IntLit(0, MirType::Int)),
@@ -5948,15 +5938,18 @@ impl<'a> Lowerer<'a> {
             Self::call_named(&lt, operands.clone(), vec![var(a), var(b)], MirType::Bool)
         };
         let ordering = |variant: &str| MirExpr::ConstructVariant {
+            source_span: None,
             type_name: "Ordering".to_string(),
             variant: variant.to_string(),
             fields: vec![],
             ty: ordering_ty.clone(),
         };
         let body = MirExpr::If {
+            source_span: None,
             cond: Box::new(is_lt("self", "other")),
             then_body: Box::new(ordering("Less")),
             else_body: Box::new(MirExpr::If {
+                source_span: None,
                 cond: Box::new(is_lt("other", "self")),
                 then_body: Box::new(ordering("Greater")),
                 else_body: Box::new(ordering("Equal")),
@@ -5976,6 +5969,7 @@ impl<'a> Lowerer<'a> {
                 .iter()
                 .map(|(field, ty)| {
                     let access = |object: &str| MirExpr::FieldAccess {
+                        source_span: None,
                         object: Box::new(MirExpr::Var(object.to_string(), struct_ty.clone())),
                         field: field.clone(),
                         ty: lowerer.binding_type(ty),
@@ -6015,6 +6009,7 @@ impl<'a> Lowerer<'a> {
                 bindings: vec![],
             };
             let tag = |scrutinee: &str| MirExpr::Match {
+                source_span: None,
                 scrutinee: Box::new(var(scrutinee, &sum_ty)),
                 arms: variants
                     .iter()
@@ -6044,6 +6039,7 @@ impl<'a> Lowerer<'a> {
                     .map(|(ty, ((a, t), (b, _)))| lowerer.cmp_expr(var(a, t), var(b, t), ty))
                     .collect();
                 let inner = MirExpr::Match {
+                    source_span: None,
                     scrutinee: Box::new(var("other", &sum_ty)),
                     arms: vec![
                         MirMatchArm {
@@ -6074,6 +6070,7 @@ impl<'a> Lowerer<'a> {
                     body: int(0),
                 });
                 MirExpr::Match {
+                    source_span: None,
                     scrutinee: Box::new(var("self", &sum_ty)),
                     arms,
                     ty: MirType::Int,
@@ -6113,32 +6110,39 @@ impl<'a> Lowerer<'a> {
         // else if self == other then Equal
         // else Greater
         let body = MirExpr::If {
+            source_span: None,
             cond: Box::new(MirExpr::BinOp {
+                source_span: None,
                 op: BinOp::Lt,
                 lhs: Box::new(self_var.clone()),
                 rhs: Box::new(other_var.clone()),
                 ty: MirType::Bool,
             }),
             then_body: Box::new(MirExpr::ConstructVariant {
+                source_span: None,
                 type_name: "Ordering".to_string(),
                 variant: "Less".to_string(),
                 fields: vec![],
                 ty: ordering_ty.clone(),
             }),
             else_body: Box::new(MirExpr::If {
+                source_span: None,
                 cond: Box::new(MirExpr::BinOp {
+                    source_span: None,
                     op: BinOp::Eq,
                     lhs: Box::new(self_var),
                     rhs: Box::new(other_var),
                     ty: MirType::Bool,
                 }),
                 then_body: Box::new(MirExpr::ConstructVariant {
+                    source_span: None,
                     type_name: "Ordering".to_string(),
                     variant: "Equal".to_string(),
                     fields: vec![],
                     ty: ordering_ty.clone(),
                 }),
                 else_body: Box::new(MirExpr::ConstructVariant {
+                    source_span: None,
                     type_name: "Ordering".to_string(),
                     variant: "Greater".to_string(),
                     fields: vec![],
@@ -6177,6 +6181,7 @@ impl<'a> Lowerer<'a> {
     fn lower_json_expr(&mut self, json_expr: &JsonExpr) -> MirExpr {
         let new_fn_ty = MirType::FnPtr(vec![], Box::new(MirType::Ptr));
         let mut result = MirExpr::Call {
+            source_span: None,
             func: Box::new(MirExpr::Var("mesh_json_object_new".to_string(), new_fn_ty)),
             args: vec![],
             ty: MirType::Ptr,
@@ -6189,7 +6194,7 @@ impl<'a> Lowerer<'a> {
 
         for field in json_expr.fields() {
             let key_str = field.key_text().unwrap_or_default();
-            let key_mir = MirExpr::StringLit(key_str, MirType::String);
+            let key_mir = MirExpr::StringLit(key_str, MirType::String, None);
 
             let val_expr = field
                 .value()
@@ -6214,6 +6219,7 @@ impl<'a> Lowerer<'a> {
             };
 
             result = MirExpr::Call {
+                source_span: None,
                 func: Box::new(MirExpr::Var(
                     "mesh_json_object_put".to_string(),
                     put_fn_ty.clone(),
@@ -6237,6 +6243,7 @@ impl<'a> Lowerer<'a> {
             MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
         );
         let struct_lit = MirExpr::StructLit {
+            source_span: None,
             name: name.to_string(),
             fields: fields
                 .iter()
@@ -6260,7 +6267,7 @@ impl<'a> Lowerer<'a> {
                 "mesh_row_from_row_get",
                 vec![
                     row.clone(),
-                    MirExpr::StringLit(field.clone(), MirType::String),
+                    MirExpr::StringLit(field.clone(), MirType::String, None),
                 ],
             );
             let decode = MirExpr::Let {
@@ -6279,6 +6286,7 @@ impl<'a> Lowerer<'a> {
                     ty: MirType::Ptr,
                     value: Box::new(column),
                     body: Box::new(MirExpr::If {
+                        source_span: None,
                         cond: Box::new(Self::call_named(
                             "mesh_result_is_ok",
                             vec![MirType::Ptr],
@@ -6325,7 +6333,9 @@ impl<'a> Lowerer<'a> {
                     MirType::Int,
                 );
                 return MirExpr::If {
+                    source_span: None,
                     cond: Box::new(MirExpr::BinOp {
+                        source_span: None,
                         op: BinOp::Eq,
                         lhs: Box::new(length),
                         rhs: Box::new(MirExpr::IntLit(0, MirType::Int)),
@@ -6350,6 +6360,7 @@ impl<'a> Lowerer<'a> {
             None => ("None", vec![]),
         };
         MirExpr::ConstructVariant {
+            source_span: None,
             type_name,
             variant: variant.to_string(),
             fields,
@@ -6382,7 +6393,7 @@ impl<'a> Lowerer<'a> {
             name: table_fn_name.clone(),
             params: vec![],
             return_type: MirType::String,
-            body: MirExpr::StringLit(table_name, MirType::String),
+            body: MirExpr::StringLit(table_name, MirType::String, None),
             is_closure_fn: false,
             captures: vec![],
             has_tail_calls: false,
@@ -6396,7 +6407,7 @@ impl<'a> Lowerer<'a> {
         // Returns a List<String> of field names.
         let field_elements: Vec<MirExpr> = fields
             .iter()
-            .map(|(fname, _)| MirExpr::StringLit(fname.clone(), MirType::String))
+            .map(|(fname, _)| MirExpr::StringLit(fname.clone(), MirType::String, None))
             .collect();
         let fields_fn_name = format!("{}____fields__", name);
         self.functions.push(MirFunction {
@@ -6404,6 +6415,7 @@ impl<'a> Lowerer<'a> {
             params: vec![],
             return_type: MirType::Ptr, // List<String> is Ptr at runtime
             body: MirExpr::ListLit {
+                source_span: None,
                 elements: field_elements,
                 ty: MirType::Ptr,
             },
@@ -6423,7 +6435,7 @@ impl<'a> Lowerer<'a> {
             name: pk_fn_name.clone(),
             params: vec![],
             return_type: MirType::String,
-            body: MirExpr::StringLit(pk_value, MirType::String),
+            body: MirExpr::StringLit(pk_value, MirType::String, None),
             is_closure_fn: false,
             captures: vec![],
             has_tail_calls: false,
@@ -6444,6 +6456,7 @@ impl<'a> Lowerer<'a> {
                 Some(MirExpr::StringLit(
                     format!("{}:{}:{}", kind, assoc, target),
                     MirType::String,
+                    None,
                 ))
             })
             .collect();
@@ -6453,6 +6466,7 @@ impl<'a> Lowerer<'a> {
             params: vec![],
             return_type: MirType::Ptr, // List<String> is Ptr at runtime
             body: MirExpr::ListLit {
+                source_span: None,
                 elements: rel_elements,
                 ty: MirType::Ptr,
             },
@@ -6469,7 +6483,7 @@ impl<'a> Lowerer<'a> {
             .iter()
             .map(|(fname, fty)| {
                 let sql_type = mir_type_to_sql_type(fty);
-                MirExpr::StringLit(format!("{}:{}", fname, sql_type), MirType::String)
+                MirExpr::StringLit(format!("{}:{}", fname, sql_type), MirType::String, None)
             })
             .collect();
         let ft_fn_name = format!("{}____field_types__", name);
@@ -6478,6 +6492,7 @@ impl<'a> Lowerer<'a> {
             params: vec![],
             return_type: MirType::Ptr,
             body: MirExpr::ListLit {
+                source_span: None,
                 elements: field_type_elements,
                 ty: MirType::Ptr,
             },
@@ -6531,6 +6546,7 @@ impl<'a> Lowerer<'a> {
                 Some(MirExpr::StringLit(
                     format!("{kind}:{assoc}:{target}:{fk}:{target_table}:{key}:{name}"),
                     MirType::String,
+                    None,
                 ))
             })
             .collect();
@@ -6541,6 +6557,7 @@ impl<'a> Lowerer<'a> {
             params: vec![],
             return_type: MirType::Ptr,
             body: MirExpr::ListLit {
+                source_span: None,
                 elements: meta_elements,
                 ty: MirType::Ptr,
             },
@@ -6559,7 +6576,7 @@ impl<'a> Lowerer<'a> {
                 name: col_fn_name.clone(),
                 params: vec![],
                 return_type: MirType::String,
-                body: MirExpr::StringLit(fname.clone(), MirType::String),
+                body: MirExpr::StringLit(fname.clone(), MirType::String, None),
                 is_closure_fn: false,
                 captures: vec![],
                 has_tail_calls: false,
@@ -6590,7 +6607,7 @@ impl<'a> Lowerer<'a> {
             "mesh_json_error_at",
             vec![
                 decoded,
-                MirExpr::StringLit(step.to_string(), MirType::String),
+                MirExpr::StringLit(step.to_string(), MirType::String, None),
             ],
         )
     }
@@ -6630,7 +6647,7 @@ impl<'a> Lowerer<'a> {
             "mesh_alloc_result",
             vec![
                 MirExpr::IntLit(1, MirType::Int),
-                MirExpr::StringLit(message, MirType::String),
+                MirExpr::StringLit(message, MirType::String, None),
             ],
         )
     }
@@ -6652,6 +6669,7 @@ impl<'a> Lowerer<'a> {
             ty: MirType::Ptr,
             value: Box::new(result),
             body: Box::new(MirExpr::If {
+                source_span: None,
                 cond: Box::new(Self::call_named(
                     "mesh_result_is_ok",
                     vec![MirType::Ptr],
@@ -6712,6 +6730,7 @@ impl<'a> Lowerer<'a> {
                 let some =
                     self.json_encode_expr(MirExpr::Var(var.clone(), inner_mir.clone()), &inner);
                 MirExpr::Match {
+                    source_span: None,
                     scrutinee: Box::new(value),
                     arms: vec![
                         MirMatchArm {
@@ -6783,6 +6802,7 @@ impl<'a> Lowerer<'a> {
                 );
                 let inner_mir = self.binding_type(&inner);
                 let variant = |variant: &str, fields: Vec<MirExpr>| MirExpr::ConstructVariant {
+                    source_span: None,
                     type_name: option.clone(),
                     variant: variant.to_string(),
                     fields,
@@ -6804,6 +6824,7 @@ impl<'a> Lowerer<'a> {
                     ty: MirType::Ptr,
                     value: Box::new(json),
                     body: Box::new(MirExpr::If {
+                        source_span: None,
                         cond: Box::new(Self::call_named(
                             "mesh_json_is_null",
                             vec![MirType::Ptr],
@@ -6907,6 +6928,7 @@ impl<'a> Lowerer<'a> {
             array = Self::json_call("mesh_json_array_push", vec![array, value]);
         }
         let body = MirExpr::Match {
+            source_span: None,
             scrutinee: Box::new(MirExpr::Var("__t".to_string(), MirType::Ptr)),
             arms: vec![MirMatchArm {
                 pattern: MirPattern::Tuple(
@@ -7004,12 +7026,13 @@ impl<'a> Lowerer<'a> {
         let mut body = Self::json_call("mesh_json_object_new", vec![]);
         for (field, ty) in fields {
             let access = MirExpr::FieldAccess {
+                source_span: None,
                 object: Box::new(MirExpr::Var("self".to_string(), struct_ty.clone())),
                 field: field.clone(),
                 ty: self.binding_type(ty),
             };
             let value = self.json_encode_expr(access, ty);
-            let key = MirExpr::StringLit(field.clone(), MirType::String);
+            let key = MirExpr::StringLit(field.clone(), MirType::String, None);
             body = Self::json_call("mesh_json_object_put", vec![body, key, value]);
         }
         self.push_helper_fn(
@@ -7037,6 +7060,7 @@ impl<'a> Lowerer<'a> {
             MirExpr::Var(format!("__f_{i}"), lowerer.binding_type(ty))
         };
         let struct_lit = MirExpr::StructLit {
+            source_span: None,
             name: name.to_string(),
             fields: fields
                 .iter()
@@ -7053,7 +7077,7 @@ impl<'a> Lowerer<'a> {
                 "mesh_json_object_get",
                 vec![
                     json.clone(),
-                    MirExpr::StringLit(field.clone(), MirType::String),
+                    MirExpr::StringLit(field.clone(), MirType::String, None),
                 ],
             );
             let unwrapped = Self::json_call(
@@ -7102,9 +7126,9 @@ impl<'a> Lowerer<'a> {
                 }
                 let tag = Self::json_call(
                     "mesh_json_from_string",
-                    vec![MirExpr::StringLit(variant.clone(), MirType::String)],
+                    vec![MirExpr::StringLit(variant.clone(), MirType::String, None)],
                 );
-                let key = |k: &str| MirExpr::StringLit(k.to_string(), MirType::String);
+                let key = |k: &str| MirExpr::StringLit(k.to_string(), MirType::String, None);
                 let object = Self::json_call("mesh_json_object_new", vec![]);
                 let object = Self::json_call("mesh_json_object_put", vec![object, key("tag"), tag]);
                 let object =
@@ -7128,6 +7152,7 @@ impl<'a> Lowerer<'a> {
             Self::json_call("mesh_json_object_new", vec![])
         } else {
             MirExpr::Match {
+                source_span: None,
                 scrutinee: Box::new(MirExpr::Var("self".to_string(), sum_ty.clone())),
                 arms,
                 ty: MirType::Ptr,
@@ -7156,7 +7181,7 @@ impl<'a> Lowerer<'a> {
         );
         let sum_ty = MirType::SumType(name.to_string());
         let json = MirExpr::Var("json".to_string(), MirType::Ptr);
-        let key = |k: &str| MirExpr::StringLit(k.to_string(), MirType::String);
+        let key = |k: &str| MirExpr::StringLit(k.to_string(), MirType::String, None);
         let mut dispatch = Self::json_err(format!("unknown variant for {name}"));
         for (variant, fields) in variants.iter().rev() {
             let values = fields
@@ -7165,6 +7190,7 @@ impl<'a> Lowerer<'a> {
                 .map(|(i, f)| MirExpr::Var(format!("__fv_{variant}_{i}"), self.binding_type(f)))
                 .collect();
             let constructed = Self::json_ok(MirExpr::ConstructVariant {
+                source_span: None,
                 type_name: name.to_string(),
                 variant: variant.clone(),
                 fields: values,
@@ -7199,12 +7225,13 @@ impl<'a> Lowerer<'a> {
                 )
             };
             dispatch = MirExpr::If {
+                source_span: None,
                 cond: Box::new(Self::call_named(
                     "mesh_string_eq",
                     vec![MirType::String, MirType::String],
                     vec![
                         MirExpr::Var("__tag".to_string(), MirType::String),
-                        MirExpr::StringLit(variant.clone(), MirType::String),
+                        MirExpr::StringLit(variant.clone(), MirType::String, None),
                     ],
                     MirType::Bool,
                 )),
@@ -7255,6 +7282,7 @@ impl<'a> Lowerer<'a> {
 
         // mesh_json_parse(input) -> *mut MeshResult
         let parse_call = MirExpr::Call {
+            source_span: None,
             func: Box::new(MirExpr::Var("mesh_json_parse".to_string(), parse_ty)),
             args: vec![str_var],
             ty: MirType::Ptr,
@@ -7263,6 +7291,7 @@ impl<'a> Lowerer<'a> {
         // If parse is Ok, call FromJson__from_json__(parsed_json)
         // Else, return the error result directly
         let from_json_call = MirExpr::Call {
+            source_span: None,
             func: Box::new(MirExpr::Var(
                 format!("FromJson__from_json__{}", name),
                 from_json_ty,
@@ -7276,7 +7305,9 @@ impl<'a> Lowerer<'a> {
             ty: MirType::Ptr,
             value: Box::new(parse_call),
             body: Box::new(MirExpr::If {
+                source_span: None,
                 cond: Box::new(MirExpr::Call {
+                    source_span: None,
                     func: Box::new(MirExpr::Var("mesh_result_is_ok".to_string(), is_ok_ty)),
                     args: vec![MirExpr::Var("__parse_res".to_string(), MirType::Ptr)],
                     ty: MirType::Int,
@@ -7285,6 +7316,7 @@ impl<'a> Lowerer<'a> {
                     name: "__parsed_json".to_string(),
                     ty: MirType::Ptr,
                     value: Box::new(MirExpr::Call {
+                        source_span: None,
                         func: Box::new(MirExpr::Var("mesh_result_unwrap".to_string(), unwrap_ty)),
                         args: vec![MirExpr::Var("__parse_res".to_string(), MirType::Ptr)],
                         ty: MirType::Ptr,
@@ -7451,8 +7483,9 @@ impl<'a> Lowerer<'a> {
                     for (name, resource_ty) in resources.into_iter().rev() {
                         body = self.wrap_resource_scope(body, &name, &resource_ty);
                     }
-                    let ty = effective_return_type(&body);
+                    let ty = body.result_ty().clone();
                     result = Some(MirExpr::Match {
+                        source_span: None,
                         scrutinee: Box::new(value),
                         arms: vec![MirMatchArm {
                             pattern,
@@ -7465,7 +7498,7 @@ impl<'a> Lowerer<'a> {
                 Part::Expr(expression) => {
                     result = Some(match result.take() {
                         Some(tail) => {
-                            let ty = effective_return_type(&tail);
+                            let ty = tail.result_ty().clone();
                             MirExpr::Block(vec![expression, tail], ty)
                         }
                         None => expression,
@@ -7536,15 +7569,28 @@ impl<'a> Lowerer<'a> {
     }
 
     fn adapt_uniform_callback_call(&mut self, expr: MirExpr, range: TextRange) -> MirExpr {
-        let MirExpr::Call { func, mut args, ty } = expr else {
+        let MirExpr::Call {
+            func, mut args, ty, ..
+        } = expr
+        else {
             return expr;
         };
         let MirExpr::Var(name, _) = func.as_ref() else {
-            return MirExpr::Call { func, args, ty };
+            return MirExpr::Call {
+                source_span: None,
+                func,
+                args,
+                ty,
+            };
         };
         let name = name.clone();
         let Some(callback_index) = uniform_callback_index(&name) else {
-            return MirExpr::Call { func, args, ty };
+            return MirExpr::Call {
+                source_span: None,
+                func,
+                args,
+                ty,
+            };
         };
         let callback = args
             .get(callback_index)
@@ -7568,6 +7614,7 @@ impl<'a> Lowerer<'a> {
             .iter()
             .enumerate()
             .map(|(index, param_ty)| MirExpr::Call {
+                source_span: None,
                 func: Box::new(MirExpr::Var(
                     "__mesh_uniform_decode".to_string(),
                     MirType::FnPtr(vec![MirType::Int], Box::new(param_ty.clone())),
@@ -7579,18 +7626,21 @@ impl<'a> Lowerer<'a> {
         let callback_var = MirExpr::Var("__callback".to_string(), callback_ty.clone());
         let callback_call = if is_closure {
             MirExpr::ClosureCall {
+                source_span: None,
                 closure: Box::new(callback_var),
                 args: decoded_args,
                 ty: return_type.clone(),
             }
         } else {
             MirExpr::Call {
+                source_span: None,
                 func: Box::new(callback_var),
                 args: decoded_args,
                 ty: return_type.clone(),
             }
         };
         let body = MirExpr::Call {
+            source_span: None,
             func: Box::new(MirExpr::Var(
                 "__mesh_uniform_encode".to_string(),
                 MirType::FnPtr(vec![return_type.clone()], Box::new(MirType::Int)),
@@ -7610,6 +7660,7 @@ impl<'a> Lowerer<'a> {
             has_tail_calls: false,
         });
         let adapter = MirExpr::MakeClosure {
+            source_span: None,
             fn_name: adapter_name,
             captures: vec![callback],
             ty: MirType::Closure(
@@ -7624,7 +7675,12 @@ impl<'a> Lowerer<'a> {
             },
             None => adapter,
         };
-        let call = MirExpr::Call { func, args, ty };
+        let call = MirExpr::Call {
+            source_span: None,
+            func,
+            args,
+            ty,
+        };
         // `List.find` hands back the element word as the `Some` payload; a
         // scalar payload is read through a pointer, so it is boxed here.
         if matches!(name.as_str(), "mesh_list_find" | "mesh_iter_find")
@@ -7666,12 +7722,14 @@ impl<'a> Lowerer<'a> {
         let callback_var = MirExpr::Var("__callback".to_string(), callback_ty.clone());
         let call = if is_closure {
             MirExpr::ClosureCall {
+                source_span: None,
                 closure: Box::new(callback_var),
                 args,
                 ty: return_type,
             }
         } else {
             MirExpr::Call {
+                source_span: None,
                 func: Box::new(callback_var),
                 args,
                 ty: return_type,
@@ -7689,6 +7747,7 @@ impl<'a> Lowerer<'a> {
             has_tail_calls: false,
         });
         MirExpr::MakeClosure {
+            source_span: None,
             fn_name: adapter_name,
             captures: vec![callback],
             ty: MirType::Closure(param_types, Box::new(MirType::Unit)),
@@ -7720,6 +7779,7 @@ impl<'a> Lowerer<'a> {
             Expr::SendExpr(send) => self.lower_send_expr(send),
             Expr::ReceiveExpr(recv) => self.lower_receive_expr(recv),
             Expr::SelfExpr(_) => MirExpr::ActorSelf {
+                source_span: None,
                 ty: self.resolve_range(expr.syntax().text_range()),
             },
             Expr::LinkExpr(link) => self.lower_link_expr(link),
@@ -7733,7 +7793,7 @@ impl<'a> Lowerer<'a> {
             // Atom literal -- lower to string constant at runtime
             Expr::AtomLiteral(atom) => {
                 let name = atom.atom_text().unwrap_or_default();
-                MirExpr::StringLit(name, MirType::String)
+                MirExpr::StringLit(name, MirType::String, None)
             }
             // Regex literal -- desugar to mesh_regex_from_literal(pattern, flags_bitmask).
             // Flags bitmask: i=1, m=2, s=4 (the lexer allows no other flag).
@@ -7747,9 +7807,10 @@ impl<'a> Lowerer<'a> {
                 let fn_ty =
                     MirType::FnPtr(vec![MirType::String, MirType::Int], Box::new(MirType::Ptr));
                 MirExpr::Call {
+                    source_span: None,
                     func: Box::new(MirExpr::Var("mesh_regex_from_literal".to_string(), fn_ty)),
                     args: vec![
-                        MirExpr::StringLit(pattern, MirType::String),
+                        MirExpr::StringLit(pattern, MirType::String, None),
                         MirExpr::IntLit(flags_bits, MirType::Int),
                     ],
                     ty: MirType::Ptr,
@@ -7769,11 +7830,23 @@ impl<'a> Lowerer<'a> {
     /// expression at `range`, with its runtime callbacks adapted, a scalar
     /// `Iter.next` payload boxed, a discarded callback result dropped, and a
     /// `Json` passed where a `String` is expected encoded.
-    fn finish_lowered(&mut self, lowered: MirExpr, range: TextRange) -> MirExpr {
+    fn finish_lowered(&mut self, mut lowered: MirExpr, range: TextRange) -> MirExpr {
+        self.record_source_span(&mut lowered, range);
         let lowered = self.adapt_uniform_callback_call(lowered, range);
         let lowered = self.box_next_scalar(lowered, range);
         let lowered = self.discard_callback_result(lowered, range);
-        self.json_text(lowered, range)
+        let mut lowered = self.json_text(lowered, range);
+        self.record_source_span(&mut lowered, range);
+        lowered
+    }
+
+    fn record_source_span(&self, expr: &mut MirExpr, range: TextRange) {
+        if let Some(file) = self.source_file {
+            expr.set_source_span(MirSourceSpan {
+                file,
+                span: Span::new(range.start().into(), range.end().into()),
+            });
+        }
     }
 
     /// A `Json` argument passed where a `String` is expected, which the type
@@ -7802,9 +7875,11 @@ impl<'a> Lowerer<'a> {
             SyntaxKind::INT_LITERAL => {
                 MirExpr::IntLit(parse_int_literal(text).unwrap_or(0), MirType::Int)
             }
-            SyntaxKind::FLOAT_LITERAL => {
-                MirExpr::FloatLit(parse_float_literal(text).unwrap_or(0.0), MirType::Float)
-            }
+            SyntaxKind::FLOAT_LITERAL => MirExpr::FloatLit(
+                parse_float_literal(text).unwrap_or(0.0),
+                MirType::Float,
+                None,
+            ),
             SyntaxKind::TRUE_KW => MirExpr::BoolLit(true, MirType::Bool),
             SyntaxKind::FALSE_KW => MirExpr::BoolLit(false, MirType::Bool),
             _ => MirExpr::Unit,
@@ -7932,6 +8007,7 @@ impl<'a> Lowerer<'a> {
             .is_some_and(|typeck_ty| self.registry.is_resource_type(typeck_ty))
         {
             MirExpr::ResourceMove {
+                source_span: None,
                 value: Box::new(MirExpr::Var(name.clone(), ty.clone())),
                 ty,
                 source: MirResourceMoveSource::Slot(name),
@@ -7953,6 +8029,7 @@ impl<'a> Lowerer<'a> {
         if find_type_for_variant(&name, Some(&resolved_ty), self.registry, Some(0)).is_some() {
             let concrete_name = mir_type_to_impl_name(&resolved_ty);
             return MirExpr::ConstructVariant {
+                source_span: None,
                 type_name: concrete_name.clone(),
                 variant: name,
                 fields: vec![],
@@ -8064,6 +8141,7 @@ impl<'a> Lowerer<'a> {
                     let equal = self.eq_expr(lhs, rhs, &source);
                     return if op == BinOp::NotEq {
                         MirExpr::BinOp {
+                            source_span: None,
                             op: BinOp::Eq,
                             lhs: Box::new(equal),
                             rhs: Box::new(MirExpr::BoolLit(false, MirType::Bool)),
@@ -8083,6 +8161,7 @@ impl<'a> Lowerer<'a> {
                         MirType::Int,
                     );
                     return MirExpr::BinOp {
+                        source_span: None,
                         op,
                         lhs: Box::new(ordering),
                         rhs: Box::new(MirExpr::IntLit(0, MirType::Int)),
@@ -8110,6 +8189,7 @@ impl<'a> Lowerer<'a> {
             let rhs_ty = rhs.ty().clone();
             let fn_ty = MirType::FnPtr(vec![lhs_ty, rhs_ty], Box::new(ty.clone()));
             return MirExpr::Call {
+                source_span: None,
                 func: Box::new(MirExpr::Var(mangled, fn_ty)),
                 args: vec![lhs, rhs],
                 ty,
@@ -8117,6 +8197,7 @@ impl<'a> Lowerer<'a> {
         }
 
         MirExpr::BinOp {
+            source_span: None,
             op,
             lhs: Box::new(lhs),
             rhs: Box::new(rhs),
@@ -8147,6 +8228,7 @@ impl<'a> Lowerer<'a> {
             let mangled = format!("Neg__neg__{}", mir_type_to_impl_name(&operand_ty));
             let fn_ty = MirType::FnPtr(vec![operand_ty], Box::new(ty.clone()));
             return MirExpr::Call {
+                source_span: None,
                 func: Box::new(MirExpr::Var(mangled, fn_ty)),
                 args: vec![operand],
                 ty,
@@ -8154,6 +8236,7 @@ impl<'a> Lowerer<'a> {
         }
 
         MirExpr::UnaryOp {
+            source_span: None,
             op,
             operand: Box::new(operand),
             ty,
@@ -8389,6 +8472,7 @@ impl<'a> Lowerer<'a> {
             false => args,
         };
         MirExpr::Call {
+            source_span: None,
             func: Box::new(callee),
             args,
             ty,
@@ -8477,6 +8561,7 @@ impl<'a> Lowerer<'a> {
         let args = self.borrow_receiver(&callee, args);
         let args = self.apply_direct_resource_modes(&callee, args);
         MirExpr::Call {
+            source_span: None,
             func: Box::new(callee),
             args,
             ty,
@@ -8582,6 +8667,7 @@ impl<'a> Lowerer<'a> {
         // A method call has its receiver first.
         if let (false, MirExpr::ResourceMove { value, ty, .. }) = (own_modes, &args[0]) {
             args[0] = MirExpr::ResourceBorrow {
+                source_span: None,
                 value: value.clone(),
                 ty: ty.clone(),
             };
@@ -8601,7 +8687,11 @@ impl<'a> Lowerer<'a> {
             .enumerate()
             .map(|(index, argument)| match (modes.get(index), argument) {
                 (Some(ParamOwnership::Borrow), MirExpr::ResourceMove { value, ty, .. }) => {
-                    MirExpr::ResourceBorrow { value, ty }
+                    MirExpr::ResourceBorrow {
+                        source_span: None,
+                        value,
+                        ty,
+                    }
                 }
                 (_, argument) => argument,
             })
@@ -8623,6 +8713,7 @@ impl<'a> Lowerer<'a> {
                 && self.lookup_non_global_var(actor).is_none()
             {
                 return MirExpr::Call {
+                    source_span: None,
                     func: Box::new(MirExpr::Var(
                         body_fn.clone(),
                         MirType::FnPtr(param_tys.clone(), Box::new(MirType::Unit)),
@@ -8634,7 +8725,10 @@ impl<'a> Lowerer<'a> {
         }
         // A message that crosses to another actor, last of the arguments:
         // `Timer.send_after(pid, ms, message)`'s, and the one a monitor sends.
-        let MirExpr::Call { func, mut args, ty } = lowered else {
+        let MirExpr::Call {
+            func, mut args, ty, ..
+        } = lowered
+        else {
             return lowered;
         };
         let arity = match func.as_ref() {
@@ -8652,7 +8746,12 @@ impl<'a> Lowerer<'a> {
             let value = args.pop().unwrap();
             args.push(self.shaped(value, message.syntax().text_range()));
         }
-        MirExpr::Call { func, args, ty }
+        MirExpr::Call {
+            source_span: None,
+            func,
+            args,
+            ty,
+        }
     }
 
     /// `declassify(value, reason)`, `Plaintext.from(value)` and
@@ -8695,17 +8794,20 @@ impl<'a> Lowerer<'a> {
         let ty = self.resolve_range(call.syntax().text_range());
         let applied = match function.ty() {
             MirType::Closure(..) => MirExpr::ClosureCall {
+                source_span: None,
                 closure: Box::new(function),
                 args: values,
                 ty: ty.clone(),
             },
             _ => MirExpr::Call {
+                source_span: None,
                 func: Box::new(function),
                 args: values,
                 ty: ty.clone(),
             },
         };
         let runtime = |name: &str| MirExpr::Call {
+            source_span: None,
             func: Box::new(MirExpr::Var(
                 name.to_string(),
                 MirType::FnPtr(vec![], Box::new(MirType::Unit)),
@@ -8761,6 +8863,7 @@ impl<'a> Lowerer<'a> {
                     .map(|arg| self.lower_expr(arg))
                     .unwrap_or(MirExpr::Unit);
                 let raise = MirExpr::Call {
+                    source_span: None,
                     func: Box::new(MirExpr::Var(
                         "mesh_panic_str".to_string(),
                         MirType::FnPtr(vec![MirType::String], Box::new(MirType::Unit)),
@@ -8852,6 +8955,7 @@ impl<'a> Lowerer<'a> {
                     let args = call.args().iter().map(|arg| self.lower_expr(arg)).collect();
                     let ty = self.resolve_range(call.syntax().text_range());
                     return MirExpr::Call {
+                        source_span: None,
                         func: Box::new(func),
                         args,
                         ty,
@@ -8932,6 +9036,7 @@ impl<'a> Lowerer<'a> {
             if find_type_for_variant(name, Some(&ty), self.registry, Some(args.len())).is_some() {
                 let concrete_name = mir_type_to_impl_name(&ty);
                 return MirExpr::ConstructVariant {
+                    source_span: None,
                     type_name: concrete_name.clone(),
                     variant: name.to_string(),
                     fields: args,
@@ -8959,6 +9064,7 @@ impl<'a> Lowerer<'a> {
                     let mut new_args = args;
                     let map_arg = new_args.remove(0);
                     let tagged_map = MirExpr::Call {
+                        source_span: None,
                         func: Box::new(MirExpr::Var(
                             "mesh_map_tag_string".to_string(),
                             MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Ptr)),
@@ -8987,9 +9093,9 @@ impl<'a> Lowerer<'a> {
                 // impl's function.
                 return match mir_type_to_impl_name(&ty).as_str() {
                     "Int" => MirExpr::IntLit(0, MirType::Int),
-                    "Float" => MirExpr::FloatLit(0.0, MirType::Float),
+                    "Float" => MirExpr::FloatLit(0.0, MirType::Float, None),
                     "Bool" => MirExpr::BoolLit(false, MirType::Bool),
-                    "String" => MirExpr::StringLit(String::new(), MirType::String),
+                    "String" => MirExpr::StringLit(String::new(), MirType::String, None),
                     type_name => Self::call_named(
                         &format!("Default__default__{type_name}"),
                         vec![],
@@ -9140,6 +9246,7 @@ impl<'a> Lowerer<'a> {
                 if tree {
                     let json = self.json_encode_expr(args[0].clone(), &source);
                     return MirExpr::Call {
+                        source_span: None,
                         func: Box::new(callee),
                         args: vec![json],
                         ty: MirType::String,
@@ -9165,6 +9272,7 @@ impl<'a> Lowerer<'a> {
             let value = args.into_iter().next().unwrap();
             let resource_ty = value.ty().clone();
             return MirExpr::ResourceDestroy {
+                source_span: None,
                 value: Box::new(value),
                 resource_ty,
                 destructor: MirResourceDestructor::Opaque,
@@ -9179,6 +9287,7 @@ impl<'a> Lowerer<'a> {
 
         if is_known_fn {
             MirExpr::Call {
+                source_span: None,
                 func: Box::new(callee),
                 args,
                 ty,
@@ -9187,11 +9296,13 @@ impl<'a> Lowerer<'a> {
             // Check the callee type. If it's a Closure type, use ClosureCall.
             match callee.ty() {
                 MirType::Closure(_, _) => MirExpr::ClosureCall {
+                    source_span: None,
                     closure: Box::new(callee),
                     args,
                     ty,
                 },
                 _ => MirExpr::Call {
+                    source_span: None,
                     func: Box::new(callee),
                     args,
                     ty,
@@ -9285,6 +9396,7 @@ impl<'a> Lowerer<'a> {
                 let callee = callee.expect("a call without a route has its callee");
                 let args = self.apply_direct_resource_modes(&callee, args);
                 MirExpr::Call {
+                    source_span: None,
                     ty,
                     func: Box::new(callee),
                     args,
@@ -9300,6 +9412,7 @@ impl<'a> Lowerer<'a> {
                 let func = self.lower_call_target(rhs_expr.syntax().text_range(), &rhs_expr);
                 let args = self.apply_direct_resource_modes(&func, vec![lhs]);
                 MirExpr::Call {
+                    source_span: None,
                     ty,
                     func: Box::new(func),
                     args,
@@ -9444,6 +9557,7 @@ impl<'a> Lowerer<'a> {
         let construct = |ty: &Ty, variant: &str, fields: Vec<MirExpr>| {
             let mir = self.binding_type(ty);
             MirExpr::ConstructVariant {
+                source_span: None,
                 type_name: mir_type_to_impl_name(&mir),
                 variant: variant.to_string(),
                 fields,
@@ -9455,6 +9569,7 @@ impl<'a> Lowerer<'a> {
             let f = extra.clone().expect("the helper takes a function");
             let (_, result) = fun_parts(&params[1]);
             MirExpr::ClosureCall {
+                source_span: None,
                 closure: Box::new(f),
                 args: vec![arg],
                 ty: self.binding_type(result),
@@ -9495,6 +9610,7 @@ impl<'a> Lowerer<'a> {
         let present_binding = bind_v.filter(|_| !field.starts_with("is_"));
         let absent_binding = bind_e.filter(|_| matches!(field, "map" | "and_then" | "map_err"));
         MirExpr::Match {
+            source_span: None,
             scrutinee: Box::new(value),
             arms: vec![
                 arm(present, present_binding, present_body),
@@ -9772,6 +9888,7 @@ impl<'a> Lowerer<'a> {
                 }
                 let concrete = mir_type_to_impl_name(&ty);
                 return MirExpr::ConstructVariant {
+                    source_span: None,
                     type_name: concrete.clone(),
                     variant: field,
                     fields: vec![],
@@ -9810,11 +9927,13 @@ impl<'a> Lowerer<'a> {
             value,
             ty: immediate_parent_ty,
             source,
+            ..
         } = object
         {
             // A field chain is one pending move rooted at the original local. Do not
             // execute an intermediate projection move while evaluating a deeper field.
             let projection = MirExpr::FieldAccess {
+                source_span: None,
                 object: value,
                 field: field.clone(),
                 ty: ty.clone(),
@@ -9855,6 +9974,7 @@ impl<'a> Lowerer<'a> {
                 }
             };
             return MirExpr::ResourceMove {
+                source_span: None,
                 value: Box::new(projection),
                 ty,
                 source,
@@ -9862,6 +9982,7 @@ impl<'a> Lowerer<'a> {
         }
 
         MirExpr::FieldAccess {
+            source_span: None,
             object: Box::new(object),
             field,
             ty,
@@ -9908,6 +10029,7 @@ impl<'a> Lowerer<'a> {
         };
 
         MirExpr::If {
+            source_span: None,
             cond: Box::new(cond),
             then_body: Box::new(then_body),
             else_body: Box::new(else_body),
@@ -9929,6 +10051,7 @@ impl<'a> Lowerer<'a> {
             .unwrap_or(MirExpr::Unit);
 
         MirExpr::While {
+            source_span: None,
             cond: Box::new(cond),
             body: Box::new(body),
             ty: MirType::Unit,
@@ -10001,8 +10124,9 @@ impl<'a> Lowerer<'a> {
             return (filter, body);
         };
         let destructure = |lowerer: &mut Self, inner: MirExpr| {
-            let ty = inner.ty().clone();
+            let ty = inner.result_ty().clone();
             MirExpr::Match {
+                source_span: None,
                 scrutinee: Box::new(elem.clone()),
                 arms: vec![MirMatchArm {
                     pattern: lowerer.lower_pattern_with_expected(&pattern, elem_src),
@@ -10077,6 +10201,7 @@ impl<'a> Lowerer<'a> {
         self.pop_scope();
 
         MirExpr::ForInIterator {
+            source_span: None,
             var: var_name,
             iterator: Box::new(collection),
             filter,
@@ -10107,6 +10232,7 @@ impl<'a> Lowerer<'a> {
         self.pop_scope();
 
         MirExpr::ForInRange {
+            source_span: None,
             var: var_name,
             start: Box::new(start),
             end: Box::new(end),
@@ -10134,6 +10260,7 @@ impl<'a> Lowerer<'a> {
         self.pop_scope();
 
         MirExpr::ForInList {
+            source_span: None,
             var: var_name,
             collection: Box::new(collection),
             filter,
@@ -10184,6 +10311,7 @@ impl<'a> Lowerer<'a> {
         self.insert_var(val_var.clone(), val_mir_ty.clone());
         // A pattern destructures the `(key, value)` pair.
         let pair = MirExpr::Call {
+            source_span: None,
             func: Box::new(MirExpr::Var(
                 "__mesh_make_tuple".to_string(),
                 MirType::FnPtr(vec![MirType::Int; 2], Box::new(MirType::Ptr)),
@@ -10199,6 +10327,7 @@ impl<'a> Lowerer<'a> {
         self.pop_scope();
 
         MirExpr::ForInMap {
+            source_span: None,
             key_var,
             val_var,
             collection: Box::new(collection),
@@ -10227,6 +10356,7 @@ impl<'a> Lowerer<'a> {
         self.pop_scope();
 
         MirExpr::ForInSet {
+            source_span: None,
             var: var_name,
             collection: Box::new(collection),
             filter,
@@ -10257,6 +10387,7 @@ impl<'a> Lowerer<'a> {
         let ty = self.resolve_range(case.syntax().text_range());
 
         MirExpr::Match {
+            source_span: None,
             scrutinee: Box::new(scrutinee),
             arms,
             ty,
@@ -10318,9 +10449,13 @@ impl<'a> Lowerer<'a> {
             Pattern::Literal(lit) => {
                 return match literal_pattern_value(lit) {
                     Some(MirLiteral::Int(value)) => MirExpr::IntLit(value, MirType::Int),
-                    Some(MirLiteral::Float(value)) => MirExpr::FloatLit(value, MirType::Float),
+                    Some(MirLiteral::Float(value)) => {
+                        MirExpr::FloatLit(value, MirType::Float, None)
+                    }
                     Some(MirLiteral::Bool(value)) => MirExpr::BoolLit(value, MirType::Bool),
-                    Some(MirLiteral::String(value)) => MirExpr::StringLit(value, MirType::String),
+                    Some(MirLiteral::String(value)) => {
+                        MirExpr::StringLit(value, MirType::String, None)
+                    }
                     None => MirExpr::Unit,
                 };
             }
@@ -10345,6 +10480,7 @@ impl<'a> Lowerer<'a> {
         // The arm's value is the `case`'s type, a sum type's instance.
         let type_name = mir_type_to_impl_name(&ty);
         MirExpr::ConstructVariant {
+            source_span: None,
             type_name: type_name.clone(),
             variant,
             fields,
@@ -10765,6 +10901,7 @@ impl<'a> Lowerer<'a> {
         let mir_ty = MirType::Closure(param_types, Box::new(return_type));
 
         MirExpr::MakeClosure {
+            source_span: None,
             fn_name: closure_fn_name,
             captures: capture_exprs,
             ty: mir_ty,
@@ -10847,6 +10984,7 @@ impl<'a> Lowerer<'a> {
             });
         }
         let body = MirExpr::Match {
+            source_span: None,
             scrutinee: Box::new(clause_scrutinee(&params)),
             arms,
             ty: return_type.clone(),
@@ -10881,6 +11019,7 @@ impl<'a> Lowerer<'a> {
         let mir_ty = MirType::Closure(param_types, Box::new(return_type));
 
         MirExpr::MakeClosure {
+            source_span: None,
             fn_name: closure_fn_name,
             captures: capture_exprs,
             ty: mir_ty,
@@ -10963,7 +11102,7 @@ impl<'a> Lowerer<'a> {
                     is_first_content = false;
 
                     if !text.is_empty() {
-                        segments.push(MirExpr::StringLit(text, MirType::String));
+                        segments.push(MirExpr::StringLit(text, MirType::String, None));
                     }
                 }
                 SyntaxKind::INTERPOLATION => {
@@ -10988,7 +11127,7 @@ impl<'a> Lowerer<'a> {
 
         // If no segments, return empty string.
         if segments.is_empty() {
-            return MirExpr::StringLit(String::new(), MirType::String);
+            return MirExpr::StringLit(String::new(), MirType::String, None);
         }
 
         // If single segment, return it directly.
@@ -11000,6 +11139,7 @@ impl<'a> Lowerer<'a> {
         let mut result = segments.remove(0);
         for seg in segments {
             result = MirExpr::Call {
+                source_span: None,
                 func: Box::new(MirExpr::Var(
                     "mesh_string_concat".to_string(),
                     MirType::FnPtr(
@@ -11029,7 +11169,10 @@ impl<'a> Lowerer<'a> {
             MirType::String | MirType::Never => return expr,
             MirType::Unit => {
                 return MirExpr::Block(
-                    vec![expr, MirExpr::StringLit("()".to_string(), MirType::String)],
+                    vec![
+                        expr,
+                        MirExpr::StringLit("()".to_string(), MirType::String, None),
+                    ],
                     MirType::String,
                 )
             }
@@ -11151,6 +11294,7 @@ impl<'a> Lowerer<'a> {
 
     fn call_named(name: &str, params: Vec<MirType>, args: Vec<MirExpr>, ret: MirType) -> MirExpr {
         MirExpr::Call {
+            source_span: None,
             func: Box::new(MirExpr::Var(
                 name.to_string(),
                 MirType::FnPtr(params, Box::new(ret.clone())),
@@ -11164,6 +11308,7 @@ impl<'a> Lowerer<'a> {
         terms
             .into_iter()
             .reduce(|acc, term| MirExpr::BinOp {
+                source_span: None,
                 op: BinOp::And,
                 lhs: Box::new(acc),
                 rhs: Box::new(term),
@@ -11183,7 +11328,7 @@ impl<'a> Lowerer<'a> {
                     MirType::String,
                 )
             })
-            .unwrap_or(MirExpr::StringLit(String::new(), MirType::String))
+            .unwrap_or(MirExpr::StringLit(String::new(), MirType::String, None))
     }
 
     /// Whether a payload of sum type `inner` inside sum type `owner` is
@@ -11326,6 +11471,7 @@ impl<'a> Lowerer<'a> {
     /// their `Eq`, primitives by the hardware. Each operand is evaluated once.
     fn eq_expr(&mut self, lhs: MirExpr, rhs: MirExpr, ty: &Ty) -> MirExpr {
         let hardware = |lhs, rhs| MirExpr::BinOp {
+            source_span: None,
             op: BinOp::Eq,
             lhs: Box::new(lhs),
             rhs: Box::new(rhs),
@@ -11455,6 +11601,7 @@ impl<'a> Lowerer<'a> {
                 // A wide integer is a boxed number: equal by its value, not
                 // its box.
                 wide @ ("U64" | "U128" | "I128") => MirExpr::BinOp {
+                    source_span: None,
                     op: BinOp::Eq,
                     lhs: Box::new(Self::wide_compare(wide, lhs, rhs)),
                     rhs: Box::new(MirExpr::IntLit(0, MirType::Int)),
@@ -11543,6 +11690,7 @@ impl<'a> Lowerer<'a> {
         ty: MirType,
     ) -> MirExpr {
         let inner = MirExpr::Match {
+            source_span: None,
             scrutinee: Box::new(MirExpr::Var("__b".to_string(), MirType::Ptr)),
             arms: vec![MirMatchArm {
                 pattern: MirPattern::Tuple(b_pats),
@@ -11552,6 +11700,7 @@ impl<'a> Lowerer<'a> {
             ty: ty.clone(),
         };
         MirExpr::Match {
+            source_span: None,
             scrutinee: Box::new(MirExpr::Var("__a".to_string(), MirType::Ptr)),
             arms: vec![MirMatchArm {
                 pattern: MirPattern::Tuple(a_pats),
@@ -11618,6 +11767,7 @@ impl<'a> Lowerer<'a> {
                     })
                     .collect();
                 let same_variant = MirExpr::Match {
+                    source_span: None,
                     scrutinee: Box::new(MirExpr::Var("other".to_string(), sum_ty.clone())),
                     arms: vec![
                         MirMatchArm {
@@ -11644,6 +11794,7 @@ impl<'a> Lowerer<'a> {
             MirExpr::BoolLit(true, MirType::Bool)
         } else {
             MirExpr::Match {
+                source_span: None,
                 scrutinee: Box::new(MirExpr::Var("self".to_string(), sum_ty.clone())),
                 arms,
                 ty: MirType::Bool,
@@ -11682,6 +11833,7 @@ impl<'a> Lowerer<'a> {
             .map(|(field, ty)| {
                 let mir = runtime_value_type(resolve_type(ty, self.registry));
                 let access = |object: &str| MirExpr::FieldAccess {
+                    source_span: None,
                     object: Box::new(MirExpr::Var(object.to_string(), struct_ty.clone())),
                     field: field.clone(),
                     ty: mir.clone(),
@@ -11716,9 +11868,11 @@ impl<'a> Lowerer<'a> {
     fn cmp_expr(&mut self, lhs: MirExpr, rhs: MirExpr, ty: &Ty) -> MirExpr {
         let int = |n: i64| MirExpr::IntLit(n, MirType::Int);
         let three_way = |lt: MirExpr, gt: MirExpr| MirExpr::If {
+            source_span: None,
             cond: Box::new(lt),
             then_body: Box::new(int(-1)),
             else_body: Box::new(MirExpr::If {
+                source_span: None,
                 cond: Box::new(gt),
                 then_body: Box::new(int(1)),
                 else_body: Box::new(int(0)),
@@ -11727,6 +11881,7 @@ impl<'a> Lowerer<'a> {
             ty: MirType::Int,
         };
         let binop = |op, lhs: &MirExpr, rhs: &MirExpr| MirExpr::BinOp {
+            source_span: None,
             op,
             lhs: Box::new(lhs.clone()),
             rhs: Box::new(rhs.clone()),
@@ -11740,6 +11895,7 @@ impl<'a> Lowerer<'a> {
                 .cloned()
                 .unwrap_or(MirType::FnPtr(params, Box::new(MirType::Bool)));
             let lt = |a: &MirExpr, b: &MirExpr| MirExpr::Call {
+                source_span: None,
                 func: Box::new(MirExpr::Var(f.clone(), ty.clone())),
                 args: vec![a.clone(), b.clone()],
                 ty: MirType::Bool,
@@ -11797,11 +11953,13 @@ impl<'a> Lowerer<'a> {
                 ),
                 "Bool" => {
                     let not = |e: &MirExpr| MirExpr::UnaryOp {
+                        source_span: None,
                         op: UnaryOp::Not,
                         operand: Box::new(e.clone()),
                         ty: MirType::Bool,
                     };
                     let and = |a: MirExpr, b: MirExpr| MirExpr::BinOp {
+                        source_span: None,
                         op: BinOp::And,
                         lhs: Box::new(a),
                         rhs: Box::new(b),
@@ -11924,6 +12082,7 @@ impl<'a> Lowerer<'a> {
             .map(|(i, (elem, t))| self.hash_expr(MirExpr::Var(format!("__e_{i}"), t.clone()), elem))
             .collect();
         let body = MirExpr::Match {
+            source_span: None,
             scrutinee: Box::new(MirExpr::Var("__t".to_string(), MirType::Ptr)),
             arms: vec![MirMatchArm {
                 pattern: MirPattern::Tuple(pats),
@@ -11973,6 +12132,7 @@ impl<'a> Lowerer<'a> {
             .iter()
             .map(|(field, ty)| {
                 let access = MirExpr::FieldAccess {
+                    source_span: None,
                     object: Box::new(MirExpr::Var("self".to_string(), struct_ty.clone())),
                     field: field.clone(),
                     ty: self.binding_type(ty),
@@ -12036,6 +12196,7 @@ impl<'a> Lowerer<'a> {
             Self::combine_hashes(0, vec![])
         } else {
             MirExpr::Match {
+                source_span: None,
                 scrutinee: Box::new(MirExpr::Var("self".to_string(), sum_ty.clone())),
                 arms,
                 ty: MirType::Int,
@@ -12056,6 +12217,7 @@ impl<'a> Lowerer<'a> {
         let cmp = Self::call_named(&f, vec![operand.clone(), operand], args, MirType::Int);
         let ordering_ty = MirType::SumType("Ordering".to_string());
         let ordering = |variant: &str| MirExpr::ConstructVariant {
+            source_span: None,
             type_name: "Ordering".to_string(),
             variant: variant.to_string(),
             fields: vec![],
@@ -12063,6 +12225,7 @@ impl<'a> Lowerer<'a> {
         };
         let c = || MirExpr::Var("__compared".to_string(), MirType::Int);
         let test = |op| MirExpr::BinOp {
+            source_span: None,
             op,
             lhs: Box::new(c()),
             rhs: Box::new(MirExpr::IntLit(0, MirType::Int)),
@@ -12074,9 +12237,11 @@ impl<'a> Lowerer<'a> {
             ty: MirType::Int,
             value: Box::new(cmp),
             body: Box::new(MirExpr::If {
+                source_span: None,
                 cond: Box::new(test(BinOp::Lt)),
                 then_body: Box::new(ordering("Less")),
                 else_body: Box::new(MirExpr::If {
+                    source_span: None,
                     cond: Box::new(test(BinOp::Eq)),
                     then_body: Box::new(ordering("Equal")),
                     else_body: Box::new(ordering("Greater")),
@@ -12137,7 +12302,9 @@ impl<'a> Lowerer<'a> {
                             ty: MirType::Int,
                             value: Box::new(term),
                             body: Box::new(MirExpr::If {
+                                source_span: None,
                                 cond: Box::new(MirExpr::BinOp {
+                                    source_span: None,
                                     op: BinOp::NotEq,
                                     lhs: Box::new(MirExpr::Var(var.clone(), MirType::Int)),
                                     rhs: Box::new(MirExpr::IntLit(0, MirType::Int)),
@@ -12568,7 +12735,7 @@ impl<'a> Lowerer<'a> {
             MirExpr::Block(
                 vec![
                     expr.clone(),
-                    MirExpr::StringLit("()".to_string(), MirType::String),
+                    MirExpr::StringLit("()".to_string(), MirType::String, None),
                 ],
                 MirType::String,
             )
@@ -12637,8 +12804,8 @@ impl<'a> Lowerer<'a> {
                     vec![expr.clone()],
                     MirType::String,
                 );
-                let open = MirExpr::StringLit("Bytes(".to_string(), MirType::String);
-                let close = MirExpr::StringLit(")".to_string(), MirType::String);
+                let open = MirExpr::StringLit("Bytes(".to_string(), MirType::String, None);
+                let close = MirExpr::StringLit(")".to_string(), MirType::String, None);
                 Some(concat(concat(open, hex), close))
             }
             Ty::Con(tc) if matches!(tc.name.as_str(), "U64" | "U128" | "I128") => {
@@ -12718,10 +12885,10 @@ impl<'a> Lowerer<'a> {
             .enumerate()
             .map(|(i, t)| MirPattern::Var(format!("__e_{i}"), t.clone()))
             .collect();
-        let mut parts = vec![MirExpr::StringLit("(".to_string(), MirType::String)];
+        let mut parts = vec![MirExpr::StringLit("(".to_string(), MirType::String, None)];
         for (i, (elem, t)) in elems.iter().zip(&tys).enumerate() {
             if i > 0 {
-                parts.push(MirExpr::StringLit(", ".to_string(), MirType::String));
+                parts.push(MirExpr::StringLit(", ".to_string(), MirType::String, None));
             }
             let value = MirExpr::Var(format!("__e_{i}"), t.clone());
             parts.push(if debug {
@@ -12730,8 +12897,9 @@ impl<'a> Lowerer<'a> {
                 self.wrap_to_string(value, Some(elem))
             });
         }
-        parts.push(MirExpr::StringLit(")".to_string(), MirType::String));
+        parts.push(MirExpr::StringLit(")".to_string(), MirType::String, None));
         let body = MirExpr::Match {
+            source_span: None,
             scrutinee: Box::new(MirExpr::Var("__t".to_string(), MirType::Ptr)),
             arms: vec![MirMatchArm {
                 pattern: MirPattern::Tuple(pats),
@@ -12792,13 +12960,16 @@ impl<'a> Lowerer<'a> {
                     .map(|(i, t)| (format!("field_{i}"), t.clone()))
                     .collect();
                 let body = if fields.is_empty() {
-                    MirExpr::StringLit(variant.clone(), MirType::String)
+                    MirExpr::StringLit(variant.clone(), MirType::String, None)
                 } else {
-                    let mut parts =
-                        vec![MirExpr::StringLit(format!("{variant}("), MirType::String)];
+                    let mut parts = vec![MirExpr::StringLit(
+                        format!("{variant}("),
+                        MirType::String,
+                        None,
+                    )];
                     for (i, (field, (var, t))) in fields.iter().zip(&bindings).enumerate() {
                         if i > 0 {
-                            parts.push(MirExpr::StringLit(", ".to_string(), MirType::String));
+                            parts.push(MirExpr::StringLit(", ".to_string(), MirType::String, None));
                         }
                         let value = MirExpr::Var(var.clone(), t.clone());
                         parts.push(if debug {
@@ -12807,7 +12978,7 @@ impl<'a> Lowerer<'a> {
                             self.wrap_to_string(value, Some(field))
                         });
                     }
-                    parts.push(MirExpr::StringLit(")".to_string(), MirType::String));
+                    parts.push(MirExpr::StringLit(")".to_string(), MirType::String, None));
                     Self::concat_all(parts)
                 };
                 MirMatchArm {
@@ -12826,9 +12997,10 @@ impl<'a> Lowerer<'a> {
             })
             .collect();
         let body = if arms.is_empty() {
-            MirExpr::StringLit(format!("<{display_name}>"), MirType::String)
+            MirExpr::StringLit(format!("<{display_name}>"), MirType::String, None)
         } else {
             MirExpr::Match {
+                source_span: None,
                 scrutinee: Box::new(MirExpr::Var("self".to_string(), sum_ty.clone())),
                 arms,
                 ty: MirType::String,
@@ -12850,7 +13022,7 @@ impl<'a> Lowerer<'a> {
             .map(|e| self.lower_expr(&e))
             .unwrap_or(MirExpr::Unit);
 
-        MirExpr::Return(Box::new(value))
+        MirExpr::Return(Box::new(value), None)
     }
 
     // ── Try expression lowering (Phase 45) ─────────────────────────
@@ -12930,6 +13102,7 @@ impl<'a> Lowerer<'a> {
         // An actor's body returns nothing: a failure there ends the actor.
         let fn_ret_ty = self.current_fn_return_type.clone().unwrap_or(MirType::Unit);
         MirExpr::Match {
+            source_span: None,
             scrutinee: Box::new(operand),
             arms: vec![
                 MirMatchArm {
@@ -12950,12 +13123,16 @@ impl<'a> Lowerer<'a> {
                         bindings,
                     },
                     guard: None,
-                    body: MirExpr::Return(Box::new(MirExpr::ConstructVariant {
-                        type_name: type_name.to_string(),
-                        variant: failure.to_string(),
-                        fields: returned,
-                        ty: fn_ret_ty,
-                    })),
+                    body: MirExpr::Return(
+                        Box::new(MirExpr::ConstructVariant {
+                            source_span: None,
+                            type_name: type_name.to_string(),
+                            variant: failure.to_string(),
+                            fields: returned,
+                            ty: fn_ret_ty,
+                        }),
+                        None,
+                    ),
                 },
             ],
             ty: success_ty,
@@ -13007,6 +13184,7 @@ impl<'a> Lowerer<'a> {
             &trait_arg_name(&target),
         );
         let converted = MirExpr::Call {
+            source_span: None,
             func: Box::new(MirExpr::Var(
                 from_fn,
                 MirType::FnPtr(vec![source_ty.clone()], Box::new(target_ty.clone())),
@@ -13039,6 +13217,7 @@ impl<'a> Lowerer<'a> {
         // Generate a synthetic __mesh_make_tuple(elem0, elem1, ...) call.
         // Codegen expands this inline: gc_alloc + store length + store elements.
         MirExpr::Call {
+            source_span: None,
             func: Box::new(MirExpr::Var(
                 "__mesh_make_tuple".to_string(),
                 MirType::FnPtr(vec![MirType::Int; n], Box::new(MirType::Ptr)),
@@ -13062,6 +13241,7 @@ impl<'a> Lowerer<'a> {
             MirType::FnPtr(vec![MirType::Int], Box::new(MirType::Ptr)),
         );
         let mut result = MirExpr::Call {
+            source_span: None,
             func: Box::new(new_typed_fn),
             args: vec![MirExpr::IntLit(key_type_tag, MirType::Int)],
             ty: MirType::Ptr,
@@ -13101,7 +13281,7 @@ impl<'a> Lowerer<'a> {
             let key = if entry.is_keyword_entry() {
                 entry
                     .keyword_key_text()
-                    .map(|text| MirExpr::StringLit(text, MirType::String))
+                    .map(|text| MirExpr::StringLit(text, MirType::String, None))
                     .unwrap_or(MirExpr::Unit)
             } else {
                 entry
@@ -13115,6 +13295,7 @@ impl<'a> Lowerer<'a> {
                 .unwrap_or(MirExpr::Unit);
 
             result = MirExpr::Call {
+                source_span: None,
                 func: Box::new(put_fn.clone()),
                 args: vec![result, key, val],
                 ty: MirType::Ptr,
@@ -13139,6 +13320,7 @@ impl<'a> Lowerer<'a> {
             // Empty list: call mesh_list_new()
             let fn_ty = MirType::FnPtr(vec![], Box::new(MirType::Ptr));
             return MirExpr::Call {
+                source_span: None,
                 func: Box::new(MirExpr::Var("mesh_list_new".to_string(), fn_ty)),
                 args: vec![],
                 ty: MirType::Ptr,
@@ -13146,6 +13328,7 @@ impl<'a> Lowerer<'a> {
         }
 
         MirExpr::ListLit {
+            source_span: None,
             elements,
             ty: MirType::Ptr,
         }
@@ -13191,7 +13374,12 @@ impl<'a> Lowerer<'a> {
             self.ensure_monomorphized_struct_trait_fns(&base_name, &typeck_ty);
         }
 
-        MirExpr::StructLit { name, fields, ty }
+        MirExpr::StructLit {
+            source_span: None,
+            name,
+            fields,
+            ty,
+        }
     }
 
     // ── Struct update lowering ────────────────────────────────────────
@@ -13240,6 +13428,7 @@ impl<'a> Lowerer<'a> {
         let ty = self.resolve_range(update.syntax().text_range());
 
         MirExpr::StructUpdate {
+            source_span: None,
             base: Box::new(base),
             overrides,
             resource_overrides,
@@ -13607,6 +13796,7 @@ impl<'a> Lowerer<'a> {
         };
         let args = args.map(|arg| self.lower_expr(&arg)).collect();
         MirExpr::Call {
+            source_span: None,
             func: Box::new(MirExpr::Var(
                 callee,
                 MirType::FnPtr(params, Box::new(MirType::Unit)),
@@ -13903,6 +14093,7 @@ impl<'a> Lowerer<'a> {
             // Codegen intercepts calls to "mesh_service_call" and packs args
             // into a payload buffer, coercing all values to i64.
             let body = MirExpr::Call {
+                source_span: None,
                 func: Box::new(MirExpr::Var(
                     "mesh_service_call".to_string(),
                     MirType::FnPtr(
@@ -13966,6 +14157,7 @@ impl<'a> Lowerer<'a> {
             // Cast message format: [u64 type_tag][u64 0 (no caller)][args as i64s]
             // Codegen intercepts the mesh_actor_send with int-lit tag and packs args.
             let body = MirExpr::Call {
+                source_span: None,
                 func: Box::new(MirExpr::Var(
                     "mesh_actor_send".to_string(),
                     MirType::FnPtr(
@@ -14008,6 +14200,7 @@ impl<'a> Lowerer<'a> {
             // Use the actual init return type (e.g., struct type) so the full
             // state is allocated and copied into the spawn args buffer.
             let init_call = MirExpr::Call {
+                source_span: None,
                 func: Box::new(MirExpr::Var(
                     init_fn_name.clone(),
                     MirType::FnPtr(
@@ -14027,6 +14220,7 @@ impl<'a> Lowerer<'a> {
                 ty: init_ret_ty.clone(),
                 value: Box::new(init_call),
                 body: Box::new(MirExpr::ActorSpawn {
+                    source_span: None,
                     func: Box::new(MirExpr::Var(
                         loop_fn_name.clone(),
                         MirType::FnPtr(vec![init_ret_ty.clone()], Box::new(MirType::Unit)),
@@ -14125,7 +14319,7 @@ impl<'a> Lowerer<'a> {
     /// location. `None` for any other call.
     fn lower_test_assertion(&mut self, call: &CallExpr, name: &str) -> Option<MirExpr> {
         let args = call.args();
-        let text = |text: String| MirExpr::StringLit(text, MirType::String);
+        let text = |text: String| MirExpr::StringLit(text, MirType::String, None);
         let (runtime, mut params, mut values) = match name {
             "assert" => (
                 "mesh_test_assert",
@@ -14209,6 +14403,7 @@ impl<'a> Lowerer<'a> {
         });
 
         MirExpr::ActorSpawn {
+            source_span: None,
             func,
             args: state_args,
             priority: 1, // Normal priority
@@ -14269,6 +14464,7 @@ impl<'a> Lowerer<'a> {
             .unwrap_or_else(|_| panic!("the type checker gives send a target and a message"));
         let message = self.shaped(message, range);
         MirExpr::ActorSend {
+            source_span: None,
             target: Box::new(target),
             message: Box::new(message),
             ty: MirType::Int,
@@ -14288,6 +14484,7 @@ impl<'a> Lowerer<'a> {
         let lowered = self.lower_expr(&message);
         let message = self.shaped(lowered, message.syntax().text_range());
         MirExpr::ActorSend {
+            source_span: None,
             target: Box::new(target),
             message: Box::new(message),
             ty: MirType::Int,
@@ -14339,6 +14536,7 @@ impl<'a> Lowerer<'a> {
         // The message is bound to one variable and matched against the arms.
         let handler = (!match_arms.is_empty()).then(|| {
             let body = MirExpr::Match {
+                source_span: None,
                 scrutinee: Box::new(MirExpr::Var(msg_var.clone(), msg_ty.clone())),
                 arms: match_arms,
                 ty: ty.clone(),
@@ -14356,6 +14554,7 @@ impl<'a> Lowerer<'a> {
         };
 
         MirExpr::ActorReceive {
+            source_span: None,
             handler,
             timeout_ms,
             timeout_body,
@@ -14369,6 +14568,7 @@ impl<'a> Lowerer<'a> {
             .and_then(|list| list.args().next())
             .expect("the type checker gives link its target");
         MirExpr::ActorLink {
+            source_span: None,
             target: Box::new(self.lower_expr(&target)),
             ty: MirType::Unit,
         }
@@ -15571,7 +15771,12 @@ struct TailCalls<'a> {
 impl TailCalls<'_> {
     fn rewrite(&mut self, expr: &mut MirExpr) -> bool {
         match expr {
-            MirExpr::Call { func, args, ty } => {
+            MirExpr::Call {
+                func,
+                args,
+                ty,
+                source_span,
+            } => {
                 if !matches!(func.as_ref(), MirExpr::Var(name, _) if name == self.name) {
                     return false;
                 }
@@ -15583,7 +15788,7 @@ impl TailCalls<'_> {
                 }
                 let args = std::mem::take(args);
                 let ty = ty.clone();
-                *expr = self.tail_call(args, ty);
+                *expr = self.tail_call(args, ty, *source_span);
                 true
             }
             MirExpr::Block(exprs, _) => {
@@ -15644,7 +15849,7 @@ impl TailCalls<'_> {
                     .is_some_and(|tb| self.rewrite(tb));
                 handled || timed_out
             }
-            MirExpr::Return(inner) => {
+            MirExpr::Return(inner, _) => {
                 // The inner expression of Return IS in tail position. A tail call
                 // jumps back to the top of the function, so `return self(...)` is
                 // the tail call itself: a `ret` after the jump would be a second
@@ -15685,14 +15890,23 @@ impl TailCalls<'_> {
     /// The jump back to the top of the function with `args`, after the
     /// drops of the scopes it leaves: the arguments are evaluated first,
     /// since they may read what the drops destroy.
-    fn tail_call(&mut self, args: Vec<MirExpr>, ty: MirType) -> MirExpr {
+    fn tail_call(
+        &mut self,
+        args: Vec<MirExpr>,
+        ty: MirType,
+        source_span: Option<MirSourceSpan>,
+    ) -> MirExpr {
         if self.cleanups.is_empty() {
-            return MirExpr::TailCall { args, ty };
+            return MirExpr::TailCall {
+                args,
+                ty,
+                source_span,
+            };
         }
         let mut evaluated = Vec::with_capacity(args.len());
         let mut tail_args = Vec::with_capacity(args.len());
         for argument in args {
-            let argument_ty = effective_return_type(&argument);
+            let argument_ty = argument.result_ty().clone();
             let name = format!("__tail_arg_{}", self.temps);
             self.temps += 1;
             tail_args.push(MirExpr::Var(name.clone(), argument_ty.clone()));
@@ -15702,6 +15916,7 @@ impl TailCalls<'_> {
         steps.push(MirExpr::TailCall {
             args: tail_args,
             ty,
+            source_span,
         });
         let mut result = MirExpr::Block(steps, MirType::Never);
         for (name, argument_ty, argument) in evaluated.into_iter().rev() {
@@ -15779,7 +15994,7 @@ fn eager_operands(expr: &mut MirExpr) -> Vec<&mut MirExpr> {
         | MirExpr::Match {
             scrutinee: operand, ..
         }
-        | MirExpr::Return(operand)
+        | MirExpr::Return(operand, _)
         | MirExpr::ResourceMove { value: operand, .. }
         | MirExpr::ResourceBorrow { value: operand, .. }
         | MirExpr::ResourceDrop { value: operand, .. }
@@ -15937,6 +16152,7 @@ fn builtin_call(name: &str, params: &[MirType], ret: &MirType, args: Vec<MirExpr
         (name, _) => name,
     };
     MirExpr::Call {
+        source_span: None,
         func: Box::new(MirExpr::Var(
             name.to_string(),
             MirType::FnPtr(params.to_vec(), Box::new(ret.clone())),
@@ -16008,6 +16224,24 @@ pub fn lower_to_mir(
     )
 }
 
+/// The raw MIR symbol for a checked top-level declaration. For overloads,
+/// `name` is the checked name with its arity suffix.
+pub fn verification_function_symbol(module_name: &str, name: &str, public: bool) -> String {
+    if name == "main" {
+        "mesh_main".to_string()
+    } else {
+        qualify_function_symbol(module_name, name, public)
+    }
+}
+
+fn qualify_function_symbol(module_name: &str, name: &str, public: bool) -> String {
+    if module_name.is_empty() || name == "main" || public {
+        name.to_string()
+    } else {
+        format!("{}__{name}", module_name.replace('.', "_"))
+    }
+}
+
 /// The specializations one module of a project needs of the other modules'
 /// generic functions, by name: a call in one of its generic functions takes
 /// a concrete type in each specialization `inferred_fn_usage_types` gives
@@ -16030,6 +16264,7 @@ pub fn imported_specializations(
 #[derive(Clone, Copy)]
 struct ForeignDefault<'a> {
     parse: &'a Parse,
+    source_file: Option<MirSourceId>,
     types: &'a FxHashMap<TextRange, Ty>,
     range: TextRange,
 }
@@ -16045,6 +16280,28 @@ pub fn lower_module_to_mir<'a>(
     inferred_fn_usage_types: &HashMap<String, Vec<Ty>>,
     other_modules: &[(&'a Parse, &'a TypeckResult)],
 ) -> Result<MirModule, String> {
+    lower_module_to_mir_with_sources(
+        parse,
+        typeck,
+        module_name,
+        pub_fns,
+        inferred_fn_usage_types,
+        other_modules,
+        |_| None,
+    )
+}
+
+/// The same lowering used for native compilation, retaining source locations
+/// for diagnostics. The caller assigns file indices for this compilation.
+pub fn lower_module_to_mir_with_sources<'a>(
+    parse: &'a Parse,
+    typeck: &'a TypeckResult,
+    module_name: &str,
+    pub_fns: &HashSet<String>,
+    inferred_fn_usage_types: &HashMap<String, Vec<Ty>>,
+    other_modules: &[(&'a Parse, &'a TypeckResult)],
+    source_id: impl Fn(&Parse) -> Option<MirSourceId>,
+) -> Result<MirModule, String> {
     if let Some(reason) = typeck.errors.iter().find_map(|error| match error {
         TypeError::ResourceViolation { reason, .. }
             if reason.contains("cannot be captured by a closure") =>
@@ -16059,6 +16316,7 @@ pub fn lower_module_to_mir<'a>(
     let source_file = parse.tree();
 
     let mut lowerer = Lowerer::new(typeck, parse, module_name, pub_fns, inferred_fn_usage_types);
+    lowerer.source_file = source_id(parse);
     for &(other_parse, other) in other_modules {
         for (key, &range) in &other.default_method_bodies {
             if !typeck.default_method_bodies.contains_key(key) {
@@ -16066,6 +16324,7 @@ pub fn lower_module_to_mir<'a>(
                     key.clone(),
                     ForeignDefault {
                         parse: other_parse,
+                        source_file: source_id(other_parse),
                         types: &other.types,
                         range,
                     },
@@ -17255,8 +17514,8 @@ mod tests {
             .expect("nested function");
 
         assert_eq!(
-            effective_return_type(&nested.body),
-            nested.return_type,
+            nested.body.result_ty(),
+            &nested.return_type,
             "resource scope wrappers and constructors must preserve the concrete Result type: {:?}",
             nested.body
         );
@@ -17477,7 +17736,7 @@ mod tests {
             .descendants()
             .into_iter()
             .filter_map(|node| match node {
-                MirExpr::StringLit(text, _) => Some(text.clone()),
+                MirExpr::StringLit(text, _, _) => Some(text.clone()),
                 _ => None,
             })
             .collect();
@@ -19981,7 +20240,7 @@ end
         assert!(main_fn.is_some(), "Expected mesh_main function in MIR");
         fn has_float_zero(expr: &MirExpr) -> bool {
             match expr {
-                MirExpr::FloatLit(val, MirType::Float) if *val == 0.0 => true,
+                MirExpr::FloatLit(val, MirType::Float, _) if *val == 0.0 => true,
                 MirExpr::Let { value, body, .. } => has_float_zero(value) || has_float_zero(body),
                 MirExpr::Call { args, .. } => args.iter().any(has_float_zero),
                 _ => false,
@@ -20006,7 +20265,7 @@ end
         assert!(main_fn.is_some(), "Expected mesh_main function in MIR");
         fn has_empty_string(expr: &MirExpr) -> bool {
             match expr {
-                MirExpr::StringLit(s, MirType::String) if s.is_empty() => true,
+                MirExpr::StringLit(s, MirType::String, _) if s.is_empty() => true,
                 MirExpr::Let { value, body, .. } => {
                     has_empty_string(value) || has_empty_string(body)
                 }
@@ -20163,7 +20422,7 @@ end
         // The body should contain the override string "point", not "unknown".
         fn has_string(expr: &MirExpr, s: &str) -> bool {
             match expr {
-                MirExpr::StringLit(val, _) => val == s,
+                MirExpr::StringLit(val, _, _) => val == s,
                 MirExpr::Block(exprs, _) => exprs.iter().any(|e| has_string(e, s)),
                 MirExpr::Let { value, body, .. } => has_string(value, s) || has_string(body, s),
                 _ => false,

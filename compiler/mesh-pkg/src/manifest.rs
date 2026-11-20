@@ -15,9 +15,18 @@ pub struct Manifest {
     pub dependencies: BTreeMap<String, Dependency>,
     #[serde(default)]
     pub native: Option<NativePackage>,
+    #[serde(default)]
+    pub verify: VerifyConfig,
     /// Runtime-owned deployment policy parsed from the modern `[cluster]` table.
     #[serde(skip)]
     pub autonomous_cluster: Option<AutonomousClusterConfig>,
+}
+
+/// Optional package-relative directories for law discovery.
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct VerifyConfig {
+    pub law_roots: Option<Vec<String>>,
 }
 
 /// Package metadata from the [package] section of mesh.toml.

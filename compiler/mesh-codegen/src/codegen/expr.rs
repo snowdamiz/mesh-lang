@@ -35,7 +35,7 @@ impl<'ctx> CodeGen<'ctx> {
                 Ok(self.context.i64_type().const_int(*val as u64, true).into())
             }
 
-            MirExpr::FloatLit(val, _) => Ok(self.context.f64_type().const_float(*val).into()),
+            MirExpr::FloatLit(val, _, _) => Ok(self.context.f64_type().const_float(*val).into()),
 
             MirExpr::BoolLit(val, _) => Ok(self
                 .context
@@ -43,21 +43,27 @@ impl<'ctx> CodeGen<'ctx> {
                 .const_int(if *val { 1 } else { 0 }, false)
                 .into()),
 
-            MirExpr::StringLit(s, _) => self.codegen_string_lit(s),
+            MirExpr::StringLit(s, _, _) => self.codegen_string_lit(s),
 
             MirExpr::Var(name, ty) => self.codegen_var(name, ty),
 
-            MirExpr::BinOp { op, lhs, rhs, ty } => self.codegen_binop(op, lhs, rhs, ty),
+            MirExpr::BinOp {
+                op, lhs, rhs, ty, ..
+            } => self.codegen_binop(op, lhs, rhs, ty),
 
-            MirExpr::UnaryOp { op, operand, ty } => self.codegen_unaryop(op, operand, ty),
+            MirExpr::UnaryOp {
+                op, operand, ty, ..
+            } => self.codegen_unaryop(op, operand, ty),
 
-            MirExpr::Call { func, args, ty } => {
+            MirExpr::Call { func, args, ty, .. } => {
                 let value = self.codegen_call(func, args, ty)?;
                 self.end_after_never(ty)?;
                 Ok(value)
             }
 
-            MirExpr::ClosureCall { closure, args, ty } => {
+            MirExpr::ClosureCall {
+                closure, args, ty, ..
+            } => {
                 let value = self.codegen_closure_call(closure, args, ty)?;
                 self.end_after_never(ty)?;
                 Ok(value)
@@ -68,6 +74,7 @@ impl<'ctx> CodeGen<'ctx> {
                 then_body,
                 else_body,
                 ty,
+                ..
             } => self.codegen_if(cond, then_body, else_body, ty),
 
             MirExpr::Let {
@@ -83,12 +90,14 @@ impl<'ctx> CodeGen<'ctx> {
                 scrutinee,
                 arms,
                 ty,
+                ..
             } => self.codegen_match(scrutinee, arms, ty),
 
             MirExpr::StructLit {
                 name,
                 fields,
                 ty: _,
+                ..
             } => self.codegen_struct_lit(name, fields),
 
             MirExpr::StructUpdate {
@@ -96,23 +105,26 @@ impl<'ctx> CodeGen<'ctx> {
                 overrides,
                 resource_overrides,
                 ty,
+                ..
             } => self.codegen_struct_update(base, overrides, resource_overrides, ty),
 
-            MirExpr::FieldAccess { object, field, ty } => {
-                self.codegen_field_access(object, field, ty)
-            }
+            MirExpr::FieldAccess {
+                object, field, ty, ..
+            } => self.codegen_field_access(object, field, ty),
 
             MirExpr::ConstructVariant {
                 type_name,
                 variant,
                 fields,
                 ty: _,
+                ..
             } => self.codegen_construct_variant(type_name, variant, fields),
 
             MirExpr::MakeClosure {
                 fn_name,
                 captures,
                 ty: _,
+                ..
             } => self.codegen_make_closure(fn_name, captures),
 
             MirExpr::ResourceMove { value, source, .. } => {
@@ -130,9 +142,10 @@ impl<'ctx> CodeGen<'ctx> {
                 value,
                 resource_ty,
                 destructor,
+                ..
             } => self.codegen_resource_drop(value, resource_ty, destructor),
 
-            MirExpr::Return(inner) => self.codegen_return(inner),
+            MirExpr::Return(inner, _) => self.codegen_return(inner),
 
             MirExpr::Panic {
                 message,
@@ -150,6 +163,7 @@ impl<'ctx> CodeGen<'ctx> {
                 placement,
                 terminate_callback,
                 ty: _,
+                ..
             } => self.codegen_actor_spawn(
                 func,
                 args,
@@ -162,6 +176,7 @@ impl<'ctx> CodeGen<'ctx> {
                 target,
                 message,
                 ty: _,
+                ..
             } => self.codegen_actor_send(target, message),
 
             MirExpr::ActorReceive {
@@ -169,6 +184,7 @@ impl<'ctx> CodeGen<'ctx> {
                 timeout_ms,
                 timeout_body,
                 ty,
+                ..
             } => self.codegen_actor_receive(
                 handler.as_ref(),
                 timeout_ms.as_deref(),
@@ -176,15 +192,15 @@ impl<'ctx> CodeGen<'ctx> {
                 ty,
             ),
 
-            MirExpr::ActorSelf { ty: _ } => self.codegen_actor_self(),
+            MirExpr::ActorSelf { ty: _, .. } => self.codegen_actor_self(),
 
-            MirExpr::ActorLink { target, ty: _ } => self.codegen_actor_link(target),
+            MirExpr::ActorLink { target, ty: _, .. } => self.codegen_actor_link(target),
 
             MirExpr::Shaped { value, .. } => self.codegen_expr(value),
 
             MirExpr::ListLit { elements, .. } => self.codegen_list_lit(elements),
 
-            MirExpr::While { cond, body, ty } => self.codegen_while(cond, body, ty),
+            MirExpr::While { cond, body, ty, .. } => self.codegen_while(cond, body, ty),
 
             MirExpr::Break => self.codegen_break(),
 
@@ -3407,7 +3423,7 @@ impl<'ctx> CodeGen<'ctx> {
         let value = self.codegen_expr(body)?;
         // A body that ends in `break`, `continue` or `return` has left.
         if self.block_is_open() {
-            let value = self.convert_to_list_element(value, body.ty())?;
+            let value = self.convert_to_list_element(value, body.result_ty())?;
             let list = self
                 .builder
                 .build_load(ptr_ty, result, "res_list")

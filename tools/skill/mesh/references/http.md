@@ -1,7 +1,4 @@
----
-name: mesh-http
-description: Mesh HTTP: server routing (`HTTP.router`, `HTTP.route`, `HTTP.on_get`/`HTTP.on_post`/`HTTP.on_put`/`HTTP.on_delete`, `HTTP.clustered`), middleware (`HTTP.use`), path parameters, the `Http.build`/`send`/`stream` client, and WebSocket.
----
+# Mesh HTTP and WebSockets
 
 ## HTTP Server Basics
 
@@ -96,7 +93,7 @@ Rules:
 4. `meshc init --template todo-api --db sqlite` is the honest local starter and does not make `HTTP.clustered(...)` part of its public contract.
 5. `GET /health` and mutating routes stay local in the shipped PostgreSQL Todo starter.
 6. `HTTP.clustered(...)` must appear in route-handler position and wrap a bare handler reference.
-7. For clustered-runtime bootstrap, scaffold, or operator guidance, also load `skills/clustering`.
+7. For clustered-runtime bootstrap, scaffold, or operator guidance, also load [clustering](clustering.md).
 
 Code example — accepted forms (grounded in `compiler/mesh-typeck/tests/http_clustered_routes.rs`):
 ```mesh

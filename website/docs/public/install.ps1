@@ -169,17 +169,13 @@ function Get-ExpectedChecksum {
         [string]$ArchiveName
     )
 
-    $line = Get-Content $ChecksumPath | Where-Object { $_ -match ("\s+" + [regex]::Escape($ArchiveName) + '$') } | Select-Object -First 1
+    $namePattern = '^\S+\s+(?:\./)?' + [regex]::Escape($ArchiveName) + '\s*$'
+    $line = Get-Content $ChecksumPath | Where-Object { $_ -cmatch $namePattern } | Select-Object -First 1
     if (-not $line) {
         return $null
     }
 
-    $parts = $line -split '\s+'
-    if ($parts.Count -lt 2) {
-        return '__MALFORMED__'
-    }
-
-    $hash = $parts[0]
+    $hash = ($line -split '\s+', 2)[0]
     if ($hash -notmatch '^[0-9A-Fa-f]{64}$') {
         return '__MALFORMED__'
     }
@@ -235,8 +231,6 @@ function Install-Binary {
     $archivePath = Join-Path $tmpDir $archive
     $checksumUrl = "$baseUrl/v${RequestedVersion}/SHA256SUMS"
     $checksumPath = Join-Path $tmpDir "SHA256SUMS"
-    $success = $false
-
     New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
 
     try {
@@ -295,12 +289,51 @@ function Install-Binary {
                 Copy-Item -Path $sourceLib.FullName -Destination (Join-Path $LibDir $lib) -Force
             }
         }
-        $success = $true
     } finally {
-        if ($success -and (Test-Path $tmpDir)) {
-            Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue
+        Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue
+    }
+}
+
+function Invoke-SkillConfiguration {
+    param([switch]$AcceptDefaults)
+
+    $meshc = Join-Path $BinDir 'meshc.exe'
+    # Windows PowerShell represents captured native stderr as error records.
+    $PSNativeCommandUseErrorActionPreference = $false
+    $ErrorActionPreference = 'Continue'
+    $output = & $meshc skills refresh 2>&1
+    $refreshed = $?
+    $status = $LASTEXITCODE
+    $ErrorActionPreference = 'Stop'
+
+    $lines = ($output -join "`n") -split '\r?\n'
+    # Published compilers predating skills report this specific Clap error.
+    if (-not $refreshed -and $status -eq 2 -and $lines -ccontains "error: unrecognized subcommand 'skills'") {
+        return
+    }
+    if (-not $refreshed) {
+        Fail-Installer (($lines + "error: Mesh skill refresh failed (exit $status).") -join "`n")
+    }
+    foreach ($line in $lines) {
+        if ($line) { Say $line }
+    }
+
+    if (-not $AcceptDefaults -and $Host.Name -eq 'ConsoleHost' -and -not [Console]::IsInputRedirected) {
+        $answer = $null
+        try {
+            $answer = Read-Host 'Set up the Mesh skill for your coding tools? [y/N]'
+        } catch [System.Management.Automation.PSInvalidOperationException] {
+            # An attached console can still be running PowerShell -NonInteractive.
+        }
+        if ($answer -in @('y', 'yes')) {
+            & $meshc skills setup
+            if (-not $?) {
+                Fail-Installer "error: Mesh skill setup failed (exit $LASTEXITCODE)."
+            }
+            return
         }
     }
+    Say "Optional: run 'meshc skills setup' to set up the Mesh skill for your coding tools."
 }
 
 # --- Install ---
@@ -315,6 +348,7 @@ function Invoke-Install {
         }
 
         if (-not (Check-UpdateNeeded -TargetVersion $RequestedVersion)) {
+            Invoke-SkillConfiguration -AcceptDefaults:$Yes
             return
         }
 
@@ -338,6 +372,7 @@ function Invoke-Install {
 
         Say-Green "Installed meshc and meshpkg v$RequestedVersion to ~\.mesh\bin\"
         Say "Run 'meshc --version' and 'meshpkg --version' to verify, or restart your terminal."
+        Invoke-SkillConfiguration -AcceptDefaults:$Yes
     } catch {
         Show-ErrorMessage $_.Exception.Message
         exit 1
@@ -354,7 +389,7 @@ function Show-Usage {
     Say "Options:"
     Say "  -Version VERSION  Install a specific version (default: latest)"
     Say "  -Uninstall        Remove meshc and meshpkg and clean up PATH changes"
-    Say "  -Yes              Accept defaults (for CI, already non-interactive)"
+    Say "  -Yes              Accept defaults and skip interactive prompts"
     Say "  -Help             Show this help message"
 }
 

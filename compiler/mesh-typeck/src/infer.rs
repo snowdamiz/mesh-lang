@@ -4637,7 +4637,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
     }
 
     // Pre-seed TypeRegistry and TypeEnv with imported struct definitions
-    for (mod_namespace, mod_exports) in &import_ctx.module_exports {
+    for mod_exports in import_ctx.module_exports.values() {
         for resource_type in &mod_exports.resource_types {
             type_registry.register_resource_type(resource_type.clone());
         }
@@ -4647,7 +4647,17 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         for (name, struct_def) in &mod_exports.struct_defs {
             type_registry.register_struct(struct_def.clone());
             // Register struct constructor in env with display_prefix set to source module
-            let tycon = TyCon::with_module(name, mod_namespace.as_str());
+            let module_path = &mod_exports.module_name;
+            let qualifier = module_path.rsplit('.').next().unwrap_or(module_path);
+            let display = if import_ctx
+                .module_at_qualifier(qualifier)
+                .is_some_and(|module| module.module_name == *module_path)
+            {
+                qualifier
+            } else {
+                module_path
+            };
+            let tycon = TyCon::with_module(name, display);
             let struct_ty = if struct_def.generic_params.is_empty() {
                 Ty::App(Box::new(Ty::Con(tycon)), vec![])
             } else {
@@ -4681,17 +4691,27 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
     // Register under both the short name ("UserId") and the qualified name
     // ("Types.UserId") so that annotations like `:: Types.UserId` resolve
     // correctly when the annotation parser emits a qualified key.
-    for (mod_namespace, mod_exports) in &import_ctx.module_exports {
+    for mod_exports in import_ctx.module_exports.values() {
         for alias_info in mod_exports.type_aliases.values() {
             // Unqualified: `UserId`
             type_registry.register_alias(alias_info.clone());
             // Qualified: `Types.UserId`
-            let qualified_name = format!("{}.{}", mod_namespace, alias_info.name);
+            let path = &mod_exports.module_name;
             type_registry.register_alias(TypeAliasInfo {
-                name: qualified_name,
-                generic_params: alias_info.generic_params.clone(),
-                aliased_type: alias_info.aliased_type.clone(),
+                name: format!("{path}.{}", alias_info.name),
+                ..alias_info.clone()
             });
+            if let Some((_, short)) = path.rsplit_once('.') {
+                if import_ctx
+                    .module_at_qualifier(short)
+                    .is_some_and(|module| module.module_name == *path)
+                {
+                    type_registry.register_alias(TypeAliasInfo {
+                        name: format!("{short}.{}", alias_info.name),
+                        ..alias_info.clone()
+                    });
+                }
+            }
         }
     }
 
@@ -6294,11 +6314,14 @@ fn register_import(
             let Some(module) = segments.last().cloned() else {
                 return;
             };
-            let Some(mod_exports) = import_ctx.module_exports.get(&module) else {
+            let path = segments.join(".");
+            let Some(mod_exports) = import_ctx.module_at_path(&path) else {
                 // A standard module's functions are found where they are used.
-                if !stdlib_modules(import_ctx.test_builtins).contains_key(&module) {
+                if segments.len() != 1
+                    || !stdlib_modules(import_ctx.test_builtins).contains_key(&module)
+                {
                     ctx.errors.push(TypeError::ImportModuleNotFound {
-                        module_name: segments.join("."),
+                        module_name: path,
                         span: import_decl.syntax().text_range(),
                         suggestion: None,
                     });
@@ -6342,7 +6365,8 @@ fn register_import(
                 .iter()
                 .flat_map(|list| list.names())
                 .filter_map(|node| Some((node.text()?, node.syntax().text_range())));
-            if let Some(mod_exports) = import_ctx.module_exports.get(&module) {
+            let path = segments.join(".");
+            if let Some(mod_exports) = import_ctx.module_at_path(&path) {
                 for (name, span) in names {
                     import_name(
                         ctx,
@@ -6351,12 +6375,12 @@ fn register_import(
                         fn_constraints,
                         import_ctx,
                         mod_exports,
-                        &segments.join("."),
+                        &path,
                         name,
                         span,
                     );
                 }
-            } else if let Some(functions) = stdlib_modules(import_ctx.test_builtins).get(&module) {
+            } else if let Some(functions) = stdlib_modules(import_ctx.test_builtins).get(&path) {
                 // A standard module's function comes in under its own name
                 // and with the module's prefix (`length`, `string_length`).
                 for (name, span) in names {
@@ -6377,7 +6401,7 @@ fn register_import(
                 }
             } else {
                 ctx.errors.push(TypeError::ImportModuleNotFound {
-                    module_name: segments.join("."),
+                    module_name: path,
                     span: from_import.syntax().text_range(),
                     suggestion: None,
                 });
@@ -7224,7 +7248,8 @@ fn names_a_type(
         return true;
     }
     if let Some((module, short)) = name.rsplit_once('.') {
-        return import_ctx.module_exports.contains_key(module)
+        return (import_ctx.module_at_path(module).is_some()
+            || import_ctx.module_at_qualifier(module).is_some())
             && is_known_type(short, type_registry);
     }
     // The type parameters of the enclosing items.
@@ -10747,8 +10772,8 @@ fn infer_call_inner(
 
 /// Checks a call of `callee_expr`, of type `callee_ty`, with the arguments
 /// `written` in it and a value piped in (`x |> f(a)`, `x |2> f(a)`): its
-/// expression, position and type. The arguments are checked against the
-/// parameters, then against what the callee requires of them: its
+/// expression, optional numbered slot and type. The arguments are checked
+/// against the parameters, then against what the callee requires of them: its
 /// where-clause, the bounds its body infers of them, `Display` for
 /// `String.from`. `call_range` is the call's. Returns the call's type.
 #[allow(clippy::too_many_arguments)]
@@ -10758,7 +10783,7 @@ fn check_call(
     callee_expr: &Expr,
     callee_ty: Ty,
     written: &[Expr],
-    piped: Option<(&Expr, usize, Ty)>,
+    piped: Option<(&Expr, Option<u32>, Ty)>,
     call_range: TextRange,
     types: &mut FxHashMap<TextRange, Ty>,
     type_registry: &TypeRegistry,
@@ -10767,7 +10792,9 @@ fn check_call(
 ) -> Result<Ty, TypeError> {
     // Every argument in order; the piped one's type is known already.
     let mut args: Vec<(&Expr, Option<Ty>)> = written.iter().map(|arg| (arg, None)).collect();
-    if let Some((expr, index, ty)) = piped {
+    let plain_pipe = matches!(piped, Some((_, None, _)));
+    if let Some((expr, slot, ty)) = piped {
+        let index = slot.map_or(0, |slot| slot as usize - 1);
         args.insert(index.min(args.len()), (expr, Some(ty)));
     }
 
@@ -10789,7 +10816,8 @@ fn check_call(
     let mut arg_types = Vec::with_capacity(args.len());
 
     let accessor = tuple_accessor(ctx, callee_expr, args.get(1).map(|(arg, _)| *arg));
-    if matches!(ctx.resolve(callee_ty.clone()), Ty::Fun(_, _) | Ty::Var(_)) {
+    let resolved_callee = ctx.resolve(callee_ty.clone());
+    if matches!(resolved_callee, Ty::Fun(_, _) | Ty::Var(_)) {
         let param_types: Vec<Ty> = (0..args.len()).map(|_| ctx.fresh_var()).collect();
         // A tuple accessor is typed by `tuple_element_type`, not by its
         // declared `(Tuple, ..) -> Int`, which would pin an argument of
@@ -10807,7 +10835,21 @@ fn check_call(
         // Establish the callee's parameter types first, then the piped value,
         // then the written arguments in source order. This lets an earlier
         // argument specialize the expected type of a later closure.
-        ctx.unify(callee_ty, expected_fn_ty, origin.clone())?;
+        let callee_origin = if plain_pipe
+            && accessor.is_none()
+            && matches!(&resolved_callee, Ty::Fun(params, _) if params.len() == written.len())
+        {
+            pipe_placeholder_slot(env, written).map_or_else(
+                || origin.clone(),
+                |placeholder_slot| ConstraintOrigin::PipePlaceholder {
+                    call_site: call_range,
+                    placeholder_slot,
+                },
+            )
+        } else {
+            origin.clone()
+        };
+        ctx.unify(callee_ty, expected_fn_ty, callee_origin)?;
         for (param_idx, (piped, piped_ty)) in args.iter().enumerate() {
             if let Some(ty) = piped_ty {
                 let origin = ConstraintOrigin::FnArg {
@@ -10933,6 +10975,17 @@ fn check_call(
     }
 
     Ok(ret_var)
+}
+
+fn pipe_placeholder_slot(env: &TypeEnv, written: &[Expr]) -> Option<usize> {
+    if env.lookup("_").is_some() {
+        return None;
+    }
+    let mut placeholders = written.iter().enumerate().filter(
+        |(_, arg)| matches!(arg, Expr::NameRef(name) if name.text().as_deref() == Some("_")),
+    );
+    let (index, _) = placeholders.next()?;
+    placeholders.next().is_none().then_some(index + 1)
 }
 
 fn jobs_handler_type() -> Ty {
@@ -11145,7 +11198,7 @@ fn infer_piped(
             &rhs,
             callee_ty,
             &[],
-            Some((&lhs, 0, lhs_ty)),
+            Some((&lhs, slot, lhs_ty)),
             rhs_range,
             types,
             type_registry,
@@ -11215,7 +11268,7 @@ fn infer_piped(
         &callee_expr,
         callee_ty,
         &args,
-        Some((&lhs, index, lhs_ty)),
+        Some((&lhs, slot, lhs_ty)),
         call_range,
         types,
         type_registry,

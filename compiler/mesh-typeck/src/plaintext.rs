@@ -476,7 +476,7 @@ impl Checker<'_> {
         };
         let module = base.text()?;
         let function = access.field()?.text().to_string();
-        let exports = self.import_ctx.module_exports.get(&module)?;
+        let exports = self.import_ctx.module_at_qualifier(&module)?;
         let pure = exports.pure_functions.contains(&function);
         Some((module, function, Some(pure)))
     }
@@ -1124,7 +1124,7 @@ impl Walk<'_, '_> {
         if field.starts_with(|c: char| c.is_ascii_uppercase()) {
             return None;
         }
-        if let Some(exports) = self.checker.import_ctx.module_exports.get(module) {
+        if let Some(exports) = self.checker.import_ctx.module_at_qualifier(module) {
             return (!exports.pure_functions.contains(field))
                 .then(|| format!("it calls `{module}.{field}`, which has an exit"));
         }

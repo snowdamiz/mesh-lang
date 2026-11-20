@@ -14,6 +14,7 @@ pub use mesh_parser::ast::expr::SpawnPlacement;
 
 use std::fmt;
 
+use mesh_common::span::Span;
 use rustc_hash::FxHashMap;
 
 /// The base name of a sum type, with any instantiation suffix (`Tree_Int`
@@ -322,21 +323,33 @@ impl fmt::Display for MirType {
 
 // ── MirExpr ───────────────────────────────────────────────────────────
 
+/// The source index assigned by the caller of MIR lowering.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MirSourceId(pub usize);
+
+/// A byte range in the file that supplied a lowered expression.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MirSourceSpan {
+    pub file: MirSourceId,
+    pub span: Span,
+}
+
 /// A MIR expression node. Each variant carries its resolved type.
 #[derive(Debug, Clone)]
 pub enum MirExpr {
     /// Integer literal.
     IntLit(i64, MirType),
     /// Float literal.
-    FloatLit(f64, MirType),
+    FloatLit(f64, MirType, Option<MirSourceSpan>),
     /// Boolean literal.
     BoolLit(bool, MirType),
     /// String literal value.
-    StringLit(std::string::String, MirType),
+    StringLit(std::string::String, MirType, Option<MirSourceSpan>),
     /// Variable reference.
     Var(std::string::String, MirType),
     /// Binary operation.
     BinOp {
+        source_span: Option<MirSourceSpan>,
         op: BinOp,
         lhs: Box<MirExpr>,
         rhs: Box<MirExpr>,
@@ -344,24 +357,28 @@ pub enum MirExpr {
     },
     /// Unary operation.
     UnaryOp {
+        source_span: Option<MirSourceSpan>,
         op: UnaryOp,
         operand: Box<MirExpr>,
         ty: MirType,
     },
     /// Direct function call.
     Call {
+        source_span: Option<MirSourceSpan>,
         func: Box<MirExpr>,
         args: Vec<MirExpr>,
         ty: MirType,
     },
     /// Call through a closure (closure = {fn_ptr, env_ptr}).
     ClosureCall {
+        source_span: Option<MirSourceSpan>,
         closure: Box<MirExpr>,
         args: Vec<MirExpr>,
         ty: MirType,
     },
     /// If-then-else expression.
     If {
+        source_span: Option<MirSourceSpan>,
         cond: Box<MirExpr>,
         then_body: Box<MirExpr>,
         else_body: Box<MirExpr>,
@@ -370,6 +387,7 @@ pub enum MirExpr {
     /// Let binding with continuation body.
     Let {
         name: std::string::String,
+        /// Type of the binding's initializer.
         ty: MirType,
         value: Box<MirExpr>,
         body: Box<MirExpr>,
@@ -378,18 +396,21 @@ pub enum MirExpr {
     Block(Vec<MirExpr>, MirType),
     /// Pattern match (NOT yet compiled to decision tree -- that is Plan 03).
     Match {
+        source_span: Option<MirSourceSpan>,
         scrutinee: Box<MirExpr>,
         arms: Vec<MirMatchArm>,
         ty: MirType,
     },
     /// Struct literal construction.
     StructLit {
+        source_span: Option<MirSourceSpan>,
         name: std::string::String,
         fields: Vec<(std::string::String, MirExpr)>,
         ty: MirType,
     },
     /// Struct update: copy base struct and overwrite specific fields.
     StructUpdate {
+        source_span: Option<MirSourceSpan>,
         base: Box<MirExpr>,
         overrides: Vec<(std::string::String, MirExpr)>,
         /// Resource-bearing base fields replaced by this update. Codegen destroys
@@ -399,12 +420,14 @@ pub enum MirExpr {
     },
     /// Field access on a struct.
     FieldAccess {
+        source_span: Option<MirSourceSpan>,
         object: Box<MirExpr>,
         field: std::string::String,
         ty: MirType,
     },
     /// Construct a variant of a sum type.
     ConstructVariant {
+        source_span: Option<MirSourceSpan>,
         type_name: std::string::String,
         variant: std::string::String,
         fields: Vec<MirExpr>,
@@ -412,18 +435,24 @@ pub enum MirExpr {
     },
     /// Create a closure object: {fn_ptr -> fn_name, env_ptr -> captures}.
     MakeClosure {
+        source_span: Option<MirSourceSpan>,
         fn_name: std::string::String,
         captures: Vec<MirExpr>,
         ty: MirType,
     },
     /// Transfer ownership of an affine resource value out of its source slot.
     ResourceMove {
+        source_span: Option<MirSourceSpan>,
         value: Box<MirExpr>,
         ty: MirType,
         source: MirResourceMoveSource,
     },
     /// Read an affine resource for the duration of a call without transferring it.
-    ResourceBorrow { value: Box<MirExpr>, ty: MirType },
+    ResourceBorrow {
+        source_span: Option<MirSourceSpan>,
+        value: Box<MirExpr>,
+        ty: MirType,
+    },
     /// Compiler-inserted destruction of a still-owned resource at scope exit.
     ResourceDrop {
         value: Box<MirExpr>,
@@ -432,12 +461,13 @@ pub enum MirExpr {
     },
     /// Source-level, explicit destruction of a resource.
     ResourceDestroy {
+        source_span: Option<MirSourceSpan>,
         value: Box<MirExpr>,
         resource_ty: MirType,
         destructor: MirResourceDestructor,
     },
     /// Return from function.
-    Return(Box<MirExpr>),
+    Return(Box<MirExpr>, Option<MirSourceSpan>),
     /// Runtime panic with message and source location.
     Panic {
         message: std::string::String,
@@ -450,6 +480,7 @@ pub enum MirExpr {
     // ── Actor primitives ──────────────────────────────────────────────
     /// Spawn a new actor process.
     ActorSpawn {
+        source_span: Option<MirSourceSpan>,
         /// The function to run as the actor body.
         func: Box<MirExpr>,
         /// Arguments to pass (initial state).
@@ -465,6 +496,7 @@ pub enum MirExpr {
     },
     /// Send a message to an actor.
     ActorSend {
+        source_span: Option<MirSourceSpan>,
         /// Target actor PID.
         target: Box<MirExpr>,
         /// Message to send.
@@ -483,6 +515,7 @@ pub enum MirExpr {
     /// body)`, the message is bound to `name` for `body`, which matches on
     /// it; without one the message itself is the value.
     ActorReceive {
+        source_span: Option<MirSourceSpan>,
         handler: Option<(String, MirType, Box<MirExpr>)>,
         /// Timeout in milliseconds (None = infinite wait).
         timeout_ms: Option<Box<MirExpr>>,
@@ -492,17 +525,29 @@ pub enum MirExpr {
         ty: MirType,
     },
     /// Get own PID.
-    ActorSelf { ty: MirType },
+    ActorSelf {
+        source_span: Option<MirSourceSpan>,
+        ty: MirType,
+    },
     /// Link to another actor for supervision.
-    ActorLink { target: Box<MirExpr>, ty: MirType },
+    ActorLink {
+        source_span: Option<MirSourceSpan>,
+        target: Box<MirExpr>,
+        ty: MirType,
+    },
 
     // ── Supervisor primitives ──────────────────────────────────────
     /// List literal: [e1, e2, ...]
-    ListLit { elements: Vec<MirExpr>, ty: MirType },
+    ListLit {
+        source_span: Option<MirSourceSpan>,
+        elements: Vec<MirExpr>,
+        ty: MirType,
+    },
 
     // ── Loop primitives ──────────────────────────────────────────────
     /// While loop: evaluates condition, if true executes body and repeats. Returns Unit.
     While {
+        source_span: Option<MirSourceSpan>,
         cond: Box<MirExpr>,
         body: Box<MirExpr>,
         ty: MirType, // Always MirType::Unit
@@ -516,6 +561,7 @@ pub enum MirExpr {
     /// Self-recursive tail call (rewritten from Call during TCE pass).
     /// Codegen compiles this as parameter reassignment + branch to loop header.
     TailCall {
+        source_span: Option<MirSourceSpan>,
         /// Arguments for the recursive call (assigned to function parameters).
         args: Vec<MirExpr>,
         /// Result type (function return type, but ty() returns Never since it branches).
@@ -525,6 +571,7 @@ pub enum MirExpr {
     /// For-in loop over an integer range: `for var in start..end do body end`.
     /// Desugared to integer counter iteration with no heap allocation.
     ForInRange {
+        source_span: Option<MirSourceSpan>,
         /// Loop variable name.
         var: String,
         /// Start value (inclusive).
@@ -542,6 +589,7 @@ pub enum MirExpr {
     /// For-in loop over a List: `for var in list do body end`.
     /// Desugared to indexed iteration with list builder.
     ForInList {
+        source_span: Option<MirSourceSpan>,
         var: String,
         collection: Box<MirExpr>,
         /// Optional filter expression (`when condition`).
@@ -554,6 +602,7 @@ pub enum MirExpr {
     /// For-in loop over a Map: `for {k, v} in map do body end`.
     /// Desugared to indexed iteration over map entries.
     ForInMap {
+        source_span: Option<MirSourceSpan>,
         key_var: String,
         val_var: String,
         collection: Box<MirExpr>,
@@ -568,6 +617,7 @@ pub enum MirExpr {
     /// For-in loop over a Set: `for var in set do body end`.
     /// Desugared to indexed iteration over set elements.
     ForInSet {
+        source_span: Option<MirSourceSpan>,
         var: String,
         collection: Box<MirExpr>,
         /// Optional filter expression (`when condition`).
@@ -580,6 +630,7 @@ pub enum MirExpr {
     /// For-in loop over any type implementing Iterable/Iterator.
     /// Desugared to repeated next() calls with Option tag checking.
     ForInIterator {
+        source_span: Option<MirSourceSpan>,
         /// Loop variable name.
         var: String,
         /// The Iterable, or the Iterator itself.
@@ -691,7 +742,7 @@ macro_rules! child_exprs {
             | MirExpr::ResourceDrop { value, .. }
             | MirExpr::ResourceDestroy { value, .. }
             | MirExpr::Shaped { value, .. }
-            | MirExpr::Return(value) => children.push(value),
+            | MirExpr::Return(value, _) => children.push(value),
             MirExpr::ActorSpawn {
                 func,
                 args,
@@ -769,7 +820,57 @@ macro_rules! child_exprs {
     }};
 }
 
+// The qualifier on the returned reference follows the input reference.
+macro_rules! expression_source_span {
+    ($expression:expr) => {
+        match $expression {
+            MirExpr::BinOp { source_span, .. }
+            | MirExpr::UnaryOp { source_span, .. }
+            | MirExpr::Call { source_span, .. }
+            | MirExpr::ClosureCall { source_span, .. }
+            | MirExpr::TailCall { source_span, .. }
+            | MirExpr::If { source_span, .. }
+            | MirExpr::Match { source_span, .. }
+            | MirExpr::StructLit { source_span, .. }
+            | MirExpr::StructUpdate { source_span, .. }
+            | MirExpr::FieldAccess { source_span, .. }
+            | MirExpr::ConstructVariant { source_span, .. }
+            | MirExpr::MakeClosure { source_span, .. }
+            | MirExpr::ResourceMove { source_span, .. }
+            | MirExpr::ResourceBorrow { source_span, .. }
+            | MirExpr::ResourceDestroy { source_span, .. }
+            | MirExpr::ActorSpawn { source_span, .. }
+            | MirExpr::ActorSend { source_span, .. }
+            | MirExpr::ActorReceive { source_span, .. }
+            | MirExpr::ActorSelf { source_span, .. }
+            | MirExpr::ActorLink { source_span, .. }
+            | MirExpr::ListLit { source_span, .. }
+            | MirExpr::While { source_span, .. }
+            | MirExpr::ForInRange { source_span, .. }
+            | MirExpr::ForInList { source_span, .. }
+            | MirExpr::ForInMap { source_span, .. }
+            | MirExpr::ForInSet { source_span, .. }
+            | MirExpr::ForInIterator { source_span, .. }
+            | MirExpr::FloatLit(_, _, source_span)
+            | MirExpr::StringLit(_, _, source_span)
+            | MirExpr::Return(_, source_span) => Some(source_span),
+            _ => None,
+        }
+    };
+}
+
 impl MirExpr {
+    pub(crate) fn set_source_span(&mut self, location: MirSourceSpan) {
+        if let Some(slot) = expression_source_span!(self) {
+            slot.get_or_insert(location);
+        }
+    }
+
+    /// Source expression that produced this MIR operation, if recorded.
+    pub fn source_span(&self) -> Option<MirSourceSpan> {
+        expression_source_span!(self).copied().flatten()
+    }
+
     /// The expressions directly inside this one (match arm guards and
     /// bodies included).
     pub fn children(&self) -> Vec<&MirExpr> {
@@ -801,13 +902,13 @@ impl MirExpr {
         }
     }
 
-    /// Get the type of this expression.
+    /// Get the stored type. For a `let`, this is the binding's type.
     pub fn ty(&self) -> &MirType {
         match self {
             MirExpr::IntLit(_, ty) => ty,
-            MirExpr::FloatLit(_, ty) => ty,
+            MirExpr::FloatLit(_, ty, _) => ty,
             MirExpr::BoolLit(_, ty) => ty,
-            MirExpr::StringLit(_, ty) => ty,
+            MirExpr::StringLit(_, ty, _) => ty,
             MirExpr::Var(_, ty) => ty,
             MirExpr::BinOp { ty, .. } => ty,
             MirExpr::UnaryOp { ty, .. } => ty,
@@ -826,14 +927,14 @@ impl MirExpr {
             MirExpr::ResourceBorrow { ty, .. } => ty,
             MirExpr::ResourceDrop { .. } => &MirType::Unit,
             MirExpr::ResourceDestroy { .. } => &MirType::Unit,
-            MirExpr::Return(_) => &MirType::Never,
+            MirExpr::Return(_, _) => &MirType::Never,
             MirExpr::Panic { .. } => &MirType::Never,
             MirExpr::Unit => &MirType::Unit,
             MirExpr::ActorSpawn { ty, .. } => ty,
             MirExpr::ActorSend { ty, .. } => ty,
             MirExpr::Shaped { value, .. } => value.ty(),
             MirExpr::ActorReceive { ty, .. } => ty,
-            MirExpr::ActorSelf { ty } => ty,
+            MirExpr::ActorSelf { ty, .. } => ty,
             MirExpr::ActorLink { ty, .. } => ty,
             MirExpr::ListLit { ty, .. } => ty,
             MirExpr::While { ty, .. } => ty,
@@ -846,6 +947,15 @@ impl MirExpr {
             MirExpr::ForInSet { ty, .. } => ty,
             MirExpr::ForInIterator { ty, .. } => ty,
             MirExpr::SupervisorStart { ty, .. } => ty,
+        }
+    }
+
+    /// Type of the value produced by this expression. A `let` produces its
+    /// continuation's value, and a block already carries its tail's type.
+    pub(crate) fn result_ty(&self) -> &MirType {
+        match self {
+            MirExpr::Let { body, .. } => body.result_ty(),
+            _ => self.ty(),
         }
     }
 }
@@ -1073,6 +1183,7 @@ mod tests {
             ),
             (
                 MirExpr::TailCall {
+                    source_span: None,
                     args: Vec::new(),
                     ty: MirType::Int,
                 },
@@ -1080,6 +1191,7 @@ mod tests {
             ),
             (
                 MirExpr::ActorLink {
+                    source_span: None,
                     target: unit(),
                     ty: MirType::Int,
                 },

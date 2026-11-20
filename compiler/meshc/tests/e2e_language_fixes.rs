@@ -14,6 +14,7 @@ fn find_meshc() -> PathBuf {
 struct Build {
     dir: tempfile::TempDir,
     ok: bool,
+    stdout: String,
     stderr: String,
 }
 
@@ -36,6 +37,7 @@ fn build_with_args(source: &str, args: &[&str]) -> Build {
     Build {
         dir,
         ok: output.status.success(),
+        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
         stderr: String::from_utf8_lossy(&output.stderr).to_string(),
     }
 }
@@ -83,8 +85,11 @@ fn build_error(source: &str) -> String {
 
 fn json_diagnostics(source: &str) -> Vec<serde_json::Value> {
     let built = build(source, true);
-    built
-        .stderr
+    parse_json_diagnostics(&built.stderr)
+}
+
+fn parse_json_diagnostics(stderr: &str) -> Vec<serde_json::Value> {
+    stderr
         .lines()
         .filter(|line| !line.trim().is_empty())
         .map(|line| {
@@ -95,6 +100,156 @@ fn json_diagnostics(source: &str) -> Vec<serde_json::Value> {
 }
 
 // ── Diagnostics ────────────────────────────────────────────────────────
+
+const PIPE_PLACEHOLDER: &str = r#"fn format_three(left :: String, middle :: String, right :: String) do
+  "${left}:${middle}:${right}"
+end
+
+fn main() do
+  let formatted = "middle" |> format_three("left", _, "right")
+  println(formatted)
+end
+"#;
+
+#[test]
+fn diagnostic_repair_pipe_placeholder_preserves_argument_order() {
+    let terminal = build_error(PIPE_PLACEHOLDER);
+    let headline = "arity mismatch: expected 3 arguments, found 4";
+    assert!(
+        terminal.contains(&format!("[E0003] Error: {headline}")),
+        "{terminal}"
+    );
+    assert!(
+        terminal.contains("passes the piped value as the first argument"),
+        "{terminal}"
+    );
+    assert!(terminal.contains("Use `|2>` and remove `_`"), "{terminal}");
+    assert!(terminal.contains("meshc guide syntax"), "{terminal}");
+
+    let json = build(PIPE_PLACEHOLDER, true);
+    assert!(!json.ok, "{}", json.stderr);
+    assert!(json.stdout.is_empty(), "{}", json.stdout);
+    let diagnostics = parse_json_diagnostics(&json.stderr);
+    assert_eq!(diagnostics.len(), 2, "{diagnostics:?}");
+    let diagnostic = &diagnostics[0];
+    assert_eq!(diagnostic["code"], "E0003");
+    assert_eq!(diagnostic["severity"], "error");
+    assert_eq!(diagnostic["message"], headline);
+    let file = std::path::Path::new(diagnostic["file"].as_str().unwrap());
+    assert_eq!(file.file_name().unwrap(), "main.mpl");
+    assert_eq!(
+        diagnostic["spans"],
+        serde_json::json!([{
+            "start": 149,
+            "end": 181,
+            "label": "expected 3 argument(s)"
+        }])
+    );
+    assert_eq!(
+        &PIPE_PLACEHOLDER[149..181],
+        r#"format_three("left", _, "right")"#
+    );
+    let hint = diagnostic["fix"].as_str().unwrap();
+    assert!(hint.contains("Use `|2>` and remove `_`"), "{hint}");
+    assert!(terminal.contains(hint), "{terminal}");
+    assert_eq!(diagnostics[1]["code"], "C0001");
+
+    let removing_only = PIPE_PLACEHOLDER.replace("_, ", "");
+    assert_eq!(run(&removing_only), "middle:left:right\n");
+    let repaired = removing_only.replace("|>", "|2>");
+    assert_eq!(run(&repaired), "left:middle:right\n");
+}
+
+#[test]
+fn diagnostic_repair_pipe_placeholder_stays_specific_to_one_extra_argument() {
+    let call = r#""middle" |> format_three("left", _, "right")"#;
+    for control in [
+        r#"format_three("extra", "left", _, "right")"#,
+        r#""middle" |> format_three("left", "_", "right")"#,
+        r#""middle" |> format_three(_, _, "right")"#,
+        r#""middle" |2> format_three("left", _, "right")"#,
+    ] {
+        let diagnostics = json_diagnostics(&PIPE_PLACEHOLDER.replace(call, control));
+        let diagnostic = &diagnostics[0];
+        assert_eq!(diagnostic["code"], "E0003", "{control}");
+        assert_eq!(
+            diagnostic["message"], "arity mismatch: expected 3 arguments, found 4",
+            "{control}"
+        );
+        assert_eq!(diagnostic["fix"], "1 extra argument(s)", "{control}");
+    }
+
+    let matching_arity =
+        "fn pair(a :: Int, b :: Int) do\n  a + b\nend\n\nfn main() do\n  1 |> pair(_)\nend\n";
+    let diagnostics = json_diagnostics(matching_arity);
+    assert_eq!(diagnostics[0]["code"], "E0004");
+    assert_eq!(diagnostics[0]["message"], "undefined variable `_`");
+
+    for (args, advice) in [
+        (r#"_, "center", "right""#, "Keep `|>` and remove `_`"),
+        (r#""left", "center", _"#, "Use `|3>` and remove `_`"),
+    ] {
+        let source = PIPE_PLACEHOLDER.replace(r#""left", _, "right""#, args);
+        let diagnostics = json_diagnostics(&source);
+        assert_eq!(diagnostics[0]["code"], "E0003");
+        let hint = diagnostics[0]["fix"].as_str().unwrap();
+        assert!(hint.contains(advice), "{hint}");
+    }
+}
+
+#[test]
+fn diagnostic_repair_exhaustive_match_requires_a_decision_for_new_variants() {
+    let incomplete = r##"type Delivery do
+  Delivered
+  Rejected
+  TimedOut
+end
+
+fn retry(state :: Delivery) -> Bool do
+  case state do
+    Delivered -> false
+    Rejected -> false
+  end
+end
+
+fn main() do
+  println("#{retry(Delivered)}")
+  println("#{retry(Rejected)}")
+  println("#{retry(TimedOut)}")
+end
+"##;
+    let terminal = build_error(incomplete);
+    assert!(terminal.contains("[E0012]"), "{terminal}");
+    assert!(terminal.contains("add an arm for `TimedOut`"), "{terminal}");
+    assert!(
+        terminal.contains("also covers future variants"),
+        "{terminal}"
+    );
+    let json = build(incomplete, true);
+    assert!(!json.ok, "{}", json.stderr);
+    assert!(json.stdout.is_empty(), "{}", json.stdout);
+    let diagnostics = parse_json_diagnostics(&json.stderr);
+    let diagnostic = &diagnostics[0];
+    assert_eq!(diagnostic["code"], "E0012");
+    assert_eq!(diagnostic["spans"][0]["label"], "missing: TimedOut");
+    let hint = diagnostic["fix"].as_str().unwrap();
+    assert!(hint.contains("add an arm for `TimedOut`"), "{hint}");
+    assert!(hint.contains("also covers future variants"), "{hint}");
+
+    let explicit = incomplete.replace(
+        "Rejected -> false\n",
+        "Rejected -> false\n    TimedOut -> true\n",
+    );
+    let wildcard = explicit.replace("TimedOut -> true", "_ -> true");
+    for repaired in [&explicit, &wildcard] {
+        assert_eq!(run(repaired), "false\nfalse\ntrue\n");
+    }
+    let add_pending = |source: &str| source.replace("  TimedOut\n", "  TimedOut\n  Pending\n");
+    let terminal = build_error(&add_pending(&explicit));
+    assert!(terminal.contains("[E0012]"), "{terminal}");
+    assert!(terminal.contains("add an arm for `Pending`"), "{terminal}");
+    assert_eq!(run(&add_pending(&wildcard)), "false\nfalse\ntrue\n");
+}
 
 #[test]
 fn diagnostic_spans_are_source_offsets_despite_whitespace() {

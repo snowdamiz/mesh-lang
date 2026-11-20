@@ -163,6 +163,21 @@ jobs:
           # secret-resource contract through compiled Mesh.
           cargo test --locked -p meshc --test e2e --test tooling_e2e --test e2e_language_fixes --test e2e_performance --test e2e_library --test e2e_crypto_v2 --test e2e_secret
 
+      - name: Check skill updates and verify policy laws
+        shell: bash
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          z3_archive=z3-4.15.7-x64-glibc-2.39.zip
+          cd "$RUNNER_TEMP"
+          curl -fsSLO "https://github.com/Z3Prover/z3/releases/download/z3-4.15.7/$z3_archive"
+          printf '%s  %s\n' '4436ab6381f0b9c68075a267ab13a5f3ad25f7c25f7626dec959c76805c9f2cb' "$z3_archive" | sha256sum --check
+          unzip -q "$z3_archive"
+          export MESH_VERIFY_Z3="$RUNNER_TEMP/${z3_archive%.zip}/bin/z3"
+          cd "$GITHUB_WORKSPACE"
+          cargo test --locked -p meshc --bin meshc --test e2e_laws
+          cargo test --locked -p meshc --bin meshc verify_solver::tests::pinned_z3 -- --ignored
+
       - name: Prove durable jobs on PostgreSQL
         timeout-minutes: 10
         env:

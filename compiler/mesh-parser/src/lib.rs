@@ -8,6 +8,7 @@
 pub mod ast;
 pub mod cst;
 pub mod error;
+pub mod law;
 mod parser;
 pub mod syntax_kind;
 pub mod test_harness;

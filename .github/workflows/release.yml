@@ -537,9 +537,36 @@ jobs:
 
   # ── Release asset smoke ────────────────────────────────────────────
 
+  assemble-release-manifest:
+    name: Assemble release manifest
+    needs: [build, build-meshpkg]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download compiler and package manager archives
+        uses: actions/download-artifact@v4
+        with:
+          pattern: 'mesh{c,pkg}-*'
+          path: artifacts/
+          merge-multiple: true
+
+      - name: Generate SHA256SUMS
+        shell: bash
+        run: |
+          export LC_ALL=C
+          cd artifacts/
+          sha256sum ./*.tar.gz ./*.zip > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Upload the manifest used for smoke tests and publication
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-checksum-manifest
+          path: artifacts/SHA256SUMS
+          if-no-files-found: error
+
   verify-release-assets:
     name: Verify release assets (${{ matrix.target }})
-    needs: [build, build-meshpkg]
+    needs: assemble-release-manifest
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -547,19 +574,14 @@ jobs:
         include:
           - target: x86_64-apple-darwin
             os: macos-15-intel
-            archive_ext: tar.gz
           - target: aarch64-apple-darwin
             os: macos-15
-            archive_ext: tar.gz
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-24.04
-            archive_ext: tar.gz
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-24.04-arm
-            archive_ext: tar.gz
           - target: x86_64-pc-windows-msvc
             os: windows-latest
-            archive_ext: zip
 
     steps:
       - name: Checkout
@@ -577,50 +599,11 @@ jobs:
           name: meshpkg-${{ matrix.target }}
           path: release-assets/
 
-      - name: Generate SHA256SUMS (Unix)
-        if: runner.os != 'Windows'
-        run: |
-          python3 - <<'PY'
-          from glob import glob
-          from hashlib import sha256
-          from pathlib import Path
-
-          patterns = [
-              "release-assets/meshc-v*-${{ matrix.target }}.${{ matrix.archive_ext }}",
-              "release-assets/meshpkg-v*-${{ matrix.target }}.${{ matrix.archive_ext }}",
-          ]
-
-          files = []
-          for pattern in patterns:
-              matches = sorted(glob(pattern))
-              if len(matches) != 1:
-                  raise SystemExit(f"missing release archive for ${{ matrix.target }}: {pattern} -> {len(matches)} matches")
-              files.append(Path(matches[0]))
-
-          lines = [
-              f"{sha256(path.read_bytes()).hexdigest()}  {path.name}"
-              for path in files
-          ]
-          output = Path("release-assets/SHA256SUMS")
-          output.write_text("\n".join(lines) + "\n", encoding="utf-8")
-          print(output.read_text(encoding="utf-8"), end="")
-          PY
-
-      - name: Generate SHA256SUMS (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $meshcArchive = Get-ChildItem -Path release-assets -Filter "meshc-v*-${{ matrix.target }}.${{ matrix.archive_ext }}" | Select-Object -First 1
-          $meshpkgArchive = Get-ChildItem -Path release-assets -Filter "meshpkg-v*-${{ matrix.target }}.${{ matrix.archive_ext }}" | Select-Object -First 1
-          $files = @($meshcArchive, $meshpkgArchive)
-          if ($files.Count -ne 2 -or ($files | Where-Object { $null -eq $_ }).Count -gt 0) {
-            throw "missing release archive for ${{ matrix.target }}"
-          }
-          $lines = foreach ($file in $files) {
-            "$((Get-FileHash -Path $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $($file.Name)"
-          }
-          Set-Content -Path release-assets/SHA256SUMS -Value $lines
-          Get-Content release-assets/SHA256SUMS
+      - name: Download shared release manifest
+        uses: actions/download-artifact@v4
+        with:
+          name: release-checksum-manifest
+          path: release-assets/
 
       - name: Install Rust for smoke verifier
         uses: dtolnay/rust-toolchain@stable
@@ -686,14 +669,30 @@ jobs:
         if: runner.os != 'Windows'
         env:
           M034_S03_PREBUILT_RELEASE_DIR: ${{ github.workspace }}/release-assets
+          M034_S03_REQUIRE_SKILLS: '1'
         run: bash scripts/verify-m034-s03.sh
+
+      - name: Set up Python for the Windows console proof
+        if: runner.os == 'Windows'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64
 
       - name: Verify staged installer assets (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
+        timeout-minutes: 15
         env:
           M034_S03_PREBUILT_RELEASE_DIR: ${{ github.workspace }}\release-assets
-        run: pwsh -NoProfile -File scripts/verify-m034-s03.ps1
+          M034_S03_REQUIRE_SKILLS: '1'
+        run: |
+          $requirements = Join-Path $env:RUNNER_TEMP 'mesh-console-requirements.txt'
+          'pywinpty==3.1.2 --hash=sha256:220e30a8cccd7f0be3356d4e3e56fdcda2ae45edc1de526b440c4031fe9308da' |
+            Set-Content -LiteralPath $requirements -Encoding ascii
+          python -m pip install --only-binary=:all: --no-deps --require-hashes -r $requirements
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python scripts/tests/verify-m034-s03-windows-console.py
 
       - name: Upload release smoke diagnostics
         if: failure()
@@ -705,15 +704,11 @@ jobs:
 
   # ── Release ─────────────────────────────────────────────────────────
 
-  release:
-    name: Create Release
-    # autonomous-cluster-proof is deliberately absent for now: see its job
-    # above. It still runs and still reports.
-    needs: [build, build-meshpkg, cryptographic-release-evidence, cryptographic-fuzz, authoritative-live-proof, verify-release-assets]
-    if: startsWith(github.ref, 'refs/tags/v')
+  verify-merged-release-assets:
+    name: Verify merged release assets
+    needs: [cryptographic-release-evidence, cryptographic-fuzz, verify-release-assets]
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -721,11 +716,43 @@ jobs:
           path: artifacts/
           merge-multiple: true
 
-      - name: Generate SHA256SUMS
+      - name: Download the smoke-tested release manifest
+        uses: actions/download-artifact@v4
+        with:
+          name: release-checksum-manifest
+          path: release-manifest/
+
+      - name: Verify merged archives match the smoke-tested SHA256SUMS
+        shell: bash
         run: |
+          export LC_ALL=C
           cd artifacts/
-          sha256sum ./*.tar.gz ./*.zip > SHA256SUMS
-          cat SHA256SUMS
+          sha256sum ./*.tar.gz ./*.zip | cmp ../release-manifest/SHA256SUMS -
+          cp ../release-manifest/SHA256SUMS SHA256SUMS
+
+      - name: Upload the verified publication assets
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: verified-publication-assets
+          path: artifacts/
+          if-no-files-found: error
+
+  release:
+    name: Create Release
+    # autonomous-cluster-proof is deliberately absent for now: see its job
+    # above. It still runs and still reports.
+    needs: [authoritative-live-proof, verify-merged-release-assets]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download the verified publication assets
+        uses: actions/download-artifact@v4
+        with:
+          name: verified-publication-assets
+          path: artifacts/
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

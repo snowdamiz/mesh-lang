@@ -222,6 +222,7 @@ mod tests {
                     params: vec![],
                     return_type: MirType::Int,
                     body: MirExpr::Call {
+                        source_span: None,
                         func: Box::new(MirExpr::Var(
                             "helper".to_string(),
                             MirType::FnPtr(vec![], Box::new(MirType::Int)),

@@ -9,5 +9,5 @@ expression: output
    │ ─────────────┬────────────
    │              ╰────────────── missing: None
    │
-   │ Help: add the missing patterns or a wildcard `_` arm
+   │ Help: add an arm for `None`. Use a wildcard `_` arm for an intentional default that also covers future variants.
 ───╯

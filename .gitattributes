@@ -8,3 +8,4 @@
 # blocks and `|>` pipes, which Rust's grammar would break on — so it restores
 # highlighting at the cost of an inexact label.
 *.mpl linguist-language=Elixir
+tools/skill/mesh/**/*.md text eol=lf

@@ -32,6 +32,7 @@ BAD_METADATA_ROOT="$SERVER_ROOT/bad-metadata"
 BAD_SHA_ROOT="$SERVER_ROOT/bad-sha"
 MISSING_MESHPKG_ROOT="$SERVER_ROOT/missing-meshpkg"
 MISSING_BINARY_ROOT="$SERVER_ROOT/missing-binary"
+TAMPERED_ROOT="$SERVER_ROOT/tampered"
 
 cleanup() {
   if [[ -n "$SERVER_PID" ]] && kill -0 "$SERVER_PID" 2>/dev/null; then
@@ -322,8 +323,8 @@ setup_local_release_assets() {
   meshc_sha="$(sha256_of_file "$GOOD_ROOT/hyperpush-org/mesh-lang/releases/download/v${VERSION}/${MESHC_ARCHIVE}")"
   meshpkg_sha="$(sha256_of_file "$GOOD_ROOT/hyperpush-org/mesh-lang/releases/download/v${VERSION}/${MESHPKG_ARCHIVE}")"
   cat >"$GOOD_ROOT/hyperpush-org/mesh-lang/releases/download/v${VERSION}/SHA256SUMS" <<EOF
-${meshc_sha}  ${MESHC_ARCHIVE}
-${meshpkg_sha}  ${MESHPKG_ARCHIVE}
+${meshc_sha}  ./${MESHC_ARCHIVE}
+${meshpkg_sha}  ./${MESHPKG_ARCHIVE}
 EOF
   write_release_json "$GOOD_ROOT/api/releases/latest.json" "$MESHC_ARCHIVE" "$MESHPKG_ARCHIVE"
 
@@ -362,6 +363,17 @@ EOF
   "assets": []
 }
 EOF
+}
+
+tamper_archive() {
+  python3 - "$1" <<'PY'
+import sys
+
+with open(sys.argv[1], 'r+b') as archive:
+    first = archive.read(1)
+    archive.seek(0)
+    archive.write(bytes([first[0] ^ 1]))
+PY
 }
 
 start_server() {
@@ -407,7 +419,7 @@ run_installer_failure() {
   done
 }
 
-rm -rf "$TMP_ROOT"
+rm -rf "$RUN_DIR" "$STAGE_ROOT" "$HOME_ROOT" "$WORK_ROOT"
 mkdir -p "$RUN_DIR" "$STAGE_ROOT" "$HOME_ROOT" "$WORK_ROOT"
 
 TARGET="$(detect_target)"
@@ -422,6 +434,10 @@ if [[ -n "$PREBUILT_RELEASE_DIR" ]]; then
 else
   setup_local_release_assets
 fi
+RELEASE_PATH="hyperpush-org/mesh-lang/releases/download/v${VERSION}"
+mkdir -p "$TAMPERED_ROOT/$RELEASE_PATH" "$TAMPERED_ROOT/api/releases"
+cp "$GOOD_ROOT/api/releases/latest.json" "$TAMPERED_ROOT/api/releases/latest.json"
+cp "$GOOD_ROOT/$RELEASE_PATH/"{SHA256SUMS,"$MESHC_ARCHIVE","$MESHPKG_ARCHIVE"} "$TAMPERED_ROOT/$RELEASE_PATH/"
 
 cat >"$RUN_DIR/00-context.log" <<EOF
 version=${VERSION}
@@ -478,11 +494,17 @@ run_command install 06-install-good "sh website/docs/public/install.sh --yes aga
 [[ -f "$GOOD_HOME/.mesh/lib/libmesh_test_rt.a" ]] || fail_phase "install" "installed test runtime library was missing" "$LAST_LOG_PATH"
 [[ -f "$GOOD_HOME/.mesh/version" ]] || fail_phase "install" "version file was not written" "$LAST_LOG_PATH"
 [[ "$(tr -d '\r\n' <"$GOOD_HOME/.mesh/version")" == "$VERSION" ]] || fail_phase "install" "version file did not match staged version" "$LAST_LOG_PATH"
+for host_dir in .agents .claude .cursor .gemini .copilot; do
+  [[ ! -e "$GOOD_HOME/$host_dir" ]] || fail_phase install "unattended install wrote to $GOOD_HOME/$host_dir" "$LAST_LOG_PATH"
+done
+if [[ -z "$PREBUILT_RELEASE_DIR" || "${M034_S03_REQUIRE_SKILLS:-0}" == 1 ]]; then
+  assert_log_contains install "Optional: run 'meshc skills setup'" "$LAST_LOG_PATH"
+fi
 
 run_command version 07-meshc-version "installed meshc --version" "$GOOD_HOME/.mesh/bin/meshc" --version
-assert_log_contains version "meshc ${VERSION}" "$LAST_LOG_PATH"
+[[ "$(cat "$LAST_STDOUT_PATH")" == "meshc ${VERSION}" ]] || fail_phase version "installed meshc version did not match ${VERSION}" "$LAST_LOG_PATH"
 run_command version 08-meshpkg-version "installed meshpkg --version" "$GOOD_HOME/.mesh/bin/meshpkg" --version
-assert_log_contains version "meshpkg ${VERSION}" "$LAST_LOG_PATH"
+[[ "$(cat "$LAST_STDOUT_PATH")" == "meshpkg ${VERSION}" ]] || fail_phase version "installed meshpkg version did not match ${VERSION}" "$LAST_LOG_PATH"
 
 SMOKE_WORK_DIR="$WORK_ROOT/installer-smoke"
 rm -rf "$SMOKE_WORK_DIR"
@@ -507,5 +529,15 @@ if [[ -z "$PREBUILT_RELEASE_DIR" ]]; then
   run_installer_failure download 13-missing-meshpkg "$MISSING_MESHPKG_API_URL" "$MISSING_MESHPKG_BASE_URL" "$HOME_ROOT/missing-meshpkg" "Failed to download meshpkg" "$MISSING_MESHPKG_BASE_URL/v${VERSION}/${MESHPKG_ARCHIVE}"
   run_installer_failure extract 14-missing-binary "$MISSING_BINARY_API_URL" "$MISSING_BINARY_BASE_URL" "$HOME_ROOT/missing-binary" "meshpkg was not found after extracting" "$MESHPKG_ARCHIVE"
 fi
+
+for archive in "$MESHC_ARCHIVE" "$MESHPKG_ARCHIVE"; do
+  tool="${archive%%-v*}"
+  tamper_archive "$TAMPERED_ROOT/$RELEASE_PATH/$archive"
+  run_installer_failure checksum "15-tampered-$tool" \
+    "$SERVER_URL/tampered/api/releases/latest.json" "$SERVER_URL/tampered/hyperpush-org/mesh-lang/releases/download" \
+    "$HOME_ROOT/tampered-$tool" "Checksum verification failed" "$archive"
+  [[ ! -e "$HOME_ROOT/tampered-$tool/.mesh/version" ]] || fail_phase checksum "tampered $archive was recorded as installed" "$LAST_LOG_PATH"
+  cp "$GOOD_ROOT/$RELEASE_PATH/$archive" "$TAMPERED_ROOT/$RELEASE_PATH/$archive"
+done
 
 echo "verify-m034-s03: ok"

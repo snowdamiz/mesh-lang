@@ -46,6 +46,10 @@ that every program links against in `~/.mesh/lib` (`libmesh_rt.a` and
 finds them in the `lib` directory beside its own `bin` directory, so keep the
 two together if you move the installation.
 
+If you extract the compiler archive manually, place the `meshc` executable in
+`<prefix>/bin` and the two runtime archives in `<prefix>/lib`. The executable
+and archives need this layout for `meshc build` and `meshc test`.
+
 `meshc build` links with the system C compiler driver: `cc` on macOS and Linux
 (the Xcode Command Line Tools, or `build-essential` and its equivalents), and
 `clang` from LLVM 21 on Windows, taken from `LLVM_SYS_211_PREFIX\bin` when that
@@ -82,6 +86,103 @@ If you are contributing to Mesh or need an unsupported target, see the
 [source-build prerequisites](/docs/getting-started/#alternative-build-from-source).
 Source builds require LLVM 21 and a working native linker; they are an
 alternative workflow, not the primary public install contract.
+
+## Read the offline guide and install the Mesh skill
+
+Run `meshc guide` to list topics or `meshc guide syntax` for examples such as
+the slot pipe. The guide comes from the running compiler and works offline
+with just the executable. Its SHA-256 identifies the guide content, including
+when two builds report the same compiler version.
+
+After an interactive installation, Mesh offers to set up its skill for your
+coding tools. You can run the picker at any time, including with a
+source-built or manually extracted compiler.
+
+```bash
+meshc skills setup
+```
+
+Choose one or more hosts, select account or project scope, then confirm the
+displayed destinations. Project scope uses the nearest enclosing Mesh
+project or Git repository, falling back to the current directory. Hosts
+that share a directory can discover the same installed copy.
+
+| Host | Project directory | Account directory |
+| --- | --- | --- |
+| Codex | `.agents/skills/mesh` | `~/.agents/skills/mesh` |
+| Claude Code | `.claude/skills/mesh` | `~/.claude/skills/mesh` |
+| Cursor | `.agents/skills/mesh` | `~/.cursor/skills/mesh` |
+| Gemini CLI | `.gemini/skills/mesh` | `~/.gemini/skills/mesh` |
+| GitHub Copilot CLI | `.github/skills/mesh` | `~/.copilot/skills/mesh` |
+
+On Windows, `~` refers to `%USERPROFILE%`. Your coding tool manages its own
+workspace trust and permissions.
+
+Fresh unattended installs, including `--yes` and `-Yes`, leave skill setup
+optional. Upgrades refresh account copies that Mesh installed and whose
+files match the recorded digest. Mesh reports paths with local edits, extra
+files, symlinks, or an existing skill managed by another tool. Project
+copies stay pinned until you rerun setup and confirm the project scope.
+
+## Verify a pure policy
+
+`meshc verify` is an experimental check for pure functions on `Int` and
+`Bool` inputs with a `Bool` result. A `.law` file identifies the function and
+defines an independent expected result. Libraries can verify laws without
+an executable entrypoint. For example, place this law in
+`laws/http/eligibility.law` for a public `retry` function in `policy.mpl`.
+
+```text
+from Policy import retry
+
+law retry(status :: Int, left :: Int) -> Bool do
+  case status do
+    429 -> left > 0
+    503 -> left > 0
+    _ -> false
+  end
+end
+```
+
+For a private function in the same package, write
+`from Policy import private retry` in the law. The function retains its
+visibility in application imports.
+
+By default, Mesh scans the project recursively for visible `.law` files.
+It skips build output, dependency directories, and nested packages. To
+choose the directories Mesh scans, add a `[verify]` table to `mesh.toml`.
+Paths are relative to the project directory.
+
+```toml
+[verify]
+law_roots = ["laws", "specs/contracts"]
+```
+
+`meshc verify . --list` reports the resolved targets and law locations without
+a solver. To verify the laws, put Z3 4.15.7 on `PATH` or set `MESH_VERIFY_Z3`
+to its trusted executable, then run `meshc verify .`. Use
+`MESH_VERIFY_TIMEOUT_MS` to change the default five-second solver budget
+per law. Builds and tests run without Z3.
+
+The verifier reports `verified` when the modeled function agrees with the
+law for every input. A `falsified` result includes inputs and both values.
+Replay those inputs against the compiled function. An `unverified` result
+gives the reason, such as an unsupported operation or an exhausted solver
+budget. For an unsupported source expression, the human report shows the
+file, line, and column. JSON includes these fields and byte offsets under
+`unsupported_at`. The command succeeds only when every discovered law verifies.
+
+For an implementation change in CI, generate the baseline with the same
+trusted compiler and keep the inventory outside the candidate's writable
+checkout.
+
+```sh
+meshc verify "$BASE_CHECKOUT" --list --json > "$TRUSTED_ARTIFACTS/base-laws.json"
+meshc verify "$CANDIDATE_CHECKOUT" --preserve "$TRUSTED_ARTIFACTS/base-laws.json" --json
+```
+
+The preservation check allows law-file moves and new laws. It fails if the
+candidate drops a baseline target or changes its requirement digest.
 
 ## Create a project
 
@@ -1231,6 +1332,9 @@ The verifier persists the candidate and hosted-run evidence under:
 | Cluster operations | `meshc cluster <command>` | Inspect or mutate runtime-owned cluster state |
 | Release gates | `meshc proof <command>` | Run Docker, chaos, performance, and continuity proof commands |
 | Toolchain update | `meshc update` or `meshpkg update` | Refresh both installed commands |
+| Offline guide | `meshc guide [topic]` | Read guidance from the running compiler |
+| Coding tool setup | `meshc skills setup` | Choose hosts and install the Mesh skill |
+| Policy verification | `meshc verify [dir]` | List or verify pure policy laws |
 | Package CLI | `meshpkg <login \| publish \| install \| search \| update>` | Authenticate with and use a registry |
 | VS Code Extension | Marketplace or VSIX | First-class VS Code host for the shared grammar and Mesh LSP |
 | Neovim Pack | Native package runtime | First-class Neovim host for classic syntax and `meshc lsp` |

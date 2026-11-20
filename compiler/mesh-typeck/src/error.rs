@@ -25,6 +25,11 @@ pub enum ConstraintOrigin {
         call_site: TextRange,
         param_idx: usize,
     },
+    /// From the callee of a plain pipe whose call has one unbound `_` argument.
+    PipePlaceholder {
+        call_site: TextRange,
+        placeholder_slot: usize,
+    },
     /// From a binary operator: `a + b` where a and b must have compatible types.
     BinOp { op_span: TextRange },
     /// From if/else branches: both branches must have the same type.
@@ -681,7 +686,8 @@ impl ConstraintOrigin {
     /// Where in the source the constraint came from; `None` for a builtin.
     pub fn span(&self) -> Option<TextRange> {
         match self {
-            ConstraintOrigin::FnArg { call_site, .. } => Some(*call_site),
+            ConstraintOrigin::FnArg { call_site, .. }
+            | ConstraintOrigin::PipePlaceholder { call_site, .. } => Some(*call_site),
             ConstraintOrigin::BinOp { op_span } => Some(*op_span),
             ConstraintOrigin::IfBranches { if_span, .. } => Some(*if_span),
             ConstraintOrigin::Annotation { annotation_span } => Some(*annotation_span),

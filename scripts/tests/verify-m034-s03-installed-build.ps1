@@ -7,27 +7,40 @@ $env:M034_S03_LIB_ONLY = '1'
 Remove-Item Env:M034_S03_LIB_ONLY -ErrorAction SilentlyContinue
 
 $TestRoot = Join-Path $RootDir '.tmp/m034-s03/installed-build-test'
-$SummaryRoot = Join-Path $RootDir '.tmp/m034-s12/t01'
-$HostedLogPath = Join-Path $RootDir '.tmp/m034-s11/t03/diag-download/windows/verify/run/07-hello-build.log'
+$SummaryRoot = Join-Path $TestRoot 'summary'
+$HostedLogPath = Join-Path $TestRoot 'hosted-format-fixture.log'
 
 Remove-Item -Recurse -Force $TestRoot -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Path $TestRoot, $SummaryRoot -Force | Out-Null
+Set-Content -Path $HostedLogPath -Value @(
+    'display: installed meshc.exe build installer smoke fixture',
+    'exit_code: -1073741819',
+    'stdout_path: fixture.stdout',
+    'stderr_path: fixture.stderr'
+)
 
-$expectedTargetDir = Join-Path $RootDir 'target'
+$expectedTargetDir = Join-Path $WorkRoot 'no-cargo-target'
 if ((Get-InstalledBuildTargetDir) -ne $expectedTargetDir) {
     throw 'installed-build target dir helper drifted'
 }
 
 $env:CARGO_TARGET_DIR = 'sentinel-target'
+$env:MESH_RT_LIB_PATH = 'sentinel-runtime'
 Push-InstalledBuildEnvironment
 if ($env:CARGO_TARGET_DIR -ne $expectedTargetDir) {
-    throw 'Push-InstalledBuildEnvironment did not export the repo target dir'
+    throw 'Push-InstalledBuildEnvironment did not export the isolated target dir'
+}
+if (Test-Path Env:MESH_RT_LIB_PATH) {
+    throw 'Push-InstalledBuildEnvironment left the external runtime override in place'
 }
 Pop-InstalledBuildEnvironment
 if ($env:CARGO_TARGET_DIR -ne 'sentinel-target') {
     throw 'Pop-InstalledBuildEnvironment did not restore the previous CARGO_TARGET_DIR'
 }
-Remove-Item Env:CARGO_TARGET_DIR -ErrorAction SilentlyContinue
+if ($env:MESH_RT_LIB_PATH -ne 'sentinel-runtime') {
+    throw 'Pop-InstalledBuildEnvironment did not restore the previous MESH_RT_LIB_PATH'
+}
+Remove-Item Env:CARGO_TARGET_DIR, Env:MESH_RT_LIB_PATH -ErrorAction SilentlyContinue
 
 $hostedInfo = Get-LoggedCommandMetadata -LogPath $HostedLogPath
 if (-not $hostedInfo.exists) {

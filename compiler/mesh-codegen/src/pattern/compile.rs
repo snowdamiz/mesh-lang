@@ -958,7 +958,7 @@ mod tests {
     }
 
     fn string_body(s: &str) -> MirExpr {
-        MirExpr::StringLit(s.to_string(), MirType::String)
+        MirExpr::StringLit(s.to_string(), MirType::String, None)
     }
 
     fn var_expr(name: &str, ty: MirType) -> MirExpr {
@@ -1438,6 +1438,7 @@ mod tests {
         // match x { n when n > 0 -> "positive", _ -> "non-positive" }
         // Expected: Guard(guard_expr, Leaf(0, [(n, Int, Root)]), Leaf(1))
         let guard = MirExpr::BinOp {
+            source_span: None,
             op: crate::mir::BinOp::Gt,
             lhs: Box::new(var_expr("n", MirType::Int)),
             rhs: Box::new(int_body(0)),
@@ -1484,6 +1485,7 @@ mod tests {
         // match x { n when n > 0 -> "positive" }
         // Only guarded arm, no default => Fail node on guard failure
         let guard = MirExpr::BinOp {
+            source_span: None,
             op: crate::mir::BinOp::Gt,
             lhs: Box::new(var_expr("n", MirType::Int)),
             rhs: Box::new(int_body(0)),
@@ -1690,12 +1692,14 @@ mod tests {
         // match x { n when n > 0 -> "pos", n when n < 0 -> "neg", _ -> "zero" }
         // Each guard should chain: Guard -> Guard -> Leaf
         let guard_pos = MirExpr::BinOp {
+            source_span: None,
             op: crate::mir::BinOp::Gt,
             lhs: Box::new(var_expr("n", MirType::Int)),
             rhs: Box::new(int_body(0)),
             ty: MirType::Bool,
         };
         let guard_neg = MirExpr::BinOp {
+            source_span: None,
             op: crate::mir::BinOp::Lt,
             lhs: Box::new(var_expr("n", MirType::Int)),
             rhs: Box::new(int_body(0)),

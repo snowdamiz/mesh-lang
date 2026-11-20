@@ -1,8 +1,3 @@
----
-name: mesh-pattern-matching
-description: Mesh pattern matching: case expressions, pattern binding, ADT destructuring, wildcard, and exhaustiveness.
----
-
 # Mesh Pattern Matching
 
 ## Case Expressions
@@ -26,7 +21,7 @@ end
 1. Match on ADT variants by constructor name: `Red`, `Some(v)`, `Ok(x)`, `Err(e)`.
 2. Payload variables in patterns bind the carried value: `Ok(value)` binds the inner value to `value`.
 3. Nested patterns: `Some(Ok(x))` matches `Some` containing `Ok` containing `x`.
-4. Exhaustiveness is verified at compile time — add `_` arm if not all variants are listed.
+4. Use explicit arms to make the compiler require a decision when a variant is added. A wildcard covers future variants as well as today's remaining cases.
 
 ```mesh
 type Color do
@@ -60,14 +55,12 @@ end
 3. Destructured bindings are immutable.
 
 ## Let Pattern Binding
-1. `let Ok(v) = expr` destructures a known-variant result into binding `v`.
-2. Only safe when the pattern is known to match — use `case` for exhaustive handling.
-3. `let Err(msg) = expr` binds the error payload.
+Destructure tuples in a `let` binding. Use `case` to bind the payload of a
+sum-type variant and handle the other variants.
 
 ```mesh
-# When you know the variant (e.g., after a successful ? chain):
-let Ok(user) = find_user(id)
-println(user.name)
+let (name, age) = ("Ada", 37)
+println("#{name}: #{age}")
 ```
 
 ## Wildcards and Literal Patterns
@@ -75,4 +68,4 @@ println(user.name)
 2. Integer literals: `0`, `1`, `42` — match exact values.
 3. String literals: `"hello"` — match exact string values.
 4. Bool literals: `true`, `false`.
-5. Multiple patterns not currently supported with `|` — use separate arms or `if` chains.
+5. Join alternatives in one arm with `|`. Each alternative must bind the same names at the same types, as in `Ok(n) | Err(n)` for a `Result<Int, Int>`.

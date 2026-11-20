@@ -2,6 +2,10 @@
 !Cargo.toml
 !Cargo.lock
 !compiler/**
+!tools/
+!tools/skill/
+!tools/skill/mesh/
+!tools/skill/mesh/**
 !packages/
 !packages/mesh-solana/**
 !tests/
