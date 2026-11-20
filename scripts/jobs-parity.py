@@ -3,6 +3,7 @@
 
 import argparse
 import contextlib
+import errno
 import hashlib
 import importlib.util
 import json
@@ -15,6 +16,7 @@ import secrets
 import shutil
 import signal
 import socket
+import stat
 import statistics
 import subprocess
 import sys
@@ -443,6 +445,13 @@ SELECT coalesce((SELECT json_build_object('id', id::text, 'state', state,
                  FROM {relation} WHERE {scope} AND args->>'key'='{label}'), 'null')
 """))
 
+    def worker_pids(self, namespace):
+        _, scope = job_relation("mesh", namespace)
+        return json.loads(self.sql("mesh", f"""
+SELECT coalesce(json_agg(worker_pid), '[]') FROM public.mesh_jobs_parity_attempts
+WHERE engine = 'mesh' AND {scope}
+"""))
+
     def owned(self, engine):
         return self.sql(engine, "SELECT nonce FROM public.mesh_jobs_parity_authority") == self.nonce
 
@@ -858,6 +867,12 @@ def mesh_shutdown_report(log):
     raise FixtureError(f"missing drained Mesh shutdown report in {log}")
 
 
+def native_worker_starts(log):
+    prefix = b"PARITY_WORKER_START "
+    with log.open("rb") as stream:
+        return [int(line[len(prefix):]) for line in stream if line.startswith(prefix)]
+
+
 def mesh_event_buffer_report(status, mode, log):
     if "event_buffer_bytes" not in status:
         return None
@@ -1108,19 +1123,237 @@ def run_batch_claim_fault(subject, scratch, evidence, settings, placement, proxy
         raise QueueMismatch(f"unexpected job identity or lease fence after {placement}: {after}")
     rows = cluster.rows("mesh", namespace)
     writes = cluster.reconcile_trial("mesh", namespace, enqueued, {"claim": (expected_attempt,)}, ("claim",))
-    worker_pid = int(cluster.sql("mesh", f"""
-SELECT worker_pid FROM public.mesh_jobs_parity_attempts
-WHERE engine = 'mesh' AND namespace = '{namespace}' AND job_key = 'claim'
-"""))
-    with log.open("rb") as stream:
-        starts = [line.rstrip() for line in stream if line.startswith(b"PARITY_WORKER_START ")]
-    if worker_pid == process.pid or starts != [f"PARITY_WORKER_START {worker_pid}".encode()]:
-        raise QueueMismatch(f"expected exactly one worker startup for attempt {expected_attempt}, "
-                            f"PID {worker_pid}; see {log}")
+    workers = cluster.worker_pids(namespace)
+    if len(workers) != 1 or process.pid in workers or native_worker_starts(log) != workers:
+        raise QueueMismatch(f"expected exactly one native worker for attempt {expected_attempt}; see {log}")
     write_json(evidence / "fault.json", {
         "engine": "mesh", "fault": fault, "rows": rows, "namespace_writes": writes,
-        "enqueued_ids": enqueued, "worker_start_pids": [worker_pid],
+        "enqueued_ids": enqueued, "worker_start_pids": workers,
     })
+
+
+def startup_case(subject, scratch, evidence, keys, *, mode):
+    cluster = subject.cluster
+    cluster.prepare_database("mesh")
+    namespace = f"parity_{secrets.token_hex(8)}"
+    env = subject.environment(namespace, len(keys), len(keys), mode, subject.poll_ms)
+    env["JOBS_PARITY_MARK_WORKER_START"] = "1"
+    if any(env.get(key) != "2" for key in ("MESH_SCHEDULER_MIN_WORKERS", "MESH_SCHEDULER_MAX_WORKERS")):
+        raise FixtureError("the startup marker requires a 2/2 coordinator scheduler")
+    subject.call("migrate", env, evidence / f"{mode}-migrate.log")
+    if not cluster.owned("mesh"):
+        raise FixtureError("startup fault requires the driver's nonce in a fresh database")
+    path = batch_files(scratch, [{"request_id": mode, "rollback": False, "jobs": [
+        {"key": key, "hold_ms": 0, "fail_first": False, "payload": "synthetic"} for key in keys]}])[0]
+    receipt, commit = subject.enqueue_receipt(env, path, evidence / f"{mode}-enqueue.log")
+    if commit is None or set(receipt["ids"]) != set(keys):
+        raise QueueMismatch(f"{mode} startup fault enqueue did not commit all jobs")
+    return namespace, env, receipt["ids"]
+
+
+def held_native_worker(process, log):
+    starts = native_worker_starts(log)
+    if len(starts) > 1:
+        raise QueueMismatch(f"duplicate native startup at the gate: {starts}; see {log}")
+    if process.poll() is not None:
+        raise FixtureError(f"the runner exited before the startup barrier; see {log}")
+    table = process_table()
+    remember_workers([process], table)
+    return starts[0] if starts and starts[0] in table and table[starts[0]][0] == process.pid else None
+
+
+def check_startup_claims(claims, enqueued, attempt):
+    if set(claims) != set(enqueued) or any(
+        row["id"] != enqueued[key] or row["state"] != "executing"
+        or row["attempt"] != attempt or not row["fence"]
+        for key, row in claims.items()
+    ) or len({row["fence"] for row in claims.values()}) != len(enqueued):
+        raise QueueMismatch(f"unexpected claims at startup barrier: {claims}")
+
+
+def run_confirmed_launch_failure(subject, scratch, evidence):
+    cluster = subject.cluster
+    keys = ("started", "denied", "skipped")
+    namespace, env, enqueued = startup_case(subject, scratch, evidence, keys, mode="dense")
+    # Distinct due times make the launch order independent of the enqueue clock.
+    cluster.sql("mesh", f"""
+UPDATE mesh_jobs.jobs SET scheduled_at_ms = CASE args->>'key'
+    WHEN 'started' THEN 1 WHEN 'denied' THEN 2 ELSE 3 END
+WHERE namespace = '{namespace}'
+""")
+    executable = Path(subject.command[0])
+    mode = stat.S_IMODE(executable.stat().st_mode)
+    spawn_gate, worker_gate = scratch / "second-spawn", scratch / "first-worker"
+    log = evidence / "confirmed-runner.log"
+    runner = subject.run(dict(env, JOBS_PARITY_SECOND_SPAWN_GATE=str(spawn_gate),
+                              JOBS_PARITY_WORKER_START_GATE=str(worker_gate)), 0, log)
+    stopped = False
+    try:
+        deadline = time.monotonic() + 12
+        wait_for(lambda: b"PARITY_SECOND_SPAWN_WAIT" in log.read_bytes().splitlines(),
+                 deadline, "the second OS spawn call at its gate")
+        worker = wait_for(lambda: held_native_worker(runner, log), deadline, "the first native worker")
+        batch = json.loads(cluster.sql("mesh", f"""
+SELECT json_object_agg(args->>'key', json_build_object(
+    'id', id::text, 'state', state, 'attempt', attempt, 'fence', lease_token::text, 'xid', xmin::text))
+FROM mesh_jobs.jobs WHERE namespace = '{namespace}'
+"""))
+        check_startup_claims(batch or {}, enqueued, 1)
+        if len({row["xid"] for row in batch.values()}) != 1:
+            raise QueueMismatch(f"the three claims did not commit in one transaction: {batch}")
+        cluster.reconcile_writes("mesh", namespace, {"attempts": {}, "effects": {}})
+        executable.chmod(mode & ~0o111)
+        spawn_gate.touch()
+        denial = f"PARITY_SPAWN_RESULT 2 {errno.EACCES}".encode()
+        wait_for(lambda: denial in log.read_bytes().splitlines(), deadline, "libc execute permission denial")
+        executable.chmod(mode)
+        worker_gate.touch()
+        wait_for(lambda: any(event.get("event") == "runner_stopped" for event in mesh_reports(log)),
+                 deadline, "runner drain after failed launch")
+        stopped = True
+    finally:
+        try:
+            executable.chmod(mode)
+            spawn_gate.touch(exist_ok=True)
+            worker_gate.touch(exist_ok=True)
+        finally:
+            stop_runners([runner], require_clean=stopped)
+
+    spawn_results = [line for line in log.read_bytes().splitlines() if line.startswith(b"PARITY_SPAWN_RESULT ")]
+    if spawn_results != [b"PARITY_SPAWN_RESULT 1 0", denial] or native_worker_starts(log) != [worker]:
+        raise QueueMismatch(f"expected one native start and exactly two OS spawn calls; see {log}")
+    report = mesh_shutdown_report(log)
+    queue = report["queues"]["default"]
+    if (report["claimed"] != 3 or report["outcomes"]["released_unstarted"] != 2
+            or report["outcomes"]["completed"] != 1 or report["stale_acks"] != 0
+            or report["pending_claims"] != 0 or queue["pending_claims"] != 0
+            or queue["in_flight"] != 0 or not queue["drained"]
+            or "could not start job handler process" not in (report["last_error"] or "")):
+        raise QueueMismatch(f"unexpected launch-failure shutdown report: {report}")
+    refunds = [event for event in mesh_reports(log)
+               if event.get("event") == "settlement_committed" and event.get("settlement") == "released_unstarted"]
+    expected_refunds = [(enqueued["denied"], 1, "worker_failure"), (enqueued["skipped"], 1, "shutdown")]
+    if sorted((event["attempt"]["job_id"], event["attempt"]["attempt_number"], event["failure_kind"])
+              for event in refunds) != sorted(expected_refunds):
+        raise QueueMismatch(f"unexpected jobs or causes in the unstarted settlements: {refunds}")
+    after = {key: cluster.claim_identity("mesh", namespace, key) for key in keys}
+    expected = {key: dict(id=enqueued[key], state="available", attempt=0, fence=None) for key in keys}
+    expected["started"].update(state="completed", attempt=1)
+    if after != expected or cluster.worker_pids(namespace) != [worker]:
+        raise QueueMismatch(f"only the denied and skipped claims should refund: {after}")
+    fault_writes = cluster.reconcile_writes(
+        "mesh", namespace, {"attempts": {"started": 1}, "effects": {"started": 1}})
+
+    recovery_log = evidence / "confirmed-recovery.log"
+    recovery = subject.run(env, 1, recovery_log)
+    completed = False
+    try:
+        wait_for(lambda: cluster.observe("mesh", namespace)["terminal"] == 3,
+                 time.monotonic() + 15, "refunded jobs to settle with returned capacity")
+        completed = True
+    finally:
+        stop_runners([recovery], require_clean=completed)
+    finished = {key: cluster.claim_identity("mesh", namespace, key) for key in keys}
+    if finished != {key: dict(row, state="completed", attempt=1) for key, row in expected.items()}:
+        raise QueueMismatch(f"launch recovery changed job identity or consumed refunded attempts: {finished}")
+    starts = native_worker_starts(recovery_log)
+    if (len(starts) != 2 or recovery.pid in starts
+            or sorted([worker, *starts]) != sorted(cluster.worker_pids(namespace))):
+        raise QueueMismatch(f"unexpected native starts during launch recovery: {starts}")
+    writes = cluster.reconcile_trial("mesh", namespace, enqueued, {key: (1,) for key in keys}, ("dense",))
+    return {"committed_batch": batch, "first_runner": report, "refund_events": refunds,
+            "after_refund": after, "fault_writes": fault_writes,
+            "after_recovery": finished, "writes": writes, "worker_start_pids": [worker, *starts],
+            "runner_pids": [runner.pid, recovery.pid],
+            "spawn_results": [[1, 0], [2, errno.EACCES]]}
+
+
+def run_ambiguous_startup(subject, scratch, evidence):
+    cluster = subject.cluster
+    namespace, env, enqueued = startup_case(subject, scratch, evidence, ("uncertain",), mode="fault")
+
+    def claim():
+        return cluster.claim_identity("mesh", namespace, "uncertain")
+
+    no_writes = {"attempts": {}, "effects": {}}
+    gate = scratch / "uncertain-worker"
+    log = evidence / "ambiguous-runner.log"
+    runner = subject.run(dict(env, JOBS_PARITY_WORKER_START_GATE=str(gate)), 0, log)
+    try:
+        deadline = time.monotonic() + 12
+        old_pid = wait_for(lambda: held_native_worker(runner, log), deadline, "old child at its constructor gate")
+        old = claim()
+        check_startup_claims({"uncertain": old} if old else {}, enqueued, 1)
+        cluster.reconcile_writes("mesh", namespace, no_writes)
+        runner.kill()
+        if runner.wait(timeout=5) != -signal.SIGKILL:
+            raise FixtureError("the startup runner did not die from SIGKILL")
+        after_death = claim()
+        if after_death != old:
+            raise QueueMismatch(f"runner death changed the uncertain claim: {after_death}")
+        # Keep the old image before runtime entry until its durable lease ends.
+        # It then proceeds through the real bootstrap and must exit without a handler write.
+        lease_expiry = wait_for(lambda: cluster.sql("mesh", f"""
+WITH observation AS MATERIALIZED (SELECT mesh_jobs.now_ms() AS now_ms)
+SELECT json_build_object('expires_at_ms', lease_expires_at_ms, 'observed_at_ms', now_ms)
+FROM mesh_jobs.jobs, observation WHERE namespace = '{namespace}' AND id = '{old["id"]}'
+  AND lease_token = '{old["fence"]}' AND lease_expires_at_ms <= now_ms
+"""), deadline, "the interrupted claim's original lease to expire")
+        if process_table().get(old_pid, (None, None, None))[2] != runner.observed_workers[old_pid]:
+            raise FixtureError("the constructor gate did not hold the original worker through lease expiry")
+        if claim() != old:
+            raise QueueMismatch("the expired startup claim changed before any recovery runner started")
+    finally:
+        try:
+            gate.touch(exist_ok=True)
+        finally:
+            stop_runners([runner], require_clean=False)
+    if native_worker_starts(log) != [old_pid] or b"PARITY_WORKER_START_GATE_TIMEOUT" in log.read_bytes().splitlines():
+        raise QueueMismatch(f"unexpected native worker startup or gate timeout; see {log}")
+    fault_writes = cluster.reconcile_writes("mesh", namespace, no_writes)
+
+    gate = scratch / "recovered-worker"
+    log = evidence / "ambiguous-recovery.log"
+    recovery = subject.run(dict(env, JOBS_PARITY_WORKER_START_GATE=str(gate)), 1, log)
+    completed = False
+    try:
+        deadline = time.monotonic() + 12
+        new_pid = wait_for(lambda: held_native_worker(recovery, log), deadline,
+                           "replacement child at its constructor gate")
+        fresh = claim()
+        check_startup_claims({"uncertain": fresh} if fresh else {}, enqueued, 2)
+        if fresh["fence"] == old["fence"]:
+            raise QueueMismatch("the replacement claim reused the interrupted token")
+        stale = cluster.sql("mesh", f"""
+SELECT coalesce(mesh_jobs.settle_state('{namespace}', '{old["id"]}', '{old["fence"]}',
+    '{{"action":"complete"}}'::jsonb, false), 'stale')
+""")
+        if stale != "stale" or claim() != fresh:
+            raise QueueMismatch("a stale settle changed the live replacement claim")
+        cluster.reconcile_writes("mesh", namespace, no_writes)
+        gate.touch()
+        wait_for(lambda: cluster.observe("mesh", namespace)["terminal"] == 1,
+                 deadline, "recovered startup settlement")
+        completed = True
+    finally:
+        try:
+            gate.touch(exist_ok=True)
+        finally:
+            stop_runners([recovery], require_clean=completed)
+    finished = claim()
+    if finished != dict(fresh, state="completed", fence=None):
+        raise QueueMismatch(f"unexpected final startup recovery claim: {finished}")
+    errors = json.loads(cluster.sql("mesh", f"""
+SELECT errors FROM mesh_jobs.jobs WHERE namespace = '{namespace}' AND id = '{old["id"]}'
+"""))
+    if ([(error["attempt"], error["reason"]) for error in errors] != [(1, "lease expired")]
+            or native_worker_starts(log) != [new_pid] or cluster.worker_pids(namespace) != [new_pid]):
+        raise QueueMismatch(f"the interrupted startup did not recover exactly once by lease; see {log}")
+    writes = cluster.reconcile_trial("mesh", namespace, enqueued, {"uncertain": (2,)}, ("fault",))
+    return {"interrupted_claim": old, "after_runner_death": after_death, "runner_exit": runner.returncode,
+            "lease_expiry": json.loads(lease_expiry), "runner_pids": [runner.pid, recovery.pid],
+            "fault_writes": fault_writes, "replacement_claim": fresh, "stale_settle": stale,
+            "after_recovery": finished, "errors": errors, "writes": writes, "worker_start_pids": [old_pid, new_pid]}
 
 
 def materialize_commit(ref, path, archive, paths=()):
@@ -1143,7 +1376,7 @@ def snapshot_harness(scratch, evidence):
     return root, head, files
 
 
-def build_mesh(ref, scratch, evidence, env, release, mesh_fixture, toolchains):
+def build_mesh(ref, scratch, evidence, env, release, mesh_fixture, toolchains, *, startup_faults=False):
     source = scratch / "mesh-source"
     materialize_commit(ref, source, scratch / "mesh-source.tar")
     profile = "release" if release else "debug"
@@ -1174,7 +1407,8 @@ def build_mesh(ref, scratch, evidence, env, release, mesh_fixture, toolchains):
     write_json(evidence / "mesh-toolchain.json", actual)
     project = scratch / "mesh-workload"
     shutil.copytree(mesh_fixture, project)
-    checked(["cc", "-std=c11", "-O2", "-c", "worker_identity.c", "-o", "worker_identity.o"],
+    native_flags = ["-DMESH_PARITY_J2_LANE_7"] if startup_faults else []
+    checked(["cc", "-std=c11", "-O2", *native_flags, "-c", "worker_identity.c", "-o", "worker_identity.o"],
             cwd=project, env=env, log=evidence / "mesh-native-compile.log")
     checked(["ar", "rcs", "libworker_identity.a", "worker_identity.o"], cwd=project, env=env)
     manifest = (project / "mesh.toml.in").read_text().replace("@TARGET@", rust_target)
@@ -1333,11 +1567,12 @@ def record(args):
     settings = json.loads(CONFIG.read_text())
     release = args.load or args.release
     poll_ms = args.poll_ms or settings["poll_ms"]
+    mesh_events = "logged" if args.j2_lane_7 else args.mesh_events
     baseline_poll_ms = args.baseline_poll_ms or poll_ms
     profiles = [(args.workload[0] if args.workload else "short", 1, 1)] if args.smoke else selection(args, settings)
     if not profiles:
         raise FixtureError("no valid profiles for the chosen runner counts and slots")
-    if args.faults:
+    if args.faults or args.j2_lane_7:
         profiles = []
     ref = checked(["git", "rev-parse", "--verify", "--end-of-options", f"{args.mesh_ref}^{{commit}}"])
     baseline_ref = None
@@ -1346,8 +1581,9 @@ def record(args):
                                 f"{args.against_ref}^{{commit}}"])
     base = EVIDENCE / ref
     base.mkdir(parents=True, exist_ok=True)
-    lane = "fault" if args.faults else "smoke" if args.smoke else "load"
-    evidence = Path(tempfile.mkdtemp(prefix=f"j1-{lane}-", dir=base))
+    lane = "j2-lane-7" if args.j2_lane_7 else "fault" if args.faults else "smoke" if args.smoke else "load"
+    prefix = lane if args.j2_lane_7 else f"j1-{lane}"
+    evidence = Path(tempfile.mkdtemp(prefix=f"{prefix}-", dir=base))
     budget_breaches = []
     write_json(evidence / "settings.json", settings)
     print(evidence, flush=True)
@@ -1360,13 +1596,16 @@ def record(args):
                        MESH_SCHEDULER_MAX_WORKERS=str(settings["runner_schedulers"]),
                        JOBS_PARITY_MESH_BATCH="1" if args.mesh_batch else "0",
                        JOBS_PARITY_MESH_LISTEN="1" if args.mesh_listen else "0",
-                       JOBS_PARITY_MESH_EVENTS=args.mesh_events or "",
+                       JOBS_PARITY_MESH_EVENTS=mesh_events or "",
                        ERL_FLAGS=settings["oban_erl_flags"])
             env.pop("MESH_RT_LIB_PATH", None)
             env.pop("RUSTC_WRAPPER", None)
             env.pop("RUSTC_WORKSPACE_WRAPPER", None)
+            env.pop("JOBS_PARITY_SECOND_SPAWN_GATE", None)
+            env.pop("JOBS_PARITY_WORKER_START_GATE", None)
             executable = build_mesh(ref, scratch, evidence, env, release,
-                                    harness / MESH_SOURCE.relative_to(ROOT), args.toolchains)
+                                    harness / MESH_SOURCE.relative_to(ROOT), args.toolchains,
+                                    startup_faults=args.j2_lane_7)
             baseline = executable
             if baseline_ref and baseline_ref != ref:
                 baseline_dir = scratch / "baseline"
@@ -1375,9 +1614,11 @@ def record(args):
                 baseline_evidence.mkdir()
                 baseline = build_mesh(baseline_ref, baseline_dir, baseline_evidence, env, release,
                                       harness / MESH_SOURCE.relative_to(ROOT), args.toolchains)
-            command, mix_env, versions = compile_oban(scratch, evidence, env, oban_fixture)
+            versions = {}
+            if not args.j2_lane_7:
+                command, mix_env, versions = compile_oban(scratch, evidence, env, oban_fixture)
             max_connections = max((s + r * settings["connection_slots_per_runner"]
-                                   for _, r, s in profiles), default=5)
+                                   for _, r, s in profiles), default=7 if args.j2_lane_7 else 5)
             cluster = Cluster(scratch, evidence, max_connections, args.postgres_version)
             try:
                 cluster.start()
@@ -1402,7 +1643,7 @@ WHERE name IN ('server_version','server_version_num','shared_buffers','max_conne
                     "mesh_build_profile": "release" if release else "debug",
                     "mesh_batch": args.mesh_batch,
                     "mesh_listen": args.mesh_listen,
-                    "mesh_events": args.mesh_events,
+                    "mesh_events": mesh_events,
                     "poll_ms": poll_ms,
                     "baseline_poll_ms": baseline_poll_ms if baseline_ref else None,
                     "mode": lane, "claim_timestamps": {"mesh": "database attempted_at_ms",
@@ -1412,8 +1653,13 @@ WHERE name IN ('server_version','server_version_num','shared_buffers','max_conne
                 })
                 subjects = {
                     "mesh": Subject("mesh", [str(executable)], ROOT, cluster, env, poll_ms=poll_ms),
-                    "oban": Subject("oban", command, oban_fixture, cluster, mix_env, poll_ms=poll_ms),
                 }
+                if args.j2_lane_7:
+                    confirmed = run_confirmed_launch_failure(subjects["mesh"], scratch, evidence)
+                    ambiguous = run_ambiguous_startup(subjects["mesh"], scratch, evidence)
+                    write_json(evidence / "j2-lane-7.log", {"confirmed": confirmed, "ambiguous": ambiguous})
+                else:
+                    subjects["oban"] = Subject("oban", command, oban_fixture, cluster, mix_env, poll_ms=poll_ms)
                 if baseline_ref:
                     subjects = {
                         "mesh": subjects["mesh"],
@@ -1500,6 +1746,15 @@ def self_check():
     import unittest
 
     class DriverChecks(unittest.TestCase):
+        def test_duplicate_native_marker_cannot_pass_the_startup_gate(self):
+            from unittest.mock import mock_open, Mock
+
+            log = Mock()
+            log.open = mock_open(read_data=b"READY\nPARITY_WORKER_START 42\nPARITY_WORKER_START 42\n")
+            self.assertEqual(native_worker_starts(log), [42, 42])
+            with self.assertRaisesRegex(QueueMismatch, "duplicate native startup"):
+                held_native_worker(Mock(), log)
+
         def test_inputs_and_slot_allocation(self):
             settings = json.loads(CONFIG.read_text())
             workload = settings["workloads"]["slow"]
@@ -1745,6 +2000,7 @@ def main():
     mode.add_argument("--smoke", action="store_true", help="small integration probe, not a benchmark")
     mode.add_argument("--load", action="store_true", help="five alternating trials per selected profile")
     mode.add_argument("--faults", action="store_true", help="owned runner-death and rollback probe")
+    mode.add_argument("--j2-lane-7", action="store_true", help="macOS batch launch denial and interrupted startup proof")
     parser.add_argument("--mesh-ref", default="HEAD", help="Git commit from which to compile Mesh")
     parser.add_argument("--toolchains", type=lambda value: Path(value).resolve(),
                         help="reuse verified compiler/runtime pairs from a previous Jobs comparison build")
@@ -1773,10 +2029,12 @@ def main():
         parser.error("--postgres-version requires MAJOR.PATCH")
     if not args.load and (args.runners is not None or args.slots is not None):
         parser.error("--runners and --slots require --load")
-    if args.workload and (args.faults or (args.smoke and len(args.workload) > 1)):
+    if args.workload and (args.faults or args.j2_lane_7 or (args.smoke and len(args.workload) > 1)):
         parser.error("select one workload for --smoke or use --load for several")
-    if args.against_ref and args.faults:
+    if args.against_ref and (args.faults or args.j2_lane_7):
         parser.error("--against-ref requires --load or --smoke")
+    if args.j2_lane_7 and (sys.platform != "darwin" or not args.mesh_batch):
+        parser.error("--j2-lane-7 requires macOS and --mesh-batch")
 
     def interrupt(_signal, _frame):
         raise InterruptedError("parity run received SIGTERM")

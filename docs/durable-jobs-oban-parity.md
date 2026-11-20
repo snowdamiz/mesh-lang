@@ -160,6 +160,17 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 - [ ] Lane 9. Run old and new binaries with scoped function grants. Save `j2-lane-9.log`. Pass when both versions process their eligible jobs and the old migration cannot change new entry points.
 - [ ] Lane 10. Burden a busy queue while a sparse queue becomes due. Save `j2-lane-10.log`. Pass when the sparse queue claims on its next available rotation.
 
+Run lane 7 on macOS after checking out the proof commit. Set `PG_BIN_DIR`
+to the chosen PostgreSQL installation if it is outside the shell's path.
+
+```bash
+python3 scripts/jobs-parity.py --j2-lane-7 --mesh-batch --mesh-ref "$(git rev-parse HEAD)"
+```
+
+The driver prints its evidence directory and writes `j2-lane-7.log` after
+both cases pass. The lane build enables a fixture-only gate at the second
+OS spawn call and a gate at the existing native worker-start marker.
+
 **Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
 - [ ] Metric. Claim round trips per job, steady-state throughput, pickup p99, and peak queued context bytes.
