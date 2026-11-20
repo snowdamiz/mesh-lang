@@ -9,6 +9,9 @@
 
 #[path = "support/test_artifacts.rs"]
 mod artifacts;
+#[cfg(target_os = "linux")]
+#[path = "support/jobs_linux_worker_exit.rs"]
+mod linux_worker_exit;
 #[path = "support/jobs_pool_outage.rs"]
 mod pool_outage;
 #[path = "support/jobs_queue_rotation.rs"]
@@ -92,6 +95,8 @@ fn durable_jobs_survive_process_boundaries() {
     prove_events(&proof);
     prove_backpressured_events(&proof);
     prove_native_timeout(&proof);
+    #[cfg(target_os = "linux")]
+    println!("J7 lane 2 passed: observed the Linux attempt processes exit after parent death and native timeout, with recovery of each original job");
     prove_native_lease_loss(&proof);
     prove_locked_job_does_not_stall_runner(&proof);
     prove_large_context(&proof);
@@ -1105,7 +1110,11 @@ fn prove_crash_and_stale_ack(proof: &Proof) {
     }));
     let mut doomed = proof.worker("before-kill", true);
     proof.wait_effects("crash", 1);
+    #[cfg(target_os = "linux")]
+    let process = linux_worker_exit::AttemptProcess::observe(&doomed);
     doomed.kill();
+    #[cfg(target_os = "linux")]
+    process.assert_exited();
     let old = proof.lease(id(&receipt));
     assert_eq!(proof.job("crash")["state"], "executing");
 
@@ -1267,7 +1276,11 @@ fn prove_native_timeout(proof: &Proof) {
     let mut worker = proof.worker("native-timeout", false);
     proof.wait_effects("native-timeout", 1);
     wait_for_native_query(proof, "native-timeout", true);
+    #[cfg(target_os = "linux")]
+    let process = linux_worker_exit::AttemptProcess::observe(&worker);
     let job = proof.wait_state("native-timeout", "completed");
+    #[cfg(target_os = "linux")]
+    process.assert_exited();
     assert_eq!(job["id"], receipt["id"]);
     assert_eq!(job["attempt"], 2);
     assert_eq!(job["errors"][0]["reason"], "job handler timed out");
