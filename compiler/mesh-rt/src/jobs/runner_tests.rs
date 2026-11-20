@@ -61,6 +61,7 @@ fn polling_and_kill_errors_keep_an_attempt_undrained_until_reap() {
     let runner = Runner {
         id: 0,
         config: Config::parse(TEST_CONFIG).unwrap(),
+        check_worker: || Ok(()),
         state: Mutex::new(State {
             phase: Phase::Running,
             jobs: BTreeMap::from([(
@@ -228,7 +229,13 @@ fn postgres_runner_executes_schedules_and_settles_renewed_timed_out_and_cancelle
         "lease_ms": 300,
         "poll_ms": 10,
     });
-    let id = start_runner(pool, &config.to_string(), Box::new(TimedWorker::start)).unwrap();
+    let id = start_runner(
+        pool,
+        &config.to_string(),
+        || Ok(()),
+        Box::new(TimedWorker::start),
+    )
+    .unwrap();
 
     let control = |request: serde_json::Value| -> serde_json::Value {
         let output = with_pool(pool, |db| {
@@ -338,6 +345,7 @@ fn postgres_runner_executes_schedules_and_settles_renewed_timed_out_and_cancelle
     let one_shot = start_runner(
         pool,
         &drain_config.to_string(),
+        || Ok(()),
         Box::new(TimedWorker::start),
     )
     .unwrap();
@@ -419,8 +427,13 @@ fn postgres_runner_executes_schedules_and_settles_renewed_timed_out_and_cancelle
     lock_acquired.recv_timeout(TEST_WAIT).unwrap();
     let mut two_queues = drain_config.clone();
     two_queues["queues"]["blocked"] = json!(1);
-    let one_shot =
-        start_runner(pool, &two_queues.to_string(), Box::new(TimedWorker::start)).unwrap();
+    let one_shot = start_runner(
+        pool,
+        &two_queues.to_string(),
+        || Ok(()),
+        Box::new(TimedWorker::start),
+    )
+    .unwrap();
     std::thread::sleep(Duration::from_millis(200));
     assert!(lookup(one_shot).unwrap().report(true).is_none());
     expire(&expires_later);
@@ -453,6 +466,7 @@ fn postgres_runner_executes_schedules_and_settles_renewed_timed_out_and_cancelle
     let pruner = start_runner(
         pool,
         &drain_config.to_string(),
+        || Ok(()),
         Box::new(TimedWorker::start),
     )
     .unwrap();

@@ -12,7 +12,7 @@ use super::store::{
     claim, drain_has_work, finish, prune, recover, renew, Claim, LeaseStatus, Outcome,
 };
 use super::with_pool;
-use super::worker::{handler_name, host_deadline, WorkerProcess};
+use super::worker::{check_executable, handler_name, host_deadline, WorkerProcess};
 
 const TICK: Duration = Duration::from_millis(10);
 const MAX_GRACE_MS: u64 = 300_000;
@@ -178,10 +178,22 @@ struct State {
     last_error: Option<String>,
 }
 
+impl State {
+    fn fail_launch(&mut self, error: String, grace_ms: u64) {
+        self.last_error = Some(error.chars().take(1024).collect());
+        if matches!(self.phase, Phase::Running) {
+            self.phase = Phase::Stopping {
+                deadline: Instant::now() + Duration::from_millis(grace_ms),
+            };
+        }
+    }
+}
+
 struct Runner {
     id: u64,
     config: Config,
     state: Mutex<State>,
+    check_worker: fn() -> Result<(), String>,
 }
 
 impl Runner {
@@ -307,6 +319,7 @@ pub(super) fn start(
     start_runner(
         pool,
         config_json,
+        check_executable,
         Box::new(move |context, deadline, lease_deadline| {
             Ok(Box::new(WorkerProcess::start(
                 &handler,
@@ -321,6 +334,7 @@ pub(super) fn start(
 fn start_runner(
     pool: u64,
     config_json: &str,
+    check_worker: fn() -> Result<(), String>,
     start_worker: Box<StartWorker>,
 ) -> Result<u64, String> {
     let config = Config::parse(config_json)?;
@@ -366,6 +380,7 @@ fn start_runner(
     let runner = Arc::new(Runner {
         id,
         config,
+        check_worker,
         state: Mutex::new(State {
             phase: Phase::Running,
             jobs: BTreeMap::new(),
@@ -899,6 +914,13 @@ fn claim_one(
     start_worker: &StartWorker,
 ) -> Result<Option<Attempt>, String> {
     let config = &runner.config;
+    if let Err(error) = (runner.check_worker)() {
+        runner
+            .state
+            .lock()
+            .fail_launch(error, config.shutdown_grace_ms);
+        return Ok(None);
+    }
     {
         let mut state = runner.state.lock();
         if !matches!(state.phase, Phase::Running) || crate::process_signal::shutdown_requested() {
@@ -942,7 +964,10 @@ fn claim_one(
                 lease_deadline: lease.expires_at,
                 stop: None,
             }),
-            Err(error) => Execution::acknowledging(Reply::Failed(error)),
+            Err(error) => {
+                state.fail_launch(error, config.shutdown_grace_ms);
+                Execution::acknowledging(Reply::Unstarted)
+            }
         }
     } else {
         Execution::acknowledging(Reply::Failed(

@@ -12,10 +12,11 @@ use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use parking_lot::Mutex;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
+use crate::db::pg::MAX_DB_VALUE_BYTES;
 use crate::string::{mesh_str, MeshString};
 
 const WORKER_ARG: &str = "--mesh-internal-job-attempt-v1";
-const MAX_REQUEST: usize = 8 * 1024 * 1024;
+const MAX_REQUEST_HEADER: usize = 1024 * 1024;
 const MAX_OUTCOME: usize = 64 * 1024;
 const MAX_REPLY_FRAME: usize = MAX_OUTCOME * 6 + 64;
 const TIMEOUT: i32 = 171;
@@ -101,10 +102,13 @@ fn executable() -> Result<&'static Path, String> {
         .check()
 }
 
+pub(super) fn check_executable() -> Result<(), String> {
+    executable().map(|_| ())
+}
+
 #[derive(Deserialize, Serialize)]
 struct Request {
     handler: String,
-    context: String,
     deadline: u64,
     lease_deadline: u64,
 }
@@ -125,11 +129,16 @@ impl WorkerProcess {
     ) -> Result<Self, String> {
         let request = Request {
             handler: handler.to_owned(),
-            context,
             deadline: host_deadline(deadline)?,
             lease_deadline,
         };
-        let child = Command::new(executable()?)
+        let mut command = Command::new(executable()?);
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            command.process_group(0);
+        }
+        let child = command
             .arg(WORKER_ARG)
             .env("MESH_SCHEDULER_MIN_WORKERS", "1")
             .env("MESH_SCHEDULER_MAX_WORKERS", "1")
@@ -162,7 +171,10 @@ impl WorkerProcess {
         std::thread::Builder::new()
             .name("mesh-job-control".into())
             .spawn(move || {
-                if write_frame(&mut input, &request, MAX_REQUEST).is_err() {
+                if write_frame(&mut input, &request, MAX_REQUEST_HEADER)
+                    .and_then(|()| write_bytes(&mut input, context.as_bytes(), MAX_DB_VALUE_BYTES))
+                    .is_err()
+                {
                     return;
                 }
                 while renewal_requests.recv().is_ok() {
@@ -241,10 +253,15 @@ fn enter_worker() -> ! {
 
 fn run_worker() -> Result<(), String> {
     crate::panic::ignore_sigpipe();
+    crate::process_signal::mesh_process_install_shutdown_signals();
     let mut result = redirect_stdout().map_err(|error| error.to_string())?;
     let mut control = io::stdin();
     let request: Request =
-        read_frame(&mut control, MAX_REQUEST).map_err(|error| error.to_string())?;
+        read_frame(&mut control, MAX_REQUEST_HEADER).map_err(|error| error.to_string())?;
+    let context = String::from_utf8(
+        read_bytes(&mut control, MAX_DB_VALUE_BYTES).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
     let handler = HANDLERS
         .lock()
         .get(&request.handler)
@@ -273,7 +290,7 @@ fn run_worker() -> Result<(), String> {
     remaining(deadline, lease);
 
     let outcome = std::panic::catch_unwind(|| {
-        let input = mesh_str(&request.context);
+        let input = mesh_str(&context);
         let output = unsafe { handler(input).as_ref() }.ok_or("job handler returned no outcome")?;
         let bytes = unsafe { output.as_bytes() };
         if bytes.len() > MAX_OUTCOME {
@@ -374,6 +391,10 @@ fn boot_millis() -> io::Result<u64> {
 }
 
 fn read_frame<T: DeserializeOwned>(reader: &mut impl Read, max: usize) -> io::Result<T> {
+    serde_json::from_slice(&read_bytes(reader, max)?).map_err(io::Error::other)
+}
+
+fn read_bytes(reader: &mut impl Read, max: usize) -> io::Result<Vec<u8>> {
     let mut header = [0; 4];
     reader.read_exact(&mut header)?;
     let len = u32::from_le_bytes(header) as usize;
@@ -385,11 +406,15 @@ fn read_frame<T: DeserializeOwned>(reader: &mut impl Read, max: usize) -> io::Re
     }
     let mut bytes = vec![0; len];
     reader.read_exact(&mut bytes)?;
-    serde_json::from_slice(&bytes).map_err(io::Error::other)
+    Ok(bytes)
 }
 
 fn write_frame<T: Serialize>(writer: &mut impl Write, value: &T, max: usize) -> io::Result<()> {
     let payload = serde_json::to_vec(value).map_err(io::Error::other)?;
+    write_bytes(writer, &payload, max)
+}
+
+fn write_bytes(writer: &mut impl Write, payload: &[u8], max: usize) -> io::Result<()> {
     if payload.len() > max {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -397,7 +422,7 @@ fn write_frame<T: Serialize>(writer: &mut impl Write, value: &T, max: usize) -> 
         ));
     }
     writer.write_all(&(payload.len() as u32).to_le_bytes())?;
-    writer.write_all(&payload)?;
+    writer.write_all(payload)?;
     writer.flush()
 }
 

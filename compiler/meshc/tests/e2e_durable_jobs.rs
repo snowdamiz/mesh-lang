@@ -11,6 +11,7 @@ mod artifacts;
 
 use serde_json::{json, Value};
 use std::fs::{self, File};
+use std::os::unix::process::CommandExt;
 use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
@@ -61,6 +62,9 @@ fn durable_jobs_survive_process_boundaries() {
     prove_retry_and_exhaustion(&proof);
     prove_native_timeout(&proof);
     prove_native_lease_loss(&proof);
+    prove_large_context(&proof);
+    #[cfg(target_os = "macos")]
+    prove_executable_replacement(&proof);
     prove_signal_drain(&proof);
     assert_eq!(proof.effects("committed").len(), 1);
     assert!(proof.effects("rolled-back").is_empty());
@@ -240,7 +244,7 @@ fn prove_signal_drain(proof: &Proof) {
     let mut worker = proof.worker("signal-worker", true);
     proof.wait_effects("graceful", 1);
     let pending = proof.enqueue(spec("after-signal"));
-    worker.signal();
+    worker.signal_group("-TERM");
     eventually("Mesh application received SIGTERM", || {
         worker.assert_running();
         worker.markers.join("signal").is_file().then_some(())
@@ -320,6 +324,62 @@ fn wait_for_native_query(proof: &Proof, label: &str, active: bool) {
         ));
         ((result == "t") == active).then_some(())
     });
+}
+
+fn prove_large_context(proof: &Proof) {
+    let request = proof.dir.join("large-enqueue.json");
+    let spec = json!({
+        "worker": "proof", "args": {"label": "large-context", "numbers": vec![1e308_f64; 30_000]},
+        "max_attempts": 1,
+    });
+    fs::write(&request, spec.to_string()).unwrap();
+    let receipt = proof.run("enqueue_file", request.to_str().unwrap());
+    let mut worker = proof.worker("large-payload", false);
+    eventually("job with large PostgreSQL context completes", || {
+        let state = proof.sql(&format!(
+            "SELECT state FROM mesh_jobs.jobs WHERE namespace = {} AND id = {}::uuid",
+            quoted(&proof.namespace),
+            quoted(id(&receipt)),
+        ));
+        assert_ne!(state, "discarded");
+        (state == "completed").then_some(())
+    });
+    let observed = proof.sql(&format!(
+        "SELECT count(*) FROM {}.effects WHERE label = 'large-context' AND octet_length(context::text) > 8 * 1024 * 1024",
+        proof.namespace,
+    ));
+    assert_eq!(observed, "1");
+    worker.stop();
+}
+
+#[cfg(target_os = "macos")]
+fn prove_executable_replacement(proof: &Proof) {
+    let mut old = proof.worker("replaced-runner", false);
+    let replacement = proof.binary.with_extension("replacement");
+    fs::copy(&proof.binary, &replacement).unwrap();
+    fs::rename(replacement, &proof.binary).unwrap();
+    proof.enqueue(spec("after-replacement"));
+    eventually("runner stops after its executable was replaced", || {
+        let report: Value =
+            serde_json::from_slice(&fs::read(old.markers.join("status")).ok()?).ok()?;
+        (report["state"] == "stopped").then_some(())
+    });
+    old.signal();
+    let report = old.join();
+    assert_eq!(report["claimed"], 0);
+    assert!(report["last_error"]
+        .as_str()
+        .unwrap()
+        .contains("executable changed"));
+    let pending = proof.job("after-replacement");
+    assert_eq!(pending["attempt"], 0);
+    assert_eq!(pending["state"], "available");
+    let mut new = proof.worker("replacement-runner", false);
+    assert_eq!(
+        proof.wait_state("after-replacement", "completed")["attempt"],
+        1
+    );
+    new.stop();
 }
 
 fn spec(label: &str) -> Value {
@@ -555,6 +615,7 @@ impl<'a> Proof<'a> {
         });
         let mut command = self.command("serve", &config.to_string());
         command
+            .process_group(0)
             .env("MESH_JOBS_PROOF_WORKER", name)
             .env("MESH_JOBS_PROOF_MARKERS", &markers)
             .stdout(output.try_clone().unwrap())
@@ -650,6 +711,16 @@ impl Worker {
                 .success(),
             "could not signal worker {pid}"
         );
+    }
+
+    fn signal_group(&mut self, signal: &str) {
+        self.assert_running();
+        let pid = self.child.as_ref().unwrap().id();
+        assert!(Command::new("kill")
+            .args([signal, "--", &format!("-{pid}")])
+            .status()
+            .unwrap()
+            .success());
     }
 
     fn join(&mut self) -> Value {
