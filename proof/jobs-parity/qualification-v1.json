@@ -3692,6 +3692,91 @@
       "within_limit": true
     }
   },
+  "high_slot_completion_batching": {
+    "harness": "bdb1bd423ceb1d3b5e659a77b559ff8816ce42d1",
+    "baseline_and_repeat": "b81c2819deb8dec7c667bf2294491ded20b13125",
+    "candidate": "d4746af9a5ee9c41875d2fe719e307f4d6a47d6e",
+    "host": "Darwin arm64",
+    "postgres_version": "17.11",
+    "transport": "SCRAM with verified TLS",
+    "measured_trials": 60,
+    "reconciled_jobs": 32640,
+    "raw_path": "target/jobs-parity/reply-reap-integration/comparison-s90_njcf",
+    "manifest_sha256": "da79176c3fe7a15d9037bdbc5166266db37aa81f7289168f59e73b064e2876af",
+    "result_sha256": "7b4c963c438fd5bcaf9d33fcd6fe6140ff9b0481bdd65b651b3c71d360e5294e",
+    "profiles": {
+      "short-1r-64s": {"jobs_per_second": [786.129, 781.158, 806.332], "runner_sql_calls_per_job": [3.229, 3.229, 2.703], "effect_to_settlement_ms": [7.943, 8.217, 6.556]},
+      "noop-1r-64s": {"jobs_per_second": [730.854, 679.506, 668.807], "runner_sql_calls_per_job": [3.217, 3.217, 2.611], "effect_to_settlement_ms": [8.215, 8.865, 9.167]},
+      "slow-1r-64s": {"jobs_per_second": [314.802, 272.021, 290.917], "runner_sql_calls_per_job": [3.471, 3.398, 2.947], "effect_to_settlement_ms": [11.352, 11.876, 12.331]},
+      "short-1r-16s": {"jobs_per_second": [355.474, 517.680, 507.216], "runner_sql_calls_per_job": [3.984, 3.961, 3.656], "effect_to_settlement_ms": [2.831, 2.866, 2.789]}
+    },
+    "metric_order": ["baseline", "baseline_repeat", "candidate"],
+    "scope": "local diagnostic, with fewer SQL calls and no consistent throughput or settlement gain"
+  },
+  "multi_runner_warm_effect_sessions": {
+    "harness": "bdb1bd423ceb1d3b5e659a77b559ff8816ce42d1",
+    "runtime": "b81c2819deb8dec7c667bf2294491ded20b13125",
+    "oban": "Basic 2.24.2",
+    "host": "Darwin arm64",
+    "postgres_version": "17.11",
+    "transport": "SCRAM with verified TLS",
+    "measured_trials": 40,
+    "reconciled_jobs": 12800,
+    "peak_one_minute_host_load": 36.037,
+    "raw_path": "target/jobs-parity/effect-session-study/multi-comparison-ide1_k9e",
+    "manifest_sha256": "3a885386222d6c8f78a84dd0c8ed31a32bcfe4b68e6be1b23bac32c28161b8ed",
+    "result_sha256": "8b3c9ee660136cbf872112b62b291a7b58bb257242fa348c9578c635d9d0b991",
+    "metric_order": ["direct", "direct_repeat", "reused", "oban"],
+    "profiles": {
+      "short-4r-16s": {
+        "median_jobs_per_second": [251.029, 233.287, 359.786, 457.185],
+        "median_entry_to_first_commit_ms": [13.390, 15.202, 0.748, 0.648],
+        "measured_peak_connections": [20, 17, 29, 26],
+        "reused_faster_than_both_direct_arms": 4,
+        "reused_vs_oban_breaches": ["throughput"]
+      },
+      "slow-8r-64s": {
+        "median_jobs_per_second": [304.834, 188.634, 378.263, 415.747],
+        "median_entry_to_first_commit_ms": [27.219, 28.387, 0.850, 0.915],
+        "measured_peak_connections": [84, 83, 89, 82],
+        "reused_faster_than_both_direct_arms": 5,
+        "reused_vs_oban_breaches": ["throughput"]
+      }
+    },
+    "scope": "local fixture diagnostic, with relay CPU and sessions included and no production runtime change"
+  },
+  "sparse_identical_binary_control": {
+    "harness": "bdb1bd423ceb1d3b5e659a77b559ff8816ce42d1",
+    "both_arms": "7c1620563614a04a573aef806a6d019a2af4dfe9",
+    "fixture_sha256": "80b160a351fc9f8585936987fd61341abd4ce0272b4ec190b1bc75cdcb396ad0",
+    "host": "Darwin arm64",
+    "postgres_version": "17.11",
+    "transport": "SCRAM with verified TLS",
+    "profile": "sparse-1r-1s",
+    "measured_pairs": 5,
+    "raw_path": "target/jobs-parity/7c1620563614a04a573aef806a6d019a2af4dfe9/j1-load-8sk5prt2",
+    "manifest_sha256": "fe96b74a06d3681f47cd447d1e2d13779b04daf6eff27bf24709af385f3f5410",
+    "summary_sha256": "6c534f5e2fffb654fb750af10cd5a7948b495d2d803beef9b50be6d6e5fcd51c",
+    "pickup_p99_ms": {
+      "mesh": {"min": 261.573, "median": 263.408, "max": 269.119},
+      "baseline": {"min": 208.146, "median": 259.525, "max": 265.263}
+    }
+  },
+  "integrated_contention_postgres": {
+    "checkout": "bdb1bd423ceb1d3b5e659a77b559ff8816ce42d1",
+    "host": "Darwin arm64",
+    "command": "bash scripts/verify-postgres-jobs.sh --compatibility VERSION --j6-roles --parity-driver-check",
+    "transport": "SCRAM with verified TLS",
+    "log_directory": "target/jobs-parity/bdb1bd423ceb1d3b5e659a77b559ff8816ce42d1/integrated-contention",
+    "log_sha256": {
+      "postgres-17.11.log": "e7762231283891f162f6154999a8bfec77d6daeb6f5d19e0fcc32fb909d414ed",
+      "postgres-18.7.log": "3bc6f9c2722c8149fda5ea0048c27ca3e8cf28047b00cbf93705ddbec6be323b",
+      "postgres-19.0.log": "9fe4dcae59bc3a9cda55a641e5a6d6ff3005c28d1564be7d8144ca27595a4197"
+    },
+    "postgres_driver_tests_passed_per_version": 36,
+    "runtime_tests_passed_per_version": 51,
+    "compiled_proofs_passed_per_version": 3
+  },
   "main_integration_postgres": {
     "checkout": "aa40fa5df5db9ca2df5ca706639973f900889906",
     "main": "7fe28906489a5b51085d3568d5fe1d8838cbdd3b",

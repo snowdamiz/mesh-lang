@@ -963,6 +963,13 @@ varied, and peak one-minute load reached 41.0 on 15 logical CPUs.
 The earlier miss and all seven new results remain in the receipt.
 [Sparse rerun receipts](../proof/jobs-parity/qualification-v1.json)
 
+An identical-binary control used `7c162056` for both arms of the
+one-runner, one-slot sparse profile. Five alternating pairs gave median
+pickup p99s of 263.4 ms and 259.5 ms, with trial ranges of 261.6–269.1 ms
+and 208.1–265.3 ms. These results show how individual trials can vary even
+when both arms use the same executable and settings. The sparse
+candidate retest remains open. [Control receipt](../proof/jobs-parity/qualification-v1.json)
+
 The batch retry at `3f651c2c`, measured at `b81c2819`, uses a bounded retry when an empty
 claim can still see eligible work and open capacity. It keeps the
 PostgreSQL admission lock, lease checks, and confirmed commit boundary.
@@ -996,6 +1003,49 @@ The current performance gate requires throughput above Oban in every
 frozen profile. The short
 one-runner dense reference used 0.227 claim calls per job versus 1.023
 on pinned main. [Batch retry receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Batch completion experiment
+
+Release `d4746af9` groups already-reaped completions on the lifecycle
+session. On macOS arm64 and PostgreSQL 17.11 over verified TLS, 60 measured
+trials reconciled 32,640 jobs. Each profile alternated the candidate and
+two arms using the same `b81c2819` binary. Peak one-minute load was 25.0
+on 15 logical CPUs.
+
+| Profile | Baseline jobs/s | Repeat jobs/s | Candidate jobs/s | Baseline → candidate runner SQL/job |
+| --- | ---: | ---: | ---: | ---: |
+| Short, one runner, 64 slots | 786 | 781 | 806 | 3.229 → 2.703 |
+| No-op, one runner, 64 slots | 731 | 680 | 669 | 3.217 → 2.611 |
+| 100 ms, one runner, 64 slots | 315 | 272 | 291 | 3.471 → 2.947 |
+| Short, one runner, 16 slots | 355 | 518 | 507 | 3.984 → 3.656 |
+
+The 64-slot short profile's median effect-to-settlement time fell from
+7.94 ms to 6.56 ms, with three improvements in five pairs. Throughput
+and settlement gains varied by pair and profile, so completion batching
+remains an experiment. [Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Warm effect sessions with multiple runners
+
+The fixture-only relay comparison used `b81c2819` and Oban Basic 2.24.2
+on PostgreSQL 17.11 over verified TLS. Five counterbalanced groups per
+profile reconciled 12,800 jobs. Each group ran direct writes, an
+identical direct repeat, warm relay sessions, and Oban. The warm path
+opened one session per slot. Relay CPU and connections count toward the
+Mesh totals. Peak one-minute host load reached 36.0 on 15 logical CPUs.
+
+| Profile | Direct jobs/s | Direct repeat jobs/s | Warm jobs/s | Oban jobs/s |
+| --- | ---: | ---: | ---: | ---: |
+| Short, four runners, 16 slots | 251 | 233 | 360 | 457 |
+| 100 ms, eight runners, 64 slots | 305 | 189 | 378 | 416 |
+
+Median handler entry to first commit fell from 13.39 ms to 0.75 ms on
+short jobs and from 27.22 ms to 0.85 ms on 100 ms jobs. Warm sessions
+beat both direct controls for throughput in four short groups and all
+five 100 ms groups. Both profiles met the measured pickup and resource
+limits, with throughput below Oban. The relay is a diagnostic fixture.
+[Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Follow-up correctness proofs
 
 The follow-up verifier used the same runtime sources and passed 45 Jobs
 runtime tests and both compiled suites on PostgreSQL 17.11, 18.7, and 19.0.
@@ -1073,6 +1123,7 @@ harness and runtime sources.
 | macOS arm64, candidate `e8fa00c0` | 17.11, 18.7, 19.0 | Verified TLS and SCRAM after the derivation change, including all 36 PostgreSQL driver cases, 43 Jobs runtime cases, both compiled suites, and fresh and upgraded scoped roles |
 | macOS arm64, runtime `1b12243b` | 17.11, 18.7, 19.0 | 45 Jobs runtime cases, both compiled suites, fresh and upgraded scoped roles, and combined pool, listener, and maintenance interruption over verified TLS |
 | macOS arm64, release runtime `1b12243b` with main `7c162056` for the upgrade | 17.11, 18.7, 19.0 | Rolling upgrade, legacy settlement and rollback under scoped grants, and primary promotion with an uncertain acknowledgement. [Receipt](../proof/jobs-parity/j7-rolling-and-promotion.log) |
+| macOS arm64, integrated `bdb1bd42` | 17.11, 18.7, 19.0 | 51 Jobs runtime cases and all three compiled suites on each version, including scoped roles and contention retry over verified TLS. [Receipt](../proof/jobs-parity/qualification-v1.json) |
 
 The Linux process proof captured the worker PID and kernel start time for
 each held attempt before injecting parent death or waiting for the hard

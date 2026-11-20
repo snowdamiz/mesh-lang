@@ -578,6 +578,8 @@ A claim has a lease. A runner renews the lease while its handler runs and record
 
 Set `claim_batch: true` in the runner config to enable opt-in batch dispatch. A batch claims at most 16 jobs before the runner rotates to its next queue. It honors the runner's available slots and the database-wide queue limit. Within a queue, continuous higher-priority arrivals can delay lower-priority jobs.
 
+When an empty batch still sees eligible work and available capacity, the runner retries with a short delay that grows up to `poll_ms`. `Jobs.status` reports these hints in `batch_contention_hints`. PostgreSQL checks admission on every retry.
+
 Batch dispatch uses two dedicated PostgreSQL sessions per runner, one for claims and one for renewal and settlement. Include both in the runner's connection budget. The database limits each job context to 16 MiB and each batch reply to 32 MiB. The runner reports an oversized job in `last_error` and continues claiming later jobs. A batch drain reports oversized jobs and can finish after processing its remaining eligible work. For restricted worker roles, grant `EXECUTE` on `mesh_jobs.claim_batch_v1(text, text, jsonb, bigint, integer, bigint)` and `SELECT`, `INSERT`, and `UPDATE` on `mesh_jobs.batch_context_blocks`. Existing runners can continue with single claims during rollout.
 
 #### Wake runners after commits
