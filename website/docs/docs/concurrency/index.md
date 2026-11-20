@@ -505,8 +505,8 @@ Run `Jobs.migrate(pool)` before starting workers on a fresh database or after up
 | `Jobs.enqueue_in(conn, namespace, spec)` | Enqueue on a borrowed `PgConn` in its active transaction |
 | `Jobs.start(pool, config, handler)` | Start a runner and return its handle |
 | `Jobs.status(runner)` | Read the local runner state as JSON |
-| `Jobs.stop(runner, grace_ms)` | Stop claiming and wait for in-flight work up to the grace period |
-| `Jobs.join(runner)` | Wait for the runner to stop |
+| `Jobs.stop(runner, grace_ms)` | Request shutdown and report the runner status when the runner stops or the grace period ends |
+| `Jobs.join(runner)` | Wait for the runner to stop and return its final status |
 | `Jobs.control(pool, namespace, request)` | Inspect jobs and control queues with a JSON operation |
 
 Pass a JSON object to enqueue one job. The default queue is `default` and the default payload version is `1`. A `request_key` lets an application retry an enqueue after losing its response. Reuse the same key and spec until the application knows the commit outcome.
@@ -576,7 +576,9 @@ The runtime terminates the attempt process at its handler timeout or when it los
 
 Deploy compiled executables at versioned paths so old runners can keep starting handlers while they drain. Stop runners from before process isolation to apply hard timeouts to every new attempt. Existing scheduled and retryable jobs keep their stored arguments and deadlines.
 
-On `SIGTERM` or `Jobs.stop`, the runner stops claiming new work and tries to finish in-flight attempts within the grace period. It terminates attempts that are still running when the grace period ends. `Jobs.stop` reports attempts whose exit has yet to be observed. An unfinished claim remains recoverable through its lease. Use `Jobs.join` to keep a worker process running until shutdown. Close the PostgreSQL pool after stopping its runners.
+On `SIGTERM` or `Jobs.stop`, the runner stops claiming new work and tries to finish in-flight attempts within the grace period. It terminates attempts that are still running when the grace period ends. `Jobs.stop` can return `stopping` if cleanup is still in progress. The `drained` field reports whether any claims or attempts remain. An unfinished claim remains recoverable through its lease.
+
+`Jobs.join` can wait past the grace period. It returns `stopped` after the runner reaps its local attempt processes and finishes its PostgreSQL work, including background maintenance. Before closing the PostgreSQL pool, wait for `Jobs.join` to return for every runner that uses it.
 
 Use a writable PostgreSQL primary with durable commits (`synchronous_commit = on` or stronger) and enough pool connections for handlers, application transactions, and runner I/O. Durability during primary failure depends on the database's storage, replication, and failover configuration. Schedules and lease expiration use the primary's clock.
 

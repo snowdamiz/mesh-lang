@@ -94,7 +94,8 @@ fn polling_and_kill_errors_keep_an_attempt_undrained_until_reap() {
     runner.supervise();
     runner.request_stop(Duration::ZERO);
     assert!(attempt.poll(&runner, 0));
-    let report: serde_json::Value = serde_json::from_str(&runner.report(true).unwrap()).unwrap();
+    let report: serde_json::Value =
+        serde_json::from_str(&runner.report(&runner.state.lock())).unwrap();
     assert_eq!(report["state"], "stopping");
     assert_eq!(report["undrained_jobs"], json!(["job-id"]));
     assert_eq!(report["finished"], 0);
@@ -189,6 +190,96 @@ fn a_late_renewal_cannot_extend_an_expired_local_lease() {
         worker.poll(now, false, &mut None),
         Some(Reply::Failed(reason)) if reason == LEASE_LOST
     ));
+}
+
+#[test]
+#[ignore = "requires MESH_TEST_DATABASE_URL"]
+fn join_waits_for_maintenance_after_stop_grace() {
+    use crate::db::pool::{mesh_pool_close, mesh_pool_open, unbox_u64_payload};
+    use crate::io::MeshResult;
+    use crate::string::mesh_str;
+
+    crate::gc::mesh_rt_init();
+    actor::mesh_rt_init_actor(2);
+    let url = std::env::var("MESH_TEST_DATABASE_URL").expect("test PostgreSQL URL");
+    let pool = unsafe { &*mesh_pool_open(mesh_str(&url), 0, 3, 500).cast::<MeshResult>() };
+    assert_eq!(pool.tag, 0);
+    let pool = unsafe { unbox_u64_payload(pool.value) };
+    with_pool(pool, |db| {
+        super::super::store::migrate(db)?;
+        db.transaction(|tx| super::super::cron::migrate(tx))
+    })
+    .unwrap();
+
+    let namespace = format!("runner-join-test-{}", rand::random::<u64>());
+    let mut config: serde_json::Value = serde_json::from_str(TEST_CONFIG).unwrap();
+    config["namespace"] = json!(namespace);
+    let (joined, join_result) = mpsc::channel();
+    let (stop_report, early_join) = with_pool(pool, |db| {
+        db.transaction(|tx| {
+            tx.simple("LOCK TABLE mesh_jobs.cron_activation IN ACCESS EXCLUSIVE MODE")?;
+            let id = start_runner(
+                pool,
+                &config.to_string(),
+                || Ok(()),
+                Box::new(TimedWorker::start),
+            )?;
+            let deadline = Instant::now() + TEST_WAIT;
+            loop {
+                let rows = tx.query(
+                    "SELECT EXISTS (SELECT 1 FROM pg_locks
+                     WHERE relation = 'mesh_jobs.cron_activation'::regclass AND NOT granted
+                     AND pg_backend_pid() = ANY(pg_blocking_pids(pid)))::text",
+                    &[],
+                )?;
+                if rows[0][0].1 == "true" {
+                    break;
+                }
+                if Instant::now() >= deadline {
+                    return Err("runner maintenance did not wait on the table lock".into());
+                }
+                std::thread::sleep(TICK);
+            }
+
+            let stop_report = stop(id, 0)?;
+            let (joining, started) = mpsc::channel();
+            std::thread::spawn(move || {
+                joining.send(()).unwrap();
+                joined.send(join(id)).unwrap();
+            });
+            started
+                .recv_timeout(TEST_WAIT)
+                .map_err(|error| error.to_string())?;
+            Ok((
+                stop_report,
+                join_result.recv_timeout(Duration::from_millis(100)),
+            ))
+        })
+    })
+    .unwrap();
+
+    let report: serde_json::Value = serde_json::from_str(&stop_report).unwrap();
+    assert_eq!(report["state"], "stopping");
+    assert_eq!(report["drained"], true);
+    assert!(
+        matches!(early_join, Err(mpsc::RecvTimeoutError::Timeout)),
+        "join returned while maintenance was blocked: {early_join:?}"
+    );
+
+    let report = join_result.recv_timeout(TEST_WAIT).unwrap().unwrap();
+    let report: serde_json::Value = serde_json::from_str(&report).unwrap();
+    assert_eq!(report["state"], "stopped");
+    assert_eq!(report["drained"], true);
+    assert_eq!(report["last_error"], serde_json::Value::Null);
+    let activation = with_pool(pool, |db| {
+        db.query(
+            "DELETE FROM mesh_jobs.cron_activation WHERE namespace = $1 RETURNING namespace",
+            &[&namespace],
+        )
+    })
+    .unwrap();
+    assert_eq!(activation.len(), 1);
+    mesh_pool_close(pool);
 }
 
 #[test]
@@ -350,11 +441,12 @@ fn postgres_runner_executes_schedules_and_settles_renewed_timed_out_and_cancelle
     )
     .unwrap();
     std::thread::sleep(Duration::from_millis(100));
-    assert!(lookup(one_shot).unwrap().report(true).is_none());
+    let runner = lookup(one_shot).unwrap();
+    assert!(!runner.state.lock().phase.is_stopped());
     release_lock.send(()).unwrap();
     lock_holder.join().unwrap();
     let deadline = Instant::now() + TEST_WAIT;
-    while lookup(one_shot).unwrap().report(true).is_none() {
+    while !runner.state.lock().phase.is_stopped() {
         assert!(
             Instant::now() < deadline,
             "drain status: {}",
@@ -435,13 +527,14 @@ fn postgres_runner_executes_schedules_and_settles_renewed_timed_out_and_cancelle
     )
     .unwrap();
     std::thread::sleep(Duration::from_millis(200));
-    assert!(lookup(one_shot).unwrap().report(true).is_none());
+    let runner = lookup(one_shot).unwrap();
+    assert!(!runner.state.lock().phase.is_stopped());
     expire(&expires_later);
     assert_eq!(wait_for(&expires_later, "completed")["attempt"], 2);
     release_lock.send(()).unwrap();
     lock_holder.join().unwrap();
     let deadline = Instant::now() + TEST_WAIT;
-    while lookup(one_shot).unwrap().report(true).is_none() {
+    while !runner.state.lock().phase.is_stopped() {
         assert!(
             Instant::now() < deadline,
             "drain status: {}",

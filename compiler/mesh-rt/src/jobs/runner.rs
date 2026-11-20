@@ -152,6 +152,18 @@ impl Phase {
             Self::Stopped => "stopped",
         }
     }
+
+    fn is_stopped(&self) -> bool {
+        matches!(self, Self::Stopped)
+    }
+
+    fn stop_wait_complete(&self) -> bool {
+        match self {
+            Self::Running => false,
+            Self::Stopping { deadline } => Instant::now() >= *deadline,
+            Self::Stopped => true,
+        }
+    }
 }
 
 struct ActiveJob {
@@ -231,17 +243,8 @@ impl Runner {
         true
     }
 
-    fn report(&self, wait: bool) -> Option<String> {
-        let state = self.state.lock();
+    fn report(&self, state: &State) -> String {
         let undrained = state.jobs.len() + state.pending_claims;
-        if wait {
-            match state.phase {
-                Phase::Running => return None,
-                Phase::Stopping { deadline } if Instant::now() < deadline => return None,
-                _ => {}
-            }
-        }
-
         let queues: BTreeMap<_, _> = self
             .config
             .queues
@@ -256,33 +259,33 @@ impl Runner {
             })
             .collect();
         let jobs: Vec<_> = state.jobs.values().map(|job| &job.id).collect();
-        Some(
-            serde_json::json!({
-                "runner_id": self.id,
-                "namespace": self.config.namespace,
-                "state": state.phase.name(),
-                "drained": undrained == 0,
-                "undrained": undrained,
-                "undrained_jobs": jobs,
-                "pending_claims": state.pending_claims,
-                "queues": queues,
-                "claimed": state.counts.claimed,
-                "finished": state.counts.finished,
-                "stale_acks": state.counts.stale_acks,
-                "recovered": state.counts.recovered,
-                "scheduled": state.counts.scheduled,
-                "pruned": state.counts.pruned,
-                "last_error": state.last_error,
-            })
-            .to_string(),
-        )
+        serde_json::json!({
+            "runner_id": self.id,
+            "namespace": self.config.namespace,
+            "state": state.phase.name(),
+            "drained": undrained == 0,
+            "undrained": undrained,
+            "undrained_jobs": jobs,
+            "pending_claims": state.pending_claims,
+            "queues": queues,
+            "claimed": state.counts.claimed,
+            "finished": state.counts.finished,
+            "stale_acks": state.counts.stale_acks,
+            "recovered": state.counts.recovered,
+            "scheduled": state.counts.scheduled,
+            "pruned": state.counts.pruned,
+            "last_error": state.last_error,
+        })
+        .to_string()
     }
 
-    fn wait(&self) -> String {
+    fn wait_until(&self, ready: fn(&Phase) -> bool) -> String {
         loop {
-            if let Some(report) = self.report(true) {
-                return report;
+            let state = self.state.lock();
+            if ready(&state.phase) {
+                return self.report(&state);
             }
+            drop(state);
             actor::mesh_timer_sleep(TICK.as_millis() as i64);
         }
     }
@@ -365,9 +368,10 @@ fn start_runner(
         return Err("runtime shutdown already requested".into());
     }
     if registry.runners.len() == MAX_RUNNERS {
-        let stopped = registry.runners.iter().find_map(|(id, runner)| {
-            matches!(runner.state.lock().phase, Phase::Stopped).then_some(*id)
-        });
+        let stopped = registry
+            .runners
+            .iter()
+            .find_map(|(id, runner)| runner.state.lock().phase.is_stopped().then_some(*id));
         registry
             .runners
             .remove(&stopped.ok_or("runner limit reached")?);
@@ -443,19 +447,19 @@ fn lookup(id: u64) -> Result<Arc<Runner>, String> {
 }
 
 pub(super) fn status(id: u64) -> Result<String, String> {
-    Ok(lookup(id)?
-        .report(false)
-        .expect("status is always available"))
+    let runner = lookup(id)?;
+    let state = runner.state.lock();
+    Ok(runner.report(&state))
 }
 
 pub(super) fn stop(id: u64, grace_ms: u64) -> Result<String, String> {
     let runner = lookup(id)?;
     runner.request_stop(grace(grace_ms)?);
-    Ok(runner.wait())
+    Ok(runner.wait_until(Phase::stop_wait_complete))
 }
 
 pub(super) fn join(id: u64) -> Result<String, String> {
-    Ok(lookup(id)?.wait())
+    Ok(lookup(id)?.wait_until(Phase::is_stopped))
 }
 
 pub(super) fn shutdown_all() {
@@ -468,7 +472,7 @@ pub(super) fn shutdown_all() {
         runner.request_stop(Duration::from_millis(runner.config.shutdown_grace_ms));
     }
     for runner in runners {
-        runner.wait();
+        runner.wait_until(Phase::stop_wait_complete);
         while runner
             .state
             .lock()
