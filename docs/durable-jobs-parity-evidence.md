@@ -558,9 +558,11 @@ p99 with four runners and 64 slots was 241.2 ms on the candidate and
 205.5 ms on main, above the 1.10 ratio limit. The run started at a one-minute
 host load of 13.2 and reached 32.6 on 15 logical CPUs. [Matrix receipt](../proof/jobs-parity/j7-lane-1.log)
 
-The follow-up PostgreSQL 17.11 verifier used the same runtime sources and
-passed 45 Jobs runtime tests and both compiled suites. It covered batch
-pause, scaling, oversized contexts, queue rotation, stale acknowledgement
+The follow-up verifier used the same runtime sources and passed 45 Jobs
+runtime tests and both compiled suites on PostgreSQL 17.11, 18.7, and 19.0.
+Both suites complete shared schema setup before running namespace traffic.
+The verifier covered batch pause and scaling, oversized contexts, queue
+rotation, stale acknowledgement
 events, and lease renewal while the reader buffer was full. The batch
 context test reached 25,166,688 queued bytes and completed the four
 admissible jobs. The oversized row retained attempt zero.

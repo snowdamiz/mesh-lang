@@ -569,8 +569,8 @@
   },
   "macos_follow_up_lanes": {
     "17.11": {
-      "compiled_checkout": "105a5a2c8e343c8398ae392a2521599bbfc664c9",
-      "compiled_log": "target/jobs-parity/105a5a2c8e343c8398ae392a2521599bbfc664c9/new-compiled-lanes/postgres-17.11.log",
+      "compiled_checkout": "e2ade6f715190deff01e5231d7442f835fc67df5",
+      "compiled_log": "target/jobs-parity/e2ade6f715190deff01e5231d7442f835fc67df5/new-compiled-lanes/postgres-17.11.log",
       "compiled_proofs": 2,
       "jobs_runtime_tests": 45,
       "lane_logs": {
@@ -578,18 +578,54 @@
         "j1-lane-10": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/lane-evidence/17.11/j1-lane-10.log",
         "j1-lane-8": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/lane-evidence/17.11/j1-lane-8.log",
         "j1-lane-9": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/lane-evidence/17.11/j1-lane-9.log",
-        "j2-lane-10": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/lane-evidence/17.11/j2-lane-10.log",
-        "j2-lane-3": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/lane-evidence/17.11/j2-lane-3.log",
+        "j2-lane-10": "target/jobs-parity/e2ade6f715190deff01e5231d7442f835fc67df5/lane-evidence/17.11/j2-lane-10.log",
+        "j2-lane-3": "target/jobs-parity/e2ade6f715190deff01e5231d7442f835fc67df5/lane-evidence/17.11/j2-lane-3.log",
         "j2-lane-6": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/lane-evidence/17.11/j2-lane-6.log",
         "j2-lane-7": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/lane-evidence/17.11/j2-lane-7.log",
-        "j2-lane-8": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/lane-evidence/17.11/j2-lane-8.log",
-        "j4-lane-5": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/lane-evidence/17.11/j4-lane-5.log",
+        "j2-lane-8": "target/jobs-parity/e2ade6f715190deff01e5231d7442f835fc67df5/lane-evidence/17.11/j2-lane-8.log",
+        "j4-lane-5": "target/jobs-parity/e2ade6f715190deff01e5231d7442f835fc67df5/lane-evidence/17.11/j4-lane-5.log",
         "j4-lane-6": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/lane-evidence/17.11/j4-lane-6.log",
-        "j4-lane-7": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/lane-evidence/17.11/j4-lane-7.log",
-        "j4-lane-8": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/lane-evidence/17.11/j4-lane-8.log",
-        "j5-lane-1": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/lane-evidence/17.11/j5-lane-1.log",
-        "j6-lane-1": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/lane-evidence/17.11/j6-lane-1.log",
-        "j6-lane-6": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/lane-evidence/17.11/j6-lane-6.log"
+        "j4-lane-7": "target/jobs-parity/e2ade6f715190deff01e5231d7442f835fc67df5/lane-evidence/17.11/j4-lane-7.log",
+        "j4-lane-8": "target/jobs-parity/e2ade6f715190deff01e5231d7442f835fc67df5/lane-evidence/17.11/j4-lane-8.log",
+        "j5-lane-1": "target/jobs-parity/e2ade6f715190deff01e5231d7442f835fc67df5/lane-evidence/17.11/j5-lane-1.log",
+        "j6-lane-1": "target/jobs-parity/e2ade6f715190deff01e5231d7442f835fc67df5/lane-evidence/17.11/j6-lane-1.log",
+        "j6-lane-6": "target/jobs-parity/e2ade6f715190deff01e5231d7442f835fc67df5/lane-evidence/17.11/j6-lane-6.log"
+      },
+      "postgres_driver_tests": 36
+    },
+    "18.7": {
+      "compiled_checkout": "e2ade6f715190deff01e5231d7442f835fc67df5",
+      "compiled_log": "target/jobs-parity/e2ade6f715190deff01e5231d7442f835fc67df5/new-compiled-lanes/postgres-18.7.log",
+      "compiled_proofs": 2,
+      "jobs_runtime_tests": 45,
+      "lane_logs": {
+        "j2-lane-10": "target/jobs-parity/e2ade6f715190deff01e5231d7442f835fc67df5/lane-evidence/18.7/j2-lane-10.log",
+        "j2-lane-3": "target/jobs-parity/e2ade6f715190deff01e5231d7442f835fc67df5/lane-evidence/18.7/j2-lane-3.log",
+        "j2-lane-8": "target/jobs-parity/e2ade6f715190deff01e5231d7442f835fc67df5/lane-evidence/18.7/j2-lane-8.log",
+        "j4-lane-5": "target/jobs-parity/e2ade6f715190deff01e5231d7442f835fc67df5/lane-evidence/18.7/j4-lane-5.log",
+        "j4-lane-7": "target/jobs-parity/e2ade6f715190deff01e5231d7442f835fc67df5/lane-evidence/18.7/j4-lane-7.log",
+        "j4-lane-8": "target/jobs-parity/e2ade6f715190deff01e5231d7442f835fc67df5/lane-evidence/18.7/j4-lane-8.log",
+        "j5-lane-1": "target/jobs-parity/e2ade6f715190deff01e5231d7442f835fc67df5/lane-evidence/18.7/j5-lane-1.log",
+        "j6-lane-1": "target/jobs-parity/e2ade6f715190deff01e5231d7442f835fc67df5/lane-evidence/18.7/j6-lane-1.log",
+        "j6-lane-6": "target/jobs-parity/e2ade6f715190deff01e5231d7442f835fc67df5/lane-evidence/18.7/j6-lane-6.log"
+      },
+      "postgres_driver_tests": 36
+    },
+    "19.0": {
+      "compiled_checkout": "e2ade6f715190deff01e5231d7442f835fc67df5",
+      "compiled_log": "target/jobs-parity/e2ade6f715190deff01e5231d7442f835fc67df5/new-compiled-lanes/postgres-19.0.log",
+      "compiled_proofs": 2,
+      "jobs_runtime_tests": 45,
+      "lane_logs": {
+        "j2-lane-10": "target/jobs-parity/e2ade6f715190deff01e5231d7442f835fc67df5/lane-evidence/19.0/j2-lane-10.log",
+        "j2-lane-3": "target/jobs-parity/e2ade6f715190deff01e5231d7442f835fc67df5/lane-evidence/19.0/j2-lane-3.log",
+        "j2-lane-8": "target/jobs-parity/e2ade6f715190deff01e5231d7442f835fc67df5/lane-evidence/19.0/j2-lane-8.log",
+        "j4-lane-5": "target/jobs-parity/e2ade6f715190deff01e5231d7442f835fc67df5/lane-evidence/19.0/j4-lane-5.log",
+        "j4-lane-7": "target/jobs-parity/e2ade6f715190deff01e5231d7442f835fc67df5/lane-evidence/19.0/j4-lane-7.log",
+        "j4-lane-8": "target/jobs-parity/e2ade6f715190deff01e5231d7442f835fc67df5/lane-evidence/19.0/j4-lane-8.log",
+        "j5-lane-1": "target/jobs-parity/e2ade6f715190deff01e5231d7442f835fc67df5/lane-evidence/19.0/j5-lane-1.log",
+        "j6-lane-1": "target/jobs-parity/e2ade6f715190deff01e5231d7442f835fc67df5/lane-evidence/19.0/j6-lane-1.log",
+        "j6-lane-6": "target/jobs-parity/e2ade6f715190deff01e5231d7442f835fc67df5/lane-evidence/19.0/j6-lane-6.log"
       },
       "postgres_driver_tests": 36
     },
