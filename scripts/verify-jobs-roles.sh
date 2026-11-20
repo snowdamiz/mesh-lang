@@ -95,6 +95,7 @@ for database in jobs_role_fresh jobs_role_upgrade; do
   {
     printf 'BEGIN; SELECT pg_advisory_xact_lock(1782495102, 1);\n'
     cat compiler/mesh-rt/src/jobs/schema.sql
+    cat compiler/mesh-rt/src/jobs/drain_schema.sql
     printf 'COMMIT; BEGIN;\n'
     cat compiler/mesh-rt/src/jobs/cron_schema.sql
     printf 'COMMIT;\n'
@@ -128,6 +129,7 @@ for database in jobs_role_fresh jobs_role_upgrade; do
     mesh_jobs.jobs WHERE namespace='proof'; SELECT count(*) FROM mesh_jobs.receipts
     WHERE namespace='proof';" $'1\n1\n1'
   denied jobs_producer "SELECT mesh_jobs.claim('proof','default','$workers',60000);"
+  denied jobs_producer "SELECT mesh_jobs.claim_drain_v1('proof','default','$workers',60000,NULL,NULL);"
   denied jobs_producer "SELECT mesh_jobs.queue_control('proof','default','pause',NULL);"
   denied jobs_worker "SELECT mesh_jobs.set_namespace_paused('proof',true);"
 
