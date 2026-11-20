@@ -60,7 +60,9 @@ fn durable_jobs_survive_process_boundaries() {
     prove_local_controls(&proof, false);
     prove_local_controls(&proof, true);
     println!("J6 local queue controls passed with single and batch claims");
+    prove_bulk_delete_during_claim(&proof);
     prove_job_operations(&proof);
+    println!("J6 lane 6 passed: bulk deletion overlapped a claim and active replacement preserved its fence");
     println!("J6 namespace controls, active replacement, run-now, and receipt replay passed");
     pool_outage::prove(&proof);
     prove_cron_process_takeover(&proof);
@@ -442,6 +444,85 @@ fn prove_local_controls(proof: &Proof, batch: bool) {
     target.stop();
 }
 
+fn prove_bulk_delete_during_claim(shared: &Proof<'_>) {
+    let dir = shared.dir.join("bulk-delete-race");
+    fs::create_dir(&dir).unwrap();
+    let proof = Proof::new(shared.url, shared.binary.clone(), &dir);
+    let queue = "bulk-delete-race";
+    let label = "claim-during-delete";
+    let terminal = proof.enqueue(json!({
+        "worker":"proof", "queue":queue, "args":{"label":"delete-terminal"}
+    }));
+    assert_eq!(
+        proof.control(json!({"action":"discard","id":terminal["id"]}))["state"],
+        "discarded"
+    );
+    let active = proof.enqueue(json!({
+        "worker":"proof", "queue":queue, "args":{"label":label}
+    }));
+    proof.sql(&format!(
+        "CREATE FUNCTION {ns}.hold_racing_claim() RETURNS trigger LANGUAGE plpgsql AS $hold$
+         BEGIN
+             PERFORM pg_advisory_xact_lock(hashtextextended(NEW.namespace, 1461749649));
+             RETURN NEW;
+         END; $hold$;
+         CREATE TRIGGER hold_racing_claim
+         BEFORE UPDATE OF attempt ON mesh_jobs.jobs FOR EACH ROW
+         WHEN (NEW.id = {id}::uuid AND NEW.namespace = {quoted_ns} AND NEW.state = 'executing')
+         EXECUTE FUNCTION {ns}.hold_racing_claim()",
+        ns = proof.namespace,
+        quoted_ns = quoted(&proof.namespace),
+        id = quoted(id(&active)),
+    ));
+    let mut barrier = native_pg_connect(proof.url).unwrap();
+    let lock = native_pg_query(
+        &mut barrier,
+        "SELECT pg_advisory_lock(hashtextextended($1, 1461749649)), pg_backend_pid()::text",
+        &[&proof.namespace],
+    )
+    .unwrap();
+    let blocker = lock[0][1].1.parse::<u32>().unwrap();
+    let mut worker = proof.worker_with_options(
+        "bulk-delete-race",
+        true,
+        json!({ (queue):1 }),
+        8000,
+        LEASE_MS,
+    );
+    let claim_is_waiting = || {
+        proof.sql(&format!(
+            "SELECT EXISTS (SELECT FROM pg_stat_activity
+             WHERE datname = current_database() AND {blocker} = ANY(pg_blocking_pids(pid))
+             AND query LIKE '%mesh_jobs.claim%')"
+        )) == "t"
+    };
+    eventually(
+        "the compiled claim to wait while the terminal row is deleted",
+        || {
+            worker.assert_running();
+            claim_is_waiting().then_some(())
+        },
+    );
+    let deleted = proof.control(json!({"action":"delete_all","filter":{"queue":queue}}));
+    assert_eq!(deleted["deleted"], 1);
+    assert_eq!(deleted["ids"], json!([terminal["id"]]));
+    assert!(proof.job("delete-terminal").is_null());
+    assert!(claim_is_waiting());
+    let pending = proof.job(label);
+    assert_eq!(pending["id"], active["id"]);
+    assert_eq!(pending["state"], "available");
+    assert_eq!(pending["attempt"], 0);
+    native_pg_close(barrier);
+    let effects = proof.wait_effects(label, 1);
+    assert_eq!(effects[0]["context"]["id"], active["id"]);
+    assert_eq!(effects[0]["context"]["effect_key"], active["effect_key"]);
+    worker.release();
+    assert_eq!(proof.wait_state(label, "completed")["attempt"], 1);
+    worker.stop();
+    assert_eq!(proof.effects(label), effects);
+    proof.clean().unwrap();
+}
+
 fn prove_job_operations(proof: &Proof) {
     let queue = "j6-new-queue-while-paused";
     let mut runner =
@@ -470,6 +551,7 @@ fn prove_job_operations(proof: &Proof) {
         false
     );
     let active = proof.wait_effects("j6-held-retry", 1);
+    let running = proof.job("j6-held-retry");
     let token = proof.lease(id(&receipt)).token;
     let replacement = proof.enqueue(json!({
         "worker":"proof", "queue":queue, "args":{"label":"run-now-updated"}, "version":1,
@@ -479,7 +561,18 @@ fn prove_job_operations(proof: &Proof) {
     assert_eq!(replacement["id"], receipt["id"]);
     assert_eq!(proof.lease(id(&receipt)).token, token);
     assert_eq!(active[0]["context"]["args"]["label"], "j6-held-retry");
-    assert_eq!(proof.job("run-now-updated")["state"], "executing");
+    let updated = proof.job("run-now-updated");
+    assert_eq!(updated["state"], "executing");
+    for field in [
+        "id",
+        "worker",
+        "queue",
+        "scheduled_at_ms",
+        "attempt",
+        "effect_key",
+    ] {
+        assert_eq!(updated[field], running[field], "{field}");
+    }
     assert_eq!(
         proof.control(json!({"action":"delete_all","filter":{"queue":queue}}))["deleted"],
         0
@@ -494,6 +587,8 @@ fn prove_job_operations(proof: &Proof) {
     let next = proof.wait_effects("run-now-updated", 1);
     assert_eq!(next[0]["context"]["effect_key"], receipt["effect_key"]);
     assert_eq!(next[0]["context"]["attempt"], 2);
+    assert_eq!(next[0]["context"]["args"]["label"], "run-now-updated");
+    assert_eq!(proof.effects("j6-held-retry"), active);
     proof.wait_state("run-now-updated", "completed");
     assert_eq!(
         proof.control(json!({"action":"prune","queue":queue,"max_age_ms":0,"limit":1}))["deleted"],
