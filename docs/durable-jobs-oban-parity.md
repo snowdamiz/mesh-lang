@@ -438,7 +438,7 @@ OS spawn call and a gate at the existing native worker-start marker.
 
 - [x] The evidence guide records the tested PostgreSQL and OS matrix, scope boundaries, and benchmark results by workload. [Evidence guide](durable-jobs-parity-evidence.md)
 - [ ] Confirm that all guarantees advertised in the reference docs have a reproducible positive case and an exercised failure case.
-- [ ] Keep scope beyond PostgreSQL Core visible in a separate backlog.
+- [x] Track other database engines and Oban Pro in the [backlog beyond PostgreSQL Core](#backlog-beyond-postgresql-core).
 
 ## Appendix A. Prototype evidence
 
@@ -471,6 +471,9 @@ Derive and verify exact grants before releasing the operational changes. The mat
 - J5 inline execution can mask physical durability or start real application effects. Keep it in a test-only scope and preserve the PostgreSQL drain and process proofs.
 - J6 maintenance can block shared work or destroy replay evidence. Keep bounded terminal-row pruning, separate receipts, and a scoped administrative reindex path.
 - J7 verifies at-least-once behavior under declared database and platform assumptions. A forced worker suspension or a service that has already accepted a request can still lead to repeated effects. Use the stable effect key and state the storage and primary fencing assumptions.
+
+### Backlog beyond PostgreSQL Core
+
 - For backend-wide Core parity, follow J7 with one separate plan each for SQLite and MySQL. Each must prove same-transaction enqueue, competing claims, migration continuity, crash recovery and durable schedules, and publish its supported platform and concurrency limits.
 - Pro parity is a distinct goal. Evaluate partitioned concurrency, rate limits, batch settlement, richer uniqueness and lifecycle hooks, dynamic queue policy, workflow dependencies and archival after PostgreSQL Core is qualified. Mesh already has database-wide queue limits and durable editable schedules. [Oban Pro Engine](https://oban.pro/docs/pro/Oban.Pro.Engine.html) · [Oban Pro composition](https://oban.pro/docs/pro/composition.html)
 
