@@ -90,15 +90,19 @@ fn transaction_id(conn :: borrow PgConn) -> String!String do
   Ok(Map.get(List.head(rows), "xid"))
 end
 
-fn write_batch(conn :: borrow PgConn, jobs :: Json, count :: Int, request_id :: String) -> String!String do
+fn write_batch(conn :: borrow PgConn, jobs :: Json, count :: Int, request_id :: String, mode :: String) -> String!String do
+  let notify_proof = mode == "notify_prepare" || mode == "notify_commit"
   if Env.get("JOBS_PARITY_MESH_LISTEN", "0") == "1" do
     let _ = Pg.execute(conn, "SET LOCAL mesh_jobs.publish_wakeups = on", [])?
+    ()
+  else if notify_proof do
+    let _ = Pg.execute(conn, "SET LOCAL mesh_jobs.publish_wakeups = off", [])?
     ()
   end
   let _ = Pg.execute(conn,
     "INSERT INTO public.mesh_jobs_parity_product (engine, namespace, request_id) VALUES ('mesh', $1, $2) ON CONFLICT DO NOTHING",
     [namespace(), request_id])?
-  if Env.get("JOBS_PARITY_MODE", "") == "producer_commit" do
+  if mode == "producer_commit" || notify_proof do
     if count < 1 || count > 128 do
       return Err("producer commit probe requires one nonempty enqueue batch")
     end
@@ -116,15 +120,35 @@ fn write_batch(conn :: borrow PgConn, jobs :: Json, count :: Int, request_id :: 
   Ok(Json.encode(json { count: count, xid: xid, ids: ids }))
 end
 
+fn finish_batch(conn :: borrow PgConn, rollback :: Bool, mode :: String) -> Unit!String do
+  if rollback do
+    return Pg.rollback(conn)
+  end
+  if mode == "notify_prepare" do
+    case Pg.execute(conn, "PREPARE TRANSACTION 'jobs_parity_notify'", []) do
+      Ok(_) -> Ok(())
+      Err(error) -> Err("PREPARE TRANSACTION: " <> error)
+    end
+  else if mode == "notify_commit" do
+    case Pg.commit(conn) do
+      Ok(_) -> Ok(())
+      Err(error) -> Err("COMMIT: " <> error)
+    end
+  else
+    Pg.commit(conn)
+  end
+end
+
 fn transact_batch(conn :: borrow PgConn, input :: Json) -> String!String do
   let jobs = Json.object_get(input, "jobs")?
   let count = Json.array_length(jobs)?
   let request_id = Json.as_string(Json.object_get(input, "request_id")?)?
   let rollback = Json.as_bool(Json.object_get(input, "rollback")?)?
+  let mode = Env.get("JOBS_PARITY_MODE", "")
   let _ = Pg.begin(conn)?
-  case write_batch(conn, jobs, count, request_id) do
+  case write_batch(conn, jobs, count, request_id, mode) do
     Ok(receipt) ->
-      let _ = (if rollback do Pg.rollback(conn) else Pg.commit(conn) end)?
+      let _ = finish_batch(conn, rollback, mode)?
       Ok(receipt)
     Err(error) ->
       let _ = Pg.rollback(conn)?

@@ -1034,6 +1034,39 @@ python3 scripts/jobs-parity.py --faults --release --mesh-batch --poll-ms 100 \
   --mesh-ref 1b12243b --against-ref 7c162056 --toolchains target/jobs-parity/build
 ```
 
+### Reproduce producer NOTIFY failures
+
+Set `PG_BIN_DIR` to the PostgreSQL 17.11 bin directory and run the proof from
+the committed harness. The driver builds the compiled producer in release mode
+and starts its own loopback PostgreSQL cluster with SCRAM and verified TLS.
+
+```bash
+python3 scripts/jobs-parity.py --notify-producer-failures --postgres-version 17.11 \
+  --mesh-ref a431fbbf
+```
+
+To reuse the pinned release pair, add `--toolchains target/jobs-parity/build`.
+The manifest records the runtime revision independently of the harness
+revision and fixture hashes.
+
+The producer writes a business row and calls `Jobs.enqueue_in` on the same
+connection. With publishing on, PostgreSQL rejects `PREPARE TRANSACTION`.
+With publishing off, a separate session sees the prepared transaction and
+empty business, job, receipt, attempt, and effect tables. The business row,
+job, and receipt become visible together after `COMMIT PREPARED`.
+
+For the full-queue case, the driver verifies the subscribed session in
+`pg_stat_activity` and holds its transaction through both producer calls.
+It commits 60 distinct 7,900-byte notifications. It then attempts to commit
+2,500 distinct 32-byte notifications in one transaction and checks for the
+queue-full error. With the queue still full, publishing on fails at
+`COMMIT` and leaves all five tables empty. Publishing off commits the
+business row, job, and receipt under the same pressure.
+
+Read `manifest.json`, `mesh-toolchain.json`, and `result.json` in the printed
+evidence directory. This producer proof runs without workers or performance
+measurements.
+
 ### Compiled drain and queue-local failures
 
 The bounded drain proof holds a claim in PostgreSQL while removing execute

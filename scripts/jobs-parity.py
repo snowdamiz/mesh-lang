@@ -42,6 +42,9 @@ EVENT_BUFFER_METRICS = ("sampled_peak_bytes", "upper_bound_bytes")
 LISTENER_POLL_MS = 1000
 LISTENER_OUTAGE_PROFILE = ("sparse", 1, 16)
 FINAL_ATTEMPT_LEASE_MS = 10_000  # The Mesh fixture's "final_attempt" runner mode.
+NOTIFY_PREPARED_GID = "jobs_parity_notify"
+NOTIFY_QUEUE_ERROR = "too many notifications in the NOTIFY queue"
+NOTIFY_PREPARE_ERROR = "cannot PREPARE a transaction that has executed LISTEN, UNLISTEN, or NOTIFY"
 SCHEMA = """
 CREATE TABLE public.mesh_jobs_parity_attempts (
     engine text NOT NULL, namespace text NOT NULL, job_key text NOT NULL,
@@ -212,7 +215,7 @@ def postgres_tools():
 
 
 class Cluster:
-    def __init__(self, scratch, evidence, connection_cap, expected_version=None):
+    def __init__(self, scratch, evidence, connection_cap, expected_version=None, *, notify_failures=False):
         self.scratch = scratch
         self.evidence = evidence
         self.bin = postgres_tools()
@@ -221,6 +224,7 @@ class Cluster:
         self.password = secrets.token_hex(16)
         self.connection_cap = connection_cap
         self.expected_version = expected_version
+        self.notify_failures = notify_failures
         self.env = {k: v for k, v in os.environ.items() if not k.startswith("PG")}
         self.env["TMPDIR"] = str(scratch)
         with socket.socket() as port:
@@ -252,6 +256,8 @@ synchronous_commit = on
 max_connections = 128
 timezone = 'UTC'
 """)
+            if self.notify_failures:
+                stream.write("max_prepared_transactions = 4\nmax_notify_queue_pages = 64\n")
         if self.expected_version:
             self.configure_tls()
         self.call("pg_ctl", "-D", str(self.data), "-w", "-t", "20", "-l",
@@ -312,14 +318,17 @@ timezone = 'UTC'
                    if self.expected_version else "sslmode=disable")
         return f"postgresql://{user}:{self.password}@127.0.0.1:{port or self.port}/{database}?{options}"
 
-    def sql(self, database, query):
+    def psql(self, database):
         env = dict(self.env, PGPASSWORD=self.password)
         env["PGSSLMODE"] = "verify-full" if self.expected_version else "disable"
         if self.expected_version:
             env["PGSSLROOTCERT"] = str(self.certificate)
-        return checked([str(self.bin / "psql"), "-X", "-w", "-qAt", "-v", "ON_ERROR_STOP=1",
-                        "-h", "127.0.0.1", "-p", str(self.port), "-U", "parity_owner",
-                        "-d", database, "-c", query], env=env, timeout=15)
+        return ([str(self.bin / "psql"), "-X", "-w", "-qAt", "-v", "ON_ERROR_STOP=1",
+                 "-h", "127.0.0.1", "-p", str(self.port), "-U", "parity_owner", "-d", database], env)
+
+    def sql(self, database, query):
+        args, env = self.psql(database)
+        return checked([*args, "-c", query], env=env, timeout=15)
 
     def calls(self, engine):
         claim_query = ("query LIKE '%FROM mesh_jobs.claim%'" if engine == "mesh"
@@ -1305,6 +1314,22 @@ def reconcile_producer_commit(state, namespace, request, input_jobs, replay_rece
     return ids
 
 
+def producer_state(cluster):
+    return json.loads(cluster.sql("mesh", """
+SELECT json_build_object(
+ 'business', (SELECT coalesce(json_agg(json_build_array(engine, namespace, request_id, xmin::text,
+                                                       pg_xact_commit_timestamp(xmin))), '[]')
+              FROM public.mesh_jobs_parity_product),
+ 'jobs', (SELECT coalesce(json_agg(json_build_array(namespace, args->>'key', id::text, xmin::text,
+                                                   pg_xact_commit_timestamp(xmin), args)
+                                ORDER BY args->>'key'), '[]') FROM mesh_jobs.jobs),
+ 'receipts', (SELECT coalesce(json_agg(json_build_array(namespace, request_key, receipt, xmin::text,
+                                                       pg_xact_commit_timestamp(xmin))
+                                    ORDER BY request_key), '[]') FROM mesh_jobs.receipts)
+)
+"""))
+
+
 def run_producer_commit_fault(subject, scratch, evidence, settings, placement, proxy_type):
     cluster = subject.cluster
     cluster.prepare_database("mesh")
@@ -1319,21 +1344,6 @@ def run_producer_commit_fault(subject, scratch, evidence, settings, placement, p
                   for key in ("producer_first", "producer_second")]
     input_file = batch_files(scratch, [{"request_id": request, "rollback": False, "jobs": input_jobs}])[0]
     producer_env = dict(env, JOBS_PARITY_MODE="producer_commit")
-
-    def producer_state():
-        return json.loads(cluster.sql("mesh", """
-SELECT json_build_object(
- 'business', (SELECT coalesce(json_agg(json_build_array(engine, namespace, request_id, xmin::text,
-                                                       pg_xact_commit_timestamp(xmin))), '[]')
-              FROM public.mesh_jobs_parity_product),
- 'jobs', (SELECT coalesce(json_agg(json_build_array(namespace, args->>'key', id::text, xmin::text,
-                                                   pg_xact_commit_timestamp(xmin), args)
-                                ORDER BY args->>'key'), '[]') FROM mesh_jobs.jobs),
- 'receipts', (SELECT coalesce(json_agg(json_build_array(namespace, request_key, receipt, xmin::text,
-                                                       pg_xact_commit_timestamp(xmin))
-                                    ORDER BY request_key), '[]') FROM mesh_jobs.receipts)
-)
-"""))
 
     with proxy_type(
         cluster.port, lambda sql: sql.strip().upper() == "COMMIT", placement,
@@ -1351,7 +1361,7 @@ SELECT json_build_object(
             raise FixtureError(f"producer did not return an error without a receipt; see {log}")
         fault = wait_for(lambda: proxy.fault, time.monotonic() + 5, f"{placement} producer commit cut")
 
-    first = producer_state()
+    first = producer_state(cluster)
     if placement == "before_commit":
         if any(first.values()):
             raise QueueMismatch("producer transaction was visible despite the pre-commit cut")
@@ -1361,7 +1371,7 @@ SELECT json_build_object(
         cluster.reconcile_trial("mesh", namespace, ids, {}, (request,))
 
     receipt, committed = subject.enqueue_receipt(producer_env, input_file, evidence / "replay.log")
-    replayed = producer_state()
+    replayed = producer_state(cluster)
     ids = reconcile_producer_commit(replayed, namespace, request, input_jobs, receipt)
     cluster.reconcile_trial("mesh", namespace, ids, {}, (request,))
     if committed is None:
@@ -1917,6 +1927,254 @@ def workspace(evidence):
             raise FixtureError(f"PostgreSQL did not confirm shutdown. Preserved {scratch} for recovery.")
         if not workers_live:
             shutil.rmtree(scratch)
+
+
+def notify_run_batch(subject, env, path, mode, publish, expected_error=None):
+    cluster = subject.cluster
+    result = subprocess.run(
+        [*subject.command, "enqueue"], cwd=subject.cwd, text=True, capture_output=True, timeout=30,
+        env=dict(env, JOBS_PARITY_MODE=mode, JOBS_PARITY_MESH_LISTEN=str(int(publish)),
+                 JOBS_PARITY_INPUT=str(path), JOBS_PARITY_DB_URL=cluster.url("mesh", "parity_producer")),
+    )
+    # A failed connection can include connection arguments in its diagnostics.
+    log = path.with_suffix(".log")
+    log.write_text(result.stdout + result.stderr)
+    if expected_error is None:
+        if result.returncode:
+            raise FixtureError(f"{path.stem}: compiled producer exited {result.returncode}: {result.stderr.strip()}")
+        receipt, committed = subject.read_receipt(result.stdout, log)
+        return {"receipt": receipt, "commit_ms_at_return": committed}
+
+    stage = "PREPARE TRANSACTION" if mode == "notify_prepare" else "COMMIT"
+    prefix = f"parity error: {stage}: "
+    message = result.stderr.strip().removeprefix(prefix)
+    sqlstate = None
+    if mode == "notify_prepare":
+        fields = message.split("\t")
+        if len(fields) == 5 and re.fullmatch(r"[A-Z0-9]{5}", fields[0]):
+            sqlstate, _, _, _, message = fields
+    if (result.returncode != 1 or result.stdout.strip() or not result.stderr.startswith(prefix)
+            or message != expected_error or (mode == "notify_prepare" and sqlstate is None)):
+        raise QueueMismatch(f"{path.stem}: expected PostgreSQL {stage} error and no producer receipt "
+                            f"(exit {result.returncode}, stdout present: {bool(result.stdout.strip())}, "
+                            f"stderr: {result.stderr.strip()!r})")
+    return {"stage": stage, "message": message, "sqlstate": sqlstate, "returncode": result.returncode}
+
+
+def notify_durable_state(cluster, namespace, request=None, jobs=(), receipt=None):
+    state = producer_state(cluster)
+    if request is None:
+        if any(state.values()):
+            raise QueueMismatch("unexpected durable business, job, or receipt rows")
+        ids = {}
+    else:
+        ids = reconcile_producer_commit(state, namespace, request, jobs, receipt)
+        if state["business"][0][3] != receipt["xid"]:
+            raise QueueMismatch("durable business row belongs to a different producer transaction")
+    writes = cluster.reconcile_trial("mesh", namespace, ids, {}, (request,) if request else ())
+    return dict(state, attempts=writes["attempts"], effects=writes["effects"])
+
+
+def notify_batch(scratch, request):
+    jobs = [{"key": request, "hold_ms": 0, "fail_first": False, "payload": f"synthetic-{request}"}]
+    path, = batch_files(scratch, [{"request_id": request, "rollback": False, "jobs": jobs}])
+    return path, jobs
+
+
+def notify_prepare_cases(subject, env, namespace, scratch):
+    cluster = subject.cluster
+
+    def prepared():
+        return json.loads(cluster.sql("mesh", """
+SELECT coalesce(json_agg(json_build_object('xid', p."transaction"::text, 'gid', p.gid,
+                                         'database', p.database, 'owner', p.owner)), '[]')
+FROM pg_prepared_xacts p
+"""))
+
+    try:
+        path, _ = notify_batch(scratch, "prepare_publish_on")
+        rejected = notify_run_batch(subject, env, path, "notify_prepare", True, NOTIFY_PREPARE_ERROR)
+        rejected["durable"] = notify_durable_state(cluster, namespace)
+        rejected["prepared_xacts"] = prepared()
+        if rejected["prepared_xacts"]:
+            raise QueueMismatch("rejected PREPARE left a prepared transaction")
+
+        request = "prepare_publish_off"
+        path, jobs = notify_batch(scratch, request)
+        control = notify_run_batch(subject, env, path, "notify_prepare", False)
+        receipt = control["receipt"]
+        control["prepared_xacts"] = prepared()
+        expected = {"xid": receipt["xid"], "gid": NOTIFY_PREPARED_GID, "database": "mesh", "owner": "parity_producer"}
+        if control["commit_ms_at_return"] is not None or control["prepared_xacts"] != [expected]:
+            raise QueueMismatch("publish-off PREPARE did not leave the exact producer transaction prepared")
+        control["before_commit_prepared"] = notify_durable_state(cluster, namespace)
+        cluster.sql("mesh", f"COMMIT PREPARED '{NOTIFY_PREPARED_GID}'")
+        control["after_commit_prepared"] = notify_durable_state(cluster, namespace, request, jobs, receipt)
+        control["remaining_prepared_xacts"] = prepared()
+        if control["remaining_prepared_xacts"]:
+            raise QueueMismatch("COMMIT PREPARED left a prepared transaction")
+        return {"publish_on": rejected, "publish_off": control}
+    finally:
+        if any(row["gid"] == NOTIFY_PREPARED_GID for row in prepared()):
+            cluster.sql("mesh", f"ROLLBACK PREPARED '{NOTIFY_PREPARED_GID}'")
+
+
+def notify_listener_state(cluster, application):
+    return json.loads(cluster.sql("mesh", f"""
+SELECT coalesce((SELECT json_build_object('pid', a.pid, 'state', a.state, 'query', a.query,
+                                         'xact_start', a.xact_start, 'ssl', s.ssl)
+                 FROM pg_stat_activity a JOIN pg_stat_ssl s USING (pid)
+                 WHERE a.datname = current_database() AND a.application_name = '{application}'), 'null')
+"""))
+
+
+@contextlib.contextmanager
+def hold_notify_listener(cluster, channel, application):
+    args, env = cluster.psql("mesh")
+    with subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                          env=dict(env, PGAPPNAME=application), text=True) as listener:
+        active = None
+        try:
+            # The channel check must pass before ON_ERROR_STOP lets psql send BEGIN.
+            listener.stdin.write(f"LISTEN {channel};\n"
+                                 f"SELECT 1 / count(*) FROM pg_listening_channels() AS channels(channel) "
+                                 f"WHERE channel = '{channel}';\nBEGIN;\n")
+            listener.stdin.flush()
+
+            def observe():
+                if listener.poll() is not None:
+                    raise FixtureError("pressure listener exited before holding its transaction")
+                row = notify_listener_state(cluster, application)
+                if (row and row["state"] == "idle in transaction" and row["query"].rstrip(";") == "BEGIN"
+                        and row["xact_start"] and row["ssl"] is True):
+                    return row
+                return None
+
+            active = wait_for(observe, time.monotonic() + 10, "verified TLS listener idle in transaction")
+            yield active
+        finally:
+            with contextlib.suppress(BrokenPipeError):
+                listener.stdin.close()
+            try:
+                listener.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                listener.kill()
+                listener.wait(timeout=5)
+            if active:
+                wait_for(lambda: notify_listener_state(cluster, application) is None,
+                         time.monotonic() + 5, "listener disconnect")
+
+
+def notify_queue_cases(subject, env, namespace, scratch):
+    cluster = subject.cluster
+    channel = "mesh_jobs_wake_" + hashlib.md5(namespace.encode(), usedforsecurity=False).hexdigest()
+    application = f"{namespace}_held_listener"
+
+    def usage():
+        return float(cluster.sql("mesh", "SELECT pg_notification_queue_usage()"))
+
+    if usage() != 0:
+        raise QueueMismatch("the disposable notification queue was not empty before injection")
+    with hold_notify_listener(cluster, channel, application) as listener:
+        cluster.sql("mesh", f"SELECT pg_notify('{channel}', lpad(i::text, 7900, 'x'))"
+                            " FROM generate_series(1, 60) AS i")
+        seeded_usage = usage()
+        if not 0 < seeded_usage < 1:
+            raise QueueMismatch("60 raw notifications did not partially fill the queue")
+
+        args, sql_env = cluster.psql("mesh")
+        overflow = subprocess.run(
+            [*args, "-c", "BEGIN", "-c",
+             f"WITH pressure AS MATERIALIZED (SELECT pg_notify('{channel}', lpad(i::text, 32, 'z'))"
+             " FROM generate_series(1, 2500) AS i) SELECT count(*) FROM pressure", "-c", "COMMIT"],
+            env=sql_env, capture_output=True, text=True, timeout=15,
+        )
+        if (overflow.returncode == 0 or overflow.stdout.strip() != "2500"
+                or f"ERROR:  {NOTIFY_QUEUE_ERROR}" not in overflow.stderr.splitlines()):
+            raise QueueMismatch("the 2500-notification transaction did not fail at commit with a full queue")
+
+        def pressure():
+            observed = {"listener": notify_listener_state(cluster, application), "queue_usage": usage()}
+            if observed != {"listener": listener, "queue_usage": 1.0}:
+                raise QueueMismatch("the same listening transaction no longer holds a full queue")
+            return observed
+
+        saturated = pressure()
+        path, _ = notify_batch(scratch, "queue_full_publish_on")
+        rejected = notify_run_batch(subject, env, path, "notify_commit", True, NOTIFY_QUEUE_ERROR)
+        rejected["pressure"] = pressure()
+        rejected["durable"] = notify_durable_state(cluster, namespace)
+
+        request = "queue_full_publish_off"
+        path, jobs = notify_batch(scratch, request)
+        control = notify_run_batch(subject, env, path, "notify_commit", False)
+        if control["commit_ms_at_return"] is None:
+            raise QueueMismatch("publish-off COMMIT did not commit")
+        control["pressure"] = pressure()
+        control["durable"] = notify_durable_state(cluster, namespace, request, jobs, control["receipt"])
+    return {
+        "channel": channel,
+        "seed": {"count": 60, "payload_bytes": 7900, "queue_usage": seeded_usage},
+        "overflow": {"count": 2500, "payload_bytes": 32, "commit_error": NOTIFY_QUEUE_ERROR, **saturated},
+        "publish_on": rejected, "publish_off": control,
+    }
+
+
+def record_notify_failures(args):
+    ref = checked(["git", "rev-parse", "--verify", "--end-of-options", f"{args.mesh_ref}^{{commit}}"])
+    target = EVIDENCE / ref
+    target.mkdir(parents=True, exist_ok=True)
+    evidence = Path(tempfile.mkdtemp(prefix="notify-producer-failures-", dir=target))
+    print(evidence, flush=True)
+    cluster = None
+    try:
+        with workspace(evidence) as scratch:
+            harness, harness_sha, hashes = snapshot_harness(scratch, evidence)
+            env = dict(os.environ, TMPDIR=str(scratch), TZ="UTC", LC_ALL="C", JOBS_PARITY_MESH_LISTEN="0")
+            for key in ("MESH_RT_LIB_PATH", "RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER"):
+                env.pop(key, None)
+            executable = build_mesh(ref, scratch, evidence, env, True, harness / MESH_SOURCE.relative_to(ROOT),
+                                    args.toolchains)
+            cluster = Cluster(scratch, scratch, 5, args.postgres_version, notify_failures=True)
+            cluster.env["LC_ALL"] = "C"
+            try:
+                cluster.start()
+                settings = json.loads(cluster.sql("postgres", """
+SELECT json_object_agg(name, setting) FROM pg_settings
+WHERE name IN ('server_version', 'server_version_num', 'max_prepared_transactions',
+               'max_notify_queue_pages', 'block_size', 'ssl', 'synchronous_commit', 'fsync')
+"""))
+                if (settings.get("max_prepared_transactions"), settings.get("max_notify_queue_pages")) != ("4", "64"):
+                    raise FixtureError("disposable PostgreSQL did not apply the NOTIFY proof settings")
+                write_json(evidence / "manifest.json", {
+                    "mesh_sha": ref,
+                    "mesh_executable_sha256": digest(executable), "harness_sha": harness_sha, "harness_sha256": hashes,
+                    "host": platform.platform(), "build_profile": "release", "postgres_settings": settings,
+                    "session_transport": "SCRAM over verified TLS on owned loopback PostgreSQL",
+                    "scope": "compiled Jobs.enqueue_in producer; separate SQL observer; no worker processes",
+                })
+                subject = Subject("mesh", [str(executable)], ROOT, cluster, env)
+                cases = {}
+                for name, run in (("prepare", notify_prepare_cases), ("full_queue", notify_queue_cases)):
+                    cluster.prepare_database("mesh")
+                    if not cluster.owned("mesh"):
+                        raise FixtureError("NOTIFY producer proof requires the owned disposable database")
+                    namespace = f"parity_{secrets.token_hex(8)}"
+                    producer_env = subject.environment(namespace, 1, 1, "fault", LISTENER_POLL_MS)
+                    work = scratch / name
+                    work.mkdir()
+                    subject.call("migrate", producer_env, work / "migrate.log")
+                    cases[name] = run(subject, producer_env, namespace, work)
+            finally:
+                cluster.stop()
+    except (FixtureError, QueueMismatch, OSError, subprocess.SubprocessError) as error:
+        reason = str(error)
+        if cluster:
+            reason = reason.replace(cluster.password, "[redacted]")
+        write_json(evidence / "result.json", {"status": "failed", "reason": reason})
+        error_type = QueueMismatch if isinstance(error, QueueMismatch) else FixtureError
+        raise error_type(reason) from None
+    write_json(evidence / "result.json", {"status": "passed", **cases})
 
 
 def record(args):
@@ -2483,6 +2741,8 @@ def main():
                       help="pair healthy and disconnected listeners on the frozen sparse profile")
     mode.add_argument("--faults", action="store_true", help="owned runner-death and rollback probe")
     mode.add_argument("--j2-lane-7", action="store_true", help="macOS batch launch denial and interrupted startup proof")
+    mode.add_argument("--notify-producer-failures", action="store_true",
+                      help="prove transactional NOTIFY failures on owned PostgreSQL with a compiled Mesh producer")
     parser.add_argument("--mesh-ref", default="HEAD", help="Git commit from which to compile Mesh")
     parser.add_argument("--toolchains", type=lambda value: Path(value).resolve(),
                         help="reuse verified compiler/runtime pairs from a previous Jobs comparison build")
@@ -2509,6 +2769,12 @@ def main():
         parser.error("--baseline-poll-ms requires --against-ref")
     if args.postgres_version and not POSTGRES_VERSION.fullmatch(args.postgres_version):
         parser.error("--postgres-version requires MAJOR.PATCH")
+    if args.notify_producer_failures and (not args.postgres_version or args.workload or args.against_ref
+                                         or args.poll_ms is not None or args.mesh_batch or args.mesh_listen
+                                         or args.mesh_events):
+        parser.error("--notify-producer-failures requires --postgres-version and uses fixed producer settings")
+    if args.notify_producer_failures and int(args.postgres_version.split(".")[0]) < 17:
+        parser.error("--notify-producer-failures requires PostgreSQL 17 or later")
     if args.listener_outage and (not args.postgres_version or args.workload or args.runners or args.slots
                                 or args.against_ref or args.poll_ms or args.mesh_events):
         parser.error("--listener-outage requires --postgres-version and uses a fixed sparse profile")
@@ -2526,7 +2792,10 @@ def main():
 
     signal.signal(signal.SIGTERM, interrupt)
     try:
-        record(args)
+        if args.notify_producer_failures:
+            record_notify_failures(args)
+        else:
+            record(args)
     except QueueMismatch as error:
         print(f"Queue mismatch: {error}", file=sys.stderr)
         return 1
