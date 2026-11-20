@@ -155,6 +155,22 @@ version printed by the script. Keep the separately measured maintenance
 latency, the paired comparison against main, and the remaining platform
 lanes in the parity plan.
 
+## Compare maintenance under load
+
+Run `scripts/jobs-j6-maintenance.py` with pinned main and candidate
+compiler/runtime pairs. It compares main with native reindex, the
+candidate with native reindex, and the candidate with the scoped reindex
+script. It uses equal page limits for pruning, recovery, and due staging.
+Use release artifacts with `--build-profile release --qualify` to apply
+the dispatch and claim-gap budgets to five or more paired rounds.
+
+The initial PostgreSQL 17.11 debug smoke reconciled 72 jobs and effects per
+arm and kept request receipts after pruning. The script arm's dispatch p99
+was 1.659 times main and its maximum observed claim gap was 164 ms against
+a 500 ms budget. One busy-host round provided functional evidence for the
+pages and receipt replay. The compiled operations proof separately exercised
+settlement while a concurrent reindex held its administrative lock.
+
 ## Exercise primary promotion
 
 Build the compiler and runtime from the revision under test. Set `PG_BIN_DIR`
@@ -212,7 +228,8 @@ trial reconciled 24. These are medians across the five measured trials.
 
 The host's one-minute load average was 42.2 on 15 logical CPUs at startup.
 The short profile missed the proposed throughput, pickup, and CPU thresholds.
-This run records the post-reliability baseline for two profiles under load.
+That harness undercounted macOS threads. This run records two diagnostic
+post-reliability profiles.
 Release qualification still requires the matched candidate matrix on a
 host with capacity for the workload and its observers.
 
@@ -231,3 +248,31 @@ pairs. The median paired duration was 1.294 times main, above the 1.10
 budget. Host load was about 30–34 on 15 logical CPUs. The inline helper took
 69.1 µs per call in that run. Release-build timing and the pinned main
 direct-handler baseline remain open.
+
+## Local correctness evidence
+
+The Jobs compatibility script exercises the compiled producer and worker,
+the PostgreSQL driver, leases, cancellation, timeout, recovery, and
+shutdown. The full-role variant adds scoped migrator, producer, worker,
+operator, and inspector logins, plus cron takeover and reindex.
+
+| Local proof | PostgreSQL | Scope |
+| --- | --- | --- |
+| Linux arm64 container, pinned main `7c162056` | 17.11, 18.7, 19.0 | Baseline transaction, timeout, and process recovery over verified TLS |
+| Linux arm64 container, candidate `03990801` | 17.11, 18.7, 19.0 | 43 Jobs runtime cases and two compiled suites per version over verified TLS |
+| macOS arm64, candidate `d83d38ed` | 17.11 | 43 Jobs runtime cases, two compiled suites, scoped roles, reindex, and pinned polling reference over verified TLS |
+| macOS arm64, candidate `23a95b87` against main `7c162056` | 17.11, 18.7, 19.0 | Compiled rolling upgrade and rollback with scoped roles and default function execution revoked |
+| macOS arm64, promotion harness `302cdce8` | 17.11, 18.7, 19.0 | Lost settlement reply, replay barrier, old-primary fencing, and one effect per job |
+
+The promotion runs resumed eligible work within 1.37 seconds of writability
+against a 2-second budget. Replication and direct sessions used verified
+TLS and SCRAM. The loopback response-loss relay used SCRAM without TLS.
+The latest paired fault smoke used release runtime `302cdce8` and harness
+`0a82033b`. Both engines reconciled the runner-death and acknowledgement
+cases. The Mesh batch ran exactly one handler after each of the three
+COMMIT cuts, including loss of `ReadyForQuery` after `CommandComplete`.
+
+The authoritative workflow targets Linux x64 and macOS arm64. These local
+receipts cover arm64 hosts and a Linux arm64 container. Windows has no
+compiled Jobs qualification in this matrix. Core parity remains open until
+the full candidate comparison and the workload-specific limits pass.

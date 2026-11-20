@@ -4,6 +4,8 @@ Bring Mesh Jobs up to Oban 2.24.2 Core for PostgreSQL-backed applications. Prese
 
 PRs #37 and #38 are the starting implementation on main. J1 through J7 are future implementation phases. Compare their behavior against both Mesh main and the pinned Oban Basic engine. Track other database engines and Oban Pro features as separate targets.
 
+Commands, implemented behavior, and recorded qualification results are in the [PostgreSQL Jobs evidence guide](durable-jobs-parity-evidence.md).
+
 ## How to read this
 
 One box is one unit of work. Each box names the evidence that checks it. Check a box only when its evidence exists. Use `playbooks/orchestrate.md` if the program is assigned across several PRs, or execute the graph one PR at a time. Future implementation PRs follow the merge instructions authorized for that run.
