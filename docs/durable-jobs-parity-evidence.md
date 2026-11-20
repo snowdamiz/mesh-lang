@@ -872,10 +872,21 @@ python3 scripts/jobs-parity.py --faults --release --mesh-batch --poll-ms 100 \
   --mesh-ref 1b12243b --against-ref 7c162056 --toolchains target/jobs-parity/build
 ```
 
-### Remaining failure cases
+### Compiled drain and queue-local failures
 
-- Exercise a surviving `Jobs.drain` caller on launch failure and unresolved
-  settlement.
-- Expire queue-local stop grace, release a late claim reply during local
-  stop, and verify that process replacement restores local defaults while
-  retaining the database pause and concurrency limit.
+The bounded drain proof holds a claim in PostgreSQL while removing execute
+permission from the fixture. The caller receives a launch error. The original
+job returns to attempt zero without effects, then completes after execute
+permission is restored. A separate case disconnects the settlement backend.
+The caller reports an unconfirmed settlement error, and a later drain
+recovers the same job on attempt two with the original effect key.
+
+The queue-local proof runs with single and batch claims. The runner terminates
+a held handler and discards its job after the explicit grace has elapsed. The
+runner continues serving another queue. A claim that returns during local stop
+is refunded without a handler start. Process replacement resets local settings
+from `Jobs.start`, preserves the database pause and concurrency limit, and
+observes the limit after resume.
+Both proofs passed on macOS arm64 with PostgreSQL 17.11, 18.7, and 19.0
+using verified TLS and SCRAM.
+[Compiled failure receipts](../proof/jobs-parity/qualification-v1.json)

@@ -393,6 +393,143 @@
     "macos_revision": "53fb9189e0dd71e0856f3ca6b5aad2d3bc4a5c8c",
     "transport": "SCRAM with verified TLS"
   },
+  "compiled_drain_and_queue_local_failures": {
+    "checkout": "0b745c43adc1f24fac305e3c2d5ee876a9cfee54",
+    "host": "Darwin arm64",
+    "postgres_versions": {
+      "17.11": {
+        "log": "target/jobs-parity/0b745c43adc1f24fac305e3c2d5ee876a9cfee54/compiled-failure-coverage/postgres-17.11.log",
+        "named_passes": [
+          {
+            "line": 924,
+            "result": "J6 queue-local grace expiry passed (single) after 277 ms with 250 ms grace"
+          },
+          {
+            "line": 925,
+            "result": "J6 queue-local late claim refund passed (single)"
+          },
+          {
+            "line": 926,
+            "result": "J6 queue-local process replacement passed (single)"
+          },
+          {
+            "line": 927,
+            "result": "J6 queue-local grace expiry passed (batch) after 266 ms with 250 ms grace"
+          },
+          {
+            "line": 928,
+            "result": "J6 queue-local late claim refund passed (batch)"
+          },
+          {
+            "line": 929,
+            "result": "J6 queue-local process replacement passed (batch)"
+          },
+          {
+            "line": 955,
+            "result": "J5 bounded drain returned a launch error and refunded the confirmed unstarted attempt"
+          },
+          {
+            "line": 956,
+            "result": "J5 bounded drain returned an unconfirmed settlement error and recovered the same job and effect key"
+          }
+        ],
+        "request_to_discard_ms": {
+          "batch": 266,
+          "single": 277
+        },
+        "requested_grace_ms": 250,
+        "sha256": "3a1257a5198a964408cd398b72a6eade7161aa1b10dc318dd1b4770a1d1c30cf"
+      },
+      "18.7": {
+        "log": "target/jobs-parity/0b745c43adc1f24fac305e3c2d5ee876a9cfee54/compiled-failure-coverage/postgres-18.7.log",
+        "named_passes": [
+          {
+            "line": 923,
+            "result": "J6 queue-local grace expiry passed (single) after 268 ms with 250 ms grace"
+          },
+          {
+            "line": 924,
+            "result": "J6 queue-local late claim refund passed (single)"
+          },
+          {
+            "line": 925,
+            "result": "J6 queue-local process replacement passed (single)"
+          },
+          {
+            "line": 926,
+            "result": "J6 queue-local grace expiry passed (batch) after 278 ms with 250 ms grace"
+          },
+          {
+            "line": 927,
+            "result": "J6 queue-local late claim refund passed (batch)"
+          },
+          {
+            "line": 928,
+            "result": "J6 queue-local process replacement passed (batch)"
+          },
+          {
+            "line": 954,
+            "result": "J5 bounded drain returned a launch error and refunded the confirmed unstarted attempt"
+          },
+          {
+            "line": 955,
+            "result": "J5 bounded drain returned an unconfirmed settlement error and recovered the same job and effect key"
+          }
+        ],
+        "request_to_discard_ms": {
+          "batch": 278,
+          "single": 268
+        },
+        "requested_grace_ms": 250,
+        "sha256": "e24d4944b4771137fda5ea071992dbf01dfe6e00e18280599686229e36ab9033"
+      },
+      "19.0": {
+        "log": "target/jobs-parity/0b745c43adc1f24fac305e3c2d5ee876a9cfee54/compiled-failure-coverage/postgres-19.0.log",
+        "named_passes": [
+          {
+            "line": 923,
+            "result": "J6 queue-local grace expiry passed (single) after 283 ms with 250 ms grace"
+          },
+          {
+            "line": 924,
+            "result": "J6 queue-local late claim refund passed (single)"
+          },
+          {
+            "line": 925,
+            "result": "J6 queue-local process replacement passed (single)"
+          },
+          {
+            "line": 926,
+            "result": "J6 queue-local grace expiry passed (batch) after 273 ms with 250 ms grace"
+          },
+          {
+            "line": 927,
+            "result": "J6 queue-local late claim refund passed (batch)"
+          },
+          {
+            "line": 928,
+            "result": "J6 queue-local process replacement passed (batch)"
+          },
+          {
+            "line": 954,
+            "result": "J5 bounded drain returned a launch error and refunded the confirmed unstarted attempt"
+          },
+          {
+            "line": 955,
+            "result": "J5 bounded drain returned an unconfirmed settlement error and recovered the same job and effect key"
+          }
+        ],
+        "request_to_discard_ms": {
+          "batch": 273,
+          "single": 283
+        },
+        "requested_grace_ms": 250,
+        "sha256": "b89abcac86ae0f29031a404220fe1380b60475696068eed479e463b79c4b3605"
+      }
+    },
+    "transport": "SCRAM with verified TLS",
+    "verify_command": "bash scripts/verify-postgres-jobs.sh --compatibility VERSION --parity-driver-check --j6-roles"
+  },
   "dense_connection_stage_study": {
     "profile": "short-1r-16s",
     "scope": "instrumented read and connect timestamps, sequential transport runs",
