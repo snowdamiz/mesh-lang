@@ -171,6 +171,12 @@ a 500 ms budget. One busy-host round provided functional evidence for the
 pages and receipt replay. The compiled operations proof separately exercised
 settlement while a concurrent reindex held its administrative lock.
 
+The five PostgreSQL 17.11 release rounds with main `7c162056` and candidate
+`302cdce8` recorded script-arm dispatch p99 between 0.958 and 1.026 times
+main. Every round met the measured latency and claim-gap budgets. The
+probe classified the run as diagnostic because the peak one-minute load
+was 1.76 per logical CPU.
+
 ## Exercise primary promotion
 
 Build the compiler and runtime from the revision under test. Set `PG_BIN_DIR`
@@ -246,8 +252,14 @@ The local PostgreSQL 17.11 debug run with main `7c162056` and candidate
 `03990801` reconciled 24 completions and four future rows in each of seven
 pairs. The median paired duration was 1.294 times main, above the 1.10
 budget. Host load was about 30–34 on 15 logical CPUs. The inline helper took
-69.1 µs per call in that run. Release-build timing and the pinned main
-direct-handler baseline remain open.
+69.1 µs per call in that run. The pinned main direct-handler baseline
+remains open.
+
+With release artifacts `7c162056` and `302cdce8`, all seven PostgreSQL 17.11
+pairs met the 1.10 budget. The median paired ratio was 1.002, with median
+drain durations of 29.0 ms per job on main and 28.4 ms on the candidate.
+The host's one-minute load was about 20–22 on 15 logical CPUs during this
+run.
 
 ## Local correctness evidence
 
@@ -260,6 +272,7 @@ operator, and inspector logins, plus cron takeover and reindex.
 | --- | --- | --- |
 | Linux arm64 container, pinned main `7c162056` | 17.11, 18.7, 19.0 | Baseline transaction, timeout, and process recovery over verified TLS |
 | Linux arm64 container, candidate `03990801` | 17.11, 18.7, 19.0 | 43 Jobs runtime cases and two compiled suites per version over verified TLS |
+| Linux arm64 container, candidate `0c40c3ad` | 17.11, 18.7, 19.0 | Same runtime and process proof plus scoped role and concurrent reindex cases |
 | macOS arm64, candidate `d83d38ed` | 17.11 | 43 Jobs runtime cases, two compiled suites, scoped roles, reindex, and pinned polling reference over verified TLS |
 | macOS arm64, candidate `23a95b87` against main `7c162056` | 17.11, 18.7, 19.0 | Compiled rolling upgrade and rollback with scoped roles and default function execution revoked |
 | macOS arm64, promotion harness `302cdce8` | 17.11, 18.7, 19.0 | Lost settlement reply, replay barrier, old-primary fencing, and one effect per job |
