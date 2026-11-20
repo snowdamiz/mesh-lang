@@ -16,6 +16,141 @@
     "profiles_reconciled": 32,
     "sparse_smoke_rerun": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-smoke-3djx57kq/result.json"
   },
+  "batch_main_recheck": {
+    "candidate_batch": true,
+    "dense_reference": {
+      "audit": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-load-9uzg0z11/profile-audit.json",
+      "audit_sha256": "a76a948a12c3b564af204ab5d601ef27c3b0b51e4d802847b3fcb9f45d32a0bd",
+      "candidate_sha": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+      "harness_sha": "938e2bd36e84f745e6f843aea073471c504a8139",
+      "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+      "logical_cpus": 15,
+      "main_sha": "7c1620563614a04a573aef806a6d019a2af4dfe9",
+      "max_one_minute_load": 21.8740234375,
+      "measured_trials": 10,
+      "metric": "claim_calls_per_job",
+      "one_minute_load_at_start": 20.25927734375,
+      "pairs_per_profile": 5,
+      "pg_stat_statements_evictions": 0,
+      "postgresql_version": "17.11 (Homebrew)",
+      "profiles": {
+        "short-1r-16s": {
+          "candidate_median": 0.2265625,
+          "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+          "main_median": 1.015625,
+          "ratio": 0.2230769230769231,
+          "ratio_limit": 0.7,
+          "summary_sha256": "fd2d104b6fb706e13986e5862a0a84b5fc3821828a9e44246909453982c0bf02",
+          "trials_sha256": "c1c1aa460d7f83c4803ca5125c739045b259af881a3ad270ef26ec53dda48ba9",
+          "within_limit": true
+        }
+      },
+      "reconciled_jobs": {
+        "baseline": 640,
+        "mesh": 640
+      },
+      "seed": 5938,
+      "transport": "SCRAM with verified TLS"
+    },
+    "historical_reference": "proof/jobs-parity/j7-lane-1.log",
+    "main_batch": false,
+    "poll_ms": 250,
+    "sparse_matrix": {
+      "audit": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-load-jcsd1nu0/profile-audit.json",
+      "audit_sha256": "a8b7b0ebfff9042aaa7f9ce8869977b02e70003052d8331e00c9802e84078010",
+      "candidate_sha": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+      "harness_sha": "5868b6495ce49e5eb8d48e0c45ab25c44952d5f4",
+      "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+      "logical_cpus": 15,
+      "main_sha": "7c1620563614a04a573aef806a6d019a2af4dfe9",
+      "max_one_minute_load": 42.33740234375,
+      "measured_trials": 70,
+      "metric": "pickup_p99_ms",
+      "one_minute_load_at_start": 28.12353515625,
+      "pairs_per_profile": 5,
+      "pg_stat_statements_evictions": 0,
+      "postgresql_version": "17.11 (Homebrew)",
+      "profiles": {
+        "sparse-1r-16s": {
+          "candidate_median": 262.2060546875,
+          "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+          "main_median": 264.48095703125,
+          "ratio": 0.9913986157291422,
+          "ratio_limit": 1.1,
+          "summary_sha256": "dfe5eac1a9d5e63b6c85c35616ab0f40c3fe2e43610f9c202acc8a01366e0b53",
+          "trials_sha256": "c383e8f5d54c17f8767ed4316cee0f39ddc54c81176f131a3d3aa1d6b397b54f",
+          "within_limit": true
+        },
+        "sparse-1r-1s": {
+          "candidate_median": 268.406982421875,
+          "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+          "main_median": 260.344970703125,
+          "ratio": 1.0309666505059674,
+          "ratio_limit": 1.1,
+          "summary_sha256": "d32a5674f8dcdbd7918d86310cb4e42f6bd2e6b8f3fd46e85d2a9d7458428814",
+          "trials_sha256": "d56f876a1fdd90babe5ffd7817628e251b62feee2c45ce9af98283bc8b2ac598",
+          "within_limit": true
+        },
+        "sparse-1r-64s": {
+          "candidate_median": 260.093994140625,
+          "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+          "main_median": 264.737060546875,
+          "ratio": 0.982461592658547,
+          "ratio_limit": 1.1,
+          "summary_sha256": "fe3299658b8c7f161f36754a7e51c2cecb46bddeccd50f96047a6c8b659f672a",
+          "trials_sha256": "60ea0bbfadffe2e427bd9e349fc92227c8d5a09cb2a95bec2b9b3e06f4e74e1b",
+          "within_limit": true
+        },
+        "sparse-4r-16s": {
+          "candidate_median": 239.93310546875,
+          "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+          "main_median": 250.781982421875,
+          "ratio": 0.9567398070293798,
+          "ratio_limit": 1.1,
+          "summary_sha256": "780962c8b280a86703530da83d4bf6c13e2647edf10acc1af6765e9c1b618446",
+          "trials_sha256": "57d25d934a515636e8d8604fa1201c894d268e0aa980420695e45aae00eca86e",
+          "within_limit": true
+        },
+        "sparse-4r-64s": {
+          "candidate_median": 217.02490234375,
+          "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+          "main_median": 229.610107421875,
+          "ratio": 0.9451888019241177,
+          "ratio_limit": 1.1,
+          "summary_sha256": "2bf8558de5e02048bd85f38c0c6c94edf6dcb84d03d7e4be7e0cf0d8c4576496",
+          "trials_sha256": "90c43037d8772fd6956cc8f0fb1c0006070505f3623e61b375aa05ed93a2437b",
+          "within_limit": true
+        },
+        "sparse-8r-16s": {
+          "candidate_median": 158.45703125,
+          "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+          "main_median": 206.577880859375,
+          "ratio": 0.7670571050047096,
+          "ratio_limit": 1.1,
+          "summary_sha256": "1bdc65920ba7b2697e15620c390d0649eb9999747c1dccf446b45dcb06ecfb8b",
+          "trials_sha256": "3a6ea2b4cfe18ee7c3d10f29216c7fc37f2784daebc7eaa07c49167efbc673ca",
+          "within_limit": true
+        },
+        "sparse-8r-64s": {
+          "candidate_median": 205.968017578125,
+          "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+          "main_median": 222.23779296875,
+          "ratio": 0.9267911403668737,
+          "ratio_limit": 1.1,
+          "summary_sha256": "cf0aaca9168ce0cbdd95f71156d118573e3104ad9ec669562aada870c5aa6d02",
+          "trials_sha256": "bb9b07f0c219cec94f3272ebe0bc292f9559352c7cb5dd56bff04d53afc17dd7",
+          "within_limit": true
+        }
+      },
+      "reconciled_jobs": {
+        "baseline": 840,
+        "mesh": 840
+      },
+      "seed": 5938,
+      "transport": "SCRAM with verified TLS"
+    },
+    "sparse_producer": "One warm process per arm with database connections scoped to each batch."
+  },
   "batch_sparse_pickup_rerun": {
     "audit": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-load-yr1akd_5/profile-audit.json",
     "audit_sha256": "7405ffef64c9c60f041d13b1cfad0d61936306fd71de105c2c6b9c895f7160d5",
@@ -797,6 +932,27 @@
       "transport": "SCRAM with verified TLS"
     }
   },
+  "hosted_postgres_compatibility": {
+    "compiled_jobs_proofs_per_job": 2,
+    "head_and_merge_tree": "f9ce0fb9e74cb732df2a8c285dbc0d2138612d01",
+    "head_revision": "5868b6495ce49e5eb8d48e0c45ab25c44952d5f4",
+    "jobs_runtime_tests_per_job": 45,
+    "postgres_driver_tests_per_job": 36,
+    "successful_jobs": {
+      "linux_x64": {
+        "17.11": 136411344179,
+        "18.7": 136411344201,
+        "19.0": 136411344567
+      },
+      "macos_arm64": {
+        "17.11": 136411344241,
+        "18.7": 136411344217,
+        "19.0": 136411344224
+      }
+    },
+    "tested_merge_revision": "23a493198a4318c6ea771e13e1047b2a93328af9",
+    "workflow": "https://github.com/snowdamiz/mesh-lang/actions/runs/44771848216"
+  },
   "latest_macos_linux_postgresql_matrix": {
     "platforms": [
       "macOS arm64",
@@ -1319,9 +1475,10 @@
     "transport": "SCRAM with verified TLS"
   },
   "open_gates": [
-    "Oban throughput and pickup budgets in the matched matrix",
-    "batch sparse pickup variance between the full matrix and the targeted rerun",
-    "hosted Linux x64 proof"
+    "Oban throughput, pickup, and resource budgets in the matched matrix",
+    "Failure-case coverage for all documented guarantees",
+    "Hosted verification and independent review of the current PR head",
+    "Landing through the configured Trunk queue"
   ],
   "postgresql_versions": [
     "17.11",
@@ -1833,6 +1990,37 @@
       "18.7",
       "19.0"
     ]
+  },
+  "scoped_drain_and_cleanup": {
+    "checkout": "308bb6cf1e24d9a60fc4a1e9c3d450dd74c8b91a",
+    "fresh_and_upgraded_worker": [
+      "locked row returns idle with remaining work",
+      "missing claim permission returns an error without spending an attempt",
+      "restored grant completes the original job at attempt one with one effect"
+    ],
+    "host": "Darwin arm64",
+    "logs": {
+      "17.11": {
+        "path": "target/jobs-parity/308bb6cf1e24d9a60fc4a1e9c3d450dd74c8b91a/scoped-drain-follow-up/postgres-17.11.log",
+        "sha256": "6762adbf6a8f804c723bd3cf6320e6138d8e05e7e3f48d04afacff22d104587d"
+      },
+      "18.7": {
+        "path": "target/jobs-parity/308bb6cf1e24d9a60fc4a1e9c3d450dd74c8b91a/scoped-drain-follow-up/postgres-18.7.log",
+        "sha256": "f2002bd0a880c2ae21bf6c632da43887cdfdd87a67e910cf2b676c90256ae3b3"
+      },
+      "19.0": {
+        "path": "target/jobs-parity/308bb6cf1e24d9a60fc4a1e9c3d450dd74c8b91a/scoped-drain-follow-up/postgres-19.0.log",
+        "sha256": "954311cb6e468bdf7287f46e87079fa3d007d73afed67ce0f8cd903e9b6be73e"
+      }
+    },
+    "terminal_cleanup": [
+      "skip a locked row",
+      "honor a one-row page",
+      "remove the released row on a later pass",
+      "reuse the original receipt without recreating the job"
+    ],
+    "transport": "SCRAM with verified TLS",
+    "verify_command": "bash scripts/verify-postgres-jobs.sh --compatibility VERSION --parity-driver-check --j6-roles"
   },
   "scram_optimization": {
     "candidate_ref": "e8fa00c0c6aa7ae6d4c807cccdd50a3f75f915bd",

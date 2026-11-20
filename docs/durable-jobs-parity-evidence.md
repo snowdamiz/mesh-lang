@@ -138,8 +138,8 @@ cluster's `127.0.0.1` address. The driver applies it after fetching
 dependencies. This avoids launching native DNS helpers for the numeric
 loopback address and keeps the TLS hostname and certificate checks.
 
-The grouped Oban comparison, the two historical replays, and the targeted
-sparse main rerun used the reset and eviction check. The full 35-profile
+The grouped Oban comparison, two historical replays, and the dense and
+sparse main reruns used the reset and eviction check. The full 35-profile
 main comparison used harness `eb472832` before those checks existed.
 Its SQL counts are positive. The saved evidence cannot establish whether
 any statement entries were evicted in that comparison. [Main comparison](../proof/jobs-parity/j7-lane-1.log)
@@ -701,6 +701,8 @@ Each excerpt identifies the assertion source and the lines from the full
 log. The `macos_paired_workload_lanes` entry records the seed, input digest,
 and reconciliation for the selected pairing lanes. [Qualification receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Batch comparison against pinned main
+
 J2 lane 1 uses all seven short-job profiles from the PostgreSQL 17.11
 main/head comparison. The audit matched 20,480 final job IDs to the
 enqueue receipts and verified one attempt and one effect per job. The
@@ -722,6 +724,16 @@ The targeted rerun of sparse four-runner, 64-slot pickup used the revised
 producer fixture for both runtimes. It reconciled all 120 jobs per runtime
 and measured 178.0 ms p99 on the candidate and 184.1 ms on main. Both results
 are recorded because the producer and host conditions differed. [Rerun receipt](../proof/jobs-parity/qualification-v1.json)
+
+The full rerun compared release runtime `1b12243b` with `7c162056` on
+macOS arm64 and PostgreSQL 17.11 over verified TLS. The dense reference
+used 0.227 claim calls per job with batching and 1.016 on main, a 77.7%
+reduction. All seven sparse profiles met the 1.10× pickup limit, with a
+largest ratio of 1.031×. The sparse rerun reconciled 840 jobs per arm and
+used a warm producer in each arm with a fresh database connection per
+enqueue transaction. Both reruns used five pairs per profile and verified
+zero `pg_stat_statements` evictions. The earlier matrix miss remains part
+of the record. [Rerun receipt](../proof/jobs-parity/qualification-v1.json)
 
 The follow-up verifier used the same runtime sources and passed 45 Jobs
 runtime tests and both compiled suites on PostgreSQL 17.11, 18.7, and 19.0.
@@ -767,6 +779,8 @@ the PostgreSQL driver, leases, cancellation, timeout, recovery, and
 shutdown. The full-role variant adds scoped migrator, producer, worker,
 operator, and inspector logins, plus cron takeover and reindex.
 
+### PostgreSQL and platform matrix
+
 | Local proof | PostgreSQL | Scope |
 | --- | --- | --- |
 | Linux arm64 container, pinned main `7c162056` | 17.11, 18.7, 19.0 | Baseline transaction, timeout, and process recovery over verified TLS |
@@ -810,7 +824,34 @@ The follow-up gate on source `64666eb7` passed 1,432 compiler tests,
 workspace built, and the locked fuzz targets passed `cargo check`.
 Formatter and linter checks passed for examples and packages. [Workspace receipts](../proof/jobs-parity/qualification-v1.json)
 
-The authoritative workflow targets Linux x64 and macOS arm64. These local
-receipts cover macOS arm64 and a Linux arm64 container. The matched comparison
-recorded workload-specific performance and resource misses, so broad Core
-parity remains open. [Qualification receipt](../proof/jobs-parity/qualification-v1.json)
+The hosted workflow passed PostgreSQL 17.11, 18.7, and 19.0 on Linux x64
+and macOS arm64 for the `5868b649` tree. GitHub tested merge checkout
+`23a49319`, whose tree matched the PR head. Each of the six matrix jobs
+passed 36 PostgreSQL driver tests, 45 Jobs runtime tests, and both compiled
+Jobs proofs, including scoped logins and the combined outage.
+[Hosted PostgreSQL jobs and logs](https://github.com/snowdamiz/mesh-lang/actions/runs/44771848216)
+
+The scoped-drain follow-up at `308bb6cf` passed the same three PostgreSQL
+versions on macOS arm64. On both fresh and upgraded databases, the worker
+login reported idle with work remaining while the row was locked and
+returned an error when claim permission was withdrawn. With the grant
+restored, it completed the original job on attempt one with one effect.
+Bulk deletion and pruning each skipped a locked terminal row, honored the
+page limit, and preserved its receipt after a later pass removed it.
+[Scoped drain and cleanup proof](../proof/jobs-parity/qualification-v1.json)
+
+The matched comparison recorded workload-specific performance and resource
+misses. Broad Core parity remains open.
+[Qualification receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Remaining failure cases
+
+- Lose the producer's commit response on both sides of commit, then replay
+  the same request key and reconcile the business write and enqueue receipt.
+- Lose the reply to a committed claim on its final attempt and verify
+  recovery discards the job without handler entry.
+- Exercise a surviving `Jobs.drain` caller on launch failure and unresolved
+  settlement.
+- Expire queue-local stop grace, release a late claim reply during local
+  stop, and verify that process replacement restores local defaults while
+  retaining the database pause and concurrency limit.

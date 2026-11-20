@@ -1,6 +1,6 @@
 # Durable Jobs and Oban parity plan
 
-Bring Mesh Jobs up to Oban 2.24.2 Core for PostgreSQL-backed applications. Preserve transactional enqueue, at-least-once execution, renewable claim fencing, isolated worker termination, and database-wide admission limits.
+Bring Mesh Jobs up to Oban 2.24.2 Core for PostgreSQL-backed applications. Preserve transactional enqueue, retries within the attempt budget, renewable claim fencing, isolated worker termination, and database-wide admission limits.
 
 PRs #37 and #38 are the starting implementation on main. J1 through J7 compare Mesh Jobs with pinned main and Oban Basic. Track other database engines and Oban Pro features as separate targets.
 
@@ -176,7 +176,7 @@ OS spawn call and a gate at the existing native worker-start marker.
 - [x] Metric. The paired trials record claim round trips, throughput, and pickup p99. The compiled mixed-size case records a 25,166,688-byte peak of queued contexts. [Lane receipts](durable-jobs-parity-evidence.md#compiled-lane-receipts)
 - [x] Probe. The main and candidate matrix interleaves dense and sparse profiles. Batching is enabled on the candidate. [Matrix receipt](../proof/jobs-parity/j7-lane-1.log)
 - [x] Baseline. Main uses one-row claims with identical concurrency. Batch dispatch is opt-in on the candidate. [Matrix receipt](../proof/jobs-parity/j7-lane-1.log)
-- [ ] Rule. Require at least 30% fewer claim round trips per job on the dense reference workload. Require sparse pickup p99 no worse than 1.10 times main and no reply above 32 MiB.
+- [x] Rule. The dense reference used 77.7% fewer claim calls per job against a 30% minimum. All seven sparse profiles met the 1.10× pickup p99 limit in the full rerun. The claim SQL budgets each reply below 32 MiB, and the compiled mixed-size proof observed a peak of 25,166,688 queued context bytes. [Rerun and earlier results](durable-jobs-parity-evidence.md#batch-comparison-against-pinned-main)
 
 **Review gate.** None. This phase has no graphical interaction. Independent review uses the CLI receipts and database proof.
 
@@ -395,7 +395,7 @@ OS spawn call and a gate at the existing native worker-start marker.
 
 **Build.**
 
-- [ ] Run database-backed correctness on PostgreSQL 17, 18.7, and 19.0. Record the exact 17 patch version and keep the minimum-version policy separate from the tested list. Run real compiled timeout, child-death, join, and recovery tests on each platform advertised for durable Jobs. Record platform boundaries explicitly.
+- [x] The compiled timeout, child-death, join, and recovery suites passed on PostgreSQL 17.11, 18.7, and 19.0 on Linux x64 and macOS arm64. The Linux arm64 container proof also passed the three PostgreSQL versions. [Platform scope and exact revisions](durable-jobs-parity-evidence.md#postgresql-and-platform-matrix)
 - [x] The proofs cover worker and runner death, row locks, connection loss, primary failover, and pool exhaustion. The Jobs reference describes process termination, host suspension, and the need for downstream idempotency when an accepted request can finish after the attempt exits. [Compiled proofs](durable-jobs-parity-evidence.md#compiled-lane-receipts) · [Jobs reference](../website/docs/docs/concurrency/index.md#durable-jobs)
 - [x] Replay the upgrade with preexisting scheduled and retryable jobs, old and new worker binaries, scoped grants, and default function execution revoked. Demonstrate rollback to the old runner without dropping rows or removing additive SQL.
 - [x] The feature matrix and workload measurements record tested behavior, platform scope, and performance misses. The broad PostgreSQL Core claim awaits the remaining gates. [Evidence guide](durable-jobs-parity-evidence.md)
@@ -461,8 +461,8 @@ Derive and verify exact grants before releasing the operational changes. The mat
 | --- | --- | --- |
 | Migrator | Own the Jobs schema, tables, sequences, and functions. Apply DDL and record role grants. | Fresh install and rolling upgrade with default execution revoked. |
 | Producer | Execute enqueue functions and use only the business and queue objects needed for enqueue. Check `admissions`, `queues`, `jobs`, `receipts`, and any required sequences. | Commit a business write with enqueue, roll it back, and reject worker and administrative operations. |
-| Worker | Read schema metadata and execute claim, renew, settlement, and recovery. Grant only the underlying queue and job operations plus any maintenance explicitly enabled for that worker. | Claim and settle, then prove the role cannot apply DDL, change roles, or reindex. |
-| Operator | Execute the selected state changes and inspect their underlying records. Put index maintenance behind a separately granted administrative capability. | Exercise pause, retry, and drain with scoped grants. Require distinct authority to reindex. |
+| Worker | Read schema metadata and execute claim, renew, settlement, and recovery. Grant only the underlying queue and job operations plus any maintenance explicitly enabled for that worker. | Claim and settle, including through bounded drain, then prove the role cannot apply DDL, change roles, or reindex. |
+| Operator | Execute the selected state changes and inspect their underlying records. Put index maintenance behind a separately granted administrative capability. | Exercise pause and retry with scoped grants. Require distinct authority to reindex. |
 | Inspector | Read approved summary data with no mutation or raw payload granted by default. | Read queue statistics and reject enqueue, settlement, and job edits. |
 
 - J2 can increase response size, resource peaks, or later-queue latency. Cap total bytes and per-queue dispatch quantum, hold reserved slots only through confirmed claims, and test the same fault cases at small and large payloads.
@@ -470,7 +470,7 @@ Derive and verify exact grants before releasing the operational changes. The mat
 - J4 event subscribers can accumulate work or disclose job data. Bound buffers, label outcomes with fixed categories, and omit payloads and credentials from default output.
 - J5 inline execution can mask physical durability or start real application effects. Keep it in a test-only scope and preserve the PostgreSQL drain and process proofs.
 - J6 maintenance can block shared work or destroy replay evidence. Keep bounded terminal-row pruning, separate receipts, and a scoped administrative reindex path.
-- J7 verifies at-least-once behavior under declared database and platform assumptions. A forced worker suspension or a service that has already accepted a request can still lead to repeated effects. Use the stable effect key and state the storage and primary fencing assumptions.
+- J7 verifies redelivery while attempts remain under declared database and platform assumptions. An uncertain committed claim can spend an attempt before handler entry. A forced worker suspension or a service that has already accepted a request can still lead to repeated effects. Use the stable effect key and state the storage and primary fencing assumptions.
 
 ### Backlog beyond PostgreSQL Core
 
