@@ -193,6 +193,11 @@ main. Every round met the measured latency and claim-gap budgets. The
 probe classified the run as diagnostic because the peak one-minute load
 was 1.76 per logical CPU.
 
+The `53fb9189` release rerun met those measured budgets in all five
+rounds too, with script-arm dispatch p99 from 0.972 to 1.021 times main.
+Host load reached 5.92 per logical CPU during the rerun, so its receipt
+also records a diagnostic verdict.
+
 ## Exercise primary promotion
 
 Build the compiler and runtime from the revision under test. Set `PG_BIN_DIR`
@@ -322,7 +327,13 @@ three COMMIT cuts, including loss of `ReadyForQuery` after `CommandComplete`.
 The one-runner, one-slot smoke observed four Oban processes against a cap
 of two. That configuration exceeds the frozen process budget.
 
+The local workspace gate passed at `dd29b93a`, including formatting,
+compiler and runtime tests, the workspace and fuzz builds, the REPL,
+and the compiled `meshc` suites.
+
 The authoritative workflow targets Linux x64 and macOS arm64. These local
 receipts cover arm64 hosts and a Linux arm64 container. Windows has no
 compiled Jobs qualification in this matrix. Core parity remains open until
 the full candidate comparison and the workload-specific limits pass.
+The [qualification receipt](../proof/jobs-parity/qualification-v1.json)
+records the source revisions, measured results, and remaining gates.

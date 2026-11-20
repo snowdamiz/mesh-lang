@@ -1,0 +1,374 @@
+{
+  "bounded_drain": {
+    "budget": {
+      "max_median_paired_ratio": 1.1,
+      "status": "pass"
+    },
+    "paired_ratio": {
+      "max": 1.0610508882063427,
+      "median": 1.0023306676050008,
+      "min": 0.8263182083202923
+    },
+    "pairs": 7,
+    "raw_receipt": "target/jobs-parity/bfcc3451777b9bc24476d1b071c57cec074004ba/release-comparisons/drain/receipt.json"
+  },
+  "candidate_ref": "53fb9189e0dd71e0856f3ca6b5aad2d3bc4a5c8c",
+  "compatibility": {
+    "compiled_proofs_per_version": 2,
+    "jobs_runtime_tests_per_version": 43,
+    "linux_full_role_revision": "0c40c3adcc3252c69b13b0237eeb1adeb3da47c7",
+    "linux_latest_postgresql_versions": [
+      "17.11"
+    ],
+    "linux_latest_revision": "ebe14b91ae4d8c8facffb1a97b790388aedc8db0",
+    "linux_postgresql_versions": [
+      "17.11",
+      "18.7",
+      "19.0"
+    ],
+    "macos_postgresql_versions": [
+      "17.11",
+      "18.7",
+      "19.0"
+    ],
+    "macos_revision": "53fb9189e0dd71e0856f3ca6b5aad2d3bc4a5c8c",
+    "transport": "SCRAM with verified TLS"
+  },
+  "local_platforms": [
+    "macOS arm64",
+    "Linux arm64 container"
+  ],
+  "main_ref": "7c1620563614a04a573aef806a6d019a2af4dfe9",
+  "maintenance": {
+    "claim_gap_within_limit": true,
+    "diagnostic_reasons": [
+      "observed one-minute load per logical CPU exceeded the noise limit"
+    ],
+    "dispatch_p99_within_limit": true,
+    "peak_one_minute_load_per_cpu": 5.9193359375,
+    "raw_receipt": "target/jobs-parity/53fb9189e0dd71e0856f3ca6b5aad2d3bc4a5c8c/program/collector/target/jobs-parity/maintenance-release-rerun/summary.json",
+    "verdict": "diagnostic"
+  },
+  "oban_basic_version": "2.24.2",
+  "one_slot_oban_process_budget": {
+    "limit": 2,
+    "observed": 4,
+    "within_limit": false
+  },
+  "open_gates": [
+    "dense Oban throughput and pickup",
+    "one-slot process budget",
+    "telemetry-disabled main comparison",
+    "quiet maintenance qualification",
+    "complete workload and platform qualifications"
+  ],
+  "postgresql_versions": [
+    "17.11",
+    "18.7",
+    "19.0"
+  ],
+  "promotion": {
+    "harness_revision": "ebe14b91ae4d8c8facffb1a97b790388aedc8db0",
+    "listener_scan_each_version": true,
+    "max_resume_upper_ms": 1306.6,
+    "restart_budget_ms": 2000,
+    "runtime_revision": "302cdce8959ed7f02fae17d765980d0de6276c06",
+    "versions": [
+      "17.11",
+      "18.7",
+      "19.0"
+    ]
+  },
+  "qualification": "open",
+  "receipt_version": 1,
+  "release_comparisons_postgresql_17_11": {
+    "batch-vs-main": {
+      "budget_breaches": [],
+      "logical_cpus": 15,
+      "one_minute_load_at_start": 6.97314453125,
+      "profiles": {
+        "short-1r-16s": {
+          "comparisons": {
+            "claim_calls_per_job": {
+              "mesh_median": 0.1015625,
+              "ratio_limit": 0.7,
+              "reference": "baseline",
+              "reference_median": 1.0078125,
+              "within_limit": true
+            }
+          },
+          "peak_queued_context_bytes": {
+            "limit": 33554432,
+            "observed": 21696,
+            "within_limit": true
+          }
+        },
+        "sparse-1r-16s": {
+          "comparisons": {
+            "pickup_p99_ms": {
+              "mesh_median": 252.531005859375,
+              "ratio_limit": 1.1,
+              "reference": "baseline",
+              "reference_median": 269.7099609375,
+              "within_limit": true
+            }
+          },
+          "peak_queued_context_bytes": {
+            "limit": 33554432,
+            "observed": 1356,
+            "within_limit": true
+          }
+        }
+      },
+      "raw_directory": "target/jobs-parity/53fb9189e0dd71e0856f3ca6b5aad2d3bc4a5c8c/program/collector/target/jobs-parity/53fb9189e0dd71e0856f3ca6b5aad2d3bc4a5c8c/j1-load-l5_ot88g",
+      "transport": "SCRAM with verified TLS"
+    },
+    "batch-vs-oban": {
+      "budget_breaches": [
+        {
+          "metric": "jobs_per_second",
+          "profile": "short-1r-16s",
+          "scope": "comparison"
+        },
+        {
+          "metric": "pickup_p99_ms",
+          "profile": "short-1r-16s",
+          "scope": "comparison"
+        }
+      ],
+      "logical_cpus": 15,
+      "one_minute_load_at_start": 25.08544921875,
+      "profiles": {
+        "short-1r-16s": {
+          "comparisons": {
+            "jobs_per_second": {
+              "mesh_median": 235.88164526151834,
+              "ratio_limit": 0.9,
+              "reference": "oban",
+              "reference_median": 405.1337172777296,
+              "within_limit": false
+            },
+            "pickup_p99_ms": {
+              "mesh_median": 492.97216796875,
+              "ratio_limit": 1.25,
+              "reference": "oban",
+              "reference_median": 310.9521484375,
+              "within_limit": false
+            }
+          },
+          "peak_queued_context_bytes": {
+            "limit": 33554432,
+            "observed": 21696,
+            "within_limit": true
+          }
+        },
+        "sparse-1r-16s": {
+          "comparisons": {
+            "jobs_per_second": {
+              "mesh_median": 1.520996392507366,
+              "ratio_limit": 0.9,
+              "reference": "oban",
+              "reference_median": 0.6977832441945004,
+              "within_limit": true
+            },
+            "pickup_p99_ms": {
+              "mesh_median": 258.77001953125,
+              "ratio_limit": 1.25,
+              "reference": "oban",
+              "reference_median": 252.0859375,
+              "within_limit": true
+            }
+          },
+          "peak_queued_context_bytes": {
+            "limit": 33554432,
+            "observed": 1356,
+            "within_limit": true
+          }
+        }
+      },
+      "raw_directory": "target/jobs-parity/53fb9189e0dd71e0856f3ca6b5aad2d3bc4a5c8c/program/collector/target/jobs-parity/53fb9189e0dd71e0856f3ca6b5aad2d3bc4a5c8c/j1-load-pqsep8or",
+      "transport": "SCRAM with verified TLS"
+    },
+    "events-backpressured": {
+      "budget_breaches": [],
+      "logical_cpus": 15,
+      "one_minute_load_at_start": 17.119140625,
+      "profiles": {
+        "short-1r-16s": {
+          "comparisons": {
+            "jobs_per_second": {
+              "mesh_median": 371.54428621541274,
+              "ratio_limit": 0.9,
+              "reference": "baseline",
+              "reference_median": 344.5937374915131,
+              "within_limit": true
+            }
+          },
+          "dropped_log_events": {
+            "max": 0,
+            "median": 0,
+            "min": 0
+          },
+          "dropped_reader_events": {
+            "max": 130,
+            "median": 130,
+            "min": 130
+          }
+        }
+      },
+      "raw_directory": "target/jobs-parity/53fb9189e0dd71e0856f3ca6b5aad2d3bc4a5c8c/program/collector/target/jobs-parity/53fb9189e0dd71e0856f3ca6b5aad2d3bc4a5c8c/j1-load-73yzm2_e",
+      "transport": "SCRAM with verified TLS"
+    },
+    "events-disabled": {
+      "budget_breaches": [
+        {
+          "metric": "jobs_per_second",
+          "profile": "short-1r-16s",
+          "scope": "comparison"
+        },
+        {
+          "metric": "pickup_p99_ms",
+          "profile": "short-1r-16s",
+          "scope": "comparison"
+        }
+      ],
+      "logical_cpus": 15,
+      "one_minute_load_at_start": 19.931640625,
+      "profiles": {
+        "short-1r-16s": {
+          "comparisons": {
+            "jobs_per_second": {
+              "mesh_median": 273.88933322119095,
+              "ratio_limit": 0.95,
+              "reference": "baseline",
+              "reference_median": 338.34680599241847,
+              "within_limit": false
+            },
+            "pickup_p99_ms": {
+              "mesh_median": 440.06494140625,
+              "ratio_limit": 1.05,
+              "reference": "baseline",
+              "reference_median": 354.22802734375,
+              "within_limit": false
+            }
+          },
+          "dropped_log_events": {
+            "max": 0,
+            "median": 0,
+            "min": 0
+          },
+          "dropped_reader_events": {
+            "max": 0,
+            "median": 0,
+            "min": 0
+          }
+        }
+      },
+      "raw_directory": "target/jobs-parity/53fb9189e0dd71e0856f3ca6b5aad2d3bc4a5c8c/program/collector/target/jobs-parity/53fb9189e0dd71e0856f3ca6b5aad2d3bc4a5c8c/j1-load-4_p2y1ks",
+      "transport": "SCRAM with verified TLS"
+    },
+    "events-logged": {
+      "budget_breaches": [],
+      "logical_cpus": 15,
+      "one_minute_load_at_start": 15.0400390625,
+      "profiles": {
+        "short-1r-16s": {
+          "comparisons": {
+            "jobs_per_second": {
+              "mesh_median": 356.45069507096883,
+              "ratio_limit": 0.9,
+              "reference": "baseline",
+              "reference_median": 323.60500398729005,
+              "within_limit": true
+            }
+          },
+          "dropped_log_events": {
+            "max": 0,
+            "median": 0,
+            "min": 0
+          },
+          "dropped_reader_events": {
+            "max": 0,
+            "median": 0,
+            "min": 0
+          }
+        }
+      },
+      "raw_directory": "target/jobs-parity/53fb9189e0dd71e0856f3ca6b5aad2d3bc4a5c8c/program/collector/target/jobs-parity/53fb9189e0dd71e0856f3ca6b5aad2d3bc4a5c8c/j1-load-0_w3k__d",
+      "transport": "SCRAM with verified TLS"
+    },
+    "listening-vs-1000": {
+      "budget_breaches": [
+        {
+          "metric": "pickup_p99_ms",
+          "profile": "sparse-1r-16s",
+          "scope": "baseline"
+        }
+      ],
+      "logical_cpus": 15,
+      "one_minute_load_at_start": 5.62353515625,
+      "profiles": {
+        "sparse-1r-16s": {
+          "comparisons": {
+            "listener_claim_p99_ms": {
+              "limit": 100,
+              "observed": 4.14697265625,
+              "within_limit": true
+            }
+          }
+        }
+      },
+      "raw_directory": "target/jobs-parity/53fb9189e0dd71e0856f3ca6b5aad2d3bc4a5c8c/program/collector/target/jobs-parity/53fb9189e0dd71e0856f3ca6b5aad2d3bc4a5c8c/j1-load-3dfwuhkf",
+      "transport": "SCRAM with verified TLS"
+    },
+    "listening-vs-250": {
+      "budget_breaches": [],
+      "logical_cpus": 15,
+      "one_minute_load_at_start": 16.1142578125,
+      "profiles": {
+        "sparse-1r-16s": {
+          "comparisons": {
+            "idle_queries_per_minute": {
+              "mesh_median": 709.1679483396086,
+              "ratio_limit": 0.5,
+              "reference_median": 1781.265895075127,
+              "within_limit": true
+            },
+            "listener_claim_p99_ms": {
+              "limit": 100,
+              "observed": 30.9208984375,
+              "within_limit": true
+            }
+          }
+        }
+      },
+      "raw_directory": "target/jobs-parity/53fb9189e0dd71e0856f3ca6b5aad2d3bc4a5c8c/program/collector/target/jobs-parity/53fb9189e0dd71e0856f3ca6b5aad2d3bc4a5c8c/j1-load-xnvlxu65",
+      "transport": "SCRAM with verified TLS"
+    }
+  },
+  "rolling_upgrade": {
+    "candidate": "53fb9189e0dd71e0856f3ca6b5aad2d3bc4a5c8c",
+    "main": "7c1620563614a04a573aef806a6d019a2af4dfe9",
+    "result": "pass",
+    "versions": [
+      "17.11",
+      "18.7",
+      "19.0"
+    ]
+  },
+  "workspace_gate": {
+    "checks": [
+      "fmt",
+      "compiler",
+      "runtime",
+      "workspace-build",
+      "fuzz-check",
+      "repl",
+      "meshc"
+    ],
+    "platform": "macOS arm64",
+    "raw_directory": "target/jobs-parity/dd29b93a180ea892352a8a6f5242ab616e47a157/workspace-macos",
+    "result": "pass",
+    "revision": "dd29b93a180ea892352a8a6f5242ab616e47a157"
+  }
+}
