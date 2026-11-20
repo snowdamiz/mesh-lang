@@ -1829,7 +1829,7 @@ WHERE name IN ('server_version','server_version_num','shared_buffers','max_conne
                     for engine, subject in subjects.items():
                         case_evidence = evidence / engine
                         case_evidence.mkdir()
-                        case_scratch = scratch / engine
+                        case_scratch = scratch / f"fault-{engine}"
                         case_scratch.mkdir()
                         recovery_receipts[engine] = run_fault(subject, case_scratch, case_evidence, settings)
                         if not cluster.expected_version:
