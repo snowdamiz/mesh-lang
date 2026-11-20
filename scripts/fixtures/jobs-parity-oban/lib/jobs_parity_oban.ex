@@ -39,7 +39,14 @@ defmodule JobsParityOban do
     validate_namespace!(namespace)
     slots = if action == "run", do: env_integer!("JOBS_PARITY_SLOTS", 1)
     if slots, do: Process.flag(:trap_exit, true)
-    pool_size = if slots, do: slots + 2, else: 2
+
+    pool_size =
+      cond do
+        slots -> slots + 2
+        action == "enqueue" and System.get_env("JOBS_PARITY_INPUT") == "-" -> 1
+        true -> 2
+      end
+
     runner = if slots, do: System.fetch_env!("JOBS_PARITY_RUNNER"), else: action
 
     {:ok, repo} =
@@ -77,6 +84,33 @@ defmodule JobsParityOban do
 
   defp enqueue(namespace, runner) do
     path = System.fetch_env!("JOBS_PARITY_INPUT")
+    {:ok, oban} =
+      Oban.start_link(oban_options(namespace, runner) ++ [stager: false, peer: false])
+
+    try do
+      if path == "-", do: enqueue_stream(namespace), else: enqueue_file(namespace, path)
+    after
+      Supervisor.stop(oban)
+    end
+  end
+
+  defp enqueue_stream(namespace) do
+    Repo.query!("SELECT 1")
+    IO.puts("PRODUCER_READY")
+
+    Enum.reduce_while(IO.stream(:stdio, :line), :ok, fn line, :ok ->
+      case String.trim_trailing(line, "\n") do
+        "stop" ->
+          {:halt, :ok}
+
+        path ->
+          enqueue_file(namespace, path)
+          {:cont, :ok}
+      end
+    end)
+  end
+
+  defp enqueue_file(namespace, path) do
     true = Path.type(path) == :absolute
     %{"jobs" => jobs, "rollback" => rollback} = input = path |> File.read!() |> Jason.decode!()
     true = is_list(jobs) and is_boolean(rollback)
@@ -86,40 +120,30 @@ defmodule JobsParityOban do
     hold_ms = env_integer!("JOBS_PARITY_HOLD_MS", 0, "0")
     changesets = Enum.map(jobs, &new_job(&1, hold_ms))
 
-    {:ok, oban} =
-      Oban.start_link(oban_options(namespace, runner) ++ [stager: false, peer: false])
+    {_status, receipt} =
+      Repo.transaction(fn ->
+        %{rows: [[xid]]} = Repo.query!("SELECT pg_current_xact_id()::text")
 
-    try do
-      result =
-        Repo.transaction(fn ->
-          %{rows: [[xid]]} = Repo.query!("SELECT pg_current_xact_id()::text")
+        Repo.query!(
+          """
+          INSERT INTO public.mesh_jobs_parity_product (engine, namespace, request_id)
+          VALUES ('oban', $1, $2)
+          ON CONFLICT DO NOTHING
+          """,
+          [namespace, request_id]
+        )
 
-          Repo.query!(
-            """
-            INSERT INTO public.mesh_jobs_parity_product (engine, namespace, request_id)
-            VALUES ('oban', $1, $2)
-            ON CONFLICT DO NOTHING
-            """,
-            [namespace, request_id]
-          )
+        ids =
+          changesets
+          |> Enum.chunk_every(@batch_size)
+          |> Enum.flat_map(&Oban.insert_all/1)
+          |> Map.new(fn job -> {job.args["key"], Integer.to_string(job.id)} end)
 
-          ids =
-            changesets
-            |> Enum.chunk_every(@batch_size)
-            |> Enum.flat_map(&Oban.insert_all/1)
-            |> Map.new(fn job -> {job.args["key"], Integer.to_string(job.id)} end)
+        receipt = %{count: map_size(ids), xid: xid, ids: ids}
+        if rollback, do: Repo.rollback(receipt), else: receipt
+      end)
 
-          receipt = %{count: map_size(ids), xid: xid, ids: ids}
-          if rollback, do: Repo.rollback(receipt), else: receipt
-        end)
-
-      case result do
-        {:ok, receipt} -> print_json(receipt)
-        {:error, receipt} -> print_json(receipt)
-      end
-    after
-      Supervisor.stop(oban)
-    end
+    print_json(receipt)
   end
 
   defp new_job(

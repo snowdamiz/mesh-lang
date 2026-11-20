@@ -109,14 +109,35 @@ fn transact_batch(conn :: borrow PgConn, input :: Json) -> String!String do
   end
 end
 
-fn enqueue() -> String!String do
-  let path = Env.get("JOBS_PARITY_INPUT", "")
+fn read_batch(path :: String) -> Json!String do
   if !String.starts_with(path, "/") do
     return Err("JOBS_PARITY_INPUT must be an absolute path")
   end
-  let input = Json.parse(File.read(path)?)?
+  Json.parse(File.read(path)?)
+end
+
+fn enqueue(path :: String) -> String!String do
+  let input = read_batch(path)?
   let conn = Pg.connect(database_url())?
   let result = transact_batch(conn, input)
+  Pg.close(conn)
+  result
+end
+
+fn enqueue_paths(conn :: borrow PgConn) -> String!String do
+  let path = IO.read_line()?
+  if path == "stop" do
+    return Ok("{}")
+  end
+  let receipt = transact_batch(conn, read_batch(path)?)?
+  println(receipt)
+  enqueue_paths(conn)
+end
+
+fn enqueue_stream() -> String!String do
+  let conn = Pg.connect(database_url())?
+  println("PRODUCER_READY")
+  let result = enqueue_paths(conn)
   Pg.close(conn)
   result
 end
@@ -260,7 +281,11 @@ fn run() -> String!String do
     return Err("JOBS_PARITY_DB_URL is required")
   end
   if action == "enqueue" do
-    return enqueue()
+    let path = Env.get("JOBS_PARITY_INPUT", "")
+    if path == "-" do
+      return enqueue_stream()
+    end
+    return enqueue(path)
   end
   let relay_url = Env.get("JOBS_PARITY_POOL_URL", "")
   let pool_url = if action == "run" && relay_url != "" do relay_url else database_url() end

@@ -493,6 +493,9 @@ class Subject:
     def enqueue_receipt(self, env, path, log):
         result = self.call("enqueue", dict(env, JOBS_PARITY_INPUT=str(path),
                             JOBS_PARITY_DB_URL=self.cluster.url(self.engine, "parity_producer")), log)
+        return self.read_receipt(result, log)
+
+    def read_receipt(self, result, log):
         try:
             receipt = json.loads(result.splitlines()[-1])
             ids = receipt["ids"]
@@ -507,6 +510,48 @@ class Subject:
         committed = self.cluster.sql(self.engine, "SELECT extract(epoch FROM "
                                      f"pg_xact_commit_timestamp('{receipt['xid']}'::xid))*1000")
         return receipt, float(committed) if committed else None
+
+    @contextlib.contextmanager
+    def warm_producer(self, env, evidence, deadline):
+        stdout = evidence / "producer-output.log"
+        stderr = evidence / "producer-errors.log"
+        producer_env = dict(env, JOBS_PARITY_INPUT="-",
+                            JOBS_PARITY_DB_URL=self.cluster.url(self.engine, "parity_producer"))
+        with stdout.open("wb") as output, stderr.open("wb") as errors:
+            process = RunnerProcess([*self.command, "enqueue"], cwd=self.cwd, env=producer_env,
+                                    start_new_session=True, stdin=subprocess.PIPE,
+                                    stdout=output, stderr=errors)
+        complete = False
+        try:
+            with stdout.open("rb") as output:
+                def receive():
+                    position = output.tell()
+                    line = output.readline()
+                    if line.endswith(b"\n"):
+                        return line.decode()
+                    output.seek(position)
+                    if process.poll() is not None:
+                        raise FixtureError(f"warm producer exited with {process.returncode}; see {stderr}")
+                    return None
+
+                ready = wait_for(receive, deadline, "warm producer readiness", 0.01)
+                if ready != "PRODUCER_READY\n":
+                    raise FixtureError(f"missing warm producer ready marker; see {stdout}")
+
+                def enqueue(path, log):
+                    try:
+                        process.stdin.write(os.fsencode(path) + b"\n")
+                        process.stdin.flush()
+                    except BrokenPipeError as error:
+                        raise FixtureError(f"warm producer pipe closed; see {stderr}") from error
+                    result = wait_for(receive, deadline, f"warm producer receipt for {path.name}", 0.01)
+                    log.write_text(result)
+                    return self.read_receipt(result, log)
+
+                yield enqueue
+                complete = True
+        finally:
+            stop_runners([process], require_clean=complete)
 
     def run(self, env, index, log):
         with log.open("wb") as stream:
@@ -837,68 +882,72 @@ def run_trial(subject, allocation, workload, batches, scratch, evidence, setting
     relay = contextlib.ExitStack()
     listener = listener_evidence = None
     try:
-        if listener_proxy:
-            if not cluster.expected_version or not cluster.owned(engine):
-                raise FixtureError("listener probe requires an owned PostgreSQL cluster with verified TLS")
-            proxy = relay.enter_context(listener_proxy(cluster.port))
-            status_path = scratch / "wake-status"
-            listener = ListenerTrial(cluster, namespace, status_path, proxy, subject.variant == "disconnected")
-            env = dict(env, JOBS_PARITY_POOL_URL=cluster.url(engine, port=proxy.port),
-                       JOBS_PARITY_STATUS_PATH=str(status_path))
-        for index, (slots, log) in enumerate(zip(allocation, logs, strict=True)):
-            processes.append(subject.run(dict(env, JOBS_PARITY_SLOTS=str(slots)), index, log))
-        deadline = time.monotonic() + settings["trial_timeout_seconds"]
-        wait_for(lambda: runner_ready(processes, logs), deadline, "runner readiness")
-        if listener:
-            listener.arm(min(deadline, time.monotonic() + 15))
-            listener_before = listener.observe(deadline)
-        idle_start = time.monotonic()
-        idle_calls_before = cluster.calls(engine)
-        idle_samples = [take_sample(cluster, engine, namespace, processes, idle_start)]
-        time.sleep(settings["idle_seconds"])
-        idle_calls_after = cluster.calls(engine)
-        idle_s = time.monotonic() - idle_start
-        idle_samples.append(take_sample(cluster, engine, namespace, processes, idle_start))
-        commits = {}
-        enqueued_ids = {}
-        start = time.monotonic()
-        samples = []
-        interval = settings["observer_interval_ms"] / 1000
+        with contextlib.ExitStack() as producer_scope:
+            if listener_proxy:
+                if not cluster.expected_version or not cluster.owned(engine):
+                    raise FixtureError("listener probe requires an owned PostgreSQL cluster with verified TLS")
+                proxy = relay.enter_context(listener_proxy(cluster.port))
+                status_path = scratch / "wake-status"
+                listener = ListenerTrial(cluster, namespace, status_path, proxy, subject.variant == "disconnected")
+                env = dict(env, JOBS_PARITY_POOL_URL=cluster.url(engine, port=proxy.port),
+                           JOBS_PARITY_STATUS_PATH=str(status_path))
+            deadline = time.monotonic() + settings["trial_timeout_seconds"]
+            sparse = workload["mode"] == "sparse"
+            enqueue_batch = (producer_scope.enter_context(subject.warm_producer(env, evidence, deadline))
+                             if sparse else lambda path, log: subject.enqueue_receipt(env, path, log))
+            for index, (slots, log) in enumerate(zip(allocation, logs, strict=True)):
+                processes.append(subject.run(dict(env, JOBS_PARITY_SLOTS=str(slots)), index, log))
+            wait_for(lambda: runner_ready(processes, logs), deadline, "runner readiness")
+            if listener:
+                listener.arm(min(deadline, time.monotonic() + 15))
+                listener_before = listener.observe(deadline)
+            idle_start = time.monotonic()
+            idle_calls_before = cluster.calls(engine)
+            idle_samples = [take_sample(cluster, engine, namespace, processes, idle_start)]
+            time.sleep(settings["idle_seconds"])
+            idle_calls_after = cluster.calls(engine)
+            idle_s = time.monotonic() - idle_start
+            idle_samples.append(take_sample(cluster, engine, namespace, processes, idle_start))
+            commits = {}
+            enqueued_ids = {}
+            start = time.monotonic()
+            samples = []
+            interval = settings["observer_interval_ms"] / 1000
 
-        def settled_count(count):
-            if not runner_ready(processes, logs, track=False):
-                raise FixtureError("runner readiness lost during observation")
-            sample = take_sample(cluster, engine, namespace, processes, start)
-            samples.append(sample)
-            return sample["terminal"] >= count
+            def settled_count(count):
+                if not runner_ready(processes, logs, track=False):
+                    raise FixtureError("runner readiness lost during observation")
+                sample = take_sample(cluster, engine, namespace, processes, start)
+                samples.append(sample)
+                return sample["terminal"] >= count
 
-        expected_total = 0
-        with ThreadPoolExecutor(max_workers=1) as producer:
-            for path, batch in zip(paths, batches, strict=True):
-                request_id = batch["request_id"]
-                enqueue = producer.submit(subject.enqueue_receipt, env, path, evidence / f"enqueue-{request_id}.log")
-                while not enqueue.done() and time.monotonic() < deadline:
-                    settled_count(len(expected))
-                    time.sleep(interval)
-                receipt, commit_ms = enqueue.result(timeout=max(0.0, deadline - time.monotonic()))
-                if set(receipt["ids"]) != {job["key"] for job in batch["jobs"]} or commit_ms is None:
-                    raise QueueMismatch(f"{request_id} did not confirm the expected enqueue transaction")
-                enqueued_ids.update(receipt["ids"])
-                commits[request_id] = commit_ms
-                expected_total += receipt["count"]
-                if workload["mode"] == "sparse":
-                    wait_for(lambda: settled_count(expected_total), deadline, request_id, interval)
-                    time.sleep(settings["poll_ms"] / 1000)
-        wait_for(lambda: settled_count(len(expected)), deadline, "durable settlements", interval)
-        after = cluster.calls(engine)
-        runner_calls = after["runner"] - idle_calls_after["runner"]
-        enqueue_calls = after["enqueue"] - idle_calls_after["enqueue"]
-        calls = runner_calls + enqueue_calls
-        claim_calls = after["claims"] - idle_calls_after["claims"]
-        idle_calls = idle_calls_after["runner"] - idle_calls_before["runner"]
-        if listener:
-            listener_evidence = listener.verify(listener_before, listener.observe(deadline), len(expected))
-        completed = True
+            expected_total = 0
+            with ThreadPoolExecutor(max_workers=1) as producer:
+                for path, batch in zip(paths, batches, strict=True):
+                    request_id = batch["request_id"]
+                    enqueue = producer.submit(enqueue_batch, path, evidence / f"enqueue-{request_id}.log")
+                    while not enqueue.done() and time.monotonic() < deadline:
+                        settled_count(len(expected))
+                        time.sleep(interval)
+                    receipt, commit_ms = enqueue.result(timeout=max(0.0, deadline - time.monotonic()))
+                    if set(receipt["ids"]) != {job["key"] for job in batch["jobs"]} or commit_ms is None:
+                        raise QueueMismatch(f"{request_id} did not confirm the expected enqueue transaction")
+                    enqueued_ids.update(receipt["ids"])
+                    commits[request_id] = commit_ms
+                    expected_total += receipt["count"]
+                    if sparse:
+                        wait_for(lambda: settled_count(expected_total), deadline, request_id, interval)
+                        time.sleep(settings["poll_ms"] / 1000)
+            wait_for(lambda: settled_count(len(expected)), deadline, "durable settlements", interval)
+            after = cluster.calls(engine)
+            runner_calls = after["runner"] - idle_calls_after["runner"]
+            enqueue_calls = after["enqueue"] - idle_calls_after["enqueue"]
+            calls = runner_calls + enqueue_calls
+            claim_calls = after["claims"] - idle_calls_after["claims"]
+            idle_calls = idle_calls_after["runner"] - idle_calls_before["runner"]
+            if listener:
+                listener_evidence = listener.verify(listener_before, listener.observe(deadline), len(expected))
+            completed = True
     finally:
         try:
             cpu = stop_runners(processes, require_clean=completed)
@@ -944,6 +993,7 @@ def run_trial(subject, allocation, workload, batches, scratch, evidence, setting
         raise FixtureError("listener trial did not record any notification-triggered scans")
 
     raw = {"engine": engine, "variant": subject.variant, "namespace": namespace, "pair": pair, "case_sha256": case,
+           "producer_mode": "warm connection" if sparse else "one process per batch",
            "transactions": commits, "enqueued_ids": enqueued_ids, "attempts": rows, "namespace_writes": writes,
            "samples": samples, "idle_samples": idle_samples,
            "poll_ms": int(env["JOBS_PARITY_POLL_MS"]), "wakeups": wakeups,
@@ -1803,6 +1853,7 @@ WHERE name IN ('server_version','server_version_num','shared_buffers','max_conne
                     "mesh_events": mesh_events,
                     "poll_ms": poll_ms,
                     "baseline_poll_ms": baseline_poll_ms if baseline_ref else None,
+                    "sparse_producer": "one warm database connection per trial",
                     "mode": lane, "claim_timestamps": {"mesh": "database attempted_at_ms",
                                                        "oban": "Basic engine attempted_at"},
                     "settlement_timestamp": "durable commit timestamp of the terminal row version",
@@ -1964,6 +2015,32 @@ def self_check():
                         expected, {"batch": 100}, 5)
             with self.assertRaises(FixtureError):
                 percentile([], 0.99)
+
+        def test_warm_producer_keeps_one_process_across_enqueues(self):
+            from unittest.mock import Mock
+
+            script = """
+import json, os, sys
+assert sys.argv[1] == 'enqueue' and os.environ['JOBS_PARITY_INPUT'] == '-'
+print('PRODUCER_READY', flush=True)
+for number, line in enumerate(sys.stdin, 1):
+    if line == 'stop\\n':
+        break
+    assert line.startswith('/')
+    print(json.dumps({'count': 1, 'ids': {'job': str(number)}, 'xid': str(number), 'pid': os.getpid()}), flush=True)
+"""
+            with tempfile.TemporaryDirectory(prefix="parity-stream-test-", dir=ROOT) as directory:
+                directory = Path(directory)
+                cluster = Mock()
+                cluster.url.return_value = "postgresql://localhost/test"
+                cluster.sql.side_effect = ["1.25", "2.50"]
+                subject = Subject("oban", [sys.executable, "-c", script], ROOT, cluster, os.environ)
+                with subject.warm_producer(os.environ, directory, time.monotonic() + 5) as send:
+                    first, first_commit = send(directory / "one.json", directory / "one.log")
+                    second, second_commit = send(directory / "two.json", directory / "two.log")
+                self.assertEqual(first["pid"], second["pid"])
+                self.assertEqual([first["ids"], second["ids"]], [{"job": "1"}, {"job": "2"}])
+                self.assertEqual([first_commit, second_commit], [1.25, 2.50])
 
         def test_trial_validation(self):
             with self.assertRaisesRegex(FixtureError, "incomplete"):
