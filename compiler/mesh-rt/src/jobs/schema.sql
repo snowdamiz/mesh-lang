@@ -105,8 +105,31 @@ CREATE TABLE IF NOT EXISTS mesh_jobs.batch_context_blocks (
     FOREIGN KEY (namespace, id) REFERENCES mesh_jobs.jobs(namespace, id) ON DELETE CASCADE
 );
 
--- Separate triggers keep legacy enqueue, claim and control function signatures
--- and grants intact when old and new binaries share the schema.
+-- Keep legacy function bodies and grants intact when binaries share the schema.
+-- Old claim() takes the queue lock before reaching this transition. Try the
+-- namespace lock without waiting and read the pause row after acquiring it.
+CREATE OR REPLACE FUNCTION mesh_jobs.fence_claim_v1() RETURNS trigger
+LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+    IF current_setting('transaction_isolation') <> 'read committed' THEN
+        RAISE EXCEPTION 'mesh jobs claim requires READ COMMITTED';
+    END IF;
+    IF NOT pg_try_advisory_xact_lock_shared(hashtextextended(NEW.namespace, 1782495106)) THEN
+        RAISE EXCEPTION 'mesh jobs namespace admission is paused or changing' USING ERRCODE = '55000';
+    END IF;
+    IF EXISTS (SELECT FROM mesh_jobs.queues
+               WHERE namespace = NEW.namespace AND name = '' AND state = 'paused') THEN
+        RAISE EXCEPTION 'mesh jobs namespace admission is paused or changing' USING ERRCODE = '55000';
+    END IF;
+    RETURN NEW;
+END
+$$;
+
+CREATE OR REPLACE TRIGGER mesh_jobs_fence_claim
+    BEFORE UPDATE OF state ON mesh_jobs.jobs
+    FOR EACH ROW WHEN (OLD.state <> 'executing' AND NEW.state = 'executing')
+    EXECUTE FUNCTION mesh_jobs.fence_claim_v1();
+
 CREATE OR REPLACE FUNCTION mesh_jobs.publish_wake_v1() RETURNS trigger
 LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
@@ -299,15 +322,6 @@ DECLARE
     due_at bigint;
     started_at bigint;
 BEGIN
-    IF current_setting('transaction_isolation') <> 'read committed' THEN
-        RAISE EXCEPTION 'mesh jobs claim requires READ COMMITTED';
-    END IF;
-    -- An empty queue name is reserved for the namespace pause. Claimers share
-    -- this lock until commit, so the pause covers both existing and new queues.
-    IF NOT pg_try_advisory_xact_lock_shared(hashtextextended(ns, 1782495106)) THEN RETURN; END IF;
-    IF EXISTS (SELECT FROM mesh_jobs.queues WHERE namespace = ns AND name = '' AND state = 'paused')
-    THEN RETURN; END IF;
-
     -- Serialize capacity admission with queue controls without blocking enqueue's FK checks.
     SELECT * INTO q FROM mesh_jobs.queues
     WHERE namespace = ns AND name = queue_name FOR NO KEY UPDATE SKIP LOCKED;

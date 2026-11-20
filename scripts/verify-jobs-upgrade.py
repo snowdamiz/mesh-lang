@@ -35,7 +35,6 @@ NEW_WORKER = "upgrade_new_worker"
 OPERATOR = "upgrade_operator"
 INSPECTOR = "upgrade_inspector"
 ROLES = (MIGRATOR, PRODUCER, OLD_WORKER, NEW_WORKER, OPERATOR, INSPECTOR)
-CLAIM = "claim(ns text, queue_name text, workers jsonb, lease_ms bigint)"
 BATCH = "claim_batch_v1(text,text,jsonb,bigint,integer,bigint)"
 
 
@@ -117,8 +116,8 @@ class RollingProof:
         return message
 
     @contextlib.contextmanager
-    def runner(self, binary, role, queues, label, batch=False):
-        env = self.settings(role, JOBS_UPGRADE_QUEUES=json.dumps(queues))
+    def runner(self, binary, role, queues, label, batch=False, *, database=DATABASE):
+        env = self.settings(role, database, JOBS_UPGRADE_QUEUES=json.dumps(queues))
         env["JOBS_UPGRADE_BATCH"] = "1" if batch else "0"
         log = self.evidence / f"{label}.log"
         with log.open("wb") as stream:
@@ -139,7 +138,7 @@ class RollingProof:
         require(summary["drained"] and summary["stale_acks"] == 0 and summary.get("last_error") is None,
                 f"unhealthy runner shutdown; see {log}")
 
-    def enqueue(self, label, queue, *, schedule=None):
+    def enqueue(self, label, queue, *, schedule=None, database=DATABASE):
         spec = {
             "worker": "upgrade", "queue": queue, "args": {"label": label},
             "request_key": label, "max_attempts": 3, "timeout_ms": 120000,
@@ -150,7 +149,7 @@ class RollingProof:
         parity.write_json(path, spec)
         return json.loads(parity.checked(
             [str(self.old), "enqueue"], cwd=self.scratch, timeout=20,
-            env=self.settings(PRODUCER, JOBS_UPGRADE_SPEC=str(path)),
+            env=self.settings(PRODUCER, database, JOBS_UPGRADE_SPEC=str(path)),
             log=self.evidence / f"enqueue-{label}.log",
         ))["id"]
 
@@ -161,23 +160,26 @@ SET ROLE {MIGRATOR};
 ALTER DEFAULT PRIVILEGES REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
 """, database)
 
-    def apply_current_grants(self):
+    def apply_current_grants(self, database=DATABASE):
         cluster = self.cluster
         env = dict(self.env, PGPASSWORD=cluster.password,
                    PGSSLMODE="verify-full" if cluster.expected_version else "disable")
         if cluster.expected_version:
             env["PGSSLROOTCERT"] = str(cluster.certificate)
         args = [str(cluster.bin / "psql"), "-Xqw", "-v", "ON_ERROR_STOP=1",
-                "-h", "127.0.0.1", "-p", str(cluster.port), "-U", MIGRATOR, "-d", DATABASE,
+                "-h", "127.0.0.1", "-p", str(cluster.port), "-U", MIGRATOR, "-d", database,
                 "-v", f"producer={PRODUCER}", "-v", f"worker={NEW_WORKER}",
                 "-v", f"operator={OPERATOR}", "-v", f"inspector={INSPECTOR}", "-f", str(GRANTS)]
-        parity.checked(args, env=env, timeout=15, log=self.evidence / "current-grants.log")
+        parity.checked(args, env=env, timeout=15, log=self.evidence / f"{database}-grants.log")
 
     def setup(self):
         for role in ROLES:
             self.sql(f"CREATE ROLE {role} LOGIN PASSWORD '{self.cluster.password}'", "postgres")
         self.prepare(DATABASE)
         self.migrate(self.old, "migrate-legacy")
+        self.grant_legacy(DATABASE)
+
+    def grant_legacy(self, database):
         self.sql(f"""
 SET ROLE {MIGRATOR};
 CREATE TABLE public.upgrade_attempts (
@@ -211,8 +213,8 @@ GRANT EXECUTE ON FUNCTION mesh_jobs.claim(text,text,jsonb,bigint), mesh_jobs.now
     mesh_jobs.settle_state(text,uuid,uuid,jsonb,boolean), mesh_jobs.settle(text,uuid,uuid,jsonb,boolean),
     mesh_jobs.recover(text,integer,jsonb) TO {OLD_WORKER};
 INSERT INTO mesh_jobs.queues (namespace,name,concurrency) VALUES ('{NAMESPACE}','legacy',2);
-""")
-        self.no_public_execute()
+""", database)
+        self.no_public_execute(database)
 
     def no_public_execute(self, database=DATABASE):
         count = self.sql("""
@@ -223,7 +225,7 @@ WHERE n.nspname='mesh_jobs' AND a.grantee=0 AND a.privilege_type='EXECUTE'
         require(count == "0", f"PUBLIC has EXECUTE on Jobs functions in {database}")
         return int(count)
 
-    def old_grants(self):
+    def old_grants(self, database=DATABASE):
         rows = self.sql(f"""
 SET ROLE {OLD_WORKER};
 SELECT 'schema:USAGE' WHERE has_schema_privilege(current_user, 'mesh_jobs', 'USAGE')
@@ -239,7 +241,7 @@ UNION ALL
 SELECT oid::regprocedure::text FROM pg_proc WHERE pronamespace='mesh_jobs'::regnamespace
     AND has_function_privilege(current_user,oid,'EXECUTE')
 ORDER BY 1
-""")
+""", database)
         return rows.splitlines()
 
     def check_roles(self):
@@ -288,7 +290,7 @@ FROM objects
 """, database)
         return json.loads(result)
 
-    def rows(self):
+    def rows(self, database=DATABASE):
         return json.loads(self.sql(f"""
 SELECT coalesce(json_object_agg(args->>'label', json_build_object(
     'id',id, 'run',run, 'position',position, 'queue',queue, 'state',state,
@@ -297,26 +299,26 @@ SELECT coalesce(json_object_agg(args->>'label', json_build_object(
     'lease_token',lease_token, 'lease_expires_at_ms',lease_expires_at_ms, 'errors',errors,
     'effect_key',mesh_jobs.effect_key(j)
 )), '{{}}') FROM mesh_jobs.jobs j WHERE namespace='{NAMESPACE}'
-"""))
+""", database))
 
-    def writes(self):
+    def writes(self, database=DATABASE):
         return json.loads(self.sql("""
 SELECT json_build_object(
     'attempts', (SELECT coalesce(json_agg(a ORDER BY job_id, attempt), '[]') FROM public.upgrade_attempts a),
     'effects', (SELECT coalesce(json_agg(e ORDER BY job_id), '[]') FROM public.upgrade_effects e)
 )
-"""))
+""", database))
 
     def request_receipts(self):
         return json.loads(self.sql(f"""
 SELECT json_object_agg(request_key, receipt->>'id') FROM mesh_jobs.receipts WHERE namespace='{NAMESPACE}'
 """))
 
-    def wait_row(self, label, state, *processes):
+    def wait_row(self, label, state, *processes, database=DATABASE):
         def observe():
             require(all(p.poll() is None for p in processes),
                     f"a runner exited before {label} became {state}")
-            row = self.rows().get(label)
+            row = self.rows(database).get(label)
             return row if row and row["state"] == state else None
 
         return parity.wait_for(observe, time.monotonic() + 35, f"{label} {state}")
@@ -338,39 +340,119 @@ SELECT json_object_agg(rolname, json_build_object('claim',coalesce(claim,0),
 """, "postgres"))
 
     def owner_replay(self):
-        # An owner replay can replace shared v1 function bodies. Keep this experiment
-        # in a second database while the upgraded namespace retains the new schema.
         database = "owner_migration_replay"
         self.prepare(database)
         self.migrate(self.old, "replay-initial-legacy", database=database)
+        self.grant_legacy(database)
         legacy = self.catalog(database)
+        grants = self.old_grants(database)
         self.migrate(self.new, "replay-upgrade", database=database)
-        self.sql(f"""SET ROLE {MIGRATOR};
-GRANT USAGE ON SCHEMA mesh_jobs TO {NEW_WORKER};
-GRANT EXECUTE ON FUNCTION mesh_jobs.{BATCH} TO {NEW_WORKER};
-""", database)
+        self.apply_current_grants(database)
         upgraded = self.catalog(database)
+        legacy_functions = sorted(key for key in legacy if key.startswith("function "))
+        changed = [key for key in legacy_functions if key not in upgraded or any(
+            legacy[key][field] != upgraded[key][field] for field in ("oid", "definition_md5")
+        )]
+        require(not changed, f"upgrade replaced legacy functions: {changed}")
         additive = sorted(upgraded.keys() - legacy.keys())
         require(any(name.startswith("function claim_batch_v1(") for name in additive),
                 "the current migrator did not install the batch entry point")
+
+        workers = json.dumps([{"worker": "upgrade", "version": 1}])
+        held = self.enqueue("replay-held", "legacy", database=database)
+        claim = json.loads(self.sql(f"""
+SET ROLE {OLD_WORKER};
+SELECT json_build_object('id',id,'token',token)
+FROM mesh_jobs.claim('{NAMESPACE}','legacy','{workers}',60000)
+""", database))
+        require(claim["id"] == held and claim["token"], "legacy claim did not take the held job")
+        lease = self.rows(database)["replay-held"]
+        existing = self.enqueue("replay-existing", "legacy", database=database)
+        self.sql(f"""
+SET ROLE {OPERATOR};
+SELECT mesh_jobs.queue_control('{NAMESPACE}','disabled','configure',3);
+SELECT mesh_jobs.queue_control('{NAMESPACE}','disabled','pause',NULL);
+SELECT mesh_jobs.set_namespace_paused('{NAMESPACE}',true);
+""", database)
         self.migrate(self.old, "replay-owner-legacy", database=database)
         replayed = self.catalog(database)
-        claim = f"function {CLAIM}"
-        changes = sorted(name for name in upgraded.keys() & replayed.keys()
-                         if upgraded[name] != replayed[name])
-        require(replayed.keys() == upgraded.keys() and changes == [claim]
-                and replayed[claim]["definition_md5"] == legacy[claim]["definition_md5"]
-                and replayed[claim]["oid"] == upgraded[claim]["oid"],
-                f"unexpected owner replay catalog changes: {changes}")
-        self.migrate(self.new, "replay-owner-current-restored", database=database)
-        require(self.catalog(database) == upgraded, "current migration did not restore the shared definition")
+        require(replayed == upgraded and self.old_grants(database) == grants,
+                "old owner replay changed an upgraded object or legacy role grant")
+
+        new = self.enqueue("replay-new", "created-while-paused", database=database)
+        queued = {"replay-existing": existing, "replay-new": new}
+        queue_names = {"legacy": 2, "created-while-paused": 1}
+        before = self.rows(database)
+        for queue in queue_names:
+            self.sql(f"""
+SET ROLE {OLD_WORKER};
+DO $$ BEGIN
+    PERFORM id FROM mesh_jobs.claim('{NAMESPACE}','{queue}','{workers}',60000);
+    RAISE EXCEPTION 'legacy claim escaped the pause';
+EXCEPTION WHEN object_not_in_prerequisite_state THEN
+    IF SQLERRM <> 'mesh jobs namespace admission is paused or changing' THEN RAISE; END IF;
+END $$;
+""", database)
+            empty = self.sql(f"""
+SET ROLE {NEW_WORKER};
+SELECT count(*) FROM mesh_jobs.claim_drain_v1('{NAMESPACE}','{queue}','{workers}',60000,NULL,NULL);
+SELECT count(*) FROM mesh_jobs.claim_batch_v1('{NAMESPACE}','{queue}','{workers}',60000,1,NULL);
+""", database)
+            require(empty.splitlines() == ["0", "0"], "current claims escaped the pause")
+        require(self.rows(database) == before, "a paused claim changed durable job state")
+
+        renewed = self.sql(f"""
+SET ROLE {OLD_WORKER};
+SELECT mesh_jobs.try_renew('{NAMESPACE}','{held}','{claim["token"]}',120000)
+""", database)
+        require(renewed == "active", "legacy renewal failed while paused")
+        extended = self.rows(database)["replay-held"]
+        self.same_claim(lease, extended)
+        require(extended["lease_expires_at_ms"] > lease["lease_expires_at_ms"],
+                "legacy renewal did not extend the original lease")
+        settled = self.sql(f"""
+SET ROLE {OLD_WORKER};
+SELECT mesh_jobs.settle_state('{NAMESPACE}','{held}','{claim["token"]}',
+    '{{"action":"complete"}}',false)
+""", database)
+        require(settled == "completed", "legacy settlement failed while paused")
+
+        queues = f"""
+SELECT jsonb_object_agg(name, jsonb_build_array(state,concurrency))
+FROM mesh_jobs.queues WHERE namespace='{NAMESPACE}' AND name <> ''
+"""
+        controls = json.loads(self.sql(queues, database))
+        require(controls == {"legacy": ["active", 2], "disabled": ["paused", 3],
+                             "created-while-paused": ["active", 1]},
+                "namespace pause changed a queue's state or limit")
+        self.sql(f"""SET ROLE {OPERATOR};
+SELECT mesh_jobs.set_namespace_paused('{NAMESPACE}',false)
+""", database)
+        require(json.loads(self.sql(queues, database)) == controls, "resume changed a queue's controls")
+        with self.runner(self.old, OLD_WORKER, queue_names, "replay-old-runner", database=database) as runner:
+            for label in queued:
+                self.wait_row(label, "completed", runner, database=database)
+        final = self.rows(database)
+        for label, ident in queued.items():
+            row = final[label]
+            require(row["id"] == ident and row["state"] == "completed" and row["attempt"] == 1
+                    and row["effect_key"] == before[label]["effect_key"] and row["lease_token"] is None,
+                    "resumed legacy work lost its job or effect identity")
+        writes = self.writes(database)
+        require(writes["attempts"] == sorted([
+            dict(job_id=ident, effect_key=final[label]["effect_key"], attempt=1, worker_role=OLD_WORKER)
+            for label, ident in queued.items()
+        ], key=lambda row: row["job_id"]) and writes["effects"] == sorted([
+            dict(job_id=ident, effect_key=final[label]["effect_key"], worker_role=OLD_WORKER)
+            for label, ident in queued.items()
+        ], key=lambda row: row["job_id"]), "resumed legacy work omitted or duplicated a write")
         return {
+            "legacy_function_definitions": {key: legacy[key]["definition_md5"] for key in legacy_functions},
             "old_owner_migration_exit": 0, "additive_objects_preserved": additive,
-            "shared_definition_replaced": {claim: {
-                "upgraded_md5": upgraded[claim]["definition_md5"],
-                "replayed_md5": replayed[claim]["definition_md5"],
-            }},
-            "current_migrator_restored_catalog": True,
+            "upgraded_catalog_and_legacy_grants_unchanged": True,
+            "paused_claims_fenced": ["legacy", "current_single", "current_batch"],
+            "held_lease_renewed_and_settled_while_paused": True,
+            "queues_after_resume": controls, "resumed_jobs": queued, "resumed_writes": writes,
             "public_execute_count": self.no_public_execute(database),
         }
 
@@ -416,6 +498,9 @@ GRANT EXECUTE ON FUNCTION mesh_jobs.{BATCH} TO {NEW_WORKER};
             batch_denied["JOBS_UPGRADE_BATCH"] = "1"
             self.reject(self.new, "run", "batch-with-legacy-grants-denied",
                         "needs EXECUTE on mesh_jobs.claim_batch_v1", batch_denied)
+            self.reject(self.new, "run", "single-with-legacy-grants-denied",
+                        "needs EXECUTE on mesh_jobs.claim_drain_v1",
+                        self.settings(OLD_WORKER, JOBS_UPGRADE_QUEUES='{"legacy":1}'))
 
             with self.runner(self.new, NEW_WORKER, {"next": 1}, "new-live", batch=True) as new_runner:
                 ids["mixed_old"] = self.enqueue("mixed_old", "legacy")
@@ -460,7 +545,8 @@ GRANT EXECUTE ON FUNCTION mesh_jobs.{BATCH} TO {NEW_WORKER};
             "j2-lane-9": {
                 "scoped_grants": scope, "public_execute_count": self.no_public_execute(),
                 "old_grants_unchanged": True, "old_worker_migration_denied": denied,
-                "current_batch_start_with_old_grants_denied": True, "lifecycle_calls": calls,
+                "current_batch_start_with_old_grants_denied": True,
+                "current_single_start_with_old_grants_denied": True, "lifecycle_calls": calls,
                 "owner_replay": self.owner_replay(),
             },
             "j7-lane-5": {
@@ -527,7 +613,7 @@ def record(args):
         try:
             cluster.start()
             metadata = {
-                "receipt_version": 1, "result": "pass", "host": platform.system(),
+                "receipt_version": 2, "result": "pass", "host": platform.system(),
                 "rust_target": target, "rustc": rust.splitlines()[0],
                 "postgres_version": cluster.sql("postgres", "SHOW server_version"),
                 "postgres_version_num": int(cluster.sql("postgres", "SHOW server_version_num")),
@@ -542,7 +628,7 @@ def record(args):
     for lane, observations in lanes.items():
         parity.write_json(evidence / f"{lane}.log", dict(metadata, observations=observations))
     receipt = dict(metadata, lanes=lanes)
-    parity.write_json(evidence / "receipt-v1.json", receipt)
+    parity.write_json(evidence / "receipt-v2.json", receipt)
     if args.receipt:
         args.receipt.parent.mkdir(parents=True, exist_ok=True)
         parity.write_json(args.receipt, receipt)

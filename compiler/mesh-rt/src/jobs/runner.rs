@@ -735,12 +735,14 @@ fn start_configured(
     let scheduler = actor::GLOBAL_SCHEDULER
         .get()
         .ok_or("actor scheduler is unavailable")?;
+    let default_claim = !config.claim_batch && bounded.is_none();
     with_pool(pool, |db| {
         let rows = db.query(
             "WITH functions AS (
                  SELECT to_regprocedure('mesh_jobs.try_renew(text,uuid,uuid,bigint)') AS renew,
                         to_regprocedure('mesh_jobs.settle_state(text,uuid,uuid,jsonb,boolean)') AS settle,
-                        to_regprocedure('mesh_jobs.claim_batch_v1(text,text,jsonb,bigint,integer,bigint)') AS batch
+                        to_regprocedure('mesh_jobs.claim_batch_v1(text,text,jsonb,bigint,integer,bigint)') AS batch,
+                        to_regprocedure('mesh_jobs.claim_drain_v1(text,text,jsonb,bigint,bigint,jsonb)') AS single_claim
              ) SELECT CASE
                  WHEN version <> 1 OR to_regclass('mesh_jobs.cron_schedules') IS NULL
                      OR renew IS NULL OR settle IS NULL THEN 'migrate'
@@ -748,9 +750,11 @@ fn start_configured(
                      AND has_function_privilege(settle, 'EXECUTE')) THEN 'permissions'
                  WHEN $1::boolean AND batch IS NULL THEN 'migrate'
                  WHEN $1::boolean AND NOT has_function_privilege(batch, 'EXECUTE') THEN 'batch_permissions'
+                 WHEN $2::boolean AND single_claim IS NULL THEN 'migrate'
+                 WHEN $2::boolean AND NOT has_function_privilege(single_claim, 'EXECUTE') THEN 'single_permissions'
                  ELSE 'ready'
              END FROM mesh_jobs.schema_version CROSS JOIN functions WHERE singleton",
-            &[if config.claim_batch { "true" } else { "false" }],
+            &[&config.claim_batch.to_string(), &default_claim.to_string()],
         )?;
         match rows
             .first()
@@ -764,6 +768,9 @@ fn start_configured(
             ),
             Some("batch_permissions") => {
                 Err("Jobs batch runner needs EXECUTE on mesh_jobs.claim_batch_v1".into())
+            }
+            Some("single_permissions") => {
+                Err("Jobs runner needs EXECUTE on mesh_jobs.claim_drain_v1".into())
             }
             _ => Err(
                 "Jobs requires the current schema. Run Jobs.migrate before starting workers".into(),

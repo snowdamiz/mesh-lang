@@ -640,9 +640,10 @@ pub(super) fn claim_with_timing(
     let sql = if observe {
         "SELECT id, token, context, timeout_ms,
                 floor(extract(epoch FROM pg_catalog.clock_timestamp()) * 1000)::bigint::text
-         FROM mesh_jobs.claim($1, $2, $3::jsonb, $4::bigint)"
+         FROM mesh_jobs.claim_drain_v1($1, $2, $3::jsonb, $4::bigint, NULL, NULL)"
     } else {
-        "SELECT id, token, context, timeout_ms FROM mesh_jobs.claim($1, $2, $3::jsonb, $4::bigint)"
+        "SELECT id, token, context, timeout_ms
+         FROM mesh_jobs.claim_drain_v1($1, $2, $3::jsonb, $4::bigint, NULL, NULL)"
     };
     claim_one_transaction(
         db,

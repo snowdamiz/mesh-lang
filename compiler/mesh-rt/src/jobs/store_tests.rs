@@ -549,24 +549,38 @@ fn namespace_pause_fences_pending_transactions_and_respects_queue_state() {
     let mut f = Fixture::new();
     f.ops(json!({"action":"configure","queue":"other","concurrency":3}));
     f.ops(json!({"action":"pause","queue":"other"}));
-    f.enqueue(json!({"worker":"Deliver"}));
+    let original = f.enqueue(json!({"worker":"Deliver"}));
+    let legacy_claim = "SELECT id FROM mesh_jobs.claim($1, 'default', $2::jsonb, 60000)";
     let mut owner = Connection::open(&f.url);
     owner.simple("BEGIN").unwrap();
-    owner
-        .query(
-            "SELECT id FROM mesh_jobs.claim($1, 'default', $2::jsonb, 60000)",
-            &[&f.ns, WORKERS],
-        )
-        .unwrap();
+    assert_eq!(
+        response(&mut owner, legacy_claim, &[&f.ns, WORKERS]).unwrap(),
+        id(&original)
+    );
     f.db.simple("SET lock_timeout = '50ms'").unwrap();
     assert!(control(&mut f.db, &f.ns, r#"{"action":"pause_namespace"}"#)
         .unwrap_err()
         .contains("lock timeout"));
     assert_eq!(f.ops(json!({"action":"namespace_status"}))["paused"], false);
     owner.simple("ROLLBACK").unwrap();
+    f.db.simple("BEGIN").unwrap();
     assert_eq!(f.ops(json!({"action":"pause_namespace"}))["paused"], true);
+    let pending_pause = response(&mut owner, legacy_claim, &[&f.ns, WORKERS]).unwrap_err();
+    assert!(
+        pending_pause.contains("namespace admission is paused"),
+        "{pending_pause}"
+    );
+    f.db.simple("COMMIT").unwrap();
     let another = f.enqueue(json!({"worker":"Deliver","queue":"another"}));
     assert!(f.try_claim().is_none());
+    let legacy_error = response(&mut owner, legacy_claim, &[&f.ns, WORKERS]).unwrap_err();
+    assert!(
+        legacy_error.contains("namespace admission is paused"),
+        "{legacy_error}"
+    );
+    let untouched = f.get(id(&original));
+    assert_eq!(untouched["state"], "available");
+    assert_eq!(untouched["attempt"], 0);
     assert!(
         claim_batch(&mut f.db, &f.ns, "another", WORKERS, 60_000, 5, None)
             .unwrap()
@@ -574,6 +588,10 @@ fn namespace_pause_fences_pending_transactions_and_respects_queue_state() {
             .is_empty()
     );
     assert_eq!(f.ops(json!({"action":"resume_namespace"}))["paused"], false);
+    assert_eq!(
+        response(&mut owner, legacy_claim, &[&f.ns, WORKERS]).unwrap(),
+        id(&original)
+    );
     assert_eq!(
         f.ops(json!({"action":"inspect_queue","queue":"other"}))["state"],
         "paused"
