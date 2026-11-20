@@ -1812,6 +1812,32 @@
     },
     "scope": "five release pairs per profile with batch claims and PostgreSQL 17.11 verified TLS"
   },
+  "macos_shared_exit_wake_experiment": {
+    "candidate": "8c86c592bfc71c922b50bd3520126e03a8f9348b",
+    "comparison": "same release binary with native exit wake off and on",
+    "compiled_jobs_proofs_on_pg17_11": 2,
+    "focused_native_tests": 5,
+    "jobs_runtime_tests_on_pg17_11": 52,
+    "manifest_sha256": "57fa682003513b45dad395989bbc642fb8f7cda709a18ba1119f77e3bd05e192",
+    "result_sha256": "60e0c2d3166520f1a8c2bd78c6eb75c5aac8279059bf2f830a57bea9d3e7f7c8",
+    "native_test_log_sha256": "bd867a8a1926cdaef8ac68a2288a4e6ef9dbc4eb9d24e1e730050ba02d23ae48",
+    "postgres_test_log_sha256": "5cf0add4209f717094ec5e24cf66e5a4a6a2513e7997daf5a7780d5528d722fa",
+    "profiles": {
+      "direct_one_slot": {
+        "jobs_per_second": {"off": 45.33973321673702, "on": 74.95820944858204},
+        "effect_commit_to_settlement_ms": {"off": 11.7889404296875, "on": 0.873046875},
+        "pairs_improved": 5
+      },
+      "pooled_16_slots": {
+        "jobs_per_second": {"off": 399.1740722016823, "on": 402.473700048516},
+        "effect_commit_to_settlement_ms": {"off": 2.71142578125, "on": 1.8223876953125},
+        "pairs_improved": 3
+      }
+    },
+    "run": "target/jobs-parity/shared-exit-wake-study/comparison-obm8dnm1",
+    "scope": "macOS arm64, PostgreSQL 17.11, verified TLS/SCRAM, short jobs, five pairs per profile",
+    "verdict": "experimental"
+  },
   "macos_paired_workload_lanes": {
     "lane_logs": {
       "j1-lane-5": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/lane-evidence/17.11/j1-lane-5.log",
@@ -3423,6 +3449,24 @@
       "bounded drain at the global slot limit and with excess expired leases",
       "compiled inspection default limit and insertion order"
     ]
+  },
+  "blocked_event_logger": {
+    "checkout": "34f061bfb45005c2904c6b1363920b6357564f69",
+    "scope": "compiled join returns while stderr is saturated; status counts write losses after the peer closes",
+    "drops_at_join": 0,
+    "drops_after_close": 4,
+    "log_sha256_by_postgres": {
+      "17.11": "82071cc85a1f68282ebcd5e1c4fd1967ad459b57335b119ea74cee964d2f5bfb",
+      "18.7": "18e908acb13b6dcb4f68c7dc1ac6163d2e839b5b32ebff21389dd13c26b55f50",
+      "19.0": "e21c50a01f52372f1e8dab0f1e1311bd1db593e9dcd9616f2e5a615718c84f3f"
+    }
+  },
+  "waiting_job_assertions": {
+    "checkout": "265f2d5b2b7d486f2332a6790077565d4afcd287",
+    "log_sha256": "97c610daf7bd00a931486586e9aca188f6a4bf815484df72a91d1d202e265eb0",
+    "postgres_version": "17.11",
+    "passed": ["waiting-assert", "waiting-refute"],
+    "scope": "compiled helpers read a no-match snapshot before an external commit"
   },
   "scoped_drain_and_cleanup": {
     "checkout": "308bb6cf1e24d9a60fc4a1e9c3d450dd74c8b91a",

@@ -262,6 +262,11 @@ check that the reader's drop count is positive and its sampled peak reaches
 its bound. Check the throughput and pickup p99 verdicts in `summary.json`
 against the existing profile limits.
 
+On PostgreSQL 17.11, 18.7, and 19.0, the compiled stderr proof kept a
+saturated socket unread through durable settlement and `Jobs.join`. At
+join the drop counter was zero. After the observer closed the socket,
+`Jobs.status` reported four dropped events. [Logger proof](../proof/jobs-parity/qualification-v1.json)
+
 `raw.json` records `runner_event_buffer_bytes` in runner order.
 `metrics.json` and `trials.json` record the largest per-runner value for
 each sink in `event_buffer_bytes`. `summary.json` takes the maximum for
@@ -645,6 +650,16 @@ interval was 0.62 ms against 2.33 ms. Both used batch claims. At 16 slots,
 the experiment still missed the Oban throughput, pickup, and CPU limits.
 The candidate stays experimental because its per-child watcher descriptor
 can prevent a later launch under descriptor pressure. [Experiment receipts](../proof/jobs-parity/qualification-v1.json)
+
+The shared watcher experiment `8c86c592` uses one kqueue per opt-in runner.
+It passed five native macOS tests and the PostgreSQL 17.11 proof with 52
+Jobs runtime tests and both compiled suites. Five release pairs per
+profile used the same binary with the feature toggled. With one slot and
+direct effect writes, median throughput rose from 45.3 to 75.0 jobs/s.
+The effect-commit-to-settlement median fell from 11.79 to 0.87 ms. At 16
+slots with the same warm effect relay in both arms, throughput was 399.2
+and 402.5 jobs/s. Three of five pairs improved. The shared watcher remains
+experimental. [Shared watcher receipt](../proof/jobs-parity/qualification-v1.json)
 
 The separate `4f7d702f` experiment schedules one supervisor recheck after
 an early reply and uses the existing watchdog for later reaps. Across five
@@ -1109,6 +1124,11 @@ slot leaves a queued job untouched, and a one-job drain recovers one
 eligible expired lease while leaving excess and wrong-version rows intact.
 The compiled inspection checks cover the 20-row default and insertion order.
 [Follow-up receipt](../proof/jobs-parity/qualification-v1.json)
+
+The compiled waiting assertions each completed one read with no visible
+match before a separate transaction committed. `Test.assert_enqueued`
+then succeeded and `Test.refute_enqueued` reported the matching job on
+PostgreSQL 17.11 with verified TLS. [Waiting assertion receipt](../proof/jobs-parity/qualification-v1.json)
 
 The maintenance-join test pauses local admission and waits for any pending
 claim to clear before stopping with the cron lock held. This lets the test
