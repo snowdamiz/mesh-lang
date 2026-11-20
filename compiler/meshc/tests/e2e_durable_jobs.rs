@@ -80,6 +80,7 @@ fn durable_jobs_survive_process_boundaries() {
     prove_native_lease_loss(&proof);
     prove_locked_job_does_not_stall_runner(&proof);
     prove_large_context(&proof);
+    prove_batch_context_budget(&proof);
     #[cfg(target_os = "macos")]
     {
         prove_executable_replacement(&proof);
@@ -1183,6 +1184,119 @@ fn prove_large_context(proof: &Proof) {
     ));
     assert_eq!(observed, "1");
     worker.stop();
+}
+
+fn prove_batch_context_budget(shared: &Proof) {
+    const MIB: usize = 1024 * 1024;
+    let dir = shared.dir.join("batch-context-budget");
+    fs::create_dir(&dir).unwrap();
+    let proof = Proof::new(shared.url, shared.binary.clone(), &dir);
+    let labels = ["oversized", "large-a", "small", "large-b", "large-c"];
+    let receipts = proof.enqueue(Value::Array(
+        labels
+            .iter()
+            .map(|label| {
+                json!({"worker":"proof", "args":{"label":label}, "max_attempts":1, "timeout_ms":60_000})
+            })
+            .collect(),
+    ));
+    let receipts = receipts.as_array().unwrap();
+    assert_eq!(receipts.len(), labels.len());
+    let ns = &proof.namespace;
+    for (receipt, bytes) in receipts
+        .iter()
+        .zip([16 * MIB, 12 * MIB, 0, 12 * MIB, 12 * MIB])
+    {
+        if bytes > 0 {
+            proof.sql(&format!(
+                "UPDATE mesh_jobs.jobs SET args = args || jsonb_build_object('large', repeat('x', {bytes}))
+                 WHERE namespace = '{ns}' AND id = {}::uuid",
+                quoted(id(receipt)),
+            ));
+        }
+    }
+    let slots = labels.len();
+    let queue = proof.control(json!({"action":"scale", "queue":"default", "concurrency":slots}));
+    assert_eq!(queue["concurrency"], slots);
+    let mut worker = proof.worker_with_config(
+        "batch-contexts",
+        false,
+        json!({
+            "namespace": ns, "queues": {"default":slots},
+            "workers": [{"worker":"proof", "version":1}], "claim_batch":true,
+            "lease_ms":60_000, "poll_ms":25, "shutdown_grace_ms":8000,
+        }),
+    );
+    eventually("the four admissible contexts settle", || {
+        worker.assert_running();
+        let count = proof.sql(&format!(
+            "SELECT count(*) FROM mesh_jobs.jobs WHERE namespace = '{ns}' AND state = 'completed'"
+        ));
+        (count == "4").then_some(())
+    });
+    worker.signal();
+    let report = worker.join();
+    assert_eq!(report["state"], "stopped", "{report}");
+    assert_eq!(report["drained"], true, "{report}");
+    assert_eq!(report["claimed"], 4, "{report}");
+    assert_eq!(report["outcomes"]["completed"], 4, "{report}");
+    assert!(
+        report["last_error"]
+            .as_str()
+            .is_some_and(|error| error.contains(&format!(
+                "oversized claim context: job {}",
+                id(&receipts[0])
+            ))),
+        "{report}"
+    );
+    let peak = report["peak_queued_context_bytes"].as_u64().unwrap() as usize;
+    // The rows carry five short sets of metadata besides their contexts. Leave
+    // ample room for that metadata and PostgreSQL's query response framing.
+    assert!((24 * MIB..32 * MIB - 4096).contains(&peak), "{report}");
+
+    let jobs: Value = serde_json::from_str(&proof.sql(&format!(
+        "SELECT jsonb_agg(jsonb_build_array(id, state, attempt, mesh_jobs.effect_key(j)) ORDER BY position)
+         FROM mesh_jobs.jobs j WHERE namespace = '{ns}'"
+    )))
+    .unwrap();
+    let expected_jobs: Vec<_> = receipts
+        .iter()
+        .enumerate()
+        .map(|(index, receipt)| {
+            let (state, attempt) = if index == 0 {
+                ("available", 0)
+            } else {
+                ("completed", 1)
+            };
+            json!([id(receipt), state, attempt, receipt["effect_key"]])
+        })
+        .collect();
+    assert_eq!(jobs, json!(expected_jobs));
+    let effects: Value = serde_json::from_str(&proof.sql(&format!(
+        "SELECT jsonb_agg(jsonb_build_array(label, context->>'id', context->'attempt', context->>'effect_key')
+                     ORDER BY label, seq) FROM {ns}.effects"
+    )))
+    .unwrap();
+    let mut expected_effects: Vec<_> = labels[1..].iter().zip(&receipts[1..]).collect();
+    expected_effects.sort_by_key(|(label, _)| **label);
+    assert_eq!(
+        effects,
+        json!(expected_effects
+            .iter()
+            .map(|(label, receipt)| json!([label, id(receipt), 1, receipt["effect_key"]]))
+            .collect::<Vec<_>>())
+    );
+    let oversized_id = quoted(id(&receipts[0]));
+    assert_eq!(
+        proof.sql(&format!(
+            "SELECT count(*) = 1 FROM mesh_jobs.batch_context_blocks
+             WHERE namespace = '{ns}' AND id = {oversized_id}::uuid AND context_bytes > {}",
+            16 * MIB,
+        )),
+        "t",
+    );
+    proof.clean().expect("delete batch context proof data");
+    println!("J2 lane 8 passed: four jobs settled once, the oversized row used no attempt, peak queued context bytes {peak}");
 }
 
 #[cfg(target_os = "macos")]
