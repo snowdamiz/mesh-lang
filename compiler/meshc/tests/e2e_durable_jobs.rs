@@ -606,9 +606,9 @@ fn prove_cron_process_takeover(shared: &Proof) {
 }
 
 fn prove_scoped_compiled_roles(proof: &Proof) {
-    let (bootstrap, path) = proof.url.rsplit_once('/').unwrap();
+    let (base, options) = proof.url.split_once('?').unwrap();
+    let (bootstrap, _) = base.rsplit_once('/').unwrap();
     let (_, host) = bootstrap.rsplit_once('@').unwrap();
-    let (_, options) = path.split_once('?').unwrap();
     let password = std::env::var("MESH_JOBS_TEST_ROLE_PASSWORD").unwrap();
     for suffix in ["fresh", "upgrade"] {
         let path = format!("jobs_role_{suffix}?{options}");
