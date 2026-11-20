@@ -678,6 +678,16 @@
       }
     }
   },
+  "macos_final_compiled_check": {
+    "checkout": "ff300993827d4c17a1ad5a4afa81b5d7fd5d90dc",
+    "log": "target/jobs-parity/ff300993827d4c17a1ad5a4afa81b5d7fd5d90dc/macos-final/postgres-17.11.log",
+    "log_sha256": "797154e9c1c4215a73b14e833cc965b0335057736b3e835f56953b0d39da3b3f",
+    "portability_scope": "macOS arm64",
+    "postgresql_version": "17.11",
+    "result": "passed",
+    "runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+    "transport": "SCRAM with verified TLS"
+  },
   "macos_follow_up_lanes": {
     "17.11": {
       "compiled_checkout": "e2ade6f715190deff01e5231d7442f835fc67df5",
