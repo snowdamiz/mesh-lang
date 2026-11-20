@@ -136,6 +136,7 @@ impl WorkerProcess {
         context: String,
         deadline: Instant,
         lease_deadline: u64,
+        reply_wake: Sender<()>,
     ) -> Result<Self, String> {
         let request = Request {
             handler: handler.to_owned(),
@@ -167,14 +168,10 @@ impl WorkerProcess {
             result,
             reply_deadline: None,
         };
-        let mut output = worker.child.stdout.take().unwrap();
+        let output = worker.child.stdout.take().unwrap();
         std::thread::Builder::new()
             .name("mesh-job-output".into())
-            .spawn(move || {
-                let result = read_frame(&mut output, MAX_REPLY_FRAME)
-                    .map_err(|error| format!("invalid job handler reply: {error}"));
-                let _ = reply.send(result.unwrap_or_else(Err));
-            })
+            .spawn(move || forward_reply(output, reply, reply_wake))
             .map_err(|error| error.to_string())?;
 
         let mut input = worker.child.stdin.take().unwrap();
@@ -241,6 +238,14 @@ impl WorkerProcess {
     }
 }
 
+fn forward_reply(mut output: impl Read, reply: Sender<Reply>, reply_wake: Sender<()>) {
+    let result = read_frame(&mut output, MAX_REPLY_FRAME)
+        .unwrap_or_else(|error| Err(format!("invalid job handler reply: {error}")));
+    if reply.send(result).is_ok() {
+        let _ = reply_wake.try_send(());
+    }
+}
+
 impl Drop for WorkerProcess {
     fn drop(&mut self) {
         // A live child retains authority until its owner stops or reaps it.
@@ -251,8 +256,7 @@ impl Drop for WorkerProcess {
 
 #[cfg(all(test, unix))]
 impl WorkerProcess {
-    fn reaped_fixture(mut child: Child) -> (Self, Sender<Reply>, std::process::ChildStdout) {
-        assert!(child.wait().unwrap().success());
+    fn fixture(mut child: Child) -> (Self, Sender<Reply>, std::process::ChildStdout) {
         let output = child.stdout.take().unwrap();
         let (publish, result) = crossbeam_channel::bounded(1);
         let worker = Self {
@@ -266,15 +270,46 @@ impl WorkerProcess {
     }
 
     pub(super) fn reaped_with_held_reply() -> (Self, Sender<Reply>, Reply) {
-        let child = Command::new("/bin/sh")
+        let mut child = Command::new("/bin/sh")
             .args(["-c", r#"printf '\015\000\000\000{"Ok":"done"}'"#])
             .stdout(Stdio::piped())
             .spawn()
             .unwrap();
-        let (worker, publish, mut output) = Self::reaped_fixture(child);
+        assert!(child.wait().unwrap().success());
+        let (worker, publish, mut output) = Self::fixture(child);
         let reply = read_frame(&mut output, MAX_REPLY_FRAME).unwrap();
         (worker, publish, reply)
     }
+}
+
+#[cfg(all(test, unix))]
+#[test]
+fn worker_reply_wake_does_not_bypass_reap() {
+    let mut child = Command::new("/bin/sh")
+        .args([
+            "-c",
+            r#"printf '\015\000\000\000{"Ok":"done"}'; read -r line"#,
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut input = child.stdin.take().unwrap();
+    let (mut worker, publish, output) = WorkerProcess::fixture(child);
+    let (reply_wake, reply_wakes) = crossbeam_channel::bounded(1);
+
+    forward_reply(output, publish, reply_wake);
+    assert_eq!(reply_wakes.try_recv(), Ok(()));
+    assert!(matches!(
+        worker.poll(Instant::now()),
+        Ok(WorkerPoll::Running)
+    ));
+    input.write_all(b"exit\n").unwrap();
+    assert!(worker.child.wait().unwrap().success());
+    assert!(matches!(
+        worker.poll(Instant::now()),
+        Ok(WorkerPoll::Exited(Ok(output))) if output == "done"
+    ));
 }
 
 #[cfg(all(test, unix))]
@@ -287,7 +322,8 @@ fn reaped_worker_bounds_wait_for_an_inherited_pipe() {
         .spawn()
         .unwrap();
     let input = child.stdin.take().unwrap();
-    let (mut worker, publish, mut output) = WorkerProcess::reaped_fixture(child);
+    assert!(child.wait().unwrap().success());
+    let (mut worker, publish, mut output) = WorkerProcess::fixture(child);
     let reader = std::thread::spawn(move || {
         let reply = read_frame::<Reply>(&mut output, MAX_REPLY_FRAME)
             .unwrap_or_else(|error| Err(error.to_string()));

@@ -90,6 +90,7 @@ fn confirmed_batch_launch_failure_stops_later_launches_and_keeps_refunds_tracked
         config: Config::parse(TEST_CONFIG).unwrap(),
         check_worker: || Ok(()),
         dispatcher: OnceLock::new(),
+        reply_wake: crossbeam_channel::bounded(1).0,
         events: None,
         wakeups: None,
         state: Mutex::new(State {
@@ -127,9 +128,9 @@ fn confirmed_batch_launch_failure_stops_later_launches_and_keeps_refunds_tracked
     ))
     .unwrap();
     let launches = AtomicUsize::new(0);
-    let launch = move |context, deadline, lease_deadline| {
+    let launch = move |context, deadline, lease_deadline, reply_wake| {
         if launches.fetch_add(1, Ordering::Relaxed) == 0 {
-            TimedWorker::start(context, deadline, lease_deadline)
+            TimedWorker::start(context, deadline, lease_deadline, reply_wake)
         } else {
             Err("injected launch error".into())
         }
@@ -195,6 +196,7 @@ fn polling_and_kill_errors_keep_an_attempt_undrained_until_reap() {
         config: Config::parse(TEST_CONFIG).unwrap(),
         check_worker: || Ok(()),
         dispatcher: OnceLock::new(),
+        reply_wake: crossbeam_channel::bounded(1).0,
         events: None,
         wakeups: None,
         state: Mutex::new(State {
@@ -379,6 +381,7 @@ fn acknowledgement_retry_preserves_token_without_reconstructing_a_commit() {
             config,
             check_worker: || Ok(()),
             dispatcher: OnceLock::new(),
+            reply_wake: crossbeam_channel::bounded(1).0,
             events: Events::new(8, false).unwrap(),
             wakeups: None,
             state: Mutex::new(State {
@@ -475,7 +478,12 @@ struct TimedWorker {
 }
 
 impl TimedWorker {
-    fn start(context: String, _: Instant, _: u64) -> Result<Box<dyn JobProcess>, String> {
+    fn start(
+        context: String,
+        _: Instant,
+        _: u64,
+        _: Sender<()>,
+    ) -> Result<Box<dyn JobProcess>, String> {
         let context: serde_json::Value = serde_json::from_str(&context).unwrap();
         let wait_ms = context["args"]["wait_ms"].as_u64().unwrap();
         let kill_delay = context["args"]["kill_delay_ms"].as_u64().unwrap_or(0);
@@ -514,7 +522,13 @@ impl JobProcess for TimedWorker {
 fn a_late_renewal_cannot_extend_an_expired_local_lease() {
     let now = Instant::now();
     let mut execution = Execution::Running(Running {
-        process: TimedWorker::start(r#"{"args":{"wait_ms":2000}}"#.into(), now, 0).unwrap(),
+        process: TimedWorker::start(
+            r#"{"args":{"wait_ms":2000}}"#.into(),
+            now,
+            0,
+            crossbeam_channel::bounded(1).0,
+        )
+        .unwrap(),
         deadline: now + TEST_WAIT,
         lease_deadline: now,
         reaped: false,

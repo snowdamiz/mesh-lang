@@ -3,6 +3,7 @@ use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError};
 use std::sync::{Arc, LazyLock, OnceLock};
 use std::time::{Duration, Instant};
 
+use crossbeam_channel::Sender;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
@@ -55,7 +56,8 @@ impl JobProcess for WorkerProcess {
     }
 }
 
-type StartWorker = dyn Fn(String, Instant, u64) -> Result<Box<dyn JobProcess>, String> + Send;
+type StartWorker =
+    dyn Fn(String, Instant, u64, Sender<()>) -> Result<Box<dyn JobProcess>, String> + Send;
 
 #[derive(Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -409,6 +411,7 @@ struct Runner {
     state: Mutex<State>,
     check_worker: fn() -> Result<(), String>,
     dispatcher: OnceLock<std::thread::Thread>,
+    reply_wake: Sender<()>,
     events: Option<Events>,
     wakeups: Option<Arc<Wakeups>>,
 }
@@ -623,12 +626,13 @@ pub(super) fn start(
 }
 
 fn worker_launcher(handler: String) -> Box<StartWorker> {
-    Box::new(move |context, deadline, lease_deadline| {
+    Box::new(move |context, deadline, lease_deadline, reply_wake| {
         Ok(Box::new(WorkerProcess::start(
             &handler,
             context,
             deadline,
             lease_deadline,
+            reply_wake,
         )?))
     })
 }
@@ -793,11 +797,13 @@ fn start_configured(
         .ok_or("runner identifiers exhausted")?;
     let events = Events::new(config.event_buffer, config.event_log)?;
     let state = Mutex::new(State::new(&config));
+    let (reply_wake, reply_wakes) = crossbeam_channel::bounded(1);
     let runner = Arc::new(Runner {
         id,
         config,
         check_worker,
         dispatcher: OnceLock::new(),
+        reply_wake,
         events,
         wakeups,
         state,
@@ -807,8 +813,14 @@ fn start_configured(
     let supervisor = std::thread::Builder::new()
         .name(format!("mesh-jobs-watch-{id}"))
         .spawn(move || {
+            let mut reap_at = Instant::now();
             while supervised.supervise() {
-                std::thread::park_timeout(TICK);
+                let now = Instant::now();
+                if now >= reap_at {
+                    reap_at = now + TICK;
+                }
+                // An early reply can precede exit. Keep the next timed reap in place.
+                let _ = reply_wakes.recv_deadline(reap_at);
             }
         })
         .map_err(|error| format!("could not start job runner supervisor: {error}"))?;
@@ -2259,7 +2271,14 @@ fn launch_confirmed(
     {
         Execution::acknowledging(Reply::Unstarted(FailureKind::Shutdown), None)
     } else if let Some(deadline) = deadline {
-        match start_worker(context, deadline, lease.worker_expires_at) {
+        // The caller holds runner.state through registration, so the supervisor
+        // cannot miss an attempt that replies during launch.
+        match start_worker(
+            context,
+            deadline,
+            lease.worker_expires_at,
+            runner.reply_wake.clone(),
+        ) {
             Ok(process) => {
                 runner.publish(Kind::AttemptStarted, identity.as_ref());
                 Execution::Running(Running {
