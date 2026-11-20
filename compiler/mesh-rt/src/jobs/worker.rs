@@ -19,6 +19,7 @@ const WORKER_ARG: &str = "--mesh-internal-job-attempt-v1";
 const MAX_REQUEST_HEADER: usize = 1024 * 1024;
 const MAX_OUTCOME: usize = 64 * 1024;
 const MAX_REPLY_FRAME: usize = MAX_OUTCOME * 6 + 64;
+const REAPED_REPLY_GRACE: Duration = Duration::from_secs(1);
 const TIMEOUT: i32 = 171;
 const LEASE_LOST: i32 = 172;
 const PARENT_GONE: i32 = 173;
@@ -113,11 +114,18 @@ struct Request {
     lease_deadline: u64,
 }
 
+pub(super) enum WorkerPoll {
+    Running,
+    AwaitingReply,
+    Exited(Reply),
+}
+
 pub(super) struct WorkerProcess {
     child: Child,
     renewals: Sender<()>,
     lease_deadline: Arc<AtomicU64>,
     result: Receiver<Reply>,
+    reply_deadline: Option<Instant>,
 }
 
 impl WorkerProcess {
@@ -155,6 +163,7 @@ impl WorkerProcess {
             renewals,
             lease_deadline,
             result,
+            reply_deadline: None,
         };
         let mut output = worker.child.stdout.take().unwrap();
         std::thread::Builder::new()
@@ -199,27 +208,34 @@ impl WorkerProcess {
         self.child.kill().map_err(|error| error.to_string())
     }
 
-    pub(super) fn poll(&mut self) -> Result<Option<Reply>, String> {
+    pub(super) fn poll(&mut self, now: Instant) -> Result<WorkerPoll, String> {
         let Some(status) = self.child.try_wait().map_err(|error| error.to_string())? else {
-            return Ok(None);
+            return Ok(WorkerPoll::Running);
         };
         let reason = match status.code() {
             Some(TIMEOUT) => "job handler timed out".into(),
             Some(LEASE_LOST) => "job lease lost".into(),
             Some(PARENT_GONE) => "job runner disconnected".into(),
             Some(BOOTSTRAP_ERROR) => "job handler could not enter its worker runtime".into(),
-            Some(0) => {
-                return Ok(match self.result.try_recv() {
-                    Ok(outcome) => Some(outcome),
-                    Err(TryRecvError::Empty) => None,
-                    Err(TryRecvError::Disconnected) => {
-                        Some(Err("job handler returned no result".into()))
-                    }
-                });
-            }
+            Some(0) => return Ok(self.poll_reply(now)),
             _ => format!("job handler process exited: {status}"),
         };
-        Ok(Some(Err(reason)))
+        Ok(WorkerPoll::Exited(Err(reason)))
+    }
+
+    fn poll_reply(&mut self, now: Instant) -> WorkerPoll {
+        match self.result.try_recv() {
+            Ok(outcome) => return WorkerPoll::Exited(outcome),
+            Err(TryRecvError::Empty) => {
+                // An inherited writer can keep the pipe open after the child exits.
+                let deadline = self.reply_deadline.get_or_insert(now + REAPED_REPLY_GRACE);
+                if now < *deadline {
+                    return WorkerPoll::AwaitingReply;
+                }
+            }
+            Err(TryRecvError::Disconnected) => {}
+        }
+        WorkerPoll::Exited(Err("job handler returned no result".into()))
     }
 }
 
@@ -229,6 +245,60 @@ impl Drop for WorkerProcess {
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
+}
+
+#[cfg(all(test, unix))]
+impl WorkerProcess {
+    fn reaped_fixture(mut child: Child) -> (Self, Sender<Reply>, std::process::ChildStdout) {
+        assert!(child.wait().unwrap().success());
+        let output = child.stdout.take().unwrap();
+        let (publish, result) = crossbeam_channel::bounded(1);
+        let worker = Self {
+            child,
+            renewals: crossbeam_channel::bounded(1).0,
+            lease_deadline: Arc::new(AtomicU64::new(0)),
+            result,
+            reply_deadline: None,
+        };
+        (worker, publish, output)
+    }
+
+    pub(super) fn reaped_with_held_reply() -> (Self, Sender<Reply>, Reply) {
+        let child = Command::new("/bin/sh")
+            .args(["-c", r#"printf '\015\000\000\000{"Ok":"done"}'"#])
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let (worker, publish, mut output) = Self::reaped_fixture(child);
+        let reply = read_frame(&mut output, MAX_REPLY_FRAME).unwrap();
+        (worker, publish, reply)
+    }
+}
+
+#[cfg(all(test, unix))]
+#[test]
+fn reaped_worker_bounds_wait_for_an_inherited_pipe() {
+    let mut child = Command::new("/bin/sh")
+        .args(["-c", "exec 3<&0; /bin/cat <&3 & exit 0"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let input = child.stdin.take().unwrap();
+    let (mut worker, publish, mut output) = WorkerProcess::reaped_fixture(child);
+    let reader = std::thread::spawn(move || {
+        let reply = read_frame::<Reply>(&mut output, MAX_REPLY_FRAME)
+            .unwrap_or_else(|error| Err(error.to_string()));
+        let _ = publish.send(reply);
+    });
+    let now = Instant::now();
+    assert!(matches!(worker.poll(now), Ok(WorkerPoll::AwaitingReply)));
+    assert!(matches!(
+        worker.poll(now + REAPED_REPLY_GRACE),
+        Ok(WorkerPoll::Exited(Err(reason))) if reason == "job handler returned no result"
+    ));
+    drop(input);
+    reader.join().unwrap();
 }
 
 #[no_mangle]

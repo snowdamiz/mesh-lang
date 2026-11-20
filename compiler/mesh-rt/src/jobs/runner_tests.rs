@@ -28,12 +28,12 @@ fn config_matches_store_names_and_bounds_runner_capacity() {
 #[test]
 fn polling_and_kill_errors_keep_an_attempt_undrained_until_reap() {
     struct Worker {
-        polls: std::collections::VecDeque<Result<Option<Result<String, String>>, String>>,
+        polls: std::collections::VecDeque<Result<WorkerPoll, String>>,
         kills: usize,
     }
 
     impl JobProcess for Worker {
-        fn poll(&mut self) -> Result<Option<Result<String, String>>, String> {
+        fn poll(&mut self, _: Instant) -> Result<WorkerPoll, String> {
             self.polls.pop_front().unwrap()
         }
 
@@ -73,8 +73,8 @@ fn polling_and_kill_errors_keep_an_attempt_undrained_until_reap() {
                         process: Box::new(Worker {
                             polls: [
                                 Err("could not poll worker".into()),
-                                Ok(None),
-                                Ok(Some(Ok(r#"{"action":"complete"}"#.into()))),
+                                Ok(WorkerPoll::Running),
+                                Ok(WorkerPoll::Exited(Ok(r#"{"action":"complete"}"#.into()))),
                             ]
                             .into(),
                             kills: 0,
@@ -112,6 +112,45 @@ fn polling_and_kill_errors_keep_an_attempt_undrained_until_reap() {
     assert!(
         matches!(reply.outcome(), Outcome::Fail { reason } if reason == "could not poll worker")
     );
+}
+
+#[test]
+#[cfg(unix)]
+fn reaped_worker_reply_survives_timeout_and_shutdown() {
+    let now = Instant::now();
+    for (deadline, shutting_down) in [(now, false), (now + TEST_WAIT, true)] {
+        let (process, publish, reply) = WorkerProcess::reaped_with_held_reply();
+        let mut running = Running {
+            process: Box::new(process),
+            deadline,
+            lease_deadline: now + TEST_WAIT,
+            stop: None,
+        };
+        assert!(running.poll(now, shutting_down, &mut None).is_none());
+        publish.send(reply).unwrap();
+        match running.poll(now, shutting_down, &mut None) {
+            Some(Reply::Returned(output)) => assert_eq!(output, "done"),
+            Some(Reply::Failed(reason)) => panic!("reaped worker failed: {reason}"),
+            _ => panic!("reaped worker did not return its reply"),
+        }
+    }
+}
+
+#[test]
+#[cfg(unix)]
+fn reaped_worker_keeps_a_previous_stop_while_awaiting_reply() {
+    let now = Instant::now();
+    let (process, _publish, _) = WorkerProcess::reaped_with_held_reply();
+    let mut running = Running {
+        process: Box::new(process),
+        deadline: now,
+        lease_deadline: now + TEST_WAIT,
+        stop: Some(Reply::Cancelled),
+    };
+    assert!(matches!(
+        running.poll(now, true, &mut None),
+        Some(Reply::Cancelled)
+    ));
 }
 
 #[test]
@@ -153,12 +192,15 @@ impl TimedWorker {
 }
 
 impl JobProcess for TimedWorker {
-    fn poll(&mut self) -> Result<Option<Result<String, String>>, String> {
+    fn poll(&mut self, _: Instant) -> Result<WorkerPoll, String> {
         let now = Instant::now();
-        if let Some(reaps_at) = self.reaps_at {
-            return Ok((now >= reaps_at).then(|| Err("worker killed".into())));
-        }
-        Ok((now >= self.completes_at).then(|| Ok(r#"{"action":"complete"}"#.into())))
+        Ok(match self.reaps_at {
+            Some(reaps_at) if now >= reaps_at => WorkerPoll::Exited(Err("worker killed".into())),
+            None if now >= self.completes_at => {
+                WorkerPoll::Exited(Ok(r#"{"action":"complete"}"#.into()))
+            }
+            _ => WorkerPoll::Running,
+        })
     }
 
     fn kill(&mut self) -> Result<(), String> {

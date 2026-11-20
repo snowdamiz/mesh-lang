@@ -12,7 +12,7 @@ use super::store::{
     claim, drain_has_work, finish, prune, recover, renew, Claim, LeaseStatus, Outcome, Settlement,
 };
 use super::with_pool;
-use super::worker::{check_executable, handler_name, host_deadline, WorkerProcess};
+use super::worker::{check_executable, handler_name, host_deadline, WorkerPoll, WorkerProcess};
 
 const TICK: Duration = Duration::from_millis(10);
 const MAX_GRACE_MS: u64 = 300_000;
@@ -25,14 +25,14 @@ const CANCELLED: &str = "job cancelled";
 const LEASE_LOST: &str = "job lease lost";
 
 trait JobProcess: Send {
-    fn poll(&mut self) -> Result<Option<Result<String, String>>, String>;
+    fn poll(&mut self, now: Instant) -> Result<WorkerPoll, String>;
     fn renew(&mut self, lease_deadline: u64) -> Result<(), String>;
     fn kill(&mut self) -> Result<(), String>;
 }
 
 impl JobProcess for WorkerProcess {
-    fn poll(&mut self) -> Result<Option<Result<String, String>>, String> {
-        self.poll()
+    fn poll(&mut self, now: Instant) -> Result<WorkerPoll, String> {
+        self.poll(now)
     }
 
     fn renew(&mut self, lease_deadline: u64) -> Result<(), String> {
@@ -577,14 +577,15 @@ impl Running {
         shutting_down: bool,
         last_error: &mut Option<String>,
     ) -> Option<Reply> {
-        let poll_error = match self.process.poll() {
-            Ok(Some(result)) => {
+        let poll_error = match self.process.poll(now) {
+            Ok(WorkerPoll::Exited(result)) => {
                 return Some(self.stop.take().unwrap_or_else(|| match result {
                     Ok(output) => Reply::Returned(output),
                     Err(error) => Reply::Failed(error),
                 }));
             }
-            Ok(None) => None,
+            Ok(WorkerPoll::AwaitingReply) => return self.stop.take(),
+            Ok(WorkerPoll::Running) => None,
             Err(error) => {
                 *last_error = Some(error.chars().take(1024).collect());
                 Some(error)
