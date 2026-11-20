@@ -103,12 +103,13 @@ defmodule JobsParityOban do
             [namespace, request_id]
           )
 
-          count =
+          ids =
             changesets
             |> Enum.chunk_every(@batch_size)
-            |> Enum.reduce(0, fn batch, count -> count + length(Oban.insert_all(batch)) end)
+            |> Enum.flat_map(&Oban.insert_all/1)
+            |> Map.new(fn job -> {job.args["key"], Integer.to_string(job.id)} end)
 
-          receipt = %{count: count, xid: xid}
+          receipt = %{count: map_size(ids), xid: xid, ids: ids}
           if rollback, do: Repo.rollback(receipt), else: receipt
         end)
 

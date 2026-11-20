@@ -51,15 +51,31 @@ fn collect_specs(jobs :: Json, index :: Int, stop :: Int, specs :: List<String>,
   collect_specs(jobs, index + 1, stop, List.append(specs, spec), next_bytes)
 end
 
-fn enqueue_batches(conn :: borrow PgConn, jobs :: Json, index :: Int, count :: Int) -> Unit!String do
+fn collect_ids(receipts :: Json, jobs :: Json, start :: Int, index :: Int, count :: Int, ids :: Map<String, String>) -> Map<String, String>!String do
+  if index == count do
+    return Ok(ids)
+  end
+  let job = Json.array_get(jobs, start + index)?
+  let key = Json.as_string(Json.object_get(job, "key")?)?
+  let receipt = Json.array_get(receipts, index)?
+  let id = Json.as_string(Json.object_get(receipt, "id")?)?
+  collect_ids(receipts, jobs, start, index + 1, count, Map.put(ids, key, id))
+end
+
+fn enqueue_batches(conn :: borrow PgConn, jobs :: Json, index :: Int, count :: Int, ids :: Map<String, String>) -> Map<String, String>!String do
   if index < count do
     let stop = if count - index > 128 do index + 128 else count end
     let specs = collect_specs(jobs, index, stop, [], 2)?
     let batch = "[" <> String.join(specs, ",") <> "]"
-    let _ = Jobs.enqueue_in(conn, namespace(), batch)?
-    enqueue_batches(conn, jobs, index + List.length(specs), count)
+    let receipts = Json.parse(Jobs.enqueue_in(conn, namespace(), batch)?)?
+    let size = List.length(specs)
+    if Json.array_length(receipts)? != size do
+      return Err("enqueue did not return one receipt per input")
+    end
+    let ids = collect_ids(receipts, jobs, index, 0, size, ids)?
+    enqueue_batches(conn, jobs, index + size, count, ids)
   else
-    Ok(())
+    Ok(ids)
   end
 end
 
@@ -71,9 +87,10 @@ fn write_batch(conn :: borrow PgConn, jobs :: Json, count :: Int, request_id :: 
   let _ = Pg.execute(conn,
     "INSERT INTO public.mesh_jobs_parity_product (engine, namespace, request_id) VALUES ('mesh', $1, $2) ON CONFLICT DO NOTHING",
     [namespace(), request_id])?
-  let _ = enqueue_batches(conn, jobs, 0, count)?
+  let ids = enqueue_batches(conn, jobs, 0, count, Map.new())?
   let rows = Pg.query(conn, "SELECT pg_current_xact_id()::text AS xid", [])?
-  Ok(Map.get(List.head(rows), "xid"))
+  let xid = Map.get(List.head(rows), "xid")
+  Ok(Json.encode(json { count: count, xid: xid, ids: ids }))
 end
 
 fn transact_batch(conn :: borrow PgConn, input :: Json) -> String!String do
@@ -83,9 +100,9 @@ fn transact_batch(conn :: borrow PgConn, input :: Json) -> String!String do
   let rollback = Json.as_bool(Json.object_get(input, "rollback")?)?
   let _ = Pg.begin(conn)?
   case write_batch(conn, jobs, count, request_id) do
-    Ok(xid) ->
+    Ok(receipt) ->
       let _ = (if rollback do Pg.rollback(conn) else Pg.commit(conn) end)?
-      Ok(Json.encode(json { count: count, xid: xid }))
+      Ok(receipt)
     Err(error) ->
       let _ = Pg.rollback(conn)?
       Err(error)

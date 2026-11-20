@@ -365,7 +365,7 @@ SELECT coalesce(json_agg(summary ORDER BY summary.job_key), '[]') FROM (
 ) summary
 """))
 
-    def reconcile_trial(self, engine, namespace, rows, commits):
+    def reconcile_trial(self, engine, namespace, enqueued_ids, handler_attempts, commits):
         relation, _ = job_relation(engine, namespace)
         if engine == "oban":
             schemas = json.loads(self.sql(engine, """
@@ -387,11 +387,13 @@ SELECT json_build_object(
     FROM public.mesh_jobs_parity_effects)
 )
 """))
+        effects = {key: f"{identity}/1" if engine == "mesh" else key for key, identity in enqueued_ids.items()}
         expected = {
-            "jobs": [[namespace, row["id"], row["job_key"]] for row in rows],
+            "jobs": [[namespace, identity, key] for key, identity in enqueued_ids.items()],
             "business": [[engine, namespace, request_id] for request_id in commits],
-            "attempts": [[engine, namespace, row["job_key"], 1, row["effect_key"]] for row in rows],
-            "effects": [[engine, namespace, row["job_key"], row["effect_key"]] for row in rows],
+            "attempts": [[engine, namespace, key, attempt, effects[key]]
+                         for key, attempts in handler_attempts.items() for attempt in attempts],
+            "effects": [[engine, namespace, key, effect_key] for key, effect_key in effects.items()],
         }
         for kind, values in expected.items():
             if sorted(observed[kind], key=repr) != sorted(values, key=repr):
@@ -463,17 +465,26 @@ class Subject:
         return checked([*self.command, action], cwd=self.cwd, env=env, log=log)
 
     def enqueue(self, env, path, log):
+        receipt, committed = self.enqueue_receipt(env, path, log)
+        return receipt["count"], committed
+
+    def enqueue_receipt(self, env, path, log):
         result = self.call("enqueue", dict(env, JOBS_PARITY_INPUT=str(path),
                             JOBS_PARITY_DB_URL=self.cluster.url(self.engine, "parity_producer")), log)
         try:
             receipt = json.loads(result.splitlines()[-1])
-            if not re.fullmatch(r"\d+", receipt["xid"]) or type(receipt["count"]) is not int:
+            ids = receipt["ids"]
+            id_pattern = r"[0-9a-f-]{36}" if self.engine == "mesh" else r"[1-9][0-9]*"
+            if (not re.fullmatch(r"\d+", receipt["xid"]) or type(receipt["count"]) is not int
+                    or type(ids) is not dict or len(ids) != receipt["count"]
+                    or any(not isinstance(value, str) or not re.fullmatch(id_pattern, value) for value in ids.values())
+                    or len(set(ids.values())) != len(ids)):
                 raise ValueError("invalid enqueue receipt")
         except (ValueError, KeyError, IndexError, TypeError) as error:
             raise FixtureError(f"invalid enqueue receipt in {log}") from error
         committed = self.cluster.sql(self.engine, "SELECT extract(epoch FROM "
                                      f"pg_xact_commit_timestamp('{receipt['xid']}'::xid))*1000")
-        return receipt["count"], float(committed) if committed else None
+        return receipt, float(committed) if committed else None
 
     def run(self, env, index, log):
         with log.open("wb") as stream:
@@ -709,6 +720,7 @@ def run_trial(subject, allocation, workload, batches, scratch, evidence, setting
         idle_s = time.monotonic() - idle_start
         idle_samples.append(take_sample(cluster, engine, namespace, processes, idle_start))
         commits = {}
+        enqueued_ids = {}
         start = time.monotonic()
         samples = []
         interval = settings["observer_interval_ms"] / 1000
@@ -724,15 +736,16 @@ def run_trial(subject, allocation, workload, batches, scratch, evidence, setting
         with ThreadPoolExecutor(max_workers=1) as producer:
             for path, batch in zip(paths, batches, strict=True):
                 request_id = batch["request_id"]
-                enqueue = producer.submit(subject.enqueue, env, path, evidence / f"enqueue-{request_id}.log")
+                enqueue = producer.submit(subject.enqueue_receipt, env, path, evidence / f"enqueue-{request_id}.log")
                 while not enqueue.done() and time.monotonic() < deadline:
                     settled_count(len(expected))
                     time.sleep(interval)
-                count, commit_ms = enqueue.result(timeout=max(0.0, deadline - time.monotonic()))
-                if count != len(batch["jobs"]) or commit_ms is None:
+                receipt, commit_ms = enqueue.result(timeout=max(0.0, deadline - time.monotonic()))
+                if set(receipt["ids"]) != {job["key"] for job in batch["jobs"]} or commit_ms is None:
                     raise QueueMismatch(f"{request_id} did not confirm the expected enqueue transaction")
+                enqueued_ids.update(receipt["ids"])
                 commits[request_id] = commit_ms
-                expected_total += count
+                expected_total += receipt["count"]
                 if workload["mode"] == "sparse":
                     wait_for(lambda: settled_count(expected_total), deadline, request_id, interval)
                     time.sleep(settings["poll_ms"] / 1000)
@@ -751,7 +764,7 @@ def run_trial(subject, allocation, workload, batches, scratch, evidence, setting
     if observed_peak > sum(allocation):
         raise QueueMismatch(f"observed {observed_peak} executing jobs above {sum(allocation)} slots")
     rows = account(cluster.rows(engine, namespace), expected, commits, settings["clock_tolerance_ms"])
-    writes = cluster.reconcile_trial(engine, namespace, rows, commits)
+    writes = cluster.reconcile_trial(engine, namespace, enqueued_ids, dict.fromkeys(expected, (1,)), commits)
     duration = (max(row["settled_ms"] for row in rows) - min(commits.values())) / 1000
     if duration <= 0:
         raise FixtureError("nonpositive committed observation interval")
@@ -779,7 +792,7 @@ def run_trial(subject, allocation, workload, batches, scratch, evidence, setting
         raise FixtureError("enabled telemetry did not report nonnegative event drop counters")
 
     raw = {"engine": engine, "variant": subject.variant, "namespace": namespace, "pair": pair, "case_sha256": case,
-           "transactions": commits, "attempts": rows, "namespace_writes": writes,
+           "transactions": commits, "enqueued_ids": enqueued_ids, "attempts": rows, "namespace_writes": writes,
            "samples": samples, "idle_samples": idle_samples,
            "poll_ms": int(env["JOBS_PARITY_POLL_MS"]), "wakeups": wakeups,
            "event_drops": event_drops,
@@ -842,9 +855,12 @@ def run_fault(subject, scratch, evidence, settings):
         batch = {"request_id": batch_id, "rollback": rollback, "jobs": [{
             "key": batch_id, "payload": "synthetic", "hold_ms": hold_ms, "fail_first": fail_first}]}
         path = batch_files(scratch, [batch])[0]
-        return subject.enqueue(env, path, evidence / f"{batch_id}.log")
+        receipt, committed = subject.enqueue_receipt(env, path, evidence / f"{batch_id}.log")
+        if set(receipt["ids"]) != {batch_id}:
+            raise QueueMismatch(f"unexpected enqueue receipt for {batch_id}")
+        return receipt["ids"], committed
 
-    _, rollback_timestamp = enqueue("rolled_back", True, False, 0)
+    rolled_back, rollback_timestamp = enqueue("rolled_back", True, False, 0)
     if rollback_timestamp is not None:
         raise QueueMismatch("rollback xid had a commit timestamp")
     process = subject.run(env, 0, evidence / "initial-runner.log")
@@ -854,7 +870,7 @@ def run_fault(subject, scratch, evidence, settings):
         deadline = time.monotonic() + settings["trial_timeout_seconds"]
         wait_for(lambda: runner_ready([process], [evidence / "initial-runner.log"]),
                  deadline, "fault runner readiness")
-        _, committed = enqueue("interrupted", False, True, 30_000)
+        enqueued, committed = enqueue("interrupted", False, True, 30_000)
         if committed is None:
             raise QueueMismatch("fault fixture enqueue did not commit")
 
@@ -876,6 +892,8 @@ SELECT json_build_object(
         claim = cluster.claim_identity(engine, namespace, "interrupted")
         if claim is None or claim["state"] != "executing" or claim["attempt"] != 1 or not claim["fence"]:
             raise FixtureError("missing original claim identity at fault barrier")
+        if claim["id"] != enqueued["interrupted"]:
+            raise QueueMismatch("the original claim did not use the enqueue ID")
         remember_workers([process], process_table())
         os.kill(process.pid, signal.SIGKILL)
         process.wait(timeout=10)
@@ -910,35 +928,25 @@ SELECT mesh_jobs.settle('{namespace}', '{claim['id']}', '{claim['fence']}',
 
         wait_for(lambda: cluster.observe(engine, namespace)["terminal"] == 1,
                  deadline, "recovered settlement")
-        rows = cluster.rows(engine, namespace)
-        if len(rows) != 1:
-            raise QueueMismatch("rollback or recovery left unexpected durable jobs")
-        row = rows[0]
-        if (row["job_key"], row["state"], row["attempts"], row["effects"], row["effect_keys"]) != (
-                "interrupted", "completed", 2, 1, 1):
-            raise QueueMismatch(f"recovery did not reconcile: {row}")
-        writes = cluster.reconcile_writes(engine, namespace, {
-            "attempts": {"interrupted": 2}, "effects": {"interrupted": 1},
-        })
-        product = cluster.sql(engine, f"""
-SELECT request_id FROM public.mesh_jobs_parity_product
-WHERE engine = '{engine}' AND namespace = '{namespace}'
-""")
-        if product != "interrupted":
-            raise QueueMismatch("unexpected business writes after rollback and recovery")
-        write_json(evidence / "fault.json", {
-            "engine": engine, "before_signal": before, "after_recovery": row,
-            "fault": "runner SIGKILL after committed effect and before settlement",
-            "enqueue_commit_ms": committed, "rollback_commit_ms": rollback_timestamp,
-            "stale_ack_rejected": stale_ack_rejected,
-            "job_id_preserved": True, "replacement_fence_changed": True, "namespace_writes": writes,
-        })
         completed = True
     finally:
         if replacement is not None:
             gate.touch(exist_ok=True)
             stop_runners([replacement], require_clean=completed)
         stop_runners([process], require_clean=False)
+
+    rows = cluster.rows(engine, namespace)
+    if len(rows) != 1 or rows[0]["state"] != "completed" or rows[0]["attempt"] != 2:
+        raise QueueMismatch(f"recovery did not reconcile: {rows}")
+    writes = cluster.reconcile_trial(engine, namespace, enqueued, {"interrupted": (1, 2)}, ("interrupted",))
+    write_json(evidence / "fault.json", {
+        "engine": engine, "before_signal": before, "after_recovery": rows[0],
+        "fault": "runner SIGKILL after committed effect and before settlement",
+        "enqueue_commit_ms": committed, "rollback_commit_ms": rollback_timestamp,
+        "enqueued_ids": enqueued, "rolled_back_ids": rolled_back,
+        "stale_ack_rejected": stale_ack_rejected,
+        "job_id_preserved": True, "replacement_fence_changed": True, "namespace_writes": writes,
+    })
 
 
 def run_settlement_fault(subject, scratch, evidence, settings, placement, proxy_type):
@@ -967,29 +975,20 @@ def run_settlement_fault(subject, scratch, evidence, settings, placement, proxy_
     def events_for_job():
         return [report["event"] for report in mesh_reports(log)
                 if ("event" in report and isinstance(report.get("attempt"), dict)
-                    and report["attempt"].get("job_id") == rows[0]["id"])]
+                    and report["attempt"].get("job_id") == enqueued["settlement"])]
 
     with proxy_type(cluster.port, matches, placement) as proxy:
         process = subject.run(dict(env, JOBS_PARITY_DB_URL=cluster.url(engine, port=proxy.port)), 0, log)
         try:
             deadline = time.monotonic() + settings["trial_timeout_seconds"]
             wait_for(lambda: runner_ready([process], [log]), deadline, "settlement-fault runner")
-            _, committed = subject.enqueue(env, input_file, evidence / "enqueue.log")
-            if committed is None:
+            receipt, committed = subject.enqueue_receipt(env, input_file, evidence / "enqueue.log")
+            enqueued = receipt["ids"]
+            if committed is None or set(enqueued) != {"settlement"}:
                 raise QueueMismatch("settlement-fault enqueue did not commit")
             fault = wait_for(lambda: proxy.fault, deadline, f"{placement} transport cut")
             wait_for(lambda: cluster.observe(engine, namespace)["terminal"] == 1,
                      deadline, f"settlement following {placement} cut")
-            rows = cluster.rows(engine, namespace)
-            accepted_attempt_counts = {1} if placement == "after_commit" else {1, 2}
-            if (len(rows) != 1 or rows[0]["state"] != "completed"
-                    or rows[0]["attempts"] not in accepted_attempt_counts
-                    or rows[0]["attempt"] != rows[0]["attempts"]
-                    or rows[0]["effects"] != 1 or rows[0]["effect_keys"] != 1):
-                raise QueueMismatch(f"unexpected durable rows after {placement}: {rows}")
-            writes = cluster.reconcile_writes(engine, namespace, {
-                "attempts": {"settlement": rows[0]["attempts"]}, "effects": {"settlement": 1},
-            })
             if inspect_events:
                 expected = {"ack_uncertain"}
                 if placement == "before_commit":
@@ -999,7 +998,13 @@ def run_settlement_fault(subject, scratch, evidence, settings, placement, proxy_
             completed = True
         finally:
             stop_runners([process], require_clean=completed)
-    receipt = {"engine": engine, "fault": fault, "rows": rows, "namespace_writes": writes}
+    rows = cluster.rows(engine, namespace)
+    accepted = {1} if placement == "after_commit" else {1, 2}
+    if len(rows) != 1 or rows[0]["state"] != "completed" or rows[0]["attempt"] not in accepted:
+        raise QueueMismatch(f"unexpected durable rows after {placement}: {rows}")
+    attempts = {"settlement": range(1, rows[0]["attempt"] + 1)}
+    writes = cluster.reconcile_trial(engine, namespace, enqueued, attempts, ("settlement",))
+    receipt = {"engine": engine, "fault": fault, "rows": rows, "enqueued_ids": enqueued, "namespace_writes": writes}
     if inspect_events:
         events = events_for_job()
         confirmed = events.count("settlement_committed")
@@ -1023,11 +1028,13 @@ def run_batch_claim_fault(subject, scratch, evidence, settings, placement, proxy
         raise FixtureError("batch claim fault requires the driver's nonce in a fresh database")
     input_file = batch_files(scratch, [{"request_id": "claim", "rollback": False, "jobs": [
         {"key": "claim", "hold_ms": 0, "fail_first": False, "payload": "synthetic"}]}])[0]
-    count, committed = subject.enqueue(env, input_file, evidence / "enqueue.log")
-    if count != 1 or committed is None:
+    receipt, committed = subject.enqueue_receipt(env, input_file, evidence / "enqueue.log")
+    enqueued = receipt["ids"]
+    if set(enqueued) != {"claim"} or committed is None:
         raise QueueMismatch("batch claim fault requires one committed job")
     before = cluster.claim_identity("mesh", namespace, "claim")
-    if not before or before["attempt"] != 0 or before["fence"] is not None:
+    if (not before or before["id"] != enqueued["claim"] or before["attempt"] != 0
+            or before["fence"] is not None):
         raise QueueMismatch(f"fault input has an unexpected initial state: {before}")
 
     log = evidence / "runner.log"
@@ -1044,25 +1051,19 @@ def run_batch_claim_fault(subject, scratch, evidence, settings, placement, proxy
             fault = wait_for(lambda: proxy.fault, deadline, f"{placement} batch commit cut")
             wait_for(lambda: cluster.observe("mesh", namespace)["terminal"] == 1,
                      deadline, "settlement following an ambiguous claim")
-            rows = cluster.rows("mesh", namespace)
-            expected_attempt = 1 if placement == "before_commit" else 2
-            if (len(rows) != 1 or rows[0]["state"] != "completed" or rows[0]["id"] != before["id"]
-                    or rows[0]["attempt"] != expected_attempt
-                    or rows[0]["first_handler_attempt"] != expected_attempt or rows[0]["effect_keys"] != 1):
-                raise QueueMismatch(f"unexpected durable batch claim after {placement}: {rows}")
-            writes = cluster.reconcile_writes("mesh", namespace, {
-                "attempts": {"claim": 1}, "effects": {"claim": 1},
-            })
-            after = cluster.claim_identity("mesh", namespace, "claim")
-            if after != dict(before, state="completed", attempt=expected_attempt):
-                raise QueueMismatch(f"unexpected job identity or lease fence after {placement}: {after}")
-            worker_pid = int(cluster.sql("mesh", f"""
-SELECT worker_pid FROM public.mesh_jobs_parity_attempts
-WHERE engine = 'mesh' AND namespace = '{namespace}' AND job_key = 'claim'
-"""))
             completed = True
         finally:
             stop_runners([process], require_clean=completed)
+    expected_attempt = 1 if placement == "before_commit" else 2
+    after = cluster.claim_identity("mesh", namespace, "claim")
+    if after != dict(before, state="completed", attempt=expected_attempt):
+        raise QueueMismatch(f"unexpected job identity or lease fence after {placement}: {after}")
+    rows = cluster.rows("mesh", namespace)
+    writes = cluster.reconcile_trial("mesh", namespace, enqueued, {"claim": (expected_attempt,)}, ("claim",))
+    worker_pid = int(cluster.sql("mesh", f"""
+SELECT worker_pid FROM public.mesh_jobs_parity_attempts
+WHERE engine = 'mesh' AND namespace = '{namespace}' AND job_key = 'claim'
+"""))
     with log.open("rb") as stream:
         starts = [line.rstrip() for line in stream if line.startswith(b"PARITY_WORKER_START ")]
     if worker_pid == process.pid or starts != [f"PARITY_WORKER_START {worker_pid}".encode()]:
@@ -1070,7 +1071,7 @@ WHERE engine = 'mesh' AND namespace = '{namespace}' AND job_key = 'claim'
                             f"PID {worker_pid}; see {log}")
     write_json(evidence / "fault.json", {
         "engine": "mesh", "fault": fault, "rows": rows, "namespace_writes": writes,
-        "worker_start_pids": [worker_pid],
+        "enqueued_ids": enqueued, "worker_start_pids": [worker_pid],
     })
 
 
@@ -1494,7 +1495,8 @@ def self_check():
             from unittest.mock import patch
 
             namespace = "parity_0123456789abcdef"
-            job = {"id": "test-id", "job_key": "key", "effect_key": "test-id/1"}
+            enqueued = {"key": "test-id"}
+            attempts = {"key": (1,)}
             observed = {
                 "jobs": [[namespace, "test-id", "key"]],
                 "business": [["mesh", namespace, "batch"]],
@@ -1509,13 +1511,18 @@ def self_check():
                 ("effects", ["mesh", namespace, "key", "test-id/2"]),
             )
             with patch.object(cluster, "sql", side_effect=lambda *_: json.dumps(observed)):
-                cluster.reconcile_trial("mesh", namespace, [job], ["batch"])
+                cluster.reconcile_trial("mesh", namespace, enqueued, attempts, ["batch"])
                 for kind, stray in cases:
                     with self.subTest(kind=kind):
                         observed[kind].append(stray)
                         with self.assertRaisesRegex(QueueMismatch, f"{kind} identities"):
-                            cluster.reconcile_trial("mesh", namespace, [job], ["batch"])
+                            cluster.reconcile_trial("mesh", namespace, enqueued, attempts, ["batch"])
                         observed[kind].pop()
+                observed["jobs"] = [[namespace, "replacement-id", "key"]]
+                observed["attempts"] = [["mesh", namespace, "key", 1, "replacement-id/1"]]
+                observed["effects"] = [["mesh", namespace, "key", "replacement-id/1"]]
+                with self.assertRaisesRegex(QueueMismatch, "jobs identities"):
+                    cluster.reconcile_trial("mesh", namespace, enqueued, attempts, ["batch"])
 
         def test_direct_peak_cannot_exceed_slots(self):
             metrics = dict.fromkeys(("completed", "jobs_per_second", "sql_calls_per_job",
@@ -1529,6 +1536,31 @@ def self_check():
             rows[0]["peak_executing"] = 2
             with self.assertRaisesRegex(QueueMismatch, "exceeds 1 slots"):
                 validate_pairs(rows, 5, 1)
+
+        def test_settlement_fault_reads_state_after_stopping_runner(self):
+            from types import SimpleNamespace
+            from unittest.mock import Mock, patch
+
+            subject = Mock(engine="mesh")
+            subject.environment.return_value = {}
+            subject.enqueue_receipt.return_value = ({"ids": {"settlement": "enqueued"}}, 100)
+            cluster = subject.cluster
+            cluster.expected_version = None
+            cluster.observe.return_value = {"terminal": 1}
+            cluster.rows.return_value = [{"id": "enqueued", "state": "completed", "attempt": 1,
+                                          "attempts": 1, "effects": 1, "effect_keys": 1}]
+
+            def late_write(*_, **__):
+                cluster.rows.return_value[0] = dict(cluster.rows.return_value[0], attempt=99)
+
+            with patch(__name__ + ".runner_ready", return_value=True), patch(
+                __name__ + ".batch_files", return_value=[Path("input.json")]
+            ), patch(__name__ + ".stop_runners", side_effect=late_write), patch(__name__ + ".write_json") as output:
+                proxy = lambda *_: contextlib.nullcontext(SimpleNamespace(port=1234, fault={"cut": True}))
+                with self.assertRaisesRegex(QueueMismatch, "unexpected durable rows"):
+                    run_settlement_fault(subject, Path("scratch"), Path("receipt"),
+                                         {"poll_ms": 250, "trial_timeout_seconds": 1}, "after_commit", proxy)
+                output.assert_not_called()
 
         def test_macos_thread_sample_counts_continuation_rows(self):
             report = """USER      PID  TT  %CPU

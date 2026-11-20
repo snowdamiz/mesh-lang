@@ -25,8 +25,9 @@ records the dependency versions and package checksums.
   `JOBS_PARITY_INPUT`. One transaction writes the product row, calls
   `Oban.insert_all` in groups of up to 128, and captures
   `pg_current_xact_id()::text`. `request_id` defaults to `batch`. The response
-  is one JSON line containing the inserted job `count` and the transaction
-  `xid`. With `rollback: true` the count describes the inserts made inside
+  is one JSON line containing the inserted job `count`, the transaction
+  `xid`, and `ids`, a map from input job keys to returned Oban IDs. With
+  `rollback: true` the receipt describes the inserts made inside
   the rolled-back transaction. The XID has no commit timestamp.
   A repeated request can enqueue another Basic job. The product and effect
   tables deduplicate writes through their unique constraints.

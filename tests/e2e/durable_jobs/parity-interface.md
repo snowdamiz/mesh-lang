@@ -34,9 +34,10 @@ Use namespaces that match `[a-z][a-z0-9_]{0,62}`.
   PostgreSQL transaction writes the business row and enqueues the jobs.
   Larger manifests split across calls of up to 128 specs and 1 MiB within
   that transaction.
-  Standard output carries one line, `{"count":N,"xid":"..."}`, after commit or
-  intentional rollback. The count is the input job count in both cases.
-  The xid comes from `pg_current_xact_id()` inside that transaction.
+  Standard output carries one JSON line with `count`, `xid`, and `ids`
+  after commit or intentional rollback. The count is the input job count.
+  The xid comes from `pg_current_xact_id()` inside that transaction. The
+  `ids` object maps input job keys to the IDs from enqueue receipts.
 - `run` starts a named isolated handler using `JOBS_PARITY_SLOTS` local
   slots and the fallback interval in `JOBS_PARITY_POLL_MS`. When startup
   succeeds, it prints `READY` to standard output. Send `SIGTERM` for shutdown.

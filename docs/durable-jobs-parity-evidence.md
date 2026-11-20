@@ -114,9 +114,10 @@ Batch trials also record the largest confirmed context payload held before
 launch on any runner. A historical runtime can omit that metric. The
 summary then marks the batch context-size budget unverified.
 
-Reconciliation runs after runner shutdown. It checks the final job,
-business-write, attempt, and effect identities across the disposable
-database. A direct occupancy observation above the configured slots
+Reconciliation runs after runner shutdown for load and fault cases. It
+compares the final job, business-write, attempt, and effect identities
+across the disposable database against the producer's enqueue receipts.
+A direct occupancy observation above the configured slots
 fails the trial. The timestamp reconstruction stays available separately.
 
 Pickup uses the interval between the enqueue transaction's commit timestamp
