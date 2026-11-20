@@ -412,6 +412,16 @@
     "result": "pass",
     "runtime_revision": "e8fa00c0c6aa7ae6d4c807cccdd50a3f75f915bd"
   },
+  "latest_rolling_and_promotion": {
+    "postgresql_versions": [
+      "17.11",
+      "18.7",
+      "19.0"
+    ],
+    "receipt": "proof/jobs-parity/j7-rolling-and-promotion.log",
+    "runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+    "worst_promotion_resume_upper_ms": 1228.2
+  },
   "latest_runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
   "listener_outage": {
     "budget_breaches": [],

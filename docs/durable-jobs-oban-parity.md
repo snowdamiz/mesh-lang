@@ -157,7 +157,7 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 - [x] Lane 6. Inject lost claim responses before and after commit. Save `j2-lane-6.log`. Pass when the runner launches only confirmed claims and recovery handles ambiguous rows.
 - [x] Lane 7. Fail a child launch partway through a batch, then kill the runner during a separate startup whose result is uncertain. Save `j2-lane-7.log`. Pass when only proven unstarted rows get refunds, held slots return, uncertain rows recover under a new token, and the runner never launches twice or settles stale with the old token.
 - [x] Lane 8. Mix large and small contexts in a backlog. Save `j2-lane-8.log`. Pass when every successful reply stays within the byte budget and oversized input does not block the queue.
-- [ ] Lane 9. Run old and new binaries with scoped function grants. Save `j2-lane-9.log`. Pass when both versions process their eligible jobs and the old migration cannot change new entry points.
+- [x] Lane 9. Both binaries processed eligible jobs under scoped grants on all three macOS PostgreSQL versions. The old owner migration preserved the new entry points. [Receipt](../proof/jobs-parity/j7-rolling-and-promotion.log)
 - [x] Lane 10. Burden a busy queue while a sparse queue becomes due. Save `j2-lane-10.log`. Pass when the sparse queue claims on its next available rotation.
 
 Run lane 7 on macOS after checking out the proof commit. Set `PG_BIN_DIR`
@@ -414,9 +414,9 @@ OS spawn call and a gate at the existing native worker-start marker.
 - [ ] Lane 2. Run the Linux compiled timeout and parent-death proof. Save `j7-lane-2.log`. Pass when the handler process terminates and the peer can recover the job.
 - [x] Lane 3. Run the macOS executable replacement and shutdown proof. Save `j7-lane-3.log`. Pass when an unstarted claim keeps its attempt budget.
 - [ ] Lane 4. Run real PostgreSQL on any advertised Windows configuration. Save `j7-lane-4.log`. Pass when timeout, parent death, and recovery are proved by a compiled executable.
-- [ ] Lane 5. Upgrade a live namespace with old scheduled and retryable work. Save `j7-lane-5.log`. Pass when persisted attempts and schedules survive.
-- [ ] Lane 6. Roll back to the previous runtime against the updated schema. Save `j7-lane-6.log`. Pass when the previous runner can settle its existing claim with its original grants.
-- [ ] Lane 7. Fail over the primary with a committed queue and an ambiguous acknowledgement. Save `j7-lane-7.log`. Pass when the old primary is fenced, recovered job identities reconcile against the declared replication policy, and eligible work resumes within a lease plus two recovery intervals after the writable primary is ready.
+- [x] Lane 5. The rolling upgrade preserved existing attempts and schedules on macOS arm64 with PostgreSQL 17.11, 18.7, and 19.0. [Receipt](../proof/jobs-parity/j7-rolling-and-promotion.log)
+- [x] Lane 6. The previous runner settled its existing claim under its original grants on the updated schema. A fresh legacy runner completed the pending retry. [Receipt](../proof/jobs-parity/j7-rolling-and-promotion.log)
+- [x] Lane 7. Primary promotion fenced the old primary and reconciled all job and effect identities. Eligible work resumed within 1.23 seconds in all three macOS PostgreSQL runs against a 2-second budget. [Receipt](../proof/jobs-parity/j7-rolling-and-promotion.log)
 - [x] Lane 8. On macOS arm64 with PostgreSQL 17.11, 18.7, and 19.0, the compiled proof exhausted the pool and interrupted notifications and maintenance. Stop and join met their bounds. The peer proved fallback polling, expired-lease recovery, and cron cursor advancement. [Receipt](../proof/jobs-parity/j7-lane-8.log)
 - [x] Lane 9. The guides reproduced enqueue, retry, drain, and lease recovery from a fresh application on macOS arm64 with PostgreSQL 17.11. [Receipt](../proof/jobs-parity/j7-lane-9.log) · [Rerun the guide proof](durable-jobs-parity-evidence.md#replay-the-fresh-application-guides)
 - [ ] Lane 10. Run the matched Oban comparison and inspect the raw results. Save `j7-lane-10.log`. Pass when each supported performance claim maps to a reproducible receipt.
