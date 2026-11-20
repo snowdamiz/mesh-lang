@@ -260,21 +260,42 @@ def summarize(samples):
             "budget": {"max_median_paired_ratio": BUDGET_RATIO, "status": status}}
 
 
-def direct_probe(artifacts, scratch, evidence, env):
-    project = scratch / "direct"
+def direct_probe(side, artifacts, scratch, evidence, env):
+    project = scratch / f"direct-{side}"
     project.mkdir()
-    (project / "mesh.toml").write_text('[package]\nname = "j5-direct"\nversion = "0.1.0"\n')
-    test = project / "direct.test.mpl"
-    test.write_bytes((FIXTURE / test.name).read_bytes())
+    common = (FIXTURE / "direct-common.mpl").read_text()
+    meshc = artifacts / "meshc"
+    if side == "main":
+        (project / "main.mpl").write_text(common + (FIXTURE / "direct-main.mpl").read_text())
+        binary = scratch / "main-direct"
+        checked([meshc, "build", project, "--output", binary, "--opt-level", "0"], cwd=scratch,
+                env=dict(env, MESH_RT_LIB_PATH=str(artifacts / "libmesh_rt.a")),
+                log=evidence / "build-direct-main.log", timeout=180)
+        context = {
+            "id": "a4ab0500-165e-4956-80af-71c7cc9c2854",
+            "effect_key": "a4ab0500-165e-4956-80af-71c7cc9c2854/1",
+            "worker": "proof", "queue": "default", "version": 1,
+            "args": {"label": "direct-probe"}, "attempt": 1, "max_attempts": 3,
+            "scheduled_at_ms": 1000, "metadata": {}, "tags": [],
+        }
+        cmd = [binary]
+        env = dict(env, J5_DIRECT_CONTEXT=json.dumps(context, separators=(",", ":")))
+        measured = "pinned main handler called directly on a prebuilt context"
+    else:
+        (project / "mesh.toml").write_text('[package]\nname = "j5-direct"\nversion = "0.1.0"\n')
+        source = common + (FIXTURE / "direct.test.mpl").read_text()
+        (project / "direct.test.mpl").write_text(source)
+        cmd = [meshc, "test", project]
+        env = dict(env, MESH_TEST_RT_LIB_PATH=str(artifacts / "libmesh_test_rt.a"))
+        measured = "candidate Test.perform_job builds and validates each context and decodes each outcome"
     before = load()
-    output = checked([artifacts / "meshc", "test", project], cwd=scratch,
-                     env=dict(env, MESH_TEST_RT_LIB_PATH=str(artifacts / "libmesh_test_rt.a")),
-                     log=evidence / "direct.log", timeout=180)
+    log = evidence / ("direct-main.log" if side == "main" else "direct.log")
+    output = checked(cmd, cwd=scratch, env=env, log=log, timeout=180)
     samples = [json.loads(line.removeprefix("J5_DIRECT ")) for line in output.splitlines()
                if line.startswith("J5_DIRECT ")]
     require(len(samples) == 7 and all(s["completed"] == 1000 and s["elapsed_ns"] > 0 for s in samples),
             "missing or invalid compiled direct-handler timings")
-    return {"path": "candidate Test.perform_job; compiled Mesh test, no PostgreSQL or worker process",
+    return {"path": measured,
             "host_before": before, "host_after": load(), "samples": samples,
             "ns_per_call": spread([sample["elapsed_ns"] / sample["completed"] for sample in samples])}
 
@@ -336,7 +357,8 @@ def run(args, receipt):
                     print(f"pair {pair} {side}: {sample['drain_ms']:.2f} ms", flush=True)
         receipt["summary"] = summarize(receipt["trials"])
         if args.direct:
-            receipt["direct"] = direct_probe(artifacts["candidate"], scratch, evidence, env)
+            receipt["direct_main"] = direct_probe("main", artifacts["main"], scratch, evidence, env)
+            receipt["direct"] = direct_probe("candidate", artifacts["candidate"], scratch, evidence, env)
         for side in SIDES:
             require(receipt["toolchains"][side]["file_sha256"]
                     == artifact_hashes(artifacts[side], direct=args.direct and side == "candidate"),
@@ -355,7 +377,7 @@ def main():
     parser.add_argument("--pairs", type=int, default=7, help="measured pairs after one warmup pair")
     parser.add_argument("--jobs", type=int, default=24, help="due jobs per trial")
     parser.add_argument("--future", type=int, default=4, help="future jobs per trial")
-    parser.add_argument("--direct", action="store_true", help="run the candidate's compiled test helper")
+    parser.add_argument("--direct", action="store_true", help="time a compiled direct handler call on both toolchains")
     args = parser.parse_args()
     if not args.output.is_relative_to(ROOT) or args.output.exists():
         parser.error("--output must name a new directory inside this checkout")

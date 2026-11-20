@@ -501,8 +501,10 @@ logical CPUs. Raw receipts are in runs `j1-load-0ghrr0su` and
 `scripts/jobs-drain-perf.py` accepts the pinned main and candidate compiler
 and runtime artifacts. It interleaves legacy due-only drain and the new
 bounded drain with one slot. Each trial checks the same completed jobs,
-their effects, and the untouched future rows. Pass `--direct` to time the
-compiled inline helper in a separate test. Pass `--build-profile release`
+their effects, and the untouched future rows. Pass `--direct` to measure the
+same compiled handler on both toolchains. Main calls it with a prebuilt
+context. The candidate uses `Test.perform_job` to build and validate the
+context and decode the outcome on every call. Pass `--build-profile release`
 when comparing two release toolchains.
 
 The local PostgreSQL 17.11 debug run with main `7c162056` and candidate
