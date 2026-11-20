@@ -35,7 +35,7 @@ main() {
     require_file "$workflow"
   done
 
-  ruby -e 'require "yaml"; ARGV.each { |path| YAML.load_file(path) }' \
+  ruby -e 'require "yaml"; ARGV.each { |path| YAML.load_file(path, aliases: true) }' \
     "${workflows[@]/#/$ROOT_DIR/}" || fail "workflow YAML parsing failed"
 
   require_text ".github/workflows/autonomous-cluster-proof.yml" "workflow_call:"
