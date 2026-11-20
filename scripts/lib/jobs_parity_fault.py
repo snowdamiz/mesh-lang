@@ -1,4 +1,4 @@
-"""One-shot PostgreSQL claim and settlement disconnects for the driver's disposable cluster."""
+"""Loopback PostgreSQL fault relays for the driver's disposable cluster."""
 
 import selectors
 import socket
@@ -168,42 +168,17 @@ class _AfterCommit:
         return None
 
 
-class SettlementProxy:
-    """Relay v3 plaintext sessions to a driver-verified loopback PostgreSQL port.
-
-    Use a fresh instance per probe. The caller verifies cluster ownership before
-    entering and supplies a fast predicate over UTF-8 Query or Parse SQL. Read
-    ``port`` inside the context. ``fault`` is None until the cut finishes, and
-    then holds the placement and protocol observations. The caller checks the
-    persisted outcome independently. The after_command_complete placement
-    requires a prior claim query and forwards the COMMIT tag while dropping
-    the idle ReadyForQuery.
-    """
-
-    def __init__(self, upstream_port, sql_matches, placement, *, prior_query=None):
+class _LoopbackProxy:
+    def __init__(self, upstream_port):
         if type(upstream_port) is not int or not 1 <= upstream_port <= 65535:
             raise ValueError("upstream must be a loopback TCP port")
-        if placement not in ("before_commit", "after_commit", "after_command_complete"):
-            raise ValueError("invalid fault placement")
-        if not callable(sql_matches):
-            raise TypeError("sql_matches must be callable")
-        if prior_query is not None and not callable(prior_query):
-            raise TypeError("prior_query must be callable")
-        if placement == "after_command_complete" and prior_query is None:
-            raise ValueError("after_command_complete requires a prior claim query")
         self._upstream_port = upstream_port
-        self._sql_matches = sql_matches
-        self._placement = placement
-        self._prior_query = prior_query
-        self._claimed = threading.Event()
-        self._claim_lock = threading.Lock()
         self._stop = threading.Event()
         self.port = None
-        self.fault = None
 
     def __enter__(self):
         if self.port is not None:
-            raise RuntimeError("settlement proxy is single-use")
+            raise RuntimeError("loopback proxy is single-use")
         listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             listener.bind((_LOOPBACK, 0))
@@ -222,7 +197,7 @@ class SettlementProxy:
         self._stop.set()
         self._thread.join(2 * _IO_SECONDS + 1)
         if self._thread.is_alive():
-            raise RuntimeError("settlement proxy shutdown timed out")
+            raise RuntimeError("loopback proxy shutdown timed out")
 
     def _serve(self, listener):
         workers = []
@@ -248,6 +223,74 @@ class SettlementProxy:
             self._stop.set()
             for worker in workers:
                 worker.join()
+
+
+class ListenerProxy(_LoopbackProxy):
+    """Pass TLS and SCRAM bytes unchanged. Hold new dials behind the gate."""
+
+    def __init__(self, upstream_port):
+        super().__init__(upstream_port)
+        self.hold = threading.Event()
+        self.reconnect_arrived = threading.Event()
+
+    def _relay(self, client):
+        try:
+            with client:
+                if self.hold.is_set():
+                    self.reconnect_arrived.set()
+                    client.settimeout(_POLL_SECONDS)
+                    while not self._stop.is_set():
+                        try:
+                            if not client.recv(4096):
+                                return
+                        except TimeoutError:
+                            continue
+                    return
+                with socket.create_connection((_LOOPBACK, self._upstream_port), timeout=_IO_SECONDS) as backend:
+                    client.settimeout(_IO_SECONDS)
+                    for sock in (client, backend):
+                        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                    with selectors.DefaultSelector() as selector:
+                        selector.register(client, selectors.EVENT_READ, backend)
+                        selector.register(backend, selectors.EVENT_READ, client)
+                        while not self._stop.is_set():
+                            for key, _ in selector.select(_POLL_SECONDS):
+                                chunk = key.fileobj.recv(64 * 1024)
+                                if not chunk:
+                                    return
+                                key.data.sendall(chunk)
+        except OSError:
+            return
+
+
+class SettlementProxy(_LoopbackProxy):
+    """Relay v3 plaintext sessions to a driver-verified loopback PostgreSQL port.
+
+    Use a fresh instance per probe. The caller verifies cluster ownership before
+    entering and supplies a fast predicate over UTF-8 Query or Parse SQL. Read
+    ``port`` inside the context. ``fault`` is None until the cut finishes, and
+    then holds the placement and protocol observations. The caller checks the
+    persisted outcome independently. The after_command_complete placement
+    requires a prior claim query and forwards the COMMIT tag while dropping
+    the idle ReadyForQuery.
+    """
+
+    def __init__(self, upstream_port, sql_matches, placement, *, prior_query=None):
+        super().__init__(upstream_port)
+        if placement not in ("before_commit", "after_commit", "after_command_complete"):
+            raise ValueError("invalid fault placement")
+        if not callable(sql_matches):
+            raise TypeError("sql_matches must be callable")
+        if prior_query is not None and not callable(prior_query):
+            raise TypeError("prior_query must be callable")
+        if placement == "after_command_complete" and prior_query is None:
+            raise ValueError("after_command_complete requires a prior claim query")
+        self._sql_matches = sql_matches
+        self._placement = placement
+        self._prior_query = prior_query
+        self._claimed = threading.Event()
+        self._claim_lock = threading.Lock()
+        self.fault = None
 
     def _matches(self, sql, predicate):
         if self._claimed.is_set():

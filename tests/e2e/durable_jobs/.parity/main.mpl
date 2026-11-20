@@ -228,8 +228,16 @@ fn serve(pool :: PoolHandle) -> String!String do
   end
   let config = String.slice(base_config, 0, String.length(base_config) - 1) <> batch <> listen <> events <> "}"
   let runner = Jobs.start(pool, config, handle)?
+  let status_path = Env.get("JOBS_PARITY_STATUS_PATH", "")
   println("READY")
   while !Process.shutdown_requested() do
+    if status_path != "" && File.exists(status_path <> ".request") do
+      let status = Jobs.status(runner)?
+      let _ = File.rename(status_path <> ".request", status_path <> ".pending")?
+      let _ = File.write(status_path <> ".pending", status)?
+      let _ = File.rename(status_path <> ".pending", status_path)?
+      ()
+    end
     Timer.sleep(25)
   end
   let _ = Jobs.stop(runner, grace)?
@@ -254,7 +262,9 @@ fn run() -> String!String do
   if action == "enqueue" do
     return enqueue()
   end
-  let pool = Pool.open(database_url(), 1, 4, 5000)?
+  let relay_url = Env.get("JOBS_PARITY_POOL_URL", "")
+  let pool_url = if action == "run" && relay_url != "" do relay_url else database_url() end
+  let pool = Pool.open(pool_url, 1, 4, 5000)?
   let result = if action == "migrate" do migrate(pool) else serve(pool) end
   Pool.close(pool)
   result

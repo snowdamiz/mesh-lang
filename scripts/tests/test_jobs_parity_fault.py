@@ -3,7 +3,7 @@ import struct
 import unittest
 from contextlib import contextmanager
 
-from scripts.lib.jobs_parity_fault import SettlementProxy
+from scripts.lib.jobs_parity_fault import ListenerProxy, SettlementProxy
 
 
 def message(kind, body=b""):
@@ -32,6 +32,36 @@ def probe(placement, sql=OBAN_SQL, *, prior=None):
         predicate = lambda query: query == sql.decode()
         with SettlementProxy(server.getsockname()[1], predicate, placement, prior_query=prior) as proxy:
             yield server, proxy
+
+
+class ListenerProxyTests(unittest.TestCase):
+    def test_gate_holds_reconnect_and_preserves_established_opaque_stream(self):
+        with socket.socket() as server:
+            server.bind(("127.0.0.1", 0))
+            server.listen()
+            server.settimeout(2)
+            with ListenerProxy(server.getsockname()[1]) as proxy:
+                endpoint = ("127.0.0.1", proxy.port)
+                with socket.create_connection(endpoint, timeout=2) as runner:
+                    backend, _ = server.accept()
+                    with backend:
+                        self.assertFalse(proxy.reconnect_arrived.is_set())
+                        proxy.hold.set()
+                        for _ in range(2):
+                            with socket.create_connection(endpoint, timeout=2) as reconnect:
+                                reconnect.sendall(b"\xff")
+                                self.assertTrue(proxy.reconnect_arrived.wait(2))
+                                server.settimeout(0.05)
+                                with self.assertRaises(TimeoutError):
+                                    server.accept()
+                                reconnect.settimeout(0.05)
+                                with self.assertRaises(TimeoutError):
+                                    reconnect.recv(1)
+                                proxy.reconnect_arrived.clear()
+                        runner.sendall(b"\xff")
+                        self.assertEqual(backend.recv(1), b"\xff")
+                        backend.sendall(b"\xfe")
+                        self.assertEqual(runner.recv(1), b"\xfe")
 
 
 class SettlementProxyTests(unittest.TestCase):

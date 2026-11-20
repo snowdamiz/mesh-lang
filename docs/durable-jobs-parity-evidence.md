@@ -148,6 +148,43 @@ with listening and 1,781 on main. With both poll intervals set to one
 second, the listener's worst trial commit-to-claim p99 was 4.2 ms. The
 one-second polling control exceeded the configured 750 ms pickup budget.
 
+### Measure fallback with the listener disconnected
+
+Point `PG_BIN_DIR` to the PostgreSQL version you pass below. Use the driver
+from the commit that adds `--listener-outage` and compile the runtime from the
+pinned comparison revision.
+
+```sh
+python3 scripts/jobs-parity.py --listener-outage \
+    --mesh-ref 9f4ae4f19e9b081d6b70752f4688a16fab3c27c7 --postgres-version 17.11
+```
+
+The driver alternates five pairs of healthy and disconnected trials after an
+unmeasured warmup. Both arms use the frozen sparse workload and seed, one
+runner with 16 slots, batch claims, and a 1000 ms runner poll interval. They
+publish wakeups and use the same commit, claim, and handler entry timestamps
+as the sparse comparison.
+
+The driver checks the disposable database's ownership nonce and waits for
+PostgreSQL and the runner to confirm the TLS listener and its initial scan.
+It then holds new coordinator connections at the loopback relay and
+terminates the exact idle listener in the disconnected arm. It waits for a
+reconnect to reach the gate before enqueuing. The original pool, claim, and
+lease settlement sessions keep their verified TLS connections. Handlers and
+producers connect directly to the same SCRAM-authenticated cluster.
+
+Check `raw.json` for the PostgreSQL session identities and live wake counters
+before and after the workload. The disconnected arm must retain the original
+runner sessions, complete every job on its first attempt, and report fallback
+scans without notifications or a new subscription. Check `summary.json` for
+both arms' claim p99 and idle SQL calls per minute. The healthy claim p99
+uses the existing 100 ms limit. The disconnected arm's maximum
+commit-to-handler-entry time must be at most 2000 ms across all measured jobs.
+Check `result.json` for budget breaches.
+
+Live timing from this probe is pending. The historical healthy comparison
+above and the compiled reconnect proof cover their own configurations.
+
 ## Measure runner telemetry
 
 On an idle host, pair the committed candidate with pinned main. Run all three

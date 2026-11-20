@@ -224,7 +224,7 @@ OS spawn call and a gate at the existing native worker-start marker.
 **Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
 - [ ] Metric. Commit-to-claim p99 and idle SQL queries per minute.
-- [ ] Probe. Run the J1 sparse profile with a 1 s fallback poll and repeat with the listener disconnected.
+- [ ] Probe. Run five pairs of the frozen J1 sparse profile with a 1 s fallback poll and the listener healthy or disconnected. [Run the listener outage probe](durable-jobs-parity-evidence.md#measure-fallback-with-the-listener-disconnected)
 - [ ] Baseline. Measure polling first at both the current default cadence and the same 1 s interval.
 - [ ] Rule. Target p99 no greater than 100 ms on a healthy local database with free slots, fallback pickup within two polls, and at least 50% fewer idle polling queries than the current default.
 

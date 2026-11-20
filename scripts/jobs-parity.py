@@ -39,6 +39,8 @@ REFERENCE = ("db606548", "59f6a7b3", "7c162056")
 POSTGRES_VERSION = re.compile(r"[0-9]+\.[0-9]+")
 EVENT_BUFFER_SINKS = ("reader", "logger")
 EVENT_BUFFER_METRICS = ("sampled_peak_bytes", "upper_bound_bytes")
+LISTENER_POLL_MS = 1000
+LISTENER_OUTAGE_PROFILE = ("sparse", 1, 16)
 SCHEMA = """
 CREATE TABLE public.mesh_jobs_parity_attempts (
     engine text NOT NULL, namespace text NOT NULL, job_key text NOT NULL,
@@ -476,6 +478,7 @@ class Subject:
 
     def environment(self, namespace, slots, total_slots, mode, poll_ms):
         return dict(self.env, JOBS_PARITY_DB_URL=self.cluster.url(self.engine),
+                    JOBS_PARITY_POOL_URL="", JOBS_PARITY_STATUS_PATH="",
                     JOBS_PARITY_NAMESPACE=namespace, JOBS_PARITY_SLOTS=str(slots),
                     JOBS_PARITY_TOTAL_SLOTS=str(total_slots), JOBS_PARITY_MODE=mode,
                     JOBS_PARITY_POLL_MS=str(self.poll_ms or poll_ms), JOBS_PARITY_RUNNER="controller")
@@ -713,7 +716,111 @@ def estimated_peak_executing(rows):
     return peak
 
 
-def run_trial(subject, allocation, workload, batches, scratch, evidence, settings, pair):
+class ListenerTrial:
+    """Observe the disposable runner's established sessions and wake source."""
+
+    def __init__(self, cluster, namespace, status_path, proxy, disconnected):
+        self.cluster = cluster
+        self.status_path = status_path
+        self.proxy = proxy
+        self.disconnected = disconnected
+        channel = hashlib.md5(namespace.encode(), usedforsecurity=False).hexdigest()
+        self.listen_sql = f'LISTEN "mesh_jobs_wake_{channel}"'
+        self.scope = """a.datname = current_database() AND a.usename = 'parity_subject'
+                        AND a.client_addr = inet '127.0.0.1' AND a.backend_type = 'client backend'"""
+
+    def sessions(self):
+        return json.loads(self.cluster.sql("mesh", f"""
+SELECT coalesce(json_agg(json_build_object('pid', a.pid, 'port', a.client_port,
+    'tls', s.ssl, 'listener', coalesce(a.query = '{self.listen_sql}' AND a.state = 'idle', false))
+    ORDER BY a.pid), '[]')
+FROM pg_stat_activity a JOIN pg_stat_ssl s USING (pid)
+WHERE {self.scope}
+"""))
+
+    def status(self, deadline):
+        self.status_path.unlink(missing_ok=True)
+        self.status_path.with_suffix(".request").touch(exist_ok=False)
+
+        def read():
+            if self.status_path.is_file():
+                try:
+                    return json.loads(self.status_path.read_text())
+                except ValueError as error:
+                    raise FixtureError("invalid live Mesh runner report") from error
+
+        report = wait_for(read, deadline, "live Mesh wake status", 0.025)
+        if (not isinstance(report, dict) or report.get("state") != "running"
+                or "last_error" not in report or report["last_error"] is not None):
+            raise FixtureError("Mesh runner reported a storage or execution error in the listener trial")
+        wake = report.get("wakeups")
+        fields = ("subscriptions", "subscription_scans", "notification_scans", "due_scans", "fallback_scans")
+        if (not isinstance(wake, dict) or type(wake.get("subscribed")) is not bool
+                or any(type(wake.get(field)) is not int or wake[field] < 0 for field in fields)):
+            raise FixtureError("invalid Mesh wake status in the listener trial")
+        return wake
+
+    def arm(self, deadline):
+        def startup():
+            wake = self.status(deadline)
+            if wake["subscribed"] and wake["subscription_scans"] > 0 and wake["fallback_scans"] > 0:
+                return wake
+
+        self.initial_wake = wait_for(startup, deadline, "subscription and initial fallback scan")
+        self.initial_sessions = self.sessions()
+        listeners = [row for row in self.initial_sessions if row["listener"]]
+        if (len(listeners) != 1 or len(self.initial_sessions) != 4
+                or not all(row["tls"] is True for row in self.initial_sessions)
+                or self.initial_wake["subscriptions"] != 1 or self.initial_wake["notification_scans"] != 0):
+            raise FixtureError("expected one TLS listener and three established TLS runner sessions")
+        if not self.disconnected:
+            return
+
+        # Batch claim and lifecycle sessions are already connected. The pool
+        # serves maintenance, and handlers and producers use the direct URL.
+        listener = listeners[0]
+        self.proxy.hold.set()
+        terminated = self.cluster.sql("mesh", f"""
+SELECT pg_terminate_backend(a.pid)
+FROM pg_stat_activity a JOIN pg_stat_ssl s USING (pid)
+WHERE {self.scope} AND s.ssl AND a.state = 'idle' AND a.query = '{self.listen_sql}'
+  AND a.pid = {listener['pid']} AND a.client_port = {listener['port']}
+  AND EXISTS (SELECT FROM public.mesh_jobs_parity_authority WHERE nonce = '{self.cluster.nonce}')
+""")
+        if terminated != "t":
+            raise FixtureError("could not terminate the owned PostgreSQL listener")
+        wait_for(self.proxy.reconnect_arrived.is_set, deadline, "listener reconnect at the loopback gate")
+
+    def observe(self, deadline):
+        wake = self.status(deadline)
+        sessions = self.sessions()
+        expected = [row for row in self.initial_sessions if not (self.disconnected and row["listener"])]
+        if sessions != expected or wake["subscribed"] == self.disconnected:
+            raise FixtureError(f"expected TLS sessions {expected}, observed {sessions}; "
+                               f"runner subscribed={wake['subscribed']}")
+        if (wake["subscriptions"] != self.initial_wake["subscriptions"]
+                or wake["subscription_scans"] != self.initial_wake["subscription_scans"]):
+            raise FixtureError("listener unexpectedly subscribed again")
+        return {"postgres_sessions": sessions, "wakeups": wake}
+
+    def verify(self, before, after, count):
+        start, end = before["wakeups"], after["wakeups"]
+        if self.disconnected:
+            if (end["notification_scans"] != 0 or end["due_scans"] != start["due_scans"]
+                    or end["fallback_scans"] - start["fallback_scans"] < count):
+                raise FixtureError("disconnected trial did not account for the sparse fallback scans")
+        elif end["notification_scans"] <= start["notification_scans"]:
+            raise FixtureError("healthy listener trial did not record notification-triggered scans")
+        return {
+            "initial_postgres_sessions": self.initial_sessions,
+            "initial_wakeups": self.initial_wake,
+            "reconnect_held": self.proxy.reconnect_arrived.is_set(),
+            "before": before,
+            "after": after,
+        }
+
+
+def run_trial(subject, allocation, workload, batches, scratch, evidence, settings, pair, listener_proxy=None):
     engine = subject.engine
     cluster = subject.cluster
     cluster.prepare_database(engine)
@@ -727,11 +834,24 @@ def run_trial(subject, allocation, workload, batches, scratch, evidence, setting
     logs = [evidence / f"runner-{index}.log" for index in range(len(allocation))]
     processes = []
     completed = False
+    relay = contextlib.ExitStack()
+    listener = listener_evidence = None
     try:
+        if listener_proxy:
+            if not cluster.expected_version or not cluster.owned(engine):
+                raise FixtureError("listener probe requires an owned PostgreSQL cluster with verified TLS")
+            proxy = relay.enter_context(listener_proxy(cluster.port))
+            status_path = scratch / "wake-status"
+            listener = ListenerTrial(cluster, namespace, status_path, proxy, subject.variant == "disconnected")
+            env = dict(env, JOBS_PARITY_POOL_URL=cluster.url(engine, port=proxy.port),
+                       JOBS_PARITY_STATUS_PATH=str(status_path))
         for index, (slots, log) in enumerate(zip(allocation, logs, strict=True)):
             processes.append(subject.run(dict(env, JOBS_PARITY_SLOTS=str(slots)), index, log))
         deadline = time.monotonic() + settings["trial_timeout_seconds"]
         wait_for(lambda: runner_ready(processes, logs), deadline, "runner readiness")
+        if listener:
+            listener.arm(min(deadline, time.monotonic() + 15))
+            listener_before = listener.observe(deadline)
         idle_start = time.monotonic()
         idle_calls_before = cluster.calls(engine)
         idle_samples = [take_sample(cluster, engine, namespace, processes, idle_start)]
@@ -776,9 +896,14 @@ def run_trial(subject, allocation, workload, batches, scratch, evidence, setting
         calls = runner_calls + enqueue_calls
         claim_calls = after["claims"] - idle_calls_after["claims"]
         idle_calls = idle_calls_after["runner"] - idle_calls_before["runner"]
+        if listener:
+            listener_evidence = listener.verify(listener_before, listener.observe(deadline), len(expected))
         completed = True
     finally:
-        cpu = stop_runners(processes, require_clean=completed)
+        try:
+            cpu = stop_runners(processes, require_clean=completed)
+        finally:
+            relay.close()
 
     observed_peak = max(sample["executing"] for sample in samples + idle_samples)
     if observed_peak > sum(allocation):
@@ -797,6 +922,8 @@ def run_trial(subject, allocation, workload, batches, scratch, evidence, setting
     if engine == "mesh":
         for log in logs:
             status = mesh_shutdown_report(log)
+            if listener and (status.get("last_error") is not None or status.get("claimed") != len(rows)):
+                raise FixtureError(f"unexpected runner errors or claim count in {log}")
             peak = status.get("peak_queued_context_bytes")
             if peak is not None and (type(peak) is not int or peak < 0):
                 raise FixtureError(f"invalid queued context peak in {log}")
@@ -811,7 +938,9 @@ def run_trial(subject, allocation, workload, batches, scratch, evidence, setting
             event_buffers.append(mesh_event_buffer_report(status, event_mode, log))
 
     listener_enabled = env.get("JOBS_PARITY_MESH_LISTEN") == "1" and engine == "mesh"
-    if listener_enabled and not any(report and report.get("notification_scans", 0) > 0 for report in wakeups):
+    if listener_enabled and not listener and not any(
+        report and report.get("notification_scans", 0) > 0 for report in wakeups
+    ):
         raise FixtureError("listener trial did not record any notification-triggered scans")
 
     raw = {"engine": engine, "variant": subject.variant, "namespace": namespace, "pair": pair, "case_sha256": case,
@@ -823,12 +952,15 @@ def run_trial(subject, allocation, workload, batches, scratch, evidence, setting
            "runner_cpu_seconds_including_startup_and_idle": cpu, "raw_sql_calls": calls,
            "raw_runner_sql_calls": runner_calls, "raw_enqueue_sql_calls": enqueue_calls,
            "raw_claim_calls": claim_calls, "raw_idle_sql_calls": idle_calls, "idle_seconds": idle_s}
+    if listener:
+        raw["listener_trial"] = listener_evidence
     write_json(evidence / "raw.json", raw)
     return {
         "pair": pair, "engine": subject.variant, "input_sha256": case, "completed": len(rows),
         "poll_ms": int(env["JOBS_PARITY_POLL_MS"]),
         "jobs_per_second": len(rows) / duration,
         "pickup_p99_ms": percentile([row["pickup_ms"] for row in rows], 0.99),
+        **({"pickup_max_ms": max(row["pickup_ms"] for row in rows)} if listener else {}),
         "claim_p99_ms": percentile([row["commit_to_claim_ms"] for row in rows], 0.99),
         "settlement_p99_ms": percentile([row["commit_to_settlement_ms"] for row in rows], 0.99),
         "sql_calls_per_job": calls / len(rows),
@@ -1459,7 +1591,7 @@ def profile_summary(trials, name, workload, settings, runners, slots, variants, 
             "sql_calls_per_job", "runner_sql_calls_per_job",
             "enqueue_sql_calls_per_job", "claim_calls_per_job", "idle_queries_per_minute",
             "cpu_seconds_per_job", "peak_rss_bytes", "events_dropped", "event_logs_dropped",
-            "peak_host_load_average_1m")
+            "peak_host_load_average_1m", "pickup_max_ms")
     summary = {}
     for engine in variants:
         values = [trial for trial in trials if trial["engine"] == engine]
@@ -1493,6 +1625,8 @@ def profile_summary(trials, name, workload, settings, runners, slots, variants, 
                                        "within_limit": observed <= limits[metric]}
     if budget := workload.get("pickup_p99_budget_ms"):
         for engine in variants:
+            if engine == "disconnected":
+                continue
             summary[engine]["pickup_p99_ms"]["budget"] = budget
             summary[engine]["pickup_p99_ms"]["within_budget"] = (
                 summary[engine]["pickup_p99_ms"]["max"] <= budget
@@ -1512,7 +1646,7 @@ def profile_summary(trials, name, workload, settings, runners, slots, variants, 
         ]
     elif mesh_batch and name == "short":
         checks = [("claim_calls_per_job", "baseline", "batch_claim_calls_ratio_max")]
-    elif mesh_batch and workload["mode"] == "sparse":
+    elif mesh_batch and workload["mode"] == "sparse" and "baseline" in summary:
         checks = [("pickup_p99_ms", "baseline", "batch_sparse_pickup_p99_ratio_max")]
     elif mesh_events == "disabled":
         checks = [("jobs_per_second", "baseline", "events_disabled_throughput_ratio_min"),
@@ -1542,6 +1676,11 @@ def profile_summary(trials, name, workload, settings, runners, slots, variants, 
             limit = settings["listener_idle_query_ratio_max"]
             comparison[metric] = {"mesh_median": observed, "reference_median": baseline,
                                   "ratio_limit": limit, "within_limit": observed <= baseline * limit}
+    if "disconnected" in summary:
+        observed = summary["disconnected"]["pickup_max_ms"]["max"]
+        limit = 2 * LISTENER_POLL_MS
+        comparison["fallback_pickup_max_ms"] = {"observed": observed, "limit": limit,
+                                               "within_limit": observed <= limit}
     if comparison:
         summary["comparison"] = comparison
     return summary
@@ -1565,11 +1704,15 @@ def workspace(evidence):
 
 def record(args):
     settings = json.loads(CONFIG.read_text())
-    release = args.load or args.release
-    poll_ms = args.poll_ms or settings["poll_ms"]
+    release = args.load or args.listener_outage or args.release
+    poll_ms = LISTENER_POLL_MS if args.listener_outage else args.poll_ms or settings["poll_ms"]
+    mesh_batch = args.mesh_batch or args.listener_outage
+    mesh_listen = args.mesh_listen or args.listener_outage
     mesh_events = "logged" if args.j2_lane_7 else args.mesh_events
     baseline_poll_ms = args.baseline_poll_ms or poll_ms
     profiles = [(args.workload[0] if args.workload else "short", 1, 1)] if args.smoke else selection(args, settings)
+    if args.listener_outage:
+        profiles = [LISTENER_OUTAGE_PROFILE]
     if not profiles:
         raise FixtureError("no valid profiles for the chosen runner counts and slots")
     if args.faults or args.j2_lane_7:
@@ -1581,7 +1724,11 @@ def record(args):
                                 f"{args.against_ref}^{{commit}}"])
     base = EVIDENCE / ref
     base.mkdir(parents=True, exist_ok=True)
-    lane = "j2-lane-7" if args.j2_lane_7 else "fault" if args.faults else "smoke" if args.smoke else "load"
+    lane = "fault" if args.faults else "smoke" if args.smoke else "load"
+    if args.listener_outage:
+        lane = "listener-outage"
+    if args.j2_lane_7:
+        lane = "j2-lane-7"
     prefix = lane if args.j2_lane_7 else f"j1-{lane}"
     evidence = Path(tempfile.mkdtemp(prefix=f"{prefix}-", dir=base))
     budget_breaches = []
@@ -1594,8 +1741,8 @@ def record(args):
             env = dict(os.environ, TMPDIR=str(scratch), TZ="UTC", LC_ALL="C",
                        MESH_SCHEDULER_MIN_WORKERS=str(settings["runner_schedulers"]),
                        MESH_SCHEDULER_MAX_WORKERS=str(settings["runner_schedulers"]),
-                       JOBS_PARITY_MESH_BATCH="1" if args.mesh_batch else "0",
-                       JOBS_PARITY_MESH_LISTEN="1" if args.mesh_listen else "0",
+                       JOBS_PARITY_MESH_BATCH="1" if mesh_batch else "0",
+                       JOBS_PARITY_MESH_LISTEN="1" if mesh_listen else "0",
                        JOBS_PARITY_MESH_EVENTS=mesh_events or "",
                        ERL_FLAGS=settings["oban_erl_flags"])
             env.pop("MESH_RT_LIB_PATH", None)
@@ -1614,8 +1761,16 @@ def record(args):
                 baseline_evidence.mkdir()
                 baseline = build_mesh(baseline_ref, baseline_dir, baseline_evidence, env, release,
                                       harness / MESH_SOURCE.relative_to(ROOT), args.toolchains)
+            listener_proxy = None
             versions = {}
-            if not args.j2_lane_7:
+            if args.listener_outage or args.faults:
+                proxy_spec = importlib.util.spec_from_file_location(
+                    "parity_fault_probe", harness / "scripts/lib/jobs_parity_fault.py")
+                proxy_module = importlib.util.module_from_spec(proxy_spec)
+                proxy_spec.loader.exec_module(proxy_module)
+            if args.listener_outage:
+                listener_proxy = proxy_module.ListenerProxy
+            elif not args.j2_lane_7:
                 command, mix_env, versions = compile_oban(scratch, evidence, env, oban_fixture)
             max_connections = max((s + r * settings["connection_slots_per_runner"]
                                    for _, r, s in profiles), default=7 if args.j2_lane_7 else 5)
@@ -1641,8 +1796,8 @@ WHERE name IN ('server_version','server_version_num','shared_buffers','max_conne
                     "reference_shas": {name: checked(["git", "rev-parse", name]) for name in REFERENCE},
                     "seed": settings["seed"], "profiles": profiles,
                     "mesh_build_profile": "release" if release else "debug",
-                    "mesh_batch": args.mesh_batch,
-                    "mesh_listen": args.mesh_listen,
+                    "mesh_batch": mesh_batch,
+                    "mesh_listen": mesh_listen,
                     "mesh_events": mesh_events,
                     "poll_ms": poll_ms,
                     "baseline_poll_ms": baseline_poll_ms if baseline_ref else None,
@@ -1651,29 +1806,23 @@ WHERE name IN ('server_version','server_version_num','shared_buffers','max_conne
                     "settlement_timestamp": "durable commit timestamp of the terminal row version",
                     "resource_scope": "runner process trees; sampled RSS, processes, threads and connections",
                 })
-                subjects = {
-                    "mesh": Subject("mesh", [str(executable)], ROOT, cluster, env, poll_ms=poll_ms),
-                }
+                subjects = {"mesh": Subject("mesh", [str(executable)], ROOT, cluster, env, poll_ms=poll_ms)}
                 if args.j2_lane_7:
                     confirmed = run_confirmed_launch_failure(subjects["mesh"], scratch, evidence)
                     ambiguous = run_ambiguous_startup(subjects["mesh"], scratch, evidence)
                     write_json(evidence / "j2-lane-7.log", {"confirmed": confirmed, "ambiguous": ambiguous})
+                elif args.listener_outage:
+                    subjects["disconnected"] = Subject("mesh", [str(executable)], ROOT, cluster, env,
+                                                       variant="disconnected", poll_ms=poll_ms)
+                elif baseline_ref:
+                    baseline_env = dict(env, JOBS_PARITY_MESH_BATCH="0", JOBS_PARITY_MESH_LISTEN="0",
+                                        JOBS_PARITY_MESH_EVENTS="")
+                    subjects["baseline"] = Subject("mesh", [str(baseline)], ROOT, cluster, baseline_env,
+                                                   variant="baseline", poll_ms=baseline_poll_ms)
                 else:
                     subjects["oban"] = Subject("oban", command, oban_fixture, cluster, mix_env, poll_ms=poll_ms)
-                if baseline_ref:
-                    subjects = {
-                        "mesh": subjects["mesh"],
-                        "baseline": Subject("mesh", [str(baseline)], ROOT, cluster,
-                                            dict(env, JOBS_PARITY_MESH_BATCH="0", JOBS_PARITY_MESH_LISTEN="0",
-                                                 JOBS_PARITY_MESH_EVENTS=""),
-                                            variant="baseline", poll_ms=baseline_poll_ms),
-                    }
                 variants = tuple(subjects)
                 if args.faults:
-                    proxy_spec = importlib.util.spec_from_file_location(
-                        "parity_fault_probe", harness / "scripts/lib/jobs_parity_fault.py")
-                    proxy_module = importlib.util.module_from_spec(proxy_spec)
-                    proxy_spec.loader.exec_module(proxy_module)
                     for engine, subject in subjects.items():
                         case_evidence = evidence / engine
                         case_evidence.mkdir()
@@ -1716,14 +1865,14 @@ WHERE name IN ('server_version','server_version_num','shared_buffers','max_conne
                             run_scratch = scratch / f"{profile}-{run_name}"
                             run_scratch.mkdir()
                             result = run_trial(subjects[engine], allocation, workload, batches, run_scratch,
-                                               run_evidence, settings, pair)
+                                               run_evidence, settings, pair, listener_proxy)
                             write_json(run_evidence / "metrics.json", result)
                             if pair >= 0:
                                 trials.append(result)
                     validate_pairs(trials, pair_count, slots, variants)
                     write_json(case_evidence / "trials.json", trials)
                     summary = profile_summary(trials, name, workload, settings, runners, slots, variants,
-                                              args.mesh_batch, args.mesh_listen, args.mesh_events)
+                                              mesh_batch, mesh_listen, mesh_events)
                     write_json(case_evidence / "summary.json", summary)
                     for scope, values in summary.items():
                         for metric, verdict in values.items():
@@ -1738,7 +1887,7 @@ WHERE name IN ('server_version','server_version_num','shared_buffers','max_conne
         write_json(evidence / "result.json", {"status": kind, "reason": str(error)})
         raise
     write_json(evidence / "result.json", {"status": "passed", "mode": lane,
-                                         "five_paired_trials": lane == "load",
+                                         "five_paired_trials": args.load or args.listener_outage,
                                          "budget_breaches": budget_breaches})
 
 
@@ -1851,6 +2000,22 @@ def self_check():
             self.assertIsNone(summary["baseline"]["event_buffer_bytes"])
             partial = profile_summary(rows[1:] + [dict(base, engine="mesh")], *args)
             self.assertIsNone(partial["mesh"]["event_buffer_bytes"])
+
+        def test_outage_budget_uses_worst_observed_pickup(self):
+            settings = json.loads(CONFIG.read_text())
+            workload = settings["workloads"]["sparse"]
+            base = {"peak_connections": 4, "peak_processes": 2, "peak_threads": 6,
+                    "peak_queued_context_bytes": 1024, "poll_ms": 1000, "claim_p99_ms": 15}
+            rows = [dict(base, engine="mesh", pickup_p99_ms=25, pickup_max_ms=30),
+                    dict(base, engine="disconnected", pickup_p99_ms=1100, pickup_max_ms=1100)]
+            args = ("sparse", workload, settings, 1, 16, ("mesh", "disconnected"), True, True, None)
+            for pickup, passes in ((2000, True), (2001, False)):
+                with self.subTest(pickup=pickup):
+                    slower = dict(rows[-1], pickup_max_ms=pickup)
+                    summary = profile_summary(rows + [slower], *args)
+                    self.assertEqual(summary["comparison"]["fallback_pickup_max_ms"],
+                                     {"observed": pickup, "limit": 2000, "within_limit": passes})
+                    self.assertEqual(summary["mesh"]["pickup_p99_ms"]["budget"], 750)
 
         def test_trial_reconciliation_rejects_stray_rows_and_wrong_effect_keys(self):
             from unittest.mock import patch
@@ -1999,6 +2164,8 @@ def main():
     mode.add_argument("--self-check", action="store_true")
     mode.add_argument("--smoke", action="store_true", help="small integration probe, not a benchmark")
     mode.add_argument("--load", action="store_true", help="five alternating trials per selected profile")
+    mode.add_argument("--listener-outage", action="store_true",
+                      help="pair healthy and disconnected listeners on the frozen sparse profile")
     mode.add_argument("--faults", action="store_true", help="owned runner-death and rollback probe")
     mode.add_argument("--j2-lane-7", action="store_true", help="macOS batch launch denial and interrupted startup proof")
     parser.add_argument("--mesh-ref", default="HEAD", help="Git commit from which to compile Mesh")
@@ -2027,6 +2194,9 @@ def main():
         parser.error("--baseline-poll-ms requires --against-ref")
     if args.postgres_version and not POSTGRES_VERSION.fullmatch(args.postgres_version):
         parser.error("--postgres-version requires MAJOR.PATCH")
+    if args.listener_outage and (not args.postgres_version or args.workload or args.runners or args.slots
+                                or args.against_ref or args.poll_ms or args.mesh_events):
+        parser.error("--listener-outage requires --postgres-version and uses a fixed sparse profile")
     if not args.load and (args.runners is not None or args.slots is not None):
         parser.error("--runners and --slots require --load")
     if args.workload and (args.faults or args.j2_lane_7 or (args.smoke and len(args.workload) > 1)):
