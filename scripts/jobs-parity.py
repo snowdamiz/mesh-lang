@@ -1285,27 +1285,34 @@ def run_producer_commit_fault(subject, scratch, evidence, settings, placement, p
     def producer_state():
         return json.loads(cluster.sql("mesh", """
 SELECT json_build_object(
- 'business', (SELECT coalesce(json_agg(json_build_array(engine, namespace, request_id, xmin::text)), '[]')
+ 'business', (SELECT coalesce(json_agg(json_build_array(engine, namespace, request_id, xmin::text,
+                                                       pg_xact_commit_timestamp(xmin))), '[]')
               FROM public.mesh_jobs_parity_product),
- 'jobs', (SELECT coalesce(json_agg(json_build_array(namespace, args->>'key', id::text, xmin::text)
+ 'jobs', (SELECT coalesce(json_agg(json_build_array(namespace, args->>'key', id::text, xmin::text,
+                                                   pg_xact_commit_timestamp(xmin))
                                 ORDER BY args->>'key'), '[]') FROM mesh_jobs.jobs),
- 'receipts', (SELECT coalesce(json_agg(json_build_array(namespace, request_key, receipt, xmin::text)
+ 'receipts', (SELECT coalesce(json_agg(json_build_array(namespace, request_key, receipt, xmin::text,
+                                                       pg_xact_commit_timestamp(xmin))
                                     ORDER BY request_key), '[]') FROM mesh_jobs.receipts)
 )
 """))
 
     def reconcile(state):
-        ids = {key: receipt["id"] for _, key, receipt, _ in state["receipts"]}
+        ids = {key: receipt["id"] for _, key, receipt, _, _ in state["receipts"]}
         if (set(ids) != set(keys) or len(state["receipts"]) != len(keys)
                 or len(state["business"]) != 1
                 or state["business"][0][:3] != ["mesh", namespace, request]):
             raise QueueMismatch("producer transaction did not persist one business row and both receipts")
-        xid = state["business"][0][3]
-        if any(ns != namespace or receipt["effect_key"] != f"{ids[key]}/1" or receipt_xid != xid
-               for ns, key, receipt, receipt_xid in state["receipts"]):
-            raise QueueMismatch("enqueue receipts did not share the business write's transaction and identity")
-        if state["jobs"] != [[namespace, key, ids[key], xid] for key in sorted(keys)]:
-            raise QueueMismatch("enqueue jobs did not share the business write's transaction and identity")
+        # Enqueue uses a savepoint. Its tuple XIDs can differ from the business row.
+        committed_at = state["business"][0][4]
+        if committed_at is None or any(
+            ns != namespace or receipt["effect_key"] != f"{ids[key]}/1" or tick != committed_at
+            for ns, key, receipt, _, tick in state["receipts"]
+        ):
+            raise QueueMismatch("enqueue receipt identities or commit times differ from the producer transaction")
+        jobs = [[ns, key, identity, tick] for ns, key, identity, _, tick in state["jobs"]]
+        if jobs != [[namespace, key, ids[key], committed_at] for key in sorted(keys)]:
+            raise QueueMismatch("enqueue job identities or commit times differ from the producer transaction")
         cluster.reconcile_trial("mesh", namespace, ids, {}, (request,))
         return ids
 
