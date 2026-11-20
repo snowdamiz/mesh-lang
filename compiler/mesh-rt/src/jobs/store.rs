@@ -816,6 +816,39 @@ pub(super) fn claim_batch_with_timing(
     result.map_err(|error| rollback_error(error, db.simple("ROLLBACK")))
 }
 
+pub(super) fn next_due_ms(
+    db: &mut impl Database,
+    namespace: &str,
+    queue: &str,
+    workers: &str,
+) -> Result<Option<u64>, String> {
+    let delay = response(
+        db,
+        "WITH clock AS MATERIALIZED (SELECT mesh_jobs.now_ms() AS now_ms)
+         SELECT coalesce((
+             SELECT (j.scheduled_at_ms - now_ms)::text
+             FROM mesh_jobs.queues q JOIN mesh_jobs.jobs j
+                 ON j.namespace = q.namespace AND j.queue = q.name
+             CROSS JOIN clock
+             WHERE q.namespace = $1 AND q.name = $2 AND q.state = 'active' AND q.concurrency > 0
+                 AND j.state IN ('available', 'scheduled', 'retryable')
+                 AND j.scheduled_at_ms > now_ms AND j.attempt < j.max_attempts
+                 AND EXISTS (SELECT FROM jsonb_to_recordset($3::jsonb) AS w(worker text, version bigint)
+                             WHERE w.worker = j.worker AND w.version = j.version)
+             ORDER BY j.scheduled_at_ms LIMIT 1
+         ), '')",
+        &[namespace, queue, workers],
+    )?;
+    if delay.is_empty() {
+        Ok(None)
+    } else {
+        delay
+            .parse::<u64>()
+            .map(Some)
+            .map_err(|error| error.to_string())
+    }
+}
+
 #[derive(Deserialize)]
 pub(super) struct DrainWork {
     pub(super) pending: bool,

@@ -72,6 +72,9 @@ CREATE INDEX IF NOT EXISTS mesh_jobs_ready
     WHERE state IN ('available', 'scheduled', 'retryable');
 CREATE INDEX IF NOT EXISTS mesh_jobs_due
     ON mesh_jobs.jobs (namespace, scheduled_at_ms, id) WHERE state IN ('scheduled', 'retryable');
+CREATE INDEX IF NOT EXISTS mesh_jobs_queue_due
+    ON mesh_jobs.jobs (namespace, queue, scheduled_at_ms)
+    WHERE state IN ('available', 'scheduled', 'retryable') AND attempt < max_attempts;
 CREATE INDEX IF NOT EXISTS mesh_jobs_running
     ON mesh_jobs.jobs (namespace, queue) WHERE state = 'executing';
 CREATE INDEX IF NOT EXISTS mesh_jobs_expiring
@@ -101,6 +104,49 @@ CREATE TABLE IF NOT EXISTS mesh_jobs.batch_context_blocks (
     PRIMARY KEY (namespace, id),
     FOREIGN KEY (namespace, id) REFERENCES mesh_jobs.jobs(namespace, id) ON DELETE CASCADE
 );
+
+-- Separate triggers keep legacy enqueue, claim and control function signatures
+-- and grants intact when old and new binaries share the schema.
+CREATE OR REPLACE FUNCTION mesh_jobs.publish_wake_v1() RETURNS trigger
+LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$
+DECLARE
+    queue_name text;
+BEGIN
+    IF TG_TABLE_NAME = 'queues' THEN
+        queue_name := NEW.name;
+    ELSE
+        queue_name := NEW.queue;
+    END IF;
+    PERFORM pg_notify('mesh_jobs_wake_' || md5(convert_to(NEW.namespace, 'UTF8')),
+                      md5(convert_to(queue_name, 'UTF8')));
+    RETURN NULL;
+END
+$$;
+
+CREATE OR REPLACE TRIGGER mesh_jobs_insert_wake
+    AFTER INSERT ON mesh_jobs.jobs
+    FOR EACH ROW WHEN (
+        lower(current_setting('mesh_jobs.publish_wakeups', true)) IN ('on', 'true', '1')
+        AND NEW.state IN ('available', 'scheduled', 'retryable') AND NEW.attempt < NEW.max_attempts
+    ) EXECUTE FUNCTION mesh_jobs.publish_wake_v1();
+
+CREATE OR REPLACE TRIGGER mesh_jobs_update_wake
+    AFTER UPDATE OF queue, worker, version, state, attempt, max_attempts, scheduled_at_ms ON mesh_jobs.jobs
+    FOR EACH ROW WHEN (
+        lower(current_setting('mesh_jobs.publish_wakeups', true)) IN ('on', 'true', '1')
+        AND NEW.state IN ('available', 'scheduled', 'retryable') AND NEW.attempt < NEW.max_attempts
+        AND (OLD.state NOT IN ('available', 'scheduled', 'retryable') OR OLD.attempt >= OLD.max_attempts
+             OR (OLD.queue, OLD.worker, OLD.version, OLD.scheduled_at_ms)
+                IS DISTINCT FROM (NEW.queue, NEW.worker, NEW.version, NEW.scheduled_at_ms))
+    ) EXECUTE FUNCTION mesh_jobs.publish_wake_v1();
+
+CREATE OR REPLACE TRIGGER mesh_jobs_queue_wake
+    AFTER UPDATE OF state, concurrency ON mesh_jobs.queues
+    FOR EACH ROW WHEN (
+        lower(current_setting('mesh_jobs.publish_wakeups', true)) IN ('on', 'true', '1')
+        AND NEW.state = 'active' AND NEW.concurrency > 0
+        AND (OLD.state <> 'active' OR OLD.concurrency < NEW.concurrency)
+    ) EXECUTE FUNCTION mesh_jobs.publish_wake_v1();
 
 CREATE OR REPLACE FUNCTION mesh_jobs.now_ms() RETURNS bigint
 LANGUAGE sql VOLATILE SET search_path = pg_catalog, pg_temp AS $$

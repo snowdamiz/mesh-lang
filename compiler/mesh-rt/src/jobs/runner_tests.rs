@@ -13,6 +13,9 @@ fn config_matches_store_names_and_bounds_runner_capacity() {
     assert_eq!(config.queues["default"], 2);
     assert_eq!(config.event_buffer, 0);
     assert!(!config.event_log);
+    assert!(!config.listen);
+    assert!(!config.claim_batch);
+    assert_eq!(config.poll_ms, 100);
     assert!(Config::parse(
         r#"{"namespace":"app jobs","queues":{"batch":1},"workers":[{"worker":"test","version":4294967295}]}"#
     )
@@ -30,6 +33,32 @@ fn config_matches_store_names_and_bounds_runner_capacity() {
 }
 
 #[test]
+fn wake_hints_coalesce_to_one_bit_per_configured_queue() {
+    let mut config = Config::parse(TEST_CONFIG).unwrap();
+    config.queues = (0..64)
+        .map(|index| (format!("queue-{index:02}"), 1))
+        .collect();
+    let wakes = Wakeups::new(&config);
+    assert!(!wakes.event(ListenEvent::Hint(&wake_key("unknown"))));
+    assert!(wakes.event(ListenEvent::Subscribed));
+    assert!(!wakes.event(ListenEvent::Subscribed));
+    let first = wake_key("queue-00");
+    let last = wake_key("queue-63");
+    for _ in 0..1024 {
+        assert!(!wakes.event(ListenEvent::Hint(&first)));
+        assert!(!wakes.event(ListenEvent::Hint(&last)));
+    }
+    assert_eq!(wakes.take(), (true, 1 | 1 << 63));
+    assert_eq!(wakes.take(), (false, 0));
+    assert!(wakes.event(ListenEvent::Hint(&last)));
+    assert_eq!(wakes.take(), (false, 1 << 63));
+    wakes.close();
+    assert!(!wakes.event(ListenEvent::Subscribed));
+    assert_eq!(wakes.report()["subscribed"], false);
+    assert_eq!(wakes.report()["subscriptions"], 2);
+}
+
+#[test]
 fn confirmed_batch_launch_failure_stops_later_launches_and_keeps_refunds_tracked() {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -38,6 +67,7 @@ fn confirmed_batch_launch_failure_stops_later_launches_and_keeps_refunds_tracked
         config: Config::parse(TEST_CONFIG).unwrap(),
         check_worker: || Ok(()),
         events: None,
+        wakeups: None,
         state: Mutex::new(State {
             phase: Phase::Running,
             jobs: BTreeMap::new(),
@@ -57,6 +87,7 @@ fn confirmed_batch_launch_failure_stops_later_launches_and_keeps_refunds_tracked
         name: "default",
         limit: 3,
         next_claim: Instant::now(),
+        source: ClaimWake::Ready,
     }];
     let lease = Lease::begin(Duration::from_secs(30)).unwrap();
     let claims = (1..=3)
@@ -76,6 +107,7 @@ fn confirmed_batch_launch_failure_stops_later_launches_and_keeps_refunds_tracked
                 claims,
                 oversized: Vec::new(),
             },
+            None,
         )),
     ))
     .unwrap();
@@ -148,6 +180,7 @@ fn polling_and_kill_errors_keep_an_attempt_undrained_until_reap() {
         config: Config::parse(TEST_CONFIG).unwrap(),
         check_worker: || Ok(()),
         events: None,
+        wakeups: None,
         state: Mutex::new(State {
             phase: Phase::Running,
             jobs: BTreeMap::from([(
@@ -329,6 +362,7 @@ fn acknowledgement_retry_preserves_token_without_reconstructing_a_commit() {
             config,
             check_worker: || Ok(()),
             events: Events::new(8, false).unwrap(),
+            wakeups: None,
             state: Mutex::new(State {
                 phase: Phase::Running,
                 jobs: BTreeMap::from([(

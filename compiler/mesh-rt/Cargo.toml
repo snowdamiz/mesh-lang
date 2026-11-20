@@ -67,6 +67,7 @@ crypto-bigint = { version = "=0.7.5", default-features = false, features = ["zer
 hostname = "0.4"
 libc = "0.2"
 mio = { version = "1.1", features = ["net", "os-poll"] }
+socket2 = "0.6"
 
 # Blind RSA signing, key generation and PKCS#8 import (profile BR1) run only
 # on servers. Phones and Windows never compile AWS-LC; their server-only blind

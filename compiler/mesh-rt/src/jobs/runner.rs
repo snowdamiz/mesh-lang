@@ -1,13 +1,15 @@
 use std::collections::{BTreeMap, HashSet};
 use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError};
-use std::sync::{Arc, LazyLock};
+use std::sync::{Arc, LazyLock, OnceLock};
 use std::time::{Duration, Instant};
 
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
 use crate::actor;
-use crate::db::jobs_connection::{JobSession, PgJobDb};
+use crate::db::jobs_connection::{
+    wake_key, JobListener, JobSession, ListenEvent, ListenerStop, PgJobDb,
+};
 use crate::db::pg::JobsAckError;
 
 use super::cron;
@@ -16,8 +18,8 @@ use super::events::{
     self, Acknowledgement, Events, FailureKind, Identity, Kind, LeaseLoss, Operation,
 };
 use super::store::{
-    claim_batch_with_timing, claim_with_timing, drain_work, finish, prune, recover, renew, Claim,
-    ClaimBatch, LeaseStatus, Outcome, OversizedClaim, Settlement, MAX_CLAIM_BATCH,
+    claim_batch_with_timing, claim_with_timing, drain_work, finish, next_due_ms, prune, recover,
+    renew, Claim, ClaimBatch, LeaseStatus, Outcome, OversizedClaim, Settlement, MAX_CLAIM_BATCH,
 };
 use super::with_pool;
 use super::worker::{check_executable, handler_name, host_deadline, WorkerPoll, WorkerProcess};
@@ -68,6 +70,7 @@ struct Config {
     claim_batch: bool,
     event_buffer: usize,
     event_log: bool,
+    listen: bool,
 }
 
 #[derive(Deserialize, Serialize, PartialEq, Eq, Hash)]
@@ -91,6 +94,7 @@ impl Default for Config {
             claim_batch: false,
             event_buffer: 0,
             event_log: false,
+            listen: false,
         }
     }
 }
@@ -289,6 +293,7 @@ struct Runner {
     state: Mutex<State>,
     check_worker: fn() -> Result<(), String>,
     events: Option<Events>,
+    wakeups: Option<Arc<Wakeups>>,
 }
 
 impl Runner {
@@ -299,6 +304,10 @@ impl Runner {
             Phase::Running => state.phase = Phase::Stopping { deadline },
             Phase::Stopping { deadline: current } => *current = (*current).min(deadline),
             Phase::Stopped => {}
+        }
+        drop(state);
+        if let Some(wakeups) = &self.wakeups {
+            wakeups.close();
         }
     }
 
@@ -364,6 +373,9 @@ impl Runner {
         if let Some(events) = &self.events {
             report["events_dropped"] = events.dropped().into();
             report["event_logs_dropped"] = events.logs_dropped().into();
+        }
+        if let Some(wakeups) = &self.wakeups {
+            report["wakeups"] = wakeups.report();
         }
         report.to_string()
     }
@@ -598,6 +610,10 @@ fn start_configured(
     } else {
         None
     };
+    let listener = (config.listen && !config.drain && bounded.is_none())
+        .then(|| unsafe { JobListener::from_pool(pool, &config.namespace) })
+        .transpose()?;
+    let wakeups = listener.as_ref().map(|_| Arc::new(Wakeups::new(&config)));
 
     let mut registry = REGISTRY.lock();
     if !registry.accepting || scheduler.is_shutdown() || crate::process_signal::shutdown_requested()
@@ -624,6 +640,7 @@ fn start_configured(
         config,
         check_worker,
         events,
+        wakeups,
         state: Mutex::new(State {
             phase: Phase::Running,
             jobs: BTreeMap::new(),
@@ -664,7 +681,13 @@ fn start_configured(
                     .spawn(move || maintain(&maintenance_runner, pool))
                 {
                     Ok(maintenance) => {
+                        if let Some(listener) = listener {
+                            dispatcher.start_listener(listener);
+                        }
                         dispatch(&dispatcher, pool, &workers, &*start_worker, sessions);
+                        if let Some(wakeups) = &dispatcher.wakeups {
+                            wakeups.close();
+                        }
                         maintenance.thread().unpark();
                         let _ = maintenance.join();
                     }
@@ -1155,6 +1178,172 @@ struct Queue<'a> {
     name: &'a str,
     limit: usize,
     next_claim: Instant,
+    source: ClaimWake,
+}
+
+#[derive(Clone, Copy)]
+enum ClaimWake {
+    Ready,
+    Subscription,
+    Notification,
+    Due,
+    Fallback,
+}
+
+impl Queue<'_> {
+    fn ready(&mut self, source: ClaimWake) {
+        self.next_claim = Instant::now();
+        self.source = source;
+    }
+
+    fn backoff(&mut self, runner: &Runner, next_due: Option<Instant>) {
+        let poll_ms = runner.config.poll_ms;
+        let jitter = if runner.wakeups.is_some() {
+            rand::random_range(0..=poll_ms / 5)
+        } else {
+            0
+        };
+        let fallback = Instant::now() + Duration::from_millis(poll_ms + jitter);
+        if let Some(due) = next_due.filter(|&due| due < fallback) {
+            self.next_claim = due;
+            self.source = ClaimWake::Due;
+        } else {
+            self.next_claim = fallback;
+            self.source = ClaimWake::Fallback;
+        }
+    }
+}
+
+struct Wakeups {
+    stop: ListenerStop,
+    dispatcher: OnceLock<std::thread::Thread>,
+    queues: BTreeMap<String, u64>,
+    state: Mutex<WakeState>,
+}
+
+#[derive(Default)]
+struct WakeState {
+    hints: u64,
+    rescan: bool,
+    closed: bool,
+    subscribed: bool,
+    subscriptions: u64,
+    subscription_scans: u64,
+    notification_scans: u64,
+    due_scans: u64,
+    fallback_scans: u64,
+}
+
+impl Wakeups {
+    fn new(config: &Config) -> Self {
+        let mut queues = BTreeMap::new();
+        for (index, name) in config.queues.keys().enumerate() {
+            *queues.entry(wake_key(name)).or_insert(0) |= 1 << index;
+        }
+        Self {
+            stop: ListenerStop::default(),
+            dispatcher: OnceLock::new(),
+            queues,
+            state: Mutex::default(),
+        }
+    }
+
+    fn event(&self, event: ListenEvent<'_>) -> bool {
+        let mut state = self.state.lock();
+        if state.closed {
+            return false;
+        }
+        let was_empty = !state.rescan && state.hints == 0;
+        match event {
+            ListenEvent::Subscribed => {
+                state.subscribed = true;
+                state.subscriptions += 1;
+                state.rescan = true;
+            }
+            ListenEvent::Disconnected => state.subscribed = false,
+            ListenEvent::Hint(key) => state.hints |= self.queues.get(key).copied().unwrap_or(0),
+        }
+        was_empty && (state.rescan || state.hints != 0)
+    }
+
+    fn close(&self) {
+        let mut state = self.state.lock();
+        if state.closed {
+            return;
+        }
+        state.closed = true;
+        state.subscribed = false;
+        self.stop.stop();
+        if let Some(dispatcher) = self.dispatcher.get() {
+            dispatcher.unpark();
+        }
+    }
+
+    fn take(&self) -> (bool, u64) {
+        let mut state = self.state.lock();
+        (
+            std::mem::take(&mut state.rescan),
+            std::mem::take(&mut state.hints),
+        )
+    }
+
+    fn record_scan(&self, source: ClaimWake) {
+        let mut state = self.state.lock();
+        match source {
+            ClaimWake::Ready => {}
+            ClaimWake::Subscription => state.subscription_scans += 1,
+            ClaimWake::Notification => state.notification_scans += 1,
+            ClaimWake::Due => state.due_scans += 1,
+            ClaimWake::Fallback => state.fallback_scans += 1,
+        }
+    }
+
+    fn report(&self) -> serde_json::Value {
+        let state = self.state.lock();
+        serde_json::json!({
+            "subscribed": state.subscribed,
+            "subscriptions": state.subscriptions,
+            "subscription_scans": state.subscription_scans,
+            "notification_scans": state.notification_scans,
+            "due_scans": state.due_scans,
+            "fallback_scans": state.fallback_scans,
+        })
+    }
+}
+
+impl Runner {
+    fn start_listener(&self, listener: JobListener) {
+        let wakeups = Arc::clone(self.wakeups.as_ref().expect("listener wake state"));
+        let dispatcher = std::thread::current();
+        let _ = wakeups.dispatcher.set(dispatcher.clone());
+        // Socket shutdown is synchronous. A canceled dial or DNS lookup can
+        // finish independently and cannot register or subscribe afterward.
+        if let Err(error) = std::thread::Builder::new()
+            .name(format!("mesh-jobs-listen-{}", self.id))
+            .spawn(move || {
+                listener.run(&wakeups.stop, |event| {
+                    if wakeups.event(event) {
+                        dispatcher.unpark();
+                    }
+                });
+            })
+        {
+            self.record_error(format!("could not start Jobs listener: {error}"));
+        }
+    }
+
+    fn probe_due(&self, db: &mut PgJobDb<'_>, queue: &str, workers: &str) -> Option<Instant> {
+        self.wakeups.as_ref()?;
+        // Sample before claiming so a deadline crossing between the two reads
+        // is either still on the timer or already visible to the claim.
+        match next_due_ms(db, &self.config.namespace, queue, workers) {
+            Ok(delay) => Instant::now().checked_add(Duration::from_millis(delay?)),
+            Err(error) => {
+                self.record_error(error);
+                None
+            }
+        }
+    }
 }
 
 fn maintain(runner: &Runner, pool: u64) {
@@ -1202,7 +1391,7 @@ struct BatchRequest {
     slots: usize,
 }
 
-type BatchReply = (usize, Result<(Lease, ClaimBatch), String>);
+type BatchReply = (usize, Result<(Lease, ClaimBatch, Option<Instant>), String>);
 
 struct BatchLane {
     requests: SyncSender<BatchRequest>,
@@ -1243,14 +1432,13 @@ impl BatchLane {
             Ok((index, result)) => {
                 self.pending = false;
                 match result {
-                    Ok((lease, batch)) => {
+                    Ok((lease, batch, next_due)) => {
                         if let Some(row) = batch.oversized.first() {
                             runner.record_oversized(row);
                         }
                         runner.state.lock().pending_claims = batch.claims.len();
                         if batch.claims.is_empty() {
-                            queues[index].next_claim =
-                                Instant::now() + Duration::from_millis(runner.config.poll_ms);
+                            queues[index].backoff(runner, next_due);
                         }
                         for job in batch.claims {
                             let mut state = runner.state.lock();
@@ -1268,8 +1456,7 @@ impl BatchLane {
                     Err(error) => {
                         runner.state.lock().pending_claims = 0;
                         runner.storage_failure(Operation::Claim, error, None);
-                        queues[index].next_claim =
-                            Instant::now() + Duration::from_millis(runner.config.poll_ms);
+                        queues[index].backoff(runner, None);
                     }
                 }
             }
@@ -1309,18 +1496,20 @@ fn dispatch(
             .spawn_scoped(scope, move || {
                 while let Ok(request) = receive.recv() {
                     let result = session.with(|db| {
+                        let queue = queue_names[request.queue];
+                        let next_due = runner.probe_due(db, queue, workers);
                         let lease = Lease::begin(Duration::from_millis(config.lease_ms))?;
                         let batch = claim_batch_with_timing(
                             db,
                             &config.namespace,
-                            queue_names[request.queue],
+                            queue,
                             workers,
                             config.lease_ms,
                             request.slots,
                             None,
                             runner.events.is_some(),
                         )?;
-                        Ok((lease, batch))
+                        Ok((lease, batch, next_due))
                     });
                     if send.send((request.queue, result)).is_err() {
                         break;
@@ -1368,6 +1557,7 @@ fn dispatch_queues(
             name,
             limit: *limit,
             next_claim: Instant::now(),
+            source: ClaimWake::Ready,
         })
         .collect();
     let mut cursor = 0;
@@ -1376,6 +1566,7 @@ fn dispatch_queues(
         .drain
         .then(|| serde_json::json!(config.queues).to_string());
     let mut next_drain_recovery = Instant::now();
+    let mut freed = 0u64;
     loop {
         if config.claim_batch && !unsafe { crate::db::pool::is_open(pool) } {
             runner.request_stop(Duration::from_millis(config.shutdown_grace_ms));
@@ -1386,6 +1577,7 @@ fn dispatch_queues(
                 true
             } else {
                 runner.state.lock().jobs.remove(&attempt.token);
+                freed |= 1 << attempt.queue;
                 false
             }
         });
@@ -1394,7 +1586,7 @@ fn dispatch_queues(
         }
         if config.drain && attempts.len() != previous_count {
             for queue in &mut queues {
-                queue.next_claim = Instant::now();
+                queue.ready(ClaimWake::Ready);
             }
             next_drain_recovery = Instant::now();
         }
@@ -1407,7 +1599,28 @@ fn dispatch_queues(
             }
             running
         };
+        if !admitting {
+            if let Some(wakeups) = &runner.wakeups {
+                wakeups.close();
+            }
+        }
         if admitting && batch.as_ref().is_none_or(|lane| !lane.pending) {
+            if let Some(wakeups) = &runner.wakeups {
+                // Apply hints after the batch reply so an empty result from an
+                // older snapshot cannot overwrite a hint arriving in flight.
+                let (rescan, hints) = wakeups.take();
+                for (index, queue) in queues.iter_mut().enumerate() {
+                    let bit = 1 << index;
+                    if hints & bit != 0 {
+                        queue.ready(ClaimWake::Notification);
+                    } else if rescan {
+                        queue.ready(ClaimWake::Subscription);
+                    } else if freed & bit != 0 && queue.next_claim > Instant::now() {
+                        queue.ready(ClaimWake::Ready);
+                    }
+                }
+                freed = 0;
+            }
             // Take one fresh snapshot of all selected queues after recovery.
             // Individually empty claims can be stale or have skipped a lock.
             if let Some(selected) = drain_queues
@@ -1455,6 +1668,10 @@ fn dispatch_queues(
                 });
             if let Some((index, slots)) = ready {
                 cursor = (index + 1) % queues.len();
+                if let Some(wakeups) = &runner.wakeups {
+                    wakeups.record_scan(queues[index].source);
+                    queues[index].source = ClaimWake::Ready;
+                }
                 if let Some(lane) = &mut batch {
                     // A disconnected lifecycle session must reserve a new
                     // connection before the claim thread can consume attempts.
@@ -1477,21 +1694,30 @@ fn dispatch_queues(
                     queues[index].name,
                     start_worker,
                 ) {
-                    Ok(Some(attempt)) => attempts.push(attempt),
-                    Ok(None) => {
-                        queues[index].next_claim =
-                            Instant::now() + Duration::from_millis(config.poll_ms);
-                    }
+                    Ok((Some(attempt), _)) => attempts.push(attempt),
+                    Ok((None, next_due)) => queues[index].backoff(runner, next_due),
                     Err(error) => {
                         runner.storage_failure(Operation::Claim, error, None);
-                        queues[index].next_claim =
-                            Instant::now() + Duration::from_millis(config.poll_ms);
+                        queues[index].backoff(runner, None);
                     }
                 }
                 continue;
             }
         }
-        std::thread::park_timeout(TICK.min(Duration::from_millis(config.poll_ms)));
+        let wait = if runner.wakeups.is_some()
+            && admitting
+            && attempts.is_empty()
+            && batch.as_ref().is_none_or(|lane| !lane.pending)
+        {
+            queues
+                .iter()
+                .map(|queue| queue.next_claim.saturating_duration_since(Instant::now()))
+                .min()
+                .expect("at least one queue")
+        } else {
+            TICK.min(Duration::from_millis(config.poll_ms))
+        };
+        std::thread::park_timeout(wait);
     }
 }
 
@@ -1614,18 +1840,29 @@ fn claim_one(
     queue: usize,
     queue_name: &str,
     start_worker: &StartWorker,
-) -> Result<Option<Attempt>, String> {
-    let config = &runner.config;
-    claim_attempt(runner, pool, queue, start_worker, |db| {
-        claim_with_timing(
+) -> Result<(Option<Attempt>, Option<Instant>), String> {
+    if !reserve_claims(runner, 1) {
+        return Ok((None, None));
+    }
+    let acquired = with_pool(pool, |db| {
+        let next_due = runner.probe_due(db, queue_name, workers);
+        let lease = Lease::begin(Duration::from_millis(runner.config.lease_ms))?;
+        let job = claim_with_timing(
             db,
-            &config.namespace,
+            &runner.config.namespace,
             queue_name,
             workers,
-            config.lease_ms,
+            runner.config.lease_ms,
             runner.events.is_some(),
-        )
-    })
+        )?;
+        Ok((lease, job, next_due))
+    });
+    let mut state = runner.state.lock();
+    state.pending_claims = 0;
+    let (lease, job, next_due) = acquired?;
+    let attempt =
+        job.map(|job| launch_confirmed(runner, &mut state, queue, lease, job, start_worker));
+    Ok((attempt, next_due))
 }
 
 fn claim_attempt(

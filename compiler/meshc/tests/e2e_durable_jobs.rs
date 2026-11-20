@@ -9,6 +9,8 @@
 
 #[path = "support/test_artifacts.rs"]
 mod artifacts;
+#[path = "support/jobs_wakeups.rs"]
+mod wakeups;
 
 #[path = "support/durable_jobs_testing.rs"]
 mod durable_jobs_testing;
@@ -36,23 +38,7 @@ fn durable_jobs_survive_process_boundaries() {
     let scratch = artifacts::repo_root().join(".tmp");
     fs::create_dir_all(&scratch).unwrap();
     let temp = tempfile::tempdir_in(scratch).expect("create durable jobs proof directory");
-    let project = temp.path().join("durable-jobs");
-    fs::create_dir(&project).unwrap();
-    fs::copy(
-        artifacts::repo_root().join("tests/e2e/durable_jobs/main.mpl"),
-        project.join("main.mpl"),
-    )
-    .unwrap();
-    let build = Command::new(compiler)
-        .arg("build")
-        .arg(&project)
-        .output()
-        .unwrap();
-    assert!(
-        build.status.success(),
-        "{}",
-        artifacts::command_output_text(&build)
-    );
+    let binary = build_fixture(&compiler, &temp.path().join("durable-jobs"), None);
 
     let Ok(url) = std::env::var("MESH_TEST_DATABASE_URL") else {
         eprintln!("Compiled the Jobs application. Set MESH_TEST_DATABASE_URL to a dedicated PostgreSQL database to exercise it, or run scripts/verify-postgres-jobs.sh.");
@@ -62,7 +48,7 @@ fn durable_jobs_survive_process_boundaries() {
         !url.is_empty(),
         "MESH_TEST_DATABASE_URL must name a dedicated test database"
     );
-    let proof = Proof::new(&url, project.join("durable-jobs"), temp.path());
+    let proof = Proof::new(&url, binary, temp.path());
     prove_transaction_and_restart(&proof);
     prove_competing_processes(&proof);
     prove_batch_admission(&proof);
@@ -81,9 +67,42 @@ fn durable_jobs_survive_process_boundaries() {
     }
     prove_signal_drain(&proof);
     prove_join_waits_after_grace(&proof);
+    wakeups::prove(&proof);
     assert_eq!(proof.effects("committed").len(), 1);
     assert!(proof.effects("rolled-back").is_empty());
     proof.clean().expect("delete durable jobs proof data");
+
+    if let Some(runtime) = std::env::var_os("MESH_JOBS_REFERENCE_RT_LIB_PATH") {
+        let project = temp.path().join("reference-jobs");
+        let binary = build_fixture(&compiler, &project, Some(Path::new(&runtime)));
+        let reference = Proof::new(&url, binary, &project);
+        wakeups::prove_sparse_reference(&reference);
+        reference.clean().expect("delete reference proof data");
+    }
+}
+
+fn build_fixture(compiler: &Path, project: &Path, runtime: Option<&Path>) -> PathBuf {
+    fs::create_dir(project).unwrap();
+    fs::copy(
+        artifacts::repo_root().join("tests/e2e/durable_jobs/main.mpl"),
+        project.join("main.mpl"),
+    )
+    .unwrap();
+    let mut command = Command::new(compiler);
+    command
+        .arg("build")
+        .arg(project)
+        .env_remove("MESH_RT_LIB_PATH");
+    if let Some(runtime) = runtime {
+        command.env("MESH_RT_LIB_PATH", runtime);
+    }
+    let build = command.output().unwrap();
+    assert!(
+        build.status.success(),
+        "{}",
+        artifacts::command_output_text(&build)
+    );
+    project.join(project.file_name().unwrap())
 }
 
 fn prove_transaction_and_restart(proof: &Proof) {
@@ -960,13 +979,17 @@ impl<'a> Proof<'a> {
             .env("MESH_JOBS_PROOF_COMMAND", operation)
             .env("MESH_JOBS_PROOF_PAYLOAD", payload)
             .env_remove("MESH_JOBS_PROOF_GATE")
-            .env_remove("MESH_JOBS_PROOF_EVENTS");
+            .env_remove("MESH_JOBS_PROOF_EVENTS")
+            .env_remove("MESH_JOBS_PROOF_PUBLISH");
         command
     }
 
     fn run(&self, operation: &str, payload: &str) -> Value {
-        let child = self
-            .command(operation, payload)
+        self.run_command(operation, &mut self.command(operation, payload))
+    }
+
+    fn run_command(&self, operation: &str, command: &mut Command) -> Value {
+        let child = command
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -1031,12 +1054,17 @@ impl<'a> Proof<'a> {
     }
 
     fn worker_with_config(&self, name: &str, blocked: bool, config: Value) -> Worker {
+        self.worker_with_url(name, blocked, config, self.url)
+    }
+
+    fn worker_with_url(&self, name: &str, blocked: bool, config: Value, url: &str) -> Worker {
         let markers = self.dir.join(name);
         fs::create_dir(&markers).unwrap();
         let output = File::create(markers.join("output")).unwrap();
         let mut command = self.command("serve", &config.to_string());
         command
             .process_group(0)
+            .env("MESH_TEST_DATABASE_URL", url)
             .env("MESH_JOBS_PROOF_WORKER", name)
             .env("MESH_JOBS_PROOF_MARKERS", &markers)
             .stdout(output.try_clone().unwrap())

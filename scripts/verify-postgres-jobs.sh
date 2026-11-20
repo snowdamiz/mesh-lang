@@ -38,6 +38,7 @@ verify() {
     cargo test --locked -p meshc --test e2e_pg_conn_ownership --test e2e_db_values \
       --test e2e_migrate -- --ignored --test-threads=1
   fi
+  cargo test --locked -p mesh-rt --lib db::pg::tests
   cargo test --locked -p mesh-rt --lib jobs:: -- --include-ignored --test-threads=1
   cargo test --locked -p meshc --test e2e_durable_jobs -- --nocapture
 }

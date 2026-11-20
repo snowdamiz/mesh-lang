@@ -38,6 +38,38 @@ fn seed(pool :: PoolHandle) -> String!String do
   end
 end
 
+fn enable_wakeups(conn :: borrow PgConn) -> Int!String do
+  Pg.execute(conn, "SET mesh_jobs.publish_wakeups = on", [])
+end
+
+fn staged_wake_job(conn :: borrow PgConn) -> String!String do
+  let _ = Pg.execute(conn, "SET LOCAL mesh_jobs.publish_wakeups = on", [])?
+  let spec = Env.get("MESH_JOBS_PROOF_PAYLOAD", "")
+  let receipt = Jobs.enqueue_in(conn, namespace(), spec)?
+  let markers = Env.get("MESH_JOBS_PROOF_MARKERS", "")
+  let _ = File.write(markers <> "/staged", receipt)?
+  while !File.exists(markers <> "/commit") do
+    Timer.sleep(10)
+  end
+  if Env.get("MESH_JOBS_PROOF_COMMAND", "") == "stage_rollback" do
+    Err("intentional wake rollback")
+  else
+    Ok(receipt)
+  end
+end
+
+fn stage_wake_rollback(pool :: PoolHandle) -> String!String do
+  case Repo.transaction(pool, staged_wake_job) do
+    Err(error) ->
+      if error == "intentional wake rollback" do
+        Ok("null")
+      else
+        Err(error)
+      end
+    Ok(_) -> Err("staged wake transaction should have rolled back")
+  end
+end
+
 fn record_effect(context :: String) -> String!String do
   let decoded = Json.parse(context)?
   let args = Json.object_get(decoded, "args")?
@@ -75,7 +107,7 @@ fn record_effect(context :: String) -> String!String do
   end
   if label == "poison" do
     Ok("""{"action":"fail","reason":"proof worker rejected poison"}""")
-  else if (label == "retry" || label == "event-exhaustion") && attempt == 1 do
+  else if (label == "retry" || label == "event-exhaustion" || label == "wake-retry") && attempt == 1 do
     Ok("""{"action":"retry_after","delay_ms":400,"reason":"proof worker requested a retry"}""")
   else
     Ok("""{"action":"complete"}""")
@@ -159,12 +191,18 @@ end
 
 fn run() -> String!String do
   let pool = Pool.open(database_url(), 1, 8, 5000)?
+  if Env.get("MESH_JOBS_PROOF_PUBLISH", "") == "on" do
+    let _ = Repo.transaction(pool, enable_wakeups)?
+    ()
+  end
   let payload = Env.get("MESH_JOBS_PROOF_PAYLOAD", "")
   let result = case Env.get("MESH_JOBS_PROOF_COMMAND", "") do
     "seed" -> seed(pool)
     "enqueue" -> Jobs.enqueue(pool, namespace(), payload)
     "enqueue_file" -> Jobs.enqueue(pool, namespace(), File.read(payload)?)
     "control" -> Jobs.control(pool, namespace(), payload)
+    "stage_commit" -> Repo.transaction(pool, staged_wake_job)
+    "stage_rollback" -> stage_wake_rollback(pool)
     "serve" -> serve(pool, payload)
     "drain" -> bounded_drain(pool, payload)
     _ -> Err("unknown proof command")

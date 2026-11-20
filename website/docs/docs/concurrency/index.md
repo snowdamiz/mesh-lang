@@ -576,6 +576,16 @@ Set `claim_batch: true` in the runner config to enable opt-in batch dispatch. A 
 
 Batch dispatch uses two dedicated PostgreSQL sessions per runner, one for claims and one for renewal and settlement. Include both in the runner's connection budget. The database limits each job context to 16 MiB and each batch reply to 32 MiB. The runner reports an oversized job in `last_error` and continues claiming later jobs. A batch drain reports oversized jobs and can finish after processing its remaining eligible work. For restricted worker roles, grant `EXECUTE` on `mesh_jobs.claim_batch_v1(text, text, jsonb, bigint, integer, bigint)` and `SELECT`, `INSERT`, and `UPDATE` on `mesh_jobs.batch_context_blocks`. Existing runners can continue with single claims during rollout.
 
+#### Wake runners after commits
+
+Set `listen: true` in a long-running runner's config to subscribe to PostgreSQL wake hints. Run `Jobs.migrate` before enabling publishing. Enable publishing on the sessions that enqueue jobs or resume queues, for example with `ALTER ROLE app_writer IN DATABASE app_db SET mesh_jobs.publish_wakeups = 'on'` for new sessions or `SET LOCAL mesh_jobs.publish_wakeups = 'on'` inside a transaction using `Jobs.enqueue_in`. Publishing and listening each default to off. A runner can listen with publishing disabled.
+
+The listener holds one additional PostgreSQL session per runner, outside the application's pool and in addition to the batch claim session when batching is enabled. Use a direct connection or a session pooler. Set `listen: false` for transaction poolers and to run in poll-only mode. Drain runners never subscribe.
+
+Every successful subscription triggers a scan after `LISTEN` commits, including after reconnect. Wake hints contain fixed-size namespace and queue hashes. PostgreSQL notifications are visible to database users. The runner reads PostgreSQL rows to decide what to claim. It uses the database's clock for known scheduled and retry deadlines and continues fallback polling during listener outages or when hints are missed. With `listen: true`, fallback delays are `poll_ms` plus up to 20% jitter. The default poll-only runner keeps its existing polling cadence. The `wakeups` status reports subscription state and counts claim scans prompted by subscriptions, notifications, due timers, and fallback polls.
+
+Publishing uses PostgreSQL's transactional notification queue. A rollback discards its hints. PostgreSQL can reject the whole transaction at commit if the notification queue is full. Monitor it with `pg_notification_queue_usage()`. A transaction that publishes a hint cannot be prepared for two-phase commit. [PostgreSQL NOTIFY documentation](https://www.postgresql.org/docs/current/sql-notify.html)
+
 If a transaction locks a job row, the runner retries that job's renewal or acknowledgement while it continues processing other active jobs. A claim can expire while its row is locked. Recovery can act once the transaction releases the lock.
 
 Delivery is at least once within the attempt budget. If a handler sends a receipt and dies before acknowledging it, another attempt can send it again. Pass `effect_key` to a downstream idempotency mechanism or record it in the same transaction as the external effect when both use the same database.

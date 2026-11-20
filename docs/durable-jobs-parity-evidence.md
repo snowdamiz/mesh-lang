@@ -19,6 +19,14 @@ python3 scripts/jobs-parity.py --faults --mesh-ref 59f6a7b3
 ```
 
 The correctness script runs the runtime tests and compiled process proof.
+The compiled proof uses both poll-only and `listen: true` runners. A loopback
+relay pauses a listener reconnect while leaving the claim and handler sessions
+available. Run with `--compatibility` to cover the same paths over verified TLS
+and SCRAM. To compare sparse pickup behavior with a pinned reference, build
+its `mesh-rt` static library and set `MESH_JOBS_REFERENCE_RT_LIB_PATH` to the
+absolute path of that library before running the verifier. It compiles the
+same fixture twice and checks the same committed input with polling on the
+reference and notifications on the candidate.
 The smoke test runs one small matched pair. The fault test observes a claim
 and a committed effect before terminating the runner, then checks recovery
 from a separate database connection. Mesh recovers by lease expiry. Oban
