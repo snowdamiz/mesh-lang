@@ -1928,6 +1928,13 @@
     "observed": 4,
     "within_limit": false
   },
+  "notification_producer_failures": {
+    "harness": "3fac6b4848c86111b1a6948ab66f31ac31c27e0a",
+    "receipt": "proof/jobs-parity/notification-producer-failures-v1.json",
+    "result": "pass",
+    "runtime": "a431fbbfb3dccc737eb12c7c651294212f728e1d",
+    "versions": ["17.11", "18.7", "19.0"]
+  },
   "one_slot_oban_process_rerun": {
     "harness_revision": "40811314ad1513d8c3ff29322145e62a832d8f13",
     "oban": {
@@ -1976,6 +1983,7 @@
     "transport": "SCRAM with verified TLS"
   },
   "open_gates": [
+    "J2 sparse pickup p99 against pinned main on the current candidate",
     "Oban throughput, pickup, and resource budgets in the matched matrix",
     "Failure-case coverage for all documented guarantees",
     "Hosted verification and independent review of the current PR head",
@@ -3382,6 +3390,38 @@
       "17.11",
       "18.7",
       "19.0"
+    ]
+  },
+  "owner_replay_batch_load_follow_up": {
+    "baseline": "7c1620563614a04a573aef806a6d019a2af4dfe9",
+    "candidate": "a431fbbfb3dccc737eb12c7c651294212f728e1d",
+    "harness": "ba78ef229e78130b17354e14c8d55d00a0be5bea",
+    "manifest_sha256": "db3b0f57ad8d52f5251f900b6c2b9b6e78cac30733df3a0475f320e6330b9613",
+    "profile": "one runner, 16 slots, five pairs per workload",
+    "postgres_version": "17.11",
+    "transport": "SCRAM with verified TLS",
+    "short_claim_calls_per_job": {"candidate": 0.3515625, "baseline": 1.0078125, "within_limit": true},
+    "sparse_pickup_p99_ms": {"candidate": 252.373046875, "baseline": 172.096923828125, "within_limit": false},
+    "run": "j1-load-fpo4vv2o",
+    "sparse_pre_fence_control": {
+      "candidate": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+      "harness": "249057a927d5fb0554a3ecb056dcc9e6710604c9",
+      "identical_harness_file_hashes": true,
+      "manifest_sha256": "6e0a524a273a194f40815d768137a97bc08c826e9777481eb30322970f767cbc",
+      "pickup_p99_ms": {"candidate": 241.509033203125, "baseline": 245.859130859375, "within_limit": true},
+      "run": "j1-load-oh6bgl8r"
+    }
+  },
+  "queue_stop_and_bounded_drain_follow_up": {
+    "checkout": "304b0cc200dcf5012afb7a30713b3cedd71dd644",
+    "compiled_proofs_passed": 2,
+    "log_sha256": "b8b7509d9ca1d3bd722e6e9547a9a45986c3bd2385862375c1829126e31aa11b",
+    "postgres_version": "17.11",
+    "runtime_tests_passed": 47,
+    "scope": [
+      "real committed claim with injected caller error during local stop",
+      "bounded drain at the global slot limit and with excess expired leases",
+      "compiled inspection default limit and insertion order"
     ]
   },
   "scoped_drain_and_cleanup": {

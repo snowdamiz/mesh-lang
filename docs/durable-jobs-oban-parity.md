@@ -179,7 +179,7 @@ OS spawn call and a gate at the existing native worker-start marker.
 - [x] Metric. The paired trials record claim round trips, throughput, and pickup p99. The compiled mixed-size case records a 25,166,688-byte peak of queued contexts. [Lane receipts](durable-jobs-parity-evidence.md#compiled-lane-receipts)
 - [x] Probe. The main and candidate matrix interleaves dense and sparse profiles. Batching is enabled on the candidate. [Matrix receipt](../proof/jobs-parity/j7-lane-1.log)
 - [x] Baseline. Main uses one-row claims with identical concurrency. Batch dispatch is opt-in on the candidate. [Matrix receipt](../proof/jobs-parity/j7-lane-1.log)
-- [x] Rule. The dense reference used 77.7% fewer claim calls per job against a 30% minimum. All seven sparse profiles met the 1.10× pickup p99 limit in the full rerun. The claim SQL budgets each reply below 32 MiB, and the compiled mixed-size proof observed a peak of 25,166,688 queued context bytes. [Rerun and earlier results](durable-jobs-parity-evidence.md#batch-comparison-against-pinned-main)
+- [ ] Rule. The full rerun reduced dense claim calls by 77.7%, and all seven sparse profiles met the 1.10× pickup p99 limit. After the owner replay fix, the short reference still met the 30% claim-call reduction and the one-runner, 16-slot sparse profile missed the relative pickup limit. The claim SQL budgets each reply below 32 MiB, and the compiled mixed-size proof observed a peak of 25,166,688 queued context bytes. [Rerun and earlier results](durable-jobs-parity-evidence.md#batch-comparison-against-pinned-main)
 
 **Review gate.** None. This phase has no graphical interaction. Independent review uses the CLI receipts and database proof.
 

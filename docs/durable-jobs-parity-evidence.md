@@ -880,6 +880,16 @@ enqueue transaction. Both reruns used five pairs per profile and verified
 zero `pg_stat_statements` evictions. The earlier matrix miss remains part
 of the record. [Rerun receipt](../proof/jobs-parity/qualification-v1.json)
 
+The owner replay follow-up used release runtime `a431fbbf` with one runner
+and 16 slots on PostgreSQL 17.11 over verified TLS. In five short pairs,
+claim calls fell by 65.1%, from 1.008 to 0.352 per job. Five sparse pairs
+measured pickup p99 of 252.4 ms versus 172.1 ms on pinned main, above the
+1.10× limit. In a separate pre-fence control with the same harness file
+hashes, `1b12243b` measured 241.5 ms against 245.9 ms on main. Most of the
+tail wait in the follow-up preceded the claim. The two runs had different
+main pickup medians, and the cause of the miss remains open.
+[Follow-up receipts](../proof/jobs-parity/qualification-v1.json)
+
 The follow-up verifier used the same runtime sources and passed 45 Jobs
 runtime tests and both compiled suites on PostgreSQL 17.11, 18.7, and 19.0.
 Both suites complete shared schema setup before running namespace traffic.
@@ -1063,6 +1073,9 @@ queue-full error. With the queue still full, publishing on fails at
 `COMMIT` and leaves all five tables empty. Publishing off commits the
 business row, job, and receipt under the same pressure.
 
+The compiled cases passed on macOS arm64 with PostgreSQL 17.11, 18.7,
+and 19.0. [Producer failure receipt](../proof/jobs-parity/notification-producer-failures-v1.json)
+
 Read `manifest.json`, `mesh-toolchain.json`, and `result.json` in the printed
 evidence directory. This producer proof runs without workers or performance
 measurements.
@@ -1085,6 +1098,17 @@ observes the limit after resume.
 Both proofs passed on macOS arm64 with PostgreSQL 17.11, 18.7, and 19.0
 using verified TLS and SCRAM.
 [Compiled failure receipts](../proof/jobs-parity/qualification-v1.json)
+
+The PostgreSQL 17.11 follow-up commits a real single claim and injects an
+error at the caller boundary during queue-local stop. The runner clears its
+local reservation, the original lease and attempt remain durable, and a
+sibling queue settles. After expiry, a replacement claims attempt two with
+the original effect key, and settlement with the obsolete token returns
+`stale`. The compiled drain suite also verifies that an occupied global
+slot leaves a queued job untouched, and a one-job drain recovers one
+eligible expired lease while leaving excess and wrong-version rows intact.
+The compiled inspection checks cover the 20-row default and insertion order.
+[Follow-up receipt](../proof/jobs-parity/qualification-v1.json)
 
 The maintenance-join test pauses local admission and waits for any pending
 claim to clear before stopping with the cron lock held. This lets the test
