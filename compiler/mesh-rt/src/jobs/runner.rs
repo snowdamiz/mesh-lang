@@ -1812,6 +1812,7 @@ fn dispatch(
         let (requests, receive) = mpsc::sync_channel::<BatchRequest>(1);
         let (send, results) = mpsc::sync_channel(1);
         let config = &runner.config;
+        let dispatcher = std::thread::current();
         let worker = std::thread::Builder::new()
             .name(format!("mesh-jobs-claim-{}", runner.id))
             .spawn_scoped(scope, move || {
@@ -1834,6 +1835,7 @@ fn dispatch(
                     if send.send((request.queue, result)).is_err() {
                         break;
                     }
+                    dispatcher.unpark();
                 }
             });
         match worker {
