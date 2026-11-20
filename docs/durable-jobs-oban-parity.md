@@ -75,8 +75,8 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 
 **Files.**
 
-- [ ] Extend `scripts/verify-postgres-jobs.sh` and add a separate load and fault driver under `scripts/`.
-- [ ] Reuse `compiler/meshc/tests/e2e_durable_jobs.rs` and `tests/e2e/durable_jobs/main.mpl` for compiled scenarios. Keep the Oban comparison fixture pinned to `2.24.2` with its lockfile.
+- [x] Extend `scripts/verify-postgres-jobs.sh` and add a separate load and fault driver under `scripts/`.
+- [x] Reuse `compiler/meshc/tests/e2e_durable_jobs.rs` and `tests/e2e/durable_jobs/main.mpl` for compiled scenarios. Keep the Oban comparison fixture pinned to `2.24.2` with its lockfile.
 
 **Build.**
 
@@ -89,7 +89,7 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 
 **You see.**
 
-- [ ] A repeatable command produces a manifest and machine-readable evidence for both engines, with test failure distinguished from a queue defect.
+- [x] A repeatable command produces a manifest and machine-readable evidence for both engines, with test failure distinguished from a queue defect.
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
@@ -127,19 +127,19 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 
 **Files.**
 
-- [ ] Edit `compiler/mesh-rt/src/jobs/schema.sql`, `compiler/mesh-rt/src/jobs/store.rs`, and `compiler/mesh-rt/src/jobs/runner.rs`.
-- [ ] Extend `compiler/mesh-rt/src/jobs/store_tests.rs` and `compiler/mesh-rt/src/jobs/runner_tests.rs` with batch and failure tests.
+- [x] Edit `compiler/mesh-rt/src/jobs/schema.sql`, `compiler/mesh-rt/src/jobs/store.rs`, and `compiler/mesh-rt/src/jobs/runner.rs`.
+- [x] Extend `compiler/mesh-rt/src/jobs/store_tests.rs` and `compiler/mesh-rt/src/jobs/runner_tests.rs` with batch and failure tests.
 
 **Build.**
 
-- [ ] Add a versioned `claim_batch` entry point. Under one `READ COMMITTED` transaction, take the queue admission lock once, measure global headroom, and select the ordered `SKIP LOCKED` candidates by priority, schedule, and position. Limit the result by local reserved slots, global headroom, and an initial quantum of 16, then rotate queues. Document that continuous higher-priority arrivals can delay lower-priority work in the same queue.
-- [ ] Return one PostgreSQL row per attempt. Enforce per-context and total reply byte budgets before creating claims, because JSONB can expand a small enqueue into a large context. Start with the existing 16 MiB per-column ceiling and a 32 MiB total reply budget under the driver's 64 MiB result cap. Expose an oversized-context error that does not block valid work behind it.
+- [x] Add a versioned `claim_batch` entry point. Under one `READ COMMITTED` transaction, take the queue admission lock once, measure global headroom, and select the ordered `SKIP LOCKED` candidates by priority, schedule, and position. Limit the result by local reserved slots, global headroom, and an initial quantum of 16, then rotate queues. Document that continuous higher-priority arrivals can delay lower-priority work in the same queue.
+- [x] Return one PostgreSQL row per attempt. Enforce per-context and total reply byte budgets before creating claims, because JSONB can expand a small enqueue into a large context. Start with the existing 16 MiB per-column ceiling and a 32 MiB total reply budget under the driver's 64 MiB result cap. Expose an oversized-context error that does not block valid work behind it.
 - [ ] Dispatch only after confirmed commit. Recover ambiguous claims by lease and refund only confirmed unstarted claims. Preserve attempt accounting, effect keys, cancellation priority, and stale-token fencing. Keep the original SQL entry points, bodies, and role grants available during upgrades.
-- [ ] Give renewal and settlement bounded database access independent of claim traffic. Reserve capacity or use bounded independent I/O so that a slow claim or a locked row does not stop another queue's renewals. Retain the per-attempt process until measurements justify a different lifetime design.
+- [x] Give renewal and settlement bounded database access independent of claim traffic. Reserve capacity or use bounded independent I/O so that a slow claim or a locked row does not stop another queue's renewals. Retain the per-attempt process until measurements justify a different lifetime design.
 
 **You see.**
 
-- [ ] A ready backlog fills available slots in bounded batches. A sparse eligible queue gets service on its next turn when it has available capacity.
+- [x] A ready backlog fills available slots in bounded batches. A sparse eligible queue gets service on its next turn when it has available capacity.
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
@@ -177,19 +177,19 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 
 **Files.**
 
-- [ ] Edit `compiler/mesh-rt/src/db/pg.rs`, `compiler/mesh-rt/src/db/jobs_connection.rs` and `compiler/mesh-rt/src/jobs/runner.rs`.
-- [ ] Extend `compiler/mesh-rt/src/jobs/schema.sql` and the compiled PostgreSQL fixtures.
+- [x] Edit `compiler/mesh-rt/src/db/pg.rs`, `compiler/mesh-rt/src/db/jobs_connection.rs` and `compiler/mesh-rt/src/jobs/runner.rs`.
+- [x] Extend `compiler/mesh-rt/src/jobs/schema.sql` and the compiled PostgreSQL fixtures.
 
 **Build.**
 
-- [ ] Decode PostgreSQL asynchronous notification frames on a dedicated, interruptible session. Reuse the existing TLS and SCRAM transport. Keep partial reads framed across wakeups and prevent the listener from occupying a lease or settlement pool slot.
-- [ ] Commit `LISTEN` before the initial catch-up scan. Repeat that order on reconnect and after failover. Coalesce namespace and queue hints without including payloads or claim tokens. Treat hints as a reason to read authoritative rows.
-- [ ] Wake on committed enqueue and queue resume, and use due-time timers for scheduled or retryable jobs. Keep jittered fallback polling for outages, missed hints, and transaction poolers. Make transactional publishing opt-in until commit coupling and resource use pass the gate. Document that PostgreSQL can reject a commit if its notification queue is full.
-- [ ] Make the subscription and shutdown path release its session within the runner's shutdown budget. Define a poll-only setting and document connection cost.
+- [x] Decode PostgreSQL asynchronous notification frames on a dedicated, interruptible session. Reuse the existing TLS and SCRAM transport. Keep partial reads framed across wakeups and prevent the listener from occupying a lease or settlement pool slot.
+- [x] Commit `LISTEN` before the initial catch-up scan. Repeat that order on reconnect and after failover. Coalesce namespace and queue hints without including payloads or claim tokens. Treat hints as a reason to read authoritative rows.
+- [x] Wake on committed enqueue and queue resume, and use due-time timers for scheduled or retryable jobs. Keep jittered fallback polling for outages, missed hints, and transaction poolers. Make transactional publishing opt-in until commit coupling and resource use pass the gate. Document that PostgreSQL can reject a commit if its notification queue is full.
+- [x] Make the subscription and shutdown path release its session within the runner's shutdown budget. Define a poll-only setting and document connection cost.
 
 **You see.**
 
-- [ ] A remote runner picks up newly committed work without waiting for the configured fallback poll. With notifications disabled, the same job still completes through polling.
+- [x] A remote runner picks up newly committed work without waiting for the configured fallback poll. With notifications disabled, the same job still completes through polling.
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
@@ -227,19 +227,19 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 
 **Files.**
 
-- [ ] Edit `compiler/mesh-rt/src/jobs/runner.rs`, `compiler/mesh-rt/src/jobs/store.rs`, and `compiler/mesh-rt/src/jobs/mod.rs`.
-- [ ] Add the event reader or subscriber API through the Jobs compiler and REPL bindings. Update `website/docs/docs/concurrency/index.md`.
+- [x] Edit `compiler/mesh-rt/src/jobs/runner.rs`, `compiler/mesh-rt/src/jobs/store.rs`, and `compiler/mesh-rt/src/jobs/mod.rs`.
+- [x] Add the event reader or subscriber API through the Jobs compiler and REPL bindings. Update `website/docs/docs/concurrency/index.md`.
 
 **Build.**
 
-- [ ] Add a versioned event envelope for runner start and stop, attempt start, committed settlement, lost lease, stale or uncertain acknowledgement, storage failures, and maintenance. Include job and attempt identities in events. Keep them out of metric labels.
-- [ ] Report queue wait, handler duration, and bounded failure kinds. Reuse the database-confirmed settlement enum so a retry at exhaustion appears as discarded and a concurrent operator cancellation wins. Keep existing `outcomes` and `stale_acks` counts.
-- [ ] Isolate event delivery with a bounded buffer and dropped-event counter. A slow, failing, or absent consumer must leave leases and shutdown responsive. Provide an opt-in JSON logger and a programmatic reader or subscriber. Omit args, metadata, credentials, and lease tokens by default.
-- [ ] Document which events reflect an observed commit. An ambiguous network response produces an uncertainty event and cannot fabricate a committed result.
+- [x] Add a versioned event envelope for runner start and stop, attempt start, committed settlement, lost lease, stale or uncertain acknowledgement, storage failures, and maintenance. Include job and attempt identities in events. Keep them out of metric labels.
+- [x] Report queue wait, handler duration, and bounded failure kinds. Reuse the database-confirmed settlement enum so a retry at exhaustion appears as discarded and a concurrent operator cancellation wins. Keep existing `outcomes` and `stale_acks` counts.
+- [x] Isolate event delivery with a bounded buffer and dropped-event counter. A slow, failing, or absent consumer must leave leases and shutdown responsive. Provide an opt-in JSON logger and a programmatic reader or subscriber. Omit args, metadata, credentials, and lease tokens by default.
+- [x] Document which events reflect an observed commit. An ambiguous network response produces an uncertainty event and cannot fabricate a committed result.
 
 **You see.**
 
-- [ ] An application can trace why a job retried or stopped from structured events and can detect a saturated event consumer.
+- [x] An application can trace why a job retried or stopped from structured events and can detect a saturated event consumer.
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
@@ -277,19 +277,19 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 
 **Files.**
 
-- [ ] Edit `compiler/mesh-test-rt/src/lib.rs` and the compiler's Jobs type, codegen, and REPL bindings where test APIs need them.
-- [ ] Add compiled examples and tests under `tests/e2e/durable_jobs/` and `compiler/meshc/tests/`. Update the concurrency and test docs.
+- [x] Edit `compiler/mesh-test-rt/src/lib.rs` and the compiler's Jobs type, codegen, and REPL bindings where test APIs need them.
+- [x] Add compiled examples and tests under `tests/e2e/durable_jobs/` and `compiler/meshc/tests/`. Update the concurrency and test docs.
 
 **Build.**
 
-- [ ] Provide scoped manual inspection and assert or refute helpers with namespace, queue, worker, version, argument subset, state, and bounded waits. Let assertions inside a transaction read through the caller's borrowed connection. Keep namespace ownership explicit so parallel tests cannot see one another's rows.
-- [ ] Provide test-only job construction and direct handler execution with the production validation and outcome decoder. Inline mode uses a fresh test scope and system clock or injected test clock as appropriate. It must not acknowledge a production row or trigger unexpected work on a rollback. Keep production execution on the existing isolated path.
-- [ ] Add a synchronous drain helper that uses the normal claim and settlement path with a maximum job count, an optional scheduled cutoff, explicit recursion and error policy. Return committed outcome counts and indicate remaining work when a budget is hit.
-- [ ] Show testing patterns for enqueue-only assertions, handler outcomes without a database, and physical multi-process recovery backed by PostgreSQL.
+- [x] Provide scoped manual inspection and assert or refute helpers with namespace, queue, worker, version, argument subset, state, and bounded waits. Let assertions inside a transaction read through the caller's borrowed connection. Keep namespace ownership explicit so parallel tests cannot see one another's rows.
+- [x] Provide test-only job construction and direct handler execution with the production validation and outcome decoder. Inline mode uses a fresh test scope and system clock or injected test clock as appropriate. It must not acknowledge a production row or trigger unexpected work on a rollback. Keep production execution on the existing isolated path.
+- [x] Add a synchronous drain helper that uses the normal claim and settlement path with a maximum job count, an optional scheduled cutoff, explicit recursion and error policy. Return committed outcome counts and indicate remaining work when a budget is hit.
+- [x] Show testing patterns for enqueue-only assertions, handler outcomes without a database, and physical multi-process recovery backed by PostgreSQL.
 
 **You see.**
 
-- [ ] A service test can assert its jobs on the same transaction, run a worker directly, or drain a bounded namespace and assert its persisted results.
+- [x] A service test can assert its jobs on the same transaction, run a worker directly, or drain a bounded namespace and assert its persisted results.
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
@@ -327,19 +327,19 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 
 **Files.**
 
-- [ ] Edit `compiler/mesh-rt/src/jobs/store.rs`, `compiler/mesh-rt/src/jobs/schema.sql`, `compiler/mesh-rt/src/jobs/runner.rs`, and `compiler/mesh-rt/src/jobs/cron.rs`.
-- [ ] Extend store and cron tests and the compiled runner proof. Add an operations runbook next to the Jobs docs.
+- [x] Edit `compiler/mesh-rt/src/jobs/store.rs`, `compiler/mesh-rt/src/jobs/schema.sql`, `compiler/mesh-rt/src/jobs/runner.rs`, and `compiler/mesh-rt/src/jobs/cron.rs`.
+- [x] Extend store and cron tests and the compiled runner proof. Add an operations runbook next to the Jobs docs.
 
 **Build.**
 
-- [ ] Add stable runner and queue inspection, targeted local start, pause, resume and scale, and queue-only graceful stop. Retain namespace-wide defaults and database-wide admission. Make the behavior during restart and node loss explicit. Add optional namespace-wide pause and resume.
-- [ ] Add bounded job search, filtered bulk delete, validated edits, and an explicit run-now action for scheduled or retryable work. Preserve global limits, the current run's effect key, and the attempt budget. Reject edits to an actively claimed attempt unless the action specifically supports cancellation.
-- [ ] Expose cadence and page sizes for recovery, cron, and pruning. Preserve transactional cron cursors, current missed-occurrence policies, and receipt replay after pruning or delete. Put opt-in concurrent index maintenance on a separate, bounded administrative path with an index allowlist and one owner at a time.
-- [ ] Document missed wakeups, database outage triage, bounded maintenance, and the operator view of a job after failover. Derive the role grants from invoker SQL and test the matrix in Appendix C on a fresh and an upgraded database with default `PUBLIC EXECUTE` revoked.
+- [x] Add stable runner and queue inspection, targeted local start, pause, resume and scale, and queue-only graceful stop. Retain namespace-wide defaults and database-wide admission. Make the behavior during restart and node loss explicit. Add optional namespace-wide pause and resume.
+- [x] Add bounded job search, filtered bulk delete, validated edits, and an explicit run-now action for scheduled or retryable work. Preserve global limits, the current run's effect key, and the attempt budget. Reject edits to an actively claimed attempt unless the action specifically supports cancellation.
+- [x] Expose cadence and page sizes for recovery, cron, and pruning. Preserve transactional cron cursors, current missed-occurrence policies, and receipt replay after pruning or delete. Put opt-in concurrent index maintenance on a separate, bounded administrative path with an index allowlist and one owner at a time.
+- [x] Document missed wakeups, database outage triage, bounded maintenance, and the operator view of a job after failover. Derive the role grants from invoker SQL and test the matrix in Appendix C on a fresh and an upgraded database with default `PUBLIC EXECUTE` revoked.
 
 **You see.**
 
-- [ ] Operators can inspect and control one runner or the namespace, safely advance due work, and maintain a busy database while jobs continue to settle.
+- [x] Operators can inspect and control one runner or the namespace, safely advance due work, and maintain a busy database while jobs continue to settle.
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
@@ -377,14 +377,14 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 
 **Files.**
 
-- [ ] Extend `.github/workflows/authoritative-verification.yml`, `scripts/verify-postgres-jobs.sh`, and `compiler/meshc/tests/e2e_durable_jobs.rs`.
-- [ ] Publish the shared API, guarantees, upgrade and support matrix, workload manifest, and comparison results in the Jobs documentation.
+- [x] Extend `.github/workflows/authoritative-verification.yml`, `scripts/verify-postgres-jobs.sh`, and `compiler/meshc/tests/e2e_durable_jobs.rs`.
+- [x] Publish the shared API, guarantees, upgrade and support matrix, workload manifest, and comparison results in the Jobs documentation.
 
 **Build.**
 
 - [ ] Run database-backed correctness on PostgreSQL 17, 18.7, and 19.0. Record the exact 17 patch version and keep the minimum-version policy separate from the tested list. Run real compiled timeout, child-death, join, and recovery tests on each platform advertised for durable Jobs. Record platform boundaries explicitly.
 - [ ] Pressure-test delivery under worker and coordinator death, row locks, network partitions, primary failover, and exhausted pools. Preserve the at-least-once contract, token fences and idempotency keys. Document that remote effects can commit after worker termination and that whole-host or worker suspension has a different boundary from blocking native I/O.
-- [ ] Replay the upgrade with preexisting scheduled and retryable jobs, old and new worker binaries, scoped grants, and default function execution revoked. Demonstrate rollback to the old runner without dropping rows or removing additive SQL.
+- [x] Replay the upgrade with preexisting scheduled and retryable jobs, old and new worker binaries, scoped grants, and default function execution revoked. Demonstrate rollback to the old runner without dropping rows or removing additive SQL.
 - [ ] Publish the feature-by-feature matrix and exact measurements. Only claim PostgreSQL core parity when the behavioral matrix and measured limits pass. Record workload-specific exclusions and deployment assumptions.
 
 **You see.**
