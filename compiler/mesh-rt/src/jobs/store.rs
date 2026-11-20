@@ -647,7 +647,7 @@ pub(super) fn renew(
     lease_duration(lease_ms)?;
     match response(
         db,
-        "SELECT mesh_jobs.renew($1, $2::uuid, $3::uuid, $4::bigint) AS status",
+        "SELECT mesh_jobs.try_renew($1, $2::uuid, $3::uuid, $4::bigint) AS status",
         &[namespace, id, token, &lease_ms.to_string()],
     )?
     .as_str()

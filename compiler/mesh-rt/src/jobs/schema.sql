@@ -279,7 +279,7 @@ BEGIN
 END
 $$;
 
-CREATE OR REPLACE FUNCTION mesh_jobs.renew(
+CREATE OR REPLACE FUNCTION mesh_jobs.try_renew(
     ns text, job_id uuid, token uuid, lease_ms bigint
 ) RETURNS text
 LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$
@@ -299,6 +299,13 @@ BEGIN
     WHERE namespace = ns AND id = job_id;
     RETURN 'active';
 END
+$$;
+
+CREATE OR REPLACE FUNCTION mesh_jobs.renew(
+    ns text, job_id uuid, token uuid, lease_ms bigint
+) RETURNS text
+LANGUAGE sql VOLATILE SET search_path = pg_catalog, pg_temp AS $$
+    SELECT mesh_jobs.try_renew(ns, job_id, token, lease_ms);
 $$;
 
 CREATE OR REPLACE FUNCTION mesh_jobs.settle_state(

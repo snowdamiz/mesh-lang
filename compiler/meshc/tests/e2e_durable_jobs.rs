@@ -201,7 +201,18 @@ fn prove_retry_and_exhaustion(proof: &Proof) {
     let poison = proof.wait_state("poison", "discarded");
     let retry = proof.wait_state("retry", "completed");
     let healthy = proof.wait_state("healthy", "completed");
-    worker.stop();
+    worker.signal();
+    let report = worker.join();
+    assert_eq!(report["state"], "stopped", "{report}");
+    assert_eq!(report["finished"], 6, "{report}");
+    assert_eq!(
+        report["outcomes"],
+        json!({
+            "completed": 2, "cancelled": 0, "discarded": 2,
+            "retryable": 2, "scheduled": 0, "released_unstarted": 0
+        }),
+        "{report}"
+    );
     assert_eq!(panicked["id"], receipts[3]["id"]);
     assert_eq!(panicked["attempt"], 1);
     assert!(panicked["errors"][0]["reason"]
@@ -342,8 +353,13 @@ fn wait_for_native_query(proof: &Proof, label: &str, active: bool) {
 
 fn prove_locked_job_does_not_stall_runner(proof: &Proof) {
     proof.control(json!({"action":"scale","queue":"default","concurrency":2}));
-    let mut worker =
-        proof.worker_with_options("independent-leases", true, json!({"default":2}), 8000);
+    let mut worker = proof.worker_with_options(
+        "independent-leases",
+        true,
+        json!({"default":2}),
+        8000,
+        LEASE_MS,
+    );
     let held = proof.enqueue(spec("locked-attempt"));
     proof.wait_effects("locked-attempt", 1);
     let healthy = proof.enqueue(json!({
@@ -382,8 +398,13 @@ fn prove_join_waits_after_grace(proof: &Proof) {
         {"worker":"proof","queue":"shutdown","args":{"label":"join-active"},"max_attempts":1},
         {"worker":"proof","queue":"shutdown","args":{"label":"join-pending"}}
     ]));
-    let mut worker =
-        proof.worker_with_options("zero-shutdown-grace", true, json!({"shutdown":1}), 0);
+    let mut worker = proof.worker_with_options(
+        "zero-shutdown-grace",
+        true,
+        json!({"shutdown":1}),
+        0,
+        60_000,
+    );
     proof.wait_effects("join-active", 1);
     let lock = proof.lock_job(&jobs[0]);
 
@@ -406,6 +427,7 @@ fn prove_join_waits_after_grace(proof: &Proof) {
     let report = worker.join();
     assert_eq!(report["state"], "stopped", "{report}");
     assert_eq!(report["drained"], true, "{report}");
+    assert_eq!(report["outcomes"]["discarded"], 1, "{report}");
     let settled = proof.wait_state("join-active", "discarded");
     assert_eq!(
         settled["errors"][0]["reason"],
@@ -505,6 +527,7 @@ fn prove_launch_failure(proof: &Proof) {
     old.signal();
     let report = old.join();
     assert_eq!(report["claimed"], 1);
+    assert_eq!(report["outcomes"]["released_unstarted"], 1, "{report}");
     assert!(report["last_error"]
         .as_str()
         .unwrap()
@@ -758,7 +781,7 @@ impl<'a> Proof<'a> {
     }
 
     fn worker(&self, name: &str, blocked: bool) -> Worker {
-        self.worker_with_options(name, blocked, json!({"default":1}), 8000)
+        self.worker_with_options(name, blocked, json!({"default":1}), 8000, LEASE_MS)
     }
 
     fn worker_with_options(
@@ -767,6 +790,7 @@ impl<'a> Proof<'a> {
         blocked: bool,
         queues: Value,
         grace_ms: u32,
+        lease_ms: u64,
     ) -> Worker {
         let markers = self.dir.join(name);
         fs::create_dir(&markers).unwrap();
@@ -775,7 +799,7 @@ impl<'a> Proof<'a> {
             "namespace": self.namespace,
             "queues": queues,
             "workers": [{"worker": "proof", "version": 1}],
-            "lease_ms": LEASE_MS,
+            "lease_ms": lease_ms,
             "poll_ms": 25,
             "shutdown_grace_ms": grace_ms,
         });

@@ -386,7 +386,8 @@ fn start_runner(
         let rows = db.query(
             "SELECT (version = 1
                      AND to_regclass('mesh_jobs.cron_schedules') IS NOT NULL
-                     AND to_regprocedure('mesh_jobs.settle_state(text,uuid,uuid,jsonb,boolean)') IS NOT NULL)::text
+                     AND to_regprocedure('mesh_jobs.settle_state(text,uuid,uuid,jsonb,boolean)') IS NOT NULL
+                     AND to_regprocedure('mesh_jobs.try_renew(text,uuid,uuid,bigint)') IS NOT NULL)::text
              FROM mesh_jobs.schema_version WHERE singleton",
             &[],
         )?;
