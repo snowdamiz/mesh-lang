@@ -299,6 +299,7 @@ struct Reservation {
 #[derive(Default)]
 struct Counts {
     claimed: u64,
+    peak_queued_context_bytes: usize,
     outcomes: OutcomeCounts,
     stale_acks: u64,
     recovered: u64,
@@ -318,6 +319,10 @@ impl Counts {
             Settlement::Stale => &mut self.stale_acks,
         };
         *count += 1;
+    }
+
+    fn observe_queued_context_bytes(&mut self, bytes: usize) {
+        self.peak_queued_context_bytes = self.peak_queued_context_bytes.max(bytes);
     }
 }
 
@@ -490,6 +495,7 @@ impl Runner {
             "pending_claims": pending_claims,
             "queues": queues,
             "claimed": state.counts.claimed,
+            "peak_queued_context_bytes": state.counts.peak_queued_context_bytes,
             "finished": state.counts.outcomes.total(),
             "outcomes": state.counts.outcomes,
             "stale_acks": state.counts.stale_acks,
@@ -1741,13 +1747,11 @@ impl BatchLane {
                             .expect("known queue")
                             .backoff(runner, next_due);
                     } else {
-                        runner
-                            .state
-                            .lock()
-                            .pending
-                            .as_mut()
-                            .expect("reserved batch")
-                            .slots = batch.claims.len();
+                        let mut state = runner.state.lock();
+                        state.pending.as_mut().expect("reserved batch").slots = batch.claims.len();
+                        state.counts.observe_queued_context_bytes(
+                            batch.claims.iter().map(|claim| claim.context.len()).sum(),
+                        );
                     }
                     for job in batch.claims {
                         let mut state = runner.state.lock();
@@ -2237,6 +2241,7 @@ fn launch_confirmed(
         timeout_ms,
         ..
     } = job;
+    state.counts.observe_queued_context_bytes(context.len());
     let now = Instant::now();
     let deadline = now.checked_add(Duration::from_millis(timeout_ms));
     let execution = if now >= lease.expires_at {

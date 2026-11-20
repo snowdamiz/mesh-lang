@@ -244,6 +244,63 @@ fn legacy_and_batch_workers_keep_distinct_executes_after_schema_reapply() {
 
 #[test]
 #[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
+fn batch_claim_keeps_the_ordered_prefix_with_large_contexts() {
+    const MIB: usize = 1024 * 1024;
+    let mut fixture = Fixture::new();
+    fixture.ops(json!({"action":"configure","queue":"default","concurrency":5}));
+    let jobs = fixture.enqueue(json!(vec![json!({"worker":"Deliver"}); 5]));
+    let jobs = jobs.as_array().unwrap();
+    for (job, payload_bytes) in jobs.iter().zip([16 * MIB, 12 * MIB, 12 * MIB, 12 * MIB]) {
+        fixture
+            .db
+            .query(
+                "UPDATE mesh_jobs.jobs SET args = jsonb_build_object('large', repeat('x', $3::integer))
+                 WHERE namespace = $1 AND id = $2::uuid",
+                &[&fixture.ns, id(job), &payload_bytes.to_string()],
+            )
+            .unwrap();
+    }
+
+    let first = claim_batch(
+        &mut fixture.db,
+        &fixture.ns,
+        "default",
+        WORKERS,
+        60_000,
+        5,
+        None,
+    )
+    .unwrap();
+    assert_eq!(first.oversized.len(), 1);
+    assert_eq!(first.oversized[0].id, id(&jobs[0]));
+    let ids: Vec<_> = first.claims.iter().map(|claim| claim.id.as_str()).collect();
+    assert_eq!(ids, [id(&jobs[1]), id(&jobs[2])]);
+    let bytes: usize = first.claims.iter().map(|claim| claim.context.len()).sum();
+    assert!(
+        (24 * MIB..32 * MIB).contains(&bytes),
+        "returned {bytes} context bytes"
+    );
+    let following = claim_batch(
+        &mut fixture.db,
+        &fixture.ns,
+        "default",
+        WORKERS,
+        60_000,
+        5,
+        None,
+    )
+    .unwrap();
+    assert!(following.oversized.is_empty());
+    let ids: Vec<_> = following
+        .claims
+        .iter()
+        .map(|claim| claim.id.as_str())
+        .collect();
+    assert_eq!(ids, [id(&jobs[3]), id(&jobs[4])]);
+}
+
+#[test]
+#[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
 fn batch_drain_steps_past_an_oversized_prefix_and_rechecks_replacements() {
     let mut fixture = Fixture::new();
     let jobs = fixture.enqueue(json!(vec![json!({"worker":"Deliver"}); 6]));

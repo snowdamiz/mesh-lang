@@ -494,7 +494,9 @@ A job panic returns `Err` to its caller. If the caller fails, Mesh stops its lin
 
 ## Durable jobs
 
-`Jobs` stores work in PostgreSQL, including PostgreSQL 18 and 19. Use the application's database to commit an enqueue together with a business change. Use the same namespace on every process that serves the same queues. A namespace groups work in the database. Processes with write access to the same job tables share authority. Use separate databases for applications that do not trust each other.
+`Jobs` stores work in PostgreSQL. Use the application's database to commit an enqueue together with a business change. Use the same namespace on every process that serves the same queues. A namespace groups work in the database. Processes with write access to the same job tables share authority. Use separate databases for applications that do not trust each other.
+
+The PostgreSQL proof command requires PostgreSQL 14 or later. The compatibility workflow targets 17.11, 18.7, and 19.0 with verified TLS and SCRAM on Linux x64 and macOS arm64. Windows is outside the compiled Jobs proof matrix. The [comparison guide](https://github.com/snowdamiz/mesh-lang/blob/main/docs/durable-jobs-parity-evidence.md) describes the workload and recorded results.
 
 Run `Jobs.migrate(pool)` before starting workers on a fresh database or after upgrading Mesh. It creates the job tables and updates the queue's SQL functions. A job stores a worker name, payload version, arguments, queue, and scheduling and retry options. Keep the worker versions needed by outstanding jobs available during a rolling deploy. Workers claim jobs that match their registered names and versions.
 
@@ -591,7 +593,7 @@ If a transaction locks a job row, the runner retries that job's renewal or ackno
 
 Delivery is at least once within the attempt budget. If a handler sends a receipt and dies before acknowledging it, another attempt can send it again. Pass `effect_key` to a downstream idempotency mechanism or record it in the same transaction as the external effect when both use the same database.
 
-The runtime terminates the attempt process at its handler timeout or when it loses its lease or runner. Termination stops the handler and all its local actors, including code blocked in a native call. A running service may still finish a request it accepted before termination. Use the same `effect_key` to deduplicate those requests across retries.
+The runtime terminates the attempt process at its handler timeout or when it loses its lease or runner. This includes a handler blocked in a native call while the host can still run its watchdog. A suspended host can miss lease renewals and allow another runner to claim the job before the original host resumes. A service may finish a request it accepted before the attempt was terminated. Use the same `effect_key` to deduplicate these requests across retries.
 
 Deploy compiled executables at versioned paths so old runners can keep starting handlers while they drain. Stop runners from before process isolation to apply hard timeouts to every new attempt. Existing scheduled and retryable jobs keep their stored arguments and deadlines.
 
@@ -600,6 +602,8 @@ On `SIGTERM` or `Jobs.stop`, the runner stops claiming new work and tries to fin
 `Jobs.join` can wait past the grace period. It returns `stopped` after the runner reaps its local attempt processes and finishes its PostgreSQL work, including background maintenance. Before closing the PostgreSQL pool, wait for `Jobs.join` to return for every runner that uses it.
 
 `Jobs.status`, `Jobs.join`, and `Jobs.stop` report cumulative settlement counts for that runner in `outcomes`. The fields are `completed`, `cancelled`, `discarded`, `retryable`, `scheduled`, and `released_unstarted`. Each count reflects writes PostgreSQL confirmed to the runner. Their sum is `finished`. The top-level `scheduled` counts cron jobs enqueued. `stale_acks` counts acknowledgements that applied no write, and `recovered` counts expired attempts handled by this runner's recovery loop.
+
+`peak_queued_context_bytes` records the largest total size of confirmed handler contexts awaiting launch in a single claim response for this runner. It measures the job context strings in memory. PostgreSQL response framing and other process memory have separate limits.
 
 Use a writable PostgreSQL primary with durable commits (`synchronous_commit = on` or stronger) and enough pool connections for handlers, application transactions, and runner I/O. Durability during primary failure depends on the database's storage, replication, and failover configuration. Schedules and lease expiration use the primary's clock.
 

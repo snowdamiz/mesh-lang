@@ -696,9 +696,24 @@ WHERE engine = '{engine}' AND namespace = '{namespace}'
     finally:
         cpu = stop_runners(processes, require_clean=completed)
 
+    queued_context = []
+    if engine == "mesh":
+        for log in logs:
+            try:
+                status = json.loads(log.read_text().strip().splitlines()[-1])
+            except (IndexError, json.JSONDecodeError) as error:
+                raise FixtureError(f"missing Mesh shutdown report in {log}") from error
+            if not isinstance(status, dict) or status.get("state") != "stopped":
+                raise FixtureError(f"invalid Mesh shutdown report in {log}")
+            peak = status.get("peak_queued_context_bytes")
+            if peak is not None and (type(peak) is not int or peak < 0):
+                raise FixtureError(f"invalid queued context peak in {log}")
+            queued_context.append(peak)
+
     raw = {"engine": engine, "variant": subject.variant, "namespace": namespace, "pair": pair, "case_sha256": case,
            "transactions": commits, "attempts": rows, "namespace_writes": writes,
            "samples": samples, "idle_samples": idle_samples,
+           "runner_peak_queued_context_bytes": queued_context,
            "runner_cpu_seconds_including_startup_and_idle": cpu, "raw_sql_calls": calls,
            "raw_runner_sql_calls": runner_calls, "raw_enqueue_sql_calls": enqueue_calls,
            "raw_claim_calls": claim_calls, "raw_idle_sql_calls": idle_calls, "idle_seconds": idle_s}
@@ -717,6 +732,7 @@ WHERE engine = '{engine}' AND namespace = '{namespace}'
         "cpu_seconds_per_job": cpu / len(rows),
         "peak_executing": max(sample["executing"] for sample in samples),
         "estimated_peak_executing": estimated_peak_executing(rows),
+        "peak_queued_context_bytes": max(queued_context) if queued_context and None not in queued_context else None,
         **{f"peak_{key}": max(sample[key] for sample in samples + idle_samples)
            for key in ("connections", "rss_bytes", "processes", "threads")},
     }
@@ -1010,7 +1026,7 @@ def selection(args, settings):
     return [(name, r, s) for name in workloads for r in runners for s in slots if s >= r]
 
 
-def profile_summary(trials, workload, settings, runners, slots, variants):
+def profile_summary(trials, name, workload, settings, runners, slots, variants, mesh_batch):
     keys = ("jobs_per_second", "pickup_p99_ms", "sql_calls_per_job", "runner_sql_calls_per_job",
             "enqueue_sql_calls_per_job", "claim_calls_per_job", "idle_queries_per_minute",
             "cpu_seconds_per_job", "peak_rss_bytes")
@@ -1048,6 +1064,35 @@ def profile_summary(trials, workload, settings, runners, slots, variants):
             summary[engine]["pickup_p99_ms"]["within_budget"] = (
                 summary[engine]["pickup_p99_ms"]["max"] <= budget
             )
+    if mesh_batch:
+        peaks = [row["peak_queued_context_bytes"] for row in trials if row["engine"] == "mesh"]
+        observed = max(peaks) if None not in peaks else None
+        limit = settings["batch_queued_context_bytes_max"]
+        summary["mesh"]["peak_queued_context_bytes"] = {
+            "observed": observed, "limit": limit,
+            "within_limit": observed is not None and 0 < observed <= limit,
+        }
+    if "oban" in summary:
+        checks = [
+            ("jobs_per_second", "oban", "core_throughput_ratio_min"),
+            ("pickup_p99_ms", "oban", "core_pickup_p99_ratio_max"),
+        ]
+    elif mesh_batch and name == "short":
+        checks = [("claim_calls_per_job", "baseline", "batch_claim_calls_ratio_max")]
+    elif mesh_batch and workload["mode"] == "sparse":
+        checks = [("pickup_p99_ms", "baseline", "batch_sparse_pickup_p99_ratio_max")]
+    else:
+        checks = []
+    comparison = {}
+    for metric, reference, rule in checks:
+        mesh = summary["mesh"][metric]["median"]
+        baseline = summary[reference][metric]["median"]
+        limit = settings[rule]
+        within_limit = mesh >= baseline * limit if rule.endswith("_min") else mesh <= baseline * limit
+        comparison[metric] = {"mesh_median": mesh, "reference": reference, "reference_median": baseline,
+                              "ratio_limit": limit, "within_limit": within_limit}
+    if comparison:
+        summary["comparison"] = comparison
     return summary
 
 
@@ -1203,7 +1248,8 @@ WHERE name IN ('server_version','server_version_num','shared_buffers','max_conne
                                 trials.append(result)
                     validate_pairs(trials, pair_count, variants)
                     write_json(case_evidence / "trials.json", trials)
-                    summary = profile_summary(trials, workload, settings, runners, slots, variants)
+                    summary = profile_summary(trials, name, workload, settings, runners, slots, variants,
+                                              args.mesh_batch)
                     write_json(case_evidence / "summary.json", summary)
                     for scope, values in summary.items():
                         for metric, verdict in values.items():

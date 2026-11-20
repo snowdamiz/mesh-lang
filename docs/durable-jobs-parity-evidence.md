@@ -80,6 +80,10 @@ and budgets. Each profile stores its raw attempt and occupancy samples,
 trial metrics, and median and range. Exit code 1 indicates a queue
 reconciliation mismatch. Exit code 2 indicates a fixture or environment
 failure. The run records budget breaches separately in `result.json`.
+`summary.json` includes the Mesh-to-Oban throughput and pickup comparisons.
+Batch trials also record the largest confirmed context payload held before
+launch on any runner. A historical runtime can omit that metric. The
+summary then marks the batch context-size budget unverified.
 
 Pickup uses the interval between the enqueue transaction's commit timestamp
 and the first handler entry. Claim and settlement are tracked separately.
@@ -95,7 +99,7 @@ functional parity.
 
 ## Run the J6 role and operations proof
 
-Use a local checkout with the pinned pre-J6 revision `74db988d` available.
+Use a local checkout with the pinned main revision `7c162056` available.
 The proof starts a disposable cluster and creates separate databases for a
 fresh install and an upgrade.
 
@@ -116,3 +120,48 @@ Use this receipt as functional evidence for the host and PostgreSQL
 version printed by the script. Keep the separately measured maintenance
 latency, the paired comparison against main, and the remaining platform
 lanes in the parity plan.
+
+## Exercise primary promotion
+
+Build the compiler and runtime from the revision under test. Set `PG_BIN_DIR`
+to a PostgreSQL installation with `pg_basebackup` and `pg_stat_statements`.
+Choose a new evidence directory under the checkout for each run.
+
+```sh
+cargo build --locked -p meshc -p mesh-rt
+python3 scripts/jobs-promotion.py --postgres-version 17.11 \
+  --evidence-dir target/jobs-parity/promotion-17.11
+```
+
+The proof starts a primary and a physical streaming standby. It loses a
+settlement reply after commit, waits for the standby to replay through the
+primary's flush LSN, stops and fences the old primary, then promotes the
+standby. It checks receipts, job IDs, effect keys, and stale-token rejection
+while the replacement attempt holds its lease. Replication and direct
+database connections use verified TLS and SCRAM. The one-shot fault proxy
+uses plaintext loopback with SCRAM so it can identify the settlement reply.
+
+The replay barrier in this proof preserves the observed commits before
+promotion. For a deployment with asynchronous replication, the failover
+operator must account for commits newer than the standby's replay position.
+
+## Recorded baseline
+
+For the five-pair run `j1-load-19blcy6t`, the benchmark used harness `6141ab94`,
+Mesh `59f6a7b3` in its default single-claim mode, Oban Basic 2.24.2, and
+PostgreSQL 17.11 over loopback SCRAM. It ran on macOS arm64 with one runner
+and 16 total slots. Each short-job trial reconciled 128 jobs and each sparse
+trial reconciled 24. These are medians across the five measured trials.
+
+| Profile | Metric | Mesh | Oban Basic |
+| --- | --- | ---: | ---: |
+| Short, 1 KiB | Completed jobs per second | 201.2 | 565.7 |
+| Short, 1 KiB | Pickup p99, ms | 608.3 | 223.4 |
+| Short, 1 KiB | CPU per completed job, ms | 7.02 | 5.39 |
+| Sparse, 1 KiB | Pickup p99, ms | 241.3 | 252.7 |
+
+The host's one-minute load average was 42.2 on 15 logical CPUs at startup.
+The short profile missed the proposed throughput, pickup, and CPU thresholds.
+This run records the post-reliability baseline for two profiles under load.
+Release qualification still requires the matched candidate matrix on a
+host with capacity for the workload and its observers.
