@@ -606,6 +606,7 @@ fn namespace_pause_fences_pending_transactions_and_respects_queue_state() {
 #[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
 fn legacy_claim_sees_pause_committed_after_its_statement_started() {
     let mut f = Fixture::new();
+    f.db.simple("SET statement_timeout = '5s'").unwrap();
     let job = f.enqueue(json!({"worker":"Deliver"}));
     let trigger = format!("hold_claim_{}", f.ns.replace('-', ""));
     f.db.simple(&format!(
@@ -667,11 +668,12 @@ fn legacy_claim_sees_pause_committed_after_its_statement_started() {
         &[&f.ns],
     )
     .unwrap();
-    let error = claimant.join().unwrap().unwrap_err();
+    let result = claimant.join();
     f.db.simple(&format!("DROP TRIGGER {trigger} ON mesh_jobs.jobs"))
         .unwrap();
     f.db.simple(&format!("DROP FUNCTION mesh_jobs.{trigger}()"))
         .unwrap();
+    let error = result.unwrap().unwrap_err();
     assert!(error.contains("namespace admission is paused"), "{error}");
     let row = f.get(id(&job));
     assert_eq!(row["state"], "available");

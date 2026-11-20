@@ -448,20 +448,26 @@ SELECT mesh_jobs.set_namespace_paused('{NAMESPACE}',false)
                 require(json.loads(self.sql(queues, database)) == controls, "resume changed a queue's controls")
                 for label in queued:
                     self.wait_row(label, "completed", runner, database=database)
+
+        single_label = "replay-current-single"
+        single = self.enqueue(single_label, "single", database=database)
+        before[single_label] = self.rows(database)[single_label]
+        with self.runner(self.new, NEW_WORKER, {"single": 1}, single_label, database=database) as runner:
+            self.wait_row(single_label, "completed", runner, database=database)
         final = self.rows(database)
-        for label, ident in queued.items():
+        expected = [(label, ident, OLD_WORKER) for label, ident in queued.items()]
+        expected.append((single_label, single, NEW_WORKER))
+        effects = []
+        for label, ident, role in expected:
             row = final[label]
             require(row["id"] == ident and row["state"] == "completed" and row["attempt"] == 1
                     and row["effect_key"] == before[label]["effect_key"] and row["lease_token"] is None,
-                    "resumed legacy work lost its job or effect identity")
+                    "post-resume work lost its job or effect identity")
+            effects.append(dict(job_id=ident, effect_key=row["effect_key"], worker_role=role))
+        effects.sort(key=lambda row: row["job_id"])
         writes = self.writes(database)
-        require(writes["attempts"] == sorted([
-            dict(job_id=ident, effect_key=final[label]["effect_key"], attempt=1, worker_role=OLD_WORKER)
-            for label, ident in queued.items()
-        ], key=lambda row: row["job_id"]) and writes["effects"] == sorted([
-            dict(job_id=ident, effect_key=final[label]["effect_key"], worker_role=OLD_WORKER)
-            for label, ident in queued.items()
-        ], key=lambda row: row["job_id"]), "resumed legacy work omitted or duplicated a write")
+        require(writes["attempts"] == [dict(row, attempt=1) for row in effects] and writes["effects"] == effects,
+                "post-resume work omitted or duplicated a write")
         return {
             "legacy_function_definitions": {key: legacy[key]["definition_md5"] for key in legacy_functions},
             "old_owner_migration_exit": 0, "additive_objects_preserved": additive,
@@ -469,7 +475,8 @@ SELECT mesh_jobs.set_namespace_paused('{NAMESPACE}',false)
             "paused_claims_fenced": ["legacy", "current_single", "current_batch"],
             "held_lease_renewed_and_settled_while_paused": True,
             "same_legacy_runner_resumed": True,
-            "queues_after_resume": controls, "resumed_jobs": queued, "resumed_writes": writes,
+            "queues_after_resume": controls, "resumed_jobs": queued, "current_single_job": single,
+            "resumed_writes": writes,
             "public_execute_count": self.no_public_execute(database),
         }
 
@@ -610,7 +617,13 @@ SELECT mesh_jobs.set_namespace_paused('{NAMESPACE}',false)
 
 
 def record(args):
-    ref = parity.checked(["git", "rev-parse", "HEAD"])
+    harness = parity.checked(["git", "rev-parse", "HEAD"])
+    ref = parity.checked(["git", "rev-parse", "--verify", "--end-of-options", f"{args.mesh_ref}^{{commit}}"])
+    proof_sources = {str(path.relative_to(ROOT)): parity.digest(path)
+                     for path in (SCRIPT, FIXTURE, GRANTS, Path(parity.__file__))}
+    for path, digest in proof_sources.items():
+        source = subprocess.check_output(["git", "show", f"{harness}:{path}"], cwd=ROOT)
+        require(hashlib.sha256(source).hexdigest() == digest, f"proof source differs from {harness}: {path}")
     require(ref != PINNED_MAIN, "the candidate and pinned binaries must be different revisions")
     base = ROOT / "target/jobs-upgrade" / ref
     base.mkdir(parents=True, exist_ok=True)
@@ -634,10 +647,9 @@ def record(args):
                 "rust_target": target, "rustc": rust.splitlines()[0],
                 "postgres_version": cluster.sql("postgres", "SHOW server_version"),
                 "postgres_version_num": int(cluster.sql("postgres", "SHOW server_version_num")),
-                "tls": bool(args.postgres_version),
+                "tls": bool(args.postgres_version), "harness_sha": harness,
                 "old": old_build, "new": new_build,
-                "proof_source_sha256": {str(path.relative_to(ROOT)): parity.digest(path)
-                                        for path in (SCRIPT, FIXTURE, GRANTS, Path(parity.__file__))},
+                "proof_source_sha256": proof_sources,
             }
             lanes = RollingProof(cluster, scratch, evidence, env, old, new).run()
         finally:
@@ -658,6 +670,7 @@ def terminate(signum, _frame):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--postgres-version", help="require this patch version and verified TLS")
+    parser.add_argument("--mesh-ref", default="HEAD", help="candidate Git revision to build and test")
     parser.add_argument("--toolchains", type=Path,
                         help="trusted prebuilt compiler/runtime pairs at <dir>/<SHA>/artifacts")
     parser.add_argument("--receipt", type=Path, help="also write the passing receipt to this new path")
