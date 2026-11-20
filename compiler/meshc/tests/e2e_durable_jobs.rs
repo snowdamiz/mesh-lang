@@ -57,6 +57,8 @@ fn durable_jobs_survive_process_boundaries() {
     println!("J6 local queue controls passed with single and batch claims");
     prove_job_operations(&proof);
     println!("J6 namespace controls, active replacement, run-now, and receipt replay passed");
+    prove_cron_process_takeover(&proof);
+    println!("J6 compiled cron owner loss before and after commit passed");
     if std::env::var("MESH_JOBS_DISPOSABLE_ROLE_PROOF").as_deref() == Ok("1") {
         prove_concurrent_reindex(&proof);
         println!("J6 concurrent index swap, owner exclusion, and compiled traffic passed");
@@ -533,6 +535,74 @@ fn prove_concurrent_reindex(proof: &Proof) {
         "t",
     );
     runner.stop();
+}
+
+fn prove_cron_process_takeover(shared: &Proof) {
+    let dir = shared.dir.join("cron-takeover");
+    fs::create_dir(&dir).unwrap();
+    let proof = Proof::new(shared.url, shared.binary.clone(), &dir);
+    let ns = &proof.namespace;
+    let label = "j6-cron-occurrence";
+    proof.control(json!({
+        "action":"schedule", "name":"once", "expression":"@reboot",
+        "job":{"worker":"proof","queue":"j6-cron-target","args":{"label":label}}
+    }));
+    let config = json!({
+        "namespace": ns, "queues":{"idle":1},
+        "workers":[{"worker":"proof","version":1}],
+        "poll_ms":25, "shutdown_grace_ms":8000,
+        "cron_interval_ms":25, "cron_page_size":1, "cron_schedule_page_size":1
+    });
+    let mut barrier = native_pg_connect(proof.url).unwrap();
+    native_pg_execute(&mut barrier, "BEGIN", &[]).unwrap();
+    native_pg_execute(
+        &mut barrier,
+        "LOCK TABLE mesh_jobs.admissions IN SHARE MODE",
+        &[],
+    )
+    .unwrap();
+    let mut first = proof.worker_with_config("cron-uncommitted", false, config.clone());
+    let blocked_pid = eventually("cron owner to enter the enqueue transaction", || {
+        let result = proof.sql(
+            "SELECT pid FROM pg_stat_activity
+             WHERE datname = current_database() AND wait_event_type = 'Lock'
+               AND query LIKE '%INSERT INTO mesh_jobs.admissions AS a%'",
+        );
+        result.parse::<u32>().ok()
+    });
+    first.kill();
+    native_pg_close(barrier);
+    eventually("uncommitted cron connection to close", || {
+        (proof.sql(&format!(
+            "SELECT count(*) FROM pg_stat_activity WHERE pid={blocked_pid}"
+        )) == "0")
+            .then_some(())
+    });
+    assert!(proof.job(label).is_null());
+
+    let mut second = proof.worker_with_config("cron-commits", false, config.clone());
+    let committed = eventually("takeover to commit the occurrence", || {
+        let job = proof.job(label);
+        (!job.is_null()).then_some(job)
+    });
+    second.kill();
+    let clock = || {
+        proof
+            .sql(&format!(
+                "SELECT seen_at_ms FROM mesh_jobs.cron_activation WHERE namespace={}",
+                quoted(ns)
+            ))
+            .parse::<i64>()
+            .unwrap()
+    };
+    let last_seen = clock();
+    let mut third = proof.worker_with_config("cron-resumes", false, config);
+    eventually("next cron owner to poll the committed cursor", || {
+        (clock() > last_seen).then_some(())
+    });
+    assert_eq!(proof.job(label), committed);
+    third.stop();
+    proof.clean().unwrap();
 }
 
 fn prove_scoped_compiled_roles(proof: &Proof) {
@@ -1402,6 +1472,8 @@ impl<'a> Proof<'a> {
                  DELETE FROM mesh_jobs.receipts WHERE namespace='{ns}';
                  DELETE FROM mesh_jobs.queues WHERE namespace='{ns}';
                  DELETE FROM mesh_jobs.admissions WHERE namespace='{ns}';
+                 DELETE FROM mesh_jobs.cron_schedules WHERE namespace='{ns}';
+                 DELETE FROM mesh_jobs.cron_activation WHERE namespace='{ns}';
                END IF;
              END $$;
              DROP SCHEMA {ns} CASCADE;"
