@@ -99,7 +99,9 @@ operations walkthrough from Markdown on a disposable cluster, then compiles
 and runs the concurrency guide's transactional enqueue and worker examples.
 The receipt covers Mesh
 0.1.8 on macOS arm64 and PostgreSQL 17.11 over loopback SCRAM. Lease recovery
-uses drain process loss on the same primary. [J7 lane 9 receipt](../proof/jobs-parity/j7-lane-9.log)
+uses drain process loss on the same primary. The walkthrough and reference
+snippets also passed with the exact `aa40fa5d` release compiler and runtime
+after integrating main. [Integrated guide receipt](../proof/jobs-parity/j7-lane-9-main-integration.log)
 
 The same fresh-application walkthrough passed with release runtime
 `1b12243b`. [Latest guide receipt](../proof/jobs-parity/qualification-v1.json)
@@ -661,6 +663,39 @@ slots with the same warm effect relay in both arms, throughput was 399.2
 and 402.5 jobs/s. Three of five pairs improved. The shared watcher remains
 experimental. [Shared watcher receipt](../proof/jobs-parity/qualification-v1.json)
 
+The macOS dispatch trace at `edf82c7a` reconciled 3,840 short jobs with
+one runner, 16 slots, and PostgreSQL 17.11 over verified TLS. Five
+rotating trials per arm compared an untagged executable, a tagged
+executable with tracing off, and the same tagged executable with
+tracing on. Each route used the same job inputs. The second route used
+16 warm effect sessions in a fixture relay.
+
+| Median traced interval | Direct effect writes | Warm effect sessions |
+| --- | ---: | ---: |
+| Claim confirmation to launch | 0.72 ms | 0.99 ms |
+| `posix_spawnp` call | 0.22 ms | 0.16 ms |
+| Spawn start to native constructor | 3.72 ms | 3.18 ms |
+| Native constructor to handler entry | 0.55 ms | 0.47 ms |
+
+In full 16-job batches, the median wait from confirmation to the last
+launch was 5.54 ms for direct writes and 4.19 ms for warm sessions.
+Across all batches, the largest median interval was from spawn to
+constructor. This interval includes loading and scheduling the new
+process. Tracing changed median first-claim-to-last-settlement time from
+164.0 to 165.7 ms with direct writes and from 99.0 to 107.3 ms with warm
+sessions. These diagnostic trials leave the Oban comparison open.
+[Dispatch trace receipt](../proof/jobs-parity/qualification-v1.json)
+
+An independent executable link added macOS `-dead_strip` to the same
+tagged fixture. It reduced the executable from 26.1 to 7.4 MiB. Across
+five pairs at 16 slots, the median traced time from spawn to constructor
+fell from 5.33 to 4.25 ms, and every pair used less application CPU per
+job. The median pair used 12.6% less CPU per job and processed 10.2%
+more jobs per second. At one slot, the median paired throughput gain
+was 2.2%. Host load reached 19.6 on 15 logical CPUs, and the probe leaves
+linker compatibility and the Oban budgets open.
+[Link experiment receipt](../proof/jobs-parity/qualification-v1.json)
+
 The separate `4f7d702f` experiment schedules one supervisor recheck after
 an early reply and uses the existing watchdog for later reaps. Across five
 batch pairs, one-slot throughput was 73.4 jobs per second against 42.2 on
@@ -668,6 +703,15 @@ batch pairs, one-slot throughput was 73.4 jobs per second against 42.2 on
 The 16-slot throughput medians were 429.8 and 404.1 jobs per second.
 Eleven runner unit cases and the release smoke passed. Full compatibility
 and Oban qualification for this experiment remain open. [Experiment receipts](../proof/jobs-parity/qualification-v1.json)
+
+The integrated retest compared `b62ec83a` with two arms running the same
+`c64eee8a` binary. All 3,840 measured short jobs reconciled on
+PostgreSQL 17.11 over verified TLS. At 16 slots, the identical baseline
+arms measured 448 and 346 jobs/s, and the candidate measured 525 jobs/s.
+The candidate beat the first baseline in three of five throughput pairs.
+At one slot, all arm medians fell between 38 and 41 jobs/s. End-to-end
+gain remains inconclusive under the measured host load. The candidate
+stays experimental. [Paired retest receipt](../proof/jobs-parity/qualification-v1.json)
 
 The follow-up compared `4f7d702f` with Oban Basic 2.24.2 on four frozen
 dense profiles with one runner and 16 slots. The release runs used
@@ -905,6 +949,13 @@ tail wait in the follow-up preceded the claim. The two runs had different
 main pickup medians, and the cause of the miss remains open.
 [Follow-up receipts](../proof/jobs-parity/qualification-v1.json)
 
+The sparse-only retest used the integrated release `aa40fa5d` and the same
+pinned main. On PostgreSQL 17.11 over verified TLS, five alternating
+one-runner, 16-slot pairs reconciled 120 jobs per arm. Pickup p99 was
+261.5 ms versus 258.5 ms, within the 1.10× limit for this profile.
+The earlier miss remains recorded. The J2 gate still needs the other
+post-replay sparse profiles. [Sparse retest receipt](../proof/jobs-parity/qualification-v1.json)
+
 The follow-up verifier used the same runtime sources and passed 45 Jobs
 runtime tests and both compiled suites on PostgreSQL 17.11, 18.7, and 19.0.
 Both suites complete shared schema setup before running namespace traffic.
@@ -1138,6 +1189,12 @@ rejected drain leaves the original job and its effect ledger untouched.
 The verifier passed 47 Jobs runtime tests and all three compiled suites on
 macOS arm64 with PostgreSQL 17.11 over verified TLS.
 [Input bounds receipt](../proof/jobs-parity/qualification-v1.json)
+
+After integrating main, the exact `aa40fa5d` checkout passed 47 Jobs
+runtime tests and all three compiled suites on each of PostgreSQL 17.11,
+18.7, and 19.0 on macOS arm64. The runs use verified TLS and cover
+scoped roles on fresh and upgraded databases.
+[Integrated matrix receipt](../proof/jobs-parity/qualification-v1.json)
 
 The maintenance-join test pauses local admission and waits for any pending
 claim to clear before stopping with the cron lock held. This lets the test

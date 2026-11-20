@@ -3468,6 +3468,69 @@
     "passed": ["waiting-assert", "waiting-refute"],
     "scope": "compiled helpers read a no-match snapshot before an external commit"
   },
+  "macos_dispatch_trace": {
+    "source": "edf82c7aa622f25a3c5c75a808d7ce4ff6f8fd4e",
+    "host": "Darwin arm64",
+    "postgres_version": "17.11",
+    "transport": "SCRAM with verified TLS",
+    "profile": "short, one runner, 16 slots, 250 ms poll",
+    "measured_trials": 30,
+    "reconciled_jobs": 3840,
+    "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+    "raw_path": "target/jobs-parity/dispatch-trace-follow-up/comparison-1nz1nzu_",
+    "manifest_sha256": "29819d53a9adb2ee2afa2fe70ec2b4118d0b416effd54ffcfe250c4e51d67d98",
+    "result_sha256": "9e1299c361da7cf08926336872013631b0811705fb5293eae9fbea7050c7f9a9",
+    "routes": {
+      "direct": {
+        "median_confirmed_to_launch_ms": 0.715,
+        "median_posix_spawn_ms": 0.222,
+        "median_spawn_to_constructor_ms": 3.7215,
+        "median_constructor_to_handler_ms": 0.5515,
+        "median_full_batch_last_launch_wait_ms": 5.537,
+        "median_first_claim_to_last_settlement_ms": {"plain": 163.893, "tagged_off": 164.029, "tagged_on": 165.675}
+      },
+      "warm_effect_sessions": {
+        "median_confirmed_to_launch_ms": 0.991,
+        "median_posix_spawn_ms": 0.159,
+        "median_spawn_to_constructor_ms": 3.1775,
+        "median_constructor_to_handler_ms": 0.4745,
+        "median_full_batch_last_launch_wait_ms": 4.1895,
+        "median_first_claim_to_last_settlement_ms": {"plain": 106.021, "tagged_off": 99.012, "tagged_on": 107.335}
+      }
+    },
+    "scope": "local diagnostic only, no runtime feature promoted"
+  },
+  "macos_dead_strip_experiment": {
+    "source": "edf82c7aa622f25a3c5c75a808d7ce4ff6f8fd4e",
+    "host": "Darwin arm64",
+    "postgres_version": "17.11",
+    "transport": "SCRAM with verified TLS",
+    "measured_trials": 20,
+    "reconciled_jobs": 2560,
+    "raw_path": "target/jobs-parity/dispatch-trace-follow-up/link-comparison-m9r4t9pd",
+    "manifest_sha256": "3c10b8a7efebf36cfe8d769761b499cfb505add63a9831cb752f5f55b02ddc6b",
+    "result_sha256": "51ad68d9f43139b4c8136f1e48335d73778b3c18ddf3c875478c08792a91f460",
+    "peak_one_minute_host_load": 19.60205078125,
+    "executables": {
+      "control": {"size_bytes": 27325056, "sha256": "1199b32c9dcf8550ed5bc38979d153c79a313c818f1d025c9df1591119a1a1d6"},
+      "dead_strip": {"size_bytes": 7783680, "sha256": "096271ba7f9714d58772376cf42c3ecdfd11f3fe9844e775f1392a24cab98cdf"}
+    },
+    "profiles": {
+      "short-1r-16s": {
+        "median_spawn_to_constructor_ms": {"control": 5.334, "dead_strip": 4.249},
+        "median_paired_throughput_ratio": 1.102,
+        "median_paired_cpu_per_job_ratio": 0.874,
+        "median_paired_first_claim_to_last_settlement_ratio": 0.868
+      },
+      "short-1r-1s": {
+        "median_spawn_to_constructor_ms": {"control": 4.494, "dead_strip": 4.0175},
+        "median_paired_throughput_ratio": 1.022,
+        "median_paired_cpu_per_job_ratio": 0.898,
+        "median_paired_first_claim_to_last_settlement_ratio": 1.006
+      }
+    },
+    "scope": "local traced fixture relink with the experimental linker option"
+  },
   "compiled_jobs_input_bounds": {
     "checkout": "55cf8f8fa1f2464e66142b75571699d378a1863e",
     "host": "Darwin arm64",
@@ -3484,6 +3547,96 @@
       "max_jobs": [0, 1001]
     },
     "marker": "J5 public helpers and drain rejected out-of-range inputs"
+  },
+  "portable_reap_recheck_retest": {
+    "baseline": "c64eee8a83f70d458684fb53326370128340e213",
+    "candidate": "b62ec83ad885b937aa0fe6ec17d32471859a1a16",
+    "host": "Darwin arm64",
+    "postgres_version": "17.11",
+    "transport": "SCRAM with verified TLS",
+    "profiles": ["short-1r-16s", "short-1r-1s"],
+    "measured_trials": 30,
+    "reconciled_jobs": 3840,
+    "raw_path": "target/jobs-parity/reply-reap-integration/comparison-ua2jppq4",
+    "manifest_sha256": "ada9c00a8e31eea1cd2377f2334785278a7c03a2bc2c6a069a4182e42e40dbb2",
+    "result_sha256": "bda042d8ae2d32705af6e1e91d1bf848c9baefb75832f211f14bf857aa7688c2",
+    "identical_baseline_artifacts": true,
+    "median_jobs_per_second": {
+      "short-1r-16s": {"baseline": 448.2, "baseline_repeat": 345.7, "candidate": 524.8},
+      "short-1r-1s": {"baseline": 40.8, "baseline_repeat": 38.2, "candidate": 39.9}
+    },
+    "peak_one_minute_load": 17.22265625,
+    "scope": "local retest with identical-binary controls for an experimental candidate"
+  },
+  "archive_build_relocation": {
+    "fix": "c64eee8a83f70d458684fb53326370128340e213",
+    "experiment": "b62ec83ad885b937aa0fe6ec17d32471859a1a16",
+    "reproduced": "cached build script and generated Rust referenced a removed archive checkout",
+    "result": "separate moved-source probes passed and two release archives built with the reused Cargo cache",
+    "guide_files_verified_per_compiler": 14,
+    "postgres_version": "17.11",
+    "smoke_receipts": {
+      "baseline": {
+        "path": "target/jobs-parity/c64eee8a83f70d458684fb53326370128340e213/j1-smoke-9anu3fzz",
+        "manifest_sha256": "704be05dbb331bc5b776dd3501a65ef218670db923e196d35cf303a6c19b1eeb"
+      },
+      "experiment": {
+        "path": "target/jobs-parity/b62ec83ad885b937aa0fe6ec17d32471859a1a16/j1-smoke-rlleidgk",
+        "manifest_sha256": "70c50792e19a141da85c8aefe4b5c48894b199c8a98bfabf4eb7861b94aec833"
+      }
+    }
+  },
+  "main_integration_sparse_retest": {
+    "harness": "aa40fa5df5db9ca2df5ca706639973f900889906",
+    "candidate": "aa40fa5df5db9ca2df5ca706639973f900889906",
+    "baseline": "7c1620563614a04a573aef806a6d019a2af4dfe9",
+    "profile": "sparse-only, one runner, 16 slots, five pairs",
+    "transport": "SCRAM with verified TLS",
+    "postgres_version": "17.11",
+    "reconciled_jobs_per_arm": 120,
+    "raw_path": "target/jobs-parity/aa40fa5df5db9ca2df5ca706639973f900889906/j1-load-kz0as_ig",
+    "manifest_sha256": "cec7acb4127f950be0605d3cc3d9927f7e7d3d2eba53018feb2ea1d907e56dfa",
+    "result_sha256": "b78d8ccf4a66d9031a51cf7faaad87b83c506b2c9b7a9a442cb6bd7476debff4",
+    "summary_sha256": "af425a716ad0175ffc47b744abbd22a04b35e5eab3b24c9647273a333072a7c4",
+    "pickup_p99_ms": {"candidate": 261.512939453125, "baseline": 258.531982421875},
+    "ratio_limit": 1.1,
+    "within_limit": true,
+    "scope": "targeted confirmation for one post-replay sparse profile"
+  },
+  "main_integration_postgres": {
+    "checkout": "aa40fa5df5db9ca2df5ca706639973f900889906",
+    "main": "7fe28906489a5b51085d3568d5fe1d8838cbdd3b",
+    "host": "Darwin arm64",
+    "command": "bash scripts/verify-postgres-jobs.sh --compatibility VERSION --j6-roles --parity-driver-check",
+    "transport": "SCRAM with verified TLS",
+    "log_directory": "target/jobs-parity/aa40fa5df5db9ca2df5ca706639973f900889906/integrated-main",
+    "log_sha256": {
+      "postgres-17.11.log": "83f4664008a81033ea9a403f973f0eeef007b6ce1a90091613bbcd972eb2d289",
+      "postgres-18.7.log": "23346440e82a6b9892525bb8bf44d5a15505e65787748754e2ab4f4484f5fc18",
+      "postgres-19.0.log": "8f2a3488d1a33e0587eba709726464bf7524a50bd44910fd2c841efc7dfefe09"
+    },
+    "runtime_tests_passed_per_version": 47,
+    "compiled_proofs_passed_per_version": 3
+  },
+  "main_integration_guide_and_smoke": {
+    "checkout": "aa40fa5df5db9ca2df5ca706639973f900889906",
+    "toolchain_source": "aa40fa5df5db9ca2df5ca706639973f900889906",
+    "profile": "release",
+    "host": "Darwin arm64",
+    "postgres_version": "17.11",
+    "guide": {
+      "receipt": "proof/jobs-parity/j7-lane-9-main-integration.log",
+      "sha256": "54614c270bdde6a7dfb86933fe117307ed148abc21f8cd4fdcf7930070174eb6",
+      "transport": "loopback SCRAM",
+      "result": "passed"
+    },
+    "smoke": {
+      "raw_path": "target/jobs-parity/aa40fa5df5db9ca2df5ca706639973f900889906/j1-smoke-89dpdevu",
+      "manifest_sha256": "447cc6c5e1090913e2d4385c9958ca0f59b0d2992d719fdb797c64348abc8c00",
+      "result_sha256": "0cc823ca7e4c335be70fd59dd61aa5b5e28d9a7a0dfdb720aafaf20f14889484",
+      "transport": "SCRAM with verified TLS",
+      "result": "passed"
+    }
   },
   "scoped_drain_and_cleanup": {
     "checkout": "308bb6cf1e24d9a60fc4a1e9c3d450dd74c8b91a",

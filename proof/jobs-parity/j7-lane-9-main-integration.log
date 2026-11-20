@@ -1,0 +1,46 @@
+J7 lane 9 | Darwin 27.0.0 arm64
+Checkout source: aa40fa5df5db9ca2df5ca706639973f900889906
+Compiler/runtime source: aa40fa5df5db9ca2df5ca706639973f900889906
+Production compiler and runtime source and Cargo inputs match.
+4383911702b1115fa0a6189c463faedd627bae14c6dd8cb4eb62fd9247f5d532  scripts/verify-jobs-guide.sh
+debdf28d5c519d910c10f4cf27ed7abef1fcc2843bbdca356ad07acf7ef96c91  website/docs/docs/concurrency/index.md
+f1114e3debd511adc7a933872c2a6a1ed84d209c3e4fdf444fd014e3a4514137  website/docs/docs/concurrency/jobs-operations.md
+5818401ebb9a070e3ee6566bf78416539be182de910f6824ea72c36e0f515bf9  meshc
+ceebc8750aa08c09ac6086f2f2cb39a89a27c8eb80200d98c7c477e1d4061c70  libmesh_rt.a
+meshc 0.1.8
+waiting for server to start.... done
+server started
+PostgreSQL server: 17.11 (Homebrew) (loopback SCRAM)
+
+Run the Jobs operations walkthrough from its Markdown commands.
+Created project 'jobs_demo'
+  Compiled: jobs_demo
+migrated
+{"id": "dc41abf4-d14a-4d6c-b6f4-8336042589f0", "state": "available", "conflict": false, "inserted": true, "effect_key": "dc41abf4-d14a-4d6c-b6f4-8336042589f0/1"}
+Request-key replay returned the original receipt.
+true
+{"budget_hit":true,"claimed":1,"finished":1,"namespace":"jobs-demo","outcomes":{"cancelled":0,"completed":0,"discarded":0,"released_unstarted":0,"retryable":1,"scheduled":0},"recovered":0,"remaining":false,"stop_reason":"job_error"}
+{"id":"dc41abf4-d14a-4d6c-b6f4-8336042589f0","run":1,"args":{"kind":"retry"},"tags":[],"queue":"default","state":"retryable","errors":[{"at_ms":1795211852054,"reason":"try again","attempt":1}],"worker":"demo","attempt":1,"version":1,"metadata":{},"priority":0,"effect_key":"dc41abf4-d14a-4d6c-b6f4-8336042589f0/1","timeout_ms":60000,"max_attempts":2,"backoff_max_ms":3600000,"finished_at_ms":null,"inserted_at_ms":1795211851965,"attempted_at_ms":1795211852036,"backoff_base_ms":0,"scheduled_at_ms":1795211912054,"lease_expires_at_ms":null,"cancel_requested_at_ms":null}
+{"id":"dc41abf4-d14a-4d6c-b6f4-8336042589f0","state":"available","attempt":1,"effect_key":"dc41abf4-d14a-4d6c-b6f4-8336042589f0/1","max_attempts":2,"scheduled_at_ms":1795211852091}
+{"budget_hit":true,"claimed":1,"finished":1,"namespace":"jobs-demo","outcomes":{"cancelled":0,"completed":1,"discarded":0,"released_unstarted":0,"retryable":0,"scheduled":0},"recovered":0,"remaining":false,"stop_reason":"budget"}
+{"id":"dc41abf4-d14a-4d6c-b6f4-8336042589f0","run":1,"args":{"kind":"retry"},"tags":[],"queue":"default","state":"completed","errors":[{"at_ms":1795211852054,"reason":"try again","attempt":1}],"worker":"demo","attempt":2,"version":1,"metadata":{},"priority":0,"effect_key":"dc41abf4-d14a-4d6c-b6f4-8336042589f0/1","timeout_ms":60000,"max_attempts":2,"backoff_max_ms":3600000,"finished_at_ms":1795211852126,"inserted_at_ms":1795211851965,"attempted_at_ms":1795211852108,"backoff_base_ms":0,"scheduled_at_ms":1795211852091,"lease_expires_at_ms":null,"cancel_requested_at_ms":null}
+walkthrough.sh: line 81: 89417 Killed: 9                  HOLD_JOB=1 ./jobs_demo drain > interrupted.out 2> interrupted.err
+handler started
+{"id": "ca0de9cf-2acf-4a82-8264-32d64961b058", "run": 1, "args": {"kind": "recovery"}, "tags": [], "queue": "default", "state": "executing", "errors": [], "worker": "demo", "attempt": 1, "version": 1, "metadata": {}, "priority": 0, "effect_key": "ca0de9cf-2acf-4a82-8264-32d64961b058/1", "timeout_ms": 60000, "max_attempts": 2, "backoff_max_ms": 3600000, "finished_at_ms": null, "inserted_at_ms": 1795211852166, "attempted_at_ms": 1795211852201, "backoff_base_ms": 0, "scheduled_at_ms": 1795211852166, "lease_expires_at_ms": 1795211853701, "cancel_requested_at_ms": null}
+
+{"budget_hit":true,"claimed":1,"finished":1,"namespace":"jobs-demo","outcomes":{"cancelled":0,"completed":1,"discarded":0,"released_unstarted":0,"retryable":0,"scheduled":0},"recovered":1,"remaining":false,"stop_reason":"budget"}
+{"id":"ca0de9cf-2acf-4a82-8264-32d64961b058","run":1,"args":{"kind":"recovery"},"tags":[],"queue":"default","state":"completed","errors":[{"at_ms":1795211853725,"reason":"lease expired","attempt":1}],"worker":"demo","attempt":2,"version":1,"metadata":{},"priority":0,"effect_key":"ca0de9cf-2acf-4a82-8264-32d64961b058/1","timeout_ms":60000,"max_attempts":2,"backoff_max_ms":3600000,"finished_at_ms":1795211853739,"inserted_at_ms":1795211852166,"attempted_at_ms":1795211853729,"backoff_base_ms":0,"scheduled_at_ms":1795211853725,"lease_expires_at_ms":null,"cancel_requested_at_ms":null}
+{"id":"ca0de9cf-2acf-4a82-8264-32d64961b058","run":2,"args":{"kind":"recovery"},"tags":[],"queue":"default","state":"available","errors":[{"at_ms":1795211853725,"reason":"lease expired","attempt":1}],"worker":"demo","attempt":0,"version":1,"metadata":{},"priority":0,"effect_key":"ca0de9cf-2acf-4a82-8264-32d64961b058/2","timeout_ms":60000,"max_attempts":2,"backoff_max_ms":3600000,"finished_at_ms":null,"inserted_at_ms":1795211852166,"attempted_at_ms":null,"backoff_base_ms":0,"scheduled_at_ms":1795211853783,"lease_expires_at_ms":null,"cancel_requested_at_ms":null}
+{"budget_hit":true,"claimed":1,"finished":1,"namespace":"jobs-demo","outcomes":{"cancelled":0,"completed":1,"discarded":0,"released_unstarted":0,"retryable":0,"scheduled":0},"recovered":0,"remaining":false,"stop_reason":"budget"}
+{"id":"ca0de9cf-2acf-4a82-8264-32d64961b058","run":2,"args":{"kind":"recovery"},"tags":[],"queue":"default","state":"completed","errors":[{"at_ms":1795211853725,"reason":"lease expired","attempt":1}],"worker":"demo","attempt":1,"version":1,"metadata":{},"priority":0,"effect_key":"ca0de9cf-2acf-4a82-8264-32d64961b058/2","timeout_ms":60000,"max_attempts":2,"backoff_max_ms":3600000,"finished_at_ms":1795211853840,"inserted_at_ms":1795211852166,"attempted_at_ms":1795211853822,"backoff_base_ms":0,"scheduled_at_ms":1795211853783,"lease_expires_at_ms":null,"cancel_requested_at_ms":null}
+
+Run the concurrency reference snippets with a fresh order.
+  Compiled: snippets
+Submitted order 42
+processing receipt with key 9382ee5a-f13b-4683-9c25-2c3a5c025377/1
+{"budget_hit":false,"claimed":1,"finished":1,"namespace":"shop","outcomes":{"cancelled":0,"completed":1,"discarded":0,"released_unstarted":0,"retryable":0,"scheduled":0},"recovered":0,"remaining":false,"stop_reason":"idle"}
+true
+Committed order and job: 42|completed|1
+Disposable PostgreSQL cluster removed.
+
+J7 lane 9 PASS
