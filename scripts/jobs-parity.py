@@ -408,7 +408,8 @@ SELECT json_build_object(
             "business": [[engine, namespace, request_id] for request_id in commits],
             "attempts": [[engine, namespace, key, attempt, effects[key]]
                          for key, attempts in handler_attempts.items() for attempt in attempts],
-            "effects": [[engine, namespace, key, effect_key] for key, effect_key in effects.items()],
+            "effects": [[engine, namespace, key, effects[key]]
+                        for key, attempts in handler_attempts.items() if attempts],
         }
         for kind, values in expected.items():
             if sorted(observed[kind], key=repr) != sorted(values, key=repr):
@@ -2278,6 +2279,12 @@ for number, line in enumerate(sys.stdin, 1):
                         with self.assertRaisesRegex(QueueMismatch, f"{kind} identities"):
                             cluster.reconcile_trial("mesh", namespace, enqueued, attempts, ["batch"])
                         observed[kind].pop()
+                pending = dict(observed, attempts=[], effects=[])
+                with patch.object(cluster, "sql", side_effect=lambda *_: json.dumps(pending)):
+                    cluster.reconcile_trial("mesh", namespace, enqueued, {"key": ()}, ["batch"])
+                    pending["effects"] = observed["effects"]
+                    with self.assertRaisesRegex(QueueMismatch, "effects identities"):
+                        cluster.reconcile_trial("mesh", namespace, enqueued, {"key": ()}, ["batch"])
                 observed["jobs"] = [[namespace, "replacement-id", "key"]]
                 observed["attempts"] = [["mesh", namespace, "key", 1, "replacement-id/1"]]
                 observed["effects"] = [["mesh", namespace, "key", "replacement-id/1"]]
