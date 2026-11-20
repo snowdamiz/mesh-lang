@@ -533,7 +533,7 @@ Use `unique` to reuse a matching retained job. A policy can specify `fields` (su
 
 ### Run workers and handle retries
 
-`Jobs.start` takes a named `fn(String) -> String` handler in a compiled Mesh executable. Each attempt starts in a fresh process. The handler receives a JSON job with `id`, `effect_key`, `worker`, `version`, `queue`, `args`, `metadata`, `attempt`, and `max_attempts`. Open connections and initialize any other dependencies inside the handler. The process inherits the application's environment. It starts with its own actor registry and connection pools. The runner config lists the queues and their concurrency and the worker versions the handler accepts.
+`Jobs.start` takes a named `fn(String) -> String` handler in a compiled Mesh executable. Each attempt starts in a fresh process. The handler receives a JSON job with `id`, `effect_key`, `worker`, `version`, `queue`, `args`, `metadata`, `attempt`, and `max_attempts`. Open connections and initialize any other dependencies inside the handler. The process inherits the application's environment and has its own actor registry and connection pools. Handler output goes to the runner's standard error. The runner config lists the queues and their concurrency and the worker versions the handler accepts.
 
 ```mesh
 fn handle_receipt(job :: String) -> String do
@@ -571,6 +571,8 @@ A claim has a lease. A runner renews the lease while its handler runs and record
 Delivery is at least once within the attempt budget. If a handler sends a receipt and dies before acknowledging it, another attempt can send it again. Pass `effect_key` to a downstream idempotency mechanism or record it in the same transaction as the external effect when both use the same database.
 
 The runtime terminates the attempt process at its handler timeout or when it loses its lease or runner. Termination stops the handler and all its local actors, including code blocked in a native call. A running service may still finish a request it accepted before termination. Use the same `effect_key` to deduplicate those requests across retries.
+
+Deploy compiled executables at versioned paths so old runners can keep starting handlers while they drain. Stop runners from before process isolation to apply hard timeouts to every new attempt. Existing scheduled and retryable jobs keep their stored arguments and deadlines.
 
 On `SIGTERM` or `Jobs.stop`, the runner stops claiming new work and tries to finish in-flight attempts within the grace period. It terminates attempts that are still running when the grace period ends. `Jobs.stop` reports attempts whose exit has yet to be observed. An unfinished claim remains recoverable through its lease. Use `Jobs.join` to keep a worker process running until shutdown. Close the PostgreSQL pool after stopping its runners.
 
