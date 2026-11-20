@@ -642,6 +642,32 @@ The 16-slot throughput medians were 429.8 and 404.1 jobs per second.
 Eleven runner unit cases and the release smoke passed. Full compatibility
 and Oban qualification for this experiment remain open. [Experiment receipts](../proof/jobs-parity/qualification-v1.json)
 
+The follow-up compared `4f7d702f` with Oban Basic 2.24.2 on four frozen
+dense profiles with one runner and 16 slots. The release runs used
+PostgreSQL 17.11 with verified TLS and SCRAM on macOS arm64. Five
+alternating pairs per profile reconciled 2,640 jobs per engine. The host's
+one-minute load started at 14.0 and reached 21.2 on 15 logical CPUs.
+
+| Profile | Mesh/Oban throughput | Mesh/Oban pickup p99 | Limits exceeded |
+| --- | ---: | ---: | --- |
+| Short | 0.470× | 2.119× | Throughput, pickup |
+| 100 ms | 0.925× | 1.078× | CPU per job, peak RSS |
+| No-op | 0.808× | 1.204× | Throughput, CPU per job |
+| 512 KiB | 0.911× | 1.064× | None |
+
+The short profiles took medians of 245.5 ms on Mesh and 135.1 ms on Oban
+from first claim to final settlement. The largest per-job median difference
+after claim was from handler entry to its first committed write. That
+interval was 9.53 ms on Mesh and 0.69 ms on Oban and includes connection
+setup and the write. The effect-to-settlement medians were 3.54 ms and
+1.20 ms. [Frozen-profile receipts](../proof/jobs-parity/qualification-v1.json)
+
+A separate five-pair short-job diagnostic held the Mesh release binary,
+batch settings, and polling interval fixed. Transactional publishing and
+listening reduced median time to first claim from 150.6 ms to 2.1 ms. The
+first-claim-to-final-settlement ranges overlapped at 158–459 ms with
+polling and 171–386 ms with notifications. [Notification diagnostic](../proof/jobs-parity/qualification-v1.json)
+
 ### Historical references
 
 On the same macOS arm64 host and PostgreSQL 17.11 configuration, the driver
