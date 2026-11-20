@@ -2,7 +2,7 @@
 
 Bring Mesh Jobs up to Oban 2.24.2 Core for PostgreSQL-backed applications. Preserve transactional enqueue, at-least-once execution, renewable claim fencing, isolated worker termination, and database-wide admission limits.
 
-PRs #37 and #38 are the starting implementation on main. J1 through J7 are future implementation phases. Compare their behavior against both Mesh main and the pinned Oban Basic engine. Track other database engines and Oban Pro features as separate targets.
+PRs #37 and #38 are the starting implementation on main. J1 through J7 compare Mesh Jobs with pinned main and Oban Basic. Track other database engines and Oban Pro features as separate targets.
 
 Commands, implemented behavior, and recorded qualification results are in the [PostgreSQL Jobs evidence guide](durable-jobs-parity-evidence.md).
 The [compiled lane receipts](durable-jobs-parity-evidence.md#compiled-lane-receipts)
@@ -83,10 +83,10 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 **Build.**
 
 - [ ] Record an exact Mesh SHA, Oban and Erlang versions, PostgreSQL server version, host and runner settings, and workload seed with every receipt. Use `db606548` as the pre-reliability reference and `59f6a7b3` as the post-reliability starting point. Capture both engines on the same machine and database configuration using separate job namespaces or databases.
-- [ ] Equalize effective concurrency. Oban Basic limits individual producers. Mesh also limits queue admission across the database. Keep job bodies, transaction and payload sizes, schedules, retry policies, and effect idempotency equivalent. Account for Mesh's per-attempt process startup as part of user-visible latency.
-- [ ] Run warm-up and five alternating trials per engine at one, four, and eight runners. Use concurrency profiles of 1, 16, and 64 total slots where they fit, a warm short job and a 100 ms job, 1 KiB and 16 KiB arguments, sparse queues, and a separate large-context stress run. Mark production-shaped workloads separately from a no-op stress case.
-- [ ] Freeze measured profiles, slot allocation, pool sizes, notifier and maintenance settings, and absolute sparse-latency budgets before optimizing. Define pickup as first handler entry minus the enqueue transaction's durable commit time. Capture commit time on the disposable database with `track_commit_timestamp` and align clocks on the same host. Record commit-to-claim and commit-to-settlement separately. Reject timing samples outside the declared clock tolerance.
-- [ ] Freeze resource budgets per profile before optimizing. Include Mesh child processes and the Oban VM in totals. Proposed relative limits for Mesh are 1.25 times Oban CPU seconds per completed job and 1.5 times its peak RSS. Use the same absolute connection budget for both engines, initially total slots plus four connections per runner. Measure OS process and thread peaks against the same caps, initially two processes and eight threads per slot plus twelve per runner and 64 per host. Record peak and steady-state samples separately.
+- [x] Both engines use the same slot allocations, inputs, transaction boundaries, and fault barriers. Pickup includes Mesh's per-attempt process startup. [Fixture interface](../tests/e2e/durable_jobs/parity-interface.md) · [Load receipt](../proof/jobs-parity/j7-lane-10.log)
+- [x] The release comparison covers all 35 frozen profiles with a warmup and five alternating pairs per profile. It includes short, 100 ms, and sparse workloads and separate no-op and 512 KiB stress cases. [Load receipt](../proof/jobs-parity/j7-lane-10.log)
+- [x] The frozen profiles fix slot allocation, pool, notifier, and maintenance settings and the absolute sparse pickup budget. The driver measures pickup from the enqueue transaction's durable commit to first handler entry. It records claim and settlement timestamps separately and rejects samples outside the clock tolerance. [Profiles](../scripts/jobs-parity-profiles.json) · [Measurement guide](durable-jobs-parity-evidence.md)
+- [x] The same frozen connection, process, and thread budgets apply to both engines. The driver counts Mesh worker processes and the Oban VM and reports idle and busy samples. The relative CPU and peak RSS limits are 1.25 and 1.5 times Oban. [Profiles](../scripts/jobs-parity-profiles.json)
 - [ ] Keep raw executions separate from deduplicated effects. Capture fault placement and reconcile each engine under its configured recovery rules. Install a barrier to kill or disconnect on an observed claim, write, or acknowledgement. Run the compiled commit, rollback, clean exit, and crash-recovery baseline on Linux and macOS before optimizing. Add native-call timeout on both and executable replacement on macOS.
 
 **You see.**
@@ -104,7 +104,7 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 - [x] Lane 3. PostgreSQL 18.7 passed the same suites and authentication checks on both platforms. [Receipt](../proof/jobs-parity/j1-postgres-matrix.log)
 - [x] Lane 4. PostgreSQL 19.0 passed the same suites and authentication checks on both platforms. [Receipt](../proof/jobs-parity/j1-postgres-matrix.log)
 - [x] Lane 5. Run the Oban Basic fixture twice with the same seed. Save `j1-lane-5.log`. Pass when the derived inputs and total job counts match.
-- [ ] Lane 6. Run the matched sparse workload. Save `j1-lane-6.log`. Pass when every eligible committed job is accounted for.
+- [x] Lane 6. The seven sparse profiles reconciled all 840 jobs per engine after runner shutdown. The receipt records the resource and pickup misses separately. [Sparse receipt](../proof/jobs-parity/j1-lane-6.log)
 - [x] Lane 7. Run the matched dense workload. Save `j1-lane-7.log`. Pass when the run records occupancy and all completed jobs.
 - [x] Lane 8. Kill a worker after its claim and before settlement. Save `j1-lane-8.log`. Pass when the same job identity is recovered and the old token cannot settle it.
 - [x] Lane 9. Lose an acknowledgement on both sides of commit. Save `j1-lane-9.log`. Pass when the final persisted state accounts for each attempt.
@@ -112,10 +112,10 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 
 **Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] Metric. Jobs per second, pickup p99, SQL calls per job, and idle queries per minute.
-- [ ] Probe. Run five paired main and head trials with the same workers and publish the raw artifacts for both.
-- [ ] Baseline. Record main first and measure Oban separately under the same conditions.
-- [ ] Rule. Baseline-only change. Reject a driver that samples fewer than five valid pairs or omits any configured metric. Run measurements with the driver out of the worker hot path.
+- [x] Metric. Each profile reports throughput, pickup p99, SQL calls per job, and idle queries per minute. [Load receipt](../proof/jobs-parity/j7-lane-10.log)
+- [x] Probe. Main and candidate each completed five paired trials per frozen profile with identical input files. [Main comparison](../proof/jobs-parity/j7-lane-1.log)
+- [x] Baseline. The main comparison and the separate Oban comparison used the same host, PostgreSQL patch, and frozen settings. The receipts pin the harness used by each arm. [Main comparison](../proof/jobs-parity/j7-lane-1.log) · [Oban comparison](../proof/jobs-parity/j7-lane-10.log)
+- [x] Rule. The load driver requires five valid pairs with complete metrics. The observer collects samples outside the runner and rejects a trial that loses a statement counter. [Measurement guide](durable-jobs-parity-evidence.md)
 
 **Review gate.** None. This phase has no graphical interaction. Independent review uses the CLI receipts and database proof.
 
@@ -173,9 +173,9 @@ OS spawn call and a gate at the existing native worker-start marker.
 
 **Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] Metric. Claim round trips per job, steady-state throughput, pickup p99, and peak queued context bytes.
-- [ ] Probe. Interleave J1 dense and sparse workloads with batching enabled and disabled.
-- [ ] Baseline. Record main with one-row claim and identical concurrency before changing defaults.
+- [x] Metric. The paired trials record claim round trips, throughput, and pickup p99. The compiled mixed-size case records a 25,166,688-byte peak of queued contexts. [Lane receipts](durable-jobs-parity-evidence.md#compiled-lane-receipts)
+- [x] Probe. The main and candidate matrix interleaves dense and sparse profiles. Batching is enabled on the candidate. [Matrix receipt](../proof/jobs-parity/j7-lane-1.log)
+- [x] Baseline. Main uses one-row claims with identical concurrency. Batch dispatch is opt-in on the candidate. [Matrix receipt](../proof/jobs-parity/j7-lane-1.log)
 - [ ] Rule. Require at least 30% fewer claim round trips per job on the dense reference workload. Require sparse pickup p99 no worse than 1.10 times main and no reply above 32 MiB.
 
 **Review gate.** None. This phase has no graphical interaction. Independent review uses the CLI receipts and database proof.
@@ -274,9 +274,9 @@ OS spawn call and a gate at the existing native worker-start marker.
 **Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
 - [x] Metric. The dense telemetry trials record throughput, pickup p99, dropped events, sampled peak bytes, and the fixed bound. The unread reader reached the bound and reported drops in every measured trial. [Telemetry measurement](durable-jobs-parity-evidence.md#measure-runner-telemetry)
-- [ ] Probe. Interleave J1 workloads with events disabled, consumed normally, and deliberately backpressured.
-- [ ] Baseline. Record the same workloads on main without an event stream.
-- [ ] Rule. Require disabled throughput and p99 within 5% of main. Require enabled throughput within 10% on the dense profile and enforce the configured fixed buffer bound.
+- [x] Probe. Interleaved five pairs on the dense one-runner, 16-slot profile in each of the disabled, logged, and unread-reader modes. [Telemetry measurement](durable-jobs-parity-evidence.md#measure-runner-telemetry)
+- [x] Baseline. Each of the three comparisons uses the same inputs on main `7c162056`. [Telemetry receipts](../proof/jobs-parity/qualification-v1.json)
+- [x] Rule. The measured disabled throughput and p99 meet the 5% limits. Both enabled modes meet the 10% throughput limit on the dense reference profile, and queued events stay within the configured bound. [Telemetry receipts](../proof/jobs-parity/qualification-v1.json)
 
 **Review gate.** None. This phase has no graphical interaction. Independent review uses the CLI receipts and database proof.
 
@@ -398,11 +398,11 @@ OS spawn call and a gate at the existing native worker-start marker.
 - [ ] Run database-backed correctness on PostgreSQL 17, 18.7, and 19.0. Record the exact 17 patch version and keep the minimum-version policy separate from the tested list. Run real compiled timeout, child-death, join, and recovery tests on each platform advertised for durable Jobs. Record platform boundaries explicitly.
 - [ ] Pressure-test delivery under worker and coordinator death, row locks, network partitions, primary failover, and exhausted pools. Preserve the at-least-once contract, token fences and idempotency keys. Document that remote effects can commit after worker termination and that whole-host or worker suspension has a different boundary from blocking native I/O.
 - [x] Replay the upgrade with preexisting scheduled and retryable jobs, old and new worker binaries, scoped grants, and default function execution revoked. Demonstrate rollback to the old runner without dropping rows or removing additive SQL.
-- [ ] Publish the feature-by-feature matrix and exact measurements. Only claim PostgreSQL core parity when the behavioral matrix and measured limits pass. Record workload-specific exclusions and deployment assumptions.
+- [x] The feature matrix and workload measurements record tested behavior, platform scope, and performance misses. The broad PostgreSQL Core claim awaits the remaining gates. [Evidence guide](durable-jobs-parity-evidence.md)
 
 **You see.**
 
-- [ ] A release receipt shows where Mesh meets Oban Core's PostgreSQL workflows, what was measured, and which platforms and boundaries the results cover.
+- [x] The qualification receipt links the workflow proofs, measurements, and remaining gates. [Qualification receipt](../proof/jobs-parity/qualification-v1.json)
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
@@ -419,13 +419,13 @@ OS spawn call and a gate at the existing native worker-start marker.
 - [x] Lane 7. Primary promotion fenced the old primary and reconciled all job and effect identities. Eligible work resumed within 1.23 seconds in all three macOS PostgreSQL runs against a 2-second budget. [Receipt](../proof/jobs-parity/j7-rolling-and-promotion.log)
 - [x] Lane 8. On macOS arm64 with PostgreSQL 17.11, 18.7, and 19.0, the compiled proof exhausted the pool and interrupted notifications and maintenance. Stop and join met their bounds. The peer proved fallback polling, expired-lease recovery, and cron cursor advancement. [Receipt](../proof/jobs-parity/j7-lane-8.log)
 - [x] Lane 9. The guides reproduced enqueue, retry, drain, and lease recovery from a fresh application on macOS arm64 with PostgreSQL 17.11. [Receipt](../proof/jobs-parity/j7-lane-9.log) · [Rerun the guide proof](durable-jobs-parity-evidence.md#replay-the-fresh-application-guides)
-- [ ] Lane 10. Run the matched Oban comparison and inspect the raw results. Save `j7-lane-10.log`. Pass when each supported performance claim maps to a reproducible receipt.
+- [x] Lane 10. The 35-profile release comparison reconciled 43,080 jobs per engine. Each measured profile links the checked raw trials and final verdicts. [Oban comparison](../proof/jobs-parity/j7-lane-10.log)
 
 **Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] Metric. Median jobs per second and p99 pickup per declared workload, plus observer resource budgets.
-- [ ] Probe. Alternate five trials per engine using J1's pinned configuration. Report raw samples and note any measurement-noise boundary.
-- [ ] Baseline. Record main and Oban Basic before the candidate on the same host and database settings.
+- [x] Metric. The release receipt records medians and resource budgets by profile. [Oban comparison](../proof/jobs-parity/j7-lane-10.log)
+- [x] Probe. The five measured pairs per profile alternate engine order. The group manifests record the harness pins and one-minute host load. [Evidence guide](durable-jobs-parity-evidence.md#matched-oban-release-comparison)
+- [x] Baseline. The candidate has separate paired comparisons with pinned main and Oban Basic on the same host and PostgreSQL 17.11. [Main comparison](../proof/jobs-parity/j7-lane-1.log) · [Oban comparison](../proof/jobs-parity/j7-lane-10.log)
 - [ ] Rule. Proposed parity gate. Require Mesh median throughput at least 90% of Oban and pickup p99 no greater than 1.25 times Oban on the declared PostgreSQL profiles, within J1's frozen absolute latency and resource budgets. Freeze or revise these budgets in J1 before optimizing. A failed profile limits the parity claim until resolved.
 
 **Review gate.** None. This phase has no graphical interaction. Independent review uses the CLI receipts and database proof.
@@ -436,7 +436,7 @@ OS spawn call and a gate at the existing native worker-start marker.
 
 ## Close the program
 
-- [ ] Publish the supported PostgreSQL and OS matrix, remaining scope boundaries, and benchmark results by workload.
+- [x] The evidence guide records the tested PostgreSQL and OS matrix, scope boundaries, and benchmark results by workload. [Evidence guide](durable-jobs-parity-evidence.md)
 - [ ] Confirm that all guarantees advertised in the reference docs have a reproducible positive case and an exercised failure case.
 - [ ] Keep scope beyond PostgreSQL Core visible in a separate backlog.
 

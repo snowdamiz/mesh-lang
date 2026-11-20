@@ -228,9 +228,6 @@ reconciled 24 jobs, and each disconnected runner kept its original
 database sessions apart from the interrupted listener. [Listener outage receipt](../proof/jobs-parity/qualification-v1.json)
 Check `result.json` for budget breaches.
 
-Live timing from this probe is pending. The historical healthy comparison
-above and the compiled reconnect proof cover their own configurations.
-
 ## Measure runner telemetry
 
 On an idle host, pair the committed candidate with pinned main. Run all three
@@ -538,6 +535,48 @@ dense timing limits. It started at a one-minute host load of 32.4 on 15
 logical CPUs. Raw receipts are in runs `j1-load-0ghrr0su` and
 `j1-load-dnc2kr57`.
 
+## Matched Oban release comparison
+
+On macOS arm64 and PostgreSQL 17.11 over verified TLS, release Mesh
+`1b12243b` used batch claims and 250 ms polling against Oban Basic 2.24.2.
+The five workload groups each ran seven configurations with per-engine
+warmups and five alternating measured pairs. The audit matched the final
+job IDs, business rows, attempt numbers, and effect keys to the input and
+enqueue receipts after shutdown. It reconciled 43,080 measured jobs per
+engine across 350 trials. [Comparison receipt](../proof/jobs-parity/j7-lane-10.log)
+
+| Workload | Throughput within limit | Pickup p99 within limit | Within every limit |
+| --- | ---: | ---: | ---: |
+| Short, 1 ms and 1 KiB | 0 of 7 | 0 of 7 | 0 of 7 |
+| Slow, 100 ms and 16 KiB | 0 of 7 | 3 of 7 | 0 of 7 |
+| Sparse | 7 of 7 | 6 of 7 | 5 of 7 |
+| No-op stress | 0 of 7 | 0 of 7 | 0 of 7 |
+| Large-context stress, 512 KiB | 1 of 7 | 4 of 7 | 1 of 7 |
+
+In the one-runner, 16-slot short profile, median throughput was 256.4
+jobs per second on Mesh and 748.2 on Oban. Median trial pickup p99 was
+478.2 ms on Mesh and 166.0 ms on Oban. In the corresponding sparse
+profile, serial throughput was 1.99 and 2.03 jobs per second. Pickup p99
+was 204.2 and 240.6 ms, respectively. Oban reached four processes
+against the two-process cap in the one-slot profiles. The eight-runner,
+64-slot sparse profile exceeded the relative pickup limit. [Sparse receipt](../proof/jobs-parity/j1-lane-6.log)
+
+Starting one-minute host load ranged from 6.25 to 23.62 on 15 logical CPUs.
+The highest sampled one-minute load was 34.73. The recorded timings apply
+to these configurations and host conditions. Each group links its raw
+trials, SQL counters, and resource samples. [Comparison receipt](../proof/jobs-parity/j7-lane-10.log)
+
+To replay a group, check out its `harness_sha` from the receipt and run
+the same runtime with its workload name. The four dense and stress groups
+used harness `3e0339f7`. The sparse group used `04cce85d`, which keeps both
+producer processes warm and closes their connections after each enqueue.
+
+```sh
+PG_BIN_DIR=/opt/homebrew/opt/postgresql@17/bin \
+  python3 scripts/jobs-parity.py --load --mesh-ref 1b12243b --mesh-batch \
+  --workload sparse --postgres-version 17.11
+```
+
 ## Compare bounded drain
 
 `scripts/jobs-drain-perf.py` accepts the pinned main and candidate compiler
@@ -691,8 +730,6 @@ workspace built, and the locked fuzz targets passed `cargo check`.
 Formatter and linter checks passed for examples and packages. [Workspace receipts](../proof/jobs-parity/qualification-v1.json)
 
 The authoritative workflow targets Linux x64 and macOS arm64. These local
-receipts cover arm64 hosts and a Linux arm64 container. Windows has no
-compiled Jobs qualification in this matrix. Core parity remains open until
-the full candidate comparison and the workload-specific limits pass.
-The [qualification receipt](../proof/jobs-parity/qualification-v1.json)
-records the source revisions, measured results, and remaining gates.
+receipts cover macOS arm64 and a Linux arm64 container. The matched comparison
+recorded workload-specific performance and resource misses, so broad Core
+parity remains open. [Qualification receipt](../proof/jobs-parity/qualification-v1.json)

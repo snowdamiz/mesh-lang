@@ -780,6 +780,7 @@
   "macos_paired_workload_lanes": {
     "lane_logs": {
       "j1-lane-5": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/lane-evidence/17.11/j1-lane-5.log",
+      "j1-lane-6": "proof/jobs-parity/j1-lane-6.log",
       "j1-lane-7": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/lane-evidence/17.11/j1-lane-7.log",
       "j2-lane-1": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/lane-evidence/17.11/j2-lane-1.log",
       "j4-lane-1": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/lane-evidence/17.11/j4-lane-1.log"
@@ -821,6 +822,36 @@
     "runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
     "verdict": "diagnostic"
   },
+  "matched_oban_matrix": {
+    "budget_breach_count": 64,
+    "collection_result": "passed",
+    "measured_trials": 350,
+    "performance_result": "budget breaches",
+    "profile_count": 35,
+    "profiles_within_all_limits": [
+      "large-1r-16s",
+      "sparse-1r-16s",
+      "sparse-1r-64s",
+      "sparse-4r-16s",
+      "sparse-4r-64s",
+      "sparse-8r-16s"
+    ],
+    "receipt": "proof/jobs-parity/j7-lane-10.log",
+    "reconciled_jobs": {
+      "mesh": 43080,
+      "oban": 43080
+    },
+    "runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+    "scope": "macOS arm64 grouped release workload comparison with frozen settings",
+    "sha256": "a072c969f8c57ded8aa9c2cc2fb310f20df63f6cf36fee33c2d9c46b6de1856e",
+    "workload_audits": {
+      "large": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-load-m2evu8ja/group-audit.json",
+      "noop": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-load-md1inmas/group-audit.json",
+      "short": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-load-v3_gwapf/group-audit.json",
+      "slow": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-load-xz9uo6oz/group-audit.json",
+      "sparse": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-load-mo5agnf_/group-audit.json"
+    }
+  },
   "oban_basic_version": "2.24.2",
   "one_slot_oban_process_budget": {
     "limit": 2,
@@ -828,11 +859,12 @@
     "within_limit": false
   },
   "open_gates": [
-    "dense Oban throughput and pickup",
-    "four-runner Oban throughput and pickup",
-    "one-slot process budget",
+    "Oban throughput and pickup budgets in the matched matrix",
+    "one-slot Oban process budget",
+    "batch sparse pickup budget against pinned main",
     "quiet maintenance qualification",
-    "complete workload and platform qualifications"
+    "historical reference reruns with the corrected harness",
+    "hosted Linux x64 proof"
   ],
   "postgresql_versions": [
     "17.11",
