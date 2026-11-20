@@ -21,7 +21,11 @@ mod msg_shape;
 pub mod pattern;
 pub mod types;
 
-use std::path::Path;
+use std::{
+    collections::BTreeMap,
+    hash::{DefaultHasher, Hash, Hasher},
+    path::Path,
+};
 
 use inkwell::builder::Builder;
 use inkwell::context::Context;
@@ -108,6 +112,8 @@ pub struct CodeGen<'ctx> {
     // ── Function tracking ────────────────────────────────────────────
     /// Map from MIR function name to LLVM function value.
     pub(crate) functions: FxHashMap<String, FunctionValue<'ctx>>,
+    /// Resolved executable symbols used as Jobs.start handlers.
+    jobs_handlers: BTreeMap<String, FunctionValue<'ctx>>,
     /// The current function being compiled.
     pub(crate) current_fn: Option<FunctionValue<'ctx>>,
     grouped_spawns: Vec<group_safety::GroupedSpawn<'ctx>>,
@@ -259,6 +265,7 @@ impl<'ctx> CodeGen<'ctx> {
             sum_type_layouts: FxHashMap::default(),
             sum_type_defs: FxHashMap::default(),
             functions: FxHashMap::default(),
+            jobs_handlers: BTreeMap::new(),
             current_fn: None,
             grouped_spawns: Vec::new(),
             grouped_step_enabled: opt_level >= 2
@@ -364,15 +371,15 @@ impl<'ctx> CodeGen<'ctx> {
         // Step 5: Generate stable binary ABI wrappers for library exports.
         self.generate_library_export_wrappers()?;
 
-        // Step 6: Generate main wrapper if entry function exists.
-        if let Some(entry_name) = &mir.entry_function {
-            self.generate_main_wrapper(entry_name)?;
-        }
-
-        // Step 7: Keep every stack slot a static, entry-block allocation.
+        // Step 6: Verify and lower grouped actor code before fingerprinting the program.
         group_safety::certify(&self.grouped_spawns, &mir.actors, &mir.native_functions)?;
         self.lower_grouped_steps(mir)?;
         self.hoist_static_allocas();
+
+        // Step 7: Generate main wrapper if entry function exists.
+        if let Some(entry_name) = &mir.entry_function {
+            self.generate_main_wrapper(entry_name)?;
+        }
 
         // Step 8: Verify the module.
         self.verify()
@@ -994,6 +1001,13 @@ impl<'ctx> CodeGen<'ctx> {
     /// Creates: `main(argc: i32, argv: ptr) -> i32` that calls
     /// `mesh_rt_init()`, then calls the Mesh entry function, then returns 0.
     fn generate_main_wrapper(&mut self, entry_name: &str) -> Result<(), String> {
+        let jobs_fingerprint = if self.jobs_handlers.is_empty() {
+            String::new()
+        } else {
+            let mut hasher = DefaultHasher::new();
+            self.module.print_to_string().to_bytes().hash(&mut hasher);
+            format!("{:016x}:", hasher.finish())
+        };
         let i32_type = self.context.i32_type();
         let ptr_type = self.context.ptr_type(inkwell::AddressSpace::default());
         let main_type = i32_type.fn_type(&[i32_type.into(), ptr_type.into()], false);
@@ -1192,6 +1206,40 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(|e| e.to_string())?;
             }
         }
+
+        let register_jobs_handler =
+            intrinsics::get_intrinsic(&self.module, "mesh_jobs_register_handler");
+        for (symbol, handler) in &self.jobs_handlers {
+            let name = format!("{jobs_fingerprint}{symbol}");
+            let name_global = self
+                .builder
+                .build_global_string_ptr(&name, &format!("jobs_handler_{symbol}"))
+                .map_err(|e| e.to_string())?;
+            let name_len = self.context.i64_type().const_int(name.len() as u64, false);
+            self.builder
+                .build_call(
+                    register_jobs_handler,
+                    &[
+                        name_global.as_pointer_value().into(),
+                        name_len.into(),
+                        handler.as_global_value().as_pointer_value().into(),
+                    ],
+                    "",
+                )
+                .map_err(|e| e.to_string())?;
+        }
+
+        let enter_worker = intrinsics::get_intrinsic(&self.module, "mesh_jobs_enter_worker");
+        self.builder
+            .build_call(
+                enter_worker,
+                &[
+                    main_fn.get_nth_param(0).expect("main argc").into(),
+                    main_fn.get_nth_param(1).expect("main argv").into(),
+                ],
+                "",
+            )
+            .map_err(|e| e.to_string())?;
 
         // Call the Mesh entry function on the main thread, through the runtime
         // so that a panic in it ends the process cleanly.

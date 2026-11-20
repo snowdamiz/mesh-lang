@@ -51,6 +51,11 @@ extern "C" fn repl_jobs_start(
     mesh_rt::io::mesh_alloc_result(1, text.cast()).cast()
 }
 
+// The JIT engine owns the handler addresses and may discard them after evaluation.
+extern "C" fn repl_jobs_register_handler(_name: *const u8, _len: u64, _handler: *const u8) {}
+
+extern "C" fn repl_jobs_enter_worker(_argc: i32, _argv: *const *const std::ffi::c_char) {}
+
 /// Initialize the Mesh runtime (GC + actor scheduler) and register all
 /// runtime symbols with LLVM so that JIT-compiled code can resolve them.
 ///
@@ -1134,6 +1139,14 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
         ("mesh_jobs_enqueue_in", mesh_jobs_enqueue_in as *const ()),
         ("mesh_jobs_control", mesh_jobs_control as *const ()),
         ("mesh_jobs_start", repl_jobs_start as *const ()),
+        (
+            "mesh_jobs_register_handler",
+            repl_jobs_register_handler as *const (),
+        ),
+        (
+            "mesh_jobs_enter_worker",
+            repl_jobs_enter_worker as *const (),
+        ),
         ("mesh_jobs_stop", mesh_jobs_stop as *const ()),
         ("mesh_jobs_join", mesh_jobs_join as *const ()),
         ("mesh_jobs_status", mesh_jobs_status as *const ()),

@@ -1,33 +1,50 @@
 use std::collections::{BTreeMap, HashSet};
-use std::sync::mpsc::{Receiver, TryRecvError};
 use std::sync::{Arc, LazyLock};
 use std::time::{Duration, Instant};
 
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
-use crate::actor::scheduler::ObservedExit;
-use crate::actor::{self, ExitReason, ProcessId, ProcessState, Scheduler};
-use crate::string::MeshString;
+use crate::actor;
 
 use super::cron;
 use super::store::{
     claim, drain_has_work, finish, prune, recover, renew, Claim, LeaseStatus, Outcome,
 };
 use super::with_pool;
+use super::worker::{check_executable, handler_name, host_deadline, WorkerProcess};
 
 const TICK: Duration = Duration::from_millis(10);
 const MAX_GRACE_MS: u64 = 300_000;
 const MAX_RUNNERS: usize = 256;
 const MAX_IN_FLIGHT: usize = 1024;
-const MAX_OUTPUT_BYTES: usize = 64 * 1024;
 const MAX_DELAY_MS: u64 = 365 * 24 * 60 * 60 * 1000;
 const TIMEOUT: &str = "job handler timed out";
 const STOPPED: &str = "job runner shutdown deadline elapsed";
 const CANCELLED: &str = "job cancelled";
 const LEASE_LOST: &str = "job lease lost";
 
-type Handler = unsafe extern "C-unwind" fn(*const MeshString) -> *const MeshString;
+trait JobProcess: Send {
+    fn poll(&mut self) -> Result<Option<Result<String, String>>, String>;
+    fn renew(&mut self, lease_deadline: u64) -> Result<(), String>;
+    fn kill(&mut self) -> Result<(), String>;
+}
+
+impl JobProcess for WorkerProcess {
+    fn poll(&mut self) -> Result<Option<Result<String, String>>, String> {
+        self.poll()
+    }
+
+    fn renew(&mut self, lease_deadline: u64) -> Result<(), String> {
+        self.renew(lease_deadline)
+    }
+
+    fn kill(&mut self) -> Result<(), String> {
+        self.kill()
+    }
+}
+
+type StartWorker = dyn Fn(String, Instant, u64) -> Result<Box<dyn JobProcess>, String> + Send;
 
 #[derive(Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -140,7 +157,7 @@ impl Phase {
 struct ActiveJob {
     id: String,
     queue: usize,
-    running: Option<(ProcessId, Arc<Invocation>)>,
+    execution: Execution,
 }
 
 #[derive(Default)]
@@ -161,14 +178,25 @@ struct State {
     last_error: Option<String>,
 }
 
-struct Runner<'a> {
-    id: u64,
-    config: Config,
-    scheduler: &'a Scheduler,
-    state: Mutex<State>,
+impl State {
+    fn fail_launch(&mut self, error: String, grace_ms: u64) {
+        self.last_error = Some(error.chars().take(1024).collect());
+        if matches!(self.phase, Phase::Running) {
+            self.phase = Phase::Stopping {
+                deadline: Instant::now() + Duration::from_millis(grace_ms),
+            };
+        }
+    }
 }
 
-impl Runner<'_> {
+struct Runner {
+    id: u64,
+    config: Config,
+    state: Mutex<State>,
+    check_worker: fn() -> Result<(), String>,
+}
+
+impl Runner {
     fn request_stop(&self, grace: Duration) {
         let mut state = self.state.lock();
         let deadline = Instant::now() + grace;
@@ -183,20 +211,20 @@ impl Runner<'_> {
         if crate::process_signal::shutdown_requested() {
             self.request_stop(Duration::from_millis(self.config.shutdown_grace_ms));
         }
-        let state = self.state.lock();
+        let mut state = self.state.lock();
         let now = Instant::now();
         let shutting_down = match state.phase {
             Phase::Running => false,
             Phase::Stopping { deadline } => now >= deadline,
             Phase::Stopped => return false,
         };
-        for job in state.jobs.values() {
-            if let Some((pid, invocation)) = &job.running {
-                let mut clock = invocation.clock.lock();
-                let reason = clock.overdue(now).or(shutting_down.then_some(STOPPED));
-                if let Some(reason) = reason {
-                    clock.forced = Some(reason);
-                    abort(self.scheduler, *pid, reason);
+        let State {
+            jobs, last_error, ..
+        } = &mut *state;
+        for job in jobs.values_mut() {
+            if let Execution::Running(worker) = &mut job.execution {
+                if let Some(reply) = worker.poll(now, shutting_down, last_error) {
+                    job.execution = Execution::acknowledging(reply);
                 }
             }
         }
@@ -252,7 +280,6 @@ impl Runner<'_> {
 
     fn wait(&self) -> String {
         loop {
-            self.supervise();
             if let Some(report) = self.report(true) {
                 return report;
             }
@@ -268,7 +295,7 @@ impl Runner<'_> {
 struct Registry {
     next_id: u64,
     accepting: bool,
-    runners: BTreeMap<u64, Arc<Runner<'static>>>,
+    runners: BTreeMap<u64, Arc<Runner>>,
 }
 
 static REGISTRY: LazyLock<Mutex<Registry>> = LazyLock::new(|| {
@@ -288,9 +315,28 @@ pub(super) fn start(
     if pool == 0 {
         return Err("runner requires a PostgreSQL pool".into());
     }
-    if fn_ptr.is_null() || !env_ptr.is_null() {
-        return Err("runner handler must be a named fn(String) -> String".into());
-    }
+    let handler = handler_name(fn_ptr, env_ptr)?;
+    start_runner(
+        pool,
+        config_json,
+        check_executable,
+        Box::new(move |context, deadline, lease_deadline| {
+            Ok(Box::new(WorkerProcess::start(
+                &handler,
+                context,
+                deadline,
+                lease_deadline,
+            )?))
+        }),
+    )
+}
+
+fn start_runner(
+    pool: u64,
+    config_json: &str,
+    check_worker: fn() -> Result<(), String>,
+    start_worker: Box<StartWorker>,
+) -> Result<u64, String> {
     let config = Config::parse(config_json)?;
     let workers = serde_json::to_string(&config.workers).map_err(|error| error.to_string())?;
     let scheduler = actor::GLOBAL_SCHEDULER
@@ -334,7 +380,7 @@ pub(super) fn start(
     let runner = Arc::new(Runner {
         id,
         config,
-        scheduler,
+        check_worker,
         state: Mutex::new(State {
             phase: Phase::Running,
             jobs: BTreeMap::new(),
@@ -344,7 +390,6 @@ pub(super) fn start(
         }),
     });
     crate::process_signal::mesh_process_install_shutdown_signals();
-    let handler = unsafe { std::mem::transmute::<*const u8, Handler>(fn_ptr) };
     let supervised = Arc::clone(&runner);
     let supervisor = std::thread::Builder::new()
         .name(format!("mesh-jobs-watch-{id}"))
@@ -359,7 +404,7 @@ pub(super) fn start(
         .name(format!("mesh-jobs-{id}"))
         .spawn(move || {
             if dispatcher.config.drain {
-                dispatch(&dispatcher, pool, &workers, handler);
+                dispatch(&dispatcher, pool, &workers, &*start_worker);
             } else {
                 let maintenance_runner = Arc::clone(&dispatcher);
                 match std::thread::Builder::new()
@@ -367,7 +412,7 @@ pub(super) fn start(
                     .spawn(move || maintain(&maintenance_runner, pool))
                 {
                     Ok(maintenance) => {
-                        dispatch(&dispatcher, pool, &workers, handler);
+                        dispatch(&dispatcher, pool, &workers, &*start_worker);
                         maintenance.thread().unpark();
                         let _ = maintenance.join();
                     }
@@ -388,7 +433,7 @@ pub(super) fn start(
     Ok(id)
 }
 
-fn lookup(id: u64) -> Result<Arc<Runner<'static>>, String> {
+fn lookup(id: u64) -> Result<Arc<Runner>, String> {
     REGISTRY
         .lock()
         .runners
@@ -424,15 +469,14 @@ pub(super) fn shutdown_all() {
     }
     for runner in runners {
         runner.wait();
-    }
-}
-
-fn abort(scheduler: &Scheduler, pid: ProcessId, reason: &str) {
-    if let Some(process) = scheduler.get_process(pid) {
-        if let Some(process) = process.try_lock() {
-            if !matches!(process.state, ProcessState::Exited(_)) {
-                scheduler.force_exit(pid, process, ExitReason::Custom(reason.into()));
-            }
+        while runner
+            .state
+            .lock()
+            .jobs
+            .values()
+            .any(|job| matches!(job.execution, Execution::Running(_)))
+        {
+            actor::mesh_timer_sleep(TICK.as_millis() as i64);
         }
     }
 }
@@ -440,117 +484,84 @@ fn abort(scheduler: &Scheduler, pid: ProcessId, reason: &str) {
 struct Lease {
     renew_at: Option<Instant>,
     expires_at: Instant,
+    worker_expires_at: u64,
 }
 
 impl Lease {
-    fn new(from: Instant, duration: Duration) -> Self {
+    fn begin(duration: Duration) -> Result<Self, String> {
         // PostgreSQL starts the lease during the request, so its start time
-        // cannot precede our own monotonic request start.
-        Self {
+        // cannot precede either of the local deadlines sampled before the query.
+        let from = Instant::now();
+        Ok(Self {
             renew_at: Some(from + duration / 3),
             expires_at: from + duration,
-        }
+            worker_expires_at: host_deadline(from + duration)?,
+        })
     }
 }
 
 struct Running {
-    pid: ProcessId,
-    invocation: Arc<Invocation>,
-    exited: Receiver<ObservedExit>,
-}
-
-struct InvocationClock {
+    process: Box<dyn JobProcess>,
     deadline: Instant,
-    lease_until: Instant,
-    forced: Option<&'static str>,
-}
-
-impl InvocationClock {
-    fn overdue(&self, now: Instant) -> Option<&'static str> {
-        self.forced
-            .or((now >= self.lease_until).then_some(LEASE_LOST))
-            .or((now >= self.deadline).then_some(TIMEOUT))
-    }
-}
-
-struct Invocation {
-    clock: Mutex<InvocationClock>,
-    result: Mutex<Option<String>>,
+    lease_deadline: Instant,
+    stop: Option<Reply>,
 }
 
 impl Running {
-    fn start(
-        scheduler: &Scheduler,
-        handler: Handler,
-        context: String,
-        deadline: Instant,
-        lease_until: Instant,
-    ) -> Self {
-        let invocation = Arc::new(Invocation {
-            clock: Mutex::new(InvocationClock {
-                deadline,
-                lease_until,
-                forced: None,
-            }),
-            result: Mutex::new(None),
-        });
-        let args = Arc::clone(&invocation);
-        let (pid, exited) = scheduler.spawn_observed(move || {
-            if args.clock.lock().overdue(Instant::now()).is_some() {
-                return;
-            }
-            let input = crate::string::mesh_str(&context);
-            let output = unsafe { handler(input).as_ref() };
-            let output = output.and_then(|text| {
-                let bytes = unsafe { text.as_bytes() };
-                if bytes.len() > MAX_OUTPUT_BYTES {
-                    return None;
-                }
-                std::str::from_utf8(bytes).ok().map(str::to_owned)
-            });
-            *args.result.lock() = output;
-        });
-        Self {
-            pid,
-            invocation,
-            exited,
+    fn renew_lease(&mut self, renewed: &Lease) -> Result<bool, String> {
+        if Instant::now() >= self.lease_deadline {
+            return Ok(false);
         }
+        self.process.renew(renewed.worker_expires_at)?;
+        self.lease_deadline = renewed.expires_at;
+        Ok(true)
     }
 
-    fn poll(&self) -> Option<Reply> {
-        match self.exited.try_recv() {
-            Ok(exit) => Some(match exit.reason {
-                ExitReason::Custom(reason) if reason == CANCELLED => Reply::Cancelled,
-                ExitReason::Custom(reason) if reason == STOPPED || reason == LEASE_LOST => {
-                    Reply::Failed(reason)
-                }
-                _ if exit.at >= self.invocation.clock.lock().deadline => {
-                    Reply::Failed(TIMEOUT.into())
-                }
-                ExitReason::Normal if exit.returned_normally => {
-                    self.invocation.result.lock().take().map_or_else(
-                        || {
-                            Reply::Failed(
-                                "job handler did not return a valid outcome string".into(),
-                            )
-                        },
-                        Reply::Returned,
-                    )
-                }
-                ExitReason::Error(reason) | ExitReason::Custom(reason) => Reply::Failed(reason),
-                reason => Reply::Failed(format!("job handler exited: {reason:?}")),
-            }),
-            Err(TryRecvError::Disconnected) => {
-                Some(Reply::Failed("job actor exit observer disconnected".into()))
+    fn poll(
+        &mut self,
+        now: Instant,
+        shutting_down: bool,
+        last_error: &mut Option<String>,
+    ) -> Option<Reply> {
+        let poll_error = match self.process.poll() {
+            Ok(Some(result)) => {
+                return Some(self.stop.take().unwrap_or_else(|| match result {
+                    Ok(output) => Reply::Returned(output),
+                    Err(error) => Reply::Failed(error),
+                }));
             }
-            Err(TryRecvError::Empty) => None,
+            Ok(None) => None,
+            Err(error) => {
+                *last_error = Some(error.chars().take(1024).collect());
+                Some(error)
+            }
+        };
+        if self.stop.is_none() {
+            self.stop = if now >= self.lease_deadline && self.lease_deadline <= self.deadline {
+                Some(Reply::Failed(LEASE_LOST.into()))
+            } else if now >= self.deadline {
+                Some(Reply::Failed(TIMEOUT.into()))
+            } else if shutting_down {
+                Some(Reply::Failed(STOPPED.into()))
+            } else {
+                poll_error.map(Reply::Failed)
+            };
         }
+        if self.stop.is_some() {
+            self.kill(last_error);
+        }
+        None
     }
 
-    fn force(&self, scheduler: &Scheduler, reason: &'static str) {
-        let mut clock = self.invocation.clock.lock();
-        let reason = *clock.forced.get_or_insert(reason);
-        abort(scheduler, self.pid, reason);
+    fn stop(&mut self, reason: Reply, last_error: &mut Option<String>) {
+        self.stop.get_or_insert(reason);
+        self.kill(last_error);
+    }
+
+    fn kill(&mut self, last_error: &mut Option<String>) {
+        if let Err(error) = self.process.kill() {
+            *last_error = Some(error.chars().take(1024).collect());
+        }
     }
 }
 
@@ -583,7 +594,7 @@ impl Reply {
             Self::Cancelled => Outcome::Cancel {
                 reason: CANCELLED.into(),
             },
-            Self::Unstarted => Outcome::Snooze { delay_ms: 1 },
+            Self::Unstarted => Outcome::ReleaseUnstarted,
         }
     }
 }
@@ -596,114 +607,153 @@ enum Execution {
     },
 }
 
+impl Execution {
+    fn acknowledging(reply: Reply) -> Self {
+        Self::Acknowledging {
+            reply,
+            retry_at: None,
+        }
+    }
+}
+
 struct Attempt {
     id: String,
     token: String,
     queue: usize,
     lease: Option<Lease>,
-    execution: Execution,
 }
 
 impl Attempt {
-    fn poll(&mut self, runner: &Runner<'_>, pool: u64) -> bool {
-        if let Execution::Running(running) = &self.execution {
-            if let Some(reply) = running.poll() {
-                if let Some(job) = runner.state.lock().jobs.get_mut(&self.token) {
-                    job.running = None;
-                }
-                self.execution = Execution::Acknowledging {
-                    reply,
-                    retry_at: None,
-                };
-            }
-        }
-        let now = Instant::now();
-        let config = &runner.config;
-        let Some(lease) = &mut self.lease else {
-            return matches!(self.execution, Execution::Running(_));
-        };
-        match &mut self.execution {
-            Execution::Acknowledging { reply, retry_at } => {
-                // A local lease deadline fences user execution. PostgreSQL
-                // still decides whether this token may settle the attempt.
-                if let Some(retry) = *retry_at {
-                    if now >= lease.expires_at {
+    fn poll(&mut self, runner: &Runner, pool: u64) -> bool {
+        let outcome = {
+            let state = runner.state.lock();
+            match &state.jobs[&self.token].execution {
+                Execution::Running(_) => None,
+                Execution::Acknowledging { reply, retry_at } => {
+                    let Some(lease) = &self.lease else {
                         return false;
-                    }
-                    if now < retry {
-                        return true;
-                    }
-                }
-                match with_pool(pool, |db| {
-                    finish(
-                        db,
-                        &config.namespace,
-                        &self.id,
-                        &self.token,
-                        reply.outcome(),
-                    )
-                }) {
-                    Ok(finished) => {
-                        let mut state = runner.state.lock();
-                        if finished {
-                            state.counts.finished += 1;
-                        } else {
-                            state.counts.stale_acks += 1;
+                    };
+                    // The local deadline fences execution. PostgreSQL decides
+                    // whether the token can still settle the reaped attempt.
+                    if let Some(retry) = retry_at {
+                        let now = Instant::now();
+                        if now >= lease.expires_at {
+                            return false;
                         }
-                        return false;
+                        if now < *retry {
+                            return true;
+                        }
                     }
-                    Err(error) => {
-                        runner.record_error(error);
-                        *retry_at = Some(Instant::now() + retry_interval(config));
-                    }
+                    Some(reply.outcome())
                 }
             }
-            Execution::Running(running) => {
-                if now >= lease.expires_at {
-                    running.force(runner.scheduler, LEASE_LOST);
-                    return true;
+        };
+        let Some(outcome) = outcome else {
+            self.renew(runner, pool);
+            return true;
+        };
+        match with_pool(pool, |db| {
+            finish(db, &runner.config.namespace, &self.id, &self.token, outcome)
+        }) {
+            Ok(finished) => {
+                let mut state = runner.state.lock();
+                if finished {
+                    state.counts.finished += 1;
+                } else {
+                    state.counts.stale_acks += 1;
                 }
-                if lease.renew_at.is_none_or(|due| now < due) {
-                    return true;
+                false
+            }
+            Err(error) => {
+                runner.record_error(error);
+                let mut state = runner.state.lock();
+                let job = state.jobs.get_mut(&self.token).expect("tracked attempt");
+                if let Execution::Acknowledging { retry_at, .. } = &mut job.execution {
+                    *retry_at = Some(Instant::now() + retry_interval(&runner.config));
                 }
-                match with_pool(pool, |db| {
-                    let started = Instant::now();
-                    renew(
-                        db,
-                        &config.namespace,
-                        &self.id,
-                        &self.token,
-                        config.lease_ms,
-                    )
-                    .map(|status| (started, status))
-                }) {
-                    Ok((started, LeaseStatus::Active)) => {
-                        *lease = Lease::new(started, Duration::from_millis(config.lease_ms));
-                        running.invocation.clock.lock().lease_until = lease.expires_at;
+                true
+            }
+        }
+    }
+
+    fn renew(&mut self, runner: &Runner, pool: u64) {
+        let Some(lease) = &mut self.lease else {
+            return;
+        };
+        let now = Instant::now();
+        if now >= lease.expires_at || lease.renew_at.is_none_or(|due| now < due) {
+            return;
+        }
+        let config = &runner.config;
+        let renewal = with_pool(pool, |db| {
+            if Instant::now() >= lease.expires_at {
+                return Ok(None);
+            }
+            let renewed = Lease::begin(Duration::from_millis(config.lease_ms))?;
+            renew(
+                db,
+                &config.namespace,
+                &self.id,
+                &self.token,
+                config.lease_ms,
+            )
+            .map(|status| Some((renewed, status)))
+        });
+        let (renewed, status) = match renewal {
+            Ok(Some(result)) => result,
+            Ok(None) => return,
+            Err(error) => {
+                runner.record_error(error);
+                lease.renew_at = Some(Instant::now() + retry_interval(config));
+                return;
+            }
+        };
+        let mut state = runner.state.lock();
+        let State {
+            jobs, last_error, ..
+        } = &mut *state;
+        let job = jobs.get_mut(&self.token).expect("tracked attempt");
+        let running = match &mut job.execution {
+            Execution::Running(worker) => Some(worker),
+            Execution::Acknowledging { .. } => None,
+        };
+        match status {
+            LeaseStatus::Active => {
+                if let Some(worker) = running {
+                    match worker.renew_lease(&renewed) {
+                        Ok(true) => {}
+                        Ok(false) => {
+                            worker.stop(Reply::Failed(LEASE_LOST.into()), last_error);
+                            return;
+                        }
+                        Err(error) => {
+                            *last_error = Some(error.chars().take(1024).collect());
+                            worker.stop(Reply::Failed(error), last_error);
+                            return;
+                        }
                     }
-                    Ok((_, LeaseStatus::Cancelled)) => {
-                        lease.renew_at = None;
-                        running.force(runner.scheduler, CANCELLED);
-                    }
-                    Ok((_, LeaseStatus::Lost)) => {
-                        self.lease = None;
-                        running.force(runner.scheduler, LEASE_LOST);
-                    }
-                    Err(error) => {
-                        runner.record_error(error);
-                        lease.renew_at = Some(Instant::now() + retry_interval(config));
-                    }
+                }
+                *lease = renewed;
+            }
+            LeaseStatus::Cancelled => {
+                lease.renew_at = None;
+                if let Some(worker) = running {
+                    worker.stop(Reply::Cancelled, last_error);
+                }
+            }
+            LeaseStatus::Lost => {
+                self.lease = None;
+                if let Some(worker) = running {
+                    worker.stop(Reply::Failed(LEASE_LOST.into()), last_error);
                 }
             }
         }
-        true
     }
 
     fn blocks_claims(&self) -> bool {
         self.lease
             .as_ref()
             .is_none_or(|lease| lease.renew_at.is_none() || Instant::now() >= lease.expires_at)
-            && matches!(self.execution, Execution::Running(_))
     }
 }
 
@@ -717,7 +767,7 @@ struct Queue<'a> {
     next_claim: Instant,
 }
 
-fn maintain(runner: &Runner<'_>, pool: u64) {
+fn maintain(runner: &Runner, pool: u64) {
     let config = &runner.config;
     let mut next_recovery = Instant::now();
     let mut next_schedule = Instant::now();
@@ -757,7 +807,7 @@ fn maintain(runner: &Runner<'_>, pool: u64) {
     }
 }
 
-fn dispatch(runner: &Runner<'_>, pool: u64, workers: &str, handler: Handler) {
+fn dispatch(runner: &Runner, pool: u64, workers: &str, start_worker: &StartWorker) {
     let config = &runner.config;
     let mut queues: Vec<_> = config
         .queues
@@ -829,7 +879,14 @@ fn dispatch(runner: &Runner<'_>, pool: u64, workers: &str, handler: Handler) {
                 });
             if let Some(index) = ready {
                 cursor = (index + 1) % queues.len();
-                match claim_one(runner, pool, workers, index, queues[index].name, handler) {
+                match claim_one(
+                    runner,
+                    pool,
+                    workers,
+                    index,
+                    queues[index].name,
+                    start_worker,
+                ) {
                     Ok(Some(attempt)) => attempts.push(attempt),
                     Ok(None) => {
                         queues[index].next_claim =
@@ -849,14 +906,21 @@ fn dispatch(runner: &Runner<'_>, pool: u64, workers: &str, handler: Handler) {
 }
 
 fn claim_one(
-    runner: &Runner<'_>,
+    runner: &Runner,
     pool: u64,
     workers: &str,
     queue: usize,
     queue_name: &str,
-    handler: Handler,
+    start_worker: &StartWorker,
 ) -> Result<Option<Attempt>, String> {
     let config = &runner.config;
+    if let Err(error) = (runner.check_worker)() {
+        runner
+            .state
+            .lock()
+            .fail_launch(error, config.shutdown_grace_ms);
+        return Ok(None);
+    }
     {
         let mut state = runner.state.lock();
         if !matches!(state.phase, Phase::Running) || crate::process_signal::shutdown_requested() {
@@ -866,13 +930,13 @@ fn claim_one(
     }
 
     let acquired = with_pool(pool, |db| {
-        let started = Instant::now();
-        claim(db, &config.namespace, queue_name, workers, config.lease_ms).map(|job| (started, job))
+        let lease = Lease::begin(Duration::from_millis(config.lease_ms))?;
+        claim(db, &config.namespace, queue_name, workers, config.lease_ms).map(|job| (lease, job))
     });
     let mut state = runner.state.lock();
     state.pending_claims = 0;
     let (
-        started,
+        lease,
         Claim {
             id,
             token,
@@ -880,51 +944,42 @@ fn claim_one(
             timeout_ms,
         },
     ) = match acquired {
-        Ok((started, Some(job))) => (started, job),
+        Ok((lease, Some(job))) => (lease, job),
         Ok((_, None)) => return Ok(None),
         Err(error) => return Err(error),
     };
 
     let now = Instant::now();
-    let lease = Lease::new(started, Duration::from_millis(config.lease_ms));
     let deadline = now.checked_add(Duration::from_millis(timeout_ms));
-    let (execution, running) = if now >= lease.expires_at
+    let execution = if now >= lease.expires_at
         || !matches!(state.phase, Phase::Running)
         || crate::process_signal::shutdown_requested()
     {
-        (
-            Execution::Acknowledging {
-                reply: Reply::Unstarted,
-                retry_at: None,
-            },
-            None,
-        )
+        Execution::acknowledging(Reply::Unstarted)
     } else if let Some(deadline) = deadline {
-        let running = Running::start(
-            runner.scheduler,
-            handler,
-            context,
-            deadline,
-            lease.expires_at,
-        );
-        let observed = Some((running.pid, Arc::clone(&running.invocation)));
-        (Execution::Running(running), observed)
+        match start_worker(context, deadline, lease.worker_expires_at) {
+            Ok(process) => Execution::Running(Running {
+                process,
+                deadline,
+                lease_deadline: lease.expires_at,
+                stop: None,
+            }),
+            Err(error) => {
+                state.fail_launch(error, config.shutdown_grace_ms);
+                Execution::acknowledging(Reply::Unstarted)
+            }
+        }
     } else {
-        let reply = Reply::Failed("job timeout exceeds runtime timer range".into());
-        (
-            Execution::Acknowledging {
-                reply,
-                retry_at: None,
-            },
-            None,
-        )
+        Execution::acknowledging(Reply::Failed(
+            "job timeout exceeds runtime timer range".into(),
+        ))
     };
     state.jobs.insert(
         token.clone(),
         ActiveJob {
             id: id.clone(),
             queue,
-            running,
+            execution,
         },
     );
     state.counts.claimed += 1;
@@ -933,7 +988,6 @@ fn claim_one(
         token,
         queue,
         lease: Some(lease),
-        execution,
     }))
 }
 

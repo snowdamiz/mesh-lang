@@ -203,7 +203,7 @@ pub extern "C" fn mesh_run_main(entry: extern "C-unwind" fn()) {
 /// fails with EPIPE instead of killing the process. A Mesh executable's `main`
 /// is not Rust's, so the runtime has to do it; an HTTP server died with the
 /// first client that closed its connection early.
-fn ignore_sigpipe() {
+pub(crate) fn ignore_sigpipe() {
     #[cfg(unix)]
     unsafe {
         libc::signal(libc::SIGPIPE, libc::SIG_IGN);

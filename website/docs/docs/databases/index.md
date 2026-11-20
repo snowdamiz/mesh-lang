@@ -53,6 +53,11 @@ SQLite placeholders are `?`, and a statement takes exactly as many parameters as
 
 ## PostgreSQL Connections and Pools
 
+The PostgreSQL compatibility matrix tests 18.7 and 19.0 over TCP with
+SCRAM-SHA-256 authentication and verified TLS. It covers direct connections,
+pools, repository operations, migrations, and durable Jobs against each
+server. The PostgreSQL 17 lane also runs the durable Jobs proof.
+
 For a one-off connection, use `Pg.connect`. For an HTTP service or other concurrent application, open a bounded pool:
 
 ```mesh

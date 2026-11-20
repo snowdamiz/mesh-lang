@@ -2,7 +2,8 @@
 //! Receipts expose id, effect_key, and state. Handlers receive the same identity
 //! plus the worker, version, queue, args, attempt, max_attempts, and metadata.
 //! The proof uses a dedicated PostgreSQL database and real Unix process signals.
-//! The stale acknowledgement probe is the only SQL mutation of a job under test.
+//! The proof uses SQL to submit a stale acknowledgement and to make a job due
+//! while its runner executable cannot be launched.
 //! The crash intentionally repeats a side effect with the same effect key.
 #![cfg(unix)]
 
@@ -11,6 +12,7 @@ mod artifacts;
 
 use serde_json::{json, Value};
 use std::fs::{self, File};
+use std::os::unix::process::CommandExt;
 use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
@@ -59,6 +61,14 @@ fn durable_jobs_survive_process_boundaries() {
     prove_competing_processes(&proof);
     prove_crash_and_stale_ack(&proof);
     prove_retry_and_exhaustion(&proof);
+    prove_native_timeout(&proof);
+    prove_native_lease_loss(&proof);
+    prove_large_context(&proof);
+    #[cfg(target_os = "macos")]
+    {
+        prove_executable_replacement(&proof);
+        prove_launch_failure(&proof);
+    }
     prove_signal_drain(&proof);
     assert_eq!(proof.effects("committed").len(), 1);
     assert!(proof.effects("rolled-back").is_empty());
@@ -238,7 +248,7 @@ fn prove_signal_drain(proof: &Proof) {
     let mut worker = proof.worker("signal-worker", true);
     proof.wait_effects("graceful", 1);
     let pending = proof.enqueue(spec("after-signal"));
-    worker.signal();
+    worker.signal_group("-TERM");
     eventually("Mesh application received SIGTERM", || {
         worker.assert_running();
         worker.markers.join("signal").is_file().then_some(())
@@ -260,6 +270,180 @@ fn prove_signal_drain(proof: &Proof) {
     assert_eq!(pending_job["state"], "available");
     assert_eq!(pending_job["attempt"], 0);
     assert!(proof.effects("after-signal").is_empty());
+}
+
+fn prove_native_timeout(proof: &Proof) {
+    let receipt = proof.enqueue(json!({
+        "worker": "proof", "args": {"label": "native-timeout"},
+        "timeout_ms": 3000, "max_attempts": 2, "backoff_base_ms": 0,
+    }));
+    let mut worker = proof.worker("native-timeout", false);
+    proof.wait_effects("native-timeout", 1);
+    wait_for_native_query(proof, "native-timeout", true);
+    let job = proof.wait_state("native-timeout", "completed");
+    assert_eq!(job["id"], receipt["id"]);
+    assert_eq!(job["attempt"], 2);
+    assert_eq!(job["errors"][0]["reason"], "job handler timed out");
+    assert_eq!(proof.effects("native-timeout").len(), 2);
+    cancel_native_query(proof, "native-timeout");
+    wait_for_native_query(proof, "native-timeout", false);
+    assert_eq!(
+        proof.effects("after-timeout"),
+        Vec::<Value>::new(),
+        "timed-out handler published a side effect after returning from native I/O"
+    );
+    worker.stop();
+}
+
+fn prove_native_lease_loss(proof: &Proof) {
+    let receipt = proof.enqueue(json!({
+        "worker": "proof", "args": {"label": "native-owner-paused"},
+        "timeout_ms": 60_000, "max_attempts": 2, "backoff_base_ms": 0,
+    }));
+    let mut owner = proof.worker("paused-owner", false);
+    proof.wait_effects("native-owner-paused", 1);
+    wait_for_native_query(proof, "native-owner-paused", true);
+    owner.send_signal("-STOP");
+
+    let mut recovery = proof.worker("native-recovery", false);
+    let job = proof.wait_state("native-owner-paused", "completed");
+    assert_eq!(job["attempt"], 2);
+    assert_eq!(job["errors"][0]["reason"], "lease expired");
+    let effects = proof.effects("native-owner-paused");
+    assert_eq!(effects.len(), 2);
+    assert_context(&effects[0], &receipt, "native-owner-paused", 1);
+    assert_context(&effects[1], &receipt, "native-owner-paused", 2);
+    assert_eq!(effects[1]["process"], "native-recovery");
+    owner.send_signal("-CONT");
+    cancel_native_query(proof, "native-owner-paused");
+    wait_for_native_query(proof, "native-owner-paused", false);
+    owner.stop();
+    recovery.stop();
+    assert!(proof.effects("after-timeout").is_empty());
+}
+
+fn wait_for_native_query(proof: &Proof, label: &str, active: bool) {
+    eventually(
+        &format!("{label} native query to have active={active}"),
+        || {
+            let result = proof.sql(&format!(
+            "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE application_name = {} AND state = 'active' AND query = 'SELECT pg_sleep(60)')",
+            quoted(label),
+        ));
+            ((result == "t") == active).then_some(())
+        },
+    );
+}
+
+fn cancel_native_query(proof: &Proof, label: &str) {
+    proof.sql(&format!(
+        "SELECT pg_cancel_backend(pid) FROM pg_stat_activity
+         WHERE application_name = {} AND state = 'active' AND query = 'SELECT pg_sleep(60)'",
+        quoted(label),
+    ));
+}
+
+fn prove_large_context(proof: &Proof) {
+    let request = proof.dir.join("large-enqueue.json");
+    let spec = json!({
+        "worker": "proof", "args": {"label": "large-context", "numbers": vec![1e308_f64; 30_000]},
+        "max_attempts": 1,
+    });
+    fs::write(&request, spec.to_string()).unwrap();
+    let receipt = proof.run("enqueue_file", request.to_str().unwrap());
+    let mut worker = proof.worker("large-payload", false);
+    eventually("job with large PostgreSQL context completes", || {
+        let state = proof.sql(&format!(
+            "SELECT state FROM mesh_jobs.jobs WHERE namespace = {} AND id = {}::uuid",
+            quoted(&proof.namespace),
+            quoted(id(&receipt)),
+        ));
+        assert_ne!(state, "discarded");
+        (state == "completed").then_some(())
+    });
+    let observed = proof.sql(&format!(
+        "SELECT count(*) FROM {}.effects WHERE label = 'large-context' AND octet_length(context::text) > 8 * 1024 * 1024",
+        proof.namespace,
+    ));
+    assert_eq!(observed, "1");
+    worker.stop();
+}
+
+#[cfg(target_os = "macos")]
+fn prove_executable_replacement(proof: &Proof) {
+    let mut old = proof.worker("replaced-runner", false);
+    let replacement = proof.binary.with_extension("replacement");
+    fs::copy(&proof.binary, &replacement).unwrap();
+    fs::rename(replacement, &proof.binary).unwrap();
+    proof.enqueue(spec("after-replacement"));
+    eventually("runner stops after its executable was replaced", || {
+        let report: Value =
+            serde_json::from_slice(&fs::read(old.markers.join("status")).ok()?).ok()?;
+        (report["state"] == "stopped").then_some(())
+    });
+    old.signal();
+    let report = old.join();
+    assert_eq!(report["claimed"], 0);
+    assert!(report["last_error"]
+        .as_str()
+        .unwrap()
+        .contains("executable changed"));
+    let pending = proof.job("after-replacement");
+    assert_eq!(pending["attempt"], 0);
+    assert_eq!(pending["state"], "available");
+    let mut new = proof.worker("replacement-runner", false);
+    assert_eq!(
+        proof.wait_state("after-replacement", "completed")["attempt"],
+        1
+    );
+    new.stop();
+}
+
+#[cfg(target_os = "macos")]
+fn prove_launch_failure(proof: &Proof) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let spec = json!({
+        "worker": "proof", "args": {"label": "launch-failure"},
+        "metadata": {"reference": "launch-proof"},
+        "unique": {"fields": ["worker", "metadata"], "states": "incomplete"},
+        "delay_ms": 120_000, "max_attempts": 1,
+    });
+    let receipt = proof.enqueue(spec.clone());
+    let mut old = proof.worker("launch-failure", false);
+    let mode = fs::metadata(&proof.binary).unwrap().permissions().mode();
+    fs::set_permissions(&proof.binary, fs::Permissions::from_mode(mode & !0o111)).unwrap();
+    proof.sql(&format!(
+        "UPDATE mesh_jobs.jobs SET scheduled_at_ms = mesh_jobs.now_ms() WHERE namespace = {} AND id = {}::uuid",
+        quoted(&proof.namespace), quoted(id(&receipt)),
+    ));
+    eventually("runner stops after the denied launch", || {
+        let report: Value =
+            serde_json::from_slice(&fs::read(old.markers.join("status")).ok()?).ok()?;
+        (report["state"] == "stopped").then_some(())
+    });
+    fs::set_permissions(&proof.binary, fs::Permissions::from_mode(mode)).unwrap();
+    old.signal();
+    let report = old.join();
+    assert_eq!(report["claimed"], 1);
+    assert!(report["last_error"]
+        .as_str()
+        .unwrap()
+        .contains("could not start job handler"));
+    let pending = proof.job("launch-failure");
+    assert_eq!(pending["attempt"], 0);
+    assert_eq!(pending["metadata"], spec["metadata"]);
+    let replay = proof.enqueue(spec);
+    assert_eq!(replay["id"], receipt["id"]);
+    assert_eq!(replay["conflict"], true);
+
+    let mut worker = proof.worker("launch-recovery", false);
+    assert_eq!(
+        proof.wait_state("launch-failure", "completed")["attempt"],
+        1
+    );
+    worker.stop();
+    assert_eq!(proof.effects("launch-failure").len(), 1);
 }
 
 fn spec(label: &str) -> Value {
@@ -495,6 +679,7 @@ impl<'a> Proof<'a> {
         });
         let mut command = self.command("serve", &config.to_string());
         command
+            .process_group(0)
             .env("MESH_JOBS_PROOF_WORKER", name)
             .env("MESH_JOBS_PROOF_MARKERS", &markers)
             .stdout(output.try_clone().unwrap())
@@ -576,16 +761,30 @@ impl Worker {
     }
 
     fn signal(&mut self) {
+        self.send_signal("-TERM");
+    }
+
+    fn send_signal(&mut self, signal: &str) {
         self.assert_running();
         let pid = self.child.as_ref().unwrap().id();
         assert!(
             Command::new("kill")
-                .args(["-TERM", &pid.to_string()])
+                .args([signal, &pid.to_string()])
                 .status()
                 .unwrap()
                 .success(),
             "could not signal worker {pid}"
         );
+    }
+
+    fn signal_group(&mut self, signal: &str) {
+        self.assert_running();
+        let pid = self.child.as_ref().unwrap().id();
+        assert!(Command::new("kill")
+            .args([signal, "--", &format!("-{pid}")])
+            .status()
+            .unwrap()
+            .success());
     }
 
     fn join(&mut self) -> Value {

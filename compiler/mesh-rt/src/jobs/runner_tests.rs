@@ -26,89 +26,42 @@ fn config_matches_store_names_and_bounds_runner_capacity() {
 }
 
 #[test]
-fn killed_before_start_releases_the_invocation_without_running_it() {
-    let scheduler = Scheduler::new(1);
-    let captured = Arc::new(());
-    let owner = Arc::downgrade(&captured);
-    let (ran, seen) = mpsc::channel();
-    let (pid, exited) = scheduler.spawn_observed(move || {
-        assert_eq!(Arc::strong_count(&captured), 1);
-        ran.send(()).unwrap();
-    });
-    assert!(owner.upgrade().is_some());
+fn polling_and_kill_errors_keep_an_attempt_undrained_until_reap() {
+    struct Worker {
+        polls: std::collections::VecDeque<Result<Option<Result<String, String>>, String>>,
+        kills: usize,
+    }
 
-    abort(&scheduler, pid, TIMEOUT);
-    scheduler.start();
-    let exit = exited.recv_timeout(TEST_WAIT).unwrap();
-    assert_eq!(exit.reason, ExitReason::Custom(TIMEOUT.into()));
-    assert!(scheduler.get_process(pid).is_none());
-    assert!(owner.upgrade().is_none());
-    assert_eq!(seen.try_recv(), Err(TryRecvError::Disconnected));
-    scheduler.signal_shutdown();
-    scheduler.wait();
-}
+    impl JobProcess for Worker {
+        fn poll(&mut self) -> Result<Option<Result<String, String>>, String> {
+            self.polls.pop_front().unwrap()
+        }
 
-#[test]
-fn forced_suspended_exit_is_observed_after_unwinding_and_removal() {
-    struct OnStack(mpsc::Sender<()>);
+        fn kill(&mut self) -> Result<(), String> {
+            self.kills += 1;
+            if self.kills == 1 {
+                Err("could not signal worker".into())
+            } else {
+                Ok(())
+            }
+        }
 
-    impl Drop for OnStack {
-        fn drop(&mut self) {
-            self.0.send(()).unwrap();
+        fn renew(&mut self, _: u64) -> Result<(), String> {
+            unreachable!()
         }
     }
 
-    let scheduler = Scheduler::new(1);
-    let (entered, began) = mpsc::channel();
-    let (dropped, unwound) = mpsc::channel();
-    let (pid, exited) = scheduler.spawn_observed(move || {
-        let _on_stack = OnStack(dropped.clone());
-        actor::current_process()
-            .unwrap()
-            .lock()
-            .set_live_state(ProcessState::Waiting);
-        entered.send(()).unwrap();
-        actor::stack::yield_current();
-        panic!("cancelled frame re-entered its body");
-    });
-    scheduler.start();
-    began.recv_timeout(TEST_WAIT).unwrap();
-    let process = scheduler.get_process(pid).unwrap();
-    scheduler.force_exit(pid, process.lock(), ExitReason::Custom(CANCELLED.into()));
-    let exit = exited.recv_timeout(TEST_WAIT).unwrap();
-    assert_eq!(exit.reason, ExitReason::Custom(CANCELLED.into()));
-    assert_eq!(unwound.try_recv(), Ok(()));
-    assert!(scheduler.get_process(pid).is_none());
-    scheduler.signal_shutdown();
-    scheduler.wait();
-}
-
-#[test]
-fn an_expired_stop_reports_a_native_callback_until_it_actually_exits() {
-    let scheduler = Scheduler::new(1);
-    let (entered, began) = mpsc::channel();
-    let (release, released) = mpsc::channel();
-    let released = Mutex::new(released);
-    let (pid, exited) = scheduler.spawn_observed(move || {
-        entered.send(()).unwrap();
-        released.lock().recv().unwrap();
-    });
-    scheduler.start();
-    began.recv_timeout(TEST_WAIT).unwrap();
-
     let now = Instant::now();
-    let invocation = Arc::new(Invocation {
-        clock: Mutex::new(InvocationClock {
-            deadline: now + TEST_WAIT,
-            lease_until: now + TEST_WAIT,
-            forced: None,
-        }),
-        result: Mutex::new(None),
-    });
+    let mut attempt = Attempt {
+        id: "job-id".into(),
+        token: "token".into(),
+        queue: 0,
+        lease: None,
+    };
     let runner = Runner {
         id: 0,
         config: Config::parse(TEST_CONFIG).unwrap(),
-        scheduler: &scheduler,
+        check_worker: || Ok(()),
         state: Mutex::new(State {
             phase: Phase::Running,
             jobs: BTreeMap::from([(
@@ -116,7 +69,20 @@ fn an_expired_stop_reports_a_native_callback_until_it_actually_exits() {
                 ActiveJob {
                     id: "job-id".into(),
                     queue: 0,
-                    running: Some((pid, invocation)),
+                    execution: Execution::Running(Running {
+                        process: Box::new(Worker {
+                            polls: [
+                                Err("could not poll worker".into()),
+                                Ok(None),
+                                Ok(Some(Ok(r#"{"action":"complete"}"#.into()))),
+                            ]
+                            .into(),
+                            kills: 0,
+                        }),
+                        deadline: now + TEST_WAIT,
+                        lease_deadline: now + TEST_WAIT,
+                        stop: None,
+                    }),
                 },
             )]),
             pending_claims: 0,
@@ -124,46 +90,105 @@ fn an_expired_stop_reports_a_native_callback_until_it_actually_exits() {
             last_error: None,
         }),
     };
-    runner.request_stop(Duration::ZERO);
-    let report: serde_json::Value = serde_json::from_str(&runner.wait()).unwrap();
-    assert_eq!(report["drained"], false);
-    assert_eq!(report["undrained_jobs"], json!(["job-id"]));
-    assert!(matches!(exited.try_recv(), Err(TryRecvError::Empty)));
-    assert!(scheduler.get_process(pid).is_some());
 
-    release.send(()).unwrap();
-    let exit = exited.recv_timeout(TEST_WAIT).unwrap();
-    assert_eq!(exit.reason, ExitReason::Custom(STOPPED.into()));
-    assert!(!exit.returned_normally);
-    assert!(scheduler.get_process(pid).is_none());
-    scheduler.signal_shutdown();
-    scheduler.wait();
+    runner.supervise();
+    runner.request_stop(Duration::ZERO);
+    assert!(attempt.poll(&runner, 0));
+    let report: serde_json::Value = serde_json::from_str(&runner.report(true).unwrap()).unwrap();
+    assert_eq!(report["state"], "stopping");
+    assert_eq!(report["undrained_jobs"], json!(["job-id"]));
+    assert_eq!(report["finished"], 0);
+
+    runner.supervise();
+    assert!(attempt.poll(&runner, 0));
+
+    runner.supervise();
+    assert!(!attempt.poll(&runner, 0));
+    let state = runner.state.lock();
+    let Execution::Acknowledging { reply, .. } = &state.jobs["token"].execution else {
+        panic!("reaped worker must be eligible for settlement");
+    };
+    assert!(
+        matches!(reply.outcome(), Outcome::Fail { reason } if reason == "could not poll worker")
+    );
 }
 
 #[test]
-fn owned_reply_survives_actor_exit_and_invalid_delays_are_failures() {
-    unsafe extern "C-unwind" fn echo(input: *const MeshString) -> *const MeshString {
-        input
+fn invalid_outcomes_are_failures() {
+    assert!(matches!(
+        Reply::Returned(r#"{"action":"complete"}"#.into()).outcome(),
+        Outcome::Complete
+    ));
+    for invalid in [
+        "not JSON",
+        r#"{"action":"snooze","delay_ms":18446744073709551615}"#,
+    ] {
+        assert!(matches!(
+            Reply::Returned(invalid.into()).outcome(),
+            Outcome::Fail { .. }
+        ));
+    }
+}
+
+// The native proof exercises actual child processes. This worker holds a
+// killed attempt past its first lease to test the runner's durable renewal.
+struct TimedWorker {
+    completes_at: Instant,
+    kill_delay: Duration,
+    reaps_at: Option<Instant>,
+}
+
+impl TimedWorker {
+    fn start(context: String, _: Instant, _: u64) -> Result<Box<dyn JobProcess>, String> {
+        let context: serde_json::Value = serde_json::from_str(&context).unwrap();
+        let wait_ms = context["args"]["wait_ms"].as_u64().unwrap();
+        let kill_delay = context["args"]["kill_delay_ms"].as_u64().unwrap_or(0);
+        Ok(Box::new(Self {
+            completes_at: Instant::now() + Duration::from_millis(wait_ms),
+            kill_delay: Duration::from_millis(kill_delay),
+            reaps_at: None,
+        }))
+    }
+}
+
+impl JobProcess for TimedWorker {
+    fn poll(&mut self) -> Result<Option<Result<String, String>>, String> {
+        let now = Instant::now();
+        if let Some(reaps_at) = self.reaps_at {
+            return Ok((now >= reaps_at).then(|| Err("worker killed".into())));
+        }
+        Ok((now >= self.completes_at).then(|| Ok(r#"{"action":"complete"}"#.into())))
     }
 
-    let scheduler = Scheduler::new(1);
-    let input = r#"{"action":"complete"}"#;
-    let deadline = Instant::now() + TEST_WAIT;
-    let running = Running::start(&scheduler, echo, input.into(), deadline, deadline);
-    scheduler.start();
-    let reply = loop {
-        if let Some(reply) = running.poll() {
-            break reply;
-        }
-        assert!(Instant::now() < deadline);
-        std::thread::sleep(Duration::from_millis(1));
+    fn kill(&mut self) -> Result<(), String> {
+        self.reaps_at
+            .get_or_insert(Instant::now() + self.kill_delay);
+        Ok(())
+    }
+
+    fn renew(&mut self, _: u64) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+#[test]
+fn a_late_renewal_cannot_extend_an_expired_local_lease() {
+    let now = Instant::now();
+    let mut worker = Running {
+        process: TimedWorker::start(r#"{"args":{"wait_ms":2000}}"#.into(), now, 0).unwrap(),
+        deadline: now + TEST_WAIT,
+        lease_deadline: now,
+        stop: None,
     };
-    assert!(scheduler.get_process(running.pid).is_none());
-    assert!(matches!(reply.outcome(), Outcome::Complete));
-    let invalid = Reply::Returned(r#"{"action":"snooze","delay_ms":18446744073709551615}"#.into());
-    assert!(matches!(invalid.outcome(), Outcome::Fail { .. }));
-    scheduler.signal_shutdown();
-    scheduler.wait();
+    assert!(!worker
+        .renew_lease(&Lease::begin(TEST_WAIT).unwrap())
+        .unwrap());
+    assert_eq!(worker.lease_deadline, now);
+    assert!(worker.poll(now, false, &mut None).is_none());
+    assert!(matches!(
+        worker.poll(now, false, &mut None),
+        Some(Reply::Failed(reason)) if reason == LEASE_LOST
+    ));
 }
 
 #[test]
@@ -171,14 +196,7 @@ fn owned_reply_survives_actor_exit_and_invalid_delays_are_failures() {
 fn postgres_runner_executes_schedules_and_settles_renewed_timed_out_and_cancelled_attempts() {
     use crate::db::pool::{mesh_pool_close, mesh_pool_open, unbox_u64_payload};
     use crate::io::MeshResult;
-    use crate::string::{mesh_str, text_of};
-
-    unsafe extern "C-unwind" fn handle(input: *const MeshString) -> *const MeshString {
-        let context: serde_json::Value = serde_json::from_str(unsafe { text_of(input) }).unwrap();
-        let wait_ms = context["args"]["wait_ms"].as_i64().unwrap();
-        actor::mesh_timer_sleep(wait_ms);
-        mesh_str(r#"{"action":"complete"}"#)
-    }
+    use crate::string::mesh_str;
 
     crate::gc::mesh_rt_init();
     actor::mesh_rt_init_actor(2);
@@ -211,11 +229,11 @@ fn postgres_runner_executes_schedules_and_settles_renewed_timed_out_and_cancelle
         "lease_ms": 300,
         "poll_ms": 10,
     });
-    let id = start(
+    let id = start_runner(
         pool,
         &config.to_string(),
-        handle as *const u8,
-        std::ptr::null(),
+        || Ok(()),
+        Box::new(TimedWorker::start),
     )
     .unwrap();
 
@@ -262,7 +280,12 @@ fn postgres_runner_executes_schedules_and_settles_renewed_timed_out_and_cancelle
     let long = enqueue(675, 2000);
     assert_eq!(wait_for(&long, "completed")["attempt"], 1);
 
-    let short = enqueue(1000, 80);
+    let short = submit(json!({
+        "worker": "test",
+        "args": {"wait_ms": 2000, "kill_delay_ms": 400},
+        "max_attempts": 1,
+        "timeout_ms": 80,
+    }));
     let timed_out = wait_for(&short, "discarded");
     assert_eq!(timed_out["errors"][0]["reason"], TIMEOUT);
 
@@ -319,11 +342,11 @@ fn postgres_runner_executes_schedules_and_settles_renewed_timed_out_and_cancelle
         .unwrap();
     });
     lock_acquired.recv_timeout(TEST_WAIT).unwrap();
-    let one_shot = start(
+    let one_shot = start_runner(
         pool,
         &drain_config.to_string(),
-        handle as *const u8,
-        std::ptr::null(),
+        || Ok(()),
+        Box::new(TimedWorker::start),
     )
     .unwrap();
     std::thread::sleep(Duration::from_millis(100));
@@ -404,11 +427,11 @@ fn postgres_runner_executes_schedules_and_settles_renewed_timed_out_and_cancelle
     lock_acquired.recv_timeout(TEST_WAIT).unwrap();
     let mut two_queues = drain_config.clone();
     two_queues["queues"]["blocked"] = json!(1);
-    let one_shot = start(
+    let one_shot = start_runner(
         pool,
         &two_queues.to_string(),
-        handle as *const u8,
-        std::ptr::null(),
+        || Ok(()),
+        Box::new(TimedWorker::start),
     )
     .unwrap();
     std::thread::sleep(Duration::from_millis(200));
@@ -440,11 +463,11 @@ fn postgres_runner_executes_schedules_and_settles_renewed_timed_out_and_cancelle
 
     drain_config["drain"] = json!(false);
     drain_config["prune_max_age_ms"] = json!(1);
-    let pruner = start(
+    let pruner = start_runner(
         pool,
         &drain_config.to_string(),
-        handle as *const u8,
-        std::ptr::null(),
+        || Ok(()),
+        Box::new(TimedWorker::start),
     )
     .unwrap();
     let deadline = Instant::now() + TEST_WAIT;

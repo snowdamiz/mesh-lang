@@ -6,22 +6,10 @@ mod artifacts;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-fn meshc_bin() -> PathBuf {
-    let mut path = std::env::current_exe()
-        .expect("cannot locate test executable")
-        .parent()
-        .expect("test executable has no parent")
-        .to_path_buf();
-    if path.file_name().is_some_and(|name| name == "deps") {
-        path.pop();
-    }
-    path.join("meshc")
-}
-
 /// Builds tests/e2e/<fixture>.mpl as a project named `name`, whose binary is
 /// `<project>/<name>`.
 fn build_fixture(fixture: &str, name: &str) -> (tempfile::TempDir, PathBuf, Output) {
-    artifacts::ensure_mesh_rt_staticlib();
+    let compiler = artifacts::meshc_bin();
     let temp = tempfile::tempdir().expect("failed to create temp directory");
     let project = temp.path().join(name);
     std::fs::create_dir_all(&project).expect("failed to create project directory");
@@ -30,7 +18,7 @@ fn build_fixture(fixture: &str, name: &str) -> (tempfile::TempDir, PathBuf, Outp
         .join(format!("{fixture}.mpl"));
     std::fs::copy(&source, project.join("main.mpl"))
         .unwrap_or_else(|error| panic!("failed to copy {}: {error}", source.display()));
-    let output = Command::new(meshc_bin())
+    let output = Command::new(compiler)
         .args(["build", project.to_str().expect("non-UTF-8 project path")])
         .output()
         .expect("failed to invoke meshc");

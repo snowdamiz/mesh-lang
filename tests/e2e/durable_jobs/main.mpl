@@ -53,6 +53,20 @@ fn record_effect(context :: String) -> String!String do
     [worker, label, context])
   Pg.close(conn)
   let _ = result?
+  if (label == "native-timeout" || label == "native-owner-paused") && attempt == 1 do
+    let blocker = Pg.connect(database_url())?
+    let _ = Pg.query(blocker, "SELECT set_config('application_name', $1, false)", [label])?
+    let blocked = Pg.query(blocker, "SELECT pg_sleep(60)", [])
+    let resumed = Pg.execute(blocker,
+      "INSERT INTO "
+        <> namespace()
+        <> ".effects(worker, label, context) VALUES ($1, 'after-timeout', $2::jsonb)",
+      [worker, context])
+    Pg.close(blocker)
+    let _ = blocked?
+    let _ = resumed?
+    ()
+  end
   let gate = Env.get("MESH_JOBS_PROOF_GATE", "")
   if gate != "" do
     while !File.exists(gate) do
@@ -84,6 +98,7 @@ fn serve(pool :: PoolHandle, config :: String) -> String!String do
   let status = Jobs.status(runner)?
   let _ = File.write(markers <> "/ready", status)?
   while !Process.shutdown_requested() do
+    let _ = File.write(markers <> "/status", Jobs.status(runner)?)?
     Timer.sleep(10)
   end
   let _ = File.write(markers <> "/signal", "received")?
@@ -97,6 +112,7 @@ fn run() -> String!String do
   let result = case Env.get("MESH_JOBS_PROOF_COMMAND", "") do
     "seed" -> seed(pool)
     "enqueue" -> Jobs.enqueue(pool, namespace(), payload)
+    "enqueue_file" -> Jobs.enqueue(pool, namespace(), File.read(payload)?)
     "control" -> Jobs.control(pool, namespace(), payload)
     "serve" -> serve(pool, payload)
     _ -> Err("unknown proof command")

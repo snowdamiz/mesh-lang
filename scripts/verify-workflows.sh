@@ -35,8 +35,10 @@ main() {
     require_file "$workflow"
   done
 
-  ruby -e 'require "yaml"; ARGV.each { |path| YAML.load_file(path) }' \
-    "${workflows[@]/#/$ROOT_DIR/}" || fail "workflow YAML parsing failed"
+  ruby -ryaml -e '
+    options = Psych::VERSION.to_i >= 4 ? { aliases: true } : {}
+    ARGV.each { |path| YAML.load_file(path, **options) }
+  ' "${workflows[@]/#/$ROOT_DIR/}" || fail "workflow YAML parsing failed"
 
   require_text ".github/workflows/autonomous-cluster-proof.yml" "workflow_call:"
   require_text ".github/workflows/autonomous-cluster-proof.yml" "schedule:"
