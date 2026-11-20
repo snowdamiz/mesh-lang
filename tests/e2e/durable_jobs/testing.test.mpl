@@ -99,7 +99,48 @@ fn check_inspection_limit(pool :: PoolHandle) -> Unit!String do
   if Json.array_length(full)? != 21 do
     return Err("inspection did not honor the explicit limit")
   end
+  for limit in [1, 100] do
+    let bounded = Json.parse(Test.jobs_inspect(pool, namespace(),
+      Json.encode(json { args: json { label: "inspection-page" }, limit: limit }))?)?
+    let count = if limit == 1 do 1 else 21 end
+    if Json.array_length(bounded)? != count do
+      return Err("inspection rejected an inclusive limit")
+    end
+    let _ = check_inspection_order(bounded, 0, count)?
+    ()
+  end
   check_inspection_order(full, 0, 21)
+end
+
+fn expect_wait_rejection(result :: Unit!String) -> Unit!String do
+  case result do
+    Ok(_) -> Err("a waiting assertion accepted an out-of-range delay")
+    Err(error) ->
+      if String.contains(error, "wait_ms must be between 0 and 60000") do
+        Ok(())
+      else
+        Err(error)
+      end
+  end
+end
+
+fn check_input_bounds(pool :: PoolHandle) -> Unit!String do
+  let _ = Test.assert_enqueued(pool, namespace(), filter(), 60000)?
+  for wait_ms in [-1, 60001] do
+    let _ = expect_wait_rejection(Test.assert_enqueued(pool, namespace(), filter(), wait_ms))?
+    let _ = expect_wait_rejection(Test.refute_enqueued(pool, namespace(), filter(), wait_ms))?
+    ()
+  end
+  for limit in [0, 101] do
+    case Test.jobs_inspect(pool, namespace(), Json.encode(json { limit: limit })) do
+      Ok(_) -> return Err("inspection accepted an out-of-range limit")
+      Err(error) ->
+        if !String.contains(error, "inspection limit must be between 1 and 100") do
+          return Err(error)
+        end
+    end
+  end
+  Ok(())
 end
 
 fn check_manual(pool :: PoolHandle) -> Unit!String do
@@ -113,6 +154,7 @@ fn check_manual(pool :: PoolHandle) -> Unit!String do
   let _ = check(Test.refute_enqueued(pool, namespace(), filter(), 0), "after rollback")?
   let _ = Jobs.enqueue(pool, namespace(), spec())?
   let _ = check(Test.assert_enqueued(pool, namespace(), filter(), 50), "after commit")?
+  let _ = check_input_bounds(pool)?
   let other = Env.get("MESH_JOBS_OTHER_NAMESPACE", "")
   let _ = check(Test.refute_enqueued(pool, other, filter(), 0), "other namespace")?
   let missing = Test.assert_enqueued(pool, namespace(), """{"args":{"label":"missing"}}""", 20)

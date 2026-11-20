@@ -101,6 +101,7 @@ end
         prove_manual_reference(&compiler, &proof, Path::new(&runtime));
     }
 
+    prove_bounded_claim_limit(&proof);
     prove_bounded_cutoff(&proof, &other);
     prove_bounded_recursion(&proof);
     prove_bounded_error_policy(&proof);
@@ -251,6 +252,38 @@ fn drain_error(output: std::process::Output) -> String {
     assert_eq!(output.status.code(), Some(1), "{report}");
     assert!(report.contains("proof error:"), "{report}");
     report
+}
+
+fn prove_bounded_claim_limit(proof: &Proof) {
+    let queue = "drain-claim-limit";
+    let label = "drain-claim-limit";
+    let receipt = proof.enqueue(json!({"worker":"proof", "queue":queue, "args":{"label":label}}));
+    let request = |max_jobs| {
+        bounded_request(
+            proof,
+            queue,
+            json!({"max_jobs":max_jobs,"recursive":false,"on_error":"continue"}),
+        )
+    };
+    let before = proof.job(label);
+    for rejected in [0, 1001] {
+        let output =
+            artifacts::wait_with_timeout(start_drain(proof, &request(rejected)), WAIT).unwrap();
+        let error = drain_error(output);
+        assert!(
+            error.contains("max_jobs must be between 1 and 1000"),
+            "{error}"
+        );
+        assert_eq!(proof.job(label), before);
+        assert!(proof.effects(label).is_empty());
+    }
+    let report = proof.run("drain", &request(1000));
+    assert_eq!(report["claimed"], 1, "{report}");
+    assert_eq!(report["outcomes"]["completed"], 1, "{report}");
+    let effects = proof.effects(label);
+    assert_eq!(effects.len(), 1);
+    assert_job_context(&effects[0], &receipt, queue, label, 1);
+    println!("J5 public helpers and drain rejected out-of-range inputs");
 }
 
 pub(super) fn prove_scoped_drain(admin: &Proof, producer: &Proof, worker: &Proof) {
