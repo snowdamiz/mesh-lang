@@ -1,11 +1,42 @@
 use std::time::Duration;
 
-use super::pg::{commit, pg_simple_command, pg_text_query, PgConn};
-use super::pool::NativeLease;
+use super::pg::{commit, connect, pg_simple_command, pg_text_query, PgConn};
+use super::pool::{connection_url, NativeLease};
 
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub(crate) struct PgJobDb<'a>(&'a mut PgConn);
+
+/// A runner's claim connection has its own socket and can reconnect without
+/// taking a lease from the pool that renews and settles attempts.
+pub(crate) struct JobSession {
+    url: String,
+    connection: Option<PgConn>,
+}
+
+impl JobSession {
+    pub(crate) unsafe fn from_pool(pool: u64) -> Result<Self, String> {
+        Ok(Self {
+            url: connection_url(pool)?,
+            connection: None,
+        })
+    }
+
+    pub(crate) fn with<T>(
+        &mut self,
+        run: impl FnOnce(&mut PgJobDb<'_>) -> Result<T, String>,
+    ) -> Result<T, String> {
+        if self.connection.is_none() {
+            self.connection = Some(connect(&self.url)?);
+        }
+        let connection = self.connection.as_mut().expect("connected session");
+        let result = run(&mut PgJobDb(connection));
+        if connection.is_broken() || connection.txn_status != b'I' {
+            self.connection = None;
+        }
+        result
+    }
+}
 
 impl PgJobDb<'_> {
     pub(crate) fn query(

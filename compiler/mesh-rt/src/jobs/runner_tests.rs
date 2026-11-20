@@ -26,6 +26,84 @@ fn config_matches_store_names_and_bounds_runner_capacity() {
 }
 
 #[test]
+fn confirmed_batch_launch_failure_stops_later_launches_and_keeps_refunds_tracked() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let runner = Runner {
+        id: 0,
+        config: Config::parse(TEST_CONFIG).unwrap(),
+        check_worker: || Ok(()),
+        state: Mutex::new(State {
+            phase: Phase::Running,
+            jobs: BTreeMap::new(),
+            pending_claims: 3,
+            counts: Counts::default(),
+            last_error: None,
+        }),
+    };
+    let (requests, _) = mpsc::sync_channel(1);
+    let (send, results) = mpsc::sync_channel(1);
+    let mut lane = BatchLane {
+        requests,
+        results,
+        pending: true,
+    };
+    let mut queues = [Queue {
+        name: "default",
+        limit: 3,
+        next_claim: Instant::now(),
+    }];
+    let lease = Lease::begin(Duration::from_secs(30)).unwrap();
+    let claims = (1..=3)
+        .map(|index| Claim {
+            id: format!("job-{index}"),
+            token: format!("token-{index}"),
+            context: r#"{"args":{"wait_ms":1000}}"#.into(),
+            timeout_ms: 2000,
+        })
+        .collect();
+    send.send((
+        0,
+        Ok((
+            lease,
+            ClaimBatch {
+                claims,
+                oversized: Vec::new(),
+            },
+        )),
+    ))
+    .unwrap();
+    let launches = AtomicUsize::new(0);
+    let launch = move |context, deadline, lease_deadline| {
+        if launches.fetch_add(1, Ordering::Relaxed) == 0 {
+            TimedWorker::start(context, deadline, lease_deadline)
+        } else {
+            Err("injected launch error".into())
+        }
+    };
+    let mut attempts = Vec::new();
+    lane.poll(&runner, &mut queues, &mut attempts, &launch);
+    let state = runner.state.lock();
+    assert!(matches!(state.phase, Phase::Stopping { .. }));
+    assert_eq!(state.pending_claims, 0);
+    assert_eq!(state.counts.claimed, 3);
+    assert_eq!(attempts.len(), 3);
+    assert!(matches!(
+        state.jobs["token-1"].execution,
+        Execution::Running(_)
+    ));
+    for token in ["token-2", "token-3"] {
+        assert!(matches!(
+            state.jobs[token].execution,
+            Execution::Acknowledging {
+                reply: Reply::Unstarted,
+                ..
+            }
+        ));
+    }
+}
+
+#[test]
 fn polling_and_kill_errors_keep_an_attempt_undrained_until_reap() {
     struct Worker {
         polls: std::collections::VecDeque<Result<WorkerPoll, String>>,

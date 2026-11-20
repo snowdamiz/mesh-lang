@@ -187,11 +187,17 @@ fn serve(pool :: PoolHandle) -> String!String do
   let grace = 15000
   let workers = Json.parse("""[{"worker":"parity","version":1}]""")?
   Process.install_shutdown_signals()
-  let runner = Jobs.start(pool, json {
+  let base_config = Json.encode(json {
     namespace: namespace(), queues: json { default: slots },
     workers: workers,
     lease_ms: lease, poll_ms: poll, shutdown_grace_ms: grace
-  }, handle)?
+  })
+  let config = if Env.get("JOBS_PARITY_MESH_BATCH", "0") == "1" do
+    String.slice(base_config, 0, String.length(base_config) - 1) <> ",\"claim_batch\":true}"
+  else
+    base_config
+  end
+  let runner = Jobs.start(pool, config, handle)?
   println("READY")
   while !Process.shutdown_requested() do
     Timer.sleep(25)

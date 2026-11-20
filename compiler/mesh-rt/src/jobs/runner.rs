@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, HashSet};
+use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError};
 use std::sync::{Arc, LazyLock};
 use std::time::{Duration, Instant};
 
@@ -6,10 +7,12 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
 use crate::actor;
+use crate::db::jobs_connection::JobSession;
 
 use super::cron;
 use super::store::{
-    claim, drain_has_work, finish, prune, recover, renew, Claim, LeaseStatus, Outcome, Settlement,
+    claim, claim_batch, drain_has_work, finish, prune, recover, renew, Claim, ClaimBatch,
+    LeaseStatus, Outcome, Settlement, MAX_CLAIM_BATCH,
 };
 use super::with_pool;
 use super::worker::{check_executable, handler_name, host_deadline, WorkerPoll, WorkerProcess};
@@ -57,6 +60,7 @@ struct Config {
     shutdown_grace_ms: u64,
     prune_max_age_ms: Option<u64>,
     drain: bool,
+    claim_batch: bool,
 }
 
 #[derive(Deserialize, Serialize, PartialEq, Eq, Hash)]
@@ -77,6 +81,7 @@ impl Default for Config {
             shutdown_grace_ms: 15_000,
             prune_max_age_ms: None,
             drain: false,
+            claim_batch: false,
         }
     }
 }
@@ -386,15 +391,18 @@ fn start_runner(
         let rows = db.query(
             "WITH functions AS (
                  SELECT to_regprocedure('mesh_jobs.try_renew(text,uuid,uuid,bigint)') AS renew,
-                        to_regprocedure('mesh_jobs.settle_state(text,uuid,uuid,jsonb,boolean)') AS settle
+                        to_regprocedure('mesh_jobs.settle_state(text,uuid,uuid,jsonb,boolean)') AS settle,
+                        to_regprocedure('mesh_jobs.claim_batch_v1(text,text,jsonb,bigint,integer,bigint)') AS batch
              ) SELECT CASE
                  WHEN version <> 1 OR to_regclass('mesh_jobs.cron_schedules') IS NULL
                      OR renew IS NULL OR settle IS NULL THEN 'migrate'
                  WHEN NOT (has_function_privilege(renew, 'EXECUTE')
                      AND has_function_privilege(settle, 'EXECUTE')) THEN 'permissions'
+                 WHEN $1::boolean AND batch IS NULL THEN 'migrate'
+                 WHEN $1::boolean AND NOT has_function_privilege(batch, 'EXECUTE') THEN 'batch_permissions'
                  ELSE 'ready'
              END FROM mesh_jobs.schema_version CROSS JOIN functions WHERE singleton",
-            &[],
+            &[if config.claim_batch { "true" } else { "false" }],
         )?;
         match rows
             .first()
@@ -406,11 +414,18 @@ fn start_runner(
                 "Jobs runner needs EXECUTE on mesh_jobs.try_renew and mesh_jobs.settle_state"
                     .into(),
             ),
+            Some("batch_permissions") => {
+                Err("Jobs batch runner needs EXECUTE on mesh_jobs.claim_batch_v1".into())
+            }
             _ => Err(
                 "Jobs requires the current schema. Run Jobs.migrate before starting workers".into(),
             ),
         }
     })?;
+    let claim_session = config
+        .claim_batch
+        .then(|| unsafe { JobSession::from_pool(pool) })
+        .transpose()?;
 
     let mut registry = REGISTRY.lock();
     if !registry.accepting || scheduler.is_shutdown() || crate::process_signal::shutdown_requested()
@@ -458,7 +473,7 @@ fn start_runner(
         .name(format!("mesh-jobs-{id}"))
         .spawn(move || {
             if dispatcher.config.drain {
-                dispatch(&dispatcher, pool, &workers, &*start_worker);
+                dispatch(&dispatcher, pool, &workers, &*start_worker, claim_session);
             } else {
                 let maintenance_runner = Arc::clone(&dispatcher);
                 match std::thread::Builder::new()
@@ -466,7 +481,7 @@ fn start_runner(
                     .spawn(move || maintain(&maintenance_runner, pool))
                 {
                     Ok(maintenance) => {
-                        dispatch(&dispatcher, pool, &workers, &*start_worker);
+                        dispatch(&dispatcher, pool, &workers, &*start_worker, claim_session);
                         maintenance.thread().unpark();
                         let _ = maintenance.join();
                     }
@@ -535,6 +550,7 @@ pub(super) fn shutdown_all() {
     }
 }
 
+#[derive(Clone, Copy)]
 struct Lease {
     renew_at: Option<Instant>,
     expires_at: Instant,
@@ -862,7 +878,161 @@ fn maintain(runner: &Runner, pool: u64) {
     }
 }
 
-fn dispatch(runner: &Runner, pool: u64, workers: &str, start_worker: &StartWorker) {
+struct BatchRequest {
+    queue: usize,
+    slots: usize,
+}
+
+type BatchReply = (usize, Result<(Lease, ClaimBatch), String>);
+
+struct BatchLane {
+    requests: SyncSender<BatchRequest>,
+    results: Receiver<BatchReply>,
+    pending: bool,
+}
+
+impl BatchLane {
+    fn request(&mut self, runner: &Runner, queue: usize, slots: usize) -> Result<(), String> {
+        let slots = slots.min(MAX_CLAIM_BATCH);
+        if !reserve_claims(runner, slots) {
+            return Ok(());
+        }
+        if self
+            .requests
+            .try_send(BatchRequest { queue, slots })
+            .is_err()
+        {
+            runner.state.lock().pending_claims = 0;
+            runner.request_stop(Duration::from_millis(runner.config.shutdown_grace_ms));
+            return Err("Jobs batch claim thread is unavailable".into());
+        }
+        self.pending = true;
+        Ok(())
+    }
+
+    fn poll(
+        &mut self,
+        runner: &Runner,
+        queues: &mut [Queue<'_>],
+        attempts: &mut Vec<Attempt>,
+        start_worker: &StartWorker,
+    ) {
+        if !self.pending {
+            return;
+        }
+        match self.results.try_recv() {
+            Ok((index, result)) => {
+                self.pending = false;
+                match result {
+                    Ok((lease, batch)) => {
+                        if let Some(row) = batch.oversized.first() {
+                            runner.record_error(format!(
+                                "mesh jobs oversized claim context: job {} requires {} bytes",
+                                row.id, row.context_bytes,
+                            ));
+                        }
+                        runner.state.lock().pending_claims = batch.claims.len();
+                        if batch.claims.is_empty() {
+                            queues[index].next_claim =
+                                Instant::now() + Duration::from_millis(runner.config.poll_ms);
+                        }
+                        for job in batch.claims {
+                            let mut state = runner.state.lock();
+                            state.pending_claims -= 1;
+                            attempts.push(launch_confirmed(
+                                runner,
+                                &mut state,
+                                index,
+                                lease,
+                                job,
+                                start_worker,
+                            ));
+                        }
+                    }
+                    Err(error) => {
+                        runner.state.lock().pending_claims = 0;
+                        runner.record_error(error);
+                        queues[index].next_claim =
+                            Instant::now() + Duration::from_millis(runner.config.poll_ms);
+                    }
+                }
+            }
+            Err(TryRecvError::Disconnected) => {
+                self.pending = false;
+                runner.state.lock().pending_claims = 0;
+                runner.record_error("Jobs batch claim thread disconnected".into());
+                runner.request_stop(Duration::from_millis(runner.config.shutdown_grace_ms));
+            }
+            Err(TryRecvError::Empty) => {}
+        }
+    }
+}
+
+fn dispatch(
+    runner: &Runner,
+    pool: u64,
+    workers: &str,
+    start_worker: &StartWorker,
+    claim_session: Option<JobSession>,
+) {
+    let Some(mut session) = claim_session else {
+        dispatch_queues(runner, pool, workers, start_worker, None);
+        return;
+    };
+    std::thread::scope(|scope| {
+        let (requests, receive) = mpsc::sync_channel::<BatchRequest>(1);
+        let (send, results) = mpsc::sync_channel(1);
+        let config = &runner.config;
+        let queue_names: Vec<_> = config.queues.keys().map(String::as_str).collect();
+        let worker = std::thread::Builder::new()
+            .name(format!("mesh-jobs-claim-{}", runner.id))
+            .spawn_scoped(scope, move || {
+                while let Ok(request) = receive.recv() {
+                    let result = session.with(|db| {
+                        let lease = Lease::begin(Duration::from_millis(config.lease_ms))?;
+                        let batch = claim_batch(
+                            db,
+                            &config.namespace,
+                            queue_names[request.queue],
+                            workers,
+                            config.lease_ms,
+                            request.slots,
+                            None,
+                        )?;
+                        Ok((lease, batch))
+                    });
+                    if send.send((request.queue, result)).is_err() {
+                        break;
+                    }
+                }
+            });
+        match worker {
+            Ok(_) => dispatch_queues(
+                runner,
+                pool,
+                workers,
+                start_worker,
+                Some(BatchLane {
+                    requests,
+                    results,
+                    pending: false,
+                }),
+            ),
+            Err(error) => {
+                runner.record_error(format!("could not start Jobs batch claim thread: {error}"));
+                runner.request_stop(Duration::ZERO);
+            }
+        }
+    });
+}
+
+fn dispatch_queues(
+    runner: &Runner,
+    pool: u64,
+    workers: &str,
+    start_worker: &StartWorker,
+    mut batch: Option<BatchLane>,
+) {
     let config = &runner.config;
     let mut queues: Vec<_> = config
         .queues
@@ -889,6 +1059,9 @@ fn dispatch(runner: &Runner, pool: u64, workers: &str, start_worker: &StartWorke
                 false
             }
         });
+        if let Some(lane) = &mut batch {
+            lane.poll(runner, &mut queues, &mut attempts, start_worker);
+        }
         if config.drain && attempts.len() != previous_count {
             for queue in &mut queues {
                 queue.next_claim = Instant::now();
@@ -899,12 +1072,12 @@ fn dispatch(runner: &Runner, pool: u64, workers: &str, start_worker: &StartWorke
         let admitting = {
             let state = runner.state.lock();
             let running = matches!(state.phase, Phase::Running);
-            if attempts.is_empty() && !running {
+            if attempts.is_empty() && state.pending_claims == 0 && !running {
                 return;
             }
             running
         };
-        if admitting {
+        if admitting && batch.as_ref().is_none_or(|lane| !lane.pending) {
             // Take one fresh snapshot of all selected queues after recovery.
             // Individually empty claims can be stale or have skipped a lock.
             if let Some(selected) = drain_queues
@@ -925,15 +1098,26 @@ fn dispatch(runner: &Runner, pool: u64, workers: &str, start_worker: &StartWorke
             }
             let ready = (0..queues.len())
                 .map(|offset| (cursor + offset) % queues.len())
-                .find(|&index| {
+                .find_map(|index| {
                     let queue = &queues[index];
+                    if queue.next_claim > Instant::now() {
+                        return None;
+                    }
                     let active = attempts.iter().filter(|attempt| attempt.queue == index);
-                    queue.next_claim <= Instant::now()
-                        && !active.clone().any(Attempt::blocks_claims)
-                        && active.count() < queue.limit
+                    if active.clone().any(Attempt::blocks_claims) {
+                        return None;
+                    }
+                    let headroom = queue.limit.saturating_sub(active.count());
+                    (headroom > 0).then_some((index, headroom))
                 });
-            if let Some(index) = ready {
+            if let Some((index, slots)) = ready {
                 cursor = (index + 1) % queues.len();
+                if let Some(lane) = &mut batch {
+                    if let Err(error) = lane.request(runner, index, slots) {
+                        runner.record_error(error);
+                    }
+                    continue;
+                }
                 match claim_one(
                     runner,
                     pool,
@@ -968,42 +1152,50 @@ fn claim_one(
     queue_name: &str,
     start_worker: &StartWorker,
 ) -> Result<Option<Attempt>, String> {
-    let config = &runner.config;
-    if let Err(error) = (runner.check_worker)() {
-        runner
-            .state
-            .lock()
-            .fail_launch(error, config.shutdown_grace_ms);
+    if !reserve_claims(runner, 1) {
         return Ok(None);
     }
-    {
-        let mut state = runner.state.lock();
-        if !matches!(state.phase, Phase::Running) || crate::process_signal::shutdown_requested() {
-            return Ok(None);
-        }
-        state.pending_claims = 1;
-    }
-
+    let config = &runner.config;
     let acquired = with_pool(pool, |db| {
         let lease = Lease::begin(Duration::from_millis(config.lease_ms))?;
         claim(db, &config.namespace, queue_name, workers, config.lease_ms).map(|job| (lease, job))
     });
     let mut state = runner.state.lock();
     state.pending_claims = 0;
-    let (
-        lease,
-        Claim {
-            id,
-            token,
-            context,
-            timeout_ms,
-        },
-    ) = match acquired {
-        Ok((lease, Some(job))) => (lease, job),
-        Ok((_, None)) => return Ok(None),
-        Err(error) => return Err(error),
-    };
+    let (lease, job) = acquired?;
+    Ok(job.map(|job| launch_confirmed(runner, &mut state, queue, lease, job, start_worker)))
+}
 
+fn reserve_claims(runner: &Runner, slots: usize) -> bool {
+    if let Err(error) = (runner.check_worker)() {
+        runner
+            .state
+            .lock()
+            .fail_launch(error, runner.config.shutdown_grace_ms);
+        return false;
+    }
+    let mut state = runner.state.lock();
+    if !matches!(state.phase, Phase::Running) || crate::process_signal::shutdown_requested() {
+        return false;
+    }
+    state.pending_claims = slots;
+    true
+}
+
+fn launch_confirmed(
+    runner: &Runner,
+    state: &mut State,
+    queue: usize,
+    lease: Lease,
+    job: Claim,
+    start_worker: &StartWorker,
+) -> Attempt {
+    let Claim {
+        id,
+        token,
+        context,
+        timeout_ms,
+    } = job;
     let now = Instant::now();
     let deadline = now.checked_add(Duration::from_millis(timeout_ms));
     let execution = if now >= lease.expires_at
@@ -1021,7 +1213,7 @@ fn claim_one(
                 stop: None,
             }),
             Err(error) => {
-                state.fail_launch(error, config.shutdown_grace_ms);
+                state.fail_launch(error, runner.config.shutdown_grace_ms);
                 Execution::acknowledging(Reply::Unstarted)
             }
         }
@@ -1039,12 +1231,12 @@ fn claim_one(
         },
     );
     state.counts.claimed += 1;
-    Ok(Some(Attempt {
+    Attempt {
         id,
         token,
         queue,
         lease: Some(lease),
-    }))
+    }
 }
 
 #[cfg(test)]

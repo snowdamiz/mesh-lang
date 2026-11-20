@@ -152,7 +152,7 @@ def validate_pairs(trials, pairs):
     if len({trial["input_sha256"] for trial in trials}) != 1:
         raise FixtureError("paired trials received different inputs")
     required = ("jobs_per_second", "pickup_p99_ms", "claim_p99_ms", "settlement_p99_ms",
-                "sql_calls_per_job", "idle_queries_per_minute", "peak_executing",
+                "sql_calls_per_job", "claim_calls_per_job", "idle_queries_per_minute", "peak_executing",
                 "peak_connections", "peak_rss_bytes", "cpu_seconds_per_job",
                 "peak_processes", "peak_threads")
     for trial in trials:
@@ -285,8 +285,12 @@ timezone = 'UTC'
                         "-d", database, "-c", query], env=env, timeout=15)
 
     def calls(self, engine):
-        return int(self.sql("postgres", f"""
-SELECT coalesce(sum(calls),0) FROM pg_stat_statements
+        claim_query = ("query LIKE '%FROM mesh_jobs.claim%'" if engine == "mesh"
+                       else "query LIKE '%oban_jobs%' AND query ILIKE '%FOR UPDATE SKIP LOCKED%'")
+        return json.loads(self.sql("postgres", f"""
+SELECT json_build_object('total', coalesce(sum(calls),0),
+                         'claims', coalesce(sum(calls) FILTER (WHERE {claim_query}),0))
+FROM pg_stat_statements
 WHERE dbid = (SELECT oid FROM pg_database WHERE datname = '{engine}')
   AND userid = (SELECT oid FROM pg_roles WHERE rolname = 'parity_subject')
 """))
@@ -433,8 +437,8 @@ def stop_runners(processes, *, require_clean):
         if process.returncode is None:
             if process.stdin is not None:
                 with contextlib.suppress(BrokenPipeError):
-                    process.stdin.write(b"stop\n")
-                    process.stdin.close()
+                    with process.stdin:
+                        process.stdin.write(b"stop\n")
             else:
                 with contextlib.suppress(ProcessLookupError):
                     os.kill(process.pid, signal.SIGTERM)
@@ -536,7 +540,10 @@ def run_trial(subject, allocation, workload, batches, scratch, evidence, setting
                     wait_for(lambda: settled_count(expected_total), deadline, request_id, interval)
                     time.sleep(settings["poll_ms"] / 1000)
         wait_for(lambda: settled_count(len(expected)), deadline, "durable settlements", interval)
-        calls = cluster.calls(engine) - idle_calls_after
+        after = cluster.calls(engine)
+        calls = after["total"] - idle_calls_after["total"]
+        claim_calls = after["claims"] - idle_calls_after["claims"]
+        idle_calls = idle_calls_after["total"] - idle_calls_before["total"]
         rows = account(cluster.rows(engine, namespace), expected, commits, settings["clock_tolerance_ms"])
         product = cluster.sql(engine, f"""
 SELECT coalesce(json_agg(request_id ORDER BY request_id), '[]')
@@ -555,7 +562,7 @@ WHERE engine = '{engine}' AND namespace = '{namespace}'
     raw = {"engine": engine, "namespace": namespace, "pair": pair, "case_sha256": case,
            "transactions": commits, "attempts": rows, "samples": samples, "idle_samples": idle_samples,
            "runner_cpu_seconds_including_startup_and_idle": cpu, "raw_sql_calls": calls,
-           "raw_idle_sql_calls": idle_calls_after - idle_calls_before, "idle_seconds": idle_s}
+           "raw_claim_calls": claim_calls, "raw_idle_sql_calls": idle_calls, "idle_seconds": idle_s}
     write_json(evidence / "raw.json", raw)
     return {
         "pair": pair, "engine": engine, "input_sha256": case, "completed": len(rows),
@@ -564,7 +571,8 @@ WHERE engine = '{engine}' AND namespace = '{namespace}'
         "claim_p99_ms": percentile([row["commit_to_claim_ms"] for row in rows], 0.99),
         "settlement_p99_ms": percentile([row["commit_to_settlement_ms"] for row in rows], 0.99),
         "sql_calls_per_job": calls / len(rows),
-        "idle_queries_per_minute": (idle_calls_after - idle_calls_before) * 60 / idle_s,
+        "claim_calls_per_job": claim_calls / len(rows),
+        "idle_queries_per_minute": idle_calls * 60 / idle_s,
         "cpu_seconds_per_job": cpu / len(rows),
         **{f"peak_{key}": max(sample[key] for sample in samples + idle_samples)
            for key in ("executing", "connections", "rss_bytes", "processes", "threads")},
@@ -779,7 +787,7 @@ def selection(args, settings):
 
 
 def profile_summary(trials, workload, settings, runners, slots):
-    keys = ("jobs_per_second", "pickup_p99_ms", "sql_calls_per_job", "idle_queries_per_minute",
+    keys = ("jobs_per_second", "pickup_p99_ms", "sql_calls_per_job", "claim_calls_per_job", "idle_queries_per_minute",
             "cpu_seconds_per_job", "peak_rss_bytes")
     summary = {}
     for engine in ("mesh", "oban"):
@@ -847,6 +855,7 @@ def record(args):
             env = dict(os.environ, TMPDIR=str(scratch), TZ="UTC", LC_ALL="C",
                        MESH_SCHEDULER_MIN_WORKERS=str(settings["runner_schedulers"]),
                        MESH_SCHEDULER_MAX_WORKERS=str(settings["runner_schedulers"]),
+                       JOBS_PARITY_MESH_BATCH="1" if args.mesh_batch else "0",
                        ERL_FLAGS=settings["oban_erl_flags"])
             env.pop("MESH_RT_LIB_PATH", None)
             env.pop("RUSTC_WRAPPER", None)
@@ -879,6 +888,7 @@ WHERE name IN ('server_version','server_version_num','shared_buffers','max_conne
                     "reference_shas": {name: checked(["git", "rev-parse", name]) for name in REFERENCE},
                     "driver_sha256": digest(Path(__file__)), "seed": settings["seed"], "profiles": profiles,
                     "mesh_build_profile": "release" if args.load else "debug",
+                    "mesh_batch": args.mesh_batch,
                     "mode": lane, "claim_timestamps": {"mesh": "database attempted_at_ms",
                                                        "oban": "Basic engine attempted_at"},
                     "settlement_timestamp": "durable commit timestamp of the terminal row version",
@@ -998,6 +1008,7 @@ def main():
     mode.add_argument("--load", action="store_true", help="five alternating trials per selected profile")
     mode.add_argument("--faults", action="store_true", help="owned runner-death and rollback probe")
     parser.add_argument("--mesh-ref", default="HEAD", help="Git commit from which to compile Mesh")
+    parser.add_argument("--mesh-batch", action="store_true", help="enable batch claims for the Mesh runner")
     parser.add_argument("--postgres-version", metavar="MAJOR.PATCH",
                         help="require exact server version and SCRAM over verified TLS")
     settings = json.loads(CONFIG.read_text())

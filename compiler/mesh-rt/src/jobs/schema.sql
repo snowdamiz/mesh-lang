@@ -279,6 +279,109 @@ BEGIN
 END
 $$;
 
+CREATE OR REPLACE FUNCTION mesh_jobs.claim_batch_v1(
+    ns text, queue_name text, workers jsonb, lease_ms bigint, slots integer, cutoff_ms bigint
+) RETURNS TABLE(status text, id text, token text, context text, timeout_ms text, context_bytes text)
+LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$
+DECLARE
+    q mesh_jobs.queues%ROWTYPE;
+    job mesh_jobs.jobs%ROWTYPE;
+    due_at bigint;
+    started_at bigint;
+    remaining integer;
+    oversized_count integer := 0;
+    value_bytes integer;
+    row_bytes integer;
+    -- Reserve 256 bytes for the six-column RowDescription and the other reply frames.
+    reply_bytes integer := 32 * 1024 * 1024 - 256;
+    wire_encoding name := current_setting('client_encoding');
+    same_encoding boolean := wire_encoding = current_setting('server_encoding');
+    candidates NO SCROLL CURSOR FOR
+        SELECT j.* FROM mesh_jobs.jobs j
+        WHERE j.namespace = ns AND j.queue = queue_name
+            AND j.state IN ('available', 'scheduled', 'retryable') AND j.scheduled_at_ms <= due_at
+            AND j.attempt < j.max_attempts
+            AND EXISTS (
+                SELECT FROM jsonb_to_recordset(workers) AS w(worker text, version bigint)
+                WHERE w.worker = j.worker AND w.version = j.version
+            )
+        ORDER BY j.priority, j.scheduled_at_ms, j.position
+        FOR NO KEY UPDATE OF j SKIP LOCKED;
+BEGIN
+    -- Capacity must be read with a fresh snapshot after taking the same lock as claim().
+    IF current_setting('transaction_isolation') <> 'read committed' THEN
+        RAISE EXCEPTION 'mesh jobs batch claim requires READ COMMITTED';
+    END IF;
+    IF lease_ms IS NULL OR lease_ms NOT BETWEEN 1 AND 31536000000 THEN
+        RAISE EXCEPTION 'mesh jobs batch claim lease_ms must be positive and at most 365 days';
+    END IF;
+    remaining := least(coalesce(slots, 0), 16);
+    IF remaining <= 0 THEN RETURN; END IF;
+
+    SELECT * INTO q FROM mesh_jobs.queues
+    WHERE namespace = ns AND name = queue_name FOR NO KEY UPDATE SKIP LOCKED;
+    IF NOT FOUND OR q.state <> 'active' OR q.concurrency = 0 THEN RETURN; END IF;
+
+    remaining := least(remaining, q.concurrency - (SELECT count(*) FROM mesh_jobs.jobs j
+        WHERE j.namespace = ns AND j.queue = queue_name AND j.state = 'executing'));
+    IF remaining <= 0 THEN RETURN; END IF;
+
+    due_at := coalesce(cutoff_ms, mesh_jobs.now_ms());
+    -- Fetch one row at a time so a cursor prefetch cannot lock work beyond the prefix.
+    OPEN candidates;
+    WHILE remaining > 0 LOOP
+        FETCH candidates INTO job;
+        EXIT WHEN NOT FOUND;
+        id := job.id::text;
+        context := jsonb_build_object(
+            'id', job.id, 'effect_key', mesh_jobs.effect_key(job), 'worker', job.worker,
+            'version', job.version, 'args', job.args, 'attempt', job.attempt + 1,
+            'max_attempts', job.max_attempts, 'queue', job.queue, 'metadata', job.metadata,
+            'tags', job.tags, 'scheduled_at_ms', job.scheduled_at_ms
+        )::text;
+        value_bytes := CASE WHEN same_encoding THEN octet_length(context)
+            ELSE octet_length(convert_to(context, wire_encoding)) END;
+        context_bytes := value_bytes::text;
+
+        -- DataRow adds a 5-byte frame, a 2-byte count, and six 4-byte field lengths.
+        row_bytes := 31 + octet_length(id) + octet_length(context_bytes);
+        IF value_bytes > 16 * 1024 * 1024 THEN
+            status := 'oversized';
+            row_bytes := row_bytes + octet_length(status);
+            -- Bound diagnostics independently of slots while continuing past oversized jobs.
+            IF oversized_count < 16 AND row_bytes <= reply_bytes THEN
+                token := NULL;
+                context := NULL;
+                timeout_ms := NULL;
+                RETURN NEXT;
+                reply_bytes := reply_bytes - row_bytes;
+                oversized_count := oversized_count + 1;
+            END IF;
+            CONTINUE;
+        END IF;
+
+        status := 'claimed';
+        token := gen_random_uuid()::text;
+        timeout_ms := job.timeout_ms::text;
+        row_bytes := row_bytes + octet_length(status) + octet_length(token) +
+            value_bytes + octet_length(timeout_ms);
+        -- Keep the ordered prefix of claimable jobs when the next one cannot fit.
+        EXIT WHEN row_bytes > reply_bytes;
+
+        started_at := mesh_jobs.now_ms();
+        UPDATE mesh_jobs.jobs j SET state = 'executing', attempt = j.attempt + 1,
+            attempted_at_ms = started_at, lease_token = token::uuid,
+            lease_expires_at_ms = started_at + lease_ms
+        WHERE j.namespace = ns AND j.id = job.id;
+
+        RETURN NEXT;
+        reply_bytes := reply_bytes - row_bytes;
+        remaining := remaining - 1;
+    END LOOP;
+    CLOSE candidates;
+END
+$$;
+
 CREATE OR REPLACE FUNCTION mesh_jobs.try_renew(
     ns text, job_id uuid, token uuid, lease_ms bigint
 ) RETURNS text

@@ -17,6 +17,20 @@ pub(super) struct Claim {
     pub(super) timeout_ms: u64,
 }
 
+pub(super) const MAX_CLAIM_BATCH: usize = 16;
+
+#[derive(Debug)]
+pub(super) struct OversizedClaim {
+    pub(super) id: String,
+    pub(super) context_bytes: usize,
+}
+
+#[derive(Debug, Default)]
+pub(super) struct ClaimBatch {
+    pub(super) claims: Vec<Claim>,
+    pub(super) oversized: Vec<OversizedClaim>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum LeaseStatus {
     Active,
@@ -605,6 +619,92 @@ pub(super) fn claim(
         };
         db.simple("COMMIT")?;
         Ok(claim)
+    })();
+    result.map_err(|error| rollback_error(error, db.simple("ROLLBACK")))
+}
+
+pub(super) fn claim_batch(
+    db: &mut impl Database,
+    namespace: &str,
+    queue: &str,
+    workers_json: &str,
+    lease_ms: u64,
+    slots: usize,
+    cutoff_ms: Option<u64>,
+) -> Result<ClaimBatch, String> {
+    standalone(db)?;
+    name(namespace, "namespace")?;
+    name(queue, "queue")?;
+    lease_duration(lease_ms)?;
+    scheduling(cutoff_ms, None)?;
+    let workers: Vec<Worker> = decode(workers_json)?;
+    for worker in &workers {
+        name(&worker.worker, "worker")?;
+        if worker.version == 0 {
+            return Err("mesh jobs worker version must be positive".into());
+        }
+    }
+    if workers.is_empty() || slots == 0 {
+        return Ok(ClaimBatch::default());
+    }
+
+    let slots = slots.min(MAX_CLAIM_BATCH);
+    let cutoff = cutoff_ms.map_or_else(String::new, |ms| ms.to_string());
+    // Force a fresh capacity snapshot even when the session defaults to repeatable read.
+    db.simple("BEGIN ISOLATION LEVEL READ COMMITTED")?;
+    let result = (|| {
+        let rows = db.query(
+            "SELECT status, id, token, context, timeout_ms, context_bytes
+             FROM mesh_jobs.claim_batch_v1($1, $2, $3::jsonb, $4::bigint, $5::integer,
+                 nullif($6, '')::bigint) WITH ORDINALITY
+             ORDER BY ordinality",
+            &[
+                namespace,
+                queue,
+                workers_json,
+                &lease_ms.to_string(),
+                &slots.to_string(),
+                &cutoff,
+            ],
+        )?;
+        let mut batch = ClaimBatch::default();
+        let invalid = || "mesh jobs invalid batch claim result from PostgreSQL".to_string();
+        for row in rows {
+            let fields = row.into_iter().map(|(_, value)| value).collect::<Vec<_>>();
+            let [status, id, token, context, timeout_ms, context_bytes]: [String; 6] =
+                fields.try_into().map_err(|_| invalid())?;
+            let context_bytes = context_bytes.parse::<usize>().map_err(|_| invalid())?;
+            match status.as_str() {
+                "claimed"
+                    if context_bytes == context.len()
+                        && context_bytes <= crate::db::pg::MAX_DB_VALUE_BYTES
+                        && batch.claims.len() < slots =>
+                {
+                    batch.claims.push(Claim {
+                        id,
+                        token,
+                        context,
+                        timeout_ms: timeout_ms.parse().map_err(|_| invalid())?,
+                    });
+                }
+                "oversized"
+                    if context_bytes > crate::db::pg::MAX_DB_VALUE_BYTES
+                        && token.is_empty()
+                        && context.is_empty()
+                        && timeout_ms.is_empty()
+                        && batch.oversized.len() < MAX_CLAIM_BATCH =>
+                {
+                    batch.oversized.push(OversizedClaim { id, context_bytes });
+                }
+                _ => return Err(invalid()),
+            }
+        }
+        if !db.in_transaction() {
+            return Err("mesh jobs batch claim did not leave a committable transaction".into());
+        }
+        // The driver waits for COMMIT's ReadyForQuery before any claim can escape.
+        db.simple("COMMIT")?;
+        Ok(batch)
     })();
     result.map_err(|error| rollback_error(error, db.simple("ROLLBACK")))
 }

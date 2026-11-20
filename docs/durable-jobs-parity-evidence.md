@@ -53,6 +53,10 @@ Commit the workload settings before using the baseline to evaluate changes.
 Both fixtures receive the same seeded inputs and write an attempt and an
 idempotent effect for each completed job.
 
+For a Mesh revision that includes batch claims, pass `--mesh-batch` to measure
+the opt-in runner. Omit the flag for the single-claim profile. Both modes
+record their claim SQL calls per completed job.
+
 Each run prints its evidence directory under `target/jobs-parity/<sha>/`.
 `manifest.json` records the compiled SHA, fixture hashes, tool versions,
 database parameters, and host. `settings.json` records the frozen workload

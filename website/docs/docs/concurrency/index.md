@@ -570,6 +570,10 @@ end
 
 A claim has a lease. A runner renews the lease while its handler runs and records an outcome only for the current unexpired claim. A runner recovers expired attempts until the job spends its attempt budget, then keeps it as `discarded`. Exceptions and timeouts count as failed attempts. Automatic retries keep the same `effect_key`. An operator retry of a terminal job starts a new run with a new effect key.
 
+Set `claim_batch: true` in the runner config to enable opt-in batch dispatch. A batch claims at most 16 jobs before the runner rotates to its next queue. It honors the runner's available slots and the database-wide queue limit. Within a queue, continuous higher-priority arrivals can delay lower-priority jobs.
+
+Batch dispatch uses one dedicated PostgreSQL session per runner. Include that session in the runner's connection budget. The database limits each job context to 16 MiB and each batch reply to 32 MiB. The runner reports an oversized job in `last_error` and continues claiming later jobs. The oversized job keeps its stored state for inspection. For restricted worker roles, grant `EXECUTE` on `mesh_jobs.claim_batch_v1(text, text, jsonb, bigint, integer, bigint)` before enabling batching. Existing runners can continue with single claims during rollout.
+
 If a transaction locks a job row, the runner retries that job's renewal or acknowledgement while it continues processing other active jobs. A claim can expire while its row is locked. Recovery can act once the transaction releases the lock.
 
 Delivery is at least once within the attempt budget. If a handler sends a receipt and dies before acknowledging it, another attempt can send it again. Pass `effect_key` to a downstream idempotency mechanism or record it in the same transaction as the external effect when both use the same database.

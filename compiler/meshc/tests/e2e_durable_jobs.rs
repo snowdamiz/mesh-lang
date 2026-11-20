@@ -62,6 +62,8 @@ fn durable_jobs_survive_process_boundaries() {
     let proof = Proof::new(&url, project.join("durable-jobs"), temp.path());
     prove_transaction_and_restart(&proof);
     prove_competing_processes(&proof);
+    prove_batch_admission(&proof);
+    prove_busy_batch_connection_keeps_lease(&proof);
     prove_crash_and_stale_ack(&proof);
     prove_retry_and_exhaustion(&proof);
     prove_native_timeout(&proof);
@@ -136,6 +138,98 @@ fn prove_competing_processes(proof: &Proof) {
     }
     left.stop();
     right.stop();
+    proof.control(json!({"action": "scale", "queue": "default", "concurrency": 1}));
+}
+
+fn prove_batch_admission(proof: &Proof) {
+    proof.control(json!({"action": "scale", "queue": "default", "concurrency": 3}));
+    let labels = ["batch-first", "batch-second", "batch-third", "batch-fourth"];
+    proof.enqueue(Value::Array(
+        labels.iter().map(|label| spec(label)).collect(),
+    ));
+    let mut worker = proof.worker_with_config(
+        "batch-admission",
+        true,
+        json!({
+            "namespace": proof.namespace,
+            "queues": {"default": 4},
+            "workers": [{"worker": "proof", "version": 1}],
+            "lease_ms": LEASE_MS,
+            "poll_ms": 25,
+            "shutdown_grace_ms": 8000,
+            "claim_batch": true,
+        }),
+    );
+    for label in &labels[..3] {
+        proof.wait_effects(label, 1);
+        assert_eq!(proof.job(label)["state"], "executing");
+    }
+    assert_eq!(proof.job(labels[3])["attempt"], 0);
+    assert!(proof.effects(labels[3]).is_empty());
+
+    worker.release();
+    for label in labels {
+        proof.wait_state(label, "completed");
+        assert_eq!(proof.job(label)["attempt"], 1);
+        assert_eq!(proof.effects(label).len(), 1);
+    }
+    worker.stop();
+    proof.control(json!({"action": "scale", "queue": "default", "concurrency": 1}));
+}
+
+fn prove_busy_batch_connection_keeps_lease(proof: &Proof) {
+    proof.control(json!({"action": "scale", "queue": "default", "concurrency": 2}));
+    let label = "separate-batch-session";
+    let receipt = proof.enqueue(json!({
+        "worker":"proof", "args":{"label":label}, "max_attempts":1
+    }));
+    let mut worker = proof.worker_with_config(
+        "blocked-batch-claim",
+        true,
+        json!({
+            "namespace": proof.namespace,
+            "queues": {"default": 2},
+            "workers": [{"worker": "proof", "version": 1}],
+            "lease_ms": LEASE_MS,
+            "poll_ms": 25,
+            "shutdown_grace_ms": 8000,
+            "claim_batch": true,
+        }),
+    );
+    proof.wait_effects(label, 1);
+
+    let mut lock = native_pg_connect(proof.url).unwrap();
+    native_pg_execute(&mut lock, "BEGIN", &[]).unwrap();
+    native_pg_execute(
+        &mut lock,
+        "LOCK TABLE mesh_jobs.queues IN ACCESS EXCLUSIVE MODE",
+        &[],
+    )
+    .unwrap();
+    eventually(
+        "the dedicated claim query to wait for its table lock",
+        || {
+            let waiting = proof.sql(
+                "SELECT EXISTS (SELECT FROM pg_stat_activity WHERE datname=current_database()
+                AND wait_event_type='Lock' AND query LIKE '%FROM mesh_jobs.claim_batch_v1%')",
+            );
+            (waiting == "t").then_some(())
+        },
+    );
+    let before = proof.lease(id(&receipt));
+    eventually(
+        "the active job to renew while the claim query waits",
+        || {
+            let after = proof.lease(id(&receipt));
+            assert_eq!(before.token, after.token);
+            (after.expires_at_ms > before.expires_at_ms).then_some(())
+        },
+    );
+    worker.release();
+    assert_eq!(proof.wait_state(label, "completed")["attempt"], 1);
+    native_pg_close(lock);
+    worker.stop();
+    assert_eq!(proof.effects(label).len(), 1);
     proof.control(json!({"action": "scale", "queue": "default", "concurrency": 1}));
 }
 
@@ -792,9 +886,6 @@ impl<'a> Proof<'a> {
         grace_ms: u32,
         lease_ms: u64,
     ) -> Worker {
-        let markers = self.dir.join(name);
-        fs::create_dir(&markers).unwrap();
-        let output = File::create(markers.join("output")).unwrap();
         let config = json!({
             "namespace": self.namespace,
             "queues": queues,
@@ -803,6 +894,13 @@ impl<'a> Proof<'a> {
             "poll_ms": 25,
             "shutdown_grace_ms": grace_ms,
         });
+        self.worker_with_config(name, blocked, config)
+    }
+
+    fn worker_with_config(&self, name: &str, blocked: bool, config: Value) -> Worker {
+        let markers = self.dir.join(name);
+        fs::create_dir(&markers).unwrap();
+        let output = File::create(markers.join("output")).unwrap();
         let mut command = self.command("serve", &config.to_string());
         command
             .process_group(0)

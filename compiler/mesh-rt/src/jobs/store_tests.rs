@@ -127,6 +127,46 @@ fn id(value: &Value) -> &str {
 
 #[test]
 #[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
+fn batch_claim_preserves_order_and_uses_the_shared_capacity() {
+    let mut f = Fixture::new();
+    f.ops(json!({"action":"configure","queue":"default","limit":3}));
+    let jobs = f.enqueue(json!([
+        {"worker":"Deliver","priority":3,"scheduled_at_ms":0},
+        {"worker":"Deliver","priority":1,"scheduled_at_ms":2},
+        {"worker":"Deliver","priority":1,"scheduled_at_ms":1},
+        {"worker":"Deliver","priority":1,"scheduled_at_ms":1},
+        {"worker":"Deliver","version":2,"priority":0,"scheduled_at_ms":0},
+        {"worker":"Other","priority":0,"scheduled_at_ms":0}
+    ]));
+    assert_eq!(f.claim().id, id(&jobs[2]));
+
+    let mut db = Connection::open(&f.url);
+    db.simple("SET default_transaction_isolation TO 'repeatable read'")
+        .unwrap();
+    let batch = claim_batch(&mut db, &f.ns, "default", WORKERS, 60_000, 16, None).unwrap();
+    assert!(batch.oversized.is_empty());
+    assert_eq!(
+        batch.claims.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(),
+        [id(&jobs[3]), id(&jobs[1])]
+    );
+    assert_ne!(batch.claims[0].token, batch.claims[1].token);
+    let context = parse(&batch.claims[0].context);
+    assert_eq!(context["effect_key"], jobs[3]["effect_key"]);
+    assert_eq!(context["attempt"], 1);
+    assert_eq!(f.get(&batch.claims[0].id)["state"], "executing");
+    assert!(f.try_claim().is_none());
+    assert_eq!(f.get(id(&jobs[0]))["attempt"], 0);
+
+    assert_eq!(f.finish(&batch.claims[0], Outcome::ReleaseUnstarted), Settlement::ReleasedUnstarted);
+    let retried = f.claim();
+    assert_eq!(retried.id, batch.claims[0].id);
+    assert_ne!(retried.token, batch.claims[0].token);
+    assert_eq!(parse(&retried.context), context);
+    assert_eq!(f.finish(&batch.claims[0], Outcome::Complete), Settlement::Stale);
+}
+
+#[test]
+#[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
 fn release_before_execution_preserves_uniqueness_and_honors_cancellation() {
     let mut fixture = Fixture::new();
     let spec = json!({"worker":"Deliver", "metadata":{"reference":"launch-proof"},

@@ -1321,7 +1321,7 @@ pub(super) fn open(url: &str) -> Result<u64, String> {
 
 /// Connect, authenticate and wait for the server to be ready: the handshake
 /// `Pg.connect` and the native API share.
-fn connect(url: &str) -> Result<PgConn, String> {
+pub(super) fn connect(url: &str) -> Result<PgConn, String> {
     let pg_url = parse_pg_url(url)?;
 
     let addrs = (pg_url.host.as_str(), pg_url.port)

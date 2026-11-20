@@ -157,6 +157,17 @@ impl Drop for NativeLease {
     }
 }
 
+pub(super) unsafe fn connection_url(pool: u64) -> Result<String, String> {
+    if pool == 0 {
+        return Err("invalid PostgreSQL pool".into());
+    }
+    let inner = (&*(pool as *const PgPool)).inner.lock();
+    if inner.closed {
+        return Err("pool is closed".into());
+    }
+    Ok(inner.url.clone())
+}
+
 // ── Public scoped API and runtime-internal leasing ───────────────────────
 
 /// Create a PostgreSQL connection pool.
