@@ -9,6 +9,8 @@
 
 #[path = "support/test_artifacts.rs"]
 mod artifacts;
+#[path = "support/jobs_event_log.rs"]
+mod event_log;
 #[cfg(target_os = "linux")]
 #[path = "support/jobs_linux_worker_exit.rs"]
 mod linux_worker_exit;
@@ -126,6 +128,28 @@ fn durable_jobs_survive_process_boundaries() {
         reference.clean().expect("delete reference proof data");
     }
     proof.clean().expect("delete durable jobs proof data");
+}
+
+#[test]
+fn durable_jobs_event_log_drops_after_join() {
+    let Ok(url) = std::env::var("MESH_TEST_DATABASE_URL") else {
+        eprintln!("Set MESH_TEST_DATABASE_URL to a dedicated PostgreSQL database to exercise the compiled Jobs event logger.");
+        return;
+    };
+    assert!(
+        !url.is_empty(),
+        "MESH_TEST_DATABASE_URL must name a dedicated test database"
+    );
+    let compiler = artifacts::meshc_bin();
+    let scratch = artifacts::repo_root().join(".tmp");
+    fs::create_dir_all(&scratch).unwrap();
+    let temp = tempfile::tempdir_in(scratch).expect("create Jobs event logger proof directory");
+    let binary = build_fixture(&compiler, &temp.path().join("durable-jobs"), None);
+    let _database = lock_proof_database();
+    let proof = Proof::new(&url, binary, temp.path());
+    proof.run("migrate", "");
+    event_log::prove(&proof);
+    proof.clean().expect("delete Jobs event logger proof data");
 }
 
 fn build_reference_fixture(compiler: &Path, project: &Path, runtime: &Path) -> PathBuf {

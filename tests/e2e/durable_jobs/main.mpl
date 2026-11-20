@@ -181,7 +181,7 @@ actor exhaust_pool(pool :: PoolHandle) do
   end
 end
 
-fn serve(pool :: PoolHandle, config :: String) -> String!String do
+fn serve(pool :: PoolHandle, config :: String, observe_after_join :: Bool) -> String!String do
   Process.install_shutdown_signals()
   let runner = Jobs.start(pool, config, handle)?
   let markers = Env.get("MESH_JOBS_PROOF_MARKERS", "")
@@ -225,7 +225,21 @@ fn serve(pool :: PoolHandle, config :: String) -> String!String do
     let batch = Jobs.read_events(runner, 128)?
     File.append(markers <> "/events", batch <> "\n")?
   end
-  Ok(joined)
+  if observe_after_join do
+    let finish = markers <> "/finish-post-join"
+    let deadline = Monotonic.now_nanos() + 60_000_000_000
+    while !File.exists(finish) && Monotonic.now_nanos() < deadline do
+      let _ = File.write(markers <> "/post-join-status", Jobs.status(runner)?)?
+      Timer.sleep(25)
+    end
+    if File.exists(finish) do
+      Jobs.status(runner)
+    else
+      Err("post-join status observation timed out")
+    end
+  else
+    Ok(joined)
+  end
 end
 
 fn run() -> String!String do
@@ -244,7 +258,8 @@ fn run() -> String!String do
     "control" -> Jobs.control(pool, namespace(), payload)
     "stage_commit" -> Repo.transaction(pool, staged_wake_job)
     "stage_rollback" -> stage_wake_rollback(pool)
-    "serve" -> serve(pool, payload)
+    "serve" -> serve(pool, payload, false)
+    "serve_with_post_join_status" -> serve(pool, payload, true)
     "drain" -> bounded_drain(pool, payload)
     _ -> Err("unknown proof command")
   end
