@@ -631,6 +631,8 @@ Acknowledgement events include a `submission` number, `handler_duration_ms`, and
 
 Each sink drops new events when its buffer is full. The JSON logger buffers up to 128 events per runner plus the write in progress, and each process supports up to 16 active logger threads. Runner status includes `events_dropped` and `event_logs_dropped` when either option is enabled. The logger counts events lost to a write failure and events skipped after that failure. Its counter can advance after `Jobs.join` returns. The runner never waits for either sink. An overflowing sink can miss the final event, and process exit can interrupt pending log writes.
 
+With either sink enabled, runner status includes `event_buffer_bytes` with a `reader` and a `logger` entry. A disabled sink has a `null` entry. Each occupied slot is charged for the in-memory event and a full attempt identity, including the job and attempt ID strings. The charge applies even when the identity is absent or shared. `upper_bound_bytes` is the charge for a full channel. `sampled_peak_bytes` is the largest observed occupancy in those units and can miss a peak that drains between samples. The counters cover queued records and exclude unused slots, channel and allocation overhead, and records already taken for reading or logging.
+
 ### Inspect and operate queues
 
 Use `Jobs.local_control` and `Jobs.status` from the process that owns the runner handle. Local queue actions take `queue` and one of the following actions.

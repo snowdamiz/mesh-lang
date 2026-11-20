@@ -1023,6 +1023,13 @@ fn postgres_runner_executes_schedules_and_settles_renewed_timed_out_and_cancelle
     assert_eq!(report["outcomes"]["completed"], 1);
     assert_eq!(report["outcomes"]["discarded"], 0);
     assert!(report["events_dropped"].as_u64().unwrap() >= 3);
+    let reader = &report["event_buffer_bytes"]["reader"];
+    assert!(reader["upper_bound_bytes"].as_u64().unwrap() > 0);
+    assert_eq!(reader["sampled_peak_bytes"], reader["upper_bound_bytes"]);
+    assert_eq!(
+        report["event_buffer_bytes"]["logger"],
+        serde_json::Value::Null
+    );
     assert_eq!(
         control(json!({"action":"get","id":locked_job}))["state"],
         "discarded"

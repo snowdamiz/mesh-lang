@@ -35,6 +35,8 @@ HARNESS_PATHS = (
 )
 REFERENCE = ("db606548", "59f6a7b3", "7c162056")
 POSTGRES_VERSION = re.compile(r"[0-9]+\.[0-9]+")
+EVENT_BUFFER_SINKS = ("reader", "logger")
+EVENT_BUFFER_METRICS = ("sampled_peak_bytes", "upper_bound_bytes")
 SCHEMA = """
 CREATE TABLE public.mesh_jobs_parity_attempts (
     engine text NOT NULL, namespace text NOT NULL, job_key text NOT NULL,
@@ -780,6 +782,8 @@ def run_trial(subject, allocation, workload, batches, scratch, evidence, setting
     queued_context = []
     wakeups = []
     event_drops = []
+    event_buffers = []
+    event_mode = env.get("JOBS_PARITY_MESH_EVENTS") if engine == "mesh" else None
     if engine == "mesh":
         for log in logs:
             status = mesh_shutdown_report(log)
@@ -788,22 +792,23 @@ def run_trial(subject, allocation, workload, batches, scratch, evidence, setting
                 raise FixtureError(f"invalid queued context peak in {log}")
             queued_context.append(peak)
             wakeups.append(status.get("wakeups"))
-            event_drops.append({"reader": status.get("events_dropped"), "logger": status.get("event_logs_dropped")})
+            drops = {"reader": status.get("events_dropped"), "logger": status.get("event_logs_dropped")}
+            if event_mode in ("logged", "backpressured") and any(
+                type(count) is not int or count < 0 for count in drops.values()
+            ):
+                raise FixtureError(f"enabled telemetry did not report nonnegative event drop counters in {log}")
+            event_drops.append(drops)
+            event_buffers.append(mesh_event_buffer_report(status, event_mode, log))
 
     listener_enabled = env.get("JOBS_PARITY_MESH_LISTEN") == "1" and engine == "mesh"
     if listener_enabled and not any(report and report.get("notification_scans", 0) > 0 for report in wakeups):
         raise FixtureError("listener trial did not record any notification-triggered scans")
-    event_mode = env.get("JOBS_PARITY_MESH_EVENTS") if engine == "mesh" else None
-    if event_mode in ("logged", "backpressured") and any(
-        type(count) is not int or count < 0 for runner in event_drops for count in runner.values()
-    ):
-        raise FixtureError("enabled telemetry did not report nonnegative event drop counters")
 
     raw = {"engine": engine, "variant": subject.variant, "namespace": namespace, "pair": pair, "case_sha256": case,
            "transactions": commits, "enqueued_ids": enqueued_ids, "attempts": rows, "namespace_writes": writes,
            "samples": samples, "idle_samples": idle_samples,
            "poll_ms": int(env["JOBS_PARITY_POLL_MS"]), "wakeups": wakeups,
-           "event_drops": event_drops,
+           "event_drops": event_drops, "runner_event_buffer_bytes": event_buffers,
            "runner_peak_queued_context_bytes": queued_context,
            "runner_cpu_seconds_including_startup_and_idle": cpu, "raw_sql_calls": calls,
            "raw_runner_sql_calls": runner_calls, "raw_enqueue_sql_calls": enqueue_calls,
@@ -827,6 +832,7 @@ def run_trial(subject, allocation, workload, batches, scratch, evidence, setting
         "peak_queued_context_bytes": max(queued_context) if queued_context and None not in queued_context else None,
         "events_dropped": sum(counts["reader"] or 0 for counts in event_drops),
         "event_logs_dropped": sum(counts["logger"] or 0 for counts in event_drops),
+        "event_buffer_bytes": max_event_buffer_bytes(event_buffers),
         **{f"peak_{key}": max(sample[key] for sample in samples + idle_samples)
            for key in ("connections", "rss_bytes", "processes", "threads")},
     }
@@ -847,6 +853,37 @@ def mesh_shutdown_report(log):
         if status.get("state") == "stopped" and status.get("drained") is True:
             return status
     raise FixtureError(f"missing drained Mesh shutdown report in {log}")
+
+
+def mesh_event_buffer_report(status, mode, log):
+    if "event_buffer_bytes" not in status:
+        return None
+    report = status["event_buffer_bytes"]
+    expected_sink = {"logged": "logger", "backpressured": "reader"}.get(mode)
+    if type(report) is not dict or set(report) != set(EVENT_BUFFER_SINKS) or expected_sink is None:
+        raise FixtureError(f"invalid event buffer report in {log}")
+    for sink, values in report.items():
+        if sink != expected_sink and values is None:
+            continue
+        if (sink != expected_sink or type(values) is not dict or set(values) != set(EVENT_BUFFER_METRICS)
+                or any(type(value) is not int for value in values.values())):
+            raise FixtureError(f"invalid {sink} event buffer bytes in {log}")
+        sampled, bound = (values[key] for key in EVENT_BUFFER_METRICS)
+        if not (0 <= sampled <= bound and bound > 0):
+            raise FixtureError(f"invalid {sink} event buffer bytes in {log}")
+        if sink == "reader" and status.get("events_dropped", 0) > 0 and sampled != bound:
+            raise FixtureError(f"backpressured reader dropped events without reporting a full buffer in {log}")
+    return report
+
+
+def max_event_buffer_bytes(reports):
+    if not reports or any(report is None for report in reports):
+        return None
+    return {
+        sink: {key: max(report[sink][key] for report in reports) for key in EVENT_BUFFER_METRICS}
+        if all(report[sink] is not None for report in reports) else None
+        for sink in EVENT_BUFFER_SINKS
+    }
 
 
 def run_fault(subject, scratch, evidence, settings):
@@ -1192,6 +1229,9 @@ def profile_summary(trials, name, workload, settings, runners, slots, variants, 
             key: {"min": min(series), "median": statistics.median(series), "max": max(series)}
             for key in keys if (series := [trial[key] for trial in values if key in trial])
         }
+        if mesh_events:
+            summary[engine]["event_buffer_bytes"] = max_event_buffer_bytes(
+                [trial.get("event_buffer_bytes") for trial in values])
     limits = {}
     if "oban" in summary:
         for metric, limit in (
@@ -1511,6 +1551,47 @@ def self_check():
             rows[-1]["input_sha256"] = "mismatch"
             with self.assertRaisesRegex(FixtureError, "different inputs"):
                 validate_pairs(rows, 5, 1)
+
+        def test_event_buffer_report_accepts_legacy_status_and_validates_backpressure(self):
+            from unittest.mock import Mock
+
+            legacy = {"state": "stopped", "drained": True, "events_dropped": 7, "event_logs_dropped": 0}
+            log = Mock()
+            log.read_text.return_value = f'READY\n{{"event":"runner_stopped"}}\n{json.dumps(legacy)}\n'
+            status = mesh_shutdown_report(log)
+            self.assertIsNone(mesh_event_buffer_report(status, "backpressured", log))
+            self.assertIsNone(mesh_event_buffer_report({"state": "stopped", "drained": True}, "", log))
+
+            reader = {"sampled_peak_bytes": 256, "upper_bound_bytes": 256}
+            report = {"reader": reader, "logger": None}
+            status["event_buffer_bytes"] = report
+            self.assertEqual(mesh_event_buffer_report(status, "backpressured", log), report)
+            for sampled in (-1, True, 257, 128):
+                with self.subTest(sampled=sampled), self.assertRaises(FixtureError):
+                    status["event_buffer_bytes"] = dict(report, reader=dict(reader, sampled_peak_bytes=sampled))
+                    mesh_event_buffer_report(status, "backpressured", log)
+            with self.assertRaises(FixtureError):
+                mesh_event_buffer_report(dict(status, event_buffer_bytes=None), "backpressured", log)
+
+        def test_event_buffer_summary_keeps_estimate_bound_and_legacy_distinct(self):
+            settings = json.loads(CONFIG.read_text())
+            workload = settings["workloads"]["short"]
+            base = {"jobs_per_second": 100, "peak_connections": 1, "peak_processes": 1, "peak_threads": 1}
+            logged = {"reader": None, "logger": {"sampled_peak_bytes": 32, "upper_bound_bytes": 256}}
+            first = mesh_event_buffer_report({"event_buffer_bytes": logged}, "logged", "runner.log")
+            second = dict(logged, logger=dict(logged["logger"], sampled_peak_bytes=64))
+            trial = max_event_buffer_bytes([first, second])
+            self.assertEqual(trial, second)
+            self.assertIsNone(max_event_buffer_bytes([first, None]))
+            rows = [dict(base, engine="mesh", event_buffer_bytes=first),
+                    dict(base, engine="mesh", event_buffer_bytes=trial),
+                    dict(base, engine="baseline")]
+            args = ("short", workload, settings, 1, 1, ("mesh", "baseline"), False, False, "logged")
+            summary = profile_summary(rows, *args)
+            self.assertEqual(summary["mesh"]["event_buffer_bytes"], second)
+            self.assertIsNone(summary["baseline"]["event_buffer_bytes"])
+            partial = profile_summary(rows[1:] + [dict(base, engine="mesh")], *args)
+            self.assertIsNone(partial["mesh"]["event_buffer_bytes"])
 
         def test_trial_reconciliation_rejects_stray_rows_and_wrong_effect_keys(self):
             from unittest.mock import patch

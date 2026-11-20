@@ -117,11 +117,43 @@ with listening and 1,781 on main. With both poll intervals set to one
 second, the listener's worst trial commit-to-claim p99 was 4.2 ms. The
 one-second polling control exceeded the configured 750 ms pickup budget.
 
-For telemetry comparisons, pair the candidate with pinned main and measure
-the same profile with `--mesh-events disabled`, `--mesh-events logged`,
-and `--mesh-events backpressured`. The logged variant writes JSON events
-to the runner's log. The backpressured variant leaves the 128-event reader
-buffer unread and records its drop count in the trial receipt.
+## Measure runner telemetry
+
+On an idle host, pair the committed candidate with pinned main. Run all three
+modes with the same PostgreSQL binaries and profile.
+
+```sh
+jobs_candidate=$(git rev-parse HEAD)
+for mode in disabled logged backpressured; do
+    python3 scripts/jobs-parity.py --load --mesh-ref "$jobs_candidate" \
+        --against-ref 7c162056 --mesh-events "$mode" --workload short --runners 1 --slots 16
+done
+```
+
+The logged mode writes JSON lines asynchronously. The backpressured mode
+leaves the 128-event reader unread. In each measured backpressured trial,
+check that the reader's drop count is positive and its sampled peak reaches
+its bound. Check the throughput and pickup p99 verdicts in `summary.json`
+against the existing profile limits.
+
+`raw.json` records `runner_event_buffer_bytes` in runner order.
+`metrics.json` and `trials.json` record the largest per-runner value for
+each sink in `event_buffer_bytes`. `summary.json` takes the maximum for
+each sink across measured trials. A missing report from an older or
+disabled runtime becomes `null` in the receipt. A disabled sink in a
+report also appears as `null`.
+
+The byte unit charges each occupied channel slot for an event and a full
+attempt identity, including the identity's two strings. Each queued copy
+pays the full charge even when the identity is absent or shared.
+`upper_bound_bytes` multiplies that charge by the sink's slot capacity.
+`sampled_peak_bytes` applies the same charge to the largest slot count
+observed after a successful enqueue or when an enqueue found a full
+channel. A consumer can drain slots between samples, so the sampled peak
+can miss a transient maximum. Both fields cover queued records and
+exclude unused slots, channel and allocation overhead, serialized output,
+and records already removed by the reader or logger.
+
 Use `--faults --mesh-events logged` on a current runtime to verify that
 an acknowledgement lost after commit produces uncertainty without a
 commit confirmation from the runner.

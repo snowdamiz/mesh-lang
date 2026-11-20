@@ -260,7 +260,7 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 
 **Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] Metric. Throughput, pickup p99, dropped events, and peak buffered bytes.
+- [ ] Metric. Record throughput, pickup p99, dropped events, and both the sampled peak and the proven upper bound for buffered event bytes. Require the unread reader to reach its bound and report drops under backpressure. [Telemetry measurement](durable-jobs-parity-evidence.md#measure-runner-telemetry)
 - [ ] Probe. Interleave J1 workloads with events disabled, consumed normally, and deliberately backpressured.
 - [ ] Baseline. Record the same workloads on main without an event stream.
 - [ ] Rule. Require disabled throughput and p99 within 5% of main. Require enabled throughput within 10% on the dense profile and enforce the configured fixed buffer bound.

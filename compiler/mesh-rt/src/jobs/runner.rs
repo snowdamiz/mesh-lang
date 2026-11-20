@@ -532,6 +532,7 @@ impl Runner {
         if let Some(events) = &self.events {
             report["events_dropped"] = events.dropped().into();
             report["event_logs_dropped"] = events.logs_dropped().into();
+            report["event_buffer_bytes"] = events.buffer_bytes();
         }
         if let Some(wakeups) = &self.wakeups {
             report["wakeups"] = wakeups.report();

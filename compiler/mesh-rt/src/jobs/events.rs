@@ -1,9 +1,10 @@
 use std::io::{self, Write};
+use std::mem::size_of;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crossbeam_channel::{bounded, Receiver, Sender};
+use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
 use serde::{Deserialize, Serialize};
 
 use super::store::{Claim, Settlement};
@@ -12,12 +13,15 @@ pub(super) const MAX_BUFFER: usize = 1024;
 pub(super) const MAX_READ: usize = 128;
 const LOG_BUFFER: usize = 128;
 const MAX_LOGGERS: usize = 16;
+// PostgreSQL emits job UUIDs as 36-byte text in every claim path.
+const JOB_ID_BYTES: usize = 36;
+const ATTEMPT_ID_BYTES: usize = 32;
 static LOGGERS: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Debug, Serialize)]
 pub(super) struct Identity {
-    job_id: String,
-    attempt_id: String,
+    job_id: Box<str>,
+    attempt_id: Box<str>,
     attempt_number: Option<u32>,
     scheduled_at_ms: Option<u64>,
     claim_observed_at_ms: Option<u64>,
@@ -36,8 +40,8 @@ impl Identity {
         let scheduled_at_ms = context.as_ref().map(|timing| timing.scheduled_at_ms);
         let claim_observed_at_ms = claim.observed_at_ms;
         Arc::new(Self {
-            job_id: claim.id.clone(),
-            attempt_id: format!("{:032x}", rand::random::<u128>()),
+            job_id: claim.id.as_str().into(),
+            attempt_id: format!("{:0ATTEMPT_ID_BYTES$x}", rand::random::<u128>()).into_boxed_str(),
             attempt_number: context.map(|timing| timing.attempt),
             scheduled_at_ms,
             claim_observed_at_ms,
@@ -137,8 +141,62 @@ struct Event {
     kind: Kind,
 }
 
-struct Reader {
+// Charge each occupied slot for the event and a full identity, even when the
+// identity is absent or shared. Box<str> gives the identifiers no spare capacity.
+const RECORD_BYTES: usize =
+    size_of::<Event>() + size_of::<Identity>() + JOB_ID_BYTES + ATTEMPT_ID_BYTES;
+
+#[derive(Serialize)]
+struct BufferBytes {
+    sampled_peak_bytes: usize,
+    upper_bound_bytes: usize,
+}
+
+struct Buffer {
     sender: Sender<Event>,
+    capacity: usize,
+    sampled_peak_slots: AtomicUsize,
+}
+
+impl Buffer {
+    fn new(capacity: usize) -> (Self, Receiver<Event>) {
+        let (sender, receiver) = bounded(capacity);
+        let buffer = Self {
+            sender,
+            capacity,
+            sampled_peak_slots: AtomicUsize::new(0),
+        };
+        (buffer, receiver)
+    }
+
+    fn publish(&self, event: Event, dropped: &AtomicU64) {
+        match self.sender.try_send(event) {
+            Ok(()) => {
+                if self.sampled_peak_slots.load(Ordering::Relaxed) < self.capacity {
+                    self.sampled_peak_slots
+                        .fetch_max(self.sender.len(), Ordering::Relaxed);
+                }
+            }
+            Err(error) => {
+                if matches!(error, TrySendError::Full(_)) {
+                    self.sampled_peak_slots
+                        .store(self.capacity, Ordering::Relaxed);
+                }
+                dropped.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+    }
+
+    fn bytes(&self) -> BufferBytes {
+        BufferBytes {
+            sampled_peak_bytes: self.sampled_peak_slots.load(Ordering::Relaxed) * RECORD_BYTES,
+            upper_bound_bytes: self.capacity * RECORD_BYTES,
+        }
+    }
+}
+
+struct Reader {
+    buffer: Buffer,
     receiver: Receiver<Event>,
     dropped: AtomicU64,
 }
@@ -155,9 +213,9 @@ impl Events {
             return Ok(None);
         }
         let reader = (capacity != 0).then(|| {
-            let (sender, receiver) = bounded(capacity);
+            let (buffer, receiver) = Buffer::new(capacity);
             Reader {
-                sender,
+                buffer,
                 receiver,
                 dropped: AtomicU64::new(0),
             }
@@ -182,14 +240,10 @@ impl Events {
             kind,
         };
         if let Some(reader) = &self.reader {
-            if reader.sender.try_send(event.clone()).is_err() {
-                reader.dropped.fetch_add(1, Ordering::Relaxed);
-            }
+            reader.buffer.publish(event.clone(), &reader.dropped);
         }
         if let Some(logger) = &self.logger {
-            if logger.sender.try_send(event).is_err() {
-                logger.dropped.fetch_add(1, Ordering::Relaxed);
-            }
+            logger.buffer.publish(event, &logger.dropped);
         }
     }
 
@@ -226,6 +280,13 @@ impl Events {
             .as_ref()
             .map_or(0, |logger| logger.dropped.load(Ordering::Relaxed))
     }
+
+    pub(super) fn buffer_bytes(&self) -> serde_json::Value {
+        serde_json::json!({
+            "reader": self.reader.as_ref().map(|reader| reader.buffer.bytes()),
+            "logger": self.logger.as_ref().map(|logger| logger.buffer.bytes()),
+        })
+    }
 }
 
 struct LoggerSlot;
@@ -248,7 +309,7 @@ impl Drop for LoggerSlot {
 }
 
 struct Logger {
-    sender: Sender<Event>,
+    buffer: Buffer,
     stop: Sender<()>,
     dropped: Arc<AtomicU64>,
 }
@@ -276,7 +337,7 @@ impl Logger {
     ) -> Result<Self, String> {
         // A blocked write can outlive its runner, so keep its slot until the thread exits.
         let slot = LoggerSlot::acquire()?;
-        let (sender, receiver) = bounded(LOG_BUFFER);
+        let (buffer, receiver) = Buffer::new(LOG_BUFFER);
         let (stop, stopping) = bounded(1);
         let dropped = Arc::new(AtomicU64::new(0));
         let write_dropped = Arc::clone(&dropped);
@@ -312,7 +373,7 @@ impl Logger {
             })
             .map_err(|error| format!("could not start Jobs event logger: {error}"))?;
         Ok(Self {
-            sender,
+            buffer,
             stop,
             dropped,
         })
@@ -324,6 +385,13 @@ mod tests {
     use super::*;
     use serde_json::{json, Value};
     use std::time::Duration;
+
+    fn charged_bytes(sampled_slots: usize, capacity: usize) -> Value {
+        json!({
+            "sampled_peak_bytes": sampled_slots * RECORD_BYTES,
+            "upper_bound_bytes": capacity * RECORD_BYTES,
+        })
+    }
 
     #[test]
     fn reader_returns_versioned_payload_free_events_and_counts_overflow() {
@@ -337,7 +405,10 @@ mod tests {
             timeout_ms: 500,
             observed_at_ms: Some(140),
         });
+        assert!(Events::new(0, false).unwrap().is_none());
+        assert_eq!(events.buffer_bytes()["reader"], charged_bytes(0, 2));
         events.publish(7, Kind::RunnerStarted, None);
+        assert_eq!(events.buffer_bytes()["reader"], charged_bytes(1, 2));
         events.publish(7, Kind::AttemptStarted, Some(&identity));
         events.publish(7, Kind::RunnerStopped, None);
         events.close();
@@ -373,6 +444,38 @@ mod tests {
             serde_json::from_str::<Value>(&events.read(1).unwrap()).unwrap(),
             json!({"closed": true, "dropped": 1, "events": []})
         );
+        assert_eq!(events.buffer_bytes()["reader"], charged_bytes(2, 2));
+        assert_eq!(events.buffer_bytes()["logger"], Value::Null);
+    }
+
+    #[test]
+    fn full_send_records_saturation_and_disconnected_send_does_not() {
+        let dropped = AtomicU64::new(0);
+        let event = Event {
+            version: 1,
+            runner_id: 7,
+            observed_at_ms: None,
+            attempt: None,
+            kind: Kind::RunnerStarted,
+        };
+        let (full, _receiver) = Buffer::new(1);
+        // Fill the slot without a successful publication sample.
+        assert!(full.sender.try_send(event.clone()).is_ok());
+        full.publish(event.clone(), &dropped);
+        assert_eq!(
+            serde_json::to_value(full.bytes()).unwrap(),
+            charged_bytes(1, 1)
+        );
+        assert_eq!(dropped.load(Ordering::Relaxed), 1);
+
+        let (disconnected, receiver) = Buffer::new(MAX_BUFFER);
+        drop(receiver);
+        disconnected.publish(event, &dropped);
+        assert_eq!(
+            serde_json::to_value(disconnected.bytes()).unwrap(),
+            charged_bytes(0, MAX_BUFFER)
+        );
+        assert_eq!(dropped.load(Ordering::Relaxed), 2);
     }
 
     #[test]
@@ -399,6 +502,11 @@ mod tests {
         }
         assert_eq!(events.logs_dropped(), 1);
         assert_eq!(events.dropped(), LOG_BUFFER as u64 + 1);
+        assert_eq!(events.buffer_bytes()["reader"], charged_bytes(1, 1));
+        assert_eq!(
+            events.buffer_bytes()["logger"],
+            charged_bytes(LOG_BUFFER, LOG_BUFFER)
+        );
         events.close();
         assert_eq!(
             serde_json::from_str::<Value>(&events.read(1).unwrap()).unwrap()["closed"],
