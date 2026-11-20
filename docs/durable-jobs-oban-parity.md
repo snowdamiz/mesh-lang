@@ -81,7 +81,9 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 - [ ] Record an exact Mesh SHA, Oban and Erlang versions, PostgreSQL server version, host and runner settings, and workload seed with every receipt. Use `db606548` as the pre-reliability reference and `59f6a7b3` as the post-reliability starting point. Capture both engines on the same machine and database configuration using separate job namespaces or databases.
 - [ ] Equalize effective concurrency. Oban Basic limits individual producers. Mesh also limits queue admission across the database. Keep job bodies, transaction and payload sizes, schedules, retry policies, and effect idempotency equivalent. Account for Mesh's per-attempt process startup as part of user-visible latency.
 - [ ] Run warm-up and five alternating trials per engine at one, four, and eight runners. Use concurrency profiles of 1, 16, and 64 total slots where they fit, a warm short job and a 100 ms job, 1 KiB and 16 KiB arguments, sparse queues, and a separate large-context stress run. Mark production-shaped workloads separately from a no-op stress case.
-- [ ] Freeze measured profiles, slot allocation, pool sizes, notifier and maintenance settings, and absolute sparse-latency budgets before optimizing. Record confirmed enqueue, durable claim, handler entry, and confirmed settlement separately with a controlled clock. Measure jobs per second, p50 and p99 latencies, SQL calls per job, idle queries, CPU, RSS, process and thread peaks, and connections. Include Mesh child processes and the Oban VM in resource totals. Keep raw executions separate from deduplicated effects. Capture fault placement and reconcile each engine under its configured recovery rules. Install a barrier to kill or disconnect on an observed claim, write, or acknowledgement.
+- [ ] Freeze measured profiles, slot allocation, pool sizes, notifier and maintenance settings, and absolute sparse-latency budgets before optimizing. Define pickup as first handler entry minus the enqueue transaction's durable commit time. Capture commit time on the disposable database with `track_commit_timestamp` and align clocks on the same host. Record commit-to-claim and commit-to-settlement separately. Reject timing samples outside the declared clock tolerance.
+- [ ] Freeze resource budgets per profile before optimizing. Include Mesh child processes and the Oban VM in totals. Proposed relative limits for Mesh are 1.25 times Oban CPU seconds per completed job and 1.5 times its peak RSS. Use the same absolute connection budget for both engines, initially total slots plus four connections per runner. Measure OS process and thread peaks against the same caps, initially two processes and eight threads per slot plus twelve per runner and 64 per host. Record peak and steady-state samples separately.
+- [ ] Keep raw executions separate from deduplicated effects. Capture fault placement and reconcile each engine under its configured recovery rules. Install a barrier to kill or disconnect on an observed claim, write, or acknowledgement. Run the compiled commit, rollback, clean exit, and crash-recovery baseline on Linux and macOS before optimizing. Add native-call timeout on both and executable replacement on macOS.
 
 **You see.**
 
@@ -94,9 +96,9 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `gpt-6.2-sol high` at the PR head using the compiled fixtures and the PostgreSQL boot recipe.
 
 - [ ] Lane 1. Regression lane against main. Run the existing transaction and recovery proof on main and head. Save `j1-lane-1.log`. Pass when the added driver reports the same persisted effects.
-- [ ] Lane 2. Measure PostgreSQL 17 with the server version in the manifest. Save `j1-lane-2.log`. Pass when the recorded version matches the server.
-- [ ] Lane 3. Run PostgreSQL 18.7 with SCRAM over TLS. Save `j1-lane-3.log`. Pass when authentication, workload, and settlement checks pass.
-- [ ] Lane 4. Run PostgreSQL 19.0 with SCRAM over TLS. Save `j1-lane-4.log`. Pass when authentication, workload, and settlement checks pass.
+- [ ] Lane 2. Run the compiled Jobs workload on PostgreSQL 17 on Linux and macOS. Save `j1-lane-2.log`. Pass when the recorded patch version matches the server and expected claims, persisted settlements, and recovery pass on both hosts.
+- [ ] Lane 3. Run PostgreSQL 18.7 with SCRAM over TLS on Linux and macOS. Save `j1-lane-3.log`. Pass when authentication and the compiled transaction, workload, settlement, and recovery checks pass.
+- [ ] Lane 4. Run PostgreSQL 19.0 with SCRAM over TLS on Linux and macOS. Save `j1-lane-4.log`. Pass when authentication and the compiled transaction, workload, settlement, and recovery checks pass.
 - [ ] Lane 5. Run the Oban Basic fixture twice with the same seed. Save `j1-lane-5.log`. Pass when the derived inputs and total job counts match.
 - [ ] Lane 6. Run the matched sparse workload. Save `j1-lane-6.log`. Pass when every eligible committed job is accounted for.
 - [ ] Lane 7. Run the matched dense workload. Save `j1-lane-7.log`. Pass when the run records occupancy and all completed jobs.
@@ -348,7 +350,7 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 - [ ] Lane 3. Scale both local and global limits. Save `j6-lane-3.log`. Pass when the lower available headroom determines new admissions.
 - [ ] Lane 4. Stop one queue with an active handler. Save `j6-lane-4.log`. Pass when stopping that queue leaves another queue able to make progress.
 - [ ] Lane 5. Run-now a retryable job. Save `j6-lane-5.log`. Pass when the scheduled time moves and the existing effect key survives.
-- [ ] Lane 6. Race bulk edit or delete with claim. Save `j6-lane-6.log`. Pass when only eligible rows change and active attempts retain authority.
+- [ ] Lane 6. Race bulk edit or delete with claim, then separately enqueue a duplicate with allowed replacement fields while a compiled handler is active. Save `j6-lane-6.log`. Pass when bulk actions change only eligible rows, the replacement persists, the active context and token stay unchanged, and settlement and the next attempt use the documented stored values.
 - [ ] Lane 7. Kill the cron owner across cursor advancement. Save `j6-lane-7.log`. Pass when a new owner neither loses nor duplicates the committed occurrence.
 - [ ] Lane 8. Prune terminal jobs and replay an existing request key. Save `j6-lane-8.log`. Pass when the receipt replay still resolves to the same identity.
 - [ ] Lane 9. Reindex under concurrent enqueue and dispatch. Save `j6-lane-9.log`. Pass when normal application work keeps moving and a second reindex owner is refused.
@@ -400,7 +402,7 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 - [ ] Lane 5. Upgrade a live namespace with old scheduled and retryable work. Save `j7-lane-5.log`. Pass when persisted attempts and schedules survive.
 - [ ] Lane 6. Roll back to the previous runtime against the updated schema. Save `j7-lane-6.log`. Pass when the previous runner can settle its existing claim with its original grants.
 - [ ] Lane 7. Fail over the primary with a committed queue and an ambiguous acknowledgement. Save `j7-lane-7.log`. Pass when the old primary is fenced, recovered job identities reconcile against the declared replication policy, and eligible work resumes within a lease plus two recovery intervals after the writable primary is ready.
-- [ ] Lane 8. Exhaust the database pool, then interrupt notifications and maintenance. Save `j7-lane-8.log`. Pass when `Jobs.stop` returns within grace plus one supervisor tick after it records the stop, `Jobs.join` finishes within the configured checkout and I/O bounds once access returns, and polling, leases, and the cron cursor recover eligible work.
+- [ ] Lane 8. Exhaust the database pool, then interrupt notifications and maintenance. Save `j7-lane-8.log`. Pass when `Jobs.stop` returns from API entry within grace plus 100 ms on a schedulable test host, `Jobs.join` finishes within the configured checkout and I/O bounds once access returns, and polling, leases, and the cron cursor recover eligible work.
 - [ ] Lane 9. Run the guides against disposable environments as a fresh application. Save `j7-lane-9.log`. Pass when the documented commands reproduce enqueue, retry, drain, and recovery.
 - [ ] Lane 10. Run the matched Oban comparison and inspect the raw results. Save `j7-lane-10.log`. Pass when each supported performance claim maps to a reproducible receipt.
 
@@ -409,7 +411,7 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 - [ ] Metric. Median jobs per second and p99 pickup per declared workload, plus observer resource budgets.
 - [ ] Probe. Alternate five trials per engine using J1's pinned configuration. Report raw samples and note any measurement-noise boundary.
 - [ ] Baseline. Record main and Oban Basic before the candidate on the same host and database settings.
-- [ ] Rule. Proposed parity gate. Require Mesh median throughput at least 90% of Oban and pickup p99 no greater than 1.25 times Oban on the declared PostgreSQL profiles. Freeze or revise these budgets in J1 before optimizing. A failed profile limits the parity claim until resolved.
+- [ ] Rule. Proposed parity gate. Require Mesh median throughput at least 90% of Oban and pickup p99 no greater than 1.25 times Oban on the declared PostgreSQL profiles, within J1's frozen absolute latency and resource budgets. Freeze or revise these budgets in J1 before optimizing. A failed profile limits the parity claim until resolved.
 
 **Review gate.** None. This phase has no graphical interaction. Independent review uses the CLI receipts and database proof.
 
