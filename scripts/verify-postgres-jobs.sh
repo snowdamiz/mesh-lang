@@ -3,11 +3,31 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 postgres_version=
-if [[ "${1:-}" == --compatibility && $# == 2 && "$2" =~ ^[0-9]+\.[0-9]+$ ]]; then
-  postgres_version="$2"
-elif (( $# != 0 )); then
-  printf 'Usage: %s [--compatibility VERSION]\n' "$0" >&2
-  exit 2
+parity_driver_check=false
+while (( $# > 0 )); do
+  case "$1" in
+    --compatibility)
+      if [[ $# -lt 2 || -n "$postgres_version" || ! "$2" =~ ^[0-9]+\.[0-9]+$ ]]; then
+        printf 'Expected one --compatibility VERSION with a major and patch number.\n' >&2
+        exit 2
+      fi
+      postgres_version="$2"
+      shift 2
+      ;;
+    --parity-driver-check)
+      parity_driver_check=true
+      shift
+      ;;
+    *)
+      printf 'Usage: %s [--compatibility VERSION] [--parity-driver-check]\n' "$0" >&2
+      exit 2
+      ;;
+  esac
+done
+
+if "$parity_driver_check"; then
+  python3 scripts/jobs-parity.py --self-check
+  PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/tests -p test_jobs_parity_fault.py
 fi
 
 verify() {
@@ -118,4 +138,6 @@ done
 server_url="postgres://$credentials@127.0.0.1:$port"
 createdb -w --maintenance-db="$server_url/postgres?$connection_options" mesh_jobs_proof
 export MESH_TEST_DATABASE_URL="$server_url/mesh_jobs_proof?$connection_options"
+server_version="$(psql -X -w -qAt -v ON_ERROR_STOP=1 "$MESH_TEST_DATABASE_URL" -c 'SHOW server_version')"
+printf 'Disposable Jobs proof server: PostgreSQL %s\n' "$server_version"
 verify

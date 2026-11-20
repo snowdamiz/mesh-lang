@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "seed": 5938,
+  "trial_pairs": 5,
+  "runner_counts": [1, 4, 8],
+  "total_slots": [1, 16, 64],
+  "poll_ms": 250,
+  "runner_schedulers": 2,
+  "oban_erl_flags": "+S 2:2 +SDcpu 1:1 +SDio 1 +A 2",
+  "clock_tolerance_ms": 5,
+  "observer_interval_ms": 100,
+  "idle_seconds": 3,
+  "trial_timeout_seconds": 300,
+  "relative_cpu_seconds_per_job": 1.25,
+  "relative_peak_rss": 1.5,
+  "connection_slots_per_runner": 4,
+  "processes_per_slot": 2,
+  "threads_per_slot": 8,
+  "threads_per_runner": 12,
+  "threads_per_host": 64,
+  "workloads": {
+    "short": {"mode": "dense", "class": "production-shaped", "payload_bytes": 1024, "hold_ms": 1, "jobs_per_slot": 8, "minimum_jobs": 128},
+    "slow": {"mode": "dense", "class": "production-shaped", "payload_bytes": 16384, "hold_ms": 100, "jobs_per_slot": 8, "minimum_jobs": 128},
+    "sparse": {"mode": "sparse", "class": "production-shaped", "payload_bytes": 1024, "hold_ms": 1, "jobs_per_slot": 0, "minimum_jobs": 24, "pickup_p99_budget_ms": 750},
+    "noop": {"mode": "dense", "class": "no-op stress", "payload_bytes": 1024, "hold_ms": 0, "jobs_per_slot": 16, "minimum_jobs": 256},
+    "large": {"mode": "dense", "class": "large-context stress", "payload_bytes": 524288, "hold_ms": 1, "jobs_per_slot": 1, "minimum_jobs": 16}
+  }
+}
