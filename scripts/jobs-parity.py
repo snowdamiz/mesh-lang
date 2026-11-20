@@ -70,6 +70,7 @@ class RunnerProcess(subprocess.Popen):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.observed_workers = {}
+        self.fixture_executable = None
 
 
 def checked(args, *, cwd=ROOT, env=None, timeout=120, log=None):
@@ -136,7 +137,7 @@ def account(rows, expected, commits, tolerance):
     samples = []
     for row in rows:
         key = row["job_key"]
-        if row["state"] != "completed" or row["attempt"] != 1:
+        if row["state"] != "completed" or row["attempt"] != 1 or row["first_handler_attempt"] != 1:
             raise QueueMismatch(f"{key}: expected one completed attempt")
         if row["attempts"] != 1 or row["effects"] != 1 or row["effect_keys"] != 1:
             raise QueueMismatch(f"{key}: expected one raw attempt and one deduplicated effect")
@@ -159,7 +160,7 @@ def account(rows, expected, commits, tolerance):
     return samples
 
 
-def validate_pairs(trials, pairs, variants=("mesh", "oban")):
+def validate_pairs(trials, pairs, slots, variants=("mesh", "oban")):
     booked = [(trial["pair"], trial["engine"]) for trial in trials]
     expected = {(i, engine) for i in range(pairs) for engine in variants}
     if len(booked) != len(expected) or set(booked) != expected:
@@ -180,6 +181,8 @@ def validate_pairs(trials, pairs, variants=("mesh", "oban")):
                 raise FixtureError(f"missing or invalid {key} in pair {trial['pair']}")
         if trial["peak_threads"] < trial["peak_processes"]:
             raise FixtureError(f"missing threads in pair {trial['pair']}")
+        if type(trial["peak_executing"]) is not int or trial["peak_executing"] > slots:
+            raise QueueMismatch(f"observed occupancy exceeds {slots} slots in pair {trial['pair']}")
 
 
 def postgres_tools():
@@ -335,6 +338,7 @@ FROM {relation} WHERE {scope}
     def rows(self, engine, namespace):
         relation, scope = job_relation(engine, namespace)
         claim = "j.attempted_at_ms" if engine == "mesh" else "extract(epoch FROM j.attempted_at) * 1000"
+        effect_key = "j.id::text || '/1'" if engine == "mesh" else "j.args->>'key'"
         return json.loads(self.sql(engine, f"""
 WITH attempts AS (
  SELECT job_key, count(*) AS attempts, min(attempt) AS first_handler_attempt, min(entered_at) AS entered_at,
@@ -346,7 +350,7 @@ WITH attempts AS (
  WHERE engine = '{engine}' AND namespace = '{namespace}' GROUP BY job_key
 )
 SELECT coalesce(json_agg(summary ORDER BY summary.job_key), '[]') FROM (
- SELECT j.id::text AS id, j.args->>'key' AS job_key, j.state, j.attempt,
+ SELECT j.id::text AS id, j.args->>'key' AS job_key, j.state, j.attempt, {effect_key} AS effect_key,
    encode(sha256(convert_to(j.args->>'payload', 'UTF8')), 'hex') AS payload_sha256,
    (j.args->>'hold_ms')::integer AS hold_ms, (j.args->>'fail_first')::boolean AS fail_first,
    coalesce(a.attempts,0) AS attempts, coalesce(e.effects,0) AS effects,
@@ -360,6 +364,39 @@ SELECT coalesce(json_agg(summary ORDER BY summary.job_key), '[]') FROM (
  WHERE {scope}
 ) summary
 """))
+
+    def reconcile_trial(self, engine, namespace, rows, commits):
+        relation, _ = job_relation(engine, namespace)
+        if engine == "oban":
+            schemas = json.loads(self.sql(engine, """
+SELECT coalesce(json_agg(n.nspname ORDER BY n.nspname), '[]')
+FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+WHERE c.relname = 'oban_jobs' AND c.relkind IN ('r', 'p')
+"""))
+            if schemas != [namespace]:
+                raise QueueMismatch("unexpected Oban job relations in the trial database")
+        scope = "namespace" if engine == "mesh" else f"'{namespace}'"
+        observed = json.loads(self.sql(engine, f"""
+SELECT json_build_object(
+ 'jobs', (SELECT coalesce(json_agg(json_build_array({scope}, id::text, args->>'key')), '[]') FROM {relation}),
+ 'business', (SELECT coalesce(json_agg(json_build_array(engine, namespace, request_id)), '[]')
+    FROM public.mesh_jobs_parity_product),
+ 'attempts', (SELECT coalesce(json_agg(json_build_array(engine, namespace, job_key, attempt, effect_key)), '[]')
+    FROM public.mesh_jobs_parity_attempts),
+ 'effects', (SELECT coalesce(json_agg(json_build_array(engine, namespace, job_key, effect_key)), '[]')
+    FROM public.mesh_jobs_parity_effects)
+)
+"""))
+        expected = {
+            "jobs": [[namespace, row["id"], row["job_key"]] for row in rows],
+            "business": [[engine, namespace, request_id] for request_id in commits],
+            "attempts": [[engine, namespace, row["job_key"], 1, row["effect_key"]] for row in rows],
+            "effects": [[engine, namespace, row["job_key"], row["effect_key"]] for row in rows],
+        }
+        for kind, values in expected.items():
+            if sorted(observed[kind], key=repr) != sorted(values, key=repr):
+                raise QueueMismatch(f"database {kind} identities do not match the completed trial")
+        return observed
 
     def reconcile_writes(self, engine, namespace, expected):
         if not re.fullmatch(r"parity_[a-f0-9]{16}", namespace):
@@ -444,6 +481,7 @@ class Subject:
                                     env=dict(env, JOBS_PARITY_RUNNER=f"runner_{index}"),
                                     stdin=subprocess.PIPE if self.engine == "oban" else subprocess.DEVNULL,
                                     stdout=stream, stderr=stream)
+        process.fixture_executable = str(Path(self.command[0]).resolve()) if self.engine == "mesh" else None
         return process
 
 
@@ -483,8 +521,8 @@ def mac_thread_counts(output, owned):
             continue
         pid = int(fields[-1])
         if pid in owned:
-            counts[pid] = counts.get(pid, 0) + int(row[0].isspace())
-    return {pid: max(1, count) for pid, count in counts.items()}
+            counts[pid] = counts.get(pid, 0) + 1
+    return counts
 
 
 def process_table():
@@ -515,12 +553,36 @@ def remember_workers(processes, table):
             process.observed_workers.update({pid: table[pid][2] for pid in workers})
 
 
-def wait_for_worker_exit(pids):
+def fixture_executables(processes):
+    return {process.fixture_executable for process in processes if process.fixture_executable}
+
+
+def fixture_workers(table, executables):
+    if not executables:
+        return {}
+    if sys.platform == "darwin":
+        paths = {}
+        for line in checked(["ps", "-A", "-ww", "-o", "pid=,comm="]).splitlines():
+            fields = line.strip().split(maxsplit=1)
+            if len(fields) == 2:
+                paths[int(fields[0])] = fields[1]
+    else:
+        paths = {}
+        for pid in table:
+            with contextlib.suppress(OSError):
+                paths[pid] = os.readlink(f"/proc/{pid}/exe")
+    return {pid: started for pid, (_, _, started) in table.items() if paths.get(pid) in executables}
+
+
+def wait_for_worker_exit(pids, executables=()):
     deadline = time.monotonic() + 5
-    while pids:
+    while pids or executables:
         live = process_table()
         pids = {pid: started for pid, started in pids.items()
                 if pid in live and live[pid][2] == started}
+        # A worker can be reparented before the observer sees it. The unique
+        # compiled fixture path identifies its processes after the runner exits.
+        pids.update(fixture_workers(live, executables))
         if not pids:
             return
         if time.monotonic() >= deadline:
@@ -586,8 +648,8 @@ def stop_runners(processes, *, require_clean):
                 error = FixtureError("runner did not stop before the cleanup deadline")
                 break
             time.sleep(0.05)
-    wait_for_worker_exit({pid: started for process in processes
-                          for pid, started in process.observed_workers.items()})
+    observed = {pid: started for process in processes for pid, started in process.observed_workers.items()}
+    wait_for_worker_exit(observed, fixture_executables(processes))
     if error:
         raise error
     return cpu_seconds
@@ -681,24 +743,18 @@ def run_trial(subject, allocation, workload, batches, scratch, evidence, setting
         calls = runner_calls + enqueue_calls
         claim_calls = after["claims"] - idle_calls_after["claims"]
         idle_calls = idle_calls_after["runner"] - idle_calls_before["runner"]
-        rows = account(cluster.rows(engine, namespace), expected, commits, settings["clock_tolerance_ms"])
-        expected_writes = dict.fromkeys(expected, 1)
-        writes = cluster.reconcile_writes(engine, namespace, {
-            "attempts": expected_writes, "effects": expected_writes,
-        })
-        product = cluster.sql(engine, f"""
-SELECT coalesce(json_agg(request_id ORDER BY request_id), '[]')
-FROM public.mesh_jobs_parity_product
-WHERE engine = '{engine}' AND namespace = '{namespace}'
-""")
-        if json.loads(product) != sorted(commits):
-            raise QueueMismatch("business transactions did not match committed batches")
-        duration = (max(row["settled_ms"] for row in rows) - min(commits.values())) / 1000
-        if duration <= 0:
-            raise FixtureError("nonpositive committed observation interval")
         completed = True
     finally:
         cpu = stop_runners(processes, require_clean=completed)
+
+    observed_peak = max(sample["executing"] for sample in samples + idle_samples)
+    if observed_peak > sum(allocation):
+        raise QueueMismatch(f"observed {observed_peak} executing jobs above {sum(allocation)} slots")
+    rows = account(cluster.rows(engine, namespace), expected, commits, settings["clock_tolerance_ms"])
+    writes = cluster.reconcile_trial(engine, namespace, rows, commits)
+    duration = (max(row["settled_ms"] for row in rows) - min(commits.values())) / 1000
+    if duration <= 0:
+        raise FixtureError("nonpositive committed observation interval")
 
     queued_context = []
     wakeups = []
@@ -745,7 +801,7 @@ WHERE engine = '{engine}' AND namespace = '{namespace}'
         "claim_calls_per_job": claim_calls / len(rows),
         "idle_queries_per_minute": idle_calls * 60 / idle_s,
         "cpu_seconds_per_job": cpu / len(rows),
-        "peak_executing": max(sample["executing"] for sample in samples),
+        "peak_executing": observed_peak,
         "estimated_peak_executing": estimated_peak_executing(rows),
         "peak_queued_context_bytes": max(queued_context) if queued_context and None not in queued_context else None,
         "events_dropped": sum(counts["reader"] or 0 for counts in event_drops),
@@ -755,13 +811,19 @@ WHERE engine = '{engine}' AND namespace = '{namespace}'
     }
 
 
-def mesh_shutdown_report(log):
-    for line in reversed(log.read_text().splitlines()):
+def mesh_reports(log):
+    for line in log.read_text().splitlines():
         try:
             status = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if isinstance(status, dict) and status.get("state") == "stopped" and status.get("drained") is True:
+        if isinstance(status, dict):
+            yield status
+
+
+def mesh_shutdown_report(log):
+    for status in reversed(list(mesh_reports(log))):
+        if status.get("state") == "stopped" and status.get("drained") is True:
             return status
     raise FixtureError(f"missing drained Mesh shutdown report in {log}")
 
@@ -819,7 +881,7 @@ SELECT json_build_object(
         process.wait(timeout=10)
         if process.stdin is not None:
             process.stdin.close()
-        wait_for_worker_exit(process.observed_workers)
+        wait_for_worker_exit(process.observed_workers, fixture_executables([process]))
         gate = scratch / "replacement-gate"
         replacement = subject.run(dict(env, JOBS_PARITY_RETRY_GATE=str(gate)), 1,
                                   evidence / "replacement-runner.log")
@@ -876,8 +938,7 @@ WHERE engine = '{engine}' AND namespace = '{namespace}'
         if replacement is not None:
             gate.touch(exist_ok=True)
             stop_runners([replacement], require_clean=completed)
-        if process.returncode is None:
-            stop_runners([process], require_clean=False)
+        stop_runners([process], require_clean=False)
 
 
 def run_settlement_fault(subject, scratch, evidence, settings, placement, proxy_type):
@@ -901,6 +962,13 @@ def run_settlement_fault(subject, scratch, evidence, settings, placement, proxy_
         {"key": "settlement", "hold_ms": 200, "fail_first": False, "payload": "synthetic"}]}])[0]
     completed = False
     log = evidence / "runner.log"
+    inspect_events = engine == "mesh" and env.get("JOBS_PARITY_MESH_EVENTS") == "logged"
+
+    def events_for_job():
+        return [report["event"] for report in mesh_reports(log)
+                if ("event" in report and isinstance(report.get("attempt"), dict)
+                    and report["attempt"].get("job_id") == rows[0]["id"])]
+
     with proxy_type(cluster.port, matches, placement) as proxy:
         process = subject.run(dict(env, JOBS_PARITY_DB_URL=cluster.url(engine, port=proxy.port)), 0, log)
         try:
@@ -922,12 +990,23 @@ def run_settlement_fault(subject, scratch, evidence, settings, placement, proxy_
             writes = cluster.reconcile_writes(engine, namespace, {
                 "attempts": {"settlement": rows[0]["attempts"]}, "effects": {"settlement": 1},
             })
-            write_json(evidence / "fault.json", {
-                "engine": engine, "fault": fault, "rows": rows, "namespace_writes": writes,
-            })
+            if inspect_events:
+                expected = {"ack_uncertain"}
+                if placement == "before_commit":
+                    expected.add("settlement_committed")
+                wait_for(lambda: expected.issubset(events_for_job()), deadline,
+                         f"expected acknowledgement events for {placement}")
             completed = True
         finally:
             stop_runners([process], require_clean=completed)
+    receipt = {"engine": engine, "fault": fault, "rows": rows, "namespace_writes": writes}
+    if inspect_events:
+        events = events_for_job()
+        confirmed = events.count("settlement_committed")
+        if confirmed != int(placement == "before_commit"):
+            raise QueueMismatch(f"ambiguous settlement produced {confirmed} commit confirmations: {placement}")
+        receipt["job_events"] = events
+    write_json(evidence / "fault.json", receipt)
 
 
 def run_batch_claim_fault(subject, scratch, evidence, settings, placement, proxy_type):
@@ -1321,7 +1400,7 @@ WHERE name IN ('server_version','server_version_num','shared_buffers','max_conne
                             write_json(run_evidence / "metrics.json", result)
                             if pair >= 0:
                                 trials.append(result)
-                    validate_pairs(trials, pair_count, variants)
+                    validate_pairs(trials, pair_count, slots, variants)
                     write_json(case_evidence / "trials.json", trials)
                     summary = profile_summary(trials, name, workload, settings, runners, slots, variants,
                                               args.mesh_batch, args.mesh_listen, args.mesh_events)
@@ -1359,6 +1438,7 @@ def self_check():
 
         def test_latency_order_and_reconciliation(self):
             row = {"job_key": "a", "state": "completed", "attempt": 1, "attempts": 1,
+                   "first_handler_attempt": 1,
                    "effects": 1, "effect_keys": 1, "claimed_ms": 99, "entered_ms": 103,
                    "settled_ms": 125, "payload_sha256": hashlib.sha256(b"test").hexdigest(),
                    "hold_ms": 0, "fail_first": False}
@@ -1372,6 +1452,8 @@ def self_check():
                 account([], expected, {"batch": 100}, 5)
             with self.assertRaises(QueueMismatch):
                 account([dict(row, hold_ms=1)], expected, {"batch": 100}, 5)
+            with self.assertRaises(QueueMismatch):
+                account([dict(row, first_handler_attempt=99)], expected, {"batch": 100}, 5)
             with self.assertRaises(FixtureError):
                 account([dict(row, entered_ms=80)], expected, {"batch": 100}, 5)
             with self.assertRaises(FixtureError):
@@ -1379,14 +1461,54 @@ def self_check():
 
         def test_trial_validation(self):
             with self.assertRaisesRegex(FixtureError, "incomplete"):
-                validate_pairs([], 5)
+                validate_pairs([], 5, 1)
             rows = [{"pair": pair, "engine": engine, "input_sha256": "shared"}
                     for engine in ("mesh", "oban") for pair in range(5)]
             with self.assertRaisesRegex(FixtureError, "completed"):
-                validate_pairs(rows, 5)
+                validate_pairs(rows, 5, 1)
             rows[-1]["input_sha256"] = "mismatch"
             with self.assertRaisesRegex(FixtureError, "different inputs"):
-                validate_pairs(rows, 5)
+                validate_pairs(rows, 5, 1)
+
+        def test_trial_reconciliation_rejects_stray_rows_and_wrong_effect_keys(self):
+            from unittest.mock import patch
+
+            namespace = "parity_0123456789abcdef"
+            job = {"id": "test-id", "job_key": "key", "effect_key": "test-id/1"}
+            observed = {
+                "jobs": [[namespace, "test-id", "key"]],
+                "business": [["mesh", namespace, "batch"]],
+                "attempts": [["mesh", namespace, "key", 1, "test-id/1"]],
+                "effects": [["mesh", namespace, "key", "test-id/1"]],
+            }
+            cluster = Cluster.__new__(Cluster)
+            cases = (
+                ("jobs", ["stray", "test-id-2", "key"]),
+                ("business", ["mesh", "stray", "batch"]),
+                ("attempts", ["mesh", namespace, "key", 99, "test-id/2"]),
+                ("effects", ["mesh", namespace, "key", "test-id/2"]),
+            )
+            with patch.object(cluster, "sql", side_effect=lambda *_: json.dumps(observed)):
+                cluster.reconcile_trial("mesh", namespace, [job], ["batch"])
+                for kind, stray in cases:
+                    with self.subTest(kind=kind):
+                        observed[kind].append(stray)
+                        with self.assertRaisesRegex(QueueMismatch, f"{kind} identities"):
+                            cluster.reconcile_trial("mesh", namespace, [job], ["batch"])
+                        observed[kind].pop()
+
+        def test_direct_peak_cannot_exceed_slots(self):
+            metrics = dict.fromkeys(("completed", "jobs_per_second", "sql_calls_per_job",
+                                     "runner_sql_calls_per_job", "enqueue_sql_calls_per_job", "claim_calls_per_job",
+                                     "peak_connections", "peak_rss_bytes", "cpu_seconds_per_job", "peak_processes",
+                                     "peak_threads", "pickup_p99_ms", "claim_p99_ms", "settlement_p99_ms",
+                                     "idle_queries_per_minute", "peak_executing"), 1)
+            rows = [dict(metrics, pair=pair, engine=engine, input_sha256="shared", estimated_peak_executing=2)
+                    for engine in ("mesh", "oban") for pair in range(5)]
+            validate_pairs(rows, 5, 1)
+            rows[0]["peak_executing"] = 2
+            with self.assertRaisesRegex(QueueMismatch, "exceeds 1 slots"):
+                validate_pairs(rows, 5, 1)
 
         def test_macos_thread_sample_counts_continuation_rows(self):
             report = """USER      PID  TT  %CPU
@@ -1397,8 +1519,30 @@ user       20  ??   0.0
 other      30  ??   0.0
            30       0.0
 """
-            self.assertEqual(mac_thread_counts(report, {10, 20}), {10: 2, 20: 1})
-            self.assertEqual(mac_thread_counts(report, {10, 40}), {10: 2})
+            self.assertEqual(mac_thread_counts(report, {10, 20}), {10: 3, 20: 1})
+            self.assertEqual(mac_thread_counts(report, {10, 40}), {10: 3})
+
+        @unittest.skipUnless(sys.platform == "darwin", "requires macOS ps -M")
+        def test_macos_thread_count_against_live_threads(self):
+            fixture = """
+import sys
+from threading import Event, Thread
+stop = Event()
+threads = [Thread(target=stop.wait) for _ in range(4)]
+for thread in threads:
+    thread.start()
+print('ready', flush=True)
+sys.stdin.read(1)
+stop.set()
+"""
+            with subprocess.Popen([sys.executable, "-c", fixture], stdin=subprocess.PIPE,
+                                  stdout=subprocess.PIPE, text=True) as worker:
+                try:
+                    self.assertEqual(worker.stdout.readline().strip(), "ready")
+                    report = checked(["ps", "-M", "-p", str(worker.pid)])
+                    self.assertEqual(mac_thread_counts(report, {worker.pid}), {worker.pid: 5})
+                finally:
+                    worker.communicate("q", timeout=5)
 
         def test_peak_executing_includes_jobs_between_observer_samples(self):
             rows = [{"claimed_ms": 101, "settled_ms": 110}, {"claimed_ms": 103, "settled_ms": 109}]
@@ -1414,12 +1558,23 @@ other      30  ??   0.0
                 pid = 10
                 returncode = -9
                 observed_workers = {11: "original start"}
+                fixture_executable = "/fixture"
 
             with patch(__name__ + ".process_table", return_value={}), patch(
                 __name__ + ".wait_for_worker_exit"
             ) as wait:
                 stop_runners([ExitedRunner()], require_clean=False)
-                wait.assert_called_once_with({11: "original start"})
+                wait.assert_called_once_with({11: "original start"}, {"/fixture"})
+
+        def test_cleanup_discovers_worker_reparented_before_any_snapshot(self):
+            from unittest.mock import patch
+
+            with patch(__name__ + ".process_table", side_effect=[{42: (1, 0, "start")}, {}]) as observed, patch(
+                __name__ + ".fixture_workers", side_effect=[{42: "start"}, {}]
+            ) as owned:
+                wait_for_worker_exit({}, {"/fixture"})
+                self.assertEqual(observed.call_count, 2)
+                self.assertEqual(owned.call_args_list[0].args, ({42: (1, 0, "start")}, {"/fixture"}))
 
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(DriverChecks)
     return unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful()

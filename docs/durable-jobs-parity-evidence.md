@@ -93,6 +93,9 @@ the same profile with `--mesh-events disabled`, `--mesh-events logged`,
 and `--mesh-events backpressured`. The logged variant writes JSON events
 to the runner's log. The backpressured variant leaves the 128-event reader
 buffer unread and records its drop count in the trial receipt.
+Use `--faults --mesh-events logged` on a current runtime to verify that
+an acknowledgement lost after commit produces uncertainty without a
+commit confirmation from the runner.
 
 Each run prints its evidence directory under `target/jobs-parity/<sha>/`.
 `manifest.json` records the compiled SHA, fixture hashes, tool versions,
@@ -105,6 +108,11 @@ failure. The run records budget breaches separately in `result.json`.
 Batch trials also record the largest confirmed context payload held before
 launch on any runner. A historical runtime can omit that metric. The
 summary then marks the batch context-size budget unverified.
+
+Reconciliation runs after runner shutdown. It checks the final job,
+business-write, attempt, and effect identities across the disposable
+database. A direct occupancy observation above the configured slots
+fails the trial. The timestamp reconstruction stays available separately.
 
 Pickup uses the interval between the enqueue transaction's commit timestamp
 and the first handler entry. Claim and settlement are tracked separately.
@@ -202,3 +210,18 @@ The short profile missed the proposed throughput, pickup, and CPU thresholds.
 This run records the post-reliability baseline for two profiles under load.
 Release qualification still requires the matched candidate matrix on a
 host with capacity for the workload and its observers.
+
+## Compare bounded drain
+
+`scripts/jobs-drain-perf.py` accepts the pinned main and candidate compiler
+and runtime artifacts. It interleaves legacy due-only drain and the new
+bounded drain with one slot. Each trial checks the same completed jobs,
+their effects, and the untouched future rows. Pass `--direct` to time the
+compiled inline helper in a separate test.
+
+The local PostgreSQL 17.11 debug run with main `7c162056` and candidate
+`03990801` reconciled 24 completions and four future rows in each of seven
+pairs. The median paired duration was 1.294 times main, above the 1.10
+budget. Host load was about 30–34 on 15 logical CPUs. The inline helper took
+69.1 µs per call in that run. Release-build timing and the pinned main
+direct-handler baseline remain open.
