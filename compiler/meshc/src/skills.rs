@@ -502,12 +502,14 @@ fn move_into_place(from: &Path, to: &Path, exchange: bool) -> io::Result<()> {
     let result = unsafe { libc::renamex_np(from.as_ptr(), to.as_ptr(), flags) };
     #[cfg(target_os = "linux")]
     let result = unsafe {
-        libc::renameat2(
-            libc::AT_FDCWD,
+        // musl's libc bindings do not expose the renameat2 wrapper.
+        libc::syscall(
+            libc::SYS_renameat2,
+            libc::c_long::from(libc::AT_FDCWD),
             from.as_ptr(),
-            libc::AT_FDCWD,
+            libc::c_long::from(libc::AT_FDCWD),
             to.as_ptr(),
-            flags,
+            flags as libc::c_long,
         )
     };
     if result == 0 {

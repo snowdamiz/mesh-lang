@@ -6,6 +6,11 @@ on:
       - main
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      installer_verification_only:
+        description: Build release archives and verify the installers and merged checksums
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -424,7 +429,7 @@ jobs:
 
   cryptographic-release-evidence:
     name: Cryptographic release evidence
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && !inputs.installer_verification_only)
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -483,7 +488,7 @@ jobs:
 
   cryptographic-fuzz:
     name: Cryptographic fuzz smoke
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && !inputs.installer_verification_only)
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -707,7 +712,15 @@ jobs:
   verify-merged-release-assets:
     name: Verify merged release assets
     needs: [cryptographic-release-evidence, cryptographic-fuzz, verify-release-assets]
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    # A manual dispatch can check the archive merge even when a separate
+    # cryptographic proof fails. Publication still requires both proofs.
+    if: >-
+      !cancelled() &&
+      needs.verify-release-assets.result == 'success' &&
+      (github.event_name == 'workflow_dispatch' ||
+      (startsWith(github.ref, 'refs/tags/v') &&
+      needs.cryptographic-release-evidence.result == 'success' &&
+      needs.cryptographic-fuzz.result == 'success'))
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
@@ -742,7 +755,7 @@ jobs:
     name: Create Release
     # autonomous-cluster-proof is deliberately absent for now: see its job
     # above. It still runs and still reports.
-    needs: [authoritative-live-proof, verify-merged-release-assets]
+    needs: [authoritative-live-proof, cryptographic-release-evidence, cryptographic-fuzz, verify-merged-release-assets]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
