@@ -423,6 +423,46 @@
     "worst_promotion_resume_upper_ms": 1228.2
   },
   "latest_runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+  "listener_against_main": {
+    "candidate_ref": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+    "jobs_per_trial": 24,
+    "main_ref": "7c1620563614a04a573aef806a6d019a2af4dfe9",
+    "pairs": 5,
+    "postgresql_version": "17.11",
+    "profiles": {
+      "1000": {
+        "budget_breaches": [
+          {
+            "metric": "pickup_p99_ms",
+            "profile": "sparse-1r-16s",
+            "scope": "baseline"
+          }
+        ],
+        "candidate_idle_queries_per_minute": 671.1995898712028,
+        "candidate_pickup_p99_ms": 14.156005859375,
+        "candidate_worst_trial_claim_p99_ms": 21.840087890625,
+        "harness_revision": "f87e47388034948814d4dd54714ed8ab9a16acab",
+        "main_idle_queries_per_minute": 748.0571892641773,
+        "main_pickup_p99_ms": 826.64013671875,
+        "poll_ms": 1000,
+        "raw_result": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-load-qizx6hip/result.json",
+        "raw_summary": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-load-qizx6hip/sparse-1r-16s/summary.json"
+      },
+      "250": {
+        "budget_breaches": [],
+        "candidate_idle_queries_per_minute": 670.3575078388836,
+        "candidate_pickup_p99_ms": 10.447998046875,
+        "candidate_worst_trial_claim_p99_ms": 5.52490234375,
+        "harness_revision": "b59e6be24059ddfaec1996ebfae4470744657740",
+        "main_idle_queries_per_minute": 1777.7310512762922,
+        "main_pickup_p99_ms": 255.47412109375,
+        "poll_ms": 1000,
+        "raw_result": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-load-prywmbwx/result.json",
+        "raw_summary": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-load-prywmbwx/sparse-1r-16s/summary.json"
+      }
+    },
+    "transport": "SCRAM with verified TLS"
+  },
   "listener_outage": {
     "budget_breaches": [],
     "fallback_interval_ms": 1000,

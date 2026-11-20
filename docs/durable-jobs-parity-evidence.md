@@ -158,6 +158,13 @@ with listening and 1,781 on main. With both poll intervals set to one
 second, the listener's worst trial commit-to-claim p99 was 4.2 ms. The
 one-second polling control exceeded the configured 750 ms pickup budget.
 
+The `1b12243b` release runtime repeated both five-pair comparisons on
+macOS arm64 and PostgreSQL 17.11 over verified TLS. The listener used
+670 idle queries per minute against 1,778 on main at 250 ms polling.
+The worst healthy trial commit-to-claim p99 was 5.5 ms in that comparison
+and 21.8 ms at a matched 1-second interval. The polling reference again
+exceeded the 750 ms pickup budget at 1 second. [Polling comparison receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Measure fallback with the listener disconnected
 
 Point `PG_BIN_DIR` to the PostgreSQL version you pass below. Use the driver

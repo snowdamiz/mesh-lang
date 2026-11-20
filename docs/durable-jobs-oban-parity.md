@@ -225,8 +225,8 @@ OS spawn call and a gate at the existing native worker-start marker.
 
 - [x] Metric. Commit-to-claim p99 and idle SQL queries per minute.
 - [x] Probe. Five pairs of the frozen sparse profile ran with a 1 s fallback poll. The worst disconnected pickup was 872 ms and the worst healthy trial commit-to-claim p99 was 13.3 ms. [Listener outage receipt](durable-jobs-parity-evidence.md#measure-fallback-with-the-listener-disconnected)
-- [ ] Baseline. Measure polling first at both the current default cadence and the same 1 s interval.
-- [ ] Rule. Target p99 no greater than 100 ms on a healthy local database with free slots, fallback pickup within two polls, and at least 50% fewer idle polling queries than the current default.
+- [x] Baseline. Five paired trials against pinned main at each cadence, 250 ms and 1 s. [Receipt index](../proof/jobs-parity/qualification-v1.json)
+- [x] Rule. The listener met the 100 ms healthy p99 and 2-second fallback limits. It used 62.3% fewer idle queries than main at the 250 ms default. [Receipt index](../proof/jobs-parity/qualification-v1.json)
 
 **Review gate.** None. This phase has no graphical interaction. Independent review uses the CLI receipts and database proof.
 
