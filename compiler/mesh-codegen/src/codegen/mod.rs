@@ -21,7 +21,7 @@ mod msg_shape;
 pub mod pattern;
 pub mod types;
 
-use std::path::Path;
+use std::{collections::BTreeMap, path::Path};
 
 use inkwell::builder::Builder;
 use inkwell::context::Context;
@@ -108,6 +108,8 @@ pub struct CodeGen<'ctx> {
     // ── Function tracking ────────────────────────────────────────────
     /// Map from MIR function name to LLVM function value.
     pub(crate) functions: FxHashMap<String, FunctionValue<'ctx>>,
+    /// Resolved executable symbols used as Jobs.start handlers.
+    jobs_handlers: BTreeMap<String, FunctionValue<'ctx>>,
     /// The current function being compiled.
     pub(crate) current_fn: Option<FunctionValue<'ctx>>,
     grouped_spawns: Vec<group_safety::GroupedSpawn<'ctx>>,
@@ -259,6 +261,7 @@ impl<'ctx> CodeGen<'ctx> {
             sum_type_layouts: FxHashMap::default(),
             sum_type_defs: FxHashMap::default(),
             functions: FxHashMap::default(),
+            jobs_handlers: BTreeMap::new(),
             current_fn: None,
             grouped_spawns: Vec::new(),
             grouped_step_enabled: opt_level >= 2
@@ -1192,6 +1195,39 @@ impl<'ctx> CodeGen<'ctx> {
                     .map_err(|e| e.to_string())?;
             }
         }
+
+        let register_jobs_handler =
+            intrinsics::get_intrinsic(&self.module, "mesh_jobs_register_handler");
+        for (name, handler) in &self.jobs_handlers {
+            let name_global = self
+                .builder
+                .build_global_string_ptr(name, &format!("jobs_handler_{name}"))
+                .map_err(|e| e.to_string())?;
+            let name_len = self.context.i64_type().const_int(name.len() as u64, false);
+            self.builder
+                .build_call(
+                    register_jobs_handler,
+                    &[
+                        name_global.as_pointer_value().into(),
+                        name_len.into(),
+                        handler.as_global_value().as_pointer_value().into(),
+                    ],
+                    "",
+                )
+                .map_err(|e| e.to_string())?;
+        }
+
+        let enter_worker = intrinsics::get_intrinsic(&self.module, "mesh_jobs_enter_worker");
+        self.builder
+            .build_call(
+                enter_worker,
+                &[
+                    main_fn.get_nth_param(0).expect("main argc").into(),
+                    main_fn.get_nth_param(1).expect("main argv").into(),
+                ],
+                "",
+            )
+            .map_err(|e| e.to_string())?;
 
         // Call the Mesh entry function on the main thread, through the runtime
         // so that a panic in it ends the process cleanly.

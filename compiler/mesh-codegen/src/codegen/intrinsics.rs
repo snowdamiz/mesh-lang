@@ -3446,6 +3446,17 @@ pub fn declare_intrinsics<'ctx>(module: &Module<'ctx>) {
         );
     }
 
+    module.add_function(
+        "mesh_jobs_register_handler",
+        void_type.fn_type(&[ptr_type.into(), i64_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+    module.add_function(
+        "mesh_jobs_enter_worker",
+        void_type.fn_type(&[i32_type.into(), ptr_type.into()], false),
+        Some(inkwell::module::Linkage::External),
+    );
+
     // ── Job runtime functions (Phase 9 Plan 04) ──────────────────────────
 
     // mesh_job_async(fn_ptr: ptr, env_ptr: ptr) -> i64 (PID)

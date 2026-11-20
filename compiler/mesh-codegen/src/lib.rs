@@ -612,6 +612,129 @@ end
     }
 
     #[test]
+    fn durable_jobs_register_resolved_handlers_before_startup() {
+        use mesh_typeck::{ImportContext, ModuleExports};
+
+        let workers = mesh_parser::parse("pub fn imported(job :: String) -> String do job end");
+        let workers_typeck = mesh_typeck::check(&workers);
+        assert!(
+            workers_typeck.errors.is_empty(),
+            "{:?}",
+            workers_typeck.errors
+        );
+        let exports = mesh_typeck::collect_exports(&workers, &workers_typeck);
+        let mut imports = ImportContext::empty();
+        imports.module_exports.insert(
+            "Workers".to_string(),
+            ModuleExports::new("Workers".to_string(), &exports),
+        );
+        let main = mesh_parser::parse(
+            r#"
+import Workers
+from Workers import imported
+from Jobs import start
+
+actor boot() do () end
+fn ordinary(job :: String) -> String do job end
+fn local(job :: String) -> String do ordinary(job) end
+fn unreachable(job :: String) -> String do job end
+
+fn dead_runner(pool :: PoolHandle) do Jobs.start(pool, "{}", unreachable) end
+
+fn run(pool :: PoolHandle) do
+  let _ = Jobs.start(pool, "{}", Workers.imported)
+  let _ = imported |3> Jobs.start(pool, "{}")
+  pool |> start("{}", local)
+end
+
+fn main() do
+  case Pool.open("postgres://localhost/db", 1, 2, 100) do
+    Ok(pool) -> inspect(run(pool))
+    Err(error) -> error
+  end
+end
+"#,
+        );
+        assert!(main.ok(), "{:?}", main.errors());
+        let main_typeck = mesh_typeck::check_with_imports(&main, &imports);
+        assert!(main_typeck.errors.is_empty(), "{:?}", main_typeck.errors);
+
+        let workers = lower_module_to_mir_raw(
+            &workers,
+            &workers_typeck,
+            "Workers",
+            &exports.functions.keys().cloned().collect(),
+            &HashMap::new(),
+            &[],
+        )
+        .unwrap();
+        let main = lower_module_to_mir_raw(
+            &main,
+            &main_typeck,
+            "Main",
+            &HashSet::new(),
+            &HashMap::new(),
+            &[],
+        )
+        .unwrap();
+        let mir = merge_mir_modules(vec![workers, main], 1, &[]);
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "jobs", 0, None).unwrap();
+        codegen.set_declared_handlers(&[DeclaredRuntimeRegistration {
+            runtime_registration_name: "Main.boot".into(),
+            executable_symbol: "boot".into(),
+            replication_count: 1,
+        }]);
+        codegen.set_startup_work_registrations(&[StartupWorkRegistration {
+            runtime_registration_name: "Main.boot".into(),
+        }]);
+        codegen.compile(&mir).unwrap();
+        let llvm = codegen.get_llvm_ir();
+
+        let registrations: Vec<_> = llvm
+            .lines()
+            .map(str::trim)
+            .filter(|line| line.starts_with("call void @mesh_jobs_register_handler("))
+            .collect();
+        assert_eq!(registrations, [
+            "call void @mesh_jobs_register_handler(ptr @jobs_handler_Main__local, i64 11, ptr @Main__local)",
+            "call void @mesh_jobs_register_handler(ptr @jobs_handler_imported, i64 8, ptr @imported)",
+        ]);
+        assert!(llvm.contains("[12 x i8] c\"Main__local\\00\""));
+        assert!(llvm.contains("[9 x i8] c\"imported\\00\""));
+        assert!(llvm.contains("call ptr @Main__ordinary("));
+        let starts: Vec<_> = llvm
+            .lines()
+            .filter(|line| line.contains("call ptr @mesh_jobs_start("))
+            .collect();
+        assert_eq!(starts.len(), 3);
+        assert!(starts[0].ends_with("ptr @imported, ptr null)"));
+        assert!(starts[1].ends_with("ptr @imported, ptr null)"));
+        assert!(starts[2].ends_with("ptr @Main__local, ptr null)"));
+
+        let (_, wrapper) = llvm.split_once("define i32 @main(i32 %0, ptr %1)").unwrap();
+        let startup_order = [
+            "call void @mesh_rt_init()",
+            "call void @mesh_rt_init_actor(",
+            "call void @mesh_register_function(",
+            "call void @mesh_register_declared_handler(",
+            "call void @mesh_register_startup_work(",
+            registrations[0],
+            registrations[1],
+            "call void @mesh_jobs_enter_worker(i32 %0, ptr %1)",
+            "call void @mesh_run_main(",
+            "call void @mesh_trigger_startup_work()",
+        ];
+        let mut remaining = wrapper;
+        for call in startup_order {
+            let (_, after) = remaining
+                .split_once(call)
+                .unwrap_or_else(|| panic!("missing or out of order: {call}\n{wrapper}"));
+            remaining = after;
+        }
+    }
+
+    #[test]
     fn merge_mir_modules_prefers_entry_module_mesh_main_when_multiple_modules_define_main() {
         let merged = merge_mir_modules(
             vec![

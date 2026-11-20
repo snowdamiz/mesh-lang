@@ -1416,6 +1416,15 @@ impl<'ctx> CodeGen<'ctx> {
 
             // Check if it's a runtime intrinsic (don't add reduction check for runtime calls)
             if let Some(fn_val) = self.module.get_function(name) {
+                if name == "mesh_jobs_start" {
+                    let handler = args
+                        .get(2)
+                        .and_then(MirExpr::var_name)
+                        .and_then(|name| self.fn_item(name))
+                        .ok_or("Jobs.start requires a named handler")?;
+                    let symbol = handler.get_name().to_string_lossy().into_owned();
+                    self.jobs_handlers.insert(symbol, handler);
+                }
                 let coerced_args =
                     self.coerce_arguments(&arg_vals, &fn_val.get_type().get_param_types())?;
                 let call = self
