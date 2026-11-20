@@ -178,11 +178,11 @@ pub(super) fn prove_sparse_reference(proof: &Proof<'_>) {
     fields.remove("listen");
     fields.remove("claim_batch");
     let mut worker = proof.worker_with_config("wake-reference", false, settings);
-    let mut staged = stage(proof, "stage_commit", "wake-committed");
+    proof.wait_state("committed", "completed");
     assert!(proof.job("wake-committed").is_null());
-    release(&staged);
-    assert_eq!(staged.join()["state"], "available");
+    let receipt = proof.enqueue(spec("wake-committed"));
     let completed = proof.wait_state("wake-committed", "completed");
+    assert_eq!(completed["id"], receipt["id"]);
     assert_eq!(completed["attempt"], 1);
     assert_eq!(proof.effects("wake-committed").len(), 1);
     worker.stop();

@@ -96,14 +96,25 @@ fn durable_jobs_survive_process_boundaries() {
 
 fn build_fixture(compiler: &Path, project: &Path, runtime: Option<&Path>) -> PathBuf {
     fs::create_dir(project).unwrap();
-    let mut source =
-        fs::read_to_string(artifacts::repo_root().join("tests/e2e/durable_jobs/main.mpl")).unwrap();
-    if runtime.is_some() {
-        // The pinned polling reference predates local queue control.
-        let local_control = "Jobs.local_control(runner, action)";
-        assert_eq!(source.matches(local_control).count(), 1);
-        source = source.replace(local_control, "Err(\"local queue control unavailable\")");
-    }
+    let root = artifacts::repo_root();
+    let source = if runtime.is_some() {
+        let pinned_fixture = Command::new("git")
+            .current_dir(&root)
+            .args([
+                "show",
+                "7c1620563614a04a573aef806a6d019a2af4dfe9:tests/e2e/durable_jobs/main.mpl",
+            ])
+            .output()
+            .expect("read the pinned polling fixture with Git");
+        assert!(
+            pinned_fixture.status.success(),
+            "{}",
+            artifacts::command_output_text(&pinned_fixture)
+        );
+        pinned_fixture.stdout
+    } else {
+        fs::read(root.join("tests/e2e/durable_jobs/main.mpl")).unwrap()
+    };
     fs::write(project.join("main.mpl"), source).unwrap();
     let mut command = Command::new(compiler);
     command

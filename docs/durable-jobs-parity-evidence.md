@@ -23,10 +23,10 @@ The compiled proof uses both poll-only and `listen: true` runners. A loopback
 relay pauses a listener reconnect while leaving the claim and handler sessions
 available. Run with `--compatibility` to cover the same paths over verified TLS
 and SCRAM. To compare sparse pickup behavior with a pinned reference, build
-its `mesh-rt` static library and set `MESH_JOBS_REFERENCE_RT_LIB_PATH` to the
-absolute path of that library before running the verifier. It compiles the
-same fixture twice, with local queue control disabled for the reference, and
-checks the same committed input with polling on the reference and notifications
+the `mesh-rt` static library from `7c162056` and set
+`MESH_JOBS_REFERENCE_RT_LIB_PATH` to its absolute path before running the
+verifier. It builds the reference fixture from the same pinned revision and
+checks the same committed job with polling on the reference and notifications
 on the candidate.
 The smoke test runs one small matched pair. The fault test observes a claim
 and a committed effect before terminating the runner, then checks recovery
