@@ -66,6 +66,12 @@ class QueueMismatch(Exception):
     pass
 
 
+class RunnerProcess(subprocess.Popen):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.observed_workers = {}
+
+
 def checked(args, *, cwd=ROOT, env=None, timeout=120, log=None):
     result = subprocess.run(args, cwd=cwd, env=env, text=True, timeout=timeout,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -162,9 +168,10 @@ def validate_pairs(trials, pairs, variants=("mesh", "oban")):
         raise FixtureError("paired trials received different inputs")
     positive = ("completed", "jobs_per_second", "sql_calls_per_job", "runner_sql_calls_per_job",
                 "enqueue_sql_calls_per_job", "claim_calls_per_job",
-                "peak_executing", "peak_connections", "peak_rss_bytes", "cpu_seconds_per_job",
+                "estimated_peak_executing", "peak_connections", "peak_rss_bytes", "cpu_seconds_per_job",
                 "peak_processes", "peak_threads")
-    nonnegative = ("pickup_p99_ms", "claim_p99_ms", "settlement_p99_ms", "idle_queries_per_minute")
+    nonnegative = ("pickup_p99_ms", "claim_p99_ms", "settlement_p99_ms", "idle_queries_per_minute",
+                   "peak_executing")
     for trial in trials:
         for key in (*positive, *nonnegative):
             value = trial.get(key)
@@ -357,19 +364,23 @@ SELECT coalesce(json_agg(summary ORDER BY summary.job_key), '[]') FROM (
     def reconcile_writes(self, engine, namespace, expected):
         if not re.fullmatch(r"parity_[a-f0-9]{16}", namespace):
             raise FixtureError("invalid write observation namespace")
-        scope = f"engine='{engine}' AND namespace='{namespace}'"
-        writes = json.loads(self.sql(engine, f"""
+        writes = json.loads(self.sql(engine, """
 SELECT json_build_object(
- 'attempts', (SELECT coalesce(json_object_agg(job_key, count), '{{}}') FROM (
-    SELECT job_key, count(*) FROM public.mesh_jobs_parity_attempts WHERE {scope} GROUP BY job_key
+ 'attempts', (SELECT coalesce(json_agg(a ORDER BY engine, namespace, job_key), '[]') FROM (
+    SELECT engine, namespace, job_key, count(*)
+    FROM public.mesh_jobs_parity_attempts GROUP BY engine, namespace, job_key
  ) a),
- 'effects', (SELECT coalesce(json_object_agg(job_key, count), '{{}}') FROM (
-    SELECT job_key, count(*) FROM public.mesh_jobs_parity_effects WHERE {scope} GROUP BY job_key
+ 'effects', (SELECT coalesce(json_agg(e ORDER BY engine, namespace, job_key), '[]') FROM (
+    SELECT engine, namespace, job_key, count(*)
+    FROM public.mesh_jobs_parity_effects GROUP BY engine, namespace, job_key
  ) e)
 )
 """))
-        if writes != expected:
-            raise QueueMismatch(f"namespace attempts or effects do not match expected counts: {writes}")
+        for kind, expected_jobs in expected.items():
+            observed = {(row["engine"], row["namespace"], row["job_key"]): row["count"]
+                        for row in writes[kind]}
+            if observed != {(engine, namespace, key): count for key, count in expected_jobs.items()}:
+                raise QueueMismatch(f"database {kind} do not match expected writes: {writes[kind]}")
         return writes
 
     def claim_identity(self, engine, namespace, label):
@@ -428,10 +439,10 @@ class Subject:
 
     def run(self, env, index, log):
         with log.open("wb") as stream:
-            process = subprocess.Popen([*self.command, "run"], cwd=self.cwd, start_new_session=True,
-                                       env=dict(env, JOBS_PARITY_RUNNER=f"runner_{index}"),
-                                       stdin=subprocess.PIPE if self.engine == "oban" else subprocess.DEVNULL,
-                                       stdout=stream, stderr=stream)
+            process = RunnerProcess([*self.command, "run"], cwd=self.cwd, start_new_session=True,
+                                    env=dict(env, JOBS_PARITY_RUNNER=f"runner_{index}"),
+                                    stdin=subprocess.PIPE if self.engine == "oban" else subprocess.DEVNULL,
+                                    stdout=stream, stderr=stream)
         return process
 
 
@@ -444,7 +455,9 @@ def wait_for(observe, deadline, description, interval=0.1):
     raise FixtureError(f"timed out waiting for {description}")
 
 
-def runner_ready(processes, logs):
+def runner_ready(processes, logs, *, track=True):
+    if track:
+        remember_workers(processes, process_table())
     for process, log in zip(processes, logs, strict=True):
         if process.poll() is not None:
             raise FixtureError(f"runner exited {process.returncode}; see {log}")
@@ -455,7 +468,7 @@ def runner_ready(processes, logs):
     return True
 
 
-def mac_thread_count(output, owned):
+def mac_thread_counts(output, owned):
     header, _, body = output.partition("\n")
     rows = body.splitlines()
     _, label, _ = header.partition("PID")
@@ -470,31 +483,43 @@ def mac_thread_count(output, owned):
         pid = int(fields[-1])
         if pid in owned:
             counts[pid] = counts.get(pid, 0) + int(row[0].isspace())
-    return sum(max(1, count) for count in counts.values())
+    return {pid: max(1, count) for pid, count in counts.items()}
 
 
 def process_table():
     table = {}
-    for line in checked(["ps", "-A", "-o", "pid=,ppid=,rss=,stat="]).splitlines():
-        pid, parent, rss, state = line.split()
+    for line in checked(["ps", "-A", "-o", "pid=,ppid=,rss=,stat=,lstart="]).splitlines():
+        fields = line.split(maxsplit=4)
+        if len(fields) != 5:
+            continue
+        pid, parent, rss, state, started = fields
         if not state.startswith("Z"):
-            table[int(pid)] = (int(parent), int(rss))
+            table[int(pid)] = (int(parent), int(rss), started)
     return table
 
 
 def process_tree(table, roots):
     owned = roots & table.keys()
     while True:
-        children = {pid for pid, (parent, _) in table.items() if parent in owned}
+        children = {pid for pid, (parent, _, _) in table.items() if parent in owned}
         if children <= owned:
             return owned
         owned |= children
 
 
+def remember_workers(processes, table):
+    for process in processes:
+        if process.returncode is None:
+            workers = process_tree(table, {process.pid}) - {process.pid}
+            process.observed_workers.update({pid: table[pid][2] for pid in workers})
+
+
 def wait_for_worker_exit(pids):
     deadline = time.monotonic() + 5
     while pids:
-        pids = pids & process_table().keys()
+        live = process_table()
+        pids = {pid: started for pid, started in pids.items()
+                if pid in live and live[pid][2] == started}
         if not pids:
             return
         if time.monotonic() >= deadline:
@@ -503,27 +528,30 @@ def wait_for_worker_exit(pids):
 
 
 def process_sample(processes):
-    table = process_table()
-    owned = process_tree(table, {process.pid for process in processes})
-    if not owned:
-        return {"processes": 0, "threads": 0, "rss_bytes": 0}
-    if sys.platform == "darwin":
-        command = ["ps", "-M", "-p", ",".join(map(str, sorted(owned)))]
-        result = subprocess.run(command, capture_output=True, text=True, timeout=5)
-        if result.returncode and not result.stdout:
-            raise FixtureError("macOS ps failed to sample runner threads")
-        threads = mac_thread_count(result.stdout, owned)
-    else:
-        threads = sum(len(list(Path(f"/proc/{pid}/task").glob("*"))) for pid in owned)
-    return {"processes": len(owned), "threads": threads,
-            "rss_bytes": 1024 * sum(table[pid][1] for pid in owned)}
+    for _ in range(3):
+        table = process_table()
+        remember_workers(processes, table)
+        owned = process_tree(table, {process.pid for process in processes})
+        if not owned:
+            return {"processes": 0, "threads": 0, "rss_bytes": 0}
+        if sys.platform == "darwin":
+            command = ["ps", "-M", "-p", ",".join(map(str, sorted(owned)))]
+            result = subprocess.run(command, capture_output=True, text=True, timeout=5)
+            counts = mac_thread_counts(result.stdout, owned) if result.stdout else {}
+        else:
+            counts = {pid: len(list(Path(f"/proc/{pid}/task").glob("*"))) for pid in owned}
+        after = process_table()
+        stable = {pid for pid in owned if pid in after and after[pid][2] == table[pid][2]}
+        if all(counts.get(pid, 0) > 0 for pid in stable):
+            return {"processes": len(stable), "threads": sum(counts[pid] for pid in stable),
+                    "rss_bytes": 1024 * sum(table[pid][1] for pid in stable)}
+    raise FixtureError("runner thread capture omitted a live process")
 
 
 def stop_runners(processes, *, require_clean):
     cpu_seconds = 0.0
     error = None
-    roots = {process.pid for process in processes if process.returncode is None}
-    owned_children = process_tree(process_table(), roots) - roots if roots else set()
+    remember_workers(processes, process_table())
     for process in processes:
         if process.returncode is None:
             if process.stdin is not None:
@@ -554,7 +582,8 @@ def stop_runners(processes, *, require_clean):
                 error = FixtureError("runner did not stop before the cleanup deadline")
                 break
             time.sleep(0.05)
-    wait_for_worker_exit(owned_children)
+    wait_for_worker_exit({pid: started for process in processes
+                          for pid, started in process.observed_workers.items()})
     if error:
         raise error
     return cpu_seconds
@@ -577,15 +606,14 @@ def take_sample(cluster, engine, namespace, processes, start):
     }
 
 
-def measured_peak_executing(rows, samples):
+def estimated_peak_executing(rows):
     active = peak = 0
-    events = [(stamp, delta) for row in rows
-              for stamp, delta in ((row["claimed_ms"], 1),
-                                   (max(row["claimed_ms"], row["settled_ms"]), -1))]
-    for _, delta in sorted(events, key=lambda event: (event[0], -event[1])):
+    events = [(stamp, delta) for row in rows if row["claimed_ms"] < row["settled_ms"]
+              for stamp, delta in ((row["claimed_ms"], 1), (row["settled_ms"], -1))]
+    for _, delta in sorted(events):
         active += delta
         peak = max(peak, active)
-    return max(peak, max(sample["executing"] for sample in samples))
+    return peak
 
 
 def run_trial(subject, allocation, workload, batches, scratch, evidence, settings, pair):
@@ -620,7 +648,7 @@ def run_trial(subject, allocation, workload, batches, scratch, evidence, setting
         interval = settings["observer_interval_ms"] / 1000
 
         def settled_count(count):
-            if not runner_ready(processes, logs):
+            if not runner_ready(processes, logs, track=False):
                 raise FixtureError("runner readiness lost during observation")
             sample = take_sample(cluster, engine, namespace, processes, start)
             samples.append(sample)
@@ -687,7 +715,8 @@ WHERE engine = '{engine}' AND namespace = '{namespace}'
         "claim_calls_per_job": claim_calls / len(rows),
         "idle_queries_per_minute": idle_calls * 60 / idle_s,
         "cpu_seconds_per_job": cpu / len(rows),
-        "peak_executing": measured_peak_executing(rows, samples),
+        "peak_executing": max(sample["executing"] for sample in samples),
+        "estimated_peak_executing": estimated_peak_executing(rows),
         **{f"peak_{key}": max(sample[key] for sample in samples + idle_samples)
            for key in ("connections", "rss_bytes", "processes", "threads")},
     }
@@ -741,12 +770,12 @@ SELECT json_build_object(
         claim = cluster.claim_identity(engine, namespace, "interrupted")
         if claim is None or claim["state"] != "executing" or claim["attempt"] != 1 or not claim["fence"]:
             raise FixtureError("missing original claim identity at fault barrier")
-        workers = process_tree(process_table(), {process.pid}) - {process.pid}
+        remember_workers([process], process_table())
         os.kill(process.pid, signal.SIGKILL)
         process.wait(timeout=10)
         if process.stdin is not None:
             process.stdin.close()
-        wait_for_worker_exit(workers)
+        wait_for_worker_exit(process.observed_workers)
         gate = scratch / "replacement-gate"
         replacement = subject.run(dict(env, JOBS_PARITY_RETRY_GATE=str(gate)), 1,
                                   evidence / "replacement-runner.log")
@@ -1247,12 +1276,29 @@ user       20  ??   0.0
 other      30  ??   0.0
            30       0.0
 """
-            self.assertEqual(mac_thread_count(report, {10, 20}), 3)
-            self.assertEqual(mac_thread_count(report, {10}), 2)
+            self.assertEqual(mac_thread_counts(report, {10, 20}), {10: 2, 20: 1})
+            self.assertEqual(mac_thread_counts(report, {10, 40}), {10: 2})
 
         def test_peak_executing_includes_jobs_between_observer_samples(self):
             rows = [{"claimed_ms": 101, "settled_ms": 110}, {"claimed_ms": 103, "settled_ms": 109}]
-            self.assertEqual(measured_peak_executing(rows, [{"executing": 0}]), 2)
+            self.assertEqual(estimated_peak_executing(rows), 2)
+            rows[1]["claimed_ms"] = 110
+            rows[1]["settled_ms"] = 120
+            self.assertEqual(estimated_peak_executing(rows), 1)
+
+        def test_cleanup_retains_workers_seen_before_the_runner_exited(self):
+            from unittest.mock import patch
+
+            class ExitedRunner:
+                pid = 10
+                returncode = -9
+                observed_workers = {11: "original start"}
+
+            with patch(__name__ + ".process_table", return_value={}), patch(
+                __name__ + ".wait_for_worker_exit"
+            ) as wait:
+                stop_runners([ExitedRunner()], require_clean=False)
+                wait.assert_called_once_with({11: "original start"})
 
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(DriverChecks)
     return unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful()
