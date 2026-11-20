@@ -16,6 +16,21 @@
     "profiles_reconciled": 32,
     "sparse_smoke_rerun": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-smoke-3djx57kq/result.json"
   },
+  "batch_sparse_pickup_rerun": {
+    "audit": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-load-yr1akd_5/profile-audit.json",
+    "audit_sha256": "7405ffef64c9c60f041d13b1cfad0d61936306fd71de105c2c6b9c895f7160d5",
+    "baseline_revision": "7c1620563614a04a573aef806a6d019a2af4dfe9",
+    "comparison": {
+      "mesh_median": 178.02001953125,
+      "ratio_limit": 1.1,
+      "reference": "baseline",
+      "reference_median": 184.073974609375,
+      "within_limit": true
+    },
+    "harness_revision": "dd7db6d3dbf2422f0b9cd696c47c64e4900ae7aa",
+    "runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+    "summary": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-load-yr1akd_5/sparse-4r-64s/summary.json"
+  },
   "bounded_drain": {
     "budget": {
       "max_median_paired_ratio": 1.1,
@@ -122,6 +137,30 @@
     ],
     "macos_revision": "53fb9189e0dd71e0856f3ca6b5aad2d3bc4a5c8c",
     "transport": "SCRAM with verified TLS"
+  },
+  "faults_with_transaction_scoped_producer": {
+    "case_count": 9,
+    "case_sha256": {
+      "mesh/after_commit/fault.json": "64cd8ccc7674a8372e23a26b758726ea7846b3d9bd191435c3e0a7c0de6483f8",
+      "mesh/before_commit/fault.json": "4ab58a4d480db3d75d62dcf8a3610c3ab0d4e8ed3acea93440ae821aa1f92c52",
+      "mesh/claim-after_command_complete/fault.json": "fd52a5539bd7133acce93f88478f7239f29c2b05d9c05b03234511062228b426",
+      "mesh/claim-after_commit/fault.json": "9569d7ecd9ad478ec9c317cd369dea43e7a284804092400b4d4713efb21fe44a",
+      "mesh/claim-before_commit/fault.json": "640419c7e125d83b357e9b2686a9a69744c6f0b85038c6fb458be95e37f7c3cd",
+      "mesh/fault.json": "cf19469f43be7c84d366023daa2ea5a11d9504859e95c33cd690d9f7f9a69d23",
+      "oban/after_commit/fault.json": "1375446717f3192d26d265fa52032c5f17ddbaeecc4d5ecfc60fa313ae9b1ee4",
+      "oban/before_commit/fault.json": "247cda8a18a1b74ada3248bdd29fa50a4b9b0aa3add8891edecc2a9005c4b682",
+      "oban/fault.json": "39455397424c19e953f89c3737f64b6527ffbe96541a27edc07931eb8e190527"
+    },
+    "harness_revision": "04cce85d8449de29dd5fb88cf2e8d2976514f492",
+    "raw_result": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-fault-gsl0f7y7/result.json",
+    "result": "passed",
+    "runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+    "startup_attempts": {
+      "after_command_complete": 2,
+      "after_commit": 2,
+      "before_commit": 1
+    },
+    "transport": "SCRAM"
   },
   "follow_up_postgresql_17_11": {
     "events_disabled_repeat": {
@@ -565,6 +604,29 @@
     "transport": "SCRAM with verified TLS",
     "worst_disconnected_pickup_ms": 871.87890625
   },
+  "listener_outage_with_transaction_scoped_producer": {
+    "comparison": {
+      "fallback_pickup_max_ms": {
+        "limit": 2000,
+        "observed": 971.154052734375,
+        "within_limit": true
+      },
+      "listener_claim_p99_ms": {
+        "limit": 100,
+        "observed": 4.373046875,
+        "within_limit": true
+      }
+    },
+    "fallback_interval_ms": 1000,
+    "harness_revision": "04cce85d8449de29dd5fb88cf2e8d2976514f492",
+    "jobs_per_trial": 24,
+    "pairs": 5,
+    "raw_result": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-listener-outage-pimfhn_y/result.json",
+    "raw_summary": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-listener-outage-pimfhn_y/sparse-1r-16s/summary.json",
+    "runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+    "summary_sha256": "a45d12b5b8fe0c236acd4b1a5e27f9c6113b6bf41b03e984dd14a189accffca5",
+    "transport": "SCRAM with verified TLS"
+  },
   "local_platforms": [
     "macOS arm64",
     "Linux arm64 container"
@@ -822,6 +884,25 @@
     "runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
     "verdict": "diagnostic"
   },
+  "maintenance_quiet_release_rerun": {
+    "arms": 3,
+    "claim_gap_limit_ms": 500,
+    "dispatch_p99_candidate_over_main_max": 0.9378193550712042,
+    "dispatch_p99_candidate_over_main_min": 0.9269094607718299,
+    "dispatch_p99_ratio_limit": 1.15,
+    "manifest": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/maintenance-quiet-repeat/manifest.json",
+    "manifest_sha256": "69cb8037f8f59dbb134f3b4268a742840a227773791b37b653e6e0b0656678f2",
+    "max_script_claim_gap_ms": 115,
+    "minimum_dispatch_samples": 132,
+    "page_size": 16,
+    "peak_one_minute_load_per_cpu": 0.39059244791666664,
+    "quiet_load_per_cpu_limit": 0.75,
+    "raw_receipt": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/maintenance-quiet-repeat/summary.json",
+    "rounds": 5,
+    "runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+    "summary_sha256": "083575605fecdb3919b596de9b2d684cb020c48e724dc933a0f5f470b766012f",
+    "verdict": "pass"
+  },
   "matched_oban_matrix": {
     "budget_breach_count": 64,
     "collection_result": "passed",
@@ -861,8 +942,7 @@
   "open_gates": [
     "Oban throughput and pickup budgets in the matched matrix",
     "one-slot Oban process budget",
-    "batch sparse pickup budget against pinned main",
-    "quiet maintenance qualification",
+    "batch sparse pickup variance between the full matrix and the targeted rerun",
     "historical reference reruns with the corrected harness",
     "hosted Linux x64 proof"
   ],

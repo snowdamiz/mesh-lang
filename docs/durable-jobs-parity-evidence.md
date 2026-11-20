@@ -226,6 +226,10 @@ over verified TLS. The worst healthy trial commit-to-claim p99 was
 13.3 ms. The slowest disconnected pickup was 871.9 ms. Each trial
 reconciled 24 jobs, and each disconnected runner kept its original
 database sessions apart from the interrupted listener. [Listener outage receipt](../proof/jobs-parity/qualification-v1.json)
+
+The rerun with transaction-scoped producer connections also passed all
+five pairs. The worst healthy trial claim p99 was 4.4 ms. The slowest
+disconnected pickup was 971.2 ms. [Rerun receipt](../proof/jobs-parity/qualification-v1.json)
 Check `result.json` for budget breaches.
 
 ## Measure runner telemetry
@@ -386,6 +390,12 @@ p99 ranged from 0.920 to 0.953 times main. The largest observed claim gap
 was 120 ms against a 500 ms budget. All rounds met the measured limits.
 The host peaked at 0.812 one-minute load per logical CPU against the 0.75
 quiet-host limit, so the receipt records a diagnostic verdict. [Maintenance receipt](../proof/jobs-parity/qualification-v1.json)
+
+The five-round quiet rerun peaked at 0.391 one-minute load per logical CPU
+and passed. Dispatch p99 ranged from 0.927 to 0.938 times main. The largest
+claim gap around a scripted reindex was 115 ms. Claims bracketed the
+reindex statements. The compiled scoped-role proof separately observed
+settlement during a rebuild. [Rerun receipt](../proof/jobs-parity/qualification-v1.json)
 
 ## Exercise primary promotion
 
@@ -641,6 +651,11 @@ short-profile claim-call misses persisted in the full matrix. Sparse pickup
 p99 with four runners and 64 slots was 241.2 ms on the candidate and
 205.5 ms on main, above the 1.10 ratio limit. The run started at a one-minute
 host load of 13.2 and reached 32.6 on 15 logical CPUs. [Matrix receipt](../proof/jobs-parity/j7-lane-1.log)
+
+The targeted rerun of sparse four-runner, 64-slot pickup used the revised
+producer fixture for both runtimes. It reconciled all 120 jobs per runtime
+and measured 178.0 ms p99 on the candidate and 184.1 ms on main. Both results
+are recorded because the producer and host conditions differed. [Rerun receipt](../proof/jobs-parity/qualification-v1.json)
 
 The follow-up verifier used the same runtime sources and passed 45 Jobs
 runtime tests and both compiled suites on PostgreSQL 17.11, 18.7, and 19.0.

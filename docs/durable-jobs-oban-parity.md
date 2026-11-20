@@ -373,10 +373,10 @@ OS spawn call and a gate at the existing native worker-start marker.
 
 **Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] Metric. Dispatch p99 under maintenance, backlog catch-up time, and administration transaction time.
-- [ ] Probe. Interleave J1 traffic with equal prune and recovery pages. Measure reindex against native PostgreSQL concurrent reindex under the same traffic.
-- [ ] Baseline. Record current staging and pruning costs and the database-only reindex control.
-- [ ] Rule. Require dispatch p99 no worse than 1.15 times main during comparable maintenance. Keep work within configured page bounds and fail a reindex that stalls ordinary claims for more than two fallback polls.
+- [x] Metric. The five-round release receipt includes dispatch p99, backlog catch-up, and administration statement and wall times. [Maintenance measurement](durable-jobs-parity-evidence.md#compare-maintenance-under-load)
+- [x] Probe. The three arms alternate order and use equal 16-row prune, recovery, and staging pages under the same J1 traffic. [Maintenance receipt](../proof/jobs-parity/qualification-v1.json)
+- [x] Baseline. Pinned main and the candidate each run native PostgreSQL concurrent reindex as a control for the scripted candidate arm. [Maintenance receipt](../proof/jobs-parity/qualification-v1.json)
+- [x] Rule. In five quiet release rounds, dispatch p99 was at most 0.938 times main. Pages stayed within their bounds, and the largest bracketing claim gap was 115 ms against 500 ms. [Maintenance receipt](../proof/jobs-parity/qualification-v1.json)
 
 **Review gate.** None. This phase has no graphical interaction. Independent review uses the CLI receipts and database proof.
 
@@ -396,7 +396,7 @@ OS spawn call and a gate at the existing native worker-start marker.
 **Build.**
 
 - [ ] Run database-backed correctness on PostgreSQL 17, 18.7, and 19.0. Record the exact 17 patch version and keep the minimum-version policy separate from the tested list. Run real compiled timeout, child-death, join, and recovery tests on each platform advertised for durable Jobs. Record platform boundaries explicitly.
-- [ ] Pressure-test delivery under worker and coordinator death, row locks, network partitions, primary failover, and exhausted pools. Preserve the at-least-once contract, token fences and idempotency keys. Document that remote effects can commit after worker termination and that whole-host or worker suspension has a different boundary from blocking native I/O.
+- [x] The proofs cover worker and runner death, row locks, connection loss, primary failover, and pool exhaustion. The Jobs reference describes process termination, host suspension, and the need for downstream idempotency when an accepted request can finish after the attempt exits. [Compiled proofs](durable-jobs-parity-evidence.md#compiled-lane-receipts) · [Jobs reference](../website/docs/docs/concurrency/index.md#durable-jobs)
 - [x] Replay the upgrade with preexisting scheduled and retryable jobs, old and new worker binaries, scoped grants, and default function execution revoked. Demonstrate rollback to the old runner without dropping rows or removing additive SQL.
 - [x] The feature matrix and workload measurements record tested behavior, platform scope, and performance misses. The broad PostgreSQL Core claim awaits the remaining gates. [Evidence guide](durable-jobs-parity-evidence.md)
 
