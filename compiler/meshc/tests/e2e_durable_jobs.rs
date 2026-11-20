@@ -36,6 +36,14 @@ const WAIT: Duration = Duration::from_secs(30);
 const COMMITTED: &str =
     r#"{"worker":"proof","args":{"label":"committed"},"request_key":"commit-once"}"#;
 
+fn lock_proof_database() -> std::sync::MutexGuard<'static, ()> {
+    static DATABASE_PROOF: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    // Migrations and test triggers take DDL locks across the shared Jobs schema.
+    DATABASE_PROOF
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 #[test]
 fn durable_jobs_survive_process_boundaries() {
     let compiler = artifacts::meshc_bin();
@@ -52,8 +60,10 @@ fn durable_jobs_survive_process_boundaries() {
         !url.is_empty(),
         "MESH_TEST_DATABASE_URL must name a dedicated test database"
     );
+    let _database = lock_proof_database();
     let proof = Proof::new(&url, binary, temp.path());
-    proof.migrate_shared_database();
+    proof.run("migrate", "");
+    proof.run("migrate", "");
     prove_transaction_and_restart(&proof);
     prove_competing_processes(&proof);
     prove_batch_admission(&proof);
@@ -1753,15 +1763,6 @@ impl<'a> Proof<'a> {
     fn sql(&self, sql: &str) -> String {
         self.sql_result(sql)
             .unwrap_or_else(|error| panic!("{error}"))
-    }
-
-    fn migrate_shared_database(&self) {
-        static MIGRATIONS: std::sync::Once = std::sync::Once::new();
-        // Both suites share mesh_jobs DDL and use distinct namespaces for DML.
-        MIGRATIONS.call_once(|| {
-            self.run("migrate", "");
-            self.run("migrate", "");
-        });
     }
 
     fn job(&self, label: &str) -> Value {

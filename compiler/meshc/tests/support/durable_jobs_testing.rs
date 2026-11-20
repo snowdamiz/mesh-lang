@@ -81,8 +81,9 @@ end
     }
 
     let binary = project.join("jobs-testing");
+    let _database = lock_proof_database();
     let proof = Proof::new(&url, binary.clone(), temp.path());
-    proof.migrate_shared_database();
+    proof.run("migrate", "");
     let other = Proof::new(&url, binary, temp.path());
     let left = proof.namespace.as_str();
     let right = other.namespace.as_str();
