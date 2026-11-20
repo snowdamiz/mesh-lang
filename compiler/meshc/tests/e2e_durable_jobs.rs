@@ -11,6 +11,8 @@
 mod artifacts;
 #[path = "support/jobs_pool_outage.rs"]
 mod pool_outage;
+#[path = "support/jobs_queue_rotation.rs"]
+mod queue_rotation;
 #[path = "support/jobs_wakeups.rs"]
 mod wakeups;
 
@@ -54,6 +56,7 @@ fn durable_jobs_survive_process_boundaries() {
     prove_transaction_and_restart(&proof);
     prove_competing_processes(&proof);
     prove_batch_admission(&proof);
+    queue_rotation::prove(&proof);
     prove_local_controls(&proof, false);
     prove_local_controls(&proof, true);
     println!("J6 local queue controls passed with single and batch claims");

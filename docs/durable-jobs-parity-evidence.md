@@ -33,6 +33,22 @@ and a committed effect before terminating the runner, then checks recovery
 from a separate database connection. Mesh recovers by lease expiry. Oban
 uses its Core Lifeline recovery policy.
 
+To capture J2 lane 10, run the verifier on a disposable database and save
+`j2-lane-10.log`.
+
+```bash
+set -o pipefail
+env -u MESH_TEST_DATABASE_URL bash scripts/verify-postgres-jobs.sh 2>&1 | tee j2-lane-10.log
+```
+
+Look for `J2 lane 10 passed` and a successful verifier exit. The proof holds
+the first 16 busy claims in a PostgreSQL transaction until the sparse job
+becomes due. The busy queue has one free slot after that transaction commits.
+PostgreSQL must record the sparse admission before the next busy admission,
+with three due busy jobs unclaimed throughout. The compiled runner must
+start and settle every admitted job on attempt one. This lane covers one
+poll-only batch runner with fixed queue limits. Live proof is pending.
+
 The compiled process proof also includes J7 lane 8. On a schedulable host,
 run the verifier with its disposable loopback database and capture the
 `J7 lane 8 passed` line in `j7-lane-8.log`. The lane holds the runner's sole
