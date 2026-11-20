@@ -345,18 +345,25 @@ fn prove_bounded_launch_failure(proof: &Proof) {
     let receipt = proof.enqueue(json!({
         "worker":"proof", "queue":queue, "args":{"label":queue}, "max_attempts":1
     }));
-    let mut payload = bounded_payload(proof, queue, json!({"max_jobs":1,"recursive":true}));
+    let mut payload = bounded_payload(
+        proof,
+        queue,
+        json!({"max_jobs":1,"recursive":true,"on_error":"continue"}),
+    );
     payload["config"]["lease_ms"] = json!(8000);
     let request = payload.to_string();
     let (barrier, blocker) = proof.hold_claim(&receipt);
-    let mut child = start_drain(proof, &request);
+    let mut child = Some(start_drain(proof, &request));
     eventually(
         "the bounded drain claim to reach the launch barrier",
         || {
-            assert!(
-                child.try_wait().unwrap().is_none(),
-                "drain caller exited early"
-            );
+            if child.as_mut().unwrap().try_wait().unwrap().is_some() {
+                let output = child.take().unwrap().wait_with_output().unwrap();
+                panic!(
+                    "drain caller exited before the claim barrier: {}",
+                    artifacts::command_output_text(&output)
+                );
+            }
             proof.claim_is_waiting(blocker).then_some(())
         },
     );
@@ -367,7 +374,7 @@ fn prove_bounded_launch_failure(proof: &Proof) {
     )
     .unwrap();
     native_pg_close(barrier);
-    let output = artifacts::wait_with_timeout(child, WAIT);
+    let output = artifacts::wait_with_timeout(child.unwrap(), WAIT);
     fs::set_permissions(&proof.binary, permissions).unwrap();
     let error = drain_error(output.unwrap());
     assert!(
@@ -416,7 +423,11 @@ fn prove_bounded_unconfirmed_settlement(proof: &Proof) {
         quoted_ns = quoted(&proof.namespace),
         id = quoted(id(&receipt)),
     ));
-    let mut payload = bounded_payload(proof, queue, json!({"max_jobs":1,"recursive":true}));
+    let mut payload = bounded_payload(
+        proof,
+        queue,
+        json!({"max_jobs":1,"recursive":true,"on_error":"continue"}),
+    );
     payload["config"]["event_log"] = json!(true);
     let request = payload.to_string();
     let child = start_drain(proof, &request);
