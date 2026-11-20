@@ -1806,6 +1806,53 @@ pub(super) fn pg_text_query(
     sql: &str,
     params: &[&str],
 ) -> Result<Vec<Vec<(String, String)>>, String> {
+    text_query(conn, sql, params).map_err(Failure::message)
+}
+
+#[derive(Debug)]
+pub(crate) enum JobsAckError {
+    Rejected(String),
+    Unconfirmed(String),
+}
+
+impl JobsAckError {
+    #[cfg(test)]
+    pub(crate) fn message(self) -> String {
+        match self {
+            Self::Rejected(message) | Self::Unconfirmed(message) => message,
+        }
+    }
+}
+
+pub(super) fn pg_jobs_ack(
+    conn: &mut PgConn,
+    sql: &str,
+    params: &[&str],
+) -> Result<Vec<Vec<(String, String)>>, JobsAckError> {
+    let rows = text_query(conn, sql, params).map_err(|failure| match failure {
+        // request() returns a server error only after reading ReadyForQuery.
+        Failure::Server(error)
+            if error.sqlstate.len() == 5
+                && !error.sqlstate.starts_with("08")
+                && error.sqlstate != "40003" =>
+        {
+            JobsAckError::Rejected(error.message)
+        }
+        failure => JobsAckError::Unconfirmed(failure.message()),
+    })?;
+    if conn.txn_status != b'I' {
+        return Err(JobsAckError::Unconfirmed(
+            "Jobs acknowledgement did not end on an idle PostgreSQL connection".into(),
+        ));
+    }
+    Ok(rows)
+}
+
+fn text_query(
+    conn: &mut PgConn,
+    sql: &str,
+    params: &[&str],
+) -> Result<Vec<Vec<(String, String)>>, Failure> {
     query(
         conn,
         sql,
@@ -1819,7 +1866,6 @@ pub(super) fn pg_text_query(
                 .collect())
         },
     )
-    .map_err(Failure::message)
 }
 
 /// Close a native PG connection.
@@ -2604,6 +2650,48 @@ mod tests {
             }
         }
         body
+    }
+
+    #[test]
+    fn jobs_ack_needs_the_completed_autocommit_response() {
+        let success = [
+            message(b'T', &row_description(&[("state", 25, 0)])),
+            message(b'D', &data_row(&[Some(b"completed")])),
+            message(b'C', b"SELECT 1\0"),
+        ]
+        .concat();
+        let rejected = message(b'E', b"SERROR\0C55P03\0Mrow locked\0\0");
+        let unknown = message(b'E', b"SERROR\0C40003\0Mcompletion unknown\0\0");
+        for (reply, expected) in [
+            ([success.clone(), ready(b'I')].concat(), "confirmed"),
+            (success.clone(), "uncertain"),
+            ([success, ready(b'T')].concat(), "uncertain"),
+            ([rejected.clone(), ready(b'I')].concat(), "rejected"),
+            (rejected, "uncertain"),
+            ([unknown, ready(b'I')].concat(), "uncertain"),
+        ] {
+            let (url, peer) = wire_peer("sslmode=disable", move |mut socket| {
+                read_startup(&mut socket);
+                socket
+                    .write_all(&[auth(0, b""), ready(b'I')].concat())
+                    .unwrap();
+                let mut stream = PgStream::Plain(socket);
+                while read_message(&mut stream).unwrap().0 != b'S' {}
+                stream.write_all(&reply).unwrap();
+            });
+            let mut conn = connect(&url).unwrap();
+            conn.set_read_timeout(Some(Duration::from_secs(5)));
+            let result = pg_jobs_ack(&mut conn, "SELECT mesh_jobs.settle_state()", &[]);
+            peer.join().unwrap();
+            match (result, expected) {
+                (Ok(rows), "confirmed") => assert_eq!(rows[0][0].1, "completed"),
+                (Err(JobsAckError::Rejected(message)), "rejected") => {
+                    assert_eq!(message, "row locked");
+                }
+                (Err(JobsAckError::Unconfirmed(_)), "uncertain") => {}
+                (result, _) => panic!("expected {expected}, got {result:?}"),
+            }
+        }
     }
 
     fn column(name: &str, oid: u32, binary: bool) -> PgColumn {

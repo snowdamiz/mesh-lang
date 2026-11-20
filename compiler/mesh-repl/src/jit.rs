@@ -37,6 +37,7 @@ extern "C" {
     fn mesh_jobs_stop(runner: i64, grace_ms: i64) -> *mut MeshResult;
     fn mesh_jobs_join(runner: i64) -> *mut MeshResult;
     fn mesh_jobs_status(runner: i64) -> *mut MeshResult;
+    fn mesh_jobs_read_events(runner: i64, limit: i64) -> *mut MeshResult;
 }
 
 extern "C" fn repl_jobs_start(
@@ -1150,6 +1151,7 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
         ("mesh_jobs_stop", mesh_jobs_stop as *const ()),
         ("mesh_jobs_join", mesh_jobs_join as *const ()),
         ("mesh_jobs_status", mesh_jobs_status as *const ()),
+        ("mesh_jobs_read_events", mesh_jobs_read_events as *const ()),
         (
             "mesh_json_array_get",
             mesh_rt::json::mesh_json_array_get as *const (),

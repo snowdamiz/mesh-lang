@@ -66,6 +66,7 @@ fn durable_jobs_survive_process_boundaries() {
     prove_busy_batch_connection_keeps_lease(&proof);
     prove_crash_and_stale_ack(&proof);
     prove_retry_and_exhaustion(&proof);
+    prove_events(&proof);
     prove_native_timeout(&proof);
     prove_native_lease_loss(&proof);
     prove_locked_job_does_not_stall_runner(&proof);
@@ -99,6 +100,9 @@ fn prove_transaction_and_restart(proof: &Proof) {
     assert_eq!(listed[0]["attempt"], 0);
 
     let mut worker = proof.worker("after-restart", false);
+    let ready: Value =
+        serde_json::from_slice(&fs::read(worker.markers.join("ready")).unwrap()).unwrap();
+    assert!(ready.get("events_dropped").is_none(), "{ready}");
     proof.wait_state("committed", "completed");
     let finished = proof.control(json!({"action": "get", "id": id(&committed)}));
     assert_eq!(finished["state"], "completed");
@@ -110,6 +114,126 @@ fn prove_transaction_and_restart(proof: &Proof) {
     assert_eq!(effects.len(), 1);
     assert_context(&effects[0], &committed, "committed", 1);
     assert_eq!(effects[0]["process"], "after-restart");
+}
+
+fn prove_events(proof: &Proof) {
+    let mut worker = proof.worker_with_config(
+        "events",
+        true,
+        json!({
+            "namespace": proof.namespace,
+            "queues": {"default": 1},
+            "workers": [{"worker": "proof", "version": 1}],
+            "lease_ms": 30000,
+            "poll_ms": 25,
+            "shutdown_grace_ms": 8000,
+            "claim_batch": true,
+            "event_buffer": 128,
+            "event_log": true,
+        }),
+    );
+    let label = "event-sensitive-argument";
+    let metadata = "event-sensitive-metadata";
+    let completed = proof.enqueue(json!({
+        "worker": "proof", "args": {"label": label}, "metadata": {"secret": metadata},
+    }));
+    let started = worker.wait_event("attempt_started", &completed);
+    assert_eq!(started["version"], 1);
+    assert_eq!(started["attempt"]["attempt_number"], 1);
+    assert!(started["attempt"]["queue_wait_ms"].is_number(), "{started}");
+    proof.wait_effects(label, 1);
+    assert_eq!(proof.job(label)["state"], "executing");
+    assert!(worker
+        .events()
+        .iter()
+        .all(|event| event["event"] != "settlement_committed"));
+    let lease = proof.lease(id(&completed));
+    worker.release();
+    let settlement = worker.wait_event("settlement_committed", &completed);
+    let durable = proof.job(label);
+    assert_eq!(durable["state"], "completed");
+    assert_eq!(settlement["settlement"], "completed");
+    assert_eq!(settlement["attempt"], started["attempt"]);
+    assert!(
+        settlement["handler_duration_ms"].is_number(),
+        "{settlement}"
+    );
+
+    let exhausted = proof.enqueue(json!({
+        "worker": "proof", "args": {"label": "event-exhaustion"}, "max_attempts": 1,
+    }));
+    let settlement = worker.wait_event("settlement_committed", &exhausted);
+    assert_eq!(settlement["settlement"], "discarded");
+    assert_eq!(settlement["failure_kind"], "handler_failure");
+    assert_eq!(proof.job("event-exhaustion")["state"], "discarded");
+
+    fs::remove_file(worker.markers.join("gate")).unwrap();
+    let cancelled = proof.enqueue(spec("event-cancel"));
+    proof.wait_effects("event-cancel", 1);
+    let mut cancellation = proof.lock_job(&cancelled);
+    let rows = native_pg_query(
+        &mut cancellation,
+        "SELECT mesh_jobs.job_control($1, $2::uuid, 'cancel', NULL, NULL)::text",
+        &[&proof.namespace, id(&cancelled)],
+    )
+    .unwrap();
+    let request: Value = serde_json::from_str(&rows[0][0].1).unwrap();
+    assert_eq!(request["state"], "executing");
+    worker.release();
+    eventually(
+        "acknowledgement rejected while the cancellation holds the row",
+        || {
+            let events = worker.events();
+            assert!(events
+                .iter()
+                .all(|event| event["event"] != "settlement_committed"
+                    || event["attempt"]["job_id"] != id(&cancelled)));
+            events.into_iter().find(|event| {
+                event["event"] == "storage_failure"
+                    && event["operation"] == "acknowledge"
+                    && event["attempt"]["job_id"] == id(&cancelled)
+            })
+        },
+    );
+    native_pg_execute(&mut cancellation, "COMMIT", &[]).unwrap();
+    native_pg_close(cancellation);
+    let settlement = worker.wait_event("settlement_committed", &cancelled);
+    assert_eq!(settlement["settlement"], "cancelled");
+    assert!(settlement["submission"].as_u64().unwrap() > 1);
+    assert_eq!(settlement["failure_kind"], Value::Null);
+    assert_eq!(proof.job("event-cancel")["state"], "cancelled");
+
+    // The stderr stream and the independent reader receive the same envelope.
+    eventually("opt-in JSON settlement log", || {
+        worker
+            .log()
+            .lines()
+            .any(|line| {
+                serde_json::from_str::<Value>(line).is_ok_and(|event| {
+                    event["event"] == "settlement_committed"
+                        && event["attempt"]["job_id"] == id(&completed)
+                        && event["settlement"] == "completed"
+                })
+            })
+            .then_some(())
+    });
+    worker.signal();
+    let report = worker.join();
+    assert_eq!(report["events_dropped"], 0);
+    assert_eq!(report["event_logs_dropped"], 0);
+    let batches = worker.event_batches();
+    assert_eq!(batches.last().unwrap()["closed"], true);
+    assert_eq!(worker.events().last().unwrap()["event"], "runner_stopped");
+    let readback = fs::read_to_string(worker.markers.join("events")).unwrap();
+    for private in [
+        label,
+        metadata,
+        &lease.token,
+        "proof worker requested a retry",
+    ] {
+        assert!(!readback.contains(private), "{readback}");
+        assert!(!worker.log().contains(private));
+    }
 }
 
 fn prove_competing_processes(proof: &Proof) {
@@ -832,7 +956,8 @@ impl<'a> Proof<'a> {
             .env("MESH_JOBS_PROOF_NAMESPACE", &self.namespace)
             .env("MESH_JOBS_PROOF_COMMAND", operation)
             .env("MESH_JOBS_PROOF_PAYLOAD", payload)
-            .env_remove("MESH_JOBS_PROOF_GATE");
+            .env_remove("MESH_JOBS_PROOF_GATE")
+            .env_remove("MESH_JOBS_PROOF_EVENTS");
         command
     }
 
@@ -913,6 +1038,9 @@ impl<'a> Proof<'a> {
             .env("MESH_JOBS_PROOF_MARKERS", &markers)
             .stdout(output.try_clone().unwrap())
             .stderr(output);
+        if config["event_buffer"].is_number() {
+            command.env("MESH_JOBS_PROOF_EVENTS", "true");
+        }
         if blocked {
             command.env("MESH_JOBS_PROOF_GATE", markers.join("gate"));
         }
@@ -975,6 +1103,29 @@ impl Worker {
         fs::read_to_string(self.markers.join("output")).unwrap_or_default()
     }
 
+    fn event_batches(&self) -> Vec<Value> {
+        fs::read_to_string(self.markers.join("events"))
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|line| serde_json::from_str(line).ok())
+            .collect()
+    }
+
+    fn events(&self) -> Vec<Value> {
+        self.event_batches()
+            .into_iter()
+            .flat_map(|mut batch| batch["events"].take().as_array().cloned().unwrap())
+            .collect()
+    }
+
+    fn wait_event(&self, kind: &str, receipt: &Value) -> Value {
+        eventually(kind, || {
+            self.events()
+                .into_iter()
+                .find(|event| event["event"] == kind && event["attempt"]["job_id"] == id(receipt))
+        })
+    }
+
     fn assert_running(&mut self) {
         if let Some(status) = self.child.as_mut().unwrap().try_wait().unwrap() {
             panic!(
@@ -1027,9 +1178,11 @@ impl Worker {
             "worker {:?} failed ({status}):\n{log}",
             self.markers
         );
-        serde_json::from_str(log.lines().last().unwrap_or_default()).unwrap_or_else(|error| {
-            panic!("worker did not print a JSON shutdown report ({error}):\n{log}")
-        })
+        log.lines()
+            .rev()
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .find(|value| value.get("state").is_some())
+            .unwrap_or_else(|| panic!("worker did not print a JSON shutdown report:\n{log}"))
     }
 
     fn stop(&mut self) {

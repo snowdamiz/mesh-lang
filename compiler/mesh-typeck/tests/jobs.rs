@@ -24,6 +24,7 @@ fn control(pool :: PoolHandle) -> Result<String, String> do Jobs.control(pool, "
 fn stop(runner :: Int) -> Result<String, String> do Jobs.stop(runner, 100) end
 fn join(runner :: Int) -> Result<String, String> do Jobs.join(runner) end
 fn status(runner :: Int) -> Result<String, String> do Jobs.status(runner) end
+fn events(runner :: Int) -> Result<String, String> do Jobs.read_events(runner, 32) end
 "#,
     );
     assert!(result.errors.is_empty(), "{:?}", result.errors);

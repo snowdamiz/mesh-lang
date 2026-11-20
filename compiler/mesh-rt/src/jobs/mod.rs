@@ -1,9 +1,11 @@
 mod cron;
+mod events;
 mod runner;
 mod store;
 mod worker;
 
 use crate::db::jobs_connection::{self, PgJobDb};
+use crate::db::pg::JobsAckError;
 use crate::io::{alloc_result, err_result, ok_int, MeshResult};
 use crate::string::{mesh_str, text_of, MeshString};
 
@@ -14,6 +16,14 @@ impl store::Database for PgJobDb<'_> {
 
     fn simple(&mut self, sql: &str) -> Result<(), String> {
         PgJobDb::simple(self, sql)
+    }
+
+    fn acknowledge(
+        &mut self,
+        sql: &str,
+        params: &[&str],
+    ) -> Result<Vec<Vec<(String, String)>>, JobsAckError> {
+        PgJobDb::acknowledge(self, sql, params)
     }
 
     fn in_transaction(&self) -> bool {
@@ -140,4 +150,12 @@ pub extern "C" fn mesh_jobs_status(runner: i64) -> *mut MeshResult {
         return err_result("invalid Jobs runner");
     }
     text_result(runner::status(runner as u64))
+}
+
+#[no_mangle]
+pub extern "C" fn mesh_jobs_read_events(runner: i64, limit: i64) -> *mut MeshResult {
+    if runner <= 0 {
+        return err_result("invalid Jobs runner");
+    }
+    text_result(runner::read_events(runner as u64, limit))
 }

@@ -507,6 +507,7 @@ If your database revokes default function access, grant the worker role `EXECUTE
 | `Jobs.enqueue_in(conn, namespace, spec)` | Enqueue on a borrowed `PgConn` in its active transaction |
 | `Jobs.start(pool, config, handler)` | Start a runner and return its handle |
 | `Jobs.status(runner)` | Read the local runner state as JSON |
+| `Jobs.read_events(runner, limit)` | Read and remove up to `limit` events from an enabled runner buffer |
 | `Jobs.stop(runner, grace_ms)` | Request shutdown and report the runner status when the runner stops or the grace period ends |
 | `Jobs.join(runner)` | Wait for the runner to stop and return its final status |
 | `Jobs.control(pool, namespace, request)` | Inspect jobs and control queues with a JSON operation |
@@ -589,6 +590,29 @@ On `SIGTERM` or `Jobs.stop`, the runner stops claiming new work and tries to fin
 `Jobs.status`, `Jobs.join`, and `Jobs.stop` report cumulative settlement counts for that runner in `outcomes`. The fields are `completed`, `cancelled`, `discarded`, `retryable`, `scheduled`, and `released_unstarted`. Each count reflects writes PostgreSQL confirmed to the runner. Their sum is `finished`. The top-level `scheduled` counts cron jobs enqueued. `stale_acks` counts acknowledgements that applied no write, and `recovered` counts expired attempts handled by this runner's recovery loop.
 
 Use a writable PostgreSQL primary with durable commits (`synchronous_commit = on` or stronger) and enough pool connections for handlers, application transactions, and runner I/O. Durability during primary failure depends on the database's storage, replication, and failover configuration. Schedules and lease expiration use the primary's clock.
+
+### Read runner events
+
+Set `event_buffer` in the runner config to a capacity between 1 and 1024 to enable the reader. Set `event_log: true` to stream the same events as JSON lines on standard error. Both options default to disabled and work independently.
+
+`Jobs.read_events(runner, limit)` returns `Result<String, String>`. The JSON result has an `events` array, a cumulative `dropped` count, and a `closed` flag. Use a limit between 1 and 128. Each call removes the events it returns from the runner's shared buffer. An empty batch with `closed: false` means you can poll again later. After the runner stops and you drain the buffer, the reader returns `closed: true`. Calls return an error for an unknown runner or a disabled reader.
+
+Each event has `version: 1`, `runner_id`, an `event` name, and `observed_at_ms` from the runner's clock. Attempt events include an `attempt` object with the job ID, an opaque attempt ID, the attempt number, and timing. The same attempt ID identifies every event for one claim. It changes on a new claim, even when a snooze preserves the attempt number. `queue_wait_ms` is the time from the scheduled time to the claim observation, measured on PostgreSQL's clock. `handler_duration_ms` measures elapsed time from local launch to observation of the worker result or termination. Unavailable timings are JSON `null`.
+
+| Event | Meaning |
+| --- | --- |
+| `runner_started`, `runner_stopped` | The local dispatcher started or finished its work. |
+| `attempt_started` | PostgreSQL confirmed the claim and the runner launched a worker. |
+| `settlement_committed` | PostgreSQL confirmed the new disposition. A retry at exhaustion reports `discarded`, and a committed operator cancellation takes precedence over a handler outcome. |
+| `lease_lost` | The local lease deadline elapsed or the database reported that the runner no longer owned the lease. |
+| `ack_stale` | PostgreSQL confirmed that this acknowledgement applied no write. |
+| `ack_uncertain` | The runner could not confirm the result of this acknowledgement. A subsequent retry uses the same lease token. A stale reply to that retry leaves the earlier result unknown to the runner. |
+| `storage_failure` | A storage operation failed. The event includes an operation name with a fixed set of possible values. |
+| `maintenance` | PostgreSQL confirmed a positive count from `recover`, `cron`, or `prune`. The count uses the same definition as the corresponding runner status field. |
+
+Acknowledgement events include a `submission` number, `handler_duration_ms`, and a nullable `failure_kind` that describes the local outcome. The failure kinds are `handler_failure`, `invalid_outcome`, `worker_failure`, `timeout`, `shutdown`, and `lease_lost`. Events omit arguments, metadata, credentials, lease tokens, and raw error text. Keep job IDs and attempt IDs out of metric labels.
+
+Each sink drops new events when its buffer is full. The JSON logger buffers up to 128 events per runner plus the write in progress, and each process supports up to 16 active logger threads. Runner status includes `events_dropped` and `event_logs_dropped` when either option is enabled. The logger counts events lost to a write failure and events skipped after that failure. Its counter can advance after `Jobs.join` returns. The runner never waits for either sink. An overflowing sink can miss the final event, and process exit can interrupt pending log writes.
 
 ### Inspect and operate queues
 

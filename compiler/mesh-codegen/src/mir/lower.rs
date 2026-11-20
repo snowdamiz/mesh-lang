@@ -4841,6 +4841,7 @@ impl<'a> Lowerer<'a> {
             ("mesh_jobs_stop", vec![MirType::Int, MirType::Int]),
             ("mesh_jobs_join", vec![MirType::Int]),
             ("mesh_jobs_status", vec![MirType::Int]),
+            ("mesh_jobs_read_events", vec![MirType::Int, MirType::Int]),
         ] {
             self.known_functions.insert(
                 name.to_string(),
@@ -15053,6 +15054,7 @@ fn map_builtin_name(name: &str) -> String {
         "jobs_stop" => "mesh_jobs_stop".to_string(),
         "jobs_join" => "mesh_jobs_join".to_string(),
         "jobs_status" => "mesh_jobs_status".to_string(),
+        "jobs_read_events" => "mesh_jobs_read_events".to_string(),
         // ── Math/Int/Float functions (Phase 43 Plan 01) ─────────────────
         "math_abs" => "mesh_math_abs".to_string(),
         "math_min" => "mesh_math_min".to_string(),

@@ -75,7 +75,7 @@ fn record_effect(context :: String) -> String!String do
   end
   if label == "poison" do
     Ok("""{"action":"fail","reason":"proof worker rejected poison"}""")
-  else if label == "retry" && attempt == 1 do
+  else if (label == "retry" || label == "event-exhaustion") && attempt == 1 do
     Ok("""{"action":"retry_after","delay_ms":400,"reason":"proof worker requested a retry"}""")
   else
     Ok("""{"action":"complete"}""")
@@ -95,10 +95,15 @@ fn serve(pool :: PoolHandle, config :: String) -> String!String do
   Process.install_shutdown_signals()
   let runner = Jobs.start(pool, config, handle)?
   let markers = Env.get("MESH_JOBS_PROOF_MARKERS", "")
+  let capture_events = Env.get("MESH_JOBS_PROOF_EVENTS", "") == "true"
   let status = Jobs.status(runner)?
   let _ = File.write(markers <> "/ready", status)?
   while !Process.shutdown_requested() do
     let _ = File.write(markers <> "/status", Jobs.status(runner)?)?
+    if capture_events do
+      let batch = Jobs.read_events(runner, 128)?
+      File.append(markers <> "/events", batch <> "\n")?
+    end
     Timer.sleep(10)
   end
   let _ = File.write(markers <> "/signal", "received")?
@@ -106,6 +111,10 @@ fn serve(pool :: PoolHandle, config :: String) -> String!String do
   let stopping = Jobs.stop(runner, grace)?
   let _ = File.write(markers <> "/stop", stopping)?
   let joined = Jobs.join(runner)?
+  if capture_events do
+    let batch = Jobs.read_events(runner, 128)?
+    File.append(markers <> "/events", batch <> "\n")?
+  end
   let _ = File.write(markers <> "/joined", joined)?
   Ok(joined)
 end

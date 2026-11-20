@@ -8,11 +8,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::actor;
 use crate::db::jobs_connection::{JobSession, PgJobDb};
+use crate::db::pg::JobsAckError;
 
 use super::cron;
+use super::events::{
+    self, Acknowledgement, Events, FailureKind, Identity, Kind, LeaseLoss, Operation,
+};
 use super::store::{
-    claim, claim_batch, drain_work, finish, prune, recover, renew, Claim, ClaimBatch, LeaseStatus,
-    Outcome, OversizedClaim, Settlement, MAX_CLAIM_BATCH,
+    claim_batch_with_timing, claim_with_timing, drain_work, finish, prune, recover, renew, Claim,
+    ClaimBatch, LeaseStatus, Outcome, OversizedClaim, Settlement, MAX_CLAIM_BATCH,
 };
 use super::with_pool;
 use super::worker::{check_executable, handler_name, host_deadline, WorkerPoll, WorkerProcess};
@@ -61,6 +65,8 @@ struct Config {
     prune_max_age_ms: Option<u64>,
     drain: bool,
     claim_batch: bool,
+    event_buffer: usize,
+    event_log: bool,
 }
 
 #[derive(Deserialize, Serialize, PartialEq, Eq, Hash)]
@@ -82,6 +88,8 @@ impl Default for Config {
             prune_max_age_ms: None,
             drain: false,
             claim_batch: false,
+            event_buffer: 0,
+            event_log: false,
         }
     }
 }
@@ -126,6 +134,12 @@ impl Config {
             .is_some_and(|age| age > MAX_DELAY_MS)
         {
             return Err("runner prune_max_age_ms must be at most 365 days".into());
+        }
+        if config.event_buffer > events::MAX_BUFFER {
+            return Err(format!(
+                "runner event_buffer must be at most {}",
+                events::MAX_BUFFER
+            ));
         }
         Ok(config)
     }
@@ -175,6 +189,32 @@ struct ActiveJob {
     id: String,
     queue: usize,
     execution: Execution,
+    identity: Option<Arc<Identity>>,
+    reported_lease_loss: bool,
+}
+
+impl ActiveJob {
+    fn observe_local_lease_loss(&mut self, runner: &Runner) {
+        let reply = match &self.execution {
+            Execution::Running(worker) => worker.stop.as_ref(),
+            Execution::Acknowledging { reply, .. } => Some(reply),
+        };
+        if matches!(
+            reply,
+            Some(
+                Reply::Failed(FailureKind::LeaseLost, _) | Reply::Unstarted(FailureKind::LeaseLost)
+            )
+        ) {
+            self.lease_lost(runner, LeaseLoss::LocalDeadline);
+        }
+    }
+
+    fn lease_lost(&mut self, runner: &Runner, source: LeaseLoss) {
+        if let Some(identity) = self.identity.as_ref().filter(|_| !self.reported_lease_loss) {
+            runner.publish(Kind::LeaseLost { source }, Some(identity));
+            self.reported_lease_loss = true;
+        }
+    }
 }
 
 #[derive(Default)]
@@ -247,6 +287,7 @@ struct Runner {
     config: Config,
     state: Mutex<State>,
     check_worker: fn() -> Result<(), String>,
+    events: Option<Events>,
 }
 
 impl Runner {
@@ -277,8 +318,9 @@ impl Runner {
         for job in jobs.values_mut() {
             if let Execution::Running(worker) = &mut job.execution {
                 if let Some(reply) = worker.poll(now, shutting_down, last_error) {
-                    job.execution = Execution::acknowledging(reply);
+                    job.execution = worker.acknowledging(reply, now);
                 }
+                job.observe_local_lease_loss(self);
             }
         }
         true
@@ -300,7 +342,7 @@ impl Runner {
             })
             .collect();
         let jobs: Vec<_> = state.jobs.values().map(|job| &job.id).collect();
-        serde_json::json!({
+        let mut report = serde_json::json!({
             "runner_id": self.id,
             "namespace": self.config.namespace,
             "state": state.phase.name(),
@@ -317,8 +359,12 @@ impl Runner {
             "scheduled": state.counts.scheduled,
             "pruned": state.counts.pruned,
             "last_error": state.last_error,
-        })
-        .to_string()
+        });
+        if let Some(events) = &self.events {
+            report["events_dropped"] = events.dropped().into();
+            report["event_logs_dropped"] = events.logs_dropped().into();
+        }
+        report.to_string()
     }
 
     fn wait_until(&self, ready: fn(&Phase) -> bool) -> String {
@@ -341,6 +387,36 @@ impl Runner {
             "mesh jobs oversized claim context: job {} requires {} bytes",
             row.id, row.context_bytes,
         ));
+    }
+
+    fn publish(&self, kind: Kind, identity: Option<&Arc<Identity>>) {
+        if let Some(events) = &self.events {
+            events.publish(self.id, kind, identity);
+        }
+    }
+
+    fn storage_failure(
+        &self,
+        operation: Operation,
+        error: String,
+        identity: Option<&Arc<Identity>>,
+    ) {
+        self.record_error(error);
+        self.publish(Kind::StorageFailure { operation }, identity);
+    }
+
+    fn record_maintenance(&self, operation: Operation, count: u64) {
+        if count == 0 {
+            return;
+        }
+        let mut state = self.state.lock();
+        match operation {
+            Operation::Recover => state.counts.recovered += count,
+            Operation::Cron => state.counts.scheduled += count,
+            Operation::Prune => state.counts.pruned += count,
+            _ => unreachable!("expected maintenance operation"),
+        }
+        self.publish(Kind::Maintenance { operation, count }, None);
     }
 }
 
@@ -459,10 +535,12 @@ fn start_runner(
         .checked_add(1)
         .filter(|&next| next <= i64::MAX as u64)
         .ok_or("runner identifiers exhausted")?;
+    let events = Events::new(config.event_buffer, config.event_log)?;
     let runner = Arc::new(Runner {
         id,
         config,
         check_worker,
+        events,
         state: Mutex::new(State {
             phase: Phase::Running,
             jobs: BTreeMap::new(),
@@ -485,6 +563,7 @@ fn start_runner(
     let thread = std::thread::Builder::new()
         .name(format!("mesh-jobs-{id}"))
         .spawn(move || {
+            dispatcher.publish(Kind::RunnerStarted, None);
             if dispatcher.config.drain {
                 dispatch(&dispatcher, pool, &workers, &*start_worker, sessions);
             } else {
@@ -504,7 +583,14 @@ fn start_runner(
                     }
                 }
             }
-            dispatcher.state.lock().phase = Phase::Stopped;
+            {
+                let mut state = dispatcher.state.lock();
+                dispatcher.publish(Kind::RunnerStopped, None);
+                if let Some(events) = &dispatcher.events {
+                    events.close();
+                }
+                state.phase = Phase::Stopped;
+            }
             let _ = supervisor.join();
         });
     if let Err(error) = thread {
@@ -528,6 +614,20 @@ pub(super) fn status(id: u64) -> Result<String, String> {
     let runner = lookup(id)?;
     let state = runner.state.lock();
     Ok(runner.report(&state))
+}
+
+pub(super) fn read_events(id: u64, limit: i64) -> Result<String, String> {
+    if !(1..=events::MAX_READ as i64).contains(&limit) {
+        return Err(format!(
+            "Jobs event read limit must be between 1 and {}",
+            events::MAX_READ
+        ));
+    }
+    lookup(id)?
+        .events
+        .as_ref()
+        .ok_or("Jobs event reader is disabled")?
+        .read(limit as usize)
 }
 
 pub(super) fn stop(id: u64, grace_ms: u64) -> Result<String, String> {
@@ -589,9 +689,17 @@ struct Running {
     lease_deadline: Instant,
     reaped: bool,
     stop: Option<Reply>,
+    started_at: Option<Instant>,
 }
 
 impl Running {
+    fn acknowledging(&self, reply: Reply, now: Instant) -> Execution {
+        let duration_ms = self
+            .started_at
+            .map(|started| now.saturating_duration_since(started).as_millis() as u64);
+        Execution::acknowledging(reply, duration_ms)
+    }
+
     fn poll(
         &mut self,
         now: Instant,
@@ -602,8 +710,14 @@ impl Running {
             Ok(WorkerPoll::Exited(result)) => {
                 return Some(self.stop.take().unwrap_or_else(|| match result {
                     Ok(output) => Reply::Returned(output),
-                    Err(error) => Reply::Failed(error),
+                    Err(error) => Reply::Failed(FailureKind::WorkerFailure, error),
                 }));
+            }
+            Ok(WorkerPoll::TimedOut) => {
+                return Some(self.stop.take().unwrap_or_else(|| Reply::timed_out()));
+            }
+            Ok(WorkerPoll::LeaseExpired) => {
+                return Some(self.stop.take().unwrap_or_else(|| Reply::lease_lost()));
             }
             Ok(WorkerPoll::AwaitingReply) => {
                 self.reaped = true;
@@ -617,13 +731,13 @@ impl Running {
         };
         if self.stop.is_none() {
             self.stop = if now >= self.lease_deadline && self.lease_deadline <= self.deadline {
-                Some(Reply::Failed(LEASE_LOST.into()))
+                Some(Reply::lease_lost())
             } else if now >= self.deadline {
-                Some(Reply::Failed(TIMEOUT.into()))
+                Some(Reply::timed_out())
             } else if shutting_down {
-                Some(Reply::Failed(STOPPED.into()))
+                Some(Reply::Failed(FailureKind::Shutdown, STOPPED.into()))
             } else {
-                poll_error.map(Reply::Failed)
+                poll_error.map(|error| Reply::Failed(FailureKind::WorkerFailure, error))
             };
         }
         if self.stop.is_some() {
@@ -646,34 +760,61 @@ impl Running {
 
 enum Reply {
     Returned(String),
-    Failed(String),
+    Failed(FailureKind, String),
     Cancelled,
-    Unstarted,
+    Unstarted(FailureKind),
 }
 
 impl Reply {
-    fn outcome(&self) -> Outcome {
+    fn lease_lost() -> Self {
+        Self::Failed(FailureKind::LeaseLost, LEASE_LOST.into())
+    }
+
+    fn timed_out() -> Self {
+        Self::Failed(FailureKind::Timeout, TIMEOUT.into())
+    }
+
+    fn outcome(&self) -> (Outcome, Option<FailureKind>) {
         match self {
             Self::Returned(json) => match serde_json::from_str(json) {
                 Ok(Outcome::RetryAfter { delay_ms, .. } | Outcome::Snooze { delay_ms })
                     if delay_ms > MAX_DELAY_MS =>
                 {
-                    Outcome::Fail {
-                        reason: "job handler outcome delay exceeds 365 days".into(),
-                    }
+                    (
+                        Outcome::Fail {
+                            reason: "job handler outcome delay exceeds 365 days".into(),
+                        },
+                        Some(FailureKind::InvalidOutcome),
+                    )
                 }
-                Ok(outcome) => outcome,
-                Err(_) => Outcome::Fail {
-                    reason: "invalid job handler outcome JSON".into(),
+                Ok(outcome) => {
+                    let failure = matches!(
+                        outcome,
+                        Outcome::Fail { .. } | Outcome::RetryAfter { .. } | Outcome::Discard { .. }
+                    )
+                    .then_some(FailureKind::HandlerFailure);
+                    (outcome, failure)
+                }
+                Err(_) => (
+                    Outcome::Fail {
+                        reason: "invalid job handler outcome JSON".into(),
+                    },
+                    Some(FailureKind::InvalidOutcome),
+                ),
+            },
+            Self::Failed(kind, reason) => (
+                Outcome::Fail {
+                    reason: reason.chars().take(1024).collect(),
                 },
-            },
-            Self::Failed(reason) => Outcome::Fail {
-                reason: reason.chars().take(1024).collect(),
-            },
-            Self::Cancelled => Outcome::Cancel {
-                reason: CANCELLED.into(),
-            },
-            Self::Unstarted => Outcome::ReleaseUnstarted,
+                Some(*kind),
+            ),
+            Self::Cancelled => (
+                Outcome::Cancel {
+                    reason: CANCELLED.into(),
+                },
+                None,
+            ),
+            Self::Unstarted(kind) => (Outcome::ReleaseUnstarted, Some(*kind)),
         }
     }
 }
@@ -683,14 +824,16 @@ enum Execution {
     Acknowledging {
         reply: Reply,
         retry_at: Option<Instant>,
+        handler_duration_ms: Option<u64>,
     },
 }
 
 impl Execution {
-    fn acknowledging(reply: Reply) -> Self {
+    fn acknowledging(reply: Reply, handler_duration_ms: Option<u64>) -> Self {
         Self::Acknowledging {
             reply,
             retry_at: None,
+            handler_duration_ms,
         }
     }
 
@@ -702,7 +845,7 @@ impl Execution {
         // The worker may have exited while PostgreSQL was processing the renewal.
         if now >= worker.lease_deadline && !worker.reaped {
             if let Some(reply) = worker.poll(now, false, last_error) {
-                *self = Self::acknowledging(reply);
+                *self = worker.acknowledging(reply, now);
                 return true;
             }
             if !worker.reaped {
@@ -712,7 +855,7 @@ impl Execution {
         if !worker.reaped {
             if let Err(error) = worker.process.renew(renewed.worker_expires_at) {
                 *last_error = Some(error.chars().take(1024).collect());
-                worker.stop(Reply::Failed(error), last_error);
+                worker.stop(Reply::Failed(FailureKind::WorkerFailure, error), last_error);
                 return false;
             }
         }
@@ -726,6 +869,7 @@ struct Attempt {
     token: String,
     queue: usize,
     lease: Option<Lease>,
+    submissions: u32,
 }
 
 struct LifecycleIo {
@@ -747,11 +891,33 @@ impl LifecycleIo {
 
 impl Attempt {
     fn poll(&mut self, runner: &Runner, io: &mut LifecycleIo) -> bool {
+        self.poll_with_ack(runner, io, |io, id, token, outcome| {
+            io.with(|db| Ok(finish(db, &runner.config.namespace, id, token, outcome)))
+                .map_err(JobsAckError::Rejected)?
+        })
+    }
+
+    fn poll_with_ack(
+        &mut self,
+        runner: &Runner,
+        io: &mut LifecycleIo,
+        acknowledge: impl FnOnce(
+            &mut LifecycleIo,
+            &str,
+            &str,
+            Outcome,
+        ) -> Result<Settlement, JobsAckError>,
+    ) -> bool {
         let outcome = {
-            let state = runner.state.lock();
-            match &state.jobs[&self.token].execution {
+            let mut state = runner.state.lock();
+            let job = state.jobs.get_mut(&self.token).expect("tracked attempt");
+            match &job.execution {
                 Execution::Running(_) => None,
-                Execution::Acknowledging { reply, retry_at } => {
+                Execution::Acknowledging {
+                    reply,
+                    retry_at,
+                    handler_duration_ms,
+                } => {
                     let Some(lease) = &self.lease else {
                         return false;
                     };
@@ -760,27 +926,50 @@ impl Attempt {
                     if let Some(retry) = retry_at {
                         let now = Instant::now();
                         if now >= lease.expires_at {
+                            job.lease_lost(runner, LeaseLoss::LocalDeadline);
                             return false;
                         }
                         if now < *retry {
                             return true;
                         }
                     }
-                    Some(reply.outcome())
+                    Some((reply.outcome(), *handler_duration_ms, job.identity.clone()))
                 }
             }
         };
-        let Some(outcome) = outcome else {
+        let Some(((outcome, failure_kind), handler_duration_ms, identity)) = outcome else {
             self.renew(runner, io);
             return true;
         };
-        match io.with(|db| finish(db, &runner.config.namespace, &self.id, &self.token, outcome)) {
+        self.submissions = self.submissions.saturating_add(1);
+        let acknowledgement = Acknowledgement {
+            submission: self.submissions,
+            handler_duration_ms,
+            failure_kind,
+        };
+        match acknowledge(io, &self.id, &self.token, outcome) {
             Ok(settlement) => {
                 runner.state.lock().counts.record_settlement(settlement);
+                let event = match settlement {
+                    Settlement::Stale => Kind::AckStale { acknowledgement },
+                    settlement => Kind::SettlementCommitted {
+                        settlement,
+                        acknowledgement,
+                    },
+                };
+                runner.publish(event, identity.as_ref());
                 false
             }
             Err(error) => {
-                runner.record_error(error);
+                match error {
+                    JobsAckError::Rejected(error) => {
+                        runner.storage_failure(Operation::Acknowledge, error, identity.as_ref());
+                    }
+                    JobsAckError::Unconfirmed(error) => {
+                        runner.record_error(error);
+                        runner.publish(Kind::AckUncertain { acknowledgement }, identity.as_ref());
+                    }
+                }
                 let mut state = runner.state.lock();
                 let job = state.jobs.get_mut(&self.token).expect("tracked attempt");
                 if let Execution::Acknowledging { retry_at, .. } = &mut job.execution {
@@ -818,7 +1007,8 @@ impl Attempt {
             Ok(Some(result)) => result,
             Ok(None) => return,
             Err(error) => {
-                runner.record_error(error);
+                let identity = runner.state.lock().jobs[&self.token].identity.clone();
+                runner.storage_failure(Operation::Renew, error, identity.as_ref());
                 lease.renew_at = Some(Instant::now() + retry_interval(config));
                 return;
             }
@@ -833,6 +1023,7 @@ impl Attempt {
                 if job.execution.apply_renewal(&renewed, last_error) {
                     *lease = renewed;
                 }
+                job.observe_local_lease_loss(runner);
             }
             LeaseStatus::Cancelled => {
                 lease.renew_at = None;
@@ -842,8 +1033,9 @@ impl Attempt {
             }
             LeaseStatus::Lost => {
                 self.lease = None;
+                job.lease_lost(runner, LeaseLoss::Database);
                 if let Execution::Running(worker) = &mut job.execution {
-                    worker.stop(Reply::Failed(LEASE_LOST.into()), last_error);
+                    worker.stop(Reply::lease_lost(), last_error);
                 }
             }
         }
@@ -881,15 +1073,15 @@ fn maintain(runner: &Runner, pool: u64) {
         let now = Instant::now();
         if now >= next_recovery {
             match with_pool(pool, |db| recover(db, &config.namespace, 64, None)) {
-                Ok(recovered) => runner.state.lock().counts.recovered += recovered,
-                Err(error) => runner.record_error(error),
+                Ok(recovered) => runner.record_maintenance(Operation::Recover, recovered),
+                Err(error) => runner.storage_failure(Operation::Recover, error, None),
             }
             next_recovery = Instant::now() + Duration::from_millis(config.poll_ms.clamp(100, 1000));
         }
         if now >= next_schedule {
             match with_pool(pool, |db| cron::tick(db, &config.namespace, &producer, 64)) {
-                Ok(scheduled) => runner.state.lock().counts.scheduled += u64::from(scheduled),
-                Err(error) => runner.record_error(error),
+                Ok(scheduled) => runner.record_maintenance(Operation::Cron, u64::from(scheduled)),
+                Err(error) => runner.storage_failure(Operation::Cron, error, None),
             }
             next_schedule = Instant::now() + Duration::from_secs(1);
         }
@@ -897,8 +1089,8 @@ fn maintain(runner: &Runner, pool: u64) {
             match with_pool(pool, |db| {
                 prune(db, &config.namespace, None, None, Some(age), Some(1000))
             }) {
-                Ok(count) => runner.state.lock().counts.pruned += count,
-                Err(error) => runner.record_error(error),
+                Ok(count) => runner.record_maintenance(Operation::Prune, count),
+                Err(error) => runner.storage_failure(Operation::Prune, error, None),
             }
             next_prune = Instant::now() + Duration::from_secs(60);
         }
@@ -976,7 +1168,7 @@ impl BatchLane {
                     }
                     Err(error) => {
                         runner.state.lock().pending_claims = 0;
-                        runner.record_error(error);
+                        runner.storage_failure(Operation::Claim, error, None);
                         queues[index].next_claim =
                             Instant::now() + Duration::from_millis(runner.config.poll_ms);
                     }
@@ -985,7 +1177,11 @@ impl BatchLane {
             Err(TryRecvError::Disconnected) => {
                 self.pending = false;
                 runner.state.lock().pending_claims = 0;
-                runner.record_error("Jobs batch claim thread disconnected".into());
+                runner.storage_failure(
+                    Operation::Claim,
+                    "Jobs batch claim thread disconnected".into(),
+                    None,
+                );
                 runner.request_stop(Duration::from_millis(runner.config.shutdown_grace_ms));
             }
             Err(TryRecvError::Empty) => {}
@@ -1015,7 +1211,7 @@ fn dispatch(
                 while let Ok(request) = receive.recv() {
                     let result = session.with(|db| {
                         let lease = Lease::begin(Duration::from_millis(config.lease_ms))?;
-                        let batch = claim_batch(
+                        let batch = claim_batch_with_timing(
                             db,
                             &config.namespace,
                             queue_names[request.queue],
@@ -1023,6 +1219,7 @@ fn dispatch(
                             config.lease_ms,
                             request.slots,
                             None,
+                            runner.events.is_some(),
                         )?;
                         Ok((lease, batch))
                     });
@@ -1119,11 +1316,17 @@ fn dispatch_queues(
                 .filter(|_| attempts.is_empty() && Instant::now() >= next_drain_recovery)
             {
                 match io.with(|db| {
-                    let recovered = recover(db, &config.namespace, 64, Some(selected))?;
-                    runner.state.lock().counts.recovered += recovered;
+                    match recover(db, &config.namespace, 64, Some(selected)) {
+                        Ok(recovered) => runner.record_maintenance(Operation::Recover, recovered),
+                        Err(error) => {
+                            runner.storage_failure(Operation::Recover, error, None);
+                            return Ok(None);
+                        }
+                    }
                     drain_work(db, &config.namespace, selected, workers, config.claim_batch)
+                        .map(Some)
                 }) {
-                    Ok(work) => {
+                    Ok(Some(work)) => {
                         if let Some(row) = &work.oversized {
                             runner.record_oversized(row);
                         }
@@ -1131,7 +1334,8 @@ fn dispatch_queues(
                             return;
                         }
                     }
-                    Err(error) => runner.record_error(error),
+                    Ok(None) => {}
+                    Err(error) => runner.storage_failure(Operation::DrainCheck, error, None),
                 }
                 next_drain_recovery =
                     Instant::now() + Duration::from_millis(config.poll_ms.clamp(10, 1000));
@@ -1162,7 +1366,7 @@ fn dispatch_queues(
                         continue;
                     }
                     if let Err(error) = lane.request(runner, index, slots) {
-                        runner.record_error(error);
+                        runner.storage_failure(Operation::Claim, error, None);
                     }
                     continue;
                 }
@@ -1180,7 +1384,7 @@ fn dispatch_queues(
                             Instant::now() + Duration::from_millis(config.poll_ms);
                     }
                     Err(error) => {
-                        runner.record_error(error);
+                        runner.storage_failure(Operation::Claim, error, None);
                         queues[index].next_claim =
                             Instant::now() + Duration::from_millis(config.poll_ms);
                     }
@@ -1206,7 +1410,15 @@ fn claim_one(
     let config = &runner.config;
     let acquired = with_pool(pool, |db| {
         let lease = Lease::begin(Duration::from_millis(config.lease_ms))?;
-        claim(db, &config.namespace, queue_name, workers, config.lease_ms).map(|job| (lease, job))
+        claim_with_timing(
+            db,
+            &config.namespace,
+            queue_name,
+            workers,
+            config.lease_ms,
+            runner.events.is_some(),
+        )
+        .map(|job| (lease, job))
     });
     let mut state = runner.state.lock();
     state.pending_claims = 0;
@@ -1238,52 +1450,64 @@ fn launch_confirmed(
     job: Claim,
     start_worker: &StartWorker,
 ) -> Attempt {
+    let identity = runner.events.as_ref().map(|_| Identity::new(&job));
     let Claim {
         id,
         token,
         context,
         timeout_ms,
+        ..
     } = job;
     let now = Instant::now();
     let deadline = now.checked_add(Duration::from_millis(timeout_ms));
-    let execution = if now >= lease.expires_at
-        || !matches!(state.phase, Phase::Running)
-        || crate::process_signal::shutdown_requested()
+    let execution = if now >= lease.expires_at {
+        Execution::acknowledging(Reply::Unstarted(FailureKind::LeaseLost), None)
+    } else if !matches!(state.phase, Phase::Running) || crate::process_signal::shutdown_requested()
     {
-        Execution::acknowledging(Reply::Unstarted)
+        Execution::acknowledging(Reply::Unstarted(FailureKind::Shutdown), None)
     } else if let Some(deadline) = deadline {
         match start_worker(context, deadline, lease.worker_expires_at) {
-            Ok(process) => Execution::Running(Running {
-                process,
-                deadline,
-                lease_deadline: lease.expires_at,
-                reaped: false,
-                stop: None,
-            }),
+            Ok(process) => {
+                runner.publish(Kind::AttemptStarted, identity.as_ref());
+                Execution::Running(Running {
+                    process,
+                    deadline,
+                    lease_deadline: lease.expires_at,
+                    reaped: false,
+                    stop: None,
+                    started_at: identity.as_ref().map(|_| now),
+                })
+            }
             Err(error) => {
                 state.fail_launch(error, runner.config.shutdown_grace_ms);
-                Execution::acknowledging(Reply::Unstarted)
+                Execution::acknowledging(Reply::Unstarted(FailureKind::WorkerFailure), None)
             }
         }
     } else {
-        Execution::acknowledging(Reply::Failed(
-            "job timeout exceeds runtime timer range".into(),
-        ))
+        Execution::acknowledging(
+            Reply::Failed(
+                FailureKind::WorkerFailure,
+                "job timeout exceeds runtime timer range".into(),
+            ),
+            None,
+        )
     };
-    state.jobs.insert(
-        token.clone(),
-        ActiveJob {
-            id: id.clone(),
-            queue,
-            execution,
-        },
-    );
+    let mut job = ActiveJob {
+        id: id.clone(),
+        queue,
+        execution,
+        identity,
+        reported_lease_loss: false,
+    };
+    job.observe_local_lease_loss(runner);
+    state.jobs.insert(token.clone(), job);
     state.counts.claimed += 1;
     Attempt {
         id,
         token,
         queue,
         lease: Some(lease),
+        submissions: 0,
     }
 }
 

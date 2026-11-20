@@ -1,6 +1,8 @@
 use std::time::Duration;
 
-use super::pg::{commit, connect, pg_simple_command, pg_text_query, PgConn};
+use super::pg::{
+    commit, connect, pg_jobs_ack, pg_simple_command, pg_text_query, JobsAckError, PgConn,
+};
 use super::pool::{connection_url, NativeLease};
 
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
@@ -50,6 +52,14 @@ impl PgJobDb<'_> {
         self.timed(|conn| pg_simple_command(conn, sql))
     }
 
+    pub(crate) fn acknowledge(
+        &mut self,
+        sql: &str,
+        params: &[&str],
+    ) -> Result<Vec<Vec<(String, String)>>, JobsAckError> {
+        self.timed(|conn| pg_jobs_ack(conn, sql, params))
+    }
+
     pub(crate) fn in_transaction(&self) -> bool {
         self.0.txn_status == b'T'
     }
@@ -74,10 +84,7 @@ impl PgJobDb<'_> {
         result
     }
 
-    fn timed<T>(
-        &mut self,
-        run: impl FnOnce(&mut PgConn) -> Result<T, String>,
-    ) -> Result<T, String> {
+    fn timed<T, E>(&mut self, run: impl FnOnce(&mut PgConn) -> Result<T, E>) -> Result<T, E> {
         let (read_timeout, write_timeout) = self.0.socket_timeouts();
         self.0.set_read_timeout(Some(IO_TIMEOUT));
         self.0.set_write_timeout(Some(IO_TIMEOUT));

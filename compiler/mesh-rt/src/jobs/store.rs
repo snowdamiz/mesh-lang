@@ -3,8 +3,15 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
+use crate::db::pg::JobsAckError;
+
 pub(super) trait Database {
     fn query(&mut self, sql: &str, params: &[&str]) -> Result<Vec<Vec<(String, String)>>, String>;
+    fn acknowledge(
+        &mut self,
+        sql: &str,
+        params: &[&str],
+    ) -> Result<Vec<Vec<(String, String)>>, JobsAckError>;
     fn simple(&mut self, sql: &str) -> Result<(), String>;
     fn in_transaction(&self) -> bool;
 }
@@ -15,6 +22,7 @@ pub(super) struct Claim {
     pub(super) token: String,
     pub(super) context: String,
     pub(super) timeout_ms: u64,
+    pub(super) observed_at_ms: Option<u64>,
 }
 
 pub(super) const MAX_CLAIM_BATCH: usize = 16;
@@ -62,7 +70,8 @@ pub(super) enum Outcome {
     ReleaseUnstarted,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub(super) enum Settlement {
     Completed,
     Cancelled,
@@ -74,7 +83,7 @@ pub(super) enum Settlement {
 }
 
 impl Settlement {
-    fn from_sql(state: &str) -> Result<Self, String> {
+    fn from_sql(state: &str) -> Result<Self, JobsAckError> {
         match state {
             "completed" => Ok(Self::Completed),
             "cancelled" => Ok(Self::Cancelled),
@@ -83,7 +92,9 @@ impl Settlement {
             "scheduled" => Ok(Self::Scheduled),
             "released_unstarted" => Ok(Self::ReleasedUnstarted),
             "stale" => Ok(Self::Stale),
-            _ => Err("mesh jobs invalid settlement state from PostgreSQL".into()),
+            _ => Err(JobsAckError::Unconfirmed(
+                "mesh jobs invalid settlement state from PostgreSQL".into(),
+            )),
         }
     }
 }
@@ -564,12 +575,24 @@ struct Worker {
     version: u32,
 }
 
+#[cfg(test)]
 pub(super) fn claim(
     db: &mut impl Database,
     namespace: &str,
     queue: &str,
     workers_json: &str,
     lease_ms: u64,
+) -> Result<Option<Claim>, String> {
+    claim_with_timing(db, namespace, queue, workers_json, lease_ms, false)
+}
+
+pub(super) fn claim_with_timing(
+    db: &mut impl Database,
+    namespace: &str,
+    queue: &str,
+    workers_json: &str,
+    lease_ms: u64,
+    observe: bool,
 ) -> Result<Option<Claim>, String> {
     standalone(db)?;
     name(namespace, "namespace")?;
@@ -589,23 +612,34 @@ pub(super) fn claim(
     // including on databases configured to default to repeatable read.
     db.simple("BEGIN ISOLATION LEVEL READ COMMITTED")?;
     let result = (|| {
+        let sql = if observe {
+            "SELECT id, token, context, timeout_ms,
+                    floor(extract(epoch FROM pg_catalog.clock_timestamp()) * 1000)::bigint::text
+             FROM mesh_jobs.claim($1, $2, $3::jsonb, $4::bigint)"
+        } else {
+            "SELECT id, token, context, timeout_ms FROM mesh_jobs.claim($1, $2, $3::jsonb, $4::bigint)"
+        };
         let rows = db.query(
-            "SELECT id, token, context, timeout_ms FROM mesh_jobs.claim($1, $2, $3::jsonb, $4::bigint)",
+            sql,
             &[namespace, queue, workers_json, &lease_ms.to_string()],
         )?;
         let claim = match rows.as_slice() {
             [] => None,
             [row] => {
                 let mut fields = row.iter().map(|(_, value)| value);
-                let (Some(id), Some(token), Some(context), Some(timeout_ms), None) = (
-                    fields.next(),
-                    fields.next(),
-                    fields.next(),
-                    fields.next(),
-                    fields.next(),
-                ) else {
+                let (Some(id), Some(token), Some(context), Some(timeout_ms)) =
+                    (fields.next(), fields.next(), fields.next(), fields.next())
+                else {
                     return Err("mesh jobs invalid claim result from PostgreSQL".into());
                 };
+                let observed_at_ms = if observe {
+                    fields.next().and_then(|value| value.parse().ok())
+                } else {
+                    None
+                };
+                if fields.next().is_some() {
+                    return Err("mesh jobs invalid claim result from PostgreSQL".into());
+                }
                 Some(Claim {
                     id: id.clone(),
                     token: token.clone(),
@@ -613,6 +647,7 @@ pub(super) fn claim(
                     timeout_ms: timeout_ms
                         .parse::<u64>()
                         .map_err(|error| error.to_string())?,
+                    observed_at_ms,
                 })
             }
             _ => return Err("mesh jobs PostgreSQL returned multiple claims".into()),
@@ -623,6 +658,7 @@ pub(super) fn claim(
     result.map_err(|error| rollback_error(error, db.simple("ROLLBACK")))
 }
 
+#[cfg(test)]
 pub(super) fn claim_batch(
     db: &mut impl Database,
     namespace: &str,
@@ -631,6 +667,28 @@ pub(super) fn claim_batch(
     lease_ms: u64,
     slots: usize,
     cutoff_ms: Option<u64>,
+) -> Result<ClaimBatch, String> {
+    claim_batch_with_timing(
+        db,
+        namespace,
+        queue,
+        workers_json,
+        lease_ms,
+        slots,
+        cutoff_ms,
+        false,
+    )
+}
+
+pub(super) fn claim_batch_with_timing(
+    db: &mut impl Database,
+    namespace: &str,
+    queue: &str,
+    workers_json: &str,
+    lease_ms: u64,
+    slots: usize,
+    cutoff_ms: Option<u64>,
+    observe: bool,
 ) -> Result<ClaimBatch, String> {
     standalone(db)?;
     name(namespace, "namespace")?;
@@ -654,7 +712,9 @@ pub(super) fn claim_batch(
     db.simple("BEGIN ISOLATION LEVEL READ COMMITTED")?;
     let result = (|| {
         let rows = db.query(
-            "SELECT status, id, token, context, timeout_ms, context_bytes
+            "SELECT status, id, token, context, timeout_ms, context_bytes,
+                    CASE WHEN $7::boolean AND status = 'claimed'
+                    THEN floor(extract(epoch FROM pg_catalog.clock_timestamp()) * 1000)::bigint::text END
              FROM mesh_jobs.claim_batch_v1($1, $2, $3::jsonb, $4::bigint, $5::integer,
                  nullif($6, '')::bigint) WITH ORDINALITY
              ORDER BY ordinality",
@@ -665,14 +725,15 @@ pub(super) fn claim_batch(
                 &lease_ms.to_string(),
                 &slots.to_string(),
                 &cutoff,
+                if observe { "true" } else { "false" },
             ],
         )?;
         let mut batch = ClaimBatch::default();
         let invalid = || "mesh jobs invalid batch claim result from PostgreSQL".to_string();
         for row in rows {
             let fields = row.into_iter().map(|(_, value)| value).collect::<Vec<_>>();
-            let [status, id, token, context, timeout_ms, context_bytes]: [String; 6] =
-                fields.try_into().map_err(|_| invalid())?;
+            let [status, id, token, context, timeout_ms, context_bytes, observed_at_ms]: [String;
+                7] = fields.try_into().map_err(|_| invalid())?;
             let context_bytes = context_bytes.parse::<usize>().map_err(|_| invalid())?;
             match status.as_str() {
                 "claimed"
@@ -685,6 +746,11 @@ pub(super) fn claim_batch(
                         token,
                         context,
                         timeout_ms: timeout_ms.parse().map_err(|_| invalid())?,
+                        observed_at_ms: if observe {
+                            observed_at_ms.parse().ok()
+                        } else {
+                            None
+                        },
                     });
                 }
                 "oversized"
@@ -797,11 +863,11 @@ pub(super) fn finish(
     id: &str,
     token: &str,
     mut outcome: Outcome,
-) -> Result<Settlement, String> {
-    standalone(db)?;
-    name(namespace, "namespace")?;
+) -> Result<Settlement, JobsAckError> {
+    standalone(db).map_err(JobsAckError::Rejected)?;
+    name(namespace, "namespace").map_err(JobsAckError::Rejected)?;
     if matches!(outcome, Outcome::ReleaseUnstarted) {
-        let state = response(
+        return acknowledge(
             db,
             "WITH held AS MATERIALIZED (
                  SELECT lease_expires_at_ms, cancel_requested_at_ms FROM mesh_jobs.jobs
@@ -821,12 +887,11 @@ pub(super) fn finish(
                            FROM released)
                  END, 'stale')",
             &[namespace, id, token],
-        )?;
-        return Settlement::from_sql(&state);
+        );
     }
     match &mut outcome {
         Outcome::RetryAfter { delay_ms, .. } | Outcome::Snooze { delay_ms } => {
-            duration(*delay_ms, "outcome delay_ms")?;
+            duration(*delay_ms, "outcome delay_ms").map_err(JobsAckError::Rejected)?;
         }
         _ => {}
     }
@@ -843,13 +908,29 @@ pub(super) fn finish(
         }
         _ => {}
     }
-    let outcome = serde_json::to_string(&outcome).map_err(|error| error.to_string())?;
-    let state = response(
+    let outcome = serde_json::to_string(&outcome)
+        .map_err(|error| JobsAckError::Rejected(error.to_string()))?;
+    acknowledge(
         db,
         "SELECT coalesce(mesh_jobs.settle_state($1, $2::uuid, $3::uuid, $4::jsonb, false), 'stale')",
         &[namespace, id, token, &outcome],
-    )?;
-    Settlement::from_sql(&state)
+    )
+}
+
+fn acknowledge(
+    db: &mut impl Database,
+    sql: &str,
+    params: &[&str],
+) -> Result<Settlement, JobsAckError> {
+    let rows = db.acknowledge(sql, params)?;
+    if let [row] = rows.as_slice() {
+        if let [(_, state)] = row.as_slice() {
+            return Settlement::from_sql(state);
+        }
+    }
+    Err(JobsAckError::Unconfirmed(
+        "mesh jobs expected one settlement cell from PostgreSQL".into(),
+    ))
 }
 
 pub(super) fn recover(

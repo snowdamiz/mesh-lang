@@ -304,8 +304,8 @@ DECLARE
     oversized_count integer := 0;
     value_bytes integer;
     row_bytes integer;
-    -- Reserve 256 bytes for the six-column RowDescription and the other reply frames.
-    reply_bytes integer := 32 * 1024 * 1024 - 256;
+    -- Reserve room for framing and the caller's optional per-row timing column.
+    reply_bytes integer := 32 * 1024 * 1024 - 1024;
     wire_encoding name := current_setting('client_encoding');
     same_encoding boolean := wire_encoding = current_setting('server_encoding');
     candidates NO SCROLL CURSOR FOR

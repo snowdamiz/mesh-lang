@@ -118,6 +118,8 @@ pub(super) enum WorkerPoll {
     Running,
     AwaitingReply,
     Exited(Reply),
+    TimedOut,
+    LeaseExpired,
 }
 
 pub(super) struct WorkerProcess {
@@ -213,8 +215,8 @@ impl WorkerProcess {
             return Ok(WorkerPoll::Running);
         };
         let reason = match status.code() {
-            Some(TIMEOUT) => "job handler timed out".into(),
-            Some(LEASE_LOST) => "job lease lost".into(),
+            Some(TIMEOUT) => return Ok(WorkerPoll::TimedOut),
+            Some(LEASE_LOST) => return Ok(WorkerPoll::LeaseExpired),
             Some(PARENT_GONE) => "job runner disconnected".into(),
             Some(BOOTSTRAP_ERROR) => "job handler could not enter its worker runtime".into(),
             Some(0) => return Ok(self.poll_reply(now)),

@@ -370,6 +370,14 @@ fn failed_enqueue_rolls_back_the_occurrence_and_its_progress() {
                 self.0.query(sql, params)
             }
 
+            fn acknowledge(
+                &mut self,
+                sql: &str,
+                params: &[&str],
+            ) -> Result<Rows, crate::db::pg::JobsAckError> {
+                self.0.acknowledge(sql, params)
+            }
+
             fn simple(&mut self, sql: &str) -> Result<(), String> {
                 self.0.simple(sql)
             }

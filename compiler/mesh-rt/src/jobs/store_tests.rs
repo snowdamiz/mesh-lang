@@ -28,6 +28,14 @@ impl Database for Connection {
         native_pg_query(&mut self.native, sql, params)
     }
 
+    fn acknowledge(
+        &mut self,
+        sql: &str,
+        params: &[&str],
+    ) -> Result<Vec<Vec<(String, String)>>, JobsAckError> {
+        self.query(sql, params).map_err(JobsAckError::Unconfirmed)
+    }
+
     fn simple(&mut self, sql: &str) -> Result<(), String> {
         if sql == include_str!("schema.sql") {
             // The public native test driver exposes extended queries only.
@@ -656,7 +664,10 @@ fn cancel_holds_capacity_until_ack_or_recovery_and_expired_tokens_are_fenced() {
     f.db.simple("COMMIT").unwrap();
     assert_eq!(requested["state"], "executing");
     assert!(requested["cancel_requested_at_ms"].is_number());
-    assert!(racing_ack.unwrap_err().contains("could not obtain lock"));
+    assert!(racing_ack
+        .unwrap_err()
+        .message()
+        .contains("could not obtain lock"));
     assert_eq!(
         renew(
             &mut new_conn,
@@ -912,7 +923,10 @@ fn locked_job_operations_leave_the_claim_for_retry() {
     assert!(renewal.unwrap_err().contains("could not obtain lock"));
     for outcome in [Outcome::Complete, Outcome::ReleaseUnstarted] {
         let settlement = finish(&mut worker, &f.ns, &claim.id, &claim.token, outcome);
-        assert!(settlement.unwrap_err().contains("could not obtain lock"));
+        assert!(settlement
+            .unwrap_err()
+            .message()
+            .contains("could not obtain lock"));
     }
     f.db.simple("ROLLBACK").unwrap();
     assert_eq!(
