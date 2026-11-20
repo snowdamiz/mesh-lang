@@ -301,13 +301,6 @@ BEGIN
 END
 $$;
 
-CREATE OR REPLACE FUNCTION mesh_jobs.renew(
-    ns text, job_id uuid, token uuid, lease_ms bigint
-) RETURNS text
-LANGUAGE sql VOLATILE SET search_path = pg_catalog, pg_temp AS $$
-    SELECT mesh_jobs.try_renew(ns, job_id, token, lease_ms);
-$$;
-
 CREATE OR REPLACE FUNCTION mesh_jobs.settle_state(
     ns text, job_id uuid, token uuid, outcome jsonb, recovering boolean
 ) RETURNS text
@@ -368,12 +361,24 @@ BEGIN
 END
 $$;
 
-CREATE OR REPLACE FUNCTION mesh_jobs.settle(
-    ns text, job_id uuid, token uuid, outcome jsonb, recovering boolean
-) RETURNS boolean
-LANGUAGE sql VOLATILE SET search_path = pg_catalog, pg_temp AS $$
-    SELECT mesh_jobs.settle_state(ns, job_id, token, outcome, recovering) IS NOT NULL;
-$$;
+DO $legacy$
+BEGIN
+    -- Existing workers can have EXECUTE grants on the legacy functions alone.
+    IF to_regprocedure('mesh_jobs.renew(text,uuid,uuid,bigint)') IS NULL THEN
+        CREATE FUNCTION mesh_jobs.renew(ns text, job_id uuid, token uuid, lease_ms bigint)
+        RETURNS text LANGUAGE sql VOLATILE SET search_path = pg_catalog, pg_temp AS $body$
+            SELECT mesh_jobs.try_renew(ns, job_id, token, lease_ms);
+        $body$;
+    END IF;
+    IF to_regprocedure('mesh_jobs.settle(text,uuid,uuid,jsonb,boolean)') IS NULL THEN
+        CREATE FUNCTION mesh_jobs.settle(
+            ns text, job_id uuid, token uuid, outcome jsonb, recovering boolean
+        ) RETURNS boolean LANGUAGE sql VOLATILE SET search_path = pg_catalog, pg_temp AS $body$
+            SELECT mesh_jobs.settle_state(ns, job_id, token, outcome, recovering) IS NOT NULL;
+        $body$;
+    END IF;
+END
+$legacy$;
 
 CREATE OR REPLACE FUNCTION mesh_jobs.recover(ns text, page_size integer, queue_filter jsonb) RETURNS bigint
 LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$

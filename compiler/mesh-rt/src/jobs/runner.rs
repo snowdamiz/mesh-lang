@@ -384,21 +384,31 @@ fn start_runner(
         .ok_or("actor scheduler is unavailable")?;
     with_pool(pool, |db| {
         let rows = db.query(
-            "SELECT (version = 1
-                     AND to_regclass('mesh_jobs.cron_schedules') IS NOT NULL
-                     AND to_regprocedure('mesh_jobs.settle_state(text,uuid,uuid,jsonb,boolean)') IS NOT NULL
-                     AND to_regprocedure('mesh_jobs.try_renew(text,uuid,uuid,bigint)') IS NOT NULL)::text
-             FROM mesh_jobs.schema_version WHERE singleton",
+            "WITH functions AS (
+                 SELECT to_regprocedure('mesh_jobs.try_renew(text,uuid,uuid,bigint)') AS renew,
+                        to_regprocedure('mesh_jobs.settle_state(text,uuid,uuid,jsonb,boolean)') AS settle
+             ) SELECT CASE
+                 WHEN version <> 1 OR to_regclass('mesh_jobs.cron_schedules') IS NULL
+                     OR renew IS NULL OR settle IS NULL THEN 'migrate'
+                 WHEN NOT (has_function_privilege(renew, 'EXECUTE')
+                     AND has_function_privilege(settle, 'EXECUTE')) THEN 'permissions'
+                 ELSE 'ready'
+             END FROM mesh_jobs.schema_version CROSS JOIN functions WHERE singleton",
             &[],
         )?;
-        if rows
+        match rows
             .first()
             .and_then(|row| row.first())
-            .is_some_and(|(_, ready)| ready == "true")
+            .map(|(_, status)| status.as_str())
         {
-            Ok(())
-        } else {
-            Err("Jobs requires the current schema. Run Jobs.migrate before starting workers".into())
+            Some("ready") => Ok(()),
+            Some("permissions") => Err(
+                "Jobs runner needs EXECUTE on mesh_jobs.try_renew and mesh_jobs.settle_state"
+                    .into(),
+            ),
+            _ => Err(
+                "Jobs requires the current schema. Run Jobs.migrate before starting workers".into(),
+            ),
         }
     })?;
 

@@ -498,6 +498,8 @@ A job panic returns `Err` to its caller. If the caller fails, Mesh stops its lin
 
 Run `Jobs.migrate(pool)` before starting workers on a fresh database or after upgrading Mesh. It creates the job tables and updates the queue's SQL functions. A job stores a worker name, payload version, arguments, queue, and scheduling and retry options. Keep the worker versions needed by outstanding jobs available during a rolling deploy. Workers claim jobs that match their registered names and versions.
 
+If your database revokes default function access, grant the worker role `EXECUTE` on `mesh_jobs.try_renew(text, uuid, uuid, bigint)` and `mesh_jobs.settle_state(text, uuid, uuid, jsonb, boolean)` before starting upgraded workers. Existing workers retain their legacy function grants during the upgrade.
+
 | Function | Result |
 | --- | --- |
 | `Jobs.migrate(pool)` | Initialize or migrate the jobs schema |
