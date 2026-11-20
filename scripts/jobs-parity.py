@@ -41,6 +41,7 @@ EVENT_BUFFER_SINKS = ("reader", "logger")
 EVENT_BUFFER_METRICS = ("sampled_peak_bytes", "upper_bound_bytes")
 LISTENER_POLL_MS = 1000
 LISTENER_OUTAGE_PROFILE = ("sparse", 1, 16)
+FINAL_ATTEMPT_LEASE_MS = 10_000  # The Mesh fixture's "final_attempt" runner mode.
 SCHEMA = """
 CREATE TABLE public.mesh_jobs_parity_attempts (
     engine text NOT NULL, namespace text NOT NULL, job_key text NOT NULL,
@@ -1269,6 +1270,41 @@ def run_settlement_fault(subject, scratch, evidence, settings, placement, proxy_
     write_json(evidence / "fault.json", receipt)
 
 
+def reconcile_producer_commit(state, namespace, request, input_jobs, replay_receipt=None):
+    if (len(state["receipts"]) != len(input_jobs) or len(state["business"]) != 1
+            or state["business"][0][:3] != ["mesh", namespace, request]):
+        raise QueueMismatch("producer transaction did not persist one business row and all enqueue receipts")
+
+    # Enqueue uses a savepoint. Its tuple XIDs can differ from the business row.
+    committed_at = state["business"][0][4]
+    receipts = {}
+    for ns, key, receipt, _, commit_time in state["receipts"]:
+        identity = receipt.get("id") if isinstance(receipt, dict) else None
+        if (ns != namespace or committed_at is None or commit_time != committed_at
+                or not isinstance(identity, str) or not identity
+                or receipt.get("inserted") is not True or receipt.get("conflict") is not False
+                or receipt.get("state") != "available" or receipt.get("effect_key") != f"{identity}/1"):
+            raise QueueMismatch("invalid durable enqueue receipt or producer commit time")
+        receipts[key] = receipt
+
+    keys = [job["key"] for job in input_jobs]
+    if set(receipts) != set(keys):
+        raise QueueMismatch("enqueue receipt keys differ from the producer input")
+    ids = {key: receipt["id"] for key, receipt in receipts.items()}
+    jobs = [[ns, key, identity, commit_time, args] for ns, key, identity, _, commit_time, args in state["jobs"]]
+    expected_jobs = [[namespace, job["key"], ids[job["key"]], committed_at, job]
+                     for job in sorted(input_jobs, key=lambda job: job["key"])]
+    if json.dumps(jobs, sort_keys=True) != json.dumps(expected_jobs, sort_keys=True):
+        raise QueueMismatch("enqueue job identities, payloads, or commit times differ from the producer input")
+
+    if replay_receipt is not None:
+        expected = [receipts[key] for key in keys]
+        if (replay_receipt["ids"] != ids
+                or json.dumps(replay_receipt.get("receipts"), sort_keys=True) != json.dumps(expected, sort_keys=True)):
+            raise QueueMismatch("producer replay did not return the full durable enqueue receipts")
+    return ids
+
+
 def run_producer_commit_fault(subject, scratch, evidence, settings, placement, proxy_type):
     cluster = subject.cluster
     cluster.prepare_database("mesh")
@@ -1278,10 +1314,11 @@ def run_producer_commit_fault(subject, scratch, evidence, settings, placement, p
     if cluster.expected_version or not cluster.owned("mesh"):
         raise FixtureError("producer commit fault requires a fresh owned SCRAM-only database")
 
-    keys = ("producer_first", "producer_second")
     request = "producer_commit"
-    input_file = batch_files(scratch, [{"request_id": request, "rollback": False, "jobs": [
-        {"key": key, "hold_ms": 0, "fail_first": False, "payload": "synthetic"} for key in keys]}])[0]
+    input_jobs = [{"key": key, "hold_ms": 0, "fail_first": False, "payload": f"synthetic-{key}"}
+                  for key in ("producer_first", "producer_second")]
+    input_file = batch_files(scratch, [{"request_id": request, "rollback": False, "jobs": input_jobs}])[0]
+    producer_env = dict(env, JOBS_PARITY_MODE="producer_commit")
 
     def producer_state():
         return json.loads(cluster.sql("mesh", """
@@ -1290,7 +1327,7 @@ SELECT json_build_object(
                                                        pg_xact_commit_timestamp(xmin))), '[]')
               FROM public.mesh_jobs_parity_product),
  'jobs', (SELECT coalesce(json_agg(json_build_array(namespace, args->>'key', id::text, xmin::text,
-                                                   pg_xact_commit_timestamp(xmin))
+                                                   pg_xact_commit_timestamp(xmin), args)
                                 ORDER BY args->>'key'), '[]') FROM mesh_jobs.jobs),
  'receipts', (SELECT coalesce(json_agg(json_build_array(namespace, request_key, receipt, xmin::text,
                                                        pg_xact_commit_timestamp(xmin))
@@ -1298,32 +1335,13 @@ SELECT json_build_object(
 )
 """))
 
-    def reconcile(state):
-        ids = {key: receipt["id"] for _, key, receipt, _, _ in state["receipts"]}
-        if (set(ids) != set(keys) or len(state["receipts"]) != len(keys)
-                or len(state["business"]) != 1
-                or state["business"][0][:3] != ["mesh", namespace, request]):
-            raise QueueMismatch("producer transaction did not persist one business row and both receipts")
-        # Enqueue uses a savepoint. Its tuple XIDs can differ from the business row.
-        committed_at = state["business"][0][4]
-        if committed_at is None or any(
-            ns != namespace or receipt["effect_key"] != f"{ids[key]}/1" or tick != committed_at
-            for ns, key, receipt, _, tick in state["receipts"]
-        ):
-            raise QueueMismatch("enqueue receipt identities or commit times differ from the producer transaction")
-        jobs = [[ns, key, identity, tick] for ns, key, identity, _, tick in state["jobs"]]
-        if jobs != [[namespace, key, ids[key], committed_at] for key in sorted(keys)]:
-            raise QueueMismatch("enqueue job identities or commit times differ from the producer transaction")
-        cluster.reconcile_trial("mesh", namespace, ids, {}, (request,))
-        return ids
-
     with proxy_type(
         cluster.port, lambda sql: sql.strip().upper() == "COMMIT", placement,
         prior_query=lambda sql: sql == "SELECT pg_current_xact_id()::text AS xid",
     ) as proxy:
         result = subprocess.run(
             [*subject.command, "enqueue"], cwd=subject.cwd, text=True, capture_output=True,
-            env=dict(env, JOBS_PARITY_INPUT=str(input_file),
+            env=dict(producer_env, JOBS_PARITY_INPUT=str(input_file),
                      JOBS_PARITY_DB_URL=cluster.url("mesh", "parity_producer", proxy.port)),
             timeout=settings["trial_timeout_seconds"],
         )
@@ -1339,13 +1357,15 @@ SELECT json_build_object(
             raise QueueMismatch("producer transaction was visible despite the pre-commit cut")
         cluster.reconcile_trial("mesh", namespace, {}, {}, ())
     else:
-        reconcile(first)
+        ids = reconcile_producer_commit(first, namespace, request, input_jobs)
+        cluster.reconcile_trial("mesh", namespace, ids, {}, (request,))
 
-    receipt, committed = subject.enqueue_receipt(env, input_file, evidence / "replay.log")
+    receipt, committed = subject.enqueue_receipt(producer_env, input_file, evidence / "replay.log")
     replayed = producer_state()
-    ids = reconcile(replayed)
-    if committed is None or receipt["ids"] != ids:
-        raise QueueMismatch("producer replay did not return the durable job identities")
+    ids = reconcile_producer_commit(replayed, namespace, request, input_jobs, receipt)
+    cluster.reconcile_trial("mesh", namespace, ids, {}, (request,))
+    if committed is None:
+        raise QueueMismatch("producer replay transaction was not committed")
     if placement != "before_commit" and replayed != first:
         raise QueueMismatch("producer replay changed a committed business write or enqueue receipt")
     if placement == "before_commit" and replayed["business"][0][3] != receipt["xid"]:
@@ -1357,7 +1377,7 @@ SELECT json_build_object(
     try:
         deadline = time.monotonic() + settings["trial_timeout_seconds"]
         wait_for(lambda: runner_ready([process], [log]), deadline, "producer replay runner")
-        wait_for(lambda: cluster.observe("mesh", namespace)["terminal"] == len(keys),
+        wait_for(lambda: cluster.observe("mesh", namespace)["terminal"] == len(input_jobs),
                  deadline, "settlement of replayed jobs")
         completed = True
     finally:
@@ -1365,7 +1385,7 @@ SELECT json_build_object(
     rows = cluster.rows("mesh", namespace)
     if any(row["state"] != "completed" or row["attempt"] != 1 for row in rows):
         raise QueueMismatch(f"replayed producer jobs did not complete at attempt one: {rows}")
-    writes = cluster.reconcile_trial("mesh", namespace, ids, dict.fromkeys(keys, (1,)), (request,))
+    writes = cluster.reconcile_trial("mesh", namespace, ids, dict.fromkeys(ids, (1,)), (request,))
     write_json(evidence / "fault.json", {
         "engine": "mesh", "fault": fault, "producer_returncode": result.returncode,
         "input_sha256": digest(input_file), "after_cut": first, "after_replay": replayed,
@@ -1379,7 +1399,8 @@ def run_batch_claim_fault(subject, scratch, evidence, settings, placement, proxy
         raise FixtureError("batch claim fault requires the driver's SCRAM-only loopback mode")
     cluster.prepare_database("mesh")
     namespace = f"parity_{secrets.token_hex(8)}"
-    env = subject.environment(namespace, 1, 1, "fault", settings["poll_ms"])
+    mode = "final_attempt" if final_attempt else "fault"
+    env = subject.environment(namespace, 1, 1, mode, settings["poll_ms"])
     if any(env.get(key) != "2" for key in ("MESH_SCHEDULER_MIN_WORKERS", "MESH_SCHEDULER_MAX_WORKERS")):
         raise FixtureError("batch claim startup marker requires a 2/2 coordinator scheduler")
     subject.call("migrate", env, evidence / "migrate.log")
@@ -1387,8 +1408,7 @@ def run_batch_claim_fault(subject, scratch, evidence, settings, placement, proxy
         raise FixtureError("batch claim fault requires the driver's nonce in a fresh database")
     input_file = batch_files(scratch, [{"request_id": "claim", "rollback": False, "jobs": [
         {"key": "claim", "hold_ms": 0, "fail_first": False, "payload": "synthetic"}]}])[0]
-    producer_env = dict(env, JOBS_PARITY_MODE="final_attempt") if final_attempt else env
-    receipt, committed = subject.enqueue_receipt(producer_env, input_file, evidence / "enqueue.log")
+    receipt, committed = subject.enqueue_receipt(env, input_file, evidence / "enqueue.log")
     enqueued = receipt["ids"]
     if set(enqueued) != {"claim"} or committed is None:
         raise QueueMismatch("batch claim fault requires one committed job")
@@ -1397,6 +1417,7 @@ def run_batch_claim_fault(subject, scratch, evidence, settings, placement, proxy
             or before["fence"] is not None):
         raise QueueMismatch(f"fault input has an unexpected initial state: {before}")
 
+    discarded = final_attempt and placement != "before_commit"
     log = evidence / "runner.log"
     completed = False
     with proxy_type(
@@ -1409,12 +1430,24 @@ def run_batch_claim_fault(subject, scratch, evidence, settings, placement, proxy
             deadline = time.monotonic() + settings["trial_timeout_seconds"]
             wait_for(lambda: runner_ready([process], [log]), deadline, "batch claim fault runner")
             fault = wait_for(lambda: proxy.fault, deadline, f"{placement} batch commit cut")
+            if discarded:
+                relation, scope = job_relation("mesh", namespace)
+                active_claim = json.loads(cluster.sql("mesh", f"""
+SELECT coalesce((SELECT json_build_object(
+ 'id', id::text, 'state', state, 'attempt', attempt, 'fenced', nullif(lease_token::text, '') IS NOT NULL,
+ 'lease_expires_at_ms', lease_expires_at_ms, 'observed_at_ms', mesh_jobs.now_ms()
+) FROM {relation} WHERE {scope} AND args->>'key' = 'claim'), 'null')
+"""))
+                if (not active_claim or active_claim["id"] != before["id"]
+                        or active_claim["state"] != "executing" or active_claim["attempt"] != 1
+                        or not active_claim["fenced"] or active_claim["lease_expires_at_ms"] is None
+                        or active_claim["observed_at_ms"] >= active_claim["lease_expires_at_ms"]):
+                    raise QueueMismatch(f"the committed final claim was not observed before expiry: {active_claim}")
             wait_for(lambda: cluster.observe("mesh", namespace)["terminal"] == 1,
                      deadline, "settlement following an ambiguous claim")
             completed = True
         finally:
             stop_runners([process], require_clean=completed)
-    discarded = final_attempt and placement != "before_commit"
     expected_attempt = 1 if final_attempt or placement == "before_commit" else 2
     after = cluster.claim_identity("mesh", namespace, "claim")
     if after != dict(before, state="discarded" if discarded else "completed", attempt=expected_attempt):
@@ -1430,14 +1463,17 @@ def run_batch_claim_fault(subject, scratch, evidence, settings, placement, proxy
         "enqueued_ids": enqueued, "worker_start_pids": workers,
     }
     if discarded:
-        lease = json.loads(cluster.sql("mesh", """
+        lease = json.loads(cluster.sql("mesh", f"""
 SELECT json_build_object('max_attempts', max_attempts, 'elapsed_ms', finished_at_ms - attempted_at_ms,
                          'lease_expires_at_ms', lease_expires_at_ms, 'errors', errors)
-FROM mesh_jobs.jobs
+FROM {relation} WHERE {scope} AND args->>'key' = 'claim'
 """))
-        if (lease["max_attempts"] != 1 or lease["elapsed_ms"] < 1500 or lease["lease_expires_at_ms"] is not None
+        if (lease["max_attempts"] != 1 or lease["elapsed_ms"] is None
+                or lease["elapsed_ms"] < FINAL_ATTEMPT_LEASE_MS
+                or lease["lease_expires_at_ms"] is not None
                 or [(error["attempt"], error["reason"]) for error in lease["errors"]] != [(1, "lease expired")]):
             raise QueueMismatch(f"the final claim did not discard through lease recovery: {lease}")
+        result["committed_claim"] = active_claim
         result["lease_recovery"] = lease
     write_json(evidence / "fault.json", result)
 
@@ -2290,6 +2326,44 @@ for number, line in enumerate(sys.stdin, 1):
                 observed["effects"] = [["mesh", namespace, "key", "replacement-id/1"]]
                 with self.assertRaisesRegex(QueueMismatch, "jobs identities"):
                     cluster.reconcile_trial("mesh", namespace, enqueued, attempts, ["batch"])
+
+        def test_producer_reconciliation_rejects_altered_receipts_or_payload(self):
+            from copy import deepcopy
+
+            namespace = "parity_0123456789abcdef"
+            request = "producer_commit"
+            input_jobs = [{"key": key, "hold_ms": 0, "fail_first": False, "payload": f"synthetic-{key}"}
+                          for key in ("second", "first")]
+            ids = {"first": "first-id", "second": "second-id"}
+            receipts = {key: {"id": identity, "state": "available", "effect_key": f"{identity}/1",
+                              "inserted": True, "conflict": False} for key, identity in ids.items()}
+            state = {
+                "business": [["mesh", namespace, request, "100", "commit-time"]],
+                "jobs": [[namespace, job["key"], ids[job["key"]], "101", "commit-time", dict(job)]
+                         for job in reversed(input_jobs)],
+                "receipts": [[namespace, key, dict(receipt), "101", "commit-time"]
+                             for key, receipt in receipts.items()],
+            }
+            replay = {"ids": ids, "receipts": [receipts[job["key"]] for job in input_jobs]}
+            self.assertEqual(reconcile_producer_commit(state, namespace, request, input_jobs, replay), ids)
+
+            for field, value in (("inserted", False), ("inserted", 1), ("conflict", True),
+                                 ("state", "scheduled"), ("effect_key", "first-id/2")):
+                with self.subTest(field=field, value=value):
+                    changed_state = deepcopy(state)
+                    changed_state["receipts"][0][2][field] = value
+                    with self.assertRaisesRegex(QueueMismatch, "invalid durable enqueue receipt"):
+                        reconcile_producer_commit(changed_state, namespace, request, input_jobs)
+                    changed_replay = deepcopy(replay)
+                    changed_replay["receipts"][1][field] = value
+                    with self.assertRaisesRegex(QueueMismatch, "full durable enqueue receipts"):
+                        reconcile_producer_commit(state, namespace, request, input_jobs, changed_replay)
+            with self.assertRaisesRegex(QueueMismatch, "full durable enqueue receipts"):
+                reconcile_producer_commit(state, namespace, request, input_jobs, {"ids": ids})
+
+            state["jobs"][0][-1]["payload"] = input_jobs[0]["payload"]
+            with self.assertRaisesRegex(QueueMismatch, "payloads"):
+                reconcile_producer_commit(state, namespace, request, input_jobs, replay)
 
         def test_direct_peak_cannot_exceed_slots(self):
             metrics = dict.fromkeys(("completed", "jobs_per_second", "sql_calls_per_job",

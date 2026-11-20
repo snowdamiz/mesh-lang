@@ -298,6 +298,21 @@ class SettlementProxyTests(unittest.TestCase):
                     self.expect_bytes(client, result)
                     self.assertIsNone(proxy.fault)
 
+    def test_after_commit_passes_through_a_rolled_back_commit(self):
+        commit = message(b"Q", b"COMMIT\0")
+        extended = (message(b"P", b"\0COMMIT\0\0\0")
+                    + message(b"B", b"\0\0\0\0\0\0\0\0")
+                    + message(b"E", b"\0\0\0\0\0") + SYNC)
+        rolled_back = message(b"C", b"ROLLBACK\0") + IDLE
+        for request, response in ((commit, rolled_back), (extended, message(b"1") + message(b"2") + rolled_back)):
+            with self.subTest(request=request), probe("after_commit", b"COMMIT") as (server, proxy):
+                with self.session(server, proxy) as (client, database):
+                    client.sendall(request)
+                    self.expect_bytes(database, request)
+                    database.sendall(response)
+                    self.expect_bytes(client, response)
+            self.assertIsNone(proxy.fault)
+
     def test_rejects_unframed_startup_and_oversized_messages(self):
         with probe("before_commit") as (server, proxy):
             with socket.create_connection(("127.0.0.1", proxy.port), timeout=2) as client:

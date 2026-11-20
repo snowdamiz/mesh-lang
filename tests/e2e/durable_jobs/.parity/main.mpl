@@ -63,21 +63,31 @@ fn collect_ids(receipts :: Json, jobs :: Json, start :: Int, index :: Int, count
   collect_ids(receipts, jobs, start, index + 1, count, Map.put(ids, key, id))
 end
 
+fn enqueue_specs(conn :: borrow PgConn, specs :: List<String>, size :: Int) -> Json!String do
+  let batch = "[" <> String.join(specs, ",") <> "]"
+  let receipts = Json.parse(Jobs.enqueue_in(conn, namespace(), batch)?)?
+  if Json.array_length(receipts)? != size do
+    return Err("enqueue did not return one receipt per input")
+  end
+  Ok(receipts)
+end
+
 fn enqueue_batches(conn :: borrow PgConn, jobs :: Json, index :: Int, count :: Int, ids :: Map<String, String>) -> Map<String, String>!String do
   if index < count do
     let stop = if count - index > 128 do index + 128 else count end
     let specs = collect_specs(jobs, index, stop, [], 2)?
-    let batch = "[" <> String.join(specs, ",") <> "]"
-    let receipts = Json.parse(Jobs.enqueue_in(conn, namespace(), batch)?)?
     let size = List.length(specs)
-    if Json.array_length(receipts)? != size do
-      return Err("enqueue did not return one receipt per input")
-    end
+    let receipts = enqueue_specs(conn, specs, size)?
     let ids = collect_ids(receipts, jobs, index, 0, size, ids)?
     enqueue_batches(conn, jobs, index + size, count, ids)
   else
     Ok(ids)
   end
+end
+
+fn transaction_id(conn :: borrow PgConn) -> String!String do
+  let rows = Pg.query(conn, "SELECT pg_current_xact_id()::text AS xid", [])?
+  Ok(Map.get(List.head(rows), "xid"))
 end
 
 fn write_batch(conn :: borrow PgConn, jobs :: Json, count :: Int, request_id :: String) -> String!String do
@@ -88,9 +98,21 @@ fn write_batch(conn :: borrow PgConn, jobs :: Json, count :: Int, request_id :: 
   let _ = Pg.execute(conn,
     "INSERT INTO public.mesh_jobs_parity_product (engine, namespace, request_id) VALUES ('mesh', $1, $2) ON CONFLICT DO NOTHING",
     [namespace(), request_id])?
+  if Env.get("JOBS_PARITY_MODE", "") == "producer_commit" do
+    if count < 1 || count > 128 do
+      return Err("producer commit probe requires one nonempty enqueue batch")
+    end
+    let specs = collect_specs(jobs, 0, count, [], 2)?
+    if List.length(specs) != count do
+      return Err("producer commit probe input exceeds the enqueue batch limit")
+    end
+    let receipts = enqueue_specs(conn, specs, count)?
+    let ids = collect_ids(receipts, jobs, 0, 0, count, Map.new())?
+    let xid = transaction_id(conn)?
+    return Ok(Json.encode(json { count: count, xid: xid, ids: ids, receipts: receipts }))
+  end
   let ids = enqueue_batches(conn, jobs, 0, count, Map.new())?
-  let rows = Pg.query(conn, "SELECT pg_current_xact_id()::text AS xid", [])?
-  let xid = Map.get(List.head(rows), "xid")
+  let xid = transaction_id(conn)?
   Ok(Json.encode(json { count: count, xid: xid, ids: ids }))
 end
 
@@ -225,10 +247,11 @@ fn serve(pool :: PoolHandle) -> String!String do
     "dense" -> 30000
     "sparse" -> 30000
     "fault" -> 1500
+    "final_attempt" -> 10000
     _ -> 0
   end
   if lease == 0 do
-    return Err("JOBS_PARITY_MODE must be dense, sparse, or fault")
+    return Err("JOBS_PARITY_MODE must be dense, sparse, fault, or final_attempt")
   end
   let grace = 15000
   let workers = Json.parse("""[{"worker":"parity","version":1}]""")?

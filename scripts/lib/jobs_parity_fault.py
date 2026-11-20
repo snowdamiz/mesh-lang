@@ -79,25 +79,30 @@ class _AfterCommit:
         self.ready_only = ready_only
         # Startup ends in ReadyForQuery, just as a Sync does.
         self.pending = deque([(b"S", False)])
-        self.statements = set()
+        self.statements = {}
         self.portals = {}
         self.deadline = float("inf")
         self.skip_to_sync = False
         self.held = None
         self.completed = False
         self.failed = False
+        self.requires_commit_tag = False
 
     def request(self, kind, body):
         matches = False
+        commit = False
         if kind == b"Q":
-            self.statements.discard(b"")
+            self.statements.pop(b"", None)
             self.portals.pop(b"", None)
-            matches = self.matches(_cstring(body)[0])
+            sql, _ = _cstring(body)
+            matches = self.matches(sql)
+            commit = matches and sql.strip().upper() == b"COMMIT"
         elif kind == b"P":
             name, rest = _cstring(body)
-            self.statements.discard(name)
-            if self.matches(_cstring(rest)[0]):
-                self.statements.add(name)
+            self.statements.pop(name, None)
+            sql, _ = _cstring(rest)
+            if self.matches(sql):
+                self.statements[name] = sql.strip().upper() == b"COMMIT"
         elif kind == b"B":
             portal, rest = _cstring(body)
             statement, _ = _cstring(rest)
@@ -107,19 +112,22 @@ class _AfterCommit:
         elif kind == b"C":
             name, _ = _cstring(body[1:])
             if body[:1] == b"S":
-                self.statements.discard(name)
+                self.statements.pop(name, None)
                 self.portals = {portal: statement for portal, statement in self.portals.items()
                                 if statement != name}
             elif body[:1] == b"P":
                 self.portals.pop(name, None)
         elif kind == b"E":
-            matches = _cstring(body)[0] in self.portals
+            statement = self.portals.get(_cstring(body)[0])
+            matches = statement in self.statements
+            commit = matches and self.statements[statement]
 
         if kind in _REPLY_END:
-            if self.ready_only and matches:
-                matches = kind == b"Q" and _cstring(body)[0].strip().upper() == b"COMMIT"
+            if self.ready_only:
+                matches = kind == b"Q" and commit
             cut = matches and self.proxy._reserve()
             if cut:
+                self.requires_commit_tag = commit
                 self.deadline = time.monotonic() + _CONFIRM_SECONDS
             self.pending.append((kind, cut))
         if max(len(self.pending), len(self.statements), len(self.portals)) > _MAX_PENDING:
@@ -145,7 +153,7 @@ class _AfterCommit:
             if request not in (b"Q", b"S", b"F"):
                 self.skip_to_sync = True
         if kind == b"C" and cut:
-            self.completed = not self.ready_only or body == b"COMMIT\0"
+            self.completed = not self.requires_commit_tag or body == b"COMMIT\0"
         if kind in _REPLY_END[request]:
             self.pending.popleft()
 
