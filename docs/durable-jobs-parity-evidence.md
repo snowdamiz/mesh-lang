@@ -274,19 +274,21 @@ operator, and inspector logins, plus cron takeover and reindex.
 | Local proof | PostgreSQL | Scope |
 | --- | --- | --- |
 | Linux arm64 container, pinned main `7c162056` | 17.11, 18.7, 19.0 | Baseline transaction, timeout, and process recovery over verified TLS |
-| Linux arm64 container, candidate `03990801` | 17.11, 18.7, 19.0 | 43 Jobs runtime cases and two compiled suites per version over verified TLS |
-| Linux arm64 container, candidate `0c40c3ad` | 17.11, 18.7, 19.0 | Same runtime and process proof plus scoped role and concurrent reindex cases |
-| macOS arm64, candidate `d83d38ed` | 17.11 | 43 Jobs runtime cases, two compiled suites, scoped roles, reindex, and pinned polling reference over verified TLS |
-| macOS arm64, candidate `23a95b87` against main `7c162056` | 17.11, 18.7, 19.0 | Compiled rolling upgrade and rollback with scoped roles and default function execution revoked |
-| macOS arm64, promotion harness `302cdce8` | 17.11, 18.7, 19.0 | Lost settlement reply, replay barrier, old-primary fencing, and one effect per job |
+| Linux arm64 container, candidate `0c40c3ad` | 17.11, 18.7, 19.0 | 43 Jobs runtime cases, two compiled suites, scoped roles, and concurrent reindex over verified TLS |
+| Linux arm64 container, candidate `ebe14b91` | 17.11 | Repeat of the full-role proof with the batch dispatcher wakeup change |
+| macOS arm64, candidate `53fb9189` | 17.11, 18.7, 19.0 | 43 Jobs runtime cases, two compiled suites, scoped roles, reindex, and pinned polling reference over verified TLS |
+| macOS arm64, release candidate `53fb9189` against main `7c162056` | 17.11, 18.7, 19.0 | Compiled rolling upgrade and rollback with scoped roles and default function execution revoked |
+| macOS arm64, promotion harness `ebe14b91` and release runtime `302cdce8` | 17.11, 18.7, 19.0 | Lost settlement reply, replay barrier, old-primary fencing, listener subscription catch-up, and one effect per job |
 
-The promotion runs resumed eligible work within 1.37 seconds of writability
+The listener promotion runs resumed eligible work within 1.31 seconds of writability
 against a 2-second budget. Replication and direct sessions used verified
 TLS and SCRAM. The loopback response-loss relay used SCRAM without TLS.
-The latest paired fault smoke used release runtime `302cdce8` and harness
-`0a82033b`. Both engines reconciled the runner-death and acknowledgement
-cases. The Mesh batch ran exactly one handler after each of the three
-COMMIT cuts, including loss of `ReadyForQuery` after `CommandComplete`.
+The paired smoke and faults used release runtime and harness `53fb9189`.
+Both engines reconciled producer IDs, business writes, attempts, and effects
+after shutdown. The Mesh batch ran exactly one handler after each of the
+three COMMIT cuts, including loss of `ReadyForQuery` after `CommandComplete`.
+The one-runner, one-slot smoke observed four Oban processes against a cap
+of two. That configuration exceeds the frozen process budget.
 
 The authoritative workflow targets Linux x64 and macOS arm64. These local
 receipts cover arm64 hosts and a Linux arm64 container. Windows has no
