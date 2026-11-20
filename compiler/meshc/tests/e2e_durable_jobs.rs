@@ -447,7 +447,13 @@ fn prove_competing_processes(proof: &Proof) {
 
 fn prove_batch_admission(proof: &Proof) {
     proof.control(json!({"action": "scale", "queue": "default", "concurrency": 3}));
-    let labels = ["batch-first", "batch-second", "batch-third", "batch-fourth"];
+    let labels = [
+        "batch-first",
+        "batch-second",
+        "batch-third",
+        "batch-fourth",
+        "batch-fifth",
+    ];
     let config = json!({
             "namespace": proof.namespace,
             "queues": {"default": 4},
@@ -469,9 +475,36 @@ fn prove_batch_admission(proof: &Proof) {
         proof.wait_effects(label, 1);
         assert_eq!(proof.job(label)["state"], "executing");
     }
-    assert_eq!(proof.job(labels[3])["attempt"], 0);
-    assert!(proof.effects(labels[3]).is_empty());
+    for label in &labels[3..] {
+        assert_eq!(proof.job(label)["attempt"], 0);
+        assert!(proof.effects(label).is_empty());
+    }
+    let paused = proof.control(json!({"action":"pause", "queue":"default"}));
+    assert_eq!(paused["state"], "paused", "{paused}");
+    let scaled = proof.control(json!({"action":"scale", "queue":"default", "concurrency":1}));
+    assert_eq!(scaled["state"], "paused", "{scaled}");
+    assert_eq!(scaled["concurrency"], 1);
 
+    for worker in &workers {
+        worker.release();
+    }
+    for label in &labels[..3] {
+        proof.wait_state(label, "completed");
+    }
+    for worker in &workers {
+        fs::remove_file(worker.markers.join("gate")).unwrap();
+    }
+    for label in &labels[3..] {
+        assert_eq!(proof.job(label)["attempt"], 0);
+        assert!(proof.effects(label).is_empty());
+    }
+    let resumed = proof.control(json!({"action":"resume", "queue":"default"}));
+    assert_eq!(resumed["state"], "active", "{resumed}");
+    assert_eq!(resumed["concurrency"], 1);
+    proof.wait_effects(labels[3], 1);
+    assert_eq!(proof.job(labels[3])["state"], "executing");
+    assert_eq!(proof.job(labels[4])["attempt"], 0);
+    assert!(proof.effects(labels[4]).is_empty());
     for worker in &workers {
         worker.release();
     }
@@ -483,7 +516,7 @@ fn prove_batch_admission(proof: &Proof) {
     for worker in &mut workers {
         worker.stop();
     }
-    proof.control(json!({"action": "scale", "queue": "default", "concurrency": 1}));
+    println!("J2 lane 3 passed: a committed pause held the backlog while admitted work settled, and resume observed the reduced cap");
 }
 
 fn prove_local_controls(proof: &Proof, batch: bool) {
