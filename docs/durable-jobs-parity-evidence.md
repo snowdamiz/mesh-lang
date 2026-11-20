@@ -133,6 +133,12 @@ trial and checks for counter eviction during measurement. PostgreSQL can
 retain entries for dropped trial databases until a reset. The raw trial
 records the deallocation counter alongside the SQL call counts.
 
+The grouped Oban comparison, the two historical replays, and the targeted
+sparse main rerun used the reset and eviction check. The full 35-profile
+main comparison used harness `eb472832` before those checks existed.
+Its SQL counts are positive. The saved evidence cannot establish whether
+any statement entries were evicted in that comparison. [Main comparison](../proof/jobs-parity/j7-lane-1.log)
+
 The archived comparison `j1-load-xqlrv50b` reconciled 42,360 jobs per
 engine across 32 profiles. It stopped when one Oban large-context trial
 reported zero enqueue SQL calls despite completing all 64 jobs. A local
@@ -575,6 +581,16 @@ Starting one-minute host load ranged from 6.25 to 23.62 on 15 logical CPUs.
 The highest sampled one-minute load was 34.73. The recorded timings apply
 to these configurations and host conditions. Each group links its raw
 trials, SQL counters, and resource samples. [Comparison receipt](../proof/jobs-parity/j7-lane-10.log)
+
+The raw archive includes the original summaries, trial metrics, and
+measured rows and resource samples from both 35-profile comparisons.
+Its `files.json` lists each recorded source path and SHA-256. The
+qualification index records the archive's SHA-256. [Raw archive](../proof/jobs-parity/matched-workload-samples-v1.tar.xz) · [Qualification index](../proof/jobs-parity/qualification-v1.json)
+
+```sh
+tar -xOf proof/jobs-parity/matched-workload-samples-v1.tar.xz \
+  oban/short/short-1r-16s/trials.json
+```
 
 To replay a group, check out its `harness_sha` from the receipt and run
 the same runtime with its workload name. The four dense and stress groups

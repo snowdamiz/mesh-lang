@@ -1044,7 +1044,7 @@
     },
     "runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
     "scope": "macOS arm64 grouped release workload comparison with frozen settings",
-    "sha256": "a072c969f8c57ded8aa9c2cc2fb310f20df63f6cf36fee33c2d9c46b6de1856e",
+    "sha256": "a25240884622e78bf03e6ddce4a4630fcdeecaec60a4a8e99e5ffb3200e71b21",
     "workload_audits": {
       "large": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-load-m2evu8ja/group-audit.json",
       "noop": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-load-md1inmas/group-audit.json",
@@ -2122,6 +2122,24 @@
       }
     },
     "transport": "SCRAM with verified TLS"
+  },
+  "workload_sample_archive": {
+    "comparisons": {
+      "main": {
+        "measured_trials": 350,
+        "profiles": 35,
+        "statement_counter_eviction_check": "unavailable"
+      },
+      "oban": {
+        "measured_trials": 350,
+        "profiles": 35,
+        "statement_counter_eviction_check": "zero evictions recorded"
+      }
+    },
+    "content": "original per-profile summaries, trial metrics, measured raw rows and samples, and manifests",
+    "path": "proof/jobs-parity/matched-workload-samples-v1.tar.xz",
+    "sha256": "6133e5f63efd16e4ed4da80992a79a84a5a037791aca2e6652351d60398ecdf4",
+    "source_files": 1016
   },
   "workspace_gate": {
     "checks": [

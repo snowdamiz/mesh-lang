@@ -113,9 +113,9 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 **Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
 - [x] Metric. Each profile reports throughput, pickup p99, SQL calls per job, and idle queries per minute. [Load receipt](../proof/jobs-parity/j7-lane-10.log)
-- [x] Probe. Main and candidate each completed five paired trials per frozen profile with identical input files. [Main comparison](../proof/jobs-parity/j7-lane-1.log)
+- [x] Probe. Main and candidate each completed five paired trials per frozen profile with identical input files. The archive contains the saved rows and samples. [Main comparison](../proof/jobs-parity/j7-lane-1.log) · [Raw archive](../proof/jobs-parity/matched-workload-samples-v1.tar.xz)
 - [x] Baseline. The main comparison and the separate Oban comparison used the same host, PostgreSQL patch, and frozen settings. The receipts pin the harness used by each arm. [Main comparison](../proof/jobs-parity/j7-lane-1.log) · [Oban comparison](../proof/jobs-parity/j7-lane-10.log)
-- [x] Rule. The load driver requires five valid pairs with complete metrics. The observer collects samples outside the runner and rejects a trial that loses a statement counter. [Measurement guide](durable-jobs-parity-evidence.md)
+- [x] Rule. The load driver requires five valid pairs with complete metrics. The current harness rejects statement-counter eviction. The original main comparison recorded positive SQL counts before that check was added. [Measurement guide](durable-jobs-parity-evidence.md)
 
 **Review gate.** None. This phase has no graphical interaction. Independent review uses the CLI receipts and database proof.
 
@@ -419,7 +419,7 @@ OS spawn call and a gate at the existing native worker-start marker.
 - [x] Lane 7. Primary promotion fenced the old primary and reconciled all job and effect identities. Eligible work resumed within 1.23 seconds in all three macOS PostgreSQL runs against a 2-second budget. [Receipt](../proof/jobs-parity/j7-rolling-and-promotion.log)
 - [x] Lane 8. On macOS arm64 with PostgreSQL 17.11, 18.7, and 19.0, the compiled proof exhausted the pool and interrupted notifications and maintenance. Stop and join met their bounds. The peer proved fallback polling, expired-lease recovery, and cron cursor advancement. [Receipt](../proof/jobs-parity/j7-lane-8.log)
 - [x] Lane 9. The guides reproduced enqueue, retry, drain, and lease recovery from a fresh application on macOS arm64 with PostgreSQL 17.11. [Receipt](../proof/jobs-parity/j7-lane-9.log) · [Rerun the guide proof](durable-jobs-parity-evidence.md#replay-the-fresh-application-guides)
-- [x] Lane 10. The 35-profile release comparison reconciled 43,080 jobs per engine. Each measured profile links the checked raw trials and final verdicts. [Oban comparison](../proof/jobs-parity/j7-lane-10.log)
+- [x] Lane 10. The 35-profile release comparison reconciled 43,080 jobs per engine. The receipt reports each profile's metrics, and the archive contains the original trial and summary files. [Oban comparison](../proof/jobs-parity/j7-lane-10.log) · [Raw archive](../proof/jobs-parity/matched-workload-samples-v1.tar.xz)
 
 **Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
