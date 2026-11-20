@@ -26,6 +26,7 @@ GRANT SELECT, INSERT (namespace, id, row_version, row_location, encoding, contex
     ON mesh_jobs.batch_context_blocks TO :"worker";
 GRANT EXECUTE ON FUNCTION mesh_jobs.claim(text,text,jsonb,bigint),
     mesh_jobs.claim_batch_v1(text,text,jsonb,bigint,integer,bigint),
+    mesh_jobs.claim_drain_v1(text,text,jsonb,bigint,bigint,jsonb),
     mesh_jobs.renew(text,uuid,uuid,bigint), mesh_jobs.try_renew(text,uuid,uuid,bigint),
     mesh_jobs.settle(text,uuid,uuid,jsonb,boolean), mesh_jobs.settle_state(text,uuid,uuid,jsonb,boolean),
     mesh_jobs.recover(text,integer,jsonb) TO :"worker";

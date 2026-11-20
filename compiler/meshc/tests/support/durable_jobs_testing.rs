@@ -152,6 +152,60 @@ fn bounded_request(proof: &Proof, queue: &str, options: Value) -> String {
     .to_string()
 }
 
+pub(super) fn prove_scoped_drain(admin: &Proof, producer: &Proof, worker: &Proof) {
+    const CLAIM: &str = "mesh_jobs.claim_drain_v1(text,text,jsonb,bigint,bigint,jsonb)";
+    let label = "scoped-drain";
+    let queue = "drain";
+    let job = producer.enqueue(json!({"worker":"proof", "queue":queue, "args":{"label":label}}));
+    let request = bounded_request(
+        worker,
+        queue,
+        json!({"max_jobs":2,"recursive":false,"on_error":"continue"}),
+    );
+
+    let locked = admin.lock_job(&job);
+    let idle = worker.run("drain", &request);
+    assert_eq!(idle["stop_reason"], "idle", "{idle}");
+    assert_eq!(idle["claimed"], 0);
+    assert_eq!(idle["remaining"], true);
+    native_pg_close(locked);
+
+    // A live caller gets an error when its worker login cannot claim.
+    admin.sql(&format!(
+        "REVOKE EXECUTE ON FUNCTION {CLAIM} FROM jobs_worker"
+    ));
+    let child = worker
+        .command("drain", &request)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let output = artifacts::wait_with_timeout(child, WAIT).unwrap();
+    let report = artifacts::command_output_text(&output);
+    assert_eq!(output.status.code(), Some(1), "{report}");
+    assert!(
+        report.contains("proof error:")
+            && report.contains("permission denied for function claim_drain_v1"),
+        "{report}"
+    );
+    let untouched = admin.job(label);
+    assert_eq!(untouched["id"], job["id"]);
+    assert_eq!(untouched["state"], "available");
+    assert_eq!(untouched["attempt"], 0);
+    assert!(admin.effects(label).is_empty());
+
+    admin.sql(&format!("GRANT EXECUTE ON FUNCTION {CLAIM} TO jobs_worker"));
+    let completed = worker.run("drain", &request);
+    assert_eq!(completed["outcomes"]["completed"], 1, "{completed}");
+    assert_eq!(completed["remaining"], false);
+    let row = admin.wait_state(label, "completed");
+    assert_eq!(row["id"], job["id"]);
+    assert_eq!(row["attempt"], 1);
+    let effects = admin.wait_effects(label, 1);
+    assert_eq!(effects[0]["context"]["effect_key"], job["effect_key"]);
+    println!("Scoped Jobs.drain respected a row lock, returned a claim error, and completed under the worker grants");
+}
+
 fn prove_bounded_cutoff(proof: &Proof, other: &Proof) {
     let cutoff = proof
         .sql("SELECT mesh_jobs.now_ms() + 600000")

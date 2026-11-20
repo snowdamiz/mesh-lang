@@ -592,13 +592,13 @@ Publishing uses PostgreSQL's transactional notification queue. A rollback discar
 
 If a transaction locks a job row, the runner retries that job's renewal or acknowledgement while it continues processing other active jobs. A claim can expire while its row is locked. Recovery can act once the transaction releases the lock.
 
-Delivery is at least once within the attempt budget. If a handler sends a receipt and dies before acknowledging it, another attempt can send it again. Pass `effect_key` to a downstream idempotency mechanism or record it in the same transaction as the external effect when both use the same database.
+Jobs retry unacknowledged claims while attempts remain. A claim can use an attempt before the handler starts, for example if PostgreSQL commits the claim and the runner loses the reply. If a handler sends a receipt and dies before acknowledging it, another attempt can send it again. Pass `effect_key` to a downstream idempotency mechanism or record it in the same transaction as the external effect when both use the same database.
 
 The runtime terminates the attempt process at its handler timeout or when it loses its lease or runner. This includes a handler blocked in a native call while the host can still run its watchdog. A suspended host can miss lease renewals and allow another runner to claim the job before the original host resumes. A service may finish a request it accepted before the attempt was terminated. Use the same `effect_key` to deduplicate these requests across retries.
 
 Deploy compiled executables at versioned paths so old runners can keep starting handlers while they drain. Stop runners from before process isolation to apply hard timeouts to every new attempt. Existing scheduled and retryable jobs keep their stored arguments and deadlines.
 
-On `SIGTERM` or `Jobs.stop`, the runner stops claiming new work and tries to finish in-flight attempts within the grace period. It terminates attempts that are still running when the grace period ends. `Jobs.stop` can return `stopping` if cleanup is still in progress. The `drained` field reports whether any claims or attempts remain. An unfinished claim remains recoverable through its lease.
+On `SIGTERM` or `Jobs.stop`, the runner stops claiming new work and tries to finish in-flight attempts within the grace period. It terminates attempts that are still running when the grace period ends. `Jobs.stop` can return `stopping` if cleanup is still in progress. The `drained` field reports whether the runner still tracks local claims or attempts. A claim with an unknown commit outcome can remain in PostgreSQL until its lease expires.
 
 `Jobs.join` can wait past the grace period. It returns `stopped` after the runner reaps its local attempt processes and finishes its PostgreSQL work, including background maintenance. Before closing the PostgreSQL pool, wait for `Jobs.join` to return for every runner that uses it.
 

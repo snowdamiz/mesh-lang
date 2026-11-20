@@ -9,6 +9,8 @@
    to pause just that runner's queue, or use `stop` to drain and remove that
    queue from local dispatch. Other queues keep running.
 3. For a local stop, check the queue's `drained` flag and wait for `stopped`.
+   The flag reports whether the runner still tracks local claims or attempts
+   for the queue.
    At the end of `grace_ms`, the runner terminates handlers still running on
    that queue and settles their attempts as failures under the current lease.
    Pending claims that return after the stop are released if the runner can
@@ -251,7 +253,8 @@ can retain an invalid index with a `_ccnew` or `_ccold` suffix after failure.
    `ALTER DEFAULT PRIVILEGES REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC` as
    the migrator before running `Jobs.migrate`.
 2. Apply the checked-in grants as the object owner after migrating. Grant the
-   producer its own application-table privileges separately. [Jobs grants](https://github.com/snowdamiz/mesh-lang/blob/main/scripts/fixtures/jobs-role-grants.sql)
+   producer its own application-table privileges separately. The worker
+   grants also cover bounded `Jobs.drain`. [Jobs grants](https://github.com/snowdamiz/mesh-lang/blob/main/scripts/fixtures/jobs-role-grants.sql)
 
    ```sh
    psql -X -v ON_ERROR_STOP=1 -v producer=app_producer -v worker=app_worker \

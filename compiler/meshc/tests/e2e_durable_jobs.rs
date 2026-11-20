@@ -76,6 +76,7 @@ fn durable_jobs_survive_process_boundaries() {
     println!("J6 local queue controls passed with single and batch claims");
     prove_bulk_delete_during_claim(&proof);
     prove_job_operations(&proof);
+    prove_cleanup_with_a_locked_terminal_row(&proof);
     println!("J6 lane 6 passed: bulk deletion overlapped a claim and active replacement preserved its fence");
     println!("J6 namespace controls, active replacement, run-now, and receipt replay passed");
     pool_outage::prove(&proof);
@@ -846,6 +847,44 @@ fn prove_job_operations(proof: &Proof) {
     runner.stop();
 }
 
+fn prove_cleanup_with_a_locked_terminal_row(proof: &Proof) {
+    for action in ["delete_all", "prune"] {
+        let queue = format!("locked-{action}");
+        let mut jobs: Vec<_> = (0..3)
+            .map(|index| {
+                let label = format!("{queue}-{index}");
+                let spec = json!({"worker":"proof", "queue":queue,
+                    "args":{"label":label}, "request_key":label});
+                let receipt = proof.enqueue(spec.clone());
+                (label, spec, receipt)
+            })
+            .collect();
+        jobs.sort_by(|left, right| id(&left.2).cmp(id(&right.2)));
+        for (_, _, receipt) in &jobs {
+            let terminal = proof.control(json!({"action":"discard", "id":receipt["id"]}));
+            assert_eq!(terminal["state"], "discarded");
+        }
+        let (locked_label, locked_spec, locked_receipt) = &jobs[0];
+        let lock = proof.lock_job(locked_receipt);
+        let page = match action {
+            "delete_all" => json!({"action":action, "filter":{"queue":queue,"limit":1}}),
+            _ => json!({"action":action,"queue":queue,"max_age_ms":0,"limit":1}),
+        };
+        assert_eq!(proof.control(page.clone())["deleted"], 1);
+        assert_eq!(proof.job(locked_label)["id"], locked_receipt["id"]);
+        assert!(proof.job(&jobs[1].0).is_null());
+        assert_eq!(proof.job(&jobs[2].0)["id"], jobs[2].2["id"]);
+
+        native_pg_close(lock);
+        assert_eq!(proof.control(page)["deleted"], 1);
+        assert!(proof.job(locked_label).is_null());
+        assert_eq!(proof.job(&jobs[2].0)["id"], jobs[2].2["id"]);
+        assert_eq!(proof.enqueue(locked_spec.clone()), *locked_receipt);
+        assert!(proof.job(locked_label).is_null());
+    }
+    println!("J6 cleanup skipped locked terminal rows, honored page limits, and preserved their receipts");
+}
+
 fn prove_concurrent_reindex(proof: &Proof) {
     let mut runner = proof.worker("j6-reindex-worker", false);
     let mut snapshot = native_pg_connect(proof.url).unwrap();
@@ -1043,6 +1082,7 @@ fn prove_scoped_compiled_roles(proof: &Proof) {
             1,
         );
         assert_eq!(producer.run("enqueue", COMMITTED), receipt);
+        durable_jobs_testing::prove_scoped_drain(&admin, &producer, &worker);
         admin.clean().unwrap();
         println!("J6 compiled scoped login proof passed on {suffix}");
     }
