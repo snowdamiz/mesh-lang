@@ -139,7 +139,7 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 
 - [x] Add a versioned `claim_batch` entry point. Under one `READ COMMITTED` transaction, take the queue admission lock once, measure global headroom, and select the ordered `SKIP LOCKED` candidates by priority, schedule, and position. Limit the result by local reserved slots, global headroom, and an initial quantum of 16, then rotate queues. Document that continuous higher-priority arrivals can delay lower-priority work in the same queue.
 - [x] Return one PostgreSQL row per attempt. Enforce per-context and total reply byte budgets before creating claims, because JSONB can expand a small enqueue into a large context. Start with the existing 16 MiB per-column ceiling and a 32 MiB total reply budget under the driver's 64 MiB result cap. Expose an oversized-context error that does not block valid work behind it.
-- [ ] Dispatch only after confirmed commit. Recover ambiguous claims by lease and refund only confirmed unstarted claims. Preserve attempt accounting, effect keys, cancellation priority, and stale-token fencing. Keep the original SQL entry points, bodies, and role grants available during upgrades.
+- [x] Dispatch only after confirmed commit. Recover ambiguous claims by lease and refund only confirmed unstarted claims. Preserve attempt accounting, effect keys, cancellation priority, and stale-token fencing. Keep the original SQL entry points, bodies, and role grants available during upgrades. [Claim faults and owner replay](../proof/jobs-parity/rolling-upgrade-v2.json)
 - [x] Give renewal and settlement bounded database access independent of claim traffic. Reserve capacity or use bounded independent I/O so that a slow claim or a locked row does not stop another queue's renewals. Retain the per-attempt process until measurements justify a different lifetime design.
 
 **You see.**
@@ -160,7 +160,7 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 - [x] Lane 6. Inject lost claim responses before and after commit. Save `j2-lane-6.log`. Pass when the runner launches only confirmed claims and recovery handles ambiguous rows.
 - [x] Lane 7. Fail a child launch partway through a batch, then kill the runner during a separate startup whose result is uncertain. Save `j2-lane-7.log`. Pass when only proven unstarted rows get refunds, held slots return, uncertain rows recover under a new token, and the runner never launches twice or settles stale with the old token.
 - [x] Lane 8. Mix large and small contexts in a backlog. Save `j2-lane-8.log`. Pass when every successful reply stays within the byte budget and oversized input does not block the queue.
-- [x] Lane 9. Both binaries processed eligible jobs under scoped grants on all three macOS PostgreSQL versions. The old owner migration preserved the new entry points. [Receipt](../proof/jobs-parity/j7-rolling-and-promotion.log)
+- [x] Lane 9. Both binaries processed eligible jobs under scoped grants on all three macOS PostgreSQL versions. Owner replay preserved the catalog, original function definitions and grants, and namespace pause. [Receipt](../proof/jobs-parity/rolling-upgrade-v2.json)
 - [x] Lane 10. Burden a busy queue while a sparse queue becomes due. Save `j2-lane-10.log`. Pass when the sparse queue claims on its next available rotation.
 
 Run lane 7 on macOS after checking out the proof commit. Set `PG_BIN_DIR`

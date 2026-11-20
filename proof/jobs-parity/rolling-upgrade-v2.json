@@ -1,0 +1,444 @@
+{
+  "candidate_release_ref": "a431fbbfb3dccc737eb12c7c651294212f728e1d",
+  "harness_sha": "6191a712e26077a86a839b87d4bdab4946fe5071",
+  "paired_faults_pg17_11": {
+    "harness_sha": "a431fbbfb3dccc737eb12c7c651294212f728e1d",
+    "manifest_sha256": "16c37b8c52e8fd3f088423df7c43466bda5c2684eca91e3b4edc69f87f09be1d",
+    "raw_fault_sha256": {
+      "baseline/after_commit/fault.json": "d2060fc0e9b7e98a41645a3a35509848d82bb21d73c233201843025d6239a296",
+      "baseline/before_commit/fault.json": "14ef8b3fd249da42bc10322c5f7fec20bb3475ca6bab39fb3357d4277b3898b8",
+      "baseline/fault.json": "02ddfac036855a99478bf29d0ed31ae8150dc80ec6a941b5a048586a769d80dd",
+      "mesh/after_commit/fault.json": "02d6dc2bbb8f36fd8200b8ab5783c0ea5cada96ee35f59af868aedd3f2507ea4",
+      "mesh/before_commit/fault.json": "424f7615fc926344d99a4125e04f6c2f8f466c9379bcb4b07d499cc52b6ecbfa",
+      "mesh/claim-after_command_complete/fault.json": "68c3b96d921583ed185bbc01b9693bec2ba8483b04d223d62208dc6a7504a629",
+      "mesh/claim-after_commit-final-attempt/fault.json": "095a219abe3fe3d2f658e8e1bf3d678a36e80bcbe4993575e373b7c9b234adca",
+      "mesh/claim-after_commit/fault.json": "cecb47d8a1ed2998018e0fe7da542f613491fab7c7cb5d331f16446677b34056",
+      "mesh/claim-before_commit/fault.json": "05cd8876afb79df44a2d63419068f7843e8d6677ff675f39abd36983bf6109c4",
+      "mesh/fault.json": "79619b4ae2fbd8903703f178585cd6cadf64e955fe1c880af1f2ea63e5e74241",
+      "mesh/producer-after_commit/fault.json": "c09f570ebe9490fb288fd0b1ba8bf2cba0eff615bd56d23c06fa681715bcde09",
+      "mesh/producer-before_commit/fault.json": "6bd6bd5bd3667f38b4d571bdf168517fde6f93e202c3099e032f704b42ba2bbb"
+    },
+    "reference_sha": "7c1620563614a04a573aef806a6d019a2af4dfe9",
+    "result_sha256": "48436d736163c2f302623635e97fb6aa84793feff0999b47ecd49cb2b4851706",
+    "runtime_sha": "a431fbbfb3dccc737eb12c7c651294212f728e1d",
+    "transport": "SCRAM over plaintext loopback"
+  },
+  "platform": "macOS arm64",
+  "proof_source_sha256": {
+    "scripts/fixtures/jobs-role-grants.sql": "cf96d48adc2ee1cdec8be3e5f95ced375e290071ea197907d011ae982263632a",
+    "scripts/fixtures/jobs-upgrade/main.mpl": "f21739aae33380daf694b10f6f627e251610a725acecc122482a862df7acfe1c",
+    "scripts/jobs-parity.py": "d1fdb3325b046f3d700d02dacb61b76963739d5672bde01237aec03105f925c2",
+    "scripts/verify-jobs-upgrade.py": "6244d1309f06cdd009a1989c0f3af103fbe116cdda7a811b6cfdb34197f80ba9"
+  },
+  "published_legacy_ref": "7c1620563614a04a573aef806a6d019a2af4dfe9",
+  "receipt_version": 2,
+  "result": "pass",
+  "rolling_transport": "SCRAM with verified TLS",
+  "runs": [
+    {
+      "current_batch_start_with_old_grants_denied": true,
+      "current_single_start_with_old_grants_denied": true,
+      "new": {
+        "compiler_sha256": "bed104fb596ab01ab2b6be9b5f35b36ca6a769100cb71fd502ce0694ffd1c8f0",
+        "fixture_binary_sha256": "29176f3ef923286032f479cf8f7e292642dacd81d9e5c0e09e953d58148693ca",
+        "runtime_sha256": "c2ec0e914fee7bbc13061535b1f2226c8b380a6ba6df584e1a164d380e1db5b9",
+        "source_sha": "a431fbbfb3dccc737eb12c7c651294212f728e1d"
+      },
+      "old": {
+        "compiler_sha256": "19b5c6efafd382158a17065fb7aa121e7190b0753a69f3f9d0f9786914473a57",
+        "fixture_binary_sha256": "09045c715f0b38cd69c8a6765d1380f819ca7bb61cc2c711a230406a2a0b88b9",
+        "runtime_sha256": "fb71e510690af5007c8ca98b350a4420934dcc8fcd2a9e015f1dfa3d530e67d8",
+        "source_sha": "7c1620563614a04a573aef806a6d019a2af4dfe9"
+      },
+      "old_grants_unchanged": true,
+      "owner_replay": {
+        "additive_objects_preserved": [
+          "function claim_batch_v1(ns text, queue_name text, workers jsonb, lease_ms bigint, slots integer, cutoff_ms bigint)",
+          "function claim_drain_v1(ns text, queue_name text, workers jsonb, lease_ms bigint, cutoff_ms bigint, initial_ids jsonb)",
+          "function fence_claim_v1()",
+          "function publish_wake_v1()",
+          "function set_namespace_paused(ns text, paused boolean)",
+          "relation batch_context_blocks",
+          "relation batch_context_blocks_pkey",
+          "relation job_summaries",
+          "relation mesh_jobs_queue_due",
+          "relation queue_summaries",
+          "trigger mesh_jobs_fence_claim",
+          "trigger mesh_jobs_insert_wake",
+          "trigger mesh_jobs_queue_wake",
+          "trigger mesh_jobs_update_wake"
+        ],
+        "current_single_job": "d25d4d1b-757e-479a-835e-add66fb346a6",
+        "held_lease_renewed_and_settled_while_paused": true,
+        "legacy_function_definitions": {
+          "function claim(ns text, queue_name text, workers jsonb, lease_ms bigint)": "e7258d9c807eb2435b6d97c29a373a3d",
+          "function effect_key(j mesh_jobs.jobs)": "359de0b53a4b87a45fc5a2608e53af90",
+          "function enqueue(ns text, spec jsonb, request_id text, fingerprint text)": "fc7fbf615b265cf56f9c34a7e1e997e9",
+          "function job_control(ns text, job_id uuid, operation text, absolute_ms bigint, delay_ms bigint)": "5e4cf7c070cb7e2a75871fdaa7e73e6a",
+          "function job_json(j mesh_jobs.jobs)": "29f7b103cf8905bd7c6ce8b863d1043d",
+          "function now_ms()": "03abf2cf6644b66453f639f8e296c380",
+          "function queue_control(ns text, queue_name text, operation text, capacity integer)": "56139a6e7b6717c57dfa3a24d49c9d3c",
+          "function queue_json(q mesh_jobs.queues)": "0ab3621c1699458571721e6fd89539b3",
+          "function recover(ns text, page_size integer, queue_filter jsonb)": "ddf46e4c4678da74dbcd3d85402043da",
+          "function renew(ns text, job_id uuid, token uuid, lease_ms bigint)": "1f3d388eb171d7dad898fabbf6450f0e",
+          "function settle(ns text, job_id uuid, token uuid, outcome jsonb, recovering boolean)": "ec7b9ab0d7f7a305c9280f6a4445ac41",
+          "function settle_state(ns text, job_id uuid, token uuid, outcome jsonb, recovering boolean)": "43fb5eae10a47ac92f65e15a372bf1e9",
+          "function try_renew(ns text, job_id uuid, token uuid, lease_ms bigint)": "835345f7899483395b59660644256743",
+          "function unique_values(payload jsonb, keys jsonb)": "51a122ef6dba56f58e766ad14d42bb7d"
+        },
+        "old_owner_migration_exit": 0,
+        "paused_claims_fenced": [
+          "legacy",
+          "current_single",
+          "current_batch"
+        ],
+        "public_execute_count": 0,
+        "queues_after_resume": {
+          "created-while-paused": [
+            "active",
+            1
+          ],
+          "disabled": [
+            "paused",
+            3
+          ],
+          "legacy": [
+            "active",
+            2
+          ]
+        },
+        "resumed_jobs": {
+          "replay-existing": "99619d9c-2b81-420b-bdea-6382189a3919",
+          "replay-new": "d6cec36a-a988-48ec-a765-903b7fd7392f"
+        },
+        "resumed_writes": {
+          "attempts": [
+            {
+              "attempt": 1,
+              "effect_key": "99619d9c-2b81-420b-bdea-6382189a3919/1",
+              "job_id": "99619d9c-2b81-420b-bdea-6382189a3919",
+              "worker_role": "upgrade_old_worker"
+            },
+            {
+              "attempt": 1,
+              "effect_key": "d25d4d1b-757e-479a-835e-add66fb346a6/1",
+              "job_id": "d25d4d1b-757e-479a-835e-add66fb346a6",
+              "worker_role": "upgrade_new_worker"
+            },
+            {
+              "attempt": 1,
+              "effect_key": "d6cec36a-a988-48ec-a765-903b7fd7392f/1",
+              "job_id": "d6cec36a-a988-48ec-a765-903b7fd7392f",
+              "worker_role": "upgrade_old_worker"
+            }
+          ],
+          "effects": [
+            {
+              "effect_key": "99619d9c-2b81-420b-bdea-6382189a3919/1",
+              "job_id": "99619d9c-2b81-420b-bdea-6382189a3919",
+              "worker_role": "upgrade_old_worker"
+            },
+            {
+              "effect_key": "d25d4d1b-757e-479a-835e-add66fb346a6/1",
+              "job_id": "d25d4d1b-757e-479a-835e-add66fb346a6",
+              "worker_role": "upgrade_new_worker"
+            },
+            {
+              "effect_key": "d6cec36a-a988-48ec-a765-903b7fd7392f/1",
+              "job_id": "d6cec36a-a988-48ec-a765-903b7fd7392f",
+              "worker_role": "upgrade_old_worker"
+            }
+          ]
+        },
+        "same_legacy_runner_resumed": true,
+        "upgraded_catalog_and_legacy_grants_unchanged": true
+      },
+      "postgres_version": "17.11 (Homebrew)",
+      "postgres_version_num": 170011,
+      "raw_receipt_sha256": "4ec67fa1e478c482bff71ef17163491db2af5c8ced134e6811e914206fb5218d",
+      "roles": {
+        "inspector_can_read_summary": true,
+        "inspector_cannot_read_args": true,
+        "legacy_cannot_batch": true,
+        "lifecycle_roles_independent": true,
+        "migration_role_owns_schema": true,
+        "operator_can_pause_namespace": true,
+        "producer_cannot_claim": true,
+        "worker_can_batch": true,
+        "worker_cannot_pause_namespace": true
+      },
+      "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+      "upgraded_catalog_unchanged_by_worker_rollback": true
+    },
+    {
+      "current_batch_start_with_old_grants_denied": true,
+      "current_single_start_with_old_grants_denied": true,
+      "new": {
+        "compiler_sha256": "bed104fb596ab01ab2b6be9b5f35b36ca6a769100cb71fd502ce0694ffd1c8f0",
+        "fixture_binary_sha256": "29176f3ef923286032f479cf8f7e292642dacd81d9e5c0e09e953d58148693ca",
+        "runtime_sha256": "c2ec0e914fee7bbc13061535b1f2226c8b380a6ba6df584e1a164d380e1db5b9",
+        "source_sha": "a431fbbfb3dccc737eb12c7c651294212f728e1d"
+      },
+      "old": {
+        "compiler_sha256": "19b5c6efafd382158a17065fb7aa121e7190b0753a69f3f9d0f9786914473a57",
+        "fixture_binary_sha256": "09045c715f0b38cd69c8a6765d1380f819ca7bb61cc2c711a230406a2a0b88b9",
+        "runtime_sha256": "fb71e510690af5007c8ca98b350a4420934dcc8fcd2a9e015f1dfa3d530e67d8",
+        "source_sha": "7c1620563614a04a573aef806a6d019a2af4dfe9"
+      },
+      "old_grants_unchanged": true,
+      "owner_replay": {
+        "additive_objects_preserved": [
+          "function claim_batch_v1(ns text, queue_name text, workers jsonb, lease_ms bigint, slots integer, cutoff_ms bigint)",
+          "function claim_drain_v1(ns text, queue_name text, workers jsonb, lease_ms bigint, cutoff_ms bigint, initial_ids jsonb)",
+          "function fence_claim_v1()",
+          "function publish_wake_v1()",
+          "function set_namespace_paused(ns text, paused boolean)",
+          "relation batch_context_blocks",
+          "relation batch_context_blocks_pkey",
+          "relation job_summaries",
+          "relation mesh_jobs_queue_due",
+          "relation queue_summaries",
+          "trigger mesh_jobs_fence_claim",
+          "trigger mesh_jobs_insert_wake",
+          "trigger mesh_jobs_queue_wake",
+          "trigger mesh_jobs_update_wake"
+        ],
+        "current_single_job": "1b4b2618-3320-4666-b716-59c58a84dada",
+        "held_lease_renewed_and_settled_while_paused": true,
+        "legacy_function_definitions": {
+          "function claim(ns text, queue_name text, workers jsonb, lease_ms bigint)": "e7258d9c807eb2435b6d97c29a373a3d",
+          "function effect_key(j mesh_jobs.jobs)": "359de0b53a4b87a45fc5a2608e53af90",
+          "function enqueue(ns text, spec jsonb, request_id text, fingerprint text)": "fc7fbf615b265cf56f9c34a7e1e997e9",
+          "function job_control(ns text, job_id uuid, operation text, absolute_ms bigint, delay_ms bigint)": "5e4cf7c070cb7e2a75871fdaa7e73e6a",
+          "function job_json(j mesh_jobs.jobs)": "29f7b103cf8905bd7c6ce8b863d1043d",
+          "function now_ms()": "03abf2cf6644b66453f639f8e296c380",
+          "function queue_control(ns text, queue_name text, operation text, capacity integer)": "56139a6e7b6717c57dfa3a24d49c9d3c",
+          "function queue_json(q mesh_jobs.queues)": "0ab3621c1699458571721e6fd89539b3",
+          "function recover(ns text, page_size integer, queue_filter jsonb)": "ddf46e4c4678da74dbcd3d85402043da",
+          "function renew(ns text, job_id uuid, token uuid, lease_ms bigint)": "1f3d388eb171d7dad898fabbf6450f0e",
+          "function settle(ns text, job_id uuid, token uuid, outcome jsonb, recovering boolean)": "ec7b9ab0d7f7a305c9280f6a4445ac41",
+          "function settle_state(ns text, job_id uuid, token uuid, outcome jsonb, recovering boolean)": "43fb5eae10a47ac92f65e15a372bf1e9",
+          "function try_renew(ns text, job_id uuid, token uuid, lease_ms bigint)": "835345f7899483395b59660644256743",
+          "function unique_values(payload jsonb, keys jsonb)": "51a122ef6dba56f58e766ad14d42bb7d"
+        },
+        "old_owner_migration_exit": 0,
+        "paused_claims_fenced": [
+          "legacy",
+          "current_single",
+          "current_batch"
+        ],
+        "public_execute_count": 0,
+        "queues_after_resume": {
+          "created-while-paused": [
+            "active",
+            1
+          ],
+          "disabled": [
+            "paused",
+            3
+          ],
+          "legacy": [
+            "active",
+            2
+          ]
+        },
+        "resumed_jobs": {
+          "replay-existing": "ee9ce7ca-98e6-4363-8bd8-957ef4933e8b",
+          "replay-new": "66cd24ed-1789-4769-8069-5d8446e56837"
+        },
+        "resumed_writes": {
+          "attempts": [
+            {
+              "attempt": 1,
+              "effect_key": "1b4b2618-3320-4666-b716-59c58a84dada/1",
+              "job_id": "1b4b2618-3320-4666-b716-59c58a84dada",
+              "worker_role": "upgrade_new_worker"
+            },
+            {
+              "attempt": 1,
+              "effect_key": "66cd24ed-1789-4769-8069-5d8446e56837/1",
+              "job_id": "66cd24ed-1789-4769-8069-5d8446e56837",
+              "worker_role": "upgrade_old_worker"
+            },
+            {
+              "attempt": 1,
+              "effect_key": "ee9ce7ca-98e6-4363-8bd8-957ef4933e8b/1",
+              "job_id": "ee9ce7ca-98e6-4363-8bd8-957ef4933e8b",
+              "worker_role": "upgrade_old_worker"
+            }
+          ],
+          "effects": [
+            {
+              "effect_key": "1b4b2618-3320-4666-b716-59c58a84dada/1",
+              "job_id": "1b4b2618-3320-4666-b716-59c58a84dada",
+              "worker_role": "upgrade_new_worker"
+            },
+            {
+              "effect_key": "66cd24ed-1789-4769-8069-5d8446e56837/1",
+              "job_id": "66cd24ed-1789-4769-8069-5d8446e56837",
+              "worker_role": "upgrade_old_worker"
+            },
+            {
+              "effect_key": "ee9ce7ca-98e6-4363-8bd8-957ef4933e8b/1",
+              "job_id": "ee9ce7ca-98e6-4363-8bd8-957ef4933e8b",
+              "worker_role": "upgrade_old_worker"
+            }
+          ]
+        },
+        "same_legacy_runner_resumed": true,
+        "upgraded_catalog_and_legacy_grants_unchanged": true
+      },
+      "postgres_version": "18.7",
+      "postgres_version_num": 180007,
+      "raw_receipt_sha256": "179ba617fbafd3f4580895f336b84372570aae906294fdd1a28c7203f0949183",
+      "roles": {
+        "inspector_can_read_summary": true,
+        "inspector_cannot_read_args": true,
+        "legacy_cannot_batch": true,
+        "lifecycle_roles_independent": true,
+        "migration_role_owns_schema": true,
+        "operator_can_pause_namespace": true,
+        "producer_cannot_claim": true,
+        "worker_can_batch": true,
+        "worker_cannot_pause_namespace": true
+      },
+      "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+      "upgraded_catalog_unchanged_by_worker_rollback": true
+    },
+    {
+      "current_batch_start_with_old_grants_denied": true,
+      "current_single_start_with_old_grants_denied": true,
+      "new": {
+        "compiler_sha256": "bed104fb596ab01ab2b6be9b5f35b36ca6a769100cb71fd502ce0694ffd1c8f0",
+        "fixture_binary_sha256": "29176f3ef923286032f479cf8f7e292642dacd81d9e5c0e09e953d58148693ca",
+        "runtime_sha256": "c2ec0e914fee7bbc13061535b1f2226c8b380a6ba6df584e1a164d380e1db5b9",
+        "source_sha": "a431fbbfb3dccc737eb12c7c651294212f728e1d"
+      },
+      "old": {
+        "compiler_sha256": "19b5c6efafd382158a17065fb7aa121e7190b0753a69f3f9d0f9786914473a57",
+        "fixture_binary_sha256": "09045c715f0b38cd69c8a6765d1380f819ca7bb61cc2c711a230406a2a0b88b9",
+        "runtime_sha256": "fb71e510690af5007c8ca98b350a4420934dcc8fcd2a9e015f1dfa3d530e67d8",
+        "source_sha": "7c1620563614a04a573aef806a6d019a2af4dfe9"
+      },
+      "old_grants_unchanged": true,
+      "owner_replay": {
+        "additive_objects_preserved": [
+          "function claim_batch_v1(ns text, queue_name text, workers jsonb, lease_ms bigint, slots integer, cutoff_ms bigint)",
+          "function claim_drain_v1(ns text, queue_name text, workers jsonb, lease_ms bigint, cutoff_ms bigint, initial_ids jsonb)",
+          "function fence_claim_v1()",
+          "function publish_wake_v1()",
+          "function set_namespace_paused(ns text, paused boolean)",
+          "relation batch_context_blocks",
+          "relation batch_context_blocks_pkey",
+          "relation job_summaries",
+          "relation mesh_jobs_queue_due",
+          "relation queue_summaries",
+          "trigger mesh_jobs_fence_claim",
+          "trigger mesh_jobs_insert_wake",
+          "trigger mesh_jobs_queue_wake",
+          "trigger mesh_jobs_update_wake"
+        ],
+        "current_single_job": "b7359e27-bc21-4125-8236-cbfaf248851a",
+        "held_lease_renewed_and_settled_while_paused": true,
+        "legacy_function_definitions": {
+          "function claim(ns text, queue_name text, workers jsonb, lease_ms bigint)": "e7258d9c807eb2435b6d97c29a373a3d",
+          "function effect_key(j mesh_jobs.jobs)": "359de0b53a4b87a45fc5a2608e53af90",
+          "function enqueue(ns text, spec jsonb, request_id text, fingerprint text)": "fc7fbf615b265cf56f9c34a7e1e997e9",
+          "function job_control(ns text, job_id uuid, operation text, absolute_ms bigint, delay_ms bigint)": "5e4cf7c070cb7e2a75871fdaa7e73e6a",
+          "function job_json(j mesh_jobs.jobs)": "29f7b103cf8905bd7c6ce8b863d1043d",
+          "function now_ms()": "03abf2cf6644b66453f639f8e296c380",
+          "function queue_control(ns text, queue_name text, operation text, capacity integer)": "56139a6e7b6717c57dfa3a24d49c9d3c",
+          "function queue_json(q mesh_jobs.queues)": "0ab3621c1699458571721e6fd89539b3",
+          "function recover(ns text, page_size integer, queue_filter jsonb)": "ddf46e4c4678da74dbcd3d85402043da",
+          "function renew(ns text, job_id uuid, token uuid, lease_ms bigint)": "1f3d388eb171d7dad898fabbf6450f0e",
+          "function settle(ns text, job_id uuid, token uuid, outcome jsonb, recovering boolean)": "ec7b9ab0d7f7a305c9280f6a4445ac41",
+          "function settle_state(ns text, job_id uuid, token uuid, outcome jsonb, recovering boolean)": "43fb5eae10a47ac92f65e15a372bf1e9",
+          "function try_renew(ns text, job_id uuid, token uuid, lease_ms bigint)": "835345f7899483395b59660644256743",
+          "function unique_values(payload jsonb, keys jsonb)": "51a122ef6dba56f58e766ad14d42bb7d"
+        },
+        "old_owner_migration_exit": 0,
+        "paused_claims_fenced": [
+          "legacy",
+          "current_single",
+          "current_batch"
+        ],
+        "public_execute_count": 0,
+        "queues_after_resume": {
+          "created-while-paused": [
+            "active",
+            1
+          ],
+          "disabled": [
+            "paused",
+            3
+          ],
+          "legacy": [
+            "active",
+            2
+          ]
+        },
+        "resumed_jobs": {
+          "replay-existing": "609796f0-bc5a-4aef-ad80-bbc26f21b04d",
+          "replay-new": "cd034808-f13c-4f5d-bfc7-10e63507142a"
+        },
+        "resumed_writes": {
+          "attempts": [
+            {
+              "attempt": 1,
+              "effect_key": "609796f0-bc5a-4aef-ad80-bbc26f21b04d/1",
+              "job_id": "609796f0-bc5a-4aef-ad80-bbc26f21b04d",
+              "worker_role": "upgrade_old_worker"
+            },
+            {
+              "attempt": 1,
+              "effect_key": "b7359e27-bc21-4125-8236-cbfaf248851a/1",
+              "job_id": "b7359e27-bc21-4125-8236-cbfaf248851a",
+              "worker_role": "upgrade_new_worker"
+            },
+            {
+              "attempt": 1,
+              "effect_key": "cd034808-f13c-4f5d-bfc7-10e63507142a/1",
+              "job_id": "cd034808-f13c-4f5d-bfc7-10e63507142a",
+              "worker_role": "upgrade_old_worker"
+            }
+          ],
+          "effects": [
+            {
+              "effect_key": "609796f0-bc5a-4aef-ad80-bbc26f21b04d/1",
+              "job_id": "609796f0-bc5a-4aef-ad80-bbc26f21b04d",
+              "worker_role": "upgrade_old_worker"
+            },
+            {
+              "effect_key": "b7359e27-bc21-4125-8236-cbfaf248851a/1",
+              "job_id": "b7359e27-bc21-4125-8236-cbfaf248851a",
+              "worker_role": "upgrade_new_worker"
+            },
+            {
+              "effect_key": "cd034808-f13c-4f5d-bfc7-10e63507142a/1",
+              "job_id": "cd034808-f13c-4f5d-bfc7-10e63507142a",
+              "worker_role": "upgrade_old_worker"
+            }
+          ]
+        },
+        "same_legacy_runner_resumed": true,
+        "upgraded_catalog_and_legacy_grants_unchanged": true
+      },
+      "postgres_version": "19.0",
+      "postgres_version_num": 190000,
+      "raw_receipt_sha256": "5b184603d6b3c87be3b0e0ad425630d9495464911f1f8d3c259664e25088fa3d",
+      "roles": {
+        "inspector_can_read_summary": true,
+        "inspector_cannot_read_args": true,
+        "legacy_cannot_batch": true,
+        "lifecycle_roles_independent": true,
+        "migration_role_owns_schema": true,
+        "operator_can_pause_namespace": true,
+        "producer_cannot_claim": true,
+        "worker_can_batch": true,
+        "worker_cannot_pause_namespace": true
+      },
+      "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+      "upgraded_catalog_unchanged_by_worker_rollback": true
+    }
+  ]
+}

@@ -449,6 +449,13 @@ old lease renews and settles. The same legacy runner observes a rejected
 claim and completes both queued jobs after resume. Its `last_error` retains
 the rejection after successful work.
 
+The v2 runs used release runtimes `7c162056` and `a431fbbf` with harness
+`6191a712`. They preserved all 14 legacy function definitions on macOS arm64
+with PostgreSQL 17.11, 18.7, and 19.0 over verified TLS. After resume, the
+current single-claim worker also completed a job on attempt one under the
+claim-and-settle grants. The paired PostgreSQL 17.11 fault run used the same
+release runtimes and loopback SCRAM. [V2 receipt](../proof/jobs-parity/rolling-upgrade-v2.json)
+
 The historical v1 receipts compare `7c162056` and `23a95b87` on macOS arm64
 with verified TLS. On those revisions, owner replay could replace the old
 claim body and bypass the namespace pause. [PostgreSQL 17.11](../proof/jobs-parity/rolling-upgrade-v1.pg17.11.json) ·

@@ -3371,6 +3371,19 @@
       "19.0"
     ]
   },
+  "rolling_upgrade_owner_replay": {
+    "candidate": "a431fbbfb3dccc737eb12c7c651294212f728e1d",
+    "harness": "6191a712e26077a86a839b87d4bdab4946fe5071",
+    "legacy_definitions_preserved": 14,
+    "main": "7c1620563614a04a573aef806a6d019a2af4dfe9",
+    "receipt": "proof/jobs-parity/rolling-upgrade-v2.json",
+    "result": "pass",
+    "versions": [
+      "17.11",
+      "18.7",
+      "19.0"
+    ]
+  },
   "scoped_drain_and_cleanup": {
     "checkout": "308bb6cf1e24d9a60fc4a1e9c3d450dd74c8b91a",
     "fresh_and_upgraded_worker": [
