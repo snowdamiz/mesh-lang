@@ -89,6 +89,7 @@ fn confirmed_batch_launch_failure_stops_later_launches_and_keeps_refunds_tracked
         id: 0,
         config: Config::parse(TEST_CONFIG).unwrap(),
         check_worker: || Ok(()),
+        dispatcher: OnceLock::new(),
         events: None,
         wakeups: None,
         state: Mutex::new(State {
@@ -193,6 +194,7 @@ fn polling_and_kill_errors_keep_an_attempt_undrained_until_reap() {
         id: 0,
         config: Config::parse(TEST_CONFIG).unwrap(),
         check_worker: || Ok(()),
+        dispatcher: OnceLock::new(),
         events: None,
         wakeups: None,
         state: Mutex::new(State {
@@ -376,6 +378,7 @@ fn acknowledgement_retry_preserves_token_without_reconstructing_a_commit() {
             id: 15,
             config,
             check_worker: || Ok(()),
+            dispatcher: OnceLock::new(),
             events: Events::new(8, false).unwrap(),
             wakeups: None,
             state: Mutex::new(State {

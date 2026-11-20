@@ -408,11 +408,18 @@ struct Runner {
     config: Config,
     state: Mutex<State>,
     check_worker: fn() -> Result<(), String>,
+    dispatcher: OnceLock<std::thread::Thread>,
     events: Option<Events>,
     wakeups: Option<Arc<Wakeups>>,
 }
 
 impl Runner {
+    fn wake_dispatcher(&self) {
+        if let Some(dispatcher) = self.dispatcher.get() {
+            dispatcher.unpark();
+        }
+    }
+
     fn request_stop(&self, grace: Duration) {
         let mut state = self.state.lock();
         let deadline = Instant::now() + grace;
@@ -425,6 +432,7 @@ impl Runner {
         if let Some(wakeups) = &self.wakeups {
             wakeups.close();
         }
+        self.wake_dispatcher();
     }
 
     fn supervise(&self) -> bool {
@@ -438,6 +446,7 @@ impl Runner {
             Phase::Stopping { deadline } => now >= deadline,
             Phase::Stopped => return false,
         };
+        let mut reply_ready = false;
         let State {
             queues,
             jobs,
@@ -456,9 +465,14 @@ impl Runner {
                 };
                 if let Some(reply) = worker.poll(now, stop, last_error) {
                     job.execution = worker.acknowledging(reply, now);
+                    reply_ready = true;
                 }
                 job.observe_local_lease_loss(self);
             }
+        }
+        drop(state);
+        if reply_ready {
+            self.wake_dispatcher();
         }
         true
     }
@@ -783,6 +797,7 @@ fn start_configured(
         id,
         config,
         check_worker,
+        dispatcher: OnceLock::new(),
         events,
         wakeups,
         state,
@@ -801,6 +816,7 @@ fn start_configured(
     let thread = std::thread::Builder::new()
         .name(format!("mesh-jobs-{id}"))
         .spawn(move || {
+            let _ = dispatcher.dispatcher.set(std::thread::current());
             dispatcher.publish(Kind::RunnerStarted, None);
             if let Some((options, publish)) = bounded {
                 let _ = publish.send(dispatch_bounded(
@@ -913,13 +929,7 @@ pub(super) fn control(id: u64, request: &str) -> Result<String, String> {
     update_queue(&mut state, &runner.config, queue, action)?;
     let report = runner.report(&state);
     drop(state);
-    if let Some(dispatcher) = runner
-        .wakeups
-        .as_ref()
-        .and_then(|wakeups| wakeups.dispatcher.get())
-    {
-        dispatcher.unpark();
-    }
+    runner.wake_dispatcher();
     Ok(report)
 }
 
@@ -1469,7 +1479,6 @@ impl LocalQueue {
 
 struct Wakeups {
     stop: ListenerStop,
-    dispatcher: OnceLock<std::thread::Thread>,
     hint_bits: BTreeMap<String, u64>,
     state: Mutex<WakeState>,
 }
@@ -1507,7 +1516,6 @@ impl Wakeups {
         }
         Self {
             stop: ListenerStop::default(),
-            dispatcher: OnceLock::new(),
             hint_bits,
             state: Mutex::default(),
         }
@@ -1543,9 +1551,6 @@ impl Wakeups {
         state.closed = true;
         state.subscribed = false;
         self.stop.stop();
-        if let Some(dispatcher) = self.dispatcher.get() {
-            dispatcher.unpark();
-        }
     }
 
     fn take(&self) -> WakeHints {
@@ -1605,7 +1610,6 @@ impl Runner {
     fn start_listener(&self, listener: JobListener) {
         let wakeups = Arc::clone(self.wakeups.as_ref().expect("listener wake state"));
         let dispatcher = std::thread::current();
-        let _ = wakeups.dispatcher.set(dispatcher.clone());
         // Socket shutdown is synchronous. A canceled dial or DNS lookup can
         // finish independently and cannot register or subscribe afterward.
         if let Err(error) = std::thread::Builder::new()
