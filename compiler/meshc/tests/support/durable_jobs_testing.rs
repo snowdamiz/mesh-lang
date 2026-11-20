@@ -97,6 +97,9 @@ end
         assert_eq!(job["attempt"], 0);
         assert!(scope.effects("manual").is_empty());
     }
+    if let Some(runtime) = std::env::var_os("MESH_JOBS_REFERENCE_RT_LIB_PATH") {
+        prove_manual_reference(&compiler, &proof, Path::new(&runtime));
+    }
 
     prove_bounded_cutoff(&proof, &other);
     prove_bounded_recursion(&proof);
@@ -104,6 +107,35 @@ end
     prove_bounded_crash_recovery(&proof);
     proof.clean().unwrap();
     other.clean().unwrap();
+}
+
+fn prove_manual_reference(compiler: &Path, candidate: &Proof, runtime: &Path) {
+    let dir = candidate.dir.join("manual-reference");
+    let binary = build_reference_fixture(compiler, &dir, runtime);
+    let reference = Proof::new(candidate.url, binary, &dir);
+    let candidate_job = candidate.job("manual");
+    let receipt = reference.enqueue(json!({
+        "worker":"proof", "queue":"testing", "version":2, "args":candidate_job["args"],
+    }));
+    let rows = reference.control(json!({"action":"list", "queue":"testing"}));
+    assert_eq!(rows.as_array().unwrap().len(), 1);
+    assert_eq!(rows[0]["id"], receipt["id"]);
+    let reference_job = reference.control(json!({"action":"get", "id":receipt["id"]}));
+    assert_eq!(reference_job["id"], receipt["id"]);
+    for field in [
+        "worker",
+        "queue",
+        "version",
+        "args",
+        "state",
+        "attempt",
+        "max_attempts",
+    ] {
+        assert_eq!(reference_job[field], candidate_job[field], "{field}");
+    }
+    assert!(reference.effects("manual").is_empty());
+    reference.clean().unwrap();
+    println!("J5 lane 1 passed: main and candidate persisted the same job input and state, and the candidate verified the row with Test.assert_enqueued");
 }
 
 fn bounded_request(proof: &Proof, queue: &str, options: Value) -> String {

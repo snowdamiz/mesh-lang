@@ -27,7 +27,12 @@ the `mesh-rt` static library from `7c162056` and set
 `MESH_JOBS_REFERENCE_RT_LIB_PATH` to its absolute path before running the
 verifier. It builds the reference fixture from the same pinned revision and
 checks the same committed job with polling on the reference and notifications
-on the candidate.
+on the candidate. Set `MESH_JOBS_REFERENCE_MESHC_PATH` to the absolute path
+of the pinned `meshc` to use its compiler as well. These reference runs
+also compare manual enqueue inspection and persisted pause and resume for
+two queues. The pinned runtime uses its per-queue controls. The candidate
+uses the namespace-wide controls.
+
 The smoke test runs one small matched pair. The fault test observes a claim
 and a committed effect before terminating the runner, then checks recovery
 from a separate database connection. Mesh recovers by lease expiry. Oban

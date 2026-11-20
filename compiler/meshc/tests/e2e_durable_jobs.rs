@@ -95,15 +95,24 @@ fn durable_jobs_survive_process_boundaries() {
     wakeups::prove(&proof);
     assert_eq!(proof.effects("committed").len(), 1);
     assert!(proof.effects("rolled-back").is_empty());
-    proof.clean().expect("delete durable jobs proof data");
-
     if let Some(runtime) = std::env::var_os("MESH_JOBS_REFERENCE_RT_LIB_PATH") {
         let project = temp.path().join("reference-jobs");
-        let binary = build_fixture(&compiler, &project, Some(Path::new(&runtime)));
+        let binary = build_reference_fixture(&compiler, &project, Path::new(&runtime));
         let reference = Proof::new(&url, binary, &project);
         wakeups::prove_sparse_reference(&reference);
+        prove_persisted_pause(&proof, true);
+        prove_persisted_pause(&reference, false);
+        println!("J6 lane 1 passed: namespace pause on the candidate and per-queue pause on main both persisted across runner startup and resumed the same admitted workload");
         reference.clean().expect("delete reference proof data");
     }
+    proof.clean().expect("delete durable jobs proof data");
+}
+
+fn build_reference_fixture(compiler: &Path, project: &Path, runtime: &Path) -> PathBuf {
+    let reference_compiler = std::env::var_os("MESH_JOBS_REFERENCE_MESHC_PATH")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| compiler.to_path_buf());
+    build_fixture(&reference_compiler, project, Some(runtime))
 }
 
 fn build_fixture(compiler: &Path, project: &Path, runtime: Option<&Path>) -> PathBuf {
@@ -677,6 +686,73 @@ fn prove_bulk_delete_during_claim(shared: &Proof<'_>) {
     worker.stop();
     assert_eq!(proof.effects(label), effects);
     proof.clean().unwrap();
+}
+
+fn prove_persisted_pause(proof: &Proof, namespace_pause: bool) {
+    let queues = ["pause-reference-a", "pause-reference-b"];
+    let receipts = proof.enqueue(Value::Array(
+        queues
+            .iter()
+            .map(|queue| json!({"worker":"proof", "queue":queue, "args":{"label":queue}}))
+            .collect(),
+    ));
+    if namespace_pause {
+        assert_eq!(
+            proof.control(json!({"action":"pause_namespace"}))["paused"],
+            true
+        );
+    } else {
+        for queue in queues {
+            assert_eq!(
+                proof.control(json!({"action":"pause", "queue":queue}))["state"],
+                "paused"
+            );
+        }
+    }
+    let mut worker = proof.worker_with_options(
+        "persisted-pause",
+        false,
+        json!({(queues[0]):1, (queues[1]):1}),
+        8000,
+        LEASE_MS,
+    );
+    // The runner polls every 25 ms. Read both persisted rows before committing resume.
+    thread::sleep(Duration::from_millis(100));
+    for (index, label) in queues.iter().enumerate() {
+        let job = proof.job(label);
+        assert_eq!(job["id"], receipts[index]["id"]);
+        assert_eq!(job["state"], "available");
+        assert_eq!(job["attempt"], 0);
+        assert!(proof.effects(label).is_empty());
+    }
+    if namespace_pause {
+        assert_eq!(
+            proof.control(json!({"action":"resume_namespace"}))["paused"],
+            false
+        );
+    } else {
+        for queue in queues {
+            assert_eq!(
+                proof.control(json!({"action":"resume", "queue":queue}))["state"],
+                "active"
+            );
+        }
+    }
+    for (index, label) in queues.iter().enumerate() {
+        let job = proof.wait_state(label, "completed");
+        assert_eq!(job["id"], receipts[index]["id"]);
+        assert_eq!(job["attempt"], 1);
+    }
+    worker.stop();
+    for (index, label) in queues.iter().enumerate() {
+        let effects = proof.effects(label);
+        assert_eq!(effects.len(), 1);
+        assert_eq!(effects[0]["context"]["id"], receipts[index]["id"]);
+        assert_eq!(
+            effects[0]["context"]["effect_key"],
+            receipts[index]["effect_key"]
+        );
+    }
 }
 
 fn prove_job_operations(proof: &Proof) {
