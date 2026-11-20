@@ -101,6 +101,9 @@ The receipt covers Mesh
 0.1.8 on macOS arm64 and PostgreSQL 17.11 over loopback SCRAM. Lease recovery
 uses drain process loss on the same primary. [J7 lane 9 receipt](../proof/jobs-parity/j7-lane-9.log)
 
+The same fresh-application walkthrough passed with release runtime
+`1b12243b`. [Latest guide receipt](../proof/jobs-parity/qualification-v1.json)
+
 ## Record a baseline
 
 Run on an otherwise idle machine. Keep the database and both engines on the
@@ -128,6 +131,13 @@ The driver resets `pg_stat_statements` on its disposable cluster before each
 trial and checks for counter eviction during measurement. PostgreSQL can
 retain entries for dropped trial databases until a reset. The raw trial
 records the deallocation counter alongside the SQL call counts.
+
+The archived comparison `j1-load-xqlrv50b` reconciled 42,360 jobs per
+engine across 32 profiles. It stopped when one Oban large-context trial
+reported zero enqueue SQL calls despite completing all 64 jobs. A local
+pressure probe reproduced this counter loss after retaining entries for a
+dropped database. The corrected large-context rerun reconciled five pairs
+with zero counter evictions. [Archived and corrected receipts](../proof/jobs-parity/qualification-v1.json)
 
 For repeated comparisons, `--toolchains target/jobs-parity/build` reuses
 the compiler and runtime pairs recorded by a prior archive build. It

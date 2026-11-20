@@ -1,4 +1,21 @@
 {
+  "archived_oban_comparison_attempt": {
+    "archived_result": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-load-xqlrv50b/result.json",
+    "counter_evictions_in_smoke_and_large_rerun": 0,
+    "invalid_counter_trial": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-load-xqlrv50b/large-4r-64s/3-oban/raw.json",
+    "jobs_per_engine_reconciled": 42360,
+    "large_context_rerun": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-load-2vxtjiki/result.json",
+    "partial_audit": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-load-xqlrv50b/partial-audit.json",
+    "pressure_reproduction": {
+      "postgresql_version": "17.11",
+      "producer_calls_after_eviction": 0,
+      "producer_calls_before_eviction": 2,
+      "retained_dropped_database_entries": 82,
+      "statement_table_max_entries": 100
+    },
+    "profiles_reconciled": 32,
+    "sparse_smoke_rerun": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-smoke-3djx57kq/result.json"
+  },
   "bounded_drain": {
     "budget": {
       "max_median_paired_ratio": 1.1,
@@ -454,6 +471,14 @@
     "receipt": "proof/jobs-parity/j7-lane-9.log",
     "result": "pass",
     "runtime_revision": "e8fa00c0c6aa7ae6d4c807cccdd50a3f75f915bd"
+  },
+  "fresh_application_guides_latest": {
+    "platform": "macOS arm64",
+    "postgresql_version": "17.11",
+    "raw_log": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/final-guide-check/j7-lane-9.log",
+    "raw_log_sha256": "a6d6f16412261a463ff798f9f55cc1bff6e9be9067a4a825b7a60a9e6e5a418f",
+    "runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+    "status": "passed"
   },
   "latest_macos_linux_postgresql_matrix": {
     "platforms": [
