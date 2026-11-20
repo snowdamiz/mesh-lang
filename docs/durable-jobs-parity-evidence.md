@@ -685,6 +685,39 @@ The no-op profile exceeded the CPU limit. Each comparison reconciled
 on a busy host. The socket change remains experimental.
 [Socket experiment receipts](../proof/jobs-parity/qualification-v1.json)
 
+### Unix worker watchdog experiment
+
+Candidate `cc00553e` combined the Unix attempt's deadline timer and
+parent-control reader in one thread. On macOS arm64, the debug worker
+exited at its own handler deadline and when its parent socket closed. A
+fragmented renewal extended the lease after the complete frame arrived.
+A separate compiled PostgreSQL 17.11 run confirmed that a handler blocked
+on stdin timed out and wrote its entry marker once.
+
+Five single-claim pairs per profile compared the candidate with
+`1b12243b`. Across the short and no-op profiles at one and 16 slots,
+throughput ranged from 0.907× to 1.022× the reference and CPU per job
+ranged from 0.971× to 1.021×. One-minute host load reached 31.5 on 15
+logical CPUs during the one-slot comparison.
+
+The batched comparison used the same inputs and Oban Basic 2.24.2.
+PostgreSQL 17.11 used SCRAM and verified TLS. Each comparison reconciled
+3,840 jobs per arm across the four profiles.
+
+| Profile | Mesh/Oban throughput | Mesh/Oban pickup p99 | Mesh/Oban CPU per job |
+| --- | ---: | ---: | ---: |
+| Short, 1 slot | 0.499× | 2.004× | 1.101× |
+| No-op, 1 slot | 0.449× | 2.221× | 1.761× |
+| Short, 16 slots | 0.803× | 1.190× | 1.324× |
+| No-op, 16 slots | 0.729× | 1.309× | 2.716× |
+
+All four profiles missed the throughput limit, and three exceeded the
+CPU limit. At 16 slots, the median of trial medians from short-job
+handler entry to its first committed write was 7.27 ms on Mesh and
+0.37 ms on Oban. That interval includes connection setup on the Mesh
+fixture. The watchdog change remains experimental.
+[Watchdog receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Historical references
 
 On the same macOS arm64 host and PostgreSQL 17.11 configuration, the driver
