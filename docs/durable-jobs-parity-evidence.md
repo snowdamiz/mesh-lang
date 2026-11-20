@@ -849,16 +849,19 @@ misses. Broad Core parity remains open.
 The producer case cuts a connection after the fixture writes one business row
 and enqueues two jobs in the same transaction. When PostgreSQL never receives
 `COMMIT`, a separate connection sees zero rows and replay creates the batch.
-When PostgreSQL commits and the reply is lost, replay returns both original IDs
-and preserves the business write and both receipts. Each recovered job completes
-on attempt one with one effect.
+When PostgreSQL commits and the reply is lost, replay returns both original
+receipts with their job IDs, effect keys, states, and insertion fields intact.
+The observer verifies the business row and stored job arguments against the
+input. Each recovered job completes on attempt one with one effect.
 
-The final batch claim case gives one job a one-attempt budget. PostgreSQL commits
-the claim while the proxy withholds the response. Recovery discards the original
-job after lease expiration, with zero native worker starts, handler entries, and
-effects. Both cases passed on macOS arm64 with PostgreSQL 17.11, 18.7, and 19.0,
-using release runtime `1b12243b` and harness `cd4392a6`. The driver owns the
-disposable PostgreSQL instance and uses SCRAM on loopback.
+The final batch claim case gives one job a one-attempt budget. The proxy
+verifies PostgreSQL's `COMMIT` tag and withholds the response. A separate
+connection observes the original job executing on attempt one with a live
+fence. Recovery discards it after the 10-second lease expires. The runner
+records zero native worker starts, handler entries, and effects. Both cases
+passed on macOS arm64 with PostgreSQL 17.11, 18.7, and 19.0, using release
+runtime `1b12243b` and harness `bc76c175`. The driver owns the disposable
+PostgreSQL instance and uses SCRAM on loopback.
 [Commit-loss receipt](../proof/jobs-parity/commit-loss-v1.json)
 
 Run the paired fault suite with already built toolchains. Set `PG_BIN_DIR` to the
