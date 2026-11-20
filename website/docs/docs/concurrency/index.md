@@ -496,7 +496,7 @@ A job panic returns `Err` to its caller. If the caller fails, Mesh stops its lin
 
 `Jobs` stores work in PostgreSQL, including PostgreSQL 18 and 19. Use the application's database to commit an enqueue together with a business change. Use the same namespace on every process that serves the same queues. A namespace groups work in the database. Processes with write access to the same job tables share authority. Use separate databases for applications that do not trust each other.
 
-Create the job tables with `Jobs.migrate(pool)` before starting workers. A job stores a worker name, payload version, arguments, queue, and scheduling and retry options. Keep the worker versions needed by outstanding jobs available during a rolling deploy. Workers claim jobs that match their registered names and versions.
+Run `Jobs.migrate(pool)` before starting workers on a fresh database or after upgrading Mesh. It creates the job tables and updates the queue's SQL functions. A job stores a worker name, payload version, arguments, queue, and scheduling and retry options. Keep the worker versions needed by outstanding jobs available during a rolling deploy. Workers claim jobs that match their registered names and versions.
 
 | Function | Result |
 | --- | --- |
@@ -567,6 +567,8 @@ end
 | `discard` with `reason` | End the job and leave the failure available for inspection |
 
 A claim has a lease. A runner renews the lease while its handler runs and records an outcome only for the current unexpired claim. A runner recovers expired attempts until the job spends its attempt budget, then keeps it as `discarded`. Exceptions and timeouts count as failed attempts. Automatic retries keep the same `effect_key`. An operator retry of a terminal job starts a new run with a new effect key.
+
+If a transaction locks a job row, the runner retries that job's renewal or acknowledgement while it continues processing other active jobs. A claim can expire while its row is locked. Recovery can act once the transaction releases the lock.
 
 Delivery is at least once within the attempt budget. If a handler sends a receipt and dies before acknowledging it, another attempt can send it again. Pass `effect_key` to a downstream idempotency mechanism or record it in the same transaction as the external effect when both use the same database.
 

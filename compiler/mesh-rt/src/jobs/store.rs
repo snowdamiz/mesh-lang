@@ -648,7 +648,7 @@ pub(super) fn finish(
             "WITH held AS MATERIALIZED (
                  SELECT lease_expires_at_ms, cancel_requested_at_ms FROM mesh_jobs.jobs
                  WHERE namespace = $1 AND id = $2::uuid AND lease_token = $3::uuid
-                 FOR NO KEY UPDATE
+                 FOR NO KEY UPDATE NOWAIT
              ), released AS (
                  UPDATE mesh_jobs.jobs j SET state = 'available', attempt = j.attempt - 1,
                      lease_token = NULL, lease_expires_at_ms = NULL

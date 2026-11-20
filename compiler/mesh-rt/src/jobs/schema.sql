@@ -287,8 +287,9 @@ DECLARE
     job mesh_jobs.jobs%ROWTYPE;
     now_at bigint;
 BEGIN
+    -- A busy attempt must not delay lease renewals for the runner's other jobs.
     SELECT * INTO job FROM mesh_jobs.jobs
-    WHERE namespace = ns AND id = job_id AND lease_token = token FOR NO KEY UPDATE;
+    WHERE namespace = ns AND id = job_id AND lease_token = token FOR NO KEY UPDATE NOWAIT;
     IF NOT FOUND THEN RETURN 'lost'; END IF;
     now_at := mesh_jobs.now_ms();
     IF job.lease_expires_at_ms <= now_at THEN RETURN 'lost'; END IF;
@@ -313,7 +314,7 @@ DECLARE
     now_at bigint;
 BEGIN
     SELECT * INTO job FROM mesh_jobs.jobs
-    WHERE namespace = ns AND id = job_id AND lease_token = token FOR NO KEY UPDATE;
+    WHERE namespace = ns AND id = job_id AND lease_token = token FOR NO KEY UPDATE NOWAIT;
     IF NOT FOUND THEN RETURN false; END IF;
     now_at := mesh_jobs.now_ms();
     IF (job.lease_expires_at_ms <= now_at) <> recovering THEN RETURN false; END IF;

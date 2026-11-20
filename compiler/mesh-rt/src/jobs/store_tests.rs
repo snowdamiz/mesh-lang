@@ -621,12 +621,12 @@ fn process_crash_retains_lease_and_recovery_enforces_exhaustion() {
 
 #[test]
 #[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
-fn finish_checks_the_deadline_after_waiting_for_the_row_lock() {
+fn locked_job_operations_leave_the_claim_for_retry() {
     let mut f = Fixture::new();
     f.enqueue(json!({"worker":"Deliver"}));
     let mut worker = Connection::open(&f.url);
-    let pid = response(&mut worker, "SELECT pg_backend_pid()::text", &[]).unwrap();
-    let claim = claim(&mut worker, &f.ns, "default", WORKERS, 2_000)
+    worker.simple("SET statement_timeout = 1000").unwrap();
+    let claim = claim(&mut worker, &f.ns, "default", WORKERS, 60_000)
         .unwrap()
         .unwrap();
 
@@ -636,40 +636,31 @@ fn finish_checks_the_deadline_after_waiting_for_the_row_lock() {
         &[&f.ns, &claim.id],
     )
     .unwrap();
-    thread::scope(|scope| {
-        let waiting = scope.spawn(|| {
-            finish(
-                &mut worker,
-                &f.ns,
-                &claim.id,
-                &claim.token,
-                Outcome::Complete,
-            )
-            .unwrap()
-        });
-        let blocked = loop {
-            let blocked = response(
-                &mut f.db,
-                "SELECT (cardinality(pg_blocking_pids($1::integer)) > 0)::text",
-                &[&pid],
-            )
-            .unwrap()
-                == "true";
-            if blocked || waiting.is_finished() {
-                break blocked;
-            }
-            thread::sleep(std::time::Duration::from_millis(5));
-        };
-        f.db.query(
-            "SELECT pg_sleep(greatest(0, lease_expires_at_ms - mesh_jobs.now_ms() + 1) / 1000.0)
-             FROM mesh_jobs.jobs WHERE namespace = $1 AND id = $2::uuid",
-            &[&f.ns, &claim.id],
-        )
-        .unwrap();
-        f.db.simple("COMMIT").unwrap();
-        assert!(blocked);
-        assert!(!waiting.join().unwrap());
-    });
+    let renewal = renew(&mut worker, &f.ns, &claim.id, &claim.token, 60_000);
+    assert!(renewal.unwrap_err().contains("could not obtain lock"));
+    for outcome in [Outcome::Complete, Outcome::ReleaseUnstarted] {
+        let settlement = finish(&mut worker, &f.ns, &claim.id, &claim.token, outcome);
+        assert!(settlement.unwrap_err().contains("could not obtain lock"));
+    }
+    f.db.simple("ROLLBACK").unwrap();
+    assert_eq!(
+        renew(&mut worker, &f.ns, &claim.id, &claim.token, 60_000).unwrap(),
+        LeaseStatus::Active
+    );
+    f.db.query(
+        "UPDATE mesh_jobs.jobs SET lease_expires_at_ms = mesh_jobs.now_ms() - 1
+         WHERE namespace = $1 AND id = $2::uuid",
+        &[&f.ns, &claim.id],
+    )
+    .unwrap();
+    assert!(!finish(
+        &mut worker,
+        &f.ns,
+        &claim.id,
+        &claim.token,
+        Outcome::Complete,
+    )
+    .unwrap());
     assert_eq!(f.get(&claim.id)["state"], "executing");
     assert_eq!(recover(&mut f.db, &f.ns, 1, None).unwrap(), 1);
 }
