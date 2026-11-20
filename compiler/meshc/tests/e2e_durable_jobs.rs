@@ -1027,6 +1027,17 @@ fn prove_scoped_compiled_roles(proof: &Proof) {
         assert_eq!(rows[0]["id"], receipt["id"]);
         assert!(rows[0].get("args").is_none());
 
+        let oversized = producer.enqueue(json!({
+            "worker":"proof", "args":{"label":"scoped-oversized"}, "priority":0
+        }));
+        let oversized_id = quoted(id(&oversized));
+        admin.sql(&format!(
+            "UPDATE mesh_jobs.jobs
+             SET args = args || jsonb_build_object('large', repeat('x', 16 * 1024 * 1024)),
+                 scheduled_at_ms = 0
+             WHERE namespace = '{ns}' AND id = {oversized_id}::uuid"
+        ));
+
         let worker = admin.on_connection(&worker_url);
         let mut runner = worker.worker_with_config(
             "scoped-worker",
@@ -1045,8 +1056,22 @@ fn prove_scoped_compiled_roles(proof: &Proof) {
             admin.wait_effects("committed", 1)[0]["context"]["id"],
             receipt["id"]
         );
-        admin.wait_state("committed", "completed");
+        let completed = admin.wait_state("committed", "completed");
+        assert_eq!(completed["attempt"], 1);
         runner.stop();
+        assert_eq!(
+            admin.sql(&format!(
+                "SELECT j.state || ':' || j.attempt
+                 FROM mesh_jobs.jobs j JOIN mesh_jobs.batch_context_blocks b USING (namespace, id)
+                 WHERE j.namespace = '{ns}' AND j.id = {oversized_id}::uuid
+                     AND b.context_bytes > 16 * 1024 * 1024"
+            )),
+            "available:0",
+        );
+        assert!(admin.effects("scoped-oversized").is_empty());
+        println!(
+            "Scoped batch claim skipped oversized work and settled the following job on {suffix}"
+        );
         assert_eq!(
             inspector.control(json!({"action":"inspect_queue","queue":"default"}))["running"],
             0,

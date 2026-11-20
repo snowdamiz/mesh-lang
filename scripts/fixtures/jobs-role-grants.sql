@@ -22,7 +22,7 @@ GRANT UPDATE (state, attempt, attempted_at_ms, scheduled_at_ms, metadata, finish
     lease_token, lease_expires_at_ms, cancel_requested_at_ms, errors)
     ON mesh_jobs.jobs TO :"worker";
 GRANT SELECT, INSERT (namespace, id, row_version, row_location, encoding, context_bytes),
-    UPDATE (row_version, row_location, context_bytes)
+    UPDATE (row_version, row_location, encoding, context_bytes)
     ON mesh_jobs.batch_context_blocks TO :"worker";
 GRANT EXECUTE ON FUNCTION mesh_jobs.claim(text,text,jsonb,bigint),
     mesh_jobs.claim_batch_v1(text,text,jsonb,bigint,integer,bigint),
