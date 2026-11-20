@@ -266,6 +266,7 @@ struct LocalQueue {
     phase: QueuePhase,
     next_claim: Instant,
     source: ClaimWake,
+    batch_retry_ms: u64,
 }
 
 #[derive(Clone, Copy)]
@@ -294,6 +295,7 @@ impl LocalQueue {
             phase: QueuePhase::Running,
             next_claim: Instant::now(),
             source: ClaimWake::Ready,
+            batch_retry_ms: 0,
         }
     }
 }
@@ -306,6 +308,7 @@ struct Reservation {
 #[derive(Default)]
 struct Counts {
     claimed: u64,
+    batch_contention_hints: u64,
     peak_queued_context_bytes: usize,
     outcomes: OutcomeCounts,
     stale_acks: u64,
@@ -529,6 +532,9 @@ impl Runner {
             "pruned": state.counts.pruned,
             "last_error": state.last_error,
         });
+        if self.config.claim_batch {
+            report["batch_contention_hints"] = state.counts.batch_contention_hints.into();
+        }
         if let Some(events) = &self.events {
             report["events_dropped"] = events.dropped().into();
             report["event_logs_dropped"] = events.logs_dropped().into();
@@ -1491,6 +1497,7 @@ impl LocalQueue {
     }
 
     fn backoff(&mut self, runner: &Runner, next_due: Option<Instant>) {
+        self.batch_retry_ms = 0;
         let poll_ms = runner.config.poll_ms;
         let jitter = if runner.wakeups.is_some() {
             rand::random_range(0..=poll_ms / 5)
@@ -1498,12 +1505,26 @@ impl LocalQueue {
             0
         };
         let fallback = Instant::now() + Duration::from_millis(poll_ms + jitter);
-        if let Some(due) = next_due.filter(|&due| due < fallback) {
+        self.schedule_claim(fallback, ClaimWake::Fallback, next_due);
+    }
+
+    fn retry_batch_claim(&mut self, now: Instant, poll_ms: u64, next_due: Option<Instant>) {
+        self.batch_retry_ms = (2 * self.batch_retry_ms).max(4).min(poll_ms);
+        let delay_ms = rand::random_range(self.batch_retry_ms.div_ceil(2)..=self.batch_retry_ms);
+        self.schedule_claim(
+            now + Duration::from_millis(delay_ms),
+            ClaimWake::Ready,
+            next_due,
+        );
+    }
+
+    fn schedule_claim(&mut self, deadline: Instant, source: ClaimWake, next_due: Option<Instant>) {
+        if let Some(due) = next_due.filter(|&due| due < deadline) {
             self.next_claim = due;
             self.source = ClaimWake::Due;
         } else {
-            self.next_claim = fallback;
-            self.source = ClaimWake::Fallback;
+            self.next_claim = deadline;
+            self.source = source;
         }
     }
 }
@@ -1776,13 +1797,24 @@ impl BatchLane {
                     if batch.claims.is_empty() {
                         let mut state = runner.state.lock();
                         state.pending = None;
+                        let local = state.queues.get_mut(&queue).expect("known queue");
+                        if batch.contention_hint {
+                            local.retry_batch_claim(
+                                Instant::now(),
+                                runner.config.poll_ms,
+                                next_due,
+                            );
+                            state.counts.batch_contention_hints += 1;
+                        } else {
+                            local.backoff(runner, next_due);
+                        }
+                    } else {
+                        let mut state = runner.state.lock();
                         state
                             .queues
                             .get_mut(&queue)
                             .expect("known queue")
-                            .backoff(runner, next_due);
-                    } else {
-                        let mut state = runner.state.lock();
+                            .batch_retry_ms = 0;
                         state.pending.as_mut().expect("reserved batch").slots = batch.claims.len();
                         state.counts.observe_queued_context_bytes(
                             batch.claims.iter().map(|claim| claim.context.len()).sum(),
@@ -1950,6 +1982,7 @@ fn dispatch_queues(
                 wakeups.close();
             }
         }
+        let mut batch_retry_at: Option<Instant> = None;
         if admitting && !pending {
             if let Some(wakeups) = &runner.wakeups {
                 // Apply hints after the batch reply so an empty result from an
@@ -1999,16 +2032,6 @@ fn dispatch_queues(
             let ready = {
                 let state = runner.state.lock();
                 let now = Instant::now();
-                let eligible = |(name, queue): &(&String, &LocalQueue)| {
-                    if state.jobs.len() >= MAX_IN_FLIGHT
-                        || !matches!(queue.phase, QueuePhase::Running)
-                        || queue.next_claim > now
-                    {
-                        return false;
-                    }
-                    let active = attempts.iter().filter(|attempt| &attempt.queue == *name);
-                    !active.clone().any(Attempt::blocks_claims) && active.count() < queue.limit
-                };
                 state
                     .queues
                     .iter()
@@ -2019,8 +2042,28 @@ fn dispatch_queues(
                             .iter()
                             .take_while(|(name, _)| *name <= &last_queue),
                     )
-                    .find(eligible)
-                    .map(|(name, _)| name.clone())
+                    .find_map(|(name, queue)| {
+                        if state.jobs.len() >= MAX_IN_FLIGHT
+                            || !matches!(queue.phase, QueuePhase::Running)
+                            || (queue.next_claim > now && queue.batch_retry_ms == 0)
+                        {
+                            return None;
+                        }
+                        let active = attempts.iter().filter(|attempt| &attempt.queue == name);
+                        if active.clone().any(Attempt::blocks_claims)
+                            || active.count() >= queue.limit
+                        {
+                            return None;
+                        }
+                        if queue.next_claim <= now {
+                            return Some(name.clone());
+                        }
+                        // Only an admissible queue can shorten the lifecycle tick.
+                        batch_retry_at = Some(
+                            batch_retry_at.map_or(queue.next_claim, |at| at.min(queue.next_claim)),
+                        );
+                        None
+                    })
             };
             if let Some(queue) = ready {
                 last_queue.clone_from(&queue);
@@ -2061,6 +2104,9 @@ fn dispatch_queues(
         } else {
             tick
         };
+        let wait = batch_retry_at.map_or(wait, |at| {
+            wait.min(at.saturating_duration_since(Instant::now()))
+        });
         std::thread::park_timeout(wait);
     }
 }

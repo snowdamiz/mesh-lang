@@ -37,6 +37,7 @@ pub(super) struct OversizedClaim {
 pub(super) struct ClaimBatch {
     pub(super) claims: Vec<Claim>,
     pub(super) oversized: Vec<OversizedClaim>,
+    pub(super) contention_hint: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -753,12 +754,40 @@ pub(super) fn claim_batch_with_timing(
     // Force a fresh capacity snapshot even when the session defaults to repeatable read.
     db.simple("BEGIN ISOLATION LEVEL READ COMMITTED")?;
     let result = (|| {
+        // The left join supplies one empty row when the claim returns nothing.
+        // CASE probes only that row. The optimistic snapshot is advisory, and the
+        // function still chooses the live cutoff after it acquires admission.
         let rows = db.query(
-            "SELECT status, id, token, context, timeout_ms, context_bytes,
+            "SELECT coalesce(status, 'contention_hint'), id, token, context, timeout_ms, context_bytes,
                     CASE WHEN $7::boolean AND status = 'claimed'
                     THEN floor(extract(epoch FROM pg_catalog.clock_timestamp()) * 1000)::bigint::text END
-             FROM mesh_jobs.claim_batch_v1($1, $2, $3::jsonb, $4::bigint, $5::integer,
-                 nullif($6, '')::bigint) WITH ORDINALITY
+             FROM (VALUES (1)) AS probe_anchor(dummy)
+             LEFT JOIN LATERAL (
+                 SELECT * FROM mesh_jobs.claim_batch_v1($1, $2, $3::jsonb, $4::bigint, $5::integer,
+                     nullif($6, '')::bigint) WITH ORDINALITY
+             ) AS result ON true
+             WHERE CASE WHEN ordinality IS NOT NULL THEN true ELSE EXISTS (
+                 SELECT FROM mesh_jobs.queues q
+                 WHERE q.namespace = $1 AND q.name = $2 AND q.state = 'active'
+                     AND q.concurrency > 0
+                     AND NOT EXISTS (SELECT FROM mesh_jobs.queues paused
+                         WHERE paused.namespace = $1 AND paused.name = '' AND paused.state = 'paused')
+                     AND q.concurrency > (SELECT count(*) FROM mesh_jobs.jobs running
+                         WHERE running.namespace = q.namespace AND running.queue = q.name
+                             AND running.state = 'executing')
+                     AND EXISTS (SELECT FROM mesh_jobs.jobs j
+                         WHERE j.namespace = q.namespace AND j.queue = q.name
+                             AND j.state IN ('available', 'scheduled', 'retryable')
+                             AND j.scheduled_at_ms <= coalesce(nullif($6, '')::bigint,
+                                 floor(extract(epoch FROM pg_catalog.statement_timestamp()) * 1000)::bigint)
+                             AND j.attempt < j.max_attempts
+                             AND EXISTS (SELECT FROM jsonb_to_recordset($3::jsonb) AS w(worker text, version bigint)
+                                 WHERE w.worker = j.worker AND w.version = j.version)
+                             AND NOT EXISTS (SELECT FROM mesh_jobs.batch_context_blocks b
+                                 WHERE b.namespace = j.namespace AND b.id = j.id
+                                     AND b.row_version = j.xmin AND b.row_location = j.ctid
+                                     AND b.encoding = current_setting('client_encoding')::name))
+             ) END
              ORDER BY ordinality",
             &[
                 namespace,
@@ -770,43 +799,7 @@ pub(super) fn claim_batch_with_timing(
                 if observe { "true" } else { "false" },
             ],
         )?;
-        let mut batch = ClaimBatch::default();
-        let invalid = || "mesh jobs invalid batch claim result from PostgreSQL".to_string();
-        for row in rows {
-            let fields = row.into_iter().map(|(_, value)| value).collect::<Vec<_>>();
-            let [status, id, token, context, timeout_ms, context_bytes, observed_at_ms]: [String;
-                7] = fields.try_into().map_err(|_| invalid())?;
-            let context_bytes = context_bytes.parse::<usize>().map_err(|_| invalid())?;
-            match status.as_str() {
-                "claimed"
-                    if context_bytes == context.len()
-                        && context_bytes <= crate::db::pg::MAX_DB_VALUE_BYTES
-                        && batch.claims.len() < slots =>
-                {
-                    batch.claims.push(Claim {
-                        id,
-                        token,
-                        context,
-                        timeout_ms: timeout_ms.parse().map_err(|_| invalid())?,
-                        observed_at_ms: if observe {
-                            observed_at_ms.parse().ok()
-                        } else {
-                            None
-                        },
-                    });
-                }
-                "oversized"
-                    if context_bytes > crate::db::pg::MAX_DB_VALUE_BYTES
-                        && token.is_empty()
-                        && context.is_empty()
-                        && timeout_ms.is_empty()
-                        && batch.oversized.len() < MAX_CLAIM_BATCH =>
-                {
-                    batch.oversized.push(OversizedClaim { id, context_bytes });
-                }
-                _ => return Err(invalid()),
-            }
-        }
+        let batch = decode_claim_batch(rows, slots, observe)?;
         if !db.in_transaction() {
             return Err("mesh jobs batch claim did not leave a committable transaction".into());
         }
@@ -815,6 +808,71 @@ pub(super) fn claim_batch_with_timing(
         Ok(batch)
     })();
     result.map_err(|error| rollback_error(error, db.simple("ROLLBACK")))
+}
+
+fn decode_claim_batch(
+    rows: Vec<Vec<(String, String)>>,
+    slots: usize,
+    observe: bool,
+) -> Result<ClaimBatch, String> {
+    let mut batch = ClaimBatch::default();
+    let sole_row = rows.len() == 1;
+    let invalid = || "mesh jobs invalid batch claim result from PostgreSQL".to_string();
+    for row in rows {
+        let fields = row.into_iter().map(|(_, value)| value).collect::<Vec<_>>();
+        let [status, id, token, context, timeout_ms, context_bytes, observed_at_ms]: [String; 7] =
+            fields.try_into().map_err(|_| invalid())?;
+        if status == "contention_hint" {
+            // The text query decodes SQL NULL as an empty string.
+            if !sole_row
+                || ![
+                    &id,
+                    &token,
+                    &context,
+                    &timeout_ms,
+                    &context_bytes,
+                    &observed_at_ms,
+                ]
+                .into_iter()
+                .all(String::is_empty)
+            {
+                return Err(invalid());
+            }
+            batch.contention_hint = true;
+            return Ok(batch);
+        }
+        let context_bytes = context_bytes.parse::<usize>().map_err(|_| invalid())?;
+        match status.as_str() {
+            "claimed"
+                if context_bytes == context.len()
+                    && context_bytes <= crate::db::pg::MAX_DB_VALUE_BYTES
+                    && batch.claims.len() < slots =>
+            {
+                batch.claims.push(Claim {
+                    id,
+                    token,
+                    context,
+                    timeout_ms: timeout_ms.parse().map_err(|_| invalid())?,
+                    observed_at_ms: if observe {
+                        observed_at_ms.parse().ok()
+                    } else {
+                        None
+                    },
+                });
+            }
+            "oversized"
+                if context_bytes > crate::db::pg::MAX_DB_VALUE_BYTES
+                    && token.is_empty()
+                    && context.is_empty()
+                    && timeout_ms.is_empty()
+                    && batch.oversized.len() < MAX_CLAIM_BATCH =>
+            {
+                batch.oversized.push(OversizedClaim { id, context_bytes });
+            }
+            _ => return Err(invalid()),
+        }
+    }
+    Ok(batch)
 }
 
 pub(super) fn next_due_ms(

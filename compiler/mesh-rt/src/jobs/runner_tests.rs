@@ -82,6 +82,76 @@ fn wake_hints_coalesce_to_one_bit_per_configured_queue() {
 }
 
 #[test]
+fn batch_contention_retries_back_off_and_definitive_empty_resets_them() {
+    let mut config = Config::parse(TEST_CONFIG).unwrap();
+    config.claim_batch = true;
+    config.poll_ms = 12;
+    let runner = Runner {
+        id: 0,
+        state: Mutex::new(State::new(&config)),
+        config,
+        check_worker: || Ok(()),
+        dispatcher: OnceLock::new(),
+        reply_wake: crossbeam_channel::bounded(1).0,
+        events: None,
+        wakeups: None,
+    };
+    let (requests, _) = mpsc::sync_channel(1);
+    let (send, results) = mpsc::sync_channel(1);
+    let lane = BatchLane { requests, results };
+    let lease = Lease::begin(Duration::from_secs(30)).unwrap();
+    let poll = |contention_hint, next_due| {
+        runner.state.lock().pending = Some(Reservation {
+            queue: "default".into(),
+            slots: 1,
+        });
+        send.send((
+            "default".into(),
+            Ok((
+                lease,
+                ClaimBatch {
+                    contention_hint,
+                    ..ClaimBatch::default()
+                },
+                next_due,
+            )),
+        ))
+        .unwrap();
+        let before = Instant::now();
+        lane.poll(&runner, &mut Vec::new(), &|_, _, _, _| {
+            panic!("empty batch must not launch a worker")
+        });
+        let state = runner.state.lock();
+        assert!(state.pending.is_none());
+        (before, state.queues["default"].next_claim)
+    };
+
+    for ceiling_ms in [4, 8, 12, 12] {
+        let (before, next) = poll(true, None);
+        assert!(next >= before + Duration::from_millis(ceiling_ms / 2));
+        assert!(next <= Instant::now() + Duration::from_millis(ceiling_ms));
+    }
+    let (before, next) = poll(false, None);
+    assert!(next >= before + Duration::from_millis(12));
+    let (_, next) = poll(true, None);
+    assert!(next <= Instant::now() + Duration::from_millis(4));
+    let due = Instant::now();
+    assert_eq!(poll(true, Some(due)).1, due);
+    let state = runner.state.lock();
+    assert!(matches!(state.queues["default"].source, ClaimWake::Due));
+    let report: serde_json::Value = serde_json::from_str(&runner.report(&state)).unwrap();
+    assert_eq!(report["batch_contention_hints"], 6);
+    assert_eq!(report["claimed"], 0);
+
+    let mut queue = LocalQueue::new(1);
+    let now = Instant::now();
+    for _ in 0..2 {
+        queue.retry_batch_claim(now, 1, None);
+        assert_eq!(queue.next_claim, now + Duration::from_millis(1));
+    }
+}
+
+#[test]
 fn confirmed_batch_launch_failure_stops_later_launches_and_keeps_refunds_tracked() {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -106,6 +176,13 @@ fn confirmed_batch_launch_failure_stops_later_launches_and_keeps_refunds_tracked
     let (send, results) = mpsc::sync_channel(1);
     let lane = BatchLane { requests, results };
     let lease = Lease::begin(Duration::from_secs(30)).unwrap();
+    runner
+        .state
+        .lock()
+        .queues
+        .get_mut("default")
+        .unwrap()
+        .batch_retry_ms = 8;
     let claims = (1..=3)
         .map(|index| Claim {
             id: format!("job-{index}"),
@@ -121,7 +198,7 @@ fn confirmed_batch_launch_failure_stops_later_launches_and_keeps_refunds_tracked
             lease,
             ClaimBatch {
                 claims,
-                oversized: Vec::new(),
+                ..ClaimBatch::default()
             },
             None,
         )),
@@ -140,6 +217,7 @@ fn confirmed_batch_launch_failure_stops_later_launches_and_keeps_refunds_tracked
     let state = runner.state.lock();
     assert!(matches!(state.phase, Phase::Stopping { .. }));
     assert!(state.pending.is_none());
+    assert_eq!(state.queues["default"].batch_retry_ms, 0);
     assert_eq!(state.counts.claimed, 3);
     assert_eq!(attempts.len(), 3);
     assert!(matches!(

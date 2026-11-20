@@ -135,6 +135,174 @@ fn id(value: &Value) -> &str {
 }
 
 #[test]
+fn batch_contention_sentinel_must_be_the_only_row_with_no_payload() {
+    let row = |fields: [&str; 7]| {
+        fields
+            .into_iter()
+            .map(|value| (String::new(), value.to_owned()))
+            .collect::<Vec<_>>()
+    };
+    let status = ["contention_hint", "", "", "", "", "", ""];
+    let batch = decode_claim_batch(vec![row(status)], 1, true).unwrap();
+    assert!(batch.contention_hint);
+    assert!(batch.claims.is_empty());
+    assert!(batch.oversized.is_empty());
+    assert!(!decode_claim_batch(vec![], 1, true).unwrap().contention_hint);
+
+    for index in 1..status.len() {
+        let mut invalid = status;
+        invalid[index] = "1";
+        assert!(decode_claim_batch(vec![row(invalid)], 1, true).is_err());
+    }
+    assert!(decode_claim_batch(vec![row(status)[..6].to_vec()], 1, true).is_err());
+    for other in [
+        status,
+        ["claimed", "id", "token", "{}", "1", "2", "1"],
+        ["oversized", "id", "", "", "", "16777217", ""],
+    ] {
+        assert!(decode_claim_batch(vec![row(status), row(other)], 1, true).is_err());
+        assert!(decode_claim_batch(vec![row(other), row(status)], 1, true).is_err());
+    }
+}
+
+#[test]
+#[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
+fn batch_contention_hint_requires_eligible_backlog_and_open_capacity() {
+    let mut f = Fixture::new();
+    let job = f.enqueue(json!({"worker":"Deliver","scheduled_at_ms":1}));
+    let mut claimant = Connection::open(&f.url);
+    claimant.simple("SET statement_timeout = '5s'").unwrap();
+    let namespace = f.ns.clone();
+    let mut claim = |cutoff| {
+        claim_batch(
+            &mut claimant,
+            &namespace,
+            "default",
+            WORKERS,
+            60_000,
+            1,
+            cutoff,
+        )
+        .unwrap()
+    };
+
+    let mut locker = Connection::open(&f.url);
+    locker.simple("BEGIN").unwrap();
+    locker
+        .query(
+            "SELECT 1 FROM mesh_jobs.queues WHERE namespace = $1 AND name = 'default'
+             FOR NO KEY UPDATE",
+            &[&f.ns],
+        )
+        .unwrap();
+    assert!(!claim(Some(0)).contention_hint);
+    let held = claim(Some(1));
+    assert!(held.contention_hint);
+    assert!(held.claims.is_empty());
+    assert!(held.oversized.is_empty());
+    locker.simple("COMMIT").unwrap();
+
+    let claimed = claim(Some(1));
+    assert!(!claimed.contention_hint);
+    assert_eq!(claimed.claims.len(), 1);
+    let first = &claimed.claims[0];
+    assert_eq!(first.id, id(&job));
+    assert_eq!(parse(&first.context)["attempt"], 1);
+
+    let waiting = f.enqueue(json!({"worker":"Deliver"}));
+    let full = claim(None);
+    assert!(!full.contention_hint && full.claims.is_empty());
+    f.finish(first, Outcome::Complete);
+    f.ops(json!({"action":"pause_namespace"}));
+    let paused = claim(None);
+    assert!(!paused.contention_hint && paused.claims.is_empty());
+    f.ops(json!({"action":"resume_namespace"}));
+    let claimed = claim(None);
+    assert_eq!(claimed.claims[0].id, id(&waiting));
+    f.finish(&claimed.claims[0], Outcome::Complete);
+
+    let jobs = f.enqueue(json!([
+        {"worker":"Deliver","delay_ms":120000},
+        {"worker":"Deliver","version":2},
+        {"worker":"Deliver","max_attempts":1}
+    ]));
+    f.db.query(
+        "UPDATE mesh_jobs.jobs SET attempt = max_attempts WHERE namespace = $1 AND id = $2::uuid",
+        &[&f.ns, id(&jobs[2])],
+    )
+    .unwrap();
+    let unmatched = claim(None);
+    assert!(!unmatched.contention_hint && unmatched.claims.is_empty());
+}
+
+#[test]
+#[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
+fn batch_claim_samples_live_due_time_after_admission_waits() {
+    let mut fixture = Fixture::new();
+    let original = fixture.enqueue(json!({"worker":"Deliver","delay_ms":120000}));
+    thread::scope(|scope| {
+        let mut locker = Connection::open(&fixture.url);
+        locker.simple("SET statement_timeout = '10s'").unwrap();
+        let (send_pid, receive_pid) = std::sync::mpsc::channel();
+        let (start, wait) = std::sync::mpsc::channel();
+        let url = fixture.url.clone();
+        let namespace = fixture.ns.clone();
+        let claimant = scope.spawn(move || {
+            let mut db = Connection::open(&url);
+            db.simple("SET statement_timeout = '10s'").unwrap();
+            send_pid
+                .send(response(&mut db, "SELECT pg_backend_pid()::text", &[]).unwrap())
+                .unwrap();
+            wait.recv_timeout(Duration::from_secs(10)).unwrap();
+            claim_batch(&mut db, &namespace, "default", WORKERS, 60_000, 1, None).unwrap()
+        });
+        let pid = receive_pid.recv_timeout(Duration::from_secs(5)).unwrap();
+        // EXCLUSIVE allows the advisory SELECT but holds the admission table lock.
+        locker.simple("BEGIN").unwrap();
+        locker
+            .simple("LOCK TABLE mesh_jobs.queues IN EXCLUSIVE MODE")
+            .unwrap();
+        start.send(()).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while response(
+            &mut locker,
+            "SELECT (pg_backend_pid() = ANY(pg_blocking_pids($1::integer)))::text",
+            &[&pid],
+        )
+        .unwrap()
+            != "true"
+        {
+            assert!(
+                Instant::now() < deadline,
+                "the claim did not wait for admission"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+        // Set the due time after admission blocks and commit after it elapses.
+        let due = response(
+            &mut locker,
+            "UPDATE mesh_jobs.jobs SET scheduled_at_ms = mesh_jobs.now_ms() + 1
+             WHERE namespace = $1 AND id = $2::uuid RETURNING scheduled_at_ms::text",
+            &[&fixture.ns, id(&original)],
+        )
+        .unwrap();
+        locker
+            .query(
+                "SELECT pg_sleep(greatest(0, $1::bigint + 1 - mesh_jobs.now_ms()) / 1000.0)",
+                &[&due],
+            )
+            .unwrap();
+        locker.simple("COMMIT").unwrap();
+
+        let batch = claimant.join().unwrap();
+        assert!(!batch.contention_hint && batch.oversized.is_empty());
+        assert_eq!(batch.claims.len(), 1);
+        assert_eq!(batch.claims[0].id, id(&original));
+        assert_eq!(parse(&batch.claims[0].context)["attempt"], 1);
+    });
+}
+
+#[test]
 #[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
 fn batch_claim_preserves_order_and_uses_the_shared_capacity() {
     let mut f = Fixture::new();
@@ -326,6 +494,7 @@ fn batch_drain_steps_past_an_oversized_prefix_and_rechecks_replacements() {
         None,
     )
     .unwrap();
+    assert!(!first.contention_hint);
     assert_eq!(first.oversized.len(), 4);
     assert!(first.claims.is_empty());
     assert!(
@@ -352,6 +521,18 @@ fn batch_drain_steps_past_an_oversized_prefix_and_rechecks_replacements() {
     let remaining = drain_work(&mut fixture.db, &fixture.ns, selected, WORKERS, true).unwrap();
     assert!(!remaining.pending);
     assert!(remaining.oversized.is_some());
+    let blocked = claim_batch(
+        &mut fixture.db,
+        &fixture.ns,
+        "default",
+        WORKERS,
+        60_000,
+        1,
+        None,
+    )
+    .unwrap();
+    assert!(!blocked.contention_hint);
+    assert!(blocked.claims.is_empty() && blocked.oversized.is_empty());
 
     fixture
         .db
