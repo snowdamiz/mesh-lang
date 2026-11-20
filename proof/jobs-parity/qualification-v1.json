@@ -1089,6 +1089,171 @@
     },
     "transport": "SCRAM with verified TLS"
   },
+  "worker_reply_wakeup": {
+    "candidate_ref": "125772f85af599c35bc9555070a01d97ddfc2521",
+    "correctness": {
+      "checkout": "34dd6884916ce5cd0e0979d3d523a0a9c68222a9",
+      "compiled_proofs": 2,
+      "fault_cases": 9,
+      "fault_directory": "target/jobs-parity/125772f85af599c35bc9555070a01d97ddfc2521/j1-fault-jxjznk1b",
+      "jobs_runtime_tests": 44,
+      "raw_directory": "target/jobs-parity/125772f85af599c35bc9555070a01d97ddfc2521/reply-verification",
+      "verified_tls_versions": [
+        "17.11"
+      ]
+    },
+    "platform": "macOS arm64",
+    "postgresql_version": "17.11",
+    "review": {
+      "fix_revision": "a1a3a821",
+      "observed_problem": "An early pass finishing after the watchdog deadline could delay the next full reap scan."
+    },
+    "runs": {
+      "batch_vs_oban": {
+        "baseline_ref": null,
+        "budget_breaches": [
+          {
+            "metric": "cpu_seconds_per_job",
+            "profile": "short-1r-16s",
+            "scope": "budgets"
+          }
+        ],
+        "completed_per_trial": 128,
+        "harness_ref": "20107f981eded632559ae74551b31f2ae2fb0fd3",
+        "metrics": {
+          "mesh": {
+            "cpu_seconds_per_job": {
+              "max": 0.0056965859375,
+              "median": 0.00566340625,
+              "min": 0.0055599609375
+            },
+            "effect_commit_to_settlement_ms": {
+              "max": 3.6944580078125,
+              "median": 3.596435546875,
+              "min": 2.3365478515625,
+              "trial_medians": [
+                2.3365478515625,
+                3.596435546875,
+                3.6944580078125,
+                3.6156005859375,
+                2.72216796875
+              ]
+            },
+            "jobs_per_second": {
+              "max": 591.9208797163953,
+              "median": 411.4854391410643,
+              "min": 356.5369897742334
+            },
+            "pickup_p99_ms": {
+              "max": 339.671875,
+              "median": 293.760986328125,
+              "min": 191.925048828125
+            }
+          },
+          "oban": {
+            "cpu_seconds_per_job": {
+              "max": 0.0053875546875,
+              "median": 0.004340859375,
+              "min": 0.0039987109375
+            },
+            "effect_commit_to_settlement_ms": {
+              "max": 1.52392578125,
+              "median": 0.506591796875,
+              "min": 0.41650390625,
+              "trial_medians": [
+                1.52392578125,
+                0.5810546875,
+                0.506591796875,
+                0.41650390625,
+                0.5054931640625
+              ]
+            },
+            "jobs_per_second": {
+              "max": 495.98557512655344,
+              "median": 425.4710680355414,
+              "min": 331.34090279980944
+            },
+            "pickup_p99_ms": {
+              "max": 381.04296875,
+              "median": 298.177978515625,
+              "min": 254.847900390625
+            }
+          }
+        },
+        "one_minute_load_at_start": 10.22021484375,
+        "raw_directory": "target/jobs-parity/125772f85af599c35bc9555070a01d97ddfc2521/j1-load-3vl21x7c"
+      },
+      "single_claim_vs_parent": {
+        "baseline_ref": "e8fa00c0c6aa7ae6d4c807cccdd50a3f75f915bd",
+        "budget_breaches": [],
+        "completed_per_trial": 128,
+        "harness_ref": "20107f981eded632559ae74551b31f2ae2fb0fd3",
+        "metrics": {
+          "baseline": {
+            "cpu_seconds_per_job": {
+              "max": 0.0057369921875,
+              "median": 0.005194015624999999,
+              "min": 0.005100539062499999
+            },
+            "effect_commit_to_settlement_ms": {
+              "max": 10.5255126953125,
+              "median": 9.77685546875,
+              "min": 8.378173828125,
+              "trial_medians": [
+                8.378173828125,
+                10.5255126953125,
+                9.4403076171875,
+                10.4354248046875,
+                9.77685546875
+              ]
+            },
+            "jobs_per_second": {
+              "max": 507.4232798702329,
+              "median": 378.5448325606548,
+              "min": 304.7176226483084
+            },
+            "pickup_p99_ms": {
+              "max": 401.7958984375,
+              "median": 318.718017578125,
+              "min": 239.594970703125
+            }
+          },
+          "mesh": {
+            "cpu_seconds_per_job": {
+              "max": 0.0062469609375,
+              "median": 0.005572078124999999,
+              "min": 0.005301421875
+            },
+            "effect_commit_to_settlement_ms": {
+              "max": 3.8809814453125,
+              "median": 2.3524169921875,
+              "min": 1.907958984375,
+              "trial_medians": [
+                1.907958984375,
+                2.3524169921875,
+                3.8809814453125,
+                3.29443359375,
+                2.2039794921875
+              ]
+            },
+            "jobs_per_second": {
+              "max": 521.4679015882109,
+              "median": 411.4909294115616,
+              "min": 311.5893321447144
+            },
+            "pickup_p99_ms": {
+              "max": 391.469970703125,
+              "median": 299.679931640625,
+              "min": 229.130126953125
+            }
+          }
+        },
+        "one_minute_load_at_start": 9.88037109375,
+        "raw_directory": "target/jobs-parity/125772f85af599c35bc9555070a01d97ddfc2521/j1-load-3q6w3p22"
+      }
+    },
+    "transport": "SCRAM with verified TLS"
+  },
   "workspace_gate": {
     "checks": [
       "fmt",

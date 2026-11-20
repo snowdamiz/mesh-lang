@@ -386,6 +386,20 @@ on Oban. Both Core performance limits still failed in this run. Startup
 one-minute load was 8.5 on 15 logical CPUs. Raw receipts are in run
 `j1-load-fycjmfc1`.
 
+The worker-reply wakeup candidate `125772f8` shortened median time from
+effect commit to settlement from 9.78 ms to 2.35 ms in five single-claim
+pairs against `e8fa00c0`. All five pairs improved on that interval. Median
+throughput was 411.5 jobs per second, with a trial range of 311.6–521.5.
+The baseline median was 378.5, with a range of 304.7–507.4. Raw receipts
+are in run `j1-load-3q6w3p22`.
+
+In the batch comparison against Oban Basic 2.24.2, Mesh met the two
+dense timing limits at 411.5 jobs per second and 293.8 ms pickup p99.
+Oban recorded 425.5 jobs per second and 298.2 ms pickup p99. Mesh used
+1.30 times Oban's CPU per job, above the 1.25 limit. Raw receipts are in
+run `j1-load-3vl21x7c`. The candidate's worker test confirmed that the
+supervisor cannot consume a reply until it reaps the child.
+
 ## Compare bounded drain
 
 `scripts/jobs-drain-perf.py` accepts the pinned main and candidate compiler
