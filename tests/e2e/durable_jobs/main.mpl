@@ -23,12 +23,6 @@ fn rollback_job(conn :: borrow PgConn) -> String!String do
   Err("intentional rollback after enqueue")
 end
 
-fn seed(pool :: PoolHandle) -> String!String do
-  let _ = Jobs.migrate(pool)?
-  let _ = Jobs.migrate(pool)?
-  seed_transaction(pool)
-end
-
 fn seed_transaction(pool :: PoolHandle) -> String!String do
   let receipt = Repo.transaction(pool, commit_job)?
   case Repo.transaction(pool, rollback_job) do
@@ -243,7 +237,6 @@ fn run() -> String!String do
   end
   let payload = Env.get("MESH_JOBS_PROOF_PAYLOAD", "")
   let result = case Env.get("MESH_JOBS_PROOF_COMMAND", "") do
-    "seed" -> seed(pool)
     "seed_transaction" -> seed_transaction(pool)
     "migrate" -> migrate(pool)
     "enqueue" -> Jobs.enqueue(pool, namespace(), payload)

@@ -53,6 +53,7 @@ fn durable_jobs_survive_process_boundaries() {
         "MESH_TEST_DATABASE_URL must name a dedicated test database"
     );
     let proof = Proof::new(&url, binary, temp.path());
+    proof.migrate_shared_database();
     prove_transaction_and_restart(&proof);
     prove_competing_processes(&proof);
     prove_batch_admission(&proof);
@@ -155,7 +156,7 @@ fn build_fixture(compiler: &Path, project: &Path, runtime: Option<&Path>) -> Pat
 }
 
 fn prove_transaction_and_restart(proof: &Proof) {
-    let committed = proof.run("seed", "");
+    let committed = proof.run("seed_transaction", "");
     assert_eq!(committed["state"], "available");
     assert_eq!(
         proof.sql(&format!("SELECT value FROM {}.business", proof.namespace)),
@@ -1752,6 +1753,15 @@ impl<'a> Proof<'a> {
     fn sql(&self, sql: &str) -> String {
         self.sql_result(sql)
             .unwrap_or_else(|error| panic!("{error}"))
+    }
+
+    fn migrate_shared_database(&self) {
+        static MIGRATIONS: std::sync::Once = std::sync::Once::new();
+        // Both suites share mesh_jobs DDL and use distinct namespaces for DML.
+        MIGRATIONS.call_once(|| {
+            self.run("migrate", "");
+            self.run("migrate", "");
+        });
     }
 
     fn job(&self, label: &str) -> Value {

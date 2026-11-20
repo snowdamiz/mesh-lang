@@ -82,8 +82,8 @@ end
 
     let binary = project.join("jobs-testing");
     let proof = Proof::new(&url, binary.clone(), temp.path());
+    proof.migrate_shared_database();
     let other = Proof::new(&url, binary, temp.path());
-    proof.run("seed", "");
     let left = proof.namespace.as_str();
     let right = other.namespace.as_str();
     thread::scope(|scope| {
