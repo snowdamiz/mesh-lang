@@ -268,6 +268,50 @@ jobs:
           name: jobs-postgres-${{ matrix.version }}-${{ matrix.os }}
           path: target/jobs-postgres-proof/*.log
 
+      - name: Read Jobs baseline BEAM versions
+        if: runner.os == 'Linux' && matrix.version == '17.11'
+        id: jobs-beam-versions
+        run: cat tools/performance/versions.env >> "$GITHUB_OUTPUT"
+
+      - name: Install BEAM for the Jobs baseline
+        if: runner.os == 'Linux' && matrix.version == '17.11'
+        uses: erlef/setup-beam@v1.24.1
+        with:
+          otp-version: ${{ steps.jobs-beam-versions.outputs.PERF_OTP_VERSION }}
+          elixir-version: ${{ steps.jobs-beam-versions.outputs.PERF_ELIXIR_VERSION }}
+          version-type: strict
+          install-hex: false
+          install-rebar: false
+
+      - name: Prove paired Mesh and Oban recovery on Linux
+        if: runner.os == 'Linux' && matrix.version == '17.11'
+        timeout-minutes: 25
+        shell: bash
+        env:
+          POSTGRES_VERSION: ${{ matrix.version }}
+          MIX_HOME: ${{ github.workspace }}/target/jobs-parity/build/oban/mix
+          HEX_HOME: ${{ github.workspace }}/target/jobs-parity/build/oban/hex
+        run: |
+          extension="$RUNNER_TEMP/postgresql-$POSTGRES_VERSION/contrib/pg_stat_statements"
+          make -s -C "$extension"
+          make -s -C "$extension" install
+          mix local.rebar --force
+          python3 -B scripts/jobs-parity.py --faults --release \
+            --mesh-ref 7c1620563614a04a573aef806a6d019a2af4dfe9 \
+            --postgres-version "$POSTGRES_VERSION"
+
+      - name: Save paired Jobs baseline receipts
+        if: always() && runner.os == 'Linux' && matrix.version == '17.11'
+        uses: actions/upload-artifact@v4
+        with:
+          name: jobs-parity-baseline-linux-17.11
+          path: |
+            target/jobs-parity/*/j1-fault-*/manifest.json
+            target/jobs-parity/*/j1-fault-*/harness.json
+            target/jobs-parity/*/j1-fault-*/mesh-toolchain.json
+            target/jobs-parity/*/j1-fault-*/result.json
+            target/jobs-parity/*/j1-fault-*/*/fault.json
+
   # The ```mesh examples on the docs site must parse, lint and format cleanly.
   # rust-core runs these tests with the rest of the mesh-lint and mesh-fmt
   # suites; this covers a change to the docs alone, without LLVM.

@@ -822,6 +822,15 @@ the PostgreSQL driver, leases, cancellation, timeout, recovery, and
 shutdown. The full-role variant adds scoped migrator, producer, worker,
 operator, and inspector logins, plus cron takeover and reindex.
 
+The hosted Linux PostgreSQL 17.11 job runs a paired recovery baseline
+with the release Mesh runtime from `7c162056` and Oban Basic 2.24.2. The
+driver uses a disposable PostgreSQL cluster with verified TLS and SCRAM.
+It verifies rollback, committed enqueue, runner death after one committed
+effect, and clean replacement shutdown. Both engines must settle the
+same job on attempt two with one durable effect. The workflow artifact
+`jobs-parity-baseline-linux-17.11` preserves the manifest and each
+engine's fault receipt. The Linux result is pending.
+
 ### PostgreSQL and platform matrix
 
 | Local proof | PostgreSQL | Scope |
