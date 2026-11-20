@@ -124,6 +124,11 @@ The driver submits one job at a time after the previous job settles and
 the configured gap elapses. The raw commit timestamps show the resulting
 spacing. Sparse throughput measures this serial submit-and-settle flow.
 
+The driver resets `pg_stat_statements` on its disposable cluster before each
+trial and checks for counter eviction during measurement. PostgreSQL can
+retain entries for dropped trial databases until a reset. The raw trial
+records the deallocation counter alongside the SQL call counts.
+
 For repeated comparisons, `--toolchains target/jobs-parity/build` reuses
 the compiler and runtime pairs recorded by a prior archive build. It
 checks the source SHA, build profile, Rust toolchain, and file hashes

@@ -327,7 +327,8 @@ timezone = 'UTC'
 SELECT json_build_object(
  'runner', coalesce(sum(calls) FILTER (WHERE rolname='parity_subject'),0),
  'enqueue', coalesce(sum(calls) FILTER (WHERE rolname='parity_producer'),0),
- 'claims', coalesce(sum(calls) FILTER (WHERE rolname='parity_subject' AND ({claim_query})),0)
+ 'claims', coalesce(sum(calls) FILTER (WHERE rolname='parity_subject' AND ({claim_query})),0),
+ 'dealloc', (SELECT dealloc FROM pg_stat_statements_info)
 )
 FROM pg_stat_statements JOIN pg_roles ON userid = pg_roles.oid
 WHERE dbid = (SELECT oid FROM pg_database WHERE datname = '{engine}')
@@ -873,6 +874,8 @@ def run_trial(subject, allocation, workload, batches, scratch, evidence, setting
     env = subject.environment(namespace, allocation[0], sum(allocation),
                               workload["mode"], settings["poll_ms"])
     subject.call("migrate", env, evidence / "migrate.log")
+    # The observer table is cluster-wide and retains entries for dropped databases.
+    cluster.sql("postgres", "SELECT pg_stat_statements_reset()")
     expected = {job["key"]: (batch["request_id"], job) for batch in batches for job in batch["jobs"]}
     paths = batch_files(scratch, batches)
     case = hashlib.sha256("".join(digest(path) for path in paths).encode()).hexdigest()
@@ -940,6 +943,9 @@ def run_trial(subject, allocation, workload, batches, scratch, evidence, setting
                         time.sleep(settings["poll_ms"] / 1000)
             wait_for(lambda: settled_count(len(expected)), deadline, "durable settlements", interval)
             after = cluster.calls(engine)
+            counter_snapshots = (idle_calls_before, idle_calls_after, after)
+            if len({snapshot["dealloc"] for snapshot in counter_snapshots}) != 1:
+                raise FixtureError("PostgreSQL evicted statement counters during the trial")
             runner_calls = after["runner"] - idle_calls_after["runner"]
             enqueue_calls = after["enqueue"] - idle_calls_after["enqueue"]
             calls = runner_calls + enqueue_calls
@@ -1000,6 +1006,7 @@ def run_trial(subject, allocation, workload, batches, scratch, evidence, setting
            "event_drops": event_drops, "runner_event_buffer_bytes": event_buffers,
            "runner_peak_queued_context_bytes": queued_context,
            "runner_cpu_seconds_including_startup_and_idle": cpu, "raw_sql_calls": calls,
+           "statement_counter_deallocations": after["dealloc"],
            "raw_runner_sql_calls": runner_calls, "raw_enqueue_sql_calls": enqueue_calls,
            "raw_claim_calls": claim_calls, "raw_idle_sql_calls": idle_calls, "idle_seconds": idle_s}
     if listener:
@@ -1834,7 +1841,7 @@ def record(args):
 SELECT json_object_agg(name, setting) FROM pg_settings
 WHERE name IN ('server_version','server_version_num','shared_buffers','max_connections',
                'track_commit_timestamp','synchronous_commit','pg_stat_statements.track',
-               'timezone','fsync','full_page_writes')
+               'pg_stat_statements.max','timezone','fsync','full_page_writes')
 """)
                 write_json(evidence / "manifest.json", {
                     "mesh_sha": ref, "mesh_executable_sha256": digest(executable), **versions,
