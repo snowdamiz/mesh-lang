@@ -1,6 +1,20 @@
-1:Jobs proof checkout: 1d639792b73d8fe670b7f40f27a1e5f952e9e714
-2:Jobs proof host: Darwin arm64
-30:Disposable Jobs proof server: PostgreSQL 17.11 (Homebrew)
-789:test result: ok. 45 passed; 0 failed; 0 ignored; 0 measured; 1546 filtered out; finished in 7.24s
-921:J7 lane 8 passed on PostgreSQL 17.11 (Homebrew), stop 39.309125ms (grace 40 ms), join after checkout release 32.347416ms, fallback poll attempt 1, expired lease recovered on attempt 2, cron cursor 29919419 -> 29919421
-938:test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 61.49s
+1: Jobs proof checkout: 1d639792b73d8fe670b7f40f27a1e5f952e9e714
+2: Jobs proof host: Darwin arm64
+30: Disposable Jobs proof server: PostgreSQL 17.11 (Homebrew)
+789: test result: ok. 45 passed; 0 failed; 0 ignored; 0 measured; 1546 filtered out; finished in 7.24s
+921: J7 lane 8 passed on PostgreSQL 17.11 (Homebrew), stop 39.309125ms (grace 40 ms), join after checkout release 32.347416ms, fallback poll attempt 1, expired lease recovered on attempt 2, cron cursor 29919419 -> 29919421
+938: test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 61.49s
+
+1: Jobs proof checkout: eb472832c0971896adc5793a0b12a6bfde809534
+2: Jobs proof host: Darwin arm64
+30: Disposable Jobs proof server: PostgreSQL 18.7
+788: test result: ok. 45 passed; 0 failed; 0 ignored; 0 measured; 1546 filtered out; finished in 6.92s
+919: J7 lane 8 passed on PostgreSQL 18.7, stop 40.163708ms (grace 40 ms), join after checkout release 27.232666ms, fallback poll attempt 1, expired lease recovered on attempt 2, cron cursor 29919422 -> 29919425
+935: test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 53.31s
+
+1: Jobs proof checkout: eb472832c0971896adc5793a0b12a6bfde809534
+2: Jobs proof host: Darwin arm64
+30: Disposable Jobs proof server: PostgreSQL 19.0
+788: test result: ok. 45 passed; 0 failed; 0 ignored; 0 measured; 1546 filtered out; finished in 7.56s
+919: J7 lane 8 passed on PostgreSQL 19.0, stop 42.453667ms (grace 40 ms), join after checkout release 28.67ms, fallback poll attempt 1, expired lease recovered on attempt 2, cron cursor 29919424 -> 29919427
+935: test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 59.50s

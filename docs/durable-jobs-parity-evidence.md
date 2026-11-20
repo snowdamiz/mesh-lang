@@ -42,9 +42,10 @@ cron checkout failures. It times `Jobs.stop` from API entry and bounds
 while the listener is still unavailable, then recovers an expired lease and
 catches up a persisted calendar occurrence. Independent PostgreSQL sessions
 observe the lease, the job attempts, and the cron cursor.
-The PostgreSQL 17.11 proof on macOS arm64 measured 39.3 ms from stop entry
-with a 40 ms grace period, and 32.3 ms from checkout release to join. It
-recovered the expired job on attempt two and advanced the cron cursor.
+On macOS arm64, the proof passed with PostgreSQL 17.11, 18.7, and 19.0.
+The longest stop took 42.5 ms with a 40 ms grace period. The longest join
+took 32.3 ms from checkout release. In each run, the expired job completed
+on attempt two and the cron cursor advanced.
 [J7 lane 8 receipt](../proof/jobs-parity/j7-lane-8.log)
 
 The default fault run also cuts the settlement connection before the write
@@ -471,6 +472,7 @@ operator, and inspector logins, plus cron takeover and reindex.
 | macOS arm64, promotion harness `ebe14b91` and release runtime `302cdce8` | 17.11, 18.7, 19.0 | Lost settlement reply, replay barrier, old-primary fencing, listener subscription catch-up, and one effect per job |
 | macOS arm64, candidate `83a76b7d` | 17.11, 18.7, 19.0 | Repeat of the full-role proof with the settlement wakeup. All 43 Jobs runtime cases and both compiled suites passed on each version. |
 | macOS arm64, candidate `e8fa00c0` | 17.11, 18.7, 19.0 | Verified TLS and SCRAM after the derivation change, including all 36 PostgreSQL driver cases, 43 Jobs runtime cases, both compiled suites, and fresh and upgraded scoped roles |
+| macOS arm64, runtime `1b12243b` | 17.11, 18.7, 19.0 | 45 Jobs runtime cases, both compiled suites, fresh and upgraded scoped roles, and combined pool, listener, and maintenance interruption over verified TLS |
 
 The listener promotion runs resumed eligible work within 1.31 seconds of writability
 against a 2-second budget. Replication and direct sessions used verified

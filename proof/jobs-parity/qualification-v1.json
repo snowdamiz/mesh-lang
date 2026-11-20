@@ -14,18 +14,33 @@
   },
   "candidate_ref": "53fb9189e0dd71e0856f3ca6b5aad2d3bc4a5c8c",
   "combined_pool_outage": {
-    "checkout": "1d639792b73d8fe670b7f40f27a1e5f952e9e714",
     "compiled_proofs": 2,
     "grace_ms": 40,
     "jobs_runtime_tests": 45,
-    "join_after_release_ms": 32.347416,
     "platform": "macOS arm64",
-    "postgresql_version": "17.11",
-    "raw_log": "target/jobs-parity/1d639792b73d8fe670b7f40f27a1e5f952e9e714/combined-outage/postgres-17.11.log",
     "receipt": "proof/jobs-parity/j7-lane-8.log",
     "runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
-    "stop_ms": 39.309125,
-    "transport": "SCRAM with verified TLS"
+    "transport": "SCRAM with verified TLS",
+    "versions": {
+      "17.11": {
+        "checkout": "1d639792b73d8fe670b7f40f27a1e5f952e9e714",
+        "join_after_release_ms": 32.347416,
+        "raw_log": "target/jobs-parity/1d639792b73d8fe670b7f40f27a1e5f952e9e714/combined-outage/postgres-17.11.log",
+        "stop_ms": 39.309125
+      },
+      "18.7": {
+        "checkout": "eb472832c0971896adc5793a0b12a6bfde809534",
+        "join_after_release_ms": 27.232666,
+        "raw_log": "target/jobs-parity/eb472832c0971896adc5793a0b12a6bfde809534/combined-outage/postgres-18.7.log",
+        "stop_ms": 40.163708
+      },
+      "19.0": {
+        "checkout": "eb472832c0971896adc5793a0b12a6bfde809534",
+        "join_after_release_ms": 28.67,
+        "raw_log": "target/jobs-parity/eb472832c0971896adc5793a0b12a6bfde809534/combined-outage/postgres-19.0.log",
+        "stop_ms": 42.453667
+      }
+    }
   },
   "compatibility": {
     "compiled_proofs_per_version": 2,
