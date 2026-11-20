@@ -588,6 +588,9 @@ fn join_waits_for_maintenance_after_stop_grace() {
                 || Ok(()),
                 Box::new(TimedWorker::start),
             )?;
+            // Isolate maintenance from the dispatcher's idle claim reservations.
+            control(id, r#"{"queue":"default","action":"pause"}"#)?;
+            let runner = lookup(id)?;
             let deadline = Instant::now() + TEST_WAIT;
             loop {
                 let rows = tx.query(
@@ -596,11 +599,11 @@ fn join_waits_for_maintenance_after_stop_grace() {
                      AND pg_backend_pid() = ANY(pg_blocking_pids(pid)))::text",
                     &[],
                 )?;
-                if rows[0][0].1 == "true" {
+                if rows[0][0].1 == "true" && runner.state.lock().pending.is_none() {
                     break;
                 }
                 if Instant::now() >= deadline {
-                    return Err("runner maintenance did not wait on the table lock".into());
+                    return Err("runner did not become claim-idle with maintenance blocked".into());
                 }
                 std::thread::sleep(TICK);
             }
