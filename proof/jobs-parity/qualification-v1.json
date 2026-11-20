@@ -376,6 +376,14 @@
       "transport": "SCRAM with verified TLS"
     }
   },
+  "fresh_application_guides": {
+    "platform": "macOS arm64",
+    "postgresql_version": "17.11",
+    "receipt": "proof/jobs-parity/j7-lane-9.log",
+    "result": "pass",
+    "runtime_revision": "83a76b7d4c615ca0f84c2801f0bf3407d8e3a173"
+  },
+  "latest_runtime_revision": "83a76b7d4c615ca0f84c2801f0bf3407d8e3a173",
   "local_platforms": [
     "macOS arm64",
     "Linux arm64 container"
@@ -398,9 +406,10 @@
     "within_limit": false
   },
   "open_gates": [
-    "dense Oban throughput and pickup",
+    "dense Oban throughput and CPU per job",
+    "four-runner Oban throughput and pickup",
     "one-slot process budget",
-    "telemetry-disabled main comparison",
+    "telemetry buffer memory and enabled modes on current runtime",
     "quiet maintenance qualification",
     "complete workload and platform qualifications"
   ],
@@ -698,6 +707,245 @@
       "19.0"
     ]
   },
+  "settlement_wakeup": {
+    "candidate_ref": "83a76b7d4c615ca0f84c2801f0bf3407d8e3a173",
+    "correctness": {
+      "checkout": "e5a5f3c8177c6c126f5c6cb55b1bcfcee1951fff",
+      "compiled_proofs_per_version": 2,
+      "fault_cases": 9,
+      "fault_directory": "target/jobs-parity/83a76b7d4c615ca0f84c2801f0bf3407d8e3a173/j1-fault-1akgie45",
+      "fault_transport": "SCRAM over loopback",
+      "jobs_runtime_tests_per_version": 43,
+      "raw_directory": "target/jobs-parity/83a76b7d4c615ca0f84c2801f0bf3407d8e3a173/follow-up-verification",
+      "runtime_review": "pass",
+      "timing_guard_fix": "059f1adf767aabc8439276408347013a8f6ea0b7",
+      "verified_tls_versions": [
+        "17.11",
+        "18.7",
+        "19.0"
+      ]
+    },
+    "platform": "macOS arm64",
+    "postgresql_version": "17.11",
+    "runs": {
+      "batch_vs_oban": {
+        "baseline_ref": null,
+        "budget_breaches": [
+          {
+            "metric": "cpu_seconds_per_job",
+            "profile": "short-1r-16s",
+            "scope": "budgets"
+          },
+          {
+            "metric": "jobs_per_second",
+            "profile": "short-1r-16s",
+            "scope": "comparison"
+          }
+        ],
+        "completed_per_trial": 128,
+        "harness_ref": "e5a5f3c8177c6c126f5c6cb55b1bcfcee1951fff",
+        "metrics": {
+          "mesh": {
+            "cpu_seconds_per_job": {
+              "max": 0.0067262578125,
+              "median": 0.006122203125,
+              "min": 0.005735765625
+            },
+            "effect_commit_to_settlement_ms": {
+              "max": 11.1920166015625,
+              "median": 9.68798828125,
+              "min": 7.9381103515625,
+              "trial_medians": [
+                11.1920166015625,
+                7.9381103515625,
+                8.7275390625,
+                9.68798828125,
+                10.5885009765625
+              ]
+            },
+            "jobs_per_second": {
+              "max": 405.8273905313032,
+              "median": 363.49593614305553,
+              "min": 241.20355184154826
+            },
+            "pickup_p99_ms": {
+              "max": 511.93603515625,
+              "median": 333.376953125,
+              "min": 294.43994140625
+            }
+          },
+          "oban": {
+            "cpu_seconds_per_job": {
+              "max": 0.0052234921875,
+              "median": 0.0037802734374999996,
+              "min": 0.0034675625
+            },
+            "effect_commit_to_settlement_ms": {
+              "max": 0.888916015625,
+              "median": 0.5765380859375,
+              "min": 0.3919677734375,
+              "trial_medians": [
+                0.3919677734375,
+                0.406982421875,
+                0.5765380859375,
+                0.8109130859375,
+                0.888916015625
+              ]
+            },
+            "jobs_per_second": {
+              "max": 1233.9730463803728,
+              "median": 438.69875106476627,
+              "min": 286.7467256909179
+            },
+            "pickup_p99_ms": {
+              "max": 430.14501953125,
+              "median": 287.447998046875,
+              "min": 101.033935546875
+            }
+          }
+        },
+        "one_minute_load_at_start": 7.38134765625,
+        "raw_directory": "target/jobs-parity/83a76b7d4c615ca0f84c2801f0bf3407d8e3a173/j1-load-if2jom40"
+      },
+      "events_disabled_vs_main": {
+        "baseline_ref": "7c1620563614a04a573aef806a6d019a2af4dfe9",
+        "budget_breaches": [],
+        "completed_per_trial": 128,
+        "harness_ref": "e5a5f3c8177c6c126f5c6cb55b1bcfcee1951fff",
+        "metrics": {
+          "baseline": {
+            "cpu_seconds_per_job": {
+              "max": 0.006112015625,
+              "median": 0.0057723984374999995,
+              "min": 0.0057069140624999995
+            },
+            "effect_commit_to_settlement_ms": {
+              "max": 15.2283935546875,
+              "median": 13.375,
+              "min": 12.72802734375,
+              "trial_medians": [
+                13.375,
+                13.1495361328125,
+                15.2283935546875,
+                12.72802734375,
+                14.4405517578125
+              ]
+            },
+            "jobs_per_second": {
+              "max": 383.23941572011995,
+              "median": 328.69051791100264,
+              "min": 313.5440619327985
+            },
+            "pickup_p99_ms": {
+              "max": 393.56201171875,
+              "median": 362.948974609375,
+              "min": 308.337890625
+            }
+          },
+          "mesh": {
+            "cpu_seconds_per_job": {
+              "max": 0.006125921875,
+              "median": 0.0058720078125,
+              "min": 0.00561815625
+            },
+            "effect_commit_to_settlement_ms": {
+              "max": 10.800048828125,
+              "median": 9.6864013671875,
+              "min": 8.9080810546875,
+              "trial_medians": [
+                10.800048828125,
+                9.2760009765625,
+                9.6864013671875,
+                8.9080810546875,
+                10.2950439453125
+              ]
+            },
+            "jobs_per_second": {
+              "max": 403.9080519984777,
+              "median": 391.8433726655526,
+              "min": 373.3923216019132
+            },
+            "pickup_p99_ms": {
+              "max": 332.18994140625,
+              "median": 310.14306640625,
+              "min": 299.90478515625
+            }
+          }
+        },
+        "one_minute_load_at_start": 16.70556640625,
+        "raw_directory": "target/jobs-parity/83a76b7d4c615ca0f84c2801f0bf3407d8e3a173/j1-load-f8ghhalg"
+      },
+      "single_claim_vs_parent": {
+        "baseline_ref": "53fb9189e0dd71e0856f3ca6b5aad2d3bc4a5c8c",
+        "budget_breaches": [],
+        "completed_per_trial": 128,
+        "harness_ref": "e5a5f3c8177c6c126f5c6cb55b1bcfcee1951fff",
+        "metrics": {
+          "baseline": {
+            "cpu_seconds_per_job": {
+              "max": 0.006533,
+              "median": 0.006013890625,
+              "min": 0.0058858828125
+            },
+            "effect_commit_to_settlement_ms": {
+              "max": 14.4605712890625,
+              "median": 13.83447265625,
+              "min": 12.2435302734375,
+              "trial_medians": [
+                13.83447265625,
+                14.4605712890625,
+                12.2435302734375,
+                13.5999755859375,
+                14.071533203125
+              ]
+            },
+            "jobs_per_second": {
+              "max": 345.2945542581925,
+              "median": 326.2977212782351,
+              "min": 254.19371041616873
+            },
+            "pickup_p99_ms": {
+              "max": 478.23486328125,
+              "median": 365.5498046875,
+              "min": 339.943115234375
+            }
+          },
+          "mesh": {
+            "cpu_seconds_per_job": {
+              "max": 0.006153640625,
+              "median": 0.005868671875,
+              "min": 0.005790234375
+            },
+            "effect_commit_to_settlement_ms": {
+              "max": 9.992431640625,
+              "median": 9.656494140625,
+              "min": 9.1839599609375,
+              "trial_medians": [
+                9.1839599609375,
+                9.886962890625,
+                9.4595947265625,
+                9.656494140625,
+                9.992431640625
+              ]
+            },
+            "jobs_per_second": {
+              "max": 395.28988839948795,
+              "median": 388.20591155692426,
+              "min": 354.869430375163
+            },
+            "pickup_p99_ms": {
+              "max": 340.45703125,
+              "median": 319.077880859375,
+              "min": 302.236083984375
+            }
+          }
+        },
+        "one_minute_load_at_start": 11.85205078125,
+        "raw_directory": "target/jobs-parity/83a76b7d4c615ca0f84c2801f0bf3407d8e3a173/j1-load-p3kxhctg"
+      }
+    },
+    "transport": "SCRAM with verified TLS"
+  },
   "workspace_gate": {
     "checks": [
       "fmt",
@@ -705,12 +953,18 @@
       "runtime",
       "workspace-build",
       "fuzz-check",
+      "examples-lint",
+      "examples-fmt",
+      "packages-lint",
+      "packages-fmt",
+      "mesh-slug-lint",
+      "mesh-slug-fmt",
       "repl",
       "meshc"
     ],
     "platform": "macOS arm64",
-    "raw_directory": "target/jobs-parity/dd29b93a180ea892352a8a6f5242ab616e47a157/workspace-macos",
+    "raw_directory": "target/jobs-parity/e5a5f3c8177c6c126f5c6cb55b1bcfcee1951fff/workspace-macos",
     "result": "pass",
-    "revision": "dd29b93a180ea892352a8a6f5242ab616e47a157"
+    "revision": "e5a5f3c8177c6c126f5c6cb55b1bcfcee1951fff"
   }
 }

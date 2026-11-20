@@ -1,12 +1,12 @@
 J7 lane 9 | Darwin 27.0.0 arm64
-Candidate source: c5ef73487e2ca9db69e45def9d53569019f0ba7d
-Compiler/runtime source: 53fb9189e0dd71e0856f3ca6b5aad2d3bc4a5c8c
+Checkout source: e5a5f3c8177c6c126f5c6cb55b1bcfcee1951fff
+Compiler/runtime source: 83a76b7d4c615ca0f84c2801f0bf3407d8e3a173
 Compiler and runtime source and Cargo inputs match.
-7f1fc4bc8fe6b5ccee479cfce7f98d25d00cd269a98a129cef14f812c29bee7c  scripts/verify-jobs-guide.sh
+572663442e46d4a1bc2c99a5d12e28626a33a5c8688ff6cad46f0d174e7abce1  scripts/verify-jobs-guide.sh
 5a9d4b152a1f60daa10343c5da2d2ed20696baf1f7ac02c882b1e82a53f94572  website/docs/docs/concurrency/index.md
 2319305c3c6f4dfd3af896af342274b5fe76b79bcafa1d04303645ba042c6291  website/docs/docs/concurrency/jobs-operations.md
-2da64bbe7f7a0fc56e0dfbfc328f1274eff7af037f55e10f25e4e016c639aaff  meshc
-7e0ac2779706246dc2ffd128bfc2c74a588d76079fff92d25243296da05e44ab  libmesh_rt.a
+70cb2946c10941e3360c10de0fc87a685d6aec2ae655ccc5af50847dd17123c8  meshc
+8f90c52b4f7c208d2b1cb3f24a399a4cee75c8cee64b03d0582ae9afcdf5bc78  libmesh_rt.a
 meshc 0.1.8
 waiting for server to start.... done
 server started
@@ -16,28 +16,28 @@ Run the Jobs operations walkthrough from its Markdown commands.
 Created project 'jobs_demo'
   Compiled: jobs_demo
 migrated
-{"id": "81fbb562-1c6f-4bb0-b099-06536c39d4bc", "state": "available", "conflict": false, "inserted": true, "effect_key": "81fbb562-1c6f-4bb0-b099-06536c39d4bc/1"}
+{"id": "551e8b6e-6549-4ebb-ac43-46f612bf1d46", "state": "available", "conflict": false, "inserted": true, "effect_key": "551e8b6e-6549-4ebb-ac43-46f612bf1d46/1"}
 Request-key replay returned the original receipt.
 true
 {"budget_hit":true,"claimed":1,"finished":1,"namespace":"jobs-demo","outcomes":{"cancelled":0,"completed":0,"discarded":0,"released_unstarted":0,"retryable":1,"scheduled":0},"recovered":0,"remaining":false,"stop_reason":"job_error"}
-{"id":"81fbb562-1c6f-4bb0-b099-06536c39d4bc","run":1,"args":{"kind":"retry"},"tags":[],"queue":"default","state":"retryable","errors":[{"at_ms":1795160827579,"reason":"try again","attempt":1}],"worker":"demo","attempt":1,"version":1,"metadata":{},"priority":0,"effect_key":"81fbb562-1c6f-4bb0-b099-06536c39d4bc/1","timeout_ms":60000,"max_attempts":2,"backoff_max_ms":3600000,"finished_at_ms":null,"inserted_at_ms":1795160827510,"attempted_at_ms":1795160827563,"backoff_base_ms":0,"scheduled_at_ms":1795160887579,"lease_expires_at_ms":null,"cancel_requested_at_ms":null}
-{"id":"81fbb562-1c6f-4bb0-b099-06536c39d4bc","state":"available","attempt":1,"effect_key":"81fbb562-1c6f-4bb0-b099-06536c39d4bc/1","max_attempts":2,"scheduled_at_ms":1795160827605}
+{"id":"551e8b6e-6549-4ebb-ac43-46f612bf1d46","run":1,"args":{"kind":"retry"},"tags":[],"queue":"default","state":"retryable","errors":[{"at_ms":1795161414094,"reason":"try again","attempt":1}],"worker":"demo","attempt":1,"version":1,"metadata":{},"priority":0,"effect_key":"551e8b6e-6549-4ebb-ac43-46f612bf1d46/1","timeout_ms":60000,"max_attempts":2,"backoff_max_ms":3600000,"finished_at_ms":null,"inserted_at_ms":1795161414044,"attempted_at_ms":1795161414085,"backoff_base_ms":0,"scheduled_at_ms":1795161474094,"lease_expires_at_ms":null,"cancel_requested_at_ms":null}
+{"id":"551e8b6e-6549-4ebb-ac43-46f612bf1d46","state":"available","attempt":1,"effect_key":"551e8b6e-6549-4ebb-ac43-46f612bf1d46/1","max_attempts":2,"scheduled_at_ms":1795161414115}
 {"budget_hit":true,"claimed":1,"finished":1,"namespace":"jobs-demo","outcomes":{"cancelled":0,"completed":1,"discarded":0,"released_unstarted":0,"retryable":0,"scheduled":0},"recovered":0,"remaining":false,"stop_reason":"budget"}
-{"id":"81fbb562-1c6f-4bb0-b099-06536c39d4bc","run":1,"args":{"kind":"retry"},"tags":[],"queue":"default","state":"completed","errors":[{"at_ms":1795160827579,"reason":"try again","attempt":1}],"worker":"demo","attempt":2,"version":1,"metadata":{},"priority":0,"effect_key":"81fbb562-1c6f-4bb0-b099-06536c39d4bc/1","timeout_ms":60000,"max_attempts":2,"backoff_max_ms":3600000,"finished_at_ms":1795160827634,"inserted_at_ms":1795160827510,"attempted_at_ms":1795160827618,"backoff_base_ms":0,"scheduled_at_ms":1795160827605,"lease_expires_at_ms":null,"cancel_requested_at_ms":null}
-walkthrough.sh: line 81: 59014 Killed: 9                  HOLD_JOB=1 ./jobs_demo drain > interrupted.out 2> interrupted.err
+{"id":"551e8b6e-6549-4ebb-ac43-46f612bf1d46","run":1,"args":{"kind":"retry"},"tags":[],"queue":"default","state":"completed","errors":[{"at_ms":1795161414094,"reason":"try again","attempt":1}],"worker":"demo","attempt":2,"version":1,"metadata":{},"priority":0,"effect_key":"551e8b6e-6549-4ebb-ac43-46f612bf1d46/1","timeout_ms":60000,"max_attempts":2,"backoff_max_ms":3600000,"finished_at_ms":1795161414134,"inserted_at_ms":1795161414044,"attempted_at_ms":1795161414126,"backoff_base_ms":0,"scheduled_at_ms":1795161414115,"lease_expires_at_ms":null,"cancel_requested_at_ms":null}
+walkthrough.sh: line 81: 16732 Killed: 9                  HOLD_JOB=1 ./jobs_demo drain > interrupted.out 2> interrupted.err
 handler started
-{"id": "9a7f65c7-5ff8-4c97-a8a0-7b5efa28f458", "run": 1, "args": {"kind": "recovery"}, "tags": [], "queue": "default", "state": "executing", "errors": [], "worker": "demo", "attempt": 1, "version": 1, "metadata": {}, "priority": 0, "effect_key": "9a7f65c7-5ff8-4c97-a8a0-7b5efa28f458/1", "timeout_ms": 60000, "max_attempts": 2, "backoff_max_ms": 3600000, "finished_at_ms": null, "inserted_at_ms": 1795160827658, "attempted_at_ms": 1795160827679, "backoff_base_ms": 0, "scheduled_at_ms": 1795160827658, "lease_expires_at_ms": 1795160829179, "cancel_requested_at_ms": null}
+{"id": "5649b00d-1822-4ead-bd36-c7168ef89124", "run": 1, "args": {"kind": "recovery"}, "tags": [], "queue": "default", "state": "executing", "errors": [], "worker": "demo", "attempt": 1, "version": 1, "metadata": {}, "priority": 0, "effect_key": "5649b00d-1822-4ead-bd36-c7168ef89124/1", "timeout_ms": 60000, "max_attempts": 2, "backoff_max_ms": 3600000, "finished_at_ms": null, "inserted_at_ms": 1795161414159, "attempted_at_ms": 1795161414180, "backoff_base_ms": 0, "scheduled_at_ms": 1795161414159, "lease_expires_at_ms": 1795161415680, "cancel_requested_at_ms": null}
 
 {"budget_hit":true,"claimed":1,"finished":1,"namespace":"jobs-demo","outcomes":{"cancelled":0,"completed":1,"discarded":0,"released_unstarted":0,"retryable":0,"scheduled":0},"recovered":1,"remaining":false,"stop_reason":"budget"}
-{"id":"9a7f65c7-5ff8-4c97-a8a0-7b5efa28f458","run":1,"args":{"kind":"recovery"},"tags":[],"queue":"default","state":"completed","errors":[{"at_ms":1795160829195,"reason":"lease expired","attempt":1}],"worker":"demo","attempt":2,"version":1,"metadata":{},"priority":0,"effect_key":"9a7f65c7-5ff8-4c97-a8a0-7b5efa28f458/1","timeout_ms":60000,"max_attempts":2,"backoff_max_ms":3600000,"finished_at_ms":1795160829210,"inserted_at_ms":1795160827658,"attempted_at_ms":1795160829197,"backoff_base_ms":0,"scheduled_at_ms":1795160829195,"lease_expires_at_ms":null,"cancel_requested_at_ms":null}
-{"id":"9a7f65c7-5ff8-4c97-a8a0-7b5efa28f458","run":2,"args":{"kind":"recovery"},"tags":[],"queue":"default","state":"available","errors":[{"at_ms":1795160829195,"reason":"lease expired","attempt":1}],"worker":"demo","attempt":0,"version":1,"metadata":{},"priority":0,"effect_key":"9a7f65c7-5ff8-4c97-a8a0-7b5efa28f458/2","timeout_ms":60000,"max_attempts":2,"backoff_max_ms":3600000,"finished_at_ms":null,"inserted_at_ms":1795160827658,"attempted_at_ms":null,"backoff_base_ms":0,"scheduled_at_ms":1795160829257,"lease_expires_at_ms":null,"cancel_requested_at_ms":null}
+{"id":"5649b00d-1822-4ead-bd36-c7168ef89124","run":1,"args":{"kind":"recovery"},"tags":[],"queue":"default","state":"completed","errors":[{"at_ms":1795161415694,"reason":"lease expired","attempt":1}],"worker":"demo","attempt":2,"version":1,"metadata":{},"priority":0,"effect_key":"5649b00d-1822-4ead-bd36-c7168ef89124/1","timeout_ms":60000,"max_attempts":2,"backoff_max_ms":3600000,"finished_at_ms":1795161415704,"inserted_at_ms":1795161414159,"attempted_at_ms":1795161415696,"backoff_base_ms":0,"scheduled_at_ms":1795161415694,"lease_expires_at_ms":null,"cancel_requested_at_ms":null}
+{"id":"5649b00d-1822-4ead-bd36-c7168ef89124","run":2,"args":{"kind":"recovery"},"tags":[],"queue":"default","state":"available","errors":[{"at_ms":1795161415694,"reason":"lease expired","attempt":1}],"worker":"demo","attempt":0,"version":1,"metadata":{},"priority":0,"effect_key":"5649b00d-1822-4ead-bd36-c7168ef89124/2","timeout_ms":60000,"max_attempts":2,"backoff_max_ms":3600000,"finished_at_ms":null,"inserted_at_ms":1795161414159,"attempted_at_ms":null,"backoff_base_ms":0,"scheduled_at_ms":1795161415727,"lease_expires_at_ms":null,"cancel_requested_at_ms":null}
 {"budget_hit":true,"claimed":1,"finished":1,"namespace":"jobs-demo","outcomes":{"cancelled":0,"completed":1,"discarded":0,"released_unstarted":0,"retryable":0,"scheduled":0},"recovered":0,"remaining":false,"stop_reason":"budget"}
-{"id":"9a7f65c7-5ff8-4c97-a8a0-7b5efa28f458","run":2,"args":{"kind":"recovery"},"tags":[],"queue":"default","state":"completed","errors":[{"at_ms":1795160829195,"reason":"lease expired","attempt":1}],"worker":"demo","attempt":1,"version":1,"metadata":{},"priority":0,"effect_key":"9a7f65c7-5ff8-4c97-a8a0-7b5efa28f458/2","timeout_ms":60000,"max_attempts":2,"backoff_max_ms":3600000,"finished_at_ms":1795160829327,"inserted_at_ms":1795160827658,"attempted_at_ms":1795160829303,"backoff_base_ms":0,"scheduled_at_ms":1795160829257,"lease_expires_at_ms":null,"cancel_requested_at_ms":null}
+{"id":"5649b00d-1822-4ead-bd36-c7168ef89124","run":2,"args":{"kind":"recovery"},"tags":[],"queue":"default","state":"completed","errors":[{"at_ms":1795161415694,"reason":"lease expired","attempt":1}],"worker":"demo","attempt":1,"version":1,"metadata":{},"priority":0,"effect_key":"5649b00d-1822-4ead-bd36-c7168ef89124/2","timeout_ms":60000,"max_attempts":2,"backoff_max_ms":3600000,"finished_at_ms":1795161415757,"inserted_at_ms":1795161414159,"attempted_at_ms":1795161415749,"backoff_base_ms":0,"scheduled_at_ms":1795161415727,"lease_expires_at_ms":null,"cancel_requested_at_ms":null}
 
 Run the concurrency reference snippets with a fresh order.
   Compiled: snippets
 Submitted order 42
-processing receipt with key 10d3bfef-e132-4968-b6ab-0dd077f2223f/1
+processing receipt with key bfab596b-1045-42b6-adae-4b73bc89f85a/1
 {"budget_hit":false,"claimed":1,"finished":1,"namespace":"shop","outcomes":{"cancelled":0,"completed":1,"discarded":0,"released_unstarted":0,"retryable":0,"scheduled":0},"recovered":0,"remaining":false,"stop_reason":"idle"}
 true
 Committed order and job: 42|completed|1

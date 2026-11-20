@@ -139,6 +139,11 @@ against 311.7 on main, with pickup p99 of 365.9 ms against 385.9 ms. Both
 metrics met their limits on the rerun. Its startup one-minute load was 17.5
 on 15 logical CPUs. Raw receipts are in run `j1-load-7tn1vav3`.
 
+The settlement-wakeup runtime `83a76b7d` also met both limits with
+telemetry disabled. In five pairs, it recorded 391.8 jobs per second and
+310.1 ms pickup p99. Main recorded 328.7 jobs per second and 363.0 ms pickup
+p99. Raw receipts are in run `j1-load-f8ghhalg`.
+
 Each run prints its evidence directory under `target/jobs-parity/<sha>/`.
 `manifest.json` records the compiled SHA, fixture hashes, tool versions,
 database parameters, and host. `settings.json` records the frozen workload
@@ -322,6 +327,19 @@ That interval includes connection setup for Mesh and a pool checkout
 for Oban. Median time from effect commit to settlement was 15.8 ms on
 Mesh and 0.5 ms on Oban. Each value is the median across five trial medians.
 
+Runtime `83a76b7d` wakes the dispatcher when the supervisor reaps an attempt
+and has a reply ready to settle. In five single-claim pairs against
+`53fb9189`, the median effect-to-settlement interval fell from 13.8 ms to
+9.7 ms. All five pairs improved. Median throughput rose from 326.3 to
+388.2 jobs per second, with trial ranges of 254.2–345.3 and 354.9–395.3
+respectively. Each trial reconciled 128 jobs. Raw receipts are in run
+`j1-load-p3kxhctg`.
+
+In five separate batch pairs against Oban, `83a76b7d` recorded 363.5 jobs
+per second and 333.4 ms pickup p99. Oban recorded 438.7 jobs per second
+and 287.4 ms pickup p99. The batch profile met the pickup limit and missed
+the throughput and CPU limits. Raw receipts are in run `j1-load-if2jom40`.
+
 ## Compare bounded drain
 
 `scripts/jobs-drain-perf.py` accepts the pinned main and candidate compiler
@@ -359,6 +377,7 @@ operator, and inspector logins, plus cron takeover and reindex.
 | macOS arm64, candidate `53fb9189` | 17.11, 18.7, 19.0 | 43 Jobs runtime cases, two compiled suites, scoped roles, reindex, and pinned polling reference over verified TLS |
 | macOS arm64, release candidate `53fb9189` against main `7c162056` | 17.11, 18.7, 19.0 | Compiled rolling upgrade and rollback with scoped roles and default function execution revoked |
 | macOS arm64, promotion harness `ebe14b91` and release runtime `302cdce8` | 17.11, 18.7, 19.0 | Lost settlement reply, replay barrier, old-primary fencing, listener subscription catch-up, and one effect per job |
+| macOS arm64, candidate `83a76b7d` | 17.11, 18.7, 19.0 | Repeat of the full-role proof with the settlement wakeup. All 43 Jobs runtime cases and both compiled suites passed on each version. |
 
 The listener promotion runs resumed eligible work within 1.31 seconds of writability
 against a 2-second budget. Replication and direct sessions used verified
@@ -370,9 +389,13 @@ three COMMIT cuts, including loss of `ReadyForQuery` after `CommandComplete`.
 The one-runner, one-slot smoke observed four Oban processes against a cap
 of two. That configuration exceeds the frozen process budget.
 
-The local workspace gate passed at `dd29b93a`, including formatting,
-compiler and runtime tests, the workspace and fuzz builds, the REPL,
-and the compiled `meshc` suites.
+The `83a76b7d` release rerun also passed the nine SCRAM fault cases,
+including settlement response loss and the three batch claim response
+cuts. Raw receipts are in run `j1-fault-1akgie45`.
+
+The local workspace gate passed at `e5a5f3c8`, including formatter and
+linter checks, compiler and runtime tests, the workspace and fuzz builds,
+the REPL, and the compiled `meshc` suites.
 
 The authoritative workflow targets Linux x64 and macOS arm64. These local
 receipts cover arm64 hosts and a Linux arm64 container. Windows has no
