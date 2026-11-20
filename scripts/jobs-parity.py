@@ -148,14 +148,18 @@ def account(rows, expected, commits, tolerance):
         if tuple(row[field] for field in fields) != expected_fields:
             raise QueueMismatch(f"{key}: persisted job inputs differ from the fixture manifest")
         committed = commits[request_id]
-        claimed, entered, settled = (row[field] for field in ("claimed_ms", "entered_ms", "settled_ms"))
-        if any(value is None for value in (claimed, entered, settled)):
+        claimed, entered, recorded, effected, settled = (row[field] for field in (
+            "claimed_ms", "entered_ms", "recorded_ms", "effected_ms", "settled_ms",
+        ))
+        if any(value is None for value in (claimed, entered, recorded, effected, settled)):
             raise FixtureError(f"{key}: missing clock sample")
-        within_clock(entered - claimed, tolerance)
-        within_clock(settled - entered, tolerance)
         samples.append({"job_key": key, "commit_ms": committed, **row,
                         "commit_to_claim_ms": within_clock(claimed - committed, tolerance),
                         "pickup_ms": within_clock(entered - committed, tolerance),
+                        "claim_to_entry_ms": within_clock(entered - claimed, tolerance),
+                        "entry_to_attempt_commit_ms": within_clock(recorded - entered, tolerance),
+                        "attempt_to_effect_commit_ms": within_clock(effected - recorded, tolerance),
+                        "effect_commit_to_settlement_ms": within_clock(settled - effected, tolerance),
                         "commit_to_settlement_ms": within_clock(settled - committed, tolerance)})
     return samples
 
@@ -342,11 +346,12 @@ FROM {relation} WHERE {scope}
         return json.loads(self.sql(engine, f"""
 WITH attempts AS (
  SELECT job_key, count(*) AS attempts, min(attempt) AS first_handler_attempt, min(entered_at) AS entered_at,
-        count(DISTINCT effect_key) AS effect_keys
+        min(pg_xact_commit_timestamp(xmin)) AS recorded_at, count(DISTINCT effect_key) AS effect_keys
  FROM public.mesh_jobs_parity_attempts
  WHERE engine = '{engine}' AND namespace = '{namespace}' GROUP BY job_key
 ), effects AS (
- SELECT job_key, count(*) AS effects FROM public.mesh_jobs_parity_effects
+ SELECT job_key, count(*) AS effects, min(pg_xact_commit_timestamp(xmin)) AS committed_at
+ FROM public.mesh_jobs_parity_effects
  WHERE engine = '{engine}' AND namespace = '{namespace}' GROUP BY job_key
 )
 SELECT coalesce(json_agg(summary ORDER BY summary.job_key), '[]') FROM (
@@ -357,6 +362,8 @@ SELECT coalesce(json_agg(summary ORDER BY summary.job_key), '[]') FROM (
    a.first_handler_attempt,
    coalesce(a.effect_keys,0) AS effect_keys, ({claim}) AS claimed_ms,
    extract(epoch FROM a.entered_at)*1000 AS entered_ms,
+   extract(epoch FROM a.recorded_at)*1000 AS recorded_ms,
+   extract(epoch FROM e.committed_at)*1000 AS effected_ms,
    extract(epoch FROM pg_xact_commit_timestamp(j.xmin))*1000 AS settled_ms
  FROM {relation} j
  LEFT JOIN attempts a ON a.job_key = j.args->>'key'
@@ -1462,12 +1469,17 @@ def self_check():
             row = {"job_key": "a", "state": "completed", "attempt": 1, "attempts": 1,
                    "first_handler_attempt": 1,
                    "effects": 1, "effect_keys": 1, "claimed_ms": 99, "entered_ms": 103,
+                   "recorded_ms": 111, "effected_ms": 115,
                    "settled_ms": 125, "payload_sha256": hashlib.sha256(b"test").hexdigest(),
                    "hold_ms": 0, "fail_first": False}
             expected = {"a": ("batch", {"payload": "test", "hold_ms": 0, "fail_first": False})}
             result = account([row], expected, {"batch": 100}, 5)
             self.assertEqual(result[0]["pickup_ms"], 3)
             self.assertEqual(result[0]["commit_to_claim_ms"], 0)
+            self.assertEqual(result[0]["claim_to_entry_ms"], 4)
+            self.assertEqual(result[0]["entry_to_attempt_commit_ms"], 8)
+            self.assertEqual(result[0]["attempt_to_effect_commit_ms"], 4)
+            self.assertEqual(result[0]["effect_commit_to_settlement_ms"], 10)
             self.assertEqual(result[0]["commit_to_settlement_ms"], 25)
             self.assertEqual(percentile(list(range(1, 101)), 0.99), 99)
             with self.assertRaises(QueueMismatch):
@@ -1478,6 +1490,10 @@ def self_check():
                 account([dict(row, first_handler_attempt=99)], expected, {"batch": 100}, 5)
             with self.assertRaises(FixtureError):
                 account([dict(row, entered_ms=80)], expected, {"batch": 100}, 5)
+            with self.assertRaises(FixtureError):
+                account([dict(row, recorded_ms=None)], expected, {"batch": 100}, 5)
+            with self.assertRaises(FixtureError):
+                account([dict(row, effected_ms=131)], expected, {"batch": 100}, 5)
             with self.assertRaises(FixtureError):
                 percentile([], 0.99)
 
