@@ -30,7 +30,6 @@ sha2 = "0.10"
 hmac = "0.12"
 subtle = "2.6"
 md-5 = "0.10"
-pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
 base64 = "0.22"
 # Phase 59: WebSocket Sec-WebSocket-Accept (RFC 6455)
 sha1 = "0.10"

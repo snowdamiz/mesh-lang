@@ -13,19 +13,20 @@
 //!
 //! Authentication supports both SCRAM-SHA-256 (production/cloud) and MD5
 //! (local development). The wire protocol is implemented from scratch using
-//! `std::net::TcpStream` and crypto crates from the RustCrypto project.
+//! `std::net::TcpStream` and cryptography libraries.
 
 use std::collections::HashMap;
 use std::io::{ErrorKind, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
+use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time::Duration;
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use hmac::{Hmac, Mac};
 use md5::{Digest, Md5};
-use pbkdf2::pbkdf2_hmac;
 use rand::Rng;
+use ring::pbkdf2;
 use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned};
 use rustls_pki_types::{pem::PemObject, CertificateDer, ServerName};
 use sha2::Sha256;
@@ -791,10 +792,18 @@ fn scram_client_final(
     let salt = BASE64
         .decode(salt_b64)
         .map_err(|_| "bad salt encoding".to_string())?;
+    let iterations =
+        NonZeroU32::new(iterations).ok_or_else(|| "missing or zero iteration count".to_string())?;
 
     // SaltedPassword = PBKDF2(password, salt, iterations, SHA-256)
     let mut salted_password = [0u8; 32];
-    pbkdf2_hmac::<Sha256>(password.as_bytes(), &salt, iterations, &mut salted_password);
+    pbkdf2::derive(
+        pbkdf2::PBKDF2_HMAC_SHA256,
+        iterations,
+        &salt,
+        password.as_bytes(),
+        &mut salted_password,
+    );
 
     // ClientKey = HMAC(SaltedPassword, "Client Key")
     let client_key = hmac_sha256(&salted_password, b"Client Key");
@@ -2616,6 +2625,40 @@ mod tests {
         server.join().unwrap();
         assert!(result.is_ok(), "malformed authentication panicked");
         assert!(result.unwrap().is_err());
+    }
+
+    #[test]
+    fn scram_client_final_matches_known_proof_and_signature() {
+        let (client_final, server_signature) = scram_client_final(
+            "pässword",
+            "mesh-client-nonce",
+            "r=mesh-client-nonce-server,s=AHNhbHT/,i=4096",
+        )
+        .unwrap();
+        assert_eq!(
+            client_final,
+            "c=biws,r=mesh-client-nonce-server,p=CF8/fE71zY418n7sN0VhgnDU3ywHPONFpL1lnXH89qY="
+        );
+        assert_eq!(
+            BASE64.encode(server_signature),
+            "NPPbXtNSvqUaLM0X54YnyL81lCdIeDFx5iWMtcNPCu8="
+        );
+    }
+
+    #[test]
+    fn scram_client_final_requires_positive_iterations() {
+        for (attribute, expected) in [
+            ("", "missing or zero iteration count"),
+            (",i=0", "missing or zero iteration count"),
+            (",i=-1", "bad iteration count"),
+        ] {
+            let server_first = format!("r=client-server,s=c2FsdA=={attribute}");
+            assert_eq!(
+                scram_client_final("password", "client", &server_first).unwrap_err(),
+                expected,
+                "{server_first}"
+            );
+        }
     }
 
     #[test]
