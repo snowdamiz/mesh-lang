@@ -1383,8 +1383,8 @@ SELECT json_build_object(
     finally:
         stop_runners([process], require_clean=completed)
     rows = cluster.rows("mesh", namespace)
-    if any(row["state"] != "completed" or row["attempt"] != 1 for row in rows):
-        raise QueueMismatch(f"replayed producer jobs did not complete at attempt one: {rows}")
+    expected = {job["key"]: (request, job) for job in input_jobs}
+    account(rows, expected, {request: committed}, settings["clock_tolerance_ms"])
     writes = cluster.reconcile_trial("mesh", namespace, ids, dict.fromkeys(ids, (1,)), (request,))
     write_json(evidence / "fault.json", {
         "engine": "mesh", "fault": fault, "producer_returncode": result.returncode,
