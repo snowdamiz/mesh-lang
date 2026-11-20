@@ -141,24 +141,34 @@ fn reaped_worker_reply_survives_timeout_and_shutdown() {
 #[test]
 #[cfg(unix)]
 fn reaped_worker_reply_survives_a_confirmed_late_renewal() {
-    let now = Instant::now();
-    let (process, publish, reply) = WorkerProcess::reaped_with_held_reply();
-    let mut running = Running {
-        process: Box::new(process),
-        deadline: now + TEST_WAIT,
-        lease_deadline: now,
-        reaped: false,
-        stop: None,
-    };
-    assert!(running.poll(now, false, &mut None).is_none());
-    assert!(running
-        .renew_lease(&Lease::begin(TEST_WAIT).unwrap())
-        .unwrap());
-    publish.send(reply).unwrap();
-    assert!(matches!(
-        running.poll(now, false, &mut None),
-        Some(Reply::Returned(output)) if output == "done"
-    ));
+    for (observed_exit, published_reply) in [(true, false), (false, false), (false, true)] {
+        let now = Instant::now();
+        let (process, publish, reply) = WorkerProcess::reaped_with_held_reply();
+        let mut running = Running {
+            process: Box::new(process),
+            deadline: now + TEST_WAIT,
+            lease_deadline: now,
+            reaped: false,
+            stop: None,
+        };
+        if observed_exit {
+            assert!(running.poll(now, false, &mut None).is_none());
+        }
+        if published_reply {
+            publish.send(reply.clone()).unwrap();
+        }
+
+        let mut execution = Execution::Running(running);
+        assert!(execution.apply_renewal(&Lease::begin(TEST_WAIT).unwrap(), &mut None));
+        if !published_reply {
+            publish.send(reply).unwrap();
+        }
+        let result = match execution {
+            Execution::Running(mut worker) => worker.poll(now, false, &mut None),
+            Execution::Acknowledging { reply, .. } => Some(reply),
+        };
+        assert!(matches!(result, Some(Reply::Returned(output)) if output == "done"));
+    }
 }
 
 #[test]
@@ -243,18 +253,18 @@ impl JobProcess for TimedWorker {
 #[test]
 fn a_late_renewal_cannot_extend_an_expired_local_lease() {
     let now = Instant::now();
-    let mut worker = Running {
+    let mut execution = Execution::Running(Running {
         process: TimedWorker::start(r#"{"args":{"wait_ms":2000}}"#.into(), now, 0).unwrap(),
         deadline: now + TEST_WAIT,
         lease_deadline: now,
         reaped: false,
         stop: None,
+    });
+    assert!(!execution.apply_renewal(&Lease::begin(TEST_WAIT).unwrap(), &mut None));
+    let Execution::Running(mut worker) = execution else {
+        panic!("worker must remain tracked until reaped");
     };
-    assert!(!worker
-        .renew_lease(&Lease::begin(TEST_WAIT).unwrap())
-        .unwrap());
     assert_eq!(worker.lease_deadline, now);
-    assert!(worker.poll(now, false, &mut None).is_none());
     assert!(matches!(
         worker.poll(now, false, &mut None),
         Some(Reply::Failed(reason)) if reason == LEASE_LOST

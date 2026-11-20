@@ -563,17 +563,6 @@ struct Running {
 }
 
 impl Running {
-    fn renew_lease(&mut self, renewed: &Lease) -> Result<bool, String> {
-        if !self.reaped {
-            if Instant::now() >= self.lease_deadline {
-                return Ok(false);
-            }
-            self.process.renew(renewed.worker_expires_at)?;
-        }
-        self.lease_deadline = renewed.expires_at;
-        Ok(true)
-    }
-
     fn poll(
         &mut self,
         now: Instant,
@@ -675,6 +664,32 @@ impl Execution {
             retry_at: None,
         }
     }
+
+    fn apply_renewal(&mut self, renewed: &Lease, last_error: &mut Option<String>) -> bool {
+        let Self::Running(worker) = self else {
+            return true;
+        };
+        let now = Instant::now();
+        // The worker may have exited while PostgreSQL was processing the renewal.
+        if now >= worker.lease_deadline && !worker.reaped {
+            if let Some(reply) = worker.poll(now, false, last_error) {
+                *self = Self::acknowledging(reply);
+                return true;
+            }
+            if !worker.reaped {
+                return false;
+            }
+        }
+        if !worker.reaped {
+            if let Err(error) = worker.process.renew(renewed.worker_expires_at) {
+                *last_error = Some(error.chars().take(1024).collect());
+                worker.stop(Reply::Failed(error), last_error);
+                return false;
+            }
+        }
+        worker.lease_deadline = renewed.expires_at;
+        true
+    }
 }
 
 struct Attempt {
@@ -769,37 +784,21 @@ impl Attempt {
             jobs, last_error, ..
         } = &mut *state;
         let job = jobs.get_mut(&self.token).expect("tracked attempt");
-        let running = match &mut job.execution {
-            Execution::Running(worker) => Some(worker),
-            Execution::Acknowledging { .. } => None,
-        };
         match status {
             LeaseStatus::Active => {
-                if let Some(worker) = running {
-                    match worker.renew_lease(&renewed) {
-                        Ok(true) => {}
-                        Ok(false) => {
-                            worker.stop(Reply::Failed(LEASE_LOST.into()), last_error);
-                            return;
-                        }
-                        Err(error) => {
-                            *last_error = Some(error.chars().take(1024).collect());
-                            worker.stop(Reply::Failed(error), last_error);
-                            return;
-                        }
-                    }
+                if job.execution.apply_renewal(&renewed, last_error) {
+                    *lease = renewed;
                 }
-                *lease = renewed;
             }
             LeaseStatus::Cancelled => {
                 lease.renew_at = None;
-                if let Some(worker) = running {
+                if let Execution::Running(worker) = &mut job.execution {
                     worker.stop(Reply::Cancelled, last_error);
                 }
             }
             LeaseStatus::Lost => {
                 self.lease = None;
-                if let Some(worker) = running {
+                if let Execution::Running(worker) = &mut job.execution {
                     worker.stop(Reply::Failed(LEASE_LOST.into()), last_error);
                 }
             }
