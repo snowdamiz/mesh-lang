@@ -126,6 +126,11 @@ commit, pass that commit to both `--mesh-ref` and `--against-ref`, then add
 `--mesh-batch`. To exercise batch commit-response loss, use
 `--faults --mesh-batch`.
 
+Use `--faults --against-ref 7c162056` to compare transactional rollback and
+runner-death recovery against main. Each runtime gets a fresh database.
+The driver checks each enqueue ID and effect key against the final durable
+rows, then writes the matching results and both receipts to `j1-lane-1.log`.
+
 Measure committed wakeups with `--mesh-listen`. It enables the listener on
 the candidate and transactional publishing on its producer. The Mesh
 reference remains polling-only. `--poll-ms` and `--baseline-poll-ms` set

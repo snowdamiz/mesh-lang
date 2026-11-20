@@ -1134,14 +1134,16 @@ SELECT mesh_jobs.settle('{namespace}', '{claim['id']}', '{claim['fence']}',
     if len(rows) != 1 or rows[0]["state"] != "completed" or rows[0]["attempt"] != 2:
         raise QueueMismatch(f"recovery did not reconcile: {rows}")
     writes = cluster.reconcile_trial(engine, namespace, enqueued, {"interrupted": (1, 2)}, ("interrupted",))
-    write_json(evidence / "fault.json", {
+    receipt = {
         "engine": engine, "before_signal": before, "after_recovery": rows[0],
         "fault": "runner SIGKILL after committed effect and before settlement",
         "enqueue_commit_ms": committed, "rollback_commit_ms": rollback_timestamp,
         "enqueued_ids": enqueued, "rolled_back_ids": rolled_back,
         "stale_ack_rejected": stale_ack_rejected,
         "job_id_preserved": True, "replacement_fence_changed": True, "namespace_writes": writes,
-    })
+    }
+    write_json(evidence / "fault.json", receipt)
+    return receipt
 
 
 def run_settlement_fault(subject, scratch, evidence, settings, placement, proxy_type):
@@ -1770,7 +1772,7 @@ def record(args):
                 proxy_spec.loader.exec_module(proxy_module)
             if args.listener_outage:
                 listener_proxy = proxy_module.ListenerProxy
-            elif not args.j2_lane_7:
+            elif not args.j2_lane_7 and not baseline_ref:
                 command, mix_env, versions = compile_oban(scratch, evidence, env, oban_fixture)
             max_connections = max((s + r * settings["connection_slots_per_runner"]
                                    for _, r, s in profiles), default=7 if args.j2_lane_7 else 5)
@@ -1823,12 +1825,13 @@ WHERE name IN ('server_version','server_version_num','shared_buffers','max_conne
                     subjects["oban"] = Subject("oban", command, oban_fixture, cluster, mix_env, poll_ms=poll_ms)
                 variants = tuple(subjects)
                 if args.faults:
+                    recovery_receipts = {}
                     for engine, subject in subjects.items():
                         case_evidence = evidence / engine
                         case_evidence.mkdir()
                         case_scratch = scratch / engine
                         case_scratch.mkdir()
-                        run_fault(subject, case_scratch, case_evidence, settings)
+                        recovery_receipts[engine] = run_fault(subject, case_scratch, case_evidence, settings)
                         if not cluster.expected_version:
                             for placement in ("before_commit", "after_commit"):
                                 placement_evidence = case_evidence / placement
@@ -1837,6 +1840,19 @@ WHERE name IN ('server_version','server_version_num','shared_buffers','max_conne
                                 placement_scratch.mkdir()
                                 run_settlement_fault(subject, placement_scratch, placement_evidence,
                                                      settings, placement, proxy_module.SettlementProxy)
+                    if baseline_ref:
+                        fields = ("job_key", "state", "attempt", "attempts", "effects", "effect_keys",
+                                  "first_handler_attempt", "payload_sha256", "hold_ms", "fail_first")
+                        candidate = recovery_receipts["mesh"]["after_recovery"]
+                        reference = recovery_receipts["baseline"]["after_recovery"]
+                        if any(candidate[field] != reference[field] for field in fields):
+                            raise QueueMismatch("main and candidate recovered different durable results")
+                        write_json(evidence / "j1-lane-1.log", {
+                            "harness_sha": harness_sha, "mesh_sha": ref, "baseline_mesh_sha": baseline_ref,
+                            "postgres_version_num": pg_version,
+                            "matching_result": {field: candidate[field] for field in fields},
+                            "receipts": recovery_receipts,
+                        })
                     if args.mesh_batch and not cluster.expected_version:
                         for placement in ("before_commit", "after_commit", "after_command_complete"):
                             case = evidence / "mesh" / f"claim-{placement}"
@@ -2201,8 +2217,8 @@ def main():
         parser.error("--runners and --slots require --load")
     if args.workload and (args.faults or args.j2_lane_7 or (args.smoke and len(args.workload) > 1)):
         parser.error("select one workload for --smoke or use --load for several")
-    if args.against_ref and (args.faults or args.j2_lane_7):
-        parser.error("--against-ref requires --load or --smoke")
+    if args.against_ref and args.j2_lane_7:
+        parser.error("--against-ref is unavailable for --j2-lane-7")
     if args.j2_lane_7 and (sys.platform != "darwin" or not args.mesh_batch):
         parser.error("--j2-lane-7 requires macOS and --mesh-batch")
 
