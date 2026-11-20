@@ -190,6 +190,12 @@ scans without notifications or a new subscription. Check `summary.json` for
 both arms' claim p99 and idle SQL calls per minute. The healthy claim p99
 uses the existing 100 ms limit. The disconnected arm's maximum
 commit-to-handler-entry time must be at most 2000 ms across all measured jobs.
+
+Runtime `1b12243b` passed five pairs on macOS arm64 with PostgreSQL 17.11
+over verified TLS. The worst healthy trial commit-to-claim p99 was
+13.3 ms. The slowest disconnected pickup was 871.9 ms. Each trial
+reconciled 24 jobs, and each disconnected runner kept its original
+database sessions apart from the interrupted listener. [Listener outage receipt](../proof/jobs-parity/qualification-v1.json)
 Check `result.json` for budget breaches.
 
 Live timing from this probe is pending. The historical healthy comparison

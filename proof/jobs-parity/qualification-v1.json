@@ -413,6 +413,22 @@
     "runtime_revision": "e8fa00c0c6aa7ae6d4c807cccdd50a3f75f915bd"
   },
   "latest_runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+  "listener_outage": {
+    "budget_breaches": [],
+    "fallback_interval_ms": 1000,
+    "harness_revision": "13f0ed7b88853b62a00c7ff1ef2bbeacb218ec38",
+    "healthy_max_trial_commit_to_claim_p99_ms": 13.302978515625,
+    "jobs_per_trial": 24,
+    "logical_cpus": 15,
+    "one_minute_load_at_start": 21.26611328125,
+    "pairs": 5,
+    "postgresql_version": "17.11",
+    "raw_result": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-listener-outage-ty_wemtf/result.json",
+    "raw_summary": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-listener-outage-ty_wemtf/sparse-1r-16s/summary.json",
+    "runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+    "transport": "SCRAM with verified TLS",
+    "worst_disconnected_pickup_ms": 871.87890625
+  },
   "local_platforms": [
     "macOS arm64",
     "Linux arm64 container"
