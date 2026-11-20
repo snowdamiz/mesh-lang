@@ -88,6 +88,9 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 - [x] The frozen profiles fix slot allocation, pool, notifier, and maintenance settings and the absolute sparse pickup budget. The driver measures pickup from the enqueue transaction's durable commit to first handler entry. It records claim and settlement timestamps separately and rejects samples outside the clock tolerance. [Profiles](../scripts/jobs-parity-profiles.json) · [Measurement guide](durable-jobs-parity-evidence.md)
 - [x] The same frozen connection, process, and thread budgets apply to both engines. The driver counts Mesh worker processes and the Oban VM and reports idle and busy samples. The relative CPU and peak RSS limits are 1.25 and 1.5 times Oban. [Profiles](../scripts/jobs-parity-profiles.json)
 - [ ] Keep raw executions separate from deduplicated effects. Capture fault placement and reconcile each engine under its configured recovery rules. Install a barrier to kill or disconnect on an observed claim, write, or acknowledgement. Run the compiled commit, rollback, clean exit, and crash-recovery baseline on Linux and macOS before optimizing. Add native-call timeout on both and executable replacement on macOS.
+  The paired Linux and macOS recovery receipts use the same pinned
+  pre-optimization Mesh runtime. The hosted Linux run came after
+  optimization work began. [Paired recovery evidence](../proof/jobs-parity/j1-paired-linux-recovery-v1.json)
 
 **You see.**
 

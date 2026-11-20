@@ -891,14 +891,22 @@ the PostgreSQL driver, leases, cancellation, timeout, recovery, and
 shutdown. The full-role variant adds scoped migrator, producer, worker,
 operator, and inspector logins, plus cron takeover and reindex.
 
-The hosted Linux PostgreSQL 17.11 job runs a paired recovery baseline
-with the release Mesh runtime from `7c162056` and Oban Basic 2.24.2. The
-driver uses a disposable PostgreSQL cluster with verified TLS and SCRAM.
-It verifies rollback, committed enqueue, runner death after one committed
-effect, and clean replacement shutdown. Both engines must settle the
-same job on attempt two with one durable effect. The workflow artifact
-`jobs-parity-baseline-linux-17.11` preserves the manifest and each
-engine's fault receipt. The Linux result is pending.
+The paired recovery baseline passed on hosted Linux x86_64 and local
+macOS arm64 with release Mesh `7c162056` and Oban Basic 2.24.2.
+PostgreSQL 17.11 used verified TLS and SCRAM. Both engines preserved the
+committed enqueue, rolled back the other enqueue, and recovered the
+original job after runner death. The replacement settled on attempt
+two with one durable effect and shut down cleanly. Mesh also rejected
+the stale lease token. The Linux run used the pinned pre-optimization
+runtime after optimization work had begun.
+[Paired recovery receipts](../proof/jobs-parity/j1-paired-linux-recovery-v1.json)
+
+The hosted job also passed 45 Jobs runtime tests and two compiled Jobs
+tests, including native timeout and parent-death recovery. Both
+downloaded artifacts matched their published SHA-256 digests. The
+tested merge checkout `1c5269a5` and PR head `e08d3f34` had identical
+harness and runtime sources.
+[Hosted PostgreSQL 17.11 job](https://github.com/snowdamiz/mesh-lang/actions/runs/44791300418/job/136501104028)
 
 ### PostgreSQL and platform matrix
 
