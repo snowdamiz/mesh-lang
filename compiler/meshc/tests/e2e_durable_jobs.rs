@@ -74,8 +74,12 @@ fn durable_jobs_survive_process_boundaries() {
     }
     prove_busy_batch_connection_keeps_lease(&proof);
     prove_crash_and_stale_ack(&proof);
+    println!(
+        "J4 lane 7 passed: compiled cron and recovery reported their committed maintenance counts"
+    );
     prove_retry_and_exhaustion(&proof);
     prove_events(&proof);
+    prove_backpressured_events(&proof);
     prove_native_timeout(&proof);
     prove_native_lease_loss(&proof);
     prove_locked_job_does_not_stall_runner(&proof);
@@ -261,6 +265,35 @@ fn prove_events(proof: &Proof) {
     assert_eq!(settlement["failure_kind"], Value::Null);
     assert_eq!(proof.job("event-cancel")["state"], "cancelled");
 
+    fs::remove_file(worker.markers.join("gate")).unwrap();
+    let stale = proof.enqueue(spec("event-stale"));
+    proof.wait_effects("event-stale", 1);
+    let lease_before = proof.lease(id(&stale));
+    let stored_token = proof.sql(&format!(
+        "WITH fenced AS (
+             UPDATE mesh_jobs.jobs SET lease_token = gen_random_uuid()
+             WHERE namespace = {} AND id = {}::uuid AND lease_token = {}::uuid
+             RETURNING lease_token
+         ) SELECT lease_token FROM fenced",
+        quoted(&proof.namespace),
+        quoted(id(&stale)),
+        quoted(&lease_before.token),
+    ));
+    assert!(!stored_token.is_empty());
+    assert_ne!(stored_token, lease_before.token);
+    let stored_job = proof.job("event-stale");
+    let before = eventually("status after the committed cancellation", || {
+        let status = worker.status()?;
+        (status["outcomes"]["cancelled"] == 1).then_some(status)
+    });
+    assert_eq!(before["stale_acks"], 0);
+    worker.release();
+    let rejected = worker.wait_event("ack_stale", &stale);
+    assert_eq!(rejected["attempt"]["attempt_number"], 1);
+    assert_eq!(rejected["submission"], 1);
+    assert_eq!(proof.job("event-stale"), stored_job);
+    assert_eq!(proof.lease(id(&stale)).token, stored_token);
+
     // The stderr stream and the independent reader receive the same envelope.
     eventually("opt-in JSON settlement log", || {
         worker
@@ -277,21 +310,110 @@ fn prove_events(proof: &Proof) {
     });
     worker.signal();
     let report = worker.join();
+    assert_eq!(report["stale_acks"], 1);
+    assert_eq!(report["outcomes"], before["outcomes"]);
     assert_eq!(report["events_dropped"], 0);
     assert_eq!(report["event_logs_dropped"], 0);
     let batches = worker.event_batches();
     assert_eq!(batches.last().unwrap()["closed"], true);
     assert_eq!(worker.events().last().unwrap()["event"], "runner_stopped");
+    let stale_events: Vec<_> = worker
+        .events()
+        .into_iter()
+        .filter(|event| event["attempt"]["job_id"] == id(&stale))
+        .map(|mut event| event["event"].take())
+        .collect();
+    assert_eq!(stale_events, [json!("attempt_started"), json!("ack_stale")]);
+    let settled = proof.sql(&format!(
+        "SELECT mesh_jobs.settle({}, {}::uuid, {}::uuid, '{{\"action\":\"complete\"}}', false)",
+        quoted(&proof.namespace),
+        quoted(id(&stale)),
+        quoted(&stored_token),
+    ));
+    assert_eq!(settled, "t");
+    assert_eq!(proof.effects("event-stale").len(), 1);
+    println!("J4 lane 5 passed: stale acknowledgement changed only the stale counter and preserved the active fence");
     let readback = fs::read_to_string(worker.markers.join("events")).unwrap();
     for private in [
         label,
         metadata,
         &lease.token,
+        &lease_before.token,
+        &stored_token,
         "proof worker requested a retry",
     ] {
         assert!(!readback.contains(private), "{readback}");
         assert!(!worker.log().contains(private));
     }
+}
+
+fn prove_backpressured_events(proof: &Proof) {
+    let held = proof.enqueue(json!({
+        "worker":"proof", "queue":"event-held", "args":{"label":"event-held"},
+        "max_attempts":1,
+    }));
+    let mut worker = proof.worker_with_environment(
+        "event-backpressure",
+        true,
+        json!({
+            "namespace":proof.namespace, "queues":{"event-held":1,"event-fast":1},
+            "workers":[{"worker":"proof","version":1}], "claim_batch":true,
+            "lease_ms":3000, "poll_ms":25, "shutdown_grace_ms":8000, "event_buffer":1,
+        }),
+        proof.url,
+        &[
+            ("MESH_JOBS_PROOF_GATE_LABEL", "event-held"),
+            ("MESH_JOBS_PROOF_EVENTS", "false"),
+        ],
+    );
+    proof.wait_effects("event-held", 1);
+    let first = proof.lease(id(&held));
+    let fast = proof.enqueue(json!({
+        "worker":"proof", "queue":"event-fast", "args":{"label":"event-fast"},
+        "max_attempts":1,
+    }));
+    let completed = proof.wait_state("event-fast", "completed");
+    assert_eq!(completed["id"], fast["id"]);
+    let effect = proof.wait_effects("event-fast", 1);
+    assert_eq!(effect[0]["context"]["effect_key"], fast["effect_key"]);
+    let renewed = eventually("lease renewal with the unread event buffer full", || {
+        worker.assert_running();
+        let report = worker.status()?;
+        let current = proof.lease(id(&held));
+        assert_eq!(current.token, first.token);
+        if report["events_dropped"].as_u64().unwrap() == 0
+            || current.expires_at_ms <= first.expires_at_ms
+        {
+            return None;
+        }
+        let buffer = &report["event_buffer_bytes"]["reader"];
+        assert!(
+            buffer["sampled_peak_bytes"].as_u64().unwrap() > 0,
+            "{report}"
+        );
+        assert_eq!(
+            buffer["sampled_peak_bytes"], buffer["upper_bound_bytes"],
+            "{report}"
+        );
+        Some(current.expires_at_ms)
+    });
+    assert_eq!(proof.job("event-held")["state"], "executing");
+    worker.release();
+    let completed = proof.wait_state("event-held", "completed");
+    assert_eq!(completed["id"], held["id"]);
+    assert_eq!(completed["attempt"], 1);
+    worker.signal();
+    let report = worker.join();
+    assert_eq!(report["state"], "stopped");
+    assert_eq!(report["drained"], true);
+    assert_eq!(report["outcomes"]["completed"], 2);
+    assert_eq!(report["stale_acks"], 0);
+    let drops = report["events_dropped"].as_u64().unwrap();
+    assert!(drops > 0);
+    assert!(!worker.markers.join("events").exists());
+    let effects = proof.wait_effects("event-held", 1);
+    assert_eq!(effects[0]["context"]["effect_key"], held["effect_key"]);
+    println!("J4 lane 8 passed: unread reader dropped {drops} events, the held lease advanced {} ms, and the other queue settled", renewed - first.expires_at_ms);
 }
 
 fn prove_competing_processes(proof: &Proof) {
@@ -664,7 +786,8 @@ fn prove_cron_process_takeover(shared: &Proof) {
         "namespace": ns, "queues":{"idle":1},
         "workers":[{"worker":"proof","version":1}],
         "poll_ms":25, "shutdown_grace_ms":8000,
-        "cron_interval_ms":25, "cron_page_size":1, "cron_schedule_page_size":1
+        "cron_interval_ms":25, "cron_page_size":1, "cron_schedule_page_size":1,
+        "event_buffer":128,
     });
     let mut barrier = native_pg_connect(proof.url).unwrap();
     native_pg_execute(&mut barrier, "BEGIN", &[]).unwrap();
@@ -698,6 +821,7 @@ fn prove_cron_process_takeover(shared: &Proof) {
         let job = proof.job(label);
         (!job.is_null()).then_some(job)
     });
+    second.assert_maintenance_event("cron", 1);
     second.kill();
     let clock = || {
         proof
@@ -865,8 +989,19 @@ fn prove_crash_and_stale_ack(proof: &Proof) {
     let old = proof.lease(id(&receipt));
     assert_eq!(proof.job("crash")["state"], "executing");
 
-    let mut recovery = proof.worker("after-kill", true);
+    let mut recovery = proof.worker_with_config(
+        "after-kill",
+        true,
+        json!({
+            "namespace": proof.namespace,
+            "queues": {"default":1},
+            "workers": [{"worker":"proof", "version":1}],
+            "lease_ms":LEASE_MS, "poll_ms":25, "shutdown_grace_ms":8000,
+            "event_buffer":128,
+        }),
+    );
     let effects = proof.wait_effects("crash", 2);
+    recovery.assert_maintenance_event("recover", 1);
     let fresh = proof.lease(id(&receipt));
     assert_ne!(
         old.token, fresh.token,
@@ -1573,6 +1708,7 @@ impl<'a> Proof<'a> {
             .env("MESH_JOBS_PROOF_COMMAND", operation)
             .env("MESH_JOBS_PROOF_PAYLOAD", payload)
             .env_remove("MESH_JOBS_PROOF_GATE")
+            .env_remove("MESH_JOBS_PROOF_GATE_LABEL")
             .env_remove("MESH_JOBS_PROOF_EVENTS")
             .env_remove("MESH_JOBS_PROOF_PUBLISH");
         command
@@ -1672,7 +1808,6 @@ impl<'a> Proof<'a> {
             .env("MESH_TEST_DATABASE_URL", url)
             .env("MESH_JOBS_PROOF_WORKER", name)
             .env("MESH_JOBS_PROOF_MARKERS", &markers)
-            .envs(environment.iter().copied())
             .stdout(output.try_clone().unwrap())
             .stderr(output);
         if config["event_buffer"].is_number() {
@@ -1681,6 +1816,7 @@ impl<'a> Proof<'a> {
         if blocked {
             command.env("MESH_JOBS_PROOF_GATE", markers.join("gate"));
         }
+        command.envs(environment.iter().copied());
         let mut worker = Worker {
             child: Some(command.spawn().unwrap()),
             markers,
@@ -1781,6 +1917,16 @@ impl Worker {
                 .into_iter()
                 .find(|event| event["event"] == kind && event["attempt"]["job_id"] == id(receipt))
         })
+    }
+
+    fn assert_maintenance_event(&self, operation: &str, count: u64) {
+        let event = eventually(&format!("{operation} maintenance event"), || {
+            self.events()
+                .into_iter()
+                .find(|event| event["event"] == "maintenance" && event["operation"] == operation)
+        });
+        assert_eq!(event["count"], count, "{event}");
+        assert!(event["attempt"].is_null(), "{event}");
     }
 
     fn assert_running(&mut self) {

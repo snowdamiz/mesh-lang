@@ -109,7 +109,7 @@ fn record_effect(context :: String) -> String!String do
     ()
   end
   let gate = Env.get("MESH_JOBS_PROOF_GATE", "")
-  if gate != "" do
+  if gate != "" && label == Env.get("MESH_JOBS_PROOF_GATE_LABEL", label) do
     while !File.exists(gate) do
       Timer.sleep(10)
     end
