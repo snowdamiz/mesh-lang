@@ -754,6 +754,27 @@ These results establish the effect of reuse within the experimental
 relay. The direct trials provide a separate reference.
 [Relayed session receipt](../proof/jobs-parity/qualification-v1.json)
 
+The native relay repeated the five pairs with Mesh's pinned PostgreSQL
+driver in both arms. Reuse increased throughput from first claim to
+final settlement from 462 to 772 jobs/s. CPU per job fell from
+6.29 to 5.56 ms, including the relay and session setup. The two direct
+trials measured 488 jobs/s after first claim and 6.36 ms CPU per job.
+The native relay cut the gap from handler entry to the first committed
+write from 9.61 to 0.44 ms.
+
+In five additional pairs against Oban Basic 2.24.2, the experimental
+reuse path delivered 419 jobs/s against 486, or 86.1% of Oban against
+the 90% throughput floor. Pickup p99 was 298 ms against 260 ms, and CPU
+per job was 5.41 ms against 5.39 ms. Both met their limits. The sampled
+resource limits passed, with the reuse path reaching 20 connections
+against a cap of 20. Host load reached 28.7 on 15 logical CPUs.
+
+The medians of trial medians from claim to handler entry were 7.60 ms
+for Mesh and 2.09 ms for Oban. The interval from effect commit to
+settlement was 3.47 ms against 0.58 ms. These timings apply to the
+experimental short-job profile on macOS arm64 and PostgreSQL 17.11.
+[Native session receipt](../proof/jobs-parity/native-effect-sessions-v1.json)
+
 ### Historical references
 
 On the same macOS arm64 host and PostgreSQL 17.11 configuration, the driver
