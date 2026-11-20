@@ -718,6 +718,42 @@ handler entry to its first committed write was 7.27 ms on Mesh and
 fixture. The watchdog change remains experimental.
 [Watchdog receipts](../proof/jobs-parity/qualification-v1.json)
 
+### Measure the effect-write session cost
+
+The compiled fixture used the same two durable SQL writes with a new
+session for every pair of writes and with one session reused for the
+trial. Five alternating pairs each wrote and reconciled 128 attempt and
+effect rows per arm on macOS arm64. PostgreSQL 17.11 used SCRAM and
+verified TLS, and the persisted rows recorded 128 server backends in
+each fresh-session trial and one in each reuse trial.
+
+With release runtime `1b12243b`, the median of trial medians to the first
+committed write was 4.82 ms with fresh sessions and 0.11 ms with reuse.
+Opening a fresh session took 4.10 ms. This serial diagnostic runs the
+fixture SQL directly. The full Jobs comparison also pays for child
+startup, dispatch, and acknowledged settlement.
+[Session-cost receipt](../proof/jobs-parity/qualification-v1.json)
+
+The follow-up ran the full short-job workload with one batch runner and
+16 slots. Both arms used the same compiled Mesh worker and the same
+fixture-only Unix socket relay to libpq. One arm opened a verified
+PostgreSQL session per attempt and the other reused 16 sessions. Two
+direct Mesh trials bracketed the five alternating pairs. All 1,536
+measured jobs completed with one attempt and one effect each.
+
+| Effect route | Entry to first commit | Jobs/s from first claim to final settlement | CPU per job |
+| --- | ---: | ---: | ---: |
+| Direct Mesh | 7.49 ms | 698 | 6.50 ms |
+| Relay, fresh session | 15.00 ms | 496 | 13.50 ms |
+| Relay, reused session | 0.37 ms | 1,026 | 6.98 ms |
+
+The reused arm improved first-claim-to-settlement throughput in every
+pair. CPU includes the helper and the runner's attempt processes.
+The fresh relay incurred more overhead than the direct Mesh path.
+These results establish the effect of reuse within the experimental
+relay. The direct trials provide a separate reference.
+[Relayed session receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Historical references
 
 On the same macOS arm64 host and PostgreSQL 17.11 configuration, the driver
