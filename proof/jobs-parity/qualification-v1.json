@@ -13,6 +13,20 @@
     "raw_receipt": "target/jobs-parity/bfcc3451777b9bc24476d1b071c57cec074004ba/release-comparisons/drain/receipt.json"
   },
   "candidate_ref": "53fb9189e0dd71e0856f3ca6b5aad2d3bc4a5c8c",
+  "combined_pool_outage": {
+    "checkout": "1d639792b73d8fe670b7f40f27a1e5f952e9e714",
+    "compiled_proofs": 2,
+    "grace_ms": 40,
+    "jobs_runtime_tests": 45,
+    "join_after_release_ms": 32.347416,
+    "platform": "macOS arm64",
+    "postgresql_version": "17.11",
+    "raw_log": "target/jobs-parity/1d639792b73d8fe670b7f40f27a1e5f952e9e714/combined-outage/postgres-17.11.log",
+    "receipt": "proof/jobs-parity/j7-lane-8.log",
+    "runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+    "stop_ms": 39.309125,
+    "transport": "SCRAM with verified TLS"
+  },
   "compatibility": {
     "compiled_proofs_per_version": 2,
     "jobs_runtime_tests_per_version": 43,
@@ -383,7 +397,7 @@
     "result": "pass",
     "runtime_revision": "e8fa00c0c6aa7ae6d4c807cccdd50a3f75f915bd"
   },
-  "latest_runtime_revision": "e8fa00c0c6aa7ae6d4c807cccdd50a3f75f915bd",
+  "latest_runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
   "local_platforms": [
     "macOS arm64",
     "Linux arm64 container"
@@ -409,7 +423,6 @@
     "dense Oban throughput and pickup",
     "four-runner Oban throughput and pickup",
     "one-slot process budget",
-    "telemetry buffer memory and enabled modes on current runtime",
     "quiet maintenance qualification",
     "complete workload and platform qualifications"
   ],
@@ -696,6 +709,223 @@
       "raw_directory": "target/jobs-parity/53fb9189e0dd71e0856f3ca6b5aad2d3bc4a5c8c/program/collector/target/jobs-parity/53fb9189e0dd71e0856f3ca6b5aad2d3bc4a5c8c/j1-load-xnvlxu65",
       "transport": "SCRAM with verified TLS"
     }
+  },
+  "reply_filter_and_telemetry": {
+    "jobs_per_measured_trial": 128,
+    "platform": "macOS arm64",
+    "postgresql_version": "17.11",
+    "runs": {
+      "batch_vs_oban": {
+        "baseline_ref": null,
+        "budget_breaches": [
+          {
+            "metric": "jobs_per_second",
+            "profile": "short-1r-16s",
+            "scope": "comparison"
+          },
+          {
+            "metric": "pickup_p99_ms",
+            "profile": "short-1r-16s",
+            "scope": "comparison"
+          }
+        ],
+        "compared_metrics": {
+          "jobs_per_second": {
+            "mesh_median": 300.2848275083922,
+            "ratio_limit": 0.9,
+            "reference": "oban",
+            "reference_median": 494.2140845282848,
+            "within_limit": false
+          },
+          "pickup_p99_ms": {
+            "mesh_median": 413.373046875,
+            "ratio_limit": 1.25,
+            "reference": "oban",
+            "reference_median": 255.990966796875,
+            "within_limit": false
+          }
+        },
+        "cpu_budget": {
+          "mesh_median": 0.0066651484375,
+          "oban_median": 0.00624796875,
+          "relative_limit": 1.25,
+          "within_limit": true
+        },
+        "harness_ref": "c50620896be6d404db32fda6619c0b0410dc5eb5",
+        "logger_drops": {
+          "max": 0,
+          "median": 0,
+          "min": 0
+        },
+        "one_minute_load_at_start": 32.3720703125,
+        "peak_buffer_bytes": null,
+        "raw_directory": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-load-dnc2kr57",
+        "reader_drops": {
+          "max": 0,
+          "median": 0,
+          "min": 0
+        }
+      },
+      "events_backpressured": {
+        "baseline_ref": "7c1620563614a04a573aef806a6d019a2af4dfe9",
+        "budget_breaches": [],
+        "compared_metrics": {
+          "jobs_per_second": {
+            "mesh_median": 237.9367871490318,
+            "ratio_limit": 0.9,
+            "reference": "baseline",
+            "reference_median": 260.76468519764705,
+            "within_limit": true
+          }
+        },
+        "harness_ref": "c50620896be6d404db32fda6619c0b0410dc5eb5",
+        "logger_drops": {
+          "max": 0,
+          "median": 0,
+          "min": 0
+        },
+        "one_minute_load_at_start": 17.4296875,
+        "peak_buffer_bytes": {
+          "logger": null,
+          "reader": {
+            "sampled_peak_bytes": 29184,
+            "upper_bound_bytes": 29184
+          }
+        },
+        "raw_directory": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-load-mm7ws85q",
+        "reader_drops": {
+          "max": 130,
+          "median": 130,
+          "min": 130
+        }
+      },
+      "events_disabled": {
+        "baseline_ref": "7c1620563614a04a573aef806a6d019a2af4dfe9",
+        "budget_breaches": [],
+        "compared_metrics": {
+          "jobs_per_second": {
+            "mesh_median": 318.3605906352602,
+            "ratio_limit": 0.95,
+            "reference": "baseline",
+            "reference_median": 309.35351129877165,
+            "within_limit": true
+          },
+          "pickup_p99_ms": {
+            "mesh_median": 393.577880859375,
+            "ratio_limit": 1.05,
+            "reference": "baseline",
+            "reference_median": 383.333984375,
+            "within_limit": true
+          }
+        },
+        "harness_ref": "c50620896be6d404db32fda6619c0b0410dc5eb5",
+        "logger_drops": {
+          "max": 0,
+          "median": 0,
+          "min": 0
+        },
+        "one_minute_load_at_start": 25.7021484375,
+        "peak_buffer_bytes": null,
+        "raw_directory": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-load-krk1cjmw",
+        "reader_drops": {
+          "max": 0,
+          "median": 0,
+          "min": 0
+        }
+      },
+      "events_logged": {
+        "baseline_ref": "7c1620563614a04a573aef806a6d019a2af4dfe9",
+        "budget_breaches": [],
+        "compared_metrics": {
+          "jobs_per_second": {
+            "mesh_median": 344.65761889579505,
+            "ratio_limit": 0.9,
+            "reference": "baseline",
+            "reference_median": 273.58548163470414,
+            "within_limit": true
+          }
+        },
+        "harness_ref": "c50620896be6d404db32fda6619c0b0410dc5eb5",
+        "logger_drops": {
+          "max": 0,
+          "median": 0,
+          "min": 0
+        },
+        "one_minute_load_at_start": 16.38623046875,
+        "peak_buffer_bytes": {
+          "logger": {
+            "sampled_peak_bytes": 228,
+            "upper_bound_bytes": 29184
+          },
+          "reader": null
+        },
+        "raw_directory": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-load-fmcd4oma",
+        "reader_drops": {
+          "max": 0,
+          "median": 0,
+          "min": 0
+        }
+      },
+      "filtered_vs_unfiltered": {
+        "baseline_ref": "125772f85af599c35bc9555070a01d97ddfc2521",
+        "budget_breaches": [],
+        "compared_metrics": null,
+        "harness_ref": "c50620896be6d404db32fda6619c0b0410dc5eb5",
+        "logger_drops": {
+          "max": 0,
+          "median": 0,
+          "min": 0
+        },
+        "matched_metrics": {
+          "baseline": {
+            "cpu_seconds_per_job": {
+              "max": 0.00727209375,
+              "median": 0.0067849921875,
+              "min": 0.0053674921875
+            },
+            "effect_commit_to_settlement_ms": 6.5870361328125,
+            "jobs_per_second": {
+              "max": 480.57799006923307,
+              "median": 204.02438853545817,
+              "min": 159.61751808106308
+            },
+            "pickup_p99_ms": {
+              "max": 775.153076171875,
+              "median": 597.091796875,
+              "min": 253.255126953125
+            }
+          },
+          "mesh": {
+            "cpu_seconds_per_job": {
+              "max": 0.0074606328125,
+              "median": 0.00710546875,
+              "min": 0.0056931640625
+            },
+            "effect_commit_to_settlement_ms": 7.2083740234375,
+            "jobs_per_second": {
+              "max": 607.7271088659712,
+              "median": 177.4214453055336,
+              "min": 95.50477880929428
+            },
+            "pickup_p99_ms": {
+              "max": 1284.530029296875,
+              "median": 704.281005859375,
+              "min": 195.48583984375
+            }
+          }
+        },
+        "one_minute_load_at_start": 9.0380859375,
+        "peak_buffer_bytes": null,
+        "raw_directory": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-load-0ghrr0su",
+        "reader_drops": {
+          "max": 0,
+          "median": 0,
+          "min": 0
+        }
+      }
+    },
+    "runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+    "transport": "SCRAM with verified TLS"
   },
   "rolling_upgrade": {
     "candidate": "53fb9189e0dd71e0856f3ca6b5aad2d3bc4a5c8c",

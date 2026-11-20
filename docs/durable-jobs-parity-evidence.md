@@ -42,6 +42,10 @@ cron checkout failures. It times `Jobs.stop` from API entry and bounds
 while the listener is still unavailable, then recovers an expired lease and
 catches up a persisted calendar occurrence. Independent PostgreSQL sessions
 observe the lease, the job attempts, and the cron cursor.
+The PostgreSQL 17.11 proof on macOS arm64 measured 39.3 ms from stop entry
+with a 40 ms grace period, and 32.3 ms from checkout release to join. It
+recovered the expired job on attempt two and advanced the cron cursor.
+[J7 lane 8 receipt](../proof/jobs-parity/j7-lane-8.log)
 
 The default fault run also cuts the settlement connection before the write
 reaches PostgreSQL and after PostgreSQL confirms the commit. This probe runs
@@ -163,6 +167,14 @@ channel. A consumer can drain slots between samples, so the sampled peak
 can miss a transient maximum. Both fields cover queued records and
 exclude unused slots, channel and allocation overhead, serialized output,
 and records already removed by the reader or logger.
+
+The five-pair dense comparison on runtime `1b12243b` met the configured
+limits in all three modes against main `7c162056` on PostgreSQL 17.11.
+The unread reader reached its 29,184-byte bound and dropped 130 events
+in each trial. The logger's sampled peak was 228 bytes with the same
+29,184-byte bound. Each trial reconciled 128 jobs. The run IDs are
+`j1-load-krk1cjmw` for disabled, `j1-load-fmcd4oma` for logged, and
+`j1-load-mm7ws85q` for backpressured.
 
 Use `--faults --mesh-events logged` on a current runtime to verify that
 an acknowledgement lost after commit produces uncertainty without a
@@ -411,6 +423,14 @@ Oban recorded 425.5 jobs per second and 298.2 ms pickup p99. Mesh used
 1.30 times Oban's CPU per job, above the 1.25 limit. Raw receipts are in
 run `j1-load-3vl21x7c`. The candidate's worker test confirmed that the
 supervisor cannot consume a reply until it reaps the child.
+
+Runtime `1b12243b` restricts early scans to pending replies and keeps the
+full watchdog deadline independent. The single-claim comparison against
+`125772f8` had wide and overlapping trial ranges for throughput and CPU.
+The separate batched comparison passed the CPU limit and missed both
+dense timing limits. It started at a one-minute host load of 32.4 on 15
+logical CPUs. Raw receipts are in runs `j1-load-0ghrr0su` and
+`j1-load-dnc2kr57`.
 
 ## Compare bounded drain
 

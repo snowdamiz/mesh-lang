@@ -1,0 +1,6 @@
+1:Jobs proof checkout: 1d639792b73d8fe670b7f40f27a1e5f952e9e714
+2:Jobs proof host: Darwin arm64
+30:Disposable Jobs proof server: PostgreSQL 17.11 (Homebrew)
+789:test result: ok. 45 passed; 0 failed; 0 ignored; 0 measured; 1546 filtered out; finished in 7.24s
+921:J7 lane 8 passed on PostgreSQL 17.11 (Homebrew), stop 39.309125ms (grace 40 ms), join after checkout release 32.347416ms, fallback poll attempt 1, expired lease recovered on attempt 2, cron cursor 29919419 -> 29919421
+938:test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 61.49s
