@@ -594,7 +594,7 @@ impl Reply {
             Self::Cancelled => Outcome::Cancel {
                 reason: CANCELLED.into(),
             },
-            Self::Unstarted => Outcome::Snooze { delay_ms: 1 },
+            Self::Unstarted => Outcome::ReleaseUnstarted,
         }
     }
 }

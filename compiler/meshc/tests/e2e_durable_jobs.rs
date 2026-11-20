@@ -2,7 +2,8 @@
 //! Receipts expose id, effect_key, and state. Handlers receive the same identity
 //! plus the worker, version, queue, args, attempt, max_attempts, and metadata.
 //! The proof uses a dedicated PostgreSQL database and real Unix process signals.
-//! The stale acknowledgement probe is the only SQL mutation of a job under test.
+//! The proof uses SQL to submit a stale acknowledgement and to make a job due
+//! while its runner executable cannot be launched.
 //! The crash intentionally repeats a side effect with the same effect key.
 #![cfg(unix)]
 
@@ -64,7 +65,10 @@ fn durable_jobs_survive_process_boundaries() {
     prove_native_lease_loss(&proof);
     prove_large_context(&proof);
     #[cfg(target_os = "macos")]
-    prove_executable_replacement(&proof);
+    {
+        prove_executable_replacement(&proof);
+        prove_launch_failure(&proof);
+    }
     prove_signal_drain(&proof);
     assert_eq!(proof.effects("committed").len(), 1);
     assert!(proof.effects("rolled-back").is_empty());
@@ -380,6 +384,53 @@ fn prove_executable_replacement(proof: &Proof) {
         1
     );
     new.stop();
+}
+
+#[cfg(target_os = "macos")]
+fn prove_launch_failure(proof: &Proof) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let spec = json!({
+        "worker": "proof", "args": {"label": "launch-failure"},
+        "metadata": {"reference": "launch-proof"},
+        "unique": {"fields": ["worker", "metadata"], "states": "incomplete"},
+        "delay_ms": 120_000, "max_attempts": 1,
+    });
+    let receipt = proof.enqueue(spec.clone());
+    let mut old = proof.worker("launch-failure", false);
+    let mode = fs::metadata(&proof.binary).unwrap().permissions().mode();
+    fs::set_permissions(&proof.binary, fs::Permissions::from_mode(mode & !0o111)).unwrap();
+    proof.sql(&format!(
+        "UPDATE mesh_jobs.jobs SET scheduled_at_ms = mesh_jobs.now_ms() WHERE namespace = {} AND id = {}::uuid",
+        quoted(&proof.namespace), quoted(id(&receipt)),
+    ));
+    eventually("runner stops after the denied launch", || {
+        let report: Value =
+            serde_json::from_slice(&fs::read(old.markers.join("status")).ok()?).ok()?;
+        (report["state"] == "stopped").then_some(())
+    });
+    fs::set_permissions(&proof.binary, fs::Permissions::from_mode(mode)).unwrap();
+    old.signal();
+    let report = old.join();
+    assert_eq!(report["claimed"], 1);
+    assert!(report["last_error"]
+        .as_str()
+        .unwrap()
+        .contains("could not start job handler"));
+    let pending = proof.job("launch-failure");
+    assert_eq!(pending["attempt"], 0);
+    assert_eq!(pending["metadata"], spec["metadata"]);
+    let replay = proof.enqueue(spec);
+    assert_eq!(replay["id"], receipt["id"]);
+    assert_eq!(replay["conflict"], true);
+
+    let mut worker = proof.worker("launch-recovery", false);
+    assert_eq!(
+        proof.wait_state("launch-failure", "completed")["attempt"],
+        1
+    );
+    worker.stop();
+    assert_eq!(proof.effects("launch-failure").len(), 1);
 }
 
 fn spec(label: &str) -> Value {

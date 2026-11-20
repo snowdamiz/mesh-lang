@@ -28,11 +28,24 @@ pub(super) enum LeaseStatus {
 #[serde(tag = "action", rename_all = "snake_case")]
 pub(super) enum Outcome {
     Complete,
-    Fail { reason: String },
-    RetryAfter { delay_ms: u64, reason: String },
-    Snooze { delay_ms: u64 },
-    Cancel { reason: String },
-    Discard { reason: String },
+    Fail {
+        reason: String,
+    },
+    RetryAfter {
+        delay_ms: u64,
+        reason: String,
+    },
+    Snooze {
+        delay_ms: u64,
+    },
+    Cancel {
+        reason: String,
+    },
+    Discard {
+        reason: String,
+    },
+    #[serde(skip)]
+    ReleaseUnstarted,
 }
 
 const MAX_INPUT: usize = 1024 * 1024;
@@ -629,6 +642,28 @@ pub(super) fn finish(
 ) -> Result<bool, String> {
     standalone(db)?;
     name(namespace, "namespace")?;
+    if matches!(outcome, Outcome::ReleaseUnstarted) {
+        return response(
+            db,
+            "WITH held AS MATERIALIZED (
+                 SELECT lease_expires_at_ms, cancel_requested_at_ms FROM mesh_jobs.jobs
+                 WHERE namespace = $1 AND id = $2::uuid AND lease_token = $3::uuid
+                 FOR NO KEY UPDATE
+             ), released AS (
+                 UPDATE mesh_jobs.jobs j SET state = 'available', attempt = j.attempt - 1,
+                     lease_token = NULL, lease_expires_at_ms = NULL
+                 FROM held WHERE j.namespace = $1 AND j.id = $2::uuid
+                     AND held.cancel_requested_at_ms IS NULL
+                     AND held.lease_expires_at_ms > mesh_jobs.now_ms()
+                 RETURNING 1
+             ) SELECT (CASE WHEN EXISTS (SELECT 1 FROM held WHERE cancel_requested_at_ms IS NOT NULL)
+                 THEN mesh_jobs.settle($1, $2::uuid, $3::uuid, '{\"action\":\"cancel\"}'::jsonb, false)
+                 ELSE EXISTS (SELECT 1 FROM released) END)::text",
+            &[namespace, id, token],
+        )?
+        .parse::<bool>()
+        .map_err(|error| error.to_string());
+    }
     match &mut outcome {
         Outcome::RetryAfter { delay_ms, .. } | Outcome::Snooze { delay_ms } => {
             duration(*delay_ms, "outcome delay_ms")?;

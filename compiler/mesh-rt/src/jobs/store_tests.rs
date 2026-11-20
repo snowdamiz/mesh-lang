@@ -127,6 +127,31 @@ fn id(value: &Value) -> &str {
 
 #[test]
 #[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
+fn release_before_execution_preserves_uniqueness_and_honors_cancellation() {
+    let mut fixture = Fixture::new();
+    let spec = json!({"worker":"Deliver", "metadata":{"reference":"launch-proof"},
+        "unique":{"fields":["worker", "metadata"], "states":"incomplete"}});
+    let admitted = fixture.enqueue(spec.clone());
+    let first = fixture.claim();
+    assert!(fixture.finish(&first, Outcome::ReleaseUnstarted));
+    let released = fixture.get(id(&admitted));
+    assert_eq!(released["attempt"], 0);
+    assert_eq!(released["metadata"], spec["metadata"]);
+    assert_eq!(
+        released["scheduled_at_ms"],
+        parse(&first.context)["scheduled_at_ms"]
+    );
+    assert_eq!(id(&fixture.enqueue(spec)), id(&admitted));
+
+    let replacement = fixture.claim();
+    assert!(!fixture.finish(&first, Outcome::ReleaseUnstarted));
+    fixture.ops(json!({"action":"cancel","id":replacement.id}));
+    assert!(fixture.finish(&replacement, Outcome::ReleaseUnstarted));
+    assert_eq!(fixture.get(id(&admitted))["state"], "cancelled");
+}
+
+#[test]
+#[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
 fn bulk_actions_respect_filters_and_retry_opens_a_new_run() {
     let mut fixture = Fixture::new();
     let jobs = fixture.enqueue(json!([
