@@ -174,7 +174,7 @@ impl JobProcess for TimedWorker {
 fn a_late_renewal_cannot_extend_an_expired_local_lease() {
     let now = Instant::now();
     let mut worker = Running {
-        process: TimedWorker::start(r#"{"args":{"wait_ms":2000}}"#.into(), now, now).unwrap(),
+        process: TimedWorker::start(r#"{"args":{"wait_ms":2000}}"#.into(), now, 0).unwrap(),
         deadline: now + TEST_WAIT,
         lease_deadline: now,
         stop: None,
