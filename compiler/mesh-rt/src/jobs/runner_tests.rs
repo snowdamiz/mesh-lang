@@ -165,6 +165,10 @@ fn polling_and_kill_errors_keep_an_attempt_undrained_until_reap() {
     }
 
     impl JobProcess for Worker {
+        fn reply_pending(&self) -> bool {
+            false
+        }
+
         fn poll(&mut self, _: Instant) -> Result<WorkerPoll, String> {
             self.polls.pop_front().unwrap()
         }
@@ -230,7 +234,9 @@ fn polling_and_kill_errors_keep_an_attempt_undrained_until_reap() {
         }),
     };
 
-    runner.supervise();
+    runner.supervise(false);
+    assert!(runner.state.lock().last_error.is_none());
+    runner.supervise(true);
     runner.request_stop(Duration::ZERO);
     let mut io = LifecycleIo {
         pool: 0,
@@ -243,10 +249,10 @@ fn polling_and_kill_errors_keep_an_attempt_undrained_until_reap() {
     assert_eq!(report["undrained_jobs"], json!(["job-id"]));
     assert_eq!(report["finished"], 0);
 
-    runner.supervise();
+    runner.supervise(true);
     assert!(attempt.poll(&runner, &mut io));
 
-    runner.supervise();
+    runner.supervise(true);
     assert!(!attempt.poll(&runner, &mut io));
     let state = runner.state.lock();
     let Execution::Acknowledging { reply, .. } = &state.jobs["token"].execution else {
@@ -496,6 +502,10 @@ impl TimedWorker {
 }
 
 impl JobProcess for TimedWorker {
+    fn reply_pending(&self) -> bool {
+        false
+    }
+
     fn poll(&mut self, _: Instant) -> Result<WorkerPoll, String> {
         let now = Instant::now();
         Ok(match self.reaps_at {

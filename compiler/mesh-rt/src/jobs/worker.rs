@@ -207,6 +207,10 @@ impl WorkerProcess {
         self.child.kill().map_err(|error| error.to_string())
     }
 
+    pub(super) fn reply_pending(&self) -> bool {
+        !self.result.is_empty()
+    }
+
     pub(super) fn poll(&mut self, now: Instant) -> Result<WorkerPoll, String> {
         let Some(status) = self.child.try_wait().map_err(|error| error.to_string())? else {
             return Ok(WorkerPoll::Running);
@@ -298,12 +302,14 @@ fn worker_reply_wake_does_not_bypass_reap() {
     let (mut worker, publish, output) = WorkerProcess::fixture(child);
     let (reply_wake, reply_wakes) = crossbeam_channel::bounded(1);
 
+    assert!(!worker.reply_pending());
     forward_reply(output, publish, reply_wake);
     assert_eq!(reply_wakes.try_recv(), Ok(()));
     assert!(matches!(
         worker.poll(Instant::now()),
         Ok(WorkerPoll::Running)
     ));
+    assert!(worker.reply_pending());
     input.write_all(b"exit\n").unwrap();
     assert!(worker.child.wait().unwrap().success());
     assert!(matches!(

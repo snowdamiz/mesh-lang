@@ -37,12 +37,17 @@ const CANCELLED: &str = "job cancelled";
 const LEASE_LOST: &str = "job lease lost";
 
 trait JobProcess: Send {
+    fn reply_pending(&self) -> bool;
     fn poll(&mut self, now: Instant) -> Result<WorkerPoll, String>;
     fn renew(&mut self, lease_deadline: u64) -> Result<(), String>;
     fn kill(&mut self) -> Result<(), String>;
 }
 
 impl JobProcess for WorkerProcess {
+    fn reply_pending(&self) -> bool {
+        self.reply_pending()
+    }
+
     fn poll(&mut self, now: Instant) -> Result<WorkerPoll, String> {
         self.poll(now)
     }
@@ -438,7 +443,7 @@ impl Runner {
         self.wake_dispatcher();
     }
 
-    fn supervise(&self) -> bool {
+    fn supervise(&self, poll_all: bool) -> bool {
         if crate::process_signal::shutdown_requested() {
             self.request_stop(Duration::from_millis(self.config.shutdown_grace_ms));
         }
@@ -458,6 +463,9 @@ impl Runner {
         } = &mut *state;
         for job in jobs.values_mut() {
             if let Execution::Running(worker) = &mut job.execution {
+                if !poll_all && !worker.process.reply_pending() {
+                    continue;
+                }
                 let queue_stopping = matches!(queues[&job.queue].phase, QueuePhase::Stopping(deadline) if now >= deadline);
                 let stop = if shutting_down {
                     Some(STOPPED)
@@ -814,10 +822,13 @@ fn start_configured(
         .name(format!("mesh-jobs-watch-{id}"))
         .spawn(move || {
             let mut reap_at = Instant::now();
-            while supervised.supervise() {
-                let now = Instant::now();
-                if now >= reap_at {
-                    reap_at = now + TICK;
+            loop {
+                let timed = Instant::now() >= reap_at;
+                if !supervised.supervise(timed) {
+                    break;
+                }
+                if timed {
+                    reap_at = Instant::now() + TICK;
                 }
                 // An early reply can precede exit. Keep the next timed reap in place.
                 let _ = reply_wakes.recv_deadline(reap_at);
