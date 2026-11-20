@@ -1877,5 +1877,38 @@
     "raw_directory": "target/jobs-parity/e5a5f3c8177c6c126f5c6cb55b1bcfcee1951fff/workspace-macos",
     "result": "pass",
     "revision": "e5a5f3c8177c6c126f5c6cb55b1bcfcee1951fff"
+  },
+  "workspace_gate_latest": {
+    "checks": [
+      "fmt",
+      "compiler",
+      "runtime",
+      "workspace-build",
+      "fuzz-check",
+      "example-and-package-lint-and-fmt",
+      "compiled CLI and REPL"
+    ],
+    "compiled_cli_and_repl_tests": {
+      "failed": 0,
+      "ignored": 0,
+      "passed": 690
+    },
+    "compiler_tests": {
+      "failed": 0,
+      "ignored": 0,
+      "passed": 1432
+    },
+    "logs": {
+      "target/jobs-parity/64666eb73982a456134a9ae604d97b195dc85b77/workspace-gate/authoritative-workspace.log": "14679fb32b6aa3da83a2a3afaf2adde61aa751e6d6b71f3e2024d3ca80cc0ce7",
+      "target/jobs-parity/64666eb73982a456134a9ae604d97b195dc85b77/workspace-gate/compiled-suites.log": "2475abe54382a388f8e1d27a74b58fe46a52e62b2199567f673eea7d4e064476"
+    },
+    "platform": "macOS arm64",
+    "result": "pass",
+    "revision": "64666eb73982a456134a9ae604d97b195dc85b77",
+    "runtime_and_library_tests": {
+      "failed": 0,
+      "ignored": 44,
+      "passed": 1550
+    }
   }
 }

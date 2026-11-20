@@ -663,6 +663,11 @@ The local workspace gate passed at `e5a5f3c8`, including formatter and
 linter checks, compiler and runtime tests, the workspace and fuzz builds,
 the REPL, and the compiled `meshc` suites.
 
+The follow-up gate on source `64666eb7` passed 1,432 compiler tests,
+1,550 runtime and library tests, and 690 compiled CLI and REPL tests. The
+workspace built, and the locked fuzz targets passed `cargo check`.
+Formatter and linter checks passed for examples and packages. [Workspace receipts](../proof/jobs-parity/qualification-v1.json)
+
 The authoritative workflow targets Linux x64 and macOS arm64. These local
 receipts cover arm64 hosts and a Linux arm64 container. Windows has no
 compiled Jobs qualification in this matrix. Core parity remains open until

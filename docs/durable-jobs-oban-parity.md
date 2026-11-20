@@ -95,7 +95,7 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] Test fixture data equality, monotonic latency accounting, percentiles, and rejection of missing or mismatched samples. Run the driver self-check and `bash scripts/verify-postgres-jobs.sh`.
+- [x] Test fixture data equality, monotonic latency accounting, percentiles, and rejection of missing or mismatched samples. Run the driver self-check and `bash scripts/verify-postgres-jobs.sh`.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `gpt-6.2-sol high` at the PR head using the compiled fixtures and the PostgreSQL boot recipe.
 
@@ -145,7 +145,7 @@ env -u MESH_TEST_DATABASE_URL -u MESH_JOBS_TEST_PG_URL \
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] Cover capacity, SQL result size, ordered prefixes, queue rotation, unstarted refunds, and same-token retries. Run `bash scripts/verify-postgres-jobs.sh`.
+- [x] Cover capacity, SQL result size, ordered prefixes, queue rotation, unstarted refunds, and same-token retries. Run `bash scripts/verify-postgres-jobs.sh`.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `gpt-6.2-sol high` at the PR head using the compiled fixtures and the PostgreSQL boot recipe.
 
@@ -206,7 +206,7 @@ OS spawn call and a gate at the existing native worker-start marker.
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] Cover partial and coalesced wire frames, reconnect order, subscription fallback, and bounded wake queues. Run the PostgreSQL driver tests and `bash scripts/verify-postgres-jobs.sh`.
+- [x] Cover partial and coalesced wire frames, reconnect order, subscription fallback, and bounded wake queues. Run the PostgreSQL driver tests and `bash scripts/verify-postgres-jobs.sh`.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `gpt-6.2-sol high` at the PR head using the compiled fixtures and the PostgreSQL boot recipe.
 
@@ -256,7 +256,7 @@ OS spawn call and a gate at the existing native worker-start marker.
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] Test event schemas, privacy, same-token retries, and subscriber overflow. Run Jobs tests plus compiler, REPL, and compiled API coverage for the public binding.
+- [x] Test event schemas, privacy, same-token retries, and subscriber overflow. Run Jobs tests plus compiler, REPL, and compiled API coverage for the public binding.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `gpt-6.2-sol high` at the PR head using the compiled fixtures and the PostgreSQL boot recipe.
 
@@ -306,7 +306,7 @@ OS spawn call and a gate at the existing native worker-start marker.
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] Test the payload matcher, scopes, outcome decoding, drain cutoff and budget, and rejection of test-only hooks in ordinary builds. Run the compiler and meshc test suites.
+- [x] Test the payload matcher, scopes, outcome decoding, drain cutoff and budget, and rejection of test-only hooks in ordinary builds. Run the compiler and meshc test suites.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `gpt-6.2-sol high` at the PR head using the compiled fixtures and the PostgreSQL boot recipe.
 
@@ -356,7 +356,7 @@ OS spawn call and a gate at the existing native worker-start marker.
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] Cover command scope, edits racing claims, terminal-only deletes, receipt replay, and cron takeover. Run `bash scripts/verify-postgres-jobs.sh` plus store and cron tests.
+- [x] Cover command scope, edits racing claims, terminal-only deletes, receipt replay, and cron takeover. Run `bash scripts/verify-postgres-jobs.sh` plus store and cron tests.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `gpt-6.2-sol high` at the PR head using the compiled fixtures and the PostgreSQL boot recipe.
 
@@ -406,7 +406,7 @@ OS spawn call and a gate at the existing native worker-start marker.
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] Run the authoritative workspace build, format, runtime tests, proof gates, and the versioned PostgreSQL matrix. Keep the full compiler-to-worker entry point in the compiled proof.
+- [x] Run the authoritative workspace build, format, runtime tests, proof gates, and the versioned PostgreSQL matrix. Keep the full compiler-to-worker entry point in the compiled proof.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on `gpt-6.2-sol high` at the PR head using the compiled fixtures and the PostgreSQL boot recipe.
 
