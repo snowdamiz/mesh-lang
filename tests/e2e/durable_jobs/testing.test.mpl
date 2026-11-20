@@ -65,6 +65,43 @@ fn check_borrowed(conn :: borrow PgConn) -> String!String do
   end
 end
 
+fn inspection_specs(index :: Int, specs :: List<String>) -> List<String> do
+  if index == 21 do
+    return specs
+  end
+  let spec = Json.encode(json { worker: "proof", queue: "testing",
+    args: json { label: "inspection-page", sequence: index } })
+  inspection_specs(index + 1, List.append(specs, spec))
+end
+
+fn check_inspection_order(rows :: Json, index :: Int, count :: Int) -> Unit!String do
+  if index == count do
+    return Ok(())
+  end
+  let args = Json.object_get(Json.array_get(rows, index)?, "args")?
+  if Json.as_int(Json.object_get(args, "sequence")?)? != index do
+    return Err("inspection did not keep insertion order")
+  end
+  check_inspection_order(rows, index + 1, count)
+end
+
+fn check_inspection_limit(pool :: PoolHandle) -> Unit!String do
+  let batch = "[" <> String.join(inspection_specs(0, []), ",") <> "]"
+  let _ = Jobs.enqueue(pool, namespace(), batch)?
+  let rows = Json.parse(Test.jobs_inspect(pool, namespace(),
+    """{"args":{"label":"inspection-page"}}""")?)?
+  if Json.array_length(rows)? != 20 do
+    return Err("inspection default did not cap the result at 20 rows")
+  end
+  let _ = check_inspection_order(rows, 0, 20)?
+  let full = Json.parse(Test.jobs_inspect(pool, namespace(),
+    """{"args":{"label":"inspection-page"},"limit":21}""")?)?
+  if Json.array_length(full)? != 21 do
+    return Err("inspection did not honor the explicit limit")
+  end
+  check_inspection_order(full, 0, 21)
+end
+
 fn check_manual(pool :: PoolHandle) -> Unit!String do
   case Repo.transaction(pool, check_borrowed) do
     Err(error) ->
@@ -80,7 +117,7 @@ fn check_manual(pool :: PoolHandle) -> Unit!String do
   let _ = check(Test.refute_enqueued(pool, other, filter(), 0), "other namespace")?
   let missing = Test.assert_enqueued(pool, namespace(), """{"args":{"label":"missing"}}""", 20)
   case missing do
-    Err(_) -> Ok(())
+    Err(_) -> check_inspection_limit(pool)
     Ok(_) -> Err("assertion accepted missing work")
   end
 end
