@@ -1941,6 +1941,7 @@ WHERE name IN ('server_version','server_version_num','shared_buffers','max_conne
                             result = run_trial(subjects[engine], allocation, workload, batches, run_scratch,
                                                run_evidence, settings, pair, listener_proxy)
                             write_json(run_evidence / "metrics.json", result)
+                            shutil.rmtree(run_scratch)
                             if pair >= 0:
                                 trials.append(result)
                     validate_pairs(trials, pair_count, slots, variants)
