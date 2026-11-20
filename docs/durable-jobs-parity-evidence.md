@@ -608,6 +608,32 @@ PG_BIN_DIR=/opt/homebrew/opt/postgresql@17/bin \
   --workload sparse --postgres-version 17.11
 ```
 
+### Follow-up on short jobs and the one-slot process cap
+
+The one-slot rerun used harness `40811314` and a fixture-local Erlang
+hosts entry. The original numeric address lookup started two
+`inet_gethost` helpers. With the hosts entry, Oban peaked at two processes
+in all five one-slot profiles. The paired trials reconciled 2,760 jobs per
+engine over verified TLS. The short and 100 ms profiles met the throughput
+and pickup limits with the experimental Mesh runtime `4f50a567` and still
+exceeded the CPU-per-job limit. [Rerun receipts](../proof/jobs-parity/qualification-v1.json)
+
+The instrumented `1b12243b` short-job fixture separated the handler's
+`Pg.connect` call from its first write. Across five trials with 16 slots,
+the median of trial medians was 4.95 ms from database claim to native
+constructor, 0.52 ms from constructor to handler entry, 5.31 ms in
+verified-TLS connection setup, and 0.52 ms from connect to attempt commit.
+The sequential plaintext SCRAM run recorded 3.32 ms in connection setup.
+These diagnostic runs had separate host-load samples. [Trace receipts](../proof/jobs-parity/qualification-v1.json)
+
+The macOS `4f50a567` experiment signaled the supervisor when the kernel
+reported child exit. At one slot, median short-job throughput was 97.6
+jobs per second against 72.9 on `1b12243b`, and the median effect-to-settlement
+interval was 0.62 ms against 2.33 ms. Both used batch claims. At 16 slots,
+the experiment still missed the Oban throughput, pickup, and CPU limits.
+The candidate stays experimental because its per-child watcher descriptor
+can prevent a later launch under descriptor pressure. [Experiment receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Historical references
 
 On the same macOS arm64 host and PostgreSQL 17.11 configuration, the driver

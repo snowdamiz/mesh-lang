@@ -138,6 +138,44 @@
     "macos_revision": "53fb9189e0dd71e0856f3ca6b5aad2d3bc4a5c8c",
     "transport": "SCRAM with verified TLS"
   },
+  "dense_connection_stage_study": {
+    "profile": "short-1r-16s",
+    "scope": "instrumented read and connect timestamps, sequential transport runs",
+    "traces": {
+      "plaintext": {
+        "harness_revision": "2bbd94f6bdc210a1d1cd9c15f2d2d92558bccdd7",
+        "measured_mesh_attempts": 640,
+        "median_of_trial_medians_ms": {
+          "claim_to_native_entry_ms": 4.5849609375,
+          "connect_ms": 3.316,
+          "connect_to_attempt_commit_ms": 0.47998046875,
+          "effect_to_settlement_ms": 1.70947265625,
+          "handler_to_connect_ms": 0.013,
+          "native_entry_to_handler_ms": 0.4835
+        },
+        "raw_receipt": "target/jobs-parity/stage-trace/target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-load-g1dsdg4e/stage-audit.json",
+        "runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+        "sha256": "64d6ed24ed7bcbc57b804563286afe0eb24257d81809c5bd0a22b9e6e50c7d0a",
+        "transport": "SCRAM"
+      },
+      "verified_tls": {
+        "harness_revision": "2bbd94f6bdc210a1d1cd9c15f2d2d92558bccdd7",
+        "measured_mesh_attempts": 640,
+        "median_of_trial_medians_ms": {
+          "claim_to_native_entry_ms": 4.952392578125,
+          "connect_ms": 5.311999999999999,
+          "connect_to_attempt_commit_ms": 0.5174560546875,
+          "effect_to_settlement_ms": 2.0150146484375,
+          "handler_to_connect_ms": 0.014,
+          "native_entry_to_handler_ms": 0.518
+        },
+        "raw_receipt": "target/jobs-parity/stage-trace/target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-load-8ea0ml8b/stage-audit.json",
+        "runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+        "sha256": "4244c2f93d045d055b93d2aec64227ff60f27b8aae748d358c18578b45a98312",
+        "transport": "SCRAM with verified TLS"
+      }
+    }
+  },
   "faults_with_transaction_scoped_producer": {
     "case_count": 9,
     "case_sha256": {
@@ -959,6 +997,60 @@
     },
     "runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287"
   },
+  "macos_native_exit_wakeup_experiment": {
+    "baseline_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+    "batch_startup": "target/jobs-parity/4f50a56757c79912b4ad64669a7025d8815d7e3a/j2-lane-7-rbnw98tl/result.json",
+    "candidate_revision": "4f50a56757c79912b4ad64669a7025d8815d7e3a",
+    "disposition": "experimental due to per-child descriptor pressure",
+    "faults": "target/jobs-parity/4f50a56757c79912b4ad64669a7025d8815d7e3a/j1-fault-rver5wov/result.json",
+    "matches": {
+      "short-1r-16s": {
+        "arms": {
+          "baseline": {
+            "effect_commit_to_settlement_ms": 1.728515625,
+            "medians": {
+              "cpu_seconds_per_job": 0.005389015625,
+              "jobs_per_second": 431.94505776975143,
+              "pickup_p99_ms": 280.425048828125
+            }
+          },
+          "mesh": {
+            "effect_commit_to_settlement_ms": 1.345458984375,
+            "medians": {
+              "cpu_seconds_per_job": 0.00529803125,
+              "jobs_per_second": 454.8264497653812,
+              "pickup_p99_ms": 273.607177734375
+            }
+          }
+        },
+        "raw_receipt": "target/jobs-parity/exit-wakeup-study/target/jobs-parity/4f50a56757c79912b4ad64669a7025d8815d7e3a/j1-load-0hfme_f9/profile-audit.json",
+        "sha256": "4affa15b42d73060321b6a945dbda2c0382606f99ac3f885cf278c6cdd0cd3bd"
+      },
+      "short-1r-1s": {
+        "arms": {
+          "baseline": {
+            "effect_commit_to_settlement_ms": 2.3385009765625,
+            "medians": {
+              "cpu_seconds_per_job": 0.004330765625,
+              "jobs_per_second": 72.93268727840086,
+              "pickup_p99_ms": 1736.81884765625
+            }
+          },
+          "mesh": {
+            "effect_commit_to_settlement_ms": 0.616455078125,
+            "medians": {
+              "cpu_seconds_per_job": 0.0042365859375,
+              "jobs_per_second": 97.56945446018739,
+              "pickup_p99_ms": 1296.281005859375
+            }
+          }
+        },
+        "raw_receipt": "target/jobs-parity/exit-wakeup-study/target/jobs-parity/4f50a56757c79912b4ad64669a7025d8815d7e3a/j1-load-zpzdprhv/profile-audit.json",
+        "sha256": "2df168b05a6f1cc6dc547c6f0f487cb2de9bfa0dec5a1570eb80f35bad53af48"
+      }
+    },
+    "scope": "five release pairs per profile with batch claims and PostgreSQL 17.11 verified TLS"
+  },
   "macos_paired_workload_lanes": {
     "lane_logs": {
       "j1-lane-5": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/lane-evidence/17.11/j1-lane-5.log",
@@ -1059,9 +1151,55 @@
     "observed": 4,
     "within_limit": false
   },
+  "one_slot_oban_process_rerun": {
+    "harness_revision": "40811314ad1513d8c3ff29322145e62a832d8f13",
+    "oban": {
+      "limit": 2,
+      "observed_peak_processes": 2,
+      "profiles_within_limit": 5
+    },
+    "performance_budget_breaches": [
+      {
+        "metric": "cpu_seconds_per_job",
+        "profile": "short-1r-1s",
+        "scope": "budgets"
+      },
+      {
+        "metric": "cpu_seconds_per_job",
+        "profile": "slow-1r-1s",
+        "scope": "budgets"
+      },
+      {
+        "metric": "cpu_seconds_per_job",
+        "profile": "noop-1r-1s",
+        "scope": "budgets"
+      },
+      {
+        "metric": "jobs_per_second",
+        "profile": "noop-1r-1s",
+        "scope": "comparison"
+      },
+      {
+        "metric": "pickup_p99_ms",
+        "profile": "noop-1r-1s",
+        "scope": "comparison"
+      }
+    ],
+    "raw_receipt": "target/jobs-parity/4f50a56757c79912b4ad64669a7025d8815d7e3a/j1-load-n4yzpbiu/group-audit.json",
+    "reconciled_jobs": {
+      "mesh": 2760,
+      "oban": 2760
+    },
+    "runtime_revision": "4f50a56757c79912b4ad64669a7025d8815d7e3a",
+    "separate_16_slot_short_audit": {
+      "raw_receipt": "target/jobs-parity/4f50a56757c79912b4ad64669a7025d8815d7e3a/j1-load-vtpd5vgp/group-audit.json",
+      "sha256": "c891ccef51861204865832638bc5c5283869827e143794dbb3443a8cfad9afc3"
+    },
+    "sha256": "71e85e74503b66171c475f48ad46c2a2d9d046685d337bdd675f4534fe1851bb",
+    "transport": "SCRAM with verified TLS"
+  },
   "open_gates": [
     "Oban throughput and pickup budgets in the matched matrix",
-    "one-slot Oban process budget",
     "batch sparse pickup variance between the full matrix and the targeted rerun",
     "hosted Linux x64 proof"
   ],
