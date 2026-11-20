@@ -389,8 +389,9 @@ To check that the test catches a regression, temporarily change the policy
 to accept only budget 1 or remove the parentheses around the allowed
 statuses. Expect a failing assertion and exit 1. Restore the policy and
 rerun the test. Report the change, the named test result, and any assumptions
-about the request. The sweep covers the listed budgets and HTTP statuses. The same recipe is
-available offline with `meshc guide testing`.
+about the request. The sweep covers the listed budgets and HTTP statuses. Read
+the recipe offline with `meshc guide testing`. To check the pure policy across
+all supported inputs as well, see [Run the retry law](/docs/tooling/#run-the-retry-law).
 
 ## Coverage
 

@@ -626,6 +626,11 @@ The `_` pattern is a wildcard that matches anything. Arms go one per line, or on
 
 Every unguarded `case` or `match` must cover all possible values. The compiler reports a non-exhaustive match as an error and warns about redundant arms. An arm with a `when` guard does not count as exhaustive because the guard may be false.
 
+For a sum type, E0012 names the missing variants. Write an arm for each
+variant when you want the compiler to flag the match after the type gains a
+variant. Use `_` when the same default should apply to any remaining variant,
+including ones added later.
+
 ### Arm Bodies
 
 An arm's body is one expression after `->`. For several statements, write `-> do ... end`, or start the body on the next line, indented. The last expression is the arm's value. `return` is an expression too, so an arm can leave the function early:
@@ -974,25 +979,23 @@ end
 
 ### Slot Pipe Operator
 
-The slot pipe `|N>` routes the left-hand value to a specific argument position (N) instead of the first position:
+The slot pipe `|N>` inserts the left-hand value at argument position N.
+This example prints `left:middle:right`.
 
 ```mesh
-fn add(a :: Int, b :: Int) -> Int do
-  a + b
+fn format_three(left :: String, middle :: String, right :: String) -> String do
+  "${left}:${middle}:${right}"
 end
 
 fn main() do
-  # Slot pipe: 10 |2> add(1) = add(1, 10) = 11
-  let result = 10 |2> add(1)
-  println("#{result}")
-
-  # Chain slot pipe and regular pipe
-  let chained = 5 |2> add(10) |> add(1)
-  println("#{chained}")
+  "middle" |2> format_three("left", "right") |> println()
 end
 ```
 
-Use `|2>` to insert the piped value as the second argument, `|3>` for the third, and so on. Slot pipes can be chained with regular pipes.
+A plain `|>` supplies the first argument. Writing
+`"middle" |> format_three("left", _, "right")` supplies an extra argument and
+triggers E0003. Use `|2>` and omit the argument for the middle position.
+Run `meshc guide syntax` to read the pipe examples offline.
 
 ### Multi-Line Pipes
 
@@ -1198,7 +1201,10 @@ fn main() do
 end
 ```
 
-Selective imports can be comma-separated or parenthesized across lines:
+Selective imports resolve the full module path. For example,
+`from Billing.Policy import invoice` and `from Support.Policy import escalate`
+select from different modules even though both end in `Policy`. You can list
+several public names with commas or place the list in parentheses across lines.
 
 ```mesh
 from Geometry import (

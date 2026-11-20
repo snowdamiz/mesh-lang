@@ -124,6 +124,11 @@ meshpkg update
 The [tooling guide](https://meshlang.dev/docs/tooling/) documents supported
 targets, installer options, source-build prerequisites, and editor setup.
 
+Run `meshc guide` for offline language and testing guidance. Run
+`meshc skills setup` to install that guidance for your coding tools. See the
+[Mesh skill setup reference](https://meshlang.dev/docs/tooling/#read-the-offline-guide-and-install-the-mesh-skill)
+for supported tools, installation scope, and upgrades.
+
 ## Build and run
 
 ```bash
@@ -164,6 +169,10 @@ meshc migrate . status
 See [Developer Tools](https://meshlang.dev/docs/tooling/) for build targets,
 LLVM output, JSON diagnostics, migrations, the LSP, the registry CLI, and the
 full command reference.
+
+Use `meshc verify` to check pure `Int` and `Bool` policies against `.law` files.
+The [retry law walkthrough](https://meshlang.dev/docs/tooling/#run-the-retry-law)
+covers solver setup and how to replay a counterexample.
 
 ## Pick a starter
 

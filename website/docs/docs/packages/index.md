@@ -165,8 +165,11 @@ Publishing rules:
 
 - Package versions are immutable. Change the version before republishing.
 - The upload limit is 50 MiB.
-- Hidden paths, the top-level `tests/` tree, `*.test.mpl` files, and
-  `*.test-support.mpl` fragments are excluded.
+- Hidden paths, Mesh sources under the top-level `tests/` directory,
+  `*.test.mpl` files, and `*.test-support.mpl` fragments are excluded.
+- The archive includes the `.law` files selected by
+  [law discovery](/docs/tooling/#choose-which-laws-to-check), including laws
+  under `tests/`. Explicit law roots keep their paths even when empty.
 - Visible symbolic links are rejected instead of followed into excluded or
   out-of-package paths.
 - Visible `.mpl` modules keep their package-relative paths.
