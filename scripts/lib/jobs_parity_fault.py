@@ -73,8 +73,9 @@ class _Frames:
 
 
 class _AfterCommit:
-    def __init__(self, proxy):
+    def __init__(self, proxy, matches):
         self.proxy = proxy
+        self.matches = matches
         # Startup ends in ReadyForQuery, just as a Sync does.
         self.pending = deque([(b"S", False)])
         self.statements = set()
@@ -90,11 +91,11 @@ class _AfterCommit:
         if kind == b"Q":
             self.statements.discard(b"")
             self.portals.pop(b"", None)
-            matches = self.proxy._matches(_cstring(body)[0])
+            matches = self.matches(_cstring(body)[0])
         elif kind == b"P":
             name, rest = _cstring(body)
             self.statements.discard(name)
-            if self.proxy._matches(_cstring(rest)[0]):
+            if self.matches(_cstring(rest)[0]):
                 self.statements.add(name)
         elif kind == b"B":
             portal, rest = _cstring(body)
@@ -173,16 +174,19 @@ class SettlementProxy:
     persisted settlement independently.
     """
 
-    def __init__(self, upstream_port, sql_matches, placement):
+    def __init__(self, upstream_port, sql_matches, placement, *, prior_query=None):
         if type(upstream_port) is not int or not 1 <= upstream_port <= 65535:
             raise ValueError("upstream must be a loopback TCP port")
         if placement not in ("before_commit", "after_commit"):
             raise ValueError("invalid settlement fault placement")
         if not callable(sql_matches):
             raise TypeError("sql_matches must be callable")
+        if prior_query is not None and not callable(prior_query):
+            raise TypeError("prior_query must be callable")
         self._upstream_port = upstream_port
         self._sql_matches = sql_matches
         self._placement = placement
+        self._prior_query = prior_query
         self._claimed = threading.Event()
         self._claim_lock = threading.Lock()
         self._stop = threading.Event()
@@ -237,11 +241,11 @@ class SettlementProxy:
             for worker in workers:
                 worker.join()
 
-    def _matches(self, sql):
+    def _matches(self, sql, predicate):
         if self._claimed.is_set():
             return False
         try:
-            return self._sql_matches(sql.decode("utf-8"))
+            return predicate(sql.decode("utf-8"))
         except Exception:
             # Predicate or decoding errors must not log SQL or close a session
             # that would otherwise be relayed without a fault.
@@ -273,7 +277,16 @@ class SettlementProxy:
             }
 
     def _bridge(self, client, backend):
-        after = _AfterCommit(self) if self._placement == "after_commit" else None
+        armed = self._prior_query is None
+
+        def matches(sql):
+            nonlocal armed
+            if not armed:
+                armed = self._matches(sql, self._prior_query)
+                return False
+            return self._matches(sql, self._sql_matches)
+
+        after = _AfterCommit(self, matches) if self._placement == "after_commit" else None
         with selectors.DefaultSelector() as selector:
             selector.register(client, selectors.EVENT_READ, (backend, _Frames(startup=True)))
             selector.register(backend, selectors.EVENT_READ, (client, _Frames()))
@@ -292,7 +305,7 @@ class SettlementProxy:
                         if key.fileobj is client:
                             if after:
                                 after.request(kind, body)
-                            elif self._drop_query(kind, body):
+                            elif self._drop_query(kind, body, matches):
                                 return True
                         elif after:
                             frame, confirmed = after.response(kind, body, frame)
@@ -302,9 +315,9 @@ class SettlementProxy:
                             dest.sendall(frame)
         return False
 
-    def _drop_query(self, kind, body):
+    def _drop_query(self, kind, body, matches):
         if kind not in (b"P", b"Q") or self._claimed.is_set():
             return False
         if kind == b"P":
             _, body = _cstring(body)
-        return self._matches(_cstring(body)[0]) and self._reserve()
+        return matches(_cstring(body)[0]) and self._reserve()

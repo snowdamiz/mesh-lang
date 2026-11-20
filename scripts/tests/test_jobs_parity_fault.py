@@ -24,13 +24,13 @@ COMPLETE = message(b"C", b"UPDATE 1\0")
 
 
 @contextmanager
-def probe(placement, sql=OBAN_SQL):
+def probe(placement, sql=OBAN_SQL, *, prior=None):
     with socket.socket() as server:
         server.bind(("127.0.0.1", 0))
         server.listen()
         server.settimeout(2)
         predicate = lambda query: query == sql.decode()
-        with SettlementProxy(server.getsockname()[1], predicate, placement) as proxy:
+        with SettlementProxy(server.getsockname()[1], predicate, placement, prior_query=prior) as proxy:
             yield server, proxy
 
 
@@ -89,6 +89,33 @@ class SettlementProxyTests(unittest.TestCase):
             "placement": "before_commit", "query_forwarded": False,
             "command_complete": False, "ready_status": None,
         })
+
+    def test_commit_cut_is_armed_only_on_the_batch_session(self):
+        commit = message(b"Q", b"COMMIT\0")
+        claim_sql = b"SELECT * FROM mesh_jobs.claim_batch_v1()"
+        claim = message(b"Q", claim_sql + b"\0")
+        started = COMPLETE + message(b"Z", b"T")
+        committed = message(b"C", b"COMMIT\0") + IDLE
+        for placement in ("before_commit", "after_commit"):
+            with self.subTest(placement=placement):
+                with probe(placement, b"COMMIT", prior=lambda sql: sql == claim_sql.decode()) as (server, proxy):
+                    with self.session(server, proxy) as (batch, batch_db):
+                        batch.sendall(claim)
+                        self.expect_bytes(batch_db, claim)
+                        batch_db.sendall(started)
+                        self.expect_bytes(batch, started)
+                        with self.session(server, proxy) as (other, other_db):
+                            other.sendall(commit)
+                            self.expect_bytes(other_db, commit)
+                            other_db.sendall(committed)
+                            self.expect_bytes(other, committed)
+                        batch.sendall(commit)
+                        if placement == "after_commit":
+                            self.expect_bytes(batch_db, commit)
+                            batch_db.sendall(committed)
+                        self.expect_cut(batch_db)
+                        self.expect_cut(batch)
+                self.assertEqual(proxy.fault["placement"], placement)
 
     def test_before_commit_cuts_only_one_of_two_matching_connections(self):
         with probe("before_commit") as (server, proxy):

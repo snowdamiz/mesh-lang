@@ -155,6 +155,12 @@ fn perform(context :: String, entered_us :: Int) -> String!String do
     end
     Ok("""{"action":"retry_after","delay_ms":1000,"reason":"parity fail_first"}""")
   else
+    let gate = Env.get("JOBS_PARITY_RETRY_GATE", "")
+    if fail_first && gate != "" do
+      while !File.exists(gate) do
+        Timer.sleep(10)
+      end
+    end
     Ok("""{"action":"complete"}""")
   end
 end

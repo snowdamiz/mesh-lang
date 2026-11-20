@@ -24,7 +24,17 @@ defmodule JobsParityOban.Worker do
       if hold_ms > 0, do: Process.sleep(hold_ms)
       {:error, :fixture_fail_first}
     else
+      if fail_first, do: wait_retry_gate(System.get_env("JOBS_PARITY_RETRY_GATE"))
       :ok
+    end
+  end
+
+  defp wait_retry_gate(nil), do: :ok
+
+  defp wait_retry_gate(path) do
+    unless File.exists?(path) do
+      Process.sleep(10)
+      wait_retry_gate(path)
     end
   end
 

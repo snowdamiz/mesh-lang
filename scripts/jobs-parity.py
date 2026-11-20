@@ -4,6 +4,7 @@
 import argparse
 import contextlib
 import hashlib
+import importlib.util
 import json
 import math
 import os
@@ -28,6 +29,10 @@ OBAN = ROOT / "scripts/fixtures/jobs-parity-oban"
 MESH_SOURCE = ROOT / "tests/e2e/durable_jobs/.parity"
 CONFIG = Path(__file__).with_name("jobs-parity-profiles.json")
 EVIDENCE = ROOT / "target/jobs-parity"
+HARNESS_PATHS = (
+    "scripts/jobs-parity.py", "scripts/jobs-parity-profiles.json", "scripts/lib/jobs_parity_fault.py",
+    str(OBAN.relative_to(ROOT)), str(MESH_SOURCE.relative_to(ROOT)),
+)
 REFERENCE = ("db606548", "59f6a7b3", "7c162056")
 POSTGRES_VERSION = re.compile(r"[0-9]+\.[0-9]+")
 SCHEMA = """
@@ -50,6 +55,10 @@ CREATE TABLE public.mesh_jobs_parity_product (
 
 
 class FixtureError(Exception):
+    pass
+
+
+class RunnerCleanupError(FixtureError):
     pass
 
 
@@ -144,22 +153,26 @@ def account(rows, expected, commits, tolerance):
     return samples
 
 
-def validate_pairs(trials, pairs):
+def validate_pairs(trials, pairs, variants=("mesh", "oban")):
     booked = [(trial["pair"], trial["engine"]) for trial in trials]
-    expected = {(i, engine) for i in range(pairs) for engine in ("mesh", "oban")}
+    expected = {(i, engine) for i in range(pairs) for engine in variants}
     if len(booked) != len(expected) or set(booked) != expected:
         raise FixtureError("incomplete or duplicate paired trials")
     if len({trial["input_sha256"] for trial in trials}) != 1:
         raise FixtureError("paired trials received different inputs")
-    required = ("jobs_per_second", "pickup_p99_ms", "claim_p99_ms", "settlement_p99_ms",
-                "sql_calls_per_job", "claim_calls_per_job", "idle_queries_per_minute", "peak_executing",
-                "peak_connections", "peak_rss_bytes", "cpu_seconds_per_job",
+    positive = ("completed", "jobs_per_second", "sql_calls_per_job", "runner_sql_calls_per_job",
+                "enqueue_sql_calls_per_job", "claim_calls_per_job",
+                "peak_executing", "peak_connections", "peak_rss_bytes", "cpu_seconds_per_job",
                 "peak_processes", "peak_threads")
+    nonnegative = ("pickup_p99_ms", "claim_p99_ms", "settlement_p99_ms", "idle_queries_per_minute")
     for trial in trials:
-        for key in required:
+        for key in (*positive, *nonnegative):
             value = trial.get(key)
-            if not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+            if (type(value) not in (int, float) or not math.isfinite(value)
+                    or value < 0 or (key in positive and value == 0)):
                 raise FixtureError(f"missing or invalid {key} in pair {trial['pair']}")
+        if trial["peak_threads"] < trial["peak_processes"]:
+            raise FixtureError(f"missing threads in pair {trial['pair']}")
 
 
 def postgres_tools():
@@ -229,12 +242,14 @@ timezone = 'UTC'
             if self.sql("postgres", "SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()") != "t":
                 raise FixtureError("the compatibility observer must use TLS")
         self.sql("postgres", "CREATE EXTENSION pg_stat_statements")
-        self.sql("postgres", f"CREATE ROLE parity_subject LOGIN CONNECTION LIMIT {self.connection_cap}"
-                 f" PASSWORD '{self.password}'")
+        self.sql("postgres", f"CREATE ROLE parity_subject LOGIN PASSWORD '{self.password}'")
+        self.sql("postgres", f"CREATE ROLE parity_producer LOGIN IN ROLE parity_subject "
+                 f"PASSWORD '{self.password}'")
 
     def prepare_database(self, engine):
         self.sql("postgres", f"DROP DATABASE IF EXISTS {engine}")
-        self.sql("postgres", f"CREATE DATABASE {engine} OWNER parity_subject")
+        self.sql("postgres", f"CREATE DATABASE {engine} OWNER parity_subject "
+                 f"CONNECTION LIMIT {self.connection_cap}")
         self.sql(engine, f"SET ROLE parity_subject; {SCHEMA}")
         self.sql(engine, f"CREATE TABLE public.mesh_jobs_parity_authority"
                  f" (nonce text NOT NULL); INSERT INTO public.mesh_jobs_parity_authority VALUES ('{self.nonce}')")
@@ -288,18 +303,21 @@ timezone = 'UTC'
         claim_query = ("query LIKE '%FROM mesh_jobs.claim%'" if engine == "mesh"
                        else "query LIKE '%oban_jobs%' AND query ILIKE '%FOR UPDATE SKIP LOCKED%'")
         return json.loads(self.sql("postgres", f"""
-SELECT json_build_object('total', coalesce(sum(calls),0),
-                         'claims', coalesce(sum(calls) FILTER (WHERE {claim_query}),0))
-FROM pg_stat_statements
+SELECT json_build_object(
+ 'runner', coalesce(sum(calls) FILTER (WHERE rolname='parity_subject'),0),
+ 'enqueue', coalesce(sum(calls) FILTER (WHERE rolname='parity_producer'),0),
+ 'claims', coalesce(sum(calls) FILTER (WHERE rolname='parity_subject' AND ({claim_query})),0)
+)
+FROM pg_stat_statements JOIN pg_roles ON userid = pg_roles.oid
 WHERE dbid = (SELECT oid FROM pg_database WHERE datname = '{engine}')
-  AND userid = (SELECT oid FROM pg_roles WHERE rolname = 'parity_subject')
+  AND rolname IN ('parity_subject', 'parity_producer')
 """))
 
     def observe(self, engine, namespace):
         relation, scope = job_relation(engine, namespace)
         return json.loads(self.sql(engine, f"""
 SELECT json_build_object(
- 'connections', (SELECT count(*) FROM pg_stat_activity WHERE usename = 'parity_subject'
+ 'connections', (SELECT count(*) FROM pg_stat_activity WHERE usename IN ('parity_subject', 'parity_producer')
                     AND datname = current_database()),
  'executing', count(*) FILTER (WHERE state = 'executing'),
  'terminal', count(*) FILTER (WHERE state IN ('completed','discarded','cancelled'))
@@ -335,6 +353,35 @@ SELECT coalesce(json_agg(summary ORDER BY summary.job_key), '[]') FROM (
 ) summary
 """))
 
+    def reconcile_writes(self, engine, namespace, expected):
+        if not re.fullmatch(r"parity_[a-f0-9]{16}", namespace):
+            raise FixtureError("invalid write observation namespace")
+        scope = f"engine='{engine}' AND namespace='{namespace}'"
+        writes = json.loads(self.sql(engine, f"""
+SELECT json_build_object(
+ 'attempts', (SELECT coalesce(json_object_agg(job_key, count), '{{}}') FROM (
+    SELECT job_key, count(*) FROM public.mesh_jobs_parity_attempts WHERE {scope} GROUP BY job_key
+ ) a),
+ 'effects', (SELECT coalesce(json_object_agg(job_key, count), '{{}}') FROM (
+    SELECT job_key, count(*) FROM public.mesh_jobs_parity_effects WHERE {scope} GROUP BY job_key
+ ) e)
+)
+"""))
+        if writes != expected:
+            raise QueueMismatch(f"namespace attempts or effects do not match expected counts: {writes}")
+        return writes
+
+    def claim_identity(self, engine, namespace, label):
+        relation, scope = job_relation(engine, namespace)
+        if not re.fullmatch(r"[a-z_]+", label):
+            raise FixtureError("invalid claim observation job key")
+        fence = "lease_token::text" if engine == "mesh" else "attempted_at::text"
+        return json.loads(self.sql(engine, f"""
+SELECT coalesce((SELECT json_build_object('id', id::text, 'state', state,
+                                          'attempt', attempt, 'fence', {fence})
+                 FROM {relation} WHERE {scope} AND args->>'key'='{label}'), 'null')
+"""))
+
     def owned(self, engine):
         return self.sql(engine, "SELECT nonce FROM public.mesh_jobs_parity_authority") == self.nonce
 
@@ -348,8 +395,9 @@ def job_relation(engine, namespace):
 
 
 class Subject:
-    def __init__(self, engine, command, cwd, cluster, env):
+    def __init__(self, engine, command, cwd, cluster, env, *, variant=None):
         self.engine = engine
+        self.variant = variant or engine
         self.command = command
         self.cwd = cwd
         self.cluster = cluster
@@ -365,7 +413,8 @@ class Subject:
         return checked([*self.command, action], cwd=self.cwd, env=env, log=log)
 
     def enqueue(self, env, path, log):
-        result = self.call("enqueue", dict(env, JOBS_PARITY_INPUT=str(path)), log)
+        result = self.call("enqueue", dict(env, JOBS_PARITY_INPUT=str(path),
+                            JOBS_PARITY_DB_URL=self.cluster.url(self.engine, "parity_producer")), log)
         try:
             receipt = json.loads(result.splitlines()[-1])
             if not re.fullmatch(r"\d+", receipt["xid"]) or type(receipt["count"]) is not int:
@@ -405,25 +454,64 @@ def runner_ready(processes, logs):
     return True
 
 
-def process_sample(processes):
-    roots = {process.pid for process in processes}
+def mac_thread_count(output, owned):
+    header, _, body = output.partition("\n")
+    rows = body.splitlines()
+    _, label, _ = header.partition("PID")
+    if not label:
+        raise FixtureError("cannot read macOS thread sample without PID column")
+    pid_end = header.index("PID") + len("PID")
+    counts = {}
+    for row in rows:
+        fields = row[:pid_end].split()
+        if not fields or not fields[-1].isdigit():
+            continue
+        pid = int(fields[-1])
+        if pid in owned:
+            counts[pid] = counts.get(pid, 0) + int(row[0].isspace())
+    return sum(max(1, count) for count in counts.values())
+
+
+def process_table():
     table = {}
-    for line in checked(["ps", "-A", "-o", "pid=,ppid=,rss="]).splitlines():
-        pid, parent, rss = map(int, line.split())
-        table[pid] = (parent, rss)
+    for line in checked(["ps", "-A", "-o", "pid=,ppid=,rss=,stat="]).splitlines():
+        pid, parent, rss, state = line.split()
+        if not state.startswith("Z"):
+            table[int(pid)] = (int(parent), int(rss))
+    return table
+
+
+def process_tree(table, roots):
     owned = roots & table.keys()
     while True:
         children = {pid for pid, (parent, _) in table.items() if parent in owned}
         if children <= owned:
-            break
+            return owned
         owned |= children
+
+
+def wait_for_worker_exit(pids):
+    deadline = time.monotonic() + 5
+    while pids:
+        pids = pids & process_table().keys()
+        if not pids:
+            return
+        if time.monotonic() >= deadline:
+            raise RunnerCleanupError(f"observed worker processes survived runner shutdown: {sorted(pids)}")
+        time.sleep(0.05)
+
+
+def process_sample(processes):
+    table = process_table()
+    owned = process_tree(table, {process.pid for process in processes})
     if not owned:
         return {"processes": 0, "threads": 0, "rss_bytes": 0}
     if sys.platform == "darwin":
         command = ["ps", "-M", "-p", ",".join(map(str, sorted(owned)))]
         result = subprocess.run(command, capture_output=True, text=True, timeout=5)
-        threads = sum(fields[1].isdigit() and int(fields[1]) in owned
-                      for line in result.stdout.splitlines() if len(fields := line.split()) >= 2)
+        if result.returncode and not result.stdout:
+            raise FixtureError("macOS ps failed to sample runner threads")
+        threads = mac_thread_count(result.stdout, owned)
     else:
         threads = sum(len(list(Path(f"/proc/{pid}/task").glob("*"))) for pid in owned)
     return {"processes": len(owned), "threads": threads,
@@ -433,6 +521,8 @@ def process_sample(processes):
 def stop_runners(processes, *, require_clean):
     cpu_seconds = 0.0
     error = None
+    roots = {process.pid for process in processes if process.returncode is None}
+    owned_children = process_tree(process_table(), roots) - roots if roots else set()
     for process in processes:
         if process.returncode is None:
             if process.stdin is not None:
@@ -463,6 +553,7 @@ def stop_runners(processes, *, require_clean):
                 error = FixtureError("runner did not stop before the cleanup deadline")
                 break
             time.sleep(0.05)
+    wait_for_worker_exit(owned_children)
     if error:
         raise error
     return cpu_seconds
@@ -483,6 +574,17 @@ def take_sample(cluster, engine, namespace, processes, start):
         **cluster.observe(engine, namespace),
         **process_sample(processes),
     }
+
+
+def measured_peak_executing(rows, samples):
+    active = peak = 0
+    events = [(stamp, delta) for row in rows
+              for stamp, delta in ((row["claimed_ms"], 1),
+                                   (max(row["claimed_ms"], row["settled_ms"]), -1))]
+    for _, delta in sorted(events, key=lambda event: (event[0], -event[1])):
+        active += delta
+        peak = max(peak, active)
+    return max(peak, max(sample["executing"] for sample in samples))
 
 
 def run_trial(subject, allocation, workload, batches, scratch, evidence, settings, pair):
@@ -541,10 +643,16 @@ def run_trial(subject, allocation, workload, batches, scratch, evidence, setting
                     time.sleep(settings["poll_ms"] / 1000)
         wait_for(lambda: settled_count(len(expected)), deadline, "durable settlements", interval)
         after = cluster.calls(engine)
-        calls = after["total"] - idle_calls_after["total"]
+        runner_calls = after["runner"] - idle_calls_after["runner"]
+        enqueue_calls = after["enqueue"] - idle_calls_after["enqueue"]
+        calls = runner_calls + enqueue_calls
         claim_calls = after["claims"] - idle_calls_after["claims"]
-        idle_calls = idle_calls_after["total"] - idle_calls_before["total"]
+        idle_calls = idle_calls_after["runner"] - idle_calls_before["runner"]
         rows = account(cluster.rows(engine, namespace), expected, commits, settings["clock_tolerance_ms"])
+        expected_writes = dict.fromkeys(expected, 1)
+        writes = cluster.reconcile_writes(engine, namespace, {
+            "attempts": expected_writes, "effects": expected_writes,
+        })
         product = cluster.sql(engine, f"""
 SELECT coalesce(json_agg(request_id ORDER BY request_id), '[]')
 FROM public.mesh_jobs_parity_product
@@ -559,23 +667,28 @@ WHERE engine = '{engine}' AND namespace = '{namespace}'
     finally:
         cpu = stop_runners(processes, require_clean=completed)
 
-    raw = {"engine": engine, "namespace": namespace, "pair": pair, "case_sha256": case,
-           "transactions": commits, "attempts": rows, "samples": samples, "idle_samples": idle_samples,
+    raw = {"engine": engine, "variant": subject.variant, "namespace": namespace, "pair": pair, "case_sha256": case,
+           "transactions": commits, "attempts": rows, "namespace_writes": writes,
+           "samples": samples, "idle_samples": idle_samples,
            "runner_cpu_seconds_including_startup_and_idle": cpu, "raw_sql_calls": calls,
+           "raw_runner_sql_calls": runner_calls, "raw_enqueue_sql_calls": enqueue_calls,
            "raw_claim_calls": claim_calls, "raw_idle_sql_calls": idle_calls, "idle_seconds": idle_s}
     write_json(evidence / "raw.json", raw)
     return {
-        "pair": pair, "engine": engine, "input_sha256": case, "completed": len(rows),
+        "pair": pair, "engine": subject.variant, "input_sha256": case, "completed": len(rows),
         "jobs_per_second": len(rows) / duration,
         "pickup_p99_ms": percentile([row["pickup_ms"] for row in rows], 0.99),
         "claim_p99_ms": percentile([row["commit_to_claim_ms"] for row in rows], 0.99),
         "settlement_p99_ms": percentile([row["commit_to_settlement_ms"] for row in rows], 0.99),
         "sql_calls_per_job": calls / len(rows),
+        "runner_sql_calls_per_job": runner_calls / len(rows),
+        "enqueue_sql_calls_per_job": enqueue_calls / len(rows),
         "claim_calls_per_job": claim_calls / len(rows),
         "idle_queries_per_minute": idle_calls * 60 / idle_s,
         "cpu_seconds_per_job": cpu / len(rows),
+        "peak_executing": measured_peak_executing(rows, samples),
         **{f"peak_{key}": max(sample[key] for sample in samples + idle_samples)
-           for key in ("executing", "connections", "rss_bytes", "processes", "threads")},
+           for key in ("connections", "rss_bytes", "processes", "threads")},
     }
 
 
@@ -624,21 +737,41 @@ SELECT json_build_object(
         before = wait_for(barrier, deadline, "committed effect on an active claim")
         if process.poll() is not None or not cluster.owned(engine):
             raise FixtureError("fault runner or database authority changed before injection")
-        if engine == "mesh":
-            claim = json.loads(cluster.sql(engine, f"""
-SELECT json_build_object('id',id,'token',lease_token)
-FROM mesh_jobs.jobs WHERE namespace='{namespace}' AND args->>'key'='interrupted'
-"""))
-            for field in ("id", "token"):
-                if not re.fullmatch(r"[0-9a-f-]{36}", claim.get(field) or ""):
-                    raise FixtureError(f"missing Mesh claim {field} at fault barrier")
+        claim = cluster.claim_identity(engine, namespace, "interrupted")
+        if claim is None or claim["state"] != "executing" or claim["attempt"] != 1 or not claim["fence"]:
+            raise FixtureError("missing original claim identity at fault barrier")
+        workers = process_tree(process_table(), {process.pid}) - {process.pid}
         os.kill(process.pid, signal.SIGKILL)
         process.wait(timeout=10)
         if process.stdin is not None:
             process.stdin.close()
-        replacement = subject.run(env, 1, evidence / "replacement-runner.log")
+        wait_for_worker_exit(workers)
+        gate = scratch / "replacement-gate"
+        replacement = subject.run(dict(env, JOBS_PARITY_RETRY_GATE=str(gate)), 1,
+                                  evidence / "replacement-runner.log")
         wait_for(lambda: runner_ready([replacement], [evidence / "replacement-runner.log"]),
                  deadline, "replacement runner readiness")
+
+        def reclaimed():
+            value = cluster.claim_identity(engine, namespace, "interrupted")
+            return value if value and value["state"] == "executing" and value["attempt"] == 2 else None
+
+        recovered = wait_for(reclaimed, deadline, "active replacement claim")
+        if recovered["id"] != claim["id"] or not recovered["fence"] or recovered["fence"] == claim["fence"]:
+            raise QueueMismatch("recovery changed job identity or reused its old claim fence")
+        stale_ack_rejected = None
+        if engine == "mesh":
+            if not all(re.fullmatch(r"[0-9a-f-]{36}", claim[field]) for field in ("id", "fence")):
+                raise FixtureError("invalid Mesh claim values at fault barrier")
+            applied = cluster.sql(engine, f"""
+SELECT mesh_jobs.settle('{namespace}', '{claim['id']}', '{claim['fence']}',
+    '{{"action":"complete"}}'::jsonb, false)
+""")
+            stale_ack_rejected = applied == "f" and reclaimed() == recovered
+            if not stale_ack_rejected:
+                raise QueueMismatch("the original Mesh token could change the active replacement claim")
+        gate.touch()
+
         wait_for(lambda: cluster.observe(engine, namespace)["terminal"] == 1,
                  deadline, "recovered settlement")
         rows = cluster.rows(engine, namespace)
@@ -648,38 +781,32 @@ FROM mesh_jobs.jobs WHERE namespace='{namespace}' AND args->>'key'='interrupted'
         if (row["job_key"], row["state"], row["attempts"], row["effects"], row["effect_keys"]) != (
                 "interrupted", "completed", 2, 1, 1):
             raise QueueMismatch(f"recovery did not reconcile: {row}")
+        writes = cluster.reconcile_writes(engine, namespace, {
+            "attempts": {"interrupted": 2}, "effects": {"interrupted": 1},
+        })
         product = cluster.sql(engine, f"""
 SELECT request_id FROM public.mesh_jobs_parity_product
 WHERE engine = '{engine}' AND namespace = '{namespace}'
 """)
         if product != "interrupted":
             raise QueueMismatch("unexpected business writes after rollback and recovery")
-        stale_ack_rejected = None
-        if engine == "mesh":
-            applied = cluster.sql(engine, f"""
-SELECT mesh_jobs.settle('{namespace}', '{claim['id']}', '{claim['token']}',
-    '{{"action":"complete"}}'::jsonb, false)
-""")
-            stale_ack_rejected = applied == "f" and cluster.rows(engine, namespace) == rows
-            if not stale_ack_rejected:
-                raise QueueMismatch("the original Mesh token could change durable state after recovery")
         write_json(evidence / "fault.json", {
             "engine": engine, "before_signal": before, "after_recovery": row,
             "fault": "runner SIGKILL after committed effect and before settlement",
             "enqueue_commit_ms": committed, "rollback_commit_ms": rollback_timestamp,
             "stale_ack_rejected": stale_ack_rejected,
+            "job_id_preserved": True, "replacement_fence_changed": True, "namespace_writes": writes,
         })
         completed = True
     finally:
         if replacement is not None:
+            gate.touch(exist_ok=True)
             stop_runners([replacement], require_clean=completed)
         if process.returncode is None:
             stop_runners([process], require_clean=False)
 
 
-def run_settlement_fault(subject, scratch, evidence, settings, placement):
-    from lib.jobs_parity_fault import SettlementProxy
-
+def run_settlement_fault(subject, scratch, evidence, settings, placement, proxy_type):
     engine = subject.engine
     cluster = subject.cluster
     cluster.prepare_database(engine)
@@ -700,7 +827,7 @@ def run_settlement_fault(subject, scratch, evidence, settings, placement):
         {"key": "settlement", "hold_ms": 200, "fail_first": False, "payload": "synthetic"}]}])[0]
     completed = False
     log = evidence / "runner.log"
-    with SettlementProxy(cluster.port, matches, placement) as proxy:
+    with proxy_type(cluster.port, matches, placement) as proxy:
         process = subject.run(dict(env, JOBS_PARITY_DB_URL=cluster.url(engine, port=proxy.port)), 0, log)
         try:
             deadline = time.monotonic() + settings["trial_timeout_seconds"]
@@ -718,20 +845,86 @@ def run_settlement_fault(subject, scratch, evidence, settings, placement):
                     or rows[0]["attempt"] != rows[0]["attempts"]
                     or rows[0]["effects"] != 1 or rows[0]["effect_keys"] != 1):
                 raise QueueMismatch(f"unexpected durable rows after {placement}: {rows}")
-            write_json(evidence / "fault.json", {"engine": engine, "fault": fault, "rows": rows})
+            writes = cluster.reconcile_writes(engine, namespace, {
+                "attempts": {"settlement": rows[0]["attempts"]}, "effects": {"settlement": 1},
+            })
+            write_json(evidence / "fault.json", {
+                "engine": engine, "fault": fault, "rows": rows, "namespace_writes": writes,
+            })
             completed = True
         finally:
             stop_runners([process], require_clean=completed)
 
 
-def build_mesh(ref, scratch, evidence, env, release):
-    source = scratch / "mesh-source"
-    source.mkdir()
-    archive = scratch / "mesh-source.tar"
+def run_batch_claim_fault(subject, scratch, evidence, settings, placement, proxy_type):
+    cluster = subject.cluster
+    cluster.prepare_database("mesh")
+    namespace = f"parity_{secrets.token_hex(8)}"
+    env = subject.environment(namespace, 1, 1, "fault", settings["poll_ms"])
+    subject.call("migrate", env, evidence / "migrate.log")
+    if not cluster.owned("mesh"):
+        raise FixtureError("batch claim fault requires the driver's nonce in a fresh database")
+    input_file = batch_files(scratch, [{"request_id": "claim", "rollback": False, "jobs": [
+        {"key": "claim", "hold_ms": 0, "fail_first": False, "payload": "synthetic"}]}])[0]
+    count, committed = subject.enqueue(env, input_file, evidence / "enqueue.log")
+    if count != 1 or committed is None:
+        raise QueueMismatch("batch claim fault requires one committed job")
+    before = cluster.claim_identity("mesh", namespace, "claim")
+    if not before or before["attempt"] != 0:
+        raise QueueMismatch(f"fault input has an unexpected initial state: {before}")
+
+    log = evidence / "runner.log"
+    completed = False
+    with proxy_type(
+        cluster.port, lambda sql: sql.strip().upper() == "COMMIT", placement,
+        prior_query=lambda sql: "FROM mesh_jobs.claim_batch_v1(" in sql,
+    ) as proxy:
+        process = subject.run(dict(env, JOBS_PARITY_DB_URL=cluster.url("mesh", port=proxy.port)), 0, log)
+        try:
+            deadline = time.monotonic() + settings["trial_timeout_seconds"]
+            wait_for(lambda: runner_ready([process], [log]), deadline, "batch claim fault runner")
+            fault = wait_for(lambda: proxy.fault, deadline, f"{placement} batch commit cut")
+            wait_for(lambda: cluster.observe("mesh", namespace)["terminal"] == 1,
+                     deadline, "settlement following an ambiguous claim")
+            rows = cluster.rows("mesh", namespace)
+            expected_attempt = 2 if placement == "after_commit" else 1
+            if (len(rows) != 1 or rows[0]["state"] != "completed" or rows[0]["id"] != before["id"]
+                    or rows[0]["attempt"] != expected_attempt or rows[0]["effect_keys"] != 1):
+                raise QueueMismatch(f"unexpected durable batch claim after {placement}: {rows}")
+            writes = cluster.reconcile_writes("mesh", namespace, {
+                "attempts": {"claim": 1}, "effects": {"claim": 1},
+            })
+            write_json(evidence / "fault.json", {
+                "engine": "mesh", "fault": fault, "rows": rows, "namespace_writes": writes,
+            })
+            completed = True
+        finally:
+            stop_runners([process], require_clean=completed)
+
+
+def materialize_commit(ref, path, archive, paths=()):
+    path.mkdir()
     with archive.open("wb") as stream:
-        subprocess.run(["git", "archive", ref], cwd=ROOT, stdout=stream, check=True)
-    checked(["tar", "-xf", str(archive), "-C", str(source)])
+        subprocess.run(["git", "archive", ref, *paths], cwd=ROOT, stdout=stream, check=True)
+    checked(["tar", "-xf", str(archive), "-C", str(path)])
     archive.unlink()
+
+
+def snapshot_harness(scratch, evidence):
+    head = checked(["git", "rev-parse", "HEAD"])
+    root = scratch / "harness"
+    materialize_commit(head, root, scratch / "harness.tar", HARNESS_PATHS)
+    files = {str(path.relative_to(root)): digest(path) for path in root.rglob("*") if path.is_file()}
+    for path, checksum in files.items():
+        if not (ROOT / path).is_file() or digest(ROOT / path) != checksum:
+            raise FixtureError(f"working harness differs from {head}: {path}")
+    write_json(evidence / "harness.json", {"sha": head, "sha256": files})
+    return root, head, files
+
+
+def build_mesh(ref, scratch, evidence, env, release, mesh_fixture):
+    source = scratch / "mesh-source"
+    materialize_commit(ref, source, scratch / "mesh-source.tar")
     cargo_target = EVIDENCE / "build" / ref
     build = cargo_target / ("release" if release else "debug")
     rust_target = next(line.removeprefix("host: ") for line in checked(["rustc", "-vV"]).splitlines()
@@ -741,7 +934,7 @@ def build_mesh(ref, scratch, evidence, env, release):
     checked(["cargo", "build", "--locked", "-p", "meshc", "-p", "mesh-rt", *options],
             cwd=source, env=compiler_env, timeout=2400, log=evidence / "meshc-build.log")
     project = scratch / "mesh-workload"
-    shutil.copytree(MESH_SOURCE, project)
+    shutil.copytree(mesh_fixture, project)
     checked(["cc", "-std=c11", "-O2", "-c", "worker_identity.c", "-o", "worker_identity.o"],
             cwd=project, env=env, log=evidence / "mesh-native-compile.log")
     checked(["ar", "rcs", "libworker_identity.a", "worker_identity.o"], cwd=project, env=env)
@@ -755,23 +948,23 @@ def build_mesh(ref, scratch, evidence, env, release):
     return executable
 
 
-def compile_oban(scratch, evidence, env):
+def compile_oban(scratch, evidence, env, oban_fixture):
     mix_state = EVIDENCE / "build" / "oban"
     mix_state.mkdir(parents=True, exist_ok=True)
     env = dict(env, MIX_ENV="prod", MIX_HOME=str(mix_state / "mix"), HEX_HOME=str(mix_state / "hex"),
                MIX_BUILD_PATH=str(mix_state / "build"), MIX_DEPS_PATH=str(mix_state / "deps"),
                ERL_CRASH_DUMP=str(scratch / "erl_crash.dump"))
     if not list((mix_state / "mix").glob("archives/hex-*")):
-        checked(["mix", "local.hex", "--force"], cwd=OBAN, env=env, log=evidence / "hex-bootstrap.log")
-    lock_hash = digest(OBAN / "mix.lock")
-    checked(["mix", "deps.get", "--check-locked"], cwd=OBAN, env=env,
+        checked(["mix", "local.hex", "--force"], cwd=oban_fixture, env=env, log=evidence / "hex-bootstrap.log")
+    lock_hash = digest(oban_fixture / "mix.lock")
+    checked(["mix", "deps.get", "--check-locked"], cwd=oban_fixture, env=env,
             log=evidence / "oban-setup.log")
-    checked(["mix", "compile"], cwd=OBAN, env=env, timeout=300, log=evidence / "oban-compile.log")
-    if digest(OBAN / "mix.lock") != lock_hash:
+    checked(["mix", "compile"], cwd=oban_fixture, env=env, timeout=300, log=evidence / "oban-compile.log")
+    if digest(oban_fixture / "mix.lock") != lock_hash:
         raise FixtureError("Mix modified the pinned lockfile")
     command = ["mix", "run", "--no-start", "--no-compile", "fixture.exs", "--"]
     try:
-        versions = json.loads(checked([*command, "versions"], cwd=OBAN, env=env).splitlines()[-1])
+        versions = json.loads(checked([*command, "versions"], cwd=oban_fixture, env=env).splitlines()[-1])
     except (ValueError, IndexError) as error:
         raise FixtureError("Oban fixture did not report version metadata") from error
     if versions.get("oban") != "2.24.2":
@@ -786,24 +979,26 @@ def selection(args, settings):
     return [(name, r, s) for name in workloads for r in runners for s in slots if s >= r]
 
 
-def profile_summary(trials, workload, settings, runners, slots):
-    keys = ("jobs_per_second", "pickup_p99_ms", "sql_calls_per_job", "claim_calls_per_job", "idle_queries_per_minute",
+def profile_summary(trials, workload, settings, runners, slots, variants):
+    keys = ("jobs_per_second", "pickup_p99_ms", "sql_calls_per_job", "runner_sql_calls_per_job",
+            "enqueue_sql_calls_per_job", "claim_calls_per_job", "idle_queries_per_minute",
             "cpu_seconds_per_job", "peak_rss_bytes")
     summary = {}
-    for engine in ("mesh", "oban"):
+    for engine in variants:
         values = [trial for trial in trials if trial["engine"] == engine]
         summary[engine] = {
             key: {"min": min(series), "median": statistics.median(series), "max": max(series)}
             for key in keys if (series := [trial[key] for trial in values])
         }
     limits = {}
-    for metric, limit in (
-            ("cpu_seconds_per_job", settings["relative_cpu_seconds_per_job"]),
-            ("peak_rss_bytes", settings["relative_peak_rss"])):
-        mesh = summary["mesh"][metric]["median"]
-        oban = summary["oban"][metric]["median"]
-        limits[metric] = {"mesh_median": mesh, "oban_median": oban, "relative_limit": limit,
-                          "within_limit": mesh <= oban * limit}
+    if "oban" in summary:
+        for metric, limit in (
+                ("cpu_seconds_per_job", settings["relative_cpu_seconds_per_job"]),
+                ("peak_rss_bytes", settings["relative_peak_rss"])):
+            mesh = summary["mesh"][metric]["median"]
+            oban = summary["oban"][metric]["median"]
+            limits[metric] = {"mesh_median": mesh, "oban_median": oban, "relative_limit": limit,
+                              "within_limit": mesh <= oban * limit}
     limits.update({
         "peak_connections": slots + runners * settings["connection_slots_per_runner"],
         "peak_processes": slots * settings["processes_per_slot"],
@@ -812,12 +1007,12 @@ def profile_summary(trials, workload, settings, runners, slots):
     })
     summary["budgets"] = limits
     for metric in ("peak_connections", "peak_processes", "peak_threads"):
-        for engine in ("mesh", "oban"):
+        for engine in variants:
             observed = max(row[metric] for row in trials if row["engine"] == engine)
             summary[engine][metric] = {"observed": observed, "limit": limits[metric],
                                        "within_limit": observed <= limits[metric]}
     if budget := workload.get("pickup_p99_budget_ms"):
-        for engine in ("mesh", "oban"):
+        for engine in variants:
             summary[engine]["pickup_p99_ms"]["budget"] = budget
             summary[engine]["pickup_p99_ms"]["within_budget"] = (
                 summary[engine]["pickup_p99_ms"]["max"] <= budget
@@ -828,12 +1023,17 @@ def profile_summary(trials, workload, settings, runners, slots):
 @contextlib.contextmanager
 def workspace(evidence):
     scratch = Path(tempfile.mkdtemp(prefix="work-", dir=evidence))
+    workers_live = False
     try:
         yield scratch
+    except RunnerCleanupError as error:
+        workers_live = True
+        raise RunnerCleanupError(f"{error}. Preserved {scratch} for recovery.") from error
     finally:
         if (scratch / "pgdata/postmaster.pid").is_file():
             raise FixtureError(f"PostgreSQL did not confirm shutdown. Preserved {scratch} for recovery.")
-        shutil.rmtree(scratch)
+        if not workers_live:
+            shutil.rmtree(scratch)
 
 
 def record(args):
@@ -844,14 +1044,21 @@ def record(args):
     if args.faults:
         profiles = []
     ref = checked(["git", "rev-parse", "--verify", "--end-of-options", f"{args.mesh_ref}^{{commit}}"])
+    baseline_ref = None
+    if args.against_ref:
+        baseline_ref = checked(["git", "rev-parse", "--verify", "--end-of-options",
+                                f"{args.against_ref}^{{commit}}"])
     base = EVIDENCE / ref
     base.mkdir(parents=True, exist_ok=True)
     lane = "fault" if args.faults else "smoke" if args.smoke else "load"
     evidence = Path(tempfile.mkdtemp(prefix=f"j1-{lane}-", dir=base))
+    budget_breaches = []
     write_json(evidence / "settings.json", settings)
     print(evidence, flush=True)
     try:
         with workspace(evidence) as scratch:
+            harness, harness_sha, harness_hashes = snapshot_harness(scratch, evidence)
+            oban_fixture = harness / OBAN.relative_to(ROOT)
             env = dict(os.environ, TMPDIR=str(scratch), TZ="UTC", LC_ALL="C",
                        MESH_SCHEDULER_MIN_WORKERS=str(settings["runner_schedulers"]),
                        MESH_SCHEDULER_MAX_WORKERS=str(settings["runner_schedulers"]),
@@ -860,8 +1067,17 @@ def record(args):
             env.pop("MESH_RT_LIB_PATH", None)
             env.pop("RUSTC_WRAPPER", None)
             env.pop("RUSTC_WORKSPACE_WRAPPER", None)
-            executable = build_mesh(ref, scratch, evidence, env, release=args.load)
-            command, mix_env, versions = compile_oban(scratch, evidence, env)
+            executable = build_mesh(ref, scratch, evidence, env, args.load,
+                                    harness / MESH_SOURCE.relative_to(ROOT))
+            baseline = executable
+            if baseline_ref and baseline_ref != ref:
+                baseline_dir = scratch / "baseline"
+                baseline_dir.mkdir()
+                baseline_evidence = evidence / "baseline-build"
+                baseline_evidence.mkdir()
+                baseline = build_mesh(baseline_ref, baseline_dir, baseline_evidence, env, args.load,
+                                      harness / MESH_SOURCE.relative_to(ROOT))
+            command, mix_env, versions = compile_oban(scratch, evidence, env, oban_fixture)
             max_connections = max((s + r * settings["connection_slots_per_runner"]
                                    for _, r, s in profiles), default=5)
             cluster = Cluster(scratch, evidence, max_connections, args.postgres_version)
@@ -874,19 +1090,17 @@ WHERE name IN ('server_version','server_version_num','shared_buffers','max_conne
                'track_commit_timestamp','synchronous_commit','pg_stat_statements.track',
                'timezone','fsync','full_page_writes')
 """)
-                fixture_files = [*MESH_SOURCE.iterdir(), OBAN / "mix.lock", OBAN / "mix.exs",
-                                 OBAN / "fixture.exs", *sorted((OBAN / "lib").glob("*.ex"))]
                 write_json(evidence / "manifest.json", {
                     "mesh_sha": ref, "mesh_executable_sha256": digest(executable), **versions,
-                    "git_head": checked(["git", "rev-parse", "HEAD"]),
+                    "baseline_mesh_sha": baseline_ref,
+                    "baseline_executable_sha256": digest(baseline) if baseline_ref else None,
+                    "harness_sha": harness_sha, "harness_sha256": harness_hashes,
                     "postgres_settings": json.loads(actual_settings), "postgres_version_num": pg_version,
                     "host": platform.platform(), "logical_cpus": os.cpu_count(),
                     "load_average_at_start": os.getloadavg(),
                     "session_transport": "SCRAM with verified TLS" if args.postgres_version else "SCRAM",
-                    "fixture_hashes": {str(path.relative_to(ROOT)): digest(path) for path in fixture_files
-                                       if path.is_file()},
                     "reference_shas": {name: checked(["git", "rev-parse", name]) for name in REFERENCE},
-                    "driver_sha256": digest(Path(__file__)), "seed": settings["seed"], "profiles": profiles,
+                    "seed": settings["seed"], "profiles": profiles,
                     "mesh_build_profile": "release" if args.load else "debug",
                     "mesh_batch": args.mesh_batch,
                     "mode": lane, "claim_timestamps": {"mesh": "database attempted_at_ms",
@@ -896,9 +1110,20 @@ WHERE name IN ('server_version','server_version_num','shared_buffers','max_conne
                 })
                 subjects = {
                     "mesh": Subject("mesh", [str(executable)], ROOT, cluster, env),
-                    "oban": Subject("oban", command, OBAN, cluster, mix_env),
+                    "oban": Subject("oban", command, oban_fixture, cluster, mix_env),
                 }
+                if baseline_ref:
+                    subjects = {
+                        "mesh": subjects["mesh"],
+                        "baseline": Subject("mesh", [str(baseline)], ROOT, cluster,
+                                            dict(env, JOBS_PARITY_MESH_BATCH="0"), variant="baseline"),
+                    }
+                variants = tuple(subjects)
                 if args.faults:
+                    proxy_spec = importlib.util.spec_from_file_location(
+                        "parity_fault_probe", harness / "scripts/lib/jobs_parity_fault.py")
+                    proxy_module = importlib.util.module_from_spec(proxy_spec)
+                    proxy_spec.loader.exec_module(proxy_module)
                     for engine, subject in subjects.items():
                         case_evidence = evidence / engine
                         case_evidence.mkdir()
@@ -912,7 +1137,15 @@ WHERE name IN ('server_version','server_version_num','shared_buffers','max_conne
                                 placement_scratch = case_scratch / placement
                                 placement_scratch.mkdir()
                                 run_settlement_fault(subject, placement_scratch, placement_evidence,
-                                                     settings, placement)
+                                                     settings, placement, proxy_module.SettlementProxy)
+                    if args.mesh_batch and not cluster.expected_version:
+                        for placement in ("before_commit", "after_commit"):
+                            case = evidence / "mesh" / f"claim-{placement}"
+                            case.mkdir()
+                            inputs_dir = scratch / f"claim-{placement}"
+                            inputs_dir.mkdir()
+                            run_batch_claim_fault(subjects["mesh"], inputs_dir, case, settings,
+                                                  placement, proxy_module.SettlementProxy)
                 for name, runners, slots in profiles:
                     profile = f"{name}-{runners}r-{slots}s"
                     case_evidence = evidence / profile
@@ -920,12 +1153,12 @@ WHERE name IN ('server_version','server_version_num','shared_buffers','max_conne
                     workload = settings["workloads"][name]
                     allocation = allocate_slots(runners, slots)
                     cap = slots + runners * settings["connection_slots_per_runner"]
-                    cluster.sql("postgres", f"ALTER ROLE parity_subject CONNECTION LIMIT {cap}")
+                    cluster.connection_cap = cap
                     trials = []
                     pair_count = 1 if args.smoke else settings["trial_pairs"]
                     for pair in range(-1, pair_count):
                         batches = inputs(workload, slots, settings["seed"], smoke=args.smoke or pair < 0)
-                        order = ("mesh", "oban") if pair % 2 == 0 else ("oban", "mesh")
+                        order = variants if pair % 2 == 0 else tuple(reversed(variants))
                         for engine in order:
                             run_name = f"{pair if pair >= 0 else 'warmup'}-{engine}"
                             run_evidence = case_evidence / run_name
@@ -937,10 +1170,16 @@ WHERE name IN ('server_version','server_version_num','shared_buffers','max_conne
                             write_json(run_evidence / "metrics.json", result)
                             if pair >= 0:
                                 trials.append(result)
-                    validate_pairs(trials, pair_count)
+                    validate_pairs(trials, pair_count, variants)
                     write_json(case_evidence / "trials.json", trials)
-                    write_json(case_evidence / "summary.json",
-                               profile_summary(trials, workload, settings, runners, slots))
+                    summary = profile_summary(trials, workload, settings, runners, slots, variants)
+                    write_json(case_evidence / "summary.json", summary)
+                    for scope, values in summary.items():
+                        for metric, verdict in values.items():
+                            if isinstance(verdict, dict) and (
+                                verdict.get("within_limit") is False or verdict.get("within_budget") is False
+                            ):
+                                budget_breaches.append({"profile": profile, "scope": scope, "metric": metric})
             finally:
                 cluster.stop()
     except (FixtureError, QueueMismatch, OSError, subprocess.SubprocessError) as error:
@@ -948,7 +1187,8 @@ WHERE name IN ('server_version','server_version_num','shared_buffers','max_conne
         write_json(evidence / "result.json", {"status": kind, "reason": str(error)})
         raise
     write_json(evidence / "result.json", {"status": "passed", "mode": lane,
-                                         "five_paired_trials": lane == "load"})
+                                         "five_paired_trials": lane == "load",
+                                         "budget_breaches": budget_breaches})
 
 
 def self_check():
@@ -990,11 +1230,27 @@ def self_check():
                 validate_pairs([], 5)
             rows = [{"pair": pair, "engine": engine, "input_sha256": "shared"}
                     for engine in ("mesh", "oban") for pair in range(5)]
-            with self.assertRaisesRegex(FixtureError, "metric|jobs_per_second"):
+            with self.assertRaisesRegex(FixtureError, "completed"):
                 validate_pairs(rows, 5)
             rows[-1]["input_sha256"] = "mismatch"
             with self.assertRaisesRegex(FixtureError, "different inputs"):
                 validate_pairs(rows, 5)
+
+        def test_macos_thread_sample_counts_continuation_rows(self):
+            report = """USER      PID  TT  %CPU
+user       10  ??   0.0
+           10       0.0
+           10       0.0
+user       20  ??   0.0
+other      30  ??   0.0
+           30       0.0
+"""
+            self.assertEqual(mac_thread_count(report, {10, 20}), 3)
+            self.assertEqual(mac_thread_count(report, {10}), 2)
+
+        def test_peak_executing_includes_jobs_between_observer_samples(self):
+            rows = [{"claimed_ms": 101, "settled_ms": 110}, {"claimed_ms": 103, "settled_ms": 109}]
+            self.assertEqual(measured_peak_executing(rows, [{"executing": 0}]), 2)
 
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(DriverChecks)
     return unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful()
@@ -1008,6 +1264,7 @@ def main():
     mode.add_argument("--load", action="store_true", help="five alternating trials per selected profile")
     mode.add_argument("--faults", action="store_true", help="owned runner-death and rollback probe")
     parser.add_argument("--mesh-ref", default="HEAD", help="Git commit from which to compile Mesh")
+    parser.add_argument("--against-ref", help="compare with a second Mesh commit using single claims")
     parser.add_argument("--mesh-batch", action="store_true", help="enable batch claims for the Mesh runner")
     parser.add_argument("--postgres-version", metavar="MAJOR.PATCH",
                         help="require exact server version and SCRAM over verified TLS")
@@ -1024,6 +1281,8 @@ def main():
         parser.error("--runners and --slots require --load")
     if args.workload and (args.faults or (args.smoke and len(args.workload) > 1)):
         parser.error("select one workload for --smoke or use --load for several")
+    if args.against_ref and args.faults:
+        parser.error("--against-ref requires --load or --smoke")
 
     def interrupt(_signal, _frame):
         raise InterruptedError("parity run received SIGTERM")

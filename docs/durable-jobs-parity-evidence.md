@@ -2,7 +2,9 @@
 
 The [parity plan](durable-jobs-oban-parity.md) defines which evidence is required
 for each phase. The comparison driver uses the Mesh executable built from a
-Git commit and the pinned Oban 2.24.2 Basic fixture.
+Git commit and the pinned Oban 2.24.2 Basic fixture. Commit changes to the
+driver and fixtures before running comparisons. The driver archives them
+from the current Git head, independently of the selected Mesh runtime.
 
 ## Run correctness checks
 
@@ -55,7 +57,12 @@ idempotent effect for each completed job.
 
 For a Mesh revision that includes batch claims, pass `--mesh-batch` to measure
 the opt-in runner. Omit the flag for the single-claim profile. Both modes
-record their claim SQL calls per completed job.
+record claim, runner, and producer SQL calls per completed job. Use
+`--against-ref` to run five pairs against another Mesh commit with the same
+inputs and connection budget. To measure batch dispatch on the same Mesh
+commit, pass that commit to both `--mesh-ref` and `--against-ref`, then add
+`--mesh-batch`. To exercise batch commit-response loss, use
+`--faults --mesh-batch`.
 
 Each run prints its evidence directory under `target/jobs-parity/<sha>/`.
 `manifest.json` records the compiled SHA, fixture hashes, tool versions,
@@ -63,7 +70,7 @@ database parameters, and host. `settings.json` records the frozen workload
 and budgets. Each profile stores its raw attempt and occupancy samples,
 trial metrics, and median and range. Exit code 1 indicates a queue
 reconciliation mismatch. Exit code 2 indicates a fixture or environment
-failure.
+failure. The run records budget breaches separately in `result.json`.
 
 Pickup uses the interval between the enqueue transaction's commit timestamp
 and the first handler entry. Claim and settlement are tracked separately.
