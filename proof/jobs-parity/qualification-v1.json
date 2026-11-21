@@ -12340,6 +12340,1542 @@
       }
     }
   },
+  "postgres17_fixed_effect_plan_retention_component": {
+    "scope": "Direct fenced PostgreSQL component on Darwin arm64. One backend per cohort.",
+    "baseline": "DISCARD ALL",
+    "treatment": "One simple query containing the documented reset steps except DISCARD PLANS.",
+    "input_code_sha256": {
+      "direct.py": "d3dc26e6b07566be954029ee470b39155b2e6d8363138d0666782c5f55a0f82a",
+      "run.py": "49c70365cb54c4feaa4d820fb69e4429132481d19ff88fc9bb96a59cd4486641"
+    },
+    "fresh_cluster_runs": [
+      {
+        "receipt": "target/jobs-parity/linux-arm-ownership-guest/effect-reset-plans-ab/receipt-01.json",
+        "sha256": "e9279fcef386b81dd97e2d600b07d5d05e9d3bd2932dd9e0e94c651f0910ca47",
+        "orders": [
+          [
+            "A",
+            "A-repeat",
+            "B"
+          ],
+          [
+            "B",
+            "A-repeat",
+            "A"
+          ]
+        ],
+        "witness": {
+          "A": {
+            "definer_role_sqlstate": "42501",
+            "first_sequence_value_after_reset": 9,
+            "missing_prepared_sqlstate": "26000",
+            "missing_sequence_state_sqlstate": "55000",
+            "states": [
+              "role",
+              "application_name",
+              "search_path",
+              "statement_timeout",
+              "advisory_lock",
+              "listen",
+              "temp_table",
+              "named_statement",
+              "held_cursor",
+              "unnamed_statement"
+            ]
+          },
+          "B": {
+            "definer_role_sqlstate": "42501",
+            "first_sequence_value_after_reset": 9,
+            "missing_prepared_sqlstate": "26000",
+            "missing_sequence_state_sqlstate": "55000",
+            "states": [
+              "role",
+              "application_name",
+              "search_path",
+              "statement_timeout",
+              "advisory_lock",
+              "listen",
+              "temp_table",
+              "named_statement",
+              "held_cursor",
+              "unnamed_statement"
+            ]
+          }
+        },
+        "cohorts": [
+          {
+            "group": 1,
+            "arm": "A",
+            "backend": 55411,
+            "warmup_jobs": 8,
+            "scored_reset_messages": 24,
+            "client_ms_per_job": {
+              "component_wall_ms": 0.4663368333333333,
+              "two_calls_client_ms": 0.40661279166666664,
+              "reset_client_ms": 0.0592675
+            }
+          },
+          {
+            "group": 1,
+            "arm": "A-repeat",
+            "backend": 55455,
+            "warmup_jobs": 8,
+            "scored_reset_messages": 24,
+            "client_ms_per_job": {
+              "component_wall_ms": 0.4692465416666667,
+              "two_calls_client_ms": 0.41346700000000003,
+              "reset_client_ms": 0.055314375
+            }
+          },
+          {
+            "group": 1,
+            "arm": "B",
+            "backend": 55490,
+            "warmup_jobs": 8,
+            "scored_reset_messages": 24,
+            "client_ms_per_job": {
+              "component_wall_ms": 0.3518802083333334,
+              "two_calls_client_ms": 0.28195129166666666,
+              "reset_client_ms": 0.06962670833333333
+            }
+          },
+          {
+            "group": 2,
+            "arm": "B",
+            "backend": 55525,
+            "warmup_jobs": 8,
+            "scored_reset_messages": 24,
+            "client_ms_per_job": {
+              "component_wall_ms": 0.3612326666666667,
+              "two_calls_client_ms": 0.28805045833333337,
+              "reset_client_ms": 0.07279516666666667
+            }
+          },
+          {
+            "group": 2,
+            "arm": "A-repeat",
+            "backend": 55560,
+            "warmup_jobs": 8,
+            "scored_reset_messages": 24,
+            "client_ms_per_job": {
+              "component_wall_ms": 0.42201041666666667,
+              "two_calls_client_ms": 0.368722,
+              "reset_client_ms": 0.052965375
+            }
+          },
+          {
+            "group": 2,
+            "arm": "A",
+            "backend": 55615,
+            "warmup_jobs": 8,
+            "scored_reset_messages": 24,
+            "client_ms_per_job": {
+              "component_wall_ms": 0.3900815833333333,
+              "two_calls_client_ms": 0.35690279166666666,
+              "reset_client_ms": 0.03264754166666667
+            }
+          }
+        ],
+        "summary": {
+          "A": {
+            "client_per_job": {
+              "component_wall_ms": {
+                "median": 0.4282092083333333,
+                "range": [
+                  0.3900815833333333,
+                  0.4663368333333333
+                ]
+              },
+              "reset_client_ms": {
+                "median": 0.045957520833333335,
+                "range": [
+                  0.03264754166666667,
+                  0.0592675
+                ]
+              },
+              "two_calls_client_ms": {
+                "median": 0.3817577916666667,
+                "range": [
+                  0.35690279166666666,
+                  0.40661279166666664
+                ]
+              }
+            },
+            "server_per_job": {
+              "effect function (inclusive)": {
+                "calls": {
+                  "median": 2.0,
+                  "range": [
+                    2.0,
+                    2.0
+                  ]
+                },
+                "exec_ms": {
+                  "median": 0.18555368750000012,
+                  "range": [
+                    0.18122725000000003,
+                    0.18988012500000018
+                  ]
+                },
+                "plan_ms": {
+                  "median": 0.002564187500000002,
+                  "range": [
+                    0.002527666666666668,
+                    0.0026007083333333355
+                  ]
+                },
+                "plans": {
+                  "median": 2.0,
+                  "range": [
+                    2.0,
+                    2.0
+                  ]
+                }
+              },
+              "fenced row lock": {
+                "calls": {
+                  "median": 2.0,
+                  "range": [
+                    2.0,
+                    2.0
+                  ]
+                },
+                "exec_ms": {
+                  "median": 0.009448770833333325,
+                  "range": [
+                    0.008031249999999992,
+                    0.010866291666666658
+                  ]
+                },
+                "plan_ms": {
+                  "median": 0.015589458333333344,
+                  "range": [
+                    0.015581583333333341,
+                    0.015597333333333347
+                  ]
+                },
+                "plans": {
+                  "median": 1.0,
+                  "range": [
+                    1.0,
+                    1.0
+                  ]
+                }
+              },
+              "insert attempt": {
+                "calls": {
+                  "median": 1.0,
+                  "range": [
+                    1.0,
+                    1.0
+                  ]
+                },
+                "exec_ms": {
+                  "median": 0.002474812499999997,
+                  "range": [
+                    0.0024044999999999974,
+                    0.0025451249999999966
+                  ]
+                },
+                "plan_ms": {
+                  "median": 0.0026710625000000024,
+                  "range": [
+                    0.002645791666666669,
+                    0.0026963333333333357
+                  ]
+                },
+                "plans": {
+                  "median": 1.0,
+                  "range": [
+                    1.0,
+                    1.0
+                  ]
+                }
+              },
+              "insert effect": {
+                "calls": {
+                  "median": 1.0,
+                  "range": [
+                    1.0,
+                    1.0
+                  ]
+                },
+                "exec_ms": {
+                  "median": 0.004343729166666664,
+                  "range": [
+                    0.0032187499999999955,
+                    0.005468708333333332
+                  ]
+                },
+                "plan_ms": {
+                  "median": 0.0014427500000000009,
+                  "range": [
+                    0.0014115416666666675,
+                    0.0014739583333333343
+                  ]
+                },
+                "plans": {
+                  "median": 1.0,
+                  "range": [
+                    1.0,
+                    1.0
+                  ]
+                }
+              },
+              "reset statements": {
+                "calls": {
+                  "median": 1.0,
+                  "range": [
+                    1.0,
+                    1.0
+                  ]
+                },
+                "exec_ms": {
+                  "median": 0.0014374166666666676,
+                  "range": [
+                    0.0014131666666666676,
+                    0.0014616666666666675
+                  ]
+                },
+                "plan_ms": {
+                  "median": 0.0,
+                  "range": [
+                    0.0,
+                    0.0
+                  ]
+                },
+                "plans": {
+                  "median": 0.0,
+                  "range": [
+                    0.0,
+                    0.0
+                  ]
+                }
+              },
+              "scope check": {
+                "calls": {
+                  "median": 2.0,
+                  "range": [
+                    2.0,
+                    2.0
+                  ]
+                },
+                "exec_ms": {
+                  "median": 0.0030764583333333364,
+                  "range": [
+                    0.003014000000000003,
+                    0.0031389166666666696
+                  ]
+                },
+                "plan_ms": {
+                  "median": 0.006076333333333328,
+                  "range": [
+                    0.006039833333333331,
+                    0.006112833333333324
+                  ]
+                },
+                "plans": {
+                  "median": 1.0,
+                  "range": [
+                    1.0,
+                    1.0
+                  ]
+                }
+              }
+            }
+          },
+          "A-repeat": {
+            "client_per_job": {
+              "component_wall_ms": {
+                "median": 0.4456284791666667,
+                "range": [
+                  0.42201041666666667,
+                  0.4692465416666667
+                ]
+              },
+              "reset_client_ms": {
+                "median": 0.054139875000000004,
+                "range": [
+                  0.052965375,
+                  0.055314375
+                ]
+              },
+              "two_calls_client_ms": {
+                "median": 0.3910945,
+                "range": [
+                  0.368722,
+                  0.41346700000000003
+                ]
+              }
+            },
+            "server_per_job": {
+              "effect function (inclusive)": {
+                "calls": {
+                  "median": 2.0,
+                  "range": [
+                    2.0,
+                    2.0
+                  ]
+                },
+                "exec_ms": {
+                  "median": 0.18246806249999997,
+                  "range": [
+                    0.17551745833333335,
+                    0.1894186666666666
+                  ]
+                },
+                "plan_ms": {
+                  "median": 0.002415770833333335,
+                  "range": [
+                    0.0023003750000000016,
+                    0.002531166666666668
+                  ]
+                },
+                "plans": {
+                  "median": 2.0,
+                  "range": [
+                    2.0,
+                    2.0
+                  ]
+                }
+              },
+              "fenced row lock": {
+                "calls": {
+                  "median": 2.0,
+                  "range": [
+                    2.0,
+                    2.0
+                  ]
+                },
+                "exec_ms": {
+                  "median": 0.008290812499999996,
+                  "range": [
+                    0.008213583333333331,
+                    0.00836804166666666
+                  ]
+                },
+                "plan_ms": {
+                  "median": 0.015637187500000004,
+                  "range": [
+                    0.015112875000000005,
+                    0.016161500000000006
+                  ]
+                },
+                "plans": {
+                  "median": 1.0,
+                  "range": [
+                    1.0,
+                    1.0
+                  ]
+                }
+              },
+              "insert attempt": {
+                "calls": {
+                  "median": 1.0,
+                  "range": [
+                    1.0,
+                    1.0
+                  ]
+                },
+                "exec_ms": {
+                  "median": 0.0025086666666666634,
+                  "range": [
+                    0.00232808333333333,
+                    0.002689249999999997
+                  ]
+                },
+                "plan_ms": {
+                  "median": 0.002661395833333336,
+                  "range": [
+                    0.0026076250000000023,
+                    0.002715166666666669
+                  ]
+                },
+                "plans": {
+                  "median": 1.0,
+                  "range": [
+                    1.0,
+                    1.0
+                  ]
+                }
+              },
+              "insert effect": {
+                "calls": {
+                  "median": 1.0,
+                  "range": [
+                    1.0,
+                    1.0
+                  ]
+                },
+                "exec_ms": {
+                  "median": 0.003705729166666665,
+                  "range": [
+                    0.003284791666666665,
+                    0.004126666666666665
+                  ]
+                },
+                "plan_ms": {
+                  "median": 0.0014088541666666676,
+                  "range": [
+                    0.0013455416666666676,
+                    0.0014721666666666674
+                  ]
+                },
+                "plans": {
+                  "median": 1.0,
+                  "range": [
+                    1.0,
+                    1.0
+                  ]
+                }
+              },
+              "reset statements": {
+                "calls": {
+                  "median": 1.0,
+                  "range": [
+                    1.0,
+                    1.0
+                  ]
+                },
+                "exec_ms": {
+                  "median": 0.0014496458333333345,
+                  "range": [
+                    0.001328125000000001,
+                    0.001571166666666668
+                  ]
+                },
+                "plan_ms": {
+                  "median": 0.0,
+                  "range": [
+                    0.0,
+                    0.0
+                  ]
+                },
+                "plans": {
+                  "median": 0.0,
+                  "range": [
+                    0.0,
+                    0.0
+                  ]
+                }
+              },
+              "scope check": {
+                "calls": {
+                  "median": 2.0,
+                  "range": [
+                    2.0,
+                    2.0
+                  ]
+                },
+                "exec_ms": {
+                  "median": 0.002989604166666669,
+                  "range": [
+                    0.002762083333333335,
+                    0.0032171250000000025
+                  ]
+                },
+                "plan_ms": {
+                  "median": 0.006059124999999997,
+                  "range": [
+                    0.0056216249999999955,
+                    0.006496624999999998
+                  ]
+                },
+                "plans": {
+                  "median": 1.0,
+                  "range": [
+                    1.0,
+                    1.0
+                  ]
+                }
+              }
+            }
+          },
+          "B": {
+            "client_per_job": {
+              "component_wall_ms": {
+                "median": 0.35655643750000005,
+                "range": [
+                  0.3518802083333334,
+                  0.3612326666666667
+                ]
+              },
+              "reset_client_ms": {
+                "median": 0.0712109375,
+                "range": [
+                  0.06962670833333333,
+                  0.07279516666666667
+                ]
+              },
+              "two_calls_client_ms": {
+                "median": 0.28500087500000004,
+                "range": [
+                  0.28195129166666666,
+                  0.28805045833333337
+                ]
+              }
+            },
+            "server_per_job": {
+              "effect function (inclusive)": {
+                "calls": {
+                  "median": 2.0,
+                  "range": [
+                    2.0,
+                    2.0
+                  ]
+                },
+                "exec_ms": {
+                  "median": 0.07966054166666671,
+                  "range": [
+                    0.07721012499999995,
+                    0.08211095833333347
+                  ]
+                },
+                "plan_ms": {
+                  "median": 0.0023368541666666685,
+                  "range": [
+                    0.0023090000000000016,
+                    0.0023647083333333354
+                  ]
+                },
+                "plans": {
+                  "median": 2.0,
+                  "range": [
+                    2.0,
+                    2.0
+                  ]
+                }
+              },
+              "fenced row lock": {
+                "calls": {
+                  "median": 2.0,
+                  "range": [
+                    2.0,
+                    2.0
+                  ]
+                },
+                "exec_ms": {
+                  "median": 0.008101729166666655,
+                  "range": [
+                    0.007642458333333321,
+                    0.008560999999999989
+                  ]
+                },
+                "plan_ms": {
+                  "median": 0.0,
+                  "range": [
+                    0.0,
+                    0.0
+                  ]
+                },
+                "plans": {
+                  "median": 0.0,
+                  "range": [
+                    0.0,
+                    0.0
+                  ]
+                }
+              },
+              "insert attempt": {
+                "calls": {
+                  "median": 1.0,
+                  "range": [
+                    1.0,
+                    1.0
+                  ]
+                },
+                "exec_ms": {
+                  "median": 0.002418520833333329,
+                  "range": [
+                    0.0022848333333333284,
+                    0.00255220833333333
+                  ]
+                },
+                "plan_ms": {
+                  "median": 0.0,
+                  "range": [
+                    0.0,
+                    0.0
+                  ]
+                },
+                "plans": {
+                  "median": 0.0,
+                  "range": [
+                    0.0,
+                    0.0
+                  ]
+                }
+              },
+              "insert effect": {
+                "calls": {
+                  "median": 1.0,
+                  "range": [
+                    1.0,
+                    1.0
+                  ]
+                },
+                "exec_ms": {
+                  "median": 0.003289062499999996,
+                  "range": [
+                    0.003234374999999994,
+                    0.0033437499999999973
+                  ]
+                },
+                "plan_ms": {
+                  "median": 0.0,
+                  "range": [
+                    0.0,
+                    0.0
+                  ]
+                },
+                "plans": {
+                  "median": 0.0,
+                  "range": [
+                    0.0,
+                    0.0
+                  ]
+                }
+              },
+              "reset statements": {
+                "calls": {
+                  "median": 8.0,
+                  "range": [
+                    8.0,
+                    8.0
+                  ]
+                },
+                "exec_ms": {
+                  "median": 0.0018257916666666676,
+                  "range": [
+                    0.0017586250000000004,
+                    0.0018929583333333348
+                  ]
+                },
+                "plan_ms": {
+                  "median": 0.0008107916666666669,
+                  "range": [
+                    0.0007622500000000004,
+                    0.0008593333333333335
+                  ]
+                },
+                "plans": {
+                  "median": 1.0,
+                  "range": [
+                    1.0,
+                    1.0
+                  ]
+                }
+              },
+              "scope check": {
+                "calls": {
+                  "median": 2.0,
+                  "range": [
+                    2.0,
+                    2.0
+                  ]
+                },
+                "exec_ms": {
+                  "median": 0.0032421458333333356,
+                  "range": [
+                    0.0030710833333333354,
+                    0.0034132083333333354
+                  ]
+                },
+                "plan_ms": {
+                  "median": 0.0,
+                  "range": [
+                    0.0,
+                    0.0
+                  ]
+                },
+                "plans": {
+                  "median": 0.0,
+                  "range": [
+                    0.0,
+                    0.0
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "receipt": "target/jobs-parity/linux-arm-ownership-guest/effect-reset-plans-ab/receipt-02.json",
+        "sha256": "79f6bca215f42ae31dc1e5b6492c5fd8fc5063105cdd8fdc30143e8e040319da",
+        "orders": [
+          [
+            "A",
+            "A-repeat",
+            "B"
+          ],
+          [
+            "B",
+            "A-repeat",
+            "A"
+          ]
+        ],
+        "witness": {
+          "A": {
+            "definer_role_sqlstate": "42501",
+            "first_sequence_value_after_reset": 9,
+            "missing_prepared_sqlstate": "26000",
+            "missing_sequence_state_sqlstate": "55000",
+            "states": [
+              "role",
+              "application_name",
+              "search_path",
+              "statement_timeout",
+              "advisory_lock",
+              "listen",
+              "temp_table",
+              "named_statement",
+              "held_cursor",
+              "unnamed_statement"
+            ]
+          },
+          "B": {
+            "definer_role_sqlstate": "42501",
+            "first_sequence_value_after_reset": 9,
+            "missing_prepared_sqlstate": "26000",
+            "missing_sequence_state_sqlstate": "55000",
+            "states": [
+              "role",
+              "application_name",
+              "search_path",
+              "statement_timeout",
+              "advisory_lock",
+              "listen",
+              "temp_table",
+              "named_statement",
+              "held_cursor",
+              "unnamed_statement"
+            ]
+          }
+        },
+        "cohorts": [
+          {
+            "group": 1,
+            "arm": "A",
+            "backend": 62848,
+            "warmup_jobs": 8,
+            "scored_reset_messages": 24,
+            "client_ms_per_job": {
+              "component_wall_ms": 0.5026840416666667,
+              "two_calls_client_ms": 0.44364933333333334,
+              "reset_client_ms": 0.05843745833333333
+            }
+          },
+          {
+            "group": 1,
+            "arm": "A-repeat",
+            "backend": 62887,
+            "warmup_jobs": 8,
+            "scored_reset_messages": 24,
+            "client_ms_per_job": {
+              "component_wall_ms": 0.4986875,
+              "two_calls_client_ms": 0.4374045833333333,
+              "reset_client_ms": 0.06084204166666667
+            }
+          },
+          {
+            "group": 1,
+            "arm": "B",
+            "backend": 62922,
+            "warmup_jobs": 8,
+            "scored_reset_messages": 24,
+            "client_ms_per_job": {
+              "component_wall_ms": 0.384392375,
+              "two_calls_client_ms": 0.30296704166666666,
+              "reset_client_ms": 0.08107979166666666
+            }
+          },
+          {
+            "group": 2,
+            "arm": "B",
+            "backend": 62969,
+            "warmup_jobs": 8,
+            "scored_reset_messages": 24,
+            "client_ms_per_job": {
+              "component_wall_ms": 0.37758158333333336,
+              "two_calls_client_ms": 0.2958819166666667,
+              "reset_client_ms": 0.08132645833333334
+            }
+          },
+          {
+            "group": 2,
+            "arm": "A-repeat",
+            "backend": 63009,
+            "warmup_jobs": 8,
+            "scored_reset_messages": 24,
+            "client_ms_per_job": {
+              "component_wall_ms": 0.5029288333333334,
+              "two_calls_client_ms": 0.4377725416666667,
+              "reset_client_ms": 0.06460416666666667
+            }
+          },
+          {
+            "group": 2,
+            "arm": "A",
+            "backend": 63046,
+            "warmup_jobs": 8,
+            "scored_reset_messages": 24,
+            "client_ms_per_job": {
+              "component_wall_ms": 0.47813887499999996,
+              "two_calls_client_ms": 0.4144809583333333,
+              "reset_client_ms": 0.06314579166666666
+            }
+          }
+        ],
+        "summary": {
+          "A": {
+            "client_per_job": {
+              "component_wall_ms": {
+                "median": 0.4904114583333333,
+                "range": [
+                  0.47813887499999996,
+                  0.5026840416666667
+                ]
+              },
+              "reset_client_ms": {
+                "median": 0.060791624999999995,
+                "range": [
+                  0.05843745833333333,
+                  0.06314579166666666
+                ]
+              },
+              "two_calls_client_ms": {
+                "median": 0.42906514583333333,
+                "range": [
+                  0.4144809583333333,
+                  0.44364933333333334
+                ]
+              }
+            },
+            "server_per_job": {
+              "effect function (inclusive)": {
+                "calls": {
+                  "median": 2.0,
+                  "range": [
+                    2.0,
+                    2.0
+                  ]
+                },
+                "exec_ms": {
+                  "median": 0.1902500416666667,
+                  "range": [
+                    0.18297554166666674,
+                    0.1975245416666667
+                  ]
+                },
+                "plan_ms": {
+                  "median": 0.002964291666666669,
+                  "range": [
+                    0.002711833333333335,
+                    0.003216750000000002
+                  ]
+                },
+                "plans": {
+                  "median": 2.0,
+                  "range": [
+                    2.0,
+                    2.0
+                  ]
+                }
+              },
+              "fenced row lock": {
+                "calls": {
+                  "median": 2.0,
+                  "range": [
+                    2.0,
+                    2.0
+                  ]
+                },
+                "exec_ms": {
+                  "median": 0.009197854166666661,
+                  "range": [
+                    0.008421791666666657,
+                    0.009973916666666667
+                  ]
+                },
+                "plan_ms": {
+                  "median": 0.016585062500000004,
+                  "range": [
+                    0.015659708333333338,
+                    0.017510416666666674
+                  ]
+                },
+                "plans": {
+                  "median": 1.0,
+                  "range": [
+                    1.0,
+                    1.0
+                  ]
+                }
+              },
+              "insert attempt": {
+                "calls": {
+                  "median": 1.0,
+                  "range": [
+                    1.0,
+                    1.0
+                  ]
+                },
+                "exec_ms": {
+                  "median": 0.00266235416666666,
+                  "range": [
+                    0.002416749999999994,
+                    0.002907958333333326
+                  ]
+                },
+                "plan_ms": {
+                  "median": 0.0026614375000000023,
+                  "range": [
+                    0.0026613750000000023,
+                    0.002661500000000002
+                  ]
+                },
+                "plans": {
+                  "median": 1.0,
+                  "range": [
+                    1.0,
+                    1.0
+                  ]
+                }
+              },
+              "insert effect": {
+                "calls": {
+                  "median": 1.0,
+                  "range": [
+                    1.0,
+                    1.0
+                  ]
+                },
+                "exec_ms": {
+                  "median": 0.003618895833333329,
+                  "range": [
+                    0.0034165416666666628,
+                    0.003821249999999995
+                  ]
+                },
+                "plan_ms": {
+                  "median": 0.0014869791666666677,
+                  "range": [
+                    0.001453125000000001,
+                    0.001520833333333334
+                  ]
+                },
+                "plans": {
+                  "median": 1.0,
+                  "range": [
+                    1.0,
+                    1.0
+                  ]
+                }
+              },
+              "reset statements": {
+                "calls": {
+                  "median": 1.0,
+                  "range": [
+                    1.0,
+                    1.0
+                  ]
+                },
+                "exec_ms": {
+                  "median": 0.0015894583333333342,
+                  "range": [
+                    0.0015017916666666676,
+                    0.0016771250000000007
+                  ]
+                },
+                "plan_ms": {
+                  "median": 0.0,
+                  "range": [
+                    0.0,
+                    0.0
+                  ]
+                },
+                "plans": {
+                  "median": 0.0,
+                  "range": [
+                    0.0,
+                    0.0
+                  ]
+                }
+              },
+              "scope check": {
+                "calls": {
+                  "median": 2.0,
+                  "range": [
+                    2.0,
+                    2.0
+                  ]
+                },
+                "exec_ms": {
+                  "median": 0.003334270833333336,
+                  "range": [
+                    0.002991333333333336,
+                    0.003677208333333336
+                  ]
+                },
+                "plan_ms": {
+                  "median": 0.0071510208333333295,
+                  "range": [
+                    0.006078083333333328,
+                    0.008223958333333331
+                  ]
+                },
+                "plans": {
+                  "median": 1.0,
+                  "range": [
+                    1.0,
+                    1.0
+                  ]
+                }
+              }
+            }
+          },
+          "A-repeat": {
+            "client_per_job": {
+              "component_wall_ms": {
+                "median": 0.5008081666666667,
+                "range": [
+                  0.4986875,
+                  0.5029288333333334
+                ]
+              },
+              "reset_client_ms": {
+                "median": 0.06272310416666667,
+                "range": [
+                  0.06084204166666667,
+                  0.06460416666666667
+                ]
+              },
+              "two_calls_client_ms": {
+                "median": 0.4375885625,
+                "range": [
+                  0.4374045833333333,
+                  0.4377725416666667
+                ]
+              }
+            },
+            "server_per_job": {
+              "effect function (inclusive)": {
+                "calls": {
+                  "median": 2.0,
+                  "range": [
+                    2.0,
+                    2.0
+                  ]
+                },
+                "exec_ms": {
+                  "median": 0.19522058333333336,
+                  "range": [
+                    0.19197737500000012,
+                    0.19846379166666664
+                  ]
+                },
+                "plan_ms": {
+                  "median": 0.0028454583333333353,
+                  "range": [
+                    0.002735958333333335,
+                    0.0029549583333333355
+                  ]
+                },
+                "plans": {
+                  "median": 2.0,
+                  "range": [
+                    2.0,
+                    2.0
+                  ]
+                }
+              },
+              "fenced row lock": {
+                "calls": {
+                  "median": 2.0,
+                  "range": [
+                    2.0,
+                    2.0
+                  ]
+                },
+                "exec_ms": {
+                  "median": 0.009071958333333324,
+                  "range": [
+                    0.008322833333333326,
+                    0.009821083333333324
+                  ]
+                },
+                "plan_ms": {
+                  "median": 0.016787374999999997,
+                  "range": [
+                    0.01602433333333333,
+                    0.017550416666666662
+                  ]
+                },
+                "plans": {
+                  "median": 1.0,
+                  "range": [
+                    1.0,
+                    1.0
+                  ]
+                }
+              },
+              "insert attempt": {
+                "calls": {
+                  "median": 1.0,
+                  "range": [
+                    1.0,
+                    1.0
+                  ]
+                },
+                "exec_ms": {
+                  "median": 0.0027924999999999964,
+                  "range": [
+                    0.0027291249999999967,
+                    0.002855874999999996
+                  ]
+                },
+                "plan_ms": {
+                  "median": 0.0027708958333333357,
+                  "range": [
+                    0.002727500000000002,
+                    0.0028142916666666694
+                  ]
+                },
+                "plans": {
+                  "median": 1.0,
+                  "range": [
+                    1.0,
+                    1.0
+                  ]
+                }
+              },
+              "insert effect": {
+                "calls": {
+                  "median": 1.0,
+                  "range": [
+                    1.0,
+                    1.0
+                  ]
+                },
+                "exec_ms": {
+                  "median": 0.0040060208333333285,
+                  "range": [
+                    0.003782958333333329,
+                    0.004229083333333329
+                  ]
+                },
+                "plan_ms": {
+                  "median": 0.0015311875000000006,
+                  "range": [
+                    0.0015121250000000007,
+                    0.0015502500000000006
+                  ]
+                },
+                "plans": {
+                  "median": 1.0,
+                  "range": [
+                    1.0,
+                    1.0
+                  ]
+                }
+              },
+              "reset statements": {
+                "calls": {
+                  "median": 1.0,
+                  "range": [
+                    1.0,
+                    1.0
+                  ]
+                },
+                "exec_ms": {
+                  "median": 0.001810875000000001,
+                  "range": [
+                    0.0015382083333333341,
+                    0.002083541666666668
+                  ]
+                },
+                "plan_ms": {
+                  "median": 0.0,
+                  "range": [
+                    0.0,
+                    0.0
+                  ]
+                },
+                "plans": {
+                  "median": 0.0,
+                  "range": [
+                    0.0,
+                    0.0
+                  ]
+                }
+              },
+              "scope check": {
+                "calls": {
+                  "median": 2.0,
+                  "range": [
+                    2.0,
+                    2.0
+                  ]
+                },
+                "exec_ms": {
+                  "median": 0.003210125000000003,
+                  "range": [
+                    0.003198125000000003,
+                    0.0032221250000000023
+                  ]
+                },
+                "plan_ms": {
+                  "median": 0.0067638958333333336,
+                  "range": [
+                    0.006590291666666669,
+                    0.006937499999999998
+                  ]
+                },
+                "plans": {
+                  "median": 1.0,
+                  "range": [
+                    1.0,
+                    1.0
+                  ]
+                }
+              }
+            }
+          },
+          "B": {
+            "client_per_job": {
+              "component_wall_ms": {
+                "median": 0.3809869791666667,
+                "range": [
+                  0.37758158333333336,
+                  0.384392375
+                ]
+              },
+              "reset_client_ms": {
+                "median": 0.081203125,
+                "range": [
+                  0.08107979166666666,
+                  0.08132645833333334
+                ]
+              },
+              "two_calls_client_ms": {
+                "median": 0.2994244791666667,
+                "range": [
+                  0.2958819166666667,
+                  0.30296704166666666
+                ]
+              }
+            },
+            "server_per_job": {
+              "effect function (inclusive)": {
+                "calls": {
+                  "median": 2.0,
+                  "range": [
+                    2.0,
+                    2.0
+                  ]
+                },
+                "exec_ms": {
+                  "median": 0.07927354166666667,
+                  "range": [
+                    0.0766179583333334,
+                    0.08192912499999995
+                  ]
+                },
+                "plan_ms": {
+                  "median": 0.0024998750000000017,
+                  "range": [
+                    0.0024928750000000016,
+                    0.0025068750000000017
+                  ]
+                },
+                "plans": {
+                  "median": 2.0,
+                  "range": [
+                    2.0,
+                    2.0
+                  ]
+                }
+              },
+              "fenced row lock": {
+                "calls": {
+                  "median": 2.0,
+                  "range": [
+                    2.0,
+                    2.0
+                  ]
+                },
+                "exec_ms": {
+                  "median": 0.007969604166666663,
+                  "range": [
+                    0.007743041666666661,
+                    0.008196166666666666
+                  ]
+                },
+                "plan_ms": {
+                  "median": 0.0,
+                  "range": [
+                    0.0,
+                    0.0
+                  ]
+                },
+                "plans": {
+                  "median": 0.0,
+                  "range": [
+                    0.0,
+                    0.0
+                  ]
+                }
+              },
+              "insert attempt": {
+                "calls": {
+                  "median": 1.0,
+                  "range": [
+                    1.0,
+                    1.0
+                  ]
+                },
+                "exec_ms": {
+                  "median": 0.0024193541666666634,
+                  "range": [
+                    0.0023299583333333297,
+                    0.0025087499999999975
+                  ]
+                },
+                "plan_ms": {
+                  "median": 0.0,
+                  "range": [
+                    0.0,
+                    0.0
+                  ]
+                },
+                "plans": {
+                  "median": 0.0,
+                  "range": [
+                    0.0,
+                    0.0
+                  ]
+                }
+              },
+              "insert effect": {
+                "calls": {
+                  "median": 1.0,
+                  "range": [
+                    1.0,
+                    1.0
+                  ]
+                },
+                "exec_ms": {
+                  "median": 0.0032213333333333295,
+                  "range": [
+                    0.0031440833333333316,
+                    0.003298583333333327
+                  ]
+                },
+                "plan_ms": {
+                  "median": 0.0,
+                  "range": [
+                    0.0,
+                    0.0
+                  ]
+                },
+                "plans": {
+                  "median": 0.0,
+                  "range": [
+                    0.0,
+                    0.0
+                  ]
+                }
+              },
+              "reset statements": {
+                "calls": {
+                  "median": 8.0,
+                  "range": [
+                    8.0,
+                    8.0
+                  ]
+                },
+                "exec_ms": {
+                  "median": 0.001851520833333334,
+                  "range": [
+                    0.0018226250000000005,
+                    0.0018804166666666672
+                  ]
+                },
+                "plan_ms": {
+                  "median": 0.0009193541666666673,
+                  "range": [
+                    0.0008629166666666672,
+                    0.0009757916666666673
+                  ]
+                },
+                "plans": {
+                  "median": 1.0,
+                  "range": [
+                    1.0,
+                    1.0
+                  ]
+                }
+              },
+              "scope check": {
+                "calls": {
+                  "median": 2.0,
+                  "range": [
+                    2.0,
+                    2.0
+                  ]
+                },
+                "exec_ms": {
+                  "median": 0.0032621458333333356,
+                  "range": [
+                    0.003229291666666669,
+                    0.003295000000000003
+                  ]
+                },
+                "plan_ms": {
+                  "median": 0.0,
+                  "range": [
+                    0.0,
+                    0.0
+                  ]
+                },
+                "plans": {
+                  "median": 0.0,
+                  "range": [
+                    0.0,
+                    0.0
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    ],
+    "scored_jobs": 288,
+    "warmup_jobs": 96,
+    "postgres": "17.11",
+    "revision": "c271319e84624bd00b0a62a7bb07a45602ee948b",
+    "input_sha256": "65bc00d2bd2745b5e9c5da25f38b6f92522707d02a7fa408f0b5f5db9fcf318f",
+    "median_client_ms_per_job": {
+      "A": {
+        "component_wall_ms": 0.47223785416666664,
+        "two_calls_client_ms": 0.410546875,
+        "reset_client_ms": 0.058852479166666666
+      },
+      "A-repeat": {
+        "component_wall_ms": 0.4839670208333333,
+        "two_calls_client_ms": 0.4254357916666667,
+        "reset_client_ms": 0.05807820833333334
+      },
+      "B": {
+        "component_wall_ms": 0.36940712500000006,
+        "two_calls_client_ms": 0.29196618750000003,
+        "reset_client_ms": 0.07693747916666667
+      }
+    },
+    "result": "All four paired groups reduced component wall time versus both controls and removed four nested plans per job. Product path and end-to-end throughput are separate."
+  },
   "linux_fenced_jobs_noop64_effect_lock_savepoint_five_groups": {
     "revision": "c271319e84624bd00b0a62a7bb07a45602ee948b",
     "scope": "local-linux-aarch64-noop64-effect-lock-savepoint-ab",

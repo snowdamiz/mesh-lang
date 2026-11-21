@@ -2706,6 +2706,28 @@ The wider comparison did not reproduce the two-group improvement.
 The SQL change remains experimental.
 [Five-group effect lock receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Retain PostgreSQL plans across fixed effect calls
+
+The direct component used the fenced effect SQL at `c271319e` on
+macOS arm64 with PostgreSQL 17.11 over TLS and SCRAM. Two disposable
+clusters reconciled 288 measured and 96 warmup jobs. Each cohort used
+one persistent effect backend and verified two separate commits per
+job. Both reset modes cleared the tested settings, prepared statements,
+cursor, temporary table, advisory lock, notification subscription, and
+sequence state.
+
+The treatment sends the documented reset sequence in one message
+without `DISCARD PLANS`. It removed four nested plans per job.
+The outer typed calls still planned twice per job. Median component
+time was 0.369 ms/job versus 0.472 and 0.484 for the two controls.
+The treatment beat both controls in all four groups. Its reset
+round trip took 0.077 ms/job versus 0.059 and 0.058 for the controls.
+
+The component isolates effect SQL and reset on one backend. The
+compiled runner, contention, and end-to-end throughput require
+separate measurements.
+[Plan retention component receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Compare four runners at 64 slots on no-op jobs
 
 Five matched Linux groups at `c271319e` reconciled 15,360
