@@ -11,7 +11,7 @@
 //! - textDocument/signatureHelp (parameter info and active parameter tracking)
 //! - Server capabilities advertisement
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -71,8 +71,10 @@ enum AnalysisOwner {
 #[derive(Default)]
 struct OwnerDiagnostics {
     revision: u64,
+    queued_generation: u64,
     published_revision: u64,
     published_generation: u64,
+    loaded: bool,
     by_uri: HashMap<Url, Vec<PublishedDiagnostic>>,
 }
 
@@ -83,17 +85,23 @@ struct ScopeDiagnostics {
     by_uri: HashMap<Url, Vec<PublishedDiagnostic>>,
 }
 
+fn uri_role(scope: &DiagnosticScope, uri: &Url) -> Option<analysis::ProjectRole> {
+    let DiagnosticScope::Project(root) = scope else {
+        return None;
+    };
+    analysis::canonical_file_path(uri.as_str()).map(|path| analysis::project_role(root, &path))
+}
+
 fn owner_covers_uri(
     scope: &DiagnosticScope,
     entry: Option<&Url>,
     owner: &AnalysisOwner,
     uri: &Url,
+    role: Option<analysis::ProjectRole>,
 ) -> bool {
-    let DiagnosticScope::Project(root) = scope else {
+    let DiagnosticScope::Project(_) = scope else {
         return true;
     };
-    let role =
-        analysis::canonical_file_path(uri.as_str()).map(|path| analysis::project_role(root, &path));
     match owner {
         AnalysisOwner::Loose(_) => true,
         AnalysisOwner::Project => !matches!(
@@ -111,13 +119,25 @@ fn owner_covers_uri(
     }
 }
 
-fn owner_priority(owner: &AnalysisOwner, uri: &Url) -> u8 {
+fn owner_sort_key(owner: &AnalysisOwner) -> (u8, &str) {
     match owner {
-        AnalysisOwner::TestFile(test_uri) if test_uri == uri => 4,
-        AnalysisOwner::Project => 3,
-        AnalysisOwner::TestHelpers => 2,
-        AnalysisOwner::Loose(_) => 2,
-        AnalysisOwner::TestFile(_) => 1,
+        AnalysisOwner::Project => (0, ""),
+        AnalysisOwner::TestHelpers => (1, ""),
+        AnalysisOwner::TestFile(uri) => (2, uri.as_str()),
+        AnalysisOwner::Loose(uri) => (3, uri.as_str()),
+    }
+}
+
+fn lsp_diagnostics_equal(
+    left: Option<&Vec<PublishedDiagnostic>>,
+    right: Option<&Vec<PublishedDiagnostic>>,
+) -> bool {
+    match (left, right) {
+        (None, None) => true,
+        (Some(a), Some(b)) => {
+            a.len() == b.len() && a.iter().zip(b.iter()).all(|(x, y)| x.lsp == y.lsp)
+        }
+        _ => false,
     }
 }
 
@@ -128,27 +148,82 @@ impl ScopeDiagnostics {
     ) -> HashMap<Url, Vec<PublishedDiagnostic>> {
         let mut uris = HashSet::new();
         for owner in self.owners.values() {
-            uris.extend(owner.by_uri.keys().cloned());
+            if owner.published_generation > 0 {
+                uris.extend(owner.by_uri.keys().cloned());
+            }
         }
         let mut next = HashMap::with_capacity(uris.len());
-        let entry = self.entry.as_ref();
         for uri in uris {
-            let best = self
-                .owners
-                .iter()
-                .filter(|(owner, state)| {
-                    state.published_generation > 0 && owner_covers_uri(scope, entry, owner, &uri)
-                })
-                .max_by_key(|(owner, state)| {
-                    (state.published_generation, owner_priority(owner, &uri))
-                });
-            if let Some((_, state)) = best {
-                if let Some(diagnostics) = state.by_uri.get(&uri) {
-                    next.insert(uri, diagnostics.clone());
+            let diagnostics = match scope {
+                DiagnosticScope::Loose(loose_uri) => self
+                    .owners
+                    .get(&AnalysisOwner::Loose(loose_uri.clone()))
+                    .filter(|state| state.published_generation > 0)
+                    .and_then(|state| state.by_uri.get(&uri)),
+                DiagnosticScope::Project(_) => {
+                    let role = uri_role(scope, &uri);
+                    self.authoritative_diagnostics(&uri, role)
                 }
+            };
+            if let Some(diagnostics) = diagnostics {
+                next.insert(uri, diagnostics.clone());
             }
         }
         std::mem::replace(&mut self.by_uri, next)
+    }
+
+    fn authoritative_diagnostics(
+        &self,
+        uri: &Url,
+        role: Option<analysis::ProjectRole>,
+    ) -> Option<&Vec<PublishedDiagnostic>> {
+        let published = |owner: &AnalysisOwner| {
+            self.owners
+                .get(owner)
+                .filter(|state| state.published_generation > 0)
+        };
+        match role {
+            Some(analysis::ProjectRole::TestFile) => {
+                published(&AnalysisOwner::TestFile(uri.clone()))
+                    .and_then(|state| state.by_uri.get(uri))
+            }
+            Some(analysis::ProjectRole::TestHelper) => {
+                if let Some(helpers) = published(&AnalysisOwner::TestHelpers) {
+                    helpers.by_uri.get(uri)
+                } else {
+                    self.best_test_file_diagnostics(uri)
+                }
+            }
+            _ => {
+                if let Some(project) = published(&AnalysisOwner::Project) {
+                    project.by_uri.get(uri)
+                } else if let Some(helpers) = published(&AnalysisOwner::TestHelpers) {
+                    helpers.by_uri.get(uri)
+                } else {
+                    self.best_test_file_diagnostics(uri)
+                }
+            }
+        }
+    }
+
+    fn best_test_file_diagnostics(&self, uri: &Url) -> Option<&Vec<PublishedDiagnostic>> {
+        self.owners
+            .iter()
+            .filter_map(|(owner, state)| {
+                let AnalysisOwner::TestFile(test_uri) = owner else {
+                    return None;
+                };
+                if state.published_generation == 0 {
+                    return None;
+                }
+                let diagnostics = state.by_uri.get(uri)?;
+                Some((
+                    (state.loaded, diagnostics.len(), test_uri.as_str()),
+                    diagnostics,
+                ))
+            })
+            .max_by(|(a, _), (b, _)| a.cmp(b))
+            .map(|(_, diagnostics)| diagnostics)
     }
 }
 
@@ -165,6 +240,7 @@ struct Pending {
     uri: Url,
     revision: u64,
     generation: u64,
+    force_publish: bool,
     source: String,
     open_documents: Vec<(String, String)>,
 }
@@ -209,23 +285,25 @@ impl Documents {
         let owner = state.owner.clone();
         self.last_generation += 1;
         let generation = self.last_generation;
-        let mut pending = vec![self.start_analysis(uri, generation)];
+        let mut pending = vec![self.start_analysis(uri, generation, true)];
         pending.extend(self.dependent_pending(&scope, &owner, generation));
         pending
     }
 
-    fn start_analysis(&mut self, uri: &Url, generation: u64) -> Pending {
+    fn start_analysis(&mut self, uri: &Url, generation: u64, force_publish: bool) -> Pending {
         self.last_revision += 1;
         let revision = self.last_revision;
         let state = self.open.get_mut(uri).expect("analyzing an open document");
         state.revision = revision;
-        self.diagnostics
+        let owner_state = self
+            .diagnostics
             .entry(state.scope.clone())
             .or_default()
             .owners
             .entry(state.owner.clone())
-            .or_default()
-            .revision = revision;
+            .or_default();
+        owner_state.revision = revision;
+        owner_state.queued_generation = generation;
         let source = state.source.clone();
         let mut open: Vec<_> = self.open.iter().collect();
         open.sort_unstable_by_key(|(_, state)| state.revision);
@@ -233,12 +311,21 @@ impl Documents {
             uri: uri.clone(),
             revision,
             generation,
+            force_publish,
             source,
             open_documents: open
                 .into_iter()
                 .map(|(uri, state)| (uri.to_string(), state.source.clone()))
                 .collect(),
         }
+    }
+
+    fn owner_document(&self, scope: &DiagnosticScope, owner: &AnalysisOwner) -> Option<Url> {
+        self.open
+            .iter()
+            .filter(|(_, state)| &state.scope == scope && &state.owner == owner)
+            .max_by_key(|(_, state)| state.revision)
+            .map(|(uri, _)| uri.clone())
     }
 
     fn is_current(&self, pending: &Pending) -> bool {
@@ -267,15 +354,7 @@ impl Documents {
         let mut targets = Vec::new();
         match changed_owner {
             AnalysisOwner::Project => {
-                if let Some(helper) = self
-                    .open
-                    .iter()
-                    .filter(|(_, state)| {
-                        &state.scope == scope && state.owner == AnalysisOwner::TestHelpers
-                    })
-                    .max_by_key(|(_, state)| state.revision)
-                    .map(|(uri, _)| uri.clone())
-                {
+                if let Some(helper) = self.owner_document(scope, &AnalysisOwner::TestHelpers) {
                     targets.push(helper);
                 }
                 let mut tests: Vec<Url> = self
@@ -305,7 +384,7 @@ impl Documents {
         }
         targets
             .into_iter()
-            .map(|uri| self.start_analysis(&uri, generation))
+            .map(|uri| self.start_analysis(&uri, generation, true))
             .collect()
     }
 
@@ -326,16 +405,11 @@ impl Documents {
 
         self.last_generation += 1;
         let generation = self.last_generation;
-        let same_owner = self
-            .open
-            .iter()
-            .filter(|(_, other)| other.scope == state.scope && other.owner == state.owner)
-            .max_by_key(|(_, other)| other.revision)
-            .map(|(uri, _)| uri.clone());
+        let same_owner = self.owner_document(&state.scope, &state.owner);
         let mut pending = Vec::new();
         let mut updates = Vec::new();
         if let Some(remaining) = same_owner {
-            pending.push(self.start_analysis(&remaining, generation));
+            pending.push(self.start_analysis(&remaining, generation, true));
         } else if let Some(prev_effective) = self.diagnostics.get_mut(&state.scope).map(|scope| {
             scope.owners.remove(&state.owner);
             scope.recompute_effective(&state.scope)
@@ -351,9 +425,15 @@ impl Documents {
     }
 
     /// Keeps the active document's analysis for queries. Each analysis owns
-    /// the diagnostics it reports: a fresher analysis supersedes older owners
-    /// on every file it covers, and closing an owner clears what only it owned.
-    fn finish(&mut self, pending: &Pending, analysis: AnalysisResult) -> Option<Vec<Publication>> {
+    /// the diagnostics it reports: authoritative owners govern project and
+    /// helper files, and when a fresher analysis disagrees with an older
+    /// owner on a shared URI, the older owner is queued to refresh at the
+    /// same generation instead of having its diagnostics pruned.
+    fn finish(
+        &mut self,
+        pending: &Pending,
+        analysis: AnalysisResult,
+    ) -> Option<(Vec<Publication>, Vec<Pending>)> {
         let state = self
             .open
             .get_mut(&pending.uri)
@@ -366,6 +446,7 @@ impl Documents {
         }
 
         let analysis = self.analysis(&pending.uri)?;
+        let loaded = analysis.loaded;
         let mut open_by_path = HashMap::new();
         for (uri, _) in &pending.open_documents {
             let uri = Url::parse(uri).expect("the URI of an open document");
@@ -385,22 +466,42 @@ impl Documents {
         };
         let entry_uri = analysis.entry.as_deref().and_then(&uri_for);
         let owner_by_uri = diagnostics::by_uri(&analysis.diagnostics, &analysis.file, &uri_for);
+        let mut disagreed_owners = Vec::new();
         let prev_effective = {
             let scope_diagnostics = self.diagnostics.get_mut(&scope)?;
             if entry_uri.is_some() {
                 scope_diagnostics.entry = entry_uri;
             }
             let entry = scope_diagnostics.entry.clone();
-            for (other_owner, other_state) in &mut scope_diagnostics.owners {
-                if other_owner != &owner && other_state.published_generation < pending.generation {
-                    other_state
-                        .by_uri
-                        .retain(|uri, _| !owner_covers_uri(&scope, entry.as_ref(), &owner, uri));
+            let mut role_cache: HashMap<Url, Option<analysis::ProjectRole>> = HashMap::new();
+            let mut role_for = |uri: &Url| -> Option<analysis::ProjectRole> {
+                *role_cache
+                    .entry(uri.clone())
+                    .or_insert_with(|| uri_role(&scope, uri))
+            };
+            for (other_owner, other_state) in &scope_diagnostics.owners {
+                if other_owner == &owner || other_state.queued_generation >= pending.generation {
+                    continue;
+                }
+                let owner_reports_diff = owner_by_uri.iter().any(|(uri, diagnostics)| {
+                    let role = role_for(uri);
+                    owner_covers_uri(&scope, entry.as_ref(), other_owner, uri, role)
+                        && !lsp_diagnostics_equal(Some(diagnostics), other_state.by_uri.get(uri))
+                });
+                let other_reports_diff = loaded
+                    && other_state.by_uri.iter().any(|(uri, diagnostics)| {
+                        let role = role_for(uri);
+                        owner_covers_uri(&scope, entry.as_ref(), &owner, uri, role)
+                            && !lsp_diagnostics_equal(owner_by_uri.get(uri), Some(diagnostics))
+                    });
+                if owner_reports_diff || other_reports_diff {
+                    disagreed_owners.push(other_owner.clone());
                 }
             }
             let owner_diagnostics = scope_diagnostics.owners.get_mut(&owner)?;
             owner_diagnostics.published_revision = pending.revision;
             owner_diagnostics.published_generation = pending.generation;
+            owner_diagnostics.loaded = loaded;
             owner_diagnostics.by_uri = owner_by_uri;
             scope_diagnostics.recompute_effective(&scope)
         };
@@ -408,9 +509,18 @@ impl Documents {
         let updates = self.diff_publications(
             &prev_effective,
             &self.diagnostics[&scope].by_uri,
-            Some(&pending.uri),
+            pending.force_publish.then_some(&pending.uri),
         );
-        Some(updates)
+        disagreed_owners.sort_by(|a, b| owner_sort_key(a).cmp(&owner_sort_key(b)));
+        let followup_uris: Vec<Url> = disagreed_owners
+            .into_iter()
+            .filter_map(|other_owner| self.owner_document(&scope, &other_owner))
+            .collect();
+        let followups = followup_uris
+            .into_iter()
+            .map(|doc_uri| self.start_analysis(&doc_uri, pending.generation, false))
+            .collect();
+        Some((updates, followups))
     }
 
     fn diff_publications(
@@ -538,29 +648,31 @@ impl MeshBackend {
             let _publishing = self.publishing.lock().await;
             self.documents.lock().unwrap().edit(&uri, version, source)
         };
-        for item in pending {
-            self.publish_analysis(item).await;
-        }
+        self.publish_analyses(pending).await;
     }
 
-    async fn publish_analysis(&self, pending: Pending) {
-        if !self.documents.lock().unwrap().is_current(&pending) {
-            return;
-        }
-        let uri = pending.uri.clone();
-        let Some((pending, analysis)) = analyze(pending).await else {
-            self.client
-                .log_message(
-                    MessageType::ERROR,
-                    format!("The analysis of {uri} did not finish"),
-                )
-                .await;
-            return;
-        };
-        let _publishing = self.publishing.lock().await;
-        let updates = self.documents.lock().unwrap().finish(&pending, analysis);
-        if let Some(updates) = updates {
-            self.publish(updates).await;
+    async fn publish_analyses(&self, pending: Vec<Pending>) {
+        let mut queue = VecDeque::from(pending);
+        while let Some(item) = queue.pop_front() {
+            if !self.documents.lock().unwrap().is_current(&item) {
+                continue;
+            }
+            let uri = item.uri.clone();
+            let Some((item, analysis)) = analyze(item).await else {
+                self.client
+                    .log_message(
+                        MessageType::ERROR,
+                        format!("The analysis of {uri} did not finish"),
+                    )
+                    .await;
+                continue;
+            };
+            let _publishing = self.publishing.lock().await;
+            let result = self.documents.lock().unwrap().finish(&item, analysis);
+            if let Some((updates, followups)) = result {
+                self.publish(updates).await;
+                queue.extend(followups);
+            }
         }
     }
 
@@ -644,9 +756,7 @@ impl LanguageServer for MeshBackend {
             self.publish(clears).await;
             pending
         };
-        for item in pending {
-            self.publish_analysis(item).await;
-        }
+        self.publish_analyses(pending).await;
     }
 
     async fn code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
@@ -1005,25 +1115,27 @@ mod tests {
         let second = documents.edit(&uri, 2, fixed.to_string()).remove(0);
         let (first_analysis, second_analysis) = (analyzed(&first), analyzed(&second));
         assert_eq!(
-            documents.finish(&second, second_analysis),
+            documents.finish(&second, second_analysis).map(|(u, _)| u),
             Some(vec![Publication {
                 uri: uri.clone(),
                 version: Some(2),
                 diagnostics: vec![],
             }])
         );
-        assert_eq!(documents.finish(&first, first_analysis), None);
+        assert!(documents.finish(&first, first_analysis).is_none());
         assert_eq!(documents.analysis(&uri).unwrap().source(), fixed);
 
         let third = documents.edit(&uri, 3, broken.to_string()).remove(0);
         documents.close(&uri);
         let third_analysis = analyzed(&third);
-        assert_eq!(documents.finish(&third, third_analysis), None);
+        assert!(documents.finish(&third, third_analysis).is_none());
 
         // Reopened at the version it had before it closed, it is a new text.
         let reopened = documents.edit(&uri, 3, fixed.to_string()).remove(0);
-        assert_eq!(documents.finish(&third, analyzed(&third)), None);
-        let published = documents.finish(&reopened, analyzed(&reopened));
+        assert!(documents.finish(&third, analyzed(&third)).is_none());
+        let published = documents
+            .finish(&reopened, analyzed(&reopened))
+            .map(|(u, _)| u);
         assert_eq!(
             published,
             Some(vec![Publication {
@@ -1054,13 +1166,13 @@ mod tests {
         let old = documents.edit(&main_uri, 4, main.to_string()).remove(0);
         let newer = documents.edit(&util_uri, 1, util.to_string()).remove(0);
         assert!(documents.finish(&newer, analyzed(&newer)).is_some());
-        assert_eq!(documents.finish(&old, analyzed(&old)), None);
+        assert!(documents.finish(&old, analyzed(&old)).is_none());
         assert_eq!(documents.analysis(&main_uri).unwrap().source(), main);
 
         let pending = documents.edit(&main_uri, 5, main.to_string()).remove(0);
         let (mut refreshed, clears) = documents.close(&util_uri);
         assert!(clears.is_empty());
-        assert_eq!(documents.finish(&pending, analyzed(&pending)), None);
+        assert!(documents.finish(&pending, analyzed(&pending)).is_none());
         let refreshed = refreshed.remove(0);
         assert!(documents.finish(&refreshed, analyzed(&refreshed)).is_some());
     }
@@ -1087,21 +1199,25 @@ mod tests {
         (temp, uris)
     }
 
-    /// Edits or opens `uri` with `text`, runs every resulting analysis, and
-    /// returns every publication emitted.
+    /// Edits or opens `uri` with `text`, runs every resulting analysis and
+    /// follow-up refresh, and returns every publication emitted.
     fn edit_and_finish(
         documents: &mut Documents,
         uri: &Url,
         version: i32,
         text: &str,
     ) -> Vec<Publication> {
+        let mut queue = VecDeque::from(documents.edit(uri, version, text.to_string()));
         let mut updates = Vec::new();
-        for pending in documents.edit(uri, version, text.to_string()) {
-            updates.extend(
-                documents
-                    .finish(&pending, analyzed(&pending))
-                    .expect("the latest analysis is published"),
-            );
+        while let Some(pending) = queue.pop_front() {
+            if !documents.is_current(&pending) {
+                continue;
+            }
+            let (published, followups) = documents
+                .finish(&pending, analyzed(&pending))
+                .expect("the latest analysis is published");
+            updates.extend(published);
+            queue.extend(followups);
         }
         updates
     }
@@ -1451,17 +1567,19 @@ mod tests {
         let mut pending = documents.edit(util, 2, fixed_util.to_string());
         assert_eq!(pending.len(), 2);
         let first = pending.remove(0);
-        let updates = documents
+        let (updates, followups) = documents
             .finish(&first, analyzed(&first))
             .expect("project analysis publishes");
+        assert!(followups.is_empty());
         let util_pub = updates.iter().find(|p| &p.uri == util).unwrap();
         assert!(util_pub.diagnostics.is_empty(), "{updates:?}");
         assert!(published_codes(&documents, util).is_empty());
 
         let second = pending.remove(0);
-        let updates = documents
+        let (updates, followups) = documents
             .finish(&second, analyzed(&second))
             .expect("test analysis publishes");
+        assert!(followups.is_empty());
         assert!(
             updates.iter().all(|p| &p.uri != util),
             "test refresh should not republish unchanged util: {updates:?}"
@@ -1484,6 +1602,134 @@ mod tests {
         let published = open(&mut documents, test_uri, test);
         assert!(published.iter().all(|p| &p.uri != main), "{published:?}");
         assert_eq!(published_codes(&documents, main), ["E0004"]);
+    }
+
+    /// A broken test edit (either failing before project load, like P0401, or
+    /// gating whole-program checks like CFG0001 and E0103) must not wipe
+    /// still-valid diagnostics owned by the project analysis.
+    #[test]
+    fn a_broken_test_edit_keeps_valid_project_diagnostics() {
+        let clean_test = "test(\"a\") do\n  assert(true)\nend\n";
+        let duplicate_teardown = "describe(\"d\") do\n  teardown do\n    assert(true)\n  end\n  teardown do\n    assert(true)\n  end\n  test(\"a\") do\n    assert(true)\n  end\nend\n";
+
+        // Row 1: second teardown in a describe (P0401, loaded = false) keeps util.mpl E0004.
+        {
+            let broken_util = "pub fn size() -> Int do\n  missing_name\nend\n";
+            let (_temp, uris) = test_project(&[
+                ("main.mpl", MAIN),
+                ("util.mpl", broken_util),
+                ("tests/a.test.mpl", clean_test),
+            ]);
+            let [_main, util, test] = &uris[..] else {
+                unreachable!()
+            };
+            let mut documents = Documents::default();
+            open(&mut documents, util, broken_util);
+            open(&mut documents, test, clean_test);
+            assert_eq!(published_codes(&documents, util), ["E0004"]);
+
+            let published = edit_and_finish(&mut documents, test, 2, duplicate_teardown);
+            assert_eq!(published_codes(&documents, test), ["P0401"]);
+            assert!(
+                published.iter().all(|p| &p.uri != util),
+                "P0401 in test must not clear or republish util.mpl: {published:?}"
+            );
+            assert_eq!(published_codes(&documents, util), ["E0004"]);
+        }
+
+        // Row 2: typo in test (E0004) keeps CFG0001 on work.mpl.
+        {
+            let bad_work = "@cluster(3)\nfn hidden() do\nend\n";
+            let (_temp, uris) = test_project(&[
+                ("main.mpl", MAIN),
+                ("work.mpl", bad_work),
+                ("tests/a.test.mpl", clean_test),
+            ]);
+            let [_main, work, test] = &uris[..] else {
+                unreachable!()
+            };
+            let mut documents = Documents::default();
+            open(&mut documents, work, bad_work);
+            open(&mut documents, test, clean_test);
+            assert_eq!(published_codes(&documents, work), ["CFG0001"]);
+
+            let published = edit_and_finish(&mut documents, test, 2, BROKEN_TEST);
+            assert_eq!(published_codes(&documents, test), ["E0004"]);
+            assert!(
+                published.iter().all(|p| &p.uri != work),
+                "typo in test must not clear work.mpl CFG0001: {published:?}"
+            );
+            assert_eq!(published_codes(&documents, work), ["CFG0001"]);
+        }
+
+        // Row 3: same typo in test (E0004) keeps E0103 on a.mpl / b.mpl.
+        {
+            let dup_a = "pub fn same() do\n  1\nend\n";
+            let dup_b = "pub fn same() do\n  2\nend\n";
+            let (_temp, uris) = test_project(&[
+                ("main.mpl", MAIN),
+                ("a.mpl", dup_a),
+                ("b.mpl", dup_b),
+                ("tests/a.test.mpl", clean_test),
+            ]);
+            let [_main, a, b, test] = &uris[..] else {
+                unreachable!()
+            };
+            let mut documents = Documents::default();
+            open(&mut documents, a, dup_a);
+            open(&mut documents, test, clean_test);
+            let e0103_uri = if !published_codes(&documents, a).is_empty() {
+                a
+            } else {
+                b
+            };
+            assert_eq!(published_codes(&documents, e0103_uri), ["E0103"]);
+
+            let published = edit_and_finish(&mut documents, test, 2, BROKEN_TEST);
+            assert_eq!(published_codes(&documents, test), ["E0004"]);
+            assert!(
+                published.iter().all(|p| &p.uri != e0103_uri),
+                "typo in test must not clear E0103: {published:?}"
+            );
+            assert_eq!(published_codes(&documents, e0103_uri), ["E0103"]);
+        }
+    }
+
+    #[test]
+    fn closing_project_tab_publishes_changed_nonempty_diagnostics_from_open_test() {
+        let helper = "pub fn foo() -> String do\n  \"hi\"\nend\n";
+        let util = "from Tests.Helper import foo\n\npub fn check() -> Int do\n  foo()\nend\n";
+        let test = "test(\"a\") do\n  assert(true)\nend\n";
+        let (_temp, uris) = test_project(&[
+            ("main.mpl", MAIN),
+            ("util.mpl", util),
+            ("tests/helper.mpl", helper),
+            ("tests/a.test.mpl", test),
+        ]);
+        let [main, util_uri, _helper, test_uri] = &uris[..] else {
+            unreachable!()
+        };
+        let mut documents = Documents::default();
+
+        open(&mut documents, main, MAIN);
+        open(&mut documents, test_uri, test);
+        let before_codes = published_codes(&documents, util_uri);
+        assert!(
+            !before_codes.is_empty(),
+            "project should report an unresolved import on util.mpl"
+        );
+        assert_ne!(before_codes, ["E0001"]);
+
+        let (pending, updates) = documents.close(main);
+        let util_update = updates
+            .iter()
+            .find(|p| &p.uri == util_uri)
+            .expect("closing project tab publishes updated non-empty diagnostics on util.mpl");
+        assert_eq!(codes(util_update), ["E0001"], "{updates:?}");
+        for item in pending {
+            documents.finish(&item, analyzed(&item));
+        }
+        assert_eq!(published_codes(&documents, util_uri), ["E0001"]);
     }
 
     /// Verify that the server advertises the expected capabilities, and

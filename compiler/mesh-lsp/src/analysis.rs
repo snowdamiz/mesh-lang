@@ -33,6 +33,9 @@ pub struct AnalysisResult {
     pub parse: mesh_parser::Parse,
     /// The type-check result, kept for hover queries.
     pub typeck: TypeckResult,
+    /// Whether the project loaded before checking (false when manifest
+    /// loading or test preprocessing failed early).
+    pub loaded: bool,
     /// The project's entry file path when a project analysis loaded it.
     pub entry: Option<PathBuf>,
 }
@@ -110,8 +113,9 @@ pub fn analyze_document(
     let checked = check_and_lint(target, &CheckOptions::cli());
     // A lone file's module is named by its file name.
     let module = Path::new(path.file_name().unwrap_or(DEFAULT_ENTRYPOINT.as_ref()));
-    module_analysis(checked, None, module)
-        .unwrap_or_else(|diagnostics| analysis_alone(diagnostics, &path, source))
+    module_analysis(checked, None, module).unwrap_or_else(|(diagnostics, loaded, entry)| {
+        analysis_alone(diagnostics, &path, source, loaded, entry)
+    })
 }
 
 fn analyze_in_project(
@@ -145,22 +149,29 @@ fn analyze_in_project(
         Target::Project { root }
     };
     let checked = check_and_lint(target, &options);
-    let loaded = checked.analysis.is_some();
     let entry_root = (role != ProjectRole::TestFile).then_some(root);
-    module_analysis(checked, entry_root, relative).unwrap_or_else(|mut diagnostics| {
-        if loaded {
-            diagnostics.insert(
-                0,
-                Diagnostic::in_file(
-                    Code::ModuleUnreadable,
-                    &SourceFile::new(path, source),
-                    format!("Document '{}' was not discovered under project root '{}'", path.display(), root.display()),
-                )
-                .with_repair("Place the document in the project outside hidden directories and nested packages."),
-            );
-        }
-        analysis_alone(diagnostics, path, source)
-    })
+    module_analysis(checked, entry_root, relative).unwrap_or_else(
+        |(mut diagnostics, loaded, entry)| {
+            if loaded {
+                diagnostics.insert(
+                    0,
+                    Diagnostic::in_file(
+                        Code::ModuleUnreadable,
+                        &SourceFile::new(path, source),
+                        format!(
+                            "Document '{}' was not discovered under project root '{}'",
+                            path.display(),
+                            root.display()
+                        ),
+                    )
+                    .with_repair(
+                        "Place the document in the project outside hidden directories and nested packages.",
+                    ),
+                );
+            }
+            analysis_alone(diagnostics, path, source, loaded, entry)
+        },
+    )
 }
 
 /// What `meshc check` reports for `target`, with what `meshc lint` reports
@@ -182,13 +193,13 @@ fn module_analysis(
     checked: Frontend,
     entry_root: Option<&Path>,
     relative: &Path,
-) -> Result<AnalysisResult, Vec<Diagnostic>> {
+) -> Result<AnalysisResult, (Vec<Diagnostic>, bool, Option<PathBuf>)> {
     let Frontend {
         diagnostics,
         analysis,
     } = checked;
     let Some(mut analysis) = analysis else {
-        return Err(diagnostics);
+        return Err((diagnostics, false, None));
     };
     let entry = entry_root.and_then(|root| {
         analysis.entry.as_ref().map(|rel| {
@@ -203,20 +214,27 @@ fn module_analysis(
         .iter()
         .position(|module| module.path == relative)
     else {
-        return Err(diagnostics);
+        return Err((diagnostics, true, entry));
     };
     Ok(AnalysisResult {
         diagnostics,
         file: analysis.files.swap_remove(idx),
         parse: analysis.project.module_parses.swap_remove(idx),
         typeck: analysis.checked.typeck.swap_remove(idx),
+        loaded: true,
         entry,
     })
 }
 
 /// `diagnostics`, with the document parsed and checked on its own for
 /// queries.
-fn analysis_alone(diagnostics: Vec<Diagnostic>, path: &Path, source: &str) -> AnalysisResult {
+fn analysis_alone(
+    diagnostics: Vec<Diagnostic>,
+    path: &Path,
+    source: &str,
+    loaded: bool,
+    entry: Option<PathBuf>,
+) -> AnalysisResult {
     let parse = mesh_parser::parse(source);
     let typeck = mesh_typeck::check(&parse);
     AnalysisResult {
@@ -224,7 +242,8 @@ fn analysis_alone(diagnostics: Vec<Diagnostic>, path: &Path, source: &str) -> An
         file: SourceFile::new(path, source),
         parse,
         typeck,
-        entry: None,
+        loaded,
+        entry,
     }
 }
 
@@ -287,7 +306,29 @@ pub fn type_at_position(
 pub(crate) fn canonical_file_path(uri: &str) -> Option<PathBuf> {
     let url = Url::parse(uri).ok()?;
     let path = url.to_file_path().ok()?;
-    Some(std::fs::canonicalize(&path).unwrap_or(path))
+    Some(canonicalize_lossy(path))
+}
+
+fn canonicalize_lossy(path: PathBuf) -> PathBuf {
+    if let Ok(canon) = std::fs::canonicalize(&path) {
+        return canon;
+    }
+    let mut suffix = Vec::new();
+    let mut current = path.as_path();
+    while let Some(name) = current.file_name() {
+        suffix.push(name.to_os_string());
+        let Some(parent) = current.parent() else {
+            return path;
+        };
+        if let Ok(mut canon) = std::fs::canonicalize(parent) {
+            for component in suffix.into_iter().rev() {
+                canon.push(component);
+            }
+            return canon;
+        }
+        current = parent;
+    }
+    path
 }
 
 /// The nearest directory above the document holding a mesh.toml: one of
