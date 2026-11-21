@@ -2515,6 +2515,31 @@ launch boundaries will identify which part of the batch cycle can
 be shortened.
 [No-op comparison receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Trace the no-op claim and launch cycle
+
+One warmed and one measured matched group at `1d9d7e41` recorded
+the claim thread, confirmed COMMIT, result consumption, and every
+launch. The `de3da046` follow-up also measured `Command::spawn`.
+Both builds ran the frozen 1,024-job input with two identical
+trace-off controls and one trace-on arm. Every measured job
+reconciled and each trace matched all 1,024 job IDs and child PIDs.
+
+In the `de3da046` measured arm, the median full 16-job cycle took
+10.10 ms from request through the next request. The claim lane took
+2.94 ms, including the due probe and confirmed claim transaction.
+The serial launch group took 6.31 ms, with 4.49 ms total inside
+`Command::spawn`. The median reply-to-consume interval was 0.018 ms
+and last-launch-to-next-request was 0.005 ms. The warmup showed a
+similar breakdown. Across measured full cycles, spawn accounted for
+45% of elapsed time.
+
+The two identical controls reached 1,508 and 536 jobs/s in this
+group. These runs locate opportunities in the code path. A matched
+trace-off experiment will test whether issuing the next claim while
+launching the current batch improves throughput within the existing
+slot and context budgets.
+[Claim and launch timing receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Follow-up correctness proofs
 
 The follow-up verifier used the same runtime sources and passed 45 Jobs
