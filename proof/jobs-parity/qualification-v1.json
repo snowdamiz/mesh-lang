@@ -5085,6 +5085,102 @@
     },
     "scope": "Private fixture route on an ARM64 Linux guest, with identical warm Mesh arms and a matched stock Oban arm. This result does not qualify the 35-profile gate."
   },
+  "linux_slow_64_stock_mesh_vs_oban": {
+    "run": "target/jobs-parity/linux-arm-ownership-guest/beam-inputs/matched-slow-64-2g.v3ui3ZIg",
+    "evidence": "target/jobs-parity/linux-arm-ownership-guest/beam-inputs/matched-slow-64-2g.v3ui3ZIg-proof/evidence",
+    "bundle_sha256": "5804762987e7736e4bfb6802de3c128f53d8f9cd214bc2e38f4bcd9f3b363798",
+    "boot_sha256": "f29e90e1baaab4899e631104c4634021edd14c62815dda075157534fa3853585",
+    "boot_source_sha256": "8d4b79556a32822a35dcdcc60c167edff78ce00643757746705d679900efbbfa",
+    "serial_sha256": "a58c8a19aa81bd99ae4e44be3f043a633bf577771dd2afa36927327eb204ca98",
+    "receipt_sha256": {
+      "bundle.json": "8e4996457c04efcf03119fffd5e7c34ef7a6f7d33bc44fb1e5788c1ab64ff4c8",
+      "comparison.json": "fe9e0703f29f6c76191a6d5210c1d993b2b53f20cb282c10c64fe5d10c7019c4",
+      "runtime.json": "025c50d2b1ae14d12a86cdc465849302c9b6d29c092e5600925f4d968904e89b",
+      "gates.json": "597eb9b0bb957efd9b6ac3dd529a3f70e07b089ea9a29e25d0ece8b0f86920d3",
+      "postgres-settings.json": "9f71a2dbd11e8f1347a83c46c31f667686094eb98222048fad1c3b623ce84d77",
+      "result.json": "63a59c88f9c61919261690ee45b2d88dd2789a82bc8a44c1be84be233b598f91",
+      "summary.json": "955400d887fe9ee8814d35fc42c201f02718163a89577202b244edd8755a9db5",
+      "trials.json": "4023e8fbeef7a1b117956cbe9c44f67f1b394edb1090d5833d239655126eeda9"
+    },
+    "initial_boot": {
+      "guest_memory_bytes": 1073741824,
+      "serial_sha256": "89bf5a37b4f60a955dcb6abe41888552b8464231ae55cd712fbfb201a7d22af2",
+      "guest_script_exit": 127,
+      "receipt": "missing"
+    },
+    "profile": "slow-1r-64s",
+    "runtime": "b67206f4cf4a7f27595dcd3a54702bc7280df149",
+    "mesh_fixture_sha256": "a802f91c0e04af70d8f773574f6c946c68d4222d81d229dca521fb709a1c8449",
+    "stock_versions": {
+      "elixir": "1.20.4",
+      "erlang": "29.1.1",
+      "oban": "2.24.2"
+    },
+    "guest_vcpu": 2,
+    "guest_memory_bytes": 2147483648,
+    "workload_connection_limit": 68,
+    "postgres": "17.11 verified TLS and SCRAM",
+    "host_1m_load_before_and_after": [
+      13.06,
+      17.87
+    ],
+    "measured_pairs": 5,
+    "measured_jobs_per_arm": 2560,
+    "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+    "arms": {
+      "mesh": {
+        "median_jobs_per_second": 245.57531009979095,
+        "median_cpu_seconds_per_job": 0.0023011796875,
+        "median_pickup_p99_ms": 1942.37109375,
+        "median_peak_rss_bytes": 584458240,
+        "median_commit_to_first_claim_ms": 138.756103515625,
+        "median_first_claim_to_last_settlement_ms": 1946.14404296875,
+        "median_entry_to_attempt_commit_ms": 18.20654296875,
+        "median_processes_at_peak_rss_sample": 49,
+        "median_descendant_bytes_at_peak_rss_sample": 543657984,
+        "jobs_per_second_range": [
+          201.7675946245004,
+          271.6850350612821
+        ],
+        "peak_connections": 49,
+        "peak_processes": 54,
+        "peak_threads": 336
+      },
+      "oban": {
+        "median_jobs_per_second": 389.07168140066045,
+        "median_cpu_seconds_per_job": 0.0019902929687499998,
+        "median_pickup_p99_ms": 1212.769775390625,
+        "median_peak_rss_bytes": 161267712,
+        "median_commit_to_first_claim_ms": 167.87890625,
+        "median_first_claim_to_last_settlement_ms": 1127.548828125,
+        "median_entry_to_attempt_commit_ms": 1.9954833984375,
+        "median_processes_at_peak_rss_sample": 2,
+        "median_descendant_bytes_at_peak_rss_sample": 1236992,
+        "jobs_per_second_range": [
+          227.97278830515876,
+          448.1945395182974
+        ],
+        "peak_connections": 68,
+        "peak_processes": 2,
+        "peak_threads": 12
+      }
+    },
+    "breaches": [
+      {
+        "metric": "peak_rss_bytes",
+        "scope": "budgets"
+      },
+      {
+        "metric": "jobs_per_second",
+        "scope": "comparison"
+      },
+      {
+        "metric": "pickup_p99_ms",
+        "scope": "comparison"
+      }
+    ],
+    "mesh_wins": 1
+  },
   "worker_fork_compiled_handler": {
     "runtime": "da0a51bcf6bc4e2c22766a2e60c0d07c96ca4cc0",
     "host": "Darwin arm64",

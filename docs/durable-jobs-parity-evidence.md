@@ -1684,6 +1684,28 @@ publication were disabled in both Mesh arms. The two warm arms differed
 by −103.3 to +52.1 jobs/s across paired groups.
 [Warm Mesh and Oban receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Measure stock Linux Jobs with 64 slow-job slots
+
+The frozen `slow-1r-64s` workload ran five alternating pairs against
+Oban Basic 2.24.2. Stock Mesh `b67206f4` used batch claims, direct effect
+connections, and a 250 ms poll. PostgreSQL 17.11 used verified TLS and
+SCRAM in the two-vCPU ARM64 guest. Each engine reconciled 2,560 measured
+jobs with one attempt and one durable effect per job.
+
+The first boot with 1 GiB of RAM ended before the benchmark emitted a
+receipt. The identical guest archive completed with 2 GiB of RAM for both
+engines and the same application limits. Mesh reached a median 245.6
+jobs/s, ranging from 201.8 to 271.7. Oban reached 389.1 jobs/s, ranging
+from 228.0 to 448.2. Mesh won one pair. It missed throughput and pickup
+but met the relative CPU limit at 2.30 versus 1.99 ms/job.
+
+The median sampled peak RSS was 557.4 MiB for Mesh and 153.8 MiB for
+Oban, above the 230.7 MiB relative limit. The median of each Mesh trial's
+peak-RSS samples included 49 processes and 518.5 MiB of descendant RSS.
+These figures identify the attempt processes as the main source of
+measured memory. They leave the contribution of per-attempt PostgreSQL
+sessions open. [64-slot slow-job receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Run the compiled handler through the fork template
 
 Five alternating pairs ran the 100 ms handler with 512 attempts and 64
