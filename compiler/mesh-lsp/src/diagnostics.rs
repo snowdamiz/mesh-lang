@@ -254,7 +254,7 @@ mod tests {
             Range::new(Position::new(0, 0), Position::new(0, 17)),
             "`á` is one UTF-16 unit"
         );
-        let about_no_file = Diagnostic::new(Code::Uncategorized, "bad manifest");
+        let about_no_file = Diagnostic::new(Code::ManifestInvalid, "bad manifest");
         assert_eq!(
             to_lsp(&about_no_file, &main_mpl(), &uri_for).lsp.range,
             Range::new(Position::new(0, 0), Position::new(0, 12))
@@ -333,7 +333,7 @@ mod tests {
         let ds = [
             Diagnostic::in_file(Code::TypeMismatch, &main_mpl(), "in main").at(Span::new(0, 2), ""),
             Diagnostic::in_file(Code::TypeMismatch, &util_mpl(), "in util").at(Span::new(0, 3), ""),
-            Diagnostic::new(Code::Uncategorized, "about the project"),
+            Diagnostic::new(Code::ManifestInvalid, "about the project"),
         ];
         let grouped = by_uri(&ds, &main_mpl(), &uri_for);
         let messages = |path| -> Vec<String> {

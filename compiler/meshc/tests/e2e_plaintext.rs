@@ -298,6 +298,7 @@ fn the_build_report_lists_every_site_and_check_catches_a_change() {
     let changed = check();
     assert!(!changed.status.success(), "an unreviewed declassify passed");
     let stderr = text(&changed.stderr);
+    assert!(stderr.contains("[X0701]"), "{stderr}");
     assert!(
         stderr.contains("+ declassify in `whole` (words.mpl): debugging"),
         "{stderr}"

@@ -127,12 +127,6 @@ impl Diagnostic {
         Diagnostic::new(code, code.info().title).with_note(detail.to_string())
     }
 
-    /// The transitional code for failures not given a code yet.
-    #[doc(hidden)]
-    pub fn uncategorized(message: impl Into<String>) -> Self {
-        Diagnostic::new(Code::Uncategorized, message)
-    }
-
     /// Places the diagnostic at `span` of its file, labelled `label`.
     pub fn at(mut self, span: Span, label: impl Into<String>) -> Self {
         debug_assert!(self.file.is_some(), "a span needs the file it indexes");
@@ -424,7 +418,6 @@ mod tests {
         assert_eq!(d.code(), Code::InternalCompilerError);
         assert_eq!(d.message(), Code::InternalCompilerError.info().title);
         assert_eq!(d.notes(), ["unexpected MIR node `Foo`"]);
-        assert_eq!(Diagnostic::uncategorized("x").code(), Code::Uncategorized);
     }
 
     #[test]

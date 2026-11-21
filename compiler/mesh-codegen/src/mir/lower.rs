@@ -17091,6 +17091,21 @@ mod tests {
             .expect("MIR lowering failed")
     }
 
+    #[test]
+    fn unresolved_trait_call_reports_internal_consistency_warning() {
+        let parse = mesh_parser::parse("fn main() do nil end");
+        let typeck = mesh_typeck::check(&parse);
+        let mut lowerer = Lowerer::new(&typeck, &parse, "", &HashSet::new(), &HashMap::new());
+
+        lowerer.resolve_trait_callee("missing_trait_method", &MirType::Int);
+
+        assert_eq!(lowerer.diagnostics.len(), 1);
+        assert_eq!(
+            lowerer.diagnostics[0].code(),
+            mesh_diagnostics::Code::InternalConsistencyWarning
+        );
+    }
+
     fn route_handler_ty() -> Ty {
         Ty::fun(
             vec![Ty::Con(TyCon::new("Request"))],

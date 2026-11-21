@@ -193,15 +193,32 @@ end
 
 fn main() do
   let _ = spawn(WorkerSup)
-  Timer.sleep(250)
+  Timer.sleep(750)
 end
 "#;
     let (_temp_dir, binary) = compile_mesh(source);
-    let stdout = run_with_timeout(&binary, 10);
+    let child = Command::new(&binary)
+        .env("MESH_DIAGNOSTICS", "json")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let output = artifacts::wait_with_timeout(child, std::time::Duration::from_secs(10))
+        .unwrap_or_else(|timed_out| panic!("{timed_out}"));
+    assert!(output.status.success(), "{output:?}");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
 
     assert!(
         stdout.matches("worker-started").count() >= 2,
         "expected a crashed permanent child to restart, got: {stdout:?}"
+    );
+    assert!(
+        stderr.lines().any(|line| {
+            serde_json::from_str::<serde_json::Value>(line)
+                .is_ok_and(|report| report["code"] == "R0102")
+        }),
+        "{stderr}"
     );
 }
 

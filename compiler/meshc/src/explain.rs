@@ -16,7 +16,10 @@ pub(crate) fn render(query: Option<&str>, json: bool) -> Result<String, Diagnost
             docs::explain(code)
         }),
         Lookup::Retired(id) => {
-            let message = format!("{id} is retired. Mesh never reuses retired diagnostic IDs.");
+            let mut message = format!("{id} is retired. Mesh never reuses retired diagnostic IDs.");
+            if id == "C0001" {
+                message.push_str(" Each failure now reports its own diagnostic code.");
+            }
             if json {
                 let info = serde_json::json!({
                     "code": id,
@@ -80,8 +83,9 @@ mod tests {
 
     #[test]
     fn explain_retired() {
-        let output = render(Some("E0013"), false).unwrap();
-        assert!(output.contains("E0013 is retired"));
+        let output = render(Some("C0001"), false).unwrap();
+        assert!(output.contains("C0001 is retired"));
+        assert!(output.contains("Each failure now reports its own diagnostic code."));
         assert!(output.contains("never reuses retired diagnostic IDs"));
     }
 

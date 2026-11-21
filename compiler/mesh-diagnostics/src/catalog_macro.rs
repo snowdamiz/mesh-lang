@@ -10,8 +10,6 @@
 /// - `Code` and `CATALOG` come from the same repetition, so `CATALOG[code as
 ///   usize]` is that code's row.
 macro_rules! catalog {
-    (@status) => { $crate::code::Status::Active };
-    (@status transitional) => { $crate::code::Status::Transitional };
     (@topic) => { None };
     (@topic $topic:literal) => { Some($topic) };
     (@example) => { None };
@@ -21,7 +19,7 @@ macro_rules! catalog {
     (
         retired: [$($retired:ident),* $(,)?],
         $(
-            $variant:ident = $id:ident $name:literal $severity:ident $($status:ident)? {
+            $variant:ident = $id:ident $name:literal $severity:ident {
                 title: $title:literal,
                 summary: $summary:literal,
                 repair: $repair:literal,
@@ -69,7 +67,7 @@ macro_rules! catalog {
                     repair: $repair,
                     topic: catalog!(@topic $($topic)?),
                     example: catalog!(@example $($bad $fixed)?),
-                    status: catalog!(@status $($status)?),
+                    status: $crate::code::Status::Active,
                 },
             )*
         ];

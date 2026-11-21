@@ -4,7 +4,7 @@
 //! and rows are kept in ID order.
 
 catalog! {
-    retired: [E0013, E0024, E0025, E0043],
+    retired: [C0001, E0013, E0024, E0025, E0043],
     TargetUnsupported = B0001 "target-unsupported" Error {
         title: "unsupported build target",
         summary: "The target triple names a platform Mesh cannot compile or link for, or an artifact kind that the target does not support.",
@@ -40,11 +40,6 @@ catalog! {
         summary: "An executable build found no `fn main()` in the entry module, or a `staticlib` or `cdylib` build found no `@export` function for a host to call.",
         repair: "Define `fn main()` in the entrypoint to build an executable, or mark a public function `@export(\"symbol\")` to build a library, or pass `--artifact` the kind of artifact the program provides.",
         topic: "projects",
-    },
-    Uncategorized = C0001 "uncategorized" Error transitional {
-        title: "uncategorized failure",
-        summary: "A failure on a path that has no catalog code yet.",
-        repair: "Fix what the message names. If the message does not say enough to act on, report it with the command that produced it.",
     },
     ClusterDeclarationInvalid = CFG0001 "cluster-declaration-invalid" Error {
         title: "invalid `@cluster` declaration",

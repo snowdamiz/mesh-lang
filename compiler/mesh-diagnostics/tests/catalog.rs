@@ -5,9 +5,9 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
-use mesh_diagnostics::{Code, Family, Lookup, Severity, Status};
+use mesh_diagnostics::{Code, Family, Lookup, Severity};
 
-const RETIRED: &[&str] = &["E0013", "E0024", "E0025", "E0043"];
+const RETIRED: &[&str] = &["C0001", "E0013", "E0024", "E0025", "E0043"];
 
 // Law file syntax, law size limits, logic size limits, and test file syntax.
 const NOT_IN_A_PROGRAM: &[&str] = &[
@@ -83,7 +83,6 @@ fn severities_fit_their_family() {
     assert_eq!(Code::UnexpectedToken.family(), Family::Syntax);
     assert_eq!(Code::RedundantArm.family(), Family::Semantic);
     assert_eq!(Code::InternalCompilerError.family(), Family::Internal);
-    assert_eq!(Code::Uncategorized.family(), Family::Uncategorized);
 }
 
 #[test]
@@ -154,15 +153,6 @@ fn source_codes_have_examples() {
         assert!(is_source_code(code), "{id}");
         assert!(code.info().example.is_none(), "{id} has an example");
     }
-}
-
-#[test]
-fn only_uncategorized_is_transitional() {
-    let transitional: Vec<&str> = Code::all()
-        .filter(|code| code.info().status == Status::Transitional)
-        .map(Code::id)
-        .collect();
-    assert_eq!(transitional, ["C0001"]);
 }
 
 #[test]

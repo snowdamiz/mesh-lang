@@ -39,6 +39,8 @@ fn migrations_need_a_database_url() {
     for action in ["up", "down", "status"] {
         let output = migrate(project.path(), &[action], None);
         assert_eq!(output.status.code(), Some(1), "{action}");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.contains("[X0601]"), "{action}: {stderr}");
         assert!(
             command_output_text(&output).contains("DATABASE_URL environment variable is required"),
             "{action}: {}",

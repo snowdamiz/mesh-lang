@@ -253,6 +253,7 @@ jobs:
 
       # ── Build ─────────────────────────────────────────────────────
 
+      # Separate Cargo invocations keep terminal diagnostics out of the runtime archives.
       - name: Build meshc (Alpine/musl)
         if: matrix.llvm_method == 'docker'
         run: |
@@ -270,19 +271,25 @@ jobs:
               curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable &&
               source "$HOME/.cargo/env" &&
               export LLVM_SYS_211_PREFIX=/usr/lib/llvm21 &&
-              cargo build --release --target x86_64-unknown-linux-musl
+              cargo build --release -p meshc --target x86_64-unknown-linux-musl &&
+              cargo build --release -p mesh-rt -p mesh-test-rt --target x86_64-unknown-linux-musl
             '
           sudo chown -R "$(id -u):$(id -g)" target/
 
       - name: Build meshc (Unix)
         if: runner.os != 'Windows' && matrix.llvm_method != 'docker'
-        run: cargo build --release --target ${{ matrix.target }}
+        run: |
+          cargo build --release -p meshc --target ${{ matrix.target }}
+          cargo build --release -p mesh-rt -p mesh-test-rt --target ${{ matrix.target }}
         env:
           LLVM_SYS_211_PREFIX: ${{ env.LLVM_SYS_211_PREFIX }}
 
       - name: Build meshc (Windows)
         if: runner.os == 'Windows'
-        run: cargo build --release --target ${{ matrix.target }}
+        run: |
+          cargo build --release -p meshc --target ${{ matrix.target }}
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo build --release -p mesh-rt -p mesh-test-rt --target ${{ matrix.target }}
         env:
           LLVM_SYS_211_PREFIX: ${{ env.LLVM_SYS_211_PREFIX }}
 

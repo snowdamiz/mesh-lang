@@ -368,6 +368,37 @@ pub(crate) fn raised(f: impl FnOnce()) -> String {
 mod tests {
     use super::*;
 
+    #[test]
+    fn runtime_failures_report_catalog_codes() {
+        const CHILD: &str = "MESH_RUNTIME_FAILURE_TEST_CHILD";
+        if std::env::var_os(CHILD).is_some() {
+            assert_eq!(actor_exit_reason(&"unexpected unwind"), "unexpected unwind");
+            let target = "remote@127.0.0.1:1";
+            assert_eq!(
+                crate::dist::node::mesh_node_connect(target.as_ptr(), target.len() as u64),
+                -1
+            );
+            return;
+        }
+
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "panic::tests::runtime_failures_report_catalog_codes",
+            ])
+            .env(CHILD, "1")
+            .env("MESH_DIAGNOSTICS", "json")
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        let codes: Vec<_> = stderr
+            .lines()
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap()["code"].clone())
+            .collect();
+        assert_eq!(codes, ["R0101", "R0301"], "{stderr}");
+    }
+
     const SECRET: &str = "twenty-seven characters!!!!";
 
     /// The payload of the panic `raise` unwinds with, reported nowhere.

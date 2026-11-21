@@ -58,7 +58,6 @@ With a compiler that supports diagnostic JSON v2, use this loop.
 | `T` | `test` | Assertions and the test harness |
 | `X` | `cli` | Command-line tools |
 | `I` | `internal` | Internal compiler diagnostics |
-| `C` | `uncategorized` | Transitional diagnostics |
 
 ## B0001
 
@@ -119,16 +118,6 @@ An executable build found no `fn main()` in the entry module, or a `staticlib` o
 **Repair:** Define `fn main()` in the entrypoint to build an executable, or mark a public function `@export("symbol")` to build a library, or pass `--artifact` the kind of artifact the program provides.
 
 Docs: https://meshlang.dev/docs/errors/#b0302
-
-## C0001
-
-**uncategorized** · error · uncategorized
-
-A failure on a path that has no catalog code yet.
-
-**Repair:** Fix what the message names. If the message does not say enough to act on, report it with the command that produced it.
-
-Docs: https://meshlang.dev/docs/errors/#c0001
 
 ## CFG0001
 
@@ -4685,4 +4674,4 @@ Docs: https://meshlang.dev/docs/errors/#x0701
 
 ## Retired codes
 
-Mesh never reuses retired IDs. Retired IDs are `E0013`, `E0024`, `E0025`, `E0043`.
+Mesh never reuses retired IDs. Retired IDs are `C0001`, `E0013`, `E0024`, `E0025`, `E0043`.

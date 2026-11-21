@@ -36,7 +36,6 @@ const FAMILIES: &[(Family, &str, &str)] = &[
     (Family::Test, "`T`", "Assertions and the test harness"),
     (Family::Cli, "`X`", "Command-line tools"),
     (Family::Internal, "`I`", "Internal compiler diagnostics"),
-    (Family::Uncategorized, "`C`", "Transitional diagnostics"),
 ];
 
 /// Render a single Markdown section as it appears in both generated pages.

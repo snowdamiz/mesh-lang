@@ -2059,6 +2059,15 @@ end
         stdout.contains("assert_raises failed: expression did not raise"),
         "{stdout}"
     );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("[T0001] Error: assert failed: false"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("[T0003] Error: assert_ne failed"),
+        "{stderr}"
+    );
     assert!(stdout.contains("6 failed"), "{stdout}");
     assert!(stdout.contains("3 passed"), "{stdout}");
 }
@@ -2463,8 +2472,8 @@ fn test_nested_describes_run() {
 
 #[test]
 fn test_runner_reports_a_test_file_that_crashes() {
-    // A test binary killed by a signal printed nothing, and `meshc test`
-    // said only "1 test file failed": the file and the cause were lost.
+    // Stack overflow has its own diagnostic. An unexplained exit gets the
+    // test runner's diagnostic with the failed file and exit status.
     let dir = tempfile::tempdir().unwrap();
     let project = dir.path().join("project");
     write_file(
@@ -2483,10 +2492,21 @@ test("overflows the stack") do
 end
 "##,
     );
+    write_file(
+        &project.join("tests/exit.test.mpl"),
+        "test(\"exits early\") do\n  Process.exit(42)\nend\n",
+    );
     let output = Command::new(meshc_bin())
         .args(["test", project.to_str().unwrap()])
         .output()
         .expect("failed to run meshc test");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("[R0002]"), "{stderr}");
+    assert!(
+        stderr.contains("[T0101] Error: the test program for 'tests/exit.test.mpl' ended without reporting a failure")
+            && stderr.contains("exit status: 42"),
+        "{stderr}"
+    );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(!output.status.success(), "{stdout}");
     assert!(
@@ -2836,6 +2856,7 @@ fn json_mode_is_pure_ndjson() {
     write_file(&main, clean);
     verify(&["check", "--json"], &[]);
     verify(&["lint", "--json"], &[]);
+    verify(&["lint", "missing", "--json"], &["X0002"]);
     assert!(!root.join("out").exists());
     verify(
         &["build", ".", "--output", "out", "--emit-llvm", "--json"],

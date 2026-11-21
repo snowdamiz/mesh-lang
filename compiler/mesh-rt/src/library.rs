@@ -535,8 +535,11 @@ mod tests {
     /// Each error status is explained by the code numbered after it.
     #[test]
     fn every_status_has_its_code() {
-        for status in 1..=9 {
-            assert_eq!(status_code(status).id(), format!("R020{status}"));
+        let ids = [
+            "R0201", "R0202", "R0203", "R0204", "R0205", "R0206", "R0207", "R0208", "R0209",
+        ];
+        for (status, id) in (1..=9).zip(ids) {
+            assert_eq!(status_code(status).id(), id);
         }
     }
 

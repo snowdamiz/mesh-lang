@@ -180,6 +180,7 @@ fn rejects_invalid_inventory_and_signatures() {
     write(root, "invalid.law", RETRY_LAW);
     write(root, "copy.law", RETRY_LAW);
     let duplicate = list(root);
+    assert_eq!(diagnostics(&duplicate)[0]["code"], "V0101");
     for diagnostic in ["Duplicate law", "copy.law:3", "invalid.law:3"] {
         fails(&duplicate, diagnostic);
     }

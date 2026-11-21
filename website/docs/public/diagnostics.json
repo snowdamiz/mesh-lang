@@ -111,24 +111,6 @@
       "status": "active"
     },
     {
-      "code": "C0001",
-      "name": "uncategorized",
-      "severity": "error",
-      "category": "uncategorized",
-      "title": "uncategorized failure",
-      "summary": "A failure on a path that has no catalog code yet.",
-      "repair": "Fix what the message names. If the message does not say enough to act on, report it with the command that produced it.",
-      "topic": null,
-      "docs_url": "https://meshlang.dev/docs/errors/#c0001",
-      "guide": {
-        "explain": "meshc explain C0001",
-        "skill": "references/diagnostics.md#c0001",
-        "topic": null
-      },
-      "example": null,
-      "status": "transitional"
-    },
-    {
       "code": "CFG0001",
       "name": "cluster-declaration-invalid",
       "severity": "error",
@@ -3880,6 +3862,7 @@
     }
   ],
   "retired": [
+    "C0001",
     "E0013",
     "E0024",
     "E0025",

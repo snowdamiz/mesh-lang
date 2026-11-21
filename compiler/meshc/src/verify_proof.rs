@@ -478,8 +478,7 @@ fn check_kernel(
         "Lean proof export",
     )
     .map_err(|reason| EncodingError::new(Code::ProofReplayMismatch, reason))?;
-    check_export(&export, theorem_symbols)
-        .map_err(|reason| EncodingError::new(Code::ProofReplayMismatch, reason))?;
+    check_export(&export, theorem_symbols)?;
     std::fs::write(directory.path().join("Proof.ndjson"), &export).map_err(|error| {
         EncodingError::new(
             Code::PathNotFound,
@@ -529,18 +528,25 @@ fn check_axiom_report(report: &str, theorems: &[String]) -> bool {
     lines.next().is_none()
 }
 
-fn check_export(export: &str, theorems: &[String]) -> Result<(), String> {
+fn check_export(export: &str, theorems: &[String]) -> Result<(), EncodingError> {
+    let invalid = |reason| EncodingError::new(Code::ProofReplayMismatch, reason);
     let mut lines = export.lines();
     let parse = |line| {
         serde_json::from_str::<serde_json::Value>(line)
-            .map_err(|error| format!("Invalid Lean proof export: {error}"))
+            .map_err(|error| invalid(format!("Invalid Lean proof export: {error}")))
     };
-    let metadata = parse(lines.next().ok_or("Lean exported no proof declarations")?)?;
+    let metadata = parse(
+        lines
+            .next()
+            .ok_or_else(|| invalid("Lean exported no proof declarations".into()))?,
+    )?;
     if metadata["meta"]["format"]["version"] != "3.1.0"
         || metadata["meta"]["lean"]["version"] != LEAN_VERSION
         || metadata["meta"]["lean"]["githash"] != LEAN_COMMIT
     {
-        return Err("Lean proof export does not match the pinned format and toolchain".into());
+        return Err(invalid(
+            "Lean proof export does not match the pinned format and toolchain".into(),
+        ));
     }
     let names: BTreeSet<_> = theorems.iter().map(String::as_str).collect();
     let mut indices = BTreeMap::new();
@@ -554,9 +560,9 @@ fn check_export(export: &str, theorems: &[String]) -> Result<(), String> {
         ) {
             if let Some(required) = names.get(name) {
                 if indices.insert(index, *required).is_some() {
-                    return Err(format!(
+                    return Err(invalid(format!(
                         "Duplicate theorem name index in proof export: {name}"
-                    ));
+                    )));
                 }
             }
         }
@@ -565,12 +571,16 @@ fn check_export(export: &str, theorems: &[String]) -> Result<(), String> {
             .and_then(|index| indices.get(&index))
         {
             if !included.insert(*name) {
-                return Err(format!("Duplicate theorem in proof export: {name}"));
+                return Err(invalid(format!(
+                    "Duplicate theorem in proof export: {name}"
+                )));
             }
         }
     }
     if let Some(missing) = names.difference(&included).next() {
-        return Err(format!("Proof export is missing theorem `{missing}`"));
+        return Err(invalid(format!(
+            "Proof export is missing theorem `{missing}`"
+        )));
     }
     Ok(())
 }
@@ -598,17 +608,19 @@ mod tests {
         let names = r#"{"in":1,"str":{"pre":0,"str":"mesh_law"}}"#;
         let declaration = r#"{"thm":{"name":1,"type":20,"value":21}}"#;
         assert!(check_export(&format!("{meta}\n{names}\n{declaration}"), &required).is_ok());
-        assert!(check_export(&format!("{meta}\n{names}"), &required)
-            .unwrap_err()
-            .contains("missing theorem"));
+        let missing = check_export(&format!("{meta}\n{names}"), &required).unwrap_err();
+        assert_eq!(missing.code, Code::ProofReplayMismatch);
+        assert!(missing.reason.contains("missing theorem"));
         assert!(check_export(
             &format!("{meta}\n{names}\n{declaration}\n{declaration}"),
             &required
         )
         .unwrap_err()
+        .reason
         .contains("Duplicate theorem"));
         assert!(check_export(&format!("{meta}\n{names}\n{{"), &required)
             .unwrap_err()
+            .reason
             .contains("Invalid Lean proof export"));
     }
 

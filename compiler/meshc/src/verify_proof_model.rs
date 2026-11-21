@@ -3553,8 +3553,7 @@ end
             .any(|def| def.name == "TreeBox_Tree_Ptr"));
 
         let native = mesh_codegen::merge_mir_modules(vec![module.clone()], 0, &["sample".into()]);
-        let output = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target");
-        let ir = tempfile::NamedTempFile::new_in(output).unwrap();
+        let ir = tempfile::NamedTempFile::new().unwrap();
         mesh_codegen::compile_mir_to_llvm_ir(
             mesh_codegen::CodegenInput::new(&native),
             ir.path(),

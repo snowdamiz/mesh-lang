@@ -30,7 +30,6 @@ pub enum Family {
     Test,
     Cli,
     Internal,
-    Uncategorized,
 }
 
 impl Family {
@@ -46,7 +45,6 @@ impl Family {
             Self::Test => "test",
             Self::Cli => "cli",
             Self::Internal => "internal",
-            Self::Uncategorized => "uncategorized",
         }
     }
 }
@@ -55,8 +53,6 @@ impl Family {
 #[serde(rename_all = "lowercase")]
 pub enum Status {
     Active,
-    /// Kept only while callers migrate off it; deleted once none remain.
-    Transitional,
 }
 
 /// A minimal program that gets the code, and the same program repaired.
@@ -135,7 +131,6 @@ impl Code {
             b'T' => Family::Test,
             b'X' => Family::Cli,
             b'I' => Family::Internal,
-            b'C' => Family::Uncategorized,
             _ => unreachable!("catalog ID `{id}` has no family prefix"),
         }
     }
