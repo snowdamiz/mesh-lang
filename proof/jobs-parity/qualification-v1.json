@@ -28773,6 +28773,226 @@
         ]
       }
     },
-    "finding": "Component claim latency fell. Linux throughput gain was within identical-control spread and missed the frozen throughput and pickup gates. The SQL remains a disposable overlay."
+    "finding": "Component claim latency fell. Linux throughput gain was within identical-control spread and missed the frozen throughput and pickup gates. The SQL remains a disposable overlay.",
+    "cpu_attribution": {
+      "run": "target/jobs-parity/linux-arm-ownership-guest/set-based-claim-screen/runs/set-update-cpu-01/noop-8r-64s",
+      "adapter_sha256": "5575c062d686f725e4caeefb10fbfb360b11cbb553eac2dd06d3fd8a482d22ee",
+      "jobs_reconciled": 12288,
+      "postgres_scope": "Includes the existing producer and observer server work.",
+      "runner_scope": "Includes the roots and exact fresh workers. No child-only CPU measurement.",
+      "bound": "Maximum of wholly enclosed poll intervals and outer delta minus the two-vCPU edge allowance.",
+      "groups": [
+        {
+          "group": 0,
+          "attribution_sha256": "05195d4ad99dd1ec8f27cc6be9f8f172a66bca765c41f3d393c188f7cbaa42a0",
+          "stage_receipt_sha256": "2bf94a420948c0fb331c177c36a2e94ad7d8d95063e34d06a9c35d53dafdebb5",
+          "same_boot_oban_cpu_capacity_ms_per_job": 0.9719862937927246,
+          "minimum_cpu_ms_per_job_to_remove": 0.47260940933227547,
+          "maximum_other_cpu_ms_per_job_if_runner_cpu_is_fixed": 0.3387050437927246,
+          "scored_arms": {
+            "mesh": {
+              "jobs": 1024,
+              "jobs_per_second": 1136.7219683106837,
+              "cpu_ms_per_job_observed": {
+                "runners": 0.6862685546875,
+                "postgres": 1.107361328125,
+                "runners_and_postgres": 1.7936298828125
+              },
+              "cpu_ms_per_job_floor": {
+                "runners": 0.5928427734375,
+                "postgres": 0.80566796875,
+                "runners_and_postgres": 1.3985107421875
+              },
+              "inside_poll_frames": 6
+            },
+            "mesh-repeat": {
+              "jobs": 1024,
+              "jobs_per_second": 1230.8414659626865,
+              "cpu_ms_per_job_observed": {
+                "runners": 0.6402626953125,
+                "postgres": 1.0354501953125,
+                "runners_and_postgres": 1.675712890625
+              },
+              "cpu_ms_per_job_floor": {
+                "runners": 0.5588330078125,
+                "postgres": 0.73894140625,
+                "runners_and_postgres": 1.2977744140625
+              },
+              "inside_poll_frames": 6
+            },
+            "oban": {
+              "jobs": 1024,
+              "jobs_per_second": 2057.642183611386,
+              "cpu_ms_per_job_observed": {
+                "runners": 0.4097412109375,
+                "postgres": 0.4412685546875,
+                "runners_and_postgres": 0.851009765625
+              },
+              "cpu_ms_per_job_floor": {
+                "runners": 0.37669140625,
+                "postgres": 0.3490693359375,
+                "runners_and_postgres": 0.7257607421875
+              },
+              "inside_poll_frames": 4
+            },
+            "mesh-set-update": {
+              "jobs": 1024,
+              "jobs_per_second": 1167.769991043291,
+              "cpu_ms_per_job_observed": {
+                "runners": 0.70326953125,
+                "postgres": 1.0748037109375,
+                "runners_and_postgres": 1.7780732421875
+              },
+              "cpu_ms_per_job_floor": {
+                "runners": 0.63328125,
+                "postgres": 0.811314453125,
+                "runners_and_postgres": 1.444595703125
+              },
+              "inside_poll_frames": 6
+            }
+          }
+        },
+        {
+          "group": 1,
+          "attribution_sha256": "d2774eb166eaa538905a78bb5d90e7c8d418a2c0d848441800a40fbe63b670d2",
+          "stage_receipt_sha256": "a455ac89c8dfc2260e0ca458c10d532e835ce660d8317a10b83b7f09b9dbbf50",
+          "same_boot_oban_cpu_capacity_ms_per_job": 0.9323849678039551,
+          "minimum_cpu_ms_per_job_to_remove": 0.28141581344604494,
+          "maximum_other_cpu_ms_per_job_if_runner_cpu_is_fixed": 0.4370119209289551,
+          "scored_arms": {
+            "mesh-repeat": {
+              "jobs": 1024,
+              "jobs_per_second": 1197.1244836454794,
+              "cpu_ms_per_job_observed": {
+                "runners": 0.6623427734375,
+                "postgres": 1.0359765625,
+                "runners_and_postgres": 1.6983193359375
+              },
+              "cpu_ms_per_job_floor": {
+                "runners": 0.5664111328125,
+                "postgres": 0.73716796875,
+                "runners_and_postgres": 1.3035791015625
+              },
+              "inside_poll_frames": 6
+            },
+            "mesh-set-update": {
+              "jobs": 1024,
+              "jobs_per_second": 1291.7566093015134,
+              "cpu_ms_per_job_observed": {
+                "runners": 0.6484365234375,
+                "postgres": 0.9463857421875,
+                "runners_and_postgres": 1.594822265625
+              },
+              "cpu_ms_per_job_floor": {
+                "runners": 0.495373046875,
+                "postgres": 0.59803515625,
+                "runners_and_postgres": 1.21380078125
+              },
+              "inside_poll_frames": 5
+            },
+            "mesh": {
+              "jobs": 1024,
+              "jobs_per_second": 1317.7315673114413,
+              "cpu_ms_per_job_observed": {
+                "runners": 0.613681640625,
+                "postgres": 0.9327919921875,
+                "runners_and_postgres": 1.5464736328125
+              },
+              "cpu_ms_per_job_floor": {
+                "runners": 0.55481640625,
+                "postgres": 0.6931181640625,
+                "runners_and_postgres": 1.2560625
+              },
+              "inside_poll_frames": 6
+            },
+            "oban": {
+              "jobs": 1024,
+              "jobs_per_second": 2145.036727383751,
+              "cpu_ms_per_job_observed": {
+                "runners": 0.3731025390625,
+                "postgres": 0.374873046875,
+                "runners_and_postgres": 0.7479755859375
+              },
+              "cpu_ms_per_job_floor": {
+                "runners": 0.3289873046875,
+                "postgres": 0.2980859375,
+                "runners_and_postgres": 0.6270732421875
+              },
+              "inside_poll_frames": 4
+            }
+          }
+        },
+        {
+          "group": 2,
+          "attribution_sha256": "de0ffc2b460f7c1c8ed88627536427c11333dd34303f4d047b0d489c7338e9c9",
+          "stage_receipt_sha256": "d412fbf3b4bd5f7c1388bd77c97a2f280cd531d1da58f007df34af5f110182e8",
+          "same_boot_oban_cpu_capacity_ms_per_job": 0.7491621971130371,
+          "minimum_cpu_ms_per_job_to_remove": 0.48924307632446284,
+          "maximum_other_cpu_ms_per_job_if_runner_cpu_is_fixed": 0.2771709861755371,
+          "scored_arms": {
+            "mesh-set-update": {
+              "jobs": 1024,
+              "jobs_per_second": 1311.4404726096398,
+              "cpu_ms_per_job_observed": {
+                "runners": 0.6345380859375,
+                "postgres": 0.940892578125,
+                "runners_and_postgres": 1.5754306640625
+              },
+              "cpu_ms_per_job_floor": {
+                "runners": 0.4719912109375,
+                "postgres": 0.6058681640625,
+                "runners_and_postgres": 1.2384052734375
+              },
+              "inside_poll_frames": 5
+            },
+            "oban": {
+              "jobs": 1024,
+              "jobs_per_second": 2669.6488526879457,
+              "cpu_ms_per_job_observed": {
+                "runners": 0.27846484375,
+                "postgres": 0.3003544921875,
+                "runners_and_postgres": 0.5788193359375
+              },
+              "cpu_ms_per_job_floor": {
+                "runners": 0.1846728515625,
+                "postgres": 0.164880859375,
+                "runners_and_postgres": 0.3495537109375
+              },
+              "inside_poll_frames": 3
+            },
+            "mesh-repeat": {
+              "jobs": 1024,
+              "jobs_per_second": 1148.0785312010294,
+              "cpu_ms_per_job_observed": {
+                "runners": 0.7072666015625,
+                "postgres": 1.0680634765625,
+                "runners_and_postgres": 1.775330078125
+              },
+              "cpu_ms_per_job_floor": {
+                "runners": 0.566900390625,
+                "postgres": 0.720900390625,
+                "runners_and_postgres": 1.3476708984375
+              },
+              "inside_poll_frames": 6
+            },
+            "mesh": {
+              "jobs": 1024,
+              "jobs_per_second": 1183.8220455492901,
+              "cpu_ms_per_job_observed": {
+                "runners": 0.6840615234375,
+                "postgres": 1.0313623046875,
+                "runners_and_postgres": 1.715423828125
+              },
+              "cpu_ms_per_job_floor": {
+                "runners": 0.572806640625,
+                "postgres": 0.720791015625,
+                "runners_and_postgres": 1.29359765625
+              },
+              "inside_poll_frames": 6
+            }
+          }
+        }
+      ]
+    }
   }
 }

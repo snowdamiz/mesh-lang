@@ -2826,6 +2826,30 @@ component savings leave the sustained drain gap open. The overlay
 remains a local diagnostic.
 [Grouped claim update receipt](../proof/jobs-parity/qualification-v1.json)
 
+Three additional groups measured active CPU on the exact same
+Linux release image and SQL overlay. Each boot separated the runner
+tree, PostgreSQL, and the driver into cgroups. Counter reads wholly
+inside the durable interval tightened the previous bounds from the
+outer enqueue and terminal-poll reads. Each bound uses the stronger
+of those two methods. All 12,288 scored jobs reconciled.
+
+| Group | Runner floor | PostgreSQL floor | Joint floor | CPU available at same-boot Oban throughput |
+| --- | ---: | ---: | ---: | ---: |
+| 0 | 0.633 | 0.811 | 1.445 | 0.972 |
+| 1 | 0.495 | 0.598 | 1.214 | 0.932 |
+| 2 | 0.472 | 0.606 | 1.238 | 0.749 |
+
+All values are CPU-ms/job for the two-vCPU guest. The joint bound uses
+one allowance for CPU outside the durable interval. PostgreSQL includes
+server work for the existing producer and observer. Meeting same-boot
+Oban throughput would require removing at least 0.28–0.49 CPU-ms/job
+from the measured runner and PostgreSQL work on this guest. The runner
+floor leaves at most 0.28–0.44 CPU-ms/job for all other work if runner
+CPU stays fixed. The runner cgroup includes child startup, handler
+execution, supervision, and effect routing. A separate process-start
+measurement would be needed to assign a share to fresh exec.
+[Grouped claim CPU receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Compare four runners at 64 slots on no-op jobs
 
 Five matched Linux groups at `c271319e` reconciled 15,360
