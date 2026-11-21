@@ -1455,6 +1455,48 @@ runtime. Database claims, settlement, and throughput remain open for
 this launcher.
 [Compiled Linux ownership receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Run the stock release dispatcher in the Linux guest
+
+The normal Jobs dispatcher at `a39447f7` ran in the same ARM64 guest
+with a cross-built Rust 1.99.0 release runtime and PostgreSQL 17.11.
+The guest used the Ubuntu Base 26.04.1 loader and libraries for the
+cached PostgreSQL build. The fixture used batch claims and an isolated
+database with verified loopback TLS and SCRAM.
+
+Three fresh boots each committed two enqueue receipts and one business
+row. Both jobs completed on attempt one. An independent SQL connection
+matched both job IDs, the effect keys, the two distinct worker PIDs, and
+the final lease fields. The native startup markers matched those PIDs.
+The runner reported two completions and shut down drained. This smoke
+exercised the stock launch and settlement path and recorded no throughput
+comparison. [Release Linux smoke receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Measure the Linux supervisor wait after a worker reply
+
+The one-slot comparator ran a single compiled release worker as a direct
+child. Both arms used the same `posix_spawn`, opened a pidfd, and
+required the exact successful child reap and reply. Arm A checked exit
+on reply and on a 10 ms sweep. Arm B also checked exit when the pidfd
+became readable. Each attempt verified the native constructor PID and
+process group, the handler context, and the reply frame. An unrelated
+child remained waitable by its owner.
+
+Two guest runs each measured five alternating pairs of 128 attempts per
+arm after warm-up, reversing the initial order. The median paired
+reduction in mean slot-ready time was 8.91 ms and 6.77 ms. Arm B was
+faster in all ten pairs. Timed sweeps supplied 79–80% of exact reaps in
+Arm A and 0.6–4.2% in Arm B. A separate five-pair comparison with the
+same policy in both arms had paired differences of −1.12 to +0.41 ms.
+The Mac's one-minute load ranged from 21.99 to 29.70 on 15 logical CPUs.
+
+Child `wait4` and active comparator CPU averaged 2.93 → 2.12 ms per
+attempt in the first run and 1.13 → 0.65 ms in the second. Both arms
+opened the pidfd, and the comparator omitted the runner's channels,
+dispatcher and PostgreSQL. The result isolates the modeled wait after
+reply. A real-runner comparison must measure acquisition and descriptor
+pressure as well as enqueue-to-settlement throughput.
+[Linux exit-wake receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Run the compiled handler through the fork template
 
 Five alternating pairs ran the 100 ms handler with 512 attempts and 64

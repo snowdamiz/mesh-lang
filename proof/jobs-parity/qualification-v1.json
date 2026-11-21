@@ -4320,6 +4320,64 @@
     },
     "scope": "Fixture runner with clone3, exact pidfd reaping, and gated execve of a compiled Jobs worker. It exercises the real worker frames and the parent-disconnect, handler-deadline, and lease-deadline watchdog exits. It uses no PostgreSQL and makes no durable settlement or throughput claim."
   },
+  "linux_arm64_stock_jobs_release_smoke": {
+    "runtime_commit": "a39447f7c86219cb3dd5dcea4ae5d8fa9855e727",
+    "runtime_sha256": "c46cc9b3372e171045072e704cef8d7c793d8e4e367c626e49ac810500e9fff9",
+    "runtime_profile": "aarch64-unknown-linux-gnu release",
+    "rustc_commit": "b940084d7eb6a299eb4bfeb8e34901bc051e7ac4",
+    "cross_target_std_sha256": "1cf7e2ef58ed1cfa6f1adea18e155cbf254c1951f39e5f5e3376879f55fd64a4",
+    "guest": "Linux 6.12.115-0-virt aarch64, Ubuntu Base 26.04.1 userspace",
+    "userspace_sha256": "5a1906794ced63a71a8119c3f211ef5f0bbe0a243001b4bbd41fdf80c5b219fd",
+    "compiler": "Cached host compiler and the pinned 52406a01 compiler with default startup generate byte-identical optimized fixtures.",
+    "cached_compiler_sha256": "809cfa9bdbee99d8ddafc951dea53bb7951ba0ade63d93d618d7b29a222ee37d",
+    "pinned_compiler_sha256": "441b9d7904076b0e8acd6456ba273fb5e407b72f7fa1a6c77f5dc58405a67f7b",
+    "fixture_sha256": "2f5b89a721cf3d7f2f6e66c530b088c5e67627c2b6d35869a46d03d4ccaa9d91",
+    "postgres_version": "17.11",
+    "postgres_binary_sha256": "9f0fa6d01198160eb3d0fb14992621a2a1bcb0d3a093f1872b8d62e271e449bc",
+    "transport": "SCRAM with verified loopback TLS",
+    "run": "target/jobs-parity/linux-arm-ownership-guest/stock-jobs-smoke",
+    "runner": "stock exec, batch claims, one runner with two slots",
+    "passing_boots": 3,
+    "per_boot": {"jobs": 2, "attempts": 2, "effects": 2, "receipts": 2, "business_rows": 1},
+    "logs_sha256": {
+      "smoke-1.log": "c701d769d209688a6179e684097c1cd2f5b8f98b7932701fcc7295af84759e56",
+      "smoke-2.log": "1c9d7ff5c33ac6bb95dbfba6fe1af2389739957b6c3f49d973643d7abc9bf690",
+      "smoke-3.log": "fb0c0727a2e42ef29072d0ba07be8652c6986a5bfbb08e3985ce1b7a273fea74"
+    },
+    "scope": "Fresh isolated PostgreSQL for each boot. Matched constructor PIDs, persisted attempts, enqueue receipts, job and effect keys, successful drained join and observed clearing of leases. No Oban, failure injection or throughput qualification."
+  },
+  "linux_pidfd_exit_wake_component_screen": {
+    "runtime_commit": "a39447f7c86219cb3dd5dcea4ae5d8fa9855e727",
+    "runtime_profile": "aarch64-unknown-linux-gnu release",
+    "guest": "Linux 6.12.115-0-virt aarch64, two vCPUs, Ubuntu Base 24.04.4 userspace",
+    "run": "target/jobs-parity/worker-cost-screen/linux-pidfd-wake/run.MRqq2sLn",
+    "worker_sha256": "a5120df154a475910fe84c803f19611c570ada502e69322a3bbc65332adfe93b",
+    "comparator_sha256": "69c62171615d4bf742863a2936cfd6bf4c233d626068156c5e6fcef38dd76f89",
+    "comparator_source_sha256": "46c9f29f098d5da4e0e26a4ed139e80c611decef2e066ff65ff5bd4e84a6cf9d",
+    "summarizer_sha256": "2e8c631121afb6a2b1f92e54d0c4426dec669565067d93529492c456ec43395a",
+    "pairs_per_run": 5,
+    "attempts_per_arm_per_pair": 128,
+    "measured_attempts": 3840,
+    "host_load_range_on_15_logical_cpus": [21.99, 29.70],
+    "paired_mean_slot_ready_savings_ms": {
+      "ab-a": {"median": 8.907, "range": [3.762, 9.308], "candidate_wins": 5},
+      "ab-b": {"median": 6.765, "range": [6.658, 9.009], "candidate_wins": 5},
+      "aa": {"median": -0.235, "range": [-1.119, 0.413], "candidate_wins": 2}
+    },
+    "exact_reaps_from_timed_sweep": {
+      "ab-a": {"baseline": 514, "pidfd_wake": 27, "attempts_per_arm": 640},
+      "ab-b": {"baseline": 503, "pidfd_wake": 4, "attempts_per_arm": 640}
+    },
+    "receipts_sha256": {
+      "ab-a.log": "b4bf706aa89ce85f24c1431cfb116f0aca904500edadc560f3a50e5914786cea",
+      "ab-a.json": "50dd12b77a8a4c140af82a848648d8da3c9a802d1834fcf9ea65aa3a41433851",
+      "ab-b.log": "bceb6c3af5207c2d7223251f4aea705008fd9b354c494b06f9cfd7d1d34575e6",
+      "ab-b.json": "88a95fa1665748d91156942d11528cc9fe6ca88db82173f3ba89b89d69d2e974",
+      "aa.log": "fe7171d6cfd1f70e68e80ac979fcce8acd554361857c7e5391b5bec9334f3bc2",
+      "aa.json": "704c1d3fbe92e55aef2b89fdb9f882041273e1f7f3ca588d8882c0d3f5fc07dd"
+    },
+    "scope": "Direct single-slot compiled worker. Both arms open the pidfd and require exact wait4, valid framed reply and native constructor and handler traces. Early reply keeps an independently scheduled 10 ms sweep. No production dispatcher, warm PostgreSQL workload, or Oban qualification."
+  },
   "worker_fork_compiled_handler": {
     "runtime": "da0a51bcf6bc4e2c22766a2e60c0d07c96ca4cc0",
     "host": "Darwin arm64",
