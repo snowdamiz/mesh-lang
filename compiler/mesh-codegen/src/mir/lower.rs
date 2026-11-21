@@ -241,6 +241,7 @@ fn shaped_params(names: &[String], types: &[MirType], shapes: &[MsgShape]) -> Ve
 
 /// The AST-to-MIR lowering context.
 struct Lowerer<'a> {
+    diagnostics: Vec<mesh_diagnostics::Diagnostic>,
     /// Type map from typeck: TextRange -> Ty.
     types: &'a FxHashMap<TextRange, Ty>,
     /// Associated types reached through type parameters (see `TypeckResult`).
@@ -718,6 +719,7 @@ impl<'a> Lowerer<'a> {
         }
 
         Lowerer {
+            diagnostics: Vec::new(),
             types: &typeck.types,
             assoc_projections: &typeck.assoc_projections,
             spec_types: FxHashMap::default(),
@@ -8715,7 +8717,7 @@ impl<'a> Lowerer<'a> {
     /// The function a call of `name` with a first argument of type
     /// `first_arg_ty` runs: the trait method of that type it names, or
     /// `name` itself.
-    fn resolve_trait_callee(&self, name: &str, first_arg_ty: &MirType) -> String {
+    fn resolve_trait_callee(&mut self, name: &str, first_arg_ty: &MirType) -> String {
         if !self.known_functions.contains_key(name) {
             if let Some(callee) = self.trait_callee(name, first_arg_ty) {
                 return callee;
@@ -8737,11 +8739,10 @@ impl<'a> Lowerer<'a> {
                 && !name.starts_with("mesh_")
                 && type_name != "Unknown"
             {
-                eprintln!(
-                    "[mesh-codegen] warning: call to '{}' could not be resolved \
-                     as a trait method for type '{}'. This may indicate a type checker bug.",
-                    name, type_name
-                );
+                self.diagnostics.push(mesh_diagnostics::Diagnostic::new(
+                    mesh_diagnostics::Code::InternalConsistencyWarning,
+                    format!("call to `{name}` could not be resolved as a trait method for type `{type_name}`"),
+                ));
             }
         }
         name.to_string()
@@ -16459,7 +16460,7 @@ pub fn lower_module_to_mir_with_sources<'a>(
     other_modules: &[(&'a Parse, &'a TypeckResult)],
     source_id: impl Fn(&Parse) -> Option<MirSourceId>,
 ) -> Result<MirModule, String> {
-    lower_module(
+    lower_module_with_diagnostics(
         parse,
         typeck,
         module_name,
@@ -16469,7 +16470,7 @@ pub fn lower_module_to_mir_with_sources<'a>(
         source_id,
         false,
     )
-    .map(|(mir, _)| mir)
+    .map(|lowered| lowered.module)
 }
 
 /// The checked signature used to lower one top-level function variant.
@@ -16499,7 +16500,7 @@ pub fn lower_module_to_mir_with_signatures<'a>(
     other_modules: &[(&'a Parse, &'a TypeckResult)],
     source_id: impl Fn(&Parse) -> Option<MirSourceId>,
 ) -> Result<(MirModule, Vec<LoweredSignature>), String> {
-    lower_module(
+    lower_module_with_diagnostics(
         parse,
         typeck,
         module_name,
@@ -16509,9 +16510,17 @@ pub fn lower_module_to_mir_with_signatures<'a>(
         source_id,
         true,
     )
+    .map(|lowered| (lowered.module, lowered.signatures))
 }
 
-fn lower_module<'a>(
+pub struct LoweredModule {
+    pub module: MirModule,
+    pub signatures: Vec<LoweredSignature>,
+    pub diagnostics: Vec<mesh_diagnostics::Diagnostic>,
+}
+
+/// Lower one module and return diagnostics to the caller for rendering.
+pub fn lower_module_with_diagnostics<'a>(
     parse: &'a Parse,
     typeck: &'a TypeckResult,
     module_name: &str,
@@ -16520,7 +16529,7 @@ fn lower_module<'a>(
     other_modules: &[(&'a Parse, &'a TypeckResult)],
     source_id: impl Fn(&Parse) -> Option<MirSourceId>,
     collect_signatures: bool,
-) -> Result<(MirModule, Vec<LoweredSignature>), String> {
+) -> Result<LoweredModule, String> {
     if !collect_signatures
         && (!typeck.proof_values.is_empty() || typeck.types.values().any(Ty::contains_proof))
     {
@@ -16893,7 +16902,11 @@ fn lower_module<'a>(
         service_dispatch: lowerer.service_dispatch,
         actors: lowerer.actors,
     };
-    Ok((mir, lowerer.lowered_signatures.unwrap_or_default()))
+    Ok(LoweredModule {
+        module: mir,
+        signatures: lowerer.lowered_signatures.unwrap_or_default(),
+        diagnostics: lowerer.diagnostics,
+    })
 }
 
 #[cfg(test)]

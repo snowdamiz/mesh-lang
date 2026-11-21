@@ -31,5 +31,6 @@ pub use scaffold::{
     scaffold_todo_api_project_with_db, TodoApiDatabase,
 };
 pub use toolchain_update::{
-    run_toolchain_update, ToolchainUpdateError, ToolchainUpdateMode, ToolchainUpdateOutcome,
+    run_toolchain_update, run_toolchain_update_with_progress, ToolchainUpdateError,
+    ToolchainUpdateMode, ToolchainUpdateOutcome,
 };

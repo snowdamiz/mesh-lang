@@ -257,10 +257,10 @@ fn removed_clustered_work_json_diagnostic_uses_source_file_and_span() {
     let spans = diag["spans"]
         .as_array()
         .expect("removed clustered(work) JSON diagnostic should include spans");
+    assert_eq!(spans.len(), 2, "expected primary and related spans");
     assert_eq!(
-        spans.len(),
-        1,
-        "expected one source span on removed-syntax diagnostic"
+        spans[1]["label"],
+        "unsupported clustered declaration started here"
     );
     let start = spans[0]["start"]
         .as_u64()
@@ -296,7 +296,7 @@ fn cluster_declaration_invalid_cluster_decorator_count_fails_before_codegen() {
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("Parse error"),
+        stderr.contains("[P0001] Error:"),
         "expected malformed decorator count to surface as a parse error, got:\n{stderr}"
     );
 }

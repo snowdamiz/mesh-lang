@@ -806,10 +806,35 @@ catalog! {
         repair: "Write the index from `Nat` literals, index parameters, and `Succ<...>`, and apply each theorem to exactly the arguments its statement declares.",
         topic: "types",
     },
+    DuplicateTypeAcrossModules = E0102 "duplicate-type-across-modules" Error {
+        title: "type name shared by multiple modules",
+        summary: "Two modules define the same struct, sum type, interface, actor, service, or supervisor name. These declarations share a project-wide namespace, even when private.",
+        repair: "Rename all but one definition and update its uses, or keep one shared definition and import it where needed.",
+        topic: "projects",
+        example: (
+            "module A do\n  struct State do\n    count :: Int\n  end\nend\n\nmodule B do\n  struct State do\n    name :: String\n  end\nend\n",
+            "module A do\n  struct State do\n    count :: Int\n  end\nend\n\nmodule B do\n  struct NamedState do\n    name :: String\n  end\nend\n",
+        ),
+    },
+    DuplicatePubFnAcrossModules = E0103 "duplicate-pub-fn-across-modules" Error {
+        title: "public function symbol shared by multiple modules",
+        summary: "Two modules export a public function with the same compiler symbol. Calls could run only one of the definitions even when the import names the other module.",
+        repair: "Rename all but one public function and update its callers, or make the other functions private if their callers are in the same module.",
+        topic: "projects",
+        example: (
+            "module A do\n  pub fn count() do\n    1\n  end\nend\n\nmodule B do\n  pub fn count() do\n    2\n  end\nend\n",
+            "module A do\n  pub fn count() do\n    1\n  end\nend\n\nmodule B do\n  pub fn total() do\n    2\n  end\nend\n",
+        ),
+    },
     InternalCompilerError = I0001 "internal-compiler-error" Error {
         title: "internal compiler error",
         summary: "The compiler reached a state it should never reach; the program may well be valid.",
         repair: "Report it with the notes and the smallest program that reproduces it. Until it is fixed, rewrite the construct the notes name another way.",
+    },
+    InternalConsistencyWarning = I0002 "internal-consistency-warning" Warning {
+        title: "internal compiler consistency warning",
+        summary: "During lowering, the compiler could not confirm the target trait method for a call that passed type checking.",
+        repair: "Report the method name, receiver type, and a small program that reproduces the warning. Use an explicit function call if it resolves the intended method.",
     },
     UnexpectedToken = P0001 "unexpected-token" Error {
         title: "unexpected token",

@@ -3,6 +3,7 @@
 //! Provides the `meshc` command with the following subcommands:
 //!
 //! - `meshc build <dir>` - Compile a Mesh project to a native binary
+//! - `meshc check [path] [--tests]` - Check Mesh source without building a binary
 //! - `meshc init [--clustered] [--template <name>] [--db <sqlite|postgres>] <name>` - Initialize a new Mesh project (`todo-api` defaults to local SQLite; `--db postgres` opts into the clustered/deployable starter)
 //! - `meshc cluster <status|continuity|diagnostics> ...` - Inspect runtime-owned clustered operator surfaces
 //! - `meshc deps [dir]` - Resolve and fetch dependencies
@@ -37,7 +38,6 @@
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 mod cluster;
-mod diagnostic_options;
 mod explain;
 mod guide;
 mod library_bindings;
@@ -66,13 +66,20 @@ use mesh_pkg::manifest::{
     ClusteredExecutionMetadata, Manifest,
 };
 
-use diagnostic_options::DiagnosticOptions;
-use mesh_diagnostics::{Format, SourceFile};
+use mesh_diagnostics::{Code, Diagnostic, Failed, Format, Reporter, SourceFile};
 use mesh_typeck::ty::Ty;
 
 #[derive(Parser)]
 #[command(name = "meshc", version, about = "The Mesh compiler")]
 struct Cli {
+    /// Output diagnostics as NDJSON and use JSON for commands with a JSON product format
+    #[arg(long, global = true)]
+    pub json: bool,
+
+    /// Disable colorized output
+    #[arg(long, global = true)]
+    pub no_color: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -88,10 +95,6 @@ enum Commands {
     Explain {
         /// Diagnostic code or name
         code: Option<String>,
-
-        /// Output the catalog or entry as JSON
-        #[arg(long)]
-        json: bool,
     },
     /// Manage the Mesh skill for coding tools
     Skills {
@@ -108,10 +111,6 @@ enum Commands {
         #[arg(long)]
         list: bool,
 
-        /// Output a machine-readable inventory and verdicts
-        #[arg(long)]
-        json: bool,
-
         /// Require the candidate to retain each law in a trusted inventory
         #[arg(long, conflicts_with = "list")]
         preserve: Option<PathBuf>,
@@ -126,7 +125,7 @@ enum Commands {
     },
     /// Compile a Mesh project to a native binary
     Build {
-        /// Path to the project directory (must contain the resolved Mesh entrypoint)
+        /// Project directory with an entrypoint, or a standalone Mesh source file
         dir: PathBuf,
 
         /// Optimization level (0 = debug, 2 = release)
@@ -149,17 +148,19 @@ enum Commands {
         #[arg(long, value_enum, default_value_t = BuildArtifact::Executable)]
         artifact: BuildArtifact,
 
-        /// Output diagnostics as JSON (one object per line) instead of human-readable format
-        #[arg(long)]
-        json: bool,
-
-        /// Disable colorized output
-        #[arg(long = "no-color")]
-        no_color: bool,
-
         /// Write the plaintext report (every `declassify` and `@display` export) here
         #[arg(long = "plaintext-report")]
         plaintext_report: Option<PathBuf>,
+    },
+    /// Parse and type-check a Mesh project or source file
+    Check {
+        /// Project directory or standalone Mesh source file
+        #[arg(default_value = ".")]
+        path: PathBuf,
+
+        /// Also check the project's *.test.mpl files
+        #[arg(long)]
+        tests: bool,
     },
     /// List every `declassify` and `@display` export of a project, as JSON
     PlaintextReport {
@@ -352,15 +353,25 @@ fn run_init_command(
     template: Option<&str>,
     db: Option<InitTodoDb>,
     name: &str,
-    dir: &Path,
-) -> Result<(), String> {
-    match resolve_init_target(clustered, template, db)? {
-        InitTarget::HelloWorld => mesh_pkg::scaffold_project(name, dir),
-        InitTarget::Clustered => mesh_pkg::scaffold_clustered_project(name, dir),
-        InitTarget::TodoApi(database) => {
-            mesh_pkg::scaffold_todo_api_project_with_db(name, dir, database)
+    reporter: &mut Reporter,
+) -> Result<(), Failed> {
+    let dir = std::env::current_dir().unwrap_or_default();
+    let kind = match resolve_init_target(clustered, template, db).reported(reporter)? {
+        InitTarget::HelloWorld => {
+            mesh_pkg::scaffold_project(name, &dir).reported(reporter)?;
+            ""
         }
-    }
+        InitTarget::Clustered => {
+            mesh_pkg::scaffold_clustered_project(name, &dir).reported(reporter)?;
+            "clustered "
+        }
+        InitTarget::TodoApi(database) => {
+            mesh_pkg::scaffold_todo_api_project_with_db(name, &dir, database).reported(reporter)?;
+            "todo-api "
+        }
+    };
+    reporter.status(format_args!("Created {kind}project '{name}'"));
+    Ok(())
 }
 
 /// The compiler recurses over expression trees (a string with hundreds of
@@ -381,7 +392,22 @@ fn main() {
 
 fn run() {
     let cli = Cli::parse();
+    let mut reporter = Reporter::stderr(Format::for_cli(cli.json, cli.no_color));
+    let mut lint_findings = false;
+    let result = dispatch(cli, &mut reporter, &mut lint_findings);
+    let summary = reporter.finish();
+    let exit_code = if result.is_err() || lint_findings {
+        1
+    } else {
+        summary.exit_code()
+    };
+    if exit_code != 0 {
+        process::exit(exit_code);
+    }
+}
 
+fn dispatch(cli: Cli, reporter: &mut Reporter, lint_findings: &mut bool) -> Result<(), Failed> {
+    let json = cli.json;
     match cli.command {
         Commands::Build {
             dir,
@@ -390,73 +416,46 @@ fn run() {
             output,
             target,
             artifact,
-            json,
-            no_color,
             plaintext_report,
-        } => {
-            let diag_opts = DiagnosticOptions::new(Format::for_cli(json, no_color));
-            if let Err(e) = build_with_report(
-                &dir,
-                opt_level,
-                emit_llvm,
-                output.as_deref(),
-                target.as_deref(),
-                artifact,
-                false,
-                &diag_opts,
-                plaintext_report.as_deref(),
-            ) {
-                if json {
-                    // In JSON mode, emit the final error as JSON too.
-                    let msg = serde_json::json!({
-                        "code": "C0001",
-                        "severity": "error",
-                        "message": e,
-                        "file": "",
-                        "spans": [],
-                        "fix": null
-                    });
-                    eprintln!("{}", msg);
-                } else {
-                    eprintln!("error: {}", e);
-                }
-                process::exit(1);
-            }
-        }
+        } => build_with_report(
+            &dir,
+            opt_level,
+            emit_llvm,
+            output.as_deref(),
+            target.as_deref(),
+            artifact,
+            false,
+            reporter,
+            plaintext_report.as_deref(),
+            true,
+        ),
+        Commands::Check { path, tests } => run_check(&path, tests, reporter),
         Commands::Init {
             clustered,
             template,
             db,
             name,
-        } => {
-            let dir = std::env::current_dir().unwrap_or_default();
-            or_exit(run_init_command(
-                clustered,
-                template.as_deref(),
-                db,
-                &name,
-                &dir,
-            ));
+        } => run_init_command(clustered, template.as_deref(), db, &name, reporter),
+        Commands::Cluster { action } => cluster::run_cluster_command(action, json, reporter),
+        Commands::Proof { action } => proof::run_proof_command(action, reporter),
+        Commands::Deps { dir } => deps_command(&dir, reporter),
+        Commands::Update => run_update_command(json, reporter),
+        Commands::Guide { topic } => guide::show(topic.as_deref()).reported(reporter),
+        Commands::Explain { code } => {
+            print!(
+                "{}",
+                explain::render(code.as_deref(), json).reported(reporter)?
+            );
+            Ok(())
         }
-        Commands::Cluster { action } => or_exit(cluster::run_cluster_command(action)),
-        Commands::Proof { action } => or_exit(
-            proof::run_proof_command(action).map_err(|error| format!("proof failed: {error}")),
-        ),
-        Commands::Deps { dir } => or_exit(deps_command(&dir)),
-        Commands::Update => or_exit(run_update_command()),
-        Commands::Guide { topic } => or_exit(guide::show(topic.as_deref())),
-        Commands::Explain { code, json } => {
-            print!("{}", or_exit(explain::render(code.as_deref(), json)))
-        }
-        Commands::Skills { action } => or_exit(skills::run(action)),
+        Commands::Skills { action } => skills::run(action, reporter),
         Commands::Verify {
             dir,
             list,
-            json,
             preserve,
             emit_proof,
             verdict,
-        } => or_exit(verify::run(
+        } => verify::run(
             &dir,
             list,
             json,
@@ -465,7 +464,8 @@ fn run() {
                 emit: emit_proof.as_deref(),
                 verdict,
             },
-        )),
+            reporter,
+        ),
         Commands::Fmt {
             path,
             check,
@@ -476,72 +476,86 @@ fn run() {
                 indent_size,
                 max_width: line_width,
             };
-            let stats = or_exit(fmt_command(&path, check, &config));
-            if !check {
-                eprintln!("Formatted {} file(s)", stats.total);
-            } else if stats.unformatted > 0 {
-                eprintln!("{} file(s) would be reformatted", stats.unformatted);
-                process::exit(1);
-            }
+            fmt_command(&path, check, &config, reporter)
         }
         Commands::Lint { path } => {
-            let problems = or_exit(lint_command(&path));
+            let problems = lint_command(&path).reported(reporter)?;
             if problems > 0 {
-                eprintln!("{} problem(s) found", problems);
-                process::exit(1);
+                reporter.status(format_args!("{problems} problem(s) found"));
+                *lint_findings = true;
             }
+            Ok(())
         }
         Commands::PlaintextReport { dir, output, check } => {
-            let prepared = or_exit(prepare_project_build(
-                &dir,
-                false,
-                &DiagnosticOptions::new(Format::Human { color: false }),
-            ));
-            or_exit(plaintext_report::run(
+            let prepared = prepare_project_build(&dir, false, reporter)?;
+            plaintext_report::run(
                 &prepared.plaintext_report,
                 output.as_deref(),
                 check.as_deref(),
-            ));
+                reporter,
+            )
         }
-        Commands::Repl => or_exit(mesh_repl::run_repl(&mesh_repl::ReplConfig::default())),
+        Commands::Repl => mesh_repl::run_repl(&mesh_repl::ReplConfig::default()).reported(reporter),
         Commands::Lsp => {
-            let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
+            let rt = tokio::runtime::Runtime::new()
+                .map_err(|e| format!("Failed to create tokio runtime: {e}"))
+                .reported(reporter)?;
             rt.block_on(mesh_lsp::run_server());
             // Its stdin read cannot be cancelled: do not wait for it.
             rt.shutdown_background();
+            Ok(())
         }
         Commands::Test {
             path,
             quiet,
             coverage,
-        } => {
-            if or_exit(test_runner::run_tests(path.as_deref(), quiet, coverage)).failed > 0 {
-                process::exit(1);
-            }
-        }
-        Commands::Migrate { action, dir } => {
-            let action = action.unwrap_or(MigrateAction::Up);
-            or_exit(match action {
-                MigrateAction::Up => migrate::run_migrations_up(&dir),
-                MigrateAction::Down => migrate::run_migrations_down(&dir),
-                MigrateAction::Status => migrate::show_migration_status(&dir),
-                MigrateAction::Generate { name } => migrate::generate_migration(&dir, &name),
-            })
-        }
+        } => test_runner::run_tests(
+            path.as_deref(),
+            quiet,
+            coverage,
+            json,
+            cli.no_color,
+            reporter,
+        ),
+        Commands::Migrate { action, dir } => match action.unwrap_or(MigrateAction::Up) {
+            MigrateAction::Up => migrate::run_migrations_up(&dir, reporter),
+            MigrateAction::Down => migrate::run_migrations_down(&dir, reporter),
+            MigrateAction::Status => migrate::show_migration_status(&dir, reporter),
+            MigrateAction::Generate { name } => migrate::generate_migration(&dir, &name, reporter),
+        },
     }
 }
 
-/// A command's value, or its error reported and the process ended.
-fn or_exit<T>(result: Result<T, String>) -> T {
-    result.unwrap_or_else(|error| {
-        eprintln!("error: {error}");
-        process::exit(1)
-    })
+/// Convert a legacy string error at the CLI boundary until its producer is migrated.
+trait ReportResult<T> {
+    fn reported(self, reporter: &mut Reporter) -> Result<T, Failed>;
 }
 
-fn run_update_command() -> Result<(), String> {
-    let outcome = mesh_pkg::run_toolchain_update().map_err(|error| error.to_string())?;
+impl<T> ReportResult<T> for Result<T, String> {
+    fn reported(self, reporter: &mut Reporter) -> Result<T, Failed> {
+        self.map_err(|message| {
+            let message = reporter.remap_message(message);
+            reporter.fail(Diagnostic::uncategorized(message))
+        })
+    }
+}
+
+fn run_update_command(json: bool, reporter: &mut Reporter) -> Result<(), Failed> {
+    let outcome = mesh_pkg::run_toolchain_update_with_progress(!json)
+        .map_err(|error| error.to_string())
+        .reported(reporter)?;
     println!("{}", outcome.mode);
+    Ok(())
+}
+
+fn run_check(path: &Path, tests: bool, reporter: &mut Reporter) -> Result<(), Failed> {
+    if tests && test_runner::is_test_file(path) {
+        return test_runner::check_tests(path, reporter);
+    }
+    load_checked_project(path, false, false, reporter)?;
+    if tests && path.is_dir() {
+        test_runner::check_tests(path, reporter)?;
+    }
     Ok(())
 }
 
@@ -701,8 +715,8 @@ pub(crate) fn build(
     target: Option<&str>,
     artifact: BuildArtifact,
     test_builtins: bool,
-    diag_opts: &DiagnosticOptions,
-) -> Result<(), String> {
+    reporter: &mut Reporter,
+) -> Result<(), Failed> {
     build_with_report(
         dir,
         opt_level,
@@ -711,8 +725,9 @@ pub(crate) fn build(
         target,
         artifact,
         test_builtins,
-        diag_opts,
+        reporter,
         None,
+        false,
     )
 }
 
@@ -726,17 +741,19 @@ pub(crate) fn build_with_report(
     target: Option<&str>,
     artifact: BuildArtifact,
     test_builtins: bool,
-    diag_opts: &DiagnosticOptions,
+    reporter: &mut Reporter,
     plaintext_report: Option<&Path>,
-) -> Result<(), String> {
-    let mut prepared = prepare_project_build(dir, test_builtins, diag_opts)?;
+    announce: bool,
+) -> Result<(), Failed> {
+    let mut prepared = prepare_project_build(dir, test_builtins, reporter)?;
     // Without an entry function codegen emits no C `main`, and the linker's
     // "_main not found" is all the user would see.
     if artifact == BuildArtifact::Executable && prepared.merged_mir.entry_function.is_none() {
         return Err(format!(
             "{} has no `fn main()`: an executable starts there",
             prepared.entry_relative_path.display()
-        ));
+        ))
+        .reported(reporter);
     }
     let declared_handler_plan = prepare_declared_handler_plan(
         &prepared.clustered_execution_plan,
@@ -747,7 +764,8 @@ pub(crate) fn build_with_report(
     let declared_handlers = mesh_codegen::prepare_declared_runtime_handlers(
         &mut prepared.merged_mir,
         &declared_handler_plan,
-    )?;
+    )
+    .reported(reporter)?;
 
     let output_path = output.map_or_else(
         || default_output_path(dir, artifact, target),
@@ -770,8 +788,9 @@ pub(crate) fn build_with_report(
             &ll_path,
             opt_level,
             target,
-        )?;
-        eprintln!("  LLVM IR: {}", ll_path.display());
+        )
+        .reported(reporter)?;
+        reporter.status(format_args!("  LLVM IR: {}", ll_path.display()));
     }
 
     // Compile to native binary
@@ -780,10 +799,12 @@ pub(crate) fn build_with_report(
     } else {
         mesh_codegen::link::RuntimeFlavor::Standard
     };
-    let runtime_override = runtime_lib_override_from_env(runtime_flavor)?;
+    let runtime_override = runtime_lib_override_from_env(runtime_flavor).reported(reporter)?;
     let native_archives = if dir.join("mesh.toml").is_file() {
-        let effective_target = mesh_codegen::link::effective_target_triple(target)?;
-        mesh_pkg::resolve_native_archives(dir, &effective_target)?
+        let effective_target =
+            mesh_codegen::link::effective_target_triple(target).reported(reporter)?;
+        mesh_pkg::resolve_native_archives(dir, &effective_target)
+            .reported(reporter)?
             .into_iter()
             .map(|archive| archive.path)
             .collect::<Vec<_>>()
@@ -803,7 +824,8 @@ pub(crate) fn build_with_report(
             runtime_flavor,
             runtime_override.as_deref(),
             &native_archives,
-        )?,
+        )
+        .reported(reporter)?,
         BuildArtifact::Staticlib | BuildArtifact::Cdylib => {
             mesh_codegen::compile_mir_to_library(
                 &prepared.merged_mir,
@@ -821,18 +843,19 @@ pub(crate) fn build_with_report(
                 target,
                 runtime_override.as_deref(),
                 &native_archives,
-            )?;
-            library_bindings::write(&output_path, &prepared.library_exports, target)?;
+            )
+            .reported(reporter)?;
+            library_bindings::write(&output_path, &prepared.library_exports, target)
+                .reported(reporter)?;
         }
     }
 
-    // `meshc test` builds each file to a throwaway temp binary; its path is noise there.
-    if !test_builtins {
-        eprintln!("  Compiled: {}", output_path.display());
+    if announce {
+        reporter.status(format_args!("  Compiled: {}", output_path.display()));
     }
     if let Some(path) = plaintext_report {
-        plaintext_report::write(&prepared.plaintext_report, path)?;
-        eprintln!("  Plaintext report: {}", path.display());
+        plaintext_report::write(&prepared.plaintext_report, path).reported(reporter)?;
+        reporter.status(format_args!("  Plaintext report: {}", path.display()));
     }
 
     Ok(())
@@ -860,6 +883,7 @@ struct CheckedBuild {
     entry_relative_path: Option<PathBuf>,
     project: mesh_pkg::project::ProjectData,
     checked: mesh_pkg::project::CheckedProject,
+    clustered_execution_plan: Vec<ClusteredExecutionMetadata>,
 }
 
 #[derive(Default)]
@@ -869,103 +893,96 @@ struct VerificationLowering {
 }
 
 fn load_checked_project(
-    dir: &Path,
+    path: &Path,
     test_builtins: bool,
     require_entrypoint: bool,
-    diag_opts: &DiagnosticOptions,
-) -> Result<CheckedBuild, String> {
-    // Validate the project directory
-    if !dir.exists() {
+    reporter: &mut Reporter,
+) -> Result<CheckedBuild, Failed> {
+    if !path.exists() {
         return Err(format!(
             "Project directory '{}' does not exist",
-            dir.display()
-        ));
+            path.display()
+        ))
+        .reported(reporter);
     }
-    if !dir.is_dir() {
-        return Err(format!("'{}' is not a directory", dir.display()));
+    let standalone = path.is_file() && path.extension().is_some_and(|ext| ext == "mpl");
+    if !standalone && !path.is_dir() {
+        return Err(format!(
+            "'{}' is not a directory or a .mpl source file",
+            path.display()
+        ))
+        .reported(reporter);
     }
 
-    let manifest_path = dir.join("mesh.toml");
-    let manifest = if manifest_path.exists() {
-        Some(Manifest::from_file(&manifest_path)?)
+    let (root, manifest, entry_relative_path, project, native_bindings) = if standalone {
+        let root = path.parent().unwrap_or(Path::new(""));
+        let relative_path = Path::new(path.file_name().expect("a source path has a file name"));
+        let source = mesh_pkg::project::read_file(path).reported(reporter)?;
+        let project = mesh_pkg::project::single_source_project_at(&source, relative_path)
+            .reported(reporter)?;
+        (
+            root,
+            None,
+            Some(relative_path.to_path_buf()),
+            project,
+            Vec::new(),
+        )
     } else {
-        None
-    };
-    let native_bindings = if manifest.is_some() {
-        mesh_pkg::resolve_native_bindings(dir)?
-    } else {
-        Vec::new()
-    };
-    let has_configured_entrypoint = manifest
-        .as_ref()
-        .is_some_and(|manifest| manifest.package.entrypoint.is_some());
-    let entry_relative_path = if require_entrypoint
-        || has_configured_entrypoint
-        || dir.join(mesh_pkg::manifest::DEFAULT_ENTRYPOINT).exists()
-    {
-        Some(resolve_entrypoint(dir, manifest.as_ref())?)
-    } else {
-        None
+        let manifest_path = path.join("mesh.toml");
+        let manifest = manifest_path
+            .exists()
+            .then(|| Manifest::from_file(&manifest_path))
+            .transpose()
+            .reported(reporter)?;
+        let native_bindings = if manifest.is_some() {
+            mesh_pkg::resolve_native_bindings(path).reported(reporter)?
+        } else {
+            Vec::new()
+        };
+        let has_configured_entrypoint = manifest
+            .as_ref()
+            .is_some_and(|manifest| manifest.package.entrypoint.is_some());
+        let entry_relative_path = if require_entrypoint
+            || has_configured_entrypoint
+            || path.join(mesh_pkg::manifest::DEFAULT_ENTRYPOINT).exists()
+        {
+            Some(resolve_entrypoint(path, manifest.as_ref()).reported(reporter)?)
+        } else {
+            None
+        };
+        let project = mesh_pkg::project::load_modules(
+            path,
+            entry_relative_path.as_deref(),
+            &native_bindings,
+            test_builtins,
+            &mesh_pkg::project::read_file,
+        )
+        .reported(reporter)?;
+        (
+            path,
+            manifest,
+            entry_relative_path,
+            project,
+            native_bindings,
+        )
     };
 
-    // Build the project: discover all files, parse, build module graph.
-    // `meshc test` builds the helpers under `tests/` too.
-    let project = mesh_pkg::project::load_modules(
-        dir,
-        entry_relative_path.as_deref(),
-        &native_bindings,
-        test_builtins,
-        &mesh_pkg::project::read_file,
-    )?;
-
-    // Check parse errors in ALL modules (not just entry)
-    let mut has_errors = false;
-    for id in &project.compilation_order {
+    let sources = project_sources(root, &project);
+    reporter.emit_all(project.compilation_order.iter().flat_map(|id| {
         let idx = id.0 as usize;
-        let parse = &project.module_parses[idx];
-        let source = &project.module_sources[idx];
-        let module_path = dir.join(&project.graph.get(*id).path);
-
-        for error in parse.errors() {
-            has_errors = true;
-            let file_name = diag_opts.display_path(&module_path);
-            if diag_opts.json() {
-                let start = error.span.start as usize;
-                let end = (error.span.end as usize).max(start + 1);
-                let json_diag = serde_json::json!({
-                    "code": "P0001",
-                    "severity": "error",
-                    "message": format!("Parse error: {}", error.message),
-                    "file": file_name,
-                    "spans": [{
-                        "start": start,
-                        "end": end,
-                        "label": error.message
-                    }],
-                    "fix": null
-                });
-                eprintln!("{}", json_diag);
-            } else {
-                use ariadne::{Label, Report, ReportKind, Source};
-                let clamped = SourceFile::new(&module_path, source.as_str()).clamp(error.span);
-                let span = (
-                    file_name.clone(),
-                    clamped.start as usize..clamped.end as usize,
-                );
-                let _ = Report::build(ReportKind::Error, span.clone())
-                    .with_message("Parse error")
-                    .with_config(diag_opts.report_config())
-                    .with_label(Label::new(span).with_message(&error.message))
-                    .finish()
-                    .eprint((file_name.clone(), Source::from(source.as_str())));
-            }
-        }
-    }
-
-    // If any parse errors exist, skip type checking entirely
-    if has_errors {
-        return Err("Compilation failed due to errors above.".to_string());
-    }
+        let file = &sources[idx];
+        project.module_parses[idx]
+            .errors()
+            .iter()
+            .map(move |error| {
+                let diagnostic = Diagnostic::in_file(Code::UnexpectedToken, file, &error.message)
+                    .at(error.span, "");
+                match &error.related {
+                    Some((message, span)) => diagnostic.with_label(*span, message),
+                    None => diagnostic,
+                }
+            })
+    }))?;
 
     let allowed_native_bindings = native_bindings
         .iter()
@@ -980,64 +997,94 @@ fn load_checked_project(
         {
             continue;
         }
-        let source_path = &project.graph.get(*id).path;
-        let full_path = if source_path.is_absolute() {
-            source_path.clone()
-        } else {
-            dir.join(source_path)
-        };
-        // A file that cannot be resolved is no declared binding either.
-        let canonical = full_path.canonicalize().ok();
+        let path = sources[idx].path();
+        let canonical = path.canonicalize().ok();
         if !canonical.is_some_and(|path| allowed_native_bindings.contains(path.as_path())) {
             return Err(format!(
                 "Native declaration in '{}' is outside a manifest-declared native binding",
-                diag_opts.display_path(&full_path)
-            ));
+                path.display()
+            ))
+            .reported(reporter);
         }
     }
 
-    reject_duplicate_type_names(&project)?;
-
-    // Type-check every module in compilation order, and report each one's
-    // errors and warnings.
+    reject_duplicate_type_names(&project, &sources, reporter)?;
     let checked = mesh_pkg::project::check_project(&project, test_builtins);
-    let mut reporter = diag_opts.reporter();
-    let mut has_type_errors = false;
-    for &id in &project.compilation_order {
+    reporter.emit_all(project.compilation_order.iter().flat_map(|id| {
         let idx = id.0 as usize;
-        let file = SourceFile::new(
-            dir.join(&project.graph.get(id).path),
-            project.module_sources[idx].as_str(),
-        );
-        has_type_errors |= reporter
-            .emit_all(checked.typeck[idx].diagnostics(&file))
-            .is_err();
-    }
+        checked.typeck[idx].diagnostics(&sources[idx])
+    }))?;
+    reject_duplicate_pub_functions(&project, &sources, &checked.exports, reporter)?;
 
-    if has_type_errors {
-        return Err("Compilation failed due to errors above.".to_string());
-    }
-
-    reject_duplicate_pub_functions(&project, &checked.exports)?;
+    let clustered_execution_plan =
+        match plan_cluster_declarations(&project.graph, &project.module_parses) {
+            Ok(plan) => plan,
+            Err(issues) => {
+                reporter.emit_all(
+                    issues
+                        .iter()
+                        .map(|issue| clustered_declaration_diagnostic(&project, &sources, issue)),
+                )?;
+                Vec::new()
+            }
+        };
     Ok(CheckedBuild {
         manifest,
         entry_relative_path,
         project,
         checked,
+        clustered_execution_plan,
     })
+}
+
+fn project_sources(dir: &Path, project: &mesh_pkg::project::ProjectData) -> Vec<SourceFile> {
+    let mut by_path = HashMap::new();
+    project
+        .graph
+        .modules
+        .iter()
+        .zip(&project.module_sources)
+        .map(|(module, source)| {
+            // Inline modules share the byte offsets of their containing file.
+            by_path
+                .entry(&module.path)
+                .or_insert_with(|| SourceFile::new(dir.join(&module.path), source.as_str()))
+                .clone()
+        })
+        .collect()
+}
+
+fn clustered_declaration_diagnostic(
+    project: &mesh_pkg::project::ProjectData,
+    sources: &[SourceFile],
+    issue: &ClusteredDeclarationError,
+) -> Diagnostic {
+    let index = project
+        .graph
+        .modules
+        .iter()
+        .position(|module| module.path == issue.file)
+        .expect("an `@cluster` decorator belongs to a project file");
+    Diagnostic::in_file(
+        Code::ClusterDeclarationInvalid,
+        &sources[index],
+        issue.to_string(),
+    )
+    .at(issue.span, &issue.reason)
 }
 
 pub(crate) fn prepare_project_build(
     dir: &Path,
     test_builtins: bool,
-    diag_opts: &DiagnosticOptions,
-) -> Result<PreparedBuild, String> {
+    reporter: &mut Reporter,
+) -> Result<PreparedBuild, Failed> {
     let CheckedBuild {
         manifest,
         entry_relative_path,
         project,
         mut checked,
-    } = load_checked_project(dir, test_builtins, true, diag_opts)?;
+        mut clustered_execution_plan,
+    } = load_checked_project(dir, test_builtins, true, reporter)?;
     let entry_relative_path = entry_relative_path.expect("build requires an entrypoint");
 
     let package = manifest.as_ref().map_or_else(
@@ -1048,7 +1095,13 @@ pub(crate) fn prepare_project_build(
         },
         |manifest| manifest.package.name.clone(),
     );
-    let plaintext_report = plaintext_report::collect(dir, &package, &project, &checked.typeck);
+    let project_root = if dir.is_file() {
+        dir.parent().unwrap_or(Path::new(""))
+    } else {
+        dir
+    };
+    let plaintext_report =
+        plaintext_report::collect(project_root, &package, &project, &checked.typeck);
 
     // `@cluster` and `HTTP.clustered` without a count take the manifest's
     // `[cluster].default_replicas`.
@@ -1058,25 +1111,16 @@ pub(crate) fn prepare_project_build(
         .map_or(mesh_pkg::DEFAULT_CLUSTER_REPLICATION_COUNT, |cluster| {
             cluster.default_replicas
         });
-    let mut clustered_execution_plan =
-        match plan_cluster_declarations(&project.graph, &project.module_parses) {
-            Ok(plan) => plan,
-            Err(issues) => {
-                emit_clustered_declaration_diagnostics(dir, &project, &issues, diag_opts);
-                return Err("Compilation failed due to errors above.".to_string());
-            }
-        };
     for entry in &mut clustered_execution_plan {
         if entry.replication_count.source == mesh_pkg::ClusteredReplicationCountSource::Default {
             entry.replication_count.value = default_replicas;
         }
     }
-    let clustered_route_handler_plan = mesh_codegen::prepare_clustered_route_handler_plan(
-        checked.typeck.iter(),
-        default_replicas,
-    )?;
-    let library_exports = collect_library_exports(&project.module_parses)?;
-    let mir_modules = verify::lower_for_build(&project, &mut checked, &package)?;
+    let clustered_route_handler_plan =
+        mesh_codegen::prepare_clustered_route_handler_plan(checked.typeck.iter(), default_replicas)
+            .reported(reporter)?;
+    let library_exports = collect_library_exports(&project.module_parses).reported(reporter)?;
+    let mir_modules = verify::lower_for_build(&project, &mut checked, &package, reporter)?;
     let entry_mir_idx = project
         .compilation_order
         .iter()
@@ -1105,7 +1149,8 @@ pub(crate) fn prepare_project_build(
             manifest
                 .as_ref()
                 .and_then(|manifest| manifest.autonomous_cluster.as_ref()),
-        )?,
+        )
+        .reported(reporter)?,
         plaintext_report,
     })
 }
@@ -1117,6 +1162,7 @@ fn lower_checked_modules(
     checked: &mut mesh_pkg::project::CheckedProject,
     source_id: impl Fn(&mesh_parser::Parse) -> Option<mesh_codegen::mir::MirSourceId>,
     mut verification: Option<&mut VerificationLowering>,
+    reporter: &mut Reporter,
 ) -> Result<Vec<mesh_codegen::mir::MirModule>, String> {
     let mesh_pkg::project::CheckedProject {
         typeck: all_typeck,
@@ -1207,54 +1253,38 @@ fn lower_checked_modules(
             .filter(|(other, _)| *other != idx)
             .map(|(_, modules)| modules)
             .collect();
-        use mesh_codegen::mir::lower;
-        let mir = if let Some(verification) = verification.as_deref_mut() {
-            let (mir, signatures) = lower::lower_module_to_mir_with_signatures(
-                parse,
-                typeck,
-                module_name,
-                &pub_fns,
-                &inferred_fn_usage_types,
-                &other_modules,
-                &source_id,
-            )?;
-            verification.signatures.push(signatures);
-            mir
-        } else {
-            lower::lower_module_to_mir_with_sources(
-                parse,
-                typeck,
-                module_name,
-                &pub_fns,
-                &inferred_fn_usage_types,
-                &other_modules,
-                &source_id,
-            )?
-        };
-        mir_modules.push(mir);
+        let lowered = mesh_codegen::mir::lower::lower_module_with_diagnostics(
+            parse,
+            typeck,
+            module_name,
+            &pub_fns,
+            &inferred_fn_usage_types,
+            &other_modules,
+            &source_id,
+            verification.is_some(),
+        )?;
+        for diagnostic in lowered.diagnostics {
+            reporter.emit(diagnostic);
+        }
+        if let Some(verification) = verification.as_deref_mut() {
+            verification.signatures.push(lowered.signatures);
+        }
+        mir_modules.push(lowered.module);
     }
     Ok(mir_modules)
 }
 
-/// Reject programs where two modules export a `pub fn` under the same symbol.
-///
-/// `Lowerer::qualify_name` deliberately leaves `pub` function names unqualified so
-/// importing modules can call them by their bare name, and `merge_mir_modules` then
-/// keys merged functions by that bare name, keeping the first one it sees. Two modules
-/// exporting the same name therefore collapse into one symbol: the later module's body
-/// is dropped, and every call site — including `from B import f` — binds to the earlier
-/// module's body while the type checker went on believing it had `B`'s signature. That
-/// mismatch is silent, and when the signatures differ it reinterprets values across
-/// types (an `Int` returned where a `String` was expected becomes a wild pointer).
-///
-/// Until pub symbols are module-qualified, refuse to compile the ambiguous program.
 /// Reject a struct, sum type, interface, actor, service or supervisor name
 /// that more than one module defines, public or not. These names are one
 /// namespace across a project: the type checker took two `State` structs
 /// for one type and codegen emitted one of them, so `Z.run_z()` showed its
 /// `State` laid out as `A`'s, and a module's `spawn(worker)` could start
 /// another module's `worker`.
-fn reject_duplicate_type_names(project: &mesh_pkg::project::ProjectData) -> Result<(), String> {
+fn reject_duplicate_type_names(
+    project: &mesh_pkg::project::ProjectData,
+    sources: &[SourceFile],
+    reporter: &mut Reporter,
+) -> Result<(), Failed> {
     use mesh_parser::ast::item::Item;
 
     // A struct or sum type copied verbatim into several modules (a private
@@ -1284,109 +1314,130 @@ fn reject_duplicate_type_names(project: &mesh_pkg::project::ProjectData) -> Resu
             .collect();
         Some(tokens.join(" "))
     };
-    let mut owners: std::collections::BTreeMap<
-        String,
-        Vec<(
-            &'static str,
-            &mesh_common::module_graph::ModuleInfo,
-            Option<String>,
-        )>,
-    > = Default::default();
+    struct Definition {
+        kind: &'static str,
+        module: mesh_common::module_graph::ModuleId,
+        span: mesh_common::span::Span,
+        fingerprint: Option<String>,
+    }
+    let mut owners = std::collections::BTreeMap::<String, Vec<Definition>>::new();
     for &id in &project.compilation_order {
-        let module = project.graph.get(id);
         for item in project.module_parses[id.0 as usize].tree().items() {
             let (kind, name) = match &item {
-                Item::StructDef(def) => ("struct", def.name().and_then(|n| n.text())),
-                Item::SumTypeDef(def) => ("type", def.name().and_then(|n| n.text())),
-                Item::InterfaceDef(def) => ("interface", def.name().and_then(|n| n.text())),
-                Item::ActorDef(def) => ("actor", def.name().and_then(|n| n.text())),
-                Item::ServiceDef(def) => ("service", def.name().and_then(|n| n.text())),
-                Item::SupervisorDef(def) => ("supervisor", def.name().and_then(|n| n.text())),
+                Item::StructDef(def) => ("struct", def.name()),
+                Item::SumTypeDef(def) => ("type", def.name()),
+                Item::InterfaceDef(def) => ("interface", def.name()),
+                Item::ActorDef(def) => ("actor", def.name()),
+                Item::ServiceDef(def) => ("service", def.name()),
+                Item::SupervisorDef(def) => ("supervisor", def.name()),
                 _ => continue,
             };
-            if let Some(name) = name {
-                owners
-                    .entry(name)
-                    .or_default()
-                    .push((kind, module, fingerprint(&item)));
+            if let Some((text, range)) =
+                name.and_then(|name| name.text().map(|text| (text, name.syntax().text_range())))
+            {
+                owners.entry(text).or_default().push(Definition {
+                    kind,
+                    module: id,
+                    span: mesh_common::span::Span::new(range.start().into(), range.end().into()),
+                    fingerprint: fingerprint(&item),
+                });
             }
         }
     }
 
-    let mut conflicted = false;
-    for (name, defs) in &owners {
-        let first = defs[0].1.name.as_str();
-        if defs.iter().all(|(_, module, _)| module.name == first) {
+    reporter.emit_all(owners.iter().filter_map(|(name, defs)| {
+        let first = &defs[0];
+        if defs.iter().all(|def| def.module == first.module) {
             // One module (a duplicate there is the type checker's E0068).
-            continue;
+            return None;
         }
-        if defs[0].2.is_some() && defs.iter().all(|(_, _, print)| *print == defs[0].2) {
-            continue;
+        if first.fingerprint.is_some()
+            && defs.iter().all(|def| def.fingerprint == first.fingerprint)
+        {
+            return None;
         }
-        conflicted = true;
-        eprintln!("error: `{name}` is defined in more than one module:");
-        for (kind, module, _) in defs {
-            eprintln!(
-                "  - {kind} in `{}` ({})",
-                module.name,
-                module.path.display()
-            );
+        let label =
+            |def: &Definition| format!("{} in `{}`", def.kind, project.graph.get(def.module).name);
+        let mut diagnostic = Diagnostic::in_file(
+            Code::DuplicateTypeAcrossModules,
+            &sources[first.module.0 as usize],
+            format!("`{name}` is defined in more than one module"),
+        )
+        .at(first.span, label(first))
+        .with_note("Identical, non-indexed struct and sum type definitions can share a layout.");
+        for def in &defs[1..] {
+            diagnostic =
+                diagnostic.with_label_in(&sources[def.module.0 as usize], def.span, label(def));
         }
-        eprintln!(
-            "note: struct, type, interface, actor, service and supervisor names share one \
-             namespace across the project, private ones too, so these definitions would be \
-             taken for one (identically defined non-indexed structs and types can share a layout)."
-        );
-        eprintln!("help: rename all but one of them.");
-    }
-
-    if conflicted {
-        return Err("Compilation failed due to errors above.".to_string());
-    }
-    Ok(())
+        Some(diagnostic)
+    }))
 }
 
+/// Reject programs where two modules export a `pub fn` under the same symbol.
+///
+/// `Lowerer::qualify_name` deliberately leaves `pub` function names unqualified so
+/// importing modules can call them by their bare name, and `merge_mir_modules` then
+/// keys merged functions by that bare name, keeping the first one it sees. Two modules
+/// exporting the same name therefore collapse into one symbol: the later module's body
+/// is dropped, and every call site — including `from B import f` — binds to the earlier
+/// module's body while the type checker went on believing it had `B`'s signature. That
+/// mismatch is silent, and when the signatures differ it reinterprets values across
+/// types (an `Int` returned where a `String` was expected becomes a wild pointer).
+///
+/// Until pub symbols are module-qualified, refuse to compile the ambiguous program.
 fn reject_duplicate_pub_functions(
     project: &mesh_pkg::project::ProjectData,
+    sources: &[SourceFile],
     all_exports: &[Option<mesh_typeck::ExportedSymbols>],
-) -> Result<(), String> {
+    reporter: &mut Reporter,
+) -> Result<(), Failed> {
     // Export keys are exactly the `pub_fns` handed to the lowerer, so a key collision
     // is a symbol collision. Same-name/different-arity pub fns inside one module are
     // already disambiguated by `collect_exports` as `name__<arity>`.
-    let mut owners: std::collections::BTreeMap<&str, Vec<&mesh_common::module_graph::ModuleInfo>> =
+    let mut owners: std::collections::BTreeMap<&str, Vec<mesh_common::module_graph::ModuleId>> =
         Default::default();
     for &id in &project.compilation_order {
-        let module = project.graph.get(id);
         let exports = all_exports[id.0 as usize].iter();
         for name in exports.flat_map(|exports| exports.functions.keys()) {
-            owners.entry(name.as_str()).or_default().push(module);
+            owners.entry(name.as_str()).or_default().push(id);
         }
     }
 
-    let mut conflicted = false;
-    for (symbol, modules) in owners.iter().filter(|(_, m)| m.len() > 1) {
-        conflicted = true;
+    reporter.emit_all(owners.iter().filter(|(_, modules)| modules.len() > 1).map(|(symbol, modules)| {
         // Strip the `__<arity>` suffix `collect_exports` adds to overloaded pub fns.
-        let display = symbol
+        let (display, arity) = symbol
             .rsplit_once("__")
-            .filter(|(_, arity)| !arity.is_empty() && arity.chars().all(|c| c.is_ascii_digit()))
-            .map(|(base, _)| base)
-            .unwrap_or(symbol);
-        eprintln!("error: public function `{display}` is defined in more than one module:");
-        for module in modules {
-            eprintln!("  - `{}` ({})", module.name, module.path.display());
+            .and_then(|(base, arity)| arity.parse::<usize>().ok().map(|arity| (base, Some(arity))))
+            .unwrap_or((symbol, None));
+        let mut declarations = modules.iter().filter_map(|&module| {
+            let idx = module.0 as usize;
+            project.module_parses[idx].tree().fn_defs().find_map(|function| {
+                let name = function.name()?;
+                let text = name.text()?;
+                let matches_overload = text == display && arity.is_some_and(|arity| {
+                    function.param_list().map_or(0, |params| params.params().count()) == arity
+                });
+                if function.visibility().is_none() || (text != *symbol && !matches_overload) {
+                    return None;
+                }
+                let range = name.syntax().text_range();
+                Some((&sources[idx], mesh_common::span::Span::new(range.start().into(), range.end().into()), &project.graph.get(module).name))
+            })
+        });
+        let message = format!("public function `{display}` is defined in more than one module");
+        let mut diagnostic = if let Some((file, span, module)) = declarations.next() {
+            Diagnostic::in_file(Code::DuplicatePubFnAcrossModules, file, message)
+                .at(span, format!("public definition in `{module}`"))
+        } else {
+            Diagnostic::new(Code::DuplicatePubFnAcrossModules, message)
+        };
+        for (file, span, module) in declarations {
+            diagnostic = diagnostic.with_label_in(file, span, format!("public definition in `{module}`"));
         }
-        eprintln!(
-            "note: public function names share one global symbol space, so a call to \
-             `{display}` would silently run only one of these definitions."
-        );
-        eprintln!("help: rename all but one of them, or make the others private.");
-    }
-
-    if conflicted {
-        return Err("Compilation failed due to errors above.".to_string());
-    }
-    Ok(())
+        diagnostic.with_note(format!(
+            "Public function names share one global symbol space, so a call to `{display}` would silently run only one of these definitions."
+        ))
+    }))
 }
 
 fn collect_library_exports(
@@ -1421,7 +1472,12 @@ fn collect_library_exports(
 /// Where `meshc build` writes an artifact when `--output` is not given:
 /// named after the project directory, in the platform's library naming.
 fn default_output_path(dir: &Path, artifact: BuildArtifact, target: Option<&str>) -> PathBuf {
-    let project_name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("output");
+    let (dir, name) = if dir.is_file() {
+        (dir.parent().unwrap_or(Path::new(".")), dir.file_stem())
+    } else {
+        (dir, dir.file_name())
+    };
+    let project_name = name.and_then(|n| n.to_str()).unwrap_or("output");
     let targets = |vendor: &str, host: bool| target.map_or(host, |triple| triple.contains(vendor));
     match artifact {
         BuildArtifact::Executable => dir.join(project_name),
@@ -1535,73 +1591,19 @@ fn collect_inferred_fn_usage_types(
     usage
 }
 
-fn offset_to_line_col(source: &str, offset: usize) -> (usize, usize) {
-    let offset = offset.min(source.len());
-    let prefix = &source[..offset];
-    let line = prefix.bytes().filter(|byte| *byte == b'\n').count() + 1;
-    let col = prefix
-        .rsplit_once('\n')
-        .map(|(_, line_text)| line_text.chars().count() + 1)
-        .unwrap_or_else(|| prefix.chars().count() + 1);
-    (line, col)
-}
-
-fn emit_clustered_declaration_diagnostics(
-    dir: &Path,
-    project: &mesh_pkg::project::ProjectData,
-    issues: &[ClusteredDeclarationError],
-    diag_opts: &DiagnosticOptions,
-) {
-    for issue in issues {
-        let file_name = dir.join(&issue.file).display().to_string();
-        let span = issue.span.start as usize..issue.span.end as usize;
-
-        if diag_opts.json() {
-            let json_diag = serde_json::json!({
-                "code": "CFG0001",
-                "severity": "error",
-                "message": issue.to_string(),
-                "file": file_name,
-                "spans": [{"start": span.start, "end": span.end, "label": issue.reason}],
-                "fix": null
-            });
-            eprintln!("{}", json_diag);
-            continue;
-        }
-
-        use ariadne::{Label, Report, ReportKind, Source};
-        // The source the decorator was parsed from.
-        let (_, source) = project
-            .graph
-            .modules
-            .iter()
-            .zip(&project.module_sources)
-            .find(|(module, _)| module.path == issue.file)
-            .expect("an `@cluster` decorator is in a module of the project");
-        let (line, col) = offset_to_line_col(source, span.start);
-        eprintln!("error: {}", issue);
-        eprintln!("  --> {}:{}:{}", file_name, line, col);
-        let _ = Report::<std::ops::Range<usize>>::build(ReportKind::Error, span.clone())
-            .with_message("Invalid clustered declaration")
-            .with_config(diag_opts.report_config())
-            .with_label(Label::new(span).with_message(&issue.reason))
-            .finish()
-            .eprint(Source::from(source.as_str()));
-    }
-}
-
 // ── Deps subcommand ──────────────────────────────────────────────────
 
 /// Execute the `deps` subcommand: resolve dependencies and generate mesh.lock.
 ///
 /// If mesh.lock already exists and the manifest hasn't changed, skips resolution.
-fn deps_command(dir: &Path) -> Result<(), String> {
+fn deps_command(dir: &Path, reporter: &mut Reporter) -> Result<(), Failed> {
     let manifest_path = dir.join("mesh.toml");
     if !manifest_path.exists() {
         return Err(format!(
             "No 'mesh.toml' found in '{}'. Run `meshc init` to create a project.",
             dir.display()
-        ));
+        ))
+        .reported(reporter);
     }
 
     let lock_path = dir.join("mesh.lock");
@@ -1609,7 +1611,8 @@ fn deps_command(dir: &Path) -> Result<(), String> {
     // The lockfile is fresh when the manifest has not changed since it was
     // written and every git dependency is checked out: `meshpkg install`
     // writes it too, without fetching git dependencies.
-    let git_checkouts_present = mesh_pkg::Manifest::from_file(&manifest_path)?
+    let git_checkouts_present = mesh_pkg::Manifest::from_file(&manifest_path)
+        .reported(reporter)?
         .dependencies
         .iter()
         .filter(|(_, dep)| matches!(dep, mesh_pkg::manifest::Dependency::Git { .. }))
@@ -1621,18 +1624,18 @@ fn deps_command(dir: &Path) -> Result<(), String> {
             .zip(modified(&lock_path))
             .is_some_and(|(manifest_time, lock_time)| manifest_time <= lock_time)
     {
-        eprintln!("Dependencies up to date");
+        reporter.status(format_args!("Dependencies up to date"));
         return Ok(());
     }
 
-    let (resolved, lockfile) = mesh_pkg::resolve_dependencies(dir)?;
+    let (resolved, lockfile) = mesh_pkg::resolve_dependencies(dir).reported(reporter)?;
 
-    lockfile.write(&lock_path)?;
+    lockfile.write(&lock_path).reported(reporter)?;
 
     if resolved.is_empty() {
-        eprintln!("No dependencies");
+        reporter.status(format_args!("No dependencies"));
     } else {
-        eprintln!("Resolved {} dependencies", resolved.len());
+        reporter.status(format_args!("Resolved {} dependencies", resolved.len()));
     }
 
     Ok(())
@@ -1640,30 +1643,25 @@ fn deps_command(dir: &Path) -> Result<(), String> {
 
 // ── Format subcommand ─────────────────────────────────────────────────
 
-/// Statistics from a format operation.
-struct FmtStats {
-    /// Total number of files processed.
-    total: usize,
-    /// Number of files that were not already formatted (check mode).
-    unformatted: usize,
-}
-
 /// Execute the `fmt` subcommand: format Mesh source files in-place or check formatting.
 fn fmt_command(
     path: &Path,
     check: bool,
     config: &mesh_fmt::FormatConfig,
-) -> Result<FmtStats, String> {
-    let files = collect_mesh_files(path)?;
+    reporter: &mut Reporter,
+) -> Result<(), Failed> {
+    let files = collect_mesh_files(path).reported(reporter)?;
 
     // Format every file before writing any: a file that cannot be formatted
     // leaves the whole tree as it was.
     let mut changed = Vec::new();
     for file in &files {
         let source = std::fs::read_to_string(file)
-            .map_err(|e| format!("Failed to read '{}': {}", file.display(), e))?;
+            .map_err(|e| format!("Failed to read '{}': {}", file.display(), e))
+            .reported(reporter)?;
         let formatted = mesh_fmt::try_format(&source, config)
-            .map_err(|reason| format!("Cannot format '{}': {}", file.display(), reason))?;
+            .map_err(|reason| format!("Cannot format '{}': {}", file.display(), reason))
+            .reported(reporter)?;
         if formatted != source {
             changed.push((file, formatted));
         }
@@ -1671,17 +1669,21 @@ fn fmt_command(
 
     for (file, formatted) in &changed {
         if check {
-            eprintln!("  would reformat: {}", file.display());
+            reporter.status(format_args!("  would reformat: {}", file.display()));
         } else {
             std::fs::write(file, formatted)
-                .map_err(|e| format!("Failed to write '{}': {}", file.display(), e))?;
+                .map_err(|e| format!("Failed to write '{}': {}", file.display(), e))
+                .reported(reporter)?;
         }
     }
 
-    Ok(FmtStats {
-        total: files.len(),
-        unformatted: if check { changed.len() } else { 0 },
-    })
+    if check && !changed.is_empty() {
+        return Err(format!("{} file(s) would be reformatted", changed.len())).reported(reporter);
+    }
+    if !check {
+        reporter.status(format_args!("Formatted {} file(s)", files.len()));
+    }
+    Ok(())
 }
 
 /// Execute the `lint` subcommand: print each finding (and each file that does

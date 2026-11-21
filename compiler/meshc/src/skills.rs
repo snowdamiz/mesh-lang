@@ -1,3 +1,5 @@
+use crate::ReportResult;
+use mesh_diagnostics::{Failed, Reporter};
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fs::{self, File, Metadata, OpenOptions};
@@ -69,17 +71,19 @@ struct Receipt {
     digest: String,
 }
 
-pub(crate) fn run(command: SkillsCommand) -> Result<(), String> {
+pub(crate) fn run(command: SkillsCommand, reporter: &mut Reporter) -> Result<(), Failed> {
     match command {
         SkillsCommand::Setup => {
             let input = io::stdin();
             if !input.is_terminal() {
-                return Err("Run `meshc skills setup` in an interactive terminal.".into());
+                return Err("Run `meshc skills setup` in an interactive terminal.".into())
+                    .reported(reporter);
             }
             setup(&mut input.lock(), &mut io::stdout().lock()).map_err(|err| err.to_string())
         }
         SkillsCommand::Refresh => refresh().map_err(|err| err.to_string()),
     }
+    .reported(reporter)
 }
 
 fn ask(

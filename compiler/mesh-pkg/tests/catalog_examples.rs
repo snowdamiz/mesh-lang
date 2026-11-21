@@ -1,6 +1,4 @@
-//! Every catalog example for a syntax or type code, checked as `meshc build`
-//! checks a single file: the bad program gets exactly its code, and the
-//! fixed one gets nothing.
+//! Catalog examples that the parser or type checker can diagnose.
 
 use std::collections::BTreeSet;
 
@@ -33,6 +31,13 @@ fn catalog_examples_get_exactly_their_code() {
     for code in
         Code::all().filter(|code| matches!(code.family(), Family::Syntax | Family::Semantic))
     {
+        if matches!(
+            code,
+            Code::DuplicateTypeAcrossModules | Code::DuplicatePubFnAcrossModules
+        ) {
+            // These project checks run in meshc. The CLI suite runs their examples.
+            continue;
+        }
         let Some(example) = code.info().example else {
             continue;
         };

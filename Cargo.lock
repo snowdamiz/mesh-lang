@@ -1599,6 +1599,7 @@ dependencies = [
  "inkwell",
  "insta",
  "mesh-common",
+ "mesh-diagnostics",
  "mesh-parser",
  "mesh-typeck",
  "rowan",
@@ -1621,8 +1622,10 @@ dependencies = [
  "ariadne",
  "insta",
  "mesh-common",
+ "proc-macro2",
  "serde",
  "serde_json",
+ "syn",
 ]
 
 [[package]]
@@ -1789,7 +1792,6 @@ dependencies = [
 name = "meshc"
 version = "0.1.8"
 dependencies = [
- "ariadne",
  "base64",
  "clap",
  "libc",

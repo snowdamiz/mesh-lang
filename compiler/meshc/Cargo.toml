@@ -20,7 +20,6 @@ mesh-rt = { path = "../mesh-rt" }
 mesh-test-rt = { path = "../mesh-test-rt" }
 clap = { workspace = true }
 tempfile = "3"
-ariadne = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }

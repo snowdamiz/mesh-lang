@@ -1,3 +1,5 @@
+use crate::ReportResult;
+use mesh_diagnostics::{Failed, Reporter};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
@@ -290,7 +292,7 @@ pub struct AutonomousChaosArgs {
     pub evidence_dir: Option<PathBuf>,
 }
 
-pub fn run_proof_command(command: ProofCommand) -> Result<(), String> {
+pub fn run_proof_command(command: ProofCommand, reporter: &mut Reporter) -> Result<(), Failed> {
     match command {
         ProofCommand::DockerAutoscaling(args) => run_docker_autoscaling(args),
         ProofCommand::ContinuitySoak(args) => crate::proof_gates::run_continuity_soak(args),
@@ -299,6 +301,8 @@ pub fn run_proof_command(command: ProofCommand) -> Result<(), String> {
         }
         ProofCommand::AutonomousChaos(args) => run_autonomous_chaos(args),
     }
+    .map_err(|error| format!("proof failed: {error}"))
+    .reported(reporter)
 }
 
 fn run_autonomous_chaos(args: AutonomousChaosArgs) -> Result<(), String> {
@@ -2874,11 +2878,11 @@ mod tests {
             .is_file());
         assert_eq!(
             repository_root_from(root.join("compiler/meshc/src")),
-            Ok(root)
+            Ok(root.clone())
         );
-        let elsewhere = tempfile::tempdir().unwrap();
+        let filesystem_root = root.ancestors().last().unwrap();
         assert_eq!(
-            repository_root_from(elsewhere.path().to_path_buf()),
+            repository_root_from(filesystem_root.to_path_buf()),
             Err("proof_repository_root_not_found".to_string())
         );
     }

@@ -3,10 +3,11 @@ use std::fmt;
 use std::fs;
 use std::path::Path;
 
-use crate::diagnostic_options::DiagnosticOptions;
+use crate::ReportResult;
 use mesh_codegen::mir::{MirFunction, MirModule, MirSourceId, MirSourceSpan};
 use mesh_common::module_graph::ModuleId;
 use mesh_common::span::{LineIndex, Span};
+use mesh_diagnostics::{Failed, Reporter};
 use mesh_parser::ast::item::FnDef;
 use mesh_parser::law::{LawDeclaration, LawFile, LawImport, LawProof, ProofTerm};
 use mesh_parser::{AstNode, SyntaxNode};
@@ -38,16 +39,20 @@ pub(crate) fn lower_for_build(
     project: &ProjectData,
     checked: &mut CheckedProject,
     package: &str,
-) -> Result<Vec<MirModule>, String> {
+    reporter: &mut Reporter,
+) -> Result<Vec<MirModule>, Failed> {
     let mut proofs = logic::Program::default();
-    proofs.add_project_blocks(project, checked)?;
-    let inventory = proofs.inventory(package)?;
+    proofs
+        .add_project_blocks(project, checked)
+        .reported(reporter)?;
+    let inventory = proofs.inventory(package).reported(reporter)?;
     if inventory.is_empty()
         && !checked.typeck.iter().any(|module| {
             !module.proof_values.is_empty() || module.types.values().any(Ty::contains_proof)
         })
     {
-        return crate::lower_checked_modules(project, checked, |_| None, None);
+        return crate::lower_checked_modules(project, checked, |_| None, None, reporter)
+            .reported(reporter);
     }
 
     let sources = source_ids(project);
@@ -57,7 +62,9 @@ pub(crate) fn lower_for_build(
         checked,
         |parse| sources.get(&std::ptr::from_ref(parse)).copied(),
         Some(&mut lowering),
-    )?;
+        reporter,
+    )
+    .reported(reporter)?;
     if inventory.is_empty() {
         return Ok(modules);
     }
@@ -75,7 +82,8 @@ pub(crate) fn lower_for_build(
         .map_err(|failure| match failure.location {
             Some(location) => format!("{location}: {}", failure.reason),
             None => failure.reason,
-        })?;
+        })
+        .reported(reporter)?;
     Ok(modules)
 }
 
@@ -202,21 +210,46 @@ pub(crate) fn run(
     json: bool,
     preserve: Option<&Path>,
     proof_settings: verify_proof::Settings<'_>,
+    reporter: &mut Reporter,
+) -> Result<(), Failed> {
+    let project_dir = project_dir
+        .canonicalize()
+        .map_err(|error| {
+            format!(
+                "Failed to resolve project '{}': {error}",
+                project_dir.display()
+            )
+        })
+        .reported(reporter)?;
+    let checked = crate::load_checked_project(&project_dir, false, false, reporter)?;
+    verify_laws(
+        &project_dir,
+        checked,
+        list,
+        json,
+        preserve,
+        proof_settings,
+        reporter,
+    )
+    .reported(reporter)
+}
+
+fn verify_laws(
+    project_dir: &Path,
+    checked_build: crate::CheckedBuild,
+    list: bool,
+    json: bool,
+    preserve: Option<&Path>,
+    proof_settings: verify_proof::Settings<'_>,
+    reporter: &mut Reporter,
 ) -> Result<(), String> {
-    let project_dir = project_dir.canonicalize().map_err(|error| {
-        format!(
-            "Failed to resolve project '{}': {error}",
-            project_dir.display()
-        )
-    })?;
-    let opts = DiagnosticOptions::new(mesh_diagnostics::Format::for_cli(json, false));
     let crate::CheckedBuild {
         manifest,
         project,
         mut checked,
         ..
-    } = crate::load_checked_project(&project_dir, false, false, &opts)?;
-    let files = laws::discover(&project_dir, manifest.as_ref())?;
+    } = checked_build;
+    let files = laws::discover(project_dir, manifest.as_ref())?;
 
     let package = manifest.as_ref().map_or_else(
         || {
@@ -274,6 +307,7 @@ pub(crate) fn run(
             &mut checked,
             |parse| source_ids.get(&std::ptr::from_ref(parse)).copied(),
             Some(&mut lowering),
+            reporter,
         ))
     };
     let mut all_verified = true;

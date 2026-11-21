@@ -16,3 +16,5 @@ ariadne = { workspace = true, optional = true }
 
 [dev-dependencies]
 insta = { workspace = true }
+proc-macro2 = { version = "1", features = ["span-locations"] }
+syn = { version = "2", features = ["full"] }

@@ -207,10 +207,18 @@ pub(crate) struct LauncherCommand {
 }
 
 pub fn run_toolchain_update() -> Result<ToolchainUpdateOutcome, ToolchainUpdateError> {
+    run_toolchain_update_with_progress(true)
+}
+
+/// Run the installer, optionally inheriting its output streams.
+pub fn run_toolchain_update_with_progress(
+    progress: bool,
+) -> Result<ToolchainUpdateOutcome, ToolchainUpdateError> {
     run_toolchain_update_on(
         &ToolchainUpdatePlatform::detect(),
         &ToolchainUpdateEnv::capture(),
         &env::temp_dir(),
+        progress,
     )
 }
 
@@ -220,6 +228,7 @@ pub(crate) fn run_toolchain_update_on(
     platform: &ToolchainUpdatePlatform,
     update_env: &ToolchainUpdateEnv,
     temp_root: &Path,
+    progress: bool,
 ) -> Result<ToolchainUpdateOutcome, ToolchainUpdateError> {
     let installer_url = update_env.installer_url_for(platform)?;
     let installer_text =
@@ -231,6 +240,7 @@ pub(crate) fn run_toolchain_update_on(
             update_env.forwarded_env(),
             &installer_url,
             &unix_launcher_command(),
+            progress,
         ),
         ToolchainUpdatePlatform::Windows => launch_windows_bootstrap(
             &installer_text,
@@ -238,6 +248,7 @@ pub(crate) fn run_toolchain_update_on(
             &installer_url,
             std::process::id(),
             temp_root,
+            progress,
         ),
         ToolchainUpdatePlatform::Unsupported(_) => Err(Attempt::new(platform, &installer_url)
             .error("plan-launcher", "unsupported host platform")),
@@ -310,11 +321,20 @@ pub(crate) fn unix_launcher_command() -> LauncherCommand {
     }
 }
 
+fn installer_output(progress: bool) -> Stdio {
+    if progress {
+        Stdio::inherit()
+    } else {
+        Stdio::null()
+    }
+}
+
 pub(crate) fn run_unix_installer_with_command(
     installer_text: &str,
     forwarded_env: &[(String, String)],
     installer_url: &str,
     launcher: &LauncherCommand,
+    progress: bool,
 ) -> Result<ToolchainUpdateOutcome, ToolchainUpdateError> {
     let attempt = Attempt::new(&ToolchainUpdatePlatform::Unix, installer_url)
         .with_launcher(&launcher.program);
@@ -322,8 +342,8 @@ pub(crate) fn run_unix_installer_with_command(
         .args(&launcher.args)
         .envs(forwarded_env.iter().cloned())
         .stdin(Stdio::piped())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
+        .stdout(installer_output(progress))
+        .stderr(installer_output(progress))
         .spawn()
         .map_err(attempt.failed("spawn-launcher", "failed to spawn launcher"))?;
 
@@ -418,6 +438,7 @@ pub(crate) fn spawn_windows_bootstrap_command(
     launcher: &LauncherCommand,
     forwarded_env: &[(String, String)],
     installer_url: &str,
+    progress: bool,
 ) -> Result<ToolchainUpdateOutcome, ToolchainUpdateError> {
     let attempt = Attempt::new(&ToolchainUpdatePlatform::Windows, installer_url)
         .with_launcher(&launcher.program);
@@ -425,8 +446,8 @@ pub(crate) fn spawn_windows_bootstrap_command(
         .args(&launcher.args)
         .envs(forwarded_env.iter().cloned())
         .stdin(Stdio::null())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
+        .stdout(installer_output(progress))
+        .stderr(installer_output(progress))
         .spawn()
         .map_err(attempt.failed("spawn-launcher", "failed to spawn launcher"))?;
 
@@ -455,6 +476,7 @@ pub(crate) fn launch_windows_bootstrap(
     installer_url: &str,
     parent_pid: u32,
     temp_root: &Path,
+    progress: bool,
 ) -> Result<ToolchainUpdateOutcome, ToolchainUpdateError> {
     let platform = ToolchainUpdatePlatform::Windows;
     let temp_dir = temp_root.join(unique_temp_dir_name());
@@ -483,6 +505,7 @@ pub(crate) fn launch_windows_bootstrap(
         &windows_launcher_command(&bootstrap_path),
         forwarded_env,
         installer_url,
+        progress,
     )
 }
 
@@ -697,12 +720,13 @@ mod tests {
     fn the_unix_installer_runs_to_its_end() {
         let url = "https://meshlang.dev/install.sh";
         let outcome =
-            run_unix_installer_with_command("exit 0\n", &[], url, &unix_launcher_command())
+            run_unix_installer_with_command("exit 0\n", &[], url, &unix_launcher_command(), true)
                 .unwrap();
         assert_eq!(outcome.mode, ToolchainUpdateMode::Completed);
 
-        let error = run_unix_installer_with_command("exit 3\n", &[], url, &unix_launcher_command())
-            .expect_err("a failed installer is an error");
+        let error =
+            run_unix_installer_with_command("exit 3\n", &[], url, &unix_launcher_command(), true)
+                .expect_err("a failed installer is an error");
         assert_eq!(error.phase, "wait-launcher");
         assert!(
             error.to_string().contains("installer exited with status"),
@@ -711,7 +735,7 @@ mod tests {
 
         // A launcher that ends without reading the script did not run it.
         let script = "#".repeat(1 << 20);
-        let error = run_unix_installer_with_command(&script, &[], url, &sh("exit 0"))
+        let error = run_unix_installer_with_command(&script, &[], url, &sh("exit 0"), true)
             .expect_err("an unread installer is an error");
         assert!(
             error.to_string().contains("failed to write installer"),
@@ -722,7 +746,7 @@ mod tests {
             program: "__missing_mesh_unix_launcher__".to_string(),
             args: vec!["-s".to_string()],
         };
-        let error = run_unix_installer_with_command("exit 0\n", &[], url, &missing)
+        let error = run_unix_installer_with_command("exit 0\n", &[], url, &missing, true)
             .expect_err("missing launchers should fail closed");
         assert_eq!(error.phase, "spawn-launcher");
         assert_eq!(
@@ -781,7 +805,7 @@ mod tests {
         let update = |platform: ToolchainUpdatePlatform| {
             let update_env =
                 env_from_pairs(&[(UPDATE_INSTALLER_URL_ENV, &serve_once(b"exit 0\n"))]);
-            run_toolchain_update_on(&platform, &update_env, temp.path()).unwrap_err()
+            run_toolchain_update_on(&platform, &update_env, temp.path(), true).unwrap_err()
         };
         let error = update(ToolchainUpdatePlatform::Unsupported("uefi".to_string()));
         assert_eq!(error.phase, "plan-launcher");
@@ -796,7 +820,7 @@ mod tests {
         let url = "https://meshlang.dev/install.ps1";
         let temp = TempDir::new().unwrap();
         // No powershell.exe here: the scripts are written, and starting fails.
-        let error = launch_windows_bootstrap("Write-Host hi", &[], url, 4242, temp.path())
+        let error = launch_windows_bootstrap("Write-Host hi", &[], url, 4242, temp.path(), true)
             .expect_err("powershell.exe is not on this host");
         assert_eq!(error.phase, "spawn-launcher");
         let dir = fs::read_dir(temp.path())
@@ -815,7 +839,7 @@ mod tests {
 
         let not_a_directory = temp.path().join("file");
         fs::write(&not_a_directory, "").unwrap();
-        let error = launch_windows_bootstrap("", &[], url, 1, &not_a_directory)
+        let error = launch_windows_bootstrap("", &[], url, 1, &not_a_directory, true)
             .expect_err("no directory can be made under a file");
         assert_eq!(error.phase, "write-installer");
         let error = write_script_file(temp.path(), "", url, &ToolchainUpdatePlatform::Windows)
@@ -825,10 +849,10 @@ mod tests {
             .to_string()
             .contains(temp.path().to_string_lossy().as_ref()));
 
-        let outcome = spawn_windows_bootstrap_command(&sh("exit 0"), &[], url).unwrap();
+        let outcome = spawn_windows_bootstrap_command(&sh("exit 0"), &[], url, true).unwrap();
         assert_eq!(outcome.mode, ToolchainUpdateMode::DetachedBootstrap);
         // A bootstrap that fails before it detaches is reported.
-        let error = spawn_windows_bootstrap_command(&sh("exit 3"), &[], url).unwrap_err();
+        let error = spawn_windows_bootstrap_command(&sh("exit 3"), &[], url, true).unwrap_err();
         assert_eq!(error.phase, "bootstrap");
         assert!(
             error.to_string().contains("bootstrap exited early"),

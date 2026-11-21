@@ -130,7 +130,7 @@ fn diagnostic_repair_pipe_placeholder_preserves_argument_order() {
     assert!(!json.ok, "{}", json.stderr);
     assert!(json.stdout.is_empty(), "{}", json.stdout);
     let diagnostics = parse_json_diagnostics(&json.stderr);
-    assert_eq!(diagnostics.len(), 2, "{diagnostics:?}");
+    assert_eq!(diagnostics.len(), 1, "{diagnostics:?}");
     let diagnostic = &diagnostics[0];
     assert_eq!(diagnostic["code"], "E0003");
     assert_eq!(diagnostic["severity"], "error");
@@ -157,7 +157,6 @@ fn diagnostic_repair_pipe_placeholder_preserves_argument_order() {
     let hint = diagnostic["fix"].as_str().unwrap();
     assert!(hint.contains("Use `|2>` and remove `_`"), "{hint}");
     assert!(terminal.contains(hint), "{terminal}");
-    assert_eq!(diagnostics[1]["code"], "C0001");
 
     let removing_only = PIPE_PLACEHOLDER.replace("_, ", "");
     assert_eq!(run(&removing_only), "middle:left:right\n");
@@ -275,7 +274,7 @@ fn json_diagnostics_are_one_object_per_line() {
     let source = "fn main() do\n  println(aaa)\n  println(bbb)\nend\n";
     let diags = json_diagnostics(source);
     let codes: Vec<&str> = diags.iter().filter_map(|d| d["code"].as_str()).collect();
-    assert_eq!(codes, ["E0004", "E0004", "C0001"]);
+    assert_eq!(codes, ["E0004", "E0004"]);
 }
 
 #[test]
@@ -1758,7 +1757,7 @@ fn a_service_handler_type_error_points_at_the_handler() {
     let diags = json_diagnostics(source);
     let codes: Vec<&str> = diags.iter().filter_map(|d| d["code"].as_str()).collect();
     // Only the handler's error: the service is still defined for `main`.
-    assert_eq!(codes, ["E0001", "C0001"], "{diags:?}");
+    assert_eq!(codes, ["E0001"], "{diags:?}");
     assert_eq!(
         diags[0]["message"],
         "type mismatch: expected `String`, found `Int`"
@@ -1771,7 +1770,7 @@ fn a_service_handler_type_error_points_at_the_handler() {
 fn an_undefined_module_is_reported_once() {
     let diags = json_diagnostics("fn main() do\n  let r = Nope.start()\n  println(\"x\")\nend\n");
     let codes: Vec<&str> = diags.iter().filter_map(|d| d["code"].as_str()).collect();
-    assert_eq!(codes, ["E0004", "C0001"], "{diags:?}");
+    assert_eq!(codes, ["E0004"], "{diags:?}");
 }
 
 // ── Pattern matching: guards, nesting, scoping ─────────────────────────
@@ -2410,7 +2409,7 @@ fn a_failed_let_does_not_make_its_name_undefined() {
         "fn main() do\n  let v = \"a\" <> nope\n  let w :: Int = \"s\"\n  println(v)\n  println(\"#{w}\")\nend\n",
     );
     let codes: Vec<&str> = diags.iter().filter_map(|d| d["code"].as_str()).collect();
-    assert_eq!(codes, ["E0004", "E0001", "C0001"], "{diags:?}");
+    assert_eq!(codes, ["E0004", "E0001"], "{diags:?}");
     // The annotation is what was expected.
     assert_eq!(
         diags[1]["message"],
@@ -4587,7 +4586,7 @@ fn a_parse_error_at_the_end_of_the_file_is_reported() {
     ] {
         let err = build_error(source);
         assert!(
-            err.contains("Parse error") && !err.contains("panicked"),
+            err.contains("[P0001] Error:") && !err.contains("panicked"),
             "{err}"
         );
     }
@@ -4598,7 +4597,7 @@ fn an_unterminated_string_is_one_error_at_its_opening_quote() {
     // It was "Parse error" with an empty message at the end of the file,
     // two or three times.
     let err = build_error("fn main() do\n  let s = \"abc\n  println(s)\nend\n");
-    assert_eq!(err.matches("Parse error").count(), 1, "{err}");
+    assert_eq!(err.matches("[P0001] Error:").count(), 1, "{err}");
     assert!(
         err.contains("unterminated string: no closing `\"`"),
         "{err}"
@@ -4618,7 +4617,7 @@ fn parse_errors_name_tokens_as_written() {
 fn a_parse_error_is_not_repeated_at_the_same_place() {
     // An unclosed interpolation gave four errors on one column.
     let err = build_error("fn main() do\n  let x = 1\n  println(\"a#{x\")\nend\n");
-    assert_eq!(err.matches("Parse error").count(), 1, "{err}");
+    assert_eq!(err.matches("[P0001] Error:").count(), 1, "{err}");
     assert!(
         err.contains("expected `}` to close the interpolation"),
         "{err}"

@@ -2249,7 +2249,9 @@ fn test_init_rejects_an_unknown_template() {
     let (ok, text) = run_meshc(dir.path(), &["init", "--template", "blog", "app"], &[]);
     assert!(!ok, "{text}");
     assert!(
-        text.contains("error: unknown init template 'blog'; supported templates: todo-api.\n"),
+        text.contains(
+            "[C0001] Error: unknown init template 'blog'; supported templates: todo-api.\n"
+        ),
         "{text}"
     );
     let (ok, text) = run_meshc(
@@ -2345,7 +2347,10 @@ fn test_update_runs_the_installer_it_downloads() {
         &["update"],
         &[("MESH_UPDATE_INSTALLER_URL", "http://127.0.0.1:1/install.sh")],
     );
-    assert!(!ok && text.starts_with("error: "), "{text}");
+    assert!(
+        !ok && text.starts_with("[C0001] Error: toolchain update download failed"),
+        "{text}"
+    );
 }
 
 #[test]
@@ -2487,4 +2492,174 @@ fn test_test_reports_targets_it_cannot_run() {
             && text.contains("Failed to resolve path dependency `gone`"),
         "{text}"
     );
+}
+
+#[test]
+fn json_mode_is_pure_ndjson() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path();
+    let bin = meshc_bin();
+    let execute = |args: &[&str]| {
+        Command::new(&bin)
+            .args(args)
+            .current_dir(root)
+            .output()
+            .unwrap()
+    };
+    let catalog = execute(&["--json", "explain"]);
+    assert!(catalog.status.success(), "{catalog:?}");
+    assert!(catalog.stderr.is_empty(), "{catalog:?}");
+    let catalog: serde_json::Value = serde_json::from_slice(&catalog.stdout).unwrap();
+    let codes = catalog["codes"].as_array().unwrap();
+    let keys = [
+        "code", "severity", "message", "file", "spans", "fix", "line", "col", "name", "category",
+        "notes", "guide", "docs_url", "edits",
+    ];
+    let verify = |args: &[&str], expected: &[&str]| {
+        let output = execute(args);
+        assert_eq!(
+            output.status.code(),
+            Some(i32::from(!expected.is_empty())),
+            "{output:?}"
+        );
+        assert!(output.stdout.is_empty(), "{args:?}: {output:?}");
+        let stderr = std::str::from_utf8(&output.stderr).unwrap();
+        let diagnostics: Vec<serde_json::Value> = stderr
+            .lines()
+            .map(|line| {
+                let diagnostic: serde_json::Value = serde_json::from_str(line)
+                    .unwrap_or_else(|e| panic!("{args:?}: invalid diagnostic {line:?}: {e}"));
+                let object = diagnostic.as_object().unwrap();
+                assert_eq!(object.len(), keys.len(), "{line}");
+                for key in keys {
+                    assert!(object.contains_key(key), "missing {key} in {line}");
+                }
+                assert!(
+                    codes
+                        .iter()
+                        .any(|entry| entry["code"] == diagnostic["code"]),
+                    "{line}"
+                );
+                diagnostic
+            })
+            .collect();
+        let actual: Vec<_> = diagnostics
+            .iter()
+            .map(|d| d["code"].as_str().unwrap())
+            .collect();
+        assert_eq!(actual, expected, "{args:?}: {stderr}");
+        diagnostics
+    };
+
+    let main = root.join("main.mpl");
+    let clean = "fn main() do\n  println(\"ready\")\nend\n";
+    write_file(&main, clean);
+    verify(&["check", "--json"], &[]);
+    assert!(!root.join("out").exists());
+    verify(
+        &["build", ".", "--output", "out", "--emit-llvm", "--json"],
+        &[],
+    );
+    assert!(root.join("out").is_file());
+    assert!(root.join("out.ll").is_file());
+    verify(
+        &["--json", "build", "main.mpl", "--output", "standalone"],
+        &[],
+    );
+
+    write_file(&main, "fn main() do\n  println(1)\n");
+    let diagnostics = verify(&["build", ".", "--json"], &["P0001"]);
+    assert_eq!(diagnostics[0]["spans"].as_array().unwrap().len(), 2);
+
+    write_file(&main, "fn main() do\n  println(missing)\nend\n");
+    verify(&["build", ".", "--json"], &["E0004"]);
+    let diagnostics = verify(&["check", "main.mpl", "--json"], &["E0004"]);
+    assert_eq!(diagnostics[0]["file"], "main.mpl");
+
+    write_file(&main, clean);
+    write_file(&root.join("a.mpl"), "struct State do\n  a :: Int\nend\n");
+    write_file(&root.join("b.mpl"), "struct State do\n  b :: String\nend\n");
+    let diagnostics = verify(&["build", ".", "--json"], &["E0102"]);
+    assert_eq!(diagnostics[0]["spans"].as_array().unwrap().len(), 2);
+    verify(&["--json", "check"], &["E0102"]);
+
+    for (file, result) in [("a.mpl", 1), ("b.mpl", 2)] {
+        write_file(
+            &root.join(file),
+            &format!("pub fn same() do\n  {result}\nend\n"),
+        );
+    }
+    verify(&["check", "--json"], &["E0103"]);
+    verify(&["verify", "--list", "--json"], &["E0103"]);
+    write_file(&root.join("a.mpl"), "");
+    write_file(&root.join("b.mpl"), "@cluster(3)\nfn hidden() do\nend\n");
+    verify(&["check", "--json"], &["CFG0001"]);
+    write_file(&root.join("b.mpl"), "");
+
+    write_file(&root.join("mesh.toml"), "[package\n");
+    verify(&["build", ".", "--json"], &["C0001"]);
+    verify(&["check", "--json"], &["C0001"]);
+    let standalone = root.join("example.mpl");
+    for code in ["E0102", "E0103"] {
+        let example = &codes.iter().find(|entry| entry["code"] == code).unwrap()["example"];
+        write_file(&standalone, example["bad"].as_str().unwrap());
+        verify(&["check", "example.mpl", "--json"], &[code]);
+        write_file(&standalone, example["fixed"].as_str().unwrap());
+        verify(&["check", "example.mpl", "--json"], &[]);
+    }
+    verify(&["explain", "BOGUS", "--json"], &["C0001"]);
+    verify(&["guide", "bogus", "--json"], &["C0001"]);
+    verify(
+        &["cluster", "status", "invalid-target", "--json"],
+        &["C0001"],
+    );
+}
+
+#[test]
+fn check_tests_compiles_the_test_dsl_without_running_it() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path();
+    write_file(
+        &root.join("mesh.toml"),
+        "[package]\nname = \"app\"\nversion = \"0.1.0\"\n",
+    );
+    write_file(&root.join("main.mpl"), "fn main() do\nend\n");
+    let path = "tests/example.test.mpl";
+    let run = |args: &[&str]| {
+        Command::new(meshc_bin())
+            .args(args)
+            .current_dir(root)
+            .env("MESH_TEST_RT_LIB_PATH", "")
+            .output()
+            .unwrap()
+    };
+    write_file(
+        &root.join(path),
+        "test(\"runtime failure\") do\n  assert(false)\nend\n",
+    );
+    let clean = run(&["check", "--tests", "--json"]);
+    assert!(
+        clean.status.success() && clean.stderr.is_empty(),
+        "{clean:?}"
+    );
+
+    write_file(
+        &root.join(path),
+        "test(\"type error\") do\n  assert(missing)\nend\n",
+    );
+    assert!(run(&["check"]).status.success());
+    for args in [
+        &["check", "--tests", "--json"][..],
+        &["check", path, "--tests", "--json"],
+    ] {
+        let bad = run(args);
+        assert_eq!(bad.status.code(), Some(1), "{bad:?}");
+        assert!(bad.stdout.is_empty(), "{bad:?}");
+        let diagnostic: serde_json::Value = serde_json::from_slice(&bad.stderr).unwrap();
+        assert_eq!(diagnostic["code"], "E0004", "{diagnostic}");
+        assert!(
+            Path::new(diagnostic["file"].as_str().unwrap()).ends_with(path),
+            "{diagnostic}"
+        );
+    }
 }

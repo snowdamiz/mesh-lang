@@ -103,6 +103,27 @@ impl<W: Write> Reporter<W> {
         self.paths.0.push((from.into(), to.into()));
     }
 
+    /// Apply path aliases while a copied project is being compiled.
+    pub fn with_path_aliases<T>(
+        &mut self,
+        aliases: impl IntoIterator<Item = (PathBuf, PathBuf)>,
+        run: impl FnOnce(&mut Self) -> T,
+    ) -> T {
+        let before = self.paths.0.len();
+        self.paths.0.extend(aliases);
+        let result = run(self);
+        self.paths.0.truncate(before);
+        result
+    }
+
+    /// Rewrite paths already interpolated into transitional string errors.
+    pub fn remap_message(&self, mut message: String) -> String {
+        for (from, to) in &self.paths.0 {
+            message = message.replace(from.to_string_lossy().as_ref(), &to.to_string_lossy());
+        }
+        message
+    }
+
     pub fn emit(&mut self, diagnostic: Diagnostic) {
         match diagnostic.severity() {
             Severity::Error => self.summary.errors += 1,

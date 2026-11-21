@@ -443,8 +443,13 @@ fn add_file_module(
 /// A file outside any project, built as meshc builds a directory holding
 /// only it: the entry module `Main`, with its module blocks and imports.
 pub fn single_source_project(source: &str) -> Result<ProjectData, String> {
+    single_source_project_at(source, Path::new(DEFAULT_ENTRYPOINT))
+}
+
+/// Load a standalone source file with its actual path for diagnostics.
+pub fn single_source_project_at(source: &str, path: &Path) -> Result<ProjectData, String> {
     let mut graph = ModuleGraph::new();
-    graph.add_module("Main".to_string(), PathBuf::from(DEFAULT_ENTRYPOINT), true);
+    graph.add_module("Main".to_string(), path.to_path_buf(), true);
     link(
         graph,
         vec![source.to_string()],

@@ -3166,6 +3166,7 @@ end
                 &mut checked,
                 |_| None,
                 Some(&mut verification),
+                &mut mesh_diagnostics::Reporter::stderr(mesh_diagnostics::Format::Json),
             )
             .unwrap();
             (project, checked, modules, verification.signatures)

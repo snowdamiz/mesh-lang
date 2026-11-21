@@ -24,7 +24,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
 
-use crate::diagnostic_options::DiagnosticOptions;
+use crate::ReportResult;
+use mesh_diagnostics::{Failed, Reporter};
 use mesh_parser::test_harness::preprocess_test_source;
 use mesh_pkg::manifest::{
     resolve_entrypoint, rewrite_test_manifest_source, Manifest, DEFAULT_ENTRYPOINT,
@@ -44,15 +45,6 @@ fn palette(color: bool) -> (&'static str, &'static str, &'static str, &'static s
     } else {
         ("", "", "", "")
     }
-}
-
-/// Summary of a test run.
-#[allow(dead_code)]
-pub struct TestSummary {
-    /// Number of test files that passed (exit code 0).
-    pub passed: usize,
-    /// Number of test files that failed (compile error or exit code non-zero).
-    pub failed: usize,
 }
 
 /// The target as an absolute path; without one, the current directory.
@@ -113,14 +105,16 @@ fn resolve_test_project(target: &Path) -> Result<ResolvedTestProject, String> {
     })
 }
 
+pub(crate) fn is_test_file(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.ends_with(".test.mpl"))
+}
+
 fn resolve_test_files(target: &Path) -> Result<Vec<PathBuf>, String> {
     if target.is_dir() {
         discover_test_files(target)
-    } else if target
-        .file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| name.ends_with(".test.mpl"))
-    {
+    } else if is_test_file(target) {
         Ok(vec![target.to_path_buf()])
     } else {
         Err(format!(
@@ -156,155 +150,171 @@ fn write_file(path: &Path, contents: impl AsRef<[u8]>) -> Result<(), String> {
     std::fs::write(path, contents).map_err(|e| format!("Failed to write '{}': {e}", path.display()))
 }
 
-/// Run tests from the current project, a project root, a test directory, or a specific test file.
-///
-/// - `target`: optional project root, directory, or specific `*.test.mpl` file.
-/// - `quiet`: compact output (a dot per passing test instead of its name).
-/// - `coverage`: currently unsupported and returns an explicit error.
+fn with_test_project<T>(
+    test_project: &ResolvedTestProject,
+    test_file: &Path,
+    report_problem: impl Fn(&str),
+    reporter: &mut Reporter,
+    run: impl FnOnce(&Path, &mut Reporter) -> Result<T, Failed>,
+) -> Result<T, Failed> {
+    let source = std::fs::read_to_string(test_file)
+        .map_err(|e| format!("Failed to read '{}': {e}", test_file.display()))
+        .reported(reporter)?;
+    let preprocessed = preprocess_test_source(&source)
+        .map_err(|e| {
+            report_problem("COMPILE ERROR");
+            format!("{}: {e}", test_file.display())
+        })
+        .reported(reporter)?;
+    let temporary = tempfile::tempdir()
+        .map_err(|e| format!("Failed to create temp dir: {e}"))
+        .reported(reporter)?;
+    let root = temporary.path();
+    reporter.with_path_aliases(
+        [
+            (root.join(DEFAULT_ENTRYPOINT), test_file.to_path_buf()),
+            (root.to_path_buf(), test_project.project_dir.clone()),
+        ],
+        |reporter| {
+            prepare_temp_test_project(test_project, root, &preprocessed)
+                .inspect_err(|_| report_problem("SETUP ERROR"))
+                .reported(reporter)?;
+            run(root, reporter)
+        },
+    )
+}
+
+pub(crate) fn check_tests(target: &Path, reporter: &mut Reporter) -> Result<(), Failed> {
+    let target = resolve_target_path(Some(target)).reported(reporter)?;
+    let tests = resolve_test_files(&target).reported(reporter)?;
+    if tests.is_empty() {
+        return Ok(());
+    }
+    let project = resolve_test_project(&target).reported(reporter)?;
+    let mut failure = None;
+    for file in tests {
+        if let Err(error) = with_test_project(
+            &project,
+            &file,
+            |_| {},
+            reporter,
+            |root, reporter| crate::load_checked_project(root, true, true, reporter).map(|_| ()),
+        ) {
+            failure = Some(error);
+        }
+    }
+    failure.map_or(Ok(()), Err)
+}
+
+/// Run tests from a project root, test directory, or specific *.test.mpl file.
 pub fn run_tests(
     target: Option<&Path>,
     quiet: bool,
     coverage: bool,
-) -> Result<TestSummary, String> {
+    json: bool,
+    no_color: bool,
+    reporter: &mut Reporter,
+) -> Result<(), Failed> {
     if coverage {
         return Err(
             "coverage reporting is not implemented for `meshc test`; run the command without --coverage"
                 .to_string(),
-        );
+        ).reported(reporter);
     }
 
-    let target = resolve_target_path(target)?;
-    let test_project = resolve_test_project(&target)?;
-    let project_dir = &test_project.project_dir;
-    let test_files = resolve_test_files(&target)?;
+    let target = resolve_target_path(target).reported(reporter)?;
+    let test_project = resolve_test_project(&target).reported(reporter)?;
+    let test_files = resolve_test_files(&target).reported(reporter)?;
 
     if test_files.is_empty() {
         println!("No *.test.mpl files found.");
-        return Ok(TestSummary {
-            passed: 0,
-            failed: 0,
-        });
+        return Ok(());
     }
 
     let start = Instant::now();
     let mut passed = 0usize;
     let mut failed = 0usize;
-    let color = use_color();
+    let mut failure = None;
+    let color = !json && !no_color && use_color();
     let (green, red, bold, reset) = palette(color);
 
     for test_file in &test_files {
-        // The project root is an ancestor of every test file.
         let label = test_file
-            .strip_prefix(project_dir)
+            .strip_prefix(&test_project.project_dir)
             .unwrap_or(test_file)
-            .display()
-            .to_string();
+            .display();
+        let report_problem = |kind: &str| println!("{red}{bold}{kind}{reset}: {label}");
+        let result = with_test_project(
+            &test_project,
+            test_file,
+            report_problem,
+            reporter,
+            |root, reporter| {
+                let bin_path = root.join("test_bin");
+                crate::build(
+                    root,
+                    0,
+                    false,
+                    Some(&bin_path),
+                    None,
+                    crate::BuildArtifact::Executable,
+                    true,
+                    reporter,
+                )
+                .inspect_err(|_| report_problem("COMPILE ERROR"))?;
 
-        // Read the .test.mpl source and preprocess it into a valid Mesh program.
-        let source = std::fs::read_to_string(test_file)
-            .map_err(|e| format!("Failed to read '{}': {}", test_file.display(), e))?;
+                let output = Command::new(&bin_path)
+                    .env("MESH_TEST_QUIET", if quiet { "1" } else { "0" })
+                    .env("MESH_TEST_COLOR", if color { "1" } else { "0" })
+                    .output()
+                    .map_err(|e| format!("Failed to execute test file '{label}': {e}"))
+                    .reported(reporter)?;
 
-        let preprocessed = match preprocess_test_source(&source) {
-            Ok(preprocessed) => preprocessed,
-            Err(e) => {
-                println!("{red}{bold}COMPILE ERROR{reset}: {label}");
-                println!("  {e}");
-                failed += 1;
-                continue;
-            }
-        };
+                print!("{}", String::from_utf8_lossy(&output.stdout));
+                if !output.stderr.is_empty() {
+                    let text = String::from_utf8_lossy(&output.stderr);
+                    if json {
+                        print!("{text}");
+                    } else {
+                        eprint!("{text}");
+                    }
+                }
 
-        // Compile the preprocessed source to a temp binary.
-        let tmp_dir =
-            tempfile::tempdir().map_err(|e| format!("Failed to create temp dir: {}", e))?;
-        let bin_path = tmp_dir.path().join("test_bin");
-
-        if let Err(e) = prepare_temp_test_project(&test_project, tmp_dir.path(), &preprocessed) {
-            println!("{red}{bold}SETUP ERROR{reset}: {label}");
-            println!("  {}", e);
-            failed += 1;
-            continue;
-        }
-
-        // Diagnostics name the test file and the project's files, not
-        // their copies in the temporary project.
-        let diag_opts = DiagnosticOptions {
-            format: mesh_diagnostics::Format::Human { color },
-            display_paths: vec![
-                (tmp_dir.path().join(DEFAULT_ENTRYPOINT), test_file.clone()),
-                (tmp_dir.path().to_path_buf(), project_dir.to_path_buf()),
-            ],
-        };
-        let compile_result = crate::build(
-            tmp_dir.path(),
-            0,     // opt_level: debug
-            false, // emit_llvm
-            Some(&bin_path),
-            None, // target: native
-            crate::BuildArtifact::Executable,
-            true, // test-only compiler builtins
-            &diag_opts,
+                if !output.status.success() {
+                    if output.status.code().is_none() {
+                        println!("{red}{bold}CRASHED{reset}: {label} ({})", output.status);
+                    }
+                    return Err(format!("Test file '{label}' failed ({})", output.status))
+                        .reported(reporter);
+                }
+                Ok(())
+            },
         );
-
-        if let Err(e) = compile_result {
-            println!("{red}{bold}COMPILE ERROR{reset}: {label}");
-            println!("  {}", e);
-            failed += 1;
-            continue;
-        }
-
-        // Execute the compiled binary. It prints a line per test, or a `.`
-        // or `F` in quiet mode.
-        let output = Command::new(&bin_path)
-            .env("MESH_TEST_QUIET", if quiet { "1" } else { "0" })
-            .env("MESH_TEST_COLOR", if color { "1" } else { "0" })
-            .output()
-            .map_err(|e| format!("Failed to execute '{}': {}", bin_path.display(), e))?;
-
-        // Pass stdout/stderr through to terminal
-        if !output.stdout.is_empty() {
-            print!("{}", String::from_utf8_lossy(&output.stdout));
-        }
-        if !output.stderr.is_empty() {
-            eprint!("{}", String::from_utf8_lossy(&output.stderr));
-        }
-
-        if output.status.success() {
-            passed += 1;
-        } else {
-            // A binary killed by a signal reported nothing itself, and lost
-            // the output it had buffered: say what happened to it.
-            if output.status.code().is_none() {
-                println!("{red}{bold}CRASHED{reset}: {label} ({})", output.status);
+        match result {
+            Ok(()) => passed += 1,
+            Err(error) => {
+                failed += 1;
+                failure = Some(error);
             }
-            failed += 1;
         }
     }
 
-    let elapsed = start.elapsed();
-    let elapsed_secs = elapsed.as_secs_f64();
-
-    // Summary line. It counts files: each file's binary already printed its
-    // own test counts, so a bare "1 passed" here read like a lost test.
+    let elapsed_secs = start.elapsed().as_secs_f64();
     let files = |n: usize| if n == 1 { "test file" } else { "test files" };
-    if failed > 0 {
+    if let Some(failure) = failure {
         println!(
             "\n{red}{bold}{failed} {} failed{reset}, {passed} passed in {elapsed_secs:.2}s",
             files(failed)
         );
+        Err(failure)
     } else {
         println!(
             "\n{green}{bold}{passed} {} passed{reset} in {elapsed_secs:.2}s",
             files(passed)
         );
+        Ok(())
     }
-
-    Ok(TestSummary { passed, failed })
 }
-
-// ── Source Preprocessor ───────────────────────────────────────────────────
-
-// ── Copy project sources into temp dir for cross-module test compilation ──
 
 /// Copy all non-test .mpl source files from `project_dir` into `tmp_dir`,
 /// preserving relative directory structure.

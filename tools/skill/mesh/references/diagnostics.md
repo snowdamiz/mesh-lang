@@ -2418,6 +2418,86 @@ A static `Nat` index or a theorem application is malformed or does not fit what 
 
 Docs: https://meshlang.dev/docs/errors/#e0095
 
+## E0102
+
+**duplicate-type-across-modules** · error · semantic · guide: `meshc guide projects`
+
+Two modules define the same struct, sum type, interface, actor, service, or supervisor name. These declarations share a project-wide namespace, even when private.
+
+**Repair:** Rename all but one definition and update its uses, or keep one shared definition and import it where needed.
+
+**Example**
+```mesh
+module A do
+  struct State do
+    count :: Int
+  end
+end
+
+module B do
+  struct State do
+    name :: String
+  end
+end
+```
+
+**Fixed**
+```mesh
+module A do
+  struct State do
+    count :: Int
+  end
+end
+
+module B do
+  struct NamedState do
+    name :: String
+  end
+end
+```
+
+Docs: https://meshlang.dev/docs/errors/#e0102
+
+## E0103
+
+**duplicate-pub-fn-across-modules** · error · semantic · guide: `meshc guide projects`
+
+Two modules export a public function with the same compiler symbol. Calls could run only one of the definitions even when the import names the other module.
+
+**Repair:** Rename all but one public function and update its callers, or make the other functions private if their callers are in the same module.
+
+**Example**
+```mesh
+module A do
+  pub fn count() do
+    1
+  end
+end
+
+module B do
+  pub fn count() do
+    2
+  end
+end
+```
+
+**Fixed**
+```mesh
+module A do
+  pub fn count() do
+    1
+  end
+end
+
+module B do
+  pub fn total() do
+    2
+  end
+end
+```
+
+Docs: https://meshlang.dev/docs/errors/#e0103
+
 ## I0001
 
 **internal-compiler-error** · error · internal
@@ -2427,6 +2507,16 @@ The compiler reached a state it should never reach; the program may well be vali
 **Repair:** Report it with the notes and the smallest program that reproduces it. Until it is fixed, rewrite the construct the notes name another way.
 
 Docs: https://meshlang.dev/docs/errors/#i0001
+
+## I0002
+
+**internal-consistency-warning** · warning · internal
+
+During lowering, the compiler could not confirm the target trait method for a call that passed type checking.
+
+**Repair:** Report the method name, receiver type, and a small program that reproduces the warning. Use an explicit function call if it resolves the intended method.
+
+Docs: https://meshlang.dev/docs/errors/#i0002
 
 ## P0001
 
