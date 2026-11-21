@@ -24,6 +24,7 @@ offers them.
 | Variable | Read by | Accepted values | Default | Effect |
 | --- | --- | --- | --- | --- |
 | `NO_COLOR` | `meshc build`, `meshc migrate`, `meshc test`, test binaries | Any value, even empty | Unset | Turns off colored diagnostics and test output. Color is also off when the output is not a terminal, or with `--no-color` or `--json`. See [Test Runner](/docs/tooling/#test-runner). |
+| `MESH_DIAGNOSTICS` | Compiled programs, test binaries | `json` | Unset: diagnostics for a person | Writes runtime diagnostics (`R` and `T` codes) on standard error as one JSON object per line, as `meshc build --json` does. `meshc test` sets it for the test binaries it runs. |
 | `MESH_RT_LIB_PATH` | `meshc` commands that link a program | Path to `libmesh_rt.a` (`mesh_rt.lib` on Windows MSVC) | The runtime in the `lib` directory beside the installed `meshc` (`~/.mesh/lib`), then a source checkout's Cargo target directory | Link against this runtime library. The file name must match the target's runtime name. Set but empty is an error. |
 | `MESH_TEST_RT_LIB_PATH` | `meshc test` | Path to `libmesh_test_rt.a` (`mesh_test_rt.lib`) | Same search as above | The same override for the test runtime. |
 | `CARGO_TARGET_DIR` | `meshc` | Directory | The first `target` directory found walking up from the `meshc` executable | Where a source-checkout `meshc` looks for `debug/` and `release/` runtime libraries (under `<triple>/` for `--target`). |

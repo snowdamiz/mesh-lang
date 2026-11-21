@@ -423,10 +423,15 @@ fn run() {
     // Lint findings are warnings, which fail no build; failing on them is
     // what `meshc lint` is for, as a CI gate.
     let fails_on_warnings = matches!(cli.command, Commands::Lint { .. });
+    // `meshc test` fails by its tests: a runtime error a passing test
+    // provokes on purpose, such as an actor it crashes, is reported only.
+    let fails_by_result = matches!(cli.command, Commands::Test { .. });
     let result = dispatch(cli, &mut reporter);
     let summary = reporter.finish();
     let exit_code = if result.is_err() || (fails_on_warnings && summary.warnings > 0) {
         1
+    } else if fails_by_result {
+        0
     } else {
         summary.exit_code()
     };

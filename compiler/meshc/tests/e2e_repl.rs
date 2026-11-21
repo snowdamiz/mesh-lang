@@ -142,7 +142,7 @@ fn timed_actor_panics_are_isolated_in_the_jit() {
         );
         let (stdout, stderr) = repl(&session, home.path());
         assert!(
-            stderr.contains("Mesh panic: jit timed actor"),
+            stderr.contains("[R0001] Error: jit timed actor"),
             "{spawn}: {stderr}"
         );
         assert!(stdout.contains("42 :: Int"), "{spawn}: {stdout}\n{stderr}");

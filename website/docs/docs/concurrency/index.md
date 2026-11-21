@@ -332,7 +332,7 @@ When omitted, the strategy defaults to `one_for_one`, `max_restarts` to `3`, and
 
 ### Runtime Errors and Panics
 
-A runtime error, such as `List.get` past the end of a list or `head` of an empty one, and a call to [`panic(message)`](/docs/stdlib/) end only the actor they happen in. The runtime prints `Mesh panic: message` to standard error, other actors keep running, and a supervised actor is restarted according to its `restart` policy:
+A runtime error, such as `List.get` past the end of a list or `head` of an empty one, and a call to [`panic(message)`](/docs/stdlib/) end only the actor they happen in. The runtime reports it on standard error as an `R0001` diagnostic with the message, other actors keep running, and a supervised actor is restarted according to its `restart` policy:
 
 ```mesh
 actor worker() do
@@ -352,7 +352,7 @@ fn main() do
 end
 ```
 
-This prints `handled 1`, then `Mesh panic: cannot handle 0` on standard error, then `main still running`. The same failure in `main` itself ends the program with exit status 101.
+This prints `handled 1`, then reports `[R0001] Error: cannot handle 0` on standard error, then prints `main still running`. The same failure in `main` itself ends the program with exit status 101.
 
 ## Services (GenServer)
 

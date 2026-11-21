@@ -139,6 +139,18 @@ fn a_runtime_diagnostic_names_its_file_and_line() {
     insta::assert_snapshot!(report(HUMAN, [line_only()]));
 }
 
+#[test]
+fn a_runtime_diagnostic_may_name_its_column() {
+    let human = report(HUMAN, [line_only().at_column(5)]);
+    assert!(human.contains("   --> src/main.mpl:12:5\n"), "{human}");
+    let json: serde_json::Value =
+        serde_json::from_str(&report(Format::Json, [line_only().at_column(5)])).unwrap();
+    assert_eq!(
+        (json["line"].as_u64(), json["col"].as_u64()),
+        (Some(12), Some(5))
+    );
+}
+
 /// Without the `terminal` feature (the runtime's build) a spanned
 /// diagnostic is plain lines that name its line and column.
 #[cfg(not(feature = "terminal"))]

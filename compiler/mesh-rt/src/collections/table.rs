@@ -533,10 +533,10 @@ mod tests {
     use crate::gc::mesh_rt_init;
 
     #[test]
-    #[should_panic(expected = "a map or set holds at most")]
     fn no_table_is_made_past_its_maximum() {
         mesh_rt_init();
-        unsafe { alloc_table::<2>(MAX_CAP + 1, 0) };
+        let reason = crate::panic::raised(|| unsafe { _ = alloc_table::<2>(MAX_CAP + 1, 0) });
+        assert!(reason.contains("a map or set holds at most"), "{reason}");
     }
 
     unsafe extern "C-unwind" fn same(a: u64, b: u64) -> i8 {

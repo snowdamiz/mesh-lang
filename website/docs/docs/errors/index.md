@@ -4131,6 +4131,216 @@ A `describe` block in a `.test.mpl` file has its `setup` after one of its tests,
 
 Docs: https://meshlang.dev/docs/errors/#p0401
 
+## R0001
+
+**panic** · error · runtime · guide: `meshc guide error-handling`
+
+The program panicked while it ran: it called `panic(...)`, or hit a runtime error such as `List.get` past the end, `Map.get` of a missing key, a value no match arm or function clause accepts, or an integer division by zero. The panic ends the actor it ran in, or the program with exit status 101 when it ran in `main`.
+
+**Repair:** Handle the case the message names before the operation runs: check an index against `List.length`, a key with `Map.has_key`, a divisor against zero, or add the missing match arm. Return a `Result` instead of calling `panic` for a failure the caller should handle, and supervise an actor that may still fail so it restarts.
+
+Docs: https://meshlang.dev/docs/errors/#r0001
+
+## R0002
+
+**stack-overflow** · error · runtime · guide: `meshc guide error-handling`
+
+A function recursed deeper than the stack of the program or actor it ran in allows, and the runtime aborted the whole process.
+
+**Repair:** Make the recursion a direct self-call in tail position, which runs as a loop in constant stack, often by carrying the result in an accumulator parameter; or rewrite it with `List.reduce` or another iterator.
+
+Docs: https://meshlang.dev/docs/errors/#r0002
+
+## R0101
+
+**actor-crashed** · error · runtime · guide: `meshc guide actors`
+
+An actor ended with a failure that is not a Mesh panic: the runtime, or native code the actor called, failed while it ran. Linked actors and the actor's supervisor receive its exit as they would a panic's.
+
+**Repair:** Read the runtime's report above this diagnostic. Report it with the program that reproduces it; until it is fixed, avoid the call the report names, and supervise the actor so a supervisor restarts it.
+
+Docs: https://meshlang.dev/docs/errors/#r0101
+
+## R0102
+
+**supervisor-gave-up** · error · runtime · guide: `meshc guide supervisors`
+
+A supervisor's children failed more often than its `max_restarts` within `max_seconds` allow, so it stopped all of its children and exited instead of restarting them again.
+
+**Repair:** Fix the failure that makes the child crash on start or soon after, which the runtime reports before this diagnostic. Raise `max_restarts` or `max_seconds` only if the failures are expected and transient.
+
+Docs: https://meshlang.dev/docs/errors/#r0102
+
+## R0201
+
+**library-invalid-argument** · error · runtime · guide: `meshc guide projects`
+
+A host called the library with a `NULL` response pointer, a `NULL` request with a non-zero length, or a `NULL` callback table; the call returned status 1 (`MESH_LIBRARY_ERR_INVALID_ARGUMENT`).
+
+**Repair:** Pass a pointer to a zero-initialized `MeshLibraryBytes` for the response, a request pointer whenever its length is not zero, and a callback table built from the generated header.
+
+Docs: https://meshlang.dev/docs/errors/#r0201
+
+## R0202
+
+**library-not-initialized** · error · runtime · guide: `meshc guide projects`
+
+A host called the library before `mesh_library_init`, or after `mesh_library_shutdown`; the call returned status 2 (`MESH_LIBRARY_ERR_NOT_INITIALIZED`).
+
+**Repair:** Call `mesh_library_init` once, check that it returns 0, then make the other calls. A library cannot be started again in the same process after `mesh_library_shutdown`, so shut it down only as the process ends.
+
+Docs: https://meshlang.dev/docs/errors/#r0202
+
+## R0203
+
+**library-busy** · error · runtime · guide: `meshc guide projects`
+
+A host called an exported function while another exported call was running in the same process; the library runs one call at a time, and this one returned status 3 (`MESH_LIBRARY_ERR_BUSY`).
+
+**Repair:** Make the calls one at a time, from one serial queue or behind a lock, or retry the call after the one in progress returns.
+
+Docs: https://meshlang.dev/docs/errors/#r0203
+
+## R0204
+
+**library-panic** · error · runtime · guide: `meshc guide projects`
+
+The exported Mesh function panicked; the runtime reported the panic on standard error, and the call returned status 4 (`MESH_LIBRARY_ERR_PANIC`) with an empty response.
+
+**Repair:** Fix the panic the runtime reported (an `R0001`), or return an `Err` from the exported function for a failure the host should handle.
+
+Docs: https://meshlang.dev/docs/errors/#r0204
+
+## R0205
+
+**library-host-callback-failed** · error · runtime · guide: `meshc guide projects`
+
+Status 5 (`MESH_LIBRARY_ERR_HOST_CALLBACK`) is reserved in library ABI 1 and no runtime function returns it: a failing host callback reaches Mesh code as `Err("host_callback_failed:<capability>:<status>")` instead.
+
+**Repair:** Check that the host was built against the header generated with the library it links. To learn why a host callback failed, handle the `Err` the Mesh code receives from it.
+
+Docs: https://meshlang.dev/docs/errors/#r0205
+
+## R0206
+
+**library-output-too-large** · error · runtime · guide: `meshc guide projects`
+
+A request or a result crossing the library boundary was larger than 1 MiB, or the host's allocator could not allocate the response; the call returned status 6 (`MESH_LIBRARY_ERR_OUTPUT_TOO_LARGE`).
+
+**Repair:** Keep each request and result under 1 MiB: split a large payload across several calls, or pass a reference such as a key or a path instead of the data.
+
+Docs: https://meshlang.dev/docs/errors/#r0206
+
+## R0207
+
+**library-abi-mismatch** · error · runtime · guide: `meshc guide projects`
+
+The host's callback table has an `abi_version` other than the runtime's (1), or a `struct_size` other than the size of `MeshLibraryHostCallbacksV1`; registration returned status 7 (`MESH_LIBRARY_ERR_ABI`).
+
+**Repair:** Build the callback table from the header generated with the library: set `abi_version` to `MESH_LIBRARY_ABI_VERSION` and `struct_size` to `sizeof(MeshLibraryHostCallbacksV1)`, and rebuild the host after regenerating the library.
+
+Docs: https://meshlang.dev/docs/errors/#r0207
+
+## R0208
+
+**library-callback-missing** · error · runtime · guide: `meshc guide projects`
+
+Mesh code used a host capability, such as the secure store, with no callback registered for it; it receives `Err("host_callback_missing")`, and status 8 (`MESH_LIBRARY_ERR_CALLBACK_MISSING`) is reserved for the host side.
+
+**Repair:** Register a callback for the capability with `mesh_library_register_host_callbacks` after `mesh_library_init`, or handle the `Err` in the Mesh code that uses it.
+
+Docs: https://meshlang.dev/docs/errors/#r0208
+
+## R0209
+
+**library-application-error** · error · runtime · guide: `meshc guide projects`
+
+The exported Mesh function returned `Err`; the call returned status 9 (`MESH_LIBRARY_ERR_APPLICATION`) and the response holds the error's message.
+
+**Repair:** Handle the message in the host as the function's error result, or change the input so the function returns `Ok`.
+
+Docs: https://meshlang.dev/docs/errors/#r0209
+
+## R0301
+
+**node-connect-failed** · error · runtime · guide: `meshc guide clustering`
+
+`Node.connect` could not reach or authenticate the remote node, or this node was never started.
+
+**Repair:** Start this node with `Node.start(name, cookie)` before connecting, give `Node.connect` the peer's `name@host:port` with the peer listening there, and start both nodes with the same cookie.
+
+Docs: https://meshlang.dev/docs/errors/#r0301
+
+## T0001
+
+**assert-failed** · error · test · guide: `meshc guide testing`
+
+The condition of an `assert` was false, which ends and fails its test.
+
+**Repair:** Fix the code under test so the condition holds, or correct the condition if it states the wrong expectation; the message shows it as written.
+
+Docs: https://meshlang.dev/docs/errors/#t0001
+
+## T0002
+
+**assert-eq-failed** · error · test · guide: `meshc guide testing`
+
+The two sides of an `assert_eq` show different text, compared as `"#{value}"` shows them, which ends and fails its test.
+
+**Repair:** Compare the `left` and `right` values in the message, and fix the code under test or the expected value, whichever is wrong.
+
+Docs: https://meshlang.dev/docs/errors/#t0002
+
+## T0003
+
+**assert-ne-failed** · error · test · guide: `meshc guide testing`
+
+The two sides of an `assert_ne` show the same text, which ends and fails its test.
+
+**Repair:** Fix the code under test so the values differ, or correct the assertion if they are meant to be equal.
+
+Docs: https://meshlang.dev/docs/errors/#t0003
+
+## T0004
+
+**assert-raises-failed** · error · test · guide: `meshc guide testing`
+
+The function given to `assert_raises` returned without panicking or failing an assertion.
+
+**Repair:** Make the function perform the operation that should fail, such as `List.get` past the end or a `panic(...)`, or drop the `assert_raises` if the operation is meant to succeed.
+
+Docs: https://meshlang.dev/docs/errors/#t0004
+
+## T0005
+
+**assert-receive-failed** · error · test · guide: `meshc guide testing`
+
+No message arrived before the `assert_receive` timeout (100 ms unless given), or the first message to arrive did not match its pattern.
+
+**Repair:** Check that the code under test sends the message to the test's process (`self()`) and that the pattern matches its exact shape, or give a slow sender more time with `assert_receive PATTERN, TIMEOUT_MS`.
+
+Docs: https://meshlang.dev/docs/errors/#t0005
+
+## T0101
+
+**test-panicked** · error · test · guide: `meshc guide testing`
+
+A test, or the test program running it, failed in a way that is not a Mesh panic or a failed assertion: the runtime panicked, or the program was killed by a signal or exited without reporting a failure.
+
+**Repair:** Read the runtime's report above this diagnostic. Report it with the test that reproduces it; if the program was killed, check the memory and resource limits it ran under.
+
+Docs: https://meshlang.dev/docs/errors/#t0101
+
+## T0103
+
+**no-tests** · error · test · guide: `meshc guide testing`
+
+`meshc test` found no `*.test.mpl` file at its target.
+
+**Repair:** Run `meshc test` from the project root or pass it the directory or `*.test.mpl` file that holds the tests, and name test files `<name>.test.mpl`.
+
+Docs: https://meshlang.dev/docs/errors/#t0103
+
 ## V0001
 
 **law-falsified** · error · verify · guide: `meshc guide verification`

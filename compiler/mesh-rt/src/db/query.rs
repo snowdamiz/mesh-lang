@@ -668,9 +668,8 @@ mod tests {
     fn panic_of(build: impl FnOnce() -> *mut u8) -> String {
         let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(build))
             .expect_err("the builder panics");
-        payload
-            .downcast_ref::<String>()
-            .cloned()
+        crate::panic::MeshPanic::of(&*payload)
+            .map(|panic| panic.reason().to_string())
             .unwrap_or_default()
     }
 

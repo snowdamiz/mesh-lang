@@ -42,6 +42,9 @@ fn plain(diagnostic: &Diagnostic, color: bool, paths: &Paths) -> String {
                 if let Some(line) = diagnostic.line() {
                     let _ = write!(location, ":{line}");
                 }
+                if let Some(col) = diagnostic.col() {
+                    let _ = write!(location, ":{col}");
+                }
             }
         }
         let _ = writeln!(text, "   --> {location}");

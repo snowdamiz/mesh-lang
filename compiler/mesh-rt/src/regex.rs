@@ -217,10 +217,10 @@ mod tests {
     use crate::string::mesh_str;
 
     #[test]
-    #[should_panic(expected = "invalid regex literal ~r/(/")]
     fn an_invalid_regex_literal_panics() {
         mesh_rt_init();
-        mesh_regex_from_literal(mesh_str("("), 0);
+        let reason = crate::panic::raised(|| _ = mesh_regex_from_literal(mesh_str("("), 0));
+        assert!(reason.contains("invalid regex literal ~r/(/"), "{reason}");
     }
 
     #[test]

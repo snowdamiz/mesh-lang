@@ -1746,6 +1746,7 @@ dependencies = [
  "libcrux-ml-kem",
  "libsqlite3-sys",
  "md-5",
+ "mesh-diagnostics",
  "mio",
  "openraft",
  "parking_lot",

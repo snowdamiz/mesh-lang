@@ -485,9 +485,8 @@ mod tests {
         let overflow = std::panic::catch_unwind(|| mesh_string_repeat(mesh_str("ab"), i64::MAX));
         let message = overflow.expect_err("an overflowing length panics");
         assert!(
-            message
-                .downcast_ref::<String>()
-                .is_some_and(|message| message.contains("do not fit in a string")),
+            crate::panic::MeshPanic::of(&*message)
+                .is_some_and(|panic| panic.reason().contains("do not fit in a string")),
             "{message:?}"
         );
     }

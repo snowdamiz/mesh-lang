@@ -22,7 +22,7 @@ use mesh_diagnostics::Diagnostic;
 
 use super::types::variant_struct_type;
 use super::{CodeGen, SavedLocal};
-use crate::mir::{MirLiteral, MirMatchArm, MirType};
+use crate::mir::{MirLiteral, MirMatchArm, MirSourceSpan, MirType};
 use crate::pattern::{AccessPath, DecisionTree};
 
 /// Where a match's decision tree reads its scrutinee and leaves its result.
@@ -37,6 +37,8 @@ pub(crate) struct MatchTarget<'a, 'ctx> {
     pub(crate) result: PointerValue<'ctx>,
     /// Where an arm branches once it is done.
     pub(crate) merge_bb: BasicBlock<'ctx>,
+    /// Where the match is: a value no arm accepts panics there.
+    pub(crate) at: Option<MirSourceSpan>,
 }
 
 type Binding = (String, MirType, AccessPath);
@@ -77,11 +79,9 @@ impl<'ctx> CodeGen<'ctx> {
                 empty,
                 ..
             } => self.codegen_list_decons(scrutinee_path, non_empty, empty, target),
-            DecisionTree::Fail {
-                message,
-                file,
-                line,
-            } => self.codegen_panic(message, file, *line).map(drop),
+            DecisionTree::Fail { message, file, .. } => {
+                self.codegen_panic(message, file, target.at).map(drop)
+            }
         }
     }
 
@@ -208,7 +208,7 @@ impl<'ctx> CodeGen<'ctx> {
             // Default: unreachable (exhaustive match guaranteed by type checker)
             None => {
                 let fn_name = self.current_function_name();
-                self.codegen_panic("non-exhaustive match in switch", &fn_name, 0)
+                self.codegen_panic("non-exhaustive match in switch", &fn_name, target.at)
                     .map(drop)
             }
         }

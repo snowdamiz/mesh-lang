@@ -372,8 +372,8 @@ fn run_worker() -> Result<(), String> {
     });
     let reply: Reply = match outcome {
         Ok(value) => value.map_err(str::to_owned),
-        Err(panic) => Err(crate::panic::mesh_panic_message(panic.as_ref())
-            .unwrap_or("job handler panicked")
+        Err(panic) => Err(crate::panic::MeshPanic::of(panic.as_ref())
+            .map_or("job handler panicked", crate::panic::MeshPanic::reason)
             .chars()
             .take(1024)
             .collect()),

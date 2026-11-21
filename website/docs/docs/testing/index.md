@@ -44,10 +44,19 @@ last line counts test files, and its time includes compiling them. A file that
 does not compile is reported as `COMPILE ERROR: <file>` with the compiler's
 diagnostics, which point at the lines of the test file as written.
 
+Each failure is also reported on standard error as a diagnostic at its line of
+the test file: `T0001` for `assert`, `T0002` for `assert_eq`, `T0003` for
+`assert_ne`, `T0004` for `assert_raises`, `T0005` for `assert_receive`, and a
+panic's own code, `R0001`. A test program that crashes without reporting a
+failure is `T0101`. With `--json`, standard error holds only those diagnostics,
+one JSON object per line, and anything else a test program writes there goes
+to standard output with the test results.
+
 The exit status is 1 when any file fails, including one that does not
-compile, and 0 otherwise, including when there are no test files (`No
-*.test.mpl files found.`). Output is colored only on a terminal with `NO_COLOR`
-unset.
+compile, or when there are no test files (`T0103`), and 0 otherwise. A panic
+that a passing test provokes on purpose, such as an actor it crashes, is
+reported but fails nothing. Output is colored only on a terminal with
+`NO_COLOR` unset.
 
 `--quiet` prints a `.` for each passing test and an `F` for each failing one,
 then the `Failures:` list and the counts.

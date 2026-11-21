@@ -15,7 +15,7 @@ pub use mesh_parser::ast::expr::SpawnPlacement;
 use std::fmt;
 
 use mesh_common::span::Span;
-use mesh_diagnostics::{Code, Diagnostic, SourceFile};
+use mesh_diagnostics::{Code, Diagnostic, LineCol, SourceFile};
 use rustc_hash::FxHashMap;
 
 /// Delimits a sum instantiation's base name if it contains underscores.
@@ -356,6 +356,20 @@ pub struct MirSourceSpan {
     pub span: Span,
 }
 
+/// The file `at` is in, named as `files` name it, and its 1-based line and
+/// column: what compiled code passes the runtime for a failure it places.
+pub fn runtime_location(
+    files: &[SourceFile],
+    at: Option<MirSourceSpan>,
+) -> Option<(String, LineCol)> {
+    let at = at?;
+    let file = files.get(at.file.0)?;
+    Some((
+        file.path().display().to_string(),
+        file.line_col(at.span.start)?,
+    ))
+}
+
 /// `code` at `at`, in its file among `files` (which `MirSourceId` indexes),
 /// or about no file when the location or its file is unknown.
 pub fn diagnostic_at(
@@ -505,11 +519,12 @@ pub enum MirExpr {
     },
     /// Return from function.
     Return(Box<MirExpr>, Option<MirSourceSpan>),
-    /// Runtime panic with message and source location.
+    /// Runtime panic with message, raised in the function `file` names, at
+    /// `source_span` when it is known.
     Panic {
         message: std::string::String,
         file: std::string::String,
-        line: u32,
+        source_span: Option<MirSourceSpan>,
     },
     /// Unit value (empty tuple).
     Unit,
@@ -1214,7 +1229,7 @@ mod tests {
                 MirExpr::Panic {
                     message: "boom".to_string(),
                     file: "main.mpl".to_string(),
-                    line: 1,
+                    source_span: None,
                 },
                 MirType::Never,
             ),

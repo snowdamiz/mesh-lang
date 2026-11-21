@@ -270,6 +270,7 @@ fn allowed_leaf(execution: Execution, name: &str) -> bool {
         | "mesh_actor_set_terminate"
         | "mesh_actor_stop"
         | "mesh_panic"
+        | "mesh_panic_at"
         | "mesh_panic_str"
         | "mesh_timer_sleep" => matches!(execution, Execution::Actor),
         _ => false,

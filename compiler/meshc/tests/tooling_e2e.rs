@@ -2137,6 +2137,148 @@ fn test_diagnostics_point_at_the_test_file() {
     assert!(!stderr.contains("main.mpl"), "{stderr}");
 }
 
+/// A failed test reports its catalog code at its line of the test file,
+/// as written: the assertion's `T` code, or a panic's own `R0001`. Under
+/// `--json` stderr is only those diagnostics, one object per line, and
+/// whatever else a test program writes there is in the run's output.
+#[test]
+fn test_failures_are_coded_diagnostics_at_the_test_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("project");
+    write_file(
+        &project.join("mesh.toml"),
+        "[package]\nname = \"coded-tests\"\nversion = \"0.1.0\"\n",
+    );
+    write_file(&project.join("main.mpl"), "fn main() do\nend\n");
+    write_file(
+        &project.join("tests/coded.test.mpl"),
+        r#"fn zero() = 0
+
+test("equal") do
+  IO.eprintln("noise on stderr")
+  IO.eprintln("{\"code\":\"Z9999\",\"message\":\"not a catalog code\"}")
+  assert_eq(1 + 1, 3)
+end
+
+test("divides") do
+  assert(10 / zero() == 1)
+end
+
+test("raises") do
+  assert_raises(fn() do
+    assert(false)
+  end)
+end
+
+test("receives") do
+  assert_receive 42, 10
+end
+
+test("passes") do
+  assert(true)
+end
+"#,
+    );
+    let run = |json: bool| {
+        let mut command = Command::new(meshc_bin());
+        command.arg("test").arg(&project).env("NO_COLOR", "1");
+        if json {
+            command.arg("--json");
+        }
+        let output = command.output().expect("failed to run meshc test");
+        assert!(!output.status.success(), "{output:?}");
+        (
+            String::from_utf8_lossy(&output.stdout).to_string(),
+            String::from_utf8_lossy(&output.stderr).to_string(),
+        )
+    };
+
+    let (stdout, stderr) = run(false);
+    assert!(stdout.contains("  ✗ equal\n"), "{stdout}");
+    assert!(stdout.contains("3 failed, 2 passed"), "{stdout}");
+    for (headline, location) in [
+        (
+            "[T0002] Error: assert_eq failed: 1 + 1 == 3",
+            "tests/coded.test.mpl:6\n",
+        ),
+        (
+            "[R0001] Error: division by zero",
+            "tests/coded.test.mpl:10:10\n",
+        ),
+        (
+            "[T0005] Error: assert_receive 42 timed out after 10ms",
+            "tests/coded.test.mpl:20\n",
+        ),
+    ] {
+        let at = stderr
+            .find(headline)
+            .unwrap_or_else(|| panic!("{headline}: {stderr}"));
+        let report = &stderr[at..];
+        let next = report[1..].find("\n[").map_or(report.len(), |end| end + 1);
+        assert!(report[..next].contains(location), "{location}: {stderr}");
+    }
+    assert!(stderr.contains("noise on stderr"), "{stderr}");
+    assert!(
+        !stderr.contains("T0004"),
+        "a raise inside assert_raises: {stderr}"
+    );
+    assert!(!stderr.contains("main.mpl"), "{stderr}");
+
+    let (stdout, stderr) = run(true);
+    assert!(stdout.contains("  ✗ equal\n"), "{stdout}");
+    assert!(stdout.contains("noise on stderr\n"), "{stdout}");
+    assert!(stdout.contains("Z9999"), "{stdout}");
+    let diagnostics: Vec<serde_json::Value> = stderr
+        .lines()
+        .map(|line| {
+            serde_json::from_str(line).unwrap_or_else(|e| panic!("not NDJSON ({e}): {line}"))
+        })
+        .collect();
+    let codes: Vec<&str> = diagnostics
+        .iter()
+        .map(|diagnostic| diagnostic["code"].as_str().unwrap())
+        .collect();
+    assert_eq!(codes, ["T0002", "R0001", "T0005"], "{stderr}");
+    for diagnostic in &diagnostics {
+        let file = diagnostic["file"].as_str().unwrap();
+        assert!(file.ends_with("tests/coded.test.mpl"), "{diagnostic}");
+        assert!(diagnostic["line"].as_u64().is_some(), "{diagnostic}");
+        let family = match diagnostic["code"].as_str() {
+            Some("R0001") => "runtime",
+            _ => "test",
+        };
+        assert_eq!(diagnostic["category"], family, "{diagnostic}");
+    }
+    assert_eq!(diagnostics[1]["col"], 10);
+}
+
+/// A passing run is a success even when its tests crash actors on purpose;
+/// those panics are still reported.
+#[test]
+fn test_a_crash_a_passing_test_provokes_fails_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("project");
+    write_file(
+        &project.join("mesh.toml"),
+        "[package]\nname = \"crashing-actor\"\nversion = \"0.1.0\"\n",
+    );
+    write_file(&project.join("main.mpl"), "fn main() do\nend\n");
+    write_file(
+        &project.join("tests/crash.test.mpl"),
+        "actor crasher() do\n  panic(\"deliberate crash\")\nend\n\ntest(\"crashes an actor\") do\n  spawn(crasher)\n  Timer.sleep(50)\n  assert(true)\nend\n",
+    );
+    let output = Command::new(meshc_bin())
+        .args(["test", "--json"])
+        .arg(&project)
+        .output()
+        .expect("failed to run meshc test");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "{output:?}");
+    let diagnostic: serde_json::Value = serde_json::from_str(stderr.trim_end()).unwrap();
+    assert_eq!(diagnostic["code"], "R0001");
+    assert_eq!(diagnostic["message"], "deliberate crash");
+}
+
 #[test]
 fn test_a_file_of_describes_runs() {
     // With no top-level test, the generated program had no `__test_body_`
@@ -2582,7 +2724,10 @@ fn test_test_reports_targets_it_cannot_run() {
     write_file(&project.join("notes.txt"), "notes");
 
     let (ok, text) = run_meshc(&project, &["test"], &[]);
-    assert!(ok && text.contains("No *.test.mpl files found."), "{text}");
+    assert!(
+        !ok && text.contains("[T0103] Error: no *.test.mpl files found under '"),
+        "{text}"
+    );
     let (ok, text) = run_meshc(&project, &["test", "missing"], &[]);
     assert!(
         !ok && text.contains("/app/missing' does not exist"),

@@ -1561,6 +1561,7 @@ fn runtime_symbols() -> Vec<(&'static str, *const ())> {
             mesh_rt::mesh_orm_build_update as *const (),
         ),
         ("mesh_panic", mesh_rt::mesh_panic as *const ()),
+        ("mesh_panic_at", mesh_rt::panic::mesh_panic_at as *const ()),
         (
             "mesh_panic_str",
             mesh_rt::panic::mesh_panic_str as *const (),
@@ -2787,17 +2788,22 @@ fn jit_execute(
 
     // The compiled wrapper has no arguments. The result type determines
     // which register the caller reads, or whether there is a return value.
-    if result_type == "Unit" || result_type == "()" {
-        let call: unsafe extern "C" fn() = unsafe { std::mem::transmute(address) };
-        unsafe { call() };
-        return Ok("()".to_string());
-    }
-    if result_type == "Float" {
-        let call: unsafe extern "C" fn() -> f64 = unsafe { std::mem::transmute(address) };
-        return Ok(format!("{:?}", unsafe { call() }));
-    }
-    let call: unsafe extern "C" fn() -> i64 = unsafe { std::mem::transmute(address) };
-    Ok(format_jit_result(unsafe { call() }, result_type))
+    // A panic unwinds out of it and ends the evaluation, not the REPL.
+    mesh_rt::panic::catch_panic(|| {
+        if result_type == "Unit" || result_type == "()" {
+            let call: unsafe extern "C-unwind" fn() = unsafe { std::mem::transmute(address) };
+            unsafe { call() };
+            return "()".to_string();
+        }
+        if result_type == "Float" {
+            let call: unsafe extern "C-unwind" fn() -> f64 =
+                unsafe { std::mem::transmute(address) };
+            return format!("{:?}", unsafe { call() });
+        }
+        let call: unsafe extern "C-unwind" fn() -> i64 = unsafe { std::mem::transmute(address) };
+        format_jit_result(unsafe { call() }, result_type)
+    })
+    .map_err(rendered)
 }
 
 /// The result type `jit_execute` is given for a value's `inspect` text,
@@ -2858,6 +2864,20 @@ mod tests {
             .err()
             .unwrap();
         assert!(error.contains("expected Int"), "{error}");
+    }
+
+    /// A panic in an evaluation is reported as its diagnostic, and the
+    /// session goes on.
+    #[test]
+    fn a_panic_ends_the_evaluation_not_the_session() {
+        init_runtime();
+        let mut session = ReplSession::new();
+        jit_eval("fn boom() -> Int do\n  panic(\"boom\")\nend", &mut session).unwrap();
+        for input in ["boom()", "List.get([1], 5)", "10 / (1 - 1)"] {
+            let error = jit_eval(input, &mut session).err().unwrap();
+            assert!(error.starts_with("[R0001] Error: "), "{input}: {error}");
+        }
+        assert_eq!(jit_eval("1 + 1", &mut session).unwrap().value, "2");
     }
 
     #[test]

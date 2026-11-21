@@ -83,7 +83,7 @@ mod tests {
         crate::gc::mesh_rt_init();
         let panic = std::panic::catch_unwind(|| mesh_random_next_int(1, 2, 1))
             .expect_err("an empty range was accepted");
-        assert!(crate::panic::mesh_panic_message(&*panic).is_some());
+        assert!(crate::panic::MeshPanic::of(&*panic).is_some());
     }
 
     /// Zero is xorshift's one fixed point: a zero state that was never

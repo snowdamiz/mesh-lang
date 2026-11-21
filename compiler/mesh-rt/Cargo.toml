@@ -11,6 +11,8 @@ crate-type = ["staticlib", "lib"]
 fuzzing = []
 
 [dependencies]
+# Line-only and JSON rendering; `terminal` would link Ariadne into every program.
+mesh-diagnostics = { path = "../mesh-diagnostics", default-features = false }
 crossbeam-deque = "0.8"
 crossbeam-utils = "0.8"
 crossbeam-channel = "0.5"

@@ -87,7 +87,7 @@ pub(super) fn render<'a>(diagnostic: &'a Diagnostic, paths: &Paths) -> String {
             }
             at
         }
-        None => (diagnostic.line(), None),
+        None => (diagnostic.line(), diagnostic.col()),
     };
 
     let wire = Wire {

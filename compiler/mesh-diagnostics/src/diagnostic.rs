@@ -34,8 +34,11 @@ pub struct Diagnostic {
 enum Primary {
     /// Byte offsets into the diagnostic's file.
     Span { span: Span, label: Option<String> },
-    /// The runtime's: a line is known, the text is not.
-    Line(NonZeroU32),
+    /// The runtime's: a line, and maybe a column, is known; the text is not.
+    Line {
+        line: NonZeroU32,
+        col: Option<NonZeroU32>,
+    },
 }
 
 /// A secondary span, possibly in another file.
@@ -104,9 +107,18 @@ impl Diagnostic {
         debug_assert!(line > 0, "lines are 1-based");
         Diagnostic {
             file: Some(file),
-            primary: NonZeroU32::new(line).map(Primary::Line),
+            primary: NonZeroU32::new(line).map(|line| Primary::Line { line, col: None }),
             ..Diagnostic::new(code, message)
         }
+    }
+
+    /// Adds the 1-based column to an [`at_line`](Self::at_line) diagnostic.
+    pub fn at_column(mut self, col: u32) -> Self {
+        match &mut self.primary {
+            Some(Primary::Line { col: at, .. }) => *at = NonZeroU32::new(col),
+            _ => debug_assert!(false, "a column needs the line it is on"),
+        }
+        self
     }
 
     /// An internal compiler error (`I0001`); `detail` becomes a note.
@@ -236,7 +248,15 @@ impl Diagnostic {
     pub fn line(&self) -> Option<u32> {
         match self.primary.as_ref()? {
             Primary::Span { span, .. } => Some(self.file.as_ref()?.line_col(span.start)?.line),
-            Primary::Line(line) => Some(line.get()),
+            Primary::Line { line, .. } => Some(line.get()),
+        }
+    }
+
+    /// The 1-based column of the primary span or line, where it is known.
+    pub fn col(&self) -> Option<u32> {
+        match self.primary.as_ref()? {
+            Primary::Span { span, .. } => Some(self.file.as_ref()?.line_col(span.start)?.col),
+            Primary::Line { col, .. } => col.map(NonZeroU32::get),
         }
     }
 
@@ -385,8 +405,10 @@ mod tests {
             "m",
         );
         assert_eq!(d.line(), Some(12));
+        assert_eq!(d.col(), None);
         assert_eq!(d.span(), None);
         assert_eq!(d.primary_label(), None);
+        assert_eq!(d.at_column(5).col(), Some(5));
     }
 
     #[test]

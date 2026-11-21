@@ -901,7 +901,10 @@ mod tests {
     /// The panic `f` raised, as its message.
     fn panic_of(f: impl FnOnce()) -> String {
         let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).unwrap_err();
-        *panic.downcast::<String>().unwrap()
+        crate::panic::MeshPanic::of(&*panic)
+            .unwrap()
+            .reason()
+            .to_string()
     }
 
     fn list_of(values: &[u64]) -> *mut u8 {

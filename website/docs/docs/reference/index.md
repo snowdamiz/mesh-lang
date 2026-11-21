@@ -438,13 +438,15 @@ end
 - `?` returns `None`/`Err` early.
 - A `Result` error may be converted through `From`.
 - Use `case`/`match` for explicit handling.
-- `panic(message)` (`String -> Never`) prints `Mesh panic: message` and ends
-  the current actor, which a supervisor can restart, or ends the program with
-  exit status 101 when called from `main`.
+- `panic(message)` (`String -> Never`) reports `message` as an `R0001`
+  diagnostic on standard error and ends the current actor, which a supervisor
+  can restart, or ends the program with exit status 101 when called from
+  `main`.
 - Runtime errors are panics: `List.get` out of range, `Map.get` of a missing
   key, a call no function clause matches, and integer division by zero.
-- Recursion deeper than the stack ends the whole program with
-  `error: stack overflow`.
+- Recursion deeper than the stack ends the whole program with an `R0002`
+  stack overflow diagnostic.
+- A runtime diagnostic is a JSON line when `MESH_DIAGNOSTICS=json` is set.
 
 See [Panics](/docs/language-basics/#panics).
 

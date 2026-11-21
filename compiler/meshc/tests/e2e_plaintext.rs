@@ -150,11 +150,23 @@ end
         ]),
         "build",
     );
-    let run = Command::new(&binary).output().unwrap();
-    assert!(!run.status.success(), "the program should crash");
-    let stderr = text(&run.stderr);
-    assert!(!stderr.contains("27"), "the index leaked: {stderr}");
-    assert!(stderr.contains("plaintext"), "{stderr}");
+    // Neither the report for a person nor the JSON one for a tool names it.
+    for json in [false, true] {
+        let mut command = Command::new(&binary);
+        if json {
+            command.env("MESH_DIAGNOSTICS", "json");
+        }
+        let run = command.output().unwrap();
+        assert!(!run.status.success(), "the program should crash");
+        let stderr = text(&run.stderr);
+        assert!(!stderr.contains("27"), "the index leaked: {stderr}");
+        assert!(stderr.contains("plaintext"), "{stderr}");
+        assert!(stderr.contains("R0001"), "{stderr}");
+        if json {
+            let diagnostic: serde_json::Value = serde_json::from_str(stderr.trim_end()).unwrap();
+            assert_eq!(diagnostic["code"], "R0001", "{stderr}");
+        }
+    }
 }
 
 #[test]

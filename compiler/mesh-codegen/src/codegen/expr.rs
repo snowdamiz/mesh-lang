@@ -21,8 +21,8 @@ use super::types::{closure_type, variant_struct_type};
 use super::{CodeGen, BUILT};
 use crate::mir::types::mir_type_to_impl_name;
 use crate::mir::{
-    BinOp, MirChildSpec, MirExpr, MirMatchArm, MirResourceDestructor, MirResourceField,
-    MirResourceMoveSource, MirSourceSpan, MirType, SpawnPlacement, UnaryOp,
+    runtime_location, BinOp, MirChildSpec, MirExpr, MirMatchArm, MirResourceDestructor,
+    MirResourceField, MirResourceMoveSource, MirSourceSpan, MirType, SpawnPlacement, UnaryOp,
 };
 use crate::pattern::compile::{self, compile_match};
 
@@ -52,8 +52,12 @@ impl<'ctx> CodeGen<'ctx> {
             MirExpr::Var(name, ty) => self.codegen_var(name, ty),
 
             MirExpr::BinOp {
-                op, lhs, rhs, ty, ..
-            } => self.codegen_binop(op, lhs, rhs, ty),
+                op,
+                lhs,
+                rhs,
+                source_span,
+                ..
+            } => self.codegen_binop(op, lhs, rhs, *source_span),
 
             MirExpr::UnaryOp {
                 op, operand, ty, ..
@@ -99,8 +103,8 @@ impl<'ctx> CodeGen<'ctx> {
                 scrutinee,
                 arms,
                 ty,
-                ..
-            } => self.codegen_match(scrutinee, arms, ty),
+                source_span,
+            } => self.codegen_match(scrutinee, arms, ty, *source_span),
 
             MirExpr::StructLit {
                 name,
@@ -159,8 +163,8 @@ impl<'ctx> CodeGen<'ctx> {
             MirExpr::Panic {
                 message,
                 file,
-                line,
-            } => self.codegen_panic(message, file, *line),
+                source_span,
+            } => self.codegen_panic(message, file, *source_span),
 
             MirExpr::Unit => Ok(self.context.struct_type(&[], false).const_zero().into()),
 
@@ -831,12 +835,13 @@ impl<'ctx> CodeGen<'ctx> {
 
     // ── Binary operations ────────────────────────────────────────────
 
+    /// `at` places a division by zero.
     fn codegen_binop(
         &mut self,
         op: &BinOp,
         lhs: &MirExpr,
         rhs: &MirExpr,
-        _ty: &MirType,
+        at: Option<MirSourceSpan>,
     ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         // Short-circuit for boolean And/Or
         match op {
@@ -867,7 +872,7 @@ impl<'ctx> CodeGen<'ctx> {
         // Floats, Bools and Strings.
         match lhs.ty() {
             // A PID is its integer.
-            MirType::Int | MirType::Pid(_) => self.codegen_int_binop(op, lhs_val, rhs_val),
+            MirType::Int | MirType::Pid(_) => self.codegen_int_binop(op, lhs_val, rhs_val, at),
             MirType::Float => self.codegen_float_binop(op, lhs_val, rhs_val),
             MirType::Bool => {
                 // false < true: the bits compare unsigned.
@@ -909,6 +914,7 @@ impl<'ctx> CodeGen<'ctx> {
         op: &BinOp,
         lhs: BasicValueEnum<'ctx>,
         rhs: BasicValueEnum<'ctx>,
+        at: Option<MirSourceSpan>,
     ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let l = lhs.into_int_value();
         let r = rhs.into_int_value();
@@ -916,7 +922,7 @@ impl<'ctx> CodeGen<'ctx> {
             BinOp::Add => self.builder.build_int_add(l, r, "add"),
             BinOp::Sub => self.builder.build_int_sub(l, r, "sub"),
             BinOp::Mul => self.builder.build_int_mul(l, r, "mul"),
-            BinOp::Div | BinOp::Mod => return Ok(self.codegen_int_div(op, l, r)?.into()),
+            BinOp::Div | BinOp::Mod => return Ok(self.codegen_int_div(op, l, r, at)?.into()),
             _ => self
                 .builder
                 .build_int_compare(int_predicate(op, true), l, r, "cmp"),
@@ -1820,11 +1826,13 @@ impl<'ctx> CodeGen<'ctx> {
 
     // ── Pattern match ────────────────────────────────────────────────
 
+    /// A value no arm accepts panics at `at`.
     fn codegen_match(
         &mut self,
         scrutinee: &MirExpr,
         arms: &[MirMatchArm],
         ty: &MirType,
+        at: Option<MirSourceSpan>,
     ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         // `case (a, b) do (0, y) -> .. end` (and a clause function's
         // parameters) match the values as columns, without building the tuple.
@@ -1832,7 +1840,7 @@ impl<'ctx> CodeGen<'ctx> {
             if matches!(func.as_ref(), MirExpr::Var(name, _) if name == "__mesh_make_tuple")
                 && compile::arms_match_columns(arms, args.len())
             {
-                return self.codegen_match_columns(args, arms, ty);
+                return self.codegen_match_columns(args, arms, ty, at);
             }
         }
 
@@ -1886,6 +1894,7 @@ impl<'ctx> CodeGen<'ctx> {
                 result_ty: ty,
                 result: result_alloca,
                 merge_bb,
+                at,
             },
         )?;
 
@@ -1899,6 +1908,7 @@ impl<'ctx> CodeGen<'ctx> {
         values: &[MirExpr],
         arms: &[MirMatchArm],
         ty: &MirType,
+        at: Option<MirSourceSpan>,
     ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
         let column_types: Vec<MirType> = values.iter().map(|value| value.ty().clone()).collect();
         let scrutinee_ty = MirType::Tuple(column_types.clone());
@@ -1950,6 +1960,7 @@ impl<'ctx> CodeGen<'ctx> {
                 result_ty: ty,
                 result: result_alloca,
                 merge_bb,
+                at,
             },
         )?;
         self.merged_value(merge_bb, result_ty, result_alloca, "match_val")
@@ -3225,6 +3236,7 @@ impl<'ctx> CodeGen<'ctx> {
         op: &BinOp,
         l: inkwell::values::IntValue<'ctx>,
         r: inkwell::values::IntValue<'ctx>,
+        at: Option<MirSourceSpan>,
     ) -> Result<inkwell::values::IntValue<'ctx>, Diagnostic> {
         let int_ty = r.get_type();
         let function = self.current_function();
@@ -3239,7 +3251,7 @@ impl<'ctx> CodeGen<'ctx> {
             .map_err(Diagnostic::internal)?;
 
         self.builder.position_at_end(zero_bb);
-        self.codegen_panic("division by zero", &self.current_function_name(), 0)?;
+        self.codegen_panic("division by zero", &self.current_function_name(), at)?;
 
         self.builder.position_at_end(ok_bb);
         let minus_one = int_ty.const_all_ones();
@@ -3887,13 +3899,23 @@ impl<'ctx> CodeGen<'ctx> {
 
     // ── Panic ────────────────────────────────────────────────────────
 
+    /// Panic with `message` at `at`, through `mesh_panic_at`; where the
+    /// place is not known, through `mesh_panic`, naming `function`.
     pub(crate) fn codegen_panic(
         &mut self,
         message: &str,
-        file: &str,
-        line: u32,
+        function: &str,
+        at: Option<MirSourceSpan>,
     ) -> Result<BasicValueEnum<'ctx>, Diagnostic> {
-        let panic_fn = get_intrinsic(&self.module, "mesh_panic");
+        let location = runtime_location(&self.files, at);
+        let (panic_fn, file, place) = match &location {
+            Some((file, at)) => (
+                get_intrinsic(&self.module, "mesh_panic_at"),
+                file.as_str(),
+                Some(*at),
+            ),
+            None => (get_intrinsic(&self.module, "mesh_panic"), function, None),
+        };
 
         // Create global constants for message and file strings
         let msg_val = self.context.const_string(message.as_bytes(), false);
@@ -3917,20 +3939,24 @@ impl<'ctx> CodeGen<'ctx> {
             .const_int(message.len() as u64, false);
         let file_ptr = file_global.as_pointer_value();
         let file_len = self.context.i64_type().const_int(file.len() as u64, false);
-        let line_val = self.context.i32_type().const_int(line as u64, false);
+        let i32_ty = self.context.i32_type();
+        let mut args: Vec<inkwell::values::BasicMetadataValueEnum<'ctx>> = vec![
+            msg_ptr.into(),
+            msg_len.into(),
+            file_ptr.into(),
+            file_len.into(),
+        ];
+        match place {
+            Some(at) => {
+                args.push(i32_ty.const_int(u64::from(at.line), false).into());
+                args.push(i32_ty.const_int(u64::from(at.col), false).into());
+            }
+            // The function's name is not a file: line 0 says so.
+            None => args.push(i32_ty.const_zero().into()),
+        }
 
         self.builder
-            .build_call(
-                panic_fn,
-                &[
-                    msg_ptr.into(),
-                    msg_len.into(),
-                    file_ptr.into(),
-                    file_len.into(),
-                    line_val.into(),
-                ],
-                "",
-            )
+            .build_call(panic_fn, &args, "")
             .map_err(Diagnostic::internal)?;
 
         self.builder

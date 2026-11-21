@@ -22,18 +22,22 @@
 //!
 //! ## Failures
 //!
-//! A failed assertion records its message and unwinds out of the test, or
+//! A failed assertion records its message, reports its diagnostic (a `T`
+//! code at the assertion's line) on stderr, and unwinds out of the test, or
 //! out of its body when a teardown follows (`TestFailed`); the runner
-//! catches it, as it catches a panic. A test counts once, however many of
-//! its steps fail.
+//! catches it, as it catches a panic, whose own diagnostic it reports. A
+//! test counts once, however many of its steps fail.
 //! Inside `assert_raises`, a failed assertion only unwinds: it is the
 //! "raise" the closure was expected to do.
 
+use std::any::Any;
 use std::cell::{Cell, RefCell};
 use std::io::Write as _;
 
+use mesh_diagnostics::{Code, Diagnostic};
 use parking_lot::RwLock;
 
+use crate::panic::MeshPanic;
 use crate::string::MeshString;
 
 // ── ANSI color codes ─────────────────────────────────────────────────────────
@@ -115,7 +119,7 @@ fn first_test_started() -> std::time::Instant {
 }
 
 /// The unwinding payload of a failed assertion, already recorded.
-struct TestFailed;
+pub(crate) struct TestFailed;
 
 static TEST_CASE_CLEANUP_HOOK: RwLock<Option<fn()>> = RwLock::new(None);
 
@@ -183,11 +187,25 @@ fn record_failure(msg: &str) {
     });
 }
 
-/// A failed assertion: the test fails, or, inside `assert_raises`, the
-/// closure has raised. Either way it ends the step that is running.
-fn assertion_failed(msg: impl FnOnce() -> String) -> ! {
+/// A failed assertion: the test fails with `code` at `line` of `file`, or,
+/// inside `assert_raises`, the closure has raised. Either way it ends the
+/// step that is running.
+///
+/// # Safety
+///
+/// `file` must be null or point to a live `MeshString`.
+unsafe fn assertion_failed(
+    code: Code,
+    file: *const MeshString,
+    line: i64,
+    msg: impl FnOnce() -> String,
+) -> ! {
     if !IN_ASSERT_RAISES.with(|f| f.get()) {
-        record_failure(&msg());
+        let msg = msg();
+        record_failure(&msg);
+        let file = if file.is_null() { "" } else { mesh_str(file) };
+        let line = u32::try_from(line).unwrap_or(0);
+        crate::panic::report(&crate::panic::located(code, file, line, 0, msg));
     }
     std::panic::resume_unwind(Box::new(TestFailed))
 }
@@ -222,32 +240,42 @@ pub extern "C" fn mesh_test_pass() {
 }
 
 /// `test_fail_msg(msg)` (what `assert_receive` expands to on a miss): fail
-/// the current test with `msg`.
+/// the current test with `msg` at `line` of `file`.
 ///
 /// # Safety
 ///
-/// `msg` must point to a live `MeshString`.
+/// `msg` and `file` must point to live `MeshString`s.
 #[no_mangle]
-pub unsafe extern "C-unwind" fn mesh_test_fail_msg(msg: *const MeshString) {
-    assertion_failed(|| mesh_str(msg).to_owned())
+pub unsafe extern "C-unwind" fn mesh_test_fail_msg(
+    msg: *const MeshString,
+    file: *const MeshString,
+    _file_len: i64,
+    line: i64,
+) {
+    assertion_failed(Code::AssertReceiveFailed, file, line, || {
+        mesh_str(msg).to_owned()
+    })
 }
 
 /// Assert that `cond` is non-zero; a failure ends the test (see
-/// `assertion_failed`).
+/// `assertion_failed`). Compiled code passes the assertion's file, its
+/// length, and its 1-based line.
 ///
 /// # Safety
 ///
-/// `expr_src` must point to a live `MeshString`.
+/// `expr_src` and `file` must point to live `MeshString`s.
 #[no_mangle]
 pub unsafe extern "C-unwind" fn mesh_test_assert(
     cond: i8,
     expr_src: *const MeshString,
-    _file: *const u8,
+    file: *const MeshString,
     _file_len: i64,
-    _line: i64,
+    line: i64,
 ) {
     if cond == 0 {
-        assertion_failed(|| format!("assert failed: {}", mesh_str(expr_src)));
+        assertion_failed(Code::AssertFailed, file, line, || {
+            format!("assert failed: {}", mesh_str(expr_src))
+        });
     }
 }
 
@@ -256,20 +284,20 @@ pub unsafe extern "C-unwind" fn mesh_test_assert(
 ///
 /// # Safety
 ///
-/// `lhs`, `rhs` and `expr_src` must point to live `MeshString`s.
+/// `lhs`, `rhs`, `expr_src` and `file` must point to live `MeshString`s.
 #[no_mangle]
 pub unsafe extern "C-unwind" fn mesh_test_assert_eq(
     lhs: *const MeshString,
     rhs: *const MeshString,
     expr_src: *const MeshString,
-    _file: *const u8,
+    file: *const MeshString,
     _file_len: i64,
-    _line: i64,
+    line: i64,
 ) {
     let l = mesh_str(lhs);
     let r = mesh_str(rhs);
     if l != r {
-        assertion_failed(|| {
+        assertion_failed(Code::AssertEqFailed, file, line, || {
             let src = mesh_str(expr_src);
             format!("assert_eq failed: {src}\n  left:  {l}\n  right: {r}")
         });
@@ -280,20 +308,20 @@ pub unsafe extern "C-unwind" fn mesh_test_assert_eq(
 ///
 /// # Safety
 ///
-/// `lhs`, `rhs` and `expr_src` must point to live `MeshString`s.
+/// `lhs`, `rhs`, `expr_src` and `file` must point to live `MeshString`s.
 #[no_mangle]
 pub unsafe extern "C-unwind" fn mesh_test_assert_ne(
     lhs: *const MeshString,
     rhs: *const MeshString,
     expr_src: *const MeshString,
-    _file: *const u8,
+    file: *const MeshString,
     _file_len: i64,
-    _line: i64,
+    line: i64,
 ) {
     let l = mesh_str(lhs);
     let r = mesh_str(rhs);
     if l == r {
-        assertion_failed(|| {
+        assertion_failed(Code::AssertNeFailed, file, line, || {
             let src = mesh_str(expr_src);
             format!("assert_ne failed: {src}\n  both sides equal: {l}")
         });
@@ -309,14 +337,15 @@ pub unsafe extern "C-unwind" fn mesh_test_assert_ne(
 ///
 /// # Safety
 ///
-/// `fn_ptr` and `env_ptr` must be a Mesh closure taking no arguments.
+/// `fn_ptr` and `env_ptr` must be a Mesh closure taking no arguments, and
+/// `file` must point to a live `MeshString`.
 #[no_mangle]
 pub unsafe extern "C-unwind" fn mesh_test_assert_raises(
     fn_ptr: *const u8,
     env_ptr: *const u8,
-    _file: *const u8,
+    file: *const MeshString,
     _file_len: i64,
-    _line: i64,
+    line: i64,
 ) {
     // Nested assert_raises calls restore the outer state.
     let prev_in_raises = IN_ASSERT_RAISES.with(|f| f.replace(true));
@@ -324,7 +353,9 @@ pub unsafe extern "C-unwind" fn mesh_test_assert_raises(
     IN_ASSERT_RAISES.with(|f| f.set(prev_in_raises));
 
     if !raised {
-        assertion_failed(|| "assert_raises failed: expression did not raise".to_string());
+        assertion_failed(Code::AssertRaisesFailed, file, line, || {
+            "assert_raises failed: expression did not raise".to_string()
+        });
     }
 }
 
@@ -397,39 +428,52 @@ pub extern "C" fn mesh_test_fail_count() -> i64 {
 
 /// Call a Mesh closure, catching a panic that unwinds out of it (a failed
 /// assertion, a failed match, `List.get` past the end). `Err(None)` is a
-/// failed assertion, already recorded; `Err(Some(message))` a panic. The
+/// failed assertion, already recorded; `Err(Some(payload))` a panic. The
 /// panic hook leaves reporting a panic to the caller.
-unsafe fn call_catching_panic(fn_ptr: *const u8, env_ptr: *const u8) -> Result<(), Option<String>> {
+unsafe fn call_catching_panic(
+    fn_ptr: *const u8,
+    env_ptr: *const u8,
+) -> Result<(), Option<Box<dyn Any + Send>>> {
     let f: extern "C-unwind" fn(*const u8) -> i64 = std::mem::transmute(fn_ptr);
     crate::panic::quietly(|| {
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             f(env_ptr);
         }))
     })
-    .map_err(|payload| {
-        if payload.is::<TestFailed>() {
-            return None;
-        }
-        Some(
-            crate::panic::mesh_panic_message(&*payload)
-                .unwrap_or("Mesh panic: the runtime failed (reported above)")
-                .to_string(),
-        )
-    })
+    .map_err(|payload| (!payload.is::<TestFailed>()).then_some(payload))
 }
 
 /// Run a test (the harness calls this with a closure), or its body when a
-/// teardown follows: a failed assertion or a panic fails the test.
+/// teardown follows: a failed assertion or a panic fails the test. A Mesh
+/// panic is reported with its own code (`R0001`); a panic that is not one
+/// is the runtime's failure (`T0101`), which the runtime reported above.
 ///
 /// # Safety
 ///
 /// `fn_ptr` and `env_ptr` must be a Mesh closure taking no arguments.
 #[no_mangle]
 pub unsafe extern "C" fn mesh_test_run_body(fn_ptr: *const u8, env_ptr: *const u8) {
-    if let Err(Some(message)) = call_catching_panic(fn_ptr, env_ptr) {
-        // "panicked in f: ...", "panicked: List.get: ..."
-        let detail = message.strip_prefix("Mesh panic").unwrap_or(&message);
-        record_failure(&format!("panicked{detail}"));
+    let Err(Some(payload)) = call_catching_panic(fn_ptr, env_ptr) else {
+        return;
+    };
+    match MeshPanic::of(&*payload) {
+        Some(panic) => {
+            // "panicked in f: ...", "panicked: List.get: ..."
+            let reason = panic.reason();
+            record_failure(&format!(
+                "panicked{}",
+                reason.strip_prefix("Mesh panic").unwrap_or(reason)
+            ));
+            crate::panic::report(panic.diagnostic());
+        }
+        None => {
+            let message = "panicked: the runtime failed (reported above)";
+            record_failure(message);
+            crate::panic::report(&Diagnostic::new(
+                Code::TestPanicked,
+                format!("the test {message}"),
+            ));
+        }
     }
 }
 

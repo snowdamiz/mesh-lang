@@ -32,11 +32,11 @@ use crate::declared::declared_route_wrapper_name;
 
 use super::types::{mangle_type_name, mir_type_to_impl_name, mir_type_to_ty, resolve_type};
 use super::{
-    diagnostic_at, sum_type_base, BinOp, MirChildSpec, MirExpr, MirFunction, MirLiteral,
-    MirMatchArm, MirModule, MirNativeFunction, MirPattern, MirResourceDestructor, MirResourceField,
-    MirResourceMoveSource, MirResourceVariant, MirSourceId, MirSourceSpan, MirStructDef,
-    MirSumTypeDef, MirSymbol, MirType, MirVariantDef, MsgShape, ServiceDispatch, SpawnPlacement,
-    UnaryOp,
+    diagnostic_at, runtime_location, sum_type_base, BinOp, MirChildSpec, MirExpr, MirFunction,
+    MirLiteral, MirMatchArm, MirModule, MirNativeFunction, MirPattern, MirResourceDestructor,
+    MirResourceField, MirResourceMoveSource, MirResourceVariant, MirSourceId, MirSourceSpan,
+    MirStructDef, MirSumTypeDef, MirSymbol, MirType, MirVariantDef, MsgShape, ServiceDispatch,
+    SpawnPlacement, UnaryOp,
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -3183,10 +3183,13 @@ impl<'a> Lowerer<'a> {
             "mesh_test_pass".to_string(),
             MirType::FnPtr(vec![], Box::new(MirType::Unit)),
         );
-        // mesh_test_fail_msg(msg: ptr) -> void
+        // mesh_test_fail_msg(msg: ptr, file: ptr, file_len: i64, line: i64) -> void
         self.known_functions.insert(
             "mesh_test_fail_msg".to_string(),
-            MirType::FnPtr(vec![MirType::Ptr], Box::new(MirType::Unit)),
+            MirType::FnPtr(
+                vec![MirType::Ptr, MirType::Ptr, MirType::Int, MirType::Int],
+                Box::new(MirType::Unit),
+            ),
         );
         // mesh_test_assert(cond: i8, expr_src: ptr, file: ptr, file_len: i64, line: i64) -> void
         self.known_functions.insert(
@@ -5574,7 +5577,9 @@ impl<'a> Lowerer<'a> {
             no_match.push(MirExpr::Panic {
                 message: "non-exhaustive match".to_string(),
                 file: fn_name.to_string(),
-                line: 0,
+                source_span: clauses
+                    .first()
+                    .and_then(|clause| self.source_location(clause.syntax().text_range())),
             });
             arms.push(MirMatchArm {
                 pattern: MirPattern::Wildcard,
@@ -9052,7 +9057,7 @@ impl<'a> Lowerer<'a> {
                 let unreachable = MirExpr::Panic {
                     message: "unreachable".to_string(),
                     file: "<panic>".to_string(),
-                    line: 0,
+                    source_span: None,
                 };
                 return MirExpr::Block(vec![raise, unreachable], MirType::Never);
             }
@@ -14586,14 +14591,25 @@ impl<'a> Lowerer<'a> {
                 vec![MirType::Ptr; 2],
                 vec![self.lower_expr(&args[0])],
             ),
+            // What a missed `assert_receive` becomes.
+            "test_fail_msg" => (
+                "mesh_test_fail_msg",
+                vec![MirType::Ptr],
+                vec![self.lower_expr(&args[0])],
+            ),
             _ => return None,
         };
-        // The location: an empty file name, its length and line 0.
+        // The location: the file's name, its length, and the 1-based line;
+        // an empty name and line 0 where the file is not known.
+        let (file, line) =
+            runtime_location(self.files, self.source_location(call.syntax().text_range()))
+                .map_or_else(Default::default, |(file, at)| (file, at.line));
+        let file_len = file.len() as i64;
         params.extend([MirType::Ptr, MirType::Int, MirType::Int]);
         values.extend([
-            text(String::new()),
-            MirExpr::IntLit(0, MirType::Int),
-            MirExpr::IntLit(0, MirType::Int),
+            text(file),
+            MirExpr::IntLit(file_len, MirType::Int),
+            MirExpr::IntLit(i64::from(line), MirType::Int),
         ]);
         Some(Self::call_named(runtime, params, values, MirType::Unit))
     }

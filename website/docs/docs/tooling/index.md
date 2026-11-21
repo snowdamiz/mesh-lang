@@ -1108,7 +1108,7 @@ is merged into `foo.mpl` only in the temporary test project. Tests can import
 fragment. See the [Testing guide](/docs/testing/#private-module-test-support)
 for the exact naming and isolation rules.
 
-Exit code is 1 if any test fails or a test file does not compile, making `meshc test` suitable for CI pipelines; a run that finds no test files prints `No *.test.mpl files found.` and exits 0.
+Exit code is 1 if any test fails or a test file does not compile, making `meshc test` suitable for CI pipelines; a run that finds no test files reports `T0103` and exits 1, so a CI step pointed at the wrong directory fails. Each test failure is also a diagnostic on standard error at its line of the test file (`T0001` to `T0005` for the assertions, a panic's own `R0001`), and `meshc test --json` writes them as JSON lines there.
 
 Use compact output for a large suite, a `.` per passing test and an `F` per failing one, with the failures listed after them:
 

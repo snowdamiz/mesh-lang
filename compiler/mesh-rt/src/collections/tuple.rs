@@ -44,10 +44,13 @@ mod tests {
     use crate::gc::{mesh_gc_alloc, mesh_rt_init};
 
     #[test]
-    #[should_panic(expected = "Tuple.nth: index 2 is out of bounds for a tuple of 2 elements")]
     fn an_index_past_a_tuple_panics() {
         mesh_rt_init();
-        mesh_tuple_nth(make_tuple(&[1, 2]), 2);
+        let reason = crate::panic::raised(|| _ = mesh_tuple_nth(make_tuple(&[1, 2]), 2));
+        assert!(
+            reason.contains("Tuple.nth: index 2 is out of bounds for a tuple of 2 elements"),
+            "{reason}"
+        );
     }
 
     /// Helper to create a GC-allocated tuple with the given elements.

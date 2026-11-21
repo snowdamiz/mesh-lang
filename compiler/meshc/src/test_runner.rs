@@ -24,24 +24,14 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
 
-use crate::ReportResult;
-use mesh_diagnostics::{Code, Diagnostic, Failed, Reporter, SourceFile};
+use crate::{ReportResult, ReportText};
+use mesh_diagnostics::{Code, Diagnostic, Failed, Lookup, Reporter, Severity, SourceFile};
 
 use mesh_parser::test_harness::preprocess_test_source;
 use mesh_pkg::frontend::{self, CheckOptions, Target};
 use mesh_pkg::manifest::{
     resolve_entrypoint, rewrite_test_manifest_source, Manifest, DEFAULT_ENTRYPOINT,
 };
-
-trait ReportTestError<T> {
-    fn reported(self, reporter: &mut Reporter) -> Result<T, Failed>;
-}
-
-impl<T> ReportTestError<T> for Result<T, String> {
-    fn reported(self, reporter: &mut Reporter) -> Result<T, Failed> {
-        self.map_err(|message| reporter.fail(Diagnostic::uncategorized(message)))
-    }
-}
 
 /// Whether output goes to a color terminal (and `NO_COLOR` is unset). The
 /// test binaries learn it through `MESH_TEST_COLOR`: their stdout is a pipe.
@@ -60,14 +50,18 @@ fn palette(color: bool) -> (&'static str, &'static str, &'static str, &'static s
 }
 
 /// The target as an absolute path; without one, the current directory.
-fn resolve_target_path(target: Option<&Path>) -> Result<PathBuf, String> {
+fn resolve_target_path(target: Option<&Path>) -> Result<PathBuf, Diagnostic> {
     let target = target.unwrap_or(Path::new("."));
+    let unavailable = |message| Diagnostic::new(Code::PathNotFound, message);
     let abs = std::path::absolute(target)
-        .map_err(|e| format!("Failed to resolve '{}': {e}", target.display()))?;
+        .map_err(|e| unavailable(format!("Failed to resolve '{}': {e}", target.display())))?;
     if abs.exists() {
         Ok(abs)
     } else {
-        Err(format!("Test target '{}' does not exist", abs.display()))
+        Err(unavailable(format!(
+            "Test target '{}' does not exist",
+            abs.display()
+        )))
     }
 }
 
@@ -127,15 +121,18 @@ pub(crate) fn is_test_file(path: &Path) -> bool {
         .is_some_and(|name| name.ends_with(".test.mpl"))
 }
 
-fn resolve_test_files(target: &Path) -> Result<Vec<PathBuf>, String> {
+fn resolve_test_files(target: &Path) -> Result<Vec<PathBuf>, Diagnostic> {
     if target.is_dir() {
-        discover_test_files(target)
+        discover_test_files(target).map_err(|message| Diagnostic::new(Code::PathNotFound, message))
     } else if is_test_file(target) {
         Ok(vec![target.to_path_buf()])
     } else {
-        Err(format!(
-            "'{}' is not a directory or a *.test.mpl file",
-            target.display()
+        Err(Diagnostic::new(
+            Code::InvalidArguments,
+            format!(
+                "'{}' is not a directory or a *.test.mpl file",
+                target.display()
+            ),
         ))
     }
 }
@@ -189,7 +186,7 @@ fn with_test_project<T>(
     })?;
     let temporary = tempfile::tempdir()
         .map_err(|e| format!("Failed to create temp dir: {e}"))
-        .reported(reporter)?;
+        .reported_as(Code::PathNotFound, reporter)?;
     let root = temporary.path();
     reporter.with_path_aliases(
         [
@@ -237,6 +234,11 @@ pub(crate) fn check_tests(target: &Path, reporter: &mut Reporter) -> Result<(), 
 }
 
 /// Run tests from a project root, test directory, or specific *.test.mpl file.
+///
+/// Each test program reports its diagnostics (a failed assertion's `T`
+/// code, a panic's `R` code) as JSON lines on its stderr; they are reported
+/// here, naming the test file as written, in the format the command was
+/// asked for. Any other line a program writes there is its own output.
 pub fn run_tests(
     target: Option<&Path>,
     quiet: bool,
@@ -249,7 +251,7 @@ pub fn run_tests(
         return Err(
             "coverage reporting is not implemented for `meshc test`; run the command without --coverage"
                 .to_string(),
-        ).reported(reporter);
+        ).reported_as(Code::InvalidArguments, reporter);
     }
 
     let target = resolve_target_path(target).reported(reporter)?;
@@ -257,8 +259,11 @@ pub fn run_tests(
     let test_files = resolve_test_files(&target).reported(reporter)?;
 
     if test_files.is_empty() {
-        println!("No *.test.mpl files found.");
-        return Ok(());
+        return Err(reporter.fail(Diagnostic::in_file(
+            Code::NoTests,
+            &SourceFile::unread(&target),
+            format!("no *.test.mpl files found under '{}'", target.display()),
+        )));
     }
 
     let start = Instant::now();
@@ -296,28 +301,45 @@ pub fn run_tests(
                 let output = Command::new(&bin_path)
                     .env("MESH_TEST_QUIET", if quiet { "1" } else { "0" })
                     .env("MESH_TEST_COLOR", if color { "1" } else { "0" })
+                    .env("MESH_DIAGNOSTICS", "json")
                     .output()
                     .map_err(|e| format!("Failed to execute test file '{label}': {e}"))
-                    .reported(reporter)?;
+                    .reported_as(Code::PathNotFound, reporter)?;
 
                 print!("{}", String::from_utf8_lossy(&output.stdout));
-                if !output.stderr.is_empty() {
-                    let text = String::from_utf8_lossy(&output.stderr);
-                    if json {
-                        print!("{text}");
-                    } else {
-                        eprint!("{text}");
+                let mut reported = None;
+                for line in String::from_utf8_lossy(&output.stderr).lines() {
+                    match runtime_diagnostic(line, root) {
+                        Some(diagnostic) if diagnostic.severity() == Severity::Error => {
+                            reported.get_or_insert(reporter.fail(diagnostic));
+                        }
+                        Some(diagnostic) => reporter.emit(diagnostic),
+                        None if json => println!("{line}"),
+                        None => eprintln!("{line}"),
                     }
                 }
 
-                if !output.status.success() {
-                    if output.status.code().is_none() {
-                        println!("{red}{bold}CRASHED{reset}: {label} ({})", output.status);
-                    }
-                    return Err(format!("Test file '{label}' failed ({})", output.status))
-                        .reported(reporter);
+                if output.status.success() {
+                    return Ok(());
                 }
-                Ok(())
+                let killed = output.status.code().is_none();
+                if killed {
+                    println!("{red}{bold}CRASHED{reset}: {label} ({})", output.status);
+                }
+                // A failure is reported as it happens, a stack overflow's
+                // too; a program that ended without reporting one crashed.
+                if let Some(failed) = reported {
+                    return Err(failed);
+                }
+                let how = if killed {
+                    "was killed"
+                } else {
+                    "ended without reporting a failure"
+                };
+                Err(reporter.fail(Diagnostic::new(
+                    Code::TestPanicked,
+                    format!("the test program for '{label}' {how} ({})", output.status),
+                )))
             },
         );
         match result {
@@ -344,6 +366,46 @@ pub fn run_tests(
         );
         Ok(())
     }
+}
+
+/// The diagnostic one line of a test program's stderr is: a JSON object
+/// with a catalog code, as `MESH_DIAGNOSTICS=json` has the runtime write
+/// one. A file it names relative to the program's build is under `root`.
+fn runtime_diagnostic(line: &str, root: &Path) -> Option<Diagnostic> {
+    let wire: serde_json::Value = serde_json::from_str(line).ok()?;
+    let id = wire["code"].as_str()?;
+    let Lookup::Found(code) = Code::lookup(id) else {
+        return None;
+    };
+    if code.id() != id {
+        return None;
+    }
+    let message = wire["message"].as_str()?;
+    let file = wire["file"]
+        .as_str()
+        .filter(|file| !file.is_empty())
+        .map(|file| SourceFile::unread(root.join(file)));
+    let line = wire["line"]
+        .as_u64()
+        .and_then(|line| u32::try_from(line).ok());
+    let mut diagnostic = match (file, line) {
+        (Some(file), Some(line)) if line > 0 => {
+            let at = Diagnostic::at_line(code, file, line, message);
+            match wire["col"].as_u64().and_then(|col| u32::try_from(col).ok()) {
+                Some(col) => at.at_column(col),
+                None => at,
+            }
+        }
+        (Some(file), _) => Diagnostic::in_file(code, &file, message),
+        (None, _) => Diagnostic::new(code, message),
+    };
+    if let Some(fix) = wire["fix"].as_str().filter(|fix| !fix.is_empty()) {
+        diagnostic = diagnostic.with_repair(fix.to_string());
+    }
+    for note in wire["notes"].as_array().into_iter().flatten() {
+        diagnostic = diagnostic.with_note(note.as_str()?);
+    }
+    Some(diagnostic)
 }
 
 /// Copy all non-test .mpl source files from `project_dir` into `tmp_dir`,
@@ -799,6 +861,43 @@ mod tests {
         }
         assert!(!tmp.path().join("lib/start.mpl").exists());
         assert!(tmp.path().join(DEFAULT_ENTRYPOINT).exists());
+    }
+
+    /// A diagnostic a test program wrote as JSON is the diagnostic again,
+    /// its file under the program's build root; any other line is output.
+    #[test]
+    fn a_test_program_diagnostic_is_read_back_from_its_json_line() {
+        let written = Diagnostic::at_line(
+            Code::AssertEqFailed,
+            SourceFile::unread("main.mpl"),
+            6,
+            "assert_eq failed: 1 == 2",
+        )
+        .at_column(3)
+        .with_note("a note");
+        let mut line = Vec::new();
+        Reporter::new(mesh_diagnostics::Format::Json, &mut line).emit(written);
+        let line = String::from_utf8(line).unwrap();
+
+        let read = runtime_diagnostic(line.trim_end(), Path::new("/build")).unwrap();
+        assert_eq!(read.code(), Code::AssertEqFailed);
+        assert_eq!(read.message(), "assert_eq failed: 1 == 2");
+        assert_eq!(read.file().unwrap().path(), Path::new("/build/main.mpl"));
+        assert_eq!((read.line(), read.col()), (Some(6), Some(3)));
+        assert_eq!(read.repair(), Code::AssertEqFailed.info().repair);
+        assert_eq!(read.notes(), ["a note"]);
+
+        for other in [
+            "noise",
+            "{\"code\":\"Z9999\",\"message\":\"x\"}",
+            "{\"code\":\"assert-eq-failed\",\"message\":\"a name, not an ID\"}",
+            "{\"code\":\"T0002\"}",
+        ] {
+            assert!(
+                runtime_diagnostic(other, Path::new("/build")).is_none(),
+                "{other}"
+            );
+        }
     }
 
     /// A source the copy refuses stops the preparation before the manifest

@@ -1149,9 +1149,9 @@ The pattern may bind names, nest constructors (`Some(Ok(value))`), contain liter
 
 ### Panics
 
-For a failure the program cannot handle, call `panic(message)`. It has type `String -> Never`, so it fits in any branch: `None -> panic("not a port: #{text}")`. A panic prints `Mesh panic: message` to standard error and ends the current actor, which a supervisor can restart; in `main`, it ends the program with exit status 101. See [Standard Library](/docs/stdlib/#strings) for an example.
+For a failure the program cannot handle, call `panic(message)`. It has type `String -> Never`, so it fits in any branch: `None -> panic("not a port: #{text}")`. A panic reports its message on standard error as an `R0001` diagnostic, with the line and column when the compiler knows them, and ends the current actor, which a supervisor can restart; in `main`, it ends the program with exit status 101. See [Standard Library](/docs/stdlib/#strings) for an example.
 
-Runtime errors are panics too and behave the same way: `List.get` past the end of a list, `Map.get` of a missing key, a call that no function clause matches, and integer division by zero. Recursion too deep for the stack is different: it ends the whole program with `error: stack overflow`. A direct self-call in tail position runs as a loop and never overflows (see [Direct Tail Recursion](#direct-tail-recursion)).
+Runtime errors are panics too and behave the same way: `List.get` past the end of a list, `Map.get` of a missing key, a call that no function clause matches, and integer division by zero. Recursion too deep for the stack is different: it ends the whole program with an `R0002` stack overflow diagnostic. A direct self-call in tail position runs as a loop and never overflows (see [Direct Tail Recursion](#direct-tail-recursion)).
 
 ## Modules
 

@@ -1682,6 +1682,27 @@ fn receive_arms_must_cover_the_message_type() {
 // ── Numbers ────────────────────────────────────────────────────────────
 
 /// Build and run a program that may fail; returns (exit code, stdout, stderr).
+/// What a program writes on stderr for runtime panics with `messages`,
+/// raised where compiled code does not know the place (`List.get`): one
+/// `R0001` report each, in order.
+fn panic_report(messages: &[&str]) -> String {
+    messages
+        .iter()
+        .map(|message| {
+            let mut out = Vec::new();
+            mesh_diagnostics::Reporter::new(
+                mesh_diagnostics::Format::Human { color: false },
+                &mut out,
+            )
+            .emit(mesh_diagnostics::Diagnostic::new(
+                mesh_diagnostics::Code::Panic,
+                *message,
+            ));
+            String::from_utf8(out).unwrap()
+        })
+        .collect()
+}
+
 fn run_status(source: &str, args: &[&str]) -> (Option<i32>, String, String) {
     let built = build_with_args(source, args);
     assert!(built.ok, "build failed:\n{}", built.stderr);
@@ -1722,7 +1743,9 @@ end
         let (code, out, err) = run_status(panics, &["--opt-level", opt]);
         assert_eq!(code, Some(101), "--opt-level {opt}\n{err}");
         assert_eq!(out, "before\n");
-        assert!(err.contains("division by zero"), "{err}");
+        assert!(err.contains("[R0001] Error: division by zero"), "{err}");
+        // At the `%`: line 5, where `10 % zero` starts.
+        assert!(err.contains("main.mpl:5:14\n"), "{err}");
         assert!(!err.contains("failed to initiate panic"), "{err}");
     }
 }
@@ -4778,7 +4801,7 @@ fn a_stack_overflow_is_reported() {
     ] {
         let (code, _stdout, stderr) = run_status(&format!("{recurse}{main}"), &[]);
         assert_ne!(code, Some(0), "{stderr}");
-        assert!(stderr.contains("error: stack overflow"), "{stderr}");
+        assert!(stderr.contains("[R0002] Error: stack overflow"), "{stderr}");
     }
 }
 
@@ -4836,7 +4859,7 @@ fn a_runtime_error_is_a_mesh_panic_that_ends_only_its_actor() {
     // `List.get` past the end, in an actor, aborted the whole process ("panic
     // in a function that cannot unwind", then Rust's backtrace): runtime
     // functions could not unwind. It now ends the actor alone, reported as
-    // the one-line Mesh panic.
+    // its R0001 diagnostic.
     let (code, out, err) = run_status(
         r##"actor worker(n :: Int) do
   receive do
@@ -4857,7 +4880,7 @@ end
     assert_eq!(out, "main still running\n");
     assert_eq!(
         err,
-        "Mesh panic: List.get: index 5 is out of bounds for a list of length 1\n"
+        panic_report(&["List.get: index 5 is out of bounds for a list of length 1"])
     );
     // On the main thread it ends the program with status 101.
     for (value, message) in [
@@ -4878,10 +4901,10 @@ end
         assert_eq!(code, Some(101), "{value}\n{err}");
         assert_eq!(out, "", "{value}");
         assert!(
-            err.starts_with(&format!("Mesh panic: {message}")),
+            err.starts_with(&format!("[R0001] Error: {message}")),
             "{value}\n{err}"
         );
-        assert_eq!(err.lines().count(), 1, "{value}\n{err}");
+        assert_eq!(err.matches("[R0001]").count(), 1, "{value}\n{err}");
     }
 }
 
@@ -4892,11 +4915,11 @@ fn an_unknown_query_atom_is_a_mesh_panic() {
     for (call, message) in [
         (
             "Query.from(\"t\") |> Query.where_op(:age, :greater, \"1\")",
-            "Mesh panic: Query.where_op: unknown operator :greater;",
+            "[R0001] Error: Query.where_op: unknown operator :greater;",
         ),
         (
             "Query.from(\"t\") |> Query.join_as(:outer, \"u\", \"x\", \"x.id = t.id\")",
-            "Mesh panic: Query.join_as: unknown join kind :outer;",
+            "[R0001] Error: Query.join_as: unknown join kind :outer;",
         ),
     ] {
         let source = format!("fn main() do\n  let q = {call}\n  println(\"built\")\nend\n");
@@ -4916,7 +4939,12 @@ fn a_failed_match_names_its_function() {
     );
     assert_eq!(code, Some(101), "{err}");
     assert_eq!(out, "zero\n");
-    assert_eq!(err, "Mesh panic in Main__f: non-exhaustive match\n");
+    assert!(
+        err.starts_with("[R0001] Error: non-exhaustive match\n"),
+        "{err}"
+    );
+    assert!(err.contains("  Note: raised in `Main__f`\n"), "{err}");
+    assert_eq!(err.matches("[R0001]").count(), 1, "{err}");
 }
 
 #[test]
@@ -5201,10 +5229,7 @@ end
     );
     assert_eq!(code, Some(101), "{err}");
     assert_eq!(out, "8080\n");
-    assert_eq!(
-        err,
-        "Mesh panic: deliberate crash\nMesh panic: not a port: x\n"
-    );
+    assert_eq!(err, panic_report(&["deliberate crash", "not a port: x"]));
 }
 
 #[test]
@@ -5271,7 +5296,9 @@ fn map_get_of_a_missing_key_panics() {
         assert_eq!(code, Some(101), "{source}\n{err}");
         assert_eq!(out, "", "{source}");
         assert!(
-            err.starts_with(&format!("Mesh panic: {value}: the key is not in the map")),
+            err.starts_with(&format!(
+                "[R0001] Error: {value}: the key is not in the map"
+            )),
             "{source}\n{err}"
         );
     }

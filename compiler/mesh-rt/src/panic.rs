@@ -3,16 +3,84 @@
 //! Called when a Mesh program encounters an unrecoverable error at runtime,
 //! such as a non-exhaustive match failure (guarded arms edge case).
 //!
-//! Uses `panic!()` rather than `abort()` so that actor crash isolation
-//! via `catch_unwind` can intercept handler failures without bringing
-//! down the entire process.
+//! A panic unwinds rather than aborting, carrying its `R0001` diagnostic,
+//! so that actor crash isolation via `catch_unwind` can intercept it
+//! without bringing down the entire process.
 
-/// Panic with a source-located error message.
+use std::any::Any;
+use std::io::Write as _;
+
+use mesh_diagnostics::{Code, Diagnostic, Format, Reporter, SourceFile};
+
+/// What a Mesh panic unwinds with. `reason` is what linked actors,
+/// supervisors and jobs receive as the exit reason, worded as it always
+/// was; `diagnostic` is what the panic hook, the test runner, or an
+/// embedder reports.
+pub(crate) struct MeshPanic {
+    reason: String,
+    diagnostic: Diagnostic,
+}
+
+impl MeshPanic {
+    /// The Mesh panic `payload` is, if it is one.
+    pub fn of(payload: &(dyn Any + Send)) -> Option<&MeshPanic> {
+        payload.downcast_ref::<MeshPanic>()
+    }
+
+    /// `Mesh panic: <message>`.
+    pub fn reason(&self) -> &str {
+        &self.reason
+    }
+
+    pub fn diagnostic(&self) -> &Diagnostic {
+        &self.diagnostic
+    }
+}
+
+/// Unwind with `diagnostic`. Its message was redacted already: inside a
+/// `Plaintext.map` it is [`WITHHELD`].
+fn unwind(reason: String, diagnostic: Diagnostic) -> ! {
+    std::panic::panic_any(MeshPanic { reason, diagnostic })
+}
+
+/// `message`, or [`WITHHELD`] when the panic comes from a computation on
+/// plaintext. Every Mesh panic passes its message through here before it
+/// builds a reason or a diagnostic.
+fn redacted(message: impl FnOnce() -> String) -> String {
+    if computing_on_plaintext() {
+        WITHHELD.to_string()
+    } else {
+        message()
+    }
+}
+
+/// `code` at 1-based `line` and `col` of `file`; a location compiled code
+/// does not know (an empty file, line 0) is left out.
+pub(crate) fn located(code: Code, file: &str, line: u32, col: u32, message: String) -> Diagnostic {
+    if file.is_empty() || line == 0 {
+        return Diagnostic::new(code, message);
+    }
+    let diagnostic = Diagnostic::at_line(code, SourceFile::unread(file), line, message);
+    if col == 0 {
+        diagnostic
+    } else {
+        diagnostic.at_column(col)
+    }
+}
+
+/// # Safety
 ///
-/// Triggers a Rust `panic!()` with a formatted source-located error
-/// message. In actor contexts, this is caught by `catch_unwind` for
-/// crash isolation. Outside actors, the panic unwinds and terminates
-/// the process as usual.
+/// `ptr` must point to `len` valid UTF-8 bytes.
+unsafe fn text<'a>(ptr: *const u8, len: u64) -> &'a str {
+    std::str::from_utf8_unchecked(std::slice::from_raw_parts(ptr, len as usize))
+}
+
+/// Panic with `msg`, raised in the function `file` names.
+///
+/// The ABI of programs compiled before [`mesh_panic_at`]: they pass the
+/// function's name where a file would be, and line 0, so neither is read
+/// as a location. In actor contexts the panic is caught by `catch_unwind`
+/// for crash isolation; outside actors it ends the process.
 ///
 /// # Safety
 ///
@@ -26,17 +94,37 @@ pub extern "C-unwind" fn mesh_panic(
     file_len: u64,
     _line: u32,
 ) -> ! {
-    unsafe {
-        let msg = std::str::from_utf8_unchecked(std::slice::from_raw_parts(msg, msg_len as usize));
-        let file =
-            std::str::from_utf8_unchecked(std::slice::from_raw_parts(file, file_len as usize));
-        // Compiled code passes no line (0): `file` names the function that
-        // panicked.
-        if computing_on_plaintext() {
-            panic!("Mesh panic in {file}: {WITHHELD}");
-        }
-        panic!("Mesh panic in {}: {}", file, msg);
-    }
+    let (msg, function) = unsafe { (text(msg, msg_len), text(file, file_len)) };
+    let message = redacted(|| msg.to_string());
+    unwind(
+        format!("Mesh panic in {function}: {message}"),
+        Diagnostic::new(Code::Panic, message).with_note(format!("raised in `{function}`")),
+    )
+}
+
+/// Panic with `msg` at 1-based `line` and `col` of the source `file`, as
+/// compiled code raises a panic whose place it knows (a division by zero,
+/// a match no arm accepts).
+///
+/// # Safety
+///
+/// `msg` must point to `msg_len` valid UTF-8 bytes.
+/// `file` must point to `file_len` valid UTF-8 bytes.
+#[no_mangle]
+pub extern "C-unwind" fn mesh_panic_at(
+    msg: *const u8,
+    msg_len: u64,
+    file: *const u8,
+    file_len: u64,
+    line: u32,
+    col: u32,
+) -> ! {
+    let (msg, file) = unsafe { (text(msg, msg_len), text(file, file_len)) };
+    let message = redacted(|| msg.to_string());
+    unwind(
+        format!("Mesh panic: {message}"),
+        located(Code::Panic, file, line, col, message),
+    )
 }
 
 /// Raise a Mesh panic from runtime code: a runtime function was given a
@@ -44,10 +132,11 @@ pub extern "C-unwind" fn mesh_panic(
 /// `mesh_panic` does, so an actor crashes alone and a test fails alone; the
 /// runtime function raising it must be `extern "C-unwind"`.
 pub(crate) fn raise(message: std::fmt::Arguments<'_>) -> ! {
-    if computing_on_plaintext() {
-        panic!("Mesh panic: {WITHHELD}");
-    }
-    panic!("Mesh panic: {message}")
+    let message = redacted(|| message.to_string());
+    unwind(
+        format!("Mesh panic: {message}"),
+        Diagnostic::new(Code::Panic, message),
+    )
 }
 
 /// What a panic inside `Plaintext.map` says instead of its message, which
@@ -98,27 +187,24 @@ pub(crate) fn defer_diagnostics<T>(f: impl FnOnce() -> T) -> T {
     result
 }
 
-enum Diagnostic {
-    Message(String),
+enum Queued {
+    Text(String),
     Flush(crossbeam_channel::Sender<()>),
 }
 
-static DIAGNOSTICS: std::sync::OnceLock<crossbeam_channel::Sender<Diagnostic>> =
+static DIAGNOSTICS: std::sync::OnceLock<crossbeam_channel::Sender<Queued>> =
     std::sync::OnceLock::new();
 
-fn enqueue_diagnostic(message: &str) {
-    use std::io::Write;
+fn enqueue_diagnostic(text: String) {
     let writer = DIAGNOSTICS.get_or_init(|| {
         let (sender, receiver) = crossbeam_channel::bounded(16);
         let _ = std::thread::Builder::new()
             .name("mesh-diagnostics".to_string())
             .spawn(move || {
-                while let Ok(diagnostic) = receiver.recv() {
-                    match diagnostic {
-                        Diagnostic::Message(message) => {
-                            let _ = writeln!(std::io::stderr(), "{message}");
-                        }
-                        Diagnostic::Flush(done) => {
+                while let Ok(queued) = receiver.recv() {
+                    match queued {
+                        Queued::Text(text) => write_stderr(text.as_bytes()),
+                        Queued::Flush(done) => {
                             let _ = done.send(());
                         }
                     }
@@ -126,53 +212,64 @@ fn enqueue_diagnostic(message: &str) {
             });
         sender
     });
-    let _ = writer.try_send(Diagnostic::Message(message.to_owned()));
+    let _ = writer.try_send(Queued::Text(text));
 }
 
 pub(crate) fn flush_deferred_diagnostics() {
     if let Some(writer) = DIAGNOSTICS.get() {
         let deadline = std::time::Instant::now() + std::time::Duration::from_millis(20);
         let (done, receiver) = crossbeam_channel::bounded(1);
-        if writer
-            .send_deadline(Diagnostic::Flush(done), deadline)
-            .is_ok()
-        {
+        if writer.send_deadline(Queued::Flush(done), deadline).is_ok() {
             let _ = receiver.recv_deadline(deadline);
         }
     }
 }
 
-/// Print a Mesh panic as its message alone: the default report's thread
-/// name and runtime source location say nothing about the Mesh program.
-/// Any other panic is a runtime bug and keeps the default report.
+/// One write per diagnostic keeps its lines together. A closed stderr
+/// leaves nowhere to say that writing failed.
+fn write_stderr(text: &[u8]) {
+    let _ = std::io::stderr().write_all(text);
+}
+
+/// How the program reports: JSON when `MESH_DIAGNOSTICS=json`, otherwise
+/// for a person, in color on a terminal without `NO_COLOR`.
+pub(crate) fn format() -> Format {
+    static FORMAT: std::sync::OnceLock<Format> = std::sync::OnceLock::new();
+    *FORMAT.get_or_init(Format::for_runtime)
+}
+
+/// `diagnostic` as `format` writes it: a person's lines with the footer
+/// for its code, or one JSON object and a newline.
+pub(crate) fn render_as(format: Format, diagnostic: &Diagnostic) -> String {
+    let mut out = Vec::new();
+    Reporter::new(format, &mut out).emit(diagnostic.clone());
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+/// Report `diagnostic` on standard error, in the program's [`format`]; on a
+/// grouped actor's worker, through the writer thread.
+pub(crate) fn report(diagnostic: &Diagnostic) {
+    let text = render_as(format(), diagnostic);
+    if DEFER_DIAGNOSTICS.get() {
+        enqueue_diagnostic(text);
+    } else {
+        write_stderr(text.as_bytes());
+    }
+}
+
+/// Report a Mesh panic as its diagnostic: the default report's thread name
+/// and runtime source location say nothing about the Mesh program. Any
+/// other panic is a runtime bug and keeps the default report.
 pub(crate) fn install_hook() {
     static INSTALL: std::sync::Once = std::sync::Once::new();
     INSTALL.call_once(|| {
         let default = std::panic::take_hook();
-        std::panic::set_hook(Box::new(move |info| {
-            match mesh_panic_message(info.payload()) {
-                Some(message) if !QUIET.with(|quiet| quiet.get()) => {
-                    if DEFER_DIAGNOSTICS.get() {
-                        enqueue_diagnostic(message);
-                    } else {
-                        use std::io::Write;
-                        let _ = writeln!(std::io::stderr(), "{message}");
-                    }
-                }
-                Some(_) => {}
-                None => default(info),
-            }
+        std::panic::set_hook(Box::new(move |info| match MeshPanic::of(info.payload()) {
+            Some(_) if QUIET.with(|quiet| quiet.get()) => {}
+            Some(panic) => report(&panic.diagnostic),
+            None => default(info),
         }));
     });
-}
-
-/// The message of a Mesh panic; `None` for any other panic payload.
-pub(crate) fn mesh_panic_message(payload: &(dyn std::any::Any + Send)) -> Option<&str> {
-    let message = payload
-        .downcast_ref::<String>()
-        .map(String::as_str)
-        .or_else(|| payload.downcast_ref::<&str>().copied())?;
-    message.starts_with("Mesh panic").then_some(message)
 }
 
 /// Run `f` with Mesh panics left for the caller to report.
@@ -181,6 +278,40 @@ pub(crate) fn quietly<T>(f: impl FnOnce() -> T) -> T {
     let result = f();
     QUIET.with(|quiet| quiet.set(previous));
     result
+}
+
+/// Run `f` for an embedder that goes on after a panic (the REPL): a panic
+/// out of it is returned as its diagnostic for the caller to report, an
+/// `R0001` for one that is not a Mesh panic (the runtime reported it).
+pub fn catch_panic<T>(f: impl FnOnce() -> T) -> Result<T, Diagnostic> {
+    quietly(|| std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))).map_err(|payload| {
+        match MeshPanic::of(&*payload) {
+            Some(panic) => panic.diagnostic.clone(),
+            None => Diagnostic::new(Code::Panic, "the runtime failed (reported above)"),
+        }
+    })
+}
+
+/// The exit reason of an actor that `payload` unwound out of, for its
+/// links, monitors and supervisor. A Mesh panic was reported as it was
+/// raised, and so was a failed assertion; any other panic is the runtime
+/// failing inside the actor, reported here as `R0101`.
+pub(crate) fn actor_exit_reason(payload: &(dyn Any + Send)) -> String {
+    if let Some(panic) = MeshPanic::of(payload) {
+        return panic.reason.clone();
+    }
+    if payload.is::<crate::test::TestFailed>() {
+        return "assertion failed".to_string();
+    }
+    report(&Diagnostic::new(
+        Code::ActorCrashed,
+        "an actor crashed: the runtime failed (reported above)",
+    ));
+    payload
+        .downcast_ref::<String>()
+        .cloned()
+        .or_else(|| payload.downcast_ref::<&str>().map(|s| s.to_string()))
+        .unwrap_or_else(|| "actor panicked".into())
 }
 
 /// Run the program's `main` function on the main thread.
@@ -219,4 +350,127 @@ pub(crate) fn die_of_sigpipe() -> ! {
         libc::raise(libc::SIGPIPE);
     }
     std::process::exit(141)
+}
+
+/// The exit reason of the Mesh panic `f` raises, for tests of runtime
+/// functions that raise one.
+#[cfg(test)]
+pub(crate) fn raised(f: impl FnOnce()) -> String {
+    let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
+        .expect_err("a Mesh panic was raised");
+    MeshPanic::of(&*payload)
+        .expect("the panic is a Mesh panic")
+        .reason()
+        .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SECRET: &str = "twenty-seven characters!!!!";
+
+    /// The payload of the panic `raise` unwinds with, reported nowhere.
+    fn caught(raise: impl FnOnce()) -> Box<dyn Any + Send> {
+        install_hook();
+        quietly(|| std::panic::catch_unwind(std::panic::AssertUnwindSafe(raise)))
+            .expect_err("it panics")
+    }
+
+    /// Every format the runtime renders `panic` in.
+    fn rendered(panic: &MeshPanic) -> Vec<String> {
+        [Format::Json, Format::Human { color: false }]
+            .into_iter()
+            .map(|format| render_as(format, panic.diagnostic()))
+            .chain([panic.reason().to_string()])
+            .collect()
+    }
+
+    /// A panic inside `Plaintext.map` is redacted before its diagnostic is
+    /// built, so neither the exit reason nor any rendering of its `R0001`
+    /// shows what the content made of the message.
+    #[test]
+    fn a_panic_on_plaintext_withholds_its_message_from_every_format() {
+        let message = format!("List.get: index {} is out of bounds", SECRET.len());
+        let raises: [Box<dyn Fn()>; 3] = [
+            Box::new(|| raise(format_args!("{message}"))),
+            Box::new(|| {
+                mesh_panic_at(
+                    message.as_ptr(),
+                    message.len() as u64,
+                    "main.mpl".as_ptr(),
+                    8,
+                    4,
+                    3,
+                )
+            }),
+            Box::new(|| mesh_panic(message.as_ptr(), message.len() as u64, "f".as_ptr(), 1, 0)),
+        ];
+        for raise in raises {
+            mesh_plaintext_enter();
+            let payload = caught(raise);
+            let panic = MeshPanic::of(&*payload).expect("a Mesh panic");
+            assert_eq!(panic.diagnostic().code(), Code::Panic);
+            for text in rendered(panic) {
+                assert!(!text.contains("27"), "the index leaked: {text}");
+                assert!(text.contains(WITHHELD), "{text}");
+            }
+            assert!(!computing_on_plaintext(), "the panic left the computation");
+        }
+    }
+
+    /// Outside `Plaintext.map` the message is the diagnostic's, and a
+    /// panic compiled code places names its file, line and column.
+    #[test]
+    fn a_placed_panic_is_an_r0001_at_its_line_and_column() {
+        let message = "division by zero";
+        let payload = caught(|| {
+            mesh_panic_at(
+                message.as_ptr(),
+                message.len() as u64,
+                "src/math.mpl".as_ptr(),
+                12,
+                7,
+                14,
+            )
+        });
+        let panic = MeshPanic::of(&*payload).unwrap();
+        assert_eq!(panic.reason(), "Mesh panic: division by zero");
+        let json: serde_json::Value =
+            serde_json::from_str(&render_as(Format::Json, panic.diagnostic())).unwrap();
+        assert_eq!(json["code"], "R0001");
+        assert_eq!(json["message"], message);
+        assert_eq!(json["file"], "src/math.mpl");
+        assert_eq!(
+            (json["line"].as_u64(), json["col"].as_u64()),
+            (Some(7), Some(14))
+        );
+        let human = render_as(Format::Human { color: false }, panic.diagnostic());
+        assert!(
+            human.starts_with("[R0001] Error: division by zero\n   --> src/math.mpl:7:14\n"),
+            "{human}"
+        );
+    }
+
+    /// The ABI before `mesh_panic_at` passes a function's name where the
+    /// file would be: it is a note, never a location.
+    #[test]
+    fn a_legacy_panic_names_its_function_not_a_file() {
+        let payload = caught(|| mesh_panic("no match".as_ptr(), 8, "Main__f".as_ptr(), 7, 3));
+        let panic = MeshPanic::of(&*payload).unwrap();
+        assert_eq!(panic.reason(), "Mesh panic in Main__f: no match");
+        assert_eq!(panic.diagnostic().file(), None);
+        assert_eq!(panic.diagnostic().line(), None);
+        assert_eq!(panic.diagnostic().notes(), ["raised in `Main__f`"]);
+    }
+
+    /// An embedder gets the diagnostic of a Mesh panic, and an `R0001` for
+    /// any other.
+    #[test]
+    fn catch_panic_returns_the_diagnostic() {
+        install_hook();
+        let mesh = catch_panic(|| raise(format_args!("boom"))).unwrap_err();
+        assert_eq!((mesh.code(), mesh.message()), (Code::Panic, "boom"));
+        assert_eq!(catch_panic(|| 7).unwrap(), 7);
+    }
 }

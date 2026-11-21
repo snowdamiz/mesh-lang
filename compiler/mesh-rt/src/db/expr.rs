@@ -492,7 +492,7 @@ mod tests {
         })
         .expect_err("the builder panics");
         assert_eq!(
-            panicked.downcast_ref::<String>().map(String::as_str),
+            crate::panic::MeshPanic::of(&*panicked).map(crate::panic::MeshPanic::reason),
             Some("Mesh panic: Expr.case: 2 condition(s) but 1 result(s)")
         );
     }

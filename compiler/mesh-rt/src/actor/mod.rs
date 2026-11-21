@@ -1463,9 +1463,13 @@ extern "C-unwind" fn supervisor_entry(args: *const u8) {
         let (child_pid, reason) = link::decode_exit_signal(message.buffer.data())
             .expect("the runtime encodes every exit signal it sends, and only it tags one");
         let mut state = state.lock();
-        if supervisor::handle_child_exit(&mut state, child_pid, &reason, sched, supervisor_pid)
-            .is_err()
+        if let Err(limit) =
+            supervisor::handle_child_exit(&mut state, child_pid, &reason, sched, supervisor_pid)
         {
+            crate::panic::report(&mesh_diagnostics::Diagnostic::new(
+                mesh_diagnostics::Code::SupervisorGaveUp,
+                format!("supervisor {supervisor_pid} gave up: {limit}"),
+            ));
             break;
         }
     }
