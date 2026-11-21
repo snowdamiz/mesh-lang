@@ -6,6 +6,20 @@ with the change so the next edit runs the same regression check. Run it
 before and after the edit. If the request changes a predicate, check the
 boundaries on both sides.
 
+## Run a project test
+
+Run `meshc test .` from a project with `mesh.toml`, or select a directory or
+a single `*.test.mpl` file. Write `test("literal name") do ... end` and use
+`assert`, `assert_eq`, or `assert_ne`. Put reusable test helpers under
+`tests/`. The runner replaces the executable entrypoint, so import
+production code from a regular module. For group setup and teardown,
+mock actors, receive assertions, or temporary files, use the
+[testing guide](https://meshlang.dev/docs/testing/).
+
+Check the named test and the file count. An empty test discovery exits
+successfully. A compile error differs from an assertion failure after the
+program runs.
+
 ## Add HTTP 429 to a retry policy
 
 Suppose the current production policy is `status == 503 && left > 0`.
@@ -64,26 +78,8 @@ about the request. The sweep covers the listed budgets and HTTP statuses.
 
 ## Verify laws
 
-Use `meshc verify . --list` to find existing laws before editing a pure
-function. Keep their requirement statements intact during implementation
-changes. If CI supplies a trusted inventory, pass it with `--preserve` so
-deleting or weakening a requirement fails the gate.
-
-A result law uses `law name(...) -> ResultType do ... end` to state the
-expected result independently. Mesh uses pinned Z3 for supported scalar
-laws. A `proof` block supplies a Mesh proof for recursive result laws.
-
-Start a `.law` file with `logic` to state named theorems, apply proved lemmas,
-and use induction, quantified hypotheses, witnesses, and dependent types.
-Import the checked function from its Mesh module so the theorem refers to
-the implementation that builds. Author the proof in Mesh and run
-`meshc verify . --verdict` with the pinned Lean toolchain to recheck its proof
-export. Inspect any `falsified` or `unverified` verdict before reporting that a
-requirement holds. See the [policy and proof guide](https://meshlang.dev/docs/tooling/#verify-a-pure-policy).
-
-An ordinary `.mpl` module can use `logic do ... end` to state and prove a
-theorem. `meshc build` and `meshc test` check embedded proofs when they build
-the module. Import a public closed theorem as a proof value, or apply a
-public theorem to static Nat indices and its required proof arguments.
-Pass the resulting `Proof<Predicate<Index>>` to a native Mesh function that
-requires evidence at that index. See the [embedded proof example](https://meshlang.dev/docs/tooling/#use-proofs-in-a-mesh-program).
+When a project has `.law` files, inventory them with `meshc verify . --list`
+before changing behavior. Run `meshc verify` explicitly after the change.
+Use the [verification guide](verification.md) for result laws, theorem proofs,
+proof values in `.mpl` files, and trusted baselines. Continue to run named
+runtime tests alongside the law check.

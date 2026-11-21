@@ -1,155 +1,84 @@
-# Mesh Traits
+# Mesh traits
 
-See also: skills/types for struct definitions used in deriving examples.
+## Interfaces and implementations
 
-## Interfaces (Trait Definitions)
-1. Defined with `interface Name do method_signatures end`.
-2. Methods can have a `self` parameter for instance methods.
-3. Associated types declared with `type Item` inside the interface body.
-4. Interfaces describe a contract — types implement the contract via `impl`.
+`interface Name do ... end` declares a trait. Interfaces may take type parameters, declare required methods, and provide methods with default bodies. `impl Interface for Type do ... end` supplies required methods with matching signatures. A method with `self` can use receiver syntax such as `box.first()`. A static method omits `self` and uses the implementing type, as in `Box.from(value)`.
+
+An interface can declare an associated type with `type Item` and reference it as `Self.Item`. Each implementation binds it once. A generic function can require an interface using `where T: Display`. See [types](types.md) and the [interface reference](https://meshlang.dev/docs/reference/#interfaces-and-implementations).
 
 ```mesh
 interface Container do
   type Item
   fn first(self) -> Self.Item
-end
-```
-
-## Impl Blocks
-1. `impl InterfaceName for TypeName do ... end` provides the implementation.
-2. Associated types are assigned: `type Item = Int`.
-3. Method bodies are full function implementations with `do...end`.
-4. `self` refers to the current instance (bound by the struct/type being implemented).
-5. Multiple interfaces can be implemented for the same type.
-
-```mesh
-struct IntPair do
-  a :: Int
-  b :: Int
+  fn label(self) -> String do
+    "container"
+  end
 end
 
-struct StrPair do
-  a :: String
-  b :: String
+struct IntBox do
+  value :: Int
 end
 
-impl Container for IntPair do
+impl Container for IntBox do
   type Item = Int
   fn first(self) -> Int do
-    42
+    self.value
   end
 end
 
-impl Container for StrPair do
-  type Item = String
-  fn first(self) -> String do
-    "hello"
-  end
+fn render<T>(value :: T) -> String where T: Display do
+  value.to_string()
 end
 
 fn main() do
-  let ip = IntPair { a: 1, b: 2 }
-  let i = ip.first()   # calls Container impl
-  println(i.to_string())
+  let box = IntBox { value: 42 }
+  println(box.label() <> ": " <> render(box.first()))  # container: 42
 end
 ```
 
-## Deriving Macros
-1. `end deriving(Protocol1, Protocol2)` on a struct/type automatically generates implementations.
-2. Multiple protocols can be derived in one `deriving(...)` clause.
-3. `deriving` only applies to `struct` and `type` (ADT) definitions.
-4. Only derive what you need — unused protocols add compile overhead.
+## Built-in interfaces and conversion
 
-### Json
-1. `deriving(Json)` generates `Json.encode(val) -> String` and `TypeName.from_json(str) -> Result<TypeName, String>`.
-2. Field names in JSON match the struct field names exactly.
-3. Nested structs require the inner struct to also derive Json.
+- `Eq` drives `==` and `!=`. `Ord` drives ordering and `compare(a, b)`, which returns `Less`, `Equal`, or `Greater`. An `Ord` implementation defines `lt(self, other) -> Bool`.
+- `Display` provides `to_string()` and interpolation. `Debug` provides `inspect()`, which quotes and escapes strings. `Hash` provides `hash()`, and `Default` provides `default()` for the type expected by the caller.
+- `Add`, `Sub`, `Mul`, `Div`, `Mod`, and unary `Neg` have an associated `Output` type. `Iterable` and `Iterator` support `for ... in`. See [numeric traits](https://meshlang.dev/docs/type-system/#numeric-traits) and [iterators](https://meshlang.dev/docs/iterators/).
+- `impl From<Source> for Target` provides `Target.from(value)` and generates `value.into()`. Give `into()` an expected type, such as `let ratio :: Float = 7.into()`. `Float.from(7)` names the target explicitly. [From and Into](https://meshlang.dev/docs/type-system/#from-into-conversion)
+- `impl TryFrom<Source> for Target` provides `Target.try_from(value)` returning `Target!E` and generates `value.try_into()`. An expected result type selects the target for `try_into()`. Postfix `?` can propagate that result's error. [TryFrom and TryInto](https://meshlang.dev/docs/type-system/#tryfrom-tryinto-conversion)
+
+See [error handling](error-handling.md) for a `From` implementation used during `?` propagation.
+
+## Deriving
+
+`deriving(...)` after `end` selects the generated implementations. `deriving()` selects none. Without a clause, ordinary structs derive `Eq`, `Ord`, `Debug`, and `Hash`, and ordinary sum types derive `Eq`, `Ord`, and `Debug`. For explicit `Ord`, include `Eq` in the same clause. Resource types derive nothing.
+
+| Derive | Generated behavior |
+| --- | --- |
+| `Eq`, `Ord` | Structural equality and ordering. Struct ordering compares fields in declaration order. |
+| `Display`, `Debug`, `Hash` | Display text, debug text, and a hash consistent with equality. |
+| `Json` | Encoding via `value.to_json()` or `Json.encode(value)`, and decoding via `Type.from_json(text) -> Type!String`. Sum types encode a `"tag"` and a `"fields"` array. Fields must support JSON, including nested types. |
+| `Row` | Struct-only `Type.from_row(row) -> Type!String`, where `row` is a `Map<String, String>`. Column names match fields. Supported fields are `String`, `Int`, `Float`, `Bool`, and their optional forms. |
+| `Schema` | Struct-only metadata for the ORM and query APIs. |
+
+Generic derives use the actual field types at each instantiation. A generic decoder can use an annotation such as `let parsed :: Box<Int>!String = Box.from_json(text)` to select the instantiation.
 
 ```mesh
 struct User do
   name :: String
   age :: Int
-  score :: Float
-  active :: Bool
-end deriving(Json)
+end deriving(Json, Row)
 
-let u = User { name: "Alice", age: 30, score: 95.5, active: true }
-let json = Json.encode(u)
-println(json)   # {"name":"Alice","age":30,"score":95.5,"active":true}
-
-let result = User.from_json(json)
-case result do
-  Ok(u2) -> println("#{u2.name} #{u2.age}")
-  Err(e) -> println("Error: #{e}")
+fn main() do
+  let row = %{"name" => "Ada", "age" => "37"}
+  case User.from_row(row) do
+    Ok(user) ->
+      let text = Json.encode(user)
+      println(text)  # {"name":"Ada","age":37}
+      case User.from_json(text) do
+        Ok(decoded) -> println("#{decoded.name}: #{decoded.age}")  # Ada: 37
+        Err(e) -> println(e)
+      end
+    Err(e) -> println(e)
+  end
 end
 ```
 
-### Row
-1. `deriving(Row)` generates `TypeName.from_row(map) -> Result<TypeName, String>`.
-2. The row is a `Map<String, String>` — all values are strings (as returned by database drivers).
-3. Automatic type coercion: Int fields parse from string, Float from string, Bool from "t"/"true"/"1".
-4. Used with `Sqlite.query` and `Pg.query` results.
-
-```mesh
-struct User do
-  name :: String
-  age :: Int
-  score :: Float
-  active :: Bool
-end deriving(Row)
-
-let row = Map.new()
-let row = Map.put(row, "name", "Alice")
-let row = Map.put(row, "age", "30")
-let row = Map.put(row, "score", "95.5")
-let row = Map.put(row, "active", "t")
-
-case User.from_row(row) do
-  Ok(u) -> println("#{u.name} #{u.age}")
-  Err(e) -> println("Error: #{e}")
-end
-```
-
-### Display
-1. `deriving(Display)` generates `.to_string()` method and enables `"#{val}"` interpolation.
-2. Structs render as `TypeName { field: value, ... }`.
-3. Required for using a struct value inside string interpolation.
-
-### Eq
-1. `deriving(Eq)` generates `==` and `!=` operators.
-2. Comparison is field-by-field structural equality.
-3. All fields must also implement `Eq`.
-
-### Ord
-1. `deriving(Ord)` generates `<`, `>`, `<=`, `>=` operators.
-2. Comparison is lexicographic: first field first, then second, etc.
-3. Requires `Eq` to also be derived or implemented.
-
-```mesh
-struct Box<T> do
-  value :: T
-end deriving(Display, Eq)
-
-let b1 = Box { value: 42 }
-let b2 = Box { value: 42 }
-let b3 = Box { value: 99 }
-println("#{b1 == b2}")   # true
-println("#{b1 == b3}")   # false
-```
-
-### Sum Type Deriving
-1. `type` (ADT) can also derive Json.
-2. Each variant serializes with a `"type"` discriminant field.
-
-```mesh
-type Shape do
-  Circle(Float)
-  Rectangle(Float, Float)
-end deriving(Json)
-```
-
-## Associated Types
-1. Declared in the interface: `type Item`.
-2. Referred to in method signatures as `Self.Item`.
-3. Assigned in the impl: `type Item = ConcreteType`.
-4. Enables generic interfaces whose output type varies per implementation.
+See [strings and JSON](strings.md), [database row decoding](database.md), and the [deriving reference](https://meshlang.dev/docs/type-system/#deriving).

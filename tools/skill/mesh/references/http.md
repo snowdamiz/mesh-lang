@@ -1,243 +1,87 @@
 # Mesh HTTP and WebSockets
 
-## HTTP Server Basics
+`HTTP` serves inbound HTTP. `Http` sends outbound HTTP requests. `Ws` and `WsClient` serve and connect to WebSockets, respectively.
 
-Rules:
-1. `HTTP.router()` creates a new router instance.
-2. `HTTP.route(router, path, handler)` registers a handler for a path — returns updated router (rebind).
-3. `HTTP.on_get`, `HTTP.on_post`, `HTTP.on_put`, and `HTTP.on_delete` register method-specific handlers — each returns updated router (rebind).
-4. `HTTP.serve(router, port)` starts the HTTP server on the given port (blocks).
-5. Handler signature: `fn handler(request) do ... HTTP.response(status, body) end`.
-6. `HTTP.response(status_code, body_string)` creates a Response — return this from handlers.
-7. For JSON responses, use `json { }` literals — they are type-safe, and a `Json` passed as a String argument is its JSON text: `HTTP.response(200, json { status: "ok", id: record_id })`.
+## HTTP routing and middleware
 
-Code example (from tests/e2e/stdlib_http_server_runtime.mpl):
+`HTTP.route(router, path, handler)` matches any method. `HTTP.on_get`, `HTTP.on_post`, `HTTP.on_put`, and `HTTP.on_delete` match one method. Router functions return the router and compose with `|>`. Exact paths take precedence over parameterized paths and wildcards. Within each category, the first registered match wins. [Routing and path parameters](https://meshlang.dev/docs/web/#routing)
+
+A handler receives `Request` and returns `Response`. Middleware registered with `HTTP.use(router, middleware)` receives the request and a continuation. Call `next(request)` to continue, or return a response to stop the chain. Middleware runs in registration order. [Middleware](https://meshlang.dev/docs/web/#middleware)
+
 ```mesh
-fn handler(request) do
-  HTTP.response(200, json { status: "ok" })
+fn users(request :: Request) -> Response do
+	case Request.param(request, "id") do
+		Some(id) -> HTTP.response(200, json { id: id })
+		None -> HTTP.response(400, json { error: "missing id" })
+	end
+end
+
+fn check_token(request :: Request, next) -> Response do
+	case Request.header(request, "X-Demo-Token") do
+		Some("demo") -> next(request)
+		_ -> HTTP.response(401, json { error: "missing or invalid token" })
+	end
 end
 
 fn main() do
-  let r = HTTP.router()
-  let r = HTTP.route(r, "/health", handler)
-  HTTP.serve(r, 8080)
+	Process.install_shutdown_signals()
+	let router = HTTP.router()
+		|> HTTP.use(check_token)
+		|> HTTP.on_get("/users/:id", users)
+	HTTP.serve(router, 8080)
 end
 ```
 
-## Method-Specific Route Helpers
+## Requests, responses, and server lifecycle
 
-Rules:
-1. `HTTP.on_get(router, path, handler)`, `HTTP.on_post(router, path, handler)`, `HTTP.on_put(router, path, handler)`, and `HTTP.on_delete(router, path, handler)` register handlers for a specific HTTP method.
-2. They compose naturally with `|>` pipelines and keep the method visible at the callsite.
-3. `HTTP.route(...)` remains the generic route API and is still valid when you do not want method-specific helpers.
-4. The shipped PostgreSQL Todo starter uses `HTTP.on_get`, `HTTP.on_post`, `HTTP.on_put`, and `HTTP.on_delete` while keeping clustered read routes bounded; the SQLite Todo starter keeps all routes local and does not claim `HTTP.clustered(...)`.
+| API | Behavior |
+| --- | --- |
+| `Request.method`, `Request.path`, `Request.body` | Return strings. Use `Request.body_bytes` for the exact request bytes. |
+| `Request.header`, `Request.query`, `Request.param` | Return `Option<String>` for a header, query parameter, or path parameter. Header lookup ignores case. |
+| `HTTP.request_id`, `HTTP.idempotency_key` | Return a correlation ID as `String` and a validated caller key as `Option<String>`, respectively. |
+| `HTTP.response(status, body)` | Build a text response with default content type `application/json; charset=utf-8`. A `json { ... }` value in a string argument supplies its JSON text. |
+| `HTTP.response_bytes(status, bytes)` | Build a byte-exact response with default content type `application/octet-stream`. |
+| `HTTP.response_with_headers`, `HTTP.response_bytes_with_headers` | Take a third argument of `Map<String, String>` for custom headers, including a content type override. |
 
-Code example (from `compiler/mesh-pkg/src/scaffold.rs`):
-```mesh
-pub fn build_router() do
-  let router = HTTP.router()
-    |> HTTP.on_get("/health", handle_health)
-    |> HTTP.on_get("/todos", HTTP.clustered(1, handle_list_todos))
-    |> HTTP.on_get("/todos/:id", HTTP.clustered(1, handle_get_todo))
-    |> HTTP.on_post("/todos", handle_create_todo)
-    |> HTTP.on_put("/todos/:id", handle_toggle_todo)
-    |> HTTP.on_delete("/todos/:id", handle_delete_todo)
-  router
-end
-```
+The server limits the request line and headers to 8 KiB each, accepts at most 100 headers, and limits the body to 1 MiB. Send a bounded `Content-Length` for request bodies. Requests with `Transfer-Encoding` are rejected. Invalid idempotency keys return `400` before handler dispatch. [Request accessors and limits](https://meshlang.dev/docs/web/#request-accessors) · [Response constructors](https://meshlang.dev/docs/web/#creating-responses)
 
-## Request Object
+`HTTP.serve(router, port)` blocks while serving. `HTTP.serve_tls(router, port, cert_path, key_path)` uses PEM files. A handler panic returns `500` and leaves the server available. After `Process.install_shutdown_signals()`, `SIGINT` and `SIGTERM` stop new accepts and drain accepted connections. `Process.request_shutdown()` triggers the same path. [TLS](https://meshlang.dev/docs/web/#tls) · [Graceful shutdown](https://meshlang.dev/docs/web/#graceful-shutdown)
 
-Rules:
-1. Handlers receive a `Request` value — use `Request.*` functions to inspect it.
-2. `Request.path(request)` — returns the URL path as String.
-3. `Request.param(request, "name")` — extracts a named path parameter (e.g., from `/users/:id`).
-4. `Request.body(request)` — returns the raw request body as String.
-5. `Request.header(request, "Header-Name")` — reads a request header.
+## Clustered routes
 
-Code example (from tests/e2e/stdlib_http_path_params.mpl):
-```mesh
-fn user_handler(request :: Request) do
-  let id = Request.param(request, "id")
-  HTTP.response(200, "user id: #{id}")
-end
+Put `HTTP.clustered(handler)` or `HTTP.clustered(N, handler)` directly in the handler argument of `HTTP.route` or `HTTP.on_*`. The handler is a named public function taking `Request` and returning `Response`. The count is a positive integer literal and includes the executor's record. The omitted count uses `[cluster].default_replicas`, or 2 without one. A handler cannot be registered with conflicting counts. Failed placement returns `503`. For routes that can replay writes, use a validated caller `Idempotency-Key`. [Clustered routes and response headers](https://meshlang.dev/docs/web/#clustered-routes) · [Bootstrap and replay rules](clustering.md#clustered-routes-and-continuity)
 
-fn main() do
-  let r = HTTP.router()
-  let r = HTTP.route(r, "/users/:id", user_handler)
-  HTTP.serve(r, 8080)
-end
-```
+## Outbound HTTP
 
-## Response Helpers
+`Http.build(method, url)` creates a single-use request handle. Methods include `:get`, `:head`, `:post`, `:put`, `:patch`, `:delete`, and `:options`. Set headers and query parameters with `Http.header` and `Http.query`. Set a request body with `Http.body`, `Http.body_bytes`, or `Http.json`. Bound requests with `Http.timeout`, `Http.stage_timeout`, `Http.max_redirects`, and `Http.max_response_bytes`. A redirect limit of `0` disables redirects. [Fluent builder and limits](https://meshlang.dev/docs/web/#fluent-builder)
 
-Rules:
-1. `HTTP.response(status, body)` — creates response with given status code and string body.
-2. `HTTP.response_bytes(status, body)` preserves a binary body; use `HTTP.response_bytes_with_headers(status, body, headers)` when binary responses need custom headers.
-3. Return a response from any handler or middleware.
-4. Common status codes: 200 (ok), 201 (created), 400 (bad request), 401 (unauthorized), 404 (not found), 500 (error).
-
-Code example (from tests/e2e/stdlib_http_response.mpl):
-```mesh
-fn handler(request :: Request) -> Response do
-  HTTP.response(200, "hello world")
-end
-```
-
-## Clustered Route Wrappers
-
-Rules:
-1. `HTTP.clustered(handler)` wraps a bare public handler reference with the default replication count.
-2. `HTTP.clustered(1, handler)` sets an explicit replication count; the shipped PostgreSQL Todo starter uses explicit-count `HTTP.clustered(1, ...)` on `GET /todos` and `GET /todos/:id`.
-3. Keep route-free `@cluster` declarations as the canonical clustered surface. `HTTP.clustered(...)` is a routed HTTP wrapper, not a replacement for source-first clustered work.
-4. `meshc init --template todo-api --db sqlite` is the honest local starter and does not make `HTTP.clustered(...)` part of its public contract.
-5. `GET /health` and mutating routes stay local in the shipped PostgreSQL Todo starter.
-6. `HTTP.clustered(...)` must appear in route-handler position and wrap a bare handler reference.
-7. For clustered-runtime bootstrap, scaffold, or operator guidance, also load [clustering](clustering.md).
-
-Code example — accepted forms (grounded in `compiler/mesh-typeck/tests/http_clustered_routes.rs`):
-```mesh
-let router = HTTP.router()
-  |> HTTP.on_get("/todos", HTTP.clustered(handle_list_todos))
-  |> HTTP.on_get("/todos/:id", HTTP.clustered(1, handle_get_todo))
-```
-
-## Middleware
-
-Rules:
-1. `HTTP.use(router, middleware_fn)` registers middleware — returns updated router (rebind).
-2. Middleware signature: `fn name(request :: Request, next) -> Response do ... end`.
-3. Call `next(request)` to pass control to the next middleware or final handler.
-4. Return a Response directly (without calling `next`) to short-circuit (e.g., auth rejection).
-5. Middleware executes in registration order — first registered runs first.
-6. Multiple middleware can be chained with successive `HTTP.use` calls.
-
-Code example (from tests/e2e/stdlib_http_middleware.mpl):
-```mesh
-fn logger(request :: Request, next) -> Response do
-  next(request)   # pass through
-end
-
-fn auth_check(request :: Request, next) do
-  let path = Request.path(request)
-  if String.starts_with(path, "/secret") do
-    HTTP.response(401, "Unauthorized")   # short-circuit
-  else
-    next(request)
-  end
-end
-
-fn main() do
-  let r = HTTP.router()
-  let r = HTTP.use(r, logger)
-  let r = HTTP.use(r, auth_check)
-  let r = HTTP.route(r, "/hello", handler)
-  let r = HTTP.route(r, "/secret", secret_handler)
-  HTTP.serve(r, 8080)
-end
-```
-
-## HTTP Client
-
-Rules:
-1. `Http.build(method, url)` — creates a new request. `method` is an atom: `:get`, `:post`, `:put`, `:delete`. Returns a Request handle.
-2. `Http.header(req, key, value)` — adds a header. Returns updated request (rebind).
-3. `Http.body(req, s)` — sets the request body string (for POST/PUT). Returns updated request.
-4. `Http.timeout(req, ms)` — sets a per-request timeout in milliseconds. Returns updated request.
-5. `Http.max_redirects(req, count)` — sets a request-local redirect limit from 0 through 20; 0 disables redirects. Returns updated request.
-6. `Http.send(req)` — executes the request. Returns `Result<String, String>` — `Ok(body)` on 2xx, `Err(message)` otherwise.
-7. `Http.stream(req, fn chunk -> ... end)` — streams response body chunk by chunk in an OS thread. Callback returns `"ok"` to continue, `"stop"` to cancel. Does not buffer the full body.
-8. `Http.client()` — creates a keep-alive HTTP client handle for connection reuse.
-9. `Http.send_with(client, req)` — sends request using the client's connection pool. Returns `Result<String, String>`.
-10. `Http.client_close(client)` — releases the client and its connections.
-11. CRITICAL: `Http.*` (lowercase) = HTTP CLIENT. `HTTP.*` (uppercase) = HTTP SERVER. Never mix them.
-
-Code example — GET with headers (from tests/e2e/http_client_builder.mpl):
 ```mesh
 fn main() do
-  let req = Http.build(:get, "https://api.example.com/data")
-  let req = Http.header(req, "Authorization", "Bearer token")
-  let req = Http.timeout(req, 5000)
-  let req = Http.max_redirects(req, 0)
-  let result = Http.send(req)
-  case result do
-    Ok(resp) -> println(resp)
-    Err(e) -> println("error: #{e}")
-  end
+	let request = Http.build(:get, "http://127.0.0.1:8080/users/42")
+		|> Http.header("X-Demo-Token", "demo")
+		|> Http.timeout(5_000)
+		|> Http.max_redirects(0)
+	case Http.send(request) do
+		Ok(response) -> println("#{response.status}: #{response.body}")
+		Err(error) -> println(error)
+	end
 end
 ```
 
-Code example — POST with body (from tests/e2e/http_client_builder.mpl):
-```mesh
-fn main() do
-  let req = Http.build(:post, "https://api.example.com/items")
-  let req = Http.header(req, "Content-Type", "application/json")
-  let req = Http.body(req, json { name: "widget" })
-  let result = Http.send(req)
-  case result do
-    Ok(resp) -> println(resp)
-    Err(e) -> println(e)
-  end
-end
-```
+`Http.send` and `Http.send_with(client, request)` yield and return `Result<HttpResponse, String>`. The response has `status`, `headers`, `body`, and `body_bytes`. HTTP error statuses such as `404` arrive as `Ok(response)`. Transport failures, timeouts, and size-limit violations return `Err`. The text body is empty if the bytes are invalid UTF-8. Open a reusable connection pool with `Http.client()` and release it with `Http.client_close(client)`. [Response contract](https://meshlang.dev/docs/web/#fluent-builder) · [Keep-alive client](https://meshlang.dev/docs/web/#keep-alive-client)
 
-Code example — Streaming (from tests/e2e/http_stream_compile.mpl):
-```mesh
-fn main() do
-  let req = Http.build(:get, "https://example.com/stream")
-  let _handle = Http.stream(req, fn chunk do
-    println(chunk)
-    "ok"
-  end)
-end
-```
+`Http.stream(request, callback)` provides UTF-8 chunks. `Http.stream_bytes` provides `Bytes`. The I/O thread waits for each callback before reading more. Return `"stop"` to end the stream or `"continue"` to keep reading. `Http.cancel(handle)` cancels a pending or active request or stream. Streaming failures end the stream and can appear in process-wide `Http.metrics()`. Use `Http.retry_class(method, error)` when implementing your own retry policy. [Streaming](https://meshlang.dev/docs/web/#streaming) · [Cancellation](https://meshlang.dev/docs/web/#cancellation) · [Retries and metrics](https://meshlang.dev/docs/web/#retries-and-metrics)
 
-Code example — Keep-alive client (from tests/e2e/http_client_keepalive.mpl):
-```mesh
-fn main() do
-  let client = Http.client()
-  let req = Http.build(:get, "https://api.example.com/data")
-  let result = Http.send_with(client, req)
-  case result do
-    Ok(resp) -> println(resp)
-    Err(e) -> println(e)
-  end
-  Http.client_close(client)
-end
-```
+## WebSockets
 
-## WebSocket
+`Ws.serve(on_connect, on_message, on_close, port)` starts a separate listener and returns after binding. Keep the process alive with other application work. `Ws.serve_tls` takes additional PEM certificate and key paths. Each connection has an isolated actor.
 
-Rules:
-1. WebSocket support is integrated with the HTTP server — same router.
-2. `HTTP.ws_route(router, path, ws_handler)` registers a WebSocket handler.
-3. WebSocket handlers work with the actor runtime — each connection is an actor.
-4. `HTTP.ws_send(conn, message)` sends a message to a WebSocket connection.
-5. See skills/actors for the actor model that backs WebSocket connections.
+| Callback | Contract |
+| --- | --- |
+| `on_connect(conn, path, headers)` | Runs after upgrade. Return a nonzero integer to accept, or `0` to close with code 1008. |
+| `on_message(conn, message)` | Handles a message. Use `Ws.send(conn, text)` to reply. |
+| `on_close(conn, code, reason)` | Receives the close code and reason. Room membership is removed automatically. |
 
-## Error Handling with HTTP.serve
+`Ws.join` and `Ws.leave` manage room membership. `Ws.broadcast` and `Ws.broadcast_except` notify room members across connected nodes and return a count of local write failures. Applications that need durable delivery must handle catch-up. [WebSocket server](https://meshlang.dev/docs/web/#websocket) · [Rooms and broadcasting](https://meshlang.dev/docs/web/#rooms-and-broadcasting)
 
-Rules:
-1. `HTTP.serve` runs the server inside the actor runtime.
-2. Handler panics are isolated — one failing request does not crash the server.
-3. For production use, pair with a supervisor (see skills/supervisors) to restart the server actor on crash.
-4. The `HTTP.crash_isolation` test verifies that panicking handlers return 500 without killing the server.
-
-Code example (from tests/e2e/stdlib_http_crash_isolation.mpl):
-```mesh
-fn panicky_handler(request :: Request) do
-  panic("deliberate crash")
-end
-
-fn safe_handler(request :: Request) do
-  HTTP.response(200, "ok")
-end
-
-fn main() do
-  let r = HTTP.router()
-  let r = HTTP.route(r, "/crash", panicky_handler)
-  let r = HTTP.route(r, "/safe", safe_handler)
-  HTTP.serve(r, 8085)
-  # /crash returns 500; /safe still returns 200
-end
-```
+`WsClient.connect(url, options)` opens `ws://` or certificate-validated `wss://` and consumes the handle from `WsClient.options()`. Configure it with `WsClient.connect_timeout`, `WsClient.heartbeat_timeout`, `WsClient.queue_capacity`, and `WsClient.max_message_bytes` before connecting. `WsClient.send_text` and `WsClient.send_bytes` send frames. `WsClient.recv(conn, timeout_ms)` returns `Result<WsMessage, String>` with a `text`, `binary`, or `close` kind. One receiver may wait per connection. Queue overflow closes the connection with a backpressure error. `WsClient.close` releases the handle. Use `WsClient.reconnect_delay` for backoff and restore subscriptions after reconnecting. [WebSocket client API and limits](https://meshlang.dev/docs/web/#websocket-client)

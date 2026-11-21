@@ -1,135 +1,61 @@
 # Mesh supervisors
 
-## What are Supervisors
+A `supervisor` declares a static set of linked children and the policy for restarting them. `spawn(SupervisorName)` starts the supervisor. Child IDs must be unique within it. [Supervision](https://meshlang.dev/docs/concurrency/#supervision)
 
-Rules:
-1. Supervisors are specialized actors that monitor and restart child actors when they crash.
-2. They implement the Erlang/OTP supervision tree pattern for fault tolerance.
-3. Defined with the `supervisor` keyword — the runtime manages the lifecycle automatically.
-4. Supervisors can themselves be supervised, forming a tree.
-
-## Defining a Supervisor
-
-Rules:
-1. `supervisor Name do strategy: ... max_restarts: N max_seconds: N child ... end`
-2. `strategy` defines how children are restarted when one crashes.
-3. `max_restarts` and `max_seconds` define the restart budget — if exceeded, the supervisor itself crashes.
-4. Each `child` block specifies one child process.
-5. Spawn a supervisor with `spawn(SupervisorName)` — same as actors.
-
-Code example (from tests/e2e/supervisor_basic.mpl):
 ```mesh
-actor worker() do
-  receive do
-    msg -> println("worker got message")
-  end
+actor worker(name :: String) do
+	println("started #{name}")
+	receive do
+		_ -> println("finished #{name}")
+	end
 end
 
 supervisor WorkerSup do
-  strategy: one_for_one
-  max_restarts: 3
-  max_seconds: 5
+	strategy: rest_for_one
+	max_restarts: 3
+	max_seconds: 5
 
-  child w1 do
-    start: fn -> spawn(worker) end
-    restart: permanent
-    shutdown: 5000
-  end
+	child reader do
+		start: fn -> spawn(worker, "reader") end
+		restart: transient
+		shutdown: 1_000
+	end
+
+	child writer do
+		start: fn -> spawn(worker, "writer") end
+		restart: temporary
+		shutdown: brutal_kill
+	end
 end
 
 fn main() do
-  let sup = spawn(WorkerSup)
-  println("supervisor started")
+	let _ = spawn(WorkerSup)
 end
 ```
 
-## Restart Strategies
+## Child specifications
 
-Rules:
-1. `one_for_one` — only the crashed child is restarted; other children continue unaffected.
-2. `one_for_all` — when any child crashes, ALL children are stopped and restarted.
-3. Use `one_for_one` when children are independent.
-4. Use `one_for_all` when children depend on each other and must restart together.
+| Field | Behavior |
+| --- | --- |
+| `start` | A zero-argument closure ending in `spawn(named_actor, args...)`. The supervisor starts the child process and runs the actor there. The closure evaluates its arguments on each start. |
+| `restart` | `permanent` restarts on any exit. `transient` restarts on abnormal exits and leaves a normal or shutdown exit alone. `temporary` removes the child when that child exits. The default is `permanent`. |
+| `shutdown` | A positive timeout in milliseconds for graceful shutdown before a forced kill, or `brutal_kill` to skip the grace period. The default is 5,000 ms. |
 
-Code example (from tests/e2e/supervisor_one_for_all.mpl):
-```mesh
-supervisor AllSup do
-  strategy: one_for_all
-  max_restarts: 2
-  max_seconds: 3
+Use ordinary `spawn` inside a child specification. `spawn grouped` is rejected there. The `start` closure must return a PID, and a non-spawning body such as `fn -> 42 end` is a compile error. [Child specifications](https://meshlang.dev/docs/concurrency/#child-specifications)
 
-  child w1 do
-    start: fn -> spawn(worker1) end
-    restart: permanent
-    shutdown: 1000
-  end
+Use an actor declaration as the child target. In the current runtime, a nested `spawn(ChildSup)` starts a separate supervisor and the parent tracks the short-lived child entry. The current child entry also skips registration of the actor's `terminate` callback.
 
-  child w2 do
-    start: fn -> spawn(worker2) end
-    restart: transient
-    shutdown: 1000
-  end
-end
-```
+## Restart strategies and limits
 
-## Child Spec Fields
+The exiting child's policy determines whether a restart runs. For a multi-child restart, the supervisor stops the affected running children in reverse declaration order and starts the affected specifications in declaration order. The restart can include a `temporary` sibling still in the child list.
 
-Rules:
-1. `start: fn -> spawn(actor_name) end` — function called to start (or restart) the child.
-2. `restart: permanent` — always restart on crash (normal termination too).
-3. `restart: transient` — restart only on abnormal crash (not on clean exit).
-4. `restart: temporary` — never restart; let it die.
-5. `shutdown: N` — milliseconds to wait for graceful shutdown before forcing kill.
+| Strategy | Restart scope |
+| --- | --- |
+| `one_for_one` (default) | The exiting child |
+| `one_for_all` | All remaining child specifications, including the exiting child |
+| `rest_for_one` | The exiting child and all specifications declared after it |
+| `simple_one_for_one` | Recognized template strategy. Its static exit handling matches `one_for_one`. Dynamic child operations exist in the Rust runtime ABI and have no Mesh source API. |
 
-## Restart Limits
+`max_restarts` and `max_seconds` count restart events across the supervisor in a sliding time window. The defaults are three events in five seconds. A restart that would exceed the budget makes the supervisor stop its children and exit normally in the current runtime. Use `Process.monitor` to observe the exit. [Restart strategies](https://meshlang.dev/docs/concurrency/#supervision-strategies) · [Restart limit configuration](https://meshlang.dev/docs/concurrency/#restart-limits)
 
-Rules:
-1. `max_restarts: N` — maximum restarts allowed within `max_seconds`.
-2. If a child crashes more than `max_restarts` times in `max_seconds`, the supervisor itself crashes.
-3. This propagates up the supervision tree — parent supervisor handles the crashed child supervisor.
-4. Choose conservative limits (e.g., 3 restarts in 5 seconds) for production systems.
-
-Code example (from tests/e2e/supervisor_restart_limit.mpl):
-```mesh
-supervisor StrictSup do
-  strategy: one_for_one
-  max_restarts: 1
-  max_seconds: 10
-
-  child w1 do
-    start: fn -> spawn(fragile_worker) end
-    restart: permanent
-    shutdown: 1000
-  end
-end
-```
-
-## Supervision Trees
-
-Rules:
-1. Nest supervisors by adding a child supervisor inside a parent supervisor.
-2. The `start` function for a child supervisor is `fn -> spawn(ChildSupervisor) end`.
-3. Trees should be designed top-down: root supervisor -> subsystem supervisors -> leaf actors.
-4. A crash in a leaf actor propagates to its immediate supervisor only (not the whole tree).
-
-## Typed Error Supervision
-
-Rules:
-1. Actors can carry typed error information for structured supervision decisions.
-2. `supervisor_typed_error` pattern: actors return typed exit values on crash.
-3. The supervisor can inspect the exit reason to decide restart vs escalate.
-
-Code example (from tests/e2e/supervisor_typed_error.mpl):
-```mesh
-actor typed_worker() do
-  receive do
-    "crash" -> panic("deliberate crash")
-    msg -> println("ok: #{msg}")
-  end
-end
-```
-
-## See Also
-
-- [actors](actors.md) — actor primitives that supervisors manage
-- [error-handling](error-handling.md) — Result and Option for non-fatal error handling
+A panic or runtime fault is an abnormal exit. Returning an `Err` value is ordinary control flow and carries no custom restart policy. Use [actor links and monitors](actors.md#lifecycle-and-process-names) for application-level failure notification. [Runtime errors and panics](https://meshlang.dev/docs/concurrency/#runtime-errors-and-panics)
