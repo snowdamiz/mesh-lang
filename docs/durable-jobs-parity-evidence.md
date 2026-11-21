@@ -2237,6 +2237,37 @@ for fresh backend teardown racing admission, and verification that all
 warm sessions finish reset before the final SQL counter sample.
 [Admission receipt](../proof/jobs-parity/qualification-v1.json) · [PostgreSQL database admission](https://github.com/postgres/postgres/blob/REL_17_11/src/backend/utils/init/postinit.c#L344-L363)
 
+### Compare the fenced short workload with stock Oban on Linux
+
+The Linux ARM64 pilot on `206d443a` reconciled 128 jobs in each effect
+mode and four revocation cases. An independent PostgreSQL connection
+matched the attempt and effect transaction IDs and backend IDs. The
+prewarmed arm opened 15 sessions and used seven of them. All recorded
+child PIDs were reaped, and the runner and PostgreSQL sessions closed.
+[Linux pilot receipt](../proof/jobs-parity/qualification-v1.json)
+
+In a separate trace-off run, two identical prewarmed Mesh arms and stock
+Oban Basic 2.24.2 completed 640 measured jobs per arm over five
+counterbalanced groups. The guest used PostgreSQL 17.11 with verified
+TLS and SCRAM, 20 workload clients, and one slot for the observer.
+
+| Arm | Median jobs/s | Range, jobs/s | Median pickup p99 | Median CPU/job |
+| --- | ---: | ---: | ---: | ---: |
+| Mesh | 937.3 | 325.6–1,164.8 | 131.0 ms | 1.06 ms |
+| Identical Mesh repeat | 777.7 | 717.1–930.8 | 155.2 ms | 1.25 ms |
+| Oban Basic | 561.8 | 440.8–772.6 | 222.1 ms | 4.63 ms |
+
+Both Mesh arms passed the scored limits for this profile and beat
+Oban in four and five groups, respectively. The median absolute gap
+between identical Mesh arms was 234.0 jobs/s, and host one-minute load
+ranged from 7.61 to 14.09 on 15 logical CPUs. Median enqueue-to-first-claim
+time was 2.0 and 1.7 ms for Mesh and 126.9 ms for Oban. From first claim
+to final settlement the medians were 134.6, 162.9, and 83.9 ms. Mesh
+used PostgreSQL notifications and stock Oban used its Isolated notifier
+with a separate enqueue process. This narrow result predates the final
+warm reset accounting and the same-host 35-profile qualification.
+[Linux benchmark receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Follow-up correctness proofs
 
 The follow-up verifier used the same runtime sources and passed 45 Jobs
