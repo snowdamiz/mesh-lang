@@ -2515,6 +2515,20 @@ launch boundaries will identify which part of the batch cycle can
 be shortened.
 [No-op comparison receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Compare the 16-slot no-op profile
+
+Both identical Mesh arms passed the scored gates at `c271319e`.
+Across five local Linux groups and 3,840 reconciled measured jobs,
+they reached 1,178 and 1,168 jobs/s versus 784 for stock Oban
+and each won four groups. Median pickup p99 was 214 and 215 ms
+versus 324 ms.
+
+Mesh picked up the first job in about 1.6 ms versus 160 ms for
+Oban. Median time from first claim to final settlement was 215
+and 218 ms for Mesh and 175 ms for Oban. The throughput win on
+this 256-job burst came from earlier pickup.
+[16-slot no-op receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Trace the no-op claim and launch cycle
 
 One warmed and one measured matched group at `1d9d7e41` recorded
