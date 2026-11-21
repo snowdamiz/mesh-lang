@@ -2775,6 +2775,19 @@ with more occupied slots and fewer claim calls per job than
 in the eight-runner comparison.
 [Four-runner no-op receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Compare four runners at 16 slots on no-op jobs
+
+Five matched Linux groups at `c271319e` reconciled all 3,840
+scored jobs. Both Mesh arms passed the median gates at 1,058
+and 1,032 jobs/s versus 986 for Oban. Each Mesh arm won three
+of the five throughput comparisons. Pickup p99 was 234 and
+242 ms versus 259 ms.
+
+Mesh recorded its first claim in 1–2 ms versus 29 ms for Oban.
+The subsequent drain took 241–246 ms versus 224 ms. The local
+throughput margin includes the difference in initial pickup.
+[Four-runner no-op-16 receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Compare the 16-slot slow profile
 
 Five matched Linux groups at `c271319e` reconciled all 1,920
