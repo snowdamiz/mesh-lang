@@ -4453,9 +4453,99 @@
       "logs_sha256": {
         "release-smoke-1.log": "e9464aade9976485e01ef2afb48524cc375a51eb8dc6c92a7b6c0c6b9ad769b1",
         "release-smoke-2.log": "43e83a392d879bdfff162f59b57dd9ebcfc9a209311f0746a6d9fd0cf4a950bd"
+      },
+      "linux_driver_tests": {
+        "passed": 37,
+        "failed": 0,
+        "ignored": 6,
+        "test_executable_sha256": "7cefdd8d8f7a737d3c8b48a5e028637303a606174565319d9a48ff505d15493b",
+        "log": "smoke.log",
+        "log_sha256": "f8a194eb7c2b3c4985270dada9c306ecb44d2170fd784e796d5216dea1dd6979"
       }
     },
     "scope": "Real Linux Mesh runner with batched claims and durable PostgreSQL effects. One fixture with an isolated TCP socket toggle and pinned release runtime. Same-policy control uses both arms disabled. The stock default has a separate exact-runtime smoke. No Oban or higher-slot qualification."
+  },
+  "local_arm64_oban_offline_smoke": {
+    "source_commit": "b67206f4cf4a7f27595dcd3a54702bc7280df149",
+    "guest": "Linux 6.12.115-0-virt aarch64, Ubuntu Base 26.04.1 userspace, two vCPUs and 1 GiB RAM",
+    "versions": {"oban": "2.24.2", "erlang": "29.1.1", "elixir": "1.20.4", "postgres": "17.11"},
+    "otp_archive_sha256": "7c528db5ec091680f7db0f70400ee9dbaa6a8c68a0dcd823ae195eee548af7bc",
+    "elixir_archive_sha256": "7863c546cda13fecc949e562e326042451dacf8fd8698a36783cb71eeb223b46",
+    "run": "target/jobs-parity/linux-arm-ownership-guest/beam-inputs/smoke.lFzVCMWB-proof/evidence",
+    "serial_sha256": "0a6e48bd0715577c2a697434b422ae502a7597482b910db7dfd303216fecb1fb",
+    "receipts_sha256": {
+      "result.json": "cb827d4ae83ca1340809d0ab3dc9b7fbb91a1eadd23ab8132b2f89b916cc7924",
+      "smoke-metrics.json": "14df7d74ced38e5cc06af43c77a888cf0997b71e0e30e8b599ed662a3312d254",
+      "raw.json": "892c174e2d71e43f94b31f316c06a4b66d74bc2e238ac7d68069368ca434c12b",
+      "runtime.json": "57986aa48960650bdb9a37896b8e59a1d40baa5a9b6c6dfd9a460f4fd2a61c31",
+      "runner-tls.json": "7bc8426ccb672a8f8833b72a58fe6789cac53aa816ea948774cfefbddd361d66"
+    },
+    "completed_jobs": 4,
+    "observed_peaks": {"processes": 2, "threads": 12, "connections": 3},
+    "frozen_limits": {"processes": 2, "threads": 84, "connections": 5},
+    "scope": "Pinned Oban fixture and eight locked packages compiled offline in the disposable guest. Real transactional enqueue and four durable effects reconciled through the repository driver with TLS and SCRAM. Admission smoke only."
+  },
+  "local_arm64_mesh_oban_release_comparison": {
+    "runtime_commit": "b67206f4cf4a7f27595dcd3a54702bc7280df149",
+    "runtime_sha256": "418d999f989b8a7e92c46f62c3c9adc5c9615485a26a48ed97933ad244c517d9",
+    "fixture_sha256": "a802f91c0e04af70d8f773574f6c946c68d4222d81d229dca521fb709a1c8449",
+    "guest": "Linux 6.12.115-0-virt aarch64, Ubuntu Base 26.04.1 userspace, two vCPUs and 1 GiB RAM",
+    "versions": {"oban": "2.24.2", "erlang": "29.1.1", "elixir": "1.20.4", "postgres": "17.11"},
+    "profiles": {
+      "short-1r-1s": {
+        "run": "target/jobs-parity/linux-arm-ownership-guest/beam-inputs/matched-short.zwIc7On6-proof/evidence",
+        "serial_sha256": "44cad00035ece57d84b379f0cd85438a631cae98b56c5adf95425682d1d4f605",
+        "measured_pairs": 5,
+        "measured_jobs_per_engine": 640,
+        "host_load_before_and_after_on_15_logical_cpus": [9.91, 14.04],
+        "median_jobs_per_second": {"mesh": 76.546, "oban": 75.936},
+        "throughput_ranges_jobs_per_second": {"mesh": [59.676, 97.477], "oban": [45.945, 84.526]},
+        "mesh_throughput_pairs_won": 4,
+        "median_runner_cpu_ms_per_job": {"mesh": 3.683, "oban": 6.755},
+        "median_peak_rss_bytes": {"mesh": 35684352, "oban": 121012224},
+        "median_pickup_p99_ms": {"mesh": 1648.873, "oban": 1670.918},
+        "budget_breaches": [],
+        "receipts_sha256": {
+          "gates.json": "addf3d2d336f58343aab92bb560ca1674c2e9122ca05b1668d28c3e52014d0dc",
+          "result.json": "63a59c88f9c61919261690ee45b2d88dd2789a82bc8a44c1be84be233b598f91",
+          "summary.json": "11ba5b1699b4bc329bc4663f502dfc093b3029c95ce5642653bf3cdf16ac3609",
+          "trials.json": "ec6446e7babd67692c86499e65da9df5573c573655605209d63e23f44bd76104",
+          "comparison.json": "3efe03b75a9009219b8e51b51d0848e167efbdb4e19aabfa1360de7ef0690958"
+        }
+      },
+      "short-1r-16s": {
+        "run": "target/jobs-parity/linux-arm-ownership-guest/beam-inputs/matched-short-16.PBEetKUL-proof/evidence",
+        "serial_sha256": "6018735d78e34d13e1ce7b4d6a79bb357dcb3be4d751a5cd71c93042eb2ed011",
+        "measured_pairs": 5,
+        "measured_jobs_per_engine": 640,
+        "host_load_before_and_after_on_15_logical_cpus": [10.61, 8.68],
+        "median_jobs_per_second": {"mesh": 234.443, "oban": 728.945},
+        "throughput_ranges_jobs_per_second": {"mesh": [164.851, 268.115], "oban": [562.855, 879.405]},
+        "mesh_throughput_pairs_won": 0,
+        "median_runner_cpu_ms_per_job": {"mesh": 1.903, "oban": 3.999},
+        "median_peak_rss_bytes": {"mesh": 100249600, "oban": 126423040},
+        "median_pickup_p99_ms": {"mesh": 525.495, "oban": 169.464},
+        "median_intervals_ms": {
+          "enqueue_commit_to_first_claim": {"mesh": 170.475, "oban": 79.387},
+          "first_claim_to_final_settlement": {"mesh": 378.023, "oban": 91.169},
+          "claim_to_entry": {"mesh": 11.148, "oban": 1.495},
+          "entry_to_first_commit": {"mesh": 11.141, "oban": 0.677},
+          "effect_commit_to_settlement": {"mesh": 10.538, "oban": 0.815}
+        },
+        "budget_breaches": [
+          {"metric": "jobs_per_second", "scope": "comparison"},
+          {"metric": "pickup_p99_ms", "scope": "comparison"}
+        ],
+        "receipts_sha256": {
+          "gates.json": "39048198014e232b036d5eb0150417a4e7668af34c4655acff1c662a1720e487",
+          "result.json": "63a59c88f9c61919261690ee45b2d88dd2789a82bc8a44c1be84be233b598f91",
+          "summary.json": "e690645dc09df26e4e9b7d8bcb2e4062e510a339ac5b2eb1318c2e3106609193",
+          "trials.json": "cbd9deb8dd0b5a1075259120de0c14622b635d76dc850b3979021a8b6442320a",
+          "comparison.json": "0da1c54e5a13c8c8ff94bd1555f593cd15946b7b3f7a9bf9683b4ac4563fb2d8"
+        }
+      }
+    },
+    "scope": "Local virtual guest, pinned release fixtures and frozen short inputs. Alternate both engines and retain per-trial database, CPU, and sampled resource evidence. The dedicated-machine full matrix remains open."
   },
   "worker_fork_compiled_handler": {
     "runtime": "da0a51bcf6bc4e2c22766a2e60c0d07c96ca4cc0",

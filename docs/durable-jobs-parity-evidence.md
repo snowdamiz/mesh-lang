@@ -1543,7 +1543,49 @@ The stock Linux connector now sets `TCP_NODELAY` before registering the
 socket and starting TLS. The release runtime at `b67206f4` passed two
 fresh PostgreSQL 17.11 guest smokes with the normal Jobs worker launch.
 Each run independently reconciled the two enqueue receipts and worker
-effects and observed a drained runner. [Stock Linux receipt](../proof/jobs-parity/qualification-v1.json)
+effects and observed a drained runner. The focused Linux driver suite
+passed 37 tests, including the socket-option assertion and the existing
+SCRAM handshake tests. [Stock Linux receipt](../proof/jobs-parity/qualification-v1.json)
+
+The same Linux guest setup compiled Oban Basic 2.24.2 offline with
+Erlang/OTP 29.1.1, Elixir 1.20.4, and the fixture's eight locked Hex
+packages. With 1 GiB of guest memory and two vCPUs, the repository
+driver reconciled four jobs over PostgreSQL 17.11 verified TLS and
+SCRAM. The runner peaked at two processes, 12 threads, and three
+connections, within the one-slot limits. This smoke establishes that
+both release subjects can run in the same local guest.
+[Offline Oban smoke receipt](../proof/jobs-parity/qualification-v1.json)
+
+In the paired `short-1r-1s` run in that guest, the stock release Mesh
+dispatcher and Oban Basic each completed 640 measured jobs. The driver
+excluded a warm-up for each engine, alternated five pairs, and reconciled
+the input, transaction, attempt, effect, and terminal rows. Both engines
+used PostgreSQL 17.11 with verified TLS and SCRAM.
+
+Mesh won four of five throughput pairs. Median throughput was 76.55
+jobs/s for Mesh and 75.94 for Oban. The trial ranges were 59.68–97.48
+and 45.94–84.53 jobs/s. Median pickup p99 was 1,649 versus 1,671 ms.
+Runner-tree CPU per job was 3.68 versus 6.75 ms and median peak RSS was
+34.0 versus 115.4 MiB. The summary recorded zero budget breaches for
+this profile. The median throughput margin was 0.8%, and the Mac's
+one-minute load was 9.91 before and 14.04 after the run. This local
+result covers one profile on a two-vCPU guest.
+[Paired Linux receipt](../proof/jobs-parity/qualification-v1.json)
+
+The `short-1r-16s` comparison reconciled another 640 measured jobs per
+engine. Mesh and Oban recorded median throughput of 234.44 and 728.95
+jobs/s, with Oban ahead in all five pairs. Median pickup p99 was 525.49
+and 169.46 ms. Throughput and pickup missed the relative limits.
+CPU per job, peak RSS and the absolute resource budgets passed.
+
+Median time from enqueue commit to the first recorded claim was 170
+versus 79 ms. The first claim to final settlement took 378 versus
+91 ms. The per-attempt medians for claim to handler entry, handler
+entry to first committed write, and effect commit to settlement were
+11.15, 11.14, and 10.54 ms for Mesh, versus 1.50, 0.68, and 0.82 ms
+for Oban. These intervals locate the remaining delay across dispatch,
+the handler's database write path, and settlement.
+[16-slot Linux receipt](../proof/jobs-parity/qualification-v1.json)
 
 ### Run the compiled handler through the fork template
 
