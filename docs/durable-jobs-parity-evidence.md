@@ -1384,6 +1384,33 @@ inherited diagnostic descriptor and do not exercise PostgreSQL or
 measure completed jobs/s.
 [Launch screen receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Fork a fresh child before worker initialization
+
+A single-threaded native launcher ran five alternating pairs of 512
+children on macOS arm64. Both arms used the same framework-free fixture
+image and 64-wide waves. The launcher invoked the fixture's native
+startup code inside each child before entering the original generated
+Mesh main. The linker audit found two pre-main AWS-LC initializers for
+CPU capabilities and cleanup registration. The launcher checked one
+thread before creating children. Every reaped PID matched its native
+startup marker and the expected bootstrap EOF exit.
+
+| CPU/job | Fresh exec | Forked child |
+| --- | ---: | ---: |
+| Children | 2.06 ms | 0.49 ms |
+| Launcher and reap | 0.19 ms | 0.34 ms |
+| Combined | 2.25 ms | 0.83 ms |
+
+The median paired saving was 1.42 ms/job, with a range of 1.34 to 1.48.
+The forked arm fell below the 1.19 ms/job screening ceiling in all five
+pairs. That ceiling came from the CPU budget left after runner and relay
+costs in the earlier 64-slot slow comparison. This prototype exits before
+reading a valid handler context. Handler and watchdog work, PostgreSQL
+effects, and the extra process and IPC for a template in a real runner
+remain unmeasured. The exact fixture run leaves arbitrary application
+initializers and cross-platform fork safety open.
+[Fork screen receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Reuse effect sessions inside the runner
 
 The local `02afc9e2` diagnostic moved the helper into a thread in the Jobs

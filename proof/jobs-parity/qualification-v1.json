@@ -4214,6 +4214,27 @@
     },
     "scope": "Fixture-only launch cutoffs with identical Mach-O images across runs. The bootstrap EOF occurs before either child watchdog and before handler work. Child wait4 CPU covers launch through exit. No PostgreSQL or completed job throughput was measured."
   },
+  "worker_fork_bootstrap_eof": {
+    "runtime": "da0a51bcf6bc4e2c22766a2e60c0d07c96ca4cc0",
+    "host": "Darwin arm64",
+    "run": "target/jobs-parity/worker-cost-screen/worker-fork-screen-fsdvlrz5",
+    "manifest_sha256": "fbbb85f97592cf82d766c9338cde4592bf7718d5e73ac253715b5d1119017b1e",
+    "result_sha256": "0c94d6f608120e5c64029040d1e69e451c422a84f401c07ffd91d4129e610b6e",
+    "image_sha256": "9d81bed92a449044dc4aa91ce649124b9367980839b7bbcb86ad313a6893d839",
+    "pre_main_initializer_symbols": ["___GLOBAL_init_65535", "_do_library_init"],
+    "pairs": 5,
+    "children_per_arm": 512,
+    "wave_width": 64,
+    "verified_child_exits": 5120,
+    "one_minute_host_load": {"min": 12.826, "max": 13.560},
+    "child_cpu_ms_per_job": {"exec": 2.057, "fork": 0.494},
+    "launcher_cpu_ms_per_job": {"exec": 0.193, "fork": 0.343},
+    "combined_cpu_ms_per_job": {"exec": 2.249, "fork": 0.831},
+    "paired_cpu_saved_ms_per_job": {"min": 1.336, "median": 1.417, "max": 1.480},
+    "fork_prefix_ceiling_ms_per_job": 1.19,
+    "fork_pairs_within_prefix_ceiling": 5,
+    "scope": "Exact-image component screen. Every forked child ran the fixture's native startup code and original compiled Mesh entry, returned its own PID marker and bootstrap EOF diagnostic, and was reaped. No valid context, watchdog startup, handler execution, or end-to-end benchmark."
+  },
   "effect_transaction_lease_admission": {
     "test_commit": "acd1d9b0a43ca9dca16b176a8ab90ff28cbc36dd",
     "host": "Darwin arm64",
