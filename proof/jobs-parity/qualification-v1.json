@@ -4235,6 +4235,46 @@
     "fork_pairs_within_prefix_ceiling": 5,
     "scope": "Exact-image component screen. Every forked child ran the fixture's native startup code and original compiled Mesh entry, returned its own PID marker and bootstrap EOF diagnostic, and was reaped. No valid context, watchdog startup, handler execution, or end-to-end benchmark."
   },
+  "template_launch_handoff": {
+    "host": "Darwin arm64",
+    "run": "target/jobs-parity/worker-cost-screen/template-gate-proof.LIxKWt",
+    "script_sha256": "e2b70a8002a55025ad9aced6ec5db1d764a196f8f536b8deb01b89312286fdc7",
+    "repetitions": 8,
+    "cases_per_repetition": 5,
+    "identical_case_reports_sha256": "267084bd9848621b6a184a651fdb4534f830fdcb733052b12d4a332a3d5937fe",
+    "negative_controls_sha256": {
+      "ungated.log": "38cd70273d811c652423c4de43c76f57c991e11a59533ed9892a721b1a14177e",
+      "leaked_socket.log": "13e8b6b2f2bb2f2b2cc36d5864a8cb2bd5d9fb617b664d8a31ee040567adf019"
+    },
+    "scope": "Disposable Unix descriptor handoff and wait ownership. Loss of the runner-owned control stream prevents entry before grant and ends a granted test child. After template death, kqueue reports the exit while the runner's waitpid returns ECHILD. No compiled handler or PostgreSQL settlement was exercised."
+  },
+  "worker_fork_compiled_handler": {
+    "runtime": "da0a51bcf6bc4e2c22766a2e60c0d07c96ca4cc0",
+    "host": "Darwin arm64",
+    "postgres_version": "17.11",
+    "transport": "SCRAM with verified TLS",
+    "run": "target/jobs-parity/worker-cost-screen/worker-fork-effects-pinned.renBWn",
+    "summary_sha256": "24d71f5a302ffd3c6f93e1d47a190e475d185e911f43d01cd5ecf7b90c751665",
+    "script_sha256": "36e81002875e7b02ba29d4b1dc20ba05784ff3487ca86fe995403f7fcd2a6bfe",
+    "launcher_sha256": "b4f2dc72a67e743e1d110cf741345138647b11b7f5f0f0b3c9eecb0337cac560",
+    "workload_sha256_without_per_pair_schedule_timestamp": "2aa7cc8bdf2787ac85a370e9a666a0472f92efa87ce04771e9f174abaec9c3bf",
+    "pairs": 5,
+    "jobs_per_arm": 512,
+    "slots": 64,
+    "hold_ms": 100,
+    "warm_effect_backends_per_arm": 64,
+    "reconciled_workers": 5120,
+    "one_minute_host_load": {"min": 14.255, "max": 17.244},
+    "child_cpu_ms_per_job": {"exec": 3.371, "fork": 1.604},
+    "launcher_cpu_ms_per_job": {"exec": 0.491, "fork": 0.762},
+    "relay_cpu_ms_per_job": {"exec": 0.257, "fork": 0.264},
+    "total_cpu_ms_per_job": {"exec": 4.121, "fork": 2.634},
+    "cpu_excluding_relay_prewarm_ms_per_job": {"exec": 4.001, "fork": 2.520},
+    "paired_cpu_saved_ms_per_job": {"min": 1.329, "median": 1.470, "max": 1.878},
+    "fork_cpu_wins": 5,
+    "earlier_full_runner_cpu_ceiling_ms_per_job": 2.061,
+    "scope": "Compiled worker, exact reaps, and independently reconciled durable effects over the warmed route. CPU includes launcher and relay, including prewarm. These standalone waves do not claim or settle Jobs in PostgreSQL. An initial series with mismatched harness revisions is excluded."
+  },
   "effect_transaction_lease_admission": {
     "test_commit": "acd1d9b0a43ca9dca16b176a8ab90ff28cbc36dd",
     "host": "Darwin arm64",

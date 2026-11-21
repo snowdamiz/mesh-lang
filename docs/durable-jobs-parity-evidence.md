@@ -1411,6 +1411,43 @@ remain unmeasured. The exact fixture run leaves arbitrary application
 initializers and cross-platform fork safety open.
 [Fork screen receipt](../proof/jobs-parity/qualification-v1.json)
 
+The macOS handoff probe passed eight repetitions of five cases using an
+anonymous Unix socket and a runner-owned control pipe. A live template
+published the exact child's status after reaping it. Closing the control
+pipe before the grant suppressed the application-start marker. Closing
+it after the grant stopped the test child. After template death, the
+runner observed child exit through kqueue and received `ECHILD` from
+`waitpid`. A runner with that topology cannot derive a reap receipt
+from a child exit notification. The probe used a synthetic child marker.
+Removing the pre-launch grant check or letting the child keep the
+template's management socket caused the corresponding case to fail.
+[Handoff probe receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Run the compiled handler through the fork template
+
+Five alternating pairs ran the 100 ms handler with 512 attempts and 64
+slots per arm on macOS arm64 and PostgreSQL 17.11. Both arms used the
+same compiled worker image, watchdogs, and native relay with 64 warmed
+sessions over verified TLS and SCRAM. All 5,120 attempts matched the
+native startup PID, exact reap, framed completion, effect key, and the
+two committed writes. The two writes for each attempt used the same
+backend. One-minute host load ranged from 14.25 to 17.24.
+
+| CPU/job | Fresh exec | Forked child |
+| --- | ---: | ---: |
+| Children | 3.37 ms | 1.60 ms |
+| Launcher and reap | 0.49 ms | 0.76 ms |
+| Warm effect relay, including prewarm | 0.26 ms | 0.26 ms |
+| Total | 4.12 ms | 2.63 ms |
+
+The median paired saving was 1.47 ms/job, with a range of 1.33 to 1.88.
+Fork used less CPU in all five pairs. Its median stayed at 2.52 ms/job
+after excluding relay prewarming. The run already exceeds the 2.06 ms/job
+budget from the earlier 64-slot Jobs runner comparison. It uses a
+standalone launcher and relay, with no Jobs dispatcher or durable
+settlement. The paired results use one pinned harness revision.
+[Real handler receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Reuse effect sessions inside the runner
 
 The local `02afc9e2` diagnostic moved the helper into a thread in the Jobs
