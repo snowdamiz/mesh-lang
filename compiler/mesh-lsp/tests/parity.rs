@@ -1,8 +1,7 @@
-//! The editor shows what the compiler reports. For every catalog example the
-//! frontend diagnoses, opened as a lone buffer and as a project's
-//! `main.mpl`, the language server publishes the codes `meshc check` reports
-//! (the shared frontend's), each with its repair and its docs page, and
-//! nothing once the example is fixed.
+//! For each catalog example, the editor and `meshc check` report the same
+//! codes. The editor shows a repair and a docs link for each diagnostic,
+//! then clears it when the source is fixed. Examples run in standalone
+//! buffers and projects, or only in a project if they require a manifest.
 
 mod common;
 
@@ -90,41 +89,46 @@ async fn the_editor_publishes_what_the_compiler_reports() {
         .filter(|code| matches!(code.family(), Family::Syntax | Family::Semantic))
         .filter_map(|code| Some((code, code.info().example?)));
     for (index, (code, example)) in examples.enumerate() {
-        // A buffer that is no file, analyzed on its own.
-        let uri = format!("untitled:Untitled-{index}");
-        let lone = Path::new("main.mpl");
-        let [bad, fixed] = publish(&mut client, &uri, example.bad, example.fixed).await;
-        let expected = frontend_codes(Target::Source {
-            path: lone,
-            text: example.bad,
-        });
-        compare(
-            code,
-            "a lone buffer",
-            &bad,
-            &fixed,
-            &expected,
-            &mut failures,
-        );
-        let fixed_expected = frontend_codes(Target::Source {
-            path: lone,
-            text: example.fixed,
-        });
-        assert!(
-            fixed_expected.is_empty(),
-            "{}: {fixed_expected:?}",
-            code.id()
-        );
+        let native = code == Code::InvalidNativeDeclaration;
+        if !native {
+            // A buffer that is no file, analyzed on its own.
+            let uri = format!("untitled:Untitled-{index}");
+            let lone = Path::new("main.mpl");
+            let [bad, fixed] = publish(&mut client, &uri, example.bad, example.fixed).await;
+            let expected = frontend_codes(Target::Source {
+                path: lone,
+                text: example.bad,
+            });
+            compare(
+                code,
+                "a lone buffer",
+                &bad,
+                &fixed,
+                &expected,
+                &mut failures,
+            );
+            let fixed_expected = frontend_codes(Target::Source {
+                path: lone,
+                text: example.fixed,
+            });
+            assert!(
+                fixed_expected.is_empty(),
+                "{}: {fixed_expected:?}",
+                code.id()
+            );
+        }
 
-        // The entry module of a project, as saved.
         let root = projects.join(code.id());
         std::fs::create_dir_all(&root).unwrap();
-        std::fs::write(
-            root.join("mesh.toml"),
-            "[package]\nname = \"example\"\nversion = \"0.1.0\"\n",
-        )
-        .unwrap();
-        let main = root.join("main.mpl");
+        let mut manifest = "[package]\nname = \"example\"\nversion = \"0.1.0\"\n".to_string();
+        let main = if native {
+            manifest.push_str("\n[native]\nabi = 1\nbindings = [\"binding.mpl\"]\n");
+            std::fs::write(root.join("main.mpl"), "fn main() do\nend\n").unwrap();
+            root.join("binding.mpl")
+        } else {
+            root.join("main.mpl")
+        };
+        std::fs::write(root.join("mesh.toml"), manifest).unwrap();
         std::fs::write(&main, example.bad).unwrap();
         let expected = frontend_codes(Target::Project { root: &root });
         let uri = Url::from_file_path(&main).unwrap().to_string();

@@ -580,3 +580,44 @@ fn a_misspelled_name_suggests_an_edit() {
         }])
     );
 }
+
+#[test]
+fn scoped_typos_offer_edits_to_the_misspelled_token() {
+    use mesh_diagnostics::{Applicability, Code};
+
+    let point = "struct Point do\n  count :: Int\nend\n\n";
+    let supervisor = "supervisor Workers do\n  strategy: one_for_one\n  child worker do\n    start: fn -> spawn(worker) end\n    restart: permannt\n  end\nend\n";
+    for (source, code, typo, fixed) in [
+        (format!("{point}fn make() = Point {{ coun: 1 }}"), Code::InvalidField, "coun", "count"),
+        (format!("{point}fn change(p :: Point) = %{{p | coun: 1}}"), Code::InvalidField, "coun", "count"),
+        (format!("{point}fn read(p :: Point) = p.coun"), Code::InvalidField, "coun", "count"),
+        (format!("{point}fn read(p :: Point) do\n  case p do\n    Point {{ coun: n }} -> n\n  end\nend"), Code::InvalidField, "coun", "count"),
+        ("fn size(s :: String) = s.lenght()".into(), Code::NoSuchMethod, "lenght", "length"),
+        (format!("{point}fn read(p :: Poin) = p"), Code::UnknownType, "Poin", "Point"),
+        ("fn read(s :: Strng) = s".into(), Code::UnknownType, "Strng", "String"),
+        ("supervisor Workers do\n  strategy: one_for_oe\nend".into(), Code::UnknownSupervisionStrategy, "one_for_oe", "one_for_one"),
+        (format!("actor worker() do\n  nil\nend\n\n{supervisor}"), Code::InvalidRestartType, "permannt", "permanent"),
+    ] {
+        let result = check_source(&source);
+        let error = result.errors.iter().find(|error| error.code() == code)
+            .unwrap_or_else(|| panic!("{source}: {:?}", result.errors));
+        let diagnostic = error.to_diagnostic(&SourceFile::new("test.mpl", source.as_str()));
+        assert_eq!(diagnostic.repair(), format!("did you mean `{fixed}`?"));
+        let [edit] = diagnostic.edits() else {
+            panic!("{source}: expected one edit, got {:?}", diagnostic.edits());
+        };
+        assert_eq!(edit.applicability(), Applicability::MaybeIncorrect);
+        assert_eq!(edit.replacement(), fixed);
+        let edited = edit.span();
+        assert_eq!(&source[edited.start as usize..edited.end as usize], typo);
+
+        let mut corrected = source.clone();
+        corrected.replace_range(edited.start as usize..edited.end as usize, fixed);
+        let corrected_result = check_source(&corrected);
+        assert!(corrected_result.errors.is_empty(), "{corrected}: {:?}", corrected_result.errors);
+
+        let mismatched = error.to_diagnostic(&SourceFile::new("test.mpl", source.replace(typo, &"x".repeat(typo.len()))));
+        assert_eq!(mismatched.repair(), diagnostic.repair());
+        assert!(mismatched.edits().is_empty());
+    }
+}

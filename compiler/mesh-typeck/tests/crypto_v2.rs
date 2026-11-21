@@ -549,8 +549,8 @@ end
     );
 
     assert!(
-        resource_violations(&result).is_empty(),
-        "borrow calls moved a resource: {:?}",
+        result.errors.is_empty(),
+        "borrowing calls should type-check: {:?}",
         result.errors
     );
 }
@@ -626,9 +626,9 @@ end
         ]
     );
     assert!(
-        !resource_violations(&result)
-            .iter()
-            .any(|reason| reason.contains("unsupported")),
+        !result.errors.iter().any(|error| matches!(
+            error, TypeError::ResourceCrossesBoundary { reason, .. } if reason.contains("unsupported")
+        )),
         "Result<R, CryptoError> must be accepted for resource outputs"
     );
 }

@@ -853,7 +853,7 @@ impl Checker<'_> {
             .name()
             .and_then(|name| name.text())
             .unwrap_or_else(|| "<binding>".to_string());
-        self.errors.push(TypeError::ResourceViolation {
+        self.errors.push(TypeError::ResourceCrossesBoundary {
             reason: format!("resource-bearing top-level binding `{name}` is unsupported"),
             span: binding.syntax().text_range(),
         });
@@ -927,14 +927,17 @@ impl Checker<'_> {
     /// checker cannot follow.
     fn check_resource_holder(&mut self, ty: &Ty, span: TextRange) {
         let reason = if is_unrestricted_collection_type(ty) && self.registry.is_resource_type(ty) {
-            format!("resource-bearing type `{ty}` cannot be used as an unrestricted collection")
+            format!(
+                "resource-bearing type `{}` cannot be used as an unrestricted collection",
+                ty.with_holes()
+            )
         } else if is_unsupported_resource_wrapper(self.registry, ty) {
             unsupported_wrapper_reason(ty)
         } else {
             return;
         };
         self.errors
-            .push(TypeError::ResourceViolation { reason, span });
+            .push(TypeError::ResourceCrossesBoundary { reason, span });
     }
 
     fn check_block(&mut self, block: &Block) {
@@ -1050,7 +1053,7 @@ impl Checker<'_> {
                                 .filter(|operand| self.expr_is_resource(operand))
                         })
                     {
-                        self.errors.push(TypeError::ResourceViolation {
+                        self.errors.push(TypeError::ResourceCrossesBoundary {
                             reason: format!(
                                 "resource `{}` cannot be compared or hashed",
                                 self.expr_label(resource)
@@ -1144,7 +1147,7 @@ impl Checker<'_> {
     /// interpolated or formatted") says it may not.
     fn reject_resource(&mut self, expr: &Expr, cannot: &str) {
         if self.expr_is_resource(expr) {
-            self.errors.push(TypeError::ResourceViolation {
+            self.errors.push(TypeError::ResourceCrossesBoundary {
                 reason: format!("resource `{}` {cannot}", self.expr_label(expr)),
                 span: expr.syntax().text_range(),
             });
@@ -1236,7 +1239,7 @@ impl Checker<'_> {
                 Some(Ty::Fun(_, result)) if self.registry.is_resource_type(&result)
             );
             if returns_resource {
-                self.errors.push(TypeError::ResourceViolation {
+                self.errors.push(TypeError::ResourceCrossesBoundary {
                     reason: "a job's result cannot be a resource: it crosses to the actor that awaits it"
                         .to_string(),
                     span: function.syntax().text_range(),
@@ -1260,7 +1263,7 @@ impl Checker<'_> {
                     _ => None,
                 };
                 if let Some(reason) = reason {
-                    self.errors.push(TypeError::ResourceViolation {
+                    self.errors.push(TypeError::ResourceCrossesBoundary {
                         reason: format!("resource `{}` {reason}", self.expr_label(&base)),
                         span: access.syntax().text_range(),
                     });
@@ -1302,7 +1305,7 @@ impl Checker<'_> {
                                 .as_ref()
                                 .is_some_and(is_unrestricted_collection_type);
                         if !is_existing_collection {
-                            self.errors.push(TypeError::ResourceViolation {
+                            self.errors.push(TypeError::ResourceCrossesBoundary {
                                 reason: format!(
                                     "resource `{}` {reason}",
                                     self.expr_label(&argument)
@@ -1329,7 +1332,7 @@ impl Checker<'_> {
                     && !allowed_resource_constructor
                     && !awaits_job;
                 if lacks_resource_aware_formal {
-                    self.errors.push(TypeError::ResourceViolation {
+                    self.errors.push(TypeError::ResourceCrossesBoundary {
                         reason: format!(
                             "resource `{}` cannot be passed through generic or indirect call `{}`",
                             self.expr_label(&argument),
@@ -1416,7 +1419,7 @@ impl Checker<'_> {
                 .is_some_and(|binding| self.registry.is_resource_type(&binding.ty));
             if is_outer_resource {
                 reported.insert(name.clone());
-                self.errors.push(TypeError::ResourceViolation {
+                self.errors.push(TypeError::ResourceCrossesBoundary {
                     reason: format!("resource `{name}` cannot be captured by a closure"),
                     span: name_ref.syntax().text_range(),
                 });
@@ -1770,7 +1773,7 @@ impl Checker<'_> {
             Expr::NameRef(name) => name.text().unwrap_or_default(),
             _ => self
                 .known_expr_type(expr)
-                .map(|ty| ty.to_string())
+                .map(|ty| ty.with_holes().to_string())
                 .unwrap_or_default(),
         }
     }
@@ -1953,5 +1956,8 @@ fn is_unsupported_resource_wrapper(registry: &TypeRegistry, ty: &Ty) -> bool {
 }
 
 fn unsupported_wrapper_reason(ty: &Ty) -> String {
-    format!("resource-bearing wrapper `{ty}` has no registered resource destructor")
+    format!(
+        "resource-bearing wrapper `{}` has no registered resource destructor",
+        ty.with_holes()
+    )
 }

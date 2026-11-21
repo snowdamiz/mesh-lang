@@ -606,6 +606,34 @@ A supervisor child's `start` function returns something other than the `Pid` of 
 
 **Repair:** Make `start` return the result of `spawn`, as `start: fn -> spawn(worker, arg) end`.
 
+**Example**
+```mesh
+actor worker() do
+  nil
+end
+
+supervisor Workers do
+  strategy: one_for_one
+  child worker do
+    start: fn -> 42 end
+  end
+end
+```
+
+**Fixed**
+```mesh
+actor worker() do
+  nil
+end
+
+supervisor Workers do
+  strategy: one_for_one
+  child worker do
+    start: fn -> spawn(worker) end
+  end
+end
+```
+
 Docs: https://meshlang.dev/docs/errors/#e0018
 
 ## E0019
@@ -784,6 +812,18 @@ A clause that matches every argument comes before other clauses of the same func
 
 **Repair:** Move the catch-all clause after every more specific clause of the function.
 
+**Example**
+```mesh
+fn label(n) = n
+fn label(0) = 1
+```
+
+**Fixed**
+```mesh
+fn label(0) = 1
+fn label(n) = n
+```
+
 Docs: https://meshlang.dev/docs/errors/#e0022
 
 ## E0023
@@ -882,6 +922,56 @@ Several interfaces implemented for the receiver's type provide a method of the c
 
 **Repair:** Call the method through the interface you mean, as `Interface.method(value)`.
 
+**Example**
+```mesh
+interface A do
+  fn label(self) -> Int
+end
+
+interface B do
+  fn label(self) -> Int
+end
+
+struct Item do
+  n :: Int
+end
+
+impl A for Item do
+  fn label(self) -> Int = self.n
+end
+
+impl B for Item do
+  fn label(self) -> Int = self.n + 1
+end
+
+fn main() = Item { n: 0 }.label()
+```
+
+**Fixed**
+```mesh
+interface A do
+  fn label(self) -> Int
+end
+
+interface B do
+  fn label(self) -> Int
+end
+
+struct Item do
+  n :: Int
+end
+
+impl A for Item do
+  fn label(self) -> Int = self.n
+end
+
+impl B for Item do
+  fn label(self) -> Int = self.n + 1
+end
+
+fn main() = A.label(Item { n: 0 })
+```
+
 Docs: https://meshlang.dev/docs/errors/#e0027
 
 ## E0028
@@ -978,6 +1068,24 @@ An `import` names a module that is neither in the project nor in the standard li
 
 **Repair:** Correct the module path, which follows the file path (`geo/points.mpl` is `Geo.Points`), or create the module's file.
 
+**Example**
+```mesh
+import Maths
+
+module Math do
+  pub fn count() = 1
+end
+```
+
+**Fixed**
+```mesh
+import Math
+
+module Math do
+  pub fn count() = 1
+end
+```
+
 Docs: https://meshlang.dev/docs/errors/#e0031
 
 ## E0032
@@ -1040,6 +1148,24 @@ An import names something its module does not define.
 
 **Repair:** Correct the name to one the module exports (the diagnostic lists them), or define it in the module with `pub`.
 
+**Example**
+```mesh
+from Math import coun
+
+module Math do
+  pub fn count() = 1
+end
+```
+
+**Fixed**
+```mesh
+from Math import count
+
+module Math do
+  pub fn count() = 1
+end
+```
+
 Docs: https://meshlang.dev/docs/errors/#e0034
 
 ## E0035
@@ -1049,6 +1175,24 @@ Docs: https://meshlang.dev/docs/errors/#e0034
 An import names a definition its module does not mark `pub`.
 
 **Repair:** Add `pub` to the definition in its module, or stop importing it.
+
+**Example**
+```mesh
+from Math import count
+
+module Math do
+  fn count() = 1
+end
+```
+
+**Fixed**
+```mesh
+from Math import count
+
+module Math do
+  pub fn count() = 1
+end
+```
 
 Docs: https://meshlang.dev/docs/errors/#e0035
 
@@ -1316,6 +1460,21 @@ Docs: https://meshlang.dev/docs/errors/#e0041
 
 **Repair:** Declare the associated type in the interface with `type Name`, and bind it in each `impl` with `type Name = ConcreteType`.
 
+**Example**
+```mesh
+interface Container do
+  fn first(self) -> Self.Item
+end
+```
+
+**Fixed**
+```mesh
+interface Container do
+  type Item
+  fn first(self) -> Self.Item
+end
+```
+
 Docs: https://meshlang.dev/docs/errors/#e0042
 
 ## E0044
@@ -1382,6 +1541,16 @@ Docs: https://meshlang.dev/docs/errors/#e0045
 
 **Repair:** Remove the `Continuity.promote()` call. Read authority state with `Continuity.authority_status()` where the program needs it.
 
+**Example**
+```mesh
+fn main() = Continuity.promote()
+```
+
+**Fixed**
+```mesh
+fn main() = Continuity.authority_status()
+```
+
 Docs: https://meshlang.dev/docs/errors/#e0046
 
 ## E0047
@@ -1391,6 +1560,20 @@ Docs: https://meshlang.dev/docs/errors/#e0046
 `HTTP.clustered(...)` received arguments other than an optional replication count and a handler reference.
 
 **Repair:** Write `HTTP.clustered(handler)` or `HTTP.clustered(count, handler)`, where `handler` names a public top-level route handler.
+
+**Example**
+```mesh
+pub fn handle(req :: Request) -> Response = HTTP.response(200, "ok")
+
+fn routes() = HTTP.on_get(HTTP.router(), "/", HTTP.clustered(0, handle))
+```
+
+**Fixed**
+```mesh
+pub fn handle(req :: Request) -> Response = HTTP.response(200, "ok")
+
+fn routes() = HTTP.on_get(HTTP.router(), "/", HTTP.clustered(handle))
+```
 
 Docs: https://meshlang.dev/docs/errors/#e0047
 
@@ -1402,6 +1585,20 @@ Docs: https://meshlang.dev/docs/errors/#e0047
 
 **Repair:** Add `pub` to the handler's definition, or remove the `HTTP.clustered(...)` wrapper.
 
+**Example**
+```mesh
+fn handle(req :: Request) -> Response = HTTP.response(200, "ok")
+
+fn routes() = HTTP.on_get(HTTP.router(), "/", HTTP.clustered(handle))
+```
+
+**Fixed**
+```mesh
+pub fn handle(req :: Request) -> Response = HTTP.response(200, "ok")
+
+fn routes() = HTTP.on_get(HTTP.router(), "/", HTTP.clustered(handle))
+```
+
 Docs: https://meshlang.dev/docs/errors/#e0048
 
 ## E0049
@@ -1412,6 +1609,20 @@ Docs: https://meshlang.dev/docs/errors/#e0048
 
 **Repair:** Pass `HTTP.clustered(handler)` directly as the handler argument of `HTTP.route(...)` or `HTTP.on_*(...)`.
 
+**Example**
+```mesh
+pub fn handle(req :: Request) -> Response = HTTP.response(200, "ok")
+
+fn routes() = HTTP.clustered(handle)
+```
+
+**Fixed**
+```mesh
+pub fn handle(req :: Request) -> Response = HTTP.response(200, "ok")
+
+fn routes() = HTTP.on_get(HTTP.router(), "/", HTTP.clustered(handle))
+```
+
 Docs: https://meshlang.dev/docs/errors/#e0049
 
 ## E0050
@@ -1421,6 +1632,26 @@ Docs: https://meshlang.dev/docs/errors/#e0049
 One clustered route handler is wrapped with different replication counts in different places.
 
 **Repair:** Use one replication count for the handler everywhere it is wrapped in `HTTP.clustered(...)`.
+
+**Example**
+```mesh
+pub fn handle(req :: Request) -> Response = HTTP.response(200, "ok")
+
+fn routes() do
+  let router = HTTP.on_get(HTTP.router(), "/a", HTTP.clustered(2, handle))
+  HTTP.on_get(router, "/b", HTTP.clustered(3, handle))
+end
+```
+
+**Fixed**
+```mesh
+pub fn handle(req :: Request) -> Response = HTTP.response(200, "ok")
+
+fn routes() do
+  let router = HTTP.on_get(HTTP.router(), "/a", HTTP.clustered(2, handle))
+  HTTP.on_get(router, "/b", HTTP.clustered(2, handle))
+end
+```
 
 Docs: https://meshlang.dev/docs/errors/#e0050
 
@@ -1438,9 +1669,21 @@ Docs: https://meshlang.dev/docs/errors/#e0051
 
 **invalid-native-declaration** · error · semantic · guide: `meshc guide projects`
 
-A `@native` function declaration is private, generic, not fully annotated, or names a symbol that is not a C identifier.
+In a native binding listed in `mesh.toml`, an `@native` function is private, generic, missing a type annotation, or names a symbol that is not a C identifier.
 
 **Repair:** Declare it as a public, non-generic function with every parameter and the return type annotated, and a C identifier as its symbol.
+
+**Example**
+```mesh
+@native("mesh_count")
+fn count() -> Int
+```
+
+**Fixed**
+```mesh
+@native("mesh_count")
+pub fn count() -> Int
+```
 
 Docs: https://meshlang.dev/docs/errors/#e0052
 
@@ -1448,9 +1691,24 @@ Docs: https://meshlang.dev/docs/errors/#e0052
 
 **resource-ownership-violation** · error · semantic · guide: `meshc guide types`
 
-A resource value, which has exactly one owner, is used after it moved or crosses a boundary it cannot cross.
+A resource is used after a move, moved while borrowed, or given more than one owner.
 
-**Repair:** Move each resource once, or pass it to a direct `borrow` parameter. Across an actor, job, or JSON boundary, pass what the resource stands for instead, such as an id or the data it holds.
+**Repair:** Use the resource before moving it. Pass it to a direct `borrow` parameter when the caller needs to keep ownership.
+
+**Example**
+```mesh
+fn close(secret :: SecretBytes) do
+  Secret.destroy(secret)
+  Secret.destroy(secret)
+end
+```
+
+**Fixed**
+```mesh
+fn close(secret :: SecretBytes) do
+  Secret.destroy(secret)
+end
+```
 
 Docs: https://meshlang.dev/docs/errors/#e0053
 
@@ -1488,6 +1746,18 @@ An `@export` function does not have the binary request and response signature li
 
 **Repair:** Declare the export as `@export("c_symbol") pub fn name(request :: Bytes) -> Bytes!String`.
 
+**Example**
+```mesh
+@export("mesh_echo")
+fn echo(request :: Bytes) -> Bytes!String = Ok(request)
+```
+
+**Fixed**
+```mesh
+@export("mesh_echo")
+pub fn echo(request :: Bytes) -> Bytes!String = Ok(request)
+```
+
 Docs: https://meshlang.dev/docs/errors/#e0055
 
 ## E0056
@@ -1497,6 +1767,24 @@ Docs: https://meshlang.dev/docs/errors/#e0055
 A match arm with no `->` gives its pattern as its value, and this pattern cannot stand for one.
 
 **Repair:** Write the arm's value after `->`, as `pattern -> value`.
+
+**Example**
+```mesh
+fn main() do
+  case 1 do
+    _
+  end
+end
+```
+
+**Fixed**
+```mesh
+fn main() do
+  case 1 do
+    _ -> 1
+  end
+end
+```
 
 Docs: https://meshlang.dev/docs/errors/#e0056
 
@@ -1571,6 +1859,20 @@ Docs: https://meshlang.dev/docs/errors/#e0058
 A struct literal or a `%{value | field: new}` update is applied to something that is not a struct, or whose type is not known there.
 
 **Repair:** Use struct literals and updates only on struct types, and annotate the value with its struct type when nothing else fixes it.
+
+**Example**
+```mesh
+fn main() = Int { n: 1 }
+```
+
+**Fixed**
+```mesh
+struct Count do
+  n :: Int
+end
+
+fn main() = Count { n: 1 }
+```
 
 Docs: https://meshlang.dev/docs/errors/#e0059
 
@@ -1734,6 +2036,22 @@ Several `impl`s provide the called method with different return or argument type
 
 **Repair:** Annotate the result, or the argument, with one of the types the diagnostic lists.
 
+**Example**
+```mesh
+fn main() do
+  let x = 5.into()
+  println("#{x}")
+end
+```
+
+**Fixed**
+```mesh
+fn main() do
+  let x :: Float = 5.into()
+  println("#{x}")
+end
+```
+
 Docs: https://meshlang.dev/docs/errors/#e0065
 
 ## E0066
@@ -1743,6 +2061,56 @@ Docs: https://meshlang.dev/docs/errors/#e0065
 A static interface method, one without `self`, is called bare while several types provide it.
 
 **Repair:** Call it on the type that should provide it, as `Type.method()`.
+
+**Example**
+```mesh
+interface Versioned do
+  fn version() -> Int
+end
+
+struct A do
+  n :: Int
+end
+
+struct B do
+  n :: Int
+end
+
+impl Versioned for A do
+  fn version() -> Int = 1
+end
+
+impl Versioned for B do
+  fn version() -> Int = 2
+end
+
+fn main() = version()
+```
+
+**Fixed**
+```mesh
+interface Versioned do
+  fn version() -> Int
+end
+
+struct A do
+  n :: Int
+end
+
+struct B do
+  n :: Int
+end
+
+impl Versioned for A do
+  fn version() -> Int = 1
+end
+
+impl Versioned for B do
+  fn version() -> Int = 2
+end
+
+fn main() = A.version()
+```
 
 Docs: https://meshlang.dev/docs/errors/#e0066
 
@@ -2070,6 +2438,24 @@ Docs: https://meshlang.dev/docs/errors/#e0076
 
 **Repair:** Move the assertion into a `.test.mpl` file, or write the `receive ... after TIMEOUT -> ...` block it stands for.
 
+**Example**
+```mesh
+fn main() do
+  assert_receive 42, 500
+end
+```
+
+**Fixed**
+```mesh
+actor worker() do
+  receive do
+    42 -> nil
+    _ -> nil
+  after 500 -> nil
+  end
+end
+```
+
 Docs: https://meshlang.dev/docs/errors/#e0077
 
 ## E0078
@@ -2105,6 +2491,24 @@ Docs: https://meshlang.dev/docs/errors/#e0078
 Nothing in the module tells which type of message an actor receives, because only untyped pids reach it.
 
 **Repair:** Give the pid a message type where the actor is spawned, as `let pid :: Pid<Int> = spawn(worker)`.
+
+**Example**
+```mesh
+actor worker() do
+  receive do
+    msg -> msg
+  end
+end
+```
+
+**Fixed**
+```mesh
+actor worker() do
+  receive do
+    msg -> msg + 1
+  end
+end
+```
 
 Docs: https://meshlang.dev/docs/errors/#e0079
 
@@ -2144,6 +2548,26 @@ Code calls a function of a project module that the file does not import.
 
 **Repair:** Add `import Module` at the top of the file.
 
+**Example**
+```mesh
+module Counters do
+  pub fn count() = 1
+end
+
+fn main() = Counters.count()
+```
+
+**Fixed**
+```mesh
+import Counters
+
+module Counters do
+  pub fn count() = 1
+end
+
+fn main() = Counters.count()
+```
+
 Docs: https://meshlang.dev/docs/errors/#e0081
 
 ## E0082
@@ -2153,6 +2577,36 @@ Docs: https://meshlang.dev/docs/errors/#e0081
 A method parameter has no annotation and nothing in the method fixes its type; a method is compiled once, for the type it is implemented for.
 
 **Repair:** Annotate the parameter with its type, as `param :: Type`.
+
+**Example**
+```mesh
+interface Labeler do
+  fn label(self, x) -> String
+end
+
+struct Item do
+  n :: Int
+end
+
+impl Labeler for Item do
+  fn label(self, x) -> String = "#{x}"
+end
+```
+
+**Fixed**
+```mesh
+interface Labeler do
+  fn label(self, x) -> String
+end
+
+struct Item do
+  n :: Int
+end
+
+impl Labeler for Item do
+  fn label(self, x :: Int) -> String = "#{x}"
+end
+```
 
 Docs: https://meshlang.dev/docs/errors/#e0082
 
@@ -2245,6 +2699,21 @@ Docs: https://meshlang.dev/docs/errors/#e0085
 
 **Repair:** Call `Process.monitor` or `Node.monitor` inside the actor body that should receive the message.
 
+**Example**
+```mesh
+fn main() = Node.monitor("node@localhost:9000", 1)
+```
+
+**Fixed**
+```mesh
+actor watcher() do
+  Node.monitor("node@localhost:9000", 1)
+  receive do
+    n -> n + 1
+  end
+end
+```
+
 Docs: https://meshlang.dev/docs/errors/#e0086
 
 ## E0087
@@ -2280,6 +2749,40 @@ A method an `impl` provides has a return type nothing fixes, so a call to it can
 
 **Repair:** Annotate the method's return type in the `impl` or the interface, as `fn name(self) -> Type`.
 
+**Example**
+```mesh
+interface Maker do
+  fn make(self)
+end
+
+struct Item do
+  n :: Int
+end
+
+impl Maker for Item do
+  fn make(self) = self.make()
+end
+
+fn main() = Item { n: 0 }.make()
+```
+
+**Fixed**
+```mesh
+interface Maker do
+  fn make(self) -> Int
+end
+
+struct Item do
+  n :: Int
+end
+
+impl Maker for Item do
+  fn make(self) -> Int = self.n
+end
+
+fn main() = Item { n: 0 }.make()
+```
+
 Docs: https://meshlang.dev/docs/errors/#e0088
 
 ## E0089
@@ -2289,6 +2792,32 @@ Docs: https://meshlang.dev/docs/errors/#e0088
 `spawn` is given a function computed at run time, and a process starts from a compiled entry that only a name gives.
 
 **Repair:** Name the actor in the call, as `spawn(worker, arg)`. To choose one at run time, spawn each by name where it is chosen.
+
+**Example**
+```mesh
+actor worker() do
+  receive do
+    msg -> msg + 1
+  end
+end
+
+fn pick() = worker
+
+fn main() = spawn(pick())
+```
+
+**Fixed**
+```mesh
+actor worker() do
+  receive do
+    msg -> msg + 1
+  end
+end
+
+fn pick() = worker
+
+fn main() = spawn(worker)
+```
 
 Docs: https://meshlang.dev/docs/errors/#e0089
 
@@ -2402,6 +2931,16 @@ A `Plaintext` value, or one holding it, reaches a way out of the program other t
 
 **Repair:** Seal the value with `Crypto.aead_seal_plaintext`, `Crypto.hpke_seal_plaintext`, or `Plaintext.seal_for_storage`, export it through `@display`, or release it with `declassify(value, "reason")`. Transform it in place with `Plaintext.map`.
 
+**Example**
+```mesh
+fn show(text :: Plaintext<String>) = declassify(text, "")
+```
+
+**Fixed**
+```mesh
+fn show(text :: Plaintext<String>) = declassify(text, "explicit display")
+```
+
 Docs: https://meshlang.dev/docs/errors/#e0093
 
 ## E0094
@@ -2411,6 +2950,22 @@ Docs: https://meshlang.dev/docs/errors/#e0093
 `Jobs.start` is used indirectly or given a handler the compiler cannot check.
 
 **Repair:** Call `Jobs.start` directly, and pass a named function of type `fn(String) -> String` as its handler.
+
+**Example**
+```mesh
+fn start(pool :: PoolHandle) do
+  Jobs.start(pool, "{}", fn job -> job end)
+end
+```
+
+**Fixed**
+```mesh
+fn handle(job :: String) -> String = job
+
+fn start(pool :: PoolHandle) do
+  Jobs.start(pool, "{}", handle)
+end
+```
 
 Docs: https://meshlang.dev/docs/errors/#e0094
 
@@ -2593,6 +3148,34 @@ end
 ```
 
 Docs: https://meshlang.dev/docs/errors/#e0100
+
+## E0101
+
+**resource-crosses-boundary** · error · semantic · guide: `meshc guide types`
+
+A resource reaches an operation that cannot preserve its single owner, such as an actor message, job, collection, or serialization.
+
+**Repair:** Keep the resource in an ownership-aware scope and pass an unrestricted value instead, such as an ID or the data the resource represents.
+
+**Example**
+```mesh
+resource struct Handle do
+  id :: Int
+end
+
+fn forward(pid :: Pid, handle :: Handle) = send(pid, handle)
+```
+
+**Fixed**
+```mesh
+resource struct Handle do
+  id :: Int
+end
+
+fn forward(pid :: Pid, handle :: Handle) = send(pid, handle.id)
+```
+
+Docs: https://meshlang.dev/docs/errors/#e0101
 
 ## E0102
 

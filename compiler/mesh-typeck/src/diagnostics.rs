@@ -77,6 +77,7 @@ impl TypeError {
             TypeError::NativeDeclarationInvalid { .. } => Code::InvalidNativeDeclaration,
             TypeError::ExportDeclarationInvalid { .. } => Code::InvalidExportDeclaration,
             TypeError::ResourceViolation { .. } => Code::ResourceOwnershipViolation,
+            TypeError::ResourceCrossesBoundary { .. } => Code::ResourceCrossesBoundary,
             TypeError::InvalidLetPattern { .. } => Code::InvalidLetPattern,
             TypeError::InvalidPassThroughArm { .. } => Code::InvalidPassThroughArm,
             TypeError::DuplicateBinding { .. } => Code::DuplicateBinding,
@@ -384,19 +385,18 @@ fn place(error: &TypeError, d: Diagnostic, file: &SourceFile) -> Diagnostic {
 
         TypeError::TraitMethodSignatureMismatch {
             trait_name,
+            method_name,
             expected,
             found,
             span,
-            ..
-        } => d.at(
-            span_of(*span),
-            format!(
-                "`{}` declares {}, this is {}",
-                trait_name,
-                expected.with_holes(),
-                found.with_holes()
-            ),
-        ),
+        } => {
+            let expected = expected.with_holes();
+            d.at(
+                span_of(*span),
+                format!("`{trait_name}` declares {expected}, this is {}", found.with_holes()),
+            )
+            .with_repair(format!("give `{method_name}` the signature `{expected}` from `{trait_name}`"))
+        }
 
         TypeError::MissingField {
             field_name, span, ..
@@ -404,29 +404,32 @@ fn place(error: &TypeError, d: Diagnostic, file: &SourceFile) -> Diagnostic {
             .at(span_of(*span), format!("field `{}` is required", field_name))
             .with_repair(format!("add `{}: <value>`", field_name)),
 
-        TypeError::UnknownField {
-            struct_name,
-            field_name,
-            span,
-        } => d.at(
-            span_of(*span),
-            format!("`{}` has no field `{}`", struct_name, field_name),
-        ),
+        TypeError::UnknownField { struct_name, field_name, suggestion, span } => {
+            let d = d.at(span_of(*span), format!("`{struct_name}` has no field `{field_name}`"));
+            match suggestion {
+                Some(close) => did_you_mean(d, file, *span, field_name, close),
+                None => d.with_repair(format!("use a field declared by `{struct_name}`, or add `{field_name}` to its definition")),
+            }
+        }
 
-        TypeError::NoSuchField {
-            field_name, span, ..
-        } => d.at(span_of(*span), format!("no field `{}`", field_name)),
+        TypeError::NoSuchField { ty, field_name, suggestion, span } => {
+            let d = d.at(span_of(*span), format!("no field `{field_name}`"));
+            match suggestion {
+                Some(close) => did_you_mean(d, file, *span, field_name, close),
+                None => d.with_repair(format!("use a field of `{}`, or change the receiver to a struct with a `{field_name}` field", ty.with_holes())),
+            }
+        }
 
-        TypeError::NoSuchMethod {
-            ty,
-            method_name,
-            span,
-        } => d
-            .at(span_of(*span), format!("method `{}` not found", method_name))
-            .with_repair(format!(
-                "type `{}` has no trait impl providing `{}`",
-                ty, method_name
-            )),
+        TypeError::NoSuchMethod { ty, method_name, suggestion, span } => {
+            let d = d.at(span_of(*span), format!("method `{method_name}` not found"));
+            match suggestion {
+                Some(close) => did_you_mean(d, file, *span, method_name, close),
+                None => d.with_repair(format!(
+                    "use a method of `{}`, or implement an interface that provides `{method_name}` for it",
+                    ty.with_holes()
+                )),
+            }
+        }
 
         TypeError::ManualContinuityPromotionDisabled { span } => d
             .at(
@@ -523,10 +526,9 @@ fn place(error: &TypeError, d: Diagnostic, file: &SourceFile) -> Diagnostic {
             .with_repair(format!("this Pid accepts messages of type {}", expected))
         }
 
-        TypeError::SelfOutsideActor { span } => d.at(
-            span_of(*span),
-            "self() is only available inside an actor block",
-        ),
+        TypeError::SelfOutsideActor { span } => d
+            .at(span_of(*span), "self() is only available inside an actor block")
+            .with_repair("call `self()` inside the actor and pass its pid to any function that needs it"),
 
         TypeError::MonitorOutsideActor { span } => d
             .at(
@@ -535,10 +537,9 @@ fn place(error: &TypeError, d: Diagnostic, file: &SourceFile) -> Diagnostic {
             )
             .with_repair("call `Process.monitor` or `Node.monitor` inside an actor block"),
 
-        TypeError::SpawnNonFunction { found, span } => d.at(
-            span_of(*span),
-            format!("expected a function, found {}", found.with_holes()),
-        ),
+        TypeError::SpawnNonFunction { found, span } => d
+            .at(span_of(*span), format!("expected a function, found {}", found.with_holes()))
+            .with_repair("pass the name of an actor as the first argument to `spawn`"),
 
         TypeError::UnderivableFieldType {
             trait_name,
@@ -558,8 +559,9 @@ fn place(error: &TypeError, d: Diagnostic, file: &SourceFile) -> Diagnostic {
         TypeError::DecodeTypeUnknown { ty, span } => d
             .at(span_of(*span), "nothing fixes what this decodes")
             .with_repair(format!(
-                "annotate the result, as `let r :: Result<{ty}, String> = ...` with the `_` \
-                 filled in"
+                "annotate the result, as `let r :: Result<{}, String> = ...` with the `_` \
+                 filled in",
+                ty.with_holes()
             )),
 
         TypeError::SpawnNotActor { span } => d
@@ -590,38 +592,40 @@ fn place(error: &TypeError, d: Diagnostic, file: &SourceFile) -> Diagnostic {
             )
             .with_repair("the start function must call spawn() and return a Pid"),
 
-        TypeError::InvalidStrategy { span, .. } => d.at(
-            span_of(*span),
-            "expected one_for_one, one_for_all, rest_for_one, or simple_one_for_one",
-        ),
+        TypeError::InvalidStrategy { found, span } => {
+            let d = d.at(span_of(*span), "invalid strategy");
+            match mesh_diagnostics::closest(found, crate::infer::SUPERVISION_STRATEGIES, 2) {
+                Some(close) => did_you_mean(d, file, *span, found, close),
+                None => d.with_repair("use `one_for_one`, `one_for_all`, `rest_for_one`, or `simple_one_for_one` for `strategy`"),
+            }
+        }
 
-        TypeError::InvalidRestartType { span, .. } => d.at(
-            span_of(*span),
-            "expected permanent, transient, or temporary",
-        ),
+        TypeError::InvalidRestartType { found, child_name, span } => {
+            let d = d.at(span_of(*span), format!("invalid restart type for `{child_name}`"));
+            match mesh_diagnostics::closest(found, crate::infer::SUPERVISION_RESTART_TYPES, 2) {
+                Some(close) => did_you_mean(d, file, *span, found, close),
+                None => d.with_repair(format!("set `{child_name}`'s `restart` to `permanent`, `transient`, or `temporary`")),
+            }
+        }
 
-        TypeError::InvalidShutdownValue { span, .. } => d.at(
-            span_of(*span),
-            "expected a positive integer or brutal_kill",
-        ),
+        TypeError::InvalidShutdownValue { child_name, span, .. } => d
+            .at(span_of(*span), "expected a positive integer or brutal_kill")
+            .with_repair(format!(
+                "set `{child_name}`'s `shutdown` to a positive timeout in milliseconds, such as `5000`, or use `brutal_kill`"
+            )),
 
-        TypeError::CatchAllNotLast { span, .. } => d.at(
-            span_of(*span),
-            "clauses after a catch-all are unreachable",
-        ),
+        TypeError::CatchAllNotLast { fn_name, span, .. } => d
+            .at(span_of(*span), "clauses after a catch-all are unreachable")
+            .with_repair(format!("move this clause to the end of `{fn_name}`'s clauses")),
 
-        TypeError::NonConsecutiveClauses {
-            first_span,
-            second_span,
-            ..
-        } => d
+        TypeError::NonConsecutiveClauses { fn_name, arity, first_span, second_span } => d
             .at(span_of(*second_span), "non-consecutive redefinition here")
-            .with_label(span_of(*first_span), "first definition here"),
+            .with_label(span_of(*first_span), "first definition here")
+            .with_repair(format!("put all clauses of `{fn_name}/{arity}` together")),
 
-        TypeError::NonFirstClauseAnnotation { span, .. } => d.at(
-            span_of(*span),
-            "only the first clause should have this annotation",
-        ),
+        TypeError::NonFirstClauseAnnotation { fn_name, what, span } => d
+            .at(span_of(*span), "only the first clause should have this annotation")
+            .with_repair(format!("move the {what} to the first clause of `{fn_name}`")),
 
         TypeError::DuplicateImpl {
             first_impl, span, ..
@@ -692,13 +696,21 @@ fn place(error: &TypeError, d: Diagnostic, file: &SourceFile) -> Diagnostic {
             )
             .with_repair("move this `continue` inside a loop body"),
 
-        // The headline names the module and any near miss, or the name and
-        // what the module exports.
-        TypeError::ImportModuleNotFound { span, .. } => {
-            d.at(span_of(*span), "no module has this name")
+        TypeError::ImportModuleNotFound { module_name, span, suggestion } => {
+            let d = d.at(span_of(*span), "no module has this name");
+            match suggestion {
+                Some(close) => did_you_mean(d, file, *span, module_name, close),
+                None => d.with_repair(format!("check the import path or add a module named `{module_name}`")),
+            }
         }
 
-        TypeError::ImportNameNotFound { span, .. } => d.at(span_of(*span), "not exported"),
+        TypeError::ImportNameNotFound { module_name, name, available, span } => {
+            let d = d.at(span_of(*span), "not exported");
+            match mesh_diagnostics::closest(name, available.iter().map(String::as_str), 2) {
+                Some(close) => did_you_mean(d, file, *span, name, close),
+                None => d.with_repair(format!("import a public name from `{module_name}`, or define and export `{name}` there")),
+            }
+        }
 
         TypeError::PrivateItem {
             module_name,
@@ -717,7 +729,9 @@ fn place(error: &TypeError, d: Diagnostic, file: &SourceFile) -> Diagnostic {
                 "use `HTTP.clustered(handler)` or `HTTP.clustered(<int>, handler)` with a public top-level route handler reference",
             ),
 
-        TypeError::JobsStartInvalid { span, .. } => d.at(span_of(*span), "here"),
+        TypeError::JobsStartInvalid { reason, span } => d
+            .at(span_of(*span), "invalid job start")
+            .with_repair(*reason),
 
         TypeError::HttpClusteredPrivateHandler { handler_name, span } => d
             .at(
@@ -732,10 +746,9 @@ fn place(error: &TypeError, d: Diagnostic, file: &SourceFile) -> Diagnostic {
                 handler_name
             )),
 
-        TypeError::HttpClusteredOutsideRouteHandlerPosition { span } => d.at(
-            span_of(*span),
-            "use this wrapper directly as the handler argument to `HTTP.route(...)` or `HTTP.on_*(...)`",
-        ),
+        TypeError::HttpClusteredOutsideRouteHandlerPosition { span } => d
+            .at(span_of(*span), "outside the route handler argument")
+            .with_repair("use this wrapper directly as the handler argument to `HTTP.route(...)` or `HTTP.on_*(...)`"),
 
         TypeError::HttpClusteredConflictingReplicationCount {
             runtime_name,
@@ -768,16 +781,16 @@ fn place(error: &TypeError, d: Diagnostic, file: &SourceFile) -> Diagnostic {
                     handler_name
                 ),
             )
-            .with_note(
-                "imported bare handlers must preserve their defining module so clustered route lowering can keep the real runtime name",
-            ),
+            .with_repair(format!(
+                "import the defining module and pass its qualified handler to `HTTP.clustered(Module.{handler_name})`"
+            )),
 
         TypeError::TryIncompatibleReturn {
             operand_ty,
             fn_return_ty,
             span,
-        } => d.at(span_of(*span), "cannot use `?` here").with_note(format!(
-            "cannot propagate `{}` from a function returning `{}`; Result errors must match or have a From conversion, and Option requires an Option return type",
+        } => d.at(span_of(*span), "cannot use `?` here").with_repair(format!(
+            "to propagate `{}` instead of returning `{}`, return an `Option` for an `Option` operand, or a `Result` with the same error type or a `From` conversion for a `Result` operand. To keep the return type, handle the operand with `case`",
             operand_ty.with_holes(),
             fn_return_ty.with_holes()
         )),
@@ -829,15 +842,9 @@ fn place(error: &TypeError, d: Diagnostic, file: &SourceFile) -> Diagnostic {
                 assoc_name
             )),
 
-        TypeError::ExtraAssocType {
-            trait_name,
-            assoc_name,
-            span,
-            ..
-        } => d.at(
-            span_of(*span),
-            format!("`{}` is not declared by `{}`", assoc_name, trait_name),
-        ),
+        TypeError::ExtraAssocType { trait_name, assoc_name, span, .. } => d
+            .at(span_of(*span), format!("`{assoc_name}` is not declared by `{trait_name}`"))
+            .with_repair(format!("remove `type {assoc_name} = ...` or declare `type {assoc_name}` in `{trait_name}`")),
 
         TypeError::UnresolvedAssocType { assoc_name, span } => d
             .at(span_of(*span), "not declared")
@@ -919,12 +926,12 @@ fn place(error: &TypeError, d: Diagnostic, file: &SourceFile) -> Diagnostic {
         } => {
             let types = candidates
                 .iter()
-                .map(|ty| format!("`{ty}`"))
+                .map(|ty| format!("`{}`", ty.with_holes()))
                 .collect::<Vec<_>>()
                 .join(", ");
             let first = candidates
                 .first()
-                .map_or_else(|| "Int".to_string(), |ty| ty.to_string());
+                .map_or_else(|| "Int".to_string(), |ty| ty.with_holes().to_string());
             let (label, repair) = match (found, by_argument) {
                 (Some(_), false) => (
                     format!("they return {types}"),
@@ -950,9 +957,13 @@ fn place(error: &TypeError, d: Diagnostic, file: &SourceFile) -> Diagnostic {
             .at(span_of(*span), "defined again here")
             .with_repair(format!("rename or remove one of the two `{name}`s")),
 
-        TypeError::UnknownType { span, .. } => d
-            .at(span_of(*span), "no type has this name")
-            .with_repair("check the spelling, or define or import the type"),
+        TypeError::UnknownType { name, suggestion, span } => {
+            let d = d.at(span_of(*span), "no type has this name");
+            match suggestion {
+                Some(close) => did_you_mean(d, file, *span, name, close),
+                None => d.with_repair(format!("check the spelling of `{name}`, or define or import that type")),
+            }
+        }
 
         TypeError::NoSuchModuleFunction {
             module,
@@ -1031,7 +1042,9 @@ fn place(error: &TypeError, d: Diagnostic, file: &SourceFile) -> Diagnostic {
                 "use `List.get(list, index)`, `Map.get(map, key)`, or `Tuple.nth(tuple, index)`",
             ),
 
-        TypeError::InvalidLiteral { span, .. } => d.at(span_of(*span), "invalid literal"),
+        TypeError::InvalidLiteral { span, .. } => d
+            .at(span_of(*span), "invalid literal")
+            .with_repair("check the digits and use a number within the range of its type"),
 
         TypeError::UnknownInterface { span, .. } => d
             .at(span_of(*span), "no interface has this name")
@@ -1049,9 +1062,13 @@ fn place(error: &TypeError, d: Diagnostic, file: &SourceFile) -> Diagnostic {
                 "move it to the top level of the module"
             }),
 
-        TypeError::TypeArgumentCount { span, .. } => {
-            d.at(span_of(*span), "wrong number of type arguments")
-        }
+        TypeError::TypeArgumentCount { name, expected, span, .. } => d
+            .at(span_of(*span), "wrong number of type arguments")
+            .with_repair(match expected {
+                0 => format!("use `{name}` without type arguments"),
+                1 => format!("give `{name}` one type argument"),
+                _ => format!("give `{name}` exactly {expected} type arguments"),
+            }),
 
         TypeError::InvalidIndex { span, .. } => d.at(span_of(*span), "invalid Nat index"),
 
@@ -1059,6 +1076,7 @@ fn place(error: &TypeError, d: Diagnostic, file: &SourceFile) -> Diagnostic {
 
         TypeError::ReservedProofName { span } => {
             d.at(span_of(*span), "reserved for the type of proof values")
+                .with_repair("rename your `Proof` type, for example to `Evidence`, and update its uses")
         }
 
         TypeError::MissingEmbeddedProof { theorem, span } => d
@@ -1157,16 +1175,8 @@ fn place(error: &TypeError, d: Diagnostic, file: &SourceFile) -> Diagnostic {
             d.at(span_of(*span), "here").with_repair(PLAINTEXT_EXITS)
         }
 
-        TypeError::ResourceViolation { reason, span } => {
-            // Across an actor, a job or into JSON it is the value itself
-            // that cannot go, however it is moved.
-            let crosses = reason.contains("cross") || reason.contains("transferred");
-            d.at(span_of(*span), "here").with_repair(if crosses {
-                "a resource stays with the actor that owns it: pass what it stands for \
-                 instead, such as an id or the data it holds"
-            } else {
-                "move each resource once, or pass it to a direct `borrow` parameter"
-            })
+        TypeError::ResourceViolation { span, .. } | TypeError::ResourceCrossesBoundary { span, .. } => {
+            d.at(span_of(*span), "here")
         }
     }
 }
@@ -1303,11 +1313,13 @@ mod tests {
     #[test]
     fn an_error_without_its_own_repair_has_the_catalogs() {
         let file = SourceFile::new("m.mpl", "fn main() do\nend\n");
-        let error = TypeError::SelfOutsideActor {
+        let error = TypeError::UnboundVariable {
+            name: "missing".into(),
+            suggestion: None,
             span: rowan::TextRange::new(0.into(), 2.into()),
         };
         let diagnostic = error.to_diagnostic(&file);
-        assert_eq!(diagnostic.repair(), Code::SelfOutsideActor.info().repair);
+        assert_eq!(diagnostic.repair(), Code::UnboundVariable.info().repair);
         assert_eq!(diagnostic.message(), error.to_string());
     }
 

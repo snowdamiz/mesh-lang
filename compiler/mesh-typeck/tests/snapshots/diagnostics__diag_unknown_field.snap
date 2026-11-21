@@ -6,9 +6,9 @@ expression: output
    ╭─[ test.mpl:5:15 ]
    │
  5 │ Point { x: 1, z: 2 }
-   │               ──┬─
-   │                 ╰─── `Point` has no field `z`
+   │               ┬
+   │               ╰── `Point` has no field `z`
    │
-   │ Help: Give every field the struct declares exactly once, and use only field names from the struct's definition.
+   │ Help: did you mean `y`?
 ───╯
   = E0009: meshc explain E0009 · skill diagnostics.md#e0009 · https://meshlang.dev/docs/errors/#e0009

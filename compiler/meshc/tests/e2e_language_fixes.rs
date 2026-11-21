@@ -3791,6 +3791,11 @@ fn question_mark_needs_a_function_that_can_return_its_error() {
     );
     let diags = json_diagnostics(&source);
     let try_err = diags.iter().find(|d| d["code"] == "E0036").expect("E0036");
+    assert!(try_err["fix"]
+        .as_str()
+        .unwrap()
+        .contains("handle the operand with `case`"));
+    assert_eq!(try_err["notes"], serde_json::json!([]));
     assert_eq!(
         try_err["spans"][0]["start"].as_u64().unwrap() as usize,
         source.find("helper(n)?").unwrap()

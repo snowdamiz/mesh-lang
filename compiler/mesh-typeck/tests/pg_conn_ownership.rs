@@ -35,11 +35,13 @@ end
 
     assert_eq!(
         resource_violations(&result),
-        [
-            "resource `conn` was used after it moved",
-            "resource `conn` cannot cross an actor mailbox boundary",
-        ]
+        ["resource `conn` was used after it moved"]
     );
+    assert!(result.errors.iter().any(|error| matches!(
+        error,
+        TypeError::ResourceCrossesBoundary { reason, .. }
+            if reason == "resource `conn` cannot cross an actor mailbox boundary"
+    )));
 }
 
 #[test]

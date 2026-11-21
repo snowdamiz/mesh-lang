@@ -23,8 +23,8 @@ fn one_of_each() -> Vec<TypeError> {
             origin: ConstraintOrigin::Expr { span: span(27, 40) },
         },
         TypeError::InfiniteType {
-            var: TyVar(7),
-            ty: Ty::int(),
+            var: TyVar(0),
+            ty: Ty::Fun(vec![Ty::Var(TyVar(0))], Box::new(Ty::Var(TyVar(1)))),
             origin: ConstraintOrigin::Expr { span: span(27, 40) },
         },
         TypeError::ArityMismatch {
@@ -89,16 +89,19 @@ fn one_of_each() -> Vec<TypeError> {
             struct_name: "struct_name".to_string(),
             field_name: "field_name".to_string(),
             span: span(19, 24),
+            suggestion: None,
         },
         TypeError::NoSuchField {
             ty: Ty::int(),
             field_name: "field_name".to_string(),
             span: span(19, 24),
+            suggestion: None,
         },
         TypeError::NoSuchMethod {
-            ty: Ty::int(),
+            ty: Ty::list(Ty::Var(TyVar(0))),
             method_name: "method_name".to_string(),
             span: span(19, 24),
+            suggestion: None,
         },
         TypeError::ManualContinuityPromotionDisabled { span: span(19, 24) },
         TypeError::UnknownVariant {
@@ -160,7 +163,10 @@ fn one_of_each() -> Vec<TypeError> {
             span: span(19, 24),
         },
         TypeError::DecodeTypeUnknown {
-            ty: Ty::Con(mesh_typeck::ty::TyCon::new("Box<_>")),
+            ty: Ty::App(
+                Box::new(Ty::Con(mesh_typeck::ty::TyCon::new("Box"))),
+                vec![Ty::Var(TyVar(1))],
+            ),
             span: span(19, 24),
         },
         TypeError::ReceiveOutsideActor { span: span(19, 24) },
@@ -333,8 +339,8 @@ fn one_of_each() -> Vec<TypeError> {
         TypeError::AmbiguousImplMethod {
             method: "method".to_string(),
             receiver: Ty::int(),
-            candidates: vec![Ty::int(), Ty::string()],
-            found: Some(Ty::int()),
+            candidates: vec![Ty::list(Ty::Var(TyVar(0))), Ty::string()],
+            found: Some(Ty::list(Ty::Var(TyVar(1)))),
             span: span(19, 24),
             by_argument: false,
         },
@@ -370,6 +376,7 @@ fn one_of_each() -> Vec<TypeError> {
         TypeError::UnknownType {
             name: "name".to_string(),
             span: span(19, 24),
+            suggestion: None,
         },
         TypeError::UnknownFieldOwner {
             field: "field".to_string(),
@@ -496,8 +503,12 @@ fn one_of_each() -> Vec<TypeError> {
             ty: Ty::Var(TyVar(3)),
             span: span(19, 24),
         },
+        TypeError::ResourceCrossesBoundary {
+            reason: "resource `value` cannot enter an unrestricted collection".to_string(),
+            span: span(19, 24),
+        },
         TypeError::ResourceViolation {
-            reason: "reason".to_string(),
+            reason: "resource `value` was used after it moved".to_string(),
             span: span(19, 24),
         },
         TypeError::PlaintextViolation {
@@ -734,6 +745,7 @@ variants!(
     DuplicateField,
     NotAStruct,
     ResourceViolation,
+    ResourceCrossesBoundary,
     PlaintextViolation,
 );
 
@@ -869,4 +881,27 @@ fn type_variables_past_z_are_numbered() {
 #[test]
 fn a_type_variable_key_names_itself() {
     assert_eq!(<TyVar as ena::unify::UnifyKey>::tag(), "TyVar");
+}
+
+#[test]
+fn diagnostics_hide_inference_variable_ids() {
+    let file = SourceFile::new("main.mpl", SOURCE);
+    for error in one_of_each() {
+        let diagnostic = error.to_diagnostic(&file);
+        let texts = [diagnostic.message(), diagnostic.repair()]
+            .into_iter()
+            .chain(diagnostic.primary_label())
+            .chain(diagnostic.labels().iter().map(|label| label.message()))
+            .chain(diagnostic.notes().iter().map(String::as_str));
+        for text in texts {
+            assert!(
+                !text
+                    .as_bytes()
+                    .windows(2)
+                    .any(|pair| pair[0] == b'?' && pair[1].is_ascii_digit()),
+                "{} leaked an inference variable ID in {text:?}",
+                diagnostic.code().id()
+            );
+        }
+    }
 }

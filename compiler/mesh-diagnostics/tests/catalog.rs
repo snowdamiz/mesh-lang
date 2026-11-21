@@ -9,18 +9,13 @@ use mesh_diagnostics::{Code, Family, Lookup, Severity, Status};
 
 const RETIRED: &[&str] = &["E0013", "E0024", "E0025", "E0043"];
 
-/// P/E/W/L codes without an example yet. An entry is removed when its
-/// example is written; the list only shrinks.
-const MISSING_EXAMPLES: &[&str] = &[
-    "E0018", "E0022", "E0027", "E0031", "E0034", "E0035", "E0042", "E0046", "E0047", "E0048",
-    "E0049", "E0050", "E0051", "E0052", "E0053", "E0055", "E0056", "E0059", "E0065", "E0066",
-    "E0077", "E0079", "E0081", "E0082", "E0086", "E0088", "E0089", "E0093", "E0094",
+// Law file syntax, law size limits, logic size limits, and test file syntax.
+const NOT_IN_A_PROGRAM: &[&str] = &[
+    "P0201", "P0202", "P0302", "P0401",
+    // Project loading always supplies the defining module. The type checker
+    // tests the missing-origin case with a synthetic import context.
+    "E0051",
 ];
-
-/// P codes no lone `.mpl` program can show: errors in `.law` and
-/// `.test.mpl` files, and nesting limits too deep to print. The parsers'
-/// own tests cause each of them.
-const NOT_IN_A_PROGRAM: &[&str] = &["P0201", "P0202", "P0302", "P0401"];
 
 fn is_id(id: &str) -> bool {
     let digits = match id.strip_prefix("CFG") {
@@ -144,33 +139,19 @@ fn every_row_has_prose_and_a_known_topic() {
 }
 
 #[test]
-fn source_codes_have_examples_or_are_baselined() {
+fn source_codes_have_examples() {
     for code in Code::all().filter(|&code| needs_example(code)) {
         let info = code.info();
-        let missing = MISSING_EXAMPLES.contains(&info.id);
-        match (&info.example, missing) {
-            (Some(example), false) => {
-                assert_ne!(example.bad, example.fixed, "{}", info.id);
-            }
-            (None, true) => {}
-            (Some(_), true) => panic!(
-                "{} has an example now: remove it from MISSING_EXAMPLES",
-                info.id
-            ),
-            (None, false) => panic!("{} has no example: write one", info.id),
-        }
-    }
-    for id in MISSING_EXAMPLES {
-        assert!(
-            matches!(Code::lookup(id), Lookup::Found(code) if needs_example(code)),
-            "MISSING_EXAMPLES lists `{id}`, which is not a P/E/W/L code"
-        );
+        let example = info
+            .example
+            .unwrap_or_else(|| panic!("{} has no example", info.id));
+        assert_ne!(example.bad, example.fixed, "{}", info.id);
     }
     for id in NOT_IN_A_PROGRAM {
         let Lookup::Found(code) = Code::lookup(id) else {
             panic!("NOT_IN_A_PROGRAM lists `{id}`, which is no code");
         };
-        assert_eq!(code.family(), Family::Syntax, "{id}");
+        assert!(is_source_code(code), "{id}");
         assert!(code.info().example.is_none(), "{id} has an example");
     }
 }

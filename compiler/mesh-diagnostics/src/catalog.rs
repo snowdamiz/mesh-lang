@@ -181,6 +181,10 @@ catalog! {
         summary: "A supervisor child's `start` function returns something other than the `Pid` of the process it spawns.",
         repair: "Make `start` return the result of `spawn`, as `start: fn -> spawn(worker, arg) end`.",
         topic: "supervisors",
+        example: (
+            "actor worker() do\n  nil\nend\n\nsupervisor Workers do\n  strategy: one_for_one\n  child worker do\n    start: fn -> 42 end\n  end\nend\n",
+            "actor worker() do\n  nil\nend\n\nsupervisor Workers do\n  strategy: one_for_one\n  child worker do\n    start: fn -> spawn(worker) end\n  end\nend\n",
+        ),
     },
     UnknownSupervisionStrategy = E0019 "unknown-supervision-strategy" Error {
         title: "unknown supervision strategy",
@@ -217,6 +221,10 @@ catalog! {
         summary: "A clause that matches every argument comes before other clauses of the same function, so they never run.",
         repair: "Move the catch-all clause after every more specific clause of the function.",
         topic: "syntax",
+        example: (
+            "fn label(n) = n\nfn label(0) = 1\n",
+            "fn label(0) = 1\nfn label(n) = n\n",
+        ),
     },
     NonConsecutiveClauses = E0023 "non-consecutive-clauses" Error {
         title: "function clauses are not consecutive",
@@ -243,6 +251,10 @@ catalog! {
         summary: "Several interfaces implemented for the receiver's type provide a method of the called name.",
         repair: "Call the method through the interface you mean, as `Interface.method(value)`.",
         topic: "traits",
+        example: (
+            "interface A do\n  fn label(self) -> Int\nend\n\ninterface B do\n  fn label(self) -> Int\nend\n\nstruct Item do\n  n :: Int\nend\n\nimpl A for Item do\n  fn label(self) -> Int = self.n\nend\n\nimpl B for Item do\n  fn label(self) -> Int = self.n + 1\nend\n\nfn main() = Item { n: 0 }.label()\n",
+            "interface A do\n  fn label(self) -> Int\nend\n\ninterface B do\n  fn label(self) -> Int\nend\n\nstruct Item do\n  n :: Int\nend\n\nimpl A for Item do\n  fn label(self) -> Int = self.n\nend\n\nimpl B for Item do\n  fn label(self) -> Int = self.n + 1\nend\n\nfn main() = A.label(Item { n: 0 })\n",
+        ),
     },
     UnsupportedDerive = E0028 "unsupported-derive" Error {
         title: "interface cannot be derived",
@@ -279,6 +291,10 @@ catalog! {
         summary: "An `import` names a module that is neither in the project nor in the standard library.",
         repair: "Correct the module path, which follows the file path (`geo/points.mpl` is `Geo.Points`), or create the module's file.",
         topic: "projects",
+        example: (
+            "import Maths\n\nmodule Math do\n  pub fn count() = 1\nend\n",
+            "import Math\n\nmodule Math do\n  pub fn count() = 1\nend\n",
+        ),
     },
     BreakOutsideLoop = E0032 "break-outside-loop" Error {
         title: "`break` outside a loop",
@@ -305,12 +321,20 @@ catalog! {
         summary: "An import names something its module does not define.",
         repair: "Correct the name to one the module exports (the diagnostic lists them), or define it in the module with `pub`.",
         topic: "projects",
+        example: (
+            "from Math import coun\n\nmodule Math do\n  pub fn count() = 1\nend\n",
+            "from Math import count\n\nmodule Math do\n  pub fn count() = 1\nend\n",
+        ),
     },
     PrivateItem = E0035 "private-item" Error {
         title: "private item imported",
         summary: "An import names a definition its module does not mark `pub`.",
         repair: "Add `pub` to the definition in its module, or stop importing it.",
         topic: "projects",
+        example: (
+            "from Math import count\n\nmodule Math do\n  fn count() = 1\nend\n",
+            "from Math import count\n\nmodule Math do\n  pub fn count() = 1\nend\n",
+        ),
     },
     TryIncompatibleReturn = E0036 "try-incompatible-return" Error {
         title: "`?` in a function that cannot return its failure",
@@ -377,6 +401,10 @@ catalog! {
         summary: "`Self.Name` refers to an associated type that no interface in scope declares.",
         repair: "Declare the associated type in the interface with `type Name`, and bind it in each `impl` with `type Name = ConcreteType`.",
         topic: "traits",
+        example: (
+            "interface Container do\n  fn first(self) -> Self.Item\nend\n",
+            "interface Container do\n  type Item\n  fn first(self) -> Self.Item\nend\n",
+        ),
     },
     SlotPipeOutOfRange = E0044 "slot-pipe-out-of-range" Error {
         title: "slot pipe position out of range",
@@ -403,30 +431,50 @@ catalog! {
         summary: "`Continuity.promote()` is no longer part of Mesh; failover between nodes is automatic.",
         repair: "Remove the `Continuity.promote()` call. Read authority state with `Continuity.authority_status()` where the program needs it.",
         topic: "clustering",
+        example: (
+            "fn main() = Continuity.promote()\n",
+            "fn main() = Continuity.authority_status()\n",
+        ),
     },
     ClusteredRouteInvalidArguments = E0047 "clustered-route-invalid-arguments" Error {
         title: "invalid `HTTP.clustered` arguments",
         summary: "`HTTP.clustered(...)` received arguments other than an optional replication count and a handler reference.",
         repair: "Write `HTTP.clustered(handler)` or `HTTP.clustered(count, handler)`, where `handler` names a public top-level route handler.",
         topic: "clustering",
+        example: (
+            "pub fn handle(req :: Request) -> Response = HTTP.response(200, \"ok\")\n\nfn routes() = HTTP.on_get(HTTP.router(), \"/\", HTTP.clustered(0, handle))\n",
+            "pub fn handle(req :: Request) -> Response = HTTP.response(200, \"ok\")\n\nfn routes() = HTTP.on_get(HTTP.router(), \"/\", HTTP.clustered(handle))\n",
+        ),
     },
     ClusteredRoutePrivateHandler = E0048 "clustered-route-private-handler" Error {
         title: "clustered route handler is private",
         summary: "`HTTP.clustered(...)` wraps a handler that is not `pub`, so other nodes cannot run it.",
         repair: "Add `pub` to the handler's definition, or remove the `HTTP.clustered(...)` wrapper.",
         topic: "clustering",
+        example: (
+            "fn handle(req :: Request) -> Response = HTTP.response(200, \"ok\")\n\nfn routes() = HTTP.on_get(HTTP.router(), \"/\", HTTP.clustered(handle))\n",
+            "pub fn handle(req :: Request) -> Response = HTTP.response(200, \"ok\")\n\nfn routes() = HTTP.on_get(HTTP.router(), \"/\", HTTP.clustered(handle))\n",
+        ),
     },
     ClusteredRouteMisplaced = E0049 "clustered-route-misplaced" Error {
         title: "`HTTP.clustered` outside a route handler position",
         summary: "`HTTP.clustered(...)` appears somewhere other than the handler argument of `HTTP.route(...)` or `HTTP.on_*(...)`.",
         repair: "Pass `HTTP.clustered(handler)` directly as the handler argument of `HTTP.route(...)` or `HTTP.on_*(...)`.",
         topic: "clustering",
+        example: (
+            "pub fn handle(req :: Request) -> Response = HTTP.response(200, \"ok\")\n\nfn routes() = HTTP.clustered(handle)\n",
+            "pub fn handle(req :: Request) -> Response = HTTP.response(200, \"ok\")\n\nfn routes() = HTTP.on_get(HTTP.router(), \"/\", HTTP.clustered(handle))\n",
+        ),
     },
     ClusteredRouteConflictingCount = E0050 "clustered-route-conflicting-count" Error {
         title: "conflicting clustered route replication counts",
         summary: "One clustered route handler is wrapped with different replication counts in different places.",
         repair: "Use one replication count for the handler everywhere it is wrapped in `HTTP.clustered(...)`.",
         topic: "clustering",
+        example: (
+            "pub fn handle(req :: Request) -> Response = HTTP.response(200, \"ok\")\n\nfn routes() do\n  let router = HTTP.on_get(HTTP.router(), \"/a\", HTTP.clustered(2, handle))\n  HTTP.on_get(router, \"/b\", HTTP.clustered(3, handle))\nend\n",
+            "pub fn handle(req :: Request) -> Response = HTTP.response(200, \"ok\")\n\nfn routes() do\n  let router = HTTP.on_get(HTTP.router(), \"/a\", HTTP.clustered(2, handle))\n  HTTP.on_get(router, \"/b\", HTTP.clustered(2, handle))\nend\n",
+        ),
     },
     ClusteredRouteOriginMissing = E0051 "clustered-route-origin-missing" Error {
         title: "imported clustered handler has no defining module",
@@ -436,15 +484,23 @@ catalog! {
     },
     InvalidNativeDeclaration = E0052 "invalid-native-declaration" Error {
         title: "invalid native declaration",
-        summary: "A `@native` function declaration is private, generic, not fully annotated, or names a symbol that is not a C identifier.",
+        summary: "In a native binding listed in `mesh.toml`, an `@native` function is private, generic, missing a type annotation, or names a symbol that is not a C identifier.",
         repair: "Declare it as a public, non-generic function with every parameter and the return type annotated, and a C identifier as its symbol.",
         topic: "projects",
+        example: (
+            "@native(\"mesh_count\")\nfn count() -> Int\n",
+            "@native(\"mesh_count\")\npub fn count() -> Int\n",
+        ),
     },
     ResourceOwnershipViolation = E0053 "resource-ownership-violation" Error {
         title: "resource ownership violation",
-        summary: "A resource value, which has exactly one owner, is used after it moved or crosses a boundary it cannot cross.",
-        repair: "Move each resource once, or pass it to a direct `borrow` parameter. Across an actor, job, or JSON boundary, pass what the resource stands for instead, such as an id or the data it holds.",
+        summary: "A resource is used after a move, moved while borrowed, or given more than one owner.",
+        repair: "Use the resource before moving it. Pass it to a direct `borrow` parameter when the caller needs to keep ownership.",
         topic: "types",
+        example: (
+            "fn close(secret :: SecretBytes) do\n  Secret.destroy(secret)\n  Secret.destroy(secret)\nend\n",
+            "fn close(secret :: SecretBytes) do\n  Secret.destroy(secret)\nend\n",
+        ),
     },
     InvalidLetPattern = E0054 "invalid-let-pattern" Error {
         title: "invalid destructuring pattern",
@@ -461,12 +517,20 @@ catalog! {
         summary: "An `@export` function does not have the binary request and response signature library exports use.",
         repair: "Declare the export as `@export(\"c_symbol\") pub fn name(request :: Bytes) -> Bytes!String`.",
         topic: "projects",
+        example: (
+            "@export(\"mesh_echo\")\nfn echo(request :: Bytes) -> Bytes!String = Ok(request)\n",
+            "@export(\"mesh_echo\")\npub fn echo(request :: Bytes) -> Bytes!String = Ok(request)\n",
+        ),
     },
     InvalidPassThroughArm = E0056 "invalid-pass-through-arm" Error {
         title: "arm without `->` whose pattern is not a value",
         summary: "A match arm with no `->` gives its pattern as its value, and this pattern cannot stand for one.",
         repair: "Write the arm's value after `->`, as `pattern -> value`.",
         topic: "pattern-matching",
+        example: (
+            "fn main() do\n  case 1 do\n    _\n  end\nend\n",
+            "fn main() do\n  case 1 do\n    _ -> 1\n  end\nend\n",
+        ),
     },
     DuplicateBinding = E0057 "duplicate-binding" Error {
         title: "name bound twice in a pattern",
@@ -493,6 +557,10 @@ catalog! {
         summary: "A struct literal or a `%{value | field: new}` update is applied to something that is not a struct, or whose type is not known there.",
         repair: "Use struct literals and updates only on struct types, and annotate the value with its struct type when nothing else fixes it.",
         topic: "types",
+        example: (
+            "fn main() = Int { n: 1 }\n",
+            "struct Count do\n  n :: Int\nend\n\nfn main() = Count { n: 1 }\n",
+        ),
     },
     UnderivableFunctionField = E0060 "underivable-function-field" Error {
         title: "derived interface over a function field",
@@ -549,12 +617,20 @@ catalog! {
         summary: "Several `impl`s provide the called method with different return or argument types, and nothing at the call picks one.",
         repair: "Annotate the result, or the argument, with one of the types the diagnostic lists.",
         topic: "traits",
+        example: (
+            "fn main() do\n  let x = 5.into()\n  println(\"#{x}\")\nend\n",
+            "fn main() do\n  let x :: Float = 5.into()\n  println(\"#{x}\")\nend\n",
+        ),
     },
     AmbiguousStaticMethod = E0066 "ambiguous-static-method" Error {
         title: "ambiguous static method",
         summary: "A static interface method, one without `self`, is called bare while several types provide it.",
         repair: "Call it on the type that should provide it, as `Type.method()`.",
         topic: "traits",
+        example: (
+            "interface Versioned do\n  fn version() -> Int\nend\n\nstruct A do\n  n :: Int\nend\n\nstruct B do\n  n :: Int\nend\n\nimpl Versioned for A do\n  fn version() -> Int = 1\nend\n\nimpl Versioned for B do\n  fn version() -> Int = 2\nend\n\nfn main() = version()\n",
+            "interface Versioned do\n  fn version() -> Int\nend\n\nstruct A do\n  n :: Int\nend\n\nstruct B do\n  n :: Int\nend\n\nimpl Versioned for A do\n  fn version() -> Int = 1\nend\n\nimpl Versioned for B do\n  fn version() -> Int = 2\nend\n\nfn main() = A.version()\n",
+        ),
     },
     RigidTypeParameter = E0067 "rigid-type-parameter" Error {
         title: "generic function fixes its type parameter",
@@ -661,6 +737,10 @@ catalog! {
         summary: "`assert_receive` is expanded only in test files that `meshc test` runs.",
         repair: "Move the assertion into a `.test.mpl` file, or write the `receive ... after TIMEOUT -> ...` block it stands for.",
         topic: "testing",
+        example: (
+            "fn main() do\n  assert_receive 42, 500\nend\n",
+            "actor worker() do\n  receive do\n    42 -> nil\n    _ -> nil\n  after 500 -> nil\n  end\nend\n",
+        ),
     },
     IndexingUnsupported = E0078 "indexing-unsupported" Error {
         title: "indexing syntax is not supported",
@@ -677,6 +757,10 @@ catalog! {
         summary: "Nothing in the module tells which type of message an actor receives, because only untyped pids reach it.",
         repair: "Give the pid a message type where the actor is spawned, as `let pid :: Pid<Int> = spawn(worker)`.",
         topic: "actors",
+        example: (
+            "actor worker() do\n  receive do\n    msg -> msg\n  end\nend\n",
+            "actor worker() do\n  receive do\n    msg -> msg + 1\n  end\nend\n",
+        ),
     },
     TopLevelLet = E0080 "top-level-let" Error {
         title: "`let` outside a function",
@@ -693,12 +777,20 @@ catalog! {
         summary: "Code calls a function of a project module that the file does not import.",
         repair: "Add `import Module` at the top of the file.",
         topic: "projects",
+        example: (
+            "module Counters do\n  pub fn count() = 1\nend\n\nfn main() = Counters.count()\n",
+            "import Counters\n\nmodule Counters do\n  pub fn count() = 1\nend\n\nfn main() = Counters.count()\n",
+        ),
     },
     UntypedMethodParameter = E0082 "untyped-method-parameter" Error {
         title: "method parameter type unknown",
         summary: "A method parameter has no annotation and nothing in the method fixes its type; a method is compiled once, for the type it is implemented for.",
         repair: "Annotate the parameter with its type, as `param :: Type`.",
         topic: "traits",
+        example: (
+            "interface Labeler do\n  fn label(self, x) -> String\nend\n\nstruct Item do\n  n :: Int\nend\n\nimpl Labeler for Item do\n  fn label(self, x) -> String = \"#{x}\"\nend\n",
+            "interface Labeler do\n  fn label(self, x) -> String\nend\n\nstruct Item do\n  n :: Int\nend\n\nimpl Labeler for Item do\n  fn label(self, x :: Int) -> String = \"#{x}\"\nend\n",
+        ),
     },
     TypeNotValue = E0083 "type-not-value" Error {
         title: "type used as a value",
@@ -735,6 +827,10 @@ catalog! {
         summary: "`Process.monitor` or `Node.monitor` is called outside an actor, so its message has no actor to go to.",
         repair: "Call `Process.monitor` or `Node.monitor` inside the actor body that should receive the message.",
         topic: "actors",
+        example: (
+            "fn main() = Node.monitor(\"node@localhost:9000\", 1)\n",
+            "actor watcher() do\n  Node.monitor(\"node@localhost:9000\", 1)\n  receive do\n    n -> n + 1\n  end\nend\n",
+        ),
     },
     TopLevelStatement = E0087 "top-level-statement" Error {
         title: "statement outside a function",
@@ -751,12 +847,20 @@ catalog! {
         summary: "A method an `impl` provides has a return type nothing fixes, so a call to it cannot be typed.",
         repair: "Annotate the method's return type in the `impl` or the interface, as `fn name(self) -> Type`.",
         topic: "traits",
+        example: (
+            "interface Maker do\n  fn make(self)\nend\n\nstruct Item do\n  n :: Int\nend\n\nimpl Maker for Item do\n  fn make(self) = self.make()\nend\n\nfn main() = Item { n: 0 }.make()\n",
+            "interface Maker do\n  fn make(self) -> Int\nend\n\nstruct Item do\n  n :: Int\nend\n\nimpl Maker for Item do\n  fn make(self) -> Int = self.n\nend\n\nfn main() = Item { n: 0 }.make()\n",
+        ),
     },
     SpawnComputed = E0089 "spawn-computed" Error {
         title: "spawn of a computed function",
         summary: "`spawn` is given a function computed at run time, and a process starts from a compiled entry that only a name gives.",
         repair: "Name the actor in the call, as `spawn(worker, arg)`. To choose one at run time, spawn each by name where it is chosen.",
         topic: "actors",
+        example: (
+            "actor worker() do\n  receive do\n    msg -> msg + 1\n  end\nend\n\nfn pick() = worker\n\nfn main() = spawn(pick())\n",
+            "actor worker() do\n  receive do\n    msg -> msg + 1\n  end\nend\n\nfn pick() = worker\n\nfn main() = spawn(worker)\n",
+        ),
     },
     SpawnNotActor = E0090 "spawn-not-actor" Error {
         title: "spawn of a function that is not an actor",
@@ -793,12 +897,20 @@ catalog! {
         summary: "A `Plaintext` value, or one holding it, reaches a way out of the program other than a seal, an `@display` export, or `declassify`.",
         repair: "Seal the value with `Crypto.aead_seal_plaintext`, `Crypto.hpke_seal_plaintext`, or `Plaintext.seal_for_storage`, export it through `@display`, or release it with `declassify(value, \"reason\")`. Transform it in place with `Plaintext.map`.",
         topic: "types",
+        example: (
+            "fn show(text :: Plaintext<String>) = declassify(text, \"\")\n",
+            "fn show(text :: Plaintext<String>) = declassify(text, \"explicit display\")\n",
+        ),
     },
     InvalidJobsStart = E0094 "invalid-jobs-start" Error {
         title: "invalid `Jobs.start` call",
         summary: "`Jobs.start` is used indirectly or given a handler the compiler cannot check.",
         repair: "Call `Jobs.start` directly, and pass a named function of type `fn(String) -> String` as its handler.",
         topic: "database",
+        example: (
+            "fn start(pool :: PoolHandle) do\n  Jobs.start(pool, \"{}\", fn job -> job end)\nend\n",
+            "fn handle(job :: String) -> String = job\n\nfn start(pool :: PoolHandle) do\n  Jobs.start(pool, \"{}\", handle)\nend\n",
+        ),
     },
     InvalidNatIndex = E0095 "invalid-nat-index" Error {
         title: "invalid Nat index",
@@ -858,6 +970,16 @@ catalog! {
         example: (
             "fn accept(evidence :: Proof<NatEq<2>>) -> Int = 2\n\nfn main() do\nend\n",
             "fn accept(evidence :: Proof<NatEq<2, 2>>) -> Int = 2\n\nfn main() do\nend\n",
+        ),
+    },
+    ResourceCrossesBoundary = E0101 "resource-crosses-boundary" Error {
+        title: "resource crosses an ownership boundary",
+        summary: "A resource reaches an operation that cannot preserve its single owner, such as an actor message, job, collection, or serialization.",
+        repair: "Keep the resource in an ownership-aware scope and pass an unrestricted value instead, such as an ID or the data the resource represents.",
+        topic: "types",
+        example: (
+            "resource struct Handle do\n  id :: Int\nend\n\nfn forward(pid :: Pid, handle :: Handle) = send(pid, handle)\n",
+            "resource struct Handle do\n  id :: Int\nend\n\nfn forward(pid :: Pid, handle :: Handle) = send(pid, handle.id)\n",
         ),
     },
     DuplicateTypeAcrossModules = E0102 "duplicate-type-across-modules" Error {

@@ -16536,7 +16536,7 @@ pub fn lower_module_with_diagnostics<'a>(
         return Err("Mesh proof values require a project build with proof checking".into());
     }
     if let Some(reason) = typeck.errors.iter().find_map(|error| match error {
-        TypeError::ResourceViolation { reason, .. }
+        TypeError::ResourceCrossesBoundary { reason, .. }
             if reason.contains("cannot be captured by a closure") =>
         {
             Some(reason)

@@ -320,6 +320,18 @@ end
         "expected imported-origin diagnostic, got: {:?}",
         result.errors
     );
+
+    let error = result
+        .errors
+        .iter()
+        .find(|error| matches!(error, TypeError::HttpClusteredImportedOriginMissing { .. }))
+        .unwrap();
+    let diagnostic = error.to_diagnostic(&SourceFile::new("test.mpl", src));
+    assert_eq!(diagnostic.code().id(), "E0051");
+    assert!(diagnostic
+        .repair()
+        .contains("HTTP.clustered(Module.handle_list_todos)"));
+    assert!(diagnostic.notes().is_empty());
 }
 
 /// Each way a handler reference can be wrong is its own error: of the

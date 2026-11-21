@@ -785,6 +785,13 @@ impl TraitRegistry {
         })
     }
 
+    pub(crate) fn method_names_for<'a>(&'a self, ty: &'a Ty) -> impl Iterator<Item = &'a str> {
+        let head = impl_head(ty, &self.nominal);
+        self.all_impls()
+            .filter(move |imp| self.applies(imp, head, ty).is_some())
+            .flat_map(|imp| imp.methods.keys().map(String::as_str))
+    }
+
     /// Find all trait names that provide a given method for a given type.
     ///
     /// Iterates all registered impls across all traits, collecting the trait

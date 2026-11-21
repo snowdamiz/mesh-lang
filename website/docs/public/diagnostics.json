@@ -389,7 +389,10 @@
         "skill": "references/diagnostics.md#e0018",
         "topic": "supervisors"
       },
-      "example": null,
+      "example": {
+        "bad": "actor worker() do\n  nil\nend\n\nsupervisor Workers do\n  strategy: one_for_one\n  child worker do\n    start: fn -> 42 end\n  end\nend\n",
+        "fixed": "actor worker() do\n  nil\nend\n\nsupervisor Workers do\n  strategy: one_for_one\n  child worker do\n    start: fn -> spawn(worker) end\n  end\nend\n"
+      },
       "status": "active"
     },
     {
@@ -470,7 +473,10 @@
         "skill": "references/diagnostics.md#e0022",
         "topic": "syntax"
       },
-      "example": null,
+      "example": {
+        "bad": "fn label(n) = n\nfn label(0) = 1\n",
+        "fixed": "fn label(0) = 1\nfn label(n) = n\n"
+      },
       "status": "active"
     },
     {
@@ -530,7 +536,10 @@
         "skill": "references/diagnostics.md#e0027",
         "topic": "traits"
       },
-      "example": null,
+      "example": {
+        "bad": "interface A do\n  fn label(self) -> Int\nend\n\ninterface B do\n  fn label(self) -> Int\nend\n\nstruct Item do\n  n :: Int\nend\n\nimpl A for Item do\n  fn label(self) -> Int = self.n\nend\n\nimpl B for Item do\n  fn label(self) -> Int = self.n + 1\nend\n\nfn main() = Item { n: 0 }.label()\n",
+        "fixed": "interface A do\n  fn label(self) -> Int\nend\n\ninterface B do\n  fn label(self) -> Int\nend\n\nstruct Item do\n  n :: Int\nend\n\nimpl A for Item do\n  fn label(self) -> Int = self.n\nend\n\nimpl B for Item do\n  fn label(self) -> Int = self.n + 1\nend\n\nfn main() = A.label(Item { n: 0 })\n"
+      },
       "status": "active"
     },
     {
@@ -611,7 +620,10 @@
         "skill": "references/diagnostics.md#e0031",
         "topic": "projects"
       },
-      "example": null,
+      "example": {
+        "bad": "import Maths\n\nmodule Math do\n  pub fn count() = 1\nend\n",
+        "fixed": "import Math\n\nmodule Math do\n  pub fn count() = 1\nend\n"
+      },
       "status": "active"
     },
     {
@@ -671,7 +683,10 @@
         "skill": "references/diagnostics.md#e0034",
         "topic": "projects"
       },
-      "example": null,
+      "example": {
+        "bad": "from Math import coun\n\nmodule Math do\n  pub fn count() = 1\nend\n",
+        "fixed": "from Math import count\n\nmodule Math do\n  pub fn count() = 1\nend\n"
+      },
       "status": "active"
     },
     {
@@ -689,7 +704,10 @@
         "skill": "references/diagnostics.md#e0035",
         "topic": "projects"
       },
-      "example": null,
+      "example": {
+        "bad": "from Math import count\n\nmodule Math do\n  fn count() = 1\nend\n",
+        "fixed": "from Math import count\n\nmodule Math do\n  pub fn count() = 1\nend\n"
+      },
       "status": "active"
     },
     {
@@ -833,7 +851,10 @@
         "skill": "references/diagnostics.md#e0042",
         "topic": "traits"
       },
-      "example": null,
+      "example": {
+        "bad": "interface Container do\n  fn first(self) -> Self.Item\nend\n",
+        "fixed": "interface Container do\n  type Item\n  fn first(self) -> Self.Item\nend\n"
+      },
       "status": "active"
     },
     {
@@ -893,7 +914,10 @@
         "skill": "references/diagnostics.md#e0046",
         "topic": "clustering"
       },
-      "example": null,
+      "example": {
+        "bad": "fn main() = Continuity.promote()\n",
+        "fixed": "fn main() = Continuity.authority_status()\n"
+      },
       "status": "active"
     },
     {
@@ -911,7 +935,10 @@
         "skill": "references/diagnostics.md#e0047",
         "topic": "clustering"
       },
-      "example": null,
+      "example": {
+        "bad": "pub fn handle(req :: Request) -> Response = HTTP.response(200, \"ok\")\n\nfn routes() = HTTP.on_get(HTTP.router(), \"/\", HTTP.clustered(0, handle))\n",
+        "fixed": "pub fn handle(req :: Request) -> Response = HTTP.response(200, \"ok\")\n\nfn routes() = HTTP.on_get(HTTP.router(), \"/\", HTTP.clustered(handle))\n"
+      },
       "status": "active"
     },
     {
@@ -929,7 +956,10 @@
         "skill": "references/diagnostics.md#e0048",
         "topic": "clustering"
       },
-      "example": null,
+      "example": {
+        "bad": "fn handle(req :: Request) -> Response = HTTP.response(200, \"ok\")\n\nfn routes() = HTTP.on_get(HTTP.router(), \"/\", HTTP.clustered(handle))\n",
+        "fixed": "pub fn handle(req :: Request) -> Response = HTTP.response(200, \"ok\")\n\nfn routes() = HTTP.on_get(HTTP.router(), \"/\", HTTP.clustered(handle))\n"
+      },
       "status": "active"
     },
     {
@@ -947,7 +977,10 @@
         "skill": "references/diagnostics.md#e0049",
         "topic": "clustering"
       },
-      "example": null,
+      "example": {
+        "bad": "pub fn handle(req :: Request) -> Response = HTTP.response(200, \"ok\")\n\nfn routes() = HTTP.clustered(handle)\n",
+        "fixed": "pub fn handle(req :: Request) -> Response = HTTP.response(200, \"ok\")\n\nfn routes() = HTTP.on_get(HTTP.router(), \"/\", HTTP.clustered(handle))\n"
+      },
       "status": "active"
     },
     {
@@ -965,7 +998,10 @@
         "skill": "references/diagnostics.md#e0050",
         "topic": "clustering"
       },
-      "example": null,
+      "example": {
+        "bad": "pub fn handle(req :: Request) -> Response = HTTP.response(200, \"ok\")\n\nfn routes() do\n  let router = HTTP.on_get(HTTP.router(), \"/a\", HTTP.clustered(2, handle))\n  HTTP.on_get(router, \"/b\", HTTP.clustered(3, handle))\nend\n",
+        "fixed": "pub fn handle(req :: Request) -> Response = HTTP.response(200, \"ok\")\n\nfn routes() do\n  let router = HTTP.on_get(HTTP.router(), \"/a\", HTTP.clustered(2, handle))\n  HTTP.on_get(router, \"/b\", HTTP.clustered(2, handle))\nend\n"
+      },
       "status": "active"
     },
     {
@@ -992,7 +1028,7 @@
       "severity": "error",
       "category": "semantic",
       "title": "invalid native declaration",
-      "summary": "A `@native` function declaration is private, generic, not fully annotated, or names a symbol that is not a C identifier.",
+      "summary": "In a native binding listed in `mesh.toml`, an `@native` function is private, generic, missing a type annotation, or names a symbol that is not a C identifier.",
       "repair": "Declare it as a public, non-generic function with every parameter and the return type annotated, and a C identifier as its symbol.",
       "topic": "projects",
       "docs_url": "https://meshlang.dev/docs/errors/#e0052",
@@ -1001,7 +1037,10 @@
         "skill": "references/diagnostics.md#e0052",
         "topic": "projects"
       },
-      "example": null,
+      "example": {
+        "bad": "@native(\"mesh_count\")\nfn count() -> Int\n",
+        "fixed": "@native(\"mesh_count\")\npub fn count() -> Int\n"
+      },
       "status": "active"
     },
     {
@@ -1010,8 +1049,8 @@
       "severity": "error",
       "category": "semantic",
       "title": "resource ownership violation",
-      "summary": "A resource value, which has exactly one owner, is used after it moved or crosses a boundary it cannot cross.",
-      "repair": "Move each resource once, or pass it to a direct `borrow` parameter. Across an actor, job, or JSON boundary, pass what the resource stands for instead, such as an id or the data it holds.",
+      "summary": "A resource is used after a move, moved while borrowed, or given more than one owner.",
+      "repair": "Use the resource before moving it. Pass it to a direct `borrow` parameter when the caller needs to keep ownership.",
       "topic": "types",
       "docs_url": "https://meshlang.dev/docs/errors/#e0053",
       "guide": {
@@ -1019,7 +1058,10 @@
         "skill": "references/diagnostics.md#e0053",
         "topic": "types"
       },
-      "example": null,
+      "example": {
+        "bad": "fn close(secret :: SecretBytes) do\n  Secret.destroy(secret)\n  Secret.destroy(secret)\nend\n",
+        "fixed": "fn close(secret :: SecretBytes) do\n  Secret.destroy(secret)\nend\n"
+      },
       "status": "active"
     },
     {
@@ -1058,7 +1100,10 @@
         "skill": "references/diagnostics.md#e0055",
         "topic": "projects"
       },
-      "example": null,
+      "example": {
+        "bad": "@export(\"mesh_echo\")\nfn echo(request :: Bytes) -> Bytes!String = Ok(request)\n",
+        "fixed": "@export(\"mesh_echo\")\npub fn echo(request :: Bytes) -> Bytes!String = Ok(request)\n"
+      },
       "status": "active"
     },
     {
@@ -1076,7 +1121,10 @@
         "skill": "references/diagnostics.md#e0056",
         "topic": "pattern-matching"
       },
-      "example": null,
+      "example": {
+        "bad": "fn main() do\n  case 1 do\n    _\n  end\nend\n",
+        "fixed": "fn main() do\n  case 1 do\n    _ -> 1\n  end\nend\n"
+      },
       "status": "active"
     },
     {
@@ -1136,7 +1184,10 @@
         "skill": "references/diagnostics.md#e0059",
         "topic": "types"
       },
-      "example": null,
+      "example": {
+        "bad": "fn main() = Int { n: 1 }\n",
+        "fixed": "struct Count do\n  n :: Int\nend\n\nfn main() = Count { n: 1 }\n"
+      },
       "status": "active"
     },
     {
@@ -1259,7 +1310,10 @@
         "skill": "references/diagnostics.md#e0065",
         "topic": "traits"
       },
-      "example": null,
+      "example": {
+        "bad": "fn main() do\n  let x = 5.into()\n  println(\"#{x}\")\nend\n",
+        "fixed": "fn main() do\n  let x :: Float = 5.into()\n  println(\"#{x}\")\nend\n"
+      },
       "status": "active"
     },
     {
@@ -1277,7 +1331,10 @@
         "skill": "references/diagnostics.md#e0066",
         "topic": "traits"
       },
-      "example": null,
+      "example": {
+        "bad": "interface Versioned do\n  fn version() -> Int\nend\n\nstruct A do\n  n :: Int\nend\n\nstruct B do\n  n :: Int\nend\n\nimpl Versioned for A do\n  fn version() -> Int = 1\nend\n\nimpl Versioned for B do\n  fn version() -> Int = 2\nend\n\nfn main() = version()\n",
+        "fixed": "interface Versioned do\n  fn version() -> Int\nend\n\nstruct A do\n  n :: Int\nend\n\nstruct B do\n  n :: Int\nend\n\nimpl Versioned for A do\n  fn version() -> Int = 1\nend\n\nimpl Versioned for B do\n  fn version() -> Int = 2\nend\n\nfn main() = A.version()\n"
+      },
       "status": "active"
     },
     {
@@ -1505,7 +1562,10 @@
         "skill": "references/diagnostics.md#e0077",
         "topic": "testing"
       },
-      "example": null,
+      "example": {
+        "bad": "fn main() do\n  assert_receive 42, 500\nend\n",
+        "fixed": "actor worker() do\n  receive do\n    42 -> nil\n    _ -> nil\n  after 500 -> nil\n  end\nend\n"
+      },
       "status": "active"
     },
     {
@@ -1544,7 +1604,10 @@
         "skill": "references/diagnostics.md#e0079",
         "topic": "actors"
       },
-      "example": null,
+      "example": {
+        "bad": "actor worker() do\n  receive do\n    msg -> msg\n  end\nend\n",
+        "fixed": "actor worker() do\n  receive do\n    msg -> msg + 1\n  end\nend\n"
+      },
       "status": "active"
     },
     {
@@ -1583,7 +1646,10 @@
         "skill": "references/diagnostics.md#e0081",
         "topic": "projects"
       },
-      "example": null,
+      "example": {
+        "bad": "module Counters do\n  pub fn count() = 1\nend\n\nfn main() = Counters.count()\n",
+        "fixed": "import Counters\n\nmodule Counters do\n  pub fn count() = 1\nend\n\nfn main() = Counters.count()\n"
+      },
       "status": "active"
     },
     {
@@ -1601,7 +1667,10 @@
         "skill": "references/diagnostics.md#e0082",
         "topic": "traits"
       },
-      "example": null,
+      "example": {
+        "bad": "interface Labeler do\n  fn label(self, x) -> String\nend\n\nstruct Item do\n  n :: Int\nend\n\nimpl Labeler for Item do\n  fn label(self, x) -> String = \"#{x}\"\nend\n",
+        "fixed": "interface Labeler do\n  fn label(self, x) -> String\nend\n\nstruct Item do\n  n :: Int\nend\n\nimpl Labeler for Item do\n  fn label(self, x :: Int) -> String = \"#{x}\"\nend\n"
+      },
       "status": "active"
     },
     {
@@ -1682,7 +1751,10 @@
         "skill": "references/diagnostics.md#e0086",
         "topic": "actors"
       },
-      "example": null,
+      "example": {
+        "bad": "fn main() = Node.monitor(\"node@localhost:9000\", 1)\n",
+        "fixed": "actor watcher() do\n  Node.monitor(\"node@localhost:9000\", 1)\n  receive do\n    n -> n + 1\n  end\nend\n"
+      },
       "status": "active"
     },
     {
@@ -1721,7 +1793,10 @@
         "skill": "references/diagnostics.md#e0088",
         "topic": "traits"
       },
-      "example": null,
+      "example": {
+        "bad": "interface Maker do\n  fn make(self)\nend\n\nstruct Item do\n  n :: Int\nend\n\nimpl Maker for Item do\n  fn make(self) = self.make()\nend\n\nfn main() = Item { n: 0 }.make()\n",
+        "fixed": "interface Maker do\n  fn make(self) -> Int\nend\n\nstruct Item do\n  n :: Int\nend\n\nimpl Maker for Item do\n  fn make(self) -> Int = self.n\nend\n\nfn main() = Item { n: 0 }.make()\n"
+      },
       "status": "active"
     },
     {
@@ -1739,7 +1814,10 @@
         "skill": "references/diagnostics.md#e0089",
         "topic": "actors"
       },
-      "example": null,
+      "example": {
+        "bad": "actor worker() do\n  receive do\n    msg -> msg + 1\n  end\nend\n\nfn pick() = worker\n\nfn main() = spawn(pick())\n",
+        "fixed": "actor worker() do\n  receive do\n    msg -> msg + 1\n  end\nend\n\nfn pick() = worker\n\nfn main() = spawn(worker)\n"
+      },
       "status": "active"
     },
     {
@@ -1820,7 +1898,10 @@
         "skill": "references/diagnostics.md#e0093",
         "topic": "types"
       },
-      "example": null,
+      "example": {
+        "bad": "fn show(text :: Plaintext<String>) = declassify(text, \"\")\n",
+        "fixed": "fn show(text :: Plaintext<String>) = declassify(text, \"explicit display\")\n"
+      },
       "status": "active"
     },
     {
@@ -1838,7 +1919,10 @@
         "skill": "references/diagnostics.md#e0094",
         "topic": "database"
       },
-      "example": null,
+      "example": {
+        "bad": "fn start(pool :: PoolHandle) do\n  Jobs.start(pool, \"{}\", fn job -> job end)\nend\n",
+        "fixed": "fn handle(job :: String) -> String = job\n\nfn start(pool :: PoolHandle) do\n  Jobs.start(pool, \"{}\", handle)\nend\n"
+      },
       "status": "active"
     },
     {
@@ -1964,6 +2048,27 @@
       "example": {
         "bad": "fn accept(evidence :: Proof<NatEq<2>>) -> Int = 2\n\nfn main() do\nend\n",
         "fixed": "fn accept(evidence :: Proof<NatEq<2, 2>>) -> Int = 2\n\nfn main() do\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "E0101",
+      "name": "resource-crosses-boundary",
+      "severity": "error",
+      "category": "semantic",
+      "title": "resource crosses an ownership boundary",
+      "summary": "A resource reaches an operation that cannot preserve its single owner, such as an actor message, job, collection, or serialization.",
+      "repair": "Keep the resource in an ownership-aware scope and pass an unrestricted value instead, such as an ID or the data the resource represents.",
+      "topic": "types",
+      "docs_url": "https://meshlang.dev/docs/errors/#e0101",
+      "guide": {
+        "explain": "meshc explain E0101",
+        "skill": "references/diagnostics.md#e0101",
+        "topic": "types"
+      },
+      "example": {
+        "bad": "resource struct Handle do\n  id :: Int\nend\n\nfn forward(pid :: Pid, handle :: Handle) = send(pid, handle)\n",
+        "fixed": "resource struct Handle do\n  id :: Int\nend\n\nfn forward(pid :: Pid, handle :: Handle) = send(pid, handle.id)\n"
       },
       "status": "active"
     },

@@ -6119,16 +6119,16 @@ fn infer_multi_clause_fn(
         }
     }
 
-    // Check catch-all ordering: catch-all must be the last clause.
-    if clauses.len() > 1 {
-        for (idx, clause) in clauses.iter().enumerate() {
-            if idx < clauses.len() - 1 && is_catch_all_clause(clause) {
-                ctx.errors.push(TypeError::CatchAllNotLast {
-                    fn_name: fn_name.clone(),
-                    arity,
-                    span: clause.syntax().text_range(),
-                });
-            }
+    // E0022 already explains why clauses after a catch-all are unreachable.
+    let mut coverage_end = clauses.len();
+    for (idx, clause) in clauses.iter().enumerate().take(clauses.len() - 1) {
+        if is_catch_all_clause(clause) {
+            coverage_end = coverage_end.min(idx + 1);
+            ctx.errors.push(TypeError::CatchAllNotLast {
+                fn_name: fn_name.clone(),
+                arity,
+                span: clause.syntax().text_range(),
+            });
         }
     }
 
@@ -6352,9 +6352,9 @@ fn infer_multi_clause_fn(
     check_arm_coverage(
         ctx,
         &scrutinee_ty,
-        &arm_patterns,
-        &arm_has_guard,
-        &arm_spans,
+        &arm_patterns[..coverage_end],
+        &arm_has_guard[..coverage_end],
+        &arm_spans[..coverage_end],
         first.syntax().text_range(),
         type_registry,
         true,
@@ -6880,7 +6880,7 @@ fn register_struct_def(
 
     if is_affine_resource && !derive_list.is_empty() {
         for trait_name in &derive_list {
-            ctx.errors.push(TypeError::ResourceViolation {
+            ctx.errors.push(TypeError::ResourceCrossesBoundary {
                 reason: format!("resource type `{name}` cannot derive `{trait_name}`"),
                 span: struct_def.syntax().text_range(),
             });
@@ -6981,7 +6981,7 @@ fn register_struct_def(
                 ctx.errors.push(TypeError::NonSerializableField {
                     struct_name: name.clone(),
                     field_name: field_name.clone(),
-                    field_type: format!("{}", field_ty),
+                    field_type: field_ty.with_holes().to_string(),
                     span: struct_field_span(struct_def, field_name),
                 });
                 json_valid = false;
@@ -7001,7 +7001,7 @@ fn register_struct_def(
                 ctx.errors.push(TypeError::NonMappableField {
                     struct_name: name.clone(),
                     field_name: field_name.clone(),
-                    field_type: format!("{}", field_ty),
+                    field_type: field_ty.with_holes().to_string(),
                     span: struct_field_span(struct_def, field_name),
                 });
                 row_valid = false;
@@ -7334,6 +7334,16 @@ fn builtin_type_names(
     names.into_iter().collect()
 }
 
+fn declared_type_names(registry: &TypeRegistry) -> impl Iterator<Item = &str> {
+    registry
+        .struct_defs
+        .keys()
+        .chain(registry.sum_type_defs.keys())
+        .chain(registry.type_aliases.keys())
+        .chain(registry.resource_types.iter())
+        .map(String::as_str)
+}
+
 /// An impl names an interface and a type that exist: `impl Dispaly for P`
 /// (a typo) or `impl Show for Nope` was accepted and did nothing. Returns
 /// whether the type exists: an impl for none implements nothing (`impl Show
@@ -7361,6 +7371,10 @@ fn check_impl_header(
         ctx.errors.push(TypeError::UnknownType {
             name: ty.text().to_string(),
             span: ty.text_range(),
+            suggestion: closest_name(
+                ty.text(),
+                declared_type_names(type_registry).chain(builtin_types.iter().map(String::as_str)),
+            ),
         });
     }
     // Registered for the bare type, the impl was accepted but no value
@@ -7423,7 +7437,39 @@ fn check_annotation_types(
         for (name, span) in names {
             if !names_a_type(&name, &ann, type_registry, builtin_types, import_ctx) {
                 ctx.unknown_types.insert(name.clone());
-                ctx.errors.push(TypeError::UnknownType { name, span });
+                let suggestion = if let Some((module, short)) = name.rsplit_once('.') {
+                    import_ctx
+                        .module_at_path(module)
+                        .or_else(|| import_ctx.module_at_qualifier(module))
+                        .and_then(|exports| {
+                            closest_name(
+                                short,
+                                exports
+                                    .struct_defs
+                                    .keys()
+                                    .chain(exports.sum_type_defs.keys())
+                                    .chain(exports.type_aliases.keys())
+                                    .map(String::as_str),
+                            )
+                        })
+                        .map(|close| format!("{module}.{close}"))
+                } else {
+                    let params: Vec<_> = ann
+                        .ancestors()
+                        .flat_map(|item| generic_param_names(&item))
+                        .collect();
+                    closest_name(
+                        &name,
+                        declared_type_names(type_registry)
+                            .chain(builtin_types.iter().map(String::as_str))
+                            .chain(params.iter().map(String::as_str)),
+                    )
+                };
+                ctx.errors.push(TypeError::UnknownType {
+                    name,
+                    span,
+                    suggestion,
+                });
             }
         }
     }
@@ -7814,7 +7860,7 @@ fn register_sum_type_def(
 
     if is_affine_resource && !derive_list.is_empty() {
         for trait_name in &derive_list {
-            ctx.errors.push(TypeError::ResourceViolation {
+            ctx.errors.push(TypeError::ResourceCrossesBoundary {
                 reason: format!("resource type `{name}` cannot derive `{trait_name}`"),
                 span: sum_def.syntax().text_range(),
             });
@@ -7915,7 +7961,7 @@ fn register_sum_type_def(
                     ctx.errors.push(TypeError::NonSerializableField {
                         struct_name: name.clone(),
                         field_name: field_ident,
-                        field_type: format!("{}", field_ty),
+                        field_type: field_ty.with_holes().to_string(),
                         span: sum_def
                             .variants()
                             .find(|v| v.name().is_some_and(|n| n.text() == variant.name))
@@ -9161,7 +9207,8 @@ fn validate_native_abi_types(
         if !is_native_abi_value(ty) {
             ctx.errors.push(TypeError::NativeDeclarationInvalid {
                 reason: format!(
-                    "parameter type `{ty}` is not ABI-safe; use Int, Float, Bool, String, Bytes, U64, U128, or I128"
+                    "parameter type `{}` is not ABI-safe; use Int, Float, Bool, String, Bytes, U64, U128, or I128",
+                    ty.with_holes()
                 ),
                 span,
             });
@@ -9170,7 +9217,8 @@ fn validate_native_abi_types(
     if let Some(ty) = return_type.filter(|ty| !is_native_abi_return(ty)) {
         ctx.errors.push(TypeError::NativeDeclarationInvalid {
             reason: format!(
-                "return type `{ty}` is not ABI-safe; use a native value, Result, or Option"
+                "return type `{}` is not ABI-safe; use a native value, Result, or Option",
+                ty.with_holes()
             ),
             span,
         });
@@ -9804,6 +9852,7 @@ fn type_qualified_method(
     type_name: &str,
     method: &str,
     span: TextRange,
+    method_span: TextRange,
 ) -> Result<Ty, TypeError> {
     let params = declared_param_count(type_registry, type_name).unwrap_or(0);
     let ty = with_unknown_args(ctx, Ty::Con(TyCon::new(type_name)), params);
@@ -9864,9 +9913,10 @@ fn type_qualified_method(
         }
         None => {
             let err = TypeError::NoSuchMethod {
+                suggestion: closest_name(method, trait_registry.method_names_for(&ty)),
                 ty,
                 method_name: method.to_string(),
-                span,
+                span: method_span,
             };
             ctx.errors.push(err.clone());
             Err(err)
@@ -9986,6 +10036,16 @@ fn did_you_mean(env: &TypeEnv, name: &str) -> Option<String> {
                 .chars()
                 .all(|c| c.is_alphanumeric() || c == '_' || c == '.')
     });
+    let max_distance = if name.chars().count() <= 3 { 1 } else { 2 };
+    mesh_diagnostics::closest(name, candidates, max_distance).map(str::to_owned)
+}
+
+fn closest_name<'a>(name: &str, candidates: impl IntoIterator<Item = &'a str>) -> Option<String> {
+    let mut candidates: Vec<_> = candidates
+        .into_iter()
+        .filter(|candidate| *candidate != name)
+        .collect();
+    candidates.sort_unstable();
     let max_distance = if name.chars().count() <= 3 { 1 } else { 2 };
     mesh_diagnostics::closest(name, candidates, max_distance).map(str::to_owned)
 }
@@ -11195,17 +11255,22 @@ fn infer_call_inner(
                 // Any other failure (an undefined base, a module without the
                 // function, an error in the base itself) would only fail
                 // again, and report it again.
-                let (fa, base_ty) = match (&callee_expr, &first_err, ctx.field_base.take()) {
-                    (
-                        Expr::FieldAccess(fa),
-                        TypeError::NoSuchField { span, .. },
-                        Some((access, base_ty)),
-                    ) if *span == fa.syntax().text_range() && access == *span => (fa, base_ty),
-                    _ => return Err(first_err),
-                };
+                let (fa, base_ty, field_span) =
+                    match (&callee_expr, &first_err, ctx.field_base.take()) {
+                        (
+                            Expr::FieldAccess(fa),
+                            TypeError::NoSuchField { span, .. },
+                            Some((access, base_ty)),
+                        ) if access == fa.syntax().text_range()
+                            && fa.field().is_some_and(|field| field.text_range() == *span) =>
+                        {
+                            (fa, base_ty, *span)
+                        }
+                        _ => return Err(first_err),
+                    };
                 // Take back the error this attempt reported, and no other.
                 ctx.errors.retain(|error| {
-                    !matches!(error, TypeError::NoSuchField { span, .. } if *span == fa.syntax().text_range())
+                    !matches!(error, TypeError::NoSuchField { span, .. } if *span == field_span)
                 });
                 let callee_ty = infer_field_access(
                     ctx,
@@ -13436,7 +13501,9 @@ fn infer_field_access(
 ) -> Result<Ty, TypeError> {
     let base_expr = fa.base().ok_or_else(incomplete)?;
 
-    let field_name = fa.field().ok_or_else(incomplete)?.text().to_string();
+    let field = fa.field().ok_or_else(incomplete)?;
+    let field_span = field.text_range();
+    let field_name = field.text().to_string();
 
     // Check if base is a NameRef pointing to a module name for qualified access.
     // e.g. Vector.add (user module), String.length (stdlib) -- module-qualified function reference.
@@ -13587,6 +13654,7 @@ fn infer_field_access(
                 &base_name,
                 &field_name,
                 fa.syntax().text_range(),
+                field_span,
             );
         }
 
@@ -13668,9 +13736,13 @@ fn infer_field_access(
             // Not a field: a method, as of any type, when it is called.
             if !is_method_call {
                 let err = TypeError::NoSuchField {
+                    suggestion: closest_name(
+                        &field_name,
+                        struct_info.fields.iter().map(|(name, _)| name.as_str()),
+                    ),
                     ty: resolved_base,
                     field_name,
-                    span: fa.syntax().text_range(),
+                    span: field_span,
                 };
                 ctx.errors.push(err.clone());
                 return Err(err);
@@ -13683,25 +13755,28 @@ fn infer_field_access(
     // names: `x.size()` under `where T: Sized` has `Sized.size`'s type. As a
     // plain field access it is no field, which sends the call to method
     // resolution.
+    let mut bound_methods = Vec::new();
     for (param_ty, trait_name) in ctx.where_bounds.clone() {
         if ctx.resolve(param_ty) != resolved_base {
             continue;
         }
-        if let Some(sig) = trait_registry
-            .get_trait(&trait_name)
-            .and_then(|def| def.methods.iter().find(|m| m.name == field_name))
-            .cloned()
-        {
-            if !is_method_call {
-                let err = TypeError::NoSuchField {
-                    ty: resolved_base,
-                    field_name,
-                    span: fa.syntax().text_range(),
-                };
-                ctx.errors.push(err.clone());
-                return Err(err);
+        if let Some(def) = trait_registry.get_trait(&trait_name) {
+            if let Some(sig) = def.methods.iter().find(|m| m.name == field_name) {
+                if !is_method_call {
+                    let err = TypeError::NoSuchField {
+                        ty: resolved_base,
+                        field_name,
+                        span: field_span,
+                        suggestion: None,
+                    };
+                    ctx.errors.push(err.clone());
+                    return Err(err);
+                }
+                return Ok(trait_method_type(ctx, &trait_name, sig, &resolved_base));
             }
-            return Ok(trait_method_type(ctx, &trait_name, &sig, &resolved_base));
+            if is_method_call {
+                bound_methods.extend(def.methods.iter().map(|m| m.name.as_str()));
+            }
         }
     }
     // A declared type parameter stands for any type: it has no fields, and
@@ -13710,18 +13785,19 @@ fn infer_field_access(
     if let Ty::Var(v) = resolved_base {
         if let Some(param) = ctx.rigid_param_name(v) {
             let ty = Ty::Con(TyCon::new(&param));
-            let span = fa.syntax().text_range();
             let err = if is_method_call {
                 TypeError::NoSuchMethod {
+                    suggestion: closest_name(&field_name, bound_methods),
                     ty,
                     method_name: field_name,
-                    span,
+                    span: field_span,
                 }
             } else {
                 TypeError::NoSuchField {
                     ty,
                     field_name,
-                    span,
+                    span: field_span,
+                    suggestion: None,
                 }
             };
             ctx.errors.push(err.clone());
@@ -13780,10 +13856,31 @@ fn infer_field_access(
 
         // An impl provides the method, but nothing fixed what it returns.
         let err = if matching_traits.is_empty() {
+            let modules = stdlib_modules(ctx.test_builtins);
+            let module_methods = method_module(&resolved_base)
+                .and_then(|module| modules.get(module))
+                .into_iter()
+                .flat_map(|module| module.keys().map(String::as_str));
+            let default_methods = ctx
+                .current_interface
+                .as_deref()
+                .filter(|_| resolved_base.con_name() == Some("Self"))
+                .and_then(|name| trait_registry.get_trait(name))
+                .into_iter()
+                .flat_map(|def| def.methods.iter().map(|method| method.name.as_str()));
+            let suggestion = closest_name(
+                &field_name,
+                trait_registry
+                    .method_names_for(&resolved_base)
+                    .chain(module_methods)
+                    .chain(default_methods)
+                    .chain(bound_methods),
+            );
             TypeError::NoSuchMethod {
                 ty: resolved_base,
                 method_name: field_name,
-                span: fa.syntax().text_range(),
+                span: field_span,
+                suggestion,
             }
         } else {
             TypeError::MethodReturnUnknown {
@@ -13807,7 +13904,8 @@ fn infer_field_access(
             let err = TypeError::NoSuchField {
                 ty: resolved_base,
                 field_name,
-                span: fa.syntax().text_range(),
+                span: field_span,
+                suggestion: None,
             };
             ctx.errors.push(err.clone());
             return Err(err);
@@ -13823,7 +13921,7 @@ fn infer_field_access(
             base: resolved_base,
             field: field_name,
             result: result.clone(),
-            span: fa.syntax().text_range(),
+            span: field_span,
         });
     }
     Ok(result)
@@ -13925,20 +14023,23 @@ fn resolve_pending_fields(
             Ty::App(_, args) => args.as_slice(),
             _ => &[],
         };
-        let field_ty = base
+        let struct_info = base
             .con_name()
-            .and_then(|name| type_registry.lookup_struct(name))
-            .and_then(|info| {
-                info.fields
-                    .iter()
-                    .find(|(name, _)| *name == field)
-                    .map(|(_, ty)| substitute_type_params(ty, &info.generic_params, args))
-            });
+            .and_then(|name| type_registry.lookup_struct(name));
+        let field_ty = struct_info.and_then(|info| {
+            info.fields
+                .iter()
+                .find(|(name, _)| *name == field)
+                .map(|(_, ty)| substitute_type_params(ty, &info.generic_params, args))
+        });
         match field_ty {
             Some(field_ty) => {
                 let _ = ctx.unify(field_ty, result, ConstraintOrigin::Expr { span });
             }
             None => ctx.errors.push(TypeError::NoSuchField {
+                suggestion: struct_info.and_then(|info| {
+                    closest_name(&field, info.fields.iter().map(|(name, _)| name.as_str()))
+                }),
                 ty: base,
                 field_name: field,
                 span,
@@ -13994,7 +14095,8 @@ fn infer_struct_literal(
     let mut provided_fields: Vec<String> = Vec::new();
 
     for field in sl.fields() {
-        let field_name = field.name().and_then(|n| n.text()).ok_or_else(incomplete)?;
+        let name = field.name().ok_or_else(incomplete)?;
+        let field_name = name.text().ok_or_else(incomplete)?;
         // A field's error is reported and the literal keeps its type: its
         // uses are checked as the struct's, not reported again as unknown.
         if provided_fields.contains(&field_name) {
@@ -14015,10 +14117,22 @@ fn infer_struct_literal(
         let expected_ty = match expected_ty {
             Some(ty) => ty,
             None => {
+                let written: FxHashSet<_> = sl
+                    .fields()
+                    .filter_map(|field| field.name()?.text())
+                    .collect();
                 ctx.errors.push(TypeError::UnknownField {
                     struct_name: struct_name.clone(),
-                    field_name: field_name.clone(),
-                    span: field.syntax().text_range(),
+                    suggestion: closest_name(
+                        &field_name,
+                        struct_def
+                            .fields
+                            .iter()
+                            .filter(|(name, _)| !written.contains(name))
+                            .map(|(name, _)| name.as_str()),
+                    ),
+                    field_name,
+                    span: name.syntax().text_range(),
                 });
                 continue;
             }
@@ -14094,7 +14208,15 @@ fn resolve_struct_name(
             // module (it said "`Secret` is not a struct").
             ctx.unknown_types.insert(struct_name.clone());
             ctx.errors.push(TypeError::UnknownType {
-                name: struct_name,
+                suggestion: closest_name(
+                    name,
+                    type_registry
+                        .struct_defs
+                        .keys()
+                        .chain(type_registry.type_aliases.keys())
+                        .map(String::as_str),
+                ),
+                name: name.to_string(),
                 span,
             });
         }
@@ -14178,7 +14300,8 @@ fn infer_struct_update(
     // Validate and infer each override field.
     let mut updated: Vec<String> = Vec::new();
     for field in update.override_fields() {
-        let field_name = field.name().and_then(|n| n.text()).ok_or_else(incomplete)?;
+        let name = field.name().ok_or_else(incomplete)?;
+        let field_name = name.text().ok_or_else(incomplete)?;
         // As in a struct literal, a field's error leaves the update typed.
         if updated.contains(&field_name) {
             ctx.errors.push(TypeError::DuplicateField {
@@ -14199,10 +14322,23 @@ fn infer_struct_update(
         let expected_ty = match expected_ty {
             Some(ty) => ty,
             None => {
+                let written: FxHashSet<_> = update
+                    .override_fields()
+                    .into_iter()
+                    .filter_map(|field| field.name()?.text())
+                    .collect();
                 ctx.errors.push(TypeError::UnknownField {
                     struct_name: struct_name.clone(),
-                    field_name: field_name.clone(),
-                    span: field.syntax().text_range(),
+                    suggestion: closest_name(
+                        &field_name,
+                        struct_def
+                            .fields
+                            .iter()
+                            .filter(|(name, _)| !written.contains(name))
+                            .map(|(name, _)| name.as_str()),
+                    ),
+                    field_name,
+                    span: name.syntax().text_range(),
                 });
                 continue;
             }
@@ -14498,6 +14634,7 @@ fn infer_struct_pattern(
     for field in struct_pat.fields() {
         let field_name = field.name().ok_or_else(incomplete)?;
         let sub = field.pattern().ok_or_else(incomplete)?;
+        let field_span = field_name.text_range();
         let field_name = field_name.text().to_string();
         let span = field.syntax().text_range();
         if seen.contains(&field_name) {
@@ -14506,10 +14643,21 @@ fn infer_struct_pattern(
             return Err(first_error(ctx));
         }
         let Some((_, field_ty)) = def.fields.iter().find(|(name, _)| *name == field_name) else {
+            let written: FxHashSet<_> = struct_pat
+                .fields()
+                .filter_map(|field| field.name().map(|name| name.text().to_string()))
+                .collect();
             ctx.errors.push(TypeError::UnknownField {
                 struct_name: def.name.clone(),
+                suggestion: closest_name(
+                    &field_name,
+                    def.fields
+                        .iter()
+                        .filter(|(name, _)| !written.contains(name))
+                        .map(|(name, _)| name.as_str()),
+                ),
                 field_name,
-                span,
+                span: field_span,
             });
             return Err(first_error(ctx));
         };
@@ -15008,6 +15156,14 @@ fn infer_actor_def(
     Ok(resolved)
 }
 
+pub(crate) const SUPERVISION_STRATEGIES: [&str; 4] = [
+    "one_for_one",
+    "one_for_all",
+    "rest_for_one",
+    "simple_one_for_one",
+];
+pub(crate) const SUPERVISION_RESTART_TYPES: [&str; 3] = ["permanent", "transient", "temporary"];
+
 /// Infer the type of a supervisor definition.
 ///
 /// The supervisor is registered as a function: `supervisor_name :: () -> Pid<Unit>`.
@@ -15043,10 +15199,7 @@ fn infer_supervisor_def(
             .nth(1)
     });
     if let Some(strategy) = strategy {
-        if !matches!(
-            strategy.text(),
-            "one_for_one" | "one_for_all" | "rest_for_one" | "simple_one_for_one"
-        ) {
+        if !SUPERVISION_STRATEGIES.contains(&strategy.text()) {
             ctx.errors.push(TypeError::InvalidStrategy {
                 found: strategy.text().to_string(),
                 span: strategy.text_range(),
@@ -15093,10 +15246,12 @@ fn infer_supervisor_def(
                 fn_constraints,
             ) {
                 let expected = Ty::Fun(vec![], Box::new(Ty::pid(ctx.fresh_var())));
+                let errors_before = ctx.errors.len();
                 if ctx
                     .unify(start_ty.clone(), expected, ConstraintOrigin::Builtin)
                     .is_err()
                 {
+                    ctx.errors.truncate(errors_before);
                     let found = ctx.resolve(start_ty);
                     ctx.errors.push(TypeError::InvalidChildStart {
                         child_name: child_name.clone(),
@@ -15121,7 +15276,7 @@ fn infer_supervisor_def(
             let (key, value) = (&pair[0], &pair[2]);
             let found = value.text().to_string();
             match key.text() {
-                "restart" if !matches!(value.text(), "permanent" | "transient" | "temporary") => {
+                "restart" if !SUPERVISION_RESTART_TYPES.contains(&value.text()) => {
                     ctx.errors.push(TypeError::InvalidRestartType {
                         found,
                         child_name: child_name.clone(),

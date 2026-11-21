@@ -154,18 +154,21 @@ pub enum TypeError {
         struct_name: String,
         field_name: String,
         span: TextRange,
+        suggestion: Option<String>,
     },
     /// A field access on a type with no such field.
     NoSuchField {
         ty: Ty,
         field_name: String,
         span: TextRange,
+        suggestion: Option<String>,
     },
     /// A method call on a type with no such method.
     NoSuchMethod {
         ty: Ty,
         method_name: String,
         span: TextRange,
+        suggestion: Option<String>,
     },
     /// Manual continuity promotion is not part of the Mesh surface anymore.
     ManualContinuityPromotionDisabled { span: TextRange },
@@ -446,7 +449,11 @@ pub enum TypeError {
         span: TextRange,
     },
     /// An annotation names a type that does not exist.
-    UnknownType { name: String, span: TextRange },
+    UnknownType {
+        name: String,
+        span: TextRange,
+        suggestion: Option<String>,
+    },
     /// A field read from a value whose type nothing determines.
     UnknownFieldOwner { field: String, span: TextRange },
     /// A type's name used as a value (`let x = Point`): a struct or sum
@@ -590,9 +597,10 @@ pub enum TypeError {
     /// that is not a struct (`ty` is the value's type; a variable when it
     /// is not known there).
     NotAStruct { ty: Ty, span: TextRange },
-    /// A value with affine resource ownership crossed an invalid boundary or
-    /// was used in an invalid ownership state.
+    /// A move or borrow violated a resource's ownership.
     ResourceViolation { reason: String, span: TextRange },
+    /// A resource reached an operation that cannot preserve its ownership.
+    ResourceCrossesBoundary { reason: String, span: TextRange },
     /// A `Plaintext` value, or one holding it, reaches a way out of the
     /// program other than a seal, an `@display` export or `declassify`.
     PlaintextViolation { reason: String, span: TextRange },
@@ -708,6 +716,7 @@ impl TypeError {
             | TypeError::GenericImplTarget { span, .. }
             | TypeError::AssertReceiveOutsideTest { span }
             | TypeError::ResourceViolation { span, .. }
+            | TypeError::ResourceCrossesBoundary { span, .. }
             | TypeError::PlaintextViolation { span, .. } => Some(*span),
         }
     }
@@ -746,7 +755,9 @@ impl fmt::Display for TypeError {
                 )
             }
             TypeError::InfiniteType { var, ty, .. } => {
-                write!(f, "infinite type: `?{}` occurs in `{}`", var.0, ty)
+                let variable = Ty::Var(*var);
+                let shown = Ty::with_named_vars_across([&variable, ty]);
+                write!(f, "infinite type: `{}` occurs in `{}`", shown[0], shown[1].with_holes())
             }
             TypeError::TupleParameterSplit { elements, .. } => write!(
                 f,
@@ -957,7 +968,7 @@ impl fmt::Display for TypeError {
                 )
             }
             TypeError::DecodeTypeUnknown { ty, .. } => {
-                write!(f, "cannot tell what `{ty}` this decodes")
+                write!(f, "cannot tell what `{}` this decodes", ty.with_holes())
             }
             TypeError::ReceiveOutsideActor { .. } => {
                 write!(f, "receive used outside actor block")
@@ -1255,10 +1266,10 @@ impl fmt::Display for TypeError {
                 ..
             } => match (found, by_argument, receiver.with_holes()) {
                 (Some(found), false, receiver) => {
-                    write!(f, "no impl's `{method}` on `{receiver}` returns `{found}`")
+                    write!(f, "no impl's `{method}` on `{receiver}` returns `{}`", found.with_holes())
                 }
                 (Some(found), true, receiver) => {
-                    write!(f, "no impl's `{method}` for `{receiver}` takes `{found}`")
+                    write!(f, "no impl's `{method}` for `{receiver}` takes `{}`", found.with_holes())
                 }
                 (None, _, receiver) => write!(
                     f,
@@ -1418,6 +1429,9 @@ impl fmt::Display for TypeError {
                     f,
                     "this arm has no `->` and its pattern is not a value: {reason}"
                 )
+            }
+            TypeError::ResourceCrossesBoundary { reason, .. } => {
+                write!(f, "resource crosses a boundary: {reason}")
             }
             TypeError::ResourceViolation { reason, .. } => {
                 write!(f, "resource ownership violation: {reason}")
