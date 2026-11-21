@@ -6,7 +6,7 @@ unset MESH_JOBS_DISPOSABLE_ROLE_PROOF MESH_JOBS_TEST_ROLE_PASSWORD
 postgres_version=
 parity_driver_check=false
 j6_roles=false
-effect_transaction=false
+sql_proof=
 while (( $# > 0 )); do
   case "$1" in
     --compatibility)
@@ -25,18 +25,22 @@ while (( $# > 0 )); do
       j6_roles=true
       shift
       ;;
-    --effect-transaction)
-      effect_transaction=true
+    --effect-transaction|--effect-fence)
+      if [[ -n "$sql_proof" && "$sql_proof" != "${1#--}" ]]; then
+        echo "Select one standalone Jobs SQL proof." >&2
+        exit 2
+      fi
+      sql_proof="${1#--}"
       shift
       ;;
     *)
-      printf 'Usage: %s [--compatibility VERSION] [--parity-driver-check] [--j6-roles] | [--effect-transaction]\n' "$0" >&2
+      printf 'Usage: %s [--compatibility VERSION] [--parity-driver-check] [--j6-roles] | --effect-transaction | --effect-fence\n' "$0" >&2
       exit 2
       ;;
   esac
 done
-if "$effect_transaction" && { [[ -n "$postgres_version" ]] || "$parity_driver_check" || "$j6_roles"; }; then
-  echo "--effect-transaction runs on its own." >&2
+if [[ -n "$sql_proof" ]] && { [[ -n "$postgres_version" ]] || "$parity_driver_check" || "$j6_roles"; }; then
+  echo "--$sql_proof runs on its own." >&2
   exit 2
 fi
 
@@ -74,8 +78,8 @@ elif ! command -v initdb >/dev/null && command -v pg_config >/dev/null; then
 fi
 
 if [[ -n "${MESH_TEST_DATABASE_URL:-}" ]]; then
-  if "$effect_transaction"; then
-    echo "--effect-transaction requires a new disposable cluster. Unset MESH_TEST_DATABASE_URL." >&2
+  if [[ -n "$sql_proof" ]]; then
+    echo "--$sql_proof requires a new disposable cluster. Unset MESH_TEST_DATABASE_URL." >&2
     exit 2
   fi
   if "$j6_roles"; then
@@ -123,7 +127,7 @@ unset PGHOSTADDR PGSERVICE PGOPTIONS
 credentials=mesh_jobs_proof
 connection_options=sslmode=disable
 auth=(--auth=trust)
-if [[ -n "$postgres_version" ]] || "$effect_transaction"; then
+if [[ -n "$postgres_version" || -n "$sql_proof" ]]; then
   password="$(openssl rand -hex 16)"
   printf '%s\n' "$password" >"$scratch/password"
   credentials="mesh_jobs_proof:$password"
@@ -139,7 +143,7 @@ listen_addresses = '127.0.0.1'
 unix_socket_directories = ''
 EOF
 
-if [[ -n "$postgres_version" ]] || "$effect_transaction"; then
+if [[ -n "$postgres_version" || -n "$sql_proof" ]]; then
   rm -- "$scratch/password"
   openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=mesh-probe-ca \
     -keyout "$scratch/ca.key" -out "$scratch/ca.crt" 2>"$scratch/openssl.log"
@@ -170,8 +174,8 @@ createdb -w --maintenance-db="$server_url/postgres?$connection_options" mesh_job
 export MESH_TEST_DATABASE_URL="$server_url/mesh_jobs_proof?$connection_options"
 server_version="$(psql -X -w -qAt -v ON_ERROR_STOP=1 "$MESH_TEST_DATABASE_URL" -c 'SHOW server_version')"
 printf 'Disposable Jobs proof server: PostgreSQL %s\n' "$server_version"
-if "$effect_transaction"; then
-  python3 scripts/fixtures/jobs-effect-transaction/prove.py "$data"
+if [[ -n "$sql_proof" ]]; then
+  python3 "scripts/fixtures/jobs-$sql_proof/prove.py" "$data"
   exit
 fi
 if "$j6_roles"; then

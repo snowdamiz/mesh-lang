@@ -437,6 +437,23 @@ OS spawn call and a gate at the existing native worker-start marker.
 
 - [ ] Land J7 after its dependencies and exact-head checks pass. Record the SHA and evidence in the program receipt.
 
+### Fence application writes with the current Jobs attempt
+
+The database candidate is a one-time, opt-in SQL migration. Apply it as the Jobs object owner after the normal Jobs migration. `mesh_jobs_effects.fence_v1(text, uuid, bigint, integer, uuid)` takes the namespace, job ID, run, attempt, and lease token. It returns void on success and uses SQLSTATE `55000` for a denied attempt, `55P03` for a contended row, and `25000` outside `READ COMMITTED`. The separate schema lets the application opt in without granting access to `mesh_jobs`. [Fence migration](../compiler/mesh-rt/src/jobs/effect_fence_schema.sql)
+
+Grant the application routine owner `USAGE` on `mesh_jobs_effects` and `EXECUTE` on `fence_v1`. Grant that owner the required application table permissions separately. Give the caller `USAGE` on the application schema and `EXECUTE` on the named application routines only. Use dedicated roles with no inherited access to the queue tables or application tables for the caller. Each application routine calls the fence for its own namespace before it touches application data. [Fixture grants and routines](../scripts/fixtures/jobs-effect-fence/application.sql)
+
+The fence takes the same `FOR NO KEY UPDATE` lock as Jobs lifecycle operations on the exact job row and checks the database clock after acquiring it. Keep the application transaction short. The lock lasts through commit or rollback, so an operator cancellation waits behind an authorized write. A committed cancellation denies the next write. A write that already passed the fence can still commit after the lease expires.
+
+Set `statement_timeout` and `lock_timeout` before submitting a routine call. A submitted transaction can commit after the local socket closes, even if the caller receives no reply. Treat that outcome as unknown and reconcile it against the durable effect record. Key the record by the stable Jobs effect key (`id/run`) and the operation name within the application namespace. A replacement attempt uses the same key and its own live lease to replay the operation idempotently.
+
+Run the SQL proof on a disposable PostgreSQL installation with both `dbc55bb1` and `7c162056` available in Git. It checks the scoped roles, owner replay of those SQL revisions with a live claim, distinct autocommit transactions on one session, and the operator cancellation order. PostgreSQL 17, 18, and 19 execution and runner integration are pending for this candidate.
+
+```sh
+env -u MESH_TEST_DATABASE_URL PG_BIN_DIR=/path/to/postgresql/bin \
+  bash scripts/verify-postgres-jobs.sh --effect-fence
+```
+
 ## Close the program
 
 - [x] The evidence guide records the tested PostgreSQL and OS matrix, scope boundaries, and benchmark results by workload. [Evidence guide](durable-jobs-parity-evidence.md)
