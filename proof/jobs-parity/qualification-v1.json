@@ -5085,6 +5085,185 @@
     },
     "scope": "Private fixture route on an ARM64 Linux guest, with identical warm Mesh arms and a matched stock Oban arm. This result does not qualify the 35-profile gate."
   },
+  "linux_short_16_warm_listen_vs_oban": {
+    "run": "target/jobs-parity/linux-arm-ownership-guest/warm-listen-met-oban/short-16-full",
+    "archive_sha256": "847128a2750fd1dc2468ab68a770baa037e35926b2bbf2723fb543f3a41e138e",
+    "serial_sha256": "6d8639d8b6aceb5f26cfe9dd1649b3baf3c3711309d67c8312f2d929188c54bc",
+    "receipt_sha256": "b6ce0e98202e23b9ddba35e4c55ac65828c2321e2afaf3956925e71015a11dfb",
+    "host_trace_sha256": "becc0a84683725bc6aaf24fcd7a4c07dc4de8da8aa72641683f5fd47492a042f",
+    "evidence_sha256": {
+      "manifest.json": "272e18855122d42da8fa188d02b1b9f9950878083f65b934ebb197e8b85bb2cb",
+      "trials.json": "5e09e3c7d244c84460bb09ad50205073b1cbafa034fc10364ade50cd4bf1e245",
+      "mesh-off-vs-oban-summary.json": "38d708c3545504459a0b5313882e9a2700a2193a3abc3651d333c0c7f160b75b",
+      "mesh-on-vs-oban-summary.json": "ddc757b4476a71b33643836f1b31ab13ad18065de743cc104eea204af115d0bc",
+      "gates.json": "9b38da1d94028cb8521a3d772c63a1a1e21cf516e46d95070439ca91ef061d0f",
+      "paired-deltas.json": "f915ec34eeef4d56c40754bb38912dfeaa9acca205a6a409037721bcccf1eabd",
+      "result.json": "3905e568a352de692bc02106f6a8190e1a0387113349dc13271f9a81946c6eaf",
+      "postgres-stop.json": "b5751ef90f6680301deba4db09b923c27296a600a90028b44c15a24436bdecfe"
+    },
+    "host_1m_load_range": [
+      18.96240234375,
+      34.91650390625
+    ],
+    "profile": "short-1r-16s",
+    "stock_versions": {
+      "elixir": "1.20.4",
+      "erlang": "29.1.1",
+      "oban": "2.24.2"
+    },
+    "postgres": "17.11 verified TLS and SCRAM",
+    "guest_vcpu": 2,
+    "guest_memory_bytes": 1073741824,
+    "settings": {
+      "slots": 16,
+      "lanes": 15,
+      "workload_client_cap": 20,
+      "orders": [
+        [
+          "mesh-off",
+          "mesh-on",
+          "oban"
+        ],
+        [
+          "oban",
+          "mesh-on",
+          "mesh-off"
+        ],
+        [
+          "mesh-on",
+          "mesh-off",
+          "oban"
+        ],
+        [
+          "oban",
+          "mesh-off",
+          "mesh-on"
+        ],
+        [
+          "mesh-off",
+          "oban",
+          "mesh-on"
+        ]
+      ],
+      "listen_and_publish": {
+        "mesh-off": false,
+        "mesh-on": true
+      }
+    },
+    "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+    "measured_jobs_per_arm": 640,
+    "measured_gates": {
+      "evaluated": true,
+      "mesh-off": {
+        "all_canonical_conditions_met": false,
+        "breaches": [
+          {
+            "mesh_median": 321.0426439872168,
+            "metric": "jobs_per_second",
+            "ratio_limit": 1.0,
+            "reference": "oban",
+            "reference_median": 430.24186169413974,
+            "scope": "comparison",
+            "within_limit": false
+          },
+          {
+            "mesh_median": 388.058837890625,
+            "metric": "pickup_p99_ms",
+            "ratio_limit": 1.25,
+            "reference": "oban",
+            "reference_median": 291.465087890625,
+            "scope": "comparison",
+            "within_limit": false
+          }
+        ],
+        "strict_median_throughput_above_oban": false
+      },
+      "mesh-on": {
+        "all_canonical_conditions_met": true,
+        "breaches": [],
+        "strict_median_throughput_above_oban": true
+      }
+    },
+    "arms": {
+      "mesh-off": {
+        "median_jobs_per_second": 321.0426439872168,
+        "median_pickup_p99_ms": 388.058837890625,
+        "median_cpu_seconds_per_job": 0.0021948828125,
+        "median_peak_rss_bytes": 93626368,
+        "median_entry_to_attempt_commit_ms": 0.6610107421875,
+        "median_effect_commit_to_settlement_ms": 4.81298828125,
+        "jobs_per_second_range": [
+          291.4829220344561,
+          359.29824561403507
+        ],
+        "median_commit_to_first_claim_ms": 222.885986328125,
+        "median_first_claim_to_last_settlement_ms": 175.761962890625,
+        "peak_connections": 19,
+        "peak_processes": 6,
+        "peak_threads": 44
+      },
+      "mesh-on": {
+        "median_jobs_per_second": 543.7273398544772,
+        "median_pickup_p99_ms": 227.569091796875,
+        "median_cpu_seconds_per_job": 0.0024686796875,
+        "median_peak_rss_bytes": 120414208,
+        "median_entry_to_attempt_commit_ms": 0.8199462890625,
+        "median_effect_commit_to_settlement_ms": 4.6719970703125,
+        "jobs_per_second_range": [
+          518.4435854610971,
+          633.3816565187977
+        ],
+        "median_commit_to_first_claim_ms": 2.694091796875,
+        "median_first_claim_to_last_settlement_ms": 232.718017578125,
+        "peak_connections": 20,
+        "peak_processes": 10,
+        "peak_threads": 77,
+        "notification_scans_by_group": [
+          1,
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      "oban": {
+        "median_jobs_per_second": 430.24186169413974,
+        "median_pickup_p99_ms": 291.465087890625,
+        "median_cpu_seconds_per_job": 0.008137,
+        "median_peak_rss_bytes": 127270912,
+        "median_entry_to_attempt_commit_ms": 1.60498046875,
+        "median_effect_commit_to_settlement_ms": 1.6490478515625,
+        "jobs_per_second_range": [
+          258.2873819563192,
+          740.8818433867399
+        ],
+        "median_commit_to_first_claim_ms": 162.10009765625,
+        "median_first_claim_to_last_settlement_ms": 150.705078125,
+        "peak_connections": 20,
+        "peak_processes": 2,
+        "peak_threads": 12
+      }
+    },
+    "paired_throughput": {
+      "mesh-on_minus_mesh-off": {
+        "wins": 5,
+        "delta_median": 226.96066342664096,
+        "delta_range": [
+          193.66103739507662,
+          274.0834109047627
+        ]
+      },
+      "mesh-on_minus_oban": {
+        "wins": 4,
+        "delta_median": 151.87447038266635,
+        "delta_range": [
+          -222.4382579256428,
+          285.439957898158
+        ]
+      }
+    },
+    "scope": "Private fixture effect relay on one frozen profile. The listener-on arm passed the strict throughput condition and its other profile limits."
+  },
   "linux_slow_64_stock_mesh_vs_oban": {
     "run": "target/jobs-parity/linux-arm-ownership-guest/beam-inputs/matched-slow-64-2g.v3ui3ZIg",
     "evidence": "target/jobs-parity/linux-arm-ownership-guest/beam-inputs/matched-slow-64-2g.v3ui3ZIg-proof/evidence",

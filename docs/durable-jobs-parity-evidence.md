@@ -1684,6 +1684,31 @@ publication were disabled in both Mesh arms. The two warm arms differed
 by −103.3 to +52.1 jobs/s across paired groups.
 [Warm Mesh and Oban receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Combine warm effect sessions and notification pickup on Linux
+
+An ARM64 Linux guest ran five counterbalanced groups of the frozen
+`short-1r-16s` workload with PostgreSQL 17.11 over verified TLS and
+SCRAM. Both Mesh arms used the same compiled worker and 15 prewarmed
+effect sessions for 16 slots. The enabled arm added one listener and
+published hints from the enqueue transaction. Each arm reconciled 640
+measured jobs and both durable writes per job after warmup.
+
+| Arm | Median jobs/s | Range | Pickup p99 | CPU/job | Peak client count |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Mesh with listener off | 321.0 | 291.5–359.3 | 388.1 ms | 2.20 ms | 19 |
+| Mesh with listener on | 543.7 | 518.4–633.4 | 227.6 ms | 2.47 ms | 20 |
+| Oban Basic 2.24.2 | 430.2 | 258.3–740.9 | 291.5 ms | 8.14 ms | 20 |
+
+The enabled arm beat the disabled arm in all five groups and Oban in
+four. It exceeded Oban's median throughput by 26.4% and met every
+measured profile limit. Median time from durable enqueue to first claim
+fell from 222.9 to 2.7 ms with the listener. Each enabled trial verified
+the registered listener, a notification-triggered scan, and both writes
+for each job on a prewarmed backend. Host one-minute load ranged from
+19.0 to 34.9 on 15 logical CPUs. The effect relay is private fixture
+code. The receipt covers one frozen profile with that route.
+[Warm sessions and notification receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Measure stock Linux Jobs with 64 slow-job slots
 
 The frozen `slow-1r-64s` workload ran five alternating pairs against
