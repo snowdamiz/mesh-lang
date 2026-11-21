@@ -2595,6 +2595,27 @@ at 203.5 and 203.8 MiB, against a 190.2 MiB ceiling from
 Oban's median 126.8 MiB.
 [16-slot slow receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Disable transparent huge pages in slow-16 workers
+
+The stock guest compared two stock Mesh controls, the worker-local
+THP variant, and stock Oban over five matched groups. A traced
+pilot read the policy in live child processes during the handler
+hold. It matched 110 stock workers with THP enabled and 112
+variant workers with THP disabled. The guest used its ordinary
+kernel settings.
+
+The variant's median peak RSS was 102.6 MiB versus 204.8 MiB for
+both Mesh controls and 125.9 MiB for Oban. It reached 132.9 jobs/s
+versus Oban's 116.5 and won all five throughput comparisons.
+The variant passed every scored limit, and all 2,560 measured
+jobs reconciled.
+
+The local treatment added a worker constructor to the relink.
+The executable layout can contribute to the reported RSS change.
+A runtime flag permits a separate comparison with the same
+executable in every Mesh arm.
+[Worker-local THP trial receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Trace the no-op claim and launch cycle
 
 One warmed and one measured matched group at `1d9d7e41` recorded

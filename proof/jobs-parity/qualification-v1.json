@@ -14273,6 +14273,346 @@
     },
     "identical_arm_absolute_median_jobs_per_second": 132.758454849288
   },
+  "linux_fenced_jobs_slow16_worker_local_thp": {
+    "profile": "slow-1r-16s",
+    "scope": "local-linux-aarch64-fenced-slow16-worker-thp-comparison",
+    "revision": "c271319e84624bd00b0a62a7bb07a45602ee948b",
+    "input_sha256": "ef74797d08ae51cda180cc40784cb4176df922a42c057a5247d25177ad74f835",
+    "kernel_policy": {
+      "after": {
+        "fault_around_bytes": null,
+        "page_bytes": 4096,
+        "thp_defrag": null,
+        "thp_enabled": null
+      },
+      "before": {
+        "fault_around_bytes": null,
+        "page_bytes": 4096,
+        "thp_defrag": null,
+        "thp_enabled": null
+      }
+    },
+    "fixture_proof": {
+      "runner_executables": {
+        "mesh": "/proof/mesh-parity-fixture",
+        "mesh-repeat": "/proof/mesh-parity-fixture",
+        "mesh-thp-off": "/proof/mesh-parity-thp-off",
+        "oban": "/opt/otp/erts-17.1/bin/beam.smp"
+      },
+      "scope": "local-linux-aarch64-fenced-slow16-worker-thp-comparison",
+      "stock_release": {
+        "build": {
+          "artifacts_sha256": {
+            "libmesh_rt.a": "7b82c3b421521846344db997482ba3fdc90a2e7f3aacc1cc4d5d87278bde77e7",
+            "libworker_identity.a": "08a569386cfe5ba8c13daa371a7bf184dad5f10aa188e31b4f27a7d09e7902a4",
+            "mesh-parity-fixture": "732f9117fc19bd6a3a201c4e1ed5299450aa3e62c6513271fa9494467af60812",
+            "meshc": "9218cffc0f1df626c5f18d6c5f7ee05d4af5a43f2be813ae227f28e357aae621"
+          },
+          "generated_mesh_toml_sha256": "52d5fafb9786953bc5ddfd4bbec1eaeec9b9714d534cba4e917ab373a8647673",
+          "native_source_sha256": {
+            "main.mpl": "43e5da1b48c368a2a638f37bf165f8e98d0796dcf008c542773390d9a5e65ece",
+            "mesh.toml.in": "764f6e78cf2a89b2ff2f08d897d60652e69745514847c184ff5f8a5c785773c1",
+            "worker_identity.c": "69dbbe0d8a5c511fc4f7c64d450bb8d47e716fdb4103502259f7c2c65d08f7fb",
+            "worker_identity.mpl": "9d083870b27b8e87e608adf5784f291f41e20272253d47b679d66de388cfaa55"
+          },
+          "parent_manifest_sha256": "fa259a536a0a5ab4396f7560a6cd493cac8293997b1f59948003577d0d69cbc0",
+          "profile": "release",
+          "requested_runtime_features": [
+            "jobs-effect-fixture"
+          ],
+          "revision": "c271319e84624bd00b0a62a7bb07a45602ee948b",
+          "target": "aarch64-unknown-linux-gnu"
+        },
+        "path": "/proof/mesh-parity-fixture",
+        "sha256": "732f9117fc19bd6a3a201c4e1ed5299450aa3e62c6513271fa9494467af60812"
+      },
+      "treatment_scope": "PR_SET_THP_DISABLE in the exact fenced child constructor before Mesh runtime",
+      "worker_argv_marker": "--mesh-internal-job-attempt-effect-v1",
+      "worker_thp_off_release": {
+        "build": {
+          "base": {
+            "artifacts_sha256": {
+              "libmesh_rt.a": "7b82c3b421521846344db997482ba3fdc90a2e7f3aacc1cc4d5d87278bde77e7",
+              "libworker_identity.a": "08a569386cfe5ba8c13daa371a7bf184dad5f10aa188e31b4f27a7d09e7902a4",
+              "mesh-parity-fixture": "732f9117fc19bd6a3a201c4e1ed5299450aa3e62c6513271fa9494467af60812",
+              "meshc": "9218cffc0f1df626c5f18d6c5f7ee05d4af5a43f2be813ae227f28e357aae621"
+            },
+            "generated_mesh_toml_sha256": "52d5fafb9786953bc5ddfd4bbec1eaeec9b9714d534cba4e917ab373a8647673",
+            "native_source_sha256": {
+              "main.mpl": "43e5da1b48c368a2a638f37bf165f8e98d0796dcf008c542773390d9a5e65ece",
+              "mesh.toml.in": "764f6e78cf2a89b2ff2f08d897d60652e69745514847c184ff5f8a5c785773c1",
+              "worker_identity.c": "69dbbe0d8a5c511fc4f7c64d450bb8d47e716fdb4103502259f7c2c65d08f7fb",
+              "worker_identity.mpl": "9d083870b27b8e87e608adf5784f291f41e20272253d47b679d66de388cfaa55"
+            },
+            "parent_manifest_sha256": "fa259a536a0a5ab4396f7560a6cd493cac8293997b1f59948003577d0d69cbc0",
+            "profile": "release",
+            "requested_runtime_features": [
+              "jobs-effect-fixture"
+            ],
+            "revision": "c271319e84624bd00b0a62a7bb07a45602ee948b",
+            "target": "aarch64-unknown-linux-gnu"
+          },
+          "fixture_sha256": "d1c064db7ae87f3c930f0e3616dd5cba4070a61573622b48c4aa6d8229fcd743",
+          "native_archive_sha256": "6e2fe537ed2b9742735a7af758e7a4d2ff1ea083253ac19221549f6940c11f78",
+          "worker_source_sha256": "c4598673f73c8998268ebaae33b7cf94180c48a9a84ae19c389a497ea9fd48ee"
+        },
+        "build_receipt_sha256": "af993c3e712808a5f6992645889d0341260ea1e56541d1b2b12f08d153403d1e",
+        "generated_mesh_toml_sha256": "b6bb57900a78badd0bd30a78b1af013282747d1a396d5c66b45611552bf743f0",
+        "path": "/proof/mesh-parity-thp-off",
+        "sha256": "d1c064db7ae87f3c930f0e3616dd5cba4070a61573622b48c4aa6d8229fcd743"
+      }
+    },
+    "gates": {
+      "mesh": {
+        "all_canonical_conditions_met": false,
+        "breaches": [
+          {
+            "mesh_median": 214790144,
+            "metric": "peak_rss_bytes",
+            "oban_median": 131989504,
+            "relative_limit": 1.5,
+            "scope": "budgets",
+            "within_limit": false
+          }
+        ]
+      },
+      "mesh-repeat": {
+        "all_canonical_conditions_met": false,
+        "breaches": [
+          {
+            "mesh_median": 214740992,
+            "metric": "peak_rss_bytes",
+            "oban_median": 131989504,
+            "relative_limit": 1.5,
+            "scope": "budgets",
+            "within_limit": false
+          }
+        ]
+      },
+      "mesh-thp-off": {
+        "all_canonical_conditions_met": true,
+        "breaches": []
+      }
+    },
+    "stage_receipt_sha256": {
+      "0": "7a6e8cb3406a48a77f45832811dcada504c9dd8f02db18342c20f60ef5c662cb",
+      "1": "a2f84327c1299efd13538ec5af2a55d65d9c8cc122abe6034bd1f59daedc0a4d",
+      "2": "8f71821fe6e68e13bfd0f2cfed456c08077a3a4b12c815a89800fa83b3f2d262",
+      "3": "877bb57251f656b6556cf0217b2639da38014f795aa63e71c56d873f7612244c",
+      "4": "2442b98fc7cc4d9958fae9e84a9b75a32cc4c244b561fafc4e10f6f39784bb3a",
+      "pilot": "32b22fdff0ae8222f481eb425fd073a8947fe2efb7e92c0227e5777483101eef"
+    },
+    "pilot_held_children": {
+      "pilot-mesh": 110,
+      "pilot-mesh-thp-off": 112
+    },
+    "reconciled_scored_jobs": 2560,
+    "throughput_wins_vs_oban": {
+      "mesh": 5,
+      "mesh-repeat": 5,
+      "mesh-thp-off": 5
+    },
+    "paired_medians": {
+      "mesh-repeat_minus_mesh": {
+        "cpu_seconds_per_job": {
+          "groups_with_samples": 5,
+          "median": -0.0008072734374999996
+        },
+        "full_occupancy_peak_rss_bytes": {
+          "groups_with_samples": 5,
+          "median": -692224
+        },
+        "held_peak_rss_bytes": {
+          "groups_with_samples": 5,
+          "median": -692224
+        },
+        "jobs_per_second": {
+          "groups_with_samples": 5,
+          "median": 5.317771076608551
+        },
+        "peak_rss_bytes": {
+          "groups_with_samples": 5,
+          "median": -692224
+        },
+        "pickup_p99_ms": {
+          "groups_with_samples": 5,
+          "median": -40.340087890625
+        }
+      },
+      "mesh-repeat_minus_oban": {
+        "cpu_seconds_per_job": {
+          "groups_with_samples": 5,
+          "median": -0.002960968749999999
+        },
+        "full_occupancy_peak_rss_bytes": {
+          "groups_with_samples": 5,
+          "median": 83038208
+        },
+        "held_peak_rss_bytes": {
+          "groups_with_samples": 5,
+          "median": 83038208
+        },
+        "jobs_per_second": {
+          "groups_with_samples": 5,
+          "median": 18.71344456217915
+        },
+        "peak_rss_bytes": {
+          "groups_with_samples": 5,
+          "median": 83038208
+        },
+        "pickup_p99_ms": {
+          "groups_with_samples": 5,
+          "median": -151.14892578125
+        }
+      },
+      "mesh-thp-off_minus_mesh": {
+        "cpu_seconds_per_job": {
+          "groups_with_samples": 5,
+          "median": -0.00016326562500000022
+        },
+        "full_occupancy_peak_rss_bytes": {
+          "groups_with_samples": 5,
+          "median": -107225088
+        },
+        "held_peak_rss_bytes": {
+          "groups_with_samples": 5,
+          "median": -107225088
+        },
+        "jobs_per_second": {
+          "groups_with_samples": 5,
+          "median": 2.6465804248269933
+        },
+        "peak_rss_bytes": {
+          "groups_with_samples": 5,
+          "median": -107225088
+        },
+        "pickup_p99_ms": {
+          "groups_with_samples": 5,
+          "median": -7.6630859375
+        }
+      },
+      "mesh-thp-off_minus_mesh-repeat": {
+        "cpu_seconds_per_job": {
+          "groups_with_samples": 5,
+          "median": -5.631249999999994e-05
+        },
+        "full_occupancy_peak_rss_bytes": {
+          "groups_with_samples": 5,
+          "median": -107040768
+        },
+        "held_peak_rss_bytes": {
+          "groups_with_samples": 5,
+          "median": -107040768
+        },
+        "jobs_per_second": {
+          "groups_with_samples": 5,
+          "median": -0.8118804328139504
+        },
+        "peak_rss_bytes": {
+          "groups_with_samples": 5,
+          "median": -107040768
+        },
+        "pickup_p99_ms": {
+          "groups_with_samples": 5,
+          "median": 7.223876953125
+        }
+      },
+      "mesh-thp-off_minus_oban": {
+        "cpu_seconds_per_job": {
+          "groups_with_samples": 5,
+          "median": -0.0026838671875000003
+        },
+        "full_occupancy_peak_rss_bytes": {
+          "groups_with_samples": 5,
+          "median": -25219072
+        },
+        "held_peak_rss_bytes": {
+          "groups_with_samples": 5,
+          "median": -25219072
+        },
+        "jobs_per_second": {
+          "groups_with_samples": 5,
+          "median": 16.817059974384506
+        },
+        "peak_rss_bytes": {
+          "groups_with_samples": 5,
+          "median": -25219072
+        },
+        "pickup_p99_ms": {
+          "groups_with_samples": 5,
+          "median": -136.89306640625
+        }
+      },
+      "mesh_minus_oban": {
+        "cpu_seconds_per_job": {
+          "groups_with_samples": 5,
+          "median": -0.0016909765624999996
+        },
+        "full_occupancy_peak_rss_bytes": {
+          "groups_with_samples": 5,
+          "median": 83771392
+        },
+        "held_peak_rss_bytes": {
+          "groups_with_samples": 5,
+          "median": 83771392
+        },
+        "jobs_per_second": {
+          "groups_with_samples": 5,
+          "median": 16.747361972316696
+        },
+        "peak_rss_bytes": {
+          "groups_with_samples": 5,
+          "median": 83771392
+        },
+        "pickup_p99_ms": {
+          "groups_with_samples": 5,
+          "median": -144.857177734375
+        }
+      }
+    },
+    "run": "target/jobs-parity/linux-arm-ownership-guest/slow16-worker-thp-comparison/runs/thp-only-02",
+    "report_sha256": "437cda66e9bf7f0f2d5da95026153d84385047c57069287bea9e09b6bff90a8b",
+    "median_by_arm": {
+      "mesh": {
+        "jobs_per_second": 129.6843450864883,
+        "peak_rss_bytes": 214790144,
+        "pickup_p99_ms": 881.10205078125,
+        "cpu_seconds_per_job": 0.0025477734374999995
+      },
+      "mesh-repeat": {
+        "jobs_per_second": 134.1771270747642,
+        "peak_rss_bytes": 214740992,
+        "pickup_p99_ms": 846.06494140625,
+        "cpu_seconds_per_job": 0.0016005703124999998
+      },
+      "mesh-thp-off": {
+        "jobs_per_second": 132.92335650946382,
+        "peak_rss_bytes": 107569152,
+        "pickup_p99_ms": 855.06396484375,
+        "cpu_seconds_per_job": 0.0015095546874999998
+      },
+      "oban": {
+        "jobs_per_second": 116.5490553152743,
+        "peak_rss_bytes": 131989504,
+        "pickup_p99_ms": 991.95703125,
+        "cpu_seconds_per_job": 0.004348359374999999
+      }
+    },
+    "host_load_1m_max_by_stage": {
+      "0": 8.3427734375,
+      "1": 9.84521484375,
+      "2": 8.32080078125,
+      "3": 8.2080078125,
+      "4": 9.16796875,
+      "pilot": 7.1142578125
+    },
+    "result": "Worker-local THP-off relink passed all slow-16 gates. Both stock Mesh controls missed RSS.",
+    "earlier_failed_stage": {
+      "run": "target/jobs-parity/linux-arm-ownership-guest/slow16-worker-thp-comparison/runs/thp-only-01/0",
+      "failure": "The guest manifest used the old counterbalance. The corrected series binds its packed order.",
+      "serial_sha256": "48652fab4a128f4fec8067a5c638dc151d3c16d977e0df0a9325d2c3f3001d4c"
+    }
+  },
   "linux_fenced_jobs_staged_slow_one_runner_16": {
     "revision": "c271319e84624bd00b0a62a7bb07a45602ee948b",
     "profile": "slow-1r-16s",
