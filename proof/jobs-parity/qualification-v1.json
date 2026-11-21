@@ -28993,6 +28993,130 @@
           }
         }
       ]
+    },
+    "exact_child_cpu": {
+      "run": "target/jobs-parity/linux-arm-ownership-guest/set-based-claim-screen/runs/set-update-cpu-child-01/noop-8r-64s",
+      "scored_jobs_reconciled": 12288,
+      "scored_mesh_reaps_matched": 9216,
+      "pilot_reaps_matched": 2048,
+      "source_sha256": {
+        "reap_stage.py": "1600f869ba2955b4f451581fc4411fefa8bcd72c6100c2426bbf7380d42e9b9c",
+        "reap_evidence.py": "9f020586c69d3b16f9bce205590e536de94975c194159136440e761f0b3c8778",
+        "reap_cpu.c": "17ff7976de385bcc6a824a53bcc22569e073b7eeda9e7d5b4fe47d3ce172d767",
+        "reap_cpu.so": "8e0a3d880c78270ca7ae49d9bd0f16f6ee07ab2ceb6ed6c07f66960b151a7324"
+      },
+      "trace_off_oban_capacity_ms_per_job": 0.7675294876098633,
+      "groups": [
+        {
+          "group": 0,
+          "stage_sha256": "506d024a129c034c2f3e285e71a344b7c2d5eecf5ca86f7f40ef03f29d4e3163",
+          "cpu_report_sha256": "7f8be82c2d5cac6d44b3a164e15cb689af1580896df98bdd59e339173994e6a9",
+          "host_load_average_1m_max": 6.01513671875,
+          "jobs_per_second_by_arm": {
+            "mesh": 775.5854376544031,
+            "mesh-repeat": 1129.381556279461,
+            "oban": 2646.8297140318505,
+            "mesh-set-update": 1042.5267385992777
+          },
+          "child_cpu_ms_per_job_by_mesh_arm": {
+            "mesh": {
+              "user": 0.402572265625,
+              "system": 0.2372353515625,
+              "total": 0.6398076171875
+            },
+            "mesh-repeat": {
+              "user": 0.332697265625,
+              "system": 0.1407255859375,
+              "total": 0.4734228515625
+            },
+            "mesh-set-update": {
+              "user": 0.347646484375,
+              "system": 0.18133984375,
+              "total": 0.528986328125
+            }
+          },
+          "grouped_joint_cpu_floor_ms_per_job": 1.528330078125,
+          "grouped_zero_child_cpu_floor_ms_per_job": 0.99934375,
+          "same_boot_oban_capacity_ms_per_job": 0.7556209564208984
+        },
+        {
+          "group": 1,
+          "stage_sha256": "dab7b22339d9793e1ca54c00a2ebdc853cf64c2a048497cf719220605fab7f4a",
+          "cpu_report_sha256": "36cfb0bc0cadd541fcad39c317f32ab0a4b08defbbfa551c96f48dcfbd968cb8",
+          "host_load_average_1m_max": 6.50732421875,
+          "jobs_per_second_by_arm": {
+            "mesh-repeat": 1214.5524927216109,
+            "mesh-set-update": 1177.0072004384413,
+            "mesh": 1260.27209567999,
+            "oban": 1011.9106813496471
+          },
+          "child_cpu_ms_per_job_by_mesh_arm": {
+            "mesh": {
+              "user": 0.3124658203125,
+              "system": 0.125521484375,
+              "total": 0.4379873046875
+            },
+            "mesh-repeat": {
+              "user": 0.313822265625,
+              "system": 0.1388955078125,
+              "total": 0.4527177734375
+            },
+            "mesh-set-update": {
+              "user": 0.3281220703125,
+              "system": 0.1513798828125,
+              "total": 0.479501953125
+            }
+          },
+          "grouped_joint_cpu_floor_ms_per_job": 1.3429453125,
+          "grouped_zero_child_cpu_floor_ms_per_job": 0.8634433593749999,
+          "same_boot_oban_capacity_ms_per_job": 1.9764590263366701
+        },
+        {
+          "group": 2,
+          "stage_sha256": "4890c404dc260fcbcda8d7e00ce91ecbbe9f2910101dbcf647d4ece4c5775010",
+          "cpu_report_sha256": "560dbfad06086c79a0815ca5f4778d9902c731b9565ffd6aac2af196219f9a47",
+          "host_load_average_1m_max": 11.65869140625,
+          "jobs_per_second_by_arm": {
+            "mesh-set-update": 250.07118821113687,
+            "oban": 1292.765905508559,
+            "mesh-repeat": 1043.124630680066,
+            "mesh": 635.6991175577707
+          },
+          "child_cpu_ms_per_job_by_mesh_arm": {
+            "mesh": {
+              "user": 0.422505859375,
+              "system": 0.3658916015625,
+              "total": 0.7883974609375
+            },
+            "mesh-repeat": {
+              "user": 0.338837890625,
+              "system": 0.176236328125,
+              "total": 0.51507421875
+            },
+            "mesh-set-update": {
+              "user": 0.5693125,
+              "system": 0.9427158203125,
+              "total": 1.5120283203125
+            }
+          },
+          "grouped_joint_cpu_floor_ms_per_job": 6.8050908203125,
+          "grouped_zero_child_cpu_floor_ms_per_job": 5.2930625,
+          "same_boot_oban_capacity_ms_per_job": 1.5470705032348633
+        }
+      ],
+      "group_1_original_serial_recovery": {
+        "raw_serial_sha256": "b039adca6019dc46ea4ae489e639b688bf37745f46f254909b4fd96eadfdb05b",
+        "normalized_serial_sha256": "125e241be595e56f85204651f14d5ff2070b227bf258f027885ff05c60d9f397",
+        "guest_proof_sha256": "561997ddab7f732173b8056bab76aaf1896abca1fa4d7e0b1eb323e6002a223c",
+        "guest_exit": 0,
+        "interleaved_text": "[   64.946823] hrtimer: interrupt took 7325000 ns",
+        "zero_based_affected_lines": [
+          14169,
+          14170,
+          14171
+        ]
+      },
+      "scope": "Exact successful wait4 lifetime CPU, with a fixed-work bound on complete removal of child CPU. Group 2 had elevated host load and a guest timer warning."
     }
   }
 }

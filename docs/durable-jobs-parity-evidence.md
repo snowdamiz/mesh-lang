@@ -2850,6 +2850,32 @@ execution, supervision, and effect routing. A separate process-start
 measurement would be needed to assign a share to fresh exec.
 [Grouped claim CPU receipt](../proof/jobs-parity/qualification-v1.json)
 
+The exact-child probe provides an upper bound on startup savings. It
+used the same worker image and captured terminal `wait4` resource usage
+from the Mesh runner. Each record matched the durable worker PID and
+its exact runner. The traced pilot matched 2,048 reaps, and the three
+instrumented groups matched all 9,216 measured Mesh reaps.
+
+| Group | Full child CPU | Joint floor | Floor with all child CPU removed | Same-boot Oban budget |
+| --- | ---: | ---: | ---: | ---: |
+| 0 | 0.529 | 1.528 | 0.999 | 0.756 |
+| 1 | 0.479 | 1.343 | 0.863 | 1.976 |
+| 2 | 1.512 | 6.805 | 5.293 | 1.547 |
+
+Values are CPU-ms/job for the grouped-claim arm. Group 1's Oban run
+reached 1,012 jobs/s. Group 2 ran under elevated host load and recorded
+a guest timer warning. Both groups remain in the receipt. In each
+group, the floor after subtracting all measured child CPU exceeds the
+0.768 CPU-ms/job budget implied by Oban's earlier trace-off median.
+This arithmetic holds the remaining work fixed and subtracts the full
+worker lifetime, including handler execution. It bounds how much a
+worker-only CPU saving can explain in these runs.
+
+The next performance screen groups independent writes on the PostgreSQL
+side. The candidate retains two ordered commits and current-claim
+validation for every job, plus one fresh worker per attempt.
+[Exact-child CPU receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Compare four runners at 64 slots on no-op jobs
 
 Five matched Linux groups at `c271319e` reconciled 15,360
