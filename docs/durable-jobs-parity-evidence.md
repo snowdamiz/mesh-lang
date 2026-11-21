@@ -2993,11 +2993,37 @@ real jobs with a zero-work executor.
 
 The variant cut claim calls and wall time in all ten pairs. Both
 arms had zero settlement lock retries. Extra WAL remained despite
-removing the separate slot-table updates. The compiled fixture still
-needs the same admission and effect proof with real child processes.
-The disposable schema fences legacy entry points, and mixed-version
-migration remains open.
+removing the separate slot-table updates. The disposable schema
+fences legacy entry points. Mixed-version migration remains open.
 [Inline admission receipt](../proof/jobs-parity/qualification-v1.json)
+
+The compiled Linux pilot used the `0ee8756a` release binary and installed
+the inline claim function in a disposable PostgreSQL 17.11 database.
+The first run completed the stock control. The inline runner stopped
+before enqueue when PostgreSQL denied its cron activation upsert.
+After adding the scoped cron grants, each arm reconciled 1,024 jobs,
+2,048 effect commits, 1,024 exact child reaps, and 1,024 resets. All 63
+effect backends returned idle and all inline slots were released.
+
+Five counterbalanced groups reconciled 20,480 scored jobs on the
+two-vCPU ARM64 guest. Each group used two identical stock Mesh arms,
+inline admission on the same executable, and Oban Basic 2.24.2 with
+the Isolated notifier.
+
+| Arm | Median jobs/s | Jobs/s range | Pickup p99 | Claim calls per 1,024 jobs |
+| --- | ---: | ---: | ---: | ---: |
+| Mesh | 828 | 379–1,107 | 1,218 ms | 406 |
+| Mesh repeat | 1,017 | 534–1,069 | 977 ms | 403 |
+| Mesh with inline admission | 1,026 | 424–1,139 | 980 ms | 277 |
+| Oban | 2,378 | 2,285–2,738 | 424 ms | 145 |
+
+Inline admission reduced claim calls in all five groups. It beat both
+Mesh controls in three groups. The median paired gain was 78 jobs/s
+against the control mean. The median absolute difference between the
+two controls was 115 jobs/s, with one difference of 638 jobs/s. The
+treatment passed the resource gates and missed throughput and pickup.
+The inline schema remains a disposable experiment.
+[Compiled inline admission receipt](../proof/jobs-parity/qualification-v1.json)
 
 ### Attribute fresh Linux worker startup
 
@@ -3022,9 +3048,54 @@ Actor initialization and worker bootstrap are direct targets for the
 fresh-exec candidate. The phase times include any concurrent worker-thread
 CPU during each interval. The witness writes its log after sampling
 handler entry. The relink and the spread between identical controls limit
-these figures to attribution. The independently toggled changes still
-need fresh Linux correctness and timing runs.
+these figures to attribution.
 [Worker startup phase receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Verify the Linux worker bootstrap changes
+
+The `f82c66b4` release build adds independent worker-only switches for
+starting the scheduler on first actor spawn and combining the two
+watchdogs. The native proof exercises all four flag combinations with
+ordinary and fenced worker arguments. It checks first actor execution
+under GC stress, the private effect descriptor, exact executable
+identity, and timeout, lease expiry, and parent EOF while a handler
+blocks on a FIFO.
+
+The initial proof script failed while entering a socket context before
+it started a worker. The corrected script at `6a7fcb38` used the same
+ELF. The DB-free observer ran as root inside the guest so it could
+inspect the optimized worker's executable and open descriptors. The
+PostgreSQL pilot used the standard unprivileged guest setup.
+The concurrent first-spawn unit test passed on macOS after the
+test-only effect child was updated to use the new bootstrap reader
+at `7310bc6d`.
+
+The compiled PostgreSQL pilot reconciled 2,048 jobs across the control
+and combined treatment. Each job produced two fenced commits, one
+reset, and an exact child reap. With both switches enabled, separate
+fresh and prewarmed cases revoked the owner between the two commits and
+after the second commit before receipt delivery. All four cases verified
+the authorized retry, a single durable effect, and checkout cleanup.
+[Worker bootstrap proof](../proof/jobs-parity/qualification-v1.json)
+
+The scored comparison enabled both switches in the treatment and
+disabled both in the two Mesh controls. All Mesh arms used the same
+ELF, stock claim SQL, and plan-retaining reset. Five fresh Linux boots
+ran one counterbalanced group each after warmup. All 20,480 scored jobs
+reconciled.
+
+| Arm | Median jobs/s | Jobs/s range | Pickup p99 | Runner CPU/job |
+| --- | ---: | ---: | ---: | ---: |
+| Mesh | 906 | 449–953 | 1,111 ms | 1.28 ms |
+| Mesh repeat | 765 | 504–1,133 | 1,318 ms | 1.48 ms |
+| Mesh with both switches | 817 | 376–1,153 | 1,235 ms | 1.33 ms |
+| Oban | 1,444 | 1,014–2,498 | 696 ms | 4.82 ms |
+
+The treatment beat both Mesh controls in one group. Its paired median
+gain of 67 jobs/s fell within the 422 jobs/s median absolute control
+spread. The treatment passed the resource gates and missed throughput
+and pickup. This result leaves each switch's individual effect open.
+[Matched bootstrap receipt](../proof/jobs-parity/qualification-v1.json)
 
 ### Compare four runners at 64 slots on no-op jobs
 
