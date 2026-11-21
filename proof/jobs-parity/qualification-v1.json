@@ -12340,6 +12340,185 @@
       }
     }
   },
+  "linux_fenced_jobs_noop64_effect_lock_savepoint_screen": {
+    "scope": "local-linux-aarch64-noop64-effect-lock-savepoint-ab",
+    "revision": "c271319e84624bd00b0a62a7bb07a45602ee948b",
+    "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+    "effect_lock_ab": {
+      "fixture_sha256": "732f9117fc19bd6a3a201c4e1ed5299450aa3e62c6513271fa9494467af60812",
+      "parent_fingerprint_sha256": "1c6c784f2fe8b38531ae68cb92d362f115509acd6dc1dea59a8be5cc39802b2d",
+      "parent_pack_sha256": "624ce92a0488d4c68d87cea781c7f432fa0463265592a41697020740841827b1",
+      "stock_body": "e4f1b67b897740fcedd2785201d6aed5edb60c41c0c0fbb40d9d74529685545f",
+      "stock_ddl": "30119c16dbf550d528e69ff5a77c1bc4bc165ffb02ce8d1124df5cb7ba7a8bb3",
+      "treatment_body": "92f71da03ea91a5db4b8fb0327dc8a700ff8aec301e0fd04ebf2e36740979367",
+      "treatment_ddl": "b51aaef846159088fdaf64692916d8fc0b141b60f02fcae38b03281803b20f9b"
+    },
+    "pilot_stage_sha256": "d06d4792c9c3b569012079af979870a7439182cb25e712a013ac09ae256fe07c",
+    "arm_definitions": {
+      "mesh": "stock-a",
+      "mesh-aa": "stock-b",
+      "mesh-repeat": "skip-locked",
+      "oban": "oban"
+    },
+    "run": "target/jobs-parity/linux-arm-ownership-guest/effect-lock-savepoint-ab/runs/effect-lock-ab-03",
+    "report_sha256": "53ba5b196b0c88a5646e0f140fa025ddbcb867a665cf40bd69b4f89f20db01ca",
+    "scored_jobs": 8192,
+    "groups": [
+      {
+        "group": 0,
+        "order": [
+          "stock-a",
+          "stock-b",
+          "oban",
+          "skip-locked"
+        ],
+        "stage_sha256": "2167bb02d792c054a2af4a261baf827a33fb35472132837564f1a2f46f1c973c",
+        "stock_high_over_low": 1.1598878425337757,
+        "treatment_over_stock_geomean": 1.1187109693150221,
+        "treatment_over_oban": 0.4121019051833816,
+        "arms": {
+          "stock-a": {
+            "jobs_per_second": 964.0958923159495,
+            "pickup_p99_ms": 1041.421875,
+            "cpu_seconds_per_job": 0.00101674609375,
+            "claim_calls_per_job": 0.4013671875,
+            "peak_rss_bytes": 371105792,
+            "effect_executor_time_ms_per_job": 0.917781103515623,
+            "postgres_observed_cpu_ms_per_job": 1.29526171875,
+            "runner_observed_cpu_ms_per_job": 0.7804287109375
+          },
+          "stock-b": {
+            "jobs_per_second": 1118.243104534022,
+            "pickup_p99_ms": 903.4990234375,
+            "cpu_seconds_per_job": 0.00089337109375,
+            "claim_calls_per_job": 0.369140625,
+            "peak_rss_bytes": 347361280,
+            "effect_executor_time_ms_per_job": 0.8248820800781246,
+            "postgres_observed_cpu_ms_per_job": 1.1598642578125,
+            "runner_observed_cpu_ms_per_job": 0.6876005859375
+          },
+          "oban": {
+            "jobs_per_second": 2818.652292626674,
+            "pickup_p99_ms": 354.906982421875,
+            "cpu_seconds_per_job": 0.0032672880859375,
+            "claim_calls_per_job": 0.134765625,
+            "peak_rss_bytes": 1005461504,
+            "effect_executor_time_ms_per_job": 0.058321205078125,
+            "postgres_observed_cpu_ms_per_job": 0.2943759765625,
+            "runner_observed_cpu_ms_per_job": 0.2689453125
+          },
+          "skip-locked": {
+            "jobs_per_second": 1161.5719798409586,
+            "pickup_p99_ms": 870.958984375,
+            "cpu_seconds_per_job": 0.001051396484375,
+            "claim_calls_per_job": 0.3984375,
+            "peak_rss_bytes": 400068608,
+            "effect_executor_time_ms_per_job": 0.6783938857421875,
+            "postgres_observed_cpu_ms_per_job": 1.1077802734375,
+            "runner_observed_cpu_ms_per_job": 0.641791015625
+          }
+        }
+      },
+      {
+        "group": 1,
+        "order": [
+          "skip-locked",
+          "oban",
+          "stock-b",
+          "stock-a"
+        ],
+        "stage_sha256": "46a745a30f623a73022f945e3460112443a8b1198b56515abcc49862d640dd18",
+        "stock_high_over_low": 1.357814223670061,
+        "treatment_over_stock_geomean": 1.1234828638846837,
+        "treatment_over_oban": 0.3798960859090728,
+        "arms": {
+          "skip-locked": {
+            "jobs_per_second": 1022.0121165691635,
+            "pickup_p99_ms": 979.761962890625,
+            "cpu_seconds_per_job": 0.0010941552734374997,
+            "claim_calls_per_job": 0.3798828125,
+            "peak_rss_bytes": 357224448,
+            "effect_executor_time_ms_per_job": 0.8647401767578127,
+            "postgres_observed_cpu_ms_per_job": 1.2353701171875,
+            "runner_observed_cpu_ms_per_job": 0.7264140625
+          },
+          "oban": {
+            "jobs_per_second": 2690.2412382679286,
+            "pickup_p99_ms": 374.9150390625,
+            "cpu_seconds_per_job": 0.0032224033203124996,
+            "claim_calls_per_job": 0.1396484375,
+            "peak_rss_bytes": 996839424,
+            "effect_executor_time_ms_per_job": 0.05743934082031252,
+            "postgres_observed_cpu_ms_per_job": 0.3453017578125,
+            "runner_observed_cpu_ms_per_job": 0.306814453125
+          },
+          "stock-b": {
+            "jobs_per_second": 780.6734598079095,
+            "pickup_p99_ms": 1291.873046875,
+            "cpu_seconds_per_job": 0.0013114775390624998,
+            "claim_calls_per_job": 0.408203125,
+            "peak_rss_bytes": 374738944,
+            "effect_executor_time_ms_per_job": 1.281418602539062,
+            "postgres_observed_cpu_ms_per_job": 1.593619140625,
+            "runner_observed_cpu_ms_per_job": 0.9669482421875
+          },
+          "stock-a": {
+            "jobs_per_second": 1060.0095277688972,
+            "pickup_p99_ms": 945.922119140625,
+            "cpu_seconds_per_job": 0.001054052734375,
+            "claim_calls_per_job": 0.3935546875,
+            "peak_rss_bytes": 427991040,
+            "effect_executor_time_ms_per_job": 1.0566201113281246,
+            "postgres_observed_cpu_ms_per_job": 1.208091796875,
+            "runner_observed_cpu_ms_per_job": 0.690400390625
+          }
+        }
+      }
+    ],
+    "pilot": {
+      "native-pilot/native/native.json": "3e90b47f65a2a020d140354214447436dc9e07edbecedc88f73f452b24bdb955",
+      "native-pilot/between/result.json": "5ac72d9e92eacabe1096f96ad91c1e71267c0434486296d18242ceed04ba8ce7",
+      "native-pilot/final/result.json": "a04f6e7db9a3f58a4f13e80eb74612f6bde4694e4349e99048c86400941348cf"
+    },
+    "denied_cases": [
+      "busy",
+      "cancelled",
+      "cancelled_and_expired",
+      "expired",
+      "missing",
+      "stale_attempt",
+      "stale_run",
+      "stale_token",
+      "wrong_namespace"
+    ],
+    "diagnostic_gate_breaches": {
+      "skip-locked": [
+        "jobs_per_second",
+        "pickup_p99_ms"
+      ],
+      "stock-a": [
+        "jobs_per_second",
+        "pickup_p99_ms"
+      ],
+      "stock-b": [
+        "jobs_per_second",
+        "pickup_p99_ms"
+      ]
+    },
+    "prior_failed_pilots": [
+      {
+        "run": "target/jobs-parity/linux-arm-ownership-guest/effect-lock-savepoint-ab/runs/effect-lock-ab-01/native-pilot",
+        "reason": "Guest plan had the stock group count.",
+        "serial_sha256": "a3c806b869056218a3800ff4ac2f639d46739257143d20404dc0cb610ac46877"
+      },
+      {
+        "run": "target/jobs-parity/linux-arm-ownership-guest/effect-lock-savepoint-ab/runs/effect-lock-ab-02/native-pilot",
+        "reason": "The pilot timestamp SELECT had an extra closing parenthesis.",
+        "serial_sha256": "6042e7bbd6073417de9ec7ee511d72dd66ffc2873d5ee108a288bb3ae694bc6a"
+      }
+    ],
+    "scope_limit": "Two instrumented groups. Effect executor time fell in every matched comparison. Total throughput gains against the stock geometric mean were within contemporaneous stock drift."
+  },
   "linux_fenced_jobs_noop64_sql_fingerprints": {
     "revision": "c271319e84624bd00b0a62a7bb07a45602ee948b",
     "profile": "noop-8r-64s",

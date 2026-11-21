@@ -2666,6 +2666,31 @@ recorded SQL time. The measurement leaves the effect function's
 internal planning and lock costs unresolved.
 [Statement fingerprint receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Screen the effect write without a subtransaction on lock acquisition
+
+The disposable effect function kept the same row lock and replaced
+`NOWAIT` inside an exception block with `SKIP LOCKED`. An empty
+lock result checks for a visible row and denies the write. The
+native proof covered the held row, missing or stale authority,
+expiry, cancellation, and two distinct commits. Both compiled
+revocation cases reconciled with the original effect key.
+
+Two reverse-order groups used the same release for both Mesh
+controls and the treatment. All 8,192 scored jobs reconciled.
+The treatment's effect statements took 0.678 and 0.865 elapsed
+executor ms/job. The controls took 0.825–0.918 and 1.057–1.281.
+The comparison changes the lock policy and the exception block
+together.
+
+End-to-end throughput was about 12% above the geometric mean
+of the controls in both groups. The control ratios differed
+by 16% and 36%. The treatment beat both controls in one group
+and reached 1,162 and 1,022 jobs/s versus Oban's 2,819 and 2,690.
+The treatment passed the resource limits and missed throughput
+and pickup. The smaller effect interval leaves a repeatable
+end-to-end gain open.
+[Effect lock experiment](../proof/jobs-parity/qualification-v1.json)
+
 ### Compare four runners at 64 slots on no-op jobs
 
 Five matched Linux groups at `c271319e` reconciled 15,360
