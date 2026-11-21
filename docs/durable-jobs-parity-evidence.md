@@ -2581,6 +2581,23 @@ no-op refill cycle. The screen used release worker `a39447f7`
 and exercised neither PostgreSQL nor the Jobs dispatcher.
 [Parallel launch screen](../proof/jobs-parity/qualification-v1.json)
 
+### Group no-op completions after exact reap
+
+The `e98650d4` release fixture ran the frozen no-op workload with
+one runner and 64 slots in five matched Linux groups. Each group
+included two identical controls and one arm with bounded completion
+batching. All 15,360 measured jobs reconciled. PostgreSQL recorded
+77 to 88 batched settlement statements per candidate trial.
+
+Completion batching reduced median runner SQL from 4.27 and
+4.28 calls per job to 3.62. The candidate reached 1,215 jobs/s
+versus 1,453 and 1,503 for the controls and beat both in two
+groups. Its paired median was 157 jobs/s below the mean of
+the controls, which differed by 293 jobs/s at the median.
+The lower statement count did not produce a repeatable
+throughput gain.
+[No-op completion-batch receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Check guest CPU headroom on the no-op workload
 
 Two local groups at each CPU count ran the same `c271319e`
