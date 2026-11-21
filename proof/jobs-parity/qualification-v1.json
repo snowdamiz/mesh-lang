@@ -38088,6 +38088,291 @@
       }
     }
   },
+  "linux_compiled_jobs_effect_c16_listen": {
+    "revision": "ef338423c4676e3251dc97eecb45c6fe8fbdf123",
+    "fixture_sha256": "294a7ffd1d7843685c57c903cf2d92a860374173f6cb3f9d3b1a0fe24fae964c",
+    "qualification": false,
+    "scope": "Matched Linux ARM64 PostgreSQL 17.11. Same release ELF and frozen short-1r-16s input, eight app sessions, 16 slots, 250 ms fallback, 12 and 13 backends including producer/observer. Untimed native gate tracks exact reap and notification. Timed arms omit libc tracing and Oban.",
+    "summary": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-summary.json",
+      "sha256": "1fb793a34734a872d463280edc272fd988ff5bfeaa6fe8520f47a12273db33fb"
+    },
+    "native_gate": {
+      "bundle.json": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/native-02/extracted/evidence/bundle.json",
+        "sha256": "bf191e9a6b6fc3156df57921daba5574f38531b77b919ecb4b3607c9a379aadf"
+      },
+      "result.json": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/native-02/extracted/evidence/result.json",
+        "sha256": "8e5a6318efe8ffce1f595933fccdd257adf4a06844a99f4b9be2ad0ecd0d628c"
+      },
+      "native-gate.json": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/native-02/extracted/evidence/native-gate.json",
+        "sha256": "71b7a25b9fd6bec1d7def6b8ebd86c05d64369c7aab978f1b3841d45c9e9a46d"
+      },
+      "pack.json": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/native-02/pack.json",
+        "sha256": "7950679a7c9ca1fe931fc6899262631cfe3a33b08508871ce5b4e2047267fc43"
+      }
+    },
+    "timed_totals": {
+      "completed": 768,
+      "distinct_write_xids": 1536,
+      "app_full_resets_after_idle": 1536
+    },
+    "groups": [
+      {
+        "group": 0,
+        "arms": [
+          {
+            "label": "A",
+            "completed": 128,
+            "max_backends": 12,
+            "commit_to_first_claim_ms": 28.549072265625,
+            "first_claim_to_final_settlement_ms": 148.136962890625,
+            "commit_to_final_settlement_ms": 176.68603515625,
+            "distinct_write_xids": 256,
+            "app_full_resets_after_idle": 256,
+            "jobs_per_second": 724.4488784119518,
+            "pickup_p99_ms": 173.504150390625,
+            "files": {
+              "attempts.json": {
+                "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-0/extracted/evidence/measured-A/attempts.json",
+                "sha256": "f48642936607981b16fb6d57913ea77b7d55bb775d12173ca55f69ea6617fd72"
+              },
+              "writes.json": {
+                "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-0/extracted/evidence/measured-A/writes.json",
+                "sha256": "50f5054f602818a55c5827c52d0c447d73e620ddf6f81c2abf0b635e12e7768f"
+              },
+              "connection-admission.json": {
+                "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-0/extracted/evidence/measured-A/connection-admission.json",
+                "sha256": "529af0025e2b0055ce6ce68b2e9b6e9a0933bc36c93f059d87dd0ec0e735fee5"
+              },
+              "statement-counters.json": {
+                "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-0/extracted/evidence/measured-A/statement-counters.json",
+                "sha256": "1b7e9f5f21ad03eedc8bcc4e685fe9ce2253df765de0705fa2cb661aac3ba2d1"
+              },
+              "active-cpu.json": {
+                "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-0/extracted/evidence/measured-A/active-cpu.json",
+                "sha256": "e4977e69c7044e4eff5ac332882cc7acefbe43486cecece8f1aa3bac05d31dfe"
+              }
+            }
+          },
+          {
+            "label": "A-repeat",
+            "completed": 128,
+            "max_backends": 12,
+            "commit_to_first_claim_ms": 255.22900390625,
+            "first_claim_to_final_settlement_ms": 139.5810546875,
+            "commit_to_final_settlement_ms": 394.81005859375,
+            "distinct_write_xids": 256,
+            "app_full_resets_after_idle": 256,
+            "jobs_per_second": 324.2065322649464,
+            "pickup_p99_ms": 385.196044921875,
+            "files": {
+              "attempts.json": {
+                "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-0/extracted/evidence/measured-A-repeat/attempts.json",
+                "sha256": "1466f40148696fe7ff6ee93923ca4b6949652db4cc55bfab6c793b8c2694f29a"
+              },
+              "writes.json": {
+                "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-0/extracted/evidence/measured-A-repeat/writes.json",
+                "sha256": "eb6fb0454b5f54bd3dc8c9a2eec11508a2d88e05722e71ff04a995796fde3f31"
+              },
+              "connection-admission.json": {
+                "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-0/extracted/evidence/measured-A-repeat/connection-admission.json",
+                "sha256": "218f1bf0ce203d6b544f11ed36ad1e8e2ffa77607c9b1cf6b6ede69223dc8f07"
+              },
+              "statement-counters.json": {
+                "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-0/extracted/evidence/measured-A-repeat/statement-counters.json",
+                "sha256": "e85e9996eba737a10e60677740ce0622bb7187f278119f0a3ec9f00efea1b3ab"
+              },
+              "active-cpu.json": {
+                "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-0/extracted/evidence/measured-A-repeat/active-cpu.json",
+                "sha256": "89ba75243913314d3c14925e8af6171a8435f8fc550acc03ebffd314cb42d8af"
+              }
+            }
+          },
+          {
+            "label": "B",
+            "completed": 128,
+            "max_backends": 13,
+            "commit_to_first_claim_ms": 0.677978515625,
+            "first_claim_to_final_settlement_ms": 123.153076171875,
+            "commit_to_final_settlement_ms": 123.8310546875,
+            "distinct_write_xids": 256,
+            "app_full_resets_after_idle": 256,
+            "jobs_per_second": 1033.6663959054597,
+            "pickup_p99_ms": 120.97900390625,
+            "files": {
+              "attempts.json": {
+                "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-0/extracted/evidence/measured-B/attempts.json",
+                "sha256": "017c0d5ed6e92f9801df81cb19a9c469f0cf8a3e336dc0a78b0ea0c37faa776a"
+              },
+              "writes.json": {
+                "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-0/extracted/evidence/measured-B/writes.json",
+                "sha256": "0e4e58a31b37bea8d42b626536ed9329d914c87eb421c70164cd7cea2df66e4e"
+              },
+              "connection-admission.json": {
+                "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-0/extracted/evidence/measured-B/connection-admission.json",
+                "sha256": "3aebac2bb75f03fbff5587583213407d57c0c9b8eb7f5f0c20f0bef5c089b2eb"
+              },
+              "statement-counters.json": {
+                "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-0/extracted/evidence/measured-B/statement-counters.json",
+                "sha256": "c93e9cff2b1f432eaf25a63ca2ef0acdd00fb925221abc1d39de36833c8cc0c6"
+              },
+              "active-cpu.json": {
+                "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-0/extracted/evidence/measured-B/active-cpu.json",
+                "sha256": "917b8398fd3f230ab540abd894a7c5ad75830d9055e2b1b097a43044d9181358"
+              }
+            }
+          }
+        ],
+        "files": {
+          "pack.json": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-0/pack.json",
+            "sha256": "93b03cbd72e5003159332f12d553911d6bc36352122ac0333b54efd4da7ba5aa"
+          },
+          "result.json": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-0/extracted/evidence/result.json",
+            "sha256": "8e5a6318efe8ffce1f595933fccdd257adf4a06844a99f4b9be2ad0ecd0d628c"
+          },
+          "screen.json": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-0/extracted/evidence/screen.json",
+            "sha256": "d91d696216838eca47e6590696e280cc6b01d7822b4132ad0447c7a9b5dea3ef"
+          },
+          "host-load.jsonl": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-0/host-load.jsonl",
+            "sha256": "71949ff07167842cc91795cef19dd917a645756aaa05fc1af833012bf9f40dec"
+          }
+        }
+      },
+      {
+        "group": 1,
+        "arms": [
+          {
+            "label": "B",
+            "completed": 128,
+            "max_backends": 13,
+            "commit_to_first_claim_ms": 1.574951171875,
+            "first_claim_to_final_settlement_ms": 180.98388671875,
+            "commit_to_final_settlement_ms": 182.558837890625,
+            "distinct_write_xids": 256,
+            "app_full_resets_after_idle": 256,
+            "jobs_per_second": 701.1438146680557,
+            "pickup_p99_ms": 177.866943359375,
+            "files": {
+              "attempts.json": {
+                "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-1/extracted/evidence/measured-B/attempts.json",
+                "sha256": "76d965f2e395701047a3b9352bb3da510dfbf2e3d4ab3c24240efc3d7d5a771c"
+              },
+              "writes.json": {
+                "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-1/extracted/evidence/measured-B/writes.json",
+                "sha256": "92858535dbaae86f8cf29fee890504c9c0d2e5bd7f881b115d5d97de11408261"
+              },
+              "connection-admission.json": {
+                "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-1/extracted/evidence/measured-B/connection-admission.json",
+                "sha256": "9e271ea5334617688c35087871f938cc656fa27d66d7c372eb7a8dbbb8ccb57f"
+              },
+              "statement-counters.json": {
+                "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-1/extracted/evidence/measured-B/statement-counters.json",
+                "sha256": "75769a11410a7bfb9d6bb05039774f8155a54a4a5297dcd206407d85f12ea601"
+              },
+              "active-cpu.json": {
+                "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-1/extracted/evidence/measured-B/active-cpu.json",
+                "sha256": "d30d4c457553d3a6eb954a222543156803d219dc3b4474828f9b26f99c3c0fb4"
+              }
+            }
+          },
+          {
+            "label": "A-repeat",
+            "completed": 128,
+            "max_backends": 12,
+            "commit_to_first_claim_ms": 254.242919921875,
+            "first_claim_to_final_settlement_ms": 263.319091796875,
+            "commit_to_final_settlement_ms": 517.56201171875,
+            "distinct_write_xids": 256,
+            "app_full_resets_after_idle": 256,
+            "jobs_per_second": 247.31335975553955,
+            "pickup_p99_ms": 512.203857421875,
+            "files": {
+              "attempts.json": {
+                "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-1/extracted/evidence/measured-A-repeat/attempts.json",
+                "sha256": "d505ebc7a41d0f9f0e50d3264cfb91236d1c642ea3649ec42b38d4d94bd7af84"
+              },
+              "writes.json": {
+                "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-1/extracted/evidence/measured-A-repeat/writes.json",
+                "sha256": "3c1dd04bab736f6c4b72991931c656bea715062570ce4afeffc994bffeef8844"
+              },
+              "connection-admission.json": {
+                "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-1/extracted/evidence/measured-A-repeat/connection-admission.json",
+                "sha256": "9689948ae46546cb961278b20572e6cb39e034ad8a48ba8559e9ae18406a06a8"
+              },
+              "statement-counters.json": {
+                "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-1/extracted/evidence/measured-A-repeat/statement-counters.json",
+                "sha256": "907dee2f8b7625581a93211f8124a2e181151516c55aecfea9082f4203671ae4"
+              },
+              "active-cpu.json": {
+                "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-1/extracted/evidence/measured-A-repeat/active-cpu.json",
+                "sha256": "eb1ec287d8e408163b1776facde980220143edf522fdab0cff5fc649c6963607"
+              }
+            }
+          },
+          {
+            "label": "A",
+            "completed": 128,
+            "max_backends": 12,
+            "commit_to_first_claim_ms": 21.202880859375,
+            "first_claim_to_final_settlement_ms": 193.910888671875,
+            "commit_to_final_settlement_ms": 215.11376953125,
+            "distinct_write_xids": 256,
+            "app_full_resets_after_idle": 256,
+            "jobs_per_second": 595.0339686711928,
+            "pickup_p99_ms": 211.118896484375,
+            "files": {
+              "attempts.json": {
+                "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-1/extracted/evidence/measured-A/attempts.json",
+                "sha256": "43e47d9eeab668fbcb68ff337db0dfd918b4f2565938c222d13aa3903572b3f0"
+              },
+              "writes.json": {
+                "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-1/extracted/evidence/measured-A/writes.json",
+                "sha256": "fa51028fa2e1002c75d1a0e91ee9cdbf67a89d5dc55c3157cbd6cebc84068eea"
+              },
+              "connection-admission.json": {
+                "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-1/extracted/evidence/measured-A/connection-admission.json",
+                "sha256": "7e95974b8fbddded3d748306136da4bf558a3bb03f19eb51784c317f2f50dc50"
+              },
+              "statement-counters.json": {
+                "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-1/extracted/evidence/measured-A/statement-counters.json",
+                "sha256": "1a63345580d3610448b94a79cc94c0fce8dee422afd1faec81bfb28d1b30e174"
+              },
+              "active-cpu.json": {
+                "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-1/extracted/evidence/measured-A/active-cpu.json",
+                "sha256": "1d943e27bef4011ab32c151604aee70b4736a35f616ac863d1af26730825b66d"
+              }
+            }
+          }
+        ],
+        "files": {
+          "pack.json": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-1/pack.json",
+            "sha256": "c5b4acdd5686695d185a3198554221a214b0bd6de38547e14763552c63494238"
+          },
+          "result.json": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-1/extracted/evidence/result.json",
+            "sha256": "8e5a6318efe8ffce1f595933fccdd257adf4a06844a99f4b9be2ad0ecd0d628c"
+          },
+          "screen.json": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-1/extracted/evidence/screen.json",
+            "sha256": "3f8d366e3a0f753002d28a2b336222244c3dfde25858fb8fc4c89bd35b5f8945"
+          },
+          "host-load.jsonl": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-listen-screen/matched-02-group-1/host-load.jsonl",
+            "sha256": "4a4388ee0f27641748756a53ac5524f761db9bebc43fdae74574694e47a5390e"
+          }
+        }
+      }
+    ]
+  },
   "linux_compiled_jobs_effect_c16_matched": {
     "revision": "ee68688207a76078b01cb13c45762f6f8d6072b3",
     "scope": "Linux ARM64, PostgreSQL 17.11, two vCPUs, matching release ELF and frozen short-1r-16s input. Five counterbalanced groups, 16 Jobs slots, LISTEN off. Oban omitted. Samples do not establish full occupancy RSS.",

@@ -4269,6 +4269,34 @@ The replay also observed fallback, catch-up, and a subsequent
 notification on the replacement listener.
 [One-slot LISTEN receipts](../proof/jobs-parity/qualification-v1.json)
 
+### Screen LISTEN at 16 slots with eight warm sessions
+
+The `ef338423` draft keeps separate claim, lifecycle, and
+LISTEN backends at 16 slots. In the untimed PostgreSQL 17.11
+gate, a real notification triggered the claim, renewal used
+the separate lifecycle session, and each worker was reaped
+before settlement. The polling topology used 12 connections
+and LISTEN used 13, including the producer/observer in each.
+
+Two reverse-order groups then used the same release ELF and
+frozen `short-1r-16s` input at the 250 ms fallback interval.
+The six measured arms reconciled 768 jobs, 1,536 separately
+committed writes, and 1,536 full app resets.
+
+| Group | Poll / repeat / LISTEN first claim (ms) | Poll / repeat / LISTEN jobs/s |
+| --- | ---: | ---: |
+| 0 | 28.5 / 255.2 / 0.7 | 724 / 324 / 1,034 |
+| 1 | 21.2 / 254.2 / 1.6 | 595 / 247 / 701 |
+
+LISTEN also had the shortest drain after first claim in both
+groups. The large polling repeat spread and two-group sample
+limit the throughput inference. The timed arms used verified
+TLS and ran without native reap tracing. The untimed gate
+exposes Jobs frames over plaintext SCRAM on loopback. This
+screen establishes pickup behavior under the connection cap.
+Oban comparison and release qualification remain open.
+[16-slot LISTEN receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Check worker-local THP selection for named effects
 
 The separate `62ece84c` draft built for Linux GNU ARM64.
