@@ -128,7 +128,7 @@ def main(data_dir):
     job_id = UUID(sql(f"""
         SELECT mesh_jobs.enqueue('{NAMESPACE}',
             '{{"worker":"proof","version":1,"queue":"default","args":{{}},"metadata":{{}},
-              "tags":[],"priority":0,"max_attempts":2,"timeout_ms":60000,
+              "tags":[],"priority":0,"max_attempts":3,"timeout_ms":60000,
               "backoff_base_ms":0,"backoff_max_ms":0,"suspended":false,"unique":null}}',
             '', '') ->> 'id';
     """))
@@ -181,6 +181,26 @@ def main(data_dir):
     check_contention(job_id, token)
     expect("row lock contention leaves no changes", observe(job_id), durable)
 
+    # Expire the live fixture lease after the effect has committed. The runner
+    # can lose a reply before learning that the operation already succeeded.
+    expect("expire the effect writer's lease", sql(f"""
+        UPDATE mesh_jobs.jobs SET lease_expires_at_ms = mesh_jobs.now_ms()
+        {job_filter} AND state = 'executing' AND lease_token = '{token}'
+            AND lease_expires_at_ms > mesh_jobs.now_ms()
+        RETURNING id;
+    """), str(job_id))
+    expect("recover the effect writer", sql(f"SELECT mesh_jobs.recover('{NAMESPACE}', 1, NULL);"), "1")
+    replacement_token = claim(job_id, 60000)
+    expect("effect writer replacement gets a new token", replacement_token != token, True)
+    replacement = observe(job_id)
+    expect_claim(replacement, job_id, replacement_token, 3)
+    durable = dict(durable, job=replacement["job"])
+    expect("replacement preserves the effect and receipt", replacement, durable)
+    expect("old writer cannot resolve the operation with a stale lease", sql(commit), "lost")
+    same_operation = record(job_id, 1, 3, replacement_token, "demo-write")
+    expect("new lease resolves the original committed effect", sql(same_operation), "confirmed:1")
+    expect("replay across leases leaves one effect and no extra insertion", observe(job_id), durable)
+
     expect("committed cancellation request", sql(f"""
         SELECT (mesh_jobs.job_control('{NAMESPACE}', '{job_id}', 'cancel', NULL, NULL)
                 ->> 'cancel_requested_at_ms') IS NOT NULL;
@@ -193,7 +213,7 @@ def main(data_dir):
     expect("cancellation timestamp recorded", isinstance(cancelled_at, int), True)
     expect("cancellation preserves the attempt identity", cancelled,
            dict(durable, job=dict(durable["job"], cancel_requested_at_ms=cancelled_at)))
-    expect("cancelled lease", sql(record(job_id, 1, 2, token, "cancelled")), "cancelled")
+    expect("cancelled lease", sql(record(job_id, 1, 3, replacement_token, "cancelled")), "cancelled")
     expect("cancelled lease leaves the confirmed effect and attempt intact", observe(job_id), cancelled)
     print("Jobs effect transaction proof passed. One committed effect and one matching receipt.")
 
