@@ -33944,5 +33944,186 @@
         }
       }
     ]
+  },
+  "macos_jobs_settlement_refill_unconfirmed_commit": {
+    "cases": [
+      {
+        "confirmed_retry_attempt": 1,
+        "phase": "before-submit",
+        "rollback_preserved_rows": true,
+        "undispatched": 1
+      },
+      {
+        "confirmed_retry_attempt": 2,
+        "expired_replacement_recovered": true,
+        "phase": "after-submit",
+        "predecessor_retry_stale": true,
+        "shared_commit_observed": true,
+        "undispatched": 1
+      }
+    ],
+    "postgres": "17.11",
+    "scope": "native SQL commit abandoned before application acknowledgement",
+    "transport": "verified TLS and SCRAM",
+    "receipt": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/settle-refill-component/native-unconfirmed.json",
+      "sha256": "cdc7e87de0566643103813810aa4538be6bd033dab70fa2ec8f2eb3fae872676"
+    },
+    "source": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/settle-refill-component/native_unconfirmed.py",
+      "sha256": "62c54a93c890d485c18094ca3da845c446dfe0847d3a316c05f6a4588c074124"
+    },
+    "sql": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/settle-refill-component/settle.sql",
+      "sha256": "107ebe33a465ab87d2c7fdff3d87989e87e00bc33e1414d1c32774c098616813"
+    }
+  },
+  "linux_jobs_fresh_exec_parent_io_component": {
+    "scope": "DB-free real fresh exec parent I/O component",
+    "worker_revision": "a39447f7c86219cb3dd5dcea4ae5d8fa9855e727",
+    "vcpus": 2,
+    "configured_guest_memory_mib": 512,
+    "slots": 8,
+    "measured_children": 15360,
+    "matched_blocks": 40,
+    "metrics": {
+      "parent_cpu_with_mux_lifecycle_us_per_child": {
+        "arm_medians": {
+          "A": 109.61328125,
+          "B": 112.5078125,
+          "C": 71.94140625
+        },
+        "median_gain_vs_faster_control": 35.703125,
+        "median_absolute_control_spread": 4.91015625,
+        "faster_than_both_controls_in": 39
+      },
+      "child_cpu_us_per_child": {
+        "arm_medians": {
+          "A": 380.9296875,
+          "B": 385.65625,
+          "C": 383.52734375
+        },
+        "median_gain_vs_faster_control": -7.0390625,
+        "median_absolute_control_spread": 14.296875,
+        "faster_than_both_controls_in": 17
+      },
+      "combined_cpu_us_per_child": {
+        "arm_medians": {
+          "A": 490.6953125,
+          "B": 497.31640625,
+          "C": 452.93359375
+        },
+        "median_gain_vs_faster_control": 31.66015625,
+        "median_absolute_control_spread": 17.50390625,
+        "faster_than_both_controls_in": 35
+      },
+      "wall_with_mux_lifecycle_us_per_child": {
+        "arm_medians": {
+          "A": 294.2403984375,
+          "B": 290.9016953125,
+          "C": 263.2952421875
+        },
+        "median_gain_vs_faster_control": 19.0683515625,
+        "median_absolute_control_spread": 13.291167968749988,
+        "faster_than_both_controls_in": 35
+      }
+    },
+    "runs": [
+      {
+        "summary": {
+          "path": "target/jobs-parity/worker-cost-screen/linux-parent-io-mux/run.AfUzLmQ5/summary.json",
+          "sha256": "089e9d8a6504175062fdad0b36df97e7d4af652388c616d3926a1819dfee4707"
+        },
+        "guest_log": {
+          "path": "target/jobs-parity/worker-cost-screen/linux-parent-io-mux/run.AfUzLmQ5/guest.log",
+          "sha256": "63e8e907294154de6b42836b9f1dbfc12b22b1330bcbd0a091433e5aee304b82"
+        },
+        "artifact_manifest": {
+          "path": "target/jobs-parity/worker-cost-screen/linux-parent-io-mux/run.AfUzLmQ5/run.sha256",
+          "sha256": "f99946f7215c23ec65b535327e0d73de3cfb8f1ee32df44daab7f5ea94fd1672"
+        },
+        "parent_block_medians": {
+          "A": 116.54296875,
+          "B": 113.19921875,
+          "C": 72.65625
+        }
+      },
+      {
+        "summary": {
+          "path": "target/jobs-parity/worker-cost-screen/linux-parent-io-mux/run.J8TJYHc2/summary.json",
+          "sha256": "56ca65f18636048ecdbbb1916e957201d9125cb4df9a71e5a3b2d04a8a1f56b2"
+        },
+        "guest_log": {
+          "path": "target/jobs-parity/worker-cost-screen/linux-parent-io-mux/run.J8TJYHc2/guest.log",
+          "sha256": "f3fe40f4e8a6abf562cdc2c0b862713c809cda7be8f7acccadbf74d203f5b399"
+        },
+        "artifact_manifest": {
+          "path": "target/jobs-parity/worker-cost-screen/linux-parent-io-mux/run.J8TJYHc2/run.sha256",
+          "sha256": "d21486107de3f8ad3b78ac547ccc51fdb1099c07fb115560afc39bee4357736b"
+        },
+        "parent_block_medians": {
+          "A": 154.6953125,
+          "B": 123.3671875,
+          "C": 85.09375
+        }
+      },
+      {
+        "summary": {
+          "path": "target/jobs-parity/worker-cost-screen/linux-parent-io-mux/run.LkiBPhMj/summary.json",
+          "sha256": "30ef3c2a07bc839eac737d4a3889de7dff53bf2d10a0f5fe333733bfc33e1fe4"
+        },
+        "guest_log": {
+          "path": "target/jobs-parity/worker-cost-screen/linux-parent-io-mux/run.LkiBPhMj/guest.log",
+          "sha256": "5ad3356069f57de328de4231786c81a4e1f2e30fc301c2521499d205724116b8"
+        },
+        "artifact_manifest": {
+          "path": "target/jobs-parity/worker-cost-screen/linux-parent-io-mux/run.LkiBPhMj/run.sha256",
+          "sha256": "fc7f0cfe00c39f57e90d3d4cdaa10be7c9ef83747a9575fbbf767857045a71a8"
+        },
+        "parent_block_medians": {
+          "A": 112.625,
+          "B": 113.94921875,
+          "C": 78.15234375
+        }
+      },
+      {
+        "summary": {
+          "path": "target/jobs-parity/worker-cost-screen/linux-parent-io-mux/run.JkQ1FWl5/summary.json",
+          "sha256": "b50fda89597279bbf37e4686695a7c096b06e47c68f12d4a8c27a6e80563bf20"
+        },
+        "guest_log": {
+          "path": "target/jobs-parity/worker-cost-screen/linux-parent-io-mux/run.JkQ1FWl5/guest.log",
+          "sha256": "74721dee16205a64fc020b7fe59a123269a2a0c5d338fd8f5107a0bb4bb62b3b"
+        },
+        "artifact_manifest": {
+          "path": "target/jobs-parity/worker-cost-screen/linux-parent-io-mux/run.JkQ1FWl5/run.sha256",
+          "sha256": "5aa3d72ff1be32794cb0969fdd986a23c34313e63edbe95a9e5766a1e8403b09"
+        },
+        "parent_block_medians": {
+          "A": 108.234375,
+          "B": 112.01171875,
+          "C": 69.34375
+        }
+      },
+      {
+        "summary": {
+          "path": "target/jobs-parity/worker-cost-screen/linux-parent-io-mux/run.yotAht3S/summary.json",
+          "sha256": "a962b081e8b4eb0830666834450b1cc54326a9c6ecd14f2b1bdabd5458cef199"
+        },
+        "guest_log": {
+          "path": "target/jobs-parity/worker-cost-screen/linux-parent-io-mux/run.yotAht3S/guest.log",
+          "sha256": "3db96a6e9792d729ab325616cdd4e6ddef4e5ddec740e729384425afed3cb611"
+        },
+        "artifact_manifest": {
+          "path": "target/jobs-parity/worker-cost-screen/linux-parent-io-mux/run.yotAht3S/run.sha256",
+          "sha256": "994dcaed8945f0455a575d2a1f2617ac2eb7fad820dbf25090221bccf2eee8c4"
+        },
+        "parent_block_medians": {
+          "A": 104.203125,
+          "B": 103.94921875,
+          "C": 69.09765625
+        }
+      }
+    ]
   }
 }

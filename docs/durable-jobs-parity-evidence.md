@@ -3560,6 +3560,17 @@ independent observer saw neither the settlement nor replacement
 claim before commit, saw both rows unchanged after rollback, and
 verified that the successful retry used one transaction ID. The
 native proof did not cut the commit reply.
+
+A second native SQL proof closed the owned client socket at both
+boundaries. With the transaction still open, both rows rolled back
+and a confirmed retry claimed the replacement on attempt one.
+When COMMIT was submitted and independently observed before the
+client consumed the reply, both rows committed together. The
+original token was stale and the replacement recovered after
+lease expiry with its stable effect key on attempt two. Neither
+unconfirmed branch returned a replacement for dispatch. This
+proof did not exercise process creation or reap in the compiled
+runner.
 [Settlement and refill receipts](../proof/jobs-parity/qualification-v1.json)
 
 ### Reuse recently active effect sessions
@@ -3664,6 +3675,29 @@ The test used the pinned SQL workload with synthetic workers.
 Its measured cost excludes fresh process startup, handler
 execution and the production dispatcher.
 [Combined SQL component receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Share parent-side I/O across fresh Linux workers
+
+Five two-vCPU Linux ARM64 boots ran eight matched blocks each
+against the same pinned DB-free release worker. Two controls
+started separate parent control and output threads per child.
+The treatment used one reusable epoll thread. All arms used the
+same fresh exec, request and reply frames and eight-slot limit.
+They reconciled 15,360 measured children through the exact
+wait, matching constructor and handler witnesses, and output
+and control descriptor checks. There were no timeouts.
+
+| CPU scope | Control medians | Treatment median | Median gain against faster control | Median absolute control spread |
+| --- | ---: | ---: | ---: | ---: |
+| Parent, including the event loop lifecycle | 109.6 and 112.5 µs/child | 71.9 µs/child | 35.7 µs/child | 4.9 µs/child |
+| Parent and exact child | 490.7 and 497.3 µs/child | 452.9 µs/child | 31.7 µs/child | 17.5 µs/child |
+
+The treatment used less parent CPU than both controls in 39
+of 40 blocks, and less combined CPU in 35. The component used
+one parent and the release worker from `a39447f7`. It did not
+exercise the production dispatcher, effect relay, database or
+lease renewals.
+[Parent I/O receipts](../proof/jobs-parity/qualification-v1.json)
 
 ### Check guest CPU headroom on the no-op workload
 
