@@ -51,6 +51,9 @@ impl AnalysisResult {
         crate::diagnostics::by_uri(&self.diagnostics, &self.file, &uri_for)
             .remove(uri)
             .unwrap_or_default()
+            .into_iter()
+            .map(|diagnostic| diagnostic.lsp)
+            .collect()
     }
 }
 
@@ -231,7 +234,7 @@ pub fn type_at_position(
     best.map(|(_, ty)| ty.with_named_vars().to_string())
 }
 
-fn canonical_file_path(uri: &str) -> Option<PathBuf> {
+pub(crate) fn canonical_file_path(uri: &str) -> Option<PathBuf> {
     let url = Url::parse(uri).ok()?;
     let path = url.to_file_path().ok()?;
     Some(std::fs::canonicalize(&path).unwrap_or(path))
@@ -240,7 +243,7 @@ fn canonical_file_path(uri: &str) -> Option<PathBuf> {
 /// The nearest directory above the document holding a mesh.toml: one of
 /// its ancestors as spelled, so the document's path is under it even when
 /// the document is not on disk and could not be canonicalized.
-fn find_project_root(path: &Path) -> Option<PathBuf> {
+pub(crate) fn find_project_root(path: &Path) -> Option<PathBuf> {
     path.ancestors()
         .skip(1)
         .find(|dir| dir.join("mesh.toml").exists())

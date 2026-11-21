@@ -4,12 +4,37 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use mesh_common::span::Span;
-use mesh_diagnostics::{Diagnostic, Severity, SourceFile};
+use mesh_diagnostics::{Applicability, Diagnostic, Severity, SourceFile};
 use serde_json::json;
 use tower_lsp::lsp_types::{
-    self, CodeDescription, DiagnosticRelatedInformation, DiagnosticSeverity, Location,
-    NumberOrString, Position, Range, Url,
+    self, CodeAction, CodeActionKind, CodeDescription, DiagnosticRelatedInformation,
+    DiagnosticSeverity, Location, NumberOrString, Position, Range, TextEdit, Url, WorkspaceEdit,
 };
+
+pub(crate) struct PublishedDiagnostic {
+    pub lsp: lsp_types::Diagnostic,
+    repair: Option<Repair>,
+}
+
+struct Repair {
+    title: String,
+    changes: HashMap<Url, Vec<TextEdit>>,
+    preferred: bool,
+}
+
+impl PublishedDiagnostic {
+    pub fn quick_fix(&self) -> Option<CodeAction> {
+        let repair = self.repair.as_ref()?;
+        Some(CodeAction {
+            title: repair.title.clone(),
+            kind: Some(CodeActionKind::QUICKFIX),
+            diagnostics: Some(vec![self.lsp.clone()]),
+            edit: Some(WorkspaceEdit::new(repair.changes.clone())),
+            is_preferred: Some(repair.preferred),
+            ..Default::default()
+        })
+    }
+}
 
 /// `d`, found while analyzing `document`, as an LSP diagnostic. Nothing is
 /// dropped:
@@ -22,11 +47,11 @@ use tower_lsp::lsp_types::{
 /// - `data`: the edits that make the repair, for code actions.
 ///
 /// `uri_for` names a file's document; a file it cannot name is `document`'s.
-pub(crate) fn to_lsp(
+fn to_lsp(
     d: &Diagnostic,
     document: &SourceFile,
     uri_for: &dyn Fn(&Path) -> Option<Url>,
-) -> lsp_types::Diagnostic {
+) -> PublishedDiagnostic {
     let file = d.file().unwrap_or(document);
     let uri = |file: &SourceFile| uri_for(file.path()).or_else(|| uri_for(document.path()));
     let shown = |file: &SourceFile, span: Span| {
@@ -57,16 +82,48 @@ pub(crate) fn to_lsp(
         .iter()
         .filter_map(|edit| {
             let file = edit.file().unwrap_or(file);
-            Some(json!({
-                "uri": uri(file)?,
-                "range": range(file, edit.span())?,
-                "newText": edit.replacement(),
-                "applicability": edit.applicability().as_str(),
-            }))
+            let text = file.text()?;
+            let span = edit.span();
+            let _ = text.get(span.start as usize..span.end as usize)?;
+            Some((
+                uri_for(file.path())?,
+                TextEdit::new(range(file, span)?, edit.replacement().to_string()),
+                edit.applicability(),
+            ))
         })
         .collect();
 
-    lsp_types::Diagnostic {
+    let data = (!edits.is_empty()).then(|| {
+        let edits: Vec<_> = edits
+            .iter()
+            .map(|(uri, edit, applicability)| {
+                json!({
+                    "uri": uri,
+                    "range": edit.range,
+                    "newText": edit.new_text,
+                    "applicability": applicability.as_str(),
+                })
+            })
+            .collect();
+        json!({ "edits": edits })
+    });
+    // A fix must apply all its edits together, including edits in other files.
+    let repair = (!edits.is_empty() && edits.len() == d.edits().len()).then(|| {
+        let preferred = edits
+            .iter()
+            .all(|(_, _, applicability)| *applicability == Applicability::MachineApplicable);
+        let mut changes: HashMap<Url, Vec<TextEdit>> = HashMap::new();
+        for (uri, edit, _) in edits {
+            changes.entry(uri).or_default().push(edit);
+        }
+        Repair {
+            title: d.repair().to_string(),
+            changes,
+            preferred,
+        }
+    });
+
+    let lsp = lsp_types::Diagnostic {
         range: d
             .span()
             .map_or_else(|| first_line(file, document), |span| shown(file, span)),
@@ -82,8 +139,9 @@ pub(crate) fn to_lsp(
         message,
         related_information: (!related.is_empty()).then_some(related),
         tags: None,
-        data: (!edits.is_empty()).then(|| json!({ "edits": edits })),
-    }
+        data,
+    };
+    PublishedDiagnostic { lsp, repair }
 }
 
 /// `ds` as LSP diagnostics, by the document each is about: one about
@@ -92,8 +150,8 @@ pub(crate) fn by_uri(
     ds: &[Diagnostic],
     document: &SourceFile,
     uri_for: &dyn Fn(&Path) -> Option<Url>,
-) -> HashMap<Url, Vec<lsp_types::Diagnostic>> {
-    let mut grouped: HashMap<Url, Vec<lsp_types::Diagnostic>> = HashMap::new();
+) -> HashMap<Url, Vec<PublishedDiagnostic>> {
+    let mut grouped: HashMap<Url, Vec<PublishedDiagnostic>> = HashMap::new();
     for d in ds {
         let file = d.file().unwrap_or(document);
         if let Some(uri) = uri_for(file.path()).or_else(|| uri_for(document.path())) {
@@ -127,7 +185,7 @@ fn first_line(file: &SourceFile, document: &SourceFile) -> Range {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mesh_diagnostics::{Applicability, Code};
+    use mesh_diagnostics::Code;
 
     const MAIN: &str = "fn main() do\n  println(cuont)\nend\n";
     const UTIL: &str = "pub fn área() = 1\n";
@@ -160,7 +218,7 @@ mod tests {
             .with_repair("did you mean `count`?")
             .with_note("first note")
             .with_note("second note");
-        let lsp = to_lsp(&d, &main_mpl(), &uri_for);
+        let lsp = to_lsp(&d, &main_mpl(), &uri_for).lsp;
         assert_eq!(lsp.code, Some(NumberOrString::String("E0004".to_string())));
         assert_eq!(
             lsp.code_description.unwrap().href.as_str(),
@@ -184,7 +242,7 @@ mod tests {
     fn a_warning_is_a_warning() {
         let d = Diagnostic::in_file(Code::RedundantArm, &main_mpl(), "unreachable")
             .at(Span::new(0, 2), "");
-        let lsp = to_lsp(&d, &main_mpl(), &uri_for);
+        let lsp = to_lsp(&d, &main_mpl(), &uri_for).lsp;
         assert_eq!(lsp.severity, Some(DiagnosticSeverity::WARNING));
     }
 
@@ -192,13 +250,13 @@ mod tests {
     fn a_diagnostic_without_a_span_covers_the_first_line() {
         let about_util = Diagnostic::in_file(Code::TypeMismatch, &util_mpl(), "whole file");
         assert_eq!(
-            to_lsp(&about_util, &main_mpl(), &uri_for).range,
+            to_lsp(&about_util, &main_mpl(), &uri_for).lsp.range,
             Range::new(Position::new(0, 0), Position::new(0, 17)),
             "`á` is one UTF-16 unit"
         );
         let about_no_file = Diagnostic::new(Code::Uncategorized, "bad manifest");
         assert_eq!(
-            to_lsp(&about_no_file, &main_mpl(), &uri_for).range,
+            to_lsp(&about_no_file, &main_mpl(), &uri_for).lsp.range,
             Range::new(Position::new(0, 0), Position::new(0, 12))
         );
     }
@@ -207,7 +265,7 @@ mod tests {
     fn an_empty_span_is_shown_one_character_wide() {
         let d = Diagnostic::in_file(Code::UnexpectedToken, &main_mpl(), "expected `end`")
             .at(Span::new(MAIN.len() as u32, MAIN.len() as u32), "");
-        let lsp = to_lsp(&d, &main_mpl(), &uri_for);
+        let lsp = to_lsp(&d, &main_mpl(), &uri_for).lsp;
         assert_ne!(lsp.range.start, lsp.range.end, "{:?}", lsp.range);
     }
 
@@ -228,7 +286,26 @@ mod tests {
                 "\n",
                 Applicability::MaybeIncorrect,
             );
-        let lsp = to_lsp(&d, &main_mpl(), &uri_for);
+        let published = to_lsp(&d, &main_mpl(), &uri_for);
+        let fix = published.quick_fix().unwrap();
+        assert_eq!(fix.is_preferred, Some(false));
+        let changes = fix.edit.unwrap().changes.unwrap();
+        assert_eq!(
+            changes[&uri("/p/util.mpl")],
+            [TextEdit::new(
+                Range::new(Position::new(0, 7), Position::new(0, 11)),
+                "size".to_string(),
+            )]
+        );
+        assert_eq!(
+            changes[&uri("/p/main.mpl")],
+            [TextEdit::new(
+                Range::new(Position::new(3, 0), Position::new(3, 0)),
+                "\n".to_string(),
+            )]
+        );
+
+        let lsp = published.lsp;
         let related = lsp.related_information.unwrap();
         assert_eq!(related.len(), 2);
         assert_eq!(related[0].location.uri, uri("/p/main.mpl"));
@@ -262,11 +339,43 @@ mod tests {
         let messages = |path| -> Vec<String> {
             grouped[&uri(path)]
                 .iter()
-                .map(|d| d.message.lines().next().unwrap().to_string())
+                .map(|d| d.lsp.message.lines().next().unwrap().to_string())
                 .collect()
         };
         assert_eq!(messages("/p/main.mpl"), ["in main", "about the project"]);
         assert_eq!(messages("/p/util.mpl"), ["in util"]);
+    }
+
+    #[test]
+    fn only_a_complete_set_of_machine_applicable_edits_is_preferred() {
+        let file = main_mpl();
+        let d = Diagnostic::in_file(Code::UnboundVariable, &file, "undefined `cuont`")
+            .at(span_of(MAIN, "cuont"), "")
+            .with_repair("replace the variable name");
+        assert!(to_lsp(&d, &file, &uri_for).quick_fix().is_none());
+
+        let d = d.with_edit(
+            span_of(MAIN, "cuont"),
+            "count",
+            Applicability::MachineApplicable,
+        );
+        let published = to_lsp(&d, &file, &uri_for);
+        let fix = published.quick_fix().unwrap();
+        assert_eq!(fix.kind, Some(CodeActionKind::QUICKFIX));
+        assert_eq!(fix.is_preferred, Some(true));
+        assert_eq!(fix.title, "replace the variable name");
+        assert_eq!(fix.diagnostics, Some(vec![published.lsp]));
+        assert_eq!(
+            fix.edit.unwrap().changes.unwrap()[&uri("/p/main.mpl")],
+            [TextEdit::new(
+                Range::new(Position::new(1, 10), Position::new(1, 15)),
+                "count".to_string(),
+            )]
+        );
+
+        let other = SourceFile::new("/p/other.mpl", "😀");
+        let d = d.with_edit_in(&other, Span::new(0, 1), "", Applicability::MaybeIncorrect);
+        assert!(to_lsp(&d, &file, &uri_for).quick_fix().is_none());
     }
 
     #[test]

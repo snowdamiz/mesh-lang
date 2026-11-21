@@ -2,7 +2,8 @@
 //!
 //! Implements the LSP `LanguageServer` trait with support for:
 //! - textDocument/didOpen, didChange, didClose (diagnostics, dropped
-//!   when the document changes again before its analysis finishes)
+//!   when the project changes again before its analysis finishes)
+//! - textDocument/codeAction (quick fixes for diagnostic edits)
 //! - textDocument/hover (type information)
 //! - textDocument/definition (go-to-definition)
 //! - textDocument/documentSymbol (Outline, Breadcrumbs, Go-to-Symbol)
@@ -11,6 +12,7 @@
 //! - Server capabilities advertisement
 
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use tower_lsp::jsonrpc::Result;
@@ -24,6 +26,7 @@ use mesh_parser::SyntaxKind;
 use mesh_parser::SyntaxNode;
 
 use crate::analysis::{self, AnalysisResult};
+use crate::diagnostics::{self, PublishedDiagnostic};
 use crate::syntax::name_child_text;
 
 /// Per-document state stored in the server.
@@ -32,6 +35,9 @@ struct DocumentState {
     source: String,
     /// Which edit `source` is; see [`Documents::edit`].
     revision: u64,
+    version: i32,
+    path: Option<PathBuf>,
+    scope: DiagnosticScope,
     /// The analysis of the latest text analyzed: of an older text while an
     /// analysis runs, and `None` until the first one is done.
     analysis: Option<AnalysisResult>,
@@ -40,16 +46,35 @@ struct DocumentState {
 /// The open documents, by URI.
 #[derive(Default)]
 struct Documents {
-    open: HashMap<String, DocumentState>,
+    open: HashMap<Url, DocumentState>,
+    diagnostics: HashMap<DiagnosticScope, ScopeDiagnostics>,
     last_revision: u64,
+}
+
+#[derive(Clone, Eq, Hash, PartialEq)]
+enum DiagnosticScope {
+    Project(PathBuf),
+    Loose(Url),
+}
+
+#[derive(Default)]
+struct ScopeDiagnostics {
+    revision: u64,
+    published_revision: u64,
+    by_uri: HashMap<Url, Vec<PublishedDiagnostic>>,
+}
+
+#[derive(Debug, PartialEq)]
+struct Publication {
+    uri: Url,
+    version: Option<i32>,
+    diagnostics: Vec<Diagnostic>,
 }
 
 /// One text of a document to analyze, with the open documents as they
 /// were when it was the latest.
 struct Pending {
     uri: Url,
-    /// The client's version of `source`.
-    version: i32,
     revision: u64,
     source: String,
     open_documents: Vec<(String, String)>,
@@ -60,57 +85,161 @@ impl Documents {
     /// revision no edit had before, of any document and across closing and
     /// reopening, so an analysis of an older text is recognized.
     fn edit(&mut self, uri: &Url, version: i32, source: String) -> Pending {
+        let state = self.open.entry(uri.clone()).or_insert_with(|| {
+            let path = analysis::canonical_file_path(uri.as_str());
+            let scope = path
+                .as_deref()
+                .and_then(analysis::find_project_root)
+                .map_or_else(
+                    || DiagnosticScope::Loose(uri.clone()),
+                    DiagnosticScope::Project,
+                );
+            DocumentState {
+                source: String::new(),
+                revision: 0,
+                version,
+                path,
+                scope,
+                analysis: None,
+            }
+        });
+        state.source = source;
+        state.version = version;
+        self.start_analysis(uri)
+    }
+
+    fn start_analysis(&mut self, uri: &Url) -> Pending {
         self.last_revision += 1;
         let revision = self.last_revision;
-        let analysis = self
-            .open
-            .remove(uri.as_str())
-            .and_then(|state| state.analysis);
-        self.open.insert(
-            uri.to_string(),
-            DocumentState {
-                source: source.clone(),
-                revision,
-                analysis,
-            },
-        );
+        let state = self.open.get_mut(uri).expect("analyzing an open document");
+        state.revision = revision;
+        self.diagnostics
+            .entry(state.scope.clone())
+            .or_default()
+            .revision = revision;
+        let source = state.source.clone();
+        let mut open: Vec<_> = self.open.iter().collect();
+        open.sort_unstable_by_key(|(_, state)| state.revision);
         Pending {
             uri: uri.clone(),
-            version,
             revision,
             source,
-            open_documents: self
-                .open
-                .iter()
-                .map(|(uri, state)| (uri.clone(), state.source.clone()))
+            open_documents: open
+                .into_iter()
+                .map(|(uri, state)| (uri.to_string(), state.source.clone()))
                 .collect(),
         }
     }
 
-    fn close(&mut self, uri: &Url) {
-        self.open.remove(uri.as_str());
+    fn close(&mut self, uri: &Url) -> (Option<Pending>, Vec<Publication>) {
+        let Some(state) = self.open.remove(uri) else {
+            return (None, vec![]);
+        };
+        let remaining = self
+            .open
+            .iter()
+            .filter(|(_, other)| other.scope == state.scope)
+            .max_by_key(|(_, other)| other.revision)
+            .map(|(uri, _)| uri.clone());
+        if let Some(remaining) = remaining {
+            return (Some(self.start_analysis(&remaining)), vec![]);
+        }
+
+        let mut by_uri = self.diagnostics.remove(&state.scope).unwrap().by_uri;
+        by_uri.entry(uri.clone()).or_default();
+        let clears = by_uri
+            .into_keys()
+            .map(|uri| self.publication(uri, vec![]))
+            .collect();
+        (None, clears)
     }
 
-    /// Keeps `analysis` of `pending`'s text, and returns the diagnostics to
-    /// publish. `None` when the document was edited or closed since: they
-    /// are about a text the editor no longer shows.
-    fn finish(
-        &mut self,
-        pending: &Pending,
-        analysis: AnalysisResult,
-    ) -> Option<Vec<tower_lsp::lsp_types::Diagnostic>> {
+    /// Keeps the active document's analysis for queries. A project-wide
+    /// publication also requires every sibling overlay to be current.
+    fn finish(&mut self, pending: &Pending, analysis: AnalysisResult) -> Option<Vec<Publication>> {
         let state = self
             .open
-            .get_mut(pending.uri.as_str())
+            .get_mut(&pending.uri)
             .filter(|state| state.revision == pending.revision)?;
-        let diagnostics = analysis.lsp_diagnostics(&pending.uri);
+        let scope = state.scope.clone();
         state.analysis = Some(analysis);
-        Some(diagnostics)
+        let published = self.diagnostics.get(&scope)?;
+        if published.revision != pending.revision {
+            return None;
+        }
+
+        let analysis = self.analysis(&pending.uri)?;
+        let mut open_by_path = HashMap::new();
+        for (uri, _) in &pending.open_documents {
+            let uri = Url::parse(uri).expect("the URI of an open document");
+            if let Some(path) = self.open.get(&uri).and_then(|state| state.path.as_deref()) {
+                open_by_path.insert(path, uri);
+            }
+        }
+        let uri_for = |path: &Path| {
+            if path == analysis.file.path() {
+                Some(pending.uri.clone())
+            } else {
+                open_by_path
+                    .get(path)
+                    .cloned()
+                    .or_else(|| Url::from_file_path(path).ok())
+            }
+        };
+        let by_uri = diagnostics::by_uri(&analysis.diagnostics, &analysis.file, &uri_for);
+        let mut updates: Vec<_> = by_uri
+            .iter()
+            .map(|(uri, diagnostics)| {
+                self.publication(
+                    uri.clone(),
+                    diagnostics.iter().map(|d| d.lsp.clone()).collect(),
+                )
+            })
+            .collect();
+        if !by_uri.contains_key(&pending.uri) {
+            updates.push(self.publication(pending.uri.clone(), vec![]));
+        }
+        for uri in published.by_uri.keys() {
+            if uri != &pending.uri && !by_uri.contains_key(uri) {
+                updates.push(self.publication(uri.clone(), vec![]));
+            }
+        }
+        self.diagnostics.insert(
+            scope,
+            ScopeDiagnostics {
+                revision: pending.revision,
+                published_revision: pending.revision,
+                by_uri,
+            },
+        );
+        Some(updates)
+    }
+
+    fn publication(&self, uri: Url, diagnostics: Vec<Diagnostic>) -> Publication {
+        Publication {
+            version: self.open.get(&uri).map(|state| state.version),
+            uri,
+            diagnostics,
+        }
+    }
+
+    fn published_diagnostics(&self, uri: &Url) -> Option<&[PublishedDiagnostic]> {
+        let scope = if let Some(open) = self.open.get(uri) {
+            self.diagnostics.get(&open.scope)?
+        } else {
+            self.diagnostics
+                .values()
+                .filter(|scope| scope.by_uri.contains_key(uri))
+                .max_by_key(|scope| scope.published_revision)?
+        };
+        (scope.published_revision == scope.revision)
+            .then(|| scope.by_uri.get(uri).map(Vec::as_slice))
+            .flatten()
     }
 
     /// The latest analysis of the document at `uri`.
     fn analysis(&self, uri: &Url) -> Option<&AnalysisResult> {
-        self.open.get(uri.as_str())?.analysis.as_ref()
+        self.open.get(uri)?.analysis.as_ref()
     }
 }
 
@@ -163,7 +292,15 @@ impl MeshBackend {
     /// Analyze the document's new text and publish its diagnostics, unless
     /// it changes again first.
     async fn analyze_and_publish(&self, uri: Url, version: i32, source: String) {
-        let pending = self.documents.lock().unwrap().edit(&uri, version, source);
+        let pending = {
+            let _publishing = self.publishing.lock().await;
+            self.documents.lock().unwrap().edit(&uri, version, source)
+        };
+        self.publish_analysis(pending).await;
+    }
+
+    async fn publish_analysis(&self, pending: Pending) {
+        let uri = pending.uri.clone();
         let Some((pending, analysis)) = analyze(pending).await else {
             self.client
                 .log_message(
@@ -174,10 +311,16 @@ impl MeshBackend {
             return;
         };
         let _publishing = self.publishing.lock().await;
-        let diagnostics = self.documents.lock().unwrap().finish(&pending, analysis);
-        if let Some(diagnostics) = diagnostics {
+        let updates = self.documents.lock().unwrap().finish(&pending, analysis);
+        if let Some(updates) = updates {
+            self.publish(updates).await;
+        }
+    }
+
+    async fn publish(&self, updates: Vec<Publication>) {
+        for update in updates {
             self.client
-                .publish_diagnostics(pending.uri, diagnostics, Some(pending.version))
+                .publish_diagnostics(update.uri, update.diagnostics, update.version)
                 .await;
         }
     }
@@ -195,6 +338,12 @@ impl LanguageServer for MeshBackend {
                 definition_provider: Some(OneOf::Left(true)),
                 document_symbol_provider: Some(OneOf::Left(true)),
                 document_formatting_provider: Some(OneOf::Left(true)),
+                code_action_provider: Some(CodeActionProviderCapability::Options(
+                    CodeActionOptions {
+                        code_action_kinds: Some(vec![CodeActionKind::QUICKFIX]),
+                        ..Default::default()
+                    },
+                )),
                 completion_provider: Some(CompletionOptions {
                     trigger_characters: None,
                     resolve_provider: Some(false),
@@ -238,11 +387,47 @@ impl LanguageServer for MeshBackend {
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
-        let uri = params.text_document.uri;
-        self.documents.lock().unwrap().close(&uri);
-        // Clear diagnostics for the closed document.
-        let _publishing = self.publishing.lock().await;
-        self.client.publish_diagnostics(uri, vec![], None).await;
+        let pending = {
+            let _publishing = self.publishing.lock().await;
+            let (pending, clears) = self
+                .documents
+                .lock()
+                .unwrap()
+                .close(&params.text_document.uri);
+            self.publish(clears).await;
+            pending
+        };
+        if let Some(pending) = pending {
+            self.publish_analysis(pending).await;
+        }
+    }
+
+    async fn code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {
+        if params.context.only.as_ref().is_some_and(|kinds| {
+            !kinds
+                .iter()
+                .any(|kind| kind == &CodeActionKind::QUICKFIX || kind.as_str().is_empty())
+        }) {
+            return Ok(None);
+        }
+        let docs = self.documents.lock().unwrap();
+        let Some(diagnostics) = docs.published_diagnostics(&params.text_document.uri) else {
+            return Ok(None);
+        };
+        let actions: Vec<_> = diagnostics
+            .iter()
+            .filter(|d| {
+                ranges_overlap(d.lsp.range, params.range)
+                    || params.context.diagnostics.iter().any(|provided| {
+                        provided.range == d.lsp.range
+                            && provided.code == d.lsp.code
+                            && provided.message == d.lsp.message
+                    })
+            })
+            .filter_map(PublishedDiagnostic::quick_fix)
+            .map(CodeActionOrCommand::CodeAction)
+            .collect();
+        Ok((!actions.is_empty()).then_some(actions))
     }
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
@@ -355,7 +540,7 @@ impl LanguageServer for MeshBackend {
 
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
         let docs = self.documents.lock().unwrap();
-        let Some(doc) = docs.open.get(params.text_document.uri.as_str()) else {
+        let Some(doc) = docs.open.get(&params.text_document.uri) else {
             return Ok(None);
         };
 
@@ -378,6 +563,14 @@ impl LanguageServer for MeshBackend {
             range: Range::new(Position::new(0, 0), end),
             new_text: formatted,
         }]))
+    }
+}
+
+fn ranges_overlap(first: Range, second: Range) -> bool {
+    if first.start == first.end || second.start == second.end {
+        first.start <= second.end && second.start <= first.end
+    } else {
+        first.start < second.end && second.start < first.end
     }
 }
 
@@ -564,7 +757,14 @@ mod tests {
         let first = documents.edit(&uri, 1, broken.to_string());
         let second = documents.edit(&uri, 2, fixed.to_string());
         let (first_analysis, second_analysis) = (analyzed(&first), analyzed(&second));
-        assert_eq!(documents.finish(&second, second_analysis), Some(vec![]));
+        assert_eq!(
+            documents.finish(&second, second_analysis),
+            Some(vec![Publication {
+                uri: uri.clone(),
+                version: Some(2),
+                diagnostics: vec![],
+            }])
+        );
         assert_eq!(documents.finish(&first, first_analysis), None);
         assert_eq!(documents.analysis(&uri).unwrap().source(), fixed);
 
@@ -577,7 +777,45 @@ mod tests {
         let reopened = documents.edit(&uri, 3, fixed.to_string());
         assert_eq!(documents.finish(&third, analyzed(&third)), None);
         let published = documents.finish(&reopened, analyzed(&reopened));
-        assert_eq!(published, Some(vec![]));
+        assert_eq!(
+            published,
+            Some(vec![Publication {
+                uri,
+                version: Some(3),
+                diagnostics: vec![],
+            }])
+        );
+    }
+
+    #[test]
+    fn a_newer_sibling_overlay_invalidates_project_publication() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        std::fs::write(
+            root.join("mesh.toml"),
+            "[package]\nname = \"project\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        let main = "from Util import size\nfn main() -> Int do\n  size()\nend\n";
+        let util = "pub fn size() -> Int do\n  1\nend\n";
+        std::fs::write(root.join("main.mpl"), main).unwrap();
+        std::fs::write(root.join("util.mpl"), util).unwrap();
+        let main_uri = Url::from_file_path(root.join("main.mpl")).unwrap();
+        let util_uri = Url::from_file_path(root.join("util.mpl")).unwrap();
+
+        let mut documents = Documents::default();
+        let old = documents.edit(&main_uri, 4, main.to_string());
+        let newer = documents.edit(&util_uri, 1, util.to_string());
+        assert!(documents.finish(&newer, analyzed(&newer)).is_some());
+        assert_eq!(documents.finish(&old, analyzed(&old)), None);
+        assert_eq!(documents.analysis(&main_uri).unwrap().source(), main);
+
+        let pending = documents.edit(&main_uri, 5, main.to_string());
+        let (refreshed, clears) = documents.close(&util_uri);
+        assert!(clears.is_empty());
+        assert_eq!(documents.finish(&pending, analyzed(&pending)), None);
+        let refreshed = refreshed.unwrap();
+        assert!(documents.finish(&refreshed, analyzed(&refreshed)).is_some());
     }
 
     /// Verify that the server advertises the expected capabilities, and
