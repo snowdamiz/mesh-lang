@@ -25060,6 +25060,36 @@
     },
     "scope": "PostgreSQL correctness and compatibility proof. Full workspace and frozen performance qualification are separate gates."
   },
+  "workspace_gate_local_jobs_followup": {
+    "revision": "2ff8a798b52dc960953484f3c8bb3aa95b754527",
+    "host": "Darwin arm64",
+    "rust_toolchain": "1.99.0-aarch64-apple-darwin",
+    "cargo_incremental": false,
+    "outcome": "passed",
+    "core_and_runtime": {
+      "log": "target/jobs-parity/exact-head-native/2ff8a798b52dc960953484f3c8bb3aa95b754527-core-workspace.log",
+      "sha256": "31dc0513be02acc9d7305b35e5ddcf5ad5772d0d953e403a1a2465655cbb7114",
+      "tests_passed": 3045,
+      "tests_ignored": 48,
+      "test_and_documentation_suites": 43
+    },
+    "compiled_cli": {
+      "log": "target/jobs-parity/exact-head-native/2ff8a798b52dc960953484f3c8bb3aa95b754527-cli-workspace-retry.log",
+      "sha256": "f00abf0e88867091e2d9475eb3e263db3eec7b4e76952e3786de85fde0bbaa22",
+      "tests_passed": 690,
+      "suites": 7
+    },
+    "checks": [
+      "workspace formatting",
+      "parser, type checker, codegen, formatter and linter suites",
+      "runtime and library suites",
+      "locked workspace build",
+      "fuzz target compilation",
+      "lint and formatting for examples, packages and mesh-slug",
+      "compiled e2e, tooling, language, performance, library, crypto and secret suites"
+    ],
+    "scope": "Native workspace and compiled CLI gates. Pinned Lean and Z3, versioned PostgreSQL, and frozen workload qualification use separate receipts."
+  },
   "workspace_gate_latest": {
     "checks": [
       "fmt",

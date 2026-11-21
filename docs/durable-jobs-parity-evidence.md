@@ -3276,3 +3276,10 @@ The first build reused older Cargo artifacts and failed to resolve
 compiler interfaces. The rerun set `CARGO_INCREMENTAL=0` and rebuilt
 the path dependencies before running the proof.
 [Exact-revision PostgreSQL receipt](../proof/jobs-parity/qualification-v1.json)
+
+The native workspace checks at `2ff8a798` passed on macOS arm64.
+The compiler and runtime suites passed 3,045 tests with 48 ignored.
+The seven compiled suites passed 690 tests. Workspace formatting,
+the locked workspace build, fuzz-target compilation, and the example
+and package lint and format checks also passed.
+[Native workspace receipt](../proof/jobs-parity/qualification-v1.json)
