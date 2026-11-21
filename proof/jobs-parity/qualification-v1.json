@@ -4594,6 +4594,211 @@
     },
     "scope": "Local fixture diagnostics. Pidfd wake compares one binary with its private toggle. The stock listener comparison enables committed producer publication and the runner listener together. The matched Oban run uses the stock Mesh socket default and its existing listener opt-in."
   },
+  "linux_short_16_launch_overlap": {
+    "run": "target/jobs-parity/linux-arm-ownership-guest/ubuntu-guest-inputs/launch-overlap/release-comparison.zBL1k2n8",
+    "summary_sha256": "1009e1030a55bcc5771c650be9284abfc849154ba68f0c39691e15785bdb8315",
+    "bundle": {
+      "fixture_revision": "70752964885d467997bf3076325e3a1e454947d0",
+      "fixture_sha256": "e0ed4e00ba0bfcfb871cf54d0a14374e20d58ea12d5194327cd5de42c1603f23",
+      "host_kernel_sha256": "ee66670649107e2efe319a436c9b9caf84b093d471f73577d54292e5c081b80b",
+      "runtime_sha256": "f7c303b105b0af67500f8f964199fe594619ab263573750c91b13570aaa85d29"
+    },
+    "profile": "short-1r-16s",
+    "guest": "Linux ARM64, two vCPUs and 1 GiB RAM",
+    "postgres": "17.11 verified TLS and SCRAM",
+    "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+    "measured_pairs_per_run": 5,
+    "measured_jobs_per_arm": 640,
+    "runs": {
+      "off_vs_on": {
+        "evidence": "target/jobs-parity/linux-arm-ownership-guest/ubuntu-guest-inputs/launch-overlap/adapter/release-comparison.zBL1k2n8-AB/evidence",
+        "serial_sha256": "ae4043dc61d2da553ba0ad981afca0ad44396dec5b665917dcafea083245a876",
+        "receipt_sha256": {
+          "manifest.json": "90282b7153d72ec4cf5b2d0dce53582a983ed1691e80bf65587509ea27c16a9a",
+          "result.json": "592319e750442e4d4e1d2cbcecc6cee5d8cc425a7cd79eac012c6fb3d7bf46e1",
+          "short-1r-16s/trials.json": "3b32573ce7e7e153773eb9f00c34ee973d430628026a2173a88fa07b4535905c"
+        },
+        "host_1m_load_before_and_after": [
+          10.66,
+          14.83
+        ],
+        "jobs_per_second": {
+          "a_median": 124.37281384808995,
+          "b_median": 125.09320169813792,
+          "b_higher": 5,
+          "paired_delta_range": [
+            0.7203878500479703,
+            18.01023019745182
+          ],
+          "paired_ratio_median": 1.0489227045172231
+        },
+        "first_claim_to_last_settlement_ms": {
+          "a_median": 895.6298828125,
+          "b_median": 727.68994140625,
+          "b_higher": 1,
+          "paired_delta_range": [
+            -167.93994140625,
+            162.1259765625
+          ],
+          "paired_ratio_median": 0.8607473305896334
+        },
+        "claim_calls_per_job": {
+          "a_median": 0.1796875,
+          "b_median": 0.1171875,
+          "b_higher": 0,
+          "paired_delta_range": [
+            -0.0859375,
+            -0.015625
+          ],
+          "paired_ratio_median": 0.6521739130434783
+        }
+      },
+      "off_vs_off": {
+        "evidence": "target/jobs-parity/linux-arm-ownership-guest/ubuntu-guest-inputs/launch-overlap/adapter/release-comparison.zBL1k2n8-AA/evidence",
+        "serial_sha256": "ca6477162b89d3d2a5b38f7dd2415e62fb094fda774acdb58233370030779df7",
+        "receipt_sha256": {
+          "manifest.json": "a29b6df51a6a5f095ecf56b0cdf340543d333fdad381415ca73ca8f908b3f376",
+          "result.json": "a060a2e759dbbb33c64ea825ae318ee9cc867a9816a8e4ab0818a232e26ddfba",
+          "short-1r-16s/trials.json": "5c55097893476682cfc00fab6d66bd9062058f762e6ff7456e56c935c3e83dc0"
+        },
+        "host_1m_load_before_and_after": [
+          14.83,
+          17.13
+        ],
+        "jobs_per_second": {
+          "a_median": 177.6181748577972,
+          "b_median": 183.73937639327787,
+          "b_higher": 2,
+          "paired_delta_range": [
+            -51.44752605195764,
+            88.05997600941006
+          ],
+          "paired_ratio_median": 0.8911856739467562
+        },
+        "first_claim_to_last_settlement_ms": {
+          "a_median": 575.070068359375,
+          "b_median": 556.9130859375,
+          "b_higher": 3,
+          "paired_delta_range": [
+            -335.741943359375,
+            260.35791015625
+          ],
+          "paired_ratio_median": 1.1358038867741598
+        },
+        "claim_calls_per_job": {
+          "a_median": 0.15625,
+          "b_median": 0.1640625,
+          "b_higher": 3,
+          "paired_delta_range": [
+            -0.0234375,
+            0.015625
+          ],
+          "paired_ratio_median": 1.0476190476190477
+        }
+      }
+    },
+    "scope": "Opt-in prototype outside the product branch. Both comparisons use the same pinned release worker and 250 ms polling with the listener disabled."
+  },
+  "linux_short_16_effect_sessions": {
+    "run": "target/jobs-parity/linux-arm-ownership-guest/warm-effects-screen/build/short-16-proof/evidence",
+    "serial_sha256": "38200bab0b3af881cd98e6e474508aa37a0927bca22091216b4c0d686e6b429f",
+    "receipt_sha256": {
+      "bundle.json": "586742a318c08796938c94e0ebea01949b5853d38425ec5b72fa20d438a188f1",
+      "manifest.json": "df157c6367c3b1660d037c85d90acd2f38f00f38621f5a067adc409de1fa7698",
+      "postgres-settings.json": "4904992c367dde25c51205c72df34231e11f902d0a660e9d995ea0018ca7aece",
+      "result.json": "70e11957cfc0dbed02e560154cc817ff66cb37556e029e49bb03943b7787c6b7",
+      "trials.json": "d1d8b401110d04164b1106cbcee29b8084569721ba059f7d59fe94d8717bca52",
+      "summary.json": "b90e1262654aea3b425b2ca9ffafb3469e4d6b01cfe1954c0de19f1ede4bb72e",
+      "paired-deltas.json": "1a00abfa442d4d565ca5dc03b0b22e5832bbc47f53fb23606b0731094dd658c0"
+    },
+    "profile": "short-1r-16s",
+    "runtime": "b67206f4cf4a7f27595dcd3a54702bc7280df149",
+    "fixture_revision": "6cf903e6dddc503bc001eaa37a13707194c8657a",
+    "fixture_sha256": "b236f0bf84d876f01af95c8ba376a2d45052409e18cfdae7e3f0fc4c8a1c5a8a",
+    "runtime_archive_sha256": "418d999f989b8a7e92c46f62c3c9adc5c9615485a26a48ed97933ad244c517d9",
+    "relay_sha256": "bf51fe7050781d6cad6e4a28cc6ab2a562c23e6614ce31a0bc87b7fe9087d401",
+    "input_sha256": "ac0bcbf2465ea6d6807e8bfcdcfc3b1dacfa18b775e3f4c074257d66bfbba9d1",
+    "measured_groups": [
+      "ABC",
+      "BCA",
+      "CBA",
+      "CAB",
+      "ACB"
+    ],
+    "measured_jobs_per_arm": 640,
+    "postgres": "17.11 verified TLS and SCRAM",
+    "workload_connection_limit": 20,
+    "database_limit_with_observer": 21,
+    "host_1m_load_before_and_after": [
+      16.16,
+      39.99
+    ],
+    "arms": {
+      "direct": {
+        "median_jobs_per_second": 79.12272724460227,
+        "median_entry_to_attempt_commit_ms": 27.712890625,
+        "median_effect_commit_to_settlement_ms": 35.2584228515625,
+        "median_cpu_seconds_per_job": 0.008207992187499999,
+        "median_pickup_p99_ms": 1582.253173828125,
+        "peak_connections": 10,
+        "peak_rss_bytes": 165965824,
+        "peak_threads": 83,
+        "peak_processes": 15,
+        "backends_per_trial": 128
+      },
+      "fresh_relay": {
+        "median_jobs_per_second": 178.71007435913603,
+        "median_entry_to_attempt_commit_ms": 14.8653564453125,
+        "median_effect_commit_to_settlement_ms": 16.6409912109375,
+        "median_cpu_seconds_per_job": 0.0035667109375,
+        "median_pickup_p99_ms": 694.126953125,
+        "peak_connections": 9,
+        "peak_rss_bytes": 179879936,
+        "peak_threads": 89,
+        "peak_processes": 12,
+        "backends_per_trial": 128
+      },
+      "warm_relay": {
+        "median_jobs_per_second": 337.6808401830719,
+        "median_entry_to_attempt_commit_ms": 0.7789306640625,
+        "median_effect_commit_to_settlement_ms": 6.2314453125,
+        "median_cpu_seconds_per_job": 0.0021981874999999996,
+        "median_pickup_p99_ms": 365.760986328125,
+        "peak_connections": 20,
+        "peak_rss_bytes": 149860352,
+        "peak_threads": 69,
+        "peak_processes": 10,
+        "backends_per_trial": 16
+      }
+    },
+    "warm_minus_fresh": {
+      "jobs_per_second": {
+        "paired_median": 218.1564761602243,
+        "paired_range": [
+          -164.56630582768375,
+          364.9263503316191
+        ],
+        "warm_higher": 4
+      },
+      "entry_to_attempt_commit_ms": {
+        "paired_median": -14.1141357421875,
+        "paired_range": [
+          -16.54345703125,
+          -9.3349609375
+        ],
+        "warm_higher": 0
+      },
+      "cpu_seconds_per_job": {
+        "paired_median": -0.00046176562499999994,
+        "paired_range": [
+          -0.0033558671874999997,
+          0.018106734375
+        ],
+        "warm_higher": 2
+      }
+    },
+    "scope": "Private same-driver fixture path. The relay contributes to runner-tree CPU and sampled resources. Stock Oban was not run in these groups."
+  },
   "worker_fork_compiled_handler": {
     "runtime": "da0a51bcf6bc4e2c22766a2e60c0d07c96ca4cc0",
     "host": "Darwin arm64",

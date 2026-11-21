@@ -1617,6 +1617,48 @@ support the opt-in wake path for first pickup and leave backlog drain
 as the dominant gap on this profile.
 [Notification comparison](../proof/jobs-parity/qualification-v1.json)
 
+### Overlap confirmed batch launches with settlement on Linux
+
+Release prototype `70752964` used the existing batch claim thread to
+start confirmed attempts while the dispatcher settled other attempts.
+The two-vCPU guest ran the frozen `short-1r-16s` workload with verified
+TLS and SCRAM, 250 ms polling, and the listener disabled in both arms.
+Five alternating off/on pairs and five flag-off control pairs each
+reconciled 640 jobs per arm after warmup.
+
+The median paired throughput gain was 4.9%, with gains in all five
+pairs. The arm medians were 124.37 and 125.09 jobs/s. The flag-off
+controls varied by −51.45 to +88.06 jobs/s across pairs, compared with
++0.72 to +18.01 jobs/s for off/on. First claim to final settlement
+improved in four pairs, with a median paired reduction of 13.9%.
+Claim calls per job fell in all five pairs, from a median of 0.180 to
+0.117. The throughput signal was within the control variation. The
+prototype remains outside the product branch.
+[Launch overlap receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Reuse effect-write sessions on Linux
+
+The frozen `short-1r-16s` workload ran on the same two-vCPU guest with
+verified PostgreSQL 17.11 TLS and SCRAM. Five counterbalanced groups used
+one worker image built against stock `b67206f4`. Each arm reconciled
+640 measured jobs and both durable writes per job after warmup.
+
+| Effect route | Median jobs/s | Entry to first write commit | CPU/job |
+| --- | ---: | ---: | ---: |
+| Direct from the isolated child | 79.1 | 27.71 ms | 8.21 ms |
+| Same-driver relay with fresh sessions | 178.7 | 14.87 ms | 3.57 ms |
+| Same-driver relay with 16 prewarmed sessions | 337.7 | 0.78 ms | 2.20 ms |
+
+The warm relay shortened first-write time in all five fresh-versus-warm
+pairs and improved throughput in four. Its median throughput gain
+within pairs was 218.2 jobs/s. The session receipts confirm 128 distinct
+backends per fresh trial and 16 prewarmed backends per warm trial. The
+warm route reached the sampled 20-client budget. CPU includes the relay
+and its prewarm. Host one-minute load moved from 16.16 to 39.99 on 15
+logical CPUs. This experiment measures a private fixture route and its
+session reuse. Product lease fencing and a same-window comparison with
+Oban remain open. [Linux session receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Run the compiled handler through the fork template
 
 Five alternating pairs ran the 100 ms handler with 512 attempts and 64
