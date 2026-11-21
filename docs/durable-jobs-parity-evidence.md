@@ -2384,6 +2384,36 @@ These are four local profiles using an opt-in fixture. The strict
 35-profile release gate remains open.
 [Local Linux receipts](../proof/jobs-parity/qualification-v1.json)
 
+### Compare slow-64 with small pages on local Linux
+
+The slow-64 diagnostic relinked the `c271319e` fixture with the
+same runtime archive. Its native constructor disabled transparent huge
+pages before Mesh initialization in the exact fenced worker. The
+disposable guest verified a 4 KiB file fault-around window for every arm
+and restored 64 KiB after each block. Both benchmark blocks used the
+same verified boot image. The traced pilot and all 15,360 scored jobs
+reconciled through both durable writes and final settlement.
+
+| Block | Mesh jobs/s | Identical Mesh repeat | Stock Oban jobs/s | Median peak RSS MiB by arm |
+| --- | ---: | ---: | ---: | --- |
+| First | 288.4 | 245.8 | 359.7 | 118.8 / 98.4 / 139.5 |
+| Exact repeat | 391.9 | 410.2 | 405.0 | 122.3 / 127.4 / 137.3 |
+
+Both Mesh arms passed RSS and CPU in both blocks. In the repeat, the
+largest sampled waves at peak RSS included 63 live children and their
+runner. Both arms passed pickup there. The 410.2 jobs/s arm passed all
+scored limits and won three of five groups. Its 5.3 jobs/s advantage
+was smaller than the 12.3 jobs/s median absolute delta between the
+identical Mesh arms. In the first block both arms missed pickup and
+throughput. One-minute host load on 15 logical CPUs ranged from
+21.3 to 44.8 in the first block and 14.1 to 23.8 in the repeat.
+
+The repeat measured about 80% durable slot utilization in Mesh versus
+89% for Oban. From first claim through final settlement the medians were
+1,304 and 1,246 ms versus 1,110 ms. The small-page configuration cleared
+the memory limit in both blocks. Throughput remains open for slow-64.
+[Small-page receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Follow-up correctness proofs
 
 The follow-up verifier used the same runtime sources and passed 45 Jobs

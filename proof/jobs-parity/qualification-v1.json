@@ -8194,6 +8194,1009 @@
     "stage_reducer": "Means per trial, then range and median of trial means",
     "scope": "Local macOS ARM64 fenced effect fixture, two identical prewarmed Mesh arms compared with stock Oban. Linux single-slot measurement still required. Sampled process counts can miss short-lived attempt children."
   },
+  "linux_fenced_jobs_slow64_small_pages": {
+    "revision": "c271319e84624bd00b0a62a7bb07a45602ee948b",
+    "scope": "Local Linux ARM64 guest and opt-in fenced Jobs fixture with two identical prewarmed arms",
+    "postgres": "17.11 over verified TLS and SCRAM",
+    "comparator": "Stock Oban Basic 2.24.2 with Isolated",
+    "stage_reducer": "Means per trial for per-attempt intervals, then range and median across trials",
+    "profile": "slow-1r-64s",
+    "blocks": {
+      "first": {
+        "pilot": {
+          "run": "target/jobs-parity/linux-arm-ownership-guest/fenced-matrix-guest/small-pages-pilot-slow-1r-64s",
+          "receipt_sha256": "00ab30e3ecbbdb54c3dc7fe51476bf71cc5d8e346a983f9d54803cd3caff9f08",
+          "proof_sha256": "0b6ec47f33ad331ca0ba4bfe0eaa6fc55299f7e7d0cc7c376c32c5b4abf86609",
+          "archive_sha256": "34614d19aa44555c142caa9a2f2bcdb9033744377302f8b38b332fd529d358db",
+          "host_trace_sha256": "d551fe8b4eff4c1b131ee9070bf62c8f9375a3c9b16ee3d5a7ab61723e8fc35e",
+          "host_one_minute_load": {
+            "min": 31.609375,
+            "median": 38.58740234375,
+            "max": 41.66552734375
+          },
+          "host_logical_cpus": 15,
+          "guest_cpus": 2,
+          "guest_memory_bytes": 2147483648,
+          "small_pages": {
+            "base": {
+              "artifacts_sha256": {
+                "libmesh_rt.a": "7b82c3b421521846344db997482ba3fdc90a2e7f3aacc1cc4d5d87278bde77e7",
+                "libworker_identity.a": "08a569386cfe5ba8c13daa371a7bf184dad5f10aa188e31b4f27a7d09e7902a4",
+                "mesh-parity-fixture": "732f9117fc19bd6a3a201c4e1ed5299450aa3e62c6513271fa9494467af60812",
+                "meshc": "9218cffc0f1df626c5f18d6c5f7ee05d4af5a43f2be813ae227f28e357aae621"
+              },
+              "generated_mesh_toml_sha256": "52d5fafb9786953bc5ddfd4bbec1eaeec9b9714d534cba4e917ab373a8647673",
+              "native_source_sha256": {
+                "main.mpl": "43e5da1b48c368a2a638f37bf165f8e98d0796dcf008c542773390d9a5e65ece",
+                "mesh.toml.in": "764f6e78cf2a89b2ff2f08d897d60652e69745514847c184ff5f8a5c785773c1",
+                "worker_identity.c": "69dbbe0d8a5c511fc4f7c64d450bb8d47e716fdb4103502259f7c2c65d08f7fb",
+                "worker_identity.mpl": "9d083870b27b8e87e608adf5784f291f41e20272253d47b679d66de388cfaa55"
+              },
+              "parent_manifest_sha256": "fa259a536a0a5ab4396f7560a6cd493cac8293997b1f59948003577d0d69cbc0",
+              "profile": "release",
+              "requested_runtime_features": [
+                "jobs-effect-fixture"
+              ],
+              "revision": "c271319e84624bd00b0a62a7bb07a45602ee948b",
+              "target": "aarch64-unknown-linux-gnu"
+            },
+            "fixture_sha256": "d1c064db7ae87f3c930f0e3616dd5cba4070a61573622b48c4aa6d8229fcd743",
+            "native_archive_sha256": "6e2fe537ed2b9742735a7af758e7a4d2ff1ea083253ac19221549f6940c11f78",
+            "shared_fault_around_bytes": 4096,
+            "worker_source_sha256": "c4598673f73c8998268ebaae33b7cf94180c48a9a84ae19c389a497ea9fd48ee",
+            "worker_thp_disabled": true
+          },
+          "fault_around_readback": {
+            "after_trials": 4096,
+            "before_trials": 4096,
+            "page_bytes": 4096,
+            "restored": 65536,
+            "trial_status": 0
+          }
+        },
+        "benchmark": {
+          "run": "target/jobs-parity/linux-arm-ownership-guest/fenced-matrix-guest/small-pages-benchmark-slow-1r-64s",
+          "receipt_sha256": "1e4339544229a452f7c0334504857b42277e5ca887495684d822be4130ccc2fc",
+          "proof_sha256": "55a12f51370b3c985a8bdc574536c6a6d448dd4e6f39e0e2c750504195ad2c12",
+          "archive_sha256": "bf66ff397d000f1f81959316da27d5b51eef5b48ce6ea2b31d227c53b3dc3cf0",
+          "host_trace_sha256": "0cf932626041d4f6e5cb19eba8acea50939b4db4e5c4b9c18209f0e1489d86e1",
+          "host_one_minute_load": {
+            "min": 21.25537109375,
+            "median": 30.203125,
+            "max": 44.75244140625
+          },
+          "host_logical_cpus": 15,
+          "guest_cpus": 2,
+          "guest_memory_bytes": 2147483648,
+          "small_pages": {
+            "base": {
+              "artifacts_sha256": {
+                "libmesh_rt.a": "7b82c3b421521846344db997482ba3fdc90a2e7f3aacc1cc4d5d87278bde77e7",
+                "libworker_identity.a": "08a569386cfe5ba8c13daa371a7bf184dad5f10aa188e31b4f27a7d09e7902a4",
+                "mesh-parity-fixture": "732f9117fc19bd6a3a201c4e1ed5299450aa3e62c6513271fa9494467af60812",
+                "meshc": "9218cffc0f1df626c5f18d6c5f7ee05d4af5a43f2be813ae227f28e357aae621"
+              },
+              "generated_mesh_toml_sha256": "52d5fafb9786953bc5ddfd4bbec1eaeec9b9714d534cba4e917ab373a8647673",
+              "native_source_sha256": {
+                "main.mpl": "43e5da1b48c368a2a638f37bf165f8e98d0796dcf008c542773390d9a5e65ece",
+                "mesh.toml.in": "764f6e78cf2a89b2ff2f08d897d60652e69745514847c184ff5f8a5c785773c1",
+                "worker_identity.c": "69dbbe0d8a5c511fc4f7c64d450bb8d47e716fdb4103502259f7c2c65d08f7fb",
+                "worker_identity.mpl": "9d083870b27b8e87e608adf5784f291f41e20272253d47b679d66de388cfaa55"
+              },
+              "parent_manifest_sha256": "fa259a536a0a5ab4396f7560a6cd493cac8293997b1f59948003577d0d69cbc0",
+              "profile": "release",
+              "requested_runtime_features": [
+                "jobs-effect-fixture"
+              ],
+              "revision": "c271319e84624bd00b0a62a7bb07a45602ee948b",
+              "target": "aarch64-unknown-linux-gnu"
+            },
+            "fixture_sha256": "d1c064db7ae87f3c930f0e3616dd5cba4070a61573622b48c4aa6d8229fcd743",
+            "native_archive_sha256": "6e2fe537ed2b9742735a7af758e7a4d2ff1ea083253ac19221549f6940c11f78",
+            "shared_fault_around_bytes": 4096,
+            "worker_source_sha256": "c4598673f73c8998268ebaae33b7cf94180c48a9a84ae19c389a497ea9fd48ee",
+            "worker_thp_disabled": true
+          },
+          "fault_around_readback": {
+            "after_trials": 4096,
+            "before_trials": 4096,
+            "page_bytes": 4096,
+            "restored": 65536,
+            "trial_status": 0
+          }
+        },
+        "topology": {
+          "database_connection_cap": 69,
+          "effect_lanes_per_runner": [
+            63
+          ],
+          "listen": true,
+          "mesh_roles": {
+            "mesh_effect_caller": 63,
+            "parity_producer": 1,
+            "parity_subject": 4
+          },
+          "oban_roles": {
+            "mesh_effect_caller": 0,
+            "parity_producer": 2,
+            "parity_subject": 66
+          },
+          "slots_per_runner": [
+            64
+          ]
+        },
+        "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+        "jobs_per_trial": 512,
+        "scored_groups": 5,
+        "throughput_pair_wins_against_oban": {
+          "mesh": 2,
+          "mesh-repeat": 2
+        },
+        "identical_arm_absolute_median_jobs_per_second": 70.73515568966849,
+        "gates": {
+          "mesh": {
+            "all_canonical_conditions_met": false,
+            "breaches": [
+              {
+                "mesh_median": 288.4165880466384,
+                "metric": "jobs_per_second",
+                "ratio_limit": 1.0,
+                "reference": "oban",
+                "reference_median": 359.6872165760396,
+                "scope": "comparison",
+                "within_limit": false
+              },
+              {
+                "mesh_median": 1651.071044921875,
+                "metric": "pickup_p99_ms",
+                "ratio_limit": 1.25,
+                "reference": "oban",
+                "reference_median": 1306.769775390625,
+                "scope": "comparison",
+                "within_limit": false
+              }
+            ],
+            "strict_median_throughput_above_oban": false
+          },
+          "mesh-repeat": {
+            "all_canonical_conditions_met": false,
+            "breaches": [
+              {
+                "mesh_median": 245.76205441717363,
+                "metric": "jobs_per_second",
+                "ratio_limit": 1.0,
+                "reference": "oban",
+                "reference_median": 359.6872165760396,
+                "scope": "comparison",
+                "within_limit": false
+              },
+              {
+                "mesh_median": 1957.761962890625,
+                "metric": "pickup_p99_ms",
+                "ratio_limit": 1.25,
+                "reference": "oban",
+                "reference_median": 1306.769775390625,
+                "scope": "comparison",
+                "within_limit": false
+              }
+            ],
+            "strict_median_throughput_above_oban": false
+          }
+        },
+        "arms": {
+          "mesh": {
+            "jobs_completed": 2560,
+            "metrics": {
+              "jobs_per_second": {
+                "min": 255.82118748540753,
+                "median": 288.4165880466384,
+                "max": 389.7822377380366
+              },
+              "pickup_p99_ms": {
+                "min": 1196.81103515625,
+                "median": 1651.071044921875,
+                "max": 1872.10107421875
+              },
+              "cpu_seconds_per_job": {
+                "min": 0.001942474609375,
+                "median": 0.002668931640625,
+                "max": 0.003091845703125
+              },
+              "peak_rss_bytes": {
+                "min": 97288192,
+                "median": 124538880,
+                "max": 132956160
+              },
+              "peak_connections": {
+                "min": 68,
+                "median": 68,
+                "max": 68
+              },
+              "peak_processes": {
+                "min": 37,
+                "median": 55,
+                "max": 59
+              },
+              "peak_threads": {
+                "min": 273,
+                "median": 381,
+                "max": 415
+              },
+              "peak_queued_context_bytes": {
+                "min": 267488,
+                "median": 267488,
+                "max": 267488
+              }
+            },
+            "stage_metrics": {
+              "enqueue_commit_to_first_claim_ms": {
+                "min": 1.8310546875,
+                "median": 3.708984375,
+                "max": 159.125
+              },
+              "first_claim_to_final_settlement_ms": {
+                "min": 1309.969970703125,
+                "median": 1616.0849609375,
+                "max": 1997.68896484375
+              },
+              "durable_slot_utilization": {
+                "min": 0.6529671480530097,
+                "median": 0.6889514160016098,
+                "max": 0.7973007241498073
+              },
+              "claim_to_entry_ms": {
+                "min": 14.405166149139404,
+                "median": 19.136473178863525,
+                "max": 33.830862522125244
+              },
+              "entry_to_attempt_commit_ms": {
+                "min": 3.362826347351074,
+                "median": 3.6286535263061523,
+                "max": 5.297217845916748
+              },
+              "attempt_to_effect_commit_ms": {
+                "min": 102.44245958328247,
+                "median": 103.41898250579834,
+                "max": 103.75016164779663
+              },
+              "effect_commit_to_settlement_ms": {
+                "min": 10.251730918884277,
+                "median": 14.774781703948975,
+                "max": 24.20991277694702
+              }
+            },
+            "rss_peak_samples": [
+              {
+                "rss_bytes": 132956160,
+                "root_rss_bytes": 42909696,
+                "descendant_rss_bytes": 90046464,
+                "processes": 59,
+                "executing": 59
+              },
+              {
+                "rss_bytes": 124538880,
+                "root_rss_bytes": 43405312,
+                "descendant_rss_bytes": 81133568,
+                "processes": 55,
+                "executing": 59
+              },
+              {
+                "rss_bytes": 111558656,
+                "root_rss_bytes": 41435136,
+                "descendant_rss_bytes": 70123520,
+                "processes": 47,
+                "executing": 49
+              },
+              {
+                "rss_bytes": 126525440,
+                "root_rss_bytes": 44736512,
+                "descendant_rss_bytes": 81788928,
+                "processes": 55,
+                "executing": 58
+              },
+              {
+                "rss_bytes": 97288192,
+                "root_rss_bytes": 43024384,
+                "descendant_rss_bytes": 54263808,
+                "processes": 37,
+                "executing": 48
+              }
+            ]
+          },
+          "mesh-repeat": {
+            "jobs_completed": 2560,
+            "metrics": {
+              "jobs_per_second": {
+                "min": 31.568678764406872,
+                "median": 245.76205441717363,
+                "max": 460.5173934277051
+              },
+              "pickup_p99_ms": {
+                "min": 999.72998046875,
+                "median": 1957.761962890625,
+                "max": 16097.296142578125
+              },
+              "cpu_seconds_per_job": {
+                "min": 0.0016346308593749997,
+                "median": 0.0030167070312499995,
+                "max": 0.017992833984375
+              },
+              "peak_rss_bytes": {
+                "min": 91037696,
+                "median": 103227392,
+                "max": 134471680
+              },
+              "peak_connections": {
+                "min": 68,
+                "median": 68,
+                "max": 68
+              },
+              "peak_processes": {
+                "min": 33,
+                "median": 40,
+                "max": 62
+              },
+              "peak_threads": {
+                "min": 232,
+                "median": 297,
+                "max": 426
+              },
+              "peak_queued_context_bytes": {
+                "min": 267488,
+                "median": 267488,
+                "max": 267488
+              }
+            },
+            "stage_metrics": {
+              "enqueue_commit_to_first_claim_ms": {
+                "min": 2.8701171875,
+                "median": 5.847900390625,
+                "max": 156.278076171875
+              },
+              "first_claim_to_final_settlement_ms": {
+                "min": 1108.364013671875,
+                "median": 2077.33203125,
+                "max": 16062.3291015625
+              },
+              "durable_slot_utilization": {
+                "min": 0.3921114004625232,
+                "median": 0.6462985956988757,
+                "max": 0.8489468264598086
+              },
+              "claim_to_entry_ms": {
+                "min": 7.741107940673828,
+                "median": 35.88020658493042,
+                "max": 251.20613956451416
+              },
+              "entry_to_attempt_commit_ms": {
+                "min": 2.515993118286133,
+                "median": 4.1631669998168945,
+                "max": 31.007669925689697
+              },
+              "attempt_to_effect_commit_ms": {
+                "min": 101.7676796913147,
+                "median": 104.26500082015991,
+                "max": 216.8354434967041
+              },
+              "effect_commit_to_settlement_ms": {
+                "min": 5.592983245849609,
+                "median": 24.028525829315186,
+                "max": 288.2285418510437
+              }
+            },
+            "rss_peak_samples": [
+              {
+                "rss_bytes": 103227392,
+                "root_rss_bytes": 41062400,
+                "descendant_rss_bytes": 62164992,
+                "processes": 16,
+                "executing": 31
+              },
+              {
+                "rss_bytes": 91037696,
+                "root_rss_bytes": 41623552,
+                "descendant_rss_bytes": 49414144,
+                "processes": 33,
+                "executing": 48
+              },
+              {
+                "rss_bytes": 115322880,
+                "root_rss_bytes": 42446848,
+                "descendant_rss_bytes": 72876032,
+                "processes": 49,
+                "executing": 56
+              },
+              {
+                "rss_bytes": 134471680,
+                "root_rss_bytes": 44294144,
+                "descendant_rss_bytes": 90177536,
+                "processes": 62,
+                "executing": 64
+              },
+              {
+                "rss_bytes": 102125568,
+                "root_rss_bytes": 42749952,
+                "descendant_rss_bytes": 59375616,
+                "processes": 40,
+                "executing": 46
+              }
+            ]
+          },
+          "oban": {
+            "jobs_completed": 2560,
+            "metrics": {
+              "jobs_per_second": {
+                "min": 169.66562841309008,
+                "median": 359.6872165760396,
+                "max": 401.9279644734464
+              },
+              "pickup_p99_ms": {
+                "min": 1161.213134765625,
+                "median": 1306.769775390625,
+                "max": 2844.378173828125
+              },
+              "cpu_seconds_per_job": {
+                "min": 0.002068697265625,
+                "median": 0.002805189453125,
+                "max": 0.00405717578125
+              },
+              "peak_rss_bytes": {
+                "min": 145211392,
+                "median": 146268160,
+                "max": 156655616
+              },
+              "peak_connections": {
+                "min": 68,
+                "median": 68,
+                "max": 68
+              },
+              "peak_processes": {
+                "min": 2,
+                "median": 2,
+                "max": 2
+              },
+              "peak_threads": {
+                "min": 12,
+                "median": 12,
+                "max": 12
+              }
+            },
+            "stage_metrics": {
+              "enqueue_commit_to_first_claim_ms": {
+                "min": 94.0419921875,
+                "median": 147.22412109375,
+                "max": 250.226806640625
+              },
+              "first_claim_to_final_settlement_ms": {
+                "min": 1126.635986328125,
+                "median": 1173.232177734375,
+                "max": 2923.658203125
+              },
+              "durable_slot_utilization": {
+                "min": 0.6788717913236274,
+                "median": 0.8883241873362976,
+                "max": 0.9068610729001558
+              },
+              "claim_to_entry_ms": {
+                "min": 11.999917984008789,
+                "median": 12.842447757720947,
+                "max": 66.27558374404907
+              },
+              "entry_to_attempt_commit_ms": {
+                "min": 3.8555469512939453,
+                "median": 5.68391752243042,
+                "max": 22.218534469604492
+              },
+              "attempt_to_effect_commit_ms": {
+                "min": 105.27633953094482,
+                "median": 107.41427326202393,
+                "max": 134.13871383666992
+              },
+              "effect_commit_to_settlement_ms": {
+                "min": 3.970445156097412,
+                "median": 7.054185390472412,
+                "max": 25.465803146362305
+              }
+            },
+            "rss_peak_samples": [
+              {
+                "rss_bytes": 156655616,
+                "root_rss_bytes": 156262400,
+                "descendant_rss_bytes": 393216,
+                "processes": 2,
+                "executing": 0
+              },
+              {
+                "rss_bytes": 146268160,
+                "root_rss_bytes": 145874944,
+                "descendant_rss_bytes": 393216,
+                "processes": 2,
+                "executing": 35
+              },
+              {
+                "rss_bytes": 145211392,
+                "root_rss_bytes": 144818176,
+                "descendant_rss_bytes": 393216,
+                "processes": 2,
+                "executing": 12
+              },
+              {
+                "rss_bytes": 145752064,
+                "root_rss_bytes": 145358848,
+                "descendant_rss_bytes": 393216,
+                "processes": 2,
+                "executing": 63
+              },
+              {
+                "rss_bytes": 153423872,
+                "root_rss_bytes": 153030656,
+                "descendant_rss_bytes": 393216,
+                "processes": 2,
+                "executing": 39
+              }
+            ]
+          }
+        }
+      },
+      "exact_repeat": {
+        "benchmark": {
+          "run": "target/jobs-parity/linux-arm-ownership-guest/fenced-matrix-guest/small-pages-benchmark-slow-1r-64s-repeat",
+          "receipt_sha256": "026ed75aade5c9f786ba8dbb94afd02dd9aeb13eeb7aaf2b1a3905be4066cace",
+          "proof_sha256": "5c60021e60af9f68f7af08595401b2d3b273b334e2328fd56b8ef3eee7a4c94e",
+          "archive_sha256": "bf66ff397d000f1f81959316da27d5b51eef5b48ce6ea2b31d227c53b3dc3cf0",
+          "host_trace_sha256": "3bcf6de56c82ad3a1c00ce7eafe45ddfa59f686f4adb1bdb994a8f4f3b4e98e8",
+          "host_one_minute_load": {
+            "min": 14.1416015625,
+            "median": 17.33251953125,
+            "max": 23.8046875
+          },
+          "host_logical_cpus": 15,
+          "guest_cpus": 2,
+          "guest_memory_bytes": 2147483648,
+          "small_pages": {
+            "base": {
+              "artifacts_sha256": {
+                "libmesh_rt.a": "7b82c3b421521846344db997482ba3fdc90a2e7f3aacc1cc4d5d87278bde77e7",
+                "libworker_identity.a": "08a569386cfe5ba8c13daa371a7bf184dad5f10aa188e31b4f27a7d09e7902a4",
+                "mesh-parity-fixture": "732f9117fc19bd6a3a201c4e1ed5299450aa3e62c6513271fa9494467af60812",
+                "meshc": "9218cffc0f1df626c5f18d6c5f7ee05d4af5a43f2be813ae227f28e357aae621"
+              },
+              "generated_mesh_toml_sha256": "52d5fafb9786953bc5ddfd4bbec1eaeec9b9714d534cba4e917ab373a8647673",
+              "native_source_sha256": {
+                "main.mpl": "43e5da1b48c368a2a638f37bf165f8e98d0796dcf008c542773390d9a5e65ece",
+                "mesh.toml.in": "764f6e78cf2a89b2ff2f08d897d60652e69745514847c184ff5f8a5c785773c1",
+                "worker_identity.c": "69dbbe0d8a5c511fc4f7c64d450bb8d47e716fdb4103502259f7c2c65d08f7fb",
+                "worker_identity.mpl": "9d083870b27b8e87e608adf5784f291f41e20272253d47b679d66de388cfaa55"
+              },
+              "parent_manifest_sha256": "fa259a536a0a5ab4396f7560a6cd493cac8293997b1f59948003577d0d69cbc0",
+              "profile": "release",
+              "requested_runtime_features": [
+                "jobs-effect-fixture"
+              ],
+              "revision": "c271319e84624bd00b0a62a7bb07a45602ee948b",
+              "target": "aarch64-unknown-linux-gnu"
+            },
+            "fixture_sha256": "d1c064db7ae87f3c930f0e3616dd5cba4070a61573622b48c4aa6d8229fcd743",
+            "native_archive_sha256": "6e2fe537ed2b9742735a7af758e7a4d2ff1ea083253ac19221549f6940c11f78",
+            "shared_fault_around_bytes": 4096,
+            "worker_source_sha256": "c4598673f73c8998268ebaae33b7cf94180c48a9a84ae19c389a497ea9fd48ee",
+            "worker_thp_disabled": true
+          },
+          "fault_around_readback": {
+            "after_trials": 4096,
+            "before_trials": 4096,
+            "page_bytes": 4096,
+            "restored": 65536,
+            "trial_status": 0
+          }
+        },
+        "topology": {
+          "database_connection_cap": 69,
+          "effect_lanes_per_runner": [
+            63
+          ],
+          "listen": true,
+          "mesh_roles": {
+            "mesh_effect_caller": 63,
+            "parity_producer": 1,
+            "parity_subject": 4
+          },
+          "oban_roles": {
+            "mesh_effect_caller": 0,
+            "parity_producer": 2,
+            "parity_subject": 66
+          },
+          "slots_per_runner": [
+            64
+          ]
+        },
+        "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+        "jobs_per_trial": 512,
+        "scored_groups": 5,
+        "throughput_pair_wins_against_oban": {
+          "mesh": 2,
+          "mesh-repeat": 3
+        },
+        "identical_arm_absolute_median_jobs_per_second": 12.34648526618463,
+        "gates": {
+          "mesh": {
+            "all_canonical_conditions_met": false,
+            "breaches": [
+              {
+                "mesh_median": 391.92809976865396,
+                "metric": "jobs_per_second",
+                "ratio_limit": 1.0,
+                "reference": "oban",
+                "reference_median": 404.96137311541025,
+                "scope": "comparison",
+                "within_limit": false
+              }
+            ],
+            "strict_median_throughput_above_oban": false
+          },
+          "mesh-repeat": {
+            "all_canonical_conditions_met": true,
+            "breaches": [],
+            "strict_median_throughput_above_oban": true
+          }
+        },
+        "arms": {
+          "mesh": {
+            "jobs_completed": 2560,
+            "metrics": {
+              "jobs_per_second": {
+                "min": 328.2425770042437,
+                "median": 391.92809976865396,
+                "max": 464.02075263711515
+              },
+              "pickup_p99_ms": {
+                "min": 993.804931640625,
+                "median": 1190.81396484375,
+                "max": 1450.626220703125
+              },
+              "cpu_seconds_per_job": {
+                "min": 0.001627654296875,
+                "median": 0.0019059882812499998,
+                "max": 0.0023322089843749996
+              },
+              "peak_rss_bytes": {
+                "min": 116871168,
+                "median": 128241664,
+                "max": 139784192
+              },
+              "peak_connections": {
+                "min": 68,
+                "median": 68,
+                "max": 68
+              },
+              "peak_processes": {
+                "min": 48,
+                "median": 55,
+                "max": 64
+              },
+              "peak_threads": {
+                "min": 330,
+                "median": 383,
+                "max": 449
+              },
+              "peak_queued_context_bytes": {
+                "min": 267488,
+                "median": 267488,
+                "max": 267488
+              }
+            },
+            "stage_metrics": {
+              "enqueue_commit_to_first_claim_ms": {
+                "min": 2.1259765625,
+                "median": 2.718017578125,
+                "max": 2.84912109375
+              },
+              "first_claim_to_final_settlement_ms": {
+                "min": 1100.637939453125,
+                "median": 1304.236083984375,
+                "max": 1557.159912109375
+              },
+              "durable_slot_utilization": {
+                "min": 0.7390103905111955,
+                "median": 0.8021986339163756,
+                "max": 0.8556095910397312
+              },
+              "claim_to_entry_ms": {
+                "min": 7.588174343109131,
+                "median": 14.1827712059021,
+                "max": 21.191224575042725
+              },
+              "entry_to_attempt_commit_ms": {
+                "min": 3.2577157020568848,
+                "median": 3.8271584510803223,
+                "max": 5.0946455001831055
+              },
+              "attempt_to_effect_commit_ms": {
+                "min": 101.91331148147583,
+                "median": 102.70984935760498,
+                "max": 102.98242521286011
+              },
+              "effect_commit_to_settlement_ms": {
+                "min": 4.955345630645752,
+                "median": 10.03892993927002,
+                "max": 15.43934679031372
+              }
+            },
+            "rss_peak_samples": [
+              {
+                "rss_bytes": 116871168,
+                "root_rss_bytes": 43372544,
+                "descendant_rss_bytes": 73498624,
+                "processes": 48,
+                "executing": 59
+              },
+              {
+                "rss_bytes": 139784192,
+                "root_rss_bytes": 45281280,
+                "descendant_rss_bytes": 94502912,
+                "processes": 64,
+                "executing": 64
+              },
+              {
+                "rss_bytes": 123367424,
+                "root_rss_bytes": 43806720,
+                "descendant_rss_bytes": 79560704,
+                "processes": 53,
+                "executing": 59
+              },
+              {
+                "rss_bytes": 128241664,
+                "root_rss_bytes": 43466752,
+                "descendant_rss_bytes": 84774912,
+                "processes": 55,
+                "executing": 64
+              },
+              {
+                "rss_bytes": 138305536,
+                "root_rss_bytes": 44064768,
+                "descendant_rss_bytes": 94240768,
+                "processes": 64,
+                "executing": 64
+              }
+            ]
+          },
+          "mesh-repeat": {
+            "jobs_completed": 2560,
+            "metrics": {
+              "jobs_per_second": {
+                "min": 347.82014507211727,
+                "median": 410.2534407831223,
+                "max": 461.746716045251
+              },
+              "pickup_p99_ms": {
+                "min": 994.317138671875,
+                "median": 1135.3349609375,
+                "max": 1350.127197265625
+              },
+              "cpu_seconds_per_job": {
+                "min": 0.0016178828124999997,
+                "median": 0.0019485546875,
+                "max": 0.002208515625
+              },
+              "peak_rss_bytes": {
+                "min": 125292544,
+                "median": 133562368,
+                "max": 137973760
+              },
+              "peak_connections": {
+                "min": 68,
+                "median": 68,
+                "max": 68
+              },
+              "peak_processes": {
+                "min": 55,
+                "median": 59,
+                "max": 64
+              },
+              "peak_threads": {
+                "min": 374,
+                "median": 416,
+                "max": 443
+              },
+              "peak_queued_context_bytes": {
+                "min": 267488,
+                "median": 267488,
+                "max": 267488
+              }
+            },
+            "stage_metrics": {
+              "enqueue_commit_to_first_claim_ms": {
+                "min": 1.050048828125,
+                "median": 2.966064453125,
+                "max": 5.610107421875
+              },
+              "first_claim_to_final_settlement_ms": {
+                "min": 1107.782958984375,
+                "median": 1245.925048828125,
+                "max": 1466.4150390625
+              },
+              "durable_slot_utilization": {
+                "min": 0.7559759647817774,
+                "median": 0.8097891455083359,
+                "max": 0.8540160116994481
+              },
+              "claim_to_entry_ms": {
+                "min": 8.013737201690674,
+                "median": 11.51620864868164,
+                "max": 18.68069314956665
+              },
+              "entry_to_attempt_commit_ms": {
+                "min": 3.1926684379577637,
+                "median": 4.010530948638916,
+                "max": 6.423378944396973
+              },
+              "attempt_to_effect_commit_ms": {
+                "min": 101.5779595375061,
+                "median": 102.43564224243164,
+                "max": 103.72340869903564
+              },
+              "effect_commit_to_settlement_ms": {
+                "min": 5.473682880401611,
+                "median": 8.537734508514404,
+                "max": 12.841660022735596
+              }
+            },
+            "rss_peak_samples": [
+              {
+                "rss_bytes": 125292544,
+                "root_rss_bytes": 42717184,
+                "descendant_rss_bytes": 82575360,
+                "processes": 55,
+                "executing": 58
+              },
+              {
+                "rss_bytes": 133562368,
+                "root_rss_bytes": 43384832,
+                "descendant_rss_bytes": 90177536,
+                "processes": 60,
+                "executing": 63
+              },
+              {
+                "rss_bytes": 137973760,
+                "root_rss_bytes": 43339776,
+                "descendant_rss_bytes": 94633984,
+                "processes": 64,
+                "executing": 64
+              },
+              {
+                "rss_bytes": 134373376,
+                "root_rss_bytes": 44089344,
+                "descendant_rss_bytes": 90284032,
+                "processes": 59,
+                "executing": 61
+              },
+              {
+                "rss_bytes": 129343488,
+                "root_rss_bytes": 44802048,
+                "descendant_rss_bytes": 84541440,
+                "processes": 57,
+                "executing": 64
+              }
+            ]
+          },
+          "oban": {
+            "jobs_completed": 2560,
+            "metrics": {
+              "jobs_per_second": {
+                "min": 361.69354824800894,
+                "median": 404.96137311541025,
+                "max": 437.3918983038475
+              },
+              "pickup_p99_ms": {
+                "min": 1063.72607421875,
+                "median": 1160.864013671875,
+                "max": 1301.64501953125
+              },
+              "cpu_seconds_per_job": {
+                "min": 0.00200013671875,
+                "median": 0.002136986328125,
+                "max": 0.002640609375
+              },
+              "peak_rss_bytes": {
+                "min": 143065088,
+                "median": 143949824,
+                "max": 150200320
+              },
+              "peak_connections": {
+                "min": 68,
+                "median": 68,
+                "max": 68
+              },
+              "peak_processes": {
+                "min": 2,
+                "median": 2,
+                "max": 2
+              },
+              "peak_threads": {
+                "min": 12,
+                "median": 12,
+                "max": 12
+              }
+            },
+            "stage_metrics": {
+              "enqueue_commit_to_first_claim_ms": {
+                "min": 60.64990234375,
+                "median": 167.197998046875,
+                "max": 235.973876953125
+              },
+              "first_claim_to_final_settlement_ms": {
+                "min": 1073.968994140625,
+                "median": 1109.925048828125,
+                "max": 1193.5029296875
+              },
+              "durable_slot_utilization": {
+                "min": 0.896770371215567,
+                "median": 0.8977488989284143,
+                "max": 0.9130555311496287
+              },
+              "claim_to_entry_ms": {
+                "min": 8.541868686676025,
+                "median": 9.672654151916504,
+                "max": 16.24755096435547
+              },
+              "entry_to_attempt_commit_ms": {
+                "min": 3.362067699432373,
+                "median": 3.9419779777526855,
+                "max": 4.446903228759766
+              },
+              "attempt_to_effect_commit_ms": {
+                "min": 104.93701267242432,
+                "median": 105.7185869216919,
+                "max": 106.69559288024902
+              },
+              "effect_commit_to_settlement_ms": {
+                "min": 4.0325751304626465,
+                "median": 5.747503757476807,
+                "max": 6.837881088256836
+              }
+            },
+            "rss_peak_samples": [
+              {
+                "rss_bytes": 143065088,
+                "root_rss_bytes": 142671872,
+                "descendant_rss_bytes": 393216,
+                "processes": 2,
+                "executing": 64
+              },
+              {
+                "rss_bytes": 143949824,
+                "root_rss_bytes": 143556608,
+                "descendant_rss_bytes": 393216,
+                "processes": 2,
+                "executing": 39
+              },
+              {
+                "rss_bytes": 150200320,
+                "root_rss_bytes": 149807104,
+                "descendant_rss_bytes": 393216,
+                "processes": 2,
+                "executing": 64
+              },
+              {
+                "rss_bytes": 143458304,
+                "root_rss_bytes": 143065088,
+                "descendant_rss_bytes": 393216,
+                "processes": 2,
+                "executing": 53
+              },
+              {
+                "rss_bytes": 145022976,
+                "root_rss_bytes": 144629760,
+                "descendant_rss_bytes": 393216,
+                "processes": 2,
+                "executing": 0
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
   "linux_fenced_jobs_topology_comparisons": {
     "revision": "c271319e84624bd00b0a62a7bb07a45602ee948b",
     "scope": "Local Linux ARM64 guest and opt-in fenced Jobs fixture with two identical prewarmed arms",
