@@ -1,0 +1,9 @@
+logic
+from Vector import Vec
+from Vector import first
+
+theorem first_returns_head(T :: Type, n :: Nat, value :: T, tail :: Vec<T, n>) do
+  first(T, n, Vec.Push(value, tail)) == value
+end
+
+proof first_returns_head do refl end

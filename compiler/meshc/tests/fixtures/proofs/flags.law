@@ -1,0 +1,24 @@
+from Flags import drop_false_prefix
+
+law drop_false_prefix(xs :: List<Bool>) -> List<Bool> do
+  case xs do
+    [] -> []
+    head :: tail ->
+      if !head do
+        drop_false_prefix(tail)
+      else
+        xs
+      end
+  end
+end
+
+proof drop_false_prefix do
+  induction xs do
+    [] -> refl
+    head :: tail, ih ->
+      cases head do
+        false -> exact ih
+        true -> refl
+      end
+  end
+end

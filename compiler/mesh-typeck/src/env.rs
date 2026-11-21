@@ -61,6 +61,13 @@ impl TypeEnv {
         None
     }
 
+    pub(crate) fn lookup_mut(&mut self, name: &str) -> Option<&mut Scheme> {
+        self.scopes
+            .iter_mut()
+            .rev()
+            .find_map(|scope| scope.get_mut(name))
+    }
+
     /// Whether `name` is bound in a scope inside the global one (a local
     /// variable or parameter).
     pub fn is_local(&self, name: &str) -> bool {

@@ -571,6 +571,126 @@ mod tests {
     }
 
     #[test]
+    fn indexed_sum_uses_one_llvm_layout_for_all_lengths() {
+        use mesh_typeck::ty::{NatIndex, Ty};
+
+        let source = r#"
+type Indexed_Vec<n :: Nat, T> do
+  Empty -> Indexed_Vec<0, T>
+  Push<k :: Nat>(T, Indexed_Vec<k, T>) -> Indexed_Vec<Succ<k>, T>
+end
+
+fn first<T, n :: Nat>(values :: Indexed_Vec<Succ<n>, T>) -> T do
+  case values do
+    Push(head, _) -> head
+  end
+end
+
+fn rest<T, n :: Nat>(values :: Indexed_Vec<Succ<n>, T>) -> Indexed_Vec<n, T> do
+  case values do
+    Push(_, tail) -> tail
+  end
+end
+
+fn main() -> Int do
+  let one :: Indexed_Vec<1, Int> = Push(10, Empty)
+  let two :: Indexed_Vec<2, Int> = Push(32, one)
+  first(two) + first(rest(two))
+end
+"#;
+        let parse = mesh_parser::parse(source);
+        assert!(parse.ok(), "{:?}", parse.errors());
+        let typeck = mesh_typeck::check(&parse);
+        assert!(typeck.errors.is_empty(), "{:?}", typeck.errors);
+        let (mut mir, signatures) = mir::lower::lower_module_to_mir_with_signatures(
+            &parse,
+            &typeck,
+            "",
+            &HashSet::new(),
+            &HashMap::new(),
+            &[],
+            |_| Some(mir::MirSourceId(0)),
+        )
+        .unwrap();
+
+        let mut lengths = Vec::new();
+        for signature in signatures
+            .iter()
+            .filter(|entry| entry.source_name == "first")
+        {
+            let Ty::Fun(params, result) = &signature.signature else {
+                panic!("{signature:?}");
+            };
+            assert_eq!(**result, Ty::int());
+            assert!(params[0].con().unwrap().indexed_origin.is_some());
+            let [Ty::Nat(NatIndex::Literal(length)), element] =
+                params[0].args_of("Indexed_Vec").unwrap()
+            else {
+                panic!("{params:?}");
+            };
+            assert_eq!(*element, Ty::int());
+            lengths.push(*length);
+        }
+        lengths.sort_unstable();
+        assert_eq!(lengths, [1, 2]);
+        let rest = signatures
+            .iter()
+            .find(|entry| entry.source_name == "rest")
+            .unwrap();
+        let rest_case = "case values do\n    Push(_, tail) -> tail\n  end";
+        let start = source.find(rest_case).unwrap() as u32;
+        let case_range =
+            rowan::TextRange::new(start.into(), (start + rest_case.len() as u32).into());
+        assert_eq!(
+            rest.expression_types[&case_range]
+                .args_of("Indexed_Vec")
+                .unwrap(),
+            [Ty::Nat(NatIndex::Literal(1)), Ty::int()],
+        );
+
+        let vec_layouts: Vec<_> = mir
+            .sum_types
+            .iter()
+            .filter(|layout| layout.name.starts_with("Indexed_Vec"))
+            .collect();
+        assert_eq!(vec_layouts.len(), 1);
+        assert_eq!(vec_layouts[0].name, "Indexed_Vec");
+        assert_eq!(
+            vec_layouts[0].variants[1].fields,
+            [MirType::Ptr, MirType::Ptr]
+        );
+
+        monomorphize(&mut mir);
+        let context = Context::create();
+        let mut codegen = CodeGen::new(&context, "indexed", 0, None).unwrap();
+        codegen.compile(&mir).unwrap();
+        let llvm = codegen.get_llvm_ir();
+        let calls: Vec<_> = llvm
+            .lines()
+            .filter(|line| line.contains("call i64 @first"))
+            .collect();
+        assert_eq!(calls.len(), 2, "{calls:?}");
+        let argument_type = |call: &str| {
+            let (_, argument) = call.split_once('(').unwrap();
+            argument
+                .strip_suffix(')')
+                .unwrap()
+                .rsplit_once(' ')
+                .unwrap()
+                .0
+                .to_owned()
+        };
+        let layout = argument_type(calls[0]);
+        assert!(layout.starts_with("{ i8, ["), "{layout}");
+        assert_eq!(argument_type(calls[1]), layout);
+        assert!(
+            llvm.lines()
+                .any(|line| line.contains(&format!("load {layout}, ptr %boxed_variant_payload"))),
+            "rest does not load its boxed {layout} payload"
+        );
+    }
+
+    #[test]
     fn durable_jobs_emit_native_calls_and_a_bare_runner_callback() {
         let llvm = llvm_of(
             r#"

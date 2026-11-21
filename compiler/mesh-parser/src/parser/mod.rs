@@ -684,7 +684,11 @@ pub(crate) fn parse_source_file(p: &mut Parser) {
             break;
         }
 
-        parse_item_or_stmt(p);
+        if p.at(SyntaxKind::IDENT) && p.current_text() == "logic" && p.nth(1) == SyntaxKind::DO_KW {
+            parse_logic_block(p);
+        } else {
+            parse_item_or_stmt(p);
+        }
         if !p.has_error() {
             expect_statement_end(p);
         }
@@ -705,6 +709,42 @@ pub(crate) fn parse_source_file(p: &mut Parser) {
     p.advance(); // EOF
 
     p.close(root, SyntaxKind::SOURCE_FILE);
+}
+
+/// Keep the proof body opaque to Mesh, including its punctuation and trivia.
+fn parse_logic_block(p: &mut Parser) {
+    let block = p.open();
+    p.advance(); // logic
+    let do_span = p.current_span();
+    p.advance(); // do
+
+    let mut depth = 1;
+    let mut string_depth = 0;
+    // Consume raw tokens so punctuation inside the body does not affect Mesh's
+    // delimiter state. Keywords inside a string or its interpolation are opaque.
+    for token in &p.tokens[p.pos..] {
+        match token.kind {
+            TokenKind::Eof => break,
+            TokenKind::StringStart => string_depth += 1,
+            TokenKind::StringEnd => string_depth -= 1,
+            TokenKind::Do if string_depth == 0 => depth += 1,
+            TokenKind::End if string_depth == 0 => depth -= 1,
+            _ => {}
+        }
+        p.events.push(Event::Advance);
+        p.pos += 1;
+        if depth == 0 {
+            p.close(block, SyntaxKind::LOGIC_BLOCK);
+            return;
+        }
+    }
+
+    p.error_with_related(
+        "expected `end` to close logic block",
+        do_span,
+        "`do` block started here",
+    );
+    p.close(block, SyntaxKind::ERROR_NODE);
 }
 
 /// After a statement or item, the line must end (or a `;` must separate the
@@ -848,7 +888,56 @@ pub(crate) fn parse_item_or_stmt(p: &mut Parser) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::AstNode;
     use mesh_lexer::Lexer;
+
+    #[test]
+    fn logic_blocks_keep_the_opaque_body_and_byte_offsets() {
+        let prefix = "fn logic() = 1\n# λ\n\t";
+        let header = "logic do";
+        let body = "  # do end\n proof ordinary do\n  \"end ${end}\"\n end\n (\n\t";
+        let block_text = format!("{header}{body}end");
+        let source = format!("{prefix}{block_text}\nlogic do end\nlet answer = logic()\n");
+        let parsed = crate::parse(&source);
+        assert!(parsed.ok(), "{:?}", parsed.errors());
+        assert_eq!(parsed.syntax().text().to_string(), source);
+
+        let file = parsed.tree();
+        let blocks: Vec<_> = file.logic_blocks().collect();
+        let [block, second] = blocks.as_slice() else {
+            panic!("expected two logic blocks");
+        };
+        assert_eq!(file.items().count(), 2);
+        let function = file.fn_defs().next().unwrap();
+        assert_eq!(function.name().unwrap().text().as_deref(), Some("logic"));
+        assert_eq!(block.syntax().children().count(), 0);
+        assert_eq!(block.syntax().text().to_string(), block_text);
+        let range = block.body_range().unwrap();
+        assert_eq!(usize::from(range.start()), prefix.len() + header.len());
+        assert_eq!(
+            usize::from(range.end()),
+            prefix.len() + header.len() + body.len()
+        );
+        assert_eq!(&source[range], body);
+        assert_eq!(&source[second.body_range().unwrap()], " ");
+    }
+
+    #[test]
+    fn unterminated_logic_block_reports_the_outer_opener() {
+        let source = "logic do\n proof sample do\n end";
+        let parsed = crate::parse(source);
+        assert_eq!(parsed.syntax().text().to_string(), source);
+        assert_eq!(parsed.tree().logic_blocks().count(), 0);
+        let [error] = parsed.errors() else {
+            panic!("expected a single error");
+        };
+        assert_eq!(error.message, "expected `end` to close logic block");
+        assert_eq!(
+            error.span,
+            Span::new(source.len() as u32, source.len() as u32)
+        );
+        assert_eq!(error.related.as_ref().unwrap().1, Span::new(6, 8));
+    }
 
     #[test]
     fn smoke_test_parser_produces_green_node() {

@@ -9,6 +9,7 @@ use crate::ast::{ast_node, child_node, child_nodes, child_token, AstNode};
 use crate::cst::{SyntaxNode, SyntaxToken};
 use crate::syntax_kind::SyntaxKind;
 use mesh_common::span::Span;
+use rowan::TextRange;
 
 // ── Source File ──────────────────────────────────────────────────────────
 
@@ -28,6 +29,25 @@ impl SourceFile {
     /// All top-level module definitions.
     pub fn modules(&self) -> impl Iterator<Item = ModuleDef> + '_ {
         child_nodes(&self.syntax)
+    }
+
+    /// All complete top-level `logic do ... end` blocks in source order.
+    pub fn logic_blocks(&self) -> impl Iterator<Item = LogicBlock> + '_ {
+        child_nodes(&self.syntax)
+    }
+}
+
+ast_node!(LogicBlock, LOGIC_BLOCK);
+
+impl LogicBlock {
+    /// Source byte range after the opening `do` and before the closing `end`,
+    /// including surrounding whitespace and comments inside the block.
+    pub fn body_range(&self) -> Option<TextRange> {
+        let start = child_token(&self.syntax, SyntaxKind::DO_KW)?
+            .text_range()
+            .end();
+        let end = self.syntax.last_token()?.text_range().start();
+        Some(TextRange::new(start, end))
     }
 }
 
@@ -878,6 +898,11 @@ impl SumTypeDef {
         child_node(&self.syntax)
     }
 
+    /// Kinded generic parameters declared on the sum type.
+    pub fn index_params(&self) -> impl Iterator<Item = IndexParam> + '_ {
+        index_params(&self.syntax)
+    }
+
     /// The variant definitions in the sum type.
     pub fn variants(&self) -> impl Iterator<Item = VariantDef> + '_ {
         child_nodes(&self.syntax)
@@ -924,6 +949,20 @@ impl VariantDef {
         child_token(&self.syntax, SyntaxKind::IDENT)
     }
 
+    /// Kinded generic parameters declared on this variant.
+    pub fn index_params(&self) -> impl Iterator<Item = IndexParam> + '_ {
+        index_params(&self.syntax)
+    }
+
+    /// The result type explicitly given after `->`, if present.
+    pub fn result_type(&self) -> Option<TypeAnnotation> {
+        let result = self
+            .syntax
+            .children()
+            .find(|node| node.kind() == SyntaxKind::VARIANT_RESULT)?;
+        child_node(&result)
+    }
+
     /// Named fields (VARIANT_FIELD children) in the variant.
     ///
     /// For `Rectangle(width :: Float, height :: Float)`, this yields the named fields.
@@ -937,6 +976,28 @@ impl VariantDef {
     pub fn positional_types(&self) -> impl Iterator<Item = TypeAnnotation> + '_ {
         child_nodes(&self.syntax)
     }
+}
+
+ast_node!(IndexParam, INDEX_PARAM);
+
+impl IndexParam {
+    /// Name of the index parameter.
+    pub fn name(&self) -> Option<Name> {
+        child_node(&self.syntax)
+    }
+
+    /// Annotation giving the kind of the index, including `::`.
+    pub fn kind_annotation(&self) -> Option<TypeAnnotation> {
+        child_node(&self.syntax)
+    }
+}
+
+fn index_params(declaration: &SyntaxNode) -> impl Iterator<Item = IndexParam> + '_ {
+    declaration
+        .children()
+        .filter(|node| node.kind() == SyntaxKind::GENERIC_PARAM_LIST)
+        .flat_map(|list| list.children())
+        .filter_map(IndexParam::cast)
 }
 
 // ── Variant Field ───────────────────────────────────────────────────────

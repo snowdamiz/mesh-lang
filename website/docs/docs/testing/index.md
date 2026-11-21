@@ -393,6 +393,10 @@ about the request. The sweep covers the listed budgets and HTTP statuses. Read
 the recipe offline with `meshc guide testing`. To check the pure policy across
 all supported inputs as well, see [Run the retry law](/docs/tooling/#run-the-retry-law).
 
+For recursive code and laws about inductive data, use Mesh-authored proofs.
+Keep native regression tests for the executable behavior alongside the
+universal properties checked by `meshc verify`. Follow the [proof guide](/docs/tooling/#state-a-theorem-and-reuse-its-proof).
+
 ## Coverage
 
 Coverage requests are intentionally honest today:

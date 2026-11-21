@@ -61,3 +61,29 @@ to accept only budget 1 or remove the parentheses around the allowed
 statuses. Expect a failing assertion and exit 1. Restore the policy and
 rerun the test. Report the change, the named test result, and any assumptions
 about the request. The sweep covers the listed budgets and HTTP statuses.
+
+## Verify laws
+
+Use `meshc verify . --list` to find existing laws before editing a pure
+function. Keep their requirement statements intact during implementation
+changes. If CI supplies a trusted inventory, pass it with `--preserve` so
+deleting or weakening a requirement fails the gate.
+
+A result law uses `law name(...) -> ResultType do ... end` to state the
+expected result independently. Mesh uses pinned Z3 for supported scalar
+laws. A `proof` block supplies a Mesh proof for recursive result laws.
+
+Start a `.law` file with `logic` to state named theorems, apply proved lemmas,
+and use induction, quantified hypotheses, witnesses, and dependent types.
+Import the checked function from its Mesh module so the theorem refers to
+the implementation that builds. Author the proof in Mesh and run
+`meshc verify . --verdict` with the pinned Lean toolchain to recheck its proof
+export. Inspect any `falsified` or `unverified` verdict before reporting that a
+requirement holds. See the [policy and proof guide](https://meshlang.dev/docs/tooling/#verify-a-pure-policy).
+
+An ordinary `.mpl` module can use `logic do ... end` to state and prove a
+theorem. `meshc build` and `meshc test` check embedded proofs when they build
+the module. Import a public closed theorem as a proof value, or apply a
+public theorem to static Nat indices and its required proof arguments.
+Pass the resulting `Proof<Predicate<Index>>` to a native Mesh function that
+requires evidence at that index. See the [embedded proof example](https://meshlang.dev/docs/tooling/#use-proofs-in-a-mesh-program).

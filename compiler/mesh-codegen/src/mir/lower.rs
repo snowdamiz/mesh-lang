@@ -21,7 +21,7 @@ use mesh_parser::ast::AstNode;
 use mesh_parser::syntax_kind::SyntaxKind;
 use mesh_parser::Parse;
 use mesh_typeck::error::TypeError;
-use mesh_typeck::ty::Ty;
+use mesh_typeck::ty::{NatIndex, Ty, TyVar};
 use mesh_typeck::{ClusteredRouteWrapperMetadata, TraitRegistry, TypeckResult};
 use rowan::TextRange;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -271,6 +271,7 @@ struct Lowerer<'a> {
     source_file: Option<MirSourceId>,
     /// Functions being built.
     functions: Vec<MirFunction>,
+    lowered_signatures: Option<Vec<LoweredSignature>>,
     /// Bodyless native archive functions.
     native_functions: Vec<MirNativeFunction>,
     /// Struct definitions.
@@ -412,6 +413,21 @@ fn fun_parts(ty: &Ty) -> (&[Ty], &Ty) {
     fn_type_parts(ty).expect("the type checker gives a function a function type")
 }
 
+fn is_test_body_function(name: &str) -> bool {
+    name.starts_with("__test_body_") || name.starts_with("__test_describe_")
+}
+
+/// The test preprocessor appends a zero-argument main ending in test_summary.
+fn is_test_harness_main(fn_def: &FnDef, name: &str) -> bool {
+    matches!(name, "main" | "main__0")
+        && matches!(
+            fn_def.body().and_then(|block| block.tail_expr()),
+            Some(Expr::CallExpr(call))
+                if matches!(call.callee(), Some(Expr::NameRef(callee))
+                    if callee.text().as_deref() == Some("test_summary"))
+        )
+}
+
 /// What a function's clauses match: its one parameter, several as a tuple,
 /// or nothing.
 fn clause_scrutinee(params: &[(String, MirType)]) -> MirExpr {
@@ -453,7 +469,7 @@ fn service_state(body: MirExpr) -> (MirExpr, MirType) {
 fn apply_default_unit(ty: &Ty) -> Ty {
     match ty {
         Ty::Var(_) => Ty::Tuple(vec![]),
-        Ty::Con(_) | Ty::Never => ty.clone(),
+        Ty::Con(_) | Ty::Nat(_) | Ty::Never => ty.clone(),
         Ty::Fun(params, ret) => Ty::Fun(
             params.iter().map(apply_default_unit).collect(),
             Box::new(apply_default_unit(ret)),
@@ -467,10 +483,15 @@ fn apply_default_unit(ty: &Ty) -> Ty {
 }
 
 /// Read off which type each variable of `generic` stands for in `concrete`.
-fn bind_type_vars(generic: &Ty, concrete: &Ty, bindings: &mut Vec<(mesh_typeck::ty::TyVar, Ty)>) {
+fn bind_type_vars(
+    generic: &Ty,
+    concrete: &Ty,
+    bindings: &mut Vec<(TyVar, Ty)>,
+    bind_indices: bool,
+) {
     let bind_all = |generic: &[Ty], concrete: &[Ty], bindings: &mut Vec<_>| {
         for (generic, concrete) in generic.iter().zip(concrete) {
-            bind_type_vars(generic, concrete, bindings);
+            bind_type_vars(generic, concrete, bindings, bind_indices);
         }
     };
     match (generic, concrete) {
@@ -481,7 +502,7 @@ fn bind_type_vars(generic: &Ty, concrete: &Ty, bindings: &mut Vec<(mesh_typeck::
         }
         (Ty::Fun(params, ret), Ty::Fun(concrete_params, concrete_ret)) => {
             bind_all(params, concrete_params, bindings);
-            bind_type_vars(ret, concrete_ret, bindings);
+            bind_type_vars(ret, concrete_ret, bindings, bind_indices);
         }
         (Ty::Tuple(elems), Ty::Tuple(concrete_elems)) => bind_all(elems, concrete_elems, bindings),
         // A tuple known by its first elements, against the whole tuple.
@@ -490,16 +511,34 @@ fn bind_type_vars(generic: &Ty, concrete: &Ty, bindings: &mut Vec<(mesh_typeck::
             if all.len() >= elems.len() {
                 let (named, rest) = all.split_at(elems.len());
                 bind_all(elems, named, bindings);
-                bind_type_vars(tail, &Ty::Tuple(rest.to_vec()), bindings);
+                bind_type_vars(tail, &Ty::Tuple(rest.to_vec()), bindings, bind_indices);
             }
         }
         (Ty::App(_, args), Ty::App(_, concrete_args)) => bind_all(args, concrete_args, bindings),
+        (Ty::Nat(generic), Ty::Nat(concrete)) if bind_indices => {
+            bind_index_var(generic, concrete.clone(), bindings);
+        }
         _ => {}
     }
 }
 
+fn bind_index_var(mut generic: &NatIndex, mut concrete: NatIndex, bindings: &mut Vec<(TyVar, Ty)>) {
+    while let NatIndex::Succ(inner) = generic {
+        let Some(predecessor) = concrete.predecessor() else {
+            return;
+        };
+        generic = inner;
+        concrete = predecessor;
+    }
+    if let NatIndex::Variable(var) = generic {
+        if !bindings.iter().any(|(bound, _)| bound == var) {
+            bindings.push((*var, Ty::Nat(concrete)));
+        }
+    }
+}
+
 /// `ty` with the variables in `bindings` replaced.
-fn apply_type_vars(ty: &Ty, bindings: &[(mesh_typeck::ty::TyVar, Ty)]) -> Ty {
+fn apply_type_vars(ty: &Ty, bindings: &[(TyVar, Ty)]) -> Ty {
     let all = |tys: &[Ty]| tys.iter().map(|ty| apply_type_vars(ty, bindings)).collect();
     match ty {
         Ty::Var(var) => bindings
@@ -509,6 +548,16 @@ fn apply_type_vars(ty: &Ty, bindings: &[(mesh_typeck::ty::TyVar, Ty)]) -> Ty {
         Ty::Fun(params, ret) => Ty::Fun(all(params), Box::new(apply_type_vars(ret, bindings))),
         Ty::Tuple(elems) => Ty::Tuple(all(elems)),
         Ty::App(con, args) => Ty::App(con.clone(), all(args)).normalize_tuple_row(),
+        Ty::Nat(index) => Ty::Nat(index.map_leaf(|leaf| {
+            if let NatIndex::Variable(var) = leaf {
+                if let Some((_, Ty::Nat(concrete))) =
+                    bindings.iter().find(|(bound, _)| bound == var)
+                {
+                    return concrete.clone();
+                }
+            }
+            leaf.clone()
+        })),
         Ty::Con(_) | Ty::Never => ty.clone(),
     }
 }
@@ -680,6 +729,7 @@ impl<'a> Lowerer<'a> {
             foreign_defaults: HashMap::new(),
             source_file: None,
             functions: Vec::new(),
+            lowered_signatures: None,
             native_functions: Vec::new(),
             structs: Vec::new(),
             sum_types: Vec::new(),
@@ -1220,6 +1270,20 @@ impl<'a> Lowerer<'a> {
             .or_else(|| self.types.get(&range))
     }
 
+    fn checked_expression_types(&self, body: &MirExpr) -> FxHashMap<TextRange, Ty> {
+        let Some(source_file) = self.source_file else {
+            return FxHashMap::default();
+        };
+        body.descendants()
+            .into_iter()
+            .filter_map(|expr| {
+                let location = expr.source_span().filter(|span| span.file == source_file)?;
+                let range = TextRange::new(location.span.start.into(), location.span.end.into());
+                Some((range, self.get_ty(range)?.clone()))
+            })
+            .collect()
+    }
+
     /// An impl's interface, the interface's type arguments as its mangled
     /// names spell them (as the type checker read them, where they are
     /// written), and the implementing type: `("From", ["Int"], "Float")`.
@@ -1252,7 +1316,7 @@ impl<'a> Lowerer<'a> {
         concrete: &Ty,
     ) -> FxHashMap<TextRange, Ty> {
         let mut bindings = Vec::new();
-        bind_type_vars(generic, concrete, &mut bindings);
+        bind_type_vars(generic, concrete, &mut bindings, true);
         // An associated type reached through a type parameter is known once
         // the parameter is: `Self.Item` of `StrBox` is String.
         for (var, trait_name, assoc, receiver) in self.assoc_projections {
@@ -1276,7 +1340,7 @@ impl<'a> Lowerer<'a> {
         } else {
             self.types
                 .iter()
-                .filter(|(range, ty)| fn_range.contains_range(**range) && Self::ty_contains_var(ty))
+                .filter(|(range, ty)| fn_range.contains_range(**range) && ty.has_type_vars())
                 .map(|(range, ty)| (*range, apply_type_vars(ty, &bindings)))
                 .collect()
         };
@@ -1418,6 +1482,7 @@ impl<'a> Lowerer<'a> {
     fn msg_shape(&self, ty: &Ty, open: &mut Vec<String>) -> MsgShape {
         let (name, args): (&str, &[Ty]) = match ty {
             Ty::Never => return MsgShape::Scalar,
+            Ty::Nat(_) => unreachable!("a Nat index cannot occur as a message value"),
             // An unresolved type has an unknown representation.
             Ty::Var(_) => return MsgShape::Shared,
             Ty::Fun(..) => return MsgShape::Closure,
@@ -1457,10 +1522,10 @@ impl<'a> Lowerer<'a> {
         if open.contains(&mir_name) {
             return MsgShape::Recur(mir_name);
         }
-        let (params, variants): (&[String], Vec<(Option<&str>, Vec<&Ty>)>) =
+        let (params, variants): (Vec<String>, Vec<(Option<&str>, Vec<&Ty>)>) =
             if let Some(info) = self.registry.struct_defs.get(name) {
                 let fields = info.fields.iter().map(|(_, field)| field).collect();
-                (&info.generic_params, vec![(None, fields)])
+                (info.generic_params.clone(), vec![(None, fields)])
             } else if let Some(info) = self.registry.sum_type_defs.get(name) {
                 let variants = info
                     .variants
@@ -1477,14 +1542,17 @@ impl<'a> Lowerer<'a> {
                         (Some(variant.name.as_str()), fields)
                     })
                     .collect();
-                (&info.generic_params, variants)
+                (info.runtime_generic_params().cloned().collect(), variants)
             } else {
                 // A type of a module lowered later, which a generic function
                 // here is specialized at: nothing here describes it.
                 return MsgShape::Shared;
             };
 
-        let subst: HashMap<String, &Ty> = params.iter().cloned().zip(args).collect();
+        let subst: HashMap<String, &Ty> = params
+            .into_iter()
+            .zip(args.iter().filter(|arg| !matches!(arg, Ty::Nat(_))))
+            .collect();
         open.push(mir_name.clone());
         let mut described: Vec<(Option<&str>, Vec<MsgShape>)> = variants
             .into_iter()
@@ -1637,7 +1705,7 @@ impl<'a> Lowerer<'a> {
             let (_, generic_ty, calls) = &fns[index];
             let mut bindings = Vec::new();
             if let Some(spec) = &spec {
-                bind_type_vars(generic_ty, spec, &mut bindings);
+                bind_type_vars(generic_ty, spec, &mut bindings, false);
             }
             let mut found = Vec::new();
             for (callee, range) in calls {
@@ -1650,6 +1718,8 @@ impl<'a> Lowerer<'a> {
                 else {
                     continue;
                 };
+                // Follow runtime type variables. Substituting Nat variables here could
+                // enumerate indefinitely many indices of an index-changing recursive call.
                 let concrete = apply_default_unit(&apply_type_vars(call_ty, &bindings));
                 let known = self
                     .inferred_fn_specializations
@@ -1764,18 +1834,10 @@ impl<'a> Lowerer<'a> {
         self.close_specializations(sf);
     }
 
+    /// Whether runtime specialization still needs an ordinary type variable.
+    /// The variable inside a `Ty::Nat` has no runtime representation.
     fn ty_contains_var(ty: &Ty) -> bool {
-        match ty {
-            Ty::Var(_) => true,
-            Ty::Con(_) | Ty::Never => false,
-            Ty::Fun(params, ret) => {
-                params.iter().any(Self::ty_contains_var) || Self::ty_contains_var(ret)
-            }
-            Ty::App(con, args) => {
-                Self::ty_contains_var(con) || args.iter().any(Self::ty_contains_var)
-            }
-            Ty::Tuple(elems) => elems.iter().any(Self::ty_contains_var),
-        }
+        matches!(ty, Ty::Var(_)) || ty.parts().any(Self::ty_contains_var)
     }
 
     fn is_concrete_fun_ty(ty: &Ty) -> bool {
@@ -1838,6 +1900,13 @@ impl<'a> Lowerer<'a> {
                 Self::ty_specialization_component(ret)
             ),
             Ty::Var(v) => format!("Var{}", v.0),
+            Ty::Nat(NatIndex::Literal(value)) => format!("Nat{value}"),
+            Ty::Nat(NatIndex::Variable(var)) => format!("NatVar{}", var.0),
+            Ty::Nat(NatIndex::Parameter(name)) => format!("NatParam_{}", sanitize(name)),
+            Ty::Nat(NatIndex::Succ(inner)) => format!(
+                "NatSucc_{}",
+                Self::ty_specialization_component(&Ty::Nat(*inner.clone()))
+            ),
             Ty::Never => "Never".to_string(),
         }
     }
@@ -1871,10 +1940,17 @@ impl<'a> Lowerer<'a> {
             .filter(|variants| variants.len() > 1)
             .and_then(|variants| {
                 let ty = apply_default_unit(self.get_ty(range)?);
-                variants.contains(&ty).then_some(ty)
+                variants.iter().find(|spec| **spec == ty).or_else(|| {
+                    // A recursive call can refine an index that specialization
+                    // discovery left symbolic. Reuse the existing runtime type.
+                    let runtime_ty = self.registry.runtime_type(&ty);
+                    variants
+                        .iter()
+                        .find(|spec| self.registry.runtime_type(spec) == runtime_ty)
+                })
             });
         match specialization {
-            Some(fun_ty) => self.mangle_inferred_fn_name(base_name, &fun_ty),
+            Some(fun_ty) => self.mangle_inferred_fn_name(base_name, fun_ty),
             None => base_name.to_string(),
         }
     }
@@ -2041,10 +2117,7 @@ impl<'a> Lowerer<'a> {
         // `fn __test_describe_*` functions injected by the test preprocessor.
         // When found, enable special DSL lowering for assert/assert_raises.
         self.is_test_mode = sf.items().any(|item| match item {
-            Item::FnDef(fn_def) => {
-                let name = self.fn_def_name(&fn_def);
-                name.starts_with("__test_body_") || name.starts_with("__test_describe_")
-            }
+            Item::FnDef(fn_def) => is_test_body_function(&self.fn_def_name(&fn_def)),
             _ => false,
         });
 
@@ -5192,6 +5265,21 @@ impl<'a> Lowerer<'a> {
 
         body = self.wrap_resource_scopes(body, owned_resource_params);
 
+        if self.lowered_signatures.is_some()
+            && !is_test_body_function(original_name)
+            && !(self.is_test_mode && is_test_harness_main(fn_def, original_name))
+        {
+            let signature = LoweredSignature {
+                source_name: original_name.to_string(),
+                source_file: self.source_file,
+                declaration: fn_def.syntax().text_range(),
+                symbol: emitted_name.clone(),
+                signature: concrete_fn_ty.clone(),
+                expression_types: self.checked_expression_types(&body),
+            };
+            self.lowered_signatures.as_mut().unwrap().push(signature);
+        }
+
         self.current_fn_return_type = prev_fn_return_type;
         self.current_fn_return_typeck = prev_fn_return_typeck;
         self.spec_types = outer_spec_types;
@@ -7966,7 +8054,7 @@ impl<'a> Lowerer<'a> {
         concrete: &Ty,
     ) -> MirExpr {
         let mut bindings = Vec::new();
-        bind_type_vars(generic, concrete, &mut bindings);
+        bind_type_vars(generic, concrete, &mut bindings, true);
         let closure_range = closure.syntax().text_range();
         let overlay: Vec<(TextRange, Ty)> = self
             .types
@@ -7974,7 +8062,8 @@ impl<'a> Lowerer<'a> {
             .filter(|range| closure_range.contains_range(**range))
             .filter_map(|range| {
                 let effective = self.get_ty(*range)?;
-                Self::ty_contains_var(effective)
+                effective
+                    .has_type_vars()
                     .then(|| (*range, apply_type_vars(effective, &bindings)))
             })
             .collect();
@@ -8020,6 +8109,9 @@ impl<'a> Lowerer<'a> {
     fn lower_name_ref(&mut self, name_ref: &NameRef) -> MirExpr {
         let name = name_ref.text().unwrap_or_else(|| "<unknown>".to_string());
         let range = name_ref.syntax().text_range();
+        if self.get_ty(range).is_some_and(Ty::is_proof) {
+            return MirExpr::Unit;
+        }
         let resolved_ty = self.resolve_range(range);
 
         // Check if this is a nullary variant constructor (e.g., Red, None, Point).
@@ -8699,6 +8791,33 @@ impl<'a> Lowerer<'a> {
     }
 
     fn lower_call_expr(&mut self, call: &CallExpr) -> MirExpr {
+        if call.callee().is_some_and(|callee| {
+            self.get_ty(callee.syntax().text_range())
+                .is_some_and(Ty::is_callable_theorem)
+        }) {
+            // Static Nat arguments have no runtime representation. Proof
+            // arguments can still call ordinary functions with effects.
+            let mut effects = Vec::new();
+            for argument in call.args() {
+                if matches!(
+                    self.get_ty(argument.syntax().text_range()),
+                    Some(Ty::Nat(_))
+                ) {
+                    continue;
+                }
+                let value = self.lower_expr(&argument);
+                let diverges = *value.result_ty() == MirType::Never;
+                effects.push(value);
+                if diverges {
+                    return MirExpr::Block(effects, MirType::Never);
+                }
+            }
+            if effects.is_empty() {
+                return MirExpr::Unit;
+            }
+            effects.push(MirExpr::Unit);
+            return MirExpr::Block(effects, MirType::Unit);
+        }
         let lowered = self.lower_call_expr_unshaped(call);
         // Inside an actor with parameters, a call to the actor itself runs its
         // body function; the actor's own name is the spawn entry, which takes
@@ -9853,6 +9972,9 @@ impl<'a> Lowerer<'a> {
                 .get(&base_name)
                 .is_some_and(|functions| functions.contains(&field))
             {
+                if self.get_ty(range).is_some_and(Ty::is_proof) {
+                    return MirExpr::Unit;
+                }
                 let ty = self.resolve_range(range);
                 let lowered_name = self.lowered_fn_symbol_name(&field, &field, range);
                 return MirExpr::Var(lowered_name, ty);
@@ -10496,6 +10618,12 @@ impl<'a> Lowerer<'a> {
         variant: &str,
         expected: Option<&Ty>,
     ) -> String {
+        if let Some(head) = expected
+            .and_then(Ty::con)
+            .filter(|head| head.indexed_origin.is_some())
+        {
+            return head.name.clone();
+        }
         // A qualifier that is not a type is the module exporting it (`Geo.Dot`).
         if let Some(type_name) = ctor.type_name() {
             let type_name = type_name.text().to_string();
@@ -10659,11 +10787,28 @@ impl<'a> Lowerer<'a> {
 
                 let type_name = self.constructor_type_name(ctor, &variant_name, expected);
                 let expected_fields = self.variant_field_types(&type_name, &variant_name, expected);
+                let indexed = self
+                    .registry
+                    .sum_type_defs
+                    .get(&type_name)
+                    .is_some_and(|info| {
+                        info.variants.iter().any(|variant| {
+                            variant.name == variant_name && variant.indexed.is_some()
+                        })
+                    });
                 let fields: Vec<MirPattern> = ctor
                     .fields()
                     .enumerate()
                     .map(|(index, pattern)| {
-                        self.lower_pattern_with_expected(&pattern, expected_fields.get(index))
+                        // The checked subpattern holds any refinement of the constructor's
+                        // payload types. The declaration is the fallback for untyped fields.
+                        let refined = indexed
+                            .then(|| self.get_ty(pattern.syntax().text_range()).cloned())
+                            .flatten();
+                        self.lower_pattern_with_expected(
+                            &pattern,
+                            refined.as_ref().or_else(|| expected_fields.get(index)),
+                        )
                     })
                     .collect();
 
@@ -11334,7 +11479,11 @@ impl<'a> Lowerer<'a> {
     /// Whether a payload of sum type `inner` inside sum type `owner` is
     /// stored boxed: the two are the same type, or each reaches the other.
     fn boxed_payload(&self, owner: &str, inner: &str) -> bool {
-        let (owner, inner) = (sum_type_base(owner), sum_type_base(inner));
+        let inner = if self.sum_reach.contains_key(inner) {
+            inner
+        } else {
+            sum_type_base(inner)
+        };
         owner == inner
             || (self
                 .sum_reach
@@ -11370,10 +11519,9 @@ impl<'a> Lowerer<'a> {
     ) -> Option<(String, Vec<(String, Vec<Ty>)>)> {
         let info = self.registry.sum_type_defs.get(base)?;
         let subst: HashMap<String, &Ty> = info
-            .generic_params
-            .iter()
+            .runtime_generic_params()
             .cloned()
-            .zip(args.iter())
+            .zip(args.iter().filter(|arg| !matches!(arg, Ty::Nat(_))))
             .collect();
         let variants = info
             .variants
@@ -11449,6 +11597,11 @@ impl<'a> Lowerer<'a> {
     /// share helpers, which compare and print the payloads by their types.
     fn instantiation_helper_name(&self, base: &str, args: &[Ty]) -> String {
         let layout = mangle_type_name(base, args, self.registry);
+        let args: Vec<_> = args
+            .iter()
+            .filter(|arg| !matches!(arg, Ty::Nat(_)))
+            .map(|arg| self.registry.runtime_type(arg))
+            .collect();
         let erased = args.iter().any(|arg| {
             matches!(
                 runtime_value_type(resolve_type(arg, self.registry)),
@@ -11488,6 +11641,7 @@ impl<'a> Lowerer<'a> {
             return hardware(lhs, rhs);
         }
         match ty {
+            Ty::Nat(_) => unreachable!("a Nat index cannot be compared at runtime"),
             Ty::Tuple(elems) if elems.is_empty() => always(lhs, rhs),
             // A type nothing fixed (`None == None`, `Ok(1) == Ok(1)`'s error
             // type) has no values to tell apart, nor has a value that never
@@ -11903,6 +12057,7 @@ impl<'a> Lowerer<'a> {
             three_way(lt(&lhs, &rhs), lt(&rhs, &lhs))
         };
         match ty {
+            Ty::Nat(_) => unreachable!("a Nat index cannot be ordered at runtime"),
             Ty::Tuple(elems) if elems.is_empty() => int(0),
             // A type nothing fixed (`Ok(1) < Ok(2)`'s error type) has no
             // values to tell apart, as in `eq_expr`. (The type checker orders
@@ -15562,7 +15717,9 @@ fn find_type_for_variant(
             .sum_type_defs
             .iter()
             .filter(|(type_name, info)| {
-                (expected_name == *type_name || expected_name.starts_with(&format!("{type_name}_")))
+                (expected_name == *type_name
+                    || sum_type_base(expected_name) == *type_name
+                    || expected_name.starts_with(&format!("{type_name}_")))
                     && contains_variant(info)
             })
             .max_by_key(|(type_name, _)| type_name.len())
@@ -16302,6 +16459,73 @@ pub fn lower_module_to_mir_with_sources<'a>(
     other_modules: &[(&'a Parse, &'a TypeckResult)],
     source_id: impl Fn(&Parse) -> Option<MirSourceId>,
 ) -> Result<MirModule, String> {
+    lower_module(
+        parse,
+        typeck,
+        module_name,
+        pub_fns,
+        inferred_fn_usage_types,
+        other_modules,
+        source_id,
+        false,
+    )
+    .map(|(mir, _)| mir)
+}
+
+/// The checked signature used to lower one top-level function variant.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LoweredSignature {
+    /// Checked function name, including the suffix for arity overloads.
+    pub source_name: String,
+    /// Source file containing the declaration and the recorded expressions.
+    pub source_file: Option<MirSourceId>,
+    /// Source range of the declaration, or the first clause of a clause group.
+    pub declaration: TextRange,
+    pub symbol: String,
+    /// Type used to lower the variant before conversion to MIR types.
+    pub signature: Ty,
+    /// Checked types at the source spans on this variant's original MIR.
+    pub expression_types: FxHashMap<TextRange, Ty>,
+}
+
+/// Lower a module and retain checked types for each emitted source function
+/// variant. Entries with the same MIR symbol are preserved.
+pub fn lower_module_to_mir_with_signatures<'a>(
+    parse: &'a Parse,
+    typeck: &'a TypeckResult,
+    module_name: &str,
+    pub_fns: &HashSet<String>,
+    inferred_fn_usage_types: &HashMap<String, Vec<Ty>>,
+    other_modules: &[(&'a Parse, &'a TypeckResult)],
+    source_id: impl Fn(&Parse) -> Option<MirSourceId>,
+) -> Result<(MirModule, Vec<LoweredSignature>), String> {
+    lower_module(
+        parse,
+        typeck,
+        module_name,
+        pub_fns,
+        inferred_fn_usage_types,
+        other_modules,
+        source_id,
+        true,
+    )
+}
+
+fn lower_module<'a>(
+    parse: &'a Parse,
+    typeck: &'a TypeckResult,
+    module_name: &str,
+    pub_fns: &HashSet<String>,
+    inferred_fn_usage_types: &HashMap<String, Vec<Ty>>,
+    other_modules: &[(&'a Parse, &'a TypeckResult)],
+    source_id: impl Fn(&Parse) -> Option<MirSourceId>,
+    collect_signatures: bool,
+) -> Result<(MirModule, Vec<LoweredSignature>), String> {
+    if !collect_signatures
+        && (!typeck.proof_values.is_empty() || typeck.types.values().any(Ty::contains_proof))
+    {
+        return Err("Mesh proof values require a project build with proof checking".into());
+    }
     if let Some(reason) = typeck.errors.iter().find_map(|error| match error {
         TypeError::ResourceViolation { reason, .. }
             if reason.contains("cannot be captured by a closure") =>
@@ -16316,6 +16540,7 @@ pub fn lower_module_to_mir_with_sources<'a>(
     let source_file = parse.tree();
 
     let mut lowerer = Lowerer::new(typeck, parse, module_name, pub_fns, inferred_fn_usage_types);
+    lowerer.lowered_signatures = collect_signatures.then(Vec::new);
     lowerer.source_file = source_id(parse);
     for &(other_parse, other) in other_modules {
         for (key, &range) in &other.default_method_bodies {
@@ -16337,7 +16562,7 @@ pub fn lower_module_to_mir_with_sources<'a>(
     // Generic type params (T, E) are resolved to Ptr since all Mesh values
     // are heap-allocated pointers at the LLVM level.
     for (name, info) in &typeck.type_registry.sum_type_defs {
-        let generic_params: Vec<String> = info.generic_params.clone();
+        let generic_params: Vec<_> = info.runtime_generic_params().collect();
         let variants = info
             .variants
             .iter()
@@ -16356,7 +16581,7 @@ pub fn lower_module_to_mir_with_sources<'a>(
                         // because they're not known types. Replace with Ptr since
                         // all variant payloads are pointer-sized at LLVM level.
                         if let Ty::Con(con) = ty {
-                            if generic_params.contains(&con.name) {
+                            if generic_params.contains(&&con.name) {
                                 return MirType::Ptr;
                             }
                         }
@@ -16659,7 +16884,7 @@ pub fn lower_module_to_mir_with_sources<'a>(
         stop_at_never(&mut function.body);
     }
 
-    Ok(MirModule {
+    let mir = MirModule {
         functions: lowerer.functions,
         native_functions: lowerer.native_functions,
         structs: lowerer.structs,
@@ -16667,7 +16892,8 @@ pub fn lower_module_to_mir_with_sources<'a>(
         entry_function: lowerer.entry_function,
         service_dispatch: lowerer.service_dispatch,
         actors: lowerer.actors,
-    })
+    };
+    Ok((mir, lowerer.lowered_signatures.unwrap_or_default()))
 }
 
 #[cfg(test)]
@@ -16808,6 +17034,292 @@ mod tests {
 
         // Body should be a BinOp
         assert!(matches!(func.body, MirExpr::BinOp { op: BinOp::Add, .. }));
+    }
+
+    #[test]
+    fn lowered_signatures_keep_checked_types_for_same_abi_specializations() {
+        let source = r#"
+fn keep<T>(values :: List<T>) -> List<T> = values
+fn private_value() -> Int = 7
+pub fn use_lists() do
+  let next = fn(value) do value + 1 end
+  (keep([next(private_value())]), keep(["mesh"]))
+end
+@native("mesh_native_value")
+pub fn native_value() -> Int
+"#;
+        let parse = mesh_parser::parse(source);
+        assert!(parse.errors().is_empty(), "{:?}", parse.errors());
+        let typeck = mesh_typeck::check(&parse);
+        assert!(typeck.errors.is_empty(), "{:?}", typeck.errors);
+        let pub_fns = mesh_typeck::collect_exports(&parse, &typeck)
+            .functions
+            .into_keys()
+            .collect();
+        let (mir, signatures) = lower_module_to_mir_with_signatures(
+            &parse,
+            &typeck,
+            "Proof.Lists",
+            &pub_fns,
+            &HashMap::new(),
+            &[],
+            |_| None,
+        )
+        .unwrap();
+
+        let declarations: HashMap<_, _> = parse
+            .tree()
+            .items()
+            .filter_map(|item| match item {
+                Item::FnDef(f) => Some((f.name()?.text()?, f.syntax().text_range())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(signatures.len(), 4, "{signatures:?}");
+        for entry in &signatures {
+            assert_eq!(entry.declaration, declarations[&entry.source_name]);
+            assert_eq!(entry.source_file, None);
+            assert!(entry.expression_types.is_empty());
+        }
+
+        let caller = function_body(&mir, "use_lists");
+        for (element, symbol) in [
+            (
+                Ty::int(),
+                "Proof_Lists__keep__spec__List_of_Int_end__ret__List_of_Int_end",
+            ),
+            (
+                Ty::string(),
+                "Proof_Lists__keep__spec__List_of_String_end__ret__List_of_String_end",
+            ),
+        ] {
+            let entry = signatures
+                .iter()
+                .find(|entry| entry.symbol == symbol)
+                .unwrap();
+            assert_eq!(entry.source_name, "keep");
+            let list = Ty::list(element);
+            assert_eq!(entry.signature, Ty::fun(vec![list.clone()], list));
+            let variant = mir.functions.iter().find(|f| f.name == symbol).unwrap();
+            assert_eq!(variant.params, [("values".to_string(), MirType::Ptr)]);
+            assert_eq!(variant.return_type, MirType::Ptr);
+            assert!(calls(&caller, symbol));
+        }
+        for (source_name, symbol) in [
+            ("private_value", "Proof_Lists__private_value"),
+            ("use_lists", "use_lists"),
+        ] {
+            let entry = signatures
+                .iter()
+                .find(|entry| entry.source_name == source_name)
+                .unwrap();
+            assert_eq!(entry.symbol, symbol);
+            assert_eq!(entry.signature, typeck.types[&entry.declaration]);
+        }
+        assert!(mir
+            .native_functions
+            .iter()
+            .any(|f| f.name == "native_value"));
+        assert!(mir.functions.iter().any(|f| f.is_closure_fn));
+    }
+
+    #[test]
+    fn lowered_signatures_keep_expression_types_for_abi_equivalent_variants() {
+        let source = r#"
+type Tree<T> do
+  Node(T)
+end
+
+struct Box<T> do
+  value :: T
+end
+
+fn rebuild<T>(tree :: Tree<T>) -> Box<Tree<T>> = Box { value: case tree do
+  Node(value) -> Node(value)
+end }
+
+fn examples() = (rebuild(Node([1])), rebuild(Node([true])))
+"#;
+        let parse = mesh_parser::parse(source);
+        assert!(parse.errors().is_empty(), "{:?}", parse.errors());
+        let checked = mesh_typeck::check(&parse);
+        assert!(checked.errors.is_empty(), "{:?}", checked.errors);
+        let file = MirSourceId(7);
+        let (mir, signatures) = lower_module_to_mir_with_signatures(
+            &parse,
+            &checked,
+            "",
+            &HashSet::new(),
+            &HashMap::new(),
+            &[],
+            |_| Some(file),
+        )
+        .unwrap();
+        let ordinary = lower_module_to_mir_with_sources(
+            &parse,
+            &checked,
+            "",
+            &HashSet::new(),
+            &HashMap::new(),
+            &[],
+            |_| Some(file),
+        )
+        .unwrap();
+
+        let variants: Vec<_> = signatures
+            .iter()
+            .filter(|entry| entry.source_name == "rebuild")
+            .collect();
+        assert_eq!(variants.len(), 2, "{variants:?}");
+
+        let span_of = |text: &str| {
+            let start = source.rfind(text).unwrap() as u32;
+            Span::new(start, start + text.len() as u32)
+        };
+        let constructor = span_of("Node(value)");
+        let case = span_of("case tree do\n  Node(value) -> Node(value)\nend");
+        let structure = span_of("Box { value: case tree do\n  Node(value) -> Node(value)\nend }");
+        let mut representations = Vec::new();
+        for element in [Ty::int(), Ty::bool()] {
+            let tree = Ty::App(
+                Box::new(Ty::Con(TyCon::new("Tree"))),
+                vec![Ty::list(element)],
+            );
+            let boxed = Ty::App(Box::new(Ty::Con(TyCon::new("Box"))), vec![tree.clone()]);
+            let signature = Ty::fun(vec![tree.clone()], boxed.clone());
+            let entry = variants
+                .iter()
+                .find(|entry| entry.signature == signature)
+                .unwrap();
+            assert_eq!(entry.source_file, Some(file));
+
+            let function = mir
+                .functions
+                .iter()
+                .find(|f| f.name == entry.symbol)
+                .unwrap();
+            let ordinary_body = function_body(&ordinary, &entry.symbol);
+            assert_eq!(format!("{:?}", function.body), format!("{ordinary_body:?}"));
+            let expressions = function.body.descendants();
+            let by_span = |span| {
+                expressions
+                    .iter()
+                    .copied()
+                    .find(|expr| expr.source_span() == Some(MirSourceSpan { file, span }))
+                    .unwrap_or_else(|| panic!("missing expression at {span:?}: {expressions:?}"))
+            };
+            let constructor_expr = by_span(constructor);
+            let case_expr = by_span(case);
+            let struct_expr = by_span(structure);
+            assert!(matches!(constructor_expr, MirExpr::ConstructVariant { .. }));
+            assert!(matches!(case_expr, MirExpr::Match { .. }));
+            assert!(matches!(struct_expr, MirExpr::StructLit { .. }));
+            assert_eq!(
+                entry.expression_types,
+                [
+                    (constructor, tree.clone()),
+                    (case, tree),
+                    (structure, boxed),
+                ]
+                .into_iter()
+                .map(|(span, ty)| (TextRange::new(span.start.into(), span.end.into()), ty))
+                .collect()
+            );
+            representations.push((constructor_expr.ty(), case_expr.ty(), struct_expr.ty()));
+        }
+        assert_eq!(representations[0], representations[1]);
+    }
+
+    #[test]
+    fn checked_expression_types_skip_foreign_source_ranges() {
+        let parse = mesh_parser::parse("fn value() = 3 + 4\n");
+        let checked = mesh_typeck::check(&parse);
+        let pub_fns = HashSet::new();
+        let mut lowerer = Lowerer::new(&checked, &parse, "", &pub_fns, &HashMap::new());
+        lowerer.source_file = Some(MirSourceId(0));
+        let Item::FnDef(function) = parse.tree().items().next().unwrap() else {
+            panic!("expected a function");
+        };
+        let mut body = lowerer.lower_fn_body(&function);
+        assert_eq!(lowerer.checked_expression_types(&body).len(), 1);
+        let MirExpr::BinOp { source_span, .. } = &mut body else {
+            panic!("expected a binary operation");
+        };
+        source_span.as_mut().unwrap().file = MirSourceId(1);
+        assert!(lowerer.checked_expression_types(&body).is_empty());
+    }
+
+    #[test]
+    fn lowered_signatures_retain_colliding_symbols_and_checked_arity_names() {
+        let parse = mesh_parser::parse(
+            "fn value() -> Int = 3 + 4\n\
+             fn value(input :: String) -> String = input\n\
+             pub fn Example__value__0() -> Bool = false == false\n",
+        );
+        assert!(parse.errors().is_empty(), "{:?}", parse.errors());
+        let typeck = mesh_typeck::check(&parse);
+        assert!(typeck.errors.is_empty(), "{:?}", typeck.errors);
+        let (mir, signatures) = lower_module_to_mir_with_signatures(
+            &parse,
+            &typeck,
+            "Example",
+            &HashSet::from(["Example__value__0".to_string()]),
+            &HashMap::new(),
+            &[],
+            |_| Some(MirSourceId(0)),
+        )
+        .unwrap();
+        let entries: Vec<_> = signatures
+            .iter()
+            .map(|entry| (entry.source_name.as_str(), entry.symbol.as_str()))
+            .collect();
+        assert_eq!(
+            entries,
+            [
+                ("value__0", "Example__value__0"),
+                ("value__1", "Example__value__1"),
+                ("Example__value__0", "Example__value__0"),
+            ]
+        );
+        assert_ne!(signatures[0].declaration, signatures[2].declaration);
+        assert_ne!(signatures[0].signature, signatures[2].signature);
+        for (entry, ty) in [(&signatures[0], Ty::int()), (&signatures[2], Ty::bool())] {
+            assert_eq!(entry.expression_types.len(), 1);
+            let (range, recorded_ty) = entry.expression_types.iter().next().unwrap();
+            assert!(entry.declaration.contains_range(*range));
+            assert_eq!(*recorded_ty, ty);
+        }
+        assert_eq!(
+            mir.functions
+                .iter()
+                .filter(|f| f.name == "Example__value__0")
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn lowered_signatures_exclude_the_generated_test_harness() {
+        let source = "fn value() -> Int = 7\ntest(\"value\") do\n  assert(value() == 7)\nend\n";
+        let source = mesh_parser::test_harness::preprocess_test_source(source).unwrap();
+        let parse = mesh_parser::parse(&source);
+        assert!(parse.errors().is_empty(), "{:?}", parse.errors());
+        let typeck = mesh_typeck::check(&parse);
+        assert!(typeck.errors.is_empty(), "{:?}", typeck.errors);
+        let (mir, signatures) = lower_module_to_mir_with_signatures(
+            &parse,
+            &typeck,
+            "",
+            &HashSet::new(),
+            &HashMap::new(),
+            &[],
+            |_| None,
+        )
+        .unwrap();
+        assert_eq!(mir.entry_function.as_deref(), Some("mesh_main"));
+        assert!(mir.functions.iter().any(|f| f.name == "__test_body_0"));
+        assert_eq!(signatures.len(), 1, "{signatures:?}");
+        assert_eq!(signatures[0].source_name, "value");
     }
 
     #[test]

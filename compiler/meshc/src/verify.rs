@@ -7,7 +7,7 @@ use mesh_codegen::mir::{MirFunction, MirModule, MirSourceId, MirSourceSpan};
 use mesh_common::module_graph::ModuleId;
 use mesh_common::span::{LineIndex, Span};
 use mesh_parser::ast::item::FnDef;
-use mesh_parser::law::{LawDeclaration, LawFile, LawImport};
+use mesh_parser::law::{LawDeclaration, LawFile, LawImport, LawProof, ProofTerm};
 use mesh_parser::{AstNode, SyntaxNode};
 use mesh_pkg::project::{laws, CheckedProject, ProjectData};
 use mesh_typeck::diagnostics::DiagnosticOptions;
@@ -15,7 +15,69 @@ use mesh_typeck::ty::Ty;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use crate::verify_proof;
 use crate::verify_solver::{self, Verdict};
+
+#[path = "verify_logic.rs"]
+mod logic;
+
+fn source_ids(
+    project: &ProjectData,
+) -> std::collections::HashMap<*const mesh_parser::Parse, MirSourceId> {
+    project
+        .module_parses
+        .iter()
+        .enumerate()
+        .map(|(index, parse)| (std::ptr::from_ref(parse), MirSourceId(index)))
+        .collect()
+}
+
+/// Lower the same project that will be built, retaining verifier metadata only
+/// when a source module declares an embedded proof obligation.
+pub(crate) fn lower_for_build(
+    project: &ProjectData,
+    checked: &mut CheckedProject,
+    package: &str,
+) -> Result<Vec<MirModule>, String> {
+    let mut proofs = logic::Program::default();
+    proofs.add_project_blocks(project, checked)?;
+    let inventory = proofs.inventory(package)?;
+    if inventory.is_empty()
+        && !checked.typeck.iter().any(|module| {
+            !module.proof_values.is_empty() || module.types.values().any(Ty::contains_proof)
+        })
+    {
+        return crate::lower_checked_modules(project, checked, |_| None, None);
+    }
+
+    let sources = source_ids(project);
+    let mut lowering = proofs.verification_lowering();
+    let modules = crate::lower_checked_modules(
+        project,
+        checked,
+        |parse| sources.get(&std::ptr::from_ref(parse)).copied(),
+        Some(&mut lowering),
+    )?;
+    if inventory.is_empty() {
+        return Ok(modules);
+    }
+    proofs
+        .verify(
+            project,
+            checked,
+            &modules,
+            &lowering.signatures,
+            verify_proof::Settings {
+                emit: None,
+                verdict: false,
+            },
+        )
+        .map_err(|failure| match failure.location {
+            Some(location) => format!("{location}: {}", failure.reason),
+            None => failure.reason,
+        })?;
+    Ok(modules)
+}
 
 const INVENTORY_VERSION: u32 = 1;
 
@@ -80,6 +142,7 @@ struct InventoryEntry {
 enum Access {
     Public,
     Private,
+    Theorem,
 }
 
 impl Access {
@@ -87,6 +150,7 @@ impl Access {
         match self {
             Self::Public => "public",
             Self::Private => "private",
+            Self::Theorem => "theorem",
         }
     }
 }
@@ -97,12 +161,21 @@ struct BoundLaw {
     symbol: String,
     expected: mesh_parser::Parse,
     expected_types: mesh_typeck::TypeckResult,
+    proof: Option<BoundProof>,
+}
+
+struct BoundProof {
+    term: ProofTerm,
+    location: Location,
+    signature: Ty,
 }
 
 #[derive(Serialize)]
 struct LawReport<'a> {
     #[serde(flatten)]
     entry: &'a InventoryEntry,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    proof_location: Option<&'a Location>,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
     verdict: Option<Verdict>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -128,6 +201,7 @@ pub(crate) fn run(
     list: bool,
     json: bool,
     preserve: Option<&Path>,
+    proof_settings: verify_proof::Settings<'_>,
 ) -> Result<(), String> {
     let project_dir = project_dir.canonicalize().map_err(|error| {
         format!(
@@ -147,9 +221,6 @@ pub(crate) fn run(
         ..
     } = crate::load_checked_project(&project_dir, false, false, &opts)?;
     let files = laws::discover(&project_dir, manifest.as_ref())?;
-    if files.paths.is_empty() && preserve.is_none() {
-        return Err("No laws found under the effective law roots".into());
-    }
 
     let package = manifest.as_ref().map_or_else(
         || {
@@ -161,9 +232,15 @@ pub(crate) fn run(
         |manifest| manifest.package.name.as_str(),
     );
     let mut bound = BTreeMap::<_, BoundLaw>::new();
+    let mut logic = logic::Program::default();
+    logic.add_project_blocks(&project, &checked)?;
     for path in &files.paths {
         let display = portable_path(path)?;
         let source = mesh_pkg::project::read_file(&project_dir.join(path))?;
+        if mesh_parser::logic::is_logic_file(&source) {
+            logic.add_file(&project, &checked, &display, &source)?;
+            continue;
+        }
         for law in bind_file(package, &display, &source, &project, &checked)? {
             let target = &law.entry.target;
             let key = (target.module.clone(), target.function.clone(), target.arity);
@@ -177,37 +254,54 @@ pub(crate) fn run(
         }
     }
 
+    let theorems = logic.inventory(package)?;
+    if bound.is_empty() && theorems.is_empty() && preserve.is_none() {
+        return Err("No laws found under the effective law roots".into());
+    }
     let baseline = preserve.map(read_baseline).transpose()?;
-    let changes = baseline.as_ref().map(|base| compare(base, bound.values()));
-    let program = if list || bound.is_empty() {
+    let changes = baseline.as_ref().map(|base| {
+        compare(
+            base,
+            bound
+                .values()
+                .map(|law| &law.entry)
+                .chain(theorems.iter().map(|theorem| &theorem.entry)),
+        )
+    });
+    let mut lowering = logic.verification_lowering();
+    let program = if list || (bound.is_empty() && theorems.is_empty()) {
         None
     } else {
-        let source_ids = project
-            .module_parses
-            .iter()
-            .enumerate()
-            .map(|(index, parse)| (std::ptr::from_ref(parse), MirSourceId(index)))
-            .collect::<std::collections::HashMap<_, _>>();
+        let source_ids = source_ids(&project);
         Some(crate::lower_checked_modules(
             &project,
             &mut checked,
             |parse| source_ids.get(&std::ptr::from_ref(parse)).copied(),
+            Some(&mut lowering),
         ))
     };
     let mut all_verified = true;
-    let reports = bound
+    let mut reports = bound
         .values()
         .map(|law| {
             let mut unsupported_at = None;
             let verdict = program.as_ref().map(|program| {
                 let result = match program {
-                    Ok(modules) => prove(law, &project, modules),
+                    Ok(modules) => prove(
+                        law,
+                        &project,
+                        &checked,
+                        modules,
+                        &lowering.signatures,
+                        proof_settings,
+                    ),
                     Err(error) => Err(error.clone().into()),
                 };
                 let verdict = result.unwrap_or_else(|error| {
                     unsupported_at = error
                         .location
-                        .and_then(|location| expression_location(law, &project, location));
+                        .and_then(|location| expression_location(law, &project, location))
+                        .or_else(|| law.proof.as_ref().map(|proof| proof.location.clone()));
                     Verdict::Unverified {
                         reason: error.reason,
                     }
@@ -217,11 +311,52 @@ pub(crate) fn run(
             });
             LawReport {
                 entry: &law.entry,
+                proof_location: law.proof.as_ref().map(|proof| &proof.location),
                 verdict,
                 unsupported_at,
             }
         })
         .collect::<Vec<_>>();
+
+    let logic_result = if theorems.is_empty() {
+        None
+    } else {
+        program.as_ref().map(|program| match program {
+            Ok(modules) => logic.verify(
+                &project,
+                &checked,
+                modules,
+                &lowering.signatures,
+                proof_settings,
+            ),
+            Err(error) => Err(error.clone().into()),
+        })
+    };
+    for theorem in &theorems {
+        let verdict = logic_result.as_ref().map(|result| match result {
+            Ok(()) => Verdict::Verified,
+            Err(failure) => {
+                all_verified = false;
+                Verdict::Unverified {
+                    reason: failure.reason.clone(),
+                }
+            }
+        });
+        let unsupported_at = logic_result.as_ref().and_then(|result| {
+            let failure = result.as_ref().err()?;
+            failure
+                .location
+                .clone()
+                .or_else(|| theorem.proof_location.clone())
+                .or_else(|| Some(theorem.entry.location.clone()))
+        });
+        reports.push(LawReport {
+            entry: &theorem.entry,
+            proof_location: theorem.proof_location.as_ref(),
+            verdict,
+            unsupported_at,
+        });
+    }
 
     let roots = files
         .roots
@@ -310,8 +445,23 @@ fn bind_file(
 ) -> Result<Vec<BoundLaw>, String> {
     let lines = LineIndex::new(source);
     let at = |span| Location::new(path, &lines, span);
-    let LawFile { imports, laws } = mesh_parser::law::parse(source)
+    let LawFile {
+        imports,
+        laws,
+        proofs,
+    } = mesh_parser::law::parse(source)
         .map_err(|error| format!("{}: {}", at(error.span), error.message))?;
+    let mut proofs_by_name = BTreeMap::new();
+    for proof in proofs {
+        let location = at(proof.span);
+        let name = proof.name.clone();
+        if let Some(previous) = proofs_by_name.insert(name.clone(), proof) {
+            return Err(format!(
+                "{location}: Duplicate proof for `{name}` (previously at {})",
+                at(previous.span)
+            ));
+        }
+    }
     let mut by_name = BTreeMap::<_, Vec<_>>::new();
     for import in &imports {
         by_name
@@ -346,9 +496,16 @@ fn bind_file(
             }
         };
         used.insert(import.name.as_str());
+        let proof = proofs_by_name.remove(&law.name);
         bound.push(bind_law(
-            package, project, checked, import, law, location, &at,
+            package, project, checked, import, law, proof, &at,
         )?);
+    }
+    if let Some((name, proof)) = proofs_by_name.first_key_value() {
+        return Err(format!(
+            "{}: Proof `{name}` has no law in this file",
+            at(proof.span)
+        ));
     }
     if let Some(unused) = imports
         .iter()
@@ -370,9 +527,10 @@ fn bind_law(
     checked: &CheckedProject,
     import: &LawImport,
     law: LawDeclaration,
-    location: Location,
+    proof: Option<LawProof>,
     at: &impl Fn(Span) -> Location,
 ) -> Result<BoundLaw, String> {
+    let location = at(law.span);
     let import_location = at(import.span);
     let target_name = format!("{}.{}", import.module, import.name);
     let module_id = project.graph.resolve(&import.module).ok_or_else(|| {
@@ -499,7 +657,7 @@ fn bind_law(
         .ok_or_else(|| format!("{location}: Missing checked law signature for `{target_name}`"))?;
     if actual_type != expected_type
         || !matches!(actual_type, Ty::Fun(..))
-        || crate::ty_contains_var(actual_type)
+        || actual_type.has_type_vars()
     {
         return Err(format!(
             "{location}: Law signature {expected_type} does not match the concrete target `{target_name}` signature {actual_type}"
@@ -532,6 +690,11 @@ fn bind_law(
         symbol,
         expected: law.expected,
         expected_types,
+        proof: proof.map(|proof| BoundProof {
+            term: proof.term,
+            location: at(proof.span),
+            signature: actual_type.clone(),
+        }),
     })
 }
 
@@ -593,7 +756,10 @@ fn hash_syntax(node: &SyntaxNode, hash: &mut Sha256) {
 fn prove(
     law: &BoundLaw,
     project: &ProjectData,
+    checked: &CheckedProject,
     modules: &[MirModule],
+    signatures: &[Vec<mesh_codegen::mir::lower::LoweredSignature>],
+    proof_settings: verify_proof::Settings<'_>,
 ) -> Result<Verdict, verify_solver::EncodingError> {
     let idx = project
         .compilation_order
@@ -613,7 +779,27 @@ fn prove(
     let expected_symbol =
         mesh_codegen::verification_function_symbol("", &law.entry.target.function, false);
     let expected = lowered_function(&expected, &expected_symbol)?;
-    verify_solver::check(modules, actual, expected)
+    match &law.proof {
+        Some(proof) => {
+            verify_proof::require_unambiguous_definition(modules, actual)?;
+            let declared = verify_proof::nominal_declarations(project, checked);
+            let callees = verify_proof::checked_callees(project, checked, modules, signatures);
+            let mut session =
+                verify_proof::ModelSession::new(modules, &declared).with_callees(callees);
+            verify_proof::check(
+                &mut session,
+                (
+                    actual,
+                    &checked.typeck[law.module_id.0 as usize].type_registry,
+                ),
+                (expected, &law.expected_types.type_registry),
+                &proof.signature,
+                &proof.term,
+                proof_settings,
+            )
+        }
+        None => verify_solver::check(modules, actual, expected),
+    }
 }
 
 fn expression_location(
@@ -636,6 +822,11 @@ fn expression_location(
         relative.end += origin.start;
         return Some(relative);
     }
+    project_expression_location(project, location)
+}
+
+fn project_expression_location(project: &ProjectData, location: MirSourceSpan) -> Option<Location> {
+    let MirSourceSpan { file, span } = location;
     let source = project.module_sources.get(file.0)?;
     let module = project.graph.modules.get(file.0)?;
     let path = portable_path(&module.path).ok()?;
@@ -691,11 +882,9 @@ fn read_baseline(path: &Path) -> Result<Baseline, String> {
 
 fn compare<'a>(
     baseline: &'a Baseline,
-    candidate: impl Iterator<Item = &'a BoundLaw>,
+    candidate: impl Iterator<Item = &'a InventoryEntry>,
 ) -> Vec<PreservationChange<'a>> {
-    let candidate: BTreeMap<_, _> = candidate
-        .map(|law| (&law.entry.target, &law.entry))
-        .collect();
+    let candidate: BTreeMap<_, _> = candidate.map(|entry| (&entry.target, entry)).collect();
     baseline
         .laws
         .iter()

@@ -1,0 +1,116 @@
+logic
+
+proof signed_le_trans do
+  exact Iff.mpr(BitVec.sle_iff_toInt_le,
+    Int.le_trans(Iff.mp(BitVec.sle_iff_toInt_le, ab), Iff.mp(BitVec.sle_iff_toInt_le, bc)))
+end
+
+proof signed_le_of_not_le do
+  exact Iff.mpr(BitVec.sle_iff_toInt_le,
+    Int.le_of_not_le(mt(Iff.mpr(BitVec.sle_iff_toInt_le), h)))
+end
+
+proof insert_perm do
+  induction xs do
+    List.nil() ->
+      unfold insert do
+        exact List.Perm.refl(List.cons(value, List.nil))
+      end
+    List.cons(head, tail, ih) ->
+      unfold insert do
+        branch BitVec.sle(value, head) == true do
+          yes(chosen) ->
+            rewrite ite_eq_left(chosen) do
+              exact List.Perm.refl(List.cons(value, List.cons(head, tail)))
+            end
+          no(skipped) ->
+            rewrite ite_eq_right(skipped) do
+              exact List.Perm.trans(List.Perm.cons(head, ih), List.Perm.swap(value, head, tail))
+            end
+        end
+      end
+  end
+end
+
+proof bound_from_cons do
+  cases member do
+    Or.inl(equal) -> rewrite equal do exact h end
+    Or.inr(in_tail) -> exact lower(item, in_tail)
+  end
+end
+
+proof bound_cons do
+  intro item do
+    intro member do
+      exact bound_from_cons(bound, item, head, tail, h, lower, List.eq_or_mem_of_mem_cons(member))
+    end
+  end
+end
+
+proof lift_bound do
+  intro z do
+    intro member do
+      exact signed_le_trans(x, head, z, h, List.rel_of_pairwise_cons(sorted, member))
+    end
+  end
+end
+
+proof bound_insert do
+  intro item do
+    intro member do
+      exact bound_cons(bound, value, tail, h, lower, item,
+        Iff.mp(List.Perm.mem_iff(insert_perm(value, tail)), member))
+    end
+  end
+end
+
+proof empty_bound do
+  cases impossible do end
+end
+
+proof insert_ordered do
+  induction xs do
+    List.nil() ->
+      intro sorted do
+        unfold insert do
+          exact List.Pairwise.cons(empty_bound(value), List.Pairwise.nil)
+        end
+      end
+    List.cons(head, tail, ih) ->
+      intro sorted do
+        unfold insert do
+          branch BitVec.sle(value, head) == true do
+            yes(chosen) ->
+              rewrite ite_eq_left(chosen) do
+                exact List.Pairwise.cons(
+                  bound_cons(value, head, tail, chosen, lift_bound(value, head, tail, chosen, sorted)),
+                  sorted)
+              end
+            no(skipped) ->
+              rewrite ite_eq_right(skipped) do
+                exact List.Pairwise.cons(
+                  bound_insert(head, value, tail, signed_le_of_not_le(value, head, skipped),
+                    fn z :: Int -> fn member :: List.Mem(z, tail) -> List.rel_of_pairwise_cons(sorted, member) end end),
+                  ih(List.Pairwise.of_cons(sorted)))
+              end
+          end
+        end
+      end
+  end
+end
+
+proof sort_ordered_permutation do
+  induction xs do
+    List.nil() ->
+      unfold sort do
+        split do exact List.Pairwise.nil, exact List.Perm.refl(List.nil) end
+      end
+    List.cons(head, tail, ih) ->
+      unfold sort do
+        split do
+          exact insert_ordered(head, sort(tail), And.left(ih)),
+          exact List.Perm.trans(insert_perm(head, sort(tail)), List.Perm.cons(head, And.right(ih)))
+        end
+      end
+  end
+end

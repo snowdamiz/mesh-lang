@@ -32,6 +32,7 @@ pub mod exhaustiveness;
 pub mod infer;
 mod ownership;
 mod plaintext;
+mod proof_values;
 pub mod traits;
 pub mod ty;
 pub mod unify;
@@ -48,8 +49,9 @@ use crate::ty::{Scheme, Ty};
 
 // Re-export type registry types for downstream crate consumption (codegen).
 pub use crate::infer::{
-    default_schema_table, register_variant_constructors, FnConstraints, SchemaInfo, StructDefInfo,
-    SumTypeDefInfo, TypeAliasInfo, TypeRegistry, VariantFieldInfo, VariantInfo,
+    default_schema_table, register_variant_constructors, FnConstraints, IndexedSumTypeInfo,
+    IndexedVariantInfo, SchemaInfo, StructDefInfo, SumTypeDefInfo, TypeAliasInfo, TypeRegistry,
+    VariantFieldInfo, VariantInfo,
 };
 // Re-export trait registry for downstream trait resolution (codegen dispatch).
 pub use crate::traits::TraitRegistry;
@@ -168,7 +170,7 @@ pub struct ModuleExports {
 impl ModuleExports {
     /// What an importer of `module_name` sees of its `exports`.
     pub fn new(module_name: String, exports: &ExportedSymbols) -> Self {
-        Self {
+        let mut module = Self {
             module_name,
             functions: exports.functions.clone(),
             struct_defs: exports.struct_defs.clone(),
@@ -187,7 +189,53 @@ impl ModuleExports {
                 .iter()
                 .map(|interface| interface.name.clone())
                 .collect(),
+        };
+        // A file checked in isolation has no module name yet. When its
+        // exports become an importable module, attach that identity to its
+        // indexed families and every signature that names one.
+        let name = &module.module_name;
+        let name_origin = |ty: &mut Ty| ty.assign_indexed_origin(name);
+        for scheme in module
+            .functions
+            .values_mut()
+            .chain(module.actor_defs.values_mut())
+            .chain(
+                module
+                    .service_defs
+                    .values_mut()
+                    .flat_map(|service| service.helpers.values_mut()),
+            )
+        {
+            name_origin(&mut scheme.ty);
         }
+        for def in module.struct_defs.values_mut() {
+            for (_, ty) in &mut def.fields {
+                name_origin(ty);
+            }
+        }
+        for def in module.sum_type_defs.values_mut() {
+            if let Some(indexed) = &mut def.indexed {
+                if indexed.origin.is_empty() {
+                    indexed.origin = name.clone();
+                }
+            }
+            for variant in &mut def.variants {
+                if let Some(indexed) = &mut variant.indexed {
+                    name_origin(&mut indexed.result);
+                }
+                for field in &mut variant.fields {
+                    match field {
+                        VariantFieldInfo::Positional(ty) | VariantFieldInfo::Named(_, ty) => {
+                            name_origin(ty)
+                        }
+                    }
+                }
+            }
+        }
+        for def in module.type_aliases.values_mut() {
+            name_origin(&mut def.aliased_type);
+        }
+        module
     }
 }
 
@@ -289,6 +337,8 @@ pub struct ClusteredRouteWrapperMetadata {
 /// to determine memory layouts, and the trait registry for trait method
 /// dispatch resolution during MIR lowering.
 pub struct TypeckResult {
+    /// Local proof-value bindings with types checked against their embedded theorem statements.
+    pub proof_values: FxHashMap<String, Ty>,
     /// Map from source text ranges to their inferred types.
     pub types: FxHashMap<TextRange, Ty>,
     /// Type errors found during checking.
@@ -406,6 +456,12 @@ pub fn collect_exports(parse: &mesh_parser::Parse, typeck: &TypeckResult) -> Exp
 
     let tree = parse.tree();
     let mut exports = ExportedSymbols::default();
+    exports.functions.extend(
+        typeck
+            .proof_values
+            .iter()
+            .map(|(name, ty)| (name.clone(), Scheme::mono(ty.clone()))),
+    );
 
     // What the module makes public, and the names of what it keeps private
     // (an import of one is "private", not "not found"). Actors and services

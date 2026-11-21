@@ -1219,7 +1219,7 @@ fn dispatch_safe(ty: &Ty) -> bool {
                 && args.iter().all(dispatch_safe)
         }
         Ty::Tuple(elements) => elements.iter().all(dispatch_safe),
-        Ty::Fun(..) | Ty::Never => true,
+        Ty::Fun(..) | Ty::Nat(_) | Ty::Never => true,
         Ty::Var(_) => false,
     }
 }

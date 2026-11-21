@@ -6,6 +6,7 @@
 
 use std::collections::HashMap;
 use std::fmt;
+use std::sync::Arc;
 
 /// A type variable, identified by a `u32` index into the unification table.
 ///
@@ -27,12 +28,15 @@ pub struct TyCon {
     pub name: String,
     /// Module origin for display in error messages (e.g., "Geometry").
     /// NOT used for type identity or codegen. Only affects Display output.
-    pub display_prefix: Option<String>,
+    pub display_prefix: Option<Box<str>>,
+    /// Identity of an indexed nominal's defining module. The thin handle
+    /// keeps ordinary types as small as they were before indexed nominals.
+    pub indexed_origin: Option<Arc<String>>,
 }
 
 impl PartialEq for TyCon {
     fn eq(&self, other: &Self) -> bool {
-        self.name == other.name // display_prefix intentionally excluded
+        self.name == other.name && self.indexed_origin == other.indexed_origin
     }
 }
 
@@ -43,20 +47,39 @@ impl TyCon {
         TyCon {
             name: name.into(),
             display_prefix: None,
+            indexed_origin: None,
         }
     }
 
     pub fn with_module(name: impl Into<String>, module: impl Into<String>) -> Self {
         TyCon {
             name: name.into(),
-            display_prefix: Some(module.into()),
+            display_prefix: Some(module.into().into_boxed_str()),
+            indexed_origin: None,
+        }
+    }
+
+    pub(crate) fn indexed(name: &str, origin: &str) -> Self {
+        Self {
+            name: name.into(),
+            display_prefix: None,
+            indexed_origin: Some(Arc::new(origin.into())),
         }
     }
 }
 
 impl fmt::Display for TyCon {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(prefix) = &self.display_prefix {
+        if let Some(name) = crate::proof_values::display_head(&self.name) {
+            return f.write_str(name);
+        }
+        let prefix = self.display_prefix.as_deref().or_else(|| {
+            self.indexed_origin
+                .as_deref()
+                .map(String::as_str)
+                .filter(|origin| !origin.is_empty())
+        });
+        if let Some(prefix) = prefix {
             write!(f, "{}.{}", prefix, self.name)
         } else {
             write!(f, "{}", self.name)
@@ -77,6 +100,8 @@ impl fmt::Display for TyCon {
 pub enum Ty {
     /// A type variable (unresolved during inference).
     Var(TyVar),
+    /// A kind-Nat term, admitted only in a declared index position.
+    Nat(NatIndex),
     /// A concrete type constructor.
     Con(TyCon),
     /// A function type: `(param_types) -> return_type`.
@@ -89,6 +114,62 @@ pub enum Ty {
     Never,
 }
 
+/// The first indexed nominal slice admits natural literals and successors
+/// of a natural literal or variable.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum NatIndex {
+    Literal(u64),
+    Variable(TyVar),
+    /// A named parameter in a constructor template or an annotation before
+    /// the corresponding inference variable is installed.
+    Parameter(String),
+    Succ(Box<NatIndex>),
+}
+
+impl NatIndex {
+    pub(crate) fn successor(self) -> Self {
+        if let Self::Literal(value) = self {
+            if let Some(value) = value.checked_add(1) {
+                return Self::Literal(value);
+            }
+        }
+        Self::Succ(Box::new(self))
+    }
+
+    pub fn predecessor(&self) -> Option<Self> {
+        match self {
+            Self::Literal(n) => n.checked_sub(1).map(Self::Literal),
+            Self::Succ(inner) => Some(*inner.clone()),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn leaf(&self) -> &Self {
+        match self {
+            Self::Succ(inner) => inner.leaf(),
+            leaf => leaf,
+        }
+    }
+
+    pub fn map_leaf(&self, f: impl FnOnce(&Self) -> Self) -> Self {
+        match self {
+            Self::Succ(inner) => inner.map_leaf(f).successor(),
+            leaf => f(leaf),
+        }
+    }
+}
+
+impl fmt::Display for NatIndex {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Literal(value) => write!(f, "{value}"),
+            Self::Variable(var) => write!(f, "?{}", var.0),
+            Self::Parameter(name) => write!(f, "{name}"),
+            Self::Succ(inner) => write!(f, "Succ<{inner}>"),
+        }
+    }
+}
+
 impl Ty {
     /// The types this one is built from, in order: a function's parameters
     /// and then its result, an application's constructor and then its
@@ -98,7 +179,7 @@ impl Ty {
             Ty::Fun(params, ret) => (None, params, Some(ret)),
             Ty::App(con, args) => (Some(con), args, None),
             Ty::Tuple(elems) => (None, elems, None),
-            Ty::Var(_) | Ty::Con(_) | Ty::Never => (None, &[], None),
+            Ty::Var(_) | Ty::Nat(_) | Ty::Con(_) | Ty::Never => (None, &[], None),
         };
         first.into_iter().chain(middle).chain(last)
     }
@@ -109,7 +190,7 @@ impl Ty {
             Ty::Fun(params, ret) => Ty::Fun(params.iter().map(&mut f).collect(), Box::new(f(ret))),
             Ty::App(con, args) => Ty::App(Box::new(f(con)), args.iter().map(f).collect()),
             Ty::Tuple(elems) => Ty::Tuple(elems.iter().map(f).collect()),
-            Ty::Var(_) | Ty::Con(_) | Ty::Never => self.clone(),
+            Ty::Var(_) | Ty::Nat(_) | Ty::Con(_) | Ty::Never => self.clone(),
         }
     }
 
@@ -128,6 +209,26 @@ impl Ty {
         self.con().map(|c| c.name.as_str())
     }
 
+    pub(crate) fn assign_indexed_origin(&mut self, origin: &str) {
+        match self {
+            Ty::Con(con) if con.indexed_origin.as_deref().is_some_and(String::is_empty) => {
+                *con = TyCon::indexed(&con.name, origin);
+            }
+            Ty::App(con, args) | Ty::Fun(args, con) => {
+                con.assign_indexed_origin(origin);
+                for arg in args {
+                    arg.assign_indexed_origin(origin);
+                }
+            }
+            Ty::Tuple(args) => {
+                for arg in args {
+                    arg.assign_indexed_origin(origin);
+                }
+            }
+            _ => {}
+        }
+    }
+
     /// The arguments of this type if it is the constructor `name` applied to
     /// them: `[Int]` for `Option<Int>` and "Option".
     pub fn args_of(&self, name: &str) -> Option<&[Ty]> {
@@ -143,6 +244,14 @@ impl Ty {
     pub fn replace_cons(&self, replace: &mut dyn FnMut(&TyCon) -> Option<Ty>) -> Ty {
         match self {
             Ty::Con(con) => replace(con).unwrap_or_else(|| self.clone()),
+            Ty::Nat(index) => Ty::Nat(index.map_leaf(|leaf| {
+                if let NatIndex::Parameter(name) = leaf {
+                    if let Some(Ty::Nat(replacement)) = replace(&TyCon::new(name)) {
+                        return replacement;
+                    }
+                }
+                leaf.clone()
+            })),
             _ => self.map_parts(|part| part.replace_cons(replace)),
         }
     }
@@ -169,6 +278,10 @@ impl Ty {
     pub fn with_holes(&self) -> Ty {
         match self {
             Ty::Var(_) => Ty::Con(TyCon::new("_")),
+            Ty::Nat(index) => Ty::Nat(index.map_leaf(|leaf| match leaf {
+                NatIndex::Variable(_) => NatIndex::Parameter("_".into()),
+                _ => leaf.clone(),
+            })),
             _ => self.map_parts(Ty::with_holes),
         }
     }
@@ -322,7 +435,19 @@ impl Ty {
 
     /// Whether any inference variable occurs in this type.
     pub fn has_type_vars(&self) -> bool {
-        matches!(self, Ty::Var(_)) || self.parts().any(Ty::has_type_vars)
+        self.variable().is_some() || self.parts().any(Ty::has_type_vars)
+    }
+
+    /// The variable of this leaf type or Nat term, if present.
+    pub(crate) fn variable(&self) -> Option<TyVar> {
+        match self {
+            Ty::Var(var) => Some(*var),
+            Ty::Nat(index) => match index.leaf() {
+                NatIndex::Variable(var) => Some(*var),
+                _ => None,
+            },
+            _ => None,
+        }
     }
 
     /// Create an `Option<T>` type.
@@ -445,6 +570,7 @@ impl fmt::Display for Ty {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Ty::Var(v) => write!(f, "?{}", v.0),
+            Ty::Nat(index) => write!(f, "{index}"),
             Ty::Con(c) => write!(f, "{}", c),
             Ty::Fun(params, ret) => {
                 write!(f, "(")?;
@@ -544,16 +670,20 @@ impl Scheme {
 
 /// Collect all TyVar references in a type, in order of first appearance.
 fn collect_free_tyvars(ty: &Ty, out: &mut Vec<TyVar>) {
-    match ty {
-        Ty::Var(v) => out.push(*v),
-        _ => ty.parts().for_each(|part| collect_free_tyvars(part, out)),
+    if let Some(var) = ty.variable() {
+        out.push(var);
     }
+    ty.parts().for_each(|part| collect_free_tyvars(part, out));
 }
 
 /// `ty` with its variables renamed by `mapping`, which holds each of them.
 fn remap_tyvars(ty: &Ty, mapping: &HashMap<TyVar, TyVar>) -> Ty {
     match ty {
         Ty::Var(v) => Ty::Var(mapping[v]),
+        Ty::Nat(index) => Ty::Nat(index.map_leaf(|leaf| match leaf {
+            NatIndex::Variable(var) => NatIndex::Variable(mapping[var]),
+            _ => leaf.clone(),
+        })),
         _ => ty.map_parts(|part| remap_tyvars(part, mapping)),
     }
 }
@@ -561,21 +691,23 @@ fn remap_tyvars(ty: &Ty, mapping: &HashMap<TyVar, TyVar>) -> Ty {
 /// `ty` with each variable named by its place in `seen`, which it joins
 /// when first met: `a` to `z`, then `a1` to `z1`, and so on.
 fn name_vars(ty: &Ty, seen: &mut Vec<TyVar>) -> Ty {
+    let Some(var) = ty.variable() else {
+        return ty.map_parts(|part| name_vars(part, seen));
+    };
+    let index = seen.iter().position(|v| *v == var).unwrap_or_else(|| {
+        seen.push(var);
+        seen.len() - 1
+    });
+    let letter = (b'a' + (index % 26) as u8) as char;
+    let suffix = if index < 26 {
+        String::new()
+    } else {
+        (index / 26).to_string()
+    };
+    let name = format!("{letter}{suffix}");
     match ty {
-        Ty::Var(var) => {
-            let index = seen.iter().position(|v| v == var).unwrap_or_else(|| {
-                seen.push(*var);
-                seen.len() - 1
-            });
-            let letter = (b'a' + (index % 26) as u8) as char;
-            let suffix = if index < 26 {
-                String::new()
-            } else {
-                (index / 26).to_string()
-            };
-            Ty::Con(TyCon::new(format!("{letter}{suffix}")))
-        }
-        _ => ty.map_parts(|part| name_vars(part, seen)),
+        Ty::Nat(index) => Ty::Nat(index.map_leaf(|_| NatIndex::Parameter(name))),
+        _ => Ty::Con(TyCon::new(name)),
     }
 }
 

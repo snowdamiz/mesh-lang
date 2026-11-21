@@ -1,0 +1,42 @@
+logic
+
+inductive Chain(T :: Type) do
+  End()
+  Link(head :: T, tail :: Chain<T>)
+end
+
+fn copy(T :: Type, chain :: Chain<T>) -> Chain<T> do
+  case chain do
+    Chain.End() -> Chain.End()
+    Chain.Link(head, tail) -> Chain.Link(head, copy(T, tail))
+  end
+end
+
+theorem copy_is_identity(T :: Type, chain :: Chain<T>) do
+  copy(T, chain) == chain
+end
+
+proof copy_is_identity do
+  induction chain do
+    Chain.End() -> refl
+    Chain.Link(head, tail, ih) -> exact congr(Chain.Link(head), ih)
+  end
+end
+
+theorem invariant_has_witness(P :: Nat -> Prop, h :: P(7)) do
+  exists value :: Nat do P(value) end
+end
+
+proof invariant_has_witness do
+  witness 7 do exact h end
+end
+
+theorem preserves_equality(T :: Type, x :: T, y :: T) do
+  x == y => copy(T, Chain.Link(x, Chain.End())) == copy(T, Chain.Link(y, Chain.End()))
+end
+
+proof preserves_equality do
+  intro equal do
+    rewrite equal do refl end
+  end
+end
