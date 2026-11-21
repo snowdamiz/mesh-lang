@@ -2276,7 +2276,10 @@ occupied the effect role's 15 sessions until the server rejected new
 checkouts. The exact runner recorded two startup capacity rejections and
 then completed all 128 jobs on attempt one, with one effect per job.
 The seven existing one-write cases and the focused startup retry test
-also passed on macOS. These were untimed runs.
+also passed on macOS. A separate untimed Linux trace matched all 264
+children from the two workload modes and four revocation cases to
+successful `posix_spawnp` calls from their own runner and exact reaps.
+The trace reported zero lost events.
 [Admission and reset receipts](../proof/jobs-parity/qualification-v1.json)
 
 ### Follow-up correctness proofs

@@ -7356,7 +7356,64 @@
       "proof_sha256": "6a2fe8768e054eb66db588e3312fe92ae4330c5c8f0c06878c7821e665c1f933",
       "verified_warm_idle_backends": 15,
       "two_write_jobs_per_mode": 128,
-      "revocation_cases": 4
+      "revocation_cases": 4,
+      "spawn_trace": {
+        "archive_sha256": "9cb8e5e7987d7aba6fad63a14e46728cb0bb5b43eb6e9f6b402834d38c342648",
+        "cases": {
+          "fresh": {
+            "children": 128,
+            "runner": 456,
+            "spawn": {
+              "posix_spawnp": 128
+            }
+          },
+          "fresh-between": {
+            "children": 2,
+            "runner": 1567,
+            "spawn": {
+              "posix_spawnp": 2
+            }
+          },
+          "fresh-final": {
+            "children": 2,
+            "runner": 1673,
+            "spawn": {
+              "posix_spawnp": 2
+            }
+          },
+          "prewarmed": {
+            "children": 128,
+            "runner": 1781,
+            "spawn": {
+              "posix_spawnp": 128
+            }
+          },
+          "prewarmed-between": {
+            "children": 2,
+            "runner": 2780,
+            "spawn": {
+              "posix_spawnp": 2
+            }
+          },
+          "prewarmed-final": {
+            "children": 2,
+            "runner": 2899,
+            "spawn": {
+              "posix_spawnp": 2
+            }
+          }
+        },
+        "embedded_proof_sha256": "f2456004be38ded316e93aff82b3ab4899b4773f90bdcc78b9bd895cc9b485de",
+        "filtered_trace_sha256": "23e2d55fafa47c1a622f7ed3b045498f8c2339b635b363152cce7144188283f7",
+        "libc_sha256": "a9cb3bea15a5be124ad570af1ef81409db6acfd5940f5b2b5fbf40e4cdaee624",
+        "lost_trace_events": 0,
+        "original_pilot_sha256": "6fe89e50bc3ca6a06f1f3b01db35a1a1021e1909d1d220ccf68fa7aa6740ecee",
+        "run": "target/jobs-parity/linux-arm-ownership-guest/worker-spawn-observer/c3edbaa2-fenced-pilot",
+        "scope": "Untimed Linux ARM64 trace. All child PIDs joined to application reconciliation and the successful libc call from their runner.",
+        "serial_sha256": "58fd02a94fab84699cd65e6bddc4795b4ff2571ea275d1d8868007fd63e4e53e",
+        "receipt": "target/jobs-parity/linux-arm-ownership-guest/worker-spawn-observer/c3edbaa2-fenced-pilot/proof/spawn-trace.json",
+        "receipt_sha256": "11f0bd75180e39b6e80506aed84098575e032370db3f793ed21e95fef4445242"
+      }
     },
     "role_capacity_recovery": {
       "run": "target/jobs-parity/two-write-local/macos/c3edbaa251d4946e744b67281e035e973bc4d4c1/real-postgres-role-retry-v2",
