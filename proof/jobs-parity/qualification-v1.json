@@ -37155,6 +37155,43 @@
         "reset_loss_events": {
           "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-versioned-proof/live-pg18.7-1/extracted/evidence/reset-loss-events.log",
           "sha256": "4f22a2316048a3d5a6738199ed25ccc6995bdb4b48dcf1be0b9882cafb829a20"
+        },
+        "observed_replay": {
+          "status": "complete",
+          "verified_cases": 12,
+          "scope": "The replay retains the original case outcomes, checks, and poll cadence. It records the states returned by the existing observer.",
+          "result": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-versioned-proof/live-pg18.7-observed-1/extracted/evidence/result.json",
+            "sha256": "6da3201593b6182de6e11d7874cdc88a71b245af526a032e267c2cc4a5b7a3ad"
+          },
+          "faults": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-versioned-proof/live-pg18.7-observed-1/extracted/evidence/faults.json",
+            "sha256": "b8fa5745b72e6b993b3019fbdc1d5f3235a388a7cd143ff4e34d9c4e32e40263"
+          },
+          "postgres_identity": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-versioned-proof/live-pg18.7-observed-1/extracted/evidence/postgres-identity.json",
+            "sha256": "07b9a8c29febe64a8eed8f0cd6df4b944b7e84f5e8869b3b1c2f9284effcdaa9"
+          },
+          "authentication": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-versioned-proof/live-pg18.7-observed-1/extracted/evidence/postgres-auth.json",
+            "sha256": "8b98e5deff5bf32e98730ad5de440dcdb936511f4627568b031149a1cf01b8c0"
+          },
+          "reset_loss_settlement": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-versioned-proof/live-pg18.7-observed-1/extracted/evidence/reset-loss-settlement.json",
+            "sha256": "14c4745c3d240b7fd6a4b905d4333fe24a16e48061030a0aac4be1cc3ef1ed4d"
+          },
+          "pack": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-versioned-proof/live-pg18.7-observed-1/pack.json",
+            "sha256": "0333d991e3a24651221a5202e52c9f9512cddbde4cf7afd8ad0d3b757c07bae6"
+          },
+          "extraction": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-versioned-proof/live-pg18.7-observed-1/extracted/extraction.json",
+            "sha256": "4a60d9445bb5ddcbc834f5158e97501ce77cf2754eb78e516a035d6b155e8636"
+          },
+          "observer": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-versioned-proof/observe_settlement.py",
+            "sha256": "1f2c57b910facb148bc3cea922c49521f716db18ae1a39650624d36ad6a3bcc2"
+          }
         }
       },
       "19.0": {

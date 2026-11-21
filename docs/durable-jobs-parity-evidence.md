@@ -4188,7 +4188,11 @@ At this revision, that error is set by running-phase admission
 after the prior attempt leaves the single slot. Maintenance can
 promote an immediately due retryable row to available between
 observer polls. The capture lacks the last observed row, so that
-explanation remains a hypothesis and the proof remains failed.
+explanation remains a hypothesis. A second PostgreSQL 18.7 run passed
+all 12 cases with the same executable, libc observer, and assertions.
+The replay recorded the states returned by the existing polling query.
+At reset loss it observed `executing:1` and then `retryable:1` before the
+replacement completed attempt 2. The original timeout remains unexplained.
 [Versioned native fault receipts](../proof/jobs-parity/qualification-v1.json)
 
 The corrected bounded-pool draft at `ee686882` passed 35 focused
