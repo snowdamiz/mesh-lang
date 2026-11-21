@@ -259,7 +259,7 @@ pub enum SyntaxKind {
     WHERE_CLAUSE,
     /// Trait bound: `T: TraitName`
     TRAIT_BOUND,
-    /// Generic parameter list: `<A, B>`
+    /// Generic parameter list: `<T, n :: Nat>`. Bare parameters are IDENT tokens.
     GENERIC_PARAM_LIST,
     /// Generic argument list in type application: `<Int, String>`
     GENERIC_ARG_LIST,
@@ -373,6 +373,15 @@ pub enum SyntaxKind {
     RESTART_LIMIT,
     /// Seconds limit in supervisor: `max_seconds: 5`
     SECONDS_LIMIT,
+
+    /// Kinded generic parameter: `n :: Nat` with NAME and TYPE_ANNOTATION children.
+    INDEX_PARAM,
+    /// Natural number used as a generic argument, retaining the INT_LITERAL token.
+    NAT_INDEX,
+    /// Constructor result after `->`, containing a TYPE_ANNOTATION child.
+    VARIANT_RESULT,
+    /// Opaque top-level `logic do ... end` block.
+    LOGIC_BLOCK,
 }
 
 impl SyntaxKind {
@@ -837,6 +846,10 @@ mod tests {
             SyntaxKind::STRATEGY_CLAUSE,
             SyntaxKind::RESTART_LIMIT,
             SyntaxKind::SECONDS_LIMIT,
+            SyntaxKind::INDEX_PARAM,
+            SyntaxKind::NAT_INDEX,
+            SyntaxKind::VARIANT_RESULT,
+            SyntaxKind::LOGIC_BLOCK,
         ];
         assert!(
             node_kinds.len() >= 90,

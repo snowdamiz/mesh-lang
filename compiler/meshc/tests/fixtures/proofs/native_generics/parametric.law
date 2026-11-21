@@ -1,0 +1,14 @@
+logic
+from Trees import Tree
+from Trees import mirror
+
+theorem mirror_twice(T :: Type, tree :: Tree<T>) do mirror(T, mirror(T, tree)) == tree end
+proof mirror_twice do
+  induction tree do
+    Tree.Leaf(value) -> refl
+    Tree.Branch(left, right, ih_left, ih_right) ->
+      change Tree.Branch(mirror(T, mirror(T, left)), mirror(T, mirror(T, right))) == Tree.Branch(left, right) do
+        rewrite ih_left do rewrite ih_right do refl end end
+      end
+  end
+end

@@ -10,7 +10,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::env::TypeEnv;
 use crate::error::{ConstraintOrigin, TypeError};
-use crate::ty::{Scheme, Ty, TyCon, TyVar};
+use crate::ty::{NatIndex, Scheme, Ty, TyCon, TyVar};
 use crate::{ClusteredRouteReplicationCount, ClusteredRouteWrapperMetadata};
 
 /// A method call that several impls could answer (`Meters.convert()` with
@@ -75,10 +75,9 @@ pub enum SchemeRequirement {
 
 /// The first of `vars` that occurs in `ty`, a resolved type.
 fn first_of(ty: &Ty, vars: &[TyVar]) -> Option<TyVar> {
-    match ty {
-        Ty::Var(var) => vars.contains(var).then_some(*var),
-        _ => ty.parts().find_map(|part| first_of(part, vars)),
-    }
+    ty.variable()
+        .filter(|var| vars.contains(var))
+        .or_else(|| ty.parts().find_map(|part| first_of(part, vars)))
 }
 
 /// Where the checker is nested (see `InferCtx::nesting`).
@@ -88,6 +87,7 @@ pub struct Nesting {
     loop_depth: u32,
     returns: usize,
     scopes: usize,
+    index_equations: usize,
 }
 
 /// A derived trait's need of one field: `type_name` derives `trait_name`
@@ -118,6 +118,15 @@ pub struct InferCtx {
     /// Level at which each type variable was created.
     /// Indexed by `TyVar.0`.
     var_levels: Vec<u32>,
+    /// Declared function indices are rigid in the body. Instances of a
+    /// function or constructor scheme always allocate fresh flexible ids.
+    rigid_indices: FxHashMap<TyVar, String>,
+    /// Rigid constructor indices introduced by matching under a local
+    /// equation. Their level is the arm in which they were introduced.
+    arm_indices: FxHashSet<TyVar>,
+    /// Equalities learned from enclosing constructor patterns. They do not
+    /// assign any of the rigid indices in the unification table.
+    index_equations: Vec<(TyVar, NatIndex)>,
     /// Type errors accumulated during inference.
     pub errors: Vec<TypeError>,
     /// Warnings accumulated during inference (e.g. redundant match arms).
@@ -196,6 +205,7 @@ pub struct InferCtx {
     /// Pushed when entering a function/closure body, popped when leaving.
     /// `None` means the return type is not yet known (will be inferred).
     pub fn_return_type_stack: Vec<Option<Ty>>,
+    fn_return_levels: Vec<u32>,
     /// Per entry of `fn_return_type_stack`: the early returns (`return`,
     /// `?`) in a function whose return type is not declared.
     pub fn_returned_types: Vec<Vec<EarlyReturn>>,
@@ -310,6 +320,7 @@ impl InferCtx {
     /// Push a function return type onto the stack (call when entering a function body).
     pub fn push_fn_return_type(&mut self, ty: Option<Ty>) {
         self.fn_return_type_stack.push(ty);
+        self.fn_return_levels.push(self.current_level);
         self.fn_returned_types.push(Vec::new());
     }
 
@@ -318,11 +329,24 @@ impl InferCtx {
     /// declared, for the caller to join with the body's type.
     pub fn pop_fn_return_type(&mut self) -> Vec<EarlyReturn> {
         self.fn_return_type_stack.pop();
+        self.fn_return_levels.pop();
         self.fn_returned_types.pop().unwrap_or_default()
     }
 
     /// Record an early return in a function without a declared return type.
-    pub fn record_return(&mut self, early: EarlyReturn) {
+    pub fn record_return(&mut self, mut early: EarlyReturn) {
+        if !self.index_equations.is_empty() {
+            if let Some(&level) = self.fn_return_levels.last() {
+                early.ty = self.resolve(early.ty);
+                if self
+                    .check_index_escape(&early.ty, level, early.span)
+                    .is_err()
+                {
+                    return;
+                }
+                self.lower_levels(&early.ty, level);
+            }
+        }
         if let Some(returns) = self.fn_returned_types.last_mut() {
             returns.push(early);
         }
@@ -337,10 +361,75 @@ impl InferCtx {
 
     /// Create a fresh type variable at the current level.
     pub fn fresh_var(&mut self) -> Ty {
+        Ty::Var(self.fresh_key())
+    }
+
+    pub(crate) fn fresh_index(&mut self, rigid_name: Option<&str>) -> Ty {
+        let var = self.fresh_key();
+        if let Some(name) = rigid_name {
+            self.rigid_indices.insert(var, name.to_owned());
+        }
+        Ty::Nat(NatIndex::Variable(var))
+    }
+
+    pub(crate) fn fresh_arm_index(&mut self, name: &str) -> NatIndex {
+        let var = self.fresh_key();
+        self.rigid_indices.insert(var, name.to_owned());
+        self.arm_indices.insert(var);
+        NatIndex::Variable(var)
+    }
+
+    pub(crate) fn is_rigid_index(&self, var: TyVar) -> bool {
+        self.rigid_indices.contains_key(&var)
+    }
+
+    pub(crate) fn add_index_equation(&mut self, var: TyVar, value: NatIndex) {
+        debug_assert!(self.is_rigid_index(var));
+        self.index_equations.push((var, value));
+    }
+
+    /// Check the normalized type from an indexed arm before it is joined
+    /// with sibling results. Later unification must treat any remaining
+    /// flexible variables as belonging to the enclosing scope.
+    pub(crate) fn close_arm_type(&mut self, ty: &Ty, span: TextRange) -> Result<(), TypeError> {
+        self.check_index_escape(ty, self.current_level, span)?;
+        self.lower_levels(ty, self.current_level);
+        Ok(())
+    }
+
+    fn check_index_escape(
+        &mut self,
+        ty: &Ty,
+        level: u32,
+        span: TextRange,
+    ) -> Result<(), TypeError> {
+        if self.arm_indices.is_empty() || !self.has_inner_arm_index(ty, level) {
+            return Ok(());
+        }
+        let err = TypeError::InvalidIndex {
+            reason: "a constructor-local Nat index cannot escape its case arm".into(),
+            span,
+        };
+        self.errors.push(err.clone());
+        Err(err)
+    }
+
+    fn has_inner_arm_index(&self, ty: &Ty, level: u32) -> bool {
+        match ty {
+            Ty::Nat(index) => matches!(
+                index.leaf(),
+                NatIndex::Variable(var)
+                    if self.arm_indices.contains(var) && self.level_of(*var) > level
+            ),
+            _ => ty.parts().any(|part| self.has_inner_arm_index(part, level)),
+        }
+    }
+
+    fn fresh_key(&mut self) -> TyVar {
         // The table numbers its keys in order, as `var_levels` holds them.
         let var = self.table.new_key(None);
         self.var_levels.push(self.current_level);
-        Ty::Var(var)
+        var
     }
 
     /// The `let` level `v` was created at, or lowered to.
@@ -357,14 +446,13 @@ impl InferCtx {
     /// `let`, which must not generalize them (a call of a function defined
     /// later in the file fixes them only then).
     fn lower_levels(&mut self, ty: &Ty, level: u32) {
-        match self.resolve(ty.clone()) {
-            Ty::Var(v) => {
-                if self.level_of(v) > level {
-                    self.set_level(v, level);
-                }
+        let ty = self.resolve(ty.clone());
+        if let Some(var) = ty.variable() {
+            if self.level_of(var) > level && !self.rigid_indices.contains_key(&var) {
+                self.set_level(var, level);
             }
-            ty => ty.parts().for_each(|part| self.lower_levels(part, level)),
         }
+        ty.parts().for_each(|part| self.lower_levels(part, level));
     }
 
     /// A fresh variable at the level of `anchor`'s variable (the current level
@@ -386,6 +474,7 @@ impl InferCtx {
     /// that value. Otherwise return the type as-is.
     pub fn resolve(&mut self, ty: Ty) -> Ty {
         match ty {
+            Ty::Nat(index) => Ty::Nat(self.resolve_index(&index)),
             Ty::Var(v) => {
                 let probe = self.table.probe_value(v);
                 match probe {
@@ -421,12 +510,36 @@ impl InferCtx {
         }
     }
 
+    fn resolve_index(&mut self, index: &NatIndex) -> NatIndex {
+        index.map_leaf(|leaf| match leaf {
+            NatIndex::Variable(var) => {
+                if let Some(value) = self
+                    .index_equations
+                    .iter()
+                    .rev()
+                    .find_map(|(key, value)| (key == var).then(|| value.clone()))
+                {
+                    return self.resolve_index(&value);
+                }
+                match self.table.probe_value(*var) {
+                    Some(Ty::Nat(value)) => self.resolve_index(&value),
+                    None => NatIndex::Variable(self.table.find(*var)),
+                    Some(_) => unreachable!("Nat variable bound to a type"),
+                }
+            }
+            _ => leaf.clone(),
+        })
+    }
+
     /// Check if two TyCon names are compatible because they both represent
     /// opaque iterator handle pointers. All iterator handle types
     /// (ListIterator, MapIterator, etc.) and adapter types resolve to
     /// MirType::Ptr at the MIR/codegen level, so they must be unifiable
     /// with each other and with the generic `Ptr` type in the type checker.
     fn iterator_ptr_compatible(c1: &TyCon, c2: &TyCon) -> bool {
+        if c1.indexed_origin.is_some() || c2.indexed_origin.is_some() {
+            return false;
+        }
         fn is_iter_ptr(name: &str) -> bool {
             name == "Ptr"
                 || name == "ListIterator"
@@ -517,6 +630,7 @@ impl InferCtx {
     ) -> Result<(), TypeError> {
         if first_of(&ty, &[v]).is_none() {
             let level = self.level_of(v);
+            self.check_index_escape(&ty, level, origin.span().unwrap_or_default())?;
             self.lower_levels(&ty, level);
             self.table
                 .unify_var_value(v, Some(ty))
@@ -553,12 +667,63 @@ impl InferCtx {
     /// shown by their names.
     fn with_param_names(&mut self, ty: Ty) -> Ty {
         match self.resolve(ty) {
+            Ty::Nat(index) => Ty::Nat(index.map_leaf(|leaf| {
+                match leaf {
+                    NatIndex::Variable(var) => self
+                        .rigid_indices
+                        .get(var)
+                        .map(|name| NatIndex::Parameter(name.clone()))
+                        .unwrap_or_else(|| leaf.clone()),
+                    _ => leaf.clone(),
+                }
+            })),
             Ty::Var(v) => self
                 .rigid_param_name(v)
                 .map(|name| Ty::Con(TyCon::new(name)))
                 .unwrap_or(Ty::Var(v)),
             other => other.map_parts(|part| self.with_param_names(part.clone())),
         }
+    }
+
+    fn unify_indices(
+        &mut self,
+        expected: NatIndex,
+        found: NatIndex,
+        origin: ConstraintOrigin,
+    ) -> Result<(), TypeError> {
+        let mut left = expected.clone();
+        let mut right = found.clone();
+        loop {
+            if left == right {
+                return Ok(());
+            }
+            match (&left, &right) {
+                (NatIndex::Literal(_), NatIndex::Literal(_)) => break,
+                (NatIndex::Variable(var), _) if !self.rigid_indices.contains_key(var) => {
+                    if right.leaf() != &left {
+                        return self.bind_var(*var, Ty::Nat(right), origin, true);
+                    }
+                    break;
+                }
+                (_, NatIndex::Variable(var)) if !self.rigid_indices.contains_key(var) => {
+                    if left.leaf() != &right {
+                        return self.bind_var(*var, Ty::Nat(left), origin, false);
+                    }
+                    break;
+                }
+                _ => match (left.predecessor(), right.predecessor()) {
+                    (Some(a), Some(b)) => (left, right) = (a, b),
+                    _ => break,
+                },
+            }
+        }
+        let err = TypeError::Mismatch {
+            expected: self.with_param_names(Ty::Nat(expected)),
+            found: self.with_param_names(Ty::Nat(found)),
+            origin,
+        };
+        self.errors.push(err.clone());
+        Err(err)
     }
 
     // ── Unification ─────────────────────────────────────────────────────
@@ -581,6 +746,17 @@ impl InferCtx {
         }
 
         match (a, b) {
+            (Ty::Nat(a), Ty::Nat(b)) => self.unify_indices(a, b, origin),
+            // Even a flexible variable of kind Type can never stand for Nat.
+            (a @ Ty::Nat(_), b) | (a, b @ Ty::Nat(_)) => {
+                let err = TypeError::Mismatch {
+                    expected: a,
+                    found: b,
+                    origin,
+                };
+                self.errors.push(err.clone());
+                Err(err)
+            }
             // Two identical variables -- already unified.
             (Ty::Var(v1), Ty::Var(v2)) if v1 == v2 => Ok(()),
 
@@ -674,8 +850,7 @@ impl InferCtx {
             // the same type.
             (Ty::Con(ref c), Ty::App(ref con, ref args))
             | (Ty::App(ref con, ref args), Ty::Con(ref c))
-                if args.is_empty()
-                    && matches!(con.as_ref(), Ty::Con(ref ac) if ac.name == c.name) =>
+                if args.is_empty() && matches!(con.as_ref(), Ty::Con(ref ac) if ac == c) =>
             {
                 Ok(())
             }
@@ -763,6 +938,7 @@ impl InferCtx {
             loop_depth: self.loop_depth,
             returns: self.fn_return_type_stack.len(),
             scopes: env.depth(),
+            index_equations: self.index_equations.len(),
         }
     }
 
@@ -771,7 +947,9 @@ impl InferCtx {
         self.current_level = nesting.level;
         self.loop_depth = nesting.loop_depth;
         self.fn_return_type_stack.truncate(nesting.returns);
+        self.fn_return_levels.truncate(nesting.returns);
         self.fn_returned_types.truncate(nesting.returns);
+        self.index_equations.truncate(nesting.index_equations);
         env.truncate(nesting.scopes);
     }
 
@@ -818,16 +996,13 @@ impl InferCtx {
     /// Collect type variables that can be generalized (level > current_level).
     /// `ty` is resolved: its variables are unbound.
     fn collect_generalizable_vars(&self, ty: &Ty, out: &mut Vec<TyVar>) {
-        match ty {
-            Ty::Var(v) => {
-                if self.level_of(*v) > self.current_level {
-                    out.push(*v);
-                }
+        if let Some(var) = ty.variable() {
+            if self.level_of(var) > self.current_level && !self.arm_indices.contains(&var) {
+                out.push(var);
             }
-            _ => ty
-                .parts()
-                .for_each(|part| self.collect_generalizable_vars(part, out)),
         }
+        ty.parts()
+            .for_each(|part| self.collect_generalizable_vars(part, out));
     }
 
     // ── Instantiation ───────────────────────────────────────────────────
@@ -950,6 +1125,14 @@ impl InferCtx {
     /// Apply a substitution map to a type.
     fn apply_substitution(&mut self, ty: &Ty, subst: &FxHashMap<TyVar, Ty>) -> Ty {
         match ty {
+            Ty::Nat(index) => self.resolve(Ty::Nat(index.map_leaf(|leaf| match leaf {
+                NatIndex::Variable(var) => match subst.get(var) {
+                    Some(Ty::Var(replacement)) => NatIndex::Variable(*replacement),
+                    None => leaf.clone(),
+                    Some(_) => unreachable!("a scheme allocates fresh variable ids"),
+                },
+                _ => leaf.clone(),
+            }))),
             Ty::Var(v) => {
                 if let Some(replacement) = subst.get(v) {
                     replacement.clone()

@@ -1,0 +1,10 @@
+logic
+from Vector import Vec<Int, 0> as EmptyVector
+from Vector import Vec<Int, 1> as SingleVector
+from Vector import only
+
+theorem only_returns_head(value :: Int) do
+  only(SingleVector.Push(value, EmptyVector.Empty)) == value
+end
+
+proof only_returns_head do refl end

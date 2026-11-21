@@ -13,6 +13,17 @@ inside this checkout.
   `bash scripts/install-git-hooks.sh` when hook setup is requested.
 - Never make release claims from stale test or proof output.
 
+## Delegated work
+
+- If a provider cannot complete permitted work because of a provider or tool
+  failure, report the limitation and retry once with Claude Opus 5.5 xhigh or
+  Gemini Neon xhigh. Use the model and reasoning option advertised by the live
+  catalog.
+- If a provider flags a task, check its scope against the applicable safety
+  rules before continuing. Use the same fallback models for a permitted
+  follow-up with a clearly defined scope, such as a read-only compiler
+  correctness review. Stop any portion that crosses a safety boundary.
+
 ## Safety
 
 - Do not commit secrets, generated credentials, private keys, or local database

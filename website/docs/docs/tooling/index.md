@@ -133,9 +133,10 @@ compiler without reinstalling it.
 
 ## Verify a pure policy
 
-`meshc verify` is an experimental check for pure functions on `Int` and
-`Bool` inputs with a `Bool` result. A `.law` file identifies the function and
-defines an independent expected result. Libraries can verify laws without
+`meshc verify` checks laws and proofs for pure code. Write a result law to
+compare a function with an independent expected result. Z3 checks supported
+`Int` and `Bool` result laws automatically. Write a Mesh proof to check
+recursive code or to prove a named theorem. Libraries can verify laws without
 an executable entrypoint.
 
 ### Run the retry law
@@ -185,6 +186,348 @@ it. For instance, at status 429 with a budget of 9, the law expects `true` and
 the capped function returns `false`. Restore the original implementation and
 run `meshc verify .` again.
 
+### Prove a recursive list function
+
+Include a `proof` block in the same `.law` file as its matching `law`. Write
+both in Mesh. Set `MESH_VERIFY_LEAN` to a trusted Lean 4.36.0 executable or
+put it on `PATH`, then run `meshc verify .`.
+
+Save this function as `flags.mpl`. It drops `false` values until the first
+`true`.
+
+```mesh
+pub fn drop_false_prefix(xs :: List<Bool>) -> List<Bool> do
+  case xs do
+    [] -> []
+    head :: tail ->
+      if head do
+        xs
+      else
+        drop_false_prefix(tail)
+      end
+  end
+end
+```
+
+Save the law and its proof as `laws/flags.law`.
+
+```text
+from Flags import drop_false_prefix
+
+law drop_false_prefix(xs :: List<Bool>) -> List<Bool> do
+  case xs do
+    [] -> []
+    head :: tail ->
+      if !head do
+        drop_false_prefix(tail)
+      else
+        xs
+      end
+  end
+end
+
+proof drop_false_prefix do
+  induction xs do
+    [] -> refl
+    head :: tail, ih ->
+      cases head do
+        false -> exact ih
+        true -> refl
+      end
+  end
+end
+```
+
+`xs` names the list parameter in the law. `induction` gives the nonempty
+branch the element, tail, and induction hypothesis. `cases` splits a
+Boolean value into its two possible values. `refl` checks equality by
+reduction. `exact ih` applies the induction hypothesis after reduction.
+Run `meshc verify .` and expect `verified`. Change the implementation's
+`true` branch to return `[]`. The proof will fail because that branch
+must preserve the nonempty list.
+
+For a recursive append, `congr List.cons(head), ih` uses an equality from
+`ih` to prove that prepending the same `head` to each side preserves equality.
+
+The kernel checks the proof against the modeled implementation and the law.
+Result proofs support scalars, nested lists, and tuples. They accept direct
+recursion that decreases a list argument to its tail. An unsupported
+operation, missing checker, or rejected proof returns `unverified`. Use
+`meshc verify . --list` to see proof locations without running a checker.
+
+### State a theorem and reuse its proof
+
+Start a `.law` file with `logic` to use named propositions. A theorem can
+refer to checked functions, define proof-side functions and inductive types,
+or apply a theorem proved elsewhere in the same package. The theorem name
+identifies the requirement. Its statement can use equality, implication,
+conjunction, disjunction, and universal or existential quantification.
+
+The following file proves a property of the native function from the
+preceding example. It also gives a witness for a dependent predicate.
+
+```text
+logic
+from Flags import drop_false_prefix
+
+theorem keeps_true_prefix(tail :: List<Bool>) do
+  drop_false_prefix(List.cons(true, tail)) == List.cons(true, tail)
+end
+
+proof keeps_true_prefix do refl end
+
+theorem predicate_has_witness(P :: Nat -> Prop, at_seven :: P(7)) do
+  exists value :: Nat do P(value) end
+end
+
+proof predicate_has_witness do
+  witness 7 do exact at_seven end
+end
+```
+
+Add paired `theorem` and `proof` declarations with the same name. Refer to a
+proved theorem by applying it to its arguments in an `exact` or `rewrite`
+step. The checker infers declaration order from dependencies across the
+package's discovered `logic` files.
+
+Use `inductive` to define a proof-side datatype with type parameters or
+value indices. The constructors of an indexed family specify their result
+types.
+
+```text
+logic
+
+inductive Vector(T :: Type) -> Nat -> Type do
+  Empty() -> Vector(T, 0)
+  Push(n :: Nat, head :: T, tail :: Vector<T, n>) -> Vector(T, Nat.succ(n))
+end
+
+theorem empty_is_reflexive(T :: Type, empty :: Vector<T, 0>) do
+  empty == empty
+end
+
+proof empty_is_reflexive do refl end
+```
+
+Use `induction` for a structural proof and `cases` to analyze a value or a
+hypothesis. An empty `cases` block eliminates a hypothesis with no possible
+constructors. Use `branch` to prove the goal from each outcome of a
+decidable proposition. The `yes(h)` and `no(h)` arms receive proofs of the
+proposition and its negation. `unfold` expands the named definition in the
+goal. `change` states an equivalent goal by computation, and `rewrite`
+uses a proved equality. Use `goal` in an unfinished proof to print the
+current obligation. The law still reports `unverified`.
+
+Mesh `Int` uses signed comparisons and wrapping 64-bit arithmetic. Use
+`Nat` for mathematical natural numbers. Write `(value : Type)` to fix a
+term's type when inference needs it. A typed `let name :: Type = value`
+binds a value for the following expression. Write `Prod<A, Prod<B, C>>` for
+the type of a three-element tuple and `(a, (b, c))` for its value. With an
+expected type such as `Sigma(fn x :: T -> Family(x) end)`, the type of a
+pair's second component depends on the first.
+
+### Bind compiled types and generic functions
+
+Use separate `from Module import name` lines for a function and any
+public nominal types in its theorem. Use `Type.Variant(...)` for sum
+constructors and `Type.mk(...)` for struct fields in declaration order.
+The checker uses the compiler's checked field types, layouts, and emitted
+function bodies. It follows supported direct calls to pure helpers,
+including private helpers.
+
+To check one specialization, give the concrete type arguments or function
+signature. An alias gives the theorem a short name for that specialization.
+
+```text
+logic
+from Trees import Tree<List<Int>> as IntTree
+from Trees import mirror(Tree<List<Int>>) -> Tree<List<Int>> as mirror_int
+```
+
+The verifier uses the exact checked types. For example, `Tree<List<Int>>`
+and `Tree<List<Bool>>` can share a native layout while remaining distinct
+types in the proof.
+
+To prove a theorem for all type arguments, import the generic type and
+function without arguments. Pass the type explicitly when you call the
+function in a theorem.
+
+```text
+logic
+from Trees import Tree
+from Trees import mirror
+
+theorem mirror_twice(T :: Type, tree :: Tree<T>) do
+  mirror(T, mirror(T, tree)) == tree
+end
+
+proof mirror_twice do
+  induction tree do
+    Tree.Leaf(value) -> refl
+    Tree.Branch(left, right, ih_left, ih_right) ->
+      change Tree.Branch(mirror(T, mirror(T, left)), mirror(T, mirror(T, right))) == Tree.Branch(left, right) do
+        rewrite ih_left do rewrite ih_right do refl end end
+      end
+  end
+end
+```
+
+A universal native import requires an unconstrained generic function in
+the supported pure fragment. The verifier compares its generic lowering
+with every concrete specialization in the checked project. Use a concrete
+signature when type constraints determine which code runs.
+
+Native indexed functions can quantify over Nat indices as well as types.
+For example, this `.law` file proves that a recursive `copy` preserves the
+contents of a compiled `Vec<T, n>` at every length.
+
+```text
+logic
+from Vector import Vec
+from Vector import copy
+
+theorem copy_preserves_contents(T :: Type, n :: Nat, values :: Vec<T, n>) do
+  copy(T, n, values) == values
+end
+
+proof copy_preserves_contents do
+  induction values do
+    Vec.Empty -> refl
+    Vec.Push(head, tail, ih) -> exact congr(Vec.Push(head), ih)
+  end
+end
+```
+
+The compiled proof model supports a dependent case over one Nat index
+with explicit, unguarded constructor arms.
+
+### Use proofs in a Mesh program
+
+Declare indexed sums and proof-bearing functions in ordinary `.mpl` files.
+`Vec<Int, 1>` and `Vec<Int, 2>` have the same native representation, but the
+type checker distinguishes their lengths. In `Vec<T, Succ<n>>`, the index
+tells the checker that only `Push` can occur.
+
+```mesh
+pub type Vec<T, n :: Nat> do
+  Empty -> Vec<T, 0>
+  Push<k :: Nat>(T, Vec<T, k>) -> Vec<T, Succ<k>>
+end
+
+logic do
+  fn FitsTwo(size :: Nat) -> Prop do size == 2 end
+  pub theorem allowed_two() do FitsTwo(2) end
+  proof allowed_two do refl end
+end
+
+pub fn deliver<T, n :: Nat>(values :: Vec<T, Succ<n>>, witness :: Proof<FitsTwo<Succ<n>>>) -> T do
+  case values do
+    Push(head, _) -> head
+  end
+end
+```
+
+Save the module as `vector.mpl`. Import the checked theorem as a value in
+`main.mpl`.
+
+```mesh
+from Vector import Vec, deliver, allowed_two
+
+fn main() do
+  let single :: Vec<Int, 1> = Push(7, Empty)
+  let double :: Vec<Int, 2> = Push(42, single)
+  println("${deliver(double, allowed_two)}")
+end
+```
+
+`meshc build .` checks embedded proofs before producing the executable.
+The executable prints `42`. Replacing `double` with `single` fails type
+checking because `allowed_two` proves `FitsTwo(2)`. Nat indices and proof
+values carry no native payload. `meshc verify . --verdict` independently
+rechecks the embedded proofs.
+
+To apply a reusable theorem from normal code, add this `logic` block to
+`vector.mpl`.
+
+```mesh
+logic do
+  pub theorem confirm(size :: Nat, known :: FitsTwo(size)) do
+    FitsTwo(size)
+  end
+  proof confirm do exact known end
+end
+```
+
+Import `confirm` from `Vector`, then call
+`deliver(double, confirm(2, allowed_two))`. Static Nat arguments accept
+natural-number literals, declared indices, `Succ(...)`, and arithmetic
+that the type checker can evaluate. Mesh checks proof arguments at those
+indices. Expressions that produce proof arguments still run.
+
+A theorem can also return a direct Nat equality. Write its evidence type
+as `Proof<NatEq<Left, Right>>` when you pass or return it in ordinary code.
+The operands can use literals, Nat indices, `Succ`, `NatAdd`, `NatSub`, or
+`NatMul`.
+
+```mesh
+logic do
+  pub theorem add_zero(n :: Nat) do n + 0 == n end
+  proof add_zero do
+    induction n do
+      Nat.zero -> refl
+      Nat.succ(previous, ih) -> refl
+    end
+  end
+end
+
+fn zero_at_two() -> Proof<NatEq<2, 2>> do
+  add_zero(2)
+end
+```
+
+### Recheck and export proofs
+
+Run the independent checker with the full Lean 4.36.0 toolchain installed.
+
+```sh
+meshc verify . --verdict --emit-proof .proof-artifacts
+```
+
+Mesh checks the generated theorem and its proof with Lean. The only
+permitted axiom is Lean's propositional extensionality (`propext`), which
+some dependent pattern matches use. `--verdict` also checks that every
+required theorem appears in the proof export and rechecks the export with
+ConLeche in its mechanically verified mode. Automatic result laws continue
+to use Z3. `--emit-proof` writes SHA-256-named `.lean` files and, with
+`--verdict`, the corresponding `.ndjson` exports. Replay the exports with
+`con-leche --verified <artifact.ndjson>`. Regenerate the artifacts after
+changing the implementation, law, or proof.
+
+The proof is about the definitions generated from the checked program.
+ConLeche's consistency result covers its verified declaration checker.
+Native execution also depends on faithful lowering, the runtime
+implementation of admitted operations, and normal completion. For example,
+the proof of a recursive list result gives no bound on the native stack
+required to compute it. Effects, native bindings, and unsupported or
+nonterminating recursion fail verification.
+
+### Prove a compiled sort
+
+The repository's insertion sort example proves that every `List<Int>`
+sorts into signed ascending order and that the output preserves each
+input element's multiplicity. It checks the compiled `sort` and `insert`
+functions against separate Mesh requirements and proofs. [Requirements](https://github.com/snowdamiz/mesh-lang/blob/main/compiler/meshc/tests/fixtures/proofs/sort/requirements.law) · [Mesh proofs](https://github.com/snowdamiz/mesh-lang/blob/main/compiler/meshc/tests/fixtures/proofs/sort/proofs.law)
+
+From the repository root, run the example with the independent checker.
+
+```sh
+meshc verify compiler/meshc/tests/fixtures/proofs/sort --verdict
+```
+
+Change `value <= head` to `value >= head` in the example's `sort.mpl`.
+The requirement inventory stays the same and the proof fails. Restore
+the comparator and rerun verification to check all ten theorems again.
+
 ### Choose which laws to check
 
 By default, Mesh scans the project recursively for visible `.law` files. It
@@ -201,9 +544,10 @@ law_roots = ["laws"]
 ### Read the verdict
 
 The verifier reports `verified` when the modeled function agrees with the
-law for every input. The model uses signed 64-bit `Int` comparisons and
-handles Boolean expressions, conditionals, and direct calls to supported
-helpers. A `falsified` result includes inputs and both values. An `unverified`
+result law for every input, or when the checker accepts a named theorem's
+proof. The automatic result model handles signed 64-bit arithmetic,
+Boolean expressions, conditionals, and direct calls to supported helpers.
+A `falsified` result includes inputs and both values. An `unverified`
 result gives the reason, such as an exhausted solver budget, division,
 recursion, or a clock read. For unsupported source expressions, the text
 report shows the file, line, and column. JSON includes these fields and byte
@@ -227,6 +571,11 @@ It fails if the candidate drops a baseline target or changes its requirement
 digest. The digest covers the resolved requirement. Moving a law or changing
 its whitespace or comments keeps the digest. A change to the owning package,
 module, name, or signature changes the target identity.
+
+For named theorems, the digest includes referenced specification
+definitions and checked import types. Proof scripts and implementation
+bodies can change when the new proof still checks against the preserved
+requirement.
 
 Use the [retry regression test](/docs/testing/#test-a-change-to-a-retry-policy)
 to exercise the executable alongside the law.

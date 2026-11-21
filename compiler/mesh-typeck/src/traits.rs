@@ -869,7 +869,7 @@ fn impl_head<'a>(ty: &'a Ty, nominal: &FxHashSet<String>) -> Option<&'a str> {
         Ty::App(con, _) => impl_head(con, nominal),
         Ty::Tuple(_) => Some("(,)"),
         Ty::Fun(..) => Some("->"),
-        Ty::Var(_) | Ty::Never => None,
+        Ty::Var(_) | Ty::Nat(_) | Ty::Never => None,
     }
 }
 

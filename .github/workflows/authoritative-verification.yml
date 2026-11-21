@@ -145,7 +145,23 @@ jobs:
           unzip -q "$z3_archive"
           echo "MESH_VERIFY_Z3=$RUNNER_TEMP/${z3_archive%.zip}/bin/z3" >> "$GITHUB_ENV"
 
-      - name: Preserve trusted retry policy laws
+      - name: Install pinned Mesh proof checker
+        shell: bash
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          lean_version=4.36.0
+          lean_archive="lean-$lean_version-linux.tar.zst"
+          curl -fsSL --retry 2 "https://github.com/leanprover/lean4/releases/download/v$lean_version/$lean_archive" -o "$RUNNER_TEMP/$lean_archive"
+          printf '%s  %s\n' '2b7ab1ed8b92d2e6abfaf41344823b510064dbc9c0260cac73eb496ab2dea6eb' "$RUNNER_TEMP/$lean_archive" | sha256sum --check
+          tar --zstd -xf "$RUNNER_TEMP/$lean_archive" -C "$RUNNER_TEMP"
+          lean_bin="$RUNNER_TEMP/${lean_archive%.tar.zst}/bin"
+          "$lean_bin/lean" --version
+          test -x "$lean_bin/leanexport"
+          test -x "$lean_bin/con-leche"
+          echo "MESH_VERIFY_LEAN=$lean_bin/lean" >> "$GITHUB_ENV"
+
+      - name: Preserve trusted policy laws
         if: github.event_name == 'pull_request'
         shell: bash
         timeout-minutes: 15
@@ -153,16 +169,16 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
-          policy=compiler/meshc/tests/fixtures/laws
           git cat-file -e "$BASE_SHA^{commit}"
-          if git diff --quiet "$BASE_SHA" HEAD -- "$policy"; then
-            exit 0
-          fi
-          if [[ "$(git cat-file -t "$BASE_SHA:$policy" 2>/dev/null)" != tree ]]; then
-            echo 'The base revision predates the retry policy pilot.'
-            exit 0
-          fi
-          test "$(git cat-file -t "HEAD:$policy")" = tree
+          changed=()
+          for policy in compiler/meshc/tests/fixtures/laws compiler/meshc/tests/fixtures/proofs/sort; do
+            if ! git diff --quiet "$BASE_SHA" HEAD -- "$policy" &&
+                [[ "$(git cat-file -t "$BASE_SHA:$policy" 2>/dev/null)" == tree ]]; then
+              test "$(git cat-file -t "HEAD:$policy")" = tree
+              changed+=("$policy")
+            fi
+          done
+          [[ "${#changed[@]}" -gt 0 ]] || exit 0
 
           trusted_dir=$(mktemp -d "$RUNNER_TEMP/mesh-policy-laws.XXXXXXXX")
           trap 'rm -rf -- "$trusted_dir"' EXIT
@@ -175,8 +191,14 @@ jobs:
             cargo build --locked -p meshc --bin meshc
           )
           verifier="$trusted_dir/target/debug/meshc"
-          "$verifier" verify "$trusted_dir/base/$policy" --list --json > "$trusted_dir/base-laws.json"
-          "$verifier" verify "$policy" --preserve "$trusted_dir/base-laws.json"
+          for policy in "${changed[@]}"; do
+            "$verifier" verify "$trusted_dir/base/$policy" --list --json > "$trusted_dir/base-laws.json"
+            verdict=()
+            if [[ "$policy" == */proofs/sort ]]; then
+              verdict+=(--verdict)
+            fi
+            "$verifier" verify "$policy" --preserve "$trusted_dir/base-laws.json" "${verdict[@]}"
+          done
 
       - name: Cargo cache
         uses: Swatinem/rust-cache@v2
@@ -213,7 +235,7 @@ jobs:
         timeout-minutes: 10
         run: |
           set -euo pipefail
-          cargo test --locked -p meshc --bin meshc --test e2e_laws
+          cargo test --locked -p meshc --bin meshc --test e2e_laws -- --test-threads=2
           cargo test --locked -p meshc --bin meshc verify_solver::tests::pinned_z3 -- --ignored
 
       - name: Prove durable jobs on PostgreSQL

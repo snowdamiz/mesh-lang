@@ -8,12 +8,14 @@ use mesh_typeck::ty::{Ty, TyCon};
 use mesh_typeck::TypeRegistry;
 
 use super::lower::ty_head;
-use super::MirType;
+use super::{MirType, SUM_LAYOUT_NAME_SEPARATOR};
 
 /// Convert a type checker `Ty` to a concrete `MirType`.
 ///
 /// The `type_registry` is used to determine whether a named type is a struct
 /// or a sum type.
+/// The registry projects compile-time indices out of the checked type before
+/// lowering its representation.
 ///
 /// A function type always resolves to a closure `{fn, env}`, the one
 /// representation a function *value* has: `env` is null for a plain named
@@ -23,11 +25,11 @@ use super::MirType;
 /// and pattern-bound functions to `FnPtr` made them load one word of a
 /// two-word value and call it without its environment.
 ///
-/// # Panics
-///
-/// Panics if a `Ty::Var` is encountered, which indicates an unresolved type
-/// variable that should not exist after type checking.
 pub fn resolve_type(ty: &Ty, registry: &TypeRegistry) -> MirType {
+    resolve_runtime_type(&registry.runtime_type(ty), registry)
+}
+
+fn resolve_runtime_type(ty: &Ty, registry: &TypeRegistry) -> MirType {
     match ty {
         Ty::Var(_v) => {
             // Unresolved type variables can occur when the type checker produces
@@ -37,12 +39,16 @@ pub fn resolve_type(ty: &Ty, registry: &TypeRegistry) -> MirType {
             MirType::Unit
         }
 
+        Ty::Nat(_) => unreachable!("a Nat index cannot occur as a runtime value type"),
+
         Ty::Con(con) => resolve_con(con, registry),
 
         Ty::Fun(params, ret) => {
-            let param_types: Vec<MirType> =
-                params.iter().map(|p| resolve_type(p, registry)).collect();
-            let ret_type = Box::new(resolve_type(ret, registry));
+            let param_types = params
+                .iter()
+                .map(|p| resolve_runtime_type(p, registry))
+                .collect();
+            let ret_type = Box::new(resolve_runtime_type(ret, registry));
             MirType::Closure(param_types, ret_type)
         }
 
@@ -55,8 +61,10 @@ pub fn resolve_type(ty: &Ty, registry: &TypeRegistry) -> MirType {
             if elems.is_empty() {
                 MirType::Unit
             } else {
-                let mir_elems: Vec<MirType> =
-                    elems.iter().map(|e| resolve_type(e, registry)).collect();
+                let mir_elems: Vec<MirType> = elems
+                    .iter()
+                    .map(|e| resolve_runtime_type(e, registry))
+                    .collect();
                 MirType::Tuple(mir_elems)
             }
         }
@@ -149,12 +157,12 @@ fn resolve_app(base_name: &str, args: &[Ty], registry: &TypeRegistry) -> MirType
     // `Plaintext<T>` is a label the type checker follows: at run time it
     // is its value.
     if let (mesh_typeck::ty::PLAINTEXT, [inner]) = (base_name, args) {
-        return resolve_type(inner, registry);
+        return resolve_runtime_type(inner, registry);
     }
 
     // Handle Pid<M> -> MirType::Pid(Some(M))
     if let ("Pid", [msg_ty]) = (base_name, args) {
-        return MirType::Pid(Some(Box::new(resolve_type(msg_ty, registry))));
+        return MirType::Pid(Some(Box::new(resolve_runtime_type(msg_ty, registry))));
     }
 
     // For monomorphization: generate a mangled name from base + args
@@ -163,7 +171,7 @@ fn resolve_app(base_name: &str, args: &[Ty], registry: &TypeRegistry) -> MirType
         return resolve_con(&TyCon::new(base_name), registry);
     }
 
-    let mangled_name = mangle_type_name(base_name, args, registry);
+    let mangled_name = mangle_runtime_type_name(base_name, args, registry);
 
     // Check if this is a sum type or struct
     if registry.sum_type_defs.contains_key(base_name) {
@@ -180,14 +188,31 @@ fn resolve_app(base_name: &str, args: &[Ty], registry: &TypeRegistry) -> MirType
 ///
 /// E.g., `Option<Int>` -> `"Option_Int"`, `Result<Int, String>` -> `"Result_Int_String"`.
 pub fn mangle_type_name(base: &str, args: &[Ty], registry: &TypeRegistry) -> String {
-    let mut name = base.to_string();
+    let args: Vec<_> = args
+        .iter()
+        .filter(|arg| !matches!(arg, Ty::Nat(_)))
+        .map(|arg| registry.runtime_type(arg))
+        .collect();
+    mangle_runtime_type_name(base, &args, registry)
+}
+
+fn mangle_runtime_type_name(base: &str, args: &[Ty], registry: &TypeRegistry) -> String {
+    // Unknown nominal applications also use sum layout lookup, since another
+    // module can supply the definition after this module's lowering.
+    let uses_sum_layout =
+        registry.sum_type_defs.contains_key(base) || !registry.struct_defs.contains_key(base);
+    let mut name = if !args.is_empty() && base.contains('_') && uses_sum_layout {
+        format!("{SUM_LAYOUT_NAME_SEPARATOR}{base}{SUM_LAYOUT_NAME_SEPARATOR}")
+    } else {
+        base.to_string()
+    };
     for arg in args {
         name.push('_');
         let suffix = match arg {
             Ty::Con(constructor) if registry.is_resource_name(&constructor.name) => {
                 constructor.name.clone()
             }
-            _ => mir_type_suffix(&resolve_type(arg, registry)),
+            _ => mir_type_suffix(&resolve_runtime_type(arg, registry)),
         };
         name.push_str(&suffix);
     }
@@ -263,13 +288,7 @@ mod tests {
     use mesh_typeck::TypeRegistry;
 
     fn empty_registry() -> TypeRegistry {
-        TypeRegistry {
-            struct_defs: Default::default(),
-            type_aliases: Default::default(),
-            sum_type_defs: Default::default(),
-            resource_types: Default::default(),
-            plaintext_types: Default::default(),
-        }
+        TypeRegistry::new()
     }
 
     /// `Plaintext<T>` costs nothing at run time: it is laid out as `T`,
@@ -368,14 +387,17 @@ mod tests {
             SumTypeDefInfo {
                 name: "Option".to_string(),
                 generic_params: vec!["T".to_string()],
+                indexed: None,
                 variants: vec![
                     VariantInfo {
                         name: "Some".to_string(),
                         fields: vec![],
+                        indexed: None,
                     },
                     VariantInfo {
                         name: "None".to_string(),
                         fields: vec![],
+                        indexed: None,
                     },
                 ],
             },
@@ -442,6 +464,7 @@ mod tests {
             SumTypeDefInfo {
                 name: "CryptoError".to_string(),
                 generic_params: vec![],
+                indexed: None,
                 variants: vec![],
             },
         );
@@ -463,6 +486,7 @@ mod tests {
             SumTypeDefInfo {
                 name: "DecryptOutcome".to_string(),
                 generic_params: vec![],
+                indexed: None,
                 variants: vec![],
             },
         );
@@ -483,6 +507,7 @@ mod tests {
             SumTypeDefInfo {
                 name: "Result".to_string(),
                 generic_params: vec!["T".to_string(), "E".to_string()],
+                indexed: None,
                 variants: vec![],
             },
         );
@@ -491,6 +516,7 @@ mod tests {
             SumTypeDefInfo {
                 name: "CryptoError".to_string(),
                 generic_params: vec![],
+                indexed: None,
                 variants: vec![],
             },
         );

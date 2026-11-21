@@ -45,6 +45,9 @@ mod proof_gates;
 mod skills;
 mod test_runner;
 mod verify;
+mod verify_parametric;
+mod verify_process;
+mod verify_proof;
 mod verify_solver;
 
 use std::collections::{HashMap, HashSet};
@@ -99,6 +102,14 @@ enum Commands {
         /// Require the candidate to retain each law in a trusted inventory
         #[arg(long, conflicts_with = "list")]
         preserve: Option<PathBuf>,
+
+        /// Write checked proof artifacts to this directory for independent replay
+        #[arg(long, conflicts_with = "list")]
+        emit_proof: Option<PathBuf>,
+
+        /// Recheck Mesh proof terms with an independent kernel
+        #[arg(long, conflicts_with = "list")]
+        verdict: bool,
     },
     /// Compile a Mesh project to a native binary
     Build {
@@ -437,7 +448,18 @@ fn run() {
             list,
             json,
             preserve,
-        } => or_exit(verify::run(&dir, list, json, preserve.as_deref())),
+            emit_proof,
+            verdict,
+        } => or_exit(verify::run(
+            &dir,
+            list,
+            json,
+            preserve.as_deref(),
+            verify_proof::Settings {
+                emit: emit_proof.as_deref(),
+                verdict,
+            },
+        )),
         Commands::Fmt {
             path,
             check,
@@ -834,6 +856,12 @@ struct CheckedBuild {
     checked: mesh_pkg::project::CheckedProject,
 }
 
+#[derive(Default)]
+struct VerificationLowering {
+    requested: HashMap<String, Vec<Ty>>,
+    signatures: Vec<Vec<mesh_codegen::mir::lower::LoweredSignature>>,
+}
+
 fn load_checked_project(
     dir: &Path,
     test_builtins: bool,
@@ -1046,7 +1074,7 @@ pub(crate) fn prepare_project_build(
         default_replicas,
     )?;
     let library_exports = collect_library_exports(&project.module_parses)?;
-    let mir_modules = lower_checked_modules(&project, &mut checked, |_| None)?;
+    let mir_modules = verify::lower_for_build(&project, &mut checked, &package)?;
     let entry_mir_idx = project
         .compilation_order
         .iter()
@@ -1086,6 +1114,7 @@ fn lower_checked_modules(
     project: &mesh_pkg::project::ProjectData,
     checked: &mut mesh_pkg::project::CheckedProject,
     source_id: impl Fn(&mesh_parser::Parse) -> Option<mesh_codegen::mir::MirSourceId>,
+    mut verification: Option<&mut VerificationLowering>,
 ) -> Result<Vec<mesh_codegen::mir::MirModule>, String> {
     let mesh_pkg::project::CheckedProject {
         typeck: all_typeck,
@@ -1096,7 +1125,7 @@ fn lower_checked_modules(
         .filter_map(|exports_opt| exports_opt.as_ref())
         .flat_map(|exports| {
             exports.functions.iter().filter_map(|(name, scheme)| {
-                if ty_contains_var(&scheme.ty) {
+                if has_runtime_type_variables(&scheme.ty) {
                     Some(name.clone())
                 } else {
                     None
@@ -1106,6 +1135,13 @@ fn lower_checked_modules(
         .collect();
     let mut inferred_fn_usage_types =
         collect_inferred_fn_usage_types(&project.module_parses, all_typeck, &inferred_export_names);
+    if let Some(verification) = &verification {
+        for (name, types) in &verification.requested {
+            for ty in types {
+                push_usage_type(&mut inferred_fn_usage_types, name, ty);
+            }
+        }
+    }
 
     // A module is checked before the modules that come later, so its trait
     // registry lacks their impls (it has its own and the earlier modules').
@@ -1169,15 +1205,30 @@ fn lower_checked_modules(
             .filter(|(other, _)| *other != idx)
             .map(|(_, modules)| modules)
             .collect();
-        let mir = mesh_codegen::mir::lower::lower_module_to_mir_with_sources(
-            parse,
-            typeck,
-            module_name,
-            &pub_fns,
-            &inferred_fn_usage_types,
-            &other_modules,
-            &source_id,
-        )?;
+        use mesh_codegen::mir::lower;
+        let mir = if let Some(verification) = verification.as_deref_mut() {
+            let (mir, signatures) = lower::lower_module_to_mir_with_signatures(
+                parse,
+                typeck,
+                module_name,
+                &pub_fns,
+                &inferred_fn_usage_types,
+                &other_modules,
+                &source_id,
+            )?;
+            verification.signatures.push(signatures);
+            mir
+        } else {
+            lower::lower_module_to_mir_with_sources(
+                parse,
+                typeck,
+                module_name,
+                &pub_fns,
+                &inferred_fn_usage_types,
+                &other_modules,
+                &source_id,
+            )?
+        };
         mir_modules.push(mir);
     }
     Ok(mir_modules)
@@ -1209,6 +1260,17 @@ fn reject_duplicate_type_names(project: &mesh_pkg::project::ProjectData) -> Resu
     // tokens; code (actors, services) may call each module's own functions.
     let fingerprint = |item: &Item| -> Option<String> {
         if !matches!(item, Item::StructDef(_) | Item::SumTypeDef(_)) {
+            return None;
+        }
+        // An indexed declaration retains its defining module in the checked
+        // type. Even identical source declarations would collide after their
+        // module identity and indices are projected to the native layout.
+        if item.syntax().descendants().any(|node| {
+            matches!(
+                node.kind(),
+                SyntaxKind::INDEX_PARAM | SyntaxKind::VARIANT_RESULT
+            )
+        }) {
             return None;
         }
         let tokens: Vec<String> = item
@@ -1271,7 +1333,7 @@ fn reject_duplicate_type_names(project: &mesh_pkg::project::ProjectData) -> Resu
         eprintln!(
             "note: struct, type, interface, actor, service and supervisor names share one \
              namespace across the project, private ones too, so these definitions would be \
-             taken for one (a struct or type defined identically in each is fine)."
+             taken for one (identically defined non-indexed structs and types can share a layout)."
         );
         eprintln!("help: rename all but one of them.");
     }
@@ -1395,18 +1457,12 @@ fn runtime_lib_override_from_env(
     Ok(Some(PathBuf::from(raw)))
 }
 
-fn ty_contains_var(ty: &Ty) -> bool {
-    match ty {
-        Ty::Var(_) => true,
-        Ty::Con(_) | Ty::Never => false,
-        Ty::Fun(params, ret) => params.iter().any(ty_contains_var) || ty_contains_var(ret),
-        Ty::App(con, args) => ty_contains_var(con) || args.iter().any(ty_contains_var),
-        Ty::Tuple(elems) => elems.iter().any(ty_contains_var),
-    }
+fn has_runtime_type_variables(ty: &Ty) -> bool {
+    matches!(ty, Ty::Var(_)) || ty.parts().any(has_runtime_type_variables)
 }
 
 fn is_concrete_fn_ty(ty: &Ty) -> bool {
-    matches!(ty, Ty::Fun(..)) && !ty_contains_var(ty)
+    matches!(ty, Ty::Fun(..)) && !has_runtime_type_variables(ty)
 }
 
 fn push_usage_type(map: &mut HashMap<String, Vec<Ty>>, name: &str, ty: &Ty) {

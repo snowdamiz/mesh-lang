@@ -1,0 +1,61 @@
+logic
+
+from Sort import insert
+from Sort import sort
+
+# Every earlier element is signed <= every later element.
+fn ordered(xs :: List<Int>) -> Prop do
+  List.Pairwise(fn left_value :: Int -> fn right_value :: Int -> left_value <= right_value end end, xs)
+end
+
+theorem signed_le_trans(a :: Int, b :: Int, c :: Int, ab :: a <= b, bc :: b <= c) do
+  a <= c
+end
+
+theorem signed_le_of_not_le(a :: Int, b :: Int, h :: Not(a <= b)) do
+  b <= a
+end
+
+theorem insert_perm(value :: Int, xs :: List<Int>) do
+  List.Perm(insert(value, xs), List.cons(value, xs))
+end
+
+theorem bound_from_cons(
+  bound :: Int, item :: Int, head :: Int, tail :: List<Int>,
+  h :: bound <= head, lower :: forall z :: Int do List.Mem(z, tail) => bound <= z end,
+  member :: item == head || List.Mem(item, tail)
+) do
+  bound <= item
+end
+
+theorem bound_cons(
+  bound :: Int, head :: Int, tail :: List<Int>,
+  h :: bound <= head, lower :: forall z :: Int do List.Mem(z, tail) => bound <= z end
+) do
+  forall item :: Int do List.Mem(item, List.cons(head, tail)) => bound <= item end
+end
+
+theorem lift_bound(x :: Int, head :: Int, tail :: List<Int>, h :: x <= head,
+  sorted :: ordered(List.cons(head, tail))) do
+  forall z :: Int do List.Mem(z, tail) => x <= z end
+end
+
+theorem bound_insert(
+  bound :: Int, value :: Int, tail :: List<Int>,
+  h :: bound <= value, lower :: forall z :: Int do List.Mem(z, tail) => bound <= z end
+) do
+  forall item :: Int do List.Mem(item, insert(value, tail)) => bound <= item end
+end
+
+theorem empty_bound(bound :: Int, item :: Int, impossible :: List.Mem(item, List.nil)) do
+  bound <= item
+end
+
+theorem insert_ordered(value :: Int, xs :: List<Int>) do
+  ordered(xs) => ordered(insert(value, xs))
+end
+
+# Perm preserves the multiplicity of each element, including duplicates.
+theorem sort_ordered_permutation(xs :: List<Int>) do
+  ordered(sort(xs)) && List.Perm(sort(xs), xs)
+end

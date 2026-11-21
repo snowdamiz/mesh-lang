@@ -17,10 +17,18 @@ use std::fmt;
 use mesh_common::span::Span;
 use rustc_hash::FxHashMap;
 
-/// The base name of a sum type, with any instantiation suffix (`Tree_Int`
-/// is `Tree`) removed: layouts and definitions of generic types are keyed
-/// by base name.
-pub(crate) fn sum_type_base(name: &str) -> &str {
+/// Delimits a sum instantiation's base name if it contains underscores.
+/// Mesh identifiers cannot contain this character.
+pub(crate) const SUM_LAYOUT_NAME_SEPARATOR: char = '$';
+
+/// Generic sum layouts and variants are registered under their base names.
+pub fn sum_type_base(name: &str) -> &str {
+    if let Some((base, _)) = name
+        .strip_prefix(SUM_LAYOUT_NAME_SEPARATOR)
+        .and_then(|name| name.split_once(SUM_LAYOUT_NAME_SEPARATOR))
+    {
+        return base;
+    }
     name.split_once('_').map_or(name, |(base, _)| base)
 }
 

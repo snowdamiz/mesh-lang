@@ -214,6 +214,7 @@ pub fn error_code(err: &TypeError) -> &'static str {
         TypeError::UnderivableFieldType { .. } => "E0092",
         TypeError::PlaintextViolation { .. } => "E0093",
         TypeError::JobsStartInvalid { .. } => "E0094",
+        TypeError::InvalidIndex { .. } => "E0095",
     }
 }
 
@@ -1684,6 +1685,9 @@ fn describe_spans(error: &TypeError, source: &str, suggestions: Option<&[String]
         TypeError::TypeArgumentCount { span, .. } => {
             let range = clamp(text_range_to_range(*span));
             Description::error(range, "wrong number of type arguments")
+        }
+        TypeError::InvalidIndex { span, .. } => {
+            Description::error(clamp(text_range_to_range(*span)), "invalid Nat index")
         }
         TypeError::TypeNotValue {
             name,

@@ -38,13 +38,18 @@ use crate::traits::{
     AssocTypeDef as TraitAssocTypeDef, ImplDef as TraitImplDef, ImplMethodSig, ImplProblem,
     TraitDef, TraitMethodSig, TraitRegistry,
 };
-use crate::ty::{Scheme, Ty, TyCon, TyVar};
+use crate::ty::{NatIndex, Scheme, Ty, TyCon, TyVar};
 use crate::unify::{DeriveNeed, EarlyReturn, ImplChoice, InferCtx, MethodParam, PendingField};
 use crate::{
     ClusteredRouteReplicationCount, ClusteredRouteWrapperMetadata, ImportContext, TypeckResult,
 };
 
 use rustc_hash::{FxHashMap, FxHashSet};
+
+#[path = "indexed.rs"]
+mod indexed;
+use indexed::*;
+pub use indexed::{IndexedSumTypeInfo, IndexedVariantInfo};
 
 /// Helper enum for tracking children in source order during multi-clause grouping.
 enum ChildKind {
@@ -129,6 +134,8 @@ pub struct SumTypeDefInfo {
     pub name: String,
     /// Names of generic type parameters (e.g. ["T"] for `Option<T>`).
     pub generic_params: Vec<String>,
+    /// Kind information and defining-module identity for an indexed sum.
+    pub indexed: Option<IndexedSumTypeInfo>,
     /// Variant definitions.
     pub variants: Vec<VariantInfo>,
 }
@@ -140,6 +147,8 @@ pub struct VariantInfo {
     pub name: String,
     /// The variant's fields (positional or named).
     pub fields: Vec<VariantFieldInfo>,
+    /// The index telescope and result of an indexed constructor.
+    pub indexed: Option<IndexedVariantInfo>,
 }
 
 /// A field in a variant -- either positional (unnamed) or named.
@@ -163,6 +172,8 @@ pub struct TypeRegistry {
     pub type_aliases: FxHashMap<String, TypeAliasInfo>,
     /// Registered sum type definitions, keyed by sum type name.
     pub sum_type_defs: FxHashMap<String, SumTypeDefInfo>,
+    indexed_type_qualifiers: FxHashMap<String, (String, String)>,
+    proof_predicates: crate::proof_values::ProofPredicates,
     /// Nominal types whose values have affine resource ownership.
     pub resource_types: FxHashSet<String>,
     /// Structs and sum types that hold a `Plaintext` value, directly or
@@ -185,6 +196,33 @@ impl TypeRegistry {
 
     pub fn register_sum_type(&mut self, info: SumTypeDefInfo) {
         self.sum_type_defs.insert(info.name.clone(), info);
+    }
+
+    /// Recursively erase compile-time indices at the runtime lowering boundary.
+    pub fn runtime_type(&self, ty: &Ty) -> Ty {
+        match ty {
+            proof if proof.is_proof() => Ty::Tuple(Vec::new()),
+            Ty::Con(con) if con.indexed_origin.is_some() => Ty::Con(TyCon::new(&con.name)),
+            Ty::App(con, args) if con.con().is_some_and(|con| con.indexed_origin.is_some()) => {
+                let indexed = con
+                    .con()
+                    .and_then(|con| self.indexed_family(con))
+                    .and_then(|def| def.indexed.as_ref());
+                Ty::App(
+                    Box::new(self.runtime_type(con)),
+                    args.iter()
+                        .enumerate()
+                        .filter(|(position, arg)| {
+                            !indexed.map_or(matches!(arg, Ty::Nat(_)), |indexed| {
+                                indexed.index_positions.contains(&position)
+                            })
+                        })
+                        .map(|(_, arg)| self.runtime_type(arg))
+                        .collect(),
+                )
+            }
+            other => other.map_parts(|part| self.runtime_type(part)),
+        }
     }
 
     pub fn register_resource_type(&mut self, name: impl Into<String>) {
@@ -325,12 +363,16 @@ impl TypeRegistry {
 
 /// The names of the type parameters a definition declares (`<A, B>`).
 fn generic_param_names(node: &mesh_parser::SyntaxNode) -> Vec<String> {
-    node.children()
-        .filter(|child| child.kind() == SyntaxKind::GENERIC_PARAM_LIST)
-        .flat_map(|list| list.children_with_tokens())
-        .filter_map(|element| element.into_token())
-        .filter(|token| token.kind() == SyntaxKind::IDENT)
-        .map(|token| token.text().to_string())
+    generic_entries(node)
+        .filter_map(|element| match element {
+            rowan::NodeOrToken::Token(token) if token.kind() == SyntaxKind::IDENT => {
+                Some(token.text().to_string())
+            }
+            rowan::NodeOrToken::Node(node) => {
+                index_param_name(mesh_parser::ast::item::IndexParam::cast(node)?)
+            }
+            _ => None,
+        })
         .collect()
 }
 
@@ -4740,10 +4782,36 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         }
     }
 
-    // Pre-seed with imported sum type definitions
-    for mod_exports in import_ctx.module_exports.values() {
+    let tree = parse.tree();
+    check_index_syntax(&mut ctx, tree.syntax());
+    let proof_values = crate::proof_values::collect(&tree, import_ctx);
+    type_registry.proof_predicates = proof_values.predicates;
+    for (span, reason) in proof_values.errors {
+        invalid_index(&mut ctx, span, reason);
+    }
+
+    // Pre-seed with imported sum type definitions.
+    for (path, mod_exports) in &import_ctx.module_exports {
         for sum_type_def in mod_exports.sum_type_defs.values() {
-            type_registry.register_sum_type(sum_type_def.clone());
+            type_registry.check_indexed_layout_collision(
+                &mut ctx,
+                &sum_type_def.name,
+                sum_type_def
+                    .indexed
+                    .as_ref()
+                    .map(|info| info.origin.as_str()),
+                TextRange::empty(tree.syntax().text_range().start()),
+            );
+            let qualifiers = import_ctx
+                .module_qualifiers
+                .iter()
+                .filter(|(_, target)| *target == path || **target == mod_exports.module_name)
+                .map(|(qualifier, _)| qualifier.clone());
+            type_registry.register_imported_sum_type(
+                sum_type_def,
+                &mod_exports.module_name,
+                qualifiers.chain([path.clone()]),
+            );
             register_variant_constructors(
                 &mut ctx,
                 &mut env,
@@ -4787,8 +4855,6 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
     let mut fn_constraints: FxHashMap<String, FnConstraints> = FxHashMap::default();
     let mut default_method_bodies: FxHashMap<(String, String), TextRange> = FxHashMap::default();
 
-    let tree = parse.tree();
-
     // Collect all children and separate items from bare expressions.
     // Items are grouped to detect multi-clause functions before inference.
     let mut children_ordered: Vec<(TextRange, ChildKind)> = Vec::new();
@@ -4816,7 +4882,24 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
 
     for child in file_items(tree.syntax().clone(), import_ctx) {
         let range = child.text_range();
-        match Item::cast(child.clone()) {
+        let item = Item::cast(child);
+        let type_name = match &item {
+            Some(Item::TypeAliasDef(def)) => def.name(),
+            Some(Item::StructDef(def)) => def.name(),
+            Some(Item::SumTypeDef(def)) => def.name(),
+            _ => None,
+        };
+        if let Some(name) = type_name {
+            if name.text().as_deref() == Some(crate::proof_values::PROOF_TYPE) {
+                invalid_index(
+                    &mut ctx,
+                    name.syntax().text_range(),
+                    "`Proof` is a reserved type name".into(),
+                );
+                continue;
+            }
+        }
+        match item {
             Some(Item::TypeAliasDef(alias_def)) => {
                 register_type_alias(&alias_def, &mut type_registry);
                 alias_defs_for_validation.push((alias_def, range));
@@ -4827,6 +4910,12 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
                     .name()
                     .and_then(|n| n.text())
                     .unwrap_or_else(|| "<unnamed>".to_string());
+                type_registry.check_indexed_layout_collision(
+                    &mut ctx,
+                    &name,
+                    None,
+                    significant_range(struct_def.syntax()),
+                );
                 // Only register the name stub, with the struct's parameters
                 // (a struct naming one declared later takes them): full
                 // registration happens in the main loop.
@@ -4850,8 +4939,18 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
                     .name()
                     .and_then(|n| n.text())
                     .unwrap_or_else(|| "<unnamed>".to_string());
+                let indexed = index_family_info(
+                    sum_def.syntax(),
+                    ctx.current_module.as_deref().unwrap_or_default(),
+                );
+                type_registry.check_indexed_layout_collision(
+                    &mut ctx,
+                    &name,
+                    indexed.as_ref().map(|info| info.origin.as_str()),
+                    significant_range(sum_def.syntax()),
+                );
                 trait_registry.register_nominal(&name);
-                if sum_def.deriving_traits().iter().any(|t| t == "Json") {
+                if indexed.is_none() && sum_def.deriving_traits().iter().any(|t| t == "Json") {
                     ctx.json_types.insert(name.clone());
                 }
                 // With its parameters, which a variant naming the type
@@ -4859,12 +4958,41 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
                 type_registry.register_sum_type(SumTypeDefInfo {
                     name,
                     generic_params: generic_param_names(sum_def.syntax()),
+                    indexed,
                     variants: vec![],
                 });
             }
             _ => {}
         }
     }
+
+    // Check and fix the identity of indexed types in alias templates while
+    // the defining module's names are in scope.
+    for (alias, span) in &alias_defs_for_validation {
+        let Some(name) = alias.name().and_then(|name| name.text()) else {
+            continue;
+        };
+        let aliased = type_registry.type_aliases[&name].aliased_type.clone();
+        match check_indexed_type(aliased, alias.syntax(), &type_registry) {
+            Ok(ty) => {
+                let info = type_registry
+                    .type_aliases
+                    .get_mut(&name)
+                    .expect("pre-registered alias");
+                info.aliased_type = ty;
+            }
+            Err(error) => {
+                invalid_index(&mut ctx, *span, error);
+            }
+        }
+    }
+    validate_type_aliases(
+        &mut ctx,
+        &type_registry,
+        &alias_defs_for_validation,
+        &builtin_types,
+        import_ctx,
+    );
 
     // Resolve struct field metadata before value-trait registration so affine
     // containment is known even through forward and transitive references.
@@ -4911,14 +5039,6 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
     type_registry.propagate_resource_containment();
     trait_registry.set_plaintext_types(type_registry.plaintext_types.clone());
 
-    // Validate that all type aliases reference known types (ALIAS-04).
-    validate_type_aliases(
-        &mut ctx,
-        &type_registry,
-        &alias_defs_for_validation,
-        &builtin_types,
-        import_ctx,
-    );
     check_annotation_types(
         &mut ctx,
         tree.syntax(),
@@ -5098,6 +5218,20 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         }
     }
     check_derive_needs(&mut ctx, &mut trait_registry);
+
+    let mut local_proof_values = FxHashMap::default();
+    for proof in proof_values.values {
+        if env.lookup(&proof.name).is_some() || !env.overload_arities(&proof.name).is_empty() {
+            ctx.errors.push(TypeError::DuplicateDefinition {
+                kind: "value",
+                name: proof.name,
+                span: proof.span,
+            });
+            continue;
+        }
+        env.insert(proof.name.clone(), Scheme::mono(proof.ty.clone()));
+        local_proof_values.insert(proof.name, proof.ty);
+    }
 
     // Check the items and expressions in source order, except that a
     // function, top-level `let`, actor or service comes after those it names
@@ -5293,6 +5427,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         .collect();
 
     TypeckResult {
+        proof_values: local_proof_values,
         types: resolved_types,
         errors: ctx.errors,
         warnings: ctx.warnings,
@@ -5406,16 +5541,19 @@ fn register_builtin_sum_types(
     let option_variants = vec![
         VariantInfo {
             name: "Some".to_string(),
+            indexed: None,
             fields: vec![VariantFieldInfo::Positional(Ty::Con(TyCon::new("T")))],
         },
         VariantInfo {
             name: "None".to_string(),
+            indexed: None,
             fields: vec![],
         },
     ];
 
     type_registry.register_sum_type(SumTypeDefInfo {
         name: "Option".to_string(),
+        indexed: None,
         generic_params: option_generic_params.clone(),
         variants: option_variants.clone(),
     });
@@ -5433,16 +5571,19 @@ fn register_builtin_sum_types(
     let result_variants = vec![
         VariantInfo {
             name: "Ok".to_string(),
+            indexed: None,
             fields: vec![VariantFieldInfo::Positional(Ty::Con(TyCon::new("T")))],
         },
         VariantInfo {
             name: "Err".to_string(),
+            indexed: None,
             fields: vec![VariantFieldInfo::Positional(Ty::Con(TyCon::new("E")))],
         },
     ];
 
     type_registry.register_sum_type(SumTypeDefInfo {
         name: "Result".to_string(),
+        indexed: None,
         generic_params: result_generic_params.clone(),
         variants: result_variants.clone(),
     });
@@ -5454,6 +5595,7 @@ fn register_builtin_sum_types(
     let crypto_error_variants = vec![
         VariantInfo {
             name: "InvalidLength".to_string(),
+            indexed: None,
             fields: vec![
                 VariantFieldInfo::Named("expected".to_string(), Ty::int()),
                 VariantFieldInfo::Named("actual".to_string(), Ty::int()),
@@ -5461,49 +5603,60 @@ fn register_builtin_sum_types(
         },
         VariantInfo {
             name: "InvalidKey".to_string(),
+            indexed: None,
             fields: vec![],
         },
         VariantInfo {
             name: "InvalidPublicKey".to_string(),
+            indexed: None,
             fields: vec![],
         },
         VariantInfo {
             name: "InvalidSignature".to_string(),
+            indexed: None,
             fields: vec![],
         },
         VariantInfo {
             name: "AuthenticationFailed".to_string(),
+            indexed: None,
             fields: vec![],
         },
         VariantInfo {
             name: "EntropyUnavailable".to_string(),
+            indexed: None,
             fields: vec![],
         },
         VariantInfo {
             name: "SecretDestroyed".to_string(),
+            indexed: None,
             fields: vec![],
         },
         VariantInfo {
             name: "ResourceLimitExceeded".to_string(),
+            indexed: None,
             fields: vec![],
         },
         VariantInfo {
             name: "UnsupportedOperation".to_string(),
+            indexed: None,
             fields: vec![],
         },
         VariantInfo {
             name: "InternalFailure".to_string(),
+            indexed: None,
             fields: vec![],
         },
         // Appended: the variants above keep their tags.
         VariantInfo {
             name: "UnsupportedTarget".to_string(),
+            indexed: None,
             fields: vec![],
         },
     ];
 
     type_registry.register_sum_type(SumTypeDefInfo {
         name: "CryptoError".to_string(),
+        indexed: None,
         generic_params: vec![],
         variants: crypto_error_variants.clone(),
     });
@@ -5512,19 +5665,23 @@ fn register_builtin_sum_types(
     let db_value_variants = vec![
         VariantInfo {
             name: "Text".to_string(),
+            indexed: None,
             fields: vec![VariantFieldInfo::Positional(Ty::string())],
         },
         VariantInfo {
             name: "Binary".to_string(),
+            indexed: None,
             fields: vec![VariantFieldInfo::Positional(Ty::bytes())],
         },
         VariantInfo {
             name: "Null".to_string(),
+            indexed: None,
             fields: vec![],
         },
     ];
     type_registry.register_sum_type(SumTypeDefInfo {
         name: "DbValue".to_string(),
+        indexed: None,
         generic_params: vec![],
         variants: db_value_variants.clone(),
     });
@@ -5543,20 +5700,24 @@ fn register_builtin_sum_types(
     let ordering_variants = vec![
         VariantInfo {
             name: "Less".to_string(),
+            indexed: None,
             fields: vec![],
         },
         VariantInfo {
             name: "Equal".to_string(),
+            indexed: None,
             fields: vec![],
         },
         VariantInfo {
             name: "Greater".to_string(),
+            indexed: None,
             fields: vec![],
         },
     ];
 
     type_registry.register_sum_type(SumTypeDefInfo {
         name: "Ordering".to_string(),
+        indexed: None,
         generic_params: vec![],
         variants: ordering_variants.clone(),
     });
@@ -5588,23 +5749,30 @@ pub fn register_variant_constructors(
 
         ctx.enter_level();
 
-        // Create fresh type vars for generic params.
-        let type_param_vars: Vec<Ty> = generic_params.iter().map(|_| ctx.fresh_var()).collect();
-
-        // Substitute generic params in field types.
-        let substituted_fields: Vec<Ty> = field_types
-            .iter()
-            .map(|fty| substitute_type_params(fty, generic_params, &type_param_vars))
-            .collect();
-
-        // The result type of the constructor: SumTypeName<T1, T2, ...>
-        let result_ty = if type_param_vars.is_empty() {
-            Ty::App(Box::new(Ty::Con(TyCon::new(type_name))), vec![])
-        } else {
-            Ty::App(
-                Box::new(Ty::Con(TyCon::new(type_name))),
-                type_param_vars.clone(),
-            )
+        let (result_ty, substituted_fields) = match &variant.indexed {
+            Some(indexed) => {
+                let mut params: FxHashMap<_, _> = generic_params
+                    .iter()
+                    .map(|name| (name.clone(), ctx.fresh_var()))
+                    .collect();
+                for name in &indexed.index_params {
+                    params.insert(name.clone(), ctx.fresh_index(None));
+                }
+                let result_ty = with_declared_type_params(&indexed.result, &params);
+                let fields = field_types
+                    .iter()
+                    .map(|ty| with_declared_type_params(ty, &params))
+                    .collect::<Vec<_>>();
+                (result_ty, fields)
+            }
+            None => {
+                let vars: Vec<_> = generic_params.iter().map(|_| ctx.fresh_var()).collect();
+                let fields = field_types
+                    .iter()
+                    .map(|ty| substitute_type_params(ty, generic_params, &vars))
+                    .collect();
+                (Ty::struct_ty(type_name, vars), fields)
+            }
         };
 
         let ctor_ty = if substituted_fields.is_empty() {
@@ -5621,6 +5789,17 @@ pub fn register_variant_constructors(
         // Register under qualified name: Option.Some, Result.Ok
         let qualified_name = format!("{}.{}", type_name, variant.name);
         env.insert(qualified_name, scheme.clone());
+        if let Some(origin) = result_ty
+            .con()
+            .and_then(|con| con.indexed_origin.as_deref())
+        {
+            if !origin.is_empty() {
+                env.insert(
+                    format!("{origin}.{type_name}.{}", variant.name),
+                    scheme.clone(),
+                );
+            }
+        }
 
         // Register under unqualified name: Some, None, Ok, Err
         env.insert(variant.name.clone(), scheme);
@@ -6044,13 +6223,27 @@ fn infer_multi_clause_fn(
     env.insert(env_key.clone(), Scheme::mono(self_var.clone()));
 
     // Extract generic type parameters from the FIRST clause only.
-    let type_params: FxHashMap<String, Ty> = generic_param_names(first.syntax())
-        .into_iter()
-        .map(|name| (name, ctx.fresh_var()))
-        .collect();
+    if clauses.len() != 1
+        || first
+            .param_list()
+            .is_some_and(|list| list.params().any(|param| param.pattern().is_some()))
+    {
+        if let Some(clause) = clauses
+            .iter()
+            .find(|clause| index_param_names(clause.syntax()).next().is_some())
+        {
+            return Err(invalid_index(
+                ctx,
+                significant_range(clause.syntax()),
+                "index parameters require a single clause with plain parameters".into(),
+            ));
+        }
+    }
+    let type_params = function_type_params(ctx, first.syntax());
 
     // Extract where-clause constraints from the first clause.
     let where_constraints = extract_where_constraints(first);
+    check_index_bounds(ctx, first, &type_params, &where_constraints);
 
     // Create fresh type variables for each parameter position.
     let param_types: Vec<Ty> = (0..arity).map(|_| ctx.fresh_var()).collect();
@@ -6111,7 +6304,9 @@ fn infer_multi_clause_fn(
 
         // Insert type params into scope.
         for (name, ty) in &type_params {
-            env.insert(name.clone(), Scheme::mono(ty.clone()));
+            if !matches!(ty, Ty::Nat(_)) {
+                env.insert(name.clone(), Scheme::mono(ty.clone()));
+            }
         }
 
         arm_patterns.push(bind_clause_params(
@@ -6297,10 +6492,7 @@ fn infer_item(
             fn_constraints,
         )
         .ok(),
-        Item::TypeAliasDef(alias_def) => {
-            register_type_alias(alias_def, type_registry);
-            None
-        }
+        Item::TypeAliasDef(_) => None,
         Item::InterfaceDef(iface) => {
             infer_interface_def(
                 ctx,
@@ -6414,8 +6606,14 @@ fn register_import(
             // Constructors are registered under their type's name (`Shape.Dot`).
             let variants = ctx.module_variants.entry(module).or_default();
             for sum_type in mod_exports.sum_type_defs.values() {
+                let owner = match &sum_type.indexed {
+                    Some(indexed) if !indexed.origin.is_empty() => {
+                        format!("{}.{}", indexed.origin, sum_type.name)
+                    }
+                    _ => sum_type.name.clone(),
+                };
                 for variant in &sum_type.variants {
-                    variants.insert(variant.name.clone(), sum_type.name.clone());
+                    variants.insert(variant.name.clone(), owner.clone());
                 }
             }
             for (name, service) in &mod_exports.service_defs {
@@ -7149,6 +7347,9 @@ fn names_any(ty: &Ty, names: &FxHashSet<String>) -> bool {
 
 /// The name of every type constructor in `ty`.
 fn type_constructors(ty: &Ty, out: &mut Vec<String>) {
+    if ty.is_proof() {
+        return;
+    }
     match ty {
         Ty::Con(tc) => out.push(tc.name.clone()),
         _ => ty.parts().for_each(|part| type_constructors(part, out)),
@@ -7262,6 +7463,9 @@ fn check_annotation_types(
     let annotations = root.descendants().filter(|n| {
         n.kind() == SyntaxKind::TYPE_ANNOTATION
             && !n
+                .parent()
+                .is_some_and(|parent| parent.kind() == SyntaxKind::INDEX_PARAM)
+            && !n
                 .ancestors()
                 .skip(1)
                 .any(|a| a.kind() == SyntaxKind::TYPE_ANNOTATION)
@@ -7271,10 +7475,10 @@ fn check_annotation_types(
         let mut names: Vec<(String, TextRange)> = Vec::new();
         let mut after_dot = false;
         for token in ann.descendants_with_tokens().filter_map(|e| e.into_token()) {
-            if token
-                .parent_ancestors()
-                .any(|n| n.kind() == SyntaxKind::OWNERSHIP_MODIFIER)
-            {
+            if token.parent_ancestors().any(|n| {
+                n.kind() == SyntaxKind::OWNERSHIP_MODIFIER
+                    || crate::proof_values::is_proposition_arguments(&n)
+            }) {
                 continue;
             }
             match token.kind() {
@@ -7310,7 +7514,10 @@ fn names_a_type(
     builtin_types: &FxHashSet<String>,
     import_ctx: &ImportContext,
 ) -> bool {
-    if name == "Self" || name.starts_with("Self.") || name == "Fun" {
+    if name == "Self"
+        || name.starts_with("Self.")
+        || matches!(name, "Fun" | "Succ" | crate::proof_values::PROOF_TYPE)
+    {
         return true;
     }
     if builtin_types.contains(name) || is_known_type(name, type_registry) {
@@ -7322,14 +7529,8 @@ fn names_a_type(
             && is_known_type(short, type_registry);
     }
     // The type parameters of the enclosing items.
-    node.ancestors().any(|item| {
-        item.children()
-            .filter(|n| n.kind() == SyntaxKind::GENERIC_PARAM_LIST)
-            .flat_map(|list| list.children_with_tokens())
-            .any(|t| {
-                t.kind() == SyntaxKind::IDENT && t.as_token().is_some_and(|t| t.text() == name)
-            })
-    })
+    node.ancestors()
+        .any(|item| generic_param_names(&item).iter().any(|param| param == name))
 }
 
 /// Report each alias that could never be expanded, as it names itself, and
@@ -7423,9 +7624,30 @@ fn sum_type_def_info(
 
     // Extract generic type parameters.
     let generic_params = generic_param_names(sum_def.syntax());
+    let indexed = index_family_info(
+        sum_def.syntax(),
+        ctx.current_module.as_deref().unwrap_or_default(),
+    );
+    let mut info = SumTypeDefInfo {
+        name,
+        generic_params,
+        indexed,
+        variants: Vec::new(),
+    };
+    if info.indexed.is_some() {
+        let mut seen = FxHashSet::default();
+        for param in &info.generic_params {
+            if !seen.insert(param) {
+                invalid_index(
+                    ctx,
+                    significant_range(sum_def.syntax()),
+                    format!("duplicate parameter `{param}`"),
+                );
+            }
+        }
+    }
 
     // Extract variants.
-    let mut variants = Vec::new();
     for variant_def in sum_def.variants() {
         let variant_name = variant_def
             .name()
@@ -7457,17 +7679,78 @@ fn sum_type_def_info(
             }
         }
 
-        variants.push(VariantInfo {
+        let indices: Vec<_> = index_param_names(variant_def.syntax()).collect();
+        let explicit = variant_def.result_type();
+        let span = significant_range(variant_def.syntax());
+        if generic_param_names(variant_def.syntax()).len() != indices.len() {
+            invalid_index(
+                ctx,
+                span,
+                "constructor parameters must have kind `Nat`".into(),
+            );
+        }
+        let indexed = if info.indexed.is_some() {
+            let mut seen = FxHashSet::default();
+            for param in &indices {
+                if info.runtime_generic_params().any(|outer| outer == param) || !seen.insert(param)
+                {
+                    invalid_index(
+                        ctx,
+                        span,
+                        format!("duplicate constructor parameter `{param}`"),
+                    );
+                }
+            }
+            let result = match explicit {
+                Some(ann) => {
+                    let result =
+                        resolve_type_annotation(ctx, &ann, type_registry).unwrap_or(Ty::Never);
+                    if result != Ty::Never {
+                        if let Err(error) = check_variant_result(&info, &result, &indices) {
+                            invalid_index(ctx, annotated_type_range(&ann), error);
+                        }
+                    }
+                    result
+                }
+                None => {
+                    invalid_index(
+                        ctx,
+                        span,
+                        "each indexed constructor must declare its result type".into(),
+                    );
+                    Ty::Never
+                }
+            };
+            for field in &fields {
+                let field = match field {
+                    VariantFieldInfo::Named(_, ty) | VariantFieldInfo::Positional(ty) => ty,
+                };
+                if let Err(error) = check_variant_field(field, &indices) {
+                    invalid_index(ctx, span, error);
+                }
+            }
+            Some(IndexedVariantInfo {
+                index_params: indices,
+                result,
+            })
+        } else {
+            if !indices.is_empty() || explicit.is_some() {
+                invalid_index(
+                    ctx,
+                    span,
+                    "constructor indices and explicit results require an indexed sum type".into(),
+                );
+            }
+            None
+        };
+        info.variants.push(VariantInfo {
             name: variant_name,
             fields,
+            indexed,
         });
     }
 
-    SumTypeDefInfo {
-        name,
-        generic_params,
-        variants,
-    }
+    info
 }
 
 /// Register a sum type definition and its polymorphic variant constructors.
@@ -7478,7 +7761,15 @@ fn register_sum_type_def(
     type_registry: &mut TypeRegistry,
     trait_registry: &mut TraitRegistry,
 ) {
-    let sum_info = sum_type_def_info(ctx, sum_def, type_registry);
+    let sum_name = sum_def
+        .name()
+        .and_then(|name| name.text())
+        .unwrap_or_default();
+    let sum_info = match type_registry.lookup_sum_type(&sum_name) {
+        Some(info) if info.indexed.is_some() => info.clone(),
+        _ => sum_type_def_info(ctx, sum_def, type_registry),
+    };
+    let indexed = sum_info.indexed.is_some();
     let name = sum_info.name.clone();
     let generic_params = sum_info.generic_params.clone();
     let variants = sum_info.variants.clone();
@@ -7537,6 +7828,17 @@ fn register_sum_type_def(
     register_variant_constructors(ctx, env, &name, &generic_params, &variants);
     for (variant, scheme) in kept {
         env.insert(variant, scheme);
+    }
+
+    if indexed {
+        if !sum_def.deriving_traits().is_empty() {
+            invalid_index(
+                ctx,
+                deriving_span(sum_def.syntax()),
+                "deriving traits for indexed sum types is unsupported".into(),
+            );
+        }
+        return;
     }
 
     // Conditional auto-registration of trait impls based on deriving clause.
@@ -7880,6 +8182,7 @@ fn infer_interface_def(
             type_registry,
             trait_registry,
             fn_constraints,
+            None,
         );
         let returns = ctx.pop_fn_return_type();
         env.pop_scope();
@@ -8317,6 +8620,7 @@ fn infer_impl_def(
                 type_registry,
                 &*trait_registry,
                 fn_constraints,
+                None,
             );
             match return_type {
                 Some(ref ret_ty) => {
@@ -8606,13 +8910,11 @@ fn infer_fn_def(
     env.insert(env_key.clone(), Scheme::mono(self_var.clone()));
 
     // Extract generic type parameters if present.
-    let type_params: FxHashMap<String, Ty> = generic_param_names(fn_.syntax())
-        .into_iter()
-        .map(|name| (name, ctx.fresh_var()))
-        .collect();
+    let type_params = function_type_params(ctx, fn_.syntax());
 
     // Extract where-clause constraints.
     let where_constraints = extract_where_constraints(fn_);
+    check_index_bounds(ctx, fn_, &type_params, &where_constraints);
 
     env.push_scope();
 
@@ -8629,7 +8931,12 @@ fn infer_fn_def(
 
     // Insert type params into the scope.
     for (name, ty) in &type_params {
-        env.insert(name.clone(), Scheme::mono(ty.clone()));
+        let key = if matches!(ty, Ty::Nat(_)) {
+            static_index_key(name)
+        } else {
+            name.clone()
+        };
+        env.insert(key, Scheme::mono(ty.clone()));
     }
 
     let mut param_types = Vec::new();
@@ -8705,6 +9012,34 @@ fn infer_fn_def(
         validate_export_abi_types(ctx, fn_, &param_types, return_type_annotation.as_ref());
     }
 
+    // A complete signature can be used recursively at a different Nat
+    // index. Ordinary type parameters still share the body inference.
+    let index_vars: Vec<_> = type_params
+        .values()
+        .filter_map(|ty| match ty {
+            Ty::Nat(NatIndex::Variable(var)) => Some(*var),
+            _ => None,
+        })
+        .collect();
+    if let Some(ret) = return_type_annotation.as_ref().filter(|_| {
+        !index_vars.is_empty()
+            && fn_.param_list().is_none_or(|params| {
+                params
+                    .params()
+                    .all(|param| param.type_annotation().is_some())
+            })
+    }) {
+        if let Some(binding) = env
+            .lookup_mut(&env_key)
+            .filter(|scheme| scheme.ty == self_var)
+        {
+            *binding = Scheme {
+                vars: index_vars,
+                ty: Ty::fun(param_types.clone(), ret.clone()),
+            };
+        }
+    }
+
     let enclosing = enter_fn_body(ctx, &where_constraints, &type_params);
     // `main` without a declared return type returns nothing: a `?` in it
     // has nowhere to send its error.
@@ -8717,16 +9052,19 @@ fn infer_fn_def(
         return_type_annotation
             .clone()
             .unwrap_or_else(|| Ty::Tuple(vec![]))
-    } else {
-        infer_body(
+    } else if let Some(body) = fn_.body() {
+        infer_block(
             ctx,
             env,
-            fn_.body(),
+            &body,
             types,
             type_registry,
             trait_registry,
             fn_constraints,
+            return_type_annotation.as_ref(),
         )
+    } else {
+        ctx.fresh_var()
     };
     let returns = ctx.pop_fn_return_type();
     if let Some(ref ret_ann) = return_type_annotation {
@@ -9023,6 +9361,28 @@ fn infer_expr(
     trait_registry: &TraitRegistry,
     fn_constraints: &FxHashMap<String, FnConstraints>,
 ) -> Result<Ty, TypeError> {
+    infer_expr_with_case_result(
+        ctx,
+        env,
+        expr,
+        types,
+        type_registry,
+        trait_registry,
+        fn_constraints,
+        None,
+    )
+}
+
+fn infer_expr_with_case_result(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    expr: &Expr,
+    types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
+    trait_registry: &TraitRegistry,
+    fn_constraints: &FxHashMap<String, FnConstraints>,
+    case_result: Option<&Ty>,
+) -> Result<Ty, TypeError> {
     // Constraints without a more specific origin are reported at the
     // innermost expression being inferred.
     ctx.expr_spans.push(expr.syntax().text_range());
@@ -9035,6 +9395,7 @@ fn infer_expr(
         type_registry,
         trait_registry,
         fn_constraints,
+        case_result,
     );
     // An expression given up on midway leaves what it entered: a loop
     // (`break` after it was taken for inside one), a scope (its bindings
@@ -9054,6 +9415,7 @@ fn infer_expr_here(
     type_registry: &TypeRegistry,
     trait_registry: &TraitRegistry,
     fn_constraints: &FxHashMap<String, FnConstraints>,
+    case_result: Option<&Ty>,
 ) -> Result<Ty, TypeError> {
     let ty = match expr {
         Expr::Literal(lit) => {
@@ -9148,6 +9510,7 @@ fn infer_expr_here(
             type_registry,
             trait_registry,
             fn_constraints,
+            None,
         )),
         Expr::TupleExpr(tuple) => infer_tuple(
             ctx,
@@ -9166,6 +9529,7 @@ fn infer_expr_here(
             type_registry,
             trait_registry,
             fn_constraints,
+            case_result,
         ),
         Expr::ReturnExpr(ret) => infer_return(
             ctx,
@@ -9626,6 +9990,12 @@ fn infer_name_ref(ctx: &mut InferCtx, env: &TypeEnv, name_ref: &NameRef) -> Resu
 
     match env.lookup(&name) {
         Some(scheme) => {
+            if scheme.ty.is_callable_theorem() {
+                return Err(theorem_requires_application(
+                    ctx,
+                    name_ref.syntax().text_range(),
+                ));
+            }
             let jobs_runner = matches!(name.as_str(), "jobs_start" | "jobs_drain")
                 || (matches!(name.as_str(), "start" | "drain")
                     && ctx
@@ -10537,6 +10907,20 @@ fn infer_call_unsettled(
             .is_some_and(|scheme| scheme.vars == [TyVar(99000)]);
     // The parser opens a call around the expression it calls.
     let callee = call.callee().expect("a call has its callee");
+    if let Some(ty) = theorem_callee_type(ctx, env, &callee) {
+        let result = infer_theorem_application(
+            ctx,
+            env,
+            call,
+            &ty,
+            types,
+            type_registry,
+            trait_registry,
+            fn_constraints,
+        )?;
+        types.insert(callee.syntax().text_range(), ty);
+        return Ok(result);
+    }
     if let Some(ty) = infer_node_spawn(
         ctx,
         env,
@@ -10565,6 +10949,135 @@ fn infer_call_unsettled(
             .push((ty.clone(), call.syntax().text_range()));
     }
     Ok(ty)
+}
+
+fn theorem_requires_application(ctx: &mut InferCtx, span: TextRange) -> TypeError {
+    invalid_index(
+        ctx,
+        span,
+        "apply this theorem directly to its static indices and proof arguments".into(),
+    )
+}
+
+fn theorem_callee_type(ctx: &InferCtx, env: &TypeEnv, callee: &Expr) -> Option<Ty> {
+    let scheme = match callee {
+        Expr::NameRef(name) => env.lookup(&name.text()?)?,
+        Expr::FieldAccess(access) => {
+            let Expr::NameRef(base) = access.base()? else {
+                return None;
+            };
+            ctx.qualified_modules
+                .get(&base.text()?)?
+                .get(access.field()?.text())?
+        }
+        _ => return None,
+    };
+    scheme.ty.is_callable_theorem().then(|| scheme.ty.clone())
+}
+
+fn static_index_key(name: &str) -> String {
+    format!("\0static Nat {name}")
+}
+
+fn static_index_argument(env: &TypeEnv, arg: &Expr) -> Option<NatIndex> {
+    match arg {
+        Expr::Literal(literal) => {
+            let token = literal.token()?;
+            (token.kind() == SyntaxKind::INT_LITERAL)
+                .then(|| parse_nat_literal(token.text()))
+                .flatten()
+                .map(NatIndex::Literal)
+        }
+        Expr::NameRef(name) => match &env.lookup(&static_index_key(&name.text()?))?.ty {
+            Ty::Nat(index) => Some(index.clone()),
+            _ => None,
+        },
+        Expr::CallExpr(call) if matches!(call.callee(), Some(Expr::NameRef(name)) if name.text().as_deref() == Some("Succ")) =>
+        {
+            let args = call.args();
+            let [index] = args.as_slice() else {
+                return None;
+            };
+            Some(static_index_argument(env, index)?.successor())
+        }
+        Expr::BinaryExpr(expression) => {
+            let left = static_index_argument(env, &expression.lhs()?)?;
+            let right = static_index_argument(env, &expression.rhs()?)?;
+            use NatIndex::Literal;
+            match (expression.op()?.kind(), left, right) {
+                (SyntaxKind::PLUS, Literal(a), Literal(b)) => a.checked_add(b).map(Literal),
+                (SyntaxKind::MINUS, Literal(a), Literal(b)) => Some(Literal(a.saturating_sub(b))),
+                (SyntaxKind::STAR, Literal(a), Literal(b)) => a.checked_mul(b).map(Literal),
+                (SyntaxKind::PLUS, value, Literal(0))
+                | (SyntaxKind::PLUS, Literal(0), value)
+                | (SyntaxKind::MINUS, value, Literal(0))
+                | (SyntaxKind::STAR, value, Literal(1))
+                | (SyntaxKind::STAR, Literal(1), value) => Some(value),
+                (SyntaxKind::STAR, _, Literal(0)) | (SyntaxKind::STAR, Literal(0), _) => {
+                    Some(Literal(0))
+                }
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn infer_theorem_application(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    call: &CallExpr,
+    ty: &Ty,
+    types: &mut FxHashMap<TextRange, Ty>,
+    registry: &TypeRegistry,
+    traits: &TraitRegistry,
+    constraints: &FxHashMap<String, FnConstraints>,
+) -> Result<Ty, TypeError> {
+    use crate::proof_values::{instantiate_theorem_proof, CallableTheoremParam};
+
+    let span = call.syntax().text_range();
+    let theorem = ty
+        .callable_theorem()
+        .expect("a checked theorem application");
+    let args = call.args();
+    let params = theorem.params();
+    if args.len() != params.len() {
+        let error = TypeError::ArityMismatch {
+            expected: params.len(),
+            found: args.len(),
+            origin: ConstraintOrigin::Expr { span },
+        };
+        ctx.errors.push(error.clone());
+        return Err(error);
+    }
+
+    let mut indices = FxHashMap::default();
+    for (argument, parameter) in args.iter().zip(params) {
+        let arg_span = argument.syntax().text_range();
+        match parameter {
+            CallableTheoremParam::Nat(name) => {
+                let index = static_index_argument(env, argument).ok_or_else(|| {
+                    invalid_index(
+                        ctx,
+                        arg_span,
+                        "a theorem's Nat argument requires a static Nat expression".into(),
+                    )
+                })?;
+                types.insert(arg_span, Ty::Nat(index.clone()));
+                indices.insert(name.to_owned(), index);
+            }
+            CallableTheoremParam::Evidence(premise) => {
+                let expected = instantiate_theorem_proof(premise, &indices)
+                    .expect("a theorem premise refers only to earlier Nat binders");
+                let actual = infer_expr(ctx, env, argument, types, registry, traits, constraints)?;
+                ctx.unify(expected, actual, ConstraintOrigin::Expr { span: arg_span })?;
+            }
+        }
+    }
+    let result = instantiate_theorem_proof(theorem.result, &indices)
+        .expect("a theorem result refers only to its Nat binders");
+    Ok(ctx.resolve(result))
 }
 
 /// `Iter.from(source)` iterates over a list's elements, a map's `(key,
@@ -11491,6 +12004,7 @@ fn infer_while(
             type_registry,
             trait_registry,
             fn_constraints,
+            None,
         );
     }
     ctx.exit_loop();
@@ -12105,6 +12619,7 @@ fn infer_body(
             type_registry,
             trait_registry,
             fn_constraints,
+            None,
         ),
         None => ctx.fresh_var(),
     }
@@ -12119,10 +12634,12 @@ fn infer_block(
     type_registry: &TypeRegistry,
     trait_registry: &TraitRegistry,
     fn_constraints: &FxHashMap<String, FnConstraints>,
+    tail_case_result: Option<&Ty>,
 ) -> Ty {
     // The block's value is its last expression's; a `let` last gives unit.
     let mut last_ty = Ty::Tuple(vec![]);
-    for child in block.syntax().children() {
+    let mut children = block.syntax().children().peekable();
+    while let Some(child) = children.next() {
         if let Some(item) = Item::cast(child.clone()) {
             last_ty = Ty::Tuple(vec![]);
             let Some(let_) = nested_let(ctx, item) else {
@@ -12145,7 +12662,7 @@ fn infer_block(
         } else if let Some(expr) = Expr::cast(child.clone()) {
             // An expression reported already has no known type, neither
             // the previous statement's nor unit.
-            last_ty = infer_expr(
+            last_ty = infer_expr_with_case_result(
                 ctx,
                 env,
                 &expr,
@@ -12153,6 +12670,7 @@ fn infer_block(
                 type_registry,
                 trait_registry,
                 fn_constraints,
+                tail_case_result.filter(|_| children.peek().is_none()),
             )
             .unwrap_or_else(|_| ctx.fresh_var());
         } else if child.kind() == SyntaxKind::ASSERT_RECEIVE_EXPR {
@@ -12419,17 +12937,29 @@ fn type_to_type_info(ty: &Ty, type_registry: &TypeRegistry) -> AbsTypeInfo {
     if ty.args_of(exhaustiveness::LIST).is_some() {
         return exhaustiveness::list_type_info();
     }
-    if let Some(name) = ty.con_name() {
+    if let Some(con) = ty.con() {
+        let name = con.name.as_str();
         // Check if it's Bool.
         if name == "Bool" {
             return AbsTypeInfo::Bool;
         }
 
         // Check if it's a registered sum type.
-        if let Some(sum_info) = type_registry.lookup_sum_type(name) {
+        let sum_info = if con.indexed_origin.is_some() {
+            type_registry.indexed_family(con)
+        } else {
+            type_registry.lookup_sum_type(name)
+        };
+        if let Some(sum_info) = sum_info {
             let variants: Vec<ConstructorSig> = sum_info
                 .variants
                 .iter()
+                .filter(|variant| {
+                    variant
+                        .indexed
+                        .as_ref()
+                        .is_none_or(|indexed| indexed_variant_can_match(indexed, ty))
+                })
                 .map(|v| ConstructorSig {
                     name: v.name.clone(),
                     arity: v.fields.len(),
@@ -12462,8 +12992,8 @@ fn struct_type_info(def: &StructDefInfo) -> AbsTypeInfo {
 fn variant_owner<'a>(type_registry: &'a TypeRegistry, name: &str) -> Option<&'a SumTypeDefInfo> {
     match name.rsplit_once('.') {
         Some((owner, variant)) => type_registry
-            .sum_type_defs
-            .get(owner)
+            .lookup_sum_type(owner)
+            .or_else(|| type_registry.indexed_family(&TyCon::new(owner)))
             .filter(|sum| sum.variants.iter().any(|v| v.name == variant)),
         None => type_registry.lookup_variant(name).map(|(sum, _)| sum),
     }
@@ -12553,6 +13083,7 @@ fn infer_case(
     type_registry: &TypeRegistry,
     trait_registry: &TraitRegistry,
     fn_constraints: &FxHashMap<String, FnConstraints>,
+    expected: Option<&Ty>,
 ) -> Result<Ty, TypeError> {
     let scrutinee_ty = if let Some(scrutinee) = case.scrutinee() {
         infer_expr(
@@ -12568,6 +13099,14 @@ fn infer_case(
         ctx.fresh_var()
     };
 
+    let has_indexed_scrutinee = |ctx: &mut InferCtx| {
+        ctx.resolve(scrutinee_ty.clone()).con().is_some_and(|con| {
+            con.indexed_origin.is_some() && type_registry.indexed_family(con).is_some()
+        })
+    };
+    let mut indexed_case = has_indexed_scrutinee(ctx);
+    let expected = expected.filter(|_| indexed_case);
+
     let mut result_ty: Option<Ty> = None;
     let mut first_branch: Option<TextRange> = None;
 
@@ -12577,71 +13116,112 @@ fn infer_case(
     let mut arm_spans: Vec<TextRange> = Vec::new();
 
     for arm in case.arms() {
+        // A preceding arm can have fixed an initially unknown scrutinee.
+        indexed_case = indexed_case || has_indexed_scrutinee(ctx);
+        let nesting = ctx.nesting(env);
         env.push_scope();
-
-        if let Some(pat) = arm.pattern() {
-            check_unique_binders(ctx, std::slice::from_ref(&pat));
-            let pat_ty = infer_pattern(ctx, env, &pat, types, type_registry)?;
-            ctx.unify(
-                scrutinee_ty.clone(),
-                pat_ty,
-                ConstraintOrigin::Pattern {
-                    pattern_span: pat.syntax().text_range(),
-                },
-            )?;
-
-            // Convert to abstract pattern for exhaustiveness.
-            let abs_pat = ast_pattern_to_abstract(ctx, &pat, env, type_registry);
-            arm_patterns.push(abs_pat);
-        } else {
-            arm_patterns.push(AbsPat::Wildcard);
+        if indexed_case {
+            ctx.enter_level();
         }
+        let branch = (|| {
+            if let Some(pat) = arm.pattern() {
+                check_unique_binders(ctx, std::slice::from_ref(&pat));
+                let pat_ty = infer_pattern_with_scrutinee(
+                    ctx,
+                    env,
+                    &pat,
+                    types,
+                    type_registry,
+                    Some(&scrutinee_ty),
+                )?;
+                ctx.unify(
+                    scrutinee_ty.clone(),
+                    pat_ty,
+                    ConstraintOrigin::Pattern {
+                        pattern_span: pat.syntax().text_range(),
+                    },
+                )?;
 
-        // Check for guard expression.
-        let has_guard = arm.guard().is_some();
-        arm_has_guard.push(has_guard);
-        arm_spans.push(arm.syntax().text_range());
-
-        // A guard is any `Bool` expression, as a function clause's is.
-        if let Some(guard_expr) = arm.guard() {
-            let guard_ty = infer_expr(
-                ctx,
-                env,
-                &guard_expr,
-                types,
-                type_registry,
-                trait_registry,
-                fn_constraints,
-            )?;
-            let _ = ctx.unify(
-                Ty::bool(),
-                guard_ty,
-                ConstraintOrigin::Expr {
-                    span: guard_expr.syntax().text_range(),
-                },
-            );
-        }
-
-        let body_ty = match (arm.body(), arm.pattern()) {
-            (Some(body), _) => Some(infer_expr(
-                ctx,
-                env,
-                &body,
-                types,
-                type_registry,
-                trait_registry,
-                fn_constraints,
-            )?),
-            (None, Some(pat)) if arm.is_pass_through() => {
-                Some(infer_rebuilt_pattern(ctx, env, &pat)?)
+                // Convert to abstract pattern for exhaustiveness.
+                let abs_pat = ast_pattern_to_abstract(ctx, &pat, env, type_registry);
+                arm_patterns.push(abs_pat);
+            } else {
+                arm_patterns.push(AbsPat::Wildcard);
             }
-            _ => None,
-        };
-        if let Some(body_ty) = body_ty {
+
+            // Check for guard expression.
+            let has_guard = arm.guard().is_some();
+            arm_has_guard.push(has_guard);
+            arm_spans.push(arm.syntax().text_range());
+
+            // A guard is any `Bool` expression, as a function clause's is.
+            if let Some(guard_expr) = arm.guard() {
+                let guard_ty = infer_expr(
+                    ctx,
+                    env,
+                    &guard_expr,
+                    types,
+                    type_registry,
+                    trait_registry,
+                    fn_constraints,
+                )?;
+                let _ = ctx.unify(
+                    Ty::bool(),
+                    guard_ty,
+                    ConstraintOrigin::Expr {
+                        span: guard_expr.syntax().text_range(),
+                    },
+                );
+            }
+
+            let body_ty = match (arm.body(), arm.pattern()) {
+                (Some(body), _) => Some(infer_expr(
+                    ctx,
+                    env,
+                    &body,
+                    types,
+                    type_registry,
+                    trait_registry,
+                    fn_constraints,
+                )?),
+                (None, Some(pat)) if arm.is_pass_through() => {
+                    Some(infer_rebuilt_pattern(ctx, env, &pat)?)
+                }
+                _ => None,
+            };
+            let Some(body_ty) = body_ty else {
+                return Ok(None);
+            };
             let branch_span = arm
                 .body()
                 .map(|body| body.syntax().text_range())
                 .unwrap_or_else(|| arm.syntax().text_range());
+            let body_ty = if let Some(expected) = expected {
+                ctx.unify(
+                    expected.clone(),
+                    body_ty,
+                    ConstraintOrigin::Expr { span: branch_span },
+                )?;
+                expected.clone()
+            } else if indexed_case {
+                // Preserve what each branch proved about its own result.
+                // Its equations cannot be used to check any other branch.
+                ctx.resolve(body_ty)
+            } else {
+                body_ty
+            };
+            Ok(Some((body_ty, branch_span)))
+        })();
+        ctx.restore(env, nesting);
+
+        if let Some((body_ty, branch_span)) = branch? {
+            if expected.is_some() {
+                result_ty = Some(body_ty);
+                continue;
+            }
+            if indexed_case {
+                ctx.close_arm_type(&body_ty, branch_span)?;
+            }
             join_branch_ty(
                 ctx,
                 &mut result_ty,
@@ -12651,8 +13231,6 @@ fn infer_case(
                 branch_span,
             )?;
         }
-
-        env.pop_scope();
     }
 
     check_arm_coverage(
@@ -12960,6 +13538,9 @@ fn infer_field_access(
             .and_then(|functions| functions.get(&field_name))
             .cloned()
         {
+            if scheme.ty.is_callable_theorem() {
+                return Err(theorem_requires_application(ctx, fa.syntax().text_range()));
+            }
             return Ok(ctx.instantiate(&scheme));
         }
         if let Some(scheme) = module_variant(ctx, &base_name, &field_name)
@@ -13837,6 +14418,18 @@ fn infer_pattern(
     types: &mut FxHashMap<TextRange, Ty>,
     type_registry: &TypeRegistry,
 ) -> Result<Ty, TypeError> {
+    infer_pattern_with_scrutinee(ctx, env, pat, types, type_registry, None)
+}
+
+fn infer_pattern_with_scrutinee(
+    ctx: &mut InferCtx,
+    env: &mut TypeEnv,
+    pat: &Pattern,
+    types: &mut FxHashMap<TextRange, Ty>,
+    type_registry: &TypeRegistry,
+    scrutinee: Option<&Ty>,
+) -> Result<Ty, TypeError> {
+    let span = pat.syntax().text_range();
     match pat {
         Pattern::Ident(ident) => {
             let name_text = ident.name().ok_or_else(incomplete)?.text().to_string();
@@ -13860,6 +14453,26 @@ fn infer_pattern(
                     _ => None,
                 };
                 if let Some(ty) = matched {
+                    let ty = match scrutinee {
+                        Some(scrutinee)
+                            if indexed_pattern_fields(
+                                ctx,
+                                type_registry,
+                                &name_text,
+                                &ty,
+                                scrutinee,
+                                span,
+                            )?
+                            .is_some() =>
+                        {
+                            ctx.resolve(scrutinee.clone())
+                        }
+                        None => {
+                            reject_unchecked_indexed_pattern(ctx, &ty, span)?;
+                            ty
+                        }
+                        _ => ty,
+                    };
                     types.insert(pat.syntax().text_range(), ty.clone());
                     return Ok(ty);
                 }
@@ -13911,7 +14524,7 @@ fn infer_pattern(
             Ok(ty)
         }
         Pattern::Constructor(ctor_pat) => {
-            infer_constructor_pattern(ctx, env, ctor_pat, pat, types, type_registry)
+            infer_constructor_pattern(ctx, env, ctor_pat, pat, types, type_registry, scrutinee)
         }
         Pattern::Struct(struct_pat) => {
             infer_struct_pattern(ctx, env, struct_pat, pat, types, type_registry)
@@ -14006,6 +14619,7 @@ fn infer_constructor_pattern(
     pat: &Pattern,
     types: &mut FxHashMap<TextRange, Ty>,
     type_registry: &TypeRegistry,
+    scrutinee: Option<&Ty>,
 ) -> Result<Ty, TypeError> {
     let lookup_name = constructor_lookup_name(ctx, ctor_pat);
 
@@ -14031,6 +14645,17 @@ fn infer_constructor_pattern(
     let (field_types, ty) = match ctx.instantiate(&ctor_scheme) {
         Ty::Fun(field_types, ty) => (field_types, *ty),
         ty => (Vec::new(), ty),
+    };
+    let span = pat.syntax().text_range();
+    let (field_types, ty) = if let Some(scrutinee) = scrutinee {
+        let variant = lookup_name.rsplit('.').next().unwrap_or(&lookup_name);
+        match indexed_pattern_fields(ctx, type_registry, variant, &ty, scrutinee, span)? {
+            Some(fields) => (fields, ctx.resolve(scrutinee.clone())),
+            None => (field_types, ty),
+        }
+    } else {
+        reject_unchecked_indexed_pattern(ctx, &ty, span)?;
+        (field_types, ty)
     };
     let sub_patterns: Vec<Pattern> = ctor_pat.fields().collect();
     if sub_patterns.len() != field_types.len() {
@@ -15701,6 +16326,9 @@ fn check_rigid_type_params(ctx: &mut InferCtx, fn_: &FnDef, type_params: &FxHash
     let mut seen: Vec<(Ty, String)> = Vec::new();
     for name in names {
         let resolved = ctx.resolve(type_params[name].clone());
+        if matches!(resolved, Ty::Nat(_)) {
+            continue;
+        }
         let found = if !is_type_var(&resolved) {
             Some(resolved.clone())
         } else {
@@ -15918,7 +16546,9 @@ fn annotation_type_param(
     collect_annotation_tokens(ann.syntax(), &mut tokens);
     match tokens.as_slice() {
         [(SyntaxKind::IDENT, name)] | [(SyntaxKind::ARROW, _), (SyntaxKind::IDENT, name)]
-            if type_params.contains_key(name) =>
+            if type_params
+                .get(name)
+                .is_some_and(|ty| !matches!(ty, Ty::Nat(_))) =>
         {
             Some(name.clone())
         }
@@ -15948,6 +16578,13 @@ fn resolve_type_annotation(
         return None;
     }
     let ty = parse_type_tokens(&tokens, &mut start);
+    let ty = match check_indexed_type(ty, ann.syntax(), type_registry) {
+        Ok(ty) => ty,
+        Err(error) => {
+            invalid_index(ctx, annotated_type_range(ann), error);
+            return Some(Ty::Never);
+        }
+    };
     // Counted as written: what an alias expands to is counted where the
     // alias is defined.
     if let Some((name, expected, found)) = wrong_type_argument_count(&ty, type_registry) {
@@ -15959,7 +16596,15 @@ fn resolve_type_annotation(
         });
     }
     let ty = resolve_alias(ctx, ty, type_registry);
-    Some(infer_missing_type_args(ctx, ty, type_registry))
+    let ty = infer_missing_type_args(ctx, ty, type_registry);
+    if !contains_indexed_type(&ty) {
+        return Some(ty);
+    }
+    Some(ty.replace_cons(&mut |con| {
+        ctx.rigid_params.iter().rev().find_map(|(ty, name)| {
+            (name == &con.name && con.indexed_origin.is_none()).then(|| ty.clone())
+        })
+    }))
 }
 
 /// Where an annotation names its type: without the `::` or `->` before it.
@@ -16050,8 +16695,9 @@ fn infer_missing_type_args(ctx: &mut InferCtx, ty: Ty, type_registry: &TypeRegis
         },
         Ty::App(con, args) => {
             let arity = con
-                .con_name()
-                .and_then(|name| type_arity(name, type_registry));
+                .con()
+                .filter(|con| con.indexed_origin.is_none())
+                .and_then(|con| type_arity(&con.name, type_registry));
             match arity {
                 Some(arity) if arity != args.len() => fresh(ctx, con, arity),
                 // The constructor of `List<Int>` has its arguments.
@@ -16095,6 +16741,7 @@ fn collect_type_element(
             if matches!(
                 kind,
                 SyntaxKind::IDENT
+                    | SyntaxKind::INT_LITERAL
                     | SyntaxKind::LT
                     | SyntaxKind::GT
                     | SyntaxKind::COMMA
@@ -16146,26 +16793,31 @@ fn parse_type_tokens(tokens: &[(SyntaxKind, String)], pos: &mut usize) -> Ty {
         return apply_type_sugar(tokens, pos, base);
     }
 
+    if tokens[*pos].0 == SyntaxKind::INT_LITERAL {
+        let value = parse_nat_literal(&tokens[*pos].1).unwrap_or_default();
+        *pos += 1;
+        return Ty::Nat(NatIndex::Literal(value));
+    }
+
     if tokens[*pos].0 != SyntaxKind::IDENT {
+        *pos += 1;
         return Ty::Never;
     }
 
-    let name = tokens[*pos].1.clone();
+    let mut name = tokens[*pos].1.clone();
     *pos += 1;
 
     // Qualified type name: Module.TypeName  (e.g. Types.UserId)
     // When we encounter IDENT DOT IDENT, join them into "Module.TypeName" so
     // that the lookup key matches the qualified alias registered from imports.
-    let name = if *pos + 1 < tokens.len()
+    while *pos + 1 < tokens.len()
         && tokens[*pos].0 == SyntaxKind::DOT
         && tokens[*pos + 1].0 == SyntaxKind::IDENT
     {
-        let qualified = format!("{}.{}", name, tokens[*pos + 1].1);
+        name.push('.');
+        name.push_str(&tokens[*pos + 1].1);
         *pos += 2; // consume DOT and IDENT
-        qualified
-    } else {
-        name
-    };
+    }
 
     // Function type: Fun(ParamTypes) -> ReturnType
     if name == "Fun" && *pos < tokens.len() && tokens[*pos].0 == SyntaxKind::L_PAREN {
@@ -16246,7 +16898,7 @@ fn resolve_alias_within(
     depth: usize,
 ) -> Ty {
     const MAX_DEPTH: usize = 64;
-    if depth > MAX_DEPTH {
+    if depth > MAX_DEPTH || ty.is_proof() {
         return ty;
     }
     let again =
@@ -16259,6 +16911,9 @@ fn resolve_alias_within(
         Ty::App(_, args) => args.into_iter().map(|arg| again(ctx, arg)).collect(),
         _ => Vec::new(),
     };
+    if tc.indexed_origin.is_some() {
+        return Ty::App(Box::new(Ty::Con(tc)), args);
+    }
     if let Some(alias) = type_registry.lookup_alias(&tc.name) {
         // Named with another number of arguments than it takes (reported
         // where it is written) or with none, its parameters are not known.
@@ -16313,13 +16968,21 @@ fn resolve_alias_within(
 /// as `List<T>` resolves to plain constructors named `T`, with the inference
 /// variables that stand for them in the body.
 fn with_declared_type_params(ty: &Ty, type_params: &FxHashMap<String, Ty>) -> Ty {
-    ty.replace_cons(&mut |tc| type_params.get(&tc.name).cloned())
+    ty.replace_cons(&mut |tc| {
+        if tc.indexed_origin.is_some() {
+            return None;
+        }
+        type_params.get(&tc.name).cloned()
+    })
 }
 
 /// `ty` with each of the type parameters `param_names` that
 /// `param_values` gives a type for replaced by it.
 fn substitute_type_params(ty: &Ty, param_names: &[String], param_values: &[Ty]) -> Ty {
     ty.replace_cons(&mut |tc| {
+        if tc.indexed_origin.is_some() {
+            return None;
+        }
         let index = param_names.iter().position(|name| *name == tc.name)?;
         param_values.get(index).cloned()
     })

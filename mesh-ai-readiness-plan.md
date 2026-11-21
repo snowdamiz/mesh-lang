@@ -225,6 +225,34 @@ I exercised the inventory rule with a disposable two-target model. A move and re
 
 **Decision after the pilot.** Advance only if a fresh agent can repair the capped policy using the verifier output, preserve an existing law through a refactor, and complete the authorized 429 requirement change unattended. Before reserving broader syntax, run the same exercise on a second real policy. For the [binary reader](packages/mesh-binary/binary/reader.mpl), successful reads should advance by the number of bytes consumed. Its records, `Bytes`, arithmetic and `Result` exceed L2. Record an honest `unverified` and compare the cost of supporting those operations with an executable sequence test. A proof-term language would need a useful obligation the automatic checker cannot settle and an independently checkable proof an agent can maintain. Keep HTTP, database and scheduler behavior covered by integration tests.
 
+### Mesh-authored proofs toward Bend-class verification
+
+The author writes the law and the proof in Mesh. The scalar solver stays
+available for compatible laws. The explicit proof checker takes its goals
+from checked Mesh definitions and checks them in a pinned kernel. Each proof
+uses the same declaration identities and machine integer semantics as the
+compiler. An unsupported operation or failed check leaves the law unverified.
+
+Use these acceptance cases to extend the language and verifier.
+
+| Capability | Acceptance case |
+| --- | --- |
+| Proofs over recursive types | Prove the result laws for a compiled list filter and a recursive append by induction. Reject a changed branch, a recursive call on an unchanged list, an effectful call in a discarded binding, and an append that drops an element. |
+| Propositions and reusable lemmas | State idempotence directly over the implementation. Prove an implication about a validated input and construct an existential witness. Apply a checked lemma from another module. |
+| Direct theorem application | Prove `n + 0 == n` by induction in an embedded Mesh proof. Call the theorem at `2` from ordinary code, pass the resulting equality evidence through a function, and reject applying the same evidence at `3`. |
+| Generic data and native specializations | Prove that compiled `Tree<T>` mirroring is an involution for all `T`. Run native specializations that share a layout but have different checked types. Reject a changed recursive branch. |
+| Dependent data and proof evidence | Prove that compiled vector copying preserves contents for every element type and length. Compile and run an ordinary `.mpl` program that applies a checked theorem and passes its evidence to a vector consumer. Reject a wrong vector length, a proof for a different index, and a failed embedded proof before execution. |
+| Compiled functional correctness | Prove that compiled integer sorting returns an ordered permutation for every input. Replay the proof independently and reject a reversed comparator. |
+| Proof replay and preservation | Regenerate the proof obligation from a clean checkout and recheck it independently. Reject stale implementation bindings, missing proofs, unknown axioms, effects, and an unreviewed change to a preserved law. |
+
+Use a result proof for the first case and a `logic` law file for named
+propositions, specifications over indexed data, and reusable lemmas.
+`meshc verify --verdict --emit-proof .proof-artifacts` writes the generated
+definitions and proof, then checks the exported theorem declarations with
+ConLeche. Both artifacts are available for review and replay. The proof
+check depends on faithful translation of the compiled definitions and
+runtime behavior for the admitted operations.
+
 ### Fix the compiler failure exposed by the acceptance test
 
 A natural first version nested the budget loop inside the HTTP-status loop. Both v0.1.8 and a fresh `cargo build --workspace --locked --offline` of `7c162056` panicked during code generation, before any assertion ran. Here is the reduced `tests/nested.test.mpl`. Removing the single `let` line made it pass.

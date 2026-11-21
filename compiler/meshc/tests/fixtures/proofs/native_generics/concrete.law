@@ -1,0 +1,32 @@
+logic
+from Trees import Tree<List<Int>> as IntTree
+from Trees import Tree<List<Bool>> as BoolTree
+from Trees import Packet<List<Int>> as IntPacket
+from Trees import mirror(Tree<List<Int>>) -> Tree<List<Int>> as mirror_int
+from Trees import mirror(Tree<List<Bool>>) -> Tree<List<Bool>> as mirror_bool
+from Trees import wrap(List<Int>) -> Packet<List<Int>> as wrap_int
+
+theorem mirror_int_twice(tree :: IntTree) do mirror_int(mirror_int(tree)) == tree end
+proof mirror_int_twice do
+  induction tree do
+    IntTree.Leaf(value) -> refl
+    IntTree.Branch(left, right, ih_left, ih_right) ->
+      change IntTree.Branch(mirror_int(mirror_int(left)), mirror_int(mirror_int(right))) == IntTree.Branch(left, right) do
+        rewrite ih_left do rewrite ih_right do refl end end
+      end
+  end
+end
+
+theorem mirror_bool_twice(tree :: BoolTree) do mirror_bool(mirror_bool(tree)) == tree end
+proof mirror_bool_twice do
+  induction tree do
+    BoolTree.Leaf(value) -> refl
+    BoolTree.Branch(left, right, ih_left, ih_right) ->
+      change BoolTree.Branch(mirror_bool(mirror_bool(left)), mirror_bool(mirror_bool(right))) == BoolTree.Branch(left, right) do
+        rewrite ih_left do rewrite ih_right do refl end end
+      end
+  end
+end
+
+theorem wraps_payload(value :: List<Int>) do wrap_int(value) == IntPacket.mk(IntTree.Leaf(value)) end
+proof wraps_payload do refl end

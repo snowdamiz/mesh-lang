@@ -1,0 +1,14 @@
+logic
+from Vector import Vec
+from Vector import copy
+
+theorem copy_preserves_contents(T :: Type, n :: Nat, values :: Vec<T, n>) do
+  copy(T, n, values) == values
+end
+
+proof copy_preserves_contents do
+  induction values do
+    Vec.Empty -> refl
+    Vec.Push(head, tail, ih) -> exact congr(Vec.Push(head), ih)
+  end
+end

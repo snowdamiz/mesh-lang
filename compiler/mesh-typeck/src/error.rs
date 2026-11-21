@@ -487,6 +487,8 @@ pub enum TypeError {
     UnknownInterface { name: String, span: TextRange },
     /// A numeric literal that is malformed or does not fit its type.
     InvalidLiteral { reason: String, span: TextRange },
+    /// An invalid static index or theorem application.
+    InvalidIndex { reason: String, span: TextRange },
     /// `Module.name` where the module has no such function.
     NoSuchModuleFunction {
         module: String,
@@ -666,6 +668,7 @@ impl TypeError {
             | TypeError::TypeArgumentCount { span, .. }
             | TypeError::UnknownInterface { span, .. }
             | TypeError::InvalidLiteral { span, .. }
+            | TypeError::InvalidIndex { span, .. }
             | TypeError::InvalidConcat { span, .. }
             | TypeError::IndexingUnsupported { span }
             | TypeError::ActorMessageTypeUnknown { span, .. }
@@ -1240,6 +1243,7 @@ impl fmt::Display for TypeError {
             TypeError::UnknownType { name, .. } => write!(f, "unknown type `{name}`"),
             TypeError::UnknownInterface { name, .. } => write!(f, "unknown interface `{name}`"),
             TypeError::InvalidLiteral { reason, .. } => write!(f, "{reason}"),
+            TypeError::InvalidIndex { reason, .. } => write!(f, "{reason}"),
             TypeError::NoSuchModuleFunction { module, name, .. } => {
                 write!(f, "module `{module}` has no function `{name}`")
             }

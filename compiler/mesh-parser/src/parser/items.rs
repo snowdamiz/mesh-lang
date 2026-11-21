@@ -841,21 +841,38 @@ fn parse_deriving_clause(p: &mut Parser) {
     p.close(dc, SyntaxKind::DERIVING_CLAUSE);
 }
 
-/// Parse a generic parameter list: `<A, B, C>`, at least one.
+/// Parse a generic parameter list such as `<T, n :: Nat>`, at least one.
 fn parse_generic_param_list(p: &mut Parser) {
     let m = p.open();
     p.advance(); // <
 
-    p.expect(SyntaxKind::IDENT);
+    parse_generic_param(p);
     while p.eat(SyntaxKind::COMMA) {
         if p.at(SyntaxKind::GT) {
             break;
         }
-        p.expect(SyntaxKind::IDENT);
+        parse_generic_param(p);
     }
 
     p.expect(SyntaxKind::GT);
     p.close(m, SyntaxKind::GENERIC_PARAM_LIST);
+}
+
+fn parse_generic_param(p: &mut Parser) {
+    if !p.at(SyntaxKind::IDENT) || p.nth(1) != SyntaxKind::COLON_COLON {
+        p.expect(SyntaxKind::IDENT);
+        return;
+    }
+
+    let index = p.open();
+    let name = p.open();
+    p.advance(); // name
+    p.close(name, SyntaxKind::NAME);
+    let kind = p.open();
+    p.advance(); // ::
+    parse_type(p);
+    p.close(kind, SyntaxKind::TYPE_ANNOTATION);
+    p.close(index, SyntaxKind::INDEX_PARAM);
 }
 
 // ── Type Parsing ─────────────────────────────────────────────────────────
@@ -927,20 +944,34 @@ pub(crate) fn parse_type(p: &mut Parser) {
 
     // Optional generic arguments: <A, B>
     if p.at(SyntaxKind::LT) {
-        let args = p.open();
-        p.advance(); // <
-        parse_type(p);
-        while p.eat(SyntaxKind::COMMA) {
-            if p.at(SyntaxKind::GT) {
-                break;
-            }
-            parse_type(p);
-        }
-        p.expect(SyntaxKind::GT);
-        p.close(args, SyntaxKind::GENERIC_ARG_LIST);
+        parse_generic_arg_list(p);
     }
 
     parse_type_sugar(p);
+}
+
+fn parse_generic_arg_list(p: &mut Parser) {
+    let args = p.open();
+    p.advance(); // <
+    parse_type_arg(p);
+    while p.eat(SyntaxKind::COMMA) {
+        if p.at(SyntaxKind::GT) {
+            break;
+        }
+        parse_type_arg(p);
+    }
+    p.expect(SyntaxKind::GT);
+    p.close(args, SyntaxKind::GENERIC_ARG_LIST);
+}
+
+fn parse_type_arg(p: &mut Parser) {
+    if p.at(SyntaxKind::INT_LITERAL) {
+        let index = p.open();
+        p.advance();
+        p.close(index, SyntaxKind::NAT_INDEX);
+    } else {
+        parse_type(p);
+    }
 }
 
 /// The `?` (Option) or `!Error` (Result) suffix of a type.
@@ -1146,17 +1177,7 @@ pub(crate) fn parse_impl_def(p: &mut Parser) {
 
     // Optional generic arguments on the trait: impl Trait<T> for ...
     if p.at(SyntaxKind::LT) {
-        let args = p.open();
-        p.advance(); // <
-        parse_type(p);
-        while p.eat(SyntaxKind::COMMA) {
-            if p.at(SyntaxKind::GT) {
-                break;
-            }
-            parse_type(p);
-        }
-        p.expect(SyntaxKind::GT);
-        p.close(args, SyntaxKind::GENERIC_ARG_LIST);
+        parse_generic_arg_list(p);
     }
 
     // Expect `for`.
@@ -1282,7 +1303,7 @@ pub(crate) fn parse_type_decl(p: &mut Parser, at: usize) {
         lookahead += 1;
     }
     if p.nth(lookahead) == SyntaxKind::LT {
-        // Skip generic params: <T, U, ...>
+        // Skip generic params, including nested type applications in kinds.
         let mut depth = 0u32;
         loop {
             match p.nth(lookahead) {
@@ -1380,6 +1401,7 @@ pub(crate) fn parse_sum_type_def(p: &mut Parser) {
 /// - `VariantName` (nullary)
 /// - `VariantName(Type1, Type2)` (positional)
 /// - `VariantName(name1 :: Type1, name2 :: Type2)` (named fields)
+/// - `Push<k :: Nat>(T, Vec<T, k>) -> Vec<T, Succ<k>>` (indexed result)
 fn parse_variant_def(p: &mut Parser) {
     let m = p.open();
 
@@ -1390,6 +1412,10 @@ fn parse_variant_def(p: &mut Parser) {
         p.error("expected variant name");
         p.close(m, SyntaxKind::VARIANT_DEF);
         return;
+    }
+
+    if p.at(SyntaxKind::LT) {
+        parse_generic_param_list(p);
     }
 
     // Optional field list: (fields...)
@@ -1407,6 +1433,14 @@ fn parse_variant_def(p: &mut Parser) {
         }
 
         p.expect(SyntaxKind::R_PAREN);
+    }
+
+    if p.eat(SyntaxKind::ARROW) {
+        let result = p.open();
+        let ann = p.open();
+        parse_type(p);
+        p.close(ann, SyntaxKind::TYPE_ANNOTATION);
+        p.close(result, SyntaxKind::VARIANT_RESULT);
     }
 
     p.close(m, SyntaxKind::VARIANT_DEF);
@@ -2112,4 +2146,136 @@ fn parse_cast_handler(p: &mut Parser) {
     }
 
     p.close(m, SyntaxKind::CAST_HANDLER);
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::ast::item::Item;
+    use crate::{AstNode, SyntaxKind, SyntaxNode};
+    use rowan::{TextRange, TextSize};
+
+    fn child_kinds(node: &SyntaxNode) -> Vec<SyntaxKind> {
+        node.children_with_tokens()
+            .map(|child| child.kind())
+            .filter(|kind| *kind != SyntaxKind::WHITESPACE)
+            .collect()
+    }
+
+    fn source_range(source: &str, text: &str) -> TextRange {
+        let start = TextSize::try_from(source.find(text).unwrap()).unwrap();
+        TextRange::at(start, TextSize::of(text))
+    }
+
+    #[test]
+    fn indexed_sum_type_preserves_constructor_shapes_and_spans() {
+        use SyntaxKind::*;
+
+        let source = "pub type Vec<T, n :: Nat> do\n \
+                      Empty -> Vec<T, 0>\n \
+                      Push<k :: Nat>(T, Vec<T, k>) -> Vec<T, Succ<k>>\nend\n";
+        let parsed = crate::parse(source);
+        assert!(parsed.ok(), "{:?}", parsed.errors());
+        assert_eq!(parsed.syntax().text().to_string(), source);
+        let tree = parsed.tree();
+        let Item::SumTypeDef(sum) = tree.items().next().unwrap() else {
+            panic!("expected sum type declaration");
+        };
+        let params = sum
+            .syntax()
+            .children()
+            .find(|node| node.kind() == GENERIC_PARAM_LIST)
+            .unwrap();
+        assert_eq!(child_kinds(&params), [LT, IDENT, COMMA, INDEX_PARAM, GT]);
+        let index = sum.index_params().next().unwrap();
+        assert_eq!(child_kinds(index.syntax()), [NAME, TYPE_ANNOTATION]);
+        assert_eq!(index.name().unwrap().text().as_deref(), Some("n"));
+        assert_eq!(
+            child_kinds(index.kind_annotation().unwrap().syntax()),
+            [COLON_COLON, IDENT]
+        );
+        assert_eq!(
+            index.syntax().text_range(),
+            source_range(source, "n :: Nat")
+        );
+
+        let variants: Vec<_> = sum.variants().collect();
+        let [empty, push] = variants.as_slice() else {
+            panic!("expected two variants");
+        };
+        assert_eq!(child_kinds(empty.syntax()), [IDENT, ARROW, VARIANT_RESULT]);
+        assert_eq!(empty.positional_types().count(), 0);
+        assert_eq!(empty.fields().count(), 0);
+        let result = empty.result_type().unwrap();
+        assert_eq!(result.syntax().parent().unwrap().kind(), VARIANT_RESULT);
+        assert_eq!(child_kinds(result.syntax()), [IDENT, GENERIC_ARG_LIST]);
+        let args = result.syntax().first_child().unwrap();
+        assert_eq!(child_kinds(&args), [LT, IDENT, COMMA, NAT_INDEX, GT]);
+        let zero = args.first_child().unwrap();
+        assert_eq!(child_kinds(&zero), [INT_LITERAL]);
+        assert_eq!(zero.first_token().unwrap().text(), "0");
+        assert_eq!(zero.text_range(), source_range(source, "0"));
+
+        assert_eq!(
+            child_kinds(push.syntax()),
+            [
+                IDENT,
+                GENERIC_PARAM_LIST,
+                L_PAREN,
+                TYPE_ANNOTATION,
+                COMMA,
+                TYPE_ANNOTATION,
+                R_PAREN,
+                ARROW,
+                VARIANT_RESULT
+            ]
+        );
+        assert_eq!(
+            push.index_params()
+                .next()
+                .unwrap()
+                .name()
+                .unwrap()
+                .text()
+                .as_deref(),
+            Some("k")
+        );
+        assert_eq!(push.positional_types().count(), 2);
+        let result = push.result_type().unwrap();
+        assert_eq!(
+            result.syntax().text_range(),
+            source_range(source, "Vec<T, Succ<k>>")
+        );
+        let args = result.syntax().first_child().unwrap();
+        assert_eq!(
+            child_kinds(&args),
+            [LT, IDENT, COMMA, IDENT, GENERIC_ARG_LIST, GT]
+        );
+        assert_eq!(child_kinds(&args.first_child().unwrap()), [LT, IDENT, GT]);
+    }
+
+    #[test]
+    fn kinded_parameters_share_function_and_struct_generic_syntax() {
+        use SyntaxKind::*;
+
+        let source = "struct Buffer<T, n :: Nat,> do\n data :: Vec<T, n>\nend\n\
+                      fn id<T, n :: Nat,>(x :: Vec<T, n>) -> Vec<T, n> = x\n";
+        let parsed = crate::parse(source);
+        assert!(parsed.ok(), "{:?}", parsed.errors());
+        let declarations: Vec<_> = parsed.syntax().children().collect();
+        let [structure, function] = declarations.as_slice() else {
+            panic!("expected two declarations");
+        };
+        assert_eq!(structure.kind(), STRUCT_DEF);
+        assert_eq!(function.kind(), FN_DEF);
+        for decl in declarations {
+            let params = decl
+                .children()
+                .find(|node| node.kind() == GENERIC_PARAM_LIST)
+                .unwrap();
+            assert_eq!(
+                child_kinds(&params),
+                [LT, IDENT, COMMA, INDEX_PARAM, COMMA, GT]
+            );
+        }
+    }
 }

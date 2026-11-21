@@ -8,12 +8,12 @@ use serde_json::Value as Json;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ffi::{OsStr, OsString};
 use std::fmt::Write as _;
-use std::io::{Read, Seek, Write};
-use std::process::{Command, Stdio};
+use std::process::Command;
 use std::time::{Duration, Instant};
 
+use crate::verify_process::{self, RunError};
+
 const Z3_VERSION: &str = "4.15.7";
-const DEFAULT_TIMEOUT_MS: u32 = 5_000;
 const MAX_EXPRESSIONS: usize = 20_000;
 const MAX_DEPTH: usize = 96;
 
@@ -23,8 +23,8 @@ pub(crate) enum Verdict {
     Verified,
     Falsified {
         inputs: BTreeMap<String, Json>,
-        expected: bool,
-        actual: bool,
+        expected: Json,
+        actual: Json,
     },
     Unverified {
         reason: String,
@@ -158,6 +158,7 @@ struct Input<'a> {
 struct Query<'a> {
     assertions: String,
     inputs: Vec<Input<'a>>,
+    result_sort: Sort,
 }
 
 impl<'a> Query<'a> {
@@ -166,9 +167,10 @@ impl<'a> Query<'a> {
         target: &'a MirFunction,
         expected: &'a MirFunction,
     ) -> Result<Self, EncodingError> {
-        if target.return_type != MirType::Bool || expected.return_type != MirType::Bool {
-            return Err("laws must compare Bool results".into());
+        if target.return_type != expected.return_type {
+            return Err("law and implementation result types differ".into());
         }
+        let result_sort = Sort::from_mir(&target.return_type)?;
         if !target
             .params
             .iter()
@@ -210,10 +212,16 @@ impl<'a> Query<'a> {
             .function(expected, &arguments, 0)
             .map_err(|error| error.context("expected expression"))?
             .scalar()?;
-        writeln!(encoder.smt, "(define-fun actual () Bool {})", actual.smt).unwrap();
+        let result_type = result_sort.smt();
         writeln!(
             encoder.smt,
-            "(define-fun expected () Bool {})",
+            "(define-fun actual () {result_type} {})",
+            actual.smt
+        )
+        .unwrap();
+        writeln!(
+            encoder.smt,
+            "(define-fun expected () {result_type} {})",
             expected.smt
         )
         .unwrap();
@@ -223,6 +231,7 @@ impl<'a> Query<'a> {
         Ok(Self {
             assertions: encoder.smt,
             inputs,
+            result_sort,
         })
     }
 
@@ -551,17 +560,11 @@ struct Solver {
 
 impl Solver {
     fn configured() -> Result<Self, String> {
-        let timeout_ms = match std::env::var("MESH_VERIFY_TIMEOUT_MS") {
-            Ok(value) => value
-                .parse::<u32>()
-                .map_err(|_| "MESH_VERIFY_TIMEOUT_MS must be an unsigned integer".to_string())?,
-            Err(std::env::VarError::NotPresent) => DEFAULT_TIMEOUT_MS,
-            Err(std::env::VarError::NotUnicode(_)) => {
-                return Err("MESH_VERIFY_TIMEOUT_MS must be an unsigned integer".into());
-            }
-        };
         let executable = std::env::var_os("MESH_VERIFY_Z3").unwrap_or_else(|| "z3".into());
-        Ok(Self::new(executable, timeout_ms))
+        Ok(Self::new(
+            executable,
+            verify_process::timeout_ms(verify_process::DEFAULT_TIMEOUT_MS)?,
+        ))
     }
 
     fn new(executable: OsString, timeout_ms: u32) -> Self {
@@ -631,59 +634,26 @@ impl Solver {
     }
 
     fn run(&self, args: &[&str], input: &str) -> Result<String, String> {
-        self.remaining()?;
-        // Files allow a hard deadline while Z3 reads or writes. A full pipe
-        // cannot block the caller and crossing the deadline kills and reaps Z3.
-        let make_file = || tempfile::tempfile().map_err(|error| format!("Z3 I/O: {error}"));
-        let mut stdin = make_file()?;
-        stdin
-            .write_all(input.as_bytes())
-            .and_then(|()| stdin.rewind())
-            .map_err(|error| format!("Z3 input: {error}"))?;
-        let stdout = make_file()?;
-        let stderr = make_file()?;
-
-        let clone_for_stdio = |file: &std::fs::File| {
-            file.try_clone()
-                .map(Stdio::from)
-                .map_err(|error| format!("Z3 I/O: {error}"))
-        };
-        let mut child = Command::new(&self.executable)
-            .args(args)
-            .stdin(stdin)
-            .stdout(clone_for_stdio(&stdout)?)
-            .stderr(clone_for_stdio(&stderr)?)
-            .spawn()
-            .map_err(|error| executable_error(&self.executable, error))?;
-
-        let status = (|| loop {
-            let delay = self.remaining()?.min(Duration::from_millis(5));
-            match child.try_wait() {
-                Ok(Some(status)) => return Ok(status),
-                Ok(None) => std::thread::sleep(delay),
-                Err(error) => return Err(format!("could not wait for Z3: {error}")),
-            }
-        })();
-        let status = match status {
-            Ok(status) => status,
-            Err(error) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(error);
-            }
-        };
-        let output = read_solver_file(stdout)?;
-        let diagnostics = read_solver_file(stderr)?;
-        if !status.success() || !diagnostics.trim().is_empty() {
-            let detail = if diagnostics.trim().is_empty() {
-                &output
+        let output = verify_process::run(
+            Command::new(&self.executable).args(args),
+            input,
+            self.deadline,
+        )
+        .map_err(|error| match error {
+            RunError::Start(error) => executable_error(&self.executable, error),
+            RunError::Io(error) => format!("Z3 I/O: {error}"),
+            RunError::Timeout => "solver time budget exhausted".into(),
+        })?;
+        if !output.status.success() || !output.stderr.trim().is_empty() {
+            let detail = if output.stderr.trim().is_empty() {
+                &output.stdout
             } else {
-                &diagnostics
+                &output.stderr
             };
             let brief: String = detail.trim().chars().take(240).collect();
-            return Err(format!("Z3 failed ({status}): {brief}"));
+            return Err(format!("Z3 failed ({}): {brief}", output.status));
         }
-        Ok(output)
+        Ok(output.stdout)
     }
 }
 
@@ -697,18 +667,6 @@ fn executable_error(executable: &OsStr, error: std::io::Error) -> String {
         "could not start Z3 {Z3_VERSION} at {}: {error}; set MESH_VERIFY_Z3 to its executable",
         executable.to_string_lossy(),
     )
-}
-
-fn read_solver_file(mut file: std::fs::File) -> Result<String, String> {
-    const LIMIT: usize = 64 * 1024;
-    let mut output = String::new();
-    file.rewind()
-        .and_then(|()| file.take((LIMIT + 1) as u64).read_to_string(&mut output))
-        .map_err(|error| format!("could not read Z3 output: {error}"))?;
-    if output.len() > LIMIT {
-        return Err("Z3 output exceeded the verifier limit".into());
-    }
-    Ok(output)
 }
 
 fn parse_witness(query: &Query<'_>, model: &str) -> Result<Verdict, String> {
@@ -738,8 +696,8 @@ fn parse_witness(query: &Query<'_>, model: &str) -> Result<Verdict, String> {
             .and_then(|value| parse_scalar(value, sort))
             .ok_or_else(invalid)
     };
-    let actual = get("actual", Sort::Bool)?.as_bool().ok_or_else(invalid)?;
-    let expected = get("expected", Sort::Bool)?.as_bool().ok_or_else(invalid)?;
+    let actual = get("actual", query.result_sort)?;
+    let expected = get("expected", query.result_sort)?;
     if actual == expected {
         return Err("Z3 witness gives equal actual and expected results".into());
     }
@@ -919,8 +877,8 @@ end
             ),
             Ok(Verdict::Falsified {
                 inputs: BTreeMap::from([("left".into(), Json::from(i64::MIN)), ("status".into(), Json::from(-1))]),
-                expected: false,
-                actual: true,
+                expected: Json::from(false),
+                actual: Json::from(true),
             }),
         );
         for invalid in [
@@ -941,9 +899,12 @@ end
         let query = query(&program, &law);
         let directory = tempfile::tempdir().unwrap();
         let absent = directory.path().join("missing-z3");
-        let missing = Solver::new(absent.clone().into_os_string(), DEFAULT_TIMEOUT_MS)
-            .solve(&query)
-            .unwrap_err();
+        let missing = Solver::new(
+            absent.clone().into_os_string(),
+            verify_process::DEFAULT_TIMEOUT_MS,
+        )
+        .solve(&query)
+        .unwrap_err();
         assert!(missing.contains("could not start Z3"), "{missing}");
         assert_eq!(
             Solver::new(absent.into_os_string(), 0).solve(&query),
@@ -994,8 +955,8 @@ end
         let budget = inputs["left"].as_i64().unwrap();
         assert!(status == 429 || status == 503, "{inputs:?}");
         assert!(budget > 8, "{inputs:?}");
-        assert!(expected);
-        assert!(!actual);
+        assert_eq!(expected, Json::from(true));
+        assert_eq!(actual, Json::from(false));
 
         let mut query = query(&program, &law);
         query.assertions.insert_str(0, "(set-option :rlimit 1)\n");
