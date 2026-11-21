@@ -2306,6 +2306,24 @@ own idle pool. These runs exercised the actual compiled fixture and
 PostgreSQL recovery paths without scoring throughput.
 [Topology pilot receipts](../proof/jobs-parity/qualification-v1.json)
 
+The same build then reconciled 64 large-context jobs per mode across
+eight runners, with 63 prewarmed effect sessions and 96 workload clients.
+[Large workload pilot](../proof/jobs-parity/qualification-v1.json)
+
+### Measure the one-slot fenced route on macOS
+
+Five matched groups at `c271319e` reconciled 640 measured jobs per arm.
+The two identical warm Mesh arms reached 57.0 and 53.3 jobs/s versus
+89.2 for stock Oban. The medians missed throughput, pickup, and
+CPU/job. Median entry-to-first-write time was 0.47 and 0.50 ms in Mesh.
+The medians of trial-mean claim-to-entry times were 6.73 and 7.09 ms
+versus 0.77 ms for Oban. Effect-to-settlement was 5.58 and 5.40 ms
+versus 0.29 ms. Mesh refilled its sole slot faster after settlement,
+with 0.34 and 0.39 ms versus 6.95 ms. This leaves worker startup and
+post-effect settlement as the main measured gaps in this local
+profile. The same candidate still needs a Linux one-slot comparison.
+[One-slot comparison](../proof/jobs-parity/qualification-v1.json)
+
 ### Follow-up correctness proofs
 
 The follow-up verifier used the same runtime sources and passed 45 Jobs
