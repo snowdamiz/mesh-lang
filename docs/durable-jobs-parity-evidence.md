@@ -2581,6 +2581,27 @@ no-op refill cycle. The screen used release worker `a39447f7`
 and exercised neither PostgreSQL nor the Jobs dispatcher.
 [Parallel launch screen](../proof/jobs-parity/qualification-v1.json)
 
+### Check guest CPU headroom on the no-op workload
+
+Two local groups at each CPU count ran the same `c271319e`
+release fixture, 1,024-job input, 2 GiB guest, and PostgreSQL
+and Oban builds. The group order was two, four, four, then
+two vCPUs. All 12,288 measured jobs reconciled.
+
+| Group | Two vCPUs, Mesh controls / Oban (jobs/s) | Four vCPUs, Mesh controls / Oban (jobs/s) |
+| --- | ---: | ---: |
+| 1 | 1,502 and 1,453 / 3,224 | 1,498 and 1,481 / 2,479 |
+| 2 | 1,546 and 1,464 / 2,273 | 2,234 and 2,072 / 2,429 |
+
+The additional CPUs coincided with a substantial improvement
+for both Mesh controls in group 2 and little difference in
+group 1. Oban led every group. This small local screen leaves
+the size of the CPU effect unresolved. The first four-vCPU
+pilot stopped at the guest harness's two-CPU assertion. The
+rerun bound the assertion to the new count and preserved the
+workload and resource limits.
+[Guest CPU comparison](../proof/jobs-parity/qualification-v1.json)
+
 ### Compare two more short-job topologies on Linux
 
 The staged `c271319e` fixture reconciled all 7,680 measured jobs for

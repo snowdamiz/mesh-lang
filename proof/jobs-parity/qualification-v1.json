@@ -8510,6 +8510,193 @@
       }
     ]
   },
+  "linux_fenced_jobs_noop64_guest_cpu_screen": {
+    "profile": "noop-1r-64s",
+    "revision": "c271319e84624bd00b0a62a7bb07a45602ee948b",
+    "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+    "scored_jobs": 12288,
+    "guest_memory_gib": 2,
+    "groups_2vcpu": [
+      {
+        "mesh": {
+          "cpu_seconds_per_job": 0.000635525390625,
+          "estimated_peak_executing": 32,
+          "jobs_per_second": 1502.307920715124,
+          "peak_connections": 68,
+          "peak_executing": 17,
+          "peak_processes": 8,
+          "peak_rss_bytes": 109772800,
+          "pickup_p99_ms": 668.18310546875
+        },
+        "mesh-repeat": {
+          "cpu_seconds_per_job": 0.0006430546875,
+          "estimated_peak_executing": 33,
+          "jobs_per_second": 1453.0594315048538,
+          "peak_connections": 68,
+          "peak_executing": 22,
+          "peak_processes": 7,
+          "peak_rss_bytes": 101359616,
+          "pickup_p99_ms": 690.776123046875
+        },
+        "oban": {
+          "cpu_seconds_per_job": 0.0005734033203124999,
+          "estimated_peak_executing": 64,
+          "jobs_per_second": 3223.6946673778675,
+          "peak_connections": 68,
+          "peak_executing": 56,
+          "peak_processes": 2,
+          "peak_rss_bytes": 160944128,
+          "pickup_p99_ms": 312.014892578125
+        }
+      },
+      {
+        "mesh": {
+          "cpu_seconds_per_job": 0.0005979902343749999,
+          "estimated_peak_executing": 31,
+          "jobs_per_second": 1546.173755363201,
+          "peak_connections": 68,
+          "peak_executing": 23,
+          "peak_processes": 3,
+          "peak_rss_bytes": 62132224,
+          "pickup_p99_ms": 655.2470703125
+        },
+        "mesh-repeat": {
+          "cpu_seconds_per_job": 0.0006416738281249999,
+          "estimated_peak_executing": 42,
+          "jobs_per_second": 1463.6391933748082,
+          "peak_connections": 68,
+          "peak_executing": 17,
+          "peak_processes": 6,
+          "peak_rss_bytes": 85614592,
+          "pickup_p99_ms": 691.849853515625
+        },
+        "oban": {
+          "cpu_seconds_per_job": 0.0005708496093749999,
+          "estimated_peak_executing": 64,
+          "jobs_per_second": 2272.7885538656283,
+          "peak_connections": 66,
+          "peak_executing": 64,
+          "peak_processes": 2,
+          "peak_rss_bytes": 155971584,
+          "pickup_p99_ms": 445.842041015625
+        }
+      }
+    ],
+    "groups_4vcpu": [
+      {
+        "mesh": {
+          "cpu_seconds_per_job": 0.0010767265624999998,
+          "estimated_peak_executing": 30,
+          "jobs_per_second": 1497.7068249631136,
+          "peak_connections": 68,
+          "peak_executing": 23,
+          "peak_processes": 2,
+          "peak_rss_bytes": 86962176,
+          "pickup_p99_ms": 674.010009765625
+        },
+        "mesh-repeat": {
+          "cpu_seconds_per_job": 0.00111171484375,
+          "estimated_peak_executing": 29,
+          "jobs_per_second": 1481.068311708031,
+          "peak_connections": 68,
+          "peak_executing": 18,
+          "peak_processes": 3,
+          "peak_rss_bytes": 95907840,
+          "pickup_p99_ms": 673.39697265625
+        },
+        "oban": {
+          "cpu_seconds_per_job": 0.000675447265625,
+          "estimated_peak_executing": 64,
+          "jobs_per_second": 2478.686261485402,
+          "peak_connections": 68,
+          "peak_executing": 0,
+          "peak_processes": 2,
+          "peak_rss_bytes": 146268160,
+          "pickup_p99_ms": 409.24609375
+        }
+      },
+      {
+        "mesh": {
+          "cpu_seconds_per_job": 0.0007499033203125,
+          "estimated_peak_executing": 31,
+          "jobs_per_second": 2233.662269607034,
+          "peak_connections": 68,
+          "peak_executing": 17,
+          "peak_processes": 3,
+          "peak_rss_bytes": 97058816,
+          "pickup_p99_ms": 450.386962890625
+        },
+        "mesh-repeat": {
+          "cpu_seconds_per_job": 0.0007927890624999999,
+          "estimated_peak_executing": 30,
+          "jobs_per_second": 2071.8802407632897,
+          "peak_connections": 68,
+          "peak_executing": 17,
+          "peak_processes": 1,
+          "peak_rss_bytes": 76021760,
+          "pickup_p99_ms": 484.702880859375
+        },
+        "oban": {
+          "cpu_seconds_per_job": 0.0006606865234374999,
+          "estimated_peak_executing": 64,
+          "jobs_per_second": 2428.841942145171,
+          "peak_connections": 68,
+          "peak_executing": 64,
+          "peak_processes": 2,
+          "peak_rss_bytes": 149209088,
+          "pickup_p99_ms": 418.85009765625
+        }
+      }
+    ],
+    "median_4_to_2_vcpu_throughput_ratio_by_arm": {
+      "mesh": 1.220787951190832,
+      "mesh-repeat": 1.2174217060550658,
+      "oban": 0.9187788703788695
+    },
+    "scope": "two trace-off matched groups per CPU count; diagnostic",
+    "measured_guest_order": [
+      2,
+      4,
+      4,
+      2
+    ],
+    "result_sha256": "1c831f3418ad57088b307c24922aa91b593e3c513b3b9ecfdd7485b0aefd296d",
+    "runs": {
+      "2": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/fenced-matrix-all-profiles/runs/cpu2-vs4/noop-1r-64s",
+        "stage_receipt_sha256": {
+          "pilot": "4b313cb0c9eea9aad9240da02da15af44ee9e83e89bdc0312c4198adbd4871ab",
+          "0": "f3c636f3263dafc8a2923ffa4e10f16b95ffd8a0bd24419d6eda2f0188cb0c39",
+          "1": "0d8677f7c4487e746d42032564baefc8a27ab442a2d43f2734d696043bae13a3"
+        },
+        "host_load_1m_max_by_stage": {
+          "pilot": 21.32080078125,
+          "0": 7.4267578125,
+          "1": 5.26953125
+        }
+      },
+      "4": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/fenced-matrix-all-profiles/runs/cpu4-vs2-r1/noop-1r-64s",
+        "stage_receipt_sha256": {
+          "pilot": "8a69b457297643ffa1b55db14c655ba8e8063cecf16c933c0f3ff5607acba8a6",
+          "0": "d499ec0ace50337f4822f954e152a816e7c59f181ae0de864844a4e56d17b954",
+          "1": "09e37c167c9db6df2d3f5ef2ba37e0828e7444acaef3ca750157cda204a47efa"
+        },
+        "host_load_1m_max_by_stage": {
+          "pilot": 7.43505859375,
+          "0": 6.5869140625,
+          "1": 5.7373046875
+        }
+      }
+    },
+    "four_vcpu_launcher_sha256": "15cc3cfede59593418dea3c12ecfae017c285b8124e9e8212a77ac718d71db41",
+    "earlier_failed_four_vcpu_pilot": {
+      "run": "target/jobs-parity/linux-arm-ownership-guest/fenced-matrix-all-profiles/runs/cpu4-vs2/noop-1r-64s/pilot",
+      "reason": "pinned stock guest assertion required two vCPUs",
+      "result_sha256": "8f4ae80f6e78a022e82315a65f36cf6ff58ff78a8cf696e733a1fc2246b1befd"
+    },
+    "fixture_sha256": "732f9117fc19bd6a3a201c4e1ed5299450aa3e62c6513271fa9494467af60812"
+  },
   "linux_fenced_jobs_noop64_claim_and_spawn_timing": {
     "scope": "Local Linux ARM64 diagnostics, one measured three-arm group per binary",
     "runs": {
