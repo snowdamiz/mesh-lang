@@ -1284,6 +1284,31 @@ medians describe each workload's observed peak. The 64-worker samples
 show that the RSS limit still requires a smaller worker footprint on this
 host. [Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
 
+### Reuse effect sessions inside the runner
+
+The local `02afc9e2` diagnostic moved the helper into a thread in the Jobs
+runner. It used the `da0a51bc` compiler and a private PostgreSQL overlay
+in a disposable runtime build. The same fixture binary ran direct,
+fresh-session, and reused-session Mesh arms with the reply-pipe wake
+enabled. Five counterbalanced one-slot groups over verified TLS on macOS
+arm64 and PostgreSQL 17.11 reconciled all 2,560 jobs.
+
+| Arm | Jobs/s | Entry to first write | Pickup p99 | CPU/job |
+| --- | ---: | ---: | ---: | ---: |
+| Mesh direct | 53.0 | 5.64 ms | 2,390 ms | 7.11 ms |
+| Mesh in-runner, fresh sessions | 47.2 | 5.95 ms | 2,671 ms | 7.57 ms |
+| Mesh in-runner, reused session | 90.1 | 0.31 ms | 1,410 ms | 5.84 ms |
+| Oban Basic 2.24.2 | 81.3 | 0.40 ms | 1,559 ms | 6.84 ms |
+
+The reused arm beat Oban in three of five pairs and its median met every
+measured limit for this profile. The fixture independently recorded one
+distinct attempt child per job and one verified effect backend per reused
+trial. The runner and attempt fit the two-process budget. The CPU includes
+the helper thread and prewarming. The diagnostic covers steady-state
+writes through the private one-slot route. A general application path
+still needs proof for interruption, lease loss, and session reuse across
+attempts. [Diagnostic receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Follow-up correctness proofs
 
 The follow-up verifier used the same runtime sources and passed 45 Jobs
@@ -1324,6 +1349,14 @@ suites and the PostgreSQL-backed runtime tests.
 | Telemetry and maintenance | The runner reports database-confirmed dispositions and redacts job data. Scoped role proofs cover fresh and upgraded databases. A concurrent index rebuild allows another job to settle and refuses a second rebuild owner. |
 
 ## Local correctness evidence
+
+After integrating compiler proof support from `27cc2c7b`, the
+`b7550dce` checkout passed four proof-value tests and the callable-theorem
+rejection cases. The macOS arm64 PostgreSQL 17.11 run over verified TLS
+passed 53 Jobs runtime tests and all three compiled Jobs suites, including
+fresh and upgraded scoped worker roles. An independent source review
+checked the resolved Jobs direct-call and theorem-application guards.
+[Integration receipt](../proof/jobs-parity/qualification-v1.json)
 
 The Jobs compatibility script exercises the compiled producer and worker,
 the PostgreSQL driver, leases, cancellation, timeout, recovery, and

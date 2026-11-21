@@ -4077,6 +4077,35 @@
     "relay_reuse_throughput_wins": {"direct": 2, "relay_fresh": 3, "oban": 0},
     "relay_reuse_breaches": ["throughput", "cpu_per_job", "peak_rss"]
   },
+  "inrunner_effect_session_reuse_one_slot": {
+    "runtime_base": "da0a51bcf6bc4e2c22766a2e60c0d07c96ca4cc0",
+    "diagnostic_commit": "02afc9e28bae0a05630d2f1f665dc89d32d1927f",
+    "oban": "2.24.2",
+    "profile": "short-1r-1s",
+    "host": "Darwin arm64",
+    "postgres_version": "17.11",
+    "transport": "SCRAM with verified TLS",
+    "run": "target/jobs-parity/inrunner-effects/one-slot-0it9xvo_",
+    "manifest_sha256": "21b12f44b07e597002b6dc982f46aed401dc2781a235645d376be90918bf20f3",
+    "result_sha256": "56146c7c9169df7ebe62b65ae76ccea458e879e18969e7a90d3d4717e95a7bb4",
+    "mesh_toolchain_sha256": "57380adb12d1d0c3c7743848af3f16eb7b081ffa90f99528afbda8db43041d30",
+    "measured_groups": 5,
+    "jobs_per_trial": 128,
+    "reconciled_jobs": 2560,
+    "peak_one_minute_host_load": 11.657,
+    "jobs_per_second": {"direct": 53.015, "fresh": 47.248, "reused": 90.072, "oban": 81.313},
+    "entry_to_first_write_ms": {"direct": 5.640, "fresh": 5.948, "reused": 0.305, "oban": 0.402},
+    "pickup_p99_ms": {"direct": 2389.845, "fresh": 2670.702, "reused": 1410.307, "oban": 1558.665},
+    "cpu_ms_per_job": {"direct": 7.112, "fresh": 7.568, "reused": 5.844, "oban": 6.841},
+    "sampled_peak_rss_mib": {"direct": 12.453, "fresh": 12.766, "reused": 12.594, "oban": 101.219},
+    "reused_vs_oban_throughput_ratios": [1.271, 1.161, 0.881, 1.387, 0.744],
+    "reused_throughput_wins": {"direct": 5, "fresh": 5, "oban": 3},
+    "reused_meets_all_profile_limits": true,
+    "process_floor": 2,
+    "process_limit": 2,
+    "reused_observed_effect_backends_per_trial": 1,
+    "scope": "Private one-slot steady-state diagnostic with one isolated process per attempt. Production effect-session lifecycle and broader workloads remain open."
+  },
   "batch_claims_local_qualification": {
     "runtime": "9bd80627830d331aaba09d4a3283bdfa2b810ad2",
     "baseline": "7c1620563614a04a573aef806a6d019a2af4dfe9",
@@ -4156,6 +4185,35 @@
     },
     "runtime_tests_passed_per_version": 47,
     "compiled_proofs_passed_per_version": 3
+  },
+  "compiler_proof_support_jobs_integration": {
+    "checkout": "b7550dcedfd3d6cb27df2b336dfa95a5bbd2f742",
+    "main": "27cc2c7b64a859372c36ab87e269b79f8d42a630",
+    "host": "Darwin arm64",
+    "review": "Independent source review found no merge regression in Jobs handler calls, test helper visibility, or callable theorem restrictions.",
+    "proof_values": {
+      "command": "cargo test --locked -j2 -p mesh-typeck --test proof_values",
+      "passed_tests": 4,
+      "log": "target/jobs-parity/b7550dcedfd3d6cb27df2b336dfa95a5bbd2f742/current-main/proof-values.log",
+      "sha256": "983b2b0a5731e9f07be37f3fba1f027c9af652e9a3d6b597443431fc2b542b0a"
+    },
+    "callable_theorem_rejections": {
+      "command": "cargo test --locked -j2 -p meshc --test e2e_laws applies_a_checked_theorem_to_static_indices_and_native_proof_arguments -- --exact",
+      "scope": "Type rejection cases with the optional native Lean proof branch disabled.",
+      "passed_tests": 1,
+      "log": "target/jobs-parity/b7550dcedfd3d6cb27df2b336dfa95a5bbd2f742/current-main/callable-theorem.log",
+      "sha256": "309b5a4a9781cb245a91d61196d81756b7a5a524365dd0414de913e45ba6d7ba"
+    },
+    "postgres": {
+      "command": "bash scripts/verify-postgres-jobs.sh --compatibility 17.11 --j6-roles --parity-driver-check",
+      "version": "17.11",
+      "transport": "SCRAM with verified TLS",
+      "postgres_driver_tests_passed": 36,
+      "runtime_tests_passed": 53,
+      "compiled_proofs_passed": 3,
+      "log": "target/jobs-parity/b7550dcedfd3d6cb27df2b336dfa95a5bbd2f742/current-main/postgres-17.11.log",
+      "sha256": "9e763aaf9f06c29f4242d5274044afe667da1bc2e66a9a58ad93907feef44c62"
+    }
   },
   "main_integration_guide_and_smoke": {
     "checkout": "aa40fa5df5db9ca2df5ca706639973f900889906",
