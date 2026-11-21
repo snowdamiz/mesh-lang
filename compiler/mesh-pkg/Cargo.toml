@@ -18,4 +18,5 @@ ureq = { workspace = true }
 sha2 = { workspace = true }
 
 [dev-dependencies]
+mesh-lint = { path = "../mesh-lint" }
 tempfile = "3"

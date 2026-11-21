@@ -2151,6 +2151,90 @@
       "status": "active"
     },
     {
+      "code": "L0001",
+      "name": "deep-nesting",
+      "severity": "warning",
+      "category": "lint",
+      "title": "control flow nested too deeply",
+      "summary": "An `if`, `case`, loop, `receive`, or closure is nested more than four levels deep in one function, counted from the function, handler, actor body, or top-level test block that holds it.",
+      "repair": "Move the construct the label points at into a function of its own and call it, return early from the enclosing function, or use `?` in place of a `case` that only passes an error on.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#l0001",
+      "guide": {
+        "explain": "meshc explain L0001",
+        "skill": "references/diagnostics.md#l0001",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn main() do\n  let n = 5\n  if n > 0 do\n    if n > 1 do\n      if n > 2 do\n        if n > 3 do\n          if n > 4 do\n            println(\"deep\")\n          end\n        end\n      end\n    end\n  end\nend\n",
+        "fixed": "fn report(n :: Int) do\n  if n > 4 do\n    println(\"deep\")\n  end\nend\n\nfn main() do\n  let n = 5\n  if n > 0 do\n    if n > 1 do\n      if n > 2 do\n        if n > 3 do\n          report(n)\n        end\n      end\n    end\n  end\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "L0002",
+      "name": "collapsible-else-if",
+      "severity": "warning",
+      "category": "lint",
+      "title": "`else` holding only an `if`",
+      "summary": "The whole body of an `else` is one `if` expression, which `else if` says one level shallower.",
+      "repair": "Join `else` and the `if` it holds into `else if ... do`, outdent that `if`'s branches one level, and delete the `end` that closed the `else`, so the inner `if`'s `end` closes the whole chain.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#l0002",
+      "guide": {
+        "explain": "meshc explain L0002",
+        "skill": "references/diagnostics.md#l0002",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn sign(n :: Int) -> String do\n  if n > 0 do\n    \"positive\"\n  else\n    if n < 0 do\n      \"negative\"\n    else\n      \"zero\"\n    end\n  end\nend\n\nfn main() do\n  println(sign(-1))\nend\n",
+        "fixed": "fn sign(n :: Int) -> String do\n  if n > 0 do\n    \"positive\"\n  else if n < 0 do\n    \"negative\"\n  else\n    \"zero\"\n  end\nend\n\nfn main() do\n  println(sign(-1))\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "L0003",
+      "name": "pass-through-arm",
+      "severity": "warning",
+      "category": "lint",
+      "title": "match arm returning what it matched",
+      "summary": "A `case` arm's value is its own pattern written again, as in `Ok(n) -> Ok(n)`, which the pattern alone already means.",
+      "repair": "Delete the `->` and the value, and leave the pattern on its own as the arm: `Ok(n)`.",
+      "topic": "pattern-matching",
+      "docs_url": "https://meshlang.dev/docs/errors/#l0003",
+      "guide": {
+        "explain": "meshc explain L0003",
+        "skill": "references/diagnostics.md#l0003",
+        "topic": "pattern-matching"
+      },
+      "example": {
+        "bad": "fn check(r) do\n  case r do\n    Ok(n) -> Ok(n)\n    Err(e) -> Err(\"check failed: #{e}\")\n  end\nend\n\nfn main() do\n  let _r = check(Err(\"no input\"))\nend\n",
+        "fixed": "fn check(r) do\n  case r do\n    Ok(n)\n    Err(e) -> Err(\"check failed: #{e}\")\n  end\nend\n\nfn main() do\n  let _r = check(Err(\"no input\"))\nend\n"
+      },
+      "status": "active"
+    },
+    {
+      "code": "L0004",
+      "name": "bool-comparison",
+      "severity": "warning",
+      "category": "lint",
+      "title": "comparison with a Bool literal",
+      "summary": "A value is compared with `true` or `false` using `==` or `!=`, which is the value itself or its negation.",
+      "repair": "Write the value alone in place of `== true` or `!= false`, and `not` the value in place of `== false` or `!= true`.",
+      "topic": "syntax",
+      "docs_url": "https://meshlang.dev/docs/errors/#l0004",
+      "guide": {
+        "explain": "meshc explain L0004",
+        "skill": "references/diagnostics.md#l0004",
+        "topic": "syntax"
+      },
+      "example": {
+        "bad": "fn main() do\n  let ready = true\n  if ready == true do\n    println(\"ready\")\n  end\nend\n",
+        "fixed": "fn main() do\n  let ready = true\n  if ready do\n    println(\"ready\")\n  end\nend\n"
+      },
+      "status": "active"
+    },
+    {
       "code": "P0001",
       "name": "unexpected-token",
       "severity": "error",

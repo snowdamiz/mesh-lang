@@ -3277,6 +3277,170 @@ During lowering, the compiler could not confirm the target trait method for a ca
 
 Docs: https://meshlang.dev/docs/errors/#i0002
 
+## L0001
+
+**deep-nesting** · warning · lint · guide: `meshc guide syntax`
+
+An `if`, `case`, loop, `receive`, or closure is nested more than four levels deep in one function, counted from the function, handler, actor body, or top-level test block that holds it.
+
+**Repair:** Move the construct the label points at into a function of its own and call it, return early from the enclosing function, or use `?` in place of a `case` that only passes an error on.
+
+**Example**
+```mesh
+fn main() do
+  let n = 5
+  if n > 0 do
+    if n > 1 do
+      if n > 2 do
+        if n > 3 do
+          if n > 4 do
+            println("deep")
+          end
+        end
+      end
+    end
+  end
+end
+```
+
+**Fixed**
+```mesh
+fn report(n :: Int) do
+  if n > 4 do
+    println("deep")
+  end
+end
+
+fn main() do
+  let n = 5
+  if n > 0 do
+    if n > 1 do
+      if n > 2 do
+        if n > 3 do
+          report(n)
+        end
+      end
+    end
+  end
+end
+```
+
+Docs: https://meshlang.dev/docs/errors/#l0001
+
+## L0002
+
+**collapsible-else-if** · warning · lint · guide: `meshc guide syntax`
+
+The whole body of an `else` is one `if` expression, which `else if` says one level shallower.
+
+**Repair:** Join `else` and the `if` it holds into `else if ... do`, outdent that `if`'s branches one level, and delete the `end` that closed the `else`, so the inner `if`'s `end` closes the whole chain.
+
+**Example**
+```mesh
+fn sign(n :: Int) -> String do
+  if n > 0 do
+    "positive"
+  else
+    if n < 0 do
+      "negative"
+    else
+      "zero"
+    end
+  end
+end
+
+fn main() do
+  println(sign(-1))
+end
+```
+
+**Fixed**
+```mesh
+fn sign(n :: Int) -> String do
+  if n > 0 do
+    "positive"
+  else if n < 0 do
+    "negative"
+  else
+    "zero"
+  end
+end
+
+fn main() do
+  println(sign(-1))
+end
+```
+
+Docs: https://meshlang.dev/docs/errors/#l0002
+
+## L0003
+
+**pass-through-arm** · warning · lint · guide: `meshc guide pattern-matching`
+
+A `case` arm's value is its own pattern written again, as in `Ok(n) -> Ok(n)`, which the pattern alone already means.
+
+**Repair:** Delete the `->` and the value, and leave the pattern on its own as the arm: `Ok(n)`.
+
+**Example**
+```mesh
+fn check(r) do
+  case r do
+    Ok(n) -> Ok(n)
+    Err(e) -> Err("check failed: #{e}")
+  end
+end
+
+fn main() do
+  let _r = check(Err("no input"))
+end
+```
+
+**Fixed**
+```mesh
+fn check(r) do
+  case r do
+    Ok(n)
+    Err(e) -> Err("check failed: #{e}")
+  end
+end
+
+fn main() do
+  let _r = check(Err("no input"))
+end
+```
+
+Docs: https://meshlang.dev/docs/errors/#l0003
+
+## L0004
+
+**bool-comparison** · warning · lint · guide: `meshc guide syntax`
+
+A value is compared with `true` or `false` using `==` or `!=`, which is the value itself or its negation.
+
+**Repair:** Write the value alone in place of `== true` or `!= false`, and `not` the value in place of `== false` or `!= true`.
+
+**Example**
+```mesh
+fn main() do
+  let ready = true
+  if ready == true do
+    println("ready")
+  end
+end
+```
+
+**Fixed**
+```mesh
+fn main() do
+  let ready = true
+  if ready do
+    println("ready")
+  end
+end
+```
+
+Docs: https://meshlang.dev/docs/errors/#l0004
+
 ## P0001
 
 **unexpected-token** · error · syntax · guide: `meshc guide syntax`

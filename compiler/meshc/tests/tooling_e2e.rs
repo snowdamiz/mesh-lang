@@ -486,6 +486,9 @@ fn test_fmt_idempotent() {
 
 // ── Linter ───────────────────────────────────────────────────────────
 
+/// `meshc lint` reports through the one diagnostic format: a parse error
+/// as its `P` code, a finding as its `L` warning, and the tally last, all on
+/// stderr. A warning fails the command, as a CI gate needs.
 #[test]
 fn test_lint_reports_findings_with_locations_and_fails() {
     let dir = tempfile::tempdir().unwrap();
@@ -498,30 +501,147 @@ fn test_lint_reports_findings_with_locations_and_fails() {
         &dir.path().join("broken.mpl"),
         "fn h() do\n  let = 1\nend\n",
     );
+    let broken = dir.path().join("broken.mpl");
+    let deep = dir.path().join("src/deep.mpl");
 
     let output = Command::new(meshc_bin())
         .args(["lint", dir.path().to_str().unwrap()])
         .output()
         .expect("failed to run meshc lint");
 
-    assert_eq!(output.status.code(), Some(1));
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let broken = dir.path().join("broken.mpl");
-    let deep = dir.path().join("src/deep.mpl");
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert!(output.stdout.is_empty(), "{output:?}");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    for expected in [
+        "[P0001] Error: expected identifier or pattern after `let`".to_string(),
+        format!("─[ {}:2:7 ]", broken.display()),
+        "  = P0001: meshc explain P0001".to_string(),
+        "[L0002] Warning: this `else` holds only an `if`".to_string(),
+        format!("─[ {}:4:3 ]", deep.display()),
+        "this `else`".to_string(),
+        "holds only this `if`".to_string(),
+        "Help: Join `else` and the `if` it holds into `else if ... do`".to_string(),
+        "  = L0002: meshc explain L0002".to_string(),
+    ] {
+        assert!(
+            stderr.contains(&expected),
+            "missing {expected:?} in:\n{stderr}"
+        );
+    }
+    assert!(
+        stderr.find("[P0001]") < stderr.find("[L0002]"),
+        "files are linted in path order:\n{stderr}"
+    );
     assert_eq!(
-        stdout.lines().collect::<Vec<_>>(),
-        vec![
-            format!(
-                "{}:2:7: parse-error: expected identifier or pattern after `let`",
-                broken.display()
+        stderr.lines().last(),
+        Some("error: 1 error, 1 warning (P0001, L0002)"),
+        "{stderr}"
+    );
+    assert!(
+        !stderr.contains("parse-error") && !stderr.contains("problem(s) found"),
+        "{stderr}"
+    );
+
+    let json = Command::new(meshc_bin())
+        .args(["lint", "--json", dir.path().to_str().unwrap()])
+        .output()
+        .expect("failed to run meshc lint --json");
+    assert_eq!(json.status.code(), Some(1), "{json:?}");
+    assert!(json.stdout.is_empty(), "{json:?}");
+    let found: Vec<(String, String, String, u64, u64)> = String::from_utf8_lossy(&json.stderr)
+        .lines()
+        .map(|line| {
+            let d: serde_json::Value = serde_json::from_str(line)
+                .unwrap_or_else(|e| panic!("invalid diagnostic {line:?}: {e}"));
+            (
+                d["code"].as_str().unwrap().to_string(),
+                d["severity"].as_str().unwrap().to_string(),
+                d["file"].as_str().unwrap().to_string(),
+                d["line"].as_u64().unwrap(),
+                d["col"].as_u64().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        found,
+        [
+            (
+                "P0001".to_string(),
+                "error".to_string(),
+                broken.display().to_string(),
+                2,
+                7
             ),
-            format!(
-                "{}:4:3: collapsible-else-if: this `else` holds only an `if`; write `else if`",
-                deep.display()
+            (
+                "L0002".to_string(),
+                "warning".to_string(),
+                deep.display().to_string(),
+                4,
+                3
             ),
         ]
     );
-    assert!(String::from_utf8_lossy(&output.stderr).contains("2 problem(s) found"));
+}
+
+/// Each catalog lint example gets its own code from `meshc lint`, and its
+/// fix gets nothing. Warnings alone fail the command.
+#[test]
+fn test_lint_reports_each_lint_code_and_passes_the_fixes() {
+    let lints = [
+        mesh_diagnostics::Code::DeepNesting,
+        mesh_diagnostics::Code::CollapsibleElseIf,
+        mesh_diagnostics::Code::PassThroughArm,
+        mesh_diagnostics::Code::BoolComparison,
+    ];
+    let dir = tempfile::tempdir().unwrap();
+    for (bad, code) in [true, false]
+        .into_iter()
+        .flat_map(|bad| lints.map(|code| (bad, code)))
+    {
+        let example = code.info().example.unwrap();
+        let folder = if bad { "bad" } else { "fixed" };
+        let source = if bad { example.bad } else { example.fixed };
+        write_file(
+            &dir.path().join(folder).join(format!("{}.mpl", code.id())),
+            source,
+        );
+    }
+
+    let bad = Command::new(meshc_bin())
+        .args(["lint", dir.path().join("bad").to_str().unwrap()])
+        .output()
+        .expect("failed to run meshc lint");
+    assert_eq!(bad.status.code(), Some(1), "{bad:?}");
+    assert!(bad.stdout.is_empty(), "{bad:?}");
+    let stderr = String::from_utf8_lossy(&bad.stderr);
+    for code in lints {
+        let headline = format!("[{}] Warning: ", code.id());
+        assert_eq!(
+            stderr.matches(&headline).count(),
+            1,
+            "{headline}:\n{stderr}"
+        );
+        let file = dir.path().join("bad").join(format!("{}.mpl", code.id()));
+        assert!(
+            stderr.contains(&format!("─[ {}:", file.display())),
+            "{stderr}"
+        );
+    }
+    assert_eq!(
+        stderr.lines().last(),
+        Some("warning: 4 warnings (L0001, L0002, L0003, L0004)"),
+        "{stderr}"
+    );
+
+    let fixed = Command::new(meshc_bin())
+        .args(["lint", dir.path().join("fixed").to_str().unwrap()])
+        .output()
+        .expect("failed to run meshc lint");
+    assert!(fixed.status.success(), "{fixed:?}");
+    assert!(
+        fixed.stdout.is_empty() && fixed.stderr.is_empty(),
+        "{fixed:?}"
+    );
 }
 
 #[test]
@@ -530,13 +650,19 @@ fn test_lint_clean_file_succeeds_silently() {
     let file = dir.path().join("clean.mpl");
     std::fs::write(&file, "fn g(a) do\n  a\nend\n").unwrap();
 
-    let output = Command::new(meshc_bin())
-        .args(["lint", file.to_str().unwrap()])
-        .output()
-        .expect("failed to run meshc lint");
+    for args in [vec!["lint"], vec!["lint", "--json"]] {
+        let output = Command::new(meshc_bin())
+            .args(&args)
+            .arg(&file)
+            .output()
+            .expect("failed to run meshc lint");
 
-    assert!(output.status.success());
-    assert!(output.stdout.is_empty() && output.stderr.is_empty());
+        assert!(output.status.success(), "{args:?}: {output:?}");
+        assert!(
+            output.stdout.is_empty() && output.stderr.is_empty(),
+            "{args:?}: {output:?}"
+        );
+    }
 }
 
 #[test]
@@ -2556,6 +2682,7 @@ fn json_mode_is_pure_ndjson() {
     let clean = "fn main() do\n  println(\"ready\")\nend\n";
     write_file(&main, clean);
     verify(&["check", "--json"], &[]);
+    verify(&["lint", "--json"], &[]);
     assert!(!root.join("out").exists());
     verify(
         &["build", ".", "--output", "out", "--emit-llvm", "--json"],
@@ -2571,6 +2698,7 @@ fn json_mode_is_pure_ndjson() {
     write_file(&main, "fn main() do\n  println(1)\n");
     let diagnostics = verify(&["build", ".", "--json"], &["P0004"]);
     assert_eq!(diagnostics[0]["spans"].as_array().unwrap().len(), 2);
+    verify(&["lint", "main.mpl", "--json"], &["P0004"]);
 
     write_file(&main, "fn main() do\n  println(missing)\nend\n");
     verify(&["build", ".", "--json"], &["E0004"]);
@@ -2608,6 +2736,28 @@ fn json_mode_is_pure_ndjson() {
         write_file(&standalone, example["fixed"].as_str().unwrap());
         verify(&["check", "example.mpl", "--json"], &[]);
     }
+    for code in ["L0001", "L0002", "L0003", "L0004"] {
+        let example = &codes.iter().find(|entry| entry["code"] == code).unwrap()["example"];
+        write_file(&standalone, example["bad"].as_str().unwrap());
+        let diagnostics = verify(&["lint", "example.mpl", "--json"], &[code]);
+        assert_eq!(diagnostics[0]["severity"], "warning");
+        assert_eq!(diagnostics[0]["category"], "lint");
+        write_file(&standalone, example["fixed"].as_str().unwrap());
+        verify(&["--json", "lint", "example.mpl"], &[]);
+    }
+    let bool_comparison = &codes.iter().find(|entry| entry["code"] == "L0004").unwrap()["example"];
+    write_file(&standalone, bool_comparison["bad"].as_str().unwrap());
+    let diagnostics = verify(&["lint", "example.mpl", "--json"], &["L0004"]);
+    assert_eq!(
+        diagnostics[0]["edits"],
+        serde_json::json!([{
+            "file": "example.mpl",
+            "start": 37,
+            "end": 50,
+            "replacement": "ready",
+            "applicability": "machine-applicable"
+        }])
+    );
     verify(&["explain", "BOGUS", "--json"], &["C0001"]);
     verify(&["guide", "bogus", "--json"], &["C0001"]);
     verify(

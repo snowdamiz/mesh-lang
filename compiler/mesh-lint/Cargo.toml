@@ -4,4 +4,6 @@ version = "0.1.8"
 edition = "2021"
 
 [dependencies]
+mesh-common = { path = "../mesh-common" }
+mesh-diagnostics = { path = "../mesh-diagnostics", default-features = false }
 mesh-parser = { path = "../mesh-parser" }

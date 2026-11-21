@@ -108,6 +108,9 @@ pub struct Analysis {
     pub files: Vec<SourceFile>,
     /// The `@cluster` functions. Empty when the project has errors.
     pub clustered_execution_plan: Vec<ClusteredExecutionMetadata>,
+    /// A checked `.test.mpl` file as written, parsed. Its module is the
+    /// program `meshc test` generates from it.
+    pub test_file: Option<(mesh_parser::Parse, SourceFile)>,
 }
 
 impl Frontend {
@@ -116,17 +119,33 @@ impl Frontend {
     }
 
     /// Each file whose own module parsed without errors, with that parse:
-    /// what a linter reads. A `module` block is linted with its file.
+    /// what a linter reads. A `module` block is linted with its file, and a
+    /// test file as written, not as the program generated from it.
     pub fn lintable(&self) -> impl Iterator<Item = (&mesh_parser::Parse, &SourceFile)> + '_ {
         self.analysis.iter().flat_map(|analysis| {
-            let mut seen = HashSet::new();
+            let test_file = analysis
+                .test_file
+                .as_ref()
+                .map(|(parse, file)| (parse, file));
+            let mut seen: HashSet<&Path> = test_file.iter().map(|(_, file)| file.path()).collect();
             analysis
                 .project
                 .module_parses
                 .iter()
                 .zip(&analysis.files)
-                .filter(move |(parse, file)| seen.insert(file.path()) && parse.ok())
+                .filter(move |(_, file)| seen.insert(file.path()))
+                .chain(test_file)
+                .filter(|(parse, _)| parse.ok())
         })
+    }
+
+    /// Adds diagnostics found outside the frontend, such as lint findings,
+    /// in the order of the frontend's own.
+    pub fn extend(&mut self, diagnostics: impl IntoIterator<Item = Diagnostic>) {
+        self.diagnostics.extend(diagnostics);
+        if let Some(analysis) = &self.analysis {
+            sort(&mut self.diagnostics, &analysis.project, &analysis.files);
+        }
     }
 
     /// Emits every diagnostic, and hands back the analysis when none was an
@@ -177,6 +196,7 @@ struct Loaded {
     entry: Option<PathBuf>,
     native_bindings: Vec<ResolvedNativeBinding>,
     project: ProjectData,
+    test_file: Option<(mesh_parser::Parse, SourceFile)>,
 }
 
 fn load(root: &Path, options: &CheckOptions<'_>) -> Result<Loaded, String> {
@@ -229,6 +249,7 @@ fn load(root: &Path, options: &CheckOptions<'_>) -> Result<Loaded, String> {
         entry,
         native_bindings,
         project,
+        test_file: None,
     })
 }
 
@@ -240,6 +261,7 @@ fn load_source(path: &Path, text: &str) -> Result<Loaded, String> {
         entry: Some(name.to_path_buf()),
         native_bindings: Vec::new(),
         project: project::single_source_project_at(text, name)?,
+        test_file: None,
     })
 }
 
@@ -254,8 +276,10 @@ fn load_test(root: &Path, test: &Path, options: &CheckOptions<'_>) -> Result<Loa
     let mut loaded = load(root, &options).map_err(uncategorized)?;
     let path = test.strip_prefix(root).unwrap_or(test).to_path_buf();
     let source = options.read(test).map_err(uncategorized)?;
+    let written = SourceFile::new(root.join(&path), source.as_str());
     let program = mesh_parser::test_harness::preprocess_test_source(&source)
-        .map_err(|error| error.to_diagnostic(&SourceFile::new(root.join(&path), source)))?;
+        .map_err(|error| error.to_diagnostic(&written))?;
+    loaded.test_file = Some((mesh_parser::parse(&source), written));
     let parse = mesh_parser::parse(&program);
     let project = &mut loaded.project;
     let id = project.graph.add_module("Main".to_string(), path, false);
@@ -277,6 +301,7 @@ fn analyze(loaded: Loaded, options: &CheckOptions<'_>) -> Frontend {
         entry,
         native_bindings,
         project,
+        test_file,
     } = loaded;
     let files = project_files(&root, &project);
     let mut diagnostics = syntax_errors(&project, &files);
@@ -322,6 +347,7 @@ fn analyze(loaded: Loaded, options: &CheckOptions<'_>) -> Frontend {
             checked,
             files,
             clustered_execution_plan,
+            test_file,
         }),
     }
 }
@@ -922,5 +948,95 @@ mod tests {
             .map(|(_, file)| file.path().file_name().unwrap().to_owned())
             .collect();
         assert_eq!(files, ["main.mpl"]);
+    }
+
+    #[test]
+    fn a_test_file_is_lintable_as_written() {
+        let test = "describe(\"group\") do\n  test(\"one\") do\n    assert(true)\n  end\nend\n";
+        let dir = project(&[
+            ("main.mpl", "fn main() do\nend\n"),
+            ("tests/group.test.mpl", test),
+        ]);
+        let path = dir.path().join("tests/group.test.mpl");
+        let target = Target::TestFile {
+            root: dir.path(),
+            test: &path,
+        };
+        let frontend = check(target, &CheckOptions::cli());
+        assert!(
+            frontend.diagnostics.is_empty(),
+            "{:?}",
+            frontend.diagnostics
+        );
+        let files: Vec<_> = frontend
+            .lintable()
+            .map(|(parse, file)| {
+                (
+                    file.path().to_owned(),
+                    file.text(),
+                    parse.syntax().to_string(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            files,
+            [
+                (
+                    dir.path().join("main.mpl"),
+                    Some("fn main() do\nend\n"),
+                    "fn main() do\nend\n".to_owned()
+                ),
+                (path, Some(test), test.to_owned()),
+            ]
+        );
+    }
+
+    #[test]
+    fn extended_diagnostics_take_their_place_in_file_and_span_order() {
+        let dir = project(&[
+            (
+                "main.mpl",
+                "import Util\n\nfn main() do\n  let n :: Int = \"one\"\nend\n",
+            ),
+            ("util.mpl", "pub fn helper() -> Int do\n  \"h\"\nend\n"),
+        ]);
+        let mut frontend = check(Target::Project { root: dir.path() }, &CheckOptions::cli());
+        let file = |name: &str| {
+            frontend
+                .analysis
+                .as_ref()
+                .unwrap()
+                .files
+                .iter()
+                .find(|file| file.path().ends_with(name))
+                .unwrap()
+                .clone()
+        };
+        // One before the file's type error, at `import`; one after it, at
+        // the last `end`.
+        let at = |file: SourceFile, start: usize| {
+            let span = Span::new(start as u32, start as u32 + 3);
+            Diagnostic::in_file(Code::BoolComparison, &file, "late").at(span, "")
+        };
+        let util = file("util.mpl");
+        let last_end = util.text().unwrap().rfind("end").unwrap();
+        frontend.extend([at(file("main.mpl"), 0), at(util, last_end)]);
+        let order: Vec<_> = frontend
+            .diagnostics
+            .iter()
+            .map(|d| {
+                let name = d.file().unwrap().path().file_name().unwrap().to_owned();
+                (name.into_string().unwrap(), d.code().id())
+            })
+            .collect();
+        assert_eq!(
+            order,
+            [
+                ("util.mpl".to_owned(), "E0001"),
+                ("util.mpl".to_owned(), "L0004"),
+                ("main.mpl".to_owned(), "L0004"),
+                ("main.mpl".to_owned(), "E0001"),
+            ]
+        );
     }
 }

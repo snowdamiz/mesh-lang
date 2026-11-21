@@ -1207,35 +1207,47 @@ unchanged.
 meshc lint .
 ```
 
-The path may be one `.mpl` file or a directory, walked recursively, and defaults to the current directory. Each finding is printed as `path:line:column: rule: message`, and the command exits with status 1 when it reports anything, so it can gate CI next to `meshc fmt --check`. A file that does not parse is reported as a `parse-error`.
+The path may be one `.mpl` file or a directory, walked recursively, and defaults to the current directory. Each finding is an `L` warning from the [error index](/docs/errors/), reported on standard error in the format `meshc check` and `meshc build` use, and the run ends with a tally. The command exits with status 1 when it reports anything, warnings included, so it can gate CI next to `meshc fmt --check`. A file that does not parse is reported with its parse errors (`P` codes) and is not linted.
 
 ```text
-api/users.mpl:14:9: deep-nesting: `case` is nested 5 levels deep (at most 4); extract a function, return early, or use `?`
-api/users.mpl:31:3: collapsible-else-if: this `else` holds only an `if`; write `else if`
+[L0004] Warning: comparison with the Bool literal `true`
+   ╭─[ ./main.mpl:3:6 ]
+   │
+ 3 │   if ready == true do
+   │      ──────┬──────
+   │            ╰──────── the same as `ready`
+   │
+   │ Help: Replace the comparison with `ready`.
+───╯
+  = L0004: meshc explain L0004 · skill diagnostics.md#l0004 · https://meshlang.dev/docs/errors/#l0004
+warning: 1 warning (L0004)
 ```
 
-| Rule | Reports | Write instead |
+| Code | Reports | Write instead |
 |------|---------|---------------|
-| `deep-nesting` | `if`, `case`/`match`, `for`, `while`, `receive`, or a closure nested more than four levels deep in one function | A helper function, an early `return`, or `?` in place of a `case` that only passes an error on |
-| `collapsible-else-if` | An `else` whose whole body is a single `if` | `else if` |
-| `pass-through-arm` | An arm that returns exactly what it matched, such as `Ok(value) -> Ok(value)` | The pattern on its own: `Ok(value)` |
-| `bool-comparison` | A comparison with `true` or `false`, such as `ready == true` or `done != false` | The value itself, or `not` it |
+| [`L0001`](/docs/errors/#l0001) `deep-nesting` | `if`, `case`/`match`, `for`, `while`, `receive`, or a closure nested more than four levels deep in one function | A helper function, an early `return`, or `?` in place of a `case` that only passes an error on |
+| [`L0002`](/docs/errors/#l0002) `collapsible-else-if` | An `else` whose whole body is a single `if` | `else if` |
+| [`L0003`](/docs/errors/#l0003) `pass-through-arm` | An arm that returns exactly what it matched, such as `Ok(value) -> Ok(value)` | The pattern on its own: `Ok(value)` |
+| [`L0004`](/docs/errors/#l0004) `bool-comparison` | A comparison with `true` or `false`, such as `ready == true` or `done != false` | The value itself, or `not` it |
 
 Nesting is counted from each named function, service handler, `terminate`
 clause, actor body, and top-level `test`, `describe`, `setup`, or `teardown`
 block. An `else if` chain stays at the level of its first `if`; a trailing
 `do |x| ... end` closure counts as a level. Only the outermost construct past
-the limit is reported, so fixing it may reveal a deeper one.
+the limit is reported, labelled with each level it is nested in, so fixing it
+may reveal a deeper one.
 
 `pass-through-arm` fires only where the pattern alone would compile as the
 arm's value: a name, a literal, or a constructor of those. A tuple or list
 pattern such as `(0, b) -> (0, b)` is left alone.
 
-Findings go to standard output, one per line, with 1-based line and byte
-columns; the count, `N problem(s) found`, goes to standard error. A file that
-does not parse reports its first parse error. Like the formatter, the linter
-skips hidden files and directories. It has no options, configuration file, or
-suppression comments yet.
+`meshc lint --json` writes one JSON object per finding to standard error, in
+the schema of [`--json`](#json-diagnostics) diagnostics, and nothing to
+standard output. A `bool-comparison` finding carries a machine-applicable edit
+that replaces the comparison, which the language server offers as a quick fix.
+The language server reports the same findings as `meshc lint` while you edit.
+Like the formatter, the linter skips hidden files and directories. It has no
+options, configuration file, or suppression comments yet.
 
 ## REPL
 

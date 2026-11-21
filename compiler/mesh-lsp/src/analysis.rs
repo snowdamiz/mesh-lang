@@ -1,8 +1,9 @@
 //! Document analysis: the shared frontend's view of a document, and the
 //! positions an editor speaks in.
 //!
-//! A document is checked as `meshc check` checks it: in its project, with
-//! the editor's open documents read in place of their files, or on its own
+//! A document is checked as `meshc check` checks it, and each file that
+//! parses is linted as `meshc lint` lints it: in its project, with the
+//! editor's open documents read in place of their files, or on its own
 //! outside any project. LSP positions are 0-based lines and UTF-16 code
 //! units, converted against the analyzed text.
 
@@ -80,7 +81,7 @@ pub fn analyze_document(
         path: &path,
         text: source,
     };
-    let checked = frontend::check(target, &CheckOptions::cli());
+    let checked = check_and_lint(target, &CheckOptions::cli());
     // A lone file's module is named by its file name.
     let module = Path::new(path.file_name().unwrap_or(DEFAULT_ENTRYPOINT.as_ref()));
     module_analysis(checked, module)
@@ -120,7 +121,7 @@ fn analyze_in_project(
     } else {
         Target::Project { root }
     };
-    let checked = frontend::check(target, &options);
+    let checked = check_and_lint(target, &options);
     let loaded = checked.analysis.is_some();
     module_analysis(checked, relative).unwrap_or_else(|mut diagnostics| {
         if loaded {
@@ -135,6 +136,18 @@ fn analyze_in_project(
         }
         analysis_alone(diagnostics, path, source)
     })
+}
+
+/// What `meshc check` reports for `target`, with what `meshc lint` reports
+/// for each of its files that parses.
+fn check_and_lint(target: Target<'_>, options: &CheckOptions<'_>) -> Frontend {
+    let mut checked = frontend::check(target, options);
+    let lints: Vec<Diagnostic> = checked
+        .lintable()
+        .flat_map(|(parse, file)| mesh_lint::lint(parse, file))
+        .collect();
+    checked.extend(lints);
+    checked
 }
 
 /// The module at `relative` (to the project root) of the checked project;
@@ -936,6 +949,34 @@ mod tests {
                 assert_eq!(diagnostic.range.end, Position::new(4, 10));
             }
         }
+    }
+
+    /// A test file is linted as written, as `meshc lint` lints it: a test
+    /// in a `describe` starts its own nesting, though the program generated
+    /// from it nests the test inside an `if` and a closure.
+    #[test]
+    fn a_test_file_is_linted_as_written() {
+        let test = "describe(\"math\") do\n  test(\"deep\") do\n    let ready = true\n    if ready do\n      if ready do\n        if ready do\n          if ready == true do\n            assert(true)\n          end\n        end\n      end\n    end\n  end\nend\n";
+        let (_tmp, _project_dir, open_path, source) = write_mesh_project(
+            Some(&package_manifest("lint")),
+            &[("main.mpl", "fn main() do\nend\n"), ("math.test.mpl", test)],
+            "math.test.mpl",
+        );
+        let result = published(&file_uri(&open_path), &source, &[]);
+        let found: Vec<_> = result
+            .diagnostics
+            .iter()
+            .map(|diagnostic| (diagnostic.code.clone(), diagnostic.range))
+            .collect();
+        assert_eq!(
+            found,
+            [(
+                Some(NumberOrString::String("L0004".into())),
+                Range::new(Position::new(6, 13), Position::new(6, 26))
+            )],
+            "{:?}",
+            diagnostic_messages(&result)
+        );
     }
 
     #[test]

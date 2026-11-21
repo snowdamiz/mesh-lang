@@ -469,3 +469,42 @@ async fn a_spelling_suggestion_is_a_nonpreferred_utf16_quick_fix() {
         .await
         .is_null());
 }
+
+#[tokio::test]
+async fn a_bool_comparison_is_a_preferred_quick_fix_to_the_value() {
+    let mut client = initialized_client().await;
+    let example = mesh_diagnostics::Code::BoolComparison
+        .info()
+        .example
+        .unwrap();
+    open(&mut client, URI, 1, example.bad).await;
+    let published_diagnostics = published(&mut client).await;
+    let diagnostic = &published_diagnostics["diagnostics"][0];
+    assert_eq!(diagnostic["code"], "L0004", "{published_diagnostics}");
+    assert_eq!(diagnostic["severity"], 2, "a warning");
+    let range = json!({"start": {"line": 2, "character": 5}, "end": {"line": 2, "character": 18}});
+    assert_eq!(diagnostic["range"], range);
+
+    let actions = client
+        .request(
+            "textDocument/codeAction",
+            json!({
+                "textDocument": {"uri": URI},
+                "range": range,
+                "context": {"diagnostics": [], "only": ["quickfix"]}
+            }),
+        )
+        .await;
+    assert_eq!(actions.as_array().unwrap().len(), 1, "{actions}");
+    let action = &actions[0];
+    assert_eq!(action["title"], "Replace the comparison with `ready`.");
+    assert_eq!(action["isPreferred"], true);
+    assert_eq!(
+        action["edit"]["changes"][URI],
+        json!([{"range": range, "newText": "ready"}])
+    );
+    assert_eq!(
+        example.bad.replacen("ready == true", "ready", 1),
+        example.fixed
+    );
+}

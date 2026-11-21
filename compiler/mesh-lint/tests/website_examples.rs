@@ -4,17 +4,31 @@
 #[path = "support/docs_examples.rs"]
 mod docs_examples;
 
+use mesh_diagnostics::SourceFile;
+
 #[test]
 fn website_examples_parse_and_pass_the_linter() {
     let mut problems = Vec::new();
     for (file, line, source) in docs_examples::examples() {
-        match mesh_lint::lint(&source) {
-            Err(error) => problems.push(format!("{file}:{line}: does not parse: {error}")),
-            Ok(lints) => problems.extend(lints.into_iter().map(|lint| {
-                let at = line + source[..lint.offset as usize].matches('\n').count();
-                format!("{file}:{at}: {}: {}", lint.rule, lint.message)
-            })),
+        let parse = mesh_parser::parse(&source);
+        if let Some(error) = parse.errors().first() {
+            problems.push(format!("{file}:{line}: does not parse: {error}"));
+            continue;
         }
+        let at = |found: u32| line + found as usize - 1;
+        problems.extend(
+            mesh_lint::lint(&parse, &SourceFile::new(&file, source.as_str()))
+                .iter()
+                .map(|lint| {
+                    let found = lint.line().expect("a finding has a line");
+                    format!(
+                        "{file}:{}: {}: {}",
+                        at(found),
+                        lint.code().id(),
+                        lint.message()
+                    )
+                }),
+        );
     }
     assert!(problems.is_empty(), "{}", problems.join("\n"));
 }

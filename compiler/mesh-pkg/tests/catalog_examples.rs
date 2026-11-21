@@ -1,12 +1,12 @@
-//! Catalog examples that the frontend can diagnose.
+//! Catalog examples that the frontend and the linter can diagnose.
 
 use std::{fs, path::Path};
 
 use mesh_diagnostics::{Code, Family};
 use mesh_pkg::frontend::{check, CheckOptions, Target};
 
-/// The codes the frontend reports for `source` as a lone file, as `meshc
-/// check main.mpl` checks it, sorted, one per diagnostic.
+/// The codes `meshc check main.mpl` and `meshc lint main.mpl` report for
+/// `source` as a lone file, sorted, one per diagnostic.
 fn codes(source: &str) -> Vec<&'static str> {
     let target = Target::Source {
         path: Path::new("main.mpl"),
@@ -16,10 +16,15 @@ fn codes(source: &str) -> Vec<&'static str> {
 }
 
 fn target_codes(target: Target<'_>) -> Vec<&'static str> {
-    let mut codes: Vec<_> = check(target, &CheckOptions::cli())
+    let frontend = check(target, &CheckOptions::cli());
+    let lints = frontend
+        .lintable()
+        .flat_map(|(parse, file)| mesh_lint::lint(parse, file));
+    let mut codes: Vec<_> = frontend
         .diagnostics
         .iter()
         .map(|diagnostic| diagnostic.code().id())
+        .chain(lints.map(|lint| lint.code().id()))
         .collect();
     codes.sort();
     codes

@@ -1,5 +1,5 @@
-//! For each catalog example, the editor and `meshc check` report the same
-//! codes. The editor shows a repair and a docs link for each diagnostic,
+//! For each catalog example, the editor reports the codes `meshc check` and
+//! `meshc lint` report. The editor shows a repair and a docs link for each diagnostic,
 //! then clears it when the source is fixed. Examples run in standalone
 //! buffers and projects, or only in a project if they require a manifest.
 
@@ -13,12 +13,18 @@ use mesh_pkg::frontend::{self, CheckOptions, Target};
 use serde_json::{json, Value};
 use tower_lsp::lsp_types::Url;
 
-/// The codes of `check`'s diagnostics, sorted: a multiset.
+/// The codes of `check`'s diagnostics and of the lint findings in each file
+/// that parsed, sorted: a multiset.
 fn frontend_codes(target: Target<'_>) -> Vec<&'static str> {
-    let mut codes: Vec<_> = frontend::check(target, &CheckOptions::cli())
+    let checked = frontend::check(target, &CheckOptions::cli());
+    let lints = checked
+        .lintable()
+        .flat_map(|(parse, file)| mesh_lint::lint(parse, file));
+    let mut codes: Vec<_> = checked
         .diagnostics
         .iter()
         .map(|d| d.code().id())
+        .chain(lints.map(|lint| lint.code().id()))
         .collect();
     codes.sort();
     codes
@@ -83,10 +89,14 @@ async fn the_editor_publishes_what_the_compiler_reports() {
     let projects = tempfile::tempdir().unwrap();
     let projects = projects.path().canonicalize().unwrap();
     let mut failures = Vec::new();
-    // Lint codes come from the linter, not the frontend. No code that only
-    // codegen reports has an example yet.
+    // No code that only codegen reports has an example yet.
     let examples = Code::all()
-        .filter(|code| matches!(code.family(), Family::Syntax | Family::Semantic))
+        .filter(|code| {
+            matches!(
+                code.family(),
+                Family::Syntax | Family::Semantic | Family::Lint
+            )
+        })
         .filter_map(|code| Some((code, code.info().example?)));
     for (index, (code, example)) in examples.enumerate() {
         let native = code == Code::InvalidNativeDeclaration;

@@ -1652,6 +1652,8 @@ dependencies = [
 name = "mesh-lint"
 version = "0.1.8"
 dependencies = [
+ "mesh-common",
+ "mesh-diagnostics",
  "mesh-parser",
 ]
 
@@ -1663,6 +1665,7 @@ dependencies = [
  "mesh-diagnostics",
  "mesh-fmt",
  "mesh-lexer",
+ "mesh-lint",
  "mesh-parser",
  "mesh-pkg",
  "mesh-typeck",
@@ -1693,6 +1696,7 @@ dependencies = [
  "git2",
  "mesh-common",
  "mesh-diagnostics",
+ "mesh-lint",
  "mesh-parser",
  "mesh-typeck",
  "semver",

@@ -1012,6 +1012,46 @@ catalog! {
         summary: "During lowering, the compiler could not confirm the target trait method for a call that passed type checking.",
         repair: "Report the method name, receiver type, and a small program that reproduces the warning. Use an explicit function call if it resolves the intended method.",
     },
+    DeepNesting = L0001 "deep-nesting" Warning {
+        title: "control flow nested too deeply",
+        summary: "An `if`, `case`, loop, `receive`, or closure is nested more than four levels deep in one function, counted from the function, handler, actor body, or top-level test block that holds it.",
+        repair: "Move the construct the label points at into a function of its own and call it, return early from the enclosing function, or use `?` in place of a `case` that only passes an error on.",
+        topic: "syntax",
+        example: (
+            "fn main() do\n  let n = 5\n  if n > 0 do\n    if n > 1 do\n      if n > 2 do\n        if n > 3 do\n          if n > 4 do\n            println(\"deep\")\n          end\n        end\n      end\n    end\n  end\nend\n",
+            "fn report(n :: Int) do\n  if n > 4 do\n    println(\"deep\")\n  end\nend\n\nfn main() do\n  let n = 5\n  if n > 0 do\n    if n > 1 do\n      if n > 2 do\n        if n > 3 do\n          report(n)\n        end\n      end\n    end\n  end\nend\n",
+        ),
+    },
+    CollapsibleElseIf = L0002 "collapsible-else-if" Warning {
+        title: "`else` holding only an `if`",
+        summary: "The whole body of an `else` is one `if` expression, which `else if` says one level shallower.",
+        repair: "Join `else` and the `if` it holds into `else if ... do`, outdent that `if`'s branches one level, and delete the `end` that closed the `else`, so the inner `if`'s `end` closes the whole chain.",
+        topic: "syntax",
+        example: (
+            "fn sign(n :: Int) -> String do\n  if n > 0 do\n    \"positive\"\n  else\n    if n < 0 do\n      \"negative\"\n    else\n      \"zero\"\n    end\n  end\nend\n\nfn main() do\n  println(sign(-1))\nend\n",
+            "fn sign(n :: Int) -> String do\n  if n > 0 do\n    \"positive\"\n  else if n < 0 do\n    \"negative\"\n  else\n    \"zero\"\n  end\nend\n\nfn main() do\n  println(sign(-1))\nend\n",
+        ),
+    },
+    PassThroughArm = L0003 "pass-through-arm" Warning {
+        title: "match arm returning what it matched",
+        summary: "A `case` arm's value is its own pattern written again, as in `Ok(n) -> Ok(n)`, which the pattern alone already means.",
+        repair: "Delete the `->` and the value, and leave the pattern on its own as the arm: `Ok(n)`.",
+        topic: "pattern-matching",
+        example: (
+            "fn check(r) do\n  case r do\n    Ok(n) -> Ok(n)\n    Err(e) -> Err(\"check failed: #{e}\")\n  end\nend\n\nfn main() do\n  let _r = check(Err(\"no input\"))\nend\n",
+            "fn check(r) do\n  case r do\n    Ok(n)\n    Err(e) -> Err(\"check failed: #{e}\")\n  end\nend\n\nfn main() do\n  let _r = check(Err(\"no input\"))\nend\n",
+        ),
+    },
+    BoolComparison = L0004 "bool-comparison" Warning {
+        title: "comparison with a Bool literal",
+        summary: "A value is compared with `true` or `false` using `==` or `!=`, which is the value itself or its negation.",
+        repair: "Write the value alone in place of `== true` or `!= false`, and `not` the value in place of `== false` or `!= true`.",
+        topic: "syntax",
+        example: (
+            "fn main() do\n  let ready = true\n  if ready == true do\n    println(\"ready\")\n  end\nend\n",
+            "fn main() do\n  let ready = true\n  if ready do\n    println(\"ready\")\n  end\nend\n",
+        ),
+    },
     UnexpectedToken = P0001 "unexpected-token" Error {
         title: "unexpected token",
         summary: "The parser reached a token the grammar does not allow at this point.",

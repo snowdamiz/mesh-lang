@@ -63,7 +63,7 @@ use mesh_parser::ast::AstNode;
 use mesh_pkg::frontend::{self, Analysis, CheckOptions, Target};
 use mesh_pkg::manifest::ClusteredExecutionMetadata;
 
-use mesh_diagnostics::{Failed, Format, Reporter};
+use mesh_diagnostics::{Failed, Format, Reporter, SourceFile};
 use mesh_typeck::ty::Ty;
 
 #[derive(Parser)]
@@ -390,10 +390,12 @@ fn main() {
 fn run() {
     let cli = Cli::parse();
     let mut reporter = Reporter::stderr(Format::for_cli(cli.json, cli.no_color));
-    let mut lint_findings = false;
-    let result = dispatch(cli, &mut reporter, &mut lint_findings);
+    // Lint findings are warnings, which fail no build; failing on them is
+    // what `meshc lint` is for, as a CI gate.
+    let fails_on_warnings = matches!(cli.command, Commands::Lint { .. });
+    let result = dispatch(cli, &mut reporter);
     let summary = reporter.finish();
-    let exit_code = if result.is_err() || lint_findings {
+    let exit_code = if result.is_err() || (fails_on_warnings && summary.warnings > 0) {
         1
     } else {
         summary.exit_code()
@@ -403,7 +405,7 @@ fn run() {
     }
 }
 
-fn dispatch(cli: Cli, reporter: &mut Reporter, lint_findings: &mut bool) -> Result<(), Failed> {
+fn dispatch(cli: Cli, reporter: &mut Reporter) -> Result<(), Failed> {
     let json = cli.json;
     match cli.command {
         Commands::Build {
@@ -475,14 +477,7 @@ fn dispatch(cli: Cli, reporter: &mut Reporter, lint_findings: &mut bool) -> Resu
             };
             fmt_command(&path, check, &config, reporter)
         }
-        Commands::Lint { path } => {
-            let problems = lint_command(&path).reported(reporter)?;
-            if problems > 0 {
-                reporter.status(format_args!("{problems} problem(s) found"));
-                *lint_findings = true;
-            }
-            Ok(())
-        }
+        Commands::Lint { path } => lint_command(&path, reporter),
         Commands::PlaintextReport { dir, output, check } => {
             let prepared = prepare_project_build(&dir, false, reporter)?;
             plaintext_report::run(
@@ -1331,30 +1326,29 @@ fn fmt_command(
     Ok(())
 }
 
-/// Execute the `lint` subcommand: print each finding (and each file that does
-/// not parse) as `path:line:column: rule: message` and return how many there were.
-fn lint_command(path: &Path) -> Result<usize, String> {
-    let files = collect_mesh_files(path)?;
-
-    let mut problems = 0;
-    for file in &files {
-        let source = std::fs::read_to_string(file)
-            .map_err(|e| format!("Failed to read '{}': {}", file.display(), e))?;
-        let findings = match mesh_lint::lint(&source) {
-            Ok(lints) => lints
-                .into_iter()
-                .map(|lint| (lint.offset, lint.rule, lint.message))
-                .collect(),
-            Err(error) => vec![(error.span.start, "parse-error", error.message)],
+/// `meshc lint`: reports each file's parse errors, or, when it parses, its
+/// lint findings. Exiting 1 on a finding is [`run`]'s policy.
+fn lint_command(path: &Path, reporter: &mut Reporter) -> Result<(), Failed> {
+    for source in collect_mesh_files(path).reported(reporter)? {
+        let text = std::fs::read_to_string(&source)
+            .map_err(|e| format!("Failed to read '{}': {}", source.display(), e))
+            .reported(reporter)?;
+        let parse = mesh_parser::parse(&text);
+        let file = SourceFile::new(source, text);
+        let diagnostics = if parse.ok() {
+            mesh_lint::lint(&parse, &file)
+        } else {
+            parse
+                .errors()
+                .iter()
+                .map(|error| error.to_diagnostic(&file))
+                .collect()
         };
-        let lines = mesh_common::span::LineIndex::new(&source);
-        for (offset, rule, message) in findings {
-            let (line, column) = lines.line_col(offset);
-            println!("{}:{line}:{column}: {rule}: {message}", file.display());
-            problems += 1;
+        for diagnostic in diagnostics {
+            reporter.emit(diagnostic);
         }
     }
-    Ok(problems)
+    Ok(())
 }
 
 /// Collect `.mpl` files from a path: the file itself, or every one under a
