@@ -1,0 +1,425 @@
+{
+  "host": "Darwin",
+  "lanes": {
+    "j2-lane-9": {
+      "current_batch_start_with_old_grants_denied": true,
+      "lifecycle_calls": {
+        "upgrade_new_worker": {
+          "batch": 207,
+          "claim": 0,
+          "renew": 0,
+          "settle": 1
+        },
+        "upgrade_old_worker": {
+          "batch": 0,
+          "claim": 281,
+          "renew": 8,
+          "settle": 4
+        }
+      },
+      "old_grants_unchanged": true,
+      "old_worker_migration_denied": "permission denied",
+      "owner_replay": {
+        "additive_objects_preserved": [
+          "function claim_batch_v1(ns text, queue_name text, workers jsonb, lease_ms bigint, slots integer, cutoff_ms bigint)",
+          "function claim_drain_v1(ns text, queue_name text, workers jsonb, lease_ms bigint, cutoff_ms bigint, initial_ids jsonb)",
+          "function publish_wake_v1()",
+          "function set_namespace_paused(ns text, paused boolean)",
+          "relation batch_context_blocks",
+          "relation batch_context_blocks_pkey",
+          "relation job_summaries",
+          "relation mesh_jobs_queue_due",
+          "relation queue_summaries",
+          "trigger mesh_jobs_insert_wake",
+          "trigger mesh_jobs_queue_wake",
+          "trigger mesh_jobs_update_wake"
+        ],
+        "current_migrator_restored_catalog": true,
+        "old_owner_migration_exit": 0,
+        "public_execute_count": 0,
+        "shared_definition_replaced": {
+          "function claim(ns text, queue_name text, workers jsonb, lease_ms bigint)": {
+            "replayed_md5": "e7258d9c807eb2435b6d97c29a373a3d",
+            "upgraded_md5": "37def2a4d2aad91fc4e9696486e7b014"
+          }
+        }
+      },
+      "public_execute_count": 0,
+      "scoped_grants": {
+        "inspector_can_read_summary": true,
+        "inspector_cannot_read_args": true,
+        "legacy_cannot_batch": true,
+        "lifecycle_roles_independent": true,
+        "migration_role_owns_schema": true,
+        "operator_can_pause_namespace": true,
+        "producer_cannot_claim": true,
+        "worker_can_batch": true,
+        "worker_cannot_pause_namespace": true
+      }
+    },
+    "j7-lane-5": {
+      "after_migrate": {
+        "held": {
+          "attempt": 1,
+          "attempted_at_ms": 1795155009087,
+          "effect_key": "267b7b4d-91e5-41c3-b50e-d957e0c44f67/1",
+          "errors": [],
+          "finished_at_ms": null,
+          "id": "267b7b4d-91e5-41c3-b50e-d957e0c44f67",
+          "lease_expires_at_ms": 1795155015087,
+          "lease_token": "681a483f-466d-4712-824b-0f1ab8216d0b",
+          "max_attempts": 3,
+          "position": 2,
+          "queue": "legacy",
+          "run": 1,
+          "scheduled_at_ms": 1795155009042,
+          "state": "executing"
+        },
+        "retryable": {
+          "attempt": 1,
+          "attempted_at_ms": 1795155008764,
+          "effect_key": "fd2ab189-b9a1-454d-8572-2ee2595b38dc/1",
+          "errors": [
+            {
+              "at_ms": 1795155008851,
+              "attempt": 1,
+              "reason": "upgrade proof"
+            }
+          ],
+          "finished_at_ms": null,
+          "id": "fd2ab189-b9a1-454d-8572-2ee2595b38dc",
+          "lease_expires_at_ms": null,
+          "lease_token": null,
+          "max_attempts": 3,
+          "position": 1,
+          "queue": "retry",
+          "run": 1,
+          "scheduled_at_ms": 1795155023851,
+          "state": "retryable"
+        },
+        "scheduled": {
+          "attempt": 0,
+          "attempted_at_ms": null,
+          "effect_key": "7be19620-aee2-4e6c-a5c9-2fa957a9e447/1",
+          "errors": [],
+          "finished_at_ms": null,
+          "id": "7be19620-aee2-4e6c-a5c9-2fa957a9e447",
+          "lease_expires_at_ms": null,
+          "lease_token": null,
+          "max_attempts": 3,
+          "position": 3,
+          "queue": "next",
+          "run": 1,
+          "scheduled_at_ms": 1795155024255,
+          "state": "scheduled"
+        }
+      },
+      "before": {
+        "held": {
+          "attempt": 1,
+          "attempted_at_ms": 1795155009087,
+          "effect_key": "267b7b4d-91e5-41c3-b50e-d957e0c44f67/1",
+          "errors": [],
+          "finished_at_ms": null,
+          "id": "267b7b4d-91e5-41c3-b50e-d957e0c44f67",
+          "lease_expires_at_ms": 1795155015087,
+          "lease_token": "681a483f-466d-4712-824b-0f1ab8216d0b",
+          "max_attempts": 3,
+          "position": 2,
+          "queue": "legacy",
+          "run": 1,
+          "scheduled_at_ms": 1795155009042,
+          "state": "executing"
+        },
+        "retryable": {
+          "attempt": 1,
+          "attempted_at_ms": 1795155008764,
+          "effect_key": "fd2ab189-b9a1-454d-8572-2ee2595b38dc/1",
+          "errors": [
+            {
+              "at_ms": 1795155008851,
+              "attempt": 1,
+              "reason": "upgrade proof"
+            }
+          ],
+          "finished_at_ms": null,
+          "id": "fd2ab189-b9a1-454d-8572-2ee2595b38dc",
+          "lease_expires_at_ms": null,
+          "lease_token": null,
+          "max_attempts": 3,
+          "position": 1,
+          "queue": "retry",
+          "run": 1,
+          "scheduled_at_ms": 1795155023851,
+          "state": "retryable"
+        },
+        "scheduled": {
+          "attempt": 0,
+          "attempted_at_ms": null,
+          "effect_key": "7be19620-aee2-4e6c-a5c9-2fa957a9e447/1",
+          "errors": [],
+          "finished_at_ms": null,
+          "id": "7be19620-aee2-4e6c-a5c9-2fa957a9e447",
+          "lease_expires_at_ms": null,
+          "lease_token": null,
+          "max_attempts": 3,
+          "position": 3,
+          "queue": "next",
+          "run": 1,
+          "scheduled_at_ms": 1795155024255,
+          "state": "scheduled"
+        }
+      },
+      "held_claim_after_concurrent_workers": {
+        "attempt": 1,
+        "attempted_at_ms": 1795155009087,
+        "effect_key": "267b7b4d-91e5-41c3-b50e-d957e0c44f67/1",
+        "errors": [],
+        "finished_at_ms": null,
+        "id": "267b7b4d-91e5-41c3-b50e-d957e0c44f67",
+        "lease_expires_at_ms": 1795155029120,
+        "lease_token": "681a483f-466d-4712-824b-0f1ab8216d0b",
+        "max_attempts": 3,
+        "position": 2,
+        "queue": "legacy",
+        "run": 1,
+        "scheduled_at_ms": 1795155009042,
+        "state": "executing"
+      }
+    },
+    "j7-lane-6": {
+      "after_new_worker_exit": {
+        "held": {
+          "attempt": 1,
+          "attempted_at_ms": 1795155009087,
+          "effect_key": "267b7b4d-91e5-41c3-b50e-d957e0c44f67/1",
+          "errors": [],
+          "finished_at_ms": null,
+          "id": "267b7b4d-91e5-41c3-b50e-d957e0c44f67",
+          "lease_expires_at_ms": 1795155029120,
+          "lease_token": "681a483f-466d-4712-824b-0f1ab8216d0b",
+          "max_attempts": 3,
+          "position": 2,
+          "queue": "legacy",
+          "run": 1,
+          "scheduled_at_ms": 1795155009042,
+          "state": "executing"
+        },
+        "mixed_old": {
+          "attempt": 1,
+          "attempted_at_ms": 1795155010447,
+          "effect_key": "5116e42f-0fcf-4eef-a598-3cf4ccfd5c7c/1",
+          "errors": [],
+          "finished_at_ms": 1795155010523,
+          "id": "5116e42f-0fcf-4eef-a598-3cf4ccfd5c7c",
+          "lease_expires_at_ms": null,
+          "lease_token": null,
+          "max_attempts": 3,
+          "position": 4,
+          "queue": "legacy",
+          "run": 1,
+          "scheduled_at_ms": 1795155010424,
+          "state": "completed"
+        },
+        "retryable": {
+          "attempt": 1,
+          "attempted_at_ms": 1795155008764,
+          "effect_key": "fd2ab189-b9a1-454d-8572-2ee2595b38dc/1",
+          "errors": [
+            {
+              "at_ms": 1795155008851,
+              "attempt": 1,
+              "reason": "upgrade proof"
+            }
+          ],
+          "finished_at_ms": null,
+          "id": "fd2ab189-b9a1-454d-8572-2ee2595b38dc",
+          "lease_expires_at_ms": null,
+          "lease_token": null,
+          "max_attempts": 3,
+          "position": 1,
+          "queue": "retry",
+          "run": 1,
+          "scheduled_at_ms": 1795155023851,
+          "state": "available"
+        },
+        "scheduled": {
+          "attempt": 1,
+          "attempted_at_ms": 1795155024312,
+          "effect_key": "7be19620-aee2-4e6c-a5c9-2fa957a9e447/1",
+          "errors": [],
+          "finished_at_ms": 1795155024669,
+          "id": "7be19620-aee2-4e6c-a5c9-2fa957a9e447",
+          "lease_expires_at_ms": null,
+          "lease_token": null,
+          "max_attempts": 3,
+          "position": 3,
+          "queue": "next",
+          "run": 1,
+          "scheduled_at_ms": 1795155024255,
+          "state": "completed"
+        }
+      },
+      "final": {
+        "held": {
+          "attempt": 1,
+          "attempted_at_ms": 1795155009087,
+          "effect_key": "267b7b4d-91e5-41c3-b50e-d957e0c44f67/1",
+          "errors": [],
+          "finished_at_ms": 1795155025325,
+          "id": "267b7b4d-91e5-41c3-b50e-d957e0c44f67",
+          "lease_expires_at_ms": null,
+          "lease_token": null,
+          "max_attempts": 3,
+          "position": 2,
+          "queue": "legacy",
+          "run": 1,
+          "scheduled_at_ms": 1795155009042,
+          "state": "completed"
+        },
+        "mixed_old": {
+          "attempt": 1,
+          "attempted_at_ms": 1795155010447,
+          "effect_key": "5116e42f-0fcf-4eef-a598-3cf4ccfd5c7c/1",
+          "errors": [],
+          "finished_at_ms": 1795155010523,
+          "id": "5116e42f-0fcf-4eef-a598-3cf4ccfd5c7c",
+          "lease_expires_at_ms": null,
+          "lease_token": null,
+          "max_attempts": 3,
+          "position": 4,
+          "queue": "legacy",
+          "run": 1,
+          "scheduled_at_ms": 1795155010424,
+          "state": "completed"
+        },
+        "retryable": {
+          "attempt": 2,
+          "attempted_at_ms": 1795155025780,
+          "effect_key": "fd2ab189-b9a1-454d-8572-2ee2595b38dc/1",
+          "errors": [
+            {
+              "at_ms": 1795155008851,
+              "attempt": 1,
+              "reason": "upgrade proof"
+            }
+          ],
+          "finished_at_ms": 1795155026056,
+          "id": "fd2ab189-b9a1-454d-8572-2ee2595b38dc",
+          "lease_expires_at_ms": null,
+          "lease_token": null,
+          "max_attempts": 3,
+          "position": 1,
+          "queue": "retry",
+          "run": 1,
+          "scheduled_at_ms": 1795155023851,
+          "state": "completed"
+        },
+        "scheduled": {
+          "attempt": 1,
+          "attempted_at_ms": 1795155024312,
+          "effect_key": "7be19620-aee2-4e6c-a5c9-2fa957a9e447/1",
+          "errors": [],
+          "finished_at_ms": 1795155024669,
+          "id": "7be19620-aee2-4e6c-a5c9-2fa957a9e447",
+          "lease_expires_at_ms": null,
+          "lease_token": null,
+          "max_attempts": 3,
+          "position": 3,
+          "queue": "next",
+          "run": 1,
+          "scheduled_at_ms": 1795155024255,
+          "state": "completed"
+        }
+      },
+      "request_receipts": {
+        "held": "267b7b4d-91e5-41c3-b50e-d957e0c44f67",
+        "mixed_old": "5116e42f-0fcf-4eef-a598-3cf4ccfd5c7c",
+        "retryable": "fd2ab189-b9a1-454d-8572-2ee2595b38dc",
+        "scheduled": "7be19620-aee2-4e6c-a5c9-2fa957a9e447"
+      },
+      "upgraded_catalog_unchanged_by_worker_rollback": true,
+      "writes": {
+        "attempts": [
+          {
+            "attempt": 1,
+            "effect_key": "267b7b4d-91e5-41c3-b50e-d957e0c44f67/1",
+            "job_id": "267b7b4d-91e5-41c3-b50e-d957e0c44f67",
+            "worker_role": "upgrade_old_worker"
+          },
+          {
+            "attempt": 1,
+            "effect_key": "5116e42f-0fcf-4eef-a598-3cf4ccfd5c7c/1",
+            "job_id": "5116e42f-0fcf-4eef-a598-3cf4ccfd5c7c",
+            "worker_role": "upgrade_old_worker"
+          },
+          {
+            "attempt": 1,
+            "effect_key": "7be19620-aee2-4e6c-a5c9-2fa957a9e447/1",
+            "job_id": "7be19620-aee2-4e6c-a5c9-2fa957a9e447",
+            "worker_role": "upgrade_new_worker"
+          },
+          {
+            "attempt": 1,
+            "effect_key": "fd2ab189-b9a1-454d-8572-2ee2595b38dc/1",
+            "job_id": "fd2ab189-b9a1-454d-8572-2ee2595b38dc",
+            "worker_role": "upgrade_old_worker"
+          },
+          {
+            "attempt": 2,
+            "effect_key": "fd2ab189-b9a1-454d-8572-2ee2595b38dc/1",
+            "job_id": "fd2ab189-b9a1-454d-8572-2ee2595b38dc",
+            "worker_role": "upgrade_old_worker"
+          }
+        ],
+        "effects": [
+          {
+            "effect_key": "267b7b4d-91e5-41c3-b50e-d957e0c44f67/1",
+            "job_id": "267b7b4d-91e5-41c3-b50e-d957e0c44f67",
+            "worker_role": "upgrade_old_worker"
+          },
+          {
+            "effect_key": "5116e42f-0fcf-4eef-a598-3cf4ccfd5c7c/1",
+            "job_id": "5116e42f-0fcf-4eef-a598-3cf4ccfd5c7c",
+            "worker_role": "upgrade_old_worker"
+          },
+          {
+            "effect_key": "7be19620-aee2-4e6c-a5c9-2fa957a9e447/1",
+            "job_id": "7be19620-aee2-4e6c-a5c9-2fa957a9e447",
+            "worker_role": "upgrade_new_worker"
+          },
+          {
+            "effect_key": "fd2ab189-b9a1-454d-8572-2ee2595b38dc/1",
+            "job_id": "fd2ab189-b9a1-454d-8572-2ee2595b38dc",
+            "worker_role": "upgrade_old_worker"
+          }
+        ]
+      }
+    }
+  },
+  "new": {
+    "compiler_sha256": "2de82c3265bbf0db2a3af45a98f0412d24d58c494dad55ea91501df5a2fa9cc0",
+    "fixture_binary_sha256": "cd1fb445cd42de49d6b857d7678d122345a20052dfe4bc0f49930a1c1bad8ace",
+    "runtime_sha256": "72ce86579887f51e3b61b26344272d3c9f2cef44614395689e0c1628683dee32",
+    "source_sha": "23a95b87fcf6aa61cd843d67714ffe262fcc17f2"
+  },
+  "old": {
+    "compiler_sha256": "07ab32d6fe38ffe2135b5d7a026a61668a458706070548e600809245ac0c52c4",
+    "fixture_binary_sha256": "f125adcffbf611b4e6e73e5039d5ea40d2525aa6e7c53d81ec9fadd6cc69f691",
+    "runtime_sha256": "d82b7e11c14846cc3eca9e3023759eb86324c5467e988aa007722d1224117831",
+    "source_sha": "7c1620563614a04a573aef806a6d019a2af4dfe9"
+  },
+  "postgres_version": "19.0",
+  "postgres_version_num": 190000,
+  "proof_source_sha256": {
+    "scripts/fixtures/jobs-role-grants.sql": "dee8d9da66a16223dccfc6906e4dea421683fdf33546234539e14e87e26f3135",
+    "scripts/fixtures/jobs-upgrade/main.mpl": "7d2f6f026a2ccdf68b9b84e7fba83bcb7bac262c2bc324c60d273d2491e398f3",
+    "scripts/jobs-parity.py": "b21871ad2d48cae9596bb6ddc056dd590cfa57d4331391de00185e355424ed82",
+    "scripts/verify-jobs-upgrade.py": "f22ae13dc5d0abcc2b7c2023c805387b351500fc88f6247ffaff3011cbb0618d"
+  },
+  "receipt_version": 1,
+  "result": "pass",
+  "rust_target": "aarch64-apple-darwin",
+  "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+  "tls": true
+}

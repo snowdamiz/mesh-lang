@@ -13,19 +13,20 @@
 //!
 //! Authentication supports both SCRAM-SHA-256 (production/cloud) and MD5
 //! (local development). The wire protocol is implemented from scratch using
-//! `std::net::TcpStream` and crypto crates from the RustCrypto project.
+//! `std::net::TcpStream` and cryptography libraries.
 
 use std::collections::HashMap;
-use std::io::{Read, Write};
+use std::io::{ErrorKind, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
+use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time::Duration;
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use hmac::{Hmac, Mac};
 use md5::{Digest, Md5};
-use pbkdf2::pbkdf2_hmac;
 use rand::Rng;
+use ring::pbkdf2;
 use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned};
 use rustls_pki_types::{pem::PemObject, CertificateDer, ServerName};
 use sha2::Sha256;
@@ -46,6 +47,7 @@ type HmacSha256 = Hmac<Sha256>;
 // ponytail: fixed safety caps; make these pool options if legitimate workloads need larger cells.
 pub(crate) const MAX_DB_VALUE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_PG_MESSAGE_BYTES: usize = 64 * 1024 * 1024;
+const MAX_LISTENER_MESSAGE_BYTES: usize = 64 * 1024;
 const MAX_PG_RESULT_BYTES: usize = 64 * 1024 * 1024;
 const MAX_PG_VALUES: usize = i16::MAX as usize;
 const MAX_PG_ROWS: usize = 100_000;
@@ -174,6 +176,113 @@ impl PgConn {
             txn_status: b'I',
             broken: false,
         }
+    }
+}
+
+pub(super) struct PgNotifications {
+    conn: PgConn,
+    pending: Vec<u8>,
+}
+
+impl PgNotifications {
+    pub(super) fn subscribe(mut conn: PgConn, channel: &str) -> Result<Self, String> {
+        // Jobs generates this identifier from a fixed prefix and a hex digest.
+        if channel.is_empty()
+            || channel.len() > 63
+            || !channel
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+            || conn.txn_status != b'I'
+        {
+            return Err("invalid PostgreSQL LISTEN channel or transaction state".into());
+        }
+        conn.set_read_timeout(Some(ANSWER_TIMEOUT));
+        pg_simple_command(&mut conn, &format!("LISTEN \"{channel}\""))?;
+        // Standalone LISTEN commits before the server sends idle ReadyForQuery.
+        if conn.txn_status != b'I' {
+            return Err("PostgreSQL LISTEN did not return to idle".into());
+        }
+        conn.set_read_timeout(Some(Duration::from_millis(250)));
+        Ok(Self {
+            conn,
+            pending: Vec::new(),
+        })
+    }
+
+    pub(super) fn read(&mut self) -> Result<Option<Notification>, String> {
+        // Keep bytes between reads, including when a read times out halfway
+        // through a header or body. Only this session uses this frame buffer.
+        if let Some(frame) = self.decode()? {
+            return Ok(frame);
+        }
+        let mut bytes = [0; 4096];
+        match self.conn.stream.read(&mut bytes) {
+            Ok(0) => Err("PostgreSQL listener closed".into()),
+            Ok(count) => {
+                self.pending.extend_from_slice(&bytes[..count]);
+                Ok(self.decode()?.flatten())
+            }
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    ErrorKind::WouldBlock | ErrorKind::TimedOut | ErrorKind::Interrupted
+                ) =>
+            {
+                Ok(None)
+            }
+            Err(error) => Err(format!("read PostgreSQL listener: {error}")),
+        }
+    }
+
+    // The outer option indicates whether a complete frame was consumed.
+    fn decode(&mut self) -> Result<Option<Option<Notification>>, String> {
+        let [tag, a, b, c, d, ..] = self.pending.as_slice() else {
+            return Ok(None);
+        };
+        let length = u32::from_be_bytes([*a, *b, *c, *d]) as usize;
+        if !(4..=MAX_LISTENER_MESSAGE_BYTES).contains(&length) {
+            return Err(format!(
+                "invalid PostgreSQL listener message length: {length}"
+            ));
+        }
+        let end = length + 1;
+        let Some(body) = self.pending.get(5..end) else {
+            return Ok(None);
+        };
+        let notification = match *tag {
+            b'A' => Some(Notification::decode(body)?),
+            b'N' | b'S' => None,
+            b'E' => return Err(parse_error_response(body)),
+            tag => return Err(format!("unexpected PostgreSQL listener message: {tag}")),
+        };
+        self.pending.drain(..end);
+        Ok(Some(notification))
+    }
+}
+
+pub(super) struct Notification {
+    pub(super) channel: String,
+    pub(super) payload: String,
+}
+
+impl Notification {
+    fn decode(body: &[u8]) -> Result<Self, String> {
+        let invalid = || "invalid PostgreSQL NotificationResponse".to_string();
+        // The initial four bytes are the notifying backend PID.
+        let mut fields = body.get(4..).ok_or_else(invalid)?.split(|&b| b == 0);
+        let (Some(channel), Some(payload), Some([]), None) =
+            (fields.next(), fields.next(), fields.next(), fields.next())
+        else {
+            return Err(invalid());
+        };
+        if channel.is_empty() {
+            return Err(invalid());
+        }
+        let text = |bytes: &[u8]| String::from_utf8(bytes.to_vec()).map_err(|_| invalid());
+        Ok(Self {
+            channel: text(channel)?,
+            payload: text(payload)?,
+        })
     }
 }
 
@@ -683,10 +792,18 @@ fn scram_client_final(
     let salt = BASE64
         .decode(salt_b64)
         .map_err(|_| "bad salt encoding".to_string())?;
+    let iterations =
+        NonZeroU32::new(iterations).ok_or_else(|| "missing or zero iteration count".to_string())?;
 
     // SaltedPassword = PBKDF2(password, salt, iterations, SHA-256)
     let mut salted_password = [0u8; 32];
-    pbkdf2_hmac::<Sha256>(password.as_bytes(), &salt, iterations, &mut salted_password);
+    pbkdf2::derive(
+        pbkdf2::PBKDF2_HMAC_SHA256,
+        iterations,
+        &salt,
+        password.as_bytes(),
+        &mut salted_password,
+    );
 
     // ClientKey = HMAC(SaltedPassword, "Client Key")
     let client_key = hmac_sha256(&salted_password, b"Client Key");
@@ -1321,7 +1438,14 @@ pub(super) fn open(url: &str) -> Result<u64, String> {
 
 /// Connect, authenticate and wait for the server to be ready: the handshake
 /// `Pg.connect` and the native API share.
-fn connect(url: &str) -> Result<PgConn, String> {
+pub(super) fn connect(url: &str) -> Result<PgConn, String> {
+    connect_with_socket(url, |_| Ok(()))
+}
+
+pub(super) fn connect_with_socket(
+    url: &str,
+    register: impl FnOnce(&TcpStream) -> Result<(), String>,
+) -> Result<PgConn, String> {
     let pg_url = parse_pg_url(url)?;
 
     let addrs = (pg_url.host.as_str(), pg_url.port)
@@ -1338,6 +1462,9 @@ fn connect(url: &str) -> Result<PgConn, String> {
         })
         .next();
     let stream = stream.ok_or(failure)?;
+    #[cfg(target_os = "linux")]
+    let _ = stream.set_nodelay(true);
+    register(&stream)?;
     // Set before TLS wrapping (StreamOwned inherits them).
     let _ = stream.set_read_timeout(Some(ANSWER_TIMEOUT));
     let _ = stream.set_write_timeout(Some(Duration::from_secs(10)));
@@ -1806,6 +1933,53 @@ pub(super) fn pg_text_query(
     sql: &str,
     params: &[&str],
 ) -> Result<Vec<Vec<(String, String)>>, String> {
+    text_query(conn, sql, params).map_err(Failure::message)
+}
+
+#[derive(Debug)]
+pub(crate) enum JobsAckError {
+    Rejected(String),
+    Unconfirmed(String),
+}
+
+impl JobsAckError {
+    #[cfg(test)]
+    pub(crate) fn message(self) -> String {
+        match self {
+            Self::Rejected(message) | Self::Unconfirmed(message) => message,
+        }
+    }
+}
+
+pub(super) fn pg_jobs_ack(
+    conn: &mut PgConn,
+    sql: &str,
+    params: &[&str],
+) -> Result<Vec<Vec<(String, String)>>, JobsAckError> {
+    let rows = text_query(conn, sql, params).map_err(|failure| match failure {
+        // request() returns a server error only after reading ReadyForQuery.
+        Failure::Server(error)
+            if error.sqlstate.len() == 5
+                && !error.sqlstate.starts_with("08")
+                && error.sqlstate != "40003" =>
+        {
+            JobsAckError::Rejected(error.message)
+        }
+        failure => JobsAckError::Unconfirmed(failure.message()),
+    })?;
+    if conn.txn_status != b'I' {
+        return Err(JobsAckError::Unconfirmed(
+            "Jobs acknowledgement did not end on an idle PostgreSQL connection".into(),
+        ));
+    }
+    Ok(rows)
+}
+
+fn text_query(
+    conn: &mut PgConn,
+    sql: &str,
+    params: &[&str],
+) -> Result<Vec<Vec<(String, String)>>, Failure> {
     query(
         conn,
         sql,
@@ -1819,7 +1993,6 @@ pub(super) fn pg_text_query(
                 .collect())
         },
     )
-    .map_err(Failure::message)
 }
 
 /// Close a native PG connection.
@@ -2457,6 +2630,40 @@ mod tests {
     }
 
     #[test]
+    fn scram_client_final_matches_known_proof_and_signature() {
+        let (client_final, server_signature) = scram_client_final(
+            "pässword",
+            "mesh-client-nonce",
+            "r=mesh-client-nonce-server,s=AHNhbHT/,i=4096",
+        )
+        .unwrap();
+        assert_eq!(
+            client_final,
+            "c=biws,r=mesh-client-nonce-server,p=CF8/fE71zY418n7sN0VhgnDU3ywHPONFpL1lnXH89qY="
+        );
+        assert_eq!(
+            BASE64.encode(server_signature),
+            "NPPbXtNSvqUaLM0X54YnyL81lCdIeDFx5iWMtcNPCu8="
+        );
+    }
+
+    #[test]
+    fn scram_client_final_requires_positive_iterations() {
+        for (attribute, expected) in [
+            ("", "missing or zero iteration count"),
+            (",i=0", "missing or zero iteration count"),
+            (",i=-1", "bad iteration count"),
+        ] {
+            let server_first = format!("r=client-server,s=c2FsdA=={attribute}");
+            assert_eq!(
+                scram_client_final("password", "client", &server_first).unwrap_err(),
+                expected,
+                "{server_first}"
+            );
+        }
+    }
+
+    #[test]
     fn scram_native_connect_requires_valid_server_signature() {
         for final_message in [
             b"".as_slice(),
@@ -2511,6 +2718,20 @@ mod tests {
         server.join().unwrap();
         assert_eq!(result.tag, 0);
         mesh_pg_close(unsafe { *(result.value as *const u64) });
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_postgres_connect_enables_tcp_nodelay() {
+        let (url, server) = scram_test_server(None);
+        let mut nodelay = false;
+        let result = connect_with_socket(&url, |socket| {
+            nodelay = socket.nodelay().unwrap();
+            Ok(())
+        });
+        server.join().unwrap();
+        assert!(result.is_ok());
+        assert!(nodelay);
     }
 
     #[test]
@@ -2604,6 +2825,48 @@ mod tests {
             }
         }
         body
+    }
+
+    #[test]
+    fn jobs_ack_needs_the_completed_autocommit_response() {
+        let success = [
+            message(b'T', &row_description(&[("state", 25, 0)])),
+            message(b'D', &data_row(&[Some(b"completed")])),
+            message(b'C', b"SELECT 1\0"),
+        ]
+        .concat();
+        let rejected = message(b'E', b"SERROR\0C55P03\0Mrow locked\0\0");
+        let unknown = message(b'E', b"SERROR\0C40003\0Mcompletion unknown\0\0");
+        for (reply, expected) in [
+            ([success.clone(), ready(b'I')].concat(), "confirmed"),
+            (success.clone(), "uncertain"),
+            ([success, ready(b'T')].concat(), "uncertain"),
+            ([rejected.clone(), ready(b'I')].concat(), "rejected"),
+            (rejected, "uncertain"),
+            ([unknown, ready(b'I')].concat(), "uncertain"),
+        ] {
+            let (url, peer) = wire_peer("sslmode=disable", move |mut socket| {
+                read_startup(&mut socket);
+                socket
+                    .write_all(&[auth(0, b""), ready(b'I')].concat())
+                    .unwrap();
+                let mut stream = PgStream::Plain(socket);
+                while read_message(&mut stream).unwrap().0 != b'S' {}
+                stream.write_all(&reply).unwrap();
+            });
+            let mut conn = connect(&url).unwrap();
+            conn.set_read_timeout(Some(Duration::from_secs(5)));
+            let result = pg_jobs_ack(&mut conn, "SELECT mesh_jobs.settle_state()", &[]);
+            peer.join().unwrap();
+            match (result, expected) {
+                (Ok(rows), "confirmed") => assert_eq!(rows[0][0].1, "completed"),
+                (Err(JobsAckError::Rejected(message)), "rejected") => {
+                    assert_eq!(message, "row locked");
+                }
+                (Err(JobsAckError::Unconfirmed(_)), "uncertain") => {}
+                (result, _) => panic!("expected {expected}, got {result:?}"),
+            }
+        }
     }
 
     fn column(name: &str, oid: u32, binary: bool) -> PgColumn {
@@ -2868,6 +3131,184 @@ mod tests {
 
     fn complete(tag: &str) -> Vec<u8> {
         message(b'C', format!("{tag}\0").as_bytes())
+    }
+
+    #[test]
+    fn listener_keeps_partial_frames_across_timeouts_and_reads_coalesced_frames() {
+        use std::net::TcpListener;
+        use std::sync::mpsc;
+
+        let server = TcpListener::bind("127.0.0.1:0").unwrap();
+        let conn =
+            PgConn::from_test_stream(TcpStream::connect(server.local_addr().unwrap()).unwrap());
+        let (mut socket, _) = server.accept().unwrap();
+        let (send, receive) = mpsc::channel();
+        let peer = std::thread::spawn(move || {
+            let mut query = [0; 5];
+            socket.read_exact(&mut query).unwrap();
+            assert_eq!(query[0], b'Q');
+            let mut sql = vec![0; u32::from_be_bytes(query[1..].try_into().unwrap()) as usize - 4];
+            socket.read_exact(&mut sql).unwrap();
+            assert_eq!(sql, b"LISTEN \"test\"\0");
+            let first = message(b'A', b"\0\0\0\x01test\0first\0");
+            socket
+                .write_all(&[complete("LISTEN"), ready(b'I')].concat())
+                .unwrap();
+            socket.write_all(&first[..3]).unwrap();
+            receive.recv_timeout(Duration::from_secs(5)).unwrap();
+            socket.write_all(&first[3..9]).unwrap();
+            receive.recv_timeout(Duration::from_secs(5)).unwrap();
+            socket
+                .write_all(
+                    &[
+                        first[9..].to_vec(),
+                        message(b'N', b"Mnotice\0\0"),
+                        message(b'A', b"\0\0\0\x02test\0second\0"),
+                        message(b'A', b"\0\0\0\x03test\0unterminated"),
+                    ]
+                    .concat(),
+                )
+                .unwrap();
+        });
+        let mut listener = PgNotifications::subscribe(conn, "test").unwrap();
+        listener
+            .conn
+            .set_read_timeout(Some(Duration::from_millis(25)));
+        for _ in 0..2 {
+            assert!(listener.read().unwrap().is_none());
+            assert!(listener.read().unwrap().is_none());
+            send.send(()).unwrap();
+        }
+        let mut payloads = Vec::new();
+        loop {
+            match listener.read() {
+                Ok(Some(notification)) => {
+                    assert_eq!(notification.channel, "test");
+                    payloads.push(notification.payload);
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    assert!(
+                        error.contains("invalid PostgreSQL NotificationResponse"),
+                        "{error}"
+                    );
+                    break;
+                }
+            }
+        }
+        assert_eq!(payloads, ["first", "second"]);
+        peer.join().unwrap();
+    }
+
+    #[test]
+    fn listener_rejects_invalid_frame_lengths_and_notification_fields() {
+        for body in [
+            &b""[..],
+            b"\0\0\0\x01\0payload\0",
+            b"\0\0\0\x01test\0payload",
+            b"\0\0\0\x01test\0payload\0trailing",
+            b"\0\0\0\x01test\0\xff\0",
+        ] {
+            assert!(Notification::decode(body).is_err(), "{body:?}");
+        }
+        let (handle, peer) = scripted(Vec::new());
+        let conn = *unsafe { Box::from_raw(handle as *mut PgConn) };
+        let mut listener = PgNotifications {
+            conn,
+            pending: Vec::new(),
+        };
+        for length in [3, MAX_LISTENER_MESSAGE_BYTES + 1, u32::MAX as usize] {
+            listener.pending = [vec![b'A'], (length as u32).to_be_bytes().to_vec()].concat();
+            assert!(matches!(listener.decode(), Err(error) if error.contains("message length")));
+        }
+        drop(listener);
+        peer.join().unwrap();
+    }
+
+    #[test]
+    fn jobs_listener_announces_only_committed_subscriptions_and_interrupts_listen() {
+        use crate::db::jobs_connection::{wake_key, JobListener, ListenEvent, ListenerStop};
+        use std::net::TcpListener;
+        use std::sync::mpsc;
+
+        let server = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!(
+            "postgres://user@{}/db?sslmode=disable",
+            server.local_addr().unwrap()
+        );
+        server.set_nonblocking(true).unwrap();
+        let wait = Duration::from_secs(5);
+        let accept_listen = || {
+            let deadline = std::time::Instant::now() + wait;
+            let mut socket = loop {
+                match server.accept() {
+                    Ok((socket, _)) => break socket,
+                    Err(e)
+                        if e.kind() == ErrorKind::WouldBlock
+                            && std::time::Instant::now() < deadline =>
+                    {
+                        std::thread::sleep(Duration::from_millis(5));
+                    }
+                    Err(error) => panic!("listener did not reconnect: {error}"),
+                }
+            };
+            socket.set_nonblocking(false).unwrap();
+            socket.set_read_timeout(Some(wait)).unwrap();
+            read_startup(&mut socket);
+            socket
+                .write_all(&[auth(0, b""), ready(b'I')].concat())
+                .unwrap();
+            let sql = format!("LISTEN \"mesh_jobs_wake_{}\"\0", wake_key("test"));
+            let mut query = vec![0; sql.len() + 5];
+            socket.read_exact(&mut query).unwrap();
+            assert_eq!(query[0], b'Q');
+            assert_eq!(&query[5..], sql.as_bytes());
+            socket
+        };
+        let stop = Arc::new(ListenerStop::default());
+        let worker_stop = Arc::clone(&stop);
+        let (send, receive) = mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            JobListener::new(url, "test").run(&worker_stop, |event| {
+                let observed = match event {
+                    ListenEvent::Subscribed => "subscribed",
+                    ListenEvent::Disconnected => "disconnected",
+                    ListenEvent::Hint(key) => key,
+                };
+                send.send(observed.to_owned()).unwrap();
+            });
+        });
+        let mut refused = accept_listen();
+        refused
+            .write_all(&[error_response("LISTEN unavailable"), ready(b'I')].concat())
+            .unwrap();
+        let mut first = accept_listen();
+        assert!(
+            receive.try_recv().is_err(),
+            "refused LISTEN counted as a subscription"
+        );
+        first.write_all(&complete("LISTEN")).unwrap();
+        assert!(receive.recv_timeout(Duration::from_millis(50)).is_err());
+        first.write_all(&ready(b'I')).unwrap();
+        assert_eq!(receive.recv_timeout(wait).unwrap(), "subscribed");
+        drop(first);
+        assert_eq!(receive.recv_timeout(wait).unwrap(), "disconnected");
+        let mut second = accept_listen();
+        second
+            .write_all(&[complete("LISTEN"), ready(b'I')].concat())
+            .unwrap();
+        assert_eq!(receive.recv_timeout(wait).unwrap(), "subscribed");
+        drop(second);
+        assert_eq!(receive.recv_timeout(wait).unwrap(), "disconnected");
+
+        let mut stopping = accept_listen();
+        stop.stop();
+        stopping
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .unwrap();
+        assert_eq!(stopping.read(&mut [0]).unwrap(), 0);
+        worker.join().unwrap();
+        assert!(receive.try_recv().is_err());
     }
 
     fn text_list(values: &[&str]) -> *mut u8 {

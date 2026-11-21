@@ -4,6 +4,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::process::{Child, Command, Stdio};
 use std::sync::Barrier;
 use std::thread;
+use std::time::{Duration, Instant};
 
 const WORKERS: &str = r#"[{"worker":"Deliver","version":1}]"#;
 const TEST_PG_URL: &str = "MESH_JOBS_TEST_PG_URL";
@@ -26,6 +27,14 @@ impl Connection {
 impl Database for Connection {
     fn query(&mut self, sql: &str, params: &[&str]) -> Result<Vec<Vec<(String, String)>>, String> {
         native_pg_query(&mut self.native, sql, params)
+    }
+
+    fn acknowledge(
+        &mut self,
+        sql: &str,
+        params: &[&str],
+    ) -> Result<Vec<Vec<(String, String)>>, JobsAckError> {
+        self.query(sql, params).map_err(JobsAckError::Unconfirmed)
     }
 
     fn simple(&mut self, sql: &str) -> Result<(), String> {
@@ -123,6 +132,497 @@ fn parse(text: &str) -> Value {
 
 fn id(value: &Value) -> &str {
     value["id"].as_str().unwrap()
+}
+
+fn batch_row(fields: [&str; 8]) -> Vec<(String, String)> {
+    fields
+        .into_iter()
+        .map(|value| (String::new(), value.to_owned()))
+        .collect()
+}
+
+#[test]
+fn batch_contention_sentinel_must_be_the_only_row_with_no_payload() {
+    let status = ["contention_hint", "", "", "", "", "", "", ""];
+    let batch = decode_claim_batch(vec![batch_row(status)], 1, true).unwrap();
+    assert!(batch.contention_hint);
+    assert!(batch.claims.is_empty());
+    assert!(batch.oversized.is_empty());
+    assert!(!decode_claim_batch(vec![], 1, true).unwrap().contention_hint);
+
+    for index in 1..status.len() {
+        let mut invalid = status;
+        invalid[index] = "1";
+        assert!(decode_claim_batch(vec![batch_row(invalid)], 1, true).is_err());
+    }
+    assert!(decode_claim_batch(vec![batch_row(status)[..7].to_vec()], 1, true).is_err());
+    for other in [
+        status,
+        ["claimed", "id", "token", "{}", "1", "2", "1", "1"],
+        ["oversized", "id", "", "", "", "16777217", "", "1"],
+    ] {
+        assert!(decode_claim_batch(vec![batch_row(status), batch_row(other)], 1, true).is_err());
+        assert!(decode_claim_batch(vec![batch_row(other), batch_row(status)], 1, true).is_err());
+    }
+}
+
+#[test]
+fn batch_decoder_restores_mixed_rows_in_numeric_order_without_copying_context() {
+    let mut rows = Vec::new();
+    for position in (1..=20).rev() {
+        let ordinal = position.to_string();
+        rows.push(if position % 5 == 0 {
+            batch_row(["oversized", &ordinal, "", "", "", "16777217", "", &ordinal])
+        } else {
+            batch_row([
+                "claimed", &ordinal, "token", "{}", "1", "2", &ordinal, &ordinal,
+            ])
+        });
+    }
+    let first_context = rows.last().unwrap()[3].1.as_ptr();
+    let batch = decode_claim_batch(rows, 16, true).unwrap();
+    assert!(!batch.contention_hint);
+    assert_eq!(batch.claims[0].context.as_ptr(), first_context);
+    let expected = (1..=20).filter(|position| position % 5 != 0);
+    assert_eq!(batch.claims.len(), 16);
+    for (claim, position) in batch.claims.iter().zip(expected) {
+        assert_eq!(claim.id, position.to_string());
+        assert_eq!(claim.observed_at_ms, Some(position));
+    }
+    assert!(batch
+        .oversized
+        .iter()
+        .map(|row| row.id.as_str())
+        .eq(["5", "10", "15", "20"]));
+}
+
+#[test]
+fn batch_decoder_rejects_invalid_ordinals_widths_and_counts() {
+    let claim = |ordinal| batch_row(["claimed", "id", "token", "{}", "1", "2", "", ordinal]);
+    let oversized = |ordinal| batch_row(["oversized", "id", "", "", "", "16777217", "", ordinal]);
+    assert!(decode_claim_batch(vec![claim("1"); 21], 16, false).is_err());
+    for ordinal in ["", "0", "-1", "+1", "01", "x", "2", "18446744073709551616"] {
+        assert!(
+            decode_claim_batch(vec![claim(ordinal)], 1, false).is_err(),
+            "{ordinal:?}"
+        );
+    }
+    for rows in [
+        vec![claim("1"), oversized("1")],
+        vec![oversized("1"), claim("3")],
+        vec![claim("1"), claim("2")],
+        vec![
+            oversized("1"),
+            oversized("2"),
+            oversized("3"),
+            oversized("4"),
+            oversized("5"),
+        ],
+    ] {
+        assert!(decode_claim_batch(rows, 1, false).is_err());
+    }
+    let mut short = claim("1");
+    short.remove(6);
+    let mut wide = claim("1");
+    wide.insert(6, (String::new(), String::new()));
+    for row in [short, wide] {
+        assert!(decode_claim_batch(vec![row], 1, false).is_err());
+    }
+}
+
+#[test]
+#[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
+fn batch_contention_hint_requires_eligible_backlog_and_open_capacity() {
+    let mut f = Fixture::new();
+    let job = f.enqueue(json!({"worker":"Deliver","scheduled_at_ms":1}));
+    let mut claimant = Connection::open(&f.url);
+    claimant.simple("SET statement_timeout = '5s'").unwrap();
+    let namespace = f.ns.clone();
+    let mut claim = |cutoff| {
+        claim_batch(
+            &mut claimant,
+            &namespace,
+            "default",
+            WORKERS,
+            60_000,
+            1,
+            cutoff,
+        )
+        .unwrap()
+    };
+
+    let mut locker = Connection::open(&f.url);
+    locker.simple("BEGIN").unwrap();
+    locker
+        .query(
+            "SELECT 1 FROM mesh_jobs.queues WHERE namespace = $1 AND name = 'default'
+             FOR NO KEY UPDATE",
+            &[&f.ns],
+        )
+        .unwrap();
+    assert!(!claim(Some(0)).contention_hint);
+    let held = claim(Some(1));
+    assert!(held.contention_hint);
+    assert!(held.claims.is_empty());
+    assert!(held.oversized.is_empty());
+    locker.simple("COMMIT").unwrap();
+
+    let claimed = claim(Some(1));
+    assert!(!claimed.contention_hint);
+    assert_eq!(claimed.claims.len(), 1);
+    let first = &claimed.claims[0];
+    assert_eq!(first.id, id(&job));
+    assert_eq!(parse(&first.context)["attempt"], 1);
+
+    let waiting = f.enqueue(json!({"worker":"Deliver"}));
+    let full = claim(None);
+    assert!(!full.contention_hint && full.claims.is_empty());
+    f.finish(first, Outcome::Complete);
+    f.ops(json!({"action":"pause_namespace"}));
+    let paused = claim(None);
+    assert!(!paused.contention_hint && paused.claims.is_empty());
+    f.ops(json!({"action":"resume_namespace"}));
+    let claimed = claim(None);
+    assert_eq!(claimed.claims[0].id, id(&waiting));
+    f.finish(&claimed.claims[0], Outcome::Complete);
+
+    let jobs = f.enqueue(json!([
+        {"worker":"Deliver","delay_ms":120000},
+        {"worker":"Deliver","version":2},
+        {"worker":"Deliver","max_attempts":1}
+    ]));
+    f.db.query(
+        "UPDATE mesh_jobs.jobs SET attempt = max_attempts WHERE namespace = $1 AND id = $2::uuid",
+        &[&f.ns, id(&jobs[2])],
+    )
+    .unwrap();
+    let unmatched = claim(None);
+    assert!(!unmatched.contention_hint && unmatched.claims.is_empty());
+}
+
+#[test]
+#[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
+fn batch_claim_samples_live_due_time_after_admission_waits() {
+    let mut fixture = Fixture::new();
+    let original = fixture.enqueue(json!({"worker":"Deliver","delay_ms":120000}));
+    thread::scope(|scope| {
+        let mut locker = Connection::open(&fixture.url);
+        locker.simple("SET statement_timeout = '10s'").unwrap();
+        let (send_pid, receive_pid) = std::sync::mpsc::channel();
+        let (start, wait) = std::sync::mpsc::channel();
+        let url = fixture.url.clone();
+        let namespace = fixture.ns.clone();
+        let claimant = scope.spawn(move || {
+            let mut db = Connection::open(&url);
+            db.simple("SET statement_timeout = '10s'").unwrap();
+            send_pid
+                .send(response(&mut db, "SELECT pg_backend_pid()::text", &[]).unwrap())
+                .unwrap();
+            wait.recv_timeout(Duration::from_secs(10)).unwrap();
+            claim_batch(&mut db, &namespace, "default", WORKERS, 60_000, 1, None).unwrap()
+        });
+        let pid = receive_pid.recv_timeout(Duration::from_secs(5)).unwrap();
+        // EXCLUSIVE allows the advisory SELECT but holds the admission table lock.
+        locker.simple("BEGIN").unwrap();
+        locker
+            .simple("LOCK TABLE mesh_jobs.queues IN EXCLUSIVE MODE")
+            .unwrap();
+        start.send(()).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while response(
+            &mut locker,
+            "SELECT (pg_backend_pid() = ANY(pg_blocking_pids($1::integer)))::text",
+            &[&pid],
+        )
+        .unwrap()
+            != "true"
+        {
+            assert!(
+                Instant::now() < deadline,
+                "the claim did not wait for admission"
+            );
+            thread::sleep(Duration::from_millis(5));
+        }
+        // Set the due time after admission blocks and commit after it elapses.
+        let due = response(
+            &mut locker,
+            "UPDATE mesh_jobs.jobs SET scheduled_at_ms = mesh_jobs.now_ms() + 1
+             WHERE namespace = $1 AND id = $2::uuid RETURNING scheduled_at_ms::text",
+            &[&fixture.ns, id(&original)],
+        )
+        .unwrap();
+        locker
+            .query(
+                "SELECT pg_sleep(greatest(0, $1::bigint + 1 - mesh_jobs.now_ms()) / 1000.0)",
+                &[&due],
+            )
+            .unwrap();
+        locker.simple("COMMIT").unwrap();
+
+        let batch = claimant.join().unwrap();
+        assert!(!batch.contention_hint && batch.oversized.is_empty());
+        assert_eq!(batch.claims.len(), 1);
+        assert_eq!(batch.claims[0].id, id(&original));
+        assert_eq!(parse(&batch.claims[0].context)["attempt"], 1);
+    });
+}
+
+#[test]
+#[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
+fn batch_claim_preserves_order_and_uses_the_shared_capacity() {
+    let mut f = Fixture::new();
+    f.ops(json!({"action":"configure","queue":"default","limit":3}));
+    let jobs = f.enqueue(json!([
+        {"worker":"Deliver","priority":3,"scheduled_at_ms":0},
+        {"worker":"Deliver","priority":1,"scheduled_at_ms":2},
+        {"worker":"Deliver","priority":1,"scheduled_at_ms":1},
+        {"worker":"Deliver","priority":1,"scheduled_at_ms":1},
+        {"worker":"Deliver","version":2,"priority":0,"scheduled_at_ms":0},
+        {"worker":"Other","priority":0,"scheduled_at_ms":0}
+    ]));
+    assert_eq!(f.claim().id, id(&jobs[2]));
+
+    let mut db = Connection::open(&f.url);
+    db.simple("SET default_transaction_isolation TO 'repeatable read'")
+        .unwrap();
+    let batch = claim_batch(&mut db, &f.ns, "default", WORKERS, 60_000, 16, None).unwrap();
+    assert!(batch.oversized.is_empty());
+    assert_eq!(
+        batch
+            .claims
+            .iter()
+            .map(|c| c.id.as_str())
+            .collect::<Vec<_>>(),
+        [id(&jobs[3]), id(&jobs[1])]
+    );
+    assert_ne!(batch.claims[0].token, batch.claims[1].token);
+    let context = parse(&batch.claims[0].context);
+    assert_eq!(context["effect_key"], jobs[3]["effect_key"]);
+    assert_eq!(context["attempt"], 1);
+    assert_eq!(f.get(&batch.claims[0].id)["state"], "executing");
+    assert!(f.try_claim().is_none());
+    assert_eq!(f.get(id(&jobs[0]))["attempt"], 0);
+
+    assert_eq!(
+        f.finish(&batch.claims[0], Outcome::ReleaseUnstarted),
+        Settlement::ReleasedUnstarted
+    );
+    let retried = f.claim();
+    assert_eq!(retried.id, batch.claims[0].id);
+    assert_ne!(retried.token, batch.claims[0].token);
+    assert_eq!(parse(&retried.context), context);
+    assert_eq!(
+        f.finish(&batch.claims[0], Outcome::Complete),
+        Settlement::Stale
+    );
+}
+
+#[test]
+#[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
+fn legacy_and_batch_workers_keep_distinct_executes_after_schema_reapply() {
+    let mut fixture = Fixture::new();
+    fixture.ops(json!({"action":"configure","queue":"default","limit":2}));
+    let jobs = fixture.enqueue(json!([{"worker":"Deliver"}, {"worker":"Deliver"}]));
+    let suffix = rand::random::<u64>();
+    let old = format!("mesh_batch_legacy_{suffix}");
+    let new = format!("mesh_batch_v1_{suffix}");
+    let batch_signature = "mesh_jobs.claim_batch_v1(text,text,jsonb,bigint,integer,bigint)";
+    let mut db = Connection::open(&fixture.url);
+    db.simple("BEGIN ISOLATION LEVEL READ COMMITTED").unwrap();
+    for statement in [
+        format!("CREATE ROLE {old}"),
+        format!("CREATE ROLE {new} IN ROLE {old}"),
+        format!("REVOKE EXECUTE ON FUNCTION {batch_signature} FROM PUBLIC"),
+        format!("GRANT USAGE ON SCHEMA mesh_jobs TO {old}"),
+        format!("GRANT SELECT, UPDATE ON mesh_jobs.jobs, mesh_jobs.queues TO {old}"),
+        format!(
+            "GRANT EXECUTE ON FUNCTION mesh_jobs.claim(text,text,jsonb,bigint),
+             mesh_jobs.now_ms(), mesh_jobs.effect_key(mesh_jobs.jobs) TO {old}"
+        ),
+        format!("GRANT EXECUTE ON FUNCTION {batch_signature} TO {new}"),
+        format!("GRANT SELECT, INSERT, UPDATE ON mesh_jobs.batch_context_blocks TO {new}"),
+    ] {
+        db.simple(&statement).unwrap();
+    }
+    db.simple(include_str!("schema.sql")).unwrap();
+
+    db.simple(&format!("SET LOCAL ROLE {old}")).unwrap();
+    assert_eq!(
+        response(
+            &mut db,
+            "SELECT has_function_privilege($1, 'EXECUTE')::text",
+            &[batch_signature]
+        )
+        .unwrap(),
+        "false",
+    );
+    let legacy = response(
+        &mut db,
+        "SELECT id FROM mesh_jobs.claim($1, 'default', $2::jsonb, 60000)",
+        &[&fixture.ns, WORKERS],
+    )
+    .unwrap();
+    assert_eq!(legacy, id(&jobs[0]));
+
+    db.simple("RESET ROLE").unwrap();
+    db.simple(&format!("SET LOCAL ROLE {new}")).unwrap();
+    let claimed = response(
+        &mut db,
+        "SELECT id FROM mesh_jobs.claim_batch_v1($1, 'default', $2::jsonb, 60000, 16, NULL)",
+        &[&fixture.ns, WORKERS],
+    )
+    .unwrap();
+    assert_eq!(claimed, id(&jobs[1]));
+    db.simple("ROLLBACK").unwrap();
+}
+
+#[test]
+#[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
+fn batch_claim_keeps_the_ordered_prefix_with_large_contexts() {
+    const MIB: usize = 1024 * 1024;
+    let mut fixture = Fixture::new();
+    fixture.ops(json!({"action":"configure","queue":"default","concurrency":5}));
+    let jobs = fixture.enqueue(json!(vec![json!({"worker":"Deliver"}); 5]));
+    let jobs = jobs.as_array().unwrap();
+    for (job, payload_bytes) in jobs.iter().zip([16 * MIB, 12 * MIB, 12 * MIB, 12 * MIB]) {
+        fixture
+            .db
+            .query(
+                "UPDATE mesh_jobs.jobs SET args = jsonb_build_object('large', repeat('x', $3::integer))
+                 WHERE namespace = $1 AND id = $2::uuid",
+                &[&fixture.ns, id(job), &payload_bytes.to_string()],
+            )
+            .unwrap();
+    }
+
+    let first = claim_batch(
+        &mut fixture.db,
+        &fixture.ns,
+        "default",
+        WORKERS,
+        60_000,
+        5,
+        None,
+    )
+    .unwrap();
+    assert_eq!(first.oversized.len(), 1);
+    assert_eq!(first.oversized[0].id, id(&jobs[0]));
+    let ids: Vec<_> = first.claims.iter().map(|claim| claim.id.as_str()).collect();
+    assert_eq!(ids, [id(&jobs[1]), id(&jobs[2])]);
+    let bytes: usize = first.claims.iter().map(|claim| claim.context.len()).sum();
+    assert!(
+        (24 * MIB..32 * MIB).contains(&bytes),
+        "returned {bytes} context bytes"
+    );
+    let following = claim_batch(
+        &mut fixture.db,
+        &fixture.ns,
+        "default",
+        WORKERS,
+        60_000,
+        5,
+        None,
+    )
+    .unwrap();
+    assert!(following.oversized.is_empty());
+    let ids: Vec<_> = following
+        .claims
+        .iter()
+        .map(|claim| claim.id.as_str())
+        .collect();
+    assert_eq!(ids, [id(&jobs[3]), id(&jobs[4])]);
+}
+
+#[test]
+#[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
+fn batch_drain_steps_past_an_oversized_prefix_and_rechecks_replacements() {
+    let mut fixture = Fixture::new();
+    let jobs = fixture.enqueue(json!(vec![json!({"worker":"Deliver"}); 6]));
+    for job in &jobs.as_array().unwrap()[..5] {
+        fixture
+            .db
+            .query(
+                "UPDATE mesh_jobs.jobs SET args = jsonb_build_object('large', repeat('x', 16777216))
+                 WHERE namespace = $1 AND id = $2::uuid",
+                &[&fixture.ns, id(job)],
+            )
+            .unwrap();
+    }
+    let selected = r#"{"default":1}"#;
+    let first = claim_batch(
+        &mut fixture.db,
+        &fixture.ns,
+        "default",
+        WORKERS,
+        60_000,
+        1,
+        None,
+    )
+    .unwrap();
+    assert!(!first.contention_hint);
+    assert_eq!(first.oversized.len(), 4);
+    assert!(first.claims.is_empty());
+    assert!(
+        drain_work(&mut fixture.db, &fixture.ns, selected, WORKERS, true)
+            .unwrap()
+            .pending
+    );
+    let second = claim_batch(
+        &mut fixture.db,
+        &fixture.ns,
+        "default",
+        WORKERS,
+        60_000,
+        1,
+        None,
+    )
+    .unwrap();
+    assert_eq!(second.oversized.len(), 1);
+    assert_eq!(second.claims[0].id, id(&jobs[5]));
+    assert_eq!(
+        fixture.finish(&second.claims[0], Outcome::Complete),
+        Settlement::Completed
+    );
+    let remaining = drain_work(&mut fixture.db, &fixture.ns, selected, WORKERS, true).unwrap();
+    assert!(!remaining.pending);
+    assert!(remaining.oversized.is_some());
+    let blocked = claim_batch(
+        &mut fixture.db,
+        &fixture.ns,
+        "default",
+        WORKERS,
+        60_000,
+        1,
+        None,
+    )
+    .unwrap();
+    assert!(!blocked.contention_hint);
+    assert!(blocked.claims.is_empty() && blocked.oversized.is_empty());
+
+    fixture
+        .db
+        .query(
+            "UPDATE mesh_jobs.jobs SET args = '{}' WHERE namespace = $1 AND id = $2::uuid",
+            &[&fixture.ns, id(&jobs[0])],
+        )
+        .unwrap();
+    assert!(
+        drain_work(&mut fixture.db, &fixture.ns, selected, WORKERS, true)
+            .unwrap()
+            .pending
+    );
+    let fixed = claim_batch(
+        &mut fixture.db,
+        &fixture.ns,
+        "default",
+        WORKERS,
+        60_000,
+        1,
+        None,
+    )
+    .unwrap();
+    assert_eq!(fixed.claims[0].id, id(&jobs[0]));
+    assert_eq!(parse(&fixed.claims[0].context)["attempt"], 1);
 }
 
 #[test]
@@ -224,6 +724,206 @@ fn bulk_actions_respect_filters_and_retry_opens_a_new_run() {
     let job = fixture.get(cancelled_id);
     assert_eq!(job["state"], "available");
     assert_eq!(job["effect_key"], format!("{cancelled_id}/2"));
+}
+
+#[test]
+#[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
+fn edits_and_terminal_deletion_respect_claim_locks_and_keep_receipts() {
+    let mut f = Fixture::new();
+    let spec = json!({"worker":"Deliver", "request_key":"ops-key"});
+    let receipt = f.enqueue(spec.clone());
+    let id = id(&receipt);
+    for patch in [
+        json!({"args":null,"priority":1}),
+        json!({"priority":10}),
+        json!({"delay_ms":0,"scheduled_at_ms":0}),
+        json!({"lease_token":"fake"}),
+    ] {
+        let edit = json!({"action":"update","id":id,"patch":patch}).to_string();
+        assert!(control(&mut f.db, &f.ns, &edit).is_err(), "{edit}");
+    }
+    let edit = json!({
+        "action":"update","id":id,
+        "patch":{"args":{"task":"updated"},"priority":3,"delay_ms":1000}
+    })
+    .to_string();
+    let mut owner = Connection::open(&f.url);
+    owner.simple("BEGIN").unwrap();
+    let claimed = owner
+        .query(
+            "SELECT id, token FROM mesh_jobs.claim($1, 'default', $2::jsonb, 60000)",
+            &[&f.ns, WORKERS],
+        )
+        .unwrap();
+    assert_eq!(claimed[0][0].1, id);
+    assert!(control(&mut f.db, &f.ns, &edit)
+        .unwrap_err()
+        .contains("locked"));
+    assert_eq!(
+        f.ops(json!({"action":"delete_all","filter":{"queue":"default"}}))["deleted"],
+        0
+    );
+    owner.simple("ROLLBACK").unwrap();
+    let updated = parse(&control(&mut f.db, &f.ns, &edit).unwrap());
+    assert_eq!(updated["state"], "scheduled");
+    assert_eq!(updated["effect_key"], receipt["effect_key"]);
+    assert_eq!(updated["attempt"], 0);
+    assert_eq!(f.get(id)["args"], json!({"task":"updated"}));
+    f.ops(json!({"action":"run_now","id":id}));
+    let claim = f.claim();
+    assert!(control(&mut f.db, &f.ns, &edit).is_err());
+    assert_eq!(f.finish(&claim, Outcome::Complete), Settlement::Completed);
+    let second = f.enqueue(json!({"worker":"Unchanged"}));
+    let summaries = f.ops(json!({"action":"search","filter":{"limit":1}}));
+    let cursor = summaries[0]["id"].as_str().unwrap();
+    assert!(summaries[0].get("args").is_none());
+    let next = f.ops(json!({"action":"search","filter":{"limit":1},"after_id":cursor}));
+    assert_ne!(next[0]["id"], summaries[0]["id"]);
+    assert!(f
+        .ops(json!({"action":"search","after_id":next[0]["id"]}))
+        .as_array()
+        .unwrap()
+        .is_empty());
+    let removed = f.ops(json!({"action":"delete_all","filter":{"queue":"default","limit":1}}));
+    assert_eq!(removed, json!({"deleted":1,"ids":[id]}));
+    assert_eq!(f.get(second["id"].as_str().unwrap())["state"], "available");
+    assert_eq!(f.enqueue(spec), receipt);
+}
+
+#[test]
+#[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
+fn namespace_pause_fences_pending_transactions_and_respects_queue_state() {
+    let mut f = Fixture::new();
+    f.ops(json!({"action":"configure","queue":"other","concurrency":3}));
+    f.ops(json!({"action":"pause","queue":"other"}));
+    let original = f.enqueue(json!({"worker":"Deliver"}));
+    let legacy_claim = "SELECT id FROM mesh_jobs.claim($1, 'default', $2::jsonb, 60000)";
+    let mut owner = Connection::open(&f.url);
+    owner.simple("SET statement_timeout = '5s'").unwrap();
+    owner.simple("BEGIN").unwrap();
+    assert_eq!(
+        response(&mut owner, legacy_claim, &[&f.ns, WORKERS]).unwrap(),
+        id(&original)
+    );
+    f.db.simple("SET lock_timeout = '50ms'").unwrap();
+    assert!(control(&mut f.db, &f.ns, r#"{"action":"pause_namespace"}"#)
+        .unwrap_err()
+        .contains("lock timeout"));
+    assert_eq!(f.ops(json!({"action":"namespace_status"}))["paused"], false);
+    owner.simple("ROLLBACK").unwrap();
+    f.db.simple("BEGIN").unwrap();
+    assert_eq!(f.ops(json!({"action":"pause_namespace"}))["paused"], true);
+    let pending_pause = response(&mut owner, legacy_claim, &[&f.ns, WORKERS]).unwrap_err();
+    assert!(
+        pending_pause.contains("namespace admission is paused"),
+        "{pending_pause}"
+    );
+    f.db.simple("COMMIT").unwrap();
+    let another = f.enqueue(json!({"worker":"Deliver","queue":"another"}));
+    assert!(f.try_claim().is_none());
+    let legacy_error = response(&mut owner, legacy_claim, &[&f.ns, WORKERS]).unwrap_err();
+    assert!(
+        legacy_error.contains("namespace admission is paused"),
+        "{legacy_error}"
+    );
+    let untouched = f.get(id(&original));
+    assert_eq!(untouched["state"], "available");
+    assert_eq!(untouched["attempt"], 0);
+    assert!(
+        claim_batch(&mut f.db, &f.ns, "another", WORKERS, 60_000, 5, None)
+            .unwrap()
+            .claims
+            .is_empty()
+    );
+    assert_eq!(f.ops(json!({"action":"resume_namespace"}))["paused"], false);
+    assert_eq!(
+        response(&mut owner, legacy_claim, &[&f.ns, WORKERS]).unwrap(),
+        id(&original)
+    );
+    assert_eq!(
+        f.ops(json!({"action":"inspect_queue","queue":"other"}))["state"],
+        "paused"
+    );
+    let batch = claim_batch(&mut f.db, &f.ns, "another", WORKERS, 60_000, 5, None).unwrap();
+    assert_eq!(batch.claims[0].id, another["id"]);
+}
+
+#[test]
+#[ignore = "requires MESH_JOBS_TEST_PG_URL pointing at disposable PostgreSQL"]
+fn legacy_claim_sees_pause_committed_after_its_statement_started() {
+    let mut f = Fixture::new();
+    f.db.simple("SET statement_timeout = '5s'").unwrap();
+    let job = f.enqueue(json!({"worker":"Deliver"}));
+    let trigger = format!("hold_claim_{}", f.ns.replace('-', ""));
+    f.db.simple(&format!(
+        "CREATE FUNCTION mesh_jobs.{trigger}() RETURNS trigger LANGUAGE plpgsql AS $$
+         BEGIN
+             PERFORM pg_advisory_xact_lock(hashtextextended(NEW.namespace, 1782495114));
+             RETURN NEW;
+         END $$"
+    ))
+    .unwrap();
+    // PostgreSQL runs this trigger before mesh_jobs_fence_claim by name.
+    f.db.simple(&format!(
+        "CREATE TRIGGER {trigger} BEFORE UPDATE OF state ON mesh_jobs.jobs FOR EACH ROW
+         WHEN (NEW.namespace = '{}' AND NEW.state = 'executing')
+         EXECUTE FUNCTION mesh_jobs.{trigger}()",
+        f.ns,
+    ))
+    .unwrap();
+    f.db.query(
+        "SELECT pg_advisory_lock(hashtextextended($1, 1782495114))",
+        &[&f.ns],
+    )
+    .unwrap();
+
+    let (pid_tx, pid_rx) = std::sync::mpsc::channel();
+    let url = f.url.clone();
+    let namespace = f.ns.clone();
+    let claimant = thread::spawn(move || {
+        let mut db = Connection::open(&url);
+        db.simple("SET statement_timeout = '10s'").unwrap();
+        pid_tx
+            .send(response(&mut db, "SELECT pg_backend_pid()::text", &[]).unwrap())
+            .unwrap();
+        response(
+            &mut db,
+            "SELECT id FROM mesh_jobs.claim($1, 'default', $2::jsonb, 60000)",
+            &[&namespace, WORKERS],
+        )
+    });
+    let pid = pid_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while response(
+        &mut f.db,
+        "SELECT (pg_backend_pid() = ANY(pg_blocking_pids($1::integer)))::text",
+        &[&pid],
+    )
+    .unwrap()
+        != "true"
+    {
+        assert!(
+            Instant::now() < deadline,
+            "legacy claim did not reach the transition"
+        );
+        thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(f.ops(json!({"action":"pause_namespace"}))["paused"], true);
+    f.db.query(
+        "SELECT pg_advisory_unlock(hashtextextended($1, 1782495114))",
+        &[&f.ns],
+    )
+    .unwrap();
+    let result = claimant.join();
+    f.db.simple(&format!("DROP TRIGGER {trigger} ON mesh_jobs.jobs"))
+        .unwrap();
+    f.db.simple(&format!("DROP FUNCTION mesh_jobs.{trigger}()"))
+        .unwrap();
+    let error = result.unwrap().unwrap_err();
+    assert!(error.contains("namespace admission is paused"), "{error}");
+    let row = f.get(id(&job));
+    assert_eq!(row["state"], "available");
+    assert_eq!(row["attempt"], 0);
 }
 
 #[test]
@@ -468,7 +1168,10 @@ fn cancel_holds_capacity_until_ack_or_recovery_and_expired_tokens_are_fenced() {
     f.db.simple("COMMIT").unwrap();
     assert_eq!(requested["state"], "executing");
     assert!(requested["cancel_requested_at_ms"].is_number());
-    assert!(racing_ack.unwrap_err().contains("could not obtain lock"));
+    assert!(racing_ack
+        .unwrap_err()
+        .message()
+        .contains("could not obtain lock"));
     assert_eq!(
         renew(
             &mut new_conn,
@@ -724,7 +1427,10 @@ fn locked_job_operations_leave_the_claim_for_retry() {
     assert!(renewal.unwrap_err().contains("could not obtain lock"));
     for outcome in [Outcome::Complete, Outcome::ReleaseUnstarted] {
         let settlement = finish(&mut worker, &f.ns, &claim.id, &claim.token, outcome);
-        assert!(settlement.unwrap_err().contains("could not obtain lock"));
+        assert!(settlement
+            .unwrap_err()
+            .message()
+            .contains("could not obtain lock"));
     }
     f.db.simple("ROLLBACK").unwrap();
     assert_eq!(

@@ -24,6 +24,7 @@ fn control(pool :: PoolHandle) -> Result<String, String> do Jobs.control(pool, "
 fn stop(runner :: Int) -> Result<String, String> do Jobs.stop(runner, 100) end
 fn join(runner :: Int) -> Result<String, String> do Jobs.join(runner) end
 fn status(runner :: Int) -> Result<String, String> do Jobs.status(runner) end
+fn events(runner :: Int) -> Result<String, String> do Jobs.read_events(runner, 32) end
 "#,
     );
     assert!(result.errors.is_empty(), "{:?}", result.errors);
@@ -151,4 +152,103 @@ fn jobs_enqueue_in_rejects_escaped_or_consumed_connections() {
             result.errors
         );
     }
+}
+
+#[test]
+fn durable_drain_requires_a_named_compiled_handler() {
+    for expression in [
+        r#"Jobs.drain(pool, "{}", handle, "{}")"#,
+        r#"pool |> drain("{}", handle, "{}")"#,
+        r#"handle |3> Jobs.drain(pool, "{}", "{}")"#,
+    ] {
+        let checked = check(&format!(
+            "from Jobs import drain\nfn handle(job :: String) -> String do job end\nfn run(pool :: PoolHandle) do {expression} end"
+        ));
+        assert!(
+            checked.errors.is_empty(),
+            "{expression}: {:?}",
+            checked.errors
+        );
+    }
+    for expression in [
+        r#"Jobs.drain(pool, "{}", fn(job) do job end, "{}")"#,
+        "drain",
+    ] {
+        let checked = check(&format!(
+            "from Jobs import drain\nfn run(pool :: PoolHandle) do {expression} end"
+        ));
+        assert!(
+            checked
+                .errors
+                .iter()
+                .any(|error| matches!(error, TypeError::JobsStartInvalid { .. })),
+            "{expression}: {:?}",
+            checked.errors
+        );
+    }
+}
+
+#[test]
+fn job_test_functions_require_the_test_capability() {
+    for name in [
+        "jobs_inspect",
+        "jobs_inspect_in",
+        "assert_enqueued",
+        "refute_enqueued",
+        "assert_enqueued_in",
+        "refute_enqueued_in",
+        "build_job",
+        "perform_job",
+    ] {
+        let source = format!("from Test import {name}\nfn use_it() do Test.{name} end");
+        let source = mesh_parser::parse(&source);
+        assert!(source.ok(), "{:?}", source.errors());
+        assert!(!mesh_typeck::check(&source).errors.is_empty(), "{name}");
+        let enabled = mesh_typeck::check_with_imports(
+            &source,
+            &ImportContext {
+                test_builtins: true,
+                ..ImportContext::default()
+            },
+        );
+        assert!(enabled.errors.is_empty(), "{name}: {:?}", enabled.errors);
+    }
+}
+
+#[test]
+fn job_test_assertions_borrow_the_transaction_connection() {
+    use mesh_diagnostics::Code;
+
+    let imports = ImportContext {
+        test_builtins: true,
+        ..ImportContext::default()
+    };
+    let source = mesh_parser::parse(
+        r#"
+from Test import assert_enqueued_in
+fn check(conn :: borrow PgConn) do
+  let _ = Test.jobs_inspect_in(conn, "namespace", "{}")
+  let _ = conn |> assert_enqueued_in("namespace", "{}")
+  let _ = Test.refute_enqueued_in(conn, "namespace", "{}")
+  Pg.execute(conn, "SELECT 1", [])
+end
+"#,
+    );
+    let checked = mesh_typeck::check_with_imports(&source, &imports);
+    assert!(checked.errors.is_empty(), "{:?}", checked.errors);
+    let source = mesh_parser::parse(
+        r#"
+fn escape(conn :: borrow PgConn) do
+  fn() do Test.assert_enqueued_in(conn, "namespace", "{}") end
+end
+"#,
+    );
+    let checked = mesh_typeck::check_with_imports(&source, &imports);
+    assert!(
+        checked.errors.iter().any(|error| {
+            error.code() == Code::ResourceCrossesBoundary && error.to_string().contains("captured")
+        }),
+        "{:?}",
+        checked.errors
+    );
 }

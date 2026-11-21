@@ -3151,6 +3151,54 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
     modules.insert("Pool".to_string(), pool_mod);
 
     let job_text_result = Ty::result(Ty::string(), Ty::string());
+    if test_builtins {
+        let test_mod = modules.get_mut("Test").expect("Test module registered");
+        let unit_result = Ty::result(Ty::Tuple(vec![]), Ty::string());
+        for (name, params, result) in [
+            (
+                "jobs_inspect",
+                vec![pool_handle_t.clone(), Ty::string(), Ty::string()],
+                job_text_result.clone(),
+            ),
+            (
+                "jobs_inspect_in",
+                vec![pg_conn_t.clone(), Ty::string(), Ty::string()],
+                job_text_result.clone(),
+            ),
+            (
+                "assert_enqueued",
+                vec![pool_handle_t.clone(), Ty::string(), Ty::string(), Ty::int()],
+                unit_result.clone(),
+            ),
+            (
+                "refute_enqueued",
+                vec![pool_handle_t.clone(), Ty::string(), Ty::string(), Ty::int()],
+                unit_result.clone(),
+            ),
+            (
+                "assert_enqueued_in",
+                vec![pg_conn_t.clone(), Ty::string(), Ty::string()],
+                unit_result.clone(),
+            ),
+            (
+                "refute_enqueued_in",
+                vec![pg_conn_t.clone(), Ty::string(), Ty::string()],
+                unit_result,
+            ),
+            (
+                "build_job",
+                vec![Ty::string(), Ty::int()],
+                job_text_result.clone(),
+            ),
+            (
+                "perform_job",
+                vec![Ty::string(), Ty::int(), jobs_handler_type()],
+                job_text_result.clone(),
+            ),
+        ] {
+            test_mod.insert(name.to_string(), Scheme::mono(Ty::fun(params, result)));
+        }
+    }
     let mut jobs_mod = HashMap::new();
     for (name, params, result) in [
         (
@@ -3175,12 +3223,32 @@ fn build_stdlib_modules(test_builtins: bool) -> StdlibModules {
         ),
         (
             "start",
-            vec![pool_handle_t, Ty::string(), jobs_handler_type()],
+            vec![pool_handle_t.clone(), Ty::string(), jobs_handler_type()],
             Ty::result(Ty::int(), Ty::string()),
+        ),
+        (
+            "drain",
+            vec![
+                pool_handle_t,
+                Ty::string(),
+                jobs_handler_type(),
+                Ty::string(),
+            ],
+            job_text_result.clone(),
         ),
         ("stop", vec![Ty::int(), Ty::int()], job_text_result.clone()),
         ("join", vec![Ty::int()], job_text_result.clone()),
-        ("status", vec![Ty::int()], job_text_result),
+        ("status", vec![Ty::int()], job_text_result.clone()),
+        (
+            "read_events",
+            vec![Ty::int(), Ty::int()],
+            job_text_result.clone(),
+        ),
+        (
+            "local_control",
+            vec![Ty::int(), Ty::string()],
+            job_text_result,
+        ),
     ] {
         jobs_mod.insert(name.to_string(), Scheme::mono(Ty::fun(params, result)));
     }
@@ -5268,10 +5336,11 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         .map(|(range, ty)| (range, ctx.resolve(ty)))
         .collect();
 
-    for (span, called) in std::mem::take(&mut ctx.jobs_start_references) {
+    for (span, called) in std::mem::take(&mut ctx.jobs_runner_references) {
         if !called {
             ctx.errors.push(TypeError::JobsStartInvalid {
-                reason: "call Jobs.start directly so the compiler can check the handler",
+                reason:
+                    "call Jobs.start or Jobs.drain directly so the compiler can check the handler",
                 span,
             });
         }
@@ -9971,18 +10040,18 @@ fn infer_name_ref(ctx: &mut InferCtx, env: &TypeEnv, name_ref: &NameRef) -> Resu
                     name_ref.syntax().text_range(),
                 ));
             }
-            let jobs_start = name == "jobs_start"
-                || (name == "start"
+            let jobs_runner = matches!(name.as_str(), "jobs_start" | "jobs_drain")
+                || (matches!(name.as_str(), "start" | "drain")
                     && ctx
                         .stdlib_imports
-                        .get("start")
+                        .get(&name)
                         .is_some_and(|module| module == "Jobs"));
-            if jobs_start
+            if jobs_runner
                 && !env.is_local(&name)
                 && !ctx.top_level_function_visibility.contains_key(&name)
                 && !ctx.imported_functions.contains(&name)
             {
-                ctx.jobs_start_references
+                ctx.jobs_runner_references
                     .entry(name_ref.syntax().text_range())
                     .or_default();
             }
@@ -11369,11 +11438,11 @@ fn check_call(
     }
 
     if let Some(called) = ctx
-        .jobs_start_references
+        .jobs_runner_references
         .get_mut(&callee_expr.syntax().text_range())
     {
         *called = true;
-        if let [_, _, (handler, _)] = args.as_slice() {
+        if let Some((handler, _)) = args.get(2) {
             check_jobs_handler(ctx, env, handler)?;
         }
     }
@@ -13551,8 +13620,8 @@ fn infer_field_access(
             .get(&base_name)
             .and_then(|functions| functions.get(&field_name))
         {
-            if base_name == "Jobs" && field_name == "start" {
-                ctx.jobs_start_references
+            if base_name == "Jobs" && matches!(field_name.as_str(), "start" | "drain") {
+                ctx.jobs_runner_references
                     .entry(fa.syntax().text_range())
                     .or_default();
             }

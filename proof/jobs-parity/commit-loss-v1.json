@@ -1,0 +1,1692 @@
+{
+  "harness_file_sha256": {
+    "scripts/fixtures/jobs-parity-oban/.gitignore": "b5c7ccd41d0f17ce18a61d2c944c71a73cbe0095789eecaa6de9f6814277d43f",
+    "scripts/fixtures/jobs-parity-oban/README.md": "f4df190148abc56ce365762833e827a1ccfabf6059ad630f9b56f26bb87213d2",
+    "scripts/fixtures/jobs-parity-oban/config/config.exs": "9b93331c38e5d24ec898bf707d6d53f2dc0d7c57224cc6ef49c6afa351e260ab",
+    "scripts/fixtures/jobs-parity-oban/fixture.exs": "7b79e9793792edd88f72bb8a1deb44e194786e590de8b935c9f67e65df5e6c1d",
+    "scripts/fixtures/jobs-parity-oban/inetrc": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+    "scripts/fixtures/jobs-parity-oban/lib/jobs_parity_oban.ex": "3f1d3df9937e8eb4528e474c328881a1308b70a108b59dd52ae473624e655e10",
+    "scripts/fixtures/jobs-parity-oban/lib/worker.ex": "a5d1a51c17662bd5dff379d1152c0eef5a23045859abec02ea396adb3b51c49e",
+    "scripts/fixtures/jobs-parity-oban/mix.exs": "b5031450b9bcf79e3ad2b949d6ffc52d3dc58e78925b6df50087a2faeb8dcede",
+    "scripts/fixtures/jobs-parity-oban/mix.lock": "aef2f8077ddc23d4b607856402108f611759a214f49400df4c2dc75be420ab95",
+    "scripts/jobs-parity-profiles.json": "719b1135cc83208d86d98911556e31796c647800f7ee482f4120a4bdbe5d03ee",
+    "scripts/jobs-parity.py": "d1fdb3325b046f3d700d02dacb61b76963739d5672bde01237aec03105f925c2",
+    "scripts/lib/jobs_parity_fault.py": "f77ff946f67b255b4a037bf5a3e28dc7ad0a3588e4efb438ce73cf5abead594b",
+    "tests/e2e/durable_jobs/.parity/main.mpl": "94b89a2189aa1aeca0635d95a596c9d8e4fe6400a1adef9089a646a736874582",
+    "tests/e2e/durable_jobs/.parity/mesh.toml.in": "764f6e78cf2a89b2ff2f08d897d60652e69745514847c184ff5f8a5c785773c1",
+    "tests/e2e/durable_jobs/.parity/worker_identity.c": "2808ca2bd2a286b79c8bf071a99453227395265b761571075a4f6c06780a63a0",
+    "tests/e2e/durable_jobs/.parity/worker_identity.mpl": "e56589a1df5442a8c82b95950314e68776145b2bd6215e22c5014ee14c9d9fca"
+  },
+  "harness_revision": "bc76c17538f40cd50bf605f9f5afe5941e392417",
+  "mode": "SCRAM on disposable loopback PostgreSQL",
+  "postgres_versions": {
+    "17.11": {
+      "cases": {
+        "committed_final_claim": {
+          "ordinary_after_commit_worker_starts": 1,
+          "receipt": {
+            "committed_claim": {
+              "attempt": 1,
+              "fenced": true,
+              "id": "393dcde9-84d3-4d1a-b34e-8af24dfbcc02",
+              "lease_expires_at_ms": 1795195624642,
+              "observed_at_ms": 1795195614668,
+              "state": "executing"
+            },
+            "engine": "mesh",
+            "enqueued_ids": {
+              "claim": "393dcde9-84d3-4d1a-b34e-8af24dfbcc02"
+            },
+            "fault": {
+              "command_complete": true,
+              "placement": "after_commit",
+              "query_forwarded": true,
+              "ready_status": "I"
+            },
+            "lease_recovery": {
+              "elapsed_ms": 10014,
+              "errors": [
+                {
+                  "at_ms": 1795195624656,
+                  "attempt": 1,
+                  "reason": "lease expired"
+                }
+              ],
+              "lease_expires_at_ms": null,
+              "max_attempts": 1
+            },
+            "namespace_writes": {
+              "attempts": [],
+              "business": [
+                [
+                  "mesh",
+                  "parity_0338c4f157d22630",
+                  "claim"
+                ]
+              ],
+              "effects": [],
+              "jobs": [
+                [
+                  "parity_0338c4f157d22630",
+                  "393dcde9-84d3-4d1a-b34e-8af24dfbcc02",
+                  "claim"
+                ]
+              ]
+            },
+            "rows": [
+              {
+                "attempt": 1,
+                "attempts": 0,
+                "claimed_ms": 1795195614642,
+                "effect_key": "393dcde9-84d3-4d1a-b34e-8af24dfbcc02/1",
+                "effect_keys": 0,
+                "effected_ms": null,
+                "effects": 0,
+                "entered_ms": null,
+                "fail_first": false,
+                "first_handler_attempt": null,
+                "hold_ms": 0,
+                "id": "393dcde9-84d3-4d1a-b34e-8af24dfbcc02",
+                "job_key": "claim",
+                "payload_sha256": "b3cc0475bb78a5026098858e9889acf666d31062d513d303314eca31d36e72f2",
+                "recorded_ms": null,
+                "settled_ms": 1795195624657.589,
+                "state": "discarded"
+              }
+            ],
+            "worker_start_pids": []
+          },
+          "sha256": "2c9b37d2c00f963906ced2bdfab55545dbe9503ee6281d767f34f3ea942b7eb8"
+        },
+        "producer_after_commit": {
+          "receipt": {
+            "after_cut": {
+              "business": [
+                [
+                  "mesh",
+                  "parity_9cb7a668583afc04",
+                  "producer_commit",
+                  "928",
+                  "2026-11-20T17:26:46.615287+00:00"
+                ]
+              ],
+              "jobs": [
+                [
+                  "parity_9cb7a668583afc04",
+                  "producer_first",
+                  "3d454aa5-5ddd-4505-a70e-f21450336e62",
+                  "929",
+                  "2026-11-20T17:26:46.615287+00:00",
+                  {
+                    "fail_first": false,
+                    "hold_ms": 0,
+                    "key": "producer_first",
+                    "payload": "synthetic-producer_first"
+                  }
+                ],
+                [
+                  "parity_9cb7a668583afc04",
+                  "producer_second",
+                  "d96456c6-6e84-48f3-8417-5d53ed0f6749",
+                  "929",
+                  "2026-11-20T17:26:46.615287+00:00",
+                  {
+                    "fail_first": false,
+                    "hold_ms": 0,
+                    "key": "producer_second",
+                    "payload": "synthetic-producer_second"
+                  }
+                ]
+              ],
+              "receipts": [
+                [
+                  "parity_9cb7a668583afc04",
+                  "producer_first",
+                  {
+                    "conflict": false,
+                    "effect_key": "3d454aa5-5ddd-4505-a70e-f21450336e62/1",
+                    "id": "3d454aa5-5ddd-4505-a70e-f21450336e62",
+                    "inserted": true,
+                    "state": "available"
+                  },
+                  "929",
+                  "2026-11-20T17:26:46.615287+00:00"
+                ],
+                [
+                  "parity_9cb7a668583afc04",
+                  "producer_second",
+                  {
+                    "conflict": false,
+                    "effect_key": "d96456c6-6e84-48f3-8417-5d53ed0f6749/1",
+                    "id": "d96456c6-6e84-48f3-8417-5d53ed0f6749",
+                    "inserted": true,
+                    "state": "available"
+                  },
+                  "929",
+                  "2026-11-20T17:26:46.615287+00:00"
+                ]
+              ]
+            },
+            "after_replay": {
+              "business": [
+                [
+                  "mesh",
+                  "parity_9cb7a668583afc04",
+                  "producer_commit",
+                  "928",
+                  "2026-11-20T17:26:46.615287+00:00"
+                ]
+              ],
+              "jobs": [
+                [
+                  "parity_9cb7a668583afc04",
+                  "producer_first",
+                  "3d454aa5-5ddd-4505-a70e-f21450336e62",
+                  "929",
+                  "2026-11-20T17:26:46.615287+00:00",
+                  {
+                    "fail_first": false,
+                    "hold_ms": 0,
+                    "key": "producer_first",
+                    "payload": "synthetic-producer_first"
+                  }
+                ],
+                [
+                  "parity_9cb7a668583afc04",
+                  "producer_second",
+                  "d96456c6-6e84-48f3-8417-5d53ed0f6749",
+                  "929",
+                  "2026-11-20T17:26:46.615287+00:00",
+                  {
+                    "fail_first": false,
+                    "hold_ms": 0,
+                    "key": "producer_second",
+                    "payload": "synthetic-producer_second"
+                  }
+                ]
+              ],
+              "receipts": [
+                [
+                  "parity_9cb7a668583afc04",
+                  "producer_first",
+                  {
+                    "conflict": false,
+                    "effect_key": "3d454aa5-5ddd-4505-a70e-f21450336e62/1",
+                    "id": "3d454aa5-5ddd-4505-a70e-f21450336e62",
+                    "inserted": true,
+                    "state": "available"
+                  },
+                  "929",
+                  "2026-11-20T17:26:46.615287+00:00"
+                ],
+                [
+                  "parity_9cb7a668583afc04",
+                  "producer_second",
+                  {
+                    "conflict": false,
+                    "effect_key": "d96456c6-6e84-48f3-8417-5d53ed0f6749/1",
+                    "id": "d96456c6-6e84-48f3-8417-5d53ed0f6749",
+                    "inserted": true,
+                    "state": "available"
+                  },
+                  "929",
+                  "2026-11-20T17:26:46.615287+00:00"
+                ]
+              ]
+            },
+            "engine": "mesh",
+            "fault": {
+              "command_complete": true,
+              "placement": "after_commit",
+              "query_forwarded": true,
+              "ready_status": "I"
+            },
+            "input_sha256": "080fc93e4ca5f4c09f8b829616725ff1b3d5d81003a233836d6ea758fe2a4e90",
+            "namespace_writes": {
+              "attempts": [
+                [
+                  "mesh",
+                  "parity_9cb7a668583afc04",
+                  "producer_first",
+                  1,
+                  "3d454aa5-5ddd-4505-a70e-f21450336e62/1"
+                ],
+                [
+                  "mesh",
+                  "parity_9cb7a668583afc04",
+                  "producer_second",
+                  1,
+                  "d96456c6-6e84-48f3-8417-5d53ed0f6749/1"
+                ]
+              ],
+              "business": [
+                [
+                  "mesh",
+                  "parity_9cb7a668583afc04",
+                  "producer_commit"
+                ]
+              ],
+              "effects": [
+                [
+                  "mesh",
+                  "parity_9cb7a668583afc04",
+                  "producer_first",
+                  "3d454aa5-5ddd-4505-a70e-f21450336e62/1"
+                ],
+                [
+                  "mesh",
+                  "parity_9cb7a668583afc04",
+                  "producer_second",
+                  "d96456c6-6e84-48f3-8417-5d53ed0f6749/1"
+                ]
+              ],
+              "jobs": [
+                [
+                  "parity_9cb7a668583afc04",
+                  "3d454aa5-5ddd-4505-a70e-f21450336e62",
+                  "producer_first"
+                ],
+                [
+                  "parity_9cb7a668583afc04",
+                  "d96456c6-6e84-48f3-8417-5d53ed0f6749",
+                  "producer_second"
+                ]
+              ]
+            },
+            "producer_returncode": 1,
+            "replay_receipt": {
+              "count": 2,
+              "ids": {
+                "producer_first": "3d454aa5-5ddd-4505-a70e-f21450336e62",
+                "producer_second": "d96456c6-6e84-48f3-8417-5d53ed0f6749"
+              },
+              "receipts": [
+                {
+                  "conflict": false,
+                  "effect_key": "3d454aa5-5ddd-4505-a70e-f21450336e62/1",
+                  "id": "3d454aa5-5ddd-4505-a70e-f21450336e62",
+                  "inserted": true,
+                  "state": "available"
+                },
+                {
+                  "conflict": false,
+                  "effect_key": "d96456c6-6e84-48f3-8417-5d53ed0f6749/1",
+                  "id": "d96456c6-6e84-48f3-8417-5d53ed0f6749",
+                  "inserted": true,
+                  "state": "available"
+                }
+              ],
+              "xid": "930"
+            },
+            "rows": [
+              {
+                "attempt": 1,
+                "attempts": 1,
+                "claimed_ms": 1795195606800,
+                "effect_key": "3d454aa5-5ddd-4505-a70e-f21450336e62/1",
+                "effect_keys": 1,
+                "effected_ms": 1795195606809.521,
+                "effects": 1,
+                "entered_ms": 1795195606805.387,
+                "fail_first": false,
+                "first_handler_attempt": 1,
+                "hold_ms": 0,
+                "id": "3d454aa5-5ddd-4505-a70e-f21450336e62",
+                "job_key": "producer_first",
+                "payload_sha256": "4f9ead4888d03ce32d48a1e7583fd557ea4a2ca1ca02b0eff506e73e6d1eea02",
+                "recorded_ms": 1795195606808.942,
+                "settled_ms": 1795195606821.885,
+                "state": "completed"
+              },
+              {
+                "attempt": 1,
+                "attempts": 1,
+                "claimed_ms": 1795195606822,
+                "effect_key": "d96456c6-6e84-48f3-8417-5d53ed0f6749/1",
+                "effect_keys": 1,
+                "effected_ms": 1795195606830.629,
+                "effects": 1,
+                "entered_ms": 1795195606827.537,
+                "fail_first": false,
+                "first_handler_attempt": 1,
+                "hold_ms": 0,
+                "id": "d96456c6-6e84-48f3-8417-5d53ed0f6749",
+                "job_key": "producer_second",
+                "payload_sha256": "5c3690eca961688d5bf78c46f5b0d73ed4397e896089854c85694e8c1ed1e304",
+                "recorded_ms": 1795195606830.193,
+                "settled_ms": 1795195606841.612,
+                "state": "completed"
+              }
+            ]
+          },
+          "sha256": "43cfab9c24fd2aa40a4745387cf0650f3c22e6eeaecd173677ef351632558548"
+        },
+        "producer_before_commit": {
+          "receipt": {
+            "after_cut": {
+              "business": [],
+              "jobs": [],
+              "receipts": []
+            },
+            "after_replay": {
+              "business": [
+                [
+                  "mesh",
+                  "parity_62189e1a3f44e02c",
+                  "producer_commit",
+                  "908",
+                  "2026-11-20T17:26:46.00032+00:00"
+                ]
+              ],
+              "jobs": [
+                [
+                  "parity_62189e1a3f44e02c",
+                  "producer_first",
+                  "e867f1fa-151b-44e0-8fd1-e4674f5290f1",
+                  "909",
+                  "2026-11-20T17:26:46.00032+00:00",
+                  {
+                    "fail_first": false,
+                    "hold_ms": 0,
+                    "key": "producer_first",
+                    "payload": "synthetic-producer_first"
+                  }
+                ],
+                [
+                  "parity_62189e1a3f44e02c",
+                  "producer_second",
+                  "246a3d10-6997-46a1-94e0-27838d2326bd",
+                  "909",
+                  "2026-11-20T17:26:46.00032+00:00",
+                  {
+                    "fail_first": false,
+                    "hold_ms": 0,
+                    "key": "producer_second",
+                    "payload": "synthetic-producer_second"
+                  }
+                ]
+              ],
+              "receipts": [
+                [
+                  "parity_62189e1a3f44e02c",
+                  "producer_first",
+                  {
+                    "conflict": false,
+                    "effect_key": "e867f1fa-151b-44e0-8fd1-e4674f5290f1/1",
+                    "id": "e867f1fa-151b-44e0-8fd1-e4674f5290f1",
+                    "inserted": true,
+                    "state": "available"
+                  },
+                  "909",
+                  "2026-11-20T17:26:46.00032+00:00"
+                ],
+                [
+                  "parity_62189e1a3f44e02c",
+                  "producer_second",
+                  {
+                    "conflict": false,
+                    "effect_key": "246a3d10-6997-46a1-94e0-27838d2326bd/1",
+                    "id": "246a3d10-6997-46a1-94e0-27838d2326bd",
+                    "inserted": true,
+                    "state": "available"
+                  },
+                  "909",
+                  "2026-11-20T17:26:46.00032+00:00"
+                ]
+              ]
+            },
+            "engine": "mesh",
+            "fault": {
+              "command_complete": false,
+              "placement": "before_commit",
+              "query_forwarded": false,
+              "ready_status": null
+            },
+            "input_sha256": "080fc93e4ca5f4c09f8b829616725ff1b3d5d81003a233836d6ea758fe2a4e90",
+            "namespace_writes": {
+              "attempts": [
+                [
+                  "mesh",
+                  "parity_62189e1a3f44e02c",
+                  "producer_first",
+                  1,
+                  "e867f1fa-151b-44e0-8fd1-e4674f5290f1/1"
+                ],
+                [
+                  "mesh",
+                  "parity_62189e1a3f44e02c",
+                  "producer_second",
+                  1,
+                  "246a3d10-6997-46a1-94e0-27838d2326bd/1"
+                ]
+              ],
+              "business": [
+                [
+                  "mesh",
+                  "parity_62189e1a3f44e02c",
+                  "producer_commit"
+                ]
+              ],
+              "effects": [
+                [
+                  "mesh",
+                  "parity_62189e1a3f44e02c",
+                  "producer_first",
+                  "e867f1fa-151b-44e0-8fd1-e4674f5290f1/1"
+                ],
+                [
+                  "mesh",
+                  "parity_62189e1a3f44e02c",
+                  "producer_second",
+                  "246a3d10-6997-46a1-94e0-27838d2326bd/1"
+                ]
+              ],
+              "jobs": [
+                [
+                  "parity_62189e1a3f44e02c",
+                  "e867f1fa-151b-44e0-8fd1-e4674f5290f1",
+                  "producer_first"
+                ],
+                [
+                  "parity_62189e1a3f44e02c",
+                  "246a3d10-6997-46a1-94e0-27838d2326bd",
+                  "producer_second"
+                ]
+              ]
+            },
+            "producer_returncode": 1,
+            "replay_receipt": {
+              "count": 2,
+              "ids": {
+                "producer_first": "e867f1fa-151b-44e0-8fd1-e4674f5290f1",
+                "producer_second": "246a3d10-6997-46a1-94e0-27838d2326bd"
+              },
+              "receipts": [
+                {
+                  "conflict": false,
+                  "effect_key": "e867f1fa-151b-44e0-8fd1-e4674f5290f1/1",
+                  "id": "e867f1fa-151b-44e0-8fd1-e4674f5290f1",
+                  "inserted": true,
+                  "state": "available"
+                },
+                {
+                  "conflict": false,
+                  "effect_key": "246a3d10-6997-46a1-94e0-27838d2326bd/1",
+                  "id": "246a3d10-6997-46a1-94e0-27838d2326bd",
+                  "inserted": true,
+                  "state": "available"
+                }
+              ],
+              "xid": "908"
+            },
+            "rows": [
+              {
+                "attempt": 1,
+                "attempts": 1,
+                "claimed_ms": 1795195606079,
+                "effect_key": "e867f1fa-151b-44e0-8fd1-e4674f5290f1/1",
+                "effect_keys": 1,
+                "effected_ms": 1795195606086.555,
+                "effects": 1,
+                "entered_ms": 1795195606083.363,
+                "fail_first": false,
+                "first_handler_attempt": 1,
+                "hold_ms": 0,
+                "id": "e867f1fa-151b-44e0-8fd1-e4674f5290f1",
+                "job_key": "producer_first",
+                "payload_sha256": "4f9ead4888d03ce32d48a1e7583fd557ea4a2ca1ca02b0eff506e73e6d1eea02",
+                "recorded_ms": 1795195606086.241,
+                "settled_ms": 1795195606100.554,
+                "state": "completed"
+              },
+              {
+                "attempt": 1,
+                "attempts": 1,
+                "claimed_ms": 1795195606101,
+                "effect_key": "246a3d10-6997-46a1-94e0-27838d2326bd/1",
+                "effect_keys": 1,
+                "effected_ms": 1795195606107.863,
+                "effects": 1,
+                "entered_ms": 1795195606104.865,
+                "fail_first": false,
+                "first_handler_attempt": 1,
+                "hold_ms": 0,
+                "id": "246a3d10-6997-46a1-94e0-27838d2326bd",
+                "job_key": "producer_second",
+                "payload_sha256": "5c3690eca961688d5bf78c46f5b0d73ed4397e896089854c85694e8c1ed1e304",
+                "recorded_ms": 1795195606107.538,
+                "settled_ms": 1795195606120.19,
+                "state": "completed"
+              }
+            ]
+          },
+          "sha256": "46bdc3e82fde7958e54fe461f2ffb626949924661e37af816d74bd651adcf546"
+        }
+      },
+      "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+      "manifest_sha256": "4cf739b32c9788f671f24a0b0486cc01e0cb4f4a6850441900fbb7cde419b860",
+      "mesh_executable_sha256": "e761437e02f4a55621976bee1df29ed7bb67120b4226a7a275df61693269a12c",
+      "run": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-fault-ndat38n6"
+    },
+    "18.7": {
+      "cases": {
+        "committed_final_claim": {
+          "ordinary_after_commit_worker_starts": 1,
+          "receipt": {
+            "committed_claim": {
+              "attempt": 1,
+              "fenced": true,
+              "id": "db29689a-d25b-4615-8082-444e9e7d125e",
+              "lease_expires_at_ms": 1795195656106,
+              "observed_at_ms": 1795195646126,
+              "state": "executing"
+            },
+            "engine": "mesh",
+            "enqueued_ids": {
+              "claim": "db29689a-d25b-4615-8082-444e9e7d125e"
+            },
+            "fault": {
+              "command_complete": true,
+              "placement": "after_commit",
+              "query_forwarded": true,
+              "ready_status": "I"
+            },
+            "lease_recovery": {
+              "elapsed_ms": 10087,
+              "errors": [
+                {
+                  "at_ms": 1795195656193,
+                  "attempt": 1,
+                  "reason": "lease expired"
+                }
+              ],
+              "lease_expires_at_ms": null,
+              "max_attempts": 1
+            },
+            "namespace_writes": {
+              "attempts": [],
+              "business": [
+                [
+                  "mesh",
+                  "parity_4c8fab8a5de0dfde",
+                  "claim"
+                ]
+              ],
+              "effects": [],
+              "jobs": [
+                [
+                  "parity_4c8fab8a5de0dfde",
+                  "db29689a-d25b-4615-8082-444e9e7d125e",
+                  "claim"
+                ]
+              ]
+            },
+            "rows": [
+              {
+                "attempt": 1,
+                "attempts": 0,
+                "claimed_ms": 1795195646106,
+                "effect_key": "db29689a-d25b-4615-8082-444e9e7d125e/1",
+                "effect_keys": 0,
+                "effected_ms": null,
+                "effects": 0,
+                "entered_ms": null,
+                "fail_first": false,
+                "first_handler_attempt": null,
+                "hold_ms": 0,
+                "id": "db29689a-d25b-4615-8082-444e9e7d125e",
+                "job_key": "claim",
+                "payload_sha256": "b3cc0475bb78a5026098858e9889acf666d31062d513d303314eca31d36e72f2",
+                "recorded_ms": null,
+                "settled_ms": 1795195656193.875,
+                "state": "discarded"
+              }
+            ],
+            "worker_start_pids": []
+          },
+          "sha256": "bd64a008aed4375fafbf59b267e0bfcfc34b4aa2a8994f6a7a9e11abf02f7582"
+        },
+        "producer_after_commit": {
+          "receipt": {
+            "after_cut": {
+              "business": [
+                [
+                  "mesh",
+                  "parity_7c10f5a039574aa7",
+                  "producer_commit",
+                  "945",
+                  "2026-11-20T17:27:18.527573+00:00"
+                ]
+              ],
+              "jobs": [
+                [
+                  "parity_7c10f5a039574aa7",
+                  "producer_first",
+                  "5e80cbf6-0d0c-4fad-81c2-fe80c06f21f8",
+                  "946",
+                  "2026-11-20T17:27:18.527573+00:00",
+                  {
+                    "fail_first": false,
+                    "hold_ms": 0,
+                    "key": "producer_first",
+                    "payload": "synthetic-producer_first"
+                  }
+                ],
+                [
+                  "parity_7c10f5a039574aa7",
+                  "producer_second",
+                  "082e7755-4c3b-4263-b332-19a77c5dfeb6",
+                  "946",
+                  "2026-11-20T17:27:18.527573+00:00",
+                  {
+                    "fail_first": false,
+                    "hold_ms": 0,
+                    "key": "producer_second",
+                    "payload": "synthetic-producer_second"
+                  }
+                ]
+              ],
+              "receipts": [
+                [
+                  "parity_7c10f5a039574aa7",
+                  "producer_first",
+                  {
+                    "conflict": false,
+                    "effect_key": "5e80cbf6-0d0c-4fad-81c2-fe80c06f21f8/1",
+                    "id": "5e80cbf6-0d0c-4fad-81c2-fe80c06f21f8",
+                    "inserted": true,
+                    "state": "available"
+                  },
+                  "946",
+                  "2026-11-20T17:27:18.527573+00:00"
+                ],
+                [
+                  "parity_7c10f5a039574aa7",
+                  "producer_second",
+                  {
+                    "conflict": false,
+                    "effect_key": "082e7755-4c3b-4263-b332-19a77c5dfeb6/1",
+                    "id": "082e7755-4c3b-4263-b332-19a77c5dfeb6",
+                    "inserted": true,
+                    "state": "available"
+                  },
+                  "946",
+                  "2026-11-20T17:27:18.527573+00:00"
+                ]
+              ]
+            },
+            "after_replay": {
+              "business": [
+                [
+                  "mesh",
+                  "parity_7c10f5a039574aa7",
+                  "producer_commit",
+                  "945",
+                  "2026-11-20T17:27:18.527573+00:00"
+                ]
+              ],
+              "jobs": [
+                [
+                  "parity_7c10f5a039574aa7",
+                  "producer_first",
+                  "5e80cbf6-0d0c-4fad-81c2-fe80c06f21f8",
+                  "946",
+                  "2026-11-20T17:27:18.527573+00:00",
+                  {
+                    "fail_first": false,
+                    "hold_ms": 0,
+                    "key": "producer_first",
+                    "payload": "synthetic-producer_first"
+                  }
+                ],
+                [
+                  "parity_7c10f5a039574aa7",
+                  "producer_second",
+                  "082e7755-4c3b-4263-b332-19a77c5dfeb6",
+                  "946",
+                  "2026-11-20T17:27:18.527573+00:00",
+                  {
+                    "fail_first": false,
+                    "hold_ms": 0,
+                    "key": "producer_second",
+                    "payload": "synthetic-producer_second"
+                  }
+                ]
+              ],
+              "receipts": [
+                [
+                  "parity_7c10f5a039574aa7",
+                  "producer_first",
+                  {
+                    "conflict": false,
+                    "effect_key": "5e80cbf6-0d0c-4fad-81c2-fe80c06f21f8/1",
+                    "id": "5e80cbf6-0d0c-4fad-81c2-fe80c06f21f8",
+                    "inserted": true,
+                    "state": "available"
+                  },
+                  "946",
+                  "2026-11-20T17:27:18.527573+00:00"
+                ],
+                [
+                  "parity_7c10f5a039574aa7",
+                  "producer_second",
+                  {
+                    "conflict": false,
+                    "effect_key": "082e7755-4c3b-4263-b332-19a77c5dfeb6/1",
+                    "id": "082e7755-4c3b-4263-b332-19a77c5dfeb6",
+                    "inserted": true,
+                    "state": "available"
+                  },
+                  "946",
+                  "2026-11-20T17:27:18.527573+00:00"
+                ]
+              ]
+            },
+            "engine": "mesh",
+            "fault": {
+              "command_complete": true,
+              "placement": "after_commit",
+              "query_forwarded": true,
+              "ready_status": "I"
+            },
+            "input_sha256": "080fc93e4ca5f4c09f8b829616725ff1b3d5d81003a233836d6ea758fe2a4e90",
+            "namespace_writes": {
+              "attempts": [
+                [
+                  "mesh",
+                  "parity_7c10f5a039574aa7",
+                  "producer_first",
+                  1,
+                  "5e80cbf6-0d0c-4fad-81c2-fe80c06f21f8/1"
+                ],
+                [
+                  "mesh",
+                  "parity_7c10f5a039574aa7",
+                  "producer_second",
+                  1,
+                  "082e7755-4c3b-4263-b332-19a77c5dfeb6/1"
+                ]
+              ],
+              "business": [
+                [
+                  "mesh",
+                  "parity_7c10f5a039574aa7",
+                  "producer_commit"
+                ]
+              ],
+              "effects": [
+                [
+                  "mesh",
+                  "parity_7c10f5a039574aa7",
+                  "producer_first",
+                  "5e80cbf6-0d0c-4fad-81c2-fe80c06f21f8/1"
+                ],
+                [
+                  "mesh",
+                  "parity_7c10f5a039574aa7",
+                  "producer_second",
+                  "082e7755-4c3b-4263-b332-19a77c5dfeb6/1"
+                ]
+              ],
+              "jobs": [
+                [
+                  "parity_7c10f5a039574aa7",
+                  "5e80cbf6-0d0c-4fad-81c2-fe80c06f21f8",
+                  "producer_first"
+                ],
+                [
+                  "parity_7c10f5a039574aa7",
+                  "082e7755-4c3b-4263-b332-19a77c5dfeb6",
+                  "producer_second"
+                ]
+              ]
+            },
+            "producer_returncode": 1,
+            "replay_receipt": {
+              "count": 2,
+              "ids": {
+                "producer_first": "5e80cbf6-0d0c-4fad-81c2-fe80c06f21f8",
+                "producer_second": "082e7755-4c3b-4263-b332-19a77c5dfeb6"
+              },
+              "receipts": [
+                {
+                  "conflict": false,
+                  "effect_key": "5e80cbf6-0d0c-4fad-81c2-fe80c06f21f8/1",
+                  "id": "5e80cbf6-0d0c-4fad-81c2-fe80c06f21f8",
+                  "inserted": true,
+                  "state": "available"
+                },
+                {
+                  "conflict": false,
+                  "effect_key": "082e7755-4c3b-4263-b332-19a77c5dfeb6/1",
+                  "id": "082e7755-4c3b-4263-b332-19a77c5dfeb6",
+                  "inserted": true,
+                  "state": "available"
+                }
+              ],
+              "xid": "947"
+            },
+            "rows": [
+              {
+                "attempt": 1,
+                "attempts": 1,
+                "claimed_ms": 1795195638655,
+                "effect_key": "5e80cbf6-0d0c-4fad-81c2-fe80c06f21f8/1",
+                "effect_keys": 1,
+                "effected_ms": 1795195638664.084,
+                "effects": 1,
+                "entered_ms": 1795195638660.249,
+                "fail_first": false,
+                "first_handler_attempt": 1,
+                "hold_ms": 0,
+                "id": "5e80cbf6-0d0c-4fad-81c2-fe80c06f21f8",
+                "job_key": "producer_first",
+                "payload_sha256": "4f9ead4888d03ce32d48a1e7583fd557ea4a2ca1ca02b0eff506e73e6d1eea02",
+                "recorded_ms": 1795195638663.592,
+                "settled_ms": 1795195638675.047,
+                "state": "completed"
+              },
+              {
+                "attempt": 1,
+                "attempts": 1,
+                "claimed_ms": 1795195638675,
+                "effect_key": "082e7755-4c3b-4263-b332-19a77c5dfeb6/1",
+                "effect_keys": 1,
+                "effected_ms": 1795195638683.761,
+                "effects": 1,
+                "entered_ms": 1795195638680.371,
+                "fail_first": false,
+                "first_handler_attempt": 1,
+                "hold_ms": 0,
+                "id": "082e7755-4c3b-4263-b332-19a77c5dfeb6",
+                "job_key": "producer_second",
+                "payload_sha256": "5c3690eca961688d5bf78c46f5b0d73ed4397e896089854c85694e8c1ed1e304",
+                "recorded_ms": 1795195638683.387,
+                "settled_ms": 1795195638696.883,
+                "state": "completed"
+              }
+            ]
+          },
+          "sha256": "4d54442f989971339455783ad89025d3870e0de9363ff27d548a4a5b4dbf2018"
+        },
+        "producer_before_commit": {
+          "receipt": {
+            "after_cut": {
+              "business": [],
+              "jobs": [],
+              "receipts": []
+            },
+            "after_replay": {
+              "business": [
+                [
+                  "mesh",
+                  "parity_75bcb5bab466b26d",
+                  "producer_commit",
+                  "925",
+                  "2026-11-20T17:27:18.000738+00:00"
+                ]
+              ],
+              "jobs": [
+                [
+                  "parity_75bcb5bab466b26d",
+                  "producer_first",
+                  "b07a69fe-64af-49a4-82e4-fdbcbb9937c8",
+                  "926",
+                  "2026-11-20T17:27:18.000738+00:00",
+                  {
+                    "fail_first": false,
+                    "hold_ms": 0,
+                    "key": "producer_first",
+                    "payload": "synthetic-producer_first"
+                  }
+                ],
+                [
+                  "parity_75bcb5bab466b26d",
+                  "producer_second",
+                  "a348180a-b014-4c7d-9bfd-eec654003cca",
+                  "926",
+                  "2026-11-20T17:27:18.000738+00:00",
+                  {
+                    "fail_first": false,
+                    "hold_ms": 0,
+                    "key": "producer_second",
+                    "payload": "synthetic-producer_second"
+                  }
+                ]
+              ],
+              "receipts": [
+                [
+                  "parity_75bcb5bab466b26d",
+                  "producer_first",
+                  {
+                    "conflict": false,
+                    "effect_key": "b07a69fe-64af-49a4-82e4-fdbcbb9937c8/1",
+                    "id": "b07a69fe-64af-49a4-82e4-fdbcbb9937c8",
+                    "inserted": true,
+                    "state": "available"
+                  },
+                  "926",
+                  "2026-11-20T17:27:18.000738+00:00"
+                ],
+                [
+                  "parity_75bcb5bab466b26d",
+                  "producer_second",
+                  {
+                    "conflict": false,
+                    "effect_key": "a348180a-b014-4c7d-9bfd-eec654003cca/1",
+                    "id": "a348180a-b014-4c7d-9bfd-eec654003cca",
+                    "inserted": true,
+                    "state": "available"
+                  },
+                  "926",
+                  "2026-11-20T17:27:18.000738+00:00"
+                ]
+              ]
+            },
+            "engine": "mesh",
+            "fault": {
+              "command_complete": false,
+              "placement": "before_commit",
+              "query_forwarded": false,
+              "ready_status": null
+            },
+            "input_sha256": "080fc93e4ca5f4c09f8b829616725ff1b3d5d81003a233836d6ea758fe2a4e90",
+            "namespace_writes": {
+              "attempts": [
+                [
+                  "mesh",
+                  "parity_75bcb5bab466b26d",
+                  "producer_first",
+                  1,
+                  "b07a69fe-64af-49a4-82e4-fdbcbb9937c8/1"
+                ],
+                [
+                  "mesh",
+                  "parity_75bcb5bab466b26d",
+                  "producer_second",
+                  1,
+                  "a348180a-b014-4c7d-9bfd-eec654003cca/1"
+                ]
+              ],
+              "business": [
+                [
+                  "mesh",
+                  "parity_75bcb5bab466b26d",
+                  "producer_commit"
+                ]
+              ],
+              "effects": [
+                [
+                  "mesh",
+                  "parity_75bcb5bab466b26d",
+                  "producer_first",
+                  "b07a69fe-64af-49a4-82e4-fdbcbb9937c8/1"
+                ],
+                [
+                  "mesh",
+                  "parity_75bcb5bab466b26d",
+                  "producer_second",
+                  "a348180a-b014-4c7d-9bfd-eec654003cca/1"
+                ]
+              ],
+              "jobs": [
+                [
+                  "parity_75bcb5bab466b26d",
+                  "b07a69fe-64af-49a4-82e4-fdbcbb9937c8",
+                  "producer_first"
+                ],
+                [
+                  "parity_75bcb5bab466b26d",
+                  "a348180a-b014-4c7d-9bfd-eec654003cca",
+                  "producer_second"
+                ]
+              ]
+            },
+            "producer_returncode": 1,
+            "replay_receipt": {
+              "count": 2,
+              "ids": {
+                "producer_first": "b07a69fe-64af-49a4-82e4-fdbcbb9937c8",
+                "producer_second": "a348180a-b014-4c7d-9bfd-eec654003cca"
+              },
+              "receipts": [
+                {
+                  "conflict": false,
+                  "effect_key": "b07a69fe-64af-49a4-82e4-fdbcbb9937c8/1",
+                  "id": "b07a69fe-64af-49a4-82e4-fdbcbb9937c8",
+                  "inserted": true,
+                  "state": "available"
+                },
+                {
+                  "conflict": false,
+                  "effect_key": "a348180a-b014-4c7d-9bfd-eec654003cca/1",
+                  "id": "a348180a-b014-4c7d-9bfd-eec654003cca",
+                  "inserted": true,
+                  "state": "available"
+                }
+              ],
+              "xid": "925"
+            },
+            "rows": [
+              {
+                "attempt": 1,
+                "attempts": 1,
+                "claimed_ms": 1795195638055,
+                "effect_key": "b07a69fe-64af-49a4-82e4-fdbcbb9937c8/1",
+                "effect_keys": 1,
+                "effected_ms": 1795195638063.754,
+                "effects": 1,
+                "entered_ms": 1795195638060.181,
+                "fail_first": false,
+                "first_handler_attempt": 1,
+                "hold_ms": 0,
+                "id": "b07a69fe-64af-49a4-82e4-fdbcbb9937c8",
+                "job_key": "producer_first",
+                "payload_sha256": "4f9ead4888d03ce32d48a1e7583fd557ea4a2ca1ca02b0eff506e73e6d1eea02",
+                "recorded_ms": 1795195638063.417,
+                "settled_ms": 1795195638074.134,
+                "state": "completed"
+              },
+              {
+                "attempt": 1,
+                "attempts": 1,
+                "claimed_ms": 1795195638074,
+                "effect_key": "a348180a-b014-4c7d-9bfd-eec654003cca/1",
+                "effect_keys": 1,
+                "effected_ms": 1795195638082.127,
+                "effects": 1,
+                "entered_ms": 1795195638078.764,
+                "fail_first": false,
+                "first_handler_attempt": 1,
+                "hold_ms": 0,
+                "id": "a348180a-b014-4c7d-9bfd-eec654003cca",
+                "job_key": "producer_second",
+                "payload_sha256": "5c3690eca961688d5bf78c46f5b0d73ed4397e896089854c85694e8c1ed1e304",
+                "recorded_ms": 1795195638081.613,
+                "settled_ms": 1795195638095.237,
+                "state": "completed"
+              }
+            ]
+          },
+          "sha256": "30201bcbfd9193dd25f6958023b18812de0f04f3ac41585061d4a46dc14ae80b"
+        }
+      },
+      "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+      "manifest_sha256": "01a28092b18bc194ec2dff9418264eeeb9d5a54ac39dcf4bd756f888a1f2cc90",
+      "mesh_executable_sha256": "e761437e02f4a55621976bee1df29ed7bb67120b4226a7a275df61693269a12c",
+      "run": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-fault-rpuv96qj"
+    },
+    "19.0": {
+      "cases": {
+        "committed_final_claim": {
+          "ordinary_after_commit_worker_starts": 1,
+          "receipt": {
+            "committed_claim": {
+              "attempt": 1,
+              "fenced": true,
+              "id": "0bb8a109-115b-4b67-a209-dd6189c30361",
+              "lease_expires_at_ms": 1795195687952,
+              "observed_at_ms": 1795195677974,
+              "state": "executing"
+            },
+            "engine": "mesh",
+            "enqueued_ids": {
+              "claim": "0bb8a109-115b-4b67-a209-dd6189c30361"
+            },
+            "fault": {
+              "command_complete": true,
+              "placement": "after_commit",
+              "query_forwarded": true,
+              "ready_status": "I"
+            },
+            "lease_recovery": {
+              "elapsed_ms": 10010,
+              "errors": [
+                {
+                  "at_ms": 1795195687962,
+                  "attempt": 1,
+                  "reason": "lease expired"
+                }
+              ],
+              "lease_expires_at_ms": null,
+              "max_attempts": 1
+            },
+            "namespace_writes": {
+              "attempts": [],
+              "business": [
+                [
+                  "mesh",
+                  "parity_ba6c5f208b18a85e",
+                  "claim"
+                ]
+              ],
+              "effects": [],
+              "jobs": [
+                [
+                  "parity_ba6c5f208b18a85e",
+                  "0bb8a109-115b-4b67-a209-dd6189c30361",
+                  "claim"
+                ]
+              ]
+            },
+            "rows": [
+              {
+                "attempt": 1,
+                "attempts": 0,
+                "claimed_ms": 1795195677952,
+                "effect_key": "0bb8a109-115b-4b67-a209-dd6189c30361/1",
+                "effect_keys": 0,
+                "effected_ms": null,
+                "effects": 0,
+                "entered_ms": null,
+                "fail_first": false,
+                "first_handler_attempt": null,
+                "hold_ms": 0,
+                "id": "0bb8a109-115b-4b67-a209-dd6189c30361",
+                "job_key": "claim",
+                "payload_sha256": "b3cc0475bb78a5026098858e9889acf666d31062d513d303314eca31d36e72f2",
+                "recorded_ms": null,
+                "settled_ms": 1795195687963.404,
+                "state": "discarded"
+              }
+            ],
+            "worker_start_pids": []
+          },
+          "sha256": "5a0ca5ac6c18636445471cb02ebcd0b954ed16334dbb9c77f0bf52b1a40ec48a"
+        },
+        "producer_after_commit": {
+          "receipt": {
+            "after_cut": {
+              "business": [
+                [
+                  "mesh",
+                  "parity_70a4523c484d9393",
+                  "producer_commit",
+                  "852",
+                  "2026-11-20T17:27:50.191259+00:00"
+                ]
+              ],
+              "jobs": [
+                [
+                  "parity_70a4523c484d9393",
+                  "producer_first",
+                  "8ef175d9-0a01-489b-a7ba-0f5f45cd063a",
+                  "853",
+                  "2026-11-20T17:27:50.191259+00:00",
+                  {
+                    "fail_first": false,
+                    "hold_ms": 0,
+                    "key": "producer_first",
+                    "payload": "synthetic-producer_first"
+                  }
+                ],
+                [
+                  "parity_70a4523c484d9393",
+                  "producer_second",
+                  "b22dbba3-7b41-4bcb-8041-ee0492fa3398",
+                  "853",
+                  "2026-11-20T17:27:50.191259+00:00",
+                  {
+                    "fail_first": false,
+                    "hold_ms": 0,
+                    "key": "producer_second",
+                    "payload": "synthetic-producer_second"
+                  }
+                ]
+              ],
+              "receipts": [
+                [
+                  "parity_70a4523c484d9393",
+                  "producer_first",
+                  {
+                    "conflict": false,
+                    "effect_key": "8ef175d9-0a01-489b-a7ba-0f5f45cd063a/1",
+                    "id": "8ef175d9-0a01-489b-a7ba-0f5f45cd063a",
+                    "inserted": true,
+                    "state": "available"
+                  },
+                  "853",
+                  "2026-11-20T17:27:50.191259+00:00"
+                ],
+                [
+                  "parity_70a4523c484d9393",
+                  "producer_second",
+                  {
+                    "conflict": false,
+                    "effect_key": "b22dbba3-7b41-4bcb-8041-ee0492fa3398/1",
+                    "id": "b22dbba3-7b41-4bcb-8041-ee0492fa3398",
+                    "inserted": true,
+                    "state": "available"
+                  },
+                  "853",
+                  "2026-11-20T17:27:50.191259+00:00"
+                ]
+              ]
+            },
+            "after_replay": {
+              "business": [
+                [
+                  "mesh",
+                  "parity_70a4523c484d9393",
+                  "producer_commit",
+                  "852",
+                  "2026-11-20T17:27:50.191259+00:00"
+                ]
+              ],
+              "jobs": [
+                [
+                  "parity_70a4523c484d9393",
+                  "producer_first",
+                  "8ef175d9-0a01-489b-a7ba-0f5f45cd063a",
+                  "853",
+                  "2026-11-20T17:27:50.191259+00:00",
+                  {
+                    "fail_first": false,
+                    "hold_ms": 0,
+                    "key": "producer_first",
+                    "payload": "synthetic-producer_first"
+                  }
+                ],
+                [
+                  "parity_70a4523c484d9393",
+                  "producer_second",
+                  "b22dbba3-7b41-4bcb-8041-ee0492fa3398",
+                  "853",
+                  "2026-11-20T17:27:50.191259+00:00",
+                  {
+                    "fail_first": false,
+                    "hold_ms": 0,
+                    "key": "producer_second",
+                    "payload": "synthetic-producer_second"
+                  }
+                ]
+              ],
+              "receipts": [
+                [
+                  "parity_70a4523c484d9393",
+                  "producer_first",
+                  {
+                    "conflict": false,
+                    "effect_key": "8ef175d9-0a01-489b-a7ba-0f5f45cd063a/1",
+                    "id": "8ef175d9-0a01-489b-a7ba-0f5f45cd063a",
+                    "inserted": true,
+                    "state": "available"
+                  },
+                  "853",
+                  "2026-11-20T17:27:50.191259+00:00"
+                ],
+                [
+                  "parity_70a4523c484d9393",
+                  "producer_second",
+                  {
+                    "conflict": false,
+                    "effect_key": "b22dbba3-7b41-4bcb-8041-ee0492fa3398/1",
+                    "id": "b22dbba3-7b41-4bcb-8041-ee0492fa3398",
+                    "inserted": true,
+                    "state": "available"
+                  },
+                  "853",
+                  "2026-11-20T17:27:50.191259+00:00"
+                ]
+              ]
+            },
+            "engine": "mesh",
+            "fault": {
+              "command_complete": true,
+              "placement": "after_commit",
+              "query_forwarded": true,
+              "ready_status": "I"
+            },
+            "input_sha256": "080fc93e4ca5f4c09f8b829616725ff1b3d5d81003a233836d6ea758fe2a4e90",
+            "namespace_writes": {
+              "attempts": [
+                [
+                  "mesh",
+                  "parity_70a4523c484d9393",
+                  "producer_first",
+                  1,
+                  "8ef175d9-0a01-489b-a7ba-0f5f45cd063a/1"
+                ],
+                [
+                  "mesh",
+                  "parity_70a4523c484d9393",
+                  "producer_second",
+                  1,
+                  "b22dbba3-7b41-4bcb-8041-ee0492fa3398/1"
+                ]
+              ],
+              "business": [
+                [
+                  "mesh",
+                  "parity_70a4523c484d9393",
+                  "producer_commit"
+                ]
+              ],
+              "effects": [
+                [
+                  "mesh",
+                  "parity_70a4523c484d9393",
+                  "producer_first",
+                  "8ef175d9-0a01-489b-a7ba-0f5f45cd063a/1"
+                ],
+                [
+                  "mesh",
+                  "parity_70a4523c484d9393",
+                  "producer_second",
+                  "b22dbba3-7b41-4bcb-8041-ee0492fa3398/1"
+                ]
+              ],
+              "jobs": [
+                [
+                  "parity_70a4523c484d9393",
+                  "8ef175d9-0a01-489b-a7ba-0f5f45cd063a",
+                  "producer_first"
+                ],
+                [
+                  "parity_70a4523c484d9393",
+                  "b22dbba3-7b41-4bcb-8041-ee0492fa3398",
+                  "producer_second"
+                ]
+              ]
+            },
+            "producer_returncode": 1,
+            "replay_receipt": {
+              "count": 2,
+              "ids": {
+                "producer_first": "8ef175d9-0a01-489b-a7ba-0f5f45cd063a",
+                "producer_second": "b22dbba3-7b41-4bcb-8041-ee0492fa3398"
+              },
+              "receipts": [
+                {
+                  "conflict": false,
+                  "effect_key": "8ef175d9-0a01-489b-a7ba-0f5f45cd063a/1",
+                  "id": "8ef175d9-0a01-489b-a7ba-0f5f45cd063a",
+                  "inserted": true,
+                  "state": "available"
+                },
+                {
+                  "conflict": false,
+                  "effect_key": "b22dbba3-7b41-4bcb-8041-ee0492fa3398/1",
+                  "id": "b22dbba3-7b41-4bcb-8041-ee0492fa3398",
+                  "inserted": true,
+                  "state": "available"
+                }
+              ],
+              "xid": "854"
+            },
+            "rows": [
+              {
+                "attempt": 1,
+                "attempts": 1,
+                "claimed_ms": 1795195670321,
+                "effect_key": "8ef175d9-0a01-489b-a7ba-0f5f45cd063a/1",
+                "effect_keys": 1,
+                "effected_ms": 1795195670330.292,
+                "effects": 1,
+                "entered_ms": 1795195670326.604,
+                "fail_first": false,
+                "first_handler_attempt": 1,
+                "hold_ms": 0,
+                "id": "8ef175d9-0a01-489b-a7ba-0f5f45cd063a",
+                "job_key": "producer_first",
+                "payload_sha256": "4f9ead4888d03ce32d48a1e7583fd557ea4a2ca1ca02b0eff506e73e6d1eea02",
+                "recorded_ms": 1795195670329.918,
+                "settled_ms": 1795195670341.601,
+                "state": "completed"
+              },
+              {
+                "attempt": 1,
+                "attempts": 1,
+                "claimed_ms": 1795195670342,
+                "effect_key": "b22dbba3-7b41-4bcb-8041-ee0492fa3398/1",
+                "effect_keys": 1,
+                "effected_ms": 1795195670348.789,
+                "effects": 1,
+                "entered_ms": 1795195670345.913,
+                "fail_first": false,
+                "first_handler_attempt": 1,
+                "hold_ms": 0,
+                "id": "b22dbba3-7b41-4bcb-8041-ee0492fa3398",
+                "job_key": "producer_second",
+                "payload_sha256": "5c3690eca961688d5bf78c46f5b0d73ed4397e896089854c85694e8c1ed1e304",
+                "recorded_ms": 1795195670348.587,
+                "settled_ms": 1795195670349.737,
+                "state": "completed"
+              }
+            ]
+          },
+          "sha256": "a2729540c7445298d79a5ed50b7bd082a058ee0c10e2f1b113407b489da06209"
+        },
+        "producer_before_commit": {
+          "receipt": {
+            "after_cut": {
+              "business": [],
+              "jobs": [],
+              "receipts": []
+            },
+            "after_replay": {
+              "business": [
+                [
+                  "mesh",
+                  "parity_853793cf305ee0d3",
+                  "producer_commit",
+                  "832",
+                  "2026-11-20T17:27:49.698851+00:00"
+                ]
+              ],
+              "jobs": [
+                [
+                  "parity_853793cf305ee0d3",
+                  "producer_first",
+                  "f96763da-c0bd-4ab4-a033-528b16a6570e",
+                  "833",
+                  "2026-11-20T17:27:49.698851+00:00",
+                  {
+                    "fail_first": false,
+                    "hold_ms": 0,
+                    "key": "producer_first",
+                    "payload": "synthetic-producer_first"
+                  }
+                ],
+                [
+                  "parity_853793cf305ee0d3",
+                  "producer_second",
+                  "6b4d32fe-4276-4ed2-9f64-a5b1aa8fa54c",
+                  "833",
+                  "2026-11-20T17:27:49.698851+00:00",
+                  {
+                    "fail_first": false,
+                    "hold_ms": 0,
+                    "key": "producer_second",
+                    "payload": "synthetic-producer_second"
+                  }
+                ]
+              ],
+              "receipts": [
+                [
+                  "parity_853793cf305ee0d3",
+                  "producer_first",
+                  {
+                    "conflict": false,
+                    "effect_key": "f96763da-c0bd-4ab4-a033-528b16a6570e/1",
+                    "id": "f96763da-c0bd-4ab4-a033-528b16a6570e",
+                    "inserted": true,
+                    "state": "available"
+                  },
+                  "833",
+                  "2026-11-20T17:27:49.698851+00:00"
+                ],
+                [
+                  "parity_853793cf305ee0d3",
+                  "producer_second",
+                  {
+                    "conflict": false,
+                    "effect_key": "6b4d32fe-4276-4ed2-9f64-a5b1aa8fa54c/1",
+                    "id": "6b4d32fe-4276-4ed2-9f64-a5b1aa8fa54c",
+                    "inserted": true,
+                    "state": "available"
+                  },
+                  "833",
+                  "2026-11-20T17:27:49.698851+00:00"
+                ]
+              ]
+            },
+            "engine": "mesh",
+            "fault": {
+              "command_complete": false,
+              "placement": "before_commit",
+              "query_forwarded": false,
+              "ready_status": null
+            },
+            "input_sha256": "080fc93e4ca5f4c09f8b829616725ff1b3d5d81003a233836d6ea758fe2a4e90",
+            "namespace_writes": {
+              "attempts": [
+                [
+                  "mesh",
+                  "parity_853793cf305ee0d3",
+                  "producer_first",
+                  1,
+                  "f96763da-c0bd-4ab4-a033-528b16a6570e/1"
+                ],
+                [
+                  "mesh",
+                  "parity_853793cf305ee0d3",
+                  "producer_second",
+                  1,
+                  "6b4d32fe-4276-4ed2-9f64-a5b1aa8fa54c/1"
+                ]
+              ],
+              "business": [
+                [
+                  "mesh",
+                  "parity_853793cf305ee0d3",
+                  "producer_commit"
+                ]
+              ],
+              "effects": [
+                [
+                  "mesh",
+                  "parity_853793cf305ee0d3",
+                  "producer_first",
+                  "f96763da-c0bd-4ab4-a033-528b16a6570e/1"
+                ],
+                [
+                  "mesh",
+                  "parity_853793cf305ee0d3",
+                  "producer_second",
+                  "6b4d32fe-4276-4ed2-9f64-a5b1aa8fa54c/1"
+                ]
+              ],
+              "jobs": [
+                [
+                  "parity_853793cf305ee0d3",
+                  "f96763da-c0bd-4ab4-a033-528b16a6570e",
+                  "producer_first"
+                ],
+                [
+                  "parity_853793cf305ee0d3",
+                  "6b4d32fe-4276-4ed2-9f64-a5b1aa8fa54c",
+                  "producer_second"
+                ]
+              ]
+            },
+            "producer_returncode": 1,
+            "replay_receipt": {
+              "count": 2,
+              "ids": {
+                "producer_first": "f96763da-c0bd-4ab4-a033-528b16a6570e",
+                "producer_second": "6b4d32fe-4276-4ed2-9f64-a5b1aa8fa54c"
+              },
+              "receipts": [
+                {
+                  "conflict": false,
+                  "effect_key": "f96763da-c0bd-4ab4-a033-528b16a6570e/1",
+                  "id": "f96763da-c0bd-4ab4-a033-528b16a6570e",
+                  "inserted": true,
+                  "state": "available"
+                },
+                {
+                  "conflict": false,
+                  "effect_key": "6b4d32fe-4276-4ed2-9f64-a5b1aa8fa54c/1",
+                  "id": "6b4d32fe-4276-4ed2-9f64-a5b1aa8fa54c",
+                  "inserted": true,
+                  "state": "available"
+                }
+              ],
+              "xid": "832"
+            },
+            "rows": [
+              {
+                "attempt": 1,
+                "attempts": 1,
+                "claimed_ms": 1795195669751,
+                "effect_key": "f96763da-c0bd-4ab4-a033-528b16a6570e/1",
+                "effect_keys": 1,
+                "effected_ms": 1795195669759.326,
+                "effects": 1,
+                "entered_ms": 1795195669756.05,
+                "fail_first": false,
+                "first_handler_attempt": 1,
+                "hold_ms": 0,
+                "id": "f96763da-c0bd-4ab4-a033-528b16a6570e",
+                "job_key": "producer_first",
+                "payload_sha256": "4f9ead4888d03ce32d48a1e7583fd557ea4a2ca1ca02b0eff506e73e6d1eea02",
+                "recorded_ms": 1795195669758.911,
+                "settled_ms": 1795195669773.546,
+                "state": "completed"
+              },
+              {
+                "attempt": 1,
+                "attempts": 1,
+                "claimed_ms": 1795195669774,
+                "effect_key": "6b4d32fe-4276-4ed2-9f64-a5b1aa8fa54c/1",
+                "effect_keys": 1,
+                "effected_ms": 1795195669781.098,
+                "effects": 1,
+                "entered_ms": 1795195669778.163,
+                "fail_first": false,
+                "first_handler_attempt": 1,
+                "hold_ms": 0,
+                "id": "6b4d32fe-4276-4ed2-9f64-a5b1aa8fa54c",
+                "job_key": "producer_second",
+                "payload_sha256": "5c3690eca961688d5bf78c46f5b0d73ed4397e896089854c85694e8c1ed1e304",
+                "recorded_ms": 1795195669780.853,
+                "settled_ms": 1795195669792.509,
+                "state": "completed"
+              }
+            ]
+          },
+          "sha256": "3fd6c0faebb8c6d67a46a13ef5f454db7c427d353cca9bd3aa143676e1ddc8d2"
+        }
+      },
+      "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+      "manifest_sha256": "189c218c3e22abbe727d6949ff84c9c3aa91881692b1101bcd70c47bdb966ac5",
+      "mesh_executable_sha256": "e761437e02f4a55621976bee1df29ed7bb67120b4226a7a275df61693269a12c",
+      "run": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/j1-fault-qa8jstia"
+    }
+  },
+  "reference_revision": "7c1620563614a04a573aef806a6d019a2af4dfe9",
+  "release_toolchains": {
+    "1b12243b663beebfdd3f183cbd0cdfcdfc02e287": {
+      "files_sha256": {
+        "libmesh_rt.a": "a00c15da7f1160b3c88d3dbb369909d7ea99e60bf3400afc6369154e913466b1",
+        "meshc": "1a66e12342e4cfd7cb895e319b8933449a2dfe3c2c5d23d95dce74ecee252a2b"
+      },
+      "mesh_sha": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+      "profile": "release",
+      "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: aarch64-apple-darwin\nrelease: 1.99.0\nLLVM version: 23.1.1"
+    },
+    "7c1620563614a04a573aef806a6d019a2af4dfe9": {
+      "files_sha256": {
+        "libmesh_rt.a": "fb71e510690af5007c8ca98b350a4420934dcc8fcd2a9e015f1dfa3d530e67d8",
+        "meshc": "19b5c6efafd382158a17065fb7aa121e7190b0753a69f3f9d0f9786914473a57"
+      },
+      "mesh_sha": "7c1620563614a04a573aef806a6d019a2af4dfe9",
+      "profile": "release",
+      "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: aarch64-apple-darwin\nrelease: 1.99.0\nLLVM version: 23.1.1"
+    }
+  },
+  "runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+  "schema": 1,
+  "scope": "Compiled Mesh producer commit replay and final-attempt claim loss"
+}

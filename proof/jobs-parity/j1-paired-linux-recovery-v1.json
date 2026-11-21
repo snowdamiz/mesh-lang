@@ -1,0 +1,139 @@
+{
+  "baseline_mesh_sha": "7c1620563614a04a573aef806a6d019a2af4dfe9",
+  "compiled_linux": {
+    "checkout_sha": "1c5269a524be87dfa058721e1975b2f083a0b14c",
+    "compiled_jobs_tests_passed": 2,
+    "jobs_runtime_tests_passed": 45,
+    "log_sha256": "58da8dd3d0b92ae1b7c37c85182b761b4f642848c4552514dc76119394705ffc",
+    "native_timeout_and_parent_death": true
+  },
+  "hosted_artifacts": {
+    "baseline": {
+      "id": 14660333689,
+      "sha256": "2e25e6f29993bd32c622e698364dbbf59bd118236d1504ae5ae753cfb0a195fd"
+    },
+    "compatibility": {
+      "id": 14659936692,
+      "sha256": "0cbccd69104491bc31ede881358b0316ba8f529118f4e728dad8f3c00949c631"
+    }
+  },
+  "hosted_job": 136501104028,
+  "hosted_run": 44791300418,
+  "hosts": {
+    "hosted_linux_x86_64": {
+      "faults": {
+        "mesh": {
+          "attempts": 2,
+          "before_kill_committed_effects": 1,
+          "effects": 1,
+          "fault_sha256": "a0f74b8e9480d82aef6e31cae137304c2e7155c0ae4cf6b03c3555b43054b6e0",
+          "job_id_preserved": true,
+          "no_rollback_commit": true,
+          "replacement_fence_changed": true,
+          "stale_ack_rejected": true
+        },
+        "oban": {
+          "attempts": 2,
+          "before_kill_committed_effects": 1,
+          "effects": 1,
+          "fault_sha256": "0755c71b4f31508c33fadf56ea55cf79a892b4b9242e80480dcbcd37bf9efc8c",
+          "job_id_preserved": true,
+          "no_rollback_commit": true,
+          "replacement_fence_changed": true,
+          "stale_ack_rejected": null
+        }
+      },
+      "harness_sha": "1c5269a524be87dfa058721e1975b2f083a0b14c",
+      "harness_sha256": {
+        "scripts/fixtures/jobs-parity-oban/.gitignore": "b5c7ccd41d0f17ce18a61d2c944c71a73cbe0095789eecaa6de9f6814277d43f",
+        "scripts/fixtures/jobs-parity-oban/README.md": "f4df190148abc56ce365762833e827a1ccfabf6059ad630f9b56f26bb87213d2",
+        "scripts/fixtures/jobs-parity-oban/config/config.exs": "9b93331c38e5d24ec898bf707d6d53f2dc0d7c57224cc6ef49c6afa351e260ab",
+        "scripts/fixtures/jobs-parity-oban/fixture.exs": "7b79e9793792edd88f72bb8a1deb44e194786e590de8b935c9f67e65df5e6c1d",
+        "scripts/fixtures/jobs-parity-oban/inetrc": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+        "scripts/fixtures/jobs-parity-oban/lib/jobs_parity_oban.ex": "3f1d3df9937e8eb4528e474c328881a1308b70a108b59dd52ae473624e655e10",
+        "scripts/fixtures/jobs-parity-oban/lib/worker.ex": "a5d1a51c17662bd5dff379d1152c0eef5a23045859abec02ea396adb3b51c49e",
+        "scripts/fixtures/jobs-parity-oban/mix.exs": "b5031450b9bcf79e3ad2b949d6ffc52d3dc58e78925b6df50087a2faeb8dcede",
+        "scripts/fixtures/jobs-parity-oban/mix.lock": "aef2f8077ddc23d4b607856402108f611759a214f49400df4c2dc75be420ab95",
+        "scripts/jobs-parity-profiles.json": "719b1135cc83208d86d98911556e31796c647800f7ee482f4120a4bdbe5d03ee",
+        "scripts/jobs-parity.py": "d1fdb3325b046f3d700d02dacb61b76963739d5672bde01237aec03105f925c2",
+        "scripts/lib/jobs_parity_fault.py": "f77ff946f67b255b4a037bf5a3e28dc7ad0a3588e4efb438ce73cf5abead594b",
+        "tests/e2e/durable_jobs/.parity/main.mpl": "94b89a2189aa1aeca0635d95a596c9d8e4fe6400a1adef9089a646a736874582",
+        "tests/e2e/durable_jobs/.parity/mesh.toml.in": "764f6e78cf2a89b2ff2f08d897d60652e69745514847c184ff5f8a5c785773c1",
+        "tests/e2e/durable_jobs/.parity/worker_identity.c": "2808ca2bd2a286b79c8bf071a99453227395265b761571075a4f6c06780a63a0",
+        "tests/e2e/durable_jobs/.parity/worker_identity.mpl": "e56589a1df5442a8c82b95950314e68776145b2bd6215e22c5014ee14c9d9fca"
+      },
+      "host": "Linux-7.0.0-1014-aws-x86_64-with-glibc2.39",
+      "manifest_sha256": "bb3f9d14c4d798f03ee7ff9596e74dbe04c6c46a72cd20a3e87bcd8e7f766350",
+      "postgres_version_num": "170011",
+      "toolchain": {
+        "files_sha256": {
+          "libmesh_rt.a": "55c8b6e6d732fa822cdb07ab6edb8f586cd50bc58550838f766b270be2fca4a9",
+          "meshc": "5459e46947f6199f7ea34518d25ddcc67474079258ab11fcde06c9a884a7ccce"
+        },
+        "mesh_sha": "7c1620563614a04a573aef806a6d019a2af4dfe9",
+        "profile": "release",
+        "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)\nbinary: rustc\ncommit-hash: 0ef1bc386059596dada8fb65b50425aab2ea637a\ncommit-date: 2026-11-09\nhost: x86_64-unknown-linux-gnu\nrelease: 1.100.0\nLLVM version: 23.1.5"
+      }
+    },
+    "local_macos_arm64": {
+      "faults": {
+        "mesh": {
+          "attempts": 2,
+          "before_kill_committed_effects": 1,
+          "effects": 1,
+          "fault_sha256": "91866927d1bc888a7c7c1df4559fad8258bf51cb5bcdffea7ebe9edd4b58ed98",
+          "job_id_preserved": true,
+          "no_rollback_commit": true,
+          "replacement_fence_changed": true,
+          "stale_ack_rejected": true
+        },
+        "oban": {
+          "attempts": 2,
+          "before_kill_committed_effects": 1,
+          "effects": 1,
+          "fault_sha256": "d97a92258b689b5d12496d2b07823831487eaf1d7840e3ae3f302a66d696d116",
+          "job_id_preserved": true,
+          "no_rollback_commit": true,
+          "replacement_fence_changed": true,
+          "stale_ack_rejected": null
+        }
+      },
+      "harness_sha": "e08d3f340b9cbd6e58eb3def70a10b9cef40af4a",
+      "harness_sha256": {
+        "scripts/fixtures/jobs-parity-oban/.gitignore": "b5c7ccd41d0f17ce18a61d2c944c71a73cbe0095789eecaa6de9f6814277d43f",
+        "scripts/fixtures/jobs-parity-oban/README.md": "f4df190148abc56ce365762833e827a1ccfabf6059ad630f9b56f26bb87213d2",
+        "scripts/fixtures/jobs-parity-oban/config/config.exs": "9b93331c38e5d24ec898bf707d6d53f2dc0d7c57224cc6ef49c6afa351e260ab",
+        "scripts/fixtures/jobs-parity-oban/fixture.exs": "7b79e9793792edd88f72bb8a1deb44e194786e590de8b935c9f67e65df5e6c1d",
+        "scripts/fixtures/jobs-parity-oban/inetrc": "ea95be6f379d135ab873d2da91daeb4d6fcbb593e27db22914bf52aca8543a9c",
+        "scripts/fixtures/jobs-parity-oban/lib/jobs_parity_oban.ex": "3f1d3df9937e8eb4528e474c328881a1308b70a108b59dd52ae473624e655e10",
+        "scripts/fixtures/jobs-parity-oban/lib/worker.ex": "a5d1a51c17662bd5dff379d1152c0eef5a23045859abec02ea396adb3b51c49e",
+        "scripts/fixtures/jobs-parity-oban/mix.exs": "b5031450b9bcf79e3ad2b949d6ffc52d3dc58e78925b6df50087a2faeb8dcede",
+        "scripts/fixtures/jobs-parity-oban/mix.lock": "aef2f8077ddc23d4b607856402108f611759a214f49400df4c2dc75be420ab95",
+        "scripts/jobs-parity-profiles.json": "719b1135cc83208d86d98911556e31796c647800f7ee482f4120a4bdbe5d03ee",
+        "scripts/jobs-parity.py": "d1fdb3325b046f3d700d02dacb61b76963739d5672bde01237aec03105f925c2",
+        "scripts/lib/jobs_parity_fault.py": "f77ff946f67b255b4a037bf5a3e28dc7ad0a3588e4efb438ce73cf5abead594b",
+        "tests/e2e/durable_jobs/.parity/main.mpl": "94b89a2189aa1aeca0635d95a596c9d8e4fe6400a1adef9089a646a736874582",
+        "tests/e2e/durable_jobs/.parity/mesh.toml.in": "764f6e78cf2a89b2ff2f08d897d60652e69745514847c184ff5f8a5c785773c1",
+        "tests/e2e/durable_jobs/.parity/worker_identity.c": "2808ca2bd2a286b79c8bf071a99453227395265b761571075a4f6c06780a63a0",
+        "tests/e2e/durable_jobs/.parity/worker_identity.mpl": "e56589a1df5442a8c82b95950314e68776145b2bd6215e22c5014ee14c9d9fca"
+      },
+      "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+      "manifest_sha256": "6827a1dc1ca7cd86d0f949c951df6fd2843118465c52f9214d5f7e5c56dda4e6",
+      "postgres_version_num": "170011",
+      "toolchain": {
+        "files_sha256": {
+          "libmesh_rt.a": "fb71e510690af5007c8ca98b350a4420934dcc8fcd2a9e015f1dfa3d530e67d8",
+          "meshc": "19b5c6efafd382158a17065fb7aa121e7190b0753a69f3f9d0f9786914473a57"
+        },
+        "mesh_sha": "7c1620563614a04a573aef806a6d019a2af4dfe9",
+        "profile": "release",
+        "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)\nbinary: rustc\ncommit-hash: b940084d7eb6a299eb4bfeb8e34901bc051e7ac4\ncommit-date: 2026-09-28\nhost: aarch64-apple-darwin\nrelease: 1.99.0\nLLVM version: 23.1.1"
+      }
+    }
+  },
+  "oban": "2.24.2",
+  "postgres_version": "17.11",
+  "pr_head_sha": "e08d3f340b9cbd6e58eb3def70a10b9cef40af4a",
+  "transport": "SCRAM with verified TLS",
+  "version": 1
+}

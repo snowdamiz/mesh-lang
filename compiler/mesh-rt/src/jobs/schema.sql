@@ -72,6 +72,9 @@ CREATE INDEX IF NOT EXISTS mesh_jobs_ready
     WHERE state IN ('available', 'scheduled', 'retryable');
 CREATE INDEX IF NOT EXISTS mesh_jobs_due
     ON mesh_jobs.jobs (namespace, scheduled_at_ms, id) WHERE state IN ('scheduled', 'retryable');
+CREATE INDEX IF NOT EXISTS mesh_jobs_queue_due
+    ON mesh_jobs.jobs (namespace, queue, scheduled_at_ms)
+    WHERE state IN ('available', 'scheduled', 'retryable') AND attempt < max_attempts;
 CREATE INDEX IF NOT EXISTS mesh_jobs_running
     ON mesh_jobs.jobs (namespace, queue) WHERE state = 'executing';
 CREATE INDEX IF NOT EXISTS mesh_jobs_expiring
@@ -90,6 +93,83 @@ CREATE TABLE IF NOT EXISTS mesh_jobs.receipts (
     receipt jsonb NOT NULL,
     PRIMARY KEY (namespace, request_key)
 );
+
+CREATE TABLE IF NOT EXISTS mesh_jobs.batch_context_blocks (
+    namespace text NOT NULL,
+    id uuid NOT NULL,
+    row_version xid NOT NULL,
+    row_location tid NOT NULL,
+    encoding name NOT NULL,
+    context_bytes integer NOT NULL,
+    PRIMARY KEY (namespace, id),
+    FOREIGN KEY (namespace, id) REFERENCES mesh_jobs.jobs(namespace, id) ON DELETE CASCADE
+);
+
+-- Keep legacy function bodies and grants intact when binaries share the schema.
+-- Old claim() takes the queue lock before reaching this transition. Try the
+-- namespace lock without waiting and read the pause row after acquiring it.
+CREATE OR REPLACE FUNCTION mesh_jobs.fence_claim_v1() RETURNS trigger
+LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+    IF current_setting('transaction_isolation') <> 'read committed' THEN
+        RAISE EXCEPTION 'mesh jobs claim requires READ COMMITTED';
+    END IF;
+    IF NOT pg_try_advisory_xact_lock_shared(hashtextextended(NEW.namespace, 1782495106)) THEN
+        RAISE EXCEPTION 'mesh jobs namespace admission is paused or changing' USING ERRCODE = '55000';
+    END IF;
+    IF EXISTS (SELECT FROM mesh_jobs.queues
+               WHERE namespace = NEW.namespace AND name = '' AND state = 'paused') THEN
+        RAISE EXCEPTION 'mesh jobs namespace admission is paused or changing' USING ERRCODE = '55000';
+    END IF;
+    RETURN NEW;
+END
+$$;
+
+CREATE OR REPLACE TRIGGER mesh_jobs_fence_claim
+    BEFORE UPDATE OF state ON mesh_jobs.jobs
+    FOR EACH ROW WHEN (OLD.state <> 'executing' AND NEW.state = 'executing')
+    EXECUTE FUNCTION mesh_jobs.fence_claim_v1();
+
+CREATE OR REPLACE FUNCTION mesh_jobs.publish_wake_v1() RETURNS trigger
+LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$
+DECLARE
+    queue_name text;
+BEGIN
+    IF TG_TABLE_NAME = 'queues' THEN
+        queue_name := NEW.name;
+    ELSE
+        queue_name := NEW.queue;
+    END IF;
+    PERFORM pg_notify('mesh_jobs_wake_' || md5(convert_to(NEW.namespace, 'UTF8')),
+                      md5(convert_to(queue_name, 'UTF8')));
+    RETURN NULL;
+END
+$$;
+
+CREATE OR REPLACE TRIGGER mesh_jobs_insert_wake
+    AFTER INSERT ON mesh_jobs.jobs
+    FOR EACH ROW WHEN (
+        lower(current_setting('mesh_jobs.publish_wakeups', true)) IN ('on', 'true', '1')
+        AND NEW.state IN ('available', 'scheduled', 'retryable') AND NEW.attempt < NEW.max_attempts
+    ) EXECUTE FUNCTION mesh_jobs.publish_wake_v1();
+
+CREATE OR REPLACE TRIGGER mesh_jobs_update_wake
+    AFTER UPDATE OF queue, worker, version, state, attempt, max_attempts, scheduled_at_ms ON mesh_jobs.jobs
+    FOR EACH ROW WHEN (
+        lower(current_setting('mesh_jobs.publish_wakeups', true)) IN ('on', 'true', '1')
+        AND NEW.state IN ('available', 'scheduled', 'retryable') AND NEW.attempt < NEW.max_attempts
+        AND (OLD.state NOT IN ('available', 'scheduled', 'retryable') OR OLD.attempt >= OLD.max_attempts
+             OR (OLD.queue, OLD.worker, OLD.version, OLD.scheduled_at_ms)
+                IS DISTINCT FROM (NEW.queue, NEW.worker, NEW.version, NEW.scheduled_at_ms))
+    ) EXECUTE FUNCTION mesh_jobs.publish_wake_v1();
+
+CREATE OR REPLACE TRIGGER mesh_jobs_queue_wake
+    AFTER UPDATE OF state, concurrency ON mesh_jobs.queues
+    FOR EACH ROW WHEN (
+        lower(current_setting('mesh_jobs.publish_wakeups', true)) IN ('on', 'true', '1')
+        AND NEW.state = 'active' AND (NEW.concurrency > 0 OR NEW.name = '')
+        AND (OLD.state <> 'active' OR OLD.concurrency < NEW.concurrency)
+    ) EXECUTE FUNCTION mesh_jobs.publish_wake_v1();
 
 CREATE OR REPLACE FUNCTION mesh_jobs.now_ms() RETURNS bigint
 LANGUAGE sql VOLATILE SET search_path = pg_catalog, pg_temp AS $$
@@ -276,6 +356,127 @@ BEGIN
         'max_attempts', job.max_attempts, 'queue', job.queue, 'metadata', job.metadata,
         'tags', job.tags, 'scheduled_at_ms', job.scheduled_at_ms
     )::text, job.timeout_ms::text;
+END
+$$;
+
+CREATE OR REPLACE FUNCTION mesh_jobs.claim_batch_v1(
+    ns text, queue_name text, workers jsonb, lease_ms bigint, slots integer, cutoff_ms bigint
+) RETURNS TABLE(status text, id text, token text, context text, timeout_ms text, context_bytes text)
+LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$
+DECLARE
+    q mesh_jobs.queues%ROWTYPE;
+    job mesh_jobs.jobs%ROWTYPE;
+    candidate record;
+    due_at bigint;
+    started_at bigint;
+    remaining integer;
+    oversized_count integer := 0;
+    value_bytes integer;
+    row_bytes integer;
+    -- Reserve room for framing and the caller's optional per-row timing column.
+    reply_bytes integer := 32 * 1024 * 1024 - 1024;
+    wire_encoding name := current_setting('client_encoding');
+    same_encoding boolean := wire_encoding = current_setting('server_encoding');
+    candidates NO SCROLL CURSOR FOR
+        SELECT j AS job_row, j.xmin AS row_version, j.ctid AS row_location FROM mesh_jobs.jobs j
+        WHERE j.namespace = ns AND j.queue = queue_name
+            AND j.state IN ('available', 'scheduled', 'retryable') AND j.scheduled_at_ms <= due_at
+            AND j.attempt < j.max_attempts
+            AND EXISTS (
+                SELECT FROM jsonb_to_recordset(workers) AS w(worker text, version bigint)
+                WHERE w.worker = j.worker AND w.version = j.version
+            )
+            AND NOT EXISTS (
+                SELECT FROM mesh_jobs.batch_context_blocks b
+                WHERE b.namespace = j.namespace AND b.id = j.id
+                    AND b.row_version = j.xmin AND b.row_location = j.ctid
+                    AND b.encoding = wire_encoding
+            )
+        ORDER BY j.priority, j.scheduled_at_ms, j.position
+        FOR NO KEY UPDATE OF j SKIP LOCKED;
+BEGIN
+    -- Capacity must be read with a fresh snapshot after taking the same lock as claim().
+    IF current_setting('transaction_isolation') <> 'read committed' THEN
+        RAISE EXCEPTION 'mesh jobs batch claim requires READ COMMITTED';
+    END IF;
+    IF lease_ms IS NULL OR lease_ms NOT BETWEEN 1 AND 31536000000 THEN
+        RAISE EXCEPTION 'mesh jobs batch claim lease_ms must be positive and at most 365 days';
+    END IF;
+    remaining := least(coalesce(slots, 0), 16);
+    IF remaining <= 0 THEN RETURN; END IF;
+
+    IF NOT pg_try_advisory_xact_lock_shared(hashtextextended(ns, 1782495106)) THEN RETURN; END IF;
+    IF EXISTS (SELECT FROM mesh_jobs.queues WHERE namespace = ns AND name = '' AND state = 'paused')
+    THEN RETURN; END IF;
+
+    SELECT * INTO q FROM mesh_jobs.queues
+    WHERE namespace = ns AND name = queue_name FOR NO KEY UPDATE SKIP LOCKED;
+    IF NOT FOUND OR q.state <> 'active' OR q.concurrency = 0 THEN RETURN; END IF;
+
+    remaining := least(remaining, q.concurrency - (SELECT count(*) FROM mesh_jobs.jobs j
+        WHERE j.namespace = ns AND j.queue = queue_name AND j.state = 'executing'));
+    IF remaining <= 0 THEN RETURN; END IF;
+
+    due_at := coalesce(cutoff_ms, mesh_jobs.now_ms());
+    -- Fetch one row at a time so a cursor prefetch cannot lock work beyond the prefix.
+    OPEN candidates;
+    WHILE remaining > 0 LOOP
+        FETCH candidates INTO candidate;
+        EXIT WHEN NOT FOUND;
+        job := candidate.job_row;
+        id := job.id::text;
+        context := jsonb_build_object(
+            'id', job.id, 'effect_key', mesh_jobs.effect_key(job), 'worker', job.worker,
+            'version', job.version, 'args', job.args, 'attempt', job.attempt + 1,
+            'max_attempts', job.max_attempts, 'queue', job.queue, 'metadata', job.metadata,
+            'tags', job.tags, 'scheduled_at_ms', job.scheduled_at_ms
+        )::text;
+        value_bytes := CASE WHEN same_encoding THEN octet_length(context)
+            ELSE octet_length(convert_to(context, wire_encoding)) END;
+        context_bytes := value_bytes::text;
+
+        -- DataRow adds a 5-byte frame, a 2-byte count, and six 4-byte field lengths.
+        row_bytes := 31 + octet_length(id) + octet_length(context_bytes);
+        IF value_bytes > 16 * 1024 * 1024 THEN
+            status := 'oversized';
+            row_bytes := row_bytes + octet_length(status);
+            EXIT WHEN row_bytes > reply_bytes;
+            -- Mark this row version so another turn resumes past it. Edits
+            -- replace the tuple and make the new context eligible for sizing again.
+            INSERT INTO mesh_jobs.batch_context_blocks (namespace, id, row_version, row_location, encoding, context_bytes)
+            VALUES (ns, job.id, candidate.row_version, candidate.row_location, wire_encoding, value_bytes)
+            ON CONFLICT ON CONSTRAINT batch_context_blocks_pkey DO UPDATE
+            SET row_version = excluded.row_version, row_location = excluded.row_location, encoding = excluded.encoding,
+                context_bytes = excluded.context_bytes;
+            token := NULL;
+            context := NULL;
+            timeout_ms := NULL;
+            RETURN NEXT;
+            reply_bytes := reply_bytes - row_bytes;
+            oversized_count := oversized_count + 1;
+            EXIT WHEN oversized_count >= 4;
+            CONTINUE;
+        END IF;
+
+        status := 'claimed';
+        token := gen_random_uuid()::text;
+        timeout_ms := job.timeout_ms::text;
+        row_bytes := row_bytes + octet_length(status) + octet_length(token) +
+            value_bytes + octet_length(timeout_ms);
+        -- Keep the ordered prefix of claimable jobs when the next one cannot fit.
+        EXIT WHEN row_bytes > reply_bytes;
+
+        started_at := mesh_jobs.now_ms();
+        UPDATE mesh_jobs.jobs j SET state = 'executing', attempt = j.attempt + 1,
+            attempted_at_ms = started_at, lease_token = token::uuid,
+            lease_expires_at_ms = started_at + lease_ms
+        WHERE j.namespace = ns AND j.id = job.id;
+
+        RETURN NEXT;
+        reply_bytes := reply_bytes - row_bytes;
+        remaining := remaining - 1;
+    END LOOP;
+    CLOSE candidates;
 END
 $$;
 
@@ -556,5 +757,32 @@ BEGIN
 
     SELECT * INTO job FROM mesh_jobs.jobs WHERE namespace = ns AND id = job_id;
     RETURN mesh_jobs.job_json(job);
+END
+$$;
+
+-- Select-only roles can read these summaries without access to job payloads.
+CREATE OR REPLACE VIEW mesh_jobs.job_summaries AS
+    SELECT namespace, id, run, worker, version, queue, state, priority, attempt, max_attempts,
+        timeout_ms, backoff_base_ms, backoff_max_ms, inserted_at_ms, scheduled_at_ms,
+        attempted_at_ms, finished_at_ms, lease_expires_at_ms, cancel_requested_at_ms,
+        id::text || '/' || run::text AS effect_key
+    FROM mesh_jobs.jobs;
+
+CREATE OR REPLACE VIEW mesh_jobs.queue_summaries AS
+    SELECT q.namespace, q.name AS queue, q.concurrency, q.state,
+        EXISTS (SELECT FROM mesh_jobs.queues paused WHERE paused.namespace = q.namespace
+            AND paused.name = '' AND paused.state = 'paused') AS namespace_paused,
+        (SELECT count(*) FROM mesh_jobs.jobs j WHERE j.namespace = q.namespace
+            AND j.queue = q.name AND j.state = 'executing') AS running
+    FROM mesh_jobs.queues q WHERE q.name <> '';
+
+CREATE OR REPLACE FUNCTION mesh_jobs.set_namespace_paused(ns text, paused boolean) RETURNS jsonb
+LANGUAGE plpgsql VOLATILE STRICT SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+    PERFORM pg_advisory_xact_lock(hashtextextended(ns, 1782495106));
+    INSERT INTO mesh_jobs.queues (namespace, name, concurrency, state)
+        VALUES (ns, '', 0, CASE WHEN paused THEN 'paused' ELSE 'active' END)
+    ON CONFLICT (namespace, name) DO UPDATE SET state = excluded.state;
+    RETURN jsonb_build_object('paused', paused);
 END
 $$;

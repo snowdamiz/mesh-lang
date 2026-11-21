@@ -621,24 +621,33 @@ pub(crate) fn check(
         );
     }
     register_imported_signatures(parse, import_ctx, &mut signatures);
-    let enqueue_in = pg_signature(vec![
+    let job_read = pg_signature(vec![
         ParamOwnership::Borrow,
         ParamOwnership::Move,
         ParamOwnership::Move,
     ]);
-    for name in ["Jobs.enqueue_in", "mesh_jobs_enqueue_in"] {
-        signatures
-            .entry(name.to_string())
-            .or_insert_with(|| enqueue_in.clone());
-    }
-    if stdlib_imports
-        .get("enqueue_in")
-        .is_some_and(|module| module == "Jobs")
-    {
-        for name in ["enqueue_in", "jobs_enqueue_in"] {
+    for (module, name) in [
+        ("Jobs", "enqueue_in"),
+        ("Test", "jobs_inspect_in"),
+        ("Test", "assert_enqueued_in"),
+        ("Test", "refute_enqueued_in"),
+    ] {
+        let prefix = module.to_ascii_lowercase();
+        for spelling in [format!("{module}.{name}"), format!("mesh_{prefix}_{name}")] {
+            signatures
+                .entry(spelling)
+                .or_insert_with(|| job_read.clone());
+        }
+        if stdlib_imports
+            .get(name)
+            .is_some_and(|import| import == module)
+        {
             signatures
                 .entry(name.to_string())
-                .or_insert_with(|| enqueue_in.clone());
+                .or_insert_with(|| job_read.clone());
+            signatures
+                .entry(format!("{prefix}_{name}"))
+                .or_insert_with(|| job_read.clone());
         }
     }
 
@@ -1276,12 +1285,21 @@ impl Checker<'_> {
         let signature = callee_name
             .as_ref()
             .filter(|name| {
-                !matches!(name.as_str(), "enqueue_in" | "jobs_enqueue_in")
-                    || !self
-                        .scopes
-                        .iter()
-                        .rev()
-                        .any(|scope| scope.contains_key(*name))
+                !matches!(
+                    name.as_str(),
+                    "enqueue_in"
+                        | "jobs_enqueue_in"
+                        | "jobs_inspect_in"
+                        | "test_jobs_inspect_in"
+                        | "assert_enqueued_in"
+                        | "test_assert_enqueued_in"
+                        | "refute_enqueued_in"
+                        | "test_refute_enqueued_in"
+                ) || !self
+                    .scopes
+                    .iter()
+                    .rev()
+                    .any(|scope| scope.contains_key(*name))
             })
             .and_then(|name| self.signatures.get(name).cloned());
         let forbidden_reason = signature

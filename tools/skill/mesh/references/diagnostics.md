@@ -2990,9 +2990,9 @@ Docs: https://meshlang.dev/docs/errors/#e0093
 
 **invalid-jobs-start** · error · semantic · guide: `meshc guide database`
 
-`Jobs.start` is used indirectly or given a handler the compiler cannot check.
+A call to `Jobs.start` or `Jobs.drain` uses an indirect reference or passes a handler the compiler cannot check.
 
-**Repair:** Call `Jobs.start` directly, and pass a named function of type `fn(String) -> String` as its handler.
+**Repair:** Call `Jobs.start` or `Jobs.drain` directly and pass a named function of type `fn(String) -> String` as the handler.
 
 **Example**
 ```mesh

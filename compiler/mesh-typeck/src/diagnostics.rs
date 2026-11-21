@@ -730,7 +730,7 @@ fn place(error: &TypeError, d: Diagnostic, file: &SourceFile) -> Diagnostic {
             ),
 
         TypeError::JobsStartInvalid { reason, span } => d
-            .at(span_of(*span), "invalid job start")
+            .at(span_of(*span), "invalid durable Jobs call")
             .with_repair(*reason),
 
         TypeError::HttpClusteredPrivateHandler { handler_name, span } => d

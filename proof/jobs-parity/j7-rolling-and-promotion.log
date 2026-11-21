@@ -1,0 +1,55 @@
+{
+  "platform": "macOS arm64",
+  "postgresql_matrix": {
+    "17.11": {
+      "eligible_work_resumed_upper_ms": 626.3,
+      "new_runtime": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+      "old_runtime": "7c1620563614a04a573aef806a6d019a2af4dfe9",
+      "promotion_harness": "e2ade6f715190deff01e5231d7442f835fc67df5",
+      "promotion_log": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/promotion-current/17.11/j7-lane-7.log",
+      "promotion_log_sha256": "9fdb487ee2d4b8ee710a117fe4b51317fcdebcf5a060057117603bda7e6b1c35",
+      "resume_budget_ms": 2000,
+      "rolling_receipt": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/rolling-upgrade/rolling-upgrade-17.11.json",
+      "rolling_receipt_sha256": "d0564d1af73b13078c89f247359c9d99a35bf2e1972351ed45a2c3a41344298e",
+      "verified_rolling_lanes": [
+        "j2-lane-9",
+        "j7-lane-5",
+        "j7-lane-6"
+      ]
+    },
+    "18.7": {
+      "eligible_work_resumed_upper_ms": 1121.5,
+      "new_runtime": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+      "old_runtime": "7c1620563614a04a573aef806a6d019a2af4dfe9",
+      "promotion_harness": "b59e6be24059ddfaec1996ebfae4470744657740",
+      "promotion_log": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/promotion-current/18.7/j7-lane-7.log",
+      "promotion_log_sha256": "dee4c16a5e3a7464ecab71ca3f4c5afbba013d4c557186c6639b1c7bcaff926e",
+      "resume_budget_ms": 2000,
+      "rolling_receipt": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/rolling-upgrade/rolling-upgrade-18.7.json",
+      "rolling_receipt_sha256": "503e8651d846ec5d030641b3c36da107b0823969ed72d8115b0b92af95387b45",
+      "verified_rolling_lanes": [
+        "j2-lane-9",
+        "j7-lane-5",
+        "j7-lane-6"
+      ]
+    },
+    "19.0": {
+      "eligible_work_resumed_upper_ms": 1228.2,
+      "new_runtime": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+      "old_runtime": "7c1620563614a04a573aef806a6d019a2af4dfe9",
+      "promotion_harness": "b59e6be24059ddfaec1996ebfae4470744657740",
+      "promotion_log": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/promotion-current/19.0/j7-lane-7.log",
+      "promotion_log_sha256": "7da7d6fb84c96a2b791ba579edcff3d0ea773bd21bc69e928a12b3c3d315503b",
+      "resume_budget_ms": 2000,
+      "rolling_receipt": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/rolling-upgrade/rolling-upgrade-19.0.json",
+      "rolling_receipt_sha256": "40744d20c541021e9a4e7af2145dd7b3ce711e17376ac494376fe9f29f6244fb",
+      "verified_rolling_lanes": [
+        "j2-lane-9",
+        "j7-lane-5",
+        "j7-lane-6"
+      ]
+    }
+  },
+  "result": "passed",
+  "transport": "Direct and replication sessions used verified TLS and SCRAM. Settlement fault proxy used loopback SCRAM."
+}

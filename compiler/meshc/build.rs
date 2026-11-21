@@ -3,9 +3,10 @@ use std::fs;
 use std::path::PathBuf;
 
 fn main() {
-    let manifest_dir = PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let root = manifest_dir.join("../../tools/skill/mesh");
-    println!("cargo:rerun-if-changed={}", root.display());
+    let guide = "../../tools/skill/mesh";
+    let manifest_dir = std::env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR");
+    let root = PathBuf::from(manifest_dir).join(guide);
+    println!("cargo:rerun-if-changed={guide}");
 
     let index = fs::read_to_string(root.join("SKILL.md")).expect("read the Mesh skill index");
     assert!(index.starts_with("---\nname: mesh\ndescription: "));
@@ -36,9 +37,13 @@ fn main() {
 
     let mut source = String::from("const FILES: &[(&str, &str)] = &[\n");
     for file in files {
-        let path = root.join(&file);
-        println!("cargo:rerun-if-changed={}", path.display());
-        writeln!(source, "    ({file:?}, include_str!({path:?})),").unwrap();
+        println!("cargo:rerun-if-changed={guide}/{file}");
+        let path = format!("/{guide}/{file}");
+        writeln!(
+            source,
+            "    ({file:?}, include_str!(concat!(env!(\"CARGO_MANIFEST_DIR\"), {path:?}))),"
+        )
+        .unwrap();
     }
     source.push_str("];\n");
     let output = PathBuf::from(std::env::var_os("OUT_DIR").unwrap());

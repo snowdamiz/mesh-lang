@@ -749,8 +749,9 @@ mod tests {
         reason: *mut u8,
     ) -> *mut u8 {
         let record = unsafe { &*(env as *const CloseRecord) };
-        record.code.store(code as u64, Ordering::SeqCst);
         *record.reason.lock() = unsafe { (*(reason as *const MeshString)).as_str().to_string() };
+        // The test waits for the code before reading the recorded reason.
+        record.code.store(code as u64, Ordering::SeqCst);
         std::ptr::null_mut()
     }
 

@@ -577,3 +577,5 @@ mod tests {
         reset_host_fixtures();
     }
 }
+
+mod jobs;

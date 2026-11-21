@@ -92,6 +92,43 @@ test("string operations") do
 end
 ```
 
+## Testing durable jobs
+
+Pick a separate Jobs namespace for each test that shares a PostgreSQL database. Pass the namespace to every enqueue and assertion. Run `Jobs.migrate(pool)` once when preparing the test database.
+
+`Test.jobs_inspect(pool, namespace, filter)` returns matching jobs as a JSON array in insertion order. The filter accepts `queue`, `worker`, `version`, `state`, and `args`. The `args` field tests PostgreSQL JSONB containment, so nested keys can be omitted and arrays match by element containment. Inspection returns up to 20 rows by default and accepts a `limit` from 1 to 100.
+
+`Test.assert_enqueued(pool, namespace, filter, wait_ms)` returns `Ok(())` when a match appears. `Test.refute_enqueued(pool, namespace, filter, wait_ms)` returns `Ok(())` when every poll during the window finds no match. Pass 0 to check once, or a wait of up to 60,000 milliseconds to poll committed state.
+
+Use `Test.jobs_inspect_in`, `Test.assert_enqueued_in`, and `Test.refute_enqueued_in` with a borrowed `PgConn` inside a transaction. These helpers check once and can read the transaction's own writes. In this example the assertion succeeds before the function requests a rollback.
+
+```mesh
+fn enqueue_and_check(conn :: borrow PgConn) -> Unit!String do
+  let _ = Jobs.enqueue_in(conn, "receipt-test",
+    json { worker: "email", args: json { order_id: 42, locale: "en" } })?
+  let _ = Test.assert_enqueued_in(conn, "receipt-test",
+    json { worker: "email", version: 1, args: json { order_id: 42 } })?
+  Err("roll back test data")
+end
+```
+
+To test a handler without PostgreSQL, call `Test.perform_job(spec, clock_ms, handler)`. It validates the enqueue spec, constructs a fresh synthetic job identity, calls the handler in the test process, and returns the decoded worker outcome as JSON. You can use a closure. Pass `-1` for the system clock or a nonnegative epoch millisecond timestamp for a fixed clock. `Test.build_job(spec, clock_ms)` returns the synthetic context without calling the handler. The direct test helpers are available in `meshc test` and require no row or lease. The handler still runs its own code, including any effects it explicitly performs.
+
+```mesh
+test("email handler asks to snooze") do
+  let spec = json { worker: "email", args: json { order_id: 42 } }
+  let outcome = Test.perform_job(spec, 1000, fn(_) do
+    """{"action":"snooze","delay_ms":50}"""
+  end)
+  case outcome do
+    Ok(value) -> assert_eq(value, """{"action":"snooze","delay_ms":50}""")
+    Err(error) -> panic(error)
+  end
+end
+```
+
+Use [`Jobs.drain`](/docs/concurrency/#run-a-bounded-drain) for persisted outcomes and lease recovery. To exercise process loss, run a compiled drain against a disposable PostgreSQL database. Wait until the handler starts, terminate the drain process, and start a replacement after the lease expires. Check the resulting attempt, effect key, and final job state on a separate connection. The repository runs this scenario with `bash scripts/verify-postgres-jobs.sh`.
+
 ## Private module test support
 
 Place `foo.test-support.mpl` beside `foo.mpl` when a test needs a narrow bridge

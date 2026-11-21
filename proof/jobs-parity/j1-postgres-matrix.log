@@ -1,0 +1,74 @@
+{
+  "result": "passed",
+  "versions": {
+    "17.11": {
+      "compiled_jobs_suites_passed_per_host": 2,
+      "hosts": {
+        "Linux arm64 container": {
+          "checkout": "f11e98d946ce6beb3396ee33ff69813f78c69333",
+          "log": "target/jobs-parity/linux-7c162056/final-f11e98d946ce6beb3396ee33ff69813f78c69333-3h31ly6g/postgres-17.11.log",
+          "sha256": "f98f1a6c098e5eb26bf28b3bb3adf1e3914b34b3eb61c18c2f6702edb321b92e"
+        },
+        "macOS arm64": {
+          "checkout": "e2ade6f715190deff01e5231d7442f835fc67df5",
+          "log": "target/jobs-parity/e2ade6f715190deff01e5231d7442f835fc67df5/new-compiled-lanes/postgres-17.11.log",
+          "sha256": "f9714361004013fae47c0c1d26922ef7007e31863ac990e0f196f0efc08a9fae"
+        }
+      },
+      "jobs_runtime_tests_passed_per_host": 45,
+      "lane": "j1-lane-2",
+      "named_lane_log": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/lane-evidence/17.11/j1-lane-2.log",
+      "postgres_driver_tests_passed_per_host": 36,
+      "postgresql_version": "17.11",
+      "result": "passed",
+      "runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+      "transport": "SCRAM with verified TLS"
+    },
+    "18.7": {
+      "compiled_jobs_suites_passed_per_host": 2,
+      "hosts": {
+        "Linux arm64 container": {
+          "checkout": "f11e98d946ce6beb3396ee33ff69813f78c69333",
+          "log": "target/jobs-parity/linux-7c162056/final-f11e98d946ce6beb3396ee33ff69813f78c69333-3h31ly6g/postgres-18.7.log",
+          "sha256": "f4022bd908e4d8a7af4f080bbd0b831ce3b05bf0d352155aa50020eef1f06702"
+        },
+        "macOS arm64": {
+          "checkout": "e2ade6f715190deff01e5231d7442f835fc67df5",
+          "log": "target/jobs-parity/e2ade6f715190deff01e5231d7442f835fc67df5/new-compiled-lanes/postgres-18.7.log",
+          "sha256": "4056e9392608227bf8e1e76d148ce9f29d886712f0e9eac6a1d030c0a98c0300"
+        }
+      },
+      "jobs_runtime_tests_passed_per_host": 45,
+      "lane": "j1-lane-3",
+      "named_lane_log": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/lane-evidence/18.7/j1-lane-3.log",
+      "postgres_driver_tests_passed_per_host": 36,
+      "postgresql_version": "18.7",
+      "result": "passed",
+      "runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+      "transport": "SCRAM with verified TLS"
+    },
+    "19.0": {
+      "compiled_jobs_suites_passed_per_host": 2,
+      "hosts": {
+        "Linux arm64 container": {
+          "checkout": "f11e98d946ce6beb3396ee33ff69813f78c69333",
+          "log": "target/jobs-parity/linux-7c162056/final-f11e98d946ce6beb3396ee33ff69813f78c69333-3h31ly6g/postgres-19.0.log",
+          "sha256": "19c4d052ba676c2df2dea4eb96f6cacfa561382a7e27f74ed9ad9218505a14ed"
+        },
+        "macOS arm64": {
+          "checkout": "e2ade6f715190deff01e5231d7442f835fc67df5",
+          "log": "target/jobs-parity/e2ade6f715190deff01e5231d7442f835fc67df5/new-compiled-lanes/postgres-19.0.log",
+          "sha256": "8009846a3678fd67447d9fd132b9a51690f67004306791a332604f256b3fb226"
+        }
+      },
+      "jobs_runtime_tests_passed_per_host": 45,
+      "lane": "j1-lane-4",
+      "named_lane_log": "target/jobs-parity/1b12243b663beebfdd3f183cbd0cdfcdfc02e287/lane-evidence/19.0/j1-lane-4.log",
+      "postgres_driver_tests_passed_per_host": 36,
+      "postgresql_version": "19.0",
+      "result": "passed",
+      "runtime_revision": "1b12243b663beebfdd3f183cbd0cdfcdfc02e287",
+      "transport": "SCRAM with verified TLS"
+    }
+  }
+}
