@@ -32006,5 +32006,709 @@
         "sha256": "334285201c5d80860d0583f19f795ced614ff7d0cdaff6630e72f48fa5bfcb19"
       }
     }
+  },
+  "linux_compiled_named_jobs_statements": {
+    "scope": "local-linux-jobs-named-statements",
+    "revision": "fc4983dbad21bdfb4fb94e06ea4b2e5f56ddabdb",
+    "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+    "build": {
+      "artifacts_sha256": {
+        "libmesh_rt.a": "df3030ae4de85825697edbd83d9cc47ed1b65876ed68268b3215526c34eab582",
+        "libworker_identity.a": "58f7c2160cd62b43f30e07e72a2bcec0e9c757a548698e616ed222e5f170481c",
+        "mesh-parity-fixture": "cf349883b7fa8b70306688ea1056cec616cf69c040ffcf11ca856c7db8d5a778",
+        "meshc": "dd1123c076a76972d8ff6eae15f511dd08d3d98d5b6a7506991d6e20a5d2b328"
+      },
+      "generated_mesh_toml_sha256": "c8d95b088dd914355ffae2360c0a1bd9547c21ee6ee1abdc30aac0d0531161f7",
+      "macos_toolchain_sha256": "80681eb316601bf4b88a5e73f5b0c35349f936c91b17b37f3921907abc968707",
+      "native_source_sha256": {
+        "main.mpl": "43e5da1b48c368a2a638f37bf165f8e98d0796dcf008c542773390d9a5e65ece",
+        "mesh.toml.in": "764f6e78cf2a89b2ff2f08d897d60652e69745514847c184ff5f8a5c785773c1",
+        "worker_identity.c": "69dbbe0d8a5c511fc4f7c64d450bb8d47e716fdb4103502259f7c2c65d08f7fb",
+        "worker_identity.mpl": "9d083870b27b8e87e608adf5784f291f41e20272253d47b679d66de388cfaa55"
+      },
+      "parent_manifest_sha256": "38b52861c5bcbb2d76c1d64967feaa17c3384def20f55b67232118f0207dc271",
+      "profile": "release",
+      "requested_runtime_features": [
+        "jobs-effect-fixture"
+      ],
+      "revision": "fc4983dbad21bdfb4fb94e06ea4b2e5f56ddabdb",
+      "target": "aarch64-unknown-linux-gnu"
+    },
+    "profile": "noop-8r-64s",
+    "host_load_average_1m_max_by_stage": [
+      12.259765625,
+      11.8203125,
+      11.8203125,
+      8.51171875,
+      12.35009765625,
+      13.74658203125
+    ],
+    "pilot": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/named-sql-guest/runs/named-sql-linux-01/noop-8r-64s/pilot/stage.json",
+      "sha256": "537d1ee5e6da32a4f2c3ecb8d553c028e626a7f95fabb8dfe2ad35cb733dfc68"
+    },
+    "groups": [
+      {
+        "trials": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/named-sql-guest/runs/named-sql-linux-01/noop-8r-64s/0/proof/evidence/trials.json",
+          "sha256": "c42b0d2a88cbdec3b50924f8645eb0e9e3a9b10ab0a64af8c5cc7eabe17de3d1"
+        },
+        "stage": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/named-sql-guest/runs/named-sql-linux-01/noop-8r-64s/0/stage.json",
+          "sha256": "bd28461290d97f28abc2db54d590e78ecbda2d3f8c6a17e6bd566d4dec2e3f6c"
+        },
+        "arms": {
+          "mesh": {
+            "jobs_per_second": 943.724864515322,
+            "pickup_p99_ms": 1069.2890625,
+            "claim_calls_per_job": 0.39453125,
+            "cpu_seconds_per_job": 0.0012191435546874997,
+            "peak_rss_bytes": 347525120
+          },
+          "mesh-repeat": {
+            "jobs_per_second": 1024.9541382150915,
+            "pickup_p99_ms": 982.7099609375,
+            "claim_calls_per_job": 0.40625,
+            "cpu_seconds_per_job": 0.0011906328125,
+            "peak_rss_bytes": 372506624
+          },
+          "oban": {
+            "jobs_per_second": 916.8677224527341,
+            "pickup_p99_ms": 1062.919921875,
+            "claim_calls_per_job": 0.236328125,
+            "cpu_seconds_per_job": 0.0059611396484375,
+            "peak_rss_bytes": 981286912
+          },
+          "mesh-named": {
+            "jobs_per_second": 353.0462340045411,
+            "pickup_p99_ms": 2846.983154296875,
+            "claim_calls_per_job": 0.4501953125,
+            "cpu_seconds_per_job": 0.003529806640625,
+            "peak_rss_bytes": 382599168
+          }
+        }
+      },
+      {
+        "trials": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/named-sql-guest/runs/named-sql-linux-01/noop-8r-64s/1/proof/evidence/trials.json",
+          "sha256": "b9e1b481bf1a9a547453993898de0f19eb5317473893b7847b6201d20b9aa7d1"
+        },
+        "stage": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/named-sql-guest/runs/named-sql-linux-01/noop-8r-64s/1/stage.json",
+          "sha256": "c08f60eb071c312ea835c80336b8eec70aee4ea3478367b1d4ac3cb9020339a2"
+        },
+        "arms": {
+          "mesh-repeat": {
+            "jobs_per_second": 1129.8649836472382,
+            "pickup_p99_ms": 894.717041015625,
+            "claim_calls_per_job": 0.361328125,
+            "cpu_seconds_per_job": 0.001115162109375,
+            "peak_rss_bytes": 318136320
+          },
+          "mesh-named": {
+            "jobs_per_second": 758.1568255017228,
+            "pickup_p99_ms": 1337.469970703125,
+            "claim_calls_per_job": 0.427734375,
+            "cpu_seconds_per_job": 0.0015882460937500001,
+            "peak_rss_bytes": 389226496
+          },
+          "mesh": {
+            "jobs_per_second": 1091.5702221239053,
+            "pickup_p99_ms": 919.451171875,
+            "claim_calls_per_job": 0.4013671875,
+            "cpu_seconds_per_job": 0.0012079687499999998,
+            "peak_rss_bytes": 415748096
+          },
+          "oban": {
+            "jobs_per_second": 2202.3112615850555,
+            "pickup_p99_ms": 459.12109375,
+            "claim_calls_per_job": 0.140625,
+            "cpu_seconds_per_job": 0.003794142578125,
+            "peak_rss_bytes": 994566144
+          }
+        }
+      },
+      {
+        "trials": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/named-sql-guest/runs/named-sql-linux-01/noop-8r-64s/2/proof/evidence/trials.json",
+          "sha256": "d893b9f100b1946b068f0631adf01fca613775e7915f8f8c1cd6e8265e26fa72"
+        },
+        "stage": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/named-sql-guest/runs/named-sql-linux-01/noop-8r-64s/2/stage.json",
+          "sha256": "c4656de15565991dc42407654db7b48d2c1fed89e5e018127c112c595d356b67"
+        },
+        "arms": {
+          "mesh-named": {
+            "jobs_per_second": 1085.1827406872894,
+            "pickup_p99_ms": 928.02294921875,
+            "claim_calls_per_job": 0.421875,
+            "cpu_seconds_per_job": 0.001174302734375,
+            "peak_rss_bytes": 346066944
+          },
+          "oban": {
+            "jobs_per_second": 2189.1099413043726,
+            "pickup_p99_ms": 456.05712890625,
+            "claim_calls_per_job": 0.14453125,
+            "cpu_seconds_per_job": 0.003506814453125,
+            "peak_rss_bytes": 1002299392
+          },
+          "mesh-repeat": {
+            "jobs_per_second": 543.7518700649084,
+            "pickup_p99_ms": 1847.113037109375,
+            "claim_calls_per_job": 0.4130859375,
+            "cpu_seconds_per_job": 0.0019593994140624997,
+            "peak_rss_bytes": 364421120
+          },
+          "mesh": {
+            "jobs_per_second": 575.0786596839572,
+            "pickup_p99_ms": 1758.35693359375,
+            "claim_calls_per_job": 0.4248046875,
+            "cpu_seconds_per_job": 0.002242048828125,
+            "peak_rss_bytes": 389021696
+          }
+        }
+      },
+      {
+        "trials": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/named-sql-guest/runs/named-sql-linux-01/noop-8r-64s/3/proof/evidence/trials.json",
+          "sha256": "73a9bb61632316bf568014d2dc68a7371377183bebbd5d8add33d5d804e0bd68"
+        },
+        "stage": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/named-sql-guest/runs/named-sql-linux-01/noop-8r-64s/3/stage.json",
+          "sha256": "c1bf0436859b034e1ef105ec64942d0206cff61240f7888869c97fd7f92594bb"
+        },
+        "arms": {
+          "oban": {
+            "jobs_per_second": 728.5854567581825,
+            "pickup_p99_ms": 1328.27197265625,
+            "claim_calls_per_job": 0.224609375,
+            "cpu_seconds_per_job": 0.004712864257812499,
+            "peak_rss_bytes": 997146624
+          },
+          "mesh": {
+            "jobs_per_second": 559.8497992081516,
+            "pickup_p99_ms": 1804.076904296875,
+            "claim_calls_per_job": 0.427734375,
+            "cpu_seconds_per_job": 0.0028848232421875,
+            "peak_rss_bytes": 388767744
+          },
+          "mesh-named": {
+            "jobs_per_second": 540.3217786196487,
+            "pickup_p99_ms": 1882.973876953125,
+            "claim_calls_per_job": 0.4150390625,
+            "cpu_seconds_per_job": 0.0022076269531250002,
+            "peak_rss_bytes": 338448384
+          },
+          "mesh-repeat": {
+            "jobs_per_second": 1133.3215343856014,
+            "pickup_p99_ms": 891.0478515625,
+            "claim_calls_per_job": 0.3857421875,
+            "cpu_seconds_per_job": 0.0012797568359375,
+            "peak_rss_bytes": 372232192
+          }
+        }
+      },
+      {
+        "trials": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/named-sql-guest/runs/named-sql-linux-01/noop-8r-64s/4/proof/evidence/trials.json",
+          "sha256": "e58b3045bea7463c5d9852ce582c6a4eedaa61547d2cc8f4e78fbc2f09760181"
+        },
+        "stage": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/named-sql-guest/runs/named-sql-linux-01/noop-8r-64s/4/stage.json",
+          "sha256": "9eb6a4f0e819661ec54d7a7b1a79d651859e367532a9ff3a2ee74eb7f8b0f651"
+        },
+        "arms": {
+          "mesh-repeat": {
+            "jobs_per_second": 326.80823902240775,
+            "pickup_p99_ms": 3096.91796875,
+            "claim_calls_per_job": 0.435546875,
+            "cpu_seconds_per_job": 0.0039886806640625,
+            "peak_rss_bytes": 387821568
+          },
+          "oban": {
+            "jobs_per_second": 1518.3121820336669,
+            "pickup_p99_ms": 666.68212890625,
+            "claim_calls_per_job": 0.1826171875,
+            "cpu_seconds_per_job": 0.004417939453125,
+            "peak_rss_bytes": 985071616
+          },
+          "mesh": {
+            "jobs_per_second": 873.139742402892,
+            "pickup_p99_ms": 1161.14892578125,
+            "claim_calls_per_job": 0.36328125,
+            "cpu_seconds_per_job": 0.0011459003906249998,
+            "peak_rss_bytes": 413368320
+          },
+          "mesh-named": {
+            "jobs_per_second": 770.132058710877,
+            "pickup_p99_ms": 1298.486083984375,
+            "claim_calls_per_job": 0.3935546875,
+            "cpu_seconds_per_job": 0.0014247412109375,
+            "peak_rss_bytes": 368619520
+          }
+        }
+      }
+    ],
+    "reconciled_scored_jobs": 20480,
+    "median_paired_throughput_gain_jobs_per_second": -306.2638881772277,
+    "median_absolute_control_spread_jobs_per_second": 81.22927369976946,
+    "groups_treatment_beat_both_controls": 1,
+    "report": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/named-sql-guest/runs/named-sql-linux-01/noop-8r-64s/report/gates.json",
+      "sha256": "4a0e19950f0f27d7a9c596846d845a432adebfaeaacee6524b66c1709579c3f0"
+    },
+    "canonical_gates": {
+      "mesh": {
+        "all_canonical_conditions_met": false,
+        "breaches": [
+          {
+            "mesh_median": 873.139742402892,
+            "metric": "jobs_per_second",
+            "ratio_limit": 1.0,
+            "reference": "oban",
+            "reference_median": 1518.3121820336669,
+            "scope": "comparison",
+            "within_limit": false
+          },
+          {
+            "mesh_median": 1161.14892578125,
+            "metric": "pickup_p99_ms",
+            "ratio_limit": 1.25,
+            "reference": "oban",
+            "reference_median": 666.68212890625,
+            "scope": "comparison",
+            "within_limit": false
+          }
+        ],
+        "strict_median_throughput_above_oban": false
+      },
+      "mesh-named": {
+        "all_canonical_conditions_met": false,
+        "breaches": [
+          {
+            "mesh_median": 758.1568255017228,
+            "metric": "jobs_per_second",
+            "ratio_limit": 1.0,
+            "reference": "oban",
+            "reference_median": 1518.3121820336669,
+            "scope": "comparison",
+            "within_limit": false
+          },
+          {
+            "mesh_median": 1337.469970703125,
+            "metric": "pickup_p99_ms",
+            "ratio_limit": 1.25,
+            "reference": "oban",
+            "reference_median": 666.68212890625,
+            "scope": "comparison",
+            "within_limit": false
+          }
+        ],
+        "strict_median_throughput_above_oban": false
+      },
+      "mesh-repeat": {
+        "all_canonical_conditions_met": false,
+        "breaches": [
+          {
+            "mesh_median": 1024.9541382150915,
+            "metric": "jobs_per_second",
+            "ratio_limit": 1.0,
+            "reference": "oban",
+            "reference_median": 1518.3121820336669,
+            "scope": "comparison",
+            "within_limit": false
+          },
+          {
+            "mesh_median": 982.7099609375,
+            "metric": "pickup_p99_ms",
+            "ratio_limit": 1.25,
+            "reference": "oban",
+            "reference_median": 666.68212890625,
+            "scope": "comparison",
+            "within_limit": false
+          }
+        ],
+        "strict_median_throughput_above_oban": false
+      }
+    },
+    "named_statement_witnesses": {
+      "mesh": {
+        "evidence": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/named-sql-guest/runs/named-sql-linux-01/noop-8r-64s/pilot/proof/evidence/trace-mesh/named-statement-witness.json",
+          "sha256": "100764663309e624ab2f5ce02965e9593aed261194a3d036f47e724c0290f9f2"
+        },
+        "executions_by_family": {
+          "claim": 0,
+          "due": 0,
+          "settlement": 0
+        },
+        "names": []
+      },
+      "mesh-named": {
+        "evidence": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/named-sql-guest/runs/named-sql-linux-01/noop-8r-64s/pilot/proof/evidence/trace-mesh-named/named-statement-witness.json",
+          "sha256": "c3c163cbd625dcf6eb2003bd73b525c946c8e5098be97a3b9dcffbbffda3f43b"
+        },
+        "executions_by_family": {
+          "claim": 565,
+          "due": 565,
+          "settlement": 1024
+        },
+        "names": [
+          "mesh_jobs_claim",
+          "mesh_jobs_due",
+          "mesh_jobs_settle"
+        ]
+      }
+    },
+    "compact_receipt": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/named-sql-guest/runs/named-sql-linux-01/noop-8r-64s/report/compact-receipt.json",
+      "sha256": "6dd4b0acc17f188a3d556c70afe29024d09eefd4063b8ccef854ebf60b8ecff2"
+    },
+    "macos": {
+      "tests": {
+        "named-protocol-tests.log": {
+          "path": "target/jobs-parity/two-write-local/macos/fc4983dbad21bdfb4fb94e06ea4b2e5f56ddabdb/named-protocol-tests.log",
+          "sha256": "e4975cda0cc7db089debb7c975151f5d665a4524bbf729b903c2f16ce4dfb052",
+          "passed": 4
+        },
+        "postgres-driver-tests.log": {
+          "path": "target/jobs-parity/two-write-local/macos/fc4983dbad21bdfb4fb94e06ea4b2e5f56ddabdb/postgres-driver-tests.log",
+          "sha256": "442417a1a22bfba1ffe35c109548d158cf89cd10f8f9e67174a0448e4ab29089",
+          "passed": 40
+        }
+      },
+      "compiled_proof": {
+        "path": "target/jobs-parity/named-jobs-sql/source/target/jobs-parity/fc4983dbad21bdfb4fb94e06ea4b2e5f56ddabdb/j1-two-write-proof-g6bxgvwp/result.json",
+        "sha256": "2d1cec2e70225aae69502c024a37a85758b6481aaf365c373b349089c33437eb"
+      },
+      "revocations": {
+        "mesh-between": {
+          "path": "target/jobs-parity/named-jobs-sql/source/target/jobs-parity/fc4983dbad21bdfb4fb94e06ea4b2e5f56ddabdb/j1-two-write-proof-g6bxgvwp/short-1r-16s-revocations/mesh-between/result.json",
+          "sha256": "34791476776adba40a12ca79b39dc6a6d52b77950c0a0f617d5359b905afbf07"
+        },
+        "mesh-final": {
+          "path": "target/jobs-parity/named-jobs-sql/source/target/jobs-parity/fc4983dbad21bdfb4fb94e06ea4b2e5f56ddabdb/j1-two-write-proof-g6bxgvwp/short-1r-16s-revocations/mesh-final/result.json",
+          "sha256": "f59d35440d7de366f42be1f86aec60a55b4327bd5f81b01d48cc4fb9a517990f"
+        },
+        "mesh-named-between": {
+          "path": "target/jobs-parity/named-jobs-sql/source/target/jobs-parity/fc4983dbad21bdfb4fb94e06ea4b2e5f56ddabdb/j1-two-write-proof-g6bxgvwp/short-1r-16s-revocations/mesh-named-between/result.json",
+          "sha256": "a54d5a0bc02f80e56d5038584740c07edd6ef415429daf37e7c57a5940f3ced0"
+        },
+        "mesh-named-final": {
+          "path": "target/jobs-parity/named-jobs-sql/source/target/jobs-parity/fc4983dbad21bdfb4fb94e06ea4b2e5f56ddabdb/j1-two-write-proof-g6bxgvwp/short-1r-16s-revocations/mesh-named-final/result.json",
+          "sha256": "312aea9737c167c41f445b6f55a7d943b8d2cc4c6bc11d7166062bd26e391842"
+        }
+      }
+    }
+  },
+  "macos_jobs_postgres_matrix_after_diagnostics_integration": {
+    "scope": "macos_arm64",
+    "revision": "59d2596e9b1fc9cdcfb5af7f1d7e7c265cfc3896",
+    "versions": {
+      "17.11": {
+        "verified_tls": true,
+        "compiled_jobs_suites_passed": 3,
+        "jobs_runtime_tests_passed": 53,
+        "postgres_driver_tests_passed": 36,
+        "parity_self_checks_passed": 18,
+        "fault_driver_tests_passed": 12,
+        "compiled_scoped_login": [
+          "fresh",
+          "upgrade"
+        ],
+        "log": {
+          "path": "target/jobs-parity/main-4f9fdd8-integration/reviewed-proof/59d2596e9b1fc9cdcfb5af7f1d7e7c265cfc3896/postgres-17.11.log",
+          "sha256": "65e794864e7866d4dde5ac538138768a76cb562599324d675be3b05623631355"
+        }
+      },
+      "18.7": {
+        "verified_tls": true,
+        "compiled_jobs_suites_passed": 3,
+        "jobs_runtime_tests_passed": 53,
+        "postgres_driver_tests_passed": 36,
+        "parity_self_checks_passed": 18,
+        "fault_driver_tests_passed": 12,
+        "compiled_scoped_login": [
+          "fresh",
+          "upgrade"
+        ],
+        "log": {
+          "path": "target/jobs-parity/main-4f9fdd8-integration/reviewed-proof/59d2596e9b1fc9cdcfb5af7f1d7e7c265cfc3896/postgres-18.7.log",
+          "sha256": "07019fef2e368ba248d3440f388cea9fb697d1e9c06fcc3617bb577574aeb9fc"
+        }
+      },
+      "19.0": {
+        "verified_tls": true,
+        "compiled_jobs_suites_passed": 3,
+        "jobs_runtime_tests_passed": 53,
+        "postgres_driver_tests_passed": 36,
+        "parity_self_checks_passed": 18,
+        "fault_driver_tests_passed": 12,
+        "compiled_scoped_login": [
+          "fresh",
+          "upgrade"
+        ],
+        "log": {
+          "path": "target/jobs-parity/main-4f9fdd8-integration/reviewed-proof/59d2596e9b1fc9cdcfb5af7f1d7e7c265cfc3896/postgres-19.0.log",
+          "sha256": "b9c9d63227a6d7e4d1cc4b3a57871b5137888e4eabc9d3580f2e79ddf6ac21ed"
+        }
+      }
+    }
+  },
+  "linux_grouped_effects_full_sql_component": {
+    "scope": "local-linux-full-sql-grouped-effects",
+    "profile": "noop-8r-64s",
+    "postgres": "17.11",
+    "input_sha256": "9afb598e8e80b56fc96689cfbe7a7061d82f8e5e3c33a2c534d680ce3db2528a",
+    "reconciled_jobs": 6144,
+    "synthetic_workers": true,
+    "runs": [
+      {
+        "revision": "0ee8756a37dc2115f16e33e5b12467547f43a90e",
+        "order": [
+          "A",
+          "A-repeat",
+          "B"
+        ],
+        "cpu_layout": {
+          "affinity": [
+            0,
+            1
+          ],
+          "cgroup_version": 2,
+          "cpu_controller_enabled": false,
+          "cpu_count": 2,
+          "init_cgroup": "0::/parity",
+          "inodes": {
+            "driver": 61,
+            "postgres": 47,
+            "runners": 33
+          },
+          "memtotal_kib": 2020440,
+          "mount_id": 24,
+          "psql_path": "/jobs-parity/postgres-17.11/bin/psql",
+          "uid": 65534,
+          "user_hz": 100
+        },
+        "arms": {
+          "A": {
+            "postgres_cpu_ms_per_job": 0.7935556640625,
+            "client_cpu_ms_per_job": 0.220297830078125,
+            "joint_cpu_ms_per_job": 1.013853494140625,
+            "claim_calls": 404,
+            "effect_statements": 2048,
+            "resets": 1024,
+            "durable_jobs": 1024
+          },
+          "A-repeat": {
+            "postgres_cpu_ms_per_job": 0.67361328125,
+            "client_cpu_ms_per_job": 0.19174574609375,
+            "joint_cpu_ms_per_job": 0.86535902734375,
+            "claim_calls": 372,
+            "effect_statements": 2048,
+            "resets": 1024,
+            "durable_jobs": 1024
+          },
+          "B": {
+            "postgres_cpu_ms_per_job": 0.53808203125,
+            "client_cpu_ms_per_job": 0.1505780322265625,
+            "joint_cpu_ms_per_job": 0.6886600634765625,
+            "claim_calls": 284,
+            "effect_statements": 256,
+            "resets": 1024,
+            "durable_jobs": 1024
+          }
+        },
+        "summary": {
+          "client": {
+            "control_spread": 0.028552083984375004,
+            "cpu_ms_per_job": {
+              "A": 0.220297830078125,
+              "A-repeat": 0.19174574609375,
+              "B": 0.1505780322265625
+            },
+            "gain_vs_control_mean": 0.05544375585937503,
+            "gain_vs_faster_control": 0.04116771386718751
+          },
+          "joint": {
+            "control_spread": 0.14849446679687495,
+            "cpu_ms_per_job": {
+              "A": 1.013853494140625,
+              "A-repeat": 0.86535902734375,
+              "B": 0.6886600634765625
+            },
+            "gain_vs_control_mean": 0.25094619726562506,
+            "gain_vs_faster_control": 0.17669896386718753
+          },
+          "postgres": {
+            "control_spread": 0.11994238281250003,
+            "cpu_ms_per_job": {
+              "A": 0.7935556640625,
+              "A-repeat": 0.67361328125,
+              "B": 0.53808203125
+            },
+            "gain_vs_control_mean": 0.19550244140624995,
+            "gain_vs_faster_control": 0.13553125
+          },
+          "postgres_backend_cpu_ms_per_job": {
+            "A": {
+              "claim": 0.243261794921875,
+              "effect": 0.3991875859375,
+              "lifecycle": 0.151071859375,
+              "listener_idle": 0.0,
+              "maintenance_idle": 0.0,
+              "observer": 0.0,
+              "producer_idle": 0.0
+            },
+            "A-repeat": {
+              "claim": 0.2110244189453125,
+              "effect": 0.326057935546875,
+              "lifecycle": 0.136504033203125,
+              "listener_idle": 0.0,
+              "maintenance_idle": 0.0,
+              "observer": 0.0,
+              "producer_idle": 0.0
+            },
+            "B": {
+              "claim": 0.1988538359375,
+              "effect": 0.1991511181640625,
+              "lifecycle": 0.139955609375,
+              "listener_idle": 0.0,
+              "maintenance_idle": 0.0,
+              "observer": 0.0,
+              "producer_idle": 0.0
+            }
+          }
+        },
+        "receipt": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/full-sql-prepared/grouped-full-01/proof/evidence/component-receipt.json",
+          "sha256": "1fd3fba5aef8d01511f04ca521e0e02dc9b08d01840b789ff4ed6c148c92a41b"
+        }
+      },
+      {
+        "revision": "0ee8756a37dc2115f16e33e5b12467547f43a90e",
+        "order": [
+          "B",
+          "A-repeat",
+          "A"
+        ],
+        "cpu_layout": {
+          "affinity": [
+            0,
+            1
+          ],
+          "cgroup_version": 2,
+          "cpu_controller_enabled": false,
+          "cpu_count": 2,
+          "init_cgroup": "0::/parity",
+          "inodes": {
+            "driver": 61,
+            "postgres": 47,
+            "runners": 33
+          },
+          "memtotal_kib": 2020440,
+          "mount_id": 24,
+          "psql_path": "/jobs-parity/postgres-17.11/bin/psql",
+          "uid": 65534,
+          "user_hz": 100
+        },
+        "arms": {
+          "A": {
+            "postgres_cpu_ms_per_job": 0.6978349609375,
+            "client_cpu_ms_per_job": 0.2106526455078125,
+            "joint_cpu_ms_per_job": 0.9084876064453125,
+            "claim_calls": 397,
+            "effect_statements": 2048,
+            "resets": 1024,
+            "durable_jobs": 1024
+          },
+          "A-repeat": {
+            "postgres_cpu_ms_per_job": 0.6174580078125,
+            "client_cpu_ms_per_job": 0.1764149599609375,
+            "joint_cpu_ms_per_job": 0.7938729677734375,
+            "claim_calls": 376,
+            "effect_statements": 2048,
+            "resets": 1024,
+            "durable_jobs": 1024
+          },
+          "B": {
+            "postgres_cpu_ms_per_job": 0.54737109375,
+            "client_cpu_ms_per_job": 0.1492841015625,
+            "joint_cpu_ms_per_job": 0.6966551953125,
+            "claim_calls": 275,
+            "effect_statements": 256,
+            "resets": 1024,
+            "durable_jobs": 1024
+          }
+        },
+        "summary": {
+          "client": {
+            "control_spread": 0.03423768554687501,
+            "cpu_ms_per_job": {
+              "A": 0.2106526455078125,
+              "A-repeat": 0.1764149599609375,
+              "B": 0.1492841015625
+            },
+            "gain_vs_control_mean": 0.04424970117187502,
+            "gain_vs_faster_control": 0.027130858398437513
+          },
+          "joint": {
+            "control_spread": 0.11461463867187494,
+            "cpu_ms_per_job": {
+              "A": 0.9084876064453125,
+              "A-repeat": 0.7938729677734375,
+              "B": 0.6966551953125
+            },
+            "gain_vs_control_mean": 0.154525091796875,
+            "gain_vs_faster_control": 0.09721777246093755
+          },
+          "postgres": {
+            "control_spread": 0.08037695312499993,
+            "cpu_ms_per_job": {
+              "A": 0.6978349609375,
+              "A-repeat": 0.6174580078125,
+              "B": 0.54737109375
+            },
+            "gain_vs_control_mean": 0.11027539062500002,
+            "gain_vs_faster_control": 0.0700869140625
+          },
+          "postgres_backend_cpu_ms_per_job": {
+            "A": {
+              "claim": 0.223514671875,
+              "effect": 0.3317289892578125,
+              "lifecycle": 0.1425471982421875,
+              "listener_idle": 0.0,
+              "maintenance_idle": 0.0,
+              "observer": 0.0,
+              "producer_idle": 0.0
+            },
+            "A-repeat": {
+              "claim": 0.1916344833984375,
+              "effect": 0.2956935556640625,
+              "lifecycle": 0.13008143359375,
+              "listener_idle": 0.0,
+              "maintenance_idle": 0.0,
+              "observer": 0.0,
+              "producer_idle": 0.0
+            },
+            "B": {
+              "claim": 0.1940850830078125,
+              "effect": 0.2122459951171875,
+              "lifecycle": 0.1409386748046875,
+              "listener_idle": 0.0,
+              "maintenance_idle": 0.0,
+              "observer": 0.0,
+              "producer_idle": 0.0
+            }
+          }
+        },
+        "receipt": {
+          "path": "target/jobs-parity/linux-arm-ownership-guest/full-sql-prepared/grouped-full-02/proof/evidence/component-receipt.json",
+          "sha256": "6a223a7b22984126ea45367b5353da2627e8e2671b0ccd8cf5613e364db00bd6"
+        }
+      }
+    ],
+    "historical_2_vcpu_cpu_budget_ms_per_job": 0.7304601899196493
   }
 }

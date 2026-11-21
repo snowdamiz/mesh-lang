@@ -3441,6 +3441,74 @@ It leaves compiled runner performance and the 35-profile qualification
 open.
 [Full SQL and prepared statement receipts](../proof/jobs-parity/qualification-v1.json)
 
+### Compare named Jobs statements in the compiled runner
+
+The `fc4983db` release fixture used the same executable in three Mesh
+arms. All three used the scalar due range and plan-retaining effect
+reset. The treatment prepared the due query and claim and settlement
+statements on their dedicated sessions. The Linux pilot recorded 565
+named due probes, 565 named claims, and 1,024 named settlements. Its
+control executed all three without names. Both arms reconciled two
+fenced commits and an exact child reap per job. The macOS compiled
+proof passed revocation between writes and after final commit in both
+modes. The named protocol tests covered commit confirmation and
+uncertain acknowledgement handling with loopback connections.
+
+Five trace-off groups on the local Linux ARM64 guest reconciled 20,480
+scored jobs on `noop-8r-64s` with PostgreSQL 17.11.
+
+| Arm | Median jobs/s | Jobs/s range | Pickup p99 | Runner CPU-ms/job |
+| --- | ---: | ---: | ---: | ---: |
+| Mesh | 873 | 560–1,092 | 1,161 ms | 1.22 |
+| Mesh repeat | 1,025 | 327–1,133 | 983 ms | 1.28 |
+| Mesh with named statements | 758 | 353–1,085 | 1,337 ms | 1.59 |
+| Oban Basic 2.24.2 Isolated | 1,518 | 729–2,202 | 667 ms | 4.42 |
+
+The treatment beat both Mesh controls in one group and Oban in zero.
+Its median paired change against the control mean was −306 jobs/s.
+Median absolute control spread was 81 jobs/s and the maximum was
+573 jobs/s. All three Mesh arms missed the throughput and relative
+pickup gates. The other median gates passed. The host load and the
+control spread limit estimates of the regression. The compiled runs
+give no evidence to enable the treatment on the release path. The
+35-profile release gate remains open.
+[Named statements receipt](../proof/jobs-parity/qualification-v1.json)
+
+### Compare grouped effects across the full SQL path
+
+Two reverse-order Linux ARM64 boots on PostgreSQL 17.11 compared
+scalar effects with groups of eight on the prepared full SQL path.
+All six arms used the frozen 1,024-job `noop-8r-64s` input. The
+treatment dispatched each confirmed claim without a fill wait. It
+committed the attempt stage before submitting the effect stage and
+ran one reset per job on the group socket before settlement.
+The audit reconciled 6,144 jobs and verified two ordered write
+transactions per job. Jobs in a group shared the transaction for
+each write stage. Settlements still committed separately by job.
+
+| Boot | Scalar control PostgreSQL CPU-ms/job | Scalar repeat | Grouped effects | Grouped PostgreSQL plus client |
+| --- | ---: | ---: | ---: | ---: |
+| Scalar first | 0.794 | 0.674 | 0.538 | 0.689 |
+| Grouped first | 0.698 | 0.617 | 0.547 | 0.697 |
+
+The grouped arm saved 0.136 and 0.070 PostgreSQL CPU-ms/job against
+the faster control. Absolute control spread was 0.120 and 0.080.
+Effect backend CPU fell to 0.199–0.212 CPU-ms/job even though the
+reset count stayed at 1,024. Each grouped arm issued 256 effect
+statements for 2,048 writes and made 275–284 claims, versus 372–404
+claims in the scalar controls. The change in claim traffic is part of
+the measured full-path result.
+
+The tight historical Oban throughput of 2,738 jobs/s allows about
+0.73 CPU-ms/job across two vCPUs. The grouped PostgreSQL work alone
+would leave about 0.18–0.19 CPU-ms/job at that rate. These runs used
+synthetic worker witnesses and omitted the compiled runner, native
+child, and production observer. The historic rate came from a different
+boot. The component gives no evidence that effect grouping alone can
+close the dense gap. The next SQL screen targets the remaining claim
+and settlement work together.
+[Grouped full SQL receipts](../proof/jobs-parity/qualification-v1.json)
+
 ### Check guest CPU headroom on the no-op workload
 
 Two local groups at each CPU count ran the same `c271319e`
@@ -3859,3 +3927,11 @@ checker tests, nine diagnostic rendering tests, and the catalog
 artifact check. These receipts cover the reviewed merge on macOS
 and leave release qualification open.
 [Main diagnostics integration receipts](../proof/jobs-parity/qualification-v1.json)
+
+The pushed `59d2596e` revision passed the macOS ARM64 verifier on
+PostgreSQL 17.11, 18.7, and 19.0. Each run verified TLS 1.3 and wrong
+password rejection, then passed 36 PostgreSQL driver tests, 53 Jobs
+runtime tests, all three compiled Jobs suites, and the compiled scoped
+login proof on fresh and upgraded schemas. All 18 parity self-checks
+and 12 fault-driver tests passed for each server version.
+[Integrated PostgreSQL matrix receipt](../proof/jobs-parity/qualification-v1.json)
