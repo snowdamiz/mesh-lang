@@ -2,7 +2,9 @@
 //! of each kind (and a mismatch from each origin), so a change to how
 //! errors render is a snapshot change to review.
 
-use mesh_diagnostics::{Format, Reporter, SourceFile};
+use mesh_common::span::Span;
+use mesh_diagnostics::{Code, Format, Reporter, SourceFile};
+use mesh_parser::ParseError;
 use mesh_typeck::error::{ConstraintOrigin, TypeError};
 use mesh_typeck::ty::{Ty, TyVar};
 use rowan::TextRange;
@@ -576,6 +578,40 @@ fn one_of_each() -> Vec<TypeError> {
             reason: "reason".to_string(),
             span: span(19, 24),
         },
+        TypeError::InvalidIndexedType {
+            reason: "each indexed constructor must declare its result type".to_string(),
+            span: span(19, 24),
+        },
+        TypeError::ReservedProofName { span: span(19, 24) },
+        TypeError::MissingEmbeddedProof {
+            theorem: "theorem".to_string(),
+            span: span(27, 40),
+        },
+        TypeError::DuplicateProofValue {
+            name: "name".to_string(),
+            first: span(19, 24),
+            span: span(43, 48),
+        },
+        TypeError::InvalidProposition {
+            reason: "`NatEq` requires exactly two Nat arguments".to_string(),
+            span: span(27, 40),
+        },
+        TypeError::LogicSyntax {
+            error: ParseError::new(
+                Code::LogicSyntax,
+                "expected `end`, found `=`",
+                Span::new(27, 34),
+            )
+            .with_related("block opened here", Span::new(19, 24))
+            .with_label("expected `end` here"),
+        },
+        TypeError::LogicSyntax {
+            error: ParseError::new(
+                Code::LogicTooLarge,
+                "logic nesting limit exceeded",
+                Span::new(27, 40),
+            ),
+        },
     ]
 }
 
@@ -673,6 +709,12 @@ variants!(
     UnknownInterface,
     InvalidLiteral,
     InvalidIndex,
+    InvalidIndexedType,
+    ReservedProofName,
+    MissingEmbeddedProof,
+    DuplicateProofValue,
+    InvalidProposition,
+    LogicSyntax,
     NoSuchModuleFunction,
     AssertReceiveOutsideTest,
     GenericImplTarget,

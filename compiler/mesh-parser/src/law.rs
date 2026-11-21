@@ -1,8 +1,10 @@
 //! The law-file grammar. Ordinary Mesh source continues to use the ordinary parser.
 
 use mesh_common::span::Span;
+use mesh_diagnostics::Code;
 
-use crate::parser::{expect_statement_end, expressions, items, Parser};
+use crate::error::code_label;
+use crate::parser::{expect_statement_end, expressions, items, Parser, NESTED_TOO_DEEPLY};
 use crate::{Parse, ParseError, SyntaxKind};
 
 pub struct LawFile {
@@ -54,8 +56,40 @@ pub enum ProofTerm {
     },
 }
 
-/// Parse target imports, result laws, and separately declared proofs.
+/// Parse target imports, result laws, and separately declared proofs. The
+/// first syntax error is `P0201`, or `P0202` past a nesting limit.
 pub fn parse(source: &str) -> Result<LawFile, ParseError> {
+    parse_law_file(source).map_err(law_error)
+}
+
+/// A syntax error found by the Mesh grammar, as the law file's own: the
+/// label and repair of a Mesh token error still say how to fix the token.
+fn law_error(error: ParseError) -> ParseError {
+    let ParseError {
+        code,
+        message,
+        span,
+        related,
+        label,
+        repair,
+    } = error;
+    if code == Code::LawTooLarge || message == NESTED_TOO_DEEPLY {
+        return ParseError::new(Code::LawTooLarge, message, span);
+    }
+    let label = label.or_else(|| code_label(code).map(Into::into));
+    let repair =
+        repair.or_else(|| (code != Code::UnexpectedToken).then(|| code.info().repair.into()));
+    ParseError {
+        code: Code::LawSyntax,
+        message,
+        span,
+        related,
+        label,
+        repair,
+    }
+}
+
+fn parse_law_file(source: &str) -> Result<LawFile, ParseError> {
     let mut parser = Parser::new(source);
     let root = parser.open();
     let mut imports = Vec::new();
@@ -162,11 +196,12 @@ fn parse_declaration(parser: &mut Parser<'_>) -> (String, Span) {
     if parser.expect(SyntaxKind::ARROW) {
         items::parse_type(parser);
     }
+    let opened = parser.current_span();
     if parser.expect(SyntaxKind::DO_KW) && !parser.has_error() {
         expressions::parse_block_body(parser);
     }
     let end = parser.current_span().end;
-    parser.expect(SyntaxKind::END_KW);
+    parser.expect_end("the law body", opened);
     (name, Span::new(start, end))
 }
 
@@ -174,11 +209,11 @@ fn parse_proof(parser: &mut Parser<'_>) -> Option<LawProof> {
     let start = parser.current_span().start;
     parser.advance(); // proof
     let name = parse_proof_ident(parser)?;
-    expect_proof_token(parser, SyntaxKind::DO_KW)?;
+    let opened = open_proof_block(parser)?;
     let term = parse_proof_term(parser, 0)?;
     parser.eat_newlines();
     let end = parser.current_span().end;
-    parser.expect(SyntaxKind::END_KW).then_some(LawProof {
+    parser.expect_end("the proof", opened).then_some(LawProof {
         name,
         span: Span::new(start, end),
         term,
@@ -188,7 +223,12 @@ fn parse_proof(parser: &mut Parser<'_>) -> Option<LawProof> {
 fn parse_proof_term(parser: &mut Parser<'_>, depth: usize) -> Option<ProofTerm> {
     parser.eat_newlines();
     if depth >= 128 {
-        parser.error("proof nesting limit exceeded");
+        let span = parser.current_span();
+        parser.report_here(ParseError::new(
+            Code::LawTooLarge,
+            "proof nesting limit exceeded",
+            span,
+        ));
         return None;
     }
     match parser.current_text() {
@@ -230,7 +270,7 @@ fn parse_proof_term(parser: &mut Parser<'_>, depth: usize) -> Option<ProofTerm> 
 fn parse_induction(parser: &mut Parser<'_>, depth: usize) -> Option<ProofTerm> {
     parser.advance(); // induction
     let variable = parse_proof_ident(parser)?;
-    expect_proof_token(parser, SyntaxKind::DO_KW)?;
+    let opened = open_proof_block(parser)?;
     expect_proof_token(parser, SyntaxKind::L_BRACKET)?;
     expect_proof_token(parser, SyntaxKind::R_BRACKET)?;
     expect_proof_token(parser, SyntaxKind::ARROW)?;
@@ -242,7 +282,7 @@ fn parse_induction(parser: &mut Parser<'_>, depth: usize) -> Option<ProofTerm> {
     let hypothesis = parse_proof_ident(parser)?;
     expect_proof_token(parser, SyntaxKind::ARROW)?;
     let cons = Box::new(parse_proof_term(parser, depth)?);
-    expect_proof_token(parser, SyntaxKind::END_KW)?;
+    close_proof_block(parser, "the induction", opened)?;
     Some(ProofTerm::Induction {
         variable,
         nil,
@@ -256,14 +296,14 @@ fn parse_induction(parser: &mut Parser<'_>, depth: usize) -> Option<ProofTerm> {
 fn parse_cases(parser: &mut Parser<'_>, depth: usize) -> Option<ProofTerm> {
     parser.advance(); // cases
     let variable = parse_proof_ident(parser)?;
-    expect_proof_token(parser, SyntaxKind::DO_KW)?;
+    let opened = open_proof_block(parser)?;
     expect_proof_token(parser, SyntaxKind::FALSE_KW)?;
     expect_proof_token(parser, SyntaxKind::ARROW)?;
     let on_false = Box::new(parse_proof_term(parser, depth)?);
     expect_proof_token(parser, SyntaxKind::TRUE_KW)?;
     expect_proof_token(parser, SyntaxKind::ARROW)?;
     let on_true = Box::new(parse_proof_term(parser, depth)?);
-    expect_proof_token(parser, SyntaxKind::END_KW)?;
+    close_proof_block(parser, "the cases", opened)?;
     Some(ProofTerm::Cases {
         variable,
         on_false,
@@ -280,6 +320,18 @@ fn parse_proof_ident(parser: &mut Parser<'_>) -> Option<String> {
 fn expect_proof_token(parser: &mut Parser<'_>, kind: SyntaxKind) -> Option<()> {
     parser.eat_newlines();
     parser.expect(kind).then_some(())
+}
+
+/// Consume a proof block's `do`, and say where it is.
+fn open_proof_block(parser: &mut Parser<'_>) -> Option<Span> {
+    parser.eat_newlines();
+    let opened = parser.current_span();
+    parser.expect(SyntaxKind::DO_KW).then_some(opened)
+}
+
+fn close_proof_block(parser: &mut Parser<'_>, what: &str, opened: Span) -> Option<()> {
+    parser.eat_newlines();
+    parser.expect_end(what, opened).then_some(())
 }
 
 #[cfg(test)]
@@ -360,11 +412,93 @@ end";
         ] {
             let source = format!("{LAW}{block}");
             let error = parse(&source).err().expect("malformed proof parsed");
+            assert_eq!(error.code, Code::LawSyntax, "{block}: {error:?}");
             assert_eq!(
                 error.span.start,
                 source.rfind(unexpected).unwrap() as u32,
                 "{block}: {error:?}"
             );
+        }
+    }
+
+    #[test]
+    fn an_unclosed_block_names_the_do_it_closes() {
+        for (source, opened) in [
+            ("law count() -> Bool do\n  true\n", "do\n  true"),
+            (
+                "law count() -> Bool do true end\nproof count do\n  refl\n",
+                "do\n  refl",
+            ),
+            (
+                "law count() -> Bool do true end\nproof count do\n  cases flag do\n    false -> refl\n    true -> refl\nend\n",
+                "do\n  cases",
+            ),
+        ] {
+            let error = parse(source).err().expect("unclosed block parsed");
+            assert_eq!(error.code, Code::LawSyntax, "{source}: {error:?}");
+            let start = source.find(opened).unwrap() as u32;
+            assert_eq!(
+                error.related,
+                Some(("block opened here".into(), Span::new(start, start + 2))),
+                "{source}"
+            );
+            assert_eq!(
+                error.repair.as_deref(),
+                Some(Code::MissingEnd.info().repair)
+            );
+            assert_eq!(error.label.as_deref(), Some("expected `end` here"));
+        }
+    }
+
+    #[test]
+    fn law_errors_keep_the_repair_of_the_token_error() {
+        let source = "from Stats import count\nlaw count() -> Bool do count(true end\n";
+        let error = parse(source).err().expect("an unclosed call parsed");
+        assert_eq!(error.code, Code::LawSyntax);
+        assert_eq!(
+            error.related.as_ref().map(|(message, _)| message.as_str()),
+            Some("opened here")
+        );
+        assert_eq!(
+            error.repair.as_deref(),
+            Some(Code::UnclosedDelimiter.info().repair)
+        );
+        assert_eq!(
+            error.label.as_deref(),
+            Some("closing delimiter expected here")
+        );
+
+        let source = "from Stats import count\nlaw count() -> Bool do \"open end\n";
+        let error = parse(source).err().expect("an unterminated string parsed");
+        assert_eq!(error.code, Code::LawSyntax);
+        assert_eq!(
+            error.repair.as_deref(),
+            Some(Code::UnterminatedString.info().repair)
+        );
+
+        let error = parse("law count() -> Bool do true end\njunk\n")
+            .err()
+            .unwrap();
+        assert_eq!(error.code, Code::LawSyntax);
+        assert_eq!(error.repair, None, "the law grammar's repair");
+    }
+
+    #[test]
+    fn nesting_past_a_limit_is_too_large() {
+        let deep_proof = format!(
+            "{LAW}proof count do {}refl{} end",
+            "cases flag do false -> refl\ntrue -> ".repeat(130),
+            " end".repeat(130)
+        );
+        let deep_body = format!(
+            "law count() -> Bool do {}true{} end\n",
+            "(".repeat(200),
+            ")".repeat(200)
+        );
+        for source in [deep_proof, deep_body] {
+            let error = parse(&source).err().expect("a deep law parsed");
+            assert_eq!(error.code, Code::LawTooLarge, "{error:?}");
+            assert_eq!(error.repair, None, "{error:?}");
         }
     }
 }

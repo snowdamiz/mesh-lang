@@ -73,9 +73,10 @@ impl Program {
         checked: &CheckedProject,
         path: &str,
         source: &str,
+        parsed: logic::LogicFile,
     ) -> Result<(), String> {
         let lines = LineIndex::new(source);
-        self.add_parsed(project, checked, logic::parse(source), |span| {
+        self.add_parsed(project, checked, parsed, |span| {
             Location::new(path, &lines, span)
         })
     }
@@ -102,13 +103,17 @@ impl Program {
                 let start = u32::from(range.start());
                 let end = u32::from(range.end());
                 let body = &source[start as usize..end as usize];
-                self.add_parsed(project, checked, logic::parse_body(body), |span| {
+                let at = |span: Span| {
                     Location::new(
                         &path,
                         &lines,
                         Span::new(start + span.start, start + span.end),
                     )
-                })?;
+                };
+                // The frontend reports a syntax error in the block first.
+                let parsed = logic::parse_body(body)
+                    .map_err(|error| format!("{}: {}", at(error.span), error.message))?;
+                self.add_parsed(project, checked, parsed, at)?;
             }
         }
         Ok(())
@@ -118,10 +123,9 @@ impl Program {
         &mut self,
         project: &ProjectData,
         checked: &CheckedProject,
-        parsed: Result<logic::LogicFile, mesh_parser::ParseError>,
+        parsed: logic::LogicFile,
         at: impl Fn(Span) -> Location,
     ) -> Result<(), String> {
-        let parsed = parsed.map_err(|error| format!("{}: {}", at(error.span), error.message))?;
         for import in parsed.imports {
             let candidate = bind_import(project, checked, &import, at(import.span))?;
             let name = import.alias.unwrap_or(import.name);

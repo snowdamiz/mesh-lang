@@ -74,6 +74,9 @@ pub(crate) struct MarkClosed {
 
 const MAX_PARSE_ERRORS: usize = 20;
 const MAX_PARSE_DEPTH: usize = 64;
+/// The message of the error at the depth limit, which a law file reports
+/// as too large rather than as malformed.
+pub(crate) const NESTED_TOO_DEEPLY: &str = "syntax nested too deeply";
 const MAX_WRAPPED_NODE_HEIGHT: usize = 1024;
 
 /// An aligned declaration seen inside a block may belong at the top level
@@ -284,7 +287,7 @@ impl<'src> Parser<'src> {
         // Repeated wrapping, such as a long chain of additions, can build a
         // deep tree even without recursing in the grammar.
         if completed.height >= MAX_WRAPPED_NODE_HEIGHT {
-            self.error("syntax nested too deeply");
+            self.error(NESTED_TOO_DEEPLY);
         }
         self.child_heights.push(completed.height);
         let mark = MarkOpened {
@@ -358,7 +361,7 @@ impl<'src> Parser<'src> {
 
     fn with_nesting<T: Default>(&mut self, parse: impl FnOnce(&mut Self) -> T) -> T {
         if self.depth == MAX_PARSE_DEPTH {
-            self.error("syntax nested too deeply");
+            self.error(NESTED_TOO_DEEPLY);
             return T::default();
         }
         self.depth += 1;

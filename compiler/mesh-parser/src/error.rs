@@ -11,7 +11,7 @@ use mesh_diagnostics::{Code, Diagnostic, SourceFile};
 /// Parse errors carry their catalog code, the primary span where the problem
 /// was detected, a human-readable message, an optional related span for
 /// context (e.g., "opened here" for unclosed delimiters), and an optional
-/// repair for this instance in place of the catalog's.
+/// label and repair for this instance in place of the code's.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParseError {
     pub code: Code,
@@ -21,8 +21,19 @@ pub struct ParseError {
     pub span: Span,
     /// Optional related location with context message (e.g., "block opened here").
     pub related: Option<(String, Span)>,
+    /// The primary span's label. `None`: the code's, if it has one.
+    pub label: Option<Cow<'static, str>>,
     /// `None`: the catalog's repair for `code`.
     pub repair: Option<Cow<'static, str>>,
+}
+
+/// The label a code gives its primary span, where every instance has one.
+pub(crate) fn code_label(code: Code) -> Option<&'static str> {
+    match code {
+        Code::UnclosedDelimiter => Some("closing delimiter expected here"),
+        Code::MissingEnd => Some("expected `end` here"),
+        _ => None,
+    }
 }
 
 impl ParseError {
@@ -32,12 +43,18 @@ impl ParseError {
             message: message.into(),
             span,
             related: None,
+            label: None,
             repair: None,
         }
     }
 
     pub fn with_related(mut self, message: impl Into<String>, span: Span) -> Self {
         self.related = Some((message.into(), span));
+        self
+    }
+
+    pub fn with_label(mut self, label: impl Into<Cow<'static, str>>) -> Self {
+        self.label = Some(label.into());
         self
     }
 
@@ -48,11 +65,11 @@ impl ParseError {
 
     /// The diagnostic every tool reports for this error in `file`.
     pub fn to_diagnostic(&self, file: &SourceFile) -> Diagnostic {
-        let primary_label = match self.code {
-            Code::UnclosedDelimiter => "closing delimiter expected here",
-            Code::MissingEnd => "expected `end` here",
-            _ => "",
-        };
+        let primary_label = self
+            .label
+            .as_deref()
+            .or(code_label(self.code))
+            .unwrap_or_default();
         let mut diagnostic =
             Diagnostic::in_file(self.code, file, &self.message).at(self.span, primary_label);
         if let Some((message, span)) = &self.related {
@@ -98,6 +115,23 @@ mod tests {
         assert_eq!(label.message(), "block opened here");
         assert_eq!(label.span(), Span::new(10, 12));
         assert_eq!(diagnostic.repair(), "Add `end` after the body.");
+    }
+
+    #[test]
+    fn an_instance_label_names_the_primary_span() {
+        let file = SourceFile::new("main.mpl", "logic do\n  theorem t() do 2 = 2 end\nend\n");
+        let diagnostic = ParseError::new(
+            Code::LogicSyntax,
+            "expected `end`, found `=`",
+            Span::new(29, 30),
+        )
+        .with_related("block opened here", Span::new(24, 26))
+        .with_label("expected `end` here")
+        .to_diagnostic(&file);
+        assert_eq!(diagnostic.primary_label(), Some("expected `end` here"));
+        let unlabelled = ParseError::new(Code::LogicSyntax, "expected a name", Span::new(11, 18))
+            .to_diagnostic(&file);
+        assert_eq!(unlabelled.primary_label(), None);
     }
 
     #[test]

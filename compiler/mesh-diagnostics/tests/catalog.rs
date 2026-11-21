@@ -14,8 +14,13 @@ const RETIRED: &[&str] = &["E0013", "E0024", "E0025", "E0043"];
 const MISSING_EXAMPLES: &[&str] = &[
     "E0018", "E0022", "E0027", "E0031", "E0034", "E0035", "E0042", "E0046", "E0047", "E0048",
     "E0049", "E0050", "E0051", "E0052", "E0053", "E0055", "E0056", "E0059", "E0065", "E0066",
-    "E0077", "E0079", "E0081", "E0082", "E0086", "E0088", "E0089", "E0093", "E0094", "E0095",
+    "E0077", "E0079", "E0081", "E0082", "E0086", "E0088", "E0089", "E0093", "E0094",
 ];
+
+/// P codes no lone `.mpl` program can show: errors in `.law` and
+/// `.test.mpl` files, and nesting limits too deep to print. The parsers'
+/// own tests cause each of them.
+const NOT_IN_A_PROGRAM: &[&str] = &["P0201", "P0202", "P0302", "P0401"];
 
 fn is_id(id: &str) -> bool {
     let digits = match id.strip_prefix("CFG") {
@@ -37,11 +42,15 @@ fn is_kebab(name: &str) -> bool {
     })
 }
 
-fn needs_example(code: Code) -> bool {
+fn is_source_code(code: Code) -> bool {
     matches!(
         code.family(),
         Family::Syntax | Family::Semantic | Family::Lint
     )
+}
+
+fn needs_example(code: Code) -> bool {
+    is_source_code(code) && !NOT_IN_A_PROGRAM.contains(&code.id())
 }
 
 #[test]
@@ -116,7 +125,7 @@ fn every_row_has_prose_and_a_known_topic() {
                 info.id
             );
         }
-        if needs_example(code) {
+        if is_source_code(code) {
             assert!(
                 info.topic.is_some(),
                 "{}: P/E/W/L codes name a guide topic",
@@ -156,6 +165,13 @@ fn source_codes_have_examples_or_are_baselined() {
             matches!(Code::lookup(id), Lookup::Found(code) if needs_example(code)),
             "MISSING_EXAMPLES lists `{id}`, which is not a P/E/W/L code"
         );
+    }
+    for id in NOT_IN_A_PROGRAM {
+        let Lookup::Found(code) = Code::lookup(id) else {
+            panic!("NOT_IN_A_PROGRAM lists `{id}`, which is no code");
+        };
+        assert_eq!(code.family(), Family::Syntax, "{id}");
+        assert!(code.info().example.is_none(), "{id} has an example");
     }
 }
 
@@ -203,11 +219,11 @@ fn unknown_queries_suggest_the_closest_codes() {
         closest("unbound-varible").first(),
         Some(&Code::UnboundVariable)
     );
-    let near: Vec<&str> = closest("E0096").into_iter().map(Code::id).collect();
+    let near: Vec<&str> = closest("E0110").into_iter().map(Code::id).collect();
     assert_eq!(
-        near,
-        ["E0095", "E0094", "E0093", "E0092", "E0091"],
-        "the nearest IDs first"
+        near[..2],
+        ["E0100", "E0010"],
+        "one edit away, nearest first"
     );
     assert_eq!(closest("not-a-real-diagnostic-at-all"), []);
 }

@@ -1377,7 +1377,96 @@ expression: rendered
    │       ──┬──
    │         ╰──── invalid Nat index
    │
-   │ Help: Write the index from `Nat` literals, index parameters, and `Succ<...>`, and apply each theorem to exactly the arguments its statement declares.
+   │ Help: Declare each index parameter as `n :: Nat` on a sum type, variant, or function, and write each index from `Nat` literals, those parameters, and `Succ<...>`, with types only in type positions. Return a value whose type names no index bound inside a case arm.
 ───╯
   = E0095: meshc explain E0095 · skill diagnostics.md#e0095 · https://meshlang.dev/docs/errors/#e0095
-{"code":"E0095","severity":"error","message":"reason","file":"main.mpl","spans":[{"start":19,"end":24,"label":"invalid Nat index","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"Write the index from `Nat` literals, index parameters, and `Succ<...>`, and apply each theorem to exactly the arguments its statement declares.","line":2,"col":7,"name":"invalid-nat-index","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0095","skill":"references/diagnostics.md#e0095","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0095","edits":[]}
+{"code":"E0095","severity":"error","message":"reason","file":"main.mpl","spans":[{"start":19,"end":24,"label":"invalid Nat index","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"Declare each index parameter as `n :: Nat` on a sum type, variant, or function, and write each index from `Nat` literals, those parameters, and `Succ<...>`, with types only in type positions. Return a value whose type names no index bound inside a case arm.","line":2,"col":7,"name":"invalid-nat-index","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0095","skill":"references/diagnostics.md#e0095","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0095","edits":[]}
+
+[E0096] Error: each indexed constructor must declare its result type
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── invalid indexed type
+   │
+   │ Help: Give each constructor of an indexed type a result `-> Family<...>` of its own family that keeps the type parameters and binds every constructor index; write the family with all its arguments; declare index parameters once, without trait bounds, on a function of one clause; derive nothing; and match its constructors in a direct `case` arm.
+───╯
+  = E0096: meshc explain E0096 · skill diagnostics.md#e0096 · https://meshlang.dev/docs/errors/#e0096
+{"code":"E0096","severity":"error","message":"each indexed constructor must declare its result type","file":"main.mpl","spans":[{"start":19,"end":24,"label":"invalid indexed type","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"Give each constructor of an indexed type a result `-> Family<...>` of its own family that keeps the type parameters and binds every constructor index; write the family with all its arguments; declare index parameters once, without trait bounds, on a function of one clause; derive nothing; and match its constructors in a direct `case` arm.","line":2,"col":7,"name":"invalid-indexed-type","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0096","skill":"references/diagnostics.md#e0096","topic":"types"},"docs_url":"https://meshlang.dev/docs/errors/#e0096","edits":[]}
+
+[E0097] Error: `Proof` is a reserved type name
+   ╭─[ main.mpl:2:7 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── reserved for the type of proof values
+   │
+   │ Help: Rename the type, for example to `Evidence`, and update its uses.
+───╯
+  = E0097: meshc explain E0097 · skill diagnostics.md#e0097 · https://meshlang.dev/docs/errors/#e0097
+{"code":"E0097","severity":"error","message":"`Proof` is a reserved type name","file":"main.mpl","spans":[{"start":19,"end":24,"label":"reserved for the type of proof values","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"Rename the type, for example to `Evidence`, and update its uses.","line":2,"col":7,"name":"reserved-proof-name","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0097","skill":"references/diagnostics.md#e0097","topic":"verification"},"docs_url":"https://meshlang.dev/docs/errors/#e0097","edits":[]}
+
+[E0098] Error: exported theorem `theorem` requires an embedded proof
+   ╭─[ main.mpl:2:15 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │               ──────┬──────
+   │                     ╰──────── no `proof` of this theorem
+   │
+   │ Help: write `proof theorem do ... end` in a `logic do` block of this module, or remove `pub` to keep `theorem` out of Mesh code
+───╯
+  = E0098: meshc explain E0098 · skill diagnostics.md#e0098 · https://meshlang.dev/docs/errors/#e0098
+{"code":"E0098","severity":"error","message":"exported theorem `theorem` requires an embedded proof","file":"main.mpl","spans":[{"start":27,"end":40,"label":"no `proof` of this theorem","file":"main.mpl","line":2,"col":15,"end_line":2,"end_col":28}],"fix":"write `proof theorem do ... end` in a `logic do` block of this module, or remove `pub` to keep `theorem` out of Mesh code","line":2,"col":15,"name":"missing-embedded-proof","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0098","skill":"references/diagnostics.md#e0098","topic":"verification"},"docs_url":"https://meshlang.dev/docs/errors/#e0098","edits":[]}
+
+[E0099] Error: proof value `name` is defined twice
+   ╭─[ main.mpl:3:3 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──
+   │         ╰──── first defined here
+ 3 │   value + other
+   │   ──┬──
+   │     ╰──── defined again here
+   │
+   │ Help: rename one `name` and its `proof`, and update the calls that use it
+───╯
+  = E0099: meshc explain E0099 · skill diagnostics.md#e0099 · https://meshlang.dev/docs/errors/#e0099
+{"code":"E0099","severity":"error","message":"proof value `name` is defined twice","file":"main.mpl","spans":[{"start":43,"end":48,"label":"defined again here","file":"main.mpl","line":3,"col":3,"end_line":3,"end_col":8},{"start":19,"end":24,"label":"first defined here","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"rename one `name` and its `proof`, and update the calls that use it","line":3,"col":3,"name":"duplicate-proof-value","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0099","skill":"references/diagnostics.md#e0099","topic":"verification"},"docs_url":"https://meshlang.dev/docs/errors/#e0099","edits":[]}
+
+[E0100] Error: `NatEq` requires exactly two Nat arguments
+   ╭─[ main.mpl:2:15 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │               ──────┬──────
+   │                     ╰──────── has no proof type here
+   │
+   │ Help: State the proposition as a predicate declared `-> Prop` in a `logic do` block, applied to Nat literals, `Nat.succ`, or index parameters, or as an equality of Nat terms (`Proof<NatEq<a, b>>` in a type). Call a theorem with parameters as `name(indices..., proofs...)`.
+───╯
+  = E0100: meshc explain E0100 · skill diagnostics.md#e0100 · https://meshlang.dev/docs/errors/#e0100
+{"code":"E0100","severity":"error","message":"`NatEq` requires exactly two Nat arguments","file":"main.mpl","spans":[{"start":27,"end":40,"label":"has no proof type here","file":"main.mpl","line":2,"col":15,"end_line":2,"end_col":28}],"fix":"State the proposition as a predicate declared `-> Prop` in a `logic do` block, applied to Nat literals, `Nat.succ`, or index parameters, or as an equality of Nat terms (`Proof<NatEq<a, b>>` in a type). Call a theorem with parameters as `name(indices..., proofs...)`.","line":2,"col":15,"name":"invalid-proposition","category":"semantic","notes":[],"guide":{"explain":"meshc explain E0100","skill":"references/diagnostics.md#e0100","topic":"verification"},"docs_url":"https://meshlang.dev/docs/errors/#e0100","edits":[]}
+
+[P0301] Error: expected `end`, found `=`
+   ╭─[ main.mpl:2:15 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │       ──┬──   ───┬───
+   │         ╰────────────── block opened here
+   │                  │
+   │                  ╰───── expected `end` here
+   │
+   │ Help: Write the token the message expects where the label points: separate entries with new lines or `;`, close each `do` with `end`, write equality as `==`, and annotate binders as `name :: Type`.
+───╯
+  = P0301: meshc explain P0301 · skill diagnostics.md#p0301 · https://meshlang.dev/docs/errors/#p0301
+{"code":"P0301","severity":"error","message":"expected `end`, found `=`","file":"main.mpl","spans":[{"start":27,"end":34,"label":"expected `end` here","file":"main.mpl","line":2,"col":15,"end_line":2,"end_col":22},{"start":19,"end":24,"label":"block opened here","file":"main.mpl","line":2,"col":7,"end_line":2,"end_col":12}],"fix":"Write the token the message expects where the label points: separate entries with new lines or `;`, close each `do` with `end`, write equality as `==`, and annotate binders as `name :: Type`.","line":2,"col":15,"name":"logic-syntax","category":"syntax","notes":[],"guide":{"explain":"meshc explain P0301","skill":"references/diagnostics.md#p0301","topic":"verification"},"docs_url":"https://meshlang.dev/docs/errors/#p0301","edits":[]}
+
+[P0302] Error: logic nesting limit exceeded
+   ╭─[ main.mpl:2:15 ]
+   │
+ 2 │   let value = compute(1, 2)
+   │               ──────┬──────
+   │                     ╰────────
+   │
+   │ Help: Name the deepest subterm with `let` or a separate `fn` declaration, split a deep proof into lemmas used with `exact`, or split the file.
+───╯
+  = P0302: meshc explain P0302 · skill diagnostics.md#p0302 · https://meshlang.dev/docs/errors/#p0302
+{"code":"P0302","severity":"error","message":"logic nesting limit exceeded","file":"main.mpl","spans":[{"start":27,"end":40,"label":"logic nesting limit exceeded","file":"main.mpl","line":2,"col":15,"end_line":2,"end_col":28}],"fix":"Name the deepest subterm with `let` or a separate `fn` declaration, split a deep proof into lemmas used with `exact`, or split the file.","line":2,"col":15,"name":"logic-too-large","category":"syntax","notes":[],"guide":{"explain":"meshc explain P0302","skill":"references/diagnostics.md#p0302","topic":"verification"},"docs_url":"https://meshlang.dev/docs/errors/#p0302","edits":[]}

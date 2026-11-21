@@ -4718,9 +4718,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
     check_index_syntax(&mut ctx, tree.syntax());
     let proof_values = crate::proof_values::collect(&tree, import_ctx);
     type_registry.proof_predicates = proof_values.predicates;
-    for (span, reason) in proof_values.errors {
-        invalid_index(&mut ctx, span, reason);
-    }
+    ctx.errors.extend(proof_values.errors);
 
     // Pre-seed with imported sum type definitions.
     for (path, mod_exports) in &import_ctx.module_exports {
@@ -4823,11 +4821,9 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
         };
         if let Some(name) = type_name {
             if name.text().as_deref() == Some(crate::proof_values::PROOF_TYPE) {
-                invalid_index(
-                    &mut ctx,
-                    name.syntax().text_range(),
-                    "`Proof` is a reserved type name".into(),
-                );
+                ctx.errors.push(TypeError::ReservedProofName {
+                    span: name.syntax().text_range(),
+                });
                 continue;
             }
         }
@@ -4905,7 +4901,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
             continue;
         };
         let aliased = type_registry.type_aliases[&name].aliased_type.clone();
-        match check_indexed_type(aliased, alias.syntax(), &type_registry) {
+        match check_indexed_type(aliased, alias.syntax(), &type_registry, *span) {
             Ok(ty) => {
                 let info = type_registry
                     .type_aliases
@@ -4913,9 +4909,7 @@ pub fn infer_with_imports(parse: &Parse, import_ctx: &ImportContext) -> TypeckRe
                     .expect("pre-registered alias");
                 info.aliased_type = ty;
             }
-            Err(error) => {
-                invalid_index(&mut ctx, *span, error);
-            }
+            Err(error) => ctx.errors.push(error),
         }
     }
     validate_type_aliases(
@@ -6163,7 +6157,7 @@ fn infer_multi_clause_fn(
             .iter()
             .find(|clause| index_param_names(clause.syntax()).next().is_some())
         {
-            return Err(invalid_index(
+            return Err(invalid_indexed_type(
                 ctx,
                 significant_range(clause.syntax()),
                 "index parameters require a single clause with plain parameters".into(),
@@ -7569,7 +7563,7 @@ fn sum_type_def_info(
         let mut seen = FxHashSet::default();
         for param in &info.generic_params {
             if !seen.insert(param) {
-                invalid_index(
+                invalid_indexed_type(
                     ctx,
                     significant_range(sum_def.syntax()),
                     format!("duplicate parameter `{param}`"),
@@ -7614,7 +7608,7 @@ fn sum_type_def_info(
         let explicit = variant_def.result_type();
         let span = significant_range(variant_def.syntax());
         if generic_param_names(variant_def.syntax()).len() != indices.len() {
-            invalid_index(
+            invalid_indexed_type(
                 ctx,
                 span,
                 "constructor parameters must have kind `Nat`".into(),
@@ -7625,7 +7619,7 @@ fn sum_type_def_info(
             for param in &indices {
                 if info.runtime_generic_params().any(|outer| outer == param) || !seen.insert(param)
                 {
-                    invalid_index(
+                    invalid_indexed_type(
                         ctx,
                         span,
                         format!("duplicate constructor parameter `{param}`"),
@@ -7638,13 +7632,13 @@ fn sum_type_def_info(
                         resolve_type_annotation(ctx, &ann, type_registry).unwrap_or(Ty::Never);
                     if result != Ty::Never {
                         if let Err(error) = check_variant_result(&info, &result, &indices) {
-                            invalid_index(ctx, annotated_type_range(&ann), error);
+                            invalid_indexed_type(ctx, annotated_type_range(&ann), error);
                         }
                     }
                     result
                 }
                 None => {
-                    invalid_index(
+                    invalid_indexed_type(
                         ctx,
                         span,
                         "each indexed constructor must declare its result type".into(),
@@ -7657,7 +7651,7 @@ fn sum_type_def_info(
                     VariantFieldInfo::Named(_, ty) | VariantFieldInfo::Positional(ty) => ty,
                 };
                 if let Err(error) = check_variant_field(field, &indices) {
-                    invalid_index(ctx, span, error);
+                    invalid_indexed_type(ctx, span, error);
                 }
             }
             Some(IndexedVariantInfo {
@@ -7666,7 +7660,7 @@ fn sum_type_def_info(
             })
         } else {
             if !indices.is_empty() || explicit.is_some() {
-                invalid_index(
+                invalid_indexed_type(
                     ctx,
                     span,
                     "constructor indices and explicit results require an indexed sum type".into(),
@@ -7763,7 +7757,7 @@ fn register_sum_type_def(
 
     if indexed {
         if !sum_def.deriving_traits().is_empty() {
-            invalid_index(
+            invalid_indexed_type(
                 ctx,
                 deriving_span(sum_def.syntax()),
                 "deriving traits for indexed sum types is unsupported".into(),
@@ -10879,10 +10873,12 @@ fn infer_call_unsettled(
 }
 
 fn theorem_requires_application(ctx: &mut InferCtx, span: TextRange) -> TypeError {
-    invalid_index(
+    report(
         ctx,
-        span,
-        "apply this theorem directly to its static indices and proof arguments".into(),
+        TypeError::InvalidProposition {
+            reason: "apply this theorem directly to its static indices and proof arguments".into(),
+            span,
+        },
     )
 }
 
@@ -16505,10 +16501,10 @@ fn resolve_type_annotation(
         return None;
     }
     let ty = parse_type_tokens(&tokens, &mut start);
-    let ty = match check_indexed_type(ty, ann.syntax(), type_registry) {
+    let ty = match check_indexed_type(ty, ann.syntax(), type_registry, annotated_type_range(ann)) {
         Ok(ty) => ty,
         Err(error) => {
-            invalid_index(ctx, annotated_type_range(ann), error);
+            ctx.errors.push(error);
             return Some(Ty::Never);
         }
     };

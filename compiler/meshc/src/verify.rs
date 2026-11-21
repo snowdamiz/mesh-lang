@@ -1,13 +1,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::ReportResult;
 use mesh_codegen::mir::{MirFunction, MirModule, MirSourceId, MirSourceSpan};
 use mesh_common::module_graph::ModuleId;
 use mesh_common::span::{LineIndex, Span};
-use mesh_diagnostics::{Failed, Reporter};
+use mesh_diagnostics::{Failed, Reporter, SourceFile};
 use mesh_parser::ast::item::FnDef;
 use mesh_parser::law::{LawDeclaration, LawFile, LawImport, LawProof, ProofTerm};
 use mesh_parser::{AstNode, SyntaxNode};
@@ -226,9 +226,13 @@ pub(crate) fn run(
         &mesh_pkg::frontend::CheckOptions::cli(),
     )
     .report(reporter)?;
+    let files = laws::discover(&project_dir, analysis.manifest.as_ref()).reported(reporter)?;
+    let sources = parse_law_files(&project_dir, &files.paths, reporter)?;
     verify_laws(
         &project_dir,
         analysis,
+        &files.roots,
+        sources,
         list,
         json,
         preserve,
@@ -238,9 +242,54 @@ pub(crate) fn run(
     .reported(reporter)
 }
 
+/// A discovered law file and what it parsed to.
+struct LawSource {
+    /// Its package-relative path with `/` separators.
+    path: String,
+    text: String,
+    parsed: Parsed,
+}
+
+enum Parsed {
+    Laws(LawFile),
+    Logic(mesh_parser::logic::LogicFile),
+}
+
+/// Read and parse each law file. A syntax error is reported where it is in
+/// its file (`P02xx`, or `P03xx` in a `logic` file).
+fn parse_law_files(
+    project_dir: &Path,
+    paths: &[PathBuf],
+    reporter: &mut Reporter,
+) -> Result<Vec<LawSource>, Failed> {
+    paths
+        .iter()
+        .map(|path| {
+            let display = portable_path(path).reported(reporter)?;
+            let full = project_dir.join(path);
+            let text = mesh_pkg::project::read_file(&full).reported(reporter)?;
+            let parsed = if mesh_parser::logic::is_logic_file(&text) {
+                mesh_parser::logic::parse(&text).map(Parsed::Logic)
+            } else {
+                mesh_parser::law::parse(&text).map(Parsed::Laws)
+            };
+            let parsed = parsed.map_err(|error| {
+                reporter.fail(error.to_diagnostic(&SourceFile::new(full, text.as_str())))
+            })?;
+            Ok(LawSource {
+                path: display,
+                text,
+                parsed,
+            })
+        })
+        .collect()
+}
+
 fn verify_laws(
     project_dir: &Path,
     analysis: mesh_pkg::frontend::Analysis,
+    law_roots: &[PathBuf],
+    sources: Vec<LawSource>,
     list: bool,
     json: bool,
     preserve: Option<&Path>,
@@ -253,8 +302,6 @@ fn verify_laws(
         mut checked,
         ..
     } = analysis;
-    let files = laws::discover(project_dir, manifest.as_ref())?;
-
     let package = manifest.as_ref().map_or_else(
         || {
             project_dir
@@ -267,14 +314,22 @@ fn verify_laws(
     let mut bound = BTreeMap::<_, BoundLaw>::new();
     let mut logic = logic::Program::default();
     logic.add_project_blocks(&project, &checked)?;
-    for path in &files.paths {
-        let display = portable_path(path)?;
-        let source = mesh_pkg::project::read_file(&project_dir.join(path))?;
-        if mesh_parser::logic::is_logic_file(&source) {
-            logic.add_file(&project, &checked, &display, &source)?;
-            continue;
-        }
-        for law in bind_file(package, &display, &source, &project, &checked)? {
+    for source in sources {
+        let laws = match source.parsed {
+            Parsed::Logic(file) => {
+                logic.add_file(&project, &checked, &source.path, &source.text, file)?;
+                continue;
+            }
+            Parsed::Laws(file) => file,
+        };
+        for law in bind_file(
+            package,
+            &source.path,
+            &source.text,
+            laws,
+            &project,
+            &checked,
+        )? {
             let target = &law.entry.target;
             let key = (target.module.clone(), target.function.clone(), target.arity);
             if let Some(previous) = bound.get(&key) {
@@ -392,8 +447,7 @@ fn verify_laws(
         });
     }
 
-    let roots = files
-        .roots
+    let roots = law_roots
         .iter()
         .map(|path| portable_path(path))
         .collect::<Result<Vec<_>, _>>()?;
@@ -474,6 +528,7 @@ fn bind_file(
     package: &str,
     path: &str,
     source: &str,
+    file: LawFile,
     project: &ProjectData,
     checked: &CheckedProject,
 ) -> Result<Vec<BoundLaw>, String> {
@@ -483,8 +538,7 @@ fn bind_file(
         imports,
         laws,
         proofs,
-    } = mesh_parser::law::parse(source)
-        .map_err(|error| format!("{}: {}", at(error.span), error.message))?;
+    } = file;
     let mut proofs_by_name = BTreeMap::new();
     for proof in proofs {
         let location = at(proof.span);

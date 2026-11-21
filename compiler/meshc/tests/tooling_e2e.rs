@@ -2474,7 +2474,8 @@ fn test_test_reports_targets_it_cannot_run() {
     assert!(!ok, "{text}");
     assert!(
         text.contains("COMPILE ERROR: tests/order.test.mpl")
-            && text.contains("`setup` must come before the tests of its describe"),
+            && text.contains("[P0401] Error: `setup` must come before the tests of its describe")
+            && text.contains("tests/order.test.mpl:5:3"),
         "{text}"
     );
     write_file(

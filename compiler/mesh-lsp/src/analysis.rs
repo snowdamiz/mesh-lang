@@ -255,7 +255,7 @@ mod tests {
     use super::*;
     use mesh_pkg::manifest::{resolve_entrypoint, Manifest};
     use mesh_pkg::project::build_project;
-    use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity};
+    use tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString};
 
     /// An analysis, with the diagnostics published on the document.
     struct Published {
@@ -925,6 +925,16 @@ mod tests {
                 "{expected}: {:?}",
                 diagnostic_messages(&result)
             );
+            if open.ends_with(".test.mpl") {
+                // At the second `teardown`, not the top of the file.
+                let diagnostic = &result.diagnostics[0];
+                assert_eq!(
+                    diagnostic.code,
+                    Some(NumberOrString::String("P0401".into()))
+                );
+                assert_eq!(diagnostic.range.start, Position::new(4, 2));
+                assert_eq!(diagnostic.range.end, Position::new(4, 10));
+            }
         }
     }
 

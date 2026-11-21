@@ -802,9 +802,63 @@ catalog! {
     },
     InvalidNatIndex = E0095 "invalid-nat-index" Error {
         title: "invalid Nat index",
-        summary: "A static `Nat` index or a theorem application is malformed or does not fit what its declaration states.",
-        repair: "Write the index from `Nat` literals, index parameters, and `Succ<...>`, and apply each theorem to exactly the arguments its statement declares.",
+        summary: "A static `Nat` index is malformed: an index parameter is not of kind `Nat` or is not on a sum type, variant, or function; a literal does not fit in 64 bits; a type and a Nat index stand in each other's place; or an index escapes the case arm that binds it.",
+        repair: "Declare each index parameter as `n :: Nat` on a sum type, variant, or function, and write each index from `Nat` literals, those parameters, and `Succ<...>`, with types only in type positions. Return a value whose type names no index bound inside a case arm.",
         topic: "types",
+        example: (
+            "fn count<n :: Int>() -> Int = 0\n\nfn main() do\nend\n",
+            "fn count<n :: Nat>() -> Int = 0\n\nfn main() do\nend\n",
+        ),
+    },
+    InvalidIndexedType = E0096 "invalid-indexed-type" Error {
+        title: "invalid indexed type",
+        summary: "An indexed sum type, one of its constructors, or a function with index parameters breaks a rule of indexed types, or an indexed type is used without its arguments or matched by a constructor it cannot have.",
+        repair: "Give each constructor of an indexed type a result `-> Family<...>` of its own family that keeps the type parameters and binds every constructor index; write the family with all its arguments; declare index parameters once, without trait bounds, on a function of one clause; derive nothing; and match its constructors in a direct `case` arm.",
+        topic: "types",
+        example: (
+            "type Vec<T, n :: Nat> do\n  Empty\n  Push<k :: Nat>(T, Vec<T, k>) -> Vec<T, Succ<k>>\nend\n\nfn main() do\nend\n",
+            "type Vec<T, n :: Nat> do\n  Empty -> Vec<T, 0>\n  Push<k :: Nat>(T, Vec<T, k>) -> Vec<T, Succ<k>>\nend\n\nfn main() do\nend\n",
+        ),
+    },
+    ReservedProofName = E0097 "reserved-proof-name" Error {
+        title: "`Proof` is a reserved type name",
+        summary: "A struct, sum type, or type alias is named `Proof`, the name of the type of proof values.",
+        repair: "Rename the type, for example to `Evidence`, and update its uses.",
+        topic: "verification",
+        example: (
+            "struct Proof do\n  value :: Int\nend\n\nfn main() do\nend\n",
+            "struct Evidence do\n  value :: Int\nend\n\nfn main() do\nend\n",
+        ),
+    },
+    MissingEmbeddedProof = E0098 "missing-embedded-proof" Error {
+        title: "exported theorem without a proof",
+        summary: "A `pub theorem` in a `logic do` block has no `proof` of the same name in the module, so there is no proof value to export.",
+        repair: "Write `proof name do ... end` for the theorem in a `logic do` block of the same module, or remove `pub` to keep the theorem out of Mesh code.",
+        topic: "verification",
+        example: (
+            "logic do\n  pub theorem two() do 2 == 2 end\nend\n\nfn main() do\nend\n",
+            "logic do\n  pub theorem two() do 2 == 2 end\n  proof two do refl end\nend\n\nfn main() do\nend\n",
+        ),
+    },
+    DuplicateProofValue = E0099 "duplicate-proof-value" Error {
+        title: "proof value defined twice",
+        summary: "Two `pub theorem`s in one module's `logic do` blocks have the same name, so the name would stand for two proof values.",
+        repair: "Rename one of the theorems and its `proof`, and update the calls that use it.",
+        topic: "verification",
+        example: (
+            "logic do\n  pub theorem two() do 2 == 2 end\n  proof two do refl end\n  pub theorem two() do 1 + 1 == 2 end\nend\n\nfn main() do\nend\n",
+            "logic do\n  pub theorem two() do 2 == 2 end\n  proof two do refl end\n  pub theorem sum() do 1 + 1 == 2 end\n  proof sum do refl end\nend\n\nfn main() do\nend\n",
+        ),
+    },
+    InvalidProposition = E0100 "invalid-proposition" Error {
+        title: "invalid proposition",
+        summary: "A proposition has no Mesh proof type: an exported theorem or a `Proof<...>` annotation states something other than a known `Prop` predicate of Nat arguments or a `NatEq` of two Nat terms, or a theorem that takes parameters is used without them.",
+        repair: "State the proposition as a predicate declared `-> Prop` in a `logic do` block, applied to Nat literals, `Nat.succ`, or index parameters, or as an equality of Nat terms (`Proof<NatEq<a, b>>` in a type). Call a theorem with parameters as `name(indices..., proofs...)`.",
+        topic: "verification",
+        example: (
+            "fn accept(evidence :: Proof<NatEq<2>>) -> Int = 2\n\nfn main() do\nend\n",
+            "fn accept(evidence :: Proof<NatEq<2, 2>>) -> Int = 2\n\nfn main() do\nend\n",
+        ),
     },
     DuplicateTypeAcrossModules = E0102 "duplicate-type-across-modules" Error {
         title: "type name shared by multiple modules",
@@ -945,6 +999,40 @@ catalog! {
             "fn main() do\n  let ok = true & false\n  println(\"#{ok}\")\nend\n",
             "fn main() do\n  let ok = true && false\n  println(\"#{ok}\")\nend\n",
         ),
+    },
+    LawSyntax = P0201 "law-syntax" Error {
+        title: "law file syntax error",
+        summary: "A `.law` file does not follow the law grammar: `from Module import name` lines, then `law` declarations written like functions, then `proof` blocks.",
+        repair: "Write target imports first, then `law name(param :: Type, ...) -> Type do ... end` for each imported function, then `proof name do ... end` with `refl`, `exact`, `congr`, `induction`, or `cases`, one entry per line.",
+        topic: "verification",
+    },
+    LawTooLarge = P0202 "law-too-large" Error {
+        title: "law file nested too deeply",
+        summary: "A law body or proof in a `.law` file nests deeper than the law parser accepts.",
+        repair: "Flatten the deepest part: move a nested expression into a helper function of the module under test, or split a deep proof into lemmas used with `exact`.",
+        topic: "verification",
+    },
+    LogicSyntax = P0301 "logic-syntax" Error {
+        title: "logic syntax error",
+        summary: "A `logic do ... end` block or a `.law` file starting with `logic` does not follow the logic grammar of `from` imports, then `inductive`, `fn`, `theorem`, and `proof` declarations.",
+        repair: "Write the token the message expects where the label points: separate entries with new lines or `;`, close each `do` with `end`, write equality as `==`, and annotate binders as `name :: Type`.",
+        topic: "verification",
+        example: (
+            "logic do\n  theorem two() do 2 = 2 end\nend\n\nfn main() do\nend\n",
+            "logic do\n  theorem two() do 2 == 2 end\nend\n\nfn main() do\nend\n",
+        ),
+    },
+    LogicTooLarge = P0302 "logic-too-large" Error {
+        title: "logic source too large",
+        summary: "A logic block or file nests terms or proofs deeper than the logic parser accepts, or is larger than 4 GiB.",
+        repair: "Name the deepest subterm with `let` or a separate `fn` declaration, split a deep proof into lemmas used with `exact`, or split the file.",
+        topic: "verification",
+    },
+    TestFileSyntax = P0401 "test-file-syntax" Error {
+        title: "test file structure error",
+        summary: "A `describe` block in a `.test.mpl` file has its `setup` after one of its tests, or more than one `teardown`.",
+        repair: "Put a describe's `setup` before its first `test` or nested `describe`, and merge its teardowns into one `teardown do ... end`.",
+        topic: "testing",
     },
     RedundantArm = W0001 "redundant-arm" Warning {
         title: "redundant match arm",

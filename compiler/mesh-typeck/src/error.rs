@@ -6,6 +6,7 @@
 
 use std::fmt;
 
+use mesh_parser::ParseError;
 use rowan::TextRange;
 
 use crate::ty::{Ty, TyVar};
@@ -487,8 +488,26 @@ pub enum TypeError {
     UnknownInterface { name: String, span: TextRange },
     /// A numeric literal that is malformed or does not fit its type.
     InvalidLiteral { reason: String, span: TextRange },
-    /// An invalid static index or theorem application.
+    /// A malformed static Nat index or index parameter.
     InvalidIndex { reason: String, span: TextRange },
+    /// An indexed sum type, constructor, or function with index parameters
+    /// declared, written, or matched against the rules of indexed types.
+    InvalidIndexedType { reason: String, span: TextRange },
+    /// A struct, sum type, or alias named `Proof`, the type of proof values.
+    ReservedProofName { span: TextRange },
+    /// A `pub theorem` with no `proof` of its name in the module.
+    MissingEmbeddedProof { theorem: String, span: TextRange },
+    /// A `pub theorem` with the name of an earlier one, at `first`.
+    DuplicateProofValue {
+        name: String,
+        first: TextRange,
+        span: TextRange,
+    },
+    /// A proposition with no proof type, or a theorem with parameters used
+    /// without them.
+    InvalidProposition { reason: String, span: TextRange },
+    /// A syntax error in a `logic do` block, at its place in the file.
+    LogicSyntax { error: ParseError },
     /// `Module.name` where the module has no such function.
     NoSuchModuleFunction {
         module: String,
@@ -591,6 +610,10 @@ impl TypeError {
             | TypeError::TraitNotSatisfied { origin, .. }
             | TypeError::UnboundedTypeParam { origin, .. } => origin.span(),
             TypeError::NonConsecutiveClauses { second_span, .. } => Some(*second_span),
+            TypeError::LogicSyntax { error } => Some(TextRange::new(
+                error.span.start.into(),
+                error.span.end.into(),
+            )),
             TypeError::UnboundVariable { span, .. }
             | TypeError::NotAFunction { span, .. }
             | TypeError::MissingTraitMethod { span, .. }
@@ -669,6 +692,11 @@ impl TypeError {
             | TypeError::UnknownInterface { span, .. }
             | TypeError::InvalidLiteral { span, .. }
             | TypeError::InvalidIndex { span, .. }
+            | TypeError::InvalidIndexedType { span, .. }
+            | TypeError::ReservedProofName { span }
+            | TypeError::MissingEmbeddedProof { span, .. }
+            | TypeError::DuplicateProofValue { span, .. }
+            | TypeError::InvalidProposition { span, .. }
             | TypeError::InvalidConcat { span, .. }
             | TypeError::IndexingUnsupported { span }
             | TypeError::ActorMessageTypeUnknown { span, .. }
@@ -1243,7 +1271,19 @@ impl fmt::Display for TypeError {
             TypeError::UnknownType { name, .. } => write!(f, "unknown type `{name}`"),
             TypeError::UnknownInterface { name, .. } => write!(f, "unknown interface `{name}`"),
             TypeError::InvalidLiteral { reason, .. } => write!(f, "{reason}"),
-            TypeError::InvalidIndex { reason, .. } => write!(f, "{reason}"),
+            TypeError::InvalidIndex { reason, .. }
+            | TypeError::InvalidIndexedType { reason, .. }
+            | TypeError::InvalidProposition { reason, .. } => write!(f, "{reason}"),
+            TypeError::ReservedProofName { .. } => {
+                write!(f, "`Proof` is a reserved type name")
+            }
+            TypeError::MissingEmbeddedProof { theorem, .. } => {
+                write!(f, "exported theorem `{theorem}` requires an embedded proof")
+            }
+            TypeError::DuplicateProofValue { name, .. } => {
+                write!(f, "proof value `{name}` is defined twice")
+            }
+            TypeError::LogicSyntax { error } => write!(f, "{}", error.message),
             TypeError::NoSuchModuleFunction { module, name, .. } => {
                 write!(f, "module `{module}` has no function `{name}`")
             }

@@ -2058,3 +2058,144 @@ fn authorized_429_requirement_change_fails_old_policy_then_verifies_the_update()
     assert_eq!(verify(root, true)["laws"][0]["status"], "verified");
     budget_passes(root);
 }
+
+/// The diagnostics `meshc` wrote to stderr, one JSON object per line.
+fn diagnostics(out: &Output) -> Vec<Value> {
+    String::from_utf8_lossy(&out.stderr)
+        .lines()
+        .map(|line| {
+            serde_json::from_str(line)
+                .unwrap_or_else(|error| panic!("{error}: {}", artifacts::command_output_text(out)))
+        })
+        .collect()
+}
+
+/// `(line, col, label)` of each span of `diagnostic`.
+fn spans(diagnostic: &Value) -> Vec<(u64, u64, String)> {
+    diagnostic["spans"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|span| {
+            (
+                span["line"].as_u64().unwrap(),
+                span["col"].as_u64().unwrap(),
+                span["label"].as_str().unwrap().to_owned(),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn law_and_logic_files_report_syntax_errors_with_their_codes_and_places() {
+    let dir = project();
+    let root = dir.path();
+    for (source, code, at) in [
+        (
+            "from Policy import retry\nlaw retry(status :: Int, left :: Int) -> Bool do\n  true\n",
+            "P0201",
+            vec![
+                (3, 7, "expected `end` here".to_owned()),
+                (2, 47, "block opened here".to_owned()),
+            ],
+        ),
+        (
+            "logic\ntheorem two() do 2 = 2 end\n",
+            "P0301",
+            vec![
+                (2, 20, "expected `end` here".to_owned()),
+                (2, 15, "block opened here".to_owned()),
+            ],
+        ),
+    ] {
+        write(root, "laws/retry.law", source);
+        let out = list(root);
+        assert!(!out.status.success());
+        let [diagnostic] = &diagnostics(&out)[..] else {
+            panic!("{}", artifacts::command_output_text(&out));
+        };
+        assert_eq!(diagnostic["code"], code, "{diagnostic}");
+        assert!(
+            diagnostic["file"]
+                .as_str()
+                .unwrap()
+                .ends_with("laws/retry.law"),
+            "{diagnostic}"
+        );
+        assert_eq!(spans(diagnostic), at, "{diagnostic}");
+    }
+}
+
+#[test]
+fn proof_and_logic_block_errors_have_their_own_codes_in_meshc_check() {
+    let dir = project();
+    let root = dir.path();
+    let meshc = |args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_meshc"))
+            .args(args)
+            .current_dir(root)
+            .output()
+            .unwrap()
+    };
+    let catalog = meshc(&["--json", "explain"]);
+    let catalog: Value = serde_json::from_slice(&catalog.stdout).unwrap();
+    for code in [
+        "P0301", "E0095", "E0096", "E0097", "E0098", "E0099", "E0100",
+    ] {
+        let entry = catalog["codes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|entry| entry["code"] == code)
+            .unwrap();
+        write(
+            root,
+            "example.mpl",
+            entry["example"]["bad"].as_str().unwrap(),
+        );
+        let bad = meshc(&["check", "example.mpl", "--json"]);
+        let found: Vec<_> = diagnostics(&bad)
+            .iter()
+            .map(|d| d["code"].as_str().unwrap().to_owned())
+            .collect();
+        assert_eq!(found, [code], "{}", artifacts::command_output_text(&bad));
+        assert_eq!(bad.status.code(), Some(1));
+        write(
+            root,
+            "example.mpl",
+            entry["example"]["fixed"].as_str().unwrap(),
+        );
+        let fixed = meshc(&["check", "example.mpl", "--json"]);
+        assert!(
+            fixed.status.success() && fixed.stderr.is_empty(),
+            "{code}: {}",
+            artifacts::command_output_text(&fixed)
+        );
+    }
+
+    write(
+        root,
+        "tests/order.test.mpl",
+        "describe(\"order\") do\n  test(\"first\") do\n    assert(true)\n  end\n  setup do\n  end\nend\n",
+    );
+    let out = meshc(&["check", "tests/order.test.mpl", "--tests", "--json"]);
+    let [diagnostic] = &diagnostics(&out)[..] else {
+        panic!("{}", artifacts::command_output_text(&out));
+    };
+    assert_eq!(diagnostic["code"], "P0401", "{diagnostic}");
+    assert!(
+        diagnostic["file"]
+            .as_str()
+            .unwrap()
+            .ends_with("tests/order.test.mpl"),
+        "{diagnostic}"
+    );
+    assert_eq!(
+        spans(diagnostic),
+        [
+            (5, 3, "`setup` after a test".to_owned()),
+            (2, 3, "the describe's first test".to_owned()),
+        ],
+        "{diagnostic}"
+    );
+}

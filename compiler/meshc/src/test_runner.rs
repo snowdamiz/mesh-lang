@@ -25,7 +25,7 @@ use std::process::Command;
 use std::time::Instant;
 
 use crate::ReportResult;
-use mesh_diagnostics::{Failed, Reporter};
+use mesh_diagnostics::{Failed, Reporter, SourceFile};
 use mesh_parser::test_harness::preprocess_test_source;
 use mesh_pkg::frontend::{self, CheckOptions, Target};
 use mesh_pkg::manifest::{
@@ -161,12 +161,10 @@ fn with_test_project<T>(
     let source = std::fs::read_to_string(test_file)
         .map_err(|e| format!("Failed to read '{}': {e}", test_file.display()))
         .reported(reporter)?;
-    let preprocessed = preprocess_test_source(&source)
-        .map_err(|e| {
-            report_problem("COMPILE ERROR");
-            format!("{}: {e}", test_file.display())
-        })
-        .reported(reporter)?;
+    let preprocessed = preprocess_test_source(&source).map_err(|error| {
+        report_problem("COMPILE ERROR");
+        reporter.fail(error.to_diagnostic(&SourceFile::new(test_file, source.as_str())))
+    })?;
     let temporary = tempfile::tempdir()
         .map_err(|e| format!("Failed to create temp dir: {e}"))
         .reported(reporter)?;

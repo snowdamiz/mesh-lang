@@ -156,14 +156,14 @@ pub fn uncategorized(message: impl Into<String>) -> Diagnostic {
 ///   when the modules they compare are free of errors.
 pub fn check(target: Target<'_>, options: &CheckOptions<'_>) -> Frontend {
     let loaded = match target {
-        Target::Project { root } => load(root, options),
+        Target::Project { root } => load(root, options).map_err(uncategorized),
         Target::TestFile { root, test } => load_test(root, test, options),
-        Target::Source { path, text } => load_source(path, text),
+        Target::Source { path, text } => load_source(path, text).map_err(uncategorized),
     };
     match loaded {
         Ok(loaded) => analyze(loaded, options),
-        Err(message) => Frontend {
-            diagnostics: vec![uncategorized(message)],
+        Err(diagnostic) => Frontend {
+            diagnostics: vec![diagnostic],
             analysis: None,
         },
     }
@@ -245,18 +245,19 @@ fn load_source(path: &Path, text: &str) -> Result<Loaded, String> {
 
 /// The project with its test helpers, and the test program as the module
 /// `Main` (as `meshc test` names it), compiled last.
-fn load_test(root: &Path, test: &Path, options: &CheckOptions<'_>) -> Result<Loaded, String> {
+fn load_test(root: &Path, test: &Path, options: &CheckOptions<'_>) -> Result<Loaded, Diagnostic> {
     let options = CheckOptions {
         test_builtins: true,
         require_entrypoint: false,
         ..*options
     };
-    let mut loaded = load(root, &options)?;
-    let program = mesh_parser::test_harness::preprocess_test_source(&options.read(test)?)
-        .map_err(|error| format!("{}: {error}", test.display()))?;
+    let mut loaded = load(root, &options).map_err(uncategorized)?;
+    let path = test.strip_prefix(root).unwrap_or(test).to_path_buf();
+    let source = options.read(test).map_err(uncategorized)?;
+    let program = mesh_parser::test_harness::preprocess_test_source(&source)
+        .map_err(|error| error.to_diagnostic(&SourceFile::new(root.join(&path), source)))?;
     let parse = mesh_parser::parse(&program);
     let project = &mut loaded.project;
-    let path = test.strip_prefix(root).unwrap_or(test).to_path_buf();
     let id = project.graph.add_module("Main".to_string(), path, false);
     for import in project::extract_imports(&parse.tree()) {
         if let Some(dependency) = project.graph.resolve(&import) {
@@ -722,6 +723,34 @@ mod tests {
         assert_eq!(d.code(), Code::MissingEnd);
         assert_eq!(d.labels()[0].message(), "block opened here");
         assert_eq!(d.labels()[0].span(), Span::new(6, 8));
+    }
+
+    #[test]
+    fn a_test_file_structure_error_is_at_its_block_in_the_test_file() {
+        let test = "describe(\"g\") do\n  teardown do\n    1\n  end\n  teardown do\n    2\n  end\n  test(\"a\") do\n    assert(true)\n  end\nend\n";
+        let dir = project(&[("main.mpl", "fn main() do\nend\n"), ("g.test.mpl", test)]);
+        let path = dir.path().join("g.test.mpl");
+        let frontend = check(
+            Target::TestFile {
+                root: dir.path(),
+                test: &path,
+            },
+            &CheckOptions::cli(),
+        );
+        assert!(frontend.analysis.is_none());
+        let [d] = frontend.diagnostics.as_slice() else {
+            panic!("{:?}", frontend.diagnostics);
+        };
+        assert_eq!(d.code(), Code::TestFileSyntax);
+        assert_eq!(d.file().map(SourceFile::path), Some(path.as_path()));
+        assert_eq!(d.line(), Some(5));
+        let second = test.rfind("teardown").unwrap() as u32;
+        assert_eq!(d.span(), Some(Span::new(second, second + 8)));
+        assert_eq!(d.labels()[0].message(), "its first `teardown`");
+        assert_eq!(
+            d.labels()[0].span().start,
+            test.find("teardown").unwrap() as u32
+        );
     }
 
     #[test]

@@ -117,6 +117,12 @@ impl TypeError {
             TypeError::PlaintextViolation { .. } => Code::PlaintextViolation,
             TypeError::JobsStartInvalid { .. } => Code::InvalidJobsStart,
             TypeError::InvalidIndex { .. } => Code::InvalidNatIndex,
+            TypeError::InvalidIndexedType { .. } => Code::InvalidIndexedType,
+            TypeError::ReservedProofName { .. } => Code::ReservedProofName,
+            TypeError::MissingEmbeddedProof { .. } => Code::MissingEmbeddedProof,
+            TypeError::DuplicateProofValue { .. } => Code::DuplicateProofValue,
+            TypeError::InvalidProposition { .. } => Code::InvalidProposition,
+            TypeError::LogicSyntax { error } => error.code,
         }
     }
 
@@ -1048,6 +1054,32 @@ fn place(error: &TypeError, d: Diagnostic, file: &SourceFile) -> Diagnostic {
         }
 
         TypeError::InvalidIndex { span, .. } => d.at(span_of(*span), "invalid Nat index"),
+
+        TypeError::InvalidIndexedType { span, .. } => d.at(span_of(*span), "invalid indexed type"),
+
+        TypeError::ReservedProofName { span } => {
+            d.at(span_of(*span), "reserved for the type of proof values")
+        }
+
+        TypeError::MissingEmbeddedProof { theorem, span } => d
+            .at(span_of(*span), "no `proof` of this theorem")
+            .with_repair(format!(
+                "write `proof {theorem} do ... end` in a `logic do` block of this module, or remove `pub` to keep `{theorem}` out of Mesh code"
+            )),
+
+        TypeError::DuplicateProofValue { name, first, span } => d
+            .at(span_of(*span), "defined again here")
+            .with_label(span_of(*first), "first defined here")
+            .with_repair(format!(
+                "rename one `{name}` and its `proof`, and update the calls that use it"
+            )),
+
+        TypeError::InvalidProposition { span, .. } => {
+            d.at(span_of(*span), "has no proof type here")
+        }
+
+        // Its own lowering: the logic parser's labels and repair.
+        TypeError::LogicSyntax { error } => error.to_diagnostic(file),
 
         TypeError::TypeNotValue {
             name,
