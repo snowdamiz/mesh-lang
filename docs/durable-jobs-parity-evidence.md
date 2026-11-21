@@ -2481,7 +2481,7 @@ that failed group. A separate 4 GiB guest series kept the same two
 vCPUs, binaries, pending-context cap, and scored resource limits for
 both engines.
 
-All five groups and both traced pilots completed in the 4 GiB series
+All five groups and both traced pilot arms completed in the 4 GiB series
 at `c271319e`. The two identical Mesh arms reached 320.5 and 334.8
 jobs/s versus 258.8 for Oban, with four and three group wins. Pickup
 p99 was 192.6 and 184.2 ms versus 237.2. Both Mesh arms passed all
@@ -2490,6 +2490,30 @@ against 32 MiB. All 960 scored jobs reconciled one attempt and one
 effect each. The staged comparison used a new PostgreSQL 17.11
 cluster and the full warmup in each boot.
 [Large-payload and guest failure receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Measure one-runner no-op drain at 64 slots
+
+The `c271319e` release fixture reconciled 15,360 scored jobs across
+five staged groups on the two-vCPU Linux guest. The two identical
+Mesh arms reached median throughput of 1,365 and 1,439 jobs/s versus
+2,506 for stock Oban Basic. Both missed throughput and pickup p99
+in the scored summary. Oban won every group. CPU, RSS, and the
+absolute resource budgets passed for Mesh.
+
+The durable intervals from claim to settlement averaged about 16
+occupied slots for each Mesh arm versus 39 for Oban, measured from
+each trial's first claim to final settlement. The medians of that
+drain interval were 748 and 710 ms versus 302 ms. Mesh reached its
+first claim in roughly 2 ms versus 110 ms for Oban. The larger
+backlog drain cost dominated the faster initial pickup.
+
+The Mesh arms made a median of 67 claim calls per 1,024 jobs, close
+to the 16-job batch limit. The dispatcher admits one request at a
+time and launches the whole confirmed batch serially. The durable
+rows establish the refill gap. Measuring the claim, dispatch, and
+launch boundaries will identify which part of the batch cycle can
+be shortened.
+[No-op comparison receipt](../proof/jobs-parity/qualification-v1.json)
 
 ### Follow-up correctness proofs
 
