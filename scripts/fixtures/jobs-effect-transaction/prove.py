@@ -101,7 +101,10 @@ def check_contention(job_id, token):
                 raise RuntimeError("Row locker did not report readiness")
             notice = locker.stderr.readline().strip()
             expect("row lock readiness", notice.partition(":")[2].strip(), "effect proof row locked")
-            expect("contended write", sql(record(job_id, 1, 2, token, "contended")), "busy")
+            # Only NOWAIT should report busy while the peer holds the row.
+            # The statement timeout still bounds a blocking regression.
+            contended = "SET lock_timeout = 0;\n" + record(job_id, 1, 2, token, "contended")
+            expect("contended write", sql(contended), "busy")
         finally:
             try:
                 _, errors = locker.communicate("ROLLBACK;\n", timeout=5)
