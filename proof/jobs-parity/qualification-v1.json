@@ -37183,6 +37183,592 @@
       }
     }
   },
+  "linux_compiled_jobs_effect_worker_thp": {
+    "revision": "62ece84c9c3ade3713af7fc2ae1edd463db77925",
+    "scope": "Two Linux GNU ARM64 unit tests for exact selectors and environment forwarding. Policy readback and held-worker RSS require a separate live witness.",
+    "build": {
+      "path": "target/jobs-parity/stock-linux/linux/62ece84c9c3ade3713af7fc2ae1edd463db77925/build.sha256",
+      "sha256": "26ab74346f2a3f77559fc3ead5abb78c0055c59d93b0f29d2455d7f1ea496222"
+    },
+    "unit_pack": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-compiled-proof/guest-unit-named-thp/pack.json",
+      "sha256": "15414005d9bb5ec8617845cbd965f5e8170726d017288fc50137132fe0e3006a"
+    },
+    "unit_bundle": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-compiled-proof/guest-unit-named-thp/extracted/evidence/bundle.json",
+      "sha256": "c88152c61e617b9f9fc4c03188d1a9cbb062d21844f22699508851a3eb5ea2c8"
+    },
+    "unit_result": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-compiled-proof/guest-unit-named-thp/extracted/evidence/result.json",
+      "sha256": "f543766cb8649933d2aba87f0a522f9951718fa07ab9690c66df7f6056cb653c"
+    },
+    "unit_log": {
+      "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-compiled-proof/guest-unit-named-thp/extracted/evidence/jobs-worker-thp_tests.log",
+      "sha256": "dfd15a38a2264a5334f5e88ab6481f69b711b4302d8f441781e60e97795405d0"
+    },
+    "live_witness": {
+      "qualification": false,
+      "scope": "One GNU ARM64 release fixture, same ELF in two mirrored pairs each at one and 16 slots, PostgreSQL 17.11. LISTEN off and one prewarmed app lane. Full held occupancy is observed. This witness does not cover 64 slots or frozen throughput.",
+      "pack": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/pack.json",
+        "sha256": "de14665e5883734db30b77f58d0d83f520fd179db1dbbc7f0f6a65bacaf86f30"
+      },
+      "bundle": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/bundle.json",
+        "sha256": "d512279912d63dbcf876d3c6bee46c233a63dddac75b287ed492948ee1700a1c"
+      },
+      "result": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/result.json",
+        "sha256": "b34866a3fcf1284f45399a7d850231d95c2613cc7cb116933d91dde409a1ca8a"
+      },
+      "comparison": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/comparison.json",
+        "sha256": "2483128f543dd30b08ddd8088dc9d9c7f1fb029a6bf9710b831a4e4eb4af5862"
+      },
+      "earlier_fixture_failure": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-01/extracted/evidence/result.json",
+        "sha256": "d099455b033745dbb5e962779ddc32ffdd42ff5871a62e50fe6b20ffd98e9d9b"
+      },
+      "arms": [
+        {
+          "name": "slots-01-pair-1-unset",
+          "slots": 1,
+          "pair": 1,
+          "thp_env": null,
+          "canonical_peak": {
+            "descendant_rss_bytes": 11272192,
+            "processes": 2,
+            "root_rss_bytes": 27516928,
+            "rss_bytes": 38592512,
+            "threads": 14
+          },
+          "canonical_held_median": {
+            "first": {
+              "descendant_rss_bytes": 11206656,
+              "root_rss_bytes": 27320320,
+              "rss_bytes": 38526976
+            },
+            "second": {
+              "descendant_rss_bytes": 11206656,
+              "root_rss_bytes": 27320320,
+              "rss_bytes": 38526976
+            }
+          },
+          "completed": 1,
+          "durable_writes": 2,
+          "reap": {
+            "consuming_waits": 1,
+            "live_workers_after_stop": [],
+            "spawned": 1
+          },
+          "peak_connections": 5,
+          "files": {
+            "ready.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-01-pair-1-unset/ready.json",
+              "sha256": "2b61749f6be5719b75612a4c27b7654abd528f821144ae70999b74bbf5310501"
+            },
+            "workers.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-01-pair-1-unset/workers.json",
+              "sha256": "6dda251c8be006dd6180f0324e5658fc8db6a7cf5550c66105cae3fa52a2ff41"
+            },
+            "tree-series.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-01-pair-1-unset/tree-series.json",
+              "sha256": "65a45fe24e2ae588cad4699d0409441958bb9677427d870b6495ba060de864c3"
+            },
+            "held-1-rollups.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-01-pair-1-unset/held-1-rollups.json",
+              "sha256": "bd08dd95e76b37643dc4202249a0c45a1f6cf38c284a212e9eaf88e2912b1779"
+            },
+            "held-2-rollups.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-01-pair-1-unset/held-2-rollups.json",
+              "sha256": "e710b3d3f9bdb67ea08dd4218141438391087c1eb7a3c60fab59e0c6fb05ed43"
+            },
+            "completion.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-01-pair-1-unset/completion.json",
+              "sha256": "5fccdb5f75408e7094438f49d3075b538b299c7a0d79ed31310a1773d9b1efd3"
+            },
+            "releases.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-01-pair-1-unset/releases.json",
+              "sha256": "d3b459423a127ff744e0eecf8b923e83d0f84c7bc5a4c093812509895e361170"
+            },
+            "events": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-01-pair-1-unset/events",
+              "sha256": "d067e465fabf57b3c621527e071fd0bc11754ee235bd898c2e6f479964ed9ec9"
+            }
+          }
+        },
+        {
+          "name": "slots-01-pair-1-one",
+          "slots": 1,
+          "pair": 1,
+          "thp_env": "1",
+          "canonical_peak": {
+            "descendant_rss_bytes": 5009408,
+            "processes": 2,
+            "root_rss_bytes": 27455488,
+            "rss_bytes": 32268288,
+            "threads": 14
+          },
+          "canonical_held_median": {
+            "first": {
+              "descendant_rss_bytes": 4943872,
+              "root_rss_bytes": 27258880,
+              "rss_bytes": 32202752
+            },
+            "second": {
+              "descendant_rss_bytes": 4943872,
+              "root_rss_bytes": 27258880,
+              "rss_bytes": 32202752
+            }
+          },
+          "completed": 1,
+          "durable_writes": 2,
+          "reap": {
+            "consuming_waits": 1,
+            "live_workers_after_stop": [],
+            "spawned": 1
+          },
+          "peak_connections": 5,
+          "files": {
+            "ready.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-01-pair-1-one/ready.json",
+              "sha256": "f9dd5c2c1d2139482e9226156366ad1ba0255dd5295c55f0716eb86920fa2e33"
+            },
+            "workers.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-01-pair-1-one/workers.json",
+              "sha256": "29df33d710bbd87975e565a585dff32602026877f9be34390c80271b38440f1e"
+            },
+            "tree-series.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-01-pair-1-one/tree-series.json",
+              "sha256": "4114bb5155e22043bdcdfb821f389d211a47433778f35f84405c9a307672c88a"
+            },
+            "held-1-rollups.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-01-pair-1-one/held-1-rollups.json",
+              "sha256": "4ebe5ff1d7869caedd5b8bbf7716c510c0d2f8973ff401cd6714441cc7146b4b"
+            },
+            "held-2-rollups.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-01-pair-1-one/held-2-rollups.json",
+              "sha256": "4f22a428dc5a93a97dab89b9411dda65d799cb0fc68793e8171a50a9f611fad3"
+            },
+            "completion.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-01-pair-1-one/completion.json",
+              "sha256": "698ab90b18bc519b03d226fa6948b70af34fc1c880afb430b5f28696061d9c99"
+            },
+            "releases.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-01-pair-1-one/releases.json",
+              "sha256": "9742a58e6e32e86df12f1a487b0d599b5b51a60574a57d484acf21f2b2a85958"
+            },
+            "events": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-01-pair-1-one/events",
+              "sha256": "39970e95696a38ff9a5379d7eef19000395d05e7cf7ce8db69699ced59874e9e"
+            }
+          }
+        },
+        {
+          "name": "slots-01-pair-2-one",
+          "slots": 1,
+          "pair": 2,
+          "thp_env": "1",
+          "canonical_peak": {
+            "descendant_rss_bytes": 4997120,
+            "processes": 2,
+            "root_rss_bytes": 27533312,
+            "rss_bytes": 32333824,
+            "threads": 14
+          },
+          "canonical_held_median": {
+            "first": {
+              "descendant_rss_bytes": 4956160,
+              "root_rss_bytes": 27336704,
+              "rss_bytes": 32292864
+            },
+            "second": {
+              "descendant_rss_bytes": 4956160,
+              "root_rss_bytes": 27336704,
+              "rss_bytes": 32292864
+            }
+          },
+          "completed": 1,
+          "durable_writes": 2,
+          "reap": {
+            "consuming_waits": 1,
+            "live_workers_after_stop": [],
+            "spawned": 1
+          },
+          "peak_connections": 5,
+          "files": {
+            "ready.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-01-pair-2-one/ready.json",
+              "sha256": "56b89777f97a09b9977c903c10d1de5859f9086cad7868b6976bdce44613670d"
+            },
+            "workers.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-01-pair-2-one/workers.json",
+              "sha256": "da6701262f413199d7c3b95ccc921d33b1d1fb062334a45a57895d01bdf28f9e"
+            },
+            "tree-series.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-01-pair-2-one/tree-series.json",
+              "sha256": "cc2fa1e17a4b81383f2a52356496d555cb70c4032a49769be7a7520c128ecd2d"
+            },
+            "held-1-rollups.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-01-pair-2-one/held-1-rollups.json",
+              "sha256": "dc6fa7820f7cc5d2c69b56cdffe5d54baee700e951d953931d33d248aae2a62e"
+            },
+            "held-2-rollups.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-01-pair-2-one/held-2-rollups.json",
+              "sha256": "28194db8b713a2aab39e2d53ecb5213e141e26b4f6dfcae27b54d138e5cf7f97"
+            },
+            "completion.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-01-pair-2-one/completion.json",
+              "sha256": "40fea17401d76a0a45dd443cdd6a3d7da1b05412b94c752023e6361a4b49a03f"
+            },
+            "releases.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-01-pair-2-one/releases.json",
+              "sha256": "17ef3f124d417eda5de91a3ed99b92f38edd81cbfb1c3766ca729c8ec6d1c0d3"
+            },
+            "events": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-01-pair-2-one/events",
+              "sha256": "2f19314b76b9ca95b4ff9768f0b9e808868bbd6496d597ce284b1c3b48f63623"
+            }
+          }
+        },
+        {
+          "name": "slots-01-pair-2-unset",
+          "slots": 1,
+          "pair": 2,
+          "thp_env": null,
+          "canonical_peak": {
+            "descendant_rss_bytes": 11300864,
+            "processes": 2,
+            "root_rss_bytes": 25354240,
+            "rss_bytes": 36655104,
+            "threads": 14
+          },
+          "canonical_held_median": {
+            "first": {
+              "descendant_rss_bytes": 11235328,
+              "root_rss_bytes": 25354240,
+              "rss_bytes": 36589568
+            },
+            "second": {
+              "descendant_rss_bytes": 11235328,
+              "root_rss_bytes": 25354240,
+              "rss_bytes": 36589568
+            }
+          },
+          "completed": 1,
+          "durable_writes": 2,
+          "reap": {
+            "consuming_waits": 1,
+            "live_workers_after_stop": [],
+            "spawned": 1
+          },
+          "peak_connections": 5,
+          "files": {
+            "ready.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-01-pair-2-unset/ready.json",
+              "sha256": "80cb81f348a8613da4c30485644eb40366231f3deb84eba32866c6c4b2a599f0"
+            },
+            "workers.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-01-pair-2-unset/workers.json",
+              "sha256": "79c215603b61fbb6770eef5656dccc317c561da5f01f3e266766ec32efff1cd6"
+            },
+            "tree-series.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-01-pair-2-unset/tree-series.json",
+              "sha256": "549d6e5d56abb69ee37a72f556ec349b09491a7f3825cf5799caa46faca04dde"
+            },
+            "held-1-rollups.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-01-pair-2-unset/held-1-rollups.json",
+              "sha256": "30b368350af72ec13526f5570f2263cc09345c9d82acdd8b90a7c07adb957c32"
+            },
+            "held-2-rollups.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-01-pair-2-unset/held-2-rollups.json",
+              "sha256": "785c53dab563e6904ac5168b46325f4b3494dc58cceb00fa8b663483d704909c"
+            },
+            "completion.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-01-pair-2-unset/completion.json",
+              "sha256": "e25a3fcdde7c358a6fa816d223a6c6da6a13e80678a78ec57bf07f1a594a5a58"
+            },
+            "releases.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-01-pair-2-unset/releases.json",
+              "sha256": "127a44c2accabe24c98c91be947a6ce0a15a41f6f00c45ae5c87b85e58c4cbf3"
+            },
+            "events": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-01-pair-2-unset/events",
+              "sha256": "8f037fe090714db991fec1d11453128a71fa0ba2a64b1c95ae45db0a60e5745f"
+            }
+          }
+        },
+        {
+          "name": "slots-16-pair-1-unset",
+          "slots": 16,
+          "pair": 1,
+          "thp_env": null,
+          "canonical_peak": {
+            "descendant_rss_bytes": 182661120,
+            "processes": 17,
+            "root_rss_bytes": 38580224,
+            "rss_bytes": 221241344,
+            "threads": 119
+          },
+          "canonical_held_median": {
+            "first": {
+              "descendant_rss_bytes": 179564544,
+              "root_rss_bytes": 38580224,
+              "rss_bytes": 218144768
+            },
+            "second": {
+              "descendant_rss_bytes": 179564544,
+              "root_rss_bytes": 38580224,
+              "rss_bytes": 218144768
+            }
+          },
+          "completed": 16,
+          "durable_writes": 32,
+          "reap": {
+            "consuming_waits": 16,
+            "live_workers_after_stop": [],
+            "spawned": 16
+          },
+          "peak_connections": 5,
+          "files": {
+            "ready.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-16-pair-1-unset/ready.json",
+              "sha256": "5ebbeeda7a401264e67d2f1cbc63681761f88ed0353b3d7956f55f418224db58"
+            },
+            "workers.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-16-pair-1-unset/workers.json",
+              "sha256": "9d31977fc6093f4d4011a43575a3416f913926365fc604ddcb3aa29e83a68673"
+            },
+            "tree-series.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-16-pair-1-unset/tree-series.json",
+              "sha256": "f1155f0310f91392e6028218900f251036df53443ff205f77c7d270a7f85c73c"
+            },
+            "held-1-rollups.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-16-pair-1-unset/held-1-rollups.json",
+              "sha256": "ad53f8eece59740a65847e24093aba79be09bf95e7c373872b0fed01727c75a7"
+            },
+            "held-2-rollups.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-16-pair-1-unset/held-2-rollups.json",
+              "sha256": "c5ffbb61f407bb8d35a009441ce063bf954aaeb4ea072120b22d2a4be11cdac6"
+            },
+            "completion.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-16-pair-1-unset/completion.json",
+              "sha256": "4477946cab7c2e12958b7707b2cf97694473900a503d936a0bc3e95f8ce50a7d"
+            },
+            "releases.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-16-pair-1-unset/releases.json",
+              "sha256": "55d9829f247d7353efeaca4149fc50c0b563bb80ff8a5c46524e9e1226ea6cf3"
+            },
+            "events": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-16-pair-1-unset/events",
+              "sha256": "2b5420853b83c411402ac417db9fcb2c24103b30ebed9866aae203b99bda368c"
+            }
+          }
+        },
+        {
+          "name": "slots-16-pair-1-one",
+          "slots": 16,
+          "pair": 1,
+          "thp_env": "1",
+          "canonical_peak": {
+            "descendant_rss_bytes": 80203776,
+            "processes": 17,
+            "root_rss_bytes": 38580224,
+            "rss_bytes": 118784000,
+            "threads": 119
+          },
+          "canonical_held_median": {
+            "first": {
+              "descendant_rss_bytes": 79175680,
+              "root_rss_bytes": 38580224,
+              "rss_bytes": 117755904
+            },
+            "second": {
+              "descendant_rss_bytes": 79175680,
+              "root_rss_bytes": 38580224,
+              "rss_bytes": 117755904
+            }
+          },
+          "completed": 16,
+          "durable_writes": 32,
+          "reap": {
+            "consuming_waits": 16,
+            "live_workers_after_stop": [],
+            "spawned": 16
+          },
+          "peak_connections": 5,
+          "files": {
+            "ready.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-16-pair-1-one/ready.json",
+              "sha256": "995c985f4e5bb10436429ec2fb4f92a5a0030de5e6b22fc4c3e8b22a5fa5287e"
+            },
+            "workers.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-16-pair-1-one/workers.json",
+              "sha256": "b75824f51533e3582c6f0f7cf04944fe03dbae964750c9fe2ad4636b769bc83b"
+            },
+            "tree-series.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-16-pair-1-one/tree-series.json",
+              "sha256": "c1793c13ab894aedd0f4305f77098ed11865d643563fec47294432ffb7b3a5d8"
+            },
+            "held-1-rollups.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-16-pair-1-one/held-1-rollups.json",
+              "sha256": "d2d30ef55987c9fdf0e52947f0fcb679904ec4200fdea094ea9349ff8949b59e"
+            },
+            "held-2-rollups.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-16-pair-1-one/held-2-rollups.json",
+              "sha256": "73ced3275f4ad7bc6f2eab52006775a9444024db1c26f97d9c0068efb8faafec"
+            },
+            "completion.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-16-pair-1-one/completion.json",
+              "sha256": "2aed1e93643971357359fda413833d571516167052fb8fa7f0c3b5c2b554f895"
+            },
+            "releases.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-16-pair-1-one/releases.json",
+              "sha256": "453b6f7f028184057c7c6ef886c23a034736d4a2ba0be575ce8e84009faee9cd"
+            },
+            "events": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-16-pair-1-one/events",
+              "sha256": "60dde1cb63c42955f337ff84870b1deeef48574c99141bb5b9c315c082785467"
+            }
+          }
+        },
+        {
+          "name": "slots-16-pair-2-one",
+          "slots": 16,
+          "pair": 2,
+          "thp_env": "1",
+          "canonical_peak": {
+            "descendant_rss_bytes": 80289792,
+            "processes": 17,
+            "root_rss_bytes": 40583168,
+            "rss_bytes": 120872960,
+            "threads": 119
+          },
+          "canonical_held_median": {
+            "first": {
+              "descendant_rss_bytes": 79290368,
+              "root_rss_bytes": 40583168,
+              "rss_bytes": 119873536
+            },
+            "second": {
+              "descendant_rss_bytes": 79290368,
+              "root_rss_bytes": 40583168,
+              "rss_bytes": 119873536
+            }
+          },
+          "completed": 16,
+          "durable_writes": 32,
+          "reap": {
+            "consuming_waits": 16,
+            "live_workers_after_stop": [],
+            "spawned": 16
+          },
+          "peak_connections": 5,
+          "files": {
+            "ready.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-16-pair-2-one/ready.json",
+              "sha256": "571205743d77c6bf8b9cae81f93750a1df272f119ebcee75d43126f1ec42148a"
+            },
+            "workers.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-16-pair-2-one/workers.json",
+              "sha256": "28a61040d604f4798a42e449059b7b8e77cc3a3911ca1d7e63a59cbb715e9491"
+            },
+            "tree-series.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-16-pair-2-one/tree-series.json",
+              "sha256": "282c6612c7e76bb20cc87c1372cea4f8f03114d5805c239434193c4561a5947c"
+            },
+            "held-1-rollups.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-16-pair-2-one/held-1-rollups.json",
+              "sha256": "2534fdd65342d70389b747fdf4a910167c7b58410a8eda6c3f7e01d123c786d5"
+            },
+            "held-2-rollups.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-16-pair-2-one/held-2-rollups.json",
+              "sha256": "0c8ad0053dcec0386d834e5af188bf1232490447d670ad1a2fa2181701065bf0"
+            },
+            "completion.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-16-pair-2-one/completion.json",
+              "sha256": "54af2fd8ff0382fb05d29ede96dc0f085e6b905b7fb97885fdc6b70c1034156e"
+            },
+            "releases.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-16-pair-2-one/releases.json",
+              "sha256": "e437b7a9fd99905bd086327765b6bf9a7bcc4bae26d7e3f21ad0c03666220036"
+            },
+            "events": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-16-pair-2-one/events",
+              "sha256": "0c673f3f73d95133c19b99996d85204b4988c507558ee25be792c7042050ce17"
+            }
+          }
+        },
+        {
+          "name": "slots-16-pair-2-unset",
+          "slots": 16,
+          "pair": 2,
+          "thp_env": null,
+          "canonical_peak": {
+            "descendant_rss_bytes": 184631296,
+            "processes": 17,
+            "root_rss_bytes": 38588416,
+            "rss_bytes": 223219712,
+            "threads": 119
+          },
+          "canonical_held_median": {
+            "first": {
+              "descendant_rss_bytes": 181612544,
+              "root_rss_bytes": 38584320,
+              "rss_bytes": 220196864
+            },
+            "second": {
+              "descendant_rss_bytes": 181612544,
+              "root_rss_bytes": 38588416,
+              "rss_bytes": 220200960
+            }
+          },
+          "completed": 16,
+          "durable_writes": 32,
+          "reap": {
+            "consuming_waits": 16,
+            "live_workers_after_stop": [],
+            "spawned": 16
+          },
+          "peak_connections": 5,
+          "files": {
+            "ready.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-16-pair-2-unset/ready.json",
+              "sha256": "ba22d4534125ebf33ec8bfb6175b3a7c10e35aff793c0b666da631b670ae4a6b"
+            },
+            "workers.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-16-pair-2-unset/workers.json",
+              "sha256": "374af489dc0de8a51be9ae5880bec94861eb14cea70cd9f4bb1f087732fe23cc"
+            },
+            "tree-series.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-16-pair-2-unset/tree-series.json",
+              "sha256": "b2036b6d8850df3fc0c1ae25112efd38415f8f9764a47fc446a271f9f8e35f35"
+            },
+            "held-1-rollups.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-16-pair-2-unset/held-1-rollups.json",
+              "sha256": "82f9b396ff716630705cb8cc85462f296c49029c8564e6d77aa6e456415feec2"
+            },
+            "held-2-rollups.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-16-pair-2-unset/held-2-rollups.json",
+              "sha256": "dd1187d06e7fd68bff6a327a891e68d7b9884a49cb638be4d0ec841411c66060"
+            },
+            "completion.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-16-pair-2-unset/completion.json",
+              "sha256": "f4db766c747b4b430c4734894802ffaf8bfb9343216e863b9dcf91aa991d8800"
+            },
+            "releases.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-16-pair-2-unset/releases.json",
+              "sha256": "590726fdbd78faa43a3bfba7105bec4497cbe889e7043eebd68386ec6967d9f3"
+            },
+            "events": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/named-effect-thp-witness/run-02/extracted/evidence/slots-16-pair-2-unset/events",
+              "sha256": "173162e4311b5681ff3577d17291e481e8552b073209f661aa4e1149f13f5c4e"
+            }
+          }
+        }
+      ]
+    }
+  },
   "linux_compiled_jobs_effect_sparse_listen": {
     "revision": "21c4ad7ae4cf31bf75f56c0a31652c5a3509ecdb",
     "fixture_sha256": "e28300bc62b7519222cf070764a373a45cf348442f3e75f7352ffec02097aea0",
@@ -37344,6 +37930,159 @@
           "reconnect.json": {
             "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-sparse-listen-proof/proof-04/extracted/evidence/outage/reconnect.json",
             "sha256": "e2088a67f8d9d80a4b1216f50865b872812a5260d83e3976b184523be0e6c291"
+          }
+        }
+      }
+    },
+    "bounded_pool_replay": {
+      "revision": "ed00aaa4e9bb2cecafbd1e0cd96fbecb3250ba51",
+      "fixture_sha256": "16a19682484d99572dc5cd0b8cb1c172cccee940e030194ed55f928e64ab64f0",
+      "pack": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-sparse-listen-proof/combined-01/pack.json",
+        "sha256": "633c5c59783f8792a1ed5b53d3c62dbbda1ce74e0b530b545ce967958ec19768"
+      },
+      "result": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-sparse-listen-proof/combined-01/extracted/evidence/result.json",
+        "sha256": "8c32b6c0055563e48d6192b9d13f275e40d415480b965ecdf9c7a5875869c916"
+      },
+      "bundle": {
+        "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-sparse-listen-proof/combined-01/extracted/evidence/bundle.json",
+        "sha256": "16e6528df4622c95d00fde5f9067ed5c795135d4fff306bd2dc7f6eb9a5e5271"
+      },
+      "arms": {
+        "poll": {
+          "jobs": 2,
+          "consuming_waits": 2,
+          "backend_pids": {
+            "app": 441,
+            "claim": 448,
+            "lifecycle": 443,
+            "pool_maintenance": 440,
+            "producer_observer": 435
+          },
+          "wake_sources": [
+            "poll",
+            "poll"
+          ],
+          "fixture_commit_to_claim_ms": [
+            2398.71,
+            501.874
+          ],
+          "files": {
+            "proof.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-sparse-listen-proof/combined-01/extracted/evidence/poll/proof.json",
+              "sha256": "f5c3908db35812799cfc97e1baafb8a50a85388a47b860e34e6a3403fcfbb13d"
+            },
+            "jobs.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-sparse-listen-proof/combined-01/extracted/evidence/poll/jobs.json",
+              "sha256": "89b2471d91dd8c415dcbd350033d283590c6f849f4e7d862f3b729d4d8fd1b43"
+            },
+            "initial-topology.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-sparse-listen-proof/combined-01/extracted/evidence/poll/initial-topology.json",
+              "sha256": "76a0663828e9fa7438ef25551637b11a3535a1c163e8852c013a1b9c6f1fdfeb"
+            },
+            "sql-timeline.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-sparse-listen-proof/combined-01/extracted/evidence/poll/sql-timeline.json",
+              "sha256": "81b1236bfb2a6cf1bd5e80d76b8069e617a256c8b401842ed0eba8319be8d343"
+            },
+            "events": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-sparse-listen-proof/combined-01/extracted/evidence/poll/events",
+              "sha256": "d7bb14479c03755d2ff4c0f55d45aec20f6e2d36d41473ec4e667dd5ae277e7d"
+            }
+          }
+        },
+        "listen": {
+          "jobs": 2,
+          "consuming_waits": 2,
+          "backend_pids": {
+            "app": 502,
+            "claim": 503,
+            "lifecycle": 503,
+            "listener": 508,
+            "pool_maintenance": 500,
+            "producer_observer": 495
+          },
+          "wake_sources": [
+            "notification",
+            "notification"
+          ],
+          "fixture_commit_to_claim_ms": [
+            2.179,
+            461.012
+          ],
+          "files": {
+            "proof.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-sparse-listen-proof/combined-01/extracted/evidence/listen/proof.json",
+              "sha256": "9249346acddf7682ce2299e526575ed52aa4ef758e76d7d34a815d648e4a50c7"
+            },
+            "jobs.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-sparse-listen-proof/combined-01/extracted/evidence/listen/jobs.json",
+              "sha256": "ea5f2c73e650e41335a1c88caa5949d54b1480afd7a655434239497f62694088"
+            },
+            "initial-topology.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-sparse-listen-proof/combined-01/extracted/evidence/listen/initial-topology.json",
+              "sha256": "b07f98c89eede33abd63fcdcf8e3670bb5d02dcc8b921dbc9a506b14da0334ca"
+            },
+            "sql-timeline.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-sparse-listen-proof/combined-01/extracted/evidence/listen/sql-timeline.json",
+              "sha256": "77e52d77115e25c3d63c02e5816dad552828dd63a25bde5874551307edd03d4b"
+            },
+            "events": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-sparse-listen-proof/combined-01/extracted/evidence/listen/events",
+              "sha256": "b11a59f206322d92c773d4c9852bbc9cf939f19d81cdbb1ad6492316a4b2672a"
+            }
+          }
+        },
+        "outage": {
+          "jobs": 3,
+          "consuming_waits": 3,
+          "backend_pids": {
+            "app": 563,
+            "claim": 565,
+            "lifecycle": 565,
+            "listener": 570,
+            "pool_maintenance": 562,
+            "producer_observer": 557
+          },
+          "wake_sources": [
+            "fallback",
+            "subscription",
+            "notification"
+          ],
+          "fixture_commit_to_claim_ms": [
+            2447.492,
+            4.899,
+            0.474
+          ],
+          "files": {
+            "proof.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-sparse-listen-proof/combined-01/extracted/evidence/outage/proof.json",
+              "sha256": "e9dc185ee093aece863a49faca233e2da5f6a2974837911952f2e6ec6aca38a8"
+            },
+            "jobs.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-sparse-listen-proof/combined-01/extracted/evidence/outage/jobs.json",
+              "sha256": "1345b66d2366e7c17a02de8f7b98e99ec57fe64cf56cf5524985e09646645a18"
+            },
+            "initial-topology.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-sparse-listen-proof/combined-01/extracted/evidence/outage/initial-topology.json",
+              "sha256": "3bca51fe54199efdb8d9bff8af662549d6f18b3216af6a9033055391f2a81129"
+            },
+            "sql-timeline.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-sparse-listen-proof/combined-01/extracted/evidence/outage/sql-timeline.json",
+              "sha256": "a8746ab2edf3c7a8a251f2e53fa35c8a9b5b0495b266fa51aae0dc4070b42037"
+            },
+            "events": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-sparse-listen-proof/combined-01/extracted/evidence/outage/events",
+              "sha256": "a965c363864c0129e94125a94d52f7ba67e3e834f8d51e57bbc89adbc85574fe"
+            },
+            "outage-held.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-sparse-listen-proof/combined-01/extracted/evidence/outage/outage-held.json",
+              "sha256": "8fcdffec976d5b41fd9714aa083c0f79b3f9547bf53d7a6c5183f61adde9030f"
+            },
+            "reconnect.json": {
+              "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-sparse-listen-proof/combined-01/extracted/evidence/outage/reconnect.json",
+              "sha256": "1ed5db4621143e806835ab360206e67d830117ab22de7d1221a53520029598d9"
+            }
           }
         }
       }
@@ -37584,7 +38323,82 @@
           "c16-repeat": 1036.7385195833967
         }
       }
-    ]
+    ],
+    "startup_timing": {
+      "scope": "Guest realtime at the producer submit anchor to first durable claim timestamp. The late cluster is consistent with missing one 250 ms idle poll. No trace of the missed empty probe is required for this clustering.",
+      "usual_trials": 14,
+      "usual_submit_to_first_claim_ms": [
+        27.127197265625,
+        90.45361328125
+      ],
+      "delayed_trials": 6,
+      "delayed_submit_to_first_claim_ms": [
+        282.54638671875,
+        321.551513671875
+      ],
+      "delayed_trials_with_observation": [
+        {
+          "group": 1,
+          "arm": "c08",
+          "commit_to_claim_ms": 229.7451171875,
+          "submit_to_claim_ms": 304.049560546875,
+          "observation": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-screen-r1/matched-03-group-1/extracted/evidence/measured-c08/cpu-observation.json",
+            "sha256": "9ab1d06305c8835b346f421297ca2c5145ec2603f59623970fe6c1298cb21249"
+          }
+        },
+        {
+          "group": 2,
+          "arm": "c08",
+          "commit_to_claim_ms": 229.362060546875,
+          "submit_to_claim_ms": 299.31396484375,
+          "observation": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-screen-r1/matched-03-group-2/extracted/evidence/measured-c08/cpu-observation.json",
+            "sha256": "d04070710db67cb3ad0b0026253ead66e692952495c1c520a3d9158b655ba88a"
+          }
+        },
+        {
+          "group": 2,
+          "arm": "c16-repeat",
+          "commit_to_claim_ms": 249.362060546875,
+          "submit_to_claim_ms": 284.072021484375,
+          "observation": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-screen-r1/matched-03-group-2/extracted/evidence/measured-c16-repeat/cpu-observation.json",
+            "sha256": "3d214304071f13d1d3b51226db0d9237395b01836f43dc247a17e6ad0e7dae35"
+          }
+        },
+        {
+          "group": 3,
+          "arm": "c16-repeat",
+          "commit_to_claim_ms": 253.787109375,
+          "submit_to_claim_ms": 321.551513671875,
+          "observation": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-screen-r1/matched-03-group-3/extracted/evidence/measured-c16-repeat/cpu-observation.json",
+            "sha256": "56d68262067eca5b1cbd20a6b40d8052a2cab778243b34dfc725789e97bc9b04"
+          }
+        },
+        {
+          "group": 3,
+          "arm": "c04",
+          "commit_to_claim_ms": 231.883056640625,
+          "submit_to_claim_ms": 300.30078125,
+          "observation": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-screen-r1/matched-03-group-3/extracted/evidence/measured-c04/cpu-observation.json",
+            "sha256": "a57b9b8090b4c0b1b8039e6b08ca5100d17b11eaf3b167a66591c0e66154ba20"
+          }
+        },
+        {
+          "group": 4,
+          "arm": "c08",
+          "commit_to_claim_ms": 248.2041015625,
+          "submit_to_claim_ms": 282.54638671875,
+          "observation": {
+            "path": "target/jobs-parity/linux-arm-ownership-guest/stock-named-effect-c16-screen-r1/matched-03-group-4/extracted/evidence/measured-c08/cpu-observation.json",
+            "sha256": "37c8e7d2ee71cba07a33667703cd93ff318591466ae113f19046b9aa872119e9"
+          }
+        }
+      ]
+    }
   },
   "linux_compiled_jobs_effect_c16_feasibility": {
     "revision": "ee68688207a76078b01cb13c45762f6f8d6072b3",

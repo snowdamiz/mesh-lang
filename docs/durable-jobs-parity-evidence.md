@@ -4229,6 +4229,12 @@ spent 229–254 ms before first claim. Others spent longer draining
 after claim. These timings leave throughput ordering unresolved.
 Four sessions use the fewest connections of the tested configurations.
 The series omits Oban and full-occupancy RSS measurement.
+
+The six delayed first claims grouped one poll interval after the
+other fourteen when measured from producer submit. This supports
+a missed idle poll as a contributor. The post-claim drain varied
+independently, so the next comparison holds the app pool at eight
+sessions and varies LISTEN with separate claim and lifecycle backends.
 [Matched bounded-pool receipts](../proof/jobs-parity/qualification-v1.json)
 
 ### Prove one-slot LISTEN under five connections
@@ -4252,7 +4258,35 @@ sessions used plaintext SCRAM on loopback to expose the frames
 to the observer. The proof used a 2,500 ms poll interval and did
 not run the frozen sparse performance workload or native claim
 confirmation-loss cases.
+
+The port onto the bounded pool at `ed00aaa4` repeated the
+same three-arm gate with its own GNU ARM64 release ELF. All
+seven jobs and fourteen independent commits reconciled.
+The first idle LISTEN claim followed the producer commit
+by about 2 ms in this fixture. The polling arm waited about
+2.4 seconds with the fixture's 2.5-second poll interval.
+The replay also observed fallback, catch-up, and a subsequent
+notification on the replacement listener.
 [One-slot LISTEN receipts](../proof/jobs-parity/qualification-v1.json)
+
+### Check worker-local THP selection for named effects
+
+The separate `62ece84c` draft built for Linux GNU ARM64.
+Two Linux unit tests checked exact worker arguments and verified
+that the named-effects launcher forwards only the literal opt-in.
+The compiled witness used one release ELF for two mirrored pairs
+at one slot and two at 16 slots on PostgreSQL 17.11. Untreated
+workers and all runners reported `THP_enabled: 1`. Opt-in workers
+reported `THP_enabled: 0`. All 68 jobs, 136 separately committed
+writes, and 68 consuming waits reconciled.
+
+At 16 fully occupied slots, paired peak process-tree RSS was
+211.0 → 113.3 MiB and 212.9 → 115.3 MiB. The median held worker
+lost 6 MiB of anonymous huge pages in each pair. The stock kernel
+and launcher policy applied across all arms. The one-slot and
+16-slot holds isolate worker memory under LISTEN-off named
+operations. The 64-slot case and frozen performance gates remain open.
+[THP selection receipts](../proof/jobs-parity/qualification-v1.json)
 
 ### Check guest CPU headroom on the no-op workload
 
