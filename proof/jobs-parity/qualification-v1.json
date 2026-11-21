@@ -8194,6 +8194,259 @@
     "stage_reducer": "Means per trial, then range and median of trial means",
     "scope": "Local macOS ARM64 fenced effect fixture, two identical prewarmed Mesh arms compared with stock Oban. Linux single-slot measurement still required. Sampled process counts can miss short-lived attempt children."
   },
+  "linux_fenced_jobs_slow64_post_effect_timing": {
+    "revision": "47415a6a20f1ecef82b0b0148354b42b29499ebf",
+    "run": "target/jobs-parity/linux-arm-ownership-guest/fenced-matrix-guest/slow-64-post-effect-trace-01",
+    "input_sha256": "42bb9e2be94c17b36110081430faf2647a04f3a3e0f2decf00e7c216fed462fd",
+    "scope": "Linux ARM64 slow-64 timing diagnostic, same release binary in all three arms",
+    "proof_sha256": "b1b20d529316dd3abc176e583c9b3961adef0ab683deee473c77f66ed79cdd23",
+    "receipt_sha256": "60c2a1bcb9d88b5ec68a06f865e47e4e7bbfd31323d72214642cd082604c9f82",
+    "host_trace_sha256": "dbe3c3c6fb4640323d050f0dc756ae19a579c57070c98d3e1961bbd7e435c50b",
+    "boot_archive_sha256": "a16ac4f3a46634c9fdadb7c10e87d0c7759886c8663ec47b9ae59da8e49cd9c6",
+    "host_one_minute_load": [
+      8.19091796875,
+      13.2763671875
+    ],
+    "scored_jobs": 7680,
+    "timed_jobs": 2560,
+    "first_pending_polls": {
+      "exited": 2067,
+      "not_observed": 1,
+      "running": 492
+    },
+    "reap_sources": {
+      "deadline:timer_due=1": 124,
+      "reply:timer_due=0": 1767,
+      "reply:timer_due=1": 669
+    },
+    "median_of_trial_means_ms": {
+      "effect_reply_to_frame_and_reap": 3.524511826171875,
+      "frame_and_reap_to_submit": 3.856399595703125,
+      "submit_to_confirm": 0.6838798984375
+    },
+    "groups": [
+      {
+        "group": 0,
+        "order": [
+          "mesh",
+          "mesh-timing",
+          "mesh-repeat"
+        ],
+        "arms": {
+          "mesh": {
+            "jobs_per_second": 408.5850810428315,
+            "cpu_seconds_per_job": 0.001781744140625,
+            "pickup_p99_ms": 1125.950927734375,
+            "peak_rss_bytes": 141275136
+          },
+          "mesh-repeat": {
+            "jobs_per_second": 422.09398186314917,
+            "cpu_seconds_per_job": 0.0018024531249999998,
+            "pickup_p99_ms": 1099.21484375,
+            "peak_rss_bytes": 130613248
+          },
+          "mesh-timing": {
+            "jobs_per_second": 406.43819660725256,
+            "cpu_seconds_per_job": 0.0018897167968749998,
+            "pickup_p99_ms": 1148.41015625,
+            "peak_rss_bytes": 125431808
+          }
+        },
+        "first_pending_polls": {
+          "exited": 406,
+          "not_observed": 0,
+          "running": 106
+        },
+        "reap_sources": {
+          "deadline:timer_due=1": 18,
+          "reply:timer_due=0": 374,
+          "reply:timer_due=1": 120
+        },
+        "timing_ms_mean": {
+          "effect_reply_to_frame_and_reap": 3.3156281640625,
+          "frame_and_reap_to_submit": 3.856399595703125,
+          "submit_to_confirm": 0.7921981640625
+        },
+        "timed_raw_sha256": "81d2fa96d3aec4e65d147e0f89b8a68e905f1f787faa4002ea7c95b2011ca995"
+      },
+      {
+        "group": 1,
+        "order": [
+          "mesh-timing",
+          "mesh-repeat",
+          "mesh"
+        ],
+        "arms": {
+          "mesh": {
+            "jobs_per_second": 421.44007916148945,
+            "cpu_seconds_per_job": 0.0017960078125,
+            "pickup_p99_ms": 1095.243896484375,
+            "peak_rss_bytes": 133083136
+          },
+          "mesh-repeat": {
+            "jobs_per_second": 409.20877403341916,
+            "cpu_seconds_per_job": 0.001765884765625,
+            "pickup_p99_ms": 1140.716064453125,
+            "peak_rss_bytes": 140193792
+          },
+          "mesh-timing": {
+            "jobs_per_second": 193.96430889939384,
+            "cpu_seconds_per_job": 0.003755716796875,
+            "pickup_p99_ms": 2509.97998046875,
+            "peak_rss_bytes": 87547904
+          }
+        },
+        "first_pending_polls": {
+          "exited": 407,
+          "not_observed": 0,
+          "running": 105
+        },
+        "reap_sources": {
+          "deadline:timer_due=1": 48,
+          "reply:timer_due=0": 284,
+          "reply:timer_due=1": 180
+        },
+        "timing_ms_mean": {
+          "effect_reply_to_frame_and_reap": 12.3801904453125,
+          "frame_and_reap_to_submit": 26.19442740234375,
+          "submit_to_confirm": 1.824923591796875
+        },
+        "timed_raw_sha256": "3ce7c4ec2068558aadf1153c1c1972cac95c2b2a59ecbca0fc93488fcad9e17c"
+      },
+      {
+        "group": 2,
+        "order": [
+          "mesh-repeat",
+          "mesh",
+          "mesh-timing"
+        ],
+        "arms": {
+          "mesh": {
+            "jobs_per_second": 359.12535254922847,
+            "cpu_seconds_per_job": 0.002043890625,
+            "pickup_p99_ms": 1290.072998046875,
+            "peak_rss_bytes": 120135680
+          },
+          "mesh-repeat": {
+            "jobs_per_second": 423.2376768458344,
+            "cpu_seconds_per_job": 0.0018463730468749999,
+            "pickup_p99_ms": 1099.51220703125,
+            "peak_rss_bytes": 131284992
+          },
+          "mesh-timing": {
+            "jobs_per_second": 376.09480130111837,
+            "cpu_seconds_per_job": 0.002070896484375,
+            "pickup_p99_ms": 1247.615966796875,
+            "peak_rss_bytes": 131690496
+          }
+        },
+        "first_pending_polls": {
+          "exited": 414,
+          "not_observed": 0,
+          "running": 98
+        },
+        "reap_sources": {
+          "deadline:timer_due=1": 32,
+          "reply:timer_due=0": 364,
+          "reply:timer_due=1": 116
+        },
+        "timing_ms_mean": {
+          "effect_reply_to_frame_and_reap": 4.771611009765625,
+          "frame_and_reap_to_submit": 7.459536326171875,
+          "submit_to_confirm": 0.675248439453125
+        },
+        "timed_raw_sha256": "c48a301670c4f870a834b3106e7dc59802ce8cc3ce810db9bd17ceedb4ac57fc"
+      },
+      {
+        "group": 3,
+        "order": [
+          "mesh-timing",
+          "mesh",
+          "mesh-repeat"
+        ],
+        "arms": {
+          "mesh": {
+            "jobs_per_second": 429.1349434378932,
+            "cpu_seconds_per_job": 0.0017270214843749998,
+            "pickup_p99_ms": 1084.8330078125,
+            "peak_rss_bytes": 128987136
+          },
+          "mesh-repeat": {
+            "jobs_per_second": 415.7363332373859,
+            "cpu_seconds_per_job": 0.001825091796875,
+            "pickup_p99_ms": 1123.823974609375,
+            "peak_rss_bytes": 126332928
+          },
+          "mesh-timing": {
+            "jobs_per_second": 422.20606712650306,
+            "cpu_seconds_per_job": 0.00176568359375,
+            "pickup_p99_ms": 1101.3330078125,
+            "peak_rss_bytes": 135507968
+          }
+        },
+        "first_pending_polls": {
+          "exited": 426,
+          "not_observed": 1,
+          "running": 85
+        },
+        "reap_sources": {
+          "deadline:timer_due=1": 16,
+          "reply:timer_due=0": 376,
+          "reply:timer_due=1": 120
+        },
+        "timing_ms_mean": {
+          "effect_reply_to_frame_and_reap": 3.524511826171875,
+          "frame_and_reap_to_submit": 3.7793957109375,
+          "submit_to_confirm": 0.6838798984375
+        },
+        "timed_raw_sha256": "d2953c52d749d549adfd906b640710c19ef17e6cb7b87a4ca7e9c260d9996695"
+      },
+      {
+        "group": 4,
+        "order": [
+          "mesh-repeat",
+          "mesh-timing",
+          "mesh"
+        ],
+        "arms": {
+          "mesh": {
+            "jobs_per_second": 446.549246425576,
+            "cpu_seconds_per_job": 0.0016296328124999998,
+            "pickup_p99_ms": 1038.2509765625,
+            "peak_rss_bytes": 128688128
+          },
+          "mesh-repeat": {
+            "jobs_per_second": 454.9586683628576,
+            "cpu_seconds_per_job": 0.001616146484375,
+            "pickup_p99_ms": 1014.260009765625,
+            "peak_rss_bytes": 134918144
+          },
+          "mesh-timing": {
+            "jobs_per_second": 435.477845709982,
+            "cpu_seconds_per_job": 0.0016688007812499998,
+            "pickup_p99_ms": 1047.66796875,
+            "peak_rss_bytes": 128929792
+          }
+        },
+        "first_pending_polls": {
+          "exited": 414,
+          "not_observed": 0,
+          "running": 98
+        },
+        "reap_sources": {
+          "deadline:timer_due=1": 10,
+          "reply:timer_due=0": 369,
+          "reply:timer_due=1": 133
+        },
+        "timing_ms_mean": {
+          "effect_reply_to_frame_and_reap": 2.924068275390625,
+          "frame_and_reap_to_submit": 2.871852244140625,
+          "submit_to_confirm": 0.6265214765625
+        },
+        "timed_raw_sha256": "d77a221a77ad1460d2f8fa229774ad3cf9a1a9af56dedaa055ce21d058cd46fb"
+      }
+    ]
+  },
   "linux_fenced_jobs_slow64_small_pages": {
     "revision": "c271319e84624bd00b0a62a7bb07a45602ee948b",
     "scope": "Local Linux ARM64 guest and opt-in fenced Jobs fixture with two identical prewarmed arms",

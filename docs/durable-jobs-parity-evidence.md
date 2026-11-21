@@ -2414,6 +2414,28 @@ The repeat measured about 80% durable slot utilization in Mesh versus
 the memory limit in both blocks. Throughput remains open for slow-64.
 [Small-page receipts](../proof/jobs-parity/qualification-v1.json)
 
+### Trace post-effect time under slow-64
+
+Release `47415a6a` ran the same small-page slow-64 workload with two
+untraced Mesh arms and one timing arm. All 7,680 scored jobs
+reconciled. The trace joined all 2,560 timed attempts to their durable
+job and exact child PID. The first pending-reply poll observed an
+exited child in 2,067 attempts and a running child in 492. One attempt
+had no pending-reply observation.
+
+The median of trial means was 3.52 ms from the last effect database
+reply to both a complete worker frame and observed reap. The dispatcher
+then spent 3.86 ms before settlement submission, and the submitted
+request took 0.68 ms through confirmation. The trace records when the
+runner collects exit status. It brackets time before submission without
+assigning that time to a particular competing operation.
+
+The timing arm ran below both controls in three of five groups.
+Its slowest group reached 194 jobs/s against 421 and 409 in the
+untraced arms. Use these timings to select a dispatcher experiment.
+The untraced comparisons supply the throughput evidence.
+[Post-effect timing receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Follow-up correctness proofs
 
 The follow-up verifier used the same runtime sources and passed 45 Jobs
