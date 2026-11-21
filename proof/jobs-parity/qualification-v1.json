@@ -11848,6 +11848,375 @@
     },
     "identical_arm_absolute_median_jobs_per_second": 0.05189290465442342
   },
+  "linux_fenced_jobs_staged_sparse_one_slot": {
+    "revision": "c271319e84624bd00b0a62a7bb07a45602ee948b",
+    "profile": "sparse-1r-1s",
+    "run": "target/jobs-parity/linux-arm-ownership-guest/fenced-matrix-all-profiles/runs/stock1/sparse-1r-1s",
+    "scope": "Local Linux ARM64 staged comparison, a full warmup and fresh database per scored group",
+    "guest_memory_gib": 1,
+    "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+    "scored_jobs": 360,
+    "report_receipt_sha256": "3734b5ea3e68a8bafbe0f22618fbfeccbd561a83cf9e13b421e97ba02a33ba0a",
+    "report_trials_sha256": "68df79dc76b528c83693ae2a687976cb8d24bf8944d245b4857bf4bca85a0778",
+    "stages": {
+      "pilot": {
+        "archive_sha256": "653a8233b4e7b2fd69da153af1c8e9caa512e203ca549e59b3ec40cd982ab5b4",
+        "extraction_sha256": "a3e891346cbfc5fb55e16bb36c5d8e6ae6c71970a06ae8286f9ad902fc0bdf80",
+        "host_load_average_1m_max": 14.5869140625,
+        "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+        "jobs": 24,
+        "pack_sha256": "8e6b0e25e35b40e0f67761b140c953f7e5942113d5b24f64c48ce0efe38867fd",
+        "transport": {
+          "evidence_files": 95,
+          "expanded_evidence_bytes": 388669,
+          "expanded_tar_limit": 33554432,
+          "gzip_bytes": 119265,
+          "gzip_limit": 2097152,
+          "serial_bytes": 162247,
+          "serial_limit": 8388608
+        },
+        "vm_seconds": 34.85524241600069,
+        "stage_sha256": "b0bba0523c2adcb194d527a2549ac9f0f9a5397d35424196e91b34392975a9da"
+      },
+      "0": {
+        "archive_sha256": "202b60650efb028d056aeffd327271d5488f63a71284162fd7fb755fc3b77649",
+        "extraction_sha256": "1bd6cd02f19a270be654f754686156a6cf09124f938f6c24970db4d42209a926",
+        "host_load_average_1m_max": 13.7763671875,
+        "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+        "jobs": 24,
+        "pack_sha256": "325bc2135d7171abadb2a9fb7751b7526fde1819180ae88b66dfbad8f596d21d",
+        "transport": {
+          "evidence_files": 257,
+          "expanded_evidence_bytes": 645904,
+          "expanded_tar_limit": 33554432,
+          "gzip_bytes": 166994,
+          "gzip_limit": 2097152,
+          "serial_bytes": 229574,
+          "serial_limit": 8388608
+        },
+        "vm_seconds": 114.20718820900947,
+        "stage_sha256": "556ff633c3976397a74cffabc5b032d68a8cd8fca65cd0e6fdfb837b1d5b2491"
+      },
+      "1": {
+        "archive_sha256": "feb998766141e4f2be91abc49be75403ff6b6c9dfc7a29dcaa5f8c1465c80055",
+        "extraction_sha256": "f2af78d3f718a57a46df24312d5f68a4ef5e5d6bedbfd5d5145f10143d9e23c7",
+        "host_load_average_1m_max": 19.9560546875,
+        "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+        "jobs": 24,
+        "pack_sha256": "20e32f72518651db26830c75146b17cf60f36d0a1a1578ae223d68ddf35e7a9e",
+        "transport": {
+          "evidence_files": 257,
+          "expanded_evidence_bytes": 643172,
+          "expanded_tar_limit": 33554432,
+          "gzip_bytes": 167430,
+          "gzip_limit": 2097152,
+          "serial_bytes": 230180,
+          "serial_limit": 8388608
+        },
+        "vm_seconds": 126.11174162500538,
+        "stage_sha256": "5b9909a667103bb5f857af4bb4a4997483ac0e9dbd847f0a0496d6e5c622b6e8"
+      },
+      "2": {
+        "archive_sha256": "8fea876bb7b6ff77042e3eb04905645630e2cb7a4c999bf0ea10b347dc84e4a2",
+        "extraction_sha256": "ba4305e25ca363a78eabe281cb31ae8a6d7fe8011d8702ce8bdf7d1bfa91fd51",
+        "host_load_average_1m_max": 20.25048828125,
+        "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+        "jobs": 24,
+        "pack_sha256": "6aa1c975c34d0d5d70e6a6a0629d8297f85b44019beaaa6e8ea330407b0f4931",
+        "transport": {
+          "evidence_files": 257,
+          "expanded_evidence_bytes": 640207,
+          "expanded_tar_limit": 33554432,
+          "gzip_bytes": 166688,
+          "gzip_limit": 2097152,
+          "serial_bytes": 229189,
+          "serial_limit": 8388608
+        },
+        "vm_seconds": 117.8189371250046,
+        "stage_sha256": "bb84274a78e17e6da26ba3de3798c5704b014dfb2ed6fa95125497a0a4fa39e7"
+      },
+      "3": {
+        "archive_sha256": "46f11b9f323e85839beb8b8b2cc49d1af9fc5a2ebc32dddb23d93666ef1a368d",
+        "extraction_sha256": "c5553471778b99195cae0ba98f3402809fdc85e91e65adee105702a5ca5c5d34",
+        "host_load_average_1m_max": 22.18505859375,
+        "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+        "jobs": 24,
+        "pack_sha256": "f85b2d6154ee3b3222ae46b3dbaf84df43592527a28f01052de5f34c2a7e0914",
+        "transport": {
+          "evidence_files": 257,
+          "expanded_evidence_bytes": 644711,
+          "expanded_tar_limit": 33554432,
+          "gzip_bytes": 167206,
+          "gzip_limit": 2097152,
+          "serial_bytes": 229880,
+          "serial_limit": 8388608
+        },
+        "vm_seconds": 115.67859120800858,
+        "stage_sha256": "b2b208fbf27fb64238d9b2e0f3c1728c1bc78583f77f2b84153a6ec1e2a728b9"
+      },
+      "4": {
+        "archive_sha256": "59f032993e6301aba386c1b63f15b9a963cda0516e4f2cf2dcc6668ab4d72b00",
+        "extraction_sha256": "5cb3668b75eb3f9ba0ab0ee6574bd6481236954b49e9a12a0c2be6c30113f4ff",
+        "host_load_average_1m_max": 90.1015625,
+        "input_sha256": "20225faf6274696987b2192136f344d69be243f0a21dc9afad71e714c6ee08c5",
+        "jobs": 24,
+        "pack_sha256": "63a0add4313f870bcece7a3d4cbd56756f5e50ba54b3f86bf5ae1c867ac30bd9",
+        "transport": {
+          "evidence_files": 257,
+          "expanded_evidence_bytes": 644669,
+          "expanded_tar_limit": 33554432,
+          "gzip_bytes": 167246,
+          "gzip_limit": 2097152,
+          "serial_bytes": 229933,
+          "serial_limit": 8388608
+        },
+        "vm_seconds": 118.35578079200059,
+        "stage_sha256": "ec469112dc3f0f34c1a122d3045e8c0266cf644e5bdcfb2d7de3f2586eddeaa5"
+      }
+    },
+    "gates": {
+      "mesh": {
+        "all_canonical_conditions_met": false,
+        "breaches": [
+          {
+            "mesh_median": 1.9729561863598248,
+            "metric": "jobs_per_second",
+            "ratio_limit": 1.0,
+            "reference": "oban",
+            "reference_median": 2.006679746637902,
+            "scope": "comparison",
+            "within_limit": false
+          }
+        ],
+        "strict_median_throughput_above_oban": false
+      },
+      "mesh-repeat": {
+        "all_canonical_conditions_met": false,
+        "breaches": [
+          {
+            "mesh_median": 1.9731305479242869,
+            "metric": "jobs_per_second",
+            "ratio_limit": 1.0,
+            "reference": "oban",
+            "reference_median": 2.006679746637902,
+            "scope": "comparison",
+            "within_limit": false
+          }
+        ],
+        "strict_median_throughput_above_oban": false
+      }
+    },
+    "observed_ranges": {
+      "mesh": {
+        "claim_calls_per_job": {
+          "max": 3.2083333333333335,
+          "median": 3.0,
+          "min": 3.0
+        },
+        "claim_p99_ms": {
+          "max": 257.258056640625,
+          "median": 253.947998046875,
+          "min": 246.89404296875
+        },
+        "cpu_seconds_per_job": {
+          "max": 0.05201329166666666,
+          "median": 0.018539625,
+          "min": 0.012069749999999999
+        },
+        "idle_queries_per_minute": {
+          "max": 1608.447681069946,
+          "median": 1599.850065475411,
+          "min": 1586.414739597129
+        },
+        "jobs_per_second": {
+          "max": 1.9833653463317367,
+          "median": 1.9729561863598248,
+          "min": 1.6023452032887457
+        },
+        "peak_connections": {
+          "max": 5,
+          "median": 5,
+          "min": 4
+        },
+        "peak_processes": {
+          "max": 2,
+          "median": 1,
+          "min": 1
+        },
+        "peak_rss_bytes": {
+          "max": 35307520,
+          "median": 26742784,
+          "min": 24858624
+        },
+        "peak_threads": {
+          "max": 14,
+          "median": 8,
+          "min": 7
+        },
+        "pickup_p99_ms": {
+          "max": 335.989013671875,
+          "median": 257.929931640625,
+          "min": 248.85009765625
+        },
+        "settlement_p99_ms": {
+          "max": 352.885009765625,
+          "median": 266.968994140625,
+          "min": 259.967041015625
+        },
+        "sql_calls_per_job": {
+          "max": 30.833333333333332,
+          "median": 28.583333333333332,
+          "min": 28.583333333333332
+        }
+      },
+      "mesh-repeat": {
+        "claim_calls_per_job": {
+          "max": 3.0,
+          "median": 3.0,
+          "min": 3.0
+        },
+        "claim_p99_ms": {
+          "max": 253.376953125,
+          "median": 245.343994140625,
+          "min": 243.5791015625
+        },
+        "cpu_seconds_per_job": {
+          "max": 0.027546291666666667,
+          "median": 0.013352791666666664,
+          "min": 0.011347875
+        },
+        "idle_queries_per_minute": {
+          "max": 1605.7115744839748,
+          "median": 1596.666252328488,
+          "min": 1576.2675722065715
+        },
+        "jobs_per_second": {
+          "max": 1.9835363096466765,
+          "median": 1.9731305479242869,
+          "min": 1.9523409084653116
+        },
+        "peak_connections": {
+          "max": 5,
+          "median": 4,
+          "min": 4
+        },
+        "peak_processes": {
+          "max": 1,
+          "median": 1,
+          "min": 1
+        },
+        "peak_rss_bytes": {
+          "max": 26898432,
+          "median": 24981504,
+          "min": 24952832
+        },
+        "peak_threads": {
+          "max": 10,
+          "median": 10,
+          "min": 8
+        },
+        "pickup_p99_ms": {
+          "max": 255.10693359375,
+          "median": 247.27587890625,
+          "min": 244.551025390625
+        },
+        "settlement_p99_ms": {
+          "max": 261.223876953125,
+          "median": 250.39794921875,
+          "min": 246.80712890625
+        },
+        "sql_calls_per_job": {
+          "max": 28.666666666666668,
+          "median": 28.583333333333332,
+          "min": 28.583333333333332
+        }
+      },
+      "oban": {
+        "claim_calls_per_job": {
+          "max": 2.0,
+          "median": 2.0,
+          "min": 2.0
+        },
+        "claim_p99_ms": {
+          "max": 257.453125,
+          "median": 210.446044921875,
+          "min": 194.708984375
+        },
+        "cpu_seconds_per_job": {
+          "max": 0.04554691666666666,
+          "median": 0.03662204166666667,
+          "min": 0.020716416666666664
+        },
+        "idle_queries_per_minute": {
+          "max": 950.682505583411,
+          "median": 945.1505813758554,
+          "min": 943.2247345760122
+        },
+        "jobs_per_second": {
+          "max": 2.0313924357826108,
+          "median": 2.006679746637902,
+          "min": 1.9762090595346449
+        },
+        "peak_connections": {
+          "max": 5,
+          "median": 5,
+          "min": 3
+        },
+        "peak_processes": {
+          "max": 2,
+          "median": 2,
+          "min": 2
+        },
+        "peak_rss_bytes": {
+          "max": 123482112,
+          "median": 122380288,
+          "min": 117493760
+        },
+        "peak_threads": {
+          "max": 12,
+          "median": 12,
+          "min": 12
+        },
+        "pickup_p99_ms": {
+          "max": 260.843017578125,
+          "median": 218.279052734375,
+          "min": 196.126953125
+        },
+        "settlement_p99_ms": {
+          "max": 267.573974609375,
+          "median": 238.322998046875,
+          "min": 198.620849609375
+        },
+        "sql_calls_per_job": {
+          "max": 22.375,
+          "median": 22.208333333333332,
+          "min": 22.041666666666668
+        }
+      }
+    },
+    "throughput_pair_wins": {
+      "mesh": 0,
+      "mesh-repeat": 1
+    },
+    "identical_arm_absolute_median_jobs_per_second": 0.026948473008770124,
+    "median_occupancy_and_pickup": {
+      "mesh": {
+        "occupied_slots": 0.017058999415177738,
+        "first_pickup_ms": 115.56591796875,
+        "first_claim_to_final_settlement_ms": 12067.81005859375
+      },
+      "mesh-repeat": {
+        "occupied_slots": 0.016700859738772476,
+        "first_pickup_ms": 89.0009765625,
+        "first_claim_to_final_settlement_ms": 12033.14501953125
+      },
+      "oban": {
+        "occupied_slots": 0.012946342022130703,
+        "first_pickup_ms": 135.6279296875,
+        "first_claim_to_final_settlement_ms": 11818.387939453125
+      }
+    }
+  },
   "linux_fenced_jobs_topology_comparisons": {
     "revision": "c271319e84624bd00b0a62a7bb07a45602ee948b",
     "scope": "Local Linux ARM64 guest and opt-in fenced Jobs fixture with two identical prewarmed arms",

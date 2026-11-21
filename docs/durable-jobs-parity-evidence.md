@@ -2559,6 +2559,21 @@ was 103 jobs/s. Both topologies passed pickup and resource limits.
 The timing spread leaves throughput open for repeatable confirmation.
 [Short topology receipts](../proof/jobs-parity/qualification-v1.json)
 
+### Compare one-slot sparse polling on Linux
+
+The `c271319e` staged run used one prewarmed effect session and no
+listener at one slot. All 360 jobs reconciled across five groups
+within the five-connection and two-process workload limits. The
+Mesh arms reached 1.973 and 1.973 jobs/s versus 2.007 for stock
+Oban. They missed the throughput gate, with zero and one group
+wins. Median pickup p99 was 257.9 and 247.3 ms versus 218.3, within
+the 1.25× limit. CPU and RSS also passed.
+
+The fixed 250 ms sparse gap and poll interval contribute much of
+the elapsed time here. The next experiment uses single-claim
+dispatch to fit a notification connection within the same budget.
+[One-slot sparse receipt](../proof/jobs-parity/qualification-v1.json)
+
 ### Follow-up correctness proofs
 
 The follow-up verifier used the same runtime sources and passed 45 Jobs
